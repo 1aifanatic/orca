@@ -5,13 +5,16 @@
 //     supersedes it; only a person's pauses.
 //   - 'cleared': a card /clear carried into this conversation waits, and no person's turn or
 //     Resume has happened here since.
-//   - 'restarted': a waiting card was written by another host process, and no person's turn has
-//     started since this conversation opened.
+//   - 'restarted': a waiting card a person queued was written by another host process, and no
+//     person's turn has started since this conversation opened. A card Orca queued for an agent
+//     (source `agent`) never waits for it: orchestration re-derives what it still owes from its own database, which
+//     outlives the process, and withdraws a card that no longer stands for unread mail.
 // A person's turn is an accepted submission of origin `client`. Orchestration mail, a restart
 // continuation, a launch prompt and the queue's own drain are `host` and never lift it.
 
 import type { AgentJournalCursor } from '../../../shared/agent-session-journal-types'
 import type { JournalStopEvent, JournalTombstoneRow } from './journal-row-schema'
+import type { QueuedMessageSource } from '../../../shared/queued-message-source'
 
 export type QueuePauseReason = 'stopped' | 'cleared' | 'restarted'
 
@@ -34,6 +37,7 @@ type QueueCard = {
   hostInstance: string
   carriedFrom: string | null
   queuedAt: AgentJournalCursor | null
+  source: Pick<QueuedMessageSource, 'kind'>
 }
 
 export function createJournalQueuePauseMarks(): JournalQueuePauseMarks {
@@ -124,19 +128,26 @@ export function deriveQueuePauses(input: {
   if (carried.length > 0 && latestPersonTurnSequence === 0 && marks.resumedSequence === 0) {
     pauses.push({ reason: 'cleared', since: null })
   }
-  if (!input.restartEnded && waiting.some((card) => card.hostInstance !== input.hostInstance)) {
-    // The process that wrote a card is gone: every card waits, whenever it was written.
+  if (
+    !input.restartEnded &&
+    waiting.some((card) => card.source.kind === 'user' && card.hostInstance !== input.hostInstance)
+  ) {
+    // The process that wrote a person's card is gone: every card of theirs waits, whenever written.
     pauses.push({ reason: 'restarted', since: null })
   }
   return pauses
 }
 
-/** Queued before the pause began: for /clear, a card it carried; for a restart, every card. For a
- *  Stop, a card queued before its row; one from another epoch (before a rewind) or from a build
- *  that recorded no position counts as before. A withdrawn steer keeps its position, so is held. */
+/** Queued before the pause began: for /clear, a card it carried; for a restart, every card a person
+ *  queued. For a Stop, a card queued before its row; one from another epoch (before a rewind) or
+ *  from a build that recorded no position counts as before. A withdrawn steer keeps its position,
+ *  so is held. */
 function queuedBeforePause(pause: DerivedQueuePause, card: QueueCard): boolean {
   if (pause.reason === 'cleared') {
     return card.carriedFrom !== null
+  }
+  if (pause.reason === 'restarted') {
+    return card.source.kind === 'user'
   }
   const { since } = pause
   return (

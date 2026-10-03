@@ -2,21 +2,23 @@
  * The structured-session half of the structured pointer lane.
  *
  * Keeps every `getStructuredAgentSessionHost()` call in one place so the delivery policy above it
- * stays pure and testable. Nothing here decides whether to deliver; it only performs the read and
- * the send and reports what the host said.
+ * stays pure and testable. Nothing here decides whether to deliver; it only performs the read, the
+ * send and the withdrawal, and reports what the host said.
  */
 
 import { AGENT_SESSION_NOT_ATTACHED } from '../../native-chat/agent-session-wire/structured-agent-session-mutation-admission'
 import { getStructuredAgentSessionHost } from '../../native-chat/agent-session-wire/structured-agent-session-registry'
-import type {
-  StructuredMailboxPointerHost,
-  StructuredPointerGateFacts
-} from './structured-mailbox-pointer-delivery'
+import type { StructuredMailboxPointerHost } from './structured-mailbox-pointer-delivery'
 import type { AgentJournalSnapshot } from '../../../shared/agent-session-journal-types'
+import { structuredAgentSessionPayloadFingerprint } from '../../../shared/structured-agent-session-mutation'
 import {
   structuredSessionGateFacts,
   type StructuredSessionGateFacts
 } from './structured-session-pointer-delivery'
+import {
+  mintAgentSessionOperationId,
+  type StructuredPointerFacts
+} from './structured-pointer-operation-id'
 import { sendAgentTurn } from './send-agent-turn'
 
 /** Per-dispatch so one worker's nudges cannot exhaust the shared runtime operation-ledger budget. */
@@ -50,22 +52,32 @@ export async function readStructuredSessionGateFacts(
   return snapshot ? structuredSessionGateFacts(snapshot.items) : null
 }
 
-/** The pointer lane's gate: the shared idle facts, plus what each recorded send settled as. */
-async function readPointerGateFacts(sessionId: string): Promise<StructuredPointerGateFacts | null> {
-  const snapshot = await readSessionJournal(sessionId)
-  return snapshot
-    ? { ...structuredSessionGateFacts(snapshot.items), submissions: snapshot.submissions }
-    : null
+async function readSessionJournal(sessionId: string): Promise<AgentJournalSnapshot | null> {
+  return readSession(sessionId, (host) => host.journalSnapshot(sessionId))
 }
 
-async function readSessionJournal(sessionId: string): Promise<AgentJournalSnapshot | null> {
+/** What each recorded send settled as, and every draft card, so the lane can find its own. */
+function readPointerFacts(sessionId: string): Promise<StructuredPointerFacts | null> {
+  return readSession(sessionId, async (host) => ({
+    submissions: (await host.journalSnapshot(sessionId)).submissions,
+    cards: (await host.queuedMessageRows(sessionId)).map(({ messageId, state }) => ({
+      messageId,
+      state
+    }))
+  }))
+}
+
+async function readSession<T>(
+  sessionId: string,
+  read: (host: NonNullable<ReturnType<typeof getStructuredAgentSessionHost>>) => Promise<T>
+): Promise<T | null> {
   const host = getStructuredAgentSessionHost()
   if (!host) {
     return null
   }
   try {
     // Opens a conversation the idle sweep closed; that starts no agent.
-    return await host.journalSnapshot(sessionId)
+    return await read(host)
   } catch (error) {
     // Not attached is a retain reason, not a failure; anything else is still unreadable.
     if ((error as Error)?.message !== AGENT_SESSION_NOT_ATTACHED.code) {
@@ -75,17 +87,19 @@ async function readSessionJournal(sessionId: string): Promise<AgentJournalSnapsh
   }
 }
 
+function currentFence(sessionId: string): number | null {
+  return (
+    getStructuredAgentSessionHost()?.deps.store.getRecord(sessionId)?.lease.runtimeFence ?? null
+  )
+}
+
 export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHost {
   return {
-    readGateFacts(sessionId) {
-      return readPointerGateFacts(sessionId)
+    readFacts(sessionId) {
+      return readPointerFacts(sessionId)
     },
 
-    currentFence(sessionId) {
-      return (
-        getStructuredAgentSessionHost()?.deps.store.getRecord(sessionId)?.lease.runtimeFence ?? null
-      )
-    },
+    currentFence,
 
     async send(input) {
       const host = getStructuredAgentSessionHost()
@@ -101,7 +115,11 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
           : structuredSessionPointerCallerKey(input.sessionId),
         turn: {
           body: input.body,
-          delivery: 'now',
+          // A busy chat holds the pointer as a card the person sees, and its own queue sends it when
+          // the turn ends: sent mid-turn, Codex coalesces it into the running turn and Claude folds
+          // it in, so it would read as part of that work rather than a new instruction.
+          delivery: 'queue',
+          source: input.source,
           operationId: input.operationId,
           expectedRuntimeFence: input.expectedRuntimeFence
         }
@@ -112,9 +130,7 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
             ? { kind: 'unattached' }
             : { kind: 'sent', state: 'rejected' }
         case 'queued':
-          // Never for a `now` send. A draft would hand off under a fresh id, which this lane's
-          // operation row cannot see, so reading it needs its own rule before this lane queues.
-          return { kind: 'sent', state: 'unknown' }
+          return { kind: 'queued', state: outcome.queued.state }
         case 'sent': {
           // `pending` is not yet an acknowledgement; only `accepted` may consume mail. A send still
           // pending after the wait parks for the next journal edge.
@@ -125,6 +141,32 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
           }
         }
       }
+    },
+
+    // The same Delete a person's click sends; a card already sent or gone answers without a change.
+    async withdraw({ sessionId, messageId }) {
+      const host = getStructuredAgentSessionHost()
+      const fence = currentFence(sessionId)
+      if (!host || fence === null) {
+        return false
+      }
+      const result = await host.queuedMessageDelete(
+        { callerKey: structuredSessionPointerCallerKey(sessionId) },
+        {
+          envelope: {
+            sessionId,
+            clientOperationId: mintAgentSessionOperationId(Date.now()),
+            expectedRuntimeFence: fence,
+            payloadFingerprint: structuredAgentSessionPayloadFingerprint({
+              method: 'agentSession.queuedMessageDelete',
+              sessionId,
+              fields: { messageId }
+            })
+          },
+          messageId
+        }
+      )
+      return result.ok
     }
   }
 }

@@ -62,6 +62,7 @@ function queueDraft(journal: AgentSessionJournal, messageId: string, carriedFrom
     body: message(messageId),
     fingerprint: `fp-${messageId}`,
     hostInstance: HOST,
+    source: { kind: 'user' },
     ...(carriedFrom ? { carriedFrom } : {})
   })
 }
@@ -494,7 +495,8 @@ describe("a restart's pause", () => {
       messageId: 'draft-restart',
       body: message('written before the restart'),
       fingerprint: 'fp-draft-restart',
-      hostInstance: 'proc-0'
+      hostInstance: 'proc-0',
+      source: { kind: 'user' }
     })
     expect(reason(journal)).toBe('restarted')
     await queueDraft(journal, 'draft-legacy')
@@ -532,7 +534,13 @@ describe('which cards the pauses in force hold', () => {
 
   function card(messageId: string, queuedAfter: number, fields: Partial<Card> = {}): Card {
     const queuedAt = { epoch: 'epoch-1', sequence: queuedAfter + 1 }
-    const base = { state: 'waiting', holdReason: null, hostInstance: HOST, carriedFrom: null }
+    const base = {
+      state: 'waiting',
+      holdReason: null,
+      hostInstance: HOST,
+      carriedFrom: null,
+      source: { kind: 'user' as const }
+    }
     return { messageId, ...base, queuedAt, ...fields }
   }
 
@@ -591,6 +599,17 @@ describe('which cards the pauses in force hold', () => {
       ['after', 'restarted']
     ])
     expect(resumableQueuePause(pausesOver(cards), cards)?.reason).toBe('stopped')
+  })
+
+  it("a restart holds only a person's card: an agent's from the dead process sends, and alone pauses nothing", () => {
+    const agent = card('agent', 1, { hostInstance: DEAD, source: { kind: 'agent' } })
+    expect(pausesOver([agent], 0)).toEqual([])
+    const both = [agent, card('person', 2, { hostInstance: DEAD })]
+    expect(holding(both, 0)).toEqual([
+      ['agent', null],
+      ['person', 'restarted']
+    ])
+    expect(nextSendableQueuedCard(pausesOver(both, 0), both)?.messageId).toBe('agent')
   })
 
   it("a /clear's pause that holds nothing never hides a restart's", () => {

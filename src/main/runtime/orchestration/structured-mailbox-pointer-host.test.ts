@@ -9,9 +9,12 @@ vi.mock('../../native-chat/agent-session-wire/structured-agent-session-registry'
 
 const {
   createStructuredMailboxPointerHost,
+  readStructuredSessionGateFacts,
   structuredPointerCallerKey,
   structuredSessionPointerCallerKey
 } = await import('./structured-mailbox-pointer-host')
+const { structuredAgentSessionPayloadFingerprint } =
+  await import('../../../shared/structured-agent-session-mutation')
 
 function runningTurn(): AgentJournalRenderItem {
   return {
@@ -41,30 +44,38 @@ describe('structured mailbox pointer host', () => {
   it('reads the gate facts from the FULL timeline, never a bounded tail', async () => {
     // The defect this pins: a running turn is announced by ONE lifecycle item, and settlement
     // tombstones it rather than rewriting it. A long tool-calling turn pushes that item arbitrarily
-    // far from the tail, so any page-sized read reports a busy worker as idle — and the pointer is
-    // then delivered mid-turn, which Codex coalesces into the running turn and Claude folds into
-    // it -- either way folded into work already in flight rather than read as a new instruction.
+    // far from the tail, so any page-sized read reports a busy worker as idle — and `@idle` then
+    // wakes it mid-turn, which Codex coalesces into the running turn and Claude folds into it.
     const items = [runningTurn(), ...transcript(500)]
-    const submissions = [{ clientMessageId: 'op1', dispatchState: 'unknown' }]
-    hostRef.current = { journalSnapshot: () => ({ items, submissions }) }
-    // The recorded sends ride along: the lane reads what its own operation id settled as.
-    expect(await createStructuredMailboxPointerHost().readGateFacts('s1')).toEqual({
+    hostRef.current = { journalSnapshot: () => ({ items, submissions: [] }) }
+    expect(await readStructuredSessionGateFacts('s1')).toEqual({
       turnRunning: true,
-      awaitingHuman: false,
-      submissions
+      awaitingHuman: false
     })
   })
 
-  it('answers null rather than idle when the session cannot be read', async () => {
-    // Null retains the pointer; `{turnRunning:false}` would deliver a nudge into a session this
-    // runtime cannot see at all.
-    expect(await createStructuredMailboxPointerHost().readGateFacts('s1')).toBeNull()
+  it("reads what the session's sends settled as, and every card in its queue", async () => {
+    const submissions = [{ clientMessageId: 'op1', dispatchState: 'unknown' }]
+    hostRef.current = {
+      journalSnapshot: () => ({ items: [], submissions }),
+      queuedMessageRows: () => [{ messageId: 'op2', state: 'withdrawn', body: {} }]
+    }
+    expect(await createStructuredMailboxPointerHost().readFacts('s1')).toEqual({
+      submissions,
+      cards: [{ messageId: 'op2', state: 'withdrawn' }]
+    })
+  })
+
+  it('answers null rather than nothing recorded when the session cannot be read', async () => {
+    // Null retains the pointer; an empty answer would read as "never sent" and send again into a
+    // session this runtime cannot see at all.
+    expect(await createStructuredMailboxPointerHost().readFacts('s1')).toBeNull()
     hostRef.current = {
       journalSnapshot: () => {
         throw new Error('agent_session_ownership_unknown')
       }
     }
-    expect(await createStructuredMailboxPointerHost().readGateFacts('s1')).toBeNull()
+    expect(await createStructuredMailboxPointerHost().readFacts('s1')).toBeNull()
   })
 
   it('reports an unattached host rather than a rejection when nothing can be sent', async () => {
@@ -108,16 +119,15 @@ describe('structured mailbox pointer host', () => {
     expect(send.mock.calls[0]![1]!.retryUnknown).toBeUndefined()
   })
 
-  it('reads a queued answer as unknown, so the pointer is retained', async () => {
-    hostRef.current = {
-      send: async () => ({
-        ok: true,
-        value: {
-          clientMessageId: 'op1',
-          queued: { messageId: 'op1', position: 0, state: 'waiting' }
-        }
-      })
-    }
+  it("asks a busy chat to queue the pointer, and reports its card's state", async () => {
+    const send = vi.fn(async (_caller: unknown, _payload: { delivery?: string }) => ({
+      ok: true,
+      value: {
+        clientMessageId: 'op1',
+        queued: { messageId: 'op1', position: 0, state: 'waiting' }
+      }
+    }))
+    hostRef.current = { send }
     await expect(
       createStructuredMailboxPointerHost().send({
         sessionId: 's1',
@@ -126,7 +136,38 @@ describe('structured mailbox pointer host', () => {
         expectedRuntimeFence: 1,
         body: { kind: 'message', role: 'user', blocks: [] }
       } as never)
-    ).resolves.toEqual({ kind: 'sent', state: 'unknown' })
+    ).resolves.toEqual({ kind: 'queued', state: 'waiting' })
+    expect(send.mock.calls[0]![1].delivery).toBe('queue-if-active')
+  })
+
+  it("withdraws its card through the same Delete a person's click sends", async () => {
+    const queuedMessageDelete = vi.fn(async () => ({ ok: true }))
+    hostRef.current = {
+      queuedMessageDelete,
+      deps: { store: { getRecord: () => ({ lease: { runtimeFence: 9 } }) } }
+    }
+    await expect(
+      createStructuredMailboxPointerHost().withdraw({ sessionId: 's1', messageId: 'op1' })
+    ).resolves.toBe(true)
+    expect(queuedMessageDelete).toHaveBeenCalledWith(
+      { callerKey: structuredSessionPointerCallerKey('s1') },
+      {
+        envelope: expect.objectContaining({
+          sessionId: 's1',
+          expectedRuntimeFence: 9,
+          payloadFingerprint: structuredAgentSessionPayloadFingerprint({
+            method: 'agentSession.queuedMessageDelete',
+            sessionId: 's1',
+            fields: { messageId: 'op1' }
+          })
+        }),
+        messageId: 'op1'
+      }
+    )
+    hostRef.current = null
+    await expect(
+      createStructuredMailboxPointerHost().withdraw({ sessionId: 's1', messageId: 'op1' })
+    ).resolves.toBe(false)
   })
 
   it('consumes mail once an accepted nudge is delivered while the worker starts (W10)', async () => {

@@ -1,16 +1,17 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
 import {
   OrchestrationStructuredMailboxPointerDelivery,
-  type StructuredMailboxPointerHost
+  type StructuredMailboxPointerHost,
+  type StructuredPointerSendOutcome
 } from './structured-mailbox-pointer-delivery'
 import type { StructuredPointerOperationRow } from './db/messages/structured-pointer-operation-store'
 import {
   structuredPointerBatchFingerprint,
+  type StructuredPointerCard,
   type StructuredPointerSubmission
 } from './structured-pointer-operation-id'
-import { structuredSessionGateFacts } from './structured-session-pointer-delivery'
 import type { StructuredWorkerIdentity } from '../structured-worker-identity'
+import type { PointerBatchMessage } from './structured-pointer-source'
 
 const IDENTITY: StructuredWorkerIdentity = {
   handle: 'structworker_1',
@@ -22,63 +23,18 @@ const IDENTITY: StructuredWorkerIdentity = {
   hostScope: { kind: 'local', hostId: 'local' }
 }
 
-function idleJournal(): AgentJournalRenderItem[] {
-  return [
-    {
-      itemId: 'i1',
-      observedAt: 1,
-      body: { kind: 'status', text: 'done', turnLifecycle: { state: 'completed', turnId: 't1' } }
-    } as unknown as AgentJournalRenderItem
-  ]
-}
+type Unread = PointerBatchMessage
 
-function runningJournal(): AgentJournalRenderItem[] {
-  return [
-    {
-      itemId: 'i1',
-      observedAt: 1,
-      body: { kind: 'status', text: 'working', turnLifecycle: { state: 'running', turnId: 't1' } }
-    } as unknown as AgentJournalRenderItem
-  ]
-}
-
-/** What a worker's journal looks like once it has finished a substantial turn: history, and no
- *  turnLifecycle row anywhere, because settlement tombstones it. */
-function settledLongJournal(): AgentJournalRenderItem[] {
-  return Array.from(
-    { length: 120 },
-    (_unused, index) =>
-      ({
-        itemId: `tool-${index}`,
-        observedAt: index,
-        body: { kind: 'tool-call', name: 'Bash', input: {}, state: 'completed' }
-      }) as unknown as AgentJournalRenderItem
-  )
-}
-
-/** A prompt raised at the very start of a long turn, far outside any bounded tail window. */
-function staleAttentionJournal(): AgentJournalRenderItem[] {
-  return [...attentionJournal(), ...settledLongJournal()]
-}
-
-function attentionJournal(): AgentJournalRenderItem[] {
-  return [
-    {
-      itemId: 'i1',
-      observedAt: 1,
-      body: {
-        kind: 'question',
-        question: 'which?',
-        options: [],
-        resolution: { state: 'pending' }
-      }
-    } as unknown as AgentJournalRenderItem
-  ]
+function mail(id: string, sequence: number, from = 'term_peer'): Unread {
+  return { id, type: 'status', sequence, from_handle: from, sender_pane_key: null, run_id: 'run_1' }
 }
 
 function harness(options: {
-  journal: AgentJournalRenderItem[] | null
+  /** False: the host cannot read the session (not attached on this runtime). */
+  attached?: boolean
   dispatchState?: 'accepted' | 'rejected' | 'unknown'
+  /** The chat is busy: the host holds the pointer as a card in its queue. */
+  busy?: boolean
   /** The coordinator of this worker's Run is mid-batch: it checked and has not acked yet. */
   outstandingRunDelivery?: boolean
   outstandingOwnDelivery?: boolean
@@ -88,27 +44,50 @@ function harness(options: {
 }) {
   const mailbox = options.mailbox ?? 'dispatch:d1'
   const dispatchId = options.dispatchId === undefined ? 'd1' : options.dispatchId
-  let journal = options.journal
-  // The session's recorded sends, as its journal reports them.
+  let attached = options.attached ?? true
+  let unread: Unread[] = [mail('m1', 3)]
+  // The session's recorded sends and queue cards, as its journal reports them.
   let submissions: StructuredPointerSubmission[] = []
+  let cards: StructuredPointerCard[] = []
   const markAsDelivered = vi.fn()
-  const send: StructuredMailboxPointerHost['send'] = vi.fn(async () => ({
-    kind: 'sent' as const,
-    state: options.dispatchState ?? ('accepted' as const)
-  }))
-  const sendMock = vi.mocked(send)
+  const send = vi.fn(
+    async (
+      input: Parameters<StructuredMailboxPointerHost['send']>[0]
+    ): Promise<StructuredPointerSendOutcome> => {
+      if (options.busy) {
+        // What the host does with a `queue` send to a busy chat: a card under the send's own id.
+        cards = [...cards, { messageId: input.operationId, state: 'waiting' }]
+        return { kind: 'queued', state: 'waiting' }
+      }
+      return { kind: 'sent', state: options.dispatchState ?? 'accepted' }
+    }
+  )
+  const withdraw = vi.fn(async ({ messageId }: { sessionId: string; messageId: string }) => {
+    cards = cards.map((card) =>
+      card.messageId === messageId ? { ...card, state: 'withdrawn' as const } : card
+    )
+    return true
+  })
+  const onRetain = vi.fn()
   const stored = new Map<string, StructuredPointerOperationRow>()
   const db = {
     getDispatchContextById: () => ({ run_id: 'run_1' }),
     hasOutstandingMailboxDelivery: (handle: string) =>
       ((options.outstandingRunDelivery ?? false) && handle.startsWith('run:')) ||
       ((options.outstandingOwnDelivery ?? false) && !handle.startsWith('run:')),
-    getUndeliveredUnreadMessages: () => [{ id: 'm1', type: 'status', sequence: 3 }],
+    getUndeliveredUnreadMessages: () => unread,
     markAsDelivered,
     getStructuredPointerOperation: (key: string) => stored.get(key),
+    listStructuredPointerOperations: () => [...stored.values()],
     putStructuredPointerOperation: (row: StructuredPointerOperationRow) =>
       stored.set(row.mailbox_handle, row),
     deleteStructuredPointerOperation: (key: string) => stored.delete(key)
+  }
+  const host: StructuredMailboxPointerHost = {
+    readFacts: async () => (attached ? { submissions, cards } : null),
+    currentFence: () => 4,
+    send,
+    withdraw
   }
   const delivery = new OrchestrationStructuredMailboxPointerDelivery({
     getDb: () => db as never,
@@ -116,24 +95,29 @@ function harness(options: {
     resolveStructuredTarget: (mailboxHandle) =>
       mailboxHandle === mailbox ? { sessionId: IDENTITY.sessionId, dispatchId } : null,
     getCliCommand: () => 'orca-dev',
-    host: {
-      readGateFacts: async () =>
-        journal === null ? null : { ...structuredSessionGateFacts(journal), submissions },
-      currentFence: () => 4,
-      send
-    }
+    host,
+    onRetain
   })
   return {
     delivery,
     markAsDelivered,
-    send: sendMock,
+    send,
+    withdraw,
+    onRetain,
     stored,
-    setJournal: (next: AgentJournalRenderItem[] | null) => {
-      journal = next
+    attach: () => {
+      attached = true
+    },
+    setUnread: (next: Unread[]) => {
+      unread = next
     },
     setSubmissions: (next: StructuredPointerSubmission[]) => {
       submissions = next
-    }
+    },
+    setCards: (next: StructuredPointerCard[]) => {
+      cards = next
+    },
+    cards: () => cards
   }
 }
 
@@ -141,13 +125,13 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 
 describe('structured mailbox pointer delivery', () => {
   it('claims only mailboxes whose assignee is a structured worker', () => {
-    const { delivery } = harness({ journal: idleJournal() })
+    const { delivery } = harness({})
     expect(delivery.deliverForHandle('dispatch:d1')).toBe(true)
     expect(delivery.deliverForHandle('run:run_1')).toBe(false)
   })
 
   it('sends the pointer as a turn and consumes mail on an accepted dispatch', async () => {
-    const { delivery, markAsDelivered, send } = harness({ journal: idleJournal() })
+    const { delivery, markAsDelivered, send } = harness({})
     delivery.deliverForHandle('dispatch:d1')
     await flush()
     expect(send).toHaveBeenCalledTimes(1)
@@ -157,7 +141,6 @@ describe('structured mailbox pointer delivery', () => {
 
   it('nudges through the worker`s own handle for direct peer mail outside a dispatch', async () => {
     const { delivery, send, markAsDelivered } = harness({
-      journal: idleJournal(),
       mailbox: IDENTITY.handle,
       dispatchId: null
     })
@@ -176,7 +159,6 @@ describe('structured mailbox pointer delivery', () => {
 
   it('retains mail when the dispatch settles unknown', async () => {
     const { delivery, markAsDelivered } = harness({
-      journal: idleJournal(),
       dispatchState: 'unknown'
     })
     delivery.deliverForHandle('dispatch:d1')
@@ -184,40 +166,8 @@ describe('structured mailbox pointer delivery', () => {
     expect(markAsDelivered).not.toHaveBeenCalled()
   })
 
-  it('retains mail while a turn is running', async () => {
-    const { delivery, send, markAsDelivered } = harness({ journal: runningJournal() })
-    delivery.deliverForHandle('dispatch:d1')
-    await flush()
-    expect(send).not.toHaveBeenCalled()
-    expect(markAsDelivered).not.toHaveBeenCalled()
-  })
-
-  it('retains mail while a prompt is waiting for a human', async () => {
-    const { delivery, send } = harness({ journal: attentionJournal() })
-    delivery.deliverForHandle('dispatch:d1')
-    await flush()
-    expect(send).not.toHaveBeenCalled()
-  })
-
-  it('delivers to a worker whose finished turn left a long history and no lifecycle row', async () => {
-    // The steady state after a worker's first substantial turn. Gating on a bounded tail page read
-    // this as permanently busy, so every later nudge parked forever and the worker went unnudged.
-    const { delivery, send, markAsDelivered } = harness({ journal: settledLongJournal() })
-    delivery.deliverForHandle('dispatch:d1')
-    await flush()
-    expect(send).toHaveBeenCalledTimes(1)
-    expect(markAsDelivered).toHaveBeenCalledWith(['m1'])
-  })
-
-  it('retains mail for a prompt that scrolled out of the tail window', async () => {
-    const { delivery, send } = harness({ journal: staleAttentionJournal() })
-    delivery.deliverForHandle('dispatch:d1')
-    await flush()
-    expect(send).not.toHaveBeenCalled()
-  })
-
   it('retains mail when the session is not attached', async () => {
-    const { delivery, send } = harness({ journal: null })
+    const { delivery, send } = harness({ attached: false })
     delivery.deliverForHandle('dispatch:d1')
     await flush()
     expect(send).not.toHaveBeenCalled()
@@ -226,23 +176,11 @@ describe('structured mailbox pointer delivery', () => {
   it('redrives a detached session when the journal replays on re-attach', async () => {
     // A transient detach parks nothing to be woken unless `session-not-attached` waits for the
     // journal edge, and the dispatch preamble tells the worker not to poll.
-    const { delivery, send, setJournal, markAsDelivered } = harness({ journal: null })
+    const { delivery, send, attach, markAsDelivered } = harness({ attached: false })
     delivery.deliverForHandle('dispatch:d1')
     await flush()
     expect(send).not.toHaveBeenCalled()
-    setJournal(idleJournal())
-    delivery.onJournalActivity('session-1')
-    await flush()
-    expect(send).toHaveBeenCalledTimes(1)
-    expect(markAsDelivered).toHaveBeenCalledWith(['m1'])
-  })
-
-  it('retries a parked pointer when the journal moves', async () => {
-    const { delivery, send, setJournal, markAsDelivered } = harness({ journal: runningJournal() })
-    delivery.deliverForHandle('dispatch:d1')
-    await flush()
-    expect(send).not.toHaveBeenCalled()
-    setJournal(idleJournal())
+    attach()
     delivery.onJournalActivity('session-1')
     await flush()
     expect(send).toHaveBeenCalledTimes(1)
@@ -255,7 +193,6 @@ describe('structured mailbox pointer delivery', () => {
     // coordinator's `run:` delivery is invisible here — gating the WORKER's dispatch mailbox on it
     // dropped the nudge with nothing parked, and the worker sat idle on mail it was never told of.
     const { delivery, send, markAsDelivered } = harness({
-      journal: idleJournal(),
       outstandingRunDelivery: true
     })
     delivery.deliverForHandle('dispatch:d1')
@@ -267,7 +204,7 @@ describe('structured mailbox pointer delivery', () => {
   it('does not re-nudge a mailbox still holding its own unacked batch', async () => {
     // The other half of the same gate: the consumer already has this batch, so a second nudge
     // spends a whole provider turn telling it something it was told.
-    const { delivery, send } = harness({ journal: idleJournal(), outstandingOwnDelivery: true })
+    const { delivery, send } = harness({ outstandingOwnDelivery: true })
     delivery.deliverForHandle('dispatch:d1')
     await flush()
     expect(send).not.toHaveBeenCalled()
@@ -278,7 +215,6 @@ describe('structured mailbox pointer delivery', () => {
     // stranded the worker until unrelated mail happened to arrive. The retry keeps the id: the host
     // replays a recorded refusal rather than starting the agent again.
     const { delivery, send, markAsDelivered } = harness({
-      journal: idleJournal(),
       dispatchState: 'rejected'
     })
     delivery.deliverForHandle('dispatch:d1')
@@ -294,7 +230,6 @@ describe('structured mailbox pointer delivery', () => {
 
   it('points again under a new id once a later send ran', async () => {
     const { delivery, send, setSubmissions } = harness({
-      journal: idleJournal(),
       dispatchState: 'unknown'
     })
     delivery.deliverForHandle('dispatch:d1')
@@ -312,7 +247,6 @@ describe('structured mailbox pointer delivery', () => {
 
   it('points once more under a new id for a send an earlier process left in doubt', async () => {
     const { delivery, send, stored, setSubmissions } = harness({
-      journal: idleJournal(),
       dispatchState: 'unknown'
     })
     stored.set('dispatch:d1', {
@@ -344,7 +278,6 @@ describe('structured mailbox pointer delivery', () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     try {
       const { delivery, send, setSubmissions } = harness({
-        journal: idleJournal(),
         dispatchState: 'unknown'
       })
       // The wall clock steps back an hour after the lane started: its own row is still its own.
@@ -374,7 +307,6 @@ describe('structured mailbox pointer delivery', () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     try {
       const { delivery, send, setSubmissions } = harness({
-        journal: idleJournal(),
         dispatchState: 'unknown'
       })
       const personTurn = {
@@ -408,7 +340,6 @@ describe('structured mailbox pointer delivery', () => {
 
   it('stamps a pointer whose echo arrived after the lane stopped waiting, sending nothing more', async () => {
     const { delivery, send, markAsDelivered, stored, setSubmissions } = harness({
-      journal: idleJournal(),
       dispatchState: 'unknown'
     })
     delivery.deliverForHandle('dispatch:d1')
@@ -428,7 +359,6 @@ describe('structured mailbox pointer delivery', () => {
 
   it('reuses one operation id for the same batch and re-mints when it grows', async () => {
     const { delivery, send, stored } = harness({
-      journal: idleJournal(),
       dispatchState: 'unknown'
     })
     delivery.deliverForHandle('dispatch:d1')
@@ -444,11 +374,145 @@ describe('structured mailbox pointer delivery', () => {
   })
 })
 
+describe("a pointer to a busy chat waits in the chat's own queue", () => {
+  const SECOND: Unread = mail('m2', 4, 'term_other')
+
+  async function queuedCard(h: ReturnType<typeof harness>): Promise<string> {
+    h.delivery.deliverForHandle('dispatch:d1')
+    await flush()
+    expect(h.send).toHaveBeenCalledTimes(1)
+    return h.send.mock.calls[0]![0].operationId
+  }
+
+  it('is sent once, by the queue, and consumes mail only when that hand-off is accepted', async () => {
+    const h = harness({ busy: true })
+    const card = await queuedCard(h)
+    expect(h.onRetain).toHaveBeenLastCalledWith(expect.objectContaining({ reason: 'queued' }))
+    expect(h.markAsDelivered).not.toHaveBeenCalled()
+    h.delivery.onJournalActivity('session-1')
+    await flush()
+    expect(h.send).toHaveBeenCalledTimes(1)
+    // The queue sends it when the turn ends, under a fresh id that names the card.
+    h.setCards([{ messageId: card, state: 'dispatched' }])
+    h.setSubmissions([
+      {
+        clientMessageId: 'queue-hand-off',
+        queuedMessageId: card,
+        dispatchState: 'accepted',
+        submittedAt: Date.now() + 1
+      }
+    ])
+    h.delivery.onJournalActivity('session-1')
+    await flush()
+    expect(h.send).toHaveBeenCalledTimes(1)
+    expect(h.markAsDelivered).toHaveBeenCalledWith(['m1'])
+    expect(h.stored.size).toBe(0)
+  })
+
+  it('queues no second card while one from before a restart still waits', async () => {
+    const h = harness({ busy: true })
+    h.stored.set('dispatch:d1', {
+      mailbox_handle: 'dispatch:d1',
+      session_id: 'session-1',
+      operation_id: 'earlier-process-card',
+      batch_fingerprint: structuredPointerBatchFingerprint('session-1', ['m1']),
+      minted_at_ms: 0
+    })
+    h.setCards([{ messageId: 'earlier-process-card', state: 'waiting' }])
+    h.delivery.deliverForHandle('dispatch:d1')
+    await flush()
+    expect(h.send).not.toHaveBeenCalled()
+    expect(h.onRetain).toHaveBeenLastCalledWith(expect.objectContaining({ reason: 'queued' }))
+  })
+
+  it('counts a card the person deleted as handled: that mail is not pointed again, newer mail is', async () => {
+    const h = harness({ busy: true })
+    const card = await queuedCard(h)
+    h.setCards([{ messageId: card, state: 'withdrawn' }])
+    // The person talked to the agent since, which alone would otherwise re-point the batch.
+    h.setSubmissions([
+      { clientMessageId: 'user-turn', dispatchState: 'accepted', submittedAt: Date.now() + 1 }
+    ])
+    h.delivery.onJournalActivity('session-1')
+    await flush()
+    expect(h.send).toHaveBeenCalledTimes(1)
+    expect(h.markAsDelivered).toHaveBeenCalledWith(['m1'])
+    h.setUnread([SECOND])
+    h.delivery.deliverForHandle('dispatch:d1')
+    await flush()
+    expect(h.send).toHaveBeenCalledTimes(2)
+  })
+
+  it('withdraws its waiting card as soon as the mail is read, before the queue can send it', async () => {
+    const h = harness({ busy: true })
+    const card = await queuedCard(h)
+    h.setUnread([])
+    await h.delivery.onMailRead()
+    expect(h.withdraw).toHaveBeenCalledWith({ sessionId: 'session-1', messageId: card })
+    expect(h.cards()).toEqual([{ messageId: card, state: 'withdrawn' }])
+    expect(h.stored.size).toBe(0)
+    expect(h.markAsDelivered).not.toHaveBeenCalled()
+    // Its own withdrawal is not a person's decline: newer mail gets a fresh pointer.
+    h.setUnread([SECOND])
+    h.delivery.deliverForHandle('dispatch:d1')
+    await flush()
+    expect(h.send).toHaveBeenCalledTimes(2)
+  })
+
+  it('replaces its card when more mail arrives, so the chat never holds two pointers', async () => {
+    const h = harness({ busy: true })
+    const first = await queuedCard(h)
+    h.setUnread([mail('m1', 3), SECOND])
+    h.delivery.deliverForHandle('dispatch:d1')
+    await flush()
+    expect(h.withdraw).toHaveBeenCalledWith({ sessionId: 'session-1', messageId: first })
+    expect(h.send).toHaveBeenCalledTimes(2)
+    const second = h.send.mock.calls[1]![0]
+    expect(second.body.blocks[0]).toMatchObject({
+      text: expect.stringContaining('You have 2 orchestration messages')
+    })
+    // The card names every distinct sender of the batch it counts, and the records it stands for.
+    expect(second.source).toEqual({
+      kind: 'agent',
+      message: 'mail-notice',
+      senders: [
+        {
+          party: {
+            address: 'term_peer',
+            terminalHandle: 'term_peer',
+            paneKey: null,
+            orcaSessionId: null
+          },
+          hostId: 'local'
+        },
+        {
+          party: {
+            address: 'term_other',
+            terminalHandle: 'term_other',
+            paneKey: null,
+            orcaSessionId: null
+          },
+          hostId: 'local'
+        }
+      ],
+      orchestration: {
+        mailbox: 'dispatch:d1',
+        dispatchId: 'd1',
+        runIds: ['run_1'],
+        messageIds: ['m1', 'm2']
+      }
+    })
+    expect(h.cards().filter((card) => card.state === 'waiting')).toEqual([
+      { messageId: second.operationId, state: 'waiting' }
+    ])
+  })
+})
+
 describe('forgetting one settled worker', () => {
-  /** Two workers, each mid-turn and so each parked on its OWN session's journal edge. */
+  /** Two workers, each not yet attached and so each parked on its OWN session's journal edge. */
   function twoWorkerHarness() {
     let resolves = true
-    let journal = runningJournal()
+    let attached = false
     const sessionByMailbox: Record<string, string> = {
       'dispatch:d1': 'session-1',
       'dispatch:d2': 'session-2'
@@ -460,9 +524,10 @@ describe('forgetting one settled worker', () => {
     const db = {
       getDispatchContextById: () => ({ run_id: 'run_1' }),
       hasOutstandingMailboxDelivery: () => false,
-      getUndeliveredUnreadMessages: () => [{ id: 'm1', type: 'status', sequence: 3 }],
+      getUndeliveredUnreadMessages: () => [mail('m1', 3)],
       markAsDelivered: vi.fn(),
       getStructuredPointerOperation: () => undefined,
+      listStructuredPointerOperations: () => [],
       putStructuredPointerOperation: () => {},
       deleteStructuredPointerOperation: () => {}
     }
@@ -477,16 +542,17 @@ describe('forgetting one settled worker', () => {
       },
       getCliCommand: () => 'orca',
       host: {
-        readGateFacts: async () => ({ ...structuredSessionGateFacts(journal), submissions: [] }),
+        readFacts: async () => (attached ? { submissions: [], cards: [] } : null),
         currentFence: () => 4,
-        send
+        send,
+        withdraw: async () => true
       }
     })
     return {
       delivery,
       send: vi.mocked(send),
-      goIdle: () => {
-        journal = idleJournal()
+      attach: () => {
+        attached = true
       },
       stopResolving: () => {
         resolves = false
@@ -501,7 +567,7 @@ describe('forgetting one settled worker', () => {
     // The bug: `forgetSession` re-resolved every parked mailbox and pruned the ones that answered
     // null. A momentarily null DB reference or a session mid-teardown made that EVERY worker, so
     // the sibling's mail stayed durable but lost the edge that would have woken it.
-    const { delivery, send, goIdle, stopResolving, resumeResolving } = twoWorkerHarness()
+    const { delivery, send, attach, stopResolving, resumeResolving } = twoWorkerHarness()
     delivery.deliverForHandle('dispatch:d1')
     delivery.deliverForHandle('dispatch:d2')
     await flush()
@@ -511,7 +577,7 @@ describe('forgetting one settled worker', () => {
     delivery.forgetSession('session-1')
     resumeResolving()
 
-    goIdle()
+    attach()
     delivery.onJournalActivity('session-2')
     await flush()
     expect(send).toHaveBeenCalledTimes(1)
@@ -519,7 +585,7 @@ describe('forgetting one settled worker', () => {
   })
 
   it('still drops what the settled worker itself had parked', async () => {
-    const { delivery, send, goIdle, stopResolving } = twoWorkerHarness()
+    const { delivery, send, attach, stopResolving } = twoWorkerHarness()
     delivery.deliverForHandle('dispatch:d1')
     await flush()
     expect(send).not.toHaveBeenCalled()
@@ -529,7 +595,7 @@ describe('forgetting one settled worker', () => {
     stopResolving()
     delivery.forgetSession('session-1')
 
-    goIdle()
+    attach()
     delivery.onJournalActivity('session-1')
     await flush()
     expect(send).not.toHaveBeenCalled()

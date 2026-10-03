@@ -41,8 +41,12 @@ async function expectPaused(...draftIds: string[]): Promise<void> {
   expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
 }
 
-async function queuedDraft(text: string): Promise<string> {
-  const queued = await rig.send(text, 'queue-if-active').result
+/** `internal`: queued by Orca for an agent (orchestration mail), not by a person. */
+async function queuedDraft(
+  text: string,
+  options?: Parameters<QueuedMessageTestRig['send']>[2]
+): Promise<string> {
+  const queued = await rig.send(text, 'queue-if-active', options).result
   if (!queued.ok || !('queued' in queued.value)) {
     throw new Error('expected a queued receipt')
   }
@@ -343,6 +347,27 @@ describe('a pause only over cards Resume could send', () => {
 })
 
 describe("a restart's pause", () => {
+  it("holds only a person's cards: an agent's card from before it still sends when the turn ends", async () => {
+    const working = await rig.workingSend()
+    const agentCard = await queuedDraft('You have 1 orchestration message.', {
+      internal: true,
+      source: {
+        kind: 'agent',
+        message: 'mail-notice',
+        senders: [],
+        orchestration: { mailbox: 'run:r1', dispatchId: null, runIds: ['r1'], messageIds: ['m1'] }
+      }
+    })
+    const personCard = await queuedDraft('typed by the person')
+    await rig.restartHostProcess()
+    await rig.settleAccepted(working, 'a')
+    await eventually(async () => expect(await rig.handoff(agentCard)).toBeDefined())
+    await rig.settleAccepted(await rig.handoffId(agentCard), 'mail')
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    expect(await rig.handoff(personCard)).toBeUndefined()
+    expect(await rig.queuePause()).toEqual({ reason: 'restarted' })
+  })
+
   it("once a person's turn ends it, stays ended when the conversation reopens", async () => {
     const working = await rig.workingSend()
     const first = await queuedDraft('first')

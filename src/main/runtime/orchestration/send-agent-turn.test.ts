@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionSendResult } from '../../../shared/agent-session-wire'
+import type { QueuedMessageAgentSource } from '../../../shared/queued-message-source'
 import { ORCHESTRATION_READINESS_TIMEOUT_MS } from '../../../shared/orchestration-timing-budgets'
 import { dispatchPreambleSendOptions } from './preamble'
 import {
@@ -50,6 +51,13 @@ function structuredHost(answer: HostSendAnswer, settled?: AgentJournalSubmission
   })
   const host: StructuredAgentTurnHost = { send, waitForSendSettlement }
   return { host, send, waitForSendSettlement }
+}
+
+const MAIL_SOURCE: QueuedMessageAgentSource = {
+  kind: 'agent',
+  message: 'mail-notice',
+  senders: [],
+  orchestration: { mailbox: 'dispatch:d1', dispatchId: 'd1', runIds: [], messageIds: ['m1'] }
 }
 
 const turn: StructuredSessionTurn = {
@@ -125,6 +133,14 @@ describe('sendAgentTurn to a structured session', () => {
     }
   })
 
+  it('answers with the submission as it was answered, not the journal row later settlement revises', async () => {
+    const journalRow = submissionOf('accepted')
+    const fake = structuredHost(accepted({ clientMessageId: 'op-1', submission: journalRow }))
+    const outcome = await sendAgentTurn(structured(fake.host))
+    journalRow.dispatchState = 'rejected'
+    expect(outcome).toMatchObject({ kind: 'sent', submission: { dispatchState: 'accepted' } })
+  })
+
   it('returns the host refusal for the caller to read', async () => {
     const refusal = { code: 'agent_session_conflict' as const, message: 'conflict' }
     const fake = structuredHost({ ok: false, refusal })
@@ -142,7 +158,7 @@ describe('sendAgentTurn to a structured session', () => {
       })
     )
     await expect(
-      sendAgentTurn(structured(fake.host, { ...turn, delivery: 'queue' }))
+      sendAgentTurn(structured(fake.host, { ...turn, delivery: 'queue', source: MAIL_SOURCE }))
     ).resolves.toEqual({
       kind: 'queued',
       clientMessageId: 'op-1',
@@ -158,7 +174,9 @@ describe('sendAgentTurn to a structured session', () => {
           payloadFingerprint: hostFingerprint({ body: turn.body, delivery: 'queue-if-active' })
         },
         body: turn.body,
-        delivery: 'queue-if-active'
+        delivery: 'queue-if-active',
+        // Host-local: who the card speaks for rides beside the envelope, outside its fingerprint.
+        source: MAIL_SOURCE
       }
     )
     expect(fake.waitForSendSettlement).not.toHaveBeenCalled()
@@ -172,7 +190,7 @@ describe('sendAgentTurn to a structured session', () => {
       })
     )
     await expect(
-      sendAgentTurn(structured(fake.host, { ...turn, delivery: 'queue' }))
+      sendAgentTurn(structured(fake.host, { ...turn, delivery: 'queue', source: MAIL_SOURCE }))
     ).resolves.toMatchObject({ kind: 'queued', queued: { state: 'returned' } })
   })
 })

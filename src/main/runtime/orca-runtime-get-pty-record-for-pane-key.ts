@@ -194,6 +194,11 @@ export class OrcaRuntimeWithGetPtyRecordForPaneKey extends OrcaRuntimeWithPruneM
     this.orchestrationStructuredMailboxPointerDelivery.onJournalActivity(sessionId)
   }
 
+  /** An agent read its mail: a pointer still queued in a chat for that mail goes, unsent. */
+  notifyOrchestrationMailRead(): Promise<void> {
+    return this.orchestrationStructuredMailboxPointerDelivery.onMailRead()
+  }
+
   /**
    * Every structured session's status change reaches here. At its idle edge, retry what is parked
    * on it and re-derive the mailboxes it owns, so mail it could not take earlier (mid-turn, closed)

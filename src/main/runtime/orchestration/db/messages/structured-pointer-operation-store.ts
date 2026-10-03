@@ -18,6 +18,15 @@ export function getStructuredPointerOperation(
     .get(mailboxHandle) as StructuredPointerOperationRow | undefined
 }
 
+/** Every mailbox with a pointer still unresolved: what a read of mail may have made stale. */
+export function listStructuredPointerOperations(
+  this: OrchestrationDb
+): StructuredPointerOperationRow[] {
+  const statement = this.db.prepare('SELECT * FROM structured_pointer_operations')
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: every column of this table is a StructuredPointerOperationRow field; better-sqlite3 types rows as unknown.
+  return statement.all() as StructuredPointerOperationRow[]
+}
+
 export function putStructuredPointerOperation(
   this: OrchestrationDb,
   row: StructuredPointerOperationRow
@@ -51,6 +60,7 @@ export function deleteStructuredPointerOperation(
 
 export type StructuredPointerOperationStoreMethods = {
   getStructuredPointerOperation: typeof getStructuredPointerOperation
+  listStructuredPointerOperations: typeof listStructuredPointerOperations
   putStructuredPointerOperation: typeof putStructuredPointerOperation
   deleteStructuredPointerOperation: typeof deleteStructuredPointerOperation
 }
@@ -58,6 +68,7 @@ export type StructuredPointerOperationStoreMethods = {
 export function attachStructuredPointerOperationStore(ctor: { prototype: object }): void {
   Object.assign(ctor.prototype, {
     getStructuredPointerOperation,
+    listStructuredPointerOperations,
     putStructuredPointerOperation,
     deleteStructuredPointerOperation
   })

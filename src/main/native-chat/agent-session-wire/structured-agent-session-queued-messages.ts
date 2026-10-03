@@ -9,6 +9,10 @@
 import { randomUUID } from 'node:crypto'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import {
+  USER_QUEUED_MESSAGE_SOURCE,
+  type QueuedMessageAgentSource
+} from '../../../shared/queued-message-source'
+import {
   QUEUED_MESSAGE_PAUSED_SEND_FAILED,
   type AgentSessionSendResult,
   type AgentSessionWireRefusal
@@ -194,6 +198,10 @@ export async function maybeQueueStructuredAgentSessionSend(
     envelope: { clientOperationId: string }
     body: AgentJournalMessageItem
     delivery?: 'queue-if-active'
+    /** A person's send at a chat surface; it outranks any `source`. */
+    userSend?: true
+    /** Who Orca is queueing for, on a host-side send. */
+    source?: QueuedMessageAgentSource
   }
 ): Promise<
   | { ok: true; value: AgentSessionSendResult }
@@ -235,7 +243,11 @@ export async function maybeQueueStructuredAgentSessionSend(
     messageId: clientMessageId,
     body: params.body,
     fingerprint: queuedMessageFingerprint(ctx.sessionId, params.body),
-    hostInstance: structuredAgentSessionHostInstance()
+    hostInstance: structuredAgentSessionHostInstance(),
+    // A host-side send that names no sender holds after a restart, as every card did before.
+    source: params.userSend
+      ? USER_QUEUED_MESSAGE_SOURCE
+      : (params.source ?? USER_QUEUED_MESSAGE_SOURCE)
   })
   return {
     ok: true,

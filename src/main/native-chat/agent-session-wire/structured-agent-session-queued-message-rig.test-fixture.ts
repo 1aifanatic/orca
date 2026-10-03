@@ -10,6 +10,7 @@ import { agentSessionFailureWords } from '../../../shared/agent-session-failure-
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionQueuePause } from '../../../shared/agent-session-wire'
+import type { QueuedMessageAgentSource } from '../../../shared/queued-message-source'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import type { StructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
@@ -29,6 +30,7 @@ import { openTestJournalHostDatabase } from '../agent-session-journal/journal-ho
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 export const QUEUED_RIG_CALLER = { callerKey: 'client-1' }
+type RigSendOptions = { internal?: true; source?: QueuedMessageAgentSource }
 
 export function eventually(assertion: () => void | Promise<void>): Promise<void> {
   return vi.waitFor(assertion, { timeout: 10_000 })
@@ -139,8 +141,9 @@ export async function createQueuedMessageTestRig(
   }
 
   /** A client's send, as the `agentSession.send` RPC hands it to the host;
-   *  `internal` is a host-side sender (orchestration mail, a restart continuation). */
-  function send(text: string, delivery?: 'queue-if-active', options?: { internal?: true }) {
+   *  `internal` is a host-side sender (orchestration mail, a restart continuation), and `source`
+   *  who it queues for. */
+  function send(text: string, delivery?: 'queue-if-active', options?: RigSendOptions) {
     const body = hostTestMessage(text)
     const clientOperationId = hostTestOperationId()
     const fields = { body, ...(delivery ? { delivery } : {}) }
@@ -148,7 +151,7 @@ export async function createQueuedMessageTestRig(
       envelope: envelope(fields, 'agentSession.send', clientOperationId),
       body,
       ...(delivery ? { delivery } : {}),
-      ...(options?.internal ? {} : { userSend: true as const })
+      ...(options?.internal ? { source: options.source } : { userSend: true as const })
     })
     return { id: clientOperationId, result }
   }

@@ -2,6 +2,8 @@
 // host's own admission: a fingerprint over other fields than the send carries is refused there.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
+import type { QueuedMessageAgentSource } from '../../../shared/queued-message-source'
 import {
   createQueuedMessageTestRig,
   eventually,
@@ -20,6 +22,23 @@ import {
 
 let rig: QueuedMessageTestRig
 
+const MAIL_SOURCE: QueuedMessageAgentSource = {
+  kind: 'agent',
+  message: 'mail-notice',
+  senders: [
+    {
+      party: {
+        address: 'term_peer',
+        terminalHandle: 'term_peer',
+        paneKey: null,
+        orcaSessionId: null
+      },
+      hostId: 'local'
+    }
+  ],
+  orchestration: { mailbox: 'dispatch:d1', dispatchId: 'd1', runIds: ['r1'], messageIds: ['m1'] }
+}
+
 beforeEach(async () => {
   rig = await createQueuedMessageTestRig()
 })
@@ -36,7 +55,12 @@ function sendTurn(
     host,
     sessionId: SESSION,
     callerKey: 'trusted-local:orchestration:d1',
-    turn: { body: hostTestMessage('mail'), delivery, operationId, expectedRuntimeFence: 1 }
+    turn: {
+      body: hostTestMessage('mail'),
+      operationId,
+      expectedRuntimeFence: 1,
+      ...(delivery === 'queue' ? { delivery, source: MAIL_SOURCE } : { delivery })
+    }
   })
 }
 
@@ -48,6 +72,10 @@ describe('sendAgentTurn through the real host', () => {
       queued: { position: 1, state: 'waiting' }
     })
     expect(await rig.drafts()).toMatchObject([{ state: 'waiting' }])
+    // Stored with the card, read back whole: who it speaks for survives the round trip.
+    expect((await rig.host.queuedMessageRows(SESSION)).map((row) => row.source)).toEqual([
+      MAIL_SOURCE
+    ])
   })
 
   it('replays a retried `queue` send instead of refusing it', async () => {
@@ -88,6 +116,22 @@ describe('sendAgentTurn through the real host', () => {
       submission: { clientMessageId: handoffId, dispatchState: 'accepted' }
     })
     expect(waitedOn).toEqual([handoffId])
+  })
+
+  it('hands a queued turn off under the body-only fingerprint the chat history matches on', async () => {
+    const working = await rig.workingSend()
+    const operationId = hostTestOperationId()
+    await sendTurn('queue', operationId)
+    await rig.settleAccepted(working, 'work')
+    await eventually(async () => expect(await rig.handoff(operationId)).toBeDefined())
+    // `delivery` is in the operation fingerprint admission checked; the stored one never has it.
+    expect((await rig.handoff(operationId))?.payloadFingerprint).toBe(
+      computeAgentSessionPayloadFingerprint({
+        method: 'agentSession.send',
+        sessionId: SESSION,
+        fields: { body: hostTestMessage('mail') }
+      })
+    )
   })
 
   /** Settles a handed-over send as the provider taking it; the turn's wait ends on that. */
