@@ -184,7 +184,6 @@ describe('remote snapshot replay onto a live alt screen', () => {
       LIVE_PANE,
       ...(await drainOntoLiveAltScreen(payload, {
         carriesNormalBuffer: true,
-        alternateScreen: true,
         snapshotCols: COLS,
         snapshotRows: ROWS
       }))
@@ -210,7 +209,6 @@ describe('remote snapshot replay onto a live alt screen', () => {
       LIVE_PANE,
       ...(await drainOntoLiveAltScreen(recoveryPayload(hostRows), {
         carriesNormalBuffer: true,
-        alternateScreen: true,
         snapshotCols: COLS,
         snapshotRows: hostRows
       }))
@@ -227,7 +225,7 @@ describe('remote snapshot replay onto a live alt screen', () => {
 
   // Why: once the host's TUI exits, the shell writes past the pane's history, so the
   // image replaces it instead of leaving a gap above the host's screen.
-  it('replaces history when the host has left the alt screen', async () => {
+  it('replaces history once the host proves the TUI exited', async () => {
     const hostScreen = [...NORMAL_LINES, 'Resume with claude --resume', '$ ']
       .slice(-ROWS)
       .join('\r\n')
@@ -235,6 +233,7 @@ describe('remote snapshot replay onto a live alt screen', () => {
       LIVE_PANE,
       ...(await drainOntoLiveAltScreen(`\x1b[?2026l\x1b[2J\x1b[H${hostScreen}`, {
         carriesNormalBuffer: true,
+        terminalOwner: 'shell',
         alternateScreen: false,
         snapshotCols: COLS,
         snapshotRows: ROWS

@@ -121,9 +121,6 @@ export function bindReplayDataDrain(session: ConnectPanePtySession): void {
         !sourceGrid ||
         (session.pane.terminal.cols === sourceGrid.cols &&
           session.pane.terminal.rows === sourceGrid.rows)
-      // Relay replay buffers may overlap with content already rendered in
-      // xterm. Local eager replay decides this earlier so metadata-only frames
-      // can keep restored scrollback while still using the replay guard.
       // Why ahead of the source-grid resize: dropping the scrollback first
       // spares a reflow of history the very next sequence discards (see
       // use-terminal-container-fit-sync.ts on its cost).
@@ -143,14 +140,17 @@ export function bindReplayDataDrain(session: ConnectPanePtySession): void {
             buildSnapshotReplayPreamble({
               targetAlternateScreen: false,
               paneOnAlternateScreen,
-              // Why: a pushed image carries only its screen. While a TUI runs on
-              // both ends the normal buffer is frozen, so the pane's history
-              // continues that screen exactly only when both share a grid.
+              // Why: a pushed image carries only its screen. Until the host proves
+              // the TUI exited (shell owner), the normal buffer is frozen, so the
+              // pane's history continues that screen exactly on a shared grid.
               keepScrollback:
-                paneOnAlternateScreen && alternateScreen === true && paneAtSourceGrid()
+                paneOnAlternateScreen && terminalOwner !== 'shell' && paneAtSourceGrid()
             })
           )
         } else {
+          // Relay replay buffers may overlap with content already rendered in
+          // xterm. Local eager replay decides this earlier so metadata-only frames
+          // can keep restored scrollback while still using the replay guard.
           // RELEASE_SYNCHRONIZED_OUTPUT: a reconnect is exactly the event that severs a
           // frame mid-flight, so this xterm may hold an open 2026 latch — and \x1b[2J does
           // not clear it, so the pane would stay frozen on its last painted frame and the
