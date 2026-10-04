@@ -152,6 +152,11 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerStatusHook
         res.end()
       } catch (error) {
         if (pathname === OPENCODE_STARTUP_PROMPT_CLAIM_PATH) {
+          if (isHookRequestTruncatedError(error) && !destroyedBySlowlorisCap) {
+            res.writeHead(503)
+            res.end()
+            return
+          }
           res.writeHead(200, { 'content-type': 'application/json' })
           res.end('{"allowed":false}')
           return
