@@ -73,7 +73,7 @@ describe('Grok background tasks through the shared timeline', () => {
       fixture.apply([
         boundary === 'end'
           ? { type: 'session.ended', verdict: { state: 'unverifiable' } }
-          : { type: 'session.reset', namespace: 'replacement-session', generation: 'gen-3' }
+          : { type: 'session.reset', namespace: 'replacement-session' }
       ])
       const [after] = await taskRows(fixture)
       expect(after?.row.itemId).toBe(before.row.itemId)
