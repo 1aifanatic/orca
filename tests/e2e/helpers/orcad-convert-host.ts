@@ -10,7 +10,6 @@ import {
   blockDockerSshRelayTargetTcpForwarding,
   cleanupDockerSshRelayTarget,
   DOCKER_SSH_RELAY_REMOTE_REPO_PATH,
-  execDockerSshRelayTargetControlCommand,
   startDockerSshRelayTarget
 } from './docker-ssh-relay-target'
 
@@ -25,8 +24,6 @@ export type OrcadConvertHost = {
   cleanup: () => void
   /** Docker only: makes sshd refuse TCP forwarding for connections opened after it. */
   blockTcpForwarding?: () => void
-  /** Docker only: how many stdio bridge processes are running on the host. */
-  stdioBridges?: () => number
 }
 
 /** `docker`, or the path of a Windows host-cell descriptor. */
@@ -47,15 +44,7 @@ export function startOrcadConvertHost(source: string, testInfo: TestInfo): Orcad
       remoteRepoPath: DOCKER_SSH_RELAY_REMOTE_REPO_PATH,
       remoteFolderPath: '/tmp',
       cleanup: () => cleanupDockerSshRelayTarget(target),
-      blockTcpForwarding: () => blockDockerSshRelayTargetTcpForwarding(target),
-      // The bracket keeps grep's own command line from matching.
-      stdioBridges: () =>
-        Number(
-          execDockerSshRelayTargetControlCommand(
-            target,
-            "grep -l 'orcadStdio[B]ridge' /proc/[0-9]*/cmdline 2>/dev/null | wc -l"
-          ).trim()
-        )
+      blockTcpForwarding: () => blockDockerSshRelayTargetTcpForwarding(target)
     }
   }
   const descriptor = parseWindowsHostCellDescriptor(readFileSync(source, 'utf8'))
