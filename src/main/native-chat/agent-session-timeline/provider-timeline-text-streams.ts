@@ -36,6 +36,7 @@ import type {
   ProviderTimelineTextChannel,
   ProviderTimelineTextItem
 } from './provider-timeline-event'
+import { BoundedMap } from '../../../shared/bounded-map'
 import { providerTimelineKeyPart } from './provider-timeline-identity'
 import type { ProviderTimelineItemJoin, ProviderTimelineRow } from './provider-timeline-joins'
 import { ProviderTimelinePlan, type ProviderTimelineSink } from './provider-timeline-plan'
@@ -77,7 +78,7 @@ export class ProviderTimelineTextStreams {
   private readonly byId = new Map<string, ProviderTimelineStream>()
   private readonly rows: ProviderTimelineStreamRows
   /** Per anonymous slot, the stream a boundary not yet decided released last. */
-  private readonly released = new Map<string, ProviderTimelineStream>()
+  private readonly released = new BoundedMap<string, ProviderTimelineStream>({ maxEntries: 64 })
   private readonly coalescer
   private serial = 0
 

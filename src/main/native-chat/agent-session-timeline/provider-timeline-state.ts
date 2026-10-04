@@ -42,8 +42,8 @@ export type ProviderTimelinePendingInput = {
   turnItemId?: string
 }
 
-/** Work still waiting on a row that settles it: a running tool, a backgrounded task, a pending
- *  request. Keyed by the item's join reference (a request's by its key, whatever its incarnation). */
+/** Work still waiting on a row that settles it: a running tool or a pending request. Keyed by
+ *  the item's join reference (a request's by its key, whatever its incarnation). */
 export type ProviderTimelineObligation = {
   /** The row, once a resolver placed it. */
   itemId: string | null

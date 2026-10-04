@@ -8,6 +8,7 @@
 // the journal, so a turn another writer ended stops the stream there too.
 
 import type { AgentJournalItemBody } from '../../../shared/agent-session-journal-types'
+import { BoundedMap } from '../../../shared/bounded-map'
 import type { StructuredAgentSessionTransitionJournal } from '../agent-session-wire/structured-agent-session-transition'
 import {
   providerTimelineLedger,
@@ -24,12 +25,22 @@ export type ProviderTimelineStreamRow = { row: ProviderTimelineRow; prefix: stri
 
 type Owned = ProviderTimelineStreamRow | 'replayed'
 
+/** Rows kept for the anonymous stream that may continue them, and streams stopped mid-flight
+ *  whose queued writes must still write nothing. */
+const MAX_CARRIED_ROWS = 64
+const MAX_STOPPED_STREAMS = 512
+
 function providerTimelineMessageText(body: AgentJournalItemBody | null): string {
   return body?.kind === 'message' && body.blocks[0]?.type === 'text' ? body.blocks[0].text : ''
 }
 
 export class ProviderTimelineStreamRows {
+  /** The streams planning still holds open. */
   private readonly owned = new Map<string, Owned>()
+  private readonly carried = new BoundedMap<string, ProviderTimelineStreamRow>({
+    maxEntries: MAX_CARRIED_ROWS
+  })
+  private readonly stopped = new BoundedMap<string, true>({ maxEntries: MAX_STOPPED_STREAMS })
 
   constructor(
     private readonly context: ProviderTimelineContext,
@@ -42,6 +53,9 @@ export class ProviderTimelineStreamRows {
     stream: ProviderTimelineStream,
     journal: StructuredAgentSessionTransitionJournal
   ): ProviderTimelineStreamRow | null {
+    if (this.stopped.has(stream.id)) {
+      return null
+    }
     const ledger = providerTimelineLedger(this.context, journal)
     let owned = this.owned.get(stream.id)
     if (!owned) {
@@ -63,10 +77,12 @@ export class ProviderTimelineStreamRows {
   /** The event that released `stream` ran: `held` when it really ended the stream's message. */
   release(stream: ProviderTimelineStream, held: boolean): void {
     stream.boundary = held ? 'held' : 'void'
-    // A named stream's next delta finds its row again through the journal; an anonymous one is
-    // kept for the stream that follows it.
-    if (held || stream.named) {
-      this.owned.delete(stream.id)
+    const owned = this.owned.get(stream.id)
+    this.owned.delete(stream.id)
+    // A named stream's next delta finds its row again through the journal; an anonymous one's row
+    // is kept for the stream that follows it.
+    if (!held && !stream.named && owned && owned !== 'replayed') {
+      this.carried.set(stream.id, owned)
     }
   }
 
@@ -92,6 +108,8 @@ export class ProviderTimelineStreamRows {
 
   clear(): void {
     this.owned.clear()
+    this.carried.clear()
+    this.stopped.clear()
   }
 
   private own(
@@ -103,7 +121,7 @@ export class ProviderTimelineStreamRows {
     if (stream.named && ledger.closed.has(stream.key)) {
       return 'replayed'
     }
-    const carried = this.carried(stream, journal)
+    const carried = this.continued(stream, journal)
     if (carried) {
       return carried
     }
@@ -125,22 +143,20 @@ export class ProviderTimelineStreamRows {
 
   /** The row of the message this one continues: an earlier anonymous stream whose release the
    *  journal did not take (its event was a replay). */
-  private carried(
+  private continued(
     stream: ProviderTimelineStream,
     journal: StructuredAgentSessionTransitionJournal
   ): Owned | null {
     let previous = stream.follows
     delete stream.follows
     for (; previous?.boundary === 'void'; previous = previous.follows) {
-      const owned = this.owned.get(previous.id)
-      if (owned) {
-        this.owned.delete(previous.id)
-        return owned === 'replayed'
-          ? owned
-          : {
-              row: owned.row,
-              prefix: providerTimelineMessageText(journal.itemBody(owned.row.itemId))
-            }
+      const kept = this.carried.get(previous.id)
+      if (kept) {
+        this.carried.delete(previous.id)
+        return {
+          row: kept.row,
+          prefix: providerTimelineMessageText(journal.itemBody(kept.row.itemId))
+        }
       }
     }
     return null
@@ -162,7 +178,8 @@ export class ProviderTimelineStreamRows {
 
   /** The stream writes nothing more; a later delta under its key starts another. */
   private stop(stream: ProviderTimelineStream): void {
-    this.owned.set(stream.id, 'replayed')
+    this.owned.delete(stream.id)
+    this.stopped.set(stream.id, true)
     this.forget(stream)
   }
 }
