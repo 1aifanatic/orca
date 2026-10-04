@@ -30,7 +30,7 @@ function flushFrames(): void {
   }
 }
 
-/** A desktop pane in a background worktree: real xterm and serializer, `display: none` host. */
+/** A desktop pane with a real xterm and serializer; hidden means a `display: none` worktree. */
 function createHiddenPane(visible = false): { pane: ManagedPane; terminal: Terminal } {
   const worktree = document.createElement('div')
   worktree.style.display = visible ? 'block' : 'none'
@@ -144,18 +144,21 @@ describe('mobile-fit override on a hidden desktop pane', () => {
     terminal.dispose()
   })
 
-  it('parks a visible pane once the fit frame runs (control)', async () => {
+  it('answers a serialize request that lands before the fit frame at the override grid', async () => {
     const { pane, terminal } = createHiddenPane(true)
     pane.container.dataset.ptyId = PTY_ID
     registerSerializer(pane)
     render(<Ticks pane={pane} />)
 
+    // The host sends the override, then its serialize request, on one ordered channel.
     act(() => setFitOverride(PTY_ID, 'mobile-fit', PHONE.cols, PHONE.rows))
-    // Before the frame the pane still answers at its desktop grid: the ordering window.
-    expect(await serializeForHost()).toMatchObject(DESKTOP)
-    act(() => flushFrames())
+    expect(pendingFrames).toHaveLength(1)
+    const reply = await serializeForHost()
 
-    expect(await serializeForHost()).toMatchObject(PHONE)
+    expect(pendingFrames).toHaveLength(1)
+    expect({ cols: reply?.cols, rows: reply?.rows }).toEqual(PHONE)
+    act(() => flushFrames())
+    expect({ cols: terminal.cols, rows: terminal.rows }).toEqual(PHONE)
     terminal.dispose()
   })
 
