@@ -52,6 +52,11 @@ export const hostScreenSecondaryStyles = StyleSheet.create({
     fontWeight: '600',
     color: colors.textPrimary
   },
+  filterModalSubtitle: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 2
+  },
   clearFiltersText: {
     fontSize: 13,
     color: colors.textSecondary
