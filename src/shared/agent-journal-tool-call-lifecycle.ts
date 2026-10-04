@@ -32,12 +32,21 @@ export function interruptedAgentJournalToolCall(
 
 /** What a call still running when its turn or session ended becomes. Only a proven interruption
  *  cuts it short: a turn the provider completed around it, or an end the host could not verify,
- *  proves none, so it reads failed as it always has. */
+ *  proves none, so it reads failed as it always has. An unverified end is kept beside that, so a
+ *  proof written later can still find the call. */
 export function endedRunningAgentJournalToolCall(
   call: AgentJournalToolCallItem,
   end: 'interrupted' | 'completed' | 'unverifiable'
 ): AgentJournalToolCallItem {
-  return end === 'interrupted'
-    ? interruptedAgentJournalToolCall(call)
+  if (end === 'interrupted') {
+    return interruptedAgentJournalToolCall(call)
+  }
+  return end === 'unverifiable'
+    ? { ...call, state: 'failed', endedAs: 'unverifiable' }
     : { ...call, state: 'failed' }
+}
+
+/** A call an unverified end closed: still waiting on a proof that its owner died. */
+export function isUnverifiedEndAgentJournalToolCall(call: ToolCallLifecycleFields): boolean {
+  return call.state === 'failed' && call.endedAs === 'unverifiable'
 }

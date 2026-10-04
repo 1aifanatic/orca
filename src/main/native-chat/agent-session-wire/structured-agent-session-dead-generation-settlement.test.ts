@@ -122,8 +122,9 @@ describe('dead structured-session generation settlement', () => {
       ])
     )
     expect(snapshot.items.some((item) => item.body.kind === 'status')).toBe(false)
+    // Kept beside its failed state, so a later proof naming its owner can correct it.
     const tool = snapshot.items.find((item) => item.body.kind === 'tool-call')
-    expect(tool?.body).not.toHaveProperty('endedAs')
+    expect(tool?.body).toMatchObject({ state: 'failed', endedAs: 'unverifiable' })
   })
 
   it('adds one actionable outcome for observed active-work failure and is idempotent', async () => {

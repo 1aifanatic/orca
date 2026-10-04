@@ -132,6 +132,15 @@ describe('nativeChatToolRunOutcome', () => {
     ).toEqual({ failedCallCount: 1, interruptedCallCount: 1, succeeded: false })
   })
 
+  it('counts a call an unverified end closed as failed until a proof corrects it', () => {
+    const block: NativeChatBlock = { ...call('a', 'failed'), endedAs: 'unverifiable' }
+    expect(nativeChatToolRunOutcome([block], {})).toEqual({
+      failedCallCount: 1,
+      interruptedCallCount: 0,
+      succeeded: false
+    })
+  })
+
   it('reads an ending it cannot place as the failed state beside it', () => {
     // A value a newer build may persist; the schema keeps the field open.
     const block: NativeChatBlock = JSON.parse(

@@ -2,7 +2,10 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'vitest'
-import { interruptedAgentJournalToolCall } from '../../../src/shared/agent-journal-tool-call-lifecycle'
+import {
+  endedRunningAgentJournalToolCall,
+  interruptedAgentJournalToolCall
+} from '../../../src/shared/agent-journal-tool-call-lifecycle'
 import type { AgentJournalItemIdentity } from '../../../src/shared/agent-session-journal-types'
 import { createTrackedJournalOpener } from '../../../src/main/native-chat/agent-session-journal/journal-host-database-test-support'
 import type { JournalRow } from '../../../src/main/native-chat/agent-session-journal/journal-row-schema'
@@ -59,13 +62,22 @@ test('an older host and client read a call a stop cut short as the failure they 
       output: { head: 'partial', byteLength: 7, digest: 'd', truncated: false }
     })
     await journal.appendItem(call(0), cutShort, { fence: 1, turnScope: { kind: 'thread' } })
+    // And one an end nothing proved closed, kept so a later proof can still correct it.
+    const unverified = endedRunningAgentJournalToolCall(
+      { kind: 'tool-call', name: 'shell', input: { command: 'sleep 30' }, state: 'running' },
+      'unverifiable'
+    )
+    await journal.appendItem(call(1), unverified, { fence: 1, turnScope: { kind: 'thread' } })
     const since = journal.readSince({ epoch: journal.epoch, sequence: 0 })
     if (!since.ok) {
       throw new Error(`expected rows, got reset ${since.reset}`)
     }
     const rows: JournalRow[] = since.rows
     const current = journal.snapshot().items
-    expect(current[0]?.body).toMatchObject({ state: 'failed', endedAs: 'interrupted' })
+    expect(current.map((item) => item.body)).toMatchObject([
+      { state: 'failed', endedAs: 'interrupted' },
+      { state: 'failed', endedAs: 'unverifiable' }
+    ])
 
     const checkout = await materializeReleaseCheckout(BASELINE_REF)
     const [reducer, schemas, projection, outcome] = await Promise.all(
@@ -99,22 +111,28 @@ test('an older host and client read a call a stop cut short as the failure they 
     const runOutcome = releaseExport<OldRunOutcome>(outcome, 'nativeChatToolRunOutcome')
     const settled = { activeTurnIsWorking: false }
 
-    // The older host, after a downgrade, folds the row it never wrote as a failed call.
+    const blocksOf = (items: OldRenderItem[]) =>
+      items.flatMap((item) => project(item)?.blocks ?? [])
+
+    // The older host, after a downgrade, folds the rows it never wrote as failed calls.
     const state = createState(SESSION, journal.epoch)
     for (const row of rows) {
       applyRow(state, row)
     }
-    const [folded] = render(state).items
-    expect(folded?.body).toMatchObject({ kind: 'tool-call', state: 'failed' })
-    expect(runOutcome(project(folded)?.blocks ?? [], settled)).toEqual({
-      failedCallCount: 1,
+    const folded = render(state).items
+    expect(folded.map((item) => item.body)).toMatchObject([
+      { kind: 'tool-call', state: 'failed' },
+      { kind: 'tool-call', state: 'failed' }
+    ])
+    expect(runOutcome(blocksOf(folded), settled)).toEqual({
+      failedCallCount: 2,
       succeeded: false
     })
 
-    // The older client reads this host's render item the same way.
-    const [read] = current.map((item) => renderItemSchema.parse(item))
-    expect(runOutcome(project(read)?.blocks ?? [], settled)).toEqual({
-      failedCallCount: 1,
+    // The older client reads this host's render items the same way.
+    const read = current.map((item) => renderItemSchema.parse(item))
+    expect(runOutcome(blocksOf(read), settled)).toEqual({
+      failedCallCount: 2,
       succeeded: false
     })
 
