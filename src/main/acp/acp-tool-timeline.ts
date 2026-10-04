@@ -167,13 +167,11 @@ export class AcpToolTimeline {
     const rows = this.journalItems()
     const suffix = `${thread ? `${providerTimelineKeyPart(thread)}/` : ''}${providerTimelineKeyPart(`tool:${callId}`)}`
     const row = rows.find((item) => {
+      if (item.body.kind !== 'tool-call' || item.body.callId !== callId) {
+        return false
+      }
       const identity = parseAgentJournalItemKey(item.itemId)
-      return (
-        item.body.kind === 'tool-call' &&
-        item.body.callId === callId &&
-        identity?.provider === 'legacy' &&
-        identity.recordId.endsWith(`:${suffix}`)
-      )
+      return identity?.provider === 'legacy' && identity.recordId.endsWith(`:${suffix}`)
     })
     return row?.body.kind === 'tool-call'
       ? { body: row.body, turn: acpJournalToolTurn(rows, callId) }

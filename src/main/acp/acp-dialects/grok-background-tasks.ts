@@ -33,7 +33,43 @@ const completedSchema = z.object({
   task_snapshot: taskSchema
 })
 const startedOutputSchema = taskSchema.extend({ type: z.literal('BackgroundTaskStarted') })
+const taskResultSchema = taskSchema.extend({
+  status: z.string().optional(),
+  outcome: z.string().optional()
+})
+const resultOutputSchema = z.object({
+  type: z.enum(['TaskOutput', 'KillTask']),
+  Result: taskResultSchema.optional(),
+  MultiResult: z.object({ results: z.array(taskResultSchema) }).optional()
+})
 type GrokTask = z.infer<typeof taskSchema>
+
+function completedState(task: GrokTask): NativeChatBackgroundTaskBlock['state'] {
+  return task.explicitly_killed
+    ? 'idle'
+    : task.signal != null || task.error?.trim() || (task.exit_code != null && task.exit_code !== 0)
+      ? 'blocked'
+      : 'done'
+}
+
+function resultState(
+  task: z.infer<typeof taskResultSchema>
+): NativeChatBackgroundTaskBlock['state'] | undefined {
+  if (task.explicitly_killed || ['killed', 'stopped', 'cancelled'].includes(task.status ?? '')) {
+    return 'idle'
+  }
+  if (task.error?.trim() || ['failed', 'error'].includes(task.status ?? '')) {
+    return 'blocked'
+  }
+  if (
+    task.exit_code != null ||
+    task.signal != null ||
+    ['completed', 'success', 'succeeded'].includes(task.status ?? '')
+  ) {
+    return completedState(task)
+  }
+  return ['pending', 'running'].includes(task.status ?? '') ? 'working' : undefined
+}
 
 function snapshot(
   task: GrokTask,
@@ -78,6 +114,20 @@ export function grokToolBackgroundTasks(
   update: ToolCallUpdate,
   tool: AgentJournalToolCallItem
 ): AcpBackgroundTaskUpdate[] {
+  const result = resultOutputSchema.safeParse(update.rawOutput)
+  if (result.success) {
+    const tasks =
+      result.data.MultiResult?.results ?? (result.data.Result ? [result.data.Result] : [])
+    return tasks.flatMap((task) => {
+      if (result.data.type === 'KillTask') {
+        return update.status === 'completed' && task.outcome === 'killed'
+          ? [snapshot(task, 'idle')]
+          : []
+      }
+      const state = resultState(task)
+      return state && !task.command?.startsWith('[subagent:') ? [snapshot(task, state)] : []
+    })
+  }
   const input = taskInputSchema.safeParse(tool.input)
   if (tool.name === 'kill_command_or_subagent' && update.status === 'completed' && input.success) {
     // Inference: a successful kill call settles its named tasks without a completion notice.
@@ -125,10 +175,5 @@ export function grokBackgroundTaskNotification(
     }
   }
   const task = update.task_snapshot
-  const state = task.explicitly_killed
-    ? 'idle'
-    : task.signal != null || task.error?.trim() || (task.exit_code != null && task.exit_code !== 0)
-      ? 'blocked'
-      : 'done'
-  return { disposition: 'map', backgroundTasks: [snapshot(task, state)] }
+  return { disposition: 'map', backgroundTasks: [snapshot(task, completedState(task))] }
 }

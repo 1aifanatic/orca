@@ -157,6 +157,7 @@ describe('background task outcome evidence', () => {
               _meta: { promptId: 'kill-turn' },
               update: {
                 sessionUpdate: 'tool_call',
+                title: 'Read file',
                 toolCallId: `unrelated-${index}`,
                 status: 'in_progress',
                 name: 'read_file',
@@ -278,7 +279,12 @@ describe('background task outcome evidence', () => {
         {
           sessionId: 'session-1',
           _meta: { promptId: 'historic-turn' },
-          update: { sessionUpdate: 'tool_call', toolCallId: 'historic-tool', status: 'in_progress' }
+          update: {
+            sessionUpdate: 'tool_call',
+            title: 'Historical launch',
+            toolCallId: 'historic-tool',
+            status: 'in_progress'
+          }
         },
         1000
       )
