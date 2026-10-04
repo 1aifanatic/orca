@@ -222,7 +222,12 @@ describe('MobileNativeChatMessage', () => {
       const output = tree.root
         .findAllByType('Text' as never)
         .find((node) => node.children.join('') === 'partial')
-      return output?.parent?.props.style
+      // The tint is on the result box: the nearest View around the output text.
+      let box = output?.parent ?? null
+      while (box && box.type !== ('View' as never)) {
+        box = box.parent
+      }
+      return box?.props.style
     }
 
     it('shows the output a stop cut short without the error tint', () => {

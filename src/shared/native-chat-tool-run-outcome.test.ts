@@ -133,7 +133,13 @@ describe('nativeChatToolRunOutcome', () => {
   })
 
   it('counts a call an unverified end closed as failed until a proof corrects it', () => {
-    const block: NativeChatBlock = { ...call('a', 'failed'), endedAs: 'unverifiable' }
+    const block: NativeChatBlock = {
+      type: 'tool-call',
+      name: 'shell',
+      input: { command: 'a' },
+      state: 'failed',
+      endedAs: 'unverifiable'
+    }
     expect(nativeChatToolRunOutcome([block], {})).toEqual({
       failedCallCount: 1,
       interruptedCallCount: 0,
