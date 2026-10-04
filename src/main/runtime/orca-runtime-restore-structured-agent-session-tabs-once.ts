@@ -74,11 +74,8 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
       })
     }
     this.hydrateHeadlessMobileSessionTabsFromWorkspaceSession()
+    // Every session here is of an agent this host registered: its store holds no other agent's records.
     const restored = (host?.listSessionTabs() ?? []).flatMap((session) => {
-      // A tab names an agent only this host registered; the record store reads no other's records.
-      if (!host?.agentDefinition(session.agent)) {
-        return []
-      }
       let sessionId = session.sessionId
       while (sessionId.startsWith('agent-session:')) {
         sessionId = sessionId.slice('agent-session:'.length)

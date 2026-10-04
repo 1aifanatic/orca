@@ -85,8 +85,8 @@ async function resolveClientSuppliedAttach(params: z.infer<typeof AttachParams>,
   const { agent: _attachAgent, provider: _attachProvider, ...attachWithoutAgent } = params
   const attachParams = {
     ...attachWithoutAgent,
-    provider: params.provider,
-    agent: params.agent
+    provider: params.provider as 'claude' | 'codex',
+    agent: params.agent as 'claude' | 'codex'
   } as AgentSessionAttachParams
   return { host, attachParams }
 }
