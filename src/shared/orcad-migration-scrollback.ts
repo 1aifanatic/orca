@@ -34,15 +34,14 @@ export type OrcadMigrationTerminalScrollbackSnapshot = {
   byteLength: number
 }
 
-export const OrcadMigrationSnapshotChunkRequestSchema = z
-  .object({
-    migrationId: Identity,
-    manifestSha256: Digest,
-    ref: SnapshotRef,
-    offset: z.number().int().nonnegative().max(MAX_ORCAD_MIGRATION_SCROLLBACK_TOTAL_BYTES),
-    bytesBase64: CanonicalBase64Chunk
-  })
-  .strict()
+// Not strict: an older host must ignore optional fields a newer client adds.
+export const OrcadMigrationSnapshotChunkRequestSchema = z.object({
+  migrationId: Identity,
+  manifestSha256: Digest,
+  ref: SnapshotRef,
+  offset: z.number().int().nonnegative().max(MAX_ORCAD_MIGRATION_SCROLLBACK_TOTAL_BYTES),
+  bytesBase64: CanonicalBase64Chunk
+})
 
 export type OrcadMigrationSnapshotChunkRequest = z.infer<
   typeof OrcadMigrationSnapshotChunkRequestSchema

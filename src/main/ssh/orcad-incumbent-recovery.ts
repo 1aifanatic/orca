@@ -27,6 +27,7 @@ import {
   type OrcadSlotOptions
 } from './orcad-recovery-slot'
 import { joinRemotePath } from './ssh-remote-platform'
+import type { OrcadManagedRefusal } from '../../shared/orcad-managed-runtime'
 
 export type OrcadIncumbentRecoveryOptions = OrcadSlotOptions & {
   /**
@@ -38,7 +39,7 @@ export type OrcadIncumbentRecoveryOptions = OrcadSlotOptions & {
 
 export type OrcadIncumbentRecovery =
   | { outcome: 'restored'; readiness: ServeReadiness | null }
-  | { outcome: 'refused'; verdict: 'live' | 'unverifiable'; code: string; reason: string }
+  | OrcadManagedRefusal
 
 export function orcadSnapshotPath(options: OrcadSlotOptions, dirName: string): string {
   return joinRemotePath(

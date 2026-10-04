@@ -24,6 +24,7 @@ import {
   recoverOrcadIncumbent,
   type OrcadIncumbentRecoveryOptions
 } from './orcad-incumbent-recovery'
+import type { OrcadManagedRefusal } from '../../shared/orcad-managed-runtime'
 
 export type OrcadActivationRecoveryResult =
   | { outcome: 'none' }
@@ -34,7 +35,7 @@ export type OrcadActivationRecoveryResult =
       activeVersion: string | null
       readiness: ServeReadiness | null
     }
-  | { outcome: 'refused'; verdict: 'live' | 'unverifiable'; code: string; reason: string }
+  | OrcadManagedRefusal
 
 export type OrcadActivationRecoveryOptions = OrcadIncumbentRecoveryOptions
 
