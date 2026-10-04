@@ -566,6 +566,8 @@ describe('codex journal translation', () => {
         ]
       }
     ])
+    // A completed turn proves no interruption.
+    expect(batches[0]?.mutations[0]).not.toHaveProperty('body.endedAs')
   })
 
   it('cuts short an active tool when Codex reports its turn interrupted', () => {
