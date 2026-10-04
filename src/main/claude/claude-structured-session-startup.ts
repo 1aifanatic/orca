@@ -105,7 +105,8 @@ export type ClaudeStartupFacts = {
 
 /** How long the CLI may go silent before answering initialize. Generous for a slow machine or a
  *  first run; a CLI that stays alive but never answers would otherwise hold the chat's messages
- *  forever. Inside the host's start wait, so a command waiting on this start hears its failure. */
+ *  forever. A CLI silent from launch fails inside the host's start wait, so a command waiting on
+ *  this start hears its failure rather than "not started yet". */
 export const CLAUDE_STARTUP_DEADLINE_MS = STRUCTURED_AGENT_SESSION_START_WAIT_MS - 30_000
 
 /** The e2e rig shortens the deadline to capture its failure; production always uses the default. */
@@ -116,10 +117,11 @@ function claudeStartupDeadlineMs(): number {
     : CLAUDE_STARTUP_DEADLINE_MS
 }
 
-/** The initialize answer, or a rejection once the CLI has said nothing for `deadlineMs`; a late
- *  answer is then ignored. Claude answers only after its SessionStart hooks finish, and their frames
- *  restart the clock, so a slow hook that reports itself is not cut off. A refused proof fails it
- *  at once. */
+/** The initialize answer, or a rejection once the CLI has sent no start frame for `deadlineMs`; a
+ *  late answer is then ignored. Claude answers only after its SessionStart hooks finish, and each
+ *  hook's start and end frames buy another `deadlineMs`, so hooks that run in turn are not cut off;
+ *  one hook running past the deadline (Claude's own hook timeout is 60 s by default) still is. A
+ *  refused proof fails it at once. */
 function withinClaudeStartupDeadline<T>(
   answer: Promise<T>,
   proof: ClaudeInitProof,

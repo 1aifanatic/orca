@@ -239,7 +239,7 @@ describe('Claude structured session publishes before the CLI answers initialize'
   })
 
   // Claude answers initialize only once its SessionStart hooks finish; their frames show it is alive.
-  it('restarts the deadline on each start frame, so a slow SessionStart hook is not cut off', async () => {
+  it('restarts the deadline on each start frame, so hooks that run in turn are not cut off', async () => {
     const claude = fakeClaude({
       initDelayMs: CLAUDE_STARTUP_DEADLINE_MS + SLOW_INIT_MS,
       initProof: 'none'

@@ -8,6 +8,7 @@ import * as claudeConnection from './claude-stream-json-connection'
 import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
 import { resolveSessionFilePath } from '../native-chat/session-file-resolver'
 import { CLAUDE_STRUCTURED_BASE_OPTIONS } from './claude-structured-launch-resolution'
+import { readClaudeInit } from './claude-structured-init-proof'
 import {
   realClaudeAuthenticated,
   realClaudeAuthStatus,
@@ -513,7 +514,7 @@ describe.skipIf(!realClaudeAvailable)(suiteTitle, () => {
           fence: 1,
           spawnToken: 'real-cli-no-hooks'
         })
-        expect(frames().filter((frame) => frame.type === 'system')).toEqual([])
+        expect(frames().filter((frame) => readClaudeInit(frame) !== null)).toEqual([])
         await expect(
           adapter.dispatch({
             sessionId: 'real-cli-handshake',
