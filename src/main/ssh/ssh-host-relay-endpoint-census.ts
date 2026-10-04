@@ -14,6 +14,7 @@ import { execCommand } from './ssh-relay-deploy-helpers'
 import { probeRelayEndpointIncumbent } from './ssh-relay-endpoint-incumbent'
 import { classifySupersededRelay } from './ssh-relay-superseded-endpoints'
 import { countRelayEndpointPtys } from './ssh-relay-endpoint-pty-count'
+import { readRelayDaemonRuntimes } from './ssh-relay-endpoint-runtime'
 import { isWindowsRemoteHost, type RemoteHostPlatform } from './ssh-remote-platform'
 
 /** `unenumerable`: Windows named pipes cannot be listed, so the caller keeps today's path. */
@@ -43,8 +44,8 @@ export async function censusHostRelayEndpoints(
   args: {
     host: RemoteHostPlatform
     remoteHome: string
-    /** Resolved only when there are endpoints to probe; null when the host has no node. */
-    nodePath: () => Promise<string | null>
+    /** A Node for endpoints whose daemon is not running; null when the host has none. */
+    fallbackNodePath: () => Promise<string | null>
     signal?: AbortSignal
   }
 ): Promise<HostRelayEndpointCensus> {
@@ -67,15 +68,24 @@ export async function censusHostRelayEndpoints(
   if (endpoints.length === 0) {
     return { verdict: 'none', count: 0 }
   }
-  const nodePath =
-    endpoints.length > MAX_CENSUS_ENDPOINTS ? null : await args.nodePath().catch(() => null)
-  if (!nodePath) {
+  if (endpoints.length > MAX_CENSUS_ENDPOINTS) {
     return { verdict: 'unverifiable', count: endpoints.length }
   }
+  // Each relay is asked with the runtime it runs on; a dead daemon's socket with any runtime here.
+  const runtimes = await readRelayDaemonRuntimes(conn, args.signal)
+  const anyRuntime = runtimes.values().next().value ?? null
+  let fallback: Promise<string | null> | undefined
+  const runtimeFor = async (endpoint: string): Promise<string | null> =>
+    runtimes.get(endpoint) ??
+    anyRuntime ??
+    (await (fallback ??= args.fallbackNodePath().catch(() => null)))
   let live = 0
   let unverifiable = 0
   for (const endpoint of endpoints) {
-    const outcome = await classifyEndpoint(conn, args.host, nodePath, endpoint, args.signal)
+    const nodePath = await runtimeFor(endpoint)
+    const outcome = nodePath
+      ? await classifyEndpoint(conn, args.host, nodePath, endpoint, args.signal)
+      : 'unverifiable'
     if (outcome === 'live') {
       live += 1
     } else if (outcome === 'unverifiable') {

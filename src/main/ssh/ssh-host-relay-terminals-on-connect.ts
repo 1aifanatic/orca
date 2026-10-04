@@ -68,7 +68,7 @@ export async function censusSshHostRelaysBeforeSession(
   return censusHostRelayEndpoints(conn, {
     host,
     remoteHome,
-    nodePath: () => resolveRemoteNodePath(conn, host, { signal }),
+    fallbackNodePath: () => resolveRemoteNodePath(conn, host, { signal }),
     signal
   })
 }
