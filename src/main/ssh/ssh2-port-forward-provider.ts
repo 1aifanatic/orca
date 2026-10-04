@@ -54,7 +54,7 @@ export class Ssh2PortForwardProvider implements SshPortForwardProvider {
       }
     })
 
-    await listen(server, options.localHost, options.localPort)
+    await listenForPortForward(server, options.localHost, options.localPort)
     // Why: port 0 asks the OS for a free port, and callers must dial the one it bound.
     const address = server.address()
     const localPort = typeof address === 'object' && address ? address.port : options.localPort
@@ -91,7 +91,7 @@ export class Ssh2PortForwardProvider implements SshPortForwardProvider {
   }
 }
 
-function listen(server: Server, host: string, port: number): Promise<void> {
+export function listenForPortForward(server: Server, host: string, port: number): Promise<void> {
   return new Promise((resolve, reject) => {
     const onError = (err: Error): void => {
       server.removeListener('listening', onListening)

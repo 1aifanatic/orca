@@ -25,7 +25,14 @@ import {
 import { execInTerminal, waitForActivePanePtyId, waitForTerminalOutput } from './helpers/terminal'
 import { connectSshTestTarget } from './helpers/ssh-test-target-connection'
 import { createRestartSession } from './helpers/orca-restart'
-import { convertThenRetire, managedServer, targetLeases } from './helpers/orcad-convert-flow'
+import {
+  convertThenRetire,
+  isManaged,
+  managedServer,
+  reconnect,
+  serverCall,
+  targetLeases
+} from './helpers/orcad-convert-flow'
 import { seedRelayEraProfile } from './helpers/orcad-upgrade-profile'
 import { ORCAD_CONVERT_HOST_ENV, startOrcadConvertHost } from './helpers/orcad-convert-host'
 import { toSshExecutionHostId } from '../../src/shared/execution-host'
@@ -242,7 +249,7 @@ test('a relay-era profile converts its SSH host on the first connect after upgra
   }
 })
 
-test('a host whose sshd refuses TCP forwarding stays on the relay, unfenced', async ({
+test('a host whose sshd refuses TCP forwarding runs a managed server over the stdio bridge', async ({
   orcaPage: page
 }, testInfo) => {
   test.skip(
@@ -250,11 +257,10 @@ test('a host whose sshd refuses TCP forwarding stays on the relay, unfenced', as
     `Set ${ORCAD_CONVERT_HOST_ENV} and ORCA_E2E_ORCAD_CONVERT_TEMPLATE`
   )
   test.skip(HOST !== 'docker', 'Only the Docker host can change its sshd policy mid-test')
-  test.setTimeout(10 * 60_000)
+  test.setTimeout(15 * 60_000)
   rmSync(SCRATCH, { recursive: true, force: true })
   mkdirSync(SCRATCH, { recursive: true })
   writeFileSync(FLAGS_FILE, '{}')
-  // Template present from the start: without the probe, this empty host would deploy and strand.
   cpSync(TEMPLATE_SOURCE!, TEMPLATE_DIR, { recursive: true })
   const host = startOrcadConvertHost(HOST!, testInfo)
   try {
@@ -266,17 +272,33 @@ test('a host whose sshd refuses TCP forwarding stays on the relay, unfenced', as
       seedInitialTab: false
     })
 
-    expect(await managedServer(page, remote.targetId)).toMatchObject({
-      kind: 'relay',
-      reason: 'orcad_unavailable',
-      detail: 'tcp_forwarding_refused'
-    })
+    await expect
+      .poll(async () => JSON.stringify(await managedServer(page, remote.targetId)), {
+        timeout: 8 * 60_000
+      })
+      .toContain('"kind":"managed"')
     const target = await page.evaluate(
       async (id) => (await window.api.ssh.listTargets()).find((entry) => entry.id === id),
       remote.targetId
     )
-    expect(target).not.toHaveProperty('orcadFence')
-    expect(target?.managedServerUnavailable).toMatchObject({ reason: 'tcp_forwarding_refused' })
+    expect(target?.orcadFence).toBeTruthy()
+    expect(target).not.toHaveProperty('managedServerUnavailable')
+    const environment = (await page.evaluate(() => window.api.runtimeEnvironments.list())).find(
+      (entry) => entry.orcadDeployment?.sshTargetId === remote.targetId
+    )
+    expect(environment, 'a managed server registered for the host').toBeTruthy()
+    // sshd refuses every forward, so this call can only have ridden a stdio bridge.
+    await serverCall(page, environment!.id, 'repo.list')
+    expect(host.stdioBridges!()).toBeGreaterThan(0)
+
+    // A reconnect rebuilds the tunnel the same way.
+    await reconnect(page, remote.targetId)
+    await expect
+      .poll(async () => isManaged(await managedServer(page, remote.targetId)), {
+        timeout: 2 * 60_000
+      })
+      .toBe(true)
+    await serverCall(page, environment!.id, 'repo.list')
   } finally {
     host.cleanup()
     if (existsSync(SCRATCH)) {

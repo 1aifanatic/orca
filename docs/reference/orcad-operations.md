@@ -84,6 +84,16 @@ nothing can reach.
 Under the shipping design a client reaches a remote orcad over an SSH local port-forward, so
 loopback is the correct default and the pairing credential travels over SSH.
 
+A host whose sshd refuses forwarding (`AllowTcpForwarding no`) is reached through the stdio
+bridge instead: the client keeps the same local port, and each connection to it opens one SSH
+exec channel running a small script on the host's pinned Node that dials orcad's loopback port.
+Windows hosts run it as the host script's `stdio-bridge` op and frame bytes as base64 lines,
+because a PowerShell DefaultShell re-decodes native output. Bridges are capped below OpenSSH's
+default `MaxSessions` of 10 per connection; further connections wait for a free one. The choice
+is made each time the tunnel starts (`orcad-managed-tunnel-transport.ts`), so nothing is
+recorded per host, and only a host where even the bridge cannot run keeps the relay, recorded as
+`ssh_tunnel_unavailable`.
+
 ## Data root and the instance lock
 
 The data root is `$ORCA_USER_DATA`, else `$XDG_DATA_HOME/Orca`, else `~/.orca`.

@@ -1,6 +1,7 @@
 // Managed orcad on a real Win32-OpenSSH host, one cell per DefaultShell: prove the conversion's
 // terminal gate against the pinned relay already serving the host, then resolve the context
-// (pinned node.exe, host script), deploy and activate, prove readiness and liveness, decommission
+// (pinned node.exe, host script), deploy and activate, prove readiness and liveness, reach orcad
+// through the stdio bridge (this account's sshd refuses forwarding), decommission
 // through the instance-bound stop request, prove exit, and run a GC pass. config/ci/windows-ssh-provider/invoke-pinned-relay-cells.ps1
 // provisions the account and runs this file for `orcad-*` cells; ssh-windows-hosts.yml runs that.
 //
@@ -18,6 +19,7 @@ import {
 } from './ssh-hostile-host-test-harness'
 import { resolveOrcadRemoteContext } from './orcad-remote-context'
 import { proveWindowsRelayTerminalGate } from './orcad-windows-relay-terminal-gate-cell'
+import { proveWindowsStdioBridge } from './orcad-windows-stdio-bridge-cell'
 import { deployOrcad } from './orcad-remote-deploy'
 import { orcadLivenessProbeCommand, parseOrcadLiveness } from './orcad-remote-launch'
 import { orcadSlotDir, type OrcadSlotOptions } from './orcad-recovery-slot'
@@ -95,6 +97,12 @@ describe.runIf(RUN)('managed orcad on a Windows OpenSSH host', () => {
             await execOrcadRemote(options, orcadLivenessProbeCommand(options.host, slotDir))
           )
         expect(await liveness()).toBe('LIVE')
+        // The managed tunnel picks the stdio bridge on this account and reaches orcad through it.
+        receipt.stdioBridge = await proveWindowsStdioBridge(conn, options.host, slotDir)
+        expect(receipt.stdioBridge).toMatchObject({
+          forwarding: 'refused',
+          response: expect.stringMatching(/^HTTP\/1\.1 101/u)
+        })
         // Decommission stops it by the instance-bound request orcad itself completes and proves.
         const record = await readOrcadActivationRecord(options)
         receipt.decommission = await decommissionRemoteOrcad({

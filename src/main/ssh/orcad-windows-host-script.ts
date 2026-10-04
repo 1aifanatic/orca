@@ -23,6 +23,7 @@ import {
   ORCAD_STOP_REQUEST_FILENAME,
   ORCAD_STOP_REQUESTS_CAPABILITY
 } from '../../shared/orcad-stop-request'
+import { ORCAD_STDIO_BRIDGE_FUNCTION } from './orcad-stdio-bridge-script'
 import {
   ORCAD_WINDOWS_HOST_STATE_OPS,
   type OrcadWindowsHostStateOp
@@ -55,6 +56,7 @@ export type OrcadWindowsHostOp =
   | 'slot-runtime'
   | 'remove-file'
   | 'remove-tree'
+  | 'stdio-bridge'
   | OrcadWindowsHostStateOp
 
 const text = JSON.stringify
@@ -222,8 +224,15 @@ const ops = {
       try { fs.unlinkSync(path.join(slotDir, ${text(ORCAD_STOP_REQUEST_FILENAME)})) } catch (error) { if (error.code !== 'ENOENT') process.exit(1) }
     }
     encoded(${text(ORCAD_WINDOWS_RUNTIME_MARKER)}, Buffer.from(runtime, 'utf8'))
+  },
+
+  // Never exits on its own: it lives as long as the client's exec channel or orcad's socket.
+  'stdio-bridge'(portArg) {
+    orcadStdioBridge(Number(portArg), 'base64')
   }
 }
+
+${ORCAD_STDIO_BRIDGE_FUNCTION}
 
 ${ORCAD_WINDOWS_HOST_STATE_OPS}
 const run = Object.hasOwn(ops, op) ? ops[op] : null

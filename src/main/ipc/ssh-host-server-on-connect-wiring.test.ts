@@ -24,8 +24,6 @@ vi.mock('../../shared/app-environment', () => ({
 }))
 vi.mock('../ssh/ssh-target-registry', () => ({
   getSshTargetRegistryStore: () => mocks.registry.current,
-  // A system-SSH-shaped connection: no ssh2 client, so the forwarding probe is unverifiable.
-  getSshConnectionManager: () => ({ connect: async () => ({ getClient: () => null }) }),
   hasRegisteredDirectSshAuthority: () => false
 }))
 vi.mock('../ssh/orcad-runtime-deployment', () => ({ createManagedOrcadEnvironment: mocks.deploy }))
@@ -94,6 +92,18 @@ describe('connect-time server decision against the real profile', () => {
     mocks.deploy.mockClear()
     await resolveHostServerOnConnect(target(), hostServerOnConnectDeps(userDataPath))
     expect(mocks.deploy).not.toHaveBeenCalled()
+  })
+
+  it('retries a host an older build kept on the relay for refusing forwarding', async () => {
+    store.updateSshTarget(TARGET.id, {
+      managedServerUnavailable: { reason: 'tcp_forwarding_refused', appVersion: '1.5.0' }
+    })
+    const deps = hostServerOnConnectDeps(userDataPath)
+    expect(deps.recordedUnavailable(target())).toBeNull()
+    store.updateSshTarget(TARGET.id, {
+      managedServerUnavailable: { reason: 'unsupported_host', appVersion: '1.4.0' }
+    })
+    expect(deps.recordedUnavailable(target())).toBeNull()
   })
 
   it('keeps the relay while a saved relay terminal is unproven, without converting', async () => {

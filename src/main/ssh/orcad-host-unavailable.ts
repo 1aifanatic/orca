@@ -19,6 +19,16 @@ export class OrcadArtifactsUnavailableError extends Error {
   }
 }
 
+/** The host refuses port forwarding and can't run the stdio bridge either. */
+export class OrcadStdioBridgeUnavailableError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'OrcadStdioBridgeUnavailableError'
+  }
+}
+
+export const ORCAD_TUNNEL_UNAVAILABLE_REASON = 'ssh_tunnel_unavailable'
+
 export type OrcadHostUnavailableReason =
   | 'unsupported_host'
   | 'artifacts_unavailable'
@@ -26,6 +36,7 @@ export type OrcadHostUnavailableReason =
   | 'runtime_self_test'
   | 'security_software'
   | 'native_preflight'
+  | typeof ORCAD_TUNNEL_UNAVAILABLE_REASON
 
 const UNAVAILABLE_BY_ERROR_NAME: Record<string, OrcadHostUnavailableReason> = {
   OrcadHostUnsupportedError: 'unsupported_host',
@@ -33,7 +44,8 @@ const UNAVAILABLE_BY_ERROR_NAME: Record<string, OrcadHostUnavailableReason> = {
   OrcadRemoteLaunchUnsupportedError: 'unsupported_host',
   UnidentifiedHostLibcError: 'libc_unidentified',
   RemoteNodeRuntimeSelfTestError: 'runtime_self_test',
-  RemoteNodeRuntimeSecurityModifiedError: 'security_software'
+  RemoteNodeRuntimeSecurityModifiedError: 'security_software',
+  OrcadStdioBridgeUnavailableError: ORCAD_TUNNEL_UNAVAILABLE_REASON
 }
 
 // Why only these deferrals: the candidate's native preflight (libc floor, missing libraries) and
