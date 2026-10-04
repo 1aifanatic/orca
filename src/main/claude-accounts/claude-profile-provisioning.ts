@@ -43,6 +43,9 @@ export const CLAUDE_PROFILE_RESOURCE_DIRS = [
 ] as const
 // Copied, not linked: a rename-replace save (Claude's own, or an editor's) would cut a link.
 export const CLAUDE_PROFILE_RESOURCE_FILES = ['CLAUDE.md', 'keybindings.json'] as const
+// Why an import, not a copy: Claude also loads ~/.claude/CLAUDE.md as a parent folder's memory
+// for any project under home, and only collapses the two when they are the same real file.
+export const CLAUDE_PROFILE_MEMORY_IMPORT = '@~/.claude/CLAUDE.md\n'
 const PRIVATE_KEYS = new Set([
   'apiKeyHelper',
   'awsAuthRefresh',
@@ -262,7 +265,13 @@ export async function provisionClaudeProfile(args: {
   }
   for (const name of CLAUDE_PROFILE_RESOURCE_FILES) {
     await runClaudeProfileSurface(report, name, () =>
-      syncClaudeProfileFile(join(defaultHome, name), join(args.profileHome, name), name, ledger)
+      syncClaudeProfileFile(
+        join(defaultHome, name),
+        join(args.profileHome, name),
+        name,
+        ledger,
+        name === 'CLAUDE.md' ? () => CLAUDE_PROFILE_MEMORY_IMPORT : undefined
+      )
     )
   }
   await runClaudeProfileSurface(report, 'settings.json', () =>
