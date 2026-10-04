@@ -25,6 +25,10 @@ import type {
   PythonEnvironments
 } from '../../shared/notebook-kernel-types'
 import type { RuntimeUploadFileStreamRequest } from '../../shared/runtime-upload-staging-contract'
+import type {
+  AgentSessionAttachmentPathUploadResult,
+  AgentSessionAttachmentUploadTarget
+} from '../../shared/agent-session-attachments'
 
 export type ExportApi = {
   htmlToPdf: (args: {
@@ -162,6 +166,10 @@ export type FilesystemApi = {
         connectionId?: string
       } & SshMutationExpectation
     ) => Promise<ResolveDroppedPathsResult>
+    /** Uploads client-local files into a paired server's store for one structured chat. */
+    uploadPathsToAgentSessionAttachments: (
+      args: AgentSessionAttachmentUploadTarget & { paths: string[] }
+    ) => Promise<AgentSessionAttachmentPathUploadResult>
     watchWorktree: (args: { worktreePath: string; connectionId?: string }) => Promise<void>
     unwatchWorktree: (args: { worktreePath: string; connectionId?: string }) => Promise<void>
     onFsChanged: (callback: (payload: FsChangedPayload) => void) => () => void

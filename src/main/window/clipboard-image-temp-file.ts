@@ -7,10 +7,13 @@ import { requireSshFilesystemProvider } from '../providers/ssh-filesystem-dispat
 import { isWindowsAbsolutePathLike } from '../../shared/cross-platform-path'
 import { assertClipboardImageByteLengthWithinLimit } from '../../shared/clipboard-image'
 import { authorizeExternalPath } from '../ipc/filesystem-auth'
+import type { AgentSessionAttachmentClipboardTarget } from '../../shared/agent-session-attachments'
 
 export type SaveClipboardImageAsTempFileArgs = {
   connectionId?: string | null
   runtimeEnvironmentId?: string | null
+  /** With `runtimeEnvironmentId`: store the image as an attachment of this structured chat. */
+  agentSessionAttachment?: AgentSessionAttachmentClipboardTarget
 }
 
 const REMOTE_CLIPBOARD_IMAGE_TEMP_DIR = '/tmp'

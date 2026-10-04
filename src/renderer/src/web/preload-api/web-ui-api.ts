@@ -1,3 +1,5 @@
+import type { AgentSessionAttachmentClipboardTarget } from '../../../../shared/agent-session-attachments'
+import { saveClipboardImageAsWebAgentSessionAttachment } from './web-agent-session-attachment-upload'
 import { createWebExplorerRootSync } from './web-explorer-root-sync'
 import type { PreloadApi } from '../../../../preload/api-types'
 import { assertClipboardTextWithinLimitWithYield } from '../../../../shared/clipboard-text'
@@ -149,6 +151,7 @@ export function createWebUiApi(): NonNullable<Partial<PreloadApi>['ui']> {
     saveClipboardImageAsTempFile: async (args?: {
       connectionId?: string | null
       runtimeEnvironmentId?: string | null
+      agentSessionAttachment?: AgentSessionAttachmentClipboardTarget
     }) => {
       if (!requireActiveEnvironmentOrNull()) {
         return null
@@ -156,6 +159,12 @@ export function createWebUiApi(): NonNullable<Partial<PreloadApi>['ui']> {
       const contentBase64 = await readClipboardImagePngBase64()
       if (!contentBase64) {
         return null
+      }
+      if (args?.agentSessionAttachment) {
+        return saveClipboardImageAsWebAgentSessionAttachment(
+          contentBase64,
+          args.agentSessionAttachment
+        )
       }
       return saveClipboardImageAsTempFileInRuntime(contentBase64, args)
     },

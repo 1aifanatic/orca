@@ -7,6 +7,7 @@ import { tryDeleteWslUncPath } from '../../wsl-unc-delete'
 import { authorizeExternalPath, resolveAuthorizedPath } from '../filesystem-auth'
 import { isENOENT } from '../filesystem-path-containment'
 import { registerFilesystemMutationHandlers } from '../filesystem-mutations'
+import { registerAgentSessionAttachmentUploadHandlers } from '../agent-session-attachment-upload-ipc'
 import type { FilesystemHandlerContext } from './filesystem-handler-context'
 
 export function registerFilesystemWriteHandlers(context: FilesystemHandlerContext): void {
@@ -84,6 +85,7 @@ export function registerFilesystemWriteHandlers(context: FilesystemHandlerContex
   )
 
   registerFilesystemMutationHandlers(store)
+  registerAgentSessionAttachmentUploadHandlers()
 
   ipcMain.handle('fs:authorizeExternalPath', (_event, args: { targetPath: string }): void => {
     authorizeExternalPath(args.targetPath)

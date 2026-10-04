@@ -1,3 +1,4 @@
+import type { AgentSessionAttachmentClipboardTarget } from '../../shared/agent-session-attachments'
 import { ipcRenderer, webFrame } from 'electron'
 import type {
   RuntimeMobileMarkdownRequest,
@@ -93,6 +94,7 @@ export const uiClipboardAndWindowControlsApi = {
   saveClipboardImageAsTempFile: (args?: {
     connectionId?: string | null
     runtimeEnvironmentId?: string | null
+    agentSessionAttachment?: AgentSessionAttachmentClipboardTarget
   }): Promise<string | null> => ipcRenderer.invoke('clipboard:saveImageAsTempFile', args),
   clipboardHasImage: (): Promise<boolean> => ipcRenderer.invoke('clipboard:hasImage'),
   readClipboardFilePaths: (): Promise<string[]> => ipcRenderer.invoke('clipboard:readFilePaths'),
