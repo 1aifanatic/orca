@@ -210,14 +210,16 @@ describe('findRunnableLocalCommand', () => {
 
   it('probes a relative PATH entry as the absolute directory cwd gives it', async () => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    const shimDir = path.resolve('shims')
+    const localShim = path.join(shimDir, 'gh')
     const relativeDir = path.join('.', 'tools')
-    process.env.PATH = [shim.replace('/gh', ''), relativeDir].join(path.delimiter)
+    process.env.PATH = [shimDir, relativeDir].join(path.delimiter)
     const absoluteDir = path.resolve(relativeDir)
-    const hidden = `${absoluteDir}/gh`
-    const absolutePath = [shim.replace('/gh', ''), absoluteDir].join(path.delimiter)
+    const hidden = path.join(absoluteDir, 'gh')
+    const absolutePath = [shimDir, absoluteDir].join(path.delimiter)
     listLocalCommandPathsMock.mockImplementation(
       async (_command: string, options?: { env?: NodeJS.ProcessEnv }) =>
-        options?.env?.PATH === absolutePath ? [shim, hidden] : []
+        options?.env?.PATH === absolutePath ? [localShim, hidden] : []
     )
     execFileAsyncMock.mockImplementation(async (command: string) => {
       if (command === hidden) {
@@ -230,7 +232,7 @@ describe('findRunnableLocalCommand', () => {
       status: 'available',
       binary: hidden
     })
-    expect(spawnedCommands()).toEqual([shim, hidden])
+    expect(spawnedCommands()).toEqual([localShim, hidden])
   })
 
   it('does not pay for the bare name when every PATH entry is absolute', async () => {
