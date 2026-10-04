@@ -16,6 +16,7 @@ import {
 } from './agent-journal-turn-row-revision'
 import {
   providerKey,
+  replaysCompletedTurn,
   settlementOf,
   type ProviderTimelineDecidedEvent,
   type ProviderTimelineDecision,
@@ -23,6 +24,7 @@ import {
   type ProviderTimelineResolvedWrite
 } from './provider-timeline-decision'
 import { providerTimelinePlacement } from './provider-timeline-context'
+import { decideItem } from './provider-timeline-item-decisions'
 import type { ProviderTimelineTurnRef } from './provider-timeline-joins'
 import {
   providerTimelineSettlement,
@@ -165,6 +167,51 @@ export function decideInput(
       }
     }
   }
+}
+
+/** Decided only at the write, against the journal then: what a load replays was journaled before
+ *  that load's sink could read anything. */
+export function decideReplayedInput(
+  input: ProviderTimelineDecisionInput,
+  event: Extract<ProviderTimelineDecidedEvent, { type: 'input.replayed' }>
+): ProviderTimelineDecision {
+  const { state, journal, context } = input
+  if (replaysCompletedTurn(input, event.join)) {
+    return { dropped: 'turn-replayed' }
+  }
+  if (!input.execute || !journal) {
+    return {}
+  }
+  const turn = context.joins.turn(providerKey(event.join.turn), state.namespace)
+  const own = context.joins.find(
+    { family: 'item', key: providerKey(event.item), thread: event.join.thread ?? null },
+    journal,
+    state.namespace
+  )
+  const opener = readAgentJournalTurn(journal.itemBody(turn.itemId) ?? undefined)?.userItemId
+  const openerBody = opener === undefined ? null : journal.itemBody(opener)
+  if (opener !== own?.itemId && openerBody?.kind === 'message' && openerBody.role === 'user') {
+    return { dropped: 'item-replayed' }
+  }
+  const sent =
+    event.clientMessageId === undefined
+      ? null
+      : journal.item(agentJournalSubmissionKey(event.clientMessageId))
+  if (sent && event.clientMessageId !== undefined && !own) {
+    return decideInput(input, {
+      type: 'input.accepted',
+      clientMessageId: event.clientMessageId,
+      requestedAt: sent.observedAt,
+      join: event.join
+    })
+  }
+  return decideItem(input, {
+    type: 'item.update',
+    item: event.item,
+    body: event.body,
+    join: event.join,
+    replay: true
+  })
 }
 
 /** Only the opener fields change; the rest are the row's as the journal holds it. */

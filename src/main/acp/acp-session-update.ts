@@ -7,6 +7,7 @@ import {
 import { acpWindowUsage } from './acp-context-usage'
 import type { AcpDialect } from './acp-dialects/acp-dialect'
 import type { AcpBackgroundTaskTimeline } from './acp-background-task-timeline'
+import { acpReplayedUser } from './acp-replay-user-messages'
 import type { AcpToolTimeline } from './acp-tool-timeline'
 import type { SessionNotification } from './generated/acp-protocol.generated'
 
@@ -55,21 +56,26 @@ export function acpSessionUpdate(
             }
           ]
         : [{ type: 'provider.frame', frameKind: update.sessionUpdate, payload: update, ...join }]
-    case 'user_message_chunk':
-      return replay && update.content.type === 'text'
+    case 'user_message_chunk': {
+      if (!replay || update.content.type !== 'text') {
+        return []
+      }
+      const body: AgentJournalMessageItem = replayUserBody ?? {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: update.content.text }]
+      }
+      return turn === undefined
         ? [
             {
               type: 'item.update',
               item: `replay-user:${turn}:${update.messageId ?? ''}`,
-              body: replayUserBody ?? {
-                kind: 'message',
-                role: 'user',
-                blocks: [{ type: 'text', text: update.content.text }]
-              },
+              body,
               ...join
             }
           ]
-        : []
+        : [acpReplayedUser({ thread: notification.sessionId, turn }, body, update.messageId ?? '')]
+    }
     case 'tool_call':
     case 'tool_call_update': {
       const events = tools.translate(update, dialect, join.join)

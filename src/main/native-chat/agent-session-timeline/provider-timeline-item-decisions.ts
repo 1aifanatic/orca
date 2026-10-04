@@ -1,5 +1,7 @@
 // What item, request and frame events do, decided on the forecast and again on the ledger.
 
+import { isDeepStrictEqual } from 'node:util'
+
 import { requiresTerminalSettlement } from '../agent-session-journal/journal-terminal-settlement'
 import { cancelledJournalPromptBody } from '../agent-session-journal/journal-prompt-body-bounds'
 import { unhandledProviderFrameJournalItem } from '../agent-session-wire/unhandled-provider-frame'
@@ -8,6 +10,7 @@ import { providerTimelineEntryBytes, providerTimelinePlacement } from './provide
 import {
   pendingPrompt,
   providerKey,
+  replaysCompletedTurn,
   runningTool,
   settledTool,
   turnOf,
@@ -23,6 +26,9 @@ export function decideItem(
   event: Extract<ProviderTimelineDecidedEvent, { type: 'item.open' | 'item.update' | 'item.close' }>
 ): ProviderTimelineDecision {
   const { state, journal, context } = input
+  if (event.replay && replaysCompletedTurn(input, event.join)) {
+    return { dropped: 'turn-replayed' }
+  }
   const change =
     event.type === 'item.open' ? 'open' : event.type === 'item.update' ? 'update' : 'close'
   const join: ProviderTimelineItemJoin = {
@@ -48,6 +54,16 @@ export function decideItem(
     return { dropped: 'item-settled' }
   }
   const obligation = change !== 'close' && requiresTerminalSettlement(event.body)
+  // A snapshot of what the row already says, read at the write: planning's journal may lag the queue.
+  if (
+    input.execute &&
+    change === 'update' &&
+    !obligation &&
+    held &&
+    isDeepStrictEqual(held, event.body)
+  ) {
+    return { dropped: 'item-replayed' }
+  }
   const placement = providerTimelinePlacement(context, state, event.join)
   const row =
     found ??

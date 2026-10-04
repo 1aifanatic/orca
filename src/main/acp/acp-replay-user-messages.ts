@@ -1,14 +1,9 @@
-import { agentJournalSubmissionKey } from '../../shared/agent-session-journal-item-key'
-import type {
-  AgentJournalMessageItem,
-  AgentJournalRenderItem
-} from '../../shared/agent-session-journal-types'
+import type { AgentJournalMessageItem } from '../../shared/agent-session-journal-types'
 import type { ProviderTimelineEvent } from '../native-chat/agent-session-timeline/provider-timeline-event'
 import {
   boundInlineText,
   DEFAULT_JOURNAL_PAYLOAD_LIMITS
 } from '../native-chat/agent-session-journal/journal-payload-bounds'
-import { acpJournalTurnHasUser } from './acp-journal-turns'
 import { acpPromptClientMessageId } from './acp-prompt-turns'
 import type { SessionUpdate } from './generated/acp-protocol.generated'
 
@@ -49,23 +44,19 @@ export class AcpReplayUserMessages {
   }
 }
 
-/** The user message of a replayed turn the journal lacks. A turn Orca's own prompt began whose send
- *  the journal holds takes that send as its opener, so the bubble is not written twice. */
+/** The user message of a replayed turn. The journal decides at the write whether the turn already
+ *  holds it, so a send Orca journaled is never written twice; see `input.replayed`. */
 export function acpReplayedUser(
-  rows: readonly AgentJournalRenderItem[],
   join: { thread: string; turn: string },
-  body: AgentJournalMessageItem
-): ProviderTimelineEvent[] {
-  if (acpJournalTurnHasUser(rows, join.turn)) {
-    return []
-  }
+  body: AgentJournalMessageItem,
+  messageId = ''
+): ProviderTimelineEvent {
   const clientMessageId = acpPromptClientMessageId(join.turn)
-  const sent =
-    clientMessageId === undefined
-      ? undefined
-      : rows.find((row) => row.itemId === agentJournalSubmissionKey(clientMessageId))
-  if (clientMessageId !== undefined && sent) {
-    return [{ type: 'input.accepted', clientMessageId, requestedAt: sent.observedAt, join }]
+  return {
+    type: 'input.replayed',
+    item: `replay-user:${join.turn}:${messageId}`,
+    body,
+    join,
+    ...(clientMessageId === undefined ? {} : { clientMessageId })
   }
-  return [{ type: 'item.update', item: `replay-user:${join.turn}:`, body, join }]
 }

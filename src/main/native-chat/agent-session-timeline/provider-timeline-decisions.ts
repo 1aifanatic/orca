@@ -21,6 +21,7 @@ import type {
 import {
   decideContextUsage,
   decideInput,
+  decideReplayedInput,
   decideSessionEnd,
   decideTurnEnd,
   decideTurnOpen
@@ -42,6 +43,8 @@ export function decideProviderTimelineEvent(
   switch (event.type) {
     case 'input.accepted':
       return decideInput(input, event)
+    case 'input.replayed':
+      return decideReplayedInput(input, event)
     case 'turn.open':
       return decideTurnOpen(input, event)
     case 'turn.end':

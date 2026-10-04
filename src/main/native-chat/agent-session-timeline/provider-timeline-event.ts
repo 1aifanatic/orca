@@ -28,6 +28,7 @@ import type { AgentSessionContextUsage } from '../../../shared/agent-session-con
 import type {
   AgentJournalApprovalItem,
   AgentJournalItemBody,
+  AgentJournalMessageItem,
   AgentJournalProducerLinkage,
   AgentJournalQuestionItem,
   AgentJournalTurnOutcome
@@ -64,6 +65,12 @@ type Produced = {
 
 type Joined = { join?: ProviderTimelineJoin }
 
+type Replayed = {
+  /** From the provider's saved history, as a load replays it: a turn the journal holds as the
+   *  provider completed it keeps exactly what it holds; any other turn takes what it lacks. */
+  replay?: true
+}
+
 export type ProviderTimelineEvent =
   /** Orca's send reached the provider. It names the open turn when nothing opened that one, else
    *  the next. `join.item`: the provider's id for its echo of the send, which takes that message's
@@ -73,6 +80,17 @@ export type ProviderTimelineEvent =
       clientMessageId: string
       requestedAt: number
       join?: ProviderTimelineJoin & { item?: string }
+    }
+  /** The provider's saved copy of the message that opened `join.turn`, as a load replays it; `item`
+   *  names its row, re-sent whole as it grows. The journal decides at the write: a turn that holds
+   *  its user message keeps it, a journaled send `clientMessageId` becomes the turn's opener, and
+   *  only otherwise is `body` written. */
+  | {
+      type: 'input.replayed'
+      item: string
+      body: AgentJournalMessageItem
+      clientMessageId?: string
+      join: ProviderTimelineJoin & { turn: string }
     }
   /** A turn began. `turn` is the provider's turn id when it has one; the assembler mints one otherwise. */
   | { type: 'turn.open'; turn?: string; at: number }
@@ -91,11 +109,17 @@ export type ProviderTimelineEvent =
    *  message carrying a `background-task` block with its own run state — beside the tool call that
    *  started it, which closes as usual: no turn's end settles that row; its own updates do, and the
    *  session's end leaves one still in flight `unverifiable`. */
-  | ({ type: 'item.open'; item: string; body: ProviderTimelineItemBody } & Produced & Joined)
+  | ({ type: 'item.open'; item: string; body: ProviderTimelineItemBody } & Produced &
+      Joined &
+      Replayed)
   /** The item's whole current body. Content may be replaced; a settled tool never runs again. */
-  | ({ type: 'item.update'; item: string; body: ProviderTimelineItemBody } & Produced & Joined)
+  | ({ type: 'item.update'; item: string; body: ProviderTimelineItemBody } & Produced &
+      Joined &
+      Replayed)
   /** The item's whole terminal body; it replaces any text streamed into the same item. */
-  | ({ type: 'item.close'; item: string; body: ProviderTimelineItemBody } & Produced & Joined)
+  | ({ type: 'item.close'; item: string; body: ProviderTimelineItemBody } & Produced &
+      Joined &
+      Replayed)
   /** Streamed text. */
   | ({
       type: 'text.delta'

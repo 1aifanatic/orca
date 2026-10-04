@@ -12,7 +12,6 @@ import {
   type AcpDialect,
   type AcpRequestPresentation
 } from './acp-dialects/acp-dialect'
-import { acpJournalTurnIsSettled } from './acp-journal-turns'
 import { acpTurnEnd, AcpPromptTurns } from './acp-prompt-turns'
 import { acpReplayedUser, AcpReplayUserMessages } from './acp-replay-user-messages'
 import type { AcpSessionEvent } from './acp-session-runtime'
@@ -24,6 +23,20 @@ import { AcpTurnMessages } from './acp-turn-messages'
 import { SessionNotificationSchema, type PromptResponse } from './generated/acp-protocol.generated'
 
 const requestSessionSchema = z.object({ sessionId: z.string() })
+
+/** Items from the provider's saved history say so, for the journal to decide what they add. */
+function acpMarkedReplay(
+  events: ProviderTimelineEvent[],
+  replay: boolean
+): ProviderTimelineEvent[] {
+  return replay
+    ? events.map((event) =>
+        event.type === 'item.open' || event.type === 'item.update' || event.type === 'item.close'
+          ? { ...event, replay: true }
+          : event
+      )
+    : events
+}
 type LoadReplay = {
   adopt: boolean
   turn?: string
@@ -166,12 +179,14 @@ export class AcpTimelineTranslator {
     }
     const isReplay = extension?.replay ?? (markedReplay || this.replay !== undefined)
     const providerTurn = extension?.turn
+    // What the journal already holds of a replayed turn is decided at each write, against the
+    // journal then: a load runs before its sink can read the journal.
     if (
       isReplay &&
       this.replay &&
-      (providerTurn
-        ? acpJournalTurnIsSettled(this.options.journalItems(), providerTurn)
-        : !this.replay.adopt && !this.dialect.injectedPromptIdentity)
+      !providerTurn &&
+      !this.replay.adopt &&
+      !this.dialect.injectedPromptIdentity
     ) {
       this.replay.pendingUser = undefined
       return []
@@ -223,11 +238,7 @@ export class AcpTimelineTranslator {
         this.replay.turn = turn
         if (this.replay.pendingUser) {
           events.push(
-            ...acpReplayedUser(
-              this.options.journalItems(),
-              { thread: this.options.sessionId, turn },
-              this.replay.pendingUser
-            )
+            acpReplayedUser({ thread: this.options.sessionId, turn }, this.replay.pendingUser)
           )
           this.replay.pendingUser = undefined
         }
@@ -253,32 +264,35 @@ export class AcpTimelineTranslator {
           this.prompts.current = undefined
         }
       }
-      return events
+      return acpMarkedReplay(events, isReplay)
     }
     if (standard?.success) {
       const messageKey =
         turn && this.dialect.injectedPromptIdentity
           ? this.messages.key(turn, standard.data.update)
           : undefined
-      return [
-        ...events,
-        ...acpSessionUpdate(
-          standard.data,
-          turn,
-          at,
-          isReplay,
-          this.tools,
-          this.dialect,
-          this.backgroundTasks,
-          replayUser?.body,
-          messageKey
-        )
-      ]
+      return acpMarkedReplay(
+        [
+          ...events,
+          ...acpSessionUpdate(
+            standard.data,
+            turn,
+            at,
+            isReplay,
+            this.tools,
+            this.dialect,
+            this.backgroundTasks,
+            replayUser?.body,
+            messageKey
+          )
+        ],
+        isReplay
+      )
     }
     if (method === 'session/update') {
       events.push({ type: 'provider.frame', frameKind: method, payload: params, join })
     }
-    return events
+    return acpMarkedReplay(events, isReplay)
   }
 
   request(

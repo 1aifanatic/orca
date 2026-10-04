@@ -109,6 +109,16 @@ export function planProviderTimelineSlots(
     case 'context.usage':
       item(TURN_ROW_RESERVED_BYTES, true)
       return
+    case 'input.replayed':
+      // Either the turn row's new opener or the message itself.
+      item(
+        Math.max(
+          TURN_ROW_RESERVED_BYTES,
+          estimateStructuredAgentSessionItemBytes(IDENTITY_PLACEHOLDER, event.body)
+        ),
+        true
+      )
+      return
     case 'item.open':
     case 'item.update':
     case 'item.close':

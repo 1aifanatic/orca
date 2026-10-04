@@ -237,6 +237,7 @@ export function createProviderTimelineAssembler(
       case 'provider.frame':
         return applyDecided({ ...event, minted: context.joins.mint('f') })
       case 'input.accepted':
+      case 'input.replayed':
       case 'turn.end':
       case 'item.open':
       case 'item.update':
