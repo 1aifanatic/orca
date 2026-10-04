@@ -85,7 +85,7 @@ function announceClick(
   continued: number,
   refused: number,
   unconfirmed: number,
-  show: (() => void) | undefined
+  show: (() => Promise<void>) | undefined
 ): void {
   if (refused === 0 && unconfirmed === 0) {
     if (continued > 0) {
@@ -105,7 +105,7 @@ function announceClick(
       : {
           action: {
             label: translate('auto.components.NativeChatResumeOnRestartModal.show', 'Show'),
-            onClick: show
+            onClick: () => void show()
           }
         })
   })
@@ -127,7 +127,8 @@ export function announceRestartResults(
   reportedResults: readonly RestartContinuationOutcome[] | undefined,
   /** The failure list after the action, as the dialog shows it; undefined when none was read. */
   hostFailed: readonly Pick<ResumeFailure, 'sessionId' | 'outcome'>[] | undefined,
-  show: () => void
+  /** Opens the dialog over a fresh read; never rejects. */
+  show: () => Promise<void>
 ): void {
   const results = Array.isArray(reportedResults)
     ? reportedResults

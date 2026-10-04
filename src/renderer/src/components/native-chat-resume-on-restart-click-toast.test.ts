@@ -2,6 +2,10 @@ import { toast } from 'sonner'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { ResumeCandidate } from './native-chat-resume-on-restart-grouping'
 import {
+  consumeNativeChatResumeOnRestartDialogRequest,
+  getNativeChatResumeOnRestartDialogRequest
+} from './native-chat-resume-on-restart-dialog'
+import {
   _resetNativeChatRestartOffer,
   continueNativeChatRestartOffer,
   getNativeChatRestartOffer,
@@ -28,6 +32,7 @@ const offered: ResumeCandidate[] = ['a', 'b'].map((sessionId) => ({
 beforeEach(() => {
   rpc.mockReset()
   _resetNativeChatRestartOffer()
+  consumeNativeChatResumeOnRestartDialogRequest()
   vi.mocked(toast).mockClear()
   vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
@@ -70,4 +75,29 @@ it('raises no toast when an opted-in launch loses its resume request', async () 
   await continueNativeChatRestartOffer(undefined, ['a', 'b'])
   expect(getNativeChatRestartOffer().failed.map((entry) => entry.sessionId)).toEqual(['a', 'b'])
   expect(toast).not.toHaveBeenCalled()
+})
+
+// The agent was seen carrying on while the toast was up, so the host retired the failure: Show
+// re-reads and opens nothing, rather than latching a request for a dialog with no rows to draw.
+it('opens nothing from Show once the host no longer lists the chat', async () => {
+  let failed = [{ ...offered[0]!, failedAt: 1, outcome: 'unconfirmed', reason: 'unknown' }]
+  rpc.mockImplementation(async (_target, method) =>
+    method === 'agentSession.restartResumable'
+      ? { sessions: [], failed }
+      : { continued: [{ sessionId: 'a', outcome: 'unknown' }], sessions: [], failed }
+  )
+  await refreshNativeChatRestartOffer()
+  await continueNativeChatRestartOffer(['a'])
+  expect(vi.mocked(toast).mock.calls.map(([title]) => title)).toEqual([
+    'Couldn’t confirm 1 chat was resumed'
+  ])
+  failed = []
+  const action = vi.mocked(toast).mock.calls[0]?.[1]?.action
+  if (action && typeof action === 'object' && 'onClick' in action) {
+    Reflect.apply(action.onClick, undefined, [])
+  }
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(rpc.mock.calls.at(-1)?.[1]).toBe('agentSession.restartResumable')
+  expect(getNativeChatRestartOffer().failed).toEqual([])
+  expect(getNativeChatResumeOnRestartDialogRequest()).toBe(false)
 })

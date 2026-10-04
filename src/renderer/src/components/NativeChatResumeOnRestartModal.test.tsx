@@ -80,6 +80,16 @@ function offerIds(): string[] {
   return getNativeChatRestartOffer().candidates.map((candidate) => candidate.sessionId)
 }
 
+/** The last toast's Show action, as a click on it; undefined when it has none. */
+function toastShow(): (() => void) | undefined {
+  const action = vi.mocked(toast).mock.calls.at(-1)?.[1]?.action
+  if (action && typeof action === 'object' && 'label' in action && action.label === 'Show') {
+    const { onClick } = action
+    return () => Reflect.apply(onClick, undefined, [])
+  }
+  return undefined
+}
+
 /** What each toast said: its title, and its description when it has one. */
 function toasts(): unknown[][] {
   return vi
@@ -591,6 +601,9 @@ it('reports the chats a lost resume request named once, as failed, until it is r
   await act(async () => button('Resume 2 chats').click())
   // Nothing reached the chats, so the click's one toast counts both as not resumed.
   expect(toasts()).toEqual([['2 chats couldn’t be resumed']])
+  // The re-read lists both chats, so the toast keeps Show.
+  const show = toastShow()
+  expect(show).toBeDefined()
   // A lost action response is followed by a read-only reconciliation, never a retry.
   expect(rpc.mock.calls.map((call) => [call[1], call[2]])).toEqual([
     ['agentSession.restartResumable', undefined],
@@ -614,7 +627,7 @@ it('reports the chats a lost resume request named once, as failed, until it is r
   expect(getNativeChatRestartOffer().failed.map((entry) => entry.sessionId)).toEqual(['b'])
 
   continueFails = false
-  await act(async () => requestNativeChatResumeOnRestartDialog())
+  await act(async () => show?.())
   expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
     'Orca couldn’t resume this chat. Open it to continue manually.'
   )
@@ -653,10 +666,8 @@ it('answers a mixed Resume with one toast whose Show opens the dialog', async ()
   expect(toasts()).toEqual([
     ['1 chat couldn’t be resumed', 'Resumed 1 chat and asked it to continue']
   ])
-  // Show opens the dialog the click closed, over the list the host just answered.
-  const show = vi.mocked(toast).mock.calls[0]?.[1]?.action
-  expect(show).toEqual({ label: 'Show', onClick: requestNativeChatResumeOnRestartDialog })
-  await act(async () => requestNativeChatResumeOnRestartDialog())
+  // Show opens the dialog the click closed, over a fresh read of the list.
+  await act(async () => toastShow()?.())
   const dialog = document.querySelector('[role="dialog"]')
   expect(dialog?.textContent).toContain('Prompt b')
   expect(dialog?.textContent).not.toContain('Prompt a')

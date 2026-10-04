@@ -254,11 +254,20 @@ async function readNativeChatRestartOffer(current = () => true): Promise<HostOff
   }
 }
 
-export async function refreshNativeChatRestartOffer(): Promise<
-  Pick<HostOfferRead, 'candidates' | 'failed'>
-> {
-  const read = await readNativeChatRestartOffer()
-  return { candidates: read.candidates, failed: read.failed }
+export async function refreshNativeChatRestartOffer(): Promise<void> {
+  await readNativeChatRestartOffer()
+}
+
+/** The status bar entry and a click's Show: re-read, then open only over rows, since the dialog
+ *  draws nothing without them. Opening a chat from it is read-only and keeps the offer. */
+export async function reopenNativeChatRestartOffer(): Promise<void> {
+  // Mid-resume the host's answer is already on its way; a re-read racing it could undo it.
+  if (resuming.length === 0) {
+    await readNativeChatRestartOffer()
+  }
+  if (resuming.length > 0 || offer.candidates.length > 0 || offer.failed.length > 0) {
+    requestNativeChatResumeOnRestartDialog()
+  }
 }
 
 /**
@@ -289,14 +298,13 @@ export async function continueNativeChatRestartOffer(
     const result = await callStructuredAgentSession<
       HostOfferPayload & { continued?: RestartContinuationOutcome[] }
     >(LOCAL, 'agentSession.restartContinue', sessionIds ? { sessionIds } : {})
-    const failed = failedFrom(result)
+    const listed = Array.isArray(result.failed) ? failedFrom(result) : undefined
     if (Array.isArray(result.sessions)) {
-      publishAnswer({ candidates: result.sessions, failed, listedAt: Date.now() })
+      publishAnswer({ candidates: result.sessions, failed: listed ?? [], listedAt: Date.now() })
     } else {
       await refreshNativeChatRestartOffer()
     }
-    const listed = Array.isArray(result.failed) ? failed : undefined
-    outcome = [batch, result.continued, listed, requestNativeChatResumeOnRestartDialog]
+    outcome = [batch, result.continued, listed, reopenNativeChatRestartOffer]
   } catch (error) {
     // The row's reason is this side's own code, so the real error is kept in the log.
     console.warn('[native-chat-resume] resume request failed before reaching the chats', error)
@@ -304,7 +312,7 @@ export async function continueNativeChatRestartOffer(
     const read = await readNativeChatRestartOffer()
     // Nothing reached the chats, so each is a failure of this click as the list now shows it.
     const listed = read.available ? offer.failed : undefined
-    outcome = [batch, [], listed, requestNativeChatResumeOnRestartDialog]
+    outcome = [batch, [], listed, reopenNativeChatRestartOffer]
   } finally {
     actionsSettled += 1
     resumeBatches.delete(batch)

@@ -2,10 +2,8 @@ import { AlertCircle, Loader2, RotateCcw } from 'lucide-react'
 import { useNativeChatRestartOfferEnabled } from '../native-chat-restart-offer-gate'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { translate } from '@/i18n/i18n'
-import { requestNativeChatResumeOnRestartDialog } from '../native-chat-resume-on-restart-dialog'
 import {
-  getNativeChatRestartResuming,
-  refreshNativeChatRestartOffer,
+  reopenNativeChatRestartOffer,
   useNativeChatRestartOffer,
   useNativeChatRestartResuming
 } from '../native-chat-resume-on-restart-store'
@@ -15,20 +13,6 @@ import {
 // `statusBarItems`. Pressing Resume closes the dialog too, so this entry carries the run while it
 // is in flight. It is also the lasting summary of chats the resume could not carry on: a click's
 // toast says so once, and each chat it reached carries its own note.
-
-/** Re-reads the host before opening so the dialog always reflects the current durable records.
- *  Opening the chat itself is read-only and does not retire the offer. */
-async function reopenOffer(): Promise<void> {
-  // Mid-resume the host's answer is already on its way; a re-read racing it could undo it.
-  if (getNativeChatRestartResuming().length > 0) {
-    requestNativeChatResumeOnRestartDialog()
-    return
-  }
-  const { candidates, failed } = await refreshNativeChatRestartOffer()
-  if (candidates.length > 0 || failed.length > 0) {
-    requestNativeChatResumeOnRestartDialog()
-  }
-}
 
 function Segment({
   icon,
@@ -50,7 +34,7 @@ function Segment({
       <TooltipTrigger asChild>
         <button
           type="button"
-          onClick={() => void reopenOffer()}
+          onClick={() => void reopenNativeChatRestartOffer()}
           className="inline-flex cursor-pointer items-center gap-1.5 rounded px-1 py-0.5 hover:bg-accent/70"
           aria-label={ariaLabel}
         >

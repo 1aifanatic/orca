@@ -36,7 +36,12 @@ it('offers Show for chats a click could not resume', () => {
   expect(titles()).toEqual(['2 chats couldn’t be resumed'])
   const options = vi.mocked(toast).mock.calls[0]?.[1]
   expect(options).not.toHaveProperty('description')
-  expect(options?.action).toEqual({ label: 'Show', onClick: show })
+  expect(options?.action).toEqual({ label: 'Show', onClick: expect.any(Function) })
+  const action = options?.action
+  if (action && typeof action === 'object' && 'onClick' in action) {
+    Reflect.apply(action.onClick, undefined, [])
+  }
+  expect(show).toHaveBeenCalledTimes(1)
 })
 
 // One click, one toast: the chats it resumed ride along under the ones it could not.
