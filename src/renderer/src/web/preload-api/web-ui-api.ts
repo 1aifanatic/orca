@@ -161,10 +161,13 @@ export function createWebUiApi(): NonNullable<Partial<PreloadApi>['ui']> {
         return null
       }
       if (args?.agentSessionAttachment) {
-        return saveClipboardImageAsWebAgentSessionAttachment(
-          contentBase64,
-          args.agentSessionAttachment
-        )
+        if (!args.runtimeEnvironmentId) {
+          throw new Error('A chat attachment needs the server the chat runs on.')
+        }
+        return saveClipboardImageAsWebAgentSessionAttachment(contentBase64, {
+          ...args.agentSessionAttachment,
+          environmentId: args.runtimeEnvironmentId
+        })
       }
       return saveClipboardImageAsTempFileInRuntime(contentBase64, args)
     },

@@ -85,11 +85,7 @@ export function useStructuredAgentSessionOutbox(args: {
   const { capability: queueCapability, enabled: queueEnabled } = queueDelivery
   // What resends and drops a send in flight besides a Retry or a new send; see the hook.
   const owner = useStructuredAgentSessionOutboxOwnerChange(target, fence)
-  const restoreWithdrawn = useStructuredAgentSessionWithdrawnRestore(
-    sessionId,
-    target,
-    composerScopeKey
-  )
+  const restoreWithdrawn = useStructuredAgentSessionWithdrawnRestore(sessionId, composerScopeKey)
   // The outbox lives in the session's store, shared with every other writer; this view holds it
   // open and drains it. Loading maps what a previous owner left mid-send.
   const load = useCallback(
