@@ -23,6 +23,7 @@ let operations = 0
 
 afterEach(async () => {
   vi.restoreAllMocks()
+  vi.unstubAllEnvs()
   await claude.dispose()
   claude = createScriptedClaudeRuntime([SESSION])
 })
@@ -114,6 +115,36 @@ describe('a Claude start that Orca fails while the CLI is still running', () => 
       { text: expect.stringMatching(/^Claude couldn't start\./), kind: 'startFailed' }
     ])
     expect(claude.child(SESSION).calls).not.toContain('send')
+  })
+
+  it('rejects a held message as a start that could not happen when the CLI never answers initialize', async () => {
+    vi.stubEnv('ORCA_E2E_CLAUDE_STARTUP_DEADLINE_MS', '50')
+    claude.behave(SESSION, { initHangs: true })
+    const host = await claude.install()
+    await expect(host.attach(CALLER, claude.attachParams(SESSION, null))).resolves.toMatchObject({
+      ok: true
+    })
+    const held = await send(host, 'hello')
+    await released(host)
+
+    await vi.waitFor(async () =>
+      expect(await submission(host, held)).toMatchObject({
+        dispatchState: 'rejected',
+        reason: expect.stringMatching(/^Claude couldn't start\./),
+        rejection: { kind: 'startFailed' }
+      })
+    )
+    expect(await failureRows(host)).toEqual([
+      { text: expect.stringMatching(/^Claude couldn't start\./), kind: 'startFailed' }
+    ])
+    expect(claude.child(SESSION).connection.closed).toBe(true)
+
+    // The CLI answering after the deadline neither starts the chat nor takes the message.
+    claude.child(SESSION).answerInit()
+    await waitForStructuredAgentSessionRecovery()
+    expect(claude.child(SESSION).calls).not.toContain('get_settings')
+    expect(claude.child(SESSION).calls).not.toContain('send')
+    expect(claude.children(SESSION)).toHaveLength(1)
   })
 
   it('still says Claude stopped when the CLI exits on its own before its start lands', async () => {

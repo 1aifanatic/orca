@@ -1,6 +1,7 @@
 // What Claude reports at initialize, read after the session is already published. None of it
 // gates the create: a slow start is still a start, and every way it can fail (exit, auth,
-// a foreign session id) faults the published session through its exit path.
+// a foreign session id, no answer within the startup deadline) faults the published session
+// through its exit path.
 
 import type {
   StructuredAgentSessionAcquireInput,
@@ -58,7 +59,34 @@ export type ClaudeStartupFacts = {
   prepared: ReturnType<typeof prepareClaudeStructuredSessionAcquisitionOptions>
 }
 
-/** Settles on the CLI's answers or on its exit; there is no startup timer. */
+/** How long the CLI has to answer initialize. Generous for a slow machine or a first run; a CLI
+ *  that stays alive but never answers would otherwise hold the chat's messages forever. */
+export const CLAUDE_STARTUP_DEADLINE_MS = 120_000
+
+/** The e2e rig shortens the deadline to capture its failure; production always uses the default. */
+export function claudeStartupDeadlineMs(): number {
+  const configured = Number(process.env.ORCA_E2E_CLAUDE_STARTUP_DEADLINE_MS)
+  return Number.isFinite(configured) && configured >= 1 && configured <= CLAUDE_STARTUP_DEADLINE_MS
+    ? configured
+    : CLAUDE_STARTUP_DEADLINE_MS
+}
+
+/** Startup's answers, or a rejection once the deadline passes; a late answer is then ignored. */
+function withinClaudeStartupDeadline<T>(answers: Promise<T>, deadlineMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const expired = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new Error(`claude did not answer initialize within ${Math.round(deadlineMs / 1000)}s`)
+        ),
+      deadlineMs
+    )
+  })
+  return Promise.race([answers, expired]).finally(() => clearTimeout(timer))
+}
+
+/** Settles on the CLI's answers, on its exit, or at the startup deadline. */
 export async function readClaudeStartupFacts(input: {
   connection: ClaudeStreamJsonConnection
   initProof: ClaudeInitProof
@@ -67,18 +95,23 @@ export async function readClaudeStartupFacts(input: {
   resumesTranscript: boolean
   inputOptions: StructuredAgentSessionAcquireInput['options']
   requestTimeoutMs: number | undefined
+  deadlineMs: number
   emit: (event: ClaudeStructuredSessionEvent) => void
 }): Promise<ClaudeStartupFacts> {
-  const [initialization, init] = await Promise.all([
-    input.connection.initializationResult().then((result) => {
-      const authError = claudeInitializationAuthError(result)
-      if (authError) {
-        throw authError
-      }
-      return result
-    }),
-    input.initProof.promise
-  ])
+  // The CLI's first answer has no request deadline of its own; the reads after it do.
+  const [initialization, init] = await withinClaudeStartupDeadline(
+    Promise.all([
+      input.connection.initializationResult().then((result) => {
+        const authError = claudeInitializationAuthError(result)
+        if (authError) {
+          throw authError
+        }
+        return result
+      }),
+      input.initProof.promise
+    ]),
+    input.deadlineMs
+  )
   if (input.connection.closed) {
     throw new Error('claude session closed before startup completed')
   }

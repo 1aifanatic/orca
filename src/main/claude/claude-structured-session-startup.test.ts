@@ -8,6 +8,7 @@ import {
   USER_MESSAGE
 } from './claude-structured-session-test-support'
 import { CLAUDE_DEFAULT_REQUEST_TIMEOUT_MS } from './claude-agent-sdk-control-requests'
+import { CLAUDE_STARTUP_DEADLINE_MS } from './claude-structured-session-startup'
 
 type LateSettlement = Parameters<
   NonNullable<ClaudeStructuredSessionAdapterDeps['onDispatchSettledLate']>
@@ -192,6 +193,48 @@ describe('Claude structured session publishes before the CLI answers initialize'
       cause: 'unexpected-exit',
       startupUnproven: true
     })
+  })
+
+  it('lands a start whose CLI answers initialize just inside the startup deadline', async () => {
+    const claude = fakeClaude({ initDelayMs: CLAUDE_STARTUP_DEADLINE_MS - 1 })
+    const { adapter, events } = startingAdapter(claude)
+    await adapter.acquire(ACQUIRE)
+
+    await vi.advanceTimersByTimeAsync(CLAUDE_STARTUP_DEADLINE_MS)
+    await adapter.awaitStarted('session-1')
+
+    expect(events.some((event) => event.type === 'started')).toBe(true)
+    expect(events.some((event) => event.type === 'ended')).toBe(false)
+    expect(claude.connections[0].closeCount).toBe(0)
+    await adapter.closeAll()
+  })
+
+  // A CLI alive but silent would otherwise hold every message sent to the chat forever.
+  it('ends a start whose CLI never answers initialize at the deadline, and ignores a late answer', async () => {
+    const claude = fakeClaude({ initDelayMs: CLAUDE_STARTUP_DEADLINE_MS + SLOW_INIT_MS })
+    const { adapter, events } = startingAdapter(claude)
+    await adapter.acquire(ACQUIRE)
+
+    await vi.advanceTimersByTimeAsync(CLAUDE_STARTUP_DEADLINE_MS - 1)
+    expect(events.some((event) => event.type === 'ended')).toBe(false)
+    expect(claude.connections[0].closeCount).toBe(0)
+    await vi.advanceTimersByTimeAsync(1)
+    await adapter.awaitStarted('session-1')
+    await adapter.drainObservedExits()
+
+    // Orca ended it, so the chat says Claude couldn't start, not that it stopped on its own.
+    expect(events.find((event) => event.type === 'ended')).toMatchObject({
+      reason: 'claude did not answer initialize within 120s',
+      cause: 'unexpected-exit',
+      failure: { kind: 'startFailed' },
+      startupUnproven: true
+    })
+    expect(claude.connections[0].closeCount).toBe(1)
+
+    await vi.advanceTimersByTimeAsync(SLOW_INIT_MS)
+    expect(events.some((event) => event.type === 'started' || event.type === 'options')).toBe(false)
+    expect(claude.connections[0].calls.map(({ subtype }) => subtype)).not.toContain('get_settings')
+    expect(claude.connections[0].sent).toEqual([])
   })
 
   it('ends an unauthenticated start with sign-in guidance', async () => {
