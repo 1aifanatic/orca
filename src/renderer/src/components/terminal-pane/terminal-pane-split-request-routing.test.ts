@@ -88,7 +88,6 @@ describe('parked terminal split request routing', () => {
       worktreeId: 'repo::/workspace',
       isActive: false,
       managerRef: { current: manager },
-      setPaneTitle: vi.fn(),
       persistLayoutSnapshot: vi.fn(),
       syncCanExpandState: vi.fn(),
       queueResizeAll: vi.fn()
@@ -110,7 +109,6 @@ describe('parked terminal split request routing', () => {
       ptyId: 'pty-new'
     })
     expect(ptyDeps.startup).toBeNull()
-    expect(mountDeps.setPaneTitle).not.toHaveBeenCalled()
     cleanup()
     manager.destroy()
   })
