@@ -66,6 +66,7 @@ import { renderClaudeAccountsSection } from './accounts-pane-claude-section'
 import { renderCodexAccountsSection } from './accounts-pane-codex-section'
 import {
   renderGeminiAccountsSection,
+  renderManagedDataAccountsSections,
   renderOpenCodeAccountsSection
 } from './accounts-pane-provider-setting-sections'
 import { renderMiniMaxAccountsSection } from './accounts-pane-minimax-section'
@@ -391,6 +392,7 @@ export function AccountsPane({
   }
   const visibleSections = [
     renderDeepSeekAccountsSection(model, deepseekScope, activeWorkspaceHostId, deepseekScopeLabel),
+    renderManagedDataAccountsSections(model),
     wslSupportedPlatform &&
     !isRemoteAccountScope &&
     matchesSettingsSearch(searchQuery, getAccountsLocationSearchEntries())
