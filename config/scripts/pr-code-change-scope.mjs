@@ -38,6 +38,8 @@ const ALWAYS_ON_CODE_JOBS = new Set(['static_analysis', 'typecheck', 'test'])
 const GLOBAL_FORCE_PREFIXES = [
   '.github/workflows/pr.yml',
   '.github/actions/install-node-dependencies/',
+  '.github/actions/restore-pnpm-verification/',
+  '.github/actions/prepare-native-runtime/',
   'config/scripts/pr-code-change-scope'
 ]
 
@@ -163,6 +165,11 @@ const CROSS_VERSION_WIRE_PREFIXES = [
   'src/shared/rpc-contract/agent-launch-params',
   'src/shared/agent-session-wire',
   'src/shared/agent-session-mutation-envelope',
+  // The send a client builds (the agent-session suite sends it to the release host) and the
+  // fingerprint the host's ledger and journal re-derive.
+  'src/shared/structured-agent-session-mutation.ts',
+  'src/shared/structured-agent-session-send-mutation.ts',
+  'src/shared/structured-agent-session-outbox.ts',
   'src/shared/agent-session-record',
   'src/shared/agent-session-journal-',
   'src/main/ai-vault/structured-session-ownership.ts',
@@ -172,6 +179,15 @@ const CROSS_VERSION_WIRE_PREFIXES = [
   'src/main/runtime/agent-session-recovery-capsule',
   'src/shared/agent-session-resume-marker',
   'src/main/runtime/rpc/dispatcher',
+  // Run on every request the suites dispatch, whatever its method.
+  'src/main/runtime/rpc/core.ts',
+  'src/main/runtime/rpc/errors.ts',
+  'src/main/runtime/rpc/rpc-streaming-dispatcher.ts',
+  'src/main/runtime/rpc/orchestration-contract-fence.ts',
+  'src/main/runtime/rpc/orchestration-session-caller.ts',
+  'src/main/runtime/rpc/orchestration-legacy-compatibility.ts',
+  'src/main/runtime/rpc/orchestration-mutation-executor.ts',
+  'src/shared/orchestration-rpc-contract.ts',
   'src/main/runtime/rpc/methods/agent-launch',
   'src/main/runtime/rpc/methods/ai-vault.ts',
   'src/main/runtime/rpc/methods/browser-tab-create-schema',
@@ -222,8 +238,26 @@ const NATIVE_CACHE_FILES = new Set([
   'package.json',
   'pnpm-lock.yaml',
   '.github/actions/install-node-dependencies/action.yml',
+  '.github/actions/prepare-native-runtime/action.yml',
+  'pnpm-workspace.yaml',
+  '.npmrc',
+  '.pnpmfile.cjs',
   'config/scripts/ensure-native-runtime.mjs',
-  'config/scripts/rebuild-native-deps.mjs'
+  'config/scripts/rebuild-native-deps.mjs',
+  'config/scripts/node-pty-job-ownership.cjs',
+  'config/scripts/windows-pe-machine.cjs',
+  'config/scripts/windows-process-tree-gyp-rebuild.mjs',
+  'config/scripts/windows-process-tree-creation-time.cjs',
+  'config/scripts/install-electron-package-binary.mjs',
+  'config/scripts/electron-platform-path.mjs',
+  'config/scripts/zip-extractor-command.mjs',
+  'src/shared/zip-extractor-command.ts',
+  'config/scripts/shared-electron-dist-cache.mjs',
+  'config/scripts/space-sharing-copy.mjs',
+  'native/windows-registry/src/addon.cc',
+  'native/windows-registry/binding.gyp',
+  'native/windows-registry/package.json',
+  'native/windows-registry/index.js'
 ])
 
 const NATIVE_CACHE_PREFIXES = [
@@ -306,6 +340,7 @@ const WINDOWS_PACKAGE_TESTS = [
   'src/shared/child-process/windows-cmd-shim-resolution.test.ts',
   'src/shared/child-process/windows-cmd-shim-resolution.win32.test.ts',
   'src/main/agent-hooks/windows-hook-payload-delivery.test.ts',
+  'src/main/jcode/hook-gate-script.test.ts',
   'src/main/agent-hooks/windows-direct-cmd-hook-command.test.ts',
   'src/main/codex/windows-hook-command.test.ts',
   'src/main/codex/windows-hook-upgrade.test.ts',
@@ -336,6 +371,8 @@ const WINDOWS_PACKAGE_TESTS = [
   'src/main/runtime/unreadable-secret-store-preservation.win32.test.ts',
   'src/main/ipc/pty-codex-account-attribution.test.ts',
   'src/main/ipc/pty-spawn-env-codex-resume-provenance.test.ts',
+  'src/main/ipc/preflight-provider-command-selection.test.ts',
+  'src/main/ipc/preflight-runnable-local-cli.test.ts',
   'src/relay/windows-port-scan.win32.test.ts',
   'src/main/ssh/ssh-relay-upload-stage-windows-identity.test.ts',
   'src/main/ssh/remote-node-runtime-store-windows.test.ts'

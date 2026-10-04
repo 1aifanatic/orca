@@ -179,7 +179,8 @@ describe('onboarding flow persistence', () => {
       suppressWhenFocused: false,
       customSoundId: 'two-tone',
       customSoundPath: null,
-      customSoundVolume: 60
+      customSoundVolume: 60,
+      mutedNotificationSourceIds: []
     })
 
     expect(notifications).toEqual({
@@ -189,7 +190,8 @@ describe('onboarding flow persistence', () => {
       suppressWhenFocused: false,
       customSoundId: 'two-tone',
       customSoundPath: null,
-      customSoundVolume: 60
+      customSoundVolume: 60,
+      mutedNotificationSourceIds: []
     })
   })
 

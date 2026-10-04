@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { parseAgentStateRuleFiles } from './agent-state-rules-catalog'
 import { compileTextAnchors, findPromptAnchorIndexes } from './agent-state-text-anchors'
-import { TERMINAL_WAIT_BLOCKED_SENTINEL_RE } from './blocked-text-layer'
+import { terminalWaitBlockedSentinelRe } from './blocked-text-layer'
 import { detectTerminalWaitBlockedReason } from '../terminal-wait-detection'
 
-function anchorsOf(textAnchors: unknown[]) {
+function anchorsOf(anchors: unknown[]) {
   return compileTextAnchors(
-    parseAgentStateRuleFiles([{ id: 'cursor', engineVersion: 1, textAnchors, rules: [] }])
+    parseAgentStateRuleFiles([{ id: 'cursor', engineVersion: 1, anchors, rules: [] }])
   )
 }
 
@@ -16,6 +16,7 @@ describe('blocked anchors', () => {
       id: 'menu',
       why: 'test',
       when: {
+        region: 'text',
         find: { lastOf: 'run it?' },
         withinLastLines: 4,
         lines: { atLeast: 2, includingLast: true, test: { regex: '\\([a-z]\\)$' } }
@@ -47,7 +48,7 @@ describe('prompt anchors', () => {
     {
       id: 'prompt',
       why: 'test',
-      when: { find: { lastOf: 'banner' }, after: { contains: '→' } },
+      when: { region: 'text', find: { lastOf: 'banner' }, after: { contains: '→' } },
       answer: { state: 'idle' }
     }
   ]).prompts
@@ -78,6 +79,6 @@ describe('the bundled Cursor approval menu', () => {
 
 describe('the blocked layer prefilter', () => {
   it('includes every bundled blocked anchor', () => {
-    expect(TERMINAL_WAIT_BLOCKED_SENTINEL_RE.test('Run this command?')).toBe(true)
+    expect(terminalWaitBlockedSentinelRe().test('Run this command?')).toBe(true)
   })
 })

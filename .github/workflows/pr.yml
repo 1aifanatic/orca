@@ -415,6 +415,8 @@ jobs:
       - uses: ./.github/actions/prepare-git-compatibility
 
       - name: Verify Git binary compatibility matrix
+        env:
+          ORCA_BACKGROUND_LAUNCH: '1'
         run: |
           specs=(
             "alpine/git:edge-2.38.1|2.38.1"
@@ -429,9 +431,13 @@ jobs:
           pids=()
           (
             ORCA_GIT_COMPAT_BINARY="$HOME/.cache/orca-git-compat/git-2.25.5/git" \
+              GIT_EXEC_PATH="$HOME/.cache/orca-git-compat/git-2.25.5" \
               ORCA_GIT_COMPAT_VERSION="2.25.5" \
               pnpm exec vitest run --config config/vitest.config.ts \
-              src/shared/git-binary-compatibility.test.ts
+              src/shared/git-binary-compatibility.test.ts \
+              src/main/git/worktree-safety-real-git.test.ts \
+              src/main/git/worktree-rebase-update-refs-real-git.test.ts \
+              src/relay/git-review-draft-binary-compatibility.test.ts
           ) &
           pids+=("$!")
 
@@ -441,7 +447,10 @@ jobs:
               version="${spec#*|}"
               ORCA_GIT_COMPAT_IMAGE="$image" ORCA_GIT_COMPAT_VERSION="$version" \
                 pnpm exec vitest run --config config/vitest.config.ts \
-                src/shared/git-binary-compatibility.test.ts
+                src/shared/git-binary-compatibility.test.ts \
+                src/main/git/worktree-safety-real-git.test.ts \
+                src/main/git/worktree-rebase-update-refs-real-git.test.ts \
+                src/relay/git-review-draft-binary-compatibility.test.ts
             ) &
             pids+=("$!")
           done
@@ -702,7 +711,7 @@ jobs:
   # after the last shard. Deliberately absent from verify's needs for the same reason.
   unit_selection_evidence:
     needs: [test]
-    if: ${{ !cancelled() && needs.test.result == 'success' }}
+    if: ${{ !cancelled() && (needs.test.result == 'success' || needs.test.result == 'failure') }}
     uses: ./.github/workflows/unit-selection-evidence.yml
 
   # Why a separate job: the test needs a real Chrome, and the sharded `test` matrix
@@ -1091,11 +1100,8 @@ jobs:
         if: steps.deps.outputs.native-cache-hit != 'true'
         uses: actions/cache/save@v5
         with:
-          path: |
-            node_modules/.pnpm/node-pty@*/node_modules/node-pty/build
-            native/windows-registry/build
-            node_modules/.pnpm/@vscode+windows-process-tre*/node_modules/@vscode/windows-process-tree/build
-          key: native-modules-${{ runner.os }}-${{ steps.deps.outputs.native-cache-scope }}-${{ runner.arch }}-node-node${{ steps.deps.outputs.node-version }}-${{ hashFiles('pnpm-lock.yaml', '.github/actions/install-node-dependencies/action.yml', 'config/scripts/ensure-native-runtime.mjs', 'config/scripts/rebuild-native-deps.mjs', 'config/patches/node-pty@1.1.0.patch', 'config/patches/@vscode__windows-process-tree@0.8.0.patch', 'native/windows-registry/src/addon.cc', 'native/windows-registry/binding.gyp', 'native/windows-registry/package.json') }}
+          path: ${{ steps.deps.outputs.native-cache-path }}
+          key: ${{ steps.deps.outputs.native-cache-key }}
 
       # vitest runs here directly rather than through `pnpm test`, so the addon
       # assertions only hold once install-node-dependencies has rebuilt natives.
@@ -1131,6 +1137,7 @@ jobs:
           src/shared/child-process/windows-cmd-shim-resolution.test.ts
           src/shared/child-process/windows-cmd-shim-resolution.win32.test.ts
           src/main/agent-hooks/windows-hook-payload-delivery.test.ts
+          src/main/jcode/hook-gate-script.test.ts
           src/main/agent-hooks/windows-direct-cmd-hook-command.test.ts
           src/main/codex/windows-hook-command.test.ts
           src/main/codex/windows-hook-upgrade.test.ts
@@ -1161,6 +1168,8 @@ jobs:
           src/main/runtime/unreadable-secret-store-preservation.win32.test.ts
           src/main/ipc/pty-codex-account-attribution.test.ts
           src/main/ipc/pty-spawn-env-codex-resume-provenance.test.ts
+          src/main/ipc/preflight-provider-command-selection.test.ts
+          src/main/ipc/preflight-runnable-local-cli.test.ts
           src/relay/windows-port-scan.win32.test.ts
           src/main/ssh/ssh-relay-upload-stage-windows-identity.test.ts
           src/main/ssh/remote-node-runtime-store-windows.test.ts
@@ -1195,17 +1204,11 @@ jobs:
       - name: Build package inputs
         run: pnpm run build:release:parallel
 
-      - name: Restore compiled Electron native modules
-        uses: actions/cache@v5
-        with:
-          path: |
-            node_modules/.pnpm/node-pty@*/node_modules/node-pty/build
-            native/windows-registry/build
-            node_modules/.pnpm/@vscode+windows-process-tre*/node_modules/@vscode/windows-process-tree/build
-          key: native-modules-${{ runner.os }}-${{ steps.deps.outputs.native-cache-scope }}-${{ runner.arch }}-electron-node${{ steps.deps.outputs.node-version }}-${{ hashFiles('pnpm-lock.yaml', '.github/actions/install-node-dependencies/action.yml', 'config/scripts/ensure-native-runtime.mjs', 'config/scripts/rebuild-native-deps.mjs', 'config/patches/node-pty@1.1.0.patch', 'config/patches/@vscode__windows-process-tree@0.8.0.patch', 'native/windows-registry/src/addon.cc', 'native/windows-registry/binding.gyp', 'native/windows-registry/package.json') }}
-
       - name: Prepare Electron native runtime
-        run: node config/scripts/ensure-native-runtime.mjs --runtime=electron
+        uses: ./.github/actions/prepare-native-runtime
+        with:
+          native-runtime: electron
+          node-version: ${{ steps.deps.outputs.node-version }}
 
       - name: Package unpacked app
         env:
