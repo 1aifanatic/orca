@@ -23,7 +23,9 @@ export function planProviderTimelineBarrier(
   host: ProviderTimelineApplyHost,
   plan: ProviderTimelinePlan,
   event: ProviderTimelineDecidedEvent,
-  decision: ProviderTimelineDecision
+  decision: ProviderTimelineDecision,
+  /** Execution: whether the event's own decision wrote, so the boundary it draws is real. */
+  landed: () => boolean
 ): void {
   const { streams, context } = host
   const forecast = host.forecast()
@@ -31,10 +33,11 @@ export function planProviderTimelineBarrier(
   const replaced = decision.closes ? streams.get(decision.closes) : undefined
   streams.planFlush(plan, replaced)
   if (replaced) {
-    streams.planRelease(plan, (stream) => stream === replaced)
+    streams.planRelease(plan, (stream) => stream === replaced, landed)
   }
   if (event.type === 'session.ended' || event.type === 'session.reset') {
-    streams.planRelease(plan, () => true)
+    streams.planRelease(plan, () => true, landed)
+    streams.planRetire(plan)
     return
   }
   if (event.type === 'turn.end' || event.type === 'turn.open') {
@@ -46,13 +49,20 @@ export function planProviderTimelineBarrier(
       plan,
       (stream) =>
         (!stream.named && stream.producer?.agentId === undefined) ||
-        (ending !== undefined && stream.turnItemId === ending)
+        (ending !== undefined && streams.rowTurn(stream) === ending),
+      landed
     )
+    // The turn that really ended is the journal's: its streams stop wherever planning placed them.
+    streams.planRetire(plan)
     return
   }
   if (event.type !== 'input.accepted') {
     const agentId = 'producer' in event ? event.producer?.agentId : undefined
-    streams.planRelease(plan, (stream) => !stream.named && stream.producer?.agentId === agentId)
+    streams.planRelease(
+      plan,
+      (stream) => !stream.named && stream.producer?.agentId === agentId,
+      landed
+    )
   }
 }
 

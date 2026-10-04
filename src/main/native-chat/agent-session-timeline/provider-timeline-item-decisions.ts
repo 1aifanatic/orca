@@ -3,6 +3,7 @@
 import { requiresTerminalSettlement } from '../agent-session-journal/journal-terminal-settlement'
 import { cancelledJournalPromptBody } from '../agent-session-journal/journal-prompt-body-bounds'
 import { unhandledProviderFrameJournalItem } from '../agent-session-wire/unhandled-provider-frame'
+import { relightsProviderTimelineBackgroundTask } from './provider-timeline-background-tasks'
 import { providerTimelineEntryBytes, providerTimelinePlacement } from './provider-timeline-context'
 import {
   pendingPrompt,
@@ -43,23 +44,24 @@ export function decideItem(
   if (change === 'close' && (closed || settledTool(held))) {
     return { dropped: 'item-settled' }
   }
-  const known = state.obligations.get(ref)
-  const outlivesTurn =
-    (event.type === 'item.open' && event.outlivesTurn === true) || known?.outlivesTurn === true
-  const obligation = change !== 'close' && (requiresTerminalSettlement(event.body) || outlivesTurn)
+  if (change !== 'open' && relightsProviderTimelineBackgroundTask(held, event.body)) {
+    return { dropped: 'item-settled' }
+  }
+  const obligation = change !== 'close' && requiresTerminalSettlement(event.body)
+  const placement = providerTimelinePlacement(context, state, event.join)
   const row =
     found ??
     (input.execute && journal
-      ? context.joins.place(
-          join,
-          providerTimelineItemClass(event.body),
-          providerTimelinePlacement(context, state, event.join),
-          journal
-        )
+      ? context.joins.place(join, providerTimelineItemClass(event.body), placement, journal)
       : null)
-  const scope = row?.scope ?? providerTimelinePlacement(context, state, event.join).scope
+  const scope = row?.scope ?? placement.scope
   const turnItemId = turnOf(scope)
-  const bytes = providerTimelineEntryBytes(event.item, event.body, event.producer)
+  const bytes = providerTimelineEntryBytes({
+    key: event.item,
+    join: event.join,
+    body: event.body,
+    producer: event.producer
+  })
   return {
     ...(obligation ? { hold: { key: ref, bytes } } : {}),
     write: row && {
@@ -74,7 +76,7 @@ export function decideItem(
     ...(change === 'close' ? { closes: ref } : {}),
     commit: (next) => {
       if (obligation) {
-        next.obligations.set(ref, { itemId: row?.itemId ?? null, turnItemId, outlivesTurn, bytes })
+        next.obligations.set(ref, { itemId: row?.itemId ?? null, turnItemId, bytes })
       } else {
         next.obligations.delete(ref)
       }
@@ -107,20 +109,31 @@ export function decideRequest(
   if (pendingPrompt(held) || (state.obligations.has(ref) && held === null)) {
     return { dropped: 'request-duplicate' }
   }
-  const settledTurn = current ? turnOf(current.scope) : null
+  // The turn this open lands in decides whether it repeats its predecessor: the same key again
+  // in a turn that is over is that turn's replay; in another, live turn it is a new request.
+  const placement = providerTimelinePlacement(context, state, event.join)
+  const target = turnOf(placement.scope)
+  const previous = current ? turnOf(current.scope) : null
   if (
     held &&
-    settledTurn !== null &&
-    state.status({ itemId: settledTurn }, journal) === 'settled'
+    previous !== null &&
+    state.status({ itemId: previous }, journal) === 'settled' &&
+    (target === null ||
+      target === previous ||
+      state.status({ itemId: target }, journal) === 'settled')
   ) {
     return { dropped: 'request-replayed' }
   }
-  const placement = providerTimelinePlacement(context, state, event.join)
   const row =
     input.execute && journal
       ? context.joins.nextRequest(key, event.body.kind, placement, journal)
       : null
-  const bytes = providerTimelineEntryBytes(event.request, event.body, event.producer)
+  const bytes = providerTimelineEntryBytes({
+    key: event.request,
+    join: event.join,
+    body: event.body,
+    producer: event.producer
+  })
   return {
     hold: { key: ref, bytes },
     // A row already there is a client's answer or a replay; neither is overwritten.
@@ -136,7 +149,6 @@ export function decideRequest(
       next.obligations.set(ref, {
         itemId: row?.itemId ?? null,
         turnItemId: turnOf(row?.scope ?? placement.scope),
-        outlivesTurn: false,
         bytes
       })
   }

@@ -22,13 +22,14 @@ import {
   type ProviderTimelineDecisionInput,
   type ProviderTimelineResolvedWrite
 } from './provider-timeline-decision'
+import { providerTimelinePlacement } from './provider-timeline-context'
 import type { ProviderTimelineTurnRef } from './provider-timeline-joins'
 import {
   providerTimelineSettlement,
   runningProviderTimelineTurns,
   type ProviderTimelineTurnEnd
 } from './provider-timeline-settlement'
-import { MAX_PENDING_INPUTS, type ProviderTimelineState } from './provider-timeline-state'
+import type { ProviderTimelineState } from './provider-timeline-state'
 
 export function decideTurnOpen(
   input: ProviderTimelineDecisionInput,
@@ -47,7 +48,7 @@ export function decideTurnOpen(
   if (state.status(turn, input.journal) !== 'absent') {
     return { dropped: 'turn-replayed' }
   }
-  const pending = state.inputs[0]
+  const pending = state.opener(turn.itemId)
   const running: AgentJournalTurnLifecycle = {
     turnId: turn.turnId,
     state: 'running',
@@ -80,7 +81,9 @@ export function decideTurnOpen(
         next.endTurn(next.open)
       }
       if (pending) {
-        next.inputs.shift()
+        next.inputs = next.inputs.filter(
+          (input) => input.clientMessageId !== pending.clientMessageId
+        )
       }
       next.open = { ...turn, running }
     }
@@ -117,32 +120,38 @@ export function decideInput(
 ): ProviderTimelineDecision {
   const { state, journal, context } = input
   const named = event.join?.turn
-  const turnKey = named === undefined ? (state.open?.address.key ?? null) : providerKey(named)
-  if (input.execute && journal && turnKey && event.join?.item !== undefined) {
+  const placement = providerTimelinePlacement(context, state, event.join)
+  if (input.execute && journal && placement.turn && event.join?.item !== undefined) {
     context.joins.reserveEcho(
       { family: 'item', key: providerKey(event.join.item), thread: event.join.thread ?? null },
-      { thread: event.join.thread ?? null, turn: turnKey, scope: state.scope },
+      placement,
       journal
     )
   }
   const open = state.open
+  const namedTurn =
+    named === undefined ? null : context.joins.turn(providerKey(named), state.namespace)
+  const status = namedTurn ? state.status(namedTurn, journal) : null
   // A late echo of a turn already over names nothing.
-  if (
-    named !== undefined &&
-    context.joins.turn(providerKey(named), state.namespace).itemId !== open?.itemId
-  ) {
+  if (status === 'settled' || (status === 'running' && namedTurn?.itemId !== open?.itemId)) {
     return {}
   }
-  const pending = { clientMessageId: event.clientMessageId, requestedAt: event.requestedAt }
-  if (!open) {
+  const pending = {
+    clientMessageId: event.clientMessageId,
+    requestedAt: event.requestedAt,
+    ...(namedTurn && status === 'absent' ? { turnItemId: namedTurn.itemId } : {})
+  }
+  // No turn open, or the send names one still to open: it waits for that turn.
+  if (!open || pending.turnItemId !== undefined) {
     return {
-      commit: (next) => {
-        next.inputs.push(pending)
-        next.inputs.splice(0, Math.max(0, next.inputs.length - MAX_PENDING_INPUTS))
-      }
+      commit: (next) => next.wait(pending)
     }
   }
-  if (open.running.userItemId !== context.joins.turnOpener(open)) {
+  // Only a turn still naming its fallback opener takes the send; the journal's row says, once there.
+  const opener =
+    readAgentJournalTurn(journal?.itemBody(open.itemId) ?? undefined)?.userItemId ??
+    open.running.userItemId
+  if (opener !== context.joins.turnOpener(open)) {
     return {}
   }
   const userItemId = agentJournalSubmissionKey(event.clientMessageId)
@@ -157,8 +166,6 @@ export function decideInput(
     }
   }
 }
-
-/** Only the opener fields change; the rest are the row's as the journal holds it. */
 
 /** Only the opener fields change; the rest are the row's as the journal holds it. */
 export function reviseOpener(

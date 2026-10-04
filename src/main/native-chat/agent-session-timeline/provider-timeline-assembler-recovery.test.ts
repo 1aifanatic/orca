@@ -10,6 +10,7 @@ import { createProviderTimelineAssembler } from './provider-timeline-assembler'
 import {
   AGENT,
   assistantText,
+  backgroundTask,
   closeProviderTimelineRigs,
   messageText,
   NAMESPACE,
@@ -119,14 +120,13 @@ describe('a forgotten join finds its original row', () => {
     expect(old.map((row) => row.itemId)).toEqual(['codex:root:t1:0'])
   })
 
-  it('keeps a late tool close in the turn it opened in after its join was evicted', async () => {
+  it('keeps a late background task update in the turn it opened in after its join was evicted', async () => {
     const rig = await openProviderTimelineRig()
     rig.assembler.apply({ type: 'turn.open', turn: 't1', at: 1_000 })
     rig.assembler.apply({
       type: 'item.open',
       item: 'background-tool',
-      body: runningTool('background'),
-      outlivesTurn: true
+      body: backgroundTask('background-tool', 'working')
     })
     rig.assembler.apply({ type: 'turn.end', turn: 't1', at: 2_000, state: 'completed' })
     rig.assembler.apply({ type: 'turn.open', turn: 't2', at: 3_000 })
@@ -139,7 +139,7 @@ describe('a forgotten join finds its original row', () => {
     rig.assembler.apply({
       type: 'item.close',
       item: 'background-tool',
-      body: { ...runningTool('background'), state: 'completed' }
+      body: backgroundTask('background-tool', 'done')
     })
 
     expect((await rig.row(providerItemId('item', 'background-tool')))?.turnScope).toEqual({

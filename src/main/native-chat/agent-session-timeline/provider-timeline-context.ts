@@ -21,14 +21,13 @@ export type ProviderTimelineContext = {
   settlementId(what: string): string
 }
 
-/** The ledger, with its open turn taken from the journal before its first decision runs. */
+/** The ledger, with its open turn taken from the journal before its first decision runs, and
+ *  ended when another writer of the journal ended it. */
 export function providerTimelineLedger(
   context: ProviderTimelineContext,
   journal: StructuredAgentSessionTransitionJournal
 ): ProviderTimelineState {
-  if (!context.ledger.hydrated) {
-    context.ledger.hydrate(journal)
-  }
+  context.ledger.reconcile(journal)
   return context.ledger
 }
 
@@ -55,13 +54,20 @@ export function providerTimelinePlacement(
   }
 }
 
-/** What an entry the assembler holds open costs: every provider string it keeps, and its body. */
-export function providerTimelineEntryBytes(
-  key: string,
-  body?: unknown,
-  producer?: AgentJournalProducerLinkage
-): number {
+/** What an entry the assembler holds open costs: its body, its producer, and every provider
+ *  string it keeps (its key and join), each twice: as given, and inside the identities spelled
+ *  from it. */
+export function providerTimelineEntryBytes(input: {
+  key: string
+  join: ProviderTimelineJoin | undefined
+  body?: unknown
+  producer: AgentJournalProducerLinkage | undefined
+}): number {
   const measure = (value: unknown) =>
     value === undefined ? 0 : Buffer.byteLength(JSON.stringify(value) ?? '', 'utf8')
-  return Buffer.byteLength(key, 'utf8') + measure(body) + measure(producer) + 64
+  const kept = [input.key, input.join?.thread ?? '', input.join?.turn ?? ''].reduce(
+    (total, part) => total + Buffer.byteLength(part, 'utf8'),
+    0
+  )
+  return 2 * kept + measure(input.body) + measure(input.producer) + 64
 }

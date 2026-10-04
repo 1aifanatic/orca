@@ -97,6 +97,5 @@ export function settlementOf(
   if (!input.execute || !input.journal) {
     return undefined
   }
-  const scope = { turnItemId: turn.itemId, outlivesTurn: input.state.outliving(turn.itemId) }
-  return providerTimelineSettlement(input.journal, scope, [turn], end)
+  return providerTimelineSettlement(input.journal, { turnItemId: turn.itemId }, [turn], end)
 }

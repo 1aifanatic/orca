@@ -5,6 +5,8 @@ import type {
 } from '../../../shared/agent-session-journal-types'
 import {
   assistantText,
+  backgroundTask,
+  backgroundTaskState,
   closeProviderTimelineRigs,
   openProviderTimelineRig,
   providerItemId,
@@ -133,15 +135,14 @@ describe('provider timeline items', () => {
     expect(rows[0]?.turnScope).toEqual({ kind: 'thread' })
   })
 
-  it('fails a tool call its turn left running, and keeps one that outlives the turn open', async () => {
+  it('fails a tool call its turn left running, and leaves a background task it started running', async () => {
     const rig = await openProviderTimelineRig()
     rig.assembler.apply({ type: 'turn.open', turn: 'turn-1', at: 1_000 })
     rig.assembler.apply({ type: 'item.open', item: 'call-a', body: runningTool('read') })
     rig.assembler.apply({
       type: 'item.open',
       item: 'bg-1',
-      body: runningTool('background'),
-      outlivesTurn: true
+      body: backgroundTask('bg-1', 'working')
     })
     rig.assembler.apply({
       type: 'turn.end',
@@ -152,19 +153,12 @@ describe('provider timeline items', () => {
     expect((await rig.row(providerItemId('item', 'call-a')))?.body).toMatchObject({
       state: 'failed'
     })
-    expect((await rig.row(providerItemId('item', 'bg-1')))?.body).toMatchObject({
-      state: 'running'
-    })
+    expect(await backgroundTaskState(rig, 'bg-1')).toBe('working')
 
-    // It settles on its own close later, still scoped to the turn that started it.
-    rig.assembler.apply({
-      type: 'item.close',
-      item: 'bg-1',
-      body: { ...runningTool('background'), state: 'completed' }
-    })
-    const background = await rig.row(providerItemId('item', 'bg-1'))
-    expect(background?.body).toMatchObject({ state: 'completed' })
-    expect(background?.turnScope).toEqual({
+    // It settles on its own update later, still in the turn that started it.
+    rig.assembler.apply({ type: 'item.close', item: 'bg-1', body: backgroundTask('bg-1', 'done') })
+    expect(await backgroundTaskState(rig, 'bg-1')).toBe('done')
+    expect((await rig.row(providerItemId('item', 'bg-1')))?.turnScope).toEqual({
       kind: 'turn',
       turnItemId: providerTurnItemId('turn-1')
     })

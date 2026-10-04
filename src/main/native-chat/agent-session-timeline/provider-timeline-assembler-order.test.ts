@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { MAX_PROVIDER_TIMELINE_OPEN_ENTRIES } from './provider-timeline-budget'
 import {
   assistantText,
+  backgroundTask,
+  backgroundTaskState,
   closeProviderTimelineRigs,
   messageText,
   openProviderTimelineRig,
@@ -217,25 +219,16 @@ describe('explicit provider attribution', () => {
     })
   })
 
-  it('keeps an item in the turn it opened in when its close arrives after the next turn opened', async () => {
+  it('keeps a background task in the turn it opened in when it settles after the next turn opened', async () => {
     const rig = await openProviderTimelineRig()
     rig.assembler.apply({ type: 'turn.open', turn: 't1', at: 1_000 })
-    rig.assembler.apply({
-      type: 'item.open',
-      item: 'bg',
-      body: runningTool('task'),
-      outlivesTurn: true
-    })
+    rig.assembler.apply({ type: 'item.open', item: 'bg', body: backgroundTask('bg', 'working') })
     rig.assembler.apply({ type: 'turn.end', at: 2_000, state: 'completed' })
     rig.assembler.apply({ type: 'turn.open', turn: 't2', at: 3_000 })
-    rig.assembler.apply({
-      type: 'item.close',
-      item: 'bg',
-      body: { ...runningTool('task'), state: 'completed' }
-    })
+    rig.assembler.apply({ type: 'item.close', item: 'bg', body: backgroundTask('bg', 'done') })
     const row = await rig.row(providerItemId('item', 'bg'))
     expect(row?.turnScope).toEqual({ kind: 'turn', turnItemId: providerTurnItemId('t1') })
-    expect(row?.body).toMatchObject({ state: 'completed' })
+    expect(await backgroundTaskState(rig, 'bg')).toBe('done')
   })
 
   it('writes context facts onto the turn the provider names, not the open one', async () => {

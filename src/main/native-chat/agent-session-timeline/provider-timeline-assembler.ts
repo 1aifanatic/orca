@@ -180,9 +180,11 @@ export function createProviderTimelineAssembler(
       return { admission: PROVIDER_TIMELINE_OVER_BUDGET }
     }
     const plan = new ProviderTimelinePlan()
-    planProviderTimelineBarrier(host, plan, event, decision)
     const entry: ProviderTimelineInFlight = { executed: false, commit: decision.commit }
     let executed: ProviderTimelineDecision | null = null
+    // A message boundary is the event's only when its own decision, at execution, wrote.
+    const landed = () => executed !== null && !executed.dropped && executed.write !== null
+    planProviderTimelineBarrier(host, plan, event, decision, landed)
     // The event's decision on the ledger, taken once, by its first slot to run.
     const decide = (at: StructuredAgentSessionTransitionJournal) => {
       if (!executed) {
@@ -210,8 +212,8 @@ export function createProviderTimelineAssembler(
 
   const apply = (event: ProviderTimelineEvent): ProviderTimelineApplyResult => {
     const journal = deps.sink.journalItems()
-    if (journal && !forecast.hydrated) {
-      forecast.hydrate(journal)
+    if (journal) {
+      forecast.reconcile(journal)
     }
     switch (event.type) {
       case 'text.delta':

@@ -87,14 +87,11 @@ export type ProviderTimelineEvent =
       /** The provider's own measured duration. */
       durationMs?: number
     }
-  /** Work began. `outlivesTurn` keeps it open past its turn's end (a backgrounded task). */
-  | ({
-      type: 'item.open'
-      item: string
-      body: ProviderTimelineItemBody
-      outlivesTurn?: true
-    } & Produced &
-      Joined)
+  /** Work began. Work that outlives its turn (a backgrounded task) is a background-task row — a
+   *  message carrying a `background-task` block with its own run state — beside the tool call that
+   *  started it, which closes as usual: no turn's end settles that row; its own updates do, and the
+   *  session's end leaves one still in flight `unverifiable`. */
+  | ({ type: 'item.open'; item: string; body: ProviderTimelineItemBody } & Produced & Joined)
   /** The item's whole current body. Content may be replaced; a settled tool never runs again. */
   | ({ type: 'item.update'; item: string; body: ProviderTimelineItemBody } & Produced & Joined)
   /** The item's whole terminal body; it replaces any text streamed into the same item. */

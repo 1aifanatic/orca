@@ -20,6 +20,7 @@ import {
 import { cancelledJournalPromptBody } from '../agent-session-journal/journal-prompt-body-bounds'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
 import type { StructuredAgentSessionTransitionJournal } from '../agent-session-wire/structured-agent-session-transition'
+import { lostProviderTimelineBackgroundTasks } from './provider-timeline-background-tasks'
 import {
   agentJournalTurnRowReservedBytes,
   resolveAgentJournalTurnRowWrite
@@ -74,9 +75,7 @@ export function endedProviderTimelineTurn(
 }
 
 /** Which open rows a settlement covers: one turn's, or every row when the session ends. */
-export type ProviderTimelineSettlementScope =
-  | { turnItemId: string; outlivesTurn: ReadonlySet<string> }
-  | 'session'
+export type ProviderTimelineSettlementScope = { turnItemId: string } | 'session'
 
 /** The settled rows of `scope`, then each listed turn's end while the journal holds it running. */
 export function providerTimelineSettlement(
@@ -90,10 +89,12 @@ export function providerTimelineSettlement(
     const turnScope = attribution.turnScope ?? AGENT_JOURNAL_THREAD_SCOPE
     const covered =
       scope === 'session' ||
-      (turnScope.kind === 'turn' &&
-        turnScope.turnItemId === scope.turnItemId &&
-        !scope.outlivesTurn.has(itemId))
-    const settled = covered ? settledProviderTimelineBody(body) : null
+      (turnScope.kind === 'turn' && turnScope.turnItemId === scope.turnItemId)
+    // Background tasks outlive turns; only the session's end leaves them past seeing.
+    const settled = !covered
+      ? null
+      : (settledProviderTimelineBody(body) ??
+        (scope === 'session' ? lostProviderTimelineBackgroundTasks(body) : null))
     const identity = settled ? parseAgentJournalItemKey(itemId) : null
     if (settled && identity) {
       // No linkage: a revision keeps the row's own producer.

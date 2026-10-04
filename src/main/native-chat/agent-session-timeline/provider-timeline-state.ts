@@ -24,21 +24,31 @@ const MAX_CLOSED_ITEMS = 512
 /** Turns remembered as settled without asking the journal. */
 const MAX_SETTLED_TURNS = 256
 /** Sends waiting for a turn; a provider that never opens one cannot grow this without bound. */
-export const MAX_PENDING_INPUTS = 64
+const MAX_PENDING_INPUTS = 64
+const MAX_PENDING_INPUT_BYTES = 64 * 1024
+
+function bytes(value: string): number {
+  return Buffer.byteLength(value, 'utf8')
+}
 
 export type ProviderTimelineOpenTurn = ProviderTimelineTurnRef & {
   running: AgentJournalTurnLifecycle
 }
 
-export type ProviderTimelinePendingInput = { clientMessageId: string; requestedAt: number }
+export type ProviderTimelinePendingInput = {
+  clientMessageId: string
+  requestedAt: number
+  /** The turn row the provider said the send opens; absent: the next turn to open. */
+  turnItemId?: string
+}
 
 /** Work still waiting on a row that settles it: a running tool, a backgrounded task, a pending
  *  request. Keyed by the item's join reference (a request's by its key, whatever its incarnation). */
 export type ProviderTimelineObligation = {
   /** The row, once a resolver placed it. */
   itemId: string | null
+  /** The turn whose end settles it; null for a row in no turn. */
   turnItemId: string | null
-  outlivesTurn: boolean
   bytes: number
 }
 
@@ -50,8 +60,16 @@ export class ProviderTimelineState {
   latest: ProviderTimelineTurnRef | null = null
   inputs: ProviderTimelinePendingInput[] = []
   /** Items this run closed, with the turn they closed in. */
-  closed = new BoundedMap<string, string | null>({ maxEntries: MAX_CLOSED_ITEMS })
-  settled = new BoundedMap<string, true>({ maxEntries: MAX_SETTLED_TURNS })
+  closed = new BoundedMap<string, string | null>({
+    maxEntries: MAX_CLOSED_ITEMS,
+    maxBytes: MAX_CLOSED_ITEMS * 1024,
+    sizeOf: (turnItemId, ref) => bytes(ref) + bytes(turnItemId ?? '') + 16
+  })
+  settled = new BoundedMap<string, true>({
+    maxEntries: MAX_SETTLED_TURNS,
+    maxBytes: MAX_SETTLED_TURNS * 1024,
+    sizeOf: (_settled, turnItemId) => bytes(turnItemId) + 8
+  })
   obligations = new Map<string, ProviderTimelineObligation>()
   /** Whether the open turn was taken from the journal yet (ledger only). */
   hydrated = false
@@ -79,29 +97,55 @@ export class ProviderTimelineState {
     return copy
   }
 
+  /** Settled once anything settled it: this run, or any writer of the journal (a person's Stop).
+   *  Memory says only what the journal cannot yet: a turn opened by a write still queued. */
   status(
     turn: { itemId: string },
     journal: StructuredAgentSessionTransitionJournal | null
   ): ProviderTimelineTurnStatus {
-    if (this.open?.itemId === turn.itemId) {
-      return 'running'
-    }
     if (this.settled.has(turn.itemId)) {
       return 'settled'
     }
     const row = readAgentJournalTurn(journal?.itemBody(turn.itemId) ?? undefined)
-    return row === null ? 'absent' : row.state === 'running' ? 'running' : 'settled'
+    if (row) {
+      return row.state === 'running' ? 'running' : 'settled'
+    }
+    return this.open?.itemId === turn.itemId ? 'running' : 'absent'
   }
 
-  /** The obligations a turn's end leaves open: the ones that outlive it. */
-  outliving(turnItemId: string): Set<string> {
-    const outliving = new Set<string>()
-    for (const obligation of this.obligations.values()) {
-      if (obligation.outlivesTurn && obligation.itemId && obligation.turnItemId === turnItemId) {
-        outliving.add(obligation.itemId)
-      }
+  /** Ends the open turn when the journal holds it settled: another writer ended it. */
+  reconcile(journal: StructuredAgentSessionTransitionJournal): void {
+    if (!this.hydrated) {
+      this.hydrate(journal)
     }
-    return outliving
+    const row = this.open && readAgentJournalTurn(journal.itemBody(this.open.itemId) ?? undefined)
+    if (this.open && row && row.state !== 'running') {
+      this.endTurn(this.open)
+    }
+  }
+
+  /** A send waiting for its turn; past the bounds the oldest is forgotten (its turn opens as the
+   *  provider's own). */
+  wait(pending: ProviderTimelinePendingInput): void {
+    this.inputs.push(pending)
+    const size = (input: ProviderTimelinePendingInput) =>
+      bytes(input.clientMessageId) + bytes(input.turnItemId ?? '') + 16
+    let held = this.inputs.reduce((total, input) => total + size(input), 0)
+    while (this.inputs.length > MAX_PENDING_INPUTS || held > MAX_PENDING_INPUT_BYTES) {
+      const forgotten = this.inputs.shift()
+      if (!forgotten) {
+        return
+      }
+      held -= size(forgotten)
+    }
+  }
+
+  /** The send that opens `turnItemId`: the one that named it, else the oldest that named none. */
+  opener(turnItemId: string): ProviderTimelinePendingInput | undefined {
+    return (
+      this.inputs.find((input) => input.turnItemId === turnItemId) ??
+      this.inputs.find((input) => input.turnItemId === undefined)
+    )
   }
 
   /** The turn is over, and so is everything its settlement covered. */
@@ -112,7 +156,7 @@ export class ProviderTimelineState {
     this.latest = turn
     this.settled.set(turn.itemId, true)
     for (const [key, obligation] of this.obligations) {
-      if (obligation.turnItemId === turn.itemId && !obligation.outlivesTurn) {
+      if (obligation.turnItemId === turn.itemId) {
         this.obligations.delete(key)
       }
     }

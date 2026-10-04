@@ -14,6 +14,11 @@ import type {
   AgentJournalTurnLifecycle
 } from '../../../shared/agent-session-journal-types'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
+import { backgroundTaskFallbackText } from '../../../shared/native-chat-background-task-row'
+import {
+  isBackgroundTaskBlock,
+  type NativeChatBackgroundTaskBlock
+} from '../../../shared/native-chat-types'
 import { createTrackedJournalOpener } from '../agent-session-journal/journal-host-database-test-support'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
@@ -75,6 +80,35 @@ export function runningTool(name: string): AgentJournalToolCallItem {
   return { kind: 'tool-call', name, input: { name }, state: 'running' }
 }
 
+/** A background task's row as every lane writes it: its plain-text twin, then its block. */
+export function backgroundTask(
+  taskId: string,
+  state: NativeChatBackgroundTaskBlock['state']
+): AgentJournalMessageItem {
+  const block: NativeChatBackgroundTaskBlock = {
+    type: 'background-task',
+    taskId,
+    kind: 'command',
+    label: taskId,
+    state
+  }
+  return {
+    kind: 'message',
+    role: 'system',
+    blocks: [{ type: 'text', text: backgroundTaskFallbackText(block) }, block]
+  }
+}
+
+/** The run state of the background task in the row of provider item `item`. */
+export async function backgroundTaskState(
+  rig: ProviderTimelineRig,
+  item: string
+): Promise<string | undefined> {
+  const body = (await rig.row(providerItemId('item', item)))?.body
+  const block = body?.kind === 'message' ? body.blocks.find(isBackgroundTaskBlock) : undefined
+  return block?.state
+}
+
 export function assistantText(text: string): AgentJournalMessageItem {
   return { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text }] }
 }
@@ -102,6 +136,47 @@ export async function closeProviderTimelineRigs(): Promise<void> {
     await cleanup()
   }
   await journals.closeAll()
+}
+
+/** An assembler whose sink binds to the rig's journal only when `bind` is called, as a lane that
+ *  starts before its journal opens: it plans without the journal's view. */
+export type UnboundProviderTimelineAssembler = {
+  assembler: ProviderTimelineAssembler
+  bind(): Promise<void>
+  drained(): Promise<void>
+}
+
+export function openUnboundProviderTimelineAssembler(
+  journal: AgentSessionJournal,
+  overrides: Partial<ProviderTimelineAssemblerDeps> = {}
+): UnboundProviderTimelineAssembler {
+  const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
+  const sink = providerTimelineSink(deferred.sink)
+  if (!sink) {
+    throw new Error('the deferred sink offers transitions')
+  }
+  const assembler = createProviderTimelineAssembler({
+    sink,
+    sessionId: SESSION,
+    agent: AGENT,
+    generation: 'gen-unbound',
+    namespace: NAMESPACE,
+    // The window never fires on its own; `flush` writes what it holds.
+    schedule: () => () => {},
+    ...overrides
+  })
+  cleanups.push(async () => {
+    assembler.dispose()
+    deferred.close()
+  })
+  return {
+    assembler,
+    bind: async () => {
+      deferred.bind({ journal, fence: 1, publish: () => {} })
+      await deferred.drained()
+    },
+    drained: () => deferred.drained()
+  }
 }
 
 export type ProviderTimelineRig = {
