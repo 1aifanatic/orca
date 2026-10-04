@@ -20,8 +20,7 @@ const removal = {
   repoPath: '/work/repo',
   worktree: { path: '/work/feature', branch: 'refs/heads/feature', head: 'abc' },
   deleteBranch: true,
-  force: false,
-  checkoutIdentity: undefined
+  force: false
 }
 const isPending = (hostId?: ExecutionHostId): boolean =>
   waitForPendingWorktreeRemoval(removal.worktreeId, hostId) !== undefined

@@ -9,65 +9,28 @@ import {
   canSafelyRemoveOrphanedWorktreeDirectory
 } from './worktree-removal-safety'
 import type { GitWorktreeExecOptions } from './git/worktree-operation-options'
-import { matchCheckoutDirectory } from './worktree-checkout-identity'
-import type { WorktreeRemovalRecord } from './worktree-removal-records'
-
-type RemovalLeftoverRecord = Pick<
-  WorktreeRemovalRecord,
-  'repoPath' | 'worktreePath' | 'checkoutIdentity'
->
 
 /**
  * Whether a checkout path Git no longer registers still holds the removed checkout's own leftover:
- * the very directory the removal accepted (or nothing at all), with no `.git` (Git deleted it first)
- * or a `.git` file naming the admin entry Git removed. Anything else was put at the path since,
- * unless the path could not be read, which proves neither.
+ * no `.git` (Git deleted it first), or a `.git` file naming the admin entry Git removed. Any other
+ * `.git` is a different checkout created at the path since.
  */
-export async function unregisteredRemovalLeftoverVerdict(
-  record: RemovalLeftoverRecord
-): Promise<'leftover' | 'unreadable' | 'different-folder' | 'different-checkout'> {
-  const match = await matchCheckoutDirectory(record.worktreePath, record.checkoutIdentity)
-  if (match === 'absent') {
-    return 'leftover'
-  }
-  if (match === 'unreadable') {
-    return 'unreadable'
-  }
-  if (match !== 'same') {
-    return 'different-folder'
-  }
+export async function isUnregisteredRemovalLeftover(
+  repoPath: string,
+  worktreePath: string
+): Promise<boolean> {
   try {
-    await lstat(join(record.worktreePath, '.git'))
+    await lstat(join(worktreePath, '.git'))
   } catch (error) {
-    return getErrorCode(error) === 'ENOENT' ? 'leftover' : 'unreadable'
+    return getErrorCode(error) === 'ENOENT'
   }
-  return (await canSafelyRemoveOrphanedWorktreeDirectory(
-    record.worktreePath,
-    record.repoPath,
-    CLIENT_REMOVAL_HOME
-  ))
-    ? 'leftover'
-    : 'different-checkout'
+  return canSafelyRemoveOrphanedWorktreeDirectory(worktreePath, repoPath, CLIENT_REMOVAL_HOME)
 }
 
 /** The refusal when the path no longer holds the removed checkout's own leftover. */
 export function differentCheckoutAtPathError(worktreePath: string): Error {
   return new Error(
     `A different checkout is now at ${worktreePath}; Orca left it in place. Delete it again to remove it.`
-  )
-}
-
-/** The refusal when the folder at the path is not the one Orca started deleting. */
-export function differentFolderAtPathError(worktreePath: string): Error {
-  return new Error(
-    `The folder at ${worktreePath} is not the one Orca started deleting, so Orca left it in place.`
-  )
-}
-
-/** The refusal when the path could not be read, so nothing proves it holds the accepted folder. */
-export function unreadableFolderAtPathError(worktreePath: string): Error {
-  return new Error(
-    `Orca could not read the folder at ${worktreePath}, so Orca left it in place. Delete it again once it can be read.`
   )
 }
 
@@ -86,23 +49,16 @@ export async function isCheckoutRegistered(record: {
  * registers at or inside it. Run right before the delete: the path can change while it waits.
  */
 export async function assertUnregisteredRemovalLeftover(
-  record: RemovalLeftoverRecord,
+  repoPath: string,
+  worktreePath: string,
   options: GitWorktreeExecOptions = {}
 ): Promise<void> {
-  const { repoPath, worktreePath } = record
   const worktrees = await listWorktreesStrict(repoPath, options)
   if (worktrees.some((worktree) => areWorktreePathsEqual(worktree.path, worktreePath))) {
     throw differentCheckoutAtPathError(worktreePath)
   }
   assertWorktreeDoesNotContainRegisteredWorktree(worktreePath, worktrees)
-  const verdict = await unregisteredRemovalLeftoverVerdict(record)
-  if (verdict === 'unreadable') {
-    throw unreadableFolderAtPathError(worktreePath)
-  }
-  if (verdict === 'different-folder') {
-    throw differentFolderAtPathError(worktreePath)
-  }
-  if (verdict === 'different-checkout') {
+  if (!(await isUnregisteredRemovalLeftover(repoPath, worktreePath))) {
     throw differentCheckoutAtPathError(worktreePath)
   }
 }

@@ -15,27 +15,12 @@ import {
   projectPendingWorktreeRemovals,
   snapshotPendingWorktreeRemovals
 } from './worktree-removal-listing'
-import type * as GitWorktree from './git/worktree'
 import type * as WorktreeRemovalRecords from './worktree-removal-records'
 import {
   readWorktreeRemovalRecords,
   worktreeRemovalRecordsFile,
   writeWorktreeRemovalRecords
 } from './worktree-removal-records'
-
-// Git still registers the checkout: a delete that fails leaves it Git's, row and all.
-vi.mock('./git/worktree', async (importOriginal) => ({
-  ...(await importOriginal<typeof GitWorktree>()),
-  listWorktreesStrict: vi.fn(async () => [
-    {
-      path: '/work/feature',
-      head: 'abc',
-      branch: 'refs/heads/feature',
-      isBare: false,
-      isMainWorktree: false
-    }
-  ])
-}))
 
 vi.mock('./worktree-removal-records', async (importOriginal) => {
   const actual = await importOriginal<typeof WorktreeRemovalRecords>()
@@ -51,8 +36,7 @@ const removal = {
   repoPath: '/work/repo',
   worktree: { path: '/work/feature', branch: 'refs/heads/feature', head: 'abc' },
   deleteBranch: true,
-  force: false,
-  checkoutIdentity: undefined
+  force: false
 }
 const isPending = (): boolean => waitForPendingWorktreeRemoval(removal.worktreeId) !== undefined
 let directory = ''
@@ -271,37 +255,5 @@ describe('durable worktree removal records', () => {
 
     await writeFile(worktreeRemovalRecordsFile(directory), '{not json')
     expect(await readWorktreeRemovalRecords(directory)).toEqual([])
-  })
-
-  it('keeps the accepted checkout identity, reading a malformed one as unrecorded', async () => {
-    const record = {
-      worktreeId: 'repo-1::/work/a',
-      repoId: 'repo-1',
-      repoPath: '/work/repo',
-      worktreePath: '/work/a',
-      branch: 'a',
-      head: 'abc',
-      deleteBranch: false,
-      force: true,
-      requestedAt: 5
-    }
-    const checkoutIdentity = { ino: '18446744073709551615', birthtimeNs: '1' }
-    await writeFile(
-      worktreeRemovalRecordsFile(directory),
-      JSON.stringify({
-        version: 1,
-        removals: [
-          // A device number an earlier build of this change wrote is ignored.
-          { ...record, checkoutIdentity: { dev: '16777232', ...checkoutIdentity } },
-          { ...record, worktreeId: 'repo-1::/work/b', checkoutIdentity: { ino: 2 } }
-        ]
-      })
-    )
-
-    // The malformed one stays, so Git's own checks can still finish it.
-    expect(await readWorktreeRemovalRecords(directory)).toEqual([
-      { ...record, checkoutIdentity },
-      { ...record, worktreeId: 'repo-1::/work/b' }
-    ])
   })
 })

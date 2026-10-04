@@ -4,7 +4,7 @@
 // the file's owner; worktree-failed-removal.test.ts covers the same rules with Git mocked.
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -38,7 +38,6 @@ import {
   writeWorktreeRemovalRecords,
   type WorktreeRemovalRecord
 } from '../worktree-removal-records'
-import { readCheckoutDirectoryIdentity } from '../worktree-checkout-identity'
 import { interruptedLocalWorktreeRemovalJob } from './runtime-interrupted-local-worktree-removal'
 
 vi.mock('../project-runtime-git-options', () => ({
@@ -121,8 +120,7 @@ async function finishAtStartup(purged: string[]): Promise<unknown> {
     head: (await git(['rev-parse', 'feature'])).trim(),
     deleteBranch: true,
     force: true,
-    requestedAt: 1,
-    checkoutIdentity: await readCheckoutDirectoryIdentity(worktreePath)
+    requestedAt: 1
   }
   await writeWorktreeRemovalRecords(recordsDir, () => [record])
   await loadWorktreeRemovalRecords(recordsDir)
@@ -146,7 +144,6 @@ async function failInSession(): Promise<unknown> {
       repoId: repo.id,
       repoPath,
       worktree: { path: worktreePath, branch: 'refs/heads/feature', head: 'abc' },
-      checkoutIdentity: await readCheckoutDirectoryIdentity(worktreePath),
       deleteBranch: true,
       force: true
     },
@@ -267,8 +264,8 @@ describe.skipIf(process.platform !== 'darwin')('a worktree delete Git fails part
   it('never deletes a different checkout created at the path since', async () => {
     await failInSession()
     await setImmutable(false)
-    // In the leftover's own folder, so only its `.git` tells it apart.
-    await rm(join(worktreePath, '.git'))
+    await rm(worktreePath, { recursive: true })
+    await mkdir(worktreePath)
     await git(['init', '-q'], worktreePath)
     await writeFile(join(worktreePath, 'unsaved.txt'), 'work\n')
     const purged: string[] = []
@@ -281,52 +278,6 @@ describe.skipIf(process.platform !== 'darwin')('a worktree delete Git fails part
     await _settlePendingWorktreeRemovalsForTests()
 
     expect(existsSync(join(worktreePath, 'unsaved.txt'))).toBe(true)
-    expect(removeHostTree).not.toHaveBeenCalled()
-    expect(purged).toEqual([])
-    expect(await readWorktreeRemovalRecords(recordsDir)).toEqual([])
-    expect(await listedRows()).toEqual([])
-  })
-
-  it('never deletes an ordinary folder the user put at the path since', async () => {
-    await failInSession()
-    await setImmutable(false)
-    // No `.git`, as the leftover may have none: only the directory's identity tells them apart.
-    await rm(worktreePath, { recursive: true })
-    await mkdir(worktreePath)
-    await writeFile(join(worktreePath, 'notes.txt'), 'mine\n')
-    const purged: string[] = []
-
-    // Delete before any listing noticed: the retry refuses and lets the record go.
-    const retried = retryFailedWorktreeRemoval(worktreeId, 'local', (record) =>
-      interruptedLocalWorktreeRemovalJob(record, jobHost(purged))
-    )
-    await expect(retried).rejects.toThrow(/is not the one Orca started deleting/)
-    await _settlePendingWorktreeRemovalsForTests()
-
-    expect(existsSync(join(worktreePath, 'notes.txt'))).toBe(true)
-    expect(removeHostTree).not.toHaveBeenCalled()
-    expect(purged).toEqual([])
-    expect(await git(['branch', '--list', 'feature'])).not.toBe('')
-    expect(await readWorktreeRemovalRecords(recordsDir)).toEqual([])
-    expect(await listedRows()).toEqual([])
-  })
-
-  it('never deletes a failed delete’s folder that an older build recorded without an identity', async () => {
-    await failInSession()
-    await setImmutable(false)
-    const [{ checkoutIdentity: _identity, ...older }] = await readWorktreeRemovalRecords(recordsDir)
-    _resetPendingWorktreeRemovalsForTests()
-    await writeWorktreeRemovalRecords(recordsDir, () => [older])
-    await loadWorktreeRemovalRecords(recordsDir)
-    const purged: string[] = []
-
-    const retried = retryFailedWorktreeRemoval(worktreeId, 'local', (record) =>
-      interruptedLocalWorktreeRemovalJob(record, jobHost(purged))
-    )
-    await expect(retried).rejects.toThrow(/is not the one Orca started deleting/)
-    await _settlePendingWorktreeRemovalsForTests()
-
-    expect(existsSync(lockedFile)).toBe(true)
     expect(removeHostTree).not.toHaveBeenCalled()
     expect(purged).toEqual([])
     expect(await readWorktreeRemovalRecords(recordsDir)).toEqual([])
@@ -399,8 +350,9 @@ describe.skipIf(process.platform !== 'darwin')('a worktree delete Git fails part
       (reason: unknown) => reason
     )
     await vi.waitFor(() => expect(_worktreeDeleteLimitSnapshotForTests().waiting).toBe(1))
-    // While it waits, a different checkout is created in the leftover's own folder.
-    await rm(join(worktreePath, '.git'))
+    // While it waits, the leftover is replaced by a different checkout.
+    await rm(worktreePath, { recursive: true })
+    await mkdir(worktreePath)
     await git(['init', '-q'], worktreePath)
     await writeFile(join(worktreePath, 'unsaved.txt'), 'work\n')
     releaseSlots()
@@ -409,93 +361,6 @@ describe.skipIf(process.platform !== 'darwin')('a worktree delete Git fails part
     expect(String(await settled)).toMatch(/A different checkout is now at/)
     await _settlePendingWorktreeRemovalsForTests()
     expect(existsSync(join(worktreePath, 'unsaved.txt'))).toBe(true)
-    expect(removeHostTree).not.toHaveBeenCalled()
-  })
-
-  it('checks the folder is still the leftover inside the delete slot', async () => {
-    await failInSession()
-    await setImmutable(false)
-    let releaseSlots = (): void => {}
-    const held = new Promise<void>((resolve) => {
-      releaseSlots = resolve
-    })
-    const holders = [
-      runUnderWorktreeDeleteLimit(() => held),
-      runUnderWorktreeDeleteLimit(() => held)
-    ]
-    const retried = retryFailedWorktreeRemoval(worktreeId, 'local', (record) =>
-      interruptedLocalWorktreeRemovalJob(record, jobHost([]))
-    )
-    const settled = retried!.then(
-      () => undefined,
-      (reason: unknown) => reason
-    )
-    await vi.waitFor(() => expect(_worktreeDeleteLimitSnapshotForTests().waiting).toBe(1))
-    // While it waits, the user replaces the leftover with an ordinary folder.
-    await rm(worktreePath, { recursive: true })
-    await mkdir(worktreePath)
-    await writeFile(join(worktreePath, 'notes.txt'), 'mine\n')
-    releaseSlots()
-    await Promise.all(holders)
-
-    expect(String(await settled)).toMatch(/is not the one Orca started deleting/)
-    await _settlePendingWorktreeRemovalsForTests()
-    expect(existsSync(join(worktreePath, 'notes.txt'))).toBe(true)
-    expect(removeHostTree).not.toHaveBeenCalled()
-  })
-
-  it('at startup, checks the folder is still the recorded checkout inside the delete slot before Git deletes it', async () => {
-    await setImmutable(false)
-    const gitFile = await readFile(join(worktreePath, '.git'), 'utf8')
-    let releaseSlots = (): void => {}
-    const held = new Promise<void>((resolve) => {
-      releaseSlots = resolve
-    })
-    const holders = [
-      runUnderWorktreeDeleteLimit(() => held),
-      runUnderWorktreeDeleteLimit(() => held)
-    ]
-    const finished = finishAtStartup([])
-    await vi.waitFor(() => expect(_worktreeDeleteLimitSnapshotForTests().waiting).toBe(1))
-    // While it waits, the user restores the folder from a backup, `.git` file and all, which Git
-    // accepts as the checkout.
-    await rm(worktreePath, { recursive: true })
-    await mkdir(worktreePath)
-    await writeFile(join(worktreePath, '.git'), gitFile)
-    await writeFile(join(worktreePath, 'notes.txt'), 'mine\n')
-    releaseSlots()
-    await Promise.all(holders)
-
-    // The refusal itself, not a failed Git delete a recovery could finish by deleting the path.
-    expect(String(await finished)).toMatch(/^Error: The folder at .* is not the one Orca started/)
-    expect(existsSync(join(worktreePath, 'notes.txt'))).toBe(true)
-    expect(await isRegistered(worktreePath)).toBe(true)
-    expect(removeHostTree).not.toHaveBeenCalled()
-  })
-
-  it('at startup, checks the folder is still the recorded checkout inside the delete slot when Git cannot remove it', async () => {
-    await setImmutable(false)
-    await rm(join(worktreePath, '.git'))
-    vi.mocked(restoreMissingWorktreeGitFile).mockResolvedValueOnce(false)
-    let releaseSlots = (): void => {}
-    const held = new Promise<void>((resolve) => {
-      releaseSlots = resolve
-    })
-    const holders = [
-      runUnderWorktreeDeleteLimit(() => held),
-      runUnderWorktreeDeleteLimit(() => held)
-    ]
-    const finished = finishAtStartup([])
-    await vi.waitFor(() => expect(_worktreeDeleteLimitSnapshotForTests().waiting).toBe(1))
-    // While it waits, the user replaces the checkout with an ordinary folder.
-    await rm(worktreePath, { recursive: true })
-    await mkdir(worktreePath)
-    await writeFile(join(worktreePath, 'notes.txt'), 'mine\n')
-    releaseSlots()
-    await Promise.all(holders)
-
-    expect(String(await finished)).toMatch(/is not the one Orca started deleting/)
-    expect(existsSync(join(worktreePath, 'notes.txt'))).toBe(true)
     expect(removeHostTree).not.toHaveBeenCalled()
   })
 

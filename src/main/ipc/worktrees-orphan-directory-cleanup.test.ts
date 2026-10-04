@@ -1,15 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { existsSync } from 'node:fs'
-import { lstat, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import {
-  _settlePendingWorktreeRemovalsForTests,
-  loadWorktreeRemovalRecords
-} from '../worktree-background-removal'
-import { readCheckoutDirectoryIdentity } from '../worktree-checkout-identity'
-import { writeWorktreeRemovalRecords } from '../worktree-removal-records'
-import { setUnfinishedWorktreeRemovalHost } from '../worktree-removal-table'
 import {
   removeWorktreeMock,
   getEffectiveHooksMock,
@@ -349,86 +341,6 @@ describe('registerWorktreeHandlers', () => {
         repoId: 'repo-1'
       })
     } finally {
-      await rm(parentDir, { recursive: true, force: true })
-    }
-  })
-
-  it('leaves a folder the user put at a failed delete’s path, on Delete and every Delete after', async () => {
-    const parentDir = await realpath(await mkdtemp(join(tmpdir(), 'orca-ipc-replaced-leftover-')))
-    const repoPath = join(parentDir, 'repo')
-    const leftoverPath = join(parentDir, 'leftover')
-    const worktreeId = `repo-1::${leftoverPath}`
-    await mkdir(join(leftoverPath, 'node_modules'), { recursive: true })
-    await mkdir(join(parentDir, 'profile'))
-    const checkoutIdentity = await readCheckoutDirectoryIdentity(leftoverPath)
-    await writeWorktreeRemovalRecords(join(parentDir, 'profile'), () => [
-      {
-        worktreeId,
-        repoId: 'repo-1',
-        repoPath,
-        worktreePath: leftoverPath,
-        branch: 'feature',
-        head: 'abc',
-        deleteBranch: true,
-        force: true,
-        requestedAt: 1,
-        checkoutIdentity,
-        failure: { message: 'Operation not permitted', failedAt: 2 }
-      }
-    ])
-    await loadWorktreeRemovalRecords(join(parentDir, 'profile'))
-    const repo = {
-      id: 'repo-1',
-      path: repoPath,
-      displayName: 'repo',
-      badgeColor: '#000',
-      addedAt: 0,
-      worktreeBaseRef: null
-    }
-    store.getRepo.mockReturnValue(repo)
-    store.getRepos.mockReturnValue([repo])
-    mockKnownFeatureWorktree(join(parentDir, 'real-feature'), repoPath)
-    // What Orca keeps for every workspace it created, which alone authorizes deleting the path.
-    let meta: Record<string, unknown> | undefined = makeWorktreeMeta({
-      orcaCreatedAt: Date.now(),
-      orcaCreationSource: 'runtime'
-    })
-    store.getWorktreeMeta.mockImplementation((id: string) => (id === worktreeId ? meta : undefined))
-    store.removeWorktreeMeta.mockImplementation((id: string) => {
-      if (id === worktreeId) {
-        meta = undefined
-      }
-    })
-    gitExecFileAsyncMock.mockImplementation(async (args: string[]) => {
-      if (args[0] === 'status') {
-        throw new Error('fatal: not a git repository')
-      }
-      return { stdout: '', stderr: '' }
-    })
-    // Stands in for the runtime, which registers the bookkeeping that ends such a workspace.
-    setUnfinishedWorktreeRemovalHost((record) => {
-      store.removeWorktreeMeta(record.worktreeId, 'local')
-    })
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    // The user deletes the leftover by hand and makes a folder of their own at the path.
-    await rm(leftoverPath, { recursive: true })
-    await mkdir(leftoverPath)
-    await writeFile(join(leftoverPath, 'notes.txt'), 'mine\n')
-
-    try {
-      await expect(handlers['worktrees:remove'](null, { worktreeId, force: true })).rejects.toThrow(
-        /is not the one Orca started deleting/
-      )
-      await _settlePendingWorktreeRemovalsForTests()
-      // A second window, or this one before its row refreshes, still shows the workspace.
-      await expect(handlers['worktrees:remove'](null, { worktreeId, force: true })).rejects.toThrow(
-        `Refusing to delete unregistered worktree path: ${leftoverPath}`
-      )
-
-      expect(existsSync(join(leftoverPath, 'notes.txt'))).toBe(true)
-      expect(store.removeWorktreeMeta).toHaveBeenCalledWith(worktreeId, 'local')
-    } finally {
-      setUnfinishedWorktreeRemovalHost(null)
       await rm(parentDir, { recursive: true, force: true })
     }
   })

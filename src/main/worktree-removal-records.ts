@@ -7,7 +7,6 @@ import {
   withSidecarSnapshotQueue,
   writeSidecarSnapshot
 } from './sidecar-snapshot-file'
-import type { CheckoutDirectoryIdentity } from './worktree-checkout-identity'
 
 const RECORDS_FILE_NAME = 'orca-worktree-removals.json'
 const RECORDS_VERSION = 1
@@ -25,8 +24,6 @@ export type WorktreeRemovalRecord = {
   deleteBranch: boolean
   force: boolean
   requestedAt: number
-  /** The checkout directory when the removal was accepted; absent on records older builds wrote. */
-  checkoutIdentity?: CheckoutDirectoryIdentity
   /** The delete failed after Git dropped the registration with the checkout still on disk. */
   failure?: WorktreeRemovalFailure
 }
@@ -54,18 +51,8 @@ function parseFailure(value: unknown): WorktreeRemovalFailure | null | undefined
     : null
 }
 
-// Why unprovable rather than invalid: dropping the record would also drop a resume Git can finish.
-function parseCheckoutIdentity(value: unknown): CheckoutDirectoryIdentity | undefined {
-  return isRecord(value) && typeof value.ino === 'string' && typeof value.birthtimeNs === 'string'
-    ? { ino: value.ino, birthtimeNs: value.birthtimeNs }
-    : undefined
-}
-
 function parseRecord(value: unknown): WorktreeRemovalRecord | null {
   const failure = isRecord(value) ? parseFailure(value.failure) : null
-  const checkoutIdentity = isRecord(value)
-    ? parseCheckoutIdentity(value.checkoutIdentity)
-    : undefined
   if (
     failure === null ||
     !isRecord(value) ||
@@ -91,7 +78,6 @@ function parseRecord(value: unknown): WorktreeRemovalRecord | null {
     deleteBranch: value.deleteBranch,
     force: value.force,
     requestedAt: value.requestedAt,
-    ...(checkoutIdentity ? { checkoutIdentity } : {}),
     ...(failure ? { failure } : {})
   }
 }

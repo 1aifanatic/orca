@@ -44,8 +44,6 @@ export type RemoveWorktreeOptions = GitWorktreeExecOptions & {
   knownRemovedWorktree?: Pick<GitWorktreeInfo, 'branch' | 'head' | 'locked' | 'lockReason'>
   /** Stops only `git worktree remove`; a killed branch cleanup could strand a ref lock. */
   checkoutDeleteSignal?: AbortSignal
-  /** Runs in the delete slot right before Git deletes; a throw refuses the delete. */
-  assertCheckoutBeforeDelete?: () => Promise<void>
 }
 
 // Why: bound `git worktree add` so a OneDrive cloud-placeholder stall fails fast (STA-1292); ample for an ordinary large checkout, but not one behind a slow content filter (#12696).

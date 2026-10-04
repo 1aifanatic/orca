@@ -21,11 +21,8 @@ import { findRegisteredDeletableWorktree } from '../worktree-removal-safety'
 import {
   assertUnregisteredRemovalLeftover,
   differentCheckoutAtPathError,
-  differentFolderAtPathError,
-  unregisteredRemovalLeftoverVerdict,
-  unreadableFolderAtPathError
+  isUnregisteredRemovalLeftover
 } from '../worktree-removal-leftover'
-import { matchCheckoutDirectory } from '../worktree-checkout-identity'
 import { CLIENT_REMOVAL_HOME } from '../worktree-removal-home-guard'
 import type { WorktreeRemovalRecord } from '../worktree-removal-records'
 import {
@@ -131,8 +128,6 @@ async function finishInterruptedLocalWorktreeRemoval(
     deleteBranch: record.deleteBranch,
     target: { id: record.worktreeId }
   }
-  // Why the repo's current path: the record's may predate a repo move.
-  const leftoverRecord = { ...record, repoPath: repo.path }
   const worktrees = await listWorktreesStrict(repo.path, localOptions)
   const registered = worktrees.some((worktree) =>
     areWorktreePathsEqual(worktree.path, record.worktreePath)
@@ -151,25 +146,14 @@ async function finishInterruptedLocalWorktreeRemoval(
     )
   }
   const gitLink = await readCheckoutGitLink(record.worktreePath)
-  const directory = await matchCheckoutDirectory(record.worktreePath, record.checkoutIdentity)
-  if (directory === 'unreadable') {
-    throw unreadableFolderAtPathError(record.worktreePath)
-  }
-  // Why: the finish forces and nobody asked for it this run, so it may only take the directory the
-  // removal accepted. A record without an identity (an older build's) is left to Git's own checks.
-  if (
-    directory === 'different' ||
-    (directory === 'unrecorded' && !(deletable && gitLink === 'present'))
-  ) {
-    throw differentFolderAtPathError(record.worktreePath)
-  }
+  // Why: the finish forces, so a checkout created at this path since the quit must not be taken.
   // At an unregistered path, only a `.git` naming the admin entry Git removed is this checkout's
   // own leftover (Git drops the registration even when its delete fails partway).
-  const leftover = deletable ? undefined : await unregisteredRemovalLeftoverVerdict(leftoverRecord)
-  if (leftover === 'unreadable') {
-    throw unreadableFolderAtPathError(record.worktreePath)
-  }
-  if (deletable ? !isRecordedCheckout(deletable, record) : leftover !== 'leftover') {
+  if (
+    deletable
+      ? !isRecordedCheckout(deletable, record)
+      : !(await isUnregisteredRemovalLeftover(repo.path, record.worktreePath))
+  ) {
     throw differentCheckoutAtPathError(record.worktreePath)
   }
   // Why: Git deletes `.git` wherever it falls in directory order (early on NTFS) and refuses to
@@ -178,17 +162,6 @@ async function finishInterruptedLocalWorktreeRemoval(
   if (deletable && gitLink === 'missing') {
     assertWorktreeUnlockedForRemoval(deletable)
     gitCanRemove = await restoreMissingWorktreeGitFile(repo.path, deletable.path, localOptions)
-  }
-  // Why recheck in the slot: the wait can outlast large deletes, and the path may change meanwhile.
-  // An older build's record (`unrecorded`) reaches only Git's delete, which validates the checkout.
-  const assertAcceptedDirectory = async (): Promise<void> => {
-    const current = await matchCheckoutDirectory(record.worktreePath, record.checkoutIdentity)
-    if (current === 'unreadable') {
-      throw unreadableFolderAtPathError(record.worktreePath)
-    }
-    if (current === 'different' || (current === 'unrecorded' && !gitCanRemove)) {
-      throw differentFolderAtPathError(record.worktreePath)
-    }
   }
   const gate = await args.acquireWatcherRemoval(record.worktreePath)
   if (args.stopPtys) {
@@ -200,12 +173,7 @@ async function finishInterruptedLocalWorktreeRemoval(
     }
   }
   if (deletable && gitCanRemove) {
-    return finishRuntimeLocalWorktreeRemoval(
-      { ...finishArgs, assertCheckoutBeforeDelete: assertAcceptedDirectory },
-      deletable,
-      gate,
-      args.stopSignal
-    )
+    return finishRuntimeLocalWorktreeRemoval(finishArgs, deletable, gate, args.stopSignal)
   }
   // Unregistered, or no admin entry claims the checkout so Git cannot validate it: the leftover is
   // deleted in this process as a last resort, then pruned.
@@ -216,9 +184,10 @@ async function finishInterruptedLocalWorktreeRemoval(
       repo.path,
       record.worktreePath,
       record.deleteBranch && record.branch ? { name: record.branch, head: record.head } : null,
+      // Why only unregistered: a registered checkout here was just proven to be the recorded one.
       deletable
-        ? assertAcceptedDirectory
-        : () => assertUnregisteredRemovalLeftover(leftoverRecord, localOptions),
+        ? async () => {}
+        : () => assertUnregisteredRemovalLeftover(repo.path, record.worktreePath, localOptions),
       localOptions
     )
     removed = true

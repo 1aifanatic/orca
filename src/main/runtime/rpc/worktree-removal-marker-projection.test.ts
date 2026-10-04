@@ -55,8 +55,7 @@ describe('worktree listings while a checkout is being deleted', () => {
         repoPath: '/work/repo',
         worktree: { path: '/work/feature', branch: 'refs/heads/feature', head: 'abc' },
         deleteBranch: true,
-        force: false,
-        checkoutIdentity: undefined
+        force: false
       },
       run: () => new Promise(() => {}),
       publish: () => {}

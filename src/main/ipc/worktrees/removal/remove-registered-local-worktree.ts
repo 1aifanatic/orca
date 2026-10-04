@@ -44,7 +44,6 @@ import {
   removesInBackground,
   startBackgroundWorktreeRemoval
 } from '../../../worktree-background-removal'
-import { readCheckoutDirectoryIdentity } from '../../../worktree-checkout-identity'
 
 export async function removeRegisteredLocalWorktree(
   context: WorktreeIpcContext,
@@ -152,15 +151,12 @@ export async function removeRegisteredLocalWorktree(
   }
   // Why detached: every refusal above already ran, and Git's 20-35 s delete must finish even when the
   // request that asked for it goes away; other views read the host's `removing` marker meanwhile.
-  // Why: a later retry or resume may only delete this directory, never one made at the path since.
-  const checkoutIdentity = await readCheckoutDirectoryIdentity(refreshedRegisteredWorktree.path)
   void startBackgroundWorktreeRemoval({
     removal: {
       worktreeId: args.worktreeId,
       repoId,
       repoPath: repo.path,
       worktree: refreshedRegisteredWorktree,
-      checkoutIdentity,
       deleteBranch,
       force: args.force ?? false
     },

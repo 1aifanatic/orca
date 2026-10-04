@@ -115,7 +115,7 @@ vi.mock('../worktree-removal-table', async (importOriginal) => ({
 }))
 vi.mock('../worktree-removal-leftover', async (importOriginal) => ({
   ...(await importOriginal<typeof WorktreeRemovalLeftover>()),
-  unregisteredRemovalLeftoverVerdict: vi.fn(async () => 'leftover')
+  isUnregisteredRemovalLeftover: vi.fn(async () => true)
 }))
 
 const featureId = 'repo-1::/workspace/feature-wt'
@@ -142,8 +142,7 @@ async function failAfterGitDroppedIt(): Promise<void> {
       repoPath: '/workspace/repo',
       worktree: feature,
       deleteBranch: true,
-      force: false,
-      checkoutIdentity: undefined
+      force: false
     },
     run: async () => {
       listWorktreesMock.mockResolvedValue([main])

@@ -255,8 +255,7 @@ describe('archive hook removal gate', () => {
         repoPath: TEST_REPO_PATH,
         worktree: { path: TEST_WORKTREE_PATH, branch: 'feature', head: 'feature' },
         deleteBranch: true,
-        force: false,
-        checkoutIdentity: undefined
+        force: false
       },
       run: () => desktopDelete.promise,
       publish: () => {}

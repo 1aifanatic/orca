@@ -32,7 +32,6 @@ import {
   waitForPendingWorktreeRemoval
 } from '../worktree-background-removal'
 import { runSerializedWorktreeRemovalAcceptance } from '../worktree-removal-acceptance-queue'
-import { readCheckoutDirectoryIdentity } from '../worktree-checkout-identity'
 
 /** Runs after the previous same-repo removal was accepted; see runSerializedWorktreeRemovalAcceptance. */
 export function removeRuntimeRegisteredLocalWorktree(
@@ -169,15 +168,12 @@ async function acceptRuntimeRegisteredLocalWorktreeRemoval(args: {
   }
   // Why detached: every refusal above already ran, and Git's 20-35 s delete must finish even when the
   // request that asked for it times out; other views read the host's `removing` marker meanwhile.
-  // Why: a later retry or resume may only delete this directory, never one made at the path since.
-  const checkoutIdentity = await readCheckoutDirectoryIdentity(refreshed.path)
   void startBackgroundWorktreeRemoval({
     removal: {
       worktreeId: args.target.id,
       repoId: repo.id,
       repoPath: repo.path,
       worktree: refreshed,
-      checkoutIdentity,
       deleteBranch: args.deleteBranch,
       force: args.force
     },
@@ -202,11 +198,7 @@ export type RuntimeLocalWorktreeRemovalFinishArgs = Pick<
   | 'closeWatchers'
   | 'preserveBranchHead'
   | 'finishRemoval'
-> & {
-  target: { id: string }
-  /** For a finish nobody asked for this run: refuses in the delete slot if the checkout changed. */
-  assertCheckoutBeforeDelete?: () => Promise<void>
-}
+> & { target: { id: string } }
 
 /** Git's delete and everything after it; the refusals and teardown before it already ran. */
 export async function finishRuntimeLocalWorktreeRemoval(
@@ -219,8 +211,6 @@ export async function finishRuntimeLocalWorktreeRemoval(
   const canonicalPath = refreshed.path
   let removalResult: RemoveWorktreeResult | undefined
   let completed = false
-  const { assertCheckoutBeforeDelete } = args
-  let refusal: unknown
   try {
     try {
       removalResult = args.preserveBranchHead(
@@ -228,24 +218,11 @@ export async function finishRuntimeLocalWorktreeRemoval(
           ...(!args.deleteBranch ? { deleteBranch: args.deleteBranch } : {}),
           knownRemovedWorktree: refreshed,
           ...localOptions,
-          ...(checkoutDeleteSignal ? { checkoutDeleteSignal } : {}),
-          ...(assertCheckoutBeforeDelete
-            ? {
-                assertCheckoutBeforeDelete: () =>
-                  assertCheckoutBeforeDelete().catch((error: unknown) => {
-                    refusal = error
-                    throw error
-                  })
-              }
-            : {})
+          ...(checkoutDeleteSignal ? { checkoutDeleteSignal } : {})
         }),
         refreshed.head
       )
     } catch (error) {
-      // Why: Git deleted nothing, so no recovery below may delete the path in its place.
-      if (error === refusal) {
-        throw error
-      }
       const recovered = await recoverLocalWindowsWorktreeRemoval({
         error,
         force: args.force,

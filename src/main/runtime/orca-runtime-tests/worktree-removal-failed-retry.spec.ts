@@ -5,7 +5,6 @@ import { existsSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  gitRunner,
   join,
   listWorktreesStrict,
   mkdir,
@@ -13,14 +12,9 @@ import {
   removeWorktree,
   rm,
   scanLocalRepoWorktreesForResolutionMock,
-  tmpdir,
-  writeFile
+  tmpdir
 } from '../orca-runtime-test-mocks.spec'
-import {
-  TEST_REPO_ID,
-  TEST_REPO_PATH,
-  createStaleRuntimeWorktreeStore
-} from '../orca-runtime-test-fixtures.spec'
+import { TEST_REPO_ID, TEST_REPO_PATH } from '../orca-runtime-test-fixtures.spec'
 import { createWorktreeRemovalRuntime } from '../orca-runtime-test-scenario-builders.spec'
 import {
   _resetPendingWorktreeRemovalsForTests,
@@ -32,7 +26,6 @@ import {
   readWorktreeRemovalRecords,
   writeWorktreeRemovalRecords
 } from '../../worktree-removal-records'
-import { readCheckoutDirectoryIdentity } from '../../worktree-checkout-identity'
 
 const FAILURE = "error: failed to delete 'node_modules/a/LICENSE': Operation not permitted"
 
@@ -47,7 +40,6 @@ describe('runtime Delete on a failed delete’s leftover', () => {
     leftover = join(directory, 'feature')
     leftoverId = `${TEST_REPO_ID}::${leftover}`
     await mkdir(join(leftover, 'node_modules'), { recursive: true })
-    const checkoutIdentity = await readCheckoutDirectoryIdentity(leftover)
     await writeWorktreeRemovalRecords(directory, () => [
       {
         worktreeId: leftoverId,
@@ -59,7 +51,6 @@ describe('runtime Delete on a failed delete’s leftover', () => {
         deleteBranch: true,
         force: true,
         requestedAt: 1,
-        checkoutIdentity,
         failure: { message: FAILURE, failedAt: 2 }
       }
     ])
@@ -213,202 +204,5 @@ describe('runtime listing straight after a delete fails partway', () => {
       path: leftover,
       removalError: expect.stringMatching(/Operation not permitted/)
     })
-  })
-})
-
-describe('runtime Delete after the user replaced a failed delete’s leftover', () => {
-  let directory = ''
-  let leftover = ''
-  let leftoverId = ''
-
-  beforeEach(async () => {
-    vi.clearAllMocks()
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    directory = await realpath(await mkdtemp(join(tmpdir(), 'orca-runtime-replaced-leftover-')))
-    leftover = join(directory, 'feature')
-    leftoverId = `${TEST_REPO_ID}::${leftover}`
-    await mkdir(join(leftover, 'node_modules'), { recursive: true })
-    const checkoutIdentity = await readCheckoutDirectoryIdentity(leftover)
-    await writeWorktreeRemovalRecords(directory, () => [
-      {
-        worktreeId: leftoverId,
-        repoId: TEST_REPO_ID,
-        repoPath: TEST_REPO_PATH,
-        worktreePath: leftover,
-        branch: 'feature',
-        head: 'abc',
-        deleteBranch: true,
-        force: true,
-        requestedAt: 1,
-        checkoutIdentity,
-        failure: { message: FAILURE, failedAt: 2 }
-      }
-    ])
-    await loadWorktreeRemovalRecords(directory)
-    vi.mocked(listWorktreesStrict).mockResolvedValue([])
-    vi.spyOn(gitRunner, 'gitExecFileAsync').mockImplementation(async (args) => {
-      if (args[0] === 'status') {
-        throw new Error('fatal: not a git repository')
-      }
-      return { stdout: '', stderr: '' }
-    })
-    // The user deletes the leftover by hand and makes a folder of their own at the path.
-    await rm(leftover, { recursive: true, force: true })
-    await mkdir(leftover)
-    await writeFile(join(leftover, 'notes.txt'), 'mine\n')
-  })
-
-  afterEach(async () => {
-    await _settlePendingWorktreeRemovalsForTests()
-    _resetPendingWorktreeRemovalsForTests()
-    vi.restoreAllMocks()
-    await rm(directory, { recursive: true, force: true })
-  })
-
-  // What Orca keeps for every workspace it created, which alone once authorized deleting the path.
-  function runtimeWithCreationMetadata() {
-    const stale = createStaleRuntimeWorktreeStore(leftoverId, {
-      orcaCreatedAt: Date.now(),
-      orcaCreationSource: 'runtime'
-    })
-    return { runtime: createWorktreeRemovalRuntime(stale.runtimeStore), ...stale }
-  }
-
-  async function deleteById(runtime: ReturnType<typeof createWorktreeRemovalRuntime>) {
-    await runtime
-      .removeManagedWorktree(`id:${leftoverId}`, { force: true, waitForBackgroundRemoval: true })
-      .catch(() => {})
-    await _settlePendingWorktreeRemovalsForTests()
-  }
-
-  it('leaves the folder on Delete, and on every Delete after, ending the workspace', async () => {
-    const { runtime, runtimeStore } = runtimeWithCreationMetadata()
-
-    await deleteById(runtime)
-    await deleteById(runtime)
-
-    expect(existsSync(join(leftover, 'notes.txt'))).toBe(true)
-    expect(runtimeStore.getWorktreeMeta(leftoverId)).toBeUndefined()
-    await vi.waitFor(async () => expect(await readWorktreeRemovalRecords(directory)).toEqual([]))
-  })
-
-  it('leaves the folder on a Delete after another client’s listing ended the failed delete', async () => {
-    const { runtime, runtimeStore } = runtimeWithCreationMetadata()
-
-    const listed = await runtime.listDetectedManagedWorktrees(`id:${TEST_REPO_ID}`)
-    expect(listed.worktrees.some((row) => row.id === leftoverId)).toBe(false)
-    await deleteById(runtime)
-
-    expect(existsSync(join(leftover, 'notes.txt'))).toBe(true)
-    expect(runtimeStore.getWorktreeMeta(leftoverId)).toBeUndefined()
-    await vi.waitFor(async () => expect(await readWorktreeRemovalRecords(directory)).toEqual([]))
-  })
-
-  it('leaves the folder on a Delete after a listing could not ask Git about the failed delete', async () => {
-    vi.mocked(listWorktreesStrict).mockRejectedValueOnce(new Error('git worktree list timed out'))
-    const { runtime, runtimeStore } = runtimeWithCreationMetadata()
-
-    await runtime.listDetectedManagedWorktrees(`id:${TEST_REPO_ID}`)
-    // Kept for the next listing to decide, rather than dropped with the workspace left behind.
-    expect(await readWorktreeRemovalRecords(directory)).toHaveLength(1)
-    await deleteById(runtime)
-
-    expect(existsSync(join(leftover, 'notes.txt'))).toBe(true)
-    expect(runtimeStore.getWorktreeMeta(leftoverId)).toBeUndefined()
-  })
-
-  it('leaves the folder on a Delete made while a listing asks Git about the failed delete', async () => {
-    let answerGit!: () => void
-    let askedGit!: () => void
-    const listingAskedGit = new Promise<void>((resolve) => (askedGit = resolve))
-    vi.mocked(listWorktreesStrict).mockImplementationOnce(() => {
-      askedGit()
-      return new Promise((resolve) => (answerGit = () => resolve([])))
-    })
-    const { runtime, runtimeStore } = runtimeWithCreationMetadata()
-
-    const listing = runtime.listDetectedManagedWorktrees(`id:${TEST_REPO_ID}`)
-    await listingAskedGit
-    await deleteById(runtime)
-    const notesAfterDelete = existsSync(join(leftover, 'notes.txt'))
-    answerGit()
-    await listing
-
-    expect(notesAfterDelete).toBe(true)
-    expect(runtimeStore.getWorktreeMeta(leftoverId)).toBeUndefined()
-  })
-
-  it('leaves the folder on a Delete after a restart’s refused delete could not ask Git what is left', async () => {
-    // The delete was still running when Orca quit; the user replaced the folder before the restart.
-    const [{ failure: _failure, ...interrupted }] = await readWorktreeRemovalRecords(directory)
-    _resetPendingWorktreeRemovalsForTests()
-    await writeWorktreeRemovalRecords(directory, () => [interrupted])
-    await loadWorktreeRemovalRecords(directory)
-    vi.mocked(listWorktreesStrict)
-      .mockResolvedValueOnce([])
-      .mockRejectedValueOnce(new Error('git worktree list timed out'))
-    const { runtime, runtimeStore } = runtimeWithCreationMetadata()
-
-    runtime.finishInterruptedWorktreeRemovals()
-    await _settlePendingWorktreeRemovalsForTests()
-    expect(await readWorktreeRemovalRecords(directory)).toMatchObject([
-      { worktreeId: leftoverId, failure: { message: expect.stringMatching(/is not the one Orca/) } }
-    ])
-    await deleteById(runtime)
-
-    expect(existsSync(join(leftover, 'notes.txt'))).toBe(true)
-    expect(runtimeStore.getWorktreeMeta(leftoverId)).toBeUndefined()
-  })
-
-  it('leaves a folder made at the path after a restart found the leftover gone', async () => {
-    await rm(leftover, { recursive: true, force: true })
-    _resetPendingWorktreeRemovalsForTests()
-    await loadWorktreeRemovalRecords(directory)
-    await mkdir(leftover)
-    await writeFile(join(leftover, 'notes.txt'), 'mine\n')
-    const { runtime, runtimeStore } = runtimeWithCreationMetadata()
-
-    await deleteById(runtime)
-
-    expect(existsSync(join(leftover, 'notes.txt'))).toBe(true)
-    expect(runtimeStore.getWorktreeMeta(leftoverId)).toBeUndefined()
-  })
-
-  it('drops the failed delete from disk only once its workspace’s end is saved', async () => {
-    const { runtimeStore } = runtimeWithCreationMetadata()
-    let saved!: () => void
-    const flushPendingOrThrowAsync = vi.fn(
-      () => new Promise<void>((resolve) => (saved = () => resolve()))
-    )
-    const runtime = createWorktreeRemovalRuntime({ ...runtimeStore, flushPendingOrThrowAsync })
-
-    await runtime.listDetectedManagedWorktrees(`id:${TEST_REPO_ID}`)
-    expect(runtimeStore.getWorktreeMeta(leftoverId)).toBeUndefined()
-    expect(flushPendingOrThrowAsync).toHaveBeenCalledOnce()
-    // A crash now must still find the record, or the saved metadata would outlive it.
-    await new Promise((resolve) => setTimeout(resolve, 100))
-    expect(await readWorktreeRemovalRecords(directory)).toHaveLength(1)
-
-    saved()
-    await vi.waitFor(async () => expect(await readWorktreeRemovalRecords(directory)).toEqual([]))
-  })
-
-  it('keeps the workspace when Git registers a checkout at the path again after the scan', async () => {
-    vi.mocked(listWorktreesStrict).mockResolvedValue([
-      {
-        path: leftover,
-        head: 'def',
-        branch: 'refs/heads/other',
-        isBare: false,
-        isMainWorktree: false
-      }
-    ])
-    scanLocalRepoWorktreesForResolutionMock.mockResolvedValue({ ok: true, worktrees: [] })
-    const { runtime, removeWorktreeMeta } = runtimeWithCreationMetadata()
-
-    await runtime.listDetectedManagedWorktrees(`id:${TEST_REPO_ID}`)
-
-    await vi.waitFor(async () => expect(await readWorktreeRemovalRecords(directory)).toEqual([]))
-    expect(removeWorktreeMeta).not.toHaveBeenCalled()
   })
 })

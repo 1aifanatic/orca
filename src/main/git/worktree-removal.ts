@@ -80,8 +80,6 @@ async function performRemoveWorktree(
   }
   args.push(worktreePath)
   await runUnderWorktreeDeleteLimit(async () => {
-    // Why in the slot: the wait can outlast two large deletes, and the path may change meanwhile.
-    await options.assertCheckoutBeforeDelete?.()
     await gitExecFileAsync(args, execOptions)
     await removeCheckoutLeftByGit(worktreePath, options)
   })
