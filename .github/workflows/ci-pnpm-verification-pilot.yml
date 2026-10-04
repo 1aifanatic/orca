@@ -20,6 +20,7 @@ on:
           - imports
           - recovery
           - cursor
+          - deadlines
         default: all
 permissions:
   contents: read
@@ -318,5 +319,38 @@ jobs:
         if: "!cancelled()"
         with:
           name: unit-capacity-cursor
+          path: ${{ runner.temp }}/capacity-output
+          retention-days: 14
+  deadlines:
+    name: unit capacity deadlines
+    if: inputs.cohort == 'all' || inputs.cohort == 'deadlines' || inputs.cohort == 'next-fixtures'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: node
+          node-version: "24"
+          cache-pnpm-store: "false"
+      - name: Typecheck modified Node sources
+        run: pnpm tc:node
+      - name: Expand frozen baseline and portable benchmark
+        run: |-
+          mkdir -p "$RUNNER_TEMP/capacity-support" "$RUNNER_TEMP/capacity-output"
+          tar -xzf config/ci-capacity-benchmark/deadlines.tar.gz -C "$RUNNER_TEMP/capacity-support"
+          git rev-parse HEAD > "$RUNNER_TEMP/capacity-output/source-sha.txt"
+          node --version > "$RUNNER_TEMP/capacity-output/node-version.txt"
+          pnpm --version > "$RUNNER_TEMP/capacity-output/pnpm-version.txt"
+      - name: Run alternating timed pairs and separate failure controls
+        run: |-
+          python3 "$RUNNER_TEMP/capacity-support/run-benchmark.py" --out "$RUNNER_TEMP/capacity-output/pairs"
+          python3 "$RUNNER_TEMP/capacity-support/run-controls.py" --out "$RUNNER_TEMP/capacity-output/controls"
+      - uses: actions/upload-artifact@v7
+        if: "!cancelled()"
+        with:
+          name: unit-capacity-deadlines
           path: ${{ runner.temp }}/capacity-output
           retention-days: 14
