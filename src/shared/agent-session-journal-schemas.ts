@@ -15,12 +15,12 @@
 
 import { z } from 'zod'
 import { AgentSessionContextUsageSchema } from './agent-session-context-usage-schema'
+import { AgentSessionFailureFactSchema } from './agent-session-failure-fact-schema'
 import type {
   AgentJournalItemBody,
   AgentJournalMessageItem,
   AgentJournalResolution,
-  AgentJournalRenderItem,
-  AgentJournalSubmission
+  AgentJournalRenderItem
 } from './agent-session-journal-types'
 
 const BoundedPayload = z.object({
@@ -201,14 +201,6 @@ const ThreadGoalState = z.union([
   z.object({ state: z.string() }).refine((value) => !['set', 'cleared'].includes(value.state))
 ])
 
-/** Open like `state`: a kind, audience or refusal detail a newer host writes must not turn the row
- *  malformed; the fact reader is where an unplaceable one is dropped. */
-const FailureFact = z.object({
-  kind: z.string().min(1),
-  detail: z.object({ text: z.string(), audience: z.string().min(1) }).optional(),
-  refusal: z.object({ code: z.string().min(1), details: z.looseObject({}).optional() }).optional()
-})
-
 export const AgentJournalItemBodySchema = z.discriminatedUnion('kind', [
   MessageBody,
   z.object({
@@ -262,7 +254,7 @@ export const AgentJournalItemBodySchema = z.discriminatedUnion('kind', [
       .optional(),
     providerFrame: ProviderFrame.optional(),
     threadGoal: ThreadGoalState.optional(),
-    failure: FailureFact.optional()
+    failure: AgentSessionFailureFactSchema.optional()
   }),
   z.object({
     kind: z.literal('turn'),
@@ -316,23 +308,6 @@ export const AgentJournalRenderItemSchema = z.object({
   ...AgentJournalProducerLinkageFields
 })
 
-export const AgentJournalSubmissionSchema = z.object({
-  clientMessageId: z.string().min(1),
-  fence: z.number().int(),
-  payloadFingerprint: z.string(),
-  dispatchState: z.string().min(1),
-  providerItemId: z.string().nullable(),
-  reason: z.string().nullable(),
-  submittedAt: z.number(),
-  resolvedAt: z.number().nullable(),
-  recovered: z.literal(true).optional(),
-  handoverRecorded: z.literal(true).optional(),
-  handedOverAt: z.number().optional(),
-  rejection: FailureFact.optional(),
-  // Listed, or the parse strips it: this schema drops unknown keys.
-  queuedMessageId: z.string().min(1).optional()
-})
-
 export function isAgentJournalResolution(value: unknown): value is AgentJournalResolution {
   return Resolution.safeParse(value).success
 }
@@ -354,12 +329,6 @@ export function isAdmissibleAgentJournalRenderItem(
   return AgentJournalRenderItemSchema.safeParse(value).success
 }
 
-export function isAdmissibleAgentJournalSubmission(
-  value: unknown
-): value is AgentJournalSubmission {
-  return AgentJournalSubmissionSchema.safeParse(value).success
-}
-
 /** Compile-time proof that every canonical value is admissible, so replay can
  *  never reject a row a writer in this build produced. The schemas are
  *  deliberately wider on open string fields, so only this direction holds. */
@@ -367,8 +336,5 @@ type Admits<T extends true> = T
 export type CanonicalJournalTypesAreAdmissible = [
   Admits<AgentJournalItemBody extends z.input<typeof AgentJournalItemBodySchema> ? true : false>,
   Admits<AgentJournalMessageItem extends z.input<typeof MessageBody> ? true : false>,
-  Admits<
-    AgentJournalRenderItem extends z.input<typeof AgentJournalRenderItemSchema> ? true : false
-  >,
-  Admits<AgentJournalSubmission extends z.input<typeof AgentJournalSubmissionSchema> ? true : false>
+  Admits<AgentJournalRenderItem extends z.input<typeof AgentJournalRenderItemSchema> ? true : false>
 ]
