@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       ssh_startup_diagnostic:
-        description: Run only the isolated SSH startup observation case
+        description: Observe SSH startup in its original watcher and parking test sequence
         type: boolean
         default: false
 
@@ -95,12 +95,26 @@ jobs:
           native-runtime: electron
       - name: Verify local Electron runtime
         run: pnpm run ensure:electron-runtime
-      - name: Observe only the original failed SSH startup case
+      - name: Run original predecessor watcher tests
+        run: >-
+          xvfb-run --auto-servernum bash .github/scripts/e2e-with-window-manager.sh
+          env SKIP_BUILD=1 ORCA_BACKGROUND_LAUNCH=1 ORCA_E2E_FORWARD_APP_LOGS=1
+          pnpm run test:e2e:ssh-docker-watcher-isolation -- --retries=0
+      - name: Preserve predecessor test evidence
+        if: always()
+        shell: bash
+        run: |
+          if [ -d test-results ]; then
+            mkdir -p e2e-traces
+            mv test-results e2e-traces/watcher-isolation
+          fi
+      - name: Observe startup in the original parking and startup sequence
+        if: '!cancelled()'
         run: >-
           xvfb-run --auto-servernum bash .github/scripts/e2e-with-window-manager.sh
           env SKIP_BUILD=1 ORCA_BACKGROUND_LAUNCH=1 ORCA_E2E_FORWARD_APP_LOGS=1
           pnpm run test:e2e:ssh-docker-terminal-parking --
-          --grep 'survives an SSH reconnect while the replacement shell is not ready' --retries=0
+          --retries=0
       - name: Preserve partial diagnostics and original assertion
         if: always()
         uses: actions/upload-artifact@v7
@@ -108,6 +122,7 @@ jobs:
           name: ssh-startup-original-case-diagnostic
           path: |
             test-results/
+            e2e-traces/
             diagnostic-source/
           include-hidden-files: true
           retention-days: 7
