@@ -11,6 +11,9 @@ type StreamEntry = {
   ackWaiters: Set<() => void>
 }
 
+// Why: a stalled but connected client can hold a terminal-frame slot open indefinitely.
+const OPERATION_SETTLE_DEADLINE_MS = 10_000
+
 export class TooManyStreamsError extends Error {
   readonly code = RelayErrorCode.TooManyStreams
   constructor() {
@@ -25,6 +28,8 @@ export class RelayStreamRegistry {
   private closing = new Map<number, Promise<void>>()
   private closeFailures = new Map<number, unknown>()
   private operations = new Set<Promise<void>>()
+
+  constructor(private readonly operationDeadlineMs = OPERATION_SETTLE_DEADLINE_MS) {}
 
   /** Tracks work that may still open or release a handle; disposeAll waits for it. */
   beginOperation(): () => void {
@@ -172,7 +177,7 @@ export class RelayStreamRegistry {
     return this.streams.size
   }
 
-  /** Permanently fences new streams; rejects while any handle is still unclosed so a retry can finish. */
+  /** Fences new streams until {@link reopen}; rejects while any handle is unclosed so a retry can finish. */
   async disposeAll(): Promise<void> {
     this.disposed = true
     // Why: flag every stream as aborted so any in-flight pump exits its loop
@@ -183,17 +188,35 @@ export class RelayStreamRegistry {
     }
     const ids = Array.from(this.streams.keys())
     const results = await Promise.allSettled(ids.map((id) => this.release(id)))
-    await Promise.all(this.operations)
-    const failures = results.filter((result) => result.status === 'rejected')
+    const settled = await settlesWithin(Promise.all(this.operations), this.operationDeadlineMs)
+    const failures = results.flatMap((result) =>
+      result.status === 'rejected' ? [result.reason] : []
+    )
+    if (!settled) {
+      failures.push(new Error('relay_file_stream_operations_unsettled'))
+    }
     if (failures.length > 0 || this.streams.size > 0) {
       throw new AggregateError(
-        [
-          ...new Set([...failures.map((failure) => failure.reason), ...this.closeFailures.values()])
-        ],
+        [...new Set([...failures, ...this.closeFailures.values()])],
         'relay_file_stream_shutdown_incomplete'
       )
     }
   }
+
+  reopen(): void {
+    this.disposed = false
+  }
+}
+
+function settlesWithin(work: Promise<unknown>, deadlineMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), deadlineMs)
+    timer.unref?.()
+    void work.then(() => {
+      clearTimeout(timer)
+      resolve(true)
+    })
+  })
 }
 
 function isErrorWithCode(error: unknown, code: string): boolean {

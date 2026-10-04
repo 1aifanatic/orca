@@ -2,12 +2,21 @@ import { execFile } from 'node:child_process'
 import type * as ChildProcess from 'node:child_process'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AgentExecHandler } from './agent-exec-handler'
-import { RELAY_AGENT_CLOSE_DEADLINE_MS } from './relay-agent-process-lifetime'
+import {
+  RELAY_AGENT_CLOSE_DEADLINE_MS,
+  RelayAgentProcessLifetime
+} from './relay-agent-process-lifetime'
 import { createFakeChild, requestContext } from './agent-exec-handler-test-harness'
 import type { MethodHandler, RelayDispatcher } from './dispatcher'
 
 // Why an untyped mock: the fake child stubs only what AgentExecHandler reads from a ChildProcess.
-const { spawnMock } = vi.hoisted(() => ({ spawnMock: vi.fn() }))
+const { spawnMock, loginShellMock } = vi.hoisted(() => ({
+  spawnMock: vi.fn(),
+  loginShellMock: vi.fn()
+}))
+vi.mock('../main/startup/login-shell-environment', () => ({
+  resolveLoginShellEnvironment: () => loginShellMock()
+}))
 vi.mock('child_process', async (importOriginal) => ({
   ...(await importOriginal<typeof ChildProcess>()),
   spawn: (...args: unknown[]) => spawnMock(...args),
@@ -86,6 +95,43 @@ it('refuses execution once disposal begins and after it completes', async () => 
   await Promise.all([request, disposal])
   await expect(f.exec()).rejects.toThrow()
   expect(spawnMock).toHaveBeenCalledTimes(1)
+})
+
+it('does not spawn when shutdown fences during login-shell resolution, and admits after reopen', async () => {
+  const f = fixture()
+  let resolveShell!: (env: NodeJS.ProcessEnv) => void
+  loginShellMock.mockReturnValueOnce(
+    new Promise<NodeJS.ProcessEnv>((resolve) => {
+      resolveShell = resolve
+    })
+  )
+  const request = f.exec({ shell: true })
+  await f.handler.dispose()
+  resolveShell({})
+  await expect(request).rejects.toThrow('relay_agent_execution_shutdown_fenced')
+  expect(spawnMock).not.toHaveBeenCalled()
+
+  f.handler.reopen()
+  const child = createFakeChild()
+  spawnMock.mockReturnValue(child)
+  const next = f.exec()
+  child.emit('close', 0)
+  await next
+  expect(spawnMock).toHaveBeenCalledOnce()
+})
+
+it('kills a child tracked after the fence instead of throwing', async () => {
+  const lifetime = new RelayAgentProcessLifetime()
+  void lifetime.dispose()
+  const child = createFakeChild()
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: track reads only pid, kill and the close/error events the fake emits.
+  expect(() => lifetime.track(child as unknown as Parameters<typeof lifetime.track>[0])).not.toThrow()
+  if (process.platform !== 'win32') {
+    expect(child.kill).toHaveBeenCalledWith('SIGKILL')
+  }
+  const disposal = lifetime.dispose()
+  child.emit('close', null)
+  await disposal
 })
 
 it('retains timed-out children until close rather than treating RPC settlement as exit', async () => {
