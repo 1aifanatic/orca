@@ -338,7 +338,9 @@ describe('withNativeChatCutTurnNotices', () => {
   it('places the notice in its turn, for desktop and phone alike', () => {
     const items = [user('u1'), turn('t1', 'u1', CUT), reply('a1', inTurn('t1')), user('u2')]
     const derived = withNativeChatCutTurnNotices(items, { agentName: 'Codex' })
-    const messages = projectStructuredAgentSessionMessages(derived, [], [])
+    const messages = projectStructuredAgentSessionMessages(derived, [], [], {
+      rejectedInPlace: true
+    })
     const { turnKeys } = nativeChatTurnMembership(messages, { items: derived, submissions: [] })
 
     const notice = messages.findIndex((message) => message.id.includes('cut-turn-notice'))
