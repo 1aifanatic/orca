@@ -32,6 +32,8 @@ import { structuredAgentSessionReadFailureNotice } from './structured-agent-sess
 import { useStructuredAgentSessionStartFailureFacts } from './use-structured-agent-session-start-failure-facts'
 import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
+import { useNativeChatHostOutage } from './use-native-chat-host-outage'
+import { NativeChatHostOutageNotice } from './NativeChatHostOutageNotice'
 
 const NO_SUBMISSIONS: readonly AgentJournalSubmission[] = []
 
@@ -86,6 +88,7 @@ export function NativeChatStructuredSession(
     target: props.target
   })
   const historyPhase = structuredChatHistoryPhase(provisionalLaunch, controller.status)
+  const hostOutage = useNativeChatHostOutage(props.target)
   const session = useMemo<NativeChatLiveSession>(
     () => ({
       messages: controller.messages,
@@ -102,7 +105,8 @@ export function NativeChatStructuredSession(
       sessionId: props.sessionId,
       agent: props.agent,
       ...(controller.error ? { error: controller.error } : {}),
-      hasMore: controller.hasOlder,
+      // Older pages can't load while the host is unreachable, so the row waits for it.
+      hasMore: controller.hasOlder && hostOutage === null,
       loadingEarlier: controller.loadingOlder,
       olderHistoryGeneration: controller.olderHistoryGeneration,
       loadEarlier: controller.loadOlder,
@@ -113,7 +117,7 @@ export function NativeChatStructuredSession(
             ? 'error'
             : 'ready'
     }),
-    [controller, historyPhase, props.agent, props.sessionId]
+    [controller, historyPhase, hostOutage, props.agent, props.sessionId]
   )
   // Read at click time, so the notices stay put while the outbox's Retry is rebuilt each render.
   const retryRef = useRef(controller.retry)
@@ -153,8 +157,9 @@ export function NativeChatStructuredSession(
   const viewState = selectNativeChatViewState(session, { readRetries: true })
   // Nothing reads an unread history, so its pane stays blank beside the Retry line.
   const loadingPane = historyPhase === 'unread' ? null : <NativeChatLoadingCue />
+  // A lost contact is the host notice's to say; the read adds only a refusal the host sent.
   const readFailure =
-    controller.status === 'error'
+    controller.status === 'error' && !(hostOutage && !controller.readRefusal)
       ? structuredAgentSessionReadFailureNotice(controller.readRefusal)
       : null
   const fontScale = useNativeChatFontScale(viewState.kind === 'ready')
@@ -240,11 +245,13 @@ export function NativeChatStructuredSession(
       runtime: (props.target.kind === 'local' ? 'local' : 'remote') as 'local' | 'remote',
       sessionId: props.sessionId,
       runtimeEnvironmentId:
-        props.target.kind === 'local' ? null : (props.target.environmentId ?? null)
+        props.target.kind === 'local' ? null : (props.target.environmentId ?? null),
+      ...(hostOutage ? { placeholder: hostOutage.composerPlaceholder } : {})
     }
   }, [
     controller,
     fileLinkContext?.worktreeId,
+    hostOutage,
     optionPickerRequest,
     props.agent,
     props.sessionId,
@@ -270,7 +277,7 @@ export function NativeChatStructuredSession(
       className="flex h-full min-h-0 w-full flex-col bg-background focus:outline-none"
     >
       <div className="flex min-h-0 flex-1 flex-col">
-        {viewState.kind === 'loading' ? (
+        {viewState.kind === 'loading' || (viewState.kind === 'error' && !readFailure) ? (
           loadingPane
         ) : viewState.kind === 'error' ? (
           <NativeChatEmptyState
@@ -315,6 +322,7 @@ export function NativeChatStructuredSession(
           composerRef.current?.focus()
         }}
       />
+      <NativeChatHostOutageNotice outage={hostOutage} />
       <NativeChatStructuredSessionStatus
         sessionId={props.sessionId}
         paneKey={paneKey}

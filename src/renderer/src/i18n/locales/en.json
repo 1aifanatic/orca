@@ -18080,7 +18080,13 @@
       "structuredSessionHostDeclined": "Opened {{value0}} in a terminal",
       "structuredSessionHostDeclinedDescription": "This server can't run a {{value0}} chat in this workspace.",
       "structuredSessionHostUnreachable": "Could not reach {{value0}}",
-      "structuredSessionHostUnreachableDescription": "Orca did not open a {{value0}} chat. Check the connection to the server and try again."
+      "structuredSessionHostUnreachableDescription": "Orca did not open a {{value0}} chat. Check the connection to the server and try again.",
+      "hostOutage": {
+        "offline": "{{hostName}} is offline",
+        "reconnecting": "{{hostName}} is reconnecting…",
+        "reconnect": "Reconnect",
+        "placeholder": "Messages send when {{hostName}} reconnects"
+      }
     },
     "tab": {
       "bar": {

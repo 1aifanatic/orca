@@ -17850,7 +17850,13 @@
       "structuredSessionHostDeclined": "{{value0}} をターミナルで開きました",
       "structuredSessionHostDeclinedDescription": "このサーバーはこのワークスペースで {{value0}} チャットを実行できません。",
       "structuredSessionHostUnreachable": "{{value0}} に接続できませんでした",
-      "structuredSessionHostUnreachableDescription": "Orca は {{value0}} チャットを開きませんでした。サーバーへの接続を確認して、もう一度お試しください。"
+      "structuredSessionHostUnreachableDescription": "Orca は {{value0}} チャットを開きませんでした。サーバーへの接続を確認して、もう一度お試しください。",
+      "hostOutage": {
+        "offline": "{{hostName}} はオフラインです",
+        "reconnecting": "{{hostName}} に再接続しています…",
+        "reconnect": "再接続",
+        "placeholder": "{{hostName}} に再接続するとメッセージが送信されます"
+      }
     },
     "tab": {
       "bar": {

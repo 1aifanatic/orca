@@ -29,6 +29,7 @@ export type NativeChatComposerFieldProps = {
   disabled: boolean
   hasPty: boolean
   canSend: boolean
+  placeholder?: string
   autocomplete: ComposerAutocomplete
   activeSuggestion: number
   notice: string | null
@@ -103,6 +104,7 @@ export function NativeChatComposerField({
   disabled,
   hasPty,
   canSend,
+  placeholder,
   autocomplete,
   activeSuggestion,
   notice,
@@ -267,7 +269,7 @@ export function NativeChatComposerField({
                       'components.native-chat.goal.placeholder',
                       'Describe your goal, define measurable outcomes for best results'
                     )
-                  : nativeChatComposerPlaceholder(hasPty, canSend)
+                  : (placeholder ?? nativeChatComposerPlaceholder(hasPty, canSend))
               }
               // Why: coarse-pointer min-height follows the app's touch target convention.
               // Editable content grows naturally; the 8lh cap (plus

@@ -15224,6 +15224,12 @@
         "queuePausedCleared": "Cola en pausa después de que borraste la conversación",
         "queuePaused": "Cola en pausa",
         "resume": "Reanudar"
+      },
+      "hostOutage": {
+        "offline": "{{hostName}} está sin conexión",
+        "reconnecting": "{{hostName}} se está reconectando…",
+        "reconnect": "Reconectar",
+        "placeholder": "Los mensajes se enviarán cuando {{hostName}} se reconecte"
       }
     },
     "tab": {

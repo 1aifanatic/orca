@@ -36,6 +36,8 @@ export type NativeChatStructuredComposerTransport = {
   sessionId: string
   /** Owning runtime for that report; null is the local runtime. */
   runtimeEnvironmentId: string | null
+  /** Replaces the idle placeholder, e.g. while the chat's host is unreachable. */
+  placeholder?: string
 }
 
 export type NativeChatOptimisticSendOutcome = {
