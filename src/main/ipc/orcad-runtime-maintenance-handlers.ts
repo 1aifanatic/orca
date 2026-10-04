@@ -9,19 +9,21 @@ export function registerOrcadRuntimeMaintenanceHandlers(options: ManagedOrcadAct
   registerManagedServerActions(actions)
   ipcMain.handle(
     'runtimeEnvironments:updateOrcad',
-    (_event, args: { selector: string; force?: boolean }) =>
+    async (_event, args: { selector: string; force?: boolean }) =>
       actions.update(requiredString(args?.selector, 'Server'), args?.force === true)
   )
-  ipcMain.handle('runtimeEnvironments:rollbackOrcad', (_event, args: { selector: string }) =>
+  ipcMain.handle('runtimeEnvironments:rollbackOrcad', async (_event, args: { selector: string }) =>
     actions.rollback(requiredString(args?.selector, 'Server'))
   )
-  ipcMain.handle('runtimeEnvironments:recoverOrcad', (_event, args: { selector: string }) =>
+  ipcMain.handle('runtimeEnvironments:recoverOrcad', async (_event, args: { selector: string }) =>
     actions.recover(requiredString(args?.selector, 'Server'))
   )
-  ipcMain.handle('runtimeEnvironments:stopOrcad', (_event, args: { selector: string }) =>
+  ipcMain.handle('runtimeEnvironments:stopOrcad', async (_event, args: { selector: string }) =>
     actions.stop(requiredString(args?.selector, 'Server'))
   )
-  ipcMain.handle('runtimeEnvironments:cancelOrcadStop', (_event, args: { selector: string }) =>
-    actions.cancelStop(requiredString(args?.selector, 'Server'))
+  ipcMain.handle(
+    'runtimeEnvironments:cancelOrcadStop',
+    async (_event, args: { selector: string }) =>
+      actions.cancelStop(requiredString(args?.selector, 'Server'))
   )
 }
