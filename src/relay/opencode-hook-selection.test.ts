@@ -27,6 +27,9 @@ vi.mock('node-pty', () => ({ spawn: mocks.mockPtySpawn }))
 vi.mock('../main/shell-prompt-readiness-probe', () => ({
   createShellPromptReadinessProbe: mocks.mockCreateShellPromptReadinessProbe
 }))
+vi.mock('../main/opencode/opencode-launch-capabilities', () => ({
+  probeOpenCodeLaunchCapabilities: async () => null
+}))
 vi.mock('../main/pty/posix-pty-process-groups', () => ({
   forceKillPosixPtyProcessGroups: vi.fn((_pid: number, fallback: () => void) => fallback())
 }))
@@ -107,7 +110,7 @@ describe('relay OpenCode source selection on real fixture files', () => {
       if (kind === 'shell') writeFileSync(join(home, '.zshrc'), `export XDG_CONFIG_HOME='${xdg}'\n`)
       const env = await spawn({
         cwd: home,
-        shell: kind === 'shell' ? '/bin/zsh' : '/bin/sh',
+        shellOverride: kind === 'shell' ? '/bin/zsh' : '/bin/sh',
         launchAgent: 'opencode',
         env: { HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: kind === 'xdg' ? xdg : '' }
       })
