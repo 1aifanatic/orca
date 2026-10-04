@@ -5,24 +5,42 @@ import {
   structuredAgentSessionDraftScopeKey
 } from '@/components/native-chat/native-chat-composer-draft-store'
 
+/** Which unsent chat drafts a workspace's open tabs own: conversation draft keys and terminal tab
+ *  ids (each tab's pane drafts). */
+export type WorkspaceChatDraftKeys = {
+  readonly conversations: readonly string[]
+  readonly terminalTabIds: readonly string[]
+}
+
 /**
- * Deletes the unsent chat drafts of removed worktrees' open tabs: each structured chat's
- * conversation draft and each terminal tab's pane drafts. The tab lists are the only record of
- * which drafts were a worktree's, so whichever removal path drops them first must call this
- * before it does.
+ * Read before a user's delete goes to the host: the host announces the removal before it replies,
+ * and the listing refresh that starts can drop the tab lists these keys are found through.
  */
-export function deleteRemovedWorktreeChatDrafts(
+export function captureWorkspaceChatDraftKeys(
   state: Pick<AppState, 'tabsByWorktree' | 'unifiedTabsByWorktree'>,
-  worktreeIds: Iterable<string>
-): void {
-  for (const worktreeId of worktreeIds) {
-    for (const tab of state.unifiedTabsByWorktree[worktreeId] ?? []) {
+  workspaceIds: Iterable<string>
+): WorkspaceChatDraftKeys {
+  const conversations: string[] = []
+  const terminalTabIds: string[] = []
+  for (const workspaceId of workspaceIds) {
+    for (const tab of state.unifiedTabsByWorktree[workspaceId] ?? []) {
       if (tab.contentType === 'agent-session') {
-        deleteNativeChatComposerDraft(structuredAgentSessionDraftScopeKey(tab.entityId))
+        conversations.push(structuredAgentSessionDraftScopeKey(tab.entityId))
       }
     }
-    for (const tab of state.tabsByWorktree[worktreeId] ?? []) {
-      deleteNativeChatComposerDraftsForTab(tab.id)
+    for (const tab of state.tabsByWorktree[workspaceId] ?? []) {
+      terminalTabIds.push(tab.id)
     }
+  }
+  return { conversations, terminalTabIds }
+}
+
+/** Only after the delete succeeded: a refused or failed one keeps the drafts. */
+export function deleteWorkspaceChatDrafts(keys: WorkspaceChatDraftKeys): void {
+  for (const key of keys.conversations) {
+    deleteNativeChatComposerDraft(key)
+  }
+  for (const tabId of keys.terminalTabIds) {
+    deleteNativeChatComposerDraftsForTab(tabId)
   }
 }
