@@ -229,4 +229,49 @@ describe('pasting into a structured chat on a paired server', () => {
     expect(insertTypedText).toHaveBeenCalledWith('caption')
     expect(setNotice).not.toHaveBeenCalledWith('needs newer server')
   })
+
+  it('files a paste whose upload lands after a prompt card unmounted the composer', async () => {
+    let finishUpload: (path: string) => void = () => {}
+    mocks.saveClipboardImageAsTempFile.mockReturnValue(
+      new Promise<string>((resolve) => {
+        finishUpload = resolve
+      })
+    )
+    const resolved: string[] = []
+    const dropped: string[] = []
+    let api: HookApi | null = null
+    function Probe(): null {
+      api = useNativeChatComposerPaste({
+        targetKey: 'session-1',
+        agent: 'claude',
+        disabled: false,
+        caret: 0,
+        setCaret: () => {},
+        resolveAttachmentOwner: () => sessionOwner,
+        attachResolvedPaths: () => {},
+        beginPendingImageAttachment: () => 'chip-1',
+        // The composer's chips file a result that lands after it unmounted into its scope cache.
+        resolvePendingImageAttachment: (id, path) => resolved.push(`${id} ${path}`),
+        dropPendingImageAttachment: (id) => {
+          dropped.push(id)
+        },
+        insertTypedText: () => true,
+        setNotice: () => {}
+      })
+      return null
+    }
+    const container = document.createElement('div')
+    document.body.append(container)
+    root = createRoot(container)
+    await act(async () => root?.render(createElement(Probe)))
+    await act(async () => api?.handlePaste(imagePasteEvent()))
+    expect(mocks.saveClipboardImageAsTempFile).toHaveBeenCalledTimes(1)
+
+    act(() => root?.unmount())
+    root = null
+    await act(async () => finishUpload(storedPath))
+
+    expect(dropped).toEqual([])
+    expect(resolved).toEqual([`chip-1 ${storedPath}`])
+  })
 })

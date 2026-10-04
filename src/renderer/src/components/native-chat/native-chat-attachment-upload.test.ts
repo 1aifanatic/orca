@@ -23,10 +23,12 @@ vi.mock('sonner', () => ({
 }))
 
 vi.mock('@/i18n/i18n', () => ({
-  translate: (_key: string, fallback: string) => fallback
+  translate: (_key: string, fallback: string, values?: Record<string, unknown>) =>
+    fallback.replace(/\{\{(\w+)\}\}/g, (_match, name: string) => String(values?.[name]))
 }))
 
 import {
+  nativeChatAttachFailedNotice,
   prepareNativeChatSessionAttachmentUpload,
   resolveNativeChatAttachmentOwner,
   resolveNativeChatAttachmentOwnerForWorktree,
@@ -290,5 +292,20 @@ describe('a structured chat on a paired server', () => {
       notice:
         'This needs a newer Orca on the computer running this chat. Update Orca there, then try again.'
     })
+  })
+})
+
+describe('nativeChatAttachFailedNotice', () => {
+  it('ends the shared cause with one full stop, whatever script it is written in', () => {
+    expect(nativeChatAttachFailedNotice(['a.mov'], 'over the 50 MB limit')).toBe(
+      "Couldn't attach a.mov. over the 50 MB limit."
+    )
+    expect(nativeChatAttachFailedNotice(['a'], 'サポートされていないファイル形式です。')).toBe(
+      "Couldn't attach a. サポートされていないファイル形式です。"
+    )
+    expect(nativeChatAttachFailedNotice(['a'], '不支持的文件类型！')).toBe(
+      "Couldn't attach a. 不支持的文件类型！"
+    )
+    expect(nativeChatAttachFailedNotice(['a', 'b'])).toBe("Couldn't attach a, b.")
   })
 })

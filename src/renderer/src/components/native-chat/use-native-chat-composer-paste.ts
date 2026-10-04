@@ -1,4 +1,5 @@
-import { useCallback, useLayoutEffect, useMemo, useRef } from 'react'
+import { useCallback, useLayoutEffect, useRef } from 'react'
+import { useNativeChatPasteLifetime } from './use-native-chat-paste-lifetime'
 import { nativeChatAttachmentOwnerUnchanged } from './native-chat-resolved-path-ownership'
 import { assertClipboardTextWithinLimit } from '../../../../shared/clipboard-text'
 import { extractIpcErrorMessage } from '@/lib/ipc-error'
@@ -57,28 +58,14 @@ export function useNativeChatComposerPaste({
   pasteFromClipboard: () => void
 } {
   const disabledRef = useRef(disabled)
-  const dropPendingRef = useRef(dropPendingImageAttachment)
   useLayoutEffect(() => {
     disabledRef.current = disabled
-    dropPendingRef.current = dropPendingImageAttachment
-  }, [disabled, dropPendingImageAttachment])
-  const lifetime = useMemo(
-    () => ({ targetKey, active: false, pending: new Map<string, string>() }),
-    [targetKey]
-  )
-  useLayoutEffect(() => {
-    lifetime.active = true
-    return () => {
-      lifetime.active = false
-      for (const [id, preview] of lifetime.pending) {
-        if (preview.startsWith('blob:')) {
-          URL.revokeObjectURL(preview)
-        }
-        dropPendingRef.current(id)
-      }
-      lifetime.pending.clear()
-    }
-  }, [lifetime])
+  }, [disabled])
+  const { lifetime, track, keepStoreUploadAfterUnmount } = useNativeChatPasteLifetime({
+    targetKey,
+    resolvePendingImageAttachment,
+    dropPendingImageAttachment
+  })
   const canPaste = useCallback(() => lifetime.active && !disabledRef.current, [lifetime])
   // A disabled composer still answers a paste, so it never vanishes silently.
   const showPasteUnavailable = useCallback(() => {
@@ -193,7 +180,7 @@ export function useNativeChatComposerPaste({
         const previewUrl = URL.createObjectURL(imageFile)
         pendingId = beginPendingImageAttachment(previewUrl)
         if (pendingId) {
-          lifetime.pending.set(pendingId, previewUrl)
+          track(pendingId, previewUrl, owner)
         } else {
           URL.revokeObjectURL(previewUrl)
         }
@@ -210,6 +197,9 @@ export function useNativeChatComposerPaste({
           async () => Boolean(text),
           awaitServer ? showChip : undefined
         )
+        if (keepStoreUploadAfterUnmount(pendingId, saved)) {
+          return
+        }
         if (saved.status !== 'saved' || !canPaste()) {
           if (pendingId) {
             lifetime.pending.delete(pendingId)
@@ -232,6 +222,8 @@ export function useNativeChatComposerPaste({
       insertTypedText,
       showPasteUnavailable,
       resolveAttachmentOwner,
+      keepStoreUploadAfterUnmount,
+      track,
       saveClipboardImageForOwner,
       setCaret,
       setNotice,
@@ -294,9 +286,12 @@ export function useNativeChatComposerPaste({
       const pendingId =
         thumbnail && canPaste() ? beginPendingImageAttachment(thumbnail.dataUrl) : null
       if (pendingId) {
-        lifetime.pending.set(pendingId, thumbnail?.dataUrl ?? '')
+        track(pendingId, thumbnail?.dataUrl ?? '', owner)
       }
       const saved = await savePromise
+      if (keepStoreUploadAfterUnmount(pendingId, saved)) {
+        return
+      }
       if (!canPaste() || saved.status !== 'saved') {
         if (pendingId) {
           lifetime.pending.delete(pendingId)
@@ -317,6 +312,8 @@ export function useNativeChatComposerPaste({
     lifetime,
     dropPendingImageAttachment,
     insertTypedText,
+    keepStoreUploadAfterUnmount,
+    track,
     showPasteUnavailable,
     resolveAttachmentOwner,
     saveClipboardImageForOwner,

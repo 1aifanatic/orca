@@ -1,0 +1,76 @@
+import { useCallback, useLayoutEffect, useMemo, useRef } from 'react'
+import type { NativeChatAttachmentOwner } from './native-chat-attachment-upload'
+
+/**
+ * The pending chips of pastes this composer started, released when it unmounts or changes target.
+ * A paste uploading into a paired server's store outlives the composer, which a prompt card
+ * unmounts: its chip stays live, and its result is filed for the composer's return, as a drop's is
+ * (`useNativeChatPendingAttachmentChips`).
+ */
+export function useNativeChatPasteLifetime(args: {
+  targetKey?: string
+  /** Files the result into the composer's scope even once this instance is unmounted. */
+  resolvePendingImageAttachment: (id: string, path: string, connectionId?: string | null) => void
+  dropPendingImageAttachment: (id: string) => void
+}): {
+  lifetime: { active: boolean; pending: Map<string, string> }
+  track: (pendingId: string, preview: string, owner: NativeChatAttachmentOwner) => void
+  keepStoreUploadAfterUnmount: (
+    pendingId: string | null,
+    saved: { status: string; tempPath?: string }
+  ) => boolean
+} {
+  const { targetKey, resolvePendingImageAttachment, dropPendingImageAttachment } = args
+  const dropPendingRef = useRef(dropPendingImageAttachment)
+  useLayoutEffect(() => {
+    dropPendingRef.current = dropPendingImageAttachment
+  }, [dropPendingImageAttachment])
+  const lifetime = useMemo(
+    () => ({
+      targetKey,
+      active: false,
+      pending: new Map<string, string>(),
+      storeUploads: new Set<string>()
+    }),
+    [targetKey]
+  )
+  useLayoutEffect(() => {
+    lifetime.active = true
+    return () => {
+      lifetime.active = false
+      for (const [id, preview] of lifetime.pending) {
+        if (preview.startsWith('blob:')) {
+          URL.revokeObjectURL(preview)
+        }
+        if (!lifetime.storeUploads.has(id)) {
+          dropPendingRef.current(id)
+        }
+      }
+      lifetime.pending.clear()
+    }
+  }, [lifetime])
+  const track = useCallback(
+    (pendingId: string, preview: string, owner: NativeChatAttachmentOwner) => {
+      lifetime.pending.set(pendingId, preview)
+      if (owner.kind === 'runtime-session') {
+        lifetime.storeUploads.add(pendingId)
+      }
+    },
+    [lifetime]
+  )
+  const keepStoreUploadAfterUnmount = useCallback(
+    (pendingId: string | null, saved: { status: string; tempPath?: string }): boolean => {
+      if (!pendingId || lifetime.active || !lifetime.storeUploads.has(pendingId)) {
+        return false
+      }
+      if (saved.status === 'saved' && saved.tempPath) {
+        resolvePendingImageAttachment(pendingId, saved.tempPath, null)
+      } else {
+        dropPendingImageAttachment(pendingId)
+      }
+      return true
+    },
+    [dropPendingImageAttachment, lifetime, resolvePendingImageAttachment]
+  )
+  return { lifetime, track, keepStoreUploadAfterUnmount }
+}

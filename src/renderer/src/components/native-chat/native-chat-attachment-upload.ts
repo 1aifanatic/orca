@@ -165,7 +165,7 @@ export function nativeChatAttachmentUnreadableNotice(): string {
  *  share when there is one. */
 export function nativeChatAttachFailedNotice(names: readonly string[], cause = ''): string {
   const files = names.join(', ')
-  const reason = cause.trim().replace(/[^.!?]$/, '$&.')
+  const reason = cause.trim().replace(/[^.!?。！？]$/u, '$&.')
   return reason
     ? translate(
         'components.native-chat.composer.attachFailedBecause',

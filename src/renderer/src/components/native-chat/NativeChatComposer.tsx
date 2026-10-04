@@ -171,7 +171,6 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       clearImageAttachments,
       removeImageAttachment,
       beginPendingImageAttachment,
-      resolvePendingImageAttachment,
       dropPendingImageAttachment
     } = attachments
     useNativeChatWorkspaceFileDrop({
@@ -219,7 +218,8 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       resolveAttachmentOwner,
       attachResolvedPaths,
       beginPendingImageAttachment,
-      resolvePendingImageAttachment,
+      // Files a store upload that lands after a prompt card unmounted the composer.
+      resolvePendingImageAttachment: attachments.pendingChips.resolve,
       dropPendingImageAttachment,
       setNotice
     })
