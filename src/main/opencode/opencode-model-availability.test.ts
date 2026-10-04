@@ -63,6 +63,17 @@ describe('OpenCode model catalog validation', () => {
     })
     expect(await probeOpenCodeModelAvailability(options)).toBe(false)
   })
+  it('refuses a truncated catalog even when its retained head contains the model', async () => {
+    vi.mocked(runProcess).mockResolvedValue({
+      code: 0,
+      timedOut: false,
+      outputTruncated: true,
+      stdout: options.model + '\n',
+      stderr: '',
+      signal: null
+    })
+    expect(await probeOpenCodeModelAvailability(options)).toBe(false)
+  })
   it('refuses WSL until its exact guest launch environment is available', async () => {
     expect(await probeOpenCodeModelAvailability({ ...options, wsl: { distro: 'Ubuntu' } })).toBe(
       false

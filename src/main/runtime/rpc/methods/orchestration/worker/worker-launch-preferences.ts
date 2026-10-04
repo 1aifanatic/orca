@@ -53,6 +53,7 @@ export function createPendingWorkerLaunchReceipt(args: {
 export function resolveWorkerLaunchPreferences(args: {
   agent: TuiAgent
   openCodeModelLaunchSupported?: boolean
+  createsWorktree?: boolean
   model?: string
   effort?: string
 }): {
@@ -67,6 +68,13 @@ export function resolveWorkerLaunchPreferences(args: {
       preferences: undefined,
       receipt: createWorkerLaunchReceipt({ agent: args.agent })
     }
+  }
+
+  if (args.agent === 'opencode' && args.createsWorktree) {
+    throw new OrchestrationError(
+      'capability_unsupported',
+      'OpenCode model selection requires an existing worktree. Use --worktree current or an existing worktree selector, or omit --model.'
+    )
   }
 
   if (args.agent === 'opencode' && args.openCodeModelLaunchSupported !== true) {

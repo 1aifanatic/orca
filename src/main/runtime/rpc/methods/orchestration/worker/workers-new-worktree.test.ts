@@ -205,7 +205,10 @@ describe('orchestration new-worktree workers', () => {
           agent: 'opencode',
           model: 'opencode/fledge-alpha-free'
         })
-      ).rejects.toMatchObject({ code: 'capability_unsupported' })
+      ).rejects.toMatchObject({
+        code: 'capability_unsupported',
+        message: expect.stringContaining('requires an existing worktree')
+      })
       expect(probe).not.toHaveBeenCalled()
       expect(runtime.createManagedWorktree).not.toHaveBeenCalled()
       expect(runtime.createTerminal).not.toHaveBeenCalled()
@@ -230,7 +233,10 @@ describe('orchestration new-worktree workers', () => {
     })
     await expect(
       prepareFederationWorkerLaunchOnHost({ runtime, params, createsWorktree: true })
-    ).rejects.toMatchObject({ code: 'capability_unsupported' })
+    ).rejects.toMatchObject({
+      code: 'capability_unsupported',
+      message: expect.stringContaining('requires an existing worktree')
+    })
     expect(probe).not.toHaveBeenCalled()
     expect(runtime.createTerminal).not.toHaveBeenCalled()
     expect(runtime.sendTerminalAgentPrompt).not.toHaveBeenCalled()

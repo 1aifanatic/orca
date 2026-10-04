@@ -80,6 +80,7 @@ export function prepareLocalWorkerStart(args: {
   return resolveWorkerStartAgent({
     runtime,
     openCodeModelLaunchSupported: args.openCodeModelLaunchSupported,
+    createsWorktree,
     terminal: params.terminal,
     agent: params.agent,
     model: params.model,
@@ -126,6 +127,7 @@ export function prepareFederationAttachmentWorkerStart(args: {
   return resolveWorkerStartAgent({
     runtime,
     openCodeModelLaunchSupported: args.openCodeModelLaunchSupported,
+    createsWorktree,
     terminal: params.terminal,
     agent: params.agent,
     model: params.model,
@@ -138,6 +140,7 @@ export function prepareFederationAttachmentWorkerStart(args: {
 function resolveWorkerStartAgent(args: {
   runtime: OrcaRuntimeService
   openCodeModelLaunchSupported?: boolean
+  createsWorktree: boolean
   terminal?: string
   agent?: string
   model?: string
@@ -159,6 +162,7 @@ function resolveWorkerStartAgent(args: {
       launch: resolveWorkerLaunchPreferences({
         agent,
         openCodeModelLaunchSupported: args.openCodeModelLaunchSupported,
+        createsWorktree: args.createsWorktree,
         model: args.model,
         effort: args.effort
       })

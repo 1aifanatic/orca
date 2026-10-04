@@ -123,6 +123,17 @@ describe('orchestration worker launch preferences', () => {
     ).toThrow('cannot verify launch-time model selection')
   })
 
+  it('explains the existing-worktree requirement even if a new-worktree host is verified', () => {
+    expect(() =>
+      resolveWorkerLaunchPreferences({
+        agent: 'opencode',
+        model: 'opencode/fledge-alpha-free',
+        createsWorktree: true,
+        openCodeModelLaunchSupported: true
+      })
+    ).toThrow('requires an existing worktree')
+  })
+
   it('supports an opaque OpenCode model on a verified legacy host', () => {
     expect(
       resolveWorkerLaunchPreferences({
