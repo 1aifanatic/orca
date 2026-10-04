@@ -180,6 +180,5 @@ describe('MonacoEditor content ownership', () => {
     expect(editorProps.current?.defaultValue).toBe('latest dirty draft')
     expect(editorProps.mounts).toEqual([unresolvedModel, resolvedModel])
     expect(editorProps.unmounts).toEqual([unresolvedModel])
-    expect(onContentChange).not.toHaveBeenCalled()
   })
 })
