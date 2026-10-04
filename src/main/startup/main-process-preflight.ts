@@ -107,6 +107,7 @@ import { initializeBrowserIdentityModeStore } from '../browser/browser-identity-
 import { acquireProfileStateRuntimeAdmission } from '../persistence/profile-state/profile-state-access'
 import { getActiveProfileStateLocation } from '../persistence/profile-state/profile-state-active-location'
 import { handleMainProcessPreflightFailure } from './main-process-preflight-failure'
+import { ensureWindowsAppDataPath } from './windows-app-data-path'
 
 export type MainProcessPreflightOptions = {
   focusExistingWindow: () => void
@@ -125,6 +126,8 @@ export function runMainProcessPreflight(options: MainProcessPreflightOptions): b
 }
 
 function initializeMainProcessPreflight(options: MainProcessPreflightOptions): boolean {
+  // Why first: every step below, recovery and the instance lock included, may resolve userData.
+  ensureWindowsAppDataPath(app)
   if (runProfileStateRecoveryPreflight()) {
     return false
   }
