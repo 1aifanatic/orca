@@ -1,6 +1,6 @@
 // Design D5/D6 hostile-host matrix: the real client-side relay deploy against container SSH
 // targets, and against a macOS runner's own loopback sshd, asserting which rung of the runtime
-// ladder each host lands on.
+// ladder each host lands on, and for cells naming one, the runtime managed orcad deploys on.
 //
 // Run: ORCA_RUN_SSH_HOSTILE_HOSTS=1 pnpm test src/main/ssh/ssh-relay-hostile-hosts.docker.test.ts
 // Needs `pnpm build:relay` and an orcad template holding each selected cell's slot. Docker cells
@@ -17,6 +17,7 @@ import { posix } from 'node:path'
 import { NODE_RUNTIME_PIN } from '../../shared/node-runtime-pin'
 import type { SshConnection } from './ssh-connection'
 import { HOSTILE_HOST_CELLS, selectHostileHostCells } from './ssh-hostile-host-cells'
+import { proveManagedOrcadCell } from './ssh-hostile-host-managed-orcad'
 import {
   assertCell,
   connectHostileHost,
@@ -115,6 +116,23 @@ describe('SSH relay hostile-host matrix', () => {
           }
         } finally {
           await conn?.disconnect().catch(() => {})
+          await stopHostileHostTarget(target)
+        }
+      },
+      CELL_TIMEOUT_MS
+    )
+  }
+
+  // A fresh host per cell: the relay pass above leaves a relay and its runtime behind.
+  for (const cell of HOSTILE_HOST_CELLS.filter((candidate) => candidate.managedRuntime)) {
+    it.skipIf(!SELECTED.has(cell.id))(
+      `${cell.id} runs managed orcad on ${cell.managedRuntime}`,
+      async () => {
+        let target: HostileHostTarget | null = null
+        try {
+          target = await startHostileHostTarget(cell)
+          await proveManagedOrcadCell(cell, target, hostileHostSshTarget(target))
+        } finally {
           await stopHostileHostTarget(target)
         }
       },

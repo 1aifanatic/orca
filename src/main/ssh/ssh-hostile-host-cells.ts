@@ -47,6 +47,8 @@ export type HostileHostExpectation =
 export type HostileHostCellCore = {
   id: string
   expect: HostileHostExpectation
+  /** Also deploy managed orcad on a fresh host, which must run on this runtime target. */
+  managedRuntime?: NodeRuntimeTarget
 }
 
 export type DockerHostileHostCell = HostileHostCellCore & {
@@ -177,7 +179,9 @@ export const HOSTILE_HOST_CELLS: readonly HostileHostCell[] = [
       target: 'linux-x64-glibc',
       runtime: 'linux-x64-glibc217',
       refusals: [{ step: 'A', reason: 'libc_floor' }]
-    }
+    },
+    // Managed orcad picks the same compat runtime, so an empty CentOS 7 host never needs the relay.
+    managedRuntime: 'linux-x64-glibc217'
   },
   {
     // The client uploads the runtime over SSH, so a host that cannot reach nodejs.org still runs A.

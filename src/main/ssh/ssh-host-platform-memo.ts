@@ -2,7 +2,7 @@
  * The platform each SSH host last reported this app session, so connect telemetry can name it
  * without a probe of its own. Keyed by the local target id, which never leaves this process.
  */
-import type { ServerTarget } from '../../shared/node-runtime-pin'
+import type { NodeRuntimeTarget } from '../../shared/node-runtime-pin'
 import type { RemoteHostPlatform } from './ssh-remote-platform'
 
 export type SshHostPlatformFacts = {
@@ -15,7 +15,7 @@ const known = new Map<string, SshHostPlatformFacts>()
 
 function libcOf(
   host: RemoteHostPlatform,
-  target: ServerTarget | null
+  target: NodeRuntimeTarget | null
 ): SshHostPlatformFacts['libc'] {
   if (host.os !== 'linux') {
     return 'none'
@@ -29,7 +29,7 @@ function libcOf(
 export function rememberSshHostPlatform(
   targetId: string,
   host: RemoteHostPlatform,
-  target: ServerTarget | null
+  target: NodeRuntimeTarget | null
 ): void {
   const libc = libcOf(host, target)
   const previous = known.get(targetId)

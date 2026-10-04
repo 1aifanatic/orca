@@ -1,9 +1,9 @@
 /** Everything a managed-orcad operation needs to know about one SSH host before it acts. */
-import type { ServerTarget } from '../../shared/node-runtime-pin'
+import type { NodeRuntimeTarget } from '../../shared/node-runtime-pin'
 import type { SshTarget } from '../../shared/ssh-types'
 import type { OrcadActivationRecord } from './orcad-activation-record'
 import { readOrcadActivationRecord } from './orcad-activation-record-store'
-import { resolveOrcadDeploymentTarget } from './orcad-deployment-target'
+import { resolveOrcadRuntimeTarget } from './orcad-runtime-target'
 import { prepareWindowsOrcadHost } from './orcad-windows-host-preparation'
 import { execOrcadRemote } from './orcad-remote-runtime-control'
 import type { SshConnection } from './ssh-connection'
@@ -21,7 +21,8 @@ import { rememberSshHostPlatform } from './ssh-host-platform-memo'
 
 export type OrcadRemoteContext = {
   activationRecord: OrcadActivationRecord
-  serverTarget: ServerTarget
+  /** A compat runtime on hosts below the default runtime's glibc floor (design D6 rung B). */
+  serverTarget: NodeRuntimeTarget
   connection: SshConnection
   host: RemoteHostPlatform
   remoteHome: string
@@ -47,7 +48,7 @@ export async function resolveOrcadRemoteContext(
   if (!validateRemoteHome(remoteHome, host)) {
     throw new Error(`Remote home is not a valid path: ${remoteHome.slice(0, 100)}`)
   }
-  const serverTarget = await resolveOrcadDeploymentTarget({ conn: connection, host, signal })
+  const serverTarget = await resolveOrcadRuntimeTarget({ conn: connection, host, signal })
   rememberSshHostPlatform(target.id, host, serverTarget)
   if (isWindowsRemoteHost(host)) {
     // Every Windows host op, the activation record read included, runs on the pinned node.exe.

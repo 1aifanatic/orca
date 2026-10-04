@@ -188,6 +188,10 @@ describe('assembleOrcadArtifact', () => {
     expect(
       readFileSync(join(artifactDir, 'node_modules/node-pty/build/Release/pty.node'), 'utf8')
     ).toBe(`${target}:node_modules/node-pty/build/Release/pty.node`)
+    // The host-side preflight hashes it the same way, so managed orcad can run it.
+    expect(await readOrcadArtifactIdentity(artifactDir)).toBe(
+      readFileSync(join(artifactDir, ORCAD_VERSION_FILENAME), 'utf8').trim()
+    )
   })
 
   it('refuses a compat slot that names the default runtime', async () => {
