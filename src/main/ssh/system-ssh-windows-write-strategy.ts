@@ -3,6 +3,7 @@ import { getSystemSshBuildArgsFromOperationOptions } from './system-ssh-args'
 import { spawnSystemSshCommand } from './system-ssh-command'
 import {
   awaitWithSystemSshAbort,
+  SystemSshCommandExitError,
   throwIfAborted,
   waitForChannelClose
 } from './system-ssh-operation-lifecycle'
@@ -267,11 +268,18 @@ export function explainWindowsPowerShellStdinFailure(error: unknown): unknown {
 }
 
 function isPwshUnavailableError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error)
-  // cmd.exe's "not recognized" and sshd's exit 9009 both mean "no pwsh here". A timeout does not:
-  // that is the stdin defect, and PowerShell 7 does not have it, so it must not be cached as absent.
-  return /is not recognized as an internal or external command|9009|CommandNotFoundException/i.test(
-    message
+  if (error instanceof SystemSshCommandExitError && error.exitCode === 9009) {
+    return true
+  }
+  // Only the remote exit/stderr establishes absence; the label can contain any filename.
+  const detail =
+    error instanceof SystemSshCommandExitError
+      ? error.stderr
+      : error instanceof Error
+        ? error.message
+        : String(error)
+  return /is not recognized as an internal or external command|CommandNotFoundException/i.test(
+    detail
   )
 }
 
