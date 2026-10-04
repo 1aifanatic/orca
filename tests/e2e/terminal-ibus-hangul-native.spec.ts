@@ -277,16 +277,40 @@ test.describe('Native IBus Hangul workspace notes @headful', () => {
       }
       return events
     })
+    const readSavedComment = () =>
+      orcaPage.evaluate(() => {
+        const state = window.__store?.getState()
+        return (
+          state &&
+          Object.values(state.worktreesByRepo)
+            .flat()
+            .find((row) => row.id === state.activeWorktreeId)?.comment
+        )
+      })
+    let completed = false
     try {
       runXdotool('type', '--delay', '10', '--clearmodifiers', 'gksrmf')
-      runXdotool('key', 'Return')
+      await expect(input).toHaveValue('한글')
       await expect
         .poll(() =>
-          events.evaluate((trace) =>
-            trace.some((event) => event.type === 'keyup' && event.key === 'Enter')
+          events.evaluate(
+            (trace) =>
+              trace.filter((event) => event.type === 'compositionstart').length >
+              trace.filter((event) => event.type === 'compositionend').length
           )
         )
         .toBe(true)
+      const compositionEndsBeforeReturn = await events.evaluate(
+        (trace) => trace.filter((event) => event.type === 'compositionend').length
+      )
+      runXdotool('key', 'Return')
+      await expect
+        .poll(() =>
+          events.evaluate(
+            (trace) => trace.filter((event) => event.type === 'compositionend').length
+          )
+        )
+        .toBeGreaterThan(compositionEndsBeforeReturn)
       await orcaPage.evaluate(
         () =>
           new Promise<void>((resolve) =>
@@ -295,16 +319,6 @@ test.describe('Native IBus Hangul workspace notes @headful', () => {
       )
       await expect(input).toBeVisible()
       await expect(input).toHaveValue('한글')
-      const readSavedComment = () =>
-        orcaPage.evaluate(() => {
-          const state = window.__store?.getState()
-          return (
-            state &&
-            Object.values(state.worktreesByRepo)
-              .flat()
-              .find((row) => row.id === state.activeWorktreeId)?.comment
-          )
-        })
       expect(await readSavedComment()).not.toBe('한글')
       await orcaPage.screenshot({
         path: testInfo.outputPath('native-confirm-keeps-notes-open.png')
@@ -315,18 +329,24 @@ test.describe('Native IBus Hangul workspace notes @headful', () => {
       const dom = await events.jsonValue()
       expect(dom.some((event) => event.type === 'compositionstart')).toBe(true)
       expect(dom.some((event) => /[\uac00-\ud7af]/.test(event.data ?? ''))).toBe(true)
+      appendImeEngagementReceipt(testInfo.title, { dom, onData: [] })
+      completed = true
+    } finally {
+      const dom = await events.jsonValue()
       await testInfo.attach('native-notes-dom-trace', {
         body: JSON.stringify({
           nativeOperatingSystemIme: true,
           engine: 'ibus-hangul',
           display: process.env.DISPLAY,
+          completed,
+          notesVisible: await input.isVisible(),
+          notesValue: (await input.count()) ? await input.inputValue() : null,
+          savedComment: await readSavedComment(),
           onData: [],
           dom
         }),
         contentType: 'application/json'
       })
-      appendImeEngagementReceipt(testInfo.title, { dom, onData: [] })
-    } finally {
       await events.dispose()
     }
   })
