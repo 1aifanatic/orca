@@ -1,6 +1,6 @@
 /**
- * Client state that still references an SSH target. Until the full migration census exists,
- * any of it keeps the host from being claimed: hiding the target would strand that state.
+ * Client state that still references an SSH target. An empty-host claim refuses any of it, since
+ * hiding the target would strand it; a migration blocks only on what its manifest can't carry.
  */
 import type { Store } from '../persistence'
 import { getDefaultWorkspaceSession } from '../../shared/constants'
