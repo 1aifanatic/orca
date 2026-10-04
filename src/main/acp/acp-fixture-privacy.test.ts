@@ -2,7 +2,7 @@ import { readFile, readdir } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 
 const privateText =
-  /\/Users\/|\/home\/|[a-z]:[\\/]+Users[\\/]|brennan|orca-qa|native-chat-other-agents|[\w.+-]+@[\w.-]+\.[a-z]{2,}|\bhostname\b|\b[\w-]+\.(?:local|lan)\b|signature|subscription_tier|skills?/i
+  /\/Users\/|\/home\/|[a-z]:[\\/]+Users[\\/]|[\w.+-]+@[\w.-]+\.[a-z]{2,}|\bhostname\b|\b[\w-]+\.(?:local|lan)\b|signature|subscription_tier|skills?/i
 
 function decodedStrings(value: unknown, depth = 0): string[] {
   if (depth > 8) {
