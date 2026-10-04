@@ -29,7 +29,10 @@ export function resolveEditorRecoveryWorkerPath(moduleDir = __dirname): string {
 }
 
 export class EditorRecoveryWorker {
-  private readonly worker: Worker
+  private worker: Worker | null = null
+  private closing: Promise<void> | null = null
+  private idleTimer: ReturnType<typeof setTimeout> | null = null
+  private closed = false
   private nextRequestId = 1
   private failed: Error | null = null
   private readonly pending = new Map<
@@ -42,13 +45,20 @@ export class EditorRecoveryWorker {
   >()
 
   constructor(
-    databasePath: string,
-    workerPath = resolveEditorRecoveryWorkerPath(),
-    private readonly timeoutMs = 15_000
-  ) {
-    this.worker = new Worker(workerPath, { workerData: { databasePath } })
-    this.worker.unref()
-    this.worker.on('message', (message: unknown) => {
+    private readonly databasePath: string,
+    private readonly workerPath = resolveEditorRecoveryWorkerPath(),
+    private readonly timeoutMs = 15_000,
+    private readonly idleMs = 1_000
+  ) {}
+
+  private startWorker(): Worker {
+    const worker = new Worker(this.workerPath, { workerData: { databasePath: this.databasePath } })
+    this.worker = worker
+    worker.unref()
+    worker.on('message', (message: unknown) => {
+      if (this.worker !== worker) {
+        return
+      }
       const parsed = editorRecoveryResponseSchema.safeParse(message)
       if (!parsed.success) {
         this.fail(new Error('Invalid recovery writer response'))
@@ -67,14 +77,22 @@ export class EditorRecoveryWorker {
       } else {
         request.reject(new Error(response.error))
       }
+      this.scheduleIdleClose()
     })
-    this.worker.on('error', (error: unknown) =>
-      this.fail(error instanceof Error ? error : new Error(String(error)))
-    )
-    this.worker.on('exit', () => this.fail(new Error('Recovery writer stopped')))
+    worker.on('error', (error: unknown) => {
+      if (this.worker === worker) {
+        this.fail(error instanceof Error ? error : new Error(String(error)))
+      }
+    })
+    worker.on('exit', () => {
+      if (this.worker === worker) {
+        this.fail(new Error('Recovery writer stopped'))
+      }
+    })
+    return worker
   }
   get isRunning(): boolean {
-    return this.failed === null
+    return this.failed === null && !this.closed
   }
 
   async list() {
@@ -134,13 +152,29 @@ export class EditorRecoveryWorker {
     return z.string().parse(await this.dispatch({ kind: 'export', id, revision, targetPath }))
   }
   async close() {
-    await this.dispatch({ kind: 'close' })
+    this.closed = true
+    this.cancelIdleClose()
+    if (this.failed) {
+      return
+    }
+    await this.stopWorker()
   }
 
-  private dispatch(command: EditorRecoveryCommand): Promise<unknown> {
-    if (this.failed) {
-      return Promise.reject(this.failed)
+  private async dispatch(command: EditorRecoveryCommand): Promise<unknown> {
+    this.cancelIdleClose()
+    if (this.closing) {
+      await this.closing
     }
+    if (this.failed) {
+      throw this.failed
+    }
+    if (this.closed) {
+      throw new Error('Recovery writer is closed')
+    }
+    return this.send(command, this.worker ?? this.startWorker())
+  }
+
+  private send(command: EditorRecoveryCommand, worker: Worker): Promise<unknown> {
     const requestId = this.nextRequestId++
     return new Promise((resolve, reject) => {
       const timer = setTimeout(
@@ -149,7 +183,7 @@ export class EditorRecoveryWorker {
       )
       this.pending.set(requestId, { resolve, reject, timer })
       try {
-        this.worker.postMessage({ requestId, command })
+        worker.postMessage({ requestId, command })
       } catch (error) {
         this.pending.delete(requestId)
         clearTimeout(timer)
@@ -158,13 +192,58 @@ export class EditorRecoveryWorker {
     })
   }
 
+  private scheduleIdleClose(): void {
+    if (this.closed || this.closing || this.failed || this.pending.size > 0) {
+      return
+    }
+    this.cancelIdleClose()
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = null
+      void this.stopWorker().catch((error: unknown) => {
+        this.fail(error instanceof Error ? error : new Error(String(error)))
+      })
+    }, this.idleMs)
+    this.idleTimer.unref()
+  }
+
+  private cancelIdleClose(): void {
+    if (this.idleTimer !== null) {
+      clearTimeout(this.idleTimer)
+      this.idleTimer = null
+    }
+  }
+
+  private stopWorker(): Promise<void> {
+    if (this.closing) {
+      return this.closing
+    }
+    const worker = this.worker
+    if (!worker) {
+      return Promise.resolve()
+    }
+    this.cancelIdleClose()
+    this.closing = this.send({ kind: 'close' }, worker)
+      .then(async () => {
+        if (this.worker === worker) {
+          this.worker = null
+        }
+        await worker.terminate()
+      })
+      .finally(() => {
+        this.closing = null
+      })
+    return this.closing
+  }
+
   private fail(error: Error): void {
+    this.cancelIdleClose()
     this.failed ??= error
     for (const request of this.pending.values()) {
       clearTimeout(request.timer)
       request.reject(this.failed)
     }
     this.pending.clear()
-    void this.worker.terminate()
+    void this.worker?.terminate()
+    this.worker = null
   }
 }

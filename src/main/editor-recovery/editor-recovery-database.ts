@@ -4,10 +4,7 @@ import { dirname } from 'node:path'
 import SyncDatabase from '../sqlite/sync-database'
 import { hardenSqliteDatabaseFiles } from '../sqlite/harden-database-files'
 import { initializeEditorRecoverySchema } from './editor-recovery-schema'
-import {
-  EditorRecoveryDraftBodies,
-  EDITOR_RECOVERY_PATCH_LIMIT
-} from './editor-recovery-draft-bodies'
+import { EditorRecoveryDraftBodies } from './editor-recovery-draft-bodies'
 import {
   editorRecoveryDraftSchema,
   editorRecoveryEntrySchema,
@@ -179,33 +176,13 @@ export class EditorRecoveryDatabase {
       return { id: change.id, revision: null }
     }
     const key = editorRecoveryResourceKey(change.metadata)
-    const current = this.db
-      .prepare(`SELECT content, content_length, patch_count, patch_bytes, byte_length
-        FROM editor_drafts WHERE id = ? AND revision = ? AND resource_key = ? AND state != 'resolved'`)
+    const legacy = this.db
+      .prepare(`SELECT content FROM editor_drafts WHERE id = ? AND revision = ?
+        AND resource_key = ? AND state != 'resolved' AND content_length IS NULL`)
       .get(change.id, change.expectedRevision, key)
-    if (!current) {
-      return { id: change.id, revision: null }
-    }
-    if (
-      (current.content_length !== null && current.content_length !== change.baseLength) ||
-      Number(current.byte_length) + change.byteLengthDelta < 0
-    ) {
-      return { id: change.id, revision: null }
-    }
-    const edited = change.removed !== 0 || change.inserted.length !== 0
-    const patchCount = Number(current.patch_count) + (edited ? 1 : 0)
-    if (
-      edited &&
-      (patchCount >= EDITOR_RECOVERY_PATCH_LIMIT ||
-        Number(current.patch_bytes) + Buffer.byteLength(JSON.stringify(change.inserted)) >=
-          Math.max(64 * 1024, (Number(current.byte_length) + change.byteLengthDelta) / 2))
-    ) {
-      // The renderer already owns the full text; ask for it instead of rebuilding a second copy.
-      return { id: change.id, revision: null, snapshotRequired: true }
-    }
-    if (current.content_length === null) {
+    if (legacy) {
       const content = editorRecoveryDraftSchema.shape.content.parse(
-        JSON.parse(String(current.content))
+        JSON.parse(String(legacy.content))
       )
       if (content.length !== change.baseLength) {
         return { id: change.id, revision: null }
@@ -237,14 +214,10 @@ export class EditorRecoveryDatabase {
     if (Number(changed.changes) !== 1) {
       return { id: change.id, revision: null }
     }
-    if (edited) {
+    if (change.removed !== 0 || change.inserted.length !== 0) {
       this.bodies.append(change.id, nextRevision, change)
     }
-    return {
-      id: change.id,
-      revision: nextRevision,
-      ...(patchCount >= EDITOR_RECOVERY_PATCH_LIMIT - 1 ? { snapshotRequired: true as const } : {})
-    }
+    return { id: change.id, revision: nextRevision }
   }
 
   private projectRow(

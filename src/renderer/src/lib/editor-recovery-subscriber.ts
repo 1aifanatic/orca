@@ -76,7 +76,7 @@ export function createEditorRecoverySubscriber({
             continue
           }
           const patch =
-            !buffer.snapshotRequired && buffer.revision > 0 && buffer.durableContent !== undefined
+            buffer.revision > 0 && buffer.durableContent !== undefined
               ? createEditorRecoveryTextPatch(buffer.durableContent, buffer.content)
               : null
           const change: EditorRecoveryChange =
@@ -130,7 +130,7 @@ export function createEditorRecoverySubscriber({
             if (!ack || (ack.revision !== null && ack.revision !== change.expectedRevision + 1)) {
               throw new Error('Invalid recovery write acknowledgement')
             }
-            tracker.acknowledge(buffer, version, change, content, ack, !disposed)
+            tracker.acknowledge(buffer, version, change, content, ack.revision, !disposed)
           }
         } catch (error) {
           for (const { buffer } of batch) {

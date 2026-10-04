@@ -210,16 +210,7 @@ describe('durable editor recovery journal', () => {
           metadata: metadata(),
           state: 'active'
         }
-        const ack = database.apply([change])[0]
-        if (ack?.revision === null && ack.snapshotRequired) {
-          expect(database.read('incremental')).toMatchObject({ content, revision })
-          expect(database.apply([put('incremental', next, revision)])).toEqual([
-            { id: 'incremental', revision: revision + 1 }
-          ])
-        } else {
-          expect(ack).toMatchObject({ id: 'incremental', revision: revision + 1 })
-        }
-        revision++
+        expect(database.apply([change])).toEqual([{ id: 'incremental', revision: ++revision }])
         content = next
         expect(database.read('incremental')).toMatchObject({
           content,
@@ -306,64 +297,6 @@ describe('durable editor recovery journal', () => {
     fault.mockRestore()
     expect(database.apply([change])).toEqual([{ id: 'one', revision: 2 }])
     expect(database.read('one')?.content).toBe(`${original}edit`)
-  })
-
-  it('requests a snapshot before the byte budget and keeps the old checkpoint when that snapshot fails', () => {
-    const database = fixture().open()
-    let content = 'a'.repeat(150_000)
-    let revision = 1
-    database.apply([put('budgeted', content)])
-    for (let index = 0; index < 2; index++) {
-      const patch = createEditorRecoveryTextPatch(content, `${content}${'b'.repeat(70_000)}`)
-      if (!patch) {
-        throw new Error('Expected an incremental edit')
-      }
-      database.apply([
-        {
-          ...patch,
-          kind: 'patch',
-          id: 'budgeted',
-          expectedRevision: revision++,
-          metadata: metadata(),
-          state: 'active'
-        }
-      ])
-      content += 'b'.repeat(70_000)
-    }
-    const next = `${content}${'b'.repeat(70_000)}`
-    const patch = createEditorRecoveryTextPatch(content, next)
-    if (!patch) {
-      throw new Error('Expected an incremental edit')
-    }
-    expect(
-      database.apply([
-        {
-          ...patch,
-          kind: 'patch',
-          id: 'budgeted',
-          expectedRevision: revision,
-          metadata: metadata(),
-          state: 'active'
-        }
-      ])
-    ).toEqual([{ id: 'budgeted', revision: null, snapshotRequired: true }])
-    const originalExec = SyncDatabase.prototype.exec
-    const fault = vi.spyOn(SyncDatabase.prototype, 'exec').mockImplementation(function (
-      this: SyncDatabase,
-      sql: string
-    ) {
-      if (sql === 'COMMIT') {
-        throw new Error('snapshot failed')
-      }
-      originalExec.call(this, sql)
-    })
-    expect(() => database.apply([put('budgeted', next, revision)])).toThrow('snapshot failed')
-    expect(database.read('budgeted')).toMatchObject({ content, revision })
-    fault.mockRestore()
-    expect(database.apply([put('budgeted', next, revision)])).toEqual([
-      { id: 'budgeted', revision: revision + 1 }
-    ])
-    expect(database.read('budgeted')?.content).toBe(next)
   })
 
   it('reads version-one bodies without eagerly copying them and migrates only an edited buffer', () => {

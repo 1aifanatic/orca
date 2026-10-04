@@ -2,7 +2,6 @@ import type { AppState } from '@/store/types'
 import {
   editorRecoveryResourceKey,
   type EditorRecoveryChange,
-  type EditorRecoveryAck,
   type EditorRecoveryMetadata
 } from '../../../shared/editor-recovery'
 import { shouldPersistWorkspaceSession } from './workspace-session'
@@ -22,7 +21,6 @@ export type EditorRecoveryBuffer = {
   metadata: EditorRecoveryMetadata
   content: string
   durableContent?: string
-  snapshotRequired?: boolean
   state: 'active' | 'retained' | 'resolved'
   version: number
 }
@@ -167,25 +165,20 @@ export class EditorRecoveryBufferTracker {
     version: number,
     change: EditorRecoveryChange,
     content: string,
-    ack: EditorRecoveryAck,
+    revision: number | null,
     publish: boolean
   ): void {
-    if (ack.revision === null && ack.snapshotRequired) {
-      buffer.snapshotRequired = true
-      this.markPending(buffer)
-    } else if (ack.revision === null) {
+    if (revision === null) {
       this.forget(buffer)
       if (buffer.state !== 'resolved') {
         buffer.id = createBrowserUuid()
         buffer.revision = 0
         buffer.durableContent = undefined
-        buffer.snapshotRequired = false
         this.buffers.set(buffer.id, buffer)
         this.markPending(buffer)
       }
     } else {
-      buffer.revision = ack.revision
-      buffer.snapshotRequired = ack.snapshotRequired === true
+      buffer.revision = revision
       if (change.kind === 'put' || change.kind === 'patch') {
         buffer.durableContent = content
       }

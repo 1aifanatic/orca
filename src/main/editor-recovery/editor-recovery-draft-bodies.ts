@@ -72,10 +72,26 @@ export class EditorRecoveryDraftBodies {
         inserted,
         patch.byteLengthDelta
       )
-    this.db
+    const row = this.db
       .prepare(`UPDATE editor_drafts SET patch_count = patch_count + 1, patch_bytes = patch_bytes + ?
-        WHERE id = ?`)
-      .run(Buffer.byteLength(inserted), id)
+        WHERE id = ? RETURNING patch_count, patch_bytes, byte_length`)
+      .get(Buffer.byteLength(inserted), id)
+    const counts = z
+      .object({
+        patch_count: z.number(),
+        patch_bytes: z.number(),
+        byte_length: z.number()
+      })
+      .parse(row)
+    if (
+      counts.patch_count >= EDITOR_RECOVERY_PATCH_LIMIT ||
+      counts.patch_bytes >= Math.max(64 * 1024, counts.byte_length / 2)
+    ) {
+      this.write(id, revision, this.read(id, revision, null))
+      this.db
+        .prepare('UPDATE editor_drafts SET patch_count = 0, patch_bytes = 0 WHERE id = ?')
+        .run(id)
+    }
   }
 
   delete(id: string): void {

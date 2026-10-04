@@ -23,9 +23,13 @@ buffers cannot be discarded from this dialog.
   and recoverable. Closing retains a copy instead of retiring it.
 - Editable sections in the combined changes view use the same journal. After the
   view closes, each unsaved section can be recovered as an independent file copy.
-- Desktop writes run in one persistent worker, in transactions using SQLite WAL
+- Desktop writes run in one reusable worker, in transactions using SQLite WAL
   and `synchronous=FULL`. The file is `editor-recovery.sqlite` in the active profile's
   storage directory. Existing SQLite permission hardening covers its sidecars.
+  The worker starts on demand, stays warm during active requests, and closes its
+  database and thread after one second without requests. The next request reopens
+  the same journal without importing old snapshots again. No committed draft needs
+  to remain in worker RAM while the editor is idle.
 - Browser clients use the `orca-editor-recovery` IndexedDB database, with separate
   metadata and content stores and strict transaction durability. Quota or disk
   failures leave previous checkpoints intact and present a retry action.
@@ -42,11 +46,9 @@ and major deletions send a full snapshot. Differences are computed at checkpoint
 time, against acknowledged text, including when newer edits arrive during a write.
 
 Desktop metadata, full bodies, and incremental edits use separate tables. Small
-edits do not load or rewrite the unchanged body. Before 64 edits or when inserted
-JSON text would reach half the current draft's UTF-8 size (with a 64 KiB minimum),
-the worker requests a full snapshot from the renderer. This refresh replaces the
-body and deletes its edit log atomically, without rebuilding a full worker-side
-copy first. Recovery replays bounded slices and joins once,
+edits do not load or rewrite the unchanged body. A transaction compacts the body
+after 64 edits or when inserted JSON text reaches half the current draft's UTF-8
+size (with a 64 KiB minimum). Recovery replays bounded slices and joins once,
 preserving every UTF-16 code unit. Browser transactions apply the same edits to
 their content store. Both persistence subscribers reuse a timer until its deadline
 instead of allocating and cancelling one for each keystroke.

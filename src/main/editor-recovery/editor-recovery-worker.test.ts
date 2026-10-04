@@ -39,8 +39,8 @@ function fixture() {
   roots.push(root)
   return { root, path: join(root, 'editor-recovery.sqlite') }
 }
-function client(path: string, entry = workerPath, timeout = 15_000) {
-  const result = new EditorRecoveryWorker(path, entry, timeout)
+function client(path: string, entry = workerPath, timeout = 15_000, idleMs = 1_000) {
+  const result = new EditorRecoveryWorker(path, entry, timeout, idleMs)
   clients.push(result)
   return result
 }
@@ -66,6 +66,47 @@ function put(content: string, owner = metadata()): EditorRecoveryChange {
 }
 
 describe('recovery writer process boundaries', () => {
+  it('releases an idle worker and reopens the same committed journal without replaying imports', async () => {
+    const writer = client(fixture().path, workerPath, 15_000, 20)
+    expect(Reflect.get(writer, 'worker')).toBeNull()
+    await writer.apply([put('committed before idle')])
+    await expect.poll(() => Reflect.get(writer, 'worker'), { timeout: 2_000 }).toBeNull()
+    expect(writer.isRunning).toBe(true)
+    expect(await writer.read('buffer')).toMatchObject({
+      content: 'committed before idle',
+      revision: 1
+    })
+    await expect.poll(() => Reflect.get(writer, 'worker'), { timeout: 2_000 }).toBeNull()
+    await writer.apply([{ ...put('new edit after idle'), expectedRevision: 1 }])
+    expect(await writer.read('buffer')).toMatchObject({
+      content: 'new edit after idle',
+      revision: 2
+    })
+    await writer.close()
+    await expect(writer.list()).rejects.toThrow('closed')
+  })
+
+  it('keeps an outstanding request alive beyond the idle deadline', async () => {
+    const f = fixture()
+    const entry = join(f.root, 'slow-worker.cjs')
+    writeFileSync(
+      entry,
+      `const { parentPort } = require('node:worker_threads');
+      parentPort.on('message', ({ requestId, command }) => {
+        if (command.kind === 'close') {
+          parentPort.postMessage({ requestId, ok: true, result: undefined }); parentPort.close();
+        } else setTimeout(() => parentPort.postMessage({ requestId, ok: true, result: [] }), 150);
+      });`
+    )
+    const writer = client(f.path, entry, 2_000, 20)
+    const reading = writer.list()
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    expect(Reflect.get(writer, 'worker')).not.toBeNull()
+    expect(Reflect.get(writer, 'closing')).toBeNull()
+    expect(await reading).toEqual([])
+    await expect.poll(() => Reflect.get(writer, 'worker'), { timeout: 2_000 }).toBeNull()
+  })
+
   it('survives an abrupt process kill after acknowledgement, with no graceful shutdown checkpoint', async () => {
     const f = fixture()
     const text = 'most recent unsaved text 😀\r\n'.repeat(30_000)

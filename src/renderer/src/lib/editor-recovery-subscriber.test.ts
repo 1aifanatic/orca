@@ -276,43 +276,6 @@ describe('buffer checkpoints independent of layout persistence', () => {
     ).toEqual(['retain', 'retain'])
   })
 
-  it('refreshes a bounded edit log from renderer text and keeps its revision after a snapshot request', async () => {
-    const large = 'a'.repeat(5_000)
-    const f = fixture([file()], { note: large })
-    await f.subscriber.flush()
-    const id = f.changes()[0]?.id
-    useAppStore.getState().setEditorDraft('note', `${large}first`)
-    f.apply.mockImplementationOnce(async (changes) =>
-      changes.map((change) => ({
-        id: change.id,
-        revision: change.expectedRevision + 1,
-        snapshotRequired: true
-      }))
-    )
-    await f.subscriber.flush()
-    useAppStore.getState().setEditorDraft('note', `${large}next`)
-    await f.subscriber.flush()
-    expect(f.changes().at(-1)).toMatchObject({
-      kind: 'put',
-      id,
-      content: `${large}next`,
-      expectedRevision: 2
-    })
-    useAppStore.getState().setEditorDraft('note', `${large}last`)
-    f.apply.mockImplementationOnce(async (changes) =>
-      changes.map((change) => ({
-        id: change.id,
-        revision: null,
-        snapshotRequired: true
-      }))
-    )
-    await f.subscriber.flush()
-    expect(f.changes().slice(-2)).toEqual([
-      expect.objectContaining({ kind: 'patch', id, expectedRevision: 3 }),
-      expect.objectContaining({ kind: 'put', id, content: `${large}last`, expectedRevision: 3 })
-    ])
-  })
-
   it('keeps text entered while retirement is pending under a fresh checkpoint', async () => {
     const f = fixture()
     await f.subscriber.flush()

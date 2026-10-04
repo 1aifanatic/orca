@@ -7,6 +7,9 @@ export function initializeEditorRecoverySchema(db: SyncDatabase): void {
   }
   db.pragma('journal_mode = WAL')
   db.pragma('synchronous = FULL')
+  if (version === 2) {
+    return
+  }
   db.exec('BEGIN IMMEDIATE')
   try {
     db.exec(`

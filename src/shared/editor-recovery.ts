@@ -73,8 +73,7 @@ export const editorRecoveryChangeSchema = z.discriminatedUnion('kind', [
 export type EditorRecoveryChange = z.infer<typeof editorRecoveryChangeSchema>
 export const editorRecoveryAckSchema = z.object({
   id: z.string(),
-  revision: z.number().int().positive().nullable(),
-  snapshotRequired: z.literal(true).optional()
+  revision: z.number().int().positive().nullable()
 })
 export type EditorRecoveryAck = z.infer<typeof editorRecoveryAckSchema>
 export const editorRecoveryStatusSchema = z.object({
