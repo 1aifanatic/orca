@@ -18,10 +18,17 @@ export type SshPtyLegacyRelayRouting = {
   dispose: () => void
 }
 
+const delegatedProviders = new WeakSet<SshPtyProvider>()
+
 export function installSshPtyLegacyRelayDelegation(
   provider: SshPtyProvider,
   routing: SshPtyLegacyRelayRouting
 ): void {
+  // Why: a second install would wrap the wrappers and route through two routing tables.
+  if (delegatedProviders.has(provider)) {
+    throw new Error('ssh_pty_legacy_relay_routing_already_installed')
+  }
+  delegatedProviders.add(provider)
   const own = {
     dispose: provider.dispose.bind(provider),
     spawn: provider.spawn.bind(provider),
@@ -45,7 +52,9 @@ export function installSshPtyLegacyRelayDelegation(
     getForegroundProcess: provider.getForegroundProcess,
     inspectProcess: provider.inspectProcess,
     hasPty: provider.hasPty,
-    getAppliedSize: provider.getAppliedSize
+    getAppliedSize: provider.getAppliedSize,
+    serialize: provider.serialize,
+    providesAgentSessionOwnerListings: provider.providesAgentSessionOwnerListings.bind(provider)
   }
   const routed = (id: string): SshPtyProvider | undefined => routing.providerFor(id)
 
@@ -102,6 +111,10 @@ export function installSshPtyLegacyRelayDelegation(
     routed(id)?.inspectProcess(id, options) ?? own.inspectProcess(id, options)
   provider.hasPty = (id) => routed(id) !== undefined || own.hasPty(id)
   provider.getAppliedSize = (id) => (routed(id) ?? own).getAppliedSize(id)
+  provider.providesAgentSessionOwnerListings = (id) =>
+    (routed(id) ?? own).providesAgentSessionOwnerListings(id)
+  // Why not routed: revive replays onto this relay and would respawn a PTY the older one still runs.
+  provider.serialize = (ids) => own.serialize(ids.filter((id) => routed(id) === undefined))
   // Why merged: a served PTY missing from the target's listing would read as gone to inventory.
   provider.listProcesses = async (options) => {
     const [current, ...previous] = await Promise.all([

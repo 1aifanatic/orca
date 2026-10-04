@@ -15,7 +15,11 @@ import {
 } from './serve-update-supervisor'
 import { RuntimeClientError } from './types'
 import { SERVE_RUNTIME_ELECTRON, SERVE_RUNTIME_ENV } from '../../shared/orcad-local-serve-selection'
-import { resolveLocalServeRuntime, serveWithOrcad } from './serve-orcad-launch'
+import {
+  resolveLocalServeRuntime,
+  serveWithOrcad,
+  type ServeOrcaAppArgs
+} from './serve-orcad-launch'
 import { waitForRecipeJson } from './serve-recipe-json'
 
 const USER_NAMESPACE_PROBE_TIMEOUT_MS = 2_000
@@ -74,24 +78,14 @@ function spawnDetached(command: string, args: string[], options: SpawnOptions): 
   child.unref()
 }
 
-export type ServeOrcaAppArgs = {
-  json?: boolean
-  port?: string | null
-  pairingAddress?: string | null
-  noPairing?: boolean
-  mobilePairing?: boolean
-  recipeJson?: boolean
-  projectRoot?: string | null
-}
-
 export function serveOrcaApp(args: ServeOrcaAppArgs = {}): Promise<number> {
   const executable = resolveForegroundOrcaExecutable()
+  if (args.recipeJson && !args.projectRoot) {
+    throw new RuntimeClientError('invalid_argument', 'Recipe JSON output requires --project-root.')
+  }
   // Why synchronous on the opt-out: it must spawn Electron exactly as before, without asking.
   if (process.env[SERVE_RUNTIME_ENV] === SERVE_RUNTIME_ELECTRON) {
     return serveWithElectron(executable, args)
-  }
-  if (args.recipeJson && !args.projectRoot) {
-    throw new RuntimeClientError('invalid_argument', 'Recipe JSON output requires --project-root.')
   }
   return serveWithSelectedRuntime(executable, args)
 }
@@ -108,7 +102,13 @@ async function serveWithSelectedRuntime(
   })
   if (selection.kind === 'orcad') {
     process.stderr.write(`[serve] running on orcad ${selection.version}\n`)
-    return serveWithOrcad(selection, args, getDefaultUserDataPath(), spawnProcess)
+    return serveWithOrcad(
+      selection,
+      args,
+      getDefaultUserDataPath(),
+      stripElectronRunAsNode(process.env),
+      spawnProcess
+    )
   }
   if (selection.reason) {
     process.stderr.write(`[serve] using Electron serve: ${selection.reason}\n`)
@@ -134,13 +134,7 @@ function serveWithElectron(executable: string, args: ServeOrcaAppArgs): Promise<
   if (args.mobilePairing) {
     childArgs.push('--serve-mobile-pairing')
   }
-  if (args.recipeJson) {
-    if (!args.projectRoot) {
-      throw new RuntimeClientError(
-        'invalid_argument',
-        'Recipe JSON output requires --project-root.'
-      )
-    }
+  if (args.recipeJson && args.projectRoot) {
     childArgs.push('--serve-recipe-json', '--serve-project-root', args.projectRoot)
   }
 

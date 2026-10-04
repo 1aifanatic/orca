@@ -3,6 +3,7 @@ import {
   ORCAD_MIGRATION_MANIFEST_VERSION,
   parseOrcadMigrationManifest
 } from './orcad-migration-manifest-validation'
+import { isRecord } from './orcad-migration-manifest-fields'
 
 export const MAX_ORCAD_MIGRATION_STAGED_CATALOGS = 4
 
@@ -48,8 +49,4 @@ function parseStagedCatalog(value: unknown): OrcadMigrationStagedCatalog {
     manifest: parseOrcadMigrationManifest(value.manifest),
     stagedAt
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

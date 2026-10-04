@@ -163,7 +163,8 @@ function parseRepository(value: unknown): Repo {
   return copy
 }
 
-/** Throws the specific field error; narrowing only follows these checks. */
+// SAFETY: checks the fields import reads and throws the specific error; the rest pass through as
+// the client's own load normalized them.
 function isMigratedRepository(value: unknown): value is Repo {
   if (!isRecord(value)) {
     throw new Error('orcad_migration_manifest_repository_invalid')
@@ -187,7 +188,8 @@ function parseProjectGroup(value: unknown): ProjectGroup {
   return copy
 }
 
-/** Throws the specific field error; narrowing only follows these checks. */
+// SAFETY: checks the fields import reads and throws the specific error; the rest pass through as
+// the client's own load normalized them.
 function isMigratedProjectGroup(value: unknown): value is ProjectGroup {
   if (!isRecord(value)) {
     throw new Error('orcad_migration_manifest_project_group_invalid')
@@ -223,7 +225,8 @@ function parseFolderWorkspace(value: unknown): FolderWorkspace {
   return copy
 }
 
-/** Throws the specific field error; narrowing only follows these checks. */
+// SAFETY: checks the fields import reads and throws the specific error; the rest pass through as
+// the client's own load normalized them.
 function isMigratedFolderWorkspace(value: unknown): value is FolderWorkspace {
   if (!isRecord(value)) {
     throw new Error('orcad_migration_manifest_folder_workspace_invalid')

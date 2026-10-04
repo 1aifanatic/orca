@@ -6,6 +6,7 @@ import type {
   OrcadManagedCancelStopResult,
   OrcadManagedStopResult
 } from '../../shared/orcad-managed-runtime'
+import type { OrcadDaemonRetirementVerdict } from '../../shared/orcad-stop-request'
 import { removeManagedOrcadEnvironment } from '../../shared/runtime-environment-managed-orcad-store'
 import type {
   KnownRuntimeEnvironment,
@@ -36,7 +37,7 @@ export type ManagedOrcadStopPolicy = {
 }
 
 type Refusal = Extract<OrcadManagedStopResult, { outcome: 'refused' }>
-type Stopped = { version: string | null; retirement: 'retired' | 'live' | 'unverifiable' | null }
+type Stopped = { version: string | null; retirement: OrcadDaemonRetirementVerdict | null }
 
 function refuse(verdict: Refusal['verdict'], code: string, reason: string): Refusal {
   return { outcome: 'refused', verdict, code, reason }

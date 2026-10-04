@@ -10,11 +10,20 @@ import {
   parseServeRuntimeSelection,
   type ServeRuntimeSelection
 } from '../../shared/orcad-local-serve-selection'
-import type { ServeOrcaAppArgs } from './launch'
 import { waitForRecipeJson } from './serve-recipe-json'
 import { superviseForegroundServe } from './serve-update-supervisor'
 
 type SupervisorArgs = Parameters<typeof superviseForegroundServe>[0]
+
+export type ServeOrcaAppArgs = {
+  json?: boolean
+  port?: string | null
+  pairingAddress?: string | null
+  noPairing?: boolean
+  mobilePairing?: boolean
+  recipeJson?: boolean
+  projectRoot?: string | null
+}
 
 /** A first run may download and verify the pinned Node; bound it well past that. */
 const SELECTION_TIMEOUT_MS = 10 * 60_000
@@ -29,19 +38,23 @@ export async function resolveLocalServeRuntime(
   },
   run: typeof runProcess = runProcess
 ): Promise<ServeRuntimeSelection> {
+  // Why before spawning: the app answers Electron for this case unconditionally.
+  if (options.usesMacUpdateHandoff) {
+    return {
+      kind: 'electron',
+      reason:
+        'packaged macOS serve stays on Electron so paired clients can still update it (orcad has no app updater)'
+    }
+  }
   const entry = join(options.appRoot, 'out', 'main', `${ORCAD_LOCAL_SERVE_SELECTION_ENTRY}.js`)
   try {
     const result = await run({
       program: options.executable,
-      args: [
-        entry,
-        FLAGS.userData,
-        options.userDataPath,
-        FLAGS.appRoot,
-        options.appRoot,
-        ...(options.usesMacUpdateHandoff ? [FLAGS.macUpdateHandoff] : [])
-      ],
+      args: [entry, FLAGS.userData, options.userDataPath, FLAGS.appRoot, options.appRoot],
       env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      // Why inherit stderr: a first run may download the pinned Node, and that progress is the
+      // only sign `orca serve` is not hung.
+      stdio: ['ignore', 'pipe', 'inherit'],
       timeoutMs: SELECTION_TIMEOUT_MS
     })
     return (
@@ -63,6 +76,8 @@ export function serveWithOrcad(
   selection: Extract<ServeRuntimeSelection, { kind: 'orcad' }>,
   args: ServeOrcaAppArgs,
   userDataPath: string,
+  /** The caller's environment without `ELECTRON_RUN_AS_NODE`. */
+  baseEnv: NodeJS.ProcessEnv,
   spawnProcess: SupervisorArgs['spawnChild']
 ): Promise<number> {
   const childArgs = [selection.entry, ...orcadServeArgs(args)]
@@ -70,8 +85,9 @@ export function serveWithOrcad(
     detached: args.recipeJson === true,
     cwd: dirname(selection.entry),
     stdio: args.recipeJson === true ? ['ignore', 'pipe', 'inherit'] : 'inherit',
+    windowsHide: true,
     env: {
-      ...withoutElectronRunAsNode(process.env),
+      ...baseEnv,
       // The desktop's profile: its instance lock makes the two refuse each other.
       ORCA_USER_DATA: userDataPath,
       ORCA_VERSION: selection.version
@@ -105,10 +121,4 @@ export function orcadServeArgs(args: ServeOrcaAppArgs): string[] {
       ? ['--recipe-json', '--project-root', args.projectRoot]
       : [])
   ]
-}
-
-function withoutElectronRunAsNode(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const next = { ...env }
-  delete next.ELECTRON_RUN_AS_NODE
-  return next
 }

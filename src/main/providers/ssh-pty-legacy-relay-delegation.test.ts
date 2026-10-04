@@ -124,6 +124,25 @@ describe('SshPtyProvider delegation to an earlier build relay', () => {
     expect(listed.map((row) => row.id)).toEqual([CURRENT, HELD])
   })
 
+  it('answers owner listings from the serving relay and never serializes its PTYs here', async () => {
+    const { provider, legacy, currentMux, served } = setup()
+    served.add(HELD)
+    const legacyListings = vi.spyOn(legacy, 'providesAgentSessionOwnerListings').mockReturnValue(true)
+    currentMux.request.mockResolvedValueOnce('[]')
+
+    expect(provider.providesAgentSessionOwnerListings(HELD)).toBe(true)
+    expect(legacyListings).toHaveBeenCalledWith(HELD)
+    await provider.serialize([HELD, CURRENT])
+    expect(currentMux.request).toHaveBeenCalledWith('pty.serialize', { ids: ['pty2:new:1'] })
+  })
+
+  it('refuses a second routing install', () => {
+    const { provider, routing } = setup()
+    expect(() => provider.setLegacyRelayRouting(routing)).toThrow(
+      'ssh_pty_legacy_relay_routing_already_installed'
+    )
+  })
+
   it('closes its routes with the provider', () => {
     const { provider, routing } = setup()
     provider.dispose()

@@ -6,7 +6,7 @@ export type RelayWatcherProcessPool = Pick<
   RuntimeWatcherProcessPool,
   'dispose' | 'forgetRoot' | 'subscribe'
 > &
-  Partial<Pick<RuntimeWatcherProcessPool, 'disposeAndWait'>>
+  Partial<Pick<RuntimeWatcherProcessPool, 'disposeAndWait' | 'reopen'>>
 
 export function getRelayWatcherProcessEntryPath(): string {
   return join(__dirname, 'relay-watcher.js')

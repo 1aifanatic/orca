@@ -1,4 +1,5 @@
 export const MAX_ORCAD_MIGRATION_DORMANT_ROWS = 16_384
+import { isRecord } from './orcad-migration-manifest-fields'
 export const MAX_ORCAD_MIGRATION_DORMANT_NAMESPACES = 256
 
 export function boundedArray<T>(
@@ -39,14 +40,10 @@ export function assertUnique<T>(values: T[], key: (value: T) => string, label: s
 }
 
 export function requiredRecord(value: unknown, error: string): Record<string, unknown> {
-  if (!isRecordValue(value)) {
+  if (!isRecord(value)) {
     throw new Error(error)
   }
   return value
-}
-
-function isRecordValue(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 export function requiredString(value: unknown, error: string): string {

@@ -129,6 +129,8 @@ export class AgentExecHandler {
     return this.processLifetime.dispose()
   }
 
+  reopen = (): void => this.processLifetime.reopen()
+
   private async cancel(params: CancelParams): Promise<{ canceled: boolean }> {
     const cwd = typeof params.cwd === 'string' ? params.cwd : ''
     const entry = this.inFlightByLane.get(laneKeyFor(cwd, params.operation))
@@ -193,6 +195,8 @@ export class AgentExecHandler {
         return { stdout: '', stderr: '', exitCode: null, timedOut: false, canceled: true }
       }
     }
+    // Why again: shutdown may have fenced while the login shell resolved.
+    this.processLifetime.assertAdmission()
     if (Date.now() >= deadline) {
       return { stdout: '', stderr: '', exitCode: null, timedOut: true }
     }

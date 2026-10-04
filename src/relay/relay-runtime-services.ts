@@ -122,22 +122,15 @@ export class RelayRuntimeServices {
     this.registerRemoteCliRoutes()
   }
 
-  // Why: the handler work drain ends when a stream's metadata/sentinel is answered; the detached
-  // pumps and file descriptors behind it are only proven gone by these registry drains.
+  // Why: answering a stream's request does not prove its detached pumps, descriptors or children
+  // are gone; only these registry drains do.
   async disposeOwnedProcesses(): Promise<void> {
-    const failures: unknown[] = []
-    const agents = this.agentExecHandler.dispose().catch((error: unknown) => {
-      failures.push(error)
-    })
-    const responses = this.responseStreams.disposeAllAndWait().catch((error: unknown) => {
-      failures.push(error)
-    })
-    const fileStreams = this.fsHandler.disposeFileStreams().catch((error: unknown) => {
-      failures.push(error)
-    })
-    const watchers = this.fsHandler.disposeWatchers().catch((error: unknown) => {
-      failures.push(error)
-    })
+    const owned = Promise.allSettled([
+      this.agentExecHandler.dispose(),
+      this.responseStreams.disposeAllAndWait(),
+      this.fsHandler.disposeFileStreams(),
+      this.fsHandler.disposeWatchers()
+    ])
     await this.skillInstallHandler.dispose().catch((error) => {
       relayLogLine(
         `[relay] Skill upload cleanup failed: ${error instanceof Error ? error.message : String(error)}`
@@ -148,15 +141,20 @@ export class RelayRuntimeServices {
         `[relay] AI Vault sidecar shutdown failed: ${error instanceof Error ? error.message : String(error)}`
       )
     })
-    await agents
-    await responses
-    await fileStreams
-    await watchers
+    const failures = (await owned).flatMap((result) =>
+      result.status === 'rejected' ? [result.reason] : []
+    )
     // Why: an unclosed fd, watcher child or agent child defers shutdown so the next attempt retries
     // it; skill/AI Vault cleanup stays log-and-continue until a later T2 slice.
     if (failures.length > 0) {
       throw new AggregateError(failures, 'relay_owned_process_shutdown_incomplete')
     }
+  }
+
+  reopenOwnedProcesses(): void {
+    this.agentExecHandler.reopen()
+    this.responseStreams.reopen()
+    this.fsHandler.reopen()
   }
 
   disposeHandlers(): void {

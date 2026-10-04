@@ -17,6 +17,10 @@ describe('orcad migration scrollback wire validation', () => {
   it('accepts only canonical non-empty bounded base64 chunks', () => {
     const request = chunkRequest('YQ==')
     expect(OrcadMigrationSnapshotChunkRequestSchema.safeParse(request).success).toBe(true)
+    expect(
+      OrcadMigrationSnapshotChunkRequestSchema.safeParse({ ...request, futureField: 1 }).success,
+      'a newer client field'
+    ).toBe(true)
     for (const bytesBase64 of ['', 'YQ', 'YQ=', 'A===', '***=']) {
       expect(
         OrcadMigrationSnapshotChunkRequestSchema.safeParse({ ...request, bytesBase64 }).success
