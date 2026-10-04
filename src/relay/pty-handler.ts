@@ -10,6 +10,11 @@ import type { IPty } from 'node-pty'
 import { killWithDescendantSweep } from '../main/pty-descendant-termination'
 import type * as NodePty from 'node-pty'
 import { existsSync } from 'node:fs'
+import {
+  createPtyStartupDiagnostic,
+  SSH_STARTUP_DIAGNOSTIC_RUN_ENV,
+  type PtyStartupDiagnostic
+} from './pty-startup-diagnostic'
 import { basename, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { resolveWindowsGitBashShellPath } from '../main/git-bash'
@@ -255,6 +260,7 @@ type ManagedPty = {
   gitCredentialPromptGuarded: boolean
   historyIsolationEnabled?: boolean
   startupCommand?: ManagedStartupCommand
+  startupDiagnostic?: PtyStartupDiagnostic
   /** Whether this host armed the shell-ready marker for a renderer-delivered startup command.
    *  Kept off `startupCommand`, which is dropped once delivered; the client reads it from the
    *  spawn reply to skip waiting for a marker that will never come (fish, sh, Windows). */
@@ -333,6 +339,8 @@ function disposeManagedPty(managed: ManagedPty): void {
   if (managed.disposed) {
     return
   }
+  managed.startupDiagnostic?.record('disposed')
+  managed.startupDiagnostic?.close()
   managed.disposed = true
   // Why: clear the SIGKILL fallback timer so it can't fire pty.kill on an already-disposed instance.
   if (managed.killTimer) {
@@ -953,6 +961,7 @@ export class PtyHandler {
 
   private clearStartupCommandTimer(managed: ManagedPty): void {
     if (managed.startupCommand?.timer) {
+      managed.startupDiagnostic?.record('timer-cleared')
       clearTimeout(managed.startupCommand.timer)
       managed.startupCommand.timer = null
     }
@@ -986,8 +995,15 @@ export class PtyHandler {
       return
     }
     this.clearStartupCommandTimer(managed)
+    managed.startupDiagnostic?.record('scheduled', {
+      delayMs,
+      providerDelivery: startup.providerDelivery
+    })
     startup.timer = setTimeout(() => {
       startup.timer = null
+      managed.startupDiagnostic?.record('timer-fired', {
+        providerDelivery: startup.providerDelivery
+      })
       if (startup.providerDelivery) {
         this.deliverStartupCommand(managed)
       } else {
@@ -1015,7 +1031,11 @@ export class PtyHandler {
       bracketedPasteSafe: startup.waitForShellReady
     })
     managed.startupCommand = undefined
-    managed.pty.write(payload)
+    if (managed.startupDiagnostic) {
+      managed.startupDiagnostic.write(payload, () => managed.pty.write(payload))
+    } else {
+      managed.pty.write(payload)
+    }
   }
 
   private signalRendererShellReady(managed: ManagedPty): void {
@@ -1044,6 +1064,7 @@ export class PtyHandler {
     // Why: a second announce covers any store whose admission window has already closed.
     this.notifyPoolListener(this.ptyPoolActiveListener, 'pty-pool-active')
     const emitIngressData = (emission: PtyIngressEmission): void => {
+      managed.startupDiagnostic?.output('ingress-output', emission.data)
       const rawLength = emission.rawEndSeq - emission.rawStartSeq
       const data = managed.freebuffStatus?.project(emission.data) ?? emission.data
       this.appendReplayBuffer(managed, data)
@@ -1078,6 +1099,7 @@ export class PtyHandler {
         shellPathEnv: managed.shellPathEnv,
         getShellPid: () => startup.shellPid,
         onPromptReady: () => {
+          managed.startupDiagnostic?.record('prompt-ready')
           if (startup.providerDelivery) {
             this.scheduleStartupCommandResolution(managed, STARTUP_COMMAND_WRITE_DELAY_MS)
           } else {
@@ -1104,10 +1126,15 @@ export class PtyHandler {
       onCommandFinished: recheckAgentPresence
     })
     managed.pty.onData((data: string) => {
+      managed.startupDiagnostic?.output('native-output', data)
       presenceTriggers.handleChunk(data)
       const startup = managed.startupCommand
       if (startup?.waitForShellReady && startup.outputScanState && !startup.delivered) {
         const scanned = scanShellStartupOutput(startup.outputScanState, data)
+        managed.startupDiagnostic?.record('shell-scan', {
+          shellPid: scanned.shellPid,
+          ready: scanned.ready
+        })
         data = scanned.output
         if (scanned.shellPid) {
           startup.shellPid = scanned.shellPid
@@ -1126,6 +1153,8 @@ export class PtyHandler {
       }
     })
     managed.pty.onExit(({ exitCode }: { exitCode: number }) => {
+      managed.startupDiagnostic?.record('native-exit', { exitCode })
+      managed.startupDiagnostic?.close()
       presenceTriggers.dispose()
       managed.physicalExit?.markExited()
       if (managed.disposed) {
@@ -2182,6 +2211,20 @@ export class PtyHandler {
             }
           }
         : {})
+    }
+    if (env?.[SSH_STARTUP_DIAGNOSTIC_RUN_ENV]) {
+      managed.startupDiagnostic = createPtyStartupDiagnostic(
+        env?.[SSH_STARTUP_DIAGNOSTIC_RUN_ENV],
+        {
+          id: managed.id,
+          incarnationId: managed.incarnationId,
+          pid: term.pid,
+          slavePath: readPtySlavePath(term) ?? null,
+          command,
+          providerDelivery: shouldProviderDeliverCommand,
+          waitForShellReady: shellLaunch.supportsReadyMarker
+        }
+      )
     }
     this.retiredIncarnations.delete(id)
     this.sourcePublication?.activate(id, managed.incarnationId, context)

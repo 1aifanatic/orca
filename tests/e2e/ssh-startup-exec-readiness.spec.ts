@@ -17,6 +17,8 @@ import {
   expectStartupCommandQueuedByCompatibilityFallback,
   expectStartupExecRecovery
 } from './helpers/startup-exec-readiness-oracle'
+import { SshStartupDiagnostic } from './helpers/ssh-startup-diagnostic'
+import type { StartupExecTerminal } from './helpers/startup-exec-readiness-oracle'
 import { ensureTerminalVisible, waitForActiveWorktree, waitForSessionReady } from './helpers/store'
 import { waitForActiveTerminalManager } from './helpers/terminal'
 
@@ -36,6 +38,8 @@ test.describe('startup exec readiness over live SSH', () => {
     const ledgerPath = `/tmp/sta4067-${runId}.ledger`
     let target: DockerSshRelayTarget | null = null
     let terminal: string | null = null
+    let diagnostic: SshStartupDiagnostic | null = null
+    let diagnosticCreated: StartupExecTerminal | null = null
     try {
       target = startDockerSshRelayTarget(testInfo)
       await waitForSessionReady(orcaPage)
@@ -50,14 +54,20 @@ test.describe('startup exec readiness over live SSH', () => {
         '/root/.bash_profile',
         bashExecProfileContents(runId, { releasePath, startedPath })
       )
+      if (process.env.ORCA_E2E_SSH_STARTUP_DIAGNOSTIC === '1') {
+        diagnostic = new SshStartupDiagnostic(orcaPage, target, runId, testInfo)
+      }
       const created = await createStartupExecTerminal(
         orcaPage,
         remote.worktreeId,
         runId,
         ledgerPath,
-        'owning-client'
+        'owning-client',
+        '/bin/bash',
+        diagnostic?.shellEnv() ?? {}
       )
       terminal = created.terminal
+      diagnosticCreated = created
       await expect
         .poll(
           () =>
@@ -68,6 +78,7 @@ test.describe('startup exec readiness over live SSH', () => {
           { timeout: 30_000 }
         )
         .toBe('ready')
+      await diagnostic?.capture('before-echo-assertion', created)
       await expectStartupCommandQueuedByCompatibilityFallback(orcaPage, created)
       expect(
         execDockerSshRelayTargetControlCommand(
@@ -103,9 +114,14 @@ test.describe('startup exec readiness over live SSH', () => {
       expect(
         execDockerSshRelayTargetControlCommand(target, `ps -o tpgid= -p '${pid}' | tr -d ' '`)
       ).toBe(String(pid))
+      await diagnostic?.capture('success-before-finally', created)
+    } catch (error) {
+      await diagnostic?.capture('failure-before-finally', diagnosticCreated)
+      throw error
     } finally {
       await closeStartupExecTerminal(orcaPage, terminal)
       cleanupDockerSshRelayTarget(target)
+      diagnostic?.afterContainerCleanup()
     }
   })
 })

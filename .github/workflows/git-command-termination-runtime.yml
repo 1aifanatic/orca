@@ -5,6 +5,12 @@ on:
       - 'src/main/git/command-runner/spawned-command-tree-kill*'
       - '.github/workflows/git-command-termination-runtime.yml'
   workflow_dispatch:
+    inputs:
+      ssh_startup_diagnostic:
+        description: Run only the isolated SSH startup observation case
+        type: boolean
+        default: false
+
 permissions:
   contents: read
 concurrency:
@@ -12,6 +18,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   windows-exit:
+    if: github.event_name != 'workflow_dispatch' || !inputs.ssh_startup_diagnostic
     runs-on: windows-latest
     timeout-minutes: 20
     env:
@@ -23,3 +30,69 @@ jobs:
       - uses: ./.github/actions/install-node-dependencies
       - name: Verify exited native child does not trigger taskkill
         run: node node_modules/vitest/vitest.mjs run --config config/vitest.config.ts src/main/git/command-runner/spawned-command-tree-kill.test.ts
+
+  ssh-startup-diagnostic:
+    if: github.event_name == 'workflow_dispatch' && inputs.ssh_startup_diagnostic
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      ORCA_E2E_SSH_STARTUP_DIAGNOSTIC: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install existing headless UI and native tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential fonts-noto-cjk openssh-client python3 ripgrep xvfb zsh openbox x11-utils
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: electron
+      - name: Create disposable process state
+        shell: bash
+        run: |
+          diagnostic_root="$(mktemp -d "$RUNNER_TEMP/orca-ssh-startup-XXXXXXXX")"
+          for directory in home tmp config data cache state; do
+            mkdir -m 700 "$diagnostic_root/$directory"
+          done
+          {
+            printf 'HOME=%s/home\n' "$diagnostic_root"
+            printf 'TMPDIR=%s/tmp\n' "$diagnostic_root"
+            printf 'XDG_CONFIG_HOME=%s/config\n' "$diagnostic_root"
+            printf 'XDG_DATA_HOME=%s/data\n' "$diagnostic_root"
+            printf 'XDG_CACHE_HOME=%s/cache\n' "$diagnostic_root"
+            printf 'XDG_STATE_HOME=%s/state\n' "$diagnostic_root"
+          } >> "$GITHUB_ENV"
+      - name: Build exact diagnostic app and relay
+        env:
+          VITE_EXPOSE_STORE: 'true'
+        run: |
+          pnpm run build:relay
+          pnpm run build:electron-vite:parallel --mode e2e
+          pnpm run build:cli
+          pnpm run build:web-from-renderer
+      - name: Record exact source and build bytes
+        shell: bash
+        run: |
+          mkdir -p diagnostic-source
+          git rev-parse HEAD HEAD^{tree} > diagnostic-source/source-identity.txt
+          git ls-tree -r HEAD > diagnostic-source/source-map.txt
+          find out -type f -print0 | sort -z | xargs -0 sha256sum > diagnostic-source/build-sha256.txt
+      - name: Observe only the original failed SSH startup case
+        run: >-
+          xvfb-run --auto-servernum bash .github/scripts/e2e-with-window-manager.sh
+          env SKIP_BUILD=1 ORCA_BACKGROUND_LAUNCH=1 ORCA_E2E_FORWARD_APP_LOGS=1
+          pnpm run test:e2e:ssh-docker-terminal-parking --
+          --grep 'survives an SSH reconnect while the replacement shell is not ready' --retries=0
+      - name: Preserve partial diagnostics and original assertion
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ssh-startup-original-case-diagnostic
+          path: |
+            test-results/
+            diagnostic-source/
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: error

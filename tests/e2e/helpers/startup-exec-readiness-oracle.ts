@@ -9,6 +9,7 @@ import type {
 import { toWebTerminalSurfaceTabId } from '../../../src/shared/terminal-surface-id'
 import { expect } from './orca-app'
 import { getTerminalContent, waitForActivePanePtyId } from './terminal'
+import { observeStartupExecRuntime } from './ssh-startup-diagnostic'
 import { readFreshTerminalInventory } from './terminal-inventory-observation'
 
 const RECOVERY_DEADLINE_MS = 8_000
@@ -107,7 +108,8 @@ export async function callStartupExecRuntime<TResult>(
   method: string,
   params: unknown
 ): Promise<TResult> {
-  return page.evaluate(
+  const startedNs = process.hrtime.bigint()
+  const pending = page.evaluate(
     async ({ method, params }) => {
       const response = await window.api.runtime.call({ method, params })
       if (!response.ok) {
@@ -117,6 +119,7 @@ export async function callStartupExecRuntime<TResult>(
     },
     { method, params }
   ) as Promise<TResult>
+  return observeStartupExecRuntime(page, method, params, startedNs, pending)
 }
 
 export function installBashExecProfile(
