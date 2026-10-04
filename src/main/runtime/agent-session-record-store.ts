@@ -109,6 +109,12 @@ export class AgentSessionRecordStore {
 
   listRecords = (): AgentSessionRecord[] => [...this.state.records.values()]
 
+  /** Every chat this host holds a row for, readable or not. */
+  listRecordedSessionIds = (): string[] => [
+    ...this.state.records.keys(),
+    ...this.state.unreadableRecords.keys()
+  ]
+
   /** Whether this host has recorded a chat, readable or not. Nothing removes a record row. */
   holdsRecords = (): boolean => this.state.records.size > 0 || this.state.unreadableRecords.size > 0
 
