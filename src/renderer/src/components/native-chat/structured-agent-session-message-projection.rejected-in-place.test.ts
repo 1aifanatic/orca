@@ -227,9 +227,9 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
 
     expect(rows(projectStructuredAgentSessionMessages(items, [], submissions, NO_CARDS))).toEqual([
       { id: agentJournalSubmissionKey('seed'), text: 'seed', unsent: false },
-      { id: agentJournalSubmissionKey('again'), text: 'continue', unsent: false },
-      // Listed after the delivered rows; its journal position keeps its place.
-      { id: agentJournalSubmissionKey('first'), text: 'continue', unsent: true }
+      // At its journal place, so a reader that draws the list as it comes needs no sort.
+      { id: agentJournalSubmissionKey('first'), text: 'continue', unsent: true },
+      { id: agentJournalSubmissionKey('again'), text: 'continue', unsent: false }
     ])
   })
 
