@@ -278,8 +278,10 @@ describe('ACP session release', () => {
   it('keeps nothing of a chat once its child is proven closed', async () => {
     const rig = await openAcpAdapterRig()
     await rig.acquire()
+    expect(rig.adapter.backgroundTaskStops(SESSION)).toBeDefined()
     await rig.adapter.closeSession(SESSION)
-    expect(Reflect.get(rig.adapter, 'sessions').size).toBe(0)
+    // Both answer from the entry the adapter holds for a chat; none is left.
+    expect(rig.adapter.backgroundTaskStops(SESSION)).toBeUndefined()
     expect(rig.adapter.readCommands(SESSION)).toBeUndefined()
   })
 
@@ -288,7 +290,7 @@ describe('ACP session release', () => {
     await rig.acquire()
     rig.child().exit()
     await waitFor(() => expect(rig.lifecycle).toHaveLength(1))
-    expect(Reflect.get(rig.adapter, 'sessions').size).toBe(0)
+    expect(rig.adapter.backgroundTaskStops(SESSION)).toBeUndefined()
     await expect(rig.adapter.closeSession(SESSION)).resolves.toBe(true)
   })
 })
