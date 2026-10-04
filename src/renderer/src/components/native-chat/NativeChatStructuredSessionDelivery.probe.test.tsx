@@ -1,10 +1,10 @@
-// The automatic probe of an unconfirmed outbox head: when it resends under the same
-// operation id, and when it parks the entry for the user's Retry instead.
+// The automatic probe of an outbox head with no answer: it resends under the same operation id,
+// with backoff, until the host answers, and a head the host holds a row for never waits on it.
 
 // @vitest-environment happy-dom
 
-import { act, cleanup, render, screen } from '@testing-library/react'
-import React from 'react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import type React from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const { mocks, moduleFactories, resetStructuredSessionMocks } = await vi.hoisted(async () =>
@@ -25,12 +25,51 @@ vi.mock('./NativeChatApprovalCard', () => moduleFactories.nativeChatApprovalCard
 vi.mock('./NativeChatQuestionCard', () => moduleFactories.nativeChatQuestionCard())
 
 import { NativeChatStructuredSession } from './NativeChatStructuredSession'
-import {
-  advanceProbeClock,
-  seededEntry,
-  seedOutbox,
-  useProbeClock
-} from './NativeChatStructuredSession.test-harness'
+import { advanceProbeClock, useProbeClock } from './NativeChatStructuredSession.test-harness'
+
+/** The composer's send, as the pane hands it over. */
+function composerSend(): (
+  text: string,
+  attachments: readonly { id: string; path: string }[]
+) => boolean {
+  const send = mocks.composerProps?.structuredTransport?.send
+  if (typeof send !== 'function') {
+    throw new Error('the composer was given no send')
+  }
+  return (text, attachments) => send(text, attachments) === true
+}
+
+/** The operation id a request carried, read without trusting its shape. */
+function sentOperationId(params: unknown): string | undefined {
+  if (typeof params !== 'object' || params === null || !('envelope' in params)) {
+    return undefined
+  }
+  const { envelope } = params
+  return typeof envelope === 'object' &&
+    envelope !== null &&
+    'clientOperationId' in envelope &&
+    typeof envelope.clientOperationId === 'string'
+    ? envelope.clientOperationId
+    : undefined
+}
+
+/** The first text block a send request carried, read without trusting its shape. */
+function sentText(params: unknown): string | undefined {
+  if (typeof params !== 'object' || params === null || !('body' in params)) {
+    return undefined
+  }
+  const { body } = params
+  if (typeof body !== 'object' || body === null || !('blocks' in body)) {
+    return undefined
+  }
+  const [first] = Array.isArray(body.blocks) ? body.blocks : []
+  return typeof first === 'object' &&
+    first !== null &&
+    'text' in first &&
+    typeof first.text === 'string'
+    ? first.text
+    : undefined
+}
 
 describe('NativeChatStructuredSession delivery probe', () => {
   afterEach(() => {
@@ -60,9 +99,7 @@ describe('NativeChatStructuredSession delivery probe', () => {
       />
     )
 
-    const send = mocks.composerProps?.structuredTransport?.send as
-      | ((text: string, attachments: readonly { id: string; path: string }[]) => boolean)
-      | undefined
+    const send = composerSend()
     await act(async () => {
       expect(send?.('first', [])).toBe(true)
     })
@@ -76,7 +113,7 @@ describe('NativeChatStructuredSession delivery probe', () => {
     await advanceProbeClock(1)
     // The head is probed automatically, clears, and the queue drains.
     expect(mocks.call).toHaveBeenCalledTimes(3)
-    expect(screen.queryByText('Message delivery is unconfirmed.')).toBeNull()
+    expect(screen.queryByText('Sending…')).toBeNull()
   }, 20000)
 
   it('probes the same operation without marking an explicit user retry', async () => {
@@ -99,9 +136,7 @@ describe('NativeChatStructuredSession delivery probe', () => {
       />
     )
 
-    const send = mocks.composerProps?.structuredTransport?.send as
-      | ((text: string, attachments: readonly { id: string; path: string }[]) => boolean)
-      | undefined
+    const send = composerSend()
     await act(async () => {
       expect(send?.('first', [])).toBe(true)
     })
@@ -110,17 +145,13 @@ describe('NativeChatStructuredSession delivery probe', () => {
     await advanceProbeClock(1)
     expect(mocks.call).toHaveBeenCalledTimes(2)
 
-    const first = mocks.call.mock.calls[0]?.[2] as Record<string, unknown>
-    const probe = mocks.call.mock.calls[1]?.[2] as Record<string, unknown>
-    expect(probe.retryUnknown).toBeUndefined()
+    const [first, probe] = mocks.call.mock.calls.map((call) => call[2])
+    expect(probe).not.toHaveProperty('retryUnknown')
     // Same operation id: both dedupe layers key off it.
-    expect((probe.envelope as { clientOperationId: string }).clientOperationId).toBe(
-      (first.envelope as { clientOperationId: string }).clientOperationId
-    )
+    expect(sentOperationId(probe)).toBe(sentOperationId(first))
   }, 20000)
 
-  it('parks a host-confirmed unknown instead of probing it', async () => {
-    useProbeClock()
+  it('lets a head the host answers in doubt leave, so the message behind it goes out (no parked head)', async () => {
     mocks.mode = 'outbox'
     mocks.call.mockRejectedValueOnce(new Error('socket closed')).mockResolvedValue({
       ok: true,
@@ -138,19 +169,17 @@ describe('NativeChatStructuredSession delivery probe', () => {
       />
     )
 
-    const send = mocks.composerProps?.structuredTransport?.send as
-      | ((text: string, attachments: readonly { id: string; path: string }[]) => boolean)
-      | undefined
+    const send = composerSend()
     await act(async () => {
       expect(send?.('first', [])).toBe(true)
     })
     expect(mocks.call).toHaveBeenCalledOnce()
 
-    const sent = mocks.call.mock.calls[0]?.[2] as { envelope: { clientOperationId: string } }
-    // The host now reports an unresolved unknown: another replay is the user's call.
+    const sentId = sentOperationId(mocks.call.mock.calls[0]?.[2])
+    // The host now reports the row in doubt: it has a record, so the row shows it from here.
     mocks.submissions = [
       {
-        clientMessageId: sent.envelope.clientOperationId,
+        clientMessageId: sentId,
         fence: 1,
         payloadFingerprint: 'fp',
         dispatchState: 'unknown',
@@ -160,15 +189,15 @@ describe('NativeChatStructuredSession delivery probe', () => {
         resolvedAt: null
       }
     ]
-    // Queue a second message purely to re-render so the effect observes the
-    // new submissions; it must stay wedged behind the parked head.
+    // A later send, with no user action: it goes out instead of waiting behind the head.
     await act(async () => {
       send?.('second', [])
     })
-    await advanceProbeClock(3000)
-    // From the row on, only the user's Retry moves it, so it says so.
-    expect(screen.getByText('Message delivery is unconfirmed.')).toBeTruthy()
-    expect(mocks.call).toHaveBeenCalledOnce()
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2), { timeout: 5000 })
+    const texts = mocks.call.mock.calls.map((call) => sentText(call[2]))
+    expect(texts).toEqual(['first', 'second'])
+    // Neither waits on the user: no Retry anywhere.
+    expect(screen.queryByRole('button', { name: /Retry/ })).toBeNull()
   }, 20000)
 
   it('still probes while streaming batches rebuild the submissions array', async () => {
@@ -192,9 +221,7 @@ describe('NativeChatStructuredSession delivery probe', () => {
     )
     const { rerender } = render(makeView())
 
-    const send = mocks.composerProps?.structuredTransport?.send as
-      | ((text: string, attachments: readonly { id: string; path: string }[]) => boolean)
-      | undefined
+    const send = composerSend()
     await act(async () => {
       expect(send?.('first', [])).toBe(true)
     })
@@ -248,13 +275,13 @@ describe('NativeChatStructuredSession delivery probe', () => {
       />
     )
     const { rerender } = render(makeView({ kind: 'local' }))
-    const send = mocks.composerProps?.structuredTransport?.send as
-      | ((text: string, attachments: readonly { id: string; path: string }[]) => boolean)
-      | undefined
+    const send = composerSend()
     await act(async () => {
       expect(send?.('first', [])).toBe(true)
     })
     expect(mocks.call).toHaveBeenCalledOnce()
+    // No answer is no failure: the message reads as sending while Orca resends it.
+    expect(screen.getByText('Sending…')).toBeTruthy()
 
     await advanceProbeClock(300)
     rerender(makeView({ kind: 'environment', environmentId: 'env-1' }))
@@ -265,30 +292,6 @@ describe('NativeChatStructuredSession delivery probe', () => {
     await advanceProbeClock(1)
     expect(mocks.call).toHaveBeenCalledTimes(2)
   }, 10000)
-
-  it('never auto-probes an entry the user already force-retried', async () => {
-    useProbeClock()
-    mocks.mode = 'outbox'
-    mocks.submissions = []
-    mocks.call.mockRejectedValue(new Error('socket closed'))
-    seedOutbox('session-forced', [seededEntry('session-forced', 'op-head', 'first', 'unconfirmed')])
-
-    render(
-      <NativeChatStructuredSession
-        isVisible
-        isFocusedGroup
-        tabId="structured-tab-forced"
-        sessionId="session-forced"
-        target={{ kind: 'local' }}
-        agent="codex"
-      />
-    )
-
-    await advanceProbeClock(3000)
-    // Only the user's Retry moves it, so it says so.
-    expect(screen.getByText('Message delivery is unconfirmed.')).toBeTruthy()
-    expect(mocks.call).not.toHaveBeenCalled()
-  }, 20000)
 
   it('does not hot-loop when the host answers pending', async () => {
     useProbeClock()
@@ -309,9 +312,7 @@ describe('NativeChatStructuredSession delivery probe', () => {
       />
     )
 
-    const send = mocks.composerProps?.structuredTransport?.send as
-      | ((text: string, attachments: readonly { id: string; path: string }[]) => boolean)
-      | undefined
+    const send = composerSend()
     await act(async () => {
       expect(send?.('first', [])).toBe(true)
     })
@@ -342,9 +343,7 @@ describe('NativeChatStructuredSession delivery probe', () => {
         />
       )
 
-      const send = mocks.composerProps?.structuredTransport?.send as
-        | ((text: string, attachments: readonly { id: string; path: string }[]) => boolean)
-        | undefined
+      const send = composerSend()
       expect(send?.('first', [])).toBe(true)
 
       // Backoff is 1+2+4+8+16 = 31s for five probes, which was the old hard budget.

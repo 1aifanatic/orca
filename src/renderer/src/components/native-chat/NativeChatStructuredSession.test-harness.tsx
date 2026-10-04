@@ -69,10 +69,7 @@ export function seededEntry(
     previewUris: [],
     state,
     queuedAt: clientMessageId === 'op-head' ? 1 : 2,
-    lastAttemptAt: null,
-    // Already force-retried once, so the automatic probe leaves the head alone
-    // and only the user's Retry moves it.
-    retryAfterUnknownSubmittedAt: -1
+    lastAttemptAt: null
   }
 }
 
