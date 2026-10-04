@@ -42,6 +42,7 @@ import {
   installAgentSessionAttachments,
   stopAgentSessionAttachments
 } from './structured-agent-session-attachment-wiring'
+import { agentSessionAttachmentStoreRoot } from '../native-chat/agent-session-attachments/agent-session-attachment-references'
 import type { JournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database'
 import { openStructuredAgentSessionJournalDatabase } from './structured-agent-session-journal-open'
 import { legacyAgentSessionStorePath } from './agent-session-record-store-file'
@@ -297,6 +298,7 @@ async function installOnJournal(
             readClaudeManagedAccountGateSettings(deps.getClaudeManagedAccountGateSettings!)
         }
       : {}),
+    attachmentDirectory: agentSessionAttachmentStoreRoot(deps.stateDirectory),
     onLifecycleEvent: (event) => lifecycle.deliver(event),
     onChildWorkEvidence: (sessionId, evidence) =>
       host?.publishChildWorkEvidence(sessionId, evidence),

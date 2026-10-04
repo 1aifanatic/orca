@@ -47,6 +47,7 @@ export type ClaudeStructuredSdkOptions = Pick<
   | 'allowDangerouslySkipPermissions'
   | 'sessionId'
   | 'resume'
+  | 'additionalDirectories'
 >
 
 /**
@@ -128,6 +129,9 @@ export type ClaudeStructuredLaunchResolverDeps = {
   authSwitchSettleTimeoutMs?: number
   /** Account state for the managed-account gate; null when it cannot be read, which refuses. */
   readManagedAccountGate?: () => ClaudeManagedAccountGateSettings | null
+  /** The host's chat attachment store: files a client attached live there, outside the workspace,
+   *  and the agent reads them without asking. */
+  attachmentDirectory?: string
   /** Whether Claude wrote a transcript for this id; defaults to the transcript resolver. */
   hasTranscript?: (input: {
     providerSessionId: string
@@ -301,6 +305,7 @@ export function createClaudeStructuredLaunchResolver(
         ...CLAUDE_STRUCTURED_BASE_OPTIONS,
         ...permission,
         extraArgs: { ...CLAUDE_STRUCTURED_BASE_OPTIONS.extraArgs, ...permission.extraArgs },
+        ...(deps.attachmentDirectory ? { additionalDirectories: [deps.attachmentDirectory] } : {}),
         // Claude owns where a resumed conversation continues; the stored leaf is Orca's bookkeeping.
         ...(resumesTranscript ? { resume: providerSessionId } : { sessionId: providerSessionId })
       },

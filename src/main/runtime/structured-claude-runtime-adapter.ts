@@ -31,6 +31,8 @@ export type StructuredClaudeRuntimeAdapterDeps = {
   /** The user's Agent Permissions setting for Claude; absent means prompting. */
   resolveClaudePermissionMode?: () => Promise<PermissionMode> | PermissionMode
   readClaudeManagedAccountGate?: () => ClaudeManagedAccountGateSettings | null
+  /** Where the host stores chat attachments; granted to the agent as a readable directory. */
+  attachmentDirectory?: string
   openClaudeConnection?: ClaudeStructuredSessionAdapterDeps['openConnection']
   readProcessStartTime?: ClaudeStructuredSessionAdapterDeps['readProcessStartTime']
   modelCatalog?: ClaudeStructuredSessionAdapterDeps['modelCatalog']
@@ -91,7 +93,8 @@ export function createStructuredClaudeRuntimeAdapter(
         : {}),
       ...(deps.readClaudeManagedAccountGate
         ? { readManagedAccountGate: deps.readClaudeManagedAccountGate }
-        : {})
+        : {}),
+      ...(deps.attachmentDirectory ? { attachmentDirectory: deps.attachmentDirectory } : {})
     }),
     persistHandle: async ({ sessionId, providerSessionId, leafUuid, fence }) => {
       const currentFence = store.getRecord(sessionId)?.lease.runtimeFence ?? fence
