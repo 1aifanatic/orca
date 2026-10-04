@@ -1,4 +1,4 @@
-// Why: user startup files can replace the prompt array and global zshrc can rebind line-init.
+// Why: stock zshrc can replace line-init after the user clears the prompt-hook array.
 export const ZSH_DEFERRED_LINE_INIT_BLOCK = `__orca_deferred_line_init() {
   builtin emulate -L zsh
   (( \${+functions[__orca_deferred_init]} )) || return 0
@@ -12,26 +12,14 @@ export const ZSH_DEFERRED_LINE_INIT_BLOCK = `__orca_deferred_line_init() {
     __orca_prompt_mark "$@"
   fi
 }
-__orca_deferred_precmd() {
-  local __orca_precmd_status=0
-  if (( \${+functions[__orca_saved_precmd]} )); then
-    local __orca_original_precmd="\${functions[__orca_saved_precmd]}"
-    functions[precmd]="$__orca_original_precmd"
-    precmd "$@"
-    __orca_precmd_status=$?
-    if (( \${+functions[__orca_deferred_init]} )) &&
-       [[ "\${functions[precmd]:-}" == "$__orca_original_precmd" ]]; then
-      functions[precmd]="\${functions[__orca_deferred_precmd]}"
-    fi
-  fi
-  __orca_deferred_precmd_fallback
-  return $__orca_precmd_status
-}
-__orca_deferred_precmd_fallback() {
+# Why: scheduled callbacks run after user prompt hooks without copying their function metadata.
+__orca_deferred_sched_init() {
+  local __orca_prompt_status=$?
   builtin emulate -L zsh
-  if (( \${+functions[__orca_deferred_init]} && ! precmd_functions[(Ie)__orca_deferred_init] )); then
-    __orca_deferred_init
-  fi
+  (( \${+functions[__orca_deferred_init]} )) && __orca_deferred_init
+  builtin unset __orca_deferred_sched_armed
+  builtin unfunction __orca_deferred_sched_init
+  return $__orca_prompt_status
 }
 __orca_arm_deferred_line_init() {
   builtin emulate -L zsh
@@ -41,23 +29,13 @@ __orca_arm_deferred_line_init() {
     fi
     zle -N zle-line-init __orca_deferred_line_init
   fi
-  if [[ "\${functions[precmd]:-}" != "\${functions[__orca_deferred_precmd]}" ]]; then
-    if (( \${+functions[precmd]} )); then
-      functions[__orca_saved_precmd]="\${functions[precmd]}"
-    fi
-    functions[precmd]="\${functions[__orca_deferred_precmd]}"
+  if (( ! $+__orca_deferred_sched_armed )) && builtin zmodload -F zsh/sched b:sched 2>/dev/null; then
+    builtin sched +0 __orca_deferred_sched_init && builtin typeset -g __orca_deferred_sched_armed=1
   fi
 }`
 
 // Why: restore the exact prior widget before the existing readiness hook captures it.
-export const ZSH_DEFERRED_LINE_INIT_RETIRE_BLOCK = `  if [[ "\${functions[precmd]:-}" == "\${functions[__orca_deferred_precmd]}" ]]; then
-    if (( \${+functions[__orca_saved_precmd]} )); then
-      functions[precmd]="\${functions[__orca_saved_precmd]}"
-    else
-      builtin unfunction precmd
-    fi
-  fi
-  if (( \${+widgets[__orca_saved_line_init]} )); then
+export const ZSH_DEFERRED_LINE_INIT_RETIRE_BLOCK = `  if (( \${+widgets[__orca_saved_line_init]} )); then
     if [[ "\${widgets[zle-line-init]:-}" == user:__orca_deferred_line_init ]]; then
       zle -A __orca_saved_line_init zle-line-init
     fi
@@ -67,8 +45,7 @@ export const ZSH_DEFERRED_LINE_INIT_RETIRE_BLOCK = `  if [[ "\${functions[precmd
   fi`
 
 // Why: add-zle-hook-widget can keep an alias of the bootstrap in its own chain.
-export const ZSH_DEFERRED_LINE_INIT_CLEANUP_BLOCK = `  builtin unfunction __orca_deferred_precmd __orca_deferred_precmd_fallback
-  (( \${+functions[__orca_saved_precmd]} )) && builtin unfunction __orca_saved_precmd
+export const ZSH_DEFERRED_LINE_INIT_CLEANUP_BLOCK = `  (( $+__orca_deferred_sched_armed )) || builtin unfunction __orca_deferred_sched_init
   local __orca_widget __orca_line_init_bound=0
   for __orca_widget in "\${(v)widgets[@]}"; do
     if [[ "$__orca_widget" == user:__orca_deferred_line_init ]]; then
