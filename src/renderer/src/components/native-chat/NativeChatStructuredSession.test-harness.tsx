@@ -144,6 +144,7 @@ export function createStructuredSessionMocks() {
         }) => {
           mocks.controllerProps = props
           const outbox = useStructuredAgentSessionOutbox({
+            journalItems: mocks.journalItems,
             sessionId: props.sessionId,
             target: props.target,
             fence: props.transportEnabled === false ? null : 1,
@@ -154,7 +155,9 @@ export function createStructuredSessionMocks() {
             messages:
               mocks.messages ??
               (mocks.mode === 'outbox'
-                ? projectStructuredAgentSessionMessages([], outbox.outbox, [])
+                ? projectStructuredAgentSessionMessages([], outbox.outbox, [], {
+                    rejectedInPlace: true
+                  })
                 : [
                     {
                       id: 'message-1',

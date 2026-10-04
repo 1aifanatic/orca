@@ -5,16 +5,17 @@
 // it names no next card, so the chat reads idle.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalRenderItem,
+  AgentJournalSubmission
+} from '../../../shared/agent-session-journal-types'
 import type {
   AgentSessionQueuedMessage,
   AgentSessionQueuePause
 } from '../../../shared/agent-session-wire'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
-import {
-  reconcileStructuredAgentSessionOutbox,
-  type StructuredAgentSessionOutboxEntry
-} from '../../../shared/structured-agent-session-outbox'
+import type { StructuredAgentSessionOutboxEntry } from '../../../shared/structured-agent-session-outbox'
+import { reconcileStructuredAgentSessionOutboxWithQueue } from '../../../shared/structured-agent-session-draft-hand-off'
 import {
   ownDirectSendOnItsWay,
   projectQueuedMessageCards,
@@ -114,6 +115,7 @@ async function watchClient(outbox: ComposerOutbox = { entries: [] }): Promise<Cl
   const views: ClientView[] = []
   const submissions = new Map<string, AgentJournalSubmission>()
   const turns = new Map<string, string>()
+  const items = new Map<string, AgentJournalRenderItem>()
   let queued: AgentSessionQueuedMessage[] = []
   let queuePause: AgentSessionQueuePause | null = null
   let nextQueuedMessageId: string | null = null
@@ -129,6 +131,7 @@ async function watchClient(outbox: ComposerOutbox = { entries: [] }): Promise<Cl
         submissions.set(submission.clientMessageId, submission)
       }
       for (const item of rows.items) {
+        items.set(item.itemId, item)
         if (item.body.kind === 'turn') {
           turns.set(item.itemId, item.body.state)
         }
@@ -145,7 +148,9 @@ async function watchClient(outbox: ComposerOutbox = { entries: [] }): Promise<Cl
       const working = hostWorking || (nextQueuedMessageId !== null && !hostWorking)
       const cards = projectQueuedMessageCards(queued, all, { hasPendingPrompt: false, queuePause })
       const queueHeld = queuedMessagesResumable(cards, working)
-      outbox.entries = reconcileStructuredAgentSessionOutbox(outbox.entries, all)
+      outbox.entries = [
+        ...reconcileStructuredAgentSessionOutboxWithQueue(outbox.entries, all, [...items.values()])
+      ]
       views.push({
         working,
         stopLive: hostWorking,

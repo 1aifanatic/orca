@@ -18,6 +18,15 @@ export type AgentSessionQueuedMessagePausedReason = typeof QUEUED_MESSAGE_PAUSED
  *  plain pause, so a newer host can add one. */
 export type AgentSessionQueuePause = { reason: 'stopped' | 'restarted' | 'cleared' }
 
+/** What rides beside a frame's `queuedMessages`, published together with the list. */
+export type AgentSessionQueuePublicationFields = {
+  /** Null when the queue sends on its own. */
+  queuePause?: AgentSessionQueuePause | null
+  /** The card the queue sends next once nothing runs, null while anything holds the queue.
+   *  Absent from an older host, read as null. */
+  nextQueuedMessageId?: string | null
+}
+
 export type AgentSessionQueuedMessagesResumeResult = {
   /** False when nothing was paused, and on a replay of an already-run Resume. */
   resumed: boolean

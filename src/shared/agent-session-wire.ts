@@ -7,7 +7,8 @@ import type { AgentSessionWireRefusal } from './agent-session-wire-refusals'
 import type { AgentChildWorkView } from './agent-status-child-work-view'
 import type {
   AgentSessionQueuedMessage,
-  AgentSessionQueuePause
+  AgentSessionQueuePause,
+  AgentSessionQueuePublicationFields
 } from './agent-session-queued-message-wire'
 
 export * from './agent-session-wire-refusals'
@@ -160,8 +161,9 @@ export type AgentSessionJournalBatch = {
   submissions: AgentJournalSubmission[]
 }
 
-/** Host wall clock (ms epoch) stamped once per published frame; see `AgentSessionHistoryPage`. */
-type AgentSessionHostClockField = { hostNow?: number }
+/** Every published frame: the host wall clock (ms epoch, see `AgentSessionHistoryPage`), and what
+ *  rides beside its `queuedMessages`. */
+type AgentSessionFrameFields = { hostNow?: number } & AgentSessionQueuePublicationFields
 
 export type AgentSessionSubscribeEvent =
   | ({
@@ -172,15 +174,11 @@ export type AgentSessionSubscribeEvent =
       backgroundTasks?: AgentSessionBackgroundTaskState | null
       /** Whole-list draft publication; omitted when unchanged since the last frame sent. */
       queuedMessages?: AgentSessionQueuedMessage[] | null
-      /** Rides with `queuedMessages`; null when the queue sends on its own. */
-      queuePause?: AgentSessionQueuePause | null
-      /** Rides with `queuedMessages`: the card the queue sends next once nothing runs. */
-      nextQueuedMessageId?: string | null
       /** Omitted when unchanged; null clears a previous provider catalog. */
       commands?: AgentSessionSlashCommand[] | null
       /** Latest provider-authored turn activity; optional for mixed-version hosts. */
       activity?: AgentSessionTurnActivity | null
-    } & AgentSessionHostClockField)
+    } & AgentSessionFrameFields)
   | ({
       type: 'batch'
       sessionId: string
@@ -191,15 +189,11 @@ export type AgentSessionSubscribeEvent =
       /** Whole-list draft publication. On a multi-page catch-up it rides only the
        *  final page, so a consumed card never vanishes before its bubble arrives. */
       queuedMessages?: AgentSessionQueuedMessage[] | null
-      /** Rides with `queuedMessages`; null when the queue sends on its own. */
-      queuePause?: AgentSessionQueuePause | null
-      /** Rides with `queuedMessages`: the card the queue sends next once nothing runs. */
-      nextQueuedMessageId?: string | null
       /** Omitted when unchanged; null clears a previous provider catalog. */
       commands?: AgentSessionSlashCommand[] | null
       /** Additive ephemeral state; it never creates or advances journal rows. */
       activity?: AgentSessionTurnActivity | null
-    } & AgentSessionHostClockField)
+    } & AgentSessionFrameFields)
   | ({
       type: 'reset'
       sessionId: string
@@ -209,14 +203,10 @@ export type AgentSessionSubscribeEvent =
       backgroundTasks?: AgentSessionBackgroundTaskState | null
       /** Whole-list draft publication; a reset re-hydrates it with the page. */
       queuedMessages?: AgentSessionQueuedMessage[] | null
-      /** Rides with `queuedMessages`; null when the queue sends on its own. */
-      queuePause?: AgentSessionQueuePause | null
-      /** Rides with `queuedMessages`: the card the queue sends next once nothing runs. */
-      nextQueuedMessageId?: string | null
       /** Omitted when unchanged; null clears a previous provider catalog. */
       commands?: AgentSessionSlashCommand[] | null
       activity?: AgentSessionTurnActivity | null
-    } & AgentSessionHostClockField)
+    } & AgentSessionFrameFields)
   | { type: 'end' }
 
 // ─── Status feed ────────────────────────────────────────────────────────────
@@ -439,7 +429,12 @@ export type AgentSessionFastModeSupport = {
  * surface: an older host simply lacks the method.
  */
 export type AgentSessionModelCatalogResult =
-  | { origin: 'unknown' }
+  | {
+      origin: 'unknown'
+      /** The host is running its first listing for this account; a `waitForListing` read answers
+       *  when it lands. Absent from a host that predates it. */
+      listingInProgress?: true
+    }
   | {
       /** What produced the listing; any age is served, `fetchedAt` carries it. */
       origin: 'live-session' | 'probe'
