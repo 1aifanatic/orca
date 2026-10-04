@@ -29,11 +29,19 @@ export function observeStartupExecRuntime<TResult>(
   }
   return pending.then(
     (result) => {
-      observer.rpc(method, params, result, startedNs)
+      try {
+        observer.rpc(method, params, result, startedNs)
+      } catch {
+        // Preserve the public result when an observation cannot serialize.
+      }
       return result
     },
     (error) => {
-      observer.rpc(method, params, undefined, startedNs, String(error))
+      try {
+        observer.rpc(method, params, undefined, startedNs, String(error))
+      } catch {
+        // Preserve the original RPC error.
+      }
       throw error
     }
   )
@@ -73,6 +81,7 @@ export class SshStartupDiagnostic {
       return
     }
     let capturedResult = result
+    let capturedParams: Record<string, unknown>
     if (method === 'session.tabs.createTerminal') {
       if (params.command !== sshStartupDiagnosticCommand(this.runId)) {
         return
@@ -87,6 +96,18 @@ export class SshStartupDiagnostic {
         this.tabId = result.tab.parentTabId
       }
       this.worktree = typeof params.worktree === 'string' ? params.worktree : null
+      capturedParams = {
+        worktree: params.worktree,
+        command: params.command,
+        startupCommandDelivery: params.startupCommandDelivery,
+        activate: params.activate,
+        select: params.select,
+        navigation: params.navigation,
+        env: {
+          SHELL: isRecord(params.env) ? params.env.SHELL : undefined,
+          [SSH_STARTUP_DIAGNOSTIC_RUN_ENV]: this.runId
+        }
+      }
     } else if (method === 'terminal.list') {
       if (
         params.worktree !== this.worktree ||
@@ -94,6 +115,10 @@ export class SshStartupDiagnostic {
         !Array.isArray(result.terminals)
       ) {
         return
+      }
+      capturedParams = {
+        worktree: params.worktree,
+        requireFreshPtyLiveness: params.requireFreshPtyLiveness
       }
       capturedResult = {
         terminals: result.terminals.filter(
@@ -106,8 +131,10 @@ export class SshStartupDiagnostic {
       params.terminal !== this.terminal
     ) {
       return
+    } else {
+      capturedParams = { terminal: params.terminal }
     }
-    const row = `${JSON.stringify({ method, params, result: capturedResult, error, startedNs: String(startedNs), endedNs: String(process.hrtime.bigint()) })}\n`
+    const row = `${JSON.stringify({ method, params: capturedParams, result: capturedResult, error, startedNs: String(startedNs), endedNs: String(process.hrtime.bigint()) })}\n`
     const bytes = Buffer.byteLength(row)
     if (this.rpcBytes + bytes > SSH_STARTUP_DIAGNOSTIC_LIMIT) {
       return
