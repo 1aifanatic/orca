@@ -29,19 +29,37 @@ function unansweredStop(outbox: readonly StructuredAgentSessionOutboxEntry[]): s
   return null
 }
 
-/** Whether a message was sent after this Stop was pressed, from here or another client: by the
- *  time its id was made, so no host clock is compared. */
+/** Whether a message was sent after this Stop was pressed. This app's own sends compare the time
+ *  they were queued with the press, both on this machine's clock. Another client's are known only
+ *  by the time in their id, made on that client's clock, so a skewed clock can misjudge them. */
 function newerSendExists(
   outbox: readonly StructuredAgentSessionOutboxEntry[],
   submissions: readonly AgentJournalSubmission[],
   stopOperationId: string
 ): boolean {
-  const pressedAt = parseAgentSessionOperationTimestamp(stopOperationId)
-  const madeAfter = (id: string): boolean =>
-    (parseAgentSessionOperationTimestamp(id) ?? -Infinity) > (pressedAt ?? Infinity)
+  const pressedAt = parseAgentSessionOperationTimestamp(stopOperationId) ?? Infinity
   return (
-    outbox.some((entry) => madeAfter(entry.clientMessageId)) ||
-    submissions.some((submission) => madeAfter(submission.clientMessageId))
+    outbox.some((entry) => entry.queuedAt > pressedAt) ||
+    submissions.some(
+      (submission) =>
+        (parseAgentSessionOperationTimestamp(submission.clientMessageId) ?? -Infinity) > pressedAt
+    )
+  )
+}
+
+/** Whether a Stop whose answer was lost goes again from the resend effect below. */
+function stopWillBeResent(
+  outbox: readonly StructuredAgentSessionOutboxEntry[],
+  submissions: readonly AgentJournalSubmission[],
+  stopOperationId: string
+): boolean {
+  return (
+    outbox.some(
+      (entry) =>
+        entry.stoppedBy?.operationId === stopOperationId &&
+        !entry.stoppedBy.cursor &&
+        entry.stoppedBy.unanswerable !== true
+    ) && !newerSendExists(outbox, submissions, stopOperationId)
   )
 }
 
@@ -55,6 +73,12 @@ export function useStructuredAgentSessionConversationStop(args: {
 }): () => Promise<void> {
   const { attached, outbox, recordStopAnswer, stopOutbox, submissions, writeAs } = args
   const inFlight = useRef(new Set<string>())
+  // The same set for rendering, so the effects below see a request end.
+  const [inFlightIds, setInFlightIds] = useState<readonly string[]>([])
+  const latest = useRef({ outbox, submissions })
+  useLayoutEffect(() => {
+    latest.current = { outbox, submissions }
+  }, [outbox, submissions])
   const [resends, setResends] = useState<{ id: string | null; attempts: number }>({
     id: null,
     attempts: 0
@@ -66,6 +90,7 @@ export function useStructuredAgentSessionConversationStop(args: {
         return
       }
       inFlight.current.add(stopOperationId)
+      setInFlightIds((ids) => [...ids, stopOperationId])
       try {
         const outcome = await writeAs(
           stopOperationId,
@@ -77,7 +102,13 @@ export function useStructuredAgentSessionConversationStop(args: {
           recordStopAnswer(stopOperationId, { kind: 'answered', cursor: outcome.cursor })
           return
         }
-        if (outcome.kind === 'not-done' && firstPress) {
+        // A refusal is said; a lost answer only when nothing will send the Stop again.
+        if (
+          outcome.kind === 'not-done' &&
+          firstPress &&
+          (outcome.answered ||
+            !stopWillBeResent(latest.current.outbox, latest.current.submissions, stopOperationId))
+        ) {
           toast.error(outcome.notice)
         }
         // A refusal is the host's answer; a lost answer goes again from the effect below.
@@ -86,7 +117,7 @@ export function useStructuredAgentSessionConversationStop(args: {
         }
       } finally {
         inFlight.current.delete(stopOperationId)
-        setResends((current) => ({ ...current }))
+        setInFlightIds((ids) => ids.filter((id) => id !== stopOperationId))
       }
     },
     [recordStopAnswer, writeAs]
@@ -94,14 +125,16 @@ export function useStructuredAgentSessionConversationStop(args: {
 
   const owed = unansweredStop(outbox)
   const newer = owed !== null && newerSendExists(outbox, submissions, owed)
+  // Its request still out may yet be answered, so the stamp is only given up once it ends.
+  const owedInFlight = owed !== null && inFlightIds.includes(owed)
   useLayoutEffect(() => {
-    if (owed !== null && newer) {
+    if (owed !== null && newer && !owedInFlight) {
       recordStopAnswer(owed, { kind: 'unanswerable' })
     }
-  }, [newer, owed, recordStopAnswer])
+  }, [newer, owed, owedInFlight, recordStopAnswer])
 
   useEffect(() => {
-    if (owed === null || newer || !attached || inFlight.current.has(owed)) {
+    if (owed === null || newer || !attached || owedInFlight) {
       return
     }
     const attempts = resends.id === owed ? resends.attempts : 0
@@ -113,7 +146,7 @@ export function useStructuredAgentSessionConversationStop(args: {
       Math.min(STOP_RESEND_BASE_DELAY_MS * 2 ** attempts, STOP_RESEND_MAX_DELAY_MS)
     )
     return () => clearTimeout(timer)
-  }, [attached, newer, owed, resends, sendStop])
+  }, [attached, newer, owed, owedInFlight, resends, sendStop])
 
   return useCallback(async (): Promise<void> => {
     const stopOperationId = structuredSessionOperationId()

@@ -13,6 +13,7 @@ import {
 import { createStructuredAgentSessionOperationId } from '../../../../shared/structured-agent-session-mutation'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import { createBrowserUuid } from '@/lib/browser-uuid'
+import { toast } from 'sonner'
 import { useStructuredAgentSessionConversationStop } from './use-structured-agent-session-conversation-stop'
 import type {
   StructuredAgentSessionWriteAs,
@@ -26,6 +27,7 @@ afterEach(cleanup)
 let uuid = 0
 beforeEach(() => {
   uuid = 0
+  vi.mocked(toast.error).mockClear()
   vi.spyOn(globalThis.crypto, 'randomUUID').mockImplementation(() => {
     uuid += 1
     return `11111111-1111-4111-8111-${uuid.toString(16).padStart(12, '0')}`
@@ -211,5 +213,73 @@ describe('a conversation Stop', () => {
     })
     expect(writeAs).toHaveBeenCalledOnce()
     expect(recordStopAnswer).toHaveBeenCalledWith(stopId, { kind: 'unanswerable' })
+  })
+  it('gives the stamp up for a newer message only once its own request has ended', async () => {
+    const answer = Promise.withResolvers<StructuredAgentSessionWriteOutcome<unknown>>()
+    const writeAs = vi.fn<StopWrite>(() => answer.promise)
+    const { view, stopOutbox, recordStopAnswer } = harness(writeAs)
+    let pressed: Promise<void> = Promise.resolve()
+    act(() => {
+      pressed = view.result.current()
+    })
+    const stopId: string = stopOutbox.mock.calls[0]?.[0]
+    const newer = createStructuredAgentSessionOutboxEntry({
+      clientMessageId: createStructuredAgentSessionOperationId(
+        createBrowserUuid,
+        Date.now() + 1_000
+      ),
+      sessionId: 'session-1',
+      text: 'newer',
+      attachments: [],
+      queuedAt: Date.now() + 1_000
+    })
+    view.rerender({ outbox: [stamped(stopId), newer] })
+    // Still out: its answer may yet come, and settle the stamp for real.
+    expect(recordStopAnswer).not.toHaveBeenCalled()
+    await act(async () => {
+      answer.resolve(DONE)
+      await pressed
+    })
+    expect(recordStopAnswer.mock.calls[0]).toEqual([
+      stopId,
+      { kind: 'answered', cursor: { epoch: 'e', sequence: 9 } }
+    ])
+  })
+})
+
+describe("a conversation Stop's first press", () => {
+  async function pressWithStamp(
+    outcome: StructuredAgentSessionWriteOutcome<unknown>,
+    stampsSend: boolean
+  ): Promise<void> {
+    const answer = Promise.withResolvers<StructuredAgentSessionWriteOutcome<unknown>>()
+    const writeAs = vi.fn<StopWrite>(() => answer.promise)
+    const { view, stopOutbox } = harness(writeAs)
+    let pressed: Promise<void> = Promise.resolve()
+    act(() => {
+      pressed = view.result.current()
+    })
+    if (stampsSend) {
+      view.rerender({ outbox: [stamped(stopOutbox.mock.calls[0]?.[0])] })
+    }
+    await act(async () => {
+      answer.resolve(outcome)
+      await pressed
+    })
+  }
+
+  it('says nothing about a lost answer when the Stop will be sent again', async () => {
+    await pressWithStamp({ kind: 'not-done', notice: 'Lost.', answered: false }, true)
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it('says a lost answer when nothing will send the Stop again', async () => {
+    await pressWithStamp({ kind: 'not-done', notice: 'Lost.', answered: false }, false)
+    expect(toast.error).toHaveBeenCalledExactlyOnceWith('Lost.')
+  })
+
+  it('always says a refusal', async () => {
+    await pressWithStamp({ kind: 'not-done', notice: 'No.', answered: true }, true)
+    expect(toast.error).toHaveBeenCalledExactlyOnceWith('No.')
   })
 })
