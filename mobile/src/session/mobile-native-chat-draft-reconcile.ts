@@ -21,8 +21,21 @@ export type UnconfirmedSend = {
   deadline: ReturnType<typeof setTimeout> | null
 }
 
+/** A user row's text as a send's echo matches it. A row shown as not sent never lands a send: the
+ *  host hides it once a later copy of its text is recorded, so counting it would strand an echo. */
 export function normalizedUserText(message: NativeChatMessage): string | null {
-  return normalizedNativeChatUserMessageText(message)
+  return message.unsent === true ? null : normalizedNativeChatUserMessageText(message)
+}
+
+/** The row a send's echo must land after: the newest one, past any shown as not sent, which the
+ *  host may hide once a resend lands. */
+export function sendBaselineTailMessageId(messages: readonly NativeChatMessage[]): string | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.unsent !== true) {
+      return messages[index]?.id ?? null
+    }
+  }
+  return null
 }
 
 export function countUserTextOccurrences(
@@ -260,7 +273,7 @@ export function findLandedUnconfirmedSends(
   const userMessagesByText = new Map<string, Array<{ id: string; index: number }>>()
   for (const [index, message] of messages.entries()) {
     messageIndexById.set(message.id, index)
-    if (message.role !== 'user') {
+    if (message.role !== 'user' || message.unsent === true) {
       continue
     }
     const key = isImageSourceUserTurn(message) ? '' : (normalizedUserText(message) ?? '')

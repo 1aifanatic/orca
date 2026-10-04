@@ -10,6 +10,7 @@ import {
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import {
   countUserTextOccurrences,
+  sendBaselineTailMessageId,
   findLandedImagePreviewEchoes,
   mergeLandedImagePreviewEchoes,
   migrateImagePreviewMessageIds,
@@ -174,7 +175,7 @@ export function useMobileNativeChatDrafts(args: {
         pendingKey,
         normalizedText,
         baselineOccurrences: countUserTextOccurrences(messagesRef.current, normalizedText),
-        baselineTailMessageId: messagesRef.current.at(-1)?.id ?? null,
+        baselineTailMessageId: sendBaselineTailMessageId(messagesRef.current),
         // Only a settled read makes this a boundary. Anything else — hydrating,
         // or a read that failed — hands back an empty list that reads as "the
         // conversation was empty", which lets any row claim this send later.
