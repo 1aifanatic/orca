@@ -14,9 +14,17 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 import { AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS } from '../../shared/agent-session-host-authority'
+import type * as FilesystemAuth from '../ipc/filesystem-auth'
+import { isPathAllowed } from '../ipc/filesystem-auth'
+import type { Store } from '../persistence'
 
 const { authorizeExternalPathMock } = vi.hoisted(() => ({ authorizeExternalPathMock: vi.fn() }))
-vi.mock('../ipc/filesystem-auth', () => ({ authorizeExternalPath: authorizeExternalPathMock }))
+// Why the real grant behind the spy: the tests check what a read is then allowed to reach.
+vi.mock('../ipc/filesystem-auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof FilesystemAuth>()
+  authorizeExternalPathMock.mockImplementation(actual.authorizeExternalPath)
+  return { ...actual, authorizeExternalPath: authorizeExternalPathMock }
+})
 
 import {
   NATIVE_CHAT_PASTE_TTL_MS,
@@ -24,6 +32,14 @@ import {
   restoreNativeChatPastes,
   sweepExpiredNativeChatPastes
 } from './native-chat-paste-files'
+
+// A store with no workspaces, so only the grants decide what a read may reach.
+const NO_ROOTS_STORE: Store = Object.assign(Object.create(null), {
+  getRepos: () => [],
+  getProjectGroups: () => [],
+  getFolderWorkspaces: () => [],
+  getSettings: () => ({})
+})
 
 describe('isInsideNativeChatPasteFolder', () => {
   const posixFolder = '/data/native-chat-pastes'
@@ -70,7 +86,7 @@ describe('native-chat paste folder on disk', () => {
   let folder: string
 
   beforeEach(() => {
-    authorizeExternalPathMock.mockReset()
+    authorizeExternalPathMock.mockClear()
     root = mkdtempSync(path.join(tmpdir(), 'orca-native-chat-pastes-'))
     folder = path.join(root, 'native-chat-pastes')
     mkdirSync(folder)
@@ -111,7 +127,7 @@ describe('native-chat paste folder on disk', () => {
       { path: '', kept: false, exists: false }
     ])
     const granted = authorizeExternalPathMock.mock.calls.map(([granted]) => granted)
-    expect(granted).toEqual([realpathSync(kept)])
+    expect(new Set(granted)).toEqual(new Set([realpathSync(kept), kept]))
     await expect(restoreNativeChatPastes('not a list')).resolves.toEqual([])
   })
 
@@ -129,6 +145,9 @@ describe('native-chat paste folder on disk', () => {
         { path: viaAlias, kept: true, exists: true },
         { path: realpathSync(kept), kept: true, exists: true }
       ])
+      // The preview reads by the stored spelling, so a read by it is allowed too.
+      expect(isPathAllowed(viaAlias, NO_ROOTS_STORE)).toBe(true)
+      expect(isPathAllowed(realpathSync(kept), NO_ROOTS_STORE)).toBe(true)
     } finally {
       rmSync(alias, { force: true })
     }
@@ -156,6 +175,7 @@ describe('native-chat paste folder on disk', () => {
       { path: crafted, kept: false, exists: false }
     ])
     expect(authorizeExternalPathMock).not.toHaveBeenCalled()
+    expect(isPathAllowed(secret, NO_ROOTS_STORE)).toBe(false)
   })
 
   it('neither restores from nor sweeps a paste folder that is itself a link', async () => {

@@ -100,8 +100,9 @@ async function restoreNativeChatPaste(
     if (!isInsideNativeChatPasteFolder(folders.real, real) || !(await stat(real)).isFile()) {
       return refused
     }
-    // Only the real file: granting the given text would cover whatever it names lexically.
+    // The real file, and the stored spelling the preview reads by: both were proven inside above.
     authorizeExternalPath(real)
+    authorizeExternalPath(named)
     return { path: restored, kept: true, exists: true }
   } catch {
     // Missing or unreadable: not kept, and nothing about an outside path is reported.
