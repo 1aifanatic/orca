@@ -14,7 +14,8 @@ import {
   countUserTextOccurrences,
   findLandedUnconfirmedSends,
   normalizeReconcileText,
-  sendBaselineTailMessageId
+  sendBaselineTailMessageId,
+  sendBaselineUnsentMessageIds
 } from './mobile-native-chat-draft-reconcile'
 import { appendMobileNativeChatPending } from './mobile-native-chat-pending-echo'
 import { retireLandedMobileNativeChatPending } from './mobile-native-chat-pending-retirement'
@@ -92,7 +93,8 @@ describe('resending a not-sent message from the phone', () => {
       normalizedText,
       baselineOccurrences: countUserTextOccurrences(before, normalizedText),
       baselineTailMessageId: sendBaselineTailMessageId(before),
-      baselineResolved: true
+      baselineResolved: true,
+      baselineUnsentMessageIds: sendBaselineUnsentMessageIds(before)
     }
     const pending = appendMobileNativeChatPending({}, 'pending', 'pending-1', origin, TEXT).pending
 
@@ -112,10 +114,31 @@ describe('resending a not-sent message from the phone', () => {
         text: TEXT,
         normalizedText: normalizeReconcileText(TEXT),
         baselineTailMessageId: sendBaselineTailMessageId(before),
+        baselineUnsentMessageIds: sendBaselineUnsentMessageIds(before),
         deadline: null
       }
     ])
     expect(landed).toHaveLength(1)
+  })
+
+  it('lets the older not-sent copy settle nothing while the resend is on its way', () => {
+    const before = phone(BEFORE_ITEMS, [REJECTED])
+    const normalizedText = normalizeReconcileText(TEXT)
+    const origin = {
+      draftKey: 'draft',
+      draftEditGeneration: 0,
+      pendingKey: 'pending',
+      normalizedText,
+      baselineOccurrences: countUserTextOccurrences(before, normalizedText),
+      baselineTailMessageId: sendBaselineTailMessageId(before),
+      baselineResolved: true,
+      baselineUnsentMessageIds: sendBaselineUnsentMessageIds(before)
+    }
+    const pending = appendMobileNativeChatPending({}, 'pending', 'pending-1', origin, TEXT).pending
+    expect(retireLandedMobileNativeChatPending(before, pending ?? [], new Set())).toHaveLength(1)
+    expect(findLandedUnconfirmedSends(before, [{ ...origin, text: TEXT, deadline: null }])).toEqual(
+      []
+    )
   })
 
   it('keeps a not-sent row where the host placed it, above what came after', () => {
@@ -133,5 +156,55 @@ describe('resending a not-sent message from the phone', () => {
       [agentJournalSubmissionKey('m3'), false],
       ['a3', false]
     ])
+  })
+})
+
+// The phone's first sight of its own row can already be the rejected one: a catch-up after the
+// stream dropped, or a send made before the first read settled. That row settles the send.
+describe('a phone send whose own row first appears as not sent', () => {
+  const OWN_REJECTED = submission('m2', 'later', 20, {
+    dispatchState: 'rejected',
+    providerItemId: null,
+    reason: 'provider_write_failed: broken pipe',
+    resolvedAt: 21
+  })
+  const BEFORE = phone(BEFORE_ITEMS, [REJECTED])
+  const AFTER = phone([...BEFORE_ITEMS, user('m2', 21, 'later')], [REJECTED, OWN_REJECTED])
+
+  it('settles an ack-lost send, so no "Delivery unconfirmed" banner follows', () => {
+    expect(
+      findLandedUnconfirmedSends(AFTER, [
+        {
+          draftKey: 'draft',
+          pendingKey: 'pending',
+          text: 'later',
+          normalizedText: normalizeReconcileText('later'),
+          baselineTailMessageId: sendBaselineTailMessageId(BEFORE),
+          baselineUnsentMessageIds: sendBaselineUnsentMessageIds(BEFORE),
+          deadline: null
+        }
+      ])
+    ).toHaveLength(1)
+  })
+
+  it("retires an accepted send's echo, so no bubble stays beside its row", () => {
+    const normalizedText = normalizeReconcileText('later')
+    const pending = appendMobileNativeChatPending(
+      {},
+      'pending',
+      'pending-1',
+      {
+        draftKey: 'draft',
+        draftEditGeneration: 0,
+        pendingKey: 'pending',
+        normalizedText,
+        baselineOccurrences: countUserTextOccurrences(BEFORE, normalizedText),
+        baselineTailMessageId: sendBaselineTailMessageId(BEFORE),
+        baselineResolved: true,
+        baselineUnsentMessageIds: sendBaselineUnsentMessageIds(BEFORE)
+      },
+      'later'
+    ).pending
+    expect(retireLandedMobileNativeChatPending(AFTER, pending ?? [], new Set())).toEqual([])
   })
 })

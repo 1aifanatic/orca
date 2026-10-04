@@ -18,13 +18,22 @@ export type UnconfirmedSend = {
   baselineTailMessageId: string | null
   /** Queued-draft cards on screen at send time; see `findQueuedUnconfirmedSends`. */
   baselineQueuedMessageIds?: readonly string[]
+  /** Rows shown as not sent at send time; see `sendBaselineUnsentMessageIds`. */
+  baselineUnsentMessageIds?: readonly string[]
   deadline: ReturnType<typeof setTimeout> | null
 }
 
-/** A user row's text as a send's echo matches it. A row shown as not sent never lands a send: the
- *  host hides it once a later copy of its text is recorded, so counting it would strand an echo. */
+/** A user row's text as a send's echo matches it. A row shown as not sent is no copy to count: the
+ *  host hides it once a later copy of its text is recorded. (A send's own not-sent row still
+ *  settles it; see `sendBaselineUnsentMessageIds`.) */
 export function normalizedUserText(message: NativeChatMessage): string | null {
   return message.unsent === true ? null : normalizedNativeChatUserMessageText(message)
+}
+
+/** Rows shown as not sent when a send went out. Only these can't settle it: one that appears
+ *  later is the send's own, settled as not sent. */
+export function sendBaselineUnsentMessageIds(messages: readonly NativeChatMessage[]): string[] {
+  return messages.filter((message) => message.unsent === true).map((message) => message.id)
 }
 
 /** The row a send's echo must land after: the newest one, past any shown as not sent, which the
@@ -270,15 +279,20 @@ export function findLandedUnconfirmedSends(
   // (`[Image: source: …]` or no text) keys under '' so an empty-text send can
   // claim it.
   const messageIndexById = new Map<string, number>()
-  const userMessagesByText = new Map<string, Array<{ id: string; index: number }>>()
+  const userMessagesByText = new Map<
+    string,
+    Array<{ id: string; index: number; unsent: boolean }>
+  >()
   for (const [index, message] of messages.entries()) {
     messageIndexById.set(message.id, index)
-    if (message.role !== 'user' || message.unsent === true) {
+    if (message.role !== 'user') {
       continue
     }
-    const key = isImageSourceUserTurn(message) ? '' : (normalizedUserText(message) ?? '')
+    const key = isImageSourceUserTurn(message)
+      ? ''
+      : (normalizedNativeChatUserMessageText(message) ?? '')
     const current = userMessagesByText.get(key) ?? []
-    current.push({ id: message.id, index })
+    current.push({ id: message.id, index, unsent: message.unsent === true })
     userMessagesByText.set(key, current)
   }
 
@@ -291,9 +305,15 @@ export function findLandedUnconfirmedSends(
     if (tailIndex === undefined) {
       continue
     }
+    const baselineUnsent = entry.baselineUnsentMessageIds ?? []
     const echo = userMessagesByText
       .get(entry.normalizedText)
-      ?.find((message) => message.index > tailIndex && !claimedMessageIds.has(message.id))
+      ?.find(
+        (message) =>
+          message.index > tailIndex &&
+          !claimedMessageIds.has(message.id) &&
+          !(message.unsent && baselineUnsent.includes(message.id))
+      )
     if (echo) {
       claimedMessageIds.add(echo.id)
       landed.push(entry)

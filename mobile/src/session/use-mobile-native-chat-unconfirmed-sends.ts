@@ -79,6 +79,9 @@ export function useMobileNativeChatUnconfirmedSends(args: {
         ...(origin.baselineQueuedMessageIds
           ? { baselineQueuedMessageIds: origin.baselineQueuedMessageIds }
           : {}),
+        ...(origin.baselineUnsentMessageIds
+          ? { baselineUnsentMessageIds: origin.baselineUnsentMessageIds }
+          : {}),
         deadline: null
       }
       // Why: the transcript event (or the card) can beat the lost RPC acknowledgement.
