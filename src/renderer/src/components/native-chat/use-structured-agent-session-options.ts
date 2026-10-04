@@ -100,6 +100,7 @@ export function useStructuredAgentSessionOptions(args: {
     namesDefault: launch?.kind === 'new' && agent === 'codex',
     ...(launch?.worktree ? { worktree: launch.worktree } : {}),
     fence,
+    optionStateRef,
     activeOptionRecordRef,
     updateOptionState
   })
