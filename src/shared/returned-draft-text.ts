@@ -1,7 +1,7 @@
 /**
  * Puts text a chat handed back after what the composer already holds, a blank line apart. It never
- * replaces typing, and adds nothing when the draft already ends with that text, so handing the same
- * text back twice leaves one copy.
+ * replaces typed text (a whitespace-only draft counts as empty), and adds nothing when the draft
+ * already ends with that text, so handing the same text back twice leaves one copy.
  */
 export function appendReturnedDraftText(draft: string, text: string): string {
   const returned = text.trimEnd()
