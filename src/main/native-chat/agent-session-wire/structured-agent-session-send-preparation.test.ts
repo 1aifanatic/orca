@@ -274,22 +274,26 @@ describe('a send with no live owner', () => {
     expect(acquire).toHaveBeenCalledOnce()
   })
 
-  /** A row claimed for this send, then the host died before the journal write; `journalEpoch`
-   *  is what this build stamps, and an older build's row carries none. */
-  async function claimedThenHostDied(params: ReturnType<typeof sendParams>, journalEpoch?: string) {
+  /** A row admitted for this send, then the host died before the journal write, left as `outcome`
+   *  says: `pending` by this build, `unknown` by a build that marked it before running. */
+  async function admittedThenHostDied(
+    params: ReturnType<typeof sendParams>,
+    outcome: 'pending' | 'unknown'
+  ) {
     await store.admitMutationOperation({
       callerKey: CALLER.callerKey,
       envelope: params.envelope,
       hostFingerprint: params.envelope.payloadFingerprint,
       now: NOW,
-      operationIdScope: 'global',
-      ...(journalEpoch ? { journalEpoch } : {})
+      operationIdScope: 'global'
     })
-    await store.recordOperationOutcome({
-      callerKey: CALLER.callerKey,
-      operationId: params.envelope.clientOperationId,
-      outcome: { status: 'unknown' }
-    })
+    if (outcome === 'unknown') {
+      await store.recordOperationOutcome({
+        callerKey: CALLER.callerKey,
+        operationId: params.envelope.clientOperationId,
+        outcome: { status: 'unknown' }
+      })
+    }
     await host.handleAdapterEvent({
       type: 'ended',
       sessionId: SESSION,
@@ -309,20 +313,8 @@ describe('a send with no live owner', () => {
     }
   }
 
-  it('restarts nothing, and answers unknown, for a row with no epoch the journal never saw', async () => {
-    const resent = await claimedThenHostDied(sendParams('claimed, then the host died'))
-
-    await expect(host.send(CALLER, resent)).resolves.toMatchObject({
-      ok: false,
-      refusal: { code: 'agent_session_operation_unknown', details: { reason: 'outcomeUnknown' } }
-    })
-    expect(acquire).not.toHaveBeenCalled()
-    expect(dispatch).not.toHaveBeenCalled()
-  })
-
-  it('runs a send its own epoch never saw for the first time, restarting the owner once', async () => {
-    const epoch = (await host.journalSnapshot(SESSION)).cursor.epoch
-    const resent = await claimedThenHostDied(sendParams('claimed in this epoch'), epoch)
+  it('runs a send admitted but never run for the first time, restarting the owner once', async () => {
+    const resent = await admittedThenHostDied(sendParams('admitted, then the host died'), 'pending')
 
     await expect(host.send(CALLER, resent)).resolves.toMatchObject({
       ok: true,
@@ -331,6 +323,18 @@ describe('a send with no live owner', () => {
     })
     await eventually(async () => expect(dispatch).toHaveBeenCalledOnce())
     expect(acquire).toHaveBeenCalledOnce()
+  })
+
+  it("restarts nothing for an older build's unknown row the journal never saw", async () => {
+    const resent = await admittedThenHostDied(sendParams('marked unknown, then died'), 'unknown')
+
+    await expect(host.send(CALLER, resent)).resolves.toMatchObject({
+      ok: true,
+      replayed: true,
+      value: { submission: { dispatchState: 'unknown', recovered: true } }
+    })
+    expect(acquire).not.toHaveBeenCalled()
+    expect(dispatch).not.toHaveBeenCalled()
   })
 
   it('accepts a send that arrives while a restart holds the queue, and hands both over in order', async () => {

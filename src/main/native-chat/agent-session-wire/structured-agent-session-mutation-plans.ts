@@ -3,15 +3,13 @@
 //
 // The replay half matters more than it looks. The ledger records only that an
 // operation happened, so the durable answer usually comes back out of the
-// journal. Send is fail-closed: admission alone cannot prove non-delivery, so a
-// send runs again only when the journal it wrote to proves it wrote nothing.
+// journal. Send is fail-closed: admission alone cannot prove non-delivery, so
+// its success commits with the row that accepts it, and a row still pending is
+// one that wrote nothing.
 
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
-import type {
-  AgentSessionOperationOutcome,
-  AgentSessionOperationRow
-} from '../../../shared/agent-session-operation-ledger'
+import type { AgentSessionOperationOutcome } from '../../../shared/agent-session-operation-ledger'
 import type {
   AgentSessionCancelResult,
   AgentSessionMutationEnvelope,
@@ -55,10 +53,12 @@ export type MutationPlan<TValue> = {
   conversationWrite?: true
   /** Still runs, decided from the committed ledger, when its ledger row cannot be written. */
   runsWithoutLedgerRow?: true
-  markUnknownBeforeRun?: boolean
+  /** Its success is the row its run writes, so it commits in that row's transaction
+   *  (`AgentSessionTurnContext.operationReceipt`): a row left pending wrote nothing. */
+  settlesWithWrite?: true
   run: (ctx: AgentSessionTurnContext) => Promise<TurnOutcome<TValue>>
   replay: (ctx: AgentSessionTurnContext, outcome: AgentSessionOperationOutcome) => TValue | null
-  rerunWhenReplayMissing?: (ctx: AgentSessionTurnContext, row: AgentSessionOperationRow) => boolean
+  rerunWhenReplayMissing?: (ctx: AgentSessionTurnContext) => boolean
   recoverUnknownFromDurableState?: boolean
   settledOutcome?: (value: TValue) => AgentSessionOperationOutcome
 }
@@ -78,7 +78,7 @@ export function sendPlan(params: {
     method: 'agentSession.send',
     operationIdScope: 'global',
     conversationWrite: true,
-    markUnknownBeforeRun: true,
+    settlesWithWrite: true,
     // `delivery` joins the OPERATION fingerprint only; the submission row keeps
     // the body-only fingerprint the reducer's echo-aliasing recomputes.
     fields: { body: params.body, ...(params.delivery ? { delivery: params.delivery } : {}) },
@@ -108,9 +108,9 @@ export function sendPlan(params: {
       if (submission) {
         return { clientMessageId, submission }
       }
-      // Only an accepted send whose row a later epoch dropped is answered without one; an
-      // unsettled one with nothing written is decided by `rerunWhenReplayMissing`.
-      if (outcome.status !== 'succeeded') {
+      // A pending row wrote nothing, so the send runs for the first time. Succeeded: accepted,
+      // then a new epoch dropped its row. Unknown: only builds before this one wrote that.
+      if (outcome.status === 'failed' || outcome.status === 'pending') {
         return null
       }
       const resolvedAt = ctx.now()
@@ -128,13 +128,7 @@ export function sendPlan(params: {
           recovered: true
         }
       }
-    },
-    // A send writes its submission, draft or hand-off before anything can deliver it, and only a
-    // new epoch removes one. So in the epoch it was admitted into, finding none proves it never
-    // wrote: running it now is its first run. Under any other epoch, or a row with none recorded,
-    // that proof is gone and the answer is unknown.
-    rerunWhenReplayMissing: (ctx, row) =>
-      row.journalEpoch !== undefined && row.journalEpoch === ctx.journal.cursor().epoch
+    }
   }
 }
 
@@ -153,7 +147,7 @@ export function conversationCommandPlan(params: {
   return {
     method: 'agentSession.conversationCommand',
     conversationWrite: true,
-    markUnknownBeforeRun: true,
+    settlesWithWrite: true,
     fields: { command: STRUCTURED_AGENT_SESSION_COMPACT_COMMAND },
     recoverUnknownFromDurableState: true,
     run: async (ctx) => {

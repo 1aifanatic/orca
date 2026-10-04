@@ -6,6 +6,7 @@ import type { AgentSessionRecordStore } from '../../runtime/agent-session-record
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { DISPATCH_DOUBT_SUBMISSION_MISSING } from '../agent-session-journal/journal-dispatch-doubt-reasons'
+import { persistRewindRecord } from './structured-rewind-recovery'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import type { StructuredAgentSessionHost } from './structured-agent-session-host'
 import {
@@ -16,16 +17,19 @@ import {
 } from './structured-agent-session-host-test-harness'
 import {
   HOST_TEST_SESSION as SESSION,
+  HOST_TEST_THREAD as THREAD,
   hostTestMessage
 } from './structured-agent-session-host-test-data'
+import { createQueuedMessageTestRig } from './structured-agent-session-queued-message-rig.test-fixture'
 
 let root: string
 let store: AgentSessionRecordStore
 let host: StructuredAgentSessionHost
 let dispatch: Mock<StructuredAgentSessionAdapter['dispatch']>
+let acquire: Mock<StructuredAgentSessionAdapter['acquire']>
 
 beforeEach(() => {
-  ;({ root, store, host, dispatch } = hostTestState())
+  ;({ root, store, host, dispatch, acquire } = hostTestState())
 })
 
 afterEach(() => vi.restoreAllMocks())
@@ -164,5 +168,74 @@ describe('a resent send id', () => {
         .listOperationRows()
         .filter((row) => row.operationId === params.envelope.clientOperationId)
     ).toHaveLength(1)
+  })
+
+  it('is answered from the chat while a rewind is in doubt, starting no agent', async () => {
+    await attach()
+    const params = sendParams('sent before the rewind')
+    await host.send(CALLER, params)
+    await deliveredOnce()
+    await host.close(SESSION, 'evict')
+    // Only the provider can settle this rewind, so a send's first run would start it.
+    await persistRewindRecord(store, SESSION, store.getRecord(SESSION)!.lease.runtimeFence, {
+      operationId: 'rewind-op',
+      callerKey: CALLER.callerKey,
+      itemId: 'orca:rewound',
+      providerItemId: `codex:${THREAD}:turn-1:0`,
+      expectedEpoch: 'epoch-before',
+      phase: 'prepared',
+      retained: []
+    })
+    acquire.mockClear()
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    await expect(host.send(CALLER, params)).resolves.toMatchObject({
+      ok: true,
+      replayed: true,
+      value: { submission: { clientMessageId: params.envelope.clientOperationId } }
+    })
+    expect(acquire).not.toHaveBeenCalled()
+    expect(store.getRecord(SESSION)?.rewind?.phase).toBe('prepared')
+  })
+
+  it('is answered from a store a newer Orca wrote, which takes no write', async () => {
+    await attach()
+    const params = sendParams('sent, then a newer Orca wrote the store')
+    await host.send(CALLER, params)
+    await deliveredOnce()
+    await host.close(SESSION, 'evict')
+    Object.defineProperty(openTestJournalHostDatabase(root), 'readOnly', { value: true })
+    expect(store.readOnly).toBe(true)
+
+    await expect(host.send(CALLER, params)).resolves.toMatchObject({
+      ok: true,
+      replayed: true,
+      value: { submission: { clientMessageId: params.envelope.clientOperationId } }
+    })
+    expect(dispatch).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('a send queued behind a running turn', () => {
+  it('commits its accepted row with its draft, so a failed settlement loses no answer', async () => {
+    const rig = await createQueuedMessageTestRig()
+    try {
+      await rig.workingSend()
+      const settle = vi
+        .spyOn(rig.store, 'recordOperationOutcome')
+        .mockRejectedValue(new Error('operation settlement failed'))
+      const queued = rig.send('queued behind the turn', 'queue-if-active')
+
+      await expect(queued.result).resolves.toMatchObject({
+        ok: true,
+        value: { queued: { messageId: queued.id, state: 'waiting' } }
+      })
+      expect(
+        rig.store.listOperationRows().find((row) => row.operationId === queued.id)
+      ).toMatchObject({ outcome: { status: 'succeeded' } })
+      expect(settle).not.toHaveBeenCalled()
+    } finally {
+      await rig.dispose()
+    }
   })
 })

@@ -133,9 +133,9 @@ export function openWithAgent(
 }
 
 /** A rewind still in doubt once the conversation is open is one only its provider can settle —
- *  the open settles every other — so a send starts the agent, whose attach recovers it. For a
- *  resend of a recorded id the answer is in the conversation: one that cannot be made ready leaves
- *  that answer unknown, never refused. */
+ *  the open settles every other — so a send starts the agent, whose attach recovers it. A resend
+ *  of a recorded id needs only the conversation, its answer's source: it starts nothing, and an
+ *  open that fails leaves that answer unknown, never refused. */
 export function sendPreparation(
   context: Pick<StructuredAgentSessionMutationContext, 'openConversation' | 'ensureAgent' | 'deps'>,
   envelope: AgentSessionMutationEnvelope
@@ -146,14 +146,15 @@ export function sendPreparation(
       envelope,
       context.deps.logger
     )
+    if (ledger === 'replay') {
+      return opened.ok
+        ? opened
+        : { ok: false, refusal: agentSessionOperationOutcomeUnknown(envelope.clientOperationId) }
+    }
     const phase = context.deps.store.getRecord(envelope.sessionId)?.rewind?.phase
-    const prepared =
-      opened.ok && (phase === 'prepared' || phase === 'provider-succeeded')
-        ? await context.ensureAgent(envelope.sessionId)
-        : opened
-    return ledger === 'replay' && !prepared.ok
-      ? { ok: false, refusal: agentSessionOperationOutcomeUnknown(envelope.clientOperationId) }
-      : prepared
+    return opened.ok && (phase === 'prepared' || phase === 'provider-succeeded')
+      ? context.ensureAgent(envelope.sessionId)
+      : opened
   }
 }
 

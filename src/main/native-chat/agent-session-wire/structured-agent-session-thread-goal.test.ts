@@ -7,7 +7,6 @@ import type {
   AgentJournalThreadGoal,
   AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
-import type { AgentSessionOperationRow } from '../../../shared/agent-session-operation-ledger'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { createTrackedJournalOpener } from '../agent-session-journal/journal-host-database-test-support'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
@@ -293,16 +292,7 @@ describe('threadGoalPlan replay', () => {
     const unknown = { status: 'unknown' as const }
 
     expect(paused.recoverUnknownFromDurableState).toBe(true)
-    const row: AgentSessionOperationRow = {
-      callerKey: 'client-1',
-      operationId: 'op-1',
-      fingerprint: 'fingerprint',
-      operationTimestamp: 0,
-      recordedAt: 0,
-      expiresAt: 1,
-      outcome: unknown
-    }
-    expect(paused.rerunWhenReplayMissing?.(ctx, row)).toBe(true)
+    expect(paused.rerunWhenReplayMissing?.(ctx)).toBe(true)
     // Nothing recorded yet: only a clear reads as applied.
     expect(paused.replay(ctx, unknown)).toBeNull()
     expect(set.replay(ctx, unknown)).toBeNull()

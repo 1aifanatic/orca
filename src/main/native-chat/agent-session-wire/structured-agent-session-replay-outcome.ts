@@ -27,8 +27,6 @@ export function resolveAgentSessionReplayOutcome<TValue>(input: {
   operationId: string
   outcome: AgentSessionOperationOutcome
   reconstruct: () => TValue | null
-  /** Whether a row with nothing to reconstruct may run for the first time. Undefined leaves an
-   *  unsettled row to the default (rerun); false refuses it as unknown. */
   rerunWhenReplayMissing?: boolean
   recoverUnknownFromDurableState?: boolean
 }): AgentSessionReplayOutcomeDecision<TValue> {
@@ -62,18 +60,15 @@ export function resolveAgentSessionReplayOutcome<TValue>(input: {
   if (input.rerunWhenReplayMissing) {
     return { decision: 'rerun' }
   }
-  if (outcome.status === 'succeeded') {
-    return {
-      decision: 'refuse',
-      refusal: refuse(
-        'agent_session_operation_unknown',
-        { reason: 'resultLost' },
-        `Operation ${operationId} succeeded, but its result is no longer reconstructable.`
-      )
-    }
-  }
-  return input.rerunWhenReplayMissing === false
-    ? { decision: 'refuse', refusal: agentSessionOperationOutcomeUnknown(operationId) }
+  return outcome.status === 'succeeded'
+    ? {
+        decision: 'refuse',
+        refusal: refuse(
+          'agent_session_operation_unknown',
+          { reason: 'resultLost' },
+          `Operation ${operationId} succeeded, but its result is no longer reconstructable.`
+        )
+      }
     : { decision: 'rerun' }
 }
 
