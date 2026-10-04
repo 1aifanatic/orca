@@ -22,7 +22,9 @@ import {
   parseAgentSessionOperationTimestamp
 } from './agent-session-host-authority'
 import { dispatchWasWithdrawn } from './structured-agent-session-dispatch-rejection'
+import { DISPATCH_DOUBT_SUBMISSION_MISSING } from './structured-agent-session-unanswered-dispatch'
 import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
+import { structuredAgentSessionEntryAwaitsSettlement } from './structured-agent-session-outbox-admission'
 
 export type StructuredAgentSessionSendSettlement =
   /** Case 1: the host's row (or card) holds the message from here. */
@@ -34,15 +36,16 @@ export type StructuredAgentSessionSendSettlement =
   | { kind: 'withdrawn' }
   /** Case 2: the text returns to the draft with these words on the chat line. */
   | { kind: 'returned'; words: AgentSessionWriteNoticePart[] }
-  /** Case 3: no answer; the same id goes again. */
-  | { kind: 'unanswered' }
+  /** Case 3: no answer; the same id goes again. `words` say why, once, when what came back was a
+   *  refusal Orca can't take as proof, so the person knows what holds the message. */
+  | { kind: 'unanswered'; words?: AgentSessionWriteNoticePart[] }
 
 /** What one `agentSession.send` attempt got back. */
 export type StructuredAgentSessionSendAnswer =
   | { kind: 'result'; result: AgentSessionMutationResult<AgentSessionSendResult> }
-  /** The request threw. Read by its codes, never its message text: whether its error carried a
-   *  host refusal, and the RPC error code. */
-  | { kind: 'thrown'; carriedRefusal: boolean; rpcCode: string | undefined }
+  /** The request threw. Read by its codes, never its message text: the host refusal its error
+   *  carried, if any, and the RPC error code. */
+  | { kind: 'thrown'; refusal: AgentSessionWriteRefusal | undefined; rpcCode: string | undefined }
 
 export type StructuredAgentSessionSendSettlementContext = {
   /** No earlier attempt under this id went out from anywhere, so nothing can hold it but this
@@ -64,6 +67,32 @@ function returnedFor(refusal: AgentSessionWriteRefusal): StructuredAgentSessionS
   return { kind: 'returned', words: agentSessionWriteNoticeParts(refusal, 'composer-send') }
 }
 
+/** Sentences that say the message is gone, or to send it again: false while Orca keeps sending it. */
+const NOT_SENT_SENTENCES: ReadonlySet<AgentSessionWriteNoticePart> =
+  new Set<AgentSessionWriteNoticePart>(['notDoneSend', 'tryAgainComposerSend', 'tryAgain'])
+
+/** Case 3 for a refusal that proves nothing here: why it is held, and that Orca keeps sending it. */
+function stillSendingFor(refusal: AgentSessionWriteRefusal): StructuredAgentSessionSendSettlement {
+  return {
+    kind: 'unanswered',
+    words: [
+      ...agentSessionWriteNoticeParts(refusal, 'composer-send').filter(
+        (part) => !NOT_SENT_SENTENCES.has(part)
+      ),
+      'stillSending'
+    ]
+  }
+}
+
+/** Words for an id no resend can settle: what an earlier attempt left, if anything, is in the chat. */
+function settledByJournal(
+  context: StructuredAgentSessionSendSettlementContext
+): StructuredAgentSessionSendSettlement {
+  return context.journalHasRow
+    ? { kind: 'recorded' }
+    : { kind: 'returned', words: [...STRUCTURED_AGENT_SESSION_SEND_UNCONFIRMED_WORDS] }
+}
+
 function refusalSettlement(
   refusal: AgentSessionWriteRefusal,
   context: StructuredAgentSessionSendSettlementContext
@@ -75,38 +104,40 @@ function refusalSettlement(
   }
   if (refusal.code === 'agent_session_operation_expired') {
     // The host forgot the id; the journal is what still knows whether it landed.
-    return context.journalHasRow
-      ? { kind: 'recorded' }
-      : { kind: 'returned', words: [...STRUCTURED_AGENT_SESSION_SEND_UNCONFIRMED_WORDS] }
+    return settledByJournal(context)
   }
   if (context.firstAttempt) {
     return returnedFor(refusal)
   }
   if (
     refusal.code === 'agent_session_operation_conflict' ||
+    (refusal.code === 'agent_session_operation_invalid' && reason === 'messageIdReused') ||
     (refusal.code === 'agent_session_ownership_unknown' && reason === 'sessionNotAttached')
   ) {
     // The id holds another payload, or the chat is closed on the host, which answers that before
     // looking the id up: no resend can settle it, and what an earlier attempt left is in the chat.
-    return context.journalHasRow
-      ? { kind: 'recorded' }
-      : { kind: 'returned', words: [...STRUCTURED_AGENT_SESSION_SEND_UNCONFIRMED_WORDS] }
+    return settledByJournal(context)
   }
   // An older host may refuse a resent id before looking it up, so only the next resend can tell.
-  return context.answersProve ? returnedFor(refusal) : { kind: 'unanswered' }
+  return context.answersProve ? returnedFor(refusal) : stillSendingFor(refusal)
 }
 
 /** A request that threw is not an answer: no code tells "never written" from "written, then the
  *  answer was lost", and a thrown refusal may come after the host wrote the row. Only a host that
- *  turned the call away before running it (a method it lacks, params it rejects) proves no row. */
+ *  turned the call away before running it (a method it lacks, params it rejects) proves no row,
+ *  and only on a first attempt: an earlier one may have landed before the host turned this away. */
 function thrownSettlement(
-  answer: Extract<StructuredAgentSessionSendAnswer, { kind: 'thrown' }>
+  answer: Extract<StructuredAgentSessionSendAnswer, { kind: 'thrown' }>,
+  context: StructuredAgentSessionSendSettlementContext
 ): StructuredAgentSessionSendSettlement {
-  if (answer.carriedRefusal) {
-    return { kind: 'unanswered' }
+  if (answer.refusal) {
+    return stillSendingFor(answer.refusal)
   }
   const failure = agentSessionRpcErrorFailure(answer.rpcCode)
-  return failure.kind === 'refused' ? returnedFor(failure) : { kind: 'unanswered' }
+  if (failure.kind !== 'refused') {
+    return { kind: 'unanswered' }
+  }
+  return context.firstAttempt ? returnedFor(failure) : stillSendingFor(failure)
 }
 
 /** The host's answer to one attempt, as one of the three ends. */
@@ -116,7 +147,7 @@ export function settleStructuredAgentSessionSendAnswer(
   context: StructuredAgentSessionSendSettlementContext
 ): StructuredAgentSessionSendSettlement {
   if (answer.kind === 'thrown') {
-    return thrownSettlement(answer)
+    return thrownSettlement(answer, context)
   }
   const { result } = answer
   if (!result.ok) {
@@ -130,18 +161,34 @@ export function settleStructuredAgentSessionSendAnswer(
   if (submission.queuedMessageId === clientMessageId) {
     return { kind: 'recorded' }
   }
+  // An older host makes this record up when its journal lost the row, so only a loaded row says
+  // the message is in the chat.
+  if (
+    submission.dispatchState === 'unknown' &&
+    submission.reason === DISPATCH_DOUBT_SUBMISSION_MISSING
+  ) {
+    return settledByJournal(context)
+  }
   return settleStructuredAgentSessionSendRow(submission)
 }
 
-/** Whether the host can no longer settle this id: past its replay window, measured as the host
- *  measures it from the id's own time, it refuses the id for good, so a host that keeps failing the
- *  request can't hold the entry forever either. */
+/** When the host's replay window for this id closes, measured as the host measures it from the
+ *  id's own time, or null for an id with no time. Past it the host refuses the id for good. */
+export function structuredAgentSessionEntryHostWindowEndsAt(
+  entry: Pick<StructuredAgentSessionOutboxEntry, 'clientMessageId'>
+): number | null {
+  const madeAt = parseAgentSessionOperationTimestamp(entry.clientMessageId)
+  return madeAt === null ? null : madeAt + AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS
+}
+
+/** Whether the host can no longer settle this id, so a host that keeps failing the request, or an
+ *  answer that never comes, can't hold the entry forever. */
 export function structuredAgentSessionEntryOutlivedHostWindow(
   entry: Pick<StructuredAgentSessionOutboxEntry, 'clientMessageId'>,
   now: number
 ): boolean {
-  const madeAt = parseAgentSessionOperationTimestamp(entry.clientMessageId)
-  return madeAt !== null && now - madeAt > AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS
+  const endsAt = structuredAgentSessionEntryHostWindowEndsAt(entry)
+  return endsAt !== null && now > endsAt
 }
 
 /** A row the host holds for the send. */
@@ -171,6 +218,8 @@ export type StructuredAgentSessionJournalReading = {
   inFlightClientMessageId: string | null
   /** Ids of the drafts the host publishes as queued; null until it has published a list. */
   queuedMessageIds: readonly string[] | null
+  /** This client's clock, for the host window. */
+  now: number
 }
 
 function readThrough(
@@ -193,7 +242,9 @@ function readThrough(
  * - an entry a Stop outran is handed back once the journal is read through the Stop's own answer:
  *   the host runs a chat's sends and Stops one at a time, so a send it took before the Stop has its
  *   row by then. A journal that moved to another epoch can't say, nor can a Stop that will never
- *   be answered, so those say to check the chat.
+ *   be answered, so those say to check the chat;
+ * - either one past the host's window for its id is handed back to check the chat: nothing can
+ *   settle it any more.
  */
 export function settleStructuredAgentSessionEntryFromJournal(
   entry: StructuredAgentSessionOutboxEntry,
@@ -220,7 +271,11 @@ export function settleStructuredAgentSessionEntryFromJournal(
   if (reading.cursor === null || reading.inFlightClientMessageId === entry.clientMessageId) {
     return null
   }
-  if (entry.legacyUnsettled === true) {
+  if (
+    entry.legacyUnsettled === true ||
+    (structuredAgentSessionEntryAwaitsSettlement(entry) &&
+      structuredAgentSessionEntryOutlivedHostWindow(entry, reading.now))
+  ) {
     return { kind: 'returned', words: [...STRUCTURED_AGENT_SESSION_SEND_UNCONFIRMED_WORDS] }
   }
   const stopCursor = entry.stoppedBy?.cursor

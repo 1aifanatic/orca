@@ -124,7 +124,7 @@ describe('an outbox on a host that accepts a send before any agent has it', () =
     expect(sentId(1)).toBe(sentId(0))
   })
 
-  it('gives a launch prompt whose staging save failed back to the chat draft, unsent', async () => {
+  it('keeps a launch prompt whose staging save failed in the chat, unsent, for Orca to try again', async () => {
     const staged = enqueueStructuredAgentSessionLaunchPrompt('session-1', 'launch notes')
     if (!staged) {
       throw new Error('fixture outbox entry was not persisted')
@@ -143,14 +143,12 @@ describe('an outbox on a host that accepts a send before any agent has it', () =
       })
     )
     setItem.mockRestore()
-    // Unsaved, it could go out where a reload never settles it, so it comes back instead.
-    expect(delivery).toEqual({ delivered: false, failureNotified: false })
+    // Unsaved, it never goes out; the chat holds it and tries again, so the caller says nothing.
+    expect(delivery).toEqual({ delivered: false, failureNotified: true })
     expect(mocks.call).not.toHaveBeenCalled()
-    expect(result.current.outbox).toEqual([])
-    expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey('session-1'))).toBe(
-      'launch notes'
-    )
-    expect(result.current.error).toBe("Couldn't save your message. Try again.")
+    expect(result.current.outbox).toMatchObject([{ state: 'unconfirmed' }])
+    expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey('session-1'))).toBe('')
+    expect(result.current.error).toBe("Couldn't save your message.")
   })
 })
 

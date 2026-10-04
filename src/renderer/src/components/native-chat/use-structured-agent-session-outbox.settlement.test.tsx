@@ -192,6 +192,41 @@ describe('case 3: no answer yet', () => {
     expect(readNativeChatDraftCache(SCOPE)).toBe('')
   }, 10000)
 
+  it("a refused resend Orca can't trust says why once, that it keeps sending, and clears once it lands", async () => {
+    setLocalRuntimeCapabilitiesForTests([])
+    let calls = 0
+    const landed = Promise.withResolvers<void>()
+    mocks.call.mockImplementation(async (_target, _method, params) => {
+      calls += 1
+      if (calls === 1) {
+        throw new Error('socket closed')
+      }
+      if (calls === 2) {
+        return { ok: false, refusal: { code: 'agent_session_journal_unreadable', message: 'x' } }
+      }
+      await landed.promise
+      return answer(params, 'accepted')
+    })
+    const { result } = mount()
+
+    act(() => expect(result.current.send('hello')).toBe(true))
+    await waitFor(
+      () =>
+        expect(result.current.error).toBe(
+          "Orca couldn't read this chat's saved history. Orca will keep trying to send it."
+        ),
+      { timeout: 3000 }
+    )
+    expect(result.current.outbox).toHaveLength(1)
+    await waitFor(() => expect(sentIds()).toHaveLength(3), { timeout: 6000 })
+    await act(async () => {
+      landed.resolve()
+    })
+    await waitFor(() => expect(result.current.outbox).toEqual([]))
+    expect(result.current.error).toBeNull()
+    expect(readNativeChatDraftCache(SCOPE)).toBe('')
+  }, 10000)
+
   it('on a host whose answers prove, the same refused resend comes back to the draft', async () => {
     let calls = 0
     mocks.call.mockImplementation(async () => {

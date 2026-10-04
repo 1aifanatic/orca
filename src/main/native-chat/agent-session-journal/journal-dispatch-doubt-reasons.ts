@@ -20,8 +20,9 @@ export const DISPATCH_DOUBT_PROVIDER_EXITED = 'provider_exited_before_acknowledg
 /** The adapter took the message and only the journal write failed after it. */
 export const DISPATCH_DOUBT_PERSISTENCE_FAILED = 'dispatch_result_persistence_failed'
 
-/** The operation tombstone survived recovery but its journal submission did not. */
-export const DISPATCH_DOUBT_SUBMISSION_MISSING = 'durable_send_submission_missing'
+/** The operation tombstone survived recovery but its journal submission did not. Shared, since a
+ *  client reads it on the answer. */
+export { DISPATCH_DOUBT_SUBMISSION_MISSING } from '../../../shared/structured-agent-session-unanswered-dispatch'
 
 /** The provider reported its thread not running with no turn open, so nothing is
  *  left that could still acknowledge the message. */

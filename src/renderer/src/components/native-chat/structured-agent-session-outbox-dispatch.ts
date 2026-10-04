@@ -6,8 +6,10 @@ import type {
   AgentSessionMutationResult,
   AgentSessionSendResult
 } from '../../../../shared/agent-session-wire'
-import { readAgentSessionErrorRefusal } from '../../../../shared/agent-session-write-failure'
-import { STRUCTURED_AGENT_SESSION_OUTBOX_NOT_SAVED } from '../../../../shared/structured-agent-session-send-failure-words'
+import {
+  agentSessionRefusalFailure,
+  readAgentSessionErrorRefusal
+} from '../../../../shared/agent-session-write-failure'
 import {
   applyStructuredAgentSessionSendSettlement,
   settleStructuredAgentSessionSendAnswer,
@@ -35,6 +37,7 @@ import {
   shareStructuredAgentLaunchPromptDispatch
 } from '@/lib/structured-agent-session-launch-prompt'
 import {
+  clearStructuredAgentSessionChatLineHeldBy,
   returnStructuredAgentSessionMessage,
   setStructuredAgentSessionChatLine
 } from './structured-agent-session-returned-send'
@@ -101,6 +104,24 @@ export function commitStructuredAgentSessionSettledOutbox(
   commitStructuredAgentSessionOutbox(sessionId, settled.entries)
 }
 
+/** What the chat line says once a settlement is committed: why a message is still being sent, said
+ *  once, until it settles. A returned message's words are set as it comes back. */
+export function sayStructuredAgentSessionSettlement(
+  sessionId: string,
+  clientMessageId: string,
+  settlement: StructuredAgentSessionSendSettlement
+): void {
+  if (settlement.kind === 'unanswered') {
+    if (settlement.words) {
+      setStructuredAgentSessionChatLine(sessionId, settlement.words, clientMessageId)
+    }
+    return
+  }
+  if (settlement.kind !== 'returned') {
+    clearStructuredAgentSessionChatLineHeldBy(sessionId, clientMessageId)
+  }
+}
+
 /** Settles one entry against the current outbox and commits it. */
 export function settleStructuredAgentSessionOutboxEntry(
   sessionId: string,
@@ -121,6 +142,15 @@ export function settleStructuredAgentSessionOutboxEntry(
     sessionId,
     applyStructuredAgentSessionSendSettlement(current, clientMessageId, kept)
   )
+  sayStructuredAgentSessionSettlement(sessionId, clientMessageId, kept)
+}
+
+function storedEntry(
+  entry: StructuredAgentSessionOutboxEntry
+): StructuredAgentSessionOutboxEntry | undefined {
+  return readOutbox(entry.sessionId, { recoverDispatching: false }).find(
+    (candidate) => candidate.clientMessageId === entry.clientMessageId
+  )
 }
 
 /** Whether no attempt under this id has gone out from anywhere: read from storage too, which every
@@ -129,10 +159,14 @@ function stagedAsFirstAttempt(entry: StructuredAgentSessionOutboxEntry): boolean
   if (entry.lastAttemptAt !== null) {
     return false
   }
-  const stored = readOutbox(entry.sessionId, { recoverDispatching: false }).find(
-    (candidate) => candidate.clientMessageId === entry.clientMessageId
-  )
+  const stored = storedEntry(entry)
   return stored === undefined || stored.lastAttemptAt === null
+}
+
+/** Whether this attempt is still the only one: another view or window that staged the id again
+ *  meanwhile restamped it in storage, and its attempt may land whatever this one was told. */
+function stillOnlyAttempt(entry: StructuredAgentSessionOutboxEntry, stagedAt: number): boolean {
+  return storedEntry(entry)?.lastAttemptAt === stagedAt
 }
 
 async function readSendAnswer(
@@ -150,9 +184,10 @@ async function readSendAnswer(
       )
     }
   } catch (caught) {
+    const refusal = readAgentSessionErrorRefusal(caught)
     return {
       kind: 'thrown',
-      carriedRefusal: readAgentSessionErrorRefusal(caught) !== undefined,
+      refusal: refusal ? agentSessionRefusalFailure(refusal) : undefined,
       rpcCode: caught instanceof RuntimeRpcCallError ? caught.code : undefined
     }
   }
@@ -160,8 +195,9 @@ async function readSendAnswer(
 
 /**
  * Sends one entry and settles it by the answer. `isCurrent` says whether the answer still belongs
- * to the outbox that sent it (an owner change voids it; the entry then goes again under its id).
- * Resolves to the settlement, or null when the answer was voided or the entry could not be staged.
+ * to the outbox that sent it (an owner change voids it; the entry then goes again under its id);
+ * `beforeSettle` runs just before the write that settles it. Resolves to the settlement, or null
+ * when the answer was voided.
  */
 export async function sendStructuredAgentSessionOutboxEntry(args: {
   /** The request's own copy; `entries` holds the copy to stage. */
@@ -170,24 +206,32 @@ export async function sendStructuredAgentSessionOutboxEntry(args: {
   target: RuntimeClientTarget
   fence: number
   isCurrent: () => boolean
+  beforeSettle?: () => void
   /** Whether the loaded journal holds a row for the id; absent where no journal is loaded. */
   journalHasRow?: (clientMessageId: string) => boolean
 }): Promise<StructuredAgentSessionSendSettlement | null> {
   const { next } = args
   const sessionId = next.sessionId
-  const firstAttempt = stagedAsFirstAttempt(next)
+  const settle = (settlement: StructuredAgentSessionSendSettlement): void => {
+    args.beforeSettle?.()
+    settleStructuredAgentSessionOutboxEntry(sessionId, next.clientMessageId, settlement)
+  }
+  const stagedAt = Date.now()
   const staged = updateStructuredAgentSessionOutboxEntry(
     args.entries,
     next.clientMessageId,
-    (entry) => stageStructuredAgentSessionOutboxEntryForSend(entry, Date.now())
+    (entry) => stageStructuredAgentSessionOutboxEntryForSend(entry, stagedAt)
   )
+  const firstAttempt = stagedAsFirstAttempt(next)
   if (!commitStructuredAgentSessionOutbox(sessionId, staged, { onlyIfSaved: true })) {
-    // Unsaved, a send could go out that a reload never settles; it comes back instead.
-    settleStructuredAgentSessionOutboxEntry(sessionId, next.clientMessageId, {
-      kind: 'returned',
-      words: [...STRUCTURED_AGENT_SESSION_OUTBOX_NOT_SAVED]
-    })
-    return null
+    // Unsaved, a send could go out that a reload never settles, and handing it back could repeat
+    // one an earlier attempt landed: it waits, and the probe tries again.
+    const unsaved: StructuredAgentSessionSendSettlement = {
+      kind: 'unanswered',
+      words: ['messageNotSaved']
+    }
+    settle(unsaved)
+    return unsaved
   }
   const answer = await readSendAnswer(args.target, next, args.fence)
   if (!args.isCurrent()) {
@@ -195,19 +239,20 @@ export async function sendStructuredAgentSessionOutboxEntry(args: {
   }
   // Only a resend's refusal reads the host's proof; asked after the answer, so a send never waits
   // on it, and a first attempt's refusal proves no record on any host.
+  const onlyAttempt = firstAttempt && stillOnlyAttempt(next, stagedAt)
   const answersProve =
-    !firstAttempt && answer.kind === 'result' && !answer.result.ok
+    !onlyAttempt && answer.kind === 'result' && !answer.result.ok
       ? await structuredAgentSessionHostAnswersProve(args.target)
       : false
   if (!args.isCurrent()) {
     return null
   }
   const settlement = settleStructuredAgentSessionSendAnswer(answer, next.clientMessageId, {
-    firstAttempt,
+    firstAttempt: onlyAttempt,
     answersProve,
     journalHasRow: args.journalHasRow?.(next.clientMessageId) ?? false
   })
-  settleStructuredAgentSessionOutboxEntry(sessionId, next.clientMessageId, settlement)
+  settle(settlement)
   return settlement
 }
 
@@ -223,8 +268,8 @@ export function dispatchStructuredAgentSessionOutboxEntry(args: {
   dispatchGenerationRef: MutableRef<number>
   inFlightIdRef: MutableRef<string | null>
   journalHasRow: (clientMessageId: string) => boolean
-}): { promise: Promise<boolean>; started: boolean } {
-  const start = async (): Promise<boolean> => {
+}): { promise: Promise<StructuredAgentSessionSendSettlement | null>; started: boolean } {
+  const start = async (): Promise<StructuredAgentSessionSendSettlement | null> => {
     args.inFlightIdRef.current = args.next.clientMessageId
     const isCurrent = (): boolean => args.dispatchGenerationRef.current === args.dispatchGeneration
     const release = (): void => {
@@ -238,17 +283,13 @@ export function dispatchStructuredAgentSessionOutboxEntry(args: {
       target: args.target,
       fence: args.fence,
       journalHasRow: args.journalHasRow,
-      // Released before the settling write, which is what runs the drain again.
-      isCurrent: () => {
-        const current = isCurrent()
-        if (current) {
-          release()
-        }
-        return current
-      }
+      isCurrent,
+      // Held through the capability probe, so nothing overtakes it; released before the settling
+      // write, which is what runs the drain again.
+      beforeSettle: release
     })
     release()
-    return settlement?.kind === 'recorded' || settlement?.kind === 'pending'
+    return settlement
   }
   return args.next.source === 'launch'
     ? shareStructuredAgentLaunchPromptDispatch(

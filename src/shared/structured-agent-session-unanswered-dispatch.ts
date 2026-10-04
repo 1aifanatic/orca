@@ -1,6 +1,10 @@
 import type { AgentJournalSubmission } from './agent-session-journal-types'
 import { isQueuedAgentJournalSubmission } from './agent-session-queued-submission'
 
+/** The reason an older host gives a send it answers from its ledger with no journal row: a record
+ *  it made up, not one the chat shows. */
+export const DISPATCH_DOUBT_SUBMISSION_MISSING = 'durable_send_submission_missing'
+
 /** A send whose outcome the host lost for good when the process that sent it went away (a restart,
  *  a provider exit, an idle release): nothing still running can answer it. */
 export function isRecoveredStructuredAgentSessionSubmission(

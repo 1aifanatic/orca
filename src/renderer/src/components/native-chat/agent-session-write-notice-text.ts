@@ -43,6 +43,8 @@ const SENTENCES: Record<AgentSessionWriteNoticeSentence, () => string> = {
     translate('components.native-chat.writeNotice.outcomeUnknown', COPY.outcomeUnknown),
   sendOutcomeLost: () =>
     translate('components.native-chat.writeNotice.sendOutcomeLost', COPY.sendOutcomeLost),
+  stillSending: () =>
+    translate('components.native-chat.writeNotice.stillSending', COPY.stillSending),
   questionChanged: () =>
     translate('components.native-chat.writeNotice.questionChanged', COPY.questionChanged),
   historyUnreadable: () =>

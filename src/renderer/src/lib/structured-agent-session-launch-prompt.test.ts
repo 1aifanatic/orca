@@ -65,7 +65,8 @@ describe('settleStructuredAgentLaunchPrompt', () => {
   })
 
   // The launch prompt goes through the outbox's one sender and settlement: a first attempt the
-  // host refused comes back to the chat's draft, never a Retry row.
+  // host refused comes back to the chat's draft, and the chat line says why, so the caller says
+  // nothing more.
   it('gives a first launch prompt the host refused back to the chat draft, with no resend', async () => {
     const stagedEntry = enqueueStructuredAgentSessionLaunchPrompt('session-1', 'review this')
     const onPromptDelivered = vi.fn()
@@ -81,7 +82,7 @@ describe('settleStructuredAgentLaunchPrompt', () => {
         options: { prompt: 'review this', onPromptDelivered },
         stagedEntry
       })
-    ).resolves.toEqual({ delivered: false, failureNotified: false })
+    ).resolves.toEqual({ delivered: false, failureNotified: true })
 
     expect(onPromptDelivered).not.toHaveBeenCalled()
     expect(mocks.call).toHaveBeenCalledOnce()
@@ -89,5 +90,35 @@ describe('settleStructuredAgentLaunchPrompt', () => {
     expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey('session-1'))).toBe(
       'review this'
     )
+  })
+  // The chat keeps it and sends it again: a caller offering it to copy would invite a duplicate.
+  it('reports a launch prompt with no answer yet as handled by the chat', async () => {
+    const stagedEntry = enqueueStructuredAgentSessionLaunchPrompt('session-1', 'review this')
+    mocks.call.mockRejectedValue(new Error('socket closed'))
+
+    await expect(
+      settleStructuredAgentLaunchPrompt({
+        launchResult: Promise.resolve({ sessionId: 'session-1', fence: 1 }),
+        target: { kind: 'local' },
+        options: { prompt: 'review this' },
+        stagedEntry
+      })
+    ).resolves.toEqual({ delivered: false, failureNotified: true })
+    expect(getStructuredAgentSessionOutbox('session-1')).toMatchObject([{ state: 'unconfirmed' }])
+  })
+
+  it('reports a launch prompt that never went out as not handled', async () => {
+    const stagedEntry = enqueueStructuredAgentSessionLaunchPrompt('session-1', 'review this')
+    localStorage.clear()
+
+    await expect(
+      settleStructuredAgentLaunchPrompt({
+        launchResult: Promise.resolve({ sessionId: 'session-1', fence: 1 }),
+        target: { kind: 'local' },
+        options: { prompt: 'review this' },
+        stagedEntry
+      })
+    ).resolves.toEqual({ delivered: false, failureNotified: false })
+    expect(mocks.call).not.toHaveBeenCalled()
   })
 })

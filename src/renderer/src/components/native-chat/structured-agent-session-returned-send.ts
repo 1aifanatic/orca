@@ -35,7 +35,12 @@ export function returnStructuredAgentSessionMessage(
   )
 }
 
-type ChatLine = { text: string | null; listeners: Set<() => void> }
+type ChatLine = {
+  text: string | null
+  /** The message still being sent whose words these are, so they leave once it settles. */
+  heldBy: string | null
+  listeners: Set<() => void>
+}
 
 // Memory only: the words are said once, where the person is; the text itself is in the draft.
 const chatLines = new Map<string, ChatLine>()
@@ -43,19 +48,22 @@ const chatLines = new Map<string, ChatLine>()
 function chatLine(sessionId: string): ChatLine {
   let line = chatLines.get(sessionId)
   if (!line) {
-    line = { text: null, listeners: new Set() }
+    line = { text: null, heldBy: null, listeners: new Set() }
     chatLines.set(sessionId, line)
   }
   return line
 }
 
-/** Says why a send of this chat did not go through, or clears the line with null. */
+/** Says why a send of this chat did not go through, or clears the line with null. `heldBy` names
+ *  a message Orca is still sending, whose words go once it settles. */
 export function setStructuredAgentSessionChatLine(
   sessionId: string,
-  words: readonly AgentSessionWriteNoticePart[] | null
+  words: readonly AgentSessionWriteNoticePart[] | null,
+  heldBy: string | null = null
 ): void {
   const line = chatLine(sessionId)
   const text = words ? agentSessionWriteNoticeText([...words]) : null
+  line.heldBy = text === null ? null : heldBy
   if (line.text === text) {
     return
   }
@@ -65,6 +73,16 @@ export function setStructuredAgentSessionChatLine(
   }
   if (text === null && line.listeners.size === 0) {
     chatLines.delete(sessionId)
+  }
+}
+
+/** Clears the line if it still says why this message is being sent again. */
+export function clearStructuredAgentSessionChatLineHeldBy(
+  sessionId: string,
+  clientMessageId: string
+): void {
+  if (chatLines.get(sessionId)?.heldBy === clientMessageId) {
+    setStructuredAgentSessionChatLine(sessionId, null)
   }
 }
 

@@ -13,11 +13,6 @@ import type {
 import { createStructuredAgentSessionOperationId } from '../../../../shared/structured-agent-session-mutation'
 import { admitStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox-admission'
 import { STRUCTURED_AGENT_SESSION_OUTBOX_NOT_SAVED } from '../../../../shared/structured-agent-session-send-failure-words'
-import {
-  applyStructuredAgentSessionSendSettlement,
-  settleStructuredAgentSessionEntryFromJournal,
-  type StructuredAgentSessionSettledOutbox
-} from '../../../../shared/structured-agent-session-send-settlement'
 import { stopStructuredAgentSessionOutbox } from '../../../../shared/structured-agent-session-outbox-stop-withdrawal'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import {
@@ -33,6 +28,10 @@ import {
   readMountedStructuredAgentSessionOutbox,
   requeueInterruptedStructuredAgentSessionDispatches
 } from './structured-agent-session-outbox-dispatch'
+import {
+  nextStructuredAgentSessionHostWindowEnd,
+  settleStructuredAgentSessionOutboxFromJournal
+} from './structured-agent-session-outbox-journal-settlement'
 import { getStructuredAgentLaunchPromptDispatch } from '@/lib/structured-agent-session-launch-prompt'
 import { useStructuredAgentSessionOutboxOwnerChange } from '@/runtime/structured-agent-session-accepted-send-capability'
 import { useStructuredAgentSessionOutboxUnconfirmedProbe } from './use-structured-agent-session-outbox-unconfirmed-probe'
@@ -46,6 +45,9 @@ import {
   structuredAgentSessionEntryAttempt,
   type StructuredAgentSessionQueueDelivery
 } from '../../../../shared/structured-agent-session-outbox-delivery'
+
+/** setTimeout's longest delay; a longer wait fires early and is simply armed again. */
+const MAX_TIMER_DELAY_MS = 2 ** 31 - 1
 
 const NO_QUEUE_DELIVERY: StructuredAgentSessionQueueDelivery = {
   capability: 'unsupported',
@@ -140,40 +142,17 @@ export function useStructuredAgentSessionOutbox(args: {
   // Everything the journal settles, every time it or the outbox moves: a row, a published card, the
   // Stop's answer read through, or an entry an older build left. The outbox too, since an idle
   // Stop answers at a cursor the journal already reached, and nothing else would move.
+  const [hostWindowsClosed, setHostWindowsClosed] = useState(0)
   useEffect(() => {
+    const now = Date.now()
     const reading = {
       submissions,
       cursor: journalCursor,
       inFlightClientMessageId: inFlightIdRef.current,
-      queuedMessageIds: queuedMessageIds ?? null
+      queuedMessageIds: queuedMessageIds ?? null,
+      now
     }
-    const current = getStructuredAgentSessionOutbox(sessionId)
-    let entries = current
-    const returned: NonNullable<StructuredAgentSessionSettledOutbox['returned']>[] = []
-    for (const entry of current) {
-      const settlement = settleStructuredAgentSessionEntryFromJournal(entry, reading)
-      if (settlement) {
-        const next = applyStructuredAgentSessionSendSettlement(
-          entries,
-          entry.clientMessageId,
-          settlement
-        )
-        entries = next.entries
-        if (next.returned) {
-          returned.push(next.returned)
-        }
-      }
-    }
-    if (entries !== current) {
-      // Each returned message goes to the draft before the outbox that drops it is saved.
-      for (const back of returned) {
-        returnStructuredAgentSessionMessage(back.entry)
-        if (back.words) {
-          setStructuredAgentSessionChatLine(sessionId, back.words)
-        }
-      }
-      commitStructuredAgentSessionOutbox(sessionId, entries)
-    }
+    const entries = settleStructuredAgentSessionOutboxFromJournal(sessionId, reading)
     // The host holding the send in flight outranks a reply that has not come: release
     // single-flight and void that reply, keyed on the entry actually in flight.
     const inFlight = inFlightIdRef.current
@@ -190,7 +169,26 @@ export function useStructuredAgentSessionOutbox(args: {
       // Nothing above may have written the outbox, so the drain is told to look again.
       drainAgain()
     }
-  }, [drainAgain, journalCursor, outbox, queuedMessageIds, sessionId, submissions])
+    // A send only an owed answer settles must still end when the host's window for it closes,
+    // though nothing else moves by then.
+    const windowEnd = nextStructuredAgentSessionHostWindowEnd(entries)
+    if (windowEnd === null) {
+      return
+    }
+    const timer = setTimeout(
+      () => setHostWindowsClosed((count) => count + 1),
+      Math.min(Math.max(windowEnd - now + 1, 0), MAX_TIMER_DELAY_MS)
+    )
+    return () => clearTimeout(timer)
+  }, [
+    drainAgain,
+    hostWindowsClosed,
+    journalCursor,
+    outbox,
+    queuedMessageIds,
+    sessionId,
+    submissions
+  ])
 
   const journalHasRow = useCallback(
     (clientMessageId: string) =>

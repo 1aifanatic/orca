@@ -18,6 +18,8 @@ import { AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS } from './agent-session-host-
 import { DISPATCH_REJECTED_CANCELLED } from './structured-agent-session-dispatch-rejection'
 
 const ID = '1759600000000-0123456789abcdef0123456789abcdef'
+const MADE_AT = 1_759_600_000_000
+const NOW = MADE_AT + 1_000
 const NO_ROWS: AgentJournalSubmission[] = []
 
 function entry(
@@ -164,13 +166,14 @@ describe('a send answer settles one of three ways', () => {
   })
 
   it('case 3: an older host may refuse a resent id before looking it up, so it goes again', () => {
+    // Said once: why, and that Orca keeps sending it, never that it was not sent.
     expect(
       settleStructuredAgentSessionSendAnswer(
         refused('agent_session_journal_unreadable'),
         ID,
         RESEND_OLD_HOST
       )
-    ).toEqual({ kind: 'unanswered' })
+    ).toEqual({ kind: 'unanswered', words: ['historyUnreadable', 'stillSending'] })
   })
 
   it('case 3: "outcome unknown" is never proof, even on a first attempt', () => {
@@ -224,31 +227,88 @@ describe('a send answer settles one of three ways', () => {
     ]) {
       expect(
         settleStructuredAgentSessionSendAnswer(
-          { kind: 'thrown', carriedRefusal: false, rpcCode },
+          { kind: 'thrown', refusal: undefined, rpcCode },
           ID,
           FIRST
         )
       ).toEqual({ kind: 'unanswered' })
     }
+    // A thrown refusal may come after the row was written, so it is held, saying why once.
     expect(
       settleStructuredAgentSessionSendAnswer(
-        { kind: 'thrown', carriedRefusal: true, rpcCode: 'agent_session_refused' },
+        {
+          kind: 'thrown',
+          refusal: { kind: 'refused', code: 'agent_session_journal_unreadable' },
+          rpcCode: 'agent_session_refused'
+        },
         ID,
         FIRST
       )
-    ).toEqual({ kind: 'unanswered' })
+    ).toEqual({ kind: 'unanswered', words: ['historyUnreadable', 'stillSending'] })
   })
 
-  it('a call the host turned away before running it proves no record', () => {
-    for (const rpcCode of ['method_not_found', 'invalid_argument']) {
-      expect(
-        settleStructuredAgentSessionSendAnswer(
-          { kind: 'thrown', carriedRefusal: false, rpcCode },
-          ID,
-          RESEND_OLD_HOST
-        ).kind
-      ).toBe('returned')
+  it('a call the host turned away before running it proves no record, on a first attempt only', () => {
+    for (const rpcCode of ['method_not_found', 'invalid_argument', 'unauthorized']) {
+      const thrown: StructuredAgentSessionSendAnswer = {
+        kind: 'thrown',
+        refusal: undefined,
+        rpcCode
+      }
+      expect(settleStructuredAgentSessionSendAnswer(thrown, ID, FIRST).kind).toBe('returned')
+      // An earlier attempt may have landed before the host turned this one away.
+      for (const resend of [
+        RESEND_OLD_HOST,
+        RESEND_PROVING,
+        { ...RESEND_PROVING, journalHasRow: true }
+      ]) {
+        const settled = settleStructuredAgentSessionSendAnswer(thrown, ID, resend)
+        expect(settled.kind, rpcCode).toBe('unanswered')
+        expect(settled).toMatchObject({ words: expect.arrayContaining(['stillSending']) })
+      }
     }
+  })
+
+  it('a reused message id on a resend is settled by the journal, as a conflict is', () => {
+    const reused = refused('agent_session_operation_invalid', { reason: 'messageIdReused' })
+    for (const resend of [RESEND_PROVING, RESEND_OLD_HOST]) {
+      expect(
+        settleStructuredAgentSessionSendAnswer(reused, ID, { ...resend, journalHasRow: true })
+      ).toEqual({ kind: 'recorded' })
+      expect(settleStructuredAgentSessionSendAnswer(reused, ID, resend)).toEqual({
+        kind: 'returned',
+        words: ['sendOutcomeLost']
+      })
+    }
+  })
+
+  it("an older host's made-up record for a lost row is the chat's only with a loaded row", () => {
+    const madeUp = sent(
+      row({ dispatchState: 'unknown', reason: 'durable_send_submission_missing', recovered: true })
+    )
+    expect(settleStructuredAgentSessionSendAnswer(madeUp, ID, RESEND_OLD_HOST)).toEqual({
+      kind: 'returned',
+      words: ['sendOutcomeLost']
+    })
+    expect(
+      settleStructuredAgentSessionSendAnswer(madeUp, ID, {
+        ...RESEND_OLD_HOST,
+        journalHasRow: true
+      })
+    ).toEqual({ kind: 'recorded' })
+    // A real recovered row is the host's.
+    expect(
+      settleStructuredAgentSessionSendAnswer(
+        sent(
+          row({
+            dispatchState: 'unknown',
+            reason: 'host_restarted_before_acknowledgement',
+            recovered: true
+          })
+        ),
+        ID,
+        RESEND_OLD_HOST
+      )
+    ).toEqual({ kind: 'recorded' })
   })
 })
 
@@ -257,7 +317,8 @@ describe('the journal settles what an answer did not', () => {
     submissions: NO_ROWS,
     cursor: { epoch: 'e', sequence: 10 },
     inFlightClientMessageId: null,
-    queuedMessageIds: null
+    queuedMessageIds: null,
+    now: NOW
   }
 
   it('a recovered-unknown row is a record: the parked head leaves, so nothing waits behind it', () => {
@@ -380,7 +441,8 @@ describe('entries an older build saved are migrated, never sent again', () => {
       submissions: NO_ROWS,
       cursor: null,
       inFlightClientMessageId: null,
-      queuedMessageIds: null
+      queuedMessageIds: null,
+      now: NOW
     }
     expect(settleStructuredAgentSessionEntryFromJournal(legacy, reading)).toBeNull()
     expect(
@@ -431,8 +493,47 @@ describe('applying a settlement', () => {
 })
 
 describe('the host window bounds every entry', () => {
+  const pastWindow = MADE_AT + AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS + 1
+  const reading = {
+    submissions: NO_ROWS,
+    cursor: { epoch: 'e', sequence: 10 },
+    inFlightClientMessageId: null,
+    queuedMessageIds: null,
+    now: pastWindow
+  }
+
+  it('a send a Stop outran whose answer never settles it comes back to check, past the window', () => {
+    // A queue send with no published draft list, and a Stop never answered: nothing else ends them.
+    for (const stopped of [
+      entry({
+        state: 'unconfirmed',
+        sentDelivery: 'queue-if-active',
+        stoppedBy: { operationId: 'stop-1', cursor: { epoch: 'e', sequence: 4 } }
+      }),
+      entry({ state: 'unconfirmed', stoppedBy: { operationId: 'stop-1' } })
+    ]) {
+      expect(
+        settleStructuredAgentSessionEntryFromJournal(stopped, { ...reading, now: NOW })
+      ).toBeNull()
+      expect(settleStructuredAgentSessionEntryFromJournal(stopped, reading)).toEqual({
+        kind: 'returned',
+        words: ['sendOutcomeLost']
+      })
+      // A row still settles it as the host's.
+      expect(
+        settleStructuredAgentSessionEntryFromJournal(stopped, { ...reading, submissions: [row()] })
+      ).toEqual({ kind: 'recorded' })
+    }
+  })
+
+  it('an ordinary entry is left to its own sender, whatever the time', () => {
+    expect(
+      settleStructuredAgentSessionEntryFromJournal(entry({ state: 'unconfirmed' }), reading)
+    ).toBeNull()
+  })
+
   it('an id older than the host replays can no longer be settled by a resend', () => {
-    const madeAt = 1_759_600_000_000
+    const madeAt = MADE_AT
     expect(structuredAgentSessionEntryOutlivedHostWindow(entry(), madeAt + 1000)).toBe(false)
     expect(
       structuredAgentSessionEntryOutlivedHostWindow(
