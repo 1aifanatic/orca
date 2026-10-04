@@ -3,7 +3,7 @@
  *
  * Why not the profile store: shipped builds rewrite orca-data.json and the profile database with
  * schemas that drop unknown fields, so a journal kept there would vanish across a downgrade while
- * the target fence (the SSH owner, which shipped builds keep) survived it. A missing journal must
+ * the target's `orcadFence`, which shipped builds keep, survived it. A missing journal must
  * never look like "no migration"; an unreadable one fails closed.
  */
 import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
@@ -136,6 +136,19 @@ export function removeOrcadMigrationSourceCutover(userDataPath: string, migratio
   rmSync(join(directory, `${migrationId}.json`), { force: true })
   if (existsSync(directory)) {
     syncDirectoryDurablySync(directory)
+  }
+}
+
+/** Every journal a host's stopped or never-registered server leaves behind; they grant nothing. */
+export function removeOrcadMigrationJournalsForDestination(
+  userDataPath: string,
+  sshTargetId: string,
+  environmentId: string
+): void {
+  for (const cutover of listOrcadMigrationSourceCutovers(userDataPath)) {
+    if (cutover.sshTargetId === sshTargetId && cutover.destinationEnvironmentId === environmentId) {
+      removeOrcadMigrationSourceCutover(userDataPath, cutover.migrationId)
+    }
   }
 }
 

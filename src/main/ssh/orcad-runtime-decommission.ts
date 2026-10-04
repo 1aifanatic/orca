@@ -23,6 +23,7 @@ import {
 } from './orcad-managed-runtime-context'
 import { closeOrcadManagedTunnel, ensureOrcadManagedTunnel } from './orcad-managed-tunnel'
 import { clearManagedOrcadUpdateDeferral } from './orcad-managed-update-deferrals'
+import { removeOrcadMigrationJournalsForDestination } from './orcad-migration-cutover-journal'
 import { decommissionRemoteOrcad } from './orcad-remote-stop'
 import { withManagedOrcadLifecycle } from './orcad-runtime-maintenance'
 import { collectManagedTerminalCensus } from './orcad-terminal-census-client'
@@ -134,6 +135,8 @@ async function unlinkStoppedEnvironment(
   claims.release(deployment.sshTargetId, environment.id)
   clearManagedOrcadUpdateDeferral(environment.id)
   await claims.flush()
+  // After the fence: a crash between leaves a stale journal a later conversion clears.
+  removeOrcadMigrationJournalsForDestination(userDataPath, deployment.sshTargetId, environment.id)
 }
 
 /** Withdraws a stop orcad has not acted on yet; the server then keeps serving. */

@@ -18,6 +18,7 @@ function deps(overrides: Partial<HostServerOnConnectDeps> = {}): HostServerOnCon
     managedEnvironmentId: () => null,
     ensureTunnel: vi.fn(async () => undefined),
     retireRetainedSource: vi.fn(async () => undefined),
+    hasUnfinishedConversion: () => false,
     abandonConversion: vi.fn(async () => undefined),
     abandonDeploy: vi.fn(async () => undefined),
     hasTemplate: () => true,
@@ -244,6 +245,33 @@ describe('which server an SSH host runs on connect', () => {
     })
     await expect(resolveHostServerOnConnect(target, d)).rejects.toBe(failure)
     expect(d.releaseUnreachableSetup).not.toHaveBeenCalled()
+  })
+
+  it('resumes an uncommitted conversion before routing to its registered server', async () => {
+    const d = deps({ managedEnvironmentId: () => 'env-9', hasUnfinishedConversion: () => true })
+    await expect(resolveHostServerOnConnect(target, d)).resolves.toEqual({
+      route: 'managed',
+      environmentId: 'env-1'
+    })
+    expect(d.convert).toHaveBeenCalledWith(target)
+    expect(d.relayTerminals).not.toHaveBeenCalled()
+    expect(d.retireRetainedSource).not.toHaveBeenCalled()
+  })
+
+  it('backs an uncommitted conversion out to the relay when its commit fails', async () => {
+    const d = deps({
+      managedEnvironmentId: () => 'env-9',
+      hasUnfinishedConversion: () => true,
+      convert: vi.fn(async () => {
+        throw new Error('orcad_migration_source_changed')
+      })
+    })
+    await expect(resolveHostServerOnConnect(target, d)).resolves.toMatchObject({
+      route: 'relay',
+      reason: 'failed',
+      detail: 'orcad_migration_source_changed'
+    })
+    expect(d.abandonConversion).toHaveBeenCalledWith(target)
   })
 
   describe('updating a managed host on connect', () => {

@@ -21,12 +21,9 @@ export function registerOrcadDeltaMoveHandlers(getUserDataPath: () => string): v
     'runtimeEnvironments:previewOrcadDeltaMove',
     (_event, args: { sshTargetId: string }): OrcadDeltaMovePreview => {
       const { store, target } = requireChangedHost(args)
-      const {
-        manifest: _manifest,
-        moved: _moved,
-        ...preview
-      } = planOrcadDeltaMove(getUserDataPath(), store, target)
-      return preview
+      const plan = planOrcadDeltaMove(getUserDataPath(), store, target)
+      const { sshTargetId, environmentId, added, notReflected, blockers } = plan
+      return { sshTargetId, environmentId, added, notReflected, blockers }
     }
   )
   ipcMain.handle(
@@ -55,7 +52,8 @@ export function registerOrcadDeltaMoveHandlers(getUserDataPath: () => string): v
         },
         ensureTunnel: async () => {
           await ensureOrcadManagedTunnel(userDataPath, environment.id)
-        }
+        },
+        runTargetLifecycle
       })
     }
   )

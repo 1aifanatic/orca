@@ -4,8 +4,11 @@ import { getManagedOrcadFenceEnvironmentId } from '../../shared/managed-orcad-ss
 import { listEnvironments } from '../../shared/runtime-environment-store'
 import { findOrcadMigrationSourceCutoverForTarget } from '../ssh/orcad-migration-cutover-journal'
 import { orcadMigrationRelayPtyLister } from '../ssh/orcad-migration-relay-pty-lister'
-import { releaseUndeployedMigrationFence } from '../ssh/orcad-migration-source-fence'
-import { isOrcadSourceRetirementEnabled } from '../ssh/orcad-migration-source-retention'
+import { abandonOrcadConversion } from '../ssh/orcad-conversion-abandon'
+import {
+  isOrcadSourceRetirementEnabled,
+  retainOrcadMigrationSource
+} from '../ssh/orcad-migration-source-retention'
 import { retireRetainedOrcadSourceChain } from '../ssh/orcad-retained-source-retirement'
 import { assessOrcadMigrationTerminals } from '../ssh/orcad-migration-terminal-gate'
 import { hasOrcadTemplate } from '../ssh/orcad-artifact-materializer'
@@ -49,6 +52,12 @@ export function hostServerOnConnectDeps(userDataPath: string): HostServerOnConne
     retireRetainedSource: async (target) => {
       if (isOrcadSourceRetirementEnabled()) {
         await retireRetainedOrcadSourceChain(userDataPath, store, target, runTargetLifecycle)
+        return
+      }
+      // A commit whose reply outlived the move: finished, so its rows are kept like any other.
+      const head = findOrcadMigrationSourceCutoverForTarget(userDataPath, target.id)
+      if (head?.phase === 'destination-committed') {
+        retainOrcadMigrationSource(userDataPath, head.migrationId)
       }
     },
     hasTemplate: hasOrcadTemplate,
@@ -110,12 +119,21 @@ export function hostServerOnConnectDeps(userDataPath: string): HostServerOnConne
         await claims.flush()
       }
     },
+    hasUnfinishedConversion: (target) => {
+      const head = findOrcadMigrationSourceCutoverForTarget(userDataPath, target.id)
+      return (
+        head !== null &&
+        !head.supersedesMigrationId &&
+        (head.phase === 'source-fenced' || head.phase === 'destination-staged')
+      )
+    },
     abandonConversion: async (target) => {
-      await releaseUndeployedMigrationFence({
+      await abandonOrcadConversion({
         userDataPath,
+        store,
         claims,
         targetId: target.id,
-        isDestinationRegistered: isRegistered
+        destinationFor: orcadMigrationDestinationFor
       })
     },
     isFencedBeforeStaging: (target) =>

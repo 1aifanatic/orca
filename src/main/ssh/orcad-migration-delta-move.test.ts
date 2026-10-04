@@ -19,6 +19,7 @@ import { planOrcadDeltaMove } from './orcad-migration-delta-plan'
 import { reconcileManagedOrcadSshTargets, visibleRepos } from './orcad-retained-source'
 import { retireRetainedOrcadSourceChain } from './orcad-retained-source-retirement'
 import { SshConnectionStore } from './ssh-connection-store'
+import { runTargetLifecycle } from '../ipc/ssh-target-lifecycle-queue'
 
 const mocks = vi.hoisted(() => {
   const state: { targetStore: unknown } = { targetStore: null }
@@ -134,6 +135,7 @@ function deltaMove() {
     listRelayPtyIds: Object.assign(async () => [], { previous: async () => [] }),
     releaseDirectSession: async () => {},
     ensureTunnel: async () => {},
+    runTargetLifecycle,
     now
   })
 }
@@ -224,6 +226,25 @@ function olderBuildSessionAfterDowngrade(): void {
     leafId: LEAF,
     state: 'expired'
   })
+}
+
+/** The delta's commit and every read after it fail, as when the tunnel drops mid-commit. */
+function loseContactAtDeltaCommit(): () => void {
+  const read = destination.readState.getMockImplementation()!
+  let lost = false
+  destination.commit.mockImplementationOnce(async () => {
+    lost = true
+    throw new Error('socket closed')
+  })
+  destination.readState.mockImplementation(async (manifest) => {
+    if (lost) {
+      throw new Error('socket closed')
+    }
+    return read(manifest)
+  })
+  return () => {
+    lost = false
+  }
 }
 
 describe('moving what an older build added to a converted host', () => {
@@ -346,5 +367,67 @@ describe('moving what an older build added to a converted host', () => {
       { id: 'tab-term', ptyId: null }
     ])
     expect(session?.unifiedTabs?.['repo-1::/srv/app']).toBeUndefined()
+  })
+
+  it('resumes a delta whose commit lost contact, keeping the host marked meanwhile', async () => {
+    await convertedThenChangedOnOlderBuild()
+    const reconnect = loseContactAtDeltaCommit()
+    await expect(deltaMove()).rejects.toThrow('socket closed')
+    expect(listOrcadMigrationSourceCutovers(userDataPath)).toHaveLength(2)
+    expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeDefined()
+
+    reconnect()
+    await expect(deltaMove()).resolves.toMatchObject({ outcome: 'moved' })
+    expect(destination.commits).toBe(2)
+    expect(listOrcadMigrationSourceCutovers(userDataPath)).toHaveLength(2)
+    expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeUndefined()
+  })
+
+  it('backs out an interrupted delta the source has since outgrown, then moves afresh', async () => {
+    await convertedThenChangedOnOlderBuild()
+    const reconnect = loseContactAtDeltaCommit()
+    await expect(deltaMove()).rejects.toThrow('socket closed')
+    reconnect()
+    await expect(
+      keepOrcadServerVersion({
+        userDataPath,
+        store,
+        claims: sshStore.getOrcadRuntimeClaims(),
+        target: store.getSshTarget(TARGET.id)!
+      })
+    ).rejects.toThrow('orcad_delta_move_unfinished')
+
+    store.addRepo(repo('repo-3', '/srv/docs'))
+    await expect(deltaMove()).resolves.toMatchObject({
+      outcome: 'refused',
+      reason: 'orcad_migration_source_changed'
+    })
+    expect(listOrcadMigrationSourceCutovers(userDataPath)).toHaveLength(1)
+    expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeDefined()
+    await expect(deltaMove()).resolves.toMatchObject({ outcome: 'moved' })
+    expect(destination.commits).toBe(2)
+  })
+
+  it('refuses a delta whose source changes while it stages', async () => {
+    await convertedThenChangedOnOlderBuild()
+    const stage = destination.stage.getMockImplementation()!
+    destination.stage.mockImplementationOnce(async (manifest) => {
+      store.addRepo(repo('repo-3', '/srv/docs'))
+      return stage(manifest)
+    })
+    await expect(deltaMove()).resolves.toMatchObject({
+      outcome: 'refused',
+      reason: 'orcad_migration_source_changed'
+    })
+    expect(destination.commits).toBe(1)
+    expect(listOrcadMigrationSourceCutovers(userDataPath)).toHaveLength(1)
+  })
+
+  it('runs one of two concurrent moves; the other finds it superseded', async () => {
+    await convertedThenChangedOnOlderBuild()
+    const results = await Promise.all([deltaMove(), deltaMove()])
+    expect(results.map((result) => result.outcome).sort()).toEqual(['moved', 'refused'])
+    expect(destination.commits).toBe(2)
+    expect(listOrcadMigrationSourceCutovers(userDataPath)).toHaveLength(2)
   })
 })

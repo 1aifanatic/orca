@@ -24,6 +24,7 @@ import {
   commitOrcadMigrationDestination,
   type OrcadMigrationDestinationCatalog
 } from './orcad-migration-cutover-coordinator'
+import { removeOrcadMigrationJournalsForDestination } from './orcad-migration-cutover-journal'
 import {
   fenceOrcadMigrationSource,
   resolveOrcadMigrationFence
@@ -143,6 +144,15 @@ async function fenceOrResume(
   if (existing.state === 'fenced') {
     return existing.cutover
   }
+  const stale = existing.state === 'stale-journal' ? existing.cutover : null
+  if (stale && !isRegistered(userDataPath, stale.destinationEnvironmentId)) {
+    // Its fence is gone and its server unregistered, so nothing it records can still be acted on.
+    removeOrcadMigrationJournalsForDestination(
+      userDataPath,
+      target.id,
+      stale.destinationEnvironmentId
+    )
+  }
   const converted = listEnvironments(userDataPath).some(
     (environment) => environment.orcadDeployment?.sshTargetId === target.id
   )
@@ -192,6 +202,10 @@ async function fenceOrResume(
     )
   }
   return refuse(result.verdict, result.code, result.reason)
+}
+
+function isRegistered(userDataPath: string, environmentId: string): boolean {
+  return listEnvironments(userDataPath).some((environment) => environment.id === environmentId)
 }
 
 function refuse(

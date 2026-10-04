@@ -161,17 +161,27 @@ export async function fenceOrcadMigrationSource(args: {
   return { outcome: 'fenced', cutover, resumed: false }
 }
 
-/**
- * Undoes a fence nothing remote has seen. Owner first, then the journal: a crash between them
- * leaves a stale journal, which grants nothing, rather than an owner nothing explains.
- */
+type FenceReleaseArgs = { userDataPath: string; claims: SshTargetOrcadClaims; signal?: AbortSignal }
+
+/** Undoes a fence nothing remote has seen. */
 export async function releaseUnstagedFence(
-  args: { userDataPath: string; claims: SshTargetOrcadClaims; signal?: AbortSignal },
+  args: FenceReleaseArgs,
   cutover: OrcadMigrationSourceCutover
 ): Promise<void> {
   if (cutover.phase !== 'source-fenced') {
     throw new Error('orcad_migration_fence_release_after_stage')
   }
+  await releaseOrcadMigrationFence(args, cutover)
+}
+
+/**
+ * Owner first, then the journal: a crash between them leaves a stale journal, which grants
+ * nothing, rather than an owner nothing explains.
+ */
+export async function releaseOrcadMigrationFence(
+  args: FenceReleaseArgs,
+  cutover: OrcadMigrationSourceCutover
+): Promise<void> {
   args.claims.release(cutover.sshTargetId, cutover.destinationEnvironmentId)
   await args.claims.flush(args.signal)
   removeOrcadMigrationSourceCutover(args.userDataPath, cutover.migrationId)
