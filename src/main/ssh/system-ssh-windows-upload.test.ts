@@ -681,8 +681,15 @@ describe('Windows upload on a host with no sftp subsystem', () => {
     expect(commands.some((command) => command.script.includes('::Move('))).toBe(false)
   })
 
+  const capturedPowerShellMissingPwsh =
+    "pwsh.exe : The term 'pwsh.exe' is not recognized as the name of a cmdlet, function, script file, or operable program. \r\nCheck the spelling of the name, or if a path was included, verify that the path is correct and try again.\r\nAt line:1 char:1\r\n+ pwsh.exe -NoProfile -NonInteractive -Command exit\r\n+ ~~~~~~~~\r\n    + CategoryInfo          : ObjectNotFound: (pwsh.exe:String) [], CommandNotFoundException\r\n    + FullyQualifiedErrorId : CommandNotFoundException"
+
   it.each([
     "'missing-tool.exe' is not recognized as an internal or external command",
+    `Access to the path 'relay.js' is denied.\n${capturedPowerShellMissingPwsh}`,
+    `${capturedPowerShellMissingPwsh}\nAccess to the path 'relay.js' is denied.`,
+    capturedPowerShellMissingPwsh.replaceAll('pwsh.exe', 'missing-tool.exe'),
+    capturedPowerShellMissingPwsh.replace(/.*CategoryInfo.*\r?\n/, ''),
     'CommandNotFoundException: missing-tool.exe',
     "Access to the path 'relay.js' is denied.\nCommandNotFoundException: pwsh.exe",
     "Access to the path 'relay.js' is denied.\n'pwsh.exe' is not recognized as an internal or external command"
@@ -708,7 +715,12 @@ describe('Windows upload on a host with no sftp subsystem', () => {
   it.each([
     [9009, ''],
     [1, "'pwsh.exe' is not recognized as an internal or external command"],
-    [1, 'CommandNotFoundException: pwsh.exe']
+    [1, 'CommandNotFoundException: pwsh.exe'],
+    [
+      1,
+      "'pwsh.exe' is not recognized as an internal or external command,\r\noperable program or batch file."
+    ],
+    [1, capturedPowerShellMissingPwsh]
   ])('falls back on an actual missing PowerShell 7 signal: %s %s', async (exit, stderr) => {
     writeFileSync(join(localDir, 'relay.js'), Buffer.alloc(WINDOWS_STDIN_WRITE_CHUNK_BYTES * 3))
     failAtSpawn = 0
