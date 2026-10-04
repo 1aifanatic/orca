@@ -13,7 +13,8 @@ import {
   attachTerminalImeBoundaryEvidence,
   disposeTerminalImeBoundaryProbe,
   installTerminalImeBoundaryProbe,
-  readTerminalImeBoundaryTrace
+  readTerminalImeBoundaryTrace,
+  type TerminalImeDomEvent
 } from './terminal-ime-boundary-probe'
 import {
   createTerminalImeByteReader,
@@ -186,5 +187,147 @@ test.describe('Native IBus Hangul terminal input @headful', () => {
       '테스트를 하고 있는데 여전히 그러네',
       typeSentenceSequence
     )
+  })
+})
+
+test.describe('Native IBus Hangul workspace notes @headful', () => {
+  test.use({ launchEnv: { ORCA_BACKGROUND_LAUNCH: '1' } })
+  test.skip(
+    process.env.ORCA_E2E_NATIVE_IBUS_HANGUL !== '1',
+    'Run through the isolated native IBus harness'
+  )
+
+  test('confirms native Hangul notes before a deliberate Enter saves', async ({
+    electronApp,
+    orcaPage
+  }, testInfo) => {
+    expect(process.platform).toBe('linux')
+    expect(process.env.GITHUB_ACTIONS).toBe('true')
+    expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted')
+    expect(process.env.DISPLAY).toMatch(/^:\d+(?:\.\d+)?$/)
+    const windowId = await electronApp.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0]
+      if (!window || window.isVisible() || process.env.ORCA_BACKGROUND_LAUNCH !== '1') {
+        throw new Error('Native Notes requires an owned background window')
+      }
+      return window.getNativeWindowHandle().readUInt32LE(0).toString()
+    })
+    // Native input is confined to the harness-owned Xvfb display on hosted CI.
+    runXdotool('windowmap', '--sync', windowId)
+    runXdotool('windowfocus', '--sync', windowId)
+    execFileSync('ibus', ['engine', 'hangul'], { timeout: NATIVE_COMMAND_TIMEOUT_MS })
+    expect(
+      execFileSync('ibus', ['engine'], {
+        encoding: 'utf8',
+        timeout: NATIVE_COMMAND_TIMEOUT_MS
+      }).trim()
+    ).toBe('hangul')
+
+    await orcaPage.evaluate(() => {
+      const state = window.__store?.getState()
+      const worktree =
+        state &&
+        Object.values(state.worktreesByRepo)
+          .flat()
+          .find((row) => row.id === state.activeWorktreeId)
+      if (!state || !worktree) {
+        throw new Error('Missing owned workspace')
+      }
+      state.openModal('edit-meta', {
+        worktreeId: worktree.id,
+        repoId: worktree.repoId,
+        currentDisplayName: worktree.displayName,
+        currentComment: '',
+        focus: 'comment'
+      })
+    })
+    const input = orcaPage.getByPlaceholder('Notes about this worktree...')
+    await expect(input).toBeVisible()
+    await input.click()
+    const events = await input.evaluateHandle((element) => {
+      if (!(element instanceof HTMLTextAreaElement)) {
+        throw new Error('Missing Notes textarea')
+      }
+      const events: TerminalImeDomEvent[] = []
+      for (const type of [
+        'compositionstart',
+        'compositionupdate',
+        'compositionend',
+        'input',
+        'keydown',
+        'keyup'
+      ]) {
+        element.addEventListener(type, (event) => {
+          const keyboard = event instanceof KeyboardEvent ? event : null
+          const inputEvent = event instanceof InputEvent ? event : null
+          const composition = event instanceof CompositionEvent ? event : null
+          events.push({
+            type: event.type,
+            data: inputEvent?.data ?? composition?.data ?? null,
+            inputType: inputEvent?.inputType ?? null,
+            key: keyboard?.key ?? null,
+            code: keyboard?.code ?? null,
+            keyCode: keyboard?.keyCode ?? null,
+            isComposing: keyboard?.isComposing ?? inputEvent?.isComposing ?? null,
+            selectionEnd: element.selectionEnd,
+            selectionStart: element.selectionStart,
+            value: element.value
+          })
+        })
+      }
+      return events
+    })
+    try {
+      runXdotool('type', '--delay', '10', '--clearmodifiers', 'gksrmf')
+      runXdotool('key', 'Return')
+      await expect
+        .poll(() =>
+          events.evaluate((trace) =>
+            trace.some((event) => event.type === 'keyup' && event.key === 'Enter')
+          )
+        )
+        .toBe(true)
+      await orcaPage.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+          )
+      )
+      await expect(input).toBeVisible()
+      await expect(input).toHaveValue('한글')
+      const readSavedComment = () =>
+        orcaPage.evaluate(() => {
+          const state = window.__store?.getState()
+          return (
+            state &&
+            Object.values(state.worktreesByRepo)
+              .flat()
+              .find((row) => row.id === state.activeWorktreeId)?.comment
+          )
+        })
+      expect(await readSavedComment()).not.toBe('한글')
+      await orcaPage.screenshot({
+        path: testInfo.outputPath('native-confirm-keeps-notes-open.png')
+      })
+      runXdotool('key', 'Return')
+      await expect(input).toBeHidden()
+      await expect.poll(readSavedComment).toBe('한글')
+      const dom = await events.jsonValue()
+      expect(dom.some((event) => event.type === 'compositionstart')).toBe(true)
+      expect(dom.some((event) => /[\uac00-\ud7af]/.test(event.data ?? ''))).toBe(true)
+      await testInfo.attach('native-notes-dom-trace', {
+        body: JSON.stringify({
+          nativeOperatingSystemIme: true,
+          engine: 'ibus-hangul',
+          display: process.env.DISPLAY,
+          onData: [],
+          dom
+        }),
+        contentType: 'application/json'
+      })
+      appendImeEngagementReceipt(testInfo.title, { dom, onData: [] })
+    } finally {
+      await events.dispose()
+    }
   })
 })

@@ -327,6 +327,35 @@ describe('WorktreeMetaDialog issue link row', () => {
     }
   )
 
+  it.each(
+    ['active composition', 'pending confirmation'].flatMap((phase) =>
+      IME_FIELDS.map((field) => ({ ...field, phase }))
+    )
+  )(
+    'allows a deliberate save after closing with $phase in $placeholder',
+    async ({ phase, placeholder, value, updates }) => {
+      openDialog(placeholder === 'MR ! or GitLab URL' ? { modalReviewProvider: 'gitlab' } : {})
+      const input = screen.getByPlaceholderText(placeholder)
+      const modalData = useAppStore.getState().modalData
+      fireEvent.compositionStart(input)
+      if (phase === 'pending confirmation') {
+        fireEvent.keyDown(input, { key: 'Enter', keyCode: 229 })
+        fireEvent.compositionEnd(input)
+      }
+      act(() => useAppStore.getState().closeModal())
+      expect(screen.queryByPlaceholderText(placeholder)).toBeNull()
+      act(() => useAppStore.setState({ activeModal: 'edit-meta', modalData }))
+      const reopenedInput = screen.getByPlaceholderText(placeholder)
+      fireEvent.change(reopenedInput, { target: { value } })
+      await act(async () => {
+        fireEvent.keyDown(reopenedInput, { key: 'Enter', keyCode: 13 })
+      })
+      expect(updateWorktreeMeta).toHaveBeenCalledTimes(1)
+      expect(updateWorktreeMeta.mock.calls[0]?.[1]).toEqual(expect.objectContaining(updates))
+      expect(useAppStore.getState().activeModal).toBe('none')
+    }
+  )
+
   it('keeps a folder workspace note open through composition confirmation', async () => {
     const worktreeId = folderWorkspaceKey('fw-1')
     openDialog({ worktreeId, folderWorkspace: {} })

@@ -34,15 +34,11 @@ import {
 import { parseExecutionHostId } from '../../../../shared/execution-host'
 import { WorktreeDisplayNameField } from './WorktreeDisplayNameField'
 import { WorktreeReviewLinkField } from './WorktreeReviewLinkField'
+import { resizeCommentTextarea } from './worktree-comment-textarea-sizing'
 import {
   isImeOwnedKeyboardEvent,
   useImeEnterGestureOwnership
 } from '@/lib/ime-composition-keyboard-event'
-
-function resizeCommentTextarea(textarea: HTMLTextAreaElement): void {
-  textarea.style.height = 'auto'
-  textarea.style.height = `${textarea.scrollHeight}px`
-}
 
 /** Only read before the first open, when nothing can be saved yet. */
 const EMPTY_SNAPSHOT: WorktreeMetaSnapshot = {
@@ -175,11 +171,14 @@ const WorktreeMetaDialog = React.memo(function WorktreeMetaDialog() {
   const setCommentTextareaRef = useCallback(
     (textarea: HTMLTextAreaElement | null) => {
       textareaRef.current = textarea
+      if (!textarea) {
+        commentIme.reset()
+      }
       if (textarea && isOpen) {
         resizeCommentTextarea(textarea)
       }
     },
-    [isOpen]
+    [commentIme, isOpen]
   )
 
   const handleCommentChange = useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
