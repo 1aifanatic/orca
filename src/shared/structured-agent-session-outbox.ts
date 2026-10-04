@@ -35,6 +35,9 @@ export type StructuredAgentSessionOutboxEntry = {
   lastAttemptAt: number | null
   retryAfterUnknownSubmittedAt: number | null
   source?: 'launch'
+  /** The notes a launch prompt was built from, as their send keys. Saved with the message so the
+   *  notes stay out of another send for as long as this message can still be sent, reload included. */
+  carriedNoteKeys?: string[]
   /** A Stop landed after this queue send went out: only the user's Retry sends it again, never the
    *  drain, the unconfirmed probe or an owner change, which would start a turn the user stopped. */
   outlivedStop?: true
@@ -298,6 +301,10 @@ export function parseStructuredAgentSessionOutboxEntry(
         ? entry.retryAfterUnknownSubmittedAt
         : null,
     ...(entry.source === 'launch' ? { source: 'launch' as const } : {}),
+    ...(Array.isArray(entry.carriedNoteKeys) &&
+    entry.carriedNoteKeys.every((key) => typeof key === 'string')
+      ? { carriedNoteKeys: entry.carriedNoteKeys }
+      : {}),
     ...parseStructuredAgentSessionOutboxQueueFields(entry),
     ...(lastFailure ? { lastFailure } : {})
   }

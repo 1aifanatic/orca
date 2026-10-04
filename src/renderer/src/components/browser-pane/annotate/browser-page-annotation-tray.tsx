@@ -19,6 +19,7 @@ import { BROWSER_ANNOTATION_INTENT_OPTIONS } from '../describe-page/browser-anno
 import { BrowserAnnotationSendMenuContent } from './BrowserAnnotationSendMenuContent'
 import { preventAgentSendTargetOutsideDismiss } from './prevent-agent-send-target-outside-dismiss'
 import { browserAnnotationMatchesPageUrl } from './browser-annotation-page-url'
+import type { NotesSendHandOff } from '@/lib/notes-send-in-flight'
 
 export function BrowserPageAnnotationTray({
   browserAnnotations,
@@ -29,7 +30,7 @@ export function BrowserPageAnnotationTray({
   activeGroupId,
   browserAnnotationsPrompt,
   handleBrowserAnnotationsSentToAgent,
-  handleBrowserAnnotationsHandedOff,
+  browserAnnotationsHandOff,
   handleCopyBrowserAnnotations,
   browserAnnotationsCopied,
   handleClearBrowserAnnotations,
@@ -44,7 +45,7 @@ export function BrowserPageAnnotationTray({
   activeGroupId: string | undefined
   browserAnnotationsPrompt: string
   handleBrowserAnnotationsSentToAgent: () => void
-  handleBrowserAnnotationsHandedOff: (delivered: Promise<unknown>) => void
+  browserAnnotationsHandOff: NotesSendHandOff
   handleCopyBrowserAnnotations: () => void
   browserAnnotationsCopied: boolean
   handleClearBrowserAnnotations: () => void
@@ -142,7 +143,7 @@ export function BrowserPageAnnotationTray({
               groupId={activeGroupId ?? worktreeId}
               prompt={browserAnnotationsPrompt}
               onPromptDelivered={handleBrowserAnnotationsSentToAgent}
-              onPromptHandedOff={handleBrowserAnnotationsHandedOff}
+              notesHandOff={browserAnnotationsHandOff}
             />
           </DropdownMenuContent>
         </DropdownMenu>

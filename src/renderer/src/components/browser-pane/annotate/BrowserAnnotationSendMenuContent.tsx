@@ -1,12 +1,13 @@
 import React from 'react'
 import { ReviewNotesSendMenuContent } from '@/components/editor/ReviewNotesSendMenuContent'
+import type { NotesSendHandOff } from '@/lib/notes-send-in-flight'
 
 export type BrowserAnnotationSendMenuContentProps = {
   worktreeId: string
   groupId: string
   prompt: string
   onPromptDelivered?: () => void
-  onPromptHandedOff?: (delivered: Promise<unknown>) => void
+  notesHandOff?: NotesSendHandOff
 }
 
 export function BrowserAnnotationSendMenuContent({
@@ -14,7 +15,7 @@ export function BrowserAnnotationSendMenuContent({
   groupId,
   prompt,
   onPromptDelivered,
-  onPromptHandedOff
+  notesHandOff
 }: BrowserAnnotationSendMenuContentProps): React.JSX.Element {
   return (
     <ReviewNotesSendMenuContent
@@ -26,7 +27,7 @@ export function BrowserAnnotationSendMenuContent({
       promptDelivery="submit-after-ready"
       launchSource="notes_send"
       onPromptDelivered={onPromptDelivered}
-      onPromptHandedOff={onPromptHandedOff}
+      notesHandOff={notesHandOff}
     />
   )
 }

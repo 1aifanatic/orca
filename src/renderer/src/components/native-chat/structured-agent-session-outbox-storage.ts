@@ -7,9 +7,11 @@ import {
 import { createStructuredAgentSessionOperationId } from '../../../../shared/structured-agent-session-mutation'
 import { createBrowserUuid } from '@/lib/browser-uuid'
 import {
-  settleStructuredAgentSessionOutboxEntryWatches,
-  type StructuredAgentSessionOutboxEntryRemoval
-} from './structured-agent-session-outbox-entry-watch'
+  carriedNotesInclude,
+  loadStructuredAgentSessionCarriedNotes,
+  recordStructuredAgentSessionCarriedNotes,
+  type StructuredAgentSessionOutboxRemoval
+} from './structured-agent-session-outbox-carried-notes'
 
 const OUTBOX_PREFIX = 'orca:desktopStructuredAgentSessionOutbox:v1:'
 
@@ -171,8 +173,9 @@ function commitOutbox(
   sessionId: string,
   entries: StructuredAgentSessionOutboxEntry[],
   options: { onlyIfSaved?: boolean },
-  removal: StructuredAgentSessionOutboxEntryRemoval
+  removal: StructuredAgentSessionOutboxRemoval
 ): boolean {
+  const before = getStructuredAgentSessionOutbox(sessionId)
   const saved = writeOutbox(sessionId, entries)
   if (!saved && options.onlyIfSaved) {
     return false
@@ -184,8 +187,28 @@ function commitOutbox(
       listener()
     }
   }
-  settleStructuredAgentSessionOutboxEntryWatches(sessionId, entries, removal)
+  recordStructuredAgentSessionCarriedNotes(sessionId, before, entries, removal)
   return saved
+}
+
+function* savedOutboxes(): Generator<readonly [string, StructuredAgentSessionOutboxEntry[]]> {
+  // Storage-less hosts (tests, a blocked profile) have no saved outboxes.
+  if (typeof localStorage === 'undefined') {
+    return
+  }
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index)
+    if (key?.startsWith(OUTBOX_PREFIX)) {
+      const sessionId = decodeURIComponent(key.slice(OUTBOX_PREFIX.length))
+      yield [sessionId, readOutbox(sessionId, { recoverDispatching: false })]
+    }
+  }
+}
+
+/** Whether a saved message still carries this note: it stays out of another send until then. */
+export function structuredAgentSessionOutboxCarriesNote(key: string): boolean {
+  loadStructuredAgentSessionCarriedNotes(savedOutboxes)
+  return carriedNotesInclude(key)
 }
 
 /** Queues a user message on the session's outbox: the one enqueue the composer, a launch prompt,
@@ -194,7 +217,8 @@ export function appendStructuredAgentSessionOutboxMessage(
   sessionId: string,
   text: string,
   attachments: readonly StructuredAgentSessionAttachment[] = [],
-  source?: 'launch'
+  source?: 'launch',
+  carriedNoteKeys?: readonly string[]
 ): StructuredAgentSessionOutboxEntry | null {
   const entry = {
     ...createStructuredAgentSessionOutboxEntry({
@@ -204,7 +228,8 @@ export function appendStructuredAgentSessionOutboxMessage(
       attachments,
       queuedAt: Date.now()
     }),
-    ...(source ? { source } : {})
+    ...(source ? { source } : {}),
+    ...(carriedNoteKeys?.length ? { carriedNoteKeys: [...carriedNoteKeys] } : {})
   }
   return commitStructuredAgentSessionOutbox(
     sessionId,
@@ -217,9 +242,10 @@ export function appendStructuredAgentSessionOutboxMessage(
 
 export function enqueueStructuredAgentSessionLaunchPrompt(
   sessionId: string,
-  text: string
+  text: string,
+  carriedNoteKeys?: readonly string[]
 ): StructuredAgentSessionOutboxEntry | null {
-  return appendStructuredAgentSessionOutboxMessage(sessionId, text, [], 'launch')
+  return appendStructuredAgentSessionOutboxMessage(sessionId, text, [], 'launch', carriedNoteKeys)
 }
 
 export function discardStructuredAgentSessionLaunchOutbox(sessionId: string): void {

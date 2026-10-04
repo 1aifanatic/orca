@@ -17,7 +17,7 @@ import { ReviewNotesSendMenuContent } from './ReviewNotesSendMenuContent'
 import type { DiffCommentDeliverySnapshot } from '@/store/slices/diffComments'
 import {
   diffCommentSendKey,
-  holdNotesForSend,
+  notesSendHandOff,
   isNoteInFlight,
   useNotesInFlightVersion
 } from '@/lib/notes-send-in-flight'
@@ -69,7 +69,7 @@ export function buildNotesSendTargetModeId(modeIdParts: readonly string[]): stri
   return `note-send:${modeIdParts.map((part) => `${part.length}:${part}`).join('|')}`
 }
 
-export function NotesSendMenu<TNote extends DiffCommentDeliverySnapshot>({
+export function NotesSendMenu<TNote extends DiffCommentDeliverySnapshot & { worktreeId: string }>({
   worktreeId,
   groupId,
   modeIdParts,
@@ -122,10 +122,9 @@ export function NotesSendMenu<TNote extends DiffCommentDeliverySnapshot>({
     },
     [onDelivered]
   )
-  const holdInFlight = useCallback(
-    (notes: readonly TNote[]) => (delivered: Promise<unknown>) =>
-      holdNotesForSend(notes.map(diffCommentSendKey), delivered, () => markDelivered(notes)),
-    [markDelivered]
+  const handOffNotes = useCallback(
+    (notes: readonly TNote[]) => notesSendHandOff(notes.map(diffCommentSendKey)),
+    []
   )
 
   const openTargetMode = useCallback(
@@ -141,11 +140,11 @@ export function NotesSendMenu<TNote extends DiffCommentDeliverySnapshot>({
         label: targetModeLabel ?? scope.label,
         launchSource: 'notes_send',
         onPromptDelivered: () => markDelivered(scope.notes),
-        onPromptHandedOff: holdInFlight(scope.notes)
+        onPromptHandedOff: handOffNotes(scope.notes).handOff
       })
     },
     [
-      holdInFlight,
+      handOffNotes,
       markDelivered,
       openAgentSendPopoverTargetMode,
       source,
@@ -278,7 +277,7 @@ export function NotesSendMenu<TNote extends DiffCommentDeliverySnapshot>({
                     promptDelivery="submit-after-ready"
                     launchSource="notes_send"
                     onPromptDelivered={() => markDelivered(scope.notes)}
-                    onPromptHandedOff={holdInFlight(scope.notes)}
+                    notesHandOff={handOffNotes(scope.notes)}
                   />
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
@@ -296,7 +295,7 @@ export function NotesSendMenu<TNote extends DiffCommentDeliverySnapshot>({
                 markDelivered(defaultScope.notes)
               }
             }}
-            onPromptHandedOff={holdInFlight(defaultScope?.notes ?? [])}
+            notesHandOff={handOffNotes(defaultScope?.notes ?? [])}
           />
         )}
       </DropdownMenuContent>
