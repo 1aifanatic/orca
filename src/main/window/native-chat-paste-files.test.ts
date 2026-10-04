@@ -178,6 +178,26 @@ describe('native-chat paste folder on disk', () => {
     expect(isPathAllowed(secret, NO_ROOTS_STORE)).toBe(false)
   })
 
+  it('grants the stored spelling only when it names the same file as the real path', async () => {
+    const secret = path.join(root, 'outside', 'id_rsa')
+    mkdirSync(path.dirname(secret), { recursive: true })
+    writeFileSync(secret, 'PRIVATE KEY')
+    // `folder/link/../y` reaches a real paste through `link`, while `folder/y` by text is a link out.
+    const sub = path.join(folder, 'sub')
+    mkdirSync(sub)
+    mkdirSync(path.join(sub, 'deeper'))
+    writeFileSync(path.join(sub, 'orca-paste-y.png'), 'png')
+    symlinkSync(path.join(sub, 'deeper'), path.join(folder, 'link'))
+    symlinkSync(secret, path.join(folder, 'orca-paste-y.png'))
+    const restored = `${folder}/link/../orca-paste-y.png`
+    expect(realpathSync.native(restored)).toBe(realpathSync(path.join(sub, 'orca-paste-y.png')))
+
+    await expect(restoreNativeChatPastes([restored])).resolves.toEqual([
+      { path: restored, kept: true, exists: true }
+    ])
+    expect(isPathAllowed(secret, NO_ROOTS_STORE)).toBe(false)
+  })
+
   it('neither restores from nor sweeps a paste folder that is itself a link', async () => {
     const outside = path.join(root, 'Documents')
     mkdirSync(outside)
