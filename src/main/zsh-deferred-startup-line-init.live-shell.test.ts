@@ -104,6 +104,8 @@ describe('zsh deferred startup after prompt-hook replacement', () => {
         HOME: home,
         USERPROFILE: home,
         PATH: `${ambientBin}:/usr/bin:/bin`,
+        // Stock cases replay this replacement after the fixture installs its own widgets.
+        DEBIAN_PREVENT_KEYBOARD_CHANGES: '1',
         ZDOTDIR: wrapperDir,
         ORCA_HISTFILE: join(home, 'scoped-history')
       }
