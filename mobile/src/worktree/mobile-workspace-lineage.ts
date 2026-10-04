@@ -7,7 +7,7 @@ export function getMobileWorkspaceLineageGroupKey(worktree: WorktreeLineageIdent
   return `workspace-lineage:${encodeURIComponent(getWorktreeRowIdentity(worktree))}`
 }
 
-export function hasValidLineageParent(worktree: Worktree, parent: Worktree): boolean {
+function hasValidLineageParent(worktree: Worktree, parent: Worktree): boolean {
   if (
     worktree.lineageWorktreeInstanceId === undefined &&
     worktree.parentWorktreeInstanceId === undefined
@@ -22,16 +22,15 @@ export function hasValidLineageParent(worktree: Worktree, parent: Worktree): boo
   )
 }
 
-export function applyMobileWorkspaceLineage(
-  worktrees: readonly Worktree[],
-  collapsedGroups: ReadonlySet<string> = new Set()
-): Worktree[] {
+/** Children keyed by parent row identity, over valid edges between the given rows only. */
+export function getMobileWorkspaceLineageChildren(
+  worktrees: readonly Worktree[]
+): Map<string, Worktree[]> {
   const visibleIds = new Set(worktrees.map((worktree) => getWorktreeRowIdentity(worktree)))
   const worktreeById = new Map(
     worktrees.map((worktree) => [getWorktreeRowIdentity(worktree), worktree])
   )
   const childrenByParentId = new Map<string, Worktree[]>()
-  const childIds = new Set<string>()
 
   for (const worktree of worktrees) {
     const worktreeId = getWorktreeRowIdentity(worktree)
@@ -49,11 +48,21 @@ export function applyMobileWorkspaceLineage(
     ) {
       continue
     }
-    childIds.add(worktreeId)
     const children = childrenByParentId.get(parentIdentity) ?? []
     children.push(worktree)
     childrenByParentId.set(parentIdentity, children)
   }
+  return childrenByParentId
+}
+
+export function applyMobileWorkspaceLineage(
+  worktrees: readonly Worktree[],
+  collapsedGroups: ReadonlySet<string> = new Set()
+): Worktree[] {
+  const childrenByParentId = getMobileWorkspaceLineageChildren(worktrees)
+  const childIds = new Set(
+    [...childrenByParentId.values()].flat().map((worktree) => getWorktreeRowIdentity(worktree))
+  )
 
   const result: Worktree[] = []
   const emitted = new Set<string>()

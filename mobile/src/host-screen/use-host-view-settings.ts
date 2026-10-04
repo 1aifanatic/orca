@@ -90,14 +90,27 @@ export function useHostViewSettings(args: {
   )
 
   // Merge the desktop's shared view settings (PersistedUIState) onto local state so desktop changes appear here.
+  // Pinned placement rides along from settings.get, unawaited so a slow read never holds the merge.
   const syncViewSettingsFromDesktop = useCallback(async () => {
     if (!client || connState !== 'connected') {
       return
     }
     const requestClient = client
     const requestHostId = hostId
+    const viewReply = hostViewSettingsRead.request(requestClient)
+    void pinnedDisplayPolicyRead
+      .request(requestClient)
+      .then((policyReply) => {
+        const policy = pinnedDisplayPolicyRead.interpret(policyReply)
+        if (clientRef.current === requestClient && policy.accepted) {
+          setPinnedDisplayPolicy(policy.value)
+        }
+      })
+      .catch(() => {
+        // Best-effort: placement keeps its current value until the next sync.
+      })
     try {
-      const reply = await hostViewSettingsRead.request(requestClient)
+      const reply = await viewReply
       if (clientRef.current !== requestClient || hostId !== requestHostId) {
         return
       }
@@ -115,26 +128,6 @@ export function useHostViewSettings(args: {
       // Transient transport failure; retry on the next focus/connect.
     }
   }, [client, connState, hostId, applyViewState])
-
-  // Placement lives in settings.get; a host switch replaces the client, so its identity guards.
-  const syncPinnedDisplayPolicy = useCallback(async () => {
-    if (!client || connState !== 'connected') {
-      return
-    }
-    const requestClient = client
-    try {
-      const reply = await pinnedDisplayPolicyRead.request(requestClient)
-      if (clientRef.current !== requestClient) {
-        return
-      }
-      const policy = pinnedDisplayPolicyRead.interpret(reply)
-      if (policy.accepted) {
-        setPinnedDisplayPolicy(policy.value)
-      }
-    } catch {
-      // Transient transport failure; retry on the next focus/connect.
-    }
-  }, [client, connState])
 
   const handleSortChange = useCallback(
     (value: MobileSortMode) => {
@@ -210,7 +203,6 @@ export function useHostViewSettings(args: {
     handleGroupChange,
     handleSortChange,
     selectedSortLabel,
-    syncPinnedDisplayPolicy,
     syncViewSettingsFromDesktop,
     toggleCollapsed,
     toggleHideDefaultBranch,

@@ -5,7 +5,10 @@ import {
   getMobileWorkspaceStatus,
   getMobileWorkspaceStatusGroupKey
 } from './mobile-workspace-statuses'
-import { applyMobileWorkspaceLineage, hasValidLineageParent } from './mobile-workspace-lineage'
+import {
+  applyMobileWorkspaceLineage,
+  getMobileWorkspaceLineageChildren
+} from './mobile-workspace-lineage'
 import { getPRGroupKey, PR_GROUP_LABELS, PR_GROUP_ORDER } from './workspace-pr-status-groups'
 import type { FilterState, PinnedDisplayPolicy, Section, Worktree } from './workspace-list-types'
 import type { MobileGroupMode, MobileSortMode } from './workspace-view-settings'
@@ -120,30 +123,17 @@ export function isWorktreePinned(w: Worktree, localPins: Set<string>): boolean {
   return w.isPinned || localPins.has(w.worktreeId)
 }
 
-// Visible descendants follow a pinned ancestor into Pinned, as on desktop; edges stay on one host.
+// Descendants follow a pin through the visible chain only: a filtered-out child breaks it.
 function getPinnedSectionIdentities(rows: Worktree[], localPins: Set<string>): Set<string> {
-  const byIdentity = new Map(rows.map((w) => [getWorktreeRowIdentity(w), w]))
-  const included = new Set(
-    rows.filter((w) => isWorktreePinned(w, localPins)).map(getWorktreeRowIdentity)
-  )
-  for (let grew = true; grew;) {
-    grew = false
-    for (const w of rows) {
-      const parentIdentity = w.parentWorktreeId
-        ? getWorktreeRowIdentity({ worktreeId: w.parentWorktreeId, hostId: w.hostId })
-        : undefined
-      const parent = parentIdentity ? byIdentity.get(parentIdentity) : undefined
-      const identity = getWorktreeRowIdentity(w)
-      if (
-        parent &&
-        parentIdentity !== identity &&
-        !included.has(identity) &&
-        included.has(getWorktreeRowIdentity(parent)) &&
-        hasValidLineageParent(w, parent)
-      ) {
-        included.add(identity)
-        grew = true
-      }
+  const childrenByParentId = getMobileWorkspaceLineageChildren(rows)
+  const pending = rows.filter((w) => isWorktreePinned(w, localPins))
+  const included = new Set<string>()
+  // Iterating while appending walks the worklist; `included` stops a malformed cycle.
+  for (const w of pending) {
+    const identity = getWorktreeRowIdentity(w)
+    if (!included.has(identity)) {
+      included.add(identity)
+      pending.push(...(childrenByParentId.get(identity) ?? []))
     }
   }
   return included

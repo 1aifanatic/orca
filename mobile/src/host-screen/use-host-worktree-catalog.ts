@@ -22,7 +22,6 @@ export function useHostWorktreeCatalog(args: {
   fetchRepoMetadata: FetchHostRepoMetadata
   hostId: string | undefined
   state: HostScreenState
-  syncPinnedDisplayPolicy: () => Promise<void>
   syncViewSettingsFromDesktop: () => Promise<void>
 }) {
   const {
@@ -32,7 +31,6 @@ export function useHostWorktreeCatalog(args: {
     fetchRepoMetadata,
     hostId,
     state,
-    syncPinnedDisplayPolicy,
     syncViewSettingsFromDesktop
   } = args
   const {
@@ -152,16 +150,8 @@ export function useHostWorktreeCatalog(args: {
       return
     }
     void syncViewSettingsFromDesktop()
-    void syncPinnedDisplayPolicy()
     return startHostWorktreeRefresh({ client, fetchWorktrees, fetchRepoMetadata })
-  }, [
-    client,
-    connState,
-    fetchWorktrees,
-    fetchRepoMetadata,
-    syncPinnedDisplayPolicy,
-    syncViewSettingsFromDesktop
-  ])
+  }, [client, connState, fetchWorktrees, fetchRepoMetadata, syncViewSettingsFromDesktop])
 
   useFocusEffect(
     useCallback(() => {
