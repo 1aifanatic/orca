@@ -175,7 +175,9 @@ export function openUnboundProviderTimelineAssembler(
       deferred.bind({ journal, fence: 1, publish: () => {} })
       await deferred.drained()
     },
-    drained: () => deferred.drained()
+    drained: async () => {
+      await deferred.drained()
+    }
   }
 }
 
