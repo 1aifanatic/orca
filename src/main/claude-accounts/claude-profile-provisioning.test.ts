@@ -13,7 +13,7 @@ vi.mock('../codex-accounts/fs-utils', async (original) => {
   return { ...actual, writeFileAtomically: vi.fn(actual.writeFileAtomically) }
 })
 import { writeFileAtomically } from '../codex-accounts/fs-utils'
-import { provisionClaudeProfile } from './claude-profile-provisioning'
+import { CLAUDE_PROFILE_MEMORY_IMPORT, provisionClaudeProfile } from './claude-profile-provisioning'
 
 const MANAGED_STATUS_LINE = {
   type: 'command',
@@ -350,10 +350,10 @@ describe('dormant Claude profile provisioning', () => {
   })
   it('keys shared values by surface, so another spelling of the profile keeps sharing', async () => {
     const f = fixture()
-    fs.writeFileSync(join(f.source, 'CLAUDE.md'), 'v1')
+    fs.writeFileSync(join(f.source, 'keybindings.json'), 'v1')
     f.json(join(f.source, 'settings.json'), { model: 'a' })
     await provision(f)
-    fs.writeFileSync(join(f.source, 'CLAUDE.md'), 'v2')
+    fs.writeFileSync(join(f.source, 'keybindings.json'), 'v2')
     f.json(join(f.source, 'settings.json'), { model: 'b' })
     const aliasRoot = fs.mkdtempSync(join(tmpdir(), 'claude-profile-alias-'))
     roots.push(aliasRoot)
@@ -363,8 +363,20 @@ describe('dormant Claude profile provisioning', () => {
       profileHome: join(alias, 'profile'),
       userHome: f.userHome
     })
-    expect(report.surfaces['CLAUDE.md']).toBe('synced')
+    expect(report.surfaces['keybindings.json']).toBe('synced')
     expect(f.read(join(f.profileHome, 'settings.json')).model).toBe('b')
+  })
+  it('imports the personal CLAUDE.md instead of copying it, so Claude loads it once', async () => {
+    const f = fixture()
+    await provision(f)
+    expect(fs.existsSync(join(f.profileHome, 'CLAUDE.md'))).toBe(false)
+    fs.writeFileSync(join(f.source, 'CLAUDE.md'), 'personal instructions')
+    expect((await provision(f)).surfaces['CLAUDE.md']).toBe('synced')
+    expect(fs.readFileSync(join(f.profileHome, 'CLAUDE.md'), 'utf8')).toBe(
+      CLAUDE_PROFILE_MEMORY_IMPORT
+    )
+    fs.writeFileSync(join(f.source, 'CLAUDE.md'), 'edited personal instructions')
+    expect((await provision(f)).surfaces['CLAUDE.md']).toBe('unchanged')
   })
   it('uses Windows junctions through platform injection (native Windows remains unverified)', async () => {
     const f = fixture()
