@@ -29,7 +29,7 @@ import { beginStructuredAgentSessionProvisionalLaunch } from './structured-agent
 import { beginDirectWorkItemStructuredLaunch } from './launch-work-item-direct-agent-routing'
 import type { AiVaultSession } from '../../../shared/ai-vault-types'
 import { resumeAiVaultSessionInNewChat } from '@/components/right-sidebar/ai-vault-session-resume-in-chat-launch'
-import { getStructuredAgentLaunchStatus } from './structured-agent-session-launch-registry'
+import { getStructuredAgentLaunchStatus } from './structured-agent-session-launch-status'
 import { getStructuredAgentSessionLaunchSelection } from './structured-agent-session-launch-options'
 import { peekWebSessionFocusIntent } from '@/runtime/web-session-focus-intent'
 
