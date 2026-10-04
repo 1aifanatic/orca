@@ -224,7 +224,7 @@ describe('MobileNativeChatMessage', () => {
         .find((node) => node.children.join('') === 'partial')
       // The tint is on the result box: the nearest View around the output text.
       let box = output?.parent ?? null
-      while (box && box.type !== ('View' as never)) {
+      while (box && String(box.type) !== 'View') {
         box = box.parent
       }
       return box?.props.style
