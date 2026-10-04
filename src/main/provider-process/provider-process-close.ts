@@ -11,17 +11,15 @@ export type ProviderProcessTree = {
 }
 
 export type ProviderProcessClosePolicy = {
-  /** Must cover the supervisor's own stop bound when supervising a real child. */
   gracefulExitMs: number
   forcedExitMs: number
   signalSupervisorOnClose?: boolean
-  requireTreeExit?: boolean
 }
 
 export type ProviderProcessCloseInput = {
   child: Pick<SpawnedProcess, 'pid' | 'kill' | 'stdin'>
   exitPromise: Promise<void>
-  exited: () => boolean
+  rootVerdict: () => ProviderProcessVerdict
   supervised?: boolean
   policy: ProviderProcessClosePolicy
   tree?: ProviderProcessTree
@@ -29,7 +27,8 @@ export type ProviderProcessCloseInput = {
 }
 
 export type ProviderProcessCloseResult = {
-  verdict: ProviderProcessVerdict
+  root: ProviderProcessVerdict
+  tree: ProviderProcessVerdict
   /** Acceptance of the fallback teardown is separate from observed process exit. */
   teardownAccepted?: boolean
 }
@@ -47,14 +46,14 @@ export async function closeProviderProcess(
   } catch {
     // A broken pipe still owes the reap.
   }
-  if (input.supervised && policy.signalSupervisorOnClose && !input.exited()) {
+  if (input.supervised && policy.signalSupervisorOnClose && input.rootVerdict() !== 'exited') {
     child.kill('SIGTERM')
   }
   let reaped = false
   let teardownAccepted: boolean | undefined
-  if (!input.exited()) {
+  if (input.rootVerdict() !== 'exited') {
     await waitForProcessExitUntil(input.exitPromise, policy.gracefulExitMs)
-    if (!input.exited()) {
+    if (input.rootVerdict() !== 'exited') {
       reaped = true
       await tree?.refresh?.()
       if (tree) {
@@ -65,13 +64,12 @@ export async function closeProviderProcess(
       await waitForProcessExitUntil(input.exitPromise, policy.forcedExitMs)
     }
   }
-  if (!reaped && input.exited() && tree && tree.treeVerdict !== 'exited') {
+  if (!reaped && input.rootVerdict() === 'exited' && tree && tree.treeVerdict !== 'exited') {
     await tree.reap()
   }
-  const verdict = !input.exited()
-    ? 'unverifiable'
-    : policy.requireTreeExit
-      ? (tree?.treeVerdict ?? 'unverifiable')
-      : 'exited'
-  return { verdict, ...(teardownAccepted === undefined ? {} : { teardownAccepted }) }
+  return {
+    root: input.rootVerdict(),
+    tree: tree?.treeVerdict ?? 'unverifiable',
+    ...(teardownAccepted === undefined ? {} : { teardownAccepted })
+  }
 }

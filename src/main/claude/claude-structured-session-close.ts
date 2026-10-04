@@ -34,7 +34,7 @@ export function claudeAcquisitionCleanupError(
   cause: unknown
 ): Error {
   const verdict = connection?.exitVerdict
-  if (verdict?.root === 'processless') {
+  if (verdict?.processless === true) {
     return new AgentSessionPreSpawnError(cause)
   }
   return claudeRootExitObserved(connection)
@@ -57,7 +57,7 @@ export async function resolveClaudeAcquisitionError(input: {
       prompt.settle(null)
     }
     const closed = (await input.attempt.connection?.close()) ?? true
-    if (input.attempt.connection?.exitVerdict.root === 'processless') {
+    if (input.attempt.connection?.exitVerdict.processless === true) {
       acquisitionError = new AgentSessionPreSpawnError(input.error)
     } else if (!closed) {
       acquisitionError = claudeAcquisitionCleanupError(input.attempt.connection, input.error)

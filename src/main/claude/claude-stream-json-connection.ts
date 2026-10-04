@@ -16,7 +16,7 @@ import {
 } from './claude-agent-sdk-control-requests'
 import { createClaudeChildTreeReaper, proveClaudeChildExit } from './claude-agent-sdk-exit-proof'
 import { withTimeout } from '../../shared/promise-timeout-fallback'
-import type { DescendantTreeVerdict } from '../pty-descendant-exit-verification'
+import type { ProviderProcessVerdict } from '../provider-process/provider-process-close'
 import { createClaudeCodeProcessSpawn } from './claude-agent-sdk-process-spawn'
 import {
   claudeUnwrittenUserMessageError,
@@ -83,8 +83,9 @@ export type ClaudeStreamJsonConnectionHandlers = {
  * is never collapsed into either neighbour.
  */
 export type ClaudeChildExitVerdict = {
-  root: 'exited' | 'live' | 'processless'
-  tree: DescendantTreeVerdict
+  root: ProviderProcessVerdict
+  tree: ProviderProcessVerdict
+  processless?: boolean
 }
 
 export type ClaudeStreamJsonConnection = ClaudeControlSurface & {
@@ -168,7 +169,7 @@ export async function openClaudeStreamJsonConnection(
   let readingBarrier: Promise<void> | null = null
   let releaseReadingBarrier: (() => void) | null = null
   const pauseReading = (): void => {
-    if (closing || managed.exited || terminalError || readingBarrier) {
+    if (closing || managed.rootVerdict === 'exited' || terminalError || readingBarrier) {
       return
     }
     readingBarrier = new Promise<void>((resolve) => {
@@ -205,8 +206,6 @@ export async function openClaudeStreamJsonConnection(
     armTreeOnOutput()
   }
 
-  const exitPromise = managed.exitPromise
-
   const handleUnexpectedEnd = (cause?: Error): void => {
     resumeReading()
     terminalError ??= exitError(spawner.stderrTail, exitStatus, cause)
@@ -215,7 +214,7 @@ export async function openClaudeStreamJsonConnection(
       faultReported = true
       handlers.onFault?.(terminalError)
     }
-    if (managed.exited && !exitReported) {
+    if (managed.rootVerdict === 'exited' && !managed.processless && !exitReported) {
       exitReported = true
       handlers.onExit?.(terminalError, { expected: closing })
     }
@@ -247,7 +246,7 @@ export async function openClaudeStreamJsonConnection(
     } catch (error: unknown) {
       // The SDK ends its generator in error when the child dies or the transport
       // fails; a transport failure with a live child still has to reap the tree.
-      if (!closing && !managed.exited) {
+      if (!closing && managed.rootVerdict !== 'exited') {
         void tree.reap()
       }
       handleUnexpectedEnd(error instanceof Error ? error : new Error(String(error)))
@@ -260,7 +259,7 @@ export async function openClaudeStreamJsonConnection(
     handleUnexpectedEnd()
   })
   child.on('error', (error) => {
-    if (!closing && !managed.exited) {
+    if (!closing && managed.rootVerdict !== 'exited') {
       void tree.reap()
     }
     handleUnexpectedEnd(error)
@@ -286,7 +285,7 @@ export async function openClaudeStreamJsonConnection(
   const send: ClaudeStreamJsonConnection['send'] = (message, beforeDispatch) => {
     if (
       closing ||
-      managed.exited ||
+      managed.rootVerdict === 'exited' ||
       terminalError ||
       child.stdin.destroyed ||
       !child.stdin.writable
@@ -310,16 +309,12 @@ export async function openClaudeStreamJsonConnection(
       await (tree.refresh?.() ?? tree.capture())
       inbox.end()
       const proven = await proveClaudeChildExit({
-        child,
-        exitPromise,
-        exited: rootSettled,
         tree,
-        supervised: spawner.supervised,
         managed
       })
       inbox.fail(new Error('claude stream-json connection closed'))
       if (!proven) {
-        if (managed.exited && tree.treeVerdict === 'live') {
+        if (managed.lastCloseResult?.root === 'exited' && managed.lastCloseResult.tree === 'live') {
           console.warn('[claude-stream-json] root exited but a descendant survived the close:', {
             pid: spawner.pid
           })
@@ -348,12 +343,13 @@ export async function openClaudeStreamJsonConnection(
       return spawner.pid
     },
     get closed() {
-      return closing || managed.exited || terminalError !== null
+      return closing || managed.rootVerdict === 'exited' || terminalError !== null
     },
     get exitVerdict() {
       return {
-        root: managed.processless ? 'processless' : managed.exited ? 'exited' : 'live',
-        tree: tree.treeVerdict
+        root: managed.rootVerdict,
+        tree: tree.treeVerdict,
+        ...(managed.processless ? { processless: true } : {})
       } as const
     },
     pauseReading,

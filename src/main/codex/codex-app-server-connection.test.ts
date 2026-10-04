@@ -391,6 +391,7 @@ describe('openCodexAppServerConnection', () => {
     child.stderr.write('codex crashed\n')
     await flushStreams()
     child.emit('exit', 1, null)
+    child.emit('exit', 1, null)
     child.emit('close', 1, null)
 
     expect((await inFlight).message).toContain('codex crashed')
@@ -431,6 +432,7 @@ describe('openCodexAppServerConnection', () => {
 
     expect(error.name).toBe('CodexAppServerHandshakeExitUnprovenError')
     expect(error.connection).toBeDefined()
+    child.emit('exit', 1, null)
     child.emit('close', 1, null)
     await expect(error.connection?.close()).resolves.toBe(true)
   })

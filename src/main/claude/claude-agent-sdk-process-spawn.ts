@@ -55,7 +55,7 @@ export function createClaudeCodeProcessSpawn(
   let stderrTail = ''
   return {
     spawn: (options) => {
-      // The SDK's abort signal cannot bypass Orca's child-owned close.
+      // SDK abort would kill the child outside Orca's ladder, losing observed exit proof.
       managed = spawnManagedProviderProcess(
         {
           command: options.command,
@@ -67,7 +67,8 @@ export function createClaudeCodeProcessSpawn(
           platform,
           inheritedEnv: definedEnv(options.env),
           site: 'claude-stream-json-teardown',
-          policy: claudeChildClosePolicy
+          policy: claudeChildClosePolicy,
+          acceptClose: (result) => result.root === 'exited' && result.tree === 'exited'
         }
       )
       const spawned = managed.child

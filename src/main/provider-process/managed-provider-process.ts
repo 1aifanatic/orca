@@ -1,11 +1,15 @@
 import { spawnProcess } from '../../shared/child-process/run-process'
 import { RetryableProcessExitProof } from '../../shared/child-process/retryable-process-exit-proof'
 import type { ProviderProcessLaunch } from './provider-process-launch'
-import { createProviderSpawnSpec } from './provider-process-supervisor'
+import {
+  PROVIDER_SUPERVISOR_MAX_STOP_MS,
+  createProviderSpawnSpec
+} from './provider-process-supervisor'
 import { terminateProviderProcessTree } from './provider-process-teardown'
 import {
   closeProviderProcess,
   type ProviderProcessClosePolicy,
+  type ProviderProcessCloseResult,
   type ProviderProcessTree,
   type ProviderProcessVerdict
 } from './provider-process-close'
@@ -22,22 +26,19 @@ type ManagedProviderProcessOptions = {
   spawnImpl?: typeof spawnProcess
   platform?: NodeJS.Platform
   inheritedEnv?: NodeJS.ProcessEnv
-  /** Preserve callers which accept Node's close event as root exit evidence. */
-  closeEventIsExit?: boolean
+  acceptClose: (result: ProviderProcessCloseResult) => boolean
 }
 
 export type ManagedProviderProcess = {
   child: ReturnType<typeof spawnProcess>
   supervised: boolean
-  readonly exited: boolean
   readonly processless: boolean
   readonly rootVerdict: ProviderProcessVerdict
-  /** Cleanup failed in a close that observed the root exit. */
-  readonly teardownUnproven: boolean
+  readonly lastCloseResult: ProviderProcessCloseResult | null
   readonly exitPromise: Promise<void>
   onExit(listener: (exit: ProviderProcessExit) => void): void
   terminateTree(): Promise<boolean>
-  close(tree?: ProviderProcessTree): Promise<ProviderProcessVerdict>
+  close(tree?: ProviderProcessTree): Promise<ProviderProcessCloseResult>
 }
 
 /** One child owns its exit observation and every retry of an unconfirmed close. */
@@ -47,6 +48,12 @@ export function spawnManagedProviderProcess(
 ): ManagedProviderProcess {
   const platform = options.platform ?? process.platform
   const spec = createProviderSpawnSpec(launch, options.inheritedEnv ?? process.env, platform)
+  const policy = options.policy(spec.supervised)
+  if (spec.supervised && !(policy.gracefulExitMs >= PROVIDER_SUPERVISOR_MAX_STOP_MS)) {
+    throw new RangeError(
+      `Supervised provider graceful exit must wait at least ${PROVIDER_SUPERVISOR_MAX_STOP_MS} ms; received ${policy.gracefulExitMs} ms`
+    )
+  }
   const child = (options.spawnImpl ?? spawnProcess)({
     program: spec.program,
     args: spec.args,
@@ -55,14 +62,11 @@ export function spawnManagedProviderProcess(
     detached: spec.detached,
     stdio: ['pipe', 'pipe', 'pipe']
   })
-  const policy = options.policy(spec.supervised)
   const listeners = new Set<(exit: ProviderProcessExit) => void>()
   let observed: ProviderProcessExit | null = null
   let spawnFailed = false
-  let teardownUnproven = false
-  const exitProof = new RetryableProcessExitProof<ProviderProcessVerdict>(
-    (verdict) => verdict === 'exited'
-  )
+  let lastCloseResult: ProviderProcessCloseResult | null = null
+  const exitProof = new RetryableProcessExitProof(options.acceptClose)
   let resolveExit = (): void => {}
   const exitPromise = new Promise<void>((resolve) => {
     resolveExit = resolve
@@ -84,11 +88,12 @@ export function spawnManagedProviderProcess(
   })
   child.on('close', (code, signal) => {
     const processless = spawnFailed && child.pid === undefined
-    if (processless || options.closeEventIsExit) {
+    if (processless) {
       observeExit({ code, signal, processless })
     }
   })
-  const exited = (): boolean => observed !== null
+  const rootVerdict = (): ProviderProcessVerdict =>
+    observed ? 'exited' : child.pid === undefined ? 'unverifiable' : 'live'
   const terminateTree = (): Promise<boolean> =>
     terminateProviderProcessTree(child, { site: options.site, platform })
 
@@ -96,17 +101,14 @@ export function spawnManagedProviderProcess(
     child,
     supervised: spec.supervised,
     exitPromise,
-    get exited() {
-      return observed !== null && !observed.processless
-    },
     get processless() {
       return observed?.processless ?? false
     },
     get rootVerdict() {
-      return observed ? 'exited' : 'unverifiable'
+      return rootVerdict()
     },
-    get teardownUnproven() {
-      return teardownUnproven && observed !== null
+    get lastCloseResult() {
+      return lastCloseResult
     },
     onExit(listener) {
       if (observed) {
@@ -117,23 +119,21 @@ export function spawnManagedProviderProcess(
     },
     terminateTree,
     close(tree) {
-      if (observed && !policy.requireTreeExit) {
-        return Promise.resolve('exited')
+      if (observed && !tree) {
+        return Promise.resolve({ root: 'exited', tree: 'unverifiable' })
       }
       return exitProof.run(async () => {
         const result = await closeProviderProcess({
           child,
           exitPromise,
-          exited,
+          rootVerdict,
           supervised: spec.supervised,
           policy,
           tree,
           terminateTree
         })
-        if (result.teardownAccepted !== undefined) {
-          teardownUnproven = !result.teardownAccepted && result.verdict === 'exited'
-        }
-        return result.verdict
+        lastCloseResult = result
+        return result
       })
     }
   }
