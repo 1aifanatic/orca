@@ -152,6 +152,7 @@ describe('structured agent launch persistence', () => {
   it('keeps when a failed launch failed across a reload, and still loads records without it', () => {
     writeStructuredAgentLaunchRecord({
       sessionId: 'claude_session',
+      executionHostId: 'local',
       agent: 'claude',
       lifecycle: 'failed',
       clientOperationId: 'operation-3',
