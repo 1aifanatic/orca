@@ -3,7 +3,8 @@ import { once } from 'node:events'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { Worker } from 'node:worker_threads'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { spawnProcess } from '../../shared/child-process/run-process'
 import { getDefaultWorkspaceSession } from '../../shared/constants'
 import type { EditorRecoveryChange, EditorRecoveryMetadata } from '../../shared/editor-recovery'
@@ -32,6 +33,7 @@ afterEach(async () => {
   for (const root of roots.splice(0)) {
     rmSync(root, { recursive: true, force: true })
   }
+  vi.restoreAllMocks()
 })
 afterAll(() => rmSync(bundleRoot, { recursive: true, force: true }))
 function fixture() {
@@ -67,16 +69,16 @@ function put(content: string, owner = metadata()): EditorRecoveryChange {
 
 describe('recovery writer process boundaries', () => {
   it('releases an idle worker and reopens the same committed journal without replaying imports', async () => {
+    const terminate = vi.spyOn(Worker.prototype, 'terminate')
     const writer = client(fixture().path, workerPath, 15_000, 20)
-    expect(Reflect.get(writer, 'worker')).toBeNull()
     await writer.apply([put('committed before idle')])
-    await expect.poll(() => Reflect.get(writer, 'worker'), { timeout: 2_000 }).toBeNull()
+    await expect.poll(() => terminate.mock.calls.length, { timeout: 2_000 }).toBe(1)
     expect(writer.isRunning).toBe(true)
     expect(await writer.read('buffer')).toMatchObject({
       content: 'committed before idle',
       revision: 1
     })
-    await expect.poll(() => Reflect.get(writer, 'worker'), { timeout: 2_000 }).toBeNull()
+    await expect.poll(() => terminate.mock.calls.length, { timeout: 2_000 }).toBe(2)
     await writer.apply([{ ...put('new edit after idle'), expectedRevision: 1 }])
     expect(await writer.read('buffer')).toMatchObject({
       content: 'new edit after idle',
@@ -87,6 +89,7 @@ describe('recovery writer process boundaries', () => {
   })
 
   it('keeps an outstanding request alive beyond the idle deadline', async () => {
+    const terminate = vi.spyOn(Worker.prototype, 'terminate')
     const f = fixture()
     const entry = join(f.root, 'slow-worker.cjs')
     writeFileSync(
@@ -101,10 +104,9 @@ describe('recovery writer process boundaries', () => {
     const writer = client(f.path, entry, 2_000, 20)
     const reading = writer.list()
     await new Promise((resolve) => setTimeout(resolve, 60))
-    expect(Reflect.get(writer, 'worker')).not.toBeNull()
-    expect(Reflect.get(writer, 'closing')).toBeNull()
+    expect(terminate).not.toHaveBeenCalled()
     expect(await reading).toEqual([])
-    await expect.poll(() => Reflect.get(writer, 'worker'), { timeout: 2_000 }).toBeNull()
+    await expect.poll(() => terminate.mock.calls.length, { timeout: 2_000 }).toBe(1)
   })
 
   it('survives an abrupt process kill after acknowledgement, with no graceful shutdown checkpoint', async () => {

@@ -31,29 +31,33 @@ test('checkpoints continuous typing, retains a closed buffer, and recovers an ex
   await expect(editor).toContainText('unchanged disk baseline')
   await editor.click()
   await orcaPage.keyboard.press('ControlOrMeta+a')
-  const text = 'continuously typed unsaved text '.repeat(8)
-  const typing = orcaPage.keyboard.type(text, { delay: 15 })
+  const readCheckpoint = () =>
+    orcaPage.evaluate(async (filePath) => {
+      const api = window.api.session.recovery
+      const entry = (await api?.list())?.find((entry) => entry.filePath === filePath)
+      return entry ? (await api?.read(entry.id))?.content : null
+    }, original)
+  // Establish storage readiness separately from the continuous-input assertion.
+  await orcaPage.keyboard.type('ready checkpoint')
+  await expect.poll(readCheckpoint, { timeout: 10_000 }).toBe('ready checkpoint')
+  await orcaPage.keyboard.press('ControlOrMeta+a')
+  const text = 'continuously typed unsaved text '.repeat(16)
+  let typingComplete = false
+  const typing = orcaPage.keyboard.type(text, { delay: 15 }).then(() => {
+    typingComplete = true
+  })
   await expect
     .poll(
-      () =>
-        orcaPage.evaluate(async (filePath) => {
-          const api = window.api.session.recovery
-          const entry = (await api?.list())?.find((entry) => entry.filePath === filePath)
-          return entry ? ((await api?.read(entry.id))?.content.length ?? 0) : 0
-        }, original),
-      { timeout: 3_000 }
+      async () => {
+        const checkpoint = await readCheckpoint()
+        return checkpoint?.startsWith('continuously') ? checkpoint.length : 0
+      },
+      { timeout: 5_000 }
     )
     .toBeGreaterThan(10)
+  expect(typingComplete).toBe(false)
   await typing
-  await expect
-    .poll(() =>
-      orcaPage.evaluate(async (filePath) => {
-        const api = window.api.session.recovery
-        const entry = (await api?.list())?.find((entry) => entry.filePath === filePath)
-        return entry ? (await api?.read(entry.id))?.content : null
-      }, original)
-    )
-    .toBe(text)
+  await expect.poll(readCheckpoint).toBe(text)
   expect(readFileSync(original, 'utf8')).toBe('unchanged disk baseline')
   await orcaPage.evaluate((filePath) => {
     const state = window.__store?.getState()
