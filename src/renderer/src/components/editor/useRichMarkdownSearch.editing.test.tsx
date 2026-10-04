@@ -18,15 +18,23 @@ function mountSearch() {
   const scrollTo = vi.spyOn(scrollContainer, 'scrollTo')
   vi.spyOn(editor.view, 'coordsAtPos').mockReturnValue({ top: 20, bottom: 40, left: 0, right: 0 })
   const root = document.createElement('div')
+  root.className = 'rich-markdown-editor-shell'
+  const search = document.createElement('div')
+  search.className = 'rich-markdown-search'
+  const input = document.createElement('input')
+  search.append(input)
   root.append(editor.view.dom)
+  root.append(search)
   document.body.append(root)
-  const hook = renderHook(() =>
-    useRichMarkdownSearch({
+  const hook = renderHook(() => {
+    const result = useRichMarkdownSearch({
       editor,
       rootRef: { current: root },
       scrollContainerRef: { current: scrollContainer }
     })
-  )
+    result.searchState.searchInputRef.current = input
+    return result
+  })
   act(() => hook.result.current.openSearch())
   act(() => hook.result.current.searchActions.setSearchQuery('beta'))
   act(() => vi.advanceTimersByTime(150))

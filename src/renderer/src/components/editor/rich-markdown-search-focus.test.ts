@@ -1,6 +1,16 @@
 // @vitest-environment happy-dom
+import { Schema } from '@tiptap/pm/model'
+import { EditorState } from '@tiptap/pm/state'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { focusRichMarkdownEditorFromSearch } from './rich-markdown-search-focus'
+
+const schema = new Schema({
+  nodes: {
+    doc: { content: 'paragraph+' },
+    paragraph: { content: 'text*' },
+    text: {}
+  }
+})
 
 function createSurface() {
   const root = document.createElement('div')
@@ -19,12 +29,14 @@ function createSurface() {
   root.append(editorDom, search)
   document.body.append(root)
   const focus = vi.spyOn(editorDom, 'focus')
+  const viewFocus = vi.fn(() => editorDom.focus({ preventScroll: true }))
+  const view = { dom: editorDom, focus: viewFocus, state: EditorState.create({ schema }) }
   root.addEventListener('mousedown', (event) => {
     if (event instanceof MouseEvent) {
-      focusRichMarkdownEditorFromSearch(event, editorDom)
+      focusRichMarkdownEditorFromSearch(event, view)
     }
   })
-  return { root, editorDom, paragraph, findInput, replaceInput, focus }
+  return { root, editorDom, paragraph, findInput, replaceInput, focus, viewFocus }
 }
 
 afterEach(() => {
@@ -36,7 +48,7 @@ describe('rich markdown search focus handoff', () => {
   it.each(['find', 'replace'] as const)(
     'returns keyboard focus from %s without preventing native selection or requesting scroll',
     (field) => {
-      const { paragraph, editorDom, findInput, replaceInput, focus } = createSurface()
+      const { paragraph, editorDom, findInput, replaceInput, focus, viewFocus } = createSurface()
       const input = field === 'find' ? findInput : replaceInput
       input.focus()
       const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 })
@@ -45,21 +57,13 @@ describe('rich markdown search focus handoff', () => {
 
       expect(document.activeElement).toBe(editorDom)
       expect(focus).toHaveBeenCalledExactlyOnceWith({ preventScroll: true })
+      expect(viewFocus).not.toHaveBeenCalled()
       expect(event.defaultPrevented).toBe(false)
     }
   )
 
-  it('leaves an existing document selection intact for Shift click or drag', () => {
-    const { paragraph, editorDom, findInput } = createSurface()
-    const text = paragraph.firstChild
-    if (!text) {
-      throw new Error('expected editable paragraph text')
-    }
-    const selection = document.getSelection()
-    const range = document.createRange()
-    range.setStart(text, 2)
-    range.setEnd(text, 9)
-    selection?.addRange(range)
+  it('restores the editor selection before native Shift click handling', () => {
+    const { paragraph, editorDom, findInput, viewFocus } = createSurface()
     findInput.focus()
     const event = new MouseEvent('mousedown', {
       bubbles: true,
@@ -71,10 +75,7 @@ describe('rich markdown search focus handoff', () => {
     paragraph.dispatchEvent(event)
 
     expect(document.activeElement).toBe(editorDom)
-    expect(selection?.anchorNode).toBe(text)
-    expect(selection?.anchorOffset).toBe(2)
-    expect(selection?.focusNode).toBe(text)
-    expect(selection?.focusOffset).toBe(9)
+    expect(viewFocus).toHaveBeenCalledExactlyOnceWith()
     expect(event.defaultPrevented).toBe(false)
   })
 

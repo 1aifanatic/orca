@@ -1,11 +1,19 @@
+import type { EditorView } from '@tiptap/pm/view'
+import { CellSelection } from '@tiptap/pm/tables'
+
 export function focusRichMarkdownEditorFromSearch(
   event: MouseEvent,
-  editorDom: HTMLElement | null
+  view: Pick<EditorView, 'dom' | 'focus' | 'state'> | null
 ): void {
-  if (!editorDom || event.defaultPrevented || event.button !== 0) {
+  if (
+    !view ||
+    event.button !== 0 ||
+    (event.defaultPrevented && !(view.state.selection instanceof CellSelection))
+  ) {
     return
   }
 
+  const editorDom = view.dom
   const target = event.target
   if (!(target instanceof Element) || !editorDom.contains(target)) {
     return
@@ -26,6 +34,11 @@ export function focusRichMarkdownEditorFromSearch(
     return
   }
 
-  // Native focus preserves the browser's upcoming click or drag selection.
-  editorDom.focus({ preventScroll: true })
+  if (event.shiftKey || event.defaultPrevented) {
+    // Shift extends the current selection; handled cell selection has no browser default.
+    view.focus()
+  } else {
+    // Native focus preserves the browser's upcoming click or drag selection.
+    editorDom.focus({ preventScroll: true })
+  }
 }

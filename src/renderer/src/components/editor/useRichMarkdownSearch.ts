@@ -42,8 +42,8 @@ export function useRichMarkdownSearch({
   const [matchCase, setMatchCase] = useState(false)
   const [wholeWord, setWholeWord] = useState(false)
   const [rawActiveMatchIndex, setRawActiveMatchIndex] = useState(-1)
-  const [navigationRequest, setNavigationRequest] = useState(0)
-  const [searchRevision, setSearchRevision] = useState(0)
+  const [navigationRequest, setNavigationRequest] = useState({ revision: 0, selectMatch: false })
+  const [, setSearchRevision] = useState(0)
   // Why: debouncing the query that drives match computation prevents the
   // expensive full-doc walk from running on every keystroke — the old
   // un-debounced path froze the main thread on large documents.
@@ -60,24 +60,24 @@ export function useRichMarkdownSearch({
   const searchRequestQuery = isMarkdownPreviewSearchQueryTooLarge(debouncedQuery)
     ? ''
     : debouncedQuery
+  const searchDocument = editor && !editor.isDestroyed ? editor.state.doc : null
 
   const matches = useMemo(() => {
-    if (!editor || !isSearchOpen || !searchRequestQuery) {
+    if (!searchDocument || !isSearchOpen || !searchRequestQuery) {
       return []
     }
-    return findMatches(editor.state.doc, searchRequestQuery, {
+    return findMatches(searchDocument, searchRequestQuery, {
       matchCase,
       wholeWord
     })
-    // searchRevision is bumped on ProseMirror doc edits to trigger recomputation
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor, findMatches, isSearchOpen, searchRequestQuery, searchRevision, matchCase, wholeWord])
+  }, [findMatches, isSearchOpen, searchRequestQuery, searchDocument, matchCase, wholeWord])
 
   const matchCount = matches.length
 
   const getLiveMatches = useCallback(() => {
     if (
       !editor ||
+      editor.isDestroyed ||
       !isSearchOpen ||
       !searchQuery ||
       isMarkdownPreviewSearchQueryTooLarge(searchQuery)
@@ -176,11 +176,14 @@ export function useRichMarkdownSearch({
     if (!match || liveMatches.some((candidate) => candidate.touchesReadOnlyAtom)) {
       return
     }
-    // Why: removing the active match shifts the next match into the same index,
-    // so leaving rawActiveMatchIndex untouched advances to it after recompute.
     replaceRange(match.from, match.to)
-    setNavigationRequest((request) => request + 1)
-  }, [activeMatchIndex, getLiveMatches, replaceRange])
+    // Skip matches inside the replacement, including when it still contains the query.
+    const replacementEnd = match.from + replaceQuery.length
+    const nextIndex = getLiveMatches().findIndex((candidate) => candidate.from >= replacementEnd)
+    setRawActiveMatchIndex(Math.max(0, nextIndex))
+    setDebouncedQuery(searchQuery)
+    setNavigationRequest((request) => ({ revision: request.revision + 1, selectMatch: true }))
+  }, [activeMatchIndex, getLiveMatches, replaceQuery, replaceRange, searchQuery])
 
   const replaceAllMatches = useCallback(() => {
     if (!editor) {
@@ -205,26 +208,25 @@ export function useRichMarkdownSearch({
       }
     }
     editor.view.dispatch(tr)
-    setNavigationRequest((request) => request + 1)
-  }, [editor, getLiveMatches, replaceQuery])
+    setDebouncedQuery(searchQuery)
+    setNavigationRequest((request) => ({ revision: request.revision + 1, selectMatch: false }))
+  }, [editor, getLiveMatches, replaceQuery, searchQuery])
 
   const moveToMatch = useCallback(
     (direction: 1 | -1) => {
-      if (matchCount === 0) {
+      const liveMatchCount = getLiveMatches().length
+      if (liveMatchCount === 0) {
         return
       }
 
-      // Why: rawActiveMatchIndex starts at -1 before the user navigates, but the
-      // derived activeMatchIndex is already 0 (first match shown). Using 0 as the
-      // base when raw is -1 ensures the first Enter press advances to match 1
-      // instead of computing (-1+1)%N = 0 and leaving the effect unchanged.
       setRawActiveMatchIndex((currentIndex) => {
-        const baseIndex = Math.max(currentIndex, 0)
-        return (baseIndex + direction + matchCount) % matchCount
+        const baseIndex = currentIndex >= 0 && currentIndex < liveMatchCount ? currentIndex : 0
+        return (baseIndex + direction + liveMatchCount) % liveMatchCount
       })
-      setNavigationRequest((request) => request + 1)
+      setDebouncedQuery(searchQuery)
+      setNavigationRequest((request) => ({ revision: request.revision + 1, selectMatch: true }))
     },
-    [matchCount]
+    [getLiveMatches, searchQuery]
   )
 
   const handleEditorUpdate = useCallback(() => {
@@ -271,7 +273,9 @@ export function useRichMarkdownSearch({
     navigationRequest,
     query: isSearchOpen ? searchRequestQuery : '',
     scrollContainerRef,
-    wholeWord
+    wholeWord,
+    rootRef,
+    searchDocument
   })
 
   useEffect(() => {

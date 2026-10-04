@@ -210,7 +210,7 @@ export function RichMarkdownEditorSurface({
             // Image layout must not anchor-scroll over the restored tab position.
             className="relative h-full overflow-auto scrollbar-editor [overflow-anchor:none]"
             onMouseDown={(event) => {
-              focusRichMarkdownEditorFromSearch(event.nativeEvent, editor?.view.dom ?? null)
+              focusRichMarkdownEditorFromSearch(event.nativeEvent, editor?.view ?? null)
               if (!shouldFocusEmptyEditorFromSurfaceClick(event, editor)) {
                 return
               }
