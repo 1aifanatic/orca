@@ -38,7 +38,8 @@ export type MailboxNoticeCards = {
   waiting: boolean
   /** A hand-off not settled yet: in flight; or refused, or of unknown fate, with no turn run since. */
   unsettled: 'send-unsettled' | 'dispatch-unknown' | 'dispatch-rejected' | null
-  /** Mail a notice already pointed at: handed off and accepted, or declined by the person. */
+  /** Mail a notice already pointed at: handed off and accepted, or deleted by an operation someone
+   *  asked for. */
   pointed: ReadonlySet<string>
 }
 

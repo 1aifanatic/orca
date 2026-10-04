@@ -16,6 +16,8 @@ export type QueuedAgentCardVerdict =
   | { kind: 'restate'; body: AgentJournalMessageItem; source: AgentMessageSource }
   /** Owed nothing any more. */
   | { kind: 'withdraw' }
+  /** The judge cannot read what it judges by right now: it decides nothing, and the card waits. */
+  | { kind: 'defer' }
 
 export type QueuedAgentCardJudge = (input: {
   sessionId: string
@@ -68,23 +70,27 @@ function queuedCardRestatement(
   return { body: verdict.body, fingerprint, source: verdict.source }
 }
 
-/** What the drain sends for the card it picked, or null when the card is to be withdrawn. */
+/** What the drain does with the card it picked: send this, withdraw it, or leave it waiting. */
 export function drainableQueuedCard(input: {
   sessionId: string
   row: QueuedMessageRow
   judge: QueuedAgentCardJudge
   logger: StructuredAgentSessionLogger
-}): {
-  body: AgentJournalMessageItem
-  fingerprint: string
-  restated?: QueuedMessageRestatement
-} | null {
+}):
+  | { kind: 'withdraw' }
+  | { kind: 'defer' }
+  | {
+      kind: 'send'
+      body: AgentJournalMessageItem
+      fingerprint: string
+      restated?: QueuedMessageRestatement
+    } {
   const verdict = judgeQueuedCard(input.judge, input)
-  if (verdict.kind === 'withdraw') {
-    return null
+  if (verdict.kind === 'withdraw' || verdict.kind === 'defer') {
+    return verdict
   }
   const restated = queuedCardRestatement(input.sessionId, verdict)
   return restated
-    ? { body: restated.body, fingerprint: restated.fingerprint, restated }
-    : { body: input.row.body, fingerprint: input.row.fingerprint }
+    ? { kind: 'send', body: restated.body, fingerprint: restated.fingerprint, restated }
+    : { kind: 'send', body: input.row.body, fingerprint: input.row.fingerprint }
 }

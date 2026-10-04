@@ -63,6 +63,8 @@ function harness(options: {
   let attached = options.attached ?? true
   let unread: Unread[] = [mail('m1', 3)]
   let targetSession: string | null = IDENTITY.sessionId
+  let outstanding = options.outstandingOwnDelivery ?? false
+  let hostUp = true
   // The session's recorded sends and queue cards, as its journal reports them.
   let submissions: Submission[] = []
   let cards: StructuredPointerCard[] = []
@@ -92,7 +94,7 @@ function harness(options: {
     getDispatchContextById: () => ({ run_id: 'run_1' }),
     hasOutstandingMailboxDelivery: (handle: string) =>
       ((options.outstandingRunDelivery ?? false) && handle.startsWith('run:')) ||
-      ((options.outstandingOwnDelivery ?? false) && !handle.startsWith('run:')),
+      (outstanding && !handle.startsWith('run:')),
     getUndeliveredUnreadMessages: () => unread,
     markAsDelivered,
     getStructuredPointerOperation: (key: string) => stored.get(key),
@@ -109,7 +111,7 @@ function harness(options: {
   }
   const host: StructuredMailboxPointerHost = {
     readFacts: async () => (attached ? { submissions, cards } : null),
-    currentFence: () => 4,
+    currentFence: () => (hostUp ? 4 : null),
     send
   }
   const delivery = new OrchestrationStructuredMailboxPointerDelivery({
@@ -127,6 +129,14 @@ function harness(options: {
     send,
     onRetain,
     stored,
+    /** The agent opened its mail with `check` and has not acked it. */
+    openBatch: () => {
+      outstanding = true
+    },
+    /** Orca is quitting: no host is left to resolve a session's mail through. */
+    stopHost: () => {
+      hostUp = false
+    },
     /** A /clear moves the mailbox to the successor; settling the worker (abandon) to none. */
     moveTarget: (sessionId: string | null) => {
       targetSession = sessionId
@@ -527,6 +537,18 @@ describe("a pointer to a busy chat waits in the chat's own queue", () => {
     expect(h.send).toHaveBeenCalledTimes(2)
   })
 
+  it('stamps the mail an accepted hand-off carried even when the agent already opened it', async () => {
+    const h = harness({ busy: true })
+    const card = await queuedCard(h)
+    h.setCards([noticeCard(card, 'dispatched')])
+    h.setSubmissions([handedOff(card, 'accepted')])
+    h.openBatch()
+    h.delivery.onJournalActivity('session-1')
+    await flush()
+    expect(h.markAsDelivered).toHaveBeenCalledWith(['m1'])
+    expect(h.send).toHaveBeenCalledTimes(1)
+  })
+
   it('waits on a card the provider refused (the host withdrew it) until a later turn ran', async () => {
     const h = harness({ busy: true })
     const card = await queuedCard(h)
@@ -650,6 +672,14 @@ describe('the queue judges a notice again as it sends', () => {
     h.moveTarget(null)
     expect(h.delivery.judgeQueuedCard({ sessionId: 'session-1', source: SOURCE })).toEqual({
       kind: 'withdraw'
+    })
+  })
+
+  it('decides nothing while no host can resolve the mailbox (Orca quitting): the card waits', () => {
+    const h = harness({})
+    h.stopHost()
+    expect(h.delivery.judgeQueuedCard({ sessionId: 'session-1', source: SOURCE })).toEqual({
+      kind: 'defer'
     })
   })
 

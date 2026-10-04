@@ -324,6 +324,40 @@ describe("mail for a busy coordinator chat waits in the chat's queue", () => {
     expect(await waitingCardTexts(COORDINATOR)).toEqual([])
   })
 
+  it('stamps the mail a handed-off notice carried even when the agent opens it in that turn', async () => {
+    const chat = await openChat(COORDINATOR)
+    const { runId, taskId } = await coordinatorRunAndTask()
+    const endTurn = await runningUserTurn(chat)
+    await finishWorker(taskId)
+    await vi.waitFor(async () => expect(await waitingCardTexts(COORDINATOR)).toHaveLength(1), WAIT)
+    await endTurn()
+    await vi.waitFor(() => expect(chat.turns).toHaveLength(2), WAIT)
+    // The normal flow: the agent checks (without an ack) in the notice's own turn.
+    expect(await call('orchestration.check', {}, { sessionId: COORDINATOR })).toMatchObject({
+      count: 1
+    })
+    await settleTurn(COORDINATOR, 1)
+    await vi.waitFor(
+      () =>
+        expect(
+          db.getAllMessages(`run:${runId}`, 20).map((row) => [row.read, row.delivered_at !== null])
+        ).toEqual([[0, true]]),
+      WAIT
+    )
+    // So a later conversation is not told again about mail the earlier one already opened.
+    const successor = await clearChat(COORDINATOR)
+    expect(await sendUserMessage(successor, 'hello')).toMatchObject({ ok: true })
+    await vi.waitFor(() => expect(connectionFor(successor).turns).toHaveLength(1), WAIT)
+    await settleTurn(successor, 0)
+    await call('orchestration.runCreate', { objective: 'other' }, { sessionId: successor })
+    await call('orchestration.runUse', { id: runId }, { sessionId: successor })
+    for (let edge = 0; edge < 3; edge += 1) {
+      runtime.onStructuredSessionStatusForMail({ sessionId: successor, status: 'idle' })
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    expect(connectionFor(successor).turns.map(turnText)).toEqual(['hello'])
+  })
+
   it('sends no card for mail an orchestration reset deleted', async () => {
     const chat = await openChat(COORDINATOR)
     const { taskId } = await coordinatorRunAndTask()

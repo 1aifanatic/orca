@@ -124,7 +124,11 @@ export class StructuredAgentSessionQueuedMessageDrain {
       judge: this.deps.judgeAgentCard,
       logger: this.deps.logger
     })
-    if (!card) {
+    if (card.kind === 'defer') {
+      // Waits unsent; a card the person can't see delays none of theirs, and any commit asks again.
+      return
+    }
+    if (card.kind === 'withdraw') {
       // The host's withdrawal, never read as a person's decline; its commit re-derives this step.
       await journal.queuedMessages.withdraw({ messageIds: [next.messageId], settledByOp: null })
       return
@@ -181,6 +185,15 @@ export class StructuredAgentSessionQueuedMessageDrain {
     source: AgentMessageSource
   ): Promise<void> {
     await journal.queuedMessages.withdraw({ messageIds: [messageId], settledByOp: null })
-    this.deps.agentCardDropped({ sessionId, source })
+    try {
+      this.deps.agentCardDropped({ sessionId, source })
+    } catch (error) {
+      // Reported, not retried: the mailbox's next edge re-derives it.
+      this.deps.logger.warn('handing a dropped agent card back to its sender failed', {
+        scope: 'queued-agent-card',
+        sessionId,
+        error
+      })
+    }
   }
 }

@@ -3,7 +3,7 @@
  *
  * The PTY lane types the nudge into a live pane and reads the idle edge off the terminal title.
  * Neither exists here, so this is a sibling of `OrchestrationMailboxPointerDelivery` rather than a
- * branch inside it: batch selection is literally shared (`selectOrchestrationPointerBatch`), and
+ * branch inside it: batch selection is literally shared (`owedPointerBatch`), and
  * everything below it is different — the nudge is a session turn, a busy chat holds it as a card in
  * its own queue (the one a person's message waits in), and only an `accepted` dispatch may consume
  * mail. The card is a projection of the mailbox: the queue asks this lane about it again as it
@@ -15,13 +15,10 @@
  */
 
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
-import type { OrchestrationDb } from './db'
-import { formatMessagePointer } from './formatter'
+import { ORCHESTRATION_DELIVERY_BATCH_LIMIT, type OrchestrationDb } from './db'
 import type { OrchestrationCliCommand } from './cli-command'
-import {
-  selectOrchestrationPointerBatch,
-  type OrchestrationMessageWaiter
-} from './mailbox-pointer-eligibility'
+import type { OrchestrationMessageWaiter } from './mailbox-pointer-eligibility'
+import { judgeMailNotice, mailNoticeBody, owedPointerBatch } from './structured-mail-notice'
 import { resolveStructuredPointerOperation } from './structured-pointer-operation-id'
 import {
   readMailboxNoticeCards,
@@ -148,47 +145,21 @@ export class OrchestrationStructuredMailboxPointerDelivery<
     }
   }
 
-  /**
-   * An agent's mail notice is about to leave a chat's queue, in the drain's serialized step: send it
-   * if it still counts the mail owed, restate it if the owed mail changed, withdraw it if none is
-   * owed or the mailbox now reaches another session (whose own notice this lane sends). One
-   * synchronous read of orchestration's database, by the same selection the lane points from.
-   */
+  /** The queue's judge of this lane's notice as it is about to send (`judgeMailNotice`). */
   judgeQueuedCard(input: {
     sessionId: string
     source: AgentMessageSource
   }): QueuedAgentCardVerdict {
-    const db = this.deps.getDb()
-    const notice = input.source.orchestration
-    if (!db) {
-      // Nothing to judge by; bookkeeping never holds the queue.
-      return { kind: 'send' }
-    }
-    switch (notice.message) {
-      case 'mail-notice': {
-        if (this.deps.resolveStructuredTarget(notice.mailbox)?.sessionId !== input.sessionId) {
-          return { kind: 'withdraw' }
-        }
-        const owed = this.owedBatch(db, notice.mailbox, undefined)
-        if (owed.length === 0) {
-          return { kind: 'withdraw' }
-        }
-        const owedIds = owed.map((message) => message.id)
-        if (owedIds.join('\n') === notice.messageIds.join('\n')) {
-          return { kind: 'send' }
-        }
-        return {
-          kind: 'restate',
-          body: this.pointerBody(notice.mailbox, owed.length),
-          source: structuredPointerSource({
-            db,
-            mailboxHandle: notice.mailbox,
-            dispatchId: notice.dispatchId,
-            batch: owed
-          })
-        }
-      }
-    }
+    return judgeMailNotice(
+      {
+        db: this.deps.getDb(),
+        hostCanResolve: (sessionId) => this.deps.host.currentFence(sessionId) !== null,
+        resolveStructuredTarget: this.deps.resolveStructuredTarget,
+        getMessageWaiters: this.deps.getMessageWaiters,
+        getCliCommand: this.deps.getCliCommand
+      },
+      input
+    )
   }
 
   /**
@@ -223,10 +194,18 @@ export class OrchestrationStructuredMailboxPointerDelivery<
     }
     this.inFlight.add(mailboxHandle)
     try {
-      const unread = this.owedBatch(db, mailboxHandle, reservedTypes)
-      await (unread.length === 0
-        ? this.retire(db, mailboxHandle)
-        : this.attempt(db, mailboxHandle, target, unread, reservedTypes))
+      const unread = owedPointerBatch(
+        db,
+        mailboxHandle,
+        this.deps.getMessageWaiters(mailboxHandle),
+        reservedTypes
+      )
+      if (unread.length > 0) {
+        await this.attempt(db, mailboxHandle, target, unread, reservedTypes)
+      } else {
+        await this.stampHandedOff(db, mailboxHandle, target)
+        await this.retire(db, mailboxHandle)
+      }
     } finally {
       this.inFlight.delete(mailboxHandle)
     }
@@ -239,25 +218,29 @@ export class OrchestrationStructuredMailboxPointerDelivery<
   }
 
   /**
-   * The rows a pointer may count right now. A consumer still holding an unacknowledged batch is owed
-   * none: the lookup is keyed on the exact handle being nudged, so a coordinator's own `run:`
-   * delivery is invisible to a worker's `dispatch:` gate and cannot suppress the nudges a
-   * coordinator sends its workers. Worth more here than in the PTY lane: a structured nudge costs a
-   * whole provider turn.
+   * Mail owed no pointer may still be mail a queued notice carried: the agent opened it in the
+   * notice's own turn, so an open batch now holds it. An accepted hand-off stamps exactly the ids it
+   * carried, as an accepted direct send does, whatever the mail's state since.
    */
-  private owedBatch(
+  private async stampHandedOff(
     db: OrchestrationDb,
     mailboxHandle: string,
-    reservedTypes: ReadonlySet<string> | undefined
-  ): PointerBatch {
-    return db.hasOutstandingMailboxDelivery?.(mailboxHandle)
-      ? []
-      : selectOrchestrationPointerBatch({
-          db,
-          mailboxHandle,
-          waiters: this.deps.getMessageWaiters(mailboxHandle),
-          reservedTypes
-        })
+    target: StructuredPointerTarget
+  ): Promise<void> {
+    const unstamped = db
+      .getUndeliveredUnreadMessages(mailboxHandle, undefined, {
+        limit: ORCHESTRATION_DELIVERY_BATCH_LIMIT
+      })
+      .map((message) => message.id)
+    const facts = unstamped.length > 0 ? await this.deps.host.readFacts(target.sessionId) : null
+    if (!facts) {
+      return
+    }
+    const { pointed } = readMailboxNoticeCards(mailboxHandle, facts, unstamped)
+    const stamped = unstamped.filter((id) => pointed.has(id))
+    if (stamped.length > 0) {
+      db.markAsDelivered(stamped)
+    }
   }
 
   /**
@@ -341,7 +324,7 @@ export class OrchestrationStructuredMailboxPointerDelivery<
       dispatchId: target.dispatchId,
       operationId: operation.operationId,
       expectedRuntimeFence: fence,
-      body: this.pointerBody(mailboxHandle, owed.length),
+      body: mailNoticeBody(mailboxHandle, owed.length, this.deps.getCliCommand()),
       source: structuredPointerSource({
         db,
         mailboxHandle,
@@ -373,11 +356,6 @@ export class OrchestrationStructuredMailboxPointerDelivery<
           )
         }
     }
-  }
-
-  private pointerBody(mailboxHandle: string, count: number): AgentJournalMessageItem {
-    const text = formatMessagePointer(count, mailboxHandle, this.deps.getCliCommand()).trim()
-    return { kind: 'message', role: 'user', blocks: [{ type: 'text', text }] }
   }
 
   /** No `markAsUndelivered` is ever owed: mail is marked delivered only once a pointer to it was

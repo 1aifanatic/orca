@@ -203,6 +203,25 @@ describe("the drain judges an agent's card as it sends", () => {
     expect(await sentText(agentCard)).toBe(NOTICE)
   })
 
+  it('leaves a card waiting, unsent and not withdrawn, while its judge cannot judge', async () => {
+    let verdict: ReturnType<QueuedAgentCardJudge> = { kind: 'defer' }
+    rig = await createQueuedMessageTestRig({
+      agentCards: { judgeQueuedAgentCard: () => verdict }
+    })
+    const working = await rig.workingSend()
+    const agentCard = await queued(NOTICE, mailNotice(['m1']))
+    await rig.settleAccepted(working, 'a')
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    expect(await row(agentCard)).toMatchObject({ state: 'waiting', holdReason: null })
+    expect(await rig.handoff(agentCard)).toBeUndefined()
+    // The next step that can judge sends it.
+    verdict = { kind: 'send' }
+    const personCard = await queued('typed by the person')
+    await eventually(async () => expect(await rig.handoff(personCard)).toBeDefined())
+    await rig.settleAccepted(await rig.handoffId(personCard), 'person')
+    await eventually(async () => expect(await rig.handoff(agentCard)).toBeDefined())
+  })
+
   it("never asks about a person's card", async () => {
     const judge = vi.fn<QueuedAgentCardJudge>(() => ({ kind: 'withdraw' }))
     rig = await createQueuedMessageTestRig({ agentCards: { judgeQueuedAgentCard: judge } })
