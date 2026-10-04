@@ -1,3 +1,4 @@
+import { act } from '@testing-library/react'
 import { forwardRef, useImperativeHandle, useRef } from 'react'
 import { vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
@@ -47,6 +48,43 @@ export function DeliveryNoticesMock({
         </div>
       ))}
     </div>
+  )
+}
+
+export function useProbeClock(): void {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+}
+
+export async function advanceProbeClock(milliseconds: number): Promise<void> {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(milliseconds)
+  })
+}
+
+export function seededEntry(
+  sessionId: string,
+  clientMessageId: string,
+  text: string,
+  state: 'queued' | 'unconfirmed'
+) {
+  return {
+    clientMessageId,
+    sessionId,
+    body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text }] },
+    previewUris: [],
+    state,
+    queuedAt: clientMessageId === 'op-head' ? 1 : 2,
+    lastAttemptAt: null,
+    // Already force-retried once, so the automatic probe leaves the head alone
+    // and only the user's Retry moves it.
+    retryAfterUnknownSubmittedAt: -1
+  }
+}
+
+export function seedOutbox(sessionId: string, entries: unknown[]): void {
+  localStorage.setItem(
+    `orca:desktopStructuredAgentSessionOutbox:v1:${encodeURIComponent(sessionId)}`,
+    JSON.stringify(entries)
   )
 }
 
