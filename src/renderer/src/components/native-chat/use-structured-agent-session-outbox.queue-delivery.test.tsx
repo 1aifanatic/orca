@@ -196,6 +196,7 @@ describe('outbox queue delivery selection', () => {
       const view = renderHook(
         (props: { queuedMessageIds: string[] }) =>
           useStructuredAgentSessionOutbox({
+            journalItems: NO_JOURNAL_ITEMS,
             sessionId: 'session-1',
             target: LOCAL_TARGET,
             fence: 1,
@@ -279,6 +280,7 @@ describe('outbox queue delivery selection', () => {
       }))
       const view = renderHook(() =>
         useStructuredAgentSessionOutbox({
+          journalItems: NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
           target: LOCAL_TARGET,
           fence: 1,
@@ -310,6 +312,7 @@ describe('outbox queue delivery selection', () => {
       ])
       const view = renderHook(() =>
         useStructuredAgentSessionOutbox({
+          journalItems: NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
           target: LOCAL_TARGET,
           fence: 1,
