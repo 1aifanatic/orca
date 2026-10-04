@@ -1,5 +1,6 @@
 import type { AgentJournalRenderItem, AgentJournalSubmission } from './agent-session-journal-types'
 import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
+import { compareAgentJournalPositions } from './agent-session-journal-position'
 import { isQueuedAgentJournalSubmission } from './agent-session-queued-submission'
 import { collapseProviderRetryRuns } from './native-chat-provider-retry-runs'
 import type { NativeChatMessage } from './native-chat-types'
@@ -82,20 +83,18 @@ export function structuredAgentSessionRejectedShownInPlace(
   return shown
 }
 
-/** Whether the loaded journal draws the send recorded under `clientMessageId` in the chat, where
- *  its row, not a reply, says how it went. A withdrawn, card-held or superseded copy is not drawn,
- *  so its reply still speaks. */
-export function structuredAgentSessionJournalShowsSubmission(
+/** Whether the loaded journal already draws the send recorded under `clientMessageId` as not sent,
+ *  so its row, not a reply, says it failed. One still pending may yet be withdrawn and hidden. */
+export function structuredAgentSessionJournalShowsRejection(
   submissions: readonly AgentJournalSubmission[],
   clientMessageId: string
 ): boolean {
   const submission = submissions.find((entry) => entry.clientMessageId === clientMessageId)
   return (
-    submission !== undefined &&
-    (submission.dispatchState !== 'rejected' ||
-      structuredAgentSessionRejectedShownInPlace(submissions, []).has(
-        agentJournalSubmissionKey(clientMessageId)
-      ))
+    submission?.dispatchState === 'rejected' &&
+    structuredAgentSessionRejectedShownInPlace(submissions, []).has(
+      agentJournalSubmissionKey(clientMessageId)
+    )
   )
 }
 
@@ -143,11 +142,14 @@ export function projectStructuredAgentSessionMessages(
     }
   }
   return [
-    // After the held sends leave: they are drawn after the conversation, never inside a run.
-    ...collapseProviderRetryRuns(delivered),
+    // In no turn, like the outbox's not-sent rows, and at their journal places, so a reader that
+    // draws this list as it comes (the phone) puts them where the host recorded them.
+    ...inJournalOrder(
+      // After the held sends leave: they are drawn after the conversation, never inside a run.
+      collapseProviderRetryRuns(delivered),
+      projectItems(unsentItems).map((message) => ({ ...message, unsent: true as const }))
+    ),
     ...held,
-    // In no turn; the journal position keeps their place.
-    ...projectItems(unsentItems).map((message) => ({ ...message, unsent: true as const })),
     ...optimistic
       .filter((entry) => {
         const id = agentJournalSubmissionKey(entry.clientMessageId)
@@ -168,4 +170,37 @@ export function projectStructuredAgentSessionMessages(
         }
       })
   ]
+}
+
+/** `rows`, already in journal order, with `placed` merged in at their journal positions. A placed
+ *  row the host moved to its rejection can sit anywhere in `items`, so it is ordered first. */
+function inJournalOrder(
+  rows: readonly NativeChatMessage[],
+  unordered: readonly NativeChatMessage[]
+): readonly NativeChatMessage[] {
+  if (unordered.length === 0) {
+    return rows
+  }
+  // Not `toSorted`: mobile's Hermes lacks it, and src/shared must stay loadable there.
+  const placed = Array.from(unordered).sort((a, b) =>
+    journalPlaceBefore(a, b) ? -1 : journalPlaceBefore(b, a) ? 1 : 0
+  )
+  const merged: NativeChatMessage[] = []
+  let next = 0
+  for (const row of rows) {
+    for (let early = placed[next]; early && journalPlaceBefore(early, row); early = placed[next]) {
+      merged.push(early)
+      next += 1
+    }
+    merged.push(row)
+  }
+  return merged.concat(placed.slice(next))
+}
+
+function journalPlaceBefore(a: NativeChatMessage, b: NativeChatMessage): boolean {
+  return (
+    a.journalPosition !== undefined &&
+    b.journalPosition !== undefined &&
+    compareAgentJournalPositions(a.journalPosition, b.journalPosition) < 0
+  )
 }

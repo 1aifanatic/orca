@@ -40,7 +40,7 @@ import { useStructuredAgentSessionRailOutline } from './use-structured-agent-ses
 import { useStructuredAgentSessionQueuedMessages } from './use-structured-agent-session-queued-messages'
 import { outboxOutsideQueuedCards } from './structured-agent-session-queued-cards'
 import { structuredAgentSessionStartFailureFacts } from '../../../../shared/structured-agent-session-recorded-rejection-words'
-import { structuredAgentSessionJournalShowsSubmission } from '../../../../shared/structured-agent-session-message-projection'
+import { structuredAgentSessionJournalShowsRejection } from '../../../../shared/structured-agent-session-message-projection'
 import { hostStatesTurnScopes } from '../../../../shared/native-chat-turn-membership'
 import { structuredAgentSessionJournalIsLive } from '../../../../shared/structured-agent-session-journal-liveness'
 
@@ -209,8 +209,8 @@ export function useStructuredAgentSession(args: {
           structuredAgentSessionOutboxOwesDelivery(outbox, transportState.submissions)
         ),
         startFailures: () => structuredAgentSessionStartFailureFacts(stateRef.current.items),
-        recorded: (clientMessageId) =>
-          structuredAgentSessionJournalShowsSubmission(
+        shownNotSent: (clientMessageId) =>
+          structuredAgentSessionJournalShowsRejection(
             stateRef.current.submissions,
             clientMessageId
           ),

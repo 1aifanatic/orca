@@ -5,6 +5,7 @@ import {
   normalizedUserText
 } from './mobile-native-chat-draft-reconcile'
 import type { MobileNativeChatPendingMessage } from './mobile-native-chat-pending-echo'
+import { normalizedNativeChatUserMessageText } from './mobile-native-chat-image-transcript-markers'
 
 const SPACE = ' '
 const NO_PENDING_IDS: ReadonlySet<string> = new Set()
@@ -147,12 +148,23 @@ export function retireLandedMobileNativeChatPending(
   landedImagePendingIds: ReadonlySet<string>
 ): MobileNativeChatPendingMessage[] {
   const landedCounts = new Map<string, number>()
+  const unsentByText = new Map<string, string[]>()
   for (const message of messages) {
     const text = normalizedUserText(message)
     if (text) {
       landedCounts.set(text, (landedCounts.get(text) ?? 0) + 1)
     }
+    const unsentText = message.unsent === true ? normalizedNativeChatUserMessageText(message) : null
+    if (unsentText) {
+      unsentByText.set(unsentText, [...(unsentByText.get(unsentText) ?? []), message.id])
+    }
   }
+  // A not-sent row settles a send only when it appeared after the send: then it is the send's own.
+  const landedFor = (item: MobileNativeChatPendingMessage, text: string): number =>
+    (landedCounts.get(text) ?? 0) +
+    (unsentByText.get(text) ?? []).filter(
+      (id) => !(item.baselineUnsentMessageIds ?? []).includes(id)
+    ).length
   const landedPendingIds = new Set<string>()
   // Why a separate set: a barrier preserves adjacency after a landing consumed a whole
   // row. An image landing can share its row with the send glued after it, so treating it
@@ -173,7 +185,7 @@ export function retireLandedMobileNativeChatPending(
       item.text.trim() === ''
         ? countImageSourceTurnsAfter(messages, item.baselineTailMessageId) >=
           item.expectedOccurrence
-        : (landedCounts.get(normalizeReconcileText(item.text)) ?? 0) >= item.expectedOccurrence
+        : landedFor(item, normalizeReconcileText(item.text)) >= item.expectedOccurrence
     if (landed) {
       landedPendingIds.add(item.id)
       exactLandedIds.add(item.id)

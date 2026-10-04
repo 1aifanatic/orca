@@ -210,23 +210,46 @@ describe('a conversation command whose reply lands after the fence moved', () =>
   })
 
   // The host recorded the /compact under the operation id, so its row in the chat says it.
+  const compactRow = (patch: Partial<AgentJournalSubmission>): AgentJournalSubmission => ({
+    clientMessageId: 'operation-1',
+    fence: 3,
+    payloadFingerprint: 'fingerprint',
+    dispatchState: 'rejected',
+    providerItemId: null,
+    reason: 'busy',
+    rejection: { kind: 'commandRefused' },
+    submittedAt: 1,
+    resolvedAt: 1,
+    ...patch
+  })
+
   it('says nothing for a /compact the host recorded, and clears its text: its row holds it', async () => {
-    submissions = [
-      {
-        clientMessageId: 'operation-1',
-        fence: 3,
-        payloadFingerprint: 'fingerprint',
-        dispatchState: 'rejected',
-        providerItemId: null,
-        reason: 'busy',
-        rejection: { kind: 'commandRefused' },
-        submittedAt: 1,
-        resolvedAt: 1
-      }
-    ]
+    submissions = [compactRow({})]
     expect(
       await commandAcrossFenceMove('compact', commandReply('compact', { kind: 'commandRefused' }))
     ).toEqual({ accepted: true, error: null })
+  })
+
+  // The reply can beat the stream: a row still pending may yet be withdrawn by a Stop and hidden.
+  it('says why when the reply lands before the row shows the rejection', async () => {
+    for (const row of [
+      compactRow({
+        dispatchState: 'pending',
+        reason: null,
+        rejection: undefined,
+        resolvedAt: null
+      }),
+      compactRow({ reason: 'provider_cancelled_before_start', rejection: { kind: 'cancelled' } })
+    ]) {
+      fence = 3
+      submissions = [row]
+      const outcome = await commandAcrossFenceMove(
+        'compact',
+        commandReply('compact', { kind: 'commandRefused' })
+      )
+      expect(outcome.accepted).toBe(false)
+      expect(outcome.error).toMatch(/didn't run/)
+    }
   })
 
   it("says why a /compact's start failed while its row is not loaded", async () => {

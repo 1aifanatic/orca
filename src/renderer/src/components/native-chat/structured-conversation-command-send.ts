@@ -21,8 +21,8 @@ export async function sendStructuredConversationCommand(input: {
   blocked: boolean
   /** What the chat's loaded start-failure rows state, read when the reply lands. */
   startFailures: () => readonly AgentSessionFailureFact[]
-  /** Whether the loaded journal shows the message the host recorded under this id. */
-  recorded: (clientMessageId: string) => boolean
+  /** Whether the loaded journal already shows the message recorded under this id as not sent. */
+  shownNotSent: (clientMessageId: string) => boolean
   send: (
     command: AgentSessionConversationCommand
   ) => Promise<StructuredAgentSessionWriteOutcome<AgentSessionConversationCommandResult>>
@@ -47,9 +47,9 @@ export async function sendStructuredConversationCommand(input: {
       return { accepted: false, error: null }
     }
     const { value } = outcome
-    // The host answered for a command it recorded: its row in the chat says how it went, so the
-    // reply says nothing more, and the text is the row's, not the composer's.
-    if (value.state === 'completed' && input.recorded(outcome.operationId)) {
+    // The command's own row already says it was not sent, and why: the reply says nothing more, and
+    // the text is the row's, not the composer's.
+    if (value.state === 'completed' && input.shownNotSent(outcome.operationId)) {
       return { accepted: true, error: null }
     }
     // The chat's own start failed and its loaded row already says why, as for a message that start

@@ -52,12 +52,13 @@ describe('structured agent session message projection', () => {
     const rejected = { ...submission(0), dispatchState: 'rejected' as const, providerItemId: null }
     const refusedItem = { ...item(0), itemId: agentJournalSubmissionKey(rejected.clientMessageId) }
     const acceptedItem = item(1)
-    // In no turn, after the conversation; its journal position keeps its place when drawn.
+    // In no turn, at its journal place, so a reader that draws the list as it comes (the phone)
+    // puts it where the host recorded it.
     expect(
       projectStructuredAgentSessionMessages([refusedItem, acceptedItem], [], [rejected], NO_CARDS)
     ).toMatchObject([
-      { id: acceptedItem.itemId, role: 'user' },
-      { id: refusedItem.itemId, role: 'user', unsent: true, journalPosition: expect.anything() }
+      { id: refusedItem.itemId, role: 'user', unsent: true, journalPosition: expect.anything() },
+      { id: acceptedItem.itemId, role: 'user' }
     ])
   })
 

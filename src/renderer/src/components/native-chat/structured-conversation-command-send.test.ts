@@ -62,7 +62,7 @@ async function sent(
     pending: { current: false },
     blocked: false,
     startFailures: () => [],
-    recorded: (clientMessageId) => recordedIds.includes(clientMessageId),
+    shownNotSent: (clientMessageId) => recordedIds.includes(clientMessageId),
     send: async () => ({
       kind: 'done',
       value: result,
@@ -187,7 +187,7 @@ describe('the line under the composer after a conversation command failed', () =
         pending: { current: false },
         blocked: false,
         startFailures: () => [START_FAILED],
-        recorded: () => false,
+        shownNotSent: () => false,
         send: async () => ({
           kind: 'done',
           value: result,

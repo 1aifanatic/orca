@@ -18,8 +18,8 @@ export async function dispatchMobileStructuredCommand(input: {
   pending: { current: boolean }
   controller: StructuredAgentSessionComposerOptions
   canRun: () => boolean
-  /** Whether the loaded journal shows the message the host recorded under this id. */
-  recorded: (clientMessageId: string) => boolean
+  /** Whether the loaded journal already shows the message recorded under this id as not sent. */
+  shownNotSent: (clientMessageId: string) => boolean
   onError: (message: string) => void
   timeoutMs: number
 }): Promise<MobileNativeChatSendOutcome | null> {
@@ -70,9 +70,9 @@ export async function dispatchMobileStructuredCommand(input: {
         if (result.status !== 'accepted') {
           return { accepted: false, error: result.message }
         }
-        // The host answered for a command it recorded: its row in the chat says how it went, so
-        // no banner repeats it and the text stays the row's, not the composer's.
-        if (result.value.state === 'completed' && input.recorded(clientOperationId)) {
+        // The command's own row already says it was not sent, and why: no banner repeats it, and
+        // the text stays the row's, not the composer's.
+        if (result.value.state === 'completed' && input.shownNotSent(clientOperationId)) {
           return { accepted: true, error: null }
         }
         return { accepted: !result.value.error, error: result.value.error ?? null }
