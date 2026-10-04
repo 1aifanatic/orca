@@ -8,11 +8,6 @@ import { MacosTccPromptNoticeHost } from '../hooks/MacosTccPromptNoticeHost'
 import { useAppStore } from '../store'
 import { StructuredAgentSessionAttentionBridge } from '../components/native-chat/StructuredAgentSessionAttentionBridge'
 import { StructuredAgentSessionStatusBridge } from '../components/native-chat/StructuredAgentSessionStatusBridge'
-import { installNotesDeliveredByChat } from '../lib/notes-delivered-by-chat'
-
-// Why at load and not in an effect: both the desktop and the web client load this with App, before
-// any chat can send its saved message.
-installNotesDeliveredByChat()
 
 const DashboardPopoutBridge = lazy(() => import('../components/dashboard/DashboardPopoutBridge'))
 

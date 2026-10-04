@@ -17,8 +17,6 @@ import {
   type HostSessionMirrorPatchVerdict,
   type HostSessionMirrorSettle
 } from './mirror-settle'
-import { takeHostRemovedStructuredChats } from './host-removed-structured-chats'
-import { discardStructuredAgentSessionLaunchOutbox } from '@/components/native-chat/structured-agent-session-outbox-storage'
 
 /** Commit a reconciliation patch and return a receipt for its host evidence. */
 export function applyWebSessionTabsStorePatch(
@@ -151,13 +149,10 @@ export function applyWebSessionTabsStorePatch(
     return patch
   }
 
-  // Only what this patch's own preparation notes.
-  takeHostRemovedStructuredChats()
   try {
     useAppStore.setState(runStorePatch)
   } catch (error) {
     if (!patchCommitted) {
-      takeHostRemovedStructuredChats()
       throw error
     }
     console.warn('[web-session-tabs-sync] a store subscriber failed after the patch landed:', error)
@@ -165,10 +160,6 @@ export function applyWebSessionTabsStorePatch(
 
   const settleHostMirror = createHostSessionMirrorSettle(hostMirrorVerdict)
   try {
-    // A chat gone from its host takes its queued messages, and the notes they held, with it.
-    for (const sessionId of takeHostRemovedStructuredChats()) {
-      discardStructuredAgentSessionLaunchOutbox(sessionId)
-    }
     if (mirroredAgentStatusChanged) {
       useAppStore.getState().scheduleAgentStatusFreshness()
     }

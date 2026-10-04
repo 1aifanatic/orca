@@ -21,7 +21,6 @@ import {
 } from './state-equality-files'
 import { shouldRetainStructuredAgentSessionLaunchTab } from '@/lib/structured-agent-session-launch-registry'
 import { executionHostIdForSessionTabsOwner } from '../local-structured-session-owner'
-import { noteHostRemovedStructuredChat } from './host-removed-structured-chats'
 
 export function prepareWebSessionTabsSnapshotBrowser(
   base: ReturnType<typeof prepareWebSessionTabsSnapshotBase>
@@ -185,18 +184,11 @@ export function prepareWebSessionTabsSnapshotBrowser(
       // A matching host row is authoritative; retaining the provisional tab beside its mirror
       // would briefly render two panes before lifecycle publication is recorded.
       // A host that cannot list its chats is no evidence this one closed.
-      if (publishedAgentSessionIds.has(tab.entityId)) {
-        return false
-      }
-      if (
-        !agentSessionsAffirmed ||
-        shouldRetainStructuredAgentSessionLaunchTab(worktreeId, tab.entityId)
-      ) {
-        return true
-      }
-      // Listed before, affirmed absent now: the chat itself is gone, not a launch still starting.
-      noteHostRemovedStructuredChat(tab.entityId)
-      return false
+      return (
+        !publishedAgentSessionIds.has(tab.entityId) &&
+        (!agentSessionsAffirmed ||
+          shouldRetainStructuredAgentSessionLaunchTab(worktreeId, tab.entityId))
+      )
     }
     if (tab.contentType === 'browser') {
       return (

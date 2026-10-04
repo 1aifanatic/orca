@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Tab } from '../../../../../shared/tab-types'
 import { createTestStore, makeWorktree, seedStore } from '../store-test-helpers'
-import type * as OutboxStorageModule from '@/components/native-chat/structured-agent-session-outbox-storage'
 
-const mocks = vi.hoisted(() => ({ beginClose: vi.fn(), discardOutbox: vi.fn() }))
+const mocks = vi.hoisted(() => ({ beginClose: vi.fn() }))
 
 vi.mock('sonner', () => ({
   toast: { info: vi.fn(), success: vi.fn(), error: vi.fn(), warning: vi.fn() }
@@ -11,13 +10,6 @@ vi.mock('sonner', () => ({
 vi.mock('@/runtime/structured-agent-session-tab-retirement', () => ({
   beginStructuredAgentSessionTabClose: mocks.beginClose
 }))
-vi.mock(
-  '@/components/native-chat/structured-agent-session-outbox-storage',
-  async (importOriginal) => ({
-    ...(await importOriginal<typeof OutboxStorageModule>()),
-    discardStructuredAgentSessionLaunchOutbox: mocks.discardOutbox
-  })
-)
 
 // `repoId::path` names both checkouts: this machine's and the paired server's.
 const WORKTREE = 'repo-1::/work/app'
@@ -66,7 +58,6 @@ function storeWith(tab: Tab): ReturnType<typeof createTestStore> {
 
 beforeEach(() => {
   mocks.beginClose.mockReset()
-  mocks.discardOutbox.mockReset()
 })
 
 describe('closing a structured chat from outside its workspace', () => {
@@ -90,14 +81,5 @@ describe('closing a structured chat from outside its workspace', () => {
 
     expect(mocks.beginClose).not.toHaveBeenCalled()
     expect(store.getState().unifiedTabsByWorktree[WORKTREE] ?? []).toEqual([])
-  })
-
-  // Its queued messages go with it, as for any close, so notes they carried come back.
-  it('throws away the queued messages of a chat it can name no host for', () => {
-    const store = storeWith(chatTab())
-
-    store.getState().closeUnifiedTab('agent-session:chat-1')
-
-    expect(mocks.discardOutbox).toHaveBeenCalledWith('chat-1')
   })
 })
