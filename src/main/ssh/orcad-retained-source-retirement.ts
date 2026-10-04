@@ -8,7 +8,10 @@
 import { listEnvironments } from '../../shared/runtime-environment-store'
 import type { SshTarget } from '../../shared/ssh-types'
 import type { Store } from '../persistence'
-import { listOrcadMigrationCutoverChainForTarget } from './orcad-migration-cutover-journal'
+import {
+  listOrcadMigrationCutoverChainForTarget,
+  writeOrcadMigrationSourceCutover
+} from './orcad-migration-cutover-journal'
 import { retireOrcadMigrationSource } from './orcad-migration-source-retirement'
 import { compareRetainedOrcadSource } from './orcad-retained-source'
 
@@ -27,6 +30,7 @@ export async function retireRetainedOrcadSourceChain(
   // Rows an older build changed are a new move, never something to delete.
   if (
     head.phase === 'destination-committed' &&
+    !head.sourceRetiringAt &&
     compareRetainedOrcadSource(store, target, head) !== 'unchanged'
   ) {
     return 'skipped'
@@ -34,6 +38,12 @@ export async function retireRetainedOrcadSourceChain(
   const environment =
     listEnvironments(userDataPath).find((entry) => entry.id === head.destinationEnvironmentId) ??
     null
+  if (head.phase === 'destination-committed' && !head.sourceRetiringAt) {
+    writeOrcadMigrationSourceCutover(userDataPath, {
+      ...head,
+      sourceRetiringAt: new Date().toISOString()
+    })
+  }
   for (const cutover of chain.toReversed()) {
     await runTargetLifecycle(target.id, () =>
       retireOrcadMigrationSource({ userDataPath, store, environment: null }, cutover.migrationId)
