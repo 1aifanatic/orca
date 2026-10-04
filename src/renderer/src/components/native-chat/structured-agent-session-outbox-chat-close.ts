@@ -29,7 +29,7 @@ export function settleStructuredAgentSessionOutboxForClosedChat(
     if (!neverWentOut(entry)) {
       kept.push(entry)
     } else if (!(options.cancelledLaunch && entry.source === 'launch')) {
-      // The draft holds the text before the notes it carried are cleared.
+      // The draft holds the text first; a cancelled launch's notes come back, any other's are used.
       returnStructuredAgentSessionMessage(entry)
       endStructuredAgentSessionEntry(entry, options.cancelledLaunch ? 'discarded' : 'returned')
     }

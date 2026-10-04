@@ -137,7 +137,6 @@ function thrownSettlement(
   return context.firstAttempt ? returnedFor(failure) : stillSendingFor(failure)
 }
 
-/** The host's answer to one attempt, as one of the three ends. */
 /** Whether the host itself answered: a refusal it returned or threw, or a code it turned the call
  *  away with. Anything else is the transport, which says nothing about the host. */
 function answeredByHost(answer: StructuredAgentSessionSendAnswer): boolean {
