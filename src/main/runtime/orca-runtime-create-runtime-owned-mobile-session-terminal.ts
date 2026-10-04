@@ -9,6 +9,8 @@ import type {
   RuntimeMobileSessionTerminalTab
 } from '../../shared/runtime-types'
 import { randomUUID } from 'node:crypto'
+import { copySleepingAgentLaunchConfig } from './runtime-agent-launch-resolution'
+import { deriveRemoteRuntimeTerminalCreateHandle } from './remote-runtime-terminal-create-identity'
 import { parsePaneKey } from '../../shared/stable-pane-id'
 import { placeCreatedSessionTab } from '../../shared/session-tab-placement'
 import {
@@ -18,6 +20,15 @@ import {
 } from './mobile-session-layout-projection'
 
 export class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal extends OrcaRuntimeWithResolveMobileSessionTerminalCommand {
+  private readonly ownedMobileDispatchRecipes = new Map<
+    string,
+    {
+      launchConfig?: SleepingAgentLaunchConfig
+      launchAgent?: TuiAgent
+      connectionId: string | null
+    }
+  >()
+
   protected async createRuntimeOwnedMobileSessionTerminal(
     worktreeId: string,
     activate: boolean,
@@ -44,9 +55,39 @@ export class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal extends Orca
     const stableSessionId =
       opts.identity?.sessionId ?? (workspace.connectionId ? undefined : `serve-${randomUUID()}`)
     const isNewSession = stableSessionId !== undefined && opts.identity?.sessionId === undefined
+    const mutationHandle = opts.createMutation
+      ? deriveRemoteRuntimeTerminalCreateHandle(
+          opts.createMutation.clientIdentity,
+          worktreeId,
+          opts.createMutation.id
+        )
+      : undefined
     const create = (preAllocatedHandle?: string) =>
       this.createTerminal(`id:${worktreeId}`, {
         focus: false,
+        ...(mutationHandle
+          ? {
+              onPtySpawnDispatched: (launch) => {
+                if (!launch) {
+                  return
+                }
+                if (
+                  !this.ownedMobileDispatchRecipes.has(mutationHandle) &&
+                  this.ownedMobileDispatchRecipes.size >= 4096
+                ) {
+                  throw new Error('runtime_unavailable')
+                }
+                // Retain original dispatch evidence across an ambiguous response; retry payloads cannot replace it.
+                this.ownedMobileDispatchRecipes.set(mutationHandle, {
+                  connectionId: workspace.connectionId ?? null,
+                  ...(launch.launchConfig
+                    ? { launchConfig: copySleepingAgentLaunchConfig(launch.launchConfig) }
+                    : {}),
+                  ...(launch.launchAgent ? { launchAgent: launch.launchAgent } : {})
+                })
+              }
+            }
+          : {}),
         ...(preAllocatedHandle ? { preAllocatedHandle } : {}),
         command: opts.command,
         cwd,
@@ -93,6 +134,32 @@ export class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal extends Orca
     }
     if (opts.createMutation) {
       livePty.pty.runtimeSessionOwned = true
+      if (
+        livePty.pty.launchAgent &&
+        opts.launchAgent &&
+        livePty.pty.launchAgent !== opts.launchAgent
+      ) {
+        throw new Error('terminal_create_identity_conflict')
+      }
+      const recipe =
+        mutationHandle === terminal.handle && this.ownedMobileDispatchRecipes.get(terminal.handle)
+      if (
+        recipe &&
+        recipe.connectionId === (workspace.connectionId ?? null) &&
+        (!livePty.pty.launchAgent || livePty.pty.launchAgent === recipe.launchAgent)
+      ) {
+        livePty.pty.launchAgent ??= recipe.launchAgent ?? null
+        if (!livePty.pty.launchConfig && recipe.launchConfig) {
+          livePty.pty.launchConfig = copySleepingAgentLaunchConfig(recipe.launchConfig)
+        }
+      }
+      if (opts.launchConfig && !livePty.pty.launchConfig) {
+        // Missing original dispatch evidence cannot authorize a retry's captured recipe.
+        throw new Error('runtime_unavailable')
+      }
+      if (mutationHandle) {
+        this.ownedMobileDispatchRecipes.delete(mutationHandle)
+      }
     }
     const parentTabId = livePty.pty.tabId ?? `pty:${livePty.pty.ptyId}`
     const leafId = parsePaneKey(livePty.pty.paneKey ?? '')?.leafId ?? randomUUID()
