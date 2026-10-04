@@ -246,6 +246,19 @@ async function waitRows() {
   )
 }
 
+/** The child echoes a send, which opens its turn: a message waiting behind that turn then goes in. */
+function echo(connection: FakeConnection, text: string): void {
+  frame(connection, {
+    type: 'system',
+    subtype: 'init',
+    uuid: 'init-resumed',
+    model: 'claude-sonnet-5',
+    capabilities: CAPABILITIES
+  })
+  const written = connection.sent.find((message) => JSON.stringify(message).includes(text))!
+  frame(connection, { ...written, uuid: written.uuid })
+}
+
 async function resumedWith(connection: FakeConnection, text: string): Promise<FakeConnection> {
   return eventually(() => {
     const started = claude.connections.at(-1)!
@@ -303,6 +316,7 @@ it('holds the message with its reason while the exit stays unverifiable, and sen
   // The sweep's next tick retries the stop; the exit is proven and both messages go out.
   await host['lifetime'].idleSweep.tick()
   const resumed = await resumedWith(connection, 'Carry on.')
+  echo(resumed, 'Carry on.')
   await eventually(() => expect(wrote(resumed, 'And this.')).toBe(true))
   expect(connection.closeCount).toBe(4)
   expect(owedWindDown()).toBeUndefined()
@@ -461,6 +475,7 @@ it('retries once per new message: commits after a second waiting message retry n
   }
   expect(connection.closeCount).toBe(7)
   const resumed = await resumedWith(connection, 'Carry on.')
+  echo(resumed, 'Carry on.')
   await eventually(() => expect(wrote(resumed, 'And this.')).toBe(true))
 })
 
@@ -498,6 +513,7 @@ it('queues a follow-up as a draft by default while a message waits, and Steer re
 
   await host['lifetime'].idleSweep.tick()
   const resumed = await resumedWith(connection, 'Carry on.')
+  echo(resumed, 'Carry on.')
   await eventually(() => expect(wrote(resumed, 'And this.')).toBe(true))
 })
 
