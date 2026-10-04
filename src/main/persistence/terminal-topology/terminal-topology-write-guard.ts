@@ -28,7 +28,6 @@ type TopologyWriteGuardState = TopologyWriteGuardOptions & {
 
 declare global {
   // Why global: a test's `vi.resetModules()` must not load an unarmed copy of this module.
-  // oxlint-disable-next-line no-var -- a global declaration has to be a var.
   var __orcaTerminalTopologyWriteGuard: TopologyWriteGuardState | undefined
 }
 
