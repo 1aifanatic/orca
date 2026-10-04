@@ -80,7 +80,9 @@ async function terminal(
 type OrcadServe = { daemonPid: number; stop: () => Promise<void> }
 
 /** `orca serve` on orcad, as the T6-11 launcher runs it, on the host's own profile. */
-async function startOrcadServe(host: HeadlessPairedRuntimeHost): Promise<OrcadServe> {
+async function startOrcadServe(
+  host: Pick<HeadlessPairedRuntimeHost, 'env' | 'userDataDir'>
+): Promise<OrcadServe> {
   const child = spawnProcess({
     program: orcadRuntime!,
     args: [path.join(slotDir, 'orcad.js'), '--bind', '127.0.0.1', '--port', '0', '--json'],
@@ -120,6 +122,26 @@ async function startOrcadServe(host: HeadlessPairedRuntimeHost): Promise<OrcadSe
     }
   }
 }
+
+// Why: an SSH-managed orcad on this machine runs under ~/.orca, beside the desktop's own profile.
+test("Electron serve starts beside a live daemon another profile's orcad forked", async () => {
+  const other = cliServeProfile(scratch)
+  const orcad = await startOrcadServe(other)
+  try {
+    const host = await launchHeadlessPairedRuntimeHost({
+      pinnedServePort: true,
+      userDataParent: scratch
+    })
+    try {
+      expect(daemonPid(host.userDataDir)).not.toBe(orcad.daemonPid)
+    } finally {
+      await host.dispose()
+    }
+  } finally {
+    await orcad.stop()
+    await cleanupE2EDaemons(other.userDataDir)
+  }
+})
 
 test('a terminal survives Electron serve → orcad serve → Electron serve on one profile', async () => {
   const host = await launchHeadlessPairedRuntimeHost({
@@ -161,13 +183,7 @@ test('a terminal survives Electron serve → orcad serve → Electron serve on o
   }
 })
 
-// Known gap: on Windows, Electron crashes at startup (0xFFFF7003) while a daemon orcad forked is
-// live; fixed, and these re-enabled, in the PR stacked on #24972.
-const ORCAD_DAEMON_WINDOWS_GAP =
-  "Known Windows gap: Electron crashes at startup beside a daemon orcad forked (follow-up to #24972)"
-
 test("Electron serve adopts a terminal orcad's daemon owns", async () => {
-  test.skip(process.platform === 'win32', ORCAD_DAEMON_WINDOWS_GAP)
   const host = await launchHeadlessPairedRuntimeHost({
     pinnedServePort: true,
     userDataParent: scratch
@@ -206,8 +222,6 @@ test("Electron serve adopts a terminal orcad's daemon owns", async () => {
 })
 
 test('each serve host refuses a profile the other holds', async () => {
-  // orcad forks its own daemon here, since Electron's idles out with no terminal open.
-  test.skip(process.platform === 'win32', ORCAD_DAEMON_WINDOWS_GAP)
   const host = await launchHeadlessPairedRuntimeHost({
     pinnedServePort: true,
     userDataParent: scratch
@@ -258,7 +272,7 @@ test('`orca serve` runs on orcad by default and on Electron with ORCA_SERVE_RUNT
   try {
     const byDefault = await startCliServe(profile)
     try {
-      // Windows defaults to Electron until Electron serve can adopt orcad's daemon there.
+      // Windows still defaults to Electron serve; orcad is opt-in there.
       if (process.platform === 'win32') {
         expect(byDefault.stderr()).toContain('not the default on Windows yet')
         expect(byDefault.readiness.health).toBeUndefined()
