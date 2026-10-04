@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { z } from 'zod'
-import { getEnvironmentStorePath } from './runtime-environment-store'
+import { getEnvironmentStorePath } from './runtime-environment-store-file'
 
 // The environment schema v1.4.217 and v1.4.218 shipped: a plain z.object, so unknown keys are
 // stripped, and every write (lastUsedAt included) rewrites the whole file.

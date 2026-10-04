@@ -22,7 +22,10 @@ import {
   type RelayWatcherPendingSetup
 } from './relay-watcher-setup-tracking'
 import { RelayWatcherRemovalFence } from './relay-watcher-removal-fence'
-import { releaseStaleRelayWatches } from './relay-watcher-stale-client-release'
+import {
+  pruneStaleRelayWatchClients,
+  releaseStaleRelayWatches
+} from './relay-watcher-stale-client-release'
 import { PromiseSettlementWaiters } from '../shared/promise-settlement-waiters'
 import { joinRelayWatcherPendingSetup } from './relay-watcher-pending-setup-join'
 import { createRelayWatcherState } from './relay-watcher-state'
@@ -168,12 +171,7 @@ export class RelayFilesystemWatchRegistry {
       return
     }
     const clientId = context?.clientId ?? 0
-    for (const [registeredClientId, isStale] of state.clients) {
-      if (registeredClientId !== clientId && isStale()) {
-        state.clients.delete(registeredClientId)
-        state.clientWatchIds.delete(registeredClientId)
-      }
-    }
+    pruneStaleRelayWatchClients(state, clientId)
     if ([...state.clients.keys()].some((registeredClientId) => registeredClientId !== clientId)) {
       // Why: destructive cleanup cannot acknowledge while another client owns the handle.
       throw new Error('Remote path is still watched by another client')
@@ -213,7 +211,7 @@ export class RelayFilesystemWatchRegistry {
 
   reopen(): void {
     this.disposed = false
-    this.watcherPool.reopen()
+    this.watcherPool.reopen?.()
   }
 
   disposeAndWait = (): Promise<void> =>

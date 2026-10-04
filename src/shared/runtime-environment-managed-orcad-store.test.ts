@@ -17,7 +17,7 @@ import {
 } from './runtime-environment-managed-orcad-store'
 import { getRuntimeEnvironmentSidecarPath } from './runtime-environment-sidecar'
 import { getRuntimeSshAccess } from './runtime-environments'
-import { shippedBuildRewrite } from './runtime-environment-shipped-store-fixture'
+import { shippedBuildRewrite } from './runtime-environment-shipped-store.test-fixture'
 
 const deployment = {
   sshTargetId: 'ssh-1',

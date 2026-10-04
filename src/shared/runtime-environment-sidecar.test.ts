@@ -19,7 +19,7 @@ import {
   prepareRuntimeEnvironmentSshAccessLink
 } from './runtime-environment-ssh-access-store'
 import { readPersistedEnvironmentStore } from './runtime-environment-store-file'
-import { shippedBuildRewrite } from './runtime-environment-shipped-store-fixture'
+import { shippedBuildRewrite } from './runtime-environment-shipped-store.test-fixture'
 
 const pairing = {
   v: 2 as const,

@@ -1,5 +1,6 @@
 import type { WorkspaceHostScope } from './ui-chrome-types'
 import type { SavedPortForward } from './ssh-types'
+import { isRecord } from './orcad-migration-manifest-fields'
 
 export function parseStringArray(value: unknown, max: number): string[] {
   if (
@@ -73,8 +74,4 @@ export function requiredRecord(value: unknown, error: string): Record<string, un
     throw new Error(error)
   }
   return value
-}
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

@@ -1,10 +1,3 @@
-export {
-  isRetryableDownloadError,
-  RETRYABLE_HTTP_STATUSES,
-  RETRYABLE_NET_ERROR,
-  type HttpStatusError
-} from '../network/transient-download-error'
-
 export type DownloadIncomingMessage = Electron.IncomingMessage &
   NodeJS.ReadableStream & {
     headers: Record<string, string | string[] | undefined>

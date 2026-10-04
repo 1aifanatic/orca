@@ -21,9 +21,10 @@ import {
   type WindowsBreakawayLaunchContract,
   type WindowsBreakawayLaunchReport
 } from './windows-breakaway-launch'
+import { RELAY_WINDOWS_PROCESS_TREE_FILENAME } from './relay-artifacts'
 
 /** Both bundles stage the addon under this name beside their entry script. */
-const WINDOWS_PROCESS_TREE_ADDON = './windows-process-tree.node'
+const WINDOWS_PROCESS_TREE_ADDON = `./${RELAY_WINDOWS_PROCESS_TREE_FILENAME}`
 
 type SpawnOutsideJobResult =
   | { ok: true; pid: number; inJob: boolean }

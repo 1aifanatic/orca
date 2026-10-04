@@ -5,6 +5,7 @@ import {
   type OrcadMigrationManifest
 } from './orcad-migration-manifest'
 import { parseOrcadMigrationSnapshotUploadStates } from './orcad-migration-scrollback'
+import { isRecord } from './orcad-migration-manifest-fields'
 
 export function parseOrcadMigrationCatalogState(
   value: unknown,
@@ -82,10 +83,6 @@ function requireRecord(value: unknown): Record<string, unknown> {
     throw new Error('orcad_migration_catalog_state_invalid')
   }
   return value
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function requireDate(value: unknown): string {

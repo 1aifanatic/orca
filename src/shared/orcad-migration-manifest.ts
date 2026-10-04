@@ -33,6 +33,7 @@ export {
   MAX_ORCAD_MIGRATION_STAGED_CATALOGS,
   normalizeOrcadMigrationStagedCatalogs
 } from './orcad-migration-staged-catalog-validation'
+import { isRecord } from './orcad-migration-manifest-fields'
 
 export type OrcadMigrationManifestSource = {
   sshTargetId: string
@@ -173,8 +174,4 @@ function canonicalizeJsonValue(value: unknown): unknown {
       .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
       .map(([key, entry]) => [key, canonicalizeJsonValue(entry)])
   )
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
