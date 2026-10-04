@@ -15,8 +15,11 @@ type RuntimeInternals = {
   pruneDisconnectedPtyTranscript: (pty: PtyRecord) => void
 }
 
-function onlyRuntimeLeaf(runtime: OrcaRuntimeService) {
-  const leaves: unknown = Reflect.get(runtime, 'leaves')
+function onlyRuntimeLeaf(runtime: unknown) {
+  if (typeof runtime !== 'object' || runtime === null || !('leaves' in runtime)) {
+    throw new Error('Runtime has no leaves')
+  }
+  const leaves = runtime.leaves
   if (!(leaves instanceof Map) || leaves.size !== 1) {
     throw new Error('Expected exactly one runtime leaf')
   }
@@ -78,7 +81,10 @@ describe('pruneDisconnectedPtyTranscript clears the wait-scan cache', () => {
     try {
       runtime.onPtyData(ptyId, 'first plain line\n', 1_000)
       expect(leafScans()).toBe(2)
-      expect(Reflect.get(leaf, 'tailWaitState')).toMatchObject({ fromTail: true, signal: null })
+      expect('tailWaitState' in leaf ? leaf.tailWaitState : undefined).toMatchObject({
+        fromTail: true,
+        signal: null
+      })
       runtime.onPtyData(ptyId, 'second plain line\n', 2_000)
       expect(leafScans()).toBe(3)
       expect(leaf.waitBlockedAt).toBeNull()
@@ -103,7 +109,10 @@ describe('pruneDisconnectedPtyTranscript clears the wait-scan cache', () => {
       )
       expect(leaf.tailBuffer).toHaveLength(MAX_TAIL_LINES)
       expect(leaf.tailBuffer).not.toContain('leaf-only history')
-      expect(Reflect.get(leaf, 'tailWaitState')).toMatchObject({ fromTail: true, signal: null })
+      expect('tailWaitState' in leaf ? leaf.tailWaitState : undefined).toMatchObject({
+        fromTail: true,
+        signal: null
+      })
       runtime.onPtyData(ptyId, 'Update available! Press Enter to continue.\n', 8_000)
       expect(leaf.waitBlockedAt).toBe(8_000)
     } finally {
