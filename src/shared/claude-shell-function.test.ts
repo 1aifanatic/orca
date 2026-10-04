@@ -35,7 +35,7 @@ function fixture() {
   }
   writeFileSync(
     join(bin, 'claude'),
-    '#!/bin/sh\n[ "$1" != hold ] || sleep 0.1\nprintf "HOME=%s KEY=%s ARG=%s TWIN=%s\\n" "${CLAUDE_CONFIG_DIR-default}" "${ANTHROPIC_API_KEY-none}" "$1" "${ORCA_CLAUDE_INJECTED_CONFIG_DIR-none}"\nexit 23\n'
+    '#!/bin/sh\n[ "$1" != hold ] || { : > "$HOME/hold-started"; sleep 0.1; }\nprintf "HOME=%s KEY=%s ARG=%s TWIN=%s\\n" "${CLAUDE_CONFIG_DIR-default}" "${ANTHROPIC_API_KEY-none}" "$1" "${ORCA_CLAUDE_INJECTED_CONFIG_DIR-none}"\nexit 23\n'
   )
   chmodSync(join(bin, 'claude'), 0o700)
   const pointer = join(root, 'selected')
@@ -77,7 +77,7 @@ describe('Claude invocation account selection', () => {
       const f = fixture()
       const result = f.run(
         shell,
-        `${getPosixClaudeShellFunction()}\nclaude hold & child=$!\nsleep 0.02\nprintf '%s' '${f.b}' > "$ORCA_CLAUDE_PROFILE_POINTER"\nclaude 'two words'\nwait "$child"`
+        `${getPosixClaudeShellFunction()}\nclaude hold & child=$!\ni=0; until [ -e hold-started ] || [ $i -ge 500 ]; do sleep 0.01; i=$((i+1)); done\nprintf '%s' '${f.b}' > "$ORCA_CLAUDE_PROFILE_POINTER"\nclaude 'two words'\nwait "$child"`
       )
       expect(result.stdout).toContain(`HOME=${f.a} KEY=none ARG=hold TWIN=${f.a}`)
       expect(result.stdout).toContain(`HOME=${f.b} KEY=none ARG=two words TWIN=${f.b}`)
