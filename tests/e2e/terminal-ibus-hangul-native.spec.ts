@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { writeFileSync } from 'node:fs'
 import type { Page, TestInfo } from '@stablyai/playwright-test'
 import type { BrowserWindow, Event as ElectronEvent, Input as ElectronInput } from 'electron'
 import { test, expect } from './helpers/orca-app'
@@ -572,9 +573,11 @@ test.describe('Native IBus Hangul workspace notes @headful', () => {
         })
       )
       let evidenceAttached = false
-      await testInfo
-        .attach('native-notes-dom-trace', {
-          body: JSON.stringify({
+      try {
+        const evidencePath = testInfo.outputPath('native-notes-dom-trace.json')
+        writeFileSync(
+          evidencePath,
+          `${JSON.stringify({
             nativeOperatingSystemIme: true,
             engine: 'ibus-hangul',
             display: process.env.DISPLAY,
@@ -584,13 +587,16 @@ test.describe('Native IBus Hangul workspace notes @headful', () => {
             native,
             onData: [],
             ...trace
-          }),
+          })}\n`
+        )
+        await testInfo.attach('native-notes-dom-trace', {
+          path: evidencePath,
           contentType: 'application/json'
         })
-        .then(() => {
-          evidenceAttached = true
-        })
-        .catch(() => undefined)
+        evidenceAttached = true
+      } catch {
+        // Failed-flow diagnostics must preserve the original assertion.
+      }
       await readDiagnostic(() => events.evaluate((probe) => probe.dispose()))
       await readDiagnostic(() =>
         nativeProbe.evaluate((probe) => {
