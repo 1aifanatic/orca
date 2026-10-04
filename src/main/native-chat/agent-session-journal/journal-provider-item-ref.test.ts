@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { AgentJournalItemIdentity } from '../../../shared/agent-session-journal-types'
 import { createTrackedJournalOpener } from './journal-host-database-test-support'
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 
 const journals = createTrackedJournalOpener()
 const roots: string[] = []
@@ -26,7 +27,7 @@ async function open(root?: string) {
       workspaceId: 'workspace-1',
       hostId: 'local',
       agent: 'codex',
-      providerHandle: { kind: 'codex', threadId: 'root' }
+      providerHandle: codexProviderHandle('root')
     },
     stateDirectory: directory,
     now: () => 1_000

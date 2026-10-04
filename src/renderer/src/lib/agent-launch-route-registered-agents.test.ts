@@ -71,12 +71,14 @@ function pairedStatus(runtimeId: string): RuntimeEnvironmentStatus {
 function store(
   overrides: { settings?: Partial<typeof SETTINGS>; runtimeId?: string } = {}
 ): AgentLaunchRouteStore {
-  return {
+  const state = {
     settings: { ...SETTINGS, ...overrides.settings },
     runtimeStatusByEnvironmentId: new Map([['env-1', pairedStatus(overrides.runtimeId ?? 'rt-1')]]),
     worktreesByRepo: {},
     folderWorkspaces: []
   }
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the route builder reads only the settings, host statuses and workspace rows given here; a missing member reads as absent, as the sibling route tests rely on.
+  return state as unknown as AgentLaunchRouteStore
 }
 
 const routeFor = (appStore: AgentLaunchRouteStore, agent: TuiAgent, workspace = LOCAL) =>

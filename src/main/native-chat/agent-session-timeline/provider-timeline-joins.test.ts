@@ -13,6 +13,7 @@ import { createTrackedJournalOpener } from '../agent-session-journal/journal-hos
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { createLegacyProviderTimelineIdentityScheme } from './provider-timeline-identity'
 import { ProviderTimelineJoins, type ProviderTimelineItemJoin } from './provider-timeline-joins'
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 
 const journals = createTrackedJournalOpener()
 const roots: string[] = []
@@ -33,7 +34,7 @@ async function openJournal(): Promise<AgentSessionJournal> {
       workspaceId: 'workspace-1',
       hostId: 'local',
       agent: 'codex',
-      providerHandle: { kind: 'codex', threadId: 'root' }
+      providerHandle: codexProviderHandle('root')
     },
     stateDirectory: root,
     now: () => 1_000

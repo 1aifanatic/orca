@@ -77,16 +77,17 @@ export async function acquireAcpStructuredSession(input: {
   })
   input.track(child)
   let session: AcpStructuredSession | null = null
-  let lane: AcpStructuredLane | null = null
+  // A slot rather than a `let`: closures read it, and control-flow narrowing cannot see them write.
+  const slot: { lane: AcpStructuredLane | null } = { lane: null }
   const options = new AcpStructuredOptions()
-  const prompts = new AcpStructuredPrompts(() => lane)
+  const prompts = new AcpStructuredPrompts(() => slot.lane)
   const early: (() => void)[] = []
   let replaying = false
   const whenLane = (deliver: () => void): void => {
     if (replaying) {
       return
     }
-    if (lane) {
+    if (slot.lane) {
       deliver()
     } else if (early.length < MAX_EARLY_FRAMES) {
       early.push(deliver)
@@ -109,7 +110,7 @@ export async function acquireAcpStructuredSession(input: {
     },
     onRequest: (method, params, context) => prompts.handle(method, params, context),
     onExtensionNotification: (method, params) =>
-      whenLane(() => lane?.apply(lane.translator.notification(method, params, now()))),
+      whenLane(() => slot.lane?.apply(slot.lane.translator.notification(method, params, now()))),
     onDiagnostic: (message) =>
       deps.logger?.warn('ACP agent protocol diagnostic', {
         scope: 'acp-diagnostic',
@@ -118,7 +119,7 @@ export async function acquireAcpStructuredSession(input: {
       })
   })
   runtime.subscribe((event: AcpSessionEvent) =>
-    whenLane(() => lane && routeAcpSessionEvent({ lane, options }, event, now()))
+    whenLane(() => slot.lane && routeAcpSessionEvent({ lane: slot.lane, options }, event, now()))
   )
   child.onExit(() => {
     runtime.close(new Error(child.stderrTail() || `${spec.command} exited`))
@@ -130,7 +131,7 @@ export async function acquireAcpStructuredSession(input: {
     deps.readProcessStartTime
   )
   const makeLane = (providerSessionId: string): AcpStructuredLane => {
-    lane = new AcpStructuredLane({
+    const lane = new AcpStructuredLane({
       sink,
       sessionId,
       agent: spec.agent,
@@ -140,6 +141,7 @@ export async function acquireAcpStructuredSession(input: {
       onInputAccepted: (clientMessageId) => session?.turns.accept(clientMessageId),
       onFailed: () => input.forceClose(sessionId)
     })
+    slot.lane = lane
     for (const deliver of early.splice(0)) {
       deliver()
     }
@@ -182,7 +184,7 @@ export async function acquireAcpStructuredSession(input: {
     }
     if (!started || !liveLane) {
       liveLane?.dispose()
-      lane = null
+      slot.lane = null
       started = await runtime.start({ cwd: launch.cwd, mcpServers: [] })
       liveLane = makeLane(started.sessionId)
     }
@@ -238,7 +240,7 @@ export async function acquireAcpStructuredSession(input: {
     return { acquisition: { process, link, acquisitionGeneration: generation }, session }
   } catch (error) {
     session = null
-    lane?.dispose()
+    slot.lane?.dispose()
     if (error instanceof AcpAuthRequiredError) {
       throw new AgentSessionAcquisitionRefusal(
         `${spec.agent} reported that it is not signed in: ${error.message}`,
