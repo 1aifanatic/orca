@@ -1,8 +1,7 @@
 import type { PickerOption } from '../components/PickerModal'
 import type { MobileGroupMode, MobileSortMode } from './workspace-view-settings'
 
-// Why: sort, group, and filters write the host's shared view settings via ui.set, and the
-// host may be headless, so the note can't promise a desktop sidebar.
+// Why: the host may be headless, so the note can't promise a desktop sidebar.
 export const WORKSPACE_VIEW_SHARED_NOTE = 'Shared with other devices on this host'
 
 export const WORKSPACE_SORT_OPTIONS: PickerOption<MobileSortMode>[] = [

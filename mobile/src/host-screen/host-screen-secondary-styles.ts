@@ -47,6 +47,9 @@ export const hostScreenSecondaryStyles = StyleSheet.create({
     paddingHorizontal: spacing.xs,
     marginBottom: spacing.md
   },
+  filterModalHeading: {
+    flexShrink: 1
+  },
   filterModalTitle: {
     fontSize: 15,
     fontWeight: '600',

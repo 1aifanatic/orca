@@ -57,7 +57,7 @@ export function HostScreenOverlays({ controller }: { controller: HostScreenContr
 
       <BottomDrawer visible={state.showFilterModal} onClose={() => state.setShowFilterModal(false)}>
         <View style={styles.filterModalHeader}>
-          <View>
+          <View style={styles.filterModalHeading}>
             <Text style={styles.filterModalTitle}>Filter</Text>
             <Text style={styles.filterModalSubtitle}>{WORKSPACE_VIEW_SHARED_NOTE}</Text>
           </View>
