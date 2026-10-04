@@ -226,6 +226,7 @@ function markChangedRetainedSources(
     if (
       interruptedDelta ||
       (isRetainedOrcadMigrationSourceCutover(head) &&
+        !head.sourceRetiringAt &&
         compareRetainedOrcadSource(store, target, head) === 'changed')
     ) {
       store.updateSshTarget(target.id, {

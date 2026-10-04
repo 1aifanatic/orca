@@ -458,4 +458,21 @@ describe('moving what an older build added to a converted host', () => {
     expect(store.getAllWorktreeMetaForHost(`ssh:${TARGET.id}`)).toEqual({})
     expect(listOrcadMigrationSourceCutovers(userDataPath)).toEqual([])
   })
+
+  it('resumes a retirement that failed after deleting rows, never reading it as changed', async () => {
+    await convertedThenChangedOnOlderBuild()
+    await deltaMove()
+    const lifecycle = <T>(_id: string, run: () => Promise<T>) => run()
+    const target = () => store.getSshTarget(TARGET.id)!
+    vi.spyOn(store, 'flushPendingOrThrowAsync').mockRejectedValueOnce(new Error('disk full'))
+    await expect(
+      retireRetainedOrcadSourceChain(userDataPath, store, target(), lifecycle)
+    ).rejects.toThrow('disk full')
+    reconcileManagedOrcadSshTargets(userDataPath, store, now)
+    expect(target().orcadFence?.sourceChangedAt).toBeUndefined()
+    await expect(
+      retireRetainedOrcadSourceChain(userDataPath, store, target(), lifecycle)
+    ).resolves.toBe('retired')
+    expect(store.getRepos()).toEqual([])
+  })
 })
