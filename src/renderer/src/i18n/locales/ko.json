@@ -503,7 +503,8 @@
           "muse_label": "Muse",
           "opencode2_label": "OpenCode 2",
           "codebuddy_label": "CodeBuddy",
-          "zcode_label": "ZCode"
+          "zcode_label": "ZCode",
+          "jcode_label": "Jcode"
         },
         "skill": {
           "cli": {
@@ -2001,7 +2002,8 @@
         "c679af7ad9": "내 할 일 새로 고침",
         "dfd72673e7": "프로젝트 선택을 저장하지 못했습니다.",
         "b797bdd7c3": "검색 지우기",
-        "99c2755218": "Jira JQL, 예: project = ABC AND statusCategory != Done",
+        "jiraTextMatchesNotice": "텍스트 일치 결과를 표시합니다. Jira에서 이 검색을 JQL로 실행할 수 없습니다.",
+        "99c2755218": "이슈 검색 또는 JQL 입력, 예: project = ABC",
         "2ff9fd71fd": "Jira 이슈 새로 고침",
         "0b65d3fb2c": "Linear 프로젝트 검색...",
         "eec0c5c079": "Linear 이슈 검색...",
@@ -2120,7 +2122,7 @@
         "6edf402e11": "개요",
         "9ae151b26b": "Linear",
         "94d900518d": "선택한 프리셋과 일치하는 이슈가 없습니다.",
-        "f51e254d35": "다른 JQL 쿼리를 시도해 보세요.",
+        "f51e254d35": "다른 검색어나 JQL을 사용해 보세요.",
         "4645a7814f": "Jira",
         "e224d76876": "MR",
         "bbec4717ee": "MR",
@@ -3031,18 +3033,9 @@
           },
           "MobileDriverOverlay": {
             "c6460cf584": "제어권 가져오기",
-            "c8f2e1a4b9": "이 terminal 다시 가져오기",
             "c44659e09f": "휴대폰 조작 중",
-            "7cffad954c": "접기",
             "3eed73394f": "키보드가 일시중지되었습니다.",
-            "faa367dc74": "휴대폰이 이 화면을 휴대폰 크기로 남겨 두었습니다",
-            "54f7d6f69d": "모든 terminals 제어권 가져오기",
-            "b3d8e1f42a": "이 terminal 복원",
-            "e8c4f2a91b": "모든 terminals 복원",
-            "f2a8b9c1d3": "휴대폰에서",
-            "c7e4a2b8f1": "휴대폰이 제어 중",
-            "d9f3c6e2a4": "데스크톱 키보드가 일시 중지되었습니다. 여기서 입력하려면 이 terminals을 다시 가져오거나, 휴대폰이 제어하는 모든 terminals을 다시 가져오거나, 계속 보려면 접으세요.",
-            "a6b1d8f3e2": "휴대폰 세션이 종료되었습니다. 이 terminals 또는 휴대폰이 휴대폰 크기로 남긴 모든 terminals을 데스크톱 크기로 복원하세요."
+            "c7e4a2b8f1": "휴대폰이 제어 중"
           },
           "TerminalAgentSessionForkDialog": {
             "17fc841e59": "컨텍스트 복사",
@@ -7099,7 +7092,7 @@
             "shellEnvToggleLabel": "셸 환경 사용 전환",
             "structuredTitle": "업데이트된 구조화된 기본 채팅 사용",
             "structuredCopy": "새 Codex 및 Claude 에이전트를 구조화된 채팅으로 엽니다. 끄면 터미널 지원 채팅으로 엽니다. 이미 있는 채팅은 그대로 유지됩니다.",
-            "structuredScope": "현재는 로컬 세션만 가능합니다. WSL 및 원격 실행 호스트(SSH 포함)는 계속해서 터미널 채팅을 사용하며 Orca가 프로세스 시작 시간을 읽을 수 없으면 Windows는 이 채팅을 사용합니다.",
+            "structuredScope": "이 컴퓨터와 이를 지원하는 버전을 실행하는 페어링된 Orca 서버에서 실행됩니다. 이전 서버는 터미널 채팅을 유지합니다. WSL 및 SSH 호스트는 계속해서 터미널 채팅을 사용하며 Orca가 프로세스 시작 시간을 읽을 수 없으면 Windows는 이 채팅을 사용합니다.",
             "structuredToggleLabel": "업데이트된 구조화된 기본 채팅 전환",
             "resumeTitle": "다시 시작한 후 작업 중인 채팅을 자동으로 재개합니다.",
             "resumeCopy": "Orca가 종료되거나 업데이트를 설치하면 Orca가 다시 열릴 때 작업 중이던 채팅이 자동으로 재개됩니다.",
@@ -7544,7 +7537,6 @@
         },
         "MobilePane": {
           "dd3cd78d04": "Orca 모바일로 스캔",
-          "35100bca5d": "휴대폰에서 terminals을 사용하는 동안 Orca는 휴대폰 화면에 맞게 terminals을 축소합니다. 앱을 닫거나 다른 곳으로 전환하면 terminals이 휴대폰 크기로 유지되는지(대화형 CLI 도구가 리플로우되지 않음) 또는 데스크탑으로 다시 크기가 조정되는지 여부가 제어됩니다. 배너에서 '이 terminals 복원' 또는 '모든 terminals 복원'을 사용해 언제든지 수동으로 크기를 조정할 수 있습니다.",
           "ee56f1c7e4": "모바일 앱을 나갈 때",
           "3939fd062c": "장치를 취소하면 즉시 연결이 끊어집니다.",
           "254a6d09e4": "페어링됨",
@@ -10035,7 +10027,13 @@
             "72539aede4": "시스템",
             "51ae2183e1": "데스크탑",
             "0534c76311": "Orca 데스크톱 알림용 마스터 스위치입니다.",
-            "4a210b2f72": "알림 활성화"
+            "4a210b2f72": "알림 활성화",
+            "machines": "머신",
+            "machinesDescription": "이 컴퓨터에 알림을 표시할 수 있는 컴퓨터를 선택합니다. SSH 컴퓨터나 페어링된 서버 등이 해당됩니다.",
+            "host": "호스트",
+            "remote": "원격",
+            "ssh": "ssh",
+            "mute": "음소거"
           }
         },
         "orchestration": {
@@ -10693,7 +10691,9 @@
           "a42f6fbdd8": "agents가 작업하는 동안 이 컴퓨터와 디스플레이를 깨어 있게 유지합니다. Orca는 전원 정책에 따라 뚜껑이 닫혀 있을 때도 이 기기를 깨어 있게 유지하도록 요청합니다.",
           "modeTitle": "컴퓨터 절전 방지",
           "modeDescriptionWindows": "켜짐, 에이전트 또는 꺼짐을 선택합니다. 에이전트 모드는 에이전트가 작업하는 동안 활성 상태를 유지합니다. 덮개 닫힘 동작은 이 기기의 전원 설정을 따릅니다.",
-          "modeDescriptionDefault": "켜짐, 에이전트 또는 꺼짐을 선택합니다. 에이전트 모드는 에이전트가 작업하는 동안 활성 상태를 유지합니다. Orca는 또한 전원 정책에 따라 덮개가 닫혀 있을 때 이 기기가 활성 상태를 유지하도록 요청합니다."
+          "modeDescriptionMac": "켜짐, 에이전트 또는 꺼짐을 선택합니다. 에이전트 모드는 에이전트가 작업하는 동안 유휴 절전을 방지하므로 덮개를 연 상태로 긴 작업을 완료할 수 있습니다. 덮개를 닫으면 이 Mac이 절전 모드로 전환됩니다.",
+          "modeDescriptionDefault": "켜짐, 에이전트 또는 꺼짐을 선택합니다. 에이전트 모드는 에이전트가 작업하는 동안 활성 상태를 유지합니다. Orca는 또한 전원 정책에 따라 덮개가 닫혀 있을 때 이 기기가 활성 상태를 유지하도록 요청합니다.",
+          "lidNoteMac": "덮개를 연 상태에서는 유휴 절전을 방지합니다. 덮개를 닫으면 이 Mac이 절전 모드로 전환됩니다."
         },
         "AgentAwakeSetting": {
           "on": "켜짐",
@@ -12066,6 +12066,11 @@
           "usageDescription": "Cursor는 요금 주기에 따라 초기화되는 두 가지 풀과, 소진 후에 발생하는 주문형 지출로 과금합니다.",
           "usageLabel": "사용량",
           "usageTitle": "월간 플랜 사용량"
+        },
+        "NotificationHostToggles": {
+          "offCount": "{{count}}대 꺼짐",
+          "machines": "머신",
+          "machinesDescription": "이 컴퓨터에 알림을 표시할 수 있는 컴퓨터를 선택합니다. 페어링된 서버의 스위치는 해당 서버를 통해 수행하는 작업에도 적용됩니다."
         }
       },
       "right": {
@@ -17812,6 +17817,7 @@
       "dismissDeliveryNotice": "닫기",
       "messageNotSent": "메시지가 전송되지 않음",
       "deliveryUnconfirmed": "전달 확인 안 됨 — 다시 시도하기 전에 채팅을 확인하세요",
+      "messageSending": "전송 중…",
       "queuedMessages": {
         "alreadySent": "이 메시지는 이미 전송되었습니다.",
         "editAlreadySent": "이미 전송되었습니다 — 텍스트는 입력창에 남아 있습니다.",
@@ -17834,7 +17840,11 @@
         "queuePausedCleared": "대화를 지워서 대기열이 일시 중지되었습니다",
         "queuePaused": "대기열이 일시 중지되었습니다",
         "resume": "재개"
-      }
+      },
+      "structuredSessionHostDeclined": "{{value0}}을(를) 터미널에서 열었습니다",
+      "structuredSessionHostDeclinedDescription": "이 서버는 이 워크스페이스에서 {{value0}} 채팅을 실행할 수 없습니다.",
+      "structuredSessionHostUnreachable": "{{value0}}에 연결할 수 없습니다",
+      "structuredSessionHostUnreachableDescription": "Orca가 {{value0}} 채팅을 열지 않았습니다. 서버 연결을 확인하고 다시 시도하세요."
     },
     "tab": {
       "bar": {
@@ -18668,5 +18678,21 @@
     "addTypedPath": "Add",
     "noDirectories": "No folders added yet.",
     "removePath": "Remove {{name}}"
+  },
+  "accounts": {
+    "managedData": {
+      "description": "Orca 호스트의 터미널에서 이 명령을 실행하여 계정을 추가하세요. 선택은 해당 호스트에서 새로 시작하는 에이전트에 적용됩니다. 직접 SSH 연결과 Windows에서 호스팅하는 WSL은 자체 자격 증명을 사용합니다.",
+      "copied": "복사됨",
+      "add": "계정 추가 명령 복사",
+      "refresh": "계정 새로 고침",
+      "upgrade": "계정이 나타나지 않으면 Orca 호스트를 업데이트하거나 다시 시작하세요.",
+      "system": "시스템 기본값",
+      "active": "활성",
+      "select": "선택",
+      "remove": "삭제",
+      "removeTitle": "관리 계정을 삭제할까요?",
+      "removeDescription": "먼저 이 프로필을 사용하는 에이전트를 중지하세요. 삭제하면 저장된 자격 증명과 대화 데이터가 지워집니다. 시스템 로그인은 변경되지 않습니다.",
+      "cancel": "취소"
+    }
   }
 }
