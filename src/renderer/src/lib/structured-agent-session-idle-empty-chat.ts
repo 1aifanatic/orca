@@ -34,12 +34,13 @@ function holdsUnadoptedLaunchDraft(tabId: string): boolean {
   return Boolean(draft && !draft.adopted && !draft.resolved && draft.text.trim())
 }
 
-/** An open chat for `agent` in this workspace that nothing was ever sent into and whose composer is
- *  untouched. Prefers the one in focus, else the newest. */
+/** An open chat for `agent` in this workspace's `groupId` (else any group) that nothing was ever
+ *  sent into and whose composer is untouched. Prefers the group's active tab, else the newest. */
 export function findIdleEmptyStructuredChat(
   worktreeId: string,
   agent: AgentSessionHandleProvider,
-  executionHostId?: ExecutionHostId
+  executionHostId?: ExecutionHostId,
+  groupId?: string
 ): IdleEmptyStructuredChat | undefined {
   const state = useAppStore.getState()
   const candidates: (IdleEmptyStructuredChat & { tab: Tab })[] = []
@@ -50,6 +51,7 @@ export function findIdleEmptyStructuredChat(
         : null
     if (
       owner &&
+      (!groupId || tab.groupId === groupId) &&
       (!executionHostId || owner === executionHostId) &&
       hostHoldsNoRequest(tab, owner) &&
       isStructuredLaunchChatEmpty(tab.entityId) &&
@@ -61,9 +63,9 @@ export function findIdleEmptyStructuredChat(
   if (candidates.length === 0) {
     return undefined
   }
-  const activeGroupId = state.activeGroupIdByWorktree[worktreeId]
+  const focusGroupId = groupId ?? state.activeGroupIdByWorktree[worktreeId]
   const focusedTabId = state.groupsByWorktree[worktreeId]?.find(
-    (group) => group.id === activeGroupId
+    (group) => group.id === focusGroupId
   )?.activeTabId
   const chosen =
     candidates.find((candidate) => candidate.tab.id === focusedTabId) ??

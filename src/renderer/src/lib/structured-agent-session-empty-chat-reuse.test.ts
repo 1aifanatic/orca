@@ -23,11 +23,18 @@ type StoreState = {
   activeGroupIdByWorktree: Record<string, string>
   nativeChatLaunchDraftByTabId: Record<string, { text: string; adopted?: boolean }>
 }
+/** A workspace split into a left (active) and a right tab group. */
 function emptyStoreState(): StoreState {
+  const group = (id: string): TabGroup => ({
+    id,
+    worktreeId: 'wt-reuse',
+    activeTabId: null,
+    tabOrder: []
+  })
   return {
     unifiedTabsByWorktree: {},
-    groupsByWorktree: {},
-    activeGroupIdByWorktree: {},
+    groupsByWorktree: { 'wt-reuse': [group('group-left'), group('group-right')] },
+    activeGroupIdByWorktree: { 'wt-reuse': 'group-left' },
     nativeChatLaunchDraftByTabId: {}
   }
 }
@@ -71,9 +78,15 @@ vi.mock('@/store', () => ({
   useAppStore: {
     getState: () => ({
       ...store.state,
-      createUnifiedTab: (worktreeId: string, contentType: Tab['contentType'], init: object) => {
+      createUnifiedTab: (
+        worktreeId: string,
+        contentType: Tab['contentType'],
+        init: { targetGroupId?: string }
+      ) => {
+        const groupId =
+          init.targetGroupId ?? store.state.activeGroupIdByWorktree[worktreeId] ?? 'group-left'
         // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the launch passes the agent-session fields a structured tab carries.
-        const tab = { ...init, contentType, worktreeId, groupId: 'group-1', createdAt: 1 } as Tab
+        const tab = { ...init, contentType, worktreeId, groupId, createdAt: 1 } as Tab
         store.state.unifiedTabsByWorktree[worktreeId] = [
           ...(store.state.unifiedTabsByWorktree[worktreeId] ?? []),
           tab
@@ -162,7 +175,13 @@ const second = launchIntent('session-second')
 /** A pick from the + menu, new-tab search or the new-agent shortcut: its own action, no text. */
 function pick(
   requestId: string,
-  overrides: { agent?: 'claude' | 'codex'; worktreeId?: string; prompt?: string } = {}
+  overrides: {
+    agent?: 'claude' | 'codex'
+    worktreeId?: string
+    prompt?: string
+    /** The split the pick was made in; none means the workspace's active group. */
+    group?: string
+  } = {}
 ): Exclude<StructuredAgentSessionProvisionalLaunch, { sessionId: null }> {
   const launch = beginStructuredAgentSessionProvisionalLaunch({
     plan: adoptAgentSessionLaunchVerdict({
@@ -175,7 +194,8 @@ function pick(
         ? { prompt: overrides.prompt, promptDelivery: 'submit-after-ready' as const }
         : {})
     }),
-    hooks: {}
+    hooks: {},
+    ...(overrides.group ? { targetGroupId: overrides.group } : {})
   })
   if (!launch || launch.sessionId === null) {
     throw new Error('expected a local chat')
@@ -357,6 +377,64 @@ describe('a second "new chat" with no text', () => {
 
     expect(pick('claude-pick', { agent: 'claude' }).sessionId).toBe(second.sessionId)
     expect(pick('other-pick', { worktreeId: 'wt-other' }).sessionId).toBe('session-third')
+  })
+})
+
+describe('a second "new chat" with no text in another split', () => {
+  function tabOf(sessionId: string): Tab | undefined {
+    return store.state.unifiedTabsByWorktree[WORKTREE_ID]?.find(
+      (tab) => tab.id === structuredAgentSessionTabId(sessionId)
+    )
+  }
+
+  it('opens a new chat in its own split beside an idle empty one, and focus stays there', async () => {
+    pick('plus-pick-1', { group: 'group-left' })
+    await publishIdle(first.sessionId)
+
+    const right = pick('plus-pick-2', { group: 'group-right' })
+
+    expect(right.sessionId).toBe(second.sessionId)
+    expect(tabOf(second.sessionId)?.groupId).toBe('group-right')
+    expect(mocks.focusGroup).not.toHaveBeenCalled()
+    expect(mocks.activateTab).not.toHaveBeenCalled()
+  })
+
+  it('reuses the idle empty chat in the split it was picked in', async () => {
+    pick('plus-pick-1', { group: 'group-right' })
+    await publishIdle(first.sessionId)
+
+    expect(pick('plus-pick-2', { group: 'group-right' }).sessionId).toBe(first.sessionId)
+    expect(mocks.focusGroup).toHaveBeenCalledWith(WORKTREE_ID, 'group-right')
+  })
+
+  it('opens a new chat in its own split beside a starting empty one', () => {
+    mocks.launch.mockImplementation(() => new Promise(() => undefined))
+    pick('plus-pick-1', { group: 'group-left' })
+
+    const right = pick('plus-pick-2', { group: 'group-right' })
+
+    expect(right.sessionId).toBe(second.sessionId)
+    expect(tabOf(second.sessionId)?.groupId).toBe('group-right')
+    expect(mocks.focusGroup).not.toHaveBeenCalled()
+  })
+
+  it('reuses the starting empty chat in the split it was picked in', () => {
+    mocks.launch.mockImplementation(() => new Promise(() => undefined))
+    const firstPick = pick('plus-pick-1', { group: 'group-right' })
+
+    expect(pick('plus-pick-2', { group: 'group-right' }).sessionId).toBe(firstPick.sessionId)
+    expect(mocks.createIntent).toHaveBeenCalledOnce()
+  })
+
+  // The dashboard and other callers name no group: the workspace's active one is where they open.
+  it('treats a pick that names no split as made in the active one', async () => {
+    pick('plus-pick-1', { group: 'group-right' })
+    await publishIdle(first.sessionId)
+
+    expect(pick('dashboard-pick').sessionId).toBe(second.sessionId)
+    expect(tabOf(second.sessionId)?.groupId).toBe('group-left')
+    store.state.activeGroupIdByWorktree[WORKTREE_ID] = 'group-right'
+    expect(pick('dashboard-pick-2').sessionId).toBe(first.sessionId)
   })
 })
 

@@ -107,7 +107,12 @@ export function beginStructuredAgentLaunchSettlement(
   const idle =
     options.resumeFrom || options.prompt?.trim()
       ? undefined
-      : findIdleEmptyStructuredChat(worktreeId, agent, options.executionHostId)
+      : findIdleEmptyStructuredChat(
+          worktreeId,
+          agent,
+          options.executionHostId,
+          options.targetGroupId
+        )
   if (idle) {
     return {
       ...idle,

@@ -9,6 +9,7 @@ import type {
 } from './structured-agent-session-launch-request'
 import type { AgentLaunchRequestId } from './agent-launch-request-id'
 import { isStructuredLaunchChatEmpty } from './structured-agent-session-launch-empty-chat'
+import { structuredChatTabGroupId } from './structured-agent-session-chat-tab-group'
 
 // Why: coalescing stops one user action delivered twice (a double click) racing into two chats. Any
 // other action, a failed or unconfirmed launch, or a Retry/re-check of one is not that race: a new
@@ -67,7 +68,7 @@ export function claimableStructuredLaunchAttempt(
 }
 
 /** The launch a new start of `request` joins: one it re-delivers, else an empty starting chat, which
- *  a request with text claims and one without reuses. The newest wins. */
+ *  a request with text claims and one without reuses in its own tab group. The newest wins. */
 export function getJoinableStructuredLaunchState(
   identity: string,
   request: StructuredLaunchRequest
@@ -75,8 +76,13 @@ export function getJoinableStructuredLaunchState(
   const matches = (candidate: string): boolean => candidate === identity
   return (
     structuredLaunchesHoldingIdentity(matches, request.id).at(-1) ??
-    structuredLaunchesHoldingIdentity(matches).findLast((state) =>
-      emptyStructuredLaunchAttempt(state)
+    structuredLaunchesHoldingIdentity(matches).findLast(
+      (state) =>
+        emptyStructuredLaunchAttempt(state) &&
+        (request.hasText ||
+          !request.groupId ||
+          structuredChatTabGroupId(state.intent.worktreeId, state.intent.sessionId) ===
+            request.groupId)
     )
   )
 }
