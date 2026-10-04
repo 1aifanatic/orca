@@ -1,4 +1,6 @@
 import type { Locator, Page } from '@stablyai/playwright-test'
+import type { Editor, JSONContent } from '@tiptap/core'
+import type { MarkdownManager } from '@tiptap/markdown'
 import { expect, test } from './helpers/orca-app'
 import {
   cleanupMarkdownFixture,
@@ -14,6 +16,25 @@ const paragraph = (index: number) =>
   `Paragraph ${index}. Ordinary editing and selection of plain prose.`
 const SOURCE = Array.from({ length: PARAGRAPH_COUNT }, (_, index) => paragraph(index)).join('\n\n')
 
+type ReviewSelectionMetrics = {
+  calls: number
+  jsonCalls: number
+  serializeMs: number
+  jsonMs: number
+  frameGaps: number[]
+}
+
+type ReviewSelectionProbe = {
+  snapshot: () => ReviewSelectionMetrics
+  reset: () => void
+  restore: () => void
+}
+
+type PageRichMarkdownReviewEditorElement = HTMLElement & {
+  editor?: Editor & { markdown?: MarkdownManager }
+  __reviewSelectionProbe?: ReviewSelectionProbe
+}
+
 async function frames(page: Page) {
   await page.evaluate(
     () =>
@@ -23,17 +44,18 @@ async function frames(page: Page) {
   )
 }
 
-async function measure(editor: Locator, reset = false) {
+async function measure(editor: Locator, reset = false): Promise<ReviewSelectionMetrics> {
   return editor.evaluate((element, reset) => {
-    const probe: unknown = Reflect.get(element, '__reviewSelectionProbe')
-    if (!probe || typeof probe !== 'object') {
+    const editorElement =
+      element.closest<PageRichMarkdownReviewEditorElement>('.rich-markdown-editor')
+    const probe = editorElement?.__reviewSelectionProbe
+    if (!probe) {
       throw new Error('Review selection probe missing')
     }
-    const method: unknown = Reflect.get(probe, reset ? 'reset' : 'snapshot')
-    if (typeof method !== 'function') {
-      throw new Error('Review selection probe method missing')
+    if (reset) {
+      probe.reset()
     }
-    return Reflect.apply(method, probe, [])
+    return probe.snapshot()
   }, reset)
 }
 
@@ -56,19 +78,18 @@ test('selection and scrolling reuse Markdown review source lines', async ({
   const editor = await waitForRichMarkdownEditor(orcaPage)
   await expect(editor.locator('p')).toHaveCount(PARAGRAPH_COUNT, { timeout: 60_000 })
   await editor.evaluate((element) => {
-    const instance: unknown = Reflect.get(element, 'editor')
-    if (!instance || typeof instance !== 'object') {
-      throw new Error('Tiptap editor missing')
+    const editorElement =
+      element.closest<PageRichMarkdownReviewEditorElement>('.rich-markdown-editor')
+    const instance = editorElement?.editor
+    if (!editorElement || !instance) {
+      throw new Error('Editor unavailable')
     }
-    const markdown: unknown = Reflect.get(instance, 'markdown')
-    if (!markdown || typeof markdown !== 'object') {
+    const markdown = instance.markdown
+    if (!markdown) {
       throw new Error('Markdown manager missing')
     }
-    const serialize: unknown = Reflect.get(markdown, 'serialize')
-    const getJSON: unknown = Reflect.get(instance, 'getJSON')
-    if (typeof serialize !== 'function' || typeof getJSON !== 'function') {
-      throw new Error('Markdown serializer missing')
-    }
+    const serialize = markdown.serialize
+    const getJSON = instance.getJSON
     let calls = 0
     let jsonCalls = 0
     let serializeMs = 0
@@ -84,25 +105,25 @@ test('selection and scrolling reuse Markdown review source lines', async ({
       frameId = requestAnimationFrame(tick)
     }
     frameId = requestAnimationFrame(tick)
-    Reflect.set(markdown, 'serialize', (...args: unknown[]) => {
+    markdown.serialize = (content: JSONContent): string => {
       const start = performance.now()
       try {
         calls++
-        return Reflect.apply(serialize, markdown, args)
+        return serialize.call(markdown, content)
       } finally {
         serializeMs += performance.now() - start
       }
-    })
-    Reflect.set(instance, 'getJSON', (...args: unknown[]) => {
+    }
+    instance.getJSON = (): ReturnType<Editor['getJSON']> => {
       const start = performance.now()
       try {
         jsonCalls++
-        return Reflect.apply(getJSON, instance, args)
+        return getJSON.call(instance)
       } finally {
         jsonMs += performance.now() - start
       }
-    })
-    Reflect.set(element, '__reviewSelectionProbe', {
+    }
+    editorElement.__reviewSelectionProbe = {
       snapshot: () => ({ calls, jsonCalls, serializeMs, jsonMs, frameGaps }),
       reset: () => {
         calls = 0
@@ -114,10 +135,10 @@ test('selection and scrolling reuse Markdown review source lines', async ({
       },
       restore: () => {
         cancelAnimationFrame(frameId)
-        Reflect.set(markdown, 'serialize', serialize)
-        Reflect.set(instance, 'getJSON', getJSON)
+        markdown.serialize = serialize
+        instance.getJSON = getJSON
       }
-    })
+    }
   })
   try {
     const target = editor.getByText(paragraph(targetIndex), { exact: true })
@@ -180,14 +201,9 @@ test('selection and scrolling reuse Markdown review source lines', async ({
     expect(scroll.jsonCalls).toBe(0)
   } finally {
     await editor.evaluate((element) => {
-      const probe: unknown = Reflect.get(element, '__reviewSelectionProbe')
-      if (!probe || typeof probe !== 'object') {
-        return
-      }
-      const restore: unknown = Reflect.get(probe, 'restore')
-      if (typeof restore === 'function') {
-        Reflect.apply(restore, probe, [])
-      }
+      const editorElement =
+        element.closest<PageRichMarkdownReviewEditorElement>('.rich-markdown-editor')
+      editorElement?.__reviewSelectionProbe?.restore()
     })
   }
 })
