@@ -21,8 +21,9 @@ export type QueuedMessageState = 'waiting' | 'dispatched' | 'returned' | 'withdr
 
 /** Why ONE waiting draft is held from auto-sending: its conversion failed.
  *  Stored on the row, so it survives handle eviction and restart; a wire marker
- *  (it publishes as `pausedReason`). A Stop or a restart pauses the whole queue
- *  instead. A reader treats an unknown stored value as a plain hold. */
+ *  (it publishes as `pausedReason`). A Stop, restart or /clear instead holds the
+ *  cards written before it, derived, and the queue skips held cards. A reader
+ *  treats an unknown stored value as a plain hold. */
 export type QueuedMessageHoldReason = 'send_failed'
 
 /** Definitively unsettled: what Stop, /clear, Edit and the budget count, and

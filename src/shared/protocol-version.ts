@@ -203,8 +203,9 @@ export const AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY =
 // v1 includes `submission.queuedMessageId` on every draft hand-off: a client reads that link and
 // never compares a draft id with a submission id. It also publishes the queue's pause once, as
 // `queuePause` beside the list, lifted by `agentSession.queuedMessagesResume` or the user's next
-// turn; cards carry a hold of their own only when their conversion failed. The host mechanism lands first; the constant
-// gates the rollout.
+// turn. Each card may carry `heldBy`, the pause holding it or null; when it is absent (an older
+// host) a client falls back to `queuePause` for every card. A card's own hold (`paused`) means only
+// that its conversion failed. The host mechanism lands first; the constant gates the rollout.
 export const AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY =
   'agent-session.queued-messages.v1' as const
 // Why: paired clients advertise Claude-structured support so the host can gate its agent-specific
