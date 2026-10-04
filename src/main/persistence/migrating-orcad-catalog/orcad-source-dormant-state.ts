@@ -1,10 +1,8 @@
 import type {
   OrcadMigrationCatalogPayload,
   OrcadMigrationDormantStatePayload,
-  OrcadMigrationManifest,
   OrcadMigrationManifestSource
 } from '../../../shared/orcad-migration-manifest'
-import { serializeOrcadMigrationValue } from '../../../shared/orcad-migration-manifest'
 import type { OrcadMigrationDependencyKind } from '../../../shared/orcad-migration-preflight'
 import type { PersistedState } from '../../../shared/persisted-state-types'
 import type { TerminalScrollbackSnapshotStorage } from '../../terminal-scrollback-snapshots'
@@ -198,24 +196,6 @@ export function collectOrcadMigrationSourceDormantState(
     },
     blockedCounts
   }
-}
-
-export function orcadMigrationDormantStateMatchesSource(
-  state: PersistedState,
-  manifest: OrcadMigrationManifest,
-  storage?: TerminalScrollbackSnapshotStorage
-): boolean {
-  const current = collectOrcadMigrationSourceDormantState(
-    state,
-    manifest.source,
-    manifest.payload,
-    storage,
-    manifest.destinationEnvironmentId
-  ).payload
-  return (
-    serializeOrcadMigrationValue(current) ===
-    serializeOrcadMigrationValue(manifest.payload.dormantState ?? emptyDormantPayload())
-  )
 }
 
 export function emptyDormantPayload(): OrcadMigrationDormantStatePayload {
