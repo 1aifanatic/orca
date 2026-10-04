@@ -169,7 +169,9 @@ export function runStructuredConversationCommand(
             replacementSessionId: completed.replacementSessionId,
             // Opened under its own lock, as every open is.
             openReplacementJournal: async () =>
-              (await context.conversation(completed.replacementSessionId)).journal
+              (await context.conversation(completed.replacementSessionId)).journal,
+            callerKey: caller.callerKey,
+            operationId: clientOperationId
           })
           return { ok: true, value: completed }
         }

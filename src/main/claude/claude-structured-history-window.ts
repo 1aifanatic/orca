@@ -136,11 +136,12 @@ function claudePromptBlocks(record: TranscriptRecord): NativeChatBlock[] | null 
 }
 
 /**
- * The digest every submission row carries: this exact call over the stored body. A direct send
- * stores it (`sendPlan`), and a queued draft stores it (`queuedMessageFingerprint`) for its hand-off
- * and Send-now to copy; a send's `delivery` joins only the operation fingerprint admission checks,
- * never the stored one. Matching here is therefore an equality between two runs of one function,
- * not a guess about two encodings agreeing.
+ * The digest the submission row is GUARANTEED to carry. `admitAndRunAgentSessionMutation`
+ * recomputes this exact call over the send's own body and refuses the send on a
+ * mismatch, and `performSend` is the only writer of a submission row — so the
+ * stored fingerprint is this function's output over the stored body, whoever
+ * produced the envelope. Matching here is therefore an equality between two runs
+ * of one function, not a guess about two encodings agreeing.
  */
 function promptFingerprint(sessionId: string, blocks: NativeChatBlock[]): string {
   return computeAgentSessionPayloadFingerprint({

@@ -42,7 +42,7 @@ export type StructuredSessionTurn = {
   expectedRuntimeFence: number
 } & (
   | { delivery: 'now' }
-  /** A queued card records who it speaks for; the chat names the sender from step B on. */
+  /** A queued card records who it is from. */
   | { delivery: 'queue'; source: AgentMessageSource }
 )
 
@@ -147,7 +147,7 @@ async function sendStructuredSessionTurn(
   }
   // Accepted is not delivered: the agent may still be starting, so wait the start out. A wait
   // that fails or runs out leaves the first answer standing.
-  const answered = snapshotOf(agentSessionSendSubmission(result.value))
+  const answered = agentSessionSendSubmission(result.value)
   if (answered?.dispatchState !== 'pending') {
     return { kind: 'sent', clientMessageId, submission: answered }
   }
@@ -161,13 +161,6 @@ async function sendStructuredSessionTurn(
   return {
     kind: 'sent',
     clientMessageId,
-    submission: snapshotOf(agentSessionSendSubmission(settled?.value)) ?? answered
+    submission: agentSessionSendSubmission(settled?.value) ?? answered
   }
-}
-
-/** The host answers with its journal's own submission, which later settlement revises in place. */
-function snapshotOf(
-  submission: AgentJournalSubmission | undefined
-): AgentJournalSubmission | undefined {
-  return submission && structuredClone(submission)
 }

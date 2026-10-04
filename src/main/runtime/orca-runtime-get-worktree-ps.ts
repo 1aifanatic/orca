@@ -181,12 +181,7 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
       // Read per sweep tick from the orchestration database: a worker whose dispatch is open keeps
       // its agent running. No database answers no.
       hasOpenDispatch: (record) =>
-        structuredWorkerOwesWork(this.getOrchestrationDbIfAvailable?.() ?? null, record),
-      // Orchestration's own mail notices are judged again by the lane that queued them, and one
-      // the host could not send goes back to it through the mailbox's ordinary redrive.
-      judgeQueuedAgentCard: (input) => this.judgeQueuedAgentCard(input),
-      onQueuedAgentCardDropped: (input) =>
-        this.deliverPendingMessagesForHandle(input.source.orchestration.mailbox)
+        structuredWorkerOwesWork(this.getOrchestrationDbIfAvailable?.() ?? null, record)
     })
   }
 }

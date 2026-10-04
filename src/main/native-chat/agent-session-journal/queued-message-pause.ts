@@ -5,16 +5,13 @@
 //     supersedes it; only a person's pauses.
 //   - 'cleared': a card /clear carried into this conversation waits, and no person's turn or
 //     Resume has happened here since.
-//   - 'restarted': a waiting card a person queued was written by another host process, and no
-//     person's turn has started since this conversation opened.
-// Pauses hold only the person's cards (`queuePausesHold`). A card the person cannot see never waits
-// on or ahead of one they can (`nextSendableQueuedCard`).
+//   - 'restarted': a waiting card was written by another host process, and no person's turn has
+//     started since this conversation opened.
 // A person's turn is an accepted submission of origin `client`. Orchestration mail, a restart
 // continuation, a launch prompt and the queue's own drain are `host` and never lift it.
 
 import type { AgentJournalCursor } from '../../../shared/agent-session-journal-types'
 import type { JournalStopEvent, JournalTombstoneRow } from './journal-row-schema'
-import type { AgentSessionMessageSource } from '../../../shared/agent-session-message-source'
 
 export type QueuePauseReason = 'stopped' | 'cleared' | 'restarted'
 
@@ -37,32 +34,6 @@ type QueueCard = {
   hostInstance: string
   carriedFrom: string | null
   queuedAt: AgentJournalCursor | null
-  source: AgentSessionMessageSource
-}
-
-/** Whether the queue's pauses hold a card: only the person's. Keyed on what the message is, so a
- *  new kind decides for itself. */
-export function queuePausesHold(source: AgentSessionMessageSource): boolean {
-  if (source.kind === 'user') {
-    return true
-  }
-  switch (source.orchestration.message) {
-    // Re-validated against orchestration's database when it sends, so waiting never makes it stale.
-    case 'mail-notice':
-      return false
-  }
-}
-
-/** Whether the person sees a card in the queue. Orca's mail notice is a transient pointer every
- *  orchestration flow passes through, so it is not shown until its sender can be labelled. */
-export function queueShowsCard(source: AgentSessionMessageSource): boolean {
-  if (source.kind === 'user') {
-    return true
-  }
-  switch (source.orchestration.message) {
-    case 'mail-notice':
-      return false
-  }
 }
 
 export function createJournalQueuePauseMarks(): JournalQueuePauseMarks {
@@ -149,13 +120,12 @@ export function deriveQueuePauses(input: {
     pauses.push({ reason: 'stopped', since: { epoch, sequence: stop.sequence } })
   }
   const waiting = input.cards.filter((card) => card.state === 'waiting')
-  const held = waiting.filter((card) => queuePausesHold(card.source))
-  const carried = held.filter((card) => card.carriedFrom !== null)
+  const carried = waiting.filter((card) => card.carriedFrom !== null)
   if (carried.length > 0 && latestPersonTurnSequence === 0 && marks.resumedSequence === 0) {
     pauses.push({ reason: 'cleared', since: null })
   }
-  if (!input.restartEnded && held.some((card) => card.hostInstance !== input.hostInstance)) {
-    // The process that wrote a person's card is gone: every card of theirs waits, whenever written.
+  if (!input.restartEnded && waiting.some((card) => card.hostInstance !== input.hostInstance)) {
+    // The process that wrote a card is gone: every card waits, whenever it was written.
     pauses.push({ reason: 'restarted', since: null })
   }
   return pauses
@@ -189,42 +159,33 @@ export function queuePauseHolding(
   pauses: readonly DerivedQueuePause[],
   card: QueueCard
 ): DerivedQueuePause | undefined {
-  if (card.state !== 'waiting' || card.holdReason !== null || !queuePausesHold(card.source)) {
+  if (card.state !== 'waiting' || card.holdReason !== null) {
     return undefined
   }
   return pauses.find((pause) => PAUSE_HOLDS_CARDS_QUEUED_AFTER_IT || queuedBeforePause(pause, card))
 }
 
-/** The card the queue sends next. The person's cards go in order, oldest first, and never past
- *  one waiting on them (paused, or returned to them): the queue never reorders what they see. A
- *  card they cannot see never delays one they can, and is never trapped behind one: it goes only
- *  when no card they see may, as a paused queue does not trap a new send. A card with a hold of its
- *  own is skipped. The drain's pick and its consume both read this. */
+/** The card the queue sends next: the oldest waiting one with no hold of its own, unless a
+ *  returned card or a held one comes first. The queue never reorders, so a newer card never
+ *  overtakes a held one. The drain's pick and its consume both read this. */
 export function nextSendableQueuedCard<T extends QueueCard>(
   pauses: readonly DerivedQueuePause[],
   cards: readonly T[]
 ): T | null {
-  let waitingOnPerson = false
-  let unseen: T | null = null
   for (const card of cards) {
-    const seen = queueShowsCard(card.source)
     if (card.state === 'returned' || queuePauseHolding(pauses, card)) {
-      waitingOnPerson ||= seen
-    } else if (card.state === 'waiting' && card.holdReason === null) {
-      if (!seen) {
-        unseen ??= card
-      } else if (!waitingOnPerson) {
-        return card
-      }
+      return null
+    }
+    if (card.state === 'waiting' && card.holdReason === null) {
+      return card
     }
   }
-  return unseen
+  return null
 }
 
 /** The pause to PUBLISH: the one holding the first card Resume would send, not behind a returned
  *  card, which blocks everything after it until the user acts. None otherwise, so its header
- *  never offers a Resume that sends nothing. A card the person cannot see never names it: no pause
- *  holds one, and the host withdraws one rather than hold it or return it to them. */
+ *  never offers a Resume that sends nothing. */
 export function resumableQueuePause(
   pauses: readonly DerivedQueuePause[],
   cards: readonly QueueCard[]

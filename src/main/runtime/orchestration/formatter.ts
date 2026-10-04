@@ -57,8 +57,6 @@ export function formatMessageBanner(
   msg: MessageRow,
   options: MessageFormattingOptions = {}
 ): string {
-  const priorityTag =
-    msg.priority === 'urgent' ? ' [URGENT]' : msg.priority === 'high' ? ' [HIGH]' : ''
   const authority = resolveAuthority(msg, options.authority)
   const authorityTag =
     authority === 'legacy_compatibility'
@@ -70,32 +68,50 @@ export function formatMessageBanner(
           : ''
   const senderName = msg.from_handle.toUpperCase()
 
-  const header = `──── From: ${senderName} (${msg.from_handle})${priorityTag}${authorityTag} (${msg.type}) ────`
+  const header = `──── From: ${senderName} (${msg.from_handle})${priorityTag(msg)}${authorityTag} (${msg.type}) ────`
 
   const lines: string[] = [header]
   lines.push(`Subject: ${msg.subject}`)
   if (authority !== 'current') {
     appendLegacyGuidance(lines, authority, options.supportedActionHints ?? [])
   }
-
-  if (msg.body) {
-    lines.push(msg.body)
-  }
-
-  if (msg.payload) {
-    lines.push(`[Payload: ${msg.payload}]`)
-  }
-
+  lines.push(...messageContentLines(msg))
   if (authority === 'current') {
-    const explicitFrom =
-      msg.to_handle.startsWith('run:') || msg.to_handle.startsWith('dispatch:')
-        ? ''
-        : ` --from ${msg.to_handle}`
-    lines.push(`[Reply: orca orchestration reply --id ${msg.id}${explicitFrom} --body "..."]`)
+    lines.push(replyHint(msg, 'orca'))
   }
   lines.push(SEPARATOR)
 
   return lines.join('\n')
+}
+
+/**
+ * One message delivered as a chat turn: a line naming the sender, then what `check` shows of it.
+ * Only current-delivery mail is pushed, so it carries no legacy guidance.
+ */
+export function formatMessageTurn(msg: MessageRow, cliCommand: OrchestrationCliCommand): string {
+  return [
+    `[message from ${msg.from_handle}]`,
+    `Type: ${msg.type}${priorityTag(msg)}`,
+    `Subject: ${msg.subject}`,
+    ...messageContentLines(msg),
+    replyHint(msg, cliCommand)
+  ].join('\n')
+}
+
+function priorityTag(msg: MessageRow): string {
+  return msg.priority === 'urgent' ? ' [URGENT]' : msg.priority === 'high' ? ' [HIGH]' : ''
+}
+
+function messageContentLines(msg: MessageRow): string[] {
+  return [...(msg.body ? [msg.body] : []), ...(msg.payload ? [`[Payload: ${msg.payload}]`] : [])]
+}
+
+function replyHint(msg: MessageRow, cliCommand: string): string {
+  const explicitFrom =
+    msg.to_handle.startsWith('run:') || msg.to_handle.startsWith('dispatch:')
+      ? ''
+      : ` --from ${msg.to_handle}`
+  return `[Reply: ${cliCommand} orchestration reply --id ${msg.id}${explicitFrom} --body "..."]`
 }
 
 // Why: grouping multiple banners under a single wrapper line lets agents detect

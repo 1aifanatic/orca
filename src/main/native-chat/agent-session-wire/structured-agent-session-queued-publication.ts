@@ -9,7 +9,7 @@ import {
   type AgentSessionQueuePause
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
-import { queueShowsCard, resumableQueuePause } from '../agent-session-journal/queued-message-pause'
+import { resumableQueuePause } from '../agent-session-journal/queued-message-pause'
 import { structuredQueuePauses } from './structured-agent-session-queued-pause'
 
 export type QueuePublication = {
@@ -17,12 +17,12 @@ export type QueuePublication = {
   queuePause: AgentSessionQueuePause | null
 }
 
-/** Waiting and returned rows the person sees (`queueShowsCard`) only. `paused` is a per-card hold
- *  (a failed conversion); a Stop or a restart pauses the queue, published once beside it. */
+/** Waiting and returned rows only. `paused` is a per-card hold (a failed
+ *  conversion); a Stop or a restart pauses the queue, published once beside it. */
 function computePublishedQueuedMessages(journal: AgentSessionJournal): AgentSessionQueuedMessage[] {
   const published: AgentSessionQueuedMessage[] = []
   for (const row of journal.queuedMessages.list()) {
-    if ((row.state !== 'waiting' && row.state !== 'returned') || !queueShowsCard(row.source)) {
+    if (row.state !== 'waiting' && row.state !== 'returned') {
       continue
     }
     const held = row.state === 'waiting' && row.holdReason !== null

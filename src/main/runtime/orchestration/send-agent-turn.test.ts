@@ -57,11 +57,10 @@ const MAIL_SOURCE: AgentMessageSource = {
   kind: 'agent',
   senders: [],
   orchestration: {
-    message: 'mail-notice',
+    message: 'mail',
     mailbox: 'dispatch:d1',
     dispatchId: 'd1',
-    runIds: [],
-    messageIds: ['m1']
+    messages: [{ messageId: 'm1', runId: 'r1', from: 'term_peer' }]
   }
 }
 
@@ -138,14 +137,6 @@ describe('sendAgentTurn to a structured session', () => {
     }
   })
 
-  it('answers with the submission as it was answered, not the journal row later settlement revises', async () => {
-    const journalRow = submissionOf('accepted')
-    const fake = structuredHost(accepted({ clientMessageId: 'op-1', submission: journalRow }))
-    const outcome = await sendAgentTurn(structured(fake.host))
-    journalRow.dispatchState = 'rejected'
-    expect(outcome).toMatchObject({ kind: 'sent', submission: { dispatchState: 'accepted' } })
-  })
-
   it('returns the host refusal for the caller to read', async () => {
     const refusal = { code: 'agent_session_conflict' as const, message: 'conflict' }
     const fake = structuredHost({ ok: false, refusal })
@@ -180,7 +171,7 @@ describe('sendAgentTurn to a structured session', () => {
         },
         body: turn.body,
         delivery: 'queue-if-active',
-        // Host-local: who the card speaks for rides beside the envelope, outside its fingerprint.
+        // Host-local: who the card is from rides beside the envelope, outside its fingerprint.
         source: MAIL_SOURCE
       }
     )

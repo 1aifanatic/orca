@@ -18,7 +18,7 @@ import { agentSessionProviderHandleChainHead } from '../../shared/agent-session-
 import { OrcaRuntimeService } from './orca-runtime'
 import { OrchestrationDb } from './orchestration/db'
 import { localOrchestrationCliCommand } from './orchestration/cli-command'
-import { formatMessagePointer } from './orchestration/formatter'
+import { formatMessageTurn } from './orchestration/formatter'
 import type { RpcRequest } from './rpc/core'
 import { RpcDispatcher } from './rpc/dispatcher'
 import { ORCHESTRATION_METHODS } from './rpc/methods/orchestration'
@@ -146,7 +146,9 @@ export function sendUserMessage(sessionId: string, text: string) {
           fields: { body }
         })
       },
-      body
+      body,
+      // The `agentSession.send` RPC marks every send it carries as the person's.
+      userSend: true
     }
   )
 }
@@ -159,7 +161,7 @@ export async function userTexts(sessionId: string): Promise<string[]> {
   )
 }
 
-/** The text of every card the chat lists in its queue: a mail notice is not one of them. */
+/** The text of every card the chat lists in its queue, as the person sees it. */
 export async function queuedCardTexts(sessionId: string): Promise<string[]> {
   const page = await host.history({ sessionId, direction: 'tail' })
   if (!page.ok) {
@@ -168,13 +170,6 @@ export async function queuedCardTexts(sessionId: string): Promise<string[]> {
   return (page.page.queuedMessages ?? []).flatMap((card) =>
     card.body.blocks.map((block) => (block.type === 'text' ? block.text : ''))
   )
-}
-
-/** The text of every card waiting in the chat's own queue, shown or not. */
-export async function waitingCardTexts(sessionId: string): Promise<string[]> {
-  return (await host.queuedMessageRows(sessionId))
-    .filter((row) => row.state === 'waiting')
-    .flatMap((row) => row.body.blocks.map((block) => (block.type === 'text' ? block.text : '')))
 }
 
 /** `/clear` as the chat surface runs it: the conversation continues in a new session. */
@@ -272,10 +267,7 @@ beforeEach(async () => {
     openCodexConnection: codex.openConnection,
     readProcessStartTime: async () => 1_700_000_000_000,
     // The same calls the runtime's own host install makes.
-    onSessionStatusChanged: (summary) => runtime.onStructuredSessionStatusForMail(summary),
-    judgeQueuedAgentCard: (input) => runtime.judgeQueuedAgentCard(input),
-    onQueuedAgentCardDropped: (input) =>
-      runtime.deliverPendingMessagesForHandle(input.source.orchestration.mailbox)
+    onSessionStatusChanged: (summary) => runtime.onStructuredSessionStatusForMail(summary)
   })
   dispatcher = new RpcDispatcher({ runtime, methods: ORCHESTRATION_METHODS })
 })
@@ -303,15 +295,25 @@ afterEach(async () => {
   }
 })
 
-// Pointers are sent on asynchronous edges; the default 1s wait is too tight under a loaded parallel run.
+// Mail is sent on asynchronous edges; the default 1s wait is too tight under a loaded parallel run.
 export const WAIT = { timeout: 10_000 }
 
-export const POINTER =
-  /You have 1 orchestration message\. Run `orca(-dev)? orchestration check --run run_\w+`\./
+/** A turn carrying a worker's result, as `finishWorker` sends it. */
+export const WORKER_RESULT = /^\[message from term_worker(_2)?\]\nType: worker_done\b/
 
-/** The text the PTY lane types into a local terminal for this mailbox, byte for byte. */
-export function ptyPointer(mailboxHandle: string): string {
-  return formatMessagePointer(1, mailboxHandle, localOrchestrationCliCommand()).trim()
+/** The turn the structured lane sends for these messages, byte for byte; all of the mailbox's when
+ *  none are named. */
+export function mailTurn(mailboxHandle: string, ...messageIds: string[]): string {
+  const messages = db.getAllMessages(mailboxHandle, 100).toReversed()
+  return messages
+    .filter((message) => messageIds.length === 0 || messageIds.includes(message.id))
+    .map((message) => formatMessageTurn(message, localOrchestrationCliCommand()))
+    .join('\n\n')
+}
+
+/** What `check` would still return for the mailbox: mail no turn delivered and no check read. */
+export function unreadMail(mailboxHandle: string): string[] {
+  return db.getUnreadMessages(mailboxHandle).map((message) => message.id)
 }
 
 /** The text of a turn the fake provider received. */

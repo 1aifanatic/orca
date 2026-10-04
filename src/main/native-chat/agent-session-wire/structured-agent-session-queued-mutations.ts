@@ -78,12 +78,11 @@ export async function withdrawQueuedMessagesForOperation(
  * /clear's carry: the source's unsettled drafts become rows on the replacement
  * session — the SAME for every client version, with no text on the wire — so the
  * cards stay visible where the user now is. The replacement's queue starts
- * paused ('cleared'), lifted exactly like a Stop's: the person's cards were written for the context /clear just
+ * paused ('cleared'), lifted exactly like a Stop's: the cards were written for the context /clear just
  * discarded, so they wait for the user's next turn there, or Resume, rather than
  * sending into the fresh context unasked. Each card records the conversation it
  * came from, which IS that pause, so the drain never sees a carried card unpaused
- * and no pause outlives the cards. An agent's card moves too and is not held: it
- * is judged again when it sends (`structured-agent-session-queued-agent-card.ts`). Runs after the clear commits, opening the
+ * and no pause outlives the cards. Runs after the clear commits, opening the
  * replacement's conversation only when there are drafts to carry; the source
  * rows are then tombstoned. Bookkeeping around the clear: a failure, or a crash
  * before the carry, leaves the cards on the superseded source — whose
@@ -96,6 +95,8 @@ export async function carryQueuedMessagesToClearReplacement(
   input: {
     replacementSessionId: string
     openReplacementJournal: () => Promise<AgentSessionJournal | undefined>
+    callerKey: string
+    operationId: string
   }
 ): Promise<void> {
   try {
@@ -120,10 +121,11 @@ export async function carryQueuedMessagesToClearReplacement(
         source: row.source
       })
     }
-    // The host's own withdrawal: a card moved is not a card anyone declined.
-    await ctx.journal.queuedMessages.withdraw({
+    await withdrawQueuedMessagesForOperation(ctx.journal, {
+      sessionId: ctx.sessionId,
       messageIds: rows.map((row) => row.messageId),
-      settledByOp: null
+      callerKey: input.callerKey,
+      operationId: input.operationId
     })
   } catch (error) {
     ctx.logger.warn("carrying queued drafts to /clear's replacement failed", {

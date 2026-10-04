@@ -127,10 +127,6 @@ export type StructuredAgentSessionRuntimeDeps = {
   statusSink?: StructuredAgentSessionHostDeps['statusSink']
   /** See `StructuredAgentSessionHostDeps.hasOpenDispatch`. */
   hasOpenDispatch?: StructuredAgentSessionHostDeps['hasOpenDispatch']
-  /** See `StructuredAgentSessionHostDeps.judgeQueuedAgentCard`. */
-  judgeQueuedAgentCard?: StructuredAgentSessionHostDeps['judgeQueuedAgentCard']
-  /** See `StructuredAgentSessionHostDeps.onQueuedAgentCardDropped`. */
-  onQueuedAgentCardDropped?: StructuredAgentSessionHostDeps['onQueuedAgentCardDropped']
   /** The account home a structured launch would pin right now, for catalog
    *  reads with no session record. Absent disables the catalog surface. */
   resolveAgentAccountHome?: RuntimeAgentAccountHomeResolver
@@ -326,10 +322,6 @@ async function installOnJournal(
     ...(deps.onSessionStatusChanged ? { onSessionStatusChanged: deps.onSessionStatusChanged } : {}),
     ...(deps.statusSink ? { statusSink: deps.statusSink } : {}),
     ...(deps.hasOpenDispatch ? { hasOpenDispatch: deps.hasOpenDispatch } : {}),
-    ...(deps.judgeQueuedAgentCard ? { judgeQueuedAgentCard: deps.judgeQueuedAgentCard } : {}),
-    ...(deps.onQueuedAgentCardDropped
-      ? { onQueuedAgentCardDropped: deps.onQueuedAgentCardDropped }
-      : {}),
     ...(await modelCatalogHostDeps({ store, deps, envResolvers }))
   })
   setStructuredAgentSessionHost(host)

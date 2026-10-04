@@ -12,11 +12,8 @@ import {
 } from './journal-dispatch-settlement'
 import type { JournalReducerState } from './journal-reducer'
 import type { JournalRow } from './journal-row-schema'
-import { queueShowsCard } from './queued-message-pause'
-import { classifyDispatchRejection } from '../../../shared/structured-agent-session-dispatch-rejection'
 import { draftDeliveredByEcho, draftsDeliveredByAppliedEcho } from './queued-message-delivered-echo'
 import {
-  getQueuedMessage,
   listQueuedMessages,
   settleRejectedQueuedMessage,
   withdrawQueuedMessages,
@@ -24,39 +21,6 @@ import {
 } from './queued-message-table'
 
 type Submissions = ReadonlyMap<string, AgentJournalSubmission>
-
-/** `settleRejectedQueuedMessage`, except for a card the person cannot see. Refused, it is not
- *  returned to them; pulled back by a Stop, it does not go back to waiting, where nothing would
- *  hold it and the queue would send it again at once. Either way the host withdraws it, and
- *  whoever queued it re-derives it. A restart's interruption still puts it back to waiting. */
-function settleRefusedQueuedMessage(
-  db: Database.Database,
-  input: Parameters<typeof settleRejectedQueuedMessage>[1]
-): boolean {
-  const consumed = listQueuedMessages(db, input.sessionId).find(
-    (row) => row.consumedAs === input.consumedRef && row.state === 'dispatched'
-  )
-  if (!settleRejectedQueuedMessage(db, input)) {
-    return false
-  }
-  const settled = consumed && getQueuedMessage(db, input.sessionId, consumed.messageId)
-  const stopped =
-    classifyDispatchRejection({ reason: input.reason, rejection: input.rejection }).category ===
-    'withdrawn'
-  if (
-    settled &&
-    !queueShowsCard(settled.source) &&
-    (settled.state === 'returned' || (settled.state === 'waiting' && stopped))
-  ) {
-    withdrawQueuedMessages(db, {
-      sessionId: input.sessionId,
-      messageIds: [settled.messageId],
-      settledByOp: null,
-      now: input.now
-    })
-  }
-  return true
-}
 
 /** Some dispatched draft still waits on a settlement the journal already decided. */
 export function queuedMessageSettlementOwed(
@@ -89,7 +53,7 @@ export function settleOwedQueuedMessages(
     ) {
       continue
     }
-    const changed = settleRefusedQueuedMessage(db, {
+    const changed = settleRejectedQueuedMessage(db, {
       sessionId: input.sessionId,
       consumedRef,
       reason: submission?.reason ?? null,
@@ -152,7 +116,7 @@ export function settleQueuedMessagesForRow(
   if (!journalDispatchRowNewlyRejects(input.state.submissions.get(row.clientMessageId), row)) {
     return changed
   }
-  const settled = settleRefusedQueuedMessage(db, {
+  const settled = settleRejectedQueuedMessage(db, {
     sessionId: input.sessionId,
     consumedRef: row.clientMessageId,
     reason: row.reason,

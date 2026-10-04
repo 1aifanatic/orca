@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
+import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
 
 const hostRef: { current: unknown } = { current: null }
 
@@ -34,6 +35,12 @@ function transcript(count: number): AgentJournalRenderItem[] {
   )
 }
 
+const MAIL_SOURCE: AgentMessageSource = {
+  kind: 'agent',
+  senders: [],
+  orchestration: { message: 'mail', mailbox: 'dispatch:d1', dispatchId: 'd1', messages: [] }
+}
+
 describe('structured mailbox pointer host', () => {
   beforeEach(() => {
     hostRef.current = null
@@ -52,36 +59,57 @@ describe('structured mailbox pointer host', () => {
     })
   })
 
-  it("reads what the session's sends settled as, every card in its queue, and who withdrew it", async () => {
-    const submissions = [{ clientMessageId: 'op1', dispatchState: 'unknown' }]
-    const notice = {
+  it("reads what the session's sends settled as, and what became of each mail card", async () => {
+    const mail = (messageIds: string[]) => ({
       kind: 'agent',
       senders: [],
       orchestration: {
-        message: 'mail-notice',
+        message: 'mail',
         mailbox: 'run:r1',
         dispatchId: null,
-        runIds: ['r1'],
-        messageIds: ['m1']
+        messages: messageIds.map((messageId) => ({ messageId, runId: 'r1', from: 'term_a' }))
       }
-    }
-    hostRef.current = {
-      journalSnapshot: () => ({ items: [], submissions }),
-      queuedMessageRows: () => [
-        { messageId: 'op2', state: 'withdrawn', settledByOp: 'person:op', source: notice },
-        { messageId: 'op3', state: 'withdrawn', settledByOp: null, source: notice },
-        { messageId: 'op4', state: 'waiting', settledByOp: null, source: { kind: 'user' } }
-      ]
-    }
-    const pointsAt = { mailbox: 'run:r1', messageIds: ['m1'] }
+    })
+    const submissions = [
+      { clientMessageId: 'op1', dispatchState: 'unknown' },
+      { clientMessageId: 'handoff-a', queuedMessageId: 'card-a', dispatchState: 'rejected' },
+      { clientMessageId: 'handoff-a2', queuedMessageId: 'card-a', dispatchState: 'accepted' },
+      { clientMessageId: 'handoff-c', queuedMessageId: 'card-c', dispatchState: 'pending' }
+    ]
+    const rows = [
+      { messageId: 'card-a', state: 'dispatched', source: mail(['m1', 'm2']) },
+      { messageId: 'card-b', state: 'withdrawn', source: mail(['m3']) },
+      { messageId: 'card-c', state: 'dispatched', source: mail(['m4']) },
+      { messageId: 'card-d', state: 'returned', source: mail(['m5']) },
+      { messageId: 'typed', state: 'waiting', source: { kind: 'user' } }
+    ]
+    const snapshots = vi.fn(() => ({ items: [], submissions }))
+    hostRef.current = { journalSnapshot: snapshots, queuedMessageRows: () => rows }
+    const card = (messageIds: string[], unsent: boolean, accepted: boolean) => ({
+      mailbox: 'run:r1',
+      messageIds,
+      unsent,
+      accepted
+    })
     expect(await createStructuredMailboxPointerHost().readFacts('s1')).toEqual({
       submissions,
-      cards: [
-        { messageId: 'op2', state: 'withdrawn', notice: pointsAt, withdrawnByRequest: true },
-        { messageId: 'op3', state: 'withdrawn', notice: pointsAt, withdrawnByRequest: false },
-        { messageId: 'op4', state: 'waiting', notice: null, withdrawnByRequest: false }
+      mailCards: [
+        // The latest hand-off decides: a card the person sent again after a refusal was taken.
+        card(['m1', 'm2'], false, true),
+        card(['m3'], false, false),
+        card(['m4'], false, false),
+        card(['m5'], true, false)
       ]
     })
+    expect(await createStructuredMailboxPointerHost().readHandedOffMailCards('s1')).toEqual([
+      card(['m1', 'm2'], false, true),
+      card(['m4'], false, false)
+    ])
+    // A chat whose queue handed no mail off costs no journal read.
+    snapshots.mockClear()
+    hostRef.current = { journalSnapshot: snapshots, queuedMessageRows: () => rows.slice(1, 2) }
+    expect(await createStructuredMailboxPointerHost().readHandedOffMailCards('s1')).toEqual([])
+    expect(snapshots).not.toHaveBeenCalled()
   })
 
   it('answers null rather than nothing recorded when the session cannot be read', async () => {
@@ -89,6 +117,7 @@ describe('structured mailbox pointer host', () => {
     // session this runtime cannot see at all.
     expect(await createStructuredMailboxPointerHost().readFacts('s1')).toBeNull()
     hostRef.current = {
+      queuedMessageRows: () => [],
       journalSnapshot: () => {
         throw new Error('agent_session_ownership_unknown')
       }
@@ -137,14 +166,16 @@ describe('structured mailbox pointer host', () => {
     expect(send.mock.calls[0]![1]!.retryUnknown).toBeUndefined()
   })
 
-  it("asks a busy chat to queue the pointer, and reports its card's state", async () => {
-    const send = vi.fn(async (_caller: unknown, _payload: { delivery?: string }) => ({
-      ok: true,
-      value: {
-        clientMessageId: 'op1',
-        queued: { messageId: 'op1', position: 0, state: 'waiting' }
-      }
-    }))
+  it('asks a busy chat to queue the turn as a card, with who it is from', async () => {
+    const send = vi.fn(
+      async (_caller: unknown, _payload: { delivery?: string; source?: unknown }) => ({
+        ok: true,
+        value: {
+          clientMessageId: 'op1',
+          queued: { messageId: 'op1', position: 0, state: 'waiting' }
+        }
+      })
+    )
     hostRef.current = { send }
     await expect(
       createStructuredMailboxPointerHost().send({
@@ -152,10 +183,14 @@ describe('structured mailbox pointer host', () => {
         dispatchId: 'd1',
         operationId: 'op1',
         expectedRuntimeFence: 1,
-        body: { kind: 'message', role: 'user', blocks: [] }
-      } as never)
-    ).resolves.toEqual({ kind: 'queued', state: 'waiting' })
-    expect(send.mock.calls[0]![1].delivery).toBe('queue-if-active')
+        body: { kind: 'message', role: 'user', blocks: [] },
+        source: MAIL_SOURCE
+      })
+    ).resolves.toEqual({ kind: 'queued' })
+    expect(send.mock.calls[0]![1]).toMatchObject({
+      delivery: 'queue-if-active',
+      source: MAIL_SOURCE
+    })
   })
 
   it('consumes mail once an accepted nudge is delivered while the worker starts (W10)', async () => {

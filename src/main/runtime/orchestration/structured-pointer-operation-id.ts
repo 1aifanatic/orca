@@ -10,9 +10,6 @@
  * (see `decideStructuredPointerAttempt`). Age never re-mints a send the host recorded: its verdict
  * is the only evidence of whether the nudge landed.
  *
- * A busy chat holds the pointer as a card in its queue under this same id; from then on the card,
- * found by what it is (`structured-pointer-notice-cards.ts`), carries the send and the row goes.
- *
  * Reuse is keyed on the MESSAGE IDS in the batch, never on the pointer body: the body names only
  * how many messages are waiting, so two unrelated same-size batches share a fingerprint. Reusing a
  * live id across them makes the host answer from its operation ledger — `accepted`, with no turn

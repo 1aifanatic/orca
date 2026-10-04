@@ -18,6 +18,7 @@ import {
   type QueuedMessageTestRig
 } from './structured-agent-session-queued-message-rig.test-fixture'
 import { sameQueuePause } from './structured-agent-session-queued-publication'
+import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 import {
   structuredAgentSessionHostInstance,
@@ -41,12 +42,10 @@ async function expectPaused(...draftIds: string[]): Promise<void> {
   expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
 }
 
-/** `internal`: queued by Orca for an agent (orchestration mail), not by a person. */
-async function queuedDraft(
-  text: string,
-  options?: Parameters<QueuedMessageTestRig['send']>[2]
-): Promise<string> {
-  const queued = await rig.send(text, 'queue-if-active', options).result
+/** `source`: queued by Orca with another agent's message, not typed by the person. */
+async function queuedDraft(text: string, source?: AgentMessageSource): Promise<string> {
+  const queued = await rig.send(text, 'queue-if-active', source ? { internal: true, source } : {})
+    .result
   if (!queued.ok || !('queued' in queued.value)) {
     throw new Error('expected a queued receipt')
   }
@@ -347,30 +346,27 @@ describe('a pause only over cards Resume could send', () => {
 })
 
 describe("a restart's pause", () => {
-  it("holds only a person's cards: an agent's card from before it still sends when the turn ends", async () => {
+  it("holds an agent's card like the person's: it waits for Resume", async () => {
     const working = await rig.workingSend()
-    const agentCard = await queuedDraft('You have 1 orchestration message.', {
-      internal: true,
-      source: {
-        kind: 'agent',
-        senders: [],
-        orchestration: {
-          message: 'mail-notice',
-          mailbox: 'run:r1',
-          dispatchId: null,
-          runIds: ['r1'],
-          messageIds: ['m1']
-        }
+    const agentCard = await queuedDraft('[message from term_worker]', {
+      kind: 'agent',
+      senders: [
+        { party: { address: 'term_worker', terminalHandle: 'term_worker', orcaSessionId: null } }
+      ],
+      orchestration: {
+        message: 'mail',
+        mailbox: 'run:r1',
+        dispatchId: null,
+        messages: [{ messageId: 'm1', runId: 'r1', from: 'term_worker' }]
       }
     })
-    const personCard = await queuedDraft('typed by the person')
     await rig.restartHostProcess()
     await rig.settleAccepted(working, 'a')
-    await eventually(async () => expect(await rig.handoff(agentCard)).toBeDefined())
-    await rig.settleAccepted(await rig.handoffId(agentCard), 'mail')
     await new Promise((resolve) => setTimeout(resolve, 250))
-    expect(await rig.handoff(personCard)).toBeUndefined()
+    expect(await rig.handoff(agentCard)).toBeUndefined()
     expect(await rig.queuePause()).toEqual({ reason: 'restarted' })
+    expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
+    await eventually(async () => expect(await rig.handoff(agentCard)).toBeDefined())
   })
 
   it("once a person's turn ends it, stays ended when the conversation reopens", async () => {

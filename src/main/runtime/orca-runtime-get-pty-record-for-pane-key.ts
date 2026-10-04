@@ -7,8 +7,6 @@ import { recognizeAgentProcess } from '../../shared/agent-process-recognition'
 import { resolveStructuredWorkerAuthority } from './structured-worker-authority'
 import { structuredWorkerIdentities } from './structured-worker-identity'
 import type { StructuredPointerTarget } from './orchestration/structured-mailbox-pointer-delivery'
-import type { AgentMessageSource } from '../../shared/agent-session-message-source'
-import type { QueuedAgentCardVerdict } from '../native-chat/agent-session-wire/structured-agent-session-queued-agent-card'
 import {
   handleLessCoordinatorSessionId,
   structuredSessionAddressTarget,
@@ -194,14 +192,6 @@ export class OrcaRuntimeWithGetPtyRecordForPaneKey extends OrcaRuntimeWithPruneM
   /** The structured idle edge: any journal movement is a chance to redrive parked mail. */
   notifyStructuredSessionJournalActivity(sessionId: string): void {
     this.orchestrationStructuredMailboxPointerDelivery.onJournalActivity(sessionId)
-  }
-
-  /** The structured host's judge of an agent's queued card as it is about to send. */
-  judgeQueuedAgentCard(input: {
-    sessionId: string
-    source: AgentMessageSource
-  }): QueuedAgentCardVerdict {
-    return this.orchestrationStructuredMailboxPointerDelivery.judgeQueuedCard(input)
   }
 
   /**

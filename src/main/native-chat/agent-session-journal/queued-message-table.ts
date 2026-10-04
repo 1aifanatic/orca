@@ -64,7 +64,7 @@ export type QueuedMessageRow = {
   /** Where the journal stood when it was queued: a Stop's pause holds only cards queued before
    *  it. Null on rows from builds before it was recorded, which read as queued before any Stop. */
   queuedAt: AgentJournalCursor | null
-  /** Who queued it; only a person's card waits out a pause (`queued-message-pause.ts`). */
+  /** Who it is from: the person, or another agent through Orca. */
   source: AgentSessionMessageSource
 }
 

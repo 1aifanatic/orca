@@ -1,33 +1,34 @@
-// Who a chat message is from: the person at the composer, or Orca on behalf of other agents.
-// Persisted with a queued card (`queued_messages.source_json`) and shaped for the sent message too,
-// so the chat can name each sender and open it.
+// Who a chat message is from: the person at the composer, or another agent through Orca.
+// Persisted with a queued card (`queued_messages.source_json`), so the chat can name each sender.
 
 import { z } from 'zod'
 import { isOrcaSessionId, type OrcaSessionId } from './orca-session-address'
 import type { OrchestrationPartyIdentity } from './orchestration-party-identity'
 
 /**
- * One agent a message speaks for, named by the orchestration database of the host that stores the
+ * An agent a message is from, named by the orchestration database of the host that stores the
  * message: the only host whose agents can send today. A relayed sender adds its host here. No pane
  * key: it reads and consumes that agent's mailbox, so the host resolves it from the handle.
  */
 export type AgentMessageSender = Readonly<{ party: Omit<OrchestrationPartyIdentity, 'paneKey'> }>
 
-/** The notice that orchestration mail is waiting, and the records it stands for while they exist. */
-export type OrchestrationMailNotice = Readonly<{
-  message: 'mail-notice'
+/** One orchestration message a turn carries: its record, and its sender's `senders` address. */
+export type OrchestrationMailMessage = Readonly<{ messageId: string; runId: string; from: string }>
+
+/** A mailbox's unread orchestration mail, delivered as the turn itself, in mail order. */
+export type OrchestrationMail = Readonly<{
+  message: 'mail'
   mailbox: string
   dispatchId: string | null
-  runIds: readonly string[]
-  messageIds: readonly string[]
+  messages: readonly OrchestrationMailMessage[]
 }>
 
-/** What Orca sends for other agents, one shape per message kind. */
-export type OrchestrationAgentMessage = OrchestrationMailNotice
+/** What Orca delivers for other agents, one shape per message kind. */
+export type OrchestrationAgentMessage = OrchestrationMail
 
 export type AgentMessageSource = Readonly<{
   kind: 'agent'
-  /** Every distinct sender of what the message stands for, in mail order. */
+  /** Every distinct sender of the messages it carries, in mail order. */
   senders: readonly AgentMessageSender[]
   orchestration: OrchestrationAgentMessage
 }>
@@ -36,30 +37,17 @@ export type AgentSessionMessageSource = Readonly<{ kind: 'user' }> | AgentMessag
 
 export const USER_MESSAGE_SOURCE: AgentSessionMessageSource = { kind: 'user' }
 
-/** Two of Orca's messages with one key are one message: a mail notice per mailbox, which counts the
- *  mail owed when it sends. Null for a person's. */
-export function agentMessageKey(source: AgentSessionMessageSource): string | null {
-  if (source.kind === 'user') {
-    return null
-  }
-  switch (source.orchestration.message) {
-    case 'mail-notice':
-      return `mail-notice:${source.orchestration.mailbox}`
-  }
-}
-
 const MESSAGE_SOURCE_VERSION = 1
 
 const orcaSessionIdSchema = z.custom<OrcaSessionId>(
   (value) => typeof value === 'string' && isOrcaSessionId(value)
 )
 
-const mailNoticeSchema = z.object({
-  message: z.literal('mail-notice'),
+const mailSchema = z.object({
+  message: z.literal('mail'),
   mailbox: z.string(),
   dispatchId: z.string().nullable(),
-  runIds: z.array(z.string()),
-  messageIds: z.array(z.string())
+  messages: z.array(z.object({ messageId: z.string(), runId: z.string(), from: z.string() }))
 })
 
 // Not strict: a newer build may add a field, which this one keeps no use for and must not reject.
@@ -77,7 +65,7 @@ const storedSourceSchema = z.discriminatedUnion('kind', [
         })
       })
     ),
-    orchestration: z.discriminatedUnion('message', [mailNoticeSchema])
+    orchestration: z.discriminatedUnion('message', [mailSchema])
   })
 ])
 
@@ -87,8 +75,7 @@ export function serializeAgentSessionMessageSource(source: AgentSessionMessageSo
 
 /**
  * The stored value read back. Absent (a card from before the column) is the person's: only the
- * composer queued then. A value this build cannot read is the person's too, so it waits out every
- * pause as every card did before agents could queue: never sent unasked.
+ * composer queued then. So is a value this build cannot read; either way it is sent as written.
  */
 export function readAgentSessionMessageSource(stored: unknown): AgentSessionMessageSource {
   const parsed = storedSourceSchema.safeParse(stored)

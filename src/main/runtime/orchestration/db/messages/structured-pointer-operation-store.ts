@@ -49,26 +49,16 @@ export function deleteStructuredPointerOperation(
     .run(mailboxHandle)
 }
 
-/** The rows of a session nothing will reconcile again (its worker settled). */
-export function deleteStructuredPointerOperationsForSession(
-  this: OrchestrationDb,
-  sessionId: string
-): void {
-  this.db.prepare('DELETE FROM structured_pointer_operations WHERE session_id = ?').run(sessionId)
-}
-
 export type StructuredPointerOperationStoreMethods = {
   getStructuredPointerOperation: typeof getStructuredPointerOperation
   putStructuredPointerOperation: typeof putStructuredPointerOperation
   deleteStructuredPointerOperation: typeof deleteStructuredPointerOperation
-  deleteStructuredPointerOperationsForSession: typeof deleteStructuredPointerOperationsForSession
 }
 
 export function attachStructuredPointerOperationStore(ctor: { prototype: object }): void {
   Object.assign(ctor.prototype, {
     getStructuredPointerOperation,
     putStructuredPointerOperation,
-    deleteStructuredPointerOperation,
-    deleteStructuredPointerOperationsForSession
+    deleteStructuredPointerOperation
   })
 }

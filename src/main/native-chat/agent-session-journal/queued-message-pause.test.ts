@@ -534,13 +534,7 @@ describe('which cards the pauses in force hold', () => {
 
   function card(messageId: string, queuedAfter: number, fields: Partial<Card> = {}): Card {
     const queuedAt = { epoch: 'epoch-1', sequence: queuedAfter + 1 }
-    const base = {
-      state: 'waiting',
-      holdReason: null,
-      hostInstance: HOST,
-      carriedFrom: null,
-      source: { kind: 'user' as const }
-    }
+    const base = { state: 'waiting', holdReason: null, hostInstance: HOST, carriedFrom: null }
     return { messageId, ...base, queuedAt, ...fields }
   }
 
@@ -599,79 +593,6 @@ describe('which cards the pauses in force hold', () => {
       ['after', 'restarted']
     ])
     expect(resumableQueuePause(pausesOver(cards), cards)?.reason).toBe('stopped')
-  })
-
-  const AGENT_SOURCE = {
-    kind: 'agent' as const,
-    senders: [],
-    orchestration: {
-      message: 'mail-notice' as const,
-      mailbox: 'run:r1',
-      dispatchId: null,
-      runIds: ['r1'],
-      messageIds: ['m1']
-    }
-  }
-
-  it("no pause holds an agent's card, and one alone pauses nothing", () => {
-    const agent = card('agent', 1, {
-      hostInstance: DEAD,
-      carriedFrom: 'source-session',
-      source: AGENT_SOURCE
-    })
-    expect(pausesOver([agent], 0)).toEqual([])
-    expect(holding([agent])).toEqual([['agent', null]])
-    expect(nextSendableQueuedCard(pausesOver([agent]), [agent])).toBe(agent)
-    expect(resumableQueuePause(pausesOver([agent]), [agent])).toBeNull()
-  })
-
-  it.each([
-    ['restarted', { hostInstance: DEAD }, 0],
-    ['stopped', {}, 5],
-    ['cleared', { carriedFrom: 'source-session' }, 0]
-  ] as const)(
-    "an agent's card behind a person's card held by '%s' sends; the header still names that pause",
-    (reason, held, stopped) => {
-      const cards = [
-        card('person', 1, held),
-        card('agent', 2, { source: AGENT_SOURCE }),
-        card('person-later', 6)
-      ]
-      expect(holding(cards, stopped).slice(0, 2)).toEqual([
-        ['person', reason],
-        ['agent', null]
-      ])
-      expect(nextSendableQueuedCard(pausesOver(cards, stopped), cards)?.messageId).toBe('agent')
-      expect(resumableQueuePause(pausesOver(cards, stopped), cards)?.reason).toBe(reason)
-      // Sent: the person's later card still never overtakes their held one.
-      const rest = cards.map((each) =>
-        each.messageId === 'agent' ? { ...each, state: 'dispatched' } : each
-      )
-      expect(nextSendableQueuedCard(pausesOver(rest, stopped), rest)).toBeNull()
-    }
-  )
-
-  it('a card the person cannot see never delays one they can: it goes only when none of theirs may', () => {
-    const cards = [card('agent', 1, { source: AGENT_SOURCE }), card('person', 2)]
-    expect(nextSendableQueuedCard(pausesOver(cards, 0), cards)?.messageId).toBe('person')
-    const sent = cards.map((each) =>
-      each.messageId === 'person' ? { ...each, state: 'dispatched' } : each
-    )
-    expect(nextSendableQueuedCard(pausesOver(sent, 0), sent)?.messageId).toBe('agent')
-    // A person's card with a hold of its own is skipped and delays nothing either.
-    const held = [
-      card('agent', 1, { source: AGENT_SOURCE }),
-      card('person', 2, { holdReason: 'send_failed' })
-    ]
-    expect(nextSendableQueuedCard(pausesOver(held, 0), held)?.messageId).toBe('agent')
-  })
-
-  it("an agent's card behind a card returned to the person sends", () => {
-    const cards = [
-      card('returned', 1, { state: 'returned' }),
-      card('agent', 2, { source: AGENT_SOURCE })
-    ]
-    expect(nextSendableQueuedCard(pausesOver(cards, 0), cards)?.messageId).toBe('agent')
   })
 
   it("a /clear's pause that holds nothing never hides a restart's", () => {

@@ -4,7 +4,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { expect, vi } from 'vitest'
+import { expect, vi, type Mock } from 'vitest'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
@@ -12,6 +12,7 @@ import type { AgentJournalSubmission } from '../../../shared/agent-session-journ
 import type { AgentSessionQueuePause } from '../../../shared/agent-session-wire'
 import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
+import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import type { StructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
@@ -27,8 +28,6 @@ import {
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
-import { createQueuedRigProviderMocks } from './structured-agent-session-queued-rig-provider.test-fixture'
-import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 
 export const QUEUED_RIG_CALLER = { callerKey: 'client-1' }
 type RigSendOptions = { internal?: true; source?: AgentMessageSource }
@@ -49,17 +48,29 @@ export async function createQueuedMessageTestRig(
     idleSweep?: { idleMs: number; intervalMs: number }
     /** The provider's Stop ends its child, as Claude's does. */
     stopEndsSession?: true
-    /** The host's owner's side of an agent's card: its judge and where a dropped one goes. */
-    agentCards?: Pick<
-      StructuredAgentSessionHostDeps,
-      'judgeQueuedAgentCard' | 'onQueuedAgentCardDropped'
-    >
   } = {}
 ) {
   const root = await mkdtemp(join(tmpdir(), 'orca-queued-messages-'))
   resetHostTestOperationIds()
-  const { dispatch, awaitStarted, compact, cancelTurn, closeSession } =
-    createQueuedRigProviderMocks()
+  // Admitted: the message is written and unanswered, so the session owes work
+  // until the test settles it.
+  const dispatch: Mock<StructuredAgentSessionAdapter['dispatch']> = vi.fn(async () => ({
+    state: 'admitted' as const
+  }))
+  const awaitStarted: Mock<NonNullable<StructuredAgentSessionAdapter['awaitStarted']>> = vi.fn(
+    async () => undefined
+  )
+  // The provider's receipt of a /compact; its end arrives later, as `finishCompact` writes it.
+  const compact: Mock<NonNullable<StructuredAgentSessionAdapter['compact']>> = vi.fn(async () => ({
+    state: 'accepted' as const,
+    providerIdentity: null
+  }))
+  const cancelTurn: Mock<StructuredAgentSessionAdapter['cancelTurn']> = vi.fn(async () => ({
+    cancelled: true
+  }))
+  const closeSession: Mock<NonNullable<StructuredAgentSessionAdapter['closeSession']>> = vi.fn(
+    async () => true
+  )
   let events: StructuredAgentSessionEventSink | undefined
   const store = await openTestAgentSessionRecordStore(root)
   const makeHost = () =>
@@ -104,8 +115,7 @@ export async function createQueuedMessageTestRig(
       claimKeyId: 'key-1',
       mintSpawnToken: () => 'spawn-1',
       now: () => NOW,
-      ...(options.idleSweep ? { idleSweep: options.idleSweep } : {}),
-      ...options.agentCards
+      ...(options.idleSweep ? { idleSweep: options.idleSweep } : {})
     })
   let host = makeHost()
   expect(await host.attach(QUEUED_RIG_CALLER, hostTestAttachParams(null))).toMatchObject({
@@ -132,7 +142,7 @@ export async function createQueuedMessageTestRig(
 
   /** A client's send, as the `agentSession.send` RPC hands it to the host;
    *  `internal` is a host-side sender (orchestration mail, a restart continuation), and `source`
-   *  who it queues for. */
+   *  who it is from. */
   function send(text: string, delivery?: 'queue-if-active', options?: RigSendOptions) {
     const body = hostTestMessage(text)
     const clientOperationId = hostTestOperationId()

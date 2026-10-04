@@ -189,17 +189,16 @@ describe('draft rows', () => {
         }
       ],
       orchestration: {
-        message: 'mail-notice',
+        message: 'mail',
         mailbox: 'run:r1',
         dispatchId: 'd1',
-        runIds: ['r1'],
-        messageIds: ['m1']
+        messages: [{ messageId: 'm1', runId: 'r1', from: 'structworker_1' }]
       }
     }
     const first = await open()
     await first.queuedMessages.insert({
       messageId: 'agent-card',
-      body: message('You have 1 orchestration message.'),
+      body: message('[message from structworker_1]'),
       fingerprint: 'fp-agent-card',
       hostInstance: 'proc-1',
       source: agent
