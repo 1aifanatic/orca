@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 import { OrcaRuntimeService, setPlatform } from '../orca-runtime-test-mocks.spec'
 import type { RuntimeTerminalAgentStatusEvent } from '../orca-runtime-test-mocks.spec'
-import { TEST_REPO_ID, TEST_WORKTREE_ID, store } from '../orca-runtime-test-fixtures.spec'
+import {
+  TEST_REPO_ID,
+  TEST_WORKTREE_ID,
+  createRuntime,
+  store,
+  syncSinglePty
+} from '../orca-runtime-test-fixtures.spec'
 
 describe('OrcaRuntimeService', () => {
   it('replaces a cwd parsed before late WSL context with the provider cwd', async () => {
@@ -226,5 +232,27 @@ describe('OrcaRuntimeService', () => {
         })
       })
     ])
+  })
+
+  it('parks a recovery-seeded model on the PTY grid when the snapshot was another size', async () => {
+    const runtime = createRuntime()
+    runtime.setPtyController({
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess: async () => null,
+      getSize: () => ({ cols: 47, rows: 40 })
+    })
+    syncSinglePty(runtime, 'pty-1')
+
+    runtime.replaceHeadlessTerminalFromRendererSnapshotForRecovery(
+      'pty-1',
+      { data: 'desktop history\r\nprompt $ ', cols: 200, rows: 50 },
+      [{ data: 'after recovery\r\n', seq: 1 }]
+    )
+
+    const snapshot = await runtime.serializeMainTerminalBuffer('pty-1', { scrollbackRows: 100 })
+    expect(snapshot).toMatchObject({ cols: 47, rows: 40, source: 'headless' })
+    expect(snapshot?.data).toContain('desktop history')
+    expect(snapshot?.data).toContain('after recovery')
   })
 })

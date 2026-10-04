@@ -122,6 +122,11 @@ export class OrcaRuntimeWithWaitForLeafPtyId extends OrcaRuntimeWithRestoreLiveP
       { cols: snapshot.cols, rows: snapshot.rows },
       { cwd: snapshot.cwd, oscLinks: snapshot.oscLinks }
     )
+    // Why: like hydrate, reflow onto the PTY grid after the seed parses; the PTY's own resize already passed with no model.
+    const ptyDims = this.getTerminalSize(ptyId)
+    if (ptyDims && (ptyDims.cols !== snapshot.cols || ptyDims.rows !== snapshot.rows)) {
+      this.resizeHeadlessTerminal(ptyId, ptyDims.cols, ptyDims.rows)
+    }
     for (const chunk of trailingOutput) {
       this.trackHeadlessTerminalData(ptyId, chunk.data, chunk.seq)
     }
