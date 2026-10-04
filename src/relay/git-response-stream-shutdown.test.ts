@@ -79,6 +79,22 @@ describe('GitResponseStreamRegistry shutdown', () => {
     expect(notifyBulk.mock.calls[0]?.[0]).toBe('git.responseChunk')
   })
 
+  it('rejects, so shutdown defers, when a pump stays parked past the drain deadline', async () => {
+    const registry = new GitResponseStreamRegistry(20)
+    const parked = deferred()
+    const notifyBulk = vi.fn(() => parked.promise)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the response pump only calls notifyBulk (producerDataBudget is optional).
+    const dispatcher = { notifyBulk } as unknown as RelayDispatcher
+    registry.startStream(Buffer.from('one chunk'), dispatcher, context)
+    await flushPump()
+
+    await expect(registry.disposeAllAndWait()).rejects.toThrow(
+      'relay_response_stream_operations_unsettled'
+    )
+    parked.resolve()
+    await registry.disposeAllAndWait()
+  })
+
   it('wakes producers parked on client ACKs without waiting for the stall timer', async () => {
     const { registry, dispatcher, notifyBulk } = fixture()
     registry.startStream(

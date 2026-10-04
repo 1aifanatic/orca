@@ -1,4 +1,5 @@
 import type { FileHandle } from 'node:fs/promises'
+import { settlesWithin } from './settles-within'
 import { MAX_CONCURRENT_STREAMS, RelayErrorCode, STREAM_ACK_STALL_RECHECK_MS } from './protocol'
 
 type StreamEntry = {
@@ -206,17 +207,6 @@ export class RelayStreamRegistry {
   reopen(): void {
     this.disposed = false
   }
-}
-
-function settlesWithin(work: Promise<unknown>, deadlineMs: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(false), deadlineMs)
-    timer.unref?.()
-    void work.then(() => {
-      clearTimeout(timer)
-      resolve(true)
-    })
-  })
 }
 
 function isErrorWithCode(error: unknown, code: string): boolean {

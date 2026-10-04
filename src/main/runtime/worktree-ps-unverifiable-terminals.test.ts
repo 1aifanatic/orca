@@ -99,7 +99,7 @@ describe('worktree.ps terminal verdicts for an SSH host', () => {
     const row = await psRow(runtime)
 
     expect(row).toMatchObject({ liveTerminalCount: 1, hasAttachedPty: true })
-    expect(row?.unverifiableTerminalCount).toBeUndefined()
+    expect(row?.unverifiableTerminalCount).toBe(0)
   })
 
   it('reports a terminal on an unreachable host as unverifiable, not zero', async () => {
@@ -128,7 +128,7 @@ describe('worktree.ps terminal verdicts for an SSH host', () => {
     const row = await psRow(runtime)
 
     expect(row).toMatchObject({ liveTerminalCount: 0, hasAttachedPty: false })
-    expect(row?.unverifiableTerminalCount).toBeUndefined()
+    expect(row?.unverifiableTerminalCount).toBe(0)
   })
 
   it('returns to live once the reconnected host lists the terminal again', async () => {
@@ -144,6 +144,6 @@ describe('worktree.ps terminal verdicts for an SSH host', () => {
     const row = await psRow(runtime)
 
     expect(row).toMatchObject({ liveTerminalCount: 1, hasAttachedPty: true })
-    expect(row?.unverifiableTerminalCount).toBeUndefined()
+    expect(row?.unverifiableTerminalCount).toBe(0)
   })
 })

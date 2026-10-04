@@ -122,10 +122,12 @@ export class RelayGraceLifecycle {
     this.graceDeadlineAt = null
     this.graceReason = null
     this.graceBranch = null
-    void this.options.ptyHandler
-      .dispose()
+    // Why owned processes first: their disposal can defer, and a deferral must leave the PTYs intact,
+    // because a disposed PTY handler kills every terminal and refuses new ones.
+    void this.options
+      .disposeOwnedProcesses()
       .then(async () => {
-        await this.options.disposeOwnedProcesses()
+        await this.options.ptyHandler.dispose()
         this.stopPoolWatch()
         this.stopPoolActiveWatch()
         this.options.disposeRuntime()
