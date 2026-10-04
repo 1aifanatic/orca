@@ -174,7 +174,8 @@ export function AgentCatalogRow({
       `[data-agent-reveal="${reveal.target}"] ${REVEAL_FOCUS_SELECTOR[reveal.target]}`
     )
     control?.scrollIntoView?.({ block: 'center' })
-    control?.focus({ preventScroll: true })
+    // focusVisible: after a mouse click on the link, a radio's ring would otherwise stay hidden.
+    control?.focus({ preventScroll: true, focusVisible: true })
   }, [reveal])
 
   return (

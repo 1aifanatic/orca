@@ -205,6 +205,29 @@ describe('Agent Permissions line links', () => {
   })
 })
 
+// The landing must show its focus ring after a mouse click too; a radio's ring is :focus-visible only.
+describe('Agent Permissions line focus ring', () => {
+  it('asks for visible focus on the control it lands on, from the mouse and the keyboard', async () => {
+    const focus = vi.spyOn(HTMLElement.prototype, 'focus')
+    renderPane({ agentPermissionModeOverrides: { claude: 'ask' } })
+    const link = within(permissionLine()).getByRole('button', { name: 'Claude' })
+    const target = (): HTMLElement =>
+      within(
+        within(row('claude')).getByRole('radiogroup', { name: 'Claude permissions' })
+      ).getByRole('radio', { name: 'Manual' })
+
+    await userEvent.click(link)
+    expect(focus.mock.contexts.at(-1)).toBe(target())
+    expect(focus.mock.calls.at(-1)?.[0]).toMatchObject({ focusVisible: true })
+
+    link.focus()
+    await userEvent.keyboard('{Enter}')
+    expect(document.activeElement).toBe(target())
+    expect(focus.mock.calls.at(-1)?.[0]).toMatchObject({ focusVisible: true })
+    focus.mockRestore()
+  })
+})
+
 // Before detection finishes no rows render, so a name can't open anything yet.
 describe('Agent Permissions line before agents are detected', () => {
   it.each([
