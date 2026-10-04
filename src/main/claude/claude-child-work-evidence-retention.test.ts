@@ -7,8 +7,8 @@ import type {
 import { deriveToolInputPreview } from '../../shared/agent-hook-listener/tool-input-preview'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { ClaudeChildWorkDecoder } from './claude-child-work-decoder'
-import { ClaudePromptRegistry } from './claude-prompt-registry'
 import { claudeChildOperation, drainClaudeChildWork } from './claude-child-work-evidence'
+import { ClaudePromptRegistry } from './claude-prompt-registry'
 import { createClaudeJournalTranslator } from './claude-structured-journal-translation'
 import {
   claudeToolResults,
@@ -88,8 +88,8 @@ describe('Claude child operation output retention', () => {
       const evidence = drainClaudeChildWork(
         {
           childWork: new ClaudeChildWorkDecoder(),
-          translator,
-          prompts: new ClaudePromptRegistry()
+          prompts: new ClaudePromptRegistry(),
+          translator
         },
         message,
         1_000
