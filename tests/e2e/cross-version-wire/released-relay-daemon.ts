@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { mkdir, symlink, writeFile } from 'node:fs/promises'
 import { connect } from 'node:net'
@@ -17,6 +17,9 @@ export type ReleasedRelayInstall = {
   dir: string
   version: string
 }
+
+/** The release whose relay an upgraded host still runs. */
+export const PREVIOUS_RELAY_REF = 'v1.4.218'
 
 const SENTINEL = Buffer.from(RELAY_SENTINEL, 'utf-8')
 const DROPPED_DEPENDENCY_NAMESPACE = 'dropped-release-dependency'
@@ -46,6 +49,14 @@ const droppedReleaseDependencies: Plugin = {
       loader: 'js'
     }))
   }
+}
+
+export function runShell(command: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile('sh', ['-c', command], { timeout: 20_000 }, (error, stdout) =>
+      error ? reject(error) : resolve(stdout)
+    )
+  })
 }
 
 /**

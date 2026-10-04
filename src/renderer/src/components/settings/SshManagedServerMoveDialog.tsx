@@ -21,7 +21,7 @@ type SshManagedServerMoveDialogProps = {
   open: boolean
   targetId: string
   host: string
-  terminals: number
+  terminals: number | undefined
   onClose: () => void
 }
 

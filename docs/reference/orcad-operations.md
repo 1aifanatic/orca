@@ -80,7 +80,8 @@ no template in the install, the pinned Node could not be fetched, or a failed na
   app update there, and orcad has no updater. Recipe-JSON serve has no handoff and uses orcad.
 - Windows serves on orcad too. Both hosts share `<userData>\daemon`, so the daemon pipe name
   (hashed from that path) is the same, and the relocated Electron daemon host changes only the
-  executable, not the pipe. The `orcad-serve-mode-switch-windows` e2e job gates D7 there.
+  executable, not the pipe. The `orcad-serve-mode-switch-windows` e2e job checks D7 there, in the
+  daily run and on PRs routed to it; it does not block merges.
 
 The slot and its pinned Node live under the desktop's `<userData>/orcad-artifacts`.
 

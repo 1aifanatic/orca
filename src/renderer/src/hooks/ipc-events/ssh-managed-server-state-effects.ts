@@ -27,7 +27,7 @@ export function applySshManagedServerTransition(
     return
   }
   if (isNewMoveOffer(previous, next) && canMoveSshHostToManagedServer()) {
-    offerManagedServerMove(targetId, next.terminals ?? 0)
+    offerManagedServerMove(targetId, next.terminals)
     return
   }
   if (
@@ -39,11 +39,11 @@ export function applySshManagedServerTransition(
       previous.detail === next.detail
     )
   ) {
+    // `detail` is main's English refusal; the SSH Hosts status line shows it under "Details".
     toast.error(
       translate(
-        'auto.hooks.ipcEvents.sshManagedServer.refused',
-        'This SSH host could not move to a managed Orca server: {{blocker}}',
-        { blocker: next.detail ?? '' }
+        'auto.hooks.ipcEvents.sshManagedServer.refusedBlocked',
+        'This SSH host could not move to a managed Orca server. SSH Hosts in Settings shows why.'
       )
     )
   }
@@ -83,7 +83,7 @@ function isNewMoveOffer(
   )
 }
 
-function offerManagedServerMove(targetId: string, terminals: number): void {
+function offerManagedServerMove(targetId: string, terminals: number | undefined): void {
   const host = useAppStore.getState().sshTargetLabels.get(targetId) ?? targetId
   toast(managedServerMoveOfferText(host, terminals), {
     id: `ssh-managed-server-move:${targetId}`,
