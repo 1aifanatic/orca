@@ -60,8 +60,8 @@ export type QueuedMessageRow = {
   /** Where the journal stood when it was queued: a Stop's pause holds only cards queued before
    *  it. Null on rows from builds before it was recorded, which read as queued before any Stop. */
   queuedAt: AgentJournalCursor | null
-  /** Who wrote the card, in the submission's vocabulary: the queue's send of it carries this. A
-   *  row from before it was recorded reads as a person's: no Orca-internal sender queued then. */
+  /** Who wrote the card, in the submission's vocabulary: the queue's send of it carries this.
+   *  Unrecorded reads as a person's: before it, no production caller queued an Orca send. */
   origin: JournalSubmissionOrigin
 }
 
