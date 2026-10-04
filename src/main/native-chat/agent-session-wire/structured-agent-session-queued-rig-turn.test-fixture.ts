@@ -1,6 +1,9 @@
-// The turn a rig's send opened, as the provider's turn record writes it, for tests where a message
-// goes into a running turn: one sent while that send's turn is still opening waits for it.
+// What a provider does with a rig's send that the rig's adapter never models: the turn it opened,
+// as the provider's turn record writes it, or its withdrawal by a Stop. A message sent while that
+// send's turn is still opening waits for one of them.
 
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import {
@@ -33,4 +36,14 @@ export async function openRigTurnFor(
       turnScope: AGENT_JOURNAL_THREAD_SCOPE
     }
   )
+}
+
+/** A Stop took back `id`, whose turn never opened, as the provider's Stop settles it. */
+export async function withdrawnByStop(rig: QueuedMessageTestRig, id: string): Promise<void> {
+  await rig.host.settleLateDispatch({
+    sessionId: SESSION,
+    clientMessageId: id,
+    state: 'rejected',
+    ...agentSessionFailureWords(agentSessionFailureFact('cancelled'), { surface: 'rejection' })
+  })
 }

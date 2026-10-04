@@ -19,6 +19,7 @@ import {
 } from '../../shared/agent-session-failure-words'
 import type { CodexTurnEnd } from './codex-structured-dispatch-echo'
 import type { CodexSession } from './codex-structured-session-state'
+import { readCodexJournalRecord } from './codex-structured-journal-translation-values'
 import {
   readCodexThreadId,
   readCodexTurnErrorMessage,
@@ -46,6 +47,27 @@ export type CodexTurnEndSettlement = {
 function errorDetail(params: unknown): ProviderDiagnostic | undefined {
   const message = readCodexTurnErrorMessage(params)
   return message ? providerDiagnostic(message, 'person') : undefined
+}
+
+/** A final `error` naming a turn Codex never opened: before 0.148 that is the only end such a
+ *  turn reports. One it opened still reports its own `turn/completed`. */
+function unopenedTurnFailure(
+  session: Pick<CodexSession, 'threadId' | 'dispatchEchoes'>,
+  method: string,
+  params: unknown,
+  turnId: string
+): CodexTurnEnd | null {
+  if (
+    method !== 'error' ||
+    readCodexJournalRecord(params).willRetry !== false ||
+    session.dispatchEchoes.hasOpened(session.threadId, turnId)
+  ) {
+    return null
+  }
+  const message = readCodexJournalRecord(readCodexJournalRecord(params).error).message
+  const detail =
+    typeof message === 'string' && message ? providerDiagnostic(message, 'person') : undefined
+  return { status: 'failed', ...(detail ? { detail } : {}) }
 }
 
 /** The end a primary-thread notification reports for its turn, or null for any other frame. */
@@ -78,6 +100,18 @@ export function codexTurnEndRejection(end: CodexTurnEnd): AgentJournalDispatchRe
 }
 
 /** Settles the sends bound to the turn this admitted notification ended. */
+/** Records a turn Codex opened, ahead of the frames that may report the thread idle before it ends. */
+export function noteCodexTurnOpened(
+  session: Pick<CodexSession, 'threadId' | 'dispatchEchoes'>,
+  method: string,
+  params: unknown
+): void {
+  const turnId = method === 'turn/started' ? readCodexTurnId(params) : null
+  if (turnId && (readCodexThreadId(params) ?? session.threadId) === session.threadId) {
+    session.dispatchEchoes.opened(session.threadId, turnId)
+  }
+}
+
 export function settleCodexSendsInEndedTurn(
   session: Pick<CodexSession, 'threadId' | 'dispatchEchoes'>,
   method: string,
@@ -85,7 +119,9 @@ export function settleCodexSendsInEndedTurn(
   settle: (settlement: CodexTurnEndSettlement) => void
 ): void {
   const turnId = readCodexTurnId(params)
-  const end = readCodexTurnEnd(method, params)
+  const end = turnId
+    ? (readCodexTurnEnd(method, params) ?? unopenedTurnFailure(session, method, params, turnId))
+    : null
   if (!turnId || !end || (readCodexThreadId(params) ?? session.threadId) !== session.threadId) {
     return
   }

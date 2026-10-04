@@ -8,7 +8,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentJournalSubmissionKey } from '../../shared/agent-session-journal-item-key'
-import { DISPATCH_DOUBT_PROVIDER_IDLE } from '../native-chat/agent-session-journal/journal-dispatch-doubt-reasons'
 import { CODEX_TURN_OPEN_WAIT_MS } from '../codex/codex-structured-turn-open-wait'
 import { projectStructuredAgentSessionMessages } from '../../shared/structured-agent-session-message-projection'
 import { projectNativeChatTranscriptMessages } from '../../shared/native-chat-transcript-projection'
@@ -455,8 +454,8 @@ describe('a send whose turn Codex answered and never opened', () => {
     return { first, second }
   }
 
-  // Codex before 0.148 fails a turn before opening it with only an `error`, then goes idle.
-  it('releases the message behind it once Codex reports the thread idle', async () => {
+  // Codex before 0.148 fails a turn before opening it with only an `error`: that is its end.
+  it('releases the message behind it once Codex fails that turn before opening it', async () => {
     turns = codexTurnLifecycleFake(
       THREAD,
       () => (method, params) => handlers?.onNotification?.(method, params),
@@ -467,8 +466,8 @@ describe('a send whose turn Codex answered and never opened', () => {
     turns.failUnopened('invalid turn settings')
 
     await vi.waitFor(async () => expect((await submission(second))?.handedOverAt).toBeDefined())
-    expect(verdictOf((await settled()).submissions, first)).toBe('unknown')
-    expect((await submission(first))?.reason).toBe(DISPATCH_DOUBT_PROVIDER_IDLE)
+    expect(await submission(first)).toMatchObject({ dispatchState: 'rejected' })
+    expect(JSON.stringify(await submission(first))).toContain('invalid turn settings')
     await vi.waitFor(() => expect(answers).toBe(2))
     expect(openWaits.turnIds).toEqual([])
   })
@@ -489,5 +488,61 @@ describe('a send whose turn Codex answered and never opened', () => {
     await vi.waitFor(async () =>
       expect(verdictOf((await settled()).submissions, first)).toBe('accepted')
     )
+  })
+})
+
+// Codex reports the thread idle ahead of the `turn/completed` of a turn it opened, as the fake does.
+describe('a send in a turn Codex opened, when Codex reports the thread idle', () => {
+  function lateSettlements(clientMessageId: string) {
+    return vi
+      .mocked(host.settleLateDispatch)
+      .mock.calls.map(([settlement]) => settlement)
+      .filter((settlement) => settlement.clientMessageId === clientMessageId)
+      .map((settlement) => ('state' in settlement ? settlement.state : 'accepted'))
+  }
+
+  it('is never doubted for the idle when it was steered in and a Stop takes it back', async () => {
+    vi.spyOn(host, 'settleLateDispatch')
+    const warmUp = await send('warm up')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    turns.start()
+    turns.echo(warmUp)
+    const steered = await send('and also this')
+    await vi.waitFor(() => expect(steers).toBe(1))
+
+    await stop()
+
+    await vi.waitFor(async () =>
+      expect(verdictOf((await settled()).submissions, steered)).toBe('withdrawn')
+    )
+    expect(lateSettlements(steered)).toEqual(['rejected'])
+  })
+
+  it('is never doubted for the idle when it opened the turn and a Stop ends it before the echo', async () => {
+    vi.spyOn(host, 'settleLateDispatch')
+    const first = await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    turns.start()
+
+    await stop()
+
+    await vi.waitFor(async () =>
+      expect(verdictOf((await settled()).submissions, first)).toBe('withdrawn')
+    )
+    expect(lateSettlements(first)).toEqual(['rejected'])
+  })
+
+  it('raises no doubt when its turn completes with it echoed', async () => {
+    vi.spyOn(host, 'settleLateDispatch')
+    const first = await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    turns.start()
+    turns.echo(first)
+    turns.end('completed')
+    const second = await send('next')
+    await vi.waitFor(async () => expect((await submission(second))?.handedOverAt).toBeDefined())
+
+    expect(lateSettlements(first)).toEqual(['accepted'])
+    expect(verdictOf((await settled()).submissions, first)).toBe('accepted')
   })
 })
