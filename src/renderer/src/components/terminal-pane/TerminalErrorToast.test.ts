@@ -355,6 +355,20 @@ describe('TerminalErrorToast environment footer', () => {
     await waitFor(() => expect(environmentMocks.resolveFooter).not.toHaveBeenCalled())
   })
 
+  it('omits client details for a terminal the previous Orca version runs on the host', async () => {
+    const view = render(
+      React.createElement(TerminalErrorToast, {
+        error:
+          "Error invoking remote method 'pty:spawn': SshPtyHeldByPreviousRelayError: SSH_PTY_HELD_BY_PREVIOUS_RELAY: pty2:old-epoch:1",
+        onDismiss: vi.fn()
+      })
+    )
+
+    expect(view.container.textContent).toContain('previous Orca version')
+    await waitFor(() => expect(environmentMocks.resolveFooter).not.toHaveBeenCalled())
+    expect(view.container.textContent).not.toContain('OS:')
+  })
+
   it('shows the issue request once for a host error that already asks for one', () => {
     const view = render(
       React.createElement(TerminalErrorToast, {
