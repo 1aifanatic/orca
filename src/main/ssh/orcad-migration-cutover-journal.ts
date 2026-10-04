@@ -6,7 +6,7 @@
  * the target's `orcadFence`, which shipped builds keep, survived it. A missing journal must
  * never look like "no migration"; an unreadable one fails closed.
  */
-import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { writeSecureJsonFileWithinLimit } from '../../shared/bounded-secure-json-file'
 import { readNodeFileSyncWithinLimit } from '../../shared/node-bounded-file-reader'
@@ -30,6 +30,9 @@ export class OrcadMigrationCutoverJournalUnreadableError extends Error {
   }
 }
 
+// Why: hidden-row checks run on every list call, and each journal embeds a full manifest.
+const parsedJournals = new Map<string, { key: string; cutovers: OrcadMigrationSourceCutover[] }>()
+
 export function orcadMigrationCutoverJournalDirectory(userDataPath: string): string {
   return join(userDataPath, JOURNAL_DIRECTORY)
 }
@@ -48,7 +51,7 @@ export function listOrcadMigrationSourceCutovers(
   } catch (error) {
     throw new OrcadMigrationCutoverJournalUnreadableError(errorMessage(error))
   }
-  const cutovers: OrcadMigrationSourceCutover[] = []
+  const files: { name: string; path: string }[] = []
   for (const name of names) {
     if (!name.endsWith('.json')) {
       continue // Durable-write temporaries and foreign files carry no journal state.
@@ -56,9 +59,18 @@ export function listOrcadMigrationSourceCutovers(
     if (!JOURNAL_FILE.test(name)) {
       throw new OrcadMigrationCutoverJournalUnreadableError(`unexpected entry ${name}`)
     }
-    cutovers.push(readJournalFile(join(directory, name), name.slice(0, -'.json'.length)))
+    files.push({ name, path: join(directory, name) })
   }
-  return cutovers
+  const key = files.map((file) => `${file.name}:${fileVersion(file.path)}`).join('|')
+  const cached = parsedJournals.get(directory)
+  if (cached?.key === key) {
+    return [...cached.cutovers]
+  }
+  const cutovers = files.map((file) =>
+    readJournalFile(file.path, file.name.slice(0, -'.json'.length))
+  )
+  parsedJournals.set(directory, { key, cutovers })
+  return [...cutovers]
 }
 
 /** The target's current cutover: the head of its chain, which no later delta move supersedes. */
@@ -126,6 +138,7 @@ export function writeOrcadMigrationSourceCutover(
     { durable: true }
   )
   syncDirectoryDurablySync(directory)
+  parsedJournals.delete(directory)
 }
 
 export function removeOrcadMigrationSourceCutover(userDataPath: string, migrationId: string): void {
@@ -134,6 +147,7 @@ export function removeOrcadMigrationSourceCutover(userDataPath: string, migratio
   }
   const directory = orcadMigrationCutoverJournalDirectory(userDataPath)
   rmSync(join(directory, `${migrationId}.json`), { force: true })
+  parsedJournals.delete(directory)
   if (existsSync(directory)) {
     syncDirectoryDurablySync(directory)
   }
@@ -149,6 +163,16 @@ export function removeOrcadMigrationJournalsForDestination(
     if (cutover.sshTargetId === sshTargetId && cutover.destinationEnvironmentId === environmentId) {
       removeOrcadMigrationSourceCutover(userDataPath, cutover.migrationId)
     }
+  }
+}
+
+/** Durable writes replace the file, so size, mtime and inode change with every rewrite. */
+function fileVersion(path: string): string {
+  try {
+    const stat = statSync(path, { bigint: true })
+    return `${stat.ino}:${stat.size}:${stat.mtimeNs}`
+  } catch (error) {
+    throw new OrcadMigrationCutoverJournalUnreadableError(errorMessage(error))
   }
 }
 

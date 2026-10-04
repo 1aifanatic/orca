@@ -70,15 +70,17 @@ export function hiddenRetainedSourceTargetIds(
     .map((target) => target.id)
 }
 
-/** A hidden host's `ssh:` session partition is migration source a renderer save would strip. */
-export function isHiddenRetainedSourceSessionPartition(
+/**
+ * A fenced host's `ssh:` session partition is migration source from the fence on: a renderer save
+ * would change it mid-conversion, and strip the rows this build hides once it commits.
+ */
+export function isFrozenOrcadSourceSessionPartition(
   store: Pick<Store, 'getSshTarget'>,
-  hostId: string | null | undefined,
-  getUserDataPath = appUserDataPath
+  hostId: string | null | undefined
 ): boolean {
   const parsed = parseExecutionHostId(hostId)
-  const target = parsed?.kind === 'ssh' ? store.getSshTarget(parsed.targetId) : undefined
-  return hiddenRetainedSourceTargetIds(getUserDataPath, target ? [target] : []).length > 0
+  const fence = parsed?.kind === 'ssh' ? store.getSshTarget(parsed.targetId)?.orcadFence : undefined
+  return fence !== undefined && !fence.sourceChangedAt
 }
 
 export function visibleRepos(
