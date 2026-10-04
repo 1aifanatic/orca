@@ -1,3 +1,4 @@
+import { nativeChatApprovalAcceptKey } from '../../../../shared/native-chat-agent-support'
 import { translate } from '@/i18n/i18n'
 import type { AgentJournalApprovalSubject } from '../../../../shared/agent-session-journal-types'
 import {
@@ -49,7 +50,8 @@ const ESCAPE = String.fromCharCode(27)
 
 /** Parse the desktop-only approval envelope; question parsing stays cross-platform. */
 export function parseApprovalFromStatus(
-  interactivePrompt: string | undefined | null
+  interactivePrompt: string | undefined | null,
+  agent?: string
 ): ChatApproval | null {
   if (!interactivePrompt) {
     return null
@@ -78,7 +80,10 @@ export function parseApprovalFromStatus(
     }),
     detail: typeof summary === 'string' && summary.length > 0 ? summary : undefined,
     options: [
-      { label: translate('components.native-chat.approval.allow', 'Allow'), send: '1' },
+      {
+        label: translate('components.native-chat.approval.allow', 'Allow'),
+        send: nativeChatApprovalAcceptKey(agent)
+      },
       { label: translate('components.native-chat.approval.deny', 'Deny'), send: ESCAPE }
     ]
   }
@@ -86,12 +91,13 @@ export function parseApprovalFromStatus(
 
 export function parseInteractivePrompt(
   interactivePrompt: string | undefined | null,
-  toolName?: string
+  toolName?: string,
+  agent?: string
 ): InteractivePromptCard {
   const prompt = parseAskFromStatus(interactivePrompt, toolName)
   if (prompt) {
     return { kind: 'question', prompt }
   }
-  const approval = parseApprovalFromStatus(interactivePrompt)
+  const approval = parseApprovalFromStatus(interactivePrompt, agent)
   return approval ? { kind: 'approval', approval } : null
 }
