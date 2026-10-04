@@ -25,7 +25,7 @@ import { renderJournalState, type JournalReducerState } from './journal-reducer'
 /** What the stored status is derived by: the derivation below and the shared projection it reads.
  *  Bump it with any change to what either produces for the same journal; the corpus digest test
  *  fails until it is bumped. */
-export const JOURNAL_SESSION_STATUS_RULES = 1
+export const JOURNAL_SESSION_STATUS_RULES = 2
 
 /** Work a gone process can have left: running work, a waiting prompt, unanswered or queued sends,
  *  or live child work. Startup settles exactly these chats. */

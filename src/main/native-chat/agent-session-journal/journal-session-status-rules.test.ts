@@ -20,8 +20,8 @@ import {
 
 // Recorded with the rules version: change both together, after checking the new rows are right.
 const DERIVED = {
-  rules: 1,
-  digest: '29251b320d2adb45c62e68fd0025c9e6bc24b2f04f094e49b09e7052c6160a32'
+  rules: 2,
+  digest: '942127f66b495fc699fdc2f7ca9b92d1132efa3733bd1329019b25271e786044'
 }
 
 const journals = createTrackedJournalOpener()

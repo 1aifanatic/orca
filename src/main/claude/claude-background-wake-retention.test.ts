@@ -42,9 +42,11 @@ async function wiredSession() {
     lastActivityAt: () => 1,
     submissions: () => snapshot().submissions,
     // The journal's own projection, which the feed shares with the status stored beside it.
-    statusState: (fence?: number) => {
-      const { items, submissions: sent } = snapshot()
-      return projectStructuredAgentSessionStatusState(items, sent, fence)
+    sessionStatus: {
+      at: (fence?: number) => {
+        const { items, submissions: sent } = snapshot()
+        return projectStructuredAgentSessionStatusState(items, sent, fence)
+      }
     }
   }
   const feed = new StructuredAgentSessionStatusFeed({

@@ -72,9 +72,9 @@ describe('journal row writer', () => {
       nextSequence: () => sequence,
       apply: () => undefined,
       writeStatus: () => undefined,
-      committed: (committed) => {
-        committedRows.push(committed)
-        sequence = committed.seq + 1
+      committed: (rows) => {
+        committedRows.push(...rows)
+        sequence += rows.length
       },
       recoverFold: () => undefined
     })
@@ -95,5 +95,18 @@ describe('journal row writer', () => {
     await expect(writer.enqueue((seq, ts) => row(seq + 1, ts))).resolves.toMatchObject({
       kind: 'item'
     })
+  })
+
+  it('writes several rows as one: a failure on the last leaves none', async () => {
+    const { writer, committedRows } = writerHarness()
+    // Sequence 2 is taken, so the second of the two rows violates the primary key.
+    insertTestJournalRow(database.db, SESSION_ID, row(2, 1))
+
+    await expect(writer.enqueueRows(() => [row, row])).rejects.toThrow()
+
+    expect(committedRows).toHaveLength(0)
+    expect(readTestJournalRows(database.db, SESSION_ID, EPOCH).map((stored) => stored.seq)).toEqual(
+      [2]
+    )
   })
 })

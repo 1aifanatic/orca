@@ -20,19 +20,10 @@ import { JournalRowWriter } from './journal-row-writer'
 import { restoreJournalStore } from './journal-store-restore'
 import type { JournalRow } from './journal-row-schema'
 import type { AgentSessionJournal } from './journal-store'
-import type Database from '../../sqlite/sync-database'
-import { applyJournalRow } from './journal-reducer'
 import { journalRowsAfterReader } from './journal-open'
 import { readJournalSince } from './journal-cursor'
 import type { JournalReadSince } from './journal-store-contracts'
-import { JOURNAL_REPAIR_DISCLOSURE_ITEM_ID } from './journal-repair-disclosure'
-import {
-  deriveJournalSessionStatus,
-  hasJournalSessionStatus,
-  writeJournalSessionStatus
-} from './journal-session-state'
-import { JournalStatusProjection } from './journal-status-projection'
-import { beginJournalFoldUndo, type JournalFoldUndo } from './journal-fold-undo'
+import { JournalSessionStatusWriter } from './journal-session-status-writer'
 import type { JournalWriteBody } from './journal-write-queue'
 
 export type JournalStoreHost = {
@@ -81,37 +72,12 @@ export type JournalStoreCollaborators = {
   /** Restores the store's state from disk. Owned here because it needs the same
    *  collaborators the constructor just built. */
   restore: () => Promise<void>
-  /** Writes the chat's status if it has none: a chat an older build last wrote. */
-  backfillSessionStatus: () => void
   readSince: (cursor: AgentJournalCursor, limit?: number) => JournalReadSince
-  statusProjection: JournalStatusProjection
+  sessionStatus: JournalSessionStatusWriter
 }
 
 export function createJournalStoreCollaborators(host: JournalStoreHost): JournalStoreCollaborators {
-  const statusProjection = new JournalStatusProjection(host.state)
-  /** `live`: the store's own fold, whose projection the status feed shares; an epoch's new fold
-   *  projects its own. Decided by the caller, so nothing reads the store's fold inside the
-   *  transaction. */
-  const writeStatus = (
-    db: Database.Database,
-    state: JournalReducerState,
-    corrupt: boolean,
-    live: boolean
-  ) =>
-    writeJournalSessionStatus(
-      db,
-      host.identity.sessionId,
-      deriveJournalSessionStatus(state, {
-        settlesRosters: !corrupt,
-        currentFence: host.currentFence(),
-        ...(live ? { statusSummary: () => statusProjection.at(host.currentFence()).summary } : {})
-      })
-    )
-  // The open append's undo: what its row changed in the fold, put back if its transaction fails.
-  let undo: JournalFoldUndo | null = null
-  // Any row but the repair's own disclosure retires the rebuild a repair owed, as replay reads it.
-  const corruptAfter = (row: JournalRow) =>
-    host.loadCorrupt() && row.kind === 'item' && row.itemId === JOURNAL_REPAIR_DISCLOSURE_ITEM_ID
+  const sessionStatus = new JournalSessionStatusWriter(host)
   const epochController = new JournalEpochController({
     identity: host.identity,
     now: host.now,
@@ -131,7 +97,7 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
       host.setLoadCorrupt(loaded.corrupt)
       host.adopt(loaded)
     },
-    writeState: (db, state, corrupt) => writeStatus(db, state, corrupt, false)
+    writeState: (db, state, corrupt) => sessionStatus.write(db, state, corrupt, false)
   })
   const queuedMessages = new JournalQueuedMessages({
     sessionId: host.identity.sessionId,
@@ -143,11 +109,27 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
     wroteBeforeOpen: (sequence) => host.journal().wroteBeforeOpen(sequence),
     committed: host.notifyCommitted
   })
+  const rowWriter = new JournalRowWriter({
+    sessionId: host.identity.sessionId,
+    now: host.now,
+    serialize: host.serialize,
+    database: host.database,
+    readOnly: host.readOnly,
+    highestFence: () => host.state().highestFence,
+    nextSequence: () => host.state().lastSequence + 1,
+    apply: (rows) => sessionStatus.apply(rows),
+    writeStatus: (db, rows) => sessionStatus.writeAppended(db, rows),
+    committed: (rows) => sessionStatus.committed(rows),
+    recoverFold: () => sessionStatus.recover(),
+    // Every rejection is a dispatch row through this one writer; the draft
+    // returned-transition rides it so no path can bypass the hook.
+    inTransaction: (db, row) => queuedMessages.onRowInTransaction(db, row),
+    rolledBack: () => queuedMessages.invalidate()
+  })
   return {
     epochController,
     queuedMessages,
-    statusProjection,
-    backfillSessionStatus: () => backfillSessionStatus(host, writeStatus),
+    sessionStatus,
     // Here rather than on the store, which is at its length limit.
     readSince: (cursor, limit) =>
       readJournalSince(
@@ -171,37 +153,7 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
       restoreJournalStore(host, { epochController }).then(() =>
         queuedMessages.repairAndPruneAtOpen()
       ),
-    rowWriter: new JournalRowWriter({
-      sessionId: host.identity.sessionId,
-      now: host.now,
-      serialize: host.serialize,
-      database: host.database,
-      readOnly: host.readOnly,
-      highestFence: () => host.state().highestFence,
-      nextSequence: () => host.state().lastSequence + 1,
-      apply: (row) => {
-        undo = beginJournalFoldUndo(host.state())
-        applyJournalRow(host.state(), row)
-      },
-      writeStatus: (db, row) => writeStatus(db, host.state(), corruptAfter(row), true),
-      committed: (row) => {
-        undo?.commit()
-        undo = null
-        host.setLoadCorrupt(corruptAfter(row))
-        host.notifyCommitted()
-      },
-      recoverFold: () => {
-        // What the projection read of the failed row must not answer for the next one at its seq.
-        statusProjection.invalidate()
-        const failed = undo
-        undo = null
-        recoverJournalFold(host, failed)
-      },
-      // Every rejection is a dispatch row through this one writer; the draft
-      // returned-transition rides it so no path can bypass the hook.
-      inTransaction: (db, row) => queuedMessages.onRowInTransaction(db, row),
-      rolledBack: () => queuedMessages.invalidate()
-    }),
+    rowWriter,
     itemAppender: new JournalItemAppender({
       state: host.state,
       enqueue: host.enqueue
@@ -209,58 +161,8 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
     lifecycleBatchAppender: new JournalLifecycleBatchAppender({
       state: host.state,
       cursor: host.cursor,
-      enqueue: host.enqueue
+      enqueue: host.enqueue,
+      enqueueRows: (plan) => rowWriter.enqueueRows(plan)
     })
   }
-}
-
-/** Bookkeeping: a failure leaves the chat without a row, which its next open writes again. */
-function backfillSessionStatus(
-  host: JournalStoreHost,
-  writeStatus: (
-    db: Database.Database,
-    state: JournalReducerState,
-    corrupt: boolean,
-    live: boolean
-  ) => void
-): void {
-  const database = host.database()
-  if (host.readOnly() || database.readOnly || host.importPending()) {
-    return
-  }
-  try {
-    // Read before the transaction: a stale fold is re-read from disk, never inside one.
-    const state = host.state()
-    database.transaction((db) => {
-      if (!hasJournalSessionStatus(db, host.identity.sessionId)) {
-        writeStatus(db, state, host.loadCorrupt(), true)
-      }
-    })
-  } catch (error) {
-    console.warn('[agent-session-journal] writing a chat status failed', {
-      sessionId: host.identity.sessionId,
-      error
-    })
-  }
-}
-
-/**
- * An append whose transaction failed after its row was folded: the undo puts back what the row
- * changed. If it cannot (it throws, or the row removed an entry, which no undo puts back in its
- * place), the fold is marked stale and folded again from what committed before its next use (the
- * host database rolls a stranded transaction back before it hands out the connection, so that
- * re-read never sees the failed row).
- */
-function recoverJournalFold(host: JournalStoreHost, undo: JournalFoldUndo | null): void {
-  try {
-    if (undo?.rollback()) {
-      return
-    }
-  } catch (error) {
-    console.warn('[agent-session-journal] undoing a failed append failed', {
-      sessionId: host.identity.sessionId,
-      error
-    })
-  }
-  host.markFoldStale()
 }

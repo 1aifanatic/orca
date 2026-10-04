@@ -27,12 +27,12 @@ export type JournalRowWriterDeps = {
   readOnly: () => boolean
   highestFence: () => number
   nextSequence: () => number
-  /** Folds the row inside the transaction, so the status written with it describes it. */
-  apply: (row: JournalRow) => void
-  /** The chat's status from the fold that now holds the row. A throw fails the append. */
-  writeStatus: (db: Database.Database, row: JournalRow) => void
-  /** After COMMIT: observers learn of the row only once it is durable. */
-  committed: (row: JournalRow) => void
+  /** Folds the append's rows inside its transaction, so the status written with them describes them. */
+  apply: (rows: readonly JournalRow[]) => void
+  /** The chat's status from the fold that now holds the rows. A throw fails the append. */
+  writeStatus: (db: Database.Database, rows: readonly JournalRow[]) => void
+  /** After COMMIT: observers learn of the rows only once they are durable. */
+  committed: (rows: readonly JournalRow[]) => void
   /** A transaction that failed after `apply`: the fold is ahead of the disk, so it is folded
    *  again from what committed. */
   recoverFold: () => void
@@ -58,30 +58,29 @@ export class JournalRowWriter {
       assertJournalWritable(this.deps.readOnly(), this.deps.sessionId)
       const row = build(this.deps.nextSequence(), this.deps.now())
       assertJournalFence(row.fence, this.deps.highestFence())
-      let applied = false
-      try {
-        // One INSERT: the chat's epoch pointer moves only when the epoch does. The hook and the
-        // bookkeeping read the fold before the row; the status reads it after.
-        this.deps.database().transaction((db) => {
-          insertJournalRow(db, this.deps.sessionId, row)
-          hook?.(db, row)
-          receipt?.write(db)
-          this.runBookkeeping(db, row)
-          applied = true
-          this.deps.apply(row)
-          this.deps.writeStatus(db, row)
-        })
-      } catch (error) {
-        this.deps.rolledBack?.()
-        if (applied) {
-          this.deps.recoverFold()
-        }
-        throw error
-      }
-      // The ledger first: it cannot throw, observers can.
-      receipt?.committed()
-      this.deps.committed(row)
+      this.writeRows([row], hook, receipt)
       return row
+    })
+  }
+
+  /** Several rows in ONE transaction, in order, planned once the lane is this append's: none is
+   *  durable unless all are, so no reader ever meets some without the rest. */
+  enqueueRows(
+    plan: () => readonly ((seq: number, ts: number) => JournalRow)[]
+  ): Promise<JournalRow[]> {
+    return this.deps.serialize(() => {
+      assertJournalWritable(this.deps.readOnly(), this.deps.sessionId)
+      const first = this.deps.nextSequence()
+      const ts = this.deps.now()
+      const rows = plan().map((build, index) => build(first + index, ts))
+      if (rows.length === 0) {
+        return rows
+      }
+      for (const row of rows) {
+        assertJournalFence(row.fence, this.deps.highestFence())
+      }
+      this.writeRows(rows)
+      return rows
     })
   }
 
@@ -96,6 +95,39 @@ export class JournalRowWriter {
       epoch: row.epoch,
       sequence: row.seq
     }))
+  }
+
+  /** One transaction: every row, then the receipt, then the fold and the status it gives. */
+  private writeRows(
+    rows: readonly JournalRow[],
+    hook?: JournalRowTransactionHook,
+    receipt?: JournalOperationReceipt
+  ): void {
+    let applied = false
+    try {
+      // One INSERT per row: the chat's epoch pointer moves only when the epoch does. The hook and
+      // the bookkeeping read the fold before the rows; the status reads it after all of them.
+      this.deps.database().transaction((db) => {
+        for (const row of rows) {
+          insertJournalRow(db, this.deps.sessionId, row)
+          hook?.(db, row)
+          this.runBookkeeping(db, row)
+        }
+        receipt?.write(db)
+        applied = true
+        this.deps.apply(rows)
+        this.deps.writeStatus(db, rows)
+      })
+    } catch (error) {
+      this.deps.rolledBack?.()
+      if (applied) {
+        this.deps.recoverFold()
+      }
+      throw error
+    }
+    // The ledger first: it cannot throw, observers can.
+    receipt?.committed()
+    this.deps.committed(rows)
   }
 
   private runBookkeeping(db: Database.Database, row: JournalRow): void {

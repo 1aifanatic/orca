@@ -111,7 +111,9 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
         lastActivityAt: () => 1,
         isReadOnly: false,
         cursor: () => ({ epoch: 1, sequence: (sequence += 1) }),
-        statusState: (fence?: number) => projectStructuredAgentSessionStatusState(items, [], fence)
+        sessionStatus: {
+          at: (fence?: number) => projectStructuredAgentSessionStatusState(items, [], fence)
+        }
       } as unknown as AgentSessionJournal
       const pending: Promise<void>[] = []
       const observe = vi.fn((summary, options) => {
@@ -220,7 +222,9 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
       isReadOnly: false,
       lastActivityAt: () => 1,
       cursor: () => ({ epoch: 1, sequence: 1 }),
-      statusState: (fence?: number) => projectStructuredAgentSessionStatusState(items, [], fence),
+      sessionStatus: {
+        at: (fence?: number) => projectStructuredAgentSessionStatusState(items, [], fence)
+      },
       submissions: () => []
     } as unknown as AgentSessionJournal
     const location = {

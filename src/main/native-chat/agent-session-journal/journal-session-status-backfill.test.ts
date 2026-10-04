@@ -94,7 +94,7 @@ describe('a row from the rows alone', () => {
     dropRow(name)
     // What an open of the chat writes for a missing row.
     const reopened = await open(name)
-    reopened.backfillSessionStatus()
+    reopened.sessionStatus.backfill()
     const byOpen = readTestJournalSessionStatus(root, name)
     await journals.closeAll()
     dropRow(name)
@@ -113,7 +113,7 @@ describe('a row from the rows alone', () => {
     insertTestJournalRowJson(database().db, 'corrupt', tip.sequence + 1, '{"not a row"')
     dropRow('corrupt')
     const reopened = await open('corrupt')
-    reopened.backfillSessionStatus()
+    reopened.sessionStatus.backfill()
     const byOpen = readTestJournalSessionStatus(root, 'corrupt')
     await journals.closeAll()
     dropRow('corrupt')
@@ -234,7 +234,7 @@ describe('a row from the rows alone', () => {
     await journals.closeAll()
     for (const name of JOURNAL_SESSION_STATE_CASES) {
       dropRow(name)
-      ;(await open(name)).backfillSessionStatus()
+      ;(await open(name)).sessionStatus.backfill()
       byOpen.set(name, readTestJournalSessionStatus(root, name))
       await journals.closeAll()
       dropRow(name)
@@ -358,7 +358,7 @@ describe('a row from the rows alone', () => {
         { fence: CORPUS_FENCE, turnScope: { kind: 'thread' } }
       )
     dropRow('appended')
-    journalsById.get('rowed')!.backfillSessionStatus()
+    journalsById.get('rowed')!.sessionStatus.backfill()
     // Unlike what its fold would write, so a rewrite shows.
     database()
       .db.prepare('UPDATE journal_session_state SET last_activity_at = 1 WHERE session_id = ?')

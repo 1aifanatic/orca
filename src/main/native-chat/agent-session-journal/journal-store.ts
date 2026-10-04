@@ -55,7 +55,7 @@ import type {
   ResolveDispatchInput
 } from './journal-store-contracts'
 import { queuedMessageConsumeHook, type JournalQueuedMessages } from './journal-queued-messages'
-import type { JournalStatusProjectionState } from './journal-status-projection'
+import type { JournalSessionStatusAccess } from './journal-session-status-writer'
 import {
   journalQueueResumeRowBuilder,
   journalStopEventRowBuilder
@@ -92,12 +92,9 @@ export class AgentSessionJournal {
   private readonly itemAppender: JournalItemAppender
   private readonly lifecycleBatchAppender: JournalLifecycleBatchAppender
   private readonly restore: () => Promise<void>
-  /** Writes the chat's status if it has none (an older build last wrote it). Bookkeeping: never
-   *  fails the open that calls it. */
-  readonly backfillSessionStatus: () => void
   readonly readSince: (cursor: AgentJournalCursor, limit?: number) => JournalReadSince
-  /** The status projection at this tip, projected once per commit for every reader. */
-  readonly statusState: (fence: number | undefined) => JournalStatusProjectionState
+  /** The chat's status: projected once per commit for every reader, and stored with each write. */
+  readonly sessionStatus: JournalSessionStatusAccess
   /** Draft rows queued while the agent works; never reducer input or owed work. */
   readonly queuedMessages: JournalQueuedMessages
   readonly stopMarks: JournalStopMarks
@@ -151,9 +148,8 @@ export class AgentSessionJournal {
     this.queuedMessages = collaborators.queuedMessages
     this.stopMarks = collaborators.stopMarks
     this.restore = collaborators.restore
-    this.backfillSessionStatus = collaborators.backfillSessionStatus
     this.readSince = collaborators.readSince
-    this.statusState = (fence) => collaborators.statusProjection.at(fence)
+    this.sessionStatus = collaborators.sessionStatus
   }
 
   private get state(): JournalReducerState {
@@ -322,8 +318,9 @@ export class AgentSessionJournal {
     identity: AgentJournalItemIdentity,
     options: JournalTombstoneInput
   ): Promise<AgentJournalCursor> {
+    const itemId = agentJournalItemKey(identity)
     return this.rowWriter.append(
-      journalTombstoneRowBuilder(() => this.state, agentJournalItemKey(identity), options.fence)
+      journalTombstoneRowBuilder(() => this.state, itemId, options.fence)
     )
   }
 

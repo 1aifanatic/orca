@@ -53,7 +53,7 @@ export class StructuredAgentSessionJournalProjections {
         // The journal's own projection, shared with the status it stores beside each write.
         state: readOnly
           ? projectStructuredAgentSessionStatusState([], [], fence)
-          : journal.statusState(fence),
+          : journal.sessionStatus.at(fence),
         // From the submissions alone: rendering the whole journal for one key costs every commit.
         acceptedSendKey: readOnly
           ? null

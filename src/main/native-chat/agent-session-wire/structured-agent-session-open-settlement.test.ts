@@ -160,7 +160,7 @@ describe('the stored status and the plan agree (T4)', () => {
     )
     expect(selected(after.sessionId)).toBe(false)
     expect(storedStatus(after.sessionId).summary).toEqual(
-      after.journal.statusState(undefined).summary
+      after.journal.sessionStatus.at(undefined).summary
     )
 
     // Found dead before the Stop event's time: the death explains the end, and says so.
@@ -242,7 +242,7 @@ describe('the stored status and the plan agree (T4)', () => {
       .run('unkeyed')
     const journal = await open('unkeyed')
     // As the chat's open does after its settle.
-    journal.backfillSessionStatus()
+    journal.sessionStatus.backfill()
     expect(readTestJournalSessionStatus(root, 'unkeyed')).not.toBeNull()
     const deathEvidence = CORPUS_DEATH_EVIDENCE['names the writer'] ?? null
     const plan = planOpenSettlement(

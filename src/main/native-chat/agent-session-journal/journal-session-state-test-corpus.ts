@@ -158,6 +158,19 @@ export const JOURNAL_SESSION_STATE_CORPUS = {
       fence: CORPUS_FENCE
     })
   },
+  // The rejected send moves to where it was rejected, after the turn: it is the latest request.
+  'send rejected after a later turn': async (journal: AgentSessionJournal) => {
+    await send(journal, 'send-early', 'the early one')
+    await settledTurn(journal, 'turn-1')
+    await journal.resolveDispatch({
+      clientMessageId: 'send-early',
+      state: 'rejected',
+      ...agentSessionFailureWords(agentSessionFailureFact('hostRestarted'), {
+        surface: 'rejection'
+      }),
+      fence: CORPUS_FENCE
+    })
+  },
   'running turn on a legacy status row': async (journal: AgentSessionJournal) => {
     await item(journal, codexItem('turn-9', 0), {
       kind: 'status',
@@ -237,6 +250,7 @@ export const CORPUS_UNSETTLED: Record<JournalSessionStateCase, boolean> = {
   'newest reply tombstoned': false,
   'queued send handed over': true,
   'refused send': false,
+  'send rejected after a later turn': false,
   'running turn on a legacy status row': true,
   'running work settled by a batch': false,
   'unknown send recovered': false,

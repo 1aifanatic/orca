@@ -654,7 +654,7 @@ describe('StructuredAgentSessionStatusFeed', () => {
     ])
     // The journal's own projection, which the status it stores beside each write reads too.
     const projected = feed.statusState(SESSION)
-    expect(projected).toBe(journal.statusState(undefined))
+    expect(projected).toBe(journal.sessionStatus.at(undefined))
     for (let tick = 1; tick <= 100; tick++) {
       taskState = tick % 2 === 1 ? 'waiting' : 'working'
       feed.publish(SESSION)

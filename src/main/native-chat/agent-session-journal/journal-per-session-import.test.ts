@@ -231,7 +231,7 @@ describe('importing a per-chat journal', () => {
     expect(readTestJournalSessionStatus(root, IDENTITY.sessionId)).toBeNull()
 
     // As the chat's open does after its replay.
-    ;(await openChat()).backfillSessionStatus()
+    ;(await openChat()).sessionStatus.backfill()
 
     const loaded = loadTestJournal(root, IDENTITY.sessionId)!
     expect(readTestJournalSessionStatus(root, IDENTITY.sessionId)).toEqual(

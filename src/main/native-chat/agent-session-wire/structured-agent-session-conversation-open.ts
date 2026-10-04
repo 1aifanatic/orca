@@ -121,7 +121,7 @@ export async function openStructuredAgentSessionConversationJournal(
       error
     })
   )
-  opened.journal.backfillSessionStatus()
+  opened.journal.sessionStatus.backfill()
   return {
     session: { journal: opened.journal, params, child: null },
     reset: opened.recovery?.reset ?? null
