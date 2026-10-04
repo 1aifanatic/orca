@@ -81,7 +81,11 @@ export async function acquireAcpStructuredSession(input: {
   const options = new AcpStructuredOptions()
   const prompts = new AcpStructuredPrompts(() => lane)
   const early: (() => void)[] = []
+  let replaying = false
   const whenLane = (deliver: () => void): void => {
+    if (replaying) {
+      return
+    }
     if (lane) {
       deliver()
     } else if (early.length < MAX_EARLY_FRAMES) {
@@ -155,14 +159,10 @@ export async function acquireAcpStructuredSession(input: {
     let liveLane: AcpStructuredLane | null = null
     let supersedesKey: string | undefined
     if (resume) {
-      const loading = makeLane(resume.sessionId)
-      liveLane = loading
-      const replays = initialized.agentCapabilities?.loadSession === true
-      if (replays) {
-        // The translator recognises replayed history against what the journal already holds.
-        await events?.written?.()
-        loading.translator.beginLoad()
-      }
+      liveLane = makeLane(resume.sessionId)
+      // A chat loads only a session it created, whose history its journal already holds, so what
+      // the agent replays before answering the load is dropped, never journaled again.
+      replaying = true
       try {
         started = await runtime.start({
           cwd: launch.cwd,
@@ -177,9 +177,7 @@ export async function acquireAcpStructuredSession(input: {
         // A session this chat created and the agent never saved: a new one takes its place.
         supersedesKey = resume.replaceableKey
       } finally {
-        if (replays) {
-          loading.apply(loading.translator.finishLoad(now()))
-        }
+        replaying = false
       }
     }
     if (!started || !liveLane) {
