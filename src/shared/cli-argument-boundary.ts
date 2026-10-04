@@ -50,7 +50,8 @@ export const CLI_BOOLEAN_FLAGS = new Set([
   'text-stdin',
   'unread',
   'value-stdin',
-  'wait'
+  'wait',
+  'yes'
 ])
 
 function commandPathStartsAt(

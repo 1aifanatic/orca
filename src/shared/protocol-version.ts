@@ -95,6 +95,8 @@ export const AI_VAULT_SESSION_TITLES_RUNTIME_CAPABILITY = 'aiVault.session-title
 // clients never fall back to a local desktop browser tab for a remote-owned page.
 export const BROWSER_HEADLESS_RUNTIME_CAPABILITY = 'browser.headless.v1' as const
 export const BROWSER_IDENTITY_RUNTIME_CAPABILITY = 'browser.identity.v1' as const
+// Why conditional: only a desktop runtime holds the SSH registry managed servers are run from.
+export const MANAGED_SERVER_RUNTIME_CAPABILITY = 'managedServer.v1' as const
 export const BROWSER_SCREENCAST_RUNTIME_CAPABILITY = 'browser.screencast.v1' as const
 export const BROWSER_CERTIFICATE_TRUST_RUNTIME_CAPABILITY = 'browser.certificate-trust.v1' as const
 // Why: older hosts discard browser.tabCreate's page field, so clients may only

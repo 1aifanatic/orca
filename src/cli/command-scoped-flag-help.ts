@@ -14,6 +14,12 @@ const COMMAND_SCOPED_FLAG_HELP: Record<string, Record<string, string>> = {
     reference: '--reference <name>     Print one bundled reference by name',
     references: '--references           List the bundled reference names for a topic'
   },
+  'environment update': {
+    force: '--force                Restart over running terminals instead of deferring the update'
+  },
+  'environment stop': {
+    yes: '--yes                  Confirm stopping the server and unlinking it from this machine'
+  },
   'file open': {
     focus: FILE_OPEN_FOCUS_HELP
   },
