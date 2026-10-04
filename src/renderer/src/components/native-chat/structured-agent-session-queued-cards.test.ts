@@ -1,5 +1,5 @@
 // Card projection policy: queue order, derived hold labels (the wire carries
-// none), and the presentation-only suppression of a card whose submission
+// holds, not labels), and the presentation-only suppression of a card whose submission
 // already arrived — a queued draft is otherwise never a transcript bubble.
 
 import { describe, expect, it } from 'vitest'
@@ -9,7 +9,9 @@ import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/struc
 import {
   newestSteerableQueuedMessageCard,
   outboxOutsideQueuedCards,
-  projectQueuedMessageCards
+  projectQueuedMessageCards,
+  queuedMessageCardSteers,
+  queuedMessageQueueRun
 } from './structured-agent-session-queued-cards'
 
 function draft(
@@ -157,6 +159,44 @@ describe('queued message cards', () => {
     expect(
       projectQueuedMessageCards([draft('waiting', 1)], [], { hasPendingPrompt: true })[0]?.hold
     ).toBe('awaiting-answer')
+  })
+
+  it("a host that names each card's hold holds only those cards; one that does not holds every card", () => {
+    const named = [
+      draft('held', 1, { heldBy: { reason: 'stopped' } }),
+      draft('typed-after', 2, { heldBy: null })
+    ]
+    const paused = { hasPendingPrompt: true, queuePaused: true }
+    // The card queued after the Stop still says it waits for the answer.
+    expect(projectQueuedMessageCards(named, [], paused).map((card) => card.hold)).toEqual([
+      'queue-paused',
+      'awaiting-answer'
+    ])
+    const older = [draft('held', 1), draft('typed-after', 2)]
+    expect(projectQueuedMessageCards(older, [], paused).map((card) => card.hold)).toEqual([
+      'queue-paused',
+      'queue-paused'
+    ])
+  })
+
+  it('a card nothing holds keeps the run going; Resume only over a card a pause holds', () => {
+    const project = (messages: AgentSessionQueuedMessage[]) =>
+      projectQueuedMessageCards(messages, [], { hasPendingPrompt: false, queuePaused: true })
+    const held = draft('held', 1, { heldBy: { reason: 'stopped' } })
+    const next = draft('next', 2, { heldBy: null })
+    // Between a turn's end and the queue's send of `next`: still running, and nothing to resume.
+    const gap = project([held, next])
+    expect(queuedMessageQueueRun(gap, false)).toEqual({ turnRunning: true, resumable: false })
+    expect(gap.map((card) => queuedMessageCardSteers(card, true))).toEqual([true, true])
+    expect(queuedMessageQueueRun(project([held]), false)).toEqual({
+      turnRunning: false,
+      resumable: true
+    })
+    const failed = draft('failed', 1, { paused: true, pausedReason: 'send_failed', heldBy: null })
+    expect(queuedMessageQueueRun(project([failed]), false)).toEqual({
+      turnRunning: false,
+      resumable: false
+    })
   })
 
   it('steers the newest card', () => {

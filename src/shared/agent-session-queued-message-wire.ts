@@ -37,6 +37,10 @@ export type AgentSessionQueuedMessage = {
    *  marker as a plain hold, so a newer host can add one. The queue-level
    *  pause is `queuePause`, published beside the list. */
   pausedReason?: AgentSessionQueuedMessagePausedReason
+  /** The queue-level pause holding this card, or null when none does: a card queued after a Stop
+   *  is not held by it. Absent from a host that predates it; a client then treats every waiting
+   *  card as held while `queuePause` is set. */
+  heldBy?: AgentSessionQueuePause | null
   /** A returned card's refusal: the `reason` and `rejection` pair its submission settled with.
    *  Only a failure returns a card; a draft a Stop or restart took back waits again. Clients classify it from `returnedRejection` (falling back to `returnedReason` when a host
    *  wrote no fact) exactly as they classify a rejected submission's `rejection`, e.g.

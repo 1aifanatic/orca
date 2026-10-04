@@ -18,8 +18,8 @@ import {
 /** Why a card is not on its way right now; decides the caption under the text. */
 export type QueuedMessageCardHold =
   | 'turn'
-  /** Held since a Stop, restart or /clear: no caption and no promise of when it sends — not even
-   *  after an answer. Its own Send or Steer, or any new message, releases it. */
+  /** Held by a Stop, restart or /clear: no caption and no promise of when it sends — not even
+   *  after an answer. Resume, its own Send or Steer, or any new message releases it. */
   | 'queue-paused'
   | 'awaiting-answer'
   | 'paused'
@@ -63,6 +63,9 @@ export function projectQueuedMessageCards(
     .filter((message) => message.state === 'returned' || !handedOff.has(message.messageId))
   let behindReturned = false
   return ordered.map((message) => {
+    // A host that predates `heldBy` publishes only the queue's pause, which then covers every card.
+    const heldByPause =
+      message.heldBy === undefined ? session.queuePaused === true : message.heldBy !== null
     const hold: QueuedMessageCardHold =
       message.state === 'returned'
         ? 'returned'
@@ -70,7 +73,7 @@ export function projectQueuedMessageCards(
           ? 'paused'
           : behindReturned
             ? 'behind-returned'
-            : session.queuePaused
+            : heldByPause
               ? 'queue-paused'
               : session.hasPendingPrompt
                 ? 'awaiting-answer'
@@ -89,6 +92,28 @@ export function projectQueuedMessageCards(
         : {})
     }
   })
+}
+
+/** Whether the queue's run is going, and whether Resume would release anything. A turn's end and
+ *  the queue's send of its next card reach the client as two updates; a card nothing holds keeps
+ *  the run going across that gap, so no card flips Steer → Send → Steer and Resume never flashes.
+ *  Resume needs a card a queue-level pause holds: one held on its own, returned or behind a
+ *  returned card would not send. */
+export function queuedMessageQueueRun(
+  cards: readonly QueuedMessageCard[],
+  isWorking: boolean
+): { turnRunning: boolean; resumable: boolean } {
+  const turnRunning = isWorking || cards.some((card) => card.hold === 'turn')
+  return {
+    turnRunning,
+    resumable: !turnRunning && cards.some((card) => card.hold === 'queue-paused')
+  }
+}
+
+/** Steer jumps into a running turn; with none running, or for a card held on its own or
+ *  returned, the action is plainly Send. */
+export function queuedMessageCardSteers(card: QueuedMessageCard, turnRunning: boolean): boolean {
+  return turnRunning && card.hold !== 'paused' && card.hold !== 'returned'
 }
 
 /** The card Cmd/Ctrl+Enter steers: the newest one; every shown card takes Send-now. */

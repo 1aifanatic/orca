@@ -19,6 +19,7 @@ import { appendNativeChatDraftCache } from './native-chat-draft-cache'
 import {
   newestSteerableQueuedMessageCard,
   projectQueuedMessageCards,
+  queuedMessageQueueRun,
   type QueuedMessageCard
 } from './structured-agent-session-queued-cards'
 import type { StructuredAgentSessionMutate } from './use-structured-agent-session-mutate'
@@ -181,12 +182,9 @@ export function useStructuredAgentSessionQueuedMessages(args: {
       setResuming(false)
     }
   }, [mutate])
-  // A turn's end and the queue's send of its next card publish as two frames; a card nothing holds
-  // keeps the run going across that gap, so its Steer never flips to Send and back.
-  const turnRunning = args.isWorking || cards.some((card) => card.hold === 'turn')
-  // Only over a card the published pause holds: one held on its own, returned or behind a
-  // returned card would not send, so Resume would do nothing.
-  const resumable = enabled && !turnRunning && cards.some((card) => card.hold === 'queue-paused')
+  const run = queuedMessageQueueRun(cards, args.isWorking)
+  const { turnRunning } = run
+  const resumable = enabled && run.resumable
   const queueResume = useMemo(
     () => (resumable ? { resume, resuming } : undefined),
     [resumable, resume, resuming]

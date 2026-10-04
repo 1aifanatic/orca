@@ -23,7 +23,10 @@ import { readWholeAgentSessionFailureFact } from '../../../../shared/agent-sessi
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 import { QUEUED_MESSAGE_PAUSED_SEND_FAILED } from '../../../../shared/agent-session-wire'
 import { isMacPlatform } from './native-chat-shortcut'
-import type { QueuedMessageCard } from './structured-agent-session-queued-cards'
+import {
+  queuedMessageCardSteers,
+  type QueuedMessageCard
+} from './structured-agent-session-queued-cards'
 
 /** The visible caption under the text; the default waiting hold needs none. */
 export function queuedMessageCardCaption(card: QueuedMessageCard): string | null {
@@ -78,8 +81,7 @@ export function queuedMessageCardCaption(card: QueuedMessageCard): string | null
   }
 }
 
-/** Steer names the jump into a running turn; with no turn running, or for a card held on its own
- *  or returned, the action and tooltip are plainly Send. */
+/** Steer's or Send's label and tooltip (`queuedMessageCardSteers`). */
 export function queuedMessageCardSendNow(
   card: QueuedMessageCard,
   turnRunning: boolean
@@ -89,7 +91,7 @@ export function queuedMessageCardSendNow(
   label: string
   hint: string
 } {
-  if (!turnRunning || card.hold === 'paused' || card.hold === 'returned') {
+  if (!queuedMessageCardSteers(card, turnRunning)) {
     return {
       steers: false,
       label: translate('components.native-chat.queuedMessages.send', 'Send'),
