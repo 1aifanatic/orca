@@ -67,7 +67,7 @@ function controller(
     remove: vi.fn(async () => {}),
     edit: vi.fn(async () => {}),
     steerNewest: vi.fn(() => false),
-    queuePrimary: undefined
+    queueResume: undefined
   }
 }
 
@@ -261,7 +261,6 @@ describe('NativeChatQueuedMessageList', () => {
           hasPendingPrompt: false,
           // Nothing runs after a Stop, a restart or a /clear.
           isWorking: false,
-          sendBlocked: false,
           composerScopeKey: undefined,
           // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the list only awaits mutate; its answer is never read.
           mutate: mutate as StructuredAgentSessionMutate

@@ -18,7 +18,7 @@ import type {
 import type { NativeChatOptionPickerRequest } from './native-chat-composer-types'
 import {
   nativeChatComposerPrimaryButton,
-  type NativeChatQueuePrimary
+  type NativeChatQueueResume
 } from './native-chat-composer-primary-action'
 import { NativeChatImageAttachmentPreview } from './NativeChatImageAttachmentPreview'
 import type { NativeChatComposerGoalMode } from './use-native-chat-composer-submit'
@@ -60,7 +60,7 @@ export type NativeChatComposerFieldProps = {
   onDictationHoldEnd: () => void
   onSend: () => void
   onStop?: () => void
-  queuePrimary?: NativeChatQueuePrimary | undefined
+  queueResume?: NativeChatQueueResume | undefined
   sessionOptionsSurface: SessionOptionsSurface | null
   sessionOptionsSnapshot: SessionOptionDescriptor[]
   contextUsage?: NativeChatContextUsageSummary | null
@@ -135,7 +135,7 @@ export function NativeChatComposerField({
   onDictationHoldEnd,
   onSend,
   onStop,
-  queuePrimary,
+  queueResume,
   sessionOptionsSurface,
   sessionOptionsSnapshot,
   contextUsage,
@@ -177,7 +177,7 @@ export function NativeChatComposerField({
   const primary = nativeChatComposerPrimaryButton({
     isWorking,
     composerEmpty: draft.trim() === '' && imageAttachments.length === 0,
-    queue: queuePrimary,
+    queueResume,
     composerDisabled: disabled,
     sendDisabled: sendButtonDisabled
   })

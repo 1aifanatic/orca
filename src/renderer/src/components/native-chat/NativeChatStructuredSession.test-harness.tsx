@@ -9,7 +9,6 @@ import type { NativeChatApprovalCardProps } from './NativeChatApprovalCard'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
 import type { NativeChatQuestionCardProps } from './NativeChatQuestionCard'
 import type { NativeChatLaunchSeed } from './native-chat-composer-types'
-import type { NativeChatQueuePrimary } from './native-chat-composer-primary-action'
 import type { NativeChatOlderPageResult } from './native-chat-pagination'
 import type { StructuredAgentSessionThreadGoal } from './use-structured-agent-session-thread-goal'
 import type { StructuredAgentSessionLaunchLifecycle } from '@/lib/structured-agent-session-launch'
@@ -88,7 +87,7 @@ export function createStructuredSessionMocks() {
       structuredTransport?: Record<string, unknown>
       isWorking?: boolean
       onStop?: () => void
-      queuePrimary?: NativeChatQueuePrimary
+      queueResume?: { resume: () => void; resuming: boolean }
     }>(),
     approvalCardProps: initialApprovalCardProps,
     questionCardProps: null as NativeChatQuestionCardProps | null,
@@ -122,6 +121,7 @@ export function createStructuredSessionMocks() {
     queuedEdit: vi.fn<(messageId: string) => Promise<void>>(async () => {}),
     queuedSteerNewest: vi.fn<() => boolean>(() => false),
     queuedResumable: false,
+    queueSendsNext: false,
     queuedResume: vi.fn<() => Promise<void>>(async () => {})
   }
 
@@ -193,6 +193,7 @@ export function createStructuredSessionMocks() {
             },
             turnId: mocks.turnId,
             canStop: mocks.canStop ?? mocks.turnId !== null,
+            queueSendsNext: mocks.queueSendsNext,
             stop: mocks.stop,
             queuedMessages: {
               cards: mocks.queuedCards,
@@ -201,8 +202,8 @@ export function createStructuredSessionMocks() {
               remove: mocks.queuedRemove,
               edit: mocks.queuedEdit,
               steerNewest: mocks.queuedSteerNewest,
-              queuePrimary: mocks.queuedResumable
-                ? { kind: 'resume' as const, resume: mocks.queuedResume, resuming: false }
+              queueResume: mocks.queuedResumable
+                ? { resume: mocks.queuedResume, resuming: false }
                 : undefined
             },
             threadGoal: mocks.threadGoal,
@@ -341,6 +342,7 @@ export function createStructuredSessionMocks() {
     mocks.olderHistoryGeneration = 0
     mocks.loadOlder.mockReset()
     mocks.queuedResumable = false
+    mocks.queueSendsNext = false
     mocks.queuedResume.mockReset()
   }
 

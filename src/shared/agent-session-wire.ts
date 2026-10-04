@@ -127,6 +127,9 @@ export type AgentSessionHistoryPage = {
   /** The queue's pause, published with the list: present whenever `queuedMessages` is, null
    *  when the queue sends on its own. */
   queuePause?: AgentSessionQueuePause | null
+  /** Rides with `queuedMessages`: the card the queue sends next as soon as nothing runs, null
+   *  while anything holds the queue. Absent from an older host, read as null. */
+  nextQueuedMessageId?: string | null
   /** Host wall clock (ms epoch) when the page was read, so a client attaching mid-turn
    *  can anchor a live counter on the real start. Absent from older hosts. */
   hostNow?: number
@@ -171,6 +174,8 @@ export type AgentSessionSubscribeEvent =
       queuedMessages?: AgentSessionQueuedMessage[] | null
       /** Rides with `queuedMessages`; null when the queue sends on its own. */
       queuePause?: AgentSessionQueuePause | null
+      /** Rides with `queuedMessages`: the card the queue sends next once nothing runs. */
+      nextQueuedMessageId?: string | null
       /** Omitted when unchanged; null clears a previous provider catalog. */
       commands?: AgentSessionSlashCommand[] | null
       /** Latest provider-authored turn activity; optional for mixed-version hosts. */
@@ -188,6 +193,8 @@ export type AgentSessionSubscribeEvent =
       queuedMessages?: AgentSessionQueuedMessage[] | null
       /** Rides with `queuedMessages`; null when the queue sends on its own. */
       queuePause?: AgentSessionQueuePause | null
+      /** Rides with `queuedMessages`: the card the queue sends next once nothing runs. */
+      nextQueuedMessageId?: string | null
       /** Omitted when unchanged; null clears a previous provider catalog. */
       commands?: AgentSessionSlashCommand[] | null
       /** Additive ephemeral state; it never creates or advances journal rows. */
@@ -204,6 +211,8 @@ export type AgentSessionSubscribeEvent =
       queuedMessages?: AgentSessionQueuedMessage[] | null
       /** Rides with `queuedMessages`; null when the queue sends on its own. */
       queuePause?: AgentSessionQueuePause | null
+      /** Rides with `queuedMessages`: the card the queue sends next once nothing runs. */
+      nextQueuedMessageId?: string | null
       /** Omitted when unchanged; null clears a previous provider catalog. */
       commands?: AgentSessionSlashCommand[] | null
       activity?: AgentSessionTurnActivity | null

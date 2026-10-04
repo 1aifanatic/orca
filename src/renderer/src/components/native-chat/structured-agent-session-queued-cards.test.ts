@@ -11,10 +11,8 @@ import {
   outboxOutsideQueuedCards,
   projectQueuedMessageCards,
   queuedMessageCardSteers,
-  queuedMessageQueueRun
+  queuedMessagesResumable
 } from './structured-agent-session-queued-cards'
-
-const IDLE_RUN = { isWorking: false, sendBlocked: false }
 
 function draft(
   id: string,
@@ -181,39 +179,21 @@ describe('queued message cards', () => {
     ])
   })
 
-  it('a card nothing holds keeps the run going; Resume only over a card a pause holds', () => {
+  it('Resume only over a card a pause holds, and only while nothing runs', () => {
     const project = (messages: AgentSessionQueuedMessage[]) =>
       projectQueuedMessageCards(messages, [], { hasPendingPrompt: false, queuePaused: true })
     const held = draft('held', 1, { heldBy: { reason: 'stopped' } })
-    const next = draft('next', 2, { heldBy: null })
-    // Between a turn's end and the queue's send of `next`: still running, and nothing to resume.
-    const gap = project([held, next])
-    expect(queuedMessageQueueRun(gap, IDLE_RUN)).toEqual({
-      turnRunning: true,
-      sendsNext: true,
-      resumable: false
-    })
-    expect(gap.map((card) => queuedMessageCardSteers(card, true))).toEqual([true, true])
-    expect(queuedMessageQueueRun(project([held]), IDLE_RUN)).toEqual({
-      turnRunning: false,
-      sendsNext: false,
-      resumable: true
-    })
+    expect(queuedMessagesResumable(project([held]), false)).toBe(true)
+    // Working counts the queue's coming send, which the host names.
+    expect(queuedMessagesResumable(project([held]), true)).toBe(false)
     const failed = draft('failed', 1, { paused: true, pausedReason: 'send_failed', heldBy: null })
-    expect(queuedMessageQueueRun(project([failed]), IDLE_RUN)).toEqual({
-      turnRunning: false,
-      sendsNext: false,
-      resumable: false
-    })
-  })
-
-  it('a host that refuses every send sends nothing: a card nothing holds does not keep a run going', () => {
-    const cards = projectQueuedMessageCards([draft('next', 1, { heldBy: null })], [], IDLE)
-    expect(queuedMessageQueueRun(cards, { isWorking: false, sendBlocked: true })).toEqual({
-      turnRunning: false,
-      sendsNext: false,
-      resumable: false
-    })
+    expect(queuedMessagesResumable(project([failed]), false)).toBe(false)
+    expect(project([held, draft('next', 2, { heldBy: null })]).map((card) => card.hold)).toEqual([
+      'queue-paused',
+      'turn'
+    ])
+    const [card] = project([held])
+    expect(card && queuedMessageCardSteers(card, true)).toBe(true)
   })
 
   it('steers the newest card', () => {

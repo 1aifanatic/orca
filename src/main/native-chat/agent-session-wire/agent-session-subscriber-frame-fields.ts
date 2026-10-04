@@ -54,7 +54,11 @@ export function buildSubscriberFrame(
       ...event,
       ...(includeCommands ? { commands: commands ?? null } : {}),
       ...(attachedQueued && queued
-        ? { queuedMessages: queued.queuedMessages, queuePause: queued.queuePause }
+        ? {
+            queuedMessages: queued.queuedMessages,
+            queuePause: queued.queuePause,
+            nextQueuedMessageId: queued.nextQueuedMessageId
+          }
         : {})
     },
     commands,

@@ -36,7 +36,6 @@ import {
 } from '@/runtime/structured-agent-session-owner'
 import { getStructuredAgentSessionStatusFeed } from '@/runtime/structured-agent-session-status-feed'
 import { getStructuredAgentSessionTabs, type StructuredTab } from './structured-agent-session-tabs'
-import { useStructuredAgentSessionStatusField } from './use-structured-agent-session-status-field'
 
 // Re-exported so the bridge stays the one import site its consumers already know.
 export { getStructuredAgentSessionTabs } from './structured-agent-session-tabs'
@@ -61,16 +60,17 @@ export function useStructuredAgentSessionStatusSummary(
   return { summary, observation }
 }
 
-/** The host's startup phase. */
+/** Only the host's startup phase, so a chat re-renders when that changes, not on every status. */
 export function useStructuredAgentSessionHostExecutionPhase(
   sessionId: string,
   target: RuntimeClientTarget
 ): NonNullable<AgentSessionStatusSummary['hostExecutionPhase']> | null {
-  return useStructuredAgentSessionStatusField(
-    sessionId,
-    target,
-    (summary) => summary?.hostExecutionPhase ?? null,
-    null
+  const feed = useMemo(() => getStructuredAgentSessionStatusFeed(target), [target])
+  useEffect(() => feed.activate(), [feed])
+  return useSyncExternalStore(
+    feed.subscribe,
+    () => feed.getSnapshot().get(sessionId)?.hostExecutionPhase ?? null,
+    () => null
   )
 }
 

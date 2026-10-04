@@ -391,16 +391,20 @@ describe('NativeChatStructuredSession', () => {
     expect(mocks.cancel).not.toHaveBeenCalled()
   })
 
+  it("shows the queue's coming send as a Stop that is not live until a turn can be stopped", () => {
+    mocks.queueSendsNext = true
+    render(claudeSessionView('structured-tab-sends-next', 'session-sends-next'))
+    expect(mocks.composerProps?.isWorking).toBe(true)
+    expect(mocks.composerProps?.onStop).toBeUndefined()
+  })
+
   it('hands the composer Resume only while the queue controller offers it', () => {
     const { rerender } = render(claudeSessionView('structured-tab-resume', 'session-resume'))
-    expect(mocks.composerProps?.queuePrimary).toBeUndefined()
+    expect(mocks.composerProps?.queueResume).toBeUndefined()
     mocks.queuedResumable = true
     rerender(claudeSessionView('structured-tab-resume', 'session-resume'))
     act(() => {
-      const primary = mocks.composerProps?.queuePrimary
-      if (primary?.kind === 'resume') {
-        primary.resume()
-      }
+      mocks.composerProps?.queueResume?.resume()
     })
     expect(mocks.queuedResume).toHaveBeenCalledOnce()
   })

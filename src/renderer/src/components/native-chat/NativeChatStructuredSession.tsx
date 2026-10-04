@@ -24,7 +24,6 @@ import { useNativeChatLaunchDraftSignal } from './use-native-chat-launch-draft-a
 import { NativeChatLaunchRetry } from './NativeChatLaunchRetry'
 import { useNativeChatProvisionalLaunch } from './use-native-chat-provisional-launch'
 import { useStructuredAgentSessionHostExecutionPhase } from './StructuredAgentSessionStatusBridge'
-import { useStructuredAgentSessionRewindBlocksSends } from './use-structured-agent-session-status-field'
 import { NativeChatQueuedMessageList } from './NativeChatQueuedMessageList'
 import { useAppStore } from '../../store'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
@@ -58,7 +57,6 @@ export function NativeChatStructuredSession(
     composerScopeKey: paneKey,
     queueFollowUps,
     providerStarting: startupPhase === 'starting',
-    sendBlocked: useStructuredAgentSessionRewindBlocksSends(props.sessionId, props.target),
     transportEnabled: provisionalLaunch.transportEnabled,
     ...(provisionalLaunch.launch ? { launch: provisionalLaunch.launch } : {})
   })
@@ -395,10 +393,11 @@ export function NativeChatStructuredSession(
           targetPtyId={null}
           agent={props.agent}
           canSend={!prompt}
-          isWorking={controller.canStop}
-          onStop={() => void controller.stop()}
+          // Stop is offered whenever the chat looks busy, live only once a turn can be stopped.
+          isWorking={controller.canStop || controller.queueSendsNext}
+          onStop={controller.canStop ? () => void controller.stop() : undefined}
           steerQueued={controller.queuedMessages.steerNewest}
-          queuePrimary={controller.queuedMessages.queuePrimary}
+          queueResume={controller.queuedMessages.queueResume}
           structuredTransport={structuredTransport}
           launchSeed={{ ...launchDraftSignal, ownsTabWideLaunchDraft: true }}
         />

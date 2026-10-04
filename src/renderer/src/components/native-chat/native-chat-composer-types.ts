@@ -1,4 +1,4 @@
-import type { NativeChatQueuePrimary } from './native-chat-composer-primary-action'
+import type { NativeChatQueueResume } from './native-chat-composer-primary-action'
 import type { AgentSessionConversationCommand } from '../../../../shared/agent-session-conversation-command'
 import type { StructuredAgentContextUsage } from '../../../../shared/structured-agent-session-context-usage'
 import type { AgentSessionSlashCommand } from '../../../../shared/agent-session-wire'
@@ -79,8 +79,9 @@ export type NativeChatComposerProps = {
   /** Cmd/Ctrl+Enter from an empty composer: send the newest queued draft now.
    *  False = nothing queued, and the chord falls through to a plain send. */
   steerQueued?: () => boolean
-  /** What the queue makes an empty composer's primary button while no turn runs. */
-  queuePrimary?: NativeChatQueuePrimary | undefined
+  /** Present while the host holds the queue and no turn runs: an empty composer's primary
+   *  action becomes Resume, which releases it. */
+  queueResume?: NativeChatQueueResume | undefined
 }
 
 /** Launch context prefilled into the TUI input as an unsent draft, plus the two

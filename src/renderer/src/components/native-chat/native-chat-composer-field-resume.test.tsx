@@ -44,7 +44,6 @@ vi.mock('@/components/editor/useLocalImageSrc', () => ({
 }))
 
 import { NativeChatComposerField } from './NativeChatComposerField'
-import type { NativeChatQueuePrimary } from './native-chat-composer-primary-action'
 import { useImeEnterGestureOwnership } from '@/lib/ime-composition-keyboard-event'
 
 afterEach(() => cleanup())
@@ -55,7 +54,7 @@ type FieldInput = {
   draft?: string
   imageAttachments?: { id: string; path: string }[]
   isWorking?: boolean
-  queuePrimary?: NativeChatQueuePrimary
+  queueResume?: { resume: () => void; resuming: boolean }
 }
 
 const NO_IMAGES: { id: string; path: string }[] = []
@@ -65,7 +64,7 @@ function TestField({
   draft = '',
   imageAttachments = NO_IMAGES,
   isWorking = false,
-  queuePrimary,
+  queueResume,
   onSend
 }: FieldInput & { onSend: () => void }): React.JSX.Element {
   const imeEnterGesture = useImeEnterGestureOwnership()
@@ -105,7 +104,7 @@ function TestField({
       onDictationHoldEnd={vi.fn()}
       onSend={onSend}
       onStop={vi.fn()}
-      queuePrimary={queuePrimary}
+      queueResume={queueResume}
       sessionOptionsSurface={null}
       sessionOptionsSnapshot={[]}
     />
@@ -124,16 +123,16 @@ function primaryButton(input: FieldInput, onSend = vi.fn()): HTMLButtonElement {
 }
 
 describe('the composer primary button over a held queue', () => {
-  const held = () => ({ kind: 'resume' as const, resume: vi.fn(), resuming: false })
+  const held = () => ({ resume: vi.fn(), resuming: false })
 
   it('is Resume on an empty composer with no turn running; one press resumes, never sends', () => {
-    const queuePrimary = held()
+    const queueResume = held()
     const onSend = vi.fn()
-    const button = primaryButton({ queuePrimary }, onSend)
+    const button = primaryButton({ queueResume }, onSend)
     expect(button.getAttribute('aria-label')).toBe('Resume')
     expect(button.disabled).toBe(false)
     fireEvent.click(button, { detail: 1 })
-    expect(queuePrimary.resume).toHaveBeenCalledTimes(1)
+    expect(queueResume.resume).toHaveBeenCalledTimes(1)
     expect(onSend).not.toHaveBeenCalled()
   })
 
@@ -142,20 +141,11 @@ describe('the composer primary button over a held queue', () => {
     ['an image is attached', { imageAttachments: [{ id: 'image-1', path: '/tmp/a.png' }] }, 'Send'],
     ['a turn runs', { isWorking: true }, 'Stop the agent']
   ])('gives way when %s', (_case, input, label) => {
-    expect(primaryButton({ ...input, queuePrimary: held() }).getAttribute('aria-label')).toBe(label)
-  })
-
-  it('is a disabled Stop while the queue is about to send a card, never Send; typing gives Send', () => {
-    const sending = primaryButton({ queuePrimary: { kind: 'sending' } })
-    expect(sending.getAttribute('aria-label')).toBe('Stop the agent')
-    expect(sending.disabled).toBe(true)
-    cleanup()
-    const typed = primaryButton({ draft: 'hello', queuePrimary: { kind: 'sending' } })
-    expect(typed.getAttribute('aria-label')).toBe('Send')
+    expect(primaryButton({ ...input, queueResume: held() }).getAttribute('aria-label')).toBe(label)
   })
 
   it('puts focus back in the composer after Resume', () => {
-    const button = primaryButton({ queuePrimary: held() })
+    const button = primaryButton({ queueResume: held() })
     button.focus()
     fireEvent.click(button, { detail: 1 })
     expect(document.activeElement).toBe(screen.getByRole('textbox'))
@@ -164,7 +154,7 @@ describe('the composer primary button over a held queue', () => {
   it('is disabled whenever Send would be: the composer cannot send', () => {
     expect(primaryButton({ draft: 'hello', disabled: true }).disabled).toBe(true)
     cleanup()
-    const resume = primaryButton({ disabled: true, queuePrimary: held() })
+    const resume = primaryButton({ disabled: true, queueResume: held() })
     expect(resume.getAttribute('aria-label')).toBe('Resume')
     expect(resume.disabled).toBe(true)
   })
@@ -172,9 +162,7 @@ describe('the composer primary button over a held queue', () => {
   it('is Send when nothing is held, and disabled while a Resume is in flight', () => {
     expect(primaryButton({}).getAttribute('aria-label')).toBe('Send')
     cleanup()
-    const resuming = primaryButton({
-      queuePrimary: { kind: 'resume', resume: vi.fn(), resuming: true }
-    })
+    const resuming = primaryButton({ queueResume: { resume: vi.fn(), resuming: true } })
     expect(resuming.getAttribute('aria-label')).toBe('Resume')
     expect(resuming.disabled).toBe(true)
   })

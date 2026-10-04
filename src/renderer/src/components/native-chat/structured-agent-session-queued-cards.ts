@@ -94,24 +94,14 @@ export function projectQueuedMessageCards(
   })
 }
 
-/** Whether the queue's run is going, and whether Resume would release anything. A turn's end and
- *  the queue's send of its next card reach the client as two updates; a card nothing holds keeps
- *  the run going across that gap (`sendsNext`), so no card flips Steer → Send → Steer and neither
- *  Resume nor Send flashes — unless the host refuses every send (`sendBlocked`), when nothing goes
- *  out. Resume needs a card a queue-level pause holds: one held on its own, returned or behind a
- *  returned card would not send. */
-export function queuedMessageQueueRun(
+/** Whether Resume would release anything: nothing runs, and a queue-level pause holds a card. One
+ *  held on its own, returned or behind a returned card would not send. `isWorking` counts the
+ *  queue's coming send, which the host names. */
+export function queuedMessagesResumable(
   cards: readonly QueuedMessageCard[],
-  session: { isWorking: boolean; sendBlocked: boolean }
-): { turnRunning: boolean; sendsNext: boolean; resumable: boolean } {
-  const sendsNext =
-    !session.isWorking && !session.sendBlocked && cards.some((card) => card.hold === 'turn')
-  const turnRunning = session.isWorking || sendsNext
-  return {
-    turnRunning,
-    sendsNext,
-    resumable: !turnRunning && cards.some((card) => card.hold === 'queue-paused')
-  }
+  isWorking: boolean
+): boolean {
+  return !isWorking && cards.some((card) => card.hold === 'queue-paused')
 }
 
 /** Steer jumps into a running turn; with none running, or for a card held on its own or
