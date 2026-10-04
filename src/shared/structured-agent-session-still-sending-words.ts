@@ -3,6 +3,7 @@
 // person ("send it again", "start a new chat"): following one while Orca resends could send the
 // message twice.
 
+import type { AgentSessionFailureKind } from './agent-session-failure'
 import { agentSessionRefusalReasonWords } from './agent-session-refusal-notice'
 import type { AgentSessionWriteNoticeSentence } from './agent-session-write-notice-copy'
 import type { AgentSessionWriteRefusal } from './agent-session-write-failure'
@@ -16,7 +17,18 @@ const CODE_CAUSES: Partial<
   agent_session_operation_capacity: 'capacity',
   agent_session_item_revision_stale: 'questionChanged',
   agent_session_already_resolved: 'questionChanged',
-  agent_session_journal_unreadable: 'historyUnreadable'
+  agent_session_journal_unreadable: 'historyUnreadable',
+  structured_agent_session_unsupported: 'newerOrcaNeeded'
+}
+
+/** The cause half of a failure fact a refusal reason names. */
+const FACT_CAUSES: Partial<Record<AgentSessionFailureKind, AgentSessionWriteNoticeSentence>> = {
+  providerStartFailed: 'agentStartStopped',
+  notSignedIn: 'agentNotSignedIn',
+  historyTooLarge: 'historyTooLarge',
+  managedAccountEnvOverride: 'managedAccountEnvOverride',
+  accountSwitchInProgress: 'accountSwitchInProgress',
+  managedAccountUnsupported: 'managedAccountUnsupported'
 }
 
 /** What stopped the write, as cause sentences only. */
@@ -25,9 +37,10 @@ function causeSentences(refusal: AgentSessionWriteRefusal): AgentSessionWriteNot
   if (words && 'cause' in words) {
     return [words.cause]
   }
-  // A failure fact's one sentence carries its step ("Sign in, then…"), so it says nothing here.
+  // A failure fact's own sentence carries its step ("Sign in, then…"), so it says its cause alone.
   if (words && 'fact' in words) {
-    return []
+    const cause = FACT_CAUSES[words.fact]
+    return cause ? [cause] : []
   }
   const cause = CODE_CAUSES[refusal.code]
   return cause ? [cause] : []

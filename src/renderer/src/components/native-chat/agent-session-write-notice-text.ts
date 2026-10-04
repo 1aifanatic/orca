@@ -45,6 +45,29 @@ const SENTENCES: Record<AgentSessionWriteNoticeSentence, () => string> = {
     translate('components.native-chat.writeNotice.sendOutcomeLost', COPY.sendOutcomeLost),
   stillSending: () =>
     translate('components.native-chat.writeNotice.stillSending', COPY.stillSending),
+  agentNotSignedIn: () =>
+    translate('components.native-chat.writeNotice.agentNotSignedIn', COPY.agentNotSignedIn),
+  agentStartStopped: () =>
+    translate('components.native-chat.writeNotice.agentStartStopped', COPY.agentStartStopped),
+  historyTooLarge: () =>
+    translate('components.native-chat.writeNotice.historyTooLarge', COPY.historyTooLarge),
+  managedAccountEnvOverride: () =>
+    translate(
+      'components.native-chat.writeNotice.managedAccountEnvOverride',
+      COPY.managedAccountEnvOverride
+    ),
+  accountSwitchInProgress: () =>
+    translate(
+      'components.native-chat.writeNotice.accountSwitchInProgress',
+      COPY.accountSwitchInProgress
+    ),
+  managedAccountUnsupported: () =>
+    translate(
+      'components.native-chat.writeNotice.managedAccountUnsupported',
+      COPY.managedAccountUnsupported
+    ),
+  newerOrcaNeeded: () =>
+    translate('components.native-chat.writeNotice.newerOrcaNeeded', COPY.newerOrcaNeeded),
   questionChanged: () =>
     translate('components.native-chat.writeNotice.questionChanged', COPY.questionChanged),
   historyUnreadable: () =>

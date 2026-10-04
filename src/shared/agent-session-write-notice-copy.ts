@@ -2,6 +2,7 @@
 
 import type { AgentSessionFailureFact } from './agent-session-failure'
 import {
+  AGENT_SESSION_FAILURE_COPY,
   QUIT_TERMINAL_AGENT,
   START_NEW_CHAT,
   TERMINAL_AGENT_HOLDS_CHAT
@@ -31,6 +32,13 @@ export const AGENT_SESSION_WRITE_NOTICE_COPY = {
   sendOutcomeLost:
     "Orca couldn't confirm your message reached the agent. Check the chat, then send it again if needed.",
   stillSending: 'Orca will keep trying to send it.',
+  agentNotSignedIn: 'The agent is not signed in for the selected account.',
+  agentStartStopped: 'The agent stopped before it finished starting.',
+  historyTooLarge: AGENT_SESSION_FAILURE_COPY.historyTooLarge,
+  managedAccountEnvOverride: 'This Claude launch sets its own Anthropic sign-in variables.',
+  accountSwitchInProgress: 'A Claude account switch is in progress.',
+  managedAccountUnsupported: AGENT_SESSION_FAILURE_COPY.managedAccountUnsupported,
+  newerOrcaNeeded: 'This needs a newer Orca on the computer running this chat.',
   questionChanged: 'This question was already answered or has changed.',
   historyUnreadable: "Orca couldn't read this chat's saved history.",
   historyUnusable: 'Unable to load this chat.',

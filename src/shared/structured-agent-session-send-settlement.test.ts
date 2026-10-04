@@ -21,8 +21,14 @@ import {
   readAgentSessionRefusalReference
 } from './agent-session-wire-refusals'
 import { AGENT_SESSION_REFUSAL_REASONS } from './agent-session-refusal-details'
-import { agentSessionWriteNoticeEnglish } from './agent-session-refusal-notice'
-import { agentSessionRefusalFailure } from './agent-session-write-failure'
+import {
+  agentSessionRefusalReasonWords,
+  agentSessionWriteNoticeEnglish
+} from './agent-session-refusal-notice'
+import {
+  agentSessionRefusalFailure,
+  type AgentSessionWriteRefusal
+} from './agent-session-write-failure'
 
 const ID = '1759600000000-0123456789abcdef0123456789abcdef'
 const MADE_AT = 1_759_600_000_000
@@ -359,16 +365,61 @@ describe('a send Orca keeps sending says why, and only why', () => {
     expect(held).toBeGreaterThan(50)
   })
 
-  it('a thrown request with no cause of its own says only that Orca keeps trying', () => {
-    for (const rpcCode of ['unauthorized', 'invalid_argument', 'method_not_found']) {
-      expect(
-        settleStructuredAgentSessionSendAnswer(
-          { kind: 'thrown', refusal: undefined, rpcCode },
-          ID,
-          RESEND_OLD_HOST
-        )
-      ).toEqual({ kind: 'unanswered', words: ['stillSending'] })
+  // A cause that lasts (signed out, a history too large, an older host) can hold a message for
+  // hours, so the line keeps saying what it is, without the step.
+  it('keeps the cause a refusal names, before "Orca will keep trying to send it"', () => {
+    const lasting = (refusal: AgentSessionWriteRefusal): boolean => {
+      const words = agentSessionRefusalReasonWords(refusal)
+      return words
+        ? 'cause' in words || 'fact' in words
+        : refusal.code === 'structured_agent_session_unsupported' ||
+            refusal.code === 'agent_session_journal_unreadable'
     }
+    let named = 0
+    for (const refusal of cells.filter(lasting)) {
+      const cell = `${refusal.code}/${refusal.details?.reason ?? '-'}`
+      const settled = settleStructuredAgentSessionSendAnswer(
+        { kind: 'thrown', refusal, rpcCode: undefined },
+        ID,
+        RESEND_OLD_HOST
+      )
+      if (settled.kind !== 'unanswered' || !settled.words) {
+        continue
+      }
+      named += 1
+      expect(settled.words.length, cell).toBeGreaterThanOrEqual(2)
+      expect(agentSessionWriteNoticeEnglish(settled.words.slice(0, -1)), cell).not.toMatch(STEP)
+    }
+    expect(named).toBeGreaterThan(20)
+    const notSignedIn = agentSessionRefusalFailure({
+      code: 'agent_session_operation_invalid',
+      details: { reason: 'notSignedIn' }
+    })
+    expect(
+      settleStructuredAgentSessionSendAnswer(
+        { kind: 'thrown', refusal: notSignedIn, rpcCode: undefined },
+        ID,
+        RESEND_OLD_HOST
+      )
+    ).toEqual({ kind: 'unanswered', words: ['agentNotSignedIn', 'stillSending'] })
+  })
+
+  it('a thrown request with no cause of its own says only that Orca keeps trying', () => {
+    const thrown = (rpcCode: string): StructuredAgentSessionSendAnswer => ({
+      kind: 'thrown',
+      refusal: undefined,
+      rpcCode
+    })
+    for (const rpcCode of ['unauthorized', 'invalid_argument']) {
+      expect(settleStructuredAgentSessionSendAnswer(thrown(rpcCode), ID, RESEND_OLD_HOST)).toEqual({
+        kind: 'unanswered',
+        words: ['stillSending']
+      })
+    }
+    // A host without the method is an older one: that is the cause.
+    expect(
+      settleStructuredAgentSessionSendAnswer(thrown('method_not_found'), ID, RESEND_OLD_HOST)
+    ).toEqual({ kind: 'unanswered', words: ['newerOrcaNeeded', 'stillSending'] })
   })
 
   it('a thrown "outcome unknown" says nothing, as the returned one does', () => {
