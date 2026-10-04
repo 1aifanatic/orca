@@ -9,7 +9,6 @@ import {
   type RefObject
 } from 'react'
 import { translate } from '@/i18n/i18n'
-import { basename } from '@/lib/path'
 import {
   nativeChatComposerTargetIsRemote,
   type NativeChatResolvedTarget
@@ -26,6 +25,9 @@ import {
 import { verifyRestoredNativeChatComposerDraftImages } from './native-chat-composer-draft-image-check'
 import type { NativeChatResolvedPathOptions } from './native-chat-resolved-path-ownership'
 import { useNativeChatResolvedPathAttachments } from './use-native-chat-resolved-path-attachments'
+import { appendNativeChatAttachmentCache } from './native-chat-draft-images'
+
+export { appendNativeChatAttachmentCache }
 
 export type UseNativeChatComposerAttachmentsArgs = {
   attachmentScopeKey: string
@@ -299,34 +301,6 @@ export function readNativeChatAttachmentCache(
   scopeKey: string
 ): NativeChatComposerImageAttachment[] {
   return readNativeChatComposerDraft(scopeKey).images.map((image) => ({ ...image }))
-}
-
-/** Adds settled images after the ones the draft holds now, skipping one it already holds, as a
- *  repeated hand-back does. Saved at once: when Stop gives images back, the copy they came from
- *  goes right after this. Only an image the user attaches (`fromUser`) takes the place of a
- *  placeholder with its file name, as a re-pick does. */
-export function appendNativeChatAttachmentCache(
-  scopeKey: string,
-  appended: readonly NativeChatComposerImageAttachment[],
-  options?: { fromUser?: boolean }
-): void {
-  if (appended.length === 0) {
-    return
-  }
-  const images = [...readNativeChatComposerDraft(scopeKey).images]
-  for (const { id, path, connectionId } of appended) {
-    // Preview URLs can retain the full clipboard Blob, so only the path is kept.
-    const image = { id, path, ...(connectionId ? { connectionId } : {}) }
-    const placeholder = options?.fromUser
-      ? images.findIndex((held) => held.unavailableName === basename(path))
-      : -1
-    if (placeholder !== -1) {
-      images[placeholder] = image
-    } else if (!images.some((held) => held.id === id)) {
-      images.push(image)
-    }
-  }
-  updateNativeChatComposerDraft(scopeKey, { images }, 'immediate')
 }
 
 export function clearNativeChatAttachmentCacheForTests(): void {

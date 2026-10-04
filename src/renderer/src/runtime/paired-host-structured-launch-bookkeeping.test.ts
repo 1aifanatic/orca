@@ -11,8 +11,8 @@ const mocks = vi.hoisted(() => ({
     vi.fn<(target: RuntimeClientTarget, method: string, params?: unknown) => Promise<unknown>>()
 }))
 
-vi.mock('@/components/native-chat/structured-agent-session-outbox-storage', () => ({
-  discardStructuredAgentSessionLaunchOutbox: vi.fn()
+vi.mock('@/components/native-chat/structured-agent-session-outbox-chat-close', () => ({
+  settleStructuredAgentSessionOutboxForClosedChat: vi.fn()
 }))
 vi.mock('./structured-agent-session-close', () => ({
   closeStructuredAgentSession: mocks.closeSession

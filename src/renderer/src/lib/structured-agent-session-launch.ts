@@ -7,10 +7,8 @@ import {
   retryStructuredAgentSessionLaunchIntent,
   StructuredAgentSessionCreateRefusalError
 } from '@/lib/launch-structured-agent-session'
-import {
-  discardStructuredAgentSessionLaunchOutbox,
-  enqueueStructuredAgentSessionLaunchPrompt
-} from '@/components/native-chat/structured-agent-session-outbox-storage'
+import { enqueueStructuredAgentSessionLaunchPrompt } from '@/components/native-chat/structured-agent-session-outbox-storage'
+import { settleStructuredAgentSessionOutboxForClosedChat } from '@/components/native-chat/structured-agent-session-outbox-chat-close'
 import {
   launchAndReconcile,
   reconcileUnknownLaunch,
@@ -281,7 +279,7 @@ export function cancelStructuredAgentLaunch(worktreeId: string, sessionId: strin
     return false
   }
   markStructuredAgentSessionLaunchCancelled(worktreeId, sessionId, state.intent.executionHostId)
-  discardStructuredAgentSessionLaunchOutbox(state.intent.sessionId)
+  settleStructuredAgentSessionOutboxForClosedChat(state.intent.sessionId, { cancelledLaunch: true })
   launchDraft.clearStructuredAgentLaunchDraft(state.intent.sessionId)
   abandonStructuredAgentSessionLaunchIntent(state.intent)
   notifyStructuredLaunchListeners()

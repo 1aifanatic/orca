@@ -240,7 +240,3 @@ export function enqueueStructuredAgentSessionLaunchPrompt(
 ): StructuredAgentSessionOutboxEntry | null {
   return appendStructuredAgentSessionOutboxMessage(sessionId, text, [], 'launch', carriedNoteKeys)
 }
-
-export function discardStructuredAgentSessionLaunchOutbox(sessionId: string): void {
-  commitStructuredAgentSessionOutbox(sessionId, [])
-}

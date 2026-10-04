@@ -15,7 +15,7 @@ import {
   shouldRetainStructuredAgentSessionLaunchTab,
   structuredLaunchStates
 } from '@/lib/structured-agent-session-launch-registry'
-import { discardStructuredAgentSessionLaunchOutbox } from '@/components/native-chat/structured-agent-session-outbox-storage'
+import { settleStructuredAgentSessionOutboxForClosedChat } from '@/components/native-chat/structured-agent-session-outbox-chat-close'
 import { clearWebSessionFocusIntentIfMatches } from '@/runtime/web-session-focus-intent'
 import {
   structuredAgentSessionFocusOwner,
@@ -44,7 +44,9 @@ export function buildWorktreePurgeState(
         launch.intent.sessionId,
         launch.intent.executionHostId
       )
-      discardStructuredAgentSessionLaunchOutbox(launch.intent.sessionId)
+      settleStructuredAgentSessionOutboxForClosedChat(launch.intent.sessionId, {
+        cancelledLaunch: true
+      })
       clearWebSessionFocusIntentIfMatches(
         structuredAgentSessionFocusOwner(launch.intent.target),
         worktreeId,
@@ -67,7 +69,7 @@ export function buildWorktreePurgeState(
         shouldRetainStructuredAgentSessionLaunchTab(worktreeId, tab.entityId)
       ) {
         markStructuredAgentSessionLaunchCancelledSilently(worktreeId, tab.entityId, owner)
-        discardStructuredAgentSessionLaunchOutbox(tab.entityId)
+        settleStructuredAgentSessionOutboxForClosedChat(tab.entityId, { cancelledLaunch: true })
         clearWebSessionFocusIntentIfMatches(
           structuredAgentSessionFocusOwner(target),
           worktreeId,

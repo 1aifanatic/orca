@@ -8,7 +8,7 @@ import type { AgentSessionWriteNoticePart } from '../../../../shared/agent-sessi
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import { structuredAgentSessionDraftScopeKey } from './native-chat-composer-draft-store'
 import { returnNativeChatDraftText } from './native-chat-draft-cache'
-import { appendNativeChatAttachmentCache } from './use-native-chat-composer-attachments'
+import { appendNativeChatAttachmentCache } from './native-chat-draft-images'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 
 /**
