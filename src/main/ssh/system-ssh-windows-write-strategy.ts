@@ -285,17 +285,19 @@ function isPwshUnavailableError(error: unknown): boolean {
 
 function isPowerShellMissingPwshDiagnostic(stderr: string): boolean {
   // NormalView wraps physical lines; its localized prose and category template are not identifiers.
-  const record = stderr.replace(/\r?\n[ \t]*/g, '')
+  const record = stderr.replace(/\r?\n/g, '')
   const sections =
-    /^pwsh\.exe[ \t]*:[ \t]*[^+]+\+[ \t]*pwsh\.exe([ \t]+-[^~]*?)\+[ \t]*~{8}[ \t]*\+[ \t]*CategoryInfo[ \t]*:[ \t]*([^+]+)\+[ \t]*FullyQualifiedErrorId[ \t]*:[ \t]*CommandNotFoundException[ \t]*$/.exec(
+    /^pwsh\.exe[ \t]*:[ \t]*([^+]+)\+[ \t]*pwsh\.exe([ \t]+-[^~]*?)\+[ \t]*~{8}[ \t]*\+[ \t]*CategoryInfo[ \t]*:[ \t]*([^+]+)\+[ \t]*FullyQualifiedErrorId[ \t]*:[ \t]*CommandNotFoundException[ \t]*$/.exec(
       record
     )
   if (!sections) {
     return false
   }
-  const source = sections[1] ?? ''
-  const category = sections[2] ?? ''
+  const prelude = sections[1] ?? ''
+  const source = sections[2] ?? ''
+  const category = sections[3] ?? ''
   return (
+    !/\b[\w.-]+\.exe[ \t]*:/.test(prelude) &&
     /^[ \t]+-NoProfile[ \t]+-NonInteractive[ \t]+-(?:Command[ \t]+exit|EncodedCommand[ \t]+[A-Za-z0-9+/=]+(?:[ \t]*\.{3})?)[ \t]*$/.test(
       source
     ) &&
