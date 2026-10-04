@@ -41,8 +41,9 @@ export function updateNativeChatAttachmentCache(
   if (next.length === 0) {
     attachmentCache.delete(scopeKey)
   } else {
-    // LRU-bounded so attachments for permanently-removed panes can't accumulate.
-    setBoundedScopeCacheEntry(attachmentCache, scopeKey, next)
+    // LRU-bounded so attachments for permanently-removed panes can't accumulate. A scope a composer
+    // shows or an attachment is still on its way to is never evicted: this is where they live.
+    setBoundedScopeCacheEntry(attachmentCache, scopeKey, next, scopeInUse)
   }
   listeners.get(scopeKey)?.forEach((listener) => listener())
 }
@@ -70,6 +71,13 @@ export function appendNativeChatAttachmentCache(
   if (appended.length > 0) {
     updateNativeChatAttachmentCache(scopeKey, (previous) => [...previous, ...appended])
   }
+}
+
+function scopeInUse(scopeKey: string): boolean {
+  return (
+    (listeners.get(scopeKey)?.size ?? 0) > 0 ||
+    nativeChatAttachmentSnapshot(scopeKey).some((attachment) => attachment.pending === true)
+  )
 }
 
 function hasPending(scopeKey: string, id: string): boolean {
