@@ -187,16 +187,20 @@ describe.skipIf(process.platform === 'win32')(
       expect(await probedArgs(good)).toEqual([])
     })
 
-    it('stops at a real timeout and leaves later copies unprobed', async () => {
-      const hung = await cliInDirectory('hung', 'exec /bin/sleep 30\n')
+    it('recovers a working copy after a real launcher timeout', async () => {
+      const marker = path.join(root, 'descendant-terminated')
+      const childScript = `trap ${shellQuote(`printf terminated > ${shellQuote(marker)}; exit 0`)} TERM\n/bin/sleep 30 &\nwait\n`
+      const hung = await cliInDirectory('hung', `/bin/sh -c ${shellQuote(childScript)} &\nwait\n`)
       const good = await cliInDirectory('good')
       vi.stubEnv('PATH', [hung, good].join(path.delimiter))
 
       await expect(findRunnableLocalCommand(COMMAND)).resolves.toEqual({
-        status: 'timeout',
-        binary: path.join(hung, COMMAND)
+        status: 'available',
+        binary: path.join(good, COMMAND)
       })
-      expect(await probedArgs(good)).toEqual([])
+      expect(await probedArgs(hung)).toEqual(['--version'])
+      expect(await probedArgs(good)).toEqual(['--version'])
+      expect(await readFile(marker, 'utf8')).toBe('terminated')
     }, 10_000)
 
     it('uses the known Nix install directory after PATH copies fail', async () => {
