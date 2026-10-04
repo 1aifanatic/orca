@@ -22,6 +22,7 @@ import {
   AGENT_SESSION_NOT_ATTACHED,
   type AgentSessionMutationSessionPreparation
 } from './structured-agent-session-mutation-admission'
+import { agentSessionOperationOutcomeUnknown } from './structured-agent-session-replay-outcome'
 import { rewindRefusal } from './structured-rewind-refusal'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
@@ -132,21 +133,27 @@ export function openWithAgent(
 }
 
 /** A rewind still in doubt once the conversation is open is one only its provider can settle —
- *  the open settles every other — so a send starts the agent, whose attach recovers it. */
+ *  the open settles every other — so a send starts the agent, whose attach recovers it. For a
+ *  resend of a recorded id the answer is in the conversation: one that cannot be made ready leaves
+ *  that answer unknown, never refused. */
 export function sendPreparation(
   context: Pick<StructuredAgentSessionMutationContext, 'openConversation' | 'ensureAgent' | 'deps'>,
   envelope: AgentSessionMutationEnvelope
-): () => Promise<AgentSessionMutationSessionPreparation> {
-  return async () => {
+): (ledger: 'admit' | 'replay') => Promise<AgentSessionMutationSessionPreparation> {
+  return async (ledger) => {
     const opened = await openConversationForWrite(
       context.openConversation,
       envelope,
       context.deps.logger
     )
     const phase = context.deps.store.getRecord(envelope.sessionId)?.rewind?.phase
-    return opened.ok && (phase === 'prepared' || phase === 'provider-succeeded')
-      ? context.ensureAgent(envelope.sessionId)
-      : opened
+    const prepared =
+      opened.ok && (phase === 'prepared' || phase === 'provider-succeeded')
+        ? await context.ensureAgent(envelope.sessionId)
+        : opened
+    return ledger === 'replay' && !prepared.ok
+      ? { ok: false, refusal: agentSessionOperationOutcomeUnknown(envelope.clientOperationId) }
+      : prepared
   }
 }
 

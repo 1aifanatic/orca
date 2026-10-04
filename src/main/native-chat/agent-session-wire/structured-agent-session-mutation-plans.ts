@@ -3,11 +3,15 @@
 //
 // The replay half matters more than it looks. The ledger records only that an
 // operation happened, so the durable answer usually comes back out of the
-// journal. Send is fail-closed: admission alone cannot prove non-delivery.
+// journal. Send is fail-closed: admission alone cannot prove non-delivery, so a
+// send runs again only when the journal it wrote to proves it wrote nothing.
 
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
-import type { AgentSessionOperationOutcome } from '../../../shared/agent-session-operation-ledger'
+import type {
+  AgentSessionOperationOutcome,
+  AgentSessionOperationRow
+} from '../../../shared/agent-session-operation-ledger'
 import type {
   AgentSessionCancelResult,
   AgentSessionMutationEnvelope,
@@ -54,7 +58,7 @@ export type MutationPlan<TValue> = {
   markUnknownBeforeRun?: boolean
   run: (ctx: AgentSessionTurnContext) => Promise<TurnOutcome<TValue>>
   replay: (ctx: AgentSessionTurnContext, outcome: AgentSessionOperationOutcome) => TValue | null
-  rerunWhenReplayMissing?: (ctx: AgentSessionTurnContext) => boolean
+  rerunWhenReplayMissing?: (ctx: AgentSessionTurnContext, row: AgentSessionOperationRow) => boolean
   recoverUnknownFromDurableState?: boolean
   settledOutcome?: (value: TValue) => AgentSessionOperationOutcome
 }
@@ -104,7 +108,9 @@ export function sendPlan(params: {
       if (submission) {
         return { clientMessageId, submission }
       }
-      if (outcome.status === 'failed') {
+      // Only an accepted send whose row a later epoch dropped is answered without one; an
+      // unsettled one with nothing written is decided by `rerunWhenReplayMissing`.
+      if (outcome.status !== 'succeeded') {
         return null
       }
       const resolvedAt = ctx.now()
@@ -122,7 +128,13 @@ export function sendPlan(params: {
           recovered: true
         }
       }
-    }
+    },
+    // A send writes its submission, draft or hand-off before anything can deliver it, and only a
+    // new epoch removes one. So in the epoch it was admitted into, finding none proves it never
+    // wrote: running it now is its first run. Under any other epoch, or a row with none recorded,
+    // that proof is gone and the answer is unknown.
+    rerunWhenReplayMissing: (ctx, row) =>
+      row.journalEpoch !== undefined && row.journalEpoch === ctx.journal.cursor().epoch
   }
 }
 

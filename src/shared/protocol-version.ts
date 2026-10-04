@@ -196,6 +196,14 @@ export const AGENT_SESSION_PENDING_SEND_RESULT_RUNTIME_CAPABILITY =
 // mobile client lacks the capability; mobile must first show a rejected message in place.
 export const AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY =
   'agent-session.accepted-send.v1' as const
+// Why: a host advertising this answers a resent send id from its ledger before anything else may
+// refuse it, so its answers to `agentSession.send` are proof. `agent_session_operation_unknown`
+// means it cannot tell yet: resend under the same id. `agent_session_operation_expired` means the
+// id outlived the window the host answers for: only the transcript can say. Any other refusal
+// means nothing under that id was recorded. An older host may refuse an id it recorded, so a
+// client must not read that host's refusal of a resend as proof.
+export const AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY =
+  'agent-session.send-answers-proof.v1' as const
 // Why: `agentSession.send`'s params are strict, so an older host rejects `delivery`; and only a
 // capable client can render the `queued` result arm, the draft list, and returned cards. DARK ON
 // PURPOSE — not in RUNTIME_CAPABILITIES: advertising still requires the integrated Codex steer
@@ -400,6 +408,7 @@ export const RUNTIME_CAPABILITIES = [
   // The host side: it accepts a send before any agent has it, and a Stop with no writer before a
   // turn starts, so a client may gate on either.
   AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY,
+  AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_HOLD_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_REVEAL_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_RESUME_HISTORY_RUNTIME_CAPABILITY,

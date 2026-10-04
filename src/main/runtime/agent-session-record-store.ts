@@ -11,6 +11,7 @@ import { setAgentSessionRecordConversationName } from './agent-session-record-co
 
 import {
   agentSessionOperationKey,
+  findAgentSessionGlobalOperationRow,
   type AgentSessionOperationClaim,
   type AgentSessionOperationDecision,
   type AgentSessionOperationOutcome,
@@ -180,6 +181,10 @@ export class AgentSessionRecordStore {
 
   getOperationRow = (callerKey: string, operationId: string): AgentSessionOperationRow | null =>
     this.state.operations.get(agentSessionOperationKey(callerKey, operationId)) ?? null
+
+  /** Whether any caller's unexpired row holds this id, as a send's global admission reads it. */
+  holdsGlobalOperation = (operationId: string, now: number): boolean =>
+    findAgentSessionGlobalOperationRow(this.state.operations, operationId, now) !== undefined
 
   isClaimKeyVerifiable = (keyId: string, now: number): boolean =>
     isAgentSessionClaimKeyVerifiable(this.state, keyId, now)

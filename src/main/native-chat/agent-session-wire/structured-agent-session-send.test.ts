@@ -328,32 +328,32 @@ describe('send', () => {
     expect(dispatch).toHaveBeenCalledTimes(1)
   })
 
-  it('never reruns an admission-only send after the caller changes', async () => {
+  it('runs an admission-only send for the first time when it is resent, once', async () => {
     await attach()
     const settlement = vi
       .spyOn(store, 'recordOperationOutcome')
       .mockRejectedValue(new Error('operation settlement failed'))
     const body = hostTestMessage('first delivery after caller recovery')
     const params = { envelope: envelope('agentSession.send', { body }), body }
+    const clientMessageId = params.envelope.clientOperationId
 
     await expect(host.send(CALLER, params)).rejects.toThrow('operation settlement failed')
     expect(dispatch).not.toHaveBeenCalled()
+    expect(hostJournal().submissions()).toHaveLength(0)
     settlement.mockRestore()
 
+    // The row was placed and nothing was written in the epoch it names: this is its first run.
     await expect(host.send({ callerKey: 'client-after-recovery' }, params)).resolves.toMatchObject({
       ok: true,
-      replayed: true,
-      value: {
-        submission: {
-          dispatchState: 'unknown',
-          reason: DISPATCH_DOUBT_SUBMISSION_MISSING
-        }
-      }
+      replayed: false,
+      value: { submission: { clientMessageId, dispatchState: 'pending' } }
     })
-    expect(dispatch).not.toHaveBeenCalled()
+    await delivered(clientMessageId)
     expect(
-      store.listOperationRows().find((row) => row.operationId === params.envelope.clientOperationId)
-    ).toMatchObject({ callerKey: CALLER.callerKey, outcome: { status: 'pending' } })
+      store.listOperationRows().find((row) => row.operationId === clientMessageId)
+    ).toMatchObject({ callerKey: CALLER.callerKey, outcome: { status: 'succeeded' } })
+    await expect(host.send(CALLER, params)).resolves.toMatchObject({ ok: true, replayed: true })
+    expect(dispatch).toHaveBeenCalledTimes(1)
   })
 
   it('never redelivers after admission survives without its journal submission', async () => {
@@ -377,21 +377,36 @@ describe('send', () => {
     await journal.rollEpoch('schema_unreadable', store.getRecord(SESSION)?.lease.runtimeFence ?? 1)
     expect(journal.submissions()).toHaveLength(0)
 
+    // A new epoch may have dropped what the send wrote, so nothing proves it never ran.
     await expect(
       host.send({ callerKey: 'client-after-recovery' }, { ...params, retryUnknown: true })
     ).resolves.toMatchObject({
-      ok: true,
-      replayed: true,
-      value: {
-        submission: {
-          dispatchState: 'unknown',
-          reason: DISPATCH_DOUBT_SUBMISSION_MISSING,
-          recovered: true
-        }
-      }
+      ok: false,
+      refusal: { code: 'agent_session_operation_unknown', details: { reason: 'outcomeUnknown' } }
     })
     expect(dispatch).toHaveBeenCalledTimes(1)
     expect(journal.submissions()).toHaveLength(0)
+  })
+
+  it('answers an accepted send a new epoch dropped as recorded, never by running it again', async () => {
+    await attach()
+    const body = hostTestMessage('accepted, then the epoch was replaced')
+    const params = { envelope: envelope('agentSession.send', { body }), body }
+    await host.send(CALLER, params)
+    await delivered(params.envelope.clientOperationId)
+    await hostJournal().rollEpoch(
+      'schema_unreadable',
+      store.getRecord(SESSION)?.lease.runtimeFence ?? 1
+    )
+
+    await expect(host.send(CALLER, params)).resolves.toMatchObject({
+      ok: true,
+      replayed: true,
+      value: {
+        submission: { dispatchState: 'unknown', reason: DISPATCH_DOUBT_SUBMISSION_MISSING }
+      }
+    })
+    expect(dispatch).toHaveBeenCalledTimes(1)
   })
 
   it('fails closed when a legacy pending row survives without its submission', async () => {
@@ -414,14 +429,8 @@ describe('send', () => {
     await journal.rollEpoch('schema_unreadable', store.getRecord(SESSION)?.lease.runtimeFence ?? 1)
 
     await expect(host.send({ callerKey: 'client-after-recovery' }, params)).resolves.toMatchObject({
-      ok: true,
-      replayed: true,
-      value: {
-        submission: {
-          dispatchState: 'unknown',
-          reason: DISPATCH_DOUBT_SUBMISSION_MISSING
-        }
-      }
+      ok: false,
+      refusal: { code: 'agent_session_operation_unknown', details: { reason: 'outcomeUnknown' } }
     })
     expect(dispatch).toHaveBeenCalledTimes(1)
   })

@@ -13,10 +13,22 @@ export type AgentSessionReplayOutcomeDecision<TValue> =
   | { decision: 'rerun' }
   | { decision: 'refuse'; refusal: AgentSessionWireRefusal }
 
+/** A recorded id this host cannot answer from what it holds, so it neither ran it again nor
+ *  refused it: the caller resends under the same id. */
+export function agentSessionOperationOutcomeUnknown(operationId: string): AgentSessionWireRefusal {
+  return refuse(
+    'agent_session_operation_unknown',
+    { reason: 'outcomeUnknown' },
+    `The outcome of operation ${operationId} is unknown; it was not run again.`
+  )
+}
+
 export function resolveAgentSessionReplayOutcome<TValue>(input: {
   operationId: string
   outcome: AgentSessionOperationOutcome
   reconstruct: () => TValue | null
+  /** Whether a row with nothing to reconstruct may run for the first time. Undefined leaves an
+   *  unsettled row to the default (rerun); false refuses it as unknown. */
   rerunWhenReplayMissing?: boolean
   recoverUnknownFromDurableState?: boolean
 }): AgentSessionReplayOutcomeDecision<TValue> {
@@ -41,14 +53,7 @@ export function resolveAgentSessionReplayOutcome<TValue>(input: {
     if (input.rerunWhenReplayMissing) {
       return { decision: 'rerun' }
     }
-    return {
-      decision: 'refuse',
-      refusal: refuse(
-        'agent_session_operation_unknown',
-        { reason: 'outcomeUnknown' },
-        `The outcome of operation ${operationId} is unknown; it was not run again.`
-      )
-    }
+    return { decision: 'refuse', refusal: agentSessionOperationOutcomeUnknown(operationId) }
   }
   const recorded = input.reconstruct()
   if (recorded) {
@@ -57,15 +62,18 @@ export function resolveAgentSessionReplayOutcome<TValue>(input: {
   if (input.rerunWhenReplayMissing) {
     return { decision: 'rerun' }
   }
-  return outcome.status === 'succeeded'
-    ? {
-        decision: 'refuse',
-        refusal: refuse(
-          'agent_session_operation_unknown',
-          { reason: 'resultLost' },
-          `Operation ${operationId} succeeded, but its result is no longer reconstructable.`
-        )
-      }
+  if (outcome.status === 'succeeded') {
+    return {
+      decision: 'refuse',
+      refusal: refuse(
+        'agent_session_operation_unknown',
+        { reason: 'resultLost' },
+        `Operation ${operationId} succeeded, but its result is no longer reconstructable.`
+      )
+    }
+  }
+  return input.rerunWhenReplayMissing === false
+    ? { decision: 'refuse', refusal: agentSessionOperationOutcomeUnknown(operationId) }
     : { decision: 'rerun' }
 }
 

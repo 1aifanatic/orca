@@ -76,6 +76,14 @@ export type AgentSessionOperationRow = {
   recordedAt: number
   expiresAt: number
   outcome: AgentSessionOperationOutcome
+  /**
+   * The chat journal epoch live when the row was placed, for an operation that writes to that
+   * journal. While the same epoch is live, a row the operation never wrote is one it never wrote;
+   * an epoch replaced since (a rewind, an import, a rebuild) may have dropped it. Absent on rows
+   * no journal backs and on rows older builds wrote. Not checked by `isAgentSessionOperationRow`,
+   * for the reason `launch` is not: a load drops a row it rejects.
+   */
+  journalEpoch?: string
 }
 
 export type AgentSessionOperationRefusalCode =
@@ -235,6 +243,7 @@ export function evaluateAgentSessionOperation(args: {
   now: number
   perClientLimit?: number
   globalLimit?: number
+  journalEpoch?: string
 }): AgentSessionOperationDecision {
   const { rows, callerKey, operationId, fingerprint, now } = args
   const operationTimestamp = parseAgentSessionOperationTimestamp(operationId)
@@ -288,7 +297,13 @@ export function evaluateAgentSessionOperation(args: {
   }
   return {
     decision: 'admit',
-    row: pendingAgentSessionOperationRow({ callerKey, operationId, fingerprint, now })
+    row: pendingAgentSessionOperationRow({
+      callerKey,
+      operationId,
+      fingerprint,
+      now,
+      ...(args.journalEpoch !== undefined ? { journalEpoch: args.journalEpoch } : {})
+    })
   }
 }
 
@@ -298,6 +313,7 @@ export function pendingAgentSessionOperationRow(args: {
   operationId: string
   fingerprint: string
   now: number
+  journalEpoch?: string
 }): AgentSessionOperationRow {
   const operationTimestamp = parseAgentSessionOperationTimestamp(args.operationId)
   if (operationTimestamp === null) {
@@ -310,7 +326,8 @@ export function pendingAgentSessionOperationRow(args: {
     operationTimestamp,
     recordedAt: args.now,
     expiresAt: agentSessionOperationExpiry(operationTimestamp, args.now),
-    outcome: { status: 'pending' }
+    outcome: { status: 'pending' },
+    ...(args.journalEpoch !== undefined ? { journalEpoch: args.journalEpoch } : {})
   }
 }
 

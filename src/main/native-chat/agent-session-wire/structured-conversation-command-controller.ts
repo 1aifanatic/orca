@@ -17,13 +17,18 @@ export class StructuredConversationCommandController {
     private readonly context: () => StructuredAgentSessionMutationContext,
     private readonly host: Pick<StructuredAgentSessionHost, 'waitForSendSettlement'>
   ) {}
+  /** A clear in flight refuses only a send it would be the first run of: a resent id the ledger
+   *  holds is answered from its record, behind the clear. */
   send = (
     caller: StructuredAgentSessionCaller,
     params: Parameters<typeof sendStructuredAgentSessionTurn>[2]
-  ): ReturnType<typeof sendStructuredAgentSessionTurn> =>
-    this.pending.has(params.envelope.sessionId)
+  ): ReturnType<typeof sendStructuredAgentSessionTurn> => {
+    const context = this.context()
+    return this.pending.has(params.envelope.sessionId) &&
+      !context.deps.store.holdsGlobalOperation(params.envelope.clientOperationId, context.now())
       ? Promise.resolve({ ok: false, refusal: conversationCommandInFlight() })
-      : sendStructuredAgentSessionTurn(this.context(), caller, params)
+      : sendStructuredAgentSessionTurn(context, caller, params)
+  }
 
   run = (caller: StructuredAgentSessionCaller, params: ConversationCommandParams) => {
     if (params.command === 'compact') {

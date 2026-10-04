@@ -6,7 +6,9 @@
 // Admission is two-phase for a call that brings a `prepareSession`. The ledger's
 // answer comes first and places nothing; a call it will admit may then give the
 // session an owner, and only after that are the row placed and the lease
-// checked — against the lease as it stands once the owner is there.
+// checked — against the lease as it stands once the owner is there. An id the
+// ledger already refused for good is answered from its row before any of that,
+// so a resend never meets a refusal its first run did not make.
 
 import {
   admitAgentSessionMutation,
@@ -103,6 +105,17 @@ export async function admitAndRunAgentSessionMutation<TValue>(
     if (!ledger) {
       return refuseAgentSessionMutation(AGENT_SESSION_NOT_ATTACHED)
     }
+    const recorded = ledger.decision.decision === 'replay' ? ledger.decision.row : null
+    if (recorded?.outcome.status === 'failed') {
+      const replay = resolveAgentSessionReplayOutcome({
+        operationId: envelope.clientOperationId,
+        outcome: recorded.outcome,
+        reconstruct: () => null
+      })
+      if (replay.decision === 'refuse') {
+        return refuseAgentSessionMutation(replay.refusal)
+      }
+    }
     if (ledger.decision.decision !== 'refused') {
       const prepared = await request.prepareSession(ledger.decision.decision, ledger.record)
       if (!prepared.ok) {
@@ -120,7 +133,8 @@ export async function admitAndRunAgentSessionMutation<TValue>(
     hostFingerprint,
     now: request.now(),
     ...(plan.operationIdScope ? { operationIdScope: plan.operationIdScope } : {}),
-    ...(plan.conversationWrite ? { conversationWrite: true } : {})
+    ...(plan.conversationWrite ? { conversationWrite: true } : {}),
+    journalEpoch: journal.cursor().epoch
   }
   let admitted: AgentSessionMutationOperationDecision
   let ledgerRowWritten = true
@@ -155,7 +169,7 @@ export async function admitAndRunAgentSessionMutation<TValue>(
       operationId: envelope.clientOperationId,
       outcome: admission.row.outcome,
       reconstruct: () => plan.replay(context, admission.row.outcome),
-      rerunWhenReplayMissing: plan.rerunWhenReplayMissing?.(context),
+      rerunWhenReplayMissing: plan.rerunWhenReplayMissing?.(context, admission.row),
       recoverUnknownFromDurableState: plan.recoverUnknownFromDurableState
     })
     if (replay.decision === 'refuse') {

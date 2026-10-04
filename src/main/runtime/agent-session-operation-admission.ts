@@ -26,6 +26,8 @@ export type AgentSessionOperationAdmission = {
   operationId: string
   fingerprint: string
   now: number
+  /** Stamped on a row this admission places: see `AgentSessionOperationRow.journalEpoch`. */
+  journalEpoch?: string
 }
 
 type OperationRows = Map<string, AgentSessionOperationRow>
@@ -37,6 +39,8 @@ export type AgentSessionMutationOperationAdmission = {
   now: number
   operationIdScope?: 'global'
   conversationWrite?: true
+  /** The journal epoch the mutation writes to. */
+  journalEpoch?: string
 }
 
 export type AgentSessionMutationOperationDecision = {
@@ -129,7 +133,8 @@ function mutationOperation(
     callerKey: args.callerKey,
     operationId: args.envelope.clientOperationId,
     fingerprint: args.hostFingerprint,
-    now: args.now
+    now: args.now,
+    ...(args.journalEpoch !== undefined ? { journalEpoch: args.journalEpoch } : {})
   }
 }
 
