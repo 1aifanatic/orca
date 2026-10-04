@@ -54,6 +54,7 @@ import {
   registerWorkspaceHttpLinkBrowserOpener
 } from '@/lib/http-link-routing'
 import { installStoreListenerCensus } from './store-listener-census'
+import { installSettledSortEpoch } from './settled-sort-epoch'
 import { withReactCommitCascadeWriteProbe } from './react-commit-cascade-write-probe'
 import { withStoreIdentityChurnProbe } from './store-identity-churn-probe'
 import {
@@ -70,9 +71,13 @@ const withDevelopmentStoreProbes = (createState: StateCreator<AppState, [], []>)
     ? withStoreIdentityChurnProbe(createState)
     : createState
 
+let disposeSettledSortEpoch: (() => void) | null = null
+
 export const useAppStore = create<AppState>()(
   withDevelopmentStoreProbes(
     withReactCommitCascadeWriteProbe((...a) => {
+      // Why first: settling inside the bump's own notify means hook subscribers never see it unsettled.
+      disposeSettledSortEpoch = installSettledSortEpoch(a[2])
       // Why: the inner api is only reachable here, before create() copies subscribe onto the hook.
       installStoreListenerCensus(a[2])
       return {
@@ -125,6 +130,8 @@ export const useAppStore = create<AppState>()(
     })
   )
 )
+
+import.meta.hot?.dispose(() => disposeSettledSortEpoch?.())
 
 registerHttpLinkStoreAccessor(() => useAppStore.getState())
 registerWorkspaceHttpLinkBrowserOpener(async (request) => {
