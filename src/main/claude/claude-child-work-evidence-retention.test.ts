@@ -88,8 +88,8 @@ describe('Claude child operation output retention', () => {
       const evidence = drainClaudeChildWork(
         {
           childWork: new ClaudeChildWorkDecoder(),
-          translator,
-          prompts: new ClaudePromptRegistry()
+          prompts: new ClaudePromptRegistry(),
+          translator
         },
         message,
         1_000
