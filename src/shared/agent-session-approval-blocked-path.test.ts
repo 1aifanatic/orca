@@ -59,6 +59,33 @@ describe('approvalBlockedPathToShow', () => {
     ).toBe('/home/me/secret.txt')
   })
 
+  it('shows a path the text names only as the start of a longer name', () => {
+    expect(
+      approvalBlockedPathToShow({ blockedPath: '/srv/data', detail: 'ls /srv/data-old/x' })
+    ).toBe('/srv/data')
+    expect(
+      approvalBlockedPathToShow({
+        blockedPath: 'C:\\qa\\demo',
+        detail: JSON.stringify({ file_path: 'C:\\qa\\demo2\\notes.md' }, null, 2)
+      })
+    ).toBe('C:\\qa\\demo')
+  })
+
+  it('hides a path the text names before a separator, quote or space', () => {
+    expect(
+      approvalBlockedPathToShow({ blockedPath: '/srv/data', detail: 'ls /srv/data/x' })
+    ).toBeNull()
+    expect(
+      approvalBlockedPathToShow({ blockedPath: '/srv/data', detail: "cd '/srv/data' && ls" })
+    ).toBeNull()
+    expect(
+      approvalBlockedPathToShow({
+        blockedPath: 'C:\\qa\\demo',
+        detail: JSON.stringify({ file_path: 'C:\\qa\\demo\\notes.md' }, null, 2)
+      })
+    ).toBeNull()
+  })
+
   it('shows nothing without a blocked path', () => {
     expect(approvalBlockedPathToShow({ detail: 'git push' })).toBeNull()
     expect(approvalBlockedPathToShow({ blockedPath: '', detail: 'git push' })).toBeNull()

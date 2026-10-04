@@ -20,7 +20,21 @@ export function approvalBlockedPathToShow(approval: ApprovalCardText): string | 
     ? [approval.subject.text, approval.subject.filePath]
     : [approval.detail]
   const shown = [approval.description, approval.decisionReason, ...drawn].some(
-    (text) => text !== undefined && forms.some((form) => text.includes(form))
+    (text) => text !== undefined && forms.some((form) => containsWholePath(text, form))
   )
   return shown ? null : path
+}
+
+// A backslash also starts a JSON escape (`\\`, `\"`) after the escaped form.
+const PATH_END = /[\s'"`/\\]/
+
+/** Whether `path` occurs in `text` without continuing into a longer name ('/srv/data' in '/srv/data-old'). */
+function containsWholePath(text: string, path: string): boolean {
+  for (let at = text.indexOf(path); at !== -1; at = text.indexOf(path, at + 1)) {
+    const next = text[at + path.length]
+    if (next === undefined || PATH_END.test(next)) {
+      return true
+    }
+  }
+  return false
 }
