@@ -112,11 +112,12 @@ export function syncClaudeProfileFile(
   source: string,
   target: string,
   surface: string,
-  ledger: ClaudeProfileLedger
+  ledger: ClaudeProfileLedger,
+  render: (sourceText: string) => string = (sourceText) => sourceText
 ): ClaudeProfileSurfaceOutcome {
   let desired: string
   try {
-    desired = readFileSync(source, 'utf8')
+    desired = render(readFileSync(source, 'utf8'))
   } catch (error) {
     if (isDefinitiveAbsence(error)) {
       return 'absent'
