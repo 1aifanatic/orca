@@ -21,7 +21,9 @@ export function createStoppedClaudeDeadline(deps: {
     turnId?: string
   ) => {
     await deps.host().flushStreamedEvents(deps.sessionId)
-    const reachedDeadline = Promise.withResolvers<void>()
+    const reachedDeadline = Promise.withResolvers<
+      Awaited<ReturnType<typeof deps.stop>> | undefined
+    >()
     let deadlineSettled = false
     const claude = deps.claude()
     const adapter = deps.adapter()
@@ -31,7 +33,7 @@ export function createStoppedClaudeDeadline(deps: {
       .spyOn(adapter, 'awaitStoppedRequestEnd')
       .mockImplementation((sessionId, at) => {
         const pending = requestEnd(sessionId, at)
-        reachedDeadline.resolve()
+        reachedDeadline.resolve(undefined)
         return pending.then(() => {
           deadlineSettled = true
         })
@@ -50,7 +52,7 @@ export function createStoppedClaudeDeadline(deps: {
             deadlineSettled = true
           }
         )
-        reachedDeadline.resolve()
+        reachedDeadline.resolve(undefined)
         return pending
       }
     }
@@ -58,8 +60,15 @@ export function createStoppedClaudeDeadline(deps: {
     try {
       const asked = Date.now()
       const stopping = deps.stop(turnId)
-      void stopping.catch(() => {})
-      await reachedDeadline.promise
+      void stopping.then((result) => {
+        if (!result.ok || !result.value.cancelled) {
+          reachedDeadline.resolve(result)
+        }
+      }, reachedDeadline.reject)
+      const early = await reachedDeadline.promise
+      if (early !== undefined) {
+        return early
+      }
       await vi.advanceTimersByTimeAsync(CLAUDE_STOP_GRACE_MS - 1)
       expect(deadlineSettled).toBe(false)
       expect(connection.closed).toBe(false)

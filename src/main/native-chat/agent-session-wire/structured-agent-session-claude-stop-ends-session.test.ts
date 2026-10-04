@@ -134,6 +134,8 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  vi.restoreAllMocks()
+  vi.useRealTimers()
   await adapter.closeAll()
   await host.flushAllStreamedEvents()
   await rm(root, { recursive: true, force: true })
@@ -215,6 +217,9 @@ function stop(turnId?: string) {
   return host.cancel(CALLER, { envelope: envelope('agentSession.cancel', fields), ...fields })
 }
 
+/** Resolves once everything queued on the session's lane so far has run: a Stop's second step. */
+const laneDrained = (): Promise<void> => host['tasks'].serialize(SESSION, async () => {})
+
 const stopAcrossGrace = createStoppedClaudeDeadline({
   host: () => host,
   adapter: () => adapter,
@@ -239,11 +244,6 @@ function stopEventsAtClose(connection: FakeConnection): () => number | undefined
     return close()
   }
   return () => atClose
-}
-
-/** Resolves once everything queued on the session's lane so far has run: a Stop's second step. */
-function laneDrained(): Promise<void> {
-  return host['tasks'].serialize(SESSION, async () => {})
 }
 
 function wrote(connection: FakeConnection, text: string): boolean {
