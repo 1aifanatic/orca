@@ -3,7 +3,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
-import { MessageRow } from './NativeChatMessageRow'
+import { MessageRow, type NativeChatDeliveryNotice } from './NativeChatMessageRow'
 
 afterEach(cleanup)
 
@@ -163,8 +163,8 @@ describe('MessageRow send mode', () => {
   })
 })
 
-describe('a user message that did not go through', () => {
-  function renderUser(deliveryNotice?: { text: string; onRetry?: () => void }) {
+describe('what a user message says about its delivery', () => {
+  function renderUser(deliveryNotice?: NativeChatDeliveryNotice) {
     return render(
       <MessageRow
         message={{
@@ -201,6 +201,19 @@ describe('a user message that did not go through', () => {
 
   it('says nothing when it went through', () => {
     renderUser()
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+  })
+
+  // Muted, in the time's place, and shown without hover: a message nothing confirmed yet never
+  // looks like one that went through.
+  it('says quietly that it is still sending in place of its time, with no Retry', () => {
+    renderUser({ sending: true })
+
+    const sending = screen.getByText('Sending…')
+    expect(sending).toHaveClass('text-muted-foreground')
+    expect(sending).not.toHaveClass('can-hover:opacity-0')
+    expect(sending.parentElement).toHaveClass('group')
+    expect(screen.queryByRole('time')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
   })
 })

@@ -15200,6 +15200,7 @@
       "dismissDeliveryNotice": "Descartar",
       "messageNotSent": "Mensaje no enviado",
       "deliveryUnconfirmed": "Entrega sin confirmar — revisa el chat antes de reintentar",
+      "messageSending": "Enviando…",
       "subagents": {
         "unnamed": "Subagente"
       },

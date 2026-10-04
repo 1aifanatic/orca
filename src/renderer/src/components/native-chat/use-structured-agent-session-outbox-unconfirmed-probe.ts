@@ -41,7 +41,7 @@ export function useStructuredAgentSessionOutboxUnconfirmedProbe(args: {
   // A non-null `retryAfterUnknownSubmittedAt` means the user already retried, so
   // another request would repeat that explicit action. Only entries that have
   // never been retried, and that no Stop outlived, are safe to probe automatically.
-  // The delivery notices read the same rule, so a send says nothing only while it is resent here.
+  // The delivery notices read the same rule: while it is resent here, its row says it is sending.
   const probeId =
     blocker &&
     blocker.sessionId === sessionId &&

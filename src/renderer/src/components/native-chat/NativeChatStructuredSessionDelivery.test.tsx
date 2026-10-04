@@ -235,17 +235,12 @@ describe('NativeChatStructuredSession delivery', () => {
     )
   }
 
-  // Resent under its own id until the host answers, as a send still on its way: nothing to say.
-  it('confirms a transport-unconfirmed send on its own, with no notice or Retry', async () => {
+  // Resent under its own id until the host answers, so its row says only that it is still sending.
+  it('says a send whose answer was lost is sending until it confirms on its own, with no Retry', async () => {
     mocks.mode = 'outbox'
     mocks.call.mockRejectedValueOnce(new Error('socket closed')).mockResolvedValueOnce({
       ok: true,
-      value: {
-        submission: {
-          clientMessageId: 'client-1',
-          dispatchState: 'accepted'
-        }
-      }
+      value: { submission: { clientMessageId: 'client-1', dispatchState: 'accepted' } }
     })
 
     render(
@@ -263,12 +258,19 @@ describe('NativeChatStructuredSession delivery', () => {
       | ((text: string, attachments: readonly { id: string; path: string }[]) => boolean)
       | undefined
     expect(send?.('hello', [])).toBe(true)
-    await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
+    // From the moment it is sent, through the lost answer, until the host confirms it.
+    await waitFor(() => expect(screen.getByText('Sending…')).toBeTruthy())
+    await waitFor(() =>
+      expect(getStructuredAgentSessionOutbox('session-1')).toMatchObject([{ state: 'unconfirmed' }])
+    )
+    expect(screen.getByText('Sending…')).toBeTruthy()
     expect(screen.queryByText('Message delivery is unconfirmed.')).toBeNull()
     expect(screen.queryByRole('button', { name: /Retry/ })).toBeNull()
 
     await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2), { timeout: 5000 })
     expect(mocks.call.mock.calls[1]?.[2]).toEqual(mocks.call.mock.calls[0]?.[2])
+    await waitFor(() => expect(screen.queryByText('Sending…')).toBeNull())
+    expect(getStructuredAgentSessionOutbox('session-1')).toEqual([])
     expect(screen.queryByText('Message delivery is unconfirmed.')).toBeNull()
   }, 10000)
 
@@ -298,7 +300,7 @@ describe('NativeChatStructuredSession delivery', () => {
     )
   }
 
-  it('says nothing on a send reopened mid-send while it is resent, and settles it', async () => {
+  it('says a send reopened mid-send is sending while it is resent, until it settles', async () => {
     mocks.mode = 'outbox'
     mocks.submissions = []
     mocks.call.mockResolvedValue({
@@ -312,6 +314,7 @@ describe('NativeChatStructuredSession delivery', () => {
     expect(getStructuredAgentSessionOutbox('session-reopened')).toMatchObject([
       { clientMessageId: 'op-sent', state: 'unconfirmed' }
     ])
+    expect(screen.getByText('Sending…')).toBeTruthy()
     expect(screen.queryByText('Message delivery is unconfirmed.')).toBeNull()
     expect(screen.queryByRole('button', { name: /Retry/ })).toBeNull()
     await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce(), { timeout: 3000 })
@@ -319,6 +322,7 @@ describe('NativeChatStructuredSession delivery', () => {
       envelope: { clientOperationId: 'op-sent' }
     })
     await waitFor(() => expect(getStructuredAgentSessionOutbox('session-reopened')).toEqual([]))
+    expect(screen.queryByText('Sending…')).toBeNull()
     expect(screen.queryByText('Message delivery is unconfirmed.')).toBeNull()
   }, 10000)
 
@@ -350,6 +354,7 @@ describe('NativeChatStructuredSession delivery', () => {
 
       await waitFor(() => expect(screen.getByText('Message delivery is unconfirmed.')).toBeTruthy())
       expect(screen.getByRole('button', { name: /Retry/ })).toBeTruthy()
+      expect(screen.queryByText('Sending…')).toBeNull()
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 1500))
       })
@@ -367,6 +372,7 @@ describe('NativeChatStructuredSession delivery', () => {
 
     expect(screen.getByText('Message delivery is unconfirmed.')).toBeTruthy()
     expect(screen.getByRole('button', { name: /Retry/ })).toBeTruthy()
+    expect(screen.queryByText('Sending…')).toBeNull()
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 1500))
     })

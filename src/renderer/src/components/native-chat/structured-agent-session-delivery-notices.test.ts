@@ -37,6 +37,8 @@ function entry(
 }
 
 const NOT_FAILED_HERE: ReadonlySet<string> = new Set()
+// What the row shows, quietly in place of its time, while nothing has confirmed the message.
+const SENDING = 'Sending…'
 
 function texts(
   outbox: StructuredAgentSessionOutboxEntry[],
@@ -52,7 +54,9 @@ function texts(
     startFailures,
     new Set(outbox.map((candidate) => candidate.clientMessageId))
   )
-  return Object.fromEntries([...notices].map(([id, notice]) => [id, notice.text]))
+  return Object.fromEntries(
+    [...notices].map(([id, notice]) => [id, notice.sending ? SENDING : notice.text])
+  )
 }
 
 describe('the notice on each message that did not go through', () => {
@@ -155,7 +159,7 @@ describe('the notice on each message that did not go through', () => {
   })
 
   // The drain's own rule: a message behind the one the queue stopped on is only waiting, so it says
-  // nothing. A rejected or refused message holds nothing up and keeps its words.
+  // only that it is still sending. A rejected or refused message holds nothing up and keeps its words.
   it('says why on the message the queue stopped on and on every rejected or refused one', () => {
     expect(
       texts([
@@ -167,9 +171,12 @@ describe('the notice on each message that did not go through', () => {
         entry('queued')
       ])
     ).toEqual({
+      [agentJournalSubmissionKey('sent')]: SENDING,
       [agentJournalSubmissionKey('rejected')]: 'Message was not sent.',
       [agentJournalSubmissionKey('failed')]: 'Your message was not sent.',
-      [agentJournalSubmissionKey('stuck')]: 'Message delivery is unconfirmed.'
+      [agentJournalSubmissionKey('stuck')]: 'Message delivery is unconfirmed.',
+      [agentJournalSubmissionKey('behind')]: SENDING,
+      [agentJournalSubmissionKey('queued')]: SENDING
     })
   })
 
@@ -461,12 +468,87 @@ describe('the notice on each message that did not go through', () => {
     )
   })
 
-  it('says nothing on a message that is only waiting its turn or on its way', () => {
-    expect(texts([entry('queued'), entry('sending', { state: 'dispatching' })])).toEqual({})
+  it('says only that a message waiting its turn or on its way is still sending', () => {
+    const notices = structuredAgentSessionDeliveryNotices(
+      [entry('queued'), entry('sending', { state: 'dispatching' })],
+      'Claude',
+      vi.fn(),
+      [],
+      [],
+      NOT_FAILED_HERE
+    )
+    expect([...notices.values()]).toEqual([{ sending: true }, { sending: true }])
   })
 
-  // The unconfirmed probe resends it under its own id until the journal answers, as a send still
-  // on its way: nothing to say until a row lands.
+  // Any row the host holds for it is the answer, whatever its state; the row itself then shows it.
+  it.each(['pending', 'accepted'] as const)(
+    'stops saying a message is sending once the journal holds a %s row for it',
+    (dispatchState) => {
+      const answer = (clientMessageId: string): AgentJournalSubmission => ({
+        clientMessageId,
+        fence: 1,
+        payloadFingerprint: 'fp',
+        dispatchState,
+        providerItemId: null,
+        reason: null,
+        submittedAt: 1,
+        resolvedAt: null
+      })
+      const resent = entry('resent', { state: 'unconfirmed', lastAttemptAt: 1 })
+      const outbox = [entry('queued'), entry('sending', { state: 'dispatching' }), resent]
+      expect(texts(outbox)).toEqual({
+        [agentJournalSubmissionKey('queued')]: SENDING,
+        [agentJournalSubmissionKey('sending')]: SENDING,
+        [agentJournalSubmissionKey('resent')]: SENDING
+      })
+      expect(texts(outbox, [answer('queued'), answer('sending'), answer('resent')])).toEqual({})
+      // Read as the outbox will commit it, so the resent one never says it failed on the way.
+      expect(texts([resent], [answer('resent')])).toEqual({})
+    }
+  )
+
+  // One state, one surface: a row that says it did not go through never also says it is sending.
+  it.each([
+    ['rejected', entry('m', { state: 'rejected' }), []],
+    ['held for its Retry', entry('m', { lastFailure: { kind: 'failed' } }), []],
+    [
+      'in doubt with a row the host holds',
+      entry('m', { state: 'unconfirmed', lastAttemptAt: 1 }),
+      [
+        {
+          clientMessageId: 'm',
+          fence: 1,
+          payloadFingerprint: 'fp',
+          dispatchState: 'unknown',
+          providerItemId: null,
+          reason: null,
+          submittedAt: 1,
+          resolvedAt: null
+        } satisfies AgentJournalSubmission
+      ]
+    ],
+    [
+      'retried by the user',
+      entry('m', { state: 'unconfirmed', retryAfterUnknownSubmittedAt: 1 }),
+      []
+    ],
+    ['outlived by a Stop', entry('m', { state: 'unconfirmed', outlivedStop: true }), []]
+  ])('says only why on a message %s, never that it is sending', (_label, failed, rows) => {
+    const notice = structuredAgentSessionDeliveryNotices(
+      [failed],
+      'Claude',
+      vi.fn(),
+      rows,
+      [],
+      NOT_FAILED_HERE
+    ).get(agentJournalSubmissionKey('m'))
+    expect(notice?.sending).toBeUndefined()
+    expect(notice?.text).toMatch(/not sent|unconfirmed/)
+    expect(notice?.onRetry).toBeDefined()
+  })
+
+  // The unconfirmed probe resends it under its own id until the journal answers, so the row says
+  // it is still sending, with no Retry, until a row lands.
   describe('a message in doubt that Orca resends on its own', () => {
     const doubt = (patch: Partial<StructuredAgentSessionOutboxEntry> = {}) =>
       entry('doubt', { state: 'unconfirmed', lastAttemptAt: 1, ...patch })
@@ -483,12 +565,21 @@ describe('the notice on each message that did not go through', () => {
     })
     const UNCONFIRMED = { [agentJournalSubmissionKey('doubt')]: 'Message delivery is unconfirmed.' }
 
-    it('says nothing while the journal holds no row for it', () => {
-      expect(texts([doubt(), entry('behind')])).toEqual({})
+    it('says only that it is still sending while the journal holds no row for it', () => {
+      const notices = structuredAgentSessionDeliveryNotices(
+        [doubt(), entry('behind')],
+        'Claude',
+        vi.fn(),
+        [],
+        [],
+        NOT_FAILED_HERE
+      )
+      expect(notices.get(agentJournalSubmissionKey('doubt'))).toEqual({ sending: true })
+      expect(notices.get(agentJournalSubmissionKey('behind'))).toEqual({ sending: true })
       // Another message's row is not its answer.
       expect(
         texts([doubt()], [row({ clientMessageId: 'other', dispatchState: 'accepted' })])
-      ).toEqual({})
+      ).toEqual({ [agentJournalSubmissionKey('doubt')]: SENDING })
     })
 
     it.each([
