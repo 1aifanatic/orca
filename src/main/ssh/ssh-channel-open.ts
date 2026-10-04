@@ -1,9 +1,6 @@
 import { trackSshConnectionChannelLifetime } from './ssh-connection-channel-lifetime'
 import { CONNECT_TIMEOUT_MS, createSshOperationAbortError } from './ssh-connection-utils'
-import type { SshConnectionWorkLedger } from './ssh-connection-work-ledger'
 import { isSshSessionLimitError } from './ssh-session-limit-error'
-
-type SshChannelOpenWork = ReturnType<SshConnectionWorkLedger['beginChannelOpen']>
 
 // Upper bound on waiting for an aborted channel's open/close to settle before rejecting anyway.
 const ABORTED_CHANNEL_CLOSE_GRACE_MS = 5_000
@@ -47,12 +44,8 @@ export async function openSshSessionChannelWithRetry<T>(
   throw lastError
 }
 
-/**
- * Waits for an ssh2 channel open, bounded by CONNECT_TIMEOUT_MS and an abort grace. The channel,
- * late ones included, stays on `work` until it physically closes.
- */
+/** Waits for an ssh2 channel open, bounded by CONNECT_TIMEOUT_MS and an abort grace. */
 export function waitForSshChannelOpen<T>(
-  work: SshChannelOpenWork,
   timeoutMessage: string,
   register: (callback: (error: Error | undefined, value: T) => void) => void,
   cleanupLateValue?: (value: T) => void,
@@ -65,7 +58,6 @@ export function waitForSshChannelOpen<T>(
     let settled = false
     let unconfirmedOpenError: ChannelOpenTerminationError | null = null
     const markOpenUnconfirmed = (error: Error): Error => {
-      work.markUnverifiable(error)
       if (!trackRemoteCommandTermination) {
         return error
       }
@@ -152,11 +144,9 @@ export function waitForSshChannelOpen<T>(
       }
     }
     const finish = (error: Error | undefined, value?: T): void => {
-      // Late channels stay tracked until physical close, after the caller has given up.
+      // Late channels get the error listener too, after the caller has given up.
       if (!error && value !== undefined) {
-        trackSshConnectionChannelLifetime(work, value, onUnhandledError)
-      } else {
-        work.close(error)
+        trackSshConnectionChannelLifetime(value, onUnhandledError)
       }
       if (settled) {
         // Why: ssh2 can invoke the open callback after our timeout rejected; close that late channel so it isn't left open with no owner.
@@ -188,7 +178,6 @@ export function waitForSshChannelOpen<T>(
     if (signal?.aborted) {
       // No open is in flight yet, so failing fast leaks nothing.
       cleanup()
-      work.close()
       reject(createSshOperationAbortError())
       return
     }
