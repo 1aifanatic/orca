@@ -8,8 +8,10 @@ import {
 
 // Why: notes follow their text, so they have one owner. Once a chat message carrying them reaches
 // the host, or its text goes back to the composer, they are used and leave their shelf; only a
-// message thrown away with nothing handed back leaves them there. A note not loaded yet when that
-// happens (its workspace or page hydrates later) is cleared when it loads, never forgotten.
+// message thrown away with nothing handed back leaves them there. A note whose workspace has not
+// loaded yet when that happens is cleared when it loads. Once its owner is loaded, a key with no
+// note (already cleared, edited since, or its workspace or page gone) is dropped: nothing waits on
+// a note that can no longer appear.
 type PendingNotes = {
   kind: 'diff-comment' | 'browser-annotation'
   owner: string
@@ -25,41 +27,54 @@ function ownerKey(kind: 'diff-comment' | 'browser-annotation', owner: string): s
   return JSON.stringify([kind, owner])
 }
 
-/** Clears the pending notes the store now holds, and forgets each one it cleared. */
+type StoreState = ReturnType<typeof useAppStore.getState>
+
+/** Whether the owner's notes are in the store as they will be: a workspace's arrive with the
+ *  session's hydration; a page's annotations live only in memory, so they are there or gone. */
+function ownerLoaded(state: StoreState, pending: PendingNotes): boolean {
+  return (
+    pending.kind === 'browser-annotation' ||
+    state.workspaceSessionReady ||
+    state.getDiffComments(pending.owner).length > 0
+  )
+}
+
+/** Clears the pending notes the store now holds; drops what a loaded owner no longer has. */
 function clearLoadedNotes(): void {
   const state = useAppStore.getState()
-  for (const [ownerId, parsed] of pendingByOwner) {
-    const { keys } = parsed
+  for (const [ownerId, pending] of pendingByOwner) {
+    const { keys } = pending
+    const loaded = ownerLoaded(state, pending)
     const current =
-      parsed.kind === 'diff-comment'
-        ? state.getDiffComments(parsed.owner)
-        : state.browserAnnotationsByPageId[parsed.owner]
-    if (current === parsed.seen) {
+      pending.kind === 'diff-comment'
+        ? state.getDiffComments(pending.owner)
+        : state.browserAnnotationsByPageId[pending.owner]
+    if (!loaded && current === pending.seen) {
       continue
     }
-    parsed.seen = current
-    if (parsed.kind === 'diff-comment') {
+    pending.seen = current
+    if (pending.kind === 'diff-comment') {
       const notes = state
-        .getDiffComments(parsed.owner)
-        .filter((note) => keys.has(diffCommentSendKey(parsed.owner, note)))
-      for (const note of notes) {
-        keys.delete(diffCommentSendKey(parsed.owner, note))
-      }
+        .getDiffComments(pending.owner)
+        .filter((note) => keys.has(diffCommentSendKey(pending.owner, note)))
       if (notes.length > 0) {
-        void state.clearDeliveredDiffComments(parsed.owner, notes)
+        void state.clearDeliveredDiffComments(pending.owner, notes)
+      }
+      for (const note of notes) {
+        keys.delete(diffCommentSendKey(pending.owner, note))
       }
     } else {
-      const annotations = (state.browserAnnotationsByPageId[parsed.owner] ?? []).filter(
+      const annotations = (state.browserAnnotationsByPageId[pending.owner] ?? []).filter(
         (annotation) => keys.has(browserAnnotationSendKey(annotation))
       )
+      if (annotations.length > 0) {
+        state.removeDeliveredBrowserPageAnnotations(pending.owner, annotations)
+      }
       for (const annotation of annotations) {
         keys.delete(browserAnnotationSendKey(annotation))
       }
-      if (annotations.length > 0) {
-        state.removeDeliveredBrowserPageAnnotations(parsed.owner, annotations)
-      }
     }
-    if (keys.size === 0) {
+    if (loaded || keys.size === 0) {
       pendingByOwner.delete(ownerId)
     }
   }
