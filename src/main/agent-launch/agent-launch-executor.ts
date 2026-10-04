@@ -40,7 +40,6 @@ import {
   promptReceipt,
   settleLaunchPromptDisposal
 } from './agent-launch-prompt-delivery'
-import type { TuiAgent } from '../../shared/tui-agent'
 import {
   workspaceKindForWorktreeId,
   type WorkspaceLaunchKind
