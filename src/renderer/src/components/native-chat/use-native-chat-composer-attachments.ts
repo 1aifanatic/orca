@@ -17,6 +17,8 @@ import {
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
 import {
   clearNativeChatComposerDraftsForTests,
+  isKeptLocalPaste,
+  isNativeChatComposerDraftUnverified,
   readNativeChatComposerDraft,
   subscribeToNativeChatComposerDraft,
   updateNativeChatComposerDraft
@@ -71,6 +73,16 @@ export function useNativeChatComposerAttachments({
     subscribe,
     () => readNativeChatComposerDraft(attachmentScopeKey).images
   )
+  // Why: a restored paste can be previewed only once main re-grants it, so until the restore check
+  // is done it waits like a chip still saving.
+  const [restoring, setRestoring] = useState(() =>
+    isNativeChatComposerDraftUnverified(attachmentScopeKey)
+  )
+  useEffect(() => {
+    void verifyRestoredNativeChatComposerDraftImages(attachmentScopeKey).finally(() =>
+      setRestoring(false)
+    )
+  }, [attachmentScopeKey])
   // Chips still being written, and the clipboard previews this composer minted, are its own.
   const [local, setLocal] = useState<LocalAttachments>(NO_LOCAL_ATTACHMENTS)
   // Read by callbacks between renders; only they change it, always together with the state.
@@ -83,15 +95,15 @@ export function useNativeChatComposerAttachments({
     () => [
       ...settled.map((image) => {
         const previewUrl = local.previews.get(image.id)
+        if (restoring && isKeptLocalPaste(image)) {
+          return { ...image, pending: true }
+        }
         return previewUrl ? { ...image, previewUrl } : image
       }),
       ...local.pending
     ],
-    [local, settled]
+    [local, restoring, settled]
   )
-  useEffect(() => {
-    void verifyRestoredNativeChatComposerDraftImages(attachmentScopeKey)
-  }, [attachmentScopeKey])
   // A preview whose image left the draft (sent, or removed elsewhere) is released.
   useEffect(() => {
     const current = localRef.current

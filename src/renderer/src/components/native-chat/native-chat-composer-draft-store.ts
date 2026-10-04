@@ -6,7 +6,7 @@
 import type { JSONContent } from '@tiptap/react'
 import { setBoundedScopeCacheEntry } from './native-chat-composer-scope-cache'
 import { basename } from '@/lib/path'
-import { isNativeChatPastedImagePath } from './native-chat-image-paste'
+import { isNativeChatKeptPastePath, isNativeChatPastedImagePath } from './native-chat-image-paste'
 import {
   clearStoredNativeChatComposerDraftsForTests,
   enforceStoredNativeChatComposerDraftBounds,
@@ -99,6 +99,10 @@ export function takeUnverifiedNativeChatComposerDraft(scopeKey: string): boolean
   return unverifiedScopes.delete(scopeKey)
 }
 
+export function isNativeChatComposerDraftUnverified(scopeKey: string): boolean {
+  return unverifiedScopes.has(scopeKey)
+}
+
 function isEmptyDraft(draft: NativeChatComposerDraft): boolean {
   return draft.text === '' && draft.images.length === 0
 }
@@ -134,12 +138,19 @@ export function unavailableNativeChatComposerDraftImage(
     : image
 }
 
-/** What storage keeps: not an unsaved launch-seed copy, and a pasted image only by name, since its
- *  temp file and read grant need not outlive this run. Null when nothing is left. */
+/** A local paste in Orca's paste folder: it outlives the run, so a restore can show and send it. */
+export function isKeptLocalPaste(image: NativeChatComposerDraftImage): boolean {
+  return !image.connectionId && isNativeChatKeptPastePath(image.path)
+}
+
+/** What storage keeps: not an unsaved launch-seed copy, and a paste outside Orca's paste folder
+ *  (over SSH, or from before it) only by name. Null when nothing is left. */
 function savedForm(record: DraftRecord): StoredNativeChatComposerDraft | null {
   const { unsavedText, ...saved } = record
   const images = saved.images.map((image) =>
-    isNativeChatPastedImagePath(image.path) ? unavailableNativeChatComposerDraftImage(image) : image
+    isNativeChatPastedImagePath(image.path) && !isKeptLocalPaste(image)
+      ? unavailableNativeChatComposerDraftImage(image)
+      : image
   )
   const text = saved.text === unsavedText ? '' : saved.text
   if (text === '' && images.length === 0) {

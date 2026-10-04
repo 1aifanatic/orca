@@ -39,7 +39,7 @@ vi.mock('node:fs/promises', () => ({
   stat: vi.fn(),
   realpath: vi.fn(),
   writeFile: fsWriteFileMock,
-  default: { writeFile: fsWriteFileMock }
+  default: { writeFile: fsWriteFileMock, mkdir: vi.fn() }
 }))
 vi.mock('../ipc/filesystem-auth', () => ({
   PATH_ACCESS_DENIED_MESSAGE: 'denied',
@@ -210,11 +210,11 @@ describe('clipboard image paste for a runtime-owned SSH workspace', () => {
     expect(callRuntimeEnvironmentMock).not.toHaveBeenCalled()
   })
 
-  it('keeps a plain local paste on the local temp dir', async () => {
+  it('keeps a plain local paste on this machine, in Orca’s paste folder', async () => {
     fsWriteFileMock.mockResolvedValue(undefined)
 
     await expect(saveImageHandler()(rendererEvent, undefined)).resolves.toMatch(
-      /orca-paste-.*\.png$/
+      /native-chat-pastes[\\/]orca-paste-.*\.png$/
     )
 
     expect(fsWriteFileMock).toHaveBeenCalledTimes(1)

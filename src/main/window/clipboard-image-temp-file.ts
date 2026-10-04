@@ -2,11 +2,11 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 
-import { getAppEnvironment } from '../../shared/app-environment'
 import { requireSshFilesystemProvider } from '../providers/ssh-filesystem-dispatch'
 import { isWindowsAbsolutePathLike } from '../../shared/cross-platform-path'
 import { assertClipboardImageByteLengthWithinLimit } from '../../shared/clipboard-image'
 import { authorizeExternalPath } from '../ipc/filesystem-auth'
+import { nativeChatPasteFolder } from './native-chat-paste-files'
 
 export type SaveClipboardImageAsTempFileArgs = {
   connectionId?: string | null
@@ -40,9 +40,13 @@ export async function saveClipboardImageBufferAsTempFile(
     return remotePath
   }
 
-  const tempPath = path.join(getAppEnvironment().getPath('temp'), fileName)
+  // Why the paste folder, not the OS temp dir: a draft that names the paste can still show and
+  // send it after a restart (native-chat-paste-files).
+  const folder = nativeChatPasteFolder()
+  await fs.mkdir(folder, { recursive: true })
+  const tempPath = path.join(folder, fileName)
   await fs.writeFile(tempPath, buffer)
-  // Why: the OS temp dir is outside every allowed root, so without this the
+  // Why: the paste folder is outside every allowed root, so without this the
   // composer's own thumbnail/preview read of the file it just wrote is denied.
   authorizeExternalPath(tempPath)
   return tempPath

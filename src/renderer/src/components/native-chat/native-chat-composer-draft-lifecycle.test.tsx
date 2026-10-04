@@ -504,6 +504,64 @@ describe('native-chat composer draft lifecycle', () => {
     ])
   })
 
+  it('shows a restored paste from Orca’s paste folder once main re-grants it, and marks the rest', async () => {
+    const folder = '/Users/me/Library/Application Support/orca/native-chat-pastes'
+    let regrant: () => void = () => {}
+    const regranted = new Promise<void>((resolve) => {
+      regrant = resolve
+    })
+    const restoreNativeChatPastes = vi.fn(async (paths: string[]) => {
+      await regranted
+      return paths.map((path) => ({
+        path,
+        kept: path.endsWith('orca-paste-1-ab.png'),
+        exists: path.endsWith('orca-paste-1-ab.png')
+      }))
+    })
+    vi.stubGlobal('api', {
+      fs: { pathExists: vi.fn(async () => true) },
+      ui: { restoreNativeChatPastes }
+    })
+    localStorage.setItem(
+      `${DRAFT_KEY_PREFIX}${encodeURIComponent('tab-1:pane')}`,
+      JSON.stringify({
+        text: 'see',
+        images: [
+          { id: 'kept', path: `${folder}/orca-paste-1-ab.png` },
+          { id: 'swept', path: `${folder}/orca-paste-2-ab.png` }
+        ],
+        savedAt: 1
+      })
+    )
+    const hooks = await loadHooks()
+    const seen: { api?: ComposerApi } = {}
+    try {
+      await mount(
+        createElement(
+          composer(hooks, (next) => (seen.api = next)),
+          { scopeKey: 'tab-1:pane' }
+        )
+      )
+      // Until main answers, the restored paste waits, so its preview is not read before the grant.
+      expect(seen.api?.attachments.imageAttachments[0]?.pending).toBe(true)
+      await act(async () => {
+        regrant()
+        await regranted
+      })
+    } finally {
+      vi.unstubAllGlobals()
+    }
+
+    expect(restoreNativeChatPastes).toHaveBeenCalledWith([
+      `${folder}/orca-paste-1-ab.png`,
+      `${folder}/orca-paste-2-ab.png`
+    ])
+    expect(seen.api?.attachments.imageAttachments).toEqual([
+      { id: 'kept', path: `${folder}/orca-paste-1-ab.png` },
+      { id: 'swept', path: '', unavailableName: 'orca-paste-2-ab.png' }
+    ])
+  })
+
   it('takes another window’s send of the same draft, unless an edit here is still unsaved', async () => {
     const key = `${DRAFT_KEY_PREFIX}${encodeURIComponent('tab-1:pane')}`
     localStorage.setItem(

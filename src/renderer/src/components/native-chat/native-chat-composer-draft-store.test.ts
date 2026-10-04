@@ -173,6 +173,25 @@ describe('native-chat composer draft store', () => {
     ])
   })
 
+  it('saves a paste kept in Orca’s paste folder as the real image, but not one over SSH', async () => {
+    const kept = {
+      id: 'p-1',
+      path: '/Users/me/Library/Application Support/orca/native-chat-pastes/orca-paste-1-0f.png'
+    }
+    const remote = {
+      id: 'p-2',
+      path: '/remote/native-chat-pastes/orca-paste-2-0f.png',
+      connectionId: 'ssh-1'
+    }
+    modules.attachments.appendNativeChatAttachmentCache('tab-1:pane', [kept, remote])
+
+    const reloaded = await reload()
+    expect(reloaded.attachments.readNativeChatAttachmentCache('tab-1:pane')).toEqual([
+      kept,
+      { id: 'p-2', path: '', unavailableName: 'orca-paste-2-0f.png' }
+    ])
+  })
+
   it('puts a re-attached image in the place of the one to attach again', async () => {
     storage.setItem(
       `${DRAFT_KEY_PREFIX}${encodeURIComponent('tab-1:pane')}`,

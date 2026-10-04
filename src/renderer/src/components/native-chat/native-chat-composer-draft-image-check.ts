@@ -1,8 +1,10 @@
-// Which restored draft images are known to be gone, through the existing existence check: the
-// workspace's own read rules locally, the host over SSH.
+// Which restored draft images are known to be gone. A paste in Orca's paste folder asks main to
+// re-grant its preview, which main does only for files really inside that folder; any other image
+// goes through the existing existence check (the workspace's read rules locally, the host over SSH).
 
 import type { NativeChatComposerDraftImage } from './native-chat-composer-draft-storage'
 import {
+  isKeptLocalPaste,
   readNativeChatComposerDraft,
   takeUnverifiedNativeChatComposerDraft,
   unavailableNativeChatComposerDraftImage,
@@ -14,14 +16,26 @@ import {
 export async function findMissingNativeChatComposerDraftImages(
   images: readonly NativeChatComposerDraftImage[]
 ): Promise<Set<string>> {
-  const pathExists = typeof window === 'undefined' ? undefined : window.api?.fs?.pathExists
+  const api = typeof window === 'undefined' ? undefined : window.api
   const missing = new Set<string>()
+  const checkable = images.filter((image) => image.unavailableName === undefined && image.path)
+  const pastes = checkable.filter(isKeptLocalPaste)
+  if (pastes.length > 0 && api?.ui?.restoreNativeChatPastes) {
+    try {
+      const restored = await api.ui.restoreNativeChatPastes(pastes.map(({ path }) => path))
+      const kept = new Set(restored.filter((r) => r.kept && r.exists).map(({ path }) => path))
+      pastes.filter(({ path }) => !kept.has(path)).forEach(({ id }) => missing.add(id))
+    } catch {
+      // Unknown, not gone.
+    }
+  }
+  const pathExists = api?.fs?.pathExists
   if (!pathExists) {
     return missing
   }
   await Promise.all(
-    images
-      .filter((image) => image.unavailableName === undefined && image.path !== '')
+    checkable
+      .filter((image) => !isKeptLocalPaste(image))
       .map(async (image) => {
         try {
           const exists = await pathExists({
