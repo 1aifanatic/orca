@@ -6,10 +6,15 @@ import {
   noteSendKeyOwner
 } from './notes-send-in-flight'
 
+let uninstall: (() => void) | null = null
+
 /** A new chat's message sent on, by its own start, a Retry or a re-check, clears the notes it
- *  carries from their shelf as a delivered send does, including after a reload. */
-export function installNotesDeliveredByChat(): () => void {
-  return subscribeToStructuredAgentSessionCarriedNotesSpent((keys) => {
+ *  carries from their shelf as a delivered send does, including after a reload. Once per renderer. */
+export function installNotesDeliveredByChat(): void {
+  if (uninstall) {
+    return
+  }
+  uninstall = subscribeToStructuredAgentSessionCarriedNotesSpent((keys) => {
     const sent = new Set(keys)
     const state = useAppStore.getState()
     const worktreeIds = new Set<string>()
@@ -40,3 +45,8 @@ export function installNotesDeliveredByChat(): () => void {
     }
   })
 }
+
+import.meta.hot?.dispose(() => {
+  uninstall?.()
+  uninstall = null
+})

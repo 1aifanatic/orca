@@ -9,6 +9,7 @@ import {
 } from '../tab-group-state'
 import { buildActiveSurfacePatch } from './tabs-surface'
 import { beginStructuredAgentSessionTabClose } from '@/runtime/structured-agent-session-tab-retirement'
+import { discardStructuredAgentSessionLaunchOutbox } from '@/components/native-chat/structured-agent-session-outbox-storage'
 import {
   hasStructuredAgentSessionLaunchCancellationTombstone,
   shouldRetainStructuredAgentSessionLaunchTab
@@ -69,8 +70,10 @@ export function createTabsCloseActions(
             provisional
           })
         } else {
-          // Closing still removes the tab; no host can be named to stop its chat on.
+          // Closing still removes the tab; no host can be named to stop its chat on. Its queued
+          // messages go with it, as for any close, so notes they carried return to their shelf.
           console.warn('[structured-agent-session] close found no owning host', tab.entityId)
+          discardStructuredAgentSessionLaunchOutbox(tab.entityId)
         }
         get().clearNativeChatLaunchDraft(structuredAgentSessionTabId(tab.entityId))
       }
