@@ -5,9 +5,9 @@
 // reason, when the host names one, and otherwise its code, pick the copy with the write. A code's
 // own row names a cause only where every emitter of the code means it; it is also the words for a
 // host too old to send a reason. A notice says how to get past a refusal only where the person has
-// a step to take; retrying is the control that sent the write, except on the phone, whose message
-// goes back to the composer, and a history that couldn't open right now says to try again unless
-// something beside the words retries it.
+// a step to take; retrying is the control that sent the write, except for a chat message, which
+// goes back to the composer (desktop and phone alike, with no Retry), and a history that couldn't
+// open right now says to try again unless something beside the words retries it.
 // Surfaces keep the fact and choose the words when they show it, so nothing saved carries copy.
 
 import type { AgentSessionFailureKind } from './agent-session-failure'
@@ -47,9 +47,9 @@ const NOT_DONE: Record<AgentSessionWriteKind, AgentSessionWriteNoticeSentence> =
   goal: 'notDoneGoal'
 }
 
-/** That the write did not happen, for one that a second attempt can carry out. Only the phone says
- *  how: its message goes back to the composer and it has no Retry control. Everywhere else the
- *  control that sent the write is the way to try again. */
+/** That the write did not happen, for one that a second attempt can carry out. Only a chat message
+ *  says how: it goes back to the composer, on desktop and the phone, and no Retry control exists.
+ *  Everywhere else the control that sent the write is the way to try again. */
 export function agentSessionWriteNotDoneParts(
   write: AgentSessionWriteKind
 ): AgentSessionWriteNoticeSentence[] {
