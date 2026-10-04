@@ -86,8 +86,8 @@ function rejected(clientMessageId: string, reason: string, rejection: AgentSessi
   }
 }
 
+// The notices are the host's rows'; a copy an earlier session left in the outbox gives way to them.
 function renderPane(messages: ReturnType<typeof rejected>[]): void {
-  mocks.mode = 'outbox'
   mocks.submissions = messages.map((message) => message.submission)
   localStorage.setItem(
     `orca:desktopStructuredAgentSessionOutbox:v1:${encodeURIComponent(SESSION_ID)}`,
@@ -117,8 +117,9 @@ async function notice(clientMessageId: string): Promise<HTMLElement> {
   })
 }
 
-// The start's own row says why, so its rejected messages say only that they were not sent.
-it("says only 'not sent', with its Retry, on each message the failed start's row explains", async () => {
+// The start's own row says why, so its rejected messages say only that they were not sent. Sending
+// one again is a new message, so none offers a Retry.
+it("says only 'not sent', with no Retry, on each message the failed start's row explains", async () => {
   mocks.journalItems = [startFailureRow(START_FAILED)]
 
   renderPane([
@@ -129,7 +130,7 @@ it("says only 'not sent', with its Retry, on each message the failed start's row
   for (const id of ['first', 'second']) {
     const row = await notice(id)
     expect(within(row).getByText('Your message was not sent.')).toBeTruthy()
-    expect(within(row).getByRole('button', { name: 'Retry' })).toBeTruthy()
+    expect(within(row).queryByRole('button', { name: 'Retry' })).toBeNull()
   }
   expect(screen.queryByText(/stopped before it finished starting/)).toBeNull()
 })
@@ -161,9 +162,7 @@ it('keeps the full notice on a message rejected for a reason no start-failure ro
 it("keeps the start failure's own words when its row is not loaded", async () => {
   renderPane([rejected('first', START_FAILED_REASON, START_FAILED)])
 
-  expect(
-    within(await notice('first')).getByText('Claude stopped before it finished starting.')
-  ).toBeTruthy()
+  expect(within(await notice('first')).getByText(START_FAILED_REASON)).toBeTruthy()
 })
 
 // Another window, or the sender after its entry is gone: the host's record alone says it.

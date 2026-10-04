@@ -113,13 +113,13 @@ export function NativeChatStructuredSession(
   )
   const agentLabel = structuredAgentLabel(props.agent === 'codex' ? 'codex' : 'claude')
   const deliveryNotices = useStructuredAgentSessionDeliveryNotices({
-    messages: controller.messages,
-    journalItems: controller.journalItems,
-    submissions: controller.submissions,
     outbox: controller.outbox,
+    submissions: controller.submissions,
+    journalItems: controller.journalItems,
     failedHere: controller.failedHere,
+    queuedMessageIds: controller.queuedMessageIds,
     retry: controller.retry,
-    agentLabel
+    agentName: agentLabel
   })
   const viewState = selectNativeChatViewState(session, { readRetries: true })
   // Nothing reads an unread history, so its pane stays blank beside the Retry line.
