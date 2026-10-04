@@ -46,27 +46,37 @@ it('requires an absolute source whose hash matches the owned overlay', async () 
   expect(
     await resolveOwnedOverlaySource(overlay, { ...manifest, sourceConfigDir: 'relative' })
   ).toBeUndefined()
+  expect(
+    await resolveOwnedOverlaySource(join(root, '123'), {
+      topLevelEntries: [],
+      pluginEntries: [],
+      sourceConfigDir: source
+    })
+  ).toBeUndefined()
 })
 
-it('recognizes an older source-scoped manifest only through its named mirrored link', async () => {
-  const source = join(root, 'retired-source')
-  const overlay = join(root, sourceOverlayDirName(source))
-  mkdirSync(overlay)
-  symlinkSync(join(source, 'opencode.json'), join(overlay, 'opencode.json'))
-  const manifest = { topLevelEntries: ['opencode.json'], pluginEntries: [] }
-  expect(await resolveOwnedOverlaySource(overlay, manifest)).toBe(source)
-  expect(
-    await resolveOwnedOverlaySource(overlay, { ...manifest, topLevelEntries: ['../other'] })
-  ).toBeUndefined()
-  expect(
-    await resolveOwnedOverlaySource(overlay, { ...manifest, topLevelEntries: [] })
-  ).toBeUndefined()
-  rmSync(join(overlay, 'opencode.json'))
-  writeFileSync(join(overlay, 'opencode.json'), '{}')
-  expect(await resolveOwnedOverlaySource(overlay, manifest)).toBeUndefined()
-})
+it.skipIf(process.platform === 'win32')(
+  'recognizes an older source-scoped manifest only through its named mirrored link',
+  async () => {
+    const source = join(root, 'retired-source')
+    const overlay = join(root, sourceOverlayDirName(source))
+    mkdirSync(overlay)
+    symlinkSync(join(source, 'opencode.json'), join(overlay, 'opencode.json'))
+    const manifest = { topLevelEntries: ['opencode.json'], pluginEntries: [] }
+    expect(await resolveOwnedOverlaySource(overlay, manifest)).toBe(source)
+    expect(
+      await resolveOwnedOverlaySource(overlay, { ...manifest, topLevelEntries: ['../other'] })
+    ).toBeUndefined()
+    expect(
+      await resolveOwnedOverlaySource(overlay, { ...manifest, topLevelEntries: [] })
+    ).toBeUndefined()
+    rmSync(join(overlay, 'opencode.json'))
+    writeFileSync(join(overlay, 'opencode.json'), '{}')
+    expect(await resolveOwnedOverlaySource(overlay, manifest)).toBeUndefined()
+  }
+)
 
-it('rejects arbitrary links and ambiguous per-session legacy directories', async () => {
+it.skipIf(process.platform === 'win32')('rejects arbitrary legacy source links', async () => {
   const source = join(root, 'source')
   const overlay = join(root, sourceOverlayDirName(source))
   mkdirSync(overlay)
@@ -75,13 +85,6 @@ it('rejects arbitrary links and ambiguous per-session legacy directories', async
     await resolveOwnedOverlaySource(overlay, {
       topLevelEntries: ['opencode.json'],
       pluginEntries: []
-    })
-  ).toBeUndefined()
-  expect(
-    await resolveOwnedOverlaySource(join(root, '123'), {
-      topLevelEntries: [],
-      pluginEntries: [],
-      sourceConfigDir: source
     })
   ).toBeUndefined()
 })
