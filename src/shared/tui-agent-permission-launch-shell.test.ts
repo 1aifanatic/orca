@@ -150,7 +150,8 @@ describe('the lift keeps every other word', () => {
       for (const agent of PERMISSION_AGENT_IDS) {
         expect(resolveAgentPermissionPosture(agent, profile, target)).toMatchObject({
           effectiveBypass: true,
-          typedPermissionOptions: []
+          typedArgumentOptions: [],
+          typedEnvironmentOptions: []
         })
       }
     }

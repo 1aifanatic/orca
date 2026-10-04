@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import { getAgentCatalog } from '@/lib/agent-catalog'
@@ -32,7 +32,11 @@ import {
   YOLO_TUI_AGENT_ENV,
   type AgentPermissionMode
 } from '../../../../shared/tui-agent-permissions'
-import { AgentPermissionsSetting, type AgentPermissionException } from './AgentPermissionControls'
+import { AgentPermissionsSetting } from './AgentPermissionControls'
+import {
+  buildAgentPermissionExceptions,
+  type AgentPermissionRevealTarget
+} from './agent-permission-exceptions'
 import { getSettingOwnershipSummary } from './setting-ownership'
 import { isPairedWebClientWindow } from '@/lib/desktop-window-chrome'
 import { getAgentsPaneSearchEntries } from './agents-search'
@@ -129,17 +133,17 @@ export function AgentsPane({
   const disabledAgents = normalizeDisabledTuiAgents(settings.disabledTuiAgents)
   const detectedAgents =
     detectedIds === null ? [] : catalog.filter((agent) => detectedIds.has(agent.id))
-  // Agents the switch won't move: every agent with its own choice, detected or not (it may run on an
-  // SSH host), and installed agents whose Arguments or env launch them differently.
-  const permissionExceptions: AgentPermissionException[] = catalog.flatMap((agent) => {
-    const posture = permissionPostures.get(agent.id)
-    const listed =
-      permissionOverrides[agent.id] !== undefined ||
-      (detectedIds?.has(agent.id) === true &&
-        posture?.effectiveBypass !== (defaultPermissionMode === 'bypass'))
-    return posture && listed
-      ? [{ label: agent.label, effectiveBypass: posture.effectiveBypass }]
-      : []
+  const [permissionReveal, setPermissionReveal] = useState<{
+    agentId: TuiAgent
+    target: AgentPermissionRevealTarget
+    nonce: number
+  } | null>(null)
+  const permissionExceptions = buildAgentPermissionExceptions({
+    catalog,
+    postures: permissionPostures,
+    overrides: permissionOverrides,
+    defaultMode: defaultPermissionMode,
+    detectedIds
   })
   const enabledDetectedAgents = detectedAgents.filter((agent) =>
     isTuiAgentEnabled(agent.id, disabledAgents)
@@ -164,7 +168,6 @@ export function AgentsPane({
           // A stored choice this build doesn't know reads as Manual, like everywhere else.
           override: permissionOverrides[id] === undefined ? undefined : posture.mode,
           defaultMode: defaultPermissionMode,
-          posture,
           onChange: (choice) => {
             const next = { ...permissionOverrides }
             if (choice === 'default') {
@@ -195,6 +198,7 @@ export function AgentsPane({
     envOverride: { ...agentDefaultEnv[agent.id] },
     envEditable: agent.id in YOLO_TUI_AGENT_ENV,
     permission: permissionRowProps(agent.id),
+    reveal: permissionReveal?.agentId === agent.id ? permissionReveal : undefined,
     onSetDefault: isDetected ? () => updateSettings({ defaultTuiAgent: agent.id }) : () => {},
     onSetEnabled: (enabled) => setAgentEnabled(agent.id, enabled),
     onSaveOverride: isDetected
@@ -255,6 +259,13 @@ export function AgentsPane({
       <AgentPermissionsSetting
         mode={defaultPermissionMode}
         exceptions={permissionExceptions}
+        onRevealException={(exception) =>
+          setPermissionReveal((previous) => ({
+            agentId: exception.agentId,
+            target: exception.target,
+            nonce: (previous?.nonce ?? 0) + 1
+          }))
+        }
         onChange={(mode: AgentPermissionMode) => {
           // Only the shared default; each agent's own choice stays until its card says Default.
           if (mode !== defaultPermissionMode) {

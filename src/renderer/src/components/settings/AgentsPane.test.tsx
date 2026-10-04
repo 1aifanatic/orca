@@ -89,6 +89,14 @@ async function flushPromiseQueue(): Promise<void> {
   await Promise.resolve()
 }
 
+/** The pane's visible text, tags dropped and entities decoded, for checking the permissions line. */
+function lineText(markup: string): string {
+  return markup
+    .replace(/<[^>]+>/g, '')
+    .replace(/&#x27;/g, "'")
+    .replace(/&amp;/g, '&')
+}
+
 function renderPane(
   settings: GlobalSettings,
   props: Partial<React.ComponentProps<typeof AgentsPane>> = {}
@@ -470,7 +478,12 @@ describe('AgentsPane', () => {
 
   it('shows the stored default on the switch and applies a choice to every agent', () => {
     const onChange = vi.fn()
-    const element = AgentPermissionsSetting({ mode: 'ask', exceptions: [], onChange })
+    const element = AgentPermissionsSetting({
+      mode: 'ask',
+      exceptions: [],
+      onChange,
+      onRevealException: vi.fn()
+    })
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: AgentPermissionsSetting passes these props to its segmented control.
     const props = element.props.children.props.action.props as {
       value: string
@@ -492,7 +505,7 @@ describe('AgentsPane', () => {
       agentPermissionModeOverrides: { claude: 'ask' }
     })
 
-    expect(markup).toContain('Set separately: Claude (Manual).')
+    expect(lineText(markup)).toContain('Claude runs Manual: it has its own setting.')
   })
 
   // The summary line and the agent's own control already say it; no badge repeats it.
@@ -518,7 +531,7 @@ describe('AgentsPane', () => {
     })
     const claudeControl = markup.slice(markup.indexOf('aria-label="Claude permissions"'))
 
-    expect(markup).toContain('Set separately: Claude (Manual).')
+    expect(lineText(markup)).toContain('Claude runs Manual: it has its own setting.')
     expect(claudeControl).toMatch(/role="radio" aria-checked="true"[^>]*>Manual</)
   })
 
@@ -530,7 +543,7 @@ describe('AgentsPane', () => {
       agentDefaultArgs: { codex: '-a on-request' }
     })
 
-    expect(markup).toContain('Set separately: Codex (Manual).')
+    expect(lineText(markup)).toContain('Codex runs Manual: its Arguments set -a on-request.')
   })
 
   // Its own choice still applies where it runs (an SSH host), and nothing else can clear it.
@@ -542,7 +555,7 @@ describe('AgentsPane', () => {
       agentPermissionModeOverrides: { codex: 'ask' }
     })
 
-    expect(markup).toContain('Set separately: Codex (Manual).')
+    expect(lineText(markup)).toContain('Codex runs Manual: it has its own setting.')
     expect(markup).toContain('aria-label="Codex permissions"')
   })
 
@@ -554,7 +567,7 @@ describe('AgentsPane', () => {
       agentDefaultArgs: { codex: '-a on-request' }
     })
 
-    expect(markup).not.toContain('Set separately')
+    expect(lineText(markup)).not.toContain("don't follow this switch")
     expect(markup).not.toContain('aria-label="Codex permissions"')
   })
 
@@ -566,13 +579,13 @@ describe('AgentsPane', () => {
       agentPermissionModeOverrides: { claude: 'ask' }
     })
 
-    expect(markup).toContain('Set separately: Claude (Manual).')
+    expect(lineText(markup)).toContain('Claude runs Manual: it has its own setting.')
   })
 
   it('lists no exceptions when every agent follows the switch', () => {
     const markup = renderPane({ ...getDefaultSettings('/tmp'), agentPermissionMode: 'ask' })
 
-    expect(markup).not.toContain('Set separately')
+    expect(lineText(markup)).not.toContain("don't follow this switch")
   })
 
   it('keeps catalog agent ids, labels, and commands discoverable in settings search', () => {

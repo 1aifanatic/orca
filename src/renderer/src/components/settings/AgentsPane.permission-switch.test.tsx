@@ -68,7 +68,7 @@ describe('AgentsPane permission switch', () => {
     await clickSwitch('Yolo')
 
     expect(updateSettings).not.toHaveBeenCalled()
-    expect(container.textContent).toContain('Set separately: Codex (Manual).')
+    expect(container.textContent).toContain('Codex runs Manual: it has its own setting.')
   })
 
   it('changes only the shared default when Manual is clicked', async () => {

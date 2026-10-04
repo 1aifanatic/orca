@@ -453,7 +453,8 @@ describe('classifyTypedAgentPermissions', () => {
       classifyTypedAgentPermissions('goose', { env: { GOOSE_MODE: 'auto' } }, 'posix')
     ).toEqual({
       kind: 'bypass',
-      options: ['GOOSE_MODE=auto']
+      argumentOptions: [],
+      environmentOptions: ['GOOSE_MODE=auto']
     })
     expect(
       classifyTypedAgentPermissions('goose', { env: { GOOSE_MODE: 'approve' } }, 'posix').kind
@@ -467,7 +468,8 @@ describe('resolveAgentPermissionPosture', () => {
     expect(resolveAgentPermissionPosture('claude', {}, DARWIN)).toEqual({
       mode: 'bypass',
       effectiveBypass: true,
-      typedPermissionOptions: []
+      typedArgumentOptions: [],
+      typedEnvironmentOptions: []
     })
     expect(
       resolveAgentPermissionPosture('claude', { agentPermissionMode: 'ask' }, DARWIN)
@@ -488,7 +490,12 @@ describe('resolveAgentPermissionPosture', () => {
         },
         DARWIN
       )
-    ).toEqual({ mode: 'ask', effectiveBypass: true, typedPermissionOptions: [CLAUDE_BYPASS] })
+    ).toEqual({
+      mode: 'ask',
+      effectiveBypass: true,
+      typedArgumentOptions: [CLAUDE_BYPASS],
+      typedEnvironmentOptions: []
+    })
   })
 
   it('lists other permission options without treating them as bypass', () => {
@@ -504,7 +511,8 @@ describe('resolveAgentPermissionPosture', () => {
     ).toEqual({
       mode: 'ask',
       effectiveBypass: false,
-      typedPermissionOptions: ['--permission-mode=auto']
+      typedArgumentOptions: ['--permission-mode=auto'],
+      typedEnvironmentOptions: []
     })
     expect(
       resolveAgentPermissionPosture(
@@ -514,7 +522,7 @@ describe('resolveAgentPermissionPosture', () => {
           agentDefaultArgs: { codex: '-a never -s workspace-write' }
         },
         DARWIN
-      ).typedPermissionOptions
+      ).typedArgumentOptions
     ).toEqual(['-a never', '-s workspace-write'])
   })
 
@@ -532,7 +540,8 @@ describe('resolveAgentPermissionPosture', () => {
     ).toEqual({
       mode: 'bypass',
       effectiveBypass: false,
-      typedPermissionOptions: ['GOOSE_MODE=approve']
+      typedArgumentOptions: [],
+      typedEnvironmentOptions: ['GOOSE_MODE=approve']
     })
     expect(
       resolveAgentPermissionPosture(
@@ -556,7 +565,12 @@ describe('resolveAgentPermissionPosture', () => {
         },
         DARWIN
       )
-    ).toEqual({ mode: 'bypass', effectiveBypass: false, typedPermissionOptions: ['-a on-request'] })
+    ).toEqual({
+      mode: 'bypass',
+      effectiveBypass: false,
+      typedArgumentOptions: ['-a on-request'],
+      typedEnvironmentOptions: []
+    })
   })
 
   it.each([

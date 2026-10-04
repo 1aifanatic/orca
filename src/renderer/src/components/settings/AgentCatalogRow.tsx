@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Check, ChevronDown, ExternalLink } from 'lucide-react'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import { AgentIcon } from '@/lib/agent-catalog'
@@ -16,7 +16,14 @@ import {
 } from './AgentLaunchDefaultsEditor'
 import { AgentPermissionOverrideControl } from './AgentPermissionControls'
 import type { AgentPermissionMode } from '../../../../shared/tui-agent-permissions'
-import type { AgentPermissionPosture } from '../../../../shared/tui-agent-permission-args'
+import type { AgentPermissionRevealTarget } from './agent-permission-exceptions'
+
+/** The control a reveal focuses: the Permissions choice, or the field whose text decides. */
+const REVEAL_FOCUS_SELECTOR: Record<AgentPermissionRevealTarget, string> = {
+  permissions: '[role="radio"][aria-checked="true"]',
+  arguments: 'input',
+  environment: 'input'
+}
 
 type AgentAvailability = 'enabled' | 'disabled'
 
@@ -83,9 +90,10 @@ export type AgentCatalogRowProps = {
   permission?: {
     override: AgentPermissionMode | undefined
     defaultMode: AgentPermissionMode
-    posture: AgentPermissionPosture
     onChange: (choice: AgentPermissionMode | 'default') => void
   }
+  /** A request from the Agent Permissions line to open this row and focus one of its controls. */
+  reveal?: { target: AgentPermissionRevealTarget; nonce: number }
 }
 
 export function AgentCatalogRow({
@@ -108,7 +116,8 @@ export function AgentCatalogRow({
   onSaveEnv,
   sessionSourceHome,
   envEditable,
-  permission
+  permission,
+  reveal
 }: AgentCatalogRowProps): React.JSX.Element {
   const envSummary = stringifyAgentDefaultEnvDraft(envOverride)
   const defaultEnvSummary = stringifyAgentDefaultEnvDraft(defaultEnv)
@@ -117,7 +126,6 @@ export function AgentCatalogRow({
       agentLabel={label}
       override={permission.override}
       defaultMode={permission.defaultMode}
-      posture={permission.posture}
       onChange={permission.onChange}
     />
   ) : null
@@ -127,9 +135,28 @@ export function AgentCatalogRow({
       envSummary !== defaultEnvSummary ||
       permission?.override !== undefined
   )
+  // A new reveal opens the row in the same render, so its controls exist when the effect focuses.
+  const [openedForReveal, setOpenedForReveal] = useState(reveal?.nonce)
+  if (reveal && reveal.nonce !== openedForReveal) {
+    setOpenedForReveal(reveal.nonce)
+    setCmdOpen(true)
+  }
+  const rowRef = useRef<HTMLDivElement>(null)
+  const focusedReveal = useRef(reveal?.nonce)
+  useEffect(() => {
+    if (!reveal || reveal.nonce === focusedReveal.current) {
+      return
+    }
+    focusedReveal.current = reveal.nonce
+    const control = rowRef.current?.querySelector<HTMLElement>(
+      `[data-agent-reveal="${reveal.target}"] ${REVEAL_FOCUS_SELECTOR[reveal.target]}`
+    )
+    control?.scrollIntoView?.({ block: 'center' })
+    control?.focus({ preventScroll: true })
+  }, [reveal])
 
   return (
-    <div className={cn('py-3', !isDetected && 'opacity-70')}>
+    <div ref={rowRef} data-agent-row={agentId} className={cn('py-3', !isDetected && 'opacity-70')}>
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border/50 bg-background/50">
           <AgentIcon agent={agentId} size={16} />
@@ -228,7 +255,9 @@ export function AgentCatalogRow({
 
       {/* An undetected agent's own choice still applies where it runs (an SSH host), so it stays clearable. */}
       {!isDetected && permission?.override !== undefined && (
-        <div className="mt-3 pl-10">{permissionControl}</div>
+        <div className="mt-3 pl-10" data-agent-reveal="permissions">
+          {permissionControl}
+        </div>
       )}
 
       {isDetected && cmdOpen && (
@@ -239,7 +268,7 @@ export function AgentCatalogRow({
             cmdOverride={cmdOverride}
             onSaveOverride={onSaveOverride}
           />
-          <div className="mt-2">
+          <div className="mt-2" data-agent-reveal="arguments">
             <AgentDefaultArgsInput
               key={`${agentId}:${argsOverride}`}
               defaultArgs={defaultArgs}
@@ -247,9 +276,13 @@ export function AgentCatalogRow({
               onSaveArgs={onSaveArgs}
             />
           </div>
-          {permissionControl && <div className="mt-2">{permissionControl}</div>}
+          {permissionControl && (
+            <div className="mt-2" data-agent-reveal="permissions">
+              {permissionControl}
+            </div>
+          )}
           {(envEditable || defaultEnvSummary || envSummary) && (
-            <div className="mt-2">
+            <div className="mt-2" data-agent-reveal="environment">
               <AgentDefaultEnvInput
                 key={`${agentId}:${envSummary}`}
                 defaultEnv={defaultEnv}

@@ -147,17 +147,22 @@ function readKind(
 /** Every grammar Orca launches with; the lift, which runs before any launch, checks them all. */
 export const LAUNCH_GRAMMARS: readonly AgentStartupShell[] = ['posix', 'powershell', 'cmd']
 
+/** One source's typed permission settings: what they add up to and the settings as written. */
+type TypedSourcePermissions = { kind: TypedAgentPermissionKind; options: string[] }
+
 export type TypedAgentPermissions = {
   kind: TypedAgentPermissionKind
-  /** The typed settings as written, in order, for Settings to name. */
-  options: string[]
+  /** Permission settings typed into Arguments, as written, in order, for Settings to name. */
+  argumentOptions: string[]
+  /** Permission settings typed into the environment, as `NAME=value`. */
+  environmentOptions: string[]
 }
 
 function classifyArgs(
   agent: TuiAgent,
   args: string,
   shell: AgentStartupShell
-): TypedAgentPermissions {
+): TypedSourcePermissions {
   const spec = agentPermissionArgSpec(agent)
   // Text that shell can't parse can't launch, so it sets nothing.
   const tokens = args.trim() && spec.options.length > 0 ? optionTokens(args, shell) : null
@@ -168,7 +173,7 @@ function classifyArgs(
   return { kind: readKind(spec, settings), options: settings.map((setting) => setting.text) }
 }
 
-function classifyEnv(agent: TuiAgent, env: Record<string, string>): TypedAgentPermissions {
+function classifyEnv(agent: TuiAgent, env: Record<string, string>): TypedSourcePermissions {
   // Extra env overrides the mode's env (see resolveTuiAgentLaunchEnv), so a typed key decides.
   const typed = Object.keys(YOLO_TUI_AGENT_ENV[agent] ?? {}).filter((name) =>
     Object.hasOwn(env, name)
@@ -201,7 +206,8 @@ export function classifyTypedAgentPermissions(
   return {
     kind:
       kinds.length === 0 ? 'none' : kinds.every((kind) => kind === 'bypass') ? 'bypass' : 'other',
-    options: [...args.options, ...env.options]
+    argumentOptions: args.options,
+    environmentOptions: env.options
   }
 }
 
@@ -273,8 +279,10 @@ export type AgentPermissionPosture = {
   mode: AgentPermissionMode
   /** Whether the agent actually launches in bypass, after its own Arguments and env have their say. */
   effectiveBypass: boolean
-  /** Permission settings typed into the agent's Arguments or env; when present they decide. */
-  typedPermissionOptions: string[]
+  /** Permission settings typed into the agent's Arguments; when present they decide. */
+  typedArgumentOptions: string[]
+  /** Permission settings typed into the agent's environment (`NAME=value`); when present they decide. */
+  typedEnvironmentOptions: string[]
 }
 
 /**
@@ -299,6 +307,7 @@ export function resolveAgentPermissionPosture(
       typed.kind === 'none'
         ? mode === 'bypass' && agentHasPermissionMode(agent)
         : typed.kind === 'bypass',
-    typedPermissionOptions: typed.options
+    typedArgumentOptions: typed.argumentOptions,
+    typedEnvironmentOptions: typed.environmentOptions
   }
 }
