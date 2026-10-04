@@ -21,14 +21,15 @@ export async function checkDirectMailbox(args: {
   queuedMail: QueuedChatMail
 }): Promise<unknown> {
   const { params, runtime, db, handle, typeFilter, signal } = args
-  let queued = await args.queuedMail()
   // Why: unread:false is honored for one release as a compat shim so in-flight callers don't break (design doc §5).
   const showAll = params.all === true || (params.unread === false && params.peek !== true)
   const consumeUnread = !showAll && params.peek !== true
-  const readAndReturn = () => {
+  const unread = (exclude: readonly string[]) =>
+    withoutQueuedChatMail(db.getUnreadMessages(handle, typeFilter), exclude)
+  const readAndReturn = (exclude: readonly string[]) => {
     const messages = showAll
       ? db.getAllMessagesForHandle(handle, undefined, typeFilter)
-      : withoutQueuedChatMail(db.getUnreadMessages(handle, typeFilter), queued)
+      : unread(exclude)
     if (
       consumeUnread &&
       messages.some((message) => message.run_id === ORCHESTRATION_LEGACY_RUN_ID)
@@ -57,10 +58,19 @@ export async function checkDirectMailbox(args: {
     return { messages: exposeMessages(visibleMessages), count: visibleMessages.length }
   }
 
+  const read = async () =>
+    showAll
+      ? readAndReturn([])
+      : consumeUnread
+        ? args.queuedMail.consume(
+            (exclude) => unread(exclude).map((message) => message.id),
+            readAndReturn
+          )
+        : readAndReturn(await args.queuedMail.peekExclusions())
   if (signal?.aborted) {
     return { messages: [], count: 0 }
   }
-  const result = readAndReturn()
+  const result = await read()
   if (result.count > 0 || !params.wait) {
     return result
   }
@@ -79,6 +89,5 @@ export async function checkDirectMailbox(args: {
       'This direct mailbox became owned by a Run while the check was waiting.'
     )
   }
-  queued = await args.queuedMail()
-  return readAndReturn()
+  return read()
 }

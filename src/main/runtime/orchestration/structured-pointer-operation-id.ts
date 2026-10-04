@@ -29,10 +29,10 @@ export type StructuredPointerSubmission = Pick<
 >
 
 /**
- * What to do with a mailbox's pointer, given its operation row and the session's recorded sends.
+ * Whether a mailbox's send reuses its operation row's id or mints a new one. What the row's send
+ * became is read elsewhere: an accepted one marks its mail read and a pending one holds its
+ * mailbox, both off the send's own record of the mail it carried, before a batch is chosen.
  *
- * - `stamp`: the row's send ran; the batch is pointed.
- * - `park`: the row's send is still in flight; its settlement is the next edge.
  * - `mint`: a new send. The batch or session changed; the agent ran a turn after the row was
  *   minted; an earlier process minted it, so its attempt died with that process; or the host never
  *   recorded it and would now refuse it as too old to admit.
@@ -40,7 +40,7 @@ export type StructuredPointerSubmission = Pick<
  *   host replays that verdict and starts nothing, so a provider that dies on every turn is not
  *   restarted by every status edge, and a user's Stop stays stopped.
  */
-export type StructuredPointerAttempt = 'mint' | 'reuse' | 'stamp' | 'park'
+export type StructuredPointerAttempt = 'mint' | 'reuse'
 
 export function decideStructuredPointerAttempt(input: {
   row: StructuredPointerOperationRow | undefined
@@ -61,12 +61,6 @@ export function decideStructuredPointerAttempt(input: {
     return 'mint'
   }
   const sent = submissions.find((entry) => entry.clientMessageId === row.operation_id)
-  if (sent?.dispatchState === 'accepted') {
-    return 'stamp'
-  }
-  if (sent?.dispatchState === 'pending') {
-    return 'park'
-  }
   const ranSince = submissions.some(
     (entry) => entry.dispatchState === 'accepted' && entry.submittedAt > row.minted_at_ms
   )
@@ -89,11 +83,6 @@ export function structuredPointerBatchFingerprint(
     .digest('base64url')
 }
 
-export type StructuredPointerOperation =
-  | { kind: 'send'; operationId: string }
-  | { kind: 'stamp' }
-  | { kind: 'park' }
-
 export function resolveStructuredPointerOperation(args: {
   db: OrchestrationDb
   mailboxHandle: string
@@ -104,7 +93,7 @@ export function resolveStructuredPointerOperation(args: {
   /** The operation id this process last sent for this mailbox, if any. */
   sentByThisProcess: string | undefined
   now?: number
-}): StructuredPointerOperation {
+}): string {
   const now = args.now ?? Date.now()
   const batchFingerprint = structuredPointerBatchFingerprint(args.sessionId, args.messageIds)
   const stored = args.db.getStructuredPointerOperation(args.mailboxHandle)
@@ -116,11 +105,8 @@ export function resolveStructuredPointerOperation(args: {
     mintedByThisProcess: stored?.operation_id === args.sentByThisProcess,
     now
   })
-  if (attempt === 'stamp' || attempt === 'park') {
-    return { kind: attempt }
-  }
   if (attempt === 'reuse' && stored) {
-    return { kind: 'send', operationId: stored.operation_id }
+    return stored.operation_id
   }
   const operationId = mintAgentSessionOperationId(now)
   args.db.putStructuredPointerOperation({
@@ -134,5 +120,5 @@ export function resolveStructuredPointerOperation(args: {
       now
     )
   })
-  return { kind: 'send', operationId }
+  return operationId
 }

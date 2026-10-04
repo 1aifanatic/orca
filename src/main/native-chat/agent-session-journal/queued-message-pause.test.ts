@@ -623,6 +623,19 @@ describe('which cards the pauses in force hold', () => {
     expect(resumableQueuePause(pausesOver(alone, 0), alone)).toBeNull()
   })
 
+  it("an agent's card from before a restart raises no restart pause over a person's card typed since", () => {
+    const cards = [
+      card('agent-before', 1, { hostInstance: DEAD, source: { kind: 'agent' } }),
+      card('person-since', 2)
+    ]
+    expect(pausesOver(cards, 0)).toEqual([])
+    expect(holding(cards, 0)).toEqual([
+      ['agent-before', null],
+      ['person-since', null]
+    ])
+    expect(resumableQueuePause(pausesOver(cards, 0), cards)).toBeNull()
+  })
+
   it("an agent's card behind the person's restart-held card waits behind it: the queue never reorders", () => {
     const cards = [
       card('person', 1, { hostInstance: DEAD }),

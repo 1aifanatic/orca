@@ -92,7 +92,7 @@ export const ORCHESTRATION_CHECK_METHODS = [
           activeDispatch,
           remoteAttachment,
           recordMutationReceipt,
-          queuedMail: queuedChatMailOf(orchestrationCaller)
+          queuedMail: queuedChatMailOf(db, orchestrationCaller)
         })
       }
       const consumingCheck = params.peek !== true && params.all !== true && params.unread !== false
@@ -119,7 +119,7 @@ export const ORCHESTRATION_CHECK_METHODS = [
         handle,
         typeFilter,
         signal,
-        queuedMail: queuedChatMailOf(orchestrationCaller)
+        queuedMail: queuedChatMailOf(db, orchestrationCaller)
       })
     }
   })

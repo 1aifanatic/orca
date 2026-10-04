@@ -7,6 +7,7 @@
  * everything below it is different. The batch itself is the turn, sent as a person's message is:
  * a busy chat holds it as a card in its own queue, which sends it when the turn ends. Mail is read
  * once the chat accepts that turn; a card the person deletes leaves its mail unread for `check`.
+ * What a card or send holds is derived each pass (`structured-chat-mail.ts`), never stamped here.
  *
  * Coordinators are in scope here, unlike the PTY lane's reasoning: a PTY coordinator blocks in
  * `check --wait`, where a waiter preempts pointer delivery, but a structured coordinator is a chat
@@ -23,10 +24,14 @@ import {
   type OrchestrationMessageWaiter
 } from './mailbox-pointer-eligibility'
 import { structuredMailSource } from './structured-mail-source'
+import { resolveStructuredPointerOperation } from './structured-pointer-operation-id'
 import {
-  resolveStructuredPointerOperation,
-  type StructuredPointerSubmission
-} from './structured-pointer-operation-id'
+  reconcileChatMail,
+  withChatMailLock,
+  type StructuredChatMail,
+  type StructuredChatMailHost,
+  type StructuredMailCard
+} from './structured-chat-mail'
 import {
   retainReasonForDispatch,
   structuredDispatchDelivered,
@@ -53,29 +58,11 @@ export type StructuredPointerSendOutcome =
   | { kind: 'sent'; state: StructuredDispatchState }
   /** The chat was busy: the turn waits as a card its queue sends when the turn ends. */
   | { kind: 'queued' }
+  /** The host refused before anything started: a full queue, say. Nothing to replay. */
+  | { kind: 'refused' }
   | { kind: 'unattached' }
 
-/** A card in the chat's queue that carries orchestration mail, whatever became of it. */
-export type StructuredMailCard = {
-  mailbox: string
-  messageIds: readonly string[]
-  /** Still in the queue: waiting for it to send, or returned to the person. */
-  unsent: boolean
-  /** Its hand-off was accepted: the chat took the mail. */
-  accepted: boolean
-}
-
-export type StructuredMailFacts = {
-  /** Every send the session recorded, oldest first: what the lane's own direct sends settled as. */
-  submissions: readonly StructuredPointerSubmission[]
-  mailCards: readonly StructuredMailCard[]
-}
-
-export type StructuredMailboxPointerHost = {
-  /** The session's recorded sends and mail cards; `null` when it cannot be read. */
-  readFacts: (sessionId: string) => Promise<StructuredMailFacts | null>
-  /** Only the cards whose hand-off ran; cheap when none has. */
-  readHandedOffMailCards: (sessionId: string) => Promise<readonly StructuredMailCard[] | null>
+export type StructuredMailboxPointerHost = StructuredChatMailHost & {
   send: (input: {
     sessionId: string
     dispatchId: string | null
@@ -125,24 +112,40 @@ export class OrchestrationStructuredMailboxPointerDelivery<
   /** The operation id this lane last sent per mailbox: a row holding any other id outlived the
    *  process that minted it. A fact, not a clock reading, so no clock step can fake it. */
   private readonly sentOperationIds = new Map<string, string>()
+  /** The chat this process last queued each mailbox's card in. */
+  private readonly queuedIn = new Map<string, string>()
 
   constructor(private readonly deps: StructuredPointerDeliveryDependencies<TWaiter>) {}
 
   deliverForHandle(mailboxHandle: string, reservedTypes?: ReadonlySet<string>): boolean {
     const target = this.deps.resolveStructuredTarget(mailboxHandle)
+    const released = this.releaseMovedCard(mailboxHandle, target?.sessionId)
     if (!target) {
       return false
     }
-    void this.deliver(mailboxHandle, target, reservedTypes).catch(() => {
-      // Durable mail stays available to an explicit check or the next settle edge.
-    })
+    void released
+      .then(() => this.deliver(mailboxHandle, target, reservedTypes))
+      .catch(() => {
+        // Durable mail stays available to an explicit check or the next settle edge.
+      })
     return true
   }
 
-  /** The session's journal moved — a turn settled, or a re-attach replayed it; mark the mail its
-   *  queue handed off read, and retry what is parked on that edge. */
+  /** The mailbox left the chat this process last queued its card in: that card must not send
+   *  there too. That chat's own pass covers a card queued before a restart. */
+  private releaseMovedCard(mailboxHandle: string, sessionId: string | undefined): Promise<unknown> {
+    const previous = this.queuedIn.get(mailboxHandle)
+    if (previous === undefined || previous === sessionId) {
+      return Promise.resolve()
+    }
+    this.queuedIn.delete(mailboxHandle)
+    return this.reconcile(previous).catch(() => undefined)
+  }
+
+  /** The session's journal or queue moved — a turn settled, a re-attach replayed it, a card was
+   *  withdrawn; reconcile its mail, and retry what is parked on that edge. */
   onJournalActivity(sessionId: string): void {
-    void this.readAcceptedMail(sessionId).catch(() => undefined)
+    void this.reconcile(sessionId).catch(() => undefined)
     for (const [mailboxHandle, parked] of Array.from(this.parkedUntilJournalEdge)) {
       if (parked.sessionId !== sessionId) {
         continue
@@ -190,29 +193,37 @@ export class OrchestrationStructuredMailboxPointerDelivery<
     if (db.hasOutstandingMailboxDelivery?.(mailboxHandle)) {
       return
     }
-    const unread = selectOrchestrationPointerBatch({
-      db,
-      mailboxHandle,
-      waiters: this.deps.getMessageWaiters(mailboxHandle),
-      reservedTypes
-    })
-    if (unread.length === 0) {
+    if (this.selectBatch(db, mailboxHandle, reservedTypes).length === 0) {
       return
     }
     this.inFlight.add(mailboxHandle)
     try {
-      await this.attempt(db, mailboxHandle, target, unread, reservedTypes)
+      await this.attempt(db, mailboxHandle, target, reservedTypes)
     } finally {
       this.inFlight.delete(mailboxHandle)
     }
   }
 
-  private async readAcceptedMail(sessionId: string): Promise<void> {
-    const db = this.deps.getDb()
-    const cards = db ? await this.deps.host.readHandedOffMailCards(sessionId) : null
-    if (db && cards) {
-      markAcceptedMailRead(db, cards)
-    }
+  private reconcile(sessionId: string): Promise<unknown> {
+    return withChatMailLock(sessionId, async () => {
+      const db = this.deps.getDb()
+      const mail = db ? await this.deps.host.readChatMail(sessionId) : null
+      return db && mail && this.reconcileWith(db, sessionId, mail)
+    })
+  }
+
+  private reconcileWith(
+    db: OrchestrationDb,
+    sessionId: string,
+    mail: StructuredChatMail
+  ): Promise<readonly StructuredMailCard[]> {
+    return reconcileChatMail({
+      db,
+      sessionId,
+      mail,
+      host: this.deps.host,
+      ownsMailbox: (mailbox) => this.deps.resolveStructuredTarget(mailbox)?.sessionId === sessionId
+    })
   }
 
   // A session whose agent is not running needs nothing first: an accepted send starts it.
@@ -220,55 +231,61 @@ export class OrchestrationStructuredMailboxPointerDelivery<
     db: OrchestrationDb,
     mailboxHandle: string,
     target: StructuredPointerTarget,
-    unread: readonly MessageRow[],
     reservedTypes: ReadonlySet<string> | undefined
   ): Promise<void> {
     const sessionId = target.sessionId
-    const facts = await this.deps.host.readFacts(sessionId)
-    const fence = facts ? this.deps.host.currentFence(sessionId) : null
-    if (!facts || fence === null) {
-      this.retain(mailboxHandle, sessionId, 'session-not-attached', reservedTypes)
-      return
-    }
-    markAcceptedMailRead(db, facts.mailCards)
-    if (facts.mailCards.some((card) => card.mailbox === mailboxHandle && card.unsent)) {
-      // One card per mailbox in the queue: what arrives meanwhile goes in the next, never this one.
-      this.retain(mailboxHandle, sessionId, 'queued', reservedTypes)
-      return
-    }
-    // Mail a card already carries (one queued just before a restart) is never sent twice.
-    const carried = new Set(facts.mailCards.flatMap((card) => card.messageIds))
-    const repeated = unread.filter((message) => carried.has(message.id))
-    if (repeated.length > 0) {
-      db.markAsDelivered(repeated.map((message) => message.id))
-    }
-    const batch = unread.filter((message) => !carried.has(message.id))
-    if (batch.length === 0) {
-      return
-    }
+    await withChatMailLock(sessionId, async () => {
+      const mail = await this.deps.host.readChatMail(sessionId)
+      const fence = mail ? this.deps.host.currentFence(sessionId) : null
+      if (!mail || fence === null) {
+        this.retain(mailboxHandle, sessionId, 'session-not-attached', reservedTypes)
+        return
+      }
+      const cards = await this.reconcileWith(db, sessionId, mail)
+      if (cards.some((card) => card.mailbox === mailboxHandle)) {
+        // One card per mailbox in the queue: what arrives meanwhile goes in the next, never this one.
+        this.retain(mailboxHandle, sessionId, 'queued', reservedTypes)
+        return
+      }
+      if (
+        mail.sends.some(
+          (send) => send.mailbox === mailboxHandle && send.dispatchState === 'pending'
+        )
+      ) {
+        this.retain(mailboxHandle, sessionId, 'turn-unsettled', reservedTypes)
+        return
+      }
+      const batch = this.selectBatch(db, mailboxHandle, reservedTypes)
+      if (batch.length > 0) {
+        await this.send(db, mailboxHandle, target, fence, mail, batch, reservedTypes)
+      }
+    })
+  }
+
+  private async send(
+    db: OrchestrationDb,
+    mailboxHandle: string,
+    target: StructuredPointerTarget,
+    fence: number,
+    mail: StructuredChatMail,
+    batch: readonly MessageRow[],
+    reservedTypes: ReadonlySet<string> | undefined
+  ): Promise<void> {
+    const sessionId = target.sessionId
     const staged = batch.map((message) => message.id)
-    const operation = resolveStructuredPointerOperation({
+    const operationId = resolveStructuredPointerOperation({
       db,
       mailboxHandle,
       sessionId,
       messageIds: staged,
-      submissions: facts.submissions,
+      submissions: mail.submissions,
       sentByThisProcess: this.sentOperationIds.get(mailboxHandle)
     })
-    if (operation.kind === 'stamp') {
-      // A send this lane gave up waiting on ran after all.
-      this.consume(db, mailboxHandle, staged, 'read')
-      return
-    }
-    if (operation.kind === 'park') {
-      this.retain(mailboxHandle, sessionId, 'turn-unsettled', reservedTypes)
-      return
-    }
-    this.sentOperationIds.set(mailboxHandle, operation.operationId)
+    this.sentOperationIds.set(mailboxHandle, operationId)
     const outcome = await this.deps.host.send({
       sessionId,
       dispatchId: target.dispatchId,
-      operationId: operation.operationId,
+      operationId,
       expectedRuntimeFence: fence,
       body: mailTurnBody(batch, this.deps.getCliCommand()),
       source: structuredMailSource({
@@ -284,12 +301,19 @@ export class OrchestrationStructuredMailboxPointerDelivery<
         return
       case 'queued':
         // The card carries it from here; it is read once its hand-off is accepted.
-        this.consume(db, mailboxHandle, staged, 'delivered')
+        this.endOperation(db, mailboxHandle)
+        this.queuedIn.set(mailboxHandle, sessionId)
         this.retain(mailboxHandle, sessionId, 'queued', reservedTypes)
+        return
+      case 'refused':
+        // Nothing started, so the next attempt is a new send, not a replay of this refusal.
+        this.endOperation(db, mailboxHandle)
+        this.retain(mailboxHandle, sessionId, 'dispatch-rejected', reservedTypes)
         return
       case 'sent':
         if (structuredDispatchDelivered(outcome.state)) {
-          this.consume(db, mailboxHandle, staged, 'read')
+          db.markAsReadAndDelivered(staged)
+          this.endOperation(db, mailboxHandle)
         } else {
           // The row stays: resending under its id replays this verdict and starts nothing.
           this.retain(
@@ -302,25 +326,26 @@ export class OrchestrationStructuredMailboxPointerDelivery<
     }
   }
 
-  /** The send is done with: the chat took the mail (`read`), or a card now carries it. */
-  private consume(
+  private selectBatch(
     db: OrchestrationDb,
     mailboxHandle: string,
-    staged: string[],
-    as: 'read' | 'delivered'
-  ): void {
-    if (as === 'read') {
-      db.markAsReadAndDelivered(staged)
-    } else {
-      db.markAsDelivered(staged)
-    }
+    reservedTypes: ReadonlySet<string> | undefined
+  ): MessageRow[] {
+    return selectOrchestrationPointerBatch({
+      db,
+      mailboxHandle,
+      waiters: this.deps.getMessageWaiters(mailboxHandle),
+      reservedTypes
+    })
+  }
+
+  private endOperation(db: OrchestrationDb, mailboxHandle: string): void {
     db.deleteStructuredPointerOperation(mailboxHandle)
     this.sentOperationIds.delete(mailboxHandle)
   }
 
   /**
-   * No `markAsUndelivered` is owed: rows are marked delivered only once the chat accepted them or a
-   * card in its queue carries them.
+   * Nothing is stamped on the mail to undo: a card or an unsettled send holds it only while it exists.
    *
    * Every reason parks for the session's next journal edge. `queued` sends what arrived while the
    * card waited once it has gone. `unknown` may mean the turn already sits in the provider's input
@@ -346,15 +371,4 @@ function mailTurnBody(
 ): AgentJournalMessageItem {
   const text = batch.map((message) => formatMessageTurn(message, cli)).join('\n\n')
   return { kind: 'message', role: 'user', blocks: [{ type: 'text', text }] }
-}
-
-/** The chat took these: `check` must not return them again. */
-function markAcceptedMailRead(db: OrchestrationDb, cards: readonly StructuredMailCard[]): void {
-  const unread = cards
-    .filter((card) => card.accepted)
-    .flatMap((card) => card.messageIds)
-    .filter((id) => db.getMessageById(id)?.read === 0)
-  if (unread.length > 0) {
-    db.markAsReadAndDelivered(unread)
-  }
 }

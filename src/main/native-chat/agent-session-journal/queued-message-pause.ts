@@ -5,8 +5,8 @@
 //     supersedes it; only a person's pauses.
 //   - 'cleared': a card /clear carried into this conversation waits, and no person's turn or
 //     Resume has happened here since.
-//   - 'restarted': a waiting card was written by another host process, and no person's turn has
-//     started since this conversation opened. It holds only the person's cards: an agent's
+//   - 'restarted': a person's waiting card was written by another host process, and no person's
+//     turn has started since this conversation opened. It holds only the person's cards: an agent's
 //     orchestration mail is safe to resend, since the mailbox is the record and reading is marked.
 // A person's turn is an accepted submission of origin `client`. Orchestration mail, a restart
 // continuation, a launch prompt and the queue's own drain are `host` and never lift it.
@@ -127,8 +127,9 @@ export function deriveQueuePauses(input: {
   if (carried.length > 0 && latestPersonTurnSequence === 0 && marks.resumedSequence === 0) {
     pauses.push({ reason: 'cleared', since: null })
   }
-  if (!input.restartEnded && waiting.some((card) => card.hostInstance !== input.hostInstance)) {
-    // The process that wrote a card is gone: every card waits, whenever it was written.
+  const restartHeld = waiting.filter((card) => card.source.kind === 'user')
+  if (!input.restartEnded && restartHeld.some((card) => card.hostInstance !== input.hostInstance)) {
+    // The process that wrote a person's card is gone: every card of theirs waits, whenever written.
     pauses.push({ reason: 'restarted', since: null })
   }
   return pauses

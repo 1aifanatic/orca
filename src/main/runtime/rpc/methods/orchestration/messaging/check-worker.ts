@@ -61,7 +61,6 @@ export async function checkWorkerMailbox(args: {
   if (!workerMailbox) {
     return undefined
   }
-  let queued = await args.queuedMail()
   const deliveryRunId = workerMailbox.runId
   db.requireRun(deliveryRunId)
   const mailboxIdentity = { runId: deliveryRunId, dispatchId: workerMailbox.dispatchId }
@@ -188,20 +187,27 @@ export async function checkWorkerMailbox(args: {
     )
   }
   const showAll = params.all === true || (params.unread === false && params.peek !== true)
-  const readPeek = () => withoutQueuedChatMail(db.getUnreadMessages(address, typeFilter), queued)
-  const readDelivery = (wakeTypes?: MessageType[]) => {
+  const readPeek = async () =>
+    withoutQueuedChatMail(
+      db.getUnreadMessages(address, typeFilter),
+      await args.queuedMail.peekExclusions()
+    )
+  const readDelivery = async (wakeTypes?: MessageType[]) => {
     if (args.deferDelivery?.()) {
       return undefined
     }
+    const selection = { runId: deliveryRunId, mailboxHandle: address, wakeTypes }
     try {
-      return db.getOrCreateMailboxDelivery({
-        runId: deliveryRunId,
-        mailboxHandle: address,
-        consumerGeneration: workerMailbox.generation,
-        consumerSource: activeDispatch ? 'dispatch' : 'attachment',
-        wakeTypes,
-        excludeMessageIds: queued
-      })
+      return await args.queuedMail.consume(
+        (exclude) => db.previewMailboxDelivery({ ...selection, excludeMessageIds: exclude }),
+        (exclude) =>
+          db.getOrCreateMailboxDelivery({
+            ...selection,
+            consumerGeneration: workerMailbox.generation,
+            consumerSource: activeDispatch ? 'dispatch' : 'attachment',
+            excludeMessageIds: exclude
+          })
+      )
     } catch (error) {
       throw asDispatchFence(error)
     }
@@ -219,7 +225,7 @@ export async function checkWorkerMailbox(args: {
     }
   }
   if (params.peek) {
-    const messages = readPeek()
+    const messages = await readPeek()
     if (messages.length > 0 || !params.wait) {
       return {
         ...mailboxIdentity,
@@ -232,7 +238,7 @@ export async function checkWorkerMailbox(args: {
       }
     }
   } else {
-    const current = readDelivery(params.wait ? typeFilter : args.wakeTypes)
+    const current = await readDelivery(params.wait ? typeFilter : args.wakeTypes)
     if (current || !params.wait) {
       return {
         ...mailboxIdentity,
@@ -259,7 +265,6 @@ export async function checkWorkerMailbox(args: {
           timeoutMs: params.timeoutMs ?? undefined,
           signal
         })
-  queued = await args.queuedMail()
   await revalidateWorkerMailbox()
   if (readCurrentGeneration() !== workerMailbox.generation) {
     throw dispatchFenced()
@@ -276,7 +281,7 @@ export async function checkWorkerMailbox(args: {
     }
   }
   if (params.peek) {
-    const arrived = readPeek()
+    const arrived = await readPeek()
     return {
       ...mailboxIdentity,
       messages: exposeMessages(arrived),
@@ -287,7 +292,7 @@ export async function checkWorkerMailbox(args: {
         : {})
     }
   }
-  const arrived = readDelivery(typeFilter)
+  const arrived = await readDelivery(typeFilter)
   return {
     ...mailboxIdentity,
     deliveryId: arrived?.delivery.id ?? null,

@@ -15,6 +15,7 @@ import type {
   AgentJournalMessageItem,
   AgentJournalSubmission
 } from '../../../shared/agent-session-journal-types'
+import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
 import {
   refuse,
   type AgentSessionRefusalReason,
@@ -127,6 +128,7 @@ export async function performSend(
     body: AgentJournalMessageItem
     /** Who asked for the turn; absent on callers that predate it. */
     origin?: 'client' | 'host'
+    source?: AgentMessageSource
   }
 ): Promise<TurnOutcome<AgentSessionSendResult>> {
   const existing = ctx.journal

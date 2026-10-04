@@ -6,6 +6,7 @@ import {
   type AgentJournalSubmission
 } from '../../../shared/agent-session-journal-types'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
+import { readAgentSessionMessageSource } from '../../../shared/agent-session-message-source'
 import { journalRenderItem } from './journal-render-item'
 import { statedOrDerivedTurnScope, upsertJournalItem } from './journal-item-fold'
 import type { JournalReducerState } from './journal-reducer'
@@ -32,6 +33,10 @@ export function applyJournalSubmission(
       : {}),
     ...(row.origin === 'client' || row.origin === 'host' ? { origin: row.origin } : {})
   })
+  const source = row.source === undefined ? null : readAgentSessionMessageSource(row.source)
+  if (source?.kind === 'agent') {
+    state.submissionSources.set(row.clientMessageId, source)
+  }
   const itemId = agentJournalSubmissionKey(row.clientMessageId)
   // A message handed over later belongs to no turn until its handover names one.
   const turnScope = row.handoverRecorded

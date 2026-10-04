@@ -9,7 +9,6 @@ import {
   AgentSessionPreSpawnError
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { AgentSessionJournal } from '../native-chat/agent-session-journal/journal-store'
-import { AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS } from '../../shared/agent-session-host-authority'
 import { refuse } from '../../shared/agent-session-wire-refusals'
 import { currentRunCoordinatorOrcaSessionId } from './orchestration/db/runs/run-coordinator-orca-session'
 import { idOf } from './rpc/orchestration-session-caller-test-fixture'
@@ -359,10 +358,10 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     )
   })
 
-  it('sends again under a new id once a send the host never recorded is too old to admit', async () => {
+  it('sends mail again under a new id at the next edge once the host refused its turn', async () => {
     const chat = await openChat(COORDINATOR)
     const { runId, taskId } = await coordinatorRunAndTask()
-    // The first mail turn is refused before the host records it, so the journal holds no verdict.
+    // Refused before anything started (a full queue, a command in flight): nothing to replay.
     const realSend = host.send
     const refused = vi.spyOn(host, 'send').mockImplementationOnce(async () => ({
       ok: false as const,
@@ -374,20 +373,21 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     }))
     refused.mockImplementation((caller, params) => realSend(caller, params))
     await finishWorker(taskId)
-    await vi.waitFor(() => expect(refused).toHaveBeenCalledTimes(1), WAIT)
-    const held = db.getStructuredPointerOperation(`run:${runId}`)?.operation_id
+    await vi.waitFor(
+      () => expect(db.getStructuredPointerOperation(`run:${runId}`)).toBeUndefined(),
+      WAIT
+    )
+    expect(chat.turns).toEqual([])
 
-    // No edge for a day: the host would now refuse that id as expired, on every retry.
-    vi.useFakeTimers({ toFake: ['Date'] })
-    try {
-      vi.setSystemTime(Date.now() + AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS + 60_000)
-      await edgesAnswered()
-      await new Promise((resolve) => setTimeout(resolve, 300))
-      expect(chat.turns.map(turnText)).toEqual([mailTurn(`run:${runId}`)])
-      expect(db.getStructuredPointerOperation(`run:${runId}`)?.operation_id).not.toBe(held)
-    } finally {
-      vi.useRealTimers()
-    }
+    await edgesAnswered()
+    await vi.waitFor(
+      () => expect(chat.turns.map(turnText)).toEqual([mailTurn(`run:${runId}`)]),
+      WAIT
+    )
+    const [refusedId, sentId] = refused.mock.calls.map(
+      ([, params]) => params.envelope.clientOperationId
+    )
+    expect(sentId).not.toBe(refusedId)
   })
 
   it('holds mail a refused turn left in doubt until the next result, then sends it once', async () => {

@@ -10,7 +10,7 @@ vi.mock('../../native-chat/agent-session-wire/structured-agent-session-registry'
 
 const {
   createStructuredMailboxPointerHost,
-  readQueuedChatMail,
+  readStructuredChatMail,
   readStructuredSessionGateFacts,
   structuredPointerCallerKey,
   structuredSessionPointerCallerKey
@@ -60,7 +60,7 @@ describe('structured mailbox pointer host', () => {
     })
   })
 
-  it("reads what the session's sends settled as, and what became of each mail card", async () => {
+  it("reads each agent card's state and each agent send's verdict, with the mail each carries", async () => {
     const mail = (messageIds: string[]) => ({
       kind: 'agent',
       senders: [],
@@ -71,81 +71,94 @@ describe('structured mailbox pointer host', () => {
         messages: messageIds.map((messageId) => ({ messageId, runId: 'r1', from: 'term_a' }))
       }
     })
-    const submissions = [
-      { clientMessageId: 'op1', dispatchState: 'unknown' },
-      { clientMessageId: 'handoff-a', queuedMessageId: 'card-a', dispatchState: 'rejected' },
-      { clientMessageId: 'handoff-a2', queuedMessageId: 'card-a', dispatchState: 'accepted' },
-      { clientMessageId: 'handoff-c', queuedMessageId: 'card-c', dispatchState: 'pending' }
+    const submission = (clientMessageId: string, dispatchState: string) => ({
+      clientMessageId,
+      dispatchState,
+      submittedAt: 1
+    })
+    const sends = [
+      { submission: submission('typed', 'accepted'), source: undefined },
+      { submission: submission('op1', 'unknown'), source: mail(['m1']) },
+      { submission: submission('handoff-a', 'accepted'), source: mail(['m2']) },
+      {
+        submission: submission('task', 'pending'),
+        source: { kind: 'agent', senders: [], orchestration: { message: 'unknown' } }
+      }
     ]
-    const rows = [
-      { messageId: 'card-a', state: 'dispatched', source: mail(['m1', 'm2']) },
-      { messageId: 'card-b', state: 'withdrawn', source: mail(['m3']) },
-      { messageId: 'card-c', state: 'dispatched', source: mail(['m4']) },
-      { messageId: 'card-d', state: 'returned', source: mail(['m5']) },
-      { messageId: 'typed', state: 'waiting', source: { kind: 'user' } }
+    const cards = [
+      { messageId: 'card-a', state: 'dispatched', settledByOp: null, source: mail(['m2']) },
+      {
+        messageId: 'card-b',
+        state: 'withdrawn',
+        settledByOp: 'test-surface\u0000op',
+        source: mail(['m3'])
+      },
+      {
+        messageId: 'card-c',
+        state: 'withdrawn',
+        settledByOp: 'trusted-local:orchestration:mail-card\u0000op',
+        source: mail(['m4'])
+      },
+      { messageId: 'card-d', state: 'returned', settledByOp: null, source: mail(['m5']) },
+      { messageId: 'typed-card', state: 'waiting', settledByOp: null, source: { kind: 'user' } }
     ]
-    const snapshots = vi.fn(() => ({ items: [], submissions }))
-    hostRef.current = { journalSnapshot: snapshots, queuedMessageRows: () => rows }
-    const card = (messageIds: string[], unsent: boolean, accepted: boolean) => ({
+    const journal = {
+      queuedMessages: { list: () => cards },
+      submissions: () => sends.map((each) => each.submission),
+      submissionSource: (id: string) =>
+        sends.find((each) => each.submission.clientMessageId === id)?.source
+    }
+    hostRef.current = { conversationJournal: async () => journal }
+    const card = (cardId: string, messageIds: string[], state: string) => ({
+      cardId,
       mailbox: 'run:r1',
       messageIds,
-      unsent,
-      accepted
+      state
     })
-    expect(await createStructuredMailboxPointerHost().readFacts('s1')).toEqual({
-      submissions,
-      mailCards: [
-        // The latest hand-off decides: a card the person sent again after a refusal was taken.
-        card(['m1', 'm2'], false, true),
-        card(['m3'], false, false),
-        card(['m4'], false, false),
-        card(['m5'], true, false)
-      ]
+    expect(await readStructuredChatMail('s1')).toEqual({
+      cards: [
+        card('card-a', ['m2'], 'dispatched'),
+        // Withdrawn by anyone but Orca: the person's Delete, whose mail waits for `check`.
+        card('card-b', ['m3'], 'declined'),
+        card('card-c', ['m4'], 'withdrawn'),
+        card('card-d', ['m5'], 'returned')
+      ],
+      sends: [
+        { mailbox: 'run:r1', messageIds: ['m1'], dispatchState: 'unknown' },
+        { mailbox: 'run:r1', messageIds: ['m2'], dispatchState: 'accepted' }
+      ],
+      submissions: sends.map((each) => each.submission)
     })
-    expect(await createStructuredMailboxPointerHost().readHandedOffMailCards('s1')).toEqual([
-      card(['m1', 'm2'], false, true),
-      card(['m4'], false, false)
-    ])
-    // A chat whose queue handed no mail off costs no journal read.
-    snapshots.mockClear()
-    hostRef.current = { journalSnapshot: snapshots, queuedMessageRows: () => rows.slice(1, 2) }
-    expect(await createStructuredMailboxPointerHost().readHandedOffMailCards('s1')).toEqual([])
-    expect(snapshots).not.toHaveBeenCalled()
-  })
-
-  it("names the mail a chat's queue carries in an agent's card it has not deleted", async () => {
-    const mail = (messageId: string) => ({
-      ...MAIL_SOURCE,
-      orchestration: {
-        ...MAIL_SOURCE.orchestration,
-        messages: [{ messageId, runId: 'r1', from: 'term_a' }]
-      }
-    })
-    hostRef.current = {
-      queuedMessageRows: () => [
-        { state: 'waiting', source: mail('m1') },
-        { state: 'returned', source: mail('m2') },
-        { state: 'dispatched', source: mail('m3') },
-        { state: 'withdrawn', source: mail('m4') },
-        { state: 'waiting', source: { kind: 'user' } }
-      ]
-    }
-    expect(await readQueuedChatMail('s1')).toEqual(['m1', 'm2', 'm3'])
-    hostRef.current = null
-    expect(await readQueuedChatMail('s1')).toEqual([])
   })
 
   it('answers null rather than nothing recorded when the session cannot be read', async () => {
     // Null retains the pointer; an empty answer would read as "never sent" and send again into a
     // session this runtime cannot see at all.
-    expect(await createStructuredMailboxPointerHost().readFacts('s1')).toBeNull()
+    expect(await readStructuredChatMail('s1')).toBeNull()
     hostRef.current = {
-      queuedMessageRows: () => [],
-      journalSnapshot: () => {
+      conversationJournal: async () => {
         throw new Error('agent_session_ownership_unknown')
       }
     }
-    expect(await createStructuredMailboxPointerHost().readFacts('s1')).toBeNull()
+    expect(await readStructuredChatMail('s1')).toBeNull()
+  })
+
+  it("withdraws only agents' cards, as Orca, under Orca's own caller key", async () => {
+    const withdraw = vi.fn(async (input: { messageIds: readonly string[]; settledByOp: string }) =>
+      input.messageIds.map((messageId) => ({ messageId }))
+    )
+    const sources: Record<string, { kind: string }> = { c1: MAIL_SOURCE, typed: { kind: 'user' } }
+    hostRef.current = {
+      conversationJournal: async () => ({
+        queuedMessages: { withdraw, get: (id: string) => ({ source: sources[id] }) }
+      })
+    }
+    expect(await createStructuredMailboxPointerHost().withdrawCards('s1', ['c1', 'typed'])).toEqual(
+      ['c1']
+    )
+    expect(withdraw.mock.calls[0]![0].settledByOp).toMatch(/^trusted-local:orchestration:/)
+    hostRef.current = null
+    expect(await createStructuredMailboxPointerHost().withdrawCards('s1', ['c1'])).toEqual([])
   })
 
   it('reports an unattached host rather than a rejection when nothing can be sent', async () => {
@@ -265,7 +278,8 @@ describe('structured mailbox pointer host', () => {
   it('separates a not-attached refusal from a real one', async () => {
     for (const [code, expected] of [
       ['agent_session_ownership_unknown', { kind: 'unattached' }],
-      ['agent_session_conflict', { kind: 'sent', state: 'rejected' }]
+      // Refused before anything started: nothing for a retry under the same id to replay.
+      ['agent_session_conflict', { kind: 'refused' }]
     ] as const) {
       hostRef.current = { send: async () => ({ ok: false, refusal: { code, message: 'no' } }) }
       await expect(

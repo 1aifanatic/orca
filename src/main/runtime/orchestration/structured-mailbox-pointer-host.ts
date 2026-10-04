@@ -8,13 +8,18 @@
 
 import { AGENT_SESSION_NOT_ATTACHED } from '../../native-chat/agent-session-wire/structured-agent-session-mutation-admission'
 import { getStructuredAgentSessionHost } from '../../native-chat/agent-session-wire/structured-agent-session-registry'
+import type { StructuredMailboxPointerHost } from './structured-mailbox-pointer-delivery'
 import type {
-  StructuredMailboxPointerHost,
-  StructuredMailCard,
-  StructuredMailFacts
-} from './structured-mailbox-pointer-delivery'
-import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
+  StructuredChatMail,
+  StructuredChatMailHost,
+  StructuredMailCardState
+} from './structured-chat-mail'
+import type { OrchestrationMail } from '../../../shared/agent-session-message-source'
 import type { QueuedMessageRow } from '../../native-chat/agent-session-journal/queued-message-table'
+import {
+  structuredAgentMailFacts,
+  withdrawStructuredAgentCards
+} from '../../native-chat/agent-session-wire/structured-agent-session-agent-mail'
 import {
   structuredSessionGateFacts,
   type StructuredSessionGateFacts
@@ -52,58 +57,73 @@ export async function readStructuredSessionGateFacts(
   return snapshot ? structuredSessionGateFacts(snapshot.items) : null
 }
 
-/** Cards first: a card read as handed off then always finds its hand-off, committed with it. */
-function readMailFacts(sessionId: string): Promise<StructuredMailFacts | null> {
+/** Withdrawals of a card by Orca carry this key; any other withdrawal of an agent's card is the
+ *  person's. */
+const ORCHESTRATION_CALLER_PREFIX = 'trusted-local:orchestration:'
+const CARD_WITHDRAWAL_CALLER_KEY = `${ORCHESTRATION_CALLER_PREFIX}mail-card`
+
+/** A chat's agent cards and agent sends; the journal and queue are read in one host call. */
+export function readStructuredChatMail(sessionId: string): Promise<StructuredChatMail | null> {
   return readSession(sessionId, async (host) => {
-    const rows = await host.queuedMessageRows(sessionId)
-    const { submissions } = await host.journalSnapshot(sessionId)
-    return { submissions, mailCards: mailCards(rows, submissions) }
+    const { cards, sends } = structuredAgentMailFacts(await host.conversationJournal(sessionId))
+    return {
+      cards: cards.flatMap(({ messageId, source, ...row }) =>
+        source.kind === 'agent' && source.orchestration.message === 'mail'
+          ? [
+              {
+                cardId: messageId,
+                mailbox: source.orchestration.mailbox,
+                messageIds: mailIds(source.orchestration),
+                state: cardState(row)
+              }
+            ]
+          : []
+      ),
+      sends: sends.flatMap(({ submission, source }) =>
+        source?.orchestration.message === 'mail'
+          ? [
+              {
+                mailbox: source.orchestration.mailbox,
+                messageIds: mailIds(source.orchestration),
+                dispatchState: submission.dispatchState
+              }
+            ]
+          : []
+      ),
+      submissions: sends.map(({ submission }) => submission)
+    }
   })
 }
 
-/** Reads the journal only when the queue handed some mail off, so a plain chat's edge costs little. */
-function readHandedOffMailCards(sessionId: string): Promise<readonly StructuredMailCard[] | null> {
-  return readSession(sessionId, async (host) => {
-    const rows = (await host.queuedMessageRows(sessionId)).filter(
-      (row) => row.state === 'dispatched' && row.source.kind === 'agent'
-    )
-    return rows.length === 0
-      ? []
-      : mailCards(rows, (await host.journalSnapshot(sessionId)).submissions)
-  })
+function mailIds(mail: OrchestrationMail): string[] {
+  return mail.messages.map((message) => message.messageId)
 }
 
-/**
- * Mail the chat's own queue carries in an agent's card it has not deleted: on its way to the chat
- * as a turn, or taken, so its `check` leaves it out. A deleted card carries nothing.
- */
-export async function readQueuedChatMail(sessionId: string): Promise<readonly string[]> {
-  const rows = await readSession(sessionId, (host) => host.queuedMessageRows(sessionId))
-  return (rows ?? []).flatMap(({ state, source }) =>
-    state !== 'withdrawn' && source.kind === 'agent'
-      ? source.orchestration.messages.map((message) => message.messageId)
-      : []
+function cardState(row: Pick<QueuedMessageRow, 'state' | 'settledByOp'>): StructuredMailCardState {
+  if (row.state !== 'withdrawn') {
+    return row.state
+  }
+  return row.settledByOp?.startsWith(ORCHESTRATION_CALLER_PREFIX) ? 'withdrawn' : 'declined'
+}
+
+async function withdrawStructuredMailCards(
+  sessionId: string,
+  cardIds: readonly string[]
+): Promise<readonly string[]> {
+  return (
+    (await readSession(sessionId, async (host) =>
+      withdrawStructuredAgentCards(await host.conversationJournal(sessionId), {
+        sessionId,
+        cardIds,
+        callerKey: CARD_WITHDRAWAL_CALLER_KEY
+      })
+    )) ?? []
   )
 }
 
-function mailCards(
-  rows: readonly QueuedMessageRow[],
-  submissions: readonly AgentJournalSubmission[]
-): StructuredMailCard[] {
-  return rows.flatMap(({ messageId, state, source }) =>
-    source.kind === 'agent'
-      ? [
-          {
-            mailbox: source.orchestration.mailbox,
-            messageIds: source.orchestration.messages.map((message) => message.messageId),
-            unsent: state === 'waiting' || state === 'returned',
-            accepted:
-              submissions.findLast((entry) => entry.queuedMessageId === messageId)
-                ?.dispatchState === 'accepted'
-          }
-        ]
-      : []
-  )
+export const structuredChatMailHost: StructuredChatMailHost = {
+  readChatMail: readStructuredChatMail,
+  withdrawCards: withdrawStructuredMailCards
 }
 
 async function readSession<T>(
@@ -128,8 +148,7 @@ async function readSession<T>(
 
 export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHost {
   return {
-    readFacts: readMailFacts,
-    readHandedOffMailCards,
+    ...structuredChatMailHost,
 
     currentFence(sessionId) {
       return (
@@ -162,7 +181,7 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
         case 'refused':
           return outcome.refusal.code === AGENT_SESSION_NOT_ATTACHED.code
             ? { kind: 'unattached' }
-            : { kind: 'sent', state: 'rejected' }
+            : { kind: 'refused' }
         case 'queued':
           return { kind: 'queued' }
         case 'sent': {

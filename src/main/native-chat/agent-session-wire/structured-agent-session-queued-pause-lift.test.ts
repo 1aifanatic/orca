@@ -376,6 +376,22 @@ describe("a restart's pause", () => {
     expect(await rig.queuePause()).toBeNull()
   })
 
+  it("hands an agent's card off when startup restores its chat, with no client attached", async () => {
+    await rig.workingSend()
+    const agentCard = await queuedDraft('[message from term_worker]', AGENT_MAIL)
+    // Orca quits mid-turn; the next launch restores the chat's tab and nothing else touches it.
+    rig.crashRestartHostProcess()
+    await rig.host.restoreReadableSessions([HOST_TEST_SESSION])
+    // Read off the open conversation: a read through the host would itself open the chat.
+    const handedOff = () =>
+      rig.host
+        .collaboratorsForTests()
+        .sessions.get(HOST_TEST_SESSION)
+        ?.journal.submissions()
+        .some((entry) => entry.queuedMessageId === agentCard)
+    await eventually(() => expect(handedOff()).toBe(true))
+  })
+
   it("holds the person's card, and an agent's card queued behind it waits behind it", async () => {
     const working = await rig.workingSend()
     const personCard = await queuedDraft('typed by the person')

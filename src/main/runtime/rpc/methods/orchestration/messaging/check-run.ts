@@ -42,8 +42,7 @@ export async function checkRunMailbox(args: {
     revalidateLegacyCoordinator,
     orchestrationCompatibilityEvidence
   } = args
-  const queuedMail = queuedChatMailOf(callerSession)
-  let queued = await queuedMail()
+  const queuedMail = queuedChatMailOf(db, callerSession)
   const routeDirectSnapshot = directMailboxSnapshotRouter(db, signal)
   const run = resolveRunScope(runtime, {
     runId: params.run,
@@ -125,20 +124,33 @@ export async function checkRunMailbox(args: {
       ? { formatted: messages.map(formatMessageBanner).join('\n\n') }
       : {})
   })
-  const readPeek = () =>
-    withoutQueuedChatMail(db.getUnreadRunMailbox(run.id, 100, typeFilter), queued)
+  const readPeek = async () =>
+    withoutQueuedChatMail(
+      db.getUnreadRunMailbox(run.id, 100, typeFilter),
+      await queuedMail.peekExclusions()
+    )
   const readDelivery = (wakeTypes?: MessageType[]) =>
-    db.getOrCreateRunDelivery({
-      runId: run.id,
-      consumerGeneration: generation,
-      wakeTypes,
-      excludeMessageIds: queued
-    })
-  let peeked = params.peek ? readPeek() : []
+    queuedMail.consume(
+      (exclude) =>
+        db.previewMailboxDelivery({
+          runId: run.id,
+          mailboxHandle: address,
+          wakeTypes,
+          excludeMessageIds: exclude
+        }),
+      (exclude) =>
+        db.getOrCreateRunDelivery({
+          runId: run.id,
+          consumerGeneration: generation,
+          wakeTypes,
+          excludeMessageIds: exclude
+        })
+    )
+  let peeked = params.peek ? await readPeek() : []
   if (params.peek && peeked.length > 0) {
     return peekResult(peeked)
   }
-  let current = params.peek ? undefined : readDelivery(params.wait ? typeFilter : undefined)
+  let current = params.peek ? undefined : await readDelivery(params.wait ? typeFilter : undefined)
   if (current) {
     return {
       runId: run.id,
@@ -177,7 +189,6 @@ export async function checkRunMailbox(args: {
     signal,
     exclusive: true
   })
-  queued = await queuedMail()
   try {
     revalidateConsumer()
   } catch (error) {
@@ -241,10 +252,10 @@ export async function checkRunMailbox(args: {
     }
   }
   if (params.peek) {
-    peeked = readPeek()
+    peeked = await readPeek()
     return { ...peekResult(peeked), timedOut: false, cancelled: false, connectionLost: false }
   }
-  current = readDelivery(typeFilter)
+  current = await readDelivery(typeFilter)
   return {
     runId: run.id,
     deliveryId: current?.delivery.id ?? null,

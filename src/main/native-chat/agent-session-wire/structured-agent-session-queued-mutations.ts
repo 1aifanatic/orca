@@ -298,6 +298,9 @@ export function deleteQueuedStructuredAgentMessage(
         callerKey: ctx.resolvedBy,
         operationId
       })
+      if (withdrawn.length > 0 && row.source.kind === 'agent') {
+        context.deps.onAgentCardDeleted?.(ctx.sessionId)
+      }
       return withdrawn.length > 0
         ? { ok: true, value: { deleted: true, messageId } }
         : { ok: true, value: { deleted: false, messageId, disposition: 'withdrawn' } }

@@ -267,7 +267,8 @@ beforeEach(async () => {
     openCodexConnection: codex.openConnection,
     readProcessStartTime: async () => 1_700_000_000_000,
     // The same calls the runtime's own host install makes.
-    onSessionStatusChanged: (summary) => runtime.onStructuredSessionStatusForMail(summary)
+    onSessionStatusChanged: (summary) => runtime.onStructuredSessionStatusForMail(summary),
+    onAgentCardDeleted: (sessionId) => runtime.notifyStructuredSessionJournalActivity(sessionId)
   })
   dispatcher = new RpcDispatcher({ runtime, methods: ORCHESTRATION_METHODS })
 })

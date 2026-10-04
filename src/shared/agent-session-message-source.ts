@@ -1,5 +1,6 @@
 // Who a chat message is from: the person at the composer, or another agent through Orca.
-// Persisted with a queued card (`queued_messages.source_json`), so the chat can name each sender.
+// Persisted with a queued card (`queued_messages.source_json`) and with the submission it becomes,
+// so the chat can name each sender.
 
 import { z } from 'zod'
 import { isOrcaSessionId, type OrcaSessionId } from './orca-session-address'
@@ -23,8 +24,11 @@ export type OrchestrationMail = Readonly<{
   messages: readonly OrchestrationMailMessage[]
 }>
 
+/** What a newer build wrote that this one cannot read: still an agent's, carrying nothing it knows. */
+export type OrchestrationUnknownMessage = Readonly<{ message: 'unknown' }>
+
 /** What Orca delivers for other agents, one shape per message kind. */
-export type OrchestrationAgentMessage = OrchestrationMail
+export type OrchestrationAgentMessage = OrchestrationMail | OrchestrationUnknownMessage
 
 export type AgentMessageSource = Readonly<{
   kind: 'agent'
@@ -51,37 +55,46 @@ const mailSchema = z.object({
 })
 
 // Not strict: a newer build may add a field, which this one keeps no use for and must not reject.
-const storedSourceSchema = z.discriminatedUnion('kind', [
-  z.object({ v: z.literal(MESSAGE_SOURCE_VERSION), kind: z.literal('user') }),
-  z.object({
-    v: z.literal(MESSAGE_SOURCE_VERSION),
-    kind: z.literal('agent'),
-    senders: z.array(
-      z.object({
-        party: z.object({
-          address: z.string(),
-          terminalHandle: z.string().nullable(),
-          orcaSessionId: orcaSessionIdSchema.nullable()
-        })
+// Read in parts, so a sender or payload this build cannot read still leaves an agent's card.
+const storedKindSchema = z.object({ kind: z.enum(['user', 'agent']) })
+const storedSendersSchema = z.object({
+  senders: z.array(
+    z.object({
+      party: z.object({
+        address: z.string(),
+        terminalHandle: z.string().nullable(),
+        orcaSessionId: orcaSessionIdSchema.nullable()
       })
-    ),
-    orchestration: z.discriminatedUnion('message', [mailSchema])
-  })
-])
+    })
+  )
+})
+const storedMailSchema = z.object({
+  v: z.literal(MESSAGE_SOURCE_VERSION),
+  orchestration: mailSchema
+})
+
+/** The stored form, as a JSON value; `readAgentSessionMessageSource` reads it back. */
+export function storedAgentSessionMessageSource(source: AgentSessionMessageSource): object {
+  return { v: MESSAGE_SOURCE_VERSION, ...source }
+}
 
 export function serializeAgentSessionMessageSource(source: AgentSessionMessageSource): string {
-  return JSON.stringify({ v: MESSAGE_SOURCE_VERSION, ...source })
+  return JSON.stringify(storedAgentSessionMessageSource(source))
 }
 
 /**
  * The stored value read back. Absent (a card from before the column) is the person's: only the
- * composer queued then. So is a value this build cannot read; either way it is sent as written.
+ * composer queued then, and so is a value with no readable `kind`. An agent's value whose senders
+ * or payload this build cannot read stays an agent's, carrying no mail it knows.
  */
 export function readAgentSessionMessageSource(stored: unknown): AgentSessionMessageSource {
-  const parsed = storedSourceSchema.safeParse(stored)
-  if (!parsed.success) {
+  if (storedKindSchema.safeParse(stored).data?.kind !== 'agent') {
     return USER_MESSAGE_SOURCE
   }
-  const { v: _version, ...source } = parsed.data
-  return source
+  const mail = storedMailSchema.safeParse(stored)
+  return {
+    kind: 'agent',
+    senders: storedSendersSchema.safeParse(stored).data?.senders ?? [],
+    orchestration: mail.success ? mail.data.orchestration : { message: 'unknown' }
+  }
 }

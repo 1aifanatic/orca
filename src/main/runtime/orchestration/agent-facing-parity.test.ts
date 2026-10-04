@@ -122,8 +122,8 @@ async function renderChatMail(mailbox: string) {
     // The runtime's wiring of the structured lane.
     getCliCommand: localOrchestrationCliCommand,
     host: {
-      readFacts: async () => ({ submissions: [], mailCards: [] }),
-      readHandedOffMailCards: async () => [],
+      readChatMail: async () => ({ cards: [], sends: [], submissions: [] }),
+      withdrawCards: async () => [],
       currentFence: () => 1,
       send: async (input) => {
         for (const block of input.body.blocks) {
