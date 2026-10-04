@@ -1,3 +1,5 @@
+import { throwIfSignalAborted, waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
+import { annotateWorktreeLocksFromAdmin } from '../../shared/git-worktree-admin'
 import { stat } from 'node:fs/promises'
 import type { GitWorktreeInfo } from '../../shared/worktree/types'
 import { toWslExecutionSpace } from '../../shared/wsl-paths'
@@ -241,7 +243,11 @@ export async function readWorktreeList(
           )
           // Why: Git <2.31 emits no `prunable`, so probe each linked path for existence instead of trusting
           // stale registrations; a harmless backstop on 2.31–2.35 where parseWorktreeList already set it (#8389).
-          return annotatePrunableByExistence(normalized, repoPath, options)
+          return annotatePrunableByExistence(
+            await annotateWorktreeLocksFromAdmin(repoPath, normalized, options),
+            repoPath,
+            options
+          )
         },
         isUnsupportedWorktreeListZError
       )
@@ -258,11 +264,11 @@ async function annotatePrunableByExistence(
 
   async function probeNext(): Promise<void> {
     while (nextIndex < worktrees.length) {
+      throwIfSignalAborted(options.signal)
       const index = nextIndex
       nextIndex += 1
       const worktree = worktrees[index]
-      // Git only prunes linked worktrees, never locked ones (a lock shields a missing dir; `locked`
-      // parses only on Git >=2.31). A missing main worktree is handled by the repo-level ENOENT paths.
+      // Git only prunes linked worktrees, never locked ones (a lock shields a missing directory). A missing main worktree is handled by the repo-level ENOENT paths.
       if (
         !worktree ||
         worktree.isMainWorktree ||
@@ -283,7 +289,11 @@ async function annotatePrunableByExistence(
   }
 
   const workerCount = Math.min(PRUNABLE_EXISTENCE_PROBE_CONCURRENCY, worktrees.length)
-  await Promise.all(Array.from({ length: workerCount }, () => probeNext()))
+  await waitForPromiseWithSignal(
+    Promise.all(Array.from({ length: workerCount }, () => probeNext())),
+    options.signal
+  )
+  throwIfSignalAborted(options.signal)
   return annotated
 }
 

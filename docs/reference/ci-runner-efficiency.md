@@ -212,6 +212,69 @@ other architectures, verification/native caches, main/manual store writers and
 release installation policies retain their existing behavior. No periodic job
 or cache is added.
 
+## October 2 store producers: keep caches without downloading hits
+
+The optional `cache-pnpm-store-lookup-only` installer input uses
+[`actions/cache` lookup-only](https://github.com/actions/cache#inputs) on non-PR
+runs. An exact hit refreshes cache access without extracting the archive; a miss
+still installs from the registry and publishes the populated store at successful
+job completion. The default remains the existing `setup-node` cache behavior.
+The four Linux/Windows dependency warmers and Linux/macOS persistence producers
+opt in. Windows persistence retains its existing store opt-out, and PR restore
+policies are unchanged. This adds no recurring job or extra cache family.
+
+A [tiny framework control](https://github.com/stablyai/orca/actions/runs/37082688033)
+proved that lookup left the payload absent, refreshed the existing cache's access
+time, and published a miss that a fresh job restored. A
+[nested composite control](https://github.com/stablyai/orca/actions/runs/37084946789)
+then saved and restored a fresh payload using the actual environment-path pattern.
+The installer exports its resolved store path through `GITHUB_ENV`: twice-nested composite post-job saves
+cannot resolve their internal step outputs. The primary key is captured
+by the cache action before cleanup. Paths, architecture and lockfile keys match
+`setup-node`, so existing default-branch archives remain reusable.
+
+The [six-platform installer screen](https://github.com/stablyai/orca/actions/runs/37084946789),
+[Linux repeats](https://github.com/stablyai/orca/actions/runs/37085164277), and
+[corrected Windows repeats](https://github.com/stablyai/orca/actions/runs/37085248976)
+compared the complete shared installer, including toolchain setup, cache actions,
+policy verification, frozen installation and native probes where requested.
+Each treatment reset dependencies, the store, pnpm metadata and the Windows
+registry build directory. Treatment order reversed across architectures and
+repeats. Every qualified pair required real main store cache hits, matching
+policy/installed-lockfile digests and Node/pnpm versions, plus exact native-cache
+hits on Linux and Windows. The initial Windows x64 screen stopped before timing
+because its benchmark guard rejected the standard `D:\.pnpm-store` path; that
+unqualified job is excluded.
+
+| Platform / sample        | Restore + installer | Lookup + installer | Paired saving |
+| ------------------------ | ------------------: | -----------------: | ------------: |
+| macOS ARM64              |             37.785s |            20.024s |       17.761s |
+| macOS x64                |             75.610s |            46.638s |       28.972s |
+| Linux ARM64 / 1          |             10.005s |             7.242s |        2.763s |
+| Linux ARM64 / 2          |              8.817s |             6.672s |        2.145s |
+| Linux ARM64 / 3          |              8.800s |             6.581s |        2.219s |
+| Linux x64 / 1            |             12.309s |             9.735s |        2.574s |
+| Linux x64 / 2            |             10.131s |             8.690s |        1.441s |
+| Linux x64 / 3            |             13.741s |             9.485s |        4.256s |
+| Windows ARM64 / repeat 1 |            145.818s |            78.729s |       67.089s |
+| Windows ARM64 / repeat 2 |            152.730s |           106.475s |       46.255s |
+| Windows ARM64 / screen   |            294.092s |           193.957s |      100.135s |
+| Windows x64 / 1          |             30.936s |            20.256s |       10.680s |
+| Windows x64 / 2          |             31.021s |            20.098s |       10.923s |
+
+All 13 qualified pairs improved. Median paired savings were 2.574 seconds on
+Linux x64, 2.219 on Linux ARM64, 10.802 on Windows x64 and 67.089 on Windows
+ARM64. Each macOS architecture had one pair; its 28.972 / 17.761 second savings
+are a screen, supported by the earlier three-pair root-store comparisons.
+
+All pairs used pnpm 12.8.1. Node was 24.21.0 on Linux and Windows, 24.19.0 on
+macOS Intel and 24.20.0 on macOS ARM. Source dependency policies were frozen for
+this screen; later main dependency changes do not extend these measurements.
+Timing excludes checkout, initial service/bootstrap use, wrapper compilation,
+resets, result validation, post-job saves and queues. These are installation
+measurements, not whole-workflow or billing savings. Cold publication is verified
+separately by the small controls; no large synthetic store cache was uploaded.
+
 ## October 1 Windows and dependency cache follow-up
 
 [PR #24355](https://github.com/stablyai/orca/pull/24355) merged at `197ea3a3`.
@@ -1751,3 +1814,148 @@ collector stopped its observer before signal routing, and the corrected trial
 received the signal after both builders finished. The qualifying trial requested
 normal cancellation earlier in the same preparation sequence to account for
 observed delivery delay; no workload, wait or proof predicate was shortened.
+
+## October 3 Terminal Perf dependency preparation
+
+The daily/manual Terminal Perf workflow still installed current dependencies through
+raw lifecycle scripts and a global node-gyp installation. Its historical `ref`
+input also accepts revisions that lack the shared installer, so replacing that
+path unconditionally would break older runs. The current-profile path now uses
+the existing shared installer with explicit Electron preparation and archive
+caching. A guard requires GitHub-hosted Linux x64, Node 24/pnpm 12.8.1, the
+native-only root postinstall and the needed local action inputs/files. Other
+profiles and historical revisions keep their original frozen install.
+
+The [hosted comparison](https://github.com/stablyai/orca/actions/runs/37101695800)
+ran both preparation paths in each of two Linux x64 jobs, reversing their order.
+Legacy/shared preparation took 25.164/16.956 seconds and 27.434/18.032 seconds:
+8.208 and 9.402 seconds saved. Both used Node 24.21.0, pnpm 12.8.1 and Electron
+43.7.5. Both shared native-module cache lookups missed, so this improvement did
+not depend on a warm native build. Electron archive and root pnpm cache lookups
+hit. Dependency trees, pnpm data and Electron archives were reset between paths;
+compiler headers and external services were not. Bootstrap, resets, validation,
+post-job cleanup, queueing and the production guard step are outside those times.
+These are preparation measurements, not whole-workflow or billing savings.
+
+Both paths passed a native-module probe inside the actual Electron executable
+with `ELECTRON_RUN_AS_NODE=1`, and built the same Electron-vite e2e application.
+The candidate's 18 focused routing/fallback tests, workflow actionlint and changed
+code-quality checks passed. Performance tests, budgets and report uploads remain
+unchanged. The [existing October 2 run](https://github.com/stablyai/orca/actions/runs/36985792125)
+failed the same-workspace 50/100-terminal budgets (46.9/50.2 ms against 25 ms).
+This dependency change does not claim to resolve those application regressions.
+
+The [full candidate integration](https://github.com/stablyai/orca/actions/runs/37104625474)
+passed on `df71ad849cd854a232f7063562785563743b641a`: current preparation was
+selected, its native cache missed and rebuilt, the app built and all 32 report
+annotation rows passed the unchanged budget checker. The downloaded report also
+passed the same checker locally. This is integration evidence; it does not
+attribute application latency changes to dependency preparation. Subsequent
+rebases resolved report documentation and incorporated fixture teardown fixes.
+Workflow, installer-action and toolchain content stayed unchanged. Main also
+added an import and a Windows-only MSBuild setting to the native-runtime script:
+the imported helper has no top-level side effects, and the Linux rebuild branch
+is unchanged. Focused tests verify its Linux/macOS no-op behavior. Final-head PR
+checks qualify separately.
+
+## October 3 producer follow-up: automatic selection for the measured profile
+
+The first producer rollout in [#24927](https://github.com/stablyai/orca/pull/24927)
+passed all 46 PR checks, all five manual warmers and all 11 manual Headless
+qualifications on `a2c489c0cca5e46d24333a4d40ba910af0de0208`. The same root installer
+also serves recurring unit, browser and performance workflows that had not opted
+in. The follow-up defaults the existing input to `auto`, reusing lookup mode for
+non-PR root-only installs on GitHub-hosted Linux/macOS/Windows x64/ARM64 runners,
+with no job container, the manifest's Node 24/pnpm 12.8.1 profile and no conflicting
+Node override. Explicit `true` and `false` retain their previous meanings. Mixed
+lockfiles, other toolchains, containers and self-hosted runners retain full cache
+restoration; PR policies are unchanged. The manifest check runs only when the
+context is potentially eligible, before setup-node chooses its cache behavior.
+
+A second cleanup audit distinguished nesting depth. The
+[twice-nested control](https://github.com/stablyai/orca/actions/runs/37087090689)
+published the environment-path payload and lost the output-path payload with an
+`Input required and not supplied: path` warning. The
+[direct control](https://github.com/stablyai/orca/actions/runs/37087211236) published
+and restored both payloads. Current Electron archive callers are direct, so they
+need no cache-path change. Keeping the producer's exported path also makes its
+new lookup mode safe for callers that nest the shared installer. These tiny
+controls establish publication behavior, not installer time savings.
+
+The [actual automatic-mode cold publisher control](https://github.com/stablyai/orca/actions/runs/37097980789)
+passed both jobs on `7b8858bdc8f`. A twice-nested wrapper called the installer
+without overriding its default input. The writer selected lookup, missed its
+unique root-lockfile key, completed the frozen policy-checked install and saved
+that key during cleanup. A fresh reader restored the exact key and installed the
+same dependency successfully. The fixture retained the manifest toolchain and
+applicable workspace policies; its one dependency keeps the publication check
+small. Two earlier trials failed fixture assertions (the pnpm multi-document
+header placement, then its empty cache-miss output), and are excluded. This proves
+automatic selection and cold publication, not a new timing result. Local
+verification passed eight suites / 184 tests, the changed-code quality gate and
+compiled-composite actionlint.
+
+## October 3 retired-cache collection observation
+
+The same owner-collection assertion failed in unit shard 3 of
+[37098089274](https://github.com/stablyai/orca/actions/runs/37098089274/attempts/1)
+and [37100365037](https://github.com/stablyai/orca/actions/runs/37100365037/attempts/1),
+requiring a full shard retry despite the focused suite passing locally. Its
+three-turn collection budget was shorter than the six-turn plus final yield
+pattern already used by the GitLab known-host retirement tests.
+
+The fixture now uses that existing observation budget. All seven tests, their assertions,
+expiry clocks and production code are unchanged. The focused suite passes. A
+local fault control changed only the production timer callback to hold its owner
+strongly: the owner-collection assertion failed, with the other six tests passing.
+The source was restored afterward. Extra collection turns therefore preserve the
+strong-retention oracle. Hosted qualification is still required; these observations
+do not prove a particular VM-retention cause or quantify avoided retries.
+
+## October 3 unit-selection evidence: include failed references
+
+The caller's `needs.test.result == 'success'` condition prevented the advisory
+collector from reading failed unit runs, despite the reviewer's existing support
+for failed tests. A six-run screen from the October 3 occupancy sample found only
+one review artifact; it was a full fallback, so it did not validate selection.
+Missing artifacts cannot establish that selection catches red tests.
+
+The caller now permits both success and failure while excluding cancellation and
+skipped tests. The collector remains advisory and absent from `verify` dependencies.
+Incomplete, interrupted or inconsistent shard records still cannot become complete
+reference evidence. Existing omitted-failure tests preserve that negative control.
+
+The five artifacts from failed [run 37098089274, attempt 1](https://github.com/stablyai/orca/actions/runs/37098089274/attempts/1)
+were reviewed locally using the unchanged script. It recognized a complete failed
+reference covering 10,606 files and 9,270,307 worker-ms. Its candidate was the full
+fallback, so `selectionEvaluated` remained false and no selection promotion is
+justified by this control. Focused workflow/reviewer checks passed 24 tests,
+including actual caller-expression outcomes for success, failure, skipped and
+cancelled states. This repair supplies needed evidence for a later optimization;
+it claims no runner-time savings and does not enable selected tests.
+
+The updated caller also passed the hosted red-run control in
+[37100365037](https://github.com/stablyai/orca/actions/runs/37100365037).
+The collector succeeded after one unit shard failed, while required verification
+remained red. Its review recognized all five shards as a complete reference
+(10,608 files, 8,965,977 worker-ms). This was again a full fallback with
+`selectionEvaluated: false`, not evidence for enabling selected tests.
+
+## October 3 removal fixture cleanup ordering
+
+[37105566358](https://github.com/stablyai/orca/actions/runs/37105566358)
+failed unit shard 4 with `ENOTEMPTY` removing the failed-removal fixture's temporary
+directory; the other four shards passed. A client's removal reply intentionally
+precedes the detached job's final record persistence. This fixture reset tracking
+and removed the directory before waiting for that persistence, allowing a writer
+to race cleanup. Its teardown now awaits the existing settlement helper before
+resetting tracking or deleting the fixture. Production removal behavior and all
+assertions are unchanged.
+
+All 1,348 runtime tests passed (one existing skip). A temporary controlled queue
+held the final record write after the client replied: waiting before reset stayed
+pending and passed; resetting before waiting lost the tracked job and failed the
+same ordering assertion. The gate was released, both controls drained the captured
+job, and the instrumentation was removed. Changed-code quality passed. This proves
+the teardown ordering mechanism, not a measured avoided-retry saving. Final-head
+hosted qualification remains required.
