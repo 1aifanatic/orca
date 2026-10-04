@@ -111,6 +111,10 @@ export function NotesSendMenu<TNote extends DiffCommentDeliverySnapshot>({
     return requested ?? enabledScopes[0] ?? null
   }, [defaultScopeId, enabledScopes])
   const hasDeliverableNotes = enabledScopes.length > 0
+  // Notes only on their way to an agent are not sent yet.
+  const disabledTitle = scopes.some((scope) => scope.notes.length > 0)
+    ? translate('components.native-chat.question.sending', 'Sending…')
+    : disabledTooltip
 
   const markDelivered = useCallback(
     (notes: readonly TNote[]) => {
@@ -120,8 +124,8 @@ export function NotesSendMenu<TNote extends DiffCommentDeliverySnapshot>({
   )
   const holdInFlight = useCallback(
     (notes: readonly TNote[]) => (delivered: Promise<unknown>) =>
-      holdNotesForSend(notes.map(diffCommentSendKey), delivered),
-    []
+      holdNotesForSend(notes.map(diffCommentSendKey), delivered, () => markDelivered(notes)),
+    [markDelivered]
   )
 
   const openTargetMode = useCallback(
@@ -211,7 +215,7 @@ export function NotesSendMenu<TNote extends DiffCommentDeliverySnapshot>({
                 triggerClassName
               )}
               disabled={!hasDeliverableNotes}
-              title={hasDeliverableNotes ? ENABLED_SEND_TOOLTIP : disabledTooltip}
+              title={hasDeliverableNotes ? ENABLED_SEND_TOOLTIP : disabledTitle}
               aria-label={
                 triggerLabel
                   ? translate(
@@ -242,7 +246,7 @@ export function NotesSendMenu<TNote extends DiffCommentDeliverySnapshot>({
           </DropdownMenuTrigger>
         </TooltipTrigger>
         <TooltipContent side="bottom" sideOffset={6}>
-          {hasDeliverableNotes ? ENABLED_SEND_TOOLTIP : disabledTooltip}
+          {hasDeliverableNotes ? ENABLED_SEND_TOOLTIP : disabledTitle}
         </TooltipContent>
       </Tooltip>
       <DropdownMenuContent

@@ -507,7 +507,10 @@ describe('NotesSendMenu notes in flight', () => {
     second.onPromptDelivered()
     await Promise.resolve()
 
-    expect(onDelivered.mock.calls).toEqual([[[noteA]], [[noteB]]])
+    // Each send clears only its own note; a repeated clear of A is a no-op for its owner.
+    expect(onDelivered).not.toHaveBeenCalledWith([noteA, noteB])
+    expect(onDelivered).toHaveBeenCalledWith([noteA])
+    expect(onDelivered).toHaveBeenCalledWith([noteB])
   })
 
   it('leaves the notes out of the running-agent target mode too', () => {
@@ -546,5 +549,27 @@ describe('NotesSendMenu notes in flight', () => {
     expect(findByType(tree, 'button').props.disabled).toBe(true)
     invoke(findByType(tree, 'DropdownMenu').props, 'onOpenChange', true)
     expect(storeMocks.openAgentSendPopoverTargetMode).not.toHaveBeenCalled()
+  })
+
+  it('says the notes are on their way, not sent, while every note is held', () => {
+    contentProps(
+      renderMenu({ scopes: scopeOf([noteA]), disabledTooltip: 'Note already sent' })
+    ).onPromptHandedOff(new Promise(() => undefined))
+
+    const tree = renderMenu({ scopes: scopeOf([noteA]), disabledTooltip: 'Note already sent' })
+
+    expect(findByType(tree, 'button').props.title).toBe('Sending…')
+  })
+
+  // A failed new chat's Retry delivers them after the send's own callback is gone.
+  it('clears notes whose send reports delivery later', async () => {
+    const onDelivered = vi.fn()
+    const delivered = Promise.resolve({ delivered: true })
+    contentProps(renderMenu({ scopes: scopeOf([noteA]), onDelivered })).onPromptHandedOff(delivered)
+
+    await delivered
+    await Promise.resolve()
+
+    expect(onDelivered).toHaveBeenCalledWith([noteA])
   })
 })

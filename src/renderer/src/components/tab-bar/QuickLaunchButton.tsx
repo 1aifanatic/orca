@@ -18,6 +18,7 @@ import {
 import { translate } from '@/i18n/i18n'
 import { useStructuredAgentLaunchStatus } from '@/lib/structured-agent-session-launch'
 import { structuredLaunchRequest } from '@/lib/structured-agent-session-launch-request'
+import { newAgentPromptOutcome } from '@/lib/new-agent-prompt-outcome'
 
 export type QuickLaunchAgentMenuItemsProps = {
   worktreeId: string
@@ -164,8 +165,16 @@ function QuickLaunchAgentMenuItemsInner({
         )
         return
       }
-      if (result.promptDeliveryResult) {
-        onPromptHandedOff?.(result.promptDeliveryResult)
+      if (onPromptHandedOff && result.promptDeliveryResult) {
+        onPromptHandedOff(
+          newAgentPromptOutcome({
+            prompt: prompt ?? '',
+            ...(result.surface.kind === 'local-agent-session'
+              ? { sessionId: result.surface.sessionId }
+              : {}),
+            delivery: result.promptDeliveryResult
+          })
+        )
       }
       if (result.surface.kind !== 'local-terminal') {
         return

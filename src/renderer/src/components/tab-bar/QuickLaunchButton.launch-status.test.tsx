@@ -181,7 +181,7 @@ describe('QuickLaunchAgentMenuItems launch status', () => {
   })
 
   // Why: the notes menu holds what it sent until this result, so a second send leaves them out.
-  it("hands the launch's own delivery result to the notes menu", () => {
+  it("hands the launch's own delivery outcome to the notes menu", async () => {
     const delivery = Promise.resolve({ delivered: true, failureNotified: false })
     launchMock.mockReturnValue({
       surface: { kind: 'local-agent-session', tabId: 'tab-1', sessionId: 'codex-session' },
@@ -201,7 +201,8 @@ describe('QuickLaunchAgentMenuItems launch status', () => {
     )
     fireEvent.click(document.querySelector('[title="Launch Codex in a new terminal"]')!)
 
-    expect(onPromptHandedOff).toHaveBeenCalledWith(delivery)
+    expect(onPromptHandedOff).toHaveBeenCalledOnce()
+    await expect(onPromptHandedOff.mock.calls[0][0]).resolves.toEqual({ delivered: true })
   })
 
   it('starts no agent when the menu has nothing left to send', () => {

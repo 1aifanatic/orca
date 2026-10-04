@@ -119,8 +119,9 @@ export function useBrowserPageAnnotationSend({
   ])
 
   const handleBrowserAnnotationsHandedOff = useCallback(
-    (delivered: Promise<unknown>): void => holdNotesForSend(sendableAnnotations, delivered),
-    [sendableAnnotations]
+    (delivered: Promise<unknown>): void =>
+      holdNotesForSend(sendableAnnotations, delivered, handleBrowserAnnotationsSentToAgent),
+    [handleBrowserAnnotationsSentToAgent, sendableAnnotations]
   )
 
   const handleClearBrowserAnnotations = useCallback((): void => {

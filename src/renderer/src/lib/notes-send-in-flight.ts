@@ -15,11 +15,32 @@ function changed(): void {
   }
 }
 
-/** Takes `keys` out of the next send until `delivered` settles, whatever its result. */
-export function holdNotesForSend(keys: readonly unknown[], delivered: Promise<unknown>): void {
+function reportsDelivered(result: unknown): boolean {
+  return typeof result === 'object' && result !== null && 'delivered' in result
+    ? result.delivered === true
+    : false
+}
+
+/** Takes `keys` out of the next send until `delivered` settles, whatever its result. A result that
+ *  reports delivery also runs `onDelivered`, for a send whose own callback can no longer fire
+ *  (a Retry of a failed new chat). */
+export function holdNotesForSend(
+  keys: readonly unknown[],
+  delivered: Promise<unknown>,
+  onDelivered?: () => void
+): void {
   if (keys.length === 0) {
     return
   }
+  // Registered before the release, so delivered notes are gone before they could show again.
+  void delivered.then(
+    (result) => {
+      if (reportsDelivered(result)) {
+        onDelivered?.()
+      }
+    },
+    () => undefined
+  )
   for (const key of keys) {
     holds.set(key, (holds.get(key) ?? 0) + 1)
   }
@@ -42,16 +63,18 @@ export function isNoteInFlight(key: unknown): boolean {
   return holds.has(key)
 }
 
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => listeners.delete(listener)
+}
+
+function getVersion(): number {
+  return version
+}
+
 /** Changes whenever a hold starts or ends, for memos that filter by `isNoteInFlight`. */
 export function useNotesInFlightVersion(): number {
-  return useSyncExternalStore(
-    (listener) => {
-      listeners.add(listener)
-      return () => listeners.delete(listener)
-    },
-    () => version,
-    () => version
-  )
+  return useSyncExternalStore(subscribe, getVersion, getVersion)
 }
 
 /** A note's identity for delivery: an edit makes it a new pending note, as for its removal. */
