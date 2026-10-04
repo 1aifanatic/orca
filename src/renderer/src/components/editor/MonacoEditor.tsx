@@ -164,7 +164,7 @@ export default function MonacoEditor({
       unregisterFileSearchSelectionRef.current?.()
       unregisterFileSearchSelectionRef.current = null
     }
-  }, [cancelScheduledReveal, clearTransientRevealHighlight, viewStateKey])
+  }, [cancelScheduledReveal, clearTransientRevealHighlight, modelUri, viewStateKey])
 
   // Update editor options when settings change
   useEffect(() => {

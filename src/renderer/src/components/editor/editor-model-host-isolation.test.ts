@@ -163,6 +163,44 @@ describe('same-path models on different execution hosts', () => {
     expect(store.getState().openFiles).toHaveLength(0)
   })
 
+  it.each([FILE_PATH, 'C:\\fixture\\workspace\\same-path.txt', '\\\\server\\share\\same-path.txt'])(
+    'restores independent closed-tab undo for remote owners of %s',
+    async (filePath) => {
+      const { owners, store, attach } = createHostModels(filePath)
+      const remoteOwners = [owners[1], owners[4]]
+      attach()
+      const closed = remoteOwners.map((owner, index) => {
+        if (!owner) {
+          throw new Error('Missing remote owner')
+        }
+        edit(owner.model, `saved remote draft ${index}`)
+        return { ...owner, saved: owner.model.getValue() }
+      })
+      for (const owner of closed) {
+        store.getState().closeFile(owner.file.id)
+      }
+      await Promise.resolve()
+      expect(closed.every((owner) => owner.model.isDisposed())).toBe(true)
+      store.setState({
+        openFiles: [...store.getState().openFiles, ...closed.map((owner) => owner.file)]
+      })
+      const reopened = closed.map((owner) => modelLifetimeTextModel(owner.modelKey, owner.saved))
+      expect(reopened.every((model) => model.canUndo())).toBe(true)
+      for (const [index, model] of reopened.entries()) {
+        await model.undo()
+        expect(reopened.map((candidate) => candidate.getValue())).toEqual(
+          closed.map((owner, ownerIndex) => (ownerIndex <= index ? owner.initial : owner.saved))
+        )
+      }
+      for (const owner of owners.filter(
+        (candidate) => !closed.some((entry) => entry.file.id === candidate.file.id)
+      )) {
+        expect(owner.model.isDisposed()).toBe(false)
+        expect(owner.model.getValue()).toBe(owner.initial)
+      }
+    }
+  )
+
   it('releases a closed SSH model after its view detaches without touching a live local model', async () => {
     const { owners, store, attach } = createHostModels()
     const local = owners[0]!
