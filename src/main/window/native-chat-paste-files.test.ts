@@ -1,5 +1,6 @@
 import {
   existsSync,
+  lutimesSync,
   mkdirSync,
   mkdtempSync,
   realpathSync,
@@ -153,6 +154,7 @@ describe('native-chat paste folder on disk', () => {
     writeFileSync(outsideOld, 'png')
     utimesSync(outsideOld, old, old)
     symlinkSync(outsideOld, path.join(folder, 'orca-paste-link.png'))
+    lutimesSync(path.join(folder, 'orca-paste-link.png'), old, old)
     const nested = path.join(folder, 'nested')
     mkdirSync(nested)
     const nestedOld = path.join(nested, 'orca-paste-nested.png')
