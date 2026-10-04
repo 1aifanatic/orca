@@ -103,7 +103,10 @@ vi.mock('@/store', () => ({
   }
 }))
 
-import { appendStructuredAgentSessionOutboxMessage } from '@/components/native-chat/structured-agent-session-outbox-storage'
+import {
+  appendStructuredAgentSessionOutboxMessage,
+  readOutbox
+} from '@/components/native-chat/structured-agent-session-outbox-storage'
 import {
   appendNativeChatAttachmentCache,
   clearNativeChatAttachmentCacheForTests
@@ -450,6 +453,34 @@ describe('a "new chat" with text', () => {
       delivered: true,
       failureNotified: false
     })
+  })
+
+  it('opens its own chat in its own split beside an empty chat starting in another', () => {
+    mocks.launch.mockImplementation(() => new Promise(() => undefined))
+    const blank = pick('plus-pick-1', { group: 'group-left' })
+
+    const notes = pick('notes-send', { prompt: 'review notes', group: 'group-right' })
+
+    expect(notes.sessionId).toBe(second.sessionId)
+    expect(
+      store.state.unifiedTabsByWorktree[WORKTREE_ID]?.find(
+        (tab) => tab.entityId === second.sessionId
+      )?.groupId
+    ).toBe('group-right')
+    expect(mocks.focusGroup).not.toHaveBeenCalled()
+    expect(readOutbox(blank.sessionId)).toEqual([])
+    expect(readOutbox(second.sessionId).map((entry) => entry.body.blocks)).toEqual([
+      [{ type: 'text', text: 'review notes' }]
+    ])
+  })
+
+  it('takes an empty chat starting in its own split', () => {
+    mocks.launch.mockImplementation(() => new Promise(() => undefined))
+    const blank = pick('plus-pick-1', { group: 'group-right' })
+
+    expect(pick('notes-send', { prompt: 'review notes', group: 'group-right' }).sessionId).toBe(
+      blank.sessionId
+    )
   })
 
   it('takes an empty chat still starting, as before', () => {

@@ -67,8 +67,8 @@ export function claimableStructuredLaunchAttempt(
   return request.hasText ? emptyStructuredLaunchAttempt(state) : undefined
 }
 
-/** The launch a new start of `request` joins: one it re-delivers, else an empty starting chat, which
- *  a request with text claims and one without reuses in its own tab group. The newest wins. */
+/** The launch a new start of `request` joins: one it re-delivers, else an empty starting chat in the
+ *  tab group it opens in, which a request with text claims and one without reuses. The newest wins. */
 export function getJoinableStructuredLaunchState(
   identity: string,
   request: StructuredLaunchRequest
@@ -79,8 +79,7 @@ export function getJoinableStructuredLaunchState(
     structuredLaunchesHoldingIdentity(matches).findLast(
       (state) =>
         emptyStructuredLaunchAttempt(state) &&
-        (request.hasText ||
-          !request.groupId ||
+        (!request.groupId ||
           structuredChatTabGroupId(state.intent.worktreeId, state.intent.sessionId) ===
             request.groupId)
     )
