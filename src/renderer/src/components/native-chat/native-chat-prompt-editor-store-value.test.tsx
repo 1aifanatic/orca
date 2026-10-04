@@ -43,6 +43,7 @@ async function mountEditor(renderer: Renderer): Promise<() => void> {
       onSelect: () => {}
     })
   )
+  await vi.waitFor(() => expect(inputRef.current).not.toBeNull())
   return renderer.store.subscribeToNativeChatComposerDraft(SCOPE, () => {
     const draft = renderer.drafts.readNativeChatDraftCache(SCOPE)
     if (inputRef.current && inputRef.current.value !== draft) {
@@ -77,6 +78,8 @@ describe('the editor and the draft store', () => {
     await renderer.store.nativeChatComposerDraftWritesSettled()
     stopSync()
     expect(storage.drafts.get(SCOPE)?.savedAt).toBe(savedAt)
+    // An echo would have saved the editor's own document over the store's text-only draft.
+    expect(storage.drafts.get(SCOPE)?.document).toBeUndefined()
   })
 
   it('lets another window’s send stand, instead of echoing back the draft it showed', async () => {
