@@ -11,11 +11,8 @@ import { disposeRemovedWorktreeParkedTerminalWatchers } from '../../../../compon
 import { detachedHeadAutoDerivedDisplayNames } from '../metadata/detached-head-display-name'
 import { applyRemoveWorktreeSuccessState } from './remove-worktree-store-cleanup'
 import { purgeOrphanedRuntimeSshProjects } from './orphaned-runtime-ssh-project-purge'
-import {
-  deleteNativeChatComposerDraft,
-  deleteNativeChatComposerDraftsForTab,
-  structuredAgentSessionDraftScopeKey
-} from '@/components/native-chat/native-chat-composer-draft-store'
+import { deleteWorkspaceChatDrafts } from './removed-worktree-chat-drafts'
+import type { WorktreeStateBeforeRemoval } from './worktree-state-before-removal'
 
 /**
  * Renderer-side teardown after the backend removal succeeded.
@@ -30,12 +27,11 @@ export async function tearDownRemovedWorktreeRendererState(args: {
   worktreeId: string
   hostId: ExecutionHostId | undefined
   requiredExecutionHostId: ExecutionHostId | null
-  terminalPtyIdsBeforeRemoval: readonly string[]
+  beforeRemoval: WorktreeStateBeforeRemoval
   /** The catalog the host's removal produced, when the host stamps it. */
   catalogVersion?: WorktreeCatalogVersion
 }): Promise<void> {
-  const { set, get, worktreeId, hostId, requiredExecutionHostId, terminalPtyIdsBeforeRemoval } =
-    args
+  const { set, get, worktreeId, hostId, requiredExecutionHostId, beforeRemoval } = args
   // Why first: a listing scanned before this removal must not be applied after it and bring
   // the row back, so the version is on record before any await below yields.
   if (hostId && args.catalogVersion) {
@@ -49,10 +45,11 @@ export async function tearDownRemovedWorktreeRendererState(args: {
       )
     )
   }
-  const structuredSessionIds: string[] = []
+  // Why the captured keys: closing a structured chat keeps its conversation's draft, and a listing
+  // refresh may already have dropped these tabs.
+  deleteWorkspaceChatDrafts(beforeRemoval.chatDraftKeys)
   for (const tab of get().unifiedTabsByWorktree[worktreeId] ?? []) {
     if (tab.contentType === 'agent-session') {
-      structuredSessionIds.push(tab.entityId)
       get().closeUnifiedTab(tab.id, {
         preserveWorktreeSelection: true,
         recordInteraction: false
@@ -86,20 +83,12 @@ export async function tearDownRemovedWorktreeRendererState(args: {
   detachedHeadAutoDerivedDisplayNames.delete(worktreeId)
   forgetForegroundTerminalTabs(tabIds)
   forgetAgentStartupDeliveriesForTabs(tabIds)
-  // Why: closing a structured chat keeps its conversation's draft, and terminal tabs skip
-  // closeTab, so both die with their worktree here.
-  for (const sessionId of structuredSessionIds) {
-    deleteNativeChatComposerDraft(structuredAgentSessionDraftScopeKey(sessionId))
-  }
-  for (const tabId of tabIds) {
-    deleteNativeChatComposerDraftsForTab(tabId)
-  }
 
   // Why: snapshot the sidebar top-row anchor in the same tick we remove the row; recording at click time goes stale across the await.
   requestVirtualizedScrollAnchorRecord('[data-worktree-sidebar]')
 
   // Why: dispose parked terminal watchers only on explicit deletion; identity migration/remounts must keep buffered PTY state.
-  disposeRemovedWorktreeParkedTerminalWatchers(worktreeId, terminalPtyIdsBeforeRemoval)
+  disposeRemovedWorktreeParkedTerminalWatchers(worktreeId, beforeRemoval.terminalPtyIds)
   applyRemoveWorktreeSuccessState(set, worktreeId, tabIds, requiredExecutionHostId ?? hostId)
   get().removeWorkspaceSpaceWorktrees?.(
     hostId ? [{ id: worktreeId, executionHostId: hostId }] : [worktreeId]
