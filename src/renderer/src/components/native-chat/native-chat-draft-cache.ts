@@ -60,16 +60,19 @@ export function appendNativeChatDraftCache(scopeKey: string, text: string): void
 
 /**
  * Hands text Orca could not deliver back to the person, with or without a composer showing it.
- * Why skipped when already there: a hand-back can repeat (a crash before its copy was removed,
- * two windows settling one message), and the person must see it once.
+ * Why skipped when the draft already ends with it: a hand-back can repeat (a crash before its copy
+ * was removed, two windows settling one message), and the person must see it once. Only the end
+ * counts, so text that merely appears inside a longer draft, or a second copy, still comes back.
  */
 export function returnNativeChatDraftText(scopeKey: string, text: string): void {
-  const returned = text.trim()
-  if (returned === '') {
+  // Only the end is trimmed, as a send trims it: a first line's indentation is part of the text.
+  const returned = text.trimEnd()
+  if (returned.trim() === '') {
     return
   }
   const previous = readNativeChatDraftCache(scopeKey)
-  if (previous.includes(returned)) {
+  const draft = previous.trimEnd()
+  if (draft === returned || draft.endsWith(`\n\n${returned}`)) {
     return
   }
   appendToDraft(scopeKey, returned, previous)

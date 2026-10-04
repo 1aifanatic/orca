@@ -66,12 +66,29 @@ describe('returnNativeChatDraftText', () => {
     expect(readNativeChatDraftCache('agent-session:s1')).toBe('typed meanwhile\n\nunsent message')
   })
 
-  it('is idempotent: text the draft already holds is not added again', () => {
+  it('is idempotent: text the draft already ends with is not added again', () => {
     returnNativeChatDraftText('agent-session:s1', 'unsent message')
     returnNativeChatDraftText('agent-session:s1', 'unsent message')
-    writeNativeChatDraftCache('agent-session:s1', 'before\n\nunsent message\n\nafter')
-    returnNativeChatDraftText('agent-session:s1', '\nunsent message  ')
-    expect(readNativeChatDraftCache('agent-session:s1')).toBe('before\n\nunsent message\n\nafter')
+    expect(readNativeChatDraftCache('agent-session:s1')).toBe('unsent message')
+    writeNativeChatDraftCache('agent-session:s1', 'before\n\nunsent message  \n')
+    returnNativeChatDraftText('agent-session:s1', 'unsent message  ')
+    expect(readNativeChatDraftCache('agent-session:s1')).toBe('before\n\nunsent message  \n')
+  })
+
+  it('still returns text that only appears inside a longer draft', () => {
+    writeNativeChatDraftCache('agent-session:s1', 'use the other algorithm and go')
+    returnNativeChatDraftText('agent-session:s1', 'go')
+    expect(readNativeChatDraftCache('agent-session:s1')).toBe(
+      'use the other algorithm and go\n\ngo'
+    )
+    writeNativeChatDraftCache('agent-session:s1', 'yes\n\nthen run the tests')
+    returnNativeChatDraftText('agent-session:s1', 'yes')
+    expect(readNativeChatDraftCache('agent-session:s1')).toBe('yes\n\nthen run the tests\n\nyes')
+  })
+
+  it("keeps the returned text's leading indentation", () => {
+    returnNativeChatDraftText('agent-session:s1', '    indented code\n')
+    expect(readNativeChatDraftCache('agent-session:s1')).toBe('    indented code')
   })
 
   it('puts no blank lines before text returned to a whitespace-only draft', () => {
