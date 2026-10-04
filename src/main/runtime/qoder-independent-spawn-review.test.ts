@@ -2,6 +2,8 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import filesystem from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { buildAgentResumeStartupPlan } from '../../shared/tui-agent-startup'
+import { buildAiVaultResumeShellCommand } from '../../shared/ai-vault-resume-command'
 
 await import('./orca-runtime-test-mocks.spec')
 await import('./orca-runtime-test-lifecycle.spec')
@@ -112,6 +114,48 @@ it('a modern-only repo-less folder start reaches the same production spawn bound
       await filesystem.rm(folderPath, { recursive: true, force: true })
     }
   }
+})
+
+it('selects the installed command for a mobile Qoder history resume at creation', async () => {
+  vi.mocked(detectAgentCommandsOnHost).mockResolvedValueOnce(new Set(['qoder']))
+  const spawn = vi.fn().mockResolvedValue({ id: 'pty-mobile-qoder-resume' })
+  const runtime = new OrcaRuntimeService(store)
+  runtime.setPtyController({
+    spawn,
+    write: () => true,
+    kill: () => true,
+    getForegroundProcess: async () => null
+  })
+  const plan = buildAgentResumeStartupPlan({
+    agent: 'qoder',
+    providerSession: { key: 'session_id', id: 'same-qoder-session' },
+    cmdOverrides: {},
+    platform: 'darwin'
+  })
+  if (!plan) {
+    throw new Error('Missing Qoder resume plan')
+  }
+  const launch = {
+    command: buildAiVaultResumeShellCommand({
+      resumeCommand: plan.launchCommand,
+      cwd: TEST_WORKTREE_PATH,
+      platform: 'darwin'
+    }),
+    launchAgent: plan.agent,
+    launchConfig: plan.launchConfig
+  }
+  await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`, {
+    command: launch.command,
+    launchAgent: launch.launchAgent,
+    launchConfig: launch.launchConfig
+  })
+  expect(spawn).toHaveBeenCalledTimes(1)
+  expect(spawn).toHaveBeenCalledWith(
+    expect.objectContaining({
+      command: launch.command.replace(/qodercli(?=\s)/, 'qoder'),
+      launchAgent: 'qoder'
+    })
+  )
 })
 
 it('host discovery refusal prevents any production spawn', async () => {

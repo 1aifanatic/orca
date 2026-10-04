@@ -242,6 +242,35 @@ describe('buildMobileAiVaultResumeLaunch', () => {
 })
 
 describe('resumeAiVaultSessionInTerminal', () => {
+  it.each(['darwin', 'linux', 'win32'] as const)(
+    'lets the %s execution host select the Qoder resume command at creation',
+    async (hostPlatform) => {
+      const launch = buildMobileAiVaultResumeLaunch({
+        session: session({ agent: 'qoder', sessionId: 'same-qoder-session' }),
+        hostPlatform
+      })
+      const sendRequest = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          result: { tab: { type: 'terminal', id: 'tab-1', terminal: 'pty-1', title: 'Terminal' } }
+        })
+        .mockResolvedValueOnce({ ok: true, result: { send: { accepted: true } } })
+      await resumeAiVaultSessionInTerminal({ sendRequest }, 'worktree-1', launch)
+      expect(sendRequest).toHaveBeenCalledTimes(1)
+      expect(sendRequest).toHaveBeenCalledWith(
+        'session.tabs.createTerminal',
+        expect.objectContaining({
+          command: launch.command,
+          launchAgent: 'qoder',
+          launchConfig: launch.launchConfig
+        }),
+        { timeoutMs: RESUME_RPC_TIMEOUT_MS }
+      )
+      expect(launch.command).toContain('same-qoder-session')
+    }
+  )
+
   it('creates a fresh terminal and sends the command with Enter', async () => {
     const sendRequest = vi
       .fn()

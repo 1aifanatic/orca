@@ -153,12 +153,15 @@ export async function resumeAiVaultSessionInTerminal(
   worktreeId: string,
   launch: MobileAiVaultResumeLaunch & { clientMutationId?: string }
 ): Promise<MobileReviewTerminalTab> {
+  // Qoder's execution host must select its installed executable before the resume starts.
+  const launchAtCreate = launch.launchAgent === 'qoder'
   // Each request is awaited outside its catch so a transport drop propagates as the original error
   // object; only a refusal is rewritten into this step's own copy.
   const created = await reviewTerminalCreateRun.request(
     client,
     {
       worktree: `id:${worktreeId}`,
+      ...(launchAtCreate ? { command: launch.command } : {}),
       ...(launch.env ? { env: launch.env } : {}),
       ...(launch.envToDelete ? { envToDelete: launch.envToDelete } : {}),
       ...(launch.launchConfig ? { launchConfig: launch.launchConfig } : {}),
@@ -175,6 +178,9 @@ export async function resumeAiVaultSessionInTerminal(
     () => reviewTerminalCreateRun.interpret(created),
     'Failed to create terminal'
   )
+  if (launchAtCreate) {
+    return terminalTab
+  }
   const sent = await reviewTerminalSendRun.request(
     client,
     {
