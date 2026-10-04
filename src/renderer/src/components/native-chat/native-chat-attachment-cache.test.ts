@@ -46,4 +46,22 @@ describe('the pane attachment cache bound', () => {
     fillWithOtherScopes()
     expect(readNativeChatAttachmentCache('pane-c')).toEqual([])
   })
+
+  it('keeps a write to an unused scope when every older scope is in use', () => {
+    const unsubscribes = Array.from(
+      { length: NATIVE_CHAT_COMPOSER_SCOPE_CACHE_MAX },
+      (_, index) => {
+        appendNativeChatAttachmentCache(`shown-${index}`, [
+          { id: `s${index}`, path: `/tmp/${index}.png` }
+        ])
+        return subscribeToNativeChatAttachmentCache(`shown-${index}`, () => {})
+      }
+    )
+
+    appendNativeChatAttachmentCache('pane-d', [{ id: 'd1', path: '/tmp/d.png' }])
+
+    expect(readNativeChatAttachmentCache('pane-d')).toEqual([{ id: 'd1', path: '/tmp/d.png' }])
+    expect(readNativeChatAttachmentCache('shown-0')).toHaveLength(1)
+    unsubscribes.forEach((unsubscribe) => unsubscribe())
+  })
 })

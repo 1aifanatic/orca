@@ -21,7 +21,8 @@ export function setBoundedScopeCacheEntry<T>(
     if (excess <= 0) {
       break
     }
-    if (!isProtected(key)) {
+    // Never the entry just written: when every older scope is in use, the cache runs over instead.
+    if (key !== scopeKey && !isProtected(key)) {
       cache.delete(key)
       excess -= 1
     }
