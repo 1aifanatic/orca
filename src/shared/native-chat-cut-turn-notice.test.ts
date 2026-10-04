@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { agentSessionFailureFact } from './agent-session-failure'
 import { agentSessionFailureWords } from './agent-session-failure-words'
-import { agentJournalItemKey } from './agent-session-journal-item-key'
+import { agentJournalItemKey, agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import type {
   AgentJournalItemBody,
+  AgentJournalSubmission,
   AgentJournalRenderItem,
   AgentJournalTurnOutcome,
   AgentJournalTurnScope
@@ -348,6 +349,41 @@ describe('withNativeChatCutTurnNotices', () => {
       expect.objectContaining({ type: 'text', text: NOTICE, tone: 'error' })
     ])
     expect(turnKeys[notice]).toBe('u1')
+  })
+
+  // A message Orca accepted and then failed to deliver after the cut is drawn in place as not sent,
+  // in no turn; the cut keeps its notice in its own turn, and the exit row about that send does
+  // not stand in for it.
+  it('keeps the notice in its turn beside a later message drawn as not sent', () => {
+    const sent = agentJournalSubmissionKey('client-u2')
+    const items = [
+      user('u1'),
+      turn('t1', 'u1', CUT),
+      reply('a1', inTurn('t1')),
+      user(sent),
+      exitRow('provider-exit:s:7:gen', THREAD)
+    ]
+    const submissions: AgentJournalSubmission[] = [
+      {
+        clientMessageId: 'client-u2',
+        fence: 2,
+        payloadFingerprint: 'fp-u2',
+        dispatchState: 'rejected',
+        providerItemId: null,
+        reason: NOTICE,
+        submittedAt: 50,
+        resolvedAt: 60
+      }
+    ]
+    const derived = withNativeChatCutTurnNotices(items, { agentName: 'Codex' })
+    const messages = projectStructuredAgentSessionMessages(derived, [], submissions, {
+      rejectedInPlace: true
+    })
+    const { turnKeys } = nativeChatTurnMembership(messages, { items: derived, submissions })
+
+    const notice = messages.findIndex((message) => message.id.includes('cut-turn-notice'))
+    expect(turnKeys[notice]).toBe('u1')
+    expect(messages.find((message) => message.id === sent)).toMatchObject({ unsent: true })
   })
 
   it('reads a journal from a host that states no scope, without making it look like one that does', () => {
