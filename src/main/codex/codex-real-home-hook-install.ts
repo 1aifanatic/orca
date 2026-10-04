@@ -22,6 +22,7 @@ import { readCodexTrustGrantLedgerHomeForReconciliation } from './codex-managed-
 import { removeSystemManagedHookTrustEntries } from './codex-hook-trust-cleanup'
 import { getCodexManagedHookInstallMaterial } from './codex-hook-definition'
 import { getSystemCodexHomePath } from './codex-home-paths'
+import { isSystemCodexHomeCodexDefault } from './codex-default-home'
 import { mutateRealHomeHooksPreservingUserTrust } from './codex-user-hook-trust-moves'
 import { sweepRealHomeCodexHook } from './codex-real-home-hook-sweep'
 import {
@@ -57,7 +58,8 @@ export type { RealHomeCodexHookWritePolicy }
  *   and the frozen ones are trusted by codex itself through the app-server grant.
  * - 'unavailable': the grant lane could not trust the entry (old binary,
  *   unsupported RPC, verify failure), or its retry window is still open. An
- *   entry the attempt wrote that is still untrusted is withdrawn.
+ *   entry the attempt wrote that is still untrusted is withdrawn. Also final
+ *   when Codex's default home is not Orca's ~/.codex; nothing is written then.
  * - 'removed': hooks are off here. Launch prep leaves the real home as it is;
  *   only an explicit opt-out strips Orca's entry, since other Orcas share it.
  */
@@ -104,7 +106,12 @@ export function setRealHomeCodexHooksEnabledReader(read: () => boolean): void {
  * diverge from PTY, rate-limit, or commit-message routing.
  */
 export function isRealHomeCodexHookLaneUsable(): boolean {
-  return approval === null && verdict !== 'unavailable' && verdict !== 'approving'
+  return (
+    approval === null &&
+    verdict !== 'unavailable' &&
+    verdict !== 'approving' &&
+    isSystemCodexHomeCodexDefault()
+  )
 }
 
 /**
@@ -148,6 +155,11 @@ async function reconcileRealHomeCodexHook(
     // Why: a launch never waits on Codex's approval, and the running one covers
     // add-missing. App start's conversion is the process's first check, so none waits here.
     return (verdict = 'approving')
+  }
+  if (!isSystemCodexHomeCodexDefault()) {
+    // Why: Codex's own default home is not the one Orca would write; touching
+    // either would split the entry from its trust, so stay on the managed lane.
+    return (verdict = 'unavailable')
   }
   if (!intent.hooksEnabled) {
     // Why: this runs for launch prep and startup, and the entry is shared by
