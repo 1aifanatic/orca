@@ -27,7 +27,7 @@ import { journalPathSegment } from '../agent-session-journal/journal-paths'
 import {
   ChunkedUploadRegistry,
   nextChunkedUploadLength
-} from '../../runtime/chunked-upload-registry'
+} from './chunked-upload-registry'
 
 export const AGENT_SESSION_ATTACHMENT_PART_FILE = '.upload.part'
 const UPLOAD_MAX_CONCURRENT = 8
