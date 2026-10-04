@@ -70,6 +70,8 @@ export type RuntimeWorktreePsSummary = {
   unread: boolean
   liveTerminalCount: number
   hasAttachedPty: boolean
+  /** Terminals whose host lost contact; they are not in `liveTerminalCount`, and not exited either. */
+  unverifiableTerminalCount?: number
   lastOutputAt: number | null
   preview: string
   status: RuntimeWorktreeStatus
