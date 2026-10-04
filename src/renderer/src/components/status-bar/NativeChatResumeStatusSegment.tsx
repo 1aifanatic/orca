@@ -13,8 +13,8 @@ import {
 // Why: closing the resume dialog is a snooze, not a decline — the host keeps the offer. This is
 // then the only surface left carrying it, so it is always rendered rather than gated by
 // `statusBarItems`. Pressing Resume closes the dialog too, so this entry carries the run while it
-// is in flight. It is also the one summary of chats the resume could not carry on; each chat it
-// reached carries its own note, and a chat a lost request never reached has only this entry.
+// is in flight. It is also the lasting summary of chats the resume could not carry on: a click's
+// toast says so once, and each chat it reached carries its own note.
 
 /** Re-reads the host before opening so the dialog always reflects the current durable records.
  *  Opening the chat itself is read-only and does not retire the offer. */

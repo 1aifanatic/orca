@@ -14842,6 +14842,15 @@
         "noMatches": "No hay coincidencias."
       },
       "NativeChatResumeOnRestartModal": {
+        "continuedOne": "Se reanudó 1 chat y se le pidió que continuara",
+        "continuedMany": "Se reanudaron {{value0}} chats y se les pidió que continuaran",
+        "notContinuedOne": "1 chat no pudo reanudarse",
+        "notContinuedMany": "{{value0}} chats no pudieron reanudarse",
+        "notConfirmedOne": "No se pudo confirmar que 1 chat se reanudó",
+        "notConfirmedMany": "No se pudo confirmar que {{value0}} chats se reanudaron",
+        "notConfirmedOtherOne": "No se pudo confirmar que 1 otro chat se reanudó",
+        "notConfirmedOtherMany": "No se pudo confirmar que {{value0}} otros chats se reanudaron",
+        "show": "Mostrar",
         "activityApproval": "Esperando tu aprobación: {{value0}}",
         "activityMidReply": "Estaba respondiendo",
         "activityMonitorMany": "Supervisando {{value0}} tareas en segundo plano",

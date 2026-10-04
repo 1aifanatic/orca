@@ -7,6 +7,10 @@ import {
 import type { AgentSessionStatusSummary } from '../../../shared/agent-session-wire'
 import { useAppStore } from '../store'
 import {
+  announceRestartResults,
+  type RestartContinuationOutcome
+} from './native-chat-restart-action-notifications'
+import {
   allResumeSessionIds,
   type ResumeCandidate,
   type ResumeFailure
@@ -266,9 +270,10 @@ export async function refreshNativeChatRestartOffer(): Promise<
  * whatever it still offers rather than on a list this side captured a moment earlier, and passes
  * `reported` instead: the chats the status bar shows as resuming.
  *
- * Says nothing itself: each chat's own note tells what happened to it, and the status bar keeps
- * whatever the host still lists. Never rejects; a lost answer is followed by a re-read, never a retry.
- * The chats a rejected request named and the host still offers show as failed, with Retry.
+ * A click ends in one toast saying what it did across those chats; an opted-in launch raises none,
+ * leaving each chat's note and the status bar to say it. Never rejects; a lost answer is followed by
+ * a re-read, never a retry. The chats a rejected request named and the host still offers show as
+ * failed, with Retry.
  */
 export async function continueNativeChatRestartOffer(
   sessionIds: readonly string[] | undefined,
@@ -277,32 +282,37 @@ export async function continueNativeChatRestartOffer(
   actionsBegun += 1
   forgetUnsentResumes(sessionIds)
   const batch = [...reported]
+  let outcome: Parameters<typeof announceRestartResults> | undefined
   resumeBatches.add(batch)
   syncResuming()
   try {
-    const result = await callStructuredAgentSession<HostOfferPayload>(
-      LOCAL,
-      'agentSession.restartContinue',
-      sessionIds ? { sessionIds } : {}
-    )
+    const result = await callStructuredAgentSession<
+      HostOfferPayload & { continued?: RestartContinuationOutcome[] }
+    >(LOCAL, 'agentSession.restartContinue', sessionIds ? { sessionIds } : {})
+    const failed = failedFrom(result)
     if (Array.isArray(result.sessions)) {
-      publishAnswer({
-        candidates: result.sessions,
-        failed: failedFrom(result),
-        listedAt: Date.now()
-      })
+      publishAnswer({ candidates: result.sessions, failed, listedAt: Date.now() })
     } else {
       await refreshNativeChatRestartOffer()
     }
+    const listed = Array.isArray(result.failed) ? failed : undefined
+    outcome = [batch, result.continued, listed, requestNativeChatResumeOnRestartDialog]
   } catch (error) {
     // The row's reason is this side's own code, so the real error is kept in the log.
     console.warn('[native-chat-resume] resume request failed before reaching the chats', error)
     markUnsentResumes(batch, Date.now())
-    await refreshNativeChatRestartOffer()
+    const read = await readNativeChatRestartOffer()
+    // Nothing reached the chats, so each is a failure of this click as the list now shows it.
+    const listed = read.available ? offer.failed : undefined
+    outcome = [batch, [], listed, requestNativeChatResumeOnRestartDialog]
   } finally {
     actionsSettled += 1
     resumeBatches.delete(batch)
     syncResuming()
+  }
+  // Only a click names chats; an opted-in launch leaves it to each chat's note and the status bar.
+  if (sessionIds && outcome) {
+    announceRestartResults(...outcome)
   }
 }
 

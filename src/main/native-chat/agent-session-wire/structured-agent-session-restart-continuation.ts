@@ -258,7 +258,7 @@ async function noteOutcome(
   }
 }
 
-/** The chat itself carries the failure, so it survives a dismissed record and a restart,
+/** The chat itself carries the failure, so it survives the toast, a dismissed record and a restart,
  *  and the user's next message is what moves past it. */
 async function noteNotContinued(
   deps: Pick<StructuredAgentSessionContinuationDeps, 'note' | 'logger'>,
