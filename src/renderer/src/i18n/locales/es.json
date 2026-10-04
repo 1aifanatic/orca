@@ -15085,6 +15085,7 @@
         "noSkills": "Sin habilidades coincidentes",
         "localAttachmentUnsupported": "Los archivos adjuntos locales no están disponibles para sesiones remotas.",
         "attachFailed": "No se pudo adjuntar {{files}}.",
+        "attachFailedBecause": "No se pudo adjuntar {{files}}. {{reason}}",
         "uploadingFile": "Subiendo {{name}}…",
         "removeAttachment": "Quitar archivo adjunto",
         "pastedImageLabel": "Imagen pegada",

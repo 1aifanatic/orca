@@ -1,4 +1,6 @@
 import { basename } from '@/lib/path'
+import { extractIpcErrorMessage } from '@/lib/ipc-error'
+import { describeDropSkipReason } from '@/lib/drop-skip-reason-copy'
 import { isNativeChatImageAttachmentPath } from './native-chat-image-paste'
 import {
   nativeChatAttachFailedNotice,
@@ -14,6 +16,8 @@ export type NativeChatPendingAttachmentChips = {
   resolve: (id: string, path: string, connectionId?: string | null) => void
   /** Removes the chip; false when the user already removed it, so its file must not attach. */
   drop: (id: string) => boolean
+  /** Inserts stored files as `@path` references, into the draft wherever the composer is now. */
+  attachReferences: (paths: string[]) => void
 }
 
 /**
@@ -29,7 +33,6 @@ export async function attachNativeChatSessionAttachmentPaths(args: {
   /** The composer was disabled or torn down meanwhile. */
   isAbandoned: () => boolean
   ownerStillCurrent: () => boolean
-  attachResolvedPaths: (paths: string[], connectionId?: string | null) => void
   setNotice: (notice: string | null) => void
 }): Promise<void> {
   const pending = args.paths.flatMap((path) => {
@@ -45,11 +48,8 @@ export async function attachNativeChatSessionAttachmentPaths(args: {
       args.chips.drop(chipId)
     }
   }
-  const failAll = (): void => {
-    dropAll()
-    args.setNotice(nativeChatAttachFailedNotice(pending.map(({ path }) => basename(path))))
-  }
   let stored: Map<string, string>
+  let reasons: Map<string, string>
   try {
     const prepared = await prepareNativeChatSessionAttachmentUpload(args.owner)
     if (!prepared.ok) {
@@ -62,11 +62,18 @@ export async function attachNativeChatSessionAttachmentPaths(args: {
       prepared.target
     )
     stored = new Map(result.uploaded.map(({ sourcePath, path }) => [sourcePath, path]))
-  } catch {
-    if (!args.isAbandoned()) {
-      failAll()
-    }
-    return
+    reasons = new Map([
+      ...result.skipped.map(({ sourcePath, reason }): [string, string] => [
+        sourcePath,
+        describeDropSkipReason(reason) ?? reason
+      ]),
+      ...result.failed.map(({ sourcePath, reason }): [string, string] => [sourcePath, reason])
+    ])
+  } catch (error) {
+    // Every file failed for the same cause.
+    stored = new Map()
+    const cause = extractIpcErrorMessage(error, '')
+    reasons = new Map(pending.map(({ path }) => [path, cause]))
   }
   if (args.isAbandoned()) {
     dropAll()
@@ -77,13 +84,13 @@ export async function attachNativeChatSessionAttachmentPaths(args: {
     args.setNotice(nativeChatAttachmentOwnerChangedNotice())
     return
   }
-  const notAttached: string[] = []
+  const notAttached: { name: string; reason: string }[] = []
   const references: string[] = []
   for (const { path, chipId } of pending) {
     const storedPath = stored.get(path)
     if (!storedPath) {
       if (args.chips.drop(chipId)) {
-        notAttached.push(basename(path))
+        notAttached.push({ name: basename(path), reason: reasons.get(path) ?? '' })
       }
       continue
     }
@@ -97,8 +104,18 @@ export async function attachNativeChatSessionAttachmentPaths(args: {
     }
   }
   // Attaching clears the notice, so what failed is said after.
-  args.attachResolvedPaths(references, null)
+  if (references.length > 0) {
+    args.chips.attachReferences(references)
+  }
   if (notAttached.length > 0) {
-    args.setNotice(nativeChatAttachFailedNotice(notAttached))
+    // A cause every file shares is said once, after their names.
+    const [first] = notAttached
+    const shared = notAttached.every(({ reason }) => reason === first?.reason) ? first?.reason : ''
+    args.setNotice(
+      nativeChatAttachFailedNotice(
+        notAttached.map(({ name }) => name),
+        shared
+      )
+    )
   }
 }

@@ -17491,6 +17491,7 @@
         "noSkills": "一致するスキルがありません",
         "localAttachmentUnsupported": "ローカル添付ファイルはリモートセッションでは使用できません。",
         "attachFailed": "{{files}} を添付できませんでした。",
+        "attachFailedBecause": "{{files}} を添付できませんでした。{{reason}}",
         "uploadingFile": "{{name}} をアップロードしています…",
         "removeAttachment": "添付ファイルを削除する",
         "pastedImageLabel": "貼り付けた画像",

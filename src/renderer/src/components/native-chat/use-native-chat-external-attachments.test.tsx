@@ -49,7 +49,12 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
 }
 
 function noPendingChips(): NativeChatPendingAttachmentChips {
-  return { begin: vi.fn(() => null), resolve: vi.fn(), drop: vi.fn(() => true) }
+  return {
+    begin: vi.fn(() => null),
+    resolve: vi.fn(),
+    drop: vi.fn(() => true),
+    attachReferences: vi.fn()
+  }
 }
 
 function Probe({
@@ -486,7 +491,8 @@ describe('useNativeChatExternalAttachments', () => {
           return `chip-${begun.length}`
         }),
         resolve: vi.fn(),
-        drop: vi.fn((id: string) => !removed.has(id))
+        drop: vi.fn((id: string) => !removed.has(id)),
+        attachReferences: vi.fn()
       }
     }
 
@@ -497,7 +503,10 @@ describe('useNativeChatExternalAttachments', () => {
       return {
         uploaded: pairs.map(([sourcePath, path]) => ({ sourcePath, path })),
         skipped: [],
-        failed: failed.map((sourcePath) => ({ sourcePath, reason: 'upload failed' }))
+        failed: failed.map((sourcePath) => ({
+          sourcePath,
+          reason: `'${sourcePath.split('/').at(-1)}' is 60 MB, over the 50 MB chat attachment limit`
+        }))
       }
     }
 
@@ -544,10 +553,9 @@ describe('useNativeChatExternalAttachments', () => {
         null
       )
       expect(chips.drop).toHaveBeenCalledExactlyOnceWith('chip-2')
-      expect(attachResolvedPaths).toHaveBeenCalledExactlyOnceWith(
-        ['/srv/agent-session-attachments/u2/notes.md'],
-        null
-      )
+      expect(chips.attachReferences).toHaveBeenCalledExactlyOnceWith([
+        '/srv/agent-session-attachments/u2/notes.md'
+      ])
       expect(mocks.authorizeExternalPath).not.toHaveBeenCalled()
     })
 
@@ -574,10 +582,9 @@ describe('useNativeChatExternalAttachments', () => {
         )
       )
 
-      expect(attachResolvedPaths).toHaveBeenCalledExactlyOnceWith(
-        ['/srv/agent-session-attachments/u2/notes.md'],
-        null
-      )
+      expect(chips.attachReferences).toHaveBeenCalledExactlyOnceWith([
+        '/srv/agent-session-attachments/u2/notes.md'
+      ])
     })
 
     it('names, in one notice, each file that did not attach', async () => {
@@ -603,11 +610,13 @@ describe('useNativeChatExternalAttachments', () => {
       )
 
       expect(chips.drop).toHaveBeenCalledWith('chip-1')
-      expect(attachResolvedPaths).toHaveBeenCalledExactlyOnceWith(
-        ['/srv/agent-session-attachments/u2/notes.md'],
-        null
-      )
-      expect(notices).toEqual(["Couldn't attach huge.mov."])
+      expect(chips.attachReferences).toHaveBeenCalledExactlyOnceWith([
+        '/srv/agent-session-attachments/u2/notes.md'
+      ])
+      // The cause, the size limit here, rides in the same notice.
+      expect(notices).toEqual([
+        "Couldn't attach huge.mov. 'huge.mov' is 60 MB, over the 50 MB chat attachment limit."
+      ])
       expect(mocks.toastLoading).not.toHaveBeenCalled()
     })
 
@@ -631,7 +640,7 @@ describe('useNativeChatExternalAttachments', () => {
 
       expect(mocks.uploadNativeChatSessionAttachmentPaths).not.toHaveBeenCalled()
       expect(chips.drop).toHaveBeenCalledExactlyOnceWith('chip-1')
-      expect(attachResolvedPaths).not.toHaveBeenCalled()
+      expect(chips.attachReferences).not.toHaveBeenCalled()
       expect(notices.at(-1)).toBe('needs newer server')
     })
 
@@ -655,8 +664,8 @@ describe('useNativeChatExternalAttachments', () => {
 
       expect(chips.resolve).not.toHaveBeenCalled()
       expect(chips.drop).toHaveBeenCalledExactlyOnceWith('chip-1')
-      expect(attachResolvedPaths).not.toHaveBeenCalled()
-      expect(notices).toEqual(["Couldn't attach shot.png."])
+      expect(chips.attachReferences).not.toHaveBeenCalled()
+      expect(notices).toEqual(["Couldn't attach shot.png. Runtime environment changed."])
     })
 
     it('keeps a local structured chat on the worktree owner', async () => {

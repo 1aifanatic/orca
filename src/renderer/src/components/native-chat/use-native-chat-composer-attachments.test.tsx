@@ -8,6 +8,7 @@ import {
   useNativeChatComposerAttachments
 } from './use-native-chat-composer-attachments'
 import type { NativeChatResolvedTarget } from './native-chat-composer-target'
+import { readNativeChatDraftCache } from './native-chat-draft-cache'
 import { NATIVE_FILE_DROP_MAX_PATHS } from '../../../../shared/native-file-drop'
 
 vi.mock('@/i18n/i18n', () => ({
@@ -460,6 +461,39 @@ describe('useNativeChatComposerAttachments', () => {
     expect(live).toEqual([false, true])
     expect(probe.latest().imageAttachments).toEqual([])
     act(() => probe.root.unmount())
+  })
+
+  it('keeps an upload that finishes while the composer is unmounted, for when it returns', async () => {
+    const probe = await renderProbe('pty-gone')
+    const chips = probe.latest().pendingChips
+    const begun: { image?: string | null; removed?: string | null } = {}
+    act(() => {
+      begun.image = chips.begin(undefined, 'shot.png')
+      begun.removed = chips.begin(undefined, 'old.png')
+    })
+    const { image, removed } = begun
+    if (!image || !removed) {
+      throw new Error('expected pending chips')
+    }
+    act(() => probe.latest().removeImageAttachment(removed))
+    // A prompt card took the composer's place while the files uploaded.
+    act(() => probe.root.unmount())
+
+    chips.resolve(image, '/srv/agent-session-attachments/u1/shot.png')
+    chips.resolve(removed, '/srv/agent-session-attachments/u2/old.png')
+    chips.attachReferences(['/srv/agent-session-attachments/u3/notes.pdf'])
+
+    expect(readNativeChatAttachmentCache('pty-gone')).toEqual([
+      { id: image, path: '/srv/agent-session-attachments/u1/shot.png' }
+    ])
+    expect(readNativeChatDraftCache('pty-gone')).toBe(
+      '@/srv/agent-session-attachments/u3/notes.pdf'
+    )
+    const back = await renderProbe('pty-gone')
+    expect(back.latest().imageAttachments).toMatchObject([
+      { path: '/srv/agent-session-attachments/u1/shot.png' }
+    ])
+    act(() => back.root.unmount())
   })
 
   it('excludes a pending chip from the scope cache while a settled chip persists', async () => {

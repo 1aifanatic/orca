@@ -46,7 +46,11 @@ export type NativeChatClipboardImageFailureCause = 'serverTooOld' | 'failed'
 /** Save the clipboard image where the owner's agent can read it. Every failure is reported. */
 export async function saveNativeChatClipboardImage(
   owner: NativeChatAttachmentOwner,
-  report: { setNotice: (notice: string, cause: NativeChatClipboardImageFailureCause) => void }
+  report: {
+    setNotice: (notice: string, cause: NativeChatClipboardImageFailureCause) => void
+    /** The image has somewhere to go, now that any server it goes to has said it takes one. */
+    ready?: () => void
+  }
 ): Promise<{ status: 'saved'; tempPath: string } | { status: 'empty' | 'failed' }> {
   if (!ownerAcceptsClipboardImage(owner)) {
     report.setNotice(nativeChatLocalAttachmentUnsupportedNotice(), 'failed')
@@ -60,6 +64,7 @@ export async function saveNativeChatClipboardImage(
       report.setNotice(target.notice, target.cause)
       return { status: 'failed' }
     }
+    report.ready?.()
     const tempPath = await window.api.ui.saveClipboardImageAsTempFile(target.args)
     return tempPath ? { status: 'saved', tempPath } : { status: 'empty' }
   } catch (error) {

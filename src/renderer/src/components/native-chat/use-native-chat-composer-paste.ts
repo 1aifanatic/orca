@@ -90,8 +90,13 @@ export function useNativeChatComposerPaste({
   // Image failures do not decide whether text can be inserted. Beside pasted text, a server too old
   // to store the image drops only the image rendition, as an owner that takes no images does.
   const saveClipboardImageForOwner = useCallback(
-    (owner: NativeChatAttachmentOwner, besidePastedText: () => Promise<boolean>) =>
+    (
+      owner: NativeChatAttachmentOwner,
+      besidePastedText: () => Promise<boolean>,
+      ready?: () => void
+    ) =>
       saveNativeChatClipboardImage(owner, {
+        ready,
         setNotice: (notice, cause) => {
           void (cause === 'serverTooOld' ? besidePastedText() : Promise.resolve(false)).then(
             (quiet) => {
@@ -180,18 +185,31 @@ export function useNativeChatComposerPaste({
       const caretAtPaste = caret
       // The clipboard blob is already in this process, so the chip can show the
       // real image on the same tick the paste happens — no round-trip at all.
-      const previewUrl = ownerAcceptsClipboardImage(owner)
-        ? URL.createObjectURL(imageFile)
-        : undefined
-      const pendingId = previewUrl ? beginPendingImageAttachment(previewUrl) : null
-      if (previewUrl && !pendingId) {
-        URL.revokeObjectURL(previewUrl)
+      let pendingId: string | null = null
+      const showChip = (): void => {
+        if (!ownerAcceptsClipboardImage(owner) || !canPaste()) {
+          return
+        }
+        const previewUrl = URL.createObjectURL(imageFile)
+        pendingId = beginPendingImageAttachment(previewUrl)
+        if (pendingId) {
+          lifetime.pending.set(pendingId, previewUrl)
+        } else {
+          URL.revokeObjectURL(previewUrl)
+        }
       }
-      if (pendingId) {
-        lifetime.pending.set(pendingId, previewUrl ?? '')
+      // Beside pasted text, a server too old to store the image drops it quietly, so its chip waits
+      // for the server's answer instead of flashing.
+      const awaitServer = Boolean(text) && owner.kind === 'runtime-session'
+      if (!awaitServer) {
+        showChip()
       }
       void (async () => {
-        const saved = await saveClipboardImageForOwner(owner, async () => Boolean(text))
+        const saved = await saveClipboardImageForOwner(
+          owner,
+          async () => Boolean(text),
+          awaitServer ? showChip : undefined
+        )
         if (saved.status !== 'saved' || !canPaste()) {
           if (pendingId) {
             lifetime.pending.delete(pendingId)

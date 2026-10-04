@@ -73,7 +73,7 @@ async function renderPaste(args: {
   attachResolvedPaths?: (...args: unknown[]) => void
   insertTypedText?: (text: string) => boolean
   setNotice?: (notice: string | null) => void
-}): Promise<{ api: () => HookApi; chips: Chip[] }> {
+}): Promise<{ api: () => HookApi; chips: Chip[]; begun: () => number }> {
   const chips: Chip[] = []
   let counter = 0
   let api: HookApi | null = null
@@ -119,7 +119,8 @@ async function renderPaste(args: {
       }
       return api
     },
-    chips
+    chips,
+    begun: () => counter
   }
 }
 
@@ -163,7 +164,7 @@ describe('pasting into a structured chat on a paired server', () => {
     expect(probe.chips).toEqual([{ id: 'chip-1', path: storedPath, pending: false }])
   })
 
-  it('keeps the image of a paste that also carries text', async () => {
+  it('keeps the image of a paste that also carries text, its chip shown once the server takes it', async () => {
     const insertTypedText = vi.fn(() => true)
     const probe = await renderPaste({ insertTypedText })
     await act(async () => probe.api().handlePaste(imagePasteEvent('caption')))
@@ -211,7 +212,8 @@ describe('pasting into a structured chat on a paired server', () => {
     await act(async () => probe.api().handlePaste(imagePasteEvent('caption')))
     expect(insertTypedText).toHaveBeenCalledWith('caption')
     expect(setNotice).not.toHaveBeenCalledWith('needs newer server')
-    expect(probe.chips).toHaveLength(0)
+    // No chip ever showed, so none flashed and vanished.
+    expect(probe.begun()).toBe(0)
   })
 
   it('pastes rich text from the button into a chat on an older server without a refusal', async () => {

@@ -161,11 +161,20 @@ export function nativeChatAttachmentUnreadableNotice(): string {
   )
 }
 
-/** One notice for every file of a drop or pick that did not attach, by name. */
-export function nativeChatAttachFailedNotice(names: readonly string[]): string {
-  return translate('components.native-chat.composer.attachFailed', "Couldn't attach {{files}}.", {
-    files: names.join(', ')
-  })
+/** One notice for every file of a drop or pick that did not attach, by name, with the cause they
+ *  share when there is one. */
+export function nativeChatAttachFailedNotice(names: readonly string[], cause = ''): string {
+  const files = names.join(', ')
+  const reason = cause.trim().replace(/[^.!?]$/, '$&.')
+  return reason
+    ? translate(
+        'components.native-chat.composer.attachFailedBecause',
+        "Couldn't attach {{files}}. {{reason}}",
+        { files, reason }
+      )
+    : translate('components.native-chat.composer.attachFailed', "Couldn't attach {{files}}.", {
+        files
+      })
 }
 
 export function nativeChatLocalAttachmentUnsupportedNotice(): string {

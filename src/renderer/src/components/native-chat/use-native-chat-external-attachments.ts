@@ -135,7 +135,6 @@ export function useNativeChatExternalAttachments({
           chips: pendingChipsRef.current,
           isAbandoned: () => disabledRef.current,
           ownerStillCurrent,
-          attachResolvedPaths,
           setNotice
         })
         return

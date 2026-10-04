@@ -1,5 +1,5 @@
 import type { NativeChatComposerInput } from './native-chat-composer-input'
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import {
   nativeChatComposerTargetIsRemote,
   type NativeChatResolvedTarget
@@ -9,6 +9,7 @@ import { setBoundedScopeCacheEntry } from './native-chat-composer-scope-cache'
 import type { NativeChatResolvedPathOptions } from './native-chat-resolved-path-ownership'
 import { useNativeChatResolvedPathAttachments } from './use-native-chat-resolved-path-attachments'
 import { nativeChatLocalAttachmentUnsupportedNotice } from './native-chat-attachment-upload'
+import { useNativeChatPendingAttachmentChips } from './use-native-chat-pending-attachment-chips'
 import type { NativeChatPendingAttachmentChips } from './native-chat-session-attachment-drop'
 
 export type UseNativeChatComposerAttachmentsArgs = {
@@ -190,14 +191,14 @@ export function useNativeChatComposerAttachments({
     [updateImageAttachments]
   )
 
-  const pendingChips = useMemo(
-    () => ({
-      begin: beginPendingImageAttachment,
-      resolve: resolvePendingImageAttachment,
-      drop: dropPendingImageAttachment
-    }),
-    [beginPendingImageAttachment, dropPendingImageAttachment, resolvePendingImageAttachment]
-  )
+  const pendingChips = useNativeChatPendingAttachmentChips({
+    scopeKey: attachmentScopeKey,
+    livePendingChipIds,
+    begin: beginPendingImageAttachment,
+    resolve: resolvePendingImageAttachment,
+    drop: dropPendingImageAttachment,
+    attachResolvedPaths
+  })
 
   return {
     pendingChips,

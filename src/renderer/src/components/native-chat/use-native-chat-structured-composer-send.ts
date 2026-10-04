@@ -45,7 +45,8 @@ export function useNativeChatStructuredComposerSend({
   }, [draft, imageAttachments])
   return useCallback(
     (text: string, attachments = imageAttachments): void => {
-      if (!structuredTransport) {
+      // A picked command is held like Send: it would carry attachments still uploading, pathless.
+      if (!structuredTransport || attachments.some((attachment) => attachment.pending)) {
         return
       }
       const hostCommand =
