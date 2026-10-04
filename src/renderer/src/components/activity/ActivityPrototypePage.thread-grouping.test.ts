@@ -120,11 +120,7 @@ describe('activity thread grouping', () => {
       acknowledgedAgentsByPaneKey: {},
       now: 3_000
     })
-    const threads = buildAgentPaneThreads({
-      events,
-      liveAgentByPaneKey,
-      acknowledgedAgentsByPaneKey: {}
-    })
+    const threads = buildAgentPaneThreads({ events, liveAgentByPaneKey })
     const groups = buildActivityThreadGroups(threads, 'status')
 
     expect(groups).toHaveLength(2)
@@ -158,11 +154,7 @@ describe('activity thread grouping', () => {
       acknowledgedAgentsByPaneKey: {},
       now: 1_000
     })
-    const threads = buildAgentPaneThreads({
-      events,
-      liveAgentByPaneKey,
-      acknowledgedAgentsByPaneKey: {}
-    })
+    const threads = buildAgentPaneThreads({ events, liveAgentByPaneKey })
     const group = getActivityThreadGroup(threads[0], 'project')
 
     expect(group).toEqual({ key: 'project:unknown', label: 'Unknown project' })
@@ -236,11 +228,7 @@ describe('activity thread grouping', () => {
       acknowledgedAgentsByPaneKey: {},
       now: 3_000
     })
-    const threads = buildAgentPaneThreads({
-      events,
-      liveAgentByPaneKey,
-      acknowledgedAgentsByPaneKey: {}
-    })
+    const threads = buildAgentPaneThreads({ events, liveAgentByPaneKey })
     const groups = buildActivityThreadGroups(threads, 'worktree')
 
     expect(groups.map((group) => group.key)).toEqual(['worktree:wt-a', 'worktree:wt-b'])

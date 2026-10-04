@@ -9,7 +9,6 @@ import { NativeChatBackgroundTasksStatus } from '@/components/native-chat/Native
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { CompactAgentRow } from './worktree-card-compact-agent-row'
 import { buildSubagentChildRows } from './worktree-subagent-child-rows'
-import { acknowledgedAgentRow } from '@/lib/agent-entry-acknowledgement'
 
 vi.mock('@/components/dashboard/use-agent-row-conversation-name', () => ({
   useAgentRowConversationName: () => null
@@ -80,11 +79,7 @@ function compactMarkup(parent: AgentStatusEntry, parentIsFresh: boolean): string
     normalize(
       renderToStaticMarkup(
         <TooltipProvider>
-          <CompactAgentRow
-            agent={acknowledgedAgentRow(agent, undefined)}
-            now={NOW}
-            onActivate={() => {}}
-          />
+          <CompactAgentRow agent={agent} now={NOW} onActivate={() => {}} />
         </TooltipProvider>
       )
     )
@@ -97,7 +92,7 @@ function fullMarkup(parent: AgentStatusEntry, parentIsFresh: boolean): string[] 
       renderToStaticMarkup(
         <TooltipProvider>
           <DashboardAgentRow
-            agent={acknowledgedAgentRow(agent, undefined)}
+            agent={agent}
             now={NOW}
             onActivate={() => {}}
             onDismiss={() => {}}

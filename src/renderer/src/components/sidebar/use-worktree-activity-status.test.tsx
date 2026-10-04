@@ -20,7 +20,6 @@ type MockState = {
   runtimeAgentOrchestrationByPaneKey: Record<string, NonNullable<AgentStatusEntry['orchestration']>>
   migrationUnsupportedByPtyId: Record<string, never>
   retainedAgentsByPaneKey: Record<string, unknown>
-  acknowledgedAgentsByPaneKey: Record<string, number>
 }
 
 let mockState: MockState
@@ -114,8 +113,7 @@ describe('useWorktreeActivityStatus', () => {
       agentStatusByPaneKey: {},
       runtimeAgentOrchestrationByPaneKey: {},
       migrationUnsupportedByPtyId: {},
-      retainedAgentsByPaneKey: {},
-      acknowledgedAgentsByPaneKey: {}
+      retainedAgentsByPaneKey: {}
     }
   })
 

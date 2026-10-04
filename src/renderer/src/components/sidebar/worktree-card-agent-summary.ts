@@ -1,11 +1,11 @@
 import type { AgentDotState } from '@/components/AgentStateDot'
-import type { AcknowledgedAgentRow } from '@/lib/agent-entry-acknowledgement'
+import type { DashboardAgentRow as DashboardAgentRowData } from '@/components/dashboard/useDashboardData'
 import { formatAgentTypeLabel } from '@/lib/agent-status'
 import { agentRowDisplayDotState } from '@/lib/agent-row-dot-state'
 
 export type SummaryAgentGroup = {
   state: AgentDotState
-  agents: AcknowledgedAgentRow[]
+  agents: DashboardAgentRowData[]
 }
 
 const SUMMARY_STATE_ORDER: AgentDotState[] = [
@@ -24,7 +24,7 @@ const SUMMARY_STATE_ORDER: AgentDotState[] = [
   'idle'
 ]
 
-export function getAgentDotState(agent: AcknowledgedAgentRow): AgentDotState {
+export function getAgentDotState(agent: DashboardAgentRowData): AgentDotState {
   return agentRowDisplayDotState(agent)
 }
 
@@ -55,8 +55,8 @@ export function formatSummaryStateLabel(state: AgentDotState): string {
   }
 }
 
-export function buildSummaryAgentGroups(agents: AcknowledgedAgentRow[]): SummaryAgentGroup[] {
-  const groups = new Map<AgentDotState, AcknowledgedAgentRow[]>()
+export function buildSummaryAgentGroups(agents: DashboardAgentRowData[]): SummaryAgentGroup[] {
+  const groups = new Map<AgentDotState, DashboardAgentRowData[]>()
   for (const agent of agents) {
     const dotState = getAgentDotState(agent)
     const group = groups.get(dotState)
@@ -72,7 +72,7 @@ export function buildSummaryAgentGroups(agents: AcknowledgedAgentRow[]): Summary
   })
 }
 
-export function summarizeAgents(agents: AcknowledgedAgentRow[], subjectLabel: string): string {
+export function summarizeAgents(agents: DashboardAgentRowData[], subjectLabel: string): string {
   const counts = new Map<AgentDotState, number>()
   for (const agent of agents) {
     const dotState = getAgentDotState(agent)
@@ -95,7 +95,7 @@ export function summarizeAgents(agents: AcknowledgedAgentRow[], subjectLabel: st
   return `${subjectLabel}: ${parts.join(', ')}`
 }
 
-export function summarizeAgentIdentities(agents: AcknowledgedAgentRow[]): string {
+export function summarizeAgentIdentities(agents: DashboardAgentRowData[]): string {
   return agents
     .map((agent) => {
       const agentLabel = formatAgentTypeLabel(agent.agentType)
@@ -106,10 +106,10 @@ export function summarizeAgentIdentities(agents: AcknowledgedAgentRow[]): string
 }
 
 export function selectSummaryGroupIconAgents(
-  agents: AcknowledgedAgentRow[],
+  agents: DashboardAgentRowData[],
   maxCount: number
-): AcknowledgedAgentRow[] {
-  const groups = new Map<string, { agents: AcknowledgedAgentRow[]; firstIndex: number }>()
+): DashboardAgentRowData[] {
+  const groups = new Map<string, { agents: DashboardAgentRowData[]; firstIndex: number }>()
   agents.forEach((agent, index) => {
     const key = agent.agentType ?? 'unknown'
     const group = groups.get(key)
@@ -122,7 +122,7 @@ export function selectSummaryGroupIconAgents(
   const sortedGroups = [...groups.values()].sort(
     (a, b) => b.agents.length - a.agents.length || a.firstIndex - b.firstIndex
   )
-  const selected: AcknowledgedAgentRow[] = []
+  const selected: DashboardAgentRowData[] = []
   for (const group of sortedGroups) {
     if (selected.length >= maxCount) {
       break

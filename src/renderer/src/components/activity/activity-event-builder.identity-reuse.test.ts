@@ -67,11 +67,7 @@ function buildBoth(
 ) {
   const result = buildActivityEvents(args, eventCache)
   const threads = buildAgentPaneThreads(
-    {
-      events: result.events,
-      liveAgentByPaneKey: result.liveAgentByPaneKey,
-      acknowledgedAgentsByPaneKey: {}
-    },
+    { events: result.events, liveAgentByPaneKey: result.liveAgentByPaneKey },
     threadCache
   )
   return { ...result, threads }
@@ -244,8 +240,7 @@ describe('activity build identity reuse', () => {
       const cold = buildActivityEvents(scenario)
       const coldThreads = buildAgentPaneThreads({
         events: cold.events,
-        liveAgentByPaneKey: cold.liveAgentByPaneKey,
-        acknowledgedAgentsByPaneKey: {}
+        liveAgentByPaneKey: cold.liveAgentByPaneKey
       })
       expect(cached.events).toEqual(cold.events)
       expect(cached.liveAgentByPaneKey).toEqual(cold.liveAgentByPaneKey)

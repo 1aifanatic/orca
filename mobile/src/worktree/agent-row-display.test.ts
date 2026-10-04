@@ -121,9 +121,8 @@ describe('agentDotState', () => {
           expect(agentRowVerdict(agentRow), JSON.stringify(agentRow)).toBe(
             agentMainAgentVerdict(agentRow)
           )
-          // The phone has no acknowledgement record: it reads every turn as desktop reads one unseen.
           expect(agentRowVerdictMark(agentRow), JSON.stringify(agentRow)).toBe(
-            agentVerdictDisplayMark({ ...agentRow, stateStartedAt: 1, acknowledgedAt: undefined })
+            agentVerdictDisplayMark(agentRow)
           )
         }
       }

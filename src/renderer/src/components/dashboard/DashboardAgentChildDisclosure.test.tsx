@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CompactAgentRow } from '../sidebar/worktree-card-compact-agent-row'
 import { TooltipProvider } from '../ui/tooltip'
 import DashboardAgentRow from './DashboardAgentRow'
-import type { AcknowledgedAgentRow as AgentRow } from '@/lib/agent-entry-acknowledgement'
+import type { DashboardAgentRow as AgentRow } from './useDashboardData'
 import { DashboardAgentChildDisclosure } from './DashboardAgentChildDisclosure'
 
 vi.mock('./use-agent-row-conversation-name', () => ({ useAgentRowConversationName: () => null }))
@@ -26,8 +26,7 @@ const agent: AgentRow = {
     prompt: 'Review the change',
     updatedAt: 60000,
     stateStartedAt: 60000,
-    stateHistory: [],
-    acknowledgedAt: undefined
+    stateHistory: []
   },
   tab: {
     id: 'tab',

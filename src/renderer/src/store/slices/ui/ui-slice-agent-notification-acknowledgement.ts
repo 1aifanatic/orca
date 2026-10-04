@@ -1,7 +1,6 @@
 import type { AppState } from '../../types'
 import { buildAgentNotificationId } from '../../../../../shared/agent-notification-id'
 import { parsePaneKey } from '../../../../../shared/stable-pane-id'
-import { isAgentTurnAcknowledged } from '../../../../../shared/agent-turn-acknowledgement'
 
 export function resolvePaneKeyWorktreeIdFromTabs(state: AppState, paneKey: string): string | null {
   const parsed = parsePaneKey(paneKey)
@@ -29,10 +28,7 @@ export function collectAcknowledgedAgentNotificationId({
   stateStartedAt: number | null | undefined
   previousAckAt: number
 }): void {
-  if (
-    typeof stateStartedAt !== 'number' ||
-    isAgentTurnAcknowledged({ stateStartedAt, acknowledgedAt: previousAckAt })
-  ) {
+  if (typeof stateStartedAt !== 'number' || previousAckAt >= stateStartedAt) {
     return
   }
   const id = buildAgentNotificationId({ worktreeId, paneKey, stateStartedAt })
@@ -49,13 +45,8 @@ export function usableTimestamp(value: unknown): number {
 export function latestAgentTurnTimestamp(entry: {
   stateStartedAt?: number
   stateHistory?: { startedAt?: number }[]
-  mainAgent?: { stateStartedAt?: number }
 }): number {
-  // Why the main agent's clock too: a cut it ended can postdate the row's, and the failed mark reads it.
-  let latest = Math.max(
-    usableTimestamp(entry.stateStartedAt),
-    usableTimestamp(entry.mainAgent?.stateStartedAt)
-  )
+  let latest = usableTimestamp(entry.stateStartedAt)
   // Why history too: Activity renders one event per stateHistory entry, each with its own unread check.
   for (const history of entry.stateHistory ?? []) {
     latest = Math.max(latest, usableTimestamp(history.startedAt))

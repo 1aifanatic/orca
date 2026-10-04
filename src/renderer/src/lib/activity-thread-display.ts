@@ -12,7 +12,6 @@ import {
 } from './agent-row-primary-text'
 import { formatAgentToolPreview } from './agent-row-tool-preview'
 import { agentVerdictStatusLine } from './agent-verdict-status-line'
-import type { AgentTurnAcknowledgement } from '../../../shared/agent-turn-acknowledgement'
 
 // Why: follow-up replies ("yes", "ok proceed") are valid hook prompts but are
 // terrible scan labels for a cross-worktree agent list — treat them as non-titles.
@@ -198,8 +197,7 @@ export function getActivityThreadStatusPreview(
     | 'interrupted'
     | 'mainAgent'
     | 'prompt'
-  > &
-    AgentTurnAcknowledgement,
+  >,
   agentState?: AgentStatusState | null
 ): string {
   const verdictLine = agentVerdictStatusLine(entry)
@@ -235,8 +233,7 @@ export function resolveActivityThreadStatusPreview(
     | 'interrupted'
     | 'mainAgent'
     | 'prompt'
-  > &
-    AgentTurnAcknowledgement,
+  >,
   agentState: AgentStatusState | null | undefined,
   previousPreview?: string
 ): string {

@@ -45,7 +45,6 @@ function createTestThread(overrides: Partial<AgentPaneThread> = {}): AgentPaneTh
   const tab = makeTab()
 
   return {
-    acknowledgedAt: undefined,
     paneKey: 'tab-1:leaf-1',
     tab,
     worktree,

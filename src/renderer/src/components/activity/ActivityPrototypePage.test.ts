@@ -73,11 +73,7 @@ describe('buildActivityEvents', () => {
       acknowledgedAgentsByPaneKey: {},
       now: 100_000
     })
-    const threads = buildAgentPaneThreads({
-      events,
-      liveAgentByPaneKey,
-      acknowledgedAgentsByPaneKey: {}
-    })
+    const threads = buildAgentPaneThreads({ events, liveAgentByPaneKey })
 
     expect(events).toHaveLength(80)
     expect(threads).toHaveLength(18)
@@ -449,8 +445,7 @@ describe('buildActivityEvents', () => {
     const groups = buildActivityThreadGroups(
       buildAgentPaneThreads({
         events: result.events,
-        liveAgentByPaneKey: result.liveAgentByPaneKey,
-        acknowledgedAgentsByPaneKey: {}
+        liveAgentByPaneKey: result.liveAgentByPaneKey
       }),
       'status'
     )

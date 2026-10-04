@@ -10,7 +10,6 @@ import {
   seedWorktreeAgentExpansionStateForTests
 } from './worktree-card-agents-expansion-state'
 import WorktreeCardAgents from './WorktreeCardAgents'
-import { acknowledgedAgentRow } from '@/lib/agent-entry-acknowledgement'
 
 const WORKSPACE = 'acknowledgement-workspace'
 const PANE_A = makePaneKey('tab-a', '11111111-1111-4111-8111-111111111111')
@@ -82,11 +81,9 @@ function agentRow(
 
 function renderLabels(agents: DashboardAgentRow[]): HTMLElement[] {
   const container = document.createElement('div')
-  // The rows as useWorktreeAgentRows hands them over: joined with the store's acknowledgements.
-  const rows = agents.map((agent) => acknowledgedAgentRow(agent, acknowledgements[agent.paneKey]))
   container.innerHTML = renderToStaticMarkup(
     <TooltipProvider>
-      <WorktreeCardAgents worktreeId={WORKSPACE} agents={rows} />
+      <WorktreeCardAgents worktreeId={WORKSPACE} agents={agents} />
     </TooltipProvider>
   )
   return [

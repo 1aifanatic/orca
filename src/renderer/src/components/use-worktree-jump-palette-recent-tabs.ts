@@ -1,8 +1,10 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { buildExplicitEntriesByTabId } from '@/components/sidebar/smart-attention'
+import {
+  buildExplicitEntriesByTabId,
+  type TabPaneInputSources
+} from '@/components/sidebar/smart-attention'
 import {
   orderRecentWorkspaceTabs,
-  type RecentWorkspaceTabPaneSources,
   type RecentWorkspaceTabRow
 } from '@/lib/recent-workspace-tab-rows'
 import type { TerminalTab } from '../../../shared/terminal-tab-types'
@@ -43,7 +45,6 @@ const EMPTY_RECENT_TAB_SNAPSHOT: RecentTabOrderSnapshot = {
 export function useWorktreeJumpPaletteRecentTabs({
   tabsByWorktree,
   agentStatusByPaneKey,
-  acknowledgedAgentsByPaneKey,
   migrationUnsupportedByPtyId,
   ptyIdsByTabId,
   runtimePaneTitlesByTabId,
@@ -98,7 +99,7 @@ export function useWorktreeJumpPaletteRecentTabs({
     }
     return byWorktree
   }, [tabsByWorktree])
-  const recentTabPaneSources = useMemo<RecentWorkspaceTabPaneSources>(
+  const recentTabPaneSources = useMemo<TabPaneInputSources>(
     () => ({
       entriesByTabId: buildExplicitEntriesByTabId(
         agentStatusByPaneKey,
@@ -106,11 +107,9 @@ export function useWorktreeJumpPaletteRecentTabs({
       ),
       ptyIdsByTabId,
       runtimePaneTitlesByTabId,
-      terminalLayoutsByTabId,
-      acknowledgedAgentsByPaneKey
+      terminalLayoutsByTabId
     }),
     [
-      acknowledgedAgentsByPaneKey,
       agentStatusByPaneKey,
       migrationUnsupportedByPtyId,
       ptyIdsByTabId,

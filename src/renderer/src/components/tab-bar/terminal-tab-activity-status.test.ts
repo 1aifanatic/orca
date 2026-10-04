@@ -68,7 +68,6 @@ describe('resolveTerminalTabActivityStatus', () => {
     })
     expect(
       resolveTerminalTabActivityStatus({
-        acknowledgedAgentsByPaneKey: {},
         tab: { id: TAB_ID, title: 'Codex - action required' },
         agentStatusByPaneKey: { [done.paneKey]: done },
         ptyIdsByTabId: LIVE_PTY
@@ -80,7 +79,6 @@ describe('resolveTerminalTabActivityStatus', () => {
     const working = entry(FIRST_LEAF_ID, 'working')
     expect(
       resolveTerminalTabActivityStatus({
-        acknowledgedAgentsByPaneKey: {},
         tab: TAB,
         agentStatusByPaneKey: { [working.paneKey]: working },
         ptyIdsByTabId: LIVE_PTY
@@ -97,7 +95,6 @@ describe('resolveTerminalTabActivityStatus', () => {
       })
       expect(
         resolveTerminalTabActivityStatus({
-          acknowledgedAgentsByPaneKey: {},
           tab: { id: TAB_ID, title: '✋ Gemini CLI' },
           agentStatusByPaneKey: { [stale.paneKey]: stale },
           ptyIdsByTabId: LIVE_PTY,
@@ -112,7 +109,6 @@ describe('resolveTerminalTabActivityStatus', () => {
     const working = entry(SECOND_LEAF_ID, 'working')
     expect(
       resolveTerminalTabActivityStatus({
-        acknowledgedAgentsByPaneKey: {},
         tab: TAB,
         agentStatusByPaneKey: { [monitoring.paneKey]: monitoring },
         ptyIdsByTabId: LIVE_PTY
@@ -120,7 +116,6 @@ describe('resolveTerminalTabActivityStatus', () => {
     ).toBe('monitoring')
     expect(
       resolveTerminalTabActivityStatus({
-        acknowledgedAgentsByPaneKey: {},
         tab: TAB,
         agentStatusByPaneKey: {
           [monitoring.paneKey]: monitoring,
@@ -136,7 +131,6 @@ describe('resolveTerminalTabActivityStatus', () => {
     const waiting = entry(SECOND_LEAF_ID, 'waiting')
     expect(
       resolveTerminalTabActivityStatus({
-        acknowledgedAgentsByPaneKey: {},
         tab: TAB,
         agentStatusByPaneKey: {
           [working.paneKey]: working,
@@ -151,7 +145,6 @@ describe('resolveTerminalTabActivityStatus', () => {
     const done = entry(FIRST_LEAF_ID, 'done')
     expect(
       resolveTerminalTabActivityStatus({
-        acknowledgedAgentsByPaneKey: {},
         tab: TAB,
         agentStatusByPaneKey: { [done.paneKey]: done },
         ptyIdsByTabId: LIVE_PTY
@@ -172,7 +165,6 @@ describe('resolveTerminalTabActivityStatus', () => {
     })
     expect(
       resolveTerminalTabActivityStatus({
-        acknowledgedAgentsByPaneKey: {},
         tab: TAB,
         agentStatusByPaneKey: { [ended.paneKey]: ended },
         ptyIdsByTabId: LIVE_PTY
@@ -180,38 +172,10 @@ describe('resolveTerminalTabActivityStatus', () => {
     ).toBe(status)
   })
 
-  // The chat's own tab agrees with the sidebar beside it: a cut-short turn is news only until seen.
-  it.each([
-    ['interruption', 'failed', 'done'],
-    ['failure', 'failed', 'failed'],
-    ['cancellation', 'interrupted', 'interrupted'],
-    ['superseded', 'interrupted', 'interrupted'],
-    ['unconfirmed', 'unconfirmed', 'unconfirmed']
-  ] as const)(
-    'reads a %s done as %s before the user sees it and %s after',
-    (outcome, unseen, seen) => {
-      const ended = entry(FIRST_LEAF_ID, 'done', {
-        mainAgent: { state: 'done', outcome, stateStartedAt: NOW }
-      })
-      // One status map throughout: an acknowledgement alone must re-read the tab.
-      const agentStatusByPaneKey = { [ended.paneKey]: ended }
-      const statusWith = (acknowledgedAt: number) =>
-        resolveTerminalTabActivityStatus({
-          acknowledgedAgentsByPaneKey: { [ended.paneKey]: acknowledgedAt },
-          tab: TAB,
-          agentStatusByPaneKey,
-          ptyIdsByTabId: LIVE_PTY
-        })
-      expect(statusWith(NOW - 1)).toBe(unseen)
-      expect(statusWith(NOW)).toBe(seen)
-    }
-  )
-
   it("reads an old host's user-stop flag as interrupted", () => {
     const stopped = entry(FIRST_LEAF_ID, 'done', { interrupted: true })
     expect(
       resolveTerminalTabActivityStatus({
-        acknowledgedAgentsByPaneKey: {},
         tab: TAB,
         agentStatusByPaneKey: { [stopped.paneKey]: stopped },
         ptyIdsByTabId: LIVE_PTY
@@ -226,7 +190,6 @@ describe('resolveTerminalTabActivityStatus', () => {
     const finished = entry(SECOND_LEAF_ID, 'done')
     expect(
       resolveTerminalTabActivityStatus({
-        acknowledgedAgentsByPaneKey: {},
         tab: TAB,
         agentStatusByPaneKey: { [failed.paneKey]: failed, [finished.paneKey]: finished },
         ptyIdsByTabId: LIVE_PTY
@@ -240,7 +203,6 @@ describe('resolveTerminalTabActivityStatus', () => {
         mainAgent: { state: 'done', outcome, stateStartedAt: NOW }
       })
       return resolveTerminalTabActivityStatus({
-        acknowledgedAgentsByPaneKey: {},
         tab: TAB,
         agentStatusByPaneKey: { [held.paneKey]: held },
         ptyIdsByTabId: LIVE_PTY
@@ -261,7 +223,6 @@ describe('resolveTerminalTabActivityStatus', () => {
     const finished = entry(SECOND_LEAF_ID, 'done')
     expect(
       resolveTerminalTabActivityStatus({
-        acknowledgedAgentsByPaneKey: {},
         tab: TAB,
         agentStatusByPaneKey: {
           [interrupted.paneKey]: interrupted,
@@ -277,7 +238,6 @@ describe('resolveTerminalTabActivityStatus', () => {
     vi.setSystemTime(31 * 60 * 1000)
     expect(
       resolveTerminalTabActivityStatus({
-        acknowledgedAgentsByPaneKey: {},
         tab: { id: TAB_ID, title: 'Codex working' },
         agentStatusByPaneKey: { [stale.paneKey]: stale },
         ptyIdsByTabId: LIVE_PTY
@@ -289,7 +249,6 @@ describe('resolveTerminalTabActivityStatus', () => {
     const restored = entry(FIRST_LEAF_ID, 'working', { restoredUnconfirmed: true })
     expect(
       resolveTerminalTabActivityStatus({
-        acknowledgedAgentsByPaneKey: {},
         tab: { id: TAB_ID, title: 'Codex working' },
         agentStatusByPaneKey: { [restored.paneKey]: restored },
         ptyIdsByTabId: LIVE_PTY
@@ -301,7 +260,6 @@ describe('resolveTerminalTabActivityStatus', () => {
     const restored = entry(FIRST_LEAF_ID, 'working', { restoredUnconfirmed: true })
     expect(
       resolveTerminalTabActivityStatus({
-        acknowledgedAgentsByPaneKey: {},
         tab: TAB,
         agentStatusByPaneKey: { [restored.paneKey]: restored },
         runtimePaneTitlesByTabId: { [TAB_ID]: { 1: 'Codex working', 2: 'Claude working' } },
@@ -328,7 +286,6 @@ describe('resolveTerminalTabActivityStatus', () => {
     const agentStatusByPaneKey = { [working.paneKey]: working }
     expect(
       resolveTerminalTabActivityStatus({
-        acknowledgedAgentsByPaneKey: {},
         tab: TAB,
         agentStatusByPaneKey,
         agentStatusEpoch: 0,
@@ -340,7 +297,6 @@ describe('resolveTerminalTabActivityStatus', () => {
     // Same map reference, bumped epoch — the entry is now stale.
     expect(
       resolveTerminalTabActivityStatus({
-        acknowledgedAgentsByPaneKey: {},
         tab: TAB,
         agentStatusByPaneKey,
         agentStatusEpoch: 1,
@@ -352,7 +308,6 @@ describe('resolveTerminalTabActivityStatus', () => {
   it('does not treat a preserved title on a sleeping tab as activity', () => {
     expect(
       resolveTerminalTabActivityStatus({
-        acknowledgedAgentsByPaneKey: {},
         tab: { id: TAB_ID, title: 'Codex working' },
         runtimePaneTitlesByTabId: { [TAB_ID]: { 1: 'Codex working' } },
         ptyIdsByTabId: { [TAB_ID]: [] }
@@ -364,7 +319,6 @@ describe('resolveTerminalTabActivityStatus', () => {
     const blocked = entry(FIRST_LEAF_ID, 'blocked')
     expect(
       resolveTerminalTabActivityStatus({
-        acknowledgedAgentsByPaneKey: {},
         tab: TAB,
         agentStatusByPaneKey: { [blocked.paneKey]: blocked },
         ptyIdsByTabId: LIVE_PTY
@@ -376,7 +330,6 @@ describe('resolveTerminalTabActivityStatus', () => {
     const working = entry(FIRST_LEAF_ID, 'working', { paneKey: `${TAB_ID}:3` })
     expect(
       resolveTerminalTabActivityStatus({
-        acknowledgedAgentsByPaneKey: {},
         tab: TAB,
         agentStatusByPaneKey: { [working.paneKey]: working },
         ptyIdsByTabId: LIVE_PTY
@@ -387,7 +340,6 @@ describe('resolveTerminalTabActivityStatus', () => {
   it('reports a live shell with no agent as active (no activity glyph)', () => {
     expect(
       resolveTerminalTabActivityStatus({
-        acknowledgedAgentsByPaneKey: {},
         tab: { id: TAB_ID, title: 'zsh' },
         ptyIdsByTabId: LIVE_PTY
       })

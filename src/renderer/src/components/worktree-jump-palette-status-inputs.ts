@@ -9,7 +9,6 @@ export type PaletteStatusInputsState = Pick<
   | 'tabsByWorktree'
   | 'unreadTerminalTabs'
   | 'unreadAgentCompletionPanes'
-  | 'acknowledgedAgentsByPaneKey'
 >
 
 export type PaletteStatusInputs = Pick<
@@ -24,15 +23,13 @@ export type PaletteIndexStatusSnapshot = Pick<
   | 'runtimePaneTitlesByTabId'
   | 'unreadTerminalTabs'
   | 'unreadAgentCompletionPanes'
-  | 'acknowledgedAgentsByPaneKey'
 >
 
 const EMPTY_PALETTE_INDEX_STATUS: PaletteIndexStatusSnapshot = Object.freeze({
   agentStatusByPaneKey: {},
   runtimePaneTitlesByTabId: {},
   unreadTerminalTabs: {},
-  unreadAgentCompletionPanes: {},
-  acknowledgedAgentsByPaneKey: {}
+  unreadAgentCompletionPanes: {}
 })
 
 /**
@@ -52,8 +49,7 @@ export function selectPaletteIndexStatusSnapshot(
     agentStatusByPaneKey: s.agentStatusByPaneKey,
     runtimePaneTitlesByTabId: s.runtimePaneTitlesByTabId,
     unreadTerminalTabs: s.unreadTerminalTabs,
-    unreadAgentCompletionPanes: s.unreadAgentCompletionPanes,
-    acknowledgedAgentsByPaneKey: s.acknowledgedAgentsByPaneKey
+    unreadAgentCompletionPanes: s.unreadAgentCompletionPanes
   }
 }
 

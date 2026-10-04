@@ -81,7 +81,6 @@ import { CompactAgentRow } from '@/components/sidebar/worktree-card-compact-agen
 import { buildSubagentChildRows } from '@/components/sidebar/worktree-subagent-child-rows'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { resetStructuredAgentSessionStatusFeedsForTests } from '@/runtime/structured-agent-session-status-feed'
-import { acknowledgedAgentRow } from '@/lib/agent-entry-acknowledgement'
 
 const MINUTE = 60_000
 const tab = {
@@ -178,11 +177,7 @@ function sidebarRows(): RenderedRow[] {
       const container = document.createElement('div')
       container.innerHTML = renderToStaticMarkup(
         <TooltipProvider>
-          <CompactAgentRow
-            agent={acknowledgedAgentRow(agent, undefined)}
-            now={Date.now()}
-            onActivate={() => {}}
-          />
+          <CompactAgentRow agent={agent} now={Date.now()} onActivate={() => {}} />
         </TooltipProvider>
       )
       return readRow(container, ' - ')

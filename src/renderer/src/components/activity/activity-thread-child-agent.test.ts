@@ -32,7 +32,6 @@ function makeTestThread(
 ): AgentPaneThread {
   const worktree = makeWorktree()
   return {
-    acknowledgedAt: undefined,
     paneKey,
     paneTitle: 'Test Agent',
     agentType: 'claude',

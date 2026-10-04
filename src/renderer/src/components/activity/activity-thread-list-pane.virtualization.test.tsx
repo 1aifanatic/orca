@@ -18,7 +18,6 @@ const THREAD_COUNT = 300
 
 function makeThread(index: number): AgentPaneThread {
   return {
-    acknowledgedAt: undefined,
     paneKey: `tab-${index}:leaf-${index}`,
     tab: makeTab(),
     worktree: makeWorktree(),

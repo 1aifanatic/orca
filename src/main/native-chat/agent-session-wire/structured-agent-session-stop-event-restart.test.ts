@@ -111,12 +111,7 @@ function settled(turnId?: string) {
     turn,
     label: timing ? formatNativeChatTurnStatusLabel({ elapsedSeconds: 0, ...timing }) : null,
     mark: verdict
-      ? agentVerdictDisplayMark({
-          state: 'done',
-          mainAgent: { state: 'done', outcome: verdict },
-          stateStartedAt: 1,
-          acknowledgedAt: undefined
-        })
+      ? agentVerdictDisplayMark({ state: 'done', mainAgent: { state: 'done', outcome: verdict } })
       : null,
     errorRows: items.flatMap((item) =>
       item.body.kind === 'status' && item.body.tone === 'error' ? [item.body.text] : []

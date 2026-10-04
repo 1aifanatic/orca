@@ -164,8 +164,6 @@ describe('getActivityThreadStatusPreview', () => {
   it('shows tool activity while working and assistant replies otherwise', () => {
     expect(
       getActivityThreadStatusPreview({
-        stateStartedAt: 1,
-        acknowledgedAt: undefined,
         state: 'working',
         toolName: 'Bash',
         toolInput: 'pnpm test',
@@ -176,8 +174,6 @@ describe('getActivityThreadStatusPreview', () => {
     expect(
       getActivityThreadStatusPreview(
         {
-          stateStartedAt: 1,
-          acknowledgedAt: undefined,
           state: 'done',
           prompt: 'yes',
           lastAssistantMessage: 'Implemented the skill creator port.'
@@ -190,8 +186,6 @@ describe('getActivityThreadStatusPreview', () => {
   it('rejects hook previews that echo the live user prompt', () => {
     expect(
       getActivityThreadStatusPreview({
-        stateStartedAt: 1,
-        acknowledgedAt: undefined,
         state: 'working',
         prompt: 'yes',
         lastAssistantMessage: 'yes'
@@ -202,8 +196,6 @@ describe('getActivityThreadStatusPreview', () => {
   it('surfaces interrupted sessions explicitly', () => {
     expect(
       getActivityThreadStatusPreview({
-        stateStartedAt: 1,
-        acknowledgedAt: undefined,
         state: 'done',
         interrupted: true,
         prompt: 'Ship it'
@@ -214,8 +206,6 @@ describe('getActivityThreadStatusPreview', () => {
   it('surfaces a failed turn as failed, not as its last reply', () => {
     expect(
       getActivityThreadStatusPreview({
-        stateStartedAt: 1,
-        acknowledgedAt: undefined,
         state: 'done',
         lastAssistantMessage: 'Done!',
         mainAgent: { state: 'done', outcome: 'failure', stateStartedAt: 1 },
@@ -229,8 +219,6 @@ describe('getActivityThreadStatusPreview', () => {
     // only thing that says what the user is being asked to approve (STA-3160).
     expect(
       getActivityThreadStatusPreview({
-        stateStartedAt: 1,
-        acknowledgedAt: undefined,
         state: 'waiting',
         toolName: 'bash',
         toolInput: 'rm -rf build/',
@@ -245,8 +233,6 @@ describe('getActivityThreadStatusPreview', () => {
     for (const state of ['done', 'blocked'] as const) {
       expect(
         getActivityThreadStatusPreview({
-          stateStartedAt: 1,
-          acknowledgedAt: undefined,
           state,
           toolName: 'bash',
           toolInput: 'rm -rf build/',
@@ -260,8 +246,6 @@ describe('getActivityThreadStatusPreview', () => {
     // Why: not every wait is an approval — a question-style wait must not borrow tool text.
     expect(
       getActivityThreadStatusPreview({
-        stateStartedAt: 1,
-        acknowledgedAt: undefined,
         state: 'waiting',
         prompt: 'Pick a branch'
       })
@@ -271,8 +255,6 @@ describe('getActivityThreadStatusPreview', () => {
   it('surfaces the completed-turn reply on a finished row', () => {
     expect(
       getActivityThreadStatusPreview({
-        stateStartedAt: 1,
-        acknowledgedAt: undefined,
         state: 'done',
         prompt: 'Audit the repo',
         lastCompletedAssistantMessage: 'Filed 8 issues from the audit.'
@@ -283,8 +265,6 @@ describe('getActivityThreadStatusPreview', () => {
   it('does not show a prior completed reply while the agent is working', () => {
     expect(
       getActivityThreadStatusPreview({
-        stateStartedAt: 1,
-        acknowledgedAt: undefined,
         state: 'working',
         prompt: 'Next turn',
         lastCompletedAssistantMessage: 'Filed 8 issues from the audit.'
@@ -295,8 +275,6 @@ describe('getActivityThreadStatusPreview', () => {
   it('skips orchestration worker_done wrap-up so the card shows the reply', () => {
     expect(
       getActivityThreadStatusPreview({
-        stateStartedAt: 1,
-        acknowledgedAt: undefined,
         state: 'done',
         prompt: 'On the m4air environment, use the terminal',
         lastAssistantMessage:
@@ -308,8 +286,6 @@ describe('getActivityThreadStatusPreview', () => {
   it('unwraps worker_done wrap-up that uses ascii dashes or markdown verdict labels', () => {
     expect(
       getActivityThreadStatusPreview({
-        stateStartedAt: 1,
-        acknowledgedAt: undefined,
         state: 'done',
         prompt: 'On the m4air environment, use the terminal',
         lastAssistantMessage:
@@ -321,8 +297,6 @@ describe('getActivityThreadStatusPreview', () => {
   it('drops a worker_done report that has no assistant reply', () => {
     expect(
       getActivityThreadStatusPreview({
-        stateStartedAt: 1,
-        acknowledgedAt: undefined,
         state: 'done',
         prompt: 'Fix checkout',
         lastAssistantMessage: 'Done — worker_done sent with outcome succeeded.'
@@ -333,8 +307,6 @@ describe('getActivityThreadStatusPreview', () => {
   it('falls through to the completed-turn reply when the live preview is only worker_done', () => {
     expect(
       getActivityThreadStatusPreview({
-        stateStartedAt: 1,
-        acknowledgedAt: undefined,
         state: 'done',
         prompt: 'Fix checkout',
         lastAssistantMessage: 'Done — worker_done sent with outcome succeeded.',
@@ -349,8 +321,6 @@ describe('resolveActivityThreadStatusPreview', () => {
     expect(
       resolveActivityThreadStatusPreview(
         {
-          stateStartedAt: 1,
-          acknowledgedAt: undefined,
           state: 'working',
           prompt: 'yes',
           lastAssistantMessage: 'yes'
@@ -365,8 +335,6 @@ describe('resolveActivityThreadStatusPreview', () => {
     expect(
       resolveActivityThreadStatusPreview(
         {
-          stateStartedAt: 1,
-          acknowledgedAt: undefined,
           state: 'done',
           prompt: 'hi',
           lastAssistantMessage: ''

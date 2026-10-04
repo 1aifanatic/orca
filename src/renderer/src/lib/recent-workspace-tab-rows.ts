@@ -8,7 +8,6 @@ import {
 } from '@/components/sidebar/smart-attention'
 import { tabHasLivePty } from './tab-has-live-pty'
 import { agentVerdictDisplayMark } from '../../../shared/agent-main-agent-verdict'
-import { acknowledgedAgentEntry } from './agent-entry-acknowledgement'
 import { isExplicitAgentStatusFresh } from './pane-agent-evidence'
 import type { WorktreeStatus } from './worktree-status'
 import type { TerminalTab } from '../../../shared/terminal-tab-types'
@@ -34,12 +33,6 @@ export type RecentWorkspaceTabRow = {
   terminalTab: Pick<TerminalTab, 'id' | 'title'> | null
   worktreeLastActivityAt: number
   lastFocusedAt?: number | null
-}
-
-/** The panes a recent row reads, beside the user's acknowledgements, so its dot agrees with the
- *  sidebar's once the user has seen a turn cut short. */
-export type RecentWorkspaceTabPaneSources = TabPaneInputSources & {
-  acknowledgedAgentsByPaneKey: Readonly<Record<string, number>>
 }
 
 export type RecentWorkspaceTabOrderInputs = {
@@ -73,7 +66,7 @@ export function resolveRecentWorkspaceTabAttention(
 /** Live status dot for a hero row — re-read on agent churn, unlike the frozen ordering. */
 export function resolveRecentWorkspaceTabStatus(
   row: RecentWorkspaceTabRow,
-  paneSources: RecentWorkspaceTabPaneSources,
+  paneSources: TabPaneInputSources,
   now: number
 ): WorktreeStatus {
   if (!row.terminalTab) {
@@ -89,14 +82,7 @@ export function resolveRecentWorkspaceTabStatus(
     panes.flatMap((pane) =>
       pane.kind === 'hook' &&
       isExplicitAgentStatusFresh(pane.entry, now, AGENT_STATUS_STALE_AFTER_MS)
-        ? [
-            agentVerdictDisplayMark(
-              acknowledgedAgentEntry(
-                pane.entry,
-                paneSources.acknowledgedAgentsByPaneKey[pane.entry.paneKey]
-              )
-            )
-          ]
+        ? [agentVerdictDisplayMark(pane.entry)]
         : []
     )
   )

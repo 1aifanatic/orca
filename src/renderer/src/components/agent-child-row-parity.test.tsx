@@ -16,7 +16,6 @@ import { buildBackgroundTaskGroupsFromViews } from '@/components/native-chat/bac
 import { CompactAgentRow } from '@/components/sidebar/worktree-card-compact-agent-row'
 import { buildSubagentChildRows } from '@/components/sidebar/worktree-subagent-child-rows'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { acknowledgedAgentRow } from '@/lib/agent-entry-acknowledgement'
 
 vi.mock('@/components/dashboard/use-agent-row-conversation-name', () => ({
   useAgentRowConversationName: () => null
@@ -126,11 +125,7 @@ function sidebarRows(parent: AgentStatusEntry, parentIsFresh = true): RenderedRo
       mount(
         renderToStaticMarkup(
           <TooltipProvider>
-            <CompactAgentRow
-              agent={acknowledgedAgentRow(agent, undefined)}
-              now={NOW}
-              onActivate={() => {}}
-            />
+            <CompactAgentRow agent={agent} now={NOW} onActivate={() => {}} />
           </TooltipProvider>
         )
       ),
@@ -181,7 +176,7 @@ function fullRow(parent: AgentStatusEntry): { labels: string[]; text: string } {
     renderToStaticMarkup(
       <TooltipProvider>
         <DashboardAgentRow
-          agent={acknowledgedAgentRow(agent, undefined)}
+          agent={agent}
           now={NOW}
           onActivate={() => {}}
           onDismiss={() => {}}
@@ -348,7 +343,7 @@ describe('a child reads the same in the sidebar and the chat strip', () => {
       renderToStaticMarkup(
         <TooltipProvider>
           <DashboardAgentRow
-            agent={acknowledgedAgentRow(agent, undefined)}
+            agent={agent}
             now={NOW}
             onActivate={() => {}}
             onDismiss={() => {}}
@@ -478,7 +473,7 @@ describe('a mirrored parent and its children read one silence', () => {
       renderToStaticMarkup(
         <TooltipProvider>
           <DashboardAgentRow
-            agent={acknowledgedAgentRow(agent, undefined)}
+            agent={agent}
             now={NOW}
             onActivate={() => {}}
             onDismiss={() => {}}

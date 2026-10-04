@@ -72,8 +72,7 @@ export function useWorktreeJumpPaletteStoreState({
     agentStatusByPaneKey,
     runtimePaneTitlesByTabId,
     unreadTerminalTabs,
-    unreadAgentCompletionPanes,
-    acknowledgedAgentsByPaneKey
+    unreadAgentCompletionPanes
   } = paletteIndexStatus
   const openFiles = useAppStore((state) => state.openFiles)
   const activeGroupIdByWorktree = useAppStore((state) => state.activeGroupIdByWorktree)
@@ -160,7 +159,6 @@ export function useWorktreeJumpPaletteStoreState({
     runtimePaneTitlesByTabId,
     unreadTerminalTabs,
     unreadAgentCompletionPanes,
-    acknowledgedAgentsByPaneKey,
     openFiles,
     activeGroupIdByWorktree,
     groupsByWorktree,

@@ -7,7 +7,6 @@ import { buildWorktreeAgentRows } from '@/components/sidebar/worktree-agent-rows
 import { getAgentDotState } from '@/components/sidebar/worktree-card-agent-summary'
 import { resolveAttention } from '@/components/sidebar/smart-attention'
 import { createTestStore, makeTab } from './store-test-helpers'
-import { acknowledgedAgentRow } from '@/lib/agent-entry-acknowledgement'
 
 // The safety argument for STA-4293 step 1 in one file: an observation-stamped row and an
 // unstamped row must be indistinguishable to every consumer that reads status today.
@@ -119,9 +118,7 @@ describe('agent status observation is behavior-neutral', () => {
       expect(stampedRows.map((row) => ({ ...row, entry: withoutObservation(row.entry) }))).toEqual(
         unstampedRows.map((row) => ({ ...row, entry: withoutObservation(row.entry) }))
       )
-      const dotState = (row: (typeof stampedRows)[number]) =>
-        getAgentDotState(acknowledgedAgentRow(row, undefined))
-      expect(stampedRows.map(dotState)).toEqual(unstampedRows.map(dotState))
+      expect(stampedRows.map(getAgentDotState)).toEqual(unstampedRows.map(getAgentDotState))
 
       expect(resolveAttention([{ kind: 'hook', entry: stamped, hasLivePty: false }], at)).toEqual(
         resolveAttention([{ kind: 'hook', entry: unstamped, hasLivePty: false }], at)
@@ -155,7 +152,7 @@ describe('agent status observation is behavior-neutral', () => {
     })
     expect(rows).toHaveLength(1)
     expect(rows[0].entry.observation).toBeUndefined()
-    expect(getAgentDotState(acknowledgedAgentRow(rows[0], undefined))).toBe('blocked')
+    expect(getAgentDotState(rows[0])).toBe('blocked')
   })
 
   it('does not carry a previous observation onto an unstamped write', () => {
