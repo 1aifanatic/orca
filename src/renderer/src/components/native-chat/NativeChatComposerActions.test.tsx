@@ -121,7 +121,7 @@ describe('NativeChatComposerActions', () => {
         attachDisabled={false}
         dictationDisabled={false}
         sendDisabled
-        sendBlockedReason="Attach the image again or remove it"
+        sendBlockedReason="An image couldn't be brought back. Remove it to send."
         isWorking={false}
         isDictating={false}
         isDictationHoldMode={false}
@@ -135,7 +135,9 @@ describe('NativeChatComposerActions', () => {
       />
     )
 
-    const send = screen.getByRole('button', { name: 'Attach the image again or remove it' })
+    const send = screen.getByRole('button', {
+      name: "An image couldn't be brought back. Remove it to send."
+    })
     expect(send.hasAttribute('disabled')).toBe(true)
   })
 })

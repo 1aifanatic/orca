@@ -203,12 +203,34 @@ describe('native-chat composer draft store', () => {
     )
     const reloaded = await reload()
 
-    reloaded.attachments.appendNativeChatAttachmentCache('tab-1:pane', [
-      { id: 'again', path: '/Users/me/Desktop/shot.png' }
-    ])
+    reloaded.attachments.appendNativeChatAttachmentCache(
+      'tab-1:pane',
+      [{ id: 'again', path: '/Users/me/Desktop/shot.png' }],
+      { fromUser: true }
+    )
     expect(reloaded.attachments.readNativeChatAttachmentCache('tab-1:pane')).toEqual([
       { id: 'again', path: '/Users/me/Desktop/shot.png' },
       IMAGES[0]
+    ])
+  })
+
+  it('adds an image Stop gives back next to a placeholder with its name, never in its place', async () => {
+    storage.setItem(
+      `${DRAFT_KEY_PREFIX}${encodeURIComponent('tab-1:pane')}`,
+      JSON.stringify({
+        text: 'compare with this',
+        images: [{ id: 'm', path: '', unavailableName: 'image.png' }],
+        savedAt: 1
+      })
+    )
+    const reloaded = await reload()
+
+    reloaded.attachments.appendNativeChatAttachmentCache('tab-1:pane', [
+      { id: 'withdrawn-cm-1-1', path: '/Users/me/Downloads/image.png' }
+    ])
+    expect(reloaded.attachments.readNativeChatAttachmentCache('tab-1:pane')).toEqual([
+      { id: 'm', path: '', unavailableName: 'image.png' },
+      { id: 'withdrawn-cm-1-1', path: '/Users/me/Downloads/image.png' }
     ])
   })
 

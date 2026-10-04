@@ -54,7 +54,7 @@ describe('NativeChatImageAttachmentPreview', () => {
     expect(mocks.useLocalImageSrc).toHaveBeenCalledWith(undefined, '', undefined)
   })
 
-  it('shows an image the draft could not keep as one to attach again, and lets it be removed', () => {
+  it('shows a pasted image that could not come back by name, says it was not kept, and lets it be removed', () => {
     mocks.useLocalImageSrc.mockReturnValue(undefined)
     const onRemove = vi.fn()
     vi.stubGlobal('IntersectionObserver', undefined)
@@ -67,10 +67,31 @@ describe('NativeChatImageAttachmentPreview', () => {
 
     expect(
       screen.getByRole('img', {
-        name: "Pasted image wasn't saved with this draft. Attach it again to send it."
+        name: "This pasted image couldn't be brought back with this draft. Remove it, and paste it again if you still need it."
       })
     ).toBeTruthy()
+    expect(screen.getByText('Pasted image')).toBeTruthy()
+    expect(screen.getByText('Not kept')).toBeTruthy()
     screen.getByRole('button', { name: 'Remove attachment' }).click()
     expect(onRemove).toHaveBeenCalledWith('m1')
+  })
+
+  it('shows a file that could not come back by name, with a visible attach-again hint', () => {
+    mocks.useLocalImageSrc.mockReturnValue(undefined)
+    vi.stubGlobal('IntersectionObserver', undefined)
+    render(
+      <NativeChatImageAttachmentPreview
+        attachment={{ id: 'm2', path: '', unavailableName: 'diagram.png' }}
+        onRemove={vi.fn()}
+      />
+    )
+
+    expect(
+      screen.getByRole('img', {
+        name: "diagram.png couldn't be brought back with this draft. Attach it again or remove it."
+      })
+    ).toBeTruthy()
+    expect(screen.getByText('diagram.png')).toBeTruthy()
+    expect(screen.getByText('Attach again')).toBeTruthy()
   })
 })

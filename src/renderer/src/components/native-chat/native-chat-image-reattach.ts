@@ -1,7 +1,8 @@
 import { translate } from '@/i18n/i18n'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
 
-/** Why the composer can't send while it holds images Orca couldn't keep; null when it holds none. */
+/** Why the composer can't send while it holds images that couldn't be brought back; null when it
+ *  holds none. Removing always works; re-attaching only for a file, so the reason names removing. */
 export function nativeChatAttachImagesAgainReason(
   attachments: readonly NativeChatComposerImageAttachment[]
 ): string | null {
@@ -11,12 +12,12 @@ export function nativeChatAttachImagesAgainReason(
   }
   return count === 1
     ? translate(
-        'components.native-chat.composer.attachImageAgain',
-        'Attach the image again or remove it'
+        'components.native-chat.composer.removeImageToSend',
+        "An image couldn't be brought back. Remove it to send."
       )
     : translate(
-        'components.native-chat.composer.attachImagesAgain',
-        'Attach the images again or remove them'
+        'components.native-chat.composer.removeImagesToSend',
+        "Some images couldn't be brought back. Remove them to send."
       )
 }
 

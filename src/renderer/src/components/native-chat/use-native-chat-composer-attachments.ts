@@ -157,7 +157,8 @@ export function useNativeChatComposerAttachments({
           id: nextAttachmentId(),
           path,
           ...(connectionId ? { connectionId } : {})
-        }))
+        })),
+        { fromUser: true }
       )
     },
     [attachmentScopeKey, nextAttachmentId]
@@ -233,9 +234,11 @@ export function useNativeChatComposerAttachments({
   const resolvePendingImageAttachment = useCallback(
     (id: string, path: string, connectionId?: string | null) => {
       if (forgetLocalAttachment(id, true)) {
-        appendNativeChatAttachmentCache(attachmentScopeKey, [
-          { id, path, ...(connectionId ? { connectionId } : {}) }
-        ])
+        appendNativeChatAttachmentCache(
+          attachmentScopeKey,
+          [{ id, path, ...(connectionId ? { connectionId } : {}) }],
+          { fromUser: true }
+        )
       }
     },
     [attachmentScopeKey, forgetLocalAttachment]
@@ -298,12 +301,13 @@ export function readNativeChatAttachmentCache(
   return readNativeChatComposerDraft(scopeKey).images.map((image) => ({ ...image }))
 }
 
-/** Adds settled images after the ones the draft holds now; one with the name of an image to
- *  attach again takes its place. Saved at once: when Stop gives images back, the copy they came
- *  from goes right after this. */
+/** Adds settled images after the ones the draft holds now. Saved at once: when Stop gives images
+ *  back, the copy they came from goes right after this. Only an image the user attaches
+ *  (`fromUser`) takes the place of a placeholder with its file name, as a re-pick does. */
 export function appendNativeChatAttachmentCache(
   scopeKey: string,
-  appended: readonly NativeChatComposerImageAttachment[]
+  appended: readonly NativeChatComposerImageAttachment[],
+  options?: { fromUser?: boolean }
 ): void {
   if (appended.length === 0) {
     return
@@ -312,11 +316,13 @@ export function appendNativeChatAttachmentCache(
   for (const { id, path, connectionId } of appended) {
     // Preview URLs can retain the full clipboard Blob, so only the path is kept.
     const image = { id, path, ...(connectionId ? { connectionId } : {}) }
-    const marker = images.findIndex((held) => held.unavailableName === basename(path))
-    if (marker === -1) {
+    const placeholder = options?.fromUser
+      ? images.findIndex((held) => held.unavailableName === basename(path))
+      : -1
+    if (placeholder === -1) {
       images.push(image)
     } else {
-      images[marker] = image
+      images[placeholder] = image
     }
   }
   updateNativeChatComposerDraft(scopeKey, { images }, 'immediate')

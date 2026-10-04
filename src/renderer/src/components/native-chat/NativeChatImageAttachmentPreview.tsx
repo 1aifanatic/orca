@@ -51,7 +51,8 @@ function RemoveAttachmentButton({ onRemove }: { onRemove: () => void }): React.J
   )
 }
 
-/** An image the draft names but couldn't keep: it waits to be attached again, or removed. */
+/** An image the draft names but couldn't bring back. A file can be attached again in its place; a
+ *  pasted image can't be matched by a new paste, so its copy asks only for removal. */
 function NativeChatUnavailableImageChip({
   id,
   name,
@@ -61,20 +62,34 @@ function NativeChatUnavailableImageChip({
   name: string
   onRemove: (id: string) => void
 }): React.JSX.Element {
-  const explanation = translate(
-    'components.native-chat.composer.imageNotSavedWithDraft',
-    "{{name}} wasn't saved with this draft. Attach it again to send it.",
-    { name: attachmentLabel(name) }
-  )
+  const pasted = isNativeChatPastedImagePath(name)
+  const label = attachmentLabel(name)
+  const explanation = pasted
+    ? translate(
+        'components.native-chat.composer.pastedImageNotBroughtBack',
+        "This pasted image couldn't be brought back with this draft. Remove it, and paste it again if you still need it."
+      )
+    : translate(
+        'components.native-chat.composer.imageNotBroughtBack',
+        "{{name}} couldn't be brought back with this draft. Attach it again or remove it.",
+        { name: label }
+      )
+  const hint = pasted
+    ? translate('components.native-chat.composer.pastedImageNotKeptLabel', 'Not kept')
+    : translate('components.native-chat.composer.imageAttachAgainLabel', 'Attach again')
   return (
-    <div className="relative size-14 shrink-0">
+    <div className="relative h-14 max-w-40 shrink-0">
       <div
         role="img"
         aria-label={explanation}
         title={explanation}
-        className="flex size-full items-center justify-center rounded-md border border-dashed border-border bg-background"
+        className="flex h-full items-center gap-2 rounded-md border border-dashed border-border bg-background px-2"
       >
-        <ImageOff className="size-5 text-muted-foreground" />
+        <ImageOff className="size-4 shrink-0 text-muted-foreground" />
+        <div className="flex min-w-0 flex-col text-xs">
+          <span className="truncate text-foreground">{label}</span>
+          <span className="truncate text-muted-foreground">{hint}</span>
+        </div>
       </div>
       <RemoveAttachmentButton onRemove={() => onRemove(id)} />
     </div>
