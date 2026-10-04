@@ -399,6 +399,26 @@ describe('native-chat composer draft store', () => {
     })
   })
 
+  it('does not add an early append twice when the load already read its write', async () => {
+    storage.drafts.set('agent-session:s1', { text: 'saved earlier', images: [], savedAt: 1 })
+    let land: () => void = () => {}
+    // This load reads only when it lands, after the append's own write.
+    const late = {
+      ...storage,
+      loadAll: () =>
+        new Promise<ReadonlyMap<string, unknown>>((resolve) => {
+          land = () => resolve(new Map(storage.drafts))
+        })
+    }
+    const reloaded = await reload({ using: late, hydrate: false })
+    await reloaded.store.waitForNativeChatComposerDrafts(1)
+    reloaded.drafts.appendNativeChatDraftCache('agent-session:s1', 'returned by Stop')
+
+    land()
+    await reloaded.store.hydrateNativeChatComposerDrafts()
+    expect(reloaded.drafts.readNativeChatDraftCache('agent-session:s1')).toBe('returned by Stop')
+  })
+
   it('retries a failed load a few times, warns once, and then stops', async () => {
     vi.useFakeTimers()
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
