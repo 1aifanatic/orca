@@ -1,7 +1,8 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, win32 } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { removeTreeSync } from '../../shared/windows-transient-lock-removal'
 import {
   deriveWindowsAppDataPath,
   ensureWindowsAppDataPath,
@@ -41,7 +42,7 @@ function createHost(nativeAppData: string | Error): WindowsAppDataPathHost & {
 const tempDirs: string[] = []
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) {
-    rmSync(dir, { recursive: true, force: true })
+    removeTreeSync(dir)
   }
 })
 
