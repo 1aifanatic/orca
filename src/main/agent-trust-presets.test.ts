@@ -123,6 +123,44 @@ describe('markCopilotFolderTrusted', () => {
     }
   })
 
+  it('keeps a token-bearing config.json owner-only', () => {
+    if (process.platform === 'win32') {
+      return
+    }
+    const workspace = mkdtempSync(join(tmpdir(), 'orca-copilot-ws-'))
+    const configPath = join(testState.fakeHomeDir, '.copilot', 'config.json')
+    // Why: a restrictive runner umask would mask a dropped mode.
+    const originalUmask = process.umask(0o022)
+    try {
+      mkdirSync(join(testState.fakeHomeDir, '.copilot'), { recursive: true })
+      writeFileSync(configPath, JSON.stringify({ copilotTokens: { a: 'secret' } }), {
+        mode: 0o600
+      })
+      markCopilotFolderTrusted(workspace, testState.fakeHomeDir)
+      expect(statSync(configPath).mode & 0o777).toBe(0o600)
+      expect(JSON.parse(readFileSync(configPath, 'utf-8')).copilotTokens).toEqual({ a: 'secret' })
+    } finally {
+      process.umask(originalUmask)
+      rmSync(workspace, { recursive: true, force: true })
+    }
+  })
+
+  it('creates a missing config.json owner-only', () => {
+    if (process.platform === 'win32') {
+      return
+    }
+    const workspace = mkdtempSync(join(tmpdir(), 'orca-copilot-ws-'))
+    const originalUmask = process.umask(0o022)
+    try {
+      markCopilotFolderTrusted(workspace, testState.fakeHomeDir)
+      const configPath = join(testState.fakeHomeDir, '.copilot', 'config.json')
+      expect(statSync(configPath).mode & 0o777).toBe(0o600)
+    } finally {
+      process.umask(originalUmask)
+      rmSync(workspace, { recursive: true, force: true })
+    }
+  })
+
   it('preserves existing config keys and dedups already-trusted folders', () => {
     const workspace = mkdtempSync(join(tmpdir(), 'orca-copilot-ws-'))
     const realpath = realpathSync(workspace)
