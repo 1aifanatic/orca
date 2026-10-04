@@ -5,6 +5,7 @@ import type { AgentJournalDispatchState } from '../../../src/shared/agent-sessio
 import type { AgentSessionSubscribeEvent } from '../../../src/shared/agent-session-wire'
 import type { RpcClient } from '../transport/rpc-client'
 import { markRpcDeliveryUnknown } from '../transport/rpc-delivery-ambiguity'
+import { agentJournalSubmissionKey } from '../../../src/shared/agent-session-journal-item-key'
 import { resetMobileStructuredSendOperationJournalForTests } from './mobile-structured-send-operation-journal'
 import { structuredSendResultFixture } from './structured-agent-send-result.test-fixture'
 import { useMobileStructuredAgentSession } from './use-mobile-structured-agent-session'
@@ -255,6 +256,43 @@ describe('mobile structured send retries', () => {
     expect(calls()).toHaveLength(2)
     expect(new Set(sentIds()).size).toBe(1)
     expect(calls().every(([, params]) => !('retryUnknown' in (params as object)))).toBe(true)
+  })
+
+  // The host's row is where a recorded, rejected message lives on the phone, as on the desktop.
+  it('shows a message the host recorded and then rejected as not sent, in place', async () => {
+    await mountSession()
+    const event = snapshotEvent()
+    const itemId = agentJournalSubmissionKey('rejected-1')
+    act(() =>
+      listener?.({
+        ...event,
+        page: {
+          ...event.page,
+          items: [
+            {
+              itemId,
+              revision: 1,
+              sequence: 1,
+              observedAt: 10,
+              body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'lost' }] }
+            }
+          ],
+          submissions: [
+            {
+              clientMessageId: 'rejected-1',
+              fence: 3,
+              payloadFingerprint: 'fingerprint',
+              dispatchState: 'rejected',
+              providerItemId: null,
+              reason: 'provider_write_failed: broken pipe',
+              submittedAt: 10,
+              resolvedAt: 10
+            }
+          ]
+        }
+      })
+    )
+    expect(hook!.session.messages).toEqual([expect.objectContaining({ id: itemId, unsent: true })])
   })
 
   // The transcript owns a message the host recorded, so the composer never gets it back.

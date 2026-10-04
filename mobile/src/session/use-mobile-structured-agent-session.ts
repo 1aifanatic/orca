@@ -157,13 +157,18 @@ export function useMobileStructuredAgentSession(args: {
     onSendError
   })
 
+  const queuedMessageIds = useMemo(
+    () => (queuedMessages ?? []).map((message) => message.messageId),
+    [queuedMessages]
+  )
   const messages = useMemo(
-    // Off: the phone hands a rejected message back to its composer, so a row would show it twice.
+    // As on the desktop: a message the host recorded lives on its row, never back in the composer.
     () =>
       projectStructuredAgentSessionMessages(state.items, [], state.submissions, {
-        rejectedInPlace: false
+        rejectedInPlace: true,
+        queuedMessageIds
       }),
-    [state.items, state.submissions]
+    [state.items, state.submissions, queuedMessageIds]
   )
   const turnId = activeStructuredAgentSessionTurnId(state.items)
   const turnTiming = useMobileStructuredAgentTurnTiming(state, turnId)
