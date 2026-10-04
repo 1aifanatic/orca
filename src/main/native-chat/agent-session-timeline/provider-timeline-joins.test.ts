@@ -62,9 +62,9 @@ const inTurn = (turn: string) => ({
   scope: { kind: 'turn', turnItemId: `turn:${turn}` } as const
 })
 
-const codexSlot = (turn: string, ordinal: number): AgentJournalItemIdentity => ({
+const codexSlot = (turn: string, ordinal: number, threadId = 'root'): AgentJournalItemIdentity => ({
   provider: 'codex',
-  threadId: 'root',
+  threadId,
   turnId: turn,
   ordinal
 })
@@ -130,7 +130,7 @@ describe('provider timeline joins', () => {
     await write(journal, { identity: codexSlot('t1', 2), ref: 'item:old' }, 'old')
     // Another turn and another thread keep their own places.
     await write(journal, { identity: codexSlot('t2', 7) }, 'other turn')
-    await write(journal, { identity: { ...codexSlot('t1', 9), threadId: 'sub' } }, 'subagent')
+    await write(journal, { identity: codexSlot('t1', 9, 'sub') }, 'subagent')
     const joins = codexJoins()
     expect(joins.place(message('new'), 'message', inTurn('t1'), journal).itemId).toBe(
       'codex:root:t1:3'
