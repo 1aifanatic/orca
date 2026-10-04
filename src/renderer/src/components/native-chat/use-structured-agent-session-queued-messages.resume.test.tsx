@@ -44,6 +44,7 @@ function card(
 }
 
 type ControllerInput = {
+  enabled?: boolean
   queuedMessages?: AgentSessionQueuedMessage[]
   queuePause?: AgentSessionQueuePause | null
   isWorking?: boolean
@@ -60,7 +61,7 @@ function renderController(initialProps: ControllerInput = {}) {
         stateRef
       })
       return useStructuredAgentSessionQueuedMessages({
-        enabled: true,
+        enabled: input.enabled ?? true,
         queuedMessages: input.queuedMessages ?? [card('held')],
         queuePause: input.queuePause === undefined ? { reason: 'stopped' } : input.queuePause,
         submissions: [],
@@ -97,6 +98,10 @@ describe('whether Resume is offered', () => {
       expect(result.current.queueResume).toBeDefined()
     }
   )
+
+  it('not without the queue capability: an older host, or no fence yet while connecting', () => {
+    expect(renderController({ enabled: false }).result.current.queueResume).toBeUndefined()
+  })
 
   it('not while a turn runs, nor when nothing is held', () => {
     expect(renderController({ isWorking: true }).result.current.queueResume).toBeUndefined()

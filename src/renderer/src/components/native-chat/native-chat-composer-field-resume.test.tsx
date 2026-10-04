@@ -49,6 +49,8 @@ import { useImeEnterGestureOwnership } from '@/lib/ime-composition-keyboard-even
 afterEach(() => cleanup())
 
 type FieldInput = {
+  /** The composer cannot send at all. */
+  disabled?: boolean
   draft?: string
   imageAttachments?: { id: string; path: string }[]
   isWorking?: boolean
@@ -58,6 +60,7 @@ type FieldInput = {
 const NO_IMAGES: { id: string; path: string }[] = []
 
 function TestField({
+  disabled = false,
   draft = '',
   imageAttachments = NO_IMAGES,
   isWorking = false,
@@ -71,14 +74,14 @@ function TestField({
       composerScopeKey="pane-test"
       textareaRef={textareaRef}
       draft={draft}
-      disabled={false}
+      disabled={disabled}
       hasPty
       canSend
       autocomplete={{ mode: 'none' }}
       activeSuggestion={0}
       notice={null}
       imageAttachments={imageAttachments}
-      sendButtonDisabled={!isWorking && draft === '' && imageAttachments.length === 0}
+      sendButtonDisabled={disabled || (!isWorking && draft === '' && imageAttachments.length === 0)}
       isWorking={isWorking}
       attachDisabled={false}
       dictationDisabled={false}
@@ -139,6 +142,14 @@ describe('the composer primary button over a held queue', () => {
     ['a turn runs', { isWorking: true }, 'Stop the agent']
   ])('gives way when %s', (_case, input, label) => {
     expect(primaryButton({ ...input, queueResume: held() }).getAttribute('aria-label')).toBe(label)
+  })
+
+  it('is disabled whenever Send would be: the composer cannot send', () => {
+    expect(primaryButton({ draft: 'hello', disabled: true }).disabled).toBe(true)
+    cleanup()
+    const resume = primaryButton({ disabled: true, queueResume: held() })
+    expect(resume.getAttribute('aria-label')).toBe('Resume')
+    expect(resume.disabled).toBe(true)
   })
 
   it('is Send when nothing is held, and disabled while a Resume is in flight', () => {
