@@ -1,5 +1,40 @@
 import { expect, it } from 'vitest'
+import { JSONParser } from '@streamparser/json'
 import { parseDenseRipgrepMatchJson } from './ripgrep-dense-match-json'
+
+it.each([0, 64 * 1024])('preserves literal and escaped BOMs with buffer size %i', (size) => {
+  const source = { '\ufeffkey': `\ufeffstart${'\n'.repeat(64 * 1024)}\ufeffend` }
+  const literal = JSON.stringify(source)
+  for (const record of [literal, literal.replaceAll('\ufeff', '\\uFEFF')]) {
+    const parser = new JSONParser({ stringBufferSize: size })
+    let parsed: unknown
+    parser.onValue = ({ value, stack }) => {
+      if (stack.length === 0) {
+        parsed = value
+      }
+    }
+    parser.write(record)
+    expect(parsed).toEqual(JSON.parse(record))
+  }
+})
+
+it.each(['', '\\', '\n', '\n'.repeat(64 * 1024), `${'x'.repeat(64 * 1024)}\n`])(
+  'preserves U+FEFF in text and filenames across string-buffer boundaries (%#)',
+  (prefix) => {
+    const text = `${prefix}\ufeff😀x`
+    const source = {
+      type: 'match',
+      data: {
+        path: { text },
+        lines: { text },
+        line_number: 1,
+        submatches: [{ start: 0, end: 1 }]
+      }
+    }
+    const record = JSON.stringify(source)
+    expect(parseDenseRipgrepMatchJson(record, 1, 16)).toEqual(JSON.parse(record))
+  }
+)
 
 it('retains only exact match fields and the remaining range budget', () => {
   const ranges = [

@@ -1,13 +1,43 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { rgPath } from '@vscode/ripgrep-universal'
 import { describe, expect, it } from 'vitest'
 import { runProcess } from './child-process/run-process'
 import { buildRgArgs, createAccumulator, ingestRgJsonLine } from './text-search'
 
 describe('text search match budgets', () => {
+  it('keeps dense-line columns after a leading U+FEFF from real rg', async () => {
+    const { rgPath } = await import('@vscode/ripgrep-universal')
+    const root = await mkdtemp(join(tmpdir(), 'orca-rg-dense-bom-'))
+    const filename = join(root, '\ufeffdense.txt')
+    try {
+      await writeFile(filename, `header\n\ufeff${'x '.repeat(10_000)}`)
+      const result = await runProcess({
+        program: rgPath,
+        args: buildRgArgs('x', '.', {}),
+        cwd: root
+      })
+      expect(result.code).toBe(0)
+      const accumulator = createAccumulator()
+      for (const line of result.stdout.split('\n')) {
+        if (ingestRgJsonLine(line, root, accumulator, 2000) === 'stop') {
+          break
+        }
+      }
+      expect(accumulator.totalMatches).toBe(2000)
+      expect(accumulator.fileMap.get(filename)?.matches[0]).toMatchObject({
+        line: 2,
+        column: 2,
+        matchLength: 1
+      })
+      expect(accumulator.fileMap.get(filename)?.matches[1999]?.column).toBe(4000)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('preserves the requested budget from real rg dense-line output', async () => {
+    const { rgPath } = await import('@vscode/ripgrep-universal')
     const root = await mkdtemp(join(tmpdir(), 'orca-rg-dense-'))
     try {
       await writeFile(join(root, 'dense.txt'), 'x '.repeat(10_000))
@@ -31,6 +61,7 @@ describe('text search match budgets', () => {
   })
 
   it('allows more than 100 matching lines in one file under the global budget', async () => {
+    const { rgPath } = await import('@vscode/ripgrep-universal')
     const root = await mkdtemp(join(tmpdir(), 'orca-rg-lines-'))
     try {
       await writeFile(join(root, 'many.txt'), 'needle\n'.repeat(150))
