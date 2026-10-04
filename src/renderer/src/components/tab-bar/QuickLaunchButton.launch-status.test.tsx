@@ -60,6 +60,8 @@ function registerLaunch(agent: 'claude' | 'codex', outcome: 'pending' | 'failed'
     intent: {
       worktreeId: WORKTREE_ID,
       sessionId,
+      executionHostId: 'local',
+      target: { kind: 'local' },
       agent,
       params: {
         envelope: {

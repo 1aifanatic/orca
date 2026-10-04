@@ -78,6 +78,8 @@ function launchIntent(sessionId: string): StructuredAgentSessionLaunchIntent {
   return {
     worktreeId: WORKTREE_ID,
     sessionId,
+    executionHostId: 'local',
+    target: { kind: 'local' },
     agent: 'codex',
     params: {
       envelope: {
