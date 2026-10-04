@@ -11,6 +11,7 @@ import { DeleteWorktreeTargetPreview } from './DeleteWorktreeTargetPreview'
 import { DeleteWorktreeLineageNotice } from './DeleteWorktreeLineageNotice'
 import { useDeleteWorktreeStatusHydration } from './use-delete-worktree-status-hydration'
 import {
+  getDeleteWorktreeChangeCheckStates,
   getDeleteWorktreeDirtyChangeCounts,
   getDeleteWorktreeDirtyChangePreview,
   getDeleteWorktreeDirtyChangePreviews
@@ -92,6 +93,7 @@ function Preview({ worktree }: { worktree: Worktree }): JSX.Element {
       collisionWorktrees={targets}
       hostLabelById={new Map()}
       deleteStateByWorktreeId={input.deleteStateByWorktreeId}
+      changeCheckStatesByWorktreeId={getDeleteWorktreeChangeCheckStates(input)}
       dirtyChangeCountsByWorktreeId={getDeleteWorktreeDirtyChangeCounts(input)}
       dirtyChangePreviewsByWorktreeId={getDeleteWorktreeDirtyChangePreviews(input)}
     />
