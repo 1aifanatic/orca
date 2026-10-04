@@ -33,6 +33,10 @@ import { readOutbox, writeOutbox } from './structured-agent-session-outbox-stora
 import { createStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 
+import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
+
+const NO_JOURNAL_ITEMS: readonly AgentJournalRenderItem[] = []
+
 // Why: every hook here shares the session outbox store; one left mounted would drain the next test's.
 afterEach(cleanup)
 
@@ -55,6 +59,7 @@ function queuedReceipt(clientMessageId: string) {
 function renderOutbox(queue: boolean) {
   return renderHook(() =>
     useStructuredAgentSessionOutbox({
+      journalItems: NO_JOURNAL_ITEMS,
       sessionId: 'session-1',
       target: LOCAL_TARGET,
       fence: 1,
@@ -156,6 +161,7 @@ describe('outbox queue delivery selection', () => {
     const first = renderHook(
       (props: { queuedMessageIds: string[] }) =>
         useStructuredAgentSessionOutbox({
+          journalItems: NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
           target: LOCAL_TARGET,
           fence: 1,
@@ -324,6 +330,7 @@ describe('outbox queue delivery selection', () => {
     const view = renderHook(
       (props: { queuedMessageIds: string[] }) =>
         useStructuredAgentSessionOutbox({
+          journalItems: NO_JOURNAL_ITEMS,
           sessionId: 'session-1',
           target: LOCAL_TARGET,
           fence: 1,
@@ -392,6 +399,7 @@ describe('outbox queue delivery selection', () => {
     }))
     const { result } = renderHook(() =>
       useStructuredAgentSessionOutbox({
+        journalItems: NO_JOURNAL_ITEMS,
         sessionId: 'session-1',
         target: LOCAL_TARGET,
         fence: 1,
@@ -446,6 +454,7 @@ async function attemptedQueueSend() {
   const view = renderHook(
     (props: { capability: StructuredAgentSessionQueueCapability }) =>
       useStructuredAgentSessionOutbox({
+        journalItems: NO_JOURNAL_ITEMS,
         sessionId: 'session-1',
         target: LOCAL_TARGET,
         fence: 1,
