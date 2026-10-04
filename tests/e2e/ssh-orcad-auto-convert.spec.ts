@@ -347,7 +347,7 @@ test('a managed host updates to the bundled orcad on the first connect after an 
     await session.close(app)
     app = null
 
-    // Template B, as an app update would bundle: the next connect updates the idle host.
+    // Template B, as an app update would bundle: the tunnel restore or the next connect updates it.
     makeOrcadTemplateVariant(TEMPLATE_DIR, 'B')
     const updated = await session.launch({
       onStderr: (chunk) => {

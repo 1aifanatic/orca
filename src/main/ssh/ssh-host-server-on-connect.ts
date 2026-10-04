@@ -18,8 +18,10 @@ import type {
   SshManagedServerUpdateNote,
   SshTarget
 } from '../../shared/ssh-types'
-import type { ManagedOrcadAutoUpdateOutcome } from './orcad-managed-auto-update'
-import { updateOnConnect } from './ssh-host-server-update-on-connect'
+import {
+  checkManagedServerUpdate,
+  type ManagedServerUpdateDeps
+} from './managed-server-update-check'
 import {
   classifyOrcadHostUnavailable,
   ORCAD_TUNNEL_UNAVAILABLE_REASON
@@ -79,16 +81,7 @@ export type HostServerOnConnectDeps = {
   releaseUnreachableSetup: (target: SshTarget) => Promise<void>
   /** Receives each decision, conversion and deploy failure as raw codes for telemetry. */
   report: HostServerReport
-  /** Runs the Managed servers update when the host is behind this app; `onUpdating` fires first. */
-  autoUpdate: (
-    environmentId: string,
-    options: { failedBefore: boolean; onUpdating: () => void }
-  ) => Promise<ManagedOrcadAutoUpdateOutcome>
-  /** Why an update to this app version already failed on the host, so it isn't retried. */
-  recordedUpdateFailure: (target: SshTarget) => string | null
-  recordUpdateFailure: (target: SshTarget, reason: string) => void
-  clearUpdateFailure: (target: SshTarget) => void
-}
+} & ManagedServerUpdateDeps
 
 // Bounds a failure's detail; the host log tail inside it is already capped.
 const MAX_FAILURE_DETAIL_CHARS = 16_000
@@ -140,7 +133,9 @@ async function decide(
     await deps.retireRetainedSource(target).catch((error: unknown) => {
       console.warn('[ssh] Source retirement deferred to a later connect:', error)
     })
-    const { note, reason, recorded } = await updateOnConnect(target, existing, deps)
+    const { note, reason, recorded } = await checkManagedServerUpdate(target, existing, deps, () =>
+      deps.progress(target, 'updating')
+    )
     trace.update = reason
     trace.recorded = recorded
     return { route: 'managed', environmentId: existing, ...(note ? { update: note } : {}) }

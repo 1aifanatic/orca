@@ -7,7 +7,8 @@ const mocks = vi.hoisted(() => {
   return {
     state,
     materialize: vi.fn(async (_target: string) => '/cache/orcad'),
-    runUpdate: vi.fn()
+    runUpdate: vi.fn(),
+    migrating: vi.fn((_userData: string, _environmentId: string): unknown => null)
   }
 })
 
@@ -24,6 +25,9 @@ vi.mock('./orcad-managed-runtime-context', () => ({
     activationRecord: mocks.state.record,
     serverTarget: 'linux-x64'
   })
+}))
+vi.mock('./orcad-managed-migration-status', () => ({
+  findIncompleteManagedOrcadMigration: mocks.migrating
 }))
 vi.mock('./orcad-artifact-materializer', () => ({ materializeOrcadArtifact: mocks.materialize }))
 vi.mock('./ssh-relay-versioned-install', () => ({ readLocalFullVersion: () => '0.1.0+new' }))
@@ -102,6 +106,7 @@ describe('updating a managed orcad on connect', () => {
     resetBundledOrcadVersionsForTests()
     mocks.materialize.mockReset().mockResolvedValue('/cache/orcad')
     mocks.runUpdate.mockReset()
+    mocks.migrating.mockReset().mockReturnValue(null)
     mocks.state.record = record({ activeAppVersion: '1.4.0' })
   })
 
@@ -143,6 +148,12 @@ describe('updating a managed orcad on connect', () => {
     await run()
     await run()
     expect(mocks.materialize).toHaveBeenCalledTimes(1)
+    expect(mocks.runUpdate).not.toHaveBeenCalled()
+  })
+
+  it('leaves a server alone while a migration into it is still running', async () => {
+    mocks.migrating.mockReturnValue({ migrationId: 'm', phase: 'staged' })
+    await expect(run()).resolves.toEqual({ outcome: 'skipped', reason: 'migrating' })
     expect(mocks.runUpdate).not.toHaveBeenCalled()
   })
 

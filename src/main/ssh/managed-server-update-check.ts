@@ -1,8 +1,22 @@
-/** A managed host's update on connect, turned into its status note and telemetry reason. */
+/**
+ * A managed host's update check, shared by the connect and the launch-time tunnel restore, turned
+ * into its status note and telemetry reason.
+ */
 import type { SshManagedServerUpdateNote, SshTarget } from '../../shared/ssh-types'
 import type { ManagedOrcadAutoUpdateOutcome } from './orcad-managed-auto-update'
 import type { HostServerUpdateReason } from './ssh-host-server-connect-events'
-import type { HostServerOnConnectDeps } from './ssh-host-server-on-connect'
+
+export type ManagedServerUpdateDeps = {
+  /** Runs the Managed servers update when the host is behind this app; `onUpdating` fires first. */
+  autoUpdate: (
+    environmentId: string,
+    options: { failedBefore: boolean; onUpdating: () => void }
+  ) => Promise<ManagedOrcadAutoUpdateOutcome>
+  /** Why an update to this app version already failed on the host, so it isn't retried. */
+  recordedUpdateFailure: (target: SshTarget) => string | null
+  recordUpdateFailure: (target: SshTarget, reason: string) => void
+  clearUpdateFailure: (target: SshTarget) => void
+}
 
 export type HostServerUpdateOnConnect = {
   note: SshManagedServerUpdateNote | undefined
@@ -11,18 +25,19 @@ export type HostServerUpdateOnConnect = {
   recorded: boolean
 }
 
-/** The host keeps serving whatever happens here, so nothing in it can fail the connect. */
-export async function updateOnConnect(
+/** The host keeps serving whatever happens here, so nothing in it can fail the caller. */
+export async function checkManagedServerUpdate(
   target: SshTarget,
   environmentId: string,
-  deps: HostServerOnConnectDeps
+  deps: ManagedServerUpdateDeps,
+  onUpdating: () => void
 ): Promise<HostServerUpdateOnConnect> {
   const failure = deps.recordedUpdateFailure(target)
   let result: ManagedOrcadAutoUpdateOutcome
   try {
     result = await deps.autoUpdate(environmentId, {
       failedBefore: failure !== null,
-      onUpdating: () => deps.progress(target, 'updating')
+      onUpdating
     })
   } catch (error) {
     console.warn('[ssh] Could not check the managed Orca server for an update:', error)
@@ -73,6 +88,7 @@ function skipped(
       }
     case 'current':
     case 'no-template':
+    case 'migrating':
       return { note: undefined, reason: 'connected', recorded: false }
   }
 }

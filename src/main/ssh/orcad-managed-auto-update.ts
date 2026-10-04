@@ -9,6 +9,7 @@ import { compareAppVersions } from '../../shared/app-version'
 import type { OrcadActivationRecord } from './orcad-activation-record'
 import { materializeOrcadArtifact } from './orcad-artifact-materializer'
 import { OrcadArtifactsUnavailableError, OrcadHostUnsupportedError } from './orcad-host-unavailable'
+import { findIncompleteManagedOrcadMigration } from './orcad-managed-migration-status'
 import { resolveLinkedOrcadContext } from './orcad-managed-runtime-context'
 import { runManagedOrcadUpdate, withManagedOrcadLifecycle } from './orcad-runtime-maintenance'
 import type { OrcadUpdateDeferCode } from './orcad-update-plan'
@@ -20,6 +21,7 @@ export type ManagedOrcadAutoUpdateSkip =
   | 'host-newer'
   | 'rolled-back'
   | 'failed-before'
+  | 'migrating'
 
 export type ManagedOrcadAutoUpdatePlan =
   | { action: 'update' }
@@ -86,6 +88,10 @@ export function autoUpdateManagedOrcadEnvironment(
   }
 ): Promise<ManagedOrcadAutoUpdateOutcome> {
   return withManagedOrcadLifecycle(userDataPath, args.environmentId, async (managed) => {
+    // Why: a restart mid-migration would race the staging the cutover journal is driving.
+    if (findIncompleteManagedOrcadMigration(userDataPath, managed.environment.id)) {
+      return { outcome: 'skipped', reason: 'migrating' }
+    }
     const context = await resolveLinkedOrcadContext(managed.environment, managed.deployment)
     const plan = planManagedOrcadAutoUpdate({
       record: context.activationRecord,

@@ -9,7 +9,7 @@ import { isOrcadSourceRetirementEnabled } from '../ssh/orcad-migration-source-re
 import { retireRetainedOrcadSourceChain } from '../ssh/orcad-retained-source-retirement'
 import { assessOrcadMigrationTerminals } from '../ssh/orcad-migration-terminal-gate'
 import { hasOrcadTemplate } from '../ssh/orcad-artifact-materializer'
-import { autoUpdateManagedOrcadEnvironment } from '../ssh/orcad-managed-auto-update'
+import { managedServerUpdateDeps } from '../ssh/managed-server-update-deps'
 import { ensureOrcadManagedTunnel } from '../ssh/orcad-managed-tunnel'
 import { convertSshTargetToManagedOrcad } from '../ssh/orcad-runtime-conversion'
 import { orcadMigrationDestinationFor } from '../ssh/orcad-runtime-conversion-wiring'
@@ -61,18 +61,7 @@ export function hostServerOnConnectDeps(userDataPath: string): HostServerOnConne
     recordUnavailable: (target, reason) => {
       registry.updateTarget(target.id, { managedServerUnavailable: { reason, appVersion } })
     },
-    autoUpdate: (environmentId, options) =>
-      autoUpdateManagedOrcadEnvironment(userDataPath, { environmentId, appVersion, ...options }),
-    recordedUpdateFailure: (target) =>
-      target.managedServerUpdateFailure?.appVersion === appVersion
-        ? target.managedServerUpdateFailure.reason
-        : null,
-    recordUpdateFailure: (target, reason) => {
-      registry.updateTarget(target.id, { managedServerUpdateFailure: { reason, appVersion } })
-    },
-    clearUpdateFailure: (target) => {
-      registry.updateTarget(target.id, { managedServerUpdateFailure: undefined })
-    },
+    ...managedServerUpdateDeps(userDataPath),
     isEmptyHost: (target) => {
       // An interrupted empty-host deploy passes its own claim, recorded by its provisioning intent.
       const environmentId = getManagedOrcadFenceEnvironmentId(target)
