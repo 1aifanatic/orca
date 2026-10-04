@@ -81,10 +81,10 @@ export async function recordStructuredAgentSessionOptionIntent(
   input: { key: string; value: string }
 ): Promise<TurnOutcome<AgentSessionOptionResult>> {
   const record = store.getRecord(ctx.sessionId)
-  const accepted =
-    record !== undefined &&
-    structuredAgentDefinition(record.provider)?.restingOptions.acceptsKey(input.key) === true
-  if (!record || !accepted) {
+  if (
+    !record ||
+    !structuredAgentDefinition(record.provider)?.restingOptions.acceptsKey(input.key)
+  ) {
     return {
       ok: false,
       refusal: refuse(
