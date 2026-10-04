@@ -125,7 +125,7 @@ const fresh = launchIntent('session-new')
 async function refuseFirstLaunch(): Promise<void> {
   mocks.createIntent.mockReturnValueOnce(failed).mockReturnValueOnce(fresh)
   mocks.launch.mockRejectedValueOnce(new StructuredAgentSessionCreateRefusalError('unsupported'))
-  startStructuredAgentLaunch(WORKTREE_ID, 'codex', { prompt: 'first task' })
+  startStructuredAgentLaunch(WORKTREE_ID, 'codex', { requestId: 'request-1', prompt: 'first task' })
   await flushLaunchSettlement()
   expect(getStructuredAgentSessionLaunchLifecycle(WORKTREE_ID, failed.sessionId)).toBe('failed')
 }
@@ -163,6 +163,7 @@ describe('a new launch after a failed one', () => {
 
     mocks.launch.mockResolvedValueOnce({ sessionId: fresh.sessionId, fence: 1 })
     const notes = startStructuredAgentLaunch(WORKTREE_ID, 'codex', {
+      requestId: 'request-2',
       prompt: 'review notes',
       promptDelivery: 'submit-after-ready'
     })
@@ -200,12 +201,14 @@ describe('a new launch after a failed one', () => {
       .mockImplementationOnce(
         () => new Promise<Receipt>((_resolve, reject) => (rejectRetry = reject))
       )
-    const next = startStructuredAgentLaunch(WORKTREE_ID, 'codex')
+    const next = startStructuredAgentLaunch(WORKTREE_ID, 'codex', { requestId: 'plus-pick' })
 
     expect(retryStructuredAgentSessionLaunch(WORKTREE_ID, failed.sessionId)).toBe(true)
     expect(mocks.launch.mock.calls[2]?.[0]).toMatchObject({ sessionId: failed.sessionId })
-    // A third start joins the new launch, not the retried chat.
-    expect(startStructuredAgentLaunch(WORKTREE_ID, 'codex').sessionId).toBe(fresh.sessionId)
+    // A re-delivery of the new pick joins the new launch, not the retried chat.
+    expect(
+      startStructuredAgentLaunch(WORKTREE_ID, 'codex', { requestId: 'plus-pick' }).sessionId
+    ).toBe(fresh.sessionId)
     expect(mocks.createIntent).toHaveBeenCalledTimes(2)
 
     // Closing the retried chat leaves the new launch registered and starting.
@@ -228,7 +231,7 @@ describe('a new launch after a failed one', () => {
     mocks.launch
       .mockImplementationOnce(() => new Promise<Receipt>((resolve) => (resolveFresh = resolve)))
       .mockResolvedValueOnce({ sessionId: failed.sessionId, fence: 1 })
-    const next = startStructuredAgentLaunch(WORKTREE_ID, 'codex')
+    const next = startStructuredAgentLaunch(WORKTREE_ID, 'codex', { requestId: 'request-5' })
 
     expect(retryStructuredAgentSessionLaunch(WORKTREE_ID, failed.sessionId)).toBe(true)
     await flushLaunchSettlement()
@@ -246,12 +249,13 @@ describe('a new launch after a failed one', () => {
     mocks.launch
       .mockRejectedValueOnce(new StructuredAgentSessionCreateRefusalError('unsupported'))
       .mockResolvedValueOnce({ sessionId: fresh.sessionId, fence: 1 })
-    startStructuredAgentLaunch(WORKTREE_ID, 'codex', { resumeFrom })
+    startStructuredAgentLaunch(WORKTREE_ID, 'codex', { requestId: 'request-6', resumeFrom })
     await flushLaunchSettlement()
     expect(getStructuredAgentLaunchStatus(WORKTREE_ID, 'codex')).toBe('idle')
 
-    expect(startStructuredAgentLaunch(WORKTREE_ID, 'codex', { resumeFrom }).sessionId).toBe(
-      fresh.sessionId
-    )
+    expect(
+      startStructuredAgentLaunch(WORKTREE_ID, 'codex', { requestId: 'request-7', resumeFrom })
+        .sessionId
+    ).toBe(fresh.sessionId)
   })
 })

@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-types'
 import { suppressCancelledStructuredSessionTabs } from '@/runtime/structured-agent-session-tab-retirement'
 import type { StructuredLaunchState } from './structured-agent-session-launch-registry'
-import { BLANK_STRUCTURED_LAUNCH_REQUEST } from './structured-agent-session-launch-request'
 import {
   hasStructuredAgentSessionLaunchCancellationTombstone,
   markStructuredAgentSessionLaunchCancelled,
@@ -83,7 +82,7 @@ describe('structured launch cancellation retirement', () => {
       promptDelivery: 'auto-submit',
       callers: {
         outcome: 'pending',
-        attempt: { kind: 'first', request: BLANK_STRUCTURED_LAUNCH_REQUEST, stagedEntry: null },
+        attempt: { kind: 'first', requestId: 'plus-pick', blank: true, stagedEntry: null },
         entries: new Set(),
         promptDeliveryResults: new Set(),
         onSettled: () => undefined
@@ -163,7 +162,7 @@ describe('structured launch cancellation retirement', () => {
       promptDelivery: 'auto-submit',
       callers: {
         outcome: 'pending',
-        attempt: { kind: 'first', request: BLANK_STRUCTURED_LAUNCH_REQUEST, stagedEntry: null },
+        attempt: { kind: 'first', requestId: 'plus-pick', blank: true, stagedEntry: null },
         entries: new Set(),
         promptDeliveryResults: new Set(),
         onSettled: () => undefined

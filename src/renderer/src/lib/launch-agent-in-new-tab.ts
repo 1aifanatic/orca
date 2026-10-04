@@ -31,8 +31,19 @@ import {
   planAgentSessionLaunch,
   type AgentSessionLaunchPlan
 } from '@/lib/agent-session-launch-plan'
+import type { AgentLaunchRequestId } from '@/lib/agent-launch-request-id'
 
-export type LaunchAgentInNewTabArgs = {
+/** The user action this launch serves: minted where that action is handled, or carried by the
+ *  route the caller already planned for it. */
+type LaunchAgentInNewTabRequest =
+  | { requestId: AgentLaunchRequestId; agentSessionLaunchPlan?: undefined }
+  | {
+      /** Keeps a preflighted route authoritative across workspace creation. */
+      agentSessionLaunchPlan: AgentSessionLaunchPlan
+      requestId?: undefined
+    }
+
+export type LaunchAgentInNewTabArgs = LaunchAgentInNewTabRequest & {
   agent: TuiAgent
   worktreeId: string
   /** Tab group the user launched from; keeps split-group launches in that pane instead of the active group. */
@@ -60,8 +71,6 @@ export type LaunchAgentInNewTabArgs = {
    * terminal route, whose readiness signal the client watches itself.
    */
   onPromptDeliveryUnconfirmed?: () => void
-  /** Keeps a preflighted route authoritative across workspace creation. */
-  agentSessionLaunchPlan?: AgentSessionLaunchPlan
   /** The launch seeds a workspace being opened, so its PTY spawn must not reshuffle Recent. */
   pendingActivationSpawn?: boolean
   /** Lets a workspace reveal itself before the selected surface opens. */
@@ -118,7 +127,6 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
     onPromptDelivered,
     onPromptDeliveryUnconfirmed,
     carriedNoteKeys,
-    agentSessionLaunchPlan,
     pendingActivationSpawn,
     beforeSurfaceOpen
   } = args
@@ -174,17 +182,19 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
   // Why first: a structured chat is created on whichever runtime owns the workspace, a paired
   // server included, so only a non-structured route falls through to the host-published terminal.
   const plan =
-    agentSessionLaunchPlan ??
-    planAgentSessionLaunch(store, {
-      agent,
-      workspace: { kind: workspaceKind, worktreeId },
-      prompt: trimmedPrompt,
-      promptDelivery: viewModePromptDelivery,
-      tuiCustomization: { cwd: initialCwd },
-      initialSessionOptions: startupPlan.sessionOptions,
-      onPromptDelivered,
-      ...(carriedNoteKeys ? { carriedNoteKeys } : {})
-    })
+    args.requestId === undefined
+      ? args.agentSessionLaunchPlan
+      : planAgentSessionLaunch(store, {
+          requestId: args.requestId,
+          agent,
+          workspace: { kind: workspaceKind, worktreeId },
+          prompt: trimmedPrompt,
+          promptDelivery: viewModePromptDelivery,
+          tuiCustomization: { cwd: initialCwd },
+          initialSessionOptions: startupPlan.sessionOptions,
+          onPromptDelivered,
+          ...(carriedNoteKeys ? { carriedNoteKeys } : {})
+        })
   if (plan?.route === 'structured-native-chat') {
     const structured = launchStructuredAgentFromNewTab({
       plan,
@@ -196,6 +206,7 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
         launchAgentInNewTabInternal({
           ...args,
           beforeSurfaceOpen: undefined,
+          requestId: undefined,
           agentSessionLaunchPlan: terminalPlan
         })
     })

@@ -160,10 +160,10 @@ function joinStructuredLaunchState(
   options: StructuredAgentLaunchOptions,
   request: StructuredLaunchRequest
 ): StructuredLaunchStateResult | undefined {
-  // A repeat (a double click) shares the text the first click staged, so it is sent once.
-  const repeat = repeatedStructuredLaunchAttempt(existing.callers.attempt, request)
+  // A re-delivery of the same action (a double click) shares the text it staged, so it is sent once.
+  const repeat = repeatedStructuredLaunchAttempt(existing.callers.attempt, request.id)
   // An empty chat takes the first text sent to it, delivered the way that request asked.
-  const claim = claimableStructuredLaunchAttempt(existing, request)
+  const claim = repeat ? undefined : claimableStructuredLaunchAttempt(existing, request)
   const retrying = existing.visibilityUnknown
   const joined = joinLaunchDelivery(
     options,
@@ -187,13 +187,14 @@ function joinStructuredLaunchState(
   }
   if (claim) {
     existing.promptDelivery = options.promptDelivery
-    Object.assign(claim, { request, stagedEntry: stagedPrompt })
+    Object.assign(claim, { requestId: request.id, blank: false, stagedEntry: stagedPrompt })
   }
   if (!retrying && !repeat) {
     launchDraft.seedStructuredAgentLaunchDraft(existing.intent.sessionId, agent, joined)
   }
+  // A re-delivery waits on the text its action staged, if any, and never stages its own.
   const { prompt: _retryPrompt, ...joinedWithoutPrompt } = joined
-  const callerOptions = retrying ? joinedWithoutPrompt : joined
+  const callerOptions = retrying || (repeat && !repeat.stagedEntry) ? joinedWithoutPrompt : joined
   return {
     state: existing,
     caller: addStructuredLaunchCaller({
@@ -233,7 +234,8 @@ function structuredAgentLaunchState(
   launchDraft.seedStructuredAgentLaunchDraft(intent.sessionId, agent, options)
   const callers = createStructuredLaunchCallerGroup({
     kind: 'first',
-    request,
+    requestId: request.id,
+    blank: !request.hasText,
     stagedEntry: stagedPrompt
   })
   const state: StructuredLaunchState = {
@@ -289,7 +291,7 @@ export function cancelStructuredAgentLaunch(worktreeId: string, sessionId: strin
 export function startStructuredAgentLaunch(
   worktreeId: string,
   agent: AgentSessionHandleProvider,
-  options: StructuredAgentLaunchOptions = {}
+  options: StructuredAgentLaunchOptions
 ): StructuredAgentLaunchResult {
   const { state, caller } = structuredAgentLaunchState(worktreeId, agent, options)
   return {

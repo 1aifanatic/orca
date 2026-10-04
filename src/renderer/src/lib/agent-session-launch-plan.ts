@@ -24,8 +24,11 @@ import {
   type StructuredAgentLaunchSettlement
 } from '@/lib/structured-agent-launch-settlement'
 import type { StructuredAgentLaunchOptions } from '@/lib/structured-agent-session-launch'
+import type { AgentLaunchRequestId } from '@/lib/agent-launch-request-id'
 
 export type AgentSessionLaunchRequest = AgentLaunchRouteArgs & {
+  /** The user action this launch serves, minted where that action is handled. */
+  requestId: AgentLaunchRequestId
   resumeFrom?: StructuredAgentSessionResumeSource
   onPromptDelivered?: () => void
   carriedNoteKeys?: readonly string[]
@@ -38,6 +41,8 @@ export type AgentSessionLaunchRequest = AgentLaunchRouteArgs & {
  */
 export type AgentSessionLaunchVerdict = {
   route: AgentLaunchRoute
+  /** The user action this launch serves; a re-entry with this verdict is that same action. */
+  requestId: AgentLaunchRequestId
   agent: TuiAgent
   worktreeId?: string
   /** The host the structured route was decided for; the chat is created there. */
@@ -80,6 +85,7 @@ export type AgentSessionLaunchPlan = Readonly<AgentSessionLaunchVerdict> & {
 
 function structuredLaunchOptions(verdict: AgentSessionLaunchVerdict): StructuredAgentLaunchOptions {
   return {
+    requestId: verdict.requestId,
     ...(verdict.prompt !== undefined ? { prompt: verdict.prompt } : {}),
     ...(verdict.promptDelivery ? { promptDelivery: verdict.promptDelivery } : {}),
     ...(verdict.resumeFrom ? { resumeFrom: verdict.resumeFrom } : {}),
@@ -156,6 +162,14 @@ export function structuredAgentSessionLaunchFeasible(
   return structuredAgentLaunchSupported({ ...buildAgentLaunchRouteInput(store, args), settings })
 }
 
+/** The route a launch would take, for a caller that only branches on it and launches nothing. */
+export function resolveAgentSessionLaunchRoute(
+  store: AgentLaunchRouteStore,
+  request: AgentLaunchRouteArgs
+): AgentLaunchRoute {
+  return resolveAgentLaunchRoute(buildAgentLaunchRouteInput(store, request))
+}
+
 /** The one place a launch route is decided. Delivery mode is fixed here too, so the settle loop
  *  later receives exactly the prompt and mode the route was decided on. */
 export function planAgentSessionLaunch(
@@ -168,6 +182,7 @@ export function planAgentSessionLaunch(
     route === 'structured-native-chat' ? parseExecutionHostId(input.executionHostId)?.id : undefined
   return adoptAgentSessionLaunchVerdict({
     route,
+    requestId: request.requestId,
     agent: request.agent,
     ...(executionHostId ? { executionHostId } : {}),
     ...(request.workspace.worktreeId ? { worktreeId: request.workspace.worktreeId } : {}),

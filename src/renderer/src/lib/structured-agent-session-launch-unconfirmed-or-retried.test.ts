@@ -65,11 +65,13 @@ vi.mock('@/lib/launch-agent-in-new-tab', async () => {
   const launch = await import('./structured-agent-session-launch')
   return {
     launchAgentInNewTab: (args: {
+      requestId: string
       worktreeId: string
       prompt: string
       promptDelivery: 'auto-submit' | 'draft' | 'submit-after-ready'
     }) => {
       const started = launch.startStructuredAgentLaunch(args.worktreeId, 'codex', {
+        requestId: args.requestId,
         prompt: args.prompt,
         promptDelivery: args.promptDelivery
       })
@@ -158,6 +160,7 @@ async function leaveFirstLaunchUnconfirmed(options: { resume?: boolean } = {}): 
     )
     .mockReturnValueOnce(fresh)
   startStructuredAgentLaunch(WORKTREE_ID, 'codex', {
+    requestId: 'request-1',
     prompt: 'first task',
     ...(options.resume ? { resumeFrom } : {})
   })
@@ -235,6 +238,7 @@ describe('a new start beside an unconfirmed or retried chat', () => {
     await leaveFirstLaunchUnconfirmed()
 
     const notes = startStructuredAgentLaunch(WORKTREE_ID, 'codex', {
+      requestId: 'request-2',
       prompt: 'review notes',
       promptDelivery: 'submit-after-ready'
     })
@@ -255,7 +259,10 @@ describe('a new start beside an unconfirmed or retried chat', () => {
     const failed = launchIntent('session-failed')
     mocks.createIntent.mockReturnValueOnce(failed).mockReturnValueOnce(fresh)
     mocks.launch.mockRejectedValueOnce(new StructuredAgentSessionCreateRefusalError('unsupported'))
-    startStructuredAgentLaunch(WORKTREE_ID, 'codex', { prompt: 'first task' })
+    startStructuredAgentLaunch(WORKTREE_ID, 'codex', {
+      requestId: 'request-3',
+      prompt: 'first task'
+    })
     await flushLaunchSettlement()
     // Reload: the registry is memory; the failed record is what survives.
     resetStructuredAgentLaunchRegistryForTests()
@@ -264,6 +271,7 @@ describe('a new start beside an unconfirmed or retried chat', () => {
     mocks.seedDraft.mockClear()
 
     const next = startStructuredAgentLaunch(WORKTREE_ID, 'codex', {
+      requestId: 'request-4',
       prompt: 'fix it',
       promptDelivery: 'submit-after-ready'
     })
@@ -282,7 +290,7 @@ describe('a new start beside an unconfirmed or retried chat', () => {
     // Why: the + menu disables an agent only while a pick would join a start in flight.
     expect(getStructuredAgentLaunchStatus(WORKTREE_ID, 'codex')).toBe('idle')
 
-    const pick = startStructuredAgentLaunch(WORKTREE_ID, 'codex')
+    const pick = startStructuredAgentLaunch(WORKTREE_ID, 'codex', { requestId: 'request-5' })
 
     expect(pick.sessionId).toBe(fresh.sessionId)
     expect(getStructuredAgentLaunchStatus(WORKTREE_ID, 'codex')).toBe('pending')
@@ -291,12 +299,18 @@ describe('a new start beside an unconfirmed or retried chat', () => {
     await expect(pick.launchResult).resolves.toEqual({ sessionId: fresh.sessionId, fence: 1 })
   })
 
-  it('still coalesces a repeat of one request racing for one chat', async () => {
+  it('still coalesces one action delivered twice racing for one chat', async () => {
     mocks.createIntent.mockReturnValueOnce(fresh)
     mocks.launch.mockImplementationOnce(() => new Promise(() => undefined))
 
-    const first = startStructuredAgentLaunch(WORKTREE_ID, 'codex', { prompt: 'one' })
-    const second = startStructuredAgentLaunch(WORKTREE_ID, 'codex', { prompt: 'one' })
+    const first = startStructuredAgentLaunch(WORKTREE_ID, 'codex', {
+      requestId: 'double-click',
+      prompt: 'one'
+    })
+    const second = startStructuredAgentLaunch(WORKTREE_ID, 'codex', {
+      requestId: 'double-click',
+      prompt: 'one'
+    })
 
     expect(second.sessionId).toBe(first.sessionId)
     expect(mocks.createIntent).toHaveBeenCalledOnce()
@@ -306,9 +320,10 @@ describe('a new start beside an unconfirmed or retried chat', () => {
     await leaveFirstLaunchUnconfirmed({ resume: true })
     expect(getStructuredAgentLaunchStatus(WORKTREE_ID, 'codex')).toBe('unknown')
 
-    expect(startStructuredAgentLaunch(WORKTREE_ID, 'codex', { resumeFrom }).sessionId).toBe(
-      unconfirmed.sessionId
-    )
+    expect(
+      startStructuredAgentLaunch(WORKTREE_ID, 'codex', { requestId: 'request-8', resumeFrom })
+        .sessionId
+    ).toBe(unconfirmed.sessionId)
     expect(mocks.createIntent).toHaveBeenCalledOnce()
   })
 })

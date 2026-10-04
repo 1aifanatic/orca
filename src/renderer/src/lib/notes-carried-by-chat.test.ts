@@ -274,7 +274,9 @@ afterEach(() => {
 
 /** "Send notes to > New agent": the launch saves the notes' keys with its staged message. */
 function sendNotesToNewAgent() {
+  // One user gesture, one request id: a launch joins another only on an equal id.
   return startStructuredAgentLaunch(WORKTREE_ID, 'codex', {
+    requestId: 'request-1',
     prompt: NOTES,
     promptDelivery: 'submit-after-ready',
     carriedNoteKeys: [KEY_A]
@@ -339,6 +341,17 @@ describe('notes sent to a new agent', () => {
     await waitFor(() => readOutbox(chat.sessionId).length === 0)
     expect(mocks.clearDeliveredDiffComments).toHaveBeenCalledExactlyOnceWith(WORKTREE_ID, [NOTE_A])
     expect(isNoteInFlight(KEY_A)).toBe(false)
+  })
+
+  it('come back when a chat still starting is closed, without waiting on its create', async () => {
+    mocks.launch.mockImplementation(() => new Promise(() => undefined))
+    sendNotesToNewAgent()
+    expect(isNoteInFlight(KEY_A)).toBe(true)
+
+    cancelStructuredAgentLaunch(WORKTREE_ID, chat.sessionId)
+    await settle()
+    expect(isNoteInFlight(KEY_A)).toBe(false)
+    expect(mocks.clearDeliveredDiffComments).not.toHaveBeenCalled()
   })
 
   it('come back when this window closes the failed chat, which hands no text back', async () => {
