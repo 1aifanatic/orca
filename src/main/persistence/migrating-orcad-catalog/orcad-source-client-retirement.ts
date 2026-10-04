@@ -202,37 +202,34 @@ function rewriteDesktopUiForDestination(
   if (!route || !destinationEnvironmentId) {
     return
   }
+  const destinationHostId = toRuntimeExecutionHostId(destinationEnvironmentId)
   if (
     route.lastActiveWorktreeId &&
     orcadMigrationOwnerMatchesScope(state.ui.lastActiveWorktreeId, scope)
   ) {
     state.ui.lastActiveWorktreeId = composeWorktreeHostIdentity(
-      toRuntimeExecutionHostId(destinationEnvironmentId),
+      destinationHostId,
       route.lastActiveWorktreeId
     )
   }
   if (route.workspaceHostScope === 'local' && state.ui.workspaceHostScope === scope.hostId) {
-    state.ui.workspaceHostScope = `runtime:${encodeURIComponent(destinationEnvironmentId)}`
+    state.ui.workspaceHostScope = destinationHostId
   }
   if (route.visibleWorkspaceHostIds?.includes('local') && state.ui.visibleWorkspaceHostIds) {
     state.ui.visibleWorkspaceHostIds = state.ui.visibleWorkspaceHostIds.map((hostId) =>
-      hostId === scope.hostId
-        ? (`runtime:${encodeURIComponent(destinationEnvironmentId)}` as const)
-        : hostId
+      hostId === scope.hostId ? destinationHostId : hostId
     )
   }
   if (route.workspaceHostOrder?.includes('local')) {
     state.ui.workspaceHostOrder = (state.ui.workspaceHostOrder ?? []).map((hostId) =>
-      hostId === scope.hostId
-        ? (`runtime:${encodeURIComponent(destinationEnvironmentId)}` as const)
-        : hostId
+      hostId === scope.hostId ? destinationHostId : hostId
     )
   }
   if (route.manualRepoOrder) {
     const repoIds = new Set(route.manualRepoOrder.map((entry) => entry.repoId))
     state.ui.manualRepoOrder = (state.ui.manualRepoOrder ?? []).map((entry) =>
       entry.hostId === scope.hostId && repoIds.has(entry.repoId)
-        ? { ...entry, hostId: `runtime:${encodeURIComponent(destinationEnvironmentId)}` as const }
+        ? { ...entry, hostId: destinationHostId }
         : entry
     )
   }
@@ -241,9 +238,7 @@ function rewriteDesktopUiForDestination(
     for (const [ownerKey, enabled] of Object.entries(next)) {
       if (orcadMigrationOwnerMatchesScope(ownerKey, scope)) {
         delete next[ownerKey]
-        next[
-          `runtime:${encodeURIComponent(destinationEnvironmentId)}|${unqualifyOrcadMigrationOwnerKey(ownerKey)}`
-        ] = enabled
+        next[`${destinationHostId}|${unqualifyOrcadMigrationOwnerKey(ownerKey)}`] = enabled
       }
     }
     state.ui.showDotfilesByWorktree = next

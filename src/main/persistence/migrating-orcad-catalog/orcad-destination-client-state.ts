@@ -126,75 +126,56 @@ function prepareMobileSelections(
   return result
 }
 
+// What each routed field reads in this profile, and what it holds when never set.
+const UI_ROUTING_FIELDS: readonly {
+  key: keyof OrcadMigrationUiRoutingState
+  read: (ui: PersistedState['ui']) => unknown
+  empty: unknown
+}[] = [
+  { key: 'lastActiveRepoId', read: (ui) => ui.lastActiveRepoId, empty: null },
+  { key: 'lastActiveWorktreeId', read: (ui) => ui.lastActiveWorktreeId, empty: null },
+  { key: 'filterRepoIds', read: (ui) => ui.filterRepoIds, empty: [] },
+  { key: 'showDotfilesByWorktree', read: (ui) => ui.showDotfilesByWorktree ?? {}, empty: {} },
+  {
+    key: 'setupScriptPromptDismissedRepoIds',
+    read: (ui) => ui.setupScriptPromptDismissedRepoIds ?? [],
+    empty: []
+  },
+  { key: 'manualRepoOrder', read: (ui) => ui.manualRepoOrder ?? [], empty: [] },
+  { key: 'workspaceHostScope', read: (ui) => ui.workspaceHostScope, empty: undefined },
+  { key: 'visibleWorkspaceHostIds', read: (ui) => ui.visibleWorkspaceHostIds, empty: null },
+  { key: 'workspaceHostOrder', read: (ui) => ui.workspaceHostOrder ?? [], empty: [] },
+  { key: 'automationHostFilter', read: (ui) => ui.automationHostFilter, empty: undefined },
+  {
+    key: 'acknowledgedAgentsByPaneKey',
+    read: (ui) => ui.acknowledgedAgentsByPaneKey ?? {},
+    empty: {}
+  }
+]
+
 function assertUiRoutingCompatible(
   route: OrcadMigrationUiRoutingState,
   state: PersistedState
 ): void {
-  const ui = state.ui
-  assertOptionalValue(route.lastActiveRepoId, ui.lastActiveRepoId, null, 'last-active-repo')
-  assertOptionalValue(
-    route.lastActiveWorktreeId,
-    ui.lastActiveWorktreeId,
-    null,
-    'last-active-worktree'
-  )
-  assertOptionalArray(route.filterRepoIds, ui.filterRepoIds, 'filter-repos')
-  assertOptionalValue(
-    route.showDotfilesByWorktree,
-    ui.showDotfilesByWorktree ?? {},
-    {},
-    'show-dotfiles'
-  )
-  assertOptionalArray(
-    route.setupScriptPromptDismissedRepoIds,
-    ui.setupScriptPromptDismissedRepoIds ?? [],
-    'setup-dismissed'
-  )
-  assertOptionalArray(route.manualRepoOrder, ui.manualRepoOrder ?? [], 'manual-order')
-  assertOptionalValue(route.workspaceHostScope, ui.workspaceHostScope, undefined, 'host-scope')
-  assertOptionalValue(
-    route.visibleWorkspaceHostIds,
-    ui.visibleWorkspaceHostIds,
-    null,
-    'visible-hosts'
-  )
-  assertOptionalArray(route.workspaceHostOrder, ui.workspaceHostOrder ?? [], 'host-order')
-  assertOptionalValue(
-    route.automationHostFilter,
-    ui.automationHostFilter,
-    undefined,
-    'automation-filter'
-  )
-  assertOptionalValue(
-    route.acknowledgedAgentsByPaneKey,
-    ui.acknowledgedAgentsByPaneKey ?? {},
-    {},
-    'acknowledgements'
-  )
+  for (const { key, read, empty } of UI_ROUTING_FIELDS) {
+    const current = serializeOrcadMigrationValue(read(state.ui))
+    if (
+      route[key] !== undefined &&
+      current !== serializeOrcadMigrationValue(route[key]) &&
+      current !== serializeOrcadMigrationValue(empty)
+    ) {
+      throw new Error(`orcad_migration_client_state_conflict:ui:${key}`)
+    }
+  }
 }
 
 function assertUiRoutingApplied(route: OrcadMigrationUiRoutingState, state: PersistedState): void {
-  const ui = state.ui
-  const fields: [keyof OrcadMigrationUiRoutingState, unknown][] = [
-    ['lastActiveRepoId', ui.lastActiveRepoId],
-    ['lastActiveWorktreeId', ui.lastActiveWorktreeId],
-    ['filterRepoIds', ui.filterRepoIds],
-    ['showDotfilesByWorktree', ui.showDotfilesByWorktree ?? {}],
-    ['setupScriptPromptDismissedRepoIds', ui.setupScriptPromptDismissedRepoIds ?? []],
-    ['manualRepoOrder', ui.manualRepoOrder ?? []],
-    ['workspaceHostScope', ui.workspaceHostScope],
-    ['visibleWorkspaceHostIds', ui.visibleWorkspaceHostIds],
-    ['workspaceHostOrder', ui.workspaceHostOrder ?? []],
-    ['automationHostFilter', ui.automationHostFilter],
-    ['acknowledgedAgentsByPaneKey', ui.acknowledgedAgentsByPaneKey ?? {}]
-  ]
-  for (const [key, actual] of fields) {
-    const expected = route[key]
+  for (const { key, read } of UI_ROUTING_FIELDS) {
     if (
-      expected !== undefined &&
-      serializeOrcadMigrationValue(actual) !== serializeOrcadMigrationValue(expected)
+      route[key] !== undefined &&
+      serializeOrcadMigrationValue(read(state.ui)) !== serializeOrcadMigrationValue(route[key])
     ) {
-      throw new Error(`orcad_migration_receipt_client_state_mismatch:ui:${String(key)}`)
+      throw new Error(`orcad_migration_receipt_client_state_mismatch:ui:${key}`)
     }
   }
 }
@@ -240,29 +221,4 @@ function applyUiRouting(route: OrcadMigrationUiRoutingState, state: PersistedSta
       ...structuredClone(route.acknowledgedAgentsByPaneKey)
     }
   }
-}
-
-function assertOptionalValue(
-  incoming: unknown,
-  current: unknown,
-  empty: unknown,
-  field: string
-): void {
-  if (
-    incoming === undefined ||
-    serializeOrcadMigrationValue(current) === serializeOrcadMigrationValue(incoming)
-  ) {
-    return
-  }
-  if (serializeOrcadMigrationValue(current) !== serializeOrcadMigrationValue(empty)) {
-    throw new Error(`orcad_migration_client_state_conflict:ui:${field}`)
-  }
-}
-
-function assertOptionalArray(
-  incoming: unknown[] | undefined,
-  current: unknown[],
-  field: string
-): void {
-  assertOptionalValue(incoming, current, [], field)
 }
