@@ -1,6 +1,12 @@
 import { createPatch } from 'diff'
 import { z } from 'zod'
-import type { AgentJournalToolCallItem } from '../../shared/agent-session-journal-types'
+import { parseAgentJournalItemKey } from '../../shared/agent-session-journal-item-key'
+import type {
+  AgentJournalRenderItem,
+  AgentJournalToolCallItem
+} from '../../shared/agent-session-journal-types'
+import { acpJournalToolTurn } from './acp-journal-turns'
+import { providerTimelineKeyPart } from '../native-chat/agent-session-timeline/provider-timeline-identity'
 import {
   boundPayload,
   boundToolInput,
@@ -74,12 +80,15 @@ export class AcpToolTimeline {
   private readonly tools = new Map<string, ToolSnapshot>()
   private bytes = 0
 
+  constructor(private readonly journalItems: () => readonly AgentJournalRenderItem[] = () => []) {}
+
   translate(
     update: ToolCallUpdate,
     dialect: AcpDialect,
     join: ProviderTimelineJoin
   ): ProviderTimelineEvent[] {
-    const previous = this.tools.get(update.toolCallId)
+    const previous =
+      this.tools.get(update.toolCallId) ?? this.persisted(update.toolCallId, join.thread)
     const output = outputText(update)
     const state =
       update.status === 'completed'
@@ -152,6 +161,23 @@ export class AcpToolTimeline {
 
   turn(toolCallId: string): string | undefined {
     return this.tools.get(toolCallId)?.turn
+  }
+
+  private persisted(callId: string, thread: string | undefined): ToolSnapshot | undefined {
+    const rows = this.journalItems()
+    const suffix = `${thread ? `${providerTimelineKeyPart(thread)}/` : ''}${providerTimelineKeyPart(`tool:${callId}`)}`
+    const row = rows.find((item) => {
+      const identity = parseAgentJournalItemKey(item.itemId)
+      return (
+        item.body.kind === 'tool-call' &&
+        item.body.callId === callId &&
+        identity?.provider === 'legacy' &&
+        identity.recordId.endsWith(`:${suffix}`)
+      )
+    })
+    return row?.body.kind === 'tool-call'
+      ? { body: row.body, turn: acpJournalToolTurn(rows, callId) }
+      : undefined
   }
 
   end(turn: string): void {

@@ -1,4 +1,5 @@
 import type { AgentSessionContextUsage } from '../../../shared/agent-session-context-usage'
+import type { AgentJournalToolCallItem } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionPromptResponse } from '../../../shared/agent-session-question-answer'
 import type { NativeChatBackgroundTaskBlock } from '../../../shared/native-chat-types'
 import type { ProviderTimelineRequestBody } from '../../native-chat/agent-session-timeline/provider-timeline-event'
@@ -10,7 +11,10 @@ export type AcpRequestPresentation = {
 }
 
 export type AcpBackgroundTaskUpdate = Pick<NativeChatBackgroundTaskBlock, 'taskId' | 'state'> &
-  Partial<Omit<NativeChatBackgroundTaskBlock, 'type' | 'taskId' | 'state'>>
+  Partial<Omit<NativeChatBackgroundTaskBlock, 'type' | 'taskId' | 'state'>> & {
+    /** Used only until a provider description is known. */
+    fallbackLabel?: string
+  }
 
 export type AcpDialectNotification =
   | { disposition: 'ignore' }
@@ -29,7 +33,10 @@ export type AcpDialectNotification =
 export type AcpDialect = {
   injectedPromptIdentity?: true
   toolName?(update: ToolCallUpdate): string | undefined
-  toolBackgroundTasks?(update: ToolCallUpdate): AcpBackgroundTaskUpdate[]
+  toolBackgroundTasks?(
+    update: ToolCallUpdate,
+    tool: AgentJournalToolCallItem
+  ): AcpBackgroundTaskUpdate[]
   notification?(method: string, params: unknown, at: number): AcpDialectNotification | undefined
   contextWindow?(models: unknown): number | undefined
   request?(method: string, params: unknown): AcpRequestPresentation | undefined

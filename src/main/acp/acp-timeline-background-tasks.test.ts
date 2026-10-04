@@ -9,6 +9,12 @@ afterEach(closeProviderTimelineRigs)
 
 const taskId = '01a10366-1e7f-7191-bcd1-fac24585851f'
 
+async function runningFrames() {
+  return (await readAcpFixture('s6-background')).filter(
+    (frame) => frame.message.method !== '_x.ai/task_completed'
+  )
+}
+
 async function taskRows(fixture: Awaited<ReturnType<typeof openAcpFixtureRig>>) {
   return (await fixture.rig.rows()).flatMap((row) => {
     if (row.body.kind !== 'message') {
@@ -53,7 +59,7 @@ describe('Grok background tasks through the shared timeline', () => {
     'renders the recorded task outside turn settlement and marks it unverifiable on session %s after restart',
     async (boundary) => {
       const fixture = await openAcpFixtureRig()
-      await fixture.feed(await readAcpFixture('s6-background'))
+      await fixture.feed(await runningFrames())
       const [before] = await taskRows(fixture)
       expect(before?.block).toMatchObject({
         taskId,
@@ -96,13 +102,13 @@ describe('Grok background tasks through the shared timeline', () => {
     'joins %s task notifications and the tool result into one row and keeps its origin after restart',
     async (prefix) => {
       const fixture = await openAcpFixtureRig()
-      const frames = await readAcpFixture('s6-background')
+      const frames = await runningFrames()
       await fixture.feed(frames.slice(0, 5))
       fixture.apply(fixture.lane().notification(`${prefix}task_backgrounded`, started(), 1010))
       await fixture.feed(frames.slice(5))
       const [before] = await taskRows(fixture)
       expect(await taskRows(fixture)).toHaveLength(1)
-      expect(before?.block.label).toBe('sleep 15; echo bg-done > bg-marker.txt')
+      expect(before?.block.label).toBe('Sleep then write bg-marker.txt')
       fixture.restart()
       fixture.apply(
         fixture
@@ -118,7 +124,7 @@ describe('Grok background tasks through the shared timeline', () => {
       expect(after?.row.turnScope).toEqual(before?.row.turnScope)
       expect(after?.block).toMatchObject({
         state: 'done',
-        summary: 'Finished',
+        summary: '',
         label: before?.block.label,
         parentToolUseId: 'call-1'
       })
@@ -138,7 +144,7 @@ describe('Grok background tasks through the shared timeline', () => {
     'preserves explicit task completion and the provider outcome %j',
     async (snapshot, state) => {
       const fixture = await openAcpFixtureRig()
-      await fixture.feed(await readAcpFixture('s6-background'))
+      await fixture.feed(await runningFrames())
       fixture.apply(fixture.lane().notification('x.ai/task_completed', completed(snapshot), 2000))
       expect((await taskRows(fixture))[0]?.block.state).toBe(state)
     }
@@ -146,7 +152,7 @@ describe('Grok background tasks through the shared timeline', () => {
 
   it('recovers partial task metadata from the journal after bounded snapshots are evicted', async () => {
     const fixture = await openAcpFixtureRig()
-    await fixture.feed(await readAcpFixture('s6-background'))
+    await fixture.feed(await runningFrames())
     for (let index = 0; index < 130; index += 1) {
       fixture.apply(
         fixture
@@ -168,7 +174,7 @@ describe('Grok background tasks through the shared timeline', () => {
 
   it('places a first task notice after restart beside its original tool while a different turn is active', async () => {
     const fixture = await openAcpFixtureRig()
-    await fixture.feed((await readAcpFixture('s6-background')).slice(0, 5))
+    await fixture.feed((await runningFrames()).slice(0, 5))
     fixture.apply(
       fixture.lane().notification(
         'session/update',

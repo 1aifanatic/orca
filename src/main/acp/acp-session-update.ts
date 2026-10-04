@@ -71,11 +71,15 @@ export function acpSessionUpdate(
           ]
         : []
     case 'tool_call':
-    case 'tool_call_update':
-      return [
-        ...tools.translate(update, dialect, join.join),
-        ...backgroundTasks.translate(dialect.toolBackgroundTasks?.(update) ?? [], join.join)
-      ]
+    case 'tool_call_update': {
+      const events = tools.translate(update, dialect, join.join)
+      const tool = events[0]
+      const tasks =
+        tool && 'body' in tool && tool.body?.kind === 'tool-call'
+          ? (dialect.toolBackgroundTasks?.(update, tool.body) ?? [])
+          : []
+      return [...events, ...backgroundTasks.translate(tasks, join.join, replay)]
+    }
     case 'plan':
       return [
         {

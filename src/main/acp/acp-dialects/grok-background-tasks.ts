@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { AgentJournalToolCallItem } from '../../../shared/agent-session-journal-types'
 import {
   isSettledBackgroundTaskState,
   normalizeBackgroundTaskKind
@@ -40,7 +41,8 @@ function snapshot(
 ): AcpBackgroundTaskUpdate {
   const kind = task.kind ?? task.task_type
   const monitor = kind === 'monitor' || task.monitor_description != null
-  const label = task.monitor_description ?? task.description ?? task.display_command ?? task.command
+  const label = task.monitor_description?.trim() || task.description?.trim()
+  const fallbackLabel = task.display_command?.trim() || task.command?.trim()
   return {
     taskId: task.task_id,
     state,
@@ -54,23 +56,46 @@ function snapshot(
                 : normalizeBackgroundTaskKind(kind ?? 'unknown')
           }
         : {}),
-    ...(label === undefined ? {} : { label }),
+    ...(label ? { label } : fallbackLabel ? { fallbackLabel } : {}),
     ...(task.output_file === undefined ? {} : { outputFile: task.output_file }),
-    ...(task.summary === undefined &&
-    task.output === undefined &&
-    !isSettledBackgroundTaskState(state)
+    ...(task.summary === undefined && !isSettledBackgroundTaskState(state)
       ? {}
-      : { summary: task.summary ?? task.output ?? '' }),
+      : { summary: task.summary ?? '' }),
     ...(task.error === undefined && !isSettledBackgroundTaskState(state)
       ? {}
       : { error: task.error ?? '' })
   }
 }
 
-export function grokToolBackgroundTasks(update: ToolCallUpdate): AcpBackgroundTaskUpdate[] {
+const taskInputSchema = z.object({
+  description: z.string().optional(),
+  command: z.string().optional(),
+  task_id: z.string().trim().min(1).optional(),
+  task_ids: z.array(z.string().trim().min(1)).optional()
+})
+
+export function grokToolBackgroundTasks(
+  update: ToolCallUpdate,
+  tool: AgentJournalToolCallItem
+): AcpBackgroundTaskUpdate[] {
+  const input = taskInputSchema.safeParse(tool.input)
+  if (tool.name === 'kill_command_or_subagent' && update.status === 'completed' && input.success) {
+    // Inference: a successful kill call settles its named tasks without a completion notice.
+    return [
+      ...new Set([
+        ...(input.data.task_ids ?? []),
+        ...(input.data.task_id ? [input.data.task_id] : [])
+      ])
+    ].map((taskId) => ({ taskId, state: 'idle', summary: '', error: '' }))
+  }
   const parsed = startedOutputSchema.safeParse(update.rawOutput)
   return parsed.success
-    ? [{ ...snapshot(parsed.data, 'working'), parentToolUseId: update.toolCallId }]
+    ? [
+        {
+          ...snapshot({ ...(input.success ? input.data : {}), ...parsed.data }, 'working'),
+          parentToolUseId: update.toolCallId
+        }
+      ]
     : []
 }
 

@@ -31,16 +31,23 @@ export class AcpBackgroundTaskTimeline {
 
   translate(
     updates: AcpBackgroundTaskUpdate[],
-    join: ProviderTimelineJoin
+    join: ProviderTimelineJoin,
+    replay = false
   ): ProviderTimelineEvent[] {
     return updates.map((update) => {
+      const { fallbackLabel, ...fields } = update
       const previous = this.snapshots.get(update.taskId) ?? this.persisted(update.taskId)
       const block: NativeChatBackgroundTaskBlock = {
         type: 'background-task',
         kind: 'unknown',
-        label: update.taskId,
         ...previous,
-        ...update
+        ...fields,
+        label: update.label ?? previous?.label ?? fallbackLabel ?? update.taskId,
+        // A historical launch proves no current liveness; explicit outcomes still settle it.
+        state:
+          replay && ['working', 'monitoring', 'waiting'].includes(update.state)
+            ? 'unverifiable'
+            : update.state
       }
       for (const key of ['label', 'summary', 'error', 'outputFile'] as const) {
         const text = block[key]
