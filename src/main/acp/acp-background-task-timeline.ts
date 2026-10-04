@@ -14,6 +14,7 @@ import type {
   ProviderTimelineJoin
 } from '../native-chat/agent-session-timeline/provider-timeline-event'
 import type { AcpBackgroundTaskUpdate } from './acp-dialects/acp-dialect'
+import { acpJournalToolTurn } from './acp-journal-turns'
 
 /** Partial provider snapshots only; the assembler owns settlement and durable placement. */
 export class AcpBackgroundTaskTimeline {
@@ -23,7 +24,10 @@ export class AcpBackgroundTaskTimeline {
     sizeOf: (block, key) => Buffer.byteLength(key) + Buffer.byteLength(JSON.stringify(block))
   })
 
-  constructor(private readonly journalItems: () => readonly AgentJournalRenderItem[]) {}
+  constructor(
+    private readonly journalItems: () => readonly AgentJournalRenderItem[],
+    private readonly toolTurn: (callId: string) => string | undefined
+  ) {}
 
   translate(
     updates: AcpBackgroundTaskUpdate[],
@@ -45,11 +49,15 @@ export class AcpBackgroundTaskTimeline {
         }
       }
       this.snapshots.set(block.taskId, block)
+      const turn = block.parentToolUseId
+        ? (this.toolTurn(block.parentToolUseId) ??
+          acpJournalToolTurn(this.journalItems(), block.parentToolUseId))
+        : undefined
       return {
         type: 'item.update',
         item: `background-task:${block.taskId}`,
         body: backgroundTaskJournalBody(block),
-        join
+        join: { ...join, ...(turn === undefined ? {} : { turn }) }
       }
     })
   }

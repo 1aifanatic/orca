@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { AgentJournalRenderItem } from '../../shared/agent-session-journal-types'
 import type { ProviderTimelineEvent } from '../native-chat/agent-session-timeline/provider-timeline-event'
 import type { AcpDialect, AcpRequestPresentation } from './acp-dialects/acp-dialect'
-import { acpJournalTurnKey } from './acp-journal-turns'
+import { acpJournalToolTurn } from './acp-journal-turns'
 import type { AcpToolTimeline } from './acp-tool-timeline'
 import { AcpRpcError } from './acp-errors'
 import { RequestPermissionRequestSchema } from './generated/acp-protocol.generated'
@@ -70,16 +70,8 @@ export function translateAcpRequest(
       : options.dialect.request?.(method, params)
   const tool = requestToolSchema.safeParse(params)
   const callId = tool.success ? (tool.data.toolCall?.toolCallId ?? tool.data.toolCallId) : undefined
-  const storedTool = callId
-    ? options
-        .journalItems()
-        .find((row) => row.body.kind === 'tool-call' && row.body.callId === callId)
-    : undefined
-  const turnItemId =
-    storedTool?.turnScope?.kind === 'turn' ? storedTool.turnScope.turnItemId : undefined
-  const storedTurn = options.journalItems().find((row) => row.itemId === turnItemId)
   const turn = callId
-    ? (options.tools.turn(callId) ?? (storedTurn && acpJournalTurnKey(storedTurn)))
+    ? (options.tools.turn(callId) ?? acpJournalToolTurn(options.journalItems(), callId))
     : undefined
   const join = { thread: options.sessionId, ...(turn === undefined ? {} : { turn }) }
   if (!presentation) {

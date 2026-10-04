@@ -52,7 +52,9 @@ export class AcpTimelineTranslator {
 
   constructor(private readonly options: AcpTimelineTranslatorOptions) {
     this.dialect = options.dialect ?? GENERIC_ACP_DIALECT
-    this.backgroundTasks = new AcpBackgroundTaskTimeline(options.journalItems)
+    this.backgroundTasks = new AcpBackgroundTaskTimeline(options.journalItems, (callId) =>
+      this.tools.turn(callId)
+    )
     this.prompts = new AcpPromptTurns(
       options.sessionId,
       this.dialect.injectedPromptIdentity === true

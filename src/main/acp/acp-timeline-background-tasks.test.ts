@@ -156,6 +156,45 @@ describe('Grok background tasks through the shared timeline', () => {
     })
   })
 
+  it('places a first task notice after restart beside its original tool while a different turn is active', async () => {
+    const fixture = await openAcpFixtureRig()
+    await fixture.feed((await readAcpFixture('s6-background')).slice(0, 5))
+    fixture.apply(
+      fixture.lane().notification(
+        'session/update',
+        {
+          sessionId: 'session-1',
+          update: { sessionUpdate: 'tool_call_update', toolCallId: 'call-1', status: 'completed' }
+        },
+        1200
+      )
+    )
+    fixture.apply(fixture.lane().promptResult('p1:3', { stopReason: 'end_turn' }, 1300))
+    const original = (await fixture.rig.rows()).find((row) => row.body.kind === 'tool-call')
+    fixture.restart()
+    fixture.apply(fixture.lane().openPrompt('next', 1400).events)
+    fixture.apply(
+      fixture.lane().notification(
+        'session/update',
+        {
+          sessionId: 'session-1',
+          _meta: { promptId: 'prompt:next' },
+          update: {
+            sessionUpdate: 'agent_message_chunk',
+            content: { type: 'text', text: 'Next reply' }
+          }
+        },
+        1500
+      )
+    )
+    fixture.apply(fixture.lane().notification('x.ai/task_backgrounded', started(), 1600))
+    expect((await taskRows(fixture))[0]?.row.turnScope).toEqual(original?.turnScope)
+    expect((await fixture.rig.turns()).map((turn) => turn.state)).toEqual(['completed', 'running'])
+    fixture.apply(fixture.lane().notification('x.ai/task_completed', completed(), 1700))
+    expect((await taskRows(fixture))[0]?.block.state).toBe('done')
+    expect((await fixture.rig.turns())[1]?.state).toBe('running')
+  })
+
   it('ignores malformed, other-session and replay-only task notifications without opening turns', async () => {
     const fixture = await openAcpFixtureRig()
     for (const params of [

@@ -19,6 +19,16 @@ export function acpJournalTurnKey(row: AgentJournalRenderItem): string | undefin
   }
 }
 
+export function acpJournalToolTurn(
+  rows: readonly AgentJournalRenderItem[],
+  callId: string
+): string | undefined {
+  const tool = rows.find((row) => row.body.kind === 'tool-call' && row.body.callId === callId)
+  const turnItemId = tool?.turnScope?.kind === 'turn' ? tool.turnScope.turnItemId : undefined
+  const turn = rows.find((row) => row.itemId === turnItemId)
+  return turn && acpJournalTurnKey(turn)
+}
+
 export function acpJournalTurnIsSettled(
   rows: readonly AgentJournalRenderItem[],
   key: string
