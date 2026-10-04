@@ -45,7 +45,10 @@ export async function runRatioCli(userDataDir: string, args: string[]) {
     },
     timeoutMs: 30_000
   })
-  expect(result, `CLI ${args.join(' ')}`).toMatchObject({ code: 0, timedOut: false })
+  expect(result, `CLI ${args.join(' ')}\n${JSON.stringify(result, null, 2)}`).toMatchObject({
+    code: 0,
+    timedOut: false
+  })
   return result
 }
 
