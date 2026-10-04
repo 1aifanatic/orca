@@ -1,65 +1,44 @@
-name: pnpm verification cache pilot
-
+name: TUI teardown qualification
 on:
-  pull_request:
-    paths: ['.github/workflows/ci-pnpm-verification-pilot.yml']
   workflow_dispatch:
-
 permissions:
   contents: read
-
-concurrency:
-  group: pnpm-verification-pilot-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-env:
-  ORCA_BACKGROUND_LAUNCH: '1'
-
 jobs:
-  seed:
-    strategy:
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+  qualify:
+    name: TUI teardown node 24
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout benchmark support
+        uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-      # PR caches are scoped to the PR merge ref; main never restores them.
-      - uses: actions/cache/save@v5
-        if: steps.deps.outputs.verification-cache-hit != 'true'
-        with:
-          path: ${{ steps.deps.outputs.verification-cache-path }}
-          key: ${{ steps.deps.outputs.verification-cache-key }}
-
-  measure:
-    needs: seed
-    name: measure ${{ matrix.runner }} sample ${{ matrix.sample }} cache ${{ matrix.cache }}
-    strategy:
-      fail-fast: false
-      max-parallel: 4
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-        sample: [1, 2, 3]
-        cache: ['false', 'true']
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-        with:
-          cache-pnpm-verification: ${{ matrix.cache }}
-      - name: Validate treatment and frozen install
-        env:
-          CACHE_ENABLED: ${{ matrix.cache }}
-          CACHE_HIT: ${{ steps.deps.outputs.verification-cache-hit }}
+      - name: Unpack frozen inputs outside source checkout
         run: |
-          if [ "$CACHE_ENABLED" = true ]; then test "$CACHE_HIT" = true; fi
-          git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
-          node -e "require.resolve('vitest'); require.resolve('electron')"
+          mkdir -p "$RUNNER_TEMP/tui-teardown-bundle" "$RUNNER_TEMP/tui-teardown-results"
+          tar -xzf config/ci-capacity-benchmark/tui-teardown.tar.gz -C "$RUNNER_TEMP/tui-teardown-bundle"
+          test -f "$RUNNER_TEMP/tui-teardown-bundle/manifest.json"
+      - name: Checkout exact qualified source
+        uses: actions/checkout@v6
+        with:
+          ref: 5cce5f56775d3d66eb3abe2fbc80900c4eff5c05
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: node
+          node-version: '24.21.0'
+          cache-electron-package: 'true'
+      - name: Install Electron package binary for tests
+        run: node config/scripts/install-electron-package-binary.mjs
+      - name: Qualify teardown and separately qualify terminal parity
+        env:
+          ORCA_BACKGROUND_LAUNCH: '1'
+        run: python3 "$RUNNER_TEMP/tui-teardown-bundle/run-hosted.py" --out "$RUNNER_TEMP/tui-teardown-results"
+      - name: Archive every report and provenance receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tui-teardown-node-24-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/tui-teardown-results
+          retention-days: 14
+          if-no-files-found: error
