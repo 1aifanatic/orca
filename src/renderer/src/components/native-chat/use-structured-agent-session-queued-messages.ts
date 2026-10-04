@@ -72,6 +72,8 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   hasPendingPrompt: boolean
   /** A turn is running, whoever started it, or the queue is about to send its next card. */
   isWorking: boolean
+  /** The person's own message is on its way to start the turn that lifts the pause. */
+  ownSendOnItsWay?: boolean
   composerScopeKey: string | undefined
   mutate: StructuredAgentSessionMutate
 }): StructuredAgentSessionQueuedMessagesController {
@@ -208,7 +210,11 @@ export function useStructuredAgentSessionQueuedMessages(args: {
     [resumable, resume, resuming]
   )
 
-  const pause = useMemo(() => queuedMessagesQueuePause(cards), [cards])
+  const ownSendOnItsWay = args.ownSendOnItsWay === true
+  const pause = useMemo(
+    () => (ownSendOnItsWay ? null : queuedMessagesQueuePause(cards)),
+    [cards, ownSendOnItsWay]
+  )
   // Every card shown, held or not: Clear queue empties the list the person sees.
   const clear = useCallback(async (): Promise<boolean> => {
     const removed = await Promise.all(cardsRef.current.map((card) => removeCard(card.messageId)))

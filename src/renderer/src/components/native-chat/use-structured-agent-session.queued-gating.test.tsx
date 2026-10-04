@@ -9,8 +9,14 @@
 
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
-import type { AgentSessionQueuedMessage } from '../../../../shared/agent-session-wire'
+import type {
+  AgentJournalRenderItem,
+  AgentJournalSubmission
+} from '../../../../shared/agent-session-journal-types'
+import type {
+  AgentSessionQueuedMessage,
+  AgentSessionQueuePause
+} from '../../../../shared/agent-session-wire'
 import {
   createStructuredAgentSessionOutboxEntry,
   type StructuredAgentSessionOutboxEntry
@@ -24,6 +30,8 @@ const mocks = vi.hoisted(() => ({
 let items: AgentJournalRenderItem[] = []
 let queuedMessages: AgentSessionQueuedMessage[] | undefined
 let nextQueuedMessageId: string | null = null
+let queuePause: AgentSessionQueuePause | null = null
+let submissions: AgentJournalSubmission[] = []
 let outboxEntries: StructuredAgentSessionOutboxEntry[] = []
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
@@ -36,11 +44,11 @@ vi.mock('./use-structured-agent-session-read', () => ({
     state: {
       fence: 3,
       items,
-      submissions: [],
+      submissions,
       status: 'ready',
       error: null,
       hasOlder: false,
-      ...(queuedMessages !== undefined ? { queuedMessages, nextQueuedMessageId } : {})
+      ...(queuedMessages !== undefined ? { queuedMessages, nextQueuedMessageId, queuePause } : {})
     },
     loadingOlder: false,
     loadOlder: vi.fn()
@@ -129,6 +137,8 @@ beforeEach(() => {
   items = [RUNNING_TURN]
   queuedMessages = undefined
   nextQueuedMessageId = null
+  queuePause = null
+  submissions = []
   outboxEntries = []
   localStorage.clear()
   clearNativeChatDraftCacheForTests()
@@ -286,6 +296,37 @@ describe('against a capable host', () => {
     nextQueuedMessageId = null
     const refused = render()
     expect(refused.result.current).toMatchObject({ isWorking: false, queueSendsNext: false })
+  })
+
+  it("hides the paused row while the person's own message is on its way, and shows it again once that send is refused", () => {
+    items = []
+    queuePause = { reason: 'stopped' }
+    queuedMessages = [{ ...draft('held'), heldBy: queuePause }]
+    const held = render()
+    expect(held.result.current.queuedMessages.pause).toEqual({ reason: 'stopped' })
+    const sent = createStructuredAgentSessionOutboxEntry({
+      clientMessageId: 'mine',
+      sessionId: 'session-1',
+      text: 'new',
+      attachments: [],
+      queuedAt: 1
+    })
+    const recorded: AgentJournalSubmission = {
+      clientMessageId: 'mine',
+      fence: 3,
+      payloadFingerprint: 'fingerprint',
+      dispatchState: 'pending',
+      providerItemId: null,
+      reason: null,
+      submittedAt: 1,
+      resolvedAt: null
+    }
+    outboxEntries = [{ ...sent, state: 'dispatching', lastAttemptAt: 1 }]
+    submissions = [recorded]
+    expect(render().result.current.queuedMessages.pause).toBeNull()
+    outboxEntries = [{ ...sent, state: 'rejected', lastAttemptAt: 1 }]
+    submissions = [{ ...recorded, dispatchState: 'rejected', resolvedAt: 2 }]
+    expect(render().result.current.queuedMessages.pause).toEqual({ reason: 'stopped' })
   })
 
   it('shows host-held drafts as cards, never as transcript bubbles', () => {

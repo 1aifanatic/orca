@@ -108,6 +108,22 @@ export function queuedMessagesQueuePause(
   return cards.find((card) => card.hold === 'queue-paused')?.queuePause ?? null
 }
 
+/** The person's own message from this composer has reached the host as a direct send and waits
+ *  for the agent to accept it. Its turn will lift the queue's pause, so the header row does not
+ *  say paused meanwhile; a refusal settles the entry and the row comes back. An Orca send never
+ *  enters this outbox, and the queue's send of a card goes under a fresh id. */
+export function ownDirectSendOnItsWay(
+  outbox: readonly StructuredAgentSessionOutboxEntry[],
+  submissions: readonly AgentJournalSubmission[]
+): boolean {
+  const pending = new Set(
+    submissions
+      .filter((submission) => submission.dispatchState === 'pending')
+      .map((submission) => submission.clientMessageId)
+  )
+  return outbox.some((entry) => entry.state !== 'rejected' && pending.has(entry.clientMessageId))
+}
+
 /** Whether the composer's Resume would release anything: nothing runs, and a pause holds a card.
  *  `isWorking` counts the queue's coming send, which the host names. */
 export function queuedMessagesResumable(
