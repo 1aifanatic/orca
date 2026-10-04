@@ -39,6 +39,7 @@ import {
 import { createStructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
 import { recordingStructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger-test-support'
 import { codexProviderHandle } from '../../shared/agent-session-provider-handle-encoding'
+import { CLAUDE_AND_CODEX_STORED_AGENTS } from '../../shared/agent-session-stored-agent.test-fixture'
 
 // `failing` fails every record write; `grants` lets that many more through, then fails.
 const writes = vi.hoisted(() => ({ failing: false, grants: Infinity, refused: 0 }))
@@ -142,7 +143,8 @@ async function seedProfile(
   const database = await openStructuredAgentSessionJournalDatabase({
     logger: createStructuredAgentSessionLogger(),
     stateDirectory: root,
-    hostId: 'local'
+    hostId: 'local',
+    agents: CLAUDE_AND_CODEX_STORED_AGENTS
   })
   for (const record of options.history ?? records) {
     const fence = record.lease.runtimeFence
@@ -182,14 +184,16 @@ async function seedChatOpenedWhileOwed(record: AgentSessionRecord, tabId: string
   const database = await openStructuredAgentSessionJournalDatabase({
     logger: createStructuredAgentSessionLogger(),
     stateDirectory: root,
-    hostId: 'local'
+    hostId: 'local',
+    agents: CLAUDE_AND_CODEX_STORED_AGENTS
   })
   database.db
     .prepare('INSERT INTO agent_session_records (session_id, record_json) VALUES (?, ?)')
     .run(record.sessionId, JSON.stringify(storedTestAgentSessionRecord(record)))
   await AgentSessionRecordStore.open({
     journalDatabase: database,
-    hostId: 'local'
+    hostId: 'local',
+    agents: CLAUDE_AND_CODEX_STORED_AGENTS
   }).setSessionTabVisibility(record.sessionId, true, tabId)
   database.close()
   await rm(legacyAgentSessionStorePath(root), { recursive: true })

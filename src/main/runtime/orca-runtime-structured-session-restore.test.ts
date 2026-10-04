@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { setStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import { OrcaRuntimeService } from './orca-runtime'
+import { claudeAndCodexDefinition } from '../native-chat/agent-session-wire/structured-agent-session-adapter-router-test-support'
 
 afterEach(() => setStructuredAgentSessionHost(null))
 
@@ -76,6 +77,7 @@ describe('structured session cold restoration', () => {
     setStructuredAgentSessionHost({
       reconcileRestartLeases,
       restoreReadableSessions,
+      agentDefinition: claudeAndCodexDefinition,
       listSessionTabs: () => []
     } as never)
 
@@ -140,6 +142,7 @@ describe('structured session cold restoration', () => {
         sessionIds: ['session-survives-rollback']
       }),
       restoreReadableSessions,
+      agentDefinition: claudeAndCodexDefinition,
       listSessionTabs: () => []
     } as never)
 
@@ -194,6 +197,7 @@ describe('structured session cold restoration', () => {
       reconcileRestartLeases: async () => undefined,
       getPersistedVisibleSessionTabIndex: () => ({ present: true, sessionIds: [] }),
       restoreReadableSessions,
+      agentDefinition: claudeAndCodexDefinition,
       listSessionTabs: () => []
     } as never)
 
@@ -228,6 +232,7 @@ describe('structured session cold restoration', () => {
       restoreReadableSessions: async () => undefined,
       close: closeStructuredSession,
       setSessionTabVisibility,
+      agentDefinition: claudeAndCodexDefinition,
       listSessionTabs: () => [
         {
           sessionId: 'agent-session:agent-session:restored-session',
@@ -341,6 +346,7 @@ describe('structured session cold restoration', () => {
     setStructuredAgentSessionHost({
       reconcileRestartLeases: async () => undefined,
       restoreReadableSessions: async () => undefined,
+      agentDefinition: claudeAndCodexDefinition,
       listSessionTabs: () => [
         {
           sessionId: 'agent-session:agent-session:restored-claude',

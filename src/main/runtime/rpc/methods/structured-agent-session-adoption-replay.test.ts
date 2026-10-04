@@ -7,6 +7,7 @@ import { STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY } from '../../../../shared/
 import { openTestAgentSessionRecordStore } from '../../agent-session-record-store-test-harness'
 import type { StructuredAgentSessionAdapter } from '../../../native-chat/agent-session-wire/structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-host'
+import { claudeAndCodexDefinition } from '../../../native-chat/agent-session-wire/structured-agent-session-adapter-router-test-support'
 import { setStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-registry'
 import { OrcaRuntimeService } from '../../orca-runtime'
 import type { RpcRequest, RpcResponse } from '../core'
@@ -32,6 +33,7 @@ let host: StructuredAgentSessionHost
 function adapter(): StructuredAgentSessionAdapter {
   return {
     supportsCreate: () => true,
+    definition: claudeAndCodexDefinition,
     acquire: vi
       .fn<StructuredAgentSessionAdapter['acquire']>()
       .mockImplementation(async ({ fence, spawnToken }) => ({

@@ -6,6 +6,7 @@ import {
 import { encodePersistedAgentSessionProviderHandleChain } from '../../shared/agent-session-provider-handle'
 import { agentSessionRecordFixture } from '../../shared/agent-session-record.test-fixture'
 import { setAgentSessionRecordConversationName } from './agent-session-record-conversation-name'
+import { CLAUDE_AND_CODEX_STORED_AGENTS } from '../../shared/agent-session-stored-agent.test-fixture'
 
 const NOW = 9_000
 
@@ -13,10 +14,15 @@ const NOW = 9_000
 function storedRecordIsValid(
   record: Omit<AgentSessionRecord, 'conversationName'> & { conversationName?: unknown }
 ): boolean {
-  return isPersistedAgentSessionRecord({
-    ...record,
-    providerHandleChain: encodePersistedAgentSessionProviderHandleChain(record.providerHandleChain)
-  })
+  return isPersistedAgentSessionRecord(
+    {
+      ...record,
+      providerHandleChain: encodePersistedAgentSessionProviderHandleChain(
+        record.providerHandleChain
+      )
+    },
+    CLAUDE_AND_CODEX_STORED_AGENTS
+  )
 }
 
 describe('agent session record conversationName validation', () => {
