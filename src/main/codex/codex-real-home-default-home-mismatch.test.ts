@@ -46,8 +46,11 @@ function divergeCodexDefaultHome(): void {
 function alignCodexDefaultHome(): void {
   if (process.platform === 'win32') {
     vi.stubEnv('USERPROFILE', undefined)
-  } else {
+  } else if (process.platform === 'darwin') {
     vi.stubEnv('HOME', userInfo().homedir)
+  } else {
+    // Linux compares nothing but emptiness; containers may lack a passwd entry.
+    vi.stubEnv('HOME', fakeHomeDir)
   }
 }
 
