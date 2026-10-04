@@ -90,9 +90,7 @@ export function markCopilotFolderTrusted(workspacePath: string, home: string): v
       existing = Array.isArray(trustedFolders) ? trustedFolders : []
     }
   } catch {
-    // Why: a corrupted config.json is the user's to fix — refuse to overwrite
-    // it from this side-effect path. Copilot will rewrite the file itself
-    // after the user accepts the trust prompt manually.
+    // Why: an unreadable config.json (permissions, a directory) is the user's to fix — never write.
     return
   }
   const normalizedExisting = existing.map((entry) =>
