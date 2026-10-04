@@ -28,7 +28,6 @@ import {
 import * as launchDraft from './structured-agent-session-launch-draft'
 import {
   deleteStructuredLaunchStateIfCurrent,
-  getJoinableStructuredLaunchState,
   getStructuredAgentSessionLaunchLifecycle,
   getStructuredLaunchStateBySessionId,
   markStructuredAgentSessionLaunchCancelled,
@@ -38,6 +37,10 @@ import {
   type StructuredLaunchState
 } from './structured-agent-session-launch-registry'
 import { restorePersistedStructuredLaunchState } from './structured-agent-session-launch-reload'
+import {
+  claimableStructuredLaunchAttempt,
+  getJoinableStructuredLaunchState
+} from './structured-agent-session-launch-holders'
 import { applyStructuredLaunchHeldOptions } from './structured-agent-session-launch-options'
 import { trackLaunchSettlement } from './structured-agent-session-launch-outcome-tracking'
 import {
@@ -163,6 +166,11 @@ function structuredAgentLaunchState(
   if (existing) {
     // A repeat (a double click) shares the text the first click staged, so it is sent once.
     const repeat = repeatedStructuredLaunchAttempt(existing.callers.attempt, request)
+    // An empty chat takes the first text sent to it, delivered the way that request asked.
+    const claim = claimableStructuredLaunchAttempt(existing, request)
+    if (claim) {
+      existing.promptDelivery = options.promptDelivery
+    }
     const retrying = existing.visibilityUnknown
     if (retrying) {
       restartStructuredLaunchState(existing)
@@ -175,6 +183,9 @@ function structuredAgentLaunchState(
       : (repeat?.stagedEntry ?? null)
     if (!retrying && !repeat) {
       launchDraft.seedStructuredAgentLaunchDraft(existing.intent.sessionId, agent, joined)
+    }
+    if (claim) {
+      Object.assign(claim, { request, stagedEntry: stagedPrompt })
     }
     const { prompt: _retryPrompt, ...joinedWithoutPrompt } = joined
     const callerOptions = retrying ? joinedWithoutPrompt : joined

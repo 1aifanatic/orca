@@ -1,14 +1,14 @@
 import { useSyncExternalStore } from 'react'
 import type { AgentSessionHandleProvider } from '../../../shared/agent-session-provider-handle'
+import { structuredLaunchesHoldingIdentity } from './structured-agent-session-launch-holders'
 import {
-  structuredLaunchesHoldingIdentity,
   structuredLaunchIdentity,
   subscribeStructuredAgentLaunchStatus,
   type StructuredAgentLaunchStatus
 } from './structured-agent-session-launch-registry'
 import type { StructuredLaunchRequest } from './structured-agent-session-launch-request'
 
-/** With `request`, only the launches a start of it would join: a different request opens its own. */
+/** With `request`, only launches a start of it would repeat: any other request is new work. */
 export function getStructuredAgentLaunchStatus(
   worktreeId: string,
   agent: AgentSessionHandleProvider,

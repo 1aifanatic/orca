@@ -10,10 +10,6 @@ import type {
   StructuredLaunchCallerGroup
 } from './structured-agent-session-launch-callers'
 import {
-  joinsFirstLaunchAttempt,
-  type StructuredLaunchRequest
-} from './structured-agent-session-launch-request'
-import {
   deleteStructuredAgentLaunchRecord,
   hasStructuredAgentLaunchCancellationTombstonePersisted,
   readStructuredAgentLaunchRecord,
@@ -82,42 +78,6 @@ export function structuredLaunchIdentity(
     : `${agent}:${worktreeId}`
 }
 
-// Why: coalescing stops a repeat of one request (a double click) racing into two chats. A different
-// request, a failed or unconfirmed launch, or a Retry/re-check of one is not that race: a new start
-// opens a new chat carrying its own text. A resume keeps holding: the host refuses a second adoption.
-function holdsLaunchIdentity(
-  state: StructuredLaunchState,
-  request?: StructuredLaunchRequest
-): boolean {
-  const lifecycle = launchStateLifecycle(state)
-  if (lifecycle === 'failed' || lifecycle === 'cancelled') {
-    return false
-  }
-  if (state.intent.params.resumeFrom) {
-    return true
-  }
-  return (
-    lifecycle !== 'visibility-unknown' && joinsFirstLaunchAttempt(state.callers.attempt, request)
-  )
-}
-
-export function structuredLaunchesHoldingIdentity(
-  matches: (identity: string) => boolean,
-  request?: StructuredLaunchRequest
-): StructuredLaunchState[] {
-  return [...structuredLaunchesBySessionId.values()].filter(
-    (state) => matches(state.identity) && holdsLaunchIdentity(state, request)
-  )
-}
-
-/** The launch a new start of `request` joins; the newest wins if a retried resume holds it too. */
-export function getJoinableStructuredLaunchState(
-  identity: string,
-  request: StructuredLaunchRequest
-): StructuredLaunchState | undefined {
-  return structuredLaunchesHoldingIdentity((candidate) => candidate === identity, request).at(-1)
-}
-
 export function getStructuredLaunchStateBySessionId(
   sessionId: string
 ): StructuredLaunchState | undefined {
@@ -157,7 +117,9 @@ export function structuredLaunchStates(): IterableIterator<StructuredLaunchState
   return structuredLaunchesBySessionId.values()
 }
 
-function launchStateLifecycle(state: StructuredLaunchState): StructuredAgentSessionLaunchLifecycle {
+export function launchStateLifecycle(
+  state: StructuredLaunchState
+): StructuredAgentSessionLaunchLifecycle {
   if (state.cancelled || state.callers.outcome === 'cancelled') {
     return 'cancelled'
   }

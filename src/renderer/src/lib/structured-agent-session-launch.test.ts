@@ -474,17 +474,15 @@ describe('startStructuredAgentLaunch', () => {
     const worktreeId = 'wt-coalesced-prompt-reservation'
     const intent = launchIntent(worktreeId)
     let resolveLaunch!: (receipt: { sessionId: string; fence: number }) => void
-    let resolveDelivery!: (result: {
-      ok: true
-      value: { submission: { dispatchState: 'accepted' } }
-    }) => void
+    const pendingSends: ((result: unknown) => void)[] = []
     mocks.createIntent.mockReturnValue(intent)
     mocks.launch.mockImplementationOnce(() => new Promise((resolve) => (resolveLaunch = resolve)))
     vi.mocked(refreshLocalStructuredSessionTabs).mockResolvedValue([
       publishedSnapshot(worktreeId, intent.sessionId)
     ])
-    mocks.callStructuredAgentSession.mockImplementationOnce(
-      () => new Promise((resolve) => (resolveDelivery = resolve))
+    // Every send waits, so a second send of the repeated text would show up below.
+    mocks.callStructuredAgentSession.mockImplementation(
+      () => new Promise((resolve) => pendingSends.push(resolve))
     )
 
     startStructuredAgentLaunch(worktreeId, 'codex', { prompt: 'second prompt' })
@@ -492,15 +490,23 @@ describe('startStructuredAgentLaunch', () => {
     resolveLaunch({ sessionId: intent.sessionId, fence: 1 })
     await vi.waitFor(() => expect(mocks.callStructuredAgentSession).toHaveBeenCalledOnce())
 
-    startStructuredAgentLaunch(worktreeId, 'codex', { prompt: 'second prompt' })
+    const whileSending = startStructuredAgentLaunch(worktreeId, 'codex', {
+      prompt: 'second prompt'
+    })
     expect(mocks.createIntent).toHaveBeenCalledOnce()
     expect(mocks.launch).toHaveBeenCalledOnce()
 
-    resolveDelivery({ ok: true, value: { submission: { dispatchState: 'accepted' } } })
-    await expect(coalesced.promptDeliveryResult).resolves.toEqual({
-      delivered: true,
-      failureNotified: false
-    })
+    await flushLaunchSettlement()
+    for (const resolve of pendingSends) {
+      resolve({ ok: true, value: { submission: { dispatchState: 'accepted' } } })
+    }
+    for (const caller of [coalesced, whileSending]) {
+      await expect(caller.promptDeliveryResult).resolves.toEqual({
+        delivered: true,
+        failureNotified: false
+      })
+    }
+    expect(mocks.callStructuredAgentSession).toHaveBeenCalledOnce()
   })
 
   it('opens a new chat for a new start while an earlier outcome is unknown', async () => {
