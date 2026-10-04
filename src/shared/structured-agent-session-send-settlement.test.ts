@@ -16,7 +16,10 @@ import {
 } from './structured-agent-session-send-settlement'
 import { AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS } from './agent-session-host-authority'
 import { DISPATCH_REJECTED_CANCELLED } from './structured-agent-session-dispatch-rejection'
-import { AGENT_SESSION_WIRE_REFUSAL_CODES } from './agent-session-wire-refusals'
+import {
+  AGENT_SESSION_WIRE_REFUSAL_CODES,
+  readAgentSessionRefusalReference
+} from './agent-session-wire-refusals'
 import { AGENT_SESSION_REFUSAL_REASONS } from './agent-session-refusal-details'
 import { agentSessionWriteNoticeEnglish } from './agent-session-refusal-notice'
 import { agentSessionRefusalFailure } from './agent-session-write-failure'
@@ -322,9 +325,14 @@ describe('a send Orca keeps sending says why, and only why', () => {
   const STEP =
     /\b(send|try again|retry|start a new chat|reopen|quit|sign in|update orca|answer the|open the current|wait for)\b/i
   const cells = AGENT_SESSION_WIRE_REFUSAL_CODES.flatMap((code) =>
-    [undefined, ...AGENT_SESSION_REFUSAL_REASONS[code]].map((reason) =>
-      agentSessionRefusalFailure({ code, ...(reason ? { details: { reason } } : {}) })
-    )
+    [undefined, ...AGENT_SESSION_REFUSAL_REASONS[code]].flatMap((reason) => {
+      // Read through the checked reader, so each code meets only its own reasons.
+      const reference = readAgentSessionRefusalReference({
+        code,
+        ...(reason ? { details: { reason } } : {})
+      })
+      return reference ? [agentSessionRefusalFailure(reference)] : []
+    })
   )
 
   it('names no step beside "Orca will keep trying to send it", for any code or reason', () => {
