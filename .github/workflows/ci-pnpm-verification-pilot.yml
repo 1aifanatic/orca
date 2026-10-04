@@ -54,11 +54,12 @@ jobs:
     timeout-minutes: 25
     env:
       ORCA_MOBILE_WEB_APP_DEPS_REQUIRED: '1'
-      ORCA_CI_NATIVE_REPORT_DIRECTORY: ${{ runner.temp }}/mobile-native-pilot
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+      - name: Set qualification receipt path
+        run: echo "ORCA_CI_NATIVE_REPORT_DIRECTORY=$RUNNER_TEMP/mobile-native-pilot" >> "$GITHUB_ENV"
       - uses: ./.github/actions/install-node-dependencies
         id: dependencies
         with:
@@ -172,6 +173,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ci-pressure-mobile-native
-          path: ${{ env.ORCA_CI_NATIVE_REPORT_DIRECTORY }}
+          path: ${{ runner.temp }}/mobile-native-pilot
           if-no-files-found: error
           retention-days: 7
