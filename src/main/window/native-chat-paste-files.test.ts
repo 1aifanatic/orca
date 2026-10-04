@@ -196,6 +196,7 @@ describe('native-chat paste folder on disk', () => {
       { path: restored, kept: true, exists: true }
     ])
     expect(isPathAllowed(secret, NO_ROOTS_STORE)).toBe(false)
+    expect(isPathAllowed(realpathSync(secret), NO_ROOTS_STORE)).toBe(false)
   })
 
   it('neither restores from nor sweeps a paste folder that is itself a link', async () => {
