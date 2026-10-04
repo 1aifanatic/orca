@@ -36,8 +36,13 @@ export const CLAUDE_PROFILE_RESOURCE_DIRS = [
   'plugins',
   'agents',
   'commands',
-  'output-styles'
+  'output-styles',
+  'rules',
+  'themes',
+  'workflows'
 ] as const
+// Copied, not linked: a rename-replace save (Claude's own, or an editor's) would cut a link.
+export const CLAUDE_PROFILE_RESOURCE_FILES = ['CLAUDE.md', 'keybindings.json'] as const
 const PRIVATE_KEYS = new Set([
   'apiKeyHelper',
   'awsAuthRefresh',
@@ -255,14 +260,11 @@ export async function provisionClaudeProfile(args: {
       linkClaudeProfileDirectory(join(defaultHome, name), join(args.profileHome, name), platform)
     )
   }
-  await runClaudeProfileSurface(report, 'CLAUDE.md', () =>
-    syncClaudeProfileFile(
-      join(defaultHome, 'CLAUDE.md'),
-      join(args.profileHome, 'CLAUDE.md'),
-      'CLAUDE.md',
-      ledger
+  for (const name of CLAUDE_PROFILE_RESOURCE_FILES) {
+    await runClaudeProfileSurface(report, name, () =>
+      syncClaudeProfileFile(join(defaultHome, name), join(args.profileHome, name), name, ledger)
     )
-  )
+  }
   await runClaudeProfileSurface(report, 'settings.json', () =>
     mergeSettings(
       join(defaultHome, 'settings.json'),

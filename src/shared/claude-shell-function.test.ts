@@ -80,7 +80,7 @@ describe('Claude invocation account selection', () => {
       const result = f.run(
         shell,
         // Why wait for the child: a fixed sleep raced the child's pointer read on a loaded machine.
-        `${getPosixClaudeShellFunction()}\nclaude hold & child=$!\nwhile [ ! -e "$HOME/hold-started" ]; do sleep 0.01; done\nprintf '%s' '${f.b}' > "$ORCA_CLAUDE_PROFILE_POINTER"\nclaude 'two words'\nwait "$child"`
+        `${getPosixClaudeShellFunction()}\nclaude hold & child=$!\ni=0; until [ -e "$HOME/hold-started" ] || [ $i -ge 500 ]; do sleep 0.01; i=$((i+1)); done\nprintf '%s' '${f.b}' > "$ORCA_CLAUDE_PROFILE_POINTER"\nclaude 'two words'\nwait "$child"`
       )
       expect(result.stdout).toContain(`HOME=${f.a} KEY=none ARG=hold TWIN=${f.a}`)
       expect(result.stdout).toContain(`HOME=${f.b} KEY=none ARG=two words TWIN=${f.b}`)

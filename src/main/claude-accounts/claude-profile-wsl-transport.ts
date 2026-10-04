@@ -2,7 +2,10 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { CLAUDE_PROFILE_HISTORY_DIRS } from './claude-profile-history'
-import { CLAUDE_PROFILE_RESOURCE_DIRS } from './claude-profile-provisioning'
+import {
+  CLAUDE_PROFILE_RESOURCE_DIRS,
+  CLAUDE_PROFILE_RESOURCE_FILES
+} from './claude-profile-provisioning'
 import { parseClaudeCliVersion } from '../claude/claude-hook-event-versions'
 import { getAppEnvironment } from '../../shared/app-environment'
 import { buildWslCapturedLoginShellCommand } from '../../shared/wsl-login-shell-command'
@@ -56,7 +59,7 @@ const responseSchema = z.object({
             ...CLAUDE_PROFILE_HISTORY_DIRS,
             ...CLAUDE_PROFILE_RESOURCE_DIRS,
             'history.jsonl',
-            'CLAUDE.md',
+            ...CLAUDE_PROFILE_RESOURCE_FILES,
             'settings.json',
             '.claude.json',
             'ledger',
