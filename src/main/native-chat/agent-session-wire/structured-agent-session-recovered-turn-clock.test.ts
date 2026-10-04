@@ -217,7 +217,7 @@ describe('a turn recovery settled after its host went away', () => {
 
       const [row] = session.server.getStatusSnapshot()
       expect(row && agentVerdictDisplayMark({ ...row, acknowledgedAt: undefined })).toBe('failed')
-      // Once the user has seen it, the chat itself is what still says it failed.
+      // Once the user has seen it, the chat itself is what still says the turn was cut.
       expect(
         row && agentVerdictDisplayMark({ ...row, acknowledgedAt: row.stateStartedAt })
       ).toBeNull()
