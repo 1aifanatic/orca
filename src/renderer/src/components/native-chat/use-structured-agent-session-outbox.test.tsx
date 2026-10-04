@@ -587,10 +587,7 @@ describe('useStructuredAgentSessionOutbox', () => {
         throw new Error('socket closed')
       })
       .mockImplementation(async (_target, _method, params) =>
-        acceptedResultFor(
-          (params as { envelope: { clientOperationId: string } }).envelope.clientOperationId,
-          11
-        )
+        acceptedResultFor(sentOperationId(params) ?? '', 11)
       )
     const { result, rerender } = renderHook(
       ({
@@ -655,8 +652,7 @@ describe('useStructuredAgentSessionOutbox', () => {
       resolvedAt: 10
     })
     mocks.call.mockImplementation(async (_target, _method, params) => {
-      const clientMessageId = (params as { envelope: { clientOperationId: string } }).envelope
-        .clientOperationId
+      const clientMessageId = sentOperationId(params) ?? ''
       return {
         ok: true,
         replayed: false,
