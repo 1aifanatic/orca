@@ -70,8 +70,8 @@ describe('hostile-host cells', () => {
 
   it('deploys managed orcad on CentOS 7 with the compat runtime its relay rung B runs', () => {
     const centos = cell('centos7-glibc217')
-    expect(centos.managedRuntime).toBe('linux-x64-glibc217')
-    expect(centos.expect).toMatchObject({ runtime: centos.managedRuntime })
+    expect(centos.managed?.runtime).toBe('linux-x64-glibc217')
+    expect(centos.expect).toMatchObject({ runtime: centos.managed?.runtime })
   })
 
   it('pins every base image by digest and installs no compiler or host Node for rung A', () => {

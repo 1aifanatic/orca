@@ -47,9 +47,14 @@ export type HostileHostExpectation =
 export type HostileHostCellCore = {
   id: string
   expect: HostileHostExpectation
-  /** Also deploy managed orcad on a fresh host, which must run on this runtime target. */
-  managedRuntime?: NodeRuntimeTarget
+  /** Also deploy managed orcad on a fresh host, on this runtime target. */
+  managed?: ManagedOrcadExpectation
 }
+
+export type ManagedOrcadExpectation =
+  | { outcome: 'activated'; runtime: NodeRuntimeTarget }
+  /** The candidate is refused with this deferral code, and the relay that follows settles on `relayRung`. */
+  | { outcome: 'refused'; runtime: NodeRuntimeTarget; code: string; relayRung: 'A' | 'B' }
 
 export type DockerHostileHostCell = HostileHostCellCore & {
   host?: 'docker'
@@ -180,8 +185,14 @@ export const HOSTILE_HOST_CELLS: readonly HostileHostCell[] = [
       runtime: 'linux-x64-glibc217',
       refusals: [{ step: 'A', reason: 'libc_floor' }]
     },
-    // Managed orcad picks the same compat runtime, so an empty CentOS 7 host never needs the relay.
-    managedRuntime: 'linux-x64-glibc217'
+    // Managed orcad picks the same compat runtime, but the template's @parcel/watcher needs a newer
+    // libstdc++ than CentOS 7 ships, so its preflight refuses and the host keeps relay rung B.
+    managed: {
+      outcome: 'refused',
+      runtime: 'linux-x64-glibc217',
+      code: 'orcad_candidate_preflight_failed',
+      relayRung: 'B'
+    }
   },
   {
     // The client uploads the runtime over SSH, so a host that cannot reach nodejs.org still runs A.

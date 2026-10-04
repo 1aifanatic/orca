@@ -124,9 +124,9 @@ describe('SSH relay hostile-host matrix', () => {
   }
 
   // A fresh host per cell: the relay pass above leaves a relay and its runtime behind.
-  for (const cell of HOSTILE_HOST_CELLS.filter((candidate) => candidate.managedRuntime)) {
+  for (const cell of HOSTILE_HOST_CELLS.filter((candidate) => candidate.managed)) {
     it.skipIf(!SELECTED.has(cell.id))(
-      `${cell.id} runs managed orcad on ${cell.managedRuntime}`,
+      `${cell.id} deploys managed orcad on ${cell.managed?.runtime} (${cell.managed?.outcome})`,
       async () => {
         let target: HostileHostTarget | null = null
         try {
