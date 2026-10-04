@@ -14,6 +14,8 @@ import {
   resolveFolderWorkspaceHost
 } from '../../shared/folder-workspace-execution-host'
 import { makePaneKey } from '../../shared/stable-pane-id'
+import { withTimeout } from './runtime-async-boundaries'
+import { TERMINAL_INTERACTIVE_WAIT_PROBE_TIMEOUT_MS } from './orca-runtime-core'
 
 type LocalDesktopSplitSource = {
   window: BrowserWindow
@@ -106,7 +108,29 @@ export class OrcaRuntimeWithSplitTerminal extends OrcaRuntimeWithStopExplicitlyC
     return pty
   }
 
+  protected async verifyLocalDesktopTerminalSplitPty(ptyId: string): Promise<void> {
+    const live = await withTimeout(
+      Promise.resolve().then(() => this.ptyController?.probePtyLiveness?.(ptyId) ?? null),
+      TERMINAL_INTERACTIVE_WAIT_PROBE_TIMEOUT_MS,
+      null
+    )
+    if (live !== true) {
+      throw new Error('--ratio requires an owned live native local desktop PTY')
+    }
+  }
+
   protected assertLocalDesktopTerminalSplit(
+    pty: RuntimePtyWorktreeRecord,
+    expected?: LocalDesktopSplitSource
+  ): LocalDesktopSplitSource {
+    const source = this.captureLocalDesktopTerminalSplitSource(pty, expected)
+    if (!this.controllerKnowsPtyIsLive(pty.ptyId)) {
+      throw new Error('--ratio requires an owned live native local desktop PTY')
+    }
+    return source
+  }
+
+  protected captureLocalDesktopTerminalSplitSource(
     pty: RuntimePtyWorktreeRecord,
     expected?: LocalDesktopSplitSource
   ): LocalDesktopSplitSource {
@@ -177,9 +201,6 @@ export class OrcaRuntimeWithSplitTerminal extends OrcaRuntimeWithStopExplicitlyC
       ) {
         throw new Error('--ratio requires affirmative local worktree ownership')
       }
-    }
-    if (!this.controllerKnowsPtyIsLive(pty.ptyId)) {
-      throw new Error('--ratio requires an owned live native local desktop PTY')
     }
     return {
       window,

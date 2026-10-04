@@ -51,7 +51,7 @@ export class OrcaRuntimeWithSplitPtyBackedTerminal extends OrcaRuntimeWithSplitT
     }
     revalidateRatioHandle()
     const ratioAuthority =
-      opts.ratio !== undefined ? this.assertLocalDesktopTerminalSplit(pty) : undefined
+      opts.ratio !== undefined ? this.captureLocalDesktopTerminalSplitSource(pty) : undefined
     const ratioSourceAuthority = ratioAuthority
       ? this.resolveTerminalSplitSourceAuthority(
           pty.worktreeId,
@@ -62,6 +62,22 @@ export class OrcaRuntimeWithSplitPtyBackedTerminal extends OrcaRuntimeWithSplitT
       : null
     if (ratioAuthority && !ratioSourceAuthority) {
       throw new Error('terminal_split_source_not_found')
+    }
+    if (ratioAuthority) {
+      if (!this.controllerKnowsPtyIsLive(pty.ptyId)) {
+        await this.verifyLocalDesktopTerminalSplitPty(pty.ptyId)
+        revalidateRatioHandle()
+      }
+      this.assertLocalDesktopTerminalSplit(pty, ratioAuthority)
+      const currentSource = this.resolveTerminalSplitSourceAuthority(
+        pty.worktreeId,
+        parentTabId,
+        parsedPaneKey.leafId,
+        pty.ptyId
+      )
+      if (!currentSource || (ratioSourceAuthority.persisted && !currentSource.persisted)) {
+        throw new Error('terminal_split_source_not_found')
+      }
     }
     const launchTarget = ratioAuthority
       ? await this.resolveTerminalWorkspaceLaunchTarget(`id:${pty.worktreeId}`, createdWorktree)
