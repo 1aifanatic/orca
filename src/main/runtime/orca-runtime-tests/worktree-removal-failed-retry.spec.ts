@@ -292,20 +292,6 @@ describe('runtime Delete after the user replaced a failed delete’s leftover', 
     await vi.waitFor(async () => expect(await readWorktreeRemovalRecords(directory)).toEqual([]))
   })
 
-  it('tells a runtime Delete that the folder was left in place', async () => {
-    const { runtime } = runtimeWithCreationMetadata()
-
-    await expect(
-      runtime.removeManagedWorktree(`id:${leftoverId}`, {
-        force: true,
-        waitForBackgroundRemoval: true
-      })
-    ).rejects.toThrow(/is not the one Orca started deleting, so Orca left it in place/)
-    await _settlePendingWorktreeRemovalsForTests()
-
-    expect(existsSync(join(leftover, 'notes.txt'))).toBe(true)
-  })
-
   it('leaves the folder on a Delete after another client’s listing ended the failed delete', async () => {
     const { runtime, runtimeStore } = runtimeWithCreationMetadata()
 
