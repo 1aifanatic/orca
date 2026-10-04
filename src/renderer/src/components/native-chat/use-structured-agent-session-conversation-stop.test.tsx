@@ -307,4 +307,41 @@ describe("a conversation Stop's first press", () => {
     expect(writeAs.mock.calls.length).toBeGreaterThanOrEqual(2)
     expect(toast.error).toHaveBeenCalledExactlyOnceWith("The agent wasn't stopped.")
   })
+
+  it('says what the quiet press left unsaid when a newer message gives the Stop up first', async () => {
+    const writeAs = vi.fn<StopWrite>(async () => ({
+      kind: 'not-done',
+      notice: "The agent wasn't stopped.",
+      answered: false
+    }))
+    const { view, stopOutbox, recordStopAnswer } = harness(writeAs)
+    let pressed: Promise<void> = Promise.resolve()
+    act(() => {
+      pressed = view.result.current()
+    })
+    const stopId: string = stopOutbox.mock.calls[0]?.[0]
+    view.rerender({ outbox: [stamped(stopId)], submissions: [] })
+    await act(async () => {
+      await pressed
+    })
+    // A resend is owed, so the press says nothing yet.
+    expect(toast.error).not.toHaveBeenCalled()
+
+    const newer = createStructuredAgentSessionOutboxEntry({
+      clientMessageId: createStructuredAgentSessionOperationId(createBrowserUuid, Date.now() + 10),
+      sessionId: 'session-1',
+      text: 'newer',
+      attachments: [],
+      queuedAt: Date.now() + 10
+    })
+    view.rerender({ outbox: [stamped(stopId), newer], submissions: [] })
+    for (let step = 0; step < 20; step += 1) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000)
+      })
+    }
+    expect(writeAs).toHaveBeenCalledOnce()
+    expect(recordStopAnswer).toHaveBeenCalledWith(stopId, { kind: 'unanswerable' })
+    expect(toast.error).toHaveBeenCalledExactlyOnceWith("The agent wasn't stopped.")
+  })
 })

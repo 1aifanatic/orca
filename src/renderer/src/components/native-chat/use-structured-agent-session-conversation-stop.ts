@@ -83,6 +83,15 @@ export function useStructuredAgentSessionConversationStop(args: {
     id: null,
     attempts: 0
   })
+  // What a press left unsaid because its Stop would go again: said if the Stop is given up first.
+  const quietPresses = useRef(new Map<string, string>())
+  const sayQuietPress = useCallback((stopOperationId: string): void => {
+    const notice = quietPresses.current.get(stopOperationId)
+    quietPresses.current.delete(stopOperationId)
+    if (notice !== undefined) {
+      toast.error(notice)
+    }
+  }, [])
 
   const sendStop = useCallback(
     async (stopOperationId: string, firstPress: boolean): Promise<void> => {
@@ -99,33 +108,39 @@ export function useStructuredAgentSessionConversationStop(args: {
           {}
         )
         if (outcome.kind === 'done') {
+          quietPresses.current.delete(stopOperationId)
           recordStopAnswer(stopOperationId, { kind: 'answered', cursor: outcome.cursor })
           return
         }
-        // A refusal is said on any attempt, a resend's too; a lost answer only on the press, and
-        // only when nothing will send the Stop again.
-        if (
-          outcome.kind === 'not-done' &&
-          (outcome.answered ||
-            (firstPress &&
-              !stopWillBeResent(
-                latest.current.outbox,
-                latest.current.submissions,
-                stopOperationId
-              )))
-        ) {
-          toast.error(outcome.notice)
-        }
-        // A refusal is the host's answer; a lost answer goes again from the effect below.
-        if (outcome.kind === 'dropped' || outcome.answered) {
+        if (outcome.kind === 'dropped') {
+          sayQuietPress(stopOperationId)
           recordStopAnswer(stopOperationId, { kind: 'unanswerable' })
+          return
+        }
+        // A refusal is said on any attempt, a resend's too, and is the host's answer.
+        if (outcome.answered) {
+          quietPresses.current.delete(stopOperationId)
+          toast.error(outcome.notice)
+          recordStopAnswer(stopOperationId, { kind: 'unanswerable' })
+          return
+        }
+        // A lost answer goes again from the effect below, so the press says it only when nothing
+        // will, and otherwise keeps it for a Stop given up before an answer comes.
+        if (firstPress) {
+          if (
+            stopWillBeResent(latest.current.outbox, latest.current.submissions, stopOperationId)
+          ) {
+            quietPresses.current.set(stopOperationId, outcome.notice)
+          } else {
+            toast.error(outcome.notice)
+          }
         }
       } finally {
         inFlight.current.delete(stopOperationId)
         setInFlightIds((ids) => ids.filter((id) => id !== stopOperationId))
       }
     },
-    [recordStopAnswer, writeAs]
+    [recordStopAnswer, sayQuietPress, writeAs]
   )
 
   const owed = unansweredStop(outbox)
@@ -134,9 +149,10 @@ export function useStructuredAgentSessionConversationStop(args: {
   const owedInFlight = owed !== null && inFlightIds.includes(owed)
   useLayoutEffect(() => {
     if (owed !== null && newer && !owedInFlight) {
+      sayQuietPress(owed)
       recordStopAnswer(owed, { kind: 'unanswerable' })
     }
-  }, [newer, owed, owedInFlight, recordStopAnswer])
+  }, [newer, owed, owedInFlight, recordStopAnswer, sayQuietPress])
 
   useEffect(() => {
     if (owed === null || newer || !attached || owedInFlight) {
