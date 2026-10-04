@@ -59,7 +59,8 @@ function resolverFor(
   stripAuthEnv = false,
   // Manual by default so a test that is not about permissions is not silently about them.
   agentDefaultArgs: Record<string, string> = { claude: '' },
-  hasTranscript: () => Promise<boolean> = async () => true
+  hasTranscript: () => Promise<boolean> = async () => true,
+  attachmentDirectory?: string
 ) {
   return createClaudeStructuredLaunchResolver({
     store: { getRecord: () => value } as unknown as AgentSessionRecordStore,
@@ -68,7 +69,8 @@ function resolverFor(
     resolveAuthPolicy: () => ({ stripAuthEnv }),
     resolvePermissionMode: () => claudeStructuredPermissionModeForSettings({ agentDefaultArgs }),
     hasTranscript,
-    ...(resolveEnv ? { resolveEnv } : {})
+    ...(resolveEnv ? { resolveEnv } : {}),
+    ...(attachmentDirectory ? { attachmentDirectory } : {})
   })
 }
 
@@ -352,6 +354,20 @@ describe('claude structured launch resolution', () => {
         }
       }
     }
+  })
+
+  it("lets the agent read the host's chat attachment store, outside the workspace", async () => {
+    const launch = await resolverFor(
+      record(),
+      undefined,
+      false,
+      { claude: '' },
+      async () => true,
+      '/state/agent-session-attachments'
+    )({ identity: IDENTITY })
+
+    expect(launch.options.additionalDirectories).toEqual(['/state/agent-session-attachments'])
+    expect(launch.cwd).toBe('/repos/workspace-1')
   })
 
   it('builds on the supplied inherited env instead of Orca process env', async () => {

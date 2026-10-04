@@ -17,6 +17,13 @@ export const AGENT_SESSION_ATTACHMENT_CHUNK_BASE64_CHARS =
 
 export const AGENT_SESSION_ATTACHMENT_NAME_MAX_BYTES = 200
 
+export type AgentSessionAttachmentUploadStartResult = { uploadId: string }
+export type AgentSessionAttachmentUploadCommitResult = {
+  path: string
+  name: string
+  byteLength: number
+}
+
 /** Whether `filePath` names a file in some server's attachment store. Only routes a preview read;
  *  the server re-checks the real path before reading anything. */
 export function isAgentSessionAttachmentStorePath(filePath: string): boolean {
