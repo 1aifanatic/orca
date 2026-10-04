@@ -31,9 +31,9 @@ ORCA orchestration worker-start --task <task_id> --worktree current --agent clau
 ORCA orchestration worker-start --task <task_id> --worktree current --agent muse --model muse-spark-1.3 --json
 ```
 
-Other agents, including `opencode`, reject `--model`; they run the model set in
-their own config, so a coordinator wanting a same-model opencode worker relies
-on that config.
+OpenCode also accepts `--model` when the execution host verifies its CLI version
+and model availability. OpenCode effort is unsupported. Omit the model to inherit
+its configuration; unsupported or unknown hosts refuse the override explicitly.
 
 `--effort` requires `--model`; neither option combines with `--terminal`. A
 connected worker server must advertise launch-preference support before Orca
