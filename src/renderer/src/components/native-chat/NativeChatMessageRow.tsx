@@ -35,9 +35,12 @@ export type NativeChatDeliveryNotice =
   | { sending: true; text?: never; onRetry?: never; onDismiss?: never }
   | { sending?: never; text: string; onRetry?: () => void; onDismiss?: () => void }
 
-/** Under a user message: until confirmed, a quiet "Sending…" in its time's place, always shown;
- *  then copy + timestamp, revealed together like the agent controls row. Image-only prompts have
- *  no text to copy, so the button is omitted. */
+const USER_META_REVEAL =
+  'transition-opacity can-hover:pointer-events-none can-hover:opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 [.group:has(:focus-visible)_&]:pointer-events-auto [.group:has(:focus-visible)_&]:opacity-100'
+
+/** Under a user message: copy + timestamp, revealed together like the agent controls row. Until
+ *  confirmed, a quiet "Sending…" stays visible in the time's place and copy keeps its own reveal,
+ *  so the row keeps its height when it clears. Image-only prompts have no text to copy. */
 function UserMessageMeta({
   markdown,
   timestamp,
@@ -47,20 +50,21 @@ function UserMessageMeta({
   timestamp: number | null
   sending: boolean
 }): React.JSX.Element | null {
-  if (sending) {
-    return (
-      <span className="select-none text-xs text-muted-foreground">
-        {translate('components.native-chat.messageSending', 'Sending…')}
-      </span>
-    )
-  }
-  if (!markdown && timestamp === null) {
+  if (!markdown && timestamp === null && !sending) {
     return null
   }
   return (
-    <div className="flex select-none items-center gap-1 transition-opacity can-hover:pointer-events-none can-hover:opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 [.group:has(:focus-visible)_&]:pointer-events-auto [.group:has(:focus-visible)_&]:opacity-100">
-      {markdown ? <NativeChatCopyButton text={markdown} /> : null}
-      <NativeChatMessageTimestamp timestamp={timestamp} focusable />
+    <div className={cn('flex select-none items-center gap-1', !sending && USER_META_REVEAL)}>
+      {markdown ? (
+        <NativeChatCopyButton text={markdown} className={sending ? USER_META_REVEAL : undefined} />
+      ) : null}
+      {sending ? (
+        <span className="text-xs whitespace-nowrap text-muted-foreground">
+          {translate('components.native-chat.messageSending', 'Sending…')}
+        </span>
+      ) : (
+        <NativeChatMessageTimestamp timestamp={timestamp} focusable />
+      )}
     </div>
   )
 }

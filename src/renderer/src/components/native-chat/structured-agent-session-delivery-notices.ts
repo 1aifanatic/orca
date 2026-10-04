@@ -1,5 +1,6 @@
 // Which of the structured chat's own messages say, on their row, that they did not go through, and
-// which say quietly that they are still sending: every other one, until the host holds a row for it.
+// which say quietly that they are still sending: every other one, until the host holds a row that
+// has it (pending or accepted). A row in doubt or rejected does not, so it still reads as sending.
 //
 // Derived from the outbox on every render and never stored: each failed or held message carries
 // its own typed failure, so each row words its own reason. Read through the drain's own rule: while
@@ -142,7 +143,7 @@ export function structuredAgentSessionDeliveryNotices(
   agentName: string,
   retry: (clientMessageId: string) => void,
   /** The journal's rows: rejected ones carry more of a rejection than the message keeps, and a
-   *  message with none yet is still sending. */
+   *  message with no pending or accepted one is still sending. */
   submissions: readonly AgentJournalSubmission[],
   /** What the loaded start-failure rows state, from `structuredAgentSessionStartFailureFacts`. */
   startFailures: readonly AgentSessionFailureFact[],
@@ -182,7 +183,11 @@ export function structuredAgentSessionDeliveryNotices(
         retryControl ? { text, onRetry: () => retry(entry.clientMessageId) } : { text }
       )
     } else if (
-      !submissions.some((submission) => submission.clientMessageId === entry.clientMessageId)
+      !submissions.some(
+        (submission) =>
+          submission.clientMessageId === entry.clientMessageId &&
+          (submission.dispatchState === 'pending' || submission.dispatchState === 'accepted')
+      )
     ) {
       notices.set(
         agentJournalSubmissionKey(entry.clientMessageId),

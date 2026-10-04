@@ -507,6 +507,65 @@ describe('the notice on each message that did not go through', () => {
     }
   )
 
+  // Only a row that has the message ends it; one in doubt or rejected leaves it looking sent.
+  describe('a message whose journal row does not have it yet', () => {
+    const row = (
+      clientMessageId: string,
+      dispatchState: AgentJournalSubmission['dispatchState'],
+      patch: Partial<AgentJournalSubmission> = {}
+    ): AgentJournalSubmission => ({
+      clientMessageId,
+      fence: 1,
+      payloadFingerprint: 'fp',
+      dispatchState,
+      providerItemId: null,
+      reason: null,
+      submittedAt: 7,
+      resolvedAt: null,
+      ...patch
+    })
+    const stuck = entry('stuck', { state: 'unconfirmed', retryAfterUnknownSubmittedAt: -1 })
+
+    it.each([
+      ['queued', { state: 'queued' as const }, {}],
+      ['in flight', { state: 'dispatching' as const, lastAttemptAt: 2 }, {}],
+      [
+        'in flight, after a host restart',
+        { state: 'dispatching' as const, lastAttemptAt: 2 },
+        { recovered: true as const }
+      ]
+    ])('says it is sending while your Retry is %s', (_label, patch, rowPatch) => {
+      const doubt = row('m', 'unknown', rowPatch)
+      expect(texts([entry('m', { state: 'unconfirmed', lastAttemptAt: 1 })], [doubt])).toEqual({
+        [agentJournalSubmissionKey('m')]: 'Message delivery is unconfirmed.'
+      })
+      const retried = entry('m', { lastAttemptAt: 1, retryAfterUnknownSubmittedAt: 7, ...patch })
+      expect(texts([retried], [doubt])).toEqual({ [agentJournalSubmissionKey('m')]: SENDING })
+    })
+
+    it.each([
+      ['a live unknown', {}],
+      ['a recovered unknown', { recovered: true as const }]
+    ])('says the second of two in doubt is sending when each row holds %s', (_label, patch) => {
+      const a = entry('a', { state: 'unconfirmed' })
+      const b = entry('b', { state: 'unconfirmed' })
+      expect(texts([a, b], [row('a', 'unknown', patch), row('b', 'unknown', patch)])).toEqual({
+        [agentJournalSubmissionKey('a')]: 'Message delivery is unconfirmed.',
+        [agentJournalSubmissionKey('b')]: SENDING
+      })
+    })
+
+    it('says a requeued message whose row was rejected is sending until its replay answers', () => {
+      const requeued = entry('q', { state: 'queued', lastAttemptAt: 1 })
+      const rejected = row('q', 'rejected', { reason: 'provider said no', resolvedAt: 8 })
+      expect(texts([requeued], [rejected])).toEqual({ [agentJournalSubmissionKey('q')]: SENDING })
+      expect(texts([stuck, requeued], [rejected])).toEqual({
+        [agentJournalSubmissionKey('stuck')]: 'Message delivery is unconfirmed.',
+        [agentJournalSubmissionKey('q')]: SENDING
+      })
+    })
+  })
+
   // One state, one surface: a row that says it did not go through never also says it is sending.
   it.each([
     ['rejected', entry('m', { state: 'rejected' }), []],
