@@ -279,8 +279,8 @@ export type AgentPermissionPosture = {
 
 /**
  * What an agent's permission settings add up to when launched at `target`. Settings and structured
- * sessions read it for a local launch, and every launch composer for its own target, so a local
- * launch and the Settings card can't disagree.
+ * sessions read it with this machine's terminal shell, each launch composer with its own target, so
+ * they disagree only for text two shells split differently.
  */
 export function resolveAgentPermissionPosture(
   agent: TuiAgent,

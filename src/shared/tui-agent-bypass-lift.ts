@@ -12,48 +12,48 @@ import type { TuiAgent } from './tui-agent'
 
 // Moves a permission bypass saved inline in an agent's Arguments or env out into its typed mode.
 
-/**
- * Where these exact words of the flag start in `tokens`, or -1. Matching the raw text (not the
- * parsed word) means a quoted or escaped spelling is never cut, so the cut means the same thing
- * under every shell; anything else stays in the text and is read with the launch's shell.
- */
-function findTokenSequence(
+type FlagOccurrence = { start: number; end: number; words: string }
+
+/** Every place these exact raw words stand as consecutive words in `spans`. */
+function rawOccurrences(
   text: string,
-  tokens: { spans: CommandTokenSpan[] },
+  spans: readonly CommandTokenSpan[],
   rawSequence: readonly string[]
-): number {
-  return tokens.spans.findIndex(
-    (_, index) =>
-      index + rawSequence.length <= tokens.spans.length &&
-      rawSequence.every((raw, offset) => {
-        const span = tokens.spans[index + offset]
-        return text.slice(span.start, span.end) === raw
+): FlagOccurrence[] {
+  const found: FlagOccurrence[] = []
+  for (let index = 0; index + rawSequence.length <= spans.length; index += 1) {
+    const words = spans.slice(index, index + rawSequence.length)
+    if (words.every((span, offset) => text.slice(span.start, span.end) === rawSequence[offset])) {
+      found.push({
+        start: spans[index].start,
+        end: spans[index + rawSequence.length - 1].end,
+        words: words.map((span) => `${span.start}:${span.end}`).join(' ')
       })
-  )
+    }
+  }
+  return found
 }
 
 /**
- * Finds the flag's words under POSIX, else PowerShell grammar (Windows paths like `C:\dir\` glue
- * onto the next word under POSIX); cmd only when neither parses, since cmd would read inside single quotes.
+ * The first place the flag's exact words stand as whole, unquoted, unescaped words under every
+ * shell grammar; null when any grammar can't parse the text or reads them inside another word.
+ * A cut then means the same under every shell, and a wrong call keeps the flag (more prompts).
  */
-function findBypassFlag(
-  text: string,
-  rawFlag: readonly string[]
-): { tokens: { spans: CommandTokenSpan[] }; at: number } | null {
-  let parsed = false
-  for (const shell of ['posix', 'powershell'] as const) {
-    const tokens = optionTokens(text, shell)
-    if (tokens.ok) {
-      parsed = true
-      const at = findTokenSequence(text, tokens, rawFlag)
-      if (at !== -1) {
-        return { tokens, at }
-      }
+function findBypassFlag(text: string, rawFlag: readonly string[]): FlagOccurrence | null {
+  const perGrammar: FlagOccurrence[][] = []
+  for (const grammar of LAUNCH_GRAMMARS) {
+    const tokens = optionTokens(text, grammar)
+    if (!tokens.ok) {
+      return null
     }
+    perGrammar.push(rawOccurrences(text, tokens.spans, rawFlag))
   }
-  const cmd = parsed ? null : optionTokens(text, 'cmd')
-  const at = cmd?.ok ? findTokenSequence(text, cmd, rawFlag) : -1
-  return cmd?.ok && at !== -1 ? { tokens: cmd, at } : null
+  const [first = [], ...others] = perGrammar
+  return (
+    first.find((hit) =>
+      others.every((found) => found.some((other) => other.words === hit.words))
+    ) ?? null
+  )
 }
 
 /**
@@ -66,9 +66,8 @@ function stripBypassFlag(agent: TuiAgent, args: string): string {
     let hit = findBypassFlag(text, group.rawTokens)
     const found = hit !== null
     while (hit) {
-      const { tokens, at } = hit
-      const before = text.slice(0, tokens.spans[at].start).trimEnd()
-      const after = text.slice(tokens.spans[at + group.rawTokens.length - 1].end).trimStart()
+      const before = text.slice(0, hit.start).trimEnd()
+      const after = text.slice(hit.end).trimStart()
       text = before && after ? `${before} ${after}` : before || after
       hit = findBypassFlag(text, group.rawTokens)
     }

@@ -320,4 +320,18 @@ describe('migrateAgentLaunchProfile', () => {
       expect(profile.agentPermissionModeOverrides).toEqual({})
     }
   )
+
+  // POSIX keeps this flag inside the prompt (escaped quotes); PowerShell would split it out.
+  it('keeps Manual for a flag one shell reads inside a quoted prompt, on every load', () => {
+    const claude = `--append-system-prompt "Never run \\" ${CLAUDE_BYPASS} \\" yourself"`
+    const typed = legacy({ agentPermissionMode: 'ask', agentDefaultArgs: { claude } })
+
+    const first = migrateAgentLaunchProfile(typed)
+    const again = migrateAgentLaunchProfile(legacy({ ...typed, ...first.profile }))
+
+    expect(first.profile.agentDefaultArgs?.claude).toBe(claude)
+    expect(first.profile.agentPermissionModeOverrides).toEqual({})
+    expect(again.migrated).toBe(false)
+    expect(resolveAgentPermissionMode('claude', again.profile)).toBe('ask')
+  })
 })

@@ -8,8 +8,8 @@ import { resolveLocalAgentLaunchTarget } from './windows-terminal-shell'
 import type { TuiAgent } from './tui-agent'
 
 // Arguments are read with the shell that launches them: the Settings card and structured chat
-// with this machine's local launch shell, each launch with its own. A local launch therefore
-// reads them exactly as the card does.
+// with this machine's terminal shell, each launch with its own target. These tests cover how the
+// text is read, not the argv a shell then passes the agent.
 
 const CLAUDE_BYPASS = '--dangerously-skip-permissions'
 const CALLER = '--model per-launch'
@@ -45,22 +45,35 @@ describe('local launch targets', () => {
   })
 })
 
-// A Windows directory ending in `\` glues onto the next word only under POSIX.
+// A Windows directory ending in `\` glues onto the next word only under POSIX. PowerShell passes
+// such a path through intact. cmd is not tested with it: Orca's cmd quoting leaves the trailing
+// backslash escaping its closing quote, so the agent never receives the option (follow-up ticket,
+// "cmd launches lose the option after a Windows path ending in a backslash").
 describe('Windows paths ending in a backslash', () => {
+  const powershell = resolveLocalAgentLaunchTarget('win32', 'powershell.exe')
+  const cmd = resolveLocalAgentLaunchTarget('win32', 'cmd.exe')
+
   it.each([
     ['claude', '--add-dir C:\\code\\ --permission-mode bypassPermissions'],
     ['codex', '--cd C:\\proj\\ --yolo'],
     ['gemini', '--include-directories C:\\code\\ -y'],
     ['gemini', '--include-directories C:\\code\\ --approval-mode yolo'],
     ['claude', '--add-dir "C:\\a\\" --permission-mode bypassPermissions --add-dir "C:\\b\\"']
-  ] as const)('read %s %j as Yolo on Windows, on the card and in a launch', (agent, args) => {
+  ] as const)('read %s %j as Yolo under PowerShell, on the card and in a launch', (agent, args) => {
     const settings = { agentPermissionMode: 'ask' as const, agentDefaultArgs: { [agent]: args } }
-    for (const [, target] of LOCAL_TARGETS.slice(1)) {
-      expect(cardAndCallerLaunch(agent, settings, target)).toEqual({
-        card: true,
-        callerBypass: true
-      })
-    }
+    expect(cardAndCallerLaunch(agent, settings, powershell)).toEqual({
+      card: true,
+      callerBypass: true
+    })
+  })
+
+  it.each([
+    ['claude', '--add-dir C:\\code --permission-mode bypassPermissions'],
+    ['codex', '--cd C:\\proj --yolo'],
+    ['gemini', '--include-directories C:\\code -y']
+  ] as const)('read %s %j as Yolo under cmd, on the card and in a launch', (agent, args) => {
+    const settings = { agentPermissionMode: 'ask' as const, agentDefaultArgs: { [agent]: args } }
+    expect(cardAndCallerLaunch(agent, settings, cmd)).toEqual({ card: true, callerBypass: true })
   })
 })
 
@@ -76,14 +89,20 @@ describe('the lift and escaped flags', () => {
     expect(liftTuiAgentBypassArgs('claude', args, LOCAL_TARGETS[0][1]).extraArgs).toBe(args)
   })
 
-  it('still cuts the flag after a Windows path that glues it under POSIX', () => {
-    expect(cutTuiAgentBypassFlag('claude', `--add-dir C:\\code\\ ${CLAUDE_BYPASS}`)).toBe(
-      '--add-dir C:\\code\\'
-    )
+  // A cut must mean the same under every shell, so text any grammar reads differently stays whole.
+  it.each([
+    `--add-dir C:\\code\\ ${CLAUDE_BYPASS}`,
+    `--append-system-prompt "Never run \\" ${CLAUDE_BYPASS} \\" yourself"`
+  ])('leaves %j whole, since one grammar reads the flag inside another word', (args) => {
+    expect(cutTuiAgentBypassFlag('claude', args)).toBe(args)
+  })
+
+  it('cuts the plain flag every grammar reads as its own word', () => {
+    expect(cutTuiAgentBypassFlag('claude', `--model opus ${CLAUDE_BYPASS}`)).toBe('--model opus')
   })
 })
 
-// D1: a launch that brings its own arguments follows the card, so for a local launch they agree.
+// D1: a launch that brings its own arguments follows the card; read with the same target, they agree.
 describe('card and caller-args launch agree on every local shell', () => {
   const agents = PERMISSION_AGENT_IDS.filter(
     (agent): agent is TuiAgent => YOLO_TUI_AGENT_ARGS[agent] !== undefined

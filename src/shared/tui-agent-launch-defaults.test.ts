@@ -268,23 +268,21 @@ describe('liftTuiAgentBypassArgs', () => {
     })
   })
 
-  // The POSIX grammar cannot parse a Windows path ending in a backslash before its closing quote.
-  it('lifts the flag from Windows-quoted text', () => {
-    expect(
-      liftTuiAgentBypassArgs('claude', `${CLAUDE_BYPASS} --add-dir "C:\\Users\\me\\"`, DARWIN)
-    ).toEqual({
+  // POSIX reads these differently (it can't parse the first, and glues the path onto the flag in
+  // the second), so no cut is the same under every shell: the text stays whole and this machine's
+  // shell reads it, which is still how it launched.
+  it.each([
+    `${CLAUDE_BYPASS} --add-dir "C:\\Users\\me\\"`,
+    `--settings C:\\cfg\\ ${CLAUDE_BYPASS}`
+  ])('keeps the flag in %j and reads it with the local shell', (args) => {
+    const windows = { platform: 'win32', shell: 'powershell' } as const
+    expect(liftTuiAgentBypassArgs('claude', args, windows)).toEqual({
       bypass: true,
-      extraArgs: '--add-dir "C:\\Users\\me\\"'
+      extraArgs: args
     })
-  })
-
-  // POSIX parses this but reads the backslash as escaping the space, hiding the flag.
-  it('lifts the flag after a Windows path that POSIX mis-splits', () => {
-    expect(
-      liftTuiAgentBypassArgs('claude', `--settings C:\\cfg\\ ${CLAUDE_BYPASS}`, DARWIN)
-    ).toEqual({
-      bypass: true,
-      extraArgs: '--settings C:\\cfg\\'
+    expect(liftTuiAgentBypassArgs('claude', args, DARWIN)).toEqual({
+      bypass: false,
+      extraArgs: args
     })
   })
 
