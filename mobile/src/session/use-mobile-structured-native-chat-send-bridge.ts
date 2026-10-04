@@ -77,8 +77,8 @@ export function useMobileStructuredNativeChatSendBridge(args: {
         return 'accepted'
       }
       if (outcome === 'queued') {
-        // The host holds the draft and publishes it as a card above the
-        // composer — never an optimistic transcript bubble.
+        // The host holds the text, as a card above the composer or a recorded
+        // row in the transcript — never an optimistic bubble or a hand-back.
         return 'queued'
       }
       if (outcome === 'unknown') {

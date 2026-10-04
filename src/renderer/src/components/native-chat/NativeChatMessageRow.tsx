@@ -32,8 +32,15 @@ import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client'
  *  place of its time, or that it did not go through, with its own Retry when the surface can send
  *  it again. */
 export type NativeChatDeliveryNotice =
-  | { sending: true; text?: never; onRetry?: never; onDismiss?: never }
-  | { sending?: never; text: string; onRetry?: () => void; onDismiss?: () => void }
+  | { sending: true; text?: never; notSent?: never; onRetry?: never; onDismiss?: never }
+  | {
+      sending?: never
+      text: string
+      /** Says only that the message did not go out, so it reads muted, not as an error. */
+      notSent?: true
+      onRetry?: () => void
+      onDismiss?: () => void
+    }
 
 const USER_META_REVEAL =
   'transition-opacity can-hover:pointer-events-none can-hover:opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 [.group:has(:focus-visible)_&]:pointer-events-auto [.group:has(:focus-visible)_&]:opacity-100'
@@ -217,7 +224,12 @@ export const MessageRow = memo(function MessageRow({
           sending={deliveryNotice?.sending === true}
         />
         {deliveryNotice?.text !== undefined ? (
-          <div className="flex max-w-[85%] items-center gap-2 text-[11px] text-destructive/80">
+          <div
+            className={cn(
+              'flex max-w-[85%] items-center gap-2 text-[11px]',
+              deliveryNotice.notSent ? 'text-muted-foreground' : 'text-destructive/80'
+            )}
+          >
             <span className="min-w-0 break-words">{deliveryNotice.text}</span>
             {deliveryNotice.onDismiss ? (
               <Button type="button" variant="ghost" size="xs" onClick={deliveryNotice.onDismiss}>

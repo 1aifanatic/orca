@@ -15,6 +15,7 @@ import { ToolRun } from './MobileNativeChatToolRun'
 import type { NativeChatTurnStatus } from './use-mobile-native-chat-turn-status'
 import { isRenderableImageUri } from './mobile-native-chat-image-preview'
 import { styles, TEXT_SIZE } from './mobile-native-chat-message-styles'
+import { AGENT_SESSION_WRITE_NOTICE_COPY } from '../../../src/shared/agent-session-write-notice-copy'
 
 function Prose({
   block,
@@ -87,7 +88,8 @@ function MobileNativeChatMessageImpl({
   turnKey,
   onToggleTurn,
   activeTurnIsWorking,
-  structuredActivityUi = false
+  structuredActivityUi = false,
+  unsentNotice
 }: {
   message: NativeChatMessage
   toolsExpanded?: boolean
@@ -108,6 +110,8 @@ function MobileNativeChatMessageImpl({
   activeTurnIsWorking?: boolean
   /** Structured lane only: live tool progress plus the turn-status disclosure. */
   structuredActivityUi?: boolean
+  /** Why the host did not deliver this message, when it is shown as not sent. */
+  unsentNotice?: string
 }): React.JSX.Element {
   const isUser = message.role === 'user'
   const isReasoning = message.role === 'reasoning'
@@ -169,6 +173,11 @@ function MobileNativeChatMessageImpl({
             />
           ) : null}
         </View>
+        {isUser && message.unsent === true ? (
+          <NativeText style={styles.unsentLabel}>
+            {unsentNotice ?? AGENT_SESSION_WRITE_NOTICE_COPY.notDoneSend}
+          </NativeText>
+        ) : null}
       </View>
       {turnStatusAbove ? null : statusRow}
     </>

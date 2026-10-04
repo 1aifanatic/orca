@@ -31,6 +31,7 @@ import type { AgentSessionConversationCommand } from '../../../shared/agent-sess
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { agentSessionRefusalReference } from '../../../shared/agent-session-wire-refusals'
+import { structuredAgentSessionCommandResultRowIdentity } from '../../../shared/structured-agent-session-command-entry'
 import {
   agentJournalTurnBody,
   readAgentJournalTurn
@@ -102,7 +103,7 @@ export function structuredAgentSessionCommandTurn(clientMessageId: string): {
     identity,
     itemId: agentJournalItemKey(identity),
     turnId: `compact:${clientMessageId}`,
-    resultIdentity: { provider: 'orca', clientMessageId: `command-result:${clientMessageId}` }
+    resultIdentity: structuredAgentSessionCommandResultRowIdentity(clientMessageId)
   }
 }
 

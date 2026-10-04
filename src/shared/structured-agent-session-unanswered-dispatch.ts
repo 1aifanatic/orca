@@ -1,6 +1,19 @@
 import type { AgentJournalSubmission } from './agent-session-journal-types'
 import { isQueuedAgentJournalSubmission } from './agent-session-queued-submission'
 
+/** A send whose outcome the host lost for good when the process that sent it went away (a restart,
+ *  a provider exit, an idle release): nothing still running can answer it. */
+export function isRecoveredStructuredAgentSessionSubmission(
+  submission: Pick<AgentJournalSubmission, 'dispatchState' | 'recovered' | 'reason'>
+): boolean {
+  return (
+    submission.dispatchState === 'unknown' &&
+    (submission.recovered === true ||
+      // Older hosts publish the recovery reason but omit the optional marker.
+      submission.reason === 'host_restarted_before_acknowledgement')
+  )
+}
+
 /** One send the provider has neither opened a turn for nor refused; the rule is explained on
  *  `hasUnansweredStructuredAgentSessionDispatch`, which asks it of every send. */
 export function isUnansweredStructuredAgentSessionDispatch(
@@ -15,9 +28,7 @@ export function isUnansweredStructuredAgentSessionDispatch(
     (currentFence == null || submission.fence >= currentFence) &&
     (submission.dispatchState === 'pending' ||
       (submission.dispatchState === 'unknown' &&
-        submission.recovered !== true &&
-        // Older hosts publish the recovery reason but omit the optional marker.
-        submission.reason !== 'host_restarted_before_acknowledgement'))
+        !isRecoveredStructuredAgentSessionSubmission(submission)))
   )
 }
 

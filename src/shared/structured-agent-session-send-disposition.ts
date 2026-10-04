@@ -22,6 +22,7 @@ import {
 import type { AgentSessionFailureFact } from './agent-session-failure'
 import type { AgentSessionFailureWordsContext } from './agent-session-failure-words'
 import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
+import { isRecoveredStructuredAgentSessionSubmission } from './structured-agent-session-unanswered-dispatch'
 import {
   classifyStructuredAgentSessionSendFailure,
   requeueStructuredAgentSessionSendRefusal,
@@ -284,7 +285,7 @@ export function disposeStructuredAgentSessionSendResult(
       error: null
     }
   }
-  if (submission.dispatchState === 'unknown' && submission.recovered) {
+  if (isRecoveredStructuredAgentSessionSubmission(submission)) {
     return {
       entries: input.entries.map((candidate) =>
         candidate.clientMessageId === input.entry.clientMessageId

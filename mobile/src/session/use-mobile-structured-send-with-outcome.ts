@@ -10,6 +10,7 @@ import {
   type StructuredAgentSessionAttachment
 } from '../../../src/shared/structured-agent-session-outbox'
 import type { StructuredAgentSessionComposerOptions } from '../../../src/shared/structured-agent-session-composer'
+import { structuredAgentSessionJournalShowsSubmission } from '../../../src/shared/structured-agent-session-message-projection'
 import type { StructuredAgentSessionState } from '../../../src/shared/structured-agent-session-reducer'
 import type { RpcClient } from '../transport/rpc-client'
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
@@ -97,6 +98,11 @@ export function useMobileStructuredSendWithOutcome(args: {
           !activeStructuredAgentSessionTurnId(stateRef.current.items) &&
           !stateRef.current.items.some(
             (item) => pendingStructuredApproval(item) || pendingStructuredQuestion(item)
+          ),
+        recorded: (clientMessageId) =>
+          structuredAgentSessionJournalShowsSubmission(
+            stateRef.current.submissions,
+            clientMessageId
           ),
         onError: onSendError,
         timeoutMs

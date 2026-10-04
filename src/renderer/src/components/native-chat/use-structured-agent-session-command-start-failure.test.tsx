@@ -5,7 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionFailureFact } from '../../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../../shared/agent-session-failure-words'
 import { agentJournalItemKey } from '../../../../shared/agent-session-journal-item-key'
-import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalRenderItem,
+  AgentJournalSubmission
+} from '../../../../shared/agent-session-journal-types'
 import { structuredAgentSessionStartFailureRowIdentity } from '../../../../shared/structured-agent-session-start-failure-row-key'
 
 const mocks = vi.hoisted(() => ({
@@ -15,6 +18,7 @@ const mocks = vi.hoisted(() => ({
 }))
 let fence = 3
 let items: AgentJournalRenderItem[] = []
+let submissions: AgentJournalSubmission[] = []
 
 vi.mock('sonner', () => ({ toast: { error: mocks.toastError, message: vi.fn() } }))
 
@@ -28,7 +32,7 @@ vi.mock('./use-structured-agent-session-read', () => ({
     state: {
       fence,
       items,
-      submissions: [],
+      submissions,
       status: 'ready',
       error: null,
       hasOlder: false,
@@ -150,6 +154,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   fence = 3
   items = []
+  submissions = []
 })
 
 afterEach(async () => {
@@ -202,6 +207,26 @@ describe('a conversation command whose reply lands after the fence moved', () =>
         startFailureRow(RESTART_FAILED)
       ])
     ).toEqual({ accepted: false, error: null })
+  })
+
+  // The host recorded the /compact under the operation id, so its row in the chat says it.
+  it('says nothing for a /compact the host recorded, and clears its text: its row holds it', async () => {
+    submissions = [
+      {
+        clientMessageId: 'operation-1',
+        fence: 3,
+        payloadFingerprint: 'fingerprint',
+        dispatchState: 'rejected',
+        providerItemId: null,
+        reason: 'busy',
+        rejection: { kind: 'commandRefused' },
+        submittedAt: 1,
+        resolvedAt: 1
+      }
+    ]
+    expect(
+      await commandAcrossFenceMove('compact', commandReply('compact', { kind: 'commandRefused' }))
+    ).toEqual({ accepted: true, error: null })
   })
 
   it("says why a /compact's start failed while its row is not loaded", async () => {
@@ -284,7 +309,7 @@ describe('a conversation command whose reply lands after the fence moved', () =>
       await Promise.all([older, newer])
     })
     expect(await older).toEqual({ kind: 'dropped' })
-    expect(await newer).toEqual({ kind: 'done', value: commandReply('clear').value })
+    expect(await newer).toMatchObject({ kind: 'done', value: commandReply('clear').value })
   })
 
   it('drops a reply once the pane has moved to another chat or closed', async () => {

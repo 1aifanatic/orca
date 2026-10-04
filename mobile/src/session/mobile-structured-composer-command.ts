@@ -7,6 +7,7 @@ import {
 import type { RpcClient } from '../transport/rpc-client'
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
 import { requestStructuredAgentSessionMutation } from './mobile-structured-agent-session-rpc'
+import { structuredSessionOperationId } from './structured-session-operation-id'
 
 export async function dispatchMobileStructuredCommand(input: {
   text: string
@@ -17,6 +18,8 @@ export async function dispatchMobileStructuredCommand(input: {
   pending: { current: boolean }
   controller: StructuredAgentSessionComposerOptions
   canRun: () => boolean
+  /** Whether the loaded journal shows the message the host recorded under this id. */
+  recorded: (clientMessageId: string) => boolean
   onError: (message: string) => void
   timeoutMs: number
 }): Promise<MobileNativeChatSendOutcome | null> {
@@ -41,6 +44,7 @@ export async function dispatchMobileStructuredCommand(input: {
         }
       }
       input.pending.current = true
+      const clientOperationId = structuredSessionOperationId()
       try {
         const result =
           await requestStructuredAgentSessionMutation<AgentSessionConversationCommandResult>({
@@ -50,6 +54,7 @@ export async function dispatchMobileStructuredCommand(input: {
             method: 'agentSession.conversationCommand',
             fingerprintMethod: 'agentSession.conversationCommand',
             fields: { command },
+            clientOperationId,
             timeoutMs: Math.max(input.timeoutMs, 195_000)
           })
         if (
@@ -62,9 +67,15 @@ export async function dispatchMobileStructuredCommand(input: {
             error: 'Conversation operation was not confirmed.'
           }
         }
-        return result.status === 'accepted'
-          ? { accepted: !result.value.error, error: result.value.error ?? null }
-          : { accepted: false, error: result.message }
+        if (result.status !== 'accepted') {
+          return { accepted: false, error: result.message }
+        }
+        // The host answered for a command it recorded: its row in the chat says how it went, so
+        // no banner repeats it and the text stays the row's, not the composer's.
+        if (result.value.state === 'completed' && input.recorded(clientOperationId)) {
+          return { accepted: true, error: null }
+        }
+        return { accepted: !result.value.error, error: result.value.error ?? null }
       } finally {
         input.pending.current = false
       }
