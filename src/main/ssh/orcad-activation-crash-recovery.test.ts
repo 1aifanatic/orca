@@ -67,8 +67,7 @@ const rollback = (): Promise<unknown> =>
     record: FakeOrcadHost.newRecord(),
     census,
     targetBuildHash: BUILD_HASH,
-    targetDaemonProtocol: { protocolVersion: 3, previousProtocolVersions: [1, 2] },
-    terminalsStartedSince: async () => 0
+    targetDaemonProtocol: { protocolVersion: 3, previousProtocolVersions: [1, 2] }
   })
 
 beforeEach(() => {
@@ -134,7 +133,7 @@ describe.each(scenarios)('%s interrupted at every mutation', (_name, scenario, r
         host.crashAt = null
         const result = await recoverInterruptedOrcadActivation({
           ...slot,
-          terminalsStartedSince: async () => 0
+          acceptChangedState: true
         })
         expect(['recovered', 'none'], `mutation ${crashAt}`).toContain(result.outcome)
         expectExactlyTheRecordedSlot()
@@ -157,30 +156,24 @@ describe('recovery refusals keep the fence', () => {
     expect(host.alive.has(NEW)).toBe(true)
   }
 
-  it('does not restore state over terminals started since the interrupted change', async () => {
+  it('keeps changed state, unverifiable, until an operator accepts restoring over it', async () => {
     await interruptedAfterCandidateLaunch()
-    const result = await recoverInterruptedOrcadActivation({
-      ...slot,
-      terminalsStartedSince: async () => 2
-    })
+    const result = await recoverInterruptedOrcadActivation(slot)
     expect(result).toMatchObject({
       outcome: 'refused',
-      verdict: 'live',
-      code: 'orcad_recovery_orphans_live_terminals'
+      verdict: 'unverifiable',
+      code: 'orcad_recovery_changed_state'
     })
     expect(host.fence).toBe(true)
     expect(host.journal).not.toBeNull()
     expect(host.alive.size).toBe(0)
-  })
 
-  it.each([undefined, null])('keeps changed state when the fresh census is %s', async (started) => {
-    await interruptedAfterCandidateLaunch()
-    const result = await recoverInterruptedOrcadActivation({
-      ...slot,
-      ...(started === undefined ? {} : { terminalsStartedSince: async () => started })
-    })
-    expect(result).toMatchObject({ outcome: 'refused', code: 'orcad_recovery_census_required' })
-    expect(host.journal).not.toBeNull()
+    await expect(
+      recoverInterruptedOrcadActivation({ ...slot, acceptChangedState: true })
+    ).resolves.toMatchObject({ outcome: 'recovered', resolution: 'restored-incumbent' })
+    expect(host.journal).toBeNull()
+    expect(host.fence).toBe(false)
+    expectExactlyTheRecordedSlot()
   })
 
   it('never treats an unverifiable incumbent as exited', async () => {

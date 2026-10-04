@@ -58,9 +58,8 @@ export function sshHostServerStatusLine(
   return null
 }
 
-// Mirror main's ORCAD_TUNNEL_UNAVAILABLE_REASON and LEGACY_TCP_FORWARDING_REFUSED_REASON.
+// Mirror main's ORCAD_TUNNEL_UNAVAILABLE_REASON.
 const TUNNEL_UNAVAILABLE = 'ssh_tunnel_unavailable'
-const LEGACY_FORWARDING_REFUSED = 'tcp_forwarding_refused'
 
 function sourceChangedLine(): SshHostServerStatusLine {
   return {
@@ -76,10 +75,6 @@ function sourceChangedLine(): SshHostServerStatusLine {
 function unavailableLine(reason: string | undefined): SshHostServerStatusLine {
   if (reason === TUNNEL_UNAVAILABLE) {
     return tunnelUnavailableLine()
-  }
-  // An older build's verdict; this one reaches such hosts and retries on the next connect.
-  if (reason === LEGACY_FORWARDING_REFUSED) {
-    return retryLine()
   }
   const cause = reason ? unavailableCause(reason) : null
   if (cause) {

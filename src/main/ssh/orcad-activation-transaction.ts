@@ -22,6 +22,7 @@ import {
   type OrcadDecommissionRecoveryPlan,
   type OrcadDecommissionTransaction
 } from './orcad-decommission-transaction'
+import { errorMessage } from '../../shared/error-message'
 
 export const ORCAD_ACTIVATION_TRANSACTION_FILENAME = 'transaction.json'
 export const ORCAD_ACTIVATION_TRANSACTION_DIRNAME = '.orcad-activation-transaction'
@@ -257,8 +258,4 @@ function neverRecord(): never {
 
 function unreadable(reason: string): { state: 'unreadable'; reason: string } {
   return { state: 'unreadable', reason }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }

@@ -246,12 +246,12 @@ describe('rollbackOrcad', () => {
     expect(result.outcome === 'failed' && result.reason).toContain('is serving again')
   })
 
-  it('keeps the newer state when a failed target may have changed it and no census is fresh', async () => {
+  it('keeps the newer state when a failed target may have changed it, until an operator accepts', async () => {
     const log: string[] = []
     scriptHost(log, { targetReady: false })
     const result = await rollbackOrcad(options())
     expect(result).toMatchObject({ outcome: 'failed', code: 'orcad_activation_no_readiness' })
-    expect(result.outcome === 'failed' && result.reason).toContain('fresh host terminal census')
+    expect(result.outcome === 'failed' && result.reason).toContain('Recover to restore')
     expect(result.outcome === 'failed' && result.reason).toContain(
       'Last lines of orcad.log:\norcad: listen EADDRINUSE'
     )
@@ -270,14 +270,6 @@ describe('rollbackOrcad', () => {
         .mocked(writeAtomicOrcadRemoteRecord)
         .mock.calls.some((call) => String(call[1]).endsWith('orcad-active.json'))
     ).toBe(false)
-  })
-
-  it('restores the rescue and the newer build after a failed target when no terminal started', async () => {
-    const log: string[] = []
-    scriptHost(log, { targetReady: false })
-    const result = await rollbackOrcad(options({ terminalsStartedSince: async () => 0 }))
-    expect(result.outcome === 'failed' && result.reason).toContain('is serving again')
-    expect(log.slice(-3)).toEqual(['compare', 'restore-rescue', `launch:${ACTIVE}`])
   })
 
   it('records the rollback only after the target answers healthy', async () => {

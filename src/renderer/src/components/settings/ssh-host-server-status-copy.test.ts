@@ -145,13 +145,4 @@ describe('SSH host server status line', () => {
       })
     }
   })
-
-  it('reads an older build’s forwarding refusal as a host that moves on a later connect', () => {
-    expect(
-      sshHostServerStatusLine(
-        { managedServerUnavailable: { reason: 'tcp_forwarding_refused', appVersion: '1.4.0' } },
-        undefined
-      )
-    ).toMatchObject({ tone: 'muted', text: expect.stringContaining('later connect') })
-  })
 })

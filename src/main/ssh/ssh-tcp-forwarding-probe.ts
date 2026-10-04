@@ -12,8 +12,6 @@ export type TcpForwardingVerdict = 'allowed' | 'refused' | 'unverifiable'
 const ADMINISTRATIVELY_PROHIBITED = 1
 const CONNECT_FAILED = 2
 export const TCP_FORWARDING_PROBE_TIMEOUT_MS = 10_000
-/** Recorded by builds before the stdio bridge, which kept such hosts on the relay. */
-export const LEGACY_TCP_FORWARDING_REFUSED_REASON = 'tcp_forwarding_refused'
 
 function closeQuietly(channel: ClientChannel | undefined): void {
   try {

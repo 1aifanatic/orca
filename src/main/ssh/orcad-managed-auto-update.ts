@@ -63,17 +63,17 @@ export function planManagedOrcadAutoUpdate(input: {
   return input.failedBefore ? { action: 'skip', reason: 'failed-before' } : { action: 'update' }
 }
 
-const WAITING_CODES: ReadonlySet<string> = new Set<
-  OrcadUpdateDeferCode | 'orcad_activation_recovery_required'
->([
+const WAITING_CODES: ReadonlySet<string> = new Set<OrcadUpdateDeferCode>([
   'orcad_update_terminals_running',
   'orcad_update_terminal_census_unavailable',
   'orcad_update_strands_live_terminals',
-  'orcad_update_daemon_protocol_unverifiable',
-  'orcad_activation_recovery_required'
+  'orcad_update_daemon_protocol_unverifiable'
 ])
 
-/** Deferrals that mean "not now", as opposed to a candidate that was tried and rejected. */
+/**
+ * Deferrals that mean "not now", as opposed to a candidate that was tried and rejected. An
+ * interrupted activation is not one: no later connect clears it, so it surfaces as a failure.
+ */
 export function isWaitingOrcadUpdateDeferral(code: string): boolean {
   return WAITING_CODES.has(code)
 }

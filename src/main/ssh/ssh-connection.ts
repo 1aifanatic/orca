@@ -1,15 +1,6 @@
 /* eslint-disable max-lines -- Why: SSH connection lifecycle, credential retries, reconnect policy, and transport fallback are intentionally co-located so state transitions stay auditable in one file. */
 import * as net from 'node:net'
 import { Client as SshClient } from 'ssh2'
-import { sshProxyRouteDigest, type SshConnectionDestination } from './ssh-connection-destination'
-import {
-  SshConnectionWorkLedger,
-  type SshConnectionWorkChannel
-} from './ssh-connection-work-ledger'
-import { SshTransportCloseLedger } from './ssh-transport-close-ledger'
-import { SshTransportClosureSubscribers } from './ssh-connection-transport-closure'
-import { disconnectAndAwaitSshTransportClose } from './ssh-connection-close-drain'
-import { openTrackedSshUploadSession } from './ssh-upload-session-lifetime'
 import {
   createSshFileUploadSession,
   downloadSshFile,
@@ -19,16 +10,7 @@ import {
   type SshFileTransferHost,
   type SshRemoteFileOptions
 } from './ssh-connection-file-transfers'
-import {
-  assertSshForwardClient,
-  assertSshStreamLocalForwardAllowed,
-  forwardTrackedSshChannel,
-  forwardTrackedSshStreamLocalChannel
-} from './ssh-forward-channel-lifetime'
-import {
-  openTrackedSshSocket,
-  trackSshConnectionChannelLifetime
-} from './ssh-connection-channel-lifetime'
+import { trackSshConnectionChannelLifetime } from './ssh-connection-channel-lifetime'
 import type { ChildProcess } from 'node:child_process'
 import type {
   ClientChannel,
@@ -202,37 +184,6 @@ export class SshConnection {
   private useSystemSshTransport = false
   private credentialAbortController = new AbortController()
   private readonly pendingSsh2Clients = new Set<SshClient>()
-  // Local lifetime evidence only: a closed channel or client never proves a remote process exited.
-  private readonly workLedger = new SshConnectionWorkLedger(
-    () => this.transportClosure.notify(),
-    () => {
-      if (this.disposed) {
-        throw createSshOperationAbortError()
-      }
-    }
-  )
-  private readonly transportCloseLedger = new SshTransportCloseLedger(() =>
-    this.transportClosure.notify()
-  )
-  private readonly transportClosure = new SshTransportClosureSubscribers(
-    () =>
-      this.disposed &&
-      this.state.status === 'disconnected' &&
-      this.activeConnectCalls === 0 &&
-      this.pendingSsh2Clients.size === 0 &&
-      !this.unprovenStartupTransport &&
-      this.transportCloseLedger.isClosed() &&
-      this.workLedger.isDrained()
-  )
-  private readonly automaticReconnect: boolean
-  // Set once drained for close; no reconnect or new transport may replace the fenced one.
-  private resetConnectionFenced = false
-  private activeConnectCalls = 0
-  // Sticky: a system-ssh child's transport closure cannot be proven from here.
-  private unprovenStartupTransport = false
-  private executionDestination:
-    | { client: SshClient; generation: number; destination: SshConnectionDestination }
-    | undefined
   private state: SshConnectionState
   private callbacks: SshConnectionCallbacks
   private target: SshTarget
@@ -247,12 +198,7 @@ export class SshConnection {
   private hostKeyFingerprint: string | undefined
   private connectGeneration = 0
 
-  constructor(
-    target: SshTarget,
-    callbacks: SshConnectionCallbacks,
-    options: { automaticReconnect?: boolean } = {}
-  ) {
-    this.automaticReconnect = options.automaticReconnect !== false
+  constructor(target: SshTarget, callbacks: SshConnectionCallbacks) {
     this.target = target
     this.callbacks = callbacks
     this.state = {
@@ -270,52 +216,12 @@ export class SshConnection {
   getConnectGeneration(): number {
     return this.connectGeneration
   }
-  /** Equals the connect generation; later slices name it by the transport it identifies. */
+  /** Alias of the connect generation. */
   getTransportGeneration(): number {
     return this.connectGeneration
   }
-  /** The ssh2 destination proven by the current handshake; undefined on system SSH or when stale. */
-  getExecutionDestination(): SshConnectionDestination | undefined {
-    const captured = this.executionDestination
-    return !this.disposed &&
-      !this.useSystemSshTransport &&
-      this.state.status === 'connected' &&
-      captured?.client === this.client &&
-      captured?.generation === this.connectGeneration
-      ? captured.destination
-      : undefined
-  }
-  subscribeTransportClosure(onClosed: () => void): () => void {
-    return this.transportClosure.subscribe(onClosed)
-  }
   getClient(): SshClient | null {
     return this.client
-  }
-  prepareForwardRoute<T>(prepare: () => Promise<T>): Promise<T> {
-    return this.workLedger.run(prepare)
-  }
-  openForwardSocket<T extends NodeJS.EventEmitter>(open: () => T): T {
-    return openTrackedSshSocket(this.workLedger, open, this.reportUnhandledChannelError('socket'))
-  }
-  forwardOut(
-    client: SshClient,
-    localSocket: SshConnectionWorkChannel,
-    ...args: Parameters<SshClient['forwardOut']>
-  ): void {
-    assertSshForwardClient(this.client, client)
-    const report = this.reportUnhandledChannelError('forward')
-    forwardTrackedSshChannel(this.workLedger, client, localSocket, report, ...args)
-  }
-  forwardStreamLocal(
-    client: SshClient,
-    ...args: Parameters<SshClient['openssh_forwardOutStreamLocal']>
-  ): void {
-    assertSshForwardClient(this.client, client)
-    const usable =
-      !this.disposed && !this.useSystemSshTransport && this.state.status === 'connected'
-    assertSshStreamLocalForwardAllowed(usable, args[0])
-    const report = this.reportUnhandledChannelError('stream-local forward')
-    forwardTrackedSshStreamLocalChannel(this.workLedger, client, report, ...args)
   }
   /** Names the connection and channel kind when a tracked channel's error has no other handler. */
   private reportUnhandledChannelError(kind: string): (error: Error) => void {
@@ -323,6 +229,16 @@ export class SshConnection {
       console.warn(
         `[ssh] Unhandled ${kind} channel error for ${this.target.label}: ${error.message}`
       )
+  }
+  /** Work after disconnect() fails with the operation abort error. */
+  private assertNotDisposed(): void {
+    if (this.disposed) {
+      throw createSshOperationAbortError()
+    }
+  }
+  private async runAdmitted<T>(operation: () => Promise<T>): Promise<T> {
+    this.assertNotDisposed()
+    return operation()
   }
   usesSystemSshTransport(): boolean {
     return this.useSystemSshTransport
@@ -358,11 +274,8 @@ export class SshConnection {
     return this.cachedPassphrase != null || this.cachedPassword != null
   }
 
-  exec(cmd: string, options?: SshExecOptions): Promise<ClientChannel> {
-    return this.workLedger.run(() => this.execUntracked(cmd, options))
-  }
-
-  private async execUntracked(cmd: string, options?: SshExecOptions): Promise<ClientChannel> {
+  async exec(cmd: string, options?: SshExecOptions): Promise<ClientChannel> {
+    this.assertNotDisposed()
     if (options?.signal?.aborted) {
       throw createSshOperationAbortError()
     }
@@ -377,31 +290,22 @@ export class SshConnection {
     }
     const client = this.client
     const remoteCommand = options?.wrapCommand === false ? cmd : wrapRemoteCommandForPosixShell(cmd)
-    return openSshSessionChannelWithRetry(
-      () =>
-        waitForSshChannelOpen(
-          this.workLedger.beginChannelOpen(),
-          'SSH exec channel timed out',
-          (callback) => client.exec(remoteCommand, callback),
-          (channel) => channel.close(),
-          options?.signal,
-          true,
-          this.reportUnhandledChannelError('exec')
-        ),
-      options?.signal
-    )
+    return openSshSessionChannelWithRetry(() => {
+      this.assertNotDisposed()
+      return waitForSshChannelOpen(
+        'SSH exec channel timed out',
+        (callback) => client.exec(remoteCommand, callback),
+        (channel) => channel.close(),
+        options?.signal,
+        true,
+        this.reportUnhandledChannelError('exec')
+      )
+    }, options?.signal)
   }
 
   /** Interactive login shell over a session channel with pty-req; ssh2 transport only. */
-  shell(pty: PseudoTtyOptions, options: ShellOptions = {}): Promise<ClientChannel> {
-    // Plain SSH mode's terminals must drain with the rest of this connection's work.
-    return this.workLedger.run(() => this.shellUntracked(pty, options))
-  }
-
-  private async shellUntracked(
-    pty: PseudoTtyOptions,
-    options: ShellOptions
-  ): Promise<ClientChannel> {
+  async shell(pty: PseudoTtyOptions, options: ShellOptions = {}): Promise<ClientChannel> {
+    this.assertNotDisposed()
     if (this.useSystemSshTransport) {
       throw new Error('Interactive SSH shells are not available when using system SSH transport')
     }
@@ -409,9 +313,9 @@ export class SshConnection {
       throw new Error('Not connected')
     }
     const client = this.client
-    return openSshSessionChannelWithRetry(() =>
-      waitForSshChannelOpen(
-        this.workLedger.beginChannelOpen(),
+    return openSshSessionChannelWithRetry(() => {
+      this.assertNotDisposed()
+      return waitForSshChannelOpen(
         'SSH shell channel timed out',
         (callback) => client.shell(pty, options, callback),
         (channel) => channel.close(),
@@ -419,16 +323,11 @@ export class SshConnection {
         false,
         this.reportUnhandledChannelError('shell')
       )
-    )
+    })
   }
 
-  sftp(options?: AbortSignal | { signal?: AbortSignal }): Promise<SFTPWrapper> {
-    return this.workLedger.run(() => this.sftpUntracked(options))
-  }
-
-  private async sftpUntracked(
-    options?: AbortSignal | { signal?: AbortSignal }
-  ): Promise<SFTPWrapper> {
+  async sftp(options?: AbortSignal | { signal?: AbortSignal }): Promise<SFTPWrapper> {
+    this.assertNotDisposed()
     // Why: relay transfers pass a signal directly, while filesystem factories use an options object.
     const signal = options && 'aborted' in options ? options : options?.signal
     if (signal?.aborted) {
@@ -441,19 +340,17 @@ export class SshConnection {
       throw new Error('Not connected')
     }
     const client = this.client
-    return openSshSessionChannelWithRetry(
-      () =>
-        waitForSshChannelOpen(
-          this.workLedger.beginChannelOpen(),
-          'SSH SFTP channel timed out',
-          (callback) => client.sftp(callback),
-          (sftp) => sftp.end(),
-          signal,
-          false,
-          this.reportUnhandledChannelError('sftp')
-        ),
-      signal
-    )
+    return openSshSessionChannelWithRetry(() => {
+      this.assertNotDisposed()
+      return waitForSshChannelOpen(
+        'SSH SFTP channel timed out',
+        (callback) => client.sftp(callback),
+        (sftp) => sftp.end(),
+        signal,
+        false,
+        this.reportUnhandledChannelError('sftp')
+      )
+    }, signal)
   }
 
   uploadDirectory(
@@ -461,7 +358,7 @@ export class SshConnection {
     remoteDir: string,
     options?: SshRemoteFileOptions & { signal?: AbortSignal }
   ): Promise<void> {
-    return this.workLedger.run(() =>
+    return this.runAdmitted(() =>
       uploadSshDirectory(this.fileTransferHost(), localDir, remoteDir, options)
     )
   }
@@ -471,15 +368,19 @@ export class SshConnection {
     localPath: string,
     options?: SshRemoteFileOptions
   ): Promise<void> {
-    return this.workLedger.run(() =>
+    return this.runAdmitted(() =>
       downloadSshFile(this.fileTransferHost(), remotePath, localPath, options)
     )
   }
 
-  openFileUploadSession(options?: SshRemoteFileOptions): Promise<FileUploadSession> {
-    return openTrackedSshUploadSession(this.workLedger, () =>
+  async openFileUploadSession(options?: SshRemoteFileOptions): Promise<FileUploadSession> {
+    const session = await this.runAdmitted(() =>
       createSshFileUploadSession(this.fileTransferHost(), options)
     )
+    return {
+      uploadFile: (...args) => this.runAdmitted(() => session.uploadFile(...args)),
+      close: () => session.close()
+    }
   }
 
   writeFile(
@@ -487,7 +388,7 @@ export class SshConnection {
     contents: string,
     options?: SshRemoteFileOptions & { signal?: AbortSignal }
   ): Promise<void> {
-    return this.workLedger.run(() =>
+    return this.runAdmitted(() =>
       writeSshFile(this.fileTransferHost(), remotePath, contents, options)
     )
   }
@@ -497,7 +398,7 @@ export class SshConnection {
     contents: Buffer,
     options?: SshRemoteFileOptions & { append?: boolean; exclusive?: boolean }
   ): Promise<void> {
-    return this.workLedger.run(() =>
+    return this.runAdmitted(() =>
       writeSshBuffer(this.fileTransferHost(), remotePath, contents, options)
     )
   }
@@ -513,23 +414,6 @@ export class SshConnection {
   }
 
   async connect(): Promise<void> {
-    this.activeConnectCalls++
-    try {
-      await this.connectInitialAttempts()
-    } finally {
-      this.activeConnectCalls--
-      this.transportClosure.notify()
-    }
-  }
-
-  private assertConnectionReplacementAllowed(): void {
-    if (this.resetConnectionFenced) {
-      throw new Error('ssh_connection_reset_replacement_refused')
-    }
-  }
-
-  private async connectInitialAttempts(): Promise<void> {
-    this.assertConnectionReplacementAllowed()
     if (this.disposed) {
       throw new Error('Connection disposed')
     }
@@ -537,7 +421,6 @@ export class SshConnection {
     let lastError: Error | null = null
 
     for (let attempt = 0; attempt < INITIAL_RETRY_ATTEMPTS; attempt++) {
-      this.assertConnectionReplacementAllowed()
       const connectGeneration = ++this.connectGeneration
       try {
         await this.attemptConnect(connectGeneration)
@@ -655,7 +538,6 @@ export class SshConnection {
   }
 
   private async attemptConnect(connectGeneration = ++this.connectGeneration): Promise<void> {
-    this.executionDestination = undefined
     this.credentialAbortController.abort()
     this.credentialAbortController = new AbortController()
     this.setState('connecting')
@@ -704,10 +586,8 @@ export class SshConnection {
 
     // Why: ssh2 doesn't support ProxyCommand/ProxyJump natively; spawn the resolved proxy and pipe its stdin/stdout as config.sock.
     const effectiveProxy = resolveEffectiveProxy(this.target, resolved)
-    const proxyRouteDigest = sshProxyRouteDigest(effectiveProxy)
     if (effectiveProxy) {
       const proxy = spawnProxyCommand(effectiveProxy, config.host!, config.port!, config.username!)
-      this.transportCloseLedger.track(proxy.process)
       this.proxyProcess = proxy.process
       config.sock = proxy.sock
     }
@@ -720,7 +600,7 @@ export class SshConnection {
     }
 
     try {
-      await this.doSsh2Connect(config, connectGeneration, proxyRouteDigest)
+      await this.doSsh2Connect(config, connectGeneration)
     } catch (err) {
       if (!(err instanceof Error)) {
         this.proxyProcess?.kill()
@@ -796,7 +676,7 @@ export class SshConnection {
         if (keyConfig.privateKey || keyConfig.password) {
           this.respawnProxy(keyConfig, effectiveProxy)
           try {
-            await this.doSsh2Connect(keyConfig, connectGeneration, proxyRouteDigest)
+            await this.doSsh2Connect(keyConfig, connectGeneration)
             return
           } catch (keyErr) {
             // Same reason as above: the retry re-runs the handshake, so it can be the attempt that
@@ -831,7 +711,7 @@ export class SshConnection {
                 this.cachedPassphrase = val
                 keyConfig.passphrase = val
                 this.respawnProxy(keyConfig, effectiveProxy)
-                await this.doSsh2Connect(keyConfig, connectGeneration, proxyRouteDigest)
+                await this.doSsh2Connect(keyConfig, connectGeneration)
                 return
               }
             }
@@ -881,7 +761,7 @@ export class SshConnection {
           this.cachedPassphrase = val
           credentialRetryConfig.passphrase = val
           this.respawnProxy(credentialRetryConfig, effectiveProxy)
-          await this.doSsh2Connect(credentialRetryConfig, connectGeneration, proxyRouteDigest)
+          await this.doSsh2Connect(credentialRetryConfig, connectGeneration)
           return
         }
       }
@@ -896,7 +776,7 @@ export class SshConnection {
           this.cachedPassword = val
           credentialRetryConfig.password = val
           this.respawnProxy(credentialRetryConfig, effectiveProxy)
-          await this.doSsh2Connect(credentialRetryConfig, connectGeneration, proxyRouteDigest)
+          await this.doSsh2Connect(credentialRetryConfig, connectGeneration)
           return
         }
       }
@@ -907,7 +787,6 @@ export class SshConnection {
   }
 
   async reconnect(): Promise<void> {
-    this.assertConnectionReplacementAllowed()
     if (this.disposed || this.state.status === 'connecting') {
       return
     }
@@ -924,7 +803,6 @@ export class SshConnection {
   }
 
   private async doSystemSshProbe(connectGeneration: number): Promise<void> {
-    this.unprovenStartupTransport = true
     this.useSystemSshTransport = true
     this.client = null
     this.proxyProcess?.kill()
@@ -1085,7 +963,6 @@ export class SshConnection {
     if (!this.isCurrentConnectAttempt(connectGeneration)) {
       throw this.createCancelledConnectAttemptError()
     }
-    this.unprovenStartupTransport = true
     const proc = spawnSystemSsh(this.target, this.getSystemSshBuildArgsOptions())
     this.systemSsh = proc
     let settled = false
@@ -1176,18 +1053,12 @@ export class SshConnection {
       options === undefined && Object.keys(buildArgsOptions).length === 0
         ? undefined
         : { ...options, ...buildArgsOptions }
-    const work = this.workLedger.beginChannelOpen()
-    let channel: ClientChannel
-    try {
-      channel =
-        commandOptions === undefined
-          ? spawnSystemSshCommand(this.target, command)
-          : spawnSystemSshCommand(this.target, command, commandOptions)
-      trackSshConnectionChannelLifetime(work, channel, this.reportUnhandledChannelError('command'))
-    } catch (error) {
-      work.close(error)
-      throw error
-    }
+    this.assertNotDisposed()
+    const channel =
+      commandOptions === undefined
+        ? spawnSystemSshCommand(this.target, command)
+        : spawnSystemSshCommand(this.target, command, commandOptions)
+    trackSshConnectionChannelLifetime(channel, this.reportUnhandledChannelError('command'))
     this.systemCommandChannels.add(channel)
     const onAbort = (): void => {
       channel.close()
@@ -1231,7 +1102,6 @@ export class SshConnection {
     }
     this.proxyProcess?.kill()
     const p = spawnProxyCommand(proxy, config.host!, config.port!, config.username!)
-    this.transportCloseLedger.track(p.process)
     this.proxyProcess = p.process
     config.sock = p.sock
   }
@@ -1284,16 +1154,7 @@ export class SshConnection {
     return sources
   }
 
-  private async doSsh2Connect(
-    config: ConnectConfig,
-    connectGeneration: number,
-    proxyRouteDigest: string
-  ): Promise<void> {
-    const endpoint = {
-      host: config.host ?? '',
-      port: config.port ?? 22,
-      username: config.username ?? ''
-    }
+  private async doSsh2Connect(config: ConnectConfig, connectGeneration: number): Promise<void> {
     const hostKeyResolved = this.hostKeyResolvedConfig
     const { host: hostKeyLookupHost, isHostKeyAlias } = resolveKnownHostsLookupHost(
       hostKeyResolved,
@@ -1336,7 +1197,6 @@ export class SshConnection {
       : undefined
     return new Promise<void>((resolve, reject) => {
       const client = new SshClient()
-      this.transportCloseLedger.track(client)
       this.pendingSsh2Clients.add(client)
       let settled = false
       let startupTimer: ReturnType<typeof setTimeout> | null = null
@@ -1359,7 +1219,6 @@ export class SshConnection {
       // the live attempt's error, and substituting a new Error drops ssh2's `code`, so a transient
       // ECONNRESET would stop being classified as retryable.
       let hostKeyRejection: HostKeyVerificationError | null = null
-      let acceptedFingerprint: string | undefined
 
       // Why the fingerprint is still recorded: the relay uses the negotiated server key to isolate
       // shared-home install locks without comparing PIDs from an unrelated SSH host. Its format is
@@ -1411,7 +1270,6 @@ export class SshConnection {
             connectGeneration === this.connectGeneration
           ) {
             this.hostKeyFingerprint = decision.fingerprint
-            acceptedFingerprint = decision.fingerprint
           }
           if (decision.action === 'reject') {
             hostKeyRejection = new HostKeyVerificationError(
@@ -1510,20 +1368,6 @@ export class SshConnection {
         }
         settled = true
         this.client = client
-        // Only this successful handshake can publish recovery destination authority.
-        this.executionDestination = acceptedFingerprint
-          ? {
-              client,
-              generation: connectGeneration,
-              destination: Object.freeze({
-                version: 1,
-                transport: 'ssh2',
-                ...endpoint,
-                hostKeyFingerprint: acceptedFingerprint,
-                proxyRouteDigest
-              })
-            }
-          : undefined
         this.proxyProcess = null
         this.setupDisconnectHandler(client)
         cleanupStartupListeners()
@@ -1581,7 +1425,6 @@ export class SshConnection {
       if (this.disposed || this.client !== client) {
         return
       }
-      this.workLedger.markTransportUnverifiable()
       this.client = null
       this.scheduleReconnect()
     }
@@ -1592,18 +1435,13 @@ export class SshConnection {
         return
       }
       console.warn(`[ssh] Connection error for ${this.target.label}: ${err.message}`)
-      this.workLedger.markTransportUnverifiable()
       this.client = null
       this.scheduleReconnect()
     })
   }
 
   private scheduleReconnect(): void {
-    if (this.disposed || this.resetConnectionFenced || this.reconnectTimer) {
-      return
-    }
-    if (!this.automaticReconnect) {
-      this.setState('disconnected')
+    if (this.disposed || this.reconnectTimer) {
       return
     }
     const decision = this.reconnectLadder.next(Date.now())
@@ -1618,7 +1456,7 @@ export class SshConnection {
     )
     this.reconnectTimer = setTimeout(async () => {
       this.reconnectTimer = null
-      if (this.disposed || this.resetConnectionFenced) {
+      if (this.disposed) {
         return
       }
       await this.runReconnectAttempt()
@@ -1626,19 +1464,6 @@ export class SshConnection {
   }
 
   private async runReconnectAttempt(): Promise<void> {
-    this.activeConnectCalls++
-    try {
-      await this.runTrackedReconnectAttempt()
-    } finally {
-      this.activeConnectCalls--
-      this.transportClosure.notify()
-    }
-  }
-
-  private async runTrackedReconnectAttempt(): Promise<void> {
-    if (this.resetConnectionFenced) {
-      return
-    }
     const connectGeneration = ++this.connectGeneration
     try {
       // Why: reset before connecting so the 'connected' broadcast carries reconnectAttempt=0, which ssh.ts uses to trigger relay re-establishment.
@@ -1714,21 +1539,9 @@ export class SshConnection {
   }
 
   async connectViaSystemSsh(): Promise<SystemSshProcess> {
-    this.activeConnectCalls++
-    try {
-      return await this.connectTrackedViaSystemSsh()
-    } finally {
-      this.activeConnectCalls--
-      this.transportClosure.notify()
-    }
-  }
-
-  private async connectTrackedViaSystemSsh(): Promise<SystemSshProcess> {
-    this.assertConnectionReplacementAllowed()
     if (this.disposed) {
       throw new Error('Connection disposed')
     }
-    this.unprovenStartupTransport = true
     const connectGeneration = ++this.connectGeneration
     this.systemSsh?.kill()
     this.systemSsh = null
@@ -1762,7 +1575,6 @@ export class SshConnection {
       // Why: register the reconnect handler only after handshake succeeds (the onExit above guards with `settled`).
       proc.onExit(() => {
         if (!this.disposed && this.systemSsh === proc) {
-          this.workLedger.markTransportUnverifiable()
           this.systemSsh = null
           this.scheduleReconnect()
         }
@@ -1781,60 +1593,7 @@ export class SshConnection {
     }
   }
 
-  /** Owned migration transport only; local closure never proves remote process exit. */
-  async disconnectAndDrain(signal: AbortSignal): Promise<void> {
-    signal.throwIfAborted()
-    // An unconnected non-reconnecting owner has nothing live left to fence.
-    const settledExclusiveStartup =
-      !this.automaticReconnect &&
-      this.activeConnectCalls === 0 &&
-      this.pendingSsh2Clients.size === 0 &&
-      !this.unprovenStartupTransport
-    if (
-      this.useSystemSshTransport ||
-      this.unprovenStartupTransport ||
-      this.activeConnectCalls > 0 ||
-      (!this.client && !settledExclusiveStartup)
-    ) {
-      await this.disconnect()
-      throw new Error('ssh_connection_close_transport_unproven')
-    }
-    let fence: ReturnType<SshConnectionWorkLedger['fenceForReset']>
-    try {
-      if (
-        this.client &&
-        (this.disposed || this.state.status !== 'connected' || this.pendingSsh2Clients.size > 0)
-      ) {
-        throw new Error('ssh_connection_reset_transport_not_connected')
-      }
-      fence = this.workLedger.fenceForReset()
-      this.resetConnectionFenced = true
-      if (this.reconnectTimer) {
-        clearTimeout(this.reconnectTimer)
-        this.reconnectTimer = null
-      }
-    } catch (error) {
-      try {
-        await this.disconnect()
-      } catch (cleanupError) {
-        throw new AggregateError([error, cleanupError], 'ssh_connection_close_cleanup_failed')
-      }
-      throw error
-    }
-    await disconnectAndAwaitSshTransportClose({
-      liveResources: [
-        ...(this.client ? [this.client] : []),
-        ...(this.proxyProcess ? [this.proxyProcess] : [])
-      ],
-      disconnect: () => this.disconnect(),
-      transportCloseLedger: this.transportCloseLedger,
-      fence,
-      signal
-    })
-  }
-
   async disconnect(): Promise<void> {
-    this.executionDestination = undefined
     this.disposed = true
     this.connectGeneration += 1
     if (this.reconnectTimer) {
@@ -1863,7 +1622,6 @@ export class SshConnection {
     this.useSystemSshTransport = false
     this.reconnectLadder.reset()
     this.setState('disconnected')
-    this.transportClosure.notify()
   }
 
   private setState(status: SshConnectionStatus, error?: string): void {

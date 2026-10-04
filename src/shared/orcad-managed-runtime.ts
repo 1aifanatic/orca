@@ -40,6 +40,9 @@ export type OrcadManagedRollbackResult =
     }
   | { outcome: 'refused' | 'failed'; code: string; reason: string }
 
+/** A recovery that needs the operator to accept restoring a snapshot over changed state. */
+export const ORCAD_RECOVERY_CHANGED_STATE_CODE = 'orcad_recovery_changed_state'
+
 export type OrcadManagedRecoveryResult =
   | { outcome: 'none' }
   | { outcome: 'pending'; code: string; reason: string }

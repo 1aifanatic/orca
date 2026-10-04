@@ -4,7 +4,7 @@ import {
   createEnvironmentFromPairingOffer,
   type KnownRuntimeEnvironment
 } from '../../shared/runtime-environments'
-import { emptyOrcadActivationRecord } from './orcad-activation-record'
+import { emptyOrcadActivationRecord, type OrcadActivationRecord } from './orcad-activation-record'
 
 const mocks = vi.hoisted(() => ({ send: vi.fn(), ensure: vi.fn() }))
 vi.mock('../../shared/remote-runtime-client', () => ({
@@ -12,8 +12,9 @@ vi.mock('../../shared/remote-runtime-client', () => ({
 }))
 vi.mock('./orcad-managed-tunnel', () => ({ ensureOrcadManagedTunnel: mocks.ensure }))
 
-const { collectManagedTerminalCensus, collectRemoteOrcadTerminalCensus } =
-  await import('./orcad-terminal-census-client')
+const { collectManagedTerminalCensus } = await import('./orcad-terminal-census-client')
+const collect = (record: OrcadActivationRecord) =>
+  collectManagedTerminalCensus('/profile', environment, record)
 
 const environment: KnownRuntimeEnvironment = createEnvironmentFromPairingOffer({
   id: 'environment-1',
@@ -48,15 +49,17 @@ describe('managed orcad terminal census client', () => {
   })
 
   it('reads an idle census without contacting a host that has nothing active', async () => {
-    await expect(
-      collectRemoteOrcadTerminalCensus(environment, { ...active, active: null })
-    ).resolves.toEqual({ liveSessions: 0, startedSinceActivation: 0, daemonProtocolVersion: null })
+    await expect(collect({ ...active, active: null })).resolves.toEqual({
+      liveSessions: 0,
+      startedSinceActivation: 0,
+      daemonProtocolVersion: null
+    })
     expect(mocks.send).not.toHaveBeenCalled()
   })
 
   it('asks an advertising host with the activation time', async () => {
     answerWith([ORCAD_TERMINAL_CENSUS_RUNTIME_CAPABILITY], { ok: true, result: census })
-    await expect(collectRemoteOrcadTerminalCensus(environment, active)).resolves.toEqual(census)
+    await expect(collect(active)).resolves.toEqual(census)
     expect(mocks.send.mock.calls[0]?.slice(1, 3)).toEqual([
       'orcad.terminalCensus',
       { activatedAt: Date.parse(active.activatedAt) }
@@ -80,15 +83,11 @@ describe('managed orcad terminal census client', () => {
     ['loss of contact', () => mocks.send.mockRejectedValue(new Error('socket closed'))]
   ])('reads %s as unverifiable, never as zero', async (_label, arrange) => {
     arrange()
-    await expect(collectRemoteOrcadTerminalCensus(environment, active)).resolves.toEqual(
-      unverifiable
-    )
+    await expect(collect(active)).resolves.toEqual(unverifiable)
   })
 
   it('reads an unparseable activation time as unverifiable', async () => {
-    await expect(
-      collectRemoteOrcadTerminalCensus(environment, { ...active, activatedAt: 'later' })
-    ).resolves.toEqual(unverifiable)
+    await expect(collect({ ...active, activatedAt: 'later' })).resolves.toEqual(unverifiable)
     expect(mocks.send).not.toHaveBeenCalled()
   })
 

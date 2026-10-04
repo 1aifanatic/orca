@@ -19,7 +19,6 @@ import {
   probeOrcadStateSnapshotCommand,
   restoreOrcadStateSnapshotCommand
 } from './orcad-state-snapshot'
-import { orcadStopFreedTheHost } from './orcad-remote-process-control'
 import { joinRemotePath } from './ssh-remote-platform'
 import {
   orcadActivationTransactionRoot,
@@ -33,29 +32,23 @@ import {
 } from './orcad-activation-transaction-transitions'
 import { writeOrcadActivationTransaction } from './orcad-activation-transaction-store'
 import {
-  execOrcadRemote,
+  execOrcadRemoteOr,
   launchOrcadAndAwaitReadiness,
   withoutAbortSignal
 } from './orcad-remote-runtime-control'
 import {
   orcadSlotDir,
   resolveOrcadSlotIdentity,
-  stopOrcadSlot,
-  ORCAD_SLOT_STOP_WAIT_SECONDS,
   type OrcadSlotIdentity
 } from './orcad-recovery-slot'
-import { orcadSnapshotPath, recoverOrcadIncumbent } from './orcad-incumbent-recovery'
+import { orcadSnapshotPath } from './orcad-incumbent-recovery'
+import {
+  putTransactionIncumbentBack,
+  restoreAfterRejectedCandidate,
+  stopTransactionIncumbent
+} from './orcad-transaction-incumbent'
 import { withOrcadLogTail } from './orcad-remote-log-tail'
-
-/** A confirmed failure reads as no answer; an unconfirmed one propagates and keeps the fence. */
-async function execOrEmpty(options: OrcadRollbackOptions, command: string): Promise<string> {
-  return execOrcadRemote(options, command).catch((error: unknown) => {
-    if (isUnconfirmedSshCommandTermination(error)) {
-      throw error
-    }
-    return ''
-  })
-}
+import { errorMessage } from '../../shared/error-message'
 
 async function stateWritesSinceActivation(options: OrcadRollbackOptions): Promise<boolean | null> {
   const activatedAtSeconds = Math.floor(Date.parse(options.record.activatedAt ?? '') / 1000)
@@ -63,7 +56,7 @@ async function stateWritesSinceActivation(options: OrcadRollbackOptions): Promis
     return null
   }
   const newest = parseNewestStateMtimeSeconds(
-    await execOrEmpty(
+    await execOrcadRemoteOr(
       options,
       newestStateMtimeCommand(
         options.host,
@@ -83,7 +76,7 @@ export async function rollbackOrcadLocked(
   const snapshot = options.record.snapshot
   const presence = snapshot
     ? parseOrcadSnapshotPresence(
-        await execOrEmpty(
+        await execOrcadRemoteOr(
           options,
           probeOrcadStateSnapshotCommand(
             options.host,
@@ -136,27 +129,24 @@ export async function rollbackOrcadLocked(
   })
   await writeOrcadActivationTransaction(options, transaction)
   lock.retainOnError()
+  // Past the first mutation a cancel would strand a stopped host, so the run finishes or rolls back.
+  options = withoutAbortSignal(options)
 
-  const stopped = await stopOrcadSlot(options, incumbent.remoteDir, false)
-  if (!orcadStopFreedTheHost(stopped)) {
-    if (stopped === 'still-running') {
-      lock.retain()
-    }
+  const unstopped = await stopTransactionIncumbent(options, incumbent, lock)
+  if (unstopped) {
     return {
       outcome: 'failed',
       code: 'orcad_rollback_stop_incomplete',
       reason:
-        `Could not verify that orcad ${incumbent.version} exited within ` +
-        `${ORCAD_SLOT_STOP_WAIT_SECONDS}s (${stopped}). Nothing was restored. Orca requires ` +
-        'matching runtime readiness before signaling an incumbent and confirmed exit before ' +
-        'replacing its state.'
+        `${unstopped} Nothing was restored. Orca requires matching runtime readiness before ` +
+        'signaling an incumbent and confirmed exit before replacing its state.'
     }
   }
   transaction = withOrcadRollbackPhase(transaction, 'incumbent-stopped', now())
   await writeOrcadActivationTransaction(options, transaction)
 
   const rescue = parseOrcadSnapshotCapture(
-    await execOrEmpty(
+    await execOrcadRemoteOr(
       options,
       captureOrcadStateSnapshotCommand(
         options.host,
@@ -167,7 +157,7 @@ export async function rollbackOrcadLocked(
     )
   )
   if (rescue === 'failed') {
-    const recovered = await putIncumbentBack(options, lock, transaction, incumbent, null)
+    const recovered = await putIncumbentBack(options, lock, transaction, incumbent)
     return {
       outcome: 'failed',
       code: 'orcad_rollback_rescue_snapshot_failed',
@@ -181,7 +171,7 @@ export async function rollbackOrcadLocked(
 
   // Why between stop and start: the older build must never load the newer build's state.
   const restored = parseOrcadSnapshotRestore(
-    await execOrEmpty(
+    await execOrcadRemoteOr(
       options,
       restoreOrcadStateSnapshotCommand(
         options.host,
@@ -192,7 +182,7 @@ export async function rollbackOrcadLocked(
     )
   )
   if (restored !== 'restored') {
-    const recovered = await putIncumbentBack(options, lock, transaction, incumbent, null)
+    const recovered = await putIncumbentBack(options, lock, transaction, incumbent)
     return {
       outcome: 'failed',
       code: 'orcad_rollback_restore_failed',
@@ -230,13 +220,13 @@ export async function rollbackOrcadLocked(
       launchError === undefined
         ? verdict.reason
         : `It failed while starting: ${errorMessage(launchError)}`
-    const targetStop = await stopOrcadSlot(withoutAbortSignal(options), targetDir, true).catch(
-      (error: unknown) => `unverifiable: ${errorMessage(error)}`
-    )
-    const recovered =
-      targetStop === 'stopped' || targetStop === 'already-exited'
-        ? await putIncumbentBack(options, lock, transaction, incumbent, safety.target)
-        : retainedAfterTargetStop(lock, targetStop)
+    const recovered = await restoreAfterRejectedCandidate(options, lock, {
+      launchedDir: targetDir,
+      launchedVersion: safety.target,
+      transactionStartedAt: transaction.startedAt,
+      incumbent,
+      restoreState: rescueVerdict(transaction)
+    })
     return {
       outcome: 'failed',
       code: launchError === undefined ? verdict.code : 'orcad_rollback_target_launch_failed',
@@ -262,42 +252,24 @@ export async function rollbackOrcadLocked(
   }
 }
 
-function retainedAfterTargetStop(lock: OrcadActivationLockControl, stopped: string): string {
-  lock.retain()
-  return (
-    `The target could not be confirmed stopped (${stopped}), so the rescue snapshot was not ` +
-    'restored over state it may still own. This host requires recovery.'
-  )
+type RestoreState = Parameters<typeof putTransactionIncumbentBack>[2]['restoreState']
+
+function rescueVerdict(transaction: OrcadRollbackTransaction): RestoreState {
+  return transaction.rescue.state === 'pending' ? null : transaction.rescue
 }
 
-/** Restores the rescued state when it was replaced, then restarts the incumbent. */
+/** Puts the rescued state back when it was replaced, then restarts the incumbent. */
 async function putIncumbentBack(
   options: OrcadRollbackOptions,
   lock: OrcadActivationLockControl,
   transaction: OrcadRollbackTransaction,
-  incumbent: OrcadSlotIdentity,
-  launchedVersion: string | null
+  incumbent: OrcadSlotIdentity
 ): Promise<string> {
-  try {
-    const recovery = await recoverOrcadIncumbent(withoutAbortSignal(options), {
-      transactionStartedAt: transaction.startedAt,
-      launchedVersion,
-      incumbent,
-      restoreState: transaction.rescue.state === 'pending' ? null : transaction.rescue,
-      slotsProvenExited: true
-    })
-    if (recovery.outcome === 'refused') {
-      lock.retain()
-      return recovery.reason
-    }
-    lock.recovered()
-    return `orcad ${incumbent.version} was restored and is serving again.`
-  } catch (error) {
-    lock.retain()
-    return `Restoring orcad ${incumbent.version} failed: ${errorMessage(error)} This host requires recovery.`
-  }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
+  const failure = await putTransactionIncumbentBack(options, lock, {
+    transactionStartedAt: transaction.startedAt,
+    launchedVersion: null,
+    incumbent,
+    restoreState: rescueVerdict(transaction)
+  })
+  return failure ?? `orcad ${incumbent.version} was restored and is serving again.`
 }

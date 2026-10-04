@@ -77,12 +77,15 @@ export function preflightOrcadMigrationExport(
   return {
     targetId,
     targetLabel: target.label,
-    // Exported catalog rows and saved port forwards (which stay with the source) do not block.
-    claimable: blockers.every(
-      (blocker) =>
-        blocker.category === 'drainable-static-state' ||
-        blocker.code === 'orcad_migration_saved_port_forwards'
-    ),
+    claimable: !blockers.some(isBlockingOrcadMigrationBlocker),
     blockers
   }
+}
+
+// Exported catalog rows and saved port forwards (which stay with the source) do not block.
+export function isBlockingOrcadMigrationBlocker(blocker: OrcadMigrationBlocker): boolean {
+  return (
+    blocker.category !== 'drainable-static-state' &&
+    blocker.code !== 'orcad_migration_saved_port_forwards'
+  )
 }

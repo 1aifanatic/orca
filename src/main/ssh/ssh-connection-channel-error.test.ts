@@ -41,23 +41,3 @@ it('logs an exec channel error nothing else handles, naming the target and chann
   )
   await conn.disconnect()
 })
-
-it('does not log a forwarded channel error its owner handles', async () => {
-  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-  const conn = new SshConnection(createTarget(), createCallbacks())
-  await conn.connect()
-  const client = conn.getClient()!
-  const channel = new EventEmitter()
-  client.openssh_forwardOutStreamLocal = vi.fn((_path, callback) => {
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the mock ssh2 client hands back this EventEmitter as its channel.
-    callback(undefined, channel as never)
-    return client
-  })
-  const owner = vi.fn()
-  conn.forwardStreamLocal(client, '/owned.sock', () => channel.on('error', owner))
-
-  channel.emit('error', new Error('handled'))
-  expect(owner).toHaveBeenCalledOnce()
-  expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('Unhandled'))
-  await conn.disconnect()
-})

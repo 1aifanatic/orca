@@ -211,16 +211,17 @@ export function rollbackManagedOrcadEnvironment(
 /** Finishes or undoes an interrupted activation, rollback or decommission on the host. */
 export function recoverManagedOrcadEnvironment(
   userDataPath: string,
-  args: LifecycleArgs
+  args: LifecycleArgs & { acceptChangedState?: boolean }
 ): Promise<OrcadManagedRecoveryResult> {
   return withManagedOrcadLifecycle(
     userDataPath,
     args.selector,
     async ({ environment, deployment }) => {
       const context = await resolveLinkedOrcadContext(environment, deployment, args.signal)
-      const result = await recoverInterruptedOrcadActivation(
-        managedOrcadSlot(context, deployment.remotePort, args.signal)
-      )
+      const result = await recoverInterruptedOrcadActivation({
+        ...managedOrcadSlot(context, deployment.remotePort, args.signal),
+        acceptChangedState: args.acceptChangedState === true
+      })
       if (result.outcome !== 'recovered') {
         return result
       }

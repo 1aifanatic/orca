@@ -188,6 +188,20 @@ describe('migration source fence', () => {
     expect(harness.target().orcadFence).toBeUndefined()
   })
 
+  it('keeps a blocker it could not read unverifiable, never live', async () => {
+    const harness = setup()
+    vi.spyOn(harness.store, 'inspectOrcadMigrationUntransferredDependencies').mockImplementation(
+      () => {
+        throw new Error('census failed')
+      }
+    )
+    await expect(harness.fence()).resolves.toMatchObject({
+      outcome: 'refused',
+      verdict: 'unverifiable',
+      code: 'orcad_migration_preflight_blocked'
+    })
+  })
+
   it('releases its own fence when a terminal appeared before the fence took hold', async () => {
     const harness = setup()
     const flush = vi.spyOn(harness.claims, 'flush').mockImplementation(async () => {

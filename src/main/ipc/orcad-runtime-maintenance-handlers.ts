@@ -15,8 +15,10 @@ export function registerOrcadRuntimeMaintenanceHandlers(options: ManagedOrcadAct
   ipcMain.handle('runtimeEnvironments:rollbackOrcad', async (_event, args: { selector: string }) =>
     actions.rollback(requiredString(args?.selector, 'Server'))
   )
-  ipcMain.handle('runtimeEnvironments:recoverOrcad', async (_event, args: { selector: string }) =>
-    actions.recover(requiredString(args?.selector, 'Server'))
+  ipcMain.handle(
+    'runtimeEnvironments:recoverOrcad',
+    async (_event, args: { selector: string; acceptChangedState?: boolean }) =>
+      actions.recover(requiredString(args?.selector, 'Server'), args?.acceptChangedState === true)
   )
   ipcMain.handle('runtimeEnvironments:stopOrcad', async (_event, args: { selector: string }) =>
     actions.stop(requiredString(args?.selector, 'Server'))

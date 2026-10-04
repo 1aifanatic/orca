@@ -12316,7 +12316,9 @@
             "confirmStop": "Stop and remove server",
             "keep": "Keep running",
             "stop": "Stop…",
-            "deferredVersion": "Update to {{version}} deferred."
+            "deferredVersion": "Update to {{version}} deferred.",
+            "confirmRestore": "Restore snapshot and restart",
+            "keepState": "Keep state"
           },
           "title": "Managed servers",
           "description": "Orca installs and runs a server on an empty SSH host and keeps it up to date.",

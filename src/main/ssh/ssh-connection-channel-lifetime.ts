@@ -1,9 +1,4 @@
-import type {
-  SshConnectionWorkChannel,
-  SshConnectionWorkLedger
-} from './ssh-connection-work-ledger'
-
-type TrackableChannel = SshConnectionWorkChannel & {
+type TrackableChannel = Pick<NodeJS.EventEmitter, 'on' | 'once' | 'removeListener'> & {
   closed?: unknown
 }
 
@@ -36,40 +31,16 @@ function hasOnlyTrackerErrorListener(channel: TrackableChannel): boolean {
   )
 }
 
-export function openTrackedSshSocket<T extends NodeJS.EventEmitter>(
-  ledger: SshConnectionWorkLedger,
-  open: () => T,
-  onUnhandledError?: SshChannelErrorReporter
-): T {
-  const work = ledger.beginChannelOpen()
-  try {
-    const socket = open()
-    trackSshConnectionChannelLifetime(work, socket, onUnhandledError)
-    return socket
-  } catch (error) {
-    work.markUnverifiable(error instanceof Error ? error : new Error(String(error)))
-    throw error
-  }
-}
-
-/** Start tracking before the open callback hands the channel to another owner. */
+/** Keeps an unowned channel 'error' from crashing main; attach before handing the channel off. */
 export function trackSshConnectionChannelLifetime(
-  work: ReturnType<SshConnectionWorkLedger['beginChannelOpen']>,
   value: unknown,
   onUnhandledError: SshChannelErrorReporter = reportOrphanChannelError
 ): void {
-  if (!isTrackableChannel(value)) {
-    work.markUnverifiable(new Error('ssh_connection_channel_lifetime_unverifiable'))
+  if (!isTrackableChannel(value) || value.closed === true) {
     return
   }
   const channel = value
-  work.bind(channel)
-  if (channel.closed === true) {
-    work.close()
-    return
-  }
   const onError = (error: Error) => {
-    work.markUnverifiable(error)
     if (hasOnlyTrackerErrorListener(channel)) {
       onUnhandledError(error)
     }
@@ -77,6 +48,5 @@ export function trackSshConnectionChannelLifetime(
   channel.on('error', onError)
   channel.once('close', () => {
     channel.removeListener('error', onError)
-    work.close()
   })
 }

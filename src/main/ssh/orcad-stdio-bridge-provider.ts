@@ -51,6 +51,8 @@ const defaultDependencies: OrcadStdioBridgeDependencies = {
 export class OrcadStdioBridgePortForwardProvider implements SshPortForwardProvider {
   constructor(private readonly dependencies: OrcadStdioBridgeDependencies = defaultDependencies) {}
 
+  // Why not system SSH: each bridge socket would be its own `ssh` process (a fresh login, and
+  // perhaps a key prompt, when multiplexing is off), and its refusal can't be probed up front.
   canHandle(conn: SshConnection): boolean {
     return conn.getClient() !== null
   }

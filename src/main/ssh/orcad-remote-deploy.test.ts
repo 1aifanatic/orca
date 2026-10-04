@@ -574,7 +574,7 @@ describe('deployOrcad', () => {
         'compare-state'
       ])
       expect(result.outcome === 'installed-not-activated' && result.reason).toContain(
-        'recovery requires a fresh host terminal census'
+        'Recover to restore the prelaunch snapshot'
       )
       expect(result.outcome === 'installed-not-activated' && result.reason).toContain(
         '/home/u/.orca-remote/orcad-state-snapshots/'

@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  ORCAD_SNAPSHOT_EXCLUDED,
-  ORCAD_SNAPSHOT_MEMBERS,
   captureOrcadStateSnapshotCommand,
   clearOrcadStateSnapshotMembersCommand,
   compareOrcadStateSnapshotCommand,
@@ -16,6 +14,7 @@ import {
   restoreOrcadStateSnapshotCommand
 } from './orcad-state-snapshot'
 import { getRemoteHostPlatform } from './ssh-remote-platform'
+import { ORCAD_SNAPSHOT_EXCLUDED, ORCAD_SNAPSHOT_MEMBERS } from './orcad-state-snapshot-members'
 
 const posix = getRemoteHostPlatform('linux-x64')
 const windows = getRemoteHostPlatform('win32-x64')

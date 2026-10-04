@@ -12,10 +12,11 @@ import { setSshHostServerStatus } from '../ssh/ssh-host-server-status'
 import { trackSshHostServerMove } from '../ssh/ssh-host-server-telemetry'
 import { knownSshHostPlatform } from '../ssh/ssh-host-platform-memo'
 import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
+import { allowsDirectSshRelay } from '../ssh/ssh-connection-store'
 import { connectionManager, getCurrentMainWindow } from './ssh-ipc-context'
 import { broadcastSshState, getPublicSshState } from './ssh-renderer-broadcast'
 
-/** Resolves null when the decision itself couldn't run; the caller then keeps today's relay path. */
+/** Resolves null when the decision couldn't run on a host that may still use the relay. */
 export async function decideHostServer(
   target: SshTarget
 ): Promise<HostServerOnConnectResult | null> {
@@ -30,7 +31,10 @@ export async function decideHostServer(
       hostServerOnConnectDeps(getAppEnvironment().getPath('userData'))
     )
   } catch (error) {
-    // A fenced host still refuses the relay below; any other host keeps today's relay path.
+    // A host with no relay fallback surfaces the real failure (auth, unreachable), not a generic one.
+    if (!allowsDirectSshRelay(getSshTargetRegistryStore()?.getTarget(target.id) ?? target)) {
+      throw error
+    }
     console.warn('[ssh] Could not decide the managed Orca server for this host:', error)
     return null
   }

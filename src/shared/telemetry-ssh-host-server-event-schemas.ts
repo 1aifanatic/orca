@@ -8,8 +8,6 @@ export const SSH_HOST_SERVER_OUTCOME_VALUES = ['managed', 'deployed', 'converted
 
 /** Why orcad can't run on a host; mirrors main's OrcadHostUnavailableReason. */
 const UNAVAILABLE_REASONS = [
-  // Recorded by builds before the stdio bridge; now retried rather than honoured.
-  'tcp_forwarding_refused',
   // The host refuses port forwarding and can't run the stdio bridge either.
   'ssh_tunnel_unavailable',
   'unsupported_host',

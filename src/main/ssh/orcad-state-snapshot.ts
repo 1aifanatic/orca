@@ -24,8 +24,6 @@ import {
 } from './orcad-state-snapshot-members'
 import { orcadWindowsHostOpCommand } from './orcad-remote-windows-node'
 
-export { ORCAD_SNAPSHOT_EXCLUDED, ORCAD_SNAPSHOT_MEMBERS } from './orcad-state-snapshot-members'
-
 /**
  * The member names go into the command unquoted (see `captureOrcadStateSnapshotCommand`), so
  * they must be inert. They are compile-time constants; this catches the edit that adds one
@@ -37,8 +35,6 @@ function assertPlainMemberName(member: string): string {
   }
   return member
 }
-
-const RESTORE_STAGE_DIRNAME = ORCAD_STATE_RESTORE_STAGE_DIRNAME
 
 /** The Windows host-script op, or null on POSIX; `baseDir` is `~/.orca-remote`. */
 function windowsStateCommand(
@@ -175,10 +171,8 @@ export function restoreOrcadStateSnapshotCommand(
   }
   const root = shellEscape(userDataDir)
   const archive = shellEscape(joinRemotePath(host, snapshotDir, 'state.tar'))
-  const stage = shellEscape(joinRemotePath(host, userDataDir, RESTORE_STAGE_DIRNAME))
-  const removals = ORCAD_SNAPSHOT_MEMBERS.map(
-    (member) => `rm -rf ${root}/${shellEscape(member)}`
-  ).join(' && ')
+  const stage = shellEscape(joinRemotePath(host, userDataDir, ORCAD_STATE_RESTORE_STAGE_DIRNAME))
+  const removals = removeMembersCommand(root)
   const replacements = ORCAD_SNAPSHOT_MEMBERS.map((member) => {
     const name = shellEscape(member)
     return `if [ -e ${stage}/${name} ]; then mv ${stage}/${name} ${root}/${name}; fi`
@@ -210,10 +204,13 @@ export function clearOrcadStateSnapshotMembersCommand(
     return windows
   }
   const root = shellEscape(userDataDir)
-  const removals = ORCAD_SNAPSHOT_MEMBERS.map(
-    (member) => `rm -rf ${root}/${shellEscape(member)}`
-  ).join(' && ')
-  return `test -d ${root} || mkdir -p ${root}; if ${removals}; then echo RESTORED; else echo FAILED; fi`
+  return `test -d ${root} || mkdir -p ${root}; if ${removeMembersCommand(root)}; then echo RESTORED; else echo FAILED; fi`
+}
+
+function removeMembersCommand(root: string): string {
+  return ORCAD_SNAPSHOT_MEMBERS.map((member) => `rm -rf ${root}/${shellEscape(member)}`).join(
+    ' && '
+  )
 }
 
 export type OrcadSnapshotRestore = 'restored' | 'missing' | 'failed'
