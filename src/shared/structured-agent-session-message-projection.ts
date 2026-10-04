@@ -17,27 +17,15 @@ export type StructuredAgentSessionMessageProjectionOptions = {
   queuedMessageIds?: readonly string[]
 }
 
-/** The loaded items that are a conversation command such as `/compact`, by item id. */
-export function structuredAgentSessionCommandItemIds(
-  items: readonly AgentJournalRenderItem[]
-): Set<string> {
-  return new Set(
-    items
-      .filter((item) => item.body.kind === 'message' && item.body.command)
-      .map((item) => item.itemId)
-  )
-}
-
 /**
  * The rejected submissions the host's history shows in place as not sent, by item id; `submissions`
- * in submission order, as the client keeps them. A withdrawn one went back to its sender, one the
- * queue holds (a draft's hand-off, or a card under its id) is drawn as its card, and a command such
- * as `/compact` has its rejection reported as its own reply.
+ * in submission order, as the client keeps them. A withdrawn one went back to its sender, and one
+ * the queue holds (a draft's hand-off, or a card under its id) is drawn as its card. A command such
+ * as `/compact` is shown like any message: its row is where every viewer learns it did not run.
  */
 export function structuredAgentSessionRejectedShownInPlace(
   submissions: readonly AgentJournalSubmission[],
-  queuedMessageIds: readonly string[],
-  commandItemIds: ReadonlySet<string>
+  queuedMessageIds: readonly string[]
 ): Set<string> {
   const cards = new Set(queuedMessageIds)
   // Each body's copies, as positions in submission order. A withdrawn one is hidden too, so it
@@ -62,7 +50,6 @@ export function structuredAgentSessionRejectedShownInPlace(
       dispatchWasWithdrawn(submission) ||
       submission.queuedMessageId !== undefined ||
       cards.has(submission.clientMessageId) ||
-      commandItemIds.has(agentJournalSubmissionKey(submission.clientMessageId)) ||
       // Collapses resends of a rejected message: past Retries resent it under a new id, and the
       // host re-delivers its own messages under new ids. Only a later copy sent once the rejection
       // was known counts, so a repeat sent before it is kept.
@@ -76,6 +63,22 @@ export function structuredAgentSessionRejectedShownInPlace(
     shown.add(agentJournalSubmissionKey(submission.clientMessageId))
   }
   return shown
+}
+
+/** Whether the loaded journal draws the send recorded under `clientMessageId` in the chat, where
+ *  its row, not a reply, says how it went. */
+export function structuredAgentSessionJournalShowsSubmission(
+  submissions: readonly AgentJournalSubmission[],
+  clientMessageId: string
+): boolean {
+  const submission = submissions.find((entry) => entry.clientMessageId === clientMessageId)
+  return (
+    submission !== undefined &&
+    (submission.dispatchState !== 'rejected' ||
+      structuredAgentSessionRejectedShownInPlace(submissions, []).has(
+        agentJournalSubmissionKey(clientMessageId)
+      ))
+  )
 }
 
 export function projectStructuredAgentSessionMessages(
@@ -93,11 +96,7 @@ export function projectStructuredAgentSessionMessages(
       .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
   )
   const inPlace = options.rejectedInPlace
-    ? structuredAgentSessionRejectedShownInPlace(
-        submissions,
-        options.queuedMessageIds ?? [],
-        structuredAgentSessionCommandItemIds(items)
-      )
+    ? structuredAgentSessionRejectedShownInPlace(submissions, options.queuedMessageIds ?? [])
     : new Set<string>()
   const visibleItems: AgentJournalRenderItem[] = []
   const unsentItems: AgentJournalRenderItem[] = []

@@ -8,9 +8,9 @@
 // queue moves.
 //
 // A message the host recorded and then rejected is drawn from the host's history, worded from the
-// journal's own fact, with no Retry: sending it again is a new message. A rejection that is a
-// failed start's, the fact its loaded row states, says only that it was not sent: the row already
-// says why. Until its row loads, the outbox draws it from its smaller copy, which leaves on the batch
+// journal's own fact, with no Retry: sending it again is a new message. A rejection a loaded host
+// row already states (a failed start's, or a command's result row) says only that it was not
+// sent. Until its row loads, the outbox draws it from its smaller copy, which leaves on the batch
 // or page that loads the row.
 
 import type { AgentSessionFailureFact } from '../../../../shared/agent-session-failure'
@@ -33,8 +33,6 @@ import { structuredAgentSessionRejectedShownInPlace } from '../../../../shared/s
 import { translate } from '@/i18n/i18n'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
-
-const NO_COMMANDS: ReadonlySet<string> = new Set()
 
 function deliveryNoticeText(
   entry: StructuredAgentSessionOutboxEntry,
@@ -83,8 +81,9 @@ export function structuredAgentSessionDeliveryNotices(
   failedHere: ReadonlySet<string>,
   /** The queue's live cards, which the transcript leaves a rejected message to. */
   queuedMessageIds: readonly string[] = [],
-  /** The loaded commands, from `structuredAgentSessionCommandItemIds`: they report their own. */
-  commandItemIds: ReadonlySet<string> = NO_COMMANDS
+  /** Commands whose loaded result row says how they ended, from
+   *  `structuredAgentSessionCommandResultRows`. */
+  commandResults?: ReadonlySet<string>
 ): ReadonlyMap<string, NativeChatDeliveryNotice> {
   const admission = admitStructuredAgentSessionOutboxEntry(outbox)
   const held = admission.state === 'blocked' ? admission.entry.clientMessageId : null
@@ -114,17 +113,18 @@ export function structuredAgentSessionDeliveryNotices(
     }
   }
   // After the outbox's: in the host's words, whether its row or the outbox's copy draws it.
-  const shown = structuredAgentSessionRejectedShownInPlace(
-    submissions,
-    queuedMessageIds,
-    commandItemIds
-  )
+  const shown = structuredAgentSessionRejectedShownInPlace(submissions, queuedMessageIds)
   for (const submission of rejected.values()) {
     const id = agentJournalSubmissionKey(submission.clientMessageId)
     if (shown.has(id)) {
       notices.set(id, {
         text: agentSessionWriteNoticeText(
-          structuredAgentSessionRecordedRejectionParts(submission, { agentName }, startFailures)
+          structuredAgentSessionRecordedRejectionParts(
+            submission,
+            { agentName },
+            startFailures,
+            commandResults
+          )
         )
       })
     }

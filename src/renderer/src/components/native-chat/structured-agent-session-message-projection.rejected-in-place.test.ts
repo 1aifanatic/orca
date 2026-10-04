@@ -11,10 +11,7 @@ import {
   DISPATCH_REJECTED_CANCELLED,
   DISPATCH_REJECTED_HOST_RESTARTED
 } from '../../../../shared/structured-agent-session-dispatch-rejection'
-import {
-  projectStructuredAgentSessionMessages as projectShared,
-  structuredAgentSessionCommandItemIds
-} from '../../../../shared/structured-agent-session-message-projection'
+import { projectStructuredAgentSessionMessages as projectShared } from '../../../../shared/structured-agent-session-message-projection'
 import {
   createStructuredAgentSessionOutboxEntry,
   type StructuredAgentSessionOutboxEntry
@@ -271,8 +268,8 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
     ])
   })
 
-  // Its own reply reports the rejection, in the composer, as a command's.
-  it('is not drawn when it was a command such as /compact', () => {
+  // Like any recorded message: its row is where every viewer learns it did not run.
+  it('is drawn as not sent when it was a command such as /compact', () => {
     const compact = {
       ...userItem('compact', 3, '/compact'),
       body: { ...body('/compact'), command: { name: 'compact' } }
@@ -283,20 +280,22 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
       rows(
         projectStructuredAgentSessionMessages([...SEED_ROWS, compact], [], submissions, NO_CARDS)
       )
-    ).toEqual([{ id: agentJournalSubmissionKey('seed'), text: 'seed', unsent: false }])
+    ).toEqual([
+      { id: agentJournalSubmissionKey('seed'), text: 'seed', unsent: false },
+      { id: agentJournalSubmissionKey('compact'), text: '/compact', unsent: true }
+    ])
     // One rule decides for the rows and the notices.
-    expect(
-      structuredAgentSessionDeliveryNotices(
+    expect([
+      ...structuredAgentSessionDeliveryNotices(
         [],
         'Claude',
         () => {},
         submissions,
         [],
         new Set(),
-        NO_CARDS,
-        structuredAgentSessionCommandItemIds([...SEED_ROWS, compact])
-      ).size
-    ).toBe(0)
+        NO_CARDS
+      ).keys()
+    ]).toEqual([agentJournalSubmissionKey('compact')])
   })
 
   it('keeps a message a Stop withdrew hidden: it went back to its sender', () => {

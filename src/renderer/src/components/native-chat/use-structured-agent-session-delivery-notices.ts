@@ -4,10 +4,10 @@ import type {
   AgentJournalSubmission
 } from '../../../../shared/agent-session-journal-types'
 import { dispatchWasWithdrawn } from '../../../../shared/structured-agent-session-dispatch-rejection'
-import { structuredAgentSessionCommandItemIds } from '../../../../shared/structured-agent-session-message-projection'
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
 import { useStructuredAgentSessionStartFailureFacts } from './use-structured-agent-session-start-failure-facts'
+import { useStructuredAgentSessionCommandResultRows } from './use-structured-agent-session-command-result-rows'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
 
 const NO_SUBMISSIONS: readonly AgentJournalSubmission[] = []
@@ -40,7 +40,7 @@ export function useStructuredAgentSessionDeliveryNotices(args: {
     )
   const rejectionRows = hasRejected ? submissions : NO_SUBMISSIONS
   const startFailures = useStructuredAgentSessionStartFailureFacts(args.journalItems, hasRejected)
-  const commandItemIds = useCommandItemIds(args.journalItems, hasRejected)
+  const commandResults = useStructuredAgentSessionCommandResultRows(args.journalItems, hasRejected)
   const notices = useMemo(
     () =>
       structuredAgentSessionDeliveryNotices(
@@ -51,7 +51,7 @@ export function useStructuredAgentSessionDeliveryNotices(args: {
         startFailures,
         failedHere,
         queuedMessageIds,
-        commandItemIds
+        commandResults
       ),
     [
       outbox,
@@ -61,34 +61,12 @@ export function useStructuredAgentSessionDeliveryNotices(args: {
       startFailures,
       failedHere,
       queuedMessageIds,
-      commandItemIds
+      commandResults
     ]
   )
   // A submission batch rebuilds the map; one that says the same keeps the old, so no row re-renders.
   const previousRef = useRef(notices)
   const stable = sameNoticesKept(previousRef.current, notices)
-  useEffect(() => {
-    previousRef.current = stable
-  }, [stable])
-  return stable
-}
-
-const NO_COMMANDS: ReadonlySet<string> = new Set()
-
-/** The loaded commands, read only while `enabled`, and held while unchanged so a streaming turn
- *  rebuilds no notice. */
-function useCommandItemIds(
-  items: readonly AgentJournalRenderItem[],
-  enabled: boolean
-): ReadonlySet<string> {
-  const ids = useMemo(
-    () => (enabled ? structuredAgentSessionCommandItemIds(items) : NO_COMMANDS),
-    [enabled, items]
-  )
-  const previousRef = useRef(ids)
-  const previous = previousRef.current
-  const stable =
-    previous.size === ids.size && [...ids].every((id) => previous.has(id)) ? previous : ids
   useEffect(() => {
     previousRef.current = stable
   }, [stable])
