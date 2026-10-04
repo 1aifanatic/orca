@@ -61,12 +61,6 @@ export async function selectServeRuntime(
   if (requested && requested !== 'orcad') {
     return electron(`${SERVE_RUNTIME_ENV}=${requested} is neither orcad nor electron`)
   }
-  // Why: Windows stays on Electron by default until orcad serve is flipped on there separately.
-  if (!requested && input.platform === 'win32') {
-    return electron(
-      'local orcad serve is not the default on Windows yet; set ORCA_SERVE_RUNTIME=orcad to opt in'
-    )
-  }
   // Why: only packaged macOS serve can take a remote app update, through Electron's updater
   // and this CLI's supervisor; orcad has no updater, so switching would drop that.
   if (input.usesMacUpdateHandoff) {
