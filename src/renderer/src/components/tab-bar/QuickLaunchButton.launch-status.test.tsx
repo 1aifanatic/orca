@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import type { ReactNode } from 'react'
-import { cleanup, render } from '@testing-library/react'
+import { cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { StructuredLaunchState } from '@/lib/structured-agent-session-launch-registry'
 import {
@@ -35,8 +35,13 @@ vi.mock('@/lib/agent-catalog', () => ({
   AgentIcon: ({ agent }: { agent: string }) => <span>{agent}</span>
 }))
 vi.mock('@/components/ui/dropdown-menu', () => ({
-  DropdownMenuItem: ({ children, disabled, title }: { children: ReactNode } & DivProps) => (
-    <div aria-disabled={disabled ? 'true' : 'false'} title={title}>
+  DropdownMenuItem: ({
+    children,
+    disabled,
+    title,
+    onSelect
+  }: { children: ReactNode } & DivProps) => (
+    <div aria-disabled={disabled ? 'true' : 'false'} title={title} onClick={onSelect}>
       {children}
     </div>
   ),
@@ -46,9 +51,10 @@ vi.mock('@/i18n/i18n', () => ({
   translate: (_key: string, fallback: string, values?: Record<string, string>) =>
     fallback.replace('{{value0}}', values?.value0 ?? '')
 }))
-vi.mock('@/lib/launch-agent-in-new-tab', () => ({ launchAgentInNewTab: vi.fn() }))
+const launchMock = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/launch-agent-in-new-tab', () => ({ launchAgentInNewTab: launchMock }))
 
-type DivProps = { disabled?: boolean; title?: string }
+type DivProps = { disabled?: boolean; title?: string; onSelect?: () => void }
 
 import { QuickLaunchAgentMenuItems } from './QuickLaunchButton'
 import {
@@ -172,5 +178,29 @@ describe('QuickLaunchAgentMenuItems launch status', () => {
     cleanup()
     render(menu('review notes'))
     expect(agentRowDisabled('Codex')).toBe('true')
+  })
+
+  // Why: the notes menu holds what it sent until this result, so a second send leaves them out.
+  it("hands the launch's own delivery result to the notes menu", () => {
+    const delivery = Promise.resolve({ delivered: true, failureNotified: false })
+    launchMock.mockReturnValue({
+      surface: { kind: 'local-agent-session', tabId: 'tab-1', sessionId: 'codex-session' },
+      promptDeliveryResult: delivery
+    })
+    const onPromptHandedOff = vi.fn()
+
+    render(
+      <QuickLaunchAgentMenuItems
+        worktreeId={WORKTREE_ID}
+        groupId="group-1"
+        onFocusTerminal={vi.fn()}
+        prompt="review notes"
+        promptDelivery="submit-after-ready"
+        onPromptHandedOff={onPromptHandedOff}
+      />
+    )
+    fireEvent.click(document.querySelector('[title="Launch Codex in a new terminal"]')!)
+
+    expect(onPromptHandedOff).toHaveBeenCalledWith(delivery)
   })
 })

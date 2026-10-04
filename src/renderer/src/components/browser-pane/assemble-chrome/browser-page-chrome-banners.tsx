@@ -28,6 +28,7 @@ export function BrowserPageChromeBanners({
   activeGroupId,
   browserAnnotationsPrompt,
   handleBrowserAnnotationsSentToAgent,
+  handleBrowserAnnotationsHandedOff,
   handleCopyBrowserAnnotations,
   browserAnnotationsCopied,
   handleClearBrowserAnnotations,
@@ -45,6 +46,7 @@ export function BrowserPageChromeBanners({
   activeGroupId: string | undefined
   browserAnnotationsPrompt: string
   handleBrowserAnnotationsSentToAgent: () => void
+  handleBrowserAnnotationsHandedOff: (delivered: Promise<unknown>) => void
   handleCopyBrowserAnnotations: () => void
   browserAnnotationsCopied: boolean
   handleClearBrowserAnnotations: () => void
@@ -155,6 +157,7 @@ export function BrowserPageChromeBanners({
                     groupId={activeGroupId ?? worktreeId}
                     prompt={browserAnnotationsPrompt}
                     onPromptDelivered={handleBrowserAnnotationsSentToAgent}
+                    onPromptHandedOff={handleBrowserAnnotationsHandedOff}
                   />
                 </DropdownMenuContent>
               </DropdownMenu>

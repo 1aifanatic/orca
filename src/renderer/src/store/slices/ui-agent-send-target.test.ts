@@ -282,6 +282,7 @@ describe('createUISlice agent send target mode', () => {
   it('sends to the live leaf PTY, runs delivery callback, tracks followup, and closes', async () => {
     const store = createAgentSendStore()
     const onPromptDelivered = vi.fn()
+    const onPromptHandedOff = vi.fn()
     seedAgentSendState(store)
     store.getState().openAgentSendPopoverTargetMode({
       id: 'send-1',
@@ -290,10 +291,15 @@ describe('createUISlice agent send target mode', () => {
       prompt: 'Review this',
       label: 'All unsent notes',
       launchSource: 'notes_send',
-      onPromptDelivered
+      onPromptDelivered,
+      onPromptHandedOff
     })
 
     await expect(store.getState().sendPromptToSidebarAgentTarget(readyPaneKey)).resolves.toBe(true)
+
+    // The notes leave the next send for exactly this send's lifetime.
+    expect(onPromptHandedOff).toHaveBeenCalledOnce()
+    await expect(onPromptHandedOff.mock.calls[0][0]).resolves.toMatchObject({ status: 'sent' })
 
     expect(mocks.sendNotesToActiveAgentSession).toHaveBeenCalledWith({
       worktreeId,

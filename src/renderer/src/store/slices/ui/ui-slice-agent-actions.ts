@@ -154,7 +154,7 @@ export function createUiAgentActions(
         import('@/lib/active-agent-note-send'),
         import('@/lib/agent-message-send')
       ])
-      const result = await sendMessageToAgent({
+      const sending = sendMessageToAgent({
         worktreeId: mode.worktreeId,
         prompt: mode.prompt,
         target: runningAgentMessageTarget(target)
@@ -164,6 +164,8 @@ export function createUiAgentActions(
         })
         return { status: 'status-unavailable' as const, code: 'runtime-unverifiable' as const }
       })
+      mode.onPromptHandedOff?.(sending)
+      const result = await sending
 
       const stillCurrent = (): boolean => {
         const current = get().agentSendPopoverTargetMode
