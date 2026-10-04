@@ -14,6 +14,7 @@ import { evaluatePtyBindingFastLane } from './pty-binding-fast-lane'
 import { ptyBindingIsRefused } from './pty-binding-refusals'
 import { startPtyBindingSpan, type PtyBindingOrigin, type PtyBindingSpan } from './pty-binding-span'
 import { applyPtyBinding } from './pty-binding-session-update'
+import { withTopologyCommit } from '../terminal-topology/terminal-topology-write-guard'
 
 type PtyBindingPersistenceOperationsRuntime = Pick<
   StoreRuntimeState,
@@ -112,7 +113,9 @@ export class PtyBindingPersistenceOperations {
         }
         return {
           value: true,
-          rollback: writePtyBinding(this, args, session, resolvedHostId, bindingWorktreeId, paneKey)
+          rollback: withTopologyCommit(() =>
+            writePtyBinding(this, args, session, resolvedHostId, bindingWorktreeId, paneKey)
+          )
         }
       })
       span?.finish(outcome)

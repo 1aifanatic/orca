@@ -36,6 +36,7 @@ import {
   discardUnpersistedPtySpawn,
   registerPersistedPtySpawn
 } from '../pane/spawn-registration'
+import { bindLeaf } from '../../../persistence/terminal-topology/terminal-topology-commit'
 
 export async function commitRuntimePtySpawn(ctx: RuntimePtySpawnState) {
   return commitPtyWithOpenCodePromptIntent(ctx, () => commitReservedRuntimePtySpawn(ctx))
@@ -150,8 +151,8 @@ async function commitReservedRuntimePtySpawn(ctx: RuntimePtySpawnState) {
         origin: spawnCommitBindingOrigin(ctx.result, expectedSourceBinding)
       }
       const persisted = args.connectionId
-        ? await store.persistPtyBinding(binding, toSshExecutionHostId(args.connectionId))
-        : await store.persistPtyBinding(binding)
+        ? await bindLeaf(store, binding, toSshExecutionHostId(args.connectionId))
+        : await bindLeaf(store, binding)
       if (persisted === false) {
         throw new Error('terminal_split_source_not_found')
       }

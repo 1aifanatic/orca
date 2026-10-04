@@ -145,6 +145,7 @@ import {
 } from './ssh-pty-consumer-recovery'
 import { classifySshPtyFrameRejection, SshPtyFrameRejectionLog } from './ssh-pty-frame-rejection'
 import { SshPtyTargetedReattachQueue } from './ssh-pty-targeted-reattach-queue'
+import { bindLeaf } from '../persistence/terminal-topology/terminal-topology-commit'
 
 export type RelaySessionState = 'idle' | 'deploying' | 'ready' | 'reconnecting' | 'disposed'
 
@@ -2922,7 +2923,7 @@ export class SshRelaySession {
     if (lease?.worktreeId && lease.tabId && lease.leafId) {
       const { worktreeId, leafId, tabId: leaseTabId } = lease
       let tabId = lease.tabId
-      const bound = await this.store.persistPtyBinding(() => {
+      const bound = await bindLeaf(this.store, () => {
         if (!shouldContinue()) {
           return null
         }
