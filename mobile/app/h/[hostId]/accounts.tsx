@@ -15,6 +15,8 @@ import { loadHosts } from '../../../src/transport/host-store'
 import { useHostClient } from '../../../src/transport/client-context'
 import { colors, spacing } from '../../../src/theme/mobile-theme'
 import { styles } from '../../../src/accounts/mobile-accounts-screen-styles'
+import { useHostAccountsRefresh } from '../../../src/accounts/use-host-accounts-refresh'
+import { getHostAccountEvidence } from '../../../src/accounts/host-account-evidence'
 import { useNow } from '../../../src/hooks/use-now'
 import { ClaudeIcon, OpenAIIcon } from '../../../src/components/AgentIcons'
 import {
@@ -67,9 +69,9 @@ function HostAccountsScreen({
   const [hostName, setHostName] = useState<string>('')
   const [snapshot, setSnapshot] = useState<AccountsSnapshot | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [refreshing, setRefreshing] = useState(false)
   const [busyAccountId, setBusyAccountId] = useState<string | null>(null)
   const [clockEnabled, setClockEnabled] = useState(false)
+  const accountEvidence = client ? getHostAccountEvidence(client, hostId) : null
 
   const acceptSnapshot = useCallback((nextSnapshot: AccountsSnapshot) => {
     setSnapshot(nextSnapshot)
@@ -81,6 +83,14 @@ function HostAccountsScreen({
     setSnapshot(null)
     setError('Invalid accounts snapshot from host')
   }, [])
+  const { refresh, refreshing } = useHostAccountsRefresh({
+    client,
+    hostId,
+    connState,
+    onSnapshot: acceptSnapshot,
+    onInvalidSnapshot: rejectInvalidSnapshot,
+    onError: setError
+  })
   const {
     supported: codexResetSupported,
     resetting: resettingCodex,
@@ -139,10 +149,12 @@ function HostAccountsScreen({
       if (disposed || !payload || typeof payload !== 'object') {
         return
       }
-      const evt = payload as { type?: string; snapshot?: unknown }
-      if (evt.type === 'ready' || evt.type === 'snapshot') {
+      if ('type' in payload && (payload.type === 'ready' || payload.type === 'snapshot')) {
+        accountEvidence?.retire()
         try {
-          acceptSnapshot(decodeAccountsSnapshot(evt.snapshot))
+          acceptSnapshot(
+            decodeAccountsSnapshot('snapshot' in payload ? payload.snapshot : undefined)
+          )
         } catch {
           rejectInvalidSnapshot()
         }
@@ -150,32 +162,10 @@ function HostAccountsScreen({
     })
     return () => {
       disposed = true
+      accountEvidence?.retire()
       unsubscribe()
     }
-  }, [acceptSnapshot, client, connState, rejectInvalidSnapshot])
-
-  const refresh = useCallback(async () => {
-    if (!client) {
-      return
-    }
-    setRefreshing(true)
-    try {
-      const res = await client.sendRequest('accounts.list')
-      if (res.ok) {
-        acceptSnapshot(decodeAccountsSnapshot(res.result))
-      } else {
-        setError(res.error.message)
-      }
-    } catch (e) {
-      if (e instanceof Error && e.message === 'Invalid accounts snapshot from host') {
-        rejectInvalidSnapshot()
-      } else {
-        setError(e instanceof Error ? e.message : String(e))
-      }
-    } finally {
-      setRefreshing(false)
-    }
-  }, [acceptSnapshot, client, rejectInvalidSnapshot])
+  }, [acceptSnapshot, accountEvidence, client, connState, rejectInvalidSnapshot])
 
   const selectAccount = useCallback(
     async (provider: ProviderKey, accountId: string | null) => {

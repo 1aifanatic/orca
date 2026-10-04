@@ -193,3 +193,81 @@ describe('Accounts monetary execution host ownership', () => {
     expect(paint()).not.toContain('99.9900')
   })
 })
+
+it.each(['replacement', 'malformed'] as const)(
+  'rejects both pending Accounts refreshes after a newer %s push, then accepts a fresh read',
+  async (kind) => {
+    await mount()
+    emit(boundary.streams[0]!, '11.1100')
+    const replies: Array<(reply: unknown) => void> = []
+    boundary.request.mockImplementation(() => new Promise((resolve) => replies.push(resolve)))
+    const refresh = renderer?.root.findByType(ScrollView).props.refreshControl.props.onRefresh
+    act(() => {
+      void refresh()
+      void refresh()
+    })
+    const newer =
+      kind === 'malformed'
+        ? {}
+        : deepSeekMobileSnapshot({
+            deepseek: null,
+            deepseekAccount: {
+              supported: true,
+              configured: true,
+              ownerId: 'replacement',
+              protection: 'sealed'
+            }
+          })
+    act(() => boundary.streams[0]!({ type: 'snapshot', snapshot: newer }))
+    await act(async () => {
+      replies[1]!({ ok: true, result: balance('22.2200') })
+      replies[0]!({ ok: true, result: balance('11.1100') })
+    })
+    expect(paint()).not.toContain('11.1100')
+    expect(paint()).not.toContain('22.2200')
+    act(() => {
+      void refresh()
+    })
+    await act(async () => replies[2]!({ ok: true, result: balance('33.3300') }))
+    expect(paint()).toContain('33.3300')
+  }
+)
+
+it.each(['older-first', 'newer-first'] as const)(
+  'keeps the newer Accounts read when overlapping replies settle %s',
+  async (order) => {
+    await mount()
+    const replies: Array<(reply: unknown) => void> = []
+    boundary.request.mockImplementation(() => new Promise((resolve) => replies.push(resolve)))
+    const refresh = renderer?.root.findByType(ScrollView).props.refreshControl.props.onRefresh
+    act(() => {
+      void refresh()
+      void refresh()
+    })
+    const older = () => replies[0]!({ ok: true, result: balance('11.1100') })
+    const newer = () => replies[1]!({ ok: true, result: balance('22.2200') })
+    await act(async () => {
+      if (order === 'older-first') {
+        older()
+        newer()
+      } else {
+        newer()
+        older()
+      }
+    })
+    expect(paint()).toContain('22.2200')
+    expect(paint()).not.toContain('11.1100')
+  }
+)
+
+it('retires malformed current Accounts list evidence and recovers on a valid refresh', async () => {
+  await mount()
+  emit(boundary.streams[0]!, '11.1100')
+  const refresh = renderer?.root.findByType(ScrollView).props.refreshControl.props.onRefresh
+  boundary.request.mockResolvedValue({ ok: true, result: {} })
+  await act(async () => refresh())
+  expect(paint()).not.toContain('11.1100')
+  boundary.request.mockResolvedValue({ ok: true, result: balance('22.2200') })
+  await act(async () => refresh())
+  expect(paint()).toContain('22.2200')
+})

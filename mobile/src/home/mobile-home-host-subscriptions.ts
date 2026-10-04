@@ -1,4 +1,5 @@
 import { decodeAccountsSnapshot } from '../components/AccountUsage'
+import { getHostAccountEvidence } from '../accounts/host-account-evidence'
 import { subscribeToDesktopNotifications } from '../notifications/mobile-notifications'
 import { createHostConnectRefetchGate } from '../transport/host-connect-refetch-gate'
 import type { RpcClient } from '../transport/rpc-client'
@@ -30,10 +31,12 @@ export function wireMobileHomeHostSubscriptions(
   let unsubscribeAccounts: (() => void) | null = null
   let disposed = false
   let accountEpoch = 0
+  const accountEvidence = getHostAccountEvidence(entry.client, entry.hostId)
   let generation = entry.client.getGeneration?.()
   const refetchGate = createHostConnectRefetchGate()
   const retireAccounts = (): void => {
     accountEpoch += 1
+    accountEvidence.retire()
     unsubscribeAccounts?.()
     unsubscribeAccounts = null
     setters.setAccounts((previous) => {
@@ -67,6 +70,7 @@ export function wireMobileHomeHostSubscriptions(
           if (!('type' in payload) || (payload.type !== 'ready' && payload.type !== 'snapshot')) {
             return
           }
+          accountEvidence.retire()
           try {
             const snapshot = decodeAccountsSnapshot(
               'snapshot' in payload ? payload.snapshot : undefined
