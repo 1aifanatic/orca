@@ -5,7 +5,8 @@
 // So it is withdrawn, as a Stop's host-side withdrawal is. Any other end records pending
 // input before `turn/completed`, a failed turn after its `error` frame, so only that
 // frame settles: a failed turn that never echoed the send refused it, in Codex's words,
-// and a completed one leaves it pending for the journal's recovery on exit.
+// and a completed one leaves it pending for the journal's recovery on exit. A turn Codex never
+// opened has no `turn/completed`: before 0.148 its final `error` is its end (`unopenedTurnFailure`).
 
 import {
   agentSessionFailureFact,
@@ -99,7 +100,6 @@ export function codexTurnEndRejection(end: CodexTurnEnd): AgentJournalDispatchRe
   return null
 }
 
-/** Settles the sends bound to the turn this admitted notification ended. */
 /** Records a turn Codex opened, ahead of the frames that may report the thread idle before it ends. */
 export function noteCodexTurnOpened(
   session: Pick<CodexSession, 'threadId' | 'dispatchEchoes'>,
@@ -112,6 +112,7 @@ export function noteCodexTurnOpened(
   }
 }
 
+/** Settles the sends bound to the turn this admitted notification ended. */
 export function settleCodexSendsInEndedTurn(
   session: Pick<CodexSession, 'threadId' | 'dispatchEchoes'>,
   method: string,
