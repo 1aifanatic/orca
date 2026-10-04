@@ -44,6 +44,7 @@ import path from 'node:path'
 import type { Page, TestInfo } from '@stablyai/playwright-test'
 import { test, expect } from './helpers/orca-app'
 import { appendImeEngagementReceipt } from './terminal-ime-engagement-receipt'
+import { installTerminalWaylandInputDiagnostics } from './terminal-wayland-input-diagnostics'
 import { ensureTerminalVisible, waitForActiveWorktree, waitForSessionReady } from './helpers/store'
 import {
   focusActiveTerminalInput,
@@ -80,6 +81,7 @@ test.use({
     IBUS_ENABLE_SYNC_MODE: '1',
     QT_IM_MODULE: 'ibus',
     XMODIFIERS: '@im=ibus',
+    ...(process.env.ORCA_E2E_WAYLAND_INPUT_DIAGNOSTICS === '1' ? { WAYLAND_DEBUG: 'client' } : {}),
     ...(process.env.ORCA_E2E_EXTRA_APP_ENV
       ? (JSON.parse(process.env.ORCA_E2E_EXTRA_APP_ENV) as Record<string, string>)
       : {})
@@ -176,6 +178,12 @@ test.describe('Hangul terminating digit @headful', () => {
     orcaPage: page,
     testRepoPath
   }, testInfo) => {
+    const diagnostics =
+      process.env.ORCA_E2E_WAYLAND_INPUT_DIAGNOSTICS === '1'
+        ? await installTerminalWaylandInputDiagnostics(electronApp, page)
+        : null
+    let completed = false
+    let diagnosticError: unknown
     const launchDiagnostics = await electronApp.evaluate(({ app: electron, BrowserWindow }) => ({
       waylandDisplay: process.env.WAYLAND_DISPLAY ?? null,
       display: process.env.DISPLAY ?? null,
@@ -218,6 +226,7 @@ test.describe('Hangul terminating digit @headful', () => {
         captureNestedScreen('nested-before-reader')
       }
       await startTerminalImeByteReader(page, ptyId, reader)
+      await diagnostics?.attachTerminal()
       await focusNativeTerminalWindow(page)
       if (INJECTOR === 'nested') {
         captureNestedScreen('nested-before-typing')
@@ -238,7 +247,20 @@ test.describe('Hangul terminating digit @headful', () => {
       )
       const trace = await readTerminalImeBoundaryTrace(page)
       appendImeEngagementReceipt(testInfo.title, trace)
+      completed = true
     } finally {
+      if (diagnostics) {
+        try {
+          await diagnostics.write(testInfo)
+        } catch (error) {
+          diagnosticError = error
+          console.error('Could not retain passive Wayland diagnostics', error)
+        } finally {
+          await diagnostics
+            .dispose()
+            .catch((error) => console.error('Could not dispose passive Wayland diagnostics', error))
+        }
+      }
       await writeEvidence(page, testInfo, 'hangul-terminating-digit', {
         expectedHex,
         expectedLine: EXPECTED_LINE,
@@ -248,6 +270,9 @@ test.describe('Hangul terminating digit @headful', () => {
       await disposeTerminalImeBoundaryProbe(page).catch(() => undefined)
       await sendToTerminal(page, ptyId, '\x03').catch(() => undefined)
       removeTerminalImeByteReader(reader)
+    }
+    if (completed && diagnosticError) {
+      throw diagnosticError
     }
   })
 })

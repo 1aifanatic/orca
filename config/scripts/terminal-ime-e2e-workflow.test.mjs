@@ -12,7 +12,12 @@ describe('terminal IME e2e workflow', () => {
 
   it('runs only on schedule or manual dispatch', () => {
     expect(workflow.on.pull_request).toBeUndefined()
-    expect(workflow.on.workflow_dispatch).toBeNull()
+    expect(workflow.on.workflow_dispatch.inputs.diagnose_wayland_input).toEqual({
+      description: 'Capture passive input diagnostics in the existing Wayland lane only',
+      required: false,
+      type: 'boolean',
+      default: false
+    })
     expect(workflow.on.schedule).toEqual([{ cron: '30 9 * * *' }])
   })
 
@@ -58,5 +63,20 @@ describe('terminal IME e2e workflow', () => {
     const upload = job.steps.find((step) => step.uses?.startsWith('actions/upload-artifact'))
     expect(upload.if).toBe('always()')
     expect(upload.with.name).toBe('terminal-wayland-ime-evidence')
+  })
+
+  it('opts only manual Wayland diagnostics into background launch and passive tracing', () => {
+    expect(workflow.jobs['linux-x11'].if).toBe(
+      "github.event_name != 'workflow_dispatch' || !inputs.diagnose_wayland_input"
+    )
+    const step = workflow.jobs['linux-wayland'].steps.find((entry) =>
+      entry.run?.includes('--nested-wayland')
+    )
+    expect(step.env.ORCA_E2E_WAYLAND_INPUT_DIAGNOSTICS).toBe(
+      "${{ inputs.diagnose_wayland_input && '1' || '' }}"
+    )
+    expect(step.env.ORCA_BACKGROUND_LAUNCH).toBe(
+      "${{ inputs.diagnose_wayland_input && '1' || env.ORCA_BACKGROUND_LAUNCH }}"
+    )
   })
 })
