@@ -1,6 +1,7 @@
 import { toast } from 'sonner'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { ResumeCandidate } from './native-chat-resume-on-restart-grouping'
+import { lastToastShow } from './native-chat-resume-toast.test-support'
 import {
   consumeNativeChatResumeOnRestartDialogRequest,
   getNativeChatResumeOnRestartDialogRequest
@@ -92,10 +93,7 @@ it('opens nothing from Show once the host no longer lists the chat', async () =>
     'Couldn’t confirm 1 chat was resumed'
   ])
   failed = []
-  const action = vi.mocked(toast).mock.calls[0]?.[1]?.action
-  if (action && typeof action === 'object' && 'onClick' in action) {
-    Reflect.apply(action.onClick, undefined, [])
-  }
+  lastToastShow()?.()
   await new Promise((resolve) => setTimeout(resolve, 0))
   expect(rpc.mock.calls.at(-1)?.[1]).toBe('agentSession.restartResumable')
   expect(getNativeChatRestartOffer().failed).toEqual([])

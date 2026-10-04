@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { toast } from 'sonner'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { announceRestartResults } from './native-chat-restart-action-notifications'
+import { lastToastShow } from './native-chat-resume-toast.test-support'
 
 vi.mock('sonner', () => ({ toast: vi.fn() }))
 
@@ -37,10 +38,7 @@ it('offers Show for chats a click could not resume', () => {
   const options = vi.mocked(toast).mock.calls[0]?.[1]
   expect(options).not.toHaveProperty('description')
   expect(options?.action).toEqual({ label: 'Show', onClick: expect.any(Function) })
-  const action = options?.action
-  if (action && typeof action === 'object' && 'onClick' in action) {
-    Reflect.apply(action.onClick, undefined, [])
-  }
+  lastToastShow()?.()
   expect(show).toHaveBeenCalledTimes(1)
 })
 
