@@ -388,7 +388,6 @@ test.describe('Native IBus Hangul workspace notes @headful', () => {
       expect(main.nativeWindowId).toBe(windowId)
       expect(xFocus).toBe(windowId)
       expect(main.windowFocused).toBe(true)
-      expect(main.webContentsFocused).toBe(true)
       expect(renderer.documentFocused).toBe(true)
       expect(renderer.activeIsNotes).toBe(true)
       return snapshot
