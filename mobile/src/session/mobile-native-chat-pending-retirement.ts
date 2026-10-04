@@ -160,11 +160,13 @@ export function retireLandedMobileNativeChatPending(
     }
   }
   // A not-sent row settles a send only when it appeared after the send: then it is the send's own.
-  const landedFor = (item: MobileNativeChatPendingMessage, text: string): number =>
-    (landedCounts.get(text) ?? 0) +
-    (unsentByText.get(text) ?? []).filter(
-      (id) => !(item.baselineUnsentMessageIds ?? []).includes(id)
-    ).length
+  const landedFor = (item: MobileNativeChatPendingMessage, text: string): number => {
+    const baselineUnsent = new Set(item.baselineUnsentMessageIds)
+    return (
+      (landedCounts.get(text) ?? 0) +
+      (unsentByText.get(text) ?? []).filter((id) => !baselineUnsent.has(id)).length
+    )
+  }
   const landedPendingIds = new Set<string>()
   // Why a separate set: a barrier preserves adjacency after a landing consumed a whole
   // row. An image landing can share its row with the send glued after it, so treating it
