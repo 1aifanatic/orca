@@ -16,6 +16,7 @@ import {
 } from '../../worktree-manual-order'
 import { buildWorkspaceKanbanSidebarDropUpdates } from '../../workspace-kanban-sidebar-drop'
 import type { SortBy } from '../../smart-sort'
+import { switchSortToManualAfterDrop } from '../../manual-sort-switch-toast'
 import type { WorktreeStatusDropAtIndexArgs } from './drop-commit-context'
 import type { WorktreeManualOrderCatalog } from '../../worktree-manual-order-catalog'
 
@@ -111,7 +112,7 @@ export function useWorktreeStatusMutations(args: {
       }
       // Why: the insertion line promises exact placement, so persist manual order on a cross-status drop.
       if (order.changed) {
-        setSortBy('manual')
+        switchSortToManualAfterDrop(setSortBy)
       }
       void updateWorktreesMeta([...updates.values()])
     },
@@ -146,7 +147,7 @@ export function useWorktreeStatusMutations(args: {
         allWorktreeIds: manualOrderCatalog.orderedIds
       })
       if (result.changed) {
-        setSortBy('manual')
+        switchSortToManualAfterDrop(setSortBy)
       }
       void updateWorktreesMeta(
         [...result.updates].map(([worktreeId, updates]) => ({
@@ -190,7 +191,7 @@ export function useWorktreeStatusMutations(args: {
       }
       // Why: switch to Manual when the drop changes order so the placement stays visible.
       if (result.shouldSwitchToManual) {
-        setSortBy('manual')
+        switchSortToManualAfterDrop(setSortBy)
       }
       useAppStore.getState().recordFeatureInteraction('workspace-board-actions')
       void updateWorktreesMeta(result.updates)
