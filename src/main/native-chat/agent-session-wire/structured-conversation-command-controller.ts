@@ -18,7 +18,7 @@ export class StructuredConversationCommandController {
     private readonly host: Pick<StructuredAgentSessionHost, 'waitForSendSettlement'>
   ) {}
   /** Whether a clear is in flight is read as the send arrives; it refuses only a first run, so an
-   *  id the ledger holds by the send's turn is answered from its record, behind the clear. */
+   *  id with a recorded answer by the send's turn gets that answer, behind the clear. */
   send = (
     caller: StructuredAgentSessionCaller,
     params: Parameters<typeof sendStructuredAgentSessionTurn>[2]

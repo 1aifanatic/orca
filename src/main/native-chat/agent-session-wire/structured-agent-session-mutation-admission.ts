@@ -215,10 +215,9 @@ export async function admitAndRunAgentSessionMutation<TValue>(
 }
 
 /**
- * A resend of a recorded id, answered before any write: a refusal its first run recorded, with
- * nothing opened; otherwise from the conversation its run wrote to. `rerun` when nothing durable
- * landed, so the call runs as a first run. Opened but unreadable, the answer is unknown, never a
- * refusal.
+ * A resend of a recorded id, answered with no admit write: a refusal its first run recorded, with
+ * nothing opened; otherwise, after the plan's own preparation for a replay, from the conversation
+ * its run wrote to. `rerun` when nothing durable landed, so the call runs as a first run.
  */
 async function answerRecordedOperation<TValue>(
   request: AgentSessionMutationRequest<TValue>,
