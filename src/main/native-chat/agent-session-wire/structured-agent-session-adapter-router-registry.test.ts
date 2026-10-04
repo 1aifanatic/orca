@@ -10,10 +10,7 @@ import type {
   StructuredAgentSessionAdapter
 } from './structured-agent-session-adapter'
 import { StructuredAgentSessionAdapterRouter } from './structured-agent-session-adapter-router'
-import {
-  structuredAgentDefinition,
-  type StructuredAgentDefinition
-} from './structured-agent-definition'
+import type { StructuredAgentDefinition } from './structured-agent-definition'
 
 const LOCAL: AgentSessionExecutionLocation = {
   executionHostId: 'local',
@@ -147,7 +144,7 @@ describe('StructuredAgentSessionAdapterRouter registry', () => {
 
 describe('structured agent definitions', () => {
   it('declares what Claude and Codex structured chats already did', () => {
-    expect(structuredAgentDefinition('claude')?.capabilities).toEqual({
+    expect(CLAUDE_STRUCTURED_AGENT.capabilities).toEqual({
       rewind: false,
       compact: true,
       threadGoal: false,
@@ -156,7 +153,7 @@ describe('structured agent definitions', () => {
       steering: 'inject',
       approvalEnforcement: 'provider'
     })
-    expect(structuredAgentDefinition('codex')?.capabilities).toEqual({
+    expect(CODEX_STRUCTURED_AGENT.capabilities).toEqual({
       rewind: true,
       compact: true,
       threadGoal: true,
@@ -165,12 +162,11 @@ describe('structured agent definitions', () => {
       steering: 'inject',
       approvalEnforcement: 'provider'
     })
-    expect(structuredAgentDefinition('grok')).toBeNull()
   })
 
   it('keeps each agent’s resting option rules with its definition', () => {
-    const claude = structuredAgentDefinition('claude')!.restingOptions
-    const codex = structuredAgentDefinition('codex')!.restingOptions
+    const claude = CLAUDE_STRUCTURED_AGENT.restingOptions
+    const codex = CODEX_STRUCTURED_AGENT.restingOptions
     expect(claude.fallbackModels()?.length).toBeGreaterThan(0)
     expect(codex.fallbackModels()).toBeNull()
     expect(claude.effortDefaultsToModel).toBe(true)

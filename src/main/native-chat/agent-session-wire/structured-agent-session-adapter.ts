@@ -48,6 +48,7 @@ import type { ProviderHistoryWindow } from '../agent-session-journal/journal-sub
 import type { StructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
 import type { AgentSessionCreatePhaseRecorder } from '../../observability/agent-session-instrumentation'
 import type { AgentSessionCapabilities } from '../../../shared/agent-session-capabilities'
+import type { StructuredAgentDefinition } from './structured-agent-definition'
 
 export class AgentSessionAcquisitionRefusal extends Error {
   readonly code = 'agent_session_operation_invalid'
@@ -323,6 +324,9 @@ export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & 
   /** What this session's agent declares it can do; `agent` answers one at rest. Answered by the
    *  router from the agent's registered definition, never by a single adapter. */
   capabilities?(sessionId: string, agent?: string): AgentSessionCapabilities | undefined
+  /** The definition registered for `agent`, null for an agent this runtime does not drive. Answered
+   *  by the router from its registrations, never by a single adapter. */
+  definition?(agent: string): StructuredAgentDefinition | null
   /** Stops exactly the tasks `taskIds` names, which the host resolves from its child records. */
   stopBackgroundTasks?(input: {
     sessionId: string

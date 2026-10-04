@@ -21,6 +21,7 @@ import type {
   StructuredAgentSessionAdapter
 } from './structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
+import { claudeAndCodexDefinition } from './structured-agent-session-adapter-router-test-support'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 import {
   HOST_TEST_NOW,
@@ -169,7 +170,8 @@ export async function createRestTestRig(
         releaseAcquisition: vi.fn(async () => true),
         cancelTurn: async () => ({ cancelled: true }),
         answerPrompt: async ({ commit }) => commit(),
-        setOption: async () => undefined
+        setOption: async () => undefined,
+        definition: claudeAndCodexDefinition
       },
       journalDatabase: openTestJournalHostDatabase(root),
       claimKeyId: 'key-1',

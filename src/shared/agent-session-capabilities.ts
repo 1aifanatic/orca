@@ -21,8 +21,9 @@ export type AgentSessionCapabilities = {
   steering: 'inject' | 'queue'
   /**
    * Who applies the user's permission setting. `provider`: the agent is launched with it and
-   * confines its own work. `orca`: the agent asks and Orca answers by the setting, so only what it
-   * asks about is covered, never a sandbox.
+   * confines its own work. `orca`: Orca answers every permission request the agent sends by the
+   * session's setting (a protocol-driven agent's value). The agent's own settings still decide
+   * WHEN it asks, so only what it asks about is covered, never a sandbox.
    */
   approvalEnforcement: 'provider' | 'orca'
 }

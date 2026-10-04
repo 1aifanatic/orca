@@ -9,6 +9,7 @@ import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
+import { claudeAndCodexDefinition } from './structured-agent-session-adapter-router-test-support'
 import {
   AgentSessionAcquisitionRefusal,
   type StructuredAgentSessionAdapter
@@ -101,6 +102,7 @@ beforeEach(async () => {
   compact.mockReset().mockResolvedValue({ state: 'accepted', providerIdentity: null })
   directory = await mkdtemp(join(tmpdir(), 'orca-conversation-command-'))
   adapter = {
+    definition: claudeAndCodexDefinition,
     supportsLocation: (location) =>
       location.executionHostId === 'local' && location.wslDistro === null,
     acquire: vi.fn(async (input) => {

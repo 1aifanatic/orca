@@ -127,6 +127,9 @@ export class StructuredAgentSessionAdapterRouter implements StructuredAgentSessi
   capabilities = (sessionId: string, agent?: string): AgentSessionCapabilities | undefined =>
     this.capabilityOwner(sessionId, agent)?.definition.capabilities
 
+  definition = (agent: string): StructuredAgentDefinition | null =>
+    this.registrations.get(agent)?.definition ?? null
+
   stopBackgroundTasks: NonNullable<StructuredAgentSessionAdapter['stopBackgroundTasks']> = (
     input
   ) => {

@@ -7,7 +7,6 @@
 
 import {
   refuse,
-  type AgentSessionModelOption,
   type AgentSessionOptionResult,
   type AgentSessionOptionsResult
 } from '../../../shared/agent-session-wire'
@@ -15,7 +14,8 @@ import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { decodeStructuredAgentSessionOptionValue } from '../../../shared/structured-agent-session-option-codec'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { journalOpenReadRefusal } from '../agent-session-journal/journal-open-failure'
-import { structuredAgentDefinition } from './structured-agent-definition'
+import type { StructuredAgentDefinition } from './structured-agent-definition'
+import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 import { structuredAgentSessionOptionModels } from './structured-agent-session-option-models'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
@@ -23,26 +23,28 @@ import type { StructuredAgentSessionMutationContext } from './structured-agent-s
 
 type RestingOptions = Pick<AgentSessionOptionsResult, 'models' | 'fastModeSupport' | 'current'>
 
-/** With no catalog for the account, the list a running child of this agent falls back to. */
-function restingFallbackModels(
-  provider: AgentSessionRecord['provider']
-): AgentSessionModelOption[] | null {
-  return structuredAgentDefinition(provider)?.restingOptions.fallbackModels() ?? null
+/** The at-rest rules of the record's agent, as this runtime registered it; null for any other. */
+function restingOptionRules(
+  adapter: Pick<StructuredAgentSessionAdapter, 'definition'>,
+  record: AgentSessionRecord
+): StructuredAgentDefinition['restingOptions'] | null {
+  return adapter.definition?.(record.provider)?.restingOptions ?? null
 }
 
 async function readStructuredAgentSessionOptionsAtRest(
-  deps: Pick<StructuredAgentSessionHostDeps, 'store' | 'modelCatalog'>,
+  deps: Pick<StructuredAgentSessionHostDeps, 'store' | 'adapter' | 'modelCatalog'>,
   sessionId: string
 ): Promise<RestingOptions> {
   const record = deps.store.getRecord(sessionId)
   if (!record) {
     throw new Error('agent_session_identity_required')
   }
+  const rules = restingOptionRules(deps.adapter, record)
   const catalog = (await deps.modelCatalog
     ?.read({ agent: record.provider, sessionId })
     .catch(() => null)) ?? { origin: 'unknown' as const }
-  const listed =
-    catalog.origin === 'unknown' ? restingFallbackModels(record.provider) : catalog.models
+  // With no catalog for the account, the list a running child of this agent falls back to.
+  const listed = catalog.origin === 'unknown' ? (rules?.fallbackModels() ?? null) : catalog.models
   const models = listed ?? []
   const saved = record.options ?? {}
   const fastMode =
@@ -58,7 +60,7 @@ async function readStructuredAgentSessionOptionsAtRest(
   // As a live child answers: the pick, else the model's default where the agent reports that.
   const effort =
     saved.effort ??
-    (structuredAgentDefinition(record.provider)?.restingOptions.effortDefaultsToModel
+    (rules?.effortDefaultsToModel
       ? models.find((entry) => entry.id === model)?.defaultEffort
       : undefined)
   return {
@@ -76,15 +78,15 @@ async function readStructuredAgentSessionOptionsAtRest(
 
 /** Records a pick for the next start. Only a key the provider would accept is kept. */
 export async function recordStructuredAgentSessionOptionIntent(
-  store: Pick<AgentSessionRecordStore, 'getRecord'>,
+  deps: {
+    store: Pick<AgentSessionRecordStore, 'getRecord'>
+    adapter: Pick<StructuredAgentSessionAdapter, 'definition'>
+  },
   ctx: Pick<AgentSessionTurnContext, 'sessionId' | 'persistOptions' | 'publish'>,
   input: { key: string; value: string }
 ): Promise<TurnOutcome<AgentSessionOptionResult>> {
-  const record = store.getRecord(ctx.sessionId)
-  if (
-    !record ||
-    !structuredAgentDefinition(record.provider)?.restingOptions.acceptsKey(input.key)
-  ) {
+  const record = deps.store.getRecord(ctx.sessionId)
+  if (!record || !restingOptionRules(deps.adapter, record)?.acceptsKey(input.key)) {
     return {
       ok: false,
       refusal: refuse(
