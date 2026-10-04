@@ -13,6 +13,7 @@ import {
 import {
   applyStructuredAgentSessionOutboxSettlement,
   settleStructuredAgentSessionSendAnswer,
+  structuredAgentSessionEntryOutlivedHostWindow,
   type StructuredAgentSessionSendAnswer,
   type StructuredAgentSessionOutboxSettlement,
   type StructuredAgentSessionSettledOutbox
@@ -279,7 +280,8 @@ export async function sendStructuredAgentSessionOutboxEntry(args: {
   const settlement = settleStructuredAgentSessionSendAnswer(answer, next.clientMessageId, {
     firstAttempt: onlyAttempt,
     answersProve,
-    journalHasRow: args.journalHasRow?.(next.clientMessageId) ?? false
+    journalHasRow: args.journalHasRow?.(next.clientMessageId) ?? false,
+    outlivedHostWindow: structuredAgentSessionEntryOutlivedHostWindow(next, Date.now())
   })
   settle(settlement)
   return settlement

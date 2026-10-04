@@ -90,7 +90,8 @@ function refused(
 const FIRST: StructuredAgentSessionOutboxSettlementContext = {
   firstAttempt: true,
   answersProve: true,
-  journalHasRow: false
+  journalHasRow: false,
+  outlivedHostWindow: false
 }
 const RESEND_PROVING: StructuredAgentSessionOutboxSettlementContext = {
   ...FIRST,
@@ -614,6 +615,48 @@ describe('applying a settlement', () => {
     expect(
       applyStructuredAgentSessionOutboxSettlement(outbox, ID, { kind: 'pending' }).entries[0]
     ).toMatchObject({ clientMessageId: ID, state: 'dispatching' })
+  })
+})
+
+describe("past the host's window, a host answer that settles nothing", () => {
+  const PAST = { ...RESEND_OLD_HOST, outlivedHostWindow: true }
+  const hostAnswers: [string, StructuredAgentSessionSendAnswer][] = [
+    ['a refusal it returned', refused('agent_session_journal_unreadable')],
+    [
+      'a refusal it threw',
+      {
+        kind: 'thrown',
+        refusal: { kind: 'refused', code: 'structured_agent_session_unsupported' },
+        rpcCode: undefined
+      }
+    ],
+    ['a call it turned away', { kind: 'thrown', refusal: undefined, rpcCode: 'method_not_found' }]
+  ]
+
+  it.each(hostAnswers)(
+    '%s: comes back to check the chat, or is the row it shows',
+    (_label, answer) => {
+      expect(settleStructuredAgentSessionSendAnswer(answer, ID, RESEND_OLD_HOST).kind).toBe(
+        'unanswered'
+      )
+      expect(settleStructuredAgentSessionSendAnswer(answer, ID, PAST)).toEqual({
+        kind: 'returned',
+        words: ['sendOutcomeLost']
+      })
+      expect(
+        settleStructuredAgentSessionSendAnswer(answer, ID, { ...PAST, journalHasRow: true })
+      ).toEqual({ kind: 'recorded' })
+    }
+  )
+
+  it('but a lost connection is no answer from the host, so it still goes again', () => {
+    expect(
+      settleStructuredAgentSessionSendAnswer(
+        { kind: 'thrown', refusal: undefined, rpcCode: 'runtime_timeout' },
+        ID,
+        PAST
+      )
+    ).toEqual({ kind: 'unanswered' })
   })
 })
 

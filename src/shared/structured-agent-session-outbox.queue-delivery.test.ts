@@ -147,7 +147,7 @@ describe('outbox queue delivery', () => {
         }
       },
       'client-1',
-      { firstAttempt: true, answersProve: false, journalHasRow: false }
+      { firstAttempt: true, answersProve: false, journalHasRow: false, outlivedHostWindow: false }
     )
     const stopped = stopStructuredAgentSessionOutbox([staged], [], 'client-1', 'stop-1').entries
     for (const entries of [stopped, [staged]]) {

@@ -57,6 +57,9 @@ export type StructuredAgentSessionOutboxSettlementContext = {
   answersProve: boolean
   /** The loaded journal holds a row for this id. */
   journalHasRow: boolean
+  /** The host's window for this id has closed, by the id's own time
+   *  (`structuredAgentSessionEntryOutlivedHostWindow`). */
+  outlivedHostWindow: boolean
 }
 
 /** Words for a message Orca can no longer settle with the host: an earlier attempt may already be
@@ -135,7 +138,31 @@ function thrownSettlement(
 }
 
 /** The host's answer to one attempt, as one of the three ends. */
+/** Whether the host itself answered: a refusal it returned or threw, or a code it turned the call
+ *  away with. Anything else is the transport, which says nothing about the host. */
+function answeredByHost(answer: StructuredAgentSessionSendAnswer): boolean {
+  return (
+    answer.kind === 'result' ||
+    answer.refusal !== undefined ||
+    agentSessionRpcErrorFailure(answer.rpcCode).kind === 'refused'
+  )
+}
+
+/** The host's answer to one attempt, as one of the three ends. Past the host's window for the id,
+ *  an answer the host gave that settles nothing never will (a host that refuses before looking the
+ *  id up refuses it every time), so the journal decides; lost contact still only goes again. */
 export function settleStructuredAgentSessionSendAnswer(
+  answer: StructuredAgentSessionSendAnswer,
+  clientMessageId: string,
+  context: StructuredAgentSessionOutboxSettlementContext
+): StructuredAgentSessionOutboxSettlement {
+  const settlement = settleAnswer(answer, clientMessageId, context)
+  return settlement.kind === 'unanswered' && context.outlivedHostWindow && answeredByHost(answer)
+    ? settledByJournal(context)
+    : settlement
+}
+
+function settleAnswer(
   answer: StructuredAgentSessionSendAnswer,
   clientMessageId: string,
   context: StructuredAgentSessionOutboxSettlementContext
@@ -177,8 +204,9 @@ export function structuredAgentSessionEntryHostWindowEndsAt(
   return madeAt === null ? null : madeAt + AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS
 }
 
-/** Whether the host can no longer settle this id, so a host that keeps failing the request, or an
- *  answer that never comes, can't hold the entry forever. */
+/** Whether the host can no longer settle this id. Past it, a host answer that settles nothing
+ *  hands the entry back for the journal to decide, and a live journal settles one only an owed
+ *  answer would; lost contact alone keeps it, since it says nothing about the host. */
 export function structuredAgentSessionEntryOutlivedHostWindow(
   entry: Pick<StructuredAgentSessionOutboxEntry, 'clientMessageId'>,
   now: number

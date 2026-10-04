@@ -21,6 +21,7 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
 
 import { createBrowserUuid } from '@/lib/browser-uuid'
+import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
 import { useStructuredAgentSessionConversationStop } from './use-structured-agent-session-conversation-stop'
 import type {
@@ -149,4 +150,46 @@ describe('while the journal is not live', () => {
       "Orca couldn't confirm your message reached the agent. Check the chat, then send it again if needed."
     )
   })
+
+  // A host that refuses before looking the id up refuses it every time: past its window that
+  // answer settles nothing, so the message comes back to be checked instead of blocking the queue.
+  it('a message past the window the host keeps refusing comes back after the next attempt', async () => {
+    seedSent('host refuses', Date.now() - AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS - 60_000)
+    // As the client receives a refusal the host threw: an RPC error carrying it.
+    mocks.call.mockImplementation(async () => {
+      throw new RuntimeRpcCallError({
+        id: 'rpc-1',
+        ok: false,
+        error: {
+          code: 'runtime_error',
+          message: 'structured_agent_session_unsupported',
+          data: {
+            refusal: {
+              code: 'structured_agent_session_unsupported',
+              details: { reason: 'hostDisabled' }
+            }
+          }
+        }
+      })
+    })
+    mountChat(asWriteAs(async () => LOST))
+
+    await vi.waitFor(() => expect(readNativeChatDraftCache(SCOPE)).toBe('host refuses'), {
+      timeout: 3000
+    })
+    expect(mocks.call).toHaveBeenCalledOnce()
+    expect(readOutbox('session-1')).toEqual([])
+  })
+
+  it('a message past the window that only meets a lost connection keeps being sent', async () => {
+    seedSent('no contact', Date.now() - AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS - 60_000)
+    mocks.call.mockRejectedValue(new Error('socket closed'))
+    mountChat(asWriteAs(async () => LOST))
+
+    await vi.waitFor(() => expect(mocks.call.mock.calls.length).toBeGreaterThanOrEqual(2), {
+      timeout: 5000
+    })
+    expect(readOutbox('session-1')).toHaveLength(1)
+    expect(readNativeChatDraftCache(SCOPE)).toBe('')
+  }, 10000)
 })

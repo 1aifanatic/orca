@@ -63,7 +63,7 @@ describe('a queued draft handed off under a fresh submission id', () => {
           }
         },
         'draft',
-        { firstAttempt: false, answersProve: true, journalHasRow: false }
+        { firstAttempt: false, answersProve: true, journalHasRow: false, outlivedHostWindow: false }
       )
     ).toEqual({ kind: 'recorded' })
   })
