@@ -11,7 +11,11 @@ import type {
   MobileSortMode,
   MobileViewState
 } from '../worktree/workspace-view-settings'
-import type { FilterState, Worktree } from '../worktree/workspace-list-sections'
+import type {
+  FilterState,
+  PinnedDisplayPolicy,
+  Worktree
+} from '../worktree/workspace-list-sections'
 import type { MobileHostRepoIcon } from './host-screen-reply-schema'
 
 export function useHostScreenState(hostId: string | undefined, action: string | undefined) {
@@ -83,6 +87,8 @@ export function useHostScreenState(hostId: string | undefined, action: string | 
   )
   const [sleptIds, setSleptIds] = useState<Set<string>>(new Set())
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set())
+  const [pinnedDisplayPolicy, setPinnedDisplayPolicy] =
+    useState<PinnedDisplayPolicy>('single-location')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   // Why: ref so the ui.get merge and ui.set writes read the latest values without re-creating callbacks on every state change.
   const viewStateRef = useRef<MobileViewState>({
@@ -118,6 +124,7 @@ export function useHostScreenState(hostId: string | undefined, action: string | 
     newWorktreeModalRef,
     newWorktreeModalVisibleRef,
     optimisticActiveWorktreeIdentity,
+    pinnedDisplayPolicy,
     pinnedIds,
     repoColorsByName,
     repoHostIdByRepoId,
@@ -141,6 +148,7 @@ export function useHostScreenState(hostId: string | undefined, action: string | 
     setHostStoredDescriptor,
     setLastKnownWorktrees,
     setOptimisticActiveWorktreeIdentity,
+    setPinnedDisplayPolicy,
     setPinnedIds,
     setRepoColorsByName,
     setRepoHostIdByRepoId,

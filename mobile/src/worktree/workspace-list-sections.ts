@@ -7,12 +7,12 @@ import {
 } from './mobile-workspace-statuses'
 import { applyMobileWorkspaceLineage } from './mobile-workspace-lineage'
 import { getPRGroupKey, PR_GROUP_LABELS, PR_GROUP_ORDER } from './workspace-pr-status-groups'
-import type { FilterState, Section, Worktree } from './workspace-list-types'
+import type { FilterState, PinnedDisplayPolicy, Section, Worktree } from './workspace-list-types'
 import type { MobileGroupMode, MobileSortMode } from './workspace-view-settings'
 import { sortWorktrees } from './workspace-list-ordering'
 import { getWorktreeRowIdentity } from './worktree-host-row-identity'
 
-export type { FilterState, Section, Worktree } from './workspace-list-types'
+export type { FilterState, PinnedDisplayPolicy, Section, Worktree } from './workspace-list-types'
 export { CREATE_GRACE_MS, getWorktreeStatus, sortWorktrees } from './workspace-list-ordering'
 
 function makeSection(
@@ -129,15 +129,18 @@ export function buildSections(
   pinnedIds: Set<string>,
   repoIdsByName: ReadonlyMap<string, string> = new Map(),
   workspaceStatuses: readonly WorkspaceStatusDefinition[] = DEFAULT_MOBILE_WORKSPACE_STATUSES,
-  collapsedGroups: ReadonlySet<string> = new Set()
+  collapsedGroups: ReadonlySet<string> = new Set(),
+  pinnedDisplayPolicy: PinnedDisplayPolicy = 'single-location'
 ): Section[] {
   const filtered = filterWorktrees(worktrees, filters, search)
   const sorted = sortWorktrees(filtered, sortMode)
 
   const pinned = sorted.filter((w) => isWorktreePinned(w, pinnedIds))
-  // Why: desktop treats Pinned as an overlay. Keeping pinned rows in canonical
-  // groups preserves exact cross-surface order and literal section counts.
-  const canonicalGroupWorktrees = sorted
+  // Pinned placement is what the user sees, so device-local pins leave their groups too.
+  const canonicalGroupWorktrees =
+    pinnedDisplayPolicy === 'duplicate-in-groups'
+      ? sorted
+      : sorted.filter((w) => !isWorktreePinned(w, pinnedIds))
 
   const sections: Section[] = []
   if (pinned.length > 0) {

@@ -9,7 +9,8 @@ import {
   optionalSettingsRead,
   botOverridesRead,
   newTabSettingsRead,
-  terminalCopyTrimsGutterRead
+  terminalCopyTrimsGutterRead,
+  pinnedDisplayPolicyRead
 } from './settings-read-operations'
 import type { RpcResponse } from './types'
 
@@ -108,6 +109,30 @@ describe('settings historical acceptance', () => {
     expect(terminalCopyTrimsGutterRead.interpret(empty)).toEqual({ accepted: true, value: true })
     const refused = await terminalCopyTrimsGutterRead.request(replyWith(refusal()))
     expect(terminalCopyTrimsGutterRead.interpret(refused)).toEqual({ accepted: false })
+  })
+
+  it('reads pinned placement, treating an absent or malformed key as the desktop default', async () => {
+    const policyFor = async (settings: unknown) =>
+      pinnedDisplayPolicyRead.interpret(
+        await pinnedDisplayPolicyRead.request(replyWith(success(settings)))
+      )
+    expect(await policyFor({ settings: { showPinnedWorktreesInGroups: true } })).toEqual({
+      accepted: true,
+      value: 'duplicate-in-groups'
+    })
+    expect(await policyFor({ settings: { showPinnedWorktreesInGroups: false } })).toEqual({
+      accepted: true,
+      value: 'single-location'
+    })
+    // A host predating the setting sends no key; the desktop default is single-location.
+    expect(await policyFor({ settings: {} })).toEqual({ accepted: true, value: 'single-location' })
+    expect(await policyFor({ settings: { showPinnedWorktreesInGroups: 'true' } })).toEqual({
+      accepted: true,
+      value: 'single-location'
+    })
+    expect(await policyFor(null)).toEqual({ accepted: true, value: 'single-location' })
+    const refused = await pinnedDisplayPolicyRead.request(replyWith(refusal()))
+    expect(pinnedDisplayPolicyRead.interpret(refused)).toEqual({ accepted: false })
   })
 
   it('does not read a stale payload until its caller permits interpretation', async () => {

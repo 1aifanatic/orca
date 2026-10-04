@@ -81,6 +81,7 @@ export function useHostScreenController({
     fetchRepoMetadata,
     hostId,
     state,
+    syncPinnedDisplayPolicy: settings.syncPinnedDisplayPolicy,
     syncViewSettingsFromDesktop: settings.syncViewSettingsFromDesktop
   })
   const actions = useHostWorktreeActions({
@@ -131,6 +132,7 @@ export function useHostScreenController({
     search: state.search,
     groupMode: state.groupMode,
     pinnedIds: state.pinnedIds,
+    pinnedDisplayPolicy: state.pinnedDisplayPolicy,
     repoIdsByName: state.repoIdsByName,
     repoColorsByName: state.repoColorsByName,
     collapsedGroups: state.collapsedGroups,

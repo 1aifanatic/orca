@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import type { RpcClient } from '../transport/rpc-client'
+import { pinnedDisplayPolicyRead } from '../transport/settings-read-operations'
 import type { ConnectionState } from '../transport/types'
 import { getMobileWorkspaceLineageGroupKey } from '../worktree/mobile-workspace-lineage'
 import { WORKSPACE_SORT_OPTIONS as SORT_OPTIONS } from '../worktree/workspace-list-picker-options'
@@ -30,6 +31,7 @@ export function useHostViewSettings(args: {
     setCollapsedGroups,
     setFilters,
     setGroupMode,
+    setPinnedDisplayPolicy,
     setSortMode,
     setWorkspaceStatuses,
     sortMode,
@@ -114,6 +116,27 @@ export function useHostViewSettings(args: {
     }
   }, [client, connState, hostId, applyViewState])
 
+  // Separate from the ui.get sync: placement lives in the desktop's settings.get store.
+  const syncPinnedDisplayPolicy = useCallback(async () => {
+    if (!client || connState !== 'connected') {
+      return
+    }
+    const requestClient = client
+    const requestHostId = hostId
+    try {
+      const reply = await pinnedDisplayPolicyRead.request(requestClient)
+      if (clientRef.current !== requestClient || hostId !== requestHostId) {
+        return
+      }
+      const policy = pinnedDisplayPolicyRead.interpret(reply)
+      if (policy.accepted) {
+        setPinnedDisplayPolicy(policy.value)
+      }
+    } catch {
+      // Transient transport failure; retry on the next focus/connect.
+    }
+  }, [client, connState, hostId])
+
   const handleSortChange = useCallback(
     (value: MobileSortMode) => {
       persistViewSettings({ sortMode: value })
@@ -188,6 +211,7 @@ export function useHostViewSettings(args: {
     handleGroupChange,
     handleSortChange,
     selectedSortLabel,
+    syncPinnedDisplayPolicy,
     syncViewSettingsFromDesktop,
     toggleCollapsed,
     toggleHideDefaultBranch,

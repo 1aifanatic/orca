@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import type { Worktree } from './workspace-list-sections'
+import type { PinnedDisplayPolicy, Worktree } from './workspace-list-sections'
 import {
   CREATE_GRACE_MS,
   buildSections,
@@ -689,28 +689,71 @@ describe('buildSections', () => {
     expect(sections[0]?.data.map((worktree) => worktree.worktreeId)).toEqual(['progress'])
   })
 
-  it('keeps pinned worktrees in their canonical status group like desktop', () => {
-    const pinned = worktree({
-      worktreeId: 'pinned',
-      workspaceStatus: 'in-progress',
-      isPinned: true
-    })
+  describe.each(['none', 'repo', 'workspaceStatus', 'prStatus'] as const)(
+    'pinned placement in %s grouping',
+    (groupMode) => {
+      const sibling = worktree({ worktreeId: 'sibling', workspaceStatus: 'in-progress' })
+      const hostPinned = worktree({
+        worktreeId: 'host-pinned',
+        workspaceStatus: 'in-progress',
+        isPinned: true
+      })
+      const localPinned = worktree({ worktreeId: 'local-pinned', workspaceStatus: 'in-progress' })
+
+      function placement(policy: PinnedDisplayPolicy) {
+        const sections = buildSections(
+          [sibling, hostPinned, localPinned],
+          'name',
+          { filterRepoIds: new Set(), hideSleeping: false, hideDefaultBranch: false },
+          '',
+          groupMode,
+          new Set(['local-pinned']),
+          new Map(),
+          DEFAULT_MOBILE_WORKSPACE_STATUSES,
+          new Set(),
+          policy
+        )
+        const ids = (keep: (key: string) => boolean) =>
+          sections
+            .filter((section) => keep(section.key))
+            .flatMap((section) => section.data.map((row) => row.worktreeId))
+            .sort()
+        return { pinned: ids((key) => key === 'pinned'), groups: ids((key) => key !== 'pinned') }
+      }
+
+      it('shows host and local pins only in Pinned under single-location', () => {
+        expect(placement('single-location')).toEqual({
+          pinned: ['host-pinned', 'local-pinned'],
+          groups: ['sibling']
+        })
+      })
+
+      it('also keeps them in their groups under duplicate-in-groups', () => {
+        expect(placement('duplicate-in-groups')).toEqual({
+          pinned: ['host-pinned', 'local-pinned'],
+          groups: ['host-pinned', 'local-pinned', 'sibling']
+        })
+      })
+    }
+  )
+
+  it('drops a repo group whose only worktree is pinned under single-location, like desktop', () => {
+    const pinned = worktree({ worktreeId: 'pinned', isPinned: true })
 
     const sections = buildSections(
       [pinned],
-      'manual',
+      'name',
       { filterRepoIds: new Set(), hideSleeping: false, hideDefaultBranch: false },
       '',
-      'workspaceStatus',
+      'repo',
       new Set(),
-      new Map(),
-      DEFAULT_MOBILE_WORKSPACE_STATUSES
+      new Map([['orca', 'repo-1']]),
+      DEFAULT_MOBILE_WORKSPACE_STATUSES,
+      new Set(),
+      'single-location'
     )
 
-    expect(withoutSectionListKeys(sections)).toEqual([
-      { key: 'pinned', title: 'Pinned', icon: 'pin', data: [pinned] },
-      { key: 'workspace-status:in-progress', title: 'In progress', data: [pinned] }
-    ])
+    expect(sections.map((section) => section.key)).toEqual(['pinned'])
   })
 
   it('renders one sorted All section when grouping is off like desktop', () => {
