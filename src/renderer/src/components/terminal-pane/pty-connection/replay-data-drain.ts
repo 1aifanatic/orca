@@ -119,8 +119,8 @@ export function bindReplayDataDrain(session: ConnectPanePtySession): void {
       // Relay replay buffers may overlap with content already rendered in
       // xterm. Local eager replay decides this earlier so metadata-only frames
       // can keep restored scrollback while still using the replay guard.
-      // Why ahead of the source-grid resize: the clear is grid-independent, so
-      // dropping the scrollback first spares a reflow of history the very next
+      // Why ahead of the source-grid resize: the clear is grid-independent, so a
+      // clear that drops the scrollback spares a reflow of history the very next
       // sequence discards (see use-terminal-container-fit-sync.ts on its cost).
       let replayPayload = data
       if (clearBeforeReplay) {

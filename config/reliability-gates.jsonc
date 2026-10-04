@@ -16977,9 +16977,10 @@
             "keeps the pane's history when the host screen has another grid",
             "keeps history unduplicated when a pushed image also carries history",
             "paints the whole image when the TUI started while hidden",
+            "reads the pane buffer after a queued alt-screen entry parses",
             "repaints from the normal buffer once the host TUI has exited",
             "clears a raw byte replay in place on the alt screen",
-            "paints a requested image exactly over a live alt screen"
+            "paints a requested image from an exited TUI exactly over an alt screen"
           ]
         },
         {

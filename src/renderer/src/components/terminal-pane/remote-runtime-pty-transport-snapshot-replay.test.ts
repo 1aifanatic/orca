@@ -97,6 +97,30 @@ describe('createRemoteRuntimePtyTransport', () => {
     expect(onConnect).toHaveBeenCalled()
   })
 
+  // Why: a push buffered during a cancelled shutdown is the same folded image and must
+  // keep its flag when the rollback replays it.
+  it('flags a pushed snapshot replayed after a cancelled shutdown', async () => {
+    const { createRemoteRuntimePtyTransport } = await import('./remote-runtime-pty-transport')
+    const { unregisterPtyDataHandlers, restorePtyDataHandlersAfterFailedShutdown } =
+      await import('./pty-shutdown-data-suspension')
+    const onReplayData = vi.fn()
+    const transport = createRemoteRuntimePtyTransport('env-1', { worktreeId: 'wt-1' })
+
+    await transport.connect({ url: '', callbacks: { onReplayData } })
+    await vi.waitFor(() => expect(subscriptionSendBinary).toHaveBeenCalled())
+    const { streamId } = latestSubscribePayload()
+    const ptyId = transport.getPtyId()
+    expect(ptyId).toBeTruthy()
+    const shutdown = unregisterPtyDataHandlers([ptyId ?? ''])
+    emitSnapshot(streamId, 'buffered image')
+    expect(onReplayData).not.toHaveBeenCalled()
+    restorePtyDataHandlersAfterFailedShutdown(shutdown)
+
+    await vi.waitFor(() =>
+      expect(onReplayData).toHaveBeenCalledWith('buffered image', { carriesNormalBuffer: true })
+    )
+  })
+
   it('paints a nonempty lossy initial snapshot once before resuming live output', async () => {
     const { createRemoteRuntimePtyTransport } = await import('./remote-runtime-pty-transport')
     const terminal = new Terminal({ cols: 80, rows: 24 })

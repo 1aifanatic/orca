@@ -137,7 +137,8 @@ describe('remote snapshot replay onto a live alt screen', () => {
   async function drainOntoLiveAltScreen(
     data: string,
     meta: PtyReplayDataMeta,
-    paneBuffer: 'normal' | 'alternate' = 'alternate'
+    // 'alternate-queued': the TUI's ?1049h is still queued and parses with the first write.
+    paneBuffer: 'normal' | 'alternate' | 'alternate-queued' = 'alternate'
   ): Promise<PaneEvent[]> {
     const { connectPanePty } = await import('./pty-connection')
     const transport = createMockTransport('agent-pty')
@@ -155,7 +156,10 @@ describe('remote snapshot replay onto a live alt screen', () => {
         events.push(chunk)
       }
       if (callback) {
-        parseCallbacks.push(callback)
+        parseCallbacks.push(() => {
+          pane.terminal.buffer.active.type = paneBuffer === 'normal' ? 'normal' : 'alternate'
+          callback()
+        })
       }
     })
     pane.terminal.resize.mockImplementation((cols: number, rows: number) => {
@@ -169,7 +173,7 @@ describe('remote snapshot replay onto a live alt screen', () => {
     await flushAsyncTicks(8)
     pane.terminal.cols = COLS
     pane.terminal.rows = ROWS
-    pane.terminal.buffer.active.type = paneBuffer
+    pane.terminal.buffer.active.type = paneBuffer === 'alternate' ? 'alternate' : 'normal'
     replay.current?.(data, meta)
     for (let index = 0; index < 12; index += 1) {
       await flushAsyncTicks(4)
@@ -254,6 +258,29 @@ describe('remote snapshot replay onto a live alt screen', () => {
     }
   })
 
+  // Why: the pane's buffer is read only after queued output parses; read early, a
+  // still-queued ?1049h makes the image paint its normal part into the TUI.
+  it('reads the pane buffer after a queued alt-screen entry parses', async () => {
+    const client = await render([
+      LIVE_PANE,
+      ...(await drainOntoLiveAltScreen(
+        recoveryPayload(ROWS),
+        { carriesNormalBuffer: true, snapshotCols: COLS, snapshotRows: ROWS },
+        'alternate-queued'
+      ))
+    ])
+    const host = await render([LIVE_PANE])
+    const fresh = await render([pushedImage(ROWS)])
+    try {
+      expect(viewport(client, 'alternate')).toEqual(viewport(fresh, 'alternate'))
+      expect(bufferLines(client, 'normal')).toEqual(bufferLines(host, 'normal'))
+    } finally {
+      client.dispose()
+      host.dispose()
+      fresh.dispose()
+    }
+  })
+
   // Why: a TUI that started while the tab was hidden left the pane on the normal
   // buffer; the image must rebuild that buffer and enter alt itself.
   it('paints the whole image when the TUI started while hidden', async () => {
@@ -317,12 +344,17 @@ describe('remote snapshot replay onto a live alt screen', () => {
     }
   })
 
-  // Why: hidden-output restore paints requested snapshots, which fold history in too.
-  it('paints a requested image exactly over a live alt screen', async () => {
+  // Why: a requested image flags alt only once the host's TUI exited (shell owner); one
+  // that exited without leaving alt must still paint from the normal buffer.
+  it('paints a requested image from an exited TUI exactly over an alt screen', async () => {
     const client = await render([
       LIVE_PANE,
       ...buildMainModelSnapshotReplayWrites(
-        { data: REQUESTED_IMAGE, alternateScreen: true, carriesNormalBuffer: true },
+        {
+          data: REQUESTED_IMAGE,
+          alternateScreen: true,
+          carriesNormalBuffer: true
+        },
         { paneOnAlternateScreen: true }
       )
     ])
