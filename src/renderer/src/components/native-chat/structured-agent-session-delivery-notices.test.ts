@@ -86,11 +86,16 @@ describe('a message still in the outbox', () => {
         state: 'unconfirmed',
         lastAttemptAt: 1,
         stoppedBy: { operationId: 'stop-1' }
-      }),
-      entry('legacy', { legacyUnsettled: true })
+      })
     ]
     const notices = structuredAgentSessionDeliveryNotices(outbox, 'Claude', [], [])
     expect([...notices.values()]).toEqual(outbox.map(() => ({ sending: true })))
+  })
+
+  // It is not being sent: the host's row or the composer it comes back to shows it.
+  it('says nothing for a message an older build saved behind its Retry', () => {
+    const legacy = [entry('legacy', { legacyUnsettled: true })]
+    expect(structuredAgentSessionDeliveryNotices(legacy, 'Claude', [], [])).toEqual(new Map())
   })
 
   // Any row the host holds for it is the answer; the row itself then shows it.

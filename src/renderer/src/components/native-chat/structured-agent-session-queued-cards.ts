@@ -104,8 +104,8 @@ export function newestSteerableQueuedMessageCard(
  * read from what its request carries — otherwise it paints
  * in the transcript until the queued answer retires it. A plain send stays a bubble. From
  * the entry the drain is stopped on (read through the drain's own rule), nothing is on its
- * way, nor is one only an answer already owed settles: those stay bubbles so their text stays
- * visible.
+ * way, nor is one a Stop outran, whose answer already owed settles it: those stay bubbles so their
+ * text stays visible. (One an older build saved behind its Retry is never a bubble at all.)
  */
 export function outboxOutsideQueuedCards(
   outbox: readonly StructuredAgentSessionOutboxEntry[],

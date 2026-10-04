@@ -381,8 +381,8 @@ describe('NativeChatStructuredSession delivery', () => {
 
     renderSession('session-reopened-stopped')
 
-    // Its settlement waits for the journal; until then it reads as not confirmed yet.
-    expect(screen.getByText('Sending…')).toBeTruthy()
+    // Its settlement waits for the journal, and it is not being sent, so nothing reads "Sending…".
+    expect(screen.queryByText('Sending…')).toBeNull()
     expect(screen.queryByRole('button', { name: /Retry/ })).toBeNull()
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 1500))
