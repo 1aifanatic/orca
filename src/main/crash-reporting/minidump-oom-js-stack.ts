@@ -26,6 +26,10 @@ function sanitizeFrame(frame: string): string {
   if (separator !== -1) {
     const open = frame.lastIndexOf('(', separator)
     const closed = open !== -1 && frame.endsWith(')')
+    if (open !== -1 && !closed) {
+      // A capped annotation cut this location short; its last segment may be the user name.
+      return frame.slice(0, open).trimEnd()
+    }
     const locationStart = open !== -1 ? open + 1 : frame.lastIndexOf(' ', separator) + 1
     const location = frame
       .slice(locationStart, closed ? -1 : undefined)
@@ -48,6 +52,13 @@ function annotationLines(value: string | undefined): string[] {
     .filter((line) => line.length > 1)
 }
 
+// V8 caps its value at 1024 bytes and only writes the `$` filler when it fits,
+// so without that filler the last line may end mid-path.
+function v8FrameLines(value: string | undefined): string[] {
+  const lines = annotationLines(value)
+  return /\n\$\s*$/.test(value ?? '') ? lines : lines.slice(0, -1)
+}
+
 export function sanitizeOomJsStack(
   annotations: Readonly<Record<string, string>>
 ): string | undefined {
@@ -56,7 +67,7 @@ export function sanitizeOomJsStack(
     ? electronLines
     : [
         ...electronLines,
-        ...annotationLines(annotations[V8_OOM_STACK_ANNOTATION]).map((line) => {
+        ...v8FrameLines(annotations[V8_OOM_STACK_ANNOTATION]).map((line) => {
           const match = V8_FRAME_PATTERN.exec(line)
           return match ? `${match[1]} (${match[2]})` : line
         })
