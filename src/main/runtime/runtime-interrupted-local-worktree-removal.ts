@@ -9,6 +9,7 @@ import {
 import { resolveWorktreeRemovalMetadata } from '../worktree-removal-repo-owner'
 import type { RuntimePreservedBranchCleanup } from './runtime-preserved-branch-cleanup'
 import { listWorktreesStrict } from '../git/worktree'
+import { cleanupUnusedWorktreePushTargetRemote } from '../ipc/worktree-remote'
 import { finishUnregisteredWorktreeRemoval } from '../git/worktree-removal'
 import { normalizeLocalBranchRef } from '../git/worktree-operation-options'
 import { areWorktreePathsEqual } from '../git/worktree-path-comparison'
@@ -44,14 +45,16 @@ export function interruptedLocalWorktreeRemovalJob(
   record: WorktreeRemovalRecord,
   host: InterruptedWorktreeRemovalHost
 ): BackgroundWorktreeRemovalJob {
+  const resolveRemovedPushTarget = () =>
+    resolveWorktreeRemovalMetadata(
+      host.store,
+      record.repoId,
+      record.worktreeId,
+      LOCAL_EXECUTION_HOST_ID
+    )?.pushTarget
   return {
     run: async (stopSignal) => {
-      const removedPushTarget = resolveWorktreeRemovalMetadata(
-        host.store,
-        record.repoId,
-        record.worktreeId,
-        LOCAL_EXECUTION_HOST_ID
-      )?.pushTarget
+      const removedPushTarget = resolveRemovedPushTarget()
       const result = await finishInterruptedLocalWorktreeRemoval({
         record,
         store: host.store,
@@ -81,7 +84,19 @@ export function interruptedLocalWorktreeRemovalJob(
       host.onRemoved(record)
       return result
     },
-    publish: () => host.publish(record.repoId)
+    publish: () => host.publish(record.repoId),
+    cleanupPushTargetRemote: async () => {
+      const repo = host.store.getRepo(record.repoId)
+      if (repo) {
+        await cleanupUnusedWorktreePushTargetRemote(
+          repo.path,
+          record.worktreeId,
+          resolveRemovedPushTarget(),
+          host.store,
+          getLocalProjectWorktreeGitOptions(host.store, repo)
+        )
+      }
+    }
   }
 }
 

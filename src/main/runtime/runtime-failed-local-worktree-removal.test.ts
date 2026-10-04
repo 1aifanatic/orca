@@ -208,10 +208,11 @@ describe.skipIf(process.platform !== 'darwin')('a worktree delete Git fails part
     const error = await failStartupFinish()
 
     expect(String(error)).toMatch(/Operation not permitted/)
-    // What Git left: no registration, but the checkout, the branch and Orca's record.
+    // What Git left: no registration, but the checkout and Orca's record. The merged branch went
+    // with the failed delete, as its finish would have deleted it.
     expect(await isRegistered(worktreePath)).toBe(false)
     expect(existsSync(lockedFile)).toBe(true)
-    expect(await git(['branch', '--list', 'feature'])).not.toBe('')
+    expect(await git(['branch', '--list', 'feature'])).toBe('')
     expect(await listedRows()).toEqual([
       { path: worktreePath, removalError: expect.stringMatching(/Operation not permitted/) }
     ])
@@ -243,7 +244,7 @@ describe.skipIf(process.platform !== 'darwin')('a worktree delete Git fails part
     expect(await listedRows()).toHaveLength(1)
   })
 
-  it('Delete refuses while the leftover is there, and finishes branch, metadata and record once the user removed it', async () => {
+  it('Delete refuses while the leftover is there, and finishes metadata and record once the user removed it', async () => {
     await failInSession()
     await setImmutable(false)
     const purged: string[] = []
@@ -280,7 +281,6 @@ describe.skipIf(process.platform !== 'darwin')('a worktree delete Git fails part
 
     expect(await readFile(join(worktreePath, 'notes.txt'), 'utf8')).toBe('mine\n')
     expect(removeHostTree).not.toHaveBeenCalled()
-    expect(await git(['branch', '--list', 'feature'])).not.toBe('')
     expect(purged).toEqual([])
     expect(await listedRows()).toEqual([
       { path: worktreePath, removalError: expect.stringMatching(/Operation not permitted/) }
@@ -290,13 +290,38 @@ describe.skipIf(process.platform !== 'darwin')('a worktree delete Git fails part
     ])
   })
 
-  it('the record ends once the checkout is deleted outside Orca', async () => {
+  it('deletes the merged branch when the delete fails, and only the folder is left to the user', async () => {
     await failInSession()
+
+    expect(await git(['branch', '--list', 'feature'])).toBe('')
+    expect(existsSync(lockedFile)).toBe(true)
+    expect(removeHostTree).not.toHaveBeenCalled()
+    expect(await listedRows()).toEqual([
+      { path: worktreePath, removalError: expect.stringMatching(/Operation not permitted/) }
+    ])
+
+    // The listing ends the record once the folder is gone; nothing of the delete is left owed.
     await setImmutable(false)
     await rm(worktreePath, { recursive: true })
-
     expect(await listedRows()).toEqual([])
     await vi.waitFor(async () => expect(await readWorktreeRemovalRecords(recordsDir)).toEqual([]))
+    expect(await git(['branch', '--list', 'feature'])).toBe('')
+    expect(await git(['worktree', 'list', '--porcelain'])).not.toContain(worktreePath)
+  })
+
+  it('keeps an unmerged branch when the delete fails, as a normal delete does', async () => {
+    await writeFile(join(worktreePath, 'work.txt'), 'work\n')
+    await git(['add', 'work.txt'], worktreePath)
+    await git(['commit', '-qm', 'work'], worktreePath)
+    const head = (await git(['rev-parse', 'feature'])).trim()
+
+    expect(String(await failInSession())).toMatch(/Operation not permitted/)
+
+    expect((await git(['rev-parse', 'feature'])).trim()).toBe(head)
+    expect(existsSync(lockedFile)).toBe(true)
+    expect(await listedRows()).toEqual([
+      { path: worktreePath, removalError: expect.stringMatching(/Operation not permitted/) }
+    ])
   })
 
   it('never deletes a different checkout created at the path since', async () => {
@@ -326,7 +351,8 @@ describe.skipIf(process.platform !== 'darwin')('a worktree delete Git fails part
     await failStartupFinish()
     await setImmutable(false)
     await rm(worktreePath, { recursive: true })
-    await git(['worktree', 'add', '-q', worktreePath, 'feature'])
+    // The failed delete already deleted the merged branch; the user makes it again.
+    await git(['worktree', 'add', '-q', worktreePath, '-b', 'feature'])
     await writeFile(join(worktreePath, 'unsaved.txt'), 'work\n')
     const purged: string[] = []
 
@@ -378,7 +404,7 @@ describe.skipIf(process.platform !== 'darwin')('a worktree delete Git fails part
     expect(String(await deleteRow(purged, stopPtys))).toBe(`Error: ${refusal()}`)
 
     expect(await readFile(join(worktreePath, 'notes.txt'), 'utf8')).toBe('mine\n')
-    expect(await git(['branch', '--list', 'feature'])).not.toBe('')
+    expect(removeHostTree).not.toHaveBeenCalled()
     expect(purged).toEqual([])
   })
 

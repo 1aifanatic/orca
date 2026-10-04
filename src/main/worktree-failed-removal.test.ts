@@ -9,6 +9,8 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GitWorktreeInfo } from '../shared/worktree/types'
 import { listWorktreesStrict } from './git/worktree'
+import type * as WorktreeRemovalModule from './git/worktree-removal'
+import { finishGitSideOfUnregisteredWorktree } from './git/worktree-removal'
 import { beginTerminalInstall } from './ipc/watcher-removal-gate'
 import { registerWorktreeChangeInvalidator } from './ipc/worktree-change-invalidators'
 import {
@@ -18,7 +20,8 @@ import {
   resumeInterruptedWorktreeRemovals,
   retryFailedWorktreeRemoval,
   startBackgroundWorktreeRemoval,
-  waitForPendingWorktreeRemoval
+  waitForPendingWorktreeRemoval,
+  type BackgroundWorktreeRemovalJob
 } from './worktree-background-removal'
 import {
   projectPendingWorktreeRemovals,
@@ -30,6 +33,10 @@ import { readWorktreeRemovalRecords } from './worktree-removal-records'
 import { loadWorktreeRemovalRecordsForStore } from './startup/worktree-removal-records-load'
 
 vi.mock('./git/worktree', () => ({ listWorktreesStrict: vi.fn(async () => []) }))
+vi.mock('./git/worktree-removal', async (importOriginal) => ({
+  ...(await importOriginal<typeof WorktreeRemovalModule>()),
+  finishGitSideOfUnregisteredWorktree: vi.fn(async () => ({}))
+}))
 
 const GIT_ERROR = "error: failed to delete 'node_modules/a/LICENSE': Operation not permitted"
 let directory = ''
@@ -58,11 +65,14 @@ beforeEach(async () => {
 
 afterEach(async () => {
   _resetPendingWorktreeRemovalsForTests()
+  vi.mocked(finishGitSideOfUnregisteredWorktree).mockReset()
   vi.restoreAllMocks()
   await rm(directory, { recursive: true, force: true })
 })
 
-function startFailingRemoval(): Promise<unknown> {
+function startFailingRemoval(
+  job: Pick<BackgroundWorktreeRemovalJob, 'cleanupPushTargetRemote'> = {}
+): Promise<unknown> {
   return startBackgroundWorktreeRemoval({
     removal: {
       worktreeId,
@@ -75,7 +85,8 @@ function startFailingRemoval(): Promise<unknown> {
     run: async () => {
       throw new Error(GIT_ERROR)
     },
-    publish: () => {}
+    publish: () => {},
+    ...job
   })
 }
 
@@ -133,9 +144,43 @@ describe('a delete that fails after Git dropped the registration', () => {
       mainWorktree,
       { ...leftoverRow(), removalError: undefined }
     ])
-    await failRemoval()
+    const cleanupPushTargetRemote = vi.fn(async () => {})
+    await expect(startFailingRemoval({ cleanupPushTargetRemote })).rejects.toThrow(GIT_ERROR)
+    await _settlePendingWorktreeRemovalsForTests()
 
     expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toEqual([])
+    // Git still has the checkout, so its branch and remote stay with it.
+    expect(finishGitSideOfUnregisteredWorktree).not.toHaveBeenCalled()
+    expect(cleanupPushTargetRemote).not.toHaveBeenCalled()
+  })
+
+  it('runs the Git side of the delete when it fails: the recorded branch and the push-target remote', async () => {
+    const cleanupPushTargetRemote = vi.fn(async () => {})
+    await expect(startFailingRemoval({ cleanupPushTargetRemote })).rejects.toThrow(GIT_ERROR)
+    await _settlePendingWorktreeRemovalsForTests()
+
+    expect(finishGitSideOfUnregisteredWorktree).toHaveBeenCalledWith('/work/repo', checkout, {
+      name: 'feature',
+      head: 'abc'
+    })
+    expect(cleanupPushTargetRemote).toHaveBeenCalledTimes(1)
+    expect(await readdir(checkout)).toEqual(['node_modules'])
+    expect(await listRows()).toEqual([mainWorktree, leftoverRow()])
+  })
+
+  it('keeps the failed row and its error when that bookkeeping fails', async () => {
+    vi.mocked(finishGitSideOfUnregisteredWorktree).mockRejectedValue(new Error('branch locked'))
+    const cleanupPushTargetRemote = vi.fn(async () => {
+      throw new Error('remote busy')
+    })
+    await expect(startFailingRemoval({ cleanupPushTargetRemote })).rejects.toThrow(GIT_ERROR)
+    await _settlePendingWorktreeRemovalsForTests()
+
+    expect(cleanupPushTargetRemote).toHaveBeenCalledTimes(1)
+    expect(await listRows()).toEqual([mainWorktree, leftoverRow()])
+    expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toMatchObject([
+      { worktreeId, failure: { message: GIT_ERROR } }
+    ])
   })
 
   it('clears the record as before when the checkout is gone', async () => {

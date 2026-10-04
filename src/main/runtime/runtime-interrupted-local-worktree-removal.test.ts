@@ -241,7 +241,8 @@ describe('finishing an interrupted worktree removal after a restart', () => {
     expect(outcome).toEqual({ status: 'failed', error: `Error: ${refusal}` })
     expect(await readFile(join(worktreePath, 'notes.txt'), 'utf8')).toBe('mine\n')
     expect(removeHostTree).not.toHaveBeenCalled()
-    expect(await git(['branch', '--list', 'feature'])).not.toBe('')
+    // Git let go of the checkout, so the recorded branch delete runs (merged only); no files.
+    expect(await git(['branch', '--list', 'feature'])).toBe('')
     expect(purged).toEqual([])
     expect(records).toMatchObject([{ failure: { message: refusal } }])
     expect(await listedRows()).toEqual([{ path: worktreePath, removalError: refusal }])

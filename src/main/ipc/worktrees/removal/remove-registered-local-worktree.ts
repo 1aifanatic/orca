@@ -128,6 +128,14 @@ export async function removeRegisteredLocalWorktree(
     }
   }
 
+  const cleanupPushTarget = () =>
+    cleanupUnusedWorktreePushTargetRemote(
+      repo.path,
+      args.worktreeId,
+      removedPushTarget,
+      context.store,
+      localWorktreeGitOptions
+    )
   const finish = (checkoutDeleteSignal?: AbortSignal): Promise<RemoveWorktreeResult> =>
     finishLocalWorktreeRemoval({
       context,
@@ -142,7 +150,8 @@ export async function removeRegisteredLocalWorktree(
       deleteBranch,
       refreshedRegisteredWorktree,
       removalGate,
-      checkoutDeleteSignal
+      checkoutDeleteSignal,
+      cleanupPushTarget
     })
   if (!removesInBackground(canonicalWorktreePath, localWorktreeGitOptions)) {
     const result = await finish()
@@ -169,7 +178,8 @@ export async function removeRegisteredLocalWorktree(
       })
       return result
     },
-    publish: () => runtime.publishWorktreeRemovalChange(repoId)
+    publish: () => runtime.publishWorktreeRemovalChange(repoId),
+    cleanupPushTargetRemote: cleanupPushTarget
   })
   return { removing: true }
 }
@@ -187,7 +197,8 @@ async function finishLocalWorktreeRemoval({
   deleteBranch,
   refreshedRegisteredWorktree,
   removalGate,
-  checkoutDeleteSignal
+  checkoutDeleteSignal,
+  cleanupPushTarget
 }: {
   context: WorktreeIpcContext
   args: RemoveWorktreeArgs
@@ -202,6 +213,7 @@ async function finishLocalWorktreeRemoval({
   refreshedRegisteredWorktree: GitWorktreeInfo
   removalGate: { finish: (removed: boolean) => Promise<void> }
   checkoutDeleteSignal?: AbortSignal
+  cleanupPushTarget: () => Promise<void>
 }): Promise<RemoveWorktreeResult> {
   const { store, runtime } = context
   let removalResult: RemoveWorktreeResult | undefined
@@ -252,13 +264,7 @@ async function finishLocalWorktreeRemoval({
           cwd: repo.path,
           ...localWorktreeGitOptions
         }).catch(() => {})
-        await cleanupUnusedWorktreePushTargetRemote(
-          repo.path,
-          args.worktreeId,
-          removedPushTarget,
-          store,
-          localWorktreeGitOptions
-        )
+        await cleanupPushTarget()
         runtime.clearOptimisticReconcileToken(args.worktreeId)
         removeWorktreeMetadataAndTransientState(
           store,
@@ -287,13 +293,7 @@ async function finishLocalWorktreeRemoval({
   } finally {
     await removalGate.finish(removalCompleted)
   }
-  await cleanupUnusedWorktreePushTargetRemote(
-    repo.path,
-    args.worktreeId,
-    removedPushTarget,
-    store,
-    localWorktreeGitOptions
-  )
+  await cleanupPushTarget()
   rememberPreservedBranchCleanupTarget(
     args.worktreeId,
     removalHostId,
