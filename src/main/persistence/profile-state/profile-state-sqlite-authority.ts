@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import type Database from '../../sqlite/sync-database'
 import type {
   ProfileStateAuthority,
   ProfileStateAuthorityInitialState,
@@ -50,6 +51,8 @@ export class ProfileStateSqliteAuthority implements ProfileStateAuthority {
   private observedRevision: number | undefined
   private writableDatabase: ReturnType<typeof openWritableProfileStateDatabase> | undefined
   private backupRotation: ProfileStateBackupRotation | undefined
+  /** Set by the writer worker per request so a committed revision names its request. */
+  writeOperationId: string | undefined
 
   constructor(
     private readonly databasePath: string,
@@ -71,13 +74,18 @@ export class ProfileStateSqliteAuthority implements ProfileStateAuthority {
     return initialization
   }
 
-  initializeFromRevision(revision: number): void {
+  /** A recovery handoff adopts revision + 1 only when its interrupted write recorded that commit. */
+  initializeFromRevision(revision: number, interruptedOperation?: string): void {
     this.assertActive()
     if (this.observedRevision !== undefined || !Number.isSafeInteger(revision) || revision < 0) {
       throw new Error('Invalid profile state worker revision handoff')
     }
-    assertProfileStateRevisionOnDisk(this.databasePath, this.profileId, revision)
-    this.observedRevision = revision
+    this.observedRevision = assertProfileStateRevisionOnDisk(
+      this.databasePath,
+      this.profileId,
+      revision,
+      interruptedOperation
+    )
     this.assertCurrentRevision()
   }
 
@@ -111,19 +119,11 @@ export class ProfileStateSqliteAuthority implements ProfileStateAuthority {
     if (!this.writableDatabase && !existsSync(this.databasePath)) {
       return this.createInitialState(0, undefined)
     }
-    const opened =
-      this.writableDatabase ?? openProfileStateDatabaseReadOnly(this.databasePath, this.profileId)
-    try {
-      const snapshot = readProfileStateParsedSnapshot(opened.db)
-      return this.createInitialState(
-        snapshot.revision,
-        snapshot.revision === 0 ? undefined : snapshot.state
-      )
-    } finally {
-      if (opened !== this.writableDatabase) {
-        opened.db.close()
-      }
-    }
+    const snapshot = this.readCurrent(readProfileStateParsedSnapshot)
+    return this.createInitialState(
+      snapshot.revision,
+      snapshot.revision === 0 ? undefined : snapshot.state
+    )
   }
 
   readSerializedState(): string | undefined {
@@ -134,12 +134,16 @@ export class ProfileStateSqliteAuthority implements ProfileStateAuthority {
       this.observedRevision = 0
       return undefined
     }
+    const snapshot = this.readCurrent(readProfileStateSnapshot)
+    this.observedRevision = snapshot.revision
+    return snapshot.revision === 0 ? undefined : snapshot.json
+  }
+
+  private readCurrent<T>(read: (db: Database.Database) => T): T {
     const opened =
       this.writableDatabase ?? openProfileStateDatabaseReadOnly(this.databasePath, this.profileId)
     try {
-      const snapshot = readProfileStateSnapshot(opened.db)
-      this.observedRevision = snapshot.revision
-      return snapshot.revision === 0 ? undefined : snapshot.json
+      return read(opened.db)
     } finally {
       if (opened !== this.writableDatabase) {
         opened.db.close()
@@ -161,7 +165,8 @@ export class ProfileStateSqliteAuthority implements ProfileStateAuthority {
     this.observedRevision = writeProfileStateDomains(opened.db, {
       expectedRevision: this.observedRevision ?? 0,
       replacements,
-      automationRunsAfter
+      automationRunsAfter,
+      operationId: this.writeOperationId
     }).revision
   }
 
@@ -221,13 +226,15 @@ export class ProfileStateSqliteAuthority implements ProfileStateAuthority {
         .map(({ domain, payload }) => `${JSON.stringify(domain)}:${payload}`)
         .join(',')}}`
       this.observedRevision = importProfileStateJson(opened.db, rawJson, {
-        expectedRevision: this.observedRevision
+        expectedRevision: this.observedRevision,
+        operationId: this.writeOperationId
       })
       return
     }
     this.observedRevision = writeProfileStateDomains(opened.db, {
       expectedRevision: this.observedRevision ?? currentRevision,
-      replacements: complete
+      replacements: complete,
+      operationId: this.writeOperationId
     }).revision
   }
 
@@ -243,11 +250,7 @@ export class ProfileStateSqliteAuthority implements ProfileStateAuthority {
   }
 
   writeJsonExport(targetPath: string): number {
-    return writeProfileStateAuthorityJsonExport(
-      this.openWritableDatabase().db,
-      targetPath,
-      this.observedRevision
-    )
+    return this.exportFenced(writeProfileStateAuthorityJsonExport, targetPath)
   }
 
   quarantineDatabase(quarantineRoot?: string, reason?: string): ProfileStateDatabaseQuarantine {
@@ -304,6 +307,13 @@ export class ProfileStateSqliteAuthority implements ProfileStateAuthority {
         return snapshot.value
       }
     }
+  }
+
+  private exportFenced<T>(
+    write: (db: Database.Database, targetPath: string, revision: number | undefined) => T,
+    targetPath: string
+  ): T {
+    return write(this.openWritableDatabase().db, targetPath, this.observedRevision)
   }
 
   private assertActive(): void {

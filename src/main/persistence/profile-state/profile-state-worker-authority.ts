@@ -7,27 +7,24 @@ import type {
 import { ProfileStateBackupRotation } from './profile-state-backup-rotation'
 import { runProfileStateBackupWorker } from './profile-state-backup-worker'
 import { quarantineProfileStateDatabase } from './profile-state-database-quarantine'
-import {
-  ProfileStateWriteWorkerClient,
-  type ProfileStateWriterInitialization
-} from './profile-state-writer-worker-client'
+import type { ProfileStateWriterConnectionOptions } from './profile-state-writer-connection'
+import type { ProfileStateWriterInitialization } from './profile-state-writer-worker-client'
+import { ProfileStateWriterSupervisor } from './profile-state-writer-supervisor'
 
 /** Main owns backup scheduling; the persistent worker owns every live SQL command. */
 export class ProfileStateWorkerAuthority implements AsyncProfileStateAuthority {
   readonly asynchronous = true
-  private writer: ProfileStateWriteWorkerClient
+  private writer: ProfileStateWriterSupervisor
   private backups: ProfileStateBackupRotation
   private closing: Promise<void> | undefined
 
   constructor(
     private readonly initialization: ProfileStateWriterInitialization,
-    private readonly options: {
-      workerPath?: string
+    private readonly options: ProfileStateWriterConnectionOptions & {
       backupWorkerPath?: string
-      onFailure?: (error: Error) => void
     } = {}
   ) {
-    this.writer = new ProfileStateWriteWorkerClient(initialization, options)
+    this.writer = new ProfileStateWriterSupervisor(initialization, options)
     this.backups = this.createBackups()
   }
 
@@ -48,36 +45,36 @@ export class ProfileStateWorkerAuthority implements AsyncProfileStateAuthority {
   }
 
   assertCurrentRevision(): Promise<void> {
-    return this.writer.assertCurrentRevision().then(() => {})
+    return this.writer.read((writer) => writer.assertCurrentRevision()).then(() => {})
   }
 
   writeSerializedDomains(replacements: readonly ProfileStateDomainReplacement[]): Promise<void> {
-    return this.writer.writeSerializedDomains(replacements).then(() => {})
+    return this.writer.write((writer) => writer.writeSerializedDomains(replacements))
   }
 
   writeSerializedAutomationRuns(
     replacements: readonly ProfileStateDomainReplacement[],
     runs: readonly AutomationRun[]
   ): Promise<void> {
-    return this.writer.writeSerializedAutomationRuns(replacements, runs).then(() => {})
+    return this.writer.write((writer) => writer.writeSerializedAutomationRuns(replacements, runs))
   }
 
   writeCompleteSerializedDomains(
     replacements: readonly ProfileStateDomainReplacement[]
   ): Promise<void> {
-    return this.writer.writeCompleteSerializedDomains(replacements).then(() => {})
+    return this.writer.write((writer) => writer.writeCompleteSerializedDomains(replacements))
   }
 
   writeSerializedState(payload: Buffer): Promise<void> {
-    return this.writer.writeSerializedState(payload).then(() => {})
+    return this.writer.write((writer) => writer.writeSerializedState(payload))
   }
 
   writeJsonExport(targetPath: string): Promise<number> {
-    return this.writer.writeJsonExport(targetPath)
+    return this.writer.read((writer) => writer.writeJsonExport(targetPath))
   }
 
   writeLatestJsonExport(dataFile: string): Promise<number | undefined> {
-    return this.writer.writeLatestJsonExport(dataFile)
+    return this.writer.read((writer) => writer.writeLatestJsonExport(dataFile))
   }
 
   scheduleBackup(): void {
@@ -111,7 +108,7 @@ export class ProfileStateWorkerAuthority implements AsyncProfileStateAuthority {
           throw new Error('Profile maintenance resume has already been consumed')
         }
         consumed = true
-        this.writer = new ProfileStateWriteWorkerClient(
+        this.writer = new ProfileStateWriterSupervisor(
           { ...this.initialization, revision },
           { ...this.options, reportInitializationFailure: true }
         )

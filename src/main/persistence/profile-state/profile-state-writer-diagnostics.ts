@@ -75,6 +75,26 @@ export function recordProfileStateWriterFault(
   })
 }
 
+export function recordProfileStateWriterRecovery(
+  result: 'started' | 'succeeded' | 'refused',
+  data: {
+    attempt: number
+    acknowledgedRevision: number
+    interruptedCommand?: string
+    committed?: boolean
+    reason?: string
+    error?: unknown
+  }
+): void {
+  const { error, ...fields } = data
+  recordDurableCrashBreadcrumb('profile_state_writer_recovery', {
+    result,
+    ...Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)),
+    ...(error === undefined ? {} : errorFields(error)),
+    powerState: getSystemPowerState()
+  })
+}
+
 export function recordProfileStateWriteFailureReport(
   error: unknown,
   presentation: 'dialog' | 'deferred' | 'suppressed' | 'duplicate'

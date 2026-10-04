@@ -10,6 +10,11 @@ export const PROFILE_STATE_DOCUMENT_VERSION = 1
 
 export const PROFILE_STATE_META_PROFILE_ID = 'profile_id'
 export const PROFILE_STATE_META_REVISION = 'revision'
+/**
+ * Writer request id committed with the revision it produced. Other builds ignore
+ * the key, and any revision they commit leaves it stale, so it proves only our commit.
+ */
+export const PROFILE_STATE_META_LAST_WRITE_OPERATION = 'last_write_operation'
 /** Records the legacy JSON bytes accepted by the SQLite authority bootstrap. */
 export const PROFILE_STATE_META_LEGACY_JSON_ACCEPTANCE = 'legacy_json_acceptance'
 
