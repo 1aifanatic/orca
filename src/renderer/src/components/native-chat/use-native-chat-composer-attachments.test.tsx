@@ -440,6 +440,31 @@ describe('useNativeChatComposerAttachments', () => {
     act(() => probe.root.unmount())
   })
 
+  it('tells a finishing upload that the user removed its chip', async () => {
+    const probe = await renderProbe('pty-1')
+    let removedId: string | null = null
+    let keptId: string | null = null
+    act(() => {
+      removedId = probe.latest().pendingChips.begin(undefined, 'report.pdf')
+      keptId = probe.latest().pendingChips.begin(undefined, 'notes.md')
+    })
+    if (!removedId || !keptId) {
+      throw new Error('expected pending chips')
+    }
+    act(() => probe.latest().removeImageAttachment(removedId as string))
+
+    let removedStillLive = true
+    let keptStillLive = false
+    act(() => {
+      removedStillLive = probe.latest().pendingChips.drop(removedId as string)
+      keptStillLive = probe.latest().pendingChips.drop(keptId as string)
+    })
+    expect(removedStillLive).toBe(false)
+    expect(keptStillLive).toBe(true)
+    expect(probe.latest().imageAttachments).toEqual([])
+    act(() => probe.root.unmount())
+  })
+
   it('excludes a pending chip from the scope cache while a settled chip persists', async () => {
     const probe = await renderProbe('pty-1')
     let pendingId: string | null = null

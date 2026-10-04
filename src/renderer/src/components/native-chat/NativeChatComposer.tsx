@@ -294,9 +294,6 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       disabled,
       sendPty,
       sendStructured,
-      attachmentScopeKey: paneKey,
-      removeImageAttachment,
-      setNotice,
       setDraft,
       setCaret,
       setHistory
@@ -375,6 +372,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
         activeSuggestion={activeSuggestion}
         notice={notice}
         imageAttachments={imageAttachments}
+        attachmentEnvironmentId={structuredTransport?.runtimeEnvironmentId ?? undefined}
         sendButtonDisabled={sendButtonDisabled}
         isWorking={isWorking}
         attachDisabled={disabled}

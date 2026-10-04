@@ -1,20 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Image as ImageIcon, Loader2, X } from 'lucide-react'
+import { FileText, Image as ImageIcon, Loader2, X } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { translate } from '@/i18n/i18n'
 import { basename } from '@/lib/path'
 import { useLocalImageSrc } from '@/components/editor/useLocalImageSrc'
-import { isNativeChatPastedImagePath } from './native-chat-image-paste'
+import {
+  isNativeChatImageAttachmentPath,
+  isNativeChatPastedImagePath
+} from './native-chat-image-paste'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
+import { isAgentSessionAttachmentStorePath } from '../../../../shared/agent-session-attachments'
 
 type Props = {
   attachment: NativeChatComposerImageAttachment
+  /** The paired server the chat runs on; a file stored there is read back through it. */
+  hostEnvironmentId?: string
   onRemove: (id: string) => void
 }
 
 /** Thumbnail for a pending image, with an in-app full-size preview on click. */
 export function NativeChatImageAttachmentPreview({
   attachment,
+  hostEnvironmentId,
   onRemove
 }: Props): React.JSX.Element {
   const [isOpen, setIsOpen] = useState(false)
@@ -43,17 +50,20 @@ export function NativeChatImageAttachmentPreview({
   }, [])
   const isPending = attachment.pending === true
   // A stored attachment is a path on the paired server, read back through that server.
-  const hostEnvironmentId = attachment.hostOwner?.environmentId
+  const readEnvironmentId =
+    hostEnvironmentId && isAgentSessionAttachmentStorePath(attachment.path)
+      ? hostEnvironmentId
+      : undefined
   const hostReadContext = useMemo(
     () =>
-      hostEnvironmentId
+      readEnvironmentId
         ? {
-            settings: { activeRuntimeEnvironmentId: hostEnvironmentId },
+            settings: { activeRuntimeEnvironmentId: readEnvironmentId },
             worktreeId: null,
             worktreePath: null
           }
         : undefined,
-    [hostEnvironmentId]
+    [readEnvironmentId]
   )
   const localSrc = useLocalImageSrc(
     !isPending && (isNearViewport || isOpen) ? attachment.path : undefined,
@@ -69,13 +79,15 @@ export function NativeChatImageAttachmentPreview({
     ? translate('components.native-chat.composer.pastedImageLabel', 'Pasted image')
     : basename(attachment.path)
   const pendingLabel = attachment.pendingName
-    ? translate(
-        'components.native-chat.composer.uploadingAttachments',
-        'Uploading {{value0}} file(s) to remote…',
-        { value0: 1 }
-      )
+    ? translate('components.native-chat.composer.uploadingFile', 'Uploading {{name}}…', {
+        name: attachment.pendingName
+      })
     : translate('components.native-chat.composer.imageSaving', 'Saving pasted image…')
-  const label = isPending ? pendingLabel : filename
+  const label = isPending ? (attachment.pendingName ?? pendingLabel) : filename
+  // A dropped document uploads as a chip too, and becomes an `@` reference once stored.
+  const isFile =
+    attachment.pendingName !== undefined && !isNativeChatImageAttachmentPath(attachment.pendingName)
+  const KindIcon = isFile ? FileText : ImageIcon
 
   return (
     <>
@@ -98,8 +110,15 @@ export function NativeChatImageAttachmentPreview({
               alt={label}
               className={`size-full object-cover${isPending ? ' opacity-50' : ''}`}
             />
+          ) : attachment.pendingName ? (
+            <span className="flex max-w-full flex-col items-center gap-0.5 px-1">
+              <KindIcon className="size-5 shrink-0 text-muted-foreground" />
+              <span className="max-w-full truncate text-xs text-muted-foreground">
+                {attachment.pendingName}
+              </span>
+            </span>
           ) : (
-            <ImageIcon className="size-5 text-muted-foreground" />
+            <KindIcon className="size-5 text-muted-foreground" />
           )}
         </button>
         {isPending ? (

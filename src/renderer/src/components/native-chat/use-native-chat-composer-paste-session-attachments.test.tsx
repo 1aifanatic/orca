@@ -1,13 +1,10 @@
 // @vitest-environment happy-dom
 // Pastes into a structured chat on a paired server land in that server's attachment store, on
-// every paste path, and the chip keeps the store's owner.
+// every paste path; the server checks each stored path again when it admits the message.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import type {
-  NativeChatAttachmentHostOwner,
-  NativeChatAttachmentOwner
-} from './native-chat-attachment-upload'
+import type { NativeChatAttachmentOwner } from './native-chat-attachment-upload'
 
 const mocks = vi.hoisted(() => ({
   saveClipboardImageAsTempFile: vi.fn(),
@@ -30,11 +27,6 @@ vi.mock('./native-chat-attachment-upload', () => ({
   nativeChatLocalAttachmentUnsupportedNotice: () =>
     'Local attachments are not available for remote sessions.',
   nativeChatWorktreeNotReadyNotice: () => 'Worktree not ready — try again in a moment.',
-  nativeChatAttachmentHostOwner: (owner: NativeChatAttachmentHostOwner) => ({
-    environmentId: owner.environmentId,
-    pairingRevision: owner.pairingRevision,
-    sessionId: owner.sessionId
-  }),
   prepareNativeChatSessionAttachmentUpload: mocks.prepareNativeChatSessionAttachmentUpload
 }))
 
@@ -57,12 +49,7 @@ vi.stubGlobal('URL', {
 import { useNativeChatComposerPaste } from './use-native-chat-composer-paste'
 
 type HookApi = ReturnType<typeof useNativeChatComposerPaste>
-type Chip = {
-  id: string
-  path: string
-  pending: boolean
-  hostOwner?: NativeChatAttachmentHostOwner
-}
+type Chip = { id: string; path: string; pending: boolean }
 
 const sessionOwner: NativeChatAttachmentOwner = {
   kind: 'runtime-session',
@@ -70,7 +57,6 @@ const sessionOwner: NativeChatAttachmentOwner = {
   pairingRevision: 7,
   sessionId: 'session-1'
 }
-const hostOwner = { environmentId: 'env-1', pairingRevision: 7, sessionId: 'session-1' }
 const storeArgs = {
   runtimeEnvironmentId: 'env-1',
   agentSessionAttachment: {
@@ -79,7 +65,7 @@ const storeArgs = {
     expectedEnvironmentRuntimeId: 'runtime-a'
   }
 }
-const storedPath = '/srv/agent-session-attachments/s/u1/orca-paste-1.png'
+const storedPath = '/srv/agent-session-attachments/u1/orca-paste-1.png'
 
 let root: Root | null = null
 
@@ -105,10 +91,10 @@ async function renderPaste(args: {
         chips.push({ id: `chip-${counter}`, path: '', pending: true })
         return `chip-${counter}`
       },
-      resolvePendingImageAttachment: (id, path, _connectionId, owner) => {
+      resolvePendingImageAttachment: (id, path) => {
         const chip = chips.find((candidate) => candidate.id === id)
         if (chip) {
-          Object.assign(chip, { path, pending: false, hostOwner: owner })
+          Object.assign(chip, { path, pending: false })
         }
       },
       dropPendingImageAttachment: (id) => {
@@ -170,11 +156,11 @@ afterEach(() => {
 })
 
 describe('pasting into a structured chat on a paired server', () => {
-  it('saves a pasted image into the chat store and settles the chip with its owner', async () => {
+  it('saves a pasted image into the chat store and settles the chip with its server path', async () => {
     const probe = await renderPaste({})
     await act(async () => probe.api().handlePaste(imagePasteEvent()))
     expect(mocks.saveClipboardImageAsTempFile).toHaveBeenCalledExactlyOnceWith(storeArgs)
-    expect(probe.chips).toEqual([{ id: 'chip-1', path: storedPath, pending: false, hostOwner }])
+    expect(probe.chips).toEqual([{ id: 'chip-1', path: storedPath, pending: false }])
   })
 
   it('keeps the image of a paste that also carries text', async () => {
@@ -191,14 +177,14 @@ describe('pasting into a structured chat on a paired server', () => {
     const probe = await renderPaste({})
     await act(async () => probe.api().pasteFromClipboard())
     expect(mocks.saveClipboardImageAsTempFile).toHaveBeenCalledExactlyOnceWith(storeArgs)
-    expect(probe.chips).toEqual([{ id: 'chip-1', path: storedPath, pending: false, hostOwner }])
+    expect(probe.chips).toEqual([{ id: 'chip-1', path: storedPath, pending: false }])
   })
 
-  it('attaches with its owner when no placeholder chip was shown', async () => {
+  it('attaches the server path when no placeholder chip was shown', async () => {
     const attachResolvedPaths = vi.fn()
     const probe = await renderPaste({ attachResolvedPaths })
     await act(async () => probe.api().pasteFromClipboard())
-    expect(attachResolvedPaths).toHaveBeenCalledExactlyOnceWith([storedPath], null, { hostOwner })
+    expect(attachResolvedPaths).toHaveBeenCalledExactlyOnceWith([storedPath], null)
   })
 
   it('refuses on a server without the attachment store and saves nothing', async () => {
@@ -212,5 +198,33 @@ describe('pasting into a structured chat on a paired server', () => {
     expect(mocks.saveClipboardImageAsTempFile).not.toHaveBeenCalled()
     expect(setNotice).toHaveBeenLastCalledWith('needs newer server')
     expect(probe.chips).toHaveLength(0)
+  })
+
+  it('pastes rich text into a chat on an older server without a refusal beside the text', async () => {
+    mocks.prepareNativeChatSessionAttachmentUpload.mockResolvedValue({
+      ok: false,
+      notice: 'needs newer server'
+    })
+    const insertTypedText = vi.fn(() => true)
+    const setNotice = vi.fn()
+    const probe = await renderPaste({ insertTypedText, setNotice })
+    await act(async () => probe.api().handlePaste(imagePasteEvent('caption')))
+    expect(insertTypedText).toHaveBeenCalledWith('caption')
+    expect(setNotice).not.toHaveBeenCalledWith('needs newer server')
+    expect(probe.chips).toHaveLength(0)
+  })
+
+  it('pastes rich text from the button into a chat on an older server without a refusal', async () => {
+    mocks.prepareNativeChatSessionAttachmentUpload.mockResolvedValue({
+      ok: false,
+      notice: 'needs newer server'
+    })
+    mocks.readClipboardText.mockResolvedValue('caption')
+    const insertTypedText = vi.fn(() => true)
+    const setNotice = vi.fn()
+    const probe = await renderPaste({ insertTypedText, setNotice })
+    await act(async () => probe.api().pasteFromClipboard())
+    expect(insertTypedText).toHaveBeenCalledWith('caption')
+    expect(setNotice).not.toHaveBeenCalledWith('needs newer server')
   })
 })

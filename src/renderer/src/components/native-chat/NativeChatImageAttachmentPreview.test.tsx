@@ -10,7 +10,8 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/i18n/i18n', () => ({
-  translate: (_key: string, fallback: string) => fallback
+  translate: (_key: string, fallback: string, values?: Record<string, unknown>) =>
+    fallback.replace(/\{\{(\w+)\}\}/g, (_match, name: string) => String(values?.[name]))
 }))
 
 vi.mock('@/components/editor/useLocalImageSrc', () => ({
@@ -23,9 +24,18 @@ afterEach(() => {
   mocks.useLocalImageSrc.mockReset()
 })
 
-function renderPreview(attachment: NativeChatComposerImageAttachment): void {
+function renderPreview(
+  attachment: NativeChatComposerImageAttachment,
+  hostEnvironmentId?: string
+): void {
   vi.stubGlobal('IntersectionObserver', undefined)
-  render(<NativeChatImageAttachmentPreview attachment={attachment} onRemove={vi.fn()} />)
+  render(
+    <NativeChatImageAttachmentPreview
+      attachment={attachment}
+      hostEnvironmentId={hostEnvironmentId}
+      onRemove={vi.fn()}
+    />
+  )
 }
 
 describe('NativeChatImageAttachmentPreview', () => {
@@ -56,12 +66,8 @@ describe('NativeChatImageAttachmentPreview', () => {
   // The path names a file on the paired server; this machine's disk must never be asked for it.
   it('reads a stored chip back through the server that holds it', () => {
     mocks.useLocalImageSrc.mockReturnValue('blob:from-server')
-    const path = '/srv/agent-session-attachments/s/u1/shot.png'
-    renderPreview({
-      id: 'a1',
-      path,
-      hostOwner: { environmentId: 'env-1', pairingRevision: 7, sessionId: 'session-1' }
-    })
+    const path = '/srv/agent-session-attachments/u1/shot.png'
+    renderPreview({ id: 'a1', path }, 'env-1')
 
     for (const call of mocks.useLocalImageSrc.mock.calls) {
       expect(call[3]).toEqual({
@@ -76,10 +82,33 @@ describe('NativeChatImageAttachmentPreview', () => {
     )
   })
 
-  it('labels a dropped file while it uploads', () => {
+  it('keeps any other path on the chat\'s usual read route', () => {
     mocks.useLocalImageSrc.mockReturnValue(undefined)
-    renderPreview({ id: 'a1', path: '', pending: true, pendingName: 'notes.md' })
+    renderPreview({ id: 'a1', path: '/repo/docs/shot.png' }, 'env-1')
 
-    expect(screen.getByRole('button', { name: /^Uploading .* file\(s\) to remote…$/ })).toBeTruthy()
+    expect(mocks.useLocalImageSrc).toHaveBeenCalledWith(
+      '/repo/docs/shot.png',
+      '/repo/docs/shot.png',
+      undefined,
+      undefined
+    )
+  })
+
+  it('shows a dropped file by name and kind while it uploads', () => {
+    mocks.useLocalImageSrc.mockReturnValue(undefined)
+    renderPreview({ id: 'a1', path: '', pending: true, pendingName: 'report.pdf' })
+
+    expect(screen.getByRole('button', { name: 'Uploading report.pdf…' })).toBeTruthy()
+    expect(screen.getByText('report.pdf')).toBeTruthy()
+    expect(document.querySelector('.lucide-file-text')).toBeTruthy()
+    expect(document.querySelector('.lucide-image')).toBeFalsy()
+  })
+
+  it('shows a dropped image as an image while it uploads', () => {
+    mocks.useLocalImageSrc.mockReturnValue(undefined)
+    renderPreview({ id: 'a1', path: '', pending: true, pendingName: 'shot.png' })
+
+    expect(screen.getByText('shot.png')).toBeTruthy()
+    expect(document.querySelector('.lucide-image')).toBeTruthy()
   })
 })

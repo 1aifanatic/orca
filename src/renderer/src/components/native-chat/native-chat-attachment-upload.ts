@@ -13,7 +13,10 @@ import { getRuntimeEnvironmentRevision } from '@/runtime/runtime-environment-rev
 import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
 import type { RuntimeStatus } from '../../../../shared/runtime-types'
 import { AGENT_SESSION_ATTACHMENTS_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
-import type { AgentSessionAttachmentUploadTarget } from '../../../../shared/agent-session-attachments'
+import type {
+  AgentSessionAttachmentPathUploadResult,
+  AgentSessionAttachmentUploadTarget
+} from '../../../../shared/agent-session-attachments'
 import type { AppState } from '@/store/types'
 import { reportTerminalDropUploadSkipsAndFailures } from '../terminal-pane/terminal-drop-upload-report'
 import {
@@ -31,17 +34,13 @@ export type NativeChatSshAttachmentOwner = DirectSshMutationExpectation & {
   worktreePath: string
 }
 
-/** Which paired server's store holds an uploaded attachment, and for which chat. Carried by each
- *  attached item so a send can refuse one meant for another host. */
-export type NativeChatAttachmentHostOwner = {
+/** A structured chat on a paired server: files upload into that server's attachment store, which
+ *  checks every stored path a message names when it admits the message. */
+export type NativeChatRuntimeSessionAttachmentOwner = {
+  kind: 'runtime-session'
   environmentId: string
   pairingRevision: number
   sessionId: string
-}
-
-/** A structured chat on a paired server: files upload into that server's attachment store. */
-export type NativeChatRuntimeSessionAttachmentOwner = NativeChatAttachmentHostOwner & {
-  kind: 'runtime-session'
 }
 
 export type NativeChatAttachmentOwner =
@@ -140,16 +139,6 @@ export function resolveNativeChatRuntimeSessionAttachmentOwner(session: {
   }
 }
 
-export function nativeChatAttachmentHostOwner(
-  owner: NativeChatRuntimeSessionAttachmentOwner
-): NativeChatAttachmentHostOwner {
-  return {
-    environmentId: owner.environmentId,
-    pairingRevision: owner.pairingRevision,
-    sessionId: owner.sessionId
-  }
-}
-
 export function nativeChatWorktreeNotReadyNotice(): string {
   return translate(
     'components.native-chat.composer.worktreeNotReady',
@@ -169,6 +158,13 @@ export function nativeChatAttachmentUnreadableNotice(): string {
     'components.native-chat.composer.attachmentUnreadable',
     "Couldn't read the dropped files."
   )
+}
+
+/** One notice for every file of a drop or pick that did not attach, by name. */
+export function nativeChatAttachFailedNotice(names: readonly string[]): string {
+  return translate('components.native-chat.composer.attachFailed', "Couldn't attach {{files}}.", {
+    files: names.join(', ')
+  })
 }
 
 export function nativeChatAttachmentsNeedNewerServerNotice(): string {
@@ -252,32 +248,12 @@ export async function prepareNativeChatSessionAttachmentUpload(
 }
 
 /**
- * Upload client-local files into the chat's store on its paired server. Returns the stored paths
- * by source path, or null when the upload IPC itself failed; per-file skips/failures surface
- * through the shared drop toasts, as SSH uploads do.
+ * Upload client-local files into the chat's store on its paired server. The chips show progress,
+ * so nothing else does; the caller reports what did not attach.
  */
-export async function uploadNativeChatSessionAttachmentPaths(
+export function uploadNativeChatSessionAttachmentPaths(
   paths: string[],
   target: AgentSessionAttachmentUploadTarget
-): Promise<Map<string, string> | null> {
-  const pending = toast.loading(
-    translate(
-      'components.native-chat.composer.uploadingAttachments',
-      'Uploading {{value0}} file(s) to remote…',
-      { value0: paths.length }
-    )
-  )
-  try {
-    const { uploaded, skipped, failed } = await window.api.fs.uploadPathsToAgentSessionAttachments({
-      ...target,
-      paths
-    })
-    reportTerminalDropUploadSkipsAndFailures(skipped, failed)
-    return new Map(uploaded.map(({ sourcePath, path }) => [sourcePath, path]))
-  } catch (err) {
-    toast.error(extractIpcErrorMessage(err, 'Failed to upload files.'))
-    return null
-  } finally {
-    toast.dismiss(pending)
-  }
+): Promise<AgentSessionAttachmentPathUploadResult> {
+  return window.api.fs.uploadPathsToAgentSessionAttachments({ ...target, paths })
 }

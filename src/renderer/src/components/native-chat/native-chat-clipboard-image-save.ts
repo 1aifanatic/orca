@@ -24,7 +24,7 @@ async function clipboardImageSaveArgs(
   owner: ClipboardImageOwner
 ): Promise<
   | { ok: true; args: Parameters<typeof window.api.ui.saveClipboardImageAsTempFile>[0] }
-  | { ok: false; notice: string }
+  | { ok: false; notice: string; cause: NativeChatClipboardImageFailureCause }
 > {
   if (owner.kind === 'local') {
     return { ok: true, args: undefined }
@@ -34,19 +34,22 @@ async function clipboardImageSaveArgs(
   }
   const prepared = await prepareNativeChatSessionAttachmentUpload(owner)
   if (!prepared.ok) {
-    return prepared
+    return { ...prepared, cause: 'serverTooOld' }
   }
   const { environmentId, ...agentSessionAttachment } = prepared.target
   return { ok: true, args: { runtimeEnvironmentId: environmentId, agentSessionAttachment } }
 }
 
+/** `serverTooOld`: the chat's paired server keeps no attachments, so it could never take one. */
+export type NativeChatClipboardImageFailureCause = 'serverTooOld' | 'failed'
+
 /** Save the clipboard image where the owner's agent can read it. Every failure is reported. */
 export async function saveNativeChatClipboardImage(
   owner: NativeChatAttachmentOwner,
-  report: { setNotice: (notice: string) => void }
+  report: { setNotice: (notice: string, cause: NativeChatClipboardImageFailureCause) => void }
 ): Promise<{ status: 'saved'; tempPath: string } | { status: 'empty' | 'failed' }> {
   if (!ownerAcceptsClipboardImage(owner)) {
-    report.setNotice(nativeChatLocalAttachmentUnsupportedNotice())
+    report.setNotice(nativeChatLocalAttachmentUnsupportedNotice(), 'failed')
     return { status: 'failed' }
   }
   try {
@@ -54,7 +57,7 @@ export async function saveNativeChatClipboardImage(
     // path is readable by the remote agent, matching terminal image paste.
     const target = await clipboardImageSaveArgs(owner)
     if (!target.ok) {
-      report.setNotice(target.notice)
+      report.setNotice(target.notice, target.cause)
       return { status: 'failed' }
     }
     const tempPath = await window.api.ui.saveClipboardImageAsTempFile(target.args)
@@ -66,7 +69,8 @@ export async function saveNativeChatClipboardImage(
       extractIpcErrorMessage(
         error,
         translate('components.native-chat.composer.imagePasteFailed', 'Image paste failed.')
-      )
+      ),
+      'failed'
     )
     return { status: 'failed' }
   }
