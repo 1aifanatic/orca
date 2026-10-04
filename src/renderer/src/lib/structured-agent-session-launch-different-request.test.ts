@@ -341,6 +341,19 @@ describe('an empty chat still starting', () => {
     expect(sends()).toEqual([[second.sessionId, 'Fix check B']])
   })
 
+  it('delivers the claiming text the way its own request asked', async () => {
+    startStructuredAgentLaunch(WORKTREE_ID, 'codex', { promptDelivery: 'draft' })
+    const notes = startStructuredAgentLaunch(WORKTREE_ID, 'codex', notesRequest)
+    resolveFirstLaunch({ sessionId: first.sessionId, fence: 1 })
+
+    await expect(notes.promptDeliveryResult).resolves.toEqual({
+      delivered: true,
+      failureNotified: false
+    })
+    expect(sends()).toEqual([[first.sessionId, 'review notes']])
+    expect(mocks.seedDraft).not.toHaveBeenCalled()
+  })
+
   it('sends the same notes once when they are sent again', async () => {
     const blank = startStructuredAgentLaunch(WORKTREE_ID, 'codex')
     const notes = startStructuredAgentLaunch(WORKTREE_ID, 'codex', notesRequest)
