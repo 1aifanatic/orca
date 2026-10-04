@@ -88,6 +88,17 @@ export function useStructuredAgentSessionHostStopping(
   )
 }
 
+/** The host's startup phase and its word on a Stop, each re-rendering the chat only on a change. */
+export function useStructuredAgentSessionHostExecution(
+  sessionId: string,
+  target: RuntimeClientTarget
+): { phase: ReturnType<typeof useStructuredAgentSessionHostExecutionPhase>; stopping: boolean } {
+  return {
+    phase: useStructuredAgentSessionHostExecutionPhase(sessionId, target),
+    stopping: useStructuredAgentSessionHostStopping(sessionId, target)
+  }
+}
+
 /** The host's child records for the row, and the legacy roster readers of `subagents` keep. A host
  *  that publishes views is copied verbatim; only an older host's task list is converted here. */
 function childWorkFor(summary: AgentSessionStatusSummary): {

@@ -23,10 +23,7 @@ import { NativeChatStructuredSessionStatus } from './NativeChatStructuredSession
 import { useNativeChatLaunchDraftSignal } from './use-native-chat-launch-draft-adoption'
 import { NativeChatLaunchRetry } from './NativeChatLaunchRetry'
 import { useNativeChatProvisionalLaunch } from './use-native-chat-provisional-launch'
-import {
-  useStructuredAgentSessionHostExecutionPhase,
-  useStructuredAgentSessionHostStopping
-} from './StructuredAgentSessionStatusBridge'
+import { useStructuredAgentSessionHostExecution } from './StructuredAgentSessionStatusBridge'
 import { NativeChatQueuedMessageList } from './NativeChatQueuedMessageList'
 import { nativeChatStructuredStopControls } from './native-chat-structured-stop-controls'
 import { useAppStore } from '../../store'
@@ -49,8 +46,7 @@ export function NativeChatStructuredSession(
   )
   const { sendThroughRelaunch } = provisionalLaunch
   // The host's own word on whether the provider child has answered startup yet.
-  const startupPhase = useStructuredAgentSessionHostExecutionPhase(props.sessionId, props.target)
-  const hostStopping = useStructuredAgentSessionHostStopping(props.sessionId, props.target)
+  const hostExecution = useStructuredAgentSessionHostExecution(props.sessionId, props.target)
   const paneKey = useMemo(
     () => structuredAgentSessionPaneKey(props.tabId, props.sessionId),
     [props.sessionId, props.tabId]
@@ -61,12 +57,12 @@ export function NativeChatStructuredSession(
     ...props,
     composerScopeKey: paneKey,
     queueFollowUps,
-    hostStopping,
-    providerStarting: startupPhase === 'starting',
+    hostStopping: hostExecution.stopping,
+    providerStarting: hostExecution.phase === 'starting',
     transportEnabled: provisionalLaunch.transportEnabled,
     ...(provisionalLaunch.launch ? { launch: provisionalLaunch.launch } : {})
   })
-  const stopControls = nativeChatStructuredStopControls(controller, hostStopping)
+  const stopControls = nativeChatStructuredStopControls(controller, hostExecution.stopping)
   const launchDraftSignal = useNativeChatLaunchDraftSignal({
     terminalTabId: props.tabId,
     agent: props.agent,
