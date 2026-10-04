@@ -1,8 +1,6 @@
 // Installs the chat attachment store beside the structured host, and its sweeps. The store lives in
-// the same state directory as the journal, and the sweeps read the host's records and journal.
+// the same state directory as the journal, whose database holds the claims the sweeps honor.
 
-import { join } from 'node:path'
-import { AGENT_SESSION_ATTACHMENTS_DIR_NAME } from '../../shared/agent-session-attachments'
 import {
   AgentSessionAttachmentStore,
   setAgentSessionAttachmentStore
@@ -11,7 +9,7 @@ import {
   startAgentSessionAttachmentSweeps,
   type AgentSessionAttachmentSweeper
 } from '../native-chat/agent-session-attachments/agent-session-attachment-sweep'
-import { createAgentSessionAttachmentJournalMentions } from '../native-chat/agent-session-attachments/agent-session-attachment-journal-references'
+import { agentSessionAttachmentStoreRoot } from '../native-chat/agent-session-attachments/agent-session-attachment-references'
 import type { JournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database'
 import type { StructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
 import type { AgentSessionRecordStore } from './agent-session-record-store'
@@ -29,16 +27,22 @@ export function installAgentSessionAttachments(deps: {
 }): void {
   stopAgentSessionAttachments()
   const attachments = new AgentSessionAttachmentStore(
-    join(deps.stateDirectory, AGENT_SESSION_ATTACHMENTS_DIR_NAME)
+    agentSessionAttachmentStoreRoot(deps.stateDirectory),
+    { hasSession: (sessionId) => deps.store.getRecord(sessionId) !== null }
   )
   setAgentSessionAttachmentStore(attachments)
   sweeper = startAgentSessionAttachmentSweeps(
     attachments,
     {
-      // Records still owed their import are missing from the list, so nothing reads as abandoned.
+      database: () =>
+        deps.journalDatabase.readOnly || deps.journalDatabase.isClosed
+          ? null
+          : deps.journalDatabase.db,
+      // Records still owed their import are missing from the list, so no claim reads as orphaned.
       recordedSessionIds: () =>
-        deps.journalDatabase.legacyRecordImportOwed ? null : deps.store.listRecordedSessionIds(),
-      journalMentions: createAgentSessionAttachmentJournalMentions(() => deps.journalDatabase.db)
+        deps.journalDatabase.legacyRecordImportOwed
+          ? null
+          : new Set(deps.store.listRecordedSessionIds())
     },
     {
       initialDelayMs: FIRST_SWEEP_DELAY_MS,

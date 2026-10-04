@@ -16,6 +16,7 @@ import {
   AttachmentUploadIdParams,
   AttachmentUploadStartParams
 } from '../../../../shared/rpc-contract/agent-session-attachment-params'
+import { remoteFileContentBudget } from './files-remote-content-budget'
 import {
   getAgentSessionAttachmentStore,
   type AgentSessionAttachmentStore
@@ -70,7 +71,8 @@ export const STRUCTURED_AGENT_SESSION_ATTACHMENT_METHODS = [
     params: AttachmentReadParams,
     handler: async (params, ctx) => {
       const { store } = await requireStore(ctx)
-      return store.readPreview(params.path)
+      // A remote reply must fit the connection's outbound budget, or the server closes the socket.
+      return store.readPreview(params.path, remoteFileContentBudget(ctx.clientKind, ctx.requestId))
     }
   })
 ]

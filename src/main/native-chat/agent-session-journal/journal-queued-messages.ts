@@ -41,6 +41,7 @@ import {
   settleQueuedMessagesForRow
 } from './queued-message-settlement'
 import { AgentSessionJournalError, assertJournalWritable } from './journal-write-guards'
+import { claimAgentSessionAttachmentsInTransaction } from '../agent-session-attachments/agent-session-attachment-claims'
 import type { JournalWriteBody, JournalWriteResult } from './journal-write-queue'
 
 /** Tombstones must outlive the window in which their operation id could still be admitted as new. */
@@ -101,15 +102,19 @@ export class JournalQueuedMessages {
     return queuedMessagesSettledByOp(this.deps.database().db, this.deps.sessionId, settledByOp)
   }
 
-  /** `carriedFrom`: a /clear's carry. The card is its own 'cleared' pause, so it lands paused. */
+  /** `carriedFrom`: a /clear's carry. The card is its own 'cleared' pause, so it lands paused.
+   *  `requireAttachments`: a client's own draft, refused whole when an attachment it names is no
+   *  longer stored; the host's own writes (the carry) claim best effort. */
   insert(input: {
     messageId: string
     body: AgentJournalMessageItem
     fingerprint: string
     hostInstance: string
     carriedFrom?: string
+    requireAttachments?: true
   }): Promise<QueuedMessageRow> {
     const { sessionId } = this.deps
+    const { requireAttachments, ...draft } = input
     let inserted = false
     return this.transact(
       (db) => {
@@ -119,13 +124,21 @@ export class JournalQueuedMessages {
           // gets here, so an existing row is the same accept landing twice.
           return existing
         }
+        const now = this.deps.now()
+        claimAgentSessionAttachmentsInTransaction(db, {
+          stateDirectory: this.deps.database().stateDirectory,
+          sessionId,
+          body: input.body,
+          required: requireAttachments === true,
+          now
+        })
         inserted = true
         const { epoch, lastSequence } = this.deps.state()
         return insertQueuedMessage(db, {
-          ...input,
+          ...draft,
           sessionId,
           queuedAt: { epoch, sequence: lastSequence },
-          now: this.deps.now()
+          now
         })
       },
       () => inserted

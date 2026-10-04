@@ -17447,6 +17447,8 @@
         "notAvailable": "이 채팅에서는 사용할 수 없습니다.",
         "unreachable": "Orca가 에이전트에 연결하지 못했습니다.",
         "recordFailed": "Orca가 이 내용을 채팅 기록에 저장하지 못했습니다.",
+        "attachmentExpired": "이 첨부 파일이 만료되었습니다.",
+        "reattachFile": "제거한 후 다시 첨부하세요.",
         "conversationCleared": "이 대화는 지워졌습니다.",
         "openCurrentConversation": "계속하려면 현재 대화를 여세요.",
         "clearUnfinished": "마지막 /clear가 완료되지 않았습니다.",

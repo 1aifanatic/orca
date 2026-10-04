@@ -17464,6 +17464,8 @@
         "notAvailable": "此聊天中无法使用此功能。",
         "unreachable": "Orca 无法连接到智能体。",
         "recordFailed": "Orca 无法将此内容保存到聊天历史记录中。",
+        "attachmentExpired": "此附件已过期。",
+        "reattachFile": "请将其移除后重新附加。",
         "conversationCleared": "此对话已被清除。",
         "openCurrentConversation": "请打开当前对话以继续。",
         "clearUnfinished": "上一次 /clear 未完成。",

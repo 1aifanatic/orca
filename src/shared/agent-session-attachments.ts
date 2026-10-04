@@ -15,17 +15,7 @@ export const AGENT_SESSION_ATTACHMENT_CHUNK_BYTES = 384 * 1024
 export const AGENT_SESSION_ATTACHMENT_CHUNK_BASE64_CHARS =
   (AGENT_SESSION_ATTACHMENT_CHUNK_BYTES / 3) * 4
 
-/** Previews are images read whole into one reply, so they stay well under the frame limit. */
-export const AGENT_SESSION_ATTACHMENT_PREVIEW_MAX_BYTES = 10 * 1024 * 1024
-
-export const AGENT_SESSION_ATTACHMENT_NAME_MAX_LENGTH = 200
-
-export type AgentSessionAttachmentUploadStartResult = { uploadId: string }
-export type AgentSessionAttachmentUploadCommitResult = {
-  path: string
-  name: string
-  byteLength: number
-}
+export const AGENT_SESSION_ATTACHMENT_NAME_MAX_BYTES = 200
 
 /** Whether `filePath` names a file in some server's attachment store. Only routes a preview read;
  *  the server re-checks the real path before reading anything. */
@@ -33,24 +23,57 @@ export function isAgentSessionAttachmentStorePath(filePath: string): boolean {
   return filePath.split(/[\\/]/).includes(AGENT_SESSION_ATTACHMENTS_DIR_NAME)
 }
 
+// Windows refuses these as a file's name whatever its extension, and drops trailing dots and spaces.
+const WINDOWS_DEVICE_NAME = /^(con|prn|aux|nul|com[0-9\u00b9\u00b2\u00b3]|lpt[0-9\u00b9\u00b2\u00b3])$/i
+
+function utf8ByteLength(text: string): number {
+  return new TextEncoder().encode(text).byteLength
+}
+
+/** Whole characters from the start of `text` that fit in `maxBytes` of UTF-8. */
+function truncateUtf8(text: string, maxBytes: number): string {
+  let kept = ''
+  let bytes = 0
+  for (const character of text) {
+    bytes += utf8ByteLength(character)
+    if (bytes > maxBytes) {
+      break
+    }
+    kept += character
+  }
+  return kept
+}
+
 /**
  * A stored file keeps the user's file name, since agents read meaning into names and extensions.
- * Only the last path segment survives, without control characters or separators.
+ * Only the last path segment survives, without control characters or separators, short enough in
+ * bytes for every server's file system and never a name Windows reserves.
  */
 export function sanitizeAgentSessionAttachmentName(name: string): string {
   const leaf = name.split(/[\\/]/).findLast((part) => part.length > 0) ?? ''
   // eslint-disable-next-line no-control-regex -- stripping control characters is the point
   const cleaned = leaf.replace(/[\u0000-\u001f\u007f<>:"|?*]/g, '_').trim()
-  const visible = cleaned.replace(/^\.+/, '')
+  let visible = cleaned.replace(/^\.+/, '').replace(/[. ]+$/, '')
   if (visible.length === 0) {
     return 'attachment'
   }
-  if (visible.length <= AGENT_SESSION_ATTACHMENT_NAME_MAX_LENGTH) {
+  const firstDot = visible.indexOf('.')
+  if (WINDOWS_DEVICE_NAME.test(firstDot > 0 ? visible.slice(0, firstDot) : visible)) {
+    visible = `_${visible}`
+  }
+  if (utf8ByteLength(visible) <= AGENT_SESSION_ATTACHMENT_NAME_MAX_BYTES) {
     return visible
   }
-  const dot = visible.lastIndexOf('.')
-  const extension = dot > 0 && visible.length - dot <= 16 ? visible.slice(dot) : ''
-  return visible.slice(0, AGENT_SESSION_ATTACHMENT_NAME_MAX_LENGTH - extension.length) + extension
+  const extensionAt = visible.lastIndexOf('.')
+  const extension =
+    extensionAt > 0 && utf8ByteLength(visible.slice(extensionAt)) <= 16
+      ? visible.slice(extensionAt)
+      : ''
+  const stem = visible.slice(0, visible.length - extension.length)
+  return (
+    truncateUtf8(stem, AGENT_SESSION_ATTACHMENT_NAME_MAX_BYTES - utf8ByteLength(extension)) +
+    extension
+  )
 }
 
 /** Pins an upload to the server the attachment was meant for: every call re-checks the pairing,

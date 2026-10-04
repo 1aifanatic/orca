@@ -15041,6 +15041,8 @@
         "notAvailable": "Esto no está disponible en este chat.",
         "unreachable": "Orca no pudo comunicarse con el agente.",
         "recordFailed": "Orca no pudo guardar esto en el historial del chat.",
+        "attachmentExpired": "Este archivo adjunto caducó.",
+        "reattachFile": "Quítelo y vuelva a adjuntarlo.",
         "conversationCleared": "Esta conversación se borró.",
         "openCurrentConversation": "Abra la conversación actual para continuar.",
         "clearUnfinished": "El último /clear no terminó.",

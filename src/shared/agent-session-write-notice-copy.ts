@@ -41,6 +41,8 @@ export const AGENT_SESSION_WRITE_NOTICE_COPY = {
   notAvailable: "This isn't available in this chat.",
   unreachable: "Orca couldn't reach the agent.",
   recordFailed: "Orca couldn't save this to the chat's history.",
+  attachmentExpired: 'This attachment expired.',
+  reattachFile: 'Remove it and attach it again.',
   conversationCleared: 'This conversation has been cleared.',
   openCurrentConversation: 'Open the current conversation to continue.',
   clearUnfinished: "The last /clear didn't finish.",

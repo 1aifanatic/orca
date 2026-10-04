@@ -14,6 +14,7 @@ import {
   setAgentSessionAttachmentStore
 } from '../../../native-chat/agent-session-attachments/agent-session-attachment-store'
 import { STRUCTURED_AGENT_SESSION_ATTACHMENT_METHODS } from './structured-agent-session-attachments'
+import { isMobileE2EETextPayloadWithinLimit } from '../mobile-e2ee-outbound-admission'
 import {
   clearStructuredHostStub,
   installStructuredHostStub,
@@ -25,7 +26,9 @@ let store: AgentSessionAttachmentStore
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-attachment-rpc-'))
-  store = new AgentSessionAttachmentStore(join(root, 'agent-session-attachments'))
+  store = new AgentSessionAttachmentStore(join(root, 'agent-session-attachments'), {
+    hasSession: (sessionId) => sessionId === 'session-alpha'
+  })
   setAgentSessionAttachmentStore(store)
   installStructuredHostStub()
 })
@@ -73,6 +76,33 @@ function result<T>(response: RpcResponse): T {
 
 const CLIENT_A = { ...STRUCTURED_CLIENT, clientId: 'client-a' }
 
+async function uploadBytes(name: string, bytes: Buffer): Promise<string> {
+  const { uploadId } = result<{ uploadId: string }>(
+    await call(
+      'agentSessionAttachment.uploadStart',
+      { sessionId: 'session-alpha', name, byteLength: bytes.byteLength },
+      CLIENT_A
+    )
+  )
+  const chunk = 384 * 1024
+  for (let offset = 0; offset < bytes.byteLength; offset += chunk) {
+    result(
+      await call(
+        'agentSessionAttachment.uploadAppend',
+        {
+          uploadId,
+          offset,
+          contentBase64: bytes.subarray(offset, offset + chunk).toString('base64')
+        },
+        CLIENT_A
+      )
+    )
+  }
+  return result<{ path: string }>(
+    await call('agentSessionAttachment.uploadCommit', { uploadId }, CLIENT_A)
+  ).path
+}
+
 describe('agentSessionAttachment.*', () => {
   it('is advertised, so a client can tell a host with the store from an older one', () => {
     expect(RUNTIME_CAPABILITIES).toContain(AGENT_SESSION_ATTACHMENTS_RUNTIME_CAPABILITY)
@@ -97,7 +127,7 @@ describe('agentSessionAttachment.*', () => {
       await call('agentSessionAttachment.uploadCommit', { uploadId }, CLIENT_A)
     )
     expect(stored.name).toBe('shot.png')
-    expect(stored.path.startsWith(store.sessionDirectory('session-alpha'))).toBe(true)
+    expect(stored.path.startsWith(store.rootDir)).toBe(true)
     expect(await readFile(stored.path, 'utf8')).toBe('png')
 
     const preview = await call('agentSessionAttachment.read', { path: stored.path }, CLIENT_A)
@@ -143,5 +173,38 @@ describe('agentSessionAttachment.*', () => {
     )
     expect(response).toMatchObject({ ok: false })
     expect(store.isUploadInFlight(uploadId)).toBe(true)
+  })
+
+  it('refuses an upload for a chat this host does not hold', async () => {
+    const response = await call(
+      'agentSessionAttachment.uploadStart',
+      { sessionId: 'session-elsewhere', name: 'a.txt', byteLength: 1 },
+      CLIENT_A
+    )
+    expect(response).toMatchObject({ ok: false, error: { message: expect.stringContaining('not on this host') } })
+  })
+
+  it('answers a remote preview of an image over 3 MiB with a small refusal, not an oversized reply', async () => {
+    const path = await uploadBytes('big.png', Buffer.alloc(3.5 * 1024 * 1024, 7))
+    const replies: string[] = []
+    const dispatcher = new RpcDispatcher({
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the attachment methods read only the host-install hook and runtime id.
+      runtime: {
+        getRuntimeId: () => 'runtime-1',
+        ensureStructuredAgentSessionHost: async () => {}
+      } as unknown as OrcaRuntimeService,
+      methods: STRUCTURED_AGENT_SESSION_ATTACHMENT_METHODS
+    })
+    await dispatcher.dispatchStreaming(
+      { id: 'request-big', authToken: 'token', method: 'agentSessionAttachment.read', params: { path } },
+      (raw) => replies.push(raw),
+      { ...CLIENT_A, clientKind: 'runtime' }
+    )
+    expect(replies).toHaveLength(1)
+    expect(isMobileE2EETextPayloadWithinLimit(replies[0] ?? '')).toBe(true)
+    expect(JSON.parse(replies[0] ?? '{}')).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining('file_too_large') }
+    })
   })
 })

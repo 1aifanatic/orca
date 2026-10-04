@@ -1,30 +1,35 @@
-// When a stored attachment may go, re-derived from what the host already holds.
+// When a stored attachment may go, re-derived on every sweep from the disk and the claim table.
 //
 // - A part file nobody is writing (the uploader crashed or vanished) goes after an hour.
-// - A chat the host has no record of never came to exist: its uploads go after a day.
-// - A recorded chat's upload that its journal never mentions after a day was never sent (the chip
-//   was removed, the draft abandoned): it goes too. A chat with no journal rows yet is no evidence.
-// - Everything a chat's journal mentions lives as long as that chat. The host never deletes a chat
+// - An upload no message ever claimed goes after a day: its chip was removed or its draft
+//   abandoned. The sweep first marks it in the same database the claims live in, and only if no
+//   claim exists; a send that names it afterwards is refused instead of losing its file.
+// - A claimed upload stays while any chat holding it has a record. The host never deletes a chat
 //   today, so that is as long as its transcript.
+// - A mark left by a sweep that died mid-delete is finished by the next one.
 
-import { readdir, rmdir, stat } from 'node:fs/promises'
+import { readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import { journalPathSegment } from '../agent-session-journal/journal-paths'
+import type Database from '../../sqlite/sync-database'
 import {
-  AGENT_SESSION_ATTACHMENT_PART_FILE,
-  removeQuietly,
-  type AgentSessionAttachmentStore
-} from './agent-session-attachment-store'
+  finishUploadSweep,
+  listUploadsBeingSwept,
+  markUnclaimedUploadForSweep,
+  pruneAgentSessionAttachmentClaims
+} from './agent-session-attachment-claims'
+import { AGENT_SESSION_ATTACHMENT_PART_FILE } from './agent-session-attachment-references'
+import { removeQuietly, type AgentSessionAttachmentStore } from './agent-session-attachment-store'
 
 export const ABANDONED_PART_MAX_AGE_MS = 60 * 60 * 1000
-export const UNSENT_ATTACHMENT_MAX_AGE_MS = 24 * 60 * 60 * 1000
+export const UNCLAIMED_ATTACHMENT_MAX_AGE_MS = 24 * 60 * 60 * 1000
 
 export type AgentSessionAttachmentSweepFacts = {
+  /** The host's journal connection, or null when it cannot take writes (closed, or written by a
+   *  newer Orca): without it nothing claimed can be told apart, so only part files go. */
+  database: () => Database.Database | null
   /** Every chat this host holds a record for; null while that list is incomplete (records still
-   *  owed their import), when no upload can be judged abandoned. */
-  recordedSessionIds: () => Iterable<string> | null
-  /** Whether the chat's journal mentions `needle`; null when the journal holds no rows yet. */
-  journalMentions: (sessionId: string, needle: string) => boolean | null
+   *  owed their import), when no chat's claims can be judged orphaned. */
+  recordedSessionIds: () => ReadonlySet<string> | null
 }
 
 export type AgentSessionAttachmentSweepResult = { removed: string[] }
@@ -32,82 +37,57 @@ export type AgentSessionAttachmentSweepResult = { removed: string[] }
 export async function sweepAgentSessionAttachments(
   store: AgentSessionAttachmentStore,
   facts: AgentSessionAttachmentSweepFacts,
-  now = Date.now(),
-  /** Verdicts already proven this process: a sent file stays sent, so it is not rescanned. */
-  knownReferenced = new Set<string>()
+  now = Date.now()
 ): Promise<AgentSessionAttachmentSweepResult> {
   const removed: string[] = []
-  const sessionSegments = await listDirectories(store.rootDir)
-  if (sessionSegments.length === 0) {
-    return { removed }
+  // Read again at every statement: the host may close the connection while the sweep awaits disk.
+  const { database } = facts
+  for (const uploadId of withDatabase(database, listUploadsBeingSwept) ?? []) {
+    await removeQuietly(join(store.rootDir, uploadId))
+    withDatabase(database, (db) => finishUploadSweep(db, uploadId))
   }
-  const recorded = facts.recordedSessionIds()
-  const sessionIdBySegment = new Map<string, string>()
-  for (const sessionId of recorded ?? []) {
-    sessionIdBySegment.set(journalPathSegment(sessionId), sessionId)
-  }
-  for (const sessionSegment of sessionSegments) {
-    const sessionDir = join(store.rootDir, sessionSegment)
-    const sessionId = sessionIdBySegment.get(sessionSegment) ?? null
-    const recordsComplete = recorded !== null
-    for (const uploadId of await listDirectories(sessionDir)) {
-      if (store.isUploadInFlight(uploadId)) {
-        continue
-      }
-      const uploadDir = join(sessionDir, uploadId)
-      const verdict = await uploadVerdict(uploadDir, {
-        sessionId,
-        recordsComplete,
-        facts,
-        now,
-        knownReferenced
-      })
-      if (verdict === 'remove') {
+  for (const uploadId of await listDirectories(store.rootDir)) {
+    if (store.isUploadInFlight(uploadId)) {
+      continue
+    }
+    const uploadDir = join(store.rootDir, uploadId)
+    const stored = (await listEntries(uploadDir)).some(
+      (entry) => entry !== AGENT_SESSION_ATTACHMENT_PART_FILE
+    )
+    const ageMs = now - (await modifiedAt(uploadDir))
+    if (!stored) {
+      if (ageMs > ABANDONED_PART_MAX_AGE_MS) {
         await removeQuietly(uploadDir)
         removed.push(uploadDir)
       }
-      // Each scan can read a long journal; let other work run between uploads.
-      await new Promise((resolve) => setImmediate(resolve))
+      continue
     }
-    // Non-recursive, so an upload that starts in this chat meanwhile keeps its directory.
-    await rmdir(sessionDir).catch(() => {})
+    // A claim landing first keeps the upload; this mark landing first refuses that claim.
+    if (
+      ageMs <= UNCLAIMED_ATTACHMENT_MAX_AGE_MS ||
+      withDatabase(database, (db) => markUnclaimedUploadForSweep(db, uploadId, now)) !== true
+    ) {
+      continue
+    }
+    await removeQuietly(uploadDir)
+    withDatabase(database, (db) => finishUploadSweep(db, uploadId))
+    removed.push(uploadDir)
   }
+  withDatabase(database, (db) =>
+    pruneAgentSessionAttachmentClaims(db, {
+      root: store.rootDir,
+      recordedSessionIds: facts.recordedSessionIds()
+    })
+  )
   return { removed }
 }
 
-async function uploadVerdict(
-  uploadDir: string,
-  context: {
-    sessionId: string | null
-    recordsComplete: boolean
-    facts: AgentSessionAttachmentSweepFacts
-    now: number
-    knownReferenced: Set<string>
-  }
-): Promise<'keep' | 'remove'> {
-  const { sessionId, recordsComplete, facts, now, knownReferenced } = context
-  const entries = await listEntries(uploadDir)
-  const stored = entries.filter((entry) => entry !== AGENT_SESSION_ATTACHMENT_PART_FILE)
-  const ageMs = now - (await modifiedAt(uploadDir))
-  if (stored.length === 0) {
-    return ageMs > ABANDONED_PART_MAX_AGE_MS ? 'remove' : 'keep'
-  }
-  if (ageMs <= UNSENT_ATTACHMENT_MAX_AGE_MS) {
-    return 'keep'
-  }
-  if (sessionId === null) {
-    return recordsComplete ? 'remove' : 'keep'
-  }
-  const path = join(uploadDir, stored[0])
-  if (knownReferenced.has(path)) {
-    return 'keep'
-  }
-  // Journal rows are JSON, so the path appears there escaped.
-  const mentioned = facts.journalMentions(sessionId, JSON.stringify(path).slice(1, -1))
-  if (mentioned === true) {
-    knownReferenced.add(path)
-  }
-  return mentioned === false ? 'remove' : 'keep'
+function withDatabase<T>(
+  database: AgentSessionAttachmentSweepFacts['database'],
+  run: (db: Database.Database) => T
+): T | undefined {
+  const db = database()
+  return db ? run(db) : undefined
 }
 
 async function listEntries(dir: string): Promise<string[]> {
@@ -150,7 +130,6 @@ export function startAgentSessionAttachmentSweeps(
     onError: (error: unknown) => void
   }
 ): AgentSessionAttachmentSweeper {
-  const knownReferenced = new Set<string>()
   let running = false
   let stopped = false
   const run = (): void => {
@@ -158,7 +137,7 @@ export function startAgentSessionAttachmentSweeps(
       return
     }
     running = true
-    void sweepAgentSessionAttachments(store, facts, Date.now(), knownReferenced)
+    void sweepAgentSessionAttachments(store, facts)
       .catch(options.onError)
       .finally(() => {
         running = false
