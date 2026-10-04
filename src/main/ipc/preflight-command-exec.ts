@@ -173,14 +173,17 @@ async function probeRunnableLocalCommand(command: string): Promise<LocalCommandP
   const candidates = explicit ? [] : await localProbeCandidates(command, env)
   const probes = candidates.length ? candidates.slice(0, PREFLIGHT_LOCAL_PROBE_LIMIT) : [command]
   const deadline = Date.now() + PREFLIGHT_COMMAND_TIMEOUT_MS
+  let recoveryDeadline: number | undefined
   let timedOutBinary: string | undefined
   for (const [index, binary] of probes.entries()) {
-    const remainingMs = deadline - Date.now()
+    const remainingMs = (recoveryDeadline ?? deadline) - Date.now()
     if (remainingMs <= 0) {
       return { status: 'timeout', binary }
     }
-    // Leave time for a working copy behind a launcher that never returns.
-    const timeoutMs = Math.max(1, Math.floor(remainingMs / (probes.length - index)))
+    // Healthy CLIs keep their full budget; only timeout recovery divides a second budget.
+    const timeoutMs = recoveryDeadline
+      ? Math.max(1, Math.floor(remainingMs / (probes.length - index)))
+      : remainingMs
     try {
       await execLocalPreflightCommandOrThrow(binary, ['--version'], {
         env,
@@ -191,6 +194,7 @@ async function probeRunnableLocalCommand(command: string): Promise<LocalCommandP
     } catch (error) {
       if (probeTimedOut(error)) {
         timedOutBinary = binary
+        recoveryDeadline ??= Date.now() + PREFLIGHT_COMMAND_TIMEOUT_MS
         continue
       }
       if (

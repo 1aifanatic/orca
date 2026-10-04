@@ -303,11 +303,11 @@ describe('findRunnableLocalCommand', () => {
     expect(execFileAsyncMock).not.toHaveBeenCalled()
   })
 
-  it('shares the five second timeout across failed candidates', async () => {
+  it('allows one bounded recovery budget after a launcher times out', async () => {
     let now = 1000
     vi.spyOn(Date, 'now').mockImplementation(() => now)
     execFileAsyncMock.mockImplementation(async (command: string) => {
-      now += command === shim ? 1666 : 1667
+      now += command === shim ? 5000 : 2500
       throw Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' })
     })
 
@@ -316,7 +316,27 @@ describe('findRunnableLocalCommand', () => {
       binary: third
     })
     expect(execFileAsyncMock.mock.calls.map(([, , options]) => options.timeout)).toEqual([
-      1666, 1667, 1667
+      5000, 2500, 2500
+    ])
+  })
+
+  it('shares the original five seconds across ordinary failures', async () => {
+    let now = 1000
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    execFileAsyncMock.mockImplementation(async (command: string) => {
+      if (command === third) {
+        return { stdout: 'gh version fixture', stderr: '' }
+      }
+      now += command === shim ? 4000 : 500
+      throw Object.assign(new Error('cannot execute'), { code: 126 })
+    })
+
+    await expect(findRunnableLocalCommand('gh')).resolves.toEqual({
+      status: 'available',
+      binary: third
+    })
+    expect(execFileAsyncMock.mock.calls.map(([, , options]) => options.timeout)).toEqual([
+      5000, 1000, 500
     ])
   })
 
