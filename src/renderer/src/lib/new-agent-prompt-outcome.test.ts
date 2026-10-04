@@ -127,6 +127,7 @@ const chat = launchIntent('session-notes')
 function sendNotesToNewAgent(options: { paired?: boolean } = {}) {
   const onDelivered = vi.fn()
   const launch = startStructuredAgentLaunch(WORKTREE_ID, 'codex', {
+    requestId: 'request-1',
     prompt: NOTES,
     promptDelivery: 'submit-after-ready'
   })

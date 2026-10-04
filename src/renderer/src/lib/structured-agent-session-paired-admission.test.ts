@@ -38,6 +38,7 @@ const INITIAL_SETTINGS = useAppStore.getState().settings
 
 function pairedPlan(overrides: { resumeFrom?: { providerSessionId: string } } = {}) {
   return adoptAgentSessionLaunchVerdict({
+    requestId: 'request-1',
     route: 'structured-native-chat',
     agent: 'claude',
     worktreeId: WORKTREE,
@@ -149,7 +150,7 @@ describe('a structured chat launch on a paired server', () => {
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: resume reads only the id fields the preparation mock ignores.
     const session = { id: 'vault-1', sessionId: 'provider-1' } as AiVaultSession
 
-    await resumeAiVaultSessionInNewChat(session, 'claude', WORKTREE)
+    await resumeAiVaultSessionInNewChat(session, 'claude', WORKTREE, 'resume-click')
 
     await vi.waitFor(() => expect(mocks.toastError).toHaveBeenCalled())
     await new Promise((resolve) => setTimeout(resolve, 0))

@@ -4,11 +4,7 @@ import type { ReactNode } from 'react'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { StructuredLaunchState } from '@/lib/structured-agent-session-launch-registry'
-import {
-  BLANK_STRUCTURED_LAUNCH_REQUEST,
-  structuredLaunchRequest,
-  type StructuredLaunchAttempt
-} from '@/lib/structured-agent-session-launch-request'
+import type { StructuredLaunchAttempt } from '@/lib/structured-agent-session-launch-request'
 
 vi.mock('@/hooks/useDetectedAgents', () => ({
   useDetectedAgents: () => ({ detectedIds: ['claude', 'codex'] })
@@ -69,7 +65,8 @@ function registerLaunch(
   outcome: 'pending' | 'failed',
   attempt: StructuredLaunchAttempt = {
     kind: 'first',
-    request: BLANK_STRUCTURED_LAUNCH_REQUEST,
+    requestId: `${agent}-pick`,
+    blank: true,
     stagedEntry: null
   }
 ): void {
@@ -114,14 +111,15 @@ function agentRowDisabled(label: string): string | null | undefined {
     ?.getAttribute('aria-disabled')
 }
 
-describe('QuickLaunchAgentMenuItems launch status', () => {
+describe('QuickLaunchAgentMenuItems launches', () => {
   beforeEach(() => {
     localStorage.clear()
     resetStructuredAgentLaunchRegistryForTests()
   })
   afterEach(cleanup)
 
-  it('keeps an agent whose chat failed to start launchable while a starting one waits', () => {
+  // Each pick is its own request, so a chat starting, failing or retrying never blocks one.
+  it('keeps every agent launchable while chats start, fail or retry', () => {
     registerLaunch('claude', 'pending')
     registerLaunch('codex', 'failed')
 
@@ -132,52 +130,43 @@ describe('QuickLaunchAgentMenuItems launch status', () => {
         onFocusTerminal={vi.fn()}
       />
     )
-
-    expect(agentRowDisabled('Claude')).toBe('true')
+    expect(agentRowDisabled('Claude')).toBe('false')
     expect(agentRowDisabled('Codex')).toBe('false')
-  })
+    cleanup()
 
-  // A pick then opens a new chat; only a new start's own create would be joined.
-  it("keeps an agent launchable while a failed chat's Retry is in flight", () => {
-    registerLaunch('claude', 'pending')
     registerLaunch('codex', 'pending', { kind: 'retry' })
-
     render(
       <QuickLaunchAgentMenuItems
         worktreeId={WORKTREE_ID}
         groupId="group-1"
         onFocusTerminal={vi.fn()}
+        prompt="review notes"
       />
     )
-
-    expect(agentRowDisabled('Claude')).toBe('true')
     expect(agentRowDisabled('Codex')).toBe('false')
   })
 
-  // A pick joins only a start of the same request; any other opens its own chat.
-  it('disables an agent only for the request its starting chat carries', () => {
-    registerLaunch('codex', 'pending', {
-      kind: 'first',
-      request: structuredLaunchRequest({ prompt: 'review notes' }),
-      stagedEntry: null
+  it('gives each pick its own request, so a second pick opens its own chat', () => {
+    launchMock.mockReset()
+    launchMock.mockReturnValue({
+      surface: { kind: 'local-agent-session', tabId: 'tab-1', sessionId: 'codex-session' }
     })
-    const menu = (prompt?: string) => (
+    render(
       <QuickLaunchAgentMenuItems
         worktreeId={WORKTREE_ID}
         groupId="group-1"
         onFocusTerminal={vi.fn()}
-        {...(prompt ? { prompt } : {})}
+        prompt="review notes"
       />
     )
+    const codexRow = document.querySelector('[title="Launch Codex in a new terminal"]')!
+    fireEvent.click(codexRow)
+    fireEvent.click(codexRow)
 
-    render(menu())
-    expect(agentRowDisabled('Codex')).toBe('false')
-    cleanup()
-    render(menu('other notes'))
-    expect(agentRowDisabled('Codex')).toBe('false')
-    cleanup()
-    render(menu('review notes'))
-    expect(agentRowDisabled('Codex')).toBe('true')
+    const requestIds = launchMock.mock.calls.map(([args]) => args.requestId)
+    expect(requestIds).toHaveLength(2)
+    expect(requestIds[0]).toEqual(expect.any(String))
+    expect(requestIds[1]).not.toBe(requestIds[0])
   })
 
   // Why: the notes menu holds what it sent until this result, so a second send leaves them out.

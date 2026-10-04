@@ -184,6 +184,7 @@ describe('startStructuredAgentLaunch', () => {
     ])
 
     const launch = startStructuredAgentLaunch(worktreeId, 'codex', {
+      requestId: 'request-1',
       prompt: 'PR #19423 — review this change',
       promptDelivery: 'draft'
     })
@@ -213,6 +214,7 @@ describe('startStructuredAgentLaunch', () => {
     const sixtyLineDraft = Array.from({ length: 60 }, (_, i) => `line ${i + 1}`).join('\n')
 
     const launch = startStructuredAgentLaunch(worktreeId, 'codex', {
+      requestId: 'request-2',
       prompt: sixtyLineDraft,
       promptDelivery: 'draft'
     })
@@ -234,6 +236,7 @@ describe('startStructuredAgentLaunch', () => {
     mocks.launch.mockRejectedValueOnce(new StructuredAgentSessionCreateRefusalError('refused'))
 
     const launch = startStructuredAgentLaunch(worktreeId, 'codex', {
+      requestId: 'request-3',
       prompt: 'review this',
       promptDelivery: 'draft'
     })
@@ -256,6 +259,7 @@ describe('startStructuredAgentLaunch', () => {
     vi.mocked(launchAndReconcile).mockRejectedValueOnce(new Error('boom'))
 
     const launch = startStructuredAgentLaunch(worktreeId, 'codex', {
+      requestId: 'request-4',
       prompt: 'review this',
       promptDelivery: 'draft'
     })
@@ -278,6 +282,7 @@ describe('startStructuredAgentLaunch', () => {
     )
 
     startStructuredAgentLaunch(worktreeId, 'codex', {
+      requestId: 'request-5',
       prompt: 'review this',
       promptDelivery: 'draft'
     })
@@ -304,7 +309,7 @@ describe('startStructuredAgentLaunch', () => {
       value: { submission: { dispatchState: 'accepted' } }
     })
 
-    startStructuredAgentLaunch(worktreeId, 'codex')
+    startStructuredAgentLaunch(worktreeId, 'codex', { requestId: 'request-6' })
     await flushLaunchSettlement()
 
     expect(mocks.launch).toHaveBeenCalledOnce()
@@ -324,8 +329,8 @@ describe('startStructuredAgentLaunch', () => {
       publishedSnapshot(worktreeId, `codex-session-${worktreeId}`)
     ])
 
-    const claude = startStructuredAgentLaunch(worktreeId, 'claude')
-    const codex = startStructuredAgentLaunch(worktreeId, 'codex')
+    const claude = startStructuredAgentLaunch(worktreeId, 'claude', { requestId: 'request-7' })
+    const codex = startStructuredAgentLaunch(worktreeId, 'codex', { requestId: 'request-8' })
     await flushLaunchSettlement()
 
     expect(mocks.createIntent).toHaveBeenNthCalledWith(
@@ -358,7 +363,9 @@ describe('startStructuredAgentLaunch', () => {
     const worktreeId = 'wt-claude-refused'
     mocks.launch.mockRejectedValue(new StructuredAgentSessionCreateRefusalError('unsupported'))
 
-    const { sessionId } = startStructuredAgentLaunch(worktreeId, 'claude')
+    const { sessionId } = startStructuredAgentLaunch(worktreeId, 'claude', {
+      requestId: 'request-9'
+    })
     await flushLaunchSettlement()
     expect(getStructuredAgentSessionLaunchLifecycle(worktreeId, sessionId)).toBe('failed')
 
@@ -388,7 +395,7 @@ describe('startStructuredAgentLaunch', () => {
       publishedSnapshot(worktreeId, intent.sessionId)
     ])
 
-    startStructuredAgentLaunch(worktreeId, 'codex')
+    startStructuredAgentLaunch(worktreeId, 'codex', { requestId: 'request-10' })
     await flushLaunchSettlement()
 
     expect(mocks.launch).toHaveBeenCalledOnce()
@@ -415,8 +422,8 @@ describe('startStructuredAgentLaunch', () => {
       value: { submission: { dispatchState: 'accepted' } }
     })
 
-    startStructuredAgentLaunch(worktreeId, 'codex')
-    startStructuredAgentLaunch(worktreeId, 'codex')
+    startStructuredAgentLaunch(worktreeId, 'codex', { requestId: 'double-click' })
+    startStructuredAgentLaunch(worktreeId, 'codex', { requestId: 'double-click' })
 
     expect(mocks.createIntent).toHaveBeenCalledOnce()
     expect(mocks.launch).toHaveBeenCalledOnce()
@@ -442,8 +449,14 @@ describe('startStructuredAgentLaunch', () => {
       ok: true,
       value: { submission: { dispatchState: 'accepted' } }
     })
-    const first = startStructuredAgentLaunch(worktreeId, 'codex', { prompt: 'second prompt' })
-    const second = startStructuredAgentLaunch(worktreeId, 'codex', { prompt: 'second prompt' })
+    const first = startStructuredAgentLaunch(worktreeId, 'codex', {
+      requestId: 'double-click',
+      prompt: 'second prompt'
+    })
+    const second = startStructuredAgentLaunch(worktreeId, 'codex', {
+      requestId: 'double-click',
+      prompt: 'second prompt'
+    })
 
     resolveLaunch({ sessionId: intent.sessionId, fence: 1 })
     for (const caller of [first, second]) {
@@ -485,12 +498,19 @@ describe('startStructuredAgentLaunch', () => {
       () => new Promise((resolve) => pendingSends.push(resolve))
     )
 
-    startStructuredAgentLaunch(worktreeId, 'codex', { prompt: 'second prompt' })
-    const coalesced = startStructuredAgentLaunch(worktreeId, 'codex', { prompt: 'second prompt' })
+    startStructuredAgentLaunch(worktreeId, 'codex', {
+      requestId: 'double-click',
+      prompt: 'second prompt'
+    })
+    const coalesced = startStructuredAgentLaunch(worktreeId, 'codex', {
+      requestId: 'double-click',
+      prompt: 'second prompt'
+    })
     resolveLaunch({ sessionId: intent.sessionId, fence: 1 })
     await vi.waitFor(() => expect(mocks.callStructuredAgentSession).toHaveBeenCalledOnce())
 
     const whileSending = startStructuredAgentLaunch(worktreeId, 'codex', {
+      requestId: 'double-click',
       prompt: 'second prompt'
     })
     expect(mocks.createIntent).toHaveBeenCalledOnce()
@@ -516,9 +536,15 @@ describe('startStructuredAgentLaunch', () => {
     mocks.launch.mockRejectedValue(new Error('offline'))
     vi.mocked(refreshLocalStructuredSessionTabs).mockResolvedValue([])
 
-    startStructuredAgentLaunch(worktreeId, 'codex', { prompt: 'first prompt' })
+    startStructuredAgentLaunch(worktreeId, 'codex', {
+      requestId: 'request-18',
+      prompt: 'first prompt'
+    })
     await flushLaunchSettlement()
-    const second = startStructuredAgentLaunch(worktreeId, 'codex', { prompt: 'second prompt' })
+    const second = startStructuredAgentLaunch(worktreeId, 'codex', {
+      requestId: 'request-19',
+      prompt: 'second prompt'
+    })
     await flushLaunchSettlement()
 
     expect(mocks.createIntent).toHaveBeenCalledTimes(2)
@@ -539,7 +565,7 @@ describe('startStructuredAgentLaunch', () => {
       publishedSnapshot(worktreeId, intent.sessionId)
     ])
 
-    startStructuredAgentLaunch(worktreeId, 'codex')
+    startStructuredAgentLaunch(worktreeId, 'codex', { requestId: 'request-20' })
     await flushLaunchSettlement()
 
     expect(mocks.createIntent).toHaveBeenCalledOnce()
@@ -557,7 +583,7 @@ describe('startStructuredAgentLaunch', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     try {
-      startStructuredAgentLaunch(worktreeId, 'codex')
+      startStructuredAgentLaunch(worktreeId, 'codex', { requestId: 'request-21' })
       await flushLaunchSettlement()
 
       expect(getStructuredAgentSessionLaunchLifecycle(worktreeId, intent.sessionId)).toBe(
@@ -581,7 +607,7 @@ describe('startStructuredAgentLaunch', () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([publishedSnapshot(worktreeId, intent.sessionId)])
 
-    startStructuredAgentLaunch(worktreeId, 'codex')
+    startStructuredAgentLaunch(worktreeId, 'codex', { requestId: 'request-22' })
     await flushLaunchSettlement()
 
     expect(mocks.launch).toHaveBeenCalledTimes(2)
@@ -600,13 +626,13 @@ describe('startStructuredAgentLaunch', () => {
     mocks.launch.mockRejectedValue(new Error('offline'))
     vi.mocked(refreshLocalStructuredSessionTabs).mockResolvedValue([])
 
-    startStructuredAgentLaunch(worktreeId, 'codex', { resumeFrom })
+    startStructuredAgentLaunch(worktreeId, 'codex', { requestId: 'request-23', resumeFrom })
     await flushLaunchSettlement()
 
     vi.mocked(refreshLocalStructuredSessionTabs).mockResolvedValue([
       publishedSnapshot(worktreeId, intent.sessionId)
     ])
-    startStructuredAgentLaunch(worktreeId, 'codex', { resumeFrom })
+    startStructuredAgentLaunch(worktreeId, 'codex', { requestId: 'request-24', resumeFrom })
     await flushLaunchSettlement()
 
     expect(mocks.createIntent).toHaveBeenCalledOnce()
@@ -621,7 +647,10 @@ describe('startStructuredAgentLaunch', () => {
     mocks.launch.mockRejectedValue(new Error('offline'))
     vi.mocked(refreshLocalStructuredSessionTabs).mockResolvedValue([])
 
-    const first = startStructuredAgentLaunch(worktreeId, 'codex', { prompt: 'only once' })
+    const first = startStructuredAgentLaunch(worktreeId, 'codex', {
+      requestId: 'request-25',
+      prompt: 'only once'
+    })
     await expect(first.launchResult).rejects.toThrow('offline')
     expect(first.releaseCallerAfterUnknownOutcome()).toBe(true)
 
@@ -656,7 +685,7 @@ describe('startStructuredAgentLaunch', () => {
     )
     vi.mocked(refreshLocalStructuredSessionTabs).mockResolvedValue([])
 
-    const launch = startStructuredAgentLaunch(worktreeId, 'codex')
+    const launch = startStructuredAgentLaunch(worktreeId, 'codex', { requestId: 'request-26' })
 
     await expect(launch.launchResult).rejects.toMatchObject({
       code: 'agent_session_operation_unknown'
@@ -678,7 +707,7 @@ describe('startStructuredAgentLaunch', () => {
       publishedSnapshot(worktreeId, first.sessionId)
     ])
 
-    startStructuredAgentLaunch(worktreeId, 'codex')
+    startStructuredAgentLaunch(worktreeId, 'codex', { requestId: 'request-27' })
     await flushLaunchSettlement()
     expect(retryStructuredAgentSessionLaunch(worktreeId, first.sessionId)).toBe(true)
     await flushLaunchSettlement()
@@ -712,7 +741,7 @@ describe('startStructuredAgentLaunch', () => {
         }
       )
 
-    startStructuredAgentLaunch(worktreeId, 'codex')
+    startStructuredAgentLaunch(worktreeId, 'codex', { requestId: 'request-28' })
     await flushLaunchSettlement()
     expect(getStructuredAgentSessionLaunchSelection(intent.sessionId)?.seed).toEqual({
       model: 'gpt-5.5'
@@ -743,6 +772,7 @@ describe('startStructuredAgentLaunch', () => {
     ])
 
     startStructuredAgentLaunch(worktreeId, 'codex', {
+      requestId: 'request-29',
       resumeFrom: { providerSessionId: 'provider-session-1' }
     })
     await flushLaunchSettlement()
@@ -761,7 +791,10 @@ describe('startStructuredAgentLaunch', () => {
       throw new Error('storage unavailable')
     })
 
-    const result = startStructuredAgentLaunch(worktreeId, 'codex', { prompt: 'start this task' })
+    const result = startStructuredAgentLaunch(worktreeId, 'codex', {
+      requestId: 'request-30',
+      prompt: 'start this task'
+    })
 
     await expect(result.launchResult).rejects.toBeInstanceOf(
       StructuredAgentSessionCreateRefusalError
@@ -785,8 +818,14 @@ describe('startStructuredAgentLaunch', () => {
       () => new Promise((_resolve, reject) => (rejectLaunch = reject))
     )
 
-    const first = startStructuredAgentLaunch(worktreeId, 'codex', { prompt: 'first prompt' })
-    const second = startStructuredAgentLaunch(worktreeId, 'codex', { prompt: 'first prompt' })
+    const first = startStructuredAgentLaunch(worktreeId, 'codex', {
+      requestId: 'double-click',
+      prompt: 'first prompt'
+    })
+    const second = startStructuredAgentLaunch(worktreeId, 'codex', {
+      requestId: 'double-click',
+      prompt: 'first prompt'
+    })
     expect(readOutbox(intent.sessionId)).toHaveLength(1)
 
     rejectLaunch(new StructuredAgentSessionCreateRefusalError('unsupported'))
@@ -804,7 +843,7 @@ describe('startStructuredAgentLaunch', () => {
     expect(readOutbox(intent.sessionId)).toHaveLength(1)
   })
 
-  it('opens a new chat for the same text asked to be sent instead of drafted', async () => {
+  it('keeps a drafted chat out of a second action that sends the same text', async () => {
     const worktreeId = 'wt-coalesced-delivery-mode'
     const drafted = launchIntent(worktreeId, 'coalesced-delivery-session')
     const sent = launchIntent(worktreeId, 'sent-delivery-session')
@@ -822,15 +861,17 @@ describe('startStructuredAgentLaunch', () => {
     })
 
     startStructuredAgentLaunch(worktreeId, 'codex', {
+      requestId: 'continue-click',
       prompt: 'PR #1 context',
       promptDelivery: 'draft'
     })
     const other = startStructuredAgentLaunch(worktreeId, 'codex', {
+      requestId: 'fix-click',
       prompt: 'PR #1 context',
       promptDelivery: 'auto-submit'
     })
 
-    // Why: a draft and a send are different requests; neither lands in the other's chat.
+    // Why: two actions are two chats, whatever their text; neither lands in the other's chat.
     expect(other.sessionId).toBe(sent.sessionId)
     await expect(other.promptDeliveryResult).resolves.toEqual({
       delivered: true,

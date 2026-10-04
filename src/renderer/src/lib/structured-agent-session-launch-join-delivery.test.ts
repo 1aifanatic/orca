@@ -163,8 +163,13 @@ describe('coalesced launch delivery mode', () => {
     const { intent, joiner } = await coalesce({
       worktreeId: 'wt-unset-delivery-mode',
       sessionId: 'unset-delivery-session',
-      established: { resumeFrom },
-      joining: { resumeFrom, prompt: 'PR context', promptDelivery: 'draft' }
+      established: { requestId: 'resume-click', resumeFrom },
+      joining: {
+        requestId: 'another-resume-click',
+        resumeFrom,
+        prompt: 'PR context',
+        promptDelivery: 'draft'
+      }
     })
 
     // Why: an unset established mode must not read as submit; the joiner never consented to send.
