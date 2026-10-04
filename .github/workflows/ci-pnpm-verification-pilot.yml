@@ -1,11 +1,11 @@
-name: Paired unit source comparison
+name: Shard rebalance holdout
 on:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   paired:
-    name: paired unit node 24 shard ${{ matrix.shard }}/5
+    name: rebalance unit node 24 shard ${{ matrix.shard }}/5
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 120
     strategy:
@@ -20,21 +20,21 @@ jobs:
           persist-credentials: false
       - name: Unpack frozen trial inputs outside checkout
         run: |
-          mkdir -p "$RUNNER_TEMP/full-suite-bundle" "$RUNNER_TEMP/paired-unit"
-          tar -xzf config/ci-capacity-benchmark/full-suite.tar.gz -C "$RUNNER_TEMP/full-suite-bundle"
-          test -f "$RUNNER_TEMP/full-suite-bundle/overlay-manifest.json"
+          mkdir -p "$RUNNER_TEMP/rebalance-bundle" "$RUNNER_TEMP/rebalance-unit"
+          tar -xzf config/ci-capacity-benchmark/shard-rebalance.tar.gz -C "$RUNNER_TEMP/rebalance-bundle"
+          test -f "$RUNNER_TEMP/rebalance-bundle/holdout-manifest.json"
       - name: Checkout fixed final source
         uses: actions/checkout@v6
         with:
           ref: 9574c8adb253c0e4084ad7697db16e7380f218d2
           persist-credentials: false
       - name: Mark dependency setup start
-        run: python3 -c 'import os,time; open(os.environ["GITHUB_ENV"],"a").write("PAIR_SETUP_STARTED_AT="+str(time.time())+"\n")'
+        run: python3 -c 'import os,time; open(os.environ["GITHUB_ENV"],"a").write("PAIR_SETUP_STARTED_AT="+str(time.monotonic())+"\n")'
       - uses: ./.github/actions/install-node-dependencies
         id: deps
         with:
           native-runtime: node
-          node-version: '24'
+          node-version: '24.21.0'
           cache-electron-package: 'true'
       - name: Install Electron package binary for tests
         run: node config/scripts/install-electron-package-binary.mjs
@@ -44,27 +44,24 @@ jobs:
           PAIR_SHARD: ${{ matrix.shard }}
         run: |
           python3 - <<'PY'
-          import json, os, pathlib, time
+          import json, os, pathlib, subprocess, time
           record = {'shard': int(os.environ['PAIR_SHARD']),
-                    'dependencySetupSeconds': time.time() - float(os.environ['PAIR_SETUP_STARTED_AT']),
+                    'dependencySetupSeconds': time.monotonic() - float(os.environ['PAIR_SETUP_STARTED_AT']),
+                    'sourceSha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+                    'runId': os.environ['GITHUB_RUN_ID'], 'runAttempt': os.environ['GITHUB_RUN_ATTEMPT'],
                     'dependencyOutputs': json.loads(os.environ['PAIR_DEPENDENCY_OUTPUTS'])}
-          pathlib.Path(os.environ['RUNNER_TEMP'], 'paired-unit', 'shared-setup.json').write_text(json.dumps(record, indent=2))
+          pathlib.Path(os.environ['RUNNER_TEMP'], 'rebalance-unit', 'shared-setup.json').write_text(json.dumps(record, indent=2))
           PY
-      - name: Run counterbalanced source arms
+      - name: Run counterbalanced assignment arms
         env:
           ORCA_BACKGROUND_LAUNCH: '1'
-        run: python3 "$RUNNER_TEMP/full-suite-bundle/run-paired-shard.py" --shard ${{ matrix.shard }} --rounds 1 --out "$RUNNER_TEMP/paired-unit" --execute
-      - name: Run added batching qualification outside timing
-        if: ${{ !cancelled() && matrix.shard == 1 }}
-        env:
-          ORCA_BACKGROUND_LAUNCH: '1'
-        run: python3 "$RUNNER_TEMP/full-suite-bundle/run-paired-shard.py" --shard 1 --out "$RUNNER_TEMP/paired-unit" --execute --qualify
+        run: python3 "$RUNNER_TEMP/rebalance-bundle/run-paired-shard.py" --shard ${{ matrix.shard }} --out "$RUNNER_TEMP/rebalance-unit" --execute
       - name: Upload all source, case and timing evidence
         if: always()
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: paired-unit-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/paired-unit
+          name: rebalance-unit-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rebalance-unit
           retention-days: 14
           if-no-files-found: warn
