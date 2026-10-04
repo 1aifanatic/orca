@@ -32,6 +32,7 @@ export type ManagedProviderProcess = {
   readonly exited: boolean
   readonly processless: boolean
   readonly rootVerdict: ProviderProcessVerdict
+  /** Cleanup failed in a close that observed the root exit. */
   readonly teardownUnproven: boolean
   readonly exitPromise: Promise<void>
   onExit(listener: (exit: ProviderProcessExit) => void): void
@@ -130,7 +131,7 @@ export function spawnManagedProviderProcess(
           terminateTree
         })
         if (result.teardownAccepted !== undefined) {
-          teardownUnproven = !result.teardownAccepted
+          teardownUnproven = !result.teardownAccepted && result.verdict === 'exited'
         }
         return result.verdict
       })

@@ -231,6 +231,19 @@ describe('managed provider process', () => {
     expect(managed.teardownUnproven).toBe(true)
   })
 
+  it('keeps the cleanup diagnostic tied to the close that finished before a late root exit', async () => {
+    vi.useFakeTimers()
+    const fixture = fakeChild()
+    const managed = launch(fixture, 'win32')
+    mocks.windowsTree.mockRejectedValueOnce(new Error('tree teardown unavailable'))
+    const close = managed.close()
+    await vi.advanceTimersByTimeAsync(150)
+    await expect(close).resolves.toBe('unverifiable')
+    fixture.child.emit('exit', null, 'SIGKILL')
+    await expect(managed.close()).resolves.toBe('exited')
+    expect(managed.teardownUnproven).toBe(false)
+  })
+
   it('lets a supervised caller signal immediately and waits its configured grace before forcing', async () => {
     vi.useFakeTimers()
     const fixture = fakeChild()
