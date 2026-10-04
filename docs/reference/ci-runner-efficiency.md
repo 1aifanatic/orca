@@ -2318,6 +2318,36 @@ serializer case ledger was also independently corrected from the original source
 before this fresh trial; its seven original cases and twenty candidate cases are
 an explicit coverage change rather than an assumed equal census.
 
+## October 4 shard-weight holdouts
+
+Fresh shard weights were generated with the production importer from a complete
+successful run of the accepted source. Two subsequent hosted holdouts used those
+same weights and assignments without retraining. The
+[first pair](https://github.com/stablyai/orca/actions/runs/37199891967) alternated
+existing and fresh assignments across the five jobs; the
+[second pair](https://github.com/stablyai/orca/actions/runs/37201939057) reversed
+each job's treatment order.
+
+| Test-process measurement | First: existing | First: fresh | Reversed: existing | Reversed: fresh |
+| ------------------------ | --------------- | ------------ | ------------------ | --------------- |
+| Sum across five shards   | 2813.595s       | 2776.421s    | 2924.689s          | 2878.481s       |
+| Maximum shard wall       | 578.735s        | 584.709s     | 603.995s           | 614.408s        |
+
+Fresh weights reduced summed test-process time by 1.32% and 1.58%, but increased
+the slowest shard's time by 1.03% and 1.72%. The small capacity saving comes with
+a repeated critical-path regression, so the existing weights remain. The 3.01%
+improvement projected from training module durations is not a measured speed
+gain.
+
+Every arm covers the same 10,839 modules and 105,250 case outcomes on source
+`9574c8adb253`, tree `4d5487e8b827`, Node 24.21.0, Ubuntu ARM and four workers.
+Both trials use cold caches and the same training data, weights, plans and case
+identity rules. Complete raw reports, assignments, hashes and opposite treatment
+orders are checked before combining the results. Two pairs supply no statistical
+confidence or account-wide queue measurement. The second run's jobs started 119
+seconds apart; that stagger and the paired jobs' setup and upload costs are
+separate from the treatment timings above.
+
 ## October 4 remaining unit-test opportunities
 
 The audit retained real child-process, PTY, SSH and crash-boundary tests. It
