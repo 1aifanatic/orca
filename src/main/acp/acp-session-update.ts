@@ -6,6 +6,7 @@ import {
 } from '../native-chat/agent-session-journal/journal-payload-bounds'
 import { acpWindowUsage } from './acp-context-usage'
 import type { AcpDialect } from './acp-dialects/acp-dialect'
+import type { AcpBackgroundTaskTimeline } from './acp-background-task-timeline'
 import type { AcpToolTimeline } from './acp-tool-timeline'
 import type { SessionNotification } from './generated/acp-protocol.generated'
 
@@ -16,6 +17,7 @@ export function acpSessionUpdate(
   replay: boolean,
   tools: AcpToolTimeline,
   dialect: AcpDialect,
+  backgroundTasks: AcpBackgroundTaskTimeline,
   replayUserBody?: AgentJournalMessageItem,
   messageKey?: string
 ): ProviderTimelineEvent[] {
@@ -70,7 +72,10 @@ export function acpSessionUpdate(
         : []
     case 'tool_call':
     case 'tool_call_update':
-      return tools.translate(update, dialect, join.join)
+      return [
+        ...tools.translate(update, dialect, join.join),
+        ...backgroundTasks.translate(dialect.toolBackgroundTasks?.(update) ?? [], join.join)
+      ]
     case 'plan':
       return [
         {

@@ -5,7 +5,8 @@ import type {
 } from '../../shared/agent-session-journal-types'
 import { BoundedMap } from '../../shared/bounded-map'
 import type { ProviderTimelineEvent } from '../native-chat/agent-session-timeline/provider-timeline-event'
-import { acpNotificationEnvelopeSchema } from './acp-context-usage'
+import { acpNotificationEnvelopeSchema, AcpContextTimeline } from './acp-context-usage'
+import { AcpBackgroundTaskTimeline } from './acp-background-task-timeline'
 import {
   GENERIC_ACP_DIALECT,
   type AcpDialect,
@@ -42,14 +43,16 @@ export class AcpTimelineTranslator {
   private readonly dialect: AcpDialect
   private readonly prompts: AcpPromptTurns
   private readonly tools = new AcpToolTimeline()
+  private readonly backgroundTasks: AcpBackgroundTaskTimeline
   private readonly messages = new AcpTurnMessages()
   private readonly started = new BoundedMap<string, true>({ maxEntries: 128 })
   private replay?: LoadReplay
-  private window?: { tokens: number; capturedAt: number }
+  private readonly context = new AcpContextTimeline()
   private activeTurn?: string
 
   constructor(private readonly options: AcpTimelineTranslatorOptions) {
     this.dialect = options.dialect ?? GENERIC_ACP_DIALECT
+    this.backgroundTasks = new AcpBackgroundTaskTimeline(options.journalItems)
     this.prompts = new AcpPromptTurns(
       options.sessionId,
       this.dialect.injectedPromptIdentity === true
@@ -96,18 +99,7 @@ export class AcpTimelineTranslator {
   }
 
   contextModels(models: unknown, at: number): ProviderTimelineEvent[] {
-    const tokens = this.dialect.contextWindow?.(models)
-    if (tokens === undefined) {
-      return []
-    }
-    this.window = { tokens, capturedAt: at }
-    return [
-      {
-        type: 'context.usage',
-        usage: { window: this.window },
-        join: { thread: this.options.sessionId }
-      }
-    ]
+    return this.context.models(models, at, this.dialect, { thread: this.options.sessionId })
   }
 
   beginLoad(): void {
@@ -230,13 +222,11 @@ export class AcpTimelineTranslator {
       }
     }
     const join = { thread: this.options.sessionId, ...(turn === undefined ? {} : { turn }) }
+    if (extension?.backgroundTasks) {
+      events.push(...this.backgroundTasks.translate(extension.backgroundTasks, join))
+    }
     if (extension?.usage) {
-      this.window = extension.usage.window ?? this.window
-      events.push({
-        type: 'context.usage',
-        usage: { ...extension.usage, ...(this.window ? { window: this.window } : {}) },
-        join
-      })
+      events.push(...this.context.update(extension.usage, join))
     }
     if (extension?.end && turn) {
       if (
@@ -267,6 +257,7 @@ export class AcpTimelineTranslator {
           isReplay,
           this.tools,
           this.dialect,
+          this.backgroundTasks,
           replayUser?.body,
           messageKey
         )

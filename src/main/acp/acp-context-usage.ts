@@ -1,6 +1,36 @@
 import { z } from 'zod'
 import type { AgentSessionContextUsage } from '../../shared/agent-session-context-usage'
+import type {
+  ProviderTimelineEvent,
+  ProviderTimelineJoin
+} from '../native-chat/agent-session-timeline/provider-timeline-event'
+import type { AcpDialect } from './acp-dialects/acp-dialect'
 import type { UsageUpdate } from './generated/acp-protocol.generated'
+
+export class AcpContextTimeline {
+  private window?: { tokens: number; capturedAt: number }
+
+  models(
+    models: unknown,
+    at: number,
+    dialect: AcpDialect,
+    join: ProviderTimelineJoin
+  ): ProviderTimelineEvent[] {
+    const tokens = dialect.contextWindow?.(models)
+    return tokens === undefined ? [] : this.update({ window: { tokens, capturedAt: at } }, join)
+  }
+
+  update(usage: AgentSessionContextUsage, join: ProviderTimelineJoin): ProviderTimelineEvent[] {
+    this.window = usage.window ?? this.window
+    return [
+      {
+        type: 'context.usage',
+        usage: { ...usage, ...(this.window ? { window: this.window } : {}) },
+        join
+      }
+    ]
+  }
+}
 
 export function acpWindowUsage(update: UsageUpdate, at: number): AgentSessionContextUsage {
   return {

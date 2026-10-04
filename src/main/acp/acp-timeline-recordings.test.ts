@@ -128,7 +128,9 @@ describe('recorded ACP traffic through the journal', () => {
       ['completed', 'success'],
       ['completed', 'success']
     ])
-    const messages = rows.filter((row) => row.body.kind === 'message')
+    const messages = rows.filter(
+      (row) => row.body.kind === 'message' && row.body.role === 'assistant'
+    )
     expect(messages).toHaveLength(2)
     expect(messageText(messages[1]!.body)).toBe('The background')
     expect(messages[0]!.turnScope).not.toEqual(messages[1]!.turnScope)

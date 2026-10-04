@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { acpNotificationEnvelopeSchema } from '../acp-context-usage'
 import type { AcpDialect, AcpDialectNotification } from './acp-dialect'
 import { grokRequest } from './grok-requests'
+import { grokBackgroundTaskNotification, grokToolBackgroundTasks } from './grok-background-tasks'
 
 const tokenCount = z.number().int().nonnegative()
 const toolMetaSchema = z.object({ 'x.ai/tool': z.object({ name: z.string().min(1) }) })
@@ -55,6 +56,10 @@ function notification(
   at: number
 ): AcpDialectNotification | undefined {
   const canonical = method.startsWith('_') ? method.slice(1) : method
+  const backgroundTask = grokBackgroundTaskNotification(canonical, params)
+  if (backgroundTask) {
+    return backgroundTask
+  }
   if (canonical === 'x.ai/models/update') {
     const tokens = contextWindow(params)
     return tokens === undefined
@@ -125,6 +130,7 @@ export const GROK_ACP_DIALECT: AcpDialect = {
     return parsed.success ? parsed.data['x.ai/tool'].name : undefined
   },
   request: grokRequest,
+  toolBackgroundTasks: grokToolBackgroundTasks,
   notification,
   contextWindow
 }
