@@ -31,7 +31,7 @@ export function DeleteWorktreeDialogDescription({
         <> {descriptionSuffix}</>
       )}
       {showChangeLossWarning && (
-        <span className="mt-2 block">
+        <span className="mt-1 block">
           {translate(
             'components.workspace.delete.changes.permanentLoss',
             'Any uncommitted or untracked changes in Git workspaces will be permanently deleted.'

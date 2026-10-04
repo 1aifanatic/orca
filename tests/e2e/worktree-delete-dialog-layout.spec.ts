@@ -93,6 +93,7 @@ for (const scenario of ['single', 'children', 'batch'] as const) {
     await expect(dialog.getByText('Checking for changes…').first()).toBeVisible()
     await expect(dialog.getByText(/will be permanently deleted/)).toHaveCount(1)
     await page.screenshot({ path: testInfo.outputPath('checking.png') })
+    await dialog.screenshot({ path: testInfo.outputPath('checking-dialog.png') })
     const frames = await page.evaluate(async () => {
       const samples: {
         dialog: number[]
@@ -135,6 +136,7 @@ for (const scenario of ['single', 'children', 'batch'] as const) {
       await expect(dialog.getByText('Changes could not be checked')).toBeVisible()
     }
     await page.screenshot({ path: testInfo.outputPath('loaded.png') })
+    await dialog.screenshot({ path: testInfo.outputPath('loaded-dialog.png') })
     expect(frames.length).toBeGreaterThan(20)
     expect(frames[0]?.confirmFocused).toBe(true)
     for (const frame of frames) {
@@ -148,6 +150,7 @@ for (const scenario of ['single', 'children', 'batch'] as const) {
     await expect(page.getByText('src/pending-work.ts', { exact: true })).toBeVisible()
     await page.waitForTimeout(250)
     await page.screenshot({ path: testInfo.outputPath('details.png') })
+    await dialog.screenshot({ path: testInfo.outputPath('details-dialog.png') })
     expect(await dialog.boundingBox()).toEqual(beforeDetails)
     await page.keyboard.press('Escape')
     await expect(dialog).toBeVisible()

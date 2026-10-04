@@ -34,7 +34,7 @@ export function DeleteWorktreeDirtyChangeHint({
             )
           : translate('components.workspace.delete.changes.checking', 'Checking for changes…')
     return (
-      <div className="mt-1 flex h-6 min-w-0 items-center text-muted-foreground">
+      <div className="mt-0.5 flex h-4 min-w-0 items-center text-muted-foreground">
         <span className="truncate">{statusLabel}</span>
       </div>
     )
@@ -54,7 +54,7 @@ export function DeleteWorktreeDirtyChangeHint({
 
   if (!preview?.files.length) {
     return (
-      <div className="mt-1 flex h-6 min-w-0 items-center">
+      <div className="mt-0.5 flex h-4 min-w-0 items-center">
         <div className="flex w-fit max-w-full items-center gap-1.5 text-destructive">
           {warningLabel}
         </div>
@@ -63,13 +63,13 @@ export function DeleteWorktreeDirtyChangeHint({
   }
 
   return (
-    <div className="mt-1 flex h-6 min-w-0 items-center">
+    <div className="mt-0.5 flex h-4 min-w-0 items-center">
       <Popover>
         <PopoverTrigger asChild>
           <button
             type="button"
             aria-label={`${label}: ${translate('auto.components.sidebar.DeleteWorktreeDirtyChangeHint.showLoadedPaths', 'Show loaded paths')}`}
-            className="flex h-6 w-fit max-w-full cursor-pointer items-center gap-1.5 rounded-sm text-destructive hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            className="flex h-4 w-fit max-w-full cursor-pointer items-center gap-1.5 rounded-sm text-destructive hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           >
             {warningLabel}
             <ChevronRight className="size-3 shrink-0" />
