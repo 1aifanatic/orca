@@ -4,7 +4,7 @@
 // it never can, so the hold lapses on its own.
 
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
-import { structuredAgentSessionEntryHostWindowEndsAt } from '../../../../shared/structured-agent-session-send-settlement'
+import { structuredAgentSessionEntryHostWindowEndsAt } from '../../../../shared/structured-agent-session-outbox-settlement'
 
 type CarriedNote = { key: string; windowEndsAt: number }
 

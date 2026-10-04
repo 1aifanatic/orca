@@ -6,7 +6,7 @@ import { structuredAgentSessionEntryResendsUnconfirmed } from '../../../../share
 import {
   STRUCTURED_AGENT_SESSION_SEND_UNCONFIRMED_WORDS,
   structuredAgentSessionEntryOutlivedHostWindow
-} from '../../../../shared/structured-agent-session-send-settlement'
+} from '../../../../shared/structured-agent-session-outbox-settlement'
 import {
   commitStructuredAgentSessionOutbox,
   getStructuredAgentSessionOutbox

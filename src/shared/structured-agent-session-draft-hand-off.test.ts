@@ -8,7 +8,7 @@ import {
   type StructuredAgentSessionOutboxEntry
 } from './structured-agent-session-outbox'
 import { reconcileStructuredAgentSessionOutboxWithQueue } from './structured-agent-session-draft-hand-off'
-import { settleStructuredAgentSessionSendAnswer } from './structured-agent-session-send-settlement'
+import { settleStructuredAgentSessionSendAnswer } from './structured-agent-session-outbox-settlement'
 import { hasUnsentStructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox-stop-withdrawal'
 
 const entry: StructuredAgentSessionOutboxEntry = {

@@ -26,7 +26,7 @@ function goesOutOnItsOwn(
  * - A message that never went out is withdrawn here; its text goes back to the composer.
  * - One already on its way is stamped with the Stop's own id and never sent again: a resend onto the
  *   session the user stopped could start a turn. Its own answer, its journal row or the Stop's
- *   answer settles it (structured-agent-session-send-settlement).
+ *   answer settles it (structured-agent-session-outbox-settlement).
  * - One the host holds a row for is the journal's to settle.
  */
 export function stopStructuredAgentSessionOutbox(

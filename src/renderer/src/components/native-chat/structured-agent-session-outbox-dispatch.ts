@@ -1,6 +1,6 @@
 // The one sender of an outbox entry, for the open chat's drain and a launch prompt alike, and the
 // one place an answer changes the outbox: through the shared settlement
-// (structured-agent-session-send-settlement).
+// (structured-agent-session-outbox-settlement).
 
 import type {
   AgentSessionMutationResult,
@@ -11,12 +11,12 @@ import {
   readAgentSessionErrorRefusal
 } from '../../../../shared/agent-session-write-failure'
 import {
-  applyStructuredAgentSessionSendSettlement,
+  applyStructuredAgentSessionOutboxSettlement,
   settleStructuredAgentSessionSendAnswer,
   type StructuredAgentSessionSendAnswer,
-  type StructuredAgentSessionSendSettlement,
+  type StructuredAgentSessionOutboxSettlement,
   type StructuredAgentSessionSettledOutbox
-} from '../../../../shared/structured-agent-session-send-settlement'
+} from '../../../../shared/structured-agent-session-outbox-settlement'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
 import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
@@ -116,7 +116,7 @@ export function commitStructuredAgentSessionSettledOutbox(
 export function sayStructuredAgentSessionSettlement(
   sessionId: string,
   clientMessageId: string,
-  settlement: StructuredAgentSessionSendSettlement
+  settlement: StructuredAgentSessionOutboxSettlement
 ): void {
   if (settlement.kind === 'unanswered') {
     if (settlement.words) {
@@ -131,7 +131,7 @@ export function sayStructuredAgentSessionSettlement(
 
 /** How a settlement ends its entry for whoever waits on it, or null while it has not ended. */
 export function structuredAgentSessionSettlementEnding(
-  settlement: StructuredAgentSessionSendSettlement
+  settlement: StructuredAgentSessionOutboxSettlement
 ): StructuredAgentSessionEntryEnding | null {
   switch (settlement.kind) {
     case 'recorded':
@@ -149,7 +149,7 @@ export function structuredAgentSessionSettlementEnding(
 export function settleStructuredAgentSessionOutboxEntry(
   sessionId: string,
   clientMessageId: string,
-  settlement: StructuredAgentSessionSendSettlement
+  settlement: StructuredAgentSessionOutboxSettlement
 ): void {
   const current = getStructuredAgentSessionOutbox(sessionId)
   const entry = current.find((candidate) => candidate.clientMessageId === clientMessageId)
@@ -164,7 +164,7 @@ export function settleStructuredAgentSessionOutboxEntry(
       : settlement
   commitStructuredAgentSessionSettledOutbox(
     sessionId,
-    applyStructuredAgentSessionSendSettlement(current, clientMessageId, kept),
+    applyStructuredAgentSessionOutboxSettlement(current, clientMessageId, kept),
     () => {
       if (ending) {
         endStructuredAgentSessionEntry(entry, ending)
@@ -238,10 +238,10 @@ export async function sendStructuredAgentSessionOutboxEntry(args: {
   beforeSettle?: () => void
   /** Whether the loaded journal holds a row for the id; absent where no journal is loaded. */
   journalHasRow?: (clientMessageId: string) => boolean
-}): Promise<StructuredAgentSessionSendSettlement | null> {
+}): Promise<StructuredAgentSessionOutboxSettlement | null> {
   const { next } = args
   const sessionId = next.sessionId
-  const settle = (settlement: StructuredAgentSessionSendSettlement): void => {
+  const settle = (settlement: StructuredAgentSessionOutboxSettlement): void => {
     args.beforeSettle?.()
     settleStructuredAgentSessionOutboxEntry(sessionId, next.clientMessageId, settlement)
   }
@@ -255,7 +255,7 @@ export async function sendStructuredAgentSessionOutboxEntry(args: {
   if (!commitStructuredAgentSessionOutbox(sessionId, staged, { onlyIfSaved: true })) {
     // Unsaved, a send could go out that a reload never settles, and handing it back could repeat
     // one an earlier attempt landed: it waits, and the probe tries again.
-    const unsaved: StructuredAgentSessionSendSettlement = {
+    const unsaved: StructuredAgentSessionOutboxSettlement = {
       kind: 'unanswered',
       words: ['messageNotSaved', 'stillSending']
     }
@@ -297,8 +297,8 @@ export function dispatchStructuredAgentSessionOutboxEntry(args: {
   dispatchGenerationRef: MutableRef<number>
   inFlightIdRef: MutableRef<string | null>
   journalHasRow: (clientMessageId: string) => boolean
-}): { promise: Promise<StructuredAgentSessionSendSettlement | null>; started: boolean } {
-  const start = async (): Promise<StructuredAgentSessionSendSettlement | null> => {
+}): { promise: Promise<StructuredAgentSessionOutboxSettlement | null>; started: boolean } {
+  const start = async (): Promise<StructuredAgentSessionOutboxSettlement | null> => {
     args.inFlightIdRef.current = args.next.clientMessageId
     const isCurrent = (): boolean => args.dispatchGenerationRef.current === args.dispatchGeneration
     const release = (): void => {

@@ -27,7 +27,7 @@ import { structuredAgentSessionStillSendingWords } from './structured-agent-sess
 import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
 import { structuredAgentSessionEntryAwaitsSettlement } from './structured-agent-session-outbox-admission'
 
-export type StructuredAgentSessionSendSettlement =
+export type StructuredAgentSessionOutboxSettlement =
   /** Case 1: the host's row (or card) holds the message from here. */
   | { kind: 'recorded' }
   /** Case 1, not final yet: the host wrote the row and has not handed it to the agent. The entry
@@ -48,7 +48,7 @@ export type StructuredAgentSessionSendAnswer =
    *  carried, if any, and the RPC error code. */
   | { kind: 'thrown'; refusal: AgentSessionWriteRefusal | undefined; rpcCode: string | undefined }
 
-export type StructuredAgentSessionSendSettlementContext = {
+export type StructuredAgentSessionOutboxSettlementContext = {
   /** No earlier attempt under this id went out from anywhere, so nothing can hold it but this
    *  attempt. Only an older host needs it: it may refuse a resent id before looking it up. */
   firstAttempt: boolean
@@ -64,13 +64,15 @@ export type StructuredAgentSessionSendSettlementContext = {
 export const STRUCTURED_AGENT_SESSION_SEND_UNCONFIRMED_WORDS: readonly AgentSessionWriteNoticePart[] =
   ['sendOutcomeLost']
 
-function returnedFor(refusal: AgentSessionWriteRefusal): StructuredAgentSessionSendSettlement {
+function returnedFor(refusal: AgentSessionWriteRefusal): StructuredAgentSessionOutboxSettlement {
   return { kind: 'returned', words: agentSessionWriteNoticeParts(refusal, 'composer-send') }
 }
 
 /** Case 3 for a refusal that proves nothing here: why it is held, and that Orca keeps sending it.
  *  "Outcome unknown" is doubt like any lost answer, so it says nothing, thrown or returned. */
-function stillSendingFor(refusal: AgentSessionWriteRefusal): StructuredAgentSessionSendSettlement {
+function stillSendingFor(
+  refusal: AgentSessionWriteRefusal
+): StructuredAgentSessionOutboxSettlement {
   return refusal.code === 'agent_session_operation_unknown'
     ? { kind: 'unanswered' }
     : { kind: 'unanswered', words: structuredAgentSessionStillSendingWords(refusal) }
@@ -78,8 +80,8 @@ function stillSendingFor(refusal: AgentSessionWriteRefusal): StructuredAgentSess
 
 /** Words for an id no resend can settle: what an earlier attempt left, if anything, is in the chat. */
 function settledByJournal(
-  context: StructuredAgentSessionSendSettlementContext
-): StructuredAgentSessionSendSettlement {
+  context: StructuredAgentSessionOutboxSettlementContext
+): StructuredAgentSessionOutboxSettlement {
   return context.journalHasRow
     ? { kind: 'recorded' }
     : { kind: 'returned', words: [...STRUCTURED_AGENT_SESSION_SEND_UNCONFIRMED_WORDS] }
@@ -87,8 +89,8 @@ function settledByJournal(
 
 function refusalSettlement(
   refusal: AgentSessionWriteRefusal,
-  context: StructuredAgentSessionSendSettlementContext
-): StructuredAgentSessionSendSettlement {
+  context: StructuredAgentSessionOutboxSettlementContext
+): StructuredAgentSessionOutboxSettlement {
   const reason = refusal.details?.reason
   if (refusal.code === 'agent_session_operation_unknown') {
     // A rewind the host refused before writing anything is settled; every other unknown is doubt.
@@ -120,8 +122,8 @@ function refusalSettlement(
  *  and only on a first attempt: an earlier one may have landed before the host turned this away. */
 function thrownSettlement(
   answer: Extract<StructuredAgentSessionSendAnswer, { kind: 'thrown' }>,
-  context: StructuredAgentSessionSendSettlementContext
-): StructuredAgentSessionSendSettlement {
+  context: StructuredAgentSessionOutboxSettlementContext
+): StructuredAgentSessionOutboxSettlement {
   if (answer.refusal) {
     return stillSendingFor(answer.refusal)
   }
@@ -136,8 +138,8 @@ function thrownSettlement(
 export function settleStructuredAgentSessionSendAnswer(
   answer: StructuredAgentSessionSendAnswer,
   clientMessageId: string,
-  context: StructuredAgentSessionSendSettlementContext
-): StructuredAgentSessionSendSettlement {
+  context: StructuredAgentSessionOutboxSettlementContext
+): StructuredAgentSessionOutboxSettlement {
   if (answer.kind === 'thrown') {
     return thrownSettlement(answer, context)
   }
@@ -188,7 +190,7 @@ export function structuredAgentSessionEntryOutlivedHostWindow(
 /** A row the host holds for the send. */
 function settleStructuredAgentSessionSendRow(
   submission: AgentJournalSubmission
-): StructuredAgentSessionSendSettlement {
+): StructuredAgentSessionOutboxSettlement {
   if (submission.dispatchState === 'pending') {
     return { kind: 'pending' }
   }
@@ -243,7 +245,7 @@ function readThrough(
 export function settleStructuredAgentSessionEntryFromJournal(
   entry: StructuredAgentSessionOutboxEntry,
   reading: StructuredAgentSessionJournalReading
-): StructuredAgentSessionSendSettlement | null {
+): StructuredAgentSessionOutboxSettlement | null {
   // The host handed it off as a queued draft, in whatever state: the card carries it.
   if (
     reading.submissions.some((candidate) => candidate.queuedMessageId === entry.clientMessageId)
@@ -298,10 +300,10 @@ export type StructuredAgentSessionSettledOutbox = {
   } | null
 }
 
-export function applyStructuredAgentSessionSendSettlement(
+export function applyStructuredAgentSessionOutboxSettlement(
   entries: readonly StructuredAgentSessionOutboxEntry[],
   clientMessageId: string,
-  settlement: StructuredAgentSessionSendSettlement
+  settlement: StructuredAgentSessionOutboxSettlement
 ): StructuredAgentSessionSettledOutbox {
   const entry = entries.find((candidate) => candidate.clientMessageId === clientMessageId)
   if (!entry) {

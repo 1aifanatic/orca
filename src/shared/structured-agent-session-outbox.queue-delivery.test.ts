@@ -15,9 +15,9 @@ import {
 import { admitStructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox-admission'
 import { structuredAgentSessionEntryAttempt } from './structured-agent-session-outbox-delivery'
 import {
-  applyStructuredAgentSessionSendSettlement,
+  applyStructuredAgentSessionOutboxSettlement,
   settleStructuredAgentSessionSendAnswer
-} from './structured-agent-session-send-settlement'
+} from './structured-agent-session-outbox-settlement'
 import { stopStructuredAgentSessionOutbox } from './structured-agent-session-outbox-stop-withdrawal'
 
 function entry(sentDelivery?: 'queue-if-active') {
@@ -151,7 +151,7 @@ describe('outbox queue delivery', () => {
     )
     const stopped = stopStructuredAgentSessionOutbox([staged], [], 'client-1', 'stop-1').entries
     for (const entries of [stopped, [staged]]) {
-      const settled = applyStructuredAgentSessionSendSettlement(entries, 'client-1', settlement)
+      const settled = applyStructuredAgentSessionOutboxSettlement(entries, 'client-1', settlement)
       expect(settled.entries).toEqual([])
       expect(settled.returned?.entry.clientMessageId).toBe('client-1')
     }

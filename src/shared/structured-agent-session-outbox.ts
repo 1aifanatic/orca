@@ -14,7 +14,7 @@ import { parseStructuredAgentSessionOutboxQueueFields } from './structured-agent
 
 /** `queued`: waits to go out. `dispatching`: out, or held by the host as a row it has not handed
  *  to the agent yet. `unconfirmed`: no answer yet, so the same id goes again
- *  (structured-agent-session-send-settlement). */
+ *  (structured-agent-session-outbox-settlement). */
 export type StructuredAgentSessionOutboxState = 'queued' | 'dispatching' | 'unconfirmed'
 
 /** The Stop that outran a send already on its way: by its own id, and where the host's journal
@@ -147,7 +147,7 @@ export function stageStructuredAgentSessionOutboxEntryForSend(
 /**
  * The outbox as the journal reads it: an entry the host holds a row for leaves once that row has
  * settled (the row shows it from there), and stays out while it is pending. A view's reading; the
- * outbox hook settles the stored copy (structured-agent-session-send-settlement).
+ * outbox hook settles the stored copy (structured-agent-session-outbox-settlement).
  */
 export function reconcileStructuredAgentSessionOutbox(
   entries: readonly StructuredAgentSessionOutboxEntry[],

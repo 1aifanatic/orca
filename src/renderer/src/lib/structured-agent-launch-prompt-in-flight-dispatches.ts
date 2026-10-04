@@ -2,11 +2,11 @@
 // launch settlement runs; both own the same persisted entry, so they share one in-flight send
 // instead of issuing two RPCs.
 
-import type { StructuredAgentSessionSendSettlement } from '../../../shared/structured-agent-session-send-settlement'
+import type { StructuredAgentSessionOutboxSettlement } from '../../../shared/structured-agent-session-outbox-settlement'
 
 /** How the send settled, or null when nothing was sent. */
 export type StructuredAgentLaunchPromptDispatch =
-  Promise<StructuredAgentSessionSendSettlement | null>
+  Promise<StructuredAgentSessionOutboxSettlement | null>
 
 const inFlightDispatches = new Map<string, StructuredAgentLaunchPromptDispatch>()
 

@@ -4,13 +4,13 @@
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import { structuredAgentSessionEntryAwaitsSettlement } from '../../../../shared/structured-agent-session-outbox-admission'
 import {
-  applyStructuredAgentSessionSendSettlement,
+  applyStructuredAgentSessionOutboxSettlement,
   settleStructuredAgentSessionEntryFromJournal,
   structuredAgentSessionEntryHostWindowEndsAt,
   type StructuredAgentSessionJournalReading,
-  type StructuredAgentSessionSendSettlement,
+  type StructuredAgentSessionOutboxSettlement,
   type StructuredAgentSessionSettledOutbox
-} from '../../../../shared/structured-agent-session-send-settlement'
+} from '../../../../shared/structured-agent-session-outbox-settlement'
 import {
   commitStructuredAgentSessionOutbox,
   getStructuredAgentSessionOutbox
@@ -35,12 +35,12 @@ export function settleStructuredAgentSessionOutboxFromJournal(
   const returned: NonNullable<StructuredAgentSessionSettledOutbox['returned']>[] = []
   const settled: {
     entry: StructuredAgentSessionOutboxEntry
-    settlement: StructuredAgentSessionSendSettlement
+    settlement: StructuredAgentSessionOutboxSettlement
   }[] = []
   for (const entry of current) {
     const settlement = settleStructuredAgentSessionEntryFromJournal(entry, reading)
     if (settlement) {
-      const next = applyStructuredAgentSessionSendSettlement(
+      const next = applyStructuredAgentSessionOutboxSettlement(
         entries,
         entry.clientMessageId,
         settlement

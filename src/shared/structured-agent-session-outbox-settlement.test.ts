@@ -7,13 +7,13 @@ import {
   type StructuredAgentSessionOutboxEntry
 } from './structured-agent-session-outbox'
 import {
-  applyStructuredAgentSessionSendSettlement,
+  applyStructuredAgentSessionOutboxSettlement,
   settleStructuredAgentSessionEntryFromJournal,
   settleStructuredAgentSessionSendAnswer,
   structuredAgentSessionEntryOutlivedHostWindow,
   type StructuredAgentSessionSendAnswer,
-  type StructuredAgentSessionSendSettlementContext
-} from './structured-agent-session-send-settlement'
+  type StructuredAgentSessionOutboxSettlementContext
+} from './structured-agent-session-outbox-settlement'
 import { AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS } from './agent-session-host-authority'
 import { DISPATCH_REJECTED_CANCELLED } from './structured-agent-session-dispatch-rejection'
 import {
@@ -87,16 +87,16 @@ function refused(
   }
 }
 
-const FIRST: StructuredAgentSessionSendSettlementContext = {
+const FIRST: StructuredAgentSessionOutboxSettlementContext = {
   firstAttempt: true,
   answersProve: true,
   journalHasRow: false
 }
-const RESEND_PROVING: StructuredAgentSessionSendSettlementContext = {
+const RESEND_PROVING: StructuredAgentSessionOutboxSettlementContext = {
   ...FIRST,
   firstAttempt: false
 }
-const RESEND_OLD_HOST: StructuredAgentSessionSendSettlementContext = {
+const RESEND_OLD_HOST: StructuredAgentSessionOutboxSettlementContext = {
   ...RESEND_PROVING,
   answersProve: false
 }
@@ -588,18 +588,18 @@ describe('entries an older build saved are migrated, never sent again', () => {
 describe('applying a settlement', () => {
   it('records and returns leave the outbox; only a return hands the entry back, with its words', () => {
     const outbox = [entry(), entry({ clientMessageId: 'next' })]
-    expect(applyStructuredAgentSessionSendSettlement(outbox, ID, { kind: 'recorded' })).toEqual({
+    expect(applyStructuredAgentSessionOutboxSettlement(outbox, ID, { kind: 'recorded' })).toEqual({
       entries: [outbox[1]],
       returned: null
     })
     expect(
-      applyStructuredAgentSessionSendSettlement(outbox, ID, {
+      applyStructuredAgentSessionOutboxSettlement(outbox, ID, {
         kind: 'returned',
         words: ['tryAgain']
       })
     ).toEqual({ entries: [outbox[1]], returned: { entry: outbox[0], words: ['tryAgain'] } })
     expect(
-      applyStructuredAgentSessionSendSettlement(outbox, ID, { kind: 'withdrawn' }).returned
+      applyStructuredAgentSessionOutboxSettlement(outbox, ID, { kind: 'withdrawn' }).returned
     ).toEqual({
       entry: outbox[0],
       words: null
@@ -609,10 +609,10 @@ describe('applying a settlement', () => {
   it('no answer keeps it under the same id, in doubt; pending keeps it dispatching', () => {
     const outbox = [entry({ state: 'dispatching' })]
     expect(
-      applyStructuredAgentSessionSendSettlement(outbox, ID, { kind: 'unanswered' }).entries[0]
+      applyStructuredAgentSessionOutboxSettlement(outbox, ID, { kind: 'unanswered' }).entries[0]
     ).toMatchObject({ clientMessageId: ID, state: 'unconfirmed' })
     expect(
-      applyStructuredAgentSessionSendSettlement(outbox, ID, { kind: 'pending' }).entries[0]
+      applyStructuredAgentSessionOutboxSettlement(outbox, ID, { kind: 'pending' }).entries[0]
     ).toMatchObject({ clientMessageId: ID, state: 'dispatching' })
   })
 })
