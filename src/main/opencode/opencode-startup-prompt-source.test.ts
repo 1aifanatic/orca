@@ -40,6 +40,8 @@ class Editor extends EventEmitter {
   }
 }
 
+type FixtureLocation = { directory: string; workspaceID?: string }
+
 function fixture() {
   const editor = new Editor()
   const input = new EventEmitter()
@@ -47,7 +49,7 @@ function fixture() {
   const route = { type: 'home' }
   const agent = vi.fn((): unknown[] | undefined => [{}])
   const model = vi.fn((): unknown[] | undefined => [{}])
-  const sync = vi.fn(async () => {})
+  const sync = vi.fn(async (_location: FixtureLocation) => {})
   const dispatch = vi.fn(() => editor.replace(''))
   const ctx = {
     app: { version: '2.0.16' },
@@ -88,6 +90,122 @@ afterEach(() => {
 })
 
 describe('installed-version native prompt intent plugin', () => {
+  it('waits for the current home location after the startup directory changes', async () => {
+    const f = fixture()
+    let location: FixtureLocation = { directory: '/private/home/private-folder' }
+    Object.defineProperty(f.ctx, 'location', { get: () => location })
+    let releaseStartup = () => {}
+    let releaseHome = () => {}
+    let selectedModel = 'opencode/mimo-v2.6-flash-free'
+    const selections: string[] = []
+    f.sync.mockImplementation(
+      (target) =>
+        new Promise<void>((resolve) => {
+          if (target.directory.endsWith('/private-folder')) {
+            releaseStartup = resolve
+          } else {
+            releaseHome = () => {
+              selectedModel = 'private-proof/model-a'
+              resolve()
+            }
+          }
+        })
+    )
+    f.dispatch.mockImplementation(() => {
+      selections.push(selectedModel)
+      f.editor.replace('')
+    })
+    const dispose = await setup(f.ctx)
+    try {
+      await vi.advanceTimersByTimeAsync(100)
+      location = { directory: '/private/home' }
+      releaseStartup()
+      await vi.advanceTimersByTimeAsync(300)
+      expect(claim).not.toHaveBeenCalled()
+      expect(selections).toEqual([])
+      expect(f.sync).toHaveBeenCalledTimes(2)
+      expect(f.sync).toHaveBeenLastCalledWith(location)
+      releaseHome()
+      await vi.advanceTimersByTimeAsync(500)
+      await vi.waitFor(() => expect(f.dispatch).toHaveBeenCalledTimes(1))
+      expect(selections).toEqual(['private-proof/model-a'])
+      expect(claim).toHaveBeenCalledTimes(1)
+    } finally {
+      await dispose()
+    }
+  })
+
+  it('waits for a concrete location before starting authoritative hydration', async () => {
+    const f = fixture()
+    let location: FixtureLocation | undefined
+    Object.defineProperty(f.ctx, 'location', { get: () => location })
+    const dispose = await setup(f.ctx)
+    try {
+      await vi.advanceTimersByTimeAsync(300)
+      expect(f.sync).not.toHaveBeenCalled()
+      expect(claim).not.toHaveBeenCalled()
+      location = { directory: '/private/home' }
+      await vi.advanceTimersByTimeAsync(500)
+      await vi.waitFor(() => expect(f.dispatch).toHaveBeenCalledTimes(1))
+      expect(f.sync).toHaveBeenCalledExactlyOnceWith(location)
+    } finally {
+      await dispose()
+    }
+  })
+
+  it('keeps readiness scoped to the workspace as well as the directory', async () => {
+    const f = fixture()
+    let location: FixtureLocation = { directory: '/private', workspaceID: 'first' }
+    Object.defineProperty(f.ctx, 'location', { get: () => location })
+    let release = () => {}
+    f.sync.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve
+        })
+    )
+    const dispose = await setup(f.ctx)
+    try {
+      await vi.advanceTimersByTimeAsync(100)
+      location = { directory: '/private', workspaceID: 'second' }
+      release()
+      await vi.advanceTimersByTimeAsync(500)
+      await vi.waitFor(() => expect(f.dispatch).toHaveBeenCalledTimes(1))
+      expect(f.sync).toHaveBeenCalledTimes(2)
+      expect(f.sync).toHaveBeenLastCalledWith(location)
+      expect(claim).toHaveBeenCalledTimes(1)
+    } finally {
+      await dispose()
+    }
+  })
+
+  it('refuses a granted claim after the composer location changes', async () => {
+    const f = fixture()
+    let location: FixtureLocation = { directory: '/private' }
+    Object.defineProperty(f.ctx, 'location', { get: () => location })
+    let grant = () => {}
+    claim.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          grant = () => resolve({ ok: true, json: async () => ({ allowed: true }) })
+        })
+    )
+    const insert = vi.spyOn(f.editor, 'insertText')
+    const dispose = await setup(f.ctx)
+    try {
+      await vi.advanceTimersByTimeAsync(500)
+      await vi.waitFor(() => expect(claim).toHaveBeenCalledTimes(1))
+      location = { directory: '/private/other' }
+      grant()
+      await vi.advanceTimersByTimeAsync(500)
+      expect(insert).not.toHaveBeenCalled()
+      expect(f.dispatch).not.toHaveBeenCalled()
+      expect(f.memory.settled).toBe(true)
+    } finally {
+      await dispose()
+    }
+  })
+
   it('waits for authoritative location config before claiming or selecting a model', async () => {
     const f = fixture()
     let configuredModel = 'unavailable-fallback'
