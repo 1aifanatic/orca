@@ -102,10 +102,8 @@ export function grokBackgroundTaskNotification(
   const task = update.task_snapshot
   const state = task.explicitly_killed
     ? 'idle'
-    : task.signal != null || (task.exit_code != null && task.exit_code !== 0)
+    : task.signal != null || task.error?.trim() || (task.exit_code != null && task.exit_code !== 0)
       ? 'blocked'
-      : task.exit_code === 0
-        ? 'done'
-        : 'unverifiable'
+      : 'done'
   return { disposition: 'map', backgroundTasks: [snapshot(task, state)] }
 }

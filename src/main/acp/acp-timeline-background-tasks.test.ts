@@ -122,11 +122,12 @@ describe('Grok background tasks through the shared timeline', () => {
 
   it.each([
     [{ exit_code: 2, error: 'Command failed' }, 'blocked'],
+    [{ exit_code: null, error: 'Task failed' }, 'blocked'],
     [{ exit_code: null, signal: 'SIGTERM' }, 'blocked'],
     [{ exit_code: null, explicitly_killed: true }, 'idle'],
-    [{ exit_code: null }, 'unverifiable']
+    [{ exit_code: null }, 'done']
   ] as const)(
-    'uses the provider outcome %j without claiming unseen success',
+    'preserves explicit task completion and the provider outcome %j',
     async (snapshot, state) => {
       const fixture = await openAcpFixtureRig()
       await fixture.feed(await readAcpFixture('s6-background'))
