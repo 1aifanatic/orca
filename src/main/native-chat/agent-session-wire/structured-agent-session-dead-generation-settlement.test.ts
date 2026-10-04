@@ -122,6 +122,8 @@ describe('dead structured-session generation settlement', () => {
       ])
     )
     expect(snapshot.items.some((item) => item.body.kind === 'status')).toBe(false)
+    const tool = snapshot.items.find((item) => item.body.kind === 'tool-call')
+    expect(tool?.body).not.toHaveProperty('endedAs')
   })
 
   it('adds one actionable outcome for observed active-work failure and is idempotent', async () => {
