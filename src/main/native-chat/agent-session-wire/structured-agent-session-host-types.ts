@@ -19,6 +19,7 @@ import type { StructuredAgentSessionStatusSink } from './structured-agent-sessio
 import type { AgentModelCatalogService } from '../agent-model-catalog/agent-model-catalog-service'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 import type { QueuedAgentCardJudge } from './structured-agent-session-queued-agent-card'
+import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
 
 export type StructuredAgentSessionCaller = { callerKey: string }
 
@@ -130,6 +131,9 @@ export type StructuredAgentSessionHostDeps = {
   hasOpenDispatch?: (record: AgentSessionRecord) => boolean
   /** Judges an agent's queued card as it is about to send; absent sends it as written. */
   judgeQueuedAgentCard?: QueuedAgentCardJudge
+  /** An agent's card the host withdrew unsent because it could not be sent, for its sender to
+   *  re-derive: no other edge follows a failure in an idle chat. */
+  onQueuedAgentCardDropped?: (input: { sessionId: string; source: AgentMessageSource }) => void
   /** Where every failure the host carries on past is reported. Required: a host without one would
    *  drop exactly the failures nobody sees in the UI. */
   logger: StructuredAgentSessionLogger

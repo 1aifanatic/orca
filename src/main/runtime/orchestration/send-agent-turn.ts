@@ -42,7 +42,7 @@ export type StructuredSessionTurn = {
   expectedRuntimeFence: number
 } & (
   | { delivery: 'now' }
-  /** A queued card records who it speaks for, so the person sees whose message waits. */
+  /** A queued card records who it speaks for; the chat names the sender from step B on. */
   | { delivery: 'queue'; source: AgentMessageSource }
 )
 

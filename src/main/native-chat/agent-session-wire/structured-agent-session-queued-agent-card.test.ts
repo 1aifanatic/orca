@@ -17,6 +17,7 @@ import {
 } from './structured-agent-session-host-test-data'
 import type { QueuedAgentCardJudge } from './structured-agent-session-queued-agent-card'
 import { queuedMessageFingerprint } from './structured-agent-session-queued-messages'
+import { QueuedMessageNotConsumableError } from '../agent-session-journal/journal-queued-messages'
 
 let rig: QueuedMessageTestRig
 
@@ -80,19 +81,20 @@ describe("the person does not see Orca's mail notice", () => {
     expect(await row(agentCard)).toMatchObject({ state: 'dispatched' })
   })
 
-  it("withdraws one the provider refused, which no one could act on, and the person's card behind it sends", async () => {
+  it('withdraws one the provider refused, which no one could act on: it never waits for the person', async () => {
     rig = await createQueuedMessageTestRig()
     const working = await rig.workingSend()
     const agentCard = await queued(NOTICE, mailNotice(['m1']))
-    const personCard = await queued('typed by the person')
     await rig.settleAccepted(working, 'a')
     await eventually(async () => expect(await rig.handoff(agentCard)).toBeDefined())
     await rig.settleRejected(await rig.handoffId(agentCard), 'The provider is unavailable.')
     await eventually(async () =>
       expect(await row(agentCard)).toMatchObject({ state: 'withdrawn', settledByOp: null })
     )
-    await eventually(async () => expect(await rig.handoff(personCard)).toBeDefined())
-    expect(await rig.drafts()).toEqual([])
+    // Nothing returned blocks the person's next queued message.
+    await rig.workingSend()
+    const personCard = await queued('typed by the person')
+    expect(await rig.drafts()).toEqual([{ messageId: personCard, state: 'waiting' }])
   })
 })
 
@@ -146,28 +148,30 @@ describe('one card per agent message', () => {
 })
 
 describe("the drain judges an agent's card as it sends", () => {
-  it("withdraws a card owed nothing, as the host, and goes on to the person's card", async () => {
+  it('withdraws a card owed nothing, as the host, unsent', async () => {
     const judge = vi.fn<QueuedAgentCardJudge>(() => ({ kind: 'withdraw' }))
-    rig = await createQueuedMessageTestRig({ judgeQueuedAgentCard: judge })
+    rig = await createQueuedMessageTestRig({ agentCards: { judgeQueuedAgentCard: judge } })
     const working = await rig.workingSend()
     const agentCard = await queued(NOTICE, mailNotice(['m1']))
-    const personCard = await queued('typed by the person')
     await rig.settleAccepted(working, 'a')
-    await eventually(async () => expect(await rig.handoff(personCard)).toBeDefined())
+    // Nobody declined it: no operation's key is stamped on the withdrawal.
+    await eventually(async () =>
+      expect(await row(agentCard)).toMatchObject({ state: 'withdrawn', settledByOp: null })
+    )
     expect(judge).toHaveBeenCalledWith({ sessionId: SESSION, source: mailNotice(['m1']) })
     expect(await rig.handoff(agentCard)).toBeUndefined()
-    // Nobody declined it: no operation's key is stamped on the withdrawal.
-    expect(await row(agentCard)).toMatchObject({ state: 'withdrawn', settledByOp: null })
   })
 
   it('sends what the card says now, and the card records what was sent', async () => {
     const restated = hostTestMessage('You have 2 orchestration messages.')
     rig = await createQueuedMessageTestRig({
-      judgeQueuedAgentCard: () => ({
-        kind: 'restate',
-        body: restated,
-        source: mailNotice(['m1', 'm2'])
-      })
+      agentCards: {
+        judgeQueuedAgentCard: () => ({
+          kind: 'restate',
+          body: restated,
+          source: mailNotice(['m1', 'm2'])
+        })
+      }
     })
     const working = await rig.workingSend()
     const agentCard = await queued(NOTICE, mailNotice(['m1']))
@@ -186,8 +190,10 @@ describe("the drain judges an agent's card as it sends", () => {
 
   it('sends a card as written when its judge fails: bookkeeping never holds the queue', async () => {
     rig = await createQueuedMessageTestRig({
-      judgeQueuedAgentCard: () => {
-        throw new Error('The database connection is not open')
+      agentCards: {
+        judgeQueuedAgentCard: () => {
+          throw new Error('The database connection is not open')
+        }
       }
     })
     const working = await rig.workingSend()
@@ -199,7 +205,7 @@ describe("the drain judges an agent's card as it sends", () => {
 
   it("never asks about a person's card", async () => {
     const judge = vi.fn<QueuedAgentCardJudge>(() => ({ kind: 'withdraw' }))
-    rig = await createQueuedMessageTestRig({ judgeQueuedAgentCard: judge })
+    rig = await createQueuedMessageTestRig({ agentCards: { judgeQueuedAgentCard: judge } })
     const working = await rig.workingSend()
     const personCard = await queued('typed by the person')
     await rig.settleAccepted(working, 'a')
@@ -211,26 +217,25 @@ describe("the drain judges an agent's card as it sends", () => {
 describe('/clear and an agent card', () => {
   it('moves a waiting agent card unheld, as the host: it sends in the new conversation', async () => {
     const judge = vi.fn<QueuedAgentCardJudge>(() => ({ kind: 'send' }))
-    rig = await createQueuedMessageTestRig({ judgeQueuedAgentCard: judge })
+    rig = await createQueuedMessageTestRig({ agentCards: { judgeQueuedAgentCard: judge } })
     const working = await rig.workingSend()
     const agentCard = await queued(NOTICE, mailNotice(['m1']))
     const personCard = await queued('typed by the person')
-    // The card's own conversion failed, so it waits on its own hold until /clear moves it.
+    // Every send from the source loses its consume race, so the card still waits when /clear moves it.
     const journal = rig.host.collaboratorsForTests().sessions.get(SESSION)!.journal
     const append = vi
       .spyOn(journal, 'appendSubmission')
-      .mockRejectedValueOnce(new Error('disk full'))
+      .mockRejectedValue(new QueuedMessageNotConsumableError(agentCard, 'waiting'))
     await rig.stop()
     await rig.settleAccepted(working, 'a')
-    await eventually(async () =>
-      expect(await row(agentCard)).toMatchObject({ state: 'waiting', holdReason: 'send_failed' })
-    )
-    append.mockRestore()
+    await eventually(() => expect(append).toHaveBeenCalled())
+    expect(await row(agentCard)).toMatchObject({ state: 'waiting', holdReason: null })
     const fields = { command: 'clear' as const }
     const cleared = await rig.host.conversationCommand(CALLER, {
       envelope: rig.envelope(fields, 'agentSession.conversationCommand', hostTestOperationId()),
       ...fields
     })
+    append.mockRestore()
     const replacementId = cleared.ok ? cleared.value.replacementSessionId : undefined
     if (!replacementId) {
       throw new Error('expected a replacement session')
@@ -249,5 +254,74 @@ describe('/clear and an agent card', () => {
       ).toEqual([agentCard])
     )
     expect(judge).toHaveBeenCalledWith({ sessionId: replacementId, source: mailNotice(['m1']) })
+  })
+})
+
+describe('a notice no one can act on never waits on anyone', () => {
+  it('a notice whose send fails is withdrawn by the host, not held, and handed back to its sender', async () => {
+    const dropped = vi.fn()
+    rig = await createQueuedMessageTestRig({
+      agentCards: {
+        judgeQueuedAgentCard: () => ({ kind: 'send' }),
+        onQueuedAgentCardDropped: dropped
+      }
+    })
+    const working = await rig.workingSend()
+    const agentCard = await queued(NOTICE, mailNotice(['m1']))
+    const journal = rig.host.collaboratorsForTests().sessions.get(SESSION)!.journal
+    const append = vi
+      .spyOn(journal, 'appendSubmission')
+      .mockRejectedValueOnce(new Error('disk full'))
+    await rig.settleAccepted(working, 'a')
+    await eventually(() =>
+      expect(dropped).toHaveBeenCalledWith({ sessionId: SESSION, source: mailNotice(['m1']) })
+    )
+    append.mockRestore()
+    expect(await row(agentCard)).toMatchObject({
+      state: 'withdrawn',
+      holdReason: null,
+      settledByOp: null
+    })
+    expect(await rig.handoff(agentCard)).toBeUndefined()
+  })
+
+  it("a person's Stop while the agent starts on the notice withdraws it: the Stop stays stopped", async () => {
+    rig = await createQueuedMessageTestRig({
+      restartable: true,
+      agentCards: { judgeQueuedAgentCard: () => ({ kind: 'send' }) }
+    })
+    const working = await rig.workingSend()
+    const agentCard = await queued(NOTICE, mailNotice(['m1']))
+    await rig.restartHostProcess()
+    let release: () => void = () => undefined
+    rig.awaitStarted.mockImplementationOnce(
+      () => new Promise<undefined>((resolve) => (release = () => resolve(undefined)))
+    )
+    await rig.settleAccepted(working, 'a')
+    await eventually(async () => expect(await rig.handoff(agentCard)).toBeDefined())
+    await rig.stop()
+    release()
+    await eventually(async () =>
+      expect(await row(agentCard)).toMatchObject({ state: 'withdrawn', settledByOp: null })
+    )
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    const handOffs = (await rig.host.journalSnapshot(SESSION)).submissions.filter(
+      (entry) => entry.queuedMessageId === agentCard
+    )
+    expect(handOffs.map((entry) => entry.dispatchState)).toEqual(['rejected'])
+  })
+
+  it("the person's card goes before a notice queued ahead of it", async () => {
+    rig = await createQueuedMessageTestRig({
+      agentCards: { judgeQueuedAgentCard: () => ({ kind: 'send' }) }
+    })
+    const working = await rig.workingSend()
+    const agentCard = await queued(NOTICE, mailNotice(['m1']))
+    const personCard = await queued('typed by the person')
+    await rig.settleAccepted(working, 'a')
+    await eventually(async () => expect(await rig.handoff(personCard)).toBeDefined())
+    expect(await rig.handoff(agentCard)).toBeUndefined()
+    await rig.settleAccepted(await rig.handoffId(personCard), 'person')
+    await eventually(async () => expect(await rig.handoff(agentCard)).toBeDefined())
   })
 })

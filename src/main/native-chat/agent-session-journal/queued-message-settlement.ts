@@ -13,8 +13,10 @@ import {
 import type { JournalReducerState } from './journal-reducer'
 import type { JournalRow } from './journal-row-schema'
 import { queueShowsCard } from './queued-message-pause'
+import { classifyDispatchRejection } from '../../../shared/structured-agent-session-dispatch-rejection'
 import { draftDeliveredByEcho, draftsDeliveredByAppliedEcho } from './queued-message-delivered-echo'
 import {
+  getQueuedMessage,
   listQueuedMessages,
   settleRejectedQueuedMessage,
   withdrawQueuedMessages,
@@ -23,22 +25,32 @@ import {
 
 type Submissions = ReadonlyMap<string, AgentJournalSubmission>
 
-/** `settleRejectedQueuedMessage`, except that a card the person cannot see is never returned to
- *  them: the host withdraws it, and whoever queued it re-derives it. */
+/** `settleRejectedQueuedMessage`, except for a card the person cannot see. Refused, it is not
+ *  returned to them; pulled back by a Stop, it does not go back to waiting, where nothing would
+ *  hold it and the queue would send it again at once. Either way the host withdraws it, and
+ *  whoever queued it re-derives it. A restart's interruption still puts it back to waiting. */
 function settleRefusedQueuedMessage(
   db: Database.Database,
   input: Parameters<typeof settleRejectedQueuedMessage>[1]
 ): boolean {
+  const consumed = listQueuedMessages(db, input.sessionId).find(
+    (row) => row.consumedAs === input.consumedRef && row.state === 'dispatched'
+  )
   if (!settleRejectedQueuedMessage(db, input)) {
     return false
   }
-  const returned = listQueuedMessages(db, input.sessionId).find(
-    (row) => row.consumedAs === input.consumedRef && row.state === 'returned'
-  )
-  if (returned && !queueShowsCard(returned.source)) {
+  const settled = consumed && getQueuedMessage(db, input.sessionId, consumed.messageId)
+  const stopped =
+    classifyDispatchRejection({ reason: input.reason, rejection: input.rejection }).category ===
+    'withdrawn'
+  if (
+    settled &&
+    !queueShowsCard(settled.source) &&
+    (settled.state === 'returned' || (settled.state === 'waiting' && stopped))
+  ) {
     withdrawQueuedMessages(db, {
       sessionId: input.sessionId,
-      messageIds: [returned.messageId],
+      messageIds: [settled.messageId],
       settledByOp: null,
       now: input.now
     })

@@ -124,7 +124,7 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
           : structuredSessionPointerCallerKey(input.sessionId),
         turn: {
           body: input.body,
-          // A busy chat holds the pointer as a card the person sees, and its own queue sends it when
+          // A busy chat holds the pointer as a card in its own queue, not shown, which sends it when
           // the turn ends: sent mid-turn, Codex coalesces it into the running turn and Claude folds
           // it in, so it would read as part of that work rather than a new instruction.
           delivery: 'queue',

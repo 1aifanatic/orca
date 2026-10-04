@@ -28,7 +28,7 @@ import {
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { createQueuedRigProviderMocks } from './structured-agent-session-queued-rig-provider.test-fixture'
-import type { QueuedAgentCardJudge } from './structured-agent-session-queued-agent-card'
+import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 
 export const QUEUED_RIG_CALLER = { callerKey: 'client-1' }
 type RigSendOptions = { internal?: true; source?: AgentMessageSource }
@@ -49,8 +49,11 @@ export async function createQueuedMessageTestRig(
     idleSweep?: { idleMs: number; intervalMs: number }
     /** The provider's Stop ends its child, as Claude's does. */
     stopEndsSession?: true
-    /** What the host's owner answers for an agent's card about to send. */
-    judgeQueuedAgentCard?: QueuedAgentCardJudge
+    /** The host's owner's side of an agent's card: its judge and where a dropped one goes. */
+    agentCards?: Pick<
+      StructuredAgentSessionHostDeps,
+      'judgeQueuedAgentCard' | 'onQueuedAgentCardDropped'
+    >
   } = {}
 ) {
   const root = await mkdtemp(join(tmpdir(), 'orca-queued-messages-'))
@@ -102,9 +105,7 @@ export async function createQueuedMessageTestRig(
       mintSpawnToken: () => 'spawn-1',
       now: () => NOW,
       ...(options.idleSweep ? { idleSweep: options.idleSweep } : {}),
-      ...(options.judgeQueuedAgentCard
-        ? { judgeQueuedAgentCard: options.judgeQueuedAgentCard }
-        : {})
+      ...options.agentCards
     })
   let host = makeHost()
   expect(await host.attach(QUEUED_RIG_CALLER, hostTestAttachParams(null))).toMatchObject({

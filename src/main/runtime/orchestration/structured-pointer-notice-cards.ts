@@ -16,7 +16,8 @@ export type StructuredPointerCard = {
   state: 'waiting' | 'dispatched' | 'returned' | 'withdrawn'
   /** An agent's mail notice: the mailbox it points at and the mail it stands for. */
   notice: { mailbox: string; messageIds: readonly string[] } | null
-  /** Withdrawn by an operation someone asked for (a person's Delete or Edit), not by the host. */
+  /** Withdrawn by an operation someone asked for (a Delete of a card the person sees), not by the
+   *  host. A hidden notice has no such operation until it is shown. */
   withdrawnByRequest: boolean
 }
 
@@ -33,7 +34,7 @@ export type StructuredPointerFacts = {
 export type MailboxNoticeCards = {
   /** Every notice card for the mailbox, whatever became of it. */
   ids: ReadonlySet<string>
-  /** One still waits (or came back to the person): the queue, or the person, owes its send. */
+  /** One still waits: the queue owes its send. */
   waiting: boolean
   /** A hand-off not settled yet: in flight; or refused, or of unknown fate, with no turn run since. */
   unsettled: 'send-unsettled' | 'dispatch-unknown' | 'dispatch-rejected' | null
@@ -57,9 +58,11 @@ export function readMailboxNoticeCards(
     ids.add(card.messageId)
     const pointedAt = card.notice.messageIds
     const handOff = facts.submissions.findLast((entry) => entry.queuedMessageId === card.messageId)
-    // A send that failed or is in doubt is retried only once a later turn shows the agent can run.
+    // A send that failed, was stopped or is in doubt goes again only once a later turn shows the
+    // agent can run, or newer mail makes it a different notice.
     const awaitsTurn =
       pointedAt.some((id) => owed.includes(id)) &&
+      owed.every((id) => pointedAt.includes(id)) &&
       !facts.submissions.some(
         (entry) =>
           entry.dispatchState === 'accepted' &&
@@ -72,7 +75,7 @@ export function readMailboxNoticeCards(
       if (card.withdrawnByRequest) {
         pointedAt.forEach((id) => pointed.add(id))
       } else if (handOff?.dispatchState === 'rejected' && awaitsTurn) {
-        // The host withdrew a card the provider refused, which no one could act on.
+        // The host withdrew a card the provider refused or a Stop pulled back.
         unsettled ??= 'dispatch-rejected'
       }
       // Any other host withdrawal (it owed nothing, or was moved) declines nothing.

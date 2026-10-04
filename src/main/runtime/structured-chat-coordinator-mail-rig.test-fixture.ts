@@ -273,7 +273,9 @@ beforeEach(async () => {
     readProcessStartTime: async () => 1_700_000_000_000,
     // The same calls the runtime's own host install makes.
     onSessionStatusChanged: (summary) => runtime.onStructuredSessionStatusForMail(summary),
-    judgeQueuedAgentCard: (input) => runtime.judgeQueuedAgentCard(input)
+    judgeQueuedAgentCard: (input) => runtime.judgeQueuedAgentCard(input),
+    onQueuedAgentCardDropped: (input) =>
+      runtime.deliverPendingMessagesForHandle(input.source.orchestration.mailbox)
   })
   dispatcher = new RpcDispatcher({ runtime, methods: ORCHESTRATION_METHODS })
 })

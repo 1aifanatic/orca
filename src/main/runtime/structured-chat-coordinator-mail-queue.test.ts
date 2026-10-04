@@ -30,6 +30,7 @@ import {
 } from './structured-chat-coordinator-mail-rig.test-fixture'
 import { formatMessagePointer } from './orchestration/formatter'
 import { localOrchestrationCliCommand } from './orchestration/cli-command'
+import { QueuedMessageNotConsumableError } from '../native-chat/agent-session-journal/journal-queued-messages'
 
 /** Idle edges with nothing owed: whatever they would start gets the time to show. */
 async function idleEdgesSettled(): Promise<void> {
@@ -86,7 +87,7 @@ describe("mail for a busy coordinator chat waits in the chat's queue", () => {
     const endTurn = await runningUserTurn(chat)
 
     await finishWorker(taskId)
-    // Not folded into the running turn: the person sees it waiting, like their own next message.
+    // Not folded into the running turn: it waits in the chat's queue, like a next message.
     await vi.waitFor(
       async () =>
         expect(await waitingCardTexts(COORDINATOR)).toEqual([expect.stringMatching(POINTER)]),
@@ -234,17 +235,19 @@ describe("mail for a busy coordinator chat waits in the chat's queue", () => {
     const endTurn = await runningUserTurn(chat)
     await finishWorker(taskId)
     await vi.waitFor(async () => expect(await waitingCardTexts(COORDINATOR)).toHaveLength(1), WAIT)
-    // Its conversion fails once, so the card is still waiting when the person clears the chat.
+    // Every send from the old conversation loses its consume race, so the card still waits when
+    // the person clears the chat.
     const journal = host.collaboratorsForTests().sessions.get(COORDINATOR)!.journal
+    const [card] = await host.queuedMessageRows(COORDINATOR)
     const append = vi
       .spyOn(journal, 'appendSubmission')
-      .mockRejectedValueOnce(new Error('disk full'))
+      .mockRejectedValue(new QueuedMessageNotConsumableError(card!.messageId, 'waiting'))
     await endTurn()
     await vi.waitFor(() => expect(append).toHaveBeenCalled(), WAIT)
-    append.mockRestore()
     expect(await waitingCardTexts(COORDINATOR)).toHaveLength(1)
 
     const successor = await clearChat(COORDINATOR)
+    append.mockRestore()
     await vi.waitFor(() => expect(connectionFor(successor).turns).toHaveLength(1), WAIT)
     expect(turnText(connectionFor(successor).turns[0]!)).toBe(ptyPointer(`run:${runId}`))
     await settleTurn(successor, 0)
@@ -265,6 +268,62 @@ describe("mail for a busy coordinator chat waits in the chat's queue", () => {
     expect(chat.turns).toHaveLength(1)
   })
 
+  it('a notice whose send fails is not left waiting: it reaches the agent without a /clear', async () => {
+    const chat = await openChat(COORDINATOR)
+    const { runId, taskId } = await coordinatorRunAndTask()
+    const endTurn = await runningUserTurn(chat)
+    await finishWorker(taskId)
+    await vi.waitFor(async () => expect(await waitingCardTexts(COORDINATOR)).toHaveLength(1), WAIT)
+    // Past the one-shot repoint that follows mail's arrival: the run is long, as when a worker
+    // finishes early in the coordinator's turn.
+    await new Promise((resolve) => setTimeout(resolve, 2_300))
+    const journal = host.collaboratorsForTests().sessions.get(COORDINATOR)!.journal
+    // The write fails only after the lane read the turn's end and saw the card still waiting, so
+    // no later edge comes: the dropped card itself has to hand the mailbox back to the lane.
+    const append = vi.spyOn(journal, 'appendSubmission').mockImplementationOnce(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      throw new Error('disk full')
+    })
+    await endTurn()
+    await vi.waitFor(() => expect(chat.turns).toHaveLength(2), WAIT)
+    append.mockRestore()
+    expect(turnText(chat.turns[1]!)).toBe(ptyPointer(`run:${runId}`))
+    expect(await waitingCardTexts(COORDINATOR)).toEqual([])
+    expect(
+      (await host.queuedMessageRows(COORDINATOR)).map(({ state, holdReason }) => [
+        state,
+        holdReason
+      ])
+    ).toEqual([['withdrawn', null]])
+    await settleTurn(COORDINATOR, 1)
+    await vi.waitFor(
+      () => expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toEqual([]),
+      WAIT
+    )
+    await idleEdgesSettled()
+    expect(chat.turns).toHaveLength(2)
+  })
+
+  it('a send that keeps failing is retried once per edge, never in a loop, and nothing is held', async () => {
+    const chat = await openChat(COORDINATOR)
+    const { taskId } = await coordinatorRunAndTask()
+    const endTurn = await runningUserTurn(chat)
+    await finishWorker(taskId)
+    await vi.waitFor(async () => expect(await waitingCardTexts(COORDINATOR)).toHaveLength(1), WAIT)
+    const journal = host.collaboratorsForTests().sessions.get(COORDINATOR)!.journal
+    const append = vi.spyOn(journal, 'appendSubmission').mockRejectedValue(new Error('disk full'))
+    await endTurn()
+    await vi.waitFor(() => expect(append.mock.calls.length).toBeGreaterThanOrEqual(2), WAIT)
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    const settled = append.mock.calls.length
+    await idleEdgesSettled()
+    // At most one more attempt per idle edge.
+    expect(append.mock.calls.length - settled).toBeLessThanOrEqual(3)
+    append.mockRestore()
+    expect(chat.turns).toHaveLength(1)
+    expect(await waitingCardTexts(COORDINATOR)).toEqual([])
+  })
+
   it('sends no card for mail an orchestration reset deleted', async () => {
     const chat = await openChat(COORDINATOR)
     const { taskId } = await coordinatorRunAndTask()
@@ -280,7 +339,7 @@ describe("mail for a busy coordinator chat waits in the chat's queue", () => {
     expect(chat.turns).toHaveLength(1)
   })
 
-  it('does not queue a pointer the person deleted again; the next result is pointed', async () => {
+  it("does not queue a pointer deleted by an operation again (a labelled card's Delete, from B); the next result is pointed", async () => {
     const chat = await openChat(COORDINATOR)
     const { runId, taskId } = await coordinatorRunAndTask()
     const second = await call(

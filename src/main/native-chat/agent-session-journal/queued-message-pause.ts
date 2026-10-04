@@ -7,8 +7,8 @@
 //     Resume has happened here since.
 //   - 'restarted': a waiting card a person queued was written by another host process, and no
 //     person's turn has started since this conversation opened.
-// Pauses hold only the person's cards (`queuePausesHold`), and a card they do not hold is never
-// trapped behind one they do: the rule admission already applies to a new send.
+// Pauses hold only the person's cards (`queuePausesHold`). A card the person cannot see never waits
+// on or ahead of one they can (`nextSendableQueuedCard`).
 // A person's turn is an accepted submission of origin `client`. Orchestration mail, a restart
 // continuation, a launch prompt and the queue's own drain are `host` and never lift it.
 
@@ -195,34 +195,36 @@ export function queuePauseHolding(
   return pauses.find((pause) => PAUSE_HOLDS_CARDS_QUEUED_AFTER_IT || queuedBeforePause(pause, card))
 }
 
-/** The card the queue sends next: the oldest waiting one with no hold of its own, unless a
- *  returned card or a held one comes first. The queue never reorders, so a newer card never
- *  overtakes a held one, except a card no pause holds: a card waiting on the person (paused, or
- *  returned to them) does not trap it, as a paused queue does not trap a new send. The drain's
- *  pick and its consume both read this. */
+/** The card the queue sends next. The person's cards go in order, oldest first, and never past
+ *  one waiting on them (paused, or returned to them): the queue never reorders what they see. A
+ *  card they cannot see never delays one they can, and is never trapped behind one: it goes only
+ *  when no card they see may, as a paused queue does not trap a new send. A card with a hold of its
+ *  own is skipped. The drain's pick and its consume both read this. */
 export function nextSendableQueuedCard<T extends QueueCard>(
   pauses: readonly DerivedQueuePause[],
   cards: readonly T[]
 ): T | null {
   let waitingOnPerson = false
+  let unseen: T | null = null
   for (const card of cards) {
+    const seen = queueShowsCard(card.source)
     if (card.state === 'returned' || queuePauseHolding(pauses, card)) {
-      waitingOnPerson = true
-    } else if (
-      card.state === 'waiting' &&
-      card.holdReason === null &&
-      (!waitingOnPerson || !queuePausesHold(card.source))
-    ) {
-      return card
+      waitingOnPerson ||= seen
+    } else if (card.state === 'waiting' && card.holdReason === null) {
+      if (!seen) {
+        unseen ??= card
+      } else if (!waitingOnPerson) {
+        return card
+      }
     }
   }
-  return null
+  return unseen
 }
 
 /** The pause to PUBLISH: the one holding the first card Resume would send, not behind a returned
  *  card, which blocks everything after it until the user acts. None otherwise, so its header
- *  never offers a Resume that sends nothing. A card the person cannot see is never held, and the
- *  host never returns one to them, so it never names the pause. */
+ *  never offers a Resume that sends nothing. A card the person cannot see never names it: no pause
+ *  holds one, and the host withdraws one rather than hold it or return it to them. */
 export function resumableQueuePause(
   pauses: readonly DerivedQueuePause[],
   cards: readonly QueueCard[]

@@ -498,7 +498,7 @@ describe("a pointer to a busy chat waits in the chat's own queue", () => {
     expect(h.send).toHaveBeenCalledTimes(1)
   })
 
-  it('counts a card the person deleted as handled: that mail is not pointed again, newer mail is', async () => {
+  it("counts a card an operation deleted (a labelled card's Delete, from B) as handled: that mail is not pointed again, newer mail is", async () => {
     const h = harness({ busy: true })
     const card = await queuedCard(h)
     h.setCards([noticeCard(card, 'withdrawn', { withdrawnByRequest: true })])
@@ -545,6 +545,18 @@ describe("a pointer to a busy chat waits in the chat's own queue", () => {
     h.delivery.onJournalActivity('session-1')
     await flush()
     expect(h.send).toHaveBeenCalledTimes(2)
+  })
+
+  it('points a refused or stopped card again at once when newer mail makes it a different notice', async () => {
+    const h = harness({ busy: true })
+    const card = await queuedCard(h)
+    h.setCards([noticeCard(card, 'withdrawn')])
+    h.setSubmissions([handedOff(card, 'rejected')])
+    h.setUnread([mail('m1', 3), SECOND])
+    h.delivery.deliverForHandle('dispatch:d1')
+    await flush()
+    expect(h.send).toHaveBeenCalledTimes(2)
+    expect(h.send.mock.calls[1]![0].source.orchestration.messageIds).toEqual(['m1', 'm2'])
   })
 
   it('waits on a hand-off of unknown fate until a later turn shows it did not land', async () => {

@@ -182,8 +182,11 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
       // its agent running. No database answers no.
       hasOpenDispatch: (record) =>
         structuredWorkerOwesWork(this.getOrchestrationDbIfAvailable?.() ?? null, record),
-      // Orchestration's own mail notices are judged again by the lane that queued them.
-      judgeQueuedAgentCard: (input) => this.judgeQueuedAgentCard(input)
+      // Orchestration's own mail notices are judged again by the lane that queued them, and one
+      // the host could not send goes back to it through the mailbox's ordinary redrive.
+      judgeQueuedAgentCard: (input) => this.judgeQueuedAgentCard(input),
+      onQueuedAgentCardDropped: (input) =>
+        this.deliverPendingMessagesForHandle(input.source.orchestration.mailbox)
     })
   }
 }

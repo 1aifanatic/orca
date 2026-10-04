@@ -651,6 +651,21 @@ describe('which cards the pauses in force hold', () => {
     }
   )
 
+  it('a card the person cannot see never delays one they can: it goes only when none of theirs may', () => {
+    const cards = [card('agent', 1, { source: AGENT_SOURCE }), card('person', 2)]
+    expect(nextSendableQueuedCard(pausesOver(cards, 0), cards)?.messageId).toBe('person')
+    const sent = cards.map((each) =>
+      each.messageId === 'person' ? { ...each, state: 'dispatched' } : each
+    )
+    expect(nextSendableQueuedCard(pausesOver(sent, 0), sent)?.messageId).toBe('agent')
+    // A person's card with a hold of its own is skipped and delays nothing either.
+    const held = [
+      card('agent', 1, { source: AGENT_SOURCE }),
+      card('person', 2, { holdReason: 'send_failed' })
+    ]
+    expect(nextSendableQueuedCard(pausesOver(held, 0), held)?.messageId).toBe('agent')
+  })
+
   it("an agent's card behind a card returned to the person sends", () => {
     const cards = [
       card('returned', 1, { state: 'returned' }),
