@@ -104,6 +104,7 @@ export const ZSH_USER_ZSHENV_SOURCE_BLOCK = `{
   builtin unset _orca_user_zshenv
   builtin typeset -ag precmd_functions
   (( \${precmd_functions[(Ie)__orca_deferred_init]} )) || precmd_functions+=(__orca_deferred_init)
+  __orca_arm_deferred_line_init
 }`
 
 // Why: daemon, local, and relay wrappers must preserve one Bash prompt-hook contract.
