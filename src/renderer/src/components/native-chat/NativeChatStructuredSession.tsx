@@ -177,13 +177,17 @@ export function NativeChatStructuredSession(
       ? (objective: string) => threadGoal.change({ kind: 'set', objective })
       : null
     return {
-      send: (text: string, attachments: readonly { id: string; path: string }[]): boolean =>
+      send: (
+        text: string,
+        attachments: readonly { id: string; path: string; connectionId?: string }[]
+      ): boolean =>
         sendThroughRelaunch(() =>
           controller.send(
             text,
             attachments.map((attachment) => ({
               path: attachment.path,
-              previewUri: attachment.path
+              previewUri: attachment.path,
+              ...(attachment.connectionId ? { connectionId: attachment.connectionId } : {})
             }))
           )
         ),

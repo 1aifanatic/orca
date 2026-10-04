@@ -2,7 +2,11 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { createStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
+import {
+  createStructuredAgentSessionOutboxEntry,
+  structuredAgentSessionSendRequest
+} from '../../../../shared/structured-agent-session-outbox'
+import { readOutbox, writeOutbox } from './structured-agent-session-outbox-storage'
 import { structuredAgentSessionDraftScopeKey } from './native-chat-composer-draft-store'
 import {
   clearNativeChatDraftCacheForTests,
@@ -78,5 +82,29 @@ describe('the chat line', () => {
     expect(opened.result.current).toBe(
       "Orca couldn't confirm your message reached the agent. Check the chat, then send it again if needed."
     )
+  })
+})
+
+describe('an SSH image handed back', () => {
+  it('keeps the connection it was uploaded to, across a reload, and never sends it', () => {
+    const sent = createStructuredAgentSessionOutboxEntry({
+      clientMessageId: 'id-remote',
+      sessionId: 'session-1',
+      text: 'look at this',
+      attachments: [
+        { path: '/home/remote/.orca/paste/a.png', previewUri: 'blob:a', connectionId: 'ssh-1' },
+        { path: '/repo/local.png', previewUri: 'blob:b' }
+      ],
+      queuedAt: 1
+    })
+    expect(JSON.stringify(structuredAgentSessionSendRequest(sent, 1))).not.toContain('ssh-1')
+    writeOutbox('session-1', [sent])
+    const [saved] = readOutbox('session-1')
+
+    returnStructuredAgentSessionMessage(saved!)
+    expect(readNativeChatAttachmentCache(SCOPE)).toEqual([
+      expect.objectContaining({ path: '/home/remote/.orca/paste/a.png', connectionId: 'ssh-1' }),
+      expect.not.objectContaining({ connectionId: expect.anything() })
+    ])
   })
 })

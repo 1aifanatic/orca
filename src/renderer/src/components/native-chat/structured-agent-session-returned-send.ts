@@ -25,13 +25,26 @@ export function returnStructuredAgentSessionMessage(
     scopeKey,
     blocks.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n')
   )
+  let image = -1
   appendNativeChatAttachmentCache(
     scopeKey,
-    blocks.flatMap((block, index) =>
-      block.type === 'image-ref' && block.path
-        ? [{ id: `returned-${entry.clientMessageId}-${index}`, path: block.path }]
+    blocks.flatMap((block, index) => {
+      if (block.type !== 'image-ref') {
+        return []
+      }
+      image += 1
+      // An SSH image keeps its connection, so it still opens on its remote host.
+      const connectionId = entry.attachmentConnectionIds?.[image] ?? undefined
+      return block.path
+        ? [
+            {
+              id: `returned-${entry.clientMessageId}-${index}`,
+              path: block.path,
+              ...(connectionId ? { connectionId } : {})
+            }
+          ]
         : []
-    )
+    })
   )
 }
 

@@ -11,6 +11,7 @@ import type {
   AgentJournalSubmission
 } from '../../../../shared/agent-session-journal-types'
 import { createStructuredAgentSessionOperationId } from '../../../../shared/structured-agent-session-mutation'
+import type { StructuredAgentSessionAttachment } from '../../../../shared/structured-agent-session-outbox'
 import { admitStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox-admission'
 import { STRUCTURED_AGENT_SESSION_OUTBOX_NOT_SAVED } from '../../../../shared/structured-agent-session-send-failure-words'
 import { stopStructuredAgentSessionOutbox } from '../../../../shared/structured-agent-session-outbox-stop-withdrawal'
@@ -265,7 +266,7 @@ export function useStructuredAgentSessionOutbox(args: {
   })
 
   const send = useCallback(
-    (text: string, attachments: readonly { path: string; previewUri: string }[] = []): boolean => {
+    (text: string, attachments: readonly StructuredAgentSessionAttachment[] = []): boolean => {
       if (!text.trim() && attachments.length === 0) {
         return false
       }

@@ -31,6 +31,9 @@ export type StructuredAgentSessionOutboxEntry = {
   sessionId: string
   body: AgentJournalMessageItem
   previewUris: string[]
+  /** Each image's SSH connection, by its place among the message's images (null: local). Kept so
+   *  an image handed back still opens on its remote host; never sent, the host reads paths. */
+  attachmentConnectionIds?: (string | null)[]
   state: StructuredAgentSessionOutboxState
   queuedAt: number
   lastAttemptAt: number | null
@@ -89,6 +92,8 @@ export function structuredAgentSessionRejectedFailure(submission: {
 export type StructuredAgentSessionAttachment = {
   path: string
   previewUri: string
+  /** The SSH connection the image was uploaded to, for a remote workspace. */
+  connectionId?: string
 }
 
 export function structuredAgentSessionSendBody(
@@ -117,6 +122,13 @@ export function createStructuredAgentSessionOutboxEntry(args: {
     sessionId: args.sessionId,
     body: structuredAgentSessionSendBody(args.text, args.attachments),
     previewUris: args.attachments.map((attachment) => attachment.previewUri),
+    ...(args.attachments.some((attachment) => attachment.connectionId)
+      ? {
+          attachmentConnectionIds: args.attachments.map(
+            (attachment) => attachment.connectionId ?? null
+          )
+        }
+      : {}),
     state: 'queued',
     queuedAt: args.queuedAt,
     lastAttemptAt: null
@@ -207,6 +219,10 @@ export function parseStructuredAgentSessionOutboxEntry(
     sessionId,
     body,
     previewUris: entry.previewUris,
+    ...(Array.isArray(saved.attachmentConnectionIds) &&
+    saved.attachmentConnectionIds.every((id) => id === null || typeof id === 'string')
+      ? { attachmentConnectionIds: saved.attachmentConnectionIds }
+      : {}),
     state,
     queuedAt: entry.queuedAt,
     lastAttemptAt: typeof entry.lastAttemptAt === 'number' ? entry.lastAttemptAt : null,
