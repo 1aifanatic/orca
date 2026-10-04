@@ -44,6 +44,8 @@ export type ClaudeInitProof = {
   seen: () => ClaudeInitObservation | null
   /** Set once startup has read the proof: a later refusal ends the session. */
   onRefusal: ((error: Error) => void) | null
+  /** Each proof frame, while startup waits on initialize. */
+  onFrame: (() => void) | null
 }
 
 export function createClaudeInitProof(): ClaudeInitProof {
@@ -64,6 +66,7 @@ export function createClaudeInitProof(): ClaudeInitProof {
     resolve: (init) => {
       outcome ??= { init }
       resolvePromise(init)
+      proof.onFrame?.()
     },
     reject,
     refuse: () => {
@@ -81,7 +84,8 @@ export function createClaudeInitProof(): ClaudeInitProof {
       }
       return outcome?.init ?? null
     },
-    onRefusal: null
+    onRefusal: null,
+    onFrame: null
   }
   return proof
 }
@@ -99,9 +103,9 @@ export type ClaudeStartupFacts = {
   prepared: ReturnType<typeof prepareClaudeStructuredSessionAcquisitionOptions>
 }
 
-/** How long the CLI has to answer initialize. Generous for a slow machine or a first run; a CLI
- *  that stays alive but never answers would otherwise hold the chat's messages forever. Inside the
- *  host's start wait, so a command waiting on this start hears its failure, not a timeout. */
+/** How long the CLI may go silent before answering initialize. Generous for a slow machine or a
+ *  first run; a CLI that stays alive but never answers would otherwise hold the chat's messages
+ *  forever. Inside the host's start wait, so a command waiting on this start hears its failure. */
 export const CLAUDE_STARTUP_DEADLINE_MS = STRUCTURED_AGENT_SESSION_START_WAIT_MS - 30_000
 
 /** The e2e rig shortens the deadline to capture its failure; production always uses the default. */
@@ -112,19 +116,37 @@ function claudeStartupDeadlineMs(): number {
     : CLAUDE_STARTUP_DEADLINE_MS
 }
 
-/** Startup's answers, or a rejection once the deadline passes; a late answer is then ignored. */
-function withinClaudeStartupDeadline<T>(answers: Promise<T>, deadlineMs: number): Promise<T> {
+/** The initialize answer, or a rejection once the CLI has said nothing for `deadlineMs`; a late
+ *  answer is then ignored. Claude answers only after its SessionStart hooks finish, and their frames
+ *  restart the clock, so a slow hook that reports itself is not cut off. A refused proof fails it
+ *  at once. */
+function withinClaudeStartupDeadline<T>(
+  answer: Promise<T>,
+  proof: ClaudeInitProof,
+  deadlineMs: number
+): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
+  let expire = (_error: Error): void => {}
   const expired = new Promise<never>((_resolve, reject) => {
+    expire = reject
+  })
+  const arm = (): void => {
+    clearTimeout(timer)
     timer = setTimeout(
       () =>
-        reject(
+        expire(
           new Error(`claude did not answer initialize within ${Math.round(deadlineMs / 1000)}s`)
         ),
       deadlineMs
     )
+  }
+  arm()
+  proof.onFrame = arm
+  const refused = proof.promise.then(() => new Promise<never>(() => {}))
+  return Promise.race([answer, refused, expired]).finally(() => {
+    clearTimeout(timer)
+    proof.onFrame = null
   })
-  return Promise.race([answers, expired]).finally(() => clearTimeout(timer))
 }
 
 /** Settles on the CLI's initialize answer, on its exit, or at the startup deadline. */
@@ -147,6 +169,7 @@ export async function readClaudeStartupFacts(input: {
       }
       return result
     }),
+    input.initProof,
     claudeStartupDeadlineMs()
   )
   if (input.connection.closed) {

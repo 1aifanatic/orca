@@ -51,8 +51,9 @@ export function fakeClaude(
     initSessionId?: string
     initUuid?: string
     initModel?: string
-    /** 'session-start' (default) mirrors live: a SessionStart hook frame proves the
-     *  session and system/init arrives only when the first command starts a cycle.
+    /** 'session-start' (default) mirrors live with a SessionStart hook installed: its
+     *  frame proves the session and system/init arrives only when the first command starts a
+     *  cycle; 'none' mirrors live without one.
      *  'init' emits init at startup — an UNMEASURED shape, opt-in only. */
     initProof?: 'init' | 'session-start' | 'none'
     initAccount?: unknown
@@ -126,8 +127,9 @@ export function fakeClaude(
           // sessions prove startup with a SessionStart hook frame instead.
           emitCycleInit()
         } else if (options.initProof !== 'none') {
-          // The live proof order (measured through Orca's adapter): SessionStart
-          // hook frames arrive first; system/init only when a cycle starts.
+          // The live order with a SessionStart hook installed (Orca's status hooks):
+          // its frames arrive first; system/init only when a cycle starts. Without
+          // one, nothing arrives before the first turn ('none').
           handlers.onMessage?.({
             type: 'system',
             subtype: 'hook_started',

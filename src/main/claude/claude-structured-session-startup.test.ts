@@ -5,6 +5,7 @@ import {
   adapterAtPublishFor,
   fakeClaude,
   identityFor,
+  PROVIDER_SESSION_ID,
   USER_MESSAGE
 } from './claude-structured-session-test-support'
 import { CLAUDE_DEFAULT_REQUEST_TIMEOUT_MS } from './claude-agent-sdk-control-requests'
@@ -235,6 +236,53 @@ describe('Claude structured session publishes before the CLI answers initialize'
     expect(events.some((event) => event.type === 'started' || event.type === 'options')).toBe(false)
     expect(claude.connections[0].calls.map(({ subtype }) => subtype)).not.toContain('get_settings')
     expect(claude.connections[0].sent).toEqual([])
+  })
+
+  // Claude answers initialize only once its SessionStart hooks finish; their frames show it is alive.
+  it('restarts the deadline on each start frame, so a slow SessionStart hook is not cut off', async () => {
+    const claude = fakeClaude({
+      initDelayMs: CLAUDE_STARTUP_DEADLINE_MS + SLOW_INIT_MS,
+      initProof: 'none'
+    })
+    const { adapter, events } = startingAdapter(claude)
+    await adapter.acquire(ACQUIRE)
+
+    await vi.advanceTimersByTimeAsync(CLAUDE_STARTUP_DEADLINE_MS - 1)
+    claude.connections[0].handlers.onMessage?.({
+      type: 'system',
+      subtype: 'hook_started',
+      hook_name: 'SessionStart:startup',
+      session_id: PROVIDER_SESSION_ID
+    })
+    await vi.advanceTimersByTimeAsync(SLOW_INIT_MS + 1)
+    await adapter.awaitStarted('session-1')
+
+    expect(events.some((event) => event.type === 'started')).toBe(true)
+    expect(events.some((event) => event.type === 'ended')).toBe(false)
+    expect(claude.connections[0].closeCount).toBe(0)
+    await adapter.closeAll()
+  })
+
+  it('fails a start at once when a frame names another session before initialize answers', async () => {
+    const claude = fakeClaude({ initDelayMs: CLAUDE_STARTUP_DEADLINE_MS * 2, initProof: 'none' })
+    const { adapter, events } = startingAdapter(claude)
+    await adapter.acquire(ACQUIRE)
+
+    claude.connections[0].handlers.onMessage?.({
+      type: 'system',
+      subtype: 'hook_started',
+      hook_name: 'SessionStart:startup',
+      session_id: 'foreign-session'
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    await adapter.awaitStarted('session-1')
+    await adapter.drainObservedExits()
+
+    expect(events.find((event) => event.type === 'ended')).toMatchObject({
+      reason: 'claude provider session expected',
+      failure: { kind: 'startFailed' },
+      startupUnproven: true
+    })
   })
 
   // Only a SessionStart hook sends a start frame before the first turn; without one, the
