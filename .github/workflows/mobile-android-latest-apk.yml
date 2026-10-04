@@ -1,0 +1,103 @@
+name: Mobile Android Latest APK
+
+# Why: GitHub's releases/latest/download URL belongs to the desktop app in this repo, so the
+# permanent Android download link is the app-release.apk asset of a dedicated release instead.
+# Every Android download link (READMEs, docs site, desktop app) points here and never changes.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+# Why: each run must read the release list after the previous run's swap has finished.
+concurrency:
+  group: mobile-android-latest-apk
+  cancel-in-progress: false
+
+jobs:
+  publish-latest-apk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Copy the newest Android APK onto the permanent link
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          LATEST_TAG: mobile-android-latest
+          ASSET: app-release.apk
+        run: |
+          set -euo pipefail
+
+          # Why: publish the newest versioned release, not this run's build, so re-running an
+          # older release (or a queued run GitHub dropped) can never roll the link back. A failed
+          # build can leave a tag with no release or APK, so walk down until one has the asset.
+          source_tag=""
+          for tag in $(
+            gh api "repos/$REPO/git/matching-refs/tags/mobile-android-v" --paginate --jq '.[].ref' \
+              | sed -n 's#^refs/tags/\(mobile-android-v[0-9]*\.[0-9]*\.[0-9]*\)$#\1#p' \
+              | sort -Vr
+          ); do
+            if gh release view "$tag" --repo "$REPO" --json assets --jq '.assets[].name' 2>/dev/null \
+              | grep -Fxq "$ASSET"; then
+              source_tag="$tag"
+              break
+            fi
+          done
+          if [ -z "$source_tag" ]; then
+            echo "::error::No mobile-android-v* release has an $ASSET asset"
+            exit 1
+          fi
+          echo "Newest Android release: $source_tag"
+
+          source_url="https://github.com/$REPO/releases/tag/$source_tag"
+          notes="The newest Orca Mobile Android APK, at a link that never changes: https://github.com/$REPO/releases/download/$LATEST_TAG/$ASSET
+
+          Currently: $source_tag ($source_url). Changelog and source are on that release."
+
+          if ! gh release view "$LATEST_TAG" --repo "$REPO" >/dev/null 2>&1; then
+            # --latest=false keeps the desktop app's Latest badge; the tag is never moved.
+            gh release create "$LATEST_TAG" --repo "$REPO" --target "$GITHUB_SHA" \
+              --title "Orca Mobile Android (latest)" --prerelease --latest=false --notes "$notes"
+          fi
+
+          release_json="$(gh api "repos/$REPO/releases/tags/$LATEST_TAG")"
+          if jq -e --arg asset "$ASSET" --arg src "Currently: $source_tag " \
+            '(.body | contains($src)) and any(.assets[]; .name == $asset)' <<<"$release_json" >/dev/null; then
+            echo "$LATEST_TAG already serves $source_tag"
+            exit 0
+          fi
+
+          dir="$RUNNER_TEMP/android-latest-apk"
+          next="app-release.next.apk"
+          checksum="$ASSET.sha256"
+          mkdir -p "$dir"
+          gh release download "$source_tag" --repo "$REPO" --pattern "$ASSET" --dir "$dir" --clobber
+          # Releases before #24037 carry no checksum file.
+          gh release download "$source_tag" --repo "$REPO" --pattern "$checksum" --dir "$dir" --clobber 2>/dev/null || true
+          mv "$dir/$ASSET" "$dir/$next"
+
+          # A run that died mid-swap can leave the temporary asset behind, and the old checksum
+          # must never sit beside a different APK.
+          for stale in "$next" "$checksum"; do
+            stale_id="$(jq -r --arg n "$stale" '.assets[] | select(.name == $n) | .id' <<<"$release_json")"
+            if [ -n "$stale_id" ]; then
+              gh api -X DELETE "repos/$REPO/releases/assets/$stale_id"
+            fi
+          done
+
+          # Why: upload under a temporary name, then swap, so the link is down only between the
+          # delete and the rename rather than for the whole upload, and a failed upload leaves the
+          # previous APK serving.
+          gh release upload "$LATEST_TAG" "$dir/$next" --repo "$REPO"
+          release_json="$(gh api "repos/$REPO/releases/tags/$LATEST_TAG")"
+          old_id="$(jq -r --arg n "$ASSET" '.assets[] | select(.name == $n) | .id' <<<"$release_json")"
+          next_id="$(jq -r --arg n "$next" '.assets[] | select(.name == $n) | .id' <<<"$release_json")"
+          if [ -n "$old_id" ]; then
+            gh api -X DELETE "repos/$REPO/releases/assets/$old_id"
+          fi
+          gh api -X PATCH "repos/$REPO/releases/assets/$next_id" -f name="$ASSET" >/dev/null
+          if [ -f "$dir/$checksum" ]; then
+            gh release upload "$LATEST_TAG" "$dir/$checksum" --repo "$REPO"
+          fi
+          gh release edit "$LATEST_TAG" --repo "$REPO" --notes "$notes"
+          echo "$LATEST_TAG now serves $source_tag"
