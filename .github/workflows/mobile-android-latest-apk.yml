@@ -118,6 +118,11 @@ jobs:
           have_apk="$(digest "$dir/latest.json" "$ASSET")"
           have_sum="$(digest "$dir/latest.json" "$checksum")"
           if [ "$want_apk" = "$have_apk" ] && [ "$want_sum" = "$have_sum" ]; then
+            # Why: notes are edited last, so a run that failed there left them naming the old version.
+            served_notes="$(jq -r '.body // "" | gsub("\r"; "")' "$dir/latest.json")"
+            if [ "$served_notes" != "$notes" ]; then
+              gh release edit "$LATEST_TAG" --repo "$REPO" --notes "$notes"
+            fi
             echo "$LATEST_TAG already serves $source_tag"
             exit 0
           fi
