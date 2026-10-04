@@ -57,6 +57,11 @@ const SOURCE_RESTORE_REQUIRED_SOURCE =
   'SSH_PTY_SOURCE_RESTORE_REQUIRED(?::[ \\t]*\\S*(?:[ \\t]+\\S+)?)?'
 const SOURCE_RESTORE_REQUIRED_PATTERN = new RegExp(SOURCE_RESTORE_REQUIRED_SOURCE)
 const SOURCE_RESTORE_REQUIRED_REPLACE_PATTERN = new RegExp(SOURCE_RESTORE_REQUIRED_SOURCE, 'g')
+// An older Orca build's relay may still run this terminal, and this build cannot reach it. Not one of
+// the sources above: that copy implies the session is gone.
+const HELD_BY_PREVIOUS_RELAY_SOURCE = 'SSH_PTY_HELD_BY_PREVIOUS_RELAY(?::[ \\t]*\\S*)?'
+const HELD_BY_PREVIOUS_RELAY_PATTERN = new RegExp(HELD_BY_PREVIOUS_RELAY_SOURCE)
+const HELD_BY_PREVIOUS_RELAY_REPLACE_PATTERN = new RegExp(HELD_BY_PREVIOUS_RELAY_SOURCE, 'g')
 const UNREATTACHABLE_SESSION_PATTERNS = UNREATTACHABLE_SESSION_SOURCES.map(
   (source) => new RegExp(source)
 )
@@ -100,6 +105,7 @@ export function isExplainedTerminalError(error: string): boolean {
         TERMINAL_HOST_GONE_PATTERN.test(line) ||
         LEGACY_TERMINAL_HOST_GONE_PATTERN.test(line) ||
         SOURCE_RESTORE_REQUIRED_PATTERN.test(line) ||
+        HELD_BY_PREVIOUS_RELAY_PATTERN.test(line) ||
         UNREATTACHABLE_SESSION_PATTERNS.some((pattern) => pattern.test(line))
     )
 }
@@ -153,6 +159,12 @@ export function humanizeTerminalError(error: string): string {
     translate(
       'auto.components.terminal.pane.TerminalErrorToast.sourceRestoring',
       'Reconnecting this terminal — its output is being re-established. The session is still running.'
+    )
+  )
+  humanized = humanized.replace(HELD_BY_PREVIOUS_RELAY_REPLACE_PATTERN, () =>
+    translate(
+      'auto.components.terminal.pane.TerminalErrorToast.heldByPreviousRelay',
+      'This terminal is still running on the host under the previous Orca version, which this version cannot connect to. It keeps running until it exits. Open a new terminal to keep working here.'
     )
   )
   if (humanized.includes(REMOTE_TERMINAL_CLOSED_MARKER)) {
