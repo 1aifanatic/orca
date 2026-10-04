@@ -62,6 +62,13 @@ const inTurn = (turn: string) => ({
   scope: { kind: 'turn', turnItemId: `turn:${turn}` } as const
 })
 
+const codexSlot = (turn: string, ordinal: number): AgentJournalItemIdentity => ({
+  provider: 'codex',
+  threadId: 'root',
+  turnId: turn,
+  ordinal
+})
+
 async function write(
   journal: AgentSessionJournal,
   row: { identity: AgentJournalItemIdentity; ref?: string },
@@ -115,6 +122,54 @@ describe('provider timeline joins', () => {
     })
     expect(codexJoins().place(message('reply'), 'message', inTurn('t1'), journal).itemId).toBe(
       'codex:root:t1:1'
+    )
+  })
+
+  it('continues past the highest ordinal the journal holds, never into a gap below it', async () => {
+    const journal = await openJournal()
+    await write(journal, { identity: codexSlot('t1', 2), ref: 'item:old' }, 'old')
+    // Another turn and another thread keep their own places.
+    await write(journal, { identity: codexSlot('t2', 7) }, 'other turn')
+    await write(journal, { identity: { ...codexSlot('t1', 9), threadId: 'sub' } }, 'subagent')
+    const joins = codexJoins()
+    expect(joins.place(message('new'), 'message', inTurn('t1'), journal).itemId).toBe(
+      'codex:root:t1:3'
+    )
+    expect(joins.place(message('next'), 'message', inTurn('t1'), journal).itemId).toBe(
+      'codex:root:t1:4'
+    )
+  })
+
+  it('continues past an echoed send above the highest row', async () => {
+    const journal = await openJournal()
+    await write(journal, { identity: codexSlot('t1', 0) }, 'first')
+    await journal.appendSubmission({
+      clientMessageId: 'send-1',
+      payloadFingerprint: 'fp',
+      body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'hi' }] },
+      fence: 1
+    })
+    await journal.resolveDispatch({
+      clientMessageId: 'send-1',
+      state: 'accepted',
+      providerIdentity: codexSlot('t1', 4),
+      fence: 1
+    })
+    expect(codexJoins().place(message('reply'), 'message', inTurn('t1'), journal).itemId).toBe(
+      'codex:root:t1:5'
+    )
+  })
+
+  it('forgets what it read from an epoch the journal replaced', async () => {
+    const journal = await openJournal()
+    const joins = codexJoins()
+    const m0 = joins.place(message('m0'), 'message', inTurn('t1'), journal)
+    await write(journal, m0, 'first')
+    expect(joins.find(message('m0'), journal)?.itemId).toBe('codex:root:t1:0')
+    await journal.replaceEpochItems('handle_forked', 1, [])
+    expect(joins.find(message('m0'), journal)).toBeNull()
+    expect(joins.place(message('m1'), 'message', inTurn('t1'), journal).itemId).toBe(
+      'codex:root:t1:0'
     )
   })
 

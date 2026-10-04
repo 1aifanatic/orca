@@ -22,7 +22,6 @@ import {
 import { BoundedMap } from '../../../shared/bounded-map'
 import type { StructuredAgentSessionTransitionJournal } from '../agent-session-wire/structured-agent-session-transition'
 import {
-  providerTimelineKeyPart,
   spellProviderTimelineKey,
   type ProviderTimelineIdentityScheme,
   type ProviderTimelineItemAddress,
@@ -31,12 +30,10 @@ import {
   type ProviderTimelineKey,
   type ProviderTimelineTurnAddress
 } from './provider-timeline-identity'
+import { ProviderTimelineMessagePlaces } from './provider-timeline-message-places'
 
 const MAX_JOINED_ROWS = 1_024
 const MAX_JOINED_ROW_BYTES = 1024 * 1024
-const MAX_TURN_ORDINALS = 256
-/** Echoed sends whose slot no row holds yet; a lane records each on its send soon after. */
-const MAX_RESERVED_ECHOES = 64
 
 /** One provider item as the provider names it. Item keys are the provider's per thread. */
 export type ProviderTimelineItemJoin = {
@@ -81,12 +78,9 @@ export class ProviderTimelineJoins {
     maxBytes: MAX_JOINED_ROW_BYTES,
     sizeOf: (row, key) => bytes(key) + 2 * bytes(row.itemId) + 64
   })
-  private readonly ordinals = new BoundedMap<string, number>({
-    maxEntries: MAX_TURN_ORDINALS,
-    maxBytes: MAX_TURN_ORDINALS * 1024,
-    sizeOf: (_next, place) => bytes(place) + 8
-  })
-  private readonly echoes = new BoundedMap<string, true>({ maxEntries: MAX_RESERVED_ECHOES })
+  private readonly places: ProviderTimelineMessagePlaces
+  /** The journal epoch every cache entry was read from; a replaced epoch holds other rows. */
+  private epoch: string | null = null
   private serial = 0
 
   constructor(
@@ -95,7 +89,12 @@ export class ProviderTimelineJoins {
       generation: string
       namespace: string
     }
-  ) {}
+  ) {
+    this.places = new ProviderTimelineMessagePlaces({
+      scheme: deps.scheme,
+      namespace: () => this.deps.namespace
+    })
+  }
 
   get namespace(): string {
     return this.deps.namespace
@@ -105,7 +104,19 @@ export class ProviderTimelineJoins {
   reset(namespace: string): void {
     this.deps.namespace = namespace
     this.rows.clear()
-    this.ordinals.clear()
+    this.places.clear()
+  }
+
+  /** Drops every cache read from an epoch the journal has since replaced (a rewind, an import). */
+  private sync(journal: Journal): void {
+    if (!journal || journal.epoch === this.epoch) {
+      return
+    }
+    if (this.epoch !== null) {
+      this.rows.clear()
+      this.places.clear()
+    }
+    this.epoch = journal.epoch
   }
 
   /** A key unique to this acquisition, for something the provider names nothing. */
@@ -143,6 +154,7 @@ export class ProviderTimelineJoins {
     journal: Journal,
     namespace = this.deps.namespace
   ): ProviderTimelineRow | null {
+    this.sync(journal)
     const ref = this.reference(join, namespace)
     const cached = this.rows.get(ref)
     // A planner ahead of a reset asks about a namespace whose rows this index does not spell yet.
@@ -165,7 +177,11 @@ export class ProviderTimelineJoins {
     placement: ProviderTimelinePlacement,
     journal: Journal
   ): ProviderTimelineRow {
-    const ordinal = this.ordinalFor(itemClass, placement, journal)
+    this.sync(journal)
+    const ordinal =
+      this.deps.scheme.ordinalMessages && itemClass === 'message' && placement.turn
+        ? this.places.next(placement.thread, placement.turn, journal)
+        : null
     const identity = this.deps.scheme.item({
       ...this.address(join, 1),
       turn: placement.turn,
@@ -194,7 +210,7 @@ export class ProviderTimelineJoins {
       return
     }
     const row = this.place(join, 'message', placement, journal)
-    this.echoes.set(row.itemId, true)
+    this.places.reserve(row.itemId)
   }
 
   /** The request under `key` the journal holds last: the highest incarnation with a row. */
@@ -203,6 +219,7 @@ export class ProviderTimelineJoins {
     journal: Journal,
     namespace = this.deps.namespace
   ): ProviderTimelineRow | null {
+    this.sync(journal)
     const join = { family: 'request' as const, key, thread: null }
     const ref = this.reference(join, namespace)
     const cached = this.rows.get(ref)
@@ -268,47 +285,6 @@ export class ProviderTimelineJoins {
 
   private spelled(join: ProviderTimelineItemJoin, incarnation: number): AgentJournalItemIdentity {
     return this.deps.scheme.item(this.address(join, incarnation))
-  }
-
-  /** The next free place among the turn's messages: past every row and echoed send holding one. */
-  private ordinalFor(
-    itemClass: ProviderTimelineItemClass,
-    placement: ProviderTimelinePlacement,
-    journal: Journal
-  ): number | null {
-    const turn = placement.turn
-    if (!this.deps.scheme.ordinalMessages || itemClass !== 'message' || !turn) {
-      return null
-    }
-    const place = `${providerTimelineKeyPart(placement.thread ?? '')}\u001f${spellProviderTimelineKey(
-      this.deps.namespace,
-      turn
-    )}`
-    let ordinal = this.ordinals.get(place) ?? 0
-    while (this.taken(this.slot(placement.thread, turn, ordinal), journal)) {
-      ordinal += 1
-    }
-    this.ordinals.set(place, ordinal + 1)
-    return ordinal
-  }
-
-  private slot(thread: string | null, turn: ProviderTimelineKey, ordinal: number): string {
-    return agentJournalItemKey(
-      this.deps.scheme.item({
-        ...this.address({ family: 'item', key: turn, thread }, 1),
-        turn,
-        itemClass: 'message',
-        messageOrdinal: ordinal
-      })
-    )
-  }
-
-  private taken(itemId: string, journal: Journal): boolean {
-    return (
-      this.echoes.has(itemId) ||
-      (journal !== null &&
-        (journal.itemBody(itemId) !== null || journal.canonicalItemId(itemId) !== itemId))
-    )
   }
 }
 

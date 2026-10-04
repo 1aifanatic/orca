@@ -52,11 +52,16 @@ export type ProviderTimelineItemAddress = {
   incarnation: number
 }
 
+export type ProviderTimelineMessageSlot = { place: string; ordinal: number }
+
 export type ProviderTimelineIdentityScheme = {
   /** Messages inside a turn are keyed by their place among the turn's messages, not by their key.
    *  Such an identity must spell only (thread, turn, ordinal), and its row carries the key as
    *  `providerItemRef`, since nothing else could find it again. */
   ordinalMessages: boolean
+  /** Reads an ordinal message identity back: its (thread, turn) place, spelled by the scheme, and
+   *  its ordinal; null for any other identity. Required with `ordinalMessages`. */
+  messageSlot?(identity: AgentJournalItemIdentity): ProviderTimelineMessageSlot | null
   turn(address: ProviderTimelineTurnAddress): AgentJournalItemIdentity
   /** The id the turn row carries and a client's Stop names. */
   turnId(address: ProviderTimelineTurnAddress): string

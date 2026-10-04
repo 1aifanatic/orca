@@ -20,6 +20,10 @@ export function createCodexProviderTimelineIdentityScheme(input: {
     codexTurnLifecycleIdentity(input.sessionId, address.key.value)
   return {
     ordinalMessages: true,
+    messageSlot: (identity) =>
+      identity.provider === 'codex'
+        ? { place: `${identity.threadId}\u001f${identity.turnId}`, ordinal: identity.ordinal }
+        : null,
     turn,
     turnId: (address) => address.key.value,
     turnOpener: (address) => {
