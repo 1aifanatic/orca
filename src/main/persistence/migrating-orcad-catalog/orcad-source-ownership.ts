@@ -12,6 +12,7 @@ import {
   type FolderWorkspaceHostState
 } from '../../../shared/folder-workspace-execution-host'
 import type { FolderWorkspace } from '../../../shared/folder-workspace-types'
+import type { ProjectGroup } from '../../../shared/project-group-types'
 import type { Repo } from '../../../shared/repo-types'
 
 export function repoBelongsToOrcadSource(repo: Repo, targetId: string): boolean {
@@ -19,6 +20,17 @@ export function repoBelongsToOrcadSource(repo: Repo, targetId: string): boolean 
     return true
   }
   const host = parseExecutionHostId(getRepoExecutionHostId(repo))
+  return host?.kind === 'ssh' && host.targetId === targetId
+}
+
+export function projectGroupBelongsToOrcadSource(
+  group: Pick<ProjectGroup, 'connectionId' | 'executionHostId'>,
+  targetId: string
+): boolean {
+  if (group.connectionId === targetId) {
+    return true
+  }
+  const host = parseExecutionHostId(group.executionHostId)
   return host?.kind === 'ssh' && host.targetId === targetId
 }
 
