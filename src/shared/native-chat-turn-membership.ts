@@ -245,6 +245,7 @@ export function nativeChatMessagesWaitingBehindLiveTurn(
     queued?: true
     unsent?: true
     sentWhileStopping?: true
+    awaitsRetry?: true
     journalPosition?: unknown
   }[],
   items: readonly AgentJournalRenderItem[] | null | undefined,
@@ -253,18 +254,28 @@ export function nativeChatMessagesWaitingBehindLiveTurn(
 ): ReadonlySet<string> {
   const waits = (message: (typeof messages)[number]): boolean =>
     message.queued === true || (stopping && message.sentWhileStopping === true)
-  const waiting = messages.filter(waits)
-  if (waiting.length > 0 && items && (stopping || commandTurnRunning(items))) {
-    return new Set(waiting.map((message) => message.id))
-  }
-  if (!items || !submissions || structuredAgentSessionOpeningSendIn(items, submissions) === null) {
+  // Behind a turn still opening: queued, or a send of this client's the host has not recorded and
+  // is not waiting on the user's Retry.
+  const unrecorded = (message: (typeof messages)[number]): boolean =>
+    message.role === 'user' &&
+    message.journalPosition === undefined &&
+    message.unsent !== true &&
+    message.awaitsRetry !== true
+  const candidates = messages.filter((message) => waits(message) || unrecorded(message))
+  if (candidates.length === 0 || !items) {
     return new Set()
   }
-  // Behind a turn still opening: queued, or a send of this client's the host has not recorded.
-  const unrecorded = (message: (typeof messages)[number]): boolean =>
-    message.role === 'user' && message.journalPosition === undefined && message.unsent !== true
+  const behindHold = stopping || commandTurnRunning(items)
+  const behindOpening =
+    submissions !== undefined && structuredAgentSessionOpeningSendIn(items, submissions) !== null
   return new Set(
-    messages.filter((message) => waits(message) || unrecorded(message)).map((message) => message.id)
+    candidates
+      .filter(
+        (message) =>
+          (behindHold && waits(message)) ||
+          (behindOpening && (message.queued === true || unrecorded(message)))
+      )
+      .map((message) => message.id)
   )
 }
 

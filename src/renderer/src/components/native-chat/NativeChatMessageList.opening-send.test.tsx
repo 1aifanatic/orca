@@ -197,4 +197,39 @@ describe('a message sent while the turn ahead is still opening', () => {
     view.rerender(frame(queued, [...submissions, withdrawn], [], true))
     expect(screen.queryByText('B')).toBeNull()
   })
+
+  // The Q2 frame: Stop pressed while the host has not recorded B yet, its lane still busy.
+  it('keeps an unrecorded B after the Stopping line, and a message typed while Stopping too', () => {
+    const { items, submissions } = openingFirst()
+    const view = render(frame(items, submissions, [unrecorded('b', 'B')], true))
+    waitsAtTheTail('B')
+
+    const typedWhileStopping: StructuredAgentSessionOutboxEntry = {
+      ...unrecorded('c', 'C'),
+      queuedAt: NOW + 300,
+      lastAttemptAt: NOW + 300,
+      sentWhileStopping: true
+    }
+    view.rerender(frame(items, submissions, [unrecorded('b', 'B'), typedWhileStopping], true))
+    waitsAtTheTail('B')
+    waitsAtTheTail('C')
+  })
+
+  // The host holds nothing for a send only the user's Retry sends again, so it stays where it is.
+  it.each([
+    ['unconfirmed', { state: 'unconfirmed' as const, retryAfterUnknownSubmittedAt: NOW - 50_000 }],
+    ['outlived by a Stop', { state: 'queued' as const, outlivedStop: true as const }]
+  ])('does not move a send waiting on Retry (%s) behind the opening turn', (_, retry) => {
+    const { items, submissions } = openingFirst()
+    const awaitingRetry: StructuredAgentSessionOutboxEntry = {
+      ...unrecorded('c', 'C'),
+      queuedAt: NOW - 50_000,
+      lastAttemptAt: NOW - 50_000,
+      ...retry
+    }
+
+    render(frame(items, submissions, [awaitingRetry]))
+
+    expect(follows(liveActivity(), screen.getByText('C'))).toBe(true)
+  })
 })

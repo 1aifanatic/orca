@@ -195,4 +195,31 @@ describe('a message sent while the turn ahead is still opening, on the phone', (
       liveOn: agentJournalSubmissionKey('first')
     })
   })
+
+  // The Q2 frame: Stop pressed while the host has not recorded B yet; then C typed while Stopping.
+  it('keeps an unrecorded B waiting while Stopping, and C typed then as well', () => {
+    expect(frame(openingItems, openingSubmissions, [unrecorded('b')], true).waiting).toEqual([
+      agentJournalSubmissionKey('b')
+    ])
+    const typedWhileStopping: StructuredAgentSessionOutboxEntry = {
+      ...unrecorded('c'),
+      queuedAt: NOW + 300,
+      sentWhileStopping: true
+    }
+    expect(
+      frame(openingItems, openingSubmissions, [unrecorded('b'), typedWhileStopping], true).waiting
+    ).toEqual([agentJournalSubmissionKey('b'), agentJournalSubmissionKey('c')])
+  })
+
+  it.each([
+    ['unconfirmed', { state: 'unconfirmed' as const, retryAfterUnknownSubmittedAt: NOW - 50_000 }],
+    ['outlived by a Stop', { state: 'queued' as const, outlivedStop: true as const }]
+  ])('leaves a send waiting on Retry (%s) in the list', (_, retry) => {
+    const awaitingRetry: StructuredAgentSessionOutboxEntry = {
+      ...unrecorded('c'),
+      queuedAt: NOW - 50_000,
+      ...retry
+    }
+    expect(frame(openingItems, openingSubmissions, [awaitingRetry]).waiting).toEqual([])
+  })
 })

@@ -217,6 +217,9 @@ export type NativeChatMessage = AgentJournalProducerLinkage & {
   unsent?: true
   /** This client's send, made while the chat read Stopping, that the host has not recorded yet. */
   sentWhileStopping?: true
+  /** This client's send the host has not recorded, which only the user's Retry sends again: the
+   *  host holds nothing for it, so it never waits behind a turn. */
+  awaitsRetry?: true
   /** Set only by the structured projection, on rows the journal holds, and ranks
    *  them ahead of time. Terminal-backed messages never carry it, and worker reads strip it. */
   journalPosition?: AgentJournalPosition

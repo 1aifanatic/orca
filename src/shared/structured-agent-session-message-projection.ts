@@ -7,6 +7,7 @@ import type { NativeChatMessage } from './native-chat-types'
 import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
 import { structuredAgentSessionEntryHeldForRetry } from './structured-agent-session-outbox-admission'
 import { reconcileStructuredAgentSessionOutboxWithQueue } from './structured-agent-session-draft-hand-off'
+import { awaitsStructuredAgentSessionRetry } from './structured-agent-session-outbox-stop-withdrawal'
 import { projectStructuredItemsToNativeChat } from './structured-agent-session-projection'
 
 export function projectStructuredAgentSessionMessages(
@@ -68,6 +69,7 @@ export function projectStructuredAgentSessionMessages(
             : entry.sentWhileStopping
               ? { sentWhileStopping: true as const }
               : {}),
+          ...(awaitsStructuredAgentSessionRetry(entry) ? { awaitsRetry: true as const } : {}),
           // A send the journal recorded before refusing it keeps its place there.
           ...(recorded ? { journalPosition: agentJournalItemPosition(recorded) } : {})
         }
