@@ -217,6 +217,7 @@ describe('attachMainWindowServices', () => {
     const mainWindow = createMainWindow()
     const store = createStore()
 
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Stubs provide the window/runtime methods exercised by attachment.
     attachMainWindowServices(mainWindow as never, store, runtime as never)
 
     expect(setRepoRemoteClientNotifierMock).toHaveBeenCalledWith(runtime)
