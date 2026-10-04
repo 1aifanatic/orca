@@ -74,7 +74,6 @@ describe('structured mailbox pointer host', () => {
         dispatchId: 'd1',
         operationId: 'op1',
         expectedRuntimeFence: 1,
-        payloadFingerprint: 'fp',
         body: { kind: 'message', role: 'user', blocks: [] }
       } as never)
     ).resolves.toEqual({ kind: 'unattached' })
@@ -101,7 +100,6 @@ describe('structured mailbox pointer host', () => {
         dispatchId: 'd1',
         operationId: 'op1',
         expectedRuntimeFence: 1,
-        payloadFingerprint: 'fp',
         body: { kind: 'message', role: 'user', blocks: [] }
       } as never)
     ).resolves.toEqual({ kind: 'sent', state: expected })
@@ -110,6 +108,27 @@ describe('structured mailbox pointer host', () => {
     expect(send.mock.calls[0]![1]!.retryUnknown).toBeUndefined()
     // The mailbox sends mail again after a restart, so a restart never keeps it as a card.
     expect(send.mock.calls[0]![1]).toMatchObject({ source: 'mail' })
+  })
+
+  it('reads a queued answer as unknown, so the pointer is retained', async () => {
+    hostRef.current = {
+      send: async () => ({
+        ok: true,
+        value: {
+          clientMessageId: 'op1',
+          queued: { messageId: 'op1', position: 0, state: 'waiting' }
+        }
+      })
+    }
+    await expect(
+      createStructuredMailboxPointerHost().send({
+        sessionId: 's1',
+        dispatchId: 'd1',
+        operationId: 'op1',
+        expectedRuntimeFence: 1,
+        body: { kind: 'message', role: 'user', blocks: [] }
+      } as never)
+    ).resolves.toEqual({ kind: 'sent', state: 'unknown' })
   })
 
   it('consumes mail once an accepted nudge is delivered while the worker starts (W10)', async () => {
@@ -128,7 +147,6 @@ describe('structured mailbox pointer host', () => {
         dispatchId: 'd1',
         operationId: 'op1',
         expectedRuntimeFence: 1,
-        payloadFingerprint: 'fp',
         body: { kind: 'message', role: 'user', blocks: [] }
       } as never)
     ).resolves.toEqual({ kind: 'sent', state: 'accepted' })
@@ -150,7 +168,6 @@ describe('structured mailbox pointer host', () => {
         dispatchId: null,
         operationId: 'op1',
         expectedRuntimeFence: 1,
-        payloadFingerprint: 'fp',
         body: { kind: 'message', role: 'user', blocks: [] }
       } as never)
     ).resolves.toEqual({ kind: 'sent', state: 'accepted' })
@@ -172,7 +189,6 @@ describe('structured mailbox pointer host', () => {
           dispatchId: 'd1',
           operationId: 'op1',
           expectedRuntimeFence: 1,
-          payloadFingerprint: 'fp',
           body: { kind: 'message', role: 'user', blocks: [] }
         } as never)
       ).resolves.toEqual(expected)

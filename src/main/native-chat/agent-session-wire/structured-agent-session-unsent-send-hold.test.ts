@@ -347,30 +347,34 @@ describe('the queue at a quit', () => {
     const queued = rig.send('queued behind the compact', 'queue-if-active')
     expect(await queued.result).toMatchObject({ ok: true, value: { queued: { state: 'waiting' } } })
     const host = rig.host
-    const flush = host.flushStreamedEvents
+    const { queuedMessages } = journal()
+    const settleOwed = queuedMessages.settleOwed.bind(queuedMessages)
     let release = (): void => undefined
     const held = new Promise<void>((resolve) => (release = resolve))
     let reached = (): void => undefined
     const inStep = new Promise<void>((resolve) => (reached = resolve))
     let blocked = false
-    // Holds only the drain step's own flush, past its first dispose check, until quit has begun.
-    host.flushStreamedEvents = async (sessionId: string) => {
-      if (
-        !blocked &&
-        (new Error('which caller flushes').stack ?? '').includes('QueuedMessageDrain.step')
-      ) {
+    const inDrainStep = (): boolean =>
+      (new Error('which caller').stack ?? '').includes('QueuedMessageDrain.step')
+    // Holds the drain step at its one await, past its first dispose check, until quit has begun.
+    const owed = vi
+      .spyOn(queuedMessages, 'settlementOwed')
+      .mockImplementation(() => !blocked && inDrainStep())
+    const healing = vi.spyOn(queuedMessages, 'settleOwed').mockImplementation(async () => {
+      if (!blocked && inDrainStep()) {
         blocked = true
         reached()
         await held
       }
-      return flush(sessionId)
-    }
+      return settleOwed()
+    })
     rig.finishCompact()
     await inStep
     const quitting = host.flushAllStreamedEvents()
     release()
     await quitting
-    host.flushStreamedEvents = flush
+    owed.mockRestore()
+    healing.mockRestore()
     rig.crashRestartHostProcess()
 
     expect(await rig.drafts()).toEqual([{ messageId: queued.id, state: 'waiting' }])
