@@ -564,7 +564,8 @@ describe('structured chat adoption guard on the launch path', () => {
     expect(mockCreateTab).not.toHaveBeenCalled()
   })
 
-  it('leaves a refused structured prompt queued for an explicit retry', async () => {
+  // The chat hands a refused prompt back to its composer and says why, so the caller says nothing.
+  it('leaves a refused structured prompt to the chat, which says why', async () => {
     mockCallStructuredAgentSession.mockResolvedValueOnce({
       ok: false,
       refusal: { code: 'agent_session_busy', message: 'busy' }
@@ -580,7 +581,7 @@ describe('structured chat adoption guard on the launch path', () => {
 
     await expect(result?.promptDeliveryResult).resolves.toEqual({
       delivered: false,
-      failureNotified: false
+      failureNotified: true
     })
     expect(mockCreateTab).not.toHaveBeenCalled()
   })

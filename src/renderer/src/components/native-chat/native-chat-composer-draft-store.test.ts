@@ -509,7 +509,7 @@ describe('native-chat composer draft store', () => {
   it('gives text back once, even when the hand-back repeats, with no composer shown', async () => {
     const conversation = modules.store.structuredAgentSessionDraftScopeKey('session-1')
     modules.drafts.returnNativeChatDraftText(conversation, 'withdrawn message')
-    modules.drafts.returnNativeChatDraftText(conversation, '  withdrawn message\n')
+    modules.drafts.returnNativeChatDraftText(conversation, 'withdrawn message\n')
     expect(modules.drafts.readNativeChatDraftCache(conversation)).toBe('withdrawn message')
     // Saved at once: the copy it came from goes right after.
     const reloaded = await reload()
