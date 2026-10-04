@@ -52,7 +52,8 @@ vi.mock('@/store', async () => {
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), message: vi.fn() } }))
 
 vi.mock('@/lib/worktree-runtime-owner', () => ({
-  getRuntimeEnvironmentIdForWorktree: () => null
+  getRuntimeEnvironmentIdForWorktree: () => null,
+  getExecutionHostIdForWorktree: () => 'local'
 }))
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
@@ -117,6 +118,8 @@ const structuredTab = {
 const intent: StructuredAgentSessionLaunchIntent = {
   worktreeId: WORKTREE_ID,
   sessionId: SESSION_ID,
+  executionHostId: 'local',
+  target: { kind: 'local' },
   agent: 'claude',
   params: {
     envelope: {
