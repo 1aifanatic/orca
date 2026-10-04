@@ -7,6 +7,8 @@ import {
   messageText,
   SESSION
 } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
+import { createDeferredStructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
+import { testEventSinkLogging } from '../native-chat/agent-session-wire/structured-agent-session-logger-test-support'
 import type { AcpScriptedAgent } from './acp-scripted-agent.test-support'
 import {
   GROK_CONFIG_OPTIONS,
@@ -65,6 +67,67 @@ describe('ACP resume reconciles what the agent replays against the journal', () 
     await rig.acquire({ fence: 2 })
     await rig.settle()
     expect(await rig.rig.rows()).toEqual(before)
+  })
+
+  it('takes the rest of a reply Grok saved for a turn that ended without its end', async () => {
+    const rig = await openAcpAdapterRig({
+      ...resume,
+      script: replaysOnReload('prompt:m1', 'complete saved reply')
+    })
+    await rig.acquire()
+    await rig.rig.eventSink.appendItem({ provider: 'orca', clientMessageId: 'm1' }, hello, {
+      turnScope: { kind: 'thread' }
+    })
+    await sendHello(rig, 'm1')
+    await rig.frame('session/prompt')
+    rig.child().agent.notify('session/update', replyChunk('prompt:m1', 'complete'))
+    await rig.settle()
+    // The child goes mid-reply: the turn is left unverifiable, not completed.
+    await rig.adapter.closeSession(SESSION)
+    await rig.acquire({ fence: 2 })
+    await rig.settle()
+    const rows = await rig.rig.rows()
+    expect(rows.flatMap((row) => messageText(row.body) ?? [])).toEqual([
+      'hello',
+      'complete saved reply'
+    ])
+    expect(rows.flatMap((row) => readAgentJournalTurn(row.body)?.state ?? [])).toEqual([
+      'unverifiable'
+    ])
+  })
+
+  it('writes nothing for a completed turn replayed into a sink bound only after the load', async () => {
+    const rig = await openAcpAdapterRig({ ...resume, script: replaysOnReload('prompt:m1', 'hi') })
+    await rig.acquire()
+    await rig.rig.eventSink.appendItem({ provider: 'orca', clientMessageId: 'm1' }, hello, {
+      turnScope: { kind: 'thread' }
+    })
+    await sendHello(rig, 'm1')
+    const prompt = await rig.frame('session/prompt')
+    rig.child().agent.notify('session/update', replyChunk('prompt:m1', 'hi'))
+    rig.child().agent.reply(prompt, { stopReason: 'end_turn' })
+    await rig.settle()
+    await rig.adapter.closeSession(SESSION)
+    const before = await rig.rig.rows()
+    // The host's order: a fresh sink per start, bound to the journal once the start succeeded.
+    const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging(SESSION))
+    await rig.adapter.acquire({
+      identity: {
+        sessionId: SESSION,
+        workspaceId: 'workspace-1',
+        hostId: 'local',
+        agent: 'grok',
+        providerHandle: null
+      },
+      fence: 2,
+      spawnToken: 'spawn-2',
+      events: deferred.sink
+    })
+    deferred.bind({ journal: rig.rig.journal, fence: 2, publish: () => {} })
+    expect(await deferred.drained()).toMatchObject({ ok: true })
+    expect(await rig.rig.rows()).toEqual(before)
+    await rig.adapter.closeSession(SESSION)
+    deferred.close()
   })
 
   it('adopts a reply Grok saved that Orca never wrote, joined to the send already in the journal', async () => {

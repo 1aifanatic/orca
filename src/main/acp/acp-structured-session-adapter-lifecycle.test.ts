@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
 import {
   closeProviderTimelineRigs,
@@ -7,7 +7,9 @@ import {
 } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
 import { StructuredAgentSessionTaskQueue } from '../native-chat/agent-session-wire/structured-agent-session-task-queue'
 import { AcpStartupTimeoutError } from './acp-structured-acquire'
+import { tick } from './acp-scripted-agent.test-support'
 import {
+  GROK,
   openAcpAdapterRig,
   PROVIDER_SESSION,
   replyChunk,
@@ -271,6 +273,56 @@ describe('ACP startup that never answers', () => {
     expect(failure).toBeInstanceOf(AcpStartupTimeoutError)
     expect(rig.child().closes).toBe(1)
     await expect(rig.adapter.closeSession(SESSION)).resolves.toBe(true)
+  })
+
+  it('keeps the child of a failed start until its exit is proven, and starts no other meanwhile', async () => {
+    const rig = await openAcpAdapterRig({
+      script: (agent) => agent.on('initialize', () => {}),
+      deps: { startupTimeoutMs: 15 }
+    })
+    const failed = rig.acquire().catch((error: unknown) => error)
+    await rig.frame('initialize')
+    const child = rig.child()
+    child.close = vi.fn(async () => false)
+    await rig.adapter.abandonStart(SESSION)
+    expect(await failed).toMatchObject({ name: 'AgentSessionAcquisitionExitUnprovenError' })
+    // Every later stop asks the child again, and none answers for it.
+    expect(await rig.adapter.closeSession(SESSION)).toBe(false)
+    await expect(rig.adapter.closeAll()).rejects.toThrow('could not be proven stopped')
+    expect(await rig.acquire().catch((error: unknown) => error)).toMatchObject({
+      name: 'AgentSessionAcquisitionExitUnprovenError'
+    })
+    expect(rig.spawned.filter((step) => step === 'spawn')).toHaveLength(1)
+    child.exit()
+    expect(await rig.adapter.closeSession(SESSION)).toBe(true)
+  })
+
+  it('spawns nothing for a start a close reached before its spawn', async () => {
+    let releaseLaunch: () => void = () => {}
+    const rig = await openAcpAdapterRig({
+      deps: {
+        resolveLaunch: async () => {
+          await new Promise<void>((resolve) => {
+            releaseLaunch = resolve
+          })
+          return {
+            spec: GROK,
+            command: '/opt/grok/bin/grok',
+            args: [],
+            cwd: '/workspace/project',
+            env: {},
+            fullAccess: false,
+            resume: null
+          }
+        }
+      }
+    })
+    const failed = rig.acquire().catch((error: unknown) => error)
+    await tick()
+    await rig.adapter.abandonStart(SESSION)
+    releaseLaunch()
+    expect(await failed).toMatchObject({ name: 'AgentSessionPreSpawnError' })
+    expect(rig.spawned).toEqual([])
   })
 })
 

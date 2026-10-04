@@ -7,7 +7,7 @@ import {
 import { acpWindowUsage } from './acp-context-usage'
 import type { AcpDialect } from './acp-dialects/acp-dialect'
 import type { AcpBackgroundTaskTimeline } from './acp-background-task-timeline'
-import { acpReplayedUser } from './acp-replay-user-messages'
+import { acpReplayedUser } from './acp-load-replay'
 import type { AcpToolTimeline } from './acp-tool-timeline'
 import type { SessionNotification } from './generated/acp-protocol.generated'
 

@@ -1,3 +1,6 @@
+// What a load replays from the agent's saved history, as grammar events the journal reconciles at
+// each write.
+
 import type { AgentJournalMessageItem } from '../../shared/agent-session-journal-types'
 import type { ProviderTimelineEvent } from '../native-chat/agent-session-timeline/provider-timeline-event'
 import {
@@ -59,4 +62,18 @@ export function acpReplayedUser(
     join,
     ...(clientMessageId === undefined ? {} : { clientMessageId })
   }
+}
+
+/** Items from the provider's saved history say so, for the journal to decide what they add. */
+export function acpMarkedReplay(
+  events: ProviderTimelineEvent[],
+  replay: boolean
+): ProviderTimelineEvent[] {
+  return replay
+    ? events.map((event) =>
+        event.type === 'item.open' || event.type === 'item.update' || event.type === 'item.close'
+          ? { ...event, replay: true }
+          : event
+      )
+    : events
 }

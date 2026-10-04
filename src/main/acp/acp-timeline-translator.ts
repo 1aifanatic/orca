@@ -13,7 +13,7 @@ import {
   type AcpRequestPresentation
 } from './acp-dialects/acp-dialect'
 import { acpTurnEnd, AcpPromptTurns } from './acp-prompt-turns'
-import { acpReplayedUser, AcpReplayUserMessages } from './acp-replay-user-messages'
+import { acpMarkedReplay, acpReplayedUser, AcpReplayUserMessages } from './acp-load-replay'
 import type { AcpSessionEvent } from './acp-session-runtime'
 import { translateAcpRequest } from './acp-timeline-requests'
 export { acpTurnEnd } from './acp-prompt-turns'
@@ -24,19 +24,6 @@ import { SessionNotificationSchema, type PromptResponse } from './generated/acp-
 
 const requestSessionSchema = z.object({ sessionId: z.string() })
 
-/** Items from the provider's saved history say so, for the journal to decide what they add. */
-function acpMarkedReplay(
-  events: ProviderTimelineEvent[],
-  replay: boolean
-): ProviderTimelineEvent[] {
-  return replay
-    ? events.map((event) =>
-        event.type === 'item.open' || event.type === 'item.update' || event.type === 'item.close'
-          ? { ...event, replay: true }
-          : event
-      )
-    : events
-}
 type LoadReplay = {
   adopt: boolean
   turn?: string

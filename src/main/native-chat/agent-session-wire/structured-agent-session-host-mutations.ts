@@ -34,8 +34,10 @@ import {
   cancelPlan,
   promptPlan,
   sendPlan,
-  setOptionPlan
+  setOptionPlan,
+  type MutationPlan
 } from './structured-agent-session-mutation-plans'
+import { agentSessionMutationAdmitsNow } from './structured-agent-session-mutation-admission'
 import { runQueueableStructuredAgentSessionSend } from './structured-agent-session-queued-send'
 import { cancelStructuredAgentSessionPrompt } from './structured-agent-session-prompt-cancel'
 import { mutateWithChatStop } from './structured-agent-session-chat-stop'
@@ -106,6 +108,9 @@ export function cancelStructuredAgentSessionTurn(
   }
   const plan = cancelPlan(params)
   const { prompt } = params
+  if (!prompt && params.turnId === undefined) {
+    abandonStartForStop(context, caller, params.envelope, plan)
+  }
   // A card's Cancel stops whatever the chat has in flight, as the Stop button does; it reaches the
   // Stop only for a card the live turn raised (`cancelStructuredAgentSessionPrompt`).
   const stopped = prompt ? { envelope: params.envelope } : params
@@ -117,6 +122,39 @@ export function cancelStructuredAgentSessionTurn(
           { stop, interrupt: () => plan.run(ctx) }
         )
       : stop().then(({ outcome }) => outcome)
+  )
+}
+
+/** A Stop must not wait behind a start the provider may never answer: the start the session's
+ *  queue is waiting on stops now, as a close's does, and the Stop's own step then finds no child.
+ *  Only a Stop admission would run now; one naming a turn is about a child already gone, so it
+ *  leaves a newer start alone. */
+function abandonStartForStop(
+  context: StructuredAgentSessionMutationContext,
+  caller: StructuredAgentSessionCaller,
+  envelope: AgentSessionMutationEnvelope,
+  plan: MutationPlan<AgentSessionCancelResult>
+): void {
+  const { adapter, store, logger } = context.deps
+  const { sessionId } = envelope
+  if (
+    !adapter.abandonStart ||
+    !agentSessionMutationAdmitsNow({
+      store,
+      callerKey: caller.callerKey,
+      envelope,
+      plan,
+      now: context.now
+    })
+  ) {
+    return
+  }
+  void adapter.abandonStart(sessionId).catch((error: unknown) =>
+    logger.warn('stopping a starting provider for a Stop failed', {
+      scope: 'abandon-start',
+      sessionId,
+      error
+    })
   )
 }
 

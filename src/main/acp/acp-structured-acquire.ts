@@ -58,6 +58,8 @@ export async function acquireAcpStructuredSession(input: {
   acquire: StructuredAgentSessionAcquireInput
   deps: AcpStructuredSessionAdapterDeps
   generation: string
+  /** A close reached this start; checked until the spawn, after which `track` hands it the child. */
+  abandoned: () => boolean
   /** Registers the child so a close during the acquire can stop it. */
   track: (child: AcpStructuredChild) => void
   /** The child's exit, observed while or after the session exists. */
@@ -77,11 +79,20 @@ export async function acquireAcpStructuredSession(input: {
   if (!sink) {
     throw new AgentSessionPreSpawnError(new Error(`${spec.agent} chats need a journal sink`))
   }
+  const closedBeforeSpawn = () => {
+    if (input.abandoned()) {
+      throw new AgentSessionPreSpawnError(
+        new Error(`${acpAgentName(spec.agent)} was closed before it started`)
+      )
+    }
+  }
+  closedBeforeSpawn()
   const launch: AcpStructuredLaunch = await deps
     .resolveLaunch({ identity: acquire.identity })
     .catch((error: unknown) => {
       throw new AgentSessionPreSpawnError(error)
     })
+  closedBeforeSpawn()
   const child = deps.spawnChild({
     command: launch.command,
     args: launch.args,
