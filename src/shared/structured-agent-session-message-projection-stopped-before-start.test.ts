@@ -83,6 +83,14 @@ const stopRow = (id: string) => ({
   role: 'system'
 })
 
+/** A host that publishes journal positions, and one that predates them (the Temporary fallback). */
+const HOSTS = [
+  ['a host that publishes positions', true],
+  ['an older host', false]
+] as const
+const publishedPosition = (published: boolean, resolvedSequence: number) =>
+  published ? { resolvedSequence } : {}
+
 describe('a send a Stop took back before the agent started it', () => {
   it('stays where it was sent, with one row after it', () => {
     const items = [sent('warm-up', 'warm up'), sent('never-ran', 'look around')]
@@ -391,58 +399,59 @@ describe('a send a Stop took back before the agent started it', () => {
 
   // Three queued during /compact: the first ran and finished, the second was left in doubt, and the
   // Stop took back only the third, which was never handed over.
-  it('stays below everything sent before it, a finished exchange included', () => {
-    const compactTurn = 'compact-turn'
-    const items = [
-      sent('compact', '/compact'),
-      entry(compactTurn, {
-        kind: 'turn',
-        turnId: compactTurn,
-        state: 'completed',
-        userItemId: agentJournalSubmissionKey('compact')
-      }),
-      sent('queued-b', 'queued B'),
-      said('compacted', 'Context compacted', compactTurn),
-      sent('queued-zero', 'queued zero'),
-      sent('queued-a', 'queued A'),
-      entry('turn-2', {
-        kind: 'turn',
-        turnId: 'turn-2',
-        state: 'completed',
-        userItemId: agentJournalSubmissionKey('queued-zero')
-      }),
-      said('answer', 'answer to zero', 'turn-2')
-    ]
-
-    expect(
-      rows(items, [
-        submission('compact', { submittedAt: 1 }),
-        submission('queued-zero', { submittedAt: 2, handoverRecorded: true, handedOverAt: 5 }),
-        submission('queued-a', {
-          submittedAt: 3,
-          dispatchState: 'unknown',
-          handoverRecorded: true,
-          handedOverAt: 6
+  it.each(HOSTS)(
+    'stays below everything sent before it, a finished exchange included, on %s',
+    (_host, published) => {
+      const compactTurn = 'compact-turn'
+      const items = [
+        sent('compact', '/compact'),
+        entry(compactTurn, {
+          kind: 'turn',
+          turnId: compactTurn,
+          state: 'completed',
+          userItemId: agentJournalSubmissionKey('compact')
         }),
-        stopped('queued-b', {
-          submittedAt: 4,
-          handoverRecorded: true,
-          resolvedSequence: sequence + 1
-        })
-      ])
-    ).toEqual([
-      user('compact'),
-      { id: 'compacted', role: 'assistant' },
-      user('queued-zero'),
-      user('queued-a'),
-      { id: 'answer', role: 'assistant' },
-      user('queued-b'),
-      stopRow('queued-b')
-    ])
-  })
+        sent('queued-b', 'queued B'),
+        said('compacted', 'Context compacted', compactTurn),
+        sent('queued-zero', 'queued zero'),
+        sent('queued-a', 'queued A'),
+        entry('turn-2', {
+          kind: 'turn',
+          turnId: 'turn-2',
+          state: 'completed',
+          userItemId: agentJournalSubmissionKey('queued-zero')
+        }),
+        said('answer', 'answer to zero', 'turn-2')
+      ]
 
-  // Two queued during /compact: the first was handed over and its turn opened and streamed, then
-  // the Stop took back the second, which was never handed over.
+      expect(
+        rows(items, [
+          submission('compact', { submittedAt: 1 }),
+          submission('queued-zero', { submittedAt: 2, handoverRecorded: true, handedOverAt: 5 }),
+          submission('queued-a', {
+            submittedAt: 3,
+            dispatchState: 'unknown',
+            handoverRecorded: true,
+            handedOverAt: 6
+          }),
+          stopped('queued-b', {
+            submittedAt: 4,
+            handoverRecorded: true,
+            ...publishedPosition(published, sequence + 1)
+          })
+        ])
+      ).toEqual([
+        user('compact'),
+        { id: 'compacted', role: 'assistant' },
+        user('queued-zero'),
+        user('queued-a'),
+        { id: 'answer', role: 'assistant' },
+        user('queued-b'),
+        stopRow('queued-b')
+      ])
+    }
+  )
+
   /** Two queued during /compact; the first handed over, its turn opened and streamed, and the Stop
    *  took back the second (never handed over) while that turn ran. */
   function streamingTurnThenStop() {
@@ -480,54 +489,83 @@ describe('a send a Stop took back before the agent started it', () => {
     return { items: [...before, ...after], takenBackAt }
   }
 
-  it("stays below the earlier send's whole exchange when that send opened the turn", () => {
-    const { items, takenBackAt } = streamingTurnThenStop()
+  it.each(HOSTS)(
+    "stays below the earlier send's whole exchange when that send opened the turn, on %s",
+    (_host, published) => {
+      const { items, takenBackAt } = streamingTurnThenStop()
 
-    expect(
-      rows(items, [
-        submission('compact', { submittedAt: 1 }),
-        submission('queued-first', { submittedAt: 2, handoverRecorded: true, handedOverAt: 5 }),
-        stopped('queued-second', {
-          submittedAt: 3,
-          handoverRecorded: true,
-          resolvedSequence: takenBackAt
-        })
+      expect(
+        rows(items, [
+          submission('compact', { submittedAt: 1 }),
+          submission('queued-first', { submittedAt: 2, handoverRecorded: true, handedOverAt: 5 }),
+          stopped('queued-second', {
+            submittedAt: 3,
+            handoverRecorded: true,
+            ...publishedPosition(published, takenBackAt)
+          })
+        ])
+      ).toEqual([
+        user('compact'),
+        { id: 'compacted', role: 'assistant' },
+        user('queued-first'),
+        { id: 'working', role: 'assistant' },
+        { id: 'stop:turn-2', role: 'system' },
+        user('queued-second'),
+        stopRow('queued-second')
       ])
-    ).toEqual([
-      user('compact'),
-      { id: 'compacted', role: 'assistant' },
-      user('queued-first'),
-      { id: 'working', role: 'assistant' },
-      { id: 'stop:turn-2', role: 'system' },
-      user('queued-second'),
-      stopRow('queued-second')
-    ])
-  })
+    }
+  )
 
-  // A host that predates the published position: the send is placed from its own row, so only
-  // the turn it was accepted behind counts.
-  it('falls back to its own row on a host that publishes no position', () => {
-    const { items } = streamingTurnThenStop()
+  // As the finished-exchange case without the send left in doubt. On an older host the latest row
+  // sent before it is that exchange's opener itself.
+  it.each(HOSTS)(
+    'stays below a finished exchange whose opener was the last thing sent before it, on %s',
+    (_host, published) => {
+      const compactTurn = 'compact-turn'
+      const items = [
+        sent('compact', '/compact'),
+        entry(compactTurn, {
+          kind: 'turn',
+          turnId: compactTurn,
+          state: 'completed',
+          userItemId: agentJournalSubmissionKey('compact')
+        }),
+        sent('queued-b', 'queued B'),
+        said('compacted', 'Context compacted', compactTurn),
+        sent('queued-zero', 'queued zero'),
+        entry('turn-2', {
+          kind: 'turn',
+          turnId: 'turn-2',
+          state: 'completed',
+          userItemId: agentJournalSubmissionKey('queued-zero')
+        }),
+        said('answer', 'answer to zero', 'turn-2')
+      ]
 
-    expect(
-      rows(items, [
-        submission('compact', { submittedAt: 1 }),
-        submission('queued-first', { submittedAt: 2, handoverRecorded: true, handedOverAt: 5 }),
-        stopped('queued-second', { submittedAt: 3, handoverRecorded: true })
+      expect(
+        rows(items, [
+          submission('compact', { submittedAt: 1 }),
+          submission('queued-zero', { submittedAt: 2, handoverRecorded: true, handedOverAt: 5 }),
+          stopped('queued-b', {
+            submittedAt: 4,
+            handoverRecorded: true,
+            ...publishedPosition(published, sequence + 1)
+          })
+        ])
+      ).toEqual([
+        user('compact'),
+        { id: 'compacted', role: 'assistant' },
+        user('queued-zero'),
+        { id: 'answer', role: 'assistant' },
+        user('queued-b'),
+        stopRow('queued-b')
       ])
-    ).toEqual([
-      user('compact'),
-      { id: 'compacted', role: 'assistant' },
-      user('queued-second'),
-      stopRow('queued-second'),
-      user('queued-first'),
-      { id: 'working', role: 'assistant' },
-      { id: 'stop:turn-2', role: 'system' }
-    ])
-  })
+    }
+  )
 
-  // As the finished-exchange case without the send left in doubt: the floor is the opener itself.
-  it('stays below a finished exchange whose opener was the last thing sent before it', () => {
+  // Accept times tie at the clock's resolution, and the client can hold the stopped send first:
+  // only the published row says which exchange came before the Stop.
+  it('stays below a finished exchange when accept times tie, by the row the host publishes', () => {
     const compactTurn = 'compact-turn'
     const items = [
       sent('compact', '/compact'),
@@ -551,13 +589,9 @@ describe('a send a Stop took back before the agent started it', () => {
 
     expect(
       rows(items, [
-        submission('compact', { submittedAt: 1 }),
-        submission('queued-zero', { submittedAt: 2, handoverRecorded: true, handedOverAt: 5 }),
-        stopped('queued-b', {
-          submittedAt: 4,
-          handoverRecorded: true,
-          resolvedSequence: sequence + 1
-        })
+        stopped('queued-b', { handoverRecorded: true, resolvedSequence: sequence + 1 }),
+        submission('compact'),
+        submission('queued-zero', { handoverRecorded: true, handedOverAt: 5 })
       ])
     ).toEqual([
       user('compact'),

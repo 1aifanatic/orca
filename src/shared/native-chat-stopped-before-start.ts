@@ -3,6 +3,7 @@
 import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import {
   agentJournalItemPosition,
+  compareAgentJournalItems,
   compareAgentJournalPositions
 } from './agent-session-journal-position'
 import type {
@@ -26,21 +27,27 @@ export function isStoppedBeforeStartBlock(block: NativeChatBlock): boolean {
 
 /**
  * Where a send a Stop took back is drawn: at the journal row that took it back (`resolvedSequence`),
- * past the end of every turn whose opener (`anchors`) the journal wrote before that row. A host
- * that predates the published position gives its own row instead, and only turns opened before
- * that row count. Journal order only, never a clock.
+ * past the end of every turn whose opener (`anchors`) the journal wrote before that row. Journal
+ * order only, never a clock.
+ * Temporary, until a host version floor: a host that predates `resolvedSequence` keeps the earlier
+ * rule, from the later of its own row and `sentBefore` (see `latestRowsSentBefore`).
  */
 export function stoppedSendPosition(
   items: readonly AgentJournalRenderItem[],
   item: AgentJournalRenderItem,
   anchors: ReadonlyMap<string, string>,
-  resolvedSequence: number | undefined
+  resolvedSequence: number | undefined,
+  sentBefore?: AgentJournalRenderItem
 ): AgentJournalPosition {
   const own = agentJournalItemPosition(item)
-  // No item sits on the row that took the send back, so nothing compares equal to it.
-  const takenBack =
-    resolvedSequence !== undefined ? { sequence: resolvedSequence, index: 0 } : undefined
-  const from = takenBack && compareAgentJournalPositions(takenBack, own) > 0 ? takenBack : own
+  const floor = sentBefore ? agentJournalItemPosition(sentBefore) : undefined
+  // Just after the floor row, so a turn that row opened counts as waited on.
+  const from =
+    resolvedSequence !== undefined
+      ? { sequence: resolvedSequence, index: 0 }
+      : floor && compareAgentJournalPositions(floor, own) > 0
+        ? { sequence: floor.sequence, index: floor.index + 0.5 }
+        : own
   const byId = new Map(items.map((candidate) => [candidate.itemId, candidate]))
   const waitedOn = new Set<string>()
   for (const [turnItemId, anchorId] of anchors) {
@@ -66,11 +73,39 @@ export function stoppedSendPosition(
   return last
 }
 
+/** For each submission, the latest loaded row of the ones sent before it, in `submittedAt` order
+ *  with ties kept in list order as the client reducer keeps them. Temporary: read only for a host
+ *  that predates `resolvedSequence`. */
+export function latestRowsSentBefore(
+  submissions: readonly AgentJournalSubmission[],
+  itemsById: ReadonlyMap<string, AgentJournalRenderItem>
+): ReadonlyMap<string, AgentJournalRenderItem> {
+  const inSendOrder = submissions
+    .map((submission, order) => ({ submission, order }))
+    .sort(
+      (left, right) =>
+        left.submission.submittedAt - right.submission.submittedAt || left.order - right.order
+    )
+  const before = new Map<string, AgentJournalRenderItem>()
+  let latest: AgentJournalRenderItem | undefined
+  for (const { submission } of inSendOrder) {
+    const key = agentJournalSubmissionKey(submission.clientMessageId)
+    if (latest) {
+      before.set(key, latest)
+    }
+    const row = itemsById.get(key)
+    if (row && (!latest || compareAgentJournalItems(row, latest) > 0)) {
+      latest = row
+    }
+  }
+  return before
+}
+
 /**
  * Sends a Stop took back (`stopped`, by id) keep the order they were sent in: a later one is drawn
- * no earlier than just after an earlier one. Sent order is the published `submittedSequence`; a
- * host that predates it gives `submittedAt`, its accept time, with ties kept in list order as the
- * client reducer keeps them. Returns whether it moved any.
+ * no earlier than just after an earlier one. Sent order is the published `submittedSequence`.
+ * Temporary, until a host version floor: a host that predates it gives `submittedAt`, its accept
+ * time, with ties kept in list order as the client reducer keeps them. Returns whether it moved any.
  */
 export function keepStoppedSendsInSendOrder(
   messages: NativeChatMessage[],
