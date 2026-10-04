@@ -18667,8 +18667,8 @@
       "openSettings": "Open Settings"
     },
     "codexSharedSettingsNotice": {
-      "title": "Codex in Orca now shares your Codex settings",
-      "description": "Codex in Orca on Windows now uses your ~/.codex settings, the same as Codex outside Orca. Codex may ask you to trust a folder or approve a command again, and MCP servers you added only inside Orca may need to be added again."
+      "title": "Codex in Orca now uses ~/.codex",
+      "description": "Codex may ask again to trust folders or approve commands. Re-add any MCP servers you added only in Orca."
     },
     "codexSharedServerBanner": {
       "title": "This Codex is sharing a server with your other Codex tabs",
