@@ -124,23 +124,23 @@ export async function finishUnregisteredWorktreeRemoval(
   options: RemoveWorktreeOptions = {}
 ): Promise<RemoveWorktreeResult> {
   await assertCheckoutGone()
-  return finishGitSideOfUnregisteredWorktree(repoPath, worktreePath, branch, options)
+  await gitExecFileAsync(['worktree', 'prune'], gitExecOptions(repoPath, options)).catch(
+    (error: unknown) => console.warn(`[git] worktree prune failed in ${repoPath}`, error)
+  )
+  return deleteBranchOfUnregisteredWorktree(repoPath, worktreePath, branch, options)
 }
 
 /**
- * The Git side of a removal once Git no longer registers the checkout, whatever is left on disk:
- * stale admin records, then the branch (merged only, as `removeWorktree` does). Deletes no files.
+ * The branch step of a removal once Git no longer registers the checkout, whatever is left on disk:
+ * merged only, as `removeWorktree` does. Prunes nothing and deletes no files.
  */
-export async function finishGitSideOfUnregisteredWorktree(
+export async function deleteBranchOfUnregisteredWorktree(
   repoPath: string,
   worktreePath: string,
   branch: { name: string; head: string } | null,
   options: RemoveWorktreeOptions = {}
 ): Promise<RemoveWorktreeResult> {
   try {
-    await gitExecFileAsync(['worktree', 'prune'], gitExecOptions(repoPath, options)).catch(
-      (error: unknown) => console.warn(`[git] worktree prune failed in ${repoPath}`, error)
-    )
     if (!branch?.name || !(await localBranchExists(repoPath, branch.name, options))) {
       return {}
     }

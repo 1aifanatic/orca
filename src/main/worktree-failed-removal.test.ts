@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GitWorktreeInfo } from '../shared/worktree/types'
 import { listWorktreesStrict } from './git/worktree'
 import type * as WorktreeRemovalModule from './git/worktree-removal'
-import { finishGitSideOfUnregisteredWorktree } from './git/worktree-removal'
+import { deleteBranchOfUnregisteredWorktree } from './git/worktree-removal'
 import { beginTerminalInstall } from './ipc/watcher-removal-gate'
 import { registerWorktreeChangeInvalidator } from './ipc/worktree-change-invalidators'
 import {
@@ -35,7 +35,7 @@ import { loadWorktreeRemovalRecordsForStore } from './startup/worktree-removal-r
 vi.mock('./git/worktree', () => ({ listWorktreesStrict: vi.fn(async () => []) }))
 vi.mock('./git/worktree-removal', async (importOriginal) => ({
   ...(await importOriginal<typeof WorktreeRemovalModule>()),
-  finishGitSideOfUnregisteredWorktree: vi.fn(async () => ({}))
+  deleteBranchOfUnregisteredWorktree: vi.fn(async () => ({}))
 }))
 
 const GIT_ERROR = "error: failed to delete 'node_modules/a/LICENSE': Operation not permitted"
@@ -65,7 +65,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   _resetPendingWorktreeRemovalsForTests()
-  vi.mocked(finishGitSideOfUnregisteredWorktree).mockReset()
+  vi.mocked(deleteBranchOfUnregisteredWorktree).mockReset()
   vi.restoreAllMocks()
   await rm(directory, { recursive: true, force: true })
 })
@@ -150,7 +150,7 @@ describe('a delete that fails after Git dropped the registration', () => {
 
     expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toEqual([])
     // Git still has the checkout, so its branch and remote stay with it.
-    expect(finishGitSideOfUnregisteredWorktree).not.toHaveBeenCalled()
+    expect(deleteBranchOfUnregisteredWorktree).not.toHaveBeenCalled()
     expect(cleanupPushTargetRemote).not.toHaveBeenCalled()
   })
 
@@ -159,7 +159,7 @@ describe('a delete that fails after Git dropped the registration', () => {
     await expect(startFailingRemoval({ cleanupPushTargetRemote })).rejects.toThrow(GIT_ERROR)
     await _settlePendingWorktreeRemovalsForTests()
 
-    expect(finishGitSideOfUnregisteredWorktree).toHaveBeenCalledWith('/work/repo', checkout, {
+    expect(deleteBranchOfUnregisteredWorktree).toHaveBeenCalledWith('/work/repo', checkout, {
       name: 'feature',
       head: 'abc'
     })
@@ -169,7 +169,7 @@ describe('a delete that fails after Git dropped the registration', () => {
   })
 
   it('keeps the failed row and its error when that bookkeeping fails', async () => {
-    vi.mocked(finishGitSideOfUnregisteredWorktree).mockRejectedValue(new Error('branch locked'))
+    vi.mocked(deleteBranchOfUnregisteredWorktree).mockRejectedValue(new Error('branch locked'))
     const cleanupPushTargetRemote = vi.fn(async () => {
       throw new Error('remote busy')
     })

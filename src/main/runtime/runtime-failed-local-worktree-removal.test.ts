@@ -4,7 +4,7 @@
 // the file's owner; worktree-failed-removal.test.ts covers the same rules with Git mocked.
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -307,6 +307,20 @@ describe.skipIf(process.platform !== 'darwin')('a worktree delete Git fails part
     await vi.waitFor(async () => expect(await readWorktreeRemovalRecords(recordsDir)).toEqual([]))
     expect(await git(['branch', '--list', 'feature'])).toBe('')
     expect(await git(['worktree', 'list', '--porcelain'])).not.toContain(worktreePath)
+  })
+
+  it('leaves another worktree registered while its folder is missing, as on an unmounted drive', async () => {
+    const parent = join(scratchDir, 'volume')
+    const other = join(parent, 'other')
+    await git(['worktree', 'add', '-q', other, '-b', 'other'])
+    await writeFile(join(other, 'wip.txt'), 'wip\n')
+    await rename(parent, join(scratchDir, 'volume-unmounted'))
+
+    expect(String(await failInSession())).toMatch(/Operation not permitted/)
+
+    expect(await isRegistered(other)).toBe(true)
+    await rename(join(scratchDir, 'volume-unmounted'), parent)
+    expect(await git(['status', '--porcelain'], other)).toBe('?? wip.txt\n')
   })
 
   it('keeps an unmerged branch when the delete fails, as a normal delete does', async () => {

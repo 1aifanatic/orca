@@ -1,4 +1,4 @@
-import { finishGitSideOfUnregisteredWorktree } from './git/worktree-removal'
+import { deleteBranchOfUnregisteredWorktree } from './git/worktree-removal'
 import { isCheckoutRegistered, isUnregisteredRemovalLeftover } from './worktree-removal-leftover'
 import type { WorktreeRemovalFailure, WorktreeRemovalRecord } from './worktree-removal-records'
 import { worktreeCheckoutExists } from './worktree-removal-table'
@@ -34,7 +34,9 @@ async function finishGitSideOfFailedRemoval(
 ): Promise<void> {
   // Why caught: bookkeeping; the failed row and the request's error stand either way.
   try {
-    await finishGitSideOfUnregisteredWorktree(
+    // No prune: Git already dropped this entry; a repo-wide prune would unregister any other
+    // worktree whose folder is missing for now (an unmounted drive).
+    await deleteBranchOfUnregisteredWorktree(
       record.repoPath,
       record.worktreePath,
       record.deleteBranch && record.branch ? { name: record.branch, head: record.head } : null
