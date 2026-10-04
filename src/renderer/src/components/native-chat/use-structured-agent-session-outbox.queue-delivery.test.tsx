@@ -31,9 +31,10 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
 import { readOutbox, writeOutbox } from './structured-agent-session-outbox-storage'
 import { createStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
-import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
-
-import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalRenderItem,
+  AgentJournalSubmission
+} from '../../../../shared/agent-session-journal-types'
 
 const NO_JOURNAL_ITEMS: readonly AgentJournalRenderItem[] = []
 
