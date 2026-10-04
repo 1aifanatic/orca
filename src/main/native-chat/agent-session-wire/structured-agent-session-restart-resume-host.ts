@@ -21,9 +21,11 @@ import {
 } from './structured-agent-session-restart-failure-ledger'
 import { createStructuredAgentSessionRestartOperationQueue } from './structured-agent-session-restart-operation-queue'
 import { createStructuredAgentSessionRestartOfferRecords } from './structured-agent-session-restart-offer-records'
-import type {
-  StructuredAgentSessionResumeCandidate,
-  StructuredAgentSessionResumeFailure
+import {
+  restartRowsFor,
+  type StructuredAgentSessionRestartAudience,
+  type StructuredAgentSessionResumeCandidate,
+  type StructuredAgentSessionResumeFailure
 } from './structured-agent-session-restart-resume-set'
 import {
   resumeStructuredAgentSessionsFromRestart,
@@ -55,20 +57,30 @@ export type StructuredAgentSessionRestartResume = {
   captureBeforeStop: (sessionId: string) => void
   confirmStopped: (sessionId: string) => void
   recordMarkers: () => Promise<void>
-  list: () => Promise<StructuredAgentSessionResumeCandidate[]>
+  list: (
+    audience?: StructuredAgentSessionRestartAudience
+  ) => Promise<StructuredAgentSessionResumeCandidate[]>
   /** Offers already acted on whose agent did not carry on. Read-only; nothing here is spent. */
-  listFailures: () => Promise<StructuredAgentSessionResumeFailure[]>
+  listFailures: (
+    audience?: StructuredAgentSessionRestartAudience
+  ) => Promise<StructuredAgentSessionResumeFailure[]>
+  /** Unnamed, continues every offer the audience sees; named, only those of them. */
   continueAfterRestart: (
     sessionIds: readonly string[] | undefined,
-    owner: string
+    owner: string,
+    audience?: StructuredAgentSessionRestartAudience
   ) => Promise<{
     resumed: StructuredAgentSessionResumeOutcome[]
     continued: StructuredAgentSessionContinuationOutcome[]
     sessions?: StructuredAgentSessionResumeCandidate[]
     failed?: StructuredAgentSessionResumeFailure[]
   }>
-  /** Named sessions forget their offer or failure; unnamed, every durable record goes. */
-  dismiss: (sessionIds?: readonly string[]) => Promise<number>
+  /** Named sessions forget their offer or failure; unnamed, every durable record goes. An audience
+   *  limits either to the agents it sees. */
+  dismiss: (
+    sessionIds?: readonly string[],
+    audience?: StructuredAgentSessionRestartAudience
+  ) => Promise<number>
   /** The chat's agent proved a start: its offer ends unless the start is a resume's own. */
   onAgentStarted: (sessionId: string) => void
 }
@@ -132,15 +144,19 @@ export function createStructuredAgentSessionRestartResume(
       enqueue: enqueueRecoveryOperation
     })
 
-  const list = async (): Promise<StructuredAgentSessionResumeCandidate[]> => {
+  const list = async (
+    audience?: StructuredAgentSessionRestartAudience
+  ): Promise<StructuredAgentSessionResumeCandidate[]> => {
     const markers = await readMarkers()
     await revealMarkers(markers)
     // A live chat remains an offer. The user may have opened it to inspect the context and still
     // explicitly choose whether Orca should ask the agent to continue.
     const { candidates, superseded } = derive(markers, 'may-be-held')
     retireSuperseded(superseded)
-    return candidates
+    return restartRowsFor(candidates, audience)
   }
+  const listFailures = async (audience?: StructuredAgentSessionRestartAudience) =>
+    restartRowsFor(await failures.list(), audience)
 
   const continuationHost: StructuredAgentSessionContinuationHost = {
     ...surfaces,
@@ -158,6 +174,7 @@ export function createStructuredAgentSessionRestartResume(
   const run = async (
     sessionIds: readonly string[] | undefined,
     owner: string,
+    audience: StructuredAgentSessionRestartAudience | undefined,
     continueOne: (marker: AgentSessionResumeMarker, continuationId: string) => Promise<void>
   ) => {
     // An explicit action supersedes teardown witnesses captured by this host. The durable mutation
@@ -168,7 +185,10 @@ export function createStructuredAgentSessionRestartResume(
     const requested = new Set(sessionIds ?? markers.map((marker) => marker.sessionId))
     const derived = derive(markers, 'may-be-held')
     retireSuperseded(derived.superseded)
-    const eligible = derived.candidates.filter((candidate) => requested.has(candidate.sessionId))
+    // Only what the caller was shown is reserved; a named offer it cannot see is not.
+    const eligible = restartRowsFor(derived.candidates, audience).filter((candidate) =>
+      requested.has(candidate.sessionId)
+    )
     if (eligible.length === 0) {
       return null
     }
@@ -222,20 +242,16 @@ export function createStructuredAgentSessionRestartResume(
     }
   }
 
-  const continueAfterRestart = async (
-    sessionIds: readonly string[] | undefined,
-    owner: string
-  ): Promise<{
-    resumed: StructuredAgentSessionResumeOutcome[]
-    continued: StructuredAgentSessionContinuationOutcome[]
-    sessions?: StructuredAgentSessionResumeCandidate[]
-    failed?: StructuredAgentSessionResumeFailure[]
-  }> => {
+  const continueAfterRestart: StructuredAgentSessionRestartResume['continueAfterRestart'] = async (
+    sessionIds,
+    owner,
+    audience
+  ) => {
     const continued: StructuredAgentSessionContinuationOutcome[] = []
     const verdicts: Promise<void>[] = []
     // A chat holds its slot until its agent took the continuation or its start failed, so a batch
     // never starts more agents at once than the runner allows; the provider's answer comes after.
-    const action = await run(sessionIds, owner, async (marker, continuationId) => {
+    const action = await run(sessionIds, owner, audience, async (marker, continuationId) => {
       const started = await startStructuredAgentSessionContinuation(
         restartContinuationDeps(continuationHost, marker),
         marker.sessionId,
@@ -286,8 +302,8 @@ export function createStructuredAgentSessionRestartResume(
     let remainingCandidates: StructuredAgentSessionResumeCandidate[] | undefined
     let remainingFailures: StructuredAgentSessionResumeFailure[] | undefined
     try {
-      remainingCandidates = await list()
-      remainingFailures = await failures.list()
+      remainingCandidates = await list(audience)
+      remainingFailures = await listFailures(audience)
     } catch {
       deps.logger.warn('refreshing restart offers after an action failed', {
         scope: 'restart-offer-refresh'
@@ -307,10 +323,10 @@ export function createStructuredAgentSessionRestartResume(
     confirmStopped: witnesses.stopped,
     recordMarkers: witnesses.record,
     list,
-    listFailures: failures.list,
+    listFailures,
     // Do not let a teardown witness already captured in this host republish after explicit
     // dismissal. A later capture is a new interruption and may create a fresh offer normally.
-    dismiss: (sessionIds) => failures.dismiss(sessionIds, witnesses.clear),
+    dismiss: (sessionIds, audience) => failures.dismiss(sessionIds, witnesses.clear, audience),
     continueAfterRestart,
     onAgentStarted: withdrawal.onAgentStarted
   }

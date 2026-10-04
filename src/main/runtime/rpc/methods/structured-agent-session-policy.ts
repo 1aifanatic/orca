@@ -23,19 +23,18 @@ export function supportsStructuredAgentSessions(
   )
 }
 
-/** Whether a published row naming `agent` is one this client reads. Every client knows Claude and
- *  Codex; any other agent reaches only a client that renders the host's registered agents. */
-export function clientReadsStructuredAgent(
-  context: Pick<RpcContext, 'clientCapabilities' | 'clientKind'>,
-  agent: string
-): boolean {
-  return (
-    isAgentSessionHandleProvider(agent) ||
-    context.clientKind === undefined ||
+/** Which agents' rows this client reads, or undefined when it reads every agent the host runs.
+ *  Every client knows Claude and Codex; any other agent reaches only a client that renders the
+ *  host's registered agents. */
+export function structuredAgentsReadBy(
+  context: Pick<RpcContext, 'clientCapabilities' | 'clientKind'>
+): ((agent: string) => boolean) | undefined {
+  return context.clientKind === undefined ||
     context.clientCapabilities?.includes(
       STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY
     ) === true
-  )
+    ? undefined
+    : isAgentSessionHandleProvider
 }
 
 /**

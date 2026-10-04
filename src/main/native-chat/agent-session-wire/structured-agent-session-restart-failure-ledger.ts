@@ -23,6 +23,7 @@ import type { StructuredAgentSessionAdapter } from './structured-agent-session-a
 import { adapterSupportsRecord } from './structured-agent-session-provider-support'
 import type { StructuredAgentSessionContinuationOutcome } from './structured-agent-session-restart-continuation'
 import type {
+  StructuredAgentSessionRestartAudience,
   StructuredAgentSessionResumeCandidate,
   StructuredAgentSessionResumeFailure
 } from './structured-agent-session-restart-resume-set'
@@ -58,10 +59,12 @@ export type StructuredAgentSessionRestartFailureLedger = {
       failureReason: (sessionId: string) => string
     }
   ) => Promise<void>
-  /** Named sessions forget their offer or failure; unnamed, every durable record goes. */
+  /** Named sessions forget their offer or failure; unnamed, every durable record goes. With an
+   *  audience, only records of agents it sees go, and an unnamed dismissal is no fence. */
   dismiss: (
     sessionIds: readonly string[] | undefined,
-    beforeClearAll: () => void
+    beforeClearAll: () => void,
+    audience?: StructuredAgentSessionRestartAudience
   ) => Promise<number>
 }
 
@@ -211,8 +214,17 @@ export function createStructuredAgentSessionRestartFailureLedger(deps: {
     read,
     list,
     settle,
-    dismiss: (sessionIds, beforeClearAll) =>
+    dismiss: (sessionIds, beforeClearAll, audience) =>
       deps.enqueue(async () => {
+        if (audience) {
+          // Decided under the capsule lock. A record whose chat this host cannot read names no
+          // agent the audience was shown, so it stays.
+          const hidden = (marker: AgentSessionResumeMarker) => {
+            const record = deps.getRecord(marker.sessionId)
+            return record === null || !audience(record.provider)
+          }
+          return (await deps.capsule?.dismiss(sessionIds ?? 'all', deps.now(), hidden)) ?? 0
+        }
         if (sessionIds !== undefined) {
           return (await deps.capsule?.dismiss(sessionIds, deps.now())) ?? 0
         }
