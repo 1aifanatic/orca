@@ -16,20 +16,37 @@ export function acpSessionUpdate(
   replay: boolean,
   tools: AcpToolTimeline,
   dialect: AcpDialect,
-  replayUserBody?: AgentJournalMessageItem
+  replayUserBody?: AgentJournalMessageItem,
+  messageKey?: string
 ): ProviderTimelineEvent[] {
   const update = notification.update
   const join = { join: { thread: notification.sessionId, ...(turn === undefined ? {} : { turn }) } }
   switch (update.sessionUpdate) {
     case 'agent_message_chunk':
     case 'agent_thought_chunk':
+      if (replay && messageKey && update.content.type === 'text') {
+        return [
+          {
+            type: 'item.update',
+            item: messageKey,
+            body: {
+              kind: 'message',
+              role: update.sessionUpdate === 'agent_thought_chunk' ? 'reasoning' : 'assistant',
+              blocks: [{ type: 'text', text: update.content.text }]
+            },
+            ...join
+          }
+        ]
+      }
       return update.content.type === 'text'
         ? [
             {
               type: 'text.delta',
-              item: update.messageId
-                ? { id: `message:${update.messageId}` }
-                : { stream: update.sessionUpdate },
+              item: messageKey
+                ? { id: messageKey }
+                : update.messageId
+                  ? { id: `message:${update.messageId}` }
+                  : { stream: update.sessionUpdate },
               channel: update.sessionUpdate === 'agent_thought_chunk' ? 'reasoning' : 'assistant',
               text: update.content.text,
               ...join

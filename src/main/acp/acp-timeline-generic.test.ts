@@ -30,7 +30,7 @@ async function genericRig() {
 describe('generic ACP translation', () => {
   it('keeps named text across non-text barriers, splits anonymous text, and assembles reasoning', async () => {
     const { rig, translator, apply, update } = await genericRig()
-    apply(translator.openPrompt('send-1', 1000))
+    apply(translator.openPrompt('send-1', 1000).events)
     update({
       sessionUpdate: 'agent_message_chunk',
       messageId: 'm1',
@@ -71,7 +71,7 @@ describe('generic ACP translation', () => {
 
   it('merges tool snapshots, bounds input/output and emits a separately keyed valid diff', async () => {
     const { rig, translator, apply, update } = await genericRig()
-    apply(translator.openPrompt('send-1', 1000))
+    apply(translator.openPrompt('send-1', 1000).events)
     const oldText = 'same\nbefore\n'
     const newText = 'same\nafter\n'
     update({
@@ -117,9 +117,9 @@ describe('generic ACP translation', () => {
     expect(applyPatch(oldText, diff.patch.head)).toBe(newText)
   })
 
-  it('records context window facts and does not double-count cached tokens in prompt usage', async () => {
+  it('keeps context occupancy from usage_update instead of aggregate prompt usage', async () => {
     const { rig, translator, apply, update } = await genericRig()
-    apply(translator.openPrompt('send-1', 1000))
+    apply(translator.openPrompt('send-1', 1000).events)
     update({ sessionUpdate: 'usage_update', used: 42, size: 100 })
     apply(
       translator.promptResult(
@@ -142,23 +142,23 @@ describe('generic ACP translation', () => {
     expect(turn.contextUsage?.used).toMatchObject({
       kind: 'estimate',
       usage: {
-        inputTokens: 20,
-        cacheReadInputTokens: 20,
-        cacheCreationInputTokens: 10,
-        outputTokens: 5
+        inputTokens: 42,
+        cacheReadInputTokens: 0,
+        cacheCreationInputTokens: 0,
+        outputTokens: 0
       }
     })
     if (turn.contextUsage?.used?.kind !== 'estimate') {
       throw new Error('Missing usage')
     }
-    expect(contextTokensFromUsage(turn.contextUsage.used.usage)).toBe(50)
+    expect(contextTokensFromUsage(turn.contextUsage.used.usage)).toBe(42)
   })
 
   it.each(['refusal', 'max_tokens', 'max_turn_requests'] as const)(
-    'records %s as provider failure with the original stop reason',
+    'records %s as provider failure without an extra status row',
     async (stopReason) => {
       const { rig, translator, apply } = await genericRig()
-      apply(translator.openPrompt('send-1', 1000))
+      apply(translator.openPrompt('send-1', 1000).events)
       apply(translator.promptResult('send-1', { stopReason }, 1200))
       expect((await rig.turns())[0]).toMatchObject({ state: 'completed', outcome: 'failure' })
       expect(
@@ -166,7 +166,7 @@ describe('generic ACP translation', () => {
           (row) =>
             row.body.kind === 'status' && row.body.providerFrame?.kind === `prompt:${stopReason}`
         )
-      ).toBe(true)
+      ).toBe(false)
     }
   )
 
@@ -234,7 +234,7 @@ describe('generic ACP translation', () => {
 
   it('requires an explicit journal decision for marked replay and uses typed standard events', async () => {
     const { rig, translator, apply } = await genericRig()
-    expect(() =>
+    expect(
       translator.notification(
         'session/update',
         {
@@ -247,8 +247,8 @@ describe('generic ACP translation', () => {
         },
         1100
       )
-    ).toThrow('beginLoad')
-    apply(translator.openPrompt('send-1', 1000))
+    ).toEqual([])
+    apply(translator.openPrompt('send-1', 1000).events)
     apply(
       translator.sessionEvent(
         {
@@ -301,7 +301,7 @@ describe('generic ACP translation', () => {
 
   it('evicts completed snapshots during long turns while preserving active tool input', async () => {
     const { rig, translator, apply, update } = await genericRig()
-    apply(translator.openPrompt('send-1', 1000))
+    apply(translator.openPrompt('send-1', 1000).events)
     update({
       sessionUpdate: 'tool_call',
       toolCallId: 'active',

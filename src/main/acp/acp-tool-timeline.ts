@@ -150,6 +150,10 @@ export class AcpToolTimeline {
     return events
   }
 
+  turn(toolCallId: string): string | undefined {
+    return this.tools.get(toolCallId)?.turn
+  }
+
   end(turn: string): void {
     for (const [key, snapshot] of this.tools) {
       if (snapshot.turn === turn) {
@@ -165,6 +169,13 @@ export class AcpToolTimeline {
 
   private remember(key: string, snapshot: ToolSnapshot): void {
     const previous = this.tools.get(key)
+    if (this.size(key, snapshot) > 1024 * 1024) {
+      if (previous) {
+        this.bytes -= this.size(key, previous)
+        this.tools.delete(key)
+      }
+      return
+    }
     let bytes = this.bytes - (previous ? this.size(key, previous) : 0) + this.size(key, snapshot)
     let count = this.tools.size + (previous ? 0 : 1)
     const evicted: string[] = []
@@ -178,8 +189,15 @@ export class AcpToolTimeline {
         bytes -= this.size(candidate, stored)
       }
     }
-    if (count > 128 || bytes > 1024 * 1024) {
-      throw new Error('ACP tool snapshot budget exceeded')
+    for (const [candidate, stored] of this.tools) {
+      if (count <= 128 && bytes <= 1024 * 1024) {
+        break
+      }
+      if (candidate !== key && !evicted.includes(candidate)) {
+        evicted.push(candidate)
+        count -= 1
+        bytes -= this.size(candidate, stored)
+      }
     }
     for (const candidate of evicted) {
       this.tools.delete(candidate)

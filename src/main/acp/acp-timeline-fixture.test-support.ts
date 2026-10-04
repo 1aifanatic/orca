@@ -98,7 +98,7 @@ export async function openAcpFixtureRig() {
           providerSessionId = session.sessionId
           lane = translator()
         }
-        apply(lane.openPrompt(`${frame.process}:${message.id}`, at))
+        apply(lane.openPrompt(`${frame.process}:${message.id}`, at).events)
       } else if (direction === 'in' && message.method && message.id !== undefined) {
         const request = lane.request(message.method, message.params, message.id)
         apply(request.events)
@@ -146,6 +146,10 @@ export async function openAcpFixtureRig() {
       } else if (direction === 'in' && message.method) {
         apply(lane.notification(message.method, message.params, at))
       } else if (direction === 'in') {
+        const models = z.object({ models: z.unknown() }).safeParse(message.result)
+        if (models.success) {
+          apply(lane.contextModels(models.data.models, at))
+        }
         const result = PromptResponseSchema.safeParse(message.result)
         if (result.success) {
           apply(lane.promptResult(`${frame.process}:${message.id}`, result.data, at))

@@ -42,7 +42,18 @@ const question = {
 describe('ACP dialect request and turn boundaries', () => {
   it('preserves provider permission labels, validates selected ids, and cancels unanswered rows on turn end', async () => {
     const { rig, translator, apply } = await dialectRig()
-    apply(translator.openPrompt('send-1', 1000))
+    apply(translator.openPrompt('send-1', 1000).events)
+    apply(
+      translator.notification(
+        'session/update',
+        {
+          sessionId: 'provider-1',
+          _meta: { promptId: 'prompt:send-1' },
+          update: { sessionUpdate: 'tool_call', toolCallId: 'call-1', title: 'Write example' }
+        },
+        1001
+      )
+    )
     const request = translator.request(
       'session/request_permission',
       {
@@ -80,7 +91,22 @@ describe('ACP dialect request and turn boundaries', () => {
     ).toEqual({ outcome: 'accepted', answers: { 'Choose a test?': 'Integration' } })
     expect(
       ask.reply({ kind: 'answers', answers: [{ questionId: 'q1', optionIds: [], other: 'Smoke' }] })
-    ).toEqual({ outcome: 'accepted', answers: { 'Choose a test?': 'Smoke' } })
+    ).toEqual({
+      outcome: 'accepted',
+      answers: { 'Choose a test?': 'Other' },
+      annotations: { 'Choose a test?': { notes: 'Smoke' } }
+    })
+    const alias = translator.request('x.ai/ask_user_question', question, 3).presentation!
+    expect(
+      alias.reply({
+        kind: 'answers',
+        answers: [{ questionId: 'q1', optionIds: ['o1'], other: 'Also run smoke checks' }]
+      })
+    ).toEqual({
+      outcome: 'accepted',
+      answers: { 'Choose a test?': 'Unit' },
+      annotations: { 'Choose a test?': { notes: 'Also run smoke checks' } }
+    })
     expect(ask.reply(null)).toEqual({ outcome: 'cancelled' })
     expect(() => ask.reply({ kind: 'answers', answers: [] })).toThrow('every offered question')
     expect(() =>
@@ -124,10 +150,14 @@ describe('ACP dialect request and turn boundaries', () => {
 
   it('keeps client prompt settlement on the response, and never gives an autonomous turn invented success', async () => {
     const { rig, translator, apply, notification } = await dialectRig()
-    apply(translator.openPrompt('send-1', 1000))
+    apply(translator.openPrompt('send-1', 1000).events)
     notification('_x.ai/session_notification', {
       sessionId: 'provider-1',
-      update: { sessionUpdate: 'turn_completed', prompt_id: 'regular', stop_reason: 'end_turn' }
+      update: {
+        sessionUpdate: 'turn_completed',
+        prompt_id: 'prompt:send-1',
+        stop_reason: 'end_turn'
+      }
     })
     expect((await rig.turns())[0]!.state).toBe('running')
     apply(translator.promptResult('send-1', { stopReason: 'cancelled' }, 1200))
@@ -155,14 +185,14 @@ describe('ACP dialect request and turn boundaries', () => {
 
   it('keeps live autonomous output while suppressing marked replay during load', async () => {
     const { rig, translator, apply, notification } = await dialectRig()
-    apply(translator.openPrompt('send-1', 1000))
+    apply(translator.openPrompt('send-1', 1000).events)
     apply(translator.promptResult('send-1', { stopReason: 'end_turn' }, 1200))
     await rig.rows()
     translator.beginLoad()
     notification('session/update', {
       sessionId: 'provider-1',
       update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Old' } },
-      _meta: { isReplay: true, promptId: 'old' }
+      _meta: { isReplay: true, promptId: 'prompt:send-1' }
     })
     notification('session/update', {
       sessionId: 'provider-1',

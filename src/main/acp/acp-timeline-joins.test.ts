@@ -80,7 +80,7 @@ describe('ACP joins through the v3 assembler', () => {
         },
         1100
       )
-    apply(translator.openPrompt('send-1', 1000))
+    apply(translator.openPrompt('send-1', 1000).events)
     apply(chunk('Hel'))
     const before = (await rig.rows()).find((row) => row.body.kind === 'message')!
     rig.assembler = rig.restart({ generation: 'gen-2' })
@@ -110,7 +110,7 @@ describe('ACP joins through the v3 assembler', () => {
       options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }]
     }
     const translator = build()
-    for (const event of translator.openPrompt('send-1', 1000)) {
+    for (const event of translator.openPrompt('send-1', 1000).events) {
       rig.assembler.apply(event)
     }
     const event = translator.request('session/request_permission', params, 0).events[0]!

@@ -23,7 +23,7 @@ const questionRequestSchema = z.object({
 const planRequestSchema = z.object({
   sessionId: z.string(),
   toolCallId: z.string(),
-  planContent: z.string()
+  planContent: z.string().nullish()
 })
 
 function questionRequest(params: unknown): AcpRequestPresentation {
@@ -59,7 +59,12 @@ function questionRequest(params: unknown): AcpRequestPresentation {
         response.kind === 'answers'
           ? response.answers
           : legacyAgentSessionQuestionAnswers(body, response.optionId)
-      if (!answers || !isValidAgentSessionQuestionAnswers(questions, answers)) {
+      const choices = answers?.map((answer) =>
+        answer.optionIds.length > 0
+          ? { questionId: answer.questionId, optionIds: answer.optionIds }
+          : answer
+      )
+      if (!answers || !choices || !isValidAgentSessionQuestionAnswers(questions, choices)) {
         throw new AcpRpcError(-32602, 'Question answer must answer every offered question')
       }
       return {
@@ -70,12 +75,24 @@ function questionRequest(params: unknown): AcpRequestPresentation {
             const values = answer.optionIds.map(
               (id) => question.options.find((option) => option.id === id)!.label
             )
-            if (answer.other?.trim()) {
-              values.push(answer.other.trim())
+            if (values.length === 0 && answer.other?.trim()) {
+              values.push('Other')
             }
             return [question.question, question.multiSelect ? values : values[0]]
           })
-        )
+        ),
+        ...(answers.some((answer) => answer.other?.trim())
+          ? {
+              annotations: Object.fromEntries(
+                questions.flatMap((question) => {
+                  const notes = answers
+                    .find((answer) => answer.questionId === question.id)
+                    ?.other?.trim()
+                  return notes ? [[question.question, { notes }]] : []
+                })
+              )
+            }
+          : {})
       }
     }
   }
@@ -91,7 +108,10 @@ function planRequest(params: unknown): AcpRequestPresentation {
       kind: 'approval',
       title: 'Approve plan',
       detail: null,
-      subject: { kind: 'plan', text: parsed.data.planContent },
+      subject: {
+        kind: 'plan',
+        text: parsed.data.planContent ?? 'The agent exited plan mode without writing a plan.'
+      },
       options: [
         { id: 'approved', label: 'Approve plan' },
         { id: 'request_changes', label: 'Request changes' }
@@ -114,10 +134,10 @@ function planRequest(params: unknown): AcpRequestPresentation {
 }
 
 export function grokRequest(method: string, params: unknown): AcpRequestPresentation | undefined {
-  if (method === '_x.ai/ask_user_question') {
+  if (['_x.ai/ask_user_question', 'x.ai/ask_user_question'].includes(method)) {
     return questionRequest(params)
   }
-  if (method === '_x.ai/exit_plan_mode') {
+  if (['_x.ai/exit_plan_mode', 'x.ai/exit_plan_mode'].includes(method)) {
     return planRequest(params)
   }
   return undefined
