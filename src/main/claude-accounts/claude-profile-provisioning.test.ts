@@ -49,19 +49,73 @@ afterEach(() => {
 describe('dormant Claude profile provisioning', () => {
   it('links resources, keeps private directories and sees later global installs', async () => {
     const f = fixture()
-    for (const name of ['skills', 'plugins', 'agents', 'commands', 'output-styles']) {
+    const linked = [
+      'skills',
+      'plugins',
+      'commands',
+      'output-styles',
+      'themes',
+      'workflows'
+    ] as const
+    for (const name of [...linked, 'agents', 'rules']) {
       fs.mkdirSync(join(f.source, name))
     }
-    fs.mkdirSync(join(f.profileHome, 'agents'))
-    fs.writeFileSync(join(f.profileHome, 'agents/mine.md'), 'private')
+    for (const name of ['agents', 'rules']) {
+      fs.mkdirSync(join(f.profileHome, name))
+      fs.writeFileSync(join(f.profileHome, name, 'mine.md'), 'private')
+    }
     const report = await provision(f)
     expect(report.surfaces.agents).toBe('user-owned')
-    for (const name of ['skills', 'plugins', 'commands', 'output-styles']) {
+    expect(report.surfaces.rules).toBe('user-owned')
+    for (const name of linked) {
+      expect(report.surfaces[name]).toBe('linked')
       expect(fs.realpathSync(join(f.profileHome, name))).toBe(fs.realpathSync(join(f.source, name)))
     }
     fs.writeFileSync(join(f.source, 'skills/new.md'), 'new skill')
     expect(fs.readFileSync(join(f.profileHome, 'skills/new.md'), 'utf8')).toBe('new skill')
-    expect(fs.readFileSync(join(f.profileHome, 'agents/mine.md'), 'utf8')).toBe('private')
+    for (const name of ['agents', 'rules']) {
+      expect(fs.readFileSync(join(f.profileHome, name, 'mine.md'), 'utf8')).toBe('private')
+    }
+  })
+  it('shares personal rules, themes and workflows that later appear in the default home', async () => {
+    const f = fixture()
+    await provision(f)
+    fs.mkdirSync(join(f.source, 'rules'))
+    fs.writeFileSync(join(f.source, 'rules/style.md'), 'use tabs')
+    fs.mkdirSync(join(f.source, 'themes'))
+    fs.writeFileSync(join(f.source, 'themes/dusk.json'), '{"base":"dark"}')
+    fs.mkdirSync(join(f.source, 'workflows'))
+    fs.writeFileSync(join(f.source, 'workflows/review.js'), 'export const meta = {}')
+    const report = await provision(f)
+    expect(report.surfaces).toMatchObject({
+      rules: 'linked',
+      themes: 'linked',
+      workflows: 'linked'
+    })
+    expect(fs.readFileSync(join(f.profileHome, 'rules/style.md'), 'utf8')).toBe('use tabs')
+    expect(fs.readFileSync(join(f.profileHome, 'themes/dusk.json'), 'utf8')).toBe('{"base":"dark"}')
+    expect(fs.readFileSync(join(f.profileHome, 'workflows/review.js'), 'utf8')).toBe(
+      'export const meta = {}'
+    )
+    fs.writeFileSync(join(f.profileHome, 'workflows/saved.js'), 'saved in profile')
+    expect(fs.readFileSync(join(f.source, 'workflows/saved.js'), 'utf8')).toBe('saved in profile')
+  })
+  it('copies keybindings, keeps a profile edit and follows the default while unedited', async () => {
+    const f = fixture()
+    const source = join(f.source, 'keybindings.json')
+    const copy = join(f.profileHome, 'keybindings.json')
+    fs.writeFileSync(source, '{"bindings":[]}')
+    expect((await provision(f)).surfaces['keybindings.json']).toBe('synced')
+    expect(fs.lstatSync(copy).isSymbolicLink()).toBe(false)
+    expect(fs.readFileSync(copy, 'utf8')).toBe('{"bindings":[]}')
+    fs.writeFileSync(source, '{"bindings":[1]}')
+    expect((await provision(f)).surfaces['keybindings.json']).toBe('synced')
+    expect(fs.readFileSync(copy, 'utf8')).toBe('{"bindings":[1]}')
+    fs.writeFileSync(copy, '{"bindings":["profile"]}')
+    fs.writeFileSync(source, '{"bindings":[2]}')
+    expect((await provision(f)).surfaces['keybindings.json']).toBe('user-owned')
+    expect(fs.readFileSync(copy, 'utf8')).toBe('{"bindings":["profile"]}')
+    expect(fs.readFileSync(source, 'utf8')).toBe('{"bindings":[2]}')
   })
   it("shares future settings keys and the user's hooks but excludes auth and Orca hooks; profile edits survive reprovision", async () => {
     const f = fixture()
