@@ -28,6 +28,7 @@ import { getExecutionHostIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { readLocalRuntimeCapabilitiesOrUnknown } from '@/runtime/local-runtime-capabilities'
 import { resolveStructuredAgentSessionOwner } from '@/runtime/structured-agent-session-owner'
 import { pairedHostClientCapabilities } from '@/runtime/paired-host-client-capabilities'
+import { readHostStructuredAgents } from '@/runtime/host-structured-agents'
 import { lastVerifiedRuntimeStatus } from '../../../shared/runtime-host-status'
 
 export type ProspectiveWorkspaceKind = NonNullable<AgentLaunchRoutingInput['workspaceKind']>
@@ -126,6 +127,14 @@ function resolveTranscriptIsLocalReadable(
   return host?.kind === 'ssh' ? isNativeChatTranscriptLocalReadable(host.targetId) : true
 }
 
+function hostStructuredAgentsInput(
+  store: AgentLaunchRouteStore,
+  executionHostId: string
+): Pick<AgentLaunchRoutingInput, 'hostStructuredAgents'> {
+  const agents = readHostStructuredAgents(executionHostId, store.runtimeStatusByEnvironmentId)
+  return agents ? { hostStructuredAgents: agents.map((row) => row.agent) } : {}
+}
+
 /** The one place that gathers what a launch route decision needs; only the planner resolves on it. */
 export function buildAgentLaunchRouteInput(
   store: AgentLaunchRouteStore,
@@ -170,6 +179,7 @@ export function buildAgentLaunchRouteInput(
       // A launch command override is this machine's; a paired host's createSupport reads its own.
       (executionHostId === LOCAL_EXECUTION_HOST_ID &&
         hasExplicitTuiLaunchCommand(store.settings, agent)),
-    initialSessionOptions: args.initialSessionOptions
+    initialSessionOptions: args.initialSessionOptions,
+    ...hostStructuredAgentsInput(store, executionHostId)
   }
 }

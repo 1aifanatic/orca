@@ -12,6 +12,8 @@ import { useNativeChatResolvedPathAttachments } from './use-native-chat-resolved
 
 export type UseNativeChatComposerAttachmentsArgs = {
   attachmentScopeKey: string
+  /** False when the agent takes no image input; see `useNativeChatResolvedPathAttachments`. */
+  acceptsImages?: boolean
   allowWithoutTarget?: boolean
   caret: number
   disabled: boolean
@@ -25,6 +27,7 @@ export type UseNativeChatComposerAttachmentsArgs = {
 
 export function useNativeChatComposerAttachments({
   attachmentScopeKey,
+  acceptsImages = true,
   allowWithoutTarget = false,
   caret,
   disabled,
@@ -122,6 +125,7 @@ export function useNativeChatComposerAttachments({
 
   const { attachResolvedPaths, disabledRef, flushPendingAttachments } =
     useNativeChatResolvedPathAttachments({
+      acceptsImages,
       appendImageAttachments,
       attachmentTargetBlocked,
       caret,
@@ -138,7 +142,8 @@ export function useNativeChatComposerAttachments({
   // takes a beat to save (or upload over SSH) never reads as a dropped paste.
   const beginPendingImageAttachment = useCallback(
     (previewUrl?: string): string | null => {
-      if (disabledRef.current) {
+      // Without image input the saved paste is attached by path once it lands, so no image chip.
+      if (disabledRef.current || !acceptsImages) {
         return null
       }
       if (attachmentTargetBlocked()) {
@@ -150,6 +155,7 @@ export function useNativeChatComposerAttachments({
       return id
     },
     [
+      acceptsImages,
       attachmentTargetBlocked,
       disabledRef,
       nextAttachmentId,
