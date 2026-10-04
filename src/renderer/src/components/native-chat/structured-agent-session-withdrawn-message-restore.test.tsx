@@ -252,11 +252,13 @@ describe('a message the host withdrew at a Stop', () => {
     unsubscribe()
 
     expect(storedAtRestore).toEqual([id])
-    // The drop never reached storage: the next mount gives the text back again rather than losing it.
+    // The drop never reached storage: after a crash, which loses the in-memory draft, the next mount
+    // gives the text back again rather than losing it.
     cleanup()
+    writeNativeChatDraftCache(PANE, '')
     writeOutbox(SESSION, beforeDrop)
     renderOutbox().rerender({ submissions: [withdrawn(id)] })
-    expect(readNativeChatDraftCache(PANE)).toBe('hello\n\nhello')
+    expect(readNativeChatDraftCache(PANE)).toBe('hello')
   })
 
   it('keeps a message refused for any other reason on its Retry, and gives nothing back', async () => {
