@@ -200,6 +200,7 @@ describe('Grok background tasks through the shared timeline', () => {
     const fixture = await openAcpFixtureRig()
     for (const params of [
       { sessionId: 'session-1', update: { sessionUpdate: 'task_completed' } },
+      { update: started().update },
       { ...started(), sessionId: 'other' },
       { ...started(), _meta: { isReplay: true } }
     ]) {

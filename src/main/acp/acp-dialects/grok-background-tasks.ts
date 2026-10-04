@@ -82,7 +82,7 @@ export function grokBackgroundTaskNotification(
     return undefined
   }
   const parsed = z
-    .object({ update: z.union([backgroundedSchema, completedSchema]) })
+    .object({ sessionId: z.string(), update: z.union([backgroundedSchema, completedSchema]) })
     .safeParse(params)
   if (!parsed.success) {
     return { disposition: 'ignore' }
