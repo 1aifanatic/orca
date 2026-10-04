@@ -17991,6 +17991,7 @@
         "deny": "Deny",
         "cancel": "Cancel",
         "reason": "Reason",
+        "needsAccess": "Needs access to",
         "plan": {
           "file": "Plan file"
         }

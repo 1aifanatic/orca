@@ -2,6 +2,7 @@ import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MobileNativeChatPermission } from './MobileNativeChatPermission'
+import type { MobileChatPermission } from './mobile-native-chat-permission'
 
 vi.mock('react-native', () => ({
   Pressable: 'Pressable',
@@ -105,44 +106,57 @@ describe('MobileNativeChatPermission', () => {
     expect(actions.props.style).toMatchObject({ flexShrink: 0 })
   })
 
-  // Same card as desktop: what is asked and why, never the provider's settings bookkeeping.
-  it('shows the reason but not the matched ask rule, its settings source or a blocked path', async () => {
+  // Same card as desktop: what is asked, why, and the path it needs, never the provider's ask-rule bookkeeping.
+  it('names a blocked path the request does not show, but never the matched ask rule', async () => {
     const fromJournal = {
       title: 'Claude wants to run git push',
       decisionReason: 'Pushing changes the remote',
-      blockedPath: '/outside/repo',
+      blockedPath: 'C:\\qa\\demo\\.git\\config',
       matchedAskRule: {
         source: 'projectSettings',
         toolName: 'Bash',
         ruleContent: 'Bash(git push:*)'
       },
+      detail: 'git push origin main',
       options: [{ label: 'Allow', send: '1' }]
     }
+    const text = await renderContentText(fromJournal)
+    expect(text).toContain('Pushing changes the remote')
+    expect(text).toContain('Needs access to: ')
+    expect(text).toContain('C:\\qa\\demo\\.git\\config')
+    for (const internal of ['Ask rule', 'Bash(git push:*)', 'projectSettings', 'Blocked path']) {
+      expect(text).not.toContain(internal)
+    }
+  })
+
+  it('does not repeat a blocked path the request already shows', async () => {
+    const blockedPath = 'C:\\qa\\demo\\notes.md'
+    const text = await renderContentText({
+      title: 'Claude wants to write notes.md',
+      blockedPath,
+      detail: JSON.stringify({ file_path: blockedPath, content: 'hi' }, null, 2),
+      options: [{ label: 'Allow', send: '1' }]
+    })
+    expect(text).toContain('notes.md')
+    expect(text).not.toContain('Needs access to')
+  })
+
+  async function renderContentText(permission: MobileChatPermission): Promise<string> {
     await act(async () => {
       renderer = create(
         createElement(MobileNativeChatPermission, {
-          permission: fromJournal,
+          permission,
           onRespond: vi.fn(async () => true)
         })
       )
     })
     const content = renderer.root.findByProps({ testID: 'native-chat-approval-content' })
-    const text = content
+    return content
       .findAllByType('Text')
       .flatMap((node) => [node.props.children].flat())
       .filter((child): child is string => typeof child === 'string')
       .join('')
-    expect(text).toContain('Pushing changes the remote')
-    for (const internal of [
-      'Ask rule',
-      'Bash(git push:*)',
-      'projectSettings',
-      'Blocked path',
-      '/outside/repo'
-    ]) {
-      expect(text).not.toContain(internal)
-    }
-  })
+  }
 
   it('renders a plan as markdown inside the same bounded scroller', async () => {
     const planText = '# Release plan\n\n- Run the tests'

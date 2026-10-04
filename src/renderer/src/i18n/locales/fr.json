@@ -17722,6 +17722,7 @@
         "deny": "Refuser",
         "cancel": "Annuler",
         "reason": "Raison",
+        "needsAccess": "Nécessite l'accès à",
         "plan": {
           "file": "Dossier de planification"
         }

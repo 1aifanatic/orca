@@ -95,13 +95,12 @@ describe('NativeChatApprovalCard', () => {
     expect(actions?.classList.contains('shrink-0')).toBe(true)
   })
 
-  // The provider's settings bookkeeping is not something to decide on: the card shows what is asked
-  // and why, and the request itself names any path.
-  it('shows the reason but not the matched ask rule, its settings source or a blocked path', () => {
+  // The path is what the request touches; the provider's ask-rule bookkeeping is not something to decide on.
+  it('names a blocked path the request does not show, but never the matched ask rule', () => {
     const fromJournal = {
       title: 'Claude wants to run git push',
       decisionReason: 'Pushing changes the remote',
-      blockedPath: '/outside/repo',
+      blockedPath: 'C:\\qa\\demo\\.git\\config',
       matchedAskRule: {
         source: 'projectSettings',
         toolName: 'Bash',
@@ -114,15 +113,43 @@ describe('NativeChatApprovalCard', () => {
     const content = document.querySelector('[data-native-chat-approval-content="true"]')
     expect(content?.textContent).toContain('Reason: Pushing changes the remote')
     expect(content?.textContent).toContain('git push origin main')
-    for (const internal of [
-      'Ask rule',
-      'Bash(git push:*)',
-      'projectSettings',
-      'Blocked path',
-      '/outside/repo'
-    ]) {
+    expect(content?.textContent).toContain('Needs access to: C:\\qa\\demo\\.git\\config')
+    for (const internal of ['Ask rule', 'Bash(git push:*)', 'projectSettings', 'Blocked path']) {
       expect(content?.textContent).not.toContain(internal)
     }
+  })
+
+  it('does not repeat a blocked path the request already shows', () => {
+    const blockedPath = 'C:\\qa\\demo\\notes.md'
+    render(
+      <NativeChatApprovalCard
+        approval={{
+          title: 'Claude wants to write notes.md',
+          blockedPath,
+          detail: JSON.stringify({ file_path: blockedPath, content: 'hi' }, null, 2),
+          options: [{ label: 'Allow', send: 'allow' }]
+        }}
+        onChoose={() => {}}
+      />
+    )
+    const content = document.querySelector('[data-native-chat-approval-content="true"]')
+    expect(content?.textContent).toContain('notes.md')
+    expect(content?.textContent).not.toContain('Needs access to')
+  })
+
+  it('shows the blocked path alone when the provider sent nothing else to show', () => {
+    render(
+      <NativeChatApprovalCard
+        approval={{
+          title: 'Allow Read?',
+          blockedPath: '/outside/repo/secrets.txt',
+          options: [{ label: 'Allow', send: 'allow' }]
+        }}
+        onChoose={() => {}}
+      />
+    )
+    const content = document.querySelector('[data-native-chat-approval-content="true"]')
+    expect(content?.textContent).toBe('Needs access to: /outside/repo/secrets.txt')
   })
 
   it('renders a plan as markdown inside the same bounded scroller', () => {

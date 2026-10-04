@@ -17676,6 +17676,7 @@
         "deny": "拒绝",
         "cancel": "取消",
         "reason": "原因",
+        "needsAccess": "需要访问的路径",
         "plan": {
           "file": "计划文件"
         }

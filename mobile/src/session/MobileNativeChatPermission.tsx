@@ -1,6 +1,7 @@
 import { memo, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { ShieldQuestion, X } from 'lucide-react-native'
+import { approvalBlockedPathToShow } from '../../../src/shared/agent-session-approval-blocked-path'
 import { MobileMarkdown } from '../components/MobileMarkdown'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
 import type { MobileChatPermission } from './mobile-native-chat-permission'
@@ -19,9 +20,6 @@ function MobileNativeChatPermissionImpl({
 }): React.JSX.Element {
   const [submitting, setSubmitting] = useState(false)
   const submittingRef = useRef(false)
-  const hasContext = Boolean(
-    permission.description || permission.decisionReason || permission.subject || permission.detail
-  )
   const respond = async (send: string): Promise<void> => {
     if (submittingRef.current) {
       return
@@ -58,34 +56,7 @@ function MobileNativeChatPermissionImpl({
           </Pressable>
         ) : null}
       </View>
-      {hasContext ? (
-        <ScrollView
-          testID="native-chat-approval-content"
-          style={styles.contentScroll}
-          contentContainerStyle={styles.content}
-          nestedScrollEnabled
-        >
-          {permission.description ? (
-            <Text style={styles.detail}>{permission.description}</Text>
-          ) : null}
-          {permission.decisionReason ? (
-            <Text style={styles.detail}>
-              <Text style={styles.contextLabel}>Reason: </Text>
-              {permission.decisionReason}
-            </Text>
-          ) : null}
-          {permission.subject?.kind === 'plan' ? (
-            <View>
-              <MobileMarkdown content={permission.subject.text} />
-              {permission.subject.filePath ? (
-                <Text style={styles.planFile}>Plan file: {permission.subject.filePath}</Text>
-              ) : null}
-            </View>
-          ) : permission.detail ? (
-            <Text style={styles.detail}>{permission.detail}</Text>
-          ) : null}
-        </ScrollView>
-      ) : null}
+      <MobileNativeChatPermissionContext permission={permission} />
       <View testID="native-chat-approval-actions" style={styles.options}>
         {permission.options.map((option, index) => {
           const isPrimary = index === 0
@@ -113,6 +84,55 @@ function MobileNativeChatPermissionImpl({
 }
 
 export const MobileNativeChatPermission = memo(MobileNativeChatPermissionImpl)
+
+function MobileNativeChatPermissionContext({
+  permission
+}: {
+  permission: MobileChatPermission
+}): React.JSX.Element | null {
+  const neededPath = approvalBlockedPathToShow(permission)
+  if (
+    !permission.description &&
+    !permission.decisionReason &&
+    !neededPath &&
+    !permission.subject &&
+    !permission.detail
+  ) {
+    return null
+  }
+  return (
+    <ScrollView
+      testID="native-chat-approval-content"
+      style={styles.contentScroll}
+      contentContainerStyle={styles.content}
+      nestedScrollEnabled
+    >
+      {permission.description ? <Text style={styles.detail}>{permission.description}</Text> : null}
+      {permission.decisionReason ? (
+        <Text style={styles.detail}>
+          <Text style={styles.contextLabel}>Reason: </Text>
+          {permission.decisionReason}
+        </Text>
+      ) : null}
+      {neededPath ? (
+        <Text style={styles.detail}>
+          <Text style={styles.contextLabel}>Needs access to: </Text>
+          {neededPath}
+        </Text>
+      ) : null}
+      {permission.subject?.kind === 'plan' ? (
+        <View>
+          <MobileMarkdown content={permission.subject.text} />
+          {permission.subject.filePath ? (
+            <Text style={styles.planFile}>Plan file: {permission.subject.filePath}</Text>
+          ) : null}
+        </View>
+      ) : permission.detail ? (
+        <Text style={styles.detail}>{permission.detail}</Text>
+      ) : null}
+    </ScrollView>
+  )
+}
 
 const styles = StyleSheet.create({
   card: {

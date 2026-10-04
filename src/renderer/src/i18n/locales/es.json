@@ -15177,7 +15177,8 @@
       "approval": {
         "title": "¿Permitir {{value0}}?",
         "allow": "Permitir",
-        "deny": "Denegar"
+        "deny": "Denegar",
+        "needsAccess": "Necesita acceso a"
       },
       "launchPromptNotDelivered": "No entregado — revisa la terminal",
       "fileLinks": {

@@ -16,6 +16,7 @@ export type MobileChatPermission = {
   displayName?: string
   description?: string
   decisionReason?: string
+  blockedPath?: string
   subject?: AgentJournalApprovalSubject
   detail?: string
   /** Structured prompt identity, present only when the host can cancel it exactly. */

@@ -5,6 +5,7 @@ import { translate } from '@/i18n/i18n'
 import CommentMarkdown, {
   type CommentMarkdownLinkClickHandler
 } from '@/components/sidebar/CommentMarkdown'
+import { approvalBlockedPathToShow } from '../../../../shared/agent-session-approval-blocked-path'
 import { NativeChatCodeBlock } from './NativeChatCodeBlock'
 import type { ChatApproval } from './native-chat-interactive-prompt'
 
@@ -34,8 +35,13 @@ export function NativeChatApprovalCard({
   allowFileUriLinks = false
 }: NativeChatApprovalCardProps): React.JSX.Element {
   const cardRef = useRef<HTMLDivElement>(null)
+  const neededPath = approvalBlockedPathToShow(approval)
   const hasContext = Boolean(
-    approval.description || approval.decisionReason || approval.subject || approval.detail
+    approval.description ||
+    approval.decisionReason ||
+    neededPath ||
+    approval.subject ||
+    approval.detail
   )
   useEffect(() => {
     if (shouldFocus) {
@@ -94,6 +100,15 @@ export function NativeChatApprovalCard({
                     {translate('components.native-chat.approval.reason', 'Reason')}:{' '}
                   </span>
                   {approval.decisionReason}
+                </p>
+              ) : null}
+              {neededPath ? (
+                <p className="break-words">
+                  <span className="font-medium text-foreground/80">
+                    {translate('components.native-chat.approval.needsAccess', 'Needs access to')}
+                    :{' '}
+                  </span>
+                  <span className="font-mono">{neededPath}</span>
                 </p>
               ) : null}
               {approval.subject?.kind === 'plan' ? (

@@ -17659,6 +17659,7 @@
         "deny": "拒否",
         "cancel": "キャンセル",
         "reason": "理由",
+        "needsAccess": "アクセスが必要なパス",
         "plan": {
           "file": "計画ファイル"
         }

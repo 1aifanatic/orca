@@ -36,6 +36,7 @@ export type ChatApproval = {
   displayName?: string
   description?: string
   decisionReason?: string
+  blockedPath?: string
   subject?: AgentJournalApprovalSubject
   detail?: string
   options: { label: string; send: string }[]

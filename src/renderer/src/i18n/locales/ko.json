@@ -17659,6 +17659,7 @@
         "deny": "거부",
         "cancel": "취소",
         "reason": "이유",
+        "needsAccess": "접근이 필요한 경로",
         "plan": {
           "file": "계획 파일"
         }
