@@ -43,6 +43,7 @@ async function call(
   client: { clientId?: string; clientKind?: 'runtime' | 'mobile'; clientCapabilities?: string[] }
 ): Promise<RpcResponse> {
   const dispatcher = new RpcDispatcher({
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the attachment methods read only the host-install hook and runtime id.
     runtime: {
       getRuntimeId: () => 'runtime-1',
       ensureStructuredAgentSessionHost: async () => {}
@@ -52,6 +53,7 @@ async function call(
   const replies: RpcResponse[] = []
   await dispatcher.dispatchStreaming(
     { id: 'request-1', authToken: 'token', method, params },
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the dispatcher writes serialized RpcResponse frames.
     (raw) => replies.push(JSON.parse(raw) as RpcResponse),
     client
   )
@@ -65,6 +67,7 @@ function result<T>(response: RpcResponse): T {
   if (!response.ok) {
     throw new Error(`refused: ${JSON.stringify(response)}`)
   }
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: each caller names the result shape its method returns.
   return response.result as T
 }
 

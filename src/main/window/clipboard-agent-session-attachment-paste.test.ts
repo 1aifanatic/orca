@@ -39,6 +39,7 @@ function saveHandler(): (...args: unknown[]) => Promise<unknown> {
   if (!entry) {
     throw new Error('save handler was not registered')
   }
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: ipcMain.handle was called with this channel's async handler.
   return entry[1] as (...args: unknown[]) => Promise<unknown>
 }
 
@@ -78,6 +79,7 @@ beforeEach(() => {
 
 describe('clipboard:saveImageAsTempFile for a structured chat on a paired server', () => {
   it("stores the image in the chat's attachment store, pinned to the pairing and server", async () => {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the image save path never reads the store.
     registerClipboardHandlers({} as never)
 
     await expect(
@@ -110,6 +112,7 @@ describe('clipboard:saveImageAsTempFile for a structured chat on a paired server
 
   it('keeps the server temp directory for a paste that names no chat', async () => {
     mocks.callRuntimeEnvironment.mockResolvedValue({ ok: true, result: { uploadId: 'u' } })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the image save path never reads the store.
     registerClipboardHandlers({} as never)
     await saveHandler()(event, { runtimeEnvironmentId: 'remote-host-1' }).catch(() => {})
     expect(mocks.callRuntimeEnvironment.mock.calls[0][2]).toBe('clipboard.startImageUpload')

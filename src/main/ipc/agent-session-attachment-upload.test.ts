@@ -33,18 +33,30 @@ vi.mock('./runtime-environment-transport-routing', () => ({
       return { ok: false, error: { code: 'internal', message: `${method} failed` } }
     }
     const callerKey = 'client-a'
+    const uploadId = String(params.uploadId)
     try {
       const result =
         method === 'agentSessionAttachment.uploadStart'
-          ? await serverStore.startUpload({ callerKey, ...(params as never) })
+          ? await serverStore.startUpload({
+              callerKey,
+              sessionId: String(params.sessionId),
+              name: String(params.name),
+              byteLength: Number(params.byteLength)
+            })
           : method === 'agentSessionAttachment.uploadAppend'
-            ? await serverStore.appendChunk({ callerKey, ...(params as never) })
+            ? await serverStore.appendChunk({
+                callerKey,
+                uploadId,
+                offset: Number(params.offset),
+                contentBase64: String(params.contentBase64)
+              })
             : method === 'agentSessionAttachment.uploadCommit'
-              ? await serverStore.commitUpload({ callerKey, ...(params as never) })
-              : await serverStore.abortUpload({ callerKey, ...(params as never) })
+              ? await serverStore.commitUpload({ callerKey, uploadId })
+              : await serverStore.abortUpload({ callerKey, uploadId })
       return { ok: true, result }
     } catch (error) {
-      return { ok: false, error: { code: 'internal', message: (error as Error).message } }
+      const message = error instanceof Error ? error.message : String(error)
+      return { ok: false, error: { code: 'internal', message } }
     }
   }
 }))
