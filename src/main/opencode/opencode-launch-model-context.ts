@@ -9,6 +9,7 @@ import {
 import { withTimeout } from '../../shared/promise-timeout-fallback'
 import { createOutputSink } from '../../shared/child-process/bounded-output-sink'
 import { readFetchResponseJsonWithinLimit } from '../../shared/fetch-response-body'
+import { cancelUnreadResponseBody } from '../lib/unread-response-body'
 
 const model = z.object({ id: z.string(), providerID: z.string() })
 const availableModel = model.extend({ enabled: z.boolean() })
@@ -155,11 +156,14 @@ export async function probeOpenCodeLaunchModelContext(options: {
             redirect: 'error',
             signal
           })
-          if (!response.ok) {
-            await response.body?.cancel()
-            throw new Error('OpenCode model preflight refused')
+          try {
+            if (!response.ok) {
+              throw new Error('OpenCode model preflight refused')
+            }
+            return await readFetchResponseJsonWithinLimit<unknown>(response, 1_048_576)
+          } finally {
+            await cancelUnreadResponseBody(response)
           }
-          return readFetchResponseJsonWithinLimit<unknown>(response, 1_048_576)
         }
         const [models, agents, defaultModel, config] = await Promise.all([
           read('model'),

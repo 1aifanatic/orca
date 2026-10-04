@@ -230,10 +230,9 @@ export class OrcaRuntimeWithGetTerminalInteractiveWait extends OrcaRuntimeWithAd
 
   async probeOrchestrationOpenCodeModelLaunchSupport(target: {
     worktree?: string
-    repo?: string
     model?: string
   }): Promise<boolean> {
-    if (!target.model || target.repo || !target.worktree) {
+    if (!target.model || !target.worktree) {
       return false
     }
     const workspace = await this.resolveTerminalWorkspaceLaunchScope(target.worktree)

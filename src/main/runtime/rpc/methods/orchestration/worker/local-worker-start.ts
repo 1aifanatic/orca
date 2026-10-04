@@ -73,26 +73,19 @@ export async function startLocalWorker(args: {
         }
   })
   let openCodeModelLaunchSupported = false
-  if (launchParams.agent === 'opencode' && launchParams.model) {
+  if (!createsWorktree && launchParams.agent === 'opencode' && launchParams.model) {
     const callerWorkspaceId = await resolveDispatchCallerWorktreeId(
       runtime,
       params.from,
       callerSession
     )
-    const creationParent = createsWorktree
-      ? await runtime.showManagedWorktree(`id:${callerWorkspaceId}`)
-      : undefined
     openCodeModelLaunchSupported = await probeWorkerOpenCodeModelLaunchSupport(
       runtime,
       launchParams,
-      createsWorktree
-        ? { repo: launchParams.repo ?? creationParent?.repoId }
-        : {
-            worktree:
-              requestedWorktree === 'current' ? `id:${callerWorkspaceId}` : requestedWorktree
-          }
+      { worktree: requestedWorktree === 'current' ? `id:${callerWorkspaceId}` : requestedWorktree }
     )
   }
+
   const { agent, launch } = prepareLocalWorkerStart({
     params: launchParams,
     createsWorktree,

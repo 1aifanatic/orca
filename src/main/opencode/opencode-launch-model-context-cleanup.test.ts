@@ -8,12 +8,15 @@ import {
   signalProcessTree
 } from '../../shared/child-process/process-tree-termination'
 import { probeOpenCodeLaunchModelContext } from './opencode-launch-model-context'
+import { readFetchResponseJsonWithinLimit } from '../../shared/fetch-response-body'
 
 vi.mock('../../shared/child-process/run-process', () => ({ spawnProcess: vi.fn() }))
 vi.mock('../../shared/child-process/process-tree-termination', () => ({
   signalProcessTree: vi.fn(),
   forceTerminateProcessTree: vi.fn()
 }))
+
+vi.mock('../../shared/fetch-response-body', () => ({ readFetchResponseJsonWithinLimit: vi.fn() }))
 
 class ProbeChild extends ChildProcess {
   override stdin = new PassThrough()
@@ -54,6 +57,7 @@ const options = { executable: '/private/opencode', cwd: directory, env: {} }
 describe('OpenCode model probe termination evidence', () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    vi.mocked(readFetchResponseJsonWithinLimit).mockImplementation((response) => response.json())
     child = new ProbeChild()
     closeDuringFetch = false
     vi.mocked(spawnProcess).mockImplementation(() => {
@@ -85,6 +89,18 @@ describe('OpenCode model probe termination evidence', () => {
       Object.defineProperty(process, 'platform', platform)
     }
     vi.unstubAllGlobals()
+  })
+
+  it('cancels all unread responses if the bounded body reader fails', async () => {
+    const cancel = vi.fn()
+    vi.mocked(readFetchResponseJsonWithinLimit).mockRejectedValue(new Error('body_reader_failed'))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(new ReadableStream({ cancel }), { status: 200 }))
+    )
+    expect(await probeOpenCodeLaunchModelContext(options)).toBeNull()
+    expect(cancel).toHaveBeenCalledTimes(4)
+    expect(signalProcessTree).toHaveBeenCalledOnce()
   })
 
   it('accepts an already-closed Windows probe without signaling its former pid', async () => {
