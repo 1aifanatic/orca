@@ -1,7 +1,8 @@
 // Stop writes one event row before it interrupts, and the queue's pause is derived from it:
 // through the real host, the cards queued before a Stop wait, a card queued after it sends past
 // them and they follow it, a withdrawn card comes back under it, a crash keeps it, it
-// never hides a restart's pause, and no stored pause is ever written.
+// never hides a restart's pause, a restart's holds only cards written before it, and no stored
+// pause is ever written.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
@@ -222,6 +223,24 @@ describe("a Stop never hides a restart's pause", () => {
     // the restart's pause stands.
     expect(structuredQueuePauses(journal()).map((pause) => pause.reason)).toEqual(['restarted'])
     await expectHeld('restarted', typed)
+  })
+})
+
+describe("a restart's pause", () => {
+  it("holds only cards written before it: one typed during Orca's own turn sends when that turn ends, and the older card follows once it starts", async () => {
+    const working = await rig.workingSend()
+    const before = await queuedDraft('written before the restart')
+    await rig.restartHostProcess()
+    await rig.settleAccepted(working, 'a')
+    // Orca's own turn after the restart, such as its continuation.
+    const continuation = await mailTurn()
+    const typed = await queuedDraft('typed during the continuation')
+    expect(await rig.queuePause()).toEqual({ reason: 'restarted' })
+    await rig.settleAccepted(continuation, 'continuation')
+    await eventually(async () => expect(await rig.handoff(typed)).toBeDefined())
+    expect(await rig.handoff(before)).toBeUndefined()
+    await rig.settleAccepted(await rig.handoffId(typed), 'typed')
+    await eventually(async () => expect(await rig.handoff(before)).toBeDefined())
   })
 })
 

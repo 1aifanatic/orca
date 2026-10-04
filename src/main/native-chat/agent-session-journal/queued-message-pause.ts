@@ -6,7 +6,7 @@
 //   - 'cleared': a card /clear carried into this conversation waits, and no person's turn or
 //     Resume has happened here since.
 //   - 'restarted': a waiting card was written by another host process, and no person's turn has
-//     started since this conversation opened.
+//     started since this conversation opened. It holds only those cards, never one written since.
 // A person's turn is an accepted submission of origin `client`: their send, Send on any card, or
 // the queue's send of a card they wrote. Orchestration mail, a restart continuation, a launch
 // prompt and the queue's send of a card one of those wrote are `host` and never lift it.
@@ -23,11 +23,12 @@ export type JournalQueuePauseMarks = {
   resumedSequence: number
 }
 
-export type DerivedQueuePause = {
-  reason: QueuePauseReason
-  /** Where a Stop's pause began: a card queued at or after it is newer. Null for the others. */
-  since: AgentJournalCursor | null
-}
+export type DerivedQueuePause =
+  /** `since`: where the Stop was written; a card queued at or after it is newer. */
+  | { reason: 'stopped'; since: AgentJournalCursor }
+  | { reason: 'cleared' }
+  /** `hostInstance`: this process; a card it wrote came after the restart. */
+  | { reason: 'restarted'; hostInstance: string }
 
 type QueueCard = {
   state: string
@@ -123,35 +124,37 @@ export function deriveQueuePauses(input: {
   const waiting = input.cards.filter((card) => card.state === 'waiting')
   const carried = waiting.filter((card) => card.carriedFrom !== null)
   if (carried.length > 0 && latestPersonTurnSequence === 0 && marks.resumedSequence === 0) {
-    pauses.push({ reason: 'cleared', since: null })
+    pauses.push({ reason: 'cleared' })
   }
   if (!input.restartEnded && waiting.some((card) => card.hostInstance !== input.hostInstance)) {
-    // The process that wrote a card is gone: every card waits, whenever it was written.
-    pauses.push({ reason: 'restarted', since: null })
+    pauses.push({ reason: 'restarted', hostInstance: input.hostInstance })
   }
   return pauses
 }
 
-/** Queued before the pause began: for /clear, a card it carried; for a restart, every card. For a
- *  Stop, a card queued before its row; one from another epoch (before a rewind) or from a build
- *  that recorded no position counts as before. A withdrawn steer keeps its position, so is held. */
+/** Queued before the pause began: for /clear, a card it carried; for a restart, a card another
+ *  process wrote. For a Stop, a card queued before its row; one from another epoch (before a
+ *  rewind) or from a build that recorded no position counts as before. A withdrawn steer keeps its
+ *  position, so is held. */
 function queuedBeforePause(pause: DerivedQueuePause, card: QueueCard): boolean {
   if (pause.reason === 'cleared') {
     return card.carriedFrom !== null
   }
+  if (pause.reason === 'restarted') {
+    return card.hostInstance !== pause.hostInstance
+  }
   const { since } = pause
   return (
-    since === null ||
     card.queuedAt === null ||
     card.queuedAt.epoch !== since.epoch ||
     card.queuedAt.sequence < since.sequence
   )
 }
 
-// Product decision: a card queued AFTER a Stop is a new instruction and is not held; only cards
-// queued before it, and a steer it withdrew, wait. The drain skips held cards, so it sends ahead of
-// them; when a person wrote that card its send is their turn, so the held cards follow it. true
-// instead holds every waiting card, whenever it was queued.
+// Product decision: a card queued AFTER a Stop or a restart is a new instruction and is not held;
+// only cards queued before it, and a steer a Stop withdrew, wait. The drain skips held cards, so
+// it sends ahead of them; when a person wrote that card its send is their turn, so the held cards
+// follow it. true instead holds every waiting card, whenever it was queued.
 const PAUSE_HOLDS_CARDS_QUEUED_AFTER_IT = false
 
 /** THE rule for which cards are held: by ANY pause in force, named by the first that holds it, so

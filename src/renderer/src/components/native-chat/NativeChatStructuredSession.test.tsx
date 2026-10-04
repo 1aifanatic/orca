@@ -391,6 +391,17 @@ describe('NativeChatStructuredSession', () => {
     expect(mocks.cancel).not.toHaveBeenCalled()
   })
 
+  it('hands the composer Resume only while the queue controller offers it', () => {
+    const { rerender } = render(claudeSessionView('structured-tab-resume', 'session-resume'))
+    expect(mocks.composerProps?.queueResume).toBeUndefined()
+    mocks.queuedResumable = true
+    rerender(claudeSessionView('structured-tab-resume', 'session-resume'))
+    act(() => {
+      mocks.composerProps?.queueResume?.resume()
+    })
+    expect(mocks.queuedResume).toHaveBeenCalledOnce()
+  })
+
   it('keeps the strip mounted through a running turn, with the turn owning the voice', () => {
     // The strip stands for work that OUTLIVES a turn, so `show` is true while
     // `isMonitoring` is false: mounted, but not speaking as the live indicator.

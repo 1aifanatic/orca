@@ -15219,7 +15219,8 @@
         "turnOffQueueing": "Desactivar la cola",
         "withdrawnHold": "Detenido antes de enviarse",
         "pausedSendFailed": "No se pudo enviar. Pulsa Enviar para reintentar.",
-        "paused": "En pausa"
+        "paused": "En pausa",
+        "resume": "Reanudar"
       }
     },
     "tab": {

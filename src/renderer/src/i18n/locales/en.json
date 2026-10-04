@@ -18071,7 +18071,8 @@
         "editAlreadySent": "Already sent — your text is still in the composer.",
         "withdrawnHold": "Stopped before it was sent",
         "pausedSendFailed": "Couldn't send — press Send to retry.",
-        "paused": "Paused"
+        "paused": "Paused",
+        "resume": "Resume"
       },
       "structuredSessionHostDeclined": "Opened {{value0}} in a terminal",
       "structuredSessionHostDeclinedDescription": "This server can't run a {{value0}} chat in this workspace.",

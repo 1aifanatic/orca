@@ -96,7 +96,8 @@ vi.mock('./use-structured-agent-session', async () => {
           steer: vi.fn(async () => {}),
           remove: vi.fn(async () => {}),
           edit: vi.fn(async () => {}),
-          steerNewest: () => false
+          steerNewest: () => false,
+          queueResume: undefined
         },
         stopBackgroundTask: (taskId?: string) => mocks.stopBackgroundTask(props.sessionId, taskId),
         respond: mocks.respond,

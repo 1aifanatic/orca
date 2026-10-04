@@ -17858,7 +17858,8 @@
         "turnOffQueueing": "关闭排队",
         "withdrawnHold": "在发送前已停止",
         "pausedSendFailed": "无法发送。点按发送以重试。",
-        "paused": "已暂停"
+        "paused": "已暂停",
+        "resume": "继续"
       },
       "structuredSessionHostDeclined": "已在终端中打开 {{value0}}",
       "structuredSessionHostDeclinedDescription": "此服务器无法在此工作区中运行 {{value0}} 聊天。",

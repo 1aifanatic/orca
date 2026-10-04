@@ -1,16 +1,17 @@
 // Host-held drafts as this pane acts on them: the card list, Send-now (Steer),
-// Delete, Edit, and the Cmd/Ctrl+Enter steer chord. Everything durable lives on
-// the host, and no draft text ever travels back over the wire: Edit copies the
-// text the card already shows into the composer, locally, before deleting the
-// draft, so no RPC outcome can lose it.
+// Delete, Edit, the Cmd/Ctrl+Enter steer chord, and Resume of a held queue.
+// Everything durable lives on the host, and no draft text ever travels back over
+// the wire: Edit copies the text the card already shows into the composer,
+// locally, before deleting the draft, so no RPC outcome can lose it.
 
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import type {
   AgentSessionQueuedMessage,
   AgentSessionQueuedMessageDeleteResult,
+  AgentSessionQueuedMessagesResumeResult,
   AgentSessionQueuePause,
   AgentSessionSendResult
 } from '../../../../shared/agent-session-wire'
@@ -24,7 +25,8 @@ import type { StructuredAgentSessionMutate } from './use-structured-agent-sessio
 
 export type StructuredAgentSessionQueuedMessagesController = {
   cards: QueuedMessageCard[]
-  /** A turn is running, so Send-now steers into it rather than starting one. */
+  /** A turn is running, or the queue is about to send its next card, so Send-now steers rather
+   *  than starting a turn. */
   turnRunning: boolean
   /** Send-now into the running turn; the transcript shows it at delivery position. */
   steer: (messageId: string) => Promise<void>
@@ -33,6 +35,15 @@ export type StructuredAgentSessionQueuedMessagesController = {
   edit: (messageId: string) => Promise<void>
   /** Cmd/Ctrl+Enter: Send-now the newest card. False when there is none to steer. */
   steerNewest: () => boolean
+  /** Present while no turn runs and the host holds a card Resume would send: the composer offers
+   *  Resume. A failure is a toast, and Resume stays the retry. */
+  queueResume: StructuredAgentSessionQueueResume | undefined
+}
+
+export type StructuredAgentSessionQueueResume = {
+  resume: () => Promise<void>
+  /** A Resume is in flight. */
+  resuming: boolean
 }
 
 function alreadySentNotice(): void {
@@ -54,7 +65,7 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   mutate: StructuredAgentSessionMutate
 }): StructuredAgentSessionQueuedMessagesController {
   const { composerScopeKey, enabled, hasPendingPrompt, mutate, queuedMessages, submissions } = args
-  // Held cards carry no caption; each card's Send or Steer, or any new message, releases them.
+  // Held cards carry no caption; Resume, a card's Send or Steer, or a new message releases them.
   const queuePaused = args.queuePause !== null
 
   const cards = useMemo(
@@ -151,5 +162,35 @@ export function useStructuredAgentSessionQueuedMessages(args: {
     return true
   }, [enabled, steer])
 
-  return { cards, turnRunning: args.isWorking, steer, remove, edit, steerNewest }
+  const resumingRef = useRef(false)
+  const [resuming, setResuming] = useState(false)
+  const resume = useCallback(async (): Promise<void> => {
+    if (resumingRef.current) {
+      return
+    }
+    resumingRef.current = true
+    setResuming(true)
+    try {
+      await mutate<AgentSessionQueuedMessagesResumeResult>(
+        'agentSession.queuedMessagesResume',
+        'agentSession.queuedMessagesResume',
+        {}
+      )
+    } finally {
+      resumingRef.current = false
+      setResuming(false)
+    }
+  }, [mutate])
+  // A turn's end and the queue's send of its next card publish as two frames; a card nothing holds
+  // keeps the run going across that gap, so its Steer never flips to Send and back.
+  const turnRunning = args.isWorking || cards.some((card) => card.hold === 'turn')
+  // Only over a card the published pause holds: one held on its own, returned or behind a
+  // returned card would not send, so Resume would do nothing.
+  const resumable = enabled && !turnRunning && cards.some((card) => card.hold === 'queue-paused')
+  const queueResume = useMemo(
+    () => (resumable ? { resume, resuming } : undefined),
+    [resumable, resume, resuming]
+  )
+
+  return { cards, turnRunning, steer, remove, edit, steerNewest, queueResume }
 }

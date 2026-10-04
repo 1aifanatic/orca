@@ -585,6 +585,16 @@ describe('which cards the pauses in force hold', () => {
     expect(nextSendableQueuedCard(pausesOver([live]), [live])).toBe(live)
   })
 
+  it('a restart holds only the cards another process wrote, never one written since', () => {
+    const cards = [card('before', 1, { hostInstance: DEAD }), card('since', 2)]
+    expect(pausesOver(cards, 0).map((pause) => pause.reason)).toEqual(['restarted'])
+    expect(holding(cards, 0)).toEqual([
+      ['before', 'restarted'],
+      ['since', null]
+    ])
+    expect(nextSendableQueuedCard(pausesOver(cards, 0), cards)?.messageId).toBe('since')
+  })
+
   it('the next card skips held ones, but never a returned card', () => {
     const held = card('held', 3)
     const after = card('after', 5)

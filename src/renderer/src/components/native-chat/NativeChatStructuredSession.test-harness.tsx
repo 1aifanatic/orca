@@ -87,6 +87,7 @@ export function createStructuredSessionMocks() {
       structuredTransport?: Record<string, unknown>
       isWorking?: boolean
       onStop?: () => void
+      queueResume?: { resume: () => void; resuming: boolean }
     }>(),
     approvalCardProps: initialApprovalCardProps,
     questionCardProps: null as NativeChatQuestionCardProps | null,
@@ -118,7 +119,9 @@ export function createStructuredSessionMocks() {
     queuedSteer: vi.fn<(messageId: string) => Promise<void>>(async () => {}),
     queuedRemove: vi.fn<(messageId: string) => Promise<void>>(async () => {}),
     queuedEdit: vi.fn<(messageId: string) => Promise<void>>(async () => {}),
-    queuedSteerNewest: vi.fn<() => boolean>(() => false)
+    queuedSteerNewest: vi.fn<() => boolean>(() => false),
+    queuedResumable: false,
+    queuedResume: vi.fn<() => Promise<void>>(async () => {})
   }
 
   const moduleFactories = {
@@ -196,7 +199,10 @@ export function createStructuredSessionMocks() {
               steer: mocks.queuedSteer,
               remove: mocks.queuedRemove,
               edit: mocks.queuedEdit,
-              steerNewest: mocks.queuedSteerNewest
+              steerNewest: mocks.queuedSteerNewest,
+              queueResume: mocks.queuedResumable
+                ? { resume: mocks.queuedResume, resuming: false }
+                : undefined
             },
             threadGoal: mocks.threadGoal,
             cancel: mocks.cancel,
@@ -333,6 +339,8 @@ export function createStructuredSessionMocks() {
     mocks.loadingOlder = false
     mocks.olderHistoryGeneration = 0
     mocks.loadOlder.mockReset()
+    mocks.queuedResumable = false
+    mocks.queuedResume.mockReset()
   }
 
   return { mocks, moduleFactories, resetStructuredSessionMocks }

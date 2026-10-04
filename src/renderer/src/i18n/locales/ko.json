@@ -17841,7 +17841,8 @@
         "turnOffQueueing": "대기열 사용 안 함",
         "withdrawnHold": "전송 전에 중지됨",
         "pausedSendFailed": "보낼 수 없습니다. 보내기를 눌러 다시 시도하세요.",
-        "paused": "일시 중지됨"
+        "paused": "일시 중지됨",
+        "resume": "재개"
       },
       "structuredSessionHostDeclined": "{{value0}}을(를) 터미널에서 열었습니다",
       "structuredSessionHostDeclinedDescription": "이 서버는 이 워크스페이스에서 {{value0}} 채팅을 실행할 수 없습니다.",

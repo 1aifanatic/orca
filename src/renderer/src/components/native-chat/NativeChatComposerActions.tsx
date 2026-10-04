@@ -1,4 +1,4 @@
-import { ArrowUp, Mic, Plus, Square } from 'lucide-react'
+import { ArrowUp, Mic, Play, Plus, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { translate } from '@/i18n/i18n'
@@ -25,6 +25,9 @@ export type NativeChatComposerActionsProps = {
   onDictationHoldEnd: () => void
   onSend: () => void
   onStop?: () => void
+  /** Present when no turn runs, the composer is empty and the queue is held: the primary action
+   *  is Resume, which releases the held cards. */
+  onResume?: () => void
   sessionOptionsSurface: SessionOptionsSurface | null
   sessionOptionsSnapshot: SessionOptionDescriptor[]
   sessionOptionsPickerRequest?: NativeChatOptionPickerRequest | null
@@ -47,6 +50,7 @@ export function NativeChatComposerActions({
   onDictationHoldEnd,
   onSend,
   onStop,
+  onResume,
   sessionOptionsSurface,
   sessionOptionsSnapshot,
   sessionOptionsPickerRequest,
@@ -61,10 +65,13 @@ export function NativeChatComposerActions({
     }
     if (isWorking) {
       onStop?.()
+    } else if (onResume) {
+      onResume()
     } else {
       onSend()
     }
   }
+  const resumes = !isWorking && onResume !== undefined
   const dictationLabel = isDictating
     ? translate('components.native-chat.composer.stopDictation', 'Stop dictation')
     : translate('components.native-chat.composer.startDictation', 'Start dictation')
@@ -151,7 +158,9 @@ export function NativeChatComposerActions({
           aria-label={
             isWorking
               ? translate('components.native-chat.stop', 'Stop the agent')
-              : translate('components.native-chat.composer.send', 'Send')
+              : resumes
+                ? translate('components.native-chat.queuedMessages.resume', 'Resume')
+                : translate('components.native-chat.composer.send', 'Send')
           }
           disabled={sendDisabled}
           onClick={handleCriticalAction}
@@ -161,6 +170,8 @@ export function NativeChatComposerActions({
         >
           {isWorking ? (
             <Square className="size-3.5 fill-current" />
+          ) : resumes ? (
+            <Play className="size-3.5 fill-current" />
           ) : (
             <ArrowUp className="size-4" />
           )}

@@ -15,7 +15,11 @@ import type {
   SessionOptionDescriptor,
   SessionOptionsSurface
 } from '../../../../shared/native-chat-session-options'
-import type { NativeChatOptionPickerRequest } from './native-chat-composer-types'
+import type {
+  NativeChatComposerProps,
+  NativeChatOptionPickerRequest
+} from './native-chat-composer-types'
+import { nativeChatComposerPrimaryAction } from './native-chat-composer-primary-action'
 import { NativeChatImageAttachmentPreview } from './NativeChatImageAttachmentPreview'
 import type { NativeChatComposerGoalMode } from './use-native-chat-composer-submit'
 import { translate } from '@/i18n/i18n'
@@ -56,6 +60,7 @@ export type NativeChatComposerFieldProps = {
   onDictationHoldEnd: () => void
   onSend: () => void
   onStop?: () => void
+  queueResume?: NativeChatComposerProps['queueResume']
   sessionOptionsSurface: SessionOptionsSurface | null
   sessionOptionsSnapshot: SessionOptionDescriptor[]
   contextUsage?: NativeChatContextUsageSummary | null
@@ -130,6 +135,7 @@ export function NativeChatComposerField({
   onDictationHoldEnd,
   onSend,
   onStop,
+  queueResume,
   sessionOptionsSurface,
   sessionOptionsSnapshot,
   contextUsage,
@@ -167,6 +173,13 @@ export function NativeChatComposerField({
     }
     onImeSettled(element)
   }
+
+  const primaryAction = nativeChatComposerPrimaryAction({
+    isWorking,
+    composerEmpty: draft.trim() === '' && imageAttachments.length === 0,
+    queueHeld: queueResume !== undefined
+  })
+  const resumesQueue = primaryAction === 'resume' ? queueResume : undefined
 
   return (
     <div className="shrink-0 bg-background">
@@ -284,7 +297,7 @@ export function NativeChatComposerField({
               <NativeChatComposerActions
                 attachDisabled={attachDisabled}
                 dictationDisabled={dictationDisabled}
-                sendDisabled={sendButtonDisabled}
+                sendDisabled={resumesQueue ? disabled || resumesQueue.resuming : sendButtonDisabled}
                 isWorking={isWorking}
                 isDictating={isDictating}
                 isDictationHoldMode={isDictationHoldMode}
@@ -294,6 +307,7 @@ export function NativeChatComposerField({
                 onDictationHoldEnd={onDictationHoldEnd}
                 onSend={onSend}
                 onStop={onStop}
+                {...(resumesQueue ? { onResume: resumesQueue.resume } : {})}
                 sessionOptionsSurface={sessionOptionsSurface}
                 sessionOptionsSnapshot={sessionOptionsSnapshot}
                 contextUsage={contextUsage}

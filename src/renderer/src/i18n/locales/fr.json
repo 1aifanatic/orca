@@ -17904,7 +17904,8 @@
         "turnOffQueueing": "Désactiver la file d'attente",
         "withdrawnHold": "Arrêté avant l'envoi",
         "pausedSendFailed": "Envoi impossible. Appuyez sur Envoyer pour réessayer.",
-        "paused": "En pause"
+        "paused": "En pause",
+        "resume": "Reprendre"
       },
       "structuredSessionHostDeclined": "{{value0}} ouvert dans un terminal",
       "structuredSessionHostDeclinedDescription": "Ce serveur ne peut pas exécuter de discussion {{value0}} dans cet espace de travail.",

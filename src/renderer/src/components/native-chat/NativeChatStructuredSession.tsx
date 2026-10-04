@@ -396,6 +396,7 @@ export function NativeChatStructuredSession(
           isWorking={controller.canStop}
           onStop={() => void controller.stop()}
           steerQueued={controller.queuedMessages.steerNewest}
+          queueResume={controller.queuedMessages.queueResume}
           structuredTransport={structuredTransport}
           launchSeed={{ ...launchDraftSignal, ownsTabWideLaunchDraft: true }}
         />
