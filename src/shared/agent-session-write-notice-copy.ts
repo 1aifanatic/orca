@@ -39,6 +39,7 @@ export const AGENT_SESSION_WRITE_NOTICE_COPY = {
   unsupported:
     'This needs a newer Orca on the computer running this chat. Update Orca there, then try again.',
   notAvailable: "This isn't available in this chat.",
+  cannotRunHere: "Orca can't run this agent in a chat here.",
   unreachable: "Orca couldn't reach the agent.",
   recordFailed: "Orca couldn't save this to the chat's history.",
   conversationCleared: 'This conversation has been cleared.',
@@ -55,7 +56,7 @@ export const AGENT_SESSION_WRITE_NOTICE_COPY = {
   backgroundTasksRunning: 'Background tasks are still running.',
   waitForBackgroundTasks: 'Wait for the background tasks to finish.',
   messagesUnsettled: "A message you sent earlier isn't confirmed yet.",
-  settleEarlierMessage: 'Wait for your earlier message to go through, or retry it.',
+  settleEarlierMessage: 'Wait for the agent to finish, then try again.',
   optionRejected: "The agent didn't accept this setting.",
   goalsUnsupported: "This agent doesn't support goals.",
   agentRefused: 'The agent turned this down.',

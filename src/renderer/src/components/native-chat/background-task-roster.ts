@@ -122,9 +122,10 @@ export function backgroundTaskStateWord(state: RunState): string {
     case 'idle':
       return translate('components.native-chat.backgroundTasks.stateIdle', 'stopped')
     case 'unverifiable':
+      // Settled unknown or out of contact: claims neither an exit nor a coming update.
       return translate(
         'components.native-chat.backgroundTasks.stateUnverifiable',
-        'no recent update'
+        'status unavailable'
       )
   }
 }
@@ -146,12 +147,12 @@ export function backgroundTaskStateReason(state: RunState): string | null {
   }
 }
 
-/** A count and its state ("2 agents waiting"); after a count, "no recent update" needs a "with". */
+/** A count and its state ("2 agents waiting"); after a count, "status unavailable" needs a "with". */
 export function backgroundTaskCountedState(counted: string | number, state: RunState): string {
   return state === 'unverifiable'
     ? translate(
         'components.native-chat.backgroundTasks.stateUnverifiableCount',
-        '{{value0}} with no recent update',
+        '{{value0}} with status unavailable',
         { value0: counted }
       )
     : `${counted} ${backgroundTaskStateWord(state)}`

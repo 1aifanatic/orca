@@ -128,6 +128,7 @@ const REASON_WORDS = {
     turnActive: causeWords('turnActive', 'wait', 'waitForTurn'),
     promptPending: causeWords('promptPending', 'actFirst', 'answerFirst'),
     backgroundTasksRunning: causeWords('backgroundTasksRunning', 'wait', 'waitForBackgroundTasks'),
+    // No Retry stands for an unconfirmed send, but the chat reads as working until it settles.
     messagesUnsettled: causeWords('messagesUnsettled', 'actFirst', 'settleEarlierMessage'),
     // No chat surface sends a rewind; a replayed one says only that it did not happen.
     rewindRefused: codeWords('hostFinding'),
@@ -209,11 +210,12 @@ const REASON_WORDS = {
   // Thrown, so a client meets these only as an RPC error. The code's own words ask for an update,
   // which only a method the host doesn't know proves; no reason here means an older Orca. An
   // unsupported location or agent, or no chat host, is not fixed by updating, and a client missing
-  // the capability words this with its own older copy.
+  // the capability words this with its own older copy. Only `hostUnsupported` names its cause:
+  // this agent or location can't run as a chat.
   structured_agent_session_unsupported: {
     clientCapabilityMissing: causeWords('notAvailable', 'hostFinding'),
     hostDisabled: causeWords('notAvailable', 'hostFinding'),
-    hostUnsupported: causeWords('notAvailable', 'hostFinding')
+    hostUnsupported: causeWords('cannotRunHere', 'hostFinding')
   },
   agent_session_owner_restart_failed: {}
 } satisfies {
