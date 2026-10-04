@@ -152,9 +152,7 @@ export class RuntimeWatcherProcessPool {
   disposeAndWait = (): Promise<void> => this.disposalOwners.disposeAndWait(() => this.dispose())
 
   /** Accepts subscriptions again after a disposal the owner decided not to follow with exit. */
-  reopen(): void {
-    this.lifecycle.reset()
-  }
+  reopen = (): void => this.lifecycle.reset()
 
   forgetRoot(dir: string): void {
     // Physical subscriptions release their assignment through unsubscribe or

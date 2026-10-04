@@ -129,9 +129,7 @@ export class AgentExecHandler {
     return this.processLifetime.dispose()
   }
 
-  reopen(): void {
-    this.processLifetime.reopen()
-  }
+  reopen = (): void => this.processLifetime.reopen()
 
   private async cancel(params: CancelParams): Promise<{ canceled: boolean }> {
     const cwd = typeof params.cwd === 'string' ? params.cwd : ''
