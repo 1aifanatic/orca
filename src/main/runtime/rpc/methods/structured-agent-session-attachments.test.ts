@@ -181,7 +181,10 @@ describe('agentSessionAttachment.*', () => {
       { sessionId: 'session-elsewhere', name: 'a.txt', byteLength: 1 },
       CLIENT_A
     )
-    expect(response).toMatchObject({ ok: false, error: { message: expect.stringContaining('not on this host') } })
+    expect(response).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining('not on this host') }
+    })
   })
 
   it('answers a remote preview of an image over 3 MiB with a small refusal, not an oversized reply', async () => {
@@ -196,7 +199,12 @@ describe('agentSessionAttachment.*', () => {
       methods: STRUCTURED_AGENT_SESSION_ATTACHMENT_METHODS
     })
     await dispatcher.dispatchStreaming(
-      { id: 'request-big', authToken: 'token', method: 'agentSessionAttachment.read', params: { path } },
+      {
+        id: 'request-big',
+        authToken: 'token',
+        method: 'agentSessionAttachment.read',
+        params: { path }
+      },
       (raw) => replies.push(raw),
       { ...CLIENT_A, clientKind: 'runtime' }
     )

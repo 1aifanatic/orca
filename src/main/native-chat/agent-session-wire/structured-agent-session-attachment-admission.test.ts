@@ -13,7 +13,10 @@ import {
   QUEUED_RIG_CALLER as CALLER,
   type QueuedMessageTestRig
 } from './structured-agent-session-queued-message-rig.test-fixture'
-import { HOST_TEST_SESSION as SESSION, hostTestOperationId } from './structured-agent-session-host-test-data'
+import {
+  HOST_TEST_SESSION as SESSION,
+  hostTestOperationId
+} from './structured-agent-session-host-test-data'
 
 const UPLOAD = '0b6f8a52-4a3e-4c4e-9a59-1d5d1f2b8c01'
 const EXPIRED = {

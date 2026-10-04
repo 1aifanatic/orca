@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({
-  callEnvironmentEnvelope: vi.fn(),
-  activeEnvironment: { id: 'env-1', createdAt: 1, pairingRevision: 7 as number | undefined }
-}))
+type TestEnvironment = { id: string; createdAt: number; pairingRevision?: number }
+
+const mocks = vi.hoisted(() => {
+  const activeEnvironment: TestEnvironment = { id: 'env-1', createdAt: 1, pairingRevision: 7 }
+  return { callEnvironmentEnvelope: vi.fn(), activeEnvironment }
+})
 
 vi.mock('./web-runtime-calls', () => ({ callEnvironmentEnvelope: mocks.callEnvironmentEnvelope }))
 vi.mock('./web-runtime-session', () => ({

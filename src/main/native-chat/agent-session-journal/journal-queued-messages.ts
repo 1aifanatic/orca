@@ -14,7 +14,7 @@ import type { JournalHostDatabase } from './journal-host-database'
 import type { JournalReducerState } from './journal-reducer'
 import type { JournalRow } from './journal-row-schema'
 import type { JournalRowTransactionHook } from './journal-row-writer'
-import type { JournalSubmissionConsume } from './journal-store-contracts'
+import type { JournalSubmissionConsume, JournalSubmissionInput } from './journal-store-contracts'
 import { adoptQueuedMessages, holdQueuedMessages } from './queued-message-holds'
 import {
   deriveQueuePauses,
@@ -124,21 +124,14 @@ export class JournalQueuedMessages {
           // gets here, so an existing row is the same accept landing twice.
           return existing
         }
-        const now = this.deps.now()
-        claimAgentSessionAttachmentsInTransaction(db, {
-          stateDirectory: this.deps.database().stateDirectory,
-          sessionId,
-          body: input.body,
-          required: requireAttachments === true,
-          now
-        })
+        this.claimAttachmentsInTransaction(db, input.body, requireAttachments === true)
         inserted = true
         const { epoch, lastSequence } = this.deps.state()
         return insertQueuedMessage(db, {
           ...draft,
           sessionId,
           queuedAt: { epoch, sequence: lastSequence },
-          now
+          now: this.deps.now()
         })
       },
       () => inserted
@@ -279,6 +272,22 @@ export class JournalQueuedMessages {
     this.changeRevision++
   }
 
+  /** Claims the stored chat attachments a message written here names, in the write's own
+   *  transaction; `required` refuses the whole write when one is no longer stored. */
+  claimAttachmentsInTransaction(
+    db: Database.Database,
+    body: AgentJournalMessageItem,
+    required: boolean
+  ): void {
+    claimAgentSessionAttachmentsInTransaction(db, {
+      stateDirectory: this.deps.database().stateDirectory,
+      sessionId: this.deps.sessionId,
+      body,
+      required,
+      now: this.deps.now()
+    })
+  }
+
   /** A skipped live settlement the journal already decided (`queued-message-settlement.ts`). */
   settlementOwed(): boolean {
     return queuedMessageSettlementOwed(this.list(), this.deps.state().submissions)
@@ -344,13 +353,24 @@ export class JournalQueuedMessages {
   }
 }
 
-/** The per-append hook converting one draft inside the append's own transaction. */
-export function queuedMessageConsumeHook(
+/** The submission append's hook, inside its transaction: converts the draft it hands off, if any,
+ *  and claims the stored attachments it names. A client's new message must name only attachments
+ *  still stored; a draft's conversion was claimed when the draft was written. */
+export function journalSubmissionHook(
   queuedMessages: JournalQueuedMessages,
-  consumedAs: string,
-  consume: JournalSubmissionConsume
+  input: Pick<JournalSubmissionInput, 'clientMessageId' | 'body' | 'origin'>,
+  consume: JournalSubmissionConsume | undefined
 ): JournalRowTransactionHook {
-  return (db) => queuedMessages.consumeInTransaction(db, { ...consume, consumedAs })
+  return (db) => {
+    if (consume) {
+      queuedMessages.consumeInTransaction(db, { ...consume, consumedAs: input.clientMessageId })
+    }
+    queuedMessages.claimAttachmentsInTransaction(
+      db,
+      input.body,
+      input.origin === 'client' && !consume
+    )
+  }
 }
 
 export class QueuedMessageNotConsumableError extends Error {

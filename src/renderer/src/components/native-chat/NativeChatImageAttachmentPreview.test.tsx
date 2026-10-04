@@ -82,7 +82,7 @@ describe('NativeChatImageAttachmentPreview', () => {
     )
   })
 
-  it('keeps any other path on the chat\'s usual read route', () => {
+  it("keeps any other path on the chat's usual read route", () => {
     mocks.useLocalImageSrc.mockReturnValue(undefined)
     renderPreview({ id: 'a1', path: '/repo/docs/shot.png' }, 'env-1')
 

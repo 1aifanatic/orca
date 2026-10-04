@@ -60,7 +60,10 @@ describe('agentSessionAttachmentReferences', () => {
     const references = agentSessionAttachmentReferences(
       windowsRoot,
       message(
-        { type: 'image-ref', path: `c:/users/ME/appdata/roaming/orca/agent-session-attachments/${UPLOAD_A}/s.png` },
+        {
+          type: 'image-ref',
+          path: `c:/users/ME/appdata/roaming/orca/agent-session-attachments/${UPLOAD_A}/s.png`
+        },
         { type: 'text', text: `@"${windowsRoot}\\${UPLOAD_B.toUpperCase()}\\a b.txt"` }
       ),
       'win32'
@@ -168,7 +171,9 @@ describe('claims written with the message', () => {
   it('refuses an upload the sweep already marked, even while its file is still on disk', async () => {
     const journal = await open()
     const path = await storeUpload(UPLOAD_A)
-    expect(markUnclaimedUploadForSweep(openTestJournalHostDatabase(stateDirectory).db, UPLOAD_A, 1)).toBe(true)
+    expect(
+      markUnclaimedUploadForSweep(openTestJournalHostDatabase(stateDirectory).db, UPLOAD_A, 1)
+    ).toBe(true)
     const error = await clientSend(journal, 'send-1', message({ type: 'image-ref', path })).catch(
       (caught: unknown) => caught
     )
@@ -179,7 +184,9 @@ describe('claims written with the message', () => {
     const journal = await open()
     const path = await storeUpload(UPLOAD_A)
     await clientSend(journal, 'send-1', message({ type: 'image-ref', path }))
-    expect(markUnclaimedUploadForSweep(openTestJournalHostDatabase(stateDirectory).db, UPLOAD_A, 1)).toBe(false)
+    expect(
+      markUnclaimedUploadForSweep(openTestJournalHostDatabase(stateDirectory).db, UPLOAD_A, 1)
+    ).toBe(false)
   })
 
   it("never refuses the host's own message, and claims what it names", async () => {
@@ -196,14 +203,24 @@ describe('claims written with the message', () => {
       origin: 'host'
     })
     expect(journal.submission('host-1')).toBeTruthy()
-    expect(claims().map((claim) => claim.upload_id).sort()).toEqual([UPLOAD_A, UPLOAD_B].sort())
+    expect(
+      claims()
+        .map((claim) => claim.upload_id)
+        .sort()
+    ).toEqual([UPLOAD_A, UPLOAD_B].sort())
   })
 
   it("refuses a client's draft naming a gone upload, and the /clear carry claims for its new chat", async () => {
     const journal = await open()
     const missing = message({ type: 'text', text: `@${join(storeRoot, UPLOAD_B, 'a.txt')}` })
     const refused = await journal.queuedMessages
-      .insert({ messageId: 'draft-0', body: missing, fingerprint: 'fp', hostInstance: 'p', requireAttachments: true })
+      .insert({
+        messageId: 'draft-0',
+        body: missing,
+        fingerprint: 'fp',
+        hostInstance: 'p',
+        requireAttachments: true
+      })
       .catch((caught: unknown) => caught)
     expect(isAgentSessionAttachmentExpiredError(refused)).toBe(true)
     expect(journal.queuedMessages.list()).toHaveLength(0)
@@ -257,6 +274,8 @@ describe('claims written with the message', () => {
     await journals.closeAll()
     journal = await open()
     expect(claims()).toEqual([{ upload_id: UPLOAD_A, session_id: IDENTITY.sessionId }])
-    expect(markUnclaimedUploadForSweep(openTestJournalHostDatabase(stateDirectory).db, UPLOAD_A, 1)).toBe(false)
+    expect(
+      markUnclaimedUploadForSweep(openTestJournalHostDatabase(stateDirectory).db, UPLOAD_A, 1)
+    ).toBe(false)
   })
 })

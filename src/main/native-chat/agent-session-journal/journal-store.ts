@@ -57,8 +57,7 @@ import type {
   JournalTombstoneInput,
   ResolveDispatchInput
 } from './journal-store-contracts'
-import { queuedMessageConsumeHook, type JournalQueuedMessages } from './journal-queued-messages'
-import { claimAgentSessionAttachmentsInTransaction } from '../agent-session-attachments/agent-session-attachment-claims'
+import { journalSubmissionHook, type JournalQueuedMessages } from './journal-queued-messages'
 import {
   journalQueueResumeRowBuilder,
   journalStopEventRowBuilder
@@ -343,22 +342,9 @@ export class AgentSessionJournal {
      *  state transition commits in the SAME transaction — exactly-once consume. */
     consume?: JournalSubmissionConsume
   ): Promise<AgentJournalCursor> {
-    const consumeHook =
-      consume && queuedMessageConsumeHook(this.queuedMessages, input.clientMessageId, consume)
     return this.rowWriter.append(
       journalSubmissionRowBuilder(() => this.state, this.identity.providerHandle, input, consume),
-      (db, row) => {
-        consumeHook?.(db, row)
-        // A client's new message must name only attachments still stored; a draft's conversion
-        // was claimed when the draft was written.
-        claimAgentSessionAttachmentsInTransaction(db, {
-          stateDirectory: this.database.stateDirectory,
-          sessionId: this.identity.sessionId,
-          body: input.body,
-          required: input.origin === 'client' && !consume,
-          now: this.now()
-        })
-      }
+      journalSubmissionHook(this.queuedMessages, input, consume)
     )
   }
 

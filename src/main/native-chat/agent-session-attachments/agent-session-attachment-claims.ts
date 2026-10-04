@@ -60,8 +60,9 @@ function uploadIsStored(root: string, uploadId: string): boolean {
 
 function isBeingSwept(db: Database.Database, uploadId: string): boolean {
   return (
-    db.prepare('SELECT 1 FROM agent_session_attachment_sweeps WHERE upload_id = ?').get(uploadId) !==
-    undefined
+    db
+      .prepare('SELECT 1 FROM agent_session_attachment_sweeps WHERE upload_id = ?')
+      .get(uploadId) !== undefined
   )
 }
 
@@ -152,7 +153,10 @@ export function listUploadsBeingSwept(db: Database.Database): string[] {
     .prepare('SELECT upload_id FROM agent_session_attachment_sweeps')
     .all()
     .flatMap((row) =>
-      typeof row === 'object' && row !== null && 'upload_id' in row && typeof row.upload_id === 'string'
+      typeof row === 'object' &&
+      row !== null &&
+      'upload_id' in row &&
+      typeof row.upload_id === 'string'
         ? [row.upload_id]
         : []
     )

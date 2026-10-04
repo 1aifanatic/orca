@@ -98,6 +98,7 @@ function causeWords(
 }
 
 const AGENT_STARTING = causeWords('agentStarting', 'wait', 'waitForStart')
+const CLEARED = causeWords('conversationCleared', 'goElsewhere', 'openCurrentConversation')
 const OWNER_UNPROVEN = causeWords('ownerUnproven', 'actFirst', 'reopenChat')
 // Only a terminal agent an older build recorded holds a claim; quitting it frees the chat.
 const TERMINAL_CLAIM = causeWords('terminalAgentHoldsChat', 'actFirst', 'quitTerminalAgent')
@@ -114,11 +115,7 @@ const REASON_WORDS = {
     operationRefusedEarlier: codeWords('retry'),
     journalWriteFailed: causeWords('recordFailed', 'retry'),
     attachmentExpired: causeWords('attachmentExpired', 'actFirst', 'reattachFile'),
-    conversationCleared: causeWords(
-      'conversationCleared',
-      'goElsewhere',
-      'openCurrentConversation'
-    ),
+    conversationCleared: CLEARED,
     // Only an older host sends this, and it keeps refusing the chat, so only a new chat continues.
     clearUnconfirmed: causeWords('clearUnfinished', 'goElsewhere', 'startNewChat'),
     // Only an older host sends this, for a /clear it never settled; only that host resolves it.

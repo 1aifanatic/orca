@@ -24,7 +24,8 @@ export function isAgentSessionAttachmentStorePath(filePath: string): boolean {
 }
 
 // Windows refuses these as a file's name whatever its extension, and drops trailing dots and spaces.
-const WINDOWS_DEVICE_NAME = /^(con|prn|aux|nul|com[0-9\u00b9\u00b2\u00b3]|lpt[0-9\u00b9\u00b2\u00b3])$/i
+const WINDOWS_DEVICE_NAME =
+  /^(con|prn|aux|nul|com[0-9\u00b9\u00b2\u00b3]|lpt[0-9\u00b9\u00b2\u00b3])$/i
 
 function utf8ByteLength(text: string): number {
   return new TextEncoder().encode(text).byteLength

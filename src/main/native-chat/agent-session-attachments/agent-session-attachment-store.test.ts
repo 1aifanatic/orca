@@ -142,9 +142,7 @@ describe('AgentSessionAttachmentStore', () => {
     })
     vi.advanceTimersByTime(5 * 60 * 1000 + 1)
     vi.useRealTimers()
-    await vi.waitFor(async () =>
-      expect(await readdir(store.rootDir)).toEqual([])
-    )
+    await vi.waitFor(async () => expect(await readdir(store.rootDir)).toEqual([]))
     expect(store.isUploadInFlight(uploadId)).toBe(false)
     await expect(store.commitUpload({ callerKey: caller, uploadId })).rejects.toThrow('not found')
   })
