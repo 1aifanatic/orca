@@ -17854,8 +17854,7 @@
       "hostOutage": {
         "offline": "{{hostName}} はオフラインです",
         "reconnecting": "{{hostName}} に再接続しています…",
-        "reconnect": "再接続",
-        "placeholder": "{{hostName}} に再接続するとメッセージが送信されます"
+        "reconnect": "再接続"
       }
     },
     "tab": {

@@ -128,7 +128,7 @@ describe('useNativeChatHostOutage', () => {
 
     advance(1)
     expect(result.current).toMatchObject({ kind: 'reconnecting', hostLabel: 'Build box' })
-    expect(result.current?.composerPlaceholder).toBe('Messages send when Build box reconnects')
+    expect(result.current?.canReconnect).toBe(false)
 
     setHost('env-a', connected('env-a'))
     expect(result.current).toBeNull()
@@ -164,12 +164,18 @@ describe('useNativeChatHostOutage', () => {
   })
 
   it.each([
-    ['refused', refused],
-    ['retired by Disconnect', retired]
-  ])('says a %s host is offline at once', (_name, offline) => {
+    ['retired by Disconnect', retired, true],
+    [
+      'never reached',
+      (id: string) => entry(id, { verification: 'unavailable', transport: 'unknown' }),
+      true
+    ],
+    // Auth or protocol refusals turn a reconnect away the same way, so none is offered.
+    ['refused', refused, false]
+  ])('says a %s host is offline at once', (_name, offline, canReconnect) => {
     const { result } = renderHook(() => useNativeChatHostOutage(remote))
     setHost('env-a', offline('env-a'))
-    expect(result.current).toMatchObject({ kind: 'offline', environmentId: 'env-a' })
+    expect(result.current).toMatchObject({ kind: 'offline', environmentId: 'env-a', canReconnect })
   })
 
   it('keeps saying offline through a retry probe, until the host is back', () => {
@@ -182,6 +188,13 @@ describe('useNativeChatHostOutage', () => {
     expect(result.current).toBeNull()
     setHost('env-a', transportDown('env-a'))
     expect(result.current).toBeNull()
+  })
+
+  it('falls back to the host id when its name is blank', () => {
+    useAppStore.setState({ runtimeEnvironments: [environment('env-a', '  ')] })
+    setHost('env-a', refused('env-a'))
+    const { result } = renderHook(() => useNativeChatHostOutage(remote))
+    expect(result.current?.hostLabel).toBe('env-a')
   })
 
   it('names a temporary VM host by its environment name', () => {

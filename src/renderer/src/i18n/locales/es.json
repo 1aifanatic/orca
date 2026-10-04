@@ -15228,8 +15228,7 @@
       "hostOutage": {
         "offline": "{{hostName}} está sin conexión",
         "reconnecting": "{{hostName}} se está reconectando…",
-        "reconnect": "Reconectar",
-        "placeholder": "Los mensajes se enviarán cuando {{hostName}} se reconecte"
+        "reconnect": "Reconectar"
       }
     },
     "tab": {

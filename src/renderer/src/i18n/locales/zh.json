@@ -17871,8 +17871,7 @@
       "hostOutage": {
         "offline": "{{hostName}} 已离线",
         "reconnecting": "正在重新连接 {{hostName}}…",
-        "reconnect": "重新连接",
-        "placeholder": "{{hostName}} 重新连接后将发送消息"
+        "reconnect": "重新连接"
       }
     },
     "tab": {

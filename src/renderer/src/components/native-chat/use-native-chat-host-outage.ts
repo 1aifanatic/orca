@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAppStore } from '@/store'
-import { translate } from '@/i18n/i18n'
 import { toRuntimeExecutionHostId } from '../../../../shared/execution-host'
-import { getHostDisplayLabelOverrides } from '../../../../shared/host-setting-overrides'
+import { runtimeHostContactFromSnapshot } from '../../../../shared/runtime-host-contact'
+import { selectExecutionHostDisplayLabel } from '@/lib/execution-host-display-label'
 import {
   runtimeHostConnectionStateForEntry,
   type RuntimeHostConnectionState
@@ -15,8 +15,8 @@ export type NativeChatHostOutage = {
   kind: NativeChatHostOutageKind
   environmentId: string
   hostLabel: string
-  /** Sends keep queuing in the outbox, which delivers them once the host answers again. */
-  composerPlaceholder: string
+  /** False when the host refused us (auth, protocol): a reconnect is turned away the same way. */
+  canReconnect: boolean
 }
 
 /** A blip shorter than this says nothing; an offline host is said at once. */
@@ -51,12 +51,16 @@ export function useNativeChatHostOutage(target: RuntimeClientTarget): NativeChat
           runtimeHostConnectionStateForEntry(s.runtimeStatusByEnvironmentId.get(environmentId))
         )
   )
-  const settings = useAppStore((s) => s.settings)
-  const environmentName = useAppStore((s) =>
+  const refused = useAppStore((s) => {
+    const entry = environmentId === null ? null : s.runtimeStatusByEnvironmentId.get(environmentId)
+    return entry?.snapshot
+      ? runtimeHostContactFromSnapshot(entry.snapshot, entry.status).verdict === 'refused'
+      : false
+  })
+  const hostLabel = useAppStore((s) =>
     environmentId === null
       ? null
-      : (s.runtimeEnvironments.find((environment) => environment.id === environmentId)?.name ??
-        null)
+      : selectExecutionHostDisplayLabel(s, toRuntimeExecutionHostId(environmentId))
   )
   // What this outage has earned so far; it ends with the outage or a change of host.
   const [earned, setEarned] = useState<{
@@ -84,26 +88,11 @@ export function useNativeChatHostOutage(target: RuntimeClientTarget): NativeChat
     }
   }, [environmentId, inOutage])
   const shown = kind === 'offline' ? 'offline' : kind === null ? null : earnedHere
-  const hostLabel =
-    environmentId === null || shown === null
-      ? null
-      : getHostDisplayLabelOverrides(settings).get(toRuntimeExecutionHostId(environmentId)) ||
-        environmentName ||
-        environmentId
   return useMemo(
     () =>
       environmentId === null || shown === null || hostLabel === null
         ? null
-        : {
-            kind: shown,
-            environmentId,
-            hostLabel,
-            composerPlaceholder: translate(
-              'components.native-chat.hostOutage.placeholder',
-              'Messages send when {{hostName}} reconnects',
-              { hostName: hostLabel }
-            )
-          },
-    [environmentId, hostLabel, shown]
+        : { kind: shown, environmentId, hostLabel, canReconnect: shown === 'offline' && !refused },
+    [environmentId, hostLabel, refused, shown]
   )
 }

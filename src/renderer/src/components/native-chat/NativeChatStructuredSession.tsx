@@ -245,13 +245,11 @@ export function NativeChatStructuredSession(
       runtime: (props.target.kind === 'local' ? 'local' : 'remote') as 'local' | 'remote',
       sessionId: props.sessionId,
       runtimeEnvironmentId:
-        props.target.kind === 'local' ? null : (props.target.environmentId ?? null),
-      ...(hostOutage ? { placeholder: hostOutage.composerPlaceholder } : {})
+        props.target.kind === 'local' ? null : (props.target.environmentId ?? null)
     }
   }, [
     controller,
     fileLinkContext?.worktreeId,
-    hostOutage,
     optionPickerRequest,
     props.agent,
     props.sessionId,

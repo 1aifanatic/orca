@@ -33,7 +33,8 @@ let sequence = 0
 
 function hostStatus(
   verification: 'verified' | 'unavailable' | 'blocked',
-  transport: 'ready' | 'disconnected'
+  transport: 'ready' | 'disconnected',
+  retired?: true
 ): RuntimeEnvironmentStatus {
   const status =
     verification === 'verified'
@@ -55,7 +56,8 @@ function hostStatus(
       checkedAt: 1,
       status,
       verification,
-      transport
+      transport,
+      ...(retired ? { retired } : {})
     },
     status,
     checkedAt: 1
@@ -119,13 +121,14 @@ it('adds no host line and no read line to a loaded chat while its host stays con
   })
 
   expect(screen.getByTestId('message-list')).toBeTruthy()
-  expect(screen.queryByRole('status')).toBeNull()
   expect(screen.queryByText(/reconnect|offline|couldn't be loaded/i)).toBeNull()
-  expect(mocks.composerProps?.structuredTransport?.placeholder).toBeUndefined()
 })
 
 it('names a reconnecting host above the composer only once the grace has passed', () => {
   renderPane()
+  // Mounted before its words arrive, so a screen reader announces them.
+  const region = screen.getByRole('status')
+  expect(region.textContent).toBe('')
   setHost(hostStatus('unavailable', 'disconnected'))
   act(() => {
     vi.advanceTimersByTime(NATIVE_CHAT_HOST_RECONNECTING_GRACE_MS - 1)
@@ -135,7 +138,7 @@ it('names a reconnecting host above the composer only once the grace has passed'
   act(() => {
     vi.advanceTimersByTime(1)
   })
-  expect(screen.getByText('Build box is reconnecting…')).toBeTruthy()
+  expect(region.textContent).toBe('Build box is reconnecting…')
   expect(screen.queryByRole('button', { name: 'Reconnect' })).toBeNull()
   expect(screen.getByTestId('structured-composer')).toBeTruthy()
 
@@ -143,15 +146,12 @@ it('names a reconnecting host above the composer only once the grace has passed'
   expect(screen.queryByText(/Build box/)).toBeNull()
 })
 
-it('says an offline host at once, offers Reconnect, and tells the composer sends wait for it', async () => {
+it('says a disconnected host is offline at once and offers Reconnect', async () => {
   mocks.hasOlder = true
   renderPane()
-  setHost(hostStatus('blocked', 'disconnected'))
+  setHost(hostStatus('blocked', 'disconnected', true))
 
   expect(screen.getByText('Build box is offline')).toBeTruthy()
-  expect(mocks.composerProps?.structuredTransport?.placeholder).toBe(
-    'Messages send when Build box reconnects'
-  )
   expect(mocks.messageListProps?.session?.hasMore).toBe(false)
 
   reconnectHost.mockResolvedValue(true)
@@ -159,6 +159,17 @@ it('says an offline host at once, offers Reconnect, and tells the composer sends
     fireEvent.click(screen.getByRole('button', { name: 'Reconnect' }))
   })
   expect(reconnectHost).toHaveBeenCalledWith('remote-host')
+})
+
+it('offers no Reconnect for a host that refused us, and promises no delivery in the composer', () => {
+  renderPane()
+  setHost(hostStatus('blocked', 'disconnected'))
+
+  expect(screen.getByText('Build box is offline')).toBeTruthy()
+  expect(screen.queryByRole('button', { name: 'Reconnect' })).toBeNull()
+  // A send now fails and waits for its own Retry, so nothing may say it will go out later.
+  expect(mocks.composerProps?.structuredTransport).not.toHaveProperty('placeholder')
+  expect(screen.queryByText(/Messages send when/)).toBeNull()
 })
 
 it('says the outage once: a lost read beside messages adds no line of its own', () => {

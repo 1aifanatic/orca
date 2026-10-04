@@ -17917,8 +17917,7 @@
       "hostOutage": {
         "offline": "{{hostName}} est hors ligne",
         "reconnecting": "{{hostName}} se reconnecte…",
-        "reconnect": "Reconnecter",
-        "placeholder": "Les messages seront envoyés quand {{hostName}} se reconnectera"
+        "reconnect": "Reconnecter"
       }
     },
     "tab": {

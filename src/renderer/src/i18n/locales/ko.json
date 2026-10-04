@@ -17854,8 +17854,7 @@
       "hostOutage": {
         "offline": "{{hostName}}이(가) 오프라인입니다",
         "reconnecting": "{{hostName}}에 다시 연결하는 중…",
-        "reconnect": "다시 연결",
-        "placeholder": "{{hostName}}이(가) 다시 연결되면 메시지가 전송됩니다"
+        "reconnect": "다시 연결"
       }
     },
     "tab": {

@@ -18084,8 +18084,7 @@
       "hostOutage": {
         "offline": "{{hostName}} is offline",
         "reconnecting": "{{hostName}} is reconnecting…",
-        "reconnect": "Reconnect",
-        "placeholder": "Messages send when {{hostName}} reconnects"
+        "reconnect": "Reconnect"
       }
     },
     "tab": {
