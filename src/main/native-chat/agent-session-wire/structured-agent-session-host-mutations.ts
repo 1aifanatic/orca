@@ -66,7 +66,8 @@ export function sendStructuredAgentSessionTurn(
     /** Which host-internal path sent it, when not a person (`AgentJournalSubmissionSource`). */
     source?: AgentJournalHostSendSource
     beforeRun?: () => void
-  }
+  },
+  arrival?: Parameters<typeof sendPreparation>[2]
 ): Promise<AgentSessionMutationResult<AgentSessionSendResult>> {
   const plan = sendPlan(params)
   return mutateStructuredAgentSession(
@@ -85,7 +86,7 @@ export function sendStructuredAgentSessionTurn(
             (await plan.run(ctx))
         )
     },
-    sendPreparation(context, params.envelope)
+    sendPreparation(context, params.envelope, arrival)
   )
 }
 
