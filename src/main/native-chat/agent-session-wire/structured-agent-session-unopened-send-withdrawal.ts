@@ -27,6 +27,21 @@ export type UnopenedSendJournal = {
   resolveDispatch?: AgentSessionJournal['resolveDispatch']
 }
 
+/** A send a dying child can take back: one still being handed over, or one this process left in
+ *  doubt (its answer was lost). Never a queued card's, nor a send an earlier process left behind. */
+export function sendStopCanTakeBack(
+  entry: Pick<
+    AgentJournalSubmission,
+    'dispatchState' | 'recovered' | 'handoverRecorded' | 'handedOverAt'
+  >
+): boolean {
+  return (
+    !isQueuedAgentJournalSubmission(entry) &&
+    (entry.dispatchState === 'pending' ||
+      (entry.dispatchState === 'unknown' && entry.recovered !== true))
+  )
+}
+
 /**
  * Withdraws the sends a Codex child left unanswered when a person's Stop, in force since they were
  * sent, ends it: each one that started its own turn (handed over with no turn running, so its
@@ -58,9 +73,7 @@ export async function withdrawCodexSendsNoTurnOpenedFor(
     .submissions()
     .filter(
       (entry) =>
-        !isQueuedAgentJournalSubmission(entry) &&
-        (entry.dispatchState === 'pending' ||
-          (entry.dispatchState === 'unknown' && entry.recovered !== true)) &&
+        sendStopCanTakeBack(entry) &&
         entry.acceptedSequence !== undefined &&
         entry.acceptedSequence < stop.sequence &&
         startedOwnTurn(entry.clientMessageId) &&
