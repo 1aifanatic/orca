@@ -59,6 +59,10 @@ function useDebouncedSortEpoch(worktreeCount: number, sortBy: SortBy): number {
   const [debouncedSortEpoch, setDebouncedSortEpoch] = useState(sortEpoch)
   const prevWorktreeCountRef = useRef(worktreeCount)
   useEffect(() => {
+    if (sortBy === 'manual') {
+      prevWorktreeCountRef.current = worktreeCount
+      return
+    }
     if (debouncedSortEpoch === sortEpoch) {
       return
     }
@@ -66,8 +70,7 @@ function useDebouncedSortEpoch(worktreeCount: number, sortBy: SortBy): number {
     const structuralChange = worktreeCount !== prevWorktreeCountRef.current
     prevWorktreeCountRef.current = worktreeCount
 
-    // Why: manual drag/drop is direct manipulation; the settle-window delay would make a successful drop look broken.
-    if (structuralChange || sortBy === 'manual') {
+    if (structuralChange) {
       setDebouncedSortEpoch(sortEpoch)
       return
     }
@@ -75,7 +78,9 @@ function useDebouncedSortEpoch(worktreeCount: number, sortBy: SortBy): number {
     const timer = setTimeout(() => setDebouncedSortEpoch(sortEpoch), SORT_SETTLE_MS)
     return () => clearTimeout(timer)
   }, [sortEpoch, debouncedSortEpoch, worktreeCount, sortBy])
-  return debouncedSortEpoch
+  // Why: manual drag/drop is direct manipulation, so skip the settle window. Returning the live epoch
+  // (not mirroring it into state from an effect) avoids a nested update per bump, which stacked into React #185.
+  return sortBy === 'manual' ? sortEpoch : debouncedSortEpoch
 }
 
 // ── Stable sort order ──────────────────────────────────────────
