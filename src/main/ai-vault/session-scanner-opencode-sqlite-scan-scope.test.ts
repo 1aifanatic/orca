@@ -8,7 +8,9 @@ import {
 afterEach(() => vi.useRealTimers())
 
 function waitForAbort(signal: AbortSignal | undefined): Promise<never> {
-  if (!signal) throw new Error('Missing scoped request signal')
+  if (!signal) {
+    throw new Error('Missing scoped request signal')
+  }
   return new Promise((_resolve, reject) => {
     signal.addEventListener('abort', () => reject(signal.reason), { once: true })
   })

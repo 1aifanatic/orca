@@ -53,7 +53,11 @@ function configure(agent: 'opencode' | 'opencode2') {
   readers.discover.mockResolvedValue([{ agent, rootDir: '/fixture', files: [file] }])
   const accumulator = createAccumulator({ agent, file, sessionId: 'session' })
   accumulator.title = 'SQLite session'
-  return finalizeSession(accumulator, 'linux')
+  const session = finalizeSession(accumulator, 'linux')
+  if (!session) {
+    throw new Error('Configured SQLite session was empty')
+  }
+  return session
 }
 
 function untilAborted(signal: AbortSignal | undefined): Promise<never> {
@@ -75,13 +79,13 @@ describe.each(['opencode', 'opencode2'] as const)('%s scan cancellation', (agent
       const claudePath = join(root, 'claude.jsonl')
       writeFileSync(
         claudePath,
-        JSON.stringify({
+        `${JSON.stringify({
           type: 'user',
           sessionId: 'retained-claude',
           timestamp: '2026-05-01T10:00:00.000Z',
           cwd: root,
           message: { role: 'user', content: 'Retain this other-agent session' }
-        }) + '\n'
+        })}\n`
       )
       readers.discover.mockResolvedValue([
         { agent, rootDir: '/fixture', files: [file, blocked] },

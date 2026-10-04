@@ -70,7 +70,9 @@ describe('OpenCode SQLite execution-host routes', () => {
     vi.useFakeTimers()
     mocks.native.list.mockResolvedValueOnce([row(native)])
     mocks.guest.mockImplementationOnce((_distro, _path, signal: AbortSignal | undefined) => {
-      if (!signal) throw new Error('Missing scoped preparation signal')
+      if (!signal) {
+        throw new Error('Missing scoped preparation signal')
+      }
       return new Promise((_resolve, reject) =>
         signal.addEventListener('abort', () => reject(signal.reason), { once: true })
       )
