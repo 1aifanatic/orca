@@ -132,6 +132,20 @@ function refusedResult(code: AgentSessionWireRefusalCode) {
   return { ok: false, refusal: { code, message: code } }
 }
 
+/** The operation id a request carried, read without trusting its shape. */
+function sentOperationId(params: unknown): string | undefined {
+  if (typeof params !== 'object' || params === null || !('envelope' in params)) {
+    return undefined
+  }
+  const { envelope } = params
+  return typeof envelope === 'object' &&
+    envelope !== null &&
+    'clientOperationId' in envelope &&
+    typeof envelope.clientOperationId === 'string'
+    ? envelope.clientOperationId
+    : undefined
+}
+
 describe('useStructuredAgentSessionOutbox', () => {
   let randomUuidSequence = 0
 
@@ -592,9 +606,7 @@ describe('useStructuredAgentSessionOutbox', () => {
     })
 
     await waitFor(() => expect(result.current.outbox).toHaveLength(0))
-    const ids = mocks.call.mock.calls.map(
-      (call) => (call[2] as { envelope: { clientOperationId: string } }).envelope.clientOperationId
-    )
+    const ids = mocks.call.mock.calls.map((call) => sentOperationId(call[2]))
     // The first went once; its row says it was not sent, and its text is not handed back.
     expect(ids.filter((id) => id === firstId)).toHaveLength(1)
     expect(ids).toHaveLength(2)

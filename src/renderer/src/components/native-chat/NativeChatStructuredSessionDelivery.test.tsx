@@ -183,6 +183,24 @@ vi.mock('./NativeChatQuestionCard', () => ({
 import { NativeChatStructuredSession } from './NativeChatStructuredSession'
 import { getStructuredAgentSessionOutbox } from './structured-agent-session-outbox-storage'
 
+/** The first text block a send request carried, read without trusting its shape. */
+function sentText(params: unknown): string | undefined {
+  if (typeof params !== 'object' || params === null || !('body' in params)) {
+    return undefined
+  }
+  const { body } = params
+  if (typeof body !== 'object' || body === null || !('blocks' in body)) {
+    return undefined
+  }
+  const [first] = Array.isArray(body.blocks) ? body.blocks : []
+  return typeof first === 'object' &&
+    first !== null &&
+    'text' in first &&
+    typeof first.text === 'string'
+    ? first.text
+    : undefined
+}
+
 describe('NativeChatStructuredSession delivery', () => {
   afterEach(() => {
     cleanup()
@@ -480,9 +498,7 @@ describe('NativeChatStructuredSession delivery', () => {
       send?.('second', [])
     })
     await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2), { timeout: 5000 })
-    const texts = mocks.call.mock.calls.map(
-      (call) => (call[2] as { body: { blocks: { text: string }[] } }).body.blocks[0]?.text
-    )
+    const texts = mocks.call.mock.calls.map((call) => sentText(call[2]))
     expect(texts).toEqual(['first', 'second'])
     expect(screen.queryByText('Message delivery is unconfirmed.')).toBeNull()
     expect(screen.queryByRole('button', { name: /Retry/ })).toBeNull()
