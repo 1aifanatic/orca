@@ -5,6 +5,7 @@ import { parse } from 'yaml'
 import {
   classifyE2eJobs,
   ORCAD_AUTO_CONVERT_E2E_SPEC,
+  ORCAD_IDLE_EXIT_E2E_SPEC,
   ORCAD_SERVE_MODE_SWITCH_E2E_SPEC,
   WINDOWS_MISSING_APPDATA_E2E_SPEC
 } from './ci-e2e-job-selection.mjs'
@@ -56,8 +57,23 @@ it('routes the auto-convert spec from its conversion sources and harness', () =>
   )
 })
 
+it('routes the idle-exit spec from its idle sources and the shared convert harness', () => {
+  expectRouted(
+    [
+      'src/shared/orcad-idle-exit.ts',
+      'tests/e2e/helpers/orcad-convert-flow.ts',
+      'tests/e2e/helpers/orcad-convert-host.ts'
+    ],
+    ORCAD_IDLE_EXIT_E2E_SPEC
+  )
+})
+
 it('builds the e2e app when only a build-dependent orcad spec is requested', () => {
-  for (const spec of [ORCAD_SERVE_MODE_SWITCH_E2E_SPEC, ORCAD_AUTO_CONVERT_E2E_SPEC]) {
+  for (const spec of [
+    ORCAD_SERVE_MODE_SWITCH_E2E_SPEC,
+    ORCAD_AUTO_CONVERT_E2E_SPEC,
+    ORCAD_IDLE_EXIT_E2E_SPEC
+  ]) {
     expect(classifyE2eJobs(JSON.stringify([spec])), spec).toEqual({
       e2e_run_changed: false,
       e2e_needs_build: true
@@ -68,7 +84,9 @@ it('builds the e2e app when only a build-dependent orcad spec is requested', () 
 
 it('runs the auto-convert lane only when routed, not on every SSH source change', () => {
   const condition = jobs['orcad-auto-convert-docker'].if
-  expect(condition).toContain(`contains(inputs.test_files, '${ORCAD_AUTO_CONVERT_E2E_SPEC}')`)
+  for (const spec of [ORCAD_AUTO_CONVERT_E2E_SPEC, ORCAD_IDLE_EXIT_E2E_SPEC]) {
+    expect(condition).toContain(`contains(inputs.test_files, '${spec}')`)
+  }
   expect(condition).not.toContain('ssh_source_changed')
 })
 

@@ -49,10 +49,11 @@ export const PR_E2E_SOURCE_ROUTES = [
     id: 'ssh.orcad-idle-exit',
     specs: ['tests/e2e/ssh-orcad-idle-exit.spec.ts'],
     matches: (file) =>
-      isProductSource(file) &&
-      /^src\/(?:main\/(?:orcad\/orcad-(?:idle-|managed-idle-)|ssh\/orcad-(?:managed-wake|managed-tunnel|recovery-slot|remote-launch))|shared\/orcad-idle-exit)/.test(
-        file
-      )
+      /^tests\/e2e\/helpers\/orcad-convert-(?:flow|host)\.ts$/.test(file) ||
+      (isProductSource(file) &&
+        /^src\/(?:main\/(?:orcad\/orcad-(?:idle-|managed-idle-)|ssh\/orcad-(?:managed-wake|managed-tunnel|recovery-slot|remote-launch))|shared\/orcad-idle-exit)/.test(
+          file
+        ))
   },
   {
     id: 'ssh.localhost-agent-hooks',
