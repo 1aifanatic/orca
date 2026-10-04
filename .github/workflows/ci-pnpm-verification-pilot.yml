@@ -1,65 +1,177 @@
-name: pnpm verification cache pilot
+name: CI pressure follow-up pilot
 
 on:
-  pull_request:
-    paths: ['.github/workflows/ci-pnpm-verification-pilot.yml']
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: pnpm-verification-pilot-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ci-pressure-followup-pilot-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   ORCA_BACKGROUND_LAUNCH: '1'
 
 jobs:
-  seed:
-    strategy:
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+  ssh-health:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
       - uses: ./.github/actions/install-node-dependencies
-        id: deps
-      # PR caches are scoped to the PR merge ref; main never restores them.
-      - uses: actions/cache/save@v5
-        if: steps.deps.outputs.verification-cache-hit != 'true'
         with:
-          path: ${{ steps.deps.outputs.verification-cache-path }}
-          key: ${{ steps.deps.outputs.verification-cache-key }}
-
-  measure:
-    needs: seed
-    name: measure ${{ matrix.runner }} sample ${{ matrix.sample }} cache ${{ matrix.cache }}
-    strategy:
-      fail-fast: false
-      max-parallel: 4
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-        sample: [1, 2, 3]
-        cache: ['false', 'true']
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-        with:
-          cache-pnpm-verification: ${{ matrix.cache }}
-      - name: Validate treatment and frozen install
-        env:
-          CACHE_ENABLED: ${{ matrix.cache }}
-          CACHE_HIT: ${{ steps.deps.outputs.verification-cache-hit }}
+          node-version: '24'
+          native-runtime: node
+      - name: Run portable SSH benchmark and final controls
+        shell: bash
         run: |
-          if [ "$CACHE_ENABLED" = true ]; then test "$CACHE_HIT" = true; fi
-          git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
-          node -e "require.resolve('vitest'); require.resolve('electron')"
+          set -euo pipefail
+          pilot="$RUNNER_TEMP/ssh-health-pilot"
+          mkdir -p "$pilot"
+          tar -xzf config/ci-pressure-pilot/ssh-unanswered-health-hosted-bundle.tar.gz -C "$pilot"
+          python3 "$pilot/run-benchmark.py" --out "$pilot/benchmark-reports"
+          python3 "$pilot/run-final-controls.py"
+      - name: Keep SSH receipts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-pressure-ssh-health
+          path: |
+            ${{ runner.temp }}/ssh-health-pilot/benchmark-reports
+            ${{ runner.temp }}/ssh-health-pilot/final-controls
+          if-no-files-found: error
+          retention-days: 7
+
+  mobile-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      ORCA_MOBILE_WEB_APP_DEPS_REQUIRED: '1'
+      ORCA_CI_NATIVE_REPORT_DIRECTORY: ${{ runner.temp }}/mobile-native-pilot
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+        id: dependencies
+        with:
+          native-runtime: none
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            mobile/pnpm-lock.yaml
+      - name: Install WebKit for the drawer check
+        id: webkit
+        background: true
+        run: pnpm exec playwright install --with-deps webkit
+      - uses: ./.github/actions/install-mobile-dependencies
+      - name: Configure native-load qualification guard
+        run: node .github/scripts/ci-mobile-native-runtime-qualification.cjs configure
+      - name: Denied prepared-addon negative control
+        env:
+          NODE_OPTIONS: ''
+        run: node .github/scripts/ci-mobile-native-runtime-qualification.cjs negative-control synthetic
+      - name: Prepare mobile route snapshot
+        id: mobile-routes
+        background: true
+        run: node config/scripts/run-mobile-web-app-checks.mjs --prepare-route-snapshot "$RUNNER_TEMP/mobile-routes.json"
+      - name: Resolve Chrome for the render check
+        shell: bash
+        run: |
+          set -euo pipefail
+          chrome="$(command -v google-chrome || command -v google-chrome-stable || true)"
+          test -n "$chrome"
+          "$chrome" --version
+          echo "ORCA_MOBILE_WEB_RENDER_BROWSER=$chrome" >> "$GITHUB_ENV"
+      - name: Build and verify the unchanged production app bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm run build:mobile-web 2>&1 | tee "$ORCA_CI_NATIVE_REPORT_DIRECTORY/build.log"
+      - wait: [webkit, mobile-routes]
+      - name: Unchanged full production prefix checks
+        shell: bash
+        env:
+          ORCA_MOBILE_WEB_PREPARED_ROUTE_SNAPSHOT: ${{ runner.temp }}/mobile-routes.json
+        run: |
+          set -euo pipefail
+          node config/scripts/run-mobile-web-app-checks.mjs 2>&1 | tee "$ORCA_CI_NATIVE_REPORT_DIRECTORY/prefix.log"
+      - name: Verify guarded qualification and clear preload before timing
+        env:
+          NODE_OPTIONS: ''
+        run: node .github/scripts/ci-mobile-native-runtime-qualification.cjs summarize-guard
+
+      # Three pairs alternate order; boundary and runner-step overhead remain in every receipt.
+      - run: node .github/scripts/ci-mobile-native-runtime-qualification.cjs stage-start 1-node
+      - uses: ./.github/actions/prepare-native-runtime
+        id: node-1
+        with:
+          native-runtime: node
+          node-version: ${{ steps.dependencies.outputs.node-version }}
+          persist-native-cache: 'false'
+      - run: node .github/scripts/ci-mobile-native-runtime-qualification.cjs stage-finish 1-node
+        env:
+          NATIVE_CACHE_HIT: ${{ steps.node-1.outputs.cache-hit }}
+          NATIVE_CACHE_KEY: ${{ steps.node-1.outputs.cache-key }}
+      - run: node .github/scripts/ci-mobile-native-runtime-qualification.cjs stage-start 1-none
+      - uses: ./.github/actions/prepare-native-runtime
+        with:
+          native-runtime: none
+          node-version: ${{ steps.dependencies.outputs.node-version }}
+          persist-native-cache: 'false'
+      - run: node .github/scripts/ci-mobile-native-runtime-qualification.cjs stage-finish 1-none
+      - run: node .github/scripts/ci-mobile-native-runtime-qualification.cjs stage-start 2-none
+      - uses: ./.github/actions/prepare-native-runtime
+        with:
+          native-runtime: none
+          node-version: ${{ steps.dependencies.outputs.node-version }}
+          persist-native-cache: 'false'
+      - run: node .github/scripts/ci-mobile-native-runtime-qualification.cjs stage-finish 2-none
+      - run: node .github/scripts/ci-mobile-native-runtime-qualification.cjs stage-start 2-node
+      - uses: ./.github/actions/prepare-native-runtime
+        id: node-2
+        with:
+          native-runtime: node
+          node-version: ${{ steps.dependencies.outputs.node-version }}
+          persist-native-cache: 'false'
+      - run: node .github/scripts/ci-mobile-native-runtime-qualification.cjs stage-finish 2-node
+        env:
+          NATIVE_CACHE_HIT: ${{ steps.node-2.outputs.cache-hit }}
+          NATIVE_CACHE_KEY: ${{ steps.node-2.outputs.cache-key }}
+      - run: node .github/scripts/ci-mobile-native-runtime-qualification.cjs stage-start 3-node
+      - uses: ./.github/actions/prepare-native-runtime
+        id: node-3
+        with:
+          native-runtime: node
+          node-version: ${{ steps.dependencies.outputs.node-version }}
+          persist-native-cache: 'false'
+      - run: node .github/scripts/ci-mobile-native-runtime-qualification.cjs stage-finish 3-node
+        env:
+          NATIVE_CACHE_HIT: ${{ steps.node-3.outputs.cache-hit }}
+          NATIVE_CACHE_KEY: ${{ steps.node-3.outputs.cache-key }}
+      - run: node .github/scripts/ci-mobile-native-runtime-qualification.cjs stage-start 3-none
+      - uses: ./.github/actions/prepare-native-runtime
+        with:
+          native-runtime: none
+          node-version: ${{ steps.dependencies.outputs.node-version }}
+          persist-native-cache: 'false'
+      - run: node .github/scripts/ci-mobile-native-runtime-qualification.cjs stage-finish 3-none
+      - name: Summarize paired stages and prove real restored addon remains denied
+        run: |
+          node .github/scripts/ci-mobile-native-runtime-qualification.cjs summarize-stages
+          node .github/scripts/ci-mobile-native-runtime-qualification.cjs negative-control require-real
+          node .github/scripts/ci-mobile-native-runtime-qualification.cjs summarize-guard
+      - name: Keep mobile qualification and paired stage receipts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-pressure-mobile-native
+          path: ${{ env.ORCA_CI_NATIVE_REPORT_DIRECTORY }}
+          if-no-files-found: error
+          retention-days: 7
