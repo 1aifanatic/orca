@@ -7,7 +7,10 @@
 // single place that answers "does this message take a slot?", and it answers it
 // with the same derivation the row itself renders from.
 
-import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalRenderItem,
+  AgentJournalSubmission
+} from '../../../../shared/agent-session-journal-types'
 import {
   isBackgroundTaskBlock,
   isSubagentGroupBlock,
@@ -247,12 +250,14 @@ export function nativeChatSlotIndexOf(
 export function splitNativeChatSlotsWaitingBehindLiveTurn(
   slots: readonly NativeChatTranscriptSlot[],
   journalItems: readonly AgentJournalRenderItem[] | undefined,
-  stopping = false
+  stopping = false,
+  journalSubmissions?: readonly AgentJournalSubmission[]
 ): { slots: NativeChatTranscriptSlot[]; waitingSlots: NativeChatTranscriptSlot[] } {
   const waiting = nativeChatMessagesWaitingBehindLiveTurn(
     slots.flatMap((slot) => (slot.kind === 'message' ? [slot.message] : [])),
     journalItems,
-    stopping
+    stopping,
+    journalSubmissions
   )
   const isWaiting = (slot: NativeChatTranscriptSlot): boolean =>
     slot.kind === 'message' &&

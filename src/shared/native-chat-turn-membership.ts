@@ -27,6 +27,7 @@ import {
 import type { NativeChatRole } from './native-chat-types'
 import { isStructuredAgentSessionCommandTurn } from './structured-agent-session-command-entry'
 import { liveStructuredAgentSessionTurnScope } from './structured-agent-session-live-turn'
+import { structuredAgentSessionOpeningSendIn } from './structured-agent-session-opening-send'
 
 /** Whether the host writing this journal states each row's turn. Only a host that runs `/compact`
  *  as a turn of the send path does, so this is also how a client tells that host from an older one. */
@@ -159,7 +160,10 @@ export function nativeChatTurnMembership(
     const runningNamed = running.kind === 'turn' ? recordKeys.get(running.turnItemId) : null
     return {
       turnKeys,
-      liveTurnKey: runningNamed ?? newestUserTurnKey(messages, turnKeys),
+      liveTurnKey:
+        runningNamed ??
+        openingTurnKey(messages, turnKeys, journal) ??
+        newestUserTurnKey(messages, turnKeys),
       drawOrder: nativeChatTurnDrawOrder(messages, turnKeys, anchoringUserItems(recordKeys))
     }
   }
@@ -180,7 +184,10 @@ export function nativeChatTurnMembership(
   })
   return {
     turnKeys,
-    liveTurnKey: runningKey ?? newestUserTurnKey(messages, turnKeys),
+    liveTurnKey:
+      runningKey ??
+      openingTurnKey(messages, turnKeys, journal) ??
+      newestUserTurnKey(messages, turnKeys),
     drawOrder: nativeChatTurnDrawOrder(messages, turnKeys, anchoring)
   }
 }
@@ -226,20 +233,38 @@ function anchoringUserItems(recordKeys: ReadonlyMap<string, string | null>): Rea
  * that turn's live activity. Any other running turn takes a send within moments, so it stays put,
  * unless a person's Stop is ending it (`stopping`): the host holds a send made then until it ends,
  * so those, and this client's own sends made then that it has not recorded yet, draw after the
- * live activity too. A send made before the Stop stays where it is.
+ * live activity too. A send made before the Stop stays where it is. While a send ahead is still
+ * opening its turn (`submissions`), the rows sent after it wait too, queued or not recorded yet:
+ * the host takes none of them into that turn until it opens, and a queued row's place, the row that
+ * accepted it, is above the handover that moved that send.
  */
 export function nativeChatMessagesWaitingBehindLiveTurn(
-  messages: readonly { id: string; queued?: true; sentWhileStopping?: true }[],
+  messages: readonly {
+    id: string
+    role?: NativeChatRole
+    queued?: true
+    unsent?: true
+    sentWhileStopping?: true
+    journalPosition?: unknown
+  }[],
   items: readonly AgentJournalRenderItem[] | null | undefined,
-  stopping = false
+  stopping = false,
+  submissions?: readonly AgentJournalSubmission[]
 ): ReadonlySet<string> {
   const waits = (message: (typeof messages)[number]): boolean =>
     message.queued === true || (stopping && message.sentWhileStopping === true)
   const waiting = messages.filter(waits)
+  if (waiting.length > 0 && items && (stopping || commandTurnRunning(items))) {
+    return new Set(waiting.map((message) => message.id))
+  }
+  if (!items || !submissions || structuredAgentSessionOpeningSendIn(items, submissions) === null) {
+    return new Set()
+  }
+  // Behind a turn still opening: queued, or a send of this client's the host has not recorded.
+  const unrecorded = (message: (typeof messages)[number]): boolean =>
+    message.role === 'user' && message.journalPosition === undefined && message.unsent !== true
   return new Set(
-    waiting.length > 0 && items && (stopping || commandTurnRunning(items))
-      ? waiting.map((message) => message.id)
-      : []
+    messages.filter((message) => waits(message) || unrecorded(message)).map((message) => message.id)
   )
 }
 
@@ -250,6 +275,18 @@ function commandTurnRunning(items: readonly AgentJournalRenderItem[]): boolean {
     running.kind === 'turn' &&
     isStructuredAgentSessionCommandTurn(readAgentJournalTurn(bodyOf(running.turnItemId)), bodyOf)
   )
+}
+
+/** While a send is still opening its turn, that send's turn is the live one, not a message sent
+ *  after it that waits behind it (`nativeChatMessagesWaitingBehindLiveTurn`). */
+function openingTurnKey(
+  messages: readonly NativeChatTurnMember[],
+  turnKeys: readonly (string | undefined)[],
+  journal: NativeChatTurnJournal
+): string | undefined {
+  const opening = structuredAgentSessionOpeningSendIn(journal.items, journal.submissions)
+  const index = opening === null ? -1 : messages.findIndex((message) => message.id === opening)
+  return index === -1 ? undefined : turnKeys[index]
 }
 
 function newestUserTurnKey(
