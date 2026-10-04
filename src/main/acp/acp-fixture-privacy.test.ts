@@ -46,9 +46,17 @@ function decodedStrings(value: unknown, depth = 0): string[] {
   } catch {
     /* Ordinary text is not JSON. */
   }
-  for (const token of value.match(/[A-Za-z0-9+/_-]{16,}={0,2}/g) ?? []) {
+  for (const token of value.match(/[A-Za-z0-9+/_-]{8,}={0,2}/g) ?? []) {
     const decoded = Buffer.from(token, 'base64url').toString('utf8')
-    if (decoded !== token && /^[\x20-\x7e\r\n\t]+$/.test(decoded)) {
+    if (
+      decoded !== token &&
+      !decoded.includes('\uFFFD') &&
+      [...decoded].every(
+        (char) =>
+          ['\n', '\r', '\t'].includes(char) ||
+          (char.charCodeAt(0) >= 32 && char.charCodeAt(0) !== 127)
+      )
+    ) {
       texts.push(...decodedStrings(decoded, depth + 1))
     }
   }
@@ -56,20 +64,24 @@ function decodedStrings(value: unknown, depth = 0): string[] {
 }
 
 describe('ACP recording privacy', () => {
-  it.each(['/Users/private/project', '/home/private/project', 'C:\\Users\\private\\project'])(
-    'detects home paths after nested JSON, URL, base64 and byte encoding: %s',
-    (path) => {
-      for (const value of [
-        path,
-        encodeURIComponent(path),
-        Buffer.from(path).toString('base64'),
-        [...Buffer.from(path)],
-        JSON.stringify({ nested: JSON.stringify(path) })
-      ]) {
-        expect(decodedStrings(value).some((text) => privateText.test(text))).toBe(true)
-      }
+  it.each([
+    '/Users/u',
+    '/home/u',
+    '/home/é',
+    '/Users/private/project',
+    '/home/private/project',
+    'C:\\Users\\private\\project'
+  ])('detects home paths after nested JSON, URL, base64 and byte encoding: %s', (path) => {
+    for (const value of [
+      path,
+      encodeURIComponent(path),
+      Buffer.from(path).toString('base64'),
+      [...Buffer.from(path)],
+      JSON.stringify({ nested: JSON.stringify(path) })
+    ]) {
+      expect(decodedStrings(value).some((text) => privateText.test(text))).toBe(true)
     }
-  )
+  })
 
   it('contains no personal metadata or home-directory paths in any decoded fixture', async () => {
     const directory = new URL('./fixtures/', import.meta.url)
