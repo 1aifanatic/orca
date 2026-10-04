@@ -165,7 +165,9 @@ export class AcpSessionRuntime {
     return active.response
   }
 
-  cancel(): Promise<void> {
+  /** `agentTurn`: no prompt of Orca's runs but a turn the agent began itself does, so the
+   *  notification still goes out and that turn's own end is the only reply. */
+  cancel(options: { agentTurn?: boolean } = {}): Promise<void> {
     if (!this.started) {
       return Promise.reject(new Error('ACP session has not started'))
     }
@@ -174,7 +176,9 @@ export class AcpSessionRuntime {
     this.peer.cancelIncomingRequests('session/request_permission')
     const active = this.activePrompt
     if (!active) {
-      return Promise.resolve()
+      return options.agentTurn
+        ? this.peer.notify('session/cancel', { sessionId })
+        : Promise.resolve()
     }
     active.cancelling = true
     active.cancelPromise ??= this.cancelActive(sessionId, active)

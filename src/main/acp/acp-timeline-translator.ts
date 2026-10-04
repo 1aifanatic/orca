@@ -12,9 +12,9 @@ import {
   type AcpDialect,
   type AcpRequestPresentation
 } from './acp-dialects/acp-dialect'
-import { acpJournalTurnIsSettled, acpJournalTurnHasUser } from './acp-journal-turns'
+import { acpJournalTurnIsSettled } from './acp-journal-turns'
 import { acpTurnEnd, AcpPromptTurns } from './acp-prompt-turns'
-import { AcpReplayUserMessages } from './acp-replay-user-messages'
+import { acpReplayedUser, AcpReplayUserMessages } from './acp-replay-user-messages'
 import type { AcpSessionEvent } from './acp-session-runtime'
 import { translateAcpRequest } from './acp-timeline-requests'
 export { acpTurnEnd } from './acp-prompt-turns'
@@ -83,6 +83,17 @@ export class AcpTimelineTranslator {
 
   promptFailed(clientMessageId: string, _error: unknown, at: number): ProviderTimelineEvent[] {
     return this.finishPrompt(clientMessageId, 'error', at)
+  }
+
+  /** The agent refused the prompt before its turn began: forgets it and answers true. False once
+   *  the turn opened, when the refusal ends that turn instead (`promptFailed`). */
+  promptRefused(clientMessageId: string): boolean {
+    const prompt = this.prompts.current
+    if (prompt?.clientMessageId !== clientMessageId || prompt.opened) {
+      return false
+    }
+    this.prompts.current = undefined
+    return true
   }
 
   private finishPrompt(
@@ -211,15 +222,13 @@ export class AcpTimelineTranslator {
       if (isReplay && this.replay) {
         this.replay.turn = turn
         if (this.replay.pendingUser) {
-          const existing = acpJournalTurnHasUser(this.options.journalItems(), turn)
-          if (!existing) {
-            events.push({
-              type: 'item.update',
-              item: `replay-user:${turn}:`,
-              body: this.replay.pendingUser,
-              join: { thread: this.options.sessionId, turn }
-            })
-          }
+          events.push(
+            ...acpReplayedUser(
+              this.options.journalItems(),
+              { thread: this.options.sessionId, turn },
+              this.replay.pendingUser
+            )
+          )
           this.replay.pendingUser = undefined
         }
       }

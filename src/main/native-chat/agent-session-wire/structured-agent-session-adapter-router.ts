@@ -264,6 +264,11 @@ export class StructuredAgentSessionAdapterRouter implements StructuredAgentSessi
     return this.closePromise
   }
 
+  /** No route exists until an acquire returns, so every adapter is asked. */
+  abandonStart = async (sessionId: string): Promise<void> => {
+    await Promise.all(this.adapters().map((adapter) => adapter.abandonStart?.(sessionId)))
+  }
+
   /** Drops a per-session stop receipt after the host releases its durable owner. */
   acknowledgeSessionRelease = (sessionId: string): void => {
     this.routes.delete(sessionId)

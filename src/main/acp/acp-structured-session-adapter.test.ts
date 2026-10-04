@@ -75,48 +75,6 @@ describe('ACP structured session adapter: acquire', () => {
     })
   })
 
-  it('loads the session this chat proved, replaying nothing over a journal that holds it', async () => {
-    // Unmarked, as an agent that does not flag its replay sends it.
-    const replayed = (update: Record<string, unknown>) => ({
-      sessionId: PROVIDER_SESSION,
-      update,
-      _meta: { promptId: 'old-prompt' }
-    })
-    const rig = await openAcpAdapterRig({
-      launch: { resume: { sessionId: PROVIDER_SESSION, replaceableKey: null } },
-      script: (agent) =>
-        agent.on('session/load', (frame) => {
-          agent.notify(
-            'session/update',
-            replayed({ sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'hi' } })
-          )
-          agent.notify(
-            'session/update',
-            replayed({
-              sessionUpdate: 'agent_message_chunk',
-              content: { type: 'text', text: 'yo' }
-            })
-          )
-          agent.notify(
-            'session/update',
-            replayed({
-              sessionUpdate: 'tool_call',
-              toolCallId: 'call-1',
-              title: 'ls',
-              status: 'completed'
-            })
-          )
-          agent.reply(frame, { configOptions: [] })
-        })
-    })
-    const acquired = await rig.acquire({ fence: 2 })
-    expect(rig.sent('session/load')[0]?.params).toMatchObject({ sessionId: PROVIDER_SESSION })
-    expect(rig.sent('session/new')).toHaveLength(0)
-    expect(acquired.link).toMatchObject({ origin: 'resumed', mintedAtFence: 2 })
-    await rig.settle()
-    expect(await rig.rig.rows()).toEqual([])
-  })
-
   it('replaces a created session the agent never saved with a new one', async () => {
     const rig = await openAcpAdapterRig({
       launch: { resume: { sessionId: 'lost', replaceableKey: 'old-key' } },

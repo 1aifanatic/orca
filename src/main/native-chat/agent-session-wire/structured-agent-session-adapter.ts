@@ -391,4 +391,8 @@ export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & 
   disposeSession?(sessionId: string): Promise<boolean>
   /** Host acknowledgement that the proven-dead child, lease and journal owner are released. */
   acknowledgeSessionRelease?(sessionId: string): void
+  /** A close that must not wait behind an acquire still in its handshake: stops that child now, so
+   *  the acquire fails and the close queued behind it runs. Called outside the session's serialize;
+   *  a no-op when nothing is starting. Absent where an acquire never waits on the provider. */
+  abandonStart?(sessionId: string): Promise<void>
 }

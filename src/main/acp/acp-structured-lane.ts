@@ -48,6 +48,7 @@ export class AcpStructuredLane {
   readonly translator: AcpTimelineTranslator
   private readonly assembler: ProviderTimelineAssembler
   private readonly backlog: ProviderTimelineEvent[] = []
+  private readonly turnWatchers = new Set<() => void>()
   private retryTimer: ReturnType<typeof setTimeout> | null = null
   private failed = false
   private disposed = false
@@ -77,6 +78,20 @@ export class AcpStructuredLane {
     }
     this.backlog.push(...events)
     this.drain()
+  }
+
+  /** Resolves once `turnId` is no longer the open turn, or nothing more can be written. */
+  whenTurnLeaves(turnId: string): Promise<void> {
+    return new Promise((resolve) => {
+      const check = (): void => {
+        if (this.failed || this.disposed || this.openTurnId !== turnId) {
+          this.turnWatchers.delete(check)
+          resolve()
+        }
+      }
+      this.turnWatchers.add(check)
+      check()
+    })
   }
 
   /** The sink drained: whatever it held back goes now. */
@@ -112,6 +127,7 @@ export class AcpStructuredLane {
     this.clearRetry()
     this.backlog.length = 0
     this.assembler.dispose()
+    this.notifyTurnWatchers()
   }
 
   private drain(): void {
@@ -126,6 +142,7 @@ export class AcpStructuredLane {
         }
         this.failed = true
         this.backlog.length = 0
+        this.notifyTurnWatchers()
         this.deps.onFailed(admission.reason)
         return
       }
@@ -133,6 +150,13 @@ export class AcpStructuredLane {
       if (event.type === 'input.accepted') {
         this.deps.onInputAccepted(event.clientMessageId)
       }
+    }
+    this.notifyTurnWatchers()
+  }
+
+  private notifyTurnWatchers(): void {
+    for (const check of this.turnWatchers) {
+      check()
     }
   }
 

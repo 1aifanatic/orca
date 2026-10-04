@@ -5,7 +5,12 @@ import {
   createIncrementalNdjsonFramer,
   encodeNdjson
 } from '../../shared/main-process-ndjson-framer'
-import { AcpConnectionClosedError, AcpRequestTimeoutError, AcpRpcError } from './acp-errors'
+import {
+  AcpAgentError,
+  AcpConnectionClosedError,
+  AcpRequestTimeoutError,
+  AcpRpcError
+} from './acp-errors'
 import { AcpIncomingRequests } from './acp-incoming-requests'
 import { AcpWriteQueue } from './acp-write-queue'
 import { detachAcpStreamErrorHandler } from './acp-stdio-error-boundary'
@@ -274,7 +279,7 @@ export class AcpJsonRpcPeer {
         pending.reject(new AcpRpcError(-32603, 'Invalid ACP error response', frame.error))
       } else {
         const error = parsedError.data
-        pending.reject(new AcpRpcError(error.code, error.message, error.data))
+        pending.reject(new AcpAgentError(error.code, error.message, error.data))
       }
     } else {
       pending.resolve(frame.result)

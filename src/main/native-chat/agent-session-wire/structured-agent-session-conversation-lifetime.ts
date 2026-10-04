@@ -160,8 +160,18 @@ export function createStructuredAgentSessionConversationLifetime(host: {
     },
     /** Ends a chat's resources, not the chat: its record and journal stay on disk, and what is
      *  still queued will not be sent. */
-    close: (sessionId: string, cause: StructuredAgentSessionCloseCause): Promise<void> =>
-      serialize(sessionId, async () => {
+    close: (sessionId: string, cause: StructuredAgentSessionCloseCause): Promise<void> => {
+      // Outside the queue: a start the provider never answers must not hold the close behind it.
+      void deps()
+        .adapter.abandonStart?.(sessionId)
+        ?.catch((error: unknown) =>
+          deps().logger.warn('stopping a starting provider for a close failed', {
+            scope: 'abandon-start',
+            sessionId,
+            error
+          })
+        )
+      return serialize(sessionId, async () => {
         readRefusals.forget(sessionId)
         const session = sessions.get(sessionId)
         if (session) {
@@ -171,5 +181,6 @@ export function createStructuredAgentSessionConversationLifetime(host: {
         await stopStructuredAgentSessionAgentUnderSerialize(host.context(), sessionId, { cause })
         await closeConversation(sessionId)
       })
+    }
   }
 }

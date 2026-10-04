@@ -1,7 +1,8 @@
 // The sends of one ACP session. ACP runs one prompt at a time, so a message sent while a turn runs
 // is held here and sent as the next prompt once the running one is answered. Each send is settled
 // exactly once: accepted when the agent's first event for its turn (or its answer) arrives,
-// rejected when the agent refused it or it never left Orca, unknown when the agent died with it.
+// rejected when the agent refused it or it never left Orca, unknown when the agent died with it or
+// its connection broke before it answered.
 
 import {
   agentSessionFailureFact,
@@ -13,7 +14,7 @@ import {
   type AgentJournalDispatchRejection
 } from '../../shared/agent-session-failure-words'
 import type { AgentJournalItemIdentity } from '../../shared/agent-session-journal-types'
-import { AcpRpcError } from './acp-errors'
+import { AcpAgentError } from './acp-errors'
 import type { AcpSessionRuntime } from './acp-session-runtime'
 import type { AcpStructuredLane } from './acp-structured-lane'
 import type { ContentBlock } from './generated/acp-protocol.generated'
@@ -32,6 +33,9 @@ export type AcpStructuredTurnsDeps = {
   agentName: string
   now: () => number
   settle: (settlement: AcpDispatchSettlement) => void
+  /** The prompt failed without an answer from the agent: the connection is no longer trustworthy,
+   *  and the session's end settles the send. */
+  onTransportFault: (error: unknown) => void
 }
 
 export class AcpStructuredTurns {
@@ -115,14 +119,21 @@ export class AcpStructuredTurns {
         if (this.active !== send) {
           return
         }
-        lane.apply(lane.translator.promptFailed(send.clientMessageId, error, this.deps.now()))
-        if (error instanceof AcpRpcError && this.unsettled.has(send.clientMessageId)) {
+        if (!(error instanceof AcpAgentError)) {
+          // No answer from the agent, so neither a refusal nor an end: the send stays running here
+          // until the session's end settles it `unknown`.
+          this.deps.onTransportFault(error)
+          return
+        }
+        if (lane.translator.promptRefused(send.clientMessageId)) {
           // The agent answered the prompt with an error before starting it: its own refusal.
           const detail = providerDiagnostic(error.message, 'person')
           this.reject(
             send.clientMessageId,
             agentSessionFailureFact('providerRejected', detail ? { detail } : {})
           )
+        } else {
+          lane.apply(lane.translator.promptFailed(send.clientMessageId, error, this.deps.now()))
         }
         this.finish(send)
       }

@@ -9,6 +9,9 @@ import type { AcpLaunchSpec } from './acp-launch-specs'
 import type { SpawnAcpStructuredChild } from './acp-structured-child'
 import type { AcpStructuredLaunch } from './acp-structured-launch-resolution'
 
+/** How long a Stop waits for the agent to end its turn before the child is closed. */
+export const ACP_CANCEL_TIMEOUT_MS = 10_000
+
 export type AcpStructuredSessionAdapterDeps = {
   spec: AcpLaunchSpec
   resolveLaunch: (input: { identity: AgentSessionJournalIdentity }) => Promise<AcpStructuredLaunch>
@@ -30,5 +33,7 @@ export type AcpStructuredSessionAdapterDeps = {
   mintLinkId?: () => string
   /** Bounds a Stop's wait for the agent to end its turn; past it the child is closed. */
   cancelTimeoutMs?: number
+  /** Bounds the handshake and session load or creation; past it the start fails. */
+  startupTimeoutMs?: number
   isWindowsProcessStartTimeAvailable?: () => boolean
 }

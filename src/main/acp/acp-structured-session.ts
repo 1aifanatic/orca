@@ -27,6 +27,9 @@ export type AcpStructuredSession = {
   restoreSkipped: readonly string[]
   /** Orca asked this child to stop; its exit is then a requested close. */
   closeRequested: boolean
+  /** Why nothing this child says reaches the journal any more; null while it does. */
+  journalClosed: string | null
+  /** Its exit is proven and the host was told. */
   ended: boolean
   exitObservedAt: number | null
   unbindReadingControl?: () => void
@@ -51,10 +54,27 @@ export function routeAcpSessionEvent(
 }
 
 /**
- * The child's exit, once. Open requests die with it, held sends never left Orca, the running turn
- * is one the host never heard end (`unverifiable` until death evidence revises it), and the host
- * hears `ended` so it releases the session.
+ * Nothing more this child says reaches the journal, once: on its exit, or when its connection broke
+ * while it may still run. Open requests die, held sends never left Orca, the running send's fate is
+ * unknown, and the running turn is one Orca never heard end (`unverifiable` until death evidence
+ * revises it).
  */
+export function closeAcpSessionJournal(session: AcpStructuredSession, reason: string): void {
+  if (session.journalClosed !== null) {
+    return
+  }
+  session.journalClosed = reason
+  session.prompts.clear()
+  session.turns.end(reason)
+  session.lane.apply([{ type: 'session.ended', verdict: UNVERIFIABLE_TURN_VERDICT }])
+  session.lane.flush()
+  session.lane.dispose()
+  session.unbindReadingControl?.()
+  session.runtime.close(new Error(reason))
+}
+
+/** The child's proven exit, once: the journal closes if it has not, and the host hears `ended` so
+ *  it releases the session. */
 export function endAcpStructuredSession(
   session: AcpStructuredSession,
   observedAt: number,
@@ -68,14 +88,9 @@ export function endAcpStructuredSession(
   const stderr = session.child.stderrTail()
   const reason = session.closeRequested
     ? `${session.spec.agent} ACP agent closed by Orca`
-    : `${session.spec.agent} ACP agent exited${stderr ? `: ${stderr}` : ''}`
-  session.prompts.clear()
-  session.turns.end(reason)
-  session.lane.apply([{ type: 'session.ended', verdict: UNVERIFIABLE_TURN_VERDICT }])
-  session.lane.flush()
-  session.lane.dispose()
-  session.unbindReadingControl?.()
-  session.runtime.close(new Error(reason))
+    : (session.journalClosed ??
+      `${session.spec.agent} ACP agent exited${stderr ? `: ${stderr}` : ''}`)
+  closeAcpSessionJournal(session, reason)
   const detail = stderr ? providerDiagnostic(stderr, 'person') : undefined
   onEvent?.({
     type: 'ended',

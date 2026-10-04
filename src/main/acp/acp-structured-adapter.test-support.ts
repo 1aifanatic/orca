@@ -115,6 +115,7 @@ export async function openAcpAdapterRig(
     launch?: Partial<AcpStructuredLaunch>
     initialize?: Record<string, unknown>
     script?: (agent: AcpScriptedAgent) => void
+    deps?: Partial<AcpStructuredSessionAdapterDeps>
   } = {}
 ): Promise<AcpAdapterRig> {
   const rig = await openProviderTimelineRig()
@@ -160,7 +161,8 @@ export async function openAcpAdapterRig(
     onDispatchSettledLate: (settlement) => settled.push(settlement),
     mintGeneration: () => 'gen-acp',
     now: () => 5_000,
-    cancelTimeoutMs: 1_000
+    cancelTimeoutMs: 1_000,
+    ...options.deps
   })
   const frames = () => current?.agent.frames ?? []
   return {
@@ -207,6 +209,22 @@ export async function openAcpAdapterRig(
       }
       await rig.rows()
     }
+  }
+}
+
+const HELLO = { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'hello' }] } as const
+
+/** A person's send of `hello` under `clientMessageId`. */
+export function sendHello(rig: AcpAdapterRig, clientMessageId: string, fence = 1) {
+  return rig.adapter.dispatch({ sessionId: SESSION, clientMessageId, body: HELLO, fence })
+}
+
+/** One streamed reply chunk of the turn Grok runs under `promptId`. */
+export function replyChunk(promptId: string, text: string, meta: Record<string, unknown> = {}) {
+  return {
+    sessionId: PROVIDER_SESSION,
+    update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } },
+    _meta: { promptId, ...meta }
   }
 }
 

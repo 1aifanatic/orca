@@ -12,6 +12,7 @@ import {
   AgentSessionAcquisitionExitUnprovenError,
   isAgentSessionPreSpawnError,
   type AgentSessionAcquisition,
+  type AgentSessionCancelOutcome,
   type AgentSessionDispatchOutcome,
   type StructuredAgentSessionAcquireInput,
   type StructuredAgentSessionAdapter,
@@ -20,16 +21,25 @@ import {
 import { supportsCodexStructuredLocation } from '../codex/codex-structured-location-support'
 import { withObservedProviderExit } from '../native-chat/agent-session-wire/structured-agent-session-failure-text'
 import { acpAgentName, acquireAcpStructuredSession } from './acp-structured-acquire'
-import { AcpRequestTimeoutError } from './acp-errors'
 import type { AcpStructuredChild } from './acp-structured-child'
-import { endAcpStructuredSession, type AcpStructuredSession } from './acp-structured-session'
-import type { AcpStructuredSessionAdapterDeps } from './acp-structured-session-adapter-deps'
+import {
+  closeAcpSessionJournal,
+  endAcpStructuredSession,
+  type AcpStructuredSession
+} from './acp-structured-session'
+import {
+  ACP_CANCEL_TIMEOUT_MS,
+  type AcpStructuredSessionAdapterDeps
+} from './acp-structured-session-adapter-deps'
 import type { ContentBlock } from './generated/acp-protocol.generated'
 
+type StartingChild = { child: AcpStructuredChild; abandoned: boolean }
+
 export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapter {
+  /** Live children, and ones whose exit is not yet proven; a proven exit removes its entry. */
   private readonly sessions = new Map<string, AcpStructuredSession>()
-  /** Children still starting, so a close during the acquire can stop them. */
-  private readonly starting = new Map<string, AcpStructuredChild>()
+  /** Children still starting, so a close need not wait behind their acquire to stop them. */
+  private readonly starting = new Map<string, StartingChild>()
 
   constructor(private readonly deps: AcpStructuredSessionAdapterDeps) {}
 
@@ -47,32 +57,43 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
       )
     }
     const generation = this.deps.mintGeneration?.() ?? randomUUID()
-    const tracked: { child: AcpStructuredChild | null } = { child: null }
+    const tracked: { starting: StartingChild | null } = { starting: null }
     try {
       const { acquisition, session } = await acquireAcpStructuredSession({
         acquire: input,
         deps: this.deps,
         generation,
-        track: (started) => {
-          tracked.child = started
-          this.starting.set(sessionId, started)
+        track: (child) => {
+          tracked.starting = { child, abandoned: false }
+          this.starting.set(sessionId, tracked.starting)
         },
         onExit: (session) => {
           if (session && this.sessions.get(sessionId) === session) {
-            endAcpStructuredSession(session, this.now(), this.deps.onEvent)
+            this.finish(session, this.now())
           }
         },
+        onConnectionLost: (session, error) => this.connectionLost(session, error),
         onSettled: (settlement) => this.deps.onDispatchSettledLate?.({ sessionId, ...settlement }),
         forceClose: (id) => void this.forceCloseSession(id)
       })
+      if (tracked.starting?.abandoned) {
+        session.lane.dispose()
+        throw new Error('closed while starting')
+      }
       this.sessions.set(sessionId, session)
       return acquisition
     } catch (error) {
-      const child = tracked.child
+      const child = tracked.starting?.child
+      const abandoned = tracked.starting?.abandoned === true
       // Checked before the close below, which would make any exit look like one Orca asked for.
-      const exitedOnItsOwn = child?.exited === true
+      const exitedOnItsOwn = child?.exited === true && !abandoned
       if (child && !(await child.close().catch(() => false))) {
         throw new AgentSessionAcquisitionExitUnprovenError(error)
+      }
+      if (abandoned) {
+        throw new Error(`${acpAgentName(this.deps.spec.agent)} was closed while starting`, {
+          cause: error
+        })
       }
       if (child && exitedOnItsOwn && !isAgentSessionPreSpawnError(error)) {
         // The agent's own last words are what a person can act on.
@@ -82,9 +103,19 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
       }
       throw error
     } finally {
-      if (this.starting.get(sessionId) === tracked.child) {
+      if (tracked.starting && this.starting.get(sessionId) === tracked.starting) {
         this.starting.delete(sessionId)
       }
+    }
+  }
+
+  /** A close that must not wait behind an acquire still starting: its child is stopped now, and
+   *  that acquire fails through the start-failure surface. */
+  abandonStart = async (sessionId: string): Promise<void> => {
+    const starting = this.starting.get(sessionId)
+    if (starting) {
+      starting.abandoned = true
+      await starting.child.close()
     }
   }
 
@@ -119,24 +150,57 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
 
   cancelTurn: StructuredAgentSessionAdapter['cancelTurn'] = async (input) => {
     const session = this.live(input.sessionId)
+    // `session/cancel` stops whatever the session runs, so a Stop naming a turn that has since
+    // ended must stop nothing newer: not the turn running now, nor the follow-ups behind it.
+    const liveTurnId = input.resolveLiveTurnId?.() ?? session.lane.openTurnId
+    if (input.turnId !== undefined && input.turnId !== liveTurnId) {
+      return { cancelled: false, refusal: { turnNotRunning: true } }
+    }
     const withdrew = session.turns.withdrawQueued()
     session.prompts.cancelAll()
-    if (!session.turns.running) {
-      return withdrew
-        ? { cancelled: true }
-        : { cancelled: false, refusal: { turnNotRunning: true } }
-    }
-    try {
-      // Ends when the agent answers the prompt `cancelled`; open permissions are declined first.
-      await session.runtime.cancel()
-      return { cancelled: true }
-    } catch (error) {
-      if (error instanceof AcpRequestTimeoutError) {
-        // The agent never ended the turn; its connection is closed, so the child goes too.
-        void this.forceCloseSession(input.sessionId)
+    if (session.turns.running) {
+      try {
+        // Ends when the agent answers the prompt `cancelled`; open permissions are declined first.
+        // Past the bound the connection closes, which stops the child.
+        await session.runtime.cancel()
+        return { cancelled: true }
+      } catch {
+        return { cancelled: false }
       }
-      return { cancelled: false }
     }
+    const agentTurnId = session.lane.openTurnId
+    if (agentTurnId !== null) {
+      return this.cancelAgentTurn(session, agentTurnId)
+    }
+    return withdrew ? { cancelled: true } : { cancelled: false, refusal: { turnNotRunning: true } }
+  }
+
+  /** A turn the agent began itself, as it does when a background task finishes: no prompt of Orca's
+   *  answers, so the turn's own end does, within the same bound a prompt's cancel has. */
+  private async cancelAgentTurn(
+    session: AcpStructuredSession,
+    turnId: string
+  ): Promise<AgentSessionCancelOutcome> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const deadline = new Promise<false>((resolve) => {
+      timer = setTimeout(() => resolve(false), this.deps.cancelTimeoutMs ?? ACP_CANCEL_TIMEOUT_MS)
+    })
+    try {
+      const left = session.lane.whenTurnLeaves(turnId).then(() => true)
+      await session.runtime.cancel({ agentTurn: true })
+      if ((await Promise.race([left, deadline])) && session.journalClosed === null) {
+        return { cancelled: true }
+      }
+    } catch {
+      // The notification could not be written: the connection's own close ends the session.
+    } finally {
+      clearTimeout(timer)
+    }
+    if (session.journalClosed === null) {
+      // The agent never ended its turn, so the child goes and the turn ends with it.
+      void this.forceCloseSession(session.sessionId)
+    }
+    return { cancelled: false }
   }
 
   answerPrompt: StructuredAgentSessionAdapter['answerPrompt'] = (input) =>
@@ -195,7 +259,7 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
   /** True only once the child is proven gone, or when this adapter runs none for the session. */
   private async stop(sessionId: string, requested: boolean): Promise<boolean> {
     const starting = this.starting.get(sessionId)
-    if (starting && !(await starting.close())) {
+    if (starting && !(await starting.child.close())) {
       return false
     }
     const session = this.sessions.get(sessionId)
@@ -203,12 +267,39 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
       return true
     }
     session.closeRequested ||= requested
-    session.lane.flush()
+    if (session.journalClosed === null) {
+      session.lane.flush()
+    }
     const proven = await session.child.close()
     if (proven) {
-      endAcpStructuredSession(session, session.exitObservedAt ?? this.now(), this.deps.onEvent)
+      this.finish(session, session.exitObservedAt ?? this.now())
     }
     return proven
+  }
+
+  /** The child's exit is proven: the host hears it, and nothing of the child stays here. */
+  private finish(session: AcpStructuredSession, observedAt: number): void {
+    endAcpStructuredSession(session, observedAt, this.deps.onEvent)
+    if (this.sessions.get(session.sessionId) === session) {
+      this.sessions.delete(session.sessionId)
+    }
+  }
+
+  /** The connection broke while the child may still run: nothing more it says can be journaled, so
+   *  the journal closes now and the child is stopped; the host hears `ended` once that is proven. */
+  private connectionLost(session: AcpStructuredSession | null, error: Error): void {
+    if (
+      !session ||
+      this.sessions.get(session.sessionId) !== session ||
+      session.journalClosed !== null
+    ) {
+      return
+    }
+    closeAcpSessionJournal(
+      session,
+      `${session.spec.agent} ACP connection closed: ${error.message || error.name}`
+    )
+    void this.stop(session.sessionId, false)
   }
 
   private promptBlocks(body: AgentJournalMessageItem): ContentBlock[] | null {
@@ -225,7 +316,7 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
 
   private live(sessionId: string): AcpStructuredSession {
     const session = this.sessions.get(sessionId)
-    if (!session || session.ended) {
+    if (!session || session.journalClosed !== null) {
       throw new Error(`no live ${this.deps.spec.agent} child owns ${sessionId}`)
     }
     return session

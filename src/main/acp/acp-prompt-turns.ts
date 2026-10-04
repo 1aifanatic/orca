@@ -8,6 +8,13 @@ export type AcpPromptTurn = {
   durationMs?: number
 }
 
+const PROMPT_TURN_PREFIX = 'prompt:'
+
+/** The send behind a turn Orca's own prompt opened; undefined for a turn the agent began. */
+export function acpPromptClientMessageId(turn: string): string | undefined {
+  return turn.startsWith(PROMPT_TURN_PREFIX) ? turn.slice(PROMPT_TURN_PREFIX.length) : undefined
+}
+
 /** An injected identity is known before any provider output arrives. */
 export class AcpPromptTurns {
   current?: AcpPromptTurn
@@ -21,7 +28,7 @@ export class AcpPromptTurns {
     if (this.current) {
       throw new Error('ACP prompt overlaps a prompt or load')
     }
-    const turn = `prompt:${clientMessageId}`
+    const turn = `${PROMPT_TURN_PREFIX}${clientMessageId}`
     this.current = { clientMessageId, turn, requestedAt: at, opened: false }
     return { promptId: turn, events: this.injected ? [] : this.start(turn, at) }
   }
