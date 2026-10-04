@@ -37,6 +37,10 @@ import {
   shareStructuredAgentLaunchPromptDispatch
 } from '@/lib/structured-agent-launch-prompt-in-flight-dispatches'
 import {
+  endStructuredAgentSessionEntry,
+  type StructuredAgentSessionEntryEnding
+} from './structured-agent-session-entry-endings'
+import {
   clearStructuredAgentSessionChatLineHeldBy,
   returnStructuredAgentSessionMessage,
   setStructuredAgentSessionChatLine
@@ -122,6 +126,22 @@ export function sayStructuredAgentSessionSettlement(
   }
 }
 
+/** How a settlement ends its entry for whoever waits on it, or null while it has not ended. */
+export function structuredAgentSessionSettlementEnding(
+  settlement: StructuredAgentSessionSendSettlement
+): StructuredAgentSessionEntryEnding | null {
+  switch (settlement.kind) {
+    case 'recorded':
+    case 'pending':
+      return 'delivered'
+    case 'returned':
+    case 'withdrawn':
+      return 'notDelivered'
+    case 'unanswered':
+      return null
+  }
+}
+
 /** Settles one entry against the current outbox and commits it. */
 export function settleStructuredAgentSessionOutboxEntry(
   sessionId: string,
@@ -132,6 +152,10 @@ export function settleStructuredAgentSessionOutboxEntry(
   const entry = current.find((candidate) => candidate.clientMessageId === clientMessageId)
   if (!entry) {
     return
+  }
+  const ending = structuredAgentSessionSettlementEnding(settlement)
+  if (ending) {
+    endStructuredAgentSessionEntry(sessionId, clientMessageId, ending)
   }
   // A send a Stop outran never goes again: no answer leaves it waiting for the Stop's.
   const kept =

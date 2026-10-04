@@ -134,19 +134,23 @@ describe('an outbox on a host that accepts a send before any agent has it', () =
     const setItem = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
       throw new Error('quota exceeded')
     })
-    const delivery = await act(async () =>
-      settleStructuredAgentLaunchPrompt({
-        launchResult: Promise.resolve({ sessionId: 'session-1', fence: 1 }),
-        target: { kind: 'local' },
-        options: { prompt: 'launch notes' },
-        stagedEntry: staged
-      })
-    )
-    setItem.mockRestore()
-    // Unsaved, it never goes out; the chat holds it and tries again, so the caller says nothing.
-    expect(delivery).toEqual({ delivered: false, failureNotified: true })
+    let delivery: unknown = 'unsettled'
+    void settleStructuredAgentLaunchPrompt({
+      launchResult: Promise.resolve({ sessionId: 'session-1', fence: 1 }),
+      target: { kind: 'local' },
+      options: { prompt: 'launch notes' },
+      stagedEntry: staged
+    })?.then((settled) => {
+      delivery = settled
+    })
+    try {
+      await waitFor(() => expect(result.current.outbox).toMatchObject([{ state: 'unconfirmed' }]))
+    } finally {
+      setItem.mockRestore()
+    }
+    // Unsaved, it never goes out; the chat holds it and tries again, and the caller waits for that.
+    expect(delivery).toBe('unsettled')
     expect(mocks.call).not.toHaveBeenCalled()
-    expect(result.current.outbox).toMatchObject([{ state: 'unconfirmed' }])
     expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey('session-1'))).toBe('')
     expect(result.current.error).toBe("Couldn't save your message.")
   })

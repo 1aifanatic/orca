@@ -15,7 +15,11 @@ import {
   commitStructuredAgentSessionOutbox,
   getStructuredAgentSessionOutbox
 } from './structured-agent-session-outbox-storage'
-import { sayStructuredAgentSessionSettlement } from './structured-agent-session-outbox-dispatch'
+import {
+  sayStructuredAgentSessionSettlement,
+  structuredAgentSessionSettlementEnding
+} from './structured-agent-session-outbox-dispatch'
+import { endStructuredAgentSessionEntry } from './structured-agent-session-entry-endings'
 import {
   returnStructuredAgentSessionMessage,
   setStructuredAgentSessionChatLine
@@ -48,6 +52,12 @@ export function settleStructuredAgentSessionOutboxFromJournal(
   }
   if (entries === current) {
     return entries
+  }
+  for (const { clientMessageId, settlement } of settled) {
+    const ending = structuredAgentSessionSettlementEnding(settlement)
+    if (ending) {
+      endStructuredAgentSessionEntry(sessionId, clientMessageId, ending)
+    }
   }
   // Each returned message goes to the draft before the outbox that drops it is saved.
   for (const back of returned) {

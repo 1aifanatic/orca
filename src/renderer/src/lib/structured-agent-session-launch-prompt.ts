@@ -2,6 +2,7 @@ import type { StructuredAgentSessionOutboxEntry } from '../../../shared/structur
 import { getStructuredAgentSessionOutbox } from '@/components/native-chat/structured-agent-session-outbox-storage'
 import { sendStructuredAgentSessionOutboxEntry } from '@/components/native-chat/structured-agent-session-outbox-dispatch'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
+import { watchStructuredAgentSessionEntryEnding } from '@/components/native-chat/structured-agent-session-entry-endings'
 import {
   shareStructuredAgentLaunchPromptDispatch,
   type StructuredAgentLaunchPromptDispatch
@@ -57,6 +58,8 @@ export function settleStructuredAgentLaunchPrompt(args: {
       return { delivered: false, failureNotified: true }
     }
     const entry = args.stagedEntry
+    // Watched before it goes, so an answer that settles it at once is not missed.
+    const watch = watchStructuredAgentSessionEntryEnding(entry.sessionId, entry.clientMessageId)
     const dispatch = shareStructuredAgentLaunchPromptDispatch(
       entry.sessionId,
       entry.clientMessageId,
@@ -64,12 +67,21 @@ export function settleStructuredAgentLaunchPrompt(args: {
       () => dispatchStructuredLaunchPrompt(entry, receipt, args.target)
     )
     const settlement = await dispatch.promise
-    const delivered = settlement?.kind === 'recorded' || settlement?.kind === 'pending'
+    const held = getStructuredAgentSessionOutbox(entry.sessionId).some(
+      (candidate) => candidate.clientMessageId === entry.clientMessageId
+    )
+    if (settlement === null && !held && watch.endedAs() === null) {
+      // Settled before this ran: nothing here sent it or can say how it ended.
+      watch.cancel()
+      return { delivered: false, failureNotified: false }
+    }
+    // With no answer yet the open chat keeps sending it, so this waits for how it finally ends,
+    // never offering the prompt again while the chat may still deliver it.
+    const delivered = (await watch.ending) === 'delivered'
     if (delivered) {
       args.options.onPromptDelivered?.()
     }
-    // Once sent, the chat holds the prompt: it says why it came back, or keeps sending it, so the
-    // caller must not offer it again beside the chat.
-    return { delivered, failureNotified: !delivered && settlement !== null }
+    // Not delivered, it came back to the chat's composer, which says why.
+    return { delivered, failureNotified: !delivered }
   })
 }

@@ -6,6 +6,7 @@ import {
 } from '../../../../shared/structured-agent-session-outbox'
 import { createStructuredAgentSessionOperationId } from '../../../../shared/structured-agent-session-mutation'
 import { createBrowserUuid } from '@/lib/browser-uuid'
+import { noteStructuredAgentSessionOutboxCommitted } from './structured-agent-session-entry-endings'
 
 const OUTBOX_PREFIX = 'orca:desktopStructuredAgentSessionOutbox:v1:'
 
@@ -171,6 +172,7 @@ export function commitStructuredAgentSessionOutbox(
       listener()
     }
   }
+  noteStructuredAgentSessionOutboxCommitted(sessionId, entries)
   return saved
 }
 
