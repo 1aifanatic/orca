@@ -13,7 +13,7 @@
  * it says nothing about the daemon, which is what makes a non-destructive restart possible.
  */
 import { randomUUID } from 'node:crypto'
-import { linkSync, mkdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
+import { linkSync, mkdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
@@ -28,9 +28,12 @@ import {
   type OrcadDataRootPrivacyHooks
 } from './orcad-data-root-privacy'
 import { readNodeFileSyncWithinLimit } from '../../shared/node-bounded-file-reader'
+import { hasErrorCode, isProcessAlive } from '../daemon/daemon-process-inspection'
 
 export const ORCAD_LOCK_FILE_NAME = 'orcad.lock'
 const MAX_ORCAD_LOCK_BYTES = 64 * 1024
+// A writer finishes in milliseconds; a garbled record older than this has no live writer.
+const GARBLED_LOCK_GRACE_MS = 10_000
 
 export { OrcadInstanceLockError, type OrcadInstanceLockCode } from './orcad-data-root-privacy'
 
@@ -81,19 +84,6 @@ function defaultIdentity(): string {
     : String(process.getuid?.() ?? 'unknown')
 }
 
-function defaultProcessIsAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (error) {
-    return isErrorCode(error, 'EPERM')
-  }
-}
-
-function isErrorCode(error: unknown, code: string): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && error.code === code
-}
-
 /** `null` for anything that is not a complete record; never a reason to treat a lock as free. */
 export function parseOrcadInstanceLockRecord(content: string): OrcadLockRecord | null {
   try {
@@ -115,7 +105,7 @@ export function acquireOrcadInstanceLock(
   hooks: OrcadInstanceLockHooks = {}
 ): OrcadInstanceLock {
   const identity = (hooks.identity ?? defaultIdentity)()
-  const isAlive = hooks.processIsAlive ?? defaultProcessIsAlive
+  const isAlive = hooks.processIsAlive ?? isProcessAlive
   const readStartedAt = hooks.startedAtMs ?? readOrcadProcessStartedAtMs
   const matchesStartTime = hooks.startTimeMatches ?? orcadProcessStartTimeMatches
 
@@ -144,18 +134,23 @@ export function acquireOrcadInstanceLock(
   }
   const serialized = JSON.stringify(record)
 
+  // Staged then hard-linked: the canonical path only ever holds a complete record, never a torn one.
   const publish = (): boolean => {
+    const staged = `${lockPath}.staged-${process.pid}-${randomUUID()}`
     try {
-      writeFileSync(lockPath, serialized, { flag: 'wx', mode: 0o600 })
+      writeFileSync(staged, serialized, { flag: 'wx', mode: 0o600 })
+      linkSync(staged, lockPath)
       return true
     } catch (error) {
-      if (isErrorCode(error, 'EEXIST')) {
+      if (hasErrorCode(error, 'EEXIST')) {
         return false
       }
       throw new OrcadInstanceLockError(
         'orcad_data_root_unusable',
         `Cannot write the orcad instance lock ${lockPath}: ${(error as Error).message}`
       )
+    } finally {
+      unlinkQuietly(staged)
     }
   }
 
@@ -163,14 +158,26 @@ export function acquireOrcadInstanceLock(
     return makeLock(lockPath, record)
   }
 
-  const existing = parseOrcadInstanceLockRecord(readBoundedLockFile(lockPath) ?? '')
-  if (!existing) {
-    // Why fail closed: an unreadable record proves nothing about its holder having exited.
+  const existingContents = readBoundedLockFile(lockPath)
+  if (existingContents === null) {
+    // Why fail closed: a record we cannot read proves nothing about its holder having exited.
     throw new OrcadInstanceLockError(
       'orcad_instance_lock_unreadable',
-      `The orcad instance lock at ${lockPath} is unreadable, malformed, or larger than ` +
+      `The orcad instance lock at ${lockPath} is unreadable or larger than ` +
         `${MAX_ORCAD_LOCK_BYTES} bytes. Refusing to reclaim it without proof that its holder ` +
         'has exited. Stop orcad and remove the stale lock manually.'
+    )
+  }
+  const existing = parseOrcadInstanceLockRecord(existingContents)
+  if (!existing) {
+    // Only a torn write (an older build, or a crash mid-write) leaves this; once it has aged
+    // past any live writer, no owner can be behind it.
+    if (garbledLockIsAbandoned(lockPath)) {
+      return reclaimAndPublish(lockPath, dataRoot, existingContents, publish, record)
+    }
+    throw new OrcadInstanceLockError(
+      'orcad_instance_lock_held',
+      `The orcad instance lock at ${lockPath} is still being written by another process. Retry.`
     )
   }
   if (existing.identity !== identity) {
@@ -189,9 +196,21 @@ export function acquireOrcadInstanceLock(
         'before starting another, or use a different ORCA_USER_DATA.'
     )
   }
-  // Why rename-and-then-publish rather than unlink-and-write: rename claims one exact
-  // directory entry, so a replacement written between our read and our write stays at the
-  // canonical path and wins — we never delete a record we did not inspect.
+  return reclaimAndPublish(lockPath, dataRoot, existingContents, publish, record)
+}
+
+/**
+ * Why rename-and-then-publish rather than unlink-and-write: rename claims one exact directory
+ * entry, so a replacement written between our read and our write stays at the canonical path
+ * and wins — we never delete a record we did not inspect.
+ */
+function reclaimAndPublish(
+  lockPath: string,
+  dataRoot: string,
+  inspectedContents: string,
+  publish: () => boolean,
+  record: OrcadLockRecord
+): OrcadInstanceLock {
   const claimPath = `${lockPath}.stale-${process.pid}-${randomUUID()}`
   try {
     renameSync(lockPath, claimPath)
@@ -204,31 +223,40 @@ export function acquireOrcadInstanceLock(
   }
   // A contender may have replaced the entry after the liveness check; never displace its record.
   const claimedContents = readBoundedLockFile(claimPath)
-  if (parseOrcadInstanceLockRecord(claimedContents ?? '')?.nonce !== existing.nonce) {
+  if (claimedContents !== inspectedContents) {
     restoreDisplacedLock(claimPath, lockPath, claimedContents)
     throw new OrcadInstanceLockError(
       'orcad_instance_lock_held',
       `The orcad instance lock at ${lockPath} changed while reclaiming a stale record.`
     )
   }
-  if (!publish()) {
+  const published = publish()
+  // A uniquely named claim is inert either way.
+  unlinkQuietly(claimPath)
+  if (!published) {
     // Someone else claimed it first. Their record is authoritative; ours is not.
-    try {
-      unlinkSync(claimPath)
-    } catch {
-      // A uniquely named claim is inert.
-    }
     throw new OrcadInstanceLockError(
       'orcad_instance_lock_held',
       `Another orcad took the data root ${dataRoot} while this one was reclaiming a stale lock.`
     )
   }
-  try {
-    unlinkSync(claimPath)
-  } catch {
-    // The canonical record is authoritative; the claim is inert.
-  }
   return makeLock(lockPath, record)
+}
+
+function garbledLockIsAbandoned(lockPath: string): boolean {
+  try {
+    return Date.now() - statSync(lockPath).mtimeMs > GARBLED_LOCK_GRACE_MS
+  } catch {
+    return false
+  }
+}
+
+function unlinkQuietly(path: string): void {
+  try {
+    unlinkSync(path)
+  } catch {
+    // Already gone, or inert under its unique name.
+  }
 }
 
 function describeLockHolder(record: OrcadLockRecord): string {

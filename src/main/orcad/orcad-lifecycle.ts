@@ -5,6 +5,7 @@ import type { OrcadManagedStopInstance } from '../../shared/orcad-stop-request'
 import { acquireOrcadInstanceLock } from './orcad-instance-lock'
 import { ORCAD_BUNDLED_LAUNCHER_ENV } from './orcad-bundled-runtime'
 import { resolveOrcadExitCode } from './orcad-exit-code'
+import { ORCAD_SHUTDOWN_DEADLINE_MS } from './orcad-stop-deadlines'
 import {
   acquireProfileStateRuntimeAdmission,
   type ProfileStateRuntimeAdmission
@@ -21,7 +22,7 @@ function createIdempotentOrcadCleanup(cleanup: () => Promise<void>): () => Promi
   }
 }
 
-export const ORCAD_SHUTDOWN_DEADLINE_MS = 15_000
+export { ORCAD_SHUTDOWN_DEADLINE_MS }
 
 /**
  * A launcher and its child can both receive the same process-group or service stop signal.

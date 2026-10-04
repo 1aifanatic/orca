@@ -15,12 +15,9 @@ import {
   type OrcadManagedStopRequest
 } from '../../shared/orcad-stop-request'
 import { orcadStopReceiptPath, readOrcadStopReceipt } from './orcad-completed-stop-receipt'
+import { hasErrorCode } from '../daemon/daemon-process-inspection'
 
 export type OrcadManagedStopDecisionValue = OrcadManagedStopDecision['decision']
-
-function isAlreadyDecided(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'EEXIST'
-}
 
 export function readOrcadManagedStopDecision(
   request: OrcadManagedStopRequest
@@ -50,7 +47,7 @@ export function claimOrcadManagedStopDecision(
     linkSync(staged, path)
     return decision
   } catch (error) {
-    if (!isAlreadyDecided(error)) {
+    if (!hasErrorCode(error, 'EEXIST')) {
       throw error
     }
     const standing = readOrcadManagedStopDecision(request)

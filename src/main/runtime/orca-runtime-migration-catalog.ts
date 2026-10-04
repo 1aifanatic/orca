@@ -2,133 +2,117 @@ import type {
   OrcadMigrationCatalogAbortResult,
   OrcadMigrationCatalogState,
   OrcadMigrationImportResult,
-  OrcadMigrationManifest
-} from '../../shared/orcad-migration-manifest'
+  OrcadMigrationManifest,
+} from "../../shared/orcad-migration-manifest";
 import type {
   OrcadMigrationSnapshotChunkRequest,
-  OrcadMigrationSnapshotChunkResult
-} from '../../shared/orcad-migration-scrollback'
+  OrcadMigrationSnapshotChunkResult,
+} from "../../shared/orcad-migration-scrollback";
 import {
   abortStagedOrcadMigrationCatalogDurably,
   commitStagedOrcadMigrationCatalogDurably,
   getOrcadMigrationCatalogState,
   importOrcadMigrationCatalogDurably,
-  stageOrcadMigrationCatalogDurably
-} from './orcad-migration-catalog-import'
-import { OrcaRuntimeWithResolveWaiter } from './orca-runtime-resolve-waiter'
+  stageOrcadMigrationCatalogDurably,
+} from "./orcad-migration-catalog-import";
+import { OrcaRuntimeWithResolveWaiter } from "./orca-runtime-resolve-waiter";
+import type { RuntimeStore } from "./runtime-store-contract";
+import type { Store } from "../persistence";
 
 /** The destination half of a dormant catalog migration; every mutation is flushed before it answers. */
 export class OrcaRuntimeWithMigrationCatalog extends OrcaRuntimeWithResolveWaiter {
   async importOrcadMigrationCatalog(
     manifest: OrcadMigrationManifest,
-    options: { signal?: AbortSignal } = {}
+    options: { signal?: AbortSignal } = {},
   ): Promise<OrcadMigrationImportResult> {
-    const store = this.store
-    const importCatalog = store?.importOrcadMigrationCatalog
-    const flushPending = store?.flushPendingOrThrowAsync
-    if (!store || !importCatalog || !flushPending) {
-      throw new Error('runtime_unavailable')
-    }
     return importOrcadMigrationCatalogDurably({
-      store: {
-        importOrcadMigrationCatalog: (input, inputOptions) =>
-          importCatalog.call(store, input, inputOptions),
-        flushPendingOrThrowAsync: (flushOptions) => flushPending.call(store, flushOptions)
-      },
+      store: this.requireMigrationStore(
+        "importOrcadMigrationCatalog",
+        "flushPendingOrThrowAsync",
+      ),
       manifest,
       signal: options.signal,
       onDurableImport: () => {
-        this.invalidateResolvedWorktreeCache()
-        this.notifyReposChanged()
-      }
-    })
+        this.invalidateResolvedWorktreeCache();
+        this.notifyReposChanged();
+      },
+    });
   }
 
   async stageOrcadMigrationCatalog(
     manifest: OrcadMigrationManifest,
-    options: { signal?: AbortSignal } = {}
+    options: { signal?: AbortSignal } = {},
   ): Promise<OrcadMigrationCatalogState> {
-    const store = this.store
-    const stage = store?.stageOrcadMigrationCatalog
-    const flush = store?.flushPendingOrThrowAsync
-    if (!store || !stage || !flush) {
-      throw new Error('runtime_unavailable')
-    }
     return stageOrcadMigrationCatalogDurably({
-      store: {
-        stageOrcadMigrationCatalog: (input, inputOptions) => stage.call(store, input, inputOptions),
-        flushPendingOrThrowAsync: (flushOptions) => flush.call(store, flushOptions)
-      },
+      store: this.requireMigrationStore(
+        "stageOrcadMigrationCatalog",
+        "flushPendingOrThrowAsync",
+      ),
       manifest,
-      signal: options.signal
-    })
+      signal: options.signal,
+    });
   }
 
   async commitStagedOrcadMigrationCatalog(
     manifest: OrcadMigrationManifest,
-    options: { signal?: AbortSignal } = {}
+    options: { signal?: AbortSignal } = {},
   ): Promise<OrcadMigrationCatalogState> {
-    const store = this.store
-    const commit = store?.commitStagedOrcadMigrationCatalog
-    const flush = store?.flushPendingOrThrowAsync
-    if (!store || !commit || !flush) {
-      throw new Error('runtime_unavailable')
-    }
     return commitStagedOrcadMigrationCatalogDurably({
-      store: {
-        commitStagedOrcadMigrationCatalog: (input, inputOptions) =>
-          commit.call(store, input, inputOptions),
-        flushPendingOrThrowAsync: (flushOptions) => flush.call(store, flushOptions)
-      },
+      store: this.requireMigrationStore(
+        "commitStagedOrcadMigrationCatalog",
+        "flushPendingOrThrowAsync",
+      ),
       manifest,
       signal: options.signal,
       onDurableCommit: () => {
-        this.invalidateResolvedWorktreeCache()
-        this.notifyReposChanged()
-      }
-    })
+        this.invalidateResolvedWorktreeCache();
+        this.notifyReposChanged();
+      },
+    });
   }
 
   stageOrcadMigrationSnapshotChunk(
-    request: OrcadMigrationSnapshotChunkRequest
+    request: OrcadMigrationSnapshotChunkRequest,
   ): OrcadMigrationSnapshotChunkResult {
-    const store = this.store
-    const stageChunk = store?.stageOrcadMigrationSnapshotChunk
-    if (!store || !stageChunk) {
-      throw new Error('runtime_unavailable')
-    }
-    return stageChunk.call(store, request)
+    return this.requireMigrationStore(
+      "stageOrcadMigrationSnapshotChunk",
+    ).stageOrcadMigrationSnapshotChunk(request);
   }
 
   async abortStagedOrcadMigrationCatalog(
     manifest: OrcadMigrationManifest,
-    options: { signal?: AbortSignal } = {}
+    options: { signal?: AbortSignal } = {},
   ): Promise<OrcadMigrationCatalogAbortResult> {
-    const store = this.store
-    const abort = store?.abortStagedOrcadMigrationCatalog
-    const flush = store?.flushPendingOrThrowAsync
-    if (!store || !abort || !flush) {
-      throw new Error('runtime_unavailable')
-    }
     return abortStagedOrcadMigrationCatalogDurably({
-      store: {
-        abortStagedOrcadMigrationCatalog: (input) => abort.call(store, input),
-        flushPendingOrThrowAsync: (flushOptions) => flush.call(store, flushOptions)
-      },
+      store: this.requireMigrationStore(
+        "abortStagedOrcadMigrationCatalog",
+        "flushPendingOrThrowAsync",
+      ),
       manifest,
-      signal: options.signal
-    })
+      signal: options.signal,
+    });
   }
 
-  getOrcadMigrationCatalogState(manifest: OrcadMigrationManifest): OrcadMigrationCatalogState {
-    const store = this.store
-    const readState = store?.getOrcadMigrationCatalogState
-    if (!store || !readState) {
-      throw new Error('runtime_unavailable')
-    }
+  getOrcadMigrationCatalogState(
+    manifest: OrcadMigrationManifest,
+  ): OrcadMigrationCatalogState {
     return getOrcadMigrationCatalogState({
-      store: { getOrcadMigrationCatalogState: (input) => readState.call(store, input) },
-      manifest
-    })
+      store: this.requireMigrationStore("getOrcadMigrationCatalogState"),
+      manifest,
+    });
+  }
+
+  /** A partial store (tests, headless hosts) lacks some optional methods; refuse rather than half-run. */
+  private requireMigrationStore<K extends keyof RuntimeStore & keyof Store>(
+    ...methods: K[]
+  ): Pick<Store, K> {
+    const store = this.store;
+    if (
+      !store ||
+      methods.some((method) => typeof store[method] !== "function")
+    ) {
+      throw new Error("runtime_unavailable");
+    }
+    return this.requireStore();
   }
 }

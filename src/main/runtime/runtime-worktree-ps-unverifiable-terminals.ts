@@ -23,16 +23,14 @@ export function applyRuntimeWorktreePsUnverifiableTerminals(args: {
     worktreeId: string
   ) => RuntimeWorktreePsSummary | null
 }): void {
-  // The renderer's pane owns the PTY's worktree; the record is the fallback once no pane holds it.
+  // Like the live pass, the host's PTY record owns the worktree; a pane only fills in a PTY with no record.
   const ownerByPtyId = new Map<string, string>()
+  for (const pty of args.ptysById.values()) {
+    ownerByPtyId.set(pty.ptyId, pty.worktreeId)
+  }
   for (const leaf of args.leaves) {
     if (leaf.ptyId && !ownerByPtyId.has(leaf.ptyId)) {
       ownerByPtyId.set(leaf.ptyId, leaf.worktreeId)
-    }
-  }
-  for (const pty of args.ptysById.values()) {
-    if (!ownerByPtyId.has(pty.ptyId)) {
-      ownerByPtyId.set(pty.ptyId, pty.worktreeId)
     }
   }
   for (const [ptyId, worktreeId] of ownerByPtyId) {

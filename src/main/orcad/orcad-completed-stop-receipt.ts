@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import type { z } from 'zod'
 import { readNodeFileSyncWithinLimit } from '../../shared/node-bounded-file-reader'
 import { writeDurableSecureJsonFile } from '../../shared/secure-file'
+import { hasErrorCode } from '../daemon/daemon-process-inspection'
 import {
   ORCAD_STOP_RECEIPTS_DIRNAME,
   OrcadCompletedStopReceiptSchema,
@@ -40,7 +41,7 @@ export function readOrcadStopReceipt<T extends { request: OrcadManagedStopReques
       throw new Error('orcad_stop_receipt_unverifiable')
     }
   } catch (error) {
-    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') {
+    if (hasErrorCode(error, 'ENOENT')) {
       return null
     }
     throw error

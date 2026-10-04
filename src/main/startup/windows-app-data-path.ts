@@ -5,6 +5,7 @@ export type WindowsAppDataPathHost = {
   getPath(name: 'appData'): string
   setPath(name: 'appData' | 'userData', value: string): void
   getName(): string
+  commandLine: { hasSwitch(name: string): boolean }
 }
 
 /** Derives the roaming AppData folder from the environment when the known-folder lookup fails. */
@@ -49,6 +50,10 @@ export function ensureWindowsAppDataPath(
     appData = deriveWindowsAppDataPath(env)
     mkdirSync(appData, { recursive: true })
     host.setPath('appData', appData)
+  }
+  // Electron already resolved userData from an explicit switch; pinning it would override that.
+  if (host.commandLine.hasSwitch('user-data-dir')) {
+    return
   }
   // Same value Electron's own provider computes; setting it skips that provider entirely.
   host.setPath('userData', win32.join(appData, host.getName()))

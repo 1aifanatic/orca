@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { ORCAD_LOCK_FILE_NAME } from './orcad-instance-lock'
 import {
   liveLocalOrcadServeVersion,
+  pruneDesktopOrcadArtifactCache,
   pruneOrcadArtifactCache
 } from './orcad-artifact-cache-retention'
 
@@ -93,5 +94,28 @@ describe('orcad artifact cache retention', () => {
     expect(liveLocalOrcadServeVersion(userData, () => false)).toBeNull()
     lock('desktop')
     expect(liveLocalOrcadServeVersion(userData)).toBeNull()
+  })
+
+  it('keeps both the selected slot and the one a running orcad serve still uses', async () => {
+    const userData = cacheRoot()
+    const root = join(userData, 'orcad-artifacts')
+    const running = slot(root, 'linux-x64-glibc', '0.1.0+old', 90)
+    const selected = slot(root, 'linux-x64-glibc', '0.4.0+new', 1)
+    const others = [2, 3, 4].map((age) => slot(root, 'linux-x64-glibc', `v${age}`, age))
+    writeFileSync(
+      join(userData, ORCAD_LOCK_FILE_NAME),
+      JSON.stringify({
+        pid: process.pid,
+        startedAtMs: null,
+        nonce: 'nonce',
+        identity: 'uid',
+        version: '0.1.0+old',
+        acquiredAt: new Date().toISOString(),
+        role: 'orcad'
+      })
+    )
+    expect(await pruneDesktopOrcadArtifactCache(userData, ['0.4.0+new'])).toEqual([others[2]])
+    expect(existsSync(running)).toBe(true)
+    expect(existsSync(selected)).toBe(true)
   })
 })

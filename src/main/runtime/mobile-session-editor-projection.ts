@@ -60,6 +60,8 @@ function editorTab(
   return { ...common, type: 'file', language: file.language, mode: 'edit' }
 }
 
+export const HEADLESS_EDITOR_UNSAVED_DRAFT_ERROR = 'editor_tab_has_unsaved_draft'
+
 export function buildHeadlessMobileSessionEditorTabs(
   worktreeId: string,
   session: WorkspaceSessionState
@@ -73,11 +75,17 @@ export function buildHeadlessMobileSessionEditorTabs(
 export function retireHeadlessEditorTab(
   session: WorkspaceSessionState,
   worktreeId: string,
-  tab: Pick<HeadlessEditorTab, 'id' | 'filePath'>
+  tab: Pick<HeadlessEditorTab, 'id' | 'filePath'>,
+  force = false
 ): WorkspaceSessionState | null {
   const files = session.openFilesByWorktree?.[worktreeId] ?? []
-  if (!files.some((file) => file.filePath === tab.filePath)) {
+  const file = files.find((candidate) => candidate.filePath === tab.filePath)
+  if (!file) {
     return null
+  }
+  // No window here can prompt to save, and the draft lives nowhere else.
+  if (file.dirtyDraftContent !== undefined && !force) {
+    throw new Error(HEADLESS_EDITOR_UNSAVED_DRAFT_ERROR)
   }
   const unifiedTabId = editorUnifiedTab(session, worktreeId, tab.filePath)?.id ?? tab.id
   const withoutTab = (ids: readonly string[] | undefined): string[] | undefined =>
@@ -127,12 +135,13 @@ export type HeadlessEditorRetirementHost = {
 export function retireHeadlessMobileSessionEditorTab(
   host: HeadlessEditorRetirementHost,
   worktreeId: string,
-  tab: { id: string; type: string; filePath?: string }
+  tab: { id: string; type: string; filePath?: string },
+  force = false
 ): boolean {
   const session = host.getWorkspaceSessionForWorktree(worktreeId)
   const next =
     session && (tab.type === 'markdown' || tab.type === 'file') && tab.filePath
-      ? retireHeadlessEditorTab(session, worktreeId, { id: tab.id, filePath: tab.filePath })
+      ? retireHeadlessEditorTab(session, worktreeId, { id: tab.id, filePath: tab.filePath }, force)
       : null
   if (!next) {
     return false

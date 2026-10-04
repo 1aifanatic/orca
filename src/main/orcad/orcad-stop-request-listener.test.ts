@@ -112,6 +112,27 @@ describe('orcad stop-request listeners', () => {
     expect(existsSync(path)).toBe(true)
   })
 
+  it('acts once on a managed request written before the listeners were installed', async () => {
+    const managedStop = managedContext()
+    writeFileSync(
+      orcadManagedStopRequestPath(managedStop.instance),
+      JSON.stringify({
+        schemaVersion: 1,
+        transactionId: '0b9f6a3e-9e2c-4c8e-8f58-4c0f6b1d2e3a',
+        ...managedStop
+      })
+    )
+    const onRequest = vi.fn()
+    const prepare = vi.fn(async () => {})
+    const report = vi.spyOn(console, 'error').mockImplementation(() => {})
+    listen(onRequest, { installRoot: directory(), managedStop, beforeManagedStop: prepare })
+    await vi.waitFor(() => expect(onRequest).toHaveBeenCalledOnce())
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(prepare).toHaveBeenCalledOnce()
+    expect(onRequest).toHaveBeenCalledOnce()
+    expect(report).not.toHaveBeenCalled()
+  })
+
   it('ignores a managed request for another runtime and reports it once', async () => {
     const managedStop = managedContext()
     const onRequest = vi.fn()

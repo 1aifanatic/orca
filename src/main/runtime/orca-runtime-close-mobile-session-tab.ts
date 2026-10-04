@@ -306,14 +306,12 @@ export class OrcaRuntimeWithCloseMobileSessionTab extends OrcaRuntimeWithRefuseU
         tab,
         structuredAgentSessionTabCloseCause(options.reason)
       )
-    } else {
-      if (!this.notifier?.closeSessionTab) {
-        // Why: a headless host listed this editor from its own session, so it retires it there.
-        if (!retireHeadlessMobileSessionEditorTab(this, worktreeId, tab)) {
-          throw new Error('runtime_unavailable')
-        }
-        return finishCommittedClose()
+    } else if (!this.notifier?.closeSessionTab) {
+      // Why: a headless host listed this editor from its own session, so it retires it there.
+      if (!retireHeadlessMobileSessionEditorTab(this, worktreeId, tab, options.force)) {
+        throw new Error('runtime_unavailable')
       }
+    } else {
       await this.notifier.closeSessionTab(tab.id, worktreeId)
     }
     return finishCommittedClose()
