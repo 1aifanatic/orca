@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import type { Page, TestInfo } from '@stablyai/playwright-test'
+import type { BrowserWindow, Event as ElectronEvent, Input as ElectronInput } from 'electron'
 import { test, expect } from './helpers/orca-app'
 import { ensureTerminalVisible, waitForActiveWorktree, waitForSessionReady } from './helpers/store'
 import {
@@ -205,8 +206,8 @@ test.describe('Native IBus Hangul workspace notes @headful', () => {
     expect(process.env.GITHUB_ACTIONS).toBe('true')
     expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted')
     expect(process.env.DISPLAY).toMatch(/^:\d+(?:\.\d+)?$/)
-    const windowId = await electronApp.evaluate(({ BrowserWindow }) => {
-      const window = BrowserWindow.getAllWindows()[0]
+    const ownedWindow = await electronApp.browserWindow(orcaPage)
+    const windowId = await ownedWindow.evaluate((window: BrowserWindow) => {
       if (!window || window.isVisible() || process.env.ORCA_BACKGROUND_LAUNCH !== '1') {
         throw new Error('Native Notes requires an owned background window')
       }
@@ -214,7 +215,6 @@ test.describe('Native IBus Hangul workspace notes @headful', () => {
     })
     // Native input is confined to the harness-owned Xvfb display on hosted CI.
     runXdotool('windowmap', '--sync', windowId)
-    runXdotool('windowfocus', '--sync', windowId)
     execFileSync('ibus', ['engine', 'hangul'], { timeout: NATIVE_COMMAND_TIMEOUT_MS })
     expect(
       execFileSync('ibus', ['engine'], {
@@ -243,39 +243,121 @@ test.describe('Native IBus Hangul workspace notes @headful', () => {
     })
     const input = orcaPage.getByPlaceholder('Notes about this worktree...')
     await expect(input).toBeVisible()
-    await input.click()
+    await input.evaluate(async (element) => {
+      const animations = element.closest('[role=dialog]')?.getAnimations({ subtree: true }) ?? []
+      await Promise.all(animations.map((animation) => animation.finished.catch(() => undefined)))
+    })
+    const nativeProbe = await ownedWindow.evaluateHandle((window: BrowserWindow) => {
+      const inputs: ElectronInput[] = []
+      const record = (_event: ElectronEvent, input: ElectronInput): void => {
+        inputs.push({ ...input })
+      }
+      window.webContents.on('before-input-event', record)
+      return {
+        window,
+        inputs,
+        dispose: () => window.webContents.removeListener('before-input-event', record)
+      }
+    })
     const events = await input.evaluateHandle((element) => {
       if (!(element instanceof HTMLTextAreaElement)) {
         throw new Error('Missing Notes textarea')
       }
-      const events: TerminalImeDomEvent[] = []
-      for (const type of [
+      const dom: TerminalImeDomEvent[] = []
+      const capture: {
+        type: string
+        scope: string
+        key: string | null
+        code: string | null
+        keyCode: number | null
+        isComposing: boolean | null
+        isTrusted: boolean
+        targetIsNotes: boolean
+        activeIsNotes: boolean
+        documentFocused: boolean
+        target: string
+        path: string[]
+      }[] = []
+      const label = (target: EventTarget | null): string =>
+        target instanceof Element
+          ? `${target.tagName}#${target.id}[${target.getAttribute('placeholder') ?? ''}]`
+          : target === window
+            ? 'window'
+            : target === document
+              ? 'document'
+              : 'other'
+      const recordDom = (event: Event): void => {
+        const keyboard = event instanceof KeyboardEvent ? event : null
+        const inputEvent = event instanceof InputEvent ? event : null
+        const composition = event instanceof CompositionEvent ? event : null
+        dom.push({
+          type: event.type,
+          data: inputEvent?.data ?? composition?.data ?? null,
+          inputType: inputEvent?.inputType ?? null,
+          key: keyboard?.key ?? null,
+          code: keyboard?.code ?? null,
+          keyCode: keyboard?.keyCode ?? null,
+          isComposing: keyboard?.isComposing ?? inputEvent?.isComposing ?? null,
+          selectionEnd: element.selectionEnd,
+          selectionStart: element.selectionStart,
+          value: element.value
+        })
+      }
+      const recordCapture = (event: Event): void => {
+        const keyboard = event instanceof KeyboardEvent ? event : null
+        capture.push({
+          type: event.type,
+          scope: label(event.currentTarget),
+          key: keyboard?.key ?? null,
+          code: keyboard?.code ?? null,
+          keyCode: keyboard?.keyCode ?? null,
+          isComposing: keyboard?.isComposing ?? null,
+          isTrusted: event.isTrusted,
+          targetIsNotes: event.target === element,
+          activeIsNotes: document.activeElement === element,
+          documentFocused: document.hasFocus(),
+          target: label(event.target),
+          path: event.composedPath().map(label)
+        })
+      }
+      const domTypes = [
         'compositionstart',
         'compositionupdate',
         'compositionend',
         'input',
         'keydown',
         'keyup'
-      ]) {
-        element.addEventListener(type, (event) => {
-          const keyboard = event instanceof KeyboardEvent ? event : null
-          const inputEvent = event instanceof InputEvent ? event : null
-          const composition = event instanceof CompositionEvent ? event : null
-          events.push({
-            type: event.type,
-            data: inputEvent?.data ?? composition?.data ?? null,
-            inputType: inputEvent?.inputType ?? null,
-            key: keyboard?.key ?? null,
-            code: keyboard?.code ?? null,
-            keyCode: keyboard?.keyCode ?? null,
-            isComposing: keyboard?.isComposing ?? inputEvent?.isComposing ?? null,
-            selectionEnd: element.selectionEnd,
-            selectionStart: element.selectionStart,
-            value: element.value
-          })
-        })
+      ]
+      const captureTypes = ['keydown', 'keyup', 'focus', 'blur']
+      for (const type of domTypes) {
+        element.addEventListener(type, recordDom, true)
       }
-      return events
+      for (const target of [window, document]) {
+        for (const type of captureTypes) {
+          target.addEventListener(type, recordCapture, true)
+        }
+      }
+      return {
+        dom,
+        capture,
+        focus: () => ({
+          documentFocused: document.hasFocus(),
+          activeIsNotes: document.activeElement === element,
+          activeElement: label(document.activeElement),
+          connected: element.isConnected,
+          value: element.value
+        }),
+        dispose: () => {
+          for (const type of domTypes) {
+            element.removeEventListener(type, recordDom, true)
+          }
+          for (const target of [window, document]) {
+            for (const type of captureTypes) {
+              target.removeEventListener(type, recordCapture, true)
+            }
+          }
+        }
+      }
     })
     const readSavedComment = () =>
       orcaPage.evaluate(() => {
@@ -287,27 +369,110 @@ test.describe('Native IBus Hangul workspace notes @headful', () => {
             .find((row) => row.id === state.activeWorktreeId)?.comment
         )
       })
+    const focusSnapshots: unknown[] = []
+    const readFocus = async (phase: string) => {
+      const renderer = await events.evaluate((probe) => probe.focus())
+      const main = await nativeProbe.evaluate(({ window }) => ({
+        windowFocused: window.isFocused(),
+        windowVisible: window.isVisible(),
+        webContentsFocused: window.webContents.isFocused(),
+        nativeWindowId: window.getNativeWindowHandle().readUInt32LE(0).toString()
+      }))
+      const xFocus = execFileSync('xdotool', ['getwindowfocus'], {
+        encoding: 'utf8',
+        timeout: NATIVE_COMMAND_TIMEOUT_MS
+      }).trim()
+      const snapshot = { phase, renderer, main, xFocus, windowId }
+      focusSnapshots.push(snapshot)
+      expect(main.nativeWindowId).toBe(windowId)
+      expect(xFocus).toBe(windowId)
+      expect(main.windowFocused).toBe(true)
+      expect(main.webContentsFocused).toBe(true)
+      expect(renderer.documentFocused).toBe(true)
+      expect(renderer.activeIsNotes).toBe(true)
+      return snapshot
+    }
     let completed = false
     try {
+      runXdotool('windowfocus', '--sync', windowId)
+      await nativeProbe.evaluate(({ window }) => window.webContents.focus())
+      const geometry = await orcaPage.evaluate(() => ({
+        ratio: window.devicePixelRatio,
+        width: window.innerWidth,
+        height: window.innerHeight
+      }))
+      const content = await ownedWindow.evaluate((window: BrowserWindow) =>
+        window.getContentBounds()
+      )
+      expect(geometry.ratio).toBe(1)
+      expect(content.width).toBe(geometry.width)
+      expect(content.height).toBe(geometry.height)
+      const box = await input.boundingBox()
+      expect(box).not.toBeNull()
+      if (!box) {
+        throw new Error('Missing native Notes input bounds')
+      }
+      runXdotool(
+        'mousemove',
+        '--window',
+        windowId,
+        String(Math.round(box.x + box.width / 2)),
+        String(Math.round(box.y + box.height / 2)),
+        'click',
+        '1'
+      )
+      await expect
+        .poll(() =>
+          events.evaluate((probe) => {
+            const focus = probe.focus()
+            return focus.documentFocused && focus.activeIsNotes
+          })
+        )
+        .toBe(true)
+      await readFocus('before-delivery-witness')
+      runXdotool('key', '--clearmodifiers', 'Shift_L')
+      await expect
+        .poll(() =>
+          events.evaluate(({ capture }) =>
+            ['keydown', 'keyup'].every((type) =>
+              capture.some(
+                (event) =>
+                  event.type === type &&
+                  event.key === 'Shift' &&
+                  event.scope === 'window' &&
+                  event.isTrusted &&
+                  event.targetIsNotes &&
+                  event.activeIsNotes &&
+                  event.documentFocused
+              )
+            )
+          )
+        )
+        .toBe(true)
+      await readFocus('before-composition')
+      const blursBeforeComposition = await events.evaluate(
+        ({ capture }) => capture.filter((event) => event.type === 'blur').length
+      )
       runXdotool('type', '--delay', '10', '--clearmodifiers', 'gksrmf')
       await expect(input).toHaveValue('한글')
       await expect
         .poll(() =>
           events.evaluate(
-            (trace) =>
+            ({ dom: trace }) =>
               trace.filter((event) => event.type === 'compositionstart').length >
               trace.filter((event) => event.type === 'compositionend').length
           )
         )
         .toBe(true)
       const compositionEndsBeforeReturn = await events.evaluate(
-        (trace) => trace.filter((event) => event.type === 'compositionend').length
+        ({ dom: trace }) => trace.filter((event) => event.type === 'compositionend').length
       )
+      await readFocus('before-confirm-return')
       runXdotool('key', 'Return')
       await expect
         .poll(() =>
           events.evaluate(
-            (trace) => trace.filter((event) => event.type === 'compositionend').length
+            ({ dom: trace }) => trace.filter((event) => event.type === 'compositionend').length
           )
         )
         .toBeGreaterThan(compositionEndsBeforeReturn)
@@ -320,34 +485,127 @@ test.describe('Native IBus Hangul workspace notes @headful', () => {
       await expect(input).toBeVisible()
       await expect(input).toHaveValue('한글')
       expect(await readSavedComment()).not.toBe('한글')
-      await orcaPage.screenshot({
-        path: testInfo.outputPath('native-confirm-keeps-notes-open.png')
-      })
+      await readFocus('before-save-return')
+      expect(
+        await events.evaluate(
+          ({ capture }) => capture.filter((event) => event.type === 'blur').length
+        )
+      ).toBe(blursBeforeComposition)
+      const capturesBeforeSave = await events.evaluate(({ capture }) => capture.length)
       runXdotool('key', 'Return')
+      await expect
+        .poll(() =>
+          events.evaluate(
+            ({ capture }, start) =>
+              capture
+                .slice(start)
+                .some(
+                  (event) =>
+                    event.type === 'keydown' &&
+                    event.key === 'Enter' &&
+                    event.keyCode === 13 &&
+                    event.isComposing === false &&
+                    event.scope === 'window' &&
+                    event.isTrusted &&
+                    event.targetIsNotes &&
+                    event.activeIsNotes &&
+                    event.documentFocused
+                ),
+            capturesBeforeSave
+          )
+        )
+        .toBe(true)
       await expect(input).toBeHidden()
       await expect.poll(readSavedComment).toBe('한글')
-      const dom = await events.jsonValue()
+      const dom = await events.evaluate(({ dom }) => dom)
       expect(dom.some((event) => event.type === 'compositionstart')).toBe(true)
       expect(dom.some((event) => /[\uac00-\ud7af]/.test(event.data ?? ''))).toBe(true)
       appendImeEngagementReceipt(testInfo.title, { dom, onData: [] })
       completed = true
-    } finally {
-      const dom = await events.jsonValue()
-      await testInfo.attach('native-notes-dom-trace', {
-        body: JSON.stringify({
-          nativeOperatingSystemIme: true,
-          engine: 'ibus-hangul',
-          display: process.env.DISPLAY,
-          completed,
-          notesVisible: await input.isVisible(),
-          notesValue: (await input.count()) ? await input.inputValue() : null,
-          savedComment: await readSavedComment(),
-          onData: [],
-          dom
-        }),
-        contentType: 'application/json'
+      await orcaPage.screenshot({
+        path: testInfo.outputPath('native-deliberate-return-saves-notes.png')
       })
-      await events.dispose()
+    } finally {
+      const readDiagnostic = async <T>(read: () => Promise<T>): Promise<T | null> => {
+        let timer: ReturnType<typeof setTimeout> | undefined
+        try {
+          return await Promise.race([
+            read().catch(() => null),
+            new Promise<null>((resolve) => {
+              timer = setTimeout(() => resolve(null), 1_000)
+            })
+          ])
+        } catch {
+          return null
+        } finally {
+          if (timer) {
+            clearTimeout(timer)
+          }
+        }
+      }
+      const trace = await readDiagnostic(() =>
+        events.evaluate(({ dom, capture, focus }) => ({ dom, capture, focus: focus() }))
+      )
+      const native = await readDiagnostic(() =>
+        nativeProbe.evaluate(({ inputs, window }) => ({
+          inputs,
+          windowFocused: window.isFocused(),
+          windowVisible: window.isVisible(),
+          webContentsFocused: window.webContents.isFocused()
+        }))
+      )
+      const notes = await readDiagnostic(() =>
+        orcaPage.evaluate(() => {
+          const element = document.querySelector(
+            'textarea[placeholder="Notes about this worktree..."]'
+          )
+          const state = window.__store?.getState()
+          return {
+            notesPresent: element instanceof HTMLTextAreaElement,
+            notesValue: element instanceof HTMLTextAreaElement ? element.value : null,
+            savedComment:
+              state &&
+              Object.values(state.worktreesByRepo)
+                .flat()
+                .find((row) => row.id === state.activeWorktreeId)?.comment
+          }
+        })
+      )
+      let evidenceAttached = false
+      await testInfo
+        .attach('native-notes-dom-trace', {
+          body: JSON.stringify({
+            nativeOperatingSystemIme: true,
+            engine: 'ibus-hangul',
+            display: process.env.DISPLAY,
+            completed,
+            notes,
+            focusSnapshots,
+            native,
+            onData: [],
+            ...trace
+          }),
+          contentType: 'application/json'
+        })
+        .then(() => {
+          evidenceAttached = true
+        })
+        .catch(() => undefined)
+      await readDiagnostic(() => events.evaluate((probe) => probe.dispose()))
+      await readDiagnostic(() =>
+        nativeProbe.evaluate((probe) => {
+          probe.dispose()
+        })
+      )
+      await events.dispose().catch(() => undefined)
+      await nativeProbe.dispose().catch(() => undefined)
+      await ownedWindow.dispose().catch(() => undefined)
+      if (completed) {
+        expect(trace).not.toBeNull()
+        expect(native).not.toBeNull()
+        expect(notes).not.toBeNull()
+        expect(evidenceAttached).toBe(true)
+      }
     }
   })
 })
