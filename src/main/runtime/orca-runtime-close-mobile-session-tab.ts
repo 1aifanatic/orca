@@ -21,6 +21,7 @@ import type { RuntimeCommandSurfaceHost } from './orca-runtime-core'
 import { SESSION_TAB_NOT_FOUND_ERROR } from '../../shared/session-tab-close'
 import { rendererPublicationThrottle } from '../window/renderer-publication-throttle'
 import { structuredAgentSessionTabCloseCause } from './structured-agent-session-tab-close-cause'
+import { retireHeadlessMobileSessionEditorTab } from './mobile-session-editor-projection'
 
 export class OrcaRuntimeWithCloseMobileSessionTab extends OrcaRuntimeWithRefuseUnattributedMobileSessionTabClose {
   async closeMobileSessionTab(
@@ -307,7 +308,11 @@ export class OrcaRuntimeWithCloseMobileSessionTab extends OrcaRuntimeWithRefuseU
       )
     } else {
       if (!this.notifier?.closeSessionTab) {
-        throw new Error('runtime_unavailable')
+        // Why: a headless host listed this editor from its own session, so it retires it there.
+        if (!retireHeadlessMobileSessionEditorTab(this, worktreeId, tab)) {
+          throw new Error('runtime_unavailable')
+        }
+        return finishCommittedClose()
       }
       await this.notifier.closeSessionTab(tab.id, worktreeId)
     }

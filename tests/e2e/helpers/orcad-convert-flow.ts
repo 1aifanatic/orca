@@ -7,7 +7,6 @@ import type { Page } from '@stablyai/playwright-test'
 import { expect } from './orca-app'
 import { readPersistedProfileState } from './persisted-profile-state'
 import { findOrcadMigrationSourceCutoverForTarget } from '../../../src/main/ssh/orcad-migration-cutover-journal'
-import { toRuntimeExecutionHostId } from '../../../src/shared/execution-host'
 
 const CONVERT_TIMEOUT_MS = 8 * 60_000
 
@@ -111,6 +110,7 @@ export type ConvertedHost = {
   worktreeId: string
   repoPath: string
   folderPath: string
+  sessionFilePath: string
 }
 
 /** Connects with the template in place, then proves conversion, retention and retirement. */
@@ -155,14 +155,19 @@ export async function convertThenRetire(
   expect(await serverCall(page, environment!.id, 'folderWorkspace.list')).toContain(
     jsonText(host.folderPath)
   )
-  // Not asserted yet: the server lists no migrated editor tab (see the PR); logged for the fix.
-  console.log(
-    `[orcad-convert] server tabs ${await serverCall(page, environment!.id, 'session.tabs.list', {
-      worktree: `id:${host.worktreeId}`
-    })} runtime partition ${await page.evaluate(
-      async (hostId) => JSON.stringify(await window.api.session.get(hostId)),
-      toRuntimeExecutionHostId(environment!.id)
-    )}`
+  // The relay-era editor tab moved with the session; the server lists it for every client.
+  await expect
+    .poll(
+      async () =>
+        await serverCall(page, environment!.id, 'session.tabs.list', {
+          worktree: `id:${host.worktreeId}`
+        }),
+      { timeout: 30_000 }
+    )
+    .toContain(jsonText(host.sessionFilePath))
+  // A fresh managed server answers the whole inventory too, instead of waiting on a renderer.
+  expect(await serverCall(page, environment!.id, 'session.tabs.listAll', {})).toContain(
+    jsonText(host.sessionFilePath)
   )
 
   // 3. Source retained for a downgrade, then retired once the rollout flag is on.

@@ -34,6 +34,9 @@ export function sshHostServerStatusLine(
     return relayLine(status)
   }
   if (target.managedServerUnavailable) {
+    if (target.managedServerUnavailable.reason === TCP_FORWARDING_REFUSED) {
+      return forwardingRefusedLine()
+    }
     return {
       tone: 'muted',
       text: translate(
@@ -44,6 +47,19 @@ export function sshHostServerStatusLine(
     }
   }
   return null
+}
+
+// Mirrors main's TCP_FORWARDING_REFUSED_REASON; the renderer can't import main.
+const TCP_FORWARDING_REFUSED = 'tcp_forwarding_refused'
+
+function forwardingRefusedLine(): SshHostServerStatusLine {
+  return {
+    tone: 'warning',
+    text: translate(
+      'auto.components.settings.sshHostServer.forwardingRefused',
+      'Runs the relay: this host’s SSH server doesn’t allow port forwarding, which a managed Orca server needs.'
+    )
+  }
 }
 
 function settingUpLabel(phase: 'deploying' | 'converting' | 'connecting'): string {
@@ -88,6 +104,9 @@ function relayLine(
         )
       }
     case 'orcad_unavailable':
+      if (status.detail === TCP_FORWARDING_REFUSED) {
+        return forwardingRefusedLine()
+      }
       return {
         tone: 'muted',
         text: translate(
