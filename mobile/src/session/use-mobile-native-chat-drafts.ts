@@ -201,7 +201,7 @@ export function useMobileNativeChatDrafts(args: {
   }, [])
 
   const restoreRejectedDraft = useCallback((origin: MobileNativeChatSendOrigin, text: string) => {
-    // Appended, so typing done while the send was in flight stays and the returned text is never dropped.
+    // Appended, so typing done while the send was in flight stays and the returned text isn't dropped.
     setDrafts((previous) => {
       const current = previous[origin.draftKey] ?? ''
       const next = appendReturnedDraftText(current, text)
