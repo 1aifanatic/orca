@@ -109,7 +109,7 @@ describe('the notice on each message that did not go through', () => {
       [],
       NOT_FAILED_HERE
     ).get(agentJournalSubmissionKey('earlier'))
-    expect(notice).toEqual({ text: 'Claude messages support at most 20 images' })
+    expect(notice).toEqual({ text: 'Claude messages support at most 20 images', notSent: true })
     expect(retry).not.toHaveBeenCalled()
   })
 
@@ -225,7 +225,8 @@ describe('the notice on each message that did not go through', () => {
         NOT_FAILED_HERE
       )
       expect(notices.get(agentJournalSubmissionKey('rejected'))).toEqual({
-        text: 'Message was not sent.'
+        text: 'Message was not sent.',
+        notSent: true
       })
     }
   })
@@ -424,6 +425,49 @@ describe('the notice on each message that did not go through', () => {
   })
 
   // An earlier attempt under the id may have landed, so the row never says it was not sent.
+  // Only a plain "not sent" reads muted, the host's copy until its row loads included, so nothing
+  // turns from red to muted; a doubt still reads as one to check.
+  it('marks as not sent only words that say the message did not go out', () => {
+    const notices = structuredAgentSessionDeliveryNotices(
+      [
+        entry('doubt', { state: 'unconfirmed' }),
+        entry('expired', {
+          lastAttemptAt: 1,
+          lastFailure: { kind: 'refused', code: 'agent_session_operation_expired' }
+        }),
+        entry('hostCopy', { state: 'rejected', lastFailure: { kind: 'rejected', reason: null } }),
+        entry('held', {
+          lastFailure: { kind: 'refused', code: 'agent_session_owner_restart_failed' }
+        })
+      ],
+      'Claude',
+      vi.fn(),
+      [
+        {
+          clientMessageId: 'elsewhere',
+          fence: 1,
+          payloadFingerprint: 'fingerprint',
+          dispatchState: 'rejected',
+          providerItemId: null,
+          reason: 'not_delivered',
+          submittedAt: 1,
+          resolvedAt: 1
+        }
+      ],
+      [],
+      NOT_FAILED_HERE
+    )
+    expect(
+      Object.fromEntries([...notices].map(([id, notice]) => [id, notice.notSent === true]))
+    ).toEqual({
+      [agentJournalSubmissionKey('doubt')]: false,
+      [agentJournalSubmissionKey('expired')]: false,
+      [agentJournalSubmissionKey('hostCopy')]: true,
+      [agentJournalSubmissionKey('held')]: true,
+      [agentJournalSubmissionKey('elsewhere')]: true
+    })
+  })
+
   it('words a kept message whose id expired as an outcome Orca cannot confirm', () => {
     const notices = structuredAgentSessionDeliveryNotices(
       [

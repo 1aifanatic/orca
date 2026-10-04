@@ -89,6 +89,7 @@ function sameNoticesKept(
     const same =
       before !== undefined &&
       before.text === notice.text &&
+      before.notSent === notice.notSent &&
       (before.onRetry === undefined) === (notice.onRetry === undefined) &&
       (before.onDismiss === undefined) === (notice.onDismiss === undefined)
     allKept &&= same

@@ -196,7 +196,8 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
     )
 
     expect(notices.get(agentJournalSubmissionKey('first'))).toEqual({
-      text: 'Your message was not sent.'
+      text: 'Your message was not sent.',
+      notSent: true
     })
   })
 
@@ -367,7 +368,7 @@ describe("one row per rejected message, the host's once it records the rejection
       )
       // In the host's words, with no control.
       expect([...notices]).toEqual([
-        [hostRow.id, { text: 'Orca restarted before this message was sent.' }]
+        [hostRow.id, { text: 'Orca restarted before this message was sent.', notSent: true }]
       ])
     }
   })

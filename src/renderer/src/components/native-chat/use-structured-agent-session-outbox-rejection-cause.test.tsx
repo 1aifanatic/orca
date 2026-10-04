@@ -342,7 +342,7 @@ describe('a send the host rejected because the agent never started', () => {
     const onSecond = notice(second.result.current.outbox, second.result.current.failedHere)
 
     for (const shown of [onFirst, onSecond]) {
-      expect(shown).toEqual({ text: REASON })
+      expect(shown).toEqual({ text: REASON, notSent: true })
     }
     await act(() => new Promise((resolve) => setTimeout(resolve, 1500)))
     // Only the first mount's question about the send it left in doubt; nothing resends it.

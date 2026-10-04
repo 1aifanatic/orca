@@ -34,15 +34,26 @@ import { translate } from '@/i18n/i18n'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
 
+function deliveryIsInDoubt(entry: StructuredAgentSessionOutboxEntry): boolean {
+  // A send attempted before a Stop and then interrupted may already be with the host.
+  const attemptedAcrossStop =
+    entry.outlivedStop === true && entry.lastAttemptAt !== null && !entry.lastFailure
+  return entry.state === 'unconfirmed' || attemptedAcrossStop
+}
+
+/** Whether the entry's words say only that it was not sent, never that it may have landed. */
+function deliveryNoticeSaysNotSent(entry: StructuredAgentSessionOutboxEntry): boolean {
+  return (
+    !deliveryIsInDoubt(entry) && !(entry.lastFailure && structuredAgentSessionEntryIdExpired(entry))
+  )
+}
+
 function deliveryNoticeText(
   entry: StructuredAgentSessionOutboxEntry,
   context: AgentSessionFailureWordsContext,
   failedHere: ReadonlySet<string>
 ): string {
-  // A send attempted before a Stop and then interrupted may already be with the host.
-  const attemptedAcrossStop =
-    entry.outlivedStop === true && entry.lastAttemptAt !== null && !entry.lastFailure
-  if (entry.state === 'unconfirmed' || attemptedAcrossStop) {
+  if (deliveryIsInDoubt(entry)) {
     return translate(
       'auto.components.native.chat.NativeChatStructuredSession.1f772bb5d0',
       'Message delivery is unconfirmed.'
@@ -106,10 +117,11 @@ export function structuredAgentSessionDeliveryNotices(
         (stalledFrom === -1 || index <= stalledFrom) &&
         !structuredAgentSessionEntryRejectedByHost(entry)
       const text = deliveryNoticeText(entry, { agentName, retryControl }, failedHere)
-      notices.set(
-        agentJournalSubmissionKey(entry.clientMessageId),
-        retryControl ? { text, onRetry: () => retry(entry.clientMessageId) } : { text }
-      )
+      notices.set(agentJournalSubmissionKey(entry.clientMessageId), {
+        text,
+        ...(deliveryNoticeSaysNotSent(entry) ? { notSent: true as const } : {}),
+        ...(retryControl ? { onRetry: () => retry(entry.clientMessageId) } : {})
+      })
     }
   }
   // After the outbox's: in the host's words, whether its row or the outbox's copy draws it.
@@ -118,6 +130,7 @@ export function structuredAgentSessionDeliveryNotices(
     const id = agentJournalSubmissionKey(submission.clientMessageId)
     if (shown.has(id)) {
       notices.set(id, {
+        notSent: true,
         text: agentSessionWriteNoticeText(
           structuredAgentSessionRecordedRejectionParts(
             submission,

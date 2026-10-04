@@ -156,7 +156,7 @@ it('leaves on the live batch that rejects it on a host that places the row at th
   expect(shown(state, [sent])).toEqual({
     kept: [],
     rows: [{ id: MESSAGE_ID, unsent: true }],
-    notice: { text: WORDS }
+    notice: { text: WORDS, notSent: true }
   })
 })
 
@@ -166,7 +166,7 @@ it('leaves on the page that opens the chat when that page holds the row', () => 
   expect(shown(state, [RECORDED_COPY])).toEqual({
     kept: [],
     rows: [{ id: MESSAGE_ID, unsent: true }],
-    notice: { text: WORDS }
+    notice: { text: WORDS, notSent: true }
   })
 })
 
@@ -188,7 +188,7 @@ it('draws once, with no control, while its row is outside the window, and leaves
   const before = shown(state, [copy({ state: 'dispatching', lastAttemptAt: 9 })])
   expect(before.kept).toMatchObject([{ clientMessageId: 'm', state: 'rejected' }])
   expect(before.rows).toEqual([{ id: MESSAGE_ID, unsent: true }])
-  expect(before.notice).toEqual({ text: WORDS })
+  expect(before.notice).toEqual({ text: WORDS, notSent: true })
 
   // Scrolling back loads the page; no control on the copy is involved.
   state = reduceStructuredAgentSession(state, {
@@ -202,7 +202,7 @@ it('draws once, with no control, while its row is outside the window, and leaves
   expect(shown(state, before.kept)).toEqual({
     kept: [],
     rows: [{ id: MESSAGE_ID, unsent: true }],
-    notice: { text: WORDS }
+    notice: { text: WORDS, notSent: true }
   })
 })
 
@@ -212,7 +212,7 @@ it('keeps a stored copy whose record is not held drawn, with no control, and nev
 
   expect(after.kept).toEqual([RECORDED_COPY])
   expect(after.rows).toEqual([{ id: MESSAGE_ID, unsent: true }])
-  expect(after.notice).toEqual({ text: WORDS })
+  expect(after.notice).toEqual({ text: WORDS, notSent: true })
   // The drain passes over it: nothing it holds is ever on its way.
   expect(admitStructuredAgentSessionOutboxEntry(after.kept)).toEqual({ state: 'idle', entry: null })
 })

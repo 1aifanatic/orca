@@ -138,7 +138,7 @@ it("keeps the outbox copy of a rejected message whose row is outside the window,
     [],
     new Set()
   ).get(MESSAGE_ID)
-  expect(notice).toEqual({ text: 'Orca restarted before this message was sent.' })
+  expect(notice).toEqual({ text: 'Orca restarted before this message was sent.', notSent: true })
 
   // Paging back loads the row: the outbox lets go, and the host's row is the one drawn.
   state = reduceStructuredAgentSession(state, {
