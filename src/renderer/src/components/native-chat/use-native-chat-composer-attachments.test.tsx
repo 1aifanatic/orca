@@ -496,7 +496,33 @@ describe('useNativeChatComposerAttachments', () => {
     act(() => back.root.unmount())
   })
 
-  it('excludes a pending chip from the scope cache while a settled chip persists', async () => {
+  it('keeps a stored file whose reference is held for an input-method composition across a remount', async () => {
+    let composing = true
+    const probe = await renderProbe('pty-ime', true, { isComposing: () => composing })
+    const chips = probe.latest().pendingChips
+    let chipId: string | null = null
+    act(() => {
+      chipId = chips.begin(undefined, 'notes.pdf')
+    })
+    if (!chipId) {
+      throw new Error('expected a pending chip')
+    }
+    const id: string = chipId
+    // The upload finishes mid-composition: the reference waits for the composition to settle.
+    act(() => {
+      expect(chips.drop(id)).toBe(true)
+      chips.attachReferences(['/srv/agent-session-attachments/u4/notes.pdf'])
+    })
+    // A prompt card takes the composer's place before the composition settles.
+    act(() => probe.root.unmount())
+    composing = false
+
+    expect(readNativeChatDraftCache('pty-ime')).toContain(
+      '@/srv/agent-session-attachments/u4/notes.pdf'
+    )
+  })
+
+  it('keeps a pending chip in the scope cache, without its preview, beside a settled one', async () => {
     const probe = await renderProbe('pty-1')
     let pendingId: string | null = null
     act(() => {
@@ -506,10 +532,11 @@ describe('useNativeChatComposerAttachments', () => {
       probe.latest().attachResolvedPaths(['/tmp/settled.png'])
     })
 
+    // A composer that comes back must still wait for the pending one.
     const cached = readNativeChatAttachmentCache('pty-1')
-    expect(cached.some((attachment) => attachment.id === pendingId)).toBe(false)
-    expect(cached).toMatchObject([{ path: '/tmp/settled.png' }])
-    expect(cached[0]?.previewUrl).toBeUndefined()
+    expect(cached).toMatchObject([{ id: pendingId, pending: true }, { path: '/tmp/settled.png' }])
+    expect(cached.every((attachment) => attachment.previewUrl === undefined)).toBe(true)
+    expect(probe.latest().imageAttachments[0]?.previewUrl).toBe('blob:preview-1')
     act(() => probe.root.unmount())
   })
 

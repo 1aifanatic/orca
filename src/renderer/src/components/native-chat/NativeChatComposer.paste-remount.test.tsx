@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 
 // A screenshot pasted into a chat on a paired server is still uploading when an agent prompt card
-// replaces the composer. The real composer, attachment and paste hooks keep the upload: it is
-// waiting in the composer when the composer comes back.
+// replaces the composer. The real composer, attachment and paste hooks keep the upload, and Send
+// waits for it, whenever the composer comes back; a rich-text paste's image is owed from the start.
 
 import { act, cleanup, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -11,6 +11,7 @@ import type { ClipboardEventLike } from './native-chat-clipboard-payload'
 type FieldProps = {
   onPaste?: (event: ClipboardEventLike) => void
   imageAttachments?: { path: string; pending?: boolean }[]
+  sendButtonDisabled?: boolean
 }
 
 const mocks = vi.hoisted(() => {
@@ -69,6 +70,10 @@ vi.mock('./native-chat-attachment-upload', async (importOriginal) => ({
 
 import { NativeChatComposer } from './NativeChatComposer'
 import {
+  clearNativeChatDraftCacheForTests,
+  writeNativeChatDraftCache
+} from './native-chat-draft-cache'
+import {
   clearNativeChatAttachmentCacheForTests,
   readNativeChatAttachmentCache
 } from './use-native-chat-composer-attachments'
@@ -118,14 +123,29 @@ function installPreloadApi(ui: Record<string, unknown>): void {
   })
 }
 
-function imagePaste(): ClipboardEventLike {
+function imagePaste(text?: string): ClipboardEventLike {
   const data = new DataTransfer()
   data.items.add(new File(['image'], 'image.png', { type: 'image/png' }))
+  if (text) {
+    data.setData('text/plain', text)
+  }
   return new ClipboardEvent('paste', { clipboardData: data, cancelable: true })
+}
+
+function holdUpload(): (path: string) => void {
+  let finishUpload: (path: string) => void = () => {}
+  mocks.save.mockReturnValue(
+    new Promise<string>((resolve) => {
+      finishUpload = resolve
+    })
+  )
+  installPreloadApi({ saveClipboardImageAsTempFile: mocks.save })
+  return (path) => finishUpload(path)
 }
 
 beforeEach(() => {
   clearNativeChatAttachmentCacheForTests()
+  clearNativeChatDraftCacheForTests()
   mocks.state.fieldProps = null
   mocks.prepare.mockResolvedValue({
     ok: true,
@@ -169,5 +189,35 @@ describe('a paste into a chat on a paired server', () => {
     ])
     render(composer())
     expect(mocks.state.fieldProps?.imageAttachments).toMatchObject([{ path: STORED }])
+  })
+
+  it('still holds Send when the composer returns before the upload has finished', async () => {
+    const finishUpload = holdUpload()
+    const first = render(composer())
+    await act(async () => mocks.state.fieldProps?.onPaste?.(imagePaste()))
+    first.unmount()
+
+    // Back from the prompt card while the image is still on its way to the server.
+    render(composer())
+    expect(mocks.state.fieldProps?.sendButtonDisabled).toBe(true)
+    expect(mocks.state.fieldProps?.imageAttachments).toMatchObject([{ pending: true }])
+
+    await act(async () => finishUpload(STORED))
+    expect(mocks.state.fieldProps?.imageAttachments).toMatchObject([{ path: STORED }])
+    expect(mocks.state.fieldProps?.imageAttachments?.[0]?.pending).toBeFalsy()
+  })
+
+  it('holds Send for rich text while the server is still asked whether it takes the image', async () => {
+    const prepared = Promise.withResolvers<unknown>()
+    mocks.prepare.mockReturnValue(prepared.promise)
+    holdUpload()
+    // What the user typed, and the pasted text with it: Send is open before the paste.
+    writeNativeChatDraftCache(PANE, 'look at this caption')
+    render(composer())
+    expect(mocks.state.fieldProps?.sendButtonDisabled).toBe(false)
+    await act(async () => mocks.state.fieldProps?.onPaste?.(imagePaste('caption')))
+
+    // The text is in; the image is not yet anywhere, but it is owed to this message.
+    expect(mocks.state.fieldProps?.sendButtonDisabled).toBe(true)
   })
 })

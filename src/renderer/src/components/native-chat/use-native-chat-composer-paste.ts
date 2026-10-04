@@ -33,8 +33,14 @@ export type UseNativeChatComposerPasteArgs = {
    *  remote host, or the attached path names a file the agent cannot read. */
   resolveAttachmentOwner: () => NativeChatAttachmentOwner
   attachResolvedPaths: (paths: string[], connectionId?: string | null) => void
-  beginPendingImageAttachment: (previewUrl?: string) => string | null
+  beginPendingImageAttachment: (
+    previewUrl?: string,
+    pendingName?: string,
+    options?: { hidden?: true }
+  ) => string | null
   resolvePendingImageAttachment: (id: string, path: string, connectionId?: string | null) => void
+  /** Shows a chip begun hidden, with its thumbnail. */
+  revealPendingImageAttachment?: (id: string, previewUrl?: string) => void
   dropPendingImageAttachment: (id: string) => void
   insertTypedText: (text: string) => boolean
   setCaret: (caret: number) => void
@@ -49,6 +55,7 @@ export function useNativeChatComposerPaste({
   attachResolvedPaths,
   beginPendingImageAttachment,
   resolvePendingImageAttachment,
+  revealPendingImageAttachment,
   dropPendingImageAttachment,
   insertTypedText,
   setCaret,
@@ -61,11 +68,14 @@ export function useNativeChatComposerPaste({
   useLayoutEffect(() => {
     disabledRef.current = disabled
   }, [disabled])
-  const { lifetime, track, keepStoreUploadAfterUnmount } = useNativeChatPasteLifetime({
-    targetKey,
-    resolvePendingImageAttachment,
-    dropPendingImageAttachment
-  })
+  const { lifetime, track, startImageChip, keepStoreUploadAfterUnmount } =
+    useNativeChatPasteLifetime({
+      targetKey,
+      beginPendingImageAttachment,
+      resolvePendingImageAttachment,
+      revealPendingImageAttachment,
+      dropPendingImageAttachment
+    })
   const canPaste = useCallback(() => lifetime.active && !disabledRef.current, [lifetime])
   // A disabled composer still answers a paste, so it never vanishes silently.
   const showPasteUnavailable = useCallback(() => {
@@ -170,32 +180,19 @@ export function useNativeChatComposerPaste({
       // Why: snapshot the caret before the async temp-file round-trip — `caret`
       // state can move (further typing/selection) while the await is in flight.
       const caretAtPaste = caret
-      // The clipboard blob is already in this process, so the chip can show the
-      // real image on the same tick the paste happens — no round-trip at all.
-      let pendingId: string | null = null
-      const showChip = (): void => {
-        if (!ownerAcceptsClipboardImage(owner) || !canPaste()) {
-          return
-        }
-        const previewUrl = URL.createObjectURL(imageFile)
-        pendingId = beginPendingImageAttachment(previewUrl)
-        if (pendingId) {
-          track(pendingId, previewUrl, owner)
-        } else {
-          URL.revokeObjectURL(previewUrl)
-        }
-      }
-      // Beside pasted text, a server too old to store the image drops it quietly, so its chip waits
-      // for the server's answer instead of flashing.
+      // Beside pasted text, a server too old to store the image drops it quietly, so its chip stays
+      // out of sight until the server answers; Send waits for it from the start all the same.
       const awaitServer = Boolean(text) && owner.kind === 'runtime-session'
-      if (!awaitServer) {
-        showChip()
-      }
+      const chip = startImageChip(owner, imageFile, {
+        hidden: awaitServer,
+        canShow: () => ownerAcceptsClipboardImage(owner) && canPaste()
+      })
+      const pendingId = chip.id
       void (async () => {
         const saved = await saveClipboardImageForOwner(
           owner,
           async () => Boolean(text),
-          awaitServer ? showChip : undefined
+          awaitServer ? chip.reveal : undefined
         )
         if (keepStoreUploadAfterUnmount(pendingId, saved)) {
           return
@@ -214,7 +211,6 @@ export function useNativeChatComposerPaste({
       })()
     },
     [
-      beginPendingImageAttachment,
       canPaste,
       lifetime,
       caret,
@@ -223,7 +219,7 @@ export function useNativeChatComposerPaste({
       showPasteUnavailable,
       resolveAttachmentOwner,
       keepStoreUploadAfterUnmount,
-      track,
+      startImageChip,
       saveClipboardImageForOwner,
       setCaret,
       setNotice,

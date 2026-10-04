@@ -16,7 +16,8 @@ export type NativeChatPendingAttachmentChips = {
   resolve: (id: string, path: string, connectionId?: string | null) => void
   /** Removes the chip; false when the user already removed it, so its file must not attach. */
   drop: (id: string) => boolean
-  /** Inserts stored files as `@path` references, into the draft wherever the composer is now. */
+  /** Adds stored files as `@path` references to the scope's draft, which keeps them through an
+   *  input-method composition or a remount. */
   attachReferences: (paths: string[]) => void
 }
 

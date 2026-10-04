@@ -4,23 +4,37 @@ import type { NativeChatAttachmentOwner } from './native-chat-attachment-upload'
 /**
  * The pending chips of pastes this composer started, released when it unmounts or changes target.
  * A paste uploading into a paired server's store outlives the composer, which a prompt card
- * unmounts: its chip stays live, and its result is filed for the composer's return, as a drop's is
- * (`useNativeChatPendingAttachmentChips`).
+ * unmounts: its chip stays pending in the scope's attachment cache, where its result settles for
+ * the composer's return (`native-chat-attachment-cache.ts`).
  */
 export function useNativeChatPasteLifetime(args: {
   targetKey?: string
+  beginPendingImageAttachment: (
+    previewUrl?: string,
+    pendingName?: string,
+    options?: { hidden?: true }
+  ) => string | null
   /** Files the result into the composer's scope even once this instance is unmounted. */
   resolvePendingImageAttachment: (id: string, path: string, connectionId?: string | null) => void
+  revealPendingImageAttachment?: (id: string, previewUrl?: string) => void
   dropPendingImageAttachment: (id: string) => void
 }): {
   lifetime: { active: boolean; pending: Map<string, string> }
   track: (pendingId: string, preview: string, owner: NativeChatAttachmentOwner) => void
+  /** A paste's chip, shown at once with the clipboard's own thumbnail, or held out of sight
+   *  (`hidden`) until `reveal`; `id` is null when the composer refused it. */
+  startImageChip: (
+    owner: NativeChatAttachmentOwner,
+    imageFile: Blob,
+    options: { hidden: boolean; canShow: () => boolean }
+  ) => { id: string | null; reveal: () => void }
   keepStoreUploadAfterUnmount: (
     pendingId: string | null,
     saved: { status: string; tempPath?: string }
   ) => boolean
 } {
-  const { targetKey, resolvePendingImageAttachment, dropPendingImageAttachment } = args
+  const { targetKey, beginPendingImageAttachment, revealPendingImageAttachment } = args
+  const { resolvePendingImageAttachment, dropPendingImageAttachment } = args
   const dropPendingRef = useRef(dropPendingImageAttachment)
   useLayoutEffect(() => {
     dropPendingRef.current = dropPendingImageAttachment
@@ -58,6 +72,40 @@ export function useNativeChatPasteLifetime(args: {
     },
     [lifetime]
   )
+  const startImageChip = useCallback(
+    (
+      owner: NativeChatAttachmentOwner,
+      imageFile: Blob,
+      options: { hidden: boolean; canShow: () => boolean }
+    ): { id: string | null; reveal: () => void } => {
+      if (options.hidden) {
+        const id = beginPendingImageAttachment(undefined, undefined, { hidden: true })
+        if (id) {
+          track(id, '', owner)
+        }
+        const reveal = (): void => {
+          if (id && lifetime.active) {
+            const previewUrl = URL.createObjectURL(imageFile)
+            lifetime.pending.set(id, previewUrl)
+            revealPendingImageAttachment?.(id, previewUrl)
+          }
+        }
+        return { id, reveal }
+      }
+      if (!options.canShow()) {
+        return { id: null, reveal: () => {} }
+      }
+      const previewUrl = URL.createObjectURL(imageFile)
+      const id = beginPendingImageAttachment(previewUrl)
+      if (id) {
+        track(id, previewUrl, owner)
+      } else {
+        URL.revokeObjectURL(previewUrl)
+      }
+      return { id, reveal: () => {} }
+    },
+    [beginPendingImageAttachment, lifetime, revealPendingImageAttachment, track]
+  )
   const keepStoreUploadAfterUnmount = useCallback(
     (pendingId: string | null, saved: { status: string; tempPath?: string }): boolean => {
       if (!pendingId || lifetime.active || !lifetime.storeUploads.has(pendingId)) {
@@ -72,5 +120,5 @@ export function useNativeChatPasteLifetime(args: {
     },
     [dropPendingImageAttachment, lifetime, resolvePendingImageAttachment]
   )
-  return { lifetime, track, keepStoreUploadAfterUnmount }
+  return { lifetime, track, startImageChip, keepStoreUploadAfterUnmount }
 }

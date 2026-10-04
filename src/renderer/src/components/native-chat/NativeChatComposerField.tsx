@@ -77,6 +77,8 @@ export type NativeChatComposerImageAttachment = {
   pending?: boolean
   /** The file's name while it uploads: a dropped or picked file, not a pasted image. */
   pendingName?: string
+  /** Owed to the message but not shown yet: a rich-text paste's image while its server is asked. */
+  hidden?: true
 }
 
 /**
@@ -141,6 +143,7 @@ export function NativeChatComposerField({
   sessionOptionsPickerRequest,
   goalMode
 }: NativeChatComposerFieldProps): React.JSX.Element {
+  const shownAttachments = imageAttachments.filter((attachment) => !attachment.hidden)
   // Value the IME started from, and whether a programmatic clear was dropped on top of it.
   const compositionBaseRef = useRef('')
   const droppedDraftClearRef = useRef(false)
@@ -215,9 +218,9 @@ export function NativeChatComposerField({
               '[contain:paint]'
             )}
           >
-            {imageAttachments.length > 0 ? (
+            {shownAttachments.length > 0 ? (
               <div className="mb-2 flex flex-wrap gap-2 px-1 pt-1.5">
-                {imageAttachments.map((attachment) => (
+                {shownAttachments.map((attachment) => (
                   <NativeChatImageAttachmentPreview
                     key={attachment.id}
                     attachment={attachment}

@@ -49,7 +49,7 @@ vi.stubGlobal('URL', {
 import { useNativeChatComposerPaste } from './use-native-chat-composer-paste'
 
 type HookApi = ReturnType<typeof useNativeChatComposerPaste>
-type Chip = { id: string; path: string; pending: boolean }
+type Chip = { id: string; path: string; pending: boolean; hidden?: true }
 
 const sessionOwner: NativeChatAttachmentOwner = {
   kind: 'runtime-session',
@@ -73,9 +73,10 @@ async function renderPaste(args: {
   attachResolvedPaths?: (...args: unknown[]) => void
   insertTypedText?: (text: string) => boolean
   setNotice?: (notice: string | null) => void
-}): Promise<{ api: () => HookApi; chips: Chip[]; begun: () => number }> {
+}): Promise<{ api: () => HookApi; chips: Chip[]; begun: () => number; revealed: () => number }> {
   const chips: Chip[] = []
   let counter = 0
+  let revealed = 0
   let api: HookApi | null = null
   function Probe(): null {
     api = useNativeChatComposerPaste({
@@ -86,10 +87,22 @@ async function renderPaste(args: {
       setCaret: () => {},
       resolveAttachmentOwner: () => sessionOwner,
       attachResolvedPaths: args.attachResolvedPaths ?? (() => {}),
-      beginPendingImageAttachment: () => {
+      beginPendingImageAttachment: (_preview, _name, options) => {
         counter += 1
-        chips.push({ id: `chip-${counter}`, path: '', pending: true })
+        chips.push({
+          id: `chip-${counter}`,
+          path: '',
+          pending: true,
+          ...(options?.hidden ? { hidden: true } : {})
+        })
         return `chip-${counter}`
+      },
+      revealPendingImageAttachment: (id) => {
+        const chip = chips.find((candidate) => candidate.id === id)
+        if (chip) {
+          delete chip.hidden
+          revealed += 1
+        }
       },
       resolvePendingImageAttachment: (id, path) => {
         const chip = chips.find((candidate) => candidate.id === id)
@@ -120,7 +133,8 @@ async function renderPaste(args: {
       return api
     },
     chips,
-    begun: () => counter
+    begun: () => counter,
+    revealed: () => revealed
   }
 }
 
@@ -212,8 +226,10 @@ describe('pasting into a structured chat on a paired server', () => {
     await act(async () => probe.api().handlePaste(imagePasteEvent('caption')))
     expect(insertTypedText).toHaveBeenCalledWith('caption')
     expect(setNotice).not.toHaveBeenCalledWith('needs newer server')
-    // No chip ever showed, so none flashed and vanished.
-    expect(probe.begun()).toBe(0)
+    // The image was owed to the message only out of sight: no chip showed, so none flashed.
+    expect(probe.begun()).toBe(1)
+    expect(probe.revealed()).toBe(0)
+    expect(probe.chips).toEqual([])
   })
 
   it('pastes rich text from the button into a chat on an older server without a refusal', async () => {

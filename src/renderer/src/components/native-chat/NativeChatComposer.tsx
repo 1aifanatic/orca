@@ -218,8 +218,9 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       resolveAttachmentOwner,
       attachResolvedPaths,
       beginPendingImageAttachment,
-      // Files a store upload that lands after a prompt card unmounted the composer.
+      // Settles into the scope cache, which outlives a composer a prompt card unmounted.
       resolvePendingImageAttachment: attachments.pendingChips.resolve,
+      revealPendingImageAttachment: attachments.revealPendingImageAttachment,
       dropPendingImageAttachment,
       setNotice
     })
