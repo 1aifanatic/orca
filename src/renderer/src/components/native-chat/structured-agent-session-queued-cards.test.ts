@@ -14,6 +14,8 @@ import {
   queuedMessageQueueRun
 } from './structured-agent-session-queued-cards'
 
+const IDLE_RUN = { isWorking: false, sendBlocked: false }
+
 function draft(
   id: string,
   position: number,
@@ -186,15 +188,30 @@ describe('queued message cards', () => {
     const next = draft('next', 2, { heldBy: null })
     // Between a turn's end and the queue's send of `next`: still running, and nothing to resume.
     const gap = project([held, next])
-    expect(queuedMessageQueueRun(gap, false)).toEqual({ turnRunning: true, resumable: false })
+    expect(queuedMessageQueueRun(gap, IDLE_RUN)).toEqual({
+      turnRunning: true,
+      sendsNext: true,
+      resumable: false
+    })
     expect(gap.map((card) => queuedMessageCardSteers(card, true))).toEqual([true, true])
-    expect(queuedMessageQueueRun(project([held]), false)).toEqual({
+    expect(queuedMessageQueueRun(project([held]), IDLE_RUN)).toEqual({
       turnRunning: false,
+      sendsNext: false,
       resumable: true
     })
     const failed = draft('failed', 1, { paused: true, pausedReason: 'send_failed', heldBy: null })
-    expect(queuedMessageQueueRun(project([failed]), false)).toEqual({
+    expect(queuedMessageQueueRun(project([failed]), IDLE_RUN)).toEqual({
       turnRunning: false,
+      sendsNext: false,
+      resumable: false
+    })
+  })
+
+  it('a host that refuses every send sends nothing: a card nothing holds does not keep a run going', () => {
+    const cards = projectQueuedMessageCards([draft('next', 1, { heldBy: null })], [], IDLE)
+    expect(queuedMessageQueueRun(cards, { isWorking: false, sendBlocked: true })).toEqual({
+      turnRunning: false,
+      sendsNext: false,
       resumable: false
     })
   })

@@ -11,11 +11,14 @@ import { NativeChatComposerGoalChip } from './NativeChatComposerGoalChip'
 import { NativeChatContextUsageRing } from './NativeChatContextUsageRing'
 import type { NativeChatContextUsageSummary } from './native-chat-context-usage-summary'
 import type { NativeChatOptionPickerRequest } from './native-chat-composer-types'
+import type { NativeChatComposerPrimaryAction } from './native-chat-composer-primary-action'
 
 export type NativeChatComposerActionsProps = {
   attachDisabled: boolean
   dictationDisabled: boolean
   sendDisabled: boolean
+  /** What the primary button does (`nativeChatComposerPrimaryAction`). */
+  primaryAction: NativeChatComposerPrimaryAction
   isWorking: boolean
   isDictating: boolean
   isDictationHoldMode: boolean
@@ -25,8 +28,7 @@ export type NativeChatComposerActionsProps = {
   onDictationHoldEnd: () => void
   onSend: () => void
   onStop?: () => void
-  /** Present when no turn runs, the composer is empty and the queue is held: the primary action
-   *  is Resume, which releases the held cards. */
+  /** Releases the held queue when the primary action is Resume. */
   onResume?: () => void
   sessionOptionsSurface: SessionOptionsSurface | null
   sessionOptionsSnapshot: SessionOptionDescriptor[]
@@ -41,6 +43,7 @@ export function NativeChatComposerActions({
   attachDisabled,
   dictationDisabled,
   sendDisabled,
+  primaryAction,
   isWorking,
   isDictating,
   isDictationHoldMode,
@@ -57,21 +60,22 @@ export function NativeChatComposerActions({
   onExitGoalMode,
   contextUsage
 }: NativeChatComposerActionsProps): React.JSX.Element {
+  const stops = primaryAction === 'stop'
+  const resumes = primaryAction === 'resume'
   const handleCriticalAction = (event: React.MouseEvent<HTMLButtonElement>): void => {
     // A double-click commonly lands after the first send has started and the button has
     // changed to Stop; ignore the second click instead of cancelling the new turn.
     if (event.detail > 1) {
       return
     }
-    if (isWorking) {
+    if (stops) {
       onStop?.()
-    } else if (onResume) {
-      onResume()
+    } else if (resumes) {
+      onResume?.()
     } else {
       onSend()
     }
   }
-  const resumes = !isWorking && onResume !== undefined
   const dictationLabel = isDictating
     ? translate('components.native-chat.composer.stopDictation', 'Stop dictation')
     : translate('components.native-chat.composer.startDictation', 'Start dictation')
@@ -154,9 +158,9 @@ export function NativeChatComposerActions({
         </Tooltip>
         <Button
           type="button"
-          data-native-chat-critical-action={isWorking ? 'stop' : undefined}
+          data-native-chat-critical-action={stops ? 'stop' : undefined}
           aria-label={
-            isWorking
+            stops
               ? translate('components.native-chat.stop', 'Stop the agent')
               : resumes
                 ? translate('components.native-chat.queuedMessages.resume', 'Resume')
@@ -164,11 +168,11 @@ export function NativeChatComposerActions({
           }
           disabled={sendDisabled}
           onClick={handleCriticalAction}
-          variant={isWorking ? 'secondary' : 'default'}
+          variant={stops ? 'secondary' : 'default'}
           size="icon"
           className="size-8 rounded-full pointer-coarse:size-10"
         >
-          {isWorking ? (
+          {stops ? (
             <Square className="size-3.5 fill-current" />
           ) : resumes ? (
             <Play className="size-3.5 fill-current" />

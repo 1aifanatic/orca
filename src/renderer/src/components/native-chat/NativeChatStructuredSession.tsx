@@ -24,6 +24,7 @@ import { useNativeChatLaunchDraftSignal } from './use-native-chat-launch-draft-a
 import { NativeChatLaunchRetry } from './NativeChatLaunchRetry'
 import { useNativeChatProvisionalLaunch } from './use-native-chat-provisional-launch'
 import { useStructuredAgentSessionHostExecutionPhase } from './StructuredAgentSessionStatusBridge'
+import { useStructuredAgentSessionRewindBlocksSends } from './use-structured-agent-session-status-field'
 import { NativeChatQueuedMessageList } from './NativeChatQueuedMessageList'
 import { useAppStore } from '../../store'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
@@ -57,6 +58,7 @@ export function NativeChatStructuredSession(
     composerScopeKey: paneKey,
     queueFollowUps,
     providerStarting: startupPhase === 'starting',
+    sendBlocked: useStructuredAgentSessionRewindBlocksSends(props.sessionId, props.target),
     transportEnabled: provisionalLaunch.transportEnabled,
     ...(provisionalLaunch.launch ? { launch: provisionalLaunch.launch } : {})
   })
@@ -396,7 +398,7 @@ export function NativeChatStructuredSession(
           isWorking={controller.canStop}
           onStop={() => void controller.stop()}
           steerQueued={controller.queuedMessages.steerNewest}
-          queueResume={controller.queuedMessages.queueResume}
+          queuePrimary={controller.queuedMessages.queuePrimary}
           structuredTransport={structuredTransport}
           launchSeed={{ ...launchDraftSignal, ownsTabWideLaunchDraft: true }}
         />

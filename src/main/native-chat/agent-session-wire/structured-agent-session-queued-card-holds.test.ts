@@ -14,6 +14,10 @@ import {
   queuedMessageCardSteers,
   queuedMessageQueueRun
 } from '../../../renderer/src/components/native-chat/structured-agent-session-queued-cards'
+import {
+  nativeChatComposerPrimaryAction,
+  type NativeChatComposerPrimaryAction
+} from '../../../renderer/src/components/native-chat/native-chat-composer-primary-action'
 import { HOST_TEST_SESSION } from './structured-agent-session-host-test-data'
 import {
   createQueuedMessageTestRig,
@@ -48,7 +52,14 @@ async function heldBy(): Promise<Record<string, AgentSessionQueuePause | null | 
   )
 }
 
-type ClientView = { resumable: boolean; steers: boolean[]; cards: number; working: boolean }
+type ClientView = {
+  resumable: boolean
+  steers: boolean[]
+  cards: number
+  working: boolean
+  /** The empty composer's primary button. */
+  button: NativeChatComposerPrimaryAction
+}
 
 /** Folds every published update as a client does, one at a time, into what its queue shows. */
 async function watchClient(): Promise<ClientView[]> {
@@ -84,12 +95,14 @@ async function watchClient(): Promise<ClientView[]> {
         queuePaused: queuePause !== null
       })
       const working = isStructuredAgentSessionMainAgentWorking(running, all)
-      const run = queuedMessageQueueRun(cards, working)
+      const run = queuedMessageQueueRun(cards, { isWorking: working, sendBlocked: false })
+      const queue = run.resumable ? 'held' : run.sendsNext ? 'sending' : null
       views.push({
         resumable: run.resumable,
         steers: cards.map((card) => queuedMessageCardSteers(card, run.turnRunning)),
         cards: cards.length,
-        working
+        working,
+        button: nativeChatComposerPrimaryAction({ isWorking: working, composerEmpty: true, queue })
       })
     }
   })
@@ -113,10 +126,12 @@ describe('which pause holds each card', () => {
       resumable: false,
       steers: [true, true],
       cards: 2,
-      working: false
+      working: false,
+      button: 'stop'
     })
     expect(views.filter((view) => view.resumable)).toEqual([])
     expect(views.flatMap((view) => view.steers)).not.toContain(false)
+    expect(views.map((view) => view.button)).not.toContain('send')
   })
 
   it("a restart's: the card from before it, not one typed during Orca's own turn since; the same holds as that turn ends", async () => {
@@ -138,9 +153,27 @@ describe('which pause holds each card', () => {
       resumable: false,
       steers: [true, true],
       cards: 2,
-      working: false
+      working: false,
+      button: 'stop'
     })
     expect(views.filter((view) => view.resumable)).toEqual([])
     expect(views.flatMap((view) => view.steers)).not.toContain(false)
+    expect(views.map((view) => view.button)).not.toContain('send')
+  })
+
+  it('after Resume over held cards the empty composer goes from Resume straight to Stop, never Send', async () => {
+    const working = await rig.workingSend()
+    const first = await queuedDraft('first')
+    await queuedDraft('second')
+    await rig.stop()
+    await rig.settleAccepted(working, 'stopped')
+    const views = await watchClient()
+    expect(views.at(-1)?.button).toBe('resume')
+    expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
+    await eventually(async () => expect(await rig.handoff(first)).toBeDefined())
+    await eventually(() => expect(views.at(-1)?.working).toBe(true))
+    // The update between the lifted hold and the first card's send is among them.
+    expect(views).toContainEqual(expect.objectContaining({ working: false, button: 'stop' }))
+    expect(views.map((view) => view.button)).not.toContain('send')
   })
 })

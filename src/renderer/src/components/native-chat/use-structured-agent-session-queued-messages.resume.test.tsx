@@ -25,7 +25,10 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 }))
 
 import { useStructuredAgentSessionMutate } from './use-structured-agent-session-mutate'
-import { useStructuredAgentSessionQueuedMessages } from './use-structured-agent-session-queued-messages'
+import {
+  useStructuredAgentSessionQueuedMessages,
+  type StructuredAgentSessionQueuedMessagesController
+} from './use-structured-agent-session-queued-messages'
 
 const RESUMED = {
   ok: true,
@@ -49,6 +52,7 @@ type ControllerInput = {
   queuePause?: AgentSessionQueuePause | null
   isWorking?: boolean
   hasPendingPrompt?: boolean
+  sendBlocked?: boolean
 }
 
 function renderController(initialProps: ControllerInput = {}) {
@@ -67,6 +71,7 @@ function renderController(initialProps: ControllerInput = {}) {
         submissions: [],
         hasPendingPrompt: input.hasPendingPrompt ?? false,
         isWorking: input.isWorking ?? false,
+        sendBlocked: input.sendBlocked ?? false,
         composerScopeKey: undefined,
         mutate
       })
@@ -76,12 +81,17 @@ function renderController(initialProps: ControllerInput = {}) {
 }
 
 /** A press of the composer's Resume, which the controller offers only over a held queue. */
-function resume(result: { current: { queueResume: { resume: () => Promise<void> } | undefined } }) {
-  const offered = result.current.queueResume
-  if (!offered) {
+function resume(result: { current: StructuredAgentSessionQueuedMessagesController }) {
+  const offered = result.current.queuePrimary
+  if (offered?.kind !== 'resume') {
     throw new Error('expected Resume to be offered')
   }
   return offered.resume()
+}
+
+function resumingOf(result: { current: StructuredAgentSessionQueuedMessagesController }) {
+  const offered = result.current.queuePrimary
+  return offered?.kind === 'resume' ? offered.resuming : undefined
 }
 
 afterEach(() => {
@@ -95,18 +105,26 @@ describe('whether Resume is offered', () => {
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a newer host may publish a reason this client's type does not list.
       const queuePause = { reason } as AgentSessionQueuePause
       const { result } = renderController({ queuePause })
-      expect(result.current.queueResume).toBeDefined()
+      expect(result.current.queuePrimary?.kind).toBe('resume')
     }
   )
 
   it('not without the queue capability: an older host, or no fence yet while connecting', () => {
-    expect(renderController({ enabled: false }).result.current.queueResume).toBeUndefined()
+    expect(renderController({ enabled: false }).result.current.queuePrimary).toBeUndefined()
+    const idle = { queuePause: null, enabled: false }
+    expect(renderController(idle).result.current.queuePrimary).toBeUndefined()
   })
 
   it('not while a turn runs, nor when nothing is held', () => {
-    expect(renderController({ isWorking: true }).result.current.queueResume).toBeUndefined()
-    expect(renderController({ queuePause: null }).result.current.queueResume).toBeUndefined()
-    expect(renderController({ queuedMessages: [] }).result.current.queueResume).toBeUndefined()
+    expect(renderController({ isWorking: true }).result.current.queuePrimary?.kind).not.toBe(
+      'resume'
+    )
+    expect(renderController({ queuePause: null }).result.current.queuePrimary?.kind).not.toBe(
+      'resume'
+    )
+    expect(renderController({ queuedMessages: [] }).result.current.queuePrimary?.kind).not.toBe(
+      'resume'
+    )
   })
 
   it('not over cards Resume would not send: held on their own, returned, or behind one', () => {
@@ -115,7 +133,9 @@ describe('whether Resume is offered', () => {
       card('returned', { position: 2, state: 'returned' }),
       card('behind', { position: 3 })
     ]
-    expect(renderController({ queuedMessages }).result.current.queueResume).toBeUndefined()
+    expect(renderController({ queuedMessages }).result.current.queuePrimary?.kind).not.toBe(
+      'resume'
+    )
   })
 })
 
@@ -131,7 +151,7 @@ describe("between a turn's end and the queue's send of its next card", () => {
     // The turn ended; the host has not yet published the card's send.
     rerender({ queuedMessages: next, queuePause: null, isWorking: false })
     running.push(result.current.turnRunning)
-    expect(result.current.queueResume).toBeUndefined()
+    expect(result.current.queuePrimary?.kind).not.toBe('resume')
     rerender({ queuedMessages: [], queuePause: null, isWorking: true })
     running.push(result.current.turnRunning)
     expect(running).toEqual([true, true, true])
@@ -147,6 +167,20 @@ describe("between a turn's end and the queue's send of its next card", () => {
     expect(renderController({ ...idle, queuedMessages: returned }).result.current.turnRunning).toBe(
       false
     )
+  })
+})
+
+describe("the composer's Stop for the queue's coming send", () => {
+  it('shows while a card nothing holds waits and no turn runs, never when the host refuses sends', () => {
+    const idle = { queuePause: null, isWorking: false }
+    expect(renderController(idle).result.current.queuePrimary).toEqual({ kind: 'sending' })
+    // A rewind whose outcome is unknown: the host refuses every send, so nothing is coming.
+    const blocked = renderController({ ...idle, sendBlocked: true })
+    expect(blocked.result.current.queuePrimary).toBeUndefined()
+    expect(blocked.result.current.turnRunning).toBe(false)
+    expect(
+      renderController({ queuePause: null, isWorking: true }).result.current.queuePrimary
+    ).toBe(undefined)
   })
 })
 
@@ -170,14 +204,14 @@ describe('Resume on a held queue', () => {
     act(() => {
       pending = resume(result)
     })
-    expect(result.current.queueResume?.resuming).toBe(true)
+    expect(resumingOf(result)).toBe(true)
     await act(() => resume(result))
     expect(mocks.call).toHaveBeenCalledTimes(1)
     await act(async () => {
       answer.resolve(RESUMED)
       await pending
     })
-    expect(result.current.queueResume?.resuming).toBe(false)
+    expect(resumingOf(result)).toBe(false)
   })
 
   it('a refused or failed Resume is one toast', async () => {

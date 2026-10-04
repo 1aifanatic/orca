@@ -51,6 +51,8 @@ export function useStructuredAgentSession(args: {
   transportEnabled?: boolean
   /** The host has published the session but its provider has not answered startup yet. */
   providerStarting?: boolean
+  /** The host refuses every send (a rewind whose outcome is unknown), so the queue sends nothing. */
+  sendBlocked?: boolean
   /** This view started the session; only then does the stored selection name what it runs. */
   launch?: StructuredAgentSessionLaunchView
   /** The composer Edit copies a card's text into, and that gets back unsent outbox text. */
@@ -64,6 +66,7 @@ export function useStructuredAgentSession(args: {
     isVisible,
     launch,
     providerStarting = false,
+    sendBlocked = false,
     queueFollowUps = true,
     sessionId,
     target,
@@ -175,6 +178,7 @@ export function useStructuredAgentSession(args: {
     submissions: transportState.submissions,
     hasPendingPrompt: prompts.length > 0,
     isWorking,
+    sendBlocked,
     composerScopeKey,
     mutate
   })

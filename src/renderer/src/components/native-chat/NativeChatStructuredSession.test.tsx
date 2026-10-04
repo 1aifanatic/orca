@@ -393,11 +393,14 @@ describe('NativeChatStructuredSession', () => {
 
   it('hands the composer Resume only while the queue controller offers it', () => {
     const { rerender } = render(claudeSessionView('structured-tab-resume', 'session-resume'))
-    expect(mocks.composerProps?.queueResume).toBeUndefined()
+    expect(mocks.composerProps?.queuePrimary).toBeUndefined()
     mocks.queuedResumable = true
     rerender(claudeSessionView('structured-tab-resume', 'session-resume'))
     act(() => {
-      mocks.composerProps?.queueResume?.resume()
+      const primary = mocks.composerProps?.queuePrimary
+      if (primary?.kind === 'resume') {
+        primary.resume()
+      }
     })
     expect(mocks.queuedResume).toHaveBeenCalledOnce()
   })

@@ -36,16 +36,20 @@ export type StructuredAgentSessionQueuedMessagesController = {
   edit: (messageId: string) => Promise<void>
   /** Cmd/Ctrl+Enter: Send-now the newest card. False when there is none to steer. */
   steerNewest: () => boolean
-  /** Present while no turn runs and the host holds a card Resume would send: the composer offers
-   *  Resume. A failure is a toast, and Resume stays the retry. */
-  queueResume: StructuredAgentSessionQueueResume | undefined
+  /** What the queue makes the empty composer's primary button while no turn runs: Resume over a
+   *  card the host holds (a failure is a toast, and Resume stays the retry), or a Stop the queue's
+   *  next send is about to need. */
+  queuePrimary: StructuredAgentSessionQueuePrimary | undefined
 }
 
-export type StructuredAgentSessionQueueResume = {
-  resume: () => Promise<void>
-  /** A Resume is in flight. */
-  resuming: boolean
-}
+export type StructuredAgentSessionQueuePrimary =
+  | {
+      kind: 'resume'
+      resume: () => Promise<void>
+      /** A Resume is in flight. */
+      resuming: boolean
+    }
+  | { kind: 'sending' }
 
 function alreadySentNotice(): void {
   toast.error(
@@ -62,6 +66,8 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   hasPendingPrompt: boolean
   /** The main agent is working: a turn is running, whoever started it. */
   isWorking: boolean
+  /** The host refuses every send (a rewind whose outcome is unknown), so the queue sends nothing. */
+  sendBlocked: boolean
   composerScopeKey: string | undefined
   mutate: StructuredAgentSessionMutate
 }): StructuredAgentSessionQueuedMessagesController {
@@ -182,13 +188,15 @@ export function useStructuredAgentSessionQueuedMessages(args: {
       setResuming(false)
     }
   }, [mutate])
-  const run = queuedMessageQueueRun(cards, args.isWorking)
+  const run = queuedMessageQueueRun(cards, args)
   const { turnRunning } = run
-  const resumable = enabled && run.resumable
-  const queueResume = useMemo(
-    () => (resumable ? { resume, resuming } : undefined),
-    [resumable, resume, resuming]
-  )
+  const primaryKind = !enabled ? null : run.resumable ? 'resume' : run.sendsNext ? 'sending' : null
+  const queuePrimary = useMemo((): StructuredAgentSessionQueuePrimary | undefined => {
+    if (primaryKind === 'resume') {
+      return { kind: 'resume', resume, resuming }
+    }
+    return primaryKind === 'sending' ? { kind: 'sending' } : undefined
+  }, [primaryKind, resume, resuming])
 
-  return { cards, turnRunning, steer, remove, edit, steerNewest, queueResume }
+  return { cards, turnRunning, steer, remove, edit, steerNewest, queuePrimary }
 }

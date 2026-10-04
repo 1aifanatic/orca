@@ -3,14 +3,17 @@ import { nativeChatComposerPrimaryAction } from './native-chat-composer-primary-
 
 describe('the composer primary action', () => {
   it.each([
-    { isWorking: false, composerEmpty: true, queueHeld: true, action: 'resume' },
-    { isWorking: false, composerEmpty: false, queueHeld: true, action: 'send' },
-    { isWorking: false, composerEmpty: true, queueHeld: false, action: 'send' },
-    { isWorking: false, composerEmpty: false, queueHeld: false, action: 'send' },
-    { isWorking: true, composerEmpty: true, queueHeld: true, action: 'stop' },
-    { isWorking: true, composerEmpty: false, queueHeld: false, action: 'stop' }
-  ])(
-    'working $isWorking, empty $composerEmpty, held $queueHeld: $action',
+    { isWorking: false, composerEmpty: true, queue: 'held', action: 'resume' },
+    { isWorking: false, composerEmpty: false, queue: 'held', action: 'send' },
+    // The queue is about to send a card: the Stop its turn will need, never a flash of Send.
+    { isWorking: false, composerEmpty: true, queue: 'sending', action: 'stop' },
+    { isWorking: false, composerEmpty: false, queue: 'sending', action: 'send' },
+    { isWorking: false, composerEmpty: true, queue: null, action: 'send' },
+    { isWorking: false, composerEmpty: false, queue: null, action: 'send' },
+    { isWorking: true, composerEmpty: true, queue: 'held', action: 'stop' },
+    { isWorking: true, composerEmpty: false, queue: null, action: 'stop' }
+  ] as const)(
+    'working $isWorking, empty $composerEmpty, queue $queue: $action',
     ({ action, ...input }) => {
       expect(nativeChatComposerPrimaryAction(input)).toBe(action)
     }

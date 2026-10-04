@@ -9,6 +9,7 @@ import type { NativeChatApprovalCardProps } from './NativeChatApprovalCard'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
 import type { NativeChatQuestionCardProps } from './NativeChatQuestionCard'
 import type { NativeChatLaunchSeed } from './native-chat-composer-types'
+import type { NativeChatQueuePrimary } from './native-chat-composer-primary-action'
 import type { NativeChatOlderPageResult } from './native-chat-pagination'
 import type { StructuredAgentSessionThreadGoal } from './use-structured-agent-session-thread-goal'
 import type { StructuredAgentSessionLaunchLifecycle } from '@/lib/structured-agent-session-launch'
@@ -87,7 +88,7 @@ export function createStructuredSessionMocks() {
       structuredTransport?: Record<string, unknown>
       isWorking?: boolean
       onStop?: () => void
-      queueResume?: { resume: () => void; resuming: boolean }
+      queuePrimary?: NativeChatQueuePrimary
     }>(),
     approvalCardProps: initialApprovalCardProps,
     questionCardProps: null as NativeChatQuestionCardProps | null,
@@ -200,8 +201,8 @@ export function createStructuredSessionMocks() {
               remove: mocks.queuedRemove,
               edit: mocks.queuedEdit,
               steerNewest: mocks.queuedSteerNewest,
-              queueResume: mocks.queuedResumable
-                ? { resume: mocks.queuedResume, resuming: false }
+              queuePrimary: mocks.queuedResumable
+                ? { kind: 'resume' as const, resume: mocks.queuedResume, resuming: false }
                 : undefined
             },
             threadGoal: mocks.threadGoal,
