@@ -683,7 +683,9 @@ describe('Windows upload on a host with no sftp subsystem', () => {
 
   it.each([
     "'missing-tool.exe' is not recognized as an internal or external command",
-    'CommandNotFoundException: missing-tool.exe'
+    'CommandNotFoundException: missing-tool.exe',
+    "Access to the path 'relay.js' is denied.\nCommandNotFoundException: pwsh.exe",
+    "Access to the path 'relay.js' is denied.\n'pwsh.exe' is not recognized as an internal or external command"
   ])(
     'does not mark PowerShell 7 absent when its script reports another missing command: %s',
     async (stderr) => {
