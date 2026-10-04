@@ -152,7 +152,9 @@ describe('an outbox on a host that accepts a send before any agent has it', () =
     expect(delivery).toBe('unsettled')
     expect(mocks.call).not.toHaveBeenCalled()
     expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey('session-1'))).toBe('')
-    expect(result.current.error).toBe("Couldn't save your message.")
+    expect(result.current.error).toBe(
+      "Couldn't save your message. Orca will keep trying to send it."
+    )
   })
 })
 

@@ -252,7 +252,7 @@ export async function sendStructuredAgentSessionOutboxEntry(args: {
     // one an earlier attempt landed: it waits, and the probe tries again.
     const unsaved: StructuredAgentSessionSendSettlement = {
       kind: 'unanswered',
-      words: ['messageNotSaved']
+      words: ['messageNotSaved', 'stillSending']
     }
     settle(unsaved)
     return unsaved

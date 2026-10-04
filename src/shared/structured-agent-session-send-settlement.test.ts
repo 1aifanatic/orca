@@ -16,6 +16,10 @@ import {
 } from './structured-agent-session-send-settlement'
 import { AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS } from './agent-session-host-authority'
 import { DISPATCH_REJECTED_CANCELLED } from './structured-agent-session-dispatch-rejection'
+import { AGENT_SESSION_WIRE_REFUSAL_CODES } from './agent-session-wire-refusals'
+import { AGENT_SESSION_REFUSAL_REASONS } from './agent-session-refusal-details'
+import { agentSessionWriteNoticeEnglish } from './agent-session-refusal-notice'
+import { agentSessionRefusalFailure } from './agent-session-write-failure'
 
 const ID = '1759600000000-0123456789abcdef0123456789abcdef'
 const MADE_AT = 1_759_600_000_000
@@ -309,6 +313,68 @@ describe('a send answer settles one of three ways', () => {
         RESEND_OLD_HOST
       )
     ).toEqual({ kind: 'recorded' })
+  })
+})
+
+// While Orca keeps sending, a step for the person (send again, retry, start over) would invite a
+// second copy, so the line says only what stopped it, and that Orca keeps trying.
+describe('a send Orca keeps sending says why, and only why', () => {
+  const STEP =
+    /\b(send|try again|retry|start a new chat|reopen|quit|sign in|update orca|answer the|open the current|wait for)\b/i
+  const cells = AGENT_SESSION_WIRE_REFUSAL_CODES.flatMap((code) =>
+    [undefined, ...AGENT_SESSION_REFUSAL_REASONS[code]].map((reason) =>
+      agentSessionRefusalFailure({ code, ...(reason ? { details: { reason } } : {}) })
+    )
+  )
+
+  it('names no step beside "Orca will keep trying to send it", for any code or reason', () => {
+    let held = 0
+    for (const refusal of cells) {
+      const cell = `${refusal.code}/${refusal.details?.reason ?? '-'}`
+      for (const answer of [
+        {
+          kind: 'result',
+          result: { ok: false, refusal: { ...refusal, message: 'x' } }
+        } satisfies StructuredAgentSessionSendAnswer,
+        { kind: 'thrown', refusal, rpcCode: undefined } satisfies StructuredAgentSessionSendAnswer
+      ]) {
+        const settled = settleStructuredAgentSessionSendAnswer(answer, ID, RESEND_OLD_HOST)
+        if (settled.kind !== 'unanswered' || !settled.words) {
+          continue
+        }
+        held += 1
+        expect(settled.words.at(-1), cell).toBe('stillSending')
+        const said = agentSessionWriteNoticeEnglish(settled.words.slice(0, -1))
+        expect(said, cell).not.toMatch(STEP)
+      }
+    }
+    expect(held).toBeGreaterThan(50)
+  })
+
+  it('a thrown request with no cause of its own says only that Orca keeps trying', () => {
+    for (const rpcCode of ['unauthorized', 'invalid_argument', 'method_not_found']) {
+      expect(
+        settleStructuredAgentSessionSendAnswer(
+          { kind: 'thrown', refusal: undefined, rpcCode },
+          ID,
+          RESEND_OLD_HOST
+        )
+      ).toEqual({ kind: 'unanswered', words: ['stillSending'] })
+    }
+  })
+
+  it('a thrown "outcome unknown" says nothing, as the returned one does', () => {
+    expect(
+      settleStructuredAgentSessionSendAnswer(
+        {
+          kind: 'thrown',
+          refusal: { kind: 'refused', code: 'agent_session_operation_unknown' },
+          rpcCode: undefined
+        },
+        ID,
+        FIRST
+      )
+    ).toEqual({ kind: 'unanswered' })
   })
 })
 

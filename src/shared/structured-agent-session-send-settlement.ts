@@ -23,6 +23,7 @@ import {
 } from './agent-session-host-authority'
 import { dispatchWasWithdrawn } from './structured-agent-session-dispatch-rejection'
 import { DISPATCH_DOUBT_SUBMISSION_MISSING } from './structured-agent-session-unanswered-dispatch'
+import { structuredAgentSessionStillSendingWords } from './structured-agent-session-still-sending-words'
 import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
 import { structuredAgentSessionEntryAwaitsSettlement } from './structured-agent-session-outbox-admission'
 
@@ -67,21 +68,12 @@ function returnedFor(refusal: AgentSessionWriteRefusal): StructuredAgentSessionS
   return { kind: 'returned', words: agentSessionWriteNoticeParts(refusal, 'composer-send') }
 }
 
-/** Sentences that say the message is gone, or to send it again: false while Orca keeps sending it. */
-const NOT_SENT_SENTENCES: ReadonlySet<AgentSessionWriteNoticePart> =
-  new Set<AgentSessionWriteNoticePart>(['notDoneSend', 'tryAgainComposerSend', 'tryAgain'])
-
-/** Case 3 for a refusal that proves nothing here: why it is held, and that Orca keeps sending it. */
+/** Case 3 for a refusal that proves nothing here: why it is held, and that Orca keeps sending it.
+ *  "Outcome unknown" is doubt like any lost answer, so it says nothing, thrown or returned. */
 function stillSendingFor(refusal: AgentSessionWriteRefusal): StructuredAgentSessionSendSettlement {
-  return {
-    kind: 'unanswered',
-    words: [
-      ...agentSessionWriteNoticeParts(refusal, 'composer-send').filter(
-        (part) => !NOT_SENT_SENTENCES.has(part)
-      ),
-      'stillSending'
-    ]
-  }
+  return refusal.code === 'agent_session_operation_unknown'
+    ? { kind: 'unanswered' }
+    : { kind: 'unanswered', words: structuredAgentSessionStillSendingWords(refusal) }
 }
 
 /** Words for an id no resend can settle: what an earlier attempt left, if anything, is in the chat. */
@@ -161,8 +153,10 @@ export function settleStructuredAgentSessionSendAnswer(
   if (submission.queuedMessageId === clientMessageId) {
     return { kind: 'recorded' }
   }
-  // An older host makes this record up when its journal lost the row, so only a loaded row says
-  // the message is in the chat.
+  // The host makes this record up when it has a ledger answer but no journal row: an older host
+  // whose journal lost the row, or this build's replay of an accepted send whose row a new journal
+  // epoch dropped. Only a loaded row says the message is in the chat; otherwise the words say to
+  // check it.
   if (
     submission.dispatchState === 'unknown' &&
     submission.reason === DISPATCH_DOUBT_SUBMISSION_MISSING

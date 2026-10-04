@@ -125,7 +125,7 @@ function send(next: StructuredAgentSessionOutboxEntry) {
 }
 
 describe('a stage that cannot be saved', () => {
-  it('keeps the message in doubt for the probe to try again, saying only that it was not saved', async () => {
+  it('keeps the message in doubt for the probe to try again, saying it was not saved and is retried', async () => {
     expect(writeOutbox('session-1', [entry('resent', 'resent text', { lastAttemptAt: 5 })])).toBe(
       true
     )
@@ -143,12 +143,41 @@ describe('a stage that cannot be saved', () => {
     expect(readOutbox('session-1', { recoverDispatching: false })).toMatchObject([
       { clientMessageId: 'resent' }
     ])
-    // Orca tries again on its own, so the line asks nothing of the person.
-    expect(result.current.error).toBe("Couldn't save your message.")
+    // Orca tries again on its own, so the line asks nothing of the person and says so.
+    expect(result.current.error).toBe(
+      "Couldn't save your message. Orca will keep trying to send it."
+    )
 
     setItem.mockRestore()
     await waitFor(() => expect(result.current.outbox).toEqual([]), { timeout: 3000 })
     expect(mocks.call).toHaveBeenCalledOnce()
+    expect(result.current.error).toBeNull()
+  })
+})
+
+describe('a Stop that withdraws a message the chat line is about', () => {
+  it('clears the line with the message it takes back', async () => {
+    const save = localStorage.setItem.bind(localStorage)
+    let full = false
+    const setItem = vi.spyOn(localStorage, 'setItem').mockImplementation((key, value) => {
+      if (full) {
+        throw new Error('QuotaExceededError')
+      }
+      save(key, value)
+    })
+    restoreStorage = () => setItem.mockRestore()
+    const { result } = mountOutbox()
+    act(() => {
+      expect(result.current.send('never went out')).toBe(true)
+      // Storage fills after the append: the stage is what can't be saved.
+      full = true
+    })
+    await waitFor(() => expect(result.current.error).not.toBeNull())
+    full = false
+
+    act(() => result.current.stop('stop-1'))
+    expect(result.current.outbox).toEqual([])
+    expect(readNativeChatDraftCache(SCOPE)).toBe('never went out')
     expect(result.current.error).toBeNull()
   })
 })

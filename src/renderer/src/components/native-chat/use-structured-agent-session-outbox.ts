@@ -37,6 +37,7 @@ import { useStructuredAgentSessionOutboxOwnerChange } from '@/runtime/structured
 import { useStructuredAgentSessionOutboxUnconfirmedProbe } from './use-structured-agent-session-outbox-unconfirmed-probe'
 import { createBrowserUuid } from '@/lib/browser-uuid'
 import {
+  clearStructuredAgentSessionChatLineHeldBy,
   returnStructuredAgentSessionMessage,
   setStructuredAgentSessionChatLine,
   useStructuredAgentSessionChatLine
@@ -294,6 +295,8 @@ export function useStructuredAgentSessionOutbox(args: {
       }
       for (const entry of next.withdrawn) {
         returnStructuredAgentSessionMessage(entry)
+        // Back in the composer, it is no longer being sent, so what the line said about it goes.
+        clearStructuredAgentSessionChatLineHeldBy(sessionId, entry.clientMessageId)
       }
       commitStructuredAgentSessionOutbox(sessionId, next.entries)
     },
