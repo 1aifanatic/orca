@@ -153,7 +153,7 @@ export async function acquireAcpStructuredSession(input: {
   }
   await identity.onSpawned(child.pid)
   try {
-    const initialized = await runtime.initialize()
+    await runtime.initialize()
     const resume = launch.resume
     let started: Awaited<ReturnType<AcpSessionRuntime['start']>> | null = null
     let liveLane: AcpStructuredLane | null = null
