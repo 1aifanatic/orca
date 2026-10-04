@@ -193,7 +193,9 @@ export function clearInheritedAgentStateEnv(): void {
     ? []
     : [...INHERITED_STATE_ENV, ...INHERITED_LIVE_CLI_ENV]
   for (const name of inheritedEnvToUnset) {
-    if (name === 'CLAUDE_CONFIG_DIR' && process.env.ORCA_REAL_CLAUDE_CLI_TEST === '1') continue
+    if (name === 'CLAUDE_CONFIG_DIR' && process.env.ORCA_REAL_CLAUDE_CLI_TEST === '1') {
+      continue
+    }
     delete process.env[name]
   }
 }

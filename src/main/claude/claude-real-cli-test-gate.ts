@@ -13,8 +13,10 @@ export type RealClaudeCliGate = {
 }
 
 function parseAuthStatus(stdout: string): RealClaudeAuthStatus | null {
-  const start = stdout.search(/[\[{]/)
-  if (start === -1) return null
+  const start = stdout.search(/[[{]/)
+  if (start === -1) {
+    return null
+  }
   // CLI warnings may precede the report, but another JSON value makes it ambiguous.
   for (const line of stdout.slice(0, start).split('\n')) {
     try {

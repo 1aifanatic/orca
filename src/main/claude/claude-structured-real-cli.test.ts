@@ -11,7 +11,8 @@ import {
   realClaudeAuthStatus,
   realClaudeAvailable,
   realClaudeCliGate,
-  realClaudeCommand
+  realClaudeCommand,
+  realClaudeLaunchHome
 } from './claude-real-cli-availability-test-support'
 import {
   ClaudeStructuredSessionAdapter,
@@ -34,6 +35,7 @@ function realAdapter(
       pathToClaudeCodeExecutable: command,
       options: { ...CLAUDE_STRUCTURED_BASE_OPTIONS, sessionId: providerSessionId },
       cwd,
+      env: realClaudeLaunchHome().env,
       claudeConfigDir,
       providerSessionId,
       resumeLeafUuid: null,
