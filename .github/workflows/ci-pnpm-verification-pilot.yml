@@ -1,65 +1,70 @@
-name: pnpm verification cache pilot
-
+name: Paired unit source comparison
 on:
-  pull_request:
-    paths: ['.github/workflows/ci-pnpm-verification-pilot.yml']
   workflow_dispatch:
-
 permissions:
   contents: read
-
-concurrency:
-  group: pnpm-verification-pilot-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-env:
-  ORCA_BACKGROUND_LAUNCH: '1'
-
 jobs:
-  seed:
-    strategy:
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-      # PR caches are scoped to the PR merge ref; main never restores them.
-      - uses: actions/cache/save@v5
-        if: steps.deps.outputs.verification-cache-hit != 'true'
-        with:
-          path: ${{ steps.deps.outputs.verification-cache-path }}
-          key: ${{ steps.deps.outputs.verification-cache-key }}
-
-  measure:
-    needs: seed
-    name: measure ${{ matrix.runner }} sample ${{ matrix.sample }} cache ${{ matrix.cache }}
+  paired:
+    name: paired unit node 24 shard ${{ matrix.shard }}/5
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 5
       matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-        sample: [1, 2, 3]
-        cache: ['false', 'true']
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+        shard: [1, 2, 3, 4, 5]
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout benchmark support
+        uses: actions/checkout@v6
         with:
           persist-credentials: false
+      - name: Unpack frozen trial inputs outside checkout
+        run: |
+          mkdir -p "$RUNNER_TEMP/full-suite-bundle" "$RUNNER_TEMP/paired-unit"
+          tar -xzf config/ci-capacity-benchmark/full-suite.tar.gz -C "$RUNNER_TEMP/full-suite-bundle"
+          test -f "$RUNNER_TEMP/full-suite-bundle/overlay-manifest.json"
+      - name: Checkout fixed final source
+        uses: actions/checkout@v6
+        with:
+          ref: 5cce5f56775d3d66eb3abe2fbc80900c4eff5c05
+          persist-credentials: false
+      - name: Mark dependency setup start
+        run: python3 -c 'import os,time; open(os.environ["GITHUB_ENV"],"a").write("PAIR_SETUP_STARTED_AT="+str(time.time())+"\n")'
       - uses: ./.github/actions/install-node-dependencies
         id: deps
         with:
-          cache-pnpm-verification: ${{ matrix.cache }}
-      - name: Validate treatment and frozen install
+          native-runtime: node
+          node-version: '24'
+          cache-electron-package: 'true'
+      - name: Install Electron package binary for tests
+        run: node config/scripts/install-electron-package-binary.mjs
+      - name: Record common setup
         env:
-          CACHE_ENABLED: ${{ matrix.cache }}
-          CACHE_HIT: ${{ steps.deps.outputs.verification-cache-hit }}
+          PAIR_DEPENDENCY_OUTPUTS: ${{ toJSON(steps.deps.outputs) }}
+          PAIR_SHARD: ${{ matrix.shard }}
         run: |
-          if [ "$CACHE_ENABLED" = true ]; then test "$CACHE_HIT" = true; fi
-          git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
-          node -e "require.resolve('vitest'); require.resolve('electron')"
+          python3 - <<'PY'
+          import json, os, pathlib, time
+          record = {'shard': int(os.environ['PAIR_SHARD']),
+                    'dependencySetupSeconds': time.time() - float(os.environ['PAIR_SETUP_STARTED_AT']),
+                    'dependencyOutputs': json.loads(os.environ['PAIR_DEPENDENCY_OUTPUTS'])}
+          pathlib.Path(os.environ['RUNNER_TEMP'], 'paired-unit', 'shared-setup.json').write_text(json.dumps(record, indent=2))
+          PY
+      - name: Run counterbalanced source arms
+        env:
+          ORCA_BACKGROUND_LAUNCH: '1'
+        run: python3 "$RUNNER_TEMP/full-suite-bundle/run-paired-shard.py" --shard ${{ matrix.shard }} --rounds 1 --out "$RUNNER_TEMP/paired-unit" --execute
+      - name: Run added batching qualification outside timing
+        if: matrix.shard == 1
+        env:
+          ORCA_BACKGROUND_LAUNCH: '1'
+        run: python3 "$RUNNER_TEMP/full-suite-bundle/run-paired-shard.py" --shard 1 --out "$RUNNER_TEMP/paired-unit" --execute --qualify
+      - name: Upload all source, case and timing evidence
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: paired-unit-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/paired-unit
+          retention-days: 14
+          if-no-files-found: warn
