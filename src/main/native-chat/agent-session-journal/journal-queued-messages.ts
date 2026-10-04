@@ -13,7 +13,7 @@ import {
 import type { JournalHostDatabase } from './journal-host-database'
 import type { JournalReducerState } from './journal-reducer'
 import type { JournalRow } from './journal-row-schema'
-import type { JournalRowTransactionHook } from './journal-row-writer'
+import type { JournalOperationReceipt, JournalRowTransactionHook } from './journal-row-writer'
 import type { JournalSubmissionConsume } from './journal-store-contracts'
 import { adoptQueuedMessages, holdQueuedMessages } from './queued-message-holds'
 import {
@@ -102,15 +102,19 @@ export class JournalQueuedMessages {
     return queuedMessagesSettledByOp(this.deps.database().db, this.deps.sessionId, settledByOp)
   }
 
-  /** `carriedFrom`: a /clear's carry. The card is its own 'cleared' pause, so it lands paused. */
-  insert(input: {
-    messageId: string
-    body: AgentJournalMessageItem
-    fingerprint: string
-    hostInstance: string
-    carriedFrom?: string
-    source: AgentSessionMessageSource
-  }): Promise<QueuedMessageRow> {
+  /** `carriedFrom`: a /clear's carry. The card is its own 'cleared' pause, so it lands paused.
+   *  `receipt`: the send's ledger answer, committed with the draft only when this inserts it. */
+  insert(
+    input: {
+      messageId: string
+      body: AgentJournalMessageItem
+      fingerprint: string
+      hostInstance: string
+      carriedFrom?: string
+      source: AgentSessionMessageSource
+    },
+    receipt?: JournalOperationReceipt
+  ): Promise<QueuedMessageRow> {
     const { sessionId } = this.deps
     let inserted = false
     return this.transact(
@@ -123,14 +127,17 @@ export class JournalQueuedMessages {
         }
         inserted = true
         const { epoch, lastSequence } = this.deps.state()
-        return insertQueuedMessage(db, {
+        const row = insertQueuedMessage(db, {
           ...input,
           sessionId,
           queuedAt: { epoch, sequence: lastSequence },
           now: this.deps.now()
         })
+        receipt?.write(db)
+        return row
       },
-      () => inserted
+      () => inserted,
+      receipt?.committed
     )
   }
 
@@ -208,15 +215,17 @@ export class JournalQueuedMessages {
   }
 
   /** One standalone draft-table transaction on the journal's queue; one that
-   *  changed rows bumps the revision and notifies after COMMIT. */
+   *  changed rows bumps the revision and notifies after COMMIT, `adopted` first. */
   private transact<T>(
     run: (db: Database.Database) => JournalWriteResult<T>,
-    changed: (result: T) => boolean
+    changed: (result: T) => boolean,
+    adopted?: () => void
   ): Promise<T> {
     return this.deps.serialize(() => {
       assertJournalWritable(this.deps.readOnly(), this.deps.sessionId)
       const result = this.deps.database().transaction(run)
       if (changed(result)) {
+        adopted?.()
         this.changeRevision++
         this.deps.committed()
       }

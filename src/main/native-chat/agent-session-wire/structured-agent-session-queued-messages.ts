@@ -27,6 +27,7 @@ import { isUnsettledQueuedMessage } from '../agent-session-journal/queued-messag
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import type { AgentSessionTurnContext } from './structured-agent-session-turns'
 import { QueuedMessageNotConsumableError } from '../agent-session-journal/journal-queued-messages'
 import type { QueuedMessageRow } from '../agent-session-journal/queued-message-table'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
@@ -189,11 +190,7 @@ export async function maybeQueueStructuredAgentSessionSend(
   context: {
     deps: { store: { getRecord: (sessionId: string) => AgentSessionRecord | null } }
   },
-  ctx: {
-    sessionId: string
-    journal: AgentSessionJournal
-    fence: number
-  },
+  ctx: Pick<AgentSessionTurnContext, 'sessionId' | 'journal' | 'fence' | 'operationReceipt'>,
   params: {
     envelope: { clientOperationId: string }
     body: AgentJournalMessageItem
@@ -239,13 +236,16 @@ export async function maybeQueueStructuredAgentSessionSend(
   }
   // The insert notifies through the journal's commit listener: publication and
   // the drain re-derive with no call here to forget.
-  const row = await ctx.journal.queuedMessages.insert({
-    messageId: clientMessageId,
-    body: params.body,
-    fingerprint: queuedMessageFingerprint(ctx.sessionId, params.body),
-    hostInstance: structuredAgentSessionHostInstance(),
-    source: params.userSend ? USER_MESSAGE_SOURCE : (params.source ?? USER_MESSAGE_SOURCE)
-  })
+  const row = await ctx.journal.queuedMessages.insert(
+    {
+      messageId: clientMessageId,
+      body: params.body,
+      fingerprint: queuedMessageFingerprint(ctx.sessionId, params.body),
+      hostInstance: structuredAgentSessionHostInstance(),
+      source: params.userSend ? USER_MESSAGE_SOURCE : (params.source ?? USER_MESSAGE_SOURCE)
+    },
+    ctx.operationReceipt
+  )
   return {
     ok: true,
     value: {

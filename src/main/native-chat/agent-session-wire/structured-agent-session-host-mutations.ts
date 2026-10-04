@@ -65,7 +65,8 @@ export function sendStructuredAgentSessionTurn(
      *  on its card. A client's send is always its person's (`userSend`). */
     source?: AgentMessageSource
     beforeRun?: () => void
-  }
+  },
+  arrival?: Parameters<typeof sendPreparation>[2]
 ): Promise<AgentSessionMutationResult<AgentSessionSendResult>> {
   const plan = sendPlan(params)
   return mutateStructuredAgentSession(
@@ -84,7 +85,7 @@ export function sendStructuredAgentSessionTurn(
             (await plan.run(ctx))
         )
     },
-    sendPreparation(context, params.envelope)
+    sendPreparation(context, params.envelope, arrival)
   )
 }
 
