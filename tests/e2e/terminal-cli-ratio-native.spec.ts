@@ -51,7 +51,7 @@ test('native CLI ratios preserve both pane arrangements through a cold daemon re
   const session = createRestartSession(testInfo, { ORCA_BACKGROUND_LAUNCH: '1' })
   const cases: RatioCase[] = []
   const evidence: Record<string, unknown> = {
-    productHead: 'a1cccc313670606b3f89c2d2c2cda7d660903dc3',
+    productBaseHead: 'a1cccc313670606b3f89c2d2c2cda7d660903dc3',
     platform: process.platform,
     coldRestart:
       'graceful app quit followed by termination of its authenticated owned daemon; not a power loss',
