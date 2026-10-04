@@ -4,13 +4,16 @@ import {
 } from '../../../shared/structured-agent-session-projection'
 import { getStructuredAgentSessionOutbox } from '@/components/native-chat/structured-agent-session-outbox-storage'
 import { readNativeChatDraftCache } from '@/components/native-chat/native-chat-draft-cache'
+// The draft store, not the composer hook: the launch must not load the composer (a store cycle).
+import { readNativeChatComposerDraft } from '@/components/native-chat/native-chat-composer-draft-store'
 
-/** A starting chat is empty until its user sends into it or types in its composer; after that it
- *  is theirs, and another request's text never goes into it. */
+/** A starting chat is empty until its user sends into it or puts text or images in its composer;
+ *  after that it is theirs, and another request never goes into it. */
 export function isStructuredLaunchChatEmpty(sessionId: string): boolean {
   const paneKey = structuredAgentSessionPaneKey(structuredAgentSessionTabId(sessionId), sessionId)
   return (
     getStructuredAgentSessionOutbox(sessionId).length === 0 &&
-    readNativeChatDraftCache(paneKey).trim() === ''
+    readNativeChatDraftCache(paneKey).trim() === '' &&
+    readNativeChatComposerDraft(paneKey).images.length === 0
   )
 }

@@ -1,8 +1,13 @@
 import type { StructuredAgentSessionOutboxEntry } from '../../../shared/structured-agent-session-outbox'
 import type { AgentLaunchRequestId } from './agent-launch-request-id'
 
-/** What a new start brings: the user action it serves, and whether it carries text. */
-export type StructuredLaunchRequest = { id: AgentLaunchRequestId; hasText: boolean }
+/** What a new start brings: the user action it serves, whether it carries text, and the tab group
+ *  it opens in. */
+export type StructuredLaunchRequest = {
+  id: AgentLaunchRequestId
+  hasText: boolean
+  groupId?: string
+}
 
 /** A new start's own create keeps its request and the text it staged; a Retry or re-check of an
  *  existing chat is no request of its own. */
@@ -19,8 +24,13 @@ export type StructuredLaunchAttempt =
 export function structuredLaunchRequest(options: {
   requestId: AgentLaunchRequestId
   prompt?: string
+  targetGroupId?: string
 }): StructuredLaunchRequest {
-  return { id: options.requestId, hasText: (options.prompt?.trim() ?? '') !== '' }
+  return {
+    id: options.requestId,
+    hasText: (options.prompt?.trim() ?? '') !== '',
+    ...(options.targetGroupId ? { groupId: options.targetGroupId } : {})
+  }
 }
 
 /** The first attempt `requestId` re-delivers, whose text is already staged or seeded. */
