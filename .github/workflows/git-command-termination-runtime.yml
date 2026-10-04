@@ -1,25 +1,46 @@
-name: Git command termination runtime
+name: Stock zsh startup diagnostic
+run-name: Stock zsh diagnostic | source ${{ github.sha }} | attempt ${{ github.run_attempt }}
+
 on:
-  pull_request:
-    paths:
-      - 'src/main/git/command-runner/spawned-command-tree-kill*'
-      - '.github/workflows/git-command-termination-runtime.yml'
-  workflow_dispatch:
+  workflow_dispatch: {}
+
 permissions:
   contents: read
+
 concurrency:
-  group: git-command-termination-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: stock-zsh-diagnostic-${{ github.run_id }}
+  cancel-in-progress: false
+
 jobs:
-  windows-exit:
-    runs-on: windows-latest
-    timeout-minutes: 20
+  stock-zsh:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
     steps:
       - uses: actions/checkout@v6
         with:
+          fetch-depth: 2
           persist-credentials: false
+      - name: Install stock zsh
+        run: |
+          timeout 120 sudo apt-get update
+          timeout 180 sudo apt-get install -y zsh
       - uses: ./.github/actions/install-node-dependencies
-      - name: Verify exited native child does not trigger taskkill
-        run: node node_modules/vitest/vitest.mjs run --config config/vitest.config.ts src/main/git/command-runner/spawned-command-tree-kill.test.ts
+        with:
+          native-runtime: node
+          persist-native-cache: 'false'
+      - name: Run four genuine private PTY controls
+        env:
+          DIAGNOSTIC_OUTPUT: ${{ runner.temp }}/stock-zsh-evidence
+        run: |
+          mkdir -p "$DIAGNOSTIC_OUTPUT"
+          node config/scripts/zsh-stock-startup-diagnostic.cjs "$GITHUB_WORKSPACE" "$DIAGNOSTIC_OUTPUT" > "$DIAGNOSTIC_OUTPUT/controller.raw.log" 2>&1
+      - name: Retain raw source and PTY observations
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: stock-zsh-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/stock-zsh-evidence
+          if-no-files-found: error
+          retention-days: 7
