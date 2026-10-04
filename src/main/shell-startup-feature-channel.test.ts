@@ -134,8 +134,7 @@ describePosix('zsh launch config', () => {
       }
       writeFileSync(
         join(userDataPath, '.zshrc'),
-        'export PATH="$HOME/ambient-bin:/usr/bin:/bin:$HOME/cli/bin"\n' +
-          (replacePromptHooks ? 'precmd_functions=()\n' : '')
+        `export PATH="$HOME/ambient-bin:/usr/bin:/bin:$HOME/cli/bin"\n${replacePromptHooks ? 'precmd_functions=()\n' : ''}`
       )
       const env: Record<string, string> = {
         ...process.env,

@@ -34,6 +34,7 @@ import { WSL_MANAGED_CLI_PATH_RESTORE } from './wsl-managed-cli-path-restore'
 import { getPosixCodexShellLaunchPreflight } from '../shared/codex-shell-function'
 import {
   ZSH_DEFERRED_LINE_INIT_BLOCK,
+  ZSH_DEFERRED_LINE_INIT_CLEANUP_BLOCK,
   ZSH_DEFERRED_LINE_INIT_RETIRE_BLOCK
 } from './zsh-deferred-startup-line-init'
 import {
@@ -199,7 +200,8 @@ ${
   __orca_has_feature markers && __orca_osc133_precmd\n`
     : ''
 }  builtin unset _orca_shell_features _orca_histfile
-  builtin unfunction __orca_deferred_init __orca_has_feature __orca_deferred_line_init __orca_arm_deferred_line_init
+${ZSH_DEFERRED_LINE_INIT_CLEANUP_BLOCK}
+  builtin unfunction __orca_deferred_init __orca_has_feature __orca_arm_deferred_line_init
 }`
 }
 

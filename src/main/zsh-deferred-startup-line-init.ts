@@ -1,9 +1,15 @@
 // Why: user startup files can replace precmd_functions after Orca registers its hook.
 export const ZSH_DEFERRED_LINE_INIT_BLOCK = `__orca_deferred_line_init() {
   builtin emulate -L zsh
-  (( \${+functions[__orca_deferred_init]} )) && __orca_deferred_init
-  if (( \${+widgets[zle-line-init]} )) && [[ "\${widgets[zle-line-init]}" != user:__orca_deferred_line_init ]]; then
+  (( \${+functions[__orca_deferred_init]} )) || return 0
+  local __orca_direct_line_init=0
+  [[ "\${widgets[zle-line-init]:-}" == user:__orca_deferred_line_init ]] && __orca_direct_line_init=1
+  __orca_deferred_init
+  if (( __orca_direct_line_init && \${+widgets[zle-line-init]} )); then
     zle zle-line-init "$@"
+  elif [[ "\${widgets[zle-line-init]:-}" == user:__orca_prompt_mark ]]; then
+    local __orca_prev_line_init_fn=""
+    __orca_prompt_mark "$@"
   fi
 }
 __orca_arm_deferred_line_init() {
@@ -24,3 +30,13 @@ export const ZSH_DEFERRED_LINE_INIT_RETIRE_BLOCK = `  if (( \${+widgets[__orca_s
   elif [[ "\${widgets[zle-line-init]:-}" == user:__orca_deferred_line_init ]]; then
     zle -D zle-line-init
   fi`
+
+// Why: add-zle-hook-widget can keep an alias of the bootstrap in its own chain.
+export const ZSH_DEFERRED_LINE_INIT_CLEANUP_BLOCK = `  local __orca_widget __orca_line_init_bound=0
+  for __orca_widget in "\${(v)widgets[@]}"; do
+    if [[ "$__orca_widget" == user:__orca_deferred_line_init ]]; then
+      __orca_line_init_bound=1
+      break
+    fi
+  done
+  (( __orca_line_init_bound )) || builtin unfunction __orca_deferred_line_init`
