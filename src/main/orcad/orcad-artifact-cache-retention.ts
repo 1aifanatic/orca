@@ -7,7 +7,7 @@
  */
 import { readdir, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import { NODE_RUNTIME_ASSETS } from '../../shared/node-runtime-pin'
+import { nodeRuntimeAsset } from '../../shared/node-runtime-pin'
 import { ORCAD_LOCK_FILE_NAME, readOrcadInstanceLockRecord } from './orcad-instance-lock'
 import { materializedOrcadArtifactVersions } from '../ssh/orcad-artifact-materializer'
 import { isProcessAlive } from '../daemon/daemon-process-inspection'
@@ -33,7 +33,7 @@ export async function pruneOrcadArtifactCache(
   const removed: string[] = []
   for (const target of await listNames(cacheRoot)) {
     // Only target directories hold slots; `node/` is the runtime archive cache.
-    if (!Object.hasOwn(NODE_RUNTIME_ASSETS, target)) {
+    if (!nodeRuntimeAsset(target)) {
       continue
     }
     const targetRoot = join(cacheRoot, target)

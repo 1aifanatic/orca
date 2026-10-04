@@ -1,6 +1,6 @@
 import { orcadNodePtyNativeArtifacts, orcadRipgrepArtifact } from '../../shared/orcad-artifacts'
 import { orcadAgentBrowserNativeName } from '../../shared/orcad-agent-browser-name'
-import type { ServerTarget } from '../../shared/node-runtime-pin'
+import type { NodeRuntimeTarget } from '../../shared/node-runtime-pin'
 import { ensureRemoteOrcadNodeRuntime } from './orcad-remote-node-runtime'
 import { execCommand } from './ssh-relay-deploy-helpers'
 import { isUnconfirmedSshCommandTermination } from './ssh-relay-exec-command'
@@ -22,7 +22,7 @@ export async function installOrcadBundle(
     conn: SshConnection
     host: RemoteHostPlatform
     localOrcadDir: string
-    target: ServerTarget
+    target: NodeRuntimeTarget
     /** The locally verified pinned Node archive, fetched only when the host lacks the runtime. */
     nodeRuntimeArchive: () => Promise<string>
     signal?: AbortSignal
@@ -94,7 +94,7 @@ export async function installOrcadBundle(
 function executablePermissionsCommand(
   host: RemoteHostPlatform,
   directory: string,
-  target: ServerTarget
+  target: NodeRuntimeTarget
 ): string {
   const required = [orcadRipgrepArtifact(target), ...orcadNodePtyNativeArtifacts(target)]
     .filter((artifact) => /\/(?:rg|spawn-helper)$/.test(artifact))

@@ -16,10 +16,11 @@ import type { OrcadTerminalCensus } from './orcad-update-plan'
 import type { RemoteHostPlatform } from './ssh-remote-platform'
 import { installOrcadBundle } from './orcad-remote-install'
 import { getAppEnvironment } from '../../shared/app-environment'
-import type { ServerTarget } from '../../shared/node-runtime-pin'
+import type { NodeRuntimeTarget } from '../../shared/node-runtime-pin'
 import { ORCAD_STARTUP_READINESS_TIMEOUT_MS } from '../../shared/orcad-profile-preflight'
 import { materializeOrcadArtifact } from './orcad-artifact-materializer'
-import { readOrcadBundleTarget, resolveOrcadDeploymentTarget } from './orcad-deployment-target'
+import { readOrcadBundleTarget } from './orcad-deployment-target'
+import { resolveOrcadRuntimeTarget } from './orcad-runtime-target'
 import { materializeNodeRuntimeArchive } from './pinned-runtime-materializer'
 import {
   resolveOrcadActivationReadinessTimeout,
@@ -33,8 +34,8 @@ export type OrcadDeployOptions = {
   remoteHome: string
   /** An already assembled bundle; otherwise materialize the packaged template for this host. */
   localOrcadDir?: string
-  /** The bundle's server target; read from `localOrcadDir` or probed when absent. */
-  target?: ServerTarget
+  /** The bundle's runtime target; read from `localOrcadDir` or probed when absent. */
+  target?: NodeRuntimeTarget
   /** Where the pinned runtime archive is cached; defaults beside the orcad artifact cache. */
   runtimeCacheRoot?: string
   nodePath: string
@@ -67,7 +68,7 @@ export async function deployOrcad(input: OrcadDeployOptions): Promise<OrcadDeplo
     input.target ??
     (input.localOrcadDir
       ? readOrcadBundleTarget(input.localOrcadDir)
-      : await resolveOrcadDeploymentTarget(input))
+      : await resolveOrcadRuntimeTarget(input))
   const options = {
     ...input,
     target,

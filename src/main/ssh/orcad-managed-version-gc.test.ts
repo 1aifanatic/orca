@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ServeReadiness } from '../server/serve-readiness'
+import { NODE_RUNTIME_ASSETS, NODE_RUNTIME_COMPAT_ASSETS } from '../../shared/node-runtime-pin'
 
 const { gcMock, readRecordMock } = vi.hoisted(() => ({
   gcMock: vi.fn(),
@@ -59,7 +60,11 @@ describe('managed orcad version GC after a deploy', () => {
       expect.objectContaining({
         liveDaemonVersion: '1.0.0+a',
         record: { active: '2.0.0+b' },
-        nodeRuntimePins: [expect.stringMatching(/^[0-9a-f]{64}$/u)]
+        // The compat runtime stays pinned: a compat orcad and a rung A relay share the store.
+        nodeRuntimePins: [
+          NODE_RUNTIME_ASSETS['linux-x64-glibc'].executableSha256,
+          NODE_RUNTIME_COMPAT_ASSETS['linux-x64-glibc217'].executableSha256
+        ]
       })
     )
 
