@@ -301,6 +301,38 @@ What differs on a Windows SSH host, and what deliberately does not:
   versioned directories that nothing deletes while a process runs from them: Windows refuses
   to delete a running image, and GC treats an in-use slot as live.
 
+## Idle exit (client-managed orcad only)
+
+An orcad that a desktop client launched over SSH stops itself, like the relay, once its host has
+been unused for 15 minutes. The client's launch sets `ORCA_ORCAD_MANAGED_ACTIVATION_ROOT`; an
+orcad started by hand, by a supervisor, or as a paired server never carries it and never idles
+out.
+
+"Unused" means every one of these held on every check for the whole period:
+
+- no client socket open and no RPC request running;
+- no terminal in the PTY provider, and the daemon answered with zero live sessions (a daemon
+  that does not answer keeps orcad up);
+- no agent reporting `working`;
+- no staged migration into this server;
+- no activation fence on the host (an update, rollback, decommission or recovery in flight).
+
+The stop is the ordinary graceful shutdown, which disconnects from the daemon and never shuts it
+down, so it cannot kill a terminal. It then asks the daemon to retire only if the daemon itself
+proves it holds no session. Before stopping, orcad writes `<data-root>/orcad-idle-stop.json`;
+the next start reports it once as `health.previousIdleStop` and removes it, so a later crash is
+never read as an idle stop. A managed start with no record reports `previousIdleStop: null`.
+
+The client starts a stopped server again, whatever stopped it (an idle stop, a kill, a host
+reboot): on every connect, on every fresh tunnel (including after the client wakes from sleep),
+and before a call through an environment the client restored at launch. A server that does not
+answer is checked on the host; only a proven exit starts the activated slot, under the activation
+fence, and the status line shows "Starting managed server…". A daemon that survived is adopted
+with its terminals; after a reboot both start fresh. A process that is live or cannot be proven
+gone is left alone, and a start that fails keeps the host managed with the reason and orcad.log's
+tail, never as a verdict about its terminals. `ORCA_E2E_ORCAD_IDLE_TIMEOUT_MS` shortens the idle
+period for tests; the client forwards it to the servers it launches.
+
 ## Health
 
 The readiness payload carries a `health` object:

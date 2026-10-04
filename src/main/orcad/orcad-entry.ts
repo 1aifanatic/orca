@@ -26,6 +26,7 @@ import type { OrcadRuntimeCleanup } from './orcad-runtime-lifetime'
 import { installOrcadStopRequestListeners } from './orcad-stop-request-listener'
 import { prepareOrcadManagedStop } from './orcad-managed-stop-admission'
 import type { OrcadManagedStopContext } from '../../shared/orcad-stop-request'
+import { beginOrcadIdleExit, bindOrcadIdleShutdown } from './orcad-managed-idle-exit-host'
 import {
   changedAiVaultSearchSettings,
   type AiVaultSearchSettings
@@ -191,6 +192,7 @@ async function startOrcadRuntime(
   const { resolvePushGatewayOrigin } = await import('../runtime/push/push-gateway-origin')
 
   const runtimeUserDataPath = getAppEnvironment().getPath('userData')
+  const idleExitStartup = beginOrcadIdleExit(runtimeUserDataPath)
   const { store: profileStore, authority: profileStateAuthority } =
     await createOrcadProfileStateStartup(runtimeUserDataPath)
   const observedPaneIdentities = new AgentStatusObservedPaneIdentities()
@@ -386,7 +388,11 @@ async function startOrcadRuntime(
     // Why in the readiness payload: this is the one message a supervisor and a deploy
     // transaction both read, and a green orcad with a dead daemon is exactly the
     // looks-healthy-but-useless state they must not activate.
-    health: await collectOrcadHealth(getAppEnvironment().getVersion(), profileStateAuthority)
+    health: await collectOrcadHealth(
+      getAppEnvironment().getVersion(),
+      profileStateAuthority,
+      idleExitStartup.previousIdleStop
+    )
   }
 
   await new ServeReadinessPublisher().publish(
@@ -396,6 +402,12 @@ async function startOrcadRuntime(
       : { mode: options.json ? 'json' : 'human' }
   )
 
+  await idleExitStartup.start({
+    rpc,
+    agentStates: () => agentHookServer.getStatusSnapshot(),
+    hasStagedMigration: () => profileStore.hasStagedOrcadMigrationCatalog(),
+    registerCleanup
+  })
   return { readiness }
 }
 
@@ -427,4 +439,5 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
     managedStop: handle.managedStop,
     beforeManagedStop: prepareOrcadManagedStop
   })
+  bindOrcadIdleShutdown(requestShutdown)
 }

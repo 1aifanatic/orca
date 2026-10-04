@@ -7,6 +7,8 @@ import {
   type RuntimeSshTunnelLink
 } from '../../shared/runtime-environments'
 import type { SshConnection } from './ssh-connection'
+import type { SshTarget } from '../../shared/ssh-types'
+import type { OrcadManagedServing } from './orcad-managed-serving'
 import type { SshConnectionManager } from './ssh-connection-manager'
 import type { SshPortForwardManager } from './ssh-port-forward'
 import type { getSshTargetRegistryStore } from './ssh-target-registry'
@@ -33,6 +35,13 @@ export type OrcadManagedTunnelProbe = (
   timeoutMs: number
 ) => Promise<boolean>
 
+export type OrcadManagedServingCheck = (input: {
+  environment: KnownRuntimeEnvironment
+  target: SshTarget
+  connection: SshConnection
+  remotePort: number
+}) => Promise<OrcadManagedServing>
+
 export type OrcadManagedTunnelResumeOptions = {
   attempts: number
   resolveEnvironment: (environmentId: string) => KnownRuntimeEnvironment | null
@@ -49,6 +58,8 @@ type ResumeRecoveryDependencies = {
   ownershipGenerations: Map<string, number>
   probeTunnel?: OrcadManagedTunnelProbe
   targeting: OrcadManagedTunnelTargeting
+  /** Never rebuilds: a server restarted on a new port drops this forward for the next ensure. */
+  checkServing?: (environment: KnownRuntimeEnvironment) => Promise<unknown>
 }
 
 type ResolvedManagedTunnelEnvironment = {
@@ -222,6 +233,8 @@ export class OrcadManagedTunnelResumeRecovery {
       targetId: active.targetId,
       transportGeneration
     })
+    // A server that idled out while this client slept is started here, not reported as lost.
+    await this.dependencies.checkServing?.(current.environment)
   }
 
   private resolveEnvironment(
@@ -265,7 +278,7 @@ export class OrcadManagedTunnelResumeRecovery {
   }
 }
 
-async function probeManagedOrcadTunnel(
+export async function probeManagedOrcadTunnel(
   environment: KnownRuntimeEnvironment,
   timeoutMs: number
 ): Promise<boolean> {
