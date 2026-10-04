@@ -306,54 +306,40 @@ test('a host whose sshd refuses TCP forwarding runs a managed server over the st
 test('a host whose port 6768 another runtime holds still runs a managed server', async ({
   orcaPage: page
 }, testInfo) => {
-  test.skip(
-    !HOST || !TEMPLATE_SOURCE,
-    `Set ${ORCAD_CONVERT_HOST_ENV} and ORCA_E2E_ORCAD_CONVERT_TEMPLATE`
-  )
   test.skip(HOST !== 'docker', 'Only the Docker host can start a listener mid-test')
   test.setTimeout(15 * 60_000)
-  rmSync(SCRATCH, { recursive: true, force: true })
-  mkdirSync(SCRATCH, { recursive: true })
-  writeFileSync(FLAGS_FILE, '{}')
   cpSync(TEMPLATE_SOURCE!, TEMPLATE_DIR, { recursive: true })
-  const host = startOrcadConvertHost(HOST!, testInfo)
-  try {
-    // Stands in for a desktop Orca on the host: it holds 6768 and turns every client away.
-    host.exec!(
-      `setsid nohup node -e "require('net').createServer((s) => s.destroy()).listen(6768, '127.0.0.1')" >/dev/null 2>&1 &`
-    )
-    await expect
-      .poll(() => host.exec!(`(echo > /dev/tcp/127.0.0.1/6768) 2>/dev/null && echo held || true`))
-      .toContain('held')
-    await waitForSessionReady(page)
-    const targetId = await page.evaluate(async (input) => {
-      const { target } = await window.api.ssh.addTarget({ target: input })
-      await window.api.ssh.connect({ targetId: target.id })
-      return target.id
-    }, host.input)
+  const host = startHost(testInfo)
+  // Stands in for a desktop Orca on the host: it holds 6768 and turns every client away.
+  host.exec!(
+    `setsid nohup node -e "require('net').createServer((s) => s.destroy()).listen(6768, '127.0.0.1')" >/dev/null 2>&1 &`
+  )
+  await expect
+    .poll(() => host.exec!(`(echo > /dev/tcp/127.0.0.1/6768) 2>/dev/null && echo held || true`))
+    .toContain('held')
+  await waitForSessionReady(page)
+  const targetId = await page.evaluate(async (input) => {
+    const { target } = await window.api.ssh.addTarget({ target: input })
+    await window.api.ssh.connect({ targetId: target.id })
+    return target.id
+  }, host.input)
 
-    await expect
-      .poll(() => managedServer(page, targetId), { timeout: 8 * 60_000 })
-      .toMatchObject({ kind: 'managed' })
-    const environment = (await page.evaluate(() => window.api.runtimeEnvironments.list())).find(
-      (entry) => entry.orcadDeployment?.sshTargetId === targetId
-    )
-    expect(environment, 'a managed server registered for the host').toBeTruthy()
-    // The other listener drops every connection, so this call can only have reached orcad.
-    await serverCall(page, environment!.id, 'repo.list')
+  await expect
+    .poll(() => managedServer(page, targetId), { timeout: 8 * 60_000 })
+    .toMatchObject({ kind: 'managed' })
+  const environment = (await page.evaluate(() => window.api.runtimeEnvironments.list())).find(
+    (entry) => entry.orcadDeployment?.sshTargetId === targetId
+  )
+  expect(environment, 'a managed server registered for the host').toBeTruthy()
+  // The other listener drops every connection, so this call can only have reached orcad.
+  await serverCall(page, environment!.id, 'repo.list')
 
-    // A reconnect reads the bound port again rather than assuming 6768.
-    await reconnect(page, targetId)
-    await expect
-      .poll(() => managedServer(page, targetId), { timeout: 2 * 60_000 })
-      .toMatchObject({ kind: 'managed' })
-    await serverCall(page, environment!.id, 'repo.list')
-  } finally {
-    host.cleanup()
-    if (existsSync(SCRATCH)) {
-      rmSync(SCRATCH, { recursive: true, force: true })
-    }
-  }
+  // A reconnect reads the bound port again rather than assuming 6768.
+  await reconnect(page, targetId)
+  await expect
+    .poll(() => managedServer(page, targetId), { timeout: 2 * 60_000 })
+    .toMatchObject({ kind: 'managed' })
+  await serverCall(page, environment!.id, 'repo.list')
 })
 
 test('a managed host updates to the bundled orcad on the first connect after an app update', async (// oxlint-disable-next-line no-empty-pattern -- Playwright's second fixture arg is testInfo; the first must be an object destructure to opt out of the default fixture set.

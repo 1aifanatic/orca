@@ -14,7 +14,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { runProcess, spawnProcess } from '../../src/shared/child-process/run-process'
+import { runProcess } from '../../src/shared/child-process/run-process'
 import { getDaemonPidPath } from '../../src/main/daemon/daemon-spawner'
 import { readDaemonPidRecord } from '../../src/main/daemon/daemon-endpoint-incarnation'
 import { resolveBundledOrcadRuntime } from '../../src/main/orcad/orcad-bundled-runtime'
@@ -29,7 +29,12 @@ import {
   type HeadlessPairedRuntimeHost
 } from './helpers/headless-paired-runtime-host'
 import { cleanupE2EDaemons } from './helpers/electron-process-shutdown'
-import { cliServeProfile, startCliServe } from './helpers/orca-serve-cli-host'
+import {
+  cliServeProfile,
+  isPidAlive,
+  spawnUntilReady,
+  startCliServe
+} from './helpers/orca-serve-cli-host'
 
 const RUN = process.env.ORCA_E2E_ORCAD_SERVE === '1'
 const slotDir = path.resolve('out/orcad')
@@ -83,44 +88,21 @@ type OrcadServe = { daemonPid: number; stop: () => Promise<void> }
 async function startOrcadServe(
   host: Pick<HeadlessPairedRuntimeHost, 'env' | 'userDataDir'>
 ): Promise<OrcadServe> {
-  const child = spawnProcess({
+  const serve = await spawnUntilReady({
+    label: 'orcad serve',
     program: orcadRuntime!,
     args: [path.join(slotDir, 'orcad.js'), '--bind', '127.0.0.1', '--port', '0', '--json'],
     env: { ...host.env, ORCA_USER_DATA: host.userDataDir },
-    timeoutMs: null
-  })
-  let stdout = ''
-  let stderr = ''
-  child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString('utf8')))
-  const line = await new Promise<string>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`orcad serve not ready: ${stderr}`)), 120_000)
-    child.stdout.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString('utf8')
+    timeoutMs: 120_000,
+    parseReady: (stdout) => {
       const newline = stdout.indexOf('\n')
-      if (newline !== -1) {
-        clearTimeout(timer)
-        resolve(stdout.slice(0, newline))
-      }
-    })
-    child.once('exit', (code) => {
-      clearTimeout(timer)
-      reject(new Error(`orcad serve exited ${String(code)}: ${stderr}`))
-    })
-  })
-  const daemon = JSON.parse(line).health?.terminalDaemon
-  expect(daemon?.state, stderr).toBe('live')
-  return {
-    daemonPid: daemon.pid,
-    stop: async () => {
-      if (child.exitCode !== null) {
-        return
-      }
-      const exited = new Promise((settle) => child.once('exit', settle))
-      // POSIX: SIGTERM is orcad's graceful stop and leaves the daemon running by design.
-      child.kill('SIGTERM')
-      await exited
+      return newline === -1 ? null : stdout.slice(0, newline)
     }
-  }
+  })
+  const daemon = JSON.parse(serve.ready).health?.terminalDaemon
+  expect(daemon?.state, serve.stderr()).toBe('live')
+  // POSIX: SIGTERM is orcad's graceful stop and leaves the daemon running by design.
+  return { daemonPid: daemon.pid, stop: serve.stop }
 }
 
 // Why: an SSH-managed orcad on this machine runs under ~/.orca, beside the desktop's own profile.
@@ -197,7 +179,7 @@ test("Electron serve adopts a terminal orcad's daemon owns", async () => {
         const previous = daemonPid(host.userDataDir)
         if (previous) {
           process.kill(previous, 'SIGKILL')
-          await expect.poll(() => isAlive(previous), { timeout: 10_000 }).toBe(false)
+          await expect.poll(() => isPidAlive(previous), { timeout: 10_000 }).toBe(false)
         }
         const orcad = await startOrcadServe(host)
         try {
@@ -291,12 +273,3 @@ test('`orca serve` runs on orcad by default and on Electron with ORCA_SERVE_RUNT
     await cleanupE2EDaemons(profile.userDataDir)
   }
 })
-
-function isAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch {
-    return false
-  }
-}

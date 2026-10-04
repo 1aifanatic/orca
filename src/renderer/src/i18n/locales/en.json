@@ -1252,7 +1252,7 @@
       },
       "ipcEvents": {
         "sshManagedServer": {
-          "refused": "This SSH host could not move to a managed Orca server: {{blocker}}"
+          "refusedBlocked": "This SSH host could not move to a managed Orca server. SSH Hosts in Settings shows why."
         }
       }
     },

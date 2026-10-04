@@ -7,9 +7,9 @@ export function canMoveSshHostToManagedServer(): boolean {
   return typeof window.api.ssh.moveToManagedServer === 'function'
 }
 
-export function managedServerMoveOfferText(host: string, terminals: number): string {
-  // Why: 0 means the count was not reported, never that no terminal will restart.
-  return terminals > 0
+export function managedServerMoveOfferText(host: string, terminals: number | undefined): string {
+  // Why: a missing or zero count means it was not reported, never that no terminal will restart.
+  return terminals
     ? translate(
         'auto.ssh.managedServerMove.offer',
         'Move {{host}} to a managed Orca server for more reliable connections. Its {{count}} open terminals will restart.',

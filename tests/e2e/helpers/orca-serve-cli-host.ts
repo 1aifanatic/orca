@@ -189,12 +189,16 @@ async function killProfileLockHolder(userDataDir: string): Promise<void> {
     return
   }
   const deadline = Date.now() + 30_000
-  while (Date.now() < deadline) {
-    try {
-      process.kill(pid, 0)
-    } catch {
-      return
-    }
+  while (Date.now() < deadline && isPidAlive(pid)) {
     await new Promise((settle) => setTimeout(settle, 100))
+  }
+}
+
+export function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
   }
 }
