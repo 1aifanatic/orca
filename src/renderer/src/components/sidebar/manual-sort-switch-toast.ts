@@ -2,13 +2,12 @@ import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
 import { useAppStore } from '@/store'
 import { SORT_OPTIONS } from './sidebar-workspace-option-items'
-import type { SortBy } from './smart-sort'
 
 const MANUAL_SORT_SWITCH_TOAST_ID = 'sidebar-manual-sort-switch'
 
 // Why: a drop that reorders must switch to Manual so the placement sticks; say so, since it changes a shared setting.
-export function switchSortToManualAfterDrop(setSortBy: (sortBy: SortBy) => void): void {
-  const previousSortBy = useAppStore.getState().sortBy
+export function switchSortToManualAfterDrop(): void {
+  const { sortBy: previousSortBy, setSortBy } = useAppStore.getState()
   if (previousSortBy === 'manual') {
     return
   }
@@ -47,9 +46,9 @@ export function switchSortToManualAfterDrop(setSortBy: (sortBy: SortBy) => void)
                 label: previousLabel
               }
             ),
+            // The sortBy change retires the toast through the subscription above.
             onClick: () => {
               if (!retired) {
-                retire()
                 setSortBy(previousSortBy)
               }
             }

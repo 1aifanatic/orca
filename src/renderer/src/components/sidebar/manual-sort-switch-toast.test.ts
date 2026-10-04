@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import { switchSortToManualAfterDrop } from './manual-sort-switch-toast'
-import type { SortBy } from './smart-sort'
 
 const { toastInfo, toastDismiss } = vi.hoisted(() => ({
   toastInfo: vi.fn(),
@@ -25,11 +24,8 @@ function lastToastOptions(): ToastOptions {
 }
 
 describe('switchSortToManualAfterDrop', () => {
-  const setSortBy = vi.fn((sortBy: SortBy) => useAppStore.setState({ sortBy }))
-
   beforeEach(() => {
     useAppStore.setState(initialState, true)
-    setSortBy.mockClear()
     toastInfo.mockClear()
     toastDismiss.mockClear()
   })
@@ -43,9 +39,9 @@ describe('switchSortToManualAfterDrop', () => {
 
   it('switches to Manual and offers a way back to the previous sort', () => {
     useAppStore.setState({ sortBy: 'smart' })
-    switchSortToManualAfterDrop(setSortBy)
+    switchSortToManualAfterDrop()
 
-    expect(setSortBy).toHaveBeenCalledWith('manual')
+    expect(useAppStore.getState().sortBy).toBe('manual')
     expect(toastInfo).toHaveBeenCalledTimes(1)
     const options = lastToastOptions()
     expect(options.action?.label).toBe('Back to Agent Activity')
@@ -56,15 +52,14 @@ describe('switchSortToManualAfterDrop', () => {
 
   it('does nothing when Manual is already active', () => {
     useAppStore.setState({ sortBy: 'manual' })
-    switchSortToManualAfterDrop(setSortBy)
+    switchSortToManualAfterDrop()
 
-    expect(setSortBy).not.toHaveBeenCalled()
     expect(toastInfo).not.toHaveBeenCalled()
   })
 
   it('retires the toast once the user picks another sort', () => {
     useAppStore.setState({ sortBy: 'recent' })
-    switchSortToManualAfterDrop(setSortBy)
+    switchSortToManualAfterDrop()
     const options = lastToastOptions()
 
     useAppStore.setState({ sortBy: 'name' })
@@ -72,9 +67,7 @@ describe('switchSortToManualAfterDrop', () => {
 
     // A round trip back to Manual must not let the stale action override it.
     useAppStore.setState({ sortBy: 'manual' })
-    setSortBy.mockClear()
     options.action?.onClick()
     expect(useAppStore.getState().sortBy).toBe('manual')
-    expect(setSortBy).not.toHaveBeenCalled()
   })
 })

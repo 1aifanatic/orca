@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createStore } from 'zustand/vanilla'
-import { useAppStore, type AppState } from './index'
-import { installSettledSortEpoch, SORT_SETTLE_MS } from './settled-sort-epoch'
+import { useAppStore } from './index'
+import { SORT_SETTLE_MS } from './settled-sort-epoch'
 import { applyWebSessionTabsStorePatch } from '@/runtime/web-session-tabs-sync/store-patch'
 import { makeWorktree } from '@/components/worktree-jump-palette-test-fixtures'
 
@@ -86,16 +85,5 @@ describe('settledSortEpoch', () => {
     expect(vi.getTimerCount()).toBe(1)
     useAppStore.setState(initialState, true)
     expect(vi.getTimerCount()).toBe(0)
-  })
-
-  it('clears its timer and stops listening when disposed', () => {
-    const store = createStore<AppState>()(() => ({ ...initialState, sortBy: 'recent' }))
-    const dispose = installSettledSortEpoch(store)
-    store.setState((s) => ({ sortEpoch: s.sortEpoch + 1 }))
-    expect(vi.getTimerCount()).toBe(1)
-    dispose()
-    expect(vi.getTimerCount()).toBe(0)
-    store.setState((s) => ({ sortEpoch: s.sortEpoch + 1, sortBy: 'manual' }))
-    expect(store.getState().settledSortEpoch).toBe(0)
   })
 })

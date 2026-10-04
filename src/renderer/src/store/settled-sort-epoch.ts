@@ -14,74 +14,48 @@ import { getIndexedAllWorktrees } from './worktree-repo-index'
 // Why: time-decaying scores would make rows jump on every bump; coalesce a burst into one re-sort.
 export const SORT_SETTLE_MS = 3_000
 
-/** Call once from inside the store's state creator, passing its `api`; returns a disposer. */
+function countLiveWorktrees(worktreesByRepo: AppState['worktreesByRepo']): number {
+  let count = 0
+  for (const worktree of getIndexedAllWorktrees(worktreesByRepo)) {
+    if (!worktree.isArchived) {
+      count++
+    }
+  }
+  return count
+}
+
+/** Call once from inside the store's state creator, passing its `api`. */
 export function installSettledSortEpoch(
-  api: Pick<StoreApi<AppState>, 'getState' | 'setState' | 'subscribe'>
-): () => void {
-  let timer: ReturnType<typeof setTimeout> | null = null
-  let countedWorktreesByRepo: AppState['worktreesByRepo'] | null = null
-  let liveWorktreeCount = 0
+  api: Pick<StoreApi<AppState>, 'setState' | 'subscribe'>
+): void {
+  let timer: ReturnType<typeof setTimeout> | undefined
   // Why a baseline from the last bump (not the previous write): a row change that skipped
   // its bump (stale-host purge) must not re-sort on its own.
   let liveWorktreeCountAtLastBump = 0
 
-  const countLiveWorktrees = (worktreesByRepo: AppState['worktreesByRepo']): number => {
-    if (worktreesByRepo !== countedWorktreesByRepo) {
-      countedWorktreesByRepo = worktreesByRepo
-      liveWorktreeCount = 0
-      for (const worktree of getIndexedAllWorktrees(worktreesByRepo)) {
-        if (!worktree.isArchived) {
-          liveWorktreeCount++
-        }
-      }
-    }
-    return liveWorktreeCount
-  }
+  const settle = (): void => api.setState((s) => ({ settledSortEpoch: s.sortEpoch }))
 
-  const clearTimer = (): void => {
-    if (timer !== null) {
-      clearTimeout(timer)
-      timer = null
-    }
-  }
-
-  const settle = (): void => {
-    clearTimer()
-    const { sortEpoch, settledSortEpoch } = api.getState()
-    if (settledSortEpoch !== sortEpoch) {
-      api.setState({ settledSortEpoch: sortEpoch })
-    }
-  }
-
-  const unsubscribe = api.subscribe((state, previous) => {
+  api.subscribe((state, previous) => {
     const epochChanged = state.sortEpoch !== previous.sortEpoch
+    let structuralChange = false
     if (epochChanged) {
       const count = countLiveWorktrees(state.worktreesByRepo)
-      const structuralChange = count !== liveWorktreeCountAtLastBump
+      structuralChange = count !== liveWorktreeCountAtLastBump
       liveWorktreeCountAtLastBump = count
-      if (structuralChange) {
-        settle()
-        return
-      }
     }
     if (state.settledSortEpoch === state.sortEpoch) {
-      // Why: a store reset (or any write that lands settled) must not leave a stale timer behind.
-      clearTimer()
+      // Why: any write that lands settled — settle() itself or a store reset — retires the pending timer.
+      clearTimeout(timer)
       return
     }
-    // Why: Manual is direct manipulation and a mode switch is user intent; neither waits out the window.
-    if (state.sortBy === 'manual' || state.sortBy !== previous.sortBy) {
+    // Why: adds/removes, Manual (direct manipulation), and a mode switch never wait out the window.
+    if (structuralChange || state.sortBy === 'manual' || state.sortBy !== previous.sortBy) {
       settle()
       return
     }
     if (epochChanged) {
-      clearTimer()
+      clearTimeout(timer)
       timer = setTimeout(settle, SORT_SETTLE_MS)
     }
   })
-
-  return () => {
-    clearTimer()
-    unsubscribe()
-  }
 }

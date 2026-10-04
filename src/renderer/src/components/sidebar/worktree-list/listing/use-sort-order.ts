@@ -56,7 +56,7 @@ export function useSidebarWorktreeSortOrder(args: {
   sortBy: SortBy
 }): string[] {
   const { repoMap, sortBy } = args
-  // Why settled (not live) epoch: the store owns the settle window, so no sort mode mirrors store updates into React state.
+  // Why settled (not live): the store coalesces bump bursts so rows don't jump (store/settled-sort-epoch.ts).
   const settledSortEpoch = useAppStore((s) => s.settledSortEpoch)
 
   // Why a latching ref: a live signal makes Smart authoritative for the session, even after that activity ends.
