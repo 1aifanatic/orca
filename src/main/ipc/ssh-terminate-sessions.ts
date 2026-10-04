@@ -5,6 +5,7 @@ import {
 import { SSH_TERMINATE_RECONNECT_REQUIRED } from '../../shared/constants'
 import { isSshPtyNotFoundError } from '../providers/ssh-pty-errors'
 import { toAppSshPtyId, toRelaySshPtyId } from '../providers/ssh-pty-id'
+import { isReattachHeldByPreviousRelay } from '../ssh/ssh-previous-relay-terminals'
 import {
   clearProviderPtyState,
   deletePtyOwnership,
@@ -79,6 +80,14 @@ export async function terminateSshTargetSessions(
     const shutdownFailures: string[] = []
     for (const [index, result] of shutdownResults.entries()) {
       const { appPtyId, relayPtyId } = ptyIds[index]
+      if (
+        result.status !== 'fulfilled' &&
+        (await isReattachHeldByPreviousRelay(targetId, result.reason))
+      ) {
+        // Not found here is not absence while an older build's relay may still run it (#25124).
+        outcome = { ...outcome, unverifiable: outcome.unverifiable + 1 }
+        continue
+      }
       if (result.status !== 'fulfilled' && !isSshPtyNotFoundError(result.reason)) {
         shutdownFailures.push(
           `${relayPtyId}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`
