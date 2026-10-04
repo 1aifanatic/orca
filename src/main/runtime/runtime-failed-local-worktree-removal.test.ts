@@ -380,14 +380,19 @@ describe.skipIf(process.platform !== 'darwin')('a worktree delete Git fails part
     const retried = retryFailedWorktreeRemoval(worktreeId, 'local', (record) =>
       interruptedLocalWorktreeRemovalJob(record, jobHost(purged))
     )
-    await expect(retried).rejects.toThrow(refusal())
+    // Named first: removing the folder, as the usual refusal asks, would delete it too.
+    const nestedRefusal = `Refusing to delete worktree because it contains another registered worktree: ${nested}`
+    await expect(retried).rejects.toThrow(nestedRefusal)
     await _settlePendingWorktreeRemovalsForTests()
 
     expect(existsSync(join(nested, 'unsaved.txt'))).toBe(true)
     expect(await isRegistered(nested)).toBe(true)
     expect(removeHostTree).not.toHaveBeenCalled()
     expect(purged).toEqual([])
-    expect(await listedRows()).toContainEqual({ path: worktreePath, removalError: refusal() })
+    expect(await listedRows()).toContainEqual({ path: worktreePath, removalError: nestedRefusal })
+    // Delete's own check names it as well, before any job runs.
+    expect(String(await deleteRow(purged))).toBe(`Error: ${nestedRefusal}`)
+    expect(existsSync(join(nested, 'unsaved.txt'))).toBe(true)
   })
 
   it('checks again after the teardown that the folder is still gone', async () => {

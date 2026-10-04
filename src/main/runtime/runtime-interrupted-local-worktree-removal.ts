@@ -179,7 +179,7 @@ async function finishInterruptedLocalWorktreeRemoval(
   }
   // Before the teardown, so a refused folder keeps its terminals and watchers.
   if (!deletable) {
-    await assertUnregisteredCheckoutGone(record.worktreePath)
+    await assertUnregisteredCheckoutGone(record.worktreePath, worktrees)
   }
   const gate = await args.acquireWatcherRemoval(record.worktreePath)
   if (args.stopPtys) {

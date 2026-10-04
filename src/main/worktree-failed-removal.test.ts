@@ -354,6 +354,21 @@ describe('a delete that fails after Git dropped the registration', () => {
     expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toHaveLength(1)
   })
 
+  it('Delete names a worktree Git registers inside the folder, which removing it would delete', async () => {
+    await failRemoval()
+    const nested = { ...mainWorktree, path: join(checkout, 'sub'), isMainWorktree: false }
+    const retry = vi.fn()
+
+    await expect(
+      retryFailedRemovalUnlessRegistered(worktreeId, checkout, [mainWorktree, nested], retry)
+    ).rejects.toThrow(
+      `Refusing to delete worktree because it contains another registered worktree: ${nested.path}`
+    )
+
+    expect(retry).not.toHaveBeenCalled()
+    expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toHaveLength(1)
+  })
+
   it('Delete finishes the recorded removal once the user removed the folder', async () => {
     await failRemoval()
     await rm(checkout, { recursive: true })

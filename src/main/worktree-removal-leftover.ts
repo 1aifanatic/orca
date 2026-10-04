@@ -11,7 +11,10 @@ import {
   persistWorktreeRemovalRecords,
   worktreeCheckoutExists
 } from './worktree-removal-table'
-import { canSafelyRemoveOrphanedWorktreeDirectory } from './worktree-removal-safety'
+import {
+  assertWorktreeDoesNotContainRegisteredWorktree,
+  canSafelyRemoveOrphanedWorktreeDirectory
+} from './worktree-removal-safety'
 
 /**
  * Whether a checkout path Git no longer registers still holds the removed checkout's own leftover:
@@ -57,9 +60,17 @@ export function unregisteredFolderRefusal(worktreePath: string): Error {
   )
 }
 
-/** Refuses while anything is at a checkout path Git no longer registers. */
-export async function assertUnregisteredCheckoutGone(worktreePath: string): Promise<void> {
+/**
+ * Refuses while anything is at a checkout path Git no longer registers, naming first any worktree
+ * in `registeredWorktrees` inside it.
+ */
+export async function assertUnregisteredCheckoutGone(
+  worktreePath: string,
+  registeredWorktrees: readonly Pick<GitWorktreeInfo, 'path'>[] = []
+): Promise<void> {
   if (await worktreeCheckoutExists(worktreePath)) {
+    // Why first: removing the folder, as the refusal asks, would delete that worktree's files too.
+    assertWorktreeDoesNotContainRegisteredWorktree(worktreePath, registeredWorktrees)
     throw unregisteredFolderRefusal(worktreePath)
   }
 }
@@ -84,7 +95,7 @@ export async function retryFailedRemovalUnlessRegistered(
   }
   const failed = failedWorktreeRemovals.get(worktreeId)
   if (failed) {
-    await assertUnregisteredCheckoutGone(failed.worktreePath)
+    await assertUnregisteredCheckoutGone(failed.worktreePath, registeredWorktrees)
   }
   return retry() !== undefined
 }

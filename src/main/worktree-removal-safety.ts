@@ -115,7 +115,7 @@ export function findRegisteredDeletableWorktree(
 
 export function assertWorktreeDoesNotContainRegisteredWorktree(
   worktreePath: string,
-  worktrees: readonly GitWorktreeInfo[]
+  worktrees: readonly Pick<GitWorktreeInfo, 'path'>[]
 ): void {
   const nestedWorktree = worktrees.find((item) => {
     if (areWorktreePathsEqual(item.path, worktreePath)) {
