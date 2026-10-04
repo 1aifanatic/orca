@@ -43,25 +43,31 @@ export function structuredLaunchesHoldingIdentity(
   )
 }
 
-/** An empty chat (a + pick, the empty-workspace default) still starting: the first request with text
- *  claims it once, and from then on it is that request's chat. A resume is never empty, nor a chat
- *  its user has already sent or typed into. */
-export function claimableStructuredLaunchAttempt(
-  state: StructuredLaunchState,
-  request: StructuredLaunchRequest
+/** A blank first attempt (a + pick, the empty-workspace default) still starting, which its user has
+ *  not sent or typed into. A resume is never empty. */
+function emptyStructuredLaunchAttempt(
+  state: StructuredLaunchState
 ): Extract<StructuredLaunchAttempt, { kind: 'first' }> | undefined {
   const { attempt } = state.callers
   return !state.intent.params.resumeFrom &&
     attempt.kind === 'first' &&
     attempt.blank &&
-    request.hasText &&
     isStructuredLaunchChatEmpty(state.intent.sessionId)
     ? attempt
     : undefined
 }
 
-/** The launch a new start of `request` joins: one it re-delivers, else an empty chat it claims. The
- *  newest wins if a retried resume holds the identity too. */
+/** The first request with text claims an empty starting chat once; from then on it is that
+ *  request's chat. */
+export function claimableStructuredLaunchAttempt(
+  state: StructuredLaunchState,
+  request: StructuredLaunchRequest
+): Extract<StructuredLaunchAttempt, { kind: 'first' }> | undefined {
+  return request.hasText ? emptyStructuredLaunchAttempt(state) : undefined
+}
+
+/** The launch a new start of `request` joins: one it re-delivers, else an empty starting chat, which
+ *  a request with text claims and one without reuses. The newest wins. */
 export function getJoinableStructuredLaunchState(
   identity: string,
   request: StructuredLaunchRequest
@@ -70,7 +76,7 @@ export function getJoinableStructuredLaunchState(
   return (
     structuredLaunchesHoldingIdentity(matches, request.id).at(-1) ??
     structuredLaunchesHoldingIdentity(matches).findLast((state) =>
-      claimableStructuredLaunchAttempt(state, request)
+      emptyStructuredLaunchAttempt(state)
     )
   )
 }
