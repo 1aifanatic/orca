@@ -7,7 +7,7 @@ export function getMobileWorkspaceLineageGroupKey(worktree: WorktreeLineageIdent
   return `workspace-lineage:${encodeURIComponent(getWorktreeRowIdentity(worktree))}`
 }
 
-function hasValidLineageParent(worktree: Worktree, parent: Worktree): boolean {
+export function hasValidLineageParent(worktree: Worktree, parent: Worktree): boolean {
   if (
     worktree.lineageWorktreeInstanceId === undefined &&
     worktree.parentWorktreeInstanceId === undefined

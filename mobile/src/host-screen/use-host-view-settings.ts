@@ -116,16 +116,15 @@ export function useHostViewSettings(args: {
     }
   }, [client, connState, hostId, applyViewState])
 
-  // Separate from the ui.get sync: placement lives in the desktop's settings.get store.
+  // Placement lives in settings.get; a host switch replaces the client, so its identity guards.
   const syncPinnedDisplayPolicy = useCallback(async () => {
     if (!client || connState !== 'connected') {
       return
     }
     const requestClient = client
-    const requestHostId = hostId
     try {
       const reply = await pinnedDisplayPolicyRead.request(requestClient)
-      if (clientRef.current !== requestClient || hostId !== requestHostId) {
+      if (clientRef.current !== requestClient) {
         return
       }
       const policy = pinnedDisplayPolicyRead.interpret(reply)
@@ -135,7 +134,7 @@ export function useHostViewSettings(args: {
     } catch {
       // Transient transport failure; retry on the next focus/connect.
     }
-  }, [client, connState, hostId])
+  }, [client, connState])
 
   const handleSortChange = useCallback(
     (value: MobileSortMode) => {

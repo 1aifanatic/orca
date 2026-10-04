@@ -5,7 +5,7 @@ import {
   getMobileWorkspaceStatus,
   getMobileWorkspaceStatusGroupKey
 } from './mobile-workspace-statuses'
-import { applyMobileWorkspaceLineage } from './mobile-workspace-lineage'
+import { applyMobileWorkspaceLineage, hasValidLineageParent } from './mobile-workspace-lineage'
 import { getPRGroupKey, PR_GROUP_LABELS, PR_GROUP_ORDER } from './workspace-pr-status-groups'
 import type { FilterState, PinnedDisplayPolicy, Section, Worktree } from './workspace-list-types'
 import type { MobileGroupMode, MobileSortMode } from './workspace-view-settings'
@@ -120,6 +120,35 @@ export function isWorktreePinned(w: Worktree, localPins: Set<string>): boolean {
   return w.isPinned || localPins.has(w.worktreeId)
 }
 
+// Visible descendants follow a pinned ancestor into Pinned, as on desktop; edges stay on one host.
+function getPinnedSectionIdentities(rows: Worktree[], localPins: Set<string>): Set<string> {
+  const byIdentity = new Map(rows.map((w) => [getWorktreeRowIdentity(w), w]))
+  const included = new Set(
+    rows.filter((w) => isWorktreePinned(w, localPins)).map(getWorktreeRowIdentity)
+  )
+  for (let grew = true; grew;) {
+    grew = false
+    for (const w of rows) {
+      const parentIdentity = w.parentWorktreeId
+        ? getWorktreeRowIdentity({ worktreeId: w.parentWorktreeId, hostId: w.hostId })
+        : undefined
+      const parent = parentIdentity ? byIdentity.get(parentIdentity) : undefined
+      const identity = getWorktreeRowIdentity(w)
+      if (
+        parent &&
+        parentIdentity !== identity &&
+        !included.has(identity) &&
+        included.has(getWorktreeRowIdentity(parent)) &&
+        hasValidLineageParent(w, parent)
+      ) {
+        included.add(identity)
+        grew = true
+      }
+    }
+  }
+  return included
+}
+
 export function buildSections(
   worktrees: Worktree[],
   sortMode: MobileSortMode,
@@ -135,16 +164,17 @@ export function buildSections(
   const filtered = filterWorktrees(worktrees, filters, search)
   const sorted = sortWorktrees(filtered, sortMode)
 
-  const pinned = sorted.filter((w) => isWorktreePinned(w, pinnedIds))
+  const pinnedIdentities = getPinnedSectionIdentities(sorted, pinnedIds)
+  const pinned = sorted.filter((w) => pinnedIdentities.has(getWorktreeRowIdentity(w)))
   // Pinned placement is what the user sees, so device-local pins leave their groups too.
   const canonicalGroupWorktrees =
     pinnedDisplayPolicy === 'duplicate-in-groups'
       ? sorted
-      : sorted.filter((w) => !isWorktreePinned(w, pinnedIds))
+      : sorted.filter((w) => !pinnedIdentities.has(getWorktreeRowIdentity(w)))
 
   const sections: Section[] = []
   if (pinned.length > 0) {
-    sections.push(makeSection('pinned', 'Pinned', pinned, 'pin'))
+    sections.push(makeSection('pinned', 'Pinned', pinned, 'pin', collapsedGroups))
   }
 
   if (groupMode === 'none') {
