@@ -11,8 +11,7 @@ import type { AgentSessionFailureWordsContext } from './agent-session-failure-wo
 import type { AgentJournalRenderItem, AgentJournalSubmission } from './agent-session-journal-types'
 import { agentSessionWriteNotDoneParts } from './agent-session-refusal-notice'
 import type { AgentSessionWriteNoticePart } from './agent-session-write-notice-copy'
-import { structuredAgentSessionRejectedFailure } from './structured-agent-session-outbox'
-import { structuredAgentSessionAttemptFailureParts } from './structured-agent-session-send-disposition'
+import { structuredAgentSessionRejectionParts } from './structured-agent-session-send-disposition'
 import { isStructuredAgentSessionStartFailureRow } from './structured-agent-session-start-failure-row-key'
 
 /** The facts the chat's loaded start-failure rows state. */
@@ -63,7 +62,7 @@ export function agentSessionFailureStatedByStartRow(
 
 const NO_COMMAND_RESULTS: ReadonlySet<string> = new Set()
 
-/** The words for a recorded rejection that no outbox entry on this client carries. */
+/** The words on the row of a send the host recorded and then rejected, in the host's terms. */
 export function structuredAgentSessionRecordedRejectionParts(
   submission: AgentJournalSubmission,
   context: AgentSessionFailureWordsContext,
@@ -77,9 +76,10 @@ export function structuredAgentSessionRecordedRejectionParts(
   ) {
     return agentSessionWriteNotDoneParts('send')
   }
-  return structuredAgentSessionAttemptFailureParts(
-    structuredAgentSessionRejectedFailure(submission),
-    context,
-    readWholeAgentSessionFailureFact(submission.rejection)
+  return structuredAgentSessionRejectionParts(
+    submission.reason,
+    'send',
+    readWholeAgentSessionFailureFact(submission.rejection),
+    context
   )
 }
