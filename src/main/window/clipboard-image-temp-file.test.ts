@@ -6,7 +6,9 @@ const { authorizeExternalPathMock, writeFileMock, mkdirMock, getPathMock, writeF
     authorizeExternalPathMock: vi.fn(),
     writeFileMock: vi.fn(),
     mkdirMock: vi.fn(),
-    getPathMock: vi.fn(() => '/Users/me/Library/Application Support/orca'),
+    getPathMock: vi.fn((name: string) =>
+      name === 'temp' ? '/os/temp' : '/Users/me/Library/Application Support/orca'
+    ),
     writeFileBase64Mock: vi.fn()
   }))
 
@@ -30,10 +32,20 @@ beforeEach(() => {
 })
 
 describe('saveClipboardImageBufferAsTempFile', () => {
-  it('writes a local paste into the paste folder, where a restored draft can still find it', async () => {
+  it('keeps a terminal, editor or phone paste in OS temp, as before', async () => {
     const savedPath = await saveClipboardImageBufferAsTempFile(Buffer.from([1, 2, 3]))
 
-    expect(getPathMock).toHaveBeenCalledWith('userData')
+    expect(getPathMock).toHaveBeenCalledWith('temp')
+    expect(getPathMock).not.toHaveBeenCalledWith('userData')
+    expect(mkdirMock).not.toHaveBeenCalled()
+    expect(dirname(savedPath)).toBe('/os/temp')
+  })
+
+  it('writes a native-chat composer paste into the paste folder, where its draft can find it', async () => {
+    const savedPath = await saveClipboardImageBufferAsTempFile(Buffer.from([1, 2, 3]), {
+      forNativeChatDraft: true
+    })
+
     expect(mkdirMock).toHaveBeenCalledWith(
       join('/Users/me/Library/Application Support/orca', 'native-chat-pastes'),
       { recursive: true }
@@ -41,13 +53,14 @@ describe('saveClipboardImageBufferAsTempFile', () => {
     expect(dirname(savedPath)).toBe(
       join('/Users/me/Library/Application Support/orca', 'native-chat-pastes')
     )
+    expect(authorizeExternalPathMock).toHaveBeenCalledWith(savedPath)
   })
 
   it('authorizes the local paste so the composer can preview what it just wrote', async () => {
     const savedPath = await saveClipboardImageBufferAsTempFile(Buffer.from([1, 2, 3]))
 
     expect(writeFileMock).toHaveBeenCalledWith(savedPath, Buffer.from([1, 2, 3]))
-    // The paste folder is outside every allowed root, so an unauthorized path
+    // OS temp is outside every allowed root, so an unauthorized path
     // makes fs:readFile deny the preview read of Orca's own file.
     expect(authorizeExternalPathMock).toHaveBeenCalledWith(savedPath)
   })

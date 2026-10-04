@@ -210,11 +210,11 @@ describe('clipboard image paste for a runtime-owned SSH workspace', () => {
     expect(callRuntimeEnvironmentMock).not.toHaveBeenCalled()
   })
 
-  it('keeps a plain local paste on this machine, in Orca’s paste folder', async () => {
+  it('keeps a plain local paste on the local temp dir', async () => {
     fsWriteFileMock.mockResolvedValue(undefined)
 
     await expect(saveImageHandler()(rendererEvent, undefined)).resolves.toMatch(
-      /native-chat-pastes[\\/]orca-paste-.*\.png$/
+      /orca-paste-.*\.png$/
     )
 
     expect(fsWriteFileMock).toHaveBeenCalledTimes(1)

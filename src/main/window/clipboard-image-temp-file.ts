@@ -3,6 +3,7 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 
 import { requireSshFilesystemProvider } from '../providers/ssh-filesystem-dispatch'
+import { getAppEnvironment } from '../../shared/app-environment'
 import { isWindowsAbsolutePathLike } from '../../shared/cross-platform-path'
 import { assertClipboardImageByteLengthWithinLimit } from '../../shared/clipboard-image'
 import { authorizeExternalPath } from '../ipc/filesystem-auth'
@@ -11,6 +12,8 @@ import { nativeChatPasteFolder } from './native-chat-paste-files'
 export type SaveClipboardImageAsTempFileArgs = {
   connectionId?: string | null
   runtimeEnvironmentId?: string | null
+  /** A native-chat composer paste: kept in Orca's paste folder so its draft can bring it back. */
+  forNativeChatDraft?: boolean
 }
 
 const REMOTE_CLIPBOARD_IMAGE_TEMP_DIR = '/tmp'
@@ -40,13 +43,16 @@ export async function saveClipboardImageBufferAsTempFile(
     return remotePath
   }
 
-  // Why the paste folder, not the OS temp dir: a draft that names the paste can still show and
-  // send it after a restart (native-chat-paste-files).
-  const folder = nativeChatPasteFolder()
-  await fs.mkdir(folder, { recursive: true })
+  // Why only a composer paste goes to the paste folder: its draft can bring it back after a
+  // restart, while terminal, editor and phone pastes stay in OS temp, as they always have.
+  let folder = getAppEnvironment().getPath('temp')
+  if (args?.forNativeChatDraft === true) {
+    folder = nativeChatPasteFolder()
+    await fs.mkdir(folder, { recursive: true })
+  }
   const tempPath = path.join(folder, fileName)
   await fs.writeFile(tempPath, buffer)
-  // Why: the paste folder is outside every allowed root, so without this the
+  // Why: both folders are outside every allowed root, so without this the
   // composer's own thumbnail/preview read of the file it just wrote is denied.
   authorizeExternalPath(tempPath)
   return tempPath

@@ -7,9 +7,11 @@ import { getAppEnvironment } from '../../shared/app-environment'
 import { NATIVE_CHAT_PASTE_FOLDER } from '../../shared/native-chat-paste-folder'
 import { authorizeExternalPath } from '../ipc/filesystem-auth'
 
-// Why 30 days: far past the host's 24 h window for admitting a resent send that names a paste
-// (AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS).
+// Why 30 days: no age bounds what can still name a paste (a queued send is retried with a new id
+// after the host's 24 h id window), so this is a judgment. A draft or outbox entry kept longer meets
+// its image as a placeholder or a failed send, and a sent paste's file lingers until then.
 export const NATIVE_CHAT_PASTE_TTL_MS = 30 * 24 * 60 * 60 * 1000
+const PASTE_FILE_NAME = /^orca-paste-.+\.png$/i
 const MAX_RESTORED_PASTES = 256
 
 type PathApi = typeof path.posix
@@ -54,36 +56,52 @@ export async function restoreNativeChatPastes(paths: unknown): Promise<RestoredN
   if (!Array.isArray(paths)) {
     return []
   }
-  let folder: string | null = null
-  try {
-    folder = await realpath(nativeChatPasteFolder())
-  } catch {
-    // No folder yet: nothing in it to keep.
-  }
+  const folders = await realPasteFolder()
   return Promise.all(
     paths
       .slice(0, MAX_RESTORED_PASTES)
       .flatMap((value) =>
-        typeof value === 'string' ? [restoreNativeChatPaste(folder, value)] : []
+        typeof value === 'string' ? [restoreNativeChatPaste(folders, value)] : []
       )
   )
 }
 
+/** The paste folder as configured and as real path; null when missing or itself a link. */
+async function realPasteFolder(): Promise<{ named: string; real: string } | null> {
+  try {
+    const named = path.resolve(nativeChatPasteFolder())
+    const info = await lstat(named)
+    return info.isDirectory() && !info.isSymbolicLink()
+      ? { named, real: await realpath(named) }
+      : null
+  } catch {
+    return null
+  }
+}
+
 async function restoreNativeChatPaste(
-  folder: string | null,
+  folders: { named: string; real: string } | null,
   restored: string
 ): Promise<RestoredNativeChatPaste> {
   const refused = { path: restored, kept: false, exists: false }
-  if (folder === null || restored === '' || !path.isAbsolute(restored)) {
+  if (folders === null || restored === '' || !path.isAbsolute(restored)) {
+    return refused
+  }
+  // Why both: the text a grant would cover and the file it really names must each be inside.
+  const named = path.resolve(restored)
+  if (
+    !isInsideNativeChatPasteFolder(folders.named, named) &&
+    !isInsideNativeChatPasteFolder(folders.real, named)
+  ) {
     return refused
   }
   try {
     const real = await realpath(restored)
-    if (!isInsideNativeChatPasteFolder(folder, real) || !(await stat(real)).isFile()) {
+    if (!isInsideNativeChatPasteFolder(folders.real, real) || !(await stat(real)).isFile()) {
       return refused
     }
+    // Only the real file: granting the given text would cover whatever it names lexically.
     authorizeExternalPath(real)
-    authorizeExternalPath(restored)
     return { path: restored, kept: true, exists: true }
   } catch {
     // Missing or unreadable: not kept, and nothing about an outside path is reported.
@@ -91,19 +109,22 @@ async function restoreNativeChatPaste(
   }
 }
 
-/** Deletes pastes older than the TTL. Symlinks and folders are skipped, never followed; failures
- *  are logged and never block startup. */
+/** Deletes pastes older than the TTL: only Orca's paste files, never a link, a folder, or anything
+ *  in a paste folder that is itself a link. Failures are logged and never block startup. */
 export async function sweepExpiredNativeChatPastes(now = Date.now()): Promise<void> {
-  let folder: string
+  const folders = await realPasteFolder()
+  if (!folders) {
+    return
+  }
+  const folder = folders.named
   let entries
   try {
-    folder = nativeChatPasteFolder()
     entries = await readdir(folder, { withFileTypes: true })
   } catch {
     return
   }
   for (const entry of entries) {
-    if (!entry.isFile()) {
+    if (!entry.isFile() || !PASTE_FILE_NAME.test(entry.name)) {
       continue
     }
     const file = path.join(folder, entry.name)

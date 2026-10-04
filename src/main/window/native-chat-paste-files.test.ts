@@ -111,8 +111,7 @@ describe('native-chat paste folder on disk', () => {
       { path: '', kept: false, exists: false }
     ])
     const granted = authorizeExternalPathMock.mock.calls.map(([granted]) => granted)
-    expect(granted).toContain(realpathSync(kept))
-    expect(granted.some((value: string) => value.includes('outside'))).toBe(false)
+    expect(granted).toEqual([realpathSync(kept)])
     await expect(restoreNativeChatPastes('not a list')).resolves.toEqual([])
   })
 
@@ -126,13 +125,69 @@ describe('native-chat paste folder on disk', () => {
       installFakeAppEnvironment({ getPath: () => alias })
       const viaAlias = path.join(alias, 'native-chat-pastes', 'orca-paste-1.png')
 
-      await expect(restoreNativeChatPastes([viaAlias, kept])).resolves.toEqual([
+      await expect(restoreNativeChatPastes([viaAlias, realpathSync(kept)])).resolves.toEqual([
         { path: viaAlias, kept: true, exists: true },
-        { path: kept, kept: true, exists: true }
+        { path: realpathSync(kept), kept: true, exists: true }
       ])
     } finally {
       rmSync(alias, { force: true })
     }
+  })
+
+  it('refuses a path that names an outside file as text while its real path is inside', async () => {
+    const secret = path.join(root, 'outside', 'id_rsa')
+    mkdirSync(path.dirname(secret), { recursive: true })
+    writeFileSync(secret, 'PRIVATE KEY')
+    const paste = path.join(folder, 'orca-paste-1.png')
+    writeFileSync(paste, 'png')
+    // `s/..` resolves through a link for real, but by text it climbs to the secret.
+    const workspace = path.join(root, 'ws')
+    const depth = workspace.split(path.sep).filter(Boolean).length + 1
+    const deep = path.join(workspace, ...Array.from({ length: depth }, (_, i) => `d${i}`))
+    mkdirSync(deep, { recursive: true })
+    symlinkSync(deep, path.join(workspace, 's'))
+    const tail = secret.slice(1)
+    mkdirSync(path.dirname(path.join(workspace, tail)), { recursive: true })
+    symlinkSync(paste, path.join(workspace, tail))
+    const crafted = `${workspace}/s/${'../'.repeat(depth)}${tail}`
+    expect(path.resolve(crafted)).toBe(secret)
+
+    await expect(restoreNativeChatPastes([crafted])).resolves.toEqual([
+      { path: crafted, kept: false, exists: false }
+    ])
+    expect(authorizeExternalPathMock).not.toHaveBeenCalled()
+  })
+
+  it('neither restores from nor sweeps a paste folder that is itself a link', async () => {
+    const outside = path.join(root, 'Documents')
+    mkdirSync(outside)
+    const old = (Date.now() - NATIVE_CHAT_PASTE_TTL_MS - 60_000) / 1000
+    for (const name of ['orca-paste-1.png', 'tax-return.pdf']) {
+      writeFileSync(path.join(outside, name), 'x')
+      utimesSync(path.join(outside, name), old, old)
+    }
+    rmSync(folder, { recursive: true })
+    symlinkSync(outside, folder)
+
+    await expect(restoreNativeChatPastes([path.join(folder, 'orca-paste-1.png')])).resolves.toEqual(
+      [{ path: path.join(folder, 'orca-paste-1.png'), kept: false, exists: false }]
+    )
+    await sweepExpiredNativeChatPastes()
+    expect(existsSync(path.join(outside, 'orca-paste-1.png'))).toBe(true)
+    expect(existsSync(path.join(outside, 'tax-return.pdf'))).toBe(true)
+  })
+
+  it('expires only Orca paste files, whatever else is in the folder', async () => {
+    const old = (Date.now() - NATIVE_CHAT_PASTE_TTL_MS - 60_000) / 1000
+    for (const name of ['orca-paste-old.png', 'notes.txt']) {
+      writeFileSync(path.join(folder, name), 'x')
+      utimesSync(path.join(folder, name), old, old)
+    }
+
+    await sweepExpiredNativeChatPastes()
+
+    expect(existsSync(path.join(folder, 'orca-paste-old.png'))).toBe(false)
+    expect(existsSync(path.join(folder, 'notes.txt'))).toBe(true)
   })
 
   it('reports nothing kept when the folder does not exist yet', async () => {
@@ -175,7 +230,7 @@ describe('native-chat paste folder on disk', () => {
     await expect(sweepExpiredNativeChatPastes()).resolves.toBeUndefined()
   })
 
-  it('keeps pastes longer than the host keeps a resend admissible', () => {
+  it('keeps a paste longer than one send id stays valid on the host', () => {
     expect(NATIVE_CHAT_PASTE_TTL_MS).toBeGreaterThan(AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS)
   })
 })
