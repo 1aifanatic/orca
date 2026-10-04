@@ -12,7 +12,7 @@ import type { AgentJournalRenderItem, AgentJournalSubmission } from './agent-ses
 import { agentSessionWriteNotDoneParts } from './agent-session-refusal-notice'
 import type { AgentSessionWriteNoticePart } from './agent-session-write-notice-copy'
 import { structuredAgentSessionRejectedFailure } from './structured-agent-session-outbox'
-import { structuredAgentSessionAttemptFailureParts } from './structured-agent-session-send-disposition'
+import { structuredAgentSessionAttemptFailureParts } from './structured-agent-session-send-failure-words'
 import { isStructuredAgentSessionStartFailureRow } from './structured-agent-session-start-failure-row-key'
 
 /** The facts the chat's loaded start-failure rows state. */

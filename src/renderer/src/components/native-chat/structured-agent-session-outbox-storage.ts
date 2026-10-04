@@ -211,28 +211,3 @@ export function enqueueStructuredAgentSessionLaunchPrompt(
 export function discardStructuredAgentSessionLaunchOutbox(sessionId: string): void {
   commitStructuredAgentSessionOutbox(sessionId, [])
 }
-
-export function mutateStructuredAgentSessionLaunchPrompt(
-  sessionId: string,
-  clientMessageId: string,
-  update: StructuredAgentSessionLaunchPromptMutation,
-  options: { onlyIfSaved?: boolean } = {}
-): boolean {
-  let matched = false
-  const next = getStructuredAgentSessionOutbox(sessionId).flatMap((entry) => {
-    if (entry.clientMessageId !== clientMessageId) {
-      return [entry]
-    }
-    matched = true
-    // The settlement reads its own in-flight send as storage recovery would: unconfirmed.
-    const replacement = update(
-      entry.state === 'dispatching' ? { ...entry, state: 'unconfirmed' } : entry
-    )
-    return replacement ? [replacement] : []
-  })
-  return matched && commitStructuredAgentSessionOutbox(sessionId, next, options)
-}
-
-export type StructuredAgentSessionLaunchPromptMutation = (
-  entry: StructuredAgentSessionOutboxEntry
-) => StructuredAgentSessionOutboxEntry | null

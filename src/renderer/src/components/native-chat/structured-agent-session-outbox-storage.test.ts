@@ -1,16 +1,11 @@
 // @vitest-environment happy-dom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  createStructuredAgentSessionOutboxEntry,
-  type StructuredAgentSessionAttemptFailure
-} from '../../../../shared/structured-agent-session-outbox'
+import { createStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import {
   hasUndeliveredStructuredAgentSessionOutbox,
   appendStructuredAgentSessionOutboxMessage,
-  commitStructuredAgentSessionOutbox,
   getStructuredAgentSessionOutbox,
-  mutateStructuredAgentSessionLaunchPrompt,
   readOutbox,
   resetUndeliveredStructuredAgentSessionOutboxForTests,
   subscribeToStructuredAgentSessionOutbox,
@@ -113,102 +108,48 @@ describe('undelivered structured agent session outbox projection', () => {
   })
 })
 
-describe("a saved message's last failure", () => {
+describe('a message an older build saved', () => {
   beforeEach(() => {
     localStorage.clear()
   })
 
-  it.each<StructuredAgentSessionAttemptFailure>([
-    { kind: 'refused', code: 'agent_session_checkpoint_stale' },
-    { kind: 'refused', code: 'agent_session_conflict', details: { reason: 'chatStarting' } },
-    {
-      kind: 'refused',
-      code: 'agent_session_ownership_unknown',
-      details: { reason: 'ownerUnproven', ownerVerdict: 'unverifiable' }
-    },
-    { kind: 'rejected', reason: 'Claude messages support at most 20 images' },
-    {
-      kind: 'rejected',
-      reason: 'Claude accepts at most 20 images in one message, so this message was not sent.',
-      rejection: { kind: 'attachmentInvalid', attachment: { reason: 'tooMany', limit: 20 } }
-    },
-    { kind: 'rejected', reason: null },
-    { kind: 'failed' }
-  ])('reads back $kind as it was saved', (lastFailure) => {
-    writeOutbox('session-a', [{ ...entry('session-a', 'client-1'), lastFailure }])
-
-    expect(readOutbox('session-a')[0]?.lastFailure).toEqual(lastFailure)
-  })
-
-  it('keeps the message and drops a failure it cannot read', () => {
+  // Each one was held for a Retry this build no longer has: never sent again on its own.
+  it.each([
+    ['rejected', { state: 'rejected', lastFailure: { kind: 'rejected', reason: 'Nope.' } }],
+    ['held for its Retry', { lastFailure: { kind: 'refused', code: 'agent_session_conflict' } }],
+    ['held for a Retry with a failure this build cannot read', { lastFailure: 'restarting' }],
+    ['outlived by a Stop', { state: 'unconfirmed', lastAttemptAt: 2, outlivedStop: true }]
+  ])('reads back one %s as waiting for its settlement', (_label, saved) => {
     localStorage.setItem(
       'orca:desktopStructuredAgentSessionOutbox:v1:session-a',
-      JSON.stringify([
-        { ...entry('session-a', 'client-1'), lastFailure: 'The agent was restarting.' },
-        { ...entry('session-a', 'client-2'), lastFailure: { kind: 'rejected', reason: 7 } }
-      ])
+      JSON.stringify([{ ...entry('session-a', 'client-1'), ...saved }])
     )
-
-    const read = readOutbox('session-a')
-    expect(read.map((saved) => saved.clientMessageId)).toEqual(['client-1', 'client-2'])
-    expect(read.every((saved) => saved.lastFailure === undefined)).toBe(true)
-  })
-
-  // Written by a build that kept only the code or the reason; it reads as that build meant it.
-  it('reads an entry saved before failures carried details as it was', () => {
-    localStorage.setItem(
-      'orca:desktopStructuredAgentSessionOutbox:v1:session-a',
-      JSON.stringify([
-        {
-          ...entry('session-a', 'client-1'),
-          lastFailure: { kind: 'refused', code: 'agent_session_checkpoint_stale' }
-        },
-        { ...entry('session-a', 'client-2'), lastFailure: { kind: 'rejected', reason: 'Nope.' } }
-      ])
-    )
-
-    expect(readOutbox('session-a').map((saved) => saved.lastFailure)).toEqual([
-      { kind: 'refused', code: 'agent_session_checkpoint_stale' },
-      { kind: 'rejected', reason: 'Nope.' }
+    expect(readOutbox('session-a')).toMatchObject([
+      { clientMessageId: 'client-1', legacyUnsettled: true }
     ])
+    expect(readOutbox('session-a')[0]).not.toHaveProperty('lastFailure')
   })
 
-  it('keeps only what a newer build saved that this one can place', () => {
-    localStorage.setItem(
-      'orca:desktopStructuredAgentSessionOutbox:v1:session-a',
-      JSON.stringify([
-        {
-          ...entry('session-a', 'client-1'),
-          lastFailure: {
-            kind: 'refused',
-            code: 'agent_session_checkpoint_stale',
-            details: { reason: 'fromTheFuture', currentFence: 4 }
-          }
-        },
-        {
-          ...entry('session-a', 'client-2'),
-          lastFailure: {
-            kind: 'rejected',
-            reason: 'Claude stopped before it finished starting.',
-            rejection: { kind: 'providerStartFailed', detail: { text: 'exit 1', audience: 'log' } }
-          }
-        },
-        {
-          ...entry('session-a', 'client-3'),
-          lastFailure: { kind: 'rejected', reason: 'Nope.', rejection: { kind: 'fromTheFuture' } }
-        }
-      ])
-    )
-
-    expect(readOutbox('session-a').map((saved) => saved.lastFailure)).toEqual([
-      { kind: 'refused', code: 'agent_session_checkpoint_stale' },
+  it("reads back a Stop's stamp with its answer, and drops a malformed one", () => {
+    writeOutbox('session-a', [
       {
-        kind: 'rejected',
-        reason: 'Claude stopped before it finished starting.',
-        rejection: { kind: 'providerStartFailed' }
+        ...entry('session-a', 'client-1'),
+        stoppedBy: { operationId: 'stop-1', cursor: { epoch: 'e', sequence: 4 } }
       },
-      { kind: 'rejected', reason: 'Nope.' }
+      {
+        ...entry('session-a', 'client-2'),
+        stoppedBy: { operationId: 'stop-2', unanswerable: true }
+      }
     ])
+    localStorage.setItem(
+      'orca:desktopStructuredAgentSessionOutbox:v1:session-b',
+      JSON.stringify([{ ...entry('session-b', 'client-3'), stoppedBy: { cursor: 4 } }])
+    )
+    expect(readOutbox('session-a').map((saved) => saved.stoppedBy)).toEqual([
+      { operationId: 'stop-1', cursor: { epoch: 'e', sequence: 4 } },
+      { operationId: 'stop-2', unanswerable: true }
+    ])
+    expect(readOutbox('session-b')[0]).not.toHaveProperty('stoppedBy')
   })
 })
 
@@ -263,25 +204,5 @@ describe('the session outbox store', () => {
     release()
 
     expect(getStructuredAgentSessionOutbox('session-1')).toEqual([])
-  })
-
-  it('lets a launch settlement read its own send as unconfirmed and leaves other sends alone', () => {
-    const release = subscribeToStructuredAgentSessionOutbox('session-1', () => [], vi.fn())
-    commitStructuredAgentSessionOutbox('session-1', [
-      { ...entry('session-1', 'launch'), state: 'dispatching' },
-      { ...entry('session-1', 'composer'), state: 'dispatching' }
-    ])
-    const seen: string[] = []
-
-    mutateStructuredAgentSessionLaunchPrompt('session-1', 'launch', (current) => {
-      seen.push(current.state)
-      return null
-    })
-
-    expect(seen).toEqual(['unconfirmed'])
-    expect(getStructuredAgentSessionOutbox('session-1')).toMatchObject([
-      { clientMessageId: 'composer', state: 'dispatching' }
-    ])
-    release()
   })
 })

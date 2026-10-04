@@ -5,6 +5,7 @@ import { structuredAgentSessionPaneKey } from '../../../../shared/structured-age
 import type { NativeChatLiveSession } from './use-native-chat-live-session'
 import { NativeChatApprovalCard } from './NativeChatApprovalCard'
 import { NativeChatComposer, type NativeChatComposerHandle } from './NativeChatComposer'
+import { structuredAgentSessionDraftScopeKey } from './native-chat-composer-draft-store'
 import { NativeChatEmptyState } from './NativeChatEmptyState'
 import { NativeChatLoadingCue } from './NativeChatLoadingCue'
 import { NativeChatMessageList } from './NativeChatMessageList'
@@ -50,7 +51,6 @@ export function NativeChatStructuredSession(
   const queueFollowUps = useAppStore((store) => store.settings?.nativeChatQueueFollowUps !== false)
   const controller = useStructuredAgentSession({
     ...props,
-    composerScopeKey: paneKey,
     queueFollowUps,
     providerStarting: startupPhase === 'starting',
     transportEnabled: provisionalLaunch.transportEnabled,
@@ -117,9 +117,10 @@ export function NativeChatStructuredSession(
     journalItems: controller.journalItems,
     submissions: controller.submissions,
     outbox: controller.outbox,
-    failedHere: controller.failedHere,
-    retry: controller.retry,
-    agentLabel
+    agentLabel,
+    // A lost outcome may still resolve while the agent works or starts.
+    agentActive:
+      controller.isWorking || startupPhase === 'starting' || !provisionalLaunch.transportEnabled
   })
   const viewState = selectNativeChatViewState(session, { readRetries: true })
   // Nothing reads an unread history, so its pane stays blank beside the Retry line.
@@ -361,6 +362,7 @@ export function NativeChatStructuredSession(
           ref={composerRef}
           terminalTabId={props.tabId}
           paneKey={paneKey}
+          draftScopeKey={structuredAgentSessionDraftScopeKey(props.sessionId)}
           targetPtyId={null}
           agent={props.agent}
           canSend={!prompt}

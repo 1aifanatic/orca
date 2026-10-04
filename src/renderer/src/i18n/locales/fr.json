@@ -17280,11 +17280,6 @@
       },
       "native": {
         "chat": {
-          "NativeChatStructuredSession": {
-            "1f772bb5d0": "La livraison du message n'est pas confirmée.",
-            "93ef441197": "Le message n'a pas été envoyé.",
-            "a5e7f14068": "Réessayer"
-          },
           "NativeChatLaunchRetry": {
             "failed": "Le chat n'a pas pu démarrer.",
             "unknown": "La connexion au chat n'a pas pu être confirmée.",
@@ -17895,6 +17890,7 @@
       "messageNotSent": "Message non envoyé",
       "deliveryUnconfirmed": "Livraison non confirmée — vérifiez le chat avant de réessayer",
       "messageSending": "Envoi…",
+      "messageNotConfirmed": "Non confirmé. Renvoyez-le si l'agent n'y a pas répondu.",
       "queuedMessages": {
         "alreadySent": "Ce message a déjà été envoyé.",
         "editAlreadySent": "Déjà envoyé — votre texte reste dans la zone de saisie.",

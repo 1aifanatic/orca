@@ -8,10 +8,7 @@ import {
   type StructuredAgentSessionOutboxEntry
 } from './structured-agent-session-outbox'
 import { reconcileStructuredAgentSessionOutboxWithQueue } from './structured-agent-session-draft-hand-off'
-import {
-  disposeStructuredAgentSessionSendResult,
-  journalAnswersInFlightSend
-} from './structured-agent-session-send-disposition'
+import { settleStructuredAgentSessionSendAnswer } from './structured-agent-session-send-settlement'
 import { hasUnsentStructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox-stop-withdrawal'
 
 const entry: StructuredAgentSessionOutboxEntry = {
@@ -48,25 +45,26 @@ describe('a queued draft handed off under a fresh submission id', () => {
     }
   })
 
-  it('answers the send in flight and leaves nothing a Stop would withdraw', () => {
-    expect(journalAnswersInFlightSend([handOff('pending')], 'draft')).toBe(true)
-    expect(journalAnswersInFlightSend([handOff('pending')], null)).toBe(false)
+  it('leaves nothing a Stop would withdraw', () => {
     expect(hasUnsentStructuredAgentSessionOutboxEntry([entry], [handOff('pending')])).toBe(false)
   })
 
-  it('settles a replayed send answered with the hand-off, with no notice', () => {
-    const disposition = disposeStructuredAgentSessionSendResult({
-      entries: [entry],
-      entry,
-      createOperationId: () => 'rotated',
-      result: {
-        ok: true,
-        replayed: true,
-        fence: 1,
-        cursor: { epoch: 'epoch-1', sequence: 10 },
-        value: { clientMessageId: 'hand-off', submission: handOff('rejected') }
-      }
-    })
-    expect(disposition).toEqual({ entries: [], error: null })
+  it("settles a replayed send answered with the hand-off as the host's, with no words", () => {
+    expect(
+      settleStructuredAgentSessionSendAnswer(
+        {
+          kind: 'result',
+          result: {
+            ok: true,
+            replayed: true,
+            fence: 1,
+            cursor: { epoch: 'epoch-1', sequence: 10 },
+            value: { clientMessageId: 'hand-off', submission: handOff('rejected') }
+          }
+        },
+        'draft',
+        { firstAttempt: false, answersProve: true, journalHasRow: false }
+      )
+    ).toEqual({ kind: 'recorded' })
   })
 })

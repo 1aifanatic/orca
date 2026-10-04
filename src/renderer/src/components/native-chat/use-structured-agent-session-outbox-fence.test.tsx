@@ -19,6 +19,8 @@ import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-cap
 import { settleStructuredAgentLaunchPrompt } from '@/lib/structured-agent-session-launch-prompt'
 import { enqueueStructuredAgentSessionLaunchPrompt } from './structured-agent-session-outbox-storage'
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
+import { structuredAgentSessionDraftScopeKey } from './native-chat-composer-draft-store'
+import { readNativeChatDraftCache } from './native-chat-draft-cache'
 
 // Why: every hook here shares the session outbox store; one left mounted would drain the next test's.
 afterEach(cleanup)
@@ -106,31 +108,28 @@ describe('an outbox on a host that accepts a send before any agent has it', () =
     expect(mocks.call).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps a failed send held across a fence change; only Retry sends it', async () => {
-    mocks.call.mockRejectedValueOnce(new Error('send failed')).mockResolvedValue({ ok: true })
+  it('keeps a send with no answer in doubt across a fence change, and sends it again under its id', async () => {
+    mocks.call
+      .mockRejectedValueOnce(new Error('send failed'))
+      .mockImplementation(async (_target, _method, params) =>
+        pendingResult(params.envelope.clientOperationId)
+      )
     const { result, rerender } = render()
 
     act(() => expect(result.current.send('hello')).toBe(true))
-    await waitFor(() => expect(result.current.outbox[0]?.lastFailure).toBeDefined())
+    await waitFor(() => expect(result.current.outbox[0]?.state).toBe('unconfirmed'))
     rerender({ fence: 2 })
-    await settle()
-    expect(mocks.call).toHaveBeenCalledTimes(1)
-    // The failure stays on the message; the fence change neither clears nor resends it.
-    expect(result.current.outbox[0]?.lastFailure).toEqual({ kind: 'failed' })
-
-    act(() => result.current.retry(result.current.outbox[0]!.clientMessageId))
-    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
+    // No answer is not a failure: the same id goes again, never a new one.
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2), { timeout: 3000 })
+    expect(sentId(1)).toBe(sentId(0))
   })
 
-  it('leaves a launch prompt whose staging save failed queued, so the chat still sends it', async () => {
-    mocks.call.mockImplementation(async (_target, _method, params) =>
-      pendingResult(params.envelope.clientOperationId)
-    )
+  it('gives a launch prompt whose staging save failed back to the chat draft, unsent', async () => {
     const staged = enqueueStructuredAgentSessionLaunchPrompt('session-1', 'launch notes')
     if (!staged) {
       throw new Error('fixture outbox entry was not persisted')
     }
-    const { result, rerender } = render(null)
+    const { result } = render(null)
 
     const setItem = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
       throw new Error('quota exceeded')
@@ -144,13 +143,14 @@ describe('an outbox on a host that accepts a send before any agent has it', () =
       })
     )
     setItem.mockRestore()
+    // Unsaved, it could go out where a reload never settles it, so it comes back instead.
     expect(delivery).toEqual({ delivered: false, failureNotified: false })
     expect(mocks.call).not.toHaveBeenCalled()
-    expect(result.current.outbox).toMatchObject([{ state: 'queued' }])
-
-    rerender({ fence: 1 })
-    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(1))
-    expect(sentId(0)).toBe(staged.clientMessageId)
+    expect(result.current.outbox).toEqual([])
+    expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey('session-1'))).toBe(
+      'launch notes'
+    )
+    expect(result.current.error).toBe("Couldn't save your message. Try again.")
   })
 })
 

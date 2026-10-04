@@ -15207,6 +15207,7 @@
       "messageNotSent": "Mensaje no enviado",
       "deliveryUnconfirmed": "Entrega sin confirmar — revisa el chat antes de reintentar",
       "messageSending": "Enviando…",
+      "messageNotConfirmed": "Sin confirmar. Vuelve a enviarlo si el agente no lo respondió.",
       "subagents": {
         "unnamed": "Subagente"
       },

@@ -95,7 +95,7 @@ describe('structured agent session message projection', () => {
     expect(projectStructuredAgentSessionMessages([withdrawnItem], [], [withdrawn])).toEqual([])
   })
 
-  it("shows the sender's recorded rejection once, from the journal, while its outbox entry holds the Retry", () => {
+  it("shows the sender's recorded rejection once, from the journal, even before its entry leaves", () => {
     const rejected = { ...submission(0), dispatchState: 'rejected' as const, providerItemId: null }
     const refusedItem = { ...item(0), itemId: agentJournalSubmissionKey(rejected.clientMessageId) }
     const draft = {
@@ -106,14 +106,14 @@ describe('structured agent session message projection', () => {
         attachments: [],
         queuedAt: 1
       }),
-      state: 'rejected' as const
+      state: 'dispatching' as const
     }
     expect(projectStructuredAgentSessionMessages([refusedItem], [draft], [rejected])).toEqual([
       expect.objectContaining({ id: refusedItem.itemId, unsent: true })
     ])
   })
 
-  it("keeps the not-sent original when the sender's Retry sends it again as a new message", () => {
+  it('keeps the not-sent original when the same text is sent again as a new message', () => {
     const rejected = { ...submission(0), dispatchState: 'rejected' as const, providerItemId: null }
     const refusedItem = { ...item(0), itemId: agentJournalSubmissionKey(rejected.clientMessageId) }
     const resend = createStructuredAgentSessionOutboxEntry({
@@ -241,10 +241,8 @@ describe('structured agent session message projection', () => {
     const notices = structuredAgentSessionDeliveryNotices(
       [],
       'Codex',
-      () => {},
       [compact],
       structuredAgentSessionStartFailureFacts(items),
-      new Set(),
       structuredAgentSessionCommandResultRows(items)
     )
     expect(notices.get(userItemId)?.text).toBe(line)

@@ -12,7 +12,7 @@ import {
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import {
   admitStructuredAgentSessionOutboxEntry,
-  structuredAgentSessionEntryHeldForRetry
+  structuredAgentSessionEntryAwaitsSettlement
 } from '../../../../shared/structured-agent-session-outbox-admission'
 
 /** Why a card is not on its way right now; decides the caption under the text. */
@@ -104,8 +104,8 @@ export function newestSteerableQueuedMessageCard(
  * read from what its request carries — otherwise it paints
  * in the transcript until the queued answer retires it. A plain send stays a bubble. From
  * the entry the drain is stopped on (read through the drain's own rule), nothing is on its
- * way, nor is one held for its Retry: those stay bubbles so their text is visible beside the
- * Retry row.
+ * way, nor is one only an answer already owed settles: those stay bubbles so their text stays
+ * visible.
  */
 export function outboxOutsideQueuedCards(
   outbox: readonly StructuredAgentSessionOutboxEntry[],
@@ -121,7 +121,7 @@ export function outboxOutsideQueuedCards(
       isWorking &&
       (stalledFrom === -1 || index < stalledFrom) &&
       (entry.state === 'queued' || entry.state === 'dispatching') &&
-      !structuredAgentSessionEntryHeldForRetry(entry) &&
+      !structuredAgentSessionEntryAwaitsSettlement(entry) &&
       structuredAgentSessionEntryAsksToQueue(entry, host)
     return !held.has(entry.clientMessageId) && !onItsWay
   })

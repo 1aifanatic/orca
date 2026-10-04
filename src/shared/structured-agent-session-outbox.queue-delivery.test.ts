@@ -10,13 +10,15 @@ import {
   stageStructuredAgentSessionOutboxEntryForSend,
   structuredAgentSessionSendMutation,
   structuredAgentSessionSendRequest,
-  type StructuredAgentSessionOutboxEntry,
   type StructuredAgentSessionOutboxState
 } from './structured-agent-session-outbox'
 import { admitStructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox-admission'
 import { structuredAgentSessionEntryAttempt } from './structured-agent-session-outbox-delivery'
-import { disposeStructuredAgentSessionSendResult } from './structured-agent-session-send-disposition'
-import { withdrawUnsentStructuredAgentSessionOutboxEntries } from './structured-agent-session-outbox-stop-withdrawal'
+import {
+  applyStructuredAgentSessionSendSettlement,
+  settleStructuredAgentSessionSendAnswer
+} from './structured-agent-session-send-settlement'
+import { stopStructuredAgentSessionOutbox } from './structured-agent-session-outbox-stop-withdrawal'
 
 function entry(sentDelivery?: 'queue-if-active') {
   return {
@@ -75,7 +77,7 @@ describe('outbox queue delivery', () => {
     expect(foreign !== null && 'sentDelivery' in foreign).toBe(false)
   })
 
-  it('Stop keeps every queue send that has gone out, in any state, and marks it for Retry', () => {
+  it('Stop stamps every send that has gone out, in any state, and never admits it again', () => {
     // An attempted queue send may already be a host-held draft: withdrawing it locally too would
     // put the same text in the composer AND on a card. Read from what went on the wire.
     const at = (
@@ -93,7 +95,7 @@ describe('outbox queue delivery', () => {
       ...(sent !== undefined ? { lastAttemptAt: 2, sentDelivery: sent } : {}),
       state
     })
-    const next = withdrawUnsentStructuredAgentSessionOutboxEntries(
+    const next = stopStructuredAgentSessionOutbox(
       [
         at('never-left', 'queued'),
         // No in-flight id: a `pending` answer freed single-flight before its journal row landed.
@@ -104,50 +106,54 @@ describe('outbox queue delivery', () => {
         at('sent-plain', 'dispatching', null)
       ],
       [],
-      null
+      null,
+      'stop-1'
     )
-    // Its state is left to its answer: only the mark holds it back.
-    expect(next.map((entry) => [entry.clientMessageId, entry.state, entry.outlivedStop])).toEqual([
-      ['in-flight', 'dispatching', true],
-      ['in-doubt', 'unconfirmed', true],
-      ['probed', 'queued', true]
+    expect(next.withdrawn.map((entry) => entry.clientMessageId)).toEqual(['never-left'])
+    // Its state is left to its answer: only the stamp holds it back.
+    expect(
+      next.entries.map((entry) => [
+        entry.clientMessageId,
+        entry.state,
+        entry.stoppedBy?.operationId
+      ])
+    ).toEqual([
+      ['in-flight', 'dispatching', 'stop-1'],
+      ['in-doubt', 'unconfirmed', 'stop-1'],
+      ['probed', 'queued', 'stop-1'],
+      ['sent-plain', 'dispatching', 'stop-1']
     ])
-    // The drain never admits the marked one it would otherwise send.
-    expect(admitStructuredAgentSessionOutboxEntry(next.slice(2))).toEqual({
-      state: 'blocked',
-      entry: next[2]
+    expect(admitStructuredAgentSessionOutboxEntry(next.entries)).toEqual({
+      state: 'idle',
+      entry: null
     })
   })
 
-  it('Stop during a first queue attempt, then a settled refusal: rotated and rejected, as without it', () => {
-    const operations = ['rotated-1', 'rotated-2']
+  it('Stop during a first queue attempt, then a refusal: its own answer returns it, as without it', () => {
     const attempt = structuredAgentSessionEntryAttempt(entry(), {
       capability: 'supported',
       enabled: true
     })
     const staged = stageStructuredAgentSessionOutboxEntryForSend(attempt.stored, 10)
-    const refusal = {
-      ok: false as const,
-      refusal: {
-        code: 'agent_session_operation_invalid' as const,
-        message: 'The message queue is full.'
-      }
+    const settlement = settleStructuredAgentSessionSendAnswer(
+      {
+        kind: 'result',
+        result: {
+          ok: false,
+          refusal: {
+            code: 'agent_session_operation_invalid',
+            message: 'The message queue is full.'
+          }
+        }
+      },
+      'client-1',
+      { firstAttempt: true, answersProve: false, journalHasRow: false }
+    )
+    const stopped = stopStructuredAgentSessionOutbox([staged], [], 'client-1', 'stop-1').entries
+    for (const entries of [stopped, [staged]]) {
+      const settled = applyStructuredAgentSessionSendSettlement(entries, 'client-1', settlement)
+      expect(settled.entries).toEqual([])
+      expect(settled.returned?.entry.clientMessageId).toBe('client-1')
     }
-    const answer = (entries: StructuredAgentSessionOutboxEntry[]) =>
-      disposeStructuredAgentSessionSendResult({
-        entries,
-        entry: attempt.wire,
-        result: refusal,
-        createOperationId: () => operations.shift() ?? 'spent'
-      })
-    const stopped = withdrawUnsentStructuredAgentSessionOutboxEntries([staged], [], 'client-1')
-    const withStop = answer(stopped)
-    const withoutStop = answer([staged])
-    expect(
-      withStop.entries.map((candidate) => [candidate.clientMessageId, candidate.state])
-    ).toEqual([['rotated-1', 'rejected']])
-    expect(
-      withoutStop.entries.map((candidate) => [candidate.clientMessageId, candidate.state])
-    ).toEqual([['rotated-2', 'rejected']])
   })
 })

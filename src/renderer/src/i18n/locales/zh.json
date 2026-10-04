@@ -17241,11 +17241,6 @@
       },
       "native": {
         "chat": {
-          "NativeChatStructuredSession": {
-            "1f772bb5d0": "消息传递未经确认。",
-            "93ef441197": "消息未发送。",
-            "a5e7f14068": "重试"
-          },
           "NativeChatLaunchRetry": {
             "failed": "无法开始聊天。",
             "unknown": "无法确认聊天连接。",
@@ -17849,6 +17844,7 @@
       "messageNotSent": "消息未发送",
       "deliveryUnconfirmed": "无法确认送达 — 重试前请检查聊天",
       "messageSending": "正在发送…",
+      "messageNotConfirmed": "未确认。如果智能体没有回复，请重新发送。",
       "queuedMessages": {
         "alreadySent": "此消息已发送。",
         "editAlreadySent": "已发送 — 你的文本仍在输入框中。",

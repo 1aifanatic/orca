@@ -18,6 +18,8 @@ import {
   useStructuredAgentSessionHostStopsConversation
 } from '@/runtime/structured-agent-session-host-capability'
 import { hasUnsentStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox-stop-withdrawal'
+import { useStructuredAgentSessionConversationStop } from './use-structured-agent-session-conversation-stop'
+import { structuredAgentSessionDraftScopeKey } from './native-chat-composer-draft-store'
 import {
   legacyAgentSessionSelectedOptionId,
   type AgentSessionPromptResponse
@@ -54,14 +56,11 @@ export function useStructuredAgentSession(args: {
   providerStarting?: boolean
   /** This view started the session; only then does the stored selection name what it runs. */
   launch?: StructuredAgentSessionLaunchView
-  /** The composer Edit copies a card's text into, and that gets back unsent outbox text. */
-  composerScopeKey?: string
   /** The chat-wide "queue follow-ups" setting; off keeps mid-turn sends immediate. */
   queueFollowUps?: boolean
 }) {
   const {
     agent,
-    composerScopeKey,
     isVisible,
     launch,
     providerStarting = false,
@@ -78,6 +77,7 @@ export function useStructuredAgentSession(args: {
     loadOlder,
     mutate,
     write,
+    writeAs,
     providerVisible
   } = useStructuredAgentSessionTransport({
     sessionId,
@@ -121,9 +121,19 @@ export function useStructuredAgentSession(args: {
     target,
     fence: transportState.fence,
     submissions: transportState.submissions,
-    composerScopeKey,
+    journalCursor: transportEnabled ? state.cursor : null,
     queueDelivery: { capability: queueCapability, enabled: queueFollowUps },
-    queuedMessageIds
+    // Absent until the host publishes a list: only a list says it holds no draft under an id.
+    queuedMessageIds:
+      transportEnabled && state.queuedMessages !== undefined ? queuedMessageIds : undefined
+  })
+  const stopConversation = useStructuredAgentSessionConversationStop({
+    outbox: outboxController.outbox,
+    submissions: transportState.submissions,
+    attached: transportState.fence !== null,
+    writeAs,
+    stopOutbox: outboxController.stop,
+    recordStopAnswer: outboxController.recordStopAnswer
   })
 
   const threadGoal = useStructuredAgentSessionThreadGoal({
@@ -175,7 +185,7 @@ export function useStructuredAgentSession(args: {
     queuePause: transportState.queuePause,
     submissions: transportState.submissions,
     hasPendingPrompt: prompts.length > 0,
-    composerScopeKey,
+    composerScopeKey: structuredAgentSessionDraftScopeKey(sessionId),
     mutate
   })
   return {
@@ -219,7 +229,6 @@ export function useStructuredAgentSession(args: {
     loadOlder,
     prompts,
     outbox,
-    failedHere: outboxController.failedHere,
     /** The journal's rows for sent messages, which carry a rejected message's whole fact. */
     submissions: transportState.submissions,
     // A message typed during a command queues behind it on the host.
@@ -227,7 +236,6 @@ export function useStructuredAgentSession(args: {
       // Legacy: an older host refuses sends while a command runs; removable once those hosts age out.
       (!commandPending.current || hostStatesTurnScopes(transportState.journalItems)) &&
       outboxController.send(...input),
-    retry: outboxController.retry,
     isWorking: transportState.isWorking,
     workingStartedAt: transportState.turnTiming.workingStartedAt,
     settledTurns: transportState.turnTiming.settledTurns,
@@ -237,11 +245,10 @@ export function useStructuredAgentSession(args: {
     canStop,
     stop: () => {
       if (stopsConversation) {
-        // Unsent text this client still owns goes back to its composer — a local move.
-        // Host-held drafts are never withdrawn by a Stop: the host pauses them and
-        // they stay visible as cards, on every device, until the user acts on one.
-        outboxController.withdrawUnsent()
-        return mutate('agentSession.cancel', 'agentSession.cancel', {})
+        // Unsent text this client still owns goes back to its composer — a local move — and
+        // a send on its way is stamped with this Stop's id. Host-held drafts are never withdrawn
+        // by a Stop: the host pauses them and they stay visible as cards until the user acts.
+        return stopConversation().then(() => null)
       }
       return transportState.turnId
         ? mutate('agentSession.cancel', 'agentSession.cancel', { turnId: transportState.turnId })

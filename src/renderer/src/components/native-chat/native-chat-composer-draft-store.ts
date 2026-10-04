@@ -5,6 +5,7 @@
 
 import type { JSONContent } from '@tiptap/react'
 import { setBoundedScopeCacheEntry } from './native-chat-composer-scope-cache'
+import { sameNativeChatComposerDraftImages } from './native-chat-composer-draft-comparison'
 import { basename } from '@/lib/path'
 import { isNativeChatKeptPastePath, isNativeChatPastedImagePath } from './native-chat-image-paste'
 import {
@@ -105,22 +106,6 @@ export function isNativeChatComposerDraftUnverified(scopeKey: string): boolean {
 
 function isEmptyDraft(draft: NativeChatComposerDraft): boolean {
   return draft.text === '' && draft.images.length === 0
-}
-
-function sameImages(
-  left: readonly NativeChatComposerDraftImage[],
-  right: readonly NativeChatComposerDraftImage[]
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every(
-      (image, index) =>
-        image.id === right[index].id &&
-        image.path === right[index].path &&
-        image.connectionId === right[index].connectionId &&
-        image.unavailableName === right[index].unavailableName
-    )
-  )
 }
 
 /** Monotonic within a run, so drafts changed in the same millisecond still age in order. */
@@ -274,7 +259,7 @@ export function updateNativeChatComposerDraft(
     text === current.text &&
     document === current.document &&
     unsavedText === current.unsavedText &&
-    sameImages(images, current.images)
+    sameNativeChatComposerDraftImages(images, current.images)
   ) {
     if (persist === 'immediate' && dirtyScopes.has(scopeKey)) {
       flushNativeChatComposerDrafts()
@@ -318,11 +303,40 @@ export function clearNativeChatComposerDraftIfUnchanged(
   sent: NativeChatComposerDraft
 ): boolean {
   const current = readNativeChatComposerDraft(scopeKey)
-  if (current.text !== sent.text || !sameImages(current.images, sent.images)) {
+  if (
+    current.text !== sent.text ||
+    !sameNativeChatComposerDraftImages(current.images, sent.images)
+  ) {
     return false
   }
   updateNativeChatComposerDraft(scopeKey, { text: '', images: [] }, 'immediate')
   return true
+}
+
+const STRUCTURED_AGENT_SESSION_DRAFT_SCOPE_PREFIX = 'agent-session:'
+
+/** A structured chat's draft belongs to its conversation, so it outlives the tab showing it. */
+export function structuredAgentSessionDraftScopeKey(sessionId: string): string {
+  return `${STRUCTURED_AGENT_SESSION_DRAFT_SCOPE_PREFIX}${sessionId}`
+}
+
+function deleteDraftsWhere(owned: (scopeKey: string) => boolean): void {
+  const storage = nativeChatComposerDraftStorage()
+  if (storage) {
+    removeStoredNativeChatComposerDraftsWhere(storage, owned)
+  }
+  for (const scopeKey of new Set([...records.keys(), ...scopeListeners.keys()])) {
+    if (owned(scopeKey)) {
+      records.delete(scopeKey)
+      dirtyScopes.delete(scopeKey)
+      notifyScope(scopeKey)
+    }
+  }
+}
+
+/** Drops one scope's draft, for an owner that is gone for good. */
+export function deleteNativeChatComposerDraft(scopeKey: string): void {
+  deleteDraftsWhere((key) => key === scopeKey)
 }
 
 /** A pane key is `<tabId>:<leaf>`; the leaf is a UUID, while a tab id may hold ':' itself. */
@@ -330,24 +344,14 @@ function scopeTabId(scopeKey: string): string {
   return scopeKey.slice(0, scopeKey.lastIndexOf(':'))
 }
 
-/** Drops the drafts of every pane in a tab the user closed; its pane keys never come back. */
+/** Drops the drafts of every pane in a tab the user closed; its pane keys never come back. A
+ *  conversation's draft is never a tab's. */
 export function deleteNativeChatComposerDraftsForTab(tabId: string): void {
-  const inTab = (scopeKey: string): boolean => scopeTabId(scopeKey) === tabId
-  for (const scopeKey of records.keys()) {
-    if (inTab(scopeKey)) {
-      records.delete(scopeKey)
-      dirtyScopes.delete(scopeKey)
-    }
-  }
-  const storage = nativeChatComposerDraftStorage()
-  if (storage) {
-    removeStoredNativeChatComposerDraftsWhere(storage, inTab)
-  }
-  for (const scopeKey of scopeListeners.keys()) {
-    if (inTab(scopeKey)) {
-      notifyScope(scopeKey)
-    }
-  }
+  deleteDraftsWhere(
+    (scopeKey) =>
+      !scopeKey.startsWith(STRUCTURED_AGENT_SESSION_DRAFT_SCOPE_PREFIX) &&
+      scopeTabId(scopeKey) === tabId
+  )
 }
 
 export function clearNativeChatComposerDraftsForTests(): void {

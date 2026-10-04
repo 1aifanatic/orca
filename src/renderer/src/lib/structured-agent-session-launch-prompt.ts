@@ -1,22 +1,7 @@
-import type {
-  AgentSessionMutationResult,
-  AgentSessionSendResult
-} from '../../../shared/agent-session-wire'
-import {
-  requeueStructuredAgentSessionSendRefusal,
-  stageStructuredAgentSessionOutboxEntryForSend,
-  structuredAgentSessionSendRequest,
-  type StructuredAgentSessionOutboxEntry
-} from '../../../shared/structured-agent-session-outbox'
-import { agentSessionRefusalFailure } from '../../../shared/agent-session-write-failure'
-import { createStructuredAgentSessionOperationId } from '../../../shared/structured-agent-session-mutation'
-import {
-  mutateStructuredAgentSessionLaunchPrompt,
-  type StructuredAgentSessionLaunchPromptMutation
-} from '@/components/native-chat/structured-agent-session-outbox-storage'
-import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
+import type { StructuredAgentSessionOutboxEntry } from '../../../shared/structured-agent-session-outbox'
+import { getStructuredAgentSessionOutbox } from '@/components/native-chat/structured-agent-session-outbox-storage'
+import { sendStructuredAgentSessionOutboxEntry } from '@/components/native-chat/structured-agent-session-outbox-dispatch'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
-import { createBrowserUuid } from '@/lib/browser-uuid'
 
 export type StructuredPromptDeliveryResult = {
   delivered: boolean
@@ -83,73 +68,26 @@ export function shareStructuredAgentLaunchPromptDispatch(
   return { promise, started: true }
 }
 
-function mutateEntry(
-  entry: StructuredAgentSessionOutboxEntry,
-  update: StructuredAgentSessionLaunchPromptMutation,
-  options: { onlyIfSaved?: boolean } = {}
-): boolean {
-  return mutateStructuredAgentSessionLaunchPrompt(
-    entry.sessionId,
-    entry.clientMessageId,
-    update,
-    options
-  )
-}
-
+/** The launch prompt goes out through the outbox's own sender and settlement, like any send. */
 async function dispatchStructuredLaunchPrompt(
-  entry: StructuredAgentSessionOutboxEntry,
+  staged: StructuredAgentSessionOutboxEntry,
   receipt: LaunchReceipt,
   target: RuntimeClientTarget
 ): Promise<boolean> {
-  // Why: an unsaved stage must leave the entry queued; a held 'dispatching' copy is never drained.
-  if (
-    !mutateEntry(
-      entry,
-      (current) => stageStructuredAgentSessionOutboxEntryForSend(current, Date.now()),
-      { onlyIfSaved: true }
-    )
-  ) {
+  const entries = getStructuredAgentSessionOutbox(staged.sessionId)
+  const entry = entries.find((candidate) => candidate.clientMessageId === staged.clientMessageId)
+  // Gone or already out: whatever settled or sent it owns it.
+  if (!entry || entry.state !== 'queued') {
     return false
   }
-  try {
-    const result = await callStructuredAgentSession<
-      AgentSessionMutationResult<AgentSessionSendResult>
-    >(target, 'agentSession.send', structuredAgentSessionSendRequest(entry, receipt.fence))
-    if (!result.ok) {
-      mutateEntry(entry, (current) =>
-        requeueStructuredAgentSessionSendRefusal(
-          current,
-          agentSessionRefusalFailure(result.refusal),
-          () => createStructuredAgentSessionOperationId(createBrowserUuid),
-          entry.lastAttemptAt !== null
-        )
-      )
-      return false
-    }
-    if ('queued' in result.value) {
-      // The host holds the draft; the outbox entry is spent.
-      mutateEntry(entry, () => null)
-      return true
-    }
-    const dispatchState = result.value.submission.dispatchState
-    mutateEntry(entry, (current) =>
-      dispatchState === 'accepted'
-        ? null
-        : {
-            ...current,
-            state:
-              dispatchState === 'unknown'
-                ? 'unconfirmed'
-                : dispatchState === 'pending'
-                  ? 'dispatching'
-                  : 'queued'
-          }
-    )
-    return dispatchState === 'accepted' || dispatchState === 'pending'
-  } catch {
-    mutateEntry(entry, (current) => ({ ...current, state: 'unconfirmed' }))
-    return false
-  }
+  const settlement = await sendStructuredAgentSessionOutboxEntry({
+    next: entry,
+    entries,
+    target,
+    fence: receipt.fence,
+    isCurrent: () => true
+  })
+  return settlement?.kind === 'recorded' || settlement?.kind === 'pending'
 }
 
 export function settleStructuredAgentLaunchPrompt(args: {

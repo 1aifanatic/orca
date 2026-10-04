@@ -26,6 +26,7 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 }))
 
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
+import { structuredAgentSessionDraftScopeKey } from './native-chat-composer-draft-store'
 import { writeOutbox } from './structured-agent-session-outbox-storage'
 
 // Why: every hook here shares the session outbox store; one left mounted would drain the next test's.
@@ -71,6 +72,8 @@ function seed(clientMessageId: string, queued: boolean): void {
   ])
 }
 
+const SCOPE = structuredAgentSessionDraftScopeKey('session-1')
+
 function renderOutbox() {
   type Props = { submissions: AgentJournalSubmission[] }
   const initialProps: Props = { submissions: [] }
@@ -81,7 +84,6 @@ function renderOutbox() {
         target: TARGET,
         fence: 1,
         submissions: props.submissions,
-        composerScopeKey: 'scope',
         queueDelivery: QUEUEING
       }),
     { initialProps }
@@ -105,7 +107,7 @@ describe('an outbox entry the host handed off as a queued draft', () => {
     seed('draft', true)
     const view = renderOutbox()
     act(() => {
-      view.result.current.withdrawUnsent()
+      view.result.current.stop('stop-1')
     })
     expect(view.result.current.outbox).toHaveLength(1)
     view.rerender({
@@ -115,10 +117,10 @@ describe('an outbox entry the host handed off as a queued draft', () => {
       ]
     })
     await waitFor(() => expect(view.result.current.outbox).toHaveLength(0))
-    expect(readNativeChatDraftCache('scope')).toBe('')
+    expect(readNativeChatDraftCache(SCOPE)).toBe('')
   })
 
-  it('lost answer, then refused: the returned card carries it, with no Retry row here', async () => {
+  it('lost answer, then refused: the returned card carries it, with nothing handed back here', async () => {
     seed('draft', true)
     const view = renderOutbox()
     // No published list yet: the link alone settles it, whichever effect runs first.
@@ -132,7 +134,7 @@ describe('an outbox entry the host handed off as a queued draft', () => {
       ]
     })
     await waitFor(() => expect(view.result.current.outbox).toHaveLength(0))
-    expect(readNativeChatDraftCache('scope')).toBe('')
+    expect(readNativeChatDraftCache(SCOPE)).toBe('')
   })
 
   it('a withdrawn immediate send still comes back to the composer', async () => {
@@ -140,7 +142,7 @@ describe('an outbox entry the host handed off as a queued draft', () => {
     const view = renderOutbox()
     view.rerender({ submissions: [submission('plain', WITHDRAWN)] })
     await waitFor(() => expect(view.result.current.outbox).toHaveLength(0))
-    expect(readNativeChatDraftCache('scope')).toBe('follow-up')
+    expect(readNativeChatDraftCache(SCOPE)).toBe('follow-up')
   })
 
   it('a withdrawn hand-off is never restored, even one under the id of the entry', async () => {
@@ -148,7 +150,7 @@ describe('an outbox entry the host handed off as a queued draft', () => {
     const view = renderOutbox()
     view.rerender({ submissions: [submission('draft', { ...WITHDRAWN, queuedMessageId: 'q' })] })
     await waitFor(() => expect(view.result.current.outbox).toHaveLength(0))
-    expect(readNativeChatDraftCache('scope')).toBe('')
+    expect(readNativeChatDraftCache(SCOPE)).toBe('')
   })
 
   it('a replayed send answered with the hand-off settles as the host holding it', async () => {
@@ -180,7 +182,7 @@ describe('an outbox entry the host handed off as a queued draft', () => {
     await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
   })
 
-  it('a replay of a deleted card is answered spent: it leaves with no restore and no Retry', async () => {
+  it('a replay of a deleted card is answered spent: it leaves with nothing handed back', async () => {
     mocks.call.mockImplementationOnce(async (_target, _method, params) => ({
       ok: true,
       replayed: true,
@@ -199,7 +201,7 @@ describe('an outbox entry the host handed off as a queued draft', () => {
     await act(async () => new Promise((resolve) => setTimeout(resolve, 20)))
     expect(view.result.current.outbox).toEqual([])
     expect(view.result.current.error).toBeNull()
-    expect(readNativeChatDraftCache('scope')).toBe('')
+    expect(readNativeChatDraftCache(SCOPE)).toBe('')
     act(() => {
       expect(view.result.current.send('next')).toBe(true)
     })

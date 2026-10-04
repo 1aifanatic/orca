@@ -1,29 +1,30 @@
 import type { AgentSessionFailureFact } from './agent-session-failure'
 import { readWholeAgentSessionFailureFact } from './agent-session-failure'
-import type { AgentJournalMessageItem, AgentJournalSubmission } from './agent-session-journal-types'
-import {
-  parseAgentSessionWriteFailure,
-  type AgentSessionWriteFailure,
-  type AgentSessionWriteRefusal
-} from './agent-session-write-failure'
-import {
-  agentSessionOwnerVerdictAllowsFreshOperationId,
-  agentSessionRefusalOperationState
-} from './agent-session-refusal-retry'
+import type {
+  AgentJournalCursor,
+  AgentJournalMessageItem,
+  AgentJournalSubmission
+} from './agent-session-journal-types'
+import type { AgentSessionWriteFailure } from './agent-session-write-failure'
 import {
   structuredAgentSessionMessageSendMutation,
   type StructuredAgentSessionSendMutation
 } from './structured-agent-session-send-mutation'
-import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
 import { parseStructuredAgentSessionOutboxQueueFields } from './structured-agent-session-outbox-delivery'
 
-/** `rejected`: the host settled the send as not delivered. The drain never sends it again on its
- *  own and nothing queues behind it; only the user's Retry does. */
-export type StructuredAgentSessionOutboxState =
-  | 'queued'
-  | 'dispatching'
-  | 'unconfirmed'
-  | 'rejected'
+/** `queued`: waits to go out. `dispatching`: out, or held by the host as a row it has not handed
+ *  to the agent yet. `unconfirmed`: no answer yet, so the same id goes again
+ *  (structured-agent-session-send-settlement). */
+export type StructuredAgentSessionOutboxState = 'queued' | 'dispatching' | 'unconfirmed'
+
+/** The Stop that outran a send already on its way: by its own id, and where the host's journal
+ *  stood when it answered. */
+export type StructuredAgentSessionOutboxStop = {
+  operationId: string
+  cursor?: AgentJournalCursor
+  /** The Stop was refused, or can't be sent again without stopping something newer. */
+  unanswerable?: true
+}
 
 export type StructuredAgentSessionOutboxEntry = {
   clientMessageId: string
@@ -33,19 +34,18 @@ export type StructuredAgentSessionOutboxEntry = {
   state: StructuredAgentSessionOutboxState
   queuedAt: number
   lastAttemptAt: number | null
-  retryAfterUnknownSubmittedAt: number | null
   source?: 'launch'
-  /** A Stop landed after this queue send went out: only the user's Retry sends it again, never the
-   *  drain, the unconfirmed probe or an owner change, which would start a turn the user stopped. */
-  outlivedStop?: true
+  /** A Stop was pressed while this send was out. It never goes again, since a resend onto the
+   *  session the user stopped could start a turn; its own answer, its journal row or the Stop's
+   *  answer settles it. */
+  stoppedBy?: StructuredAgentSessionOutboxStop
+  /** Saved by an older build that held it for a Retry this build no longer has: it never goes out
+   *  again on its own (the person was told it did not go), and the journal settles it once loaded. */
+  legacyUnsettled?: true
   /** Whether the first attempt asked the host to hold it as a draft (`null`: plain); every replay
    *  of this id asks the same (structured-agent-session-outbox-delivery). On a request's own copy,
    *  what that request carries. */
   sentDelivery?: 'queue-if-active' | null
-  /** Why the last attempt did not go through. Lives on the message so it goes when the message
-   *  is sent again or delivered, instead of outliving it as a separate error. On a `queued` entry
-   *  it is also the hold (structured-agent-session-outbox-admission). */
-  lastFailure?: StructuredAgentSessionAttemptFailure
 }
 
 /** A host's rejection fact as a message keeps it: never its provider detail, whose log text is not
@@ -56,7 +56,7 @@ export type StructuredAgentSessionRejectionFact = Pick<
   'kind' | 'attachment'
 >
 
-/** Kept as the fact, not the words: the Retry row chooses those when it shows the entry. */
+/** Why a write did not go through, kept as the fact; the words are chosen where it is shown. */
 export type StructuredAgentSessionAttemptFailure =
   | AgentSessionWriteFailure
   /** The host recorded the message and the provider turned it down, with the provider's reason. */
@@ -81,26 +81,6 @@ export function structuredAgentSessionRejectedFailure(submission: {
         }
       : {})
   }
-}
-
-function parseStructuredAgentSessionAttemptFailure(
-  value: unknown
-): StructuredAgentSessionAttemptFailure | undefined {
-  if (
-    typeof value === 'object' &&
-    value !== null &&
-    'kind' in value &&
-    value.kind === 'rejected' &&
-    'reason' in value
-  ) {
-    return value.reason === null || typeof value.reason === 'string'
-      ? structuredAgentSessionRejectedFailure({
-          reason: value.reason,
-          rejection: 'rejection' in value ? value.rejection : undefined
-        })
-      : undefined
-  }
-  return parseAgentSessionWriteFailure(value)
 }
 
 export type StructuredAgentSessionAttachment = {
@@ -136,8 +116,7 @@ export function createStructuredAgentSessionOutboxEntry(args: {
     previewUris: args.attachments.map((attachment) => attachment.previewUri),
     state: 'queued',
     queuedAt: args.queuedAt,
-    lastAttemptAt: null,
-    retryAfterUnknownSubmittedAt: null
+    lastAttemptAt: null
   }
 }
 
@@ -155,108 +134,32 @@ export function updateStructuredAgentSessionOutboxEntry(
   })
 }
 
-/** Staged for another attempt; the last attempt's failure no longer describes it. */
 export function stageStructuredAgentSessionOutboxEntryForSend(
-  { lastFailure: _sentAgain, ...entry }: StructuredAgentSessionOutboxEntry,
+  entry: StructuredAgentSessionOutboxEntry,
   now: number
 ): StructuredAgentSessionOutboxEntry {
   return { ...entry, state: 'dispatching', lastAttemptAt: now }
 }
 
-/** The host forgot this message's id, a day after it was made, and refuses it for good: only a new
- *  id sends it. The id was kept because an earlier attempt under it may already be in the chat; a
- *  first attempt's was replaced when it was refused. */
-export function structuredAgentSessionEntryIdExpired(
-  entry: StructuredAgentSessionOutboxEntry
-): boolean {
-  return (
-    entry.state === 'queued' &&
-    entry.lastFailure?.kind === 'refused' &&
-    entry.lastFailure.code === 'agent_session_operation_expired'
-  )
-}
-
-export function requeueStructuredAgentSessionSendRefusal(
-  entry: StructuredAgentSessionOutboxEntry,
-  refusal: AgentSessionWriteRefusal,
-  createOperationId: () => string,
-  retainOperationId = false
-): StructuredAgentSessionOutboxEntry {
-  const refusalSettled = agentSessionRefusalOperationState(refusal.code) === 'settled-rejected'
-  // An exited owner runs nothing under the old id, so a new one can't collide; the message still
-  // waits for its Retry, since nothing recorded it.
-  const ownerExited =
-    refusal.code === 'agent_session_ownership_unknown' &&
-    agentSessionOwnerVerdictAllowsFreshOperationId(refusal.details?.ownerVerdict)
-  if (
-    !(refusalSettled || ownerExited) ||
-    retainOperationId ||
-    entry.state === 'unconfirmed' ||
-    entry.retryAfterUnknownSubmittedAt !== null
-  ) {
-    return { ...entry, state: 'queued' }
-  }
-  // Only here may the id rotate: an earlier attempt under this id, or one whose delivery was in
-  // doubt, may have landed, so those keep it. Only a settled refusal proves the message never
-  // landed.
-  return {
-    ...entry,
-    clientMessageId: createOperationId(),
-    state: refusalSettled ? 'rejected' : 'queued',
-    lastAttemptAt: null,
-    retryAfterUnknownSubmittedAt: null
-  }
-}
-
+/**
+ * The outbox as the journal reads it: an entry the host holds a row for leaves once that row has
+ * settled (the row shows it from there), and stays out while it is pending. A view's reading; the
+ * outbox hook settles the stored copy (structured-agent-session-send-settlement).
+ */
 export function reconcileStructuredAgentSessionOutbox(
   entries: readonly StructuredAgentSessionOutboxEntry[],
   submissions: readonly AgentJournalSubmission[]
 ): StructuredAgentSessionOutboxEntry[] {
-  const settled = new Map(submissions.map((entry) => [entry.clientMessageId, entry]))
+  const rows = new Map(submissions.map((entry) => [entry.clientMessageId, entry]))
   return entries.flatMap((entry) => {
-    const submission = settled.get(entry.clientMessageId)
-    if (submission?.dispatchState === 'accepted') {
+    const submission = rows.get(entry.clientMessageId)
+    if (!submission) {
+      return [entry]
+    }
+    if (submission.dispatchState !== 'pending') {
       return []
     }
-    if (
-      submission?.dispatchState === 'rejected' &&
-      classifyDispatchRejection(submission).category === 'withdrawn'
-    ) {
-      return []
-    }
-    if (submission?.dispatchState === 'pending') {
-      if (entry.state === 'dispatching') {
-        return [entry]
-      }
-      // The host has it, so no failure of an earlier attempt describes it now.
-      const { lastFailure: _landed, ...landed } = entry
-      return [{ ...landed, state: 'dispatching' as const }]
-    }
-    // Accepted, then not delivered — the agent never started, or its start was refused. The text
-    // and why stay here for the user's Retry, and nothing queues behind it. `unconfirmed` is how a
-    // remount reads an entry it left dispatching; the journal has since answered it.
-    if (
-      submission?.dispatchState === 'rejected' &&
-      (entry.state === 'dispatching' || entry.state === 'unconfirmed')
-    ) {
-      return [
-        {
-          ...entry,
-          state: 'rejected' as const,
-          lastFailure: structuredAgentSessionRejectedFailure(submission)
-        }
-      ]
-    }
-    if (
-      submission?.dispatchState === 'unknown' &&
-      entry.retryAfterUnknownSubmittedAt !== -1 &&
-      entry.retryAfterUnknownSubmittedAt !== submission.submittedAt
-    ) {
-      // In doubt now, not failed: the probe's resend decides it, as for any unconfirmed send.
-      const { lastFailure: _superseded, ...inDoubt } = entry
-      return [{ ...inDoubt, state: 'unconfirmed' as const }]
-    }
-    return [entry]
+    return entry.state === 'dispatching' ? [entry] : [{ ...entry, state: 'dispatching' as const }]
   })
 }
 
@@ -278,28 +181,57 @@ export function parseStructuredAgentSessionOutboxEntry(
     body.role !== 'user' ||
     !Array.isArray(body.blocks) ||
     !Array.isArray(entry.previewUris) ||
-    !entry.previewUris.every((uri) => typeof uri === 'string') ||
-    !['queued', 'dispatching', 'unconfirmed', 'rejected'].includes(entry.state ?? '')
+    !entry.previewUris.every((uri) => typeof uri === 'string')
   ) {
     return null
   }
-  // A malformed failure is dropped: the row then says only that the message was not sent.
-  const lastFailure = parseStructuredAgentSessionAttemptFailure(entry.lastFailure)
+  const saved: Record<string, unknown> = { ...entry }
+  // `rejected` is an older build's: read as queued and never sent again (below).
+  const state = saved.state === 'rejected' ? 'queued' : saved.state
+  if (state !== 'queued' && state !== 'dispatching' && state !== 'unconfirmed') {
+    return null
+  }
+  // Older builds held these for a Retry: a rejected one, one with a saved failure, one a Stop
+  // outlived. Read as they were left, never sent again.
+  const legacyUnsettled =
+    saved.legacyUnsettled === true ||
+    saved.state === 'rejected' ||
+    (state === 'queued' && saved.lastFailure !== undefined) ||
+    saved.outlivedStop === true
+  const stoppedBy = parseStructuredAgentSessionOutboxStop(saved.stoppedBy)
   return {
     clientMessageId: entry.clientMessageId,
     sessionId,
     body,
     previewUris: entry.previewUris,
-    state: entry.state as StructuredAgentSessionOutboxState,
+    state,
     queuedAt: entry.queuedAt,
     lastAttemptAt: typeof entry.lastAttemptAt === 'number' ? entry.lastAttemptAt : null,
-    retryAfterUnknownSubmittedAt:
-      typeof entry.retryAfterUnknownSubmittedAt === 'number'
-        ? entry.retryAfterUnknownSubmittedAt
-        : null,
     ...(entry.source === 'launch' ? { source: 'launch' as const } : {}),
     ...parseStructuredAgentSessionOutboxQueueFields(entry),
-    ...(lastFailure ? { lastFailure } : {})
+    ...(stoppedBy ? { stoppedBy } : {}),
+    ...(legacyUnsettled ? { legacyUnsettled: true as const } : {})
+  }
+}
+
+function parseStructuredAgentSessionOutboxStop(
+  value: unknown
+): StructuredAgentSessionOutboxStop | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined
+  }
+  const stop: Record<string, unknown> = { ...value }
+  if (typeof stop.operationId !== 'string') {
+    return undefined
+  }
+  const cursor: Record<string, unknown> | null =
+    typeof stop.cursor === 'object' && stop.cursor !== null ? { ...stop.cursor } : null
+  return {
+    operationId: stop.operationId,
+    ...(cursor && typeof cursor.epoch === 'string' && typeof cursor.sequence === 'number'
+      ? { cursor: { epoch: cursor.epoch, sequence: cursor.sequence } }
+      : {}),
+    ...(stop.unanswerable === true ? { unanswerable: true as const } : {})
   }
 }
 
@@ -322,13 +254,4 @@ export function structuredAgentSessionSendRequest(
   expectedRuntimeFence: number
 ): Record<string, unknown> {
   return structuredAgentSessionSendMutation(entry, expectedRuntimeFence)
-}
-
-export type StructuredAgentSessionSendFailure = 'delivery-unknown' | 'failed'
-
-export function classifyStructuredAgentSessionSendFailure(
-  error: unknown,
-  isDeliveryUnknown: (error: unknown) => boolean
-): StructuredAgentSessionSendFailure {
-  return isDeliveryUnknown(error) ? 'delivery-unknown' : 'failed'
 }

@@ -56,8 +56,8 @@ vi.mock('./use-structured-agent-session-outbox', () => ({
       outbox: outboxEntries,
       error: null,
       send: vi.fn(),
-      retry: vi.fn(),
-      withdrawUnsent: vi.fn()
+      stop: vi.fn(),
+      recordStopAnswer: vi.fn()
     }
   }
 }))
@@ -73,6 +73,7 @@ import {
   clearNativeChatDraftCacheForTests,
   readNativeChatDraftCache
 } from './native-chat-draft-cache'
+import { structuredAgentSessionDraftScopeKey } from './native-chat-composer-draft-store'
 import { useStructuredAgentSession } from './use-structured-agent-session'
 
 const RUNNING_TURN: AgentJournalRenderItem = {
@@ -99,7 +100,6 @@ function render(queueFollowUps?: boolean) {
       agent: 'claude',
       target: { kind: 'local' },
       isVisible: true,
-      composerScopeKey: 'scope-1',
       ...(queueFollowUps === undefined ? {} : { queueFollowUps })
     })
   )
@@ -171,7 +171,7 @@ describe('against a capable host', () => {
     expect(result.current.queuedMessages.cards).toMatchObject([
       { messageId: 'draft-1', hold: 'paused' }
     ])
-    expect(readNativeChatDraftCache('scope-1')).toBe('')
+    expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey('session-1'))).toBe('')
   })
 
   it("/clear is exactly today's command — drafts are the host's to carry", async () => {

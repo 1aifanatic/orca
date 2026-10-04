@@ -30,6 +30,7 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
 import { readOutbox } from './structured-agent-session-outbox-storage'
+import { structuredAgentSessionDraftScopeKey } from './native-chat-composer-draft-store'
 
 // Why: every hook here shares the session outbox store; one left mounted would drain the next test's.
 afterEach(cleanup)
@@ -188,7 +189,6 @@ describe('outbox queue delivery selection', () => {
           target: LOCAL_TARGET,
           fence: 1,
           submissions: [],
-          composerScopeKey: 'stop-scope',
           queueDelivery: { capability: 'supported' as const, enabled: true },
           queuedMessageIds: props.queuedMessageIds
         }),
@@ -199,29 +199,27 @@ describe('outbox queue delivery selection', () => {
     // A second send waits behind single-flight: the Stop still owns ITS text locally.
     expect(view.result.current.send('never left')).toBe(true)
     act(() => {
-      view.result.current.withdrawUnsent()
+      view.result.current.stop('stop-1')
     })
     // The unissued entry came back to the composer; the issued one stayed put.
-    expect(readNativeChatDraftCache('stop-scope')).toBe('never left')
-    // The issued one waits for its answer, marked: only the user's Retry sends it again.
-    expect(view.result.current.outbox.map((entry) => [entry.state, entry.outlivedStop])).toEqual([
-      ['dispatching', true]
-    ])
+    expect(readNativeChatDraftCache(STOP_SCOPE)).toBe('never left')
+    // The issued one waits for its answer, stamped with the Stop: nothing sends it again.
+    expect(
+      view.result.current.outbox.map((entry) => [entry.state, entry.stoppedBy?.operationId])
+    ).toEqual([['dispatching', 'stop-1']])
     // The host publishes the issued send as a card: retired, still nothing restored.
     const entryId = mocks.call.mock.calls[0]?.[2]?.envelope.clientOperationId
     view.rerender({ queuedMessageIds: [entryId ?? ''] })
     await waitFor(() => expect(view.result.current.outbox).toHaveLength(0))
-    expect(readNativeChatDraftCache('stop-scope')).toBe('never left')
+    expect(readNativeChatDraftCache(STOP_SCOPE)).toBe('never left')
   })
 
   it('while the capability is unknown, an attempted queue send replays what it sent', async () => {
     const view = await attemptedQueueSend()
     view.rerender({ capability: 'unknown' })
     const id = view.result.current.outbox[0]?.clientMessageId ?? ''
-    act(() => {
-      view.result.current.retry(id)
-    })
-    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
+    // The same id goes again on its own, with no answer to the first.
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2), { timeout: 3000 })
     const params = mocks.call.mock.calls[1]?.[2]
     expect(params?.envelope.clientOperationId).toBe(id)
     expect(params?.delivery).toBe('queue-if-active')
@@ -272,16 +270,13 @@ describe('outbox queue delivery selection', () => {
     }
   })
 
-  it('a host known not to queue gets the Retry without `delivery`; the entry keeps what it sent', async () => {
+  it('a host known not to queue gets the resend without `delivery`; the entry keeps what it sent', async () => {
     // Such a host rejects the strict field before its operation ledger, so a replay carrying it
     // again could only fail the same way.
     const view = await attemptedQueueSend()
     view.rerender({ capability: 'unsupported' })
     const id = view.result.current.outbox[0]?.clientMessageId ?? ''
-    act(() => {
-      view.result.current.retry(id)
-    })
-    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2), { timeout: 3000 })
     const params = mocks.call.mock.calls[1]?.[2]
     expect(params?.envelope.clientOperationId).toBe(id)
     expect(params && 'delivery' in params).toBe(false)
@@ -297,11 +292,12 @@ describe('outbox queue delivery selection', () => {
 })
 
 const SUPPORTED: StructuredAgentSessionQueueCapability = 'supported'
+const STOP_SCOPE = structuredAgentSessionDraftScopeKey('session-1')
 
-/** A queue send whose first attempt failed and now waits on the user's Retry. */
+/** A queue send whose first attempt got no answer, so it goes again under its id. */
 async function attemptedQueueSend() {
   mocks.call.mockImplementationOnce(async () => {
-    throw new Error('invalid_argument: Unrecognized key: "delivery"')
+    throw new Error('socket closed')
   })
   const view = renderHook(
     (props: { capability: StructuredAgentSessionQueueCapability }) =>
@@ -315,7 +311,7 @@ async function attemptedQueueSend() {
     { initialProps: { capability: SUPPORTED } }
   )
   expect(view.result.current.send('follow-up')).toBe(true)
-  await waitFor(() => expect(view.result.current.outbox[0]?.lastFailure).toBeDefined())
+  await waitFor(() => expect(view.result.current.outbox[0]?.state).toBe('unconfirmed'))
   expect(mocks.call.mock.calls[0]?.[2]?.delivery).toBe('queue-if-active')
   mocks.call.mockImplementation(() => new Promise(() => {}))
   return view

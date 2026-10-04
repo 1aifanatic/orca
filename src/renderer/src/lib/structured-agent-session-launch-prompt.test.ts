@@ -3,8 +3,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   enqueueStructuredAgentSessionLaunchPrompt,
-  mutateStructuredAgentSessionLaunchPrompt
+  getStructuredAgentSessionOutbox
 } from '@/components/native-chat/structured-agent-session-outbox-storage'
+import { structuredAgentSessionDraftScopeKey } from '@/components/native-chat/native-chat-composer-draft-store'
+import { readNativeChatDraftCache } from '@/components/native-chat/native-chat-draft-cache'
 
 const mocks = vi.hoisted(() => ({ call: vi.fn() }))
 
@@ -62,32 +64,30 @@ describe('settleStructuredAgentLaunchPrompt', () => {
     expect(persisted).toMatchObject([{ state: 'dispatching' }])
   })
 
-  it('drops the previous attempt failure when the launch path sends the message again', async () => {
+  // The launch prompt goes through the outbox's one sender and settlement: a first attempt the
+  // host refused comes back to the chat's draft, never a Retry row.
+  it('gives a first launch prompt the host refused back to the chat draft, with no resend', async () => {
     const stagedEntry = enqueueStructuredAgentSessionLaunchPrompt('session-1', 'review this')
-    mutateStructuredAgentSessionLaunchPrompt(
-      'session-1',
-      stagedEntry!.clientMessageId,
-      (entry) => ({
-        ...entry,
-        lastFailure: { kind: 'refused', code: 'agent_session_operation_capacity' }
-      })
-    )
+    const onPromptDelivered = vi.fn()
     mocks.call.mockResolvedValue({
       ok: false,
       refusal: { code: 'agent_session_checkpoint_stale', message: 'stale' }
     })
 
-    await settleStructuredAgentLaunchPrompt({
-      launchResult: Promise.resolve({ sessionId: 'session-1', fence: 1 }),
-      target: { kind: 'local' },
-      options: { prompt: 'review this' },
-      stagedEntry
-    })
+    await expect(
+      settleStructuredAgentLaunchPrompt({
+        launchResult: Promise.resolve({ sessionId: 'session-1', fence: 1 }),
+        target: { kind: 'local' },
+        options: { prompt: 'review this', onPromptDelivered },
+        stagedEntry
+      })
+    ).resolves.toEqual({ delivered: false, failureNotified: false })
 
-    const persisted: unknown = JSON.parse(localStorage.getItem(localStorage.key(0)!) ?? '[]')
-    expect(persisted).toHaveLength(1)
-    expect(persisted).not.toContainEqual(
-      expect.objectContaining({ lastFailure: expect.anything() })
+    expect(onPromptDelivered).not.toHaveBeenCalled()
+    expect(mocks.call).toHaveBeenCalledOnce()
+    expect(getStructuredAgentSessionOutbox('session-1')).toEqual([])
+    expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey('session-1'))).toBe(
+      'review this'
     )
   })
 })

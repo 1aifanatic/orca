@@ -5,7 +5,6 @@ import { isQueuedAgentJournalSubmission } from './agent-session-queued-submissio
 import { collapseProviderRetryRuns } from './native-chat-provider-retry-runs'
 import type { NativeChatMessage } from './native-chat-types'
 import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
-import { structuredAgentSessionEntryHeldForRetry } from './structured-agent-session-outbox-admission'
 import { reconcileStructuredAgentSessionOutboxWithQueue } from './structured-agent-session-draft-hand-off'
 import { dispatchWasWithdrawn } from './structured-agent-session-dispatch-rejection'
 import { projectStructuredItemsToNativeChat } from './structured-agent-session-projection'
@@ -104,9 +103,6 @@ export function projectStructuredAgentSessionMessages(
           source: 'transcript',
           timestamp: entry.queuedAt,
           blocks: entry.body.blocks,
-          ...(entry.state === 'rejected' || structuredAgentSessionEntryHeldForRetry(entry)
-            ? { unsent: true as const }
-            : {}),
           // A send the journal recorded before refusing it keeps its place there.
           ...(recorded ? { journalPosition: agentJournalItemPosition(recorded) } : {})
         }

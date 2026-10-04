@@ -17189,11 +17189,6 @@
       },
       "native": {
         "chat": {
-          "NativeChatStructuredSession": {
-            "1f772bb5d0": "メッセージの配信は未確認です。",
-            "93ef441197": "メッセージは送信されませんでした。",
-            "a5e7f14068": "再試行"
-          },
           "NativeChatLaunchRetry": {
             "failed": "チャットを開始できませんでした。",
             "unknown": "チャット接続が確認できませんでした。",
@@ -17832,6 +17827,7 @@
       "messageNotSent": "メッセージは送信されませんでした",
       "deliveryUnconfirmed": "配信を確認できません — 再試行する前にチャットを確認してください",
       "messageSending": "送信中…",
+      "messageNotConfirmed": "未確認です。Agent が応答していない場合は、もう一度送信してください。",
       "queuedMessages": {
         "alreadySent": "このメッセージはすでに送信されています。",
         "editAlreadySent": "すでに送信されています — テキストは入力欄に残っています。",

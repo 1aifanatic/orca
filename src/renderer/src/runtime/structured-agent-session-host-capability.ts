@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY,
   AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY,
+  AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY,
   type RuntimeCapability
 } from '../../../shared/protocol-version'
 import type { RuntimeClientTarget } from './runtime-client-target'
@@ -108,4 +109,34 @@ export function useStructuredAgentSessionHostQueuesMessagesState(
     target,
     AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY
   )
+}
+
+const ANSWERS_PROVE_PROBE_TIMEOUT_MS = 5_000
+
+/** Whether every refusal the session's host returns to a send proves the id has no record there.
+ *  False until the host has said so, for a failed probe, and for one that does not answer in time:
+ *  an older host proves nothing, so the send only goes again. */
+export async function structuredAgentSessionHostAnswersProve(
+  target: RuntimeClientTarget
+): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timedOut = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), ANSWERS_PROVE_PROBE_TIMEOUT_MS)
+  })
+  const probe = (async (): Promise<boolean> => {
+    if (target.kind === 'local') {
+      const capabilities = await ensureLocalRuntimeCapabilities()
+      return capabilities?.includes(AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY) === true
+    }
+    return runtimeEnvironmentSupportsCapability(
+      target.environmentId,
+      AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY,
+      ANSWERS_PROVE_PROBE_TIMEOUT_MS
+    )
+  })().catch(() => false)
+  try {
+    return await Promise.race([probe, timedOut])
+  } finally {
+    clearTimeout(timer)
+  }
 }

@@ -23,7 +23,9 @@ import { translate } from '@/i18n/i18n'
 export type NativeChatComposerFieldProps = {
   /** Pane identity published to the drop pipeline so a native file drop lands
    *  only in the composer it was dropped on. */
-  composerScopeKey: string
+  dropScopeKey: string
+  /** Owner of the draft the editor's document is saved with. */
+  draftScopeKey: string
   textareaRef: RefObject<NativeChatComposerInput | null>
   draft: string
   disabled: boolean
@@ -101,7 +103,8 @@ function imeComposedSegment(base: string, settled: string): string {
 }
 
 export function NativeChatComposerField({
-  composerScopeKey,
+  dropScopeKey,
+  draftScopeKey,
   textareaRef,
   draft,
   disabled,
@@ -198,7 +201,7 @@ export function NativeChatComposerField({
           ) : null}
           <div
             data-native-file-drop-target={NATIVE_FILE_DROP_TARGET.composer}
-            data-composer-scope-key={composerScopeKey}
+            data-composer-scope-key={dropScopeKey}
             className={cn(
               // Why: always-on hairline (token-level border, not focus ring) —
               // no focus/click border flash. The box is a container, not a
@@ -227,8 +230,8 @@ export function NativeChatComposerField({
               </div>
             ) : null}
             <NativeChatPromptEditor
-              key={composerScopeKey}
-              scopeKey={composerScopeKey}
+              key={draftScopeKey}
+              scopeKey={draftScopeKey}
               inputRef={textareaRef}
               initialValue={draft}
               disabled={disabled}

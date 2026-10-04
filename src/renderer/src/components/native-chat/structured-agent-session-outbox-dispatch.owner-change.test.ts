@@ -1,5 +1,5 @@
-// An owner change sends a send left dispatching again under its id. One a Stop outlived is put
-// back the same way, and its mark alone holds it: the drain never admits it.
+// An owner change sends a send left dispatching again under its id. One a Stop outran stays as it
+// is: nothing sends it again.
 
 import { describe, expect, it } from 'vitest'
 import {
@@ -28,12 +28,13 @@ function dispatching(
 }
 
 describe('requeue after an owner change', () => {
-  it('resends an interrupted send, but never one a Stop outlived', () => {
+  it('resends an interrupted send, but never one a Stop outran', () => {
     const [stopped] = requeueInterruptedStructuredAgentSessionDispatches(
-      [dispatching('stopped', { outlivedStop: true })],
+      [dispatching('stopped', { stoppedBy: { operationId: 'stop-1' } })],
       1
     )
-    expect(admitStructuredAgentSessionOutboxEntry([stopped]).state).toBe('blocked')
+    expect(stopped?.state).toBe('dispatching')
+    expect(admitStructuredAgentSessionOutboxEntry([stopped!]).state).toBe('idle')
     const [plain] = requeueInterruptedStructuredAgentSessionDispatches([dispatching('plain')], 1)
     expect(admitStructuredAgentSessionOutboxEntry([plain]).state).toBe('dispatch')
   })

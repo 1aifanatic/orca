@@ -44,7 +44,7 @@ function harness(
       draftScopeKey: 'tab-1:pane',
       imageAttachments: [ATTACHMENT],
       structuredTransport,
-      clearImageAttachments: vi.fn(),
+      isComposing: () => false,
       clearSkillOrigin: vi.fn(),
       setHistory: vi.fn(),
       setDraft: vi.fn(),

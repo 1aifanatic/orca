@@ -1,9 +1,9 @@
-// The delivery notice and the outbox queue behind it: which entry a Retry acts
-// on, when no notice is owed at all, and how a host-confirmed unknown is probed.
+// The delivery notice and the outbox queue behind it: a send with no answer reads as sending and
+// goes again under its id, and a send the host holds a row for leaves, so nothing waits on it.
 
 // @vitest-environment happy-dom
 
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import React, { forwardRef, useImperativeHandle, useRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
@@ -79,10 +79,8 @@ vi.mock('./use-structured-agent-session', async () => {
         loadOlder: vi.fn(),
         prompts: mocks.promptItems,
         outbox: outbox.outbox,
-        failedHere: outbox.failedHere,
         submissions: mocks.submissions,
         send: outbox.send,
-        retry: outbox.retry,
         isWorking: false,
         isMonitoringBackgroundTasks: mocks.monitoringBackgroundTasks,
         supportsBackgroundTaskStop: mocks.supportsBackgroundTaskStop,
@@ -183,10 +181,7 @@ vi.mock('./NativeChatQuestionCard', () => ({
 }))
 
 import { NativeChatStructuredSession } from './NativeChatStructuredSession'
-import {
-  appendStructuredAgentSessionOutboxMessage,
-  getStructuredAgentSessionOutbox
-} from './structured-agent-session-outbox-storage'
+import { getStructuredAgentSessionOutbox } from './structured-agent-session-outbox-storage'
 
 describe('NativeChatStructuredSession delivery', () => {
   afterEach(() => {
@@ -221,10 +216,7 @@ describe('NativeChatStructuredSession delivery', () => {
       previewUris: [],
       state,
       queuedAt: clientMessageId === 'op-head' ? 1 : 2,
-      lastAttemptAt: null,
-      // Already force-retried once, so the automatic probe leaves the head alone
-      // and only the user's Retry moves it.
-      retryAfterUnknownSubmittedAt: -1
+      lastAttemptAt: null
     }
   }
 
@@ -281,7 +273,6 @@ describe('NativeChatStructuredSession delivery', () => {
         ...seededEntry(sessionId, 'op-sent', 'first', 'queued'),
         state: 'dispatching',
         lastAttemptAt: 1,
-        retryAfterUnknownSubmittedAt: null,
         ...patch
       }
     ])
@@ -326,12 +317,14 @@ describe('NativeChatStructuredSession delivery', () => {
     expect(screen.queryByText('Message delivery is unconfirmed.')).toBeNull()
   }, 10000)
 
+  // The host has a record of it, so the row shows it from there: the entry leaves, and nothing
+  // waits on a Retry that no longer exists.
   it.each([
     ['a live unknown', {}],
     ['a recovered unknown', { recovered: true }],
     ["an older host's recovered unknown", { reason: 'host_restarted_before_acknowledgement' }]
   ])(
-    'says a send reopened mid-send is unconfirmed, with its Retry, once the journal holds %s',
+    'lets a send reopened mid-send leave once the journal holds %s, with no Retry and no resend',
     async (label, patch) => {
       mocks.mode = 'outbox'
       const sessionId = `session-reopened-${label.replace(/\W+/g, '-')}`
@@ -352,9 +345,9 @@ describe('NativeChatStructuredSession delivery', () => {
 
       renderSession(sessionId)
 
-      await waitFor(() => expect(screen.getByText('Message delivery is unconfirmed.')).toBeTruthy())
-      expect(screen.getByRole('button', { name: /Retry/ })).toBeTruthy()
-      expect(screen.queryByText('Sending…')).toBeNull()
+      await waitFor(() => expect(getStructuredAgentSessionOutbox(sessionId)).toEqual([]))
+      expect(screen.queryByRole('button', { name: /Retry/ })).toBeNull()
+      expect(screen.queryByText('Message delivery is unconfirmed.')).toBeNull()
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 1500))
       })
@@ -363,213 +356,21 @@ describe('NativeChatStructuredSession delivery', () => {
     10000
   )
 
-  it('says a send a Stop outlived is unconfirmed when reopened, as nothing resends it', async () => {
+  it('never sends a send an older build said a Stop outlived, and offers no Retry', async () => {
     mocks.mode = 'outbox'
     mocks.submissions = []
     seedMidSend('session-reopened-stopped', { outlivedStop: true })
 
     renderSession('session-reopened-stopped')
 
-    expect(screen.getByText('Message delivery is unconfirmed.')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /Retry/ })).toBeTruthy()
-    expect(screen.queryByText('Sending…')).toBeNull()
+    // Its settlement waits for the journal; until then it reads as not confirmed yet.
+    expect(screen.getByText('Sending…')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Retry/ })).toBeNull()
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 1500))
     })
     expect(mocks.call).not.toHaveBeenCalled()
   }, 10000)
-
-  it('retries the head, not a later stuck message', async () => {
-    mocks.mode = 'outbox'
-    mocks.submissions = []
-    mocks.call.mockResolvedValue({
-      ok: true,
-      value: { submission: { clientMessageId: 'client-1', dispatchState: 'accepted' } }
-    })
-    seedOutbox('session-retry-head', [
-      seededEntry('session-retry-head', 'op-head', 'first', 'unconfirmed'),
-      seededEntry('session-retry-head', 'op-later', 'second', 'unconfirmed')
-    ])
-
-    render(
-      <NativeChatStructuredSession
-        isVisible
-        isFocusedGroup
-        tabId="structured-tab-retry-head"
-        sessionId="session-retry-head"
-        target={{ kind: 'local' }}
-        agent="codex"
-      />
-    )
-
-    await waitFor(() => expect(screen.getByText('Message delivery is unconfirmed.')).toBeTruthy())
-    fireEvent.click(screen.getByRole('button', { name: /Retry/ }))
-
-    await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
-    const request = mocks.call.mock.calls[0]?.[2] as { envelope: { clientOperationId: string } }
-    expect(request.envelope.clientOperationId).toBe('op-head')
-  })
-
-  it('offers a rejected message no Retry while the queue is stopped, and gives it back once it moves', async () => {
-    mocks.mode = 'outbox'
-    mocks.submissions = []
-    mocks.call.mockResolvedValue({
-      ok: true,
-      value: { submission: { clientMessageId: 'op-head', dispatchState: 'accepted' } }
-    })
-    seedOutbox('session-held-rejected', [
-      seededEntry('session-held-rejected', 'op-head', 'first', 'unconfirmed'),
-      {
-        ...seededEntry('session-held-rejected', 'op-rejected', 'second', 'queued'),
-        state: 'rejected',
-        lastFailure: { kind: 'rejected', reason: 'Claude messages support at most 20 images' }
-      }
-    ])
-
-    render(
-      <NativeChatStructuredSession
-        isVisible
-        isFocusedGroup
-        tabId="structured-tab-held-rejected"
-        sessionId="session-held-rejected"
-        target={{ kind: 'local' }}
-        agent="codex"
-      />
-    )
-
-    await waitFor(() => expect(screen.getByText('Message delivery is unconfirmed.')).toBeTruthy())
-    expect(screen.getByText('Claude messages support at most 20 images')).toBeTruthy()
-    // One Retry, the stopped message's: it sends only that one.
-    fireEvent.click(screen.getByRole('button', { name: /Retry/ }))
-    await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
-    expect(mocks.call.mock.calls[0]?.[2]).toMatchObject({
-      envelope: { clientOperationId: 'op-head' }
-    })
-
-    // The queue moved, so the rejected message offers its own Retry again.
-    await waitFor(() => expect(screen.queryByText('Message delivery is unconfirmed.')).toBeNull())
-    expect(screen.getByText('Claude messages support at most 20 images')).toBeTruthy()
-    expect(screen.getAllByRole('button', { name: /Retry/ })).toHaveLength(1)
-    expect(mocks.call).toHaveBeenCalledOnce()
-  })
-
-  it("words a failed start on each message by the chat's agent, leaving the resend to its Retry", async () => {
-    mocks.mode = 'outbox'
-    mocks.submissions = []
-    const startFailed = (clientMessageId: string, text: string) => ({
-      ...seededEntry('session-start-failed', clientMessageId, text, 'queued'),
-      state: 'rejected' as const,
-      lastFailure: {
-        kind: 'rejected' as const,
-        reason: 'Codex stopped before it finished starting. Send your message to try again.',
-        rejection: { kind: 'providerStartFailed' as const }
-      }
-    })
-    seedOutbox('session-start-failed', [
-      startFailed('op-first', 'first'),
-      startFailed('op-second', 'second')
-    ])
-
-    render(
-      <NativeChatStructuredSession
-        isVisible
-        isFocusedGroup
-        tabId="structured-tab-start-failed"
-        sessionId="session-start-failed"
-        target={{ kind: 'local' }}
-        agent="codex"
-      />
-    )
-
-    await waitFor(() =>
-      expect(screen.getAllByText('Codex stopped before it finished starting.')).toHaveLength(2)
-    )
-    expect(screen.getAllByRole('button', { name: /Retry/ })).toHaveLength(2)
-    expect(screen.queryByText(/Send your message to try again/)).toBeNull()
-  })
-
-  it("words a rejected message from its loaded journal row, not the message's own copy", async () => {
-    mocks.mode = 'outbox'
-    const reason = "Claude couldn't start. Send your message to try again."
-    mocks.submissions = [
-      {
-        clientMessageId: 'op-recorded',
-        fence: 1,
-        payloadFingerprint: 'fingerprint',
-        dispatchState: 'rejected',
-        providerItemId: null,
-        reason,
-        rejection: {
-          kind: 'startFailed',
-          refusal: { code: 'agent_session_identity_required', details: { reason: 'recordMissing' } }
-        },
-        submittedAt: 1,
-        resolvedAt: 1
-      }
-    ]
-    seedOutbox('session-recorded', [
-      {
-        ...seededEntry('session-recorded', 'op-recorded', 'first', 'queued'),
-        state: 'rejected',
-        lastFailure: { kind: 'rejected', reason, rejection: { kind: 'startFailed' } }
-      }
-    ])
-
-    render(
-      <NativeChatStructuredSession
-        isVisible
-        isFocusedGroup
-        tabId="structured-tab-recorded"
-        sessionId="session-recorded"
-        target={{ kind: 'local' }}
-        agent="codex"
-      />
-    )
-
-    await waitFor(() =>
-      expect(screen.getByText("Codex couldn't start. Start a new chat to continue.")).toBeTruthy()
-    )
-    expect(screen.queryByText(reason)).toBeNull()
-  })
-
-  it('names the stuck message behind an admitted head, and its Retry sends that one', async () => {
-    mocks.mode = 'outbox'
-    mocks.submissions = []
-    // The head is admitted -- written and awaiting the provider -- so the entry behind it is the
-    // one holding the queue, and Retry acts on it instead of waiting for the head to clear.
-    mocks.call.mockResolvedValue({
-      ok: true,
-      value: { submission: { clientMessageId: 'op-head', dispatchState: 'pending' } }
-    })
-    seedOutbox('session-quiet-head', [
-      seededEntry('session-quiet-head', 'op-head', 'first', 'queued'),
-      seededEntry('session-quiet-head', 'op-later', 'second', 'unconfirmed')
-    ])
-
-    render(
-      <NativeChatStructuredSession
-        isVisible
-        isFocusedGroup
-        tabId="structured-tab-quiet-head"
-        sessionId="session-quiet-head"
-        target={{ kind: 'local' }}
-        agent="codex"
-      />
-    )
-
-    await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
-    expect(mocks.call.mock.calls[0]?.[2]).toMatchObject({
-      envelope: { clientOperationId: 'op-head' }
-    })
-
-    await waitFor(() => expect(screen.getByText('Message delivery is unconfirmed.')).toBeTruthy())
-    fireEvent.click(screen.getByRole('button', { name: /Retry/ }))
-
-    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
-    expect(mocks.call.mock.calls[1]?.[2]).toMatchObject({
-      envelope: { clientOperationId: 'op-later' }
-    })
-  })
 
   it('resends a transport-unconfirmed head so later messages are not wedged', async () => {
     mocks.mode = 'outbox'
@@ -636,7 +437,7 @@ describe('NativeChatStructuredSession delivery', () => {
     )
   }, 20000)
 
-  it('parks a host-confirmed unknown instead of probing it', async () => {
+  it('lets a head the host answers in doubt leave, so the message behind it goes out (no parked head)', async () => {
     mocks.mode = 'outbox'
     mocks.call.mockRejectedValueOnce(new Error('socket closed')).mockResolvedValue({
       ok: true,
@@ -661,7 +462,7 @@ describe('NativeChatStructuredSession delivery', () => {
     await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
 
     const sent = mocks.call.mock.calls[0]?.[2] as { envelope: { clientOperationId: string } }
-    // The host now reports an unresolved unknown: another replay is the user's call.
+    // The host now reports the row in doubt: it has a record, so the row shows it from here.
     mocks.submissions = [
       {
         clientMessageId: sent.envelope.clientOperationId,
@@ -674,17 +475,17 @@ describe('NativeChatStructuredSession delivery', () => {
         resolvedAt: null
       }
     ]
-    // Queue a second message purely to re-render so the effect observes the
-    // new submissions; it must stay wedged behind the parked head.
+    // A later send, with no user action: it goes out instead of waiting behind the head.
     await act(async () => {
       send?.('second', [])
     })
-    // From the row on, only the user's Retry moves it, so it says so.
-    await waitFor(() => expect(screen.getByText('Message delivery is unconfirmed.')).toBeTruthy())
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 3000))
-    })
-    expect(mocks.call).toHaveBeenCalledOnce()
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2), { timeout: 5000 })
+    const texts = mocks.call.mock.calls.map(
+      (call) => (call[2] as { body: { blocks: { text: string }[] } }).body.blocks[0]?.text
+    )
+    expect(texts).toEqual(['first', 'second'])
+    expect(screen.queryByText('Message delivery is unconfirmed.')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Retry/ })).toBeNull()
   }, 20000)
 
   it('still probes while streaming batches rebuild the submissions array', async () => {
@@ -777,31 +578,6 @@ describe('NativeChatStructuredSession delivery', () => {
     await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2), { timeout: 1500 })
   }, 10000)
 
-  it('never auto-probes an entry the user already force-retried', async () => {
-    mocks.mode = 'outbox'
-    mocks.submissions = []
-    mocks.call.mockRejectedValue(new Error('socket closed'))
-    seedOutbox('session-forced', [seededEntry('session-forced', 'op-head', 'first', 'unconfirmed')])
-
-    render(
-      <NativeChatStructuredSession
-        isVisible
-        isFocusedGroup
-        tabId="structured-tab-forced"
-        sessionId="session-forced"
-        target={{ kind: 'local' }}
-        agent="codex"
-      />
-    )
-
-    // Only the user's Retry moves it, so it says so.
-    await waitFor(() => expect(screen.getByText('Message delivery is unconfirmed.')).toBeTruthy())
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 3000))
-    })
-    expect(mocks.call).not.toHaveBeenCalled()
-  }, 20000)
-
   it('does not hot-loop when the host answers pending', async () => {
     mocks.mode = 'outbox'
     mocks.call.mockResolvedValue({
@@ -867,44 +643,4 @@ describe('NativeChatStructuredSession delivery', () => {
       vi.useRealTimers()
     }
   }, 30000)
-
-  // A cause seen while the chat was open is worded in full; one read back after the chat is
-  // reopened may have cleared, until a Retry it still stops brings it back.
-  it('words a refusal seen here in full, and after a reopen only once its Retry is refused', async () => {
-    const newerOrca =
-      'Chats were saved by a newer Orca. Your message was not sent. Update Orca to keep using them.'
-    mocks.mode = 'outbox'
-    mocks.call.mockResolvedValue({
-      ok: false,
-      refusal: {
-        code: 'agent_session_journal_unreadable',
-        message: 'newer',
-        details: { reason: 'journalWrittenByNewerOrca' }
-      }
-    })
-    const view = (): React.JSX.Element => (
-      <NativeChatStructuredSession
-        isVisible
-        isFocusedGroup
-        tabId="tab-held"
-        sessionId="session-held"
-        target={{ kind: 'local' }}
-        agent="codex"
-      />
-    )
-    const first = render(view())
-    // The composer's own enqueue.
-    act(() => {
-      expect(appendStructuredAgentSessionOutboxMessage('session-held', 'hello')).not.toBeNull()
-    })
-    await waitFor(() => expect(screen.getByText(newerOrca)).toBeTruthy())
-    first.unmount()
-
-    render(view())
-    await waitFor(() => expect(screen.getByText('Your message was not sent.')).toBeTruthy())
-    expect(mocks.call).toHaveBeenCalledOnce()
-    fireEvent.click(screen.getByRole('button', { name: /Retry/ }))
-    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
-    await waitFor(() => expect(screen.getByText(newerOrca)).toBeTruthy())
-  })
 })

@@ -48,6 +48,7 @@ import {
 } from './store-test-helpers'
 import {
   readNativeChatComposerDraft,
+  structuredAgentSessionDraftScopeKey,
   updateNativeChatComposerDraft
 } from '@/components/native-chat/native-chat-composer-draft-store'
 
@@ -189,8 +190,7 @@ describe('nativeChatLaunchDraftByTabId teardown', () => {
     expect(readNativeChatComposerDraft(`${TAB2}:leaf-a`).text).toBe('kept')
   })
 
-  it('closing a structured chat tab drops its unsent composer draft', () => {
-    const store = createTestStore()
+  function seedStructuredChat(store: ReturnType<typeof createTestStore>) {
     const chat = makeUnifiedTab({
       id: 'chat-tab',
       entityId: 'session-1',
@@ -199,7 +199,12 @@ describe('nativeChatLaunchDraftByTabId teardown', () => {
       groupId: 'group-1'
     })
     seedStore(store, {
-      worktreesByRepo: { repo1: [makeWorktree({ id: WT1, repoId: 'repo1', path: '/path/wt1' })] },
+      worktreesByRepo: {
+        repo1: [
+          makeWorktree({ id: WT1, repoId: 'repo1', path: '/path/wt1' }),
+          makeWorktree({ id: WT2, repoId: 'repo1', path: '/path/wt2' })
+        ]
+      },
       unifiedTabsByWorktree: { [WT1]: [chat] },
       groupsByWorktree: {
         [WT1]: [
@@ -212,10 +217,33 @@ describe('nativeChatLaunchDraftByTabId teardown', () => {
         ]
       }
     })
-    updateNativeChatComposerDraft('chat-tab:pane', { text: 'unsent' }, 'immediate')
+    return chat
+  }
+
+  it('closing a structured chat tab keeps its conversation’s unsent draft', () => {
+    const store = createTestStore()
+    const chat = seedStructuredChat(store)
+    const conversation = structuredAgentSessionDraftScopeKey('session-1')
+    updateNativeChatComposerDraft(conversation, { text: 'unsent' }, 'immediate')
 
     store.getState().closeUnifiedTab(chat.id)
 
-    expect(readNativeChatComposerDraft('chat-tab:pane').text).toBe('')
+    expect(store.getState().unifiedTabsByWorktree[WT1]).toEqual([])
+    expect(readNativeChatComposerDraft(conversation).text).toBe('unsent')
+  })
+
+  it('removing a worktree drops its structured chats’ conversation drafts only', async () => {
+    const store = createTestStore()
+    seedStructuredChat(store)
+    const removed = structuredAgentSessionDraftScopeKey('session-1')
+    const other = structuredAgentSessionDraftScopeKey('session-2')
+    updateNativeChatComposerDraft(removed, { text: 'unsent' }, 'immediate')
+    updateNativeChatComposerDraft(other, { text: 'kept' }, 'immediate')
+
+    const result = await store.getState().removeWorktree({ id: WT1, executionHostId: null })
+
+    expect(result).toEqual({ ok: true })
+    expect(readNativeChatComposerDraft(removed).text).toBe('')
+    expect(readNativeChatComposerDraft(other).text).toBe('kept')
   })
 })

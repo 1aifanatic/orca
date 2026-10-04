@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import type { AgentSessionMutationResult } from '../../../../shared/agent-session-wire'
+import type { AgentJournalCursor } from '../../../../shared/agent-session-journal-types'
 import {
   agentSessionRefusalFailure,
   agentSessionThrownFailure,
@@ -27,16 +28,23 @@ import { structuredSessionOperationId } from './use-structured-agent-session-out
 import { agentSessionWriteFailureText } from './agent-session-write-notice-text'
 
 export type StructuredAgentSessionWriteOutcome<T> =
-  /** `operationId`: the id the host recorded this write under. */
-  | { kind: 'done'; value: T; operationId: string }
-  /** Refused or failed, with what to tell the person. */
-  | { kind: 'not-done'; notice: string }
+  /** `operationId`: the id the host recorded this write under; `cursor`: where its journal stood. */
+  | { kind: 'done'; value: T; operationId: string; cursor: AgentJournalCursor }
+  /** Refused or failed, with what to tell the person; `answered` when the host returned a refusal,
+   *  not when the request threw. */
+  | { kind: 'not-done'; notice: string; answered: boolean }
   /** Settled for an owner or session this pane no longer shows; there is nothing to say. */
   | { kind: 'dropped' }
 
 type WriteArgs = [method: string, fingerprintMethod: string, fields: Record<string, unknown>]
 
 export type StructuredAgentSessionWrite = <T>(
+  ...args: WriteArgs
+) => Promise<StructuredAgentSessionWriteOutcome<T>>
+
+/** A write under an id the caller chose: the same id twice is one write to the host. */
+export type StructuredAgentSessionWriteAs = <T>(
+  clientOperationId: string,
   ...args: WriteArgs
 ) => Promise<StructuredAgentSessionWriteOutcome<T>>
 
@@ -63,6 +71,7 @@ export function useStructuredAgentSessionMutate(args: {
   stateRef: { current: { fence: number | null } }
 }): {
   write: StructuredAgentSessionWrite
+  writeAs: StructuredAgentSessionWriteAs
   mutate: StructuredAgentSessionMutate
 } {
   const { enabled = true, sessionId, stateRef, target } = args
@@ -85,7 +94,8 @@ export function useStructuredAgentSessionMutate(args: {
       fingerprintMethod: string,
       fields: Record<string, unknown>,
       /** The fence when the press happened, read before any await, so a write never retargets. */
-      pressedFence: number | null = stateRef.current.fence
+      pressedFence: number | null = stateRef.current.fence,
+      clientOperationId: string = structuredSessionOperationId()
     ): Promise<StructuredAgentSessionWriteOutcome<T>> => {
       if (!enabled || !enabledRef.current || pressedFence === null) {
         return { kind: 'dropped' }
@@ -106,7 +116,6 @@ export function useStructuredAgentSessionMutate(args: {
         }
         return enabledRef.current && (stateRef.current.fence === targetFence || waitedOn)
       }
-      const clientOperationId = structuredSessionOperationId()
       let result: AgentSessionMutationResult<T>
       try {
         result = await callStructuredAgentSession<AgentSessionMutationResult<T>>(target, method, {
@@ -126,6 +135,7 @@ export function useStructuredAgentSessionMutate(args: {
         return settlesHere()
           ? {
               kind: 'not-done',
+              answered: false,
               notice: agentSessionWriteFailureText(
                 agentSessionThrownFailure(
                   error,
@@ -140,6 +150,7 @@ export function useStructuredAgentSessionMutate(args: {
         return settlesHere()
           ? {
               kind: 'not-done',
+              answered: true,
               notice: agentSessionWriteFailureText(
                 agentSessionRefusalFailure(result.refusal),
                 writeKind(fingerprintMethod, fields)
@@ -150,7 +161,12 @@ export function useStructuredAgentSessionMutate(args: {
       if (!settlesHere()) {
         return { kind: 'dropped' }
       }
-      return { kind: 'done', value: result.value, operationId: clientOperationId }
+      return {
+        kind: 'done',
+        value: result.value,
+        operationId: clientOperationId,
+        cursor: result.cursor
+      }
     },
     [enabled, sessionId, stateRef, target]
   )
@@ -204,5 +220,14 @@ export function useStructuredAgentSessionMutate(args: {
     [write]
   )
 
-  return { write, mutate }
+  const writeAs = useCallback(
+    <T>(
+      clientOperationId: string,
+      ...[method, fingerprintMethod, fields]: WriteArgs
+    ): Promise<StructuredAgentSessionWriteOutcome<T>> =>
+      send<T>(method, fingerprintMethod, fields, stateRef.current.fence, clientOperationId),
+    [send, stateRef]
+  )
+
+  return { write, writeAs, mutate }
 }

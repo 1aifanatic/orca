@@ -32,19 +32,15 @@ export function writeNativeChatDraftCache(
   )
 }
 
+/** A whitespace-only draft counts as empty, so the text never lands after blank lines. */
 export function appendNativeChatDraftText(draft: string, text: string): string {
-  return draft === '' ? text : `${draft.trimEnd()}\n\n${text}`
+  return draft.trim() === '' ? text : `${draft.trimEnd()}\n\n${text}`
 }
 
 // Why: a composer mid-IME-composition keeps showing what it had, so it is told what was appended.
 const appendListeners = new Map<string, Set<(text: string, previous: string) => void>>()
 
-/** Puts text back after whatever is typed, and tells a mounted composer to show it. */
-export function appendNativeChatDraftCache(scopeKey: string, text: string): void {
-  if (text === '') {
-    return
-  }
-  const previous = readNativeChatDraftCache(scopeKey)
+function appendToDraft(scopeKey: string, text: string, previous: string): void {
   // Saved now: the copy it came from (an outbox entry, a queued card) goes right after this.
   updateNativeChatComposerDraft(
     scopeKey,
@@ -52,6 +48,31 @@ export function appendNativeChatDraftCache(scopeKey: string, text: string): void
     'immediate'
   )
   appendListeners.get(scopeKey)?.forEach((listener) => listener(text, previous))
+}
+
+/** Puts text back after whatever is typed, and tells a mounted composer to show it. */
+export function appendNativeChatDraftCache(scopeKey: string, text: string): void {
+  if (text === '') {
+    return
+  }
+  appendToDraft(scopeKey, text, readNativeChatDraftCache(scopeKey))
+}
+
+/**
+ * Hands text Orca could not deliver back to the person, with or without a composer showing it.
+ * Why skipped when already there: a hand-back can repeat (a crash before its copy was removed,
+ * two windows settling one message), and the person must see it once.
+ */
+export function returnNativeChatDraftText(scopeKey: string, text: string): void {
+  const returned = text.trim()
+  if (returned === '') {
+    return
+  }
+  const previous = readNativeChatDraftCache(scopeKey)
+  if (previous.includes(returned)) {
+    return
+  }
+  appendToDraft(scopeKey, returned, previous)
 }
 
 export function subscribeToNativeChatDraftAppend(

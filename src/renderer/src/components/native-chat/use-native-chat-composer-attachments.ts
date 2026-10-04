@@ -301,9 +301,10 @@ export function readNativeChatAttachmentCache(
   return readNativeChatComposerDraft(scopeKey).images.map((image) => ({ ...image }))
 }
 
-/** Adds settled images after the ones the draft holds now. Saved at once: when Stop gives images
- *  back, the copy they came from goes right after this. Only an image the user attaches
- *  (`fromUser`) takes the place of a placeholder with its file name, as a re-pick does. */
+/** Adds settled images after the ones the draft holds now, skipping one it already holds, as a
+ *  repeated hand-back does. Saved at once: when Stop gives images back, the copy they came from
+ *  goes right after this. Only an image the user attaches (`fromUser`) takes the place of a
+ *  placeholder with its file name, as a re-pick does. */
 export function appendNativeChatAttachmentCache(
   scopeKey: string,
   appended: readonly NativeChatComposerImageAttachment[],
@@ -319,10 +320,10 @@ export function appendNativeChatAttachmentCache(
     const placeholder = options?.fromUser
       ? images.findIndex((held) => held.unavailableName === basename(path))
       : -1
-    if (placeholder === -1) {
-      images.push(image)
-    } else {
+    if (placeholder !== -1) {
       images[placeholder] = image
+    } else if (!images.some((held) => held.id === id)) {
+      images.push(image)
     }
   }
   updateNativeChatComposerDraft(scopeKey, { images }, 'immediate')

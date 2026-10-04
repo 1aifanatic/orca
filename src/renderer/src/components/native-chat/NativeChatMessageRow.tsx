@@ -1,5 +1,5 @@
 import { memo, useCallback, useRef } from 'react'
-import { Goal, RotateCcw } from 'lucide-react'
+import { Goal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import CommentMarkdown, {
   type CommentMarkdownLinkClickHandler
@@ -29,16 +29,14 @@ import type {
 import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client'
 
 /** What a user message says about its delivery: that nothing has confirmed it yet, quietly in
- *  place of its time, or that it did not go through, with its own Retry when the surface can send
- *  it again. */
+ *  place of its time, or how it ended when it did not go through. */
 export type NativeChatDeliveryNotice =
-  | { sending: true; text?: never; notSent?: never; onRetry?: never; onDismiss?: never }
+  | { sending: true; text?: never; muted?: never; onDismiss?: never }
   | {
       sending?: never
       text: string
-      /** Says only that the message did not go out, so it reads muted, not as an error. */
-      notSent?: true
-      onRetry?: () => void
+      /** Says only that the message did not go out, or is not confirmed: muted, not an error. */
+      muted?: true
       onDismiss?: () => void
     }
 
@@ -227,22 +225,13 @@ export const MessageRow = memo(function MessageRow({
           <div
             className={cn(
               'flex max-w-[85%] items-center gap-2 text-[11px]',
-              deliveryNotice.notSent ? 'text-muted-foreground' : 'text-destructive/80'
+              deliveryNotice.muted ? 'text-muted-foreground' : 'text-destructive/80'
             )}
           >
             <span className="min-w-0 break-words">{deliveryNotice.text}</span>
             {deliveryNotice.onDismiss ? (
               <Button type="button" variant="ghost" size="xs" onClick={deliveryNotice.onDismiss}>
                 {translate('components.native-chat.dismissDeliveryNotice', 'Dismiss')}
-              </Button>
-            ) : null}
-            {deliveryNotice.onRetry ? (
-              <Button type="button" variant="ghost" size="xs" onClick={deliveryNotice.onRetry}>
-                <RotateCcw className="size-3" />
-                {translate(
-                  'auto.components.native.chat.NativeChatStructuredSession.a5e7f14068',
-                  'Retry'
-                )}
               </Button>
             ) : null}
           </div>

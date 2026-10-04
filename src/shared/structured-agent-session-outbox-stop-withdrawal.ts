@@ -1,81 +1,62 @@
 import type { AgentJournalSubmission } from './agent-session-journal-types'
 import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
-import { structuredAgentSessionEntryHeldForRetry } from './structured-agent-session-outbox-admission'
+import { structuredAgentSessionEntryAwaitsSettlement } from './structured-agent-session-outbox-admission'
 import { handedOffQueuedMessageIds } from './structured-agent-session-draft-hand-off'
 
-/** Whether only the user's Retry sends this entry again: a rejected one, one whose send failed or
- *  was refused, one a Stop outlived, or one in doubt the unconfirmed probe leaves alone.
- *  `NativeChatDeliveryRetry` offers it. */
-function awaitsStructuredAgentSessionRetry(entry: StructuredAgentSessionOutboxEntry): boolean {
-  return (
-    entry.state === 'rejected' ||
-    structuredAgentSessionEntryHeldForRetry(entry) ||
-    entry.outlivedStop === true ||
-    (entry.state === 'unconfirmed' && entry.retryAfterUnknownSubmittedAt !== null)
-  )
-}
-
-function unsentStructuredAgentSessionOutboxEntry(
-  submissions: readonly AgentJournalSubmission[]
-): (entry: StructuredAgentSessionOutboxEntry) => boolean {
+function hostHeldIds(submissions: readonly AgentJournalSubmission[]): Set<string> {
   const held = handedOffQueuedMessageIds(submissions)
   for (const submission of submissions) {
     held.add(submission.clientMessageId)
   }
-  return (entry) => !held.has(entry.clientMessageId) && !awaitsStructuredAgentSessionRetry(entry)
+  return held
 }
 
-/** A queue send that has gone out at least once and was not refused, in whatever state it now
- *  waits: the host may hold it as a paused draft, so a local restore too would put the same text
- *  in two places. Read from what went on the wire (`sentDelivery`). */
-function attemptedQueueSend(entry: StructuredAgentSessionOutboxEntry): boolean {
-  return (
-    entry.sentDelivery === 'queue-if-active' &&
-    entry.lastAttemptAt !== null &&
-    entry.state !== 'rejected'
-  )
-}
-
-/** An attempted queue send a Stop keeps is marked, and its state is left to its answer: nothing
- *  but the user's Retry sends it again (the drain holds a marked `queued` entry, and the probe
- *  skips the mark), since a resend onto the session the user just stopped would start a turn if
- *  the host never got it. */
-function markedOutlivingStop(
-  entry: StructuredAgentSessionOutboxEntry
-): StructuredAgentSessionOutboxEntry {
-  return attemptedQueueSend(entry) && entry.outlivedStop !== true
-    ? { ...entry, outlivedStop: true }
-    : entry
+/** Whether this entry would still go out on its own: the host holds no row for it and nothing
+ *  already owed settles it. */
+function goesOutOnItsOwn(
+  held: ReadonlySet<string>
+): (entry: StructuredAgentSessionOutboxEntry) => boolean {
+  return (entry) =>
+    !held.has(entry.clientMessageId) && !structuredAgentSessionEntryAwaitsSettlement(entry)
 }
 
 /**
- * What a Stop leaves in the outbox: nothing the journal does not already hold may go out after it,
- * so every such entry goes, as a message the host withdraws leaves the chat. The send on its way
- * stays: it reaches the host ahead of the Stop, and it comes back from the host's answer, since
- * the agent may already have it. One waiting on Retry keeps it, and so does an issued queue send
- * that has gone out (a queued receipt or hand-off retires it against the published card), and it
- * waits for the user's Retry from then on.
+ * What a Stop does to the outbox, before its request: nothing the journal does not already hold may
+ * go out after it.
+ * - A message that never went out is withdrawn here; its text goes back to the composer.
+ * - One already on its way is stamped with the Stop's own id and never sent again: a resend onto the
+ *   session the user stopped could start a turn. Its own answer, its journal row or the Stop's
+ *   answer settles it (structured-agent-session-send-settlement).
+ * - One the host holds a row for is the journal's to settle.
  */
-export function withdrawUnsentStructuredAgentSessionOutboxEntries(
+export function stopStructuredAgentSessionOutbox(
   entries: readonly StructuredAgentSessionOutboxEntry[],
   submissions: readonly AgentJournalSubmission[],
-  inFlightClientMessageId: string | null
-): StructuredAgentSessionOutboxEntry[] {
-  const unsent = unsentStructuredAgentSessionOutboxEntry(submissions)
-  return entries
-    .filter(
-      (entry) =>
-        entry.clientMessageId === inFlightClientMessageId ||
-        !unsent(entry) ||
-        attemptedQueueSend(entry)
-    )
-    .map(markedOutlivingStop)
+  inFlightClientMessageId: string | null,
+  stopOperationId: string
+): {
+  entries: StructuredAgentSessionOutboxEntry[]
+  withdrawn: StructuredAgentSessionOutboxEntry[]
+} {
+  const goesOut = goesOutOnItsOwn(hostHeldIds(submissions))
+  const kept: StructuredAgentSessionOutboxEntry[] = []
+  const withdrawn: StructuredAgentSessionOutboxEntry[] = []
+  for (const entry of entries) {
+    if (!goesOut(entry)) {
+      kept.push(entry)
+    } else if (entry.lastAttemptAt === null && entry.clientMessageId !== inFlightClientMessageId) {
+      withdrawn.push(entry)
+    } else {
+      kept.push({ ...entry, stoppedBy: { operationId: stopOperationId } })
+    }
+  }
+  return { entries: kept, withdrawn }
 }
 
-/** Whether a Stop has something here to withdraw: a message that would still go out on its own. */
+/** Whether a Stop has something here to withdraw or stamp: a message that would still go out. */
 export function hasUnsentStructuredAgentSessionOutboxEntry(
   entries: readonly StructuredAgentSessionOutboxEntry[],
   submissions: readonly AgentJournalSubmission[]
 ): boolean {
-  return entries.some(unsentStructuredAgentSessionOutboxEntry(submissions))
+  return entries.some(goesOutOnItsOwn(hostHeldIds(submissions)))
 }

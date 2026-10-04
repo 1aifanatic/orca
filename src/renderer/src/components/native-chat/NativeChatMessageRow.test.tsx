@@ -181,15 +181,13 @@ describe('what a user message says about its delivery', () => {
     )
   }
 
-  it('says why under the message, with a Retry that sends this one', () => {
-    const onRetry = vi.fn()
-    renderUser({ text: "The agent couldn't restart. Your message was not sent.", onRetry })
+  it('says why under the message, with no Retry: sending again is a new message', () => {
+    renderUser({ text: "The agent couldn't restart. Your message was not sent." })
 
     expect(
       screen.getByText("The agent couldn't restart. Your message was not sent.")
     ).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
-    expect(onRetry).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
   })
 
   it('offers no Retry where the surface cannot send it again', () => {
@@ -199,9 +197,9 @@ describe('what a user message says about its delivery', () => {
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
   })
 
-  // A plain "not sent" is a label, not an error; a doubt to check keeps the error color.
+  // A plain "not sent" is a label, not an error; anything else keeps the error color.
   it('reads muted when it says only that the message was not sent', () => {
-    renderUser({ text: 'Your message was not sent.', notSent: true })
+    renderUser({ text: 'Your message was not sent.', muted: true })
     const notSent = screen.getByText('Your message was not sent.').parentElement
     expect(notSent).toHaveClass('text-muted-foreground')
     expect(notSent).not.toHaveClass('text-destructive/80')

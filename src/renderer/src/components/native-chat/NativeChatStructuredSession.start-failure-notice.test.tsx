@@ -61,17 +61,6 @@ function startFailureRow(fact: AgentSessionFailureFact): AgentJournalRenderItem 
 
 function rejected(clientMessageId: string, reason: string, rejection: AgentSessionFailureFact) {
   return {
-    outbox: {
-      clientMessageId,
-      sessionId: SESSION_ID,
-      body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: clientMessageId }] },
-      previewUris: [],
-      state: 'rejected',
-      queuedAt: 1,
-      lastAttemptAt: null,
-      retryAfterUnknownSubmittedAt: null,
-      lastFailure: { kind: 'rejected', reason, rejection: { kind: rejection.kind } }
-    },
     submission: {
       clientMessageId,
       fence: 1,
@@ -86,13 +75,26 @@ function rejected(clientMessageId: string, reason: string, rejection: AgentSessi
   }
 }
 
+function userRow(clientMessageId: string, sequence: number): AgentJournalRenderItem {
+  return {
+    itemId: agentJournalSubmissionKey(clientMessageId),
+    revision: 1,
+    sequence,
+    observedAt: sequence,
+    body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: clientMessageId }] }
+  }
+}
+
+// The sender's own message: its entry left the outbox when the host answered, so the host's
+// record alone shows it, as in every other window.
 function renderPane(messages: ReturnType<typeof rejected>[]): void {
-  mocks.mode = 'outbox'
-  mocks.submissions = messages.map((message) => message.submission)
-  localStorage.setItem(
-    `orca:desktopStructuredAgentSessionOutbox:v1:${encodeURIComponent(SESSION_ID)}`,
-    JSON.stringify(messages.map((message) => message.outbox))
-  )
+  mocks.journalItems = [
+    ...mocks.journalItems,
+    ...messages.map((message, index) => userRow(message.submission.clientMessageId, index + 2))
+  ]
+  const submissions = messages.map((message) => message.submission)
+  mocks.submissions = submissions
+  mocks.messages = projectStructuredAgentSessionMessages(mocks.journalItems, [], submissions)
   render(
     <NativeChatStructuredSession
       isVisible
@@ -118,7 +120,7 @@ async function notice(clientMessageId: string): Promise<HTMLElement> {
 }
 
 // The start's own row says why, so its rejected messages say only that they were not sent.
-it("says only 'not sent', with its Retry, on each message the failed start's row explains", async () => {
+it("says only 'not sent', with no Retry, on each message the failed start's row explains", async () => {
   mocks.journalItems = [startFailureRow(START_FAILED)]
 
   renderPane([
@@ -129,7 +131,7 @@ it("says only 'not sent', with its Retry, on each message the failed start's row
   for (const id of ['first', 'second']) {
     const row = await notice(id)
     expect(within(row).getByText('Your message was not sent.')).toBeTruthy()
-    expect(within(row).getByRole('button', { name: 'Retry' })).toBeTruthy()
+    expect(within(row).queryByRole('button', { name: 'Retry' })).toBeNull()
   }
   expect(screen.queryByText(/stopped before it finished starting/)).toBeNull()
 })
@@ -162,7 +164,8 @@ it("keeps the start failure's own words when its row is not loaded", async () =>
   renderPane([rejected('first', START_FAILED_REASON, START_FAILED)])
 
   expect(
-    within(await notice('first')).getByText('Claude stopped before it finished starting.')
+    // No Retry here, so the words carry the step: sending again is the user's new message.
+    within(await notice('first')).getByText(START_FAILED_REASON)
   ).toBeTruthy()
 })
 

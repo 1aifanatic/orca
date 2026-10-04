@@ -17189,11 +17189,6 @@
       },
       "native": {
         "chat": {
-          "NativeChatStructuredSession": {
-            "1f772bb5d0": "메시지 전달이 확인되지 않았습니다.",
-            "93ef441197": "메시지가 전송되지 않았습니다.",
-            "a5e7f14068": "다시 시도"
-          },
           "NativeChatLaunchRetry": {
             "failed": "채팅을 시작할 수 없습니다.",
             "unknown": "채팅 연결을 확인할 수 없습니다.",
@@ -17832,6 +17827,7 @@
       "messageNotSent": "메시지가 전송되지 않음",
       "deliveryUnconfirmed": "전달 확인 안 됨 — 다시 시도하기 전에 채팅을 확인하세요",
       "messageSending": "전송 중…",
+      "messageNotConfirmed": "확인되지 않았습니다. 에이전트가 답하지 않았다면 다시 보내세요.",
       "queuedMessages": {
         "alreadySent": "이 메시지는 이미 전송되었습니다.",
         "editAlreadySent": "이미 전송되었습니다 — 텍스트는 입력창에 남아 있습니다.",

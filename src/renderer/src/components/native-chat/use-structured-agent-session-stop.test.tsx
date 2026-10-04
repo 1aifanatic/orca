@@ -14,7 +14,8 @@ import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/struc
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
-  withdrawUnsent: vi.fn(),
+  stopOutbox: vi.fn(),
+  recordStopAnswer: vi.fn(),
   operations: 0
 }))
 let items: AgentJournalRenderItem[] = []
@@ -42,8 +43,8 @@ vi.mock('./use-structured-agent-session-outbox', () => ({
     outbox,
     error: null,
     send: vi.fn(),
-    retry: vi.fn(),
-    withdrawUnsent: mocks.withdrawUnsent
+    stop: mocks.stopOutbox,
+    recordStopAnswer: mocks.recordStopAnswer
   })
 }))
 
@@ -66,8 +67,7 @@ function entry(
     previewUris: [],
     state,
     queuedAt: 1,
-    lastAttemptAt: null,
-    retryAfterUnknownSubmittedAt: null
+    lastAttemptAt: null
   }
 }
 
@@ -160,15 +160,18 @@ describe('Stop against a host that stops the conversation', () => {
         await result.current.stop()
       })
 
-      expect(mocks.withdrawUnsent).toHaveBeenCalledOnce()
-      // Withdrawn first, so the drain has nothing left to send after the Stop.
+      expect(mocks.stopOutbox).toHaveBeenCalledOnce()
+      // The outbox is stopped first, so the drain has nothing left to send after the Stop, and its
+      // sends are stamped with the very id the Stop goes out under.
       const cancelCall = mocks.call.mock.calls.findIndex(
         ([, method]) => method === 'agentSession.cancel'
       )
-      expect(mocks.withdrawUnsent.mock.invocationCallOrder[0]).toBeLessThan(
+      expect(mocks.stopOutbox.mock.invocationCallOrder[0]).toBeLessThan(
         mocks.call.mock.invocationCallOrder[cancelCall] ?? 0
       )
       expect(cancels()).toEqual([expect.not.objectContaining({ turnId: expect.anything() })])
+      const stopId = mocks.stopOutbox.mock.calls[0]?.[0]
+      expect(mocks.call.mock.calls[cancelCall]?.[2].envelope.clientOperationId).toBe(stopId)
     }
   )
 
@@ -301,7 +304,11 @@ describe('Stop against a host that stops the conversation', () => {
       await Promise.all([first, second])
     })
 
-    expect(await second).toEqual({ cancelled: true })
+    // The second Stop has its own id, so the host runs it rather than replaying the first.
+    const ids = cancelOperationIds()
+    expect(ids).toHaveLength(2)
+    expect(new Set(ids).size).toBe(2)
+    expect(mocks.recordStopAnswer).toHaveBeenCalledWith(ids[1], expect.anything())
   })
 
   it('does not let a lost stop of every background task swallow the next one', async () => {
@@ -387,18 +394,18 @@ describe('Stop against a host that stops the conversation', () => {
 
   it('is hidden at rest, and with only a message that will not run', () => {
     expect(render().result.current.canStop).toBe(false)
-    outbox = [entry('rejected')]
+    outbox = [{ ...entry('queued'), legacyUnsettled: true }]
     submissions = [submission({ dispatchState: 'accepted', resolvedAt: 2 })]
     expect(render().result.current.canStop).toBe(false)
   })
 
-  it('is hidden with only a message that waits on its Retry', () => {
-    // A send that failed waits, with its saved failure, until the user retries it.
-    outbox = [{ ...entry('queued'), lastFailure: { kind: 'failed' } }]
+  it('is hidden with only a message an earlier Stop already outran', () => {
+    // A send a Stop stamped never goes again: there is nothing more to stop.
+    outbox = [{ ...entry('unconfirmed'), lastAttemptAt: 2, stoppedBy: { operationId: 'stop-0' } }]
     expect(render().result.current.canStop).toBe(false)
 
-    // A send the host restarted under is parked for the user, and the chat reads idle.
-    outbox = [{ ...entry('unconfirmed'), retryAfterUnknownSubmittedAt: -1 }]
+    // A send the host restarted under is the host's row now, and the chat reads idle.
+    outbox = []
     submissions = [
       submission({
         dispatchState: 'unknown',
@@ -526,7 +533,7 @@ describe.each([
         await result.current.stop()
       })
       expect(cancels()).toEqual([])
-      expect(mocks.withdrawUnsent).not.toHaveBeenCalled()
+      expect(mocks.stopOutbox).not.toHaveBeenCalled()
     }
   )
 
@@ -539,6 +546,6 @@ describe.each([
       await result.current.stop()
     })
     expect(cancels()).toEqual([expect.objectContaining({ turnId: 'provider-turn' })])
-    expect(mocks.withdrawUnsent).not.toHaveBeenCalled()
+    expect(mocks.stopOutbox).not.toHaveBeenCalled()
   })
 })

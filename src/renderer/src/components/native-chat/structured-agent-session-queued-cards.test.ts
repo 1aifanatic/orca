@@ -177,7 +177,6 @@ describe('queued message cards', () => {
       state: 'queued',
       queuedAt: 1,
       lastAttemptAt: null,
-      retryAfterUnknownSubmittedAt: null,
       ...overrides
     })
     const ids = (entries: readonly StructuredAgentSessionOutboxEntry[]): string[] =>
@@ -188,15 +187,15 @@ describe('queued message cards', () => {
     ]
     expect(ids(outboxOutsideQueuedCards(inFlight, [], true, QUEUEING))).toEqual([])
     expect(ids(outboxOutsideQueuedCards(inFlight, [], false, QUEUEING))).toEqual(['a', 'b'])
-    // Refused and held for Retry: its text stays in view, and what follows it is on its way.
-    const refused = [entry('a', { lastFailure: { kind: 'failed' } }), entry('b')]
-    expect(ids(outboxOutsideQueuedCards(refused, [], true, QUEUEING))).toEqual(['a'])
-    // A rejected send holds nothing up: what follows it is still on its way to a card.
-    const rejected = [
-      entry('a', { state: 'rejected', lastFailure: { kind: 'rejected', reason: null } }),
+    // One only an answer already owed settles (a Stop outran it, or an older build held it) stays
+    // in view, and holds nothing up: what follows it is on its way.
+    const stopped = [
+      entry('a', { state: 'dispatching', lastAttemptAt: 2, stoppedBy: { operationId: 'stop-1' } }),
       entry('b')
     ]
-    expect(ids(outboxOutsideQueuedCards(rejected, [], true, QUEUEING))).toEqual(['a'])
+    expect(ids(outboxOutsideQueuedCards(stopped, [], true, QUEUEING))).toEqual(['a'])
+    const legacy = [entry('a', { legacyUnsettled: true }), entry('b')]
+    expect(ids(outboxOutsideQueuedCards(legacy, [], true, QUEUEING))).toEqual(['a'])
     const unconfirmed = [entry('a', { state: 'unconfirmed' }), entry('b')]
     expect(ids(outboxOutsideQueuedCards(unconfirmed, [], true, QUEUEING))).toEqual(['a', 'b'])
     // Once the host visibly holds it, it is a card whatever this queue last heard.
@@ -215,7 +214,6 @@ describe('queued message cards', () => {
       state: 'queued',
       queuedAt: 1,
       lastAttemptAt: null,
-      retryAfterUnknownSubmittedAt: null,
       ...overrides
     })
     const ids = (entries: readonly StructuredAgentSessionOutboxEntry[]): string[] =>

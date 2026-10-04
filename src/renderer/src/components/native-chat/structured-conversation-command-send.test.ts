@@ -63,7 +63,12 @@ async function sent(
     blocked: false,
     startFailures: () => [],
     recorded: (clientMessageId) => recordedIds.includes(clientMessageId),
-    send: async () => ({ kind: 'done', value: result, operationId: 'op-command' })
+    send: async () => ({
+      kind: 'done',
+      value: result,
+      operationId: 'op-command',
+      cursor: { epoch: 'epoch-1', sequence: 1 }
+    })
   })
 }
 
@@ -183,7 +188,12 @@ describe('the line under the composer after a conversation command failed', () =
         blocked: false,
         startFailures: () => [START_FAILED],
         recorded: () => false,
-        send: async () => ({ kind: 'done', value: result, operationId: 'op-command' })
+        send: async () => ({
+          kind: 'done',
+          value: result,
+          operationId: 'op-command',
+          cursor: { epoch: 'epoch-1', sequence: 1 }
+        })
       })
     ).toEqual({ accepted: false, error })
   })

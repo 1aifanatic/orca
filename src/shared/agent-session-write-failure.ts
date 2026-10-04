@@ -63,7 +63,7 @@ export function agentSessionWriteKindForMethod(
 type DurableRefusalFacts = {
   agent_session_operation_invalid: { rewindReason?: AgentSessionRewindReason }
   agent_session_operation_unknown: { rewindReason?: AgentSessionRewindReason }
-  /** A snapshot from when it was refused; see `agentSessionOwnerVerdictAllowsFreshOperationId`. */
+  /** A snapshot of the owner's state from when it was refused. */
   agent_session_ownership_unknown: { ownerVerdict?: AgentSessionOwnerVerdict }
 }
 

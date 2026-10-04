@@ -54,12 +54,8 @@ export function structuredAgentSessionEntryAttempt(
 /** The queue fields a stored entry carries, read back from storage. */
 export function parseStructuredAgentSessionOutboxQueueFields(entry: {
   sentDelivery?: unknown
-  outlivedStop?: unknown
-}): Pick<StructuredAgentSessionOutboxEntry, 'sentDelivery' | 'outlivedStop'> {
-  return {
-    ...(entry.sentDelivery === 'queue-if-active' || entry.sentDelivery === null
-      ? { sentDelivery: entry.sentDelivery }
-      : {}),
-    ...(entry.outlivedStop === true ? { outlivedStop: true as const } : {})
-  }
+}): Pick<StructuredAgentSessionOutboxEntry, 'sentDelivery'> {
+  return entry.sentDelivery === 'queue-if-active' || entry.sentDelivery === null
+    ? { sentDelivery: entry.sentDelivery }
+    : {}
 }

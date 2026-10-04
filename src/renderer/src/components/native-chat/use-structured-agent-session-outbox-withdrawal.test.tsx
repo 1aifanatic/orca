@@ -1,5 +1,6 @@
 // What a Stop does to the messages this client sent that the host does not hold yet: nothing may go
-// out after the Stop, and nothing the host already holds or already refused changes here.
+// out after the Stop. One that never went out comes back to the composer; one on its way is stamped
+// with the Stop's own id and never sent again; one the host holds is the journal's to settle.
 
 // @vitest-environment happy-dom
 
@@ -9,7 +10,7 @@ import type { AgentJournalSubmission } from '../../../../shared/agent-session-jo
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import {
   hasUnsentStructuredAgentSessionOutboxEntry,
-  withdrawUnsentStructuredAgentSessionOutboxEntries
+  stopStructuredAgentSessionOutbox
 } from '../../../../shared/structured-agent-session-outbox-stop-withdrawal'
 
 type SendRequest = { body?: { blocks?: { text?: string }[] } }
@@ -24,6 +25,11 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
 import { readOutbox } from './structured-agent-session-outbox-storage'
+import { structuredAgentSessionDraftScopeKey } from './native-chat-composer-draft-store'
+import {
+  clearNativeChatDraftCacheForTests,
+  readNativeChatDraftCache
+} from './native-chat-draft-cache'
 
 // One object: a target rebuilt each render reads as a new owner, which re-sends what is on its way.
 const TARGET = { kind: 'local' } as const
@@ -57,8 +63,7 @@ function entry(
     previewUris: [],
     state,
     queuedAt: 1,
-    lastAttemptAt: null,
-    retryAfterUnknownSubmittedAt: null
+    lastAttemptAt: state === 'queued' ? null : 2
   }
 }
 
@@ -67,6 +72,7 @@ afterEach(cleanup)
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
+  clearNativeChatDraftCacheForTests()
   let uuid = 0
   vi.spyOn(globalThis.crypto, 'randomUUID').mockImplementation(() => {
     uuid += 1
@@ -93,7 +99,11 @@ describe('a Stop withdrawing what the host does not hold', () => {
     act(() => expect(result.current.send('second')).toBe(true))
     const firstId = result.current.outbox[0]!.clientMessageId
 
-    act(() => result.current.withdrawUnsent())
+    act(() => result.current.stop('stop-1'))
+    // The one that never left is back in the composer.
+    expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey('session-1'))).toBe(
+      'second'
+    )
     await act(async () =>
       reply.resolve({
         ok: true,
@@ -111,40 +121,36 @@ describe('a Stop withdrawing what the host does not hold', () => {
     expect(sentTexts()).toEqual(['first'])
   })
 
-  it('leaves what the journal holds to the host, and a refused message to its Retry', () => {
+  it('leaves what the journal holds to the host, and stamps what is on its way', () => {
     const entries = [
       entry('held', 'dispatching'),
-      entry('refused', 'rejected'),
       entry('in-doubt', 'unconfirmed'),
       entry('local', 'queued')
     ]
 
+    const stopped = stopStructuredAgentSessionOutbox(entries, [pending('held')], null, 'stop-1')
     expect(
-      withdrawUnsentStructuredAgentSessionOutboxEntries(entries, [pending('held')], null).map(
-        (candidate) => candidate.clientMessageId
-      )
-    ).toEqual(['held', 'refused'])
+      stopped.entries.map((candidate) => [candidate.clientMessageId, candidate.stoppedBy])
+    ).toEqual([
+      ['held', undefined],
+      ['in-doubt', { operationId: 'stop-1' }]
+    ])
+    expect(stopped.withdrawn.map((candidate) => candidate.clientMessageId)).toEqual(['local'])
   })
 
-  it('leaves every message that waits on its Retry, not only a refused one', () => {
-    const entries = [
-      { ...entry('blocked', 'queued'), lastFailure: { kind: 'failed' as const } },
-      { ...entry('retried-in-doubt', 'unconfirmed'), retryAfterUnknownSubmittedAt: 10 },
-      entry('probed-in-doubt', 'unconfirmed'),
-      entry('local', 'queued')
-    ]
-
-    expect(
-      withdrawUnsentStructuredAgentSessionOutboxEntries(entries, [], null).map(
-        (candidate) => candidate.clientMessageId
-      )
-    ).toEqual(['blocked', 'retried-in-doubt'])
-    expect(hasUnsentStructuredAgentSessionOutboxEntry(entries.slice(0, 2), [])).toBe(false)
-    expect(hasUnsentStructuredAgentSessionOutboxEntry(entries, [])).toBe(true)
+  it('stamps the send in flight even before its first answer, and never a second time', () => {
+    const inFlight = { ...entry('in-flight', 'dispatching'), lastAttemptAt: null }
+    const stopped = stopStructuredAgentSessionOutbox([inFlight], [], 'in-flight', 'stop-1')
+    expect(stopped.entries[0]?.stoppedBy).toEqual({ operationId: 'stop-1' })
+    // A later Stop leaves it with the first: its answer is what it waits for.
+    const again = stopStructuredAgentSessionOutbox(stopped.entries, [], null, 'stop-2')
+    expect(again.entries[0]?.stoppedBy).toEqual({ operationId: 'stop-1' })
+    expect(hasUnsentStructuredAgentSessionOutboxEntry(stopped.entries, [])).toBe(false)
+    expect(hasUnsentStructuredAgentSessionOutboxEntry([inFlight], [])).toBe(true)
   })
 
-  it('keeps a message whose send failed for its Retry', async () => {
-    mocks.call.mockRejectedValue(new Error('the host refused the frame'))
+  it('keeps a message with no answer, stamped, and never sends it again', async () => {
+    mocks.call.mockRejectedValue(new Error('socket closed'))
     const { result } = renderHook(() =>
       useStructuredAgentSessionOutbox({
         sessionId: 'session-1',
@@ -154,13 +160,14 @@ describe('a Stop withdrawing what the host does not hold', () => {
       })
     )
     act(() => expect(result.current.send('first')).toBe(true))
-    await waitFor(() => expect(result.current.outbox[0]?.lastFailure).toEqual({ kind: 'failed' }))
+    await waitFor(() => expect(result.current.outbox[0]?.state).toBe('unconfirmed'))
 
-    act(() => result.current.withdrawUnsent())
+    act(() => result.current.stop('stop-1'))
+    // Past the resend's first delay: nothing goes again.
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 1300)))
 
-    expect(result.current.outbox.map((candidate) => candidate.body.blocks)).toEqual([
-      [{ type: 'text', text: 'first' }]
-    ])
-    expect(readOutbox('session-1')).toHaveLength(1)
+    expect(mocks.call).toHaveBeenCalledOnce()
+    expect(readOutbox('session-1')).toMatchObject([{ stoppedBy: { operationId: 'stop-1' } }])
+    expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey('session-1'))).toBe('')
   })
 })

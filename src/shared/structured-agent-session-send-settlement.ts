@@ -1,0 +1,280 @@
+// How a desktop chat send ends. Every send ends one of three ways, decided only by what the host
+// said, never by a flag this client stored:
+//   1. recorded: the host holds a row, a queued card or a hand-off, and from then on the host's row
+//      shows the message to every viewer, however it ends;
+//   2. returned: the host proved it has no record and never will, so the text goes back to the
+//      chat's draft and the reason is said once;
+//   3. unanswered: nothing proves either, so the same id is sent again until the host answers. The
+//      host records an id at most once, so a resend can't deliver twice.
+// Pure on purpose: the callers own the outbox, the draft and the chat line.
+
+import type { AgentJournalCursor, AgentJournalSubmission } from './agent-session-journal-types'
+import type { AgentSessionMutationResult, AgentSessionSendResult } from './agent-session-wire'
+import { agentSessionWriteNoticeParts } from './agent-session-refusal-notice'
+import type { AgentSessionWriteNoticePart } from './agent-session-write-notice-copy'
+import {
+  agentSessionRefusalFailure,
+  agentSessionRpcErrorFailure,
+  type AgentSessionWriteRefusal
+} from './agent-session-write-failure'
+import {
+  AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS,
+  parseAgentSessionOperationTimestamp
+} from './agent-session-host-authority'
+import { dispatchWasWithdrawn } from './structured-agent-session-dispatch-rejection'
+import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
+
+export type StructuredAgentSessionSendSettlement =
+  /** Case 1: the host's row (or card) holds the message from here. */
+  | { kind: 'recorded' }
+  /** Case 1, not final yet: the host wrote the row and has not handed it to the agent. The entry
+   *  stays until the row settles, since a Stop may still withdraw it back to this composer. */
+  | { kind: 'pending' }
+  /** A Stop took it back: the text returns to the draft and nothing is said. */
+  | { kind: 'withdrawn' }
+  /** Case 2: the text returns to the draft with these words on the chat line. */
+  | { kind: 'returned'; words: AgentSessionWriteNoticePart[] }
+  /** Case 3: no answer; the same id goes again. */
+  | { kind: 'unanswered' }
+
+/** What one `agentSession.send` attempt got back. */
+export type StructuredAgentSessionSendAnswer =
+  | { kind: 'result'; result: AgentSessionMutationResult<AgentSessionSendResult> }
+  /** The request threw. Read by its codes, never its message text: whether its error carried a
+   *  host refusal, and the RPC error code. */
+  | { kind: 'thrown'; carriedRefusal: boolean; rpcCode: string | undefined }
+
+export type StructuredAgentSessionSendSettlementContext = {
+  /** No earlier attempt under this id went out from anywhere, so nothing can hold it but this
+   *  attempt. Only an older host needs it: it may refuse a resent id before looking it up. */
+  firstAttempt: boolean
+  /** The host checks a resent id before anything else, so every refusal it returns proves the id
+   *  has no record (`agent-session.send-answers-proof.v1`). */
+  answersProve: boolean
+  /** The loaded journal holds a row for this id. */
+  journalHasRow: boolean
+}
+
+/** Words for a message Orca can no longer settle with the host: an earlier attempt may already be
+ *  in the chat, so the person checks before sending it again. */
+export const STRUCTURED_AGENT_SESSION_SEND_UNCONFIRMED_WORDS: readonly AgentSessionWriteNoticePart[] =
+  ['sendOutcomeLost']
+
+function returnedFor(refusal: AgentSessionWriteRefusal): StructuredAgentSessionSendSettlement {
+  return { kind: 'returned', words: agentSessionWriteNoticeParts(refusal, 'composer-send') }
+}
+
+function refusalSettlement(
+  refusal: AgentSessionWriteRefusal,
+  context: StructuredAgentSessionSendSettlementContext
+): StructuredAgentSessionSendSettlement {
+  const reason = refusal.details?.reason
+  if (refusal.code === 'agent_session_operation_unknown') {
+    // A rewind the host refused before writing anything is settled; every other unknown is doubt.
+    return reason === 'rewindUnconfirmed' ? returnedFor(refusal) : { kind: 'unanswered' }
+  }
+  if (refusal.code === 'agent_session_operation_expired') {
+    // The host forgot the id; the journal is what still knows whether it landed.
+    return context.journalHasRow
+      ? { kind: 'recorded' }
+      : { kind: 'returned', words: [...STRUCTURED_AGENT_SESSION_SEND_UNCONFIRMED_WORDS] }
+  }
+  if (context.firstAttempt) {
+    return returnedFor(refusal)
+  }
+  if (
+    refusal.code === 'agent_session_operation_conflict' ||
+    (refusal.code === 'agent_session_ownership_unknown' && reason === 'sessionNotAttached')
+  ) {
+    // The id holds another payload, or the chat is closed on the host, which answers that before
+    // looking the id up: no resend can settle it, and what an earlier attempt left is in the chat.
+    return context.journalHasRow
+      ? { kind: 'recorded' }
+      : { kind: 'returned', words: [...STRUCTURED_AGENT_SESSION_SEND_UNCONFIRMED_WORDS] }
+  }
+  // An older host may refuse a resent id before looking it up, so only the next resend can tell.
+  return context.answersProve ? returnedFor(refusal) : { kind: 'unanswered' }
+}
+
+/** A request that threw is not an answer: no code tells "never written" from "written, then the
+ *  answer was lost", and a thrown refusal may come after the host wrote the row. Only a host that
+ *  turned the call away before running it (a method it lacks, params it rejects) proves no row. */
+function thrownSettlement(
+  answer: Extract<StructuredAgentSessionSendAnswer, { kind: 'thrown' }>
+): StructuredAgentSessionSendSettlement {
+  if (answer.carriedRefusal) {
+    return { kind: 'unanswered' }
+  }
+  const failure = agentSessionRpcErrorFailure(answer.rpcCode)
+  return failure.kind === 'refused' ? returnedFor(failure) : { kind: 'unanswered' }
+}
+
+/** The host's answer to one attempt, as one of the three ends. */
+export function settleStructuredAgentSessionSendAnswer(
+  answer: StructuredAgentSessionSendAnswer,
+  clientMessageId: string,
+  context: StructuredAgentSessionSendSettlementContext
+): StructuredAgentSessionSendSettlement {
+  if (answer.kind === 'thrown') {
+    return thrownSettlement(answer)
+  }
+  const { result } = answer
+  if (!result.ok) {
+    return refusalSettlement(agentSessionRefusalFailure(result.refusal), context)
+  }
+  if ('queued' in result.value) {
+    return { kind: 'recorded' }
+  }
+  const { submission } = result.value
+  // A replay answering with the hand-off of the draft this send queued: the host owns it.
+  if (submission.queuedMessageId === clientMessageId) {
+    return { kind: 'recorded' }
+  }
+  return settleStructuredAgentSessionSendRow(submission)
+}
+
+/** Whether the host can no longer settle this id: past its replay window, measured as the host
+ *  measures it from the id's own time, it refuses the id for good, so a host that keeps failing the
+ *  request can't hold the entry forever either. */
+export function structuredAgentSessionEntryOutlivedHostWindow(
+  entry: Pick<StructuredAgentSessionOutboxEntry, 'clientMessageId'>,
+  now: number
+): boolean {
+  const madeAt = parseAgentSessionOperationTimestamp(entry.clientMessageId)
+  return madeAt !== null && now - madeAt > AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS
+}
+
+/** A row the host holds for the send. */
+function settleStructuredAgentSessionSendRow(
+  submission: AgentJournalSubmission
+): StructuredAgentSessionSendSettlement {
+  if (submission.dispatchState === 'pending') {
+    return { kind: 'pending' }
+  }
+  // A withdrawn hand-off of a queued draft is never given back: the Stop put the card back.
+  if (
+    submission.dispatchState === 'rejected' &&
+    dispatchWasWithdrawn(submission) &&
+    submission.queuedMessageId === undefined
+  ) {
+    return { kind: 'withdrawn' }
+  }
+  // Accepted, rejected, or in doubt (a restart lost its outcome): the row says which, for everyone.
+  return { kind: 'recorded' }
+}
+
+export type StructuredAgentSessionJournalReading = {
+  submissions: readonly AgentJournalSubmission[]
+  /** How far this client has read the journal; null until a page has loaded. */
+  cursor: AgentJournalCursor | null
+  /** The entry's own request is still out, so its answer will settle it. */
+  inFlightClientMessageId: string | null
+  /** Ids of the drafts the host publishes as queued; null until it has published a list. */
+  queuedMessageIds: readonly string[] | null
+}
+
+function readThrough(
+  reading: StructuredAgentSessionJournalReading,
+  at: AgentJournalCursor
+): boolean {
+  return (
+    reading.cursor !== null &&
+    reading.cursor.epoch === at.epoch &&
+    reading.cursor.sequence >= at.sequence
+  )
+}
+
+/**
+ * What the journal alone settles about an entry, or null while it settles nothing. A row settles
+ * it as the send's answer would. Without a row:
+ * - an entry an older build left waiting for a Retry that no longer exists is handed back once the
+ *   journal has loaded, with words that say to check the chat (never sent again on its own: the
+ *   person was told it did not go);
+ * - an entry a Stop outran is handed back once the journal is read through the Stop's own answer:
+ *   the host runs a chat's sends and Stops one at a time, so a send it took before the Stop has its
+ *   row by then. A journal that moved to another epoch can't say, nor can a Stop that will never
+ *   be answered, so those say to check the chat.
+ */
+export function settleStructuredAgentSessionEntryFromJournal(
+  entry: StructuredAgentSessionOutboxEntry,
+  reading: StructuredAgentSessionJournalReading
+): StructuredAgentSessionSendSettlement | null {
+  // The host handed it off as a queued draft, in whatever state: the card carries it.
+  if (
+    reading.submissions.some((candidate) => candidate.queuedMessageId === entry.clientMessageId)
+  ) {
+    return { kind: 'recorded' }
+  }
+  const submission = reading.submissions.find(
+    (candidate) => candidate.clientMessageId === entry.clientMessageId
+  )
+  if (submission) {
+    const settlement = settleStructuredAgentSessionSendRow(submission)
+    // A pending row changes nothing an attempt in flight doesn't already show.
+    return settlement.kind === 'pending' && entry.state === 'dispatching' ? null : settlement
+  }
+  // The host holds it as a queued draft: its card carries the text.
+  if (reading.queuedMessageIds?.includes(entry.clientMessageId)) {
+    return { kind: 'recorded' }
+  }
+  if (reading.cursor === null || reading.inFlightClientMessageId === entry.clientMessageId) {
+    return null
+  }
+  if (entry.legacyUnsettled === true) {
+    return { kind: 'returned', words: [...STRUCTURED_AGENT_SESSION_SEND_UNCONFIRMED_WORDS] }
+  }
+  const stopCursor = entry.stoppedBy?.cursor
+  if (stopCursor) {
+    if (reading.cursor.epoch !== stopCursor.epoch) {
+      return { kind: 'returned', words: [...STRUCTURED_AGENT_SESSION_SEND_UNCONFIRMED_WORDS] }
+    }
+    // A queued draft is no journal row, so only the published list can say the host lacks it.
+    const queueSendUnknown =
+      entry.sentDelivery === 'queue-if-active' && reading.queuedMessageIds === null
+    return readThrough(reading, stopCursor) && !queueSendUnknown ? { kind: 'withdrawn' } : null
+  }
+  if (entry.stoppedBy?.unanswerable === true) {
+    return { kind: 'returned', words: [...STRUCTURED_AGENT_SESSION_SEND_UNCONFIRMED_WORDS] }
+  }
+  return null
+}
+
+/** The outbox after a settlement, and the entry whose text goes back to the draft, if any. */
+export type StructuredAgentSessionSettledOutbox = {
+  entries: StructuredAgentSessionOutboxEntry[]
+  returned: {
+    entry: StructuredAgentSessionOutboxEntry
+    /** Null for a Stop's withdrawal, which says nothing. */
+    words: AgentSessionWriteNoticePart[] | null
+  } | null
+}
+
+export function applyStructuredAgentSessionSendSettlement(
+  entries: readonly StructuredAgentSessionOutboxEntry[],
+  clientMessageId: string,
+  settlement: StructuredAgentSessionSendSettlement
+): StructuredAgentSessionSettledOutbox {
+  const entry = entries.find((candidate) => candidate.clientMessageId === clientMessageId)
+  if (!entry) {
+    return { entries: [...entries], returned: null }
+  }
+  const others = entries.filter((candidate) => candidate !== entry)
+  switch (settlement.kind) {
+    case 'recorded':
+      return { entries: others, returned: null }
+    case 'withdrawn':
+      return { entries: others, returned: { entry, words: null } }
+    case 'returned':
+      return { entries: others, returned: { entry, words: settlement.words } }
+    case 'pending':
+    case 'unanswered': {
+      const state = settlement.kind === 'pending' ? 'dispatching' : 'unconfirmed'
+      return {
+        entries: entries.map((candidate) =>
+          candidate === entry ? { ...candidate, state } : candidate
+        ),
+        returned: null
+      }
+    }
+  }
+}
