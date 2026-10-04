@@ -268,18 +268,15 @@ export function explainWindowsPowerShellStdinFailure(error: unknown): unknown {
 }
 
 function isPwshUnavailableError(error: unknown): boolean {
-  if (error instanceof SystemSshCommandExitError && error.exitCode === 9009) {
-    return true
+  if (!(error instanceof SystemSshCommandExitError)) {
+    return false
   }
   // Only the remote exit/stderr establishes absence; the label can contain any filename.
-  const detail =
-    error instanceof SystemSshCommandExitError
-      ? error.stderr
-      : error instanceof Error
-        ? error.message
-        : String(error)
-  return /is not recognized as an internal or external command|CommandNotFoundException/i.test(
-    detail
+  return (
+    error.exitCode === 9009 ||
+    /is not recognized as an internal or external command|CommandNotFoundException/i.test(
+      error.stderr
+    )
   )
 }
 
