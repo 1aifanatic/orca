@@ -5,6 +5,14 @@ export type ProfileStateWriterInitialization = {
   databasePath: string
   profileId: string
   revision: number
+  /** Unique per connection; commits record `${token}:${requestId}` beside the revision. */
+  operationToken?: string
+  /** Adopt revision + 1 only when the predecessor's interrupted write recorded this id. */
+  interruptedOperation?: string
+}
+
+export function profileStateWriterOperationId(token: string, requestId: number): string {
+  return `${token}:${requestId}`
 }
 
 export type ProfileStateWriterCommand =
@@ -48,7 +56,9 @@ export function isProfileStateWriterInitialization(
     value.databasePath.length > 0 &&
     typeof value.profileId === 'string' &&
     value.profileId.length > 0 &&
-    isProfileStateRevision(value.revision)
+    isProfileStateRevision(value.revision) &&
+    (value.operationToken === undefined || typeof value.operationToken === 'string') &&
+    (value.interruptedOperation === undefined || typeof value.interruptedOperation === 'string')
   )
 }
 

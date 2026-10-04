@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { resolveProfileStateWriterWorkerPath } from './profile-state-writer-worker-path'
 import {
   createProfileStateWriterRequest,
@@ -11,6 +12,7 @@ import {
 } from './profile-state-writer-errors'
 import {
   isProfileStateWriterResponse,
+  profileStateWriterOperationId,
   type ProfileStateWriterCommand,
   type ProfileStateWriterFailureOutcome,
   type ProfileStateWriterInitialization
@@ -29,22 +31,29 @@ export type ProfileStateWriterConnectionOptions = {
   clock?: () => number
 }
 
+export type ProfileStateWriterFault = {
+  error: Error
+  /** The command whose acknowledgement was outstanding when the writer failed. */
+  interrupted?: { command: PendingProfileStateWriterRequest['command']; operationId: string }
+}
+
 /** One materialized command; Store owns coalescing and never queues snapshots here. */
 export class ProfileStateWriterConnection {
   readonly ready: Promise<void>
   private thread: ProfileStateWriterThread | undefined
   private active: PendingProfileStateWriterRequest | undefined
   private nextId = 1
-  private failure: Error | undefined
+  private failure: ProfileStateWriterFault | undefined
   private draining = false
   private closePromise: Promise<void> | undefined
   private closeAcknowledged = false
   private readonly timeoutMs: number
   private readonly initialRevision: number
   private latestRevision: number | undefined
+  private readonly operationToken = randomUUID()
 
   constructor(
-    initialization: ProfileStateWriterInitialization,
+    private readonly initialization: ProfileStateWriterInitialization,
     private readonly options: ProfileStateWriterConnectionOptions = {}
   ) {
     this.initialRevision = initialization.revision
@@ -57,7 +66,7 @@ export class ProfileStateWriterConnection {
     try {
       this.thread = new ProfileStateWriterThread(
         options.workerPath ?? resolveProfileStateWriterWorkerPath(),
-        initialization,
+        { ...initialization, operationToken: this.operationToken },
         {
           message: (response) => this.receive(response),
           error: (cause) =>
@@ -97,7 +106,7 @@ export class ProfileStateWriterConnection {
 
   get acknowledgedRevision(): number {
     if (this.failure) {
-      throw this.failure
+      throw this.failure.error
     }
     if (this.latestRevision === undefined) {
       throw new Error('Profile state writer has no acknowledged revision')
@@ -105,9 +114,23 @@ export class ProfileStateWriterConnection {
     return this.latestRevision
   }
 
-  /** The last revision this worker confirmed, kept after a fault for diagnostics. */
+  /** The last revision this worker confirmed, retained after a fault as the recovery fence. */
   get lastAcknowledgedRevision(): number {
     return this.latestRevision ?? this.initialRevision
+  }
+
+  /** Only a writer whose initialization was acknowledged has state worth recovering. */
+  get admitted(): boolean {
+    return this.latestRevision !== undefined
+  }
+
+  get faulted(): ProfileStateWriterFault | undefined {
+    return this.failure
+  }
+
+  /** Resolve false when the thread has not exited within one awake deadline. */
+  waitForExit(): Promise<boolean> {
+    return this.thread?.waitForExit() ?? Promise.resolve(true)
   }
 
   private get didExit(): boolean {
@@ -120,7 +143,7 @@ export class ProfileStateWriterConnection {
       try {
         await this.dispatch({ command: 'close' })
       } finally {
-        if (!(await (this.thread?.waitForExit() ?? true))) {
+        if (!(await this.waitForExit())) {
           this.faultWith(
             'profile-state-writer-close-timeout',
             'Profile state writer did not exit after close',
@@ -130,8 +153,10 @@ export class ProfileStateWriterConnection {
         // Termination is asynchronous; close must retain ownership until exit is confirmed.
         await this.thread?.exitPromise
       }
-      if (this.failure) {
-        throw this.failure
+      // Read through the getter: the await above may have recorded a fault.
+      const failure = this.faulted
+      if (failure) {
+        throw failure.error
       }
     } else {
       await this.thread?.exitPromise
@@ -140,7 +165,7 @@ export class ProfileStateWriterConnection {
 
   protected assertDispatchable(closing = false): void {
     if (this.failure) {
-      throw this.failure
+      throw this.failure.error
     }
     if (this.didExit || (this.draining && !closing)) {
       throw new ProfileStateWriterError(
@@ -220,11 +245,16 @@ export class ProfileStateWriterConnection {
       }
       return
     }
+    const mayAdvance =
+      pending.command === 'initialize'
+        ? this.initialization.interruptedOperation !== undefined
+        : pending.command.startsWith('write-')
     if (
       !isExpectedProfileStateWriterSuccess(
         pending.command,
         value,
-        this.latestRevision ?? this.initialRevision
+        this.latestRevision ?? this.initialRevision,
+        mayAdvance
       )
     ) {
       this.invalidResponse()
@@ -276,8 +306,13 @@ export class ProfileStateWriterConnection {
     if (this.failure) {
       return
     }
-    this.failure = error
-    recordProfileStateWriterFault(error, this.active, this.lastAcknowledgedRevision, exitCode)
+    const active = this.active
+    const interrupted = active && {
+      command: active.command,
+      operationId: profileStateWriterOperationId(this.operationToken, active.id)
+    }
+    this.failure = { error, ...(interrupted && { interrupted }) }
+    recordProfileStateWriterFault(error, active, this.lastAcknowledgedRevision, exitCode)
     this.settle(undefined, error)
     this.thread?.terminate()
     // Startup failures already reject ready; admitted writers must also alert idle callers.

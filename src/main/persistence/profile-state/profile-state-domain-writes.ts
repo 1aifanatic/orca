@@ -1,10 +1,7 @@
 import { withProfileStateWriteTransaction } from './profile-state-write-transaction'
 import type Database from '../../sqlite/sync-database'
 import { readCurrentAutomationRunsState } from './profile-state-automation-runs-storage'
-import {
-  PROFILE_STATE_DOCUMENT_VERSION,
-  PROFILE_STATE_META_REVISION
-} from './profile-state-database-schema'
+import { PROFILE_STATE_DOCUMENT_VERSION } from './profile-state-database-schema'
 import {
   ProfileStateRevisionConflictError,
   readProfileStateRevision
@@ -16,7 +13,10 @@ import {
   prepareProfileStateAutomationRunsReplacement
 } from './profile-state-automation-runs'
 import { isRecord, validateProfileStateDocumentRow } from './profile-state-document-validation'
-import { assertProfileStateDocumentRevision } from './profile-state-revision'
+import {
+  assertProfileStateDocumentRevision,
+  writeProfileStateRevision
+} from './profile-state-revision'
 import {
   prepareProfileStateDomainMutation,
   validateProfileStateDomainTransaction,
@@ -51,6 +51,8 @@ export type ProfileStateDomainTransaction = {
   replacements: readonly ProfileStateDomainMutation[]
   /** Changed run projection supplied by Store for selective row updates. */
   automationRunsAfter?: readonly unknown[]
+  /** Recorded only when this transaction commits a new revision. */
+  operationId?: string
 }
 
 export type ProfileStateDomainWriteResult = {
@@ -218,10 +220,7 @@ export function writeProfileStateDomains(
         )
       }
     }
-    db.prepare(
-      `INSERT INTO profile_state_meta (key, value) VALUES (?, ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
-    ).run(PROFILE_STATE_META_REVISION, String(nextRevision))
+    writeProfileStateRevision(db, nextRevision, transaction.operationId)
     return {
       changed: true,
       revision: nextRevision,

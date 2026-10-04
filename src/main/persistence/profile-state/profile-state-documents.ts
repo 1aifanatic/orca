@@ -4,8 +4,7 @@ import type Database from '../../sqlite/sync-database'
 import { readCurrentAutomationRunsState } from './profile-state-automation-runs-storage'
 import {
   PROFILE_STATE_META_LEGACY_JSON_ACCEPTANCE,
-  PROFILE_STATE_DOCUMENT_VERSION,
-  PROFILE_STATE_META_REVISION
+  PROFILE_STATE_DOCUMENT_VERSION
 } from './profile-state-database-schema'
 import {
   hashProfileStatePayload,
@@ -21,7 +20,7 @@ import {
 
 import { readProfileStateDocuments } from './profile-state-document-reader'
 
-import { readProfileStateRevision } from './profile-state-revision'
+import { readProfileStateRevision, writeProfileStateRevision } from './profile-state-revision'
 import { readProfileStateJsonAcceptance } from './legacy-json/profile-state-json-acceptance'
 
 export {
@@ -43,6 +42,8 @@ export type ImportProfileStateOptions = {
   acceptedLegacyJsonHash?: string
   /** Revision observed by the caller before constructing this replacement. */
   expectedRevision?: number
+  /** Writer request id recorded with the committed revision. */
+  operationId?: string
 }
 
 export type ProfileStateSnapshot = {
@@ -126,10 +127,7 @@ export function importProfileStateJson(
         hashProfileStatePayload(payload)
       )
     }
-    db.prepare(
-      `INSERT INTO profile_state_meta (key, value) VALUES (?, ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
-    ).run(PROFILE_STATE_META_REVISION, String(revision))
+    writeProfileStateRevision(db, revision, options.operationId)
     if (options.acceptedLegacyJsonHash !== undefined) {
       db.prepare(
         `INSERT INTO profile_state_meta (key, value) VALUES (?, ?)

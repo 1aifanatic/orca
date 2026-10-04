@@ -21,12 +21,13 @@ export type PendingProfileStateWriterRequest = {
 export function isExpectedProfileStateWriterSuccess(
   command: PendingProfileStateWriterRequest['command'],
   response: SuccessfulProfileStateWriterResponse,
-  previousRevision: number
+  previousRevision: number,
+  /** Writes, and a recovery initialization adopting its predecessor's proven commit. */
+  mayAdvance: boolean
 ): boolean {
-  const mayWrite = command.startsWith('write-')
   if (
     response.revision < previousRevision ||
-    response.revision > previousRevision + (mayWrite ? 1 : 0)
+    response.revision > previousRevision + (mayAdvance ? 1 : 0)
   ) {
     return false
   }

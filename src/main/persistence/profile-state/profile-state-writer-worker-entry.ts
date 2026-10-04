@@ -8,6 +8,7 @@ import {
 import {
   isProfileStateWriterInitialization,
   isProfileStateWriterRequest,
+  profileStateWriterOperationId,
   type ProfileStateWriterRequest,
   type ProfileStateWriterResponse
 } from './profile-state-writer-protocol'
@@ -20,6 +21,7 @@ let authority: ProfileStateSqliteAuthority | undefined
 let busy = false
 let stopping = false
 let previousId = 0
+let operationToken: string | undefined
 
 function reply(response: ProfileStateWriterResponse): void {
   port.postMessage(response)
@@ -39,6 +41,10 @@ async function execute(request: ProfileStateWriterRequest): Promise<ProfileState
     throw new Error('Profile state writer is not initialized')
   }
   let exportedRevision: number | null | undefined
+  authority.writeOperationId =
+    operationToken === undefined
+      ? undefined
+      : profileStateWriterOperationId(operationToken, request.id)
   switch (request.command) {
     case 'write-state':
       authority.writeSerializedState(Buffer.from(request.payload))
@@ -136,8 +142,9 @@ try {
       'known-failure'
     )
   }
+  operationToken = initialization.operationToken
   authority = new ProfileStateSqliteAuthority(initialization.databasePath, initialization.profileId)
-  authority.initializeFromRevision(initialization.revision)
+  authority.initializeFromRevision(initialization.revision, initialization.interruptedOperation)
   reply({ id: 0, ok: true, revision: authority.revision })
   port.on('message', (value: unknown) => {
     void accept(value)
