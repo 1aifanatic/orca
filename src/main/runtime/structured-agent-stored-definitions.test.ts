@@ -23,6 +23,14 @@ describe('what the shipped definitions let a record store', () => {
     expect([...STRUCTURED_AGENT_STORAGE.keys()]).toEqual(
       STRUCTURED_AGENT_RUNTIME_REGISTRATIONS.map(({ definition }) => definition.agent)
     )
-    expect(STRUCTURED_AGENT_STORAGE).toEqual(CLAUDE_AND_CODEX_STORED_AGENTS)
+    // Claude and Codex keep the storage every older build wrote; Grok's is new and its own.
+    expect(new Map([...STRUCTURED_AGENT_STORAGE].filter(([agent]) => agent !== 'grok'))).toEqual(
+      CLAUDE_AND_CODEX_STORED_AGENTS
+    )
+    expect(STRUCTURED_AGENT_STORAGE.get('grok')).toEqual({
+      agent: 'grok',
+      handleTransport: 'acp',
+      accountHomeVariable: 'GROK_HOME'
+    })
   })
 })
