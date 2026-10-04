@@ -87,7 +87,14 @@ function migrateLegacyManagedOrcadOwner(target: SshTarget): SshTarget {
     return normalizeOrcadFence(target)
   }
   const { owner: _legacyOwner, ...rest } = target
-  return { ...rest, orcadFence: target.orcadFence ?? { environmentId } }
+  const fenced = normalizeOrcadFence(rest)
+  // A malformed fence must not discard the owner's valid environment id.
+  return fenced.orcadFence ? fenced : { ...fenced, orcadFence: { environmentId } }
+}
+
+// Unknown keys pass through every note below, so a newer build's optional fields survive this one.
+function noteFields(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? { ...value } : null
 }
 
 function normalizeAppVersionNote(
@@ -97,9 +104,9 @@ function normalizeAppVersionNote(
   if (target[key] === undefined) {
     return target
   }
-  const { reason, appVersion } = target[key] ?? {}
-  if (typeof reason === 'string' && typeof appVersion === 'string') {
-    return { ...target, [key]: { reason, appVersion } }
+  const note = noteFields(target[key])
+  if (typeof note?.reason === 'string' && typeof note.appVersion === 'string') {
+    return { ...target, [key]: { ...note, reason: note.reason, appVersion: note.appVersion } }
   }
   const { [key]: _malformed, ...rest } = target
   return rest
@@ -109,9 +116,9 @@ function normalizeManagedServerMoveOffered(target: SshTarget): SshTarget {
   if (target.managedServerMoveOffered === undefined) {
     return target
   }
-  const { appVersion } = target.managedServerMoveOffered ?? {}
-  if (typeof appVersion === 'string') {
-    return { ...target, managedServerMoveOffered: { appVersion } }
+  const note = noteFields(target.managedServerMoveOffered)
+  if (typeof note?.appVersion === 'string') {
+    return { ...target, managedServerMoveOffered: { ...note, appVersion: note.appVersion } }
   }
   const { managedServerMoveOffered: _malformed, ...rest } = target
   return rest
@@ -121,11 +128,14 @@ function normalizeOrcadFence(target: SshTarget): SshTarget {
   if (target.orcadFence === undefined) {
     return target
   }
-  const { environmentId, sourceChangedAt } = target.orcadFence ?? {}
-  if (typeof environmentId === 'string' && environmentId.length > 0) {
+  const fence = noteFields(target.orcadFence)
+  const environmentId = fence?.environmentId
+  if (fence && typeof environmentId === 'string' && environmentId.length > 0) {
+    const { sourceChangedAt, ...unknownAndId } = fence
     return {
       ...target,
       orcadFence: {
+        ...unknownAndId,
         environmentId,
         ...(typeof sourceChangedAt === 'string' ? { sourceChangedAt } : {})
       }
