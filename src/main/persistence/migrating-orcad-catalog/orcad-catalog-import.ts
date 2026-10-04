@@ -1,5 +1,4 @@
 import {
-  MAX_ORCAD_MIGRATION_IMPORT_RECEIPTS,
   MAX_ORCAD_MIGRATION_STAGED_CATALOGS,
   ORCAD_MIGRATION_MANIFEST_VERSION,
   type OrcadMigrationCatalogAbortResult,
@@ -18,12 +17,17 @@ import type { WriteSchedulingOperations } from '../loading-store/write-schedulin
 import { scheduleSave } from '../loading-store/write-scheduling'
 import {
   applyPreparedOrcadMigrationCatalog,
-  assertCommittedOrcadMigrationCatalog,
   assertOrcadMigrationReceiptMatchesManifest,
   assertSameOrcadMigrationManifest,
   prepareOrcadMigrationCatalog,
   type PreparedOrcadMigrationCatalog
 } from './orcad-catalog-records'
+import {
+  expireOrcadMigrationStages,
+  findOrcadMigrationImportReceipt,
+  isLiveOrcadMigrationStage,
+  recordOrcadMigrationImportReceipt
+} from './orcad-catalog-receipt-ledger'
 import {
   abortOrcadMigrationSnapshots,
   assertOrcadMigrationSnapshotsReady,
@@ -62,14 +66,9 @@ export class OrcadCatalogImportPersistence {
     options: { now?: () => Date } = {}
   ): OrcadMigrationImportResult {
     const context = this[orcadCatalogImportContext]
-    const existingReceipt = findImportReceipt(context.runtime.state, manifest.migrationId)
+    const existingReceipt = findOrcadMigrationImportReceipt(context.runtime.state, manifest)
     if (existingReceipt) {
-      assertCommittedReceipt(
-        existingReceipt,
-        manifest,
-        context.runtime.state,
-        context.runtime.terminalScrollbackSnapshotStorage
-      )
+      assertCommittedReceipt(existingReceipt, manifest)
       return { status: 'already-imported', receipt: structuredClone(existingReceipt) }
     }
     if ((manifest.payload.dormantState?.terminalScrollbackSnapshots?.length ?? 0) > 0) {
@@ -86,6 +85,10 @@ export class OrcadCatalogImportPersistence {
     options: { now?: () => Date } = {}
   ): OrcadMigrationCatalogState {
     const context = this[orcadCatalogImportContext]
+    const now = options.now ?? (() => new Date())
+    if (expireOrcadMigrationStages(context.runtime.state, now().getTime())) {
+      scheduleSave(context.scheduling)
+    }
     pruneOrcadMigrationSnapshotStaging(
       stagedManifests(context.runtime.state),
       context.runtime.terminalScrollbackSnapshotStorage
@@ -106,7 +109,7 @@ export class OrcadCatalogImportPersistence {
     if (staged.length >= MAX_ORCAD_MIGRATION_STAGED_CATALOGS) {
       throw new Error('orcad_migration_staging_capacity_exceeded')
     }
-    const stagedAt = (options.now ?? (() => new Date()))().toISOString()
+    const stagedAt = now().toISOString()
     context.runtime.state.orcadMigrationStagedCatalogs = [
       ...staged,
       {
@@ -187,10 +190,10 @@ export class OrcadCatalogImportPersistence {
     )
   }
 
-  /** A migration into this server that is staged but neither committed nor aborted. */
-  hasStagedOrcadMigrationCatalog(): boolean {
-    return (
-      (this[orcadCatalogImportContext].runtime.state.orcadMigrationStagedCatalogs?.length ?? 0) > 0
+  /** A migration into this server staged recently and neither committed nor aborted. */
+  hasStagedOrcadMigrationCatalog(now: number = Date.now()): boolean {
+    return (this[orcadCatalogImportContext].runtime.state.orcadMigrationStagedCatalogs ?? []).some(
+      (entry) => isLiveOrcadMigrationStage(entry.stagedAt, now)
     )
   }
 }
@@ -215,10 +218,7 @@ function commitPreparedCatalog(
   context.runtime.state.orcadMigrationStagedCatalogs = (
     context.runtime.state.orcadMigrationStagedCatalogs ?? []
   ).filter((entry) => entry.manifest.migrationId !== manifest.migrationId)
-  context.runtime.state.orcadMigrationImportReceipts = [
-    ...(context.runtime.state.orcadMigrationImportReceipts ?? []),
-    receipt
-  ].slice(-MAX_ORCAD_MIGRATION_IMPORT_RECEIPTS)
+  recordOrcadMigrationImportReceipt(context.runtime.state, receipt)
   return receipt
 }
 
@@ -227,9 +227,9 @@ function migrationCatalogState(
   manifest: OrcadMigrationManifest,
   storage?: StoreRuntimeState['terminalScrollbackSnapshotStorage']
 ): OrcadMigrationCatalogState {
-  const receipt = findImportReceipt(state, manifest.migrationId)
+  const receipt = findOrcadMigrationImportReceipt(state, manifest)
   if (receipt) {
-    assertCommittedReceipt(receipt, manifest, state, storage)
+    assertCommittedReceipt(receipt, manifest)
     return committedCatalogState(receipt)
   }
   const staged = state.orcadMigrationStagedCatalogs?.find(
@@ -246,27 +246,18 @@ function stagedManifests(state: StoreRuntimeState['state']): OrcadMigrationManif
   return (state.orcadMigrationStagedCatalogs ?? []).map((entry) => entry.manifest)
 }
 
-function findImportReceipt(
-  state: StoreRuntimeState['state'],
-  migrationId: string
-): OrcadMigrationImportReceipt | undefined {
-  return state.orcadMigrationImportReceipts?.find((receipt) => receipt.migrationId === migrationId)
-}
-
+/**
+ * The receipt alone proves the commit: the server is live afterwards, so its rows and snapshot
+ * files may legitimately change, and a later read must still say "committed".
+ */
 function assertCommittedReceipt(
   receipt: OrcadMigrationImportReceipt,
-  manifest: OrcadMigrationManifest,
-  state: StoreRuntimeState['state'],
-  storage?: StoreRuntimeState['terminalScrollbackSnapshotStorage']
+  manifest: OrcadMigrationManifest
 ): void {
   if (receipt.manifestSha256 !== manifest.manifestSha256) {
     throw new Error('orcad_migration_id_reused_with_different_manifest')
   }
   assertOrcadMigrationReceiptMatchesManifest(receipt, manifest)
-  assertCommittedOrcadMigrationCatalog(manifest, state)
-  if (storage) {
-    assertOrcadMigrationSnapshotsReady(manifest, storage)
-  }
 }
 
 function absentCatalogState(manifest: OrcadMigrationManifest): OrcadMigrationCatalogState {

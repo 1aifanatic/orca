@@ -392,6 +392,15 @@ describe('orcad migration catalog persistence', () => {
       store.stageOrcadMigrationCatalog(manifest({ migrationId: 'migration-overflow' }))
     ).toThrow('orcad_migration_staging_capacity_exceeded')
     expect(store.getRepos()).toEqual([])
+
+    // A week later no client came back: the stages expire and stop holding the server awake.
+    const later = () => new Date(Date.now() + 8 * 24 * 60 * 60 * 1000)
+    expect(store.hasStagedOrcadMigrationCatalog(later().getTime())).toBe(false)
+    expect(
+      store.stageOrcadMigrationCatalog(manifest({ migrationId: 'migration-overflow' }), {
+        now: later
+      })
+    ).toMatchObject({ state: 'staged' })
   })
 
   it('retains exclusive staged claims after reload and releases them on dormant abort', async () => {
@@ -479,15 +488,15 @@ describe('orcad migration catalog persistence', () => {
     expect(restored.getSparsePresets(REPOSITORY.id)).toHaveLength(1)
   })
 
-  it('rejects a stale receipt when its imported catalog no longer matches', () => {
+  it('still reads a commit as committed after the live server changed what it imported', () => {
     const store = createStore()
     const input = manifest()
     store.importOrcadMigrationCatalog(input)
     store.removeProject(REPOSITORY.id)
 
-    expect(() => store.importOrcadMigrationCatalog(input)).toThrow(
-      'orcad_migration_receipt_catalog_mismatch:repository:repo-1'
-    )
+    expect(store.importOrcadMigrationCatalog(input).status).toBe('already-imported')
+    expect(store.getOrcadMigrationCatalogState(input).state).toBe('committed')
+    expect(store.getRepos()).toEqual([])
   })
 
   it('rejects an id reuse with a different manifest without duplicating state', () => {

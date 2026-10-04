@@ -3,7 +3,6 @@ import type { PersistedState } from '../../../shared/persisted-state-types'
 import type { OrcadMigrationClientStatePayload } from '../../../shared/orcad-migration-client-state'
 import {
   applyPreparedOrcadMigrationClientState,
-  assertCommittedOrcadMigrationClientState,
   prepareOrcadMigrationClientState
 } from './orcad-destination-client-state'
 
@@ -70,7 +69,6 @@ describe('destination client-state migration', () => {
       filterRepoIds: ['repo-1'],
       showDotfilesByWorktree: { 'repo-1::/worktree': false }
     })
-    expect(() => assertCommittedOrcadMigrationClientState(incoming, destination)).not.toThrow()
   })
 
   it('rejects a conflicting destination selection before publication', () => {

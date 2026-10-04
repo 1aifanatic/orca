@@ -15,7 +15,6 @@ import {
 import type { StoreRuntimeState } from '../loading-store/store-runtime-state'
 import {
   applyPreparedOrcadMigrationDormantState,
-  assertCommittedOrcadMigrationDormantState,
   prepareOrcadMigrationDormantState,
   type PreparedOrcadMigrationDormantState
 } from './orcad-dormant-state-records'
@@ -109,26 +108,6 @@ export function assertOrcadMigrationReceiptMatchesManifest(
   }
 }
 
-export function assertCommittedOrcadMigrationCatalog(
-  manifest: OrcadMigrationManifest,
-  state: StoreRuntimeState['state']
-): void {
-  const repositories = manifest.payload.repositories.map(toOrcadDestinationRepository)
-  const projectGroups = manifest.payload.projectGroups.map(toOrcadDestinationProjectGroup)
-  const folderWorkspaces = manifest.payload.folderWorkspaces.map(toOrcadDestinationFolderWorkspace)
-  assertRowsExist(repositories, state.repos, 'repository')
-  assertRowsExist(projectGroups, state.projectGroups, 'project_group')
-  assertRowsExist(folderWorkspaces, state.folderWorkspaces, 'folder_workspace')
-  assertNoRepositoryPathConflicts(repositories, state.repos)
-  assertCatalogReferences({
-    repositories,
-    projectGroups,
-    folderWorkspaces,
-    existingProjectGroups: state.projectGroups
-  })
-  assertCommittedOrcadMigrationDormantState(manifest, state)
-}
-
 export function toOrcadDestinationRepository(source: Repo): Repo {
   const destination = structuredClone(source)
   delete destination.connectionId
@@ -163,16 +142,6 @@ function selectNewRows<T extends { id: string }>(incoming: T[], existing: T[], l
     }
     return false
   })
-}
-
-function assertRowsExist<T extends { id: string }>(incoming: T[], existing: T[], label: string) {
-  const existingById = new Map(existing.map((row) => [row.id, row]))
-  for (const row of incoming) {
-    const current = existingById.get(row.id)
-    if (!current || serializeOrcadMigrationValue(current) !== serializeOrcadMigrationValue(row)) {
-      throw new Error(`orcad_migration_receipt_catalog_mismatch:${label}:${row.id}`)
-    }
-  }
 }
 
 function assertNoRepositoryPathConflicts(incoming: Repo[], existing: Repo[]): void {

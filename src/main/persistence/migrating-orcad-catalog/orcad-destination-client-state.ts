@@ -54,36 +54,6 @@ export function applyPreparedOrcadMigrationClientState(
   }
 }
 
-export function assertCommittedOrcadMigrationClientState(
-  incoming: OrcadMigrationClientStatePayload | undefined,
-  state: PersistedState
-): void {
-  if (!incoming) {
-    return
-  }
-  prepareOrcadMigrationClientState(incoming, state)
-  const current = state.mobileClientTabSelectionsByDeviceId ?? {}
-  for (const [deviceId, selections] of Object.entries(
-    incoming.mobileClientTabSelectionsByDeviceId ?? {}
-  )) {
-    for (const [worktreeId, selection] of Object.entries(selections)) {
-      const actual = current[deviceId]?.[worktreeId]
-      if (
-        !actual ||
-        serializeOrcadMigrationValue(actual) !== serializeOrcadMigrationValue(selection)
-      ) {
-        throw new Error(
-          `orcad_migration_receipt_client_state_mismatch:mobile:${deviceId}:${worktreeId}`
-        )
-      }
-    }
-  }
-  const uiRouting = incoming.uiRouting ? normalizeUiRouting(incoming.uiRouting) : undefined
-  if (uiRouting) {
-    assertUiRoutingApplied(uiRouting, state)
-  }
-}
-
 function normalizeUiRouting(route: OrcadMigrationUiRoutingState): OrcadMigrationUiRoutingState {
   const filter = route.automationHostFilter
   if (filter?.kind !== 'host') {
@@ -165,17 +135,6 @@ function assertUiRoutingCompatible(
       current !== serializeOrcadMigrationValue(empty)
     ) {
       throw new Error(`orcad_migration_client_state_conflict:ui:${key}`)
-    }
-  }
-}
-
-function assertUiRoutingApplied(route: OrcadMigrationUiRoutingState, state: PersistedState): void {
-  for (const { key, read } of UI_ROUTING_FIELDS) {
-    if (
-      route[key] !== undefined &&
-      serializeOrcadMigrationValue(read(state.ui)) !== serializeOrcadMigrationValue(route[key])
-    ) {
-      throw new Error(`orcad_migration_receipt_client_state_mismatch:ui:${key}`)
     }
   }
 }

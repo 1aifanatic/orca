@@ -3,6 +3,7 @@ import type { SshRemotePtyLease } from '../../../shared/ssh-types'
 import { normalizeFeatureInteractionTelemetryBuckets } from '../../../shared/feature-interactions'
 import { normalizeFolderWorkspaceDiffComments } from '../../folder-workspace-diff-comments'
 import { normalizeFolderWorkspaces } from '../../../shared/folder-workspaces'
+import { normalizeOrcadMigrationEvictedReceipts } from '../../../shared/orcad-migration-evicted-receipts'
 import { normalizeOrcadMigrationImportReceipts } from '../../../shared/orcad-migration-manifest-validation'
 import { normalizeOrcadMigrationStagedCatalogs } from '../../../shared/orcad-migration-staged-catalog-validation'
 import { normalizeWorkspaceLineageByChildKey } from '../applying-settings/ui-interaction-merge'
@@ -110,6 +111,9 @@ export function normalizeLoadedProfileState(
     automationRuns: normalizeLoadedAutomationRuns(parsed, markNeedsSave),
     orcadMigrationImportReceipts: normalizeOrcadMigrationImportReceipts(
       parsed.orcadMigrationImportReceipts
+    ),
+    orcadMigrationEvictedReceipts: normalizeOrcadMigrationEvictedReceipts(
+      parsed.orcadMigrationEvictedReceipts
     ),
     orcadMigrationStagedCatalogs: normalizeOrcadMigrationStagedCatalogs(
       parsed.orcadMigrationStagedCatalogs
