@@ -10,6 +10,7 @@ import type { SshConnectionManager } from './ssh-connection-manager'
 import type { SshConnectionStore } from './ssh-connection-store'
 import type { SshPortForwardManager } from './ssh-port-forward'
 import { OrcadManagedTunnelManager } from './orcad-managed-tunnel'
+import type { OrcadManagedTunnelTargeting } from './orcad-managed-tunnel-target'
 
 function createEnvironment(linkKind: 'orcadDeployment' | 'sshAccess'): KnownRuntimeEnvironment {
   const paired = createEnvironmentFromPairingOffer({
@@ -42,7 +43,7 @@ function createEnvironment(linkKind: 'orcadDeployment' | 'sshAccess'): KnownRunt
       }
 }
 
-function setup(overrides: Partial<SshTarget> = {}) {
+function setup(overrides: Partial<SshTarget> = {}, targeting?: OrcadManagedTunnelTargeting) {
   const target: SshTarget = {
     id: 'ssh-1',
     label: 'Managed server',
@@ -102,7 +103,8 @@ function setup(overrides: Partial<SshTarget> = {}) {
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the tunnel manager reads only getTarget.
     getTargetStore: () => ({ getTarget: vi.fn(() => target) }) as unknown as SshConnectionStore,
     forwardManager,
-    probeTunnel
+    probeTunnel,
+    targeting
   })
   return {
     addForward,
@@ -501,3 +503,93 @@ describe.each(['orcadDeployment', 'sshAccess'] as const)(
     })
   }
 )
+
+describe('OrcadManagedTunnelManager bound port', () => {
+  function boundPortSetup(ports: number[], verdicts: ('verified' | 'foreign')[] = []) {
+    const resolveRemotePort = vi.fn(async () => ports.shift() ?? 6_768)
+    const verifyIdentity = vi.fn(async () =>
+      verdicts.shift() === 'foreign'
+        ? { verdict: 'foreign' as const, detail: '4001: Unauthorized' }
+        : { verdict: 'verified' as const }
+    )
+    return {
+      ...setup({}, { resolveRemotePort, verifyIdentity }),
+      resolveRemotePort,
+      verifyIdentity
+    }
+  }
+
+  it('forwards to the port orcad bound when another runtime holds the preferred one', async () => {
+    const state = boundPortSetup([58_520])
+    await state.manager.ensure(createEnvironment('orcadDeployment'))
+
+    expect(state.addForward).toHaveBeenCalledWith(
+      'ssh-1',
+      state.connection,
+      46_768,
+      '127.0.0.1',
+      58_520,
+      'Managed Orca server: Managed server'
+    )
+    expect(state.verifyIdentity).toHaveBeenCalledOnce()
+  })
+
+  it('reuses a verified tunnel without reading the port again', async () => {
+    const state = boundPortSetup([58_520])
+    const environment = createEnvironment('orcadDeployment')
+    await state.manager.ensure(environment)
+    await state.manager.ensure(environment)
+
+    expect(state.resolveRemotePort).toHaveBeenCalledOnce()
+    expect(state.addForward).toHaveBeenCalledOnce()
+  })
+
+  it('fails the connect, leaving no forward, when the bound port serves another runtime', async () => {
+    const state = boundPortSetup([6_768, 6_768], ['foreign'])
+    await expect(state.manager.ensure(createEnvironment('orcadDeployment'))).rejects.toThrow(
+      'orcad_identity_mismatch'
+    )
+    expect(state.removeForwardAndWait).toHaveBeenCalledWith('forward-1')
+    await state.manager.close('environment-1')
+    expect(state.removeForwardAndWait).toHaveBeenCalledOnce()
+  })
+
+  it('rebuilds at the re-read port after a host resume', async () => {
+    const state = boundPortSetup([58_520, 60_001])
+    const environment = createEnvironment('orcadDeployment')
+    await state.manager.ensure(environment)
+    state.probeTunnel.mockResolvedValue(false)
+
+    await state.manager.recoverAfterHostResume({
+      attempts: 1,
+      resolveEnvironment: () => environment,
+      timeoutMs: 5_000
+    })
+
+    expect(state.addForward.mock.calls.map((call) => call[4])).toEqual([58_520, 60_001])
+  })
+
+  it('starts a deploy tunnel at the bound port but keeps the preferred port for reuse', async () => {
+    const state = boundPortSetup([])
+    const localPort = await state.manager.start(
+      'environment-1',
+      state.target,
+      state.connection,
+      58_520,
+      { preferredPort: 6_768 }
+    )
+    expect(state.addForward.mock.calls[0]?.[4]).toBe(58_520)
+    state.addForward.mockClear()
+    // The persisted link names the preferred port, so the next ensure reuses this forward.
+    await state.manager.ensure({
+      ...createEnvironment('orcadDeployment'),
+      orcadDeployment: {
+        sshTargetId: 'ssh-1',
+        sshTargetGeneration: 7,
+        localPort,
+        remotePort: 6_768
+      }
+    })
+    expect(state.addForward).not.toHaveBeenCalled()
+  })
+})

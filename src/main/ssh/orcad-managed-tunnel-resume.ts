@@ -10,12 +10,19 @@ import type { SshConnection } from './ssh-connection'
 import type { SshConnectionManager } from './ssh-connection-manager'
 import type { SshPortForwardManager } from './ssh-port-forward'
 import type { getSshTargetRegistryStore } from './ssh-target-registry'
+import {
+  environmentForwardChecks,
+  forwardToVerifiedOrcad,
+  type OrcadManagedTunnelTargeting
+} from './orcad-managed-tunnel-target'
 
 export type ActiveOrcadTunnel = {
   connection: SshConnection
   forwardId: string
   localPort: number
+  /** The port orcad bound, which can differ from the persisted (preferred) one. */
   remotePort: number
+  preferredPort: number
   sshTargetGeneration: number
   targetId: string
   transportGeneration: number
@@ -41,6 +48,7 @@ type ResumeRecoveryDependencies = {
   inFlight: Map<string, Promise<void>>
   ownershipGenerations: Map<string, number>
   probeTunnel?: OrcadManagedTunnelProbe
+  targeting: OrcadManagedTunnelTargeting
 }
 
 type ResolvedManagedTunnelEnvironment = {
@@ -179,25 +187,29 @@ export class OrcadManagedTunnelResumeRecovery {
       return
     }
     const { deployment } = current
+    const target = this.dependencies.getTargetStore()?.getTarget(active.targetId)
+    if (!target) {
+      return
+    }
     const transportGeneration = active.connection.getTransportGeneration()
-    const forward = await this.dependencies.forwards.addForward(
-      active.targetId,
-      active.connection,
-      deployment.localPort,
-      '127.0.0.1',
-      deployment.remotePort,
-      `Managed Orca server: ${current.environment.name}`
-    )
-    if (
-      forward.localPort !== deployment.localPort ||
-      active.connection.getTransportGeneration() !== transportGeneration ||
-      !this.stillOwned(environment.id, active, ownershipGeneration, managerGeneration, true) ||
-      !this.resolveEnvironment(environment.id, active, options)
-    ) {
-      await this.dependencies.forwards.removeForwardAndWait(forward.id)
-      if (forward.localPort !== deployment.localPort) {
-        throw new Error('Managed Orca tunnel bound an unexpected local port after host resume.')
-      }
+    const checks = await environmentForwardChecks(this.dependencies.targeting, {
+      environment: current.environment,
+      target,
+      connection: active.connection
+    })
+    const forward = await forwardToVerifiedOrcad({
+      targetId: active.targetId,
+      connection: active.connection,
+      forwards: this.dependencies.forwards,
+      localPort: deployment.localPort,
+      label: `Managed Orca server: ${current.environment.name}`,
+      ...checks,
+      stillCurrent: () =>
+        active.connection.getTransportGeneration() === transportGeneration &&
+        this.stillOwned(environment.id, active, ownershipGeneration, managerGeneration, true) &&
+        this.resolveEnvironment(environment.id, active, options) !== null
+    })
+    if (!forward) {
       return
     }
     this.dependencies.active.set(environment.id, {
@@ -205,6 +217,7 @@ export class OrcadManagedTunnelResumeRecovery {
       forwardId: forward.id,
       localPort: forward.localPort,
       remotePort: forward.remotePort,
+      preferredPort: deployment.remotePort,
       sshTargetGeneration: active.sshTargetGeneration,
       targetId: active.targetId,
       transportGeneration
@@ -226,7 +239,7 @@ export class OrcadManagedTunnelResumeRecovery {
       deployment.sshTargetId !== active.targetId ||
       deployment.sshTargetGeneration !== active.sshTargetGeneration ||
       deployment.localPort !== active.localPort ||
-      deployment.remotePort !== active.remotePort ||
+      deployment.remotePort !== active.preferredPort ||
       !target ||
       target.generation !== active.sshTargetGeneration ||
       getManagedOrcadFenceEnvironmentId(target) !== environmentId
