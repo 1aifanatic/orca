@@ -21,13 +21,13 @@ function ok(result: unknown) {
   return { ok: true, result, _meta: { runtimeId: 'runtime-1' } }
 }
 
-function sendResult(dispatchState: AgentJournalDispatchState) {
+function sendResult(dispatchState: AgentJournalDispatchState, reason: string | null = null) {
   return ok({
     ok: true,
     replayed: false,
     fence: 3,
     cursor: { epoch: 'epoch-1', sequence: 1 },
-    value: structuredSendResultFixture(dispatchState)
+    value: structuredSendResultFixture(dispatchState, reason)
   })
 }
 
@@ -255,6 +255,30 @@ describe('mobile structured send retries', () => {
     expect(calls()).toHaveLength(2)
     expect(new Set(sentIds()).size).toBe(1)
     expect(calls().every(([, params]) => !('retryUnknown' in (params as object)))).toBe(true)
+  })
+
+  // The transcript owns a message the host recorded, so the composer never gets it back.
+  it('hands back only a send a Stop withdrew, never one the host recorded and rejected', async () => {
+    let reason = 'provider_write_failed: broken pipe'
+    sendRequest.mockImplementation(async (method) =>
+      method === 'agentSession.send'
+        ? sendResult('rejected', reason)
+        : method === 'agentSession.options'
+          ? ok({ models: [], current: {} })
+          : ok({})
+    )
+    await mountSession()
+
+    await act(async () => {
+      expect(await hook!.sendWithOutcome('recorded, then rejected')).toBe('queued')
+    })
+    expect(onSendError).not.toHaveBeenCalled()
+
+    reason = 'provider_cancelled_before_start'
+    await act(async () => {
+      expect(await hook!.sendWithOutcome('withdrawn by Stop')).toBe('rejected')
+    })
+    expect(onSendError).toHaveBeenCalledWith('Your message was not sent. Send it again.')
   })
 
   it('reuses the original uploaded attachment identity after acknowledgement loss', async () => {

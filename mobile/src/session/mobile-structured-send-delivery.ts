@@ -13,7 +13,8 @@
 //
 //   accepted/pending — the send happened. The id is spent; a later identical
 //     message is a new message and must carry a new id.
-//   rejected — a terminal refusal or rejected submission spends a fresh id. A
+//   rejected — a terminal refusal or rejected submission spends a fresh id (a
+//     recorded one reports `queued`: the host holds its text, not the composer). A
 //     pending-admission refusal, or any refusal after earlier transport doubt,
 //     keeps it because neither proves a retained delivery did not happen. The
 //     one exception is a host that refuses the replay's request shape itself
@@ -87,16 +88,18 @@ export function mobileStructuredSendDelivery(
   if (!submission || submission.dispatchState === 'unknown') {
     return { outcome: 'unknown', operationIdSpent: false, error: null }
   }
-  if (submission.dispatchState === 'rejected') {
+  if (submission.dispatchState === 'rejected' && dispatchWasWithdrawn(submission)) {
+    // A Stop withdrew it, so no row holds it: its text goes back to the composer, with why.
     return {
       outcome: 'rejected',
       operationIdSpent: true,
-      // The host recorded it, so its row in the chat says it was not sent and why; only a Stop's
-      // withdrawal leaves no row to say it.
-      error: dispatchWasWithdrawn(submission)
-        ? structuredAgentSessionRejectionNotice(submission.reason, 'composer-send')
-        : null
+      error: structuredAgentSessionRejectionNotice(submission.reason, 'composer-send')
     }
+  }
+  if (submission.dispatchState === 'rejected') {
+    // The host recorded it: its row in the chat holds the text and says it was not sent and why,
+    // so nothing is handed back.
+    return { outcome: 'queued', operationIdSpent: true, error: null }
   }
   if (retained) {
     // A payload match cannot distinguish retrying the ambiguous action from a

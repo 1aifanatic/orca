@@ -29,8 +29,9 @@ type MobileNativeChatSendArgs = {
 /** 'unknown' = the RPC failed without proof the request never reached the
  *  desktop (ack loss after a write, or a cutover that cannot tell whether the
  *  frame was written) — callers must not present it as a definite send failure.
- *  'queued' = structured lane only: the host holds the message as a queued
- *  draft, so it shows as a card above the composer, never a transcript echo. */
+ *  'queued' = structured lane only: the host holds the message, as a queued
+ *  draft's card above the composer or as a recorded row in the transcript, so
+ *  the client draws no echo and hands no text back. */
 export type MobileNativeChatSendOutcome = 'accepted' | 'rejected' | 'unknown' | 'queued'
 
 /** What a terminal write can answer: the PTY lane has no draft queue. */

@@ -112,13 +112,13 @@ describe('mobileStructuredSendDelivery', () => {
     }
   })
 
-  it('spends the id of a recorded rejection and leaves saying it to its row in the chat', () => {
+  it('spends the id of a recorded rejection and leaves the message to its row in the chat', () => {
     // Provably undelivered and terminal, so the id can only replay it: spending the
     // id makes the retry a first delivery. The host recorded the message, so the
-    // transcript shows it as not sent, with why; a banner would say it twice.
+    // transcript holds it and shows it as not sent, with why: no banner, no hand-back.
     for (const reason of ['provider_write_failed: broken pipe', 'Claude does not support .bmp']) {
       expect(mobileStructuredSendDelivery(accepted('rejected', reason))).toEqual({
-        outcome: 'rejected',
+        outcome: 'queued',
         operationIdSpent: true,
         error: null
       })
