@@ -33,7 +33,7 @@ describe('the tone of a delivery line', () => {
   it('marks as not sent only words that say the message did not go out', () => {
     const notices = structuredAgentSessionDeliveryNotices(
       [
-        entry('doubt', { state: 'unconfirmed' }),
+        entry('doubt', { state: 'unconfirmed', retryAfterUnknownSubmittedAt: -1 }),
         entry('expired', {
           lastAttemptAt: 1,
           lastFailure: { kind: 'refused', code: 'agent_session_operation_expired' }
