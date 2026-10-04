@@ -2,7 +2,11 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 export const OPENCODE_OVERLAY_MANIFEST_FILE = '.orca-opencode-overlay-manifest.json'
-export type OpenCodeOverlayManifest = { topLevelEntries: string[]; pluginEntries: string[] }
+export type OpenCodeOverlayManifest = {
+  topLevelEntries: string[]
+  pluginEntries: string[]
+  sourceConfigDir?: string
+}
 
 export function readOpenCodeOverlayManifest(overlayDir: string): OpenCodeOverlayManifest {
   const empty = { topLevelEntries: [], pluginEntries: [] }
@@ -14,6 +18,9 @@ export function readOpenCodeOverlayManifest(overlayDir: string): OpenCodeOverlay
       return empty
     }
     return {
+      ...('sourceConfigDir' in parsed && typeof parsed.sourceConfigDir === 'string'
+        ? { sourceConfigDir: parsed.sourceConfigDir }
+        : {}),
       topLevelEntries:
         'topLevelEntries' in parsed && Array.isArray(parsed.topLevelEntries)
           ? parsed.topLevelEntries.filter((entry): entry is string => typeof entry === 'string')

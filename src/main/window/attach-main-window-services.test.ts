@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Store } from '../persistence'
 import type { RuntimeNotifier } from '../runtime/runtime-notifier-contract'
+import { openCodeHookService, openCode2HookService } from '../opencode/hook-service'
+import { listLiveDaemonPtyIds } from '../daemon/daemon-provider-state'
 
 const {
   onMock,
@@ -233,6 +235,8 @@ async function fireReadyToShow(mainWindow: MainWindowStub): Promise<void> {
 describe('attachMainWindowServices', () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    vi.spyOn(openCodeHookService, 'scheduleOrphanedDirGc').mockImplementation(() => {})
+    vi.spyOn(openCode2HookService, 'scheduleOrphanedDirGc').mockImplementation(() => {})
     systemPreferencesAskForMediaAccessMock.mockResolvedValue(true)
     systemPreferencesGetMediaAccessStatusMock.mockReturnValue('granted')
   })
@@ -244,6 +248,12 @@ describe('attachMainWindowServices', () => {
 
     expect(setRepoRemoteClientNotifierMock).toHaveBeenCalledWith(runtime)
     expect(setWorktreeCatalogRemoteClientNotifierMock).toHaveBeenCalledWith(runtime)
+    expect(openCodeHookService.scheduleOrphanedDirGc).toHaveBeenCalledExactlyOnceWith(
+      listLiveDaemonPtyIds
+    )
+    expect(openCode2HookService.scheduleOrphanedDirGc).toHaveBeenCalledExactlyOnceWith(
+      listLiveDaemonPtyIds
+    )
   })
 
   it('reloads the app renderer through main and marks expected renderer teardown', async () => {

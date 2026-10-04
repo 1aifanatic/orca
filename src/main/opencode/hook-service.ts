@@ -10,7 +10,6 @@ import {
   statSync,
   writeFileSync
 } from 'node:fs'
-import { createHash } from 'node:crypto'
 import { isSafeDescendCandidate, mirrorEntry, safeRemoveOverlay } from '../pty/overlay-mirror'
 import {
   getOpenCode2PluginSource,
@@ -33,14 +32,18 @@ import {
   writeOpenCodeTuiPlugin
 } from '../../shared/opencode-tui-plugin-install'
 import { writeLegacyOpenCodePluginWithAclRetry } from './legacy-plugin-acl-retry'
+import {
+  OPENCODE_OVERLAY_DIR,
+  ORCA_OPENCODE_PLUGIN_FILE,
+  sourceOverlayDirName,
+  toSafeDirName
+} from './overlay-dir-names'
+import { sweepOrphanedOpenCodeDirs, type OpenCodeDirGcResult } from './overlay-dir-gc'
 
 export { getOpenCode2PluginSource, getOpenCodeFamilyPluginSource, getOpenCodePluginSource }
 
 import { writeCanonicalOpenCodePluginAtomically } from '../../shared/opencode-plugin-atomic-write'
 import { writeOpenCodePluginConfig } from './opencode-plugin-config-writer'
-
-const ORCA_OPENCODE_PLUGIN_FILE = 'orca-opencode-status.js'
-const OPENCODE_OVERLAY_DIR = 'opencode-config-overlays'
 
 type OpenCodeHookVariant = {
   pluginFileName: string
@@ -57,11 +60,6 @@ function isUsableId(id: string): boolean {
   return typeof id === 'string' && id.length > 0 && id.length <= 1024
 }
 
-function toSafeDirName(id: string): string {
-  // Why: 32 hex chars (128 bits) makes collisions negligible and stays filesystem-portable (no base64 padding or `/`).
-  return createHash('sha256').update(id).digest('hex').slice(0, 32)
-}
-
 // Why: installs the plugin into OpenCode's config discovery path so it POSTs to the shared agent-hooks server, unifying OpenCode status with Claude/Codex/Gemini.
 export class OpenCodeHookService {
   private readonly pluginSource: () => string
@@ -70,6 +68,8 @@ export class OpenCodeHookService {
   private readonly overlayDir: string
   private readonly installsTuiPlugin: boolean
   private readonly tuiOnlyDirectory: string | undefined
+  private readonly handedOutConfigDirs = new Set<string>()
+  private orphanDirGcScheduled = false
 
   constructor(variant?: OpenCodeHookVariant | (() => string)) {
     const config: OpenCodeHookVariant =
@@ -114,6 +114,7 @@ export class OpenCodeHookService {
         }
       }
       this.writePluginIntoOverlay(directory)
+      owner.handedOutConfigDirs.add(directory)
       return 'installed'
     } catch {
       return 'failed'
@@ -152,10 +153,49 @@ export class OpenCodeHookService {
         this.mirrorUserConfig(existingConfigDir, overlayDir)
       }
       this.writePluginIntoOverlay(overlayDir)
+      this.handedOutConfigDirs.add(overlayDir)
       return { OPENCODE_CONFIG_DIR: overlayDir }
     } catch {
       return { OPENCODE_CONFIG_DIR: existingConfigDir }
     }
+  }
+
+  scheduleOrphanedDirGc(
+    readLivePtyIds: () => Promise<readonly string[] | null>,
+    delayMs = 3 * 60_000
+  ): void {
+    if (this.orphanDirGcScheduled) {
+      return
+    }
+    this.orphanDirGcScheduled = true
+    const timer = setTimeout(() => {
+      void this.runOrphanedDirGc(readLivePtyIds).catch((error) => {
+        console.warn('[OpenCode] Overlay cleanup skipped:', error)
+      })
+    }, delayMs)
+    timer.unref()
+  }
+
+  async runOrphanedDirGc(
+    readLivePtyIds: () => Promise<readonly string[] | null>
+  ): Promise<OpenCodeDirGcResult> {
+    const references = this.handedOutConfigDirs
+    for (const key of [
+      'OPENCODE_CONFIG_DIR',
+      'ORCA_OPENCODE_CONFIG_DIR',
+      'ORCA_OPENCODE_SOURCE_CONFIG_DIR'
+    ]) {
+      const value = process.env[key]
+      if (value) {
+        references.add(value)
+      }
+    }
+    return sweepOrphanedOpenCodeDirs({
+      overlayRoot: this.getOverlayRoot(),
+      pluginFileName: this.pluginFileName,
+      referencedConfigDirs: references,
+      readLivePtyIds
+    })
   }
 
   // Why: pre-1.4.209 Orca left a server()-only plugin here that OpenCode 2 rejects. Only helps
@@ -217,7 +257,7 @@ export class OpenCodeHookService {
   }
 
   private getSourceOverlayDir(sourceConfigDir: string): string {
-    return join(this.getOverlayRoot(), toSafeDirName(`source:${sourceConfigDir}`))
+    return join(this.getOverlayRoot(), sourceOverlayDirName(sourceConfigDir))
   }
 
   private getSharedConfigDir(): string {
@@ -254,7 +294,11 @@ export class OpenCodeHookService {
     // Why: overlays persist across terminals; remove only Orca-mirrored paths so stale user config clears but OpenCode runtime dirs (node_modules) survive.
     this.clearManifestEntries(overlayDir, previousManifest)
 
-    const nextManifest: OpenCodeOverlayManifest = { topLevelEntries: [], pluginEntries: [] }
+    const nextManifest: OpenCodeOverlayManifest = {
+      topLevelEntries: [],
+      pluginEntries: [],
+      sourceConfigDir: sourceDir
+    }
 
     for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
       const sourcePath = join(sourceDir, entry.name)
