@@ -4,6 +4,7 @@ import {
   OrcadHostUnsupportedError,
   OrcadStdioBridgeUnavailableError
 } from './orcad-host-unavailable'
+import type { ManagedOrcadAutoUpdateOutcome } from './orcad-managed-auto-update'
 import type { HostServerConnectEvent } from './ssh-host-server-connect-events'
 import {
   resolveHostServerOnConnect,
@@ -32,6 +33,10 @@ function deps(overrides: Partial<HostServerOnConnectDeps> = {}): HostServerOnCon
     isFencedBeforeStaging: () => false,
     releaseUnreachableSetup: vi.fn(async () => undefined),
     report: vi.fn(),
+    autoUpdate: vi.fn(async () => ({ outcome: 'skipped' as const, reason: 'current' as const })),
+    recordedUpdateFailure: () => null,
+    recordUpdateFailure: vi.fn(),
+    clearUpdateFailure: vi.fn(),
     ...overrides
   }
 }
@@ -200,5 +205,39 @@ describe('connect-decision telemetry', () => {
     await expect(resolveHostServerOnConnect(target, throwing)).resolves.toMatchObject({
       route: 'managed'
     })
+  })
+
+  it('names what a managed host update on connect did', async () => {
+    const managed = (overrides: Partial<HostServerOnConnectDeps>) =>
+      eventsOf(deps({ managedEnvironmentId: () => 'env-9', ...overrides }))
+    const outcomes: [ManagedOrcadAutoUpdateOutcome, string][] = [
+      [{ outcome: 'skipped', reason: 'current' }, 'connected'],
+      [{ outcome: 'updated', activeVersion: '0.1.0+b' }, 'updated'],
+      [
+        { outcome: 'deferred', code: 'orcad_update_terminals_running', reason: 'r' },
+        'update_deferred'
+      ],
+      [{ outcome: 'failed', reason: 'r' }, 'update_failed'],
+      [{ outcome: 'skipped', reason: 'host-newer' }, 'update_host_newer'],
+      [{ outcome: 'skipped', reason: 'rolled-back' }, 'update_rolled_back']
+    ]
+    for (const [outcome, reason] of outcomes) {
+      expect(decided(await managed({ autoUpdate: async () => outcome }))).toMatchObject({
+        outcome: 'managed',
+        reason,
+        recorded: false
+      })
+    }
+    const thrown = await managed({
+      autoUpdate: async () => {
+        throw new Error('ssh dropped')
+      }
+    })
+    expect(decided(thrown)).toMatchObject({ outcome: 'managed', reason: 'update_check_failed' })
+    const held = await managed({
+      recordedUpdateFailure: () => 'earlier',
+      autoUpdate: async () => ({ outcome: 'skipped', reason: 'failed-before' })
+    })
+    expect(decided(held)).toMatchObject({ reason: 'update_failed', recorded: true })
   })
 })

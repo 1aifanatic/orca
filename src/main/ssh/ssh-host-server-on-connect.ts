@@ -2,17 +2,26 @@
  * Which server an SSH host runs, decided once per connect before any relay is started.
  *
  * Every host runs managed orcad: an empty host deploys it, a host with Orca state converts through
- * the journaled migration, and a converted host connects through its tunnel. A host whose relay
- * terminals are live, or can't be proven exited, keeps the relay this session and converts on a
- * later connect. A host orcad can't run on keeps the pinned-relay ladder, with the reason recorded
- * so the deploy isn't retried on every connect. A host whose sshd refuses port forwarding reaches
- * its server through the stdio bridge (orcad-managed-tunnel-transport.ts) instead.
+ * the journaled migration, and a converted host connects through its tunnel, updating first when
+ * it runs an older build and its terminals allow. A host whose relay terminals are live, or can't
+ * be proven exited, keeps the relay this session and converts on a later connect. A host orcad
+ * can't run on keeps the pinned-relay ladder, with the reason recorded so the deploy isn't retried
+ * on every connect. A host whose sshd refuses port forwarding reaches its server through the
+ * stdio bridge (orcad-managed-tunnel-transport.ts) instead.
  */
 import type {
   OrcadManagedConversionResult,
   OrcadManagedDeployResult
 } from '../../shared/orcad-managed-runtime'
-import type { SshManagedServerRelayReason, SshTarget } from '../../shared/ssh-types'
+import type {
+  SshManagedServerRelayReason,
+  SshManagedServerUpdateNote,
+  SshTarget
+} from '../../shared/ssh-types'
+import {
+  checkManagedServerUpdate,
+  type ManagedServerUpdateDeps
+} from './managed-server-update-check'
 import {
   classifyOrcadHostUnavailable,
   ORCAD_TUNNEL_UNAVAILABLE_REASON
@@ -28,10 +37,10 @@ import {
   type HostServerReport
 } from './ssh-host-server-connect-events'
 
-export type HostServerPhase = 'deploying' | 'converting' | 'connecting'
+export type HostServerPhase = 'deploying' | 'converting' | 'connecting' | 'updating'
 
 export type HostServerOnConnectResult =
-  | { route: 'managed'; environmentId: string }
+  | { route: 'managed'; environmentId: string; update?: SshManagedServerUpdateNote }
   | {
       route: 'relay'
       reason: SshManagedServerRelayReason
@@ -72,7 +81,7 @@ export type HostServerOnConnectDeps = {
   releaseUnreachableSetup: (target: SshTarget) => Promise<void>
   /** Receives each decision, conversion and deploy failure as raw codes for telemetry. */
   report: HostServerReport
-}
+} & ManagedServerUpdateDeps
 
 // Bounds a failure's detail; the host log tail inside it is already capped.
 const MAX_FAILURE_DETAIL_CHARS = 16_000
@@ -124,7 +133,12 @@ async function decide(
     await deps.retireRetainedSource(target).catch((error: unknown) => {
       console.warn('[ssh] Source retirement deferred to a later connect:', error)
     })
-    return { route: 'managed', environmentId: existing }
+    const { note, reason, recorded } = await checkManagedServerUpdate(target, existing, deps, () =>
+      deps.progress(target, 'updating')
+    )
+    trace.update = reason
+    trace.recorded = recorded
+    return { route: 'managed', environmentId: existing, ...(note ? { update: note } : {}) }
   }
   const recorded = deps.recordedUnavailable(target)
   if (recorded) {

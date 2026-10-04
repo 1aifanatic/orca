@@ -36,17 +36,35 @@ export type HostServerConnectEvent =
       durationMs: number
     }
 
+/** What a managed host's update on connect did; `connected` when there was nothing to do. */
+export type HostServerUpdateReason =
+  | 'connected'
+  | 'updated'
+  | 'update_deferred'
+  | 'update_failed'
+  | 'update_host_newer'
+  | 'update_rolled_back'
+  | 'update_check_failed'
+
 /** How far one decision got, filled in as it runs. */
 export type HostServerDecisionTrace = {
   startedAt: number
   path: 'existing' | 'deploy' | 'convert' | null
+  update: HostServerUpdateReason | null
   conversionStartedAt: number | null
   recorded: boolean
   refusal: string | null
 }
 
 export function startHostServerDecisionTrace(now = Date.now()): HostServerDecisionTrace {
-  return { startedAt: now, path: null, conversionStartedAt: null, recorded: false, refusal: null }
+  return {
+    startedAt: now,
+    path: null,
+    update: null,
+    conversionStartedAt: null,
+    recorded: false,
+    refusal: null
+  }
 }
 
 export function decidedEvent(
@@ -65,7 +83,7 @@ export function decidedEvent(
     if (trace.path === 'convert') {
       return { kind: 'decided', outcome: 'converted', reason: 'converted', ...base }
     }
-    return { kind: 'decided', outcome: 'managed', reason: 'connected', ...base }
+    return { kind: 'decided', outcome: 'managed', reason: trace.update ?? 'connected', ...base }
   }
   if (result.reason === 'orcad_unavailable') {
     // Why the detail: for this reason it is always a classified code, never a message.

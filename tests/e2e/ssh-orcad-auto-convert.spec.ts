@@ -8,13 +8,15 @@
  * 3. The source rows stay retained (downgrade safety) until `orcad-source-retirement` is on; the
  *    connect after that retires them while the server keeps serving the host.
  *
+ * A managed host also updates to a relaunched app's bundled orcad on its next idle connect.
+ *
  * Host: `ORCA_E2E_ORCAD_CONVERT_HOST=docker` (Linux fixture) or a Windows host-cell descriptor.
  * Template: `ORCA_E2E_ORCAD_CONVERT_TEMPLATE`, built for that host's target.
  */
 import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { ElectronApplication } from '@stablyai/playwright-test'
+import type { ElectronApplication, Page } from '@stablyai/playwright-test'
 import { expect, test } from './helpers/orca-app'
 import {
   ensureTerminalVisible,
@@ -32,6 +34,11 @@ import {
   serverCall,
   targetLeases
 } from './helpers/orcad-convert-flow'
+import {
+  isOrcadFullVersion,
+  makeOrcadTemplateVariant,
+  readHostOrcadActivation
+} from './helpers/orcad-template-variant'
 import { seedRelayEraProfile } from './helpers/orcad-upgrade-profile'
 import { ORCAD_CONVERT_HOST_ENV, startOrcadConvertHost } from './helpers/orcad-convert-host'
 import { toSshExecutionHostId } from '../../src/shared/execution-host'
@@ -303,3 +310,96 @@ test('a host whose sshd refuses TCP forwarding runs a managed server over the st
     }
   }
 })
+
+test('a managed host updates to the bundled orcad on the first connect after an app update', async (// oxlint-disable-next-line no-empty-pattern -- Playwright's second fixture arg is testInfo; the first must be an object destructure to opt out of the default fixture set.
+{}, testInfo) => {
+  test.skip(
+    !HOST || !TEMPLATE_SOURCE,
+    `Set ${ORCAD_CONVERT_HOST_ENV} and ORCA_E2E_ORCAD_CONVERT_TEMPLATE`
+  )
+  test.skip(HOST !== 'docker', 'Reads the activation record through the Docker host')
+  test.setTimeout(20 * 60_000)
+  rmSync(SCRATCH, { recursive: true, force: true })
+  mkdirSync(SCRATCH, { recursive: true })
+  writeFileSync(FLAGS_FILE, '{}')
+  cpSync(TEMPLATE_SOURCE!, TEMPLATE_DIR, { recursive: true })
+  const host = startOrcadConvertHost(HOST!, testInfo)
+  const session = createRestartSession(testInfo, {
+    ORCA_ORCAD_TEMPLATE_PATH: TEMPLATE_DIR,
+    ORCA_E2E_ROLLOUT_FLAGS_FILE: FLAGS_FILE
+  })
+  let app: ElectronApplication | null = null
+  try {
+    // Template A: the empty host deploys managed orcad on its first connect.
+    const first = await session.launch()
+    app = first.app
+    await waitForSessionReady(first.page)
+    const targetId = await first.page.evaluate(async (input) => {
+      const { target } = await window.api.ssh.addTarget({ target: input })
+      return target.id
+    }, host.input)
+    await connectOnce(first.page, targetId)
+    await expect
+      .poll(() => managedServer(first.page, targetId), { timeout: 8 * 60_000 })
+      .toMatchObject({ kind: 'managed' })
+    const deployed = readHostOrcadActivation(host.exec!)
+    expect(isOrcadFullVersion(deployed.active)).toBe(true)
+    await session.close(app)
+    app = null
+
+    // Template B, as an app update would bundle: the tunnel restore or the next connect updates it.
+    makeOrcadTemplateVariant(TEMPLATE_DIR, 'B')
+    const updated = await session.launch({
+      onStderr: (chunk) => {
+        if (chunk.includes('[ssh]')) {
+          process.stderr.write(chunk)
+        }
+      }
+    })
+    app = updated.app
+    await waitForSessionReady(updated.page)
+    // Why connect, not disconnect first: on launch the app already reaches the server through its
+    // tunnel, and a disconnect racing that restore cancels the connect that runs the update.
+    const attempts: string[] = []
+    await expect
+      .poll(
+        async () => {
+          attempts.push(await connectOnce(updated.page, targetId))
+          const record = readHostOrcadActivation(host.exec!)
+          return record.active !== deployed.active
+            ? 'updated'
+            : JSON.stringify({ attempts: attempts.slice(-3), record })
+        },
+        { timeout: 8 * 60_000, intervals: [5_000] }
+      )
+      .toBe('updated')
+    await expect
+      .poll(() => managedServer(updated.page, targetId), { timeout: 60_000 })
+      .toEqual({ kind: 'managed', environmentId: expect.any(String) })
+    const record = readHostOrcadActivation(host.exec!)
+    expect(isOrcadFullVersion(record.active)).toBe(true)
+    expect(record.previous).toBe(deployed.active)
+    expect(record.activeAppVersion).toBeTruthy()
+  } finally {
+    if (app) {
+      await session.close(app)
+    }
+    await session.dispose()
+    host.cleanup()
+    if (existsSync(SCRATCH)) {
+      rmSync(SCRATCH, { recursive: true, force: true })
+    }
+  }
+})
+
+/** One connect; returns its managed-server state, or why it threw, for a poll to report. */
+function connectOnce(page: Page, targetId: string): Promise<string> {
+  return page.evaluate(async (id) => {
+    try {
+      const state = await window.api.ssh.connect({ targetId: id })
+      return JSON.stringify(state?.managedServer ?? null)
+    } catch (error) {
+      return `connect threw: ${String(error)}`
+    }
+  }, targetId)
+}

@@ -249,7 +249,7 @@ export async function activateInstalledOrcad(
     return notActivated(code, await withOrcadLogTail(options, remoteDir, located))
   }
 
-  const recordAfter = withActivatedVersion(record, fullVersion, snapshot, now())
+  const recordAfter = withActivatedVersion(record, fullVersion, snapshot, now(), options.appVersion)
   transaction = withOrcadActivationCandidateReady(transaction, recordAfter, now())
   await writeOrcadActivationTransaction(options, transaction)
   await writeOrcadActivationRecord(options, recordAfter)

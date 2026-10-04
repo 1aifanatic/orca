@@ -97,6 +97,31 @@ describe('ssh host server telemetry', () => {
     })
   })
 
+  it('keeps every update-on-connect reason through the schema', () => {
+    for (const reason of [
+      'updated',
+      'update_deferred',
+      'update_failed',
+      'update_host_newer',
+      'update_rolled_back',
+      'update_check_failed'
+    ] as const) {
+      trackSshHostServerEvent(
+        {
+          kind: 'decided',
+          outcome: 'managed',
+          reason,
+          refusal: null,
+          recorded: false,
+          durationMs: 1
+        },
+        linuxGlibc,
+        'tcp_forward'
+      )
+      expect(expectSchemaValid()).toMatchObject({ outcome: 'managed', reason })
+    }
+  })
+
   it('reports the per-host move offer and each move result', () => {
     for (const outcome of ['offered', 'moved', 'refused_live', 'failed'] as const) {
       trackSshHostServerMove(outcome, linuxGlibc)

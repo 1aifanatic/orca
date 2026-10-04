@@ -22,6 +22,13 @@ const UNAVAILABLE_REASONS = [
 
 export const SSH_HOST_SERVER_REASON_VALUES = [
   'connected',
+  // A managed host's update on connect (ssh-host-server-update-on-connect.ts).
+  'updated',
+  'update_deferred',
+  'update_failed',
+  'update_host_newer',
+  'update_rolled_back',
+  'update_check_failed',
   'deployed',
   'converted',
   'source_changed',
