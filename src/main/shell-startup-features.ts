@@ -32,7 +32,8 @@ const OVERLAY_ENV_KEYS = [
   'ORCA_OMP_STATUS_EXTENSION',
   'ORCA_CODEX_HOME',
   'ORCA_AGENT_TEAMS_SHIM_DIR',
-  'ORCA_REMOTE_CLI_BIN_DIR'
+  'ORCA_REMOTE_CLI_BIN_DIR',
+  'ORCA_CLI_BIN_DIR'
 ] as const
 
 export type ShellStartupFeatureInput = {

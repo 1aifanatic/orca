@@ -43,6 +43,12 @@ __orca_deferred_init() {
   precmd_functions=(${precmd_functions:#__orca_deferred_init})
   if __orca_has_feature overlay; then
     # Why: remote startup files can re-export user defaults after relay spawn.
+    if [ -n "${ORCA_CLI_BIN_DIR:-}" ]; then
+      case "${PATH:-}" in
+        "$ORCA_CLI_BIN_DIR"|"$ORCA_CLI_BIN_DIR":*) ;;
+        *) export PATH="$ORCA_CLI_BIN_DIR${PATH:+:$PATH}" ;;
+      esac
+    fi
     [[ -n "${ORCA_OPENCODE_CONFIG_DIR:-}" ]] && export OPENCODE_CONFIG_DIR="${ORCA_OPENCODE_CONFIG_DIR}"
     if [[ -n "${ORCA_DATA_ACCOUNT_DATA_HOME:-}" ]]; then
       export XDG_DATA_HOME="${ORCA_DATA_ACCOUNT_DATA_HOME}"
