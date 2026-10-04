@@ -11,6 +11,7 @@
 
 import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import { isRootAgentJournalItem } from './agent-session-journal-producer'
+import { isQueuedAgentJournalSubmission } from './agent-session-queued-submission'
 import type {
   AgentJournalRenderItem,
   AgentJournalSubmission,
@@ -73,9 +74,15 @@ export function structuredAgentTurnAnchors(
       aliases.set(submission.providerItemId, agentJournalSubmissionKey(submission.clientMessageId))
     }
   }
+  // Handed over and not echoed yet; a send still queued opens nothing ahead of a turn record.
   const inFlight = new Set(
     submissions
-      .filter((submission) => submission.dispatchState === 'pending' && !submission.providerItemId)
+      .filter(
+        (submission) =>
+          submission.dispatchState === 'pending' &&
+          !submission.providerItemId &&
+          !isQueuedAgentJournalSubmission(submission)
+      )
       .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
   )
   const anchors = new Map<string, string>()

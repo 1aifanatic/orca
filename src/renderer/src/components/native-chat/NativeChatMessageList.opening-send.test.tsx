@@ -227,28 +227,51 @@ describe('a message sent while the turn ahead is still opening', () => {
     waitsAtTheTail('C')
   })
 
-  // From the turn record to the steer's echo, one frame per commit: "second" stays under the first
-  // send's status and above its activity line, where it lands, and the status stays on "first".
-  it('draws it where it lands at every step of the turn opening, even with the steer echoed first', () => {
+  /** One frame per commit: "second" stays under the first send's live status and above its
+   *  activity line, where it lands, and the live status stays on "first". */
+  function walkTurnOpening(
+    steps: [
+      AgentJournalRenderItem[],
+      AgentJournalSubmission[],
+      StructuredAgentSessionOutboxEntry[]
+    ][]
+  ): void {
+    const view = render(<div />)
+    for (const step of steps) {
+      view.rerender(frame(...step))
+      expect(follows(liveStatus(), screen.getByText('first'))).toBe(true)
+      expect(follows(screen.getByText('second'), liveStatus())).toBe(true)
+      expect(follows(liveActivity(), screen.getByText('second'))).toBe(true)
+    }
+  }
+
+  function turnOpening() {
     const { items, submissions } = openingFirst()
-    const opened = [...items, firstTurnOpened(6)]
-    const steered = [...opened, { ...userMessage('second', 8, 'second'), turnScope: inFirstTurn }]
-    const handedOver = submission('second', { acceptedSequence: 7, handedOverAt: NOW + 10 })
-    const echoed = (sent: AgentJournalSubmission): AgentJournalSubmission => ({
-      ...sent,
-      dispatchState: 'accepted',
-      providerItemId: FIRST_TURN_PROVIDER_KEY,
-      resolvedAt: NOW + 20
-    })
     const [warm, first] = submissions
     if (!warm || !first) {
       throw new Error('expected the warm-up and the first send')
     }
-    const steps: [
-      AgentJournalRenderItem[],
-      AgentJournalSubmission[],
-      StructuredAgentSessionOutboxEntry[]
-    ][] = [
+    const opened = [...items, firstTurnOpened(6)]
+    return {
+      submissions,
+      warm,
+      first,
+      opened,
+      // Handed over as a steer once the turn opened (row 8).
+      steered: [...opened, { ...userMessage('second', 8, 'second'), turnScope: inFirstTurn }],
+      echoed: (sent: AgentJournalSubmission): AgentJournalSubmission => ({
+        ...sent,
+        dispatchState: 'accepted',
+        providerItemId: FIRST_TURN_PROVIDER_KEY,
+        resolvedAt: NOW + 20
+      })
+    }
+  }
+
+  it('draws it where it lands at every step of the turn opening, even with the steer echoed first', () => {
+    const { submissions, warm, first, opened, steered, echoed } = turnOpening()
+    const handedOver = submission('second', { acceptedSequence: 7, handedOverAt: NOW + 10 })
+    walkTurnOpening([
       // The turn record is in; the host has not recorded "second" yet.
       [opened, submissions, [unrecorded('second', 'second')]],
       // Recorded after the turn record, not yet handed over.
@@ -257,19 +280,32 @@ describe('a message sent while the turn ahead is still opening', () => {
         [...submissions, submission('second', { acceptedSequence: 7 })],
         []
       ],
-      // Handed over as a steer.
       [steered, [...submissions, handedOver], []],
       // Codex echoes the steer before the send that opened the turn, then that send.
       [steered, [warm, first, echoed(handedOver)], []],
       [steered, [warm, echoed(first), echoed(handedOver)], []]
-    ]
-    const view = render(<div />)
-    for (const step of steps) {
-      view.rerender(frame(...step))
-      expect(follows(liveStatus(), screen.getByText('first'))).toBe(true)
-      expect(follows(screen.getByText('second'), liveStatus())).toBe(true)
-      expect(follows(liveActivity(), screen.getByText('second'))).toBe(true)
+    ])
+  })
+
+  // Two messages queued behind /compact, or sent while Stopping: "second" is accepted above the
+  // first send's handover, and the first send's turn record lands before "second" is handed over.
+  it('draws it where it lands at every step when it was accepted above the first send', () => {
+    const { submissions, warm, first, opened, steered, echoed } = turnOpening()
+    const [warmUp, warmTurn, firstRow, turnRecord] = opened
+    if (!warmUp || !warmTurn || !firstRow || !turnRecord) {
+      throw new Error('expected the warm-up, the first send and its turn record')
     }
+    const queuedAbove = [warmUp, warmTurn, userMessage('second', 4, 'second'), firstRow, turnRecord]
+    const queued = submission('second', { acceptedSequence: 4 })
+    const handedOver = { ...queued, handedOverAt: NOW + 10 }
+    walkTurnOpening([
+      [queuedAbove, [...submissions, queued], []],
+      // The first send echoes while "second" is still queued.
+      [queuedAbove, [warm, echoed(first), queued], []],
+      [steered, [...submissions, handedOver], []],
+      [steered, [warm, first, echoed(handedOver)], []],
+      [steered, [warm, echoed(first), echoed(handedOver)], []]
+    ])
   })
 
   // The host holds nothing for a send only the user's Retry sends again, so it stays where it is.
