@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { emitNativeChatMessageSent } from '@/lib/native-chat-telemetry'
 import { reportStructuredSessionUserInput } from '@/lib/worker-terminal-takeover-report'
 import {
@@ -10,10 +10,15 @@ import { dispatchNativeChatStructuredComposerText } from './native-chat-structur
 import { pushHistory, type HistoryState } from './native-chat-composer-state'
 import type { NativeChatStructuredComposerTransport } from './native-chat-composer-types'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
+import { nativeChatAttachImagesAgainReason } from './native-chat-image-reattach'
+import {
+  clearNativeChatComposerDraftIfUnchanged,
+  readNativeChatComposerDraft
+} from './native-chat-composer-draft-store'
 
 export type UseNativeChatStructuredComposerSendArgs = {
   agent: AgentType
-  draft?: string
+  draftScopeKey: string
   imageAttachments: readonly NativeChatComposerImageAttachment[]
   structuredTransport?: NativeChatStructuredComposerTransport
   clearImageAttachments: () => void
@@ -27,7 +32,7 @@ export type UseNativeChatStructuredComposerSendArgs = {
  *  once the transport accepts (the PTY path has its own sibling hook). */
 export function useNativeChatStructuredComposerSend({
   agent,
-  draft,
+  draftScopeKey,
   imageAttachments,
   structuredTransport,
   clearImageAttachments,
@@ -39,10 +44,13 @@ export function useNativeChatStructuredComposerSend({
   text: string,
   attachments?: readonly NativeChatComposerImageAttachment[]
 ) => void {
-  const composition = useRef({ draft, imageAttachments })
-  useLayoutEffect(() => {
-    composition.current = { draft, imageAttachments }
-  }, [draft, imageAttachments])
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
   return useCallback(
     (text: string, attachments = imageAttachments): void => {
       if (!structuredTransport) {
@@ -51,11 +59,17 @@ export function useNativeChatStructuredComposerSend({
       const hostCommand =
         isStructuredAgentSessionComposerCommand(text, agent) ||
         (structuredTransport.threadGoal !== undefined && isStructuredAgentSessionGoalCommand(text))
+      // A command picked while images await re-attaching would send them without a file.
+      const attachAgain = nativeChatAttachImagesAgainReason(attachments)
+      if (attachAgain) {
+        structuredTransport.onError(attachAgain)
+        return
+      }
       if (attachments.length > 0 && hostCommand) {
         structuredTransport.onError('Remove attachments before using a chat-session command.')
         return
       }
-      const submitted = composition.current
+      const submitted = readNativeChatComposerDraft(draftScopeKey)
       void dispatchNativeChatStructuredComposerText(structuredTransport, text, attachments)
         .then(({ accepted, error }) => {
           structuredTransport.onError(error)
@@ -71,11 +85,14 @@ export function useNativeChatStructuredComposerSend({
             structuredTransport.runtimeEnvironmentId
           )
           setHistory((previous) => pushHistory(previous, text))
-          if (
-            hostCommand &&
-            (composition.current.draft !== submitted.draft ||
-              composition.current.imageAttachments !== submitted.imageAttachments)
-          ) {
+          // Why: a host command settles after a round trip, and a replaced composer's send after
+          // the user may have typed in the new one; either clears only a draft still as sent, and
+          // leaves an image pasted meanwhile, which was never part of it.
+          if (hostCommand || !mounted.current) {
+            if (clearNativeChatComposerDraftIfUnchanged(draftScopeKey, submitted)) {
+              setCaret(0)
+              clearSkillOrigin()
+            }
             return
           }
           setDraft('')
@@ -91,6 +108,7 @@ export function useNativeChatStructuredComposerSend({
       agent,
       clearImageAttachments,
       clearSkillOrigin,
+      draftScopeKey,
       imageAttachments,
       setCaret,
       setDraft,

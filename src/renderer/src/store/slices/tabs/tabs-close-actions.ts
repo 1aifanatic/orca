@@ -19,6 +19,7 @@ import {
   structuredAgentSessionFocusOwner,
   structuredAgentSessionTargetForTab
 } from '@/runtime/structured-agent-session-owner'
+import { deleteNativeChatComposerDraftsForTab } from '@/components/native-chat/native-chat-composer-draft-store'
 
 export function createTabsCloseActions(
   set: TabsSliceSet,
@@ -73,6 +74,7 @@ export function createTabsCloseActions(
           console.warn('[structured-agent-session] close found no owning host', tab.entityId)
         }
         get().clearNativeChatLaunchDraft(structuredAgentSessionTabId(tab.entityId))
+        deleteNativeChatComposerDraftsForTab(tab.id)
       }
       // Why: on closing the active tab, walk the MRU stack to the previously-active tab; pickNextActiveTab falls back to the neighbor.
       const nextActiveTabId =

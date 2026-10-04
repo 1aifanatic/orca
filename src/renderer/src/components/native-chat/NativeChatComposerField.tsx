@@ -34,6 +34,8 @@ export type NativeChatComposerFieldProps = {
   notice: string | null
   imageAttachments: readonly NativeChatComposerImageAttachment[]
   sendButtonDisabled: boolean
+  /** Why the send button is disabled, when the user can do something about it. */
+  sendBlockedReason?: string | null
   isWorking: boolean
   attachDisabled: boolean
   dictationDisabled: boolean
@@ -73,6 +75,8 @@ export type NativeChatComposerImageAttachment = {
   previewUrl?: string
   /** True while the pasted image is still being written to disk or uploaded. */
   pending?: boolean
+  /** Set on an image the draft names but can't send: the file to attach again. */
+  unavailableName?: string
 }
 
 /**
@@ -108,6 +112,7 @@ export function NativeChatComposerField({
   notice,
   imageAttachments,
   sendButtonDisabled,
+  sendBlockedReason,
   isWorking,
   attachDisabled,
   dictationDisabled,
@@ -285,6 +290,7 @@ export function NativeChatComposerField({
                 attachDisabled={attachDisabled}
                 dictationDisabled={dictationDisabled}
                 sendDisabled={sendButtonDisabled}
+                sendBlockedReason={sendBlockedReason}
                 isWorking={isWorking}
                 isDictating={isDictating}
                 isDictationHoldMode={isDictationHoldMode}

@@ -16,6 +16,8 @@ export type NativeChatComposerActionsProps = {
   attachDisabled: boolean
   dictationDisabled: boolean
   sendDisabled: boolean
+  /** Shown on the disabled send button: what the user can do to send. */
+  sendBlockedReason?: string | null
   isWorking: boolean
   isDictating: boolean
   isDictationHoldMode: boolean
@@ -38,6 +40,7 @@ export function NativeChatComposerActions({
   attachDisabled,
   dictationDisabled,
   sendDisabled,
+  sendBlockedReason,
   isWorking,
   isDictating,
   isDictationHoldMode,
@@ -68,6 +71,26 @@ export function NativeChatComposerActions({
   const dictationLabel = isDictating
     ? translate('components.native-chat.composer.stopDictation', 'Stop dictation')
     : translate('components.native-chat.composer.startDictation', 'Start dictation')
+  const sendReason = isWorking ? null : (sendBlockedReason ?? null)
+  const sendButton = (
+    <Button
+      type="button"
+      data-native-chat-critical-action={isWorking ? 'stop' : undefined}
+      aria-label={
+        isWorking
+          ? translate('components.native-chat.stop', 'Stop the agent')
+          : (sendReason ?? translate('components.native-chat.composer.send', 'Send'))
+      }
+      disabled={sendDisabled}
+      onClick={handleCriticalAction}
+      variant={isWorking ? 'secondary' : 'default'}
+      size="icon"
+      className="size-8 rounded-full pointer-coarse:size-10"
+    >
+      {isWorking ? <Square className="size-3.5 fill-current" /> : <ArrowUp className="size-4" />}
+    </Button>
+  )
+
   return (
     <div className="flex w-full items-center justify-between gap-2">
       <div className="flex min-w-0 items-center gap-0.5">
@@ -145,26 +168,19 @@ export function NativeChatComposerActions({
             {dictationLabel}
           </TooltipContent>
         </Tooltip>
-        <Button
-          type="button"
-          data-native-chat-critical-action={isWorking ? 'stop' : undefined}
-          aria-label={
-            isWorking
-              ? translate('components.native-chat.stop', 'Stop the agent')
-              : translate('components.native-chat.composer.send', 'Send')
-          }
-          disabled={sendDisabled}
-          onClick={handleCriticalAction}
-          variant={isWorking ? 'secondary' : 'default'}
-          size="icon"
-          className="size-8 rounded-full pointer-coarse:size-10"
-        >
-          {isWorking ? (
-            <Square className="size-3.5 fill-current" />
-          ) : (
-            <ArrowUp className="size-4" />
-          )}
-        </Button>
+        {sendReason ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              {/* A disabled button gets no pointer events, so the wrapper carries the hover. */}
+              <span className="inline-flex">{sendButton}</span>
+            </TooltipTrigger>
+            <TooltipContent side="top" sideOffset={4}>
+              {sendReason}
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          sendButton
+        )}
       </div>
     </div>
   )

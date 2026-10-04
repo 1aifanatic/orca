@@ -114,4 +114,30 @@ describe('NativeChatComposerActions', () => {
     expect(onSend).not.toHaveBeenCalled()
     expect(onStop).not.toHaveBeenCalled()
   })
+
+  it('says on the disabled send button what to do to send', () => {
+    render(
+      <NativeChatComposerActions
+        attachDisabled={false}
+        dictationDisabled={false}
+        sendDisabled
+        sendBlockedReason="An image couldn't be brought back. Remove it to send."
+        isWorking={false}
+        isDictating={false}
+        isDictationHoldMode={false}
+        onAttach={vi.fn()}
+        onDictationToggle={vi.fn()}
+        onDictationHoldStart={vi.fn()}
+        onDictationHoldEnd={vi.fn()}
+        onSend={vi.fn()}
+        sessionOptionsSurface={null}
+        sessionOptionsSnapshot={[]}
+      />
+    )
+
+    const send = screen.getByRole('button', {
+      name: "An image couldn't be brought back. Remove it to send."
+    })
+    expect(send.hasAttribute('disabled')).toBe(true)
+  })
 })
