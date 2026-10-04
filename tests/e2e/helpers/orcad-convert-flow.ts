@@ -58,7 +58,7 @@ export function managedServer(page: Page, targetId: string): Promise<unknown> {
   )
 }
 
-export function isManaged(server: unknown): boolean {
+function isManaged(server: unknown): boolean {
   return (
     typeof server === 'object' && server !== null && 'kind' in server && server.kind === 'managed'
   )

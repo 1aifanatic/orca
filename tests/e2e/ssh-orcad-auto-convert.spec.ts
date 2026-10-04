@@ -27,7 +27,6 @@ import { connectSshTestTarget } from './helpers/ssh-test-target-connection'
 import { createRestartSession } from './helpers/orca-restart'
 import {
   convertThenRetire,
-  isManaged,
   managedServer,
   reconnect,
   serverCall,
@@ -266,37 +265,36 @@ test('a host whose sshd refuses TCP forwarding runs a managed server over the st
   try {
     host.blockTcpForwarding!()
     await waitForSessionReady(page)
-    const remote = await connectSshTestTarget(page, host.input, {
-      remotePath: host.remoteRepoPath,
-      displayName: 'orcad forwarding refused E2E',
-      seedInitialTab: false
-    })
+    // Just the connect: a managed host serves repositories through its server, not the relay.
+    const targetId = await page.evaluate(async (input) => {
+      const { target } = await window.api.ssh.addTarget({ target: input })
+      await window.api.ssh.connect({ targetId: target.id })
+      return target.id
+    }, host.input)
+    const mainServer = (): Promise<string> =>
+      page.evaluate(
+        async (id) =>
+          JSON.stringify((await window.api.ssh.getState({ targetId: id }))?.managedServer ?? null),
+        targetId
+      )
 
-    await expect
-      .poll(async () => JSON.stringify(await managedServer(page, remote.targetId)), {
-        timeout: 8 * 60_000
-      })
-      .toContain('"kind":"managed"')
+    await expect.poll(mainServer, { timeout: 8 * 60_000 }).toContain('"kind":"managed"')
     const target = await page.evaluate(
       async (id) => (await window.api.ssh.listTargets()).find((entry) => entry.id === id),
-      remote.targetId
+      targetId
     )
     expect(target?.orcadFence).toBeTruthy()
     expect(target).not.toHaveProperty('managedServerUnavailable')
     const environment = (await page.evaluate(() => window.api.runtimeEnvironments.list())).find(
-      (entry) => entry.orcadDeployment?.sshTargetId === remote.targetId
+      (entry) => entry.orcadDeployment?.sshTargetId === targetId
     )
     expect(environment, 'a managed server registered for the host').toBeTruthy()
     // sshd refuses every forward, so this call can only have ridden a stdio bridge.
     await serverCall(page, environment!.id, 'repo.list')
 
     // A reconnect rebuilds the tunnel the same way.
-    await reconnect(page, remote.targetId)
-    await expect
-      .poll(async () => isManaged(await managedServer(page, remote.targetId)), {
-        timeout: 2 * 60_000
-      })
-      .toBe(true)
+    await reconnect(page, targetId)
+    await expect.poll(mainServer, { timeout: 2 * 60_000 }).toContain('"kind":"managed"')
     await serverCall(page, environment!.id, 'repo.list')
   } finally {
     host.cleanup()
