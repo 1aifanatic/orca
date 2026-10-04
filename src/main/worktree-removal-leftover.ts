@@ -20,15 +20,9 @@ type RemovalLeftoverRecord = Pick<
 /**
  * Whether a checkout path Git no longer registers still holds the removed checkout's own leftover:
  * the very directory the removal accepted (or nothing at all), with no `.git` (Git deleted it first)
- * or a `.git` file naming the admin entry Git removed. Anything else was put at the path since.
+ * or a `.git` file naming the admin entry Git removed. Anything else was put at the path since,
+ * unless the path could not be read, which proves neither.
  */
-export async function isUnregisteredRemovalLeftover(
-  record: RemovalLeftoverRecord
-): Promise<boolean> {
-  return (await unregisteredRemovalLeftoverVerdict(record)) === 'leftover'
-}
-
-/** As isUnregisteredRemovalLeftover, telling a path that could not be read from a different one. */
 export async function unregisteredRemovalLeftoverVerdict(
   record: RemovalLeftoverRecord
 ): Promise<'leftover' | 'unreadable' | 'different-folder' | 'different-checkout'> {

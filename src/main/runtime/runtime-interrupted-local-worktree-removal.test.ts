@@ -113,7 +113,9 @@ type FinishOutcome =
   | ({ status: 'removed' } & RemoveWorktreeResult)
   | { status: 'failed'; error: string }
 
-async function finishAfterRestart(options: { repoGone?: boolean; head?: string } = {}): Promise<{
+async function finishAfterRestart(
+  options: { repoGone?: boolean; head?: string; keepsFailedRecord?: boolean } = {}
+): Promise<{
   outcome: FinishOutcome
   purged: string[]
   remember: ReturnType<typeof vi.fn>
@@ -171,7 +173,9 @@ async function finishAfterRestart(options: { repoGone?: boolean; head?: string }
     (error: unknown) => ({ status: 'failed' as const, error: String(error) })
   )
   await _settlePendingWorktreeRemovalsForTests()
-  expect(await readWorktreeRemovalRecords(recordsDir)).toEqual([])
+  if (!options.keepsFailedRecord) {
+    expect(await readWorktreeRemovalRecords(recordsDir)).toEqual([])
+  }
   expect(waitForPendingWorktreeRemoval(record.worktreeId)).toBeUndefined()
   // Released on every outcome, including a finish that ended before taking its own gate.
   beginTerminalInstall(worktreePath)()
@@ -337,6 +341,37 @@ describe('finishing an interrupted worktree removal after a restart', () => {
       })
       expect(existsSync(join(worktreePath, '.git'))).toBe(true)
       expect(await isRegistered(worktreePath)).toBe(true)
+      expect(removeHostTree).not.toHaveBeenCalled()
+      expect(purged).toEqual([])
+    } finally {
+      vi.mocked(lstat).mockReset()
+    }
+  })
+
+  it('says it could not read an unregistered leftover whose .git it cannot read', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await unlink(join(worktreePath, '.git'))
+    await git(['worktree', 'prune'])
+    const gitLink = join(worktreePath, '.git')
+    const { lstat: readLstat } = await vi.importActual<typeof FsPromises>('node:fs/promises')
+    const denied = Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
+    vi.mocked(lstat).mockImplementation((path, options) =>
+      path === gitLink ? Promise.reject(denied) : readLstat(path, options)
+    )
+
+    try {
+      const { outcome, purged } = await finishAfterRestart({ keepsFailedRecord: true })
+
+      // Not "a different checkout": deleting it again would be refused the same way.
+      expect(outcome).toMatchObject({
+        status: 'failed',
+        error: expect.stringMatching(/could not read the folder/)
+      })
+      // The row keeps that text until the folder can be read.
+      expect(await readWorktreeRemovalRecords(recordsDir)).toMatchObject([
+        { failure: { message: expect.stringMatching(/could not read the folder/) } }
+      ])
+      expect(existsSync(join(worktreePath, 'seed.txt'))).toBe(true)
       expect(removeHostTree).not.toHaveBeenCalled()
       expect(purged).toEqual([])
     } finally {

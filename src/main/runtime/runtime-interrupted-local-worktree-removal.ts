@@ -22,7 +22,7 @@ import {
   assertUnregisteredRemovalLeftover,
   differentCheckoutAtPathError,
   differentFolderAtPathError,
-  isUnregisteredRemovalLeftover,
+  unregisteredRemovalLeftoverVerdict,
   unreadableFolderAtPathError
 } from '../worktree-removal-leftover'
 import { matchCheckoutDirectory } from '../worktree-checkout-identity'
@@ -165,11 +165,11 @@ async function finishInterruptedLocalWorktreeRemoval(
   }
   // At an unregistered path, only a `.git` naming the admin entry Git removed is this checkout's
   // own leftover (Git drops the registration even when its delete fails partway).
-  if (
-    deletable
-      ? !isRecordedCheckout(deletable, record)
-      : !(await isUnregisteredRemovalLeftover(leftoverRecord))
-  ) {
+  const leftover = deletable ? undefined : await unregisteredRemovalLeftoverVerdict(leftoverRecord)
+  if (leftover === 'unreadable') {
+    throw unreadableFolderAtPathError(record.worktreePath)
+  }
+  if (deletable ? !isRecordedCheckout(deletable, record) : leftover !== 'leftover') {
     throw differentCheckoutAtPathError(record.worktreePath)
   }
   // Why: Git deletes `.git` wherever it falls in directory order (early on NTFS) and refuses to

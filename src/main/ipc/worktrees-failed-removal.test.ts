@@ -115,7 +115,6 @@ vi.mock('../worktree-removal-table', async (importOriginal) => ({
 }))
 vi.mock('../worktree-removal-leftover', async (importOriginal) => ({
   ...(await importOriginal<typeof WorktreeRemovalLeftover>()),
-  isUnregisteredRemovalLeftover: vi.fn(async () => true),
   unregisteredRemovalLeftoverVerdict: vi.fn(async () => 'leftover')
 }))
 
