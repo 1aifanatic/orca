@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import type * as NodeOs from 'node:os'
-import { tmpdir } from 'node:os'
+import { tmpdir, userInfo } from 'node:os'
 import { join } from 'node:path'
 
 const { homedirMock, grantMock } = vi.hoisted(() => ({
@@ -29,14 +29,25 @@ import {
 let fakeHomeDir: string
 let userDataDir: string
 
-/** Makes Codex's own default home differ from homedir(), as an isolated rig does. */
+/** Makes a default-home Codex resolve a different home than homedir(), as an isolated rig does. */
 function divergeCodexDefaultHome(): void {
   if (process.platform === 'win32') {
     // Codex reads the profile known folder; this fake home is not it.
     vi.stubEnv('USERPROFILE', fakeHomeDir)
+  } else if (process.platform === 'darwin') {
+    // login(1) gives panes the account home, not this one.
+    vi.stubEnv('HOME', fakeHomeDir)
   } else {
     // Codex treats an empty HOME as unset and falls back to the passwd entry.
     vi.stubEnv('HOME', '')
+  }
+}
+
+function alignCodexDefaultHome(): void {
+  if (process.platform === 'win32') {
+    vi.stubEnv('USERPROFILE', undefined)
+  } else {
+    vi.stubEnv('HOME', userInfo().homedir)
   }
 }
 
@@ -84,6 +95,7 @@ describe('real-home lane when Codex resolves a different default home', () => {
   })
 
   it('routes to the real home as before when the homes agree', () => {
+    alignCodexDefaultHome()
     expect(isRealHomeCodexHookLaneUsable()).toBe(true)
     _internals.resetForTesting('removed')
     expect(isRealHomeCodexHookLaneUsable()).toBe(true)

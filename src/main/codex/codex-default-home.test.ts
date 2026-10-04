@@ -25,7 +25,7 @@ afterEach(() => {
 })
 
 describe('isSystemCodexHomeCodexDefault', () => {
-  it('agrees on POSIX unless HOME is set but empty', () => {
+  it('agrees on Linux unless HOME is set but empty', () => {
     setPlatform('linux')
     vi.stubEnv('HOME', '/home/user')
     expect(isSystemCodexHomeCodexDefault()).toBe(true)
@@ -35,6 +35,28 @@ describe('isSystemCodexHomeCodexDefault', () => {
     vi.stubEnv('HOME', '')
     expect(isSystemCodexHomeCodexDefault()).toBe(false)
     expect(userInfoMock).not.toHaveBeenCalled()
+  })
+
+  it('agrees on macOS only when HOME is the account home that login(1) restores', () => {
+    setPlatform('darwin')
+    userInfoMock.mockReturnValue({ homedir: '/Users/neil' })
+    vi.stubEnv('HOME', '/Users/neil/')
+    expect(isSystemCodexHomeCodexDefault()).toBe(true)
+    vi.stubEnv('HOME', undefined)
+    expect(isSystemCodexHomeCodexDefault()).toBe(true)
+    vi.stubEnv('HOME', '/tmp/rig/home')
+    expect(isSystemCodexHomeCodexDefault()).toBe(false)
+    vi.stubEnv('HOME', '')
+    expect(isSystemCodexHomeCodexDefault()).toBe(false)
+  })
+
+  it('disagrees on macOS when the account home cannot be read', () => {
+    setPlatform('darwin')
+    userInfoMock.mockImplementation(() => {
+      throw new Error('no passwd entry')
+    })
+    vi.stubEnv('HOME', '/Users/neil')
+    expect(isSystemCodexHomeCodexDefault()).toBe(false)
   })
 
   it('agrees on Windows when USERPROFILE is unset or names the profile directory', () => {
