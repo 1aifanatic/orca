@@ -1,18 +1,17 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
 import { retirePersistedStablePaneOwner } from '../../ipc/pty/pane/stable-owner'
 import { createStore, makeTerminalTab, testState } from '../../persistence-test-harness'
 import { TEST_LEAF_1, TEST_LEAF_2 } from '../../persistence-session-fixtures'
+import { topologyClassAChanges } from './terminal-topology-class-a-diff'
 import {
   armTopologyWriteGuardForTests,
-  attributeTopologyWriter,
   observeTopologySinkWrite,
   takeTopologyWriteGuardReport,
-  TEST_SEED_WRITER,
-  topologyClassAChanges,
   withTopologyCommit
 } from './terminal-topology-write-guard'
 import { UNROUTED_TOPOLOGY_WRITERS } from './terminal-topology-unrouted-writers'
@@ -22,6 +21,7 @@ vi.mock('electron', () => ({
   safeStorage: { isEncryptionAvailable: () => false }
 }))
 
+const REPO_ROOT = fileURLToPath(new URL('../../../..', import.meta.url))
 const WORKTREE = 'repo1::/w'
 const TAB = 'tab-1'
 const STABLE_OWNER = 'src/main/ipc/pty/pane/stable-owner.ts'
@@ -80,7 +80,7 @@ describe('terminal topology write guard', () => {
   })
 
   it('reports an unrouted writer that changes class (a) outside a commit', async () => {
-    armTopologyWriteGuardForTests({ allowedWriters: new Set(), freeze: false })
+    armTopologyWriteGuardForTests({ allowedWriters: new Set(), freeze: false, repoRoot: REPO_ROOT })
     expect(await retireSecondPane(store)).toBe(true)
     const { violations, allowed } = takeTopologyWriteGuardReport()
     expect(allowed).toEqual([])
@@ -95,7 +95,8 @@ describe('terminal topology write guard', () => {
     expect(UNROUTED_TOPOLOGY_WRITERS).toHaveProperty([STABLE_OWNER])
     armTopologyWriteGuardForTests({
       allowedWriters: new Set(Object.keys(UNROUTED_TOPOLOGY_WRITERS)),
-      freeze: false
+      freeze: false,
+      repoRoot: REPO_ROOT
     })
     expect(await retireSecondPane(store)).toBe(true)
     const { violations, allowed } = takeTopologyWriteGuardReport()
@@ -104,7 +105,7 @@ describe('terminal topology write guard', () => {
   })
 
   it('admits the same write inside a commit scope', () => {
-    armTopologyWriteGuardForTests({ allowedWriters: new Set(), freeze: false })
+    armTopologyWriteGuardForTests({ allowedWriters: new Set(), freeze: false, repoRoot: REPO_ROOT })
     const prior = boundSession()
     const next = { ...prior, terminalTopologyRevisionByRepoId: { repo1: 2 } }
     withTopologyCommit(() => observeTopologySinkWrite(prior, next))
@@ -112,13 +113,13 @@ describe('terminal topology write guard', () => {
   })
 
   it('treats a test seeding the store as no writer', () => {
-    armTopologyWriteGuardForTests({ allowedWriters: new Set(), freeze: false })
+    armTopologyWriteGuardForTests({ allowedWriters: new Set(), freeze: false, repoRoot: REPO_ROOT })
     store.setWorkspaceSession({ ...boundSession(), terminalTopologyRevisionByRepoId: { repo1: 5 } })
     expect(takeTopologyWriteGuardReport()).toEqual({ violations: [], allowed: [] })
   })
 
   it('freezes published sessions so an in-place write throws at the writer', () => {
-    armTopologyWriteGuardForTests({ allowedWriters: new Set(), freeze: true })
+    armTopologyWriteGuardForTests({ allowedWriters: new Set(), freeze: true, repoRoot: REPO_ROOT })
     store.setWorkspaceSession(boundSession())
     const published = store.getWorkspaceSession()
     expect(() => {
@@ -132,7 +133,7 @@ describe('terminal topology write guard', () => {
   // Pins why the suite-wide arming leaves freeze off: the binding write is still in place (P1)
   // until it becomes copy-on-write in B1-4.
   it('the binding write still mutates the published session in place', async () => {
-    armTopologyWriteGuardForTests({ allowedWriters: new Set(), freeze: true })
+    armTopologyWriteGuardForTests({ allowedWriters: new Set(), freeze: true, repoRoot: REPO_ROOT })
     store.setWorkspaceSession(boundSession())
     await expect(
       store.persistPtyBinding({
@@ -212,43 +213,5 @@ describe('class (a) comparison', () => {
   it('compares by value, so a rebuilt but equal session is no change', () => {
     const prior = boundSession()
     expect(topologyClassAChanges(prior, structuredClone(prior))).toEqual([])
-  })
-})
-
-describe('writer attribution', () => {
-  const frame = (path: string): string => `    at fn (${path}:10:5)`
-  const stack = (...paths: string[]): string => ['Error', ...paths.map(frame)].join('\n')
-
-  it('skips the sinks and names the first source frame', () => {
-    expect(
-      attributeTopologyWriter(
-        stack(
-          '/repo/src/main/persistence/terminal-topology/terminal-topology-write-guard.ts',
-          '/repo/src/main/persistence/loading-store/session-snapshot-operations.ts',
-          '/repo/src/main/runtime/runtime-workspace-session-controller.ts',
-          '/repo/src/main/runtime/orca-runtime-persist-headless-terminal-title.ts',
-          '/repo/src/main/runtime/caller.test.ts'
-        )
-      )
-    ).toBe('src/main/runtime/orca-runtime-persist-headless-terminal-title.ts')
-  })
-
-  it('normalizes Windows and file URL frames and skips dependencies', () => {
-    expect(
-      attributeTopologyWriter(
-        stack(
-          'file:///C:/repo/node_modules/vitest/dist/index.js',
-          'C:\\repo\\src\\main\\ipc\\pty\\pane\\stable-owner.ts'
-        )
-      )
-    ).toBe(STABLE_OWNER)
-  })
-
-  it('reads a test file or fixture as seeding, and no source frame as unknown', () => {
-    expect(attributeTopologyWriter(stack('/repo/src/main/a.test.ts'))).toBe(TEST_SEED_WRITER)
-    expect(attributeTopologyWriter(stack('/repo/src/main/persistence-test-harness.ts'))).toBe(
-      TEST_SEED_WRITER
-    )
-    expect(attributeTopologyWriter(stack('node:internal/process/task_queues'))).toBe('unknown')
   })
 })

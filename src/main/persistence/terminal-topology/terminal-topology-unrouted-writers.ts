@@ -8,7 +8,8 @@ export const UNROUTED_TOPOLOGY_WRITERS: Readonly<Record<string, string>> = {
     'R5 → clearWorktreeResumeRecords (B1-8)',
   'src/main/runtime/orca-runtime-persist-terminal-surface-retirements.ts':
     'R6 → retireSurfaces (B1-8)',
-  'src/main/runtime/runtime-terminal-orphan-adoption.ts': 'R9 → adoptOrphan (B1-8)',
+  'src/main/runtime/orca-runtime-adopt-terminal-orphans-from-inventory.ts':
+    'R9 → adoptOrphan (B1-8)',
   'src/main/runtime/orca-runtime-apply-mobile-session-tab-navigation.ts':
     'R10 deleted by split placement (B1-4); R11 → writePresentation (B1-9)',
   'src/main/runtime/orca-runtime-attach-window.ts': 'R13 → recordWindowlessBindings (B1-9)',

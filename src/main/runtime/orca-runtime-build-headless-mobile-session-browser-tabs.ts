@@ -12,6 +12,7 @@ import { holdAgentSessionInventory } from './structured-agent-session-inventory-
 import type { Tab } from '../../shared/tab-types'
 import {
   resolveTerminalCloseTarget,
+  terminalSurfaceCloseMutation,
   type PaneCloseResolution,
   type RendererTerminalClose,
   type TerminalSurfaceCloseOptions
@@ -24,7 +25,6 @@ import { retireTerminalSurfacesFromSnapshot } from './mobile-session-terminal-re
 import type { PtyControllerInventory } from './runtime-pty-controller-contract'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../shared/constants'
 import { captureAcknowledgedTerminalTabRetirement } from './workspace-session-terminal-tab-retirement-identity'
-import { closeLeaf, closeTab } from '../persistence/terminal-topology/terminal-topology-commit'
 
 export class OrcaRuntimeWithBuildHeadlessMobileSessionBrowserTabs extends OrcaRuntimeWithPersistTerminalSurfaceRetirements {
   // Why: headless serve backs browser panes with offscreen WebContents that live
@@ -130,22 +130,20 @@ export class OrcaRuntimeWithBuildHeadlessMobileSessionBrowserTabs extends OrcaRu
     let ptyIdsToKill: string[] = []
     let refusal: Error | undefined
     try {
-      const closeCommit = {
-        worktreeId,
-        options,
-        requestedSession: this.getWorkspaceSessionForWorktree(worktreeId),
-        ownerMatches: () => !acknowledgeTabRetirement || acknowledgeTabRetirement().matches,
-        hostId: () => this.getWorkspaceSessionHostIdForWorktree(worktreeId),
-        getSession: (hostId) => store.getWorkspaceSession(hostId),
-        setSession: (session, hostId) => store.setWorkspaceSession(session, hostId),
-        onClosed: (closedPtyIds) => {
-          ptyIdsToKill = closedPtyIds
-        }
-      }
       refusal = await store.runDurableMutation(
-        target.kind === 'pane'
-          ? closeLeaf({ ...closeCommit, target })
-          : closeTab({ ...closeCommit, target })
+        terminalSurfaceCloseMutation({
+          worktreeId,
+          target,
+          options,
+          requestedSession: this.getWorkspaceSessionForWorktree(worktreeId),
+          ownerMatches: () => !acknowledgeTabRetirement || acknowledgeTabRetirement().matches,
+          hostId: () => this.getWorkspaceSessionHostIdForWorktree(worktreeId),
+          getSession: (hostId) => store.getWorkspaceSession(hostId),
+          setSession: (session, hostId) => store.setWorkspaceSession(session, hostId),
+          onClosed: (closedPtyIds) => {
+            ptyIdsToKill = closedPtyIds
+          }
+        })
       )
     } catch (error) {
       console.error('[runtime] failed to persist terminal close:', error)

@@ -9,6 +9,7 @@ export function commitWorkspaceSessionPartition(
   hostId: ExecutionHostId,
   session: WorkspaceSessionState
 ): void {
+  // Why: 'local' always lives in workspaceSession, never workspaceSessionsByHostId.local.
   if (hostId === LOCAL_EXECUTION_HOST_ID) {
     observeTopologySinkWrite(state.workspaceSession, session)
     state.workspaceSession = session
