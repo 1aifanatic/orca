@@ -10,6 +10,13 @@ import {
   writeChunksToTerminal
 } from './terminal-restore-parity-fixture'
 
+type AsyncOscParser = {
+  registerOscHandler(
+    identifier: number,
+    callback: (data: string) => boolean | Promise<boolean>
+  ): { dispose(): void }
+}
+
 describe('terminal parity fixture writes', () => {
   it('queues every original chunk and resolves only after the last callback', async () => {
     const { terminal } = createRendererParityTerminal({ cols: 8, rows: 2 })
@@ -59,17 +66,11 @@ describe('terminal parity fixture writes', () => {
       releaseParser = () => resolve(true)
     })
     // xterm supports async handlers; its shipped public typings still say boolean.
-    const registration: unknown = Reflect.apply(
-      terminal.parser.registerOscHandler,
-      terminal.parser,
-      [
-        777,
-        () => {
-          signalEntered()
-          return barrier
-        }
-      ]
-    )
+    const parser: AsyncOscParser = terminal.parser
+    const registration = parser.registerOscHandler(777, () => {
+      signalEntered()
+      return barrier
+    })
     try {
       let completed = false
       const pending = writeChunksToTerminal(terminal, [
@@ -89,14 +90,7 @@ describe('terminal parity fixture writes', () => {
       expect(terminal.buffer.active.getLine(0)?.getCell(3)?.getFgColor()).toBe(1)
     } finally {
       releaseParser()
-      if (
-        typeof registration === 'object' &&
-        registration !== null &&
-        'dispose' in registration &&
-        typeof registration.dispose === 'function'
-      ) {
-        registration.dispose()
-      }
+      registration.dispose()
       terminal.dispose()
     }
   })
