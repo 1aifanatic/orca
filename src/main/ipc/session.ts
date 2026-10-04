@@ -2,12 +2,17 @@ import { ipcMain } from 'electron'
 import type { Store } from '../persistence'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { parseTerminalSurfaceCloseTarget } from '../../shared/terminal-surface-close-target'
+import { isFencedOrcadSourceSessionPartition } from '../../shared/orcad-fenced-source-session'
 import type {
   WorkspaceSessionPatch,
   WorkspaceSessionState
 } from '../../shared/workspace-session-state-types'
 
 export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeService): void {
+  // Why: renderer saves would rewrite a fenced host's source partition without its hidden rows.
+  const isFenced = (hostId?: string | null): boolean =>
+    isFencedOrcadSourceSessionPartition((id) => store.getSshTarget(id), hostId)
+
   // Why: hostId is an optional second arg so an older renderer that invokes
   // these channels without it keeps reading/writing the 'local' partition
   // exactly as before. Channel names stay stable.
@@ -23,11 +28,15 @@ export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeServic
   })
 
   ipcMain.handle('session:set', (_event, args: WorkspaceSessionState, hostId?: string | null) => {
-    store.setWorkspaceSession(args, hostId)
+    if (!isFenced(hostId)) {
+      store.setWorkspaceSession(args, hostId)
+    }
   })
 
   ipcMain.handle('session:patch', (_event, args: WorkspaceSessionPatch, hostId?: string | null) => {
-    store.patchWorkspaceSession(args, hostId)
+    if (!isFenced(hostId)) {
+      store.patchWorkspaceSession(args, hostId)
+    }
   })
 
   // Why: a renderer save cannot shrink membership main owns, so each close commits it explicitly.
@@ -57,7 +66,9 @@ export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeServic
   ipcMain.on('session:set-sync', (event, args: WorkspaceSessionState, hostId?: string | null) => {
     void (async () => {
       try {
-        store.setWorkspaceSession(args, hostId)
+        if (!isFenced(hostId)) {
+          store.setWorkspaceSession(args, hostId)
+        }
         await store.flushPendingOrThrowAsync({ drainToStableGeneration: false })
       } catch (error) {
         console.error('[persistence] Failed to flush legacy session checkpoint:', error)
