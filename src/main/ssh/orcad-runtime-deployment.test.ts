@@ -67,8 +67,7 @@ const { createManagedOrcadEnvironment, getManagedOrcadRuntimeStatus } =
 const VERSION = '0.1.0+abc123'
 const emptyRecord = { active: null, previous: null, activatedAt: null, snapshot: null }
 
-function readiness() {
-  const endpoint = 'ws://127.0.0.1:6768'
+function readiness(endpoint = 'ws://127.0.0.1:6768') {
   return {
     runtimeId: 'runtime-1',
     boundEndpoint: endpoint,
@@ -178,6 +177,16 @@ describe('createManagedOrcadEnvironment', () => {
       }
     )
     expect(mocks.closeTunnel).not.toHaveBeenCalled()
+  })
+
+  it('tunnels to the port orcad bound when 6768 is taken, and keeps 6768 as its launch port', async () => {
+    mocks.probe.mockResolvedValue(readiness('ws://127.0.0.1:58520'))
+    await deploy()
+
+    const [, , , remotePort, checks] = mocks.startTunnel.mock.calls[0] ?? []
+    expect(remotePort).toBe(58_520)
+    expect(checks).toMatchObject({ preferredPort: 6_768 })
+    expect(listEnvironments(userDataPath)[0]?.orcadDeployment?.remotePort).toBe(6_768)
   })
 
   it('deploys an empty host with a zero census and an unknown one over an active slot', async () => {

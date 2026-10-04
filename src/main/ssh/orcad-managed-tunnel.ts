@@ -16,12 +16,21 @@ import {
   type OrcadManagedTunnelResumeOptions
 } from './orcad-managed-tunnel-resume'
 import { getSshConnectionManager, getSshTargetRegistryStore } from './ssh-target-registry'
+import {
+  environmentForwardChecks,
+  forwardToVerifiedOrcad,
+  MANAGED_ORCAD_TUNNEL_TARGETING,
+  PERSISTED_PORT_TARGETING,
+  type OrcadManagedTunnelTargeting,
+  type OrcadTunnelStartChecks
+} from './orcad-managed-tunnel-target'
 
 type OrcadManagedTunnelDependencies = {
   getConnectionManager: () => SshConnectionManager | null
   getTargetStore: () => ReturnType<typeof getSshTargetRegistryStore>
   forwardManager?: SshPortForwardManager
   probeTunnel?: OrcadManagedTunnelProbe
+  targeting?: OrcadManagedTunnelTargeting
 }
 
 export class OrcadManagedTunnelManager {
@@ -30,12 +39,14 @@ export class OrcadManagedTunnelManager {
   private readonly ownershipGenerations = new Map<string, number>()
   private readonly forwards: SshPortForwardManager
   private readonly resumeRecovery: OrcadManagedTunnelResumeRecovery
+  private readonly targeting: OrcadManagedTunnelTargeting
   private managerGeneration = 0
 
   constructor(private readonly dependencies: OrcadManagedTunnelDependencies) {
     this.forwards =
       dependencies.forwardManager ??
       new SshPortForwardManager({}, [new OrcadManagedTunnelTransportProvider()])
+    this.targeting = dependencies.targeting ?? PERSISTED_PORT_TARGETING
     this.resumeRecovery = new OrcadManagedTunnelResumeRecovery({
       active: this.active,
       forwards: this.forwards,
@@ -44,7 +55,8 @@ export class OrcadManagedTunnelManager {
       getTargetStore: dependencies.getTargetStore,
       inFlight: this.inFlight,
       ownershipGenerations: this.ownershipGenerations,
-      probeTunnel: dependencies.probeTunnel
+      probeTunnel: dependencies.probeTunnel,
+      targeting: this.targeting
     })
     this.forwards.setCallbacks({
       onForwardClosed: (entry) => {
@@ -81,7 +93,8 @@ export class OrcadManagedTunnelManager {
     environmentId: string,
     target: SshTarget,
     connection: SshConnection,
-    remotePort: number
+    remotePort: number,
+    checks: OrcadTunnelStartChecks = {}
   ): Promise<number> {
     if (!target.generation) {
       throw new Error('Managed Orca SSH target has no registration generation.')
@@ -97,16 +110,18 @@ export class OrcadManagedTunnelManager {
     if (!stillCurrent()) {
       throw new Error('Orca SSH tunnel setup was superseded.')
     }
-    const forward = await this.forwards.addForward(
-      target.id,
+    const forward = await forwardToVerifiedOrcad({
+      targetId: target.id,
       connection,
-      0,
-      '127.0.0.1',
+      forwards: this.forwards,
+      localPort: 0,
+      label: 'Managed Orca server',
       remotePort,
-      `Managed Orca server`
-    )
-    if (!stillCurrent()) {
-      await this.forwards.removeForwardAndWait(forward.id)
+      rereadRemotePort: checks.rereadRemotePort,
+      verify: checks.verify,
+      stillCurrent
+    })
+    if (!forward) {
       throw new Error('Orca SSH tunnel setup was superseded.')
     }
     this.active.set(environmentId, {
@@ -114,6 +129,7 @@ export class OrcadManagedTunnelManager {
       forwardId: forward.id,
       localPort: forward.localPort,
       remotePort: forward.remotePort,
+      preferredPort: checks.preferredPort ?? remotePort,
       sshTargetGeneration: target.generation,
       targetId: target.id,
       transportGeneration
@@ -204,11 +220,16 @@ export class OrcadManagedTunnelManager {
       active.targetId === target.id &&
       active.sshTargetGeneration === target.generation &&
       active.localPort === deployment.localPort &&
-      active.remotePort === deployment.remotePort
+      active.preferredPort === deployment.remotePort
     ) {
       return
     }
-    if (active) {
+    const checks = await environmentForwardChecks(this.targeting, {
+      environment,
+      target,
+      connection
+    })
+    if (active && stillOwned()) {
       await this.forwards.removeForwardAndWait(active.forwardId)
       if (this.active.get(environment.id) === active) {
         this.active.delete(environment.id)
@@ -217,20 +238,17 @@ export class OrcadManagedTunnelManager {
     if (!stillOwned()) {
       return
     }
-    const forward = await this.forwards.addForward(
-      target.id,
+    const forward = await forwardToVerifiedOrcad({
+      targetId: target.id,
       connection,
-      deployment.localPort,
-      '127.0.0.1',
-      deployment.remotePort,
-      `Managed Orca server: ${environment.name}`
-    )
-    if (forward.localPort !== deployment.localPort) {
-      await this.forwards.removeForwardAndWait(forward.id)
-      throw new Error('Managed Orca tunnel bound an unexpected local port.')
-    }
-    if (!stillOwned() || connection.getTransportGeneration() !== transportGeneration) {
-      await this.forwards.removeForwardAndWait(forward.id)
+      forwards: this.forwards,
+      localPort: deployment.localPort,
+      label: `Managed Orca server: ${environment.name}`,
+      ...checks,
+      stillCurrent: () =>
+        stillOwned() && connection.getTransportGeneration() === transportGeneration
+    })
+    if (!forward) {
       return
     }
     this.active.set(environment.id, {
@@ -238,6 +256,7 @@ export class OrcadManagedTunnelManager {
       forwardId: forward.id,
       localPort: forward.localPort,
       remotePort: forward.remotePort,
+      preferredPort: deployment.remotePort,
       sshTargetGeneration: target.generation,
       targetId: target.id,
       transportGeneration
@@ -247,7 +266,8 @@ export class OrcadManagedTunnelManager {
 
 const managedTunnels = new OrcadManagedTunnelManager({
   getConnectionManager: getSshConnectionManager,
-  getTargetStore: getSshTargetRegistryStore
+  getTargetStore: getSshTargetRegistryStore,
+  targeting: MANAGED_ORCAD_TUNNEL_TARGETING
 })
 
 export async function ensureOrcadManagedTunnel(
@@ -255,13 +275,17 @@ export async function ensureOrcadManagedTunnel(
   selector: string
 ): Promise<void> {
   const environment = resolveEnvironment(userDataPath, selector)
-  await managedTunnels.ensure(environment, () => {
-    try {
-      return resolveEnvironment(userDataPath, environment.id)
-    } catch {
-      return null
-    }
-  })
+  await managedTunnels.ensure(environment, () =>
+    resolveEnvironmentOrNull(userDataPath, environment.id)
+  )
+}
+
+function resolveEnvironmentOrNull(userDataPath: string, id: string) {
+  try {
+    return resolveEnvironment(userDataPath, id)
+  } catch {
+    return null
+  }
 }
 
 export function disposeOrcadManagedTunnels(): void {
@@ -274,13 +298,7 @@ export function recoverOrcadManagedTunnelsAfterHostResume(
 ): Promise<void> {
   return managedTunnels.recoverAfterHostResume({
     ...options,
-    resolveEnvironment: (environmentId) => {
-      try {
-        return resolveEnvironment(userDataPath, environmentId)
-      } catch {
-        return null
-      }
-    }
+    resolveEnvironment: (environmentId) => resolveEnvironmentOrNull(userDataPath, environmentId)
   })
 }
 
@@ -288,9 +306,10 @@ export function startOrcadManagedTunnel(
   environmentId: string,
   target: SshTarget,
   connection: SshConnection,
-  remotePort: number
+  remotePort: number,
+  checks?: OrcadTunnelStartChecks
 ): Promise<number> {
-  return managedTunnels.start(environmentId, target, connection, remotePort)
+  return managedTunnels.start(environmentId, target, connection, remotePort, checks)
 }
 
 export function closeOrcadManagedTunnel(environmentId: string): Promise<void> {

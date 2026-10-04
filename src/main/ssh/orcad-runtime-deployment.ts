@@ -30,6 +30,7 @@ import { tunneledOrcadPairingCode } from './orcad-tunneled-pairing'
 import { hasRegisteredDirectSshAuthority } from './ssh-target-registry'
 import { resolveOrcadMigrationFence } from './orcad-migration-source-fence'
 import type { SshTarget } from '../../shared/ssh-types'
+import { deployedOrcadTunnelChecks } from './orcad-managed-tunnel-identity'
 import {
   isForceableOrcadDeferral,
   managedOrcadSlot,
@@ -147,16 +148,21 @@ export async function createManagedOrcadEnvironment(
         activeVersion: deployResult.fullVersion,
         readiness
       })
+      // Why read back: orcad binds another port when the preferred one is taken on the host.
+      const tunnel = deployedOrcadTunnelChecks(readiness, () =>
+        probeManagedOrcadReadiness(context, localOrcadDir, deployResult.fullVersion, args.signal)
+      )
       const localPort = await startOrcadManagedTunnel(
         environmentId,
         claimed,
         connection,
-        ORCAD_MANAGED_REMOTE_PORT
+        tunnel.remotePort,
+        { ...tunnel, preferredPort: ORCAD_MANAGED_REMOTE_PORT }
       )
       const environment = addManagedOrcadEnvironment(userDataPath, {
         id: environmentId,
         name: args.name,
-        pairingCode: tunneledOrcadPairingCode(readiness, localPort),
+        pairingCode: tunneledOrcadPairingCode(tunnel.readiness(), localPort),
         orcadDeployment: {
           sshTargetId: claimed.id,
           sshTargetGeneration: targetGeneration,
