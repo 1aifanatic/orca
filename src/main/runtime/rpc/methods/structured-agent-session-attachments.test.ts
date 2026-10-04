@@ -9,10 +9,8 @@ import {
   AGENT_SESSION_ATTACHMENTS_RUNTIME_CAPABILITY,
   RUNTIME_CAPABILITIES
 } from '../../../../shared/protocol-version'
-import {
-  AgentSessionAttachmentStore,
-  setAgentSessionAttachmentStore
-} from '../../../native-chat/agent-session-attachments/agent-session-attachment-store'
+import { AgentSessionAttachmentStore } from '../../../native-chat/agent-session-attachments/agent-session-attachment-store'
+import { setAgentSessionAttachmentStore } from '../../../native-chat/agent-session-attachments/agent-session-attachment-store-registry'
 import { STRUCTURED_AGENT_SESSION_ATTACHMENT_METHODS } from './structured-agent-session-attachments'
 import { isMobileE2EETextPayloadWithinLimit } from '../mobile-e2ee-outbound-admission'
 import {

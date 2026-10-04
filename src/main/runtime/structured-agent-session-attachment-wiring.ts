@@ -2,10 +2,8 @@
 // the same state directory as the journal, whose database holds the claims the sweeps honor.
 
 import { mkdirSync } from 'node:fs'
-import {
-  AgentSessionAttachmentStore,
-  setAgentSessionAttachmentStore
-} from '../native-chat/agent-session-attachments/agent-session-attachment-store'
+import { AgentSessionAttachmentStore } from '../native-chat/agent-session-attachments/agent-session-attachment-store'
+import { setAgentSessionAttachmentStore } from '../native-chat/agent-session-attachments/agent-session-attachment-store-registry'
 import {
   startAgentSessionAttachmentSweeps,
   type AgentSessionAttachmentSweeper

@@ -17,10 +17,8 @@ import {
   AttachmentUploadStartParams
 } from '../../../../shared/rpc-contract/agent-session-attachment-params'
 import { remoteFileContentBudget } from './files-remote-content-budget'
-import {
-  getAgentSessionAttachmentStore,
-  type AgentSessionAttachmentStore
-} from '../../../native-chat/agent-session-attachments/agent-session-attachment-store'
+import type { AgentSessionAttachmentStore } from '../../../native-chat/agent-session-attachments/agent-session-attachment-store'
+import { getAgentSessionAttachmentStore } from '../../../native-chat/agent-session-attachments/agent-session-attachment-store-registry'
 
 async function requireStore(
   ctx: RpcContext

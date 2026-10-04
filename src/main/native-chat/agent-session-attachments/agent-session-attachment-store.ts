@@ -223,14 +223,3 @@ export async function removeQuietly(path: string): Promise<void> {
   // Cleanup is best effort: a file that will not go is retried by the next sweep.
   await rm(path, { recursive: true, force: true }).catch(() => {})
 }
-
-let installedStore: AgentSessionAttachmentStore | null = null
-
-/** Installed with the structured host, which owns the state directory the store lives in. */
-export function setAgentSessionAttachmentStore(store: AgentSessionAttachmentStore | null): void {
-  installedStore = store
-}
-
-export function getAgentSessionAttachmentStore(): AgentSessionAttachmentStore | null {
-  return installedStore
-}
