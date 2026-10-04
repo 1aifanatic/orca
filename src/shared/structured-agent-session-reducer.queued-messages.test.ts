@@ -175,6 +175,18 @@ describe('structured agent session reducer: queuedMessages', () => {
     expect(resumed.queuePause).toBeNull()
   })
 
+  it("keeps the queue's next card with the list it rode with, from a snapshot and a batch", () => {
+    const named = reduceStructuredAgentSession(EMPTY_STRUCTURED_AGENT_SESSION, {
+      type: 'event',
+      event: { ...snapshot([queued('draft-1', 1)]), nextQueuedMessageId: 'draft-1' }
+    })
+    expect(named.nextQueuedMessageId).toBe('draft-1')
+    const kept = reduceStructuredAgentSession(named, { type: 'event', event: batch(2) })
+    expect(kept.nextQueuedMessageId).toBe('draft-1')
+    const sent = reduceStructuredAgentSession(kept, { type: 'event', event: batch(3, []) })
+    expect(sent.nextQueuedMessageId).toBeNull()
+  })
+
   it('changes state for a pause-only update at an unchanged cursor, journal and list', () => {
     const state = reduceStructuredAgentSession(hydrated([queued('draft-1', 1)]), {
       type: 'event',

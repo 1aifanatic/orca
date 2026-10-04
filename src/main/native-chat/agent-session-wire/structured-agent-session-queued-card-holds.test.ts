@@ -4,7 +4,7 @@
 // composer button and the card labels never flip in between. Where the host would refuse the send,
 // it names no next card, so the chat reads idle.
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import type {
   AgentSessionQueuedMessage,
@@ -20,6 +20,7 @@ import {
   nativeChatComposerPrimaryAction,
   type NativeChatComposerPrimaryAction
 } from '../../../renderer/src/components/native-chat/native-chat-composer-primary-action'
+import { JournalQueuedMessages } from '../agent-session-journal/journal-queued-messages'
 import {
   readQueuePublication,
   structuredQueueSendGate
@@ -187,6 +188,31 @@ describe('which pause holds each card', () => {
     await eventually(async () => expect(await rig.handoff(first)).toBeDefined())
     await eventually(() => expect(views.at(-1)?.stopLive).toBe(true))
     expectOneWorkingRun(views.slice(before))
+  })
+})
+
+describe("the queue's next card on a history page", () => {
+  it('names the card a Resume released while the drain still waits for the session', async () => {
+    const working = await rig.workingSend()
+    const card = await queuedDraft('held, then released')
+    await rig.stop()
+    await rig.settleAccepted(working, 'stopped')
+    // The Resume row is written; its adoption, and so the drain behind it, waits.
+    let release: () => void = () => undefined
+    const adopt = vi
+      .spyOn(JournalQueuedMessages.prototype, 'adopt')
+      .mockImplementationOnce(() => new Promise((resolve) => (release = () => resolve(false))))
+    const resumed = rig.resume()
+    try {
+      await eventually(async () => {
+        const page = await rig.host.history({ sessionId: HOST_TEST_SESSION, direction: 'tail' })
+        expect(page.ok && page.page.nextQueuedMessageId).toBe(card)
+      })
+    } finally {
+      release()
+      adopt.mockRestore()
+    }
+    expect(await resumed).toMatchObject({ ok: true, value: { resumed: true } })
   })
 })
 
