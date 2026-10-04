@@ -52,8 +52,8 @@ function renderSortOrder(options?: { strict?: boolean }) {
 function renderSortOrderOutsideAct(sortBy: SortBy) {
   const errors: unknown[] = []
   const latest: { ids: string[] } = { ids: [] }
-  const previousActEnvironment = Reflect.get(globalThis, 'IS_REACT_ACT_ENVIRONMENT')
-  Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', false)
+  const previousActEnvironment = globalThis.IS_REACT_ACT_ENVIRONMENT
+  globalThis.IS_REACT_ACT_ENVIRONMENT = false
   const root = createRoot(document.createElement('div'), {
     onUncaughtError: (error) => errors.push(error),
     onCaughtError: (error) => errors.push(error)
@@ -68,7 +68,7 @@ function renderSortOrderOutsideAct(sortBy: SortBy) {
     latest,
     unmount: () => {
       root.unmount()
-      Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', previousActEnvironment)
+      globalThis.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment
     }
   }
 }

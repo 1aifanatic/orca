@@ -63,6 +63,15 @@ describe('settledSortEpoch', () => {
     expect(settled()).toBe(true)
   })
 
+  it('settles a pending bump when a row arrives without its own bump', () => {
+    useAppStore.setState({ sortBy: 'recent' })
+    bump()
+    expect(settled()).toBe(false)
+    useAppStore.setState({ worktreesByRepo: { 'repo-1': [makeWorktree('a', 'A')] } })
+    expect(settled()).toBe(true)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it('ignores archived rows when detecting adds and removes', () => {
     useAppStore.setState((s) => ({
       sortBy: 'recent',

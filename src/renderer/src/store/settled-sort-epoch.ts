@@ -38,10 +38,13 @@ export function installSettledSortEpoch(
   api.subscribe((state, previous) => {
     const epochChanged = state.sortEpoch !== previous.sortEpoch
     let structuralChange = false
-    if (epochChanged) {
+    // Why also on row writes: a bump-less add during a pending window must still settle now.
+    if (epochChanged || state.worktreesByRepo !== previous.worktreesByRepo) {
       const count = countLiveWorktrees(state.worktreesByRepo)
       structuralChange = count !== liveWorktreeCountAtLastBump
-      liveWorktreeCountAtLastBump = count
+      if (epochChanged) {
+        liveWorktreeCountAtLastBump = count
+      }
     }
     if (state.settledSortEpoch === state.sortEpoch) {
       // Why: any write that lands settled — settle() itself or a store reset — retires the pending timer.
