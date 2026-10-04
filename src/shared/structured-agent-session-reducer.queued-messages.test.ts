@@ -46,7 +46,8 @@ function page(queuedMessages?: AgentSessionQueuedMessage[] | null): AgentSession
 
 function snapshot(
   queuedMessages?: AgentSessionQueuedMessage[] | null,
-  queuePause?: AgentSessionQueuePause | null
+  queuePause?: AgentSessionQueuePause | null,
+  nextQueuedMessageId?: string | null
 ): AgentSessionSubscribeEvent {
   return {
     type: 'snapshot',
@@ -54,7 +55,8 @@ function snapshot(
     page: page(),
     fence: 1,
     ...(queuedMessages !== undefined ? { queuedMessages } : {}),
-    ...(queuePause !== undefined ? { queuePause } : {})
+    ...(queuePause !== undefined ? { queuePause } : {}),
+    ...(nextQueuedMessageId !== undefined ? { nextQueuedMessageId } : {})
   }
 }
 
@@ -178,7 +180,7 @@ describe('structured agent session reducer: queuedMessages', () => {
   it("keeps the queue's next card with the list it rode with, from a snapshot and a batch", () => {
     const named = reduceStructuredAgentSession(EMPTY_STRUCTURED_AGENT_SESSION, {
       type: 'event',
-      event: { ...snapshot([queued('draft-1', 1)]), nextQueuedMessageId: 'draft-1' }
+      event: snapshot([queued('draft-1', 1)], null, 'draft-1')
     })
     expect(named.nextQueuedMessageId).toBe('draft-1')
     const kept = reduceStructuredAgentSession(named, { type: 'event', event: batch(2) })
