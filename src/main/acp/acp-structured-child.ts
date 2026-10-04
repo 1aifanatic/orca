@@ -37,7 +37,7 @@ export function spawnAcpStructuredChild(
   const managed = spawnManagedProviderProcess(launch, {
     spawnImpl,
     site: 'acp-agent-teardown',
-    closeEventIsExit: true,
+    acceptClose: (result) => result.root === 'exited',
     policy: (supervised) => ({
       gracefulExitMs: supervised ? PROVIDER_SUPERVISOR_MAX_STOP_MS : GRACEFUL_EXIT_MS,
       forcedExitMs: FORCED_EXIT_MS
@@ -70,6 +70,6 @@ export function spawnAcpStructuredChild(
     spawned,
     onExit: (listener) => managed.onExit(() => listener()),
     stderrTail: () => stderr.trim(),
-    close: async () => managed.rootVerdict === 'exited' || (await managed.close()) === 'exited'
+    close: async () => managed.rootVerdict === 'exited' || (await managed.close()).root === 'exited'
   }
 }
