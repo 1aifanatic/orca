@@ -80,6 +80,10 @@ export function markCopilotFolderTrusted(workspacePath: string, home: string): v
       const errors: ParseError[] = []
       const parsed: unknown = parseJsonc(text, errors)
       if (errors.length > 0 || !parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        // Why: path only — the file can hold copilotTokens.
+        console.warn(
+          `Could not parse ${configPath} as a JSONC object; skipping Copilot folder trust`
+        )
         return
       }
       const trustedFolders = 'trustedFolders' in parsed ? parsed.trustedFolders : undefined
