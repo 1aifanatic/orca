@@ -342,7 +342,8 @@ jobs:
               . != "tests/e2e/ssh-localhost.spec.ts" and
               . != "tests/e2e/terminal-ibus-hangul-native.spec.ts" and
               . != "tests/e2e/orcad-serve-mode-switch.spec.ts" and
-              . != "tests/e2e/ssh-orcad-auto-convert.spec.ts"
+              . != "tests/e2e/ssh-orcad-auto-convert.spec.ts" and
+              . != "tests/e2e/windows-missing-appdata-startup.spec.ts"
             )' <<<"$TEST_FILES_JSON" > "$RUNNER_TEMP/general-e2e-specs"
           fi
           mapfile -t TEST_FILES < "$RUNNER_TEMP/general-e2e-specs"
@@ -548,6 +549,44 @@ jobs:
         if: failure()
         with:
           name: orcad-serve-mode-switch-traces
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # A profile-less Windows session has no roaming AppData; Electron 43 used to crash natively there.
+  windows-missing-appdata-startup:
+    name: orca serve starts without AppData on Windows
+    if: inputs.test_files == '' || contains(inputs.test_files, 'tests/e2e/windows-missing-appdata-startup.spec.ts')
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+      ORCA_BACKGROUND_LAUNCH: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: electron
+      - name: Build the e2e app and CLI
+        shell: bash
+        run: |
+          pnpm exec electron-vite build --mode e2e
+          pnpm run build:cli
+      - name: Start serve with no AppData folder
+        env:
+          SKIP_BUILD: '1'
+          ORCA_E2E_FORWARD_APP_LOGS: '1'
+          ORCA_STARTUP_DIAGNOSTICS: '1'
+          ELECTRON_ENABLE_LOGGING: '1'
+          ELECTRON_ENABLE_STACK_DUMPING: '1'
+        run: pnpm exec playwright test --config tests/playwright.config.ts tests/e2e/windows-missing-appdata-startup.spec.ts --project=electron-headless --workers=1
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: windows-missing-appdata-startup-traces
           path: test-results/
           retention-days: 7
           if-no-files-found: ignore
