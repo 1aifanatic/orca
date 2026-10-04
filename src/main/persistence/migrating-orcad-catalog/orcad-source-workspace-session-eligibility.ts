@@ -79,22 +79,15 @@ export function countUnsupportedSessionState(
       shutdownMarkerHasTerminalAuthority(state, session, scope, sourceHostPartition, worktreeId)
   ).length
   count +=
+    sourceHostPartition &&
     session.activeRepoId &&
     owns(session.activeRepoId) &&
-    !(sourceHostPartition && scope.repoIds.has(session.activeRepoId))
+    !scope.repoIds.has(session.activeRepoId)
       ? 1
       : 0
-  // Why not in the source partition: there focus is a copy of the client-wide focus. An in-scope
-  // copy is carried; one aimed at another host's workspace is not host state and is never carried.
-  count +=
-    !sourceHostPartition && session.activeWorktreeId && owns(session.activeWorktreeId) ? 1 : 0
-  count +=
-    !sourceHostPartition && session.activeWorkspaceKey && owns(session.activeWorkspaceKey) ? 1 : 0
-  count += session.activeWorkspaceExecutionHostId === scope.hostId && !sourceHostPartition ? 1 : 0
+  // Focus outside the source partition is client focus, not host state: retirement retargets it.
   // activeConnectionIdsAtShutdown is not counted: it is the renderer's live "connected now" hint, and
   // the remote work it can stand for (tab PTYs, remote session ids, leases) is counted on its own.
-  count +=
-    session.activeTabId && terminalTabIds.has(session.activeTabId) && !sourceHostPartition ? 1 : 0
   for (const [ownerKey, files] of Object.entries(session.openFilesByWorktree ?? {})) {
     if (owns(ownerKey)) {
       count += files.filter(
@@ -112,7 +105,8 @@ export function countUnsupportedSessionState(
   for (const [ownerKey, tabs] of Object.entries(session.unifiedTabs ?? {})) {
     if (owns(ownerKey)) {
       count += tabs.filter(
-        (tab) => tab.executionHostId !== undefined && tab.executionHostId !== scope.hostId
+        (tab) =>
+          tab.executionHostId !== undefined && !isOrcadSourceTabHost(tab.executionHostId, scope)
       ).length
     }
   }
@@ -204,6 +198,11 @@ export function projectDormantSessionFocus(
   if (source.activeTabId && terminalTabIds.has(source.activeTabId)) {
     transferred.activeTabId = source.activeTabId
   }
+}
+
+/** Older builds stamped 'local' on tabs created in an SSH worktree; its owner key proves the host. */
+function isOrcadSourceTabHost(executionHostId: string, scope: OrcadMigrationSourceScope): boolean {
+  return executionHostId === scope.hostId || executionHostId === LOCAL_EXECUTION_HOST_ID
 }
 
 export function projectSessionToDestination(

@@ -10,6 +10,7 @@ import { collectSessionOwnerKeys } from './orcad-source-workspace-session-fragme
 import type { OrcadMigrationManifest } from '../../../shared/orcad-migration-manifest'
 import type { PersistedState } from '../../../shared/persisted-state-types'
 import { collectOrcadMigrationSourceWorkspaceSession } from './orcad-source-workspace-session'
+import { isOrcadRuntimeHostFocus } from './orcad-source-client-focus-retarget'
 
 export function retireOrcadMigrationSourceWorkspaceSession(
   state: PersistedState,
@@ -83,17 +84,30 @@ export function removeOwnedSessionState(
       )
     }
   }
+  // Focus retargeted to the destination names the same ids on the managed host; keep it.
+  const retargetedFocus = isOrcadRuntimeHostFocus(session)
+    ? {
+        activeRepoId: session.activeRepoId,
+        activeWorktreeId: session.activeWorktreeId,
+        activeWorkspaceKey: session.activeWorkspaceKey,
+        activeTabId: session.activeTabId
+      }
+    : null
   const next = removeWorkspaceSessionOwners(session, ownerKeys) ?? session
   // Selection-only sessions and canonical workspace keys need the same scoped retirement.
   const retired = next === session ? structuredClone(session) : next
-  if (retired.activeRepoId && scope.repoIds.has(retired.activeRepoId)) {
-    retired.activeRepoId = null
-  }
-  if (orcadMigrationOwnerMatchesScope(retired.activeWorktreeId, scope)) {
-    retired.activeWorktreeId = null
-  }
-  if (orcadMigrationOwnerMatchesScope(retired.activeWorkspaceKey, scope)) {
-    retired.activeWorkspaceKey = null
+  if (retargetedFocus) {
+    Object.assign(retired, retargetedFocus)
+  } else {
+    if (retired.activeRepoId && scope.repoIds.has(retired.activeRepoId)) {
+      retired.activeRepoId = null
+    }
+    if (orcadMigrationOwnerMatchesScope(retired.activeWorktreeId, scope)) {
+      retired.activeWorktreeId = null
+    }
+    if (orcadMigrationOwnerMatchesScope(retired.activeWorkspaceKey, scope)) {
+      retired.activeWorkspaceKey = null
+    }
   }
   if (retired.activeWorkspaceExecutionHostId === scope.hostId) {
     retired.activeWorkspaceExecutionHostId = null
