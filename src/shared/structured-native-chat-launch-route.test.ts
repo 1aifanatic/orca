@@ -161,6 +161,7 @@ describe('Cursor and paired-host launch capability composition', () => {
     STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY
   ]
   const clientCapabilities = [
+    CURSOR_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
     STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
     STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY
   ]
@@ -203,3 +204,22 @@ describe('Cursor and paired-host launch capability composition', () => {
     })
   })
 })
+
+it.each(['claude', 'codex'] as const)(
+  'keeps paired %s launch support without Cursor capability',
+  (agent) => {
+    const capabilities = [
+      STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
+      STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY
+    ]
+    expect(
+      support({
+        agent,
+        executionHostId: 'runtime:host',
+        hostCapabilities: capabilities,
+        clientCapabilities: capabilities,
+        workspaceKind: 'folder'
+      })
+    ).toEqual({ supported: true })
+  }
+)

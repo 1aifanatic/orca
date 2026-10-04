@@ -135,7 +135,11 @@ export function resolveStructuredNativeChatSupport(
     }
     // The host refuses a client that did not say it reads structured sessions, as the browser
     // client does not; that client keeps the host terminal.
-    if (!clientChoosesStructuredLaunches(input.clientCapabilities)) {
+    if (
+      !clientChoosesStructuredLaunches(input.clientCapabilities) ||
+      (input.agent === 'cursor' &&
+        !input.clientCapabilities?.includes(CURSOR_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY))
+    ) {
       return { supported: false, blocker: 'client-capability' }
     }
   }
