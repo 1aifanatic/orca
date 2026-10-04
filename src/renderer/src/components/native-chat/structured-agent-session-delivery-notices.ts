@@ -81,7 +81,7 @@ export function structuredAgentSessionDeliveryNotices(
         text: agentSessionWriteNoticeText(
           structuredAgentSessionRecordedRejectionParts(
             submission,
-            { agentName, retryControl: false },
+            { agentName },
             startFailures,
             commandResults
           )

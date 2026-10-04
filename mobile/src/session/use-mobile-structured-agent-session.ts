@@ -157,14 +157,18 @@ export function useMobileStructuredAgentSession(args: {
     onSendError
   })
 
+  const queuedMessageIds = useMemo(
+    () => (queuedMessages ?? []).map((message) => message.messageId),
+    [queuedMessages]
+  )
   const messages = useMemo(
-    // A message the host recorded and then rejected stays in place, said once on its row.
+    // As on the desktop: a message the host recorded lives on its row, never back in the composer.
     () =>
       projectStructuredAgentSessionMessages(state.items, [], state.submissions, {
         rejectedInPlace: true,
-        queuedMessageIds: (queuedMessages ?? []).map((draft) => draft.messageId)
+        queuedMessageIds
       }),
-    [queuedMessages, state.items, state.submissions]
+    [state.items, state.submissions, queuedMessageIds]
   )
   const turnId = activeStructuredAgentSessionTurnId(state.items)
   const turnTiming = useMobileStructuredAgentTurnTiming(state, turnId)

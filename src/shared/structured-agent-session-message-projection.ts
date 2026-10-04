@@ -34,24 +34,12 @@ export function structuredAgentSessionRecordStaysInChat(
   )
 }
 
-/** Whether the loaded journal draws the send recorded under `clientMessageId` in the chat, where
- *  its row, not a reply, says how it went. */
-export function structuredAgentSessionJournalShowsSubmission(
-  submissions: readonly AgentJournalSubmission[],
-  clientMessageId: string
-): boolean {
-  return submissions.some(
-    (submission) =>
-      submission.clientMessageId === clientMessageId &&
-      structuredAgentSessionRecordStaysInChat(submission)
-  )
-}
-
 /**
  * The rejected submissions the host's history shows in place as not sent, by item id; `submissions`
  * in submission order, as the client keeps them. Beyond what leaves every viewer's chat
  * (`structuredAgentSessionRecordStaysInChat`), one a live card holds under its id is drawn as that
- * card, and one a later copy of the same body superseded is not drawn twice.
+ * card, and one a later copy of the same body superseded is not drawn twice. A command such as
+ * `/compact` is shown like any message: its row is where every viewer learns it did not run.
  */
 export function structuredAgentSessionRejectedShownInPlace(
   submissions: readonly AgentJournalSubmission[],
@@ -92,6 +80,23 @@ export function structuredAgentSessionRejectedShownInPlace(
     shown.add(agentJournalSubmissionKey(submission.clientMessageId))
   }
   return shown
+}
+
+/** Whether the loaded journal draws the send recorded under `clientMessageId` in the chat, where
+ *  its row, not a reply, says how it went. A withdrawn, card-held or superseded copy is not drawn,
+ *  so its reply still speaks. */
+export function structuredAgentSessionJournalShowsSubmission(
+  submissions: readonly AgentJournalSubmission[],
+  clientMessageId: string
+): boolean {
+  const submission = submissions.find((entry) => entry.clientMessageId === clientMessageId)
+  return (
+    submission !== undefined &&
+    (submission.dispatchState !== 'rejected' ||
+      structuredAgentSessionRejectedShownInPlace(submissions, []).has(
+        agentJournalSubmissionKey(clientMessageId)
+      ))
+  )
 }
 
 export function projectStructuredAgentSessionMessages(
