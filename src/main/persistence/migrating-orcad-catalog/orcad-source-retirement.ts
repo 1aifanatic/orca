@@ -18,10 +18,20 @@ import {
 } from './orcad-source-dormant-retirement'
 import { retireOrcadSourceReconnectHint } from './orcad-source-workspace-session-retirement'
 import { retargetOrcadSourceClientFocus } from './orcad-source-client-focus-retarget'
+import { sessionPartitions } from './orcad-source-workspace-session-fragments'
+import { LOCAL_EXECUTION_HOST_ID } from '../../../shared/execution-host'
+import {
+  collectTerminalScrollbackSnapshotRefs,
+  deleteTerminalScrollbackSnapshotSync
+} from '../../terminal-scrollback-snapshots'
 
 const orcadSourceRetirementContext = Symbol('OrcadSourceRetirementPersistence')
+type OrcadSourceRetirementRuntime = Pick<
+  StoreRuntimeState,
+  'state' | 'terminalScrollbackSnapshotStorage' | 'retainedScrollbackRefsByMigrationId'
+>
 type OrcadSourceRetirementContext = {
-  runtime: Pick<StoreRuntimeState, 'state'>
+  runtime: OrcadSourceRetirementRuntime
   repos: RepoLifecycleOperations
   scheduling: WriteSchedulingOperations
 }
@@ -30,7 +40,7 @@ export class OrcadSourceRetirementPersistence {
   readonly [orcadSourceRetirementContext]: OrcadSourceRetirementContext
 
   constructor(
-    runtime: Pick<StoreRuntimeState, 'state'>,
+    runtime: OrcadSourceRetirementRuntime,
     repos: RepoLifecycleOperations,
     scheduling: WriteSchedulingOperations
   ) {
@@ -64,6 +74,26 @@ export class OrcadSourceRetirementPersistence {
       throw new Error('orcad_migration_source_catalog_reappeared')
     }
     assertOrcadMigrationSourceDormantStateRetired(state, manifest)
+  }
+
+  /**
+   * Deletes a retired manifest's scrollback files. Only after retirement is durable: until then
+   * the source rows still name them. A ref any session or pending export still names is kept.
+   */
+  deleteRetiredOrcadMigrationScrollback(manifest: OrcadMigrationManifest): void {
+    const { state, terminalScrollbackSnapshotStorage, retainedScrollbackRefsByMigrationId } =
+      this[orcadSourceRetirementContext].runtime
+    const live = new Set([
+      ...sessionPartitions(state, LOCAL_EXECUTION_HOST_ID).flatMap(([, session]) => [
+        ...collectTerminalScrollbackSnapshotRefs(session)
+      ]),
+      ...[...retainedScrollbackRefsByMigrationId.values()].flatMap((refs) => [...refs])
+    ])
+    for (const snapshot of manifest.payload.dormantState?.terminalScrollbackSnapshots ?? []) {
+      if (!live.has(snapshot.ref)) {
+        deleteTerminalScrollbackSnapshotSync(snapshot.ref, terminalScrollbackSnapshotStorage)
+      }
+    }
   }
 }
 
