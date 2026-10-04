@@ -68,7 +68,7 @@ describe('OpenCode model catalog validation', () => {
       code: 0,
       timedOut: false,
       outputTruncated: true,
-      stdout: options.model + '\n',
+      stdout: `${options.model}\n`,
       stderr: '',
       signal: null
     })
