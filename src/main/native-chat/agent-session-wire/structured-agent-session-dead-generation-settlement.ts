@@ -3,6 +3,7 @@ import {
   MAX_PROVIDER_DIAGNOSTIC_CHARS,
   type SubmissionRejectionFact
 } from '../../../shared/agent-session-failure'
+import { endedRunningAgentJournalToolCall } from '../../../shared/agent-journal-tool-call-lifecycle'
 import { parseAgentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import {
@@ -28,9 +29,11 @@ import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-re
 import {
   endedByPersonsStop,
   provenUnverifiableTurnRevisions,
+  provenUnverifiedToolCallRevisions,
   runningTurnLifecycleRevisions,
   stopFoundTurnLiveAt,
   turnVerdictFromDeathEvidence,
+  UNVERIFIABLE_TURN_VERDICT,
   type StructuredAgentSessionTurnVerdict
 } from './structured-agent-session-stale-turn-verdict'
 import {
@@ -175,7 +178,7 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
     }
     for (const item of items) {
       const identity = parseAgentJournalItemKey(item.itemId)
-      const body = terminalDeadGenerationBody(item)
+      const body = terminalDeadGenerationBody(item, input.verdict)
       if (identity && body) {
         mutations.push({
           kind: 'item',
@@ -206,8 +209,9 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
  * Settles whatever a generation with no child in this process left running: found when a new child
  * is acquired, or when a chat is reopened for reading. Derived from the journal and the lease's
  * death evidence each time, so nothing is owed in between. Proven death ends the turn interrupted,
- * and a proof written after an earlier settle revises what that settle left `unverifiable`. Must
- * run before a new child's buffered events land, or a live turn would be judged.
+ * and a proof written after an earlier settle revises what that settle left `unverifiable`, the
+ * turn and the calls it closed alike. Must run before a new child's buffered events land, or a
+ * live turn would be judged.
  */
 export async function settleStaleStructuredAgentSessionState(input: {
   journal: AgentSessionJournal
@@ -230,10 +234,11 @@ export async function settleStaleStructuredAgentSessionState(input: {
   // Per attempt: a retry re-partitions only what is left, and a reused chunk id would skip it.
   const generation = input.acquisitionGeneration ?? `seq-${journal.cursor().sequence}`
   const settlementId = `stale-session:${input.sessionId}:${input.fence}:${generation}`
-  const mutations: JournalLifecycleMutationInput[] = []
+  // Calls an earlier settle closed with no proof, revised once a proof names their owner.
+  const mutations = provenUnverifiedToolCallRevisions(items, input.deathEvidence, journal)
   for (const item of items) {
     const identity = parseAgentJournalItemKey(item.itemId)
-    const body = terminalDeadGenerationBody(item)
+    const body = terminalDeadGenerationBody(item, verdictFor(item))
     if (identity && body) {
       mutations.push({
         kind: 'item',
@@ -287,9 +292,13 @@ export async function settleStaleStructuredAgentSessionState(input: {
   return mutations.length
 }
 
-function terminalDeadGenerationBody(item: AgentJournalRenderItem): AgentJournalItemBody | null {
+function terminalDeadGenerationBody(
+  item: AgentJournalRenderItem,
+  verdict: StructuredAgentSessionTurnVerdict
+): AgentJournalItemBody | null {
   if (item.body.kind === 'tool-call' && item.body.state === 'running') {
-    return { ...item.body, state: 'failed' }
+    // Ended as its turn is: a proven death cuts it short.
+    return endedRunningAgentJournalToolCall(item.body, verdict.state)
   }
   if (item.body.kind === 'approval' || item.body.kind === 'question') {
     return item.body.resolution.state === 'pending' ? cancelledJournalPromptBody(item.body) : null
@@ -300,7 +309,7 @@ function terminalDeadGenerationBody(item: AgentJournalRenderItem): AgentJournalI
 function isUnfinishedItem(item: AgentJournalRenderItem): boolean {
   return (
     readAgentJournalTurn(item.body)?.state === 'running' ||
-    terminalDeadGenerationBody(item) !== null
+    terminalDeadGenerationBody(item, UNVERIFIABLE_TURN_VERDICT) !== null
   )
 }
 
