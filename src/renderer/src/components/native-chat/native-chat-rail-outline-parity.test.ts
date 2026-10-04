@@ -95,14 +95,11 @@ function loadedRailItems(items: AgentJournalRenderItem[], submissions: AgentJour
 }
 
 describe('conversation outline parity with the loaded rail', () => {
-  // Except a rejected message: the desktop draws it in place and ticks it once loaded, while the
-  // host's outline, which older clients read too, leaves it out.
+  // A rejected message is drawn in place as not sent but is no prompt the agent saw, so it takes no
+  // tick, as the host's outline, which older clients read too, leaves it out.
   it('lists exactly the user messages the transcript gives a rail tick, with the same ids and previews', () => {
     const outline = projectAgentSessionConversationOutline(JOURNAL, [REJECTED])
-    const rejectedId = agentJournalSubmissionKey(REJECTED.clientMessageId)
-    const loadedWithRejected = loadedRailItems(JOURNAL, [REJECTED])
-    expect(loadedWithRejected.filter((item) => item.id === rejectedId)).toHaveLength(1)
-    const loaded = loadedWithRejected.filter((item) => item.id !== rejectedId)
+    const loaded = loadedRailItems(JOURNAL, [REJECTED])
 
     expect(outline.map((entry) => entry.itemId)).toEqual(loaded.map((item) => item.id))
     expect(
