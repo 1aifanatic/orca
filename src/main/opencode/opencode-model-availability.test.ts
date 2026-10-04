@@ -74,6 +74,28 @@ describe('OpenCode model catalog validation', () => {
     })
     expect(await probeOpenCodeModelAvailability(options)).toBe(false)
   })
+  it('refuses the unterminated catalog shape captured from OpenCode 2.0.16', async () => {
+    vi.mocked(runProcess).mockResolvedValue({
+      code: 0,
+      timedOut: false,
+      outputTruncated: false,
+      stdout: `${options.model}\npriv`,
+      stderr: '',
+      signal: null
+    })
+    expect(await probeOpenCodeModelAvailability(options)).toBe(false)
+  })
+  it.each(['\n', '\r\n'])('accepts a complete catalog with %j line endings', async (ending) => {
+    vi.mocked(runProcess).mockResolvedValue({
+      code: 0,
+      timedOut: false,
+      outputTruncated: false,
+      stdout: `${options.model}${ending}`,
+      stderr: '',
+      signal: null
+    })
+    expect(await probeOpenCodeModelAvailability(options)).toBe(true)
+  })
   it('refuses WSL until its exact guest launch environment is available', async () => {
     expect(await probeOpenCodeModelAvailability({ ...options, wsl: { distro: 'Ubuntu' } })).toBe(
       false

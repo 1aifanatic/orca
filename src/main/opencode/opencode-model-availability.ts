@@ -50,6 +50,7 @@ export async function probeOpenCodeModelAvailability(
       result.code === 0 &&
       !result.timedOut &&
       !result.outputTruncated &&
+      result.stdout.endsWith('\n') &&
       result.stdout.split(/\r?\n/).some((line) => line === options.model)
     )
   } catch {
