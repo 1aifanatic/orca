@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
-import { closeProviderTimelineRigs } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
+import {
+  closeProviderTimelineRigs,
+  SESSION
+} from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
 import {
   AgentSessionAcquisitionExitProvenError,
   AgentSessionAcquisitionRefusal
@@ -14,7 +17,6 @@ import {
   waitFor,
   type AcpAdapterRig
 } from './acp-structured-adapter.test-support'
-import { SESSION } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
 import type { AgentJournalMessageItem } from '../../shared/agent-session-journal-types'
 
 afterEach(async () => {

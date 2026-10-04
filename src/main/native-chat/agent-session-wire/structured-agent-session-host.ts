@@ -1,5 +1,4 @@
 import type { AgentSessionRewindParams } from '../../../shared/agent-session-rewind'
-import type { StructuredAgentDefinition } from './structured-agent-definition'
 import { rewindStructuredAgentSession } from './structured-agent-session-rewind'
 import { StructuredConversationCommandController } from './structured-conversation-command-controller'
 // Structured agent-session host: where the lease, journal, and provider adapter meet.
@@ -221,8 +220,7 @@ export class StructuredAgentSessionHost {
 
   /** What this runtime registered: one agent's definition (null when unregistered), or all of them. */
   agentDefinition = (agent: string) => this.deps.adapter.definition?.(agent) ?? null
-  agentDefinitions = (): readonly StructuredAgentDefinition[] =>
-    this.deps.adapter.definitions?.() ?? []
+  agentDefinitions = () => this.deps.adapter.definitions?.() ?? []
 
   private readonly tabs = sessionTabs.createStructuredAgentSessionTabSurface(
     this,
@@ -262,11 +260,10 @@ export class StructuredAgentSessionHost {
   flushStreamedEvents = (sessionId: string): Promise<void> =>
     this.runtimeState.flushEventSink(sessionId)
 
-  // Trigger inlined rather than imported: `AgentSessionResumeTrigger` in shared is the canonical
-  // type, and this file has no line budget left for the import.
   /** Quit: no exit or recovery settled after this starts a child or hands a message over. */
   stopDelivery = (): void => this.conversationDelivery.dispose()
-
+  // Trigger inlined rather than imported: `AgentSessionResumeTrigger` in shared is the canonical
+  // type, and this file has no line budget left for the import.
   async flushAllStreamedEvents(options?: { trigger?: 'quit' | 'update' }): Promise<void> {
     this.stopDelivery()
     await flushStructuredAgentSessionHost({

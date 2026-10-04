@@ -1,11 +1,13 @@
 import type { StructuredAgentSessionLifecycleEvent } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { StructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
-import type { AgentJournalItemIdentity } from '../../shared/agent-session-journal-types'
+import type {
+  AgentJournalItemIdentity,
+  AgentSessionJournalIdentity
+} from '../../shared/agent-session-journal-types'
 import type { AgentJournalDispatchRejection } from '../../shared/agent-session-failure-words'
 import type { AcpLaunchSpec } from './acp-launch-specs'
 import type { SpawnAcpStructuredChild } from './acp-structured-child'
 import type { AcpStructuredLaunch } from './acp-structured-launch-resolution'
-import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
 
 export type AcpStructuredSessionAdapterDeps = {
   spec: AcpLaunchSpec
