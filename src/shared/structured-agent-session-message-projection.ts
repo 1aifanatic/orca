@@ -3,7 +3,9 @@ import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import { agentJournalItemPosition } from './agent-session-journal-position'
 import { isQueuedAgentJournalSubmission } from './agent-session-queued-submission'
 import { collapseProviderRetryRuns } from './native-chat-provider-retry-runs'
+import { compareNativeChatTranscriptMessages } from './native-chat-transcript-projection'
 import type { NativeChatMessage } from './native-chat-types'
+import { waitingSendPositions } from './native-chat-waiting-send-placement'
 import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
 import { structuredAgentSessionEntryHeldForRetry } from './structured-agent-session-outbox-admission'
 import { reconcileStructuredAgentSessionOutboxWithQueue } from './structured-agent-session-draft-hand-off'
@@ -39,18 +41,22 @@ export function projectStructuredAgentSessionMessages(
       .filter(isQueuedAgentJournalSubmission)
       .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
   )
+  const waiting = waitingSendPositions(items, submissions)
   const delivered: NativeChatMessage[] = []
   const held: NativeChatMessage[] = []
   for (const message of projectItems(visibleItems)) {
+    const waitedOn = waiting.get(message.id)
     if (queued.has(message.id)) {
       held.push({ ...message, queued: true })
     } else {
-      delivered.push(message)
+      delivered.push(waitedOn ? { ...message, journalPosition: waitedOn } : message)
     }
   }
   return [
     // After the held sends leave: they are drawn after the conversation, never inside a run.
-    ...collapseProviderRetryRuns(delivered),
+    ...(waiting.size > 0
+      ? Array.from(collapseProviderRetryRuns(delivered)).sort(compareNativeChatTranscriptMessages)
+      : collapseProviderRetryRuns(delivered)),
     ...held,
     ...optimistic
       .filter((entry) => !journalled.has(agentJournalSubmissionKey(entry.clientMessageId)))
