@@ -1,5 +1,6 @@
 import { beforeEach, expect, it, vi } from 'vitest'
-import { mkdtemp, rm } from 'node:fs/promises'
+import filesystem from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 await import('./orca-runtime-test-mocks.spec')
@@ -43,6 +44,7 @@ it.each([
     await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`, {
       startupAgent: 'qoder',
       agentArgs: null,
+      launchSource: 'orchestration',
       startupPrompt: 'qodercli remains prompt text'
     })
     expect(spawn).toHaveBeenCalledWith(
@@ -51,28 +53,41 @@ it.each([
         command: `${selected} --prompt-interactive 'qodercli remains prompt text'`
       })
     )
+    expect(spawn).toHaveBeenCalledTimes(1)
+    expect(spawn.mock.calls[0]?.[0].telemetry).toEqual({
+      agent_kind: 'qoder',
+      launch_source: 'orchestration',
+      request_kind: 'new'
+    })
   }
 )
 
 it('a modern-only repo-less folder start reaches the same production spawn boundary', async () => {
   vi.mocked(detectAgentCommandsOnHost).mockResolvedValueOnce(new Set(['qoder']))
   const spawn = vi.fn().mockResolvedValue({ id: 'pty-independent-folder' })
-  const folderPath = await mkdtemp(join(process.cwd(), '.context/qoder-independent-folder-'))
-  const folderStore = createFolderWorkspaceRuntimeStore(
-    makeFolderWorkspace({ folderPath }),
-    makeFolderProjectGroup({ parentPath: folderPath })
-  )
-  const runtime = new OrcaRuntimeService({
-    ...folderStore,
-    getSettings: () => ({ ...store.getSettings(), disabledTuiAgents: [], agentCmdOverrides: {} })
+  const createTempDirectory = filesystem.mkdtemp
+  const guard = vi.spyOn(filesystem, 'mkdtemp').mockImplementation((prefix, options) => {
+    // CI has no .context parent; reject that prerequisite even on a developer checkout.
+    expect(String(prefix)).not.toContain('.context')
+    return createTempDirectory(prefix, options)
   })
-  runtime.setPtyController({
-    spawn,
-    write: () => true,
-    kill: () => true,
-    getForegroundProcess: async () => null
-  })
+  let folderPath: string | undefined
   try {
+    folderPath = await filesystem.mkdtemp(join(tmpdir(), 'qoder-independent-folder-'))
+    const folderStore = createFolderWorkspaceRuntimeStore(
+      makeFolderWorkspace({ folderPath }),
+      makeFolderProjectGroup({ parentPath: folderPath })
+    )
+    const runtime = new OrcaRuntimeService({
+      ...folderStore,
+      getSettings: () => ({ ...store.getSettings(), disabledTuiAgents: [], agentCmdOverrides: {} })
+    })
+    runtime.setPtyController({
+      spawn,
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess: async () => null
+    })
     await runtime.createTerminal(`id:${TEST_FOLDER_WORKSPACE_KEY}`, {
       startupAgent: 'qoder',
       agentArgs: null
@@ -80,8 +95,22 @@ it('a modern-only repo-less folder start reaches the same production spawn bound
     expect(spawn).toHaveBeenCalledWith(
       expect.objectContaining({ launchAgent: 'qoder', command: 'qoder' })
     )
+    expect(spawn).toHaveBeenCalledTimes(1)
+    expect(spawn.mock.calls[0]?.[0].cwd).toBe(folderPath)
+    expect(spawn.mock.calls[0]?.[0].telemetry).toEqual({
+      agent_kind: 'qoder',
+      launch_source: 'unknown',
+      request_kind: 'new'
+    })
+    expect((await filesystem.stat(folderPath)).isDirectory()).toBe(true)
+    await expect(filesystem.stat(join(folderPath, '.git'))).rejects.toMatchObject({
+      code: 'ENOENT'
+    })
   } finally {
-    await rm(folderPath, { recursive: true, force: true })
+    guard.mockRestore()
+    if (folderPath) {
+      await filesystem.rm(folderPath, { recursive: true, force: true })
+    }
   }
 })
 
@@ -125,4 +154,29 @@ it('caller-owned explicit executable survives production resume without discover
     expect.objectContaining({ command: '/caller/qodercli --resume original-id' })
   )
   expect(detect).not.toHaveBeenCalled()
+  expect(spawn).toHaveBeenCalledTimes(1)
+  expect(spawn.mock.calls[0]?.[0].telemetry).toBeUndefined()
+})
+
+it.each([
+  ['bare', 'qodercli'],
+  ['resume', 'qodercli --resume original-id']
+] as const)('does not falsely attribute a %s command as a fresh start', async (_, command) => {
+  const spawn = vi.fn().mockResolvedValue({ id: 'pty-independent-unattributed' })
+  const runtime = new OrcaRuntimeService(store)
+  runtime.setPtyController({
+    spawn,
+    write: () => true,
+    kill: () => true,
+    getForegroundProcess: async () => null
+  })
+  await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`, {
+    command,
+    agentArgs: null,
+    launchSource: 'orchestration',
+    ...(command.includes('--resume') ? { launchAgent: 'qoder' as const } : {})
+  })
+  expect(spawn).toHaveBeenCalledTimes(1)
+  expect(spawn.mock.calls[0]?.[0].command).toBe(command)
+  expect(spawn.mock.calls[0]?.[0].telemetry).toBeUndefined()
 })
