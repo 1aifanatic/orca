@@ -354,6 +354,7 @@ import {
   WorkspaceSelection
 } from './linear-params'
 import { CreateProject } from './linear-project-create-params'
+import { ManagedServerSelector, ManagedServerUpdate } from './managed-server-params'
 import { NativeChatSession, NativeChatUnsubscribe } from './native-chat-params'
 import {
   NotificationGetMissedSinceParams,
@@ -990,6 +991,12 @@ export const RPC_PARAMS_BY_METHOD = {
   'linear.teamStates': TeamId,
   'linear.testConnection': WorkspaceSelection,
   'linear.updateIssue': IssueUpdateOfLinearParams,
+  'managedServer.cancelStop': ManagedServerSelector,
+  'managedServer.recover': ManagedServerSelector,
+  'managedServer.rollback': ManagedServerSelector,
+  'managedServer.status': ManagedServerSelector,
+  'managedServer.stop': ManagedServerSelector,
+  'managedServer.update': ManagedServerUpdate,
   'markdown.readTab': ActivateTab,
   'markdown.saveTab': SaveMarkdownTab,
   'mobileWeb.bundle.chunk': MobileWebBundleChunkParamsSchema,
