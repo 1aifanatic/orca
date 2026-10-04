@@ -1,7 +1,15 @@
 import { RipgrepFilenameDecoder } from '../../shared/ripgrep-filename-decoder'
 import { isWindowsAbsolutePathLike } from '../../shared/cross-platform-path'
 import { normalizeRelativePath } from '../../shared/text-search-paths'
-import { basename as pathBasename, extname, isAbsolute, join, relative, resolve } from 'node:path'
+import {
+  basename as pathBasename,
+  extname,
+  isAbsolute,
+  join,
+  posix,
+  relative,
+  resolve
+} from 'node:path'
 import type { FileDocument, MarkdownDocument } from '../../shared/filesystem-entry-types'
 import { spawnBundledRipgrep } from '../ripgrep/bundled-ripgrep-spawn'
 import { parseWslPath } from '../wsl'
@@ -11,8 +19,12 @@ import {
 } from '../../shared/ripgrep-process-availability'
 
 export function isMarkdownDocumentName(name: string): boolean {
-  const extension = extname(name).toLowerCase()
-  return extension === '.md' || extension === '.mdx' || extension === '.markdown'
+  return isMarkdownExtension(extname(name))
+}
+
+function isMarkdownExtension(extension: string): boolean {
+  const normalized = extension.toLowerCase()
+  return normalized === '.md' || normalized === '.mdx' || normalized === '.markdown'
 }
 
 function basenameFromRelativePath(relativePath: string): string {
@@ -69,10 +81,11 @@ export function markdownDocumentFromRelativePath(
     return null
   }
   const basename = basenameFromRelativePath(normalizedRelativePath)
-  if (!isMarkdownDocumentName(basename)) {
+  // Remote separators are already normalized; a POSIX backslash stays part of the name.
+  const extension = posix.extname(basename)
+  if (!isMarkdownExtension(extension)) {
     return null
   }
-  const extension = extname(basename)
   const normalizedRoot = rootPath.replace(
     isWindowsAbsolutePathLike(rootPath) ? /[\\/]+$/ : /\/+$/,
     ''
