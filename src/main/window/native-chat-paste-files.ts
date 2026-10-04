@@ -2,7 +2,7 @@
 // a restore re-grants preview reads only for files that really are inside it, and old files expire.
 
 import { lstat, readdir, realpath, stat, unlink } from 'node:fs/promises'
-import path from 'node:path'
+import path, { type PlatformPath } from 'node:path'
 import { getAppEnvironment } from '../../shared/app-environment'
 import { NATIVE_CHAT_PASTE_FOLDER } from '../../shared/native-chat-paste-folder'
 import { authorizeExternalPath } from '../ipc/filesystem-auth'
@@ -19,7 +19,7 @@ export function nativeChatPasteFolder(): string {
 }
 
 /** A path as compared for containment: no `\\?\` prefix, and case-folded where the platform is. */
-function comparablePath(value: string, pathApi: path.PlatformPath, platform: string): string {
+function comparablePath(value: string, pathApi: PlatformPath, platform: string): string {
   const unprefixed = value.replace(/^\\\\\?\\UNC\\/i, '\\\\').replace(/^\\\\\?\\/, '')
   const normalized = pathApi.normalize(unprefixed)
   return platform === 'win32' ? normalized.toLowerCase() : normalized
@@ -29,7 +29,7 @@ function comparablePath(value: string, pathApi: path.PlatformPath, platform: str
 export function isInsideNativeChatPasteFolder(
   folder: string,
   target: string,
-  pathApi: path.PlatformPath = path,
+  pathApi: PlatformPath = path,
   platform: string = process.platform
 ): boolean {
   const relative = pathApi.relative(
