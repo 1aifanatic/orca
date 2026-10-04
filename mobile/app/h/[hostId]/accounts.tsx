@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useSyncExternalStore } from 'react'
 import {
   View,
   Text,
@@ -35,14 +35,35 @@ import {
 import { CodexResetCreditAction } from '../../../src/components/CodexResetCreditAction'
 import { useCodexResetCreditAction } from '../../../src/components/use-codex-reset-credit-action'
 import { DeepSeekBalanceCard } from '../../../src/components/DeepSeekBalanceCard'
+import type { RpcClient } from '../../../src/transport/rpc-client'
+import type { ConnectionState } from '../../../src/transport/types'
 
 export default function AccountsScreen() {
+  const { hostId } = useLocalSearchParams<{ hostId: string }>()
+  const { client, clientId, state } = useHostClient(hostId)
+  const subscribe = useCallback(
+    (listener: () => void) => client?.onStateChange(listener) ?? (() => {}),
+    [client]
+  )
+  const readScope = useCallback(
+    () => JSON.stringify([hostId, clientId, state, client?.getGeneration?.()]),
+    [client, clientId, hostId, state]
+  )
+  const scope = useSyncExternalStore(subscribe, readScope, readScope)
+  return <HostAccountsScreen key={scope} hostId={hostId} client={client} connState={state} />
+}
+
+function HostAccountsScreen({
+  hostId,
+  client,
+  connState
+}: {
+  hostId: string
+  client: RpcClient | null
+  connState: ConnectionState
+}) {
   const router = useRouter()
   const insets = useSafeAreaInsets()
-  const { hostId } = useLocalSearchParams<{ hostId: string }>()
-
-  // Why: shared client per host. See docs/mobile-shared-client-per-host.md.
-  const { client, state: connState } = useHostClient(hostId)
   const [hostName, setHostName] = useState<string>('')
   const [snapshot, setSnapshot] = useState<AccountsSnapshot | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -113,8 +134,9 @@ export default function AccountsScreen() {
     if (!client || connState !== 'connected') {
       return
     }
+    let disposed = false
     const unsubscribe = client.subscribe('accounts.subscribe', null, (payload) => {
-      if (!payload || typeof payload !== 'object') {
+      if (disposed || !payload || typeof payload !== 'object') {
         return
       }
       const evt = payload as { type?: string; snapshot?: unknown }
@@ -126,7 +148,10 @@ export default function AccountsScreen() {
         }
       }
     })
-    return unsubscribe
+    return () => {
+      disposed = true
+      unsubscribe()
+    }
   }, [acceptSnapshot, client, connState, rejectInvalidSnapshot])
 
   const refresh = useCallback(async () => {

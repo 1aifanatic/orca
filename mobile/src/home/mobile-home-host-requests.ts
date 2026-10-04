@@ -49,16 +49,24 @@ export function fetchMobileHomeAccounts(
   setSnapshots: HomeAccountsSetter,
   disposed: () => boolean
 ): void {
+  const generation = client.getGeneration?.()
+  let retired = false
+  const unsubscribe = client.onStateChange((state) => {
+    if (state !== 'connected' || client.getGeneration?.() !== generation) {
+      retired = true
+    }
+  })
   homeHostAccountsRead
     .requestSingleFlight(client, hostId)
     .then((reply) => {
       const accounts = homeHostAccountsRead.interpret(reply)
-      if (!disposed() && accounts.accepted) {
+      if (!retired && !disposed() && accounts.accepted) {
         const snapshot = decodeAccountsSnapshot(accounts.value)
         setSnapshots((previous) => ({ ...previous, [hostId]: snapshot }))
       }
     })
     .catch(() => {})
+    .finally(unsubscribe)
 }
 
 export function fetchMobileHomeTaskProviders(

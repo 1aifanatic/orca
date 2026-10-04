@@ -5,6 +5,7 @@ import type { AccountsSnapshot } from '../components/AccountUsage'
 import { hasRenderableUsage } from '../components/AccountUsage'
 import { getDeepSeekBalanceState } from '../components/deepseek-balance-state'
 import { loadHomeSnapshot, saveHomeSnapshot } from '../cache/home-snapshot-cache'
+import { readCachedHomeAccounts } from '../cache/cached-home-accounts'
 import { getCachedWorktrees, setCachedWorktrees } from '../cache/worktree-cache'
 import {
   loadMobileOnboardingSteps,
@@ -68,7 +69,9 @@ export function useMobileHomeData() {
         Object.keys(previous).length > 0 ? previous : snapshot.worktreeInfo
       )
       setAccountsByHost((previous) =>
-        Object.keys(previous).length > 0 ? previous : snapshot.accountsByHost
+        Object.keys(previous).length > 0
+          ? previous
+          : readCachedHomeAccounts(snapshot.accountsByHost)
       )
       for (const [hostId, info] of Object.entries(snapshot.worktreeInfo)) {
         if (info.lastActiveWorktree) {
