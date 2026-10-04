@@ -23,7 +23,8 @@ import {
   exerciseLaunchedCell,
   installHostileHostAppEnvironment,
   TERMINAL_PROBES,
-  type DeployAttempt
+  type DeployAttempt,
+  type TerminalProbeDiagnostic
 } from './ssh-hostile-host-test-harness'
 import {
   auditWindowsSessionCommands,
@@ -64,7 +65,26 @@ describe.runIf(RUN)('SSH relay on a Windows OpenSSH host', () => {
         const violations = windowsSessionCommandViolations(audit, { uploaded })
         expect(violations, `${cell.id}: ${violations.join('; ')}`).toEqual([])
       }
-      const receipt: Record<string, unknown> = { cell: cell.id, target: descriptor.target, audits }
+      const inputDiagnostics = process.env.ORCA_SSH_INPUT_DIAGNOSTICS === '1'
+      if (
+        inputDiagnostics &&
+        (process.env.GITHUB_ACTIONS !== 'true' ||
+          process.env.ORCA_ISOLATED_SSH_CI !== '1' ||
+          process.env.ORCA_BACKGROUND_LAUNCH !== '1')
+      ) {
+        throw new Error('Input diagnostics require isolated background CI')
+      }
+      const terminalDiagnostics: TerminalProbeDiagnostic[] | undefined = inputDiagnostics
+        ? []
+        : undefined
+      const receipt: Record<string, unknown> = {
+        cell: cell.id,
+        target: descriptor.target,
+        audits,
+        ...(terminalDiagnostics
+          ? { terminalDiagnostics, sourceCommit: process.env.GITHUB_SHA }
+          : {})
+      }
       // The deploy logs each relay launch; the cell reads them to prove which route ran.
       const launches: unknown[] = []
       const logSpy = vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
@@ -93,6 +113,7 @@ describe.runIf(RUN)('SSH relay on a Windows OpenSSH host', () => {
             observer,
             sshTarget,
             terminal: TERMINAL_PROBES.windows,
+            terminalDiagnostics,
             first,
             firstConn: conn,
             inspectDeploy

@@ -45,9 +45,8 @@ describe('SSH Windows-host workflow', () => {
   })
 
   it('covers inbox and preview OpenSSH on both Windows architectures', () => {
-    const cells = job.strategy.matrix.include.map(({ arch, runner, server }) =>
-      [arch, runner, server].join('/')
-    )
+    const ordinaryMatrix = JSON.parse(job.strategy.matrix.include.match(/\|\| '(\[.*\])'/)[1])
+    const cells = ordinaryMatrix.map(({ arch, runner, server }) => [arch, runner, server].join('/'))
     expect(cells.sort()).toEqual([
       'arm64/windows-11-arm/inbox',
       'arm64/windows-11-arm/preview',
@@ -82,7 +81,7 @@ describe('SSH Windows-host workflow', () => {
       templateIndex,
       waitIndex,
       runIndex
-    ]).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
+    ]).toEqual([1, 2, 3, 4, 5, 6, 7, 9])
     expect(job.steps[prepareIndex]).toMatchObject({
       background: true,
       shell: 'pwsh'
@@ -148,6 +147,27 @@ describe('SSH Windows-host workflow', () => {
     expect(provisioning).toContain('$report.inboxCapabilityPreparation=$preparation')
     expect(capability).toContain('$Report.inboxCapabilityInitialState=[string]$capability.State')
     expect(capability).toContain("$report.status='failed';$report.error=$_.Exception.Message;throw")
+  })
+
+  it('restricts explicit diagnostics to the original required host and cell', () => {
+    expect(workflow.on.workflow_dispatch.inputs.input_diagnostics).toMatchObject({
+      type: 'boolean',
+      default: false
+    })
+    const diagnosticMatrix = JSON.parse(
+      job.strategy.matrix.include.match(/input_diagnostics && '(\[.*?\])'/)[1]
+    )
+    expect(diagnosticMatrix).toEqual([{ arch: 'x64', runner: 'windows-2022', server: 'inbox' }])
+    expect(runStep.env.CELLS).toContain("inputs.input_diagnostics && 'pinned-cmd'")
+    const stage = job.steps.find(
+      (step) => step.run === 'node config/scripts/ssh-windows-native-input-diagnostics.mjs'
+    )
+    expect(stage.if).toContain(
+      "github.event_name == 'workflow_dispatch' && inputs.input_diagnostics"
+    )
+    expect(job.steps.indexOf(stage)).toBeGreaterThan(
+      job.steps.findIndex((step) => step.name?.startsWith('Build this runner'))
+    )
   })
 
   it('fetches the preview release its hash manifests pin', () => {

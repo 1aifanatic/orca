@@ -44,6 +44,11 @@ on:
         description: Comma-separated cell ids from src/main/ssh/ssh-windows-host-cells.ts; empty runs all.
         required: false
         default: ''
+      input_diagnostics:
+        description: Record bounded input/write receipts for only Server 2022 inbox pinned CMD.
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -59,27 +64,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - arch: x64
-            runner: windows-2022
-            server: inbox
-          - arch: x64
-            runner: windows-2022
-            server: preview
-            archive: OpenSSH-Win64.zip
-          - arch: arm64
-            runner: windows-11-arm
-            server: inbox
-          - arch: arm64
-            runner: windows-11-arm
-            server: preview
-            archive: OpenSSH-ARM64.zip
+        include: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.input_diagnostics && '[{"arch":"x64","runner":"windows-2022","server":"inbox"}]' || '[{"arch":"x64","runner":"windows-2022","server":"inbox"},{"arch":"x64","runner":"windows-2022","server":"preview","archive":"OpenSSH-Win64.zip"},{"arch":"arm64","runner":"windows-11-arm","server":"inbox"},{"arch":"arm64","runner":"windows-11-arm","server":"preview","archive":"OpenSSH-ARM64.zip"}]') }}
     runs-on: ${{ matrix.runner }}
     # Installing the inbox capability alone can take several minutes on a fresh image.
     timeout-minutes: 75
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
       ORCA_ISOLATED_SSH_CI: '1'
+      ORCA_SSH_INPUT_DIAGNOSTICS: ${{ github.event_name == 'workflow_dispatch' && inputs.input_diagnostics && '1' || '0' }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -136,11 +128,15 @@ jobs:
           node config/scripts/build-orcad-template.mjs --targets "win32-${{ matrix.arch }}"
           pnpm run build:relay
       - wait: inbox-capability
+      - name: Stage opt-in native input metadata after ordinary template verification
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.input_diagnostics }}
+        shell: bash
+        run: node config/scripts/ssh-windows-native-input-diagnostics.mjs
       - name: Run the Windows host cells against a private ${{ matrix.server }} sshd
         shell: pwsh
         timeout-minutes: 50
         env:
-          CELLS: ${{ github.event.inputs.cells || '' }}
+          CELLS: ${{ inputs.input_diagnostics && 'pinned-cmd' || github.event.inputs.cells || '' }}
         run: |
           $tools=Join-Path $pwd 'config/ci/windows-ssh-provider'
           $sourceRoot=$pwd.Path

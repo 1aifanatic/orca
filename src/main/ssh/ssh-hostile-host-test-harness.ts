@@ -14,7 +14,6 @@ import { removeTreeSync } from '../../shared/windows-transient-lock-removal'
 import { orcadNodeRuntimeExecutable } from '../../shared/orcad-artifacts'
 import type { SshRemoteRuntimeRung, SshTarget } from '../../shared/ssh-types'
 import { gcRemoteNodeRuntimeStore } from './remote-node-runtime-store-gc'
-import { SshChannelMultiplexer } from './ssh-channel-multiplexer'
 import { SshConnection } from './ssh-connection'
 import {
   hostileHostCellViolations,
@@ -23,9 +22,17 @@ import {
   type RungRefusal
 } from './ssh-hostile-host-cells'
 import type { HostileHostObserver } from './ssh-hostile-host-observer'
-import { retrySshOwnerRecoveryWhileBlocked } from './ssh-owner-recovery-retry'
-import { openSshPtyConsumerSession } from './ssh-pty-consumer-session'
 import { deployAndLaunchRelay, type RelayDeployResult } from './ssh-relay-deploy'
+import {
+  assertTerminalEchoes,
+  type TerminalProbe,
+  type TerminalProbeDiagnostic
+} from './ssh-hostile-host-terminal-probe'
+export {
+  assertTerminalEchoes,
+  type TerminalProbe,
+  type TerminalProbeDiagnostic
+} from './ssh-hostile-host-terminal-probe'
 import { pinnedRelayAddonFiles, pinnedRelayNodePath } from './ssh-relay-pinned-node'
 import {
   RelayRuntimeLadderRun,
@@ -43,8 +50,6 @@ export type DeployAttempt = {
 }
 
 /** Input the shell must evaluate to print `expect`; the echoed keystrokes never contain it. */
-export type TerminalProbe = { input: string; expect: string }
-
 export const TERMINAL_PROBES = {
   posix: { input: 'echo ORCA_HOSTILE_$((6*7))\r', expect: 'ORCA_HOSTILE_42' },
   // Why through cmd.exe: the same line evaluates whether the relay's PTY shell is cmd or PowerShell.
@@ -125,64 +130,6 @@ export async function assertCell(
   expect(violations, `${cell.id}: ${violations.join('; ')}`).toEqual([])
 }
 
-/** Resends the probe this often until the shell evaluates it; typeahead before a prompt can be dropped. */
-const TERMINAL_PROBE_RESEND_MS = 15_000
-
-/**
- * Opens a PTY as the session owner and waits for the shell to evaluate what it was sent. Returns
- * the multiplexer's disposer: until called, the session keeps answering relay keepalives, as the
- * app does, so the relay never reaps it as silent while the connection is still up.
- */
-export async function assertTerminalEchoes(
-  deployed: RelayDeployResult,
-  clientInstanceId: string,
-  probe: TerminalProbe
-): Promise<() => void> {
-  const mux = new SshChannelMultiplexer(deployed.transport)
-  let keepOpen = false
-  try {
-    // Why retry: the first connect's owner stays held for its grace period, and the app retries too.
-    await retrySshOwnerRecoveryWhileBlocked(
-      () =>
-        openSshPtyConsumerSession(mux, {
-          clientInstanceId,
-          expectedServerBuildId: deployed.serverBuildId
-        }),
-      { isCurrent: () => true, onClosed: () => () => {} }
-    )
-    const output = new Map<string, string>()
-    mux.onNotificationByMethod('pty.data', (params) => {
-      if (typeof params.id === 'string' && typeof params.data === 'string') {
-        output.set(params.id, (output.get(params.id) ?? '') + params.data)
-      }
-    })
-    const spawned: unknown = await mux.request('pty.spawn', { cols: 80, rows: 24 })
-    const id =
-      spawned && typeof spawned === 'object' && 'id' in spawned && typeof spawned.id === 'string'
-        ? spawned.id
-        : ''
-    expect(id).not.toBe('')
-    // Why 90s: a first Windows PowerShell start under ConPTY can take tens of seconds on CI.
-    const deadline = Date.now() + 90_000
-    let nextSendAt = 0
-    while (!(output.get(id) ?? '').includes(probe.expect) && Date.now() < deadline) {
-      if (Date.now() >= nextSendAt) {
-        mux.notify('pty.data', { id, data: probe.input })
-        nextSendAt = Date.now() + TERMINAL_PROBE_RESEND_MS
-      }
-      await new Promise((resolve) => setTimeout(resolve, 200))
-    }
-    expect(output.get(id) ?? '').toContain(probe.expect)
-    await mux.request('pty.shutdown', { id })
-    keepOpen = true
-    return () => mux.dispose()
-  } finally {
-    if (!keepOpen) {
-      mux.dispose()
-    }
-  }
-}
-
 export type PinnedRuntimeLayout = { nodePath: string; runtimeDir: string; storeDir: string }
 
 export function pinnedRuntimeLayout(
@@ -242,6 +189,7 @@ export type LaunchedCellRun = {
   observer: HostileHostObserver
   sshTarget: SshTarget
   terminal: TerminalProbe
+  terminalDiagnostics?: TerminalProbeDiagnostic[]
   first: DeployAttempt
   firstConn: SshConnection
   /** Extra per-deploy checks, e.g. the Windows command audit; `uploaded` is the first deploy. */
@@ -271,7 +219,12 @@ export async function exerciseLaunchedCell(run: LaunchedCellRun): Promise<Launch
   }
   // Why one id for both connects: the app reconnects as the same client instance.
   const clientInstanceId = randomUUID()
-  const closeFirstSession = await assertTerminalEchoes(first.deployed, clientInstanceId, terminal)
+  const closeFirstSession = await assertTerminalEchoes(
+    first.deployed,
+    clientInstanceId,
+    terminal,
+    run.terminalDiagnostics
+  )
   try {
     await assertGcKeepsInUseRuntime(firstConn, observer, first.deployed, layout)
   } finally {
@@ -293,7 +246,8 @@ export async function exerciseLaunchedCell(run: LaunchedCellRun): Promise<Launch
     const closeSecondSession = await assertTerminalEchoes(
       second.deployed,
       clientInstanceId,
-      terminal
+      terminal,
+      run.terminalDiagnostics
     )
     closeSecondSession()
   } finally {
