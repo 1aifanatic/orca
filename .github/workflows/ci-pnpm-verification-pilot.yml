@@ -25,6 +25,7 @@ on:
           - nativechat
           - vault
           - ssh
+          - opencode
         default: all
 permissions:
   contents: read
@@ -487,5 +488,36 @@ jobs:
         if: "!cancelled()"
         with:
           name: unit-capacity-ssh
+          path: ${{ runner.temp }}/capacity-output
+          retention-days: 14
+  opencode:
+    name: unit capacity opencode
+    if: inputs.cohort == 'all' || inputs.cohort == 'opencode' || inputs.cohort == 'next-fixtures'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: node
+          node-version: "24"
+          cache-pnpm-store: "false"
+      - name: Typecheck modified Node sources
+        run: pnpm tc:node
+      - name: Expand frozen baseline and portable benchmark
+        run: |-
+          mkdir -p "$RUNNER_TEMP/capacity-support" "$RUNNER_TEMP/capacity-output"
+          tar -xzf config/ci-capacity-benchmark/opencode.tar.gz -C "$RUNNER_TEMP/capacity-support"
+          git rev-parse HEAD > "$RUNNER_TEMP/capacity-output/source-sha.txt"
+          node --version > "$RUNNER_TEMP/capacity-output/node-version.txt"
+          pnpm --version > "$RUNNER_TEMP/capacity-output/pnpm-version.txt"
+      - name: Run alternating timed pairs and separate failure controls
+        run: node "$RUNNER_TEMP/capacity-support/run.mjs" "$RUNNER_TEMP/capacity-output"
+      - uses: actions/upload-artifact@v7
+        if: "!cancelled()"
+        with:
+          name: unit-capacity-opencode
           path: ${{ runner.temp }}/capacity-output
           retention-days: 14
