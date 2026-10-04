@@ -257,3 +257,26 @@ it("classifies wsl.exe's own missing-distro failure and reports its diagnostic",
   expect(error).not.toBeInstanceOf(ClaudeProfileHostMissingError)
   expect(String(error)).toContain('WSL_E_VM_FAILED')
 })
+it('accepts guest setup warnings for every shared resource, files included', async () => {
+  const { CLAUDE_PROFILE_RESOURCE_DIRS, CLAUDE_PROFILE_RESOURCE_FILES } =
+    await import('./claude-profile-provisioning')
+  const surfaces = [...CLAUDE_PROFILE_RESOURCE_DIRS, ...CLAUDE_PROFILE_RESOURCE_FILES]
+  const report = {
+    outcome: 'prepared',
+    surfaces: {},
+    warnings: surfaces.map((surface) => ({ surface, code: 'unreadable', detail: 'x' }))
+  }
+  mocks.run.mockImplementation(async (spec) => ({
+    code: 0,
+    stdout:
+      spec.program === '/usr/bin/env'
+        ? JSON.stringify({ ready: true, provisioned: true, report })
+        : '/mnt/c/fake-helper.cjs',
+    stderr: '',
+    timedOut: false,
+    environmentResolved: true
+  }))
+  const guest = await prepareClaudeWslGuest('Ubuntu with spaces')
+  const result = await guest.request(setup(guest.home))
+  expect(result.report?.warnings.map((warning) => warning.surface)).toEqual(surfaces)
+})
