@@ -490,6 +490,54 @@ describe.skipIf(!realClaudeAvailable)(suiteTitle, () => {
     150_000
   )
 
+  // With no SessionStart hook (Orca's status hooks off), the CLI names no session before the
+  // first turn; the chat must start on the initialize answer and take the message.
+  it.skipIf(!realClaudeAuthenticated)(
+    'starts and answers with every hook disabled, so no start frame precedes the turn',
+    async () => {
+      const providerSessionId = randomUUID()
+      const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), '.claude')
+      const cwd = await mkdtemp(join(tmpdir(), 'orca-no-hooks-'))
+      await mkdir(join(cwd, '.claude'), { recursive: true })
+      await writeFile(
+        join(cwd, '.claude', 'settings.json'),
+        JSON.stringify({ disableAllHooks: true })
+      )
+      const events: ClaudeStructuredSessionEvent[] = []
+      const adapter = realAdapter(providerSessionId, claudeConfigDir, events, cwd)
+      const frames = (): Record<string, unknown>[] =>
+        events.flatMap((event) => (event.type === 'message' ? [event.message] : []))
+      try {
+        await adapter.acquire({
+          identity: identity(providerSessionId),
+          fence: 1,
+          spawnToken: 'real-cli-no-hooks'
+        })
+        expect(frames().filter((frame) => frame.type === 'system')).toEqual([])
+        await expect(
+          adapter.dispatch({
+            sessionId: 'real-cli-handshake',
+            clientMessageId: 'real-cli-no-hooks-1',
+            body: {
+              kind: 'message',
+              role: 'user',
+              blocks: [{ type: 'text', text: 'Reply with the single word ok.' }]
+            },
+            fence: 1
+          })
+        ).resolves.toEqual({ state: 'admitted' })
+        await vi.waitFor(
+          () => expect(frames()).toContainEqual(expect.objectContaining({ type: 'result' })),
+          { timeout: 120_000, interval: 200 }
+        )
+      } finally {
+        await adapter.closeAll()
+        await rm(cwd, { recursive: true, force: true })
+      }
+    },
+    150_000
+  )
+
   it('turns a real silent unauthenticated startup into sign-in guidance', async () => {
     const claudeConfigDir = await mkdtemp(join(tmpdir(), 'orca-claude-no-auth-'))
     const providerSessionId = randomUUID()
