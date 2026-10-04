@@ -1,4 +1,4 @@
-name: Shard rebalance holdout
+name: Shard rebalance reversed-order holdout
 on:
   workflow_dispatch:
 permissions:
