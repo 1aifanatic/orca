@@ -694,6 +694,10 @@ describe('Windows upload on a host with no sftp subsystem', () => {
     vi.useFakeTimers()
     const remotePath = `${remoteRoot}/${file}`
     writeFileSync(join(localDir, file), 'x')
+    let noteWriteStarted: () => void = () => {}
+    const writeStarted = new Promise<void>((resolve) => {
+      noteWriteStarted = resolve
+    })
     spawnSystemSshCommandMock.mockImplementation((_target: SshTarget, command: string) => {
       const executable = command.split(' ')[0] ?? ''
       return createFakeChannel((channel) => {
@@ -704,6 +708,8 @@ describe('Windows upload on a host with no sftp subsystem', () => {
         })
         if (executable !== 'pwsh.exe') {
           setImmediate(() => channel.emit('close', 0, null))
+        } else {
+          noteWriteStarted()
         }
       })
     })
@@ -711,6 +717,7 @@ describe('Windows upload on a host with no sftp subsystem', () => {
       const result = expect(
         uploadFileViaSystemSsh(target, join(localDir, file), remotePath, { hostPlatform })
       ).rejects.toThrow('timed out')
+      await writeStarted
       await vi.advanceTimersByTimeAsync(WINDOWS_STDIN_WRITE_TIMEOUT_MS + 1)
       await result
 
