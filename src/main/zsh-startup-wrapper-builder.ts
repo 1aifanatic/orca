@@ -1,3 +1,4 @@
+import { ORCA_CLI_POSIX_PATH_RESTORE } from '../shared/orca-cli-shell-path'
 import { MANAGED_DATA_ACCOUNT_POSIX_RESTORE } from '../shared/managed-data-account-shell'
 /**
  * The single `.zshenv` Orca writes for every transport: local PTY, daemon/SSH,
@@ -122,6 +123,7 @@ function getOverlayRestoreBlocks(spec: ZshStartupHookSpec): (string | null)[] {
   return [
     spec.overlayRestoreComment,
     spec.restores.agentTeamsPath ? AGENT_TEAMS_PATH_RESTORE_BLOCK : null,
+    ORCA_CLI_POSIX_PATH_RESTORE,
     OPENCODE_CONFIG_DIR_RESTORE,
     MANAGED_DATA_ACCOUNT_POSIX_RESTORE,
     MIMOCODE_HOME_RESTORE,
