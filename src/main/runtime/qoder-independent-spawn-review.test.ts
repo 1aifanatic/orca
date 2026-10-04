@@ -253,6 +253,13 @@ it.each([
         wslDistro?: string
       }[] = []
       let connection = new AbortController()
+      const kill = vi.fn((id: string) => {
+        const index = live.findIndex((entry) => entry.id === id)
+        if (index !== -1) {
+          live.splice(index, 1)
+        }
+        return true
+      })
       const spawn = vi.fn(async (args: { command?: string; preAllocatedHandle?: string }) => {
         if (args.command) {
           acceptedCommands.push(args.command)
@@ -274,7 +281,7 @@ it.each([
         spawn,
         listProcesses: async () => live,
         write: () => true,
-        kill: vi.fn(),
+        kill,
         getForegroundProcess: async () => null
       })
       const send = vi.fn((channel: string, payload: { command?: string }) => {
@@ -325,6 +332,7 @@ it.each([
         )
       await vi.advanceTimersByTimeAsync(10_001)
       expect(await first).toBeInstanceOf(Error)
+      expect(kill).not.toHaveBeenCalled()
       connection = new AbortController()
       const retryPromise = runtime
         .createMobileSessionTerminal(`id:${TEST_WORKTREE_ID}`, {
