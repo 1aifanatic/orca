@@ -8,6 +8,8 @@ import { createStructuredAgentSessionOutboxEntry } from './structured-agent-sess
 import { projectStructuredAgentSessionMessages } from './structured-agent-session-message-projection'
 
 const KEPT_ID = 'client-kept'
+// The desktop draws a rejected send in place, as not sent, unless the host kept it as a card.
+const DESKTOP = { rejectedInPlace: true }
 
 function rejected(fields: Partial<AgentJournalSubmission> = {}): AgentJournalSubmission {
   return {
@@ -50,11 +52,13 @@ describe('a send kept as a card', () => {
   it('shows nothing of the original send, even beside its own local copy', () => {
     const kept = rejected({ keptAsQueuedMessageId: KEPT_ID })
     const items = [userItem(KEPT_ID, 'the kept words', 1)]
-    expect(projectStructuredAgentSessionMessages(items, [lingeringCopy], [kept])).toEqual([])
+    expect(projectStructuredAgentSessionMessages(items, [lingeringCopy], [kept], DESKTOP)).toEqual(
+      []
+    )
     // A rejection with no card keeps its local copy, marked not sent.
-    expect(projectStructuredAgentSessionMessages(items, [lingeringCopy], [rejected()])).toEqual([
-      expect.objectContaining({ id: agentJournalSubmissionKey(KEPT_ID), unsent: true })
-    ])
+    expect(
+      projectStructuredAgentSessionMessages(items, [lingeringCopy], [rejected()], DESKTOP)
+    ).toEqual([expect.objectContaining({ id: agentJournalSubmissionKey(KEPT_ID), unsent: true })])
   })
 
   // Edit is the card's text in the composer, then the card's Delete, then a new send.
@@ -71,7 +75,8 @@ describe('a send kept as a card', () => {
     const shown = projectStructuredAgentSessionMessages(
       [userItem(KEPT_ID, 'the kept words', 1), userItem('client-edited', 'the edited words', 2)],
       [lingeringCopy],
-      [kept, edited]
+      [kept, edited],
+      DESKTOP
     )
     expect(shown).toHaveLength(1)
     expect(shown[0]).toMatchObject({ blocks: [{ text: 'the edited words' }] })

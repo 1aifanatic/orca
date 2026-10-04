@@ -166,8 +166,7 @@ export function useStructuredAgentSession(args: {
   const messages = useStructuredAgentSessionMessages(
     transportState.journalItems,
     transcriptOutbox,
-    transportState.submissions,
-    queuedMessageIds
+    transportState.submissions
   )
   const queuedController = useStructuredAgentSessionQueuedMessages({
     enabled: queueCapable && transportState.fence !== null,
@@ -217,8 +216,6 @@ export function useStructuredAgentSession(args: {
     failedHere: outboxController.failedHere,
     /** The journal's rows for sent messages, which carry a rejected message's whole fact. */
     submissions: transportState.submissions,
-    /** The host's queued cards, which hold their own rejected hand-offs. */
-    queuedMessageIds,
     // A message typed during a command queues behind it on the host.
     send: (...input: Parameters<typeof outboxController.send>) =>
       // Legacy: an older host refuses sends while a command runs; removable once those hosts age out.
