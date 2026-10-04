@@ -1,6 +1,7 @@
 // On the phone, as on the desktop: a message sent while the turn ahead is still opening waits after
 // that turn's live status, and the live status stays on the turn ahead, never on the waiting one.
-// The phone keeps no outbox, so it draws only the rows the host recorded; these are those frames.
+// The phone keeps no outbox: its rows are the host's recorded ones, plus its own echo of a send the
+// host accepted, until that send's row arrives. The list is built as the phone's view builds it.
 
 import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
@@ -15,7 +16,11 @@ import type {
 } from '../../../src/shared/agent-session-journal-types'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import { projectStructuredAgentSessionMessages } from '../../../src/shared/structured-agent-session-message-projection'
-import { foldMobileNativeChatMessages } from './mobile-native-chat-render-data'
+import {
+  buildMobileNativeChatTransientData,
+  foldMobileNativeChatMessages,
+  type MobileNativeChatPendingItem
+} from './mobile-native-chat-render-data'
 import { useMobileNativeChatTurnDisclosure } from './use-mobile-native-chat-turn-disclosure'
 
 const NOW = 100_000
@@ -80,13 +85,22 @@ function Harness(props: {
   items: AgentJournalRenderItem[]
   submissions: AgentJournalSubmission[]
   stopping: boolean
+  pending: MobileNativeChatPendingItem[]
   seen: (disclosure: Disclosure) => void
 }): null {
-  const messages: NativeChatMessage[] = foldMobileNativeChatMessages(
-    projectStructuredAgentSessionMessages(props.items, [], props.submissions)
+  const messages: NativeChatMessage[] = projectStructuredAgentSessionMessages(
+    props.items,
+    [],
+    props.submissions
   )
-  const disclosure = useMobileNativeChatTurnDisclosure({
+  const { data } = buildMobileNativeChatTransientData({
     messages,
+    folded: foldMobileNativeChatMessages(messages),
+    streaming: null,
+    pending: props.pending
+  })
+  const disclosure = useMobileNativeChatTurnDisclosure({
+    messages: data,
     enabled: true,
     isWorking: true,
     workingStartedAt: NOW,
@@ -109,7 +123,8 @@ describe('a message sent while the turn ahead is still opening, on the phone', (
   function frame(
     items: AgentJournalRenderItem[],
     submissions: AgentJournalSubmission[],
-    stopping = false
+    stopping = false,
+    pending: MobileNativeChatPendingItem[] = []
   ): { listed: string[]; waiting: string[]; liveOn: string | undefined } {
     let seen: Disclosure | undefined
     act(() => {
@@ -117,6 +132,7 @@ describe('a message sent while the turn ahead is still opening, on the phone', (
         items,
         submissions,
         stopping,
+        pending,
         seen: (disclosure) => {
           seen = disclosure
         }
@@ -154,6 +170,31 @@ describe('a message sent while the turn ahead is still opening, on the phone', (
       waiting: [agentJournalSubmissionKey('second')],
       liveOn: agentJournalSubmissionKey('first')
     })
+  })
+
+  // Its echo of a send the host accepted, before that send's row reaches the phone.
+  it('keeps its own echo of an accepted send waiting after the live status, Stopping or not', () => {
+    const echo = {
+      id: 'pending-1',
+      text: 'second',
+      baselineTailMessageId: agentJournalSubmissionKey('first')
+    }
+    for (const stopping of [false, true]) {
+      expect(frame(openingItems, openingSubmissions, stopping, [echo])).toEqual({
+        listed: [agentJournalSubmissionKey('first')],
+        waiting: ['pending-1'],
+        liveOn: agentJournalSubmissionKey('first')
+      })
+    }
+    // While Stopping, sent after a queued B the Stop holds.
+    expect(
+      frame(
+        [...openingItems, userMessage('b', 4)],
+        [...openingSubmissions, submission('b', { acceptedSequence: 4 })],
+        true,
+        [{ ...echo, baselineTailMessageId: agentJournalSubmissionKey('b') }]
+      ).waiting
+    ).toEqual([agentJournalSubmissionKey('b'), 'pending-1'])
   })
 
   it('drops B from the wait when a Stop withdraws it, never listing it above the live status', () => {
