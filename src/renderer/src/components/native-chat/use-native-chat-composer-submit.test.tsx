@@ -207,6 +207,15 @@ describe('composer goal mode', () => {
     expect(hook.result.current.goalMode.active).toBe(true)
   })
 
+  it('does not send while an image waits to be attached again', () => {
+    const { hook, calls } = harness({
+      draft: 'see the screenshot',
+      imageAttachments: [{ id: 'm1', path: '', unavailableName: 'orca-paste-1-ab.png' }]
+    })
+    act(() => hook.result.current.send())
+    expect(calls.sendStructured).not.toHaveBeenCalled()
+  })
+
   it('sends an ordinary message outside goal mode', () => {
     const { hook, calls } = harness({ draft: 'hello', threadGoal: { setObjective: vi.fn() } })
     act(() => hook.result.current.send())
