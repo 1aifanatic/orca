@@ -92,6 +92,23 @@ export function createIndexedDbNativeChatComposerDraftStorage(
         for (const scopeKey of scopeKeys) {
           drafts.delete(scopeKey)
         }
-      })
+      }),
+    update: async (scopeKey, apply) => {
+      const transaction = (await database()).transaction(DRAFTS, 'readwrite')
+      const done = committed(transaction)
+      const drafts = transaction.objectStore(DRAFTS)
+      const read = drafts.get(scopeKey)
+      // Why inside the read's callback: the write must land in the same transaction as the read.
+      read.onsuccess = () => {
+        const next = apply(read.result)
+        if (next) {
+          drafts.put(next, scopeKey)
+        } else {
+          drafts.delete(scopeKey)
+        }
+        transaction.commit?.()
+      }
+      await done
+    }
   }
 }

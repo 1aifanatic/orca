@@ -27,11 +27,21 @@ export const scopeListeners = new Map<string, Set<() => void>>()
  *  append (text or images given back, a paste) is applied again on top of it. */
 export type DraftAppend = (draft: StoredNativeChatComposerDraft) => StoredNativeChatComposerDraft
 
+/** An append made before the load landed: written onto the stored draft in one change, and made
+ *  again on the loaded draft when that load could not have read it. */
+export type AppendBeforeLoad = {
+  /** In-run order, compared with the order at which a load attempt read storage. */
+  readonly sequence: number
+  readonly append: DraftAppend
+  committed: boolean
+}
+
 type LoadBookkeeping = {
   hydrated: boolean
+  /** Sequence of the last append made before the load landed. */
+  appendSequence: number
   readonly editedBeforeLoad: Set<string>
-  /** Per scope: the appends, and when the first of them was written. */
-  readonly appendsBeforeLoad: Map<string, { firstWrittenAt: number; appends: DraftAppend[] }>
+  readonly appendsBeforeLoad: Map<string, AppendBeforeLoad[]>
   readonly deletionsBeforeLoad: ((
     scopeKey: string,
     draft: StoredNativeChatComposerDraft
@@ -41,6 +51,7 @@ type LoadBookkeeping = {
 // The startup load's bookkeeping, emptied once it lands.
 export const load: LoadBookkeeping = {
   hydrated: false,
+  appendSequence: 0,
   editedBeforeLoad: new Set(),
   appendsBeforeLoad: new Map(),
   deletionsBeforeLoad: []
@@ -71,6 +82,7 @@ export function clearDraftMemoryForTests(): void {
   unverifiedScopes.clear()
   lastSavedAt = 0
   load.hydrated = false
+  load.appendSequence = 0
   load.editedBeforeLoad.clear()
   load.appendsBeforeLoad.clear()
   load.deletionsBeforeLoad.length = 0

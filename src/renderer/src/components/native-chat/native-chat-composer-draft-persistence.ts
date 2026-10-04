@@ -13,6 +13,7 @@ import {
   refusedScopes,
   unconfirmed,
   unverifiedScopes,
+  type AppendBeforeLoad,
   type DraftAppend,
   type DraftRecord,
   type UnconfirmedDraftChange
@@ -116,13 +117,10 @@ export function flushNativeChatComposerDrafts(): void {
 }
 
 /** Why: storage commits after this task, so what it has not confirmed when the window goes away
- *  is also written synchronously and replayed by the next load. A draft storage already refused
- *  is left out: it is shown as not saved and retried instead. */
+ *  is also written synchronously and replayed by the next load, a refused draft included. */
 function journalUnconfirmed(): void {
   flushNativeChatComposerDrafts()
-  journalNativeChatComposerDraftChanges(
-    new Map([...unconfirmed].filter(([scopeKey]) => !refusedScopes.has(scopeKey)))
-  )
+  journalNativeChatComposerDraftChanges(unconfirmed)
 }
 
 function journalWhenHidden(): void {
@@ -146,6 +144,42 @@ function installFlushOnHide(): void {
   document.addEventListener('visibilitychange', journalWhenHidden)
 }
 
+/** Before the load lands, memory may not hold the saved draft, so an append is written onto what
+ *  storage holds, read and written as one change. The loaded draft gets it again on landing. */
+function appendBeforeLoad(scopeKey: string, append: DraftAppend): void {
+  load.appendSequence += 1
+  const entry: AppendBeforeLoad = { sequence: load.appendSequence, append, committed: false }
+  load.appendsBeforeLoad.set(scopeKey, [...(load.appendsBeforeLoad.get(scopeKey) ?? []), entry])
+  const owner = records.get(scopeKey)?.owner
+  const empty: StoredNativeChatComposerDraft = { text: '', images: [], savedAt: 0 }
+  const written = nativeChatComposerDraftStorage()
+    .update(scopeKey, (stored) => {
+      const base = parseStoredNativeChatComposerDraft(stored) ?? empty
+      return savedForm({
+        ...append({ ...base, ...(base.owner || !owner ? {} : { owner }) }),
+        savedAt: nextSavedAt()
+      })
+    })
+    .then(
+      () => {
+        entry.committed = true
+        channel?.postMessage({ scopeKey })
+      },
+      (error: unknown) => {
+        if (!refusedScopes.has(scopeKey)) {
+          console.warn(
+            '[native-chat-drafts] a draft could not be saved; it is kept in memory',
+            error
+          )
+          refusedScopes.add(scopeKey)
+          notifyScope(scopeKey)
+        }
+      }
+    )
+  inFlight.add(written)
+  void written.finally(() => inFlight.delete(written))
+}
+
 /** Marks a scope changed in memory: `deferred` coalesces typing into one write, `immediate`
  *  writes now. Before the startup load lands, an edit wins over the loaded draft and an append
  *  is applied again on top of it. */
@@ -154,19 +188,15 @@ export function persistNativeChatComposerDraft(
   persist: 'immediate' | 'deferred',
   append?: DraftAppend
 ): void {
+  installFlushOnHide()
+  if (!load.hydrated && append && !load.editedBeforeLoad.has(scopeKey)) {
+    appendBeforeLoad(scopeKey, append)
+    return
+  }
   dirtyScopes.add(scopeKey)
   if (!load.hydrated) {
-    if (append) {
-      const pending = load.appendsBeforeLoad.get(scopeKey)
-      load.appendsBeforeLoad.set(scopeKey, {
-        firstWrittenAt: pending?.firstWrittenAt ?? records.get(scopeKey)?.savedAt ?? 0,
-        appends: [...(pending?.appends ?? []), append]
-      })
-    } else {
-      load.editedBeforeLoad.add(scopeKey)
-    }
+    load.editedBeforeLoad.add(scopeKey)
   }
-  installFlushOnHide()
   if (persist === 'immediate') {
     flushNativeChatComposerDrafts()
     return

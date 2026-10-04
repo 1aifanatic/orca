@@ -11,6 +11,8 @@ import {
 import {
   clearDraftMemoryForTests,
   dirtyScopes,
+  hasLocalChange,
+  load,
   nextSavedAt,
   notifyScope,
   records,
@@ -25,12 +27,16 @@ import {
   persistNativeChatComposerDraft,
   resetNativeChatComposerDraftPersistenceForTests
 } from './native-chat-composer-draft-persistence'
-import { resetNativeChatComposerDraftLoadForTests } from './native-chat-composer-draft-load'
-import type {
-  NativeChatComposerDraft,
-  NativeChatComposerDraftImage,
-  NativeChatComposerDraftOwner,
-  StoredNativeChatComposerDraft
+import {
+  hydrateNativeChatComposerDrafts,
+  resetNativeChatComposerDraftLoadForTests
+} from './native-chat-composer-draft-load'
+import {
+  setNativeChatComposerDraftStorageForTests,
+  type NativeChatComposerDraft,
+  type NativeChatComposerDraftImage,
+  type NativeChatComposerDraftOwner,
+  type StoredNativeChatComposerDraft
 } from './native-chat-composer-draft-storage'
 
 export {
@@ -43,6 +49,11 @@ export {
   hydrateNativeChatComposerDrafts,
   waitForNativeChatComposerDrafts
 } from './native-chat-composer-draft-load'
+
+/** This window has changed the draft and storage has not confirmed it yet. */
+export function hasUnsavedNativeChatComposerDraftChange(scopeKey: string): boolean {
+  return hasLocalChange(scopeKey)
+}
 
 export type NativeChatComposerDraftChange = {
   text?: string
@@ -150,6 +161,10 @@ export function updateNativeChatComposerDraft(
   records.set(scopeKey, record)
   notifyScope(scopeKey)
   persistNativeChatComposerDraft(scopeKey, persist, append)
+  if (!load.hydrated) {
+    // Why: a window whose startup never started the load still gets its saved drafts.
+    void hydrateNativeChatComposerDrafts()
+  }
 }
 
 /**
@@ -260,5 +275,6 @@ export function clearNativeChatComposerDraftsForTests(): void {
   clearDraftMemoryForTests()
   resetNativeChatComposerDraftPersistenceForTests()
   resetNativeChatComposerDraftLoadForTests()
+  setNativeChatComposerDraftStorageForTests(null)
   resolveOwner = null
 }

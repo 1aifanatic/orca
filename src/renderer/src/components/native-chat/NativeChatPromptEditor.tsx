@@ -2,6 +2,7 @@ import {
   readNativeChatDraftDocument,
   writeNativeChatDraftDocument
 } from './native-chat-draft-cache'
+import { hasUnsavedNativeChatComposerDraftChange } from './native-chat-composer-draft-store'
 import { closeHistory } from '@tiptap/pm/history'
 import { Slice } from '@tiptap/pm/model'
 import {
@@ -104,9 +105,15 @@ export function NativeChatPromptEditor({
           )
       },
       onTransaction: ({ editor: current, transaction }) => {
-        // Why: a value set from outside (the store's own draft, another window's, a late load)
-        // is already the store's; saving it back would make it a local change of this window.
-        if (scopeKey && transaction.docChanged && !transaction.getMeta('preventUpdate')) {
+        // Why: a value set from the store with no change of this window behind it (another
+        // window's draft, a late load) is already saved; saving it back would make it one. A
+        // value this window just set keeps its document, skill chips included.
+        if (
+          scopeKey &&
+          transaction.docChanged &&
+          (!transaction.getMeta('preventUpdate') ||
+            hasUnsavedNativeChatComposerDraftChange(scopeKey))
+        ) {
           writeNativeChatDraftDocument(
             scopeKey,
             promptTextMap(current.state.doc).text,

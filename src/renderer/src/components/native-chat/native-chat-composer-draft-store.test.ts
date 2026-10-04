@@ -399,24 +399,74 @@ describe('native-chat composer draft store', () => {
     })
   })
 
-  it('does not add an early append twice when the load already read its write', async () => {
-    storage.drafts.set('agent-session:s1', { text: 'saved earlier', images: [], savedAt: 1 })
-    let land: () => void = () => {}
-    // This load reads only when it lands, after the append's own write.
-    const late = {
+  it('keeps the saved draft when a load that failed once reads after text was given back', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    storage.drafts.set('agent-session:s1', { text: 'saved typing', images: [], savedAt: 1 })
+    let failures = 1
+    const flaky = {
       ...storage,
       loadAll: () =>
-        new Promise<ReadonlyMap<string, unknown>>((resolve) => {
-          land = () => resolve(new Map(storage.drafts))
-        })
+        failures-- > 0 ? Promise.reject(new Error('backing store')) : storage.loadAll()
     }
-    const reloaded = await reload({ using: late, hydrate: false })
+    const reloaded = await reload({ using: flaky, hydrate: false })
     await reloaded.store.waitForNativeChatComposerDrafts(1)
-    reloaded.drafts.appendNativeChatDraftCache('agent-session:s1', 'returned by Stop')
+    reloaded.drafts.appendNativeChatDraftCache('agent-session:s1', 'given back')
+    await reloaded.store.nativeChatComposerDraftWritesSettled()
+    await new Promise((resolve) => setTimeout(resolve, 1_200))
+    await reloaded.store.hydrateNativeChatComposerDrafts()
+    await reloaded.store.nativeChatComposerDraftWritesSettled()
+
+    expect(reloaded.drafts.readNativeChatDraftCache('agent-session:s1')).toBe(
+      'saved typing\n\ngiven back'
+    )
+    expect(storedDraft('agent-session:s1')?.text).toBe('saved typing\n\ngiven back')
+    warn.mockRestore()
+  })
+
+  it('keeps an append made after a retried load began reading', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let failures = 1
+    let land: () => void = () => {}
+    const flaky = {
+      ...storage,
+      loadAll: () => {
+        if (failures-- > 0) {
+          return Promise.reject(new Error('backing store'))
+        }
+        const snapshot = new Map(storage.drafts)
+        return new Promise<ReadonlyMap<string, unknown>>((resolve) => {
+          land = () => resolve(snapshot)
+        })
+      }
+    }
+    const reloaded = await reload({ using: flaky, hydrate: false })
+    await reloaded.store.waitForNativeChatComposerDrafts(1)
+    reloaded.drafts.appendNativeChatDraftCache('agent-session:s1', 'first')
+    await reloaded.store.nativeChatComposerDraftWritesSettled()
+    await new Promise((resolve) => setTimeout(resolve, 1_200))
+    reloaded.drafts.appendNativeChatDraftCache('agent-session:s1', 'second')
+    await reloaded.store.nativeChatComposerDraftWritesSettled()
 
     land()
     await reloaded.store.hydrateNativeChatComposerDrafts()
-    expect(reloaded.drafts.readNativeChatDraftCache('agent-session:s1')).toBe('returned by Stop')
+    await reloaded.store.nativeChatComposerDraftWritesSettled()
+    expect(reloaded.drafts.readNativeChatDraftCache('agent-session:s1')).toBe('first\n\nsecond')
+    expect(storedDraft('agent-session:s1')?.text).toBe('first\n\nsecond')
+    warn.mockRestore()
+  })
+
+  it('starts the load on its first write when startup never did', async () => {
+    storage.drafts.set('agent-session:other', { text: 'saved elsewhere', images: [], savedAt: 1 })
+    const counted = { ...storage, loadAll: vi.fn(() => storage.loadAll()) }
+    const reloaded = await reload({ using: counted, hydrate: false })
+    reloaded.drafts.writeNativeChatDraftCache('tab-1:pane', 'typed')
+
+    expect(counted.loadAll).toHaveBeenCalledTimes(1)
+    await vi.waitFor(() =>
+      expect(reloaded.drafts.readNativeChatDraftCache('agent-session:other')).toBe(
+        'saved elsewhere'
+      )
+    )
   })
 
   it('retries a failed load a few times, warns once, and then stops', async () => {
@@ -494,31 +544,27 @@ describe('native-chat composer draft store', () => {
     expect(localStorage.getItem('orca:nativeChatComposerDraftJournal:v1')).toBeNull()
   })
 
-  it('keeps the journal small: never a refused draft, and never past its cap', async () => {
+  it('keeps a refused draft in the journal for the next run, and the journal under its cap', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     storage.refuseWrites = true
+    modules.drafts.writeNativeChatDraftCache('agent-session:s1', 'typed while storage refuses')
     for (let index = 0; index < 10; index += 1) {
-      modules.drafts.appendNativeChatDraftCache(
-        `agent-session:refused-${index}`,
-        'x'.repeat(200_000)
-      )
+      modules.drafts.appendNativeChatDraftCache(`agent-session:big-${index}`, 'x'.repeat(200_000))
     }
+    modules.store.flushNativeChatComposerDrafts()
     await modules.store.nativeChatComposerDraftWritesSettled()
     window.dispatchEvent(new Event('pagehide'))
-    expect(localStorage.getItem('orca:nativeChatComposerDraftJournal:v1')).toBeNull()
+    await modules.store.nativeChatComposerDraftWritesSettled()
+    const journal = localStorage.getItem('orca:nativeChatComposerDraftJournal:v1') ?? ''
+    expect(journal.length).toBeLessThanOrEqual(256_000)
+    modules.store.clearNativeChatComposerDraftsForTests()
 
     storage.refuseWrites = false
-    const hanging = { ...storage, write: () => new Promise<void>(() => {}) }
-    const unconfirmedTab = await reload({ using: hanging })
-    for (let index = 0; index < 10; index += 1) {
-      unconfirmedTab.drafts.appendNativeChatDraftCache(
-        `agent-session:big-${index}`,
-        'y'.repeat(60_000)
-      )
-    }
-    window.dispatchEvent(new Event('pagehide'))
-    const journal = localStorage.getItem('orca:nativeChatComposerDraftJournal:v1') ?? ''
-    expect(journal.length).toBeGreaterThan(0)
-    expect(journal.length).toBeLessThanOrEqual(256_000)
+    const next = await reload()
+    expect(next.drafts.readNativeChatDraftCache('agent-session:s1')).toBe(
+      'typed while storage refuses'
+    )
+    warn.mockRestore()
   })
 
   it('keeps a restored image checked when another window saves the draft with the same image', async () => {

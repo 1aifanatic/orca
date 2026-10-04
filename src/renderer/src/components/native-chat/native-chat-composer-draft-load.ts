@@ -33,19 +33,25 @@ let hydration: Promise<void> | null = null
 let failedLoads = 0
 let retryTimer: ReturnType<typeof setTimeout> | null = null
 
-function withAppends(scopeKey: string, loaded: StoredNativeChatComposerDraft): DraftLoadResult {
-  const pending = load.appendsBeforeLoad.get(scopeKey)
-  // Why the time check: a load that read after the append's own write already holds it.
-  if (!pending || loaded.savedAt >= pending.firstWrittenAt) {
+/** The appends this load could not have read: made after it began reading, or never written. */
+function withAppends(
+  scopeKey: string,
+  loaded: StoredNativeChatComposerDraft,
+  readAtSequence: number
+): DraftLoadResult {
+  const missing = (load.appendsBeforeLoad.get(scopeKey) ?? []).filter(
+    (entry) => !entry.committed || entry.sequence > readAtSequence
+  )
+  if (missing.length === 0) {
     return { draft: loaded, changed: false }
   }
-  const merged = pending.appends.reduce((draft, append) => append(draft), loaded)
+  const merged = missing.reduce((draft, entry) => entry.append(draft), loaded)
   return { draft: { ...merged, savedAt: nextSavedAt() }, changed: true }
 }
 
 type DraftLoadResult = { draft: StoredNativeChatComposerDraft; changed: boolean }
 
-function applyLoaded(loaded: ReadonlyMap<string, unknown>): void {
+function applyLoaded(loaded: ReadonlyMap<string, unknown>, readAtSequence: number): void {
   const drafts = new Map<string, StoredNativeChatComposerDraft | null>()
   for (const [scopeKey, value] of loaded) {
     drafts.set(scopeKey, parseStoredNativeChatComposerDraft(value))
@@ -59,6 +65,12 @@ function applyLoaded(loaded: ReadonlyMap<string, unknown>): void {
     drafts.set(scopeKey, change.draft)
     dirtyScopes.add(scopeKey)
   }
+  for (const [scopeKey, appends] of load.appendsBeforeLoad) {
+    // Appended with nothing saved before: an empty draft is what the load would have read.
+    if (!drafts.has(scopeKey) && appends.some((entry) => !entry.committed)) {
+      drafts.set(scopeKey, { text: '', images: [], savedAt: 0 })
+    }
+  }
   for (const [scopeKey, stored] of drafts) {
     if (load.editedBeforeLoad.has(scopeKey)) {
       continue
@@ -68,7 +80,7 @@ function applyLoaded(loaded: ReadonlyMap<string, unknown>): void {
       dirtyScopes.add(scopeKey)
       continue
     }
-    const { draft, changed } = withAppends(scopeKey, stored)
+    const { draft, changed } = withAppends(scopeKey, stored, readAtSequence)
     records.set(scopeKey, draft)
     unverifiedScopes.add(scopeKey)
     if (changed) {
@@ -109,7 +121,9 @@ export function hydrateNativeChatComposerDrafts(): Promise<void> {
   hydration ??= (async () => {
     removeLegacyLocalStorageNativeChatComposerDrafts()
     installNativeChatComposerDraftBroadcast()
-    applyLoaded(await nativeChatComposerDraftStorage().loadAll())
+    // Why read here: storage applies changes in order, so this load reads every append made so far.
+    const readAtSequence = load.appendSequence
+    applyLoaded(await nativeChatComposerDraftStorage().loadAll(), readAtSequence)
   })().catch(retryLater)
   return hydration
 }

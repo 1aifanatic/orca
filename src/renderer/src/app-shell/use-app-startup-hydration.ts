@@ -5,7 +5,7 @@ import { installCodexDetachedPaneRestartExecutor } from '@/components/terminal-p
 import { useAppStore } from '../store'
 import { reconcileHydratedWorkspaceTabModels } from './reconcile-hydrated-workspace-tab-models'
 import { useStartupActions } from './use-app-startup-actions'
-import { loadNativeChatDraftsForStartup } from './native-chat-draft-startup'
+import { waitForNativeChatDraftsAtStartup } from './native-chat-draft-startup'
 import { WORKTREE_REFRESH_CONCURRENCY } from '../store/slices/worktrees'
 import { sweepRestoredCodexPanesForStaleAccounts } from '../lib/codex-stale-pane-sweep'
 import { fetchWorkspaceSessionWithRuntimeHostOwners } from '../lib/workspace-session-host-hydration'
@@ -182,7 +182,7 @@ export function useAppStartupHydration(onOnboardingLoaded: (state: OnboardingSta
         const [sessionOutcome, catalogOutcome] = await Promise.allSettled([
           hydrationSessionChain,
           localCatalogChain,
-          timeRendererStartupStep('native-chat-drafts', loadNativeChatDraftsForStartup)
+          timeRendererStartupStep('native-chat-drafts', waitForNativeChatDraftsAtStartup)
         ])
         if (sessionOutcome.status === 'rejected') {
           throw sessionOutcome.reason

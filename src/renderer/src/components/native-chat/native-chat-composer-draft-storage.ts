@@ -40,6 +40,11 @@ export type NativeChatComposerDraftStorage = {
   read(scopeKey: string): Promise<unknown>
   write(scopeKey: string, draft: StoredNativeChatComposerDraft): Promise<void>
   remove(scopeKeys: readonly string[]): Promise<void>
+  /** Reads the stored record and writes what `apply` makes of it, as one change. */
+  update(
+    scopeKey: string,
+    apply: (stored: unknown) => StoredNativeChatComposerDraft | null
+  ): Promise<void>
 }
 
 /** Drafts kept for this run only: the storage of an environment without IndexedDB (unit tests),
@@ -66,6 +71,21 @@ export function createMemoryNativeChatComposerDraftStorage(): NativeChatComposer
         drafts.delete(scopeKey)
       }
       return Promise.resolve()
+    },
+    update: (
+      scopeKey: string,
+      apply: (stored: unknown) => StoredNativeChatComposerDraft | null
+    ) => {
+      if (storage.refuseWrites) {
+        return Promise.reject(new DOMException('refused', 'QuotaExceededError'))
+      }
+      const next = apply(drafts.get(scopeKey))
+      if (next) {
+        drafts.set(scopeKey, next)
+      } else {
+        drafts.delete(scopeKey)
+      }
+      return Promise.resolve()
     }
   }
   return storage
@@ -82,7 +102,7 @@ export function nativeChatComposerDraftStorage(): NativeChatComposerDraftStorage
 }
 
 export function setNativeChatComposerDraftStorageForTests(
-  next: NativeChatComposerDraftStorage
+  next: NativeChatComposerDraftStorage | null
 ): void {
   storage = next
 }
