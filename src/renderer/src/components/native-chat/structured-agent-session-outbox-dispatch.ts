@@ -35,7 +35,7 @@ import {
 import {
   getStructuredAgentLaunchPromptDispatch,
   shareStructuredAgentLaunchPromptDispatch
-} from '@/lib/structured-agent-session-launch-prompt'
+} from '@/lib/structured-agent-launch-prompt-in-flight-dispatches'
 import {
   clearStructuredAgentSessionChatLineHeldBy,
   returnStructuredAgentSessionMessage,

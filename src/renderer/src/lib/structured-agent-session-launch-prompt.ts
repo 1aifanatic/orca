@@ -1,8 +1,11 @@
 import type { StructuredAgentSessionOutboxEntry } from '../../../shared/structured-agent-session-outbox'
-import type { StructuredAgentSessionSendSettlement } from '../../../shared/structured-agent-session-send-settlement'
 import { getStructuredAgentSessionOutbox } from '@/components/native-chat/structured-agent-session-outbox-storage'
 import { sendStructuredAgentSessionOutboxEntry } from '@/components/native-chat/structured-agent-session-outbox-dispatch'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
+import {
+  shareStructuredAgentLaunchPromptDispatch,
+  type StructuredAgentLaunchPromptDispatch
+} from './structured-agent-launch-prompt-in-flight-dispatches'
 
 export type StructuredPromptDeliveryResult = {
   delivered: boolean
@@ -17,67 +20,12 @@ export type StructuredLaunchPromptOptions = {
 
 type LaunchReceipt = { sessionId: string; fence: number }
 
-/** How the send settled, or null when nothing was sent. */
-type SharedDispatch = Promise<StructuredAgentSessionSendSettlement | null>
-
-type SharedDispatchStart = {
-  promise: SharedDispatch
-  started: boolean
-}
-
-// A provisional chat can mount before its launch settlement runs. Both paths own the same
-// persisted entry, so share the in-flight admission by operation id instead of issuing two RPCs.
-const inFlightDispatches = new Map<string, SharedDispatch>()
-
-function dispatchKey(sessionId: string, clientMessageId: string, fence: number): string {
-  return `${sessionId}:${clientMessageId}:${fence}`
-}
-
-export function getStructuredAgentLaunchPromptDispatch(
-  sessionId: string,
-  clientMessageId: string,
-  fence?: number
-): SharedDispatch | undefined {
-  if (fence !== undefined) {
-    return inFlightDispatches.get(dispatchKey(sessionId, clientMessageId, fence))
-  }
-  const prefix = `${sessionId}:${clientMessageId}:`
-  for (const [key, promise] of inFlightDispatches) {
-    if (key.startsWith(prefix)) {
-      return promise
-    }
-  }
-  return undefined
-}
-
-export function shareStructuredAgentLaunchPromptDispatch(
-  sessionId: string,
-  clientMessageId: string,
-  fence: number,
-  start: () => SharedDispatch
-): SharedDispatchStart {
-  const key = dispatchKey(sessionId, clientMessageId, fence)
-  const existing = inFlightDispatches.get(key)
-  if (existing) {
-    return { promise: existing, started: false }
-  }
-  const promise = Promise.resolve().then(start)
-  inFlightDispatches.set(key, promise)
-  const clear = (): void => {
-    if (inFlightDispatches.get(key) === promise) {
-      inFlightDispatches.delete(key)
-    }
-  }
-  void promise.then(clear, clear)
-  return { promise, started: true }
-}
-
 /** The launch prompt goes out through the outbox's own sender and settlement, like any send. */
 async function dispatchStructuredLaunchPrompt(
   staged: StructuredAgentSessionOutboxEntry,
   receipt: LaunchReceipt,
   target: RuntimeClientTarget
-): SharedDispatch {
+): StructuredAgentLaunchPromptDispatch {
   const entries = getStructuredAgentSessionOutbox(staged.sessionId)
   const entry = entries.find((candidate) => candidate.clientMessageId === staged.clientMessageId)
   // Gone or already out: whatever settled or sent it owns it.
