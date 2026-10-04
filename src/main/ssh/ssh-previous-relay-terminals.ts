@@ -30,8 +30,23 @@ export type PreviousRelayCensusInput = {
 }
 
 const MAX_CENSUS_ENDPOINTS = 32
-type PreviousRelayCensus = { endpoints: string[]; nodePath?: string }
+/**
+ * `complete` only when every older endpoint on an enumerable host was censused. `unverifiable` when
+ * such a host could not be fully censused: a failed run, missing inputs, or too many endpoints.
+ */
+type PreviousRelayCensus = {
+  endpoints: string[]
+  nodePath?: string
+  complete: boolean
+  unverifiable: boolean
+}
 const censusByTarget = new Map<string, Promise<PreviousRelayCensus>>()
+const NO_CENSUS: PreviousRelayCensus = { endpoints: [], complete: false, unverifiable: false }
+
+/** Windows pipes are not enumerable (see the superseded sweep), so those hosts keep today's path. */
+function isEnumerableRelayHost(input: PreviousRelayCensusInput): boolean {
+  return Boolean(input.hostPlatform && !isWindowsRemoteHost(input.hostPlatform))
+}
 
 /** An older relay that holds nothing, or is gone, cannot be running this target's terminals. */
 export function mayHoldTerminals(incumbent: RelayEndpointIncumbent): boolean {
@@ -44,13 +59,21 @@ export async function censusPreviousRelays(
   targetId: string,
   input: PreviousRelayCensusInput
 ): Promise<string[]> {
+  return (await runPreviousRelayCensus(conn, targetId, input))?.endpoints ?? []
+}
+
+/** Null when the host is enumerable but an input the census needs is missing. */
+async function runPreviousRelayCensus(
+  conn: SshConnection,
+  targetId: string,
+  input: PreviousRelayCensusInput
+): Promise<{ endpoints: string[]; truncated: boolean } | null> {
   const { hostPlatform, remoteHome, remoteRelayDir, nodePath, sockPath } = input
-  // Windows pipes are not enumerable (see the superseded sweep), so those hosts keep today's path.
-  if (!hostPlatform || isWindowsRemoteHost(hostPlatform) || !remoteHome || !remoteRelayDir) {
-    return []
+  if (!hostPlatform || !isEnumerableRelayHost(input)) {
+    return { endpoints: [], truncated: false }
   }
-  if (!nodePath) {
-    return []
+  if (!remoteHome || !remoteRelayDir || !nodePath) {
+    return null
   }
   const listing = await execCommand(
     conn,
@@ -64,19 +87,18 @@ export async function censusPreviousRelays(
     }),
     { wrapCommand: true }
   )
-  const sockPaths = listing
+  const listed = listing
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line.startsWith('/'))
-    .slice(0, MAX_CENSUS_ENDPOINTS)
   const holding: string[] = []
-  for (const endpoint of sockPaths) {
+  for (const endpoint of listed.slice(0, MAX_CENSUS_ENDPOINTS)) {
     const incumbent = await probeRelayEndpointIncumbent(conn, hostPlatform, nodePath, endpoint)
     if (mayHoldTerminals(incumbent)) {
       holding.push(endpoint)
     }
   }
-  return holding
+  return { endpoints: holding, truncated: listed.length > MAX_CENSUS_ENDPOINTS }
 }
 
 /** Starts this deploy's census; a newer deploy for the target replaces it. */
@@ -84,33 +106,50 @@ export function startPreviousRelayCensus(
   conn: SshConnection,
   targetId: string,
   input: PreviousRelayCensusInput
-): void {
-  const census = censusPreviousRelays(conn, targetId, input).then(
-    (endpoints) => ({ endpoints, nodePath: input.nodePath }),
-    (error: unknown) => {
-      // A census that could not run leaves the reattach on today's path, which never kills anything.
+): Promise<PreviousRelayCensus> {
+  const census = runPreviousRelayCensus(conn, targetId, input).then(
+    (ran): PreviousRelayCensus => {
+      const enumerable = isEnumerableRelayHost(input)
+      const unverifiable = enumerable && (!ran || ran.truncated)
+      return {
+        endpoints: ran?.endpoints ?? [],
+        nodePath: input.nodePath,
+        complete: enumerable && !unverifiable,
+        unverifiable
+      }
+    },
+    (error: unknown): PreviousRelayCensus => {
+      // Not "no older relay": a census that could not run leaves its terminals unverifiable.
       console.warn(
         `[ssh-relay] Previous relay census did not run for ${targetId}: ${
           error instanceof Error ? error.message : String(error)
         }`
       )
-      return { endpoints: [] }
+      return { endpoints: [], complete: false, unverifiable: true }
     }
   )
   censusByTarget.set(targetId, census)
+  return census
 }
 
 /** This deploy's census, with the node it ran under, which can also run an older bridge. */
 export function previousRelayCensus(targetId: string): Promise<PreviousRelayCensus> {
-  return censusByTarget.get(targetId) ?? Promise.resolve({ endpoints: [] })
+  return censusByTarget.get(targetId) ?? Promise.resolve(NO_CENSUS)
 }
 
 export async function previousRelayMayHoldTerminals(targetId: string): Promise<boolean> {
-  return (await previousRelayCensus(targetId)).endpoints.length > 0
+  const census = await previousRelayCensus(targetId)
+  return census.endpoints.length > 0 || census.unverifiable
 }
 
-export function clearPreviousRelayCensus(targetId: string): void {
-  censusByTarget.delete(targetId)
+/** A session's teardown passes the census it started, so a newer deploy's census survives it. */
+export function clearPreviousRelayCensus(
+  targetId: string,
+  census?: Promise<PreviousRelayCensus>
+): void {
+  if (!census || censusByTarget.get(targetId) === census) {
+    censusByTarget.delete(targetId)
+  }
 }
 
 /** A not-found reattach this target must keep, because an older build's relay may run the PTY. */

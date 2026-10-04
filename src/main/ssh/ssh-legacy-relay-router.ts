@@ -19,10 +19,13 @@ type RouteEntry = {
   pending: Promise<SshLegacyRelayRoute | null>
   /** Set once opened; synchronous lookups read only routes that finished opening. */
   route?: SshLegacyRelayRoute | null
+  /** Callers awaiting or reading the route; it closes only once none remain and it serves nothing. */
+  users: number
 }
 
 export class SshLegacyRelayRouter implements SshPtyLegacyRelayRouting {
   private readonly routes = new Map<string, RouteEntry>()
+  private readonly disposeListeners = new Set<() => void>()
   private disposed = false
 
   constructor(private readonly options: SshLegacyRelayRouterOptions) {}
@@ -32,26 +35,70 @@ export class SshLegacyRelayRouter implements SshPtyLegacyRelayRouting {
     appPtyId: string
   ): Promise<{ provider: SshPtyProvider; release: () => void } | null> {
     for (const sockPath of await this.options.endpoints()) {
-      const route = await this.route(sockPath)
-      if (this.disposed) {
-        return null
-      }
-      if (route?.holds(appPtyId)) {
-        route.beginServing(appPtyId)
-        return { provider: route.provider, release: () => this.release(route, appPtyId) }
-      }
-      if (route && !route.servesAny) {
-        route.close('legacy-relay-holds-no-requested-terminal')
+      const served = await this.use(
+        sockPath,
+        'legacy-relay-holds-no-requested-terminal',
+        (route) => {
+          if (!route?.holds(appPtyId) || this.disposed) {
+            return null
+          }
+          route.beginServing(appPtyId)
+          return {
+            provider: route.provider,
+            release: () => this.release(sockPath, route, appPtyId)
+          }
+        }
+      )
+      if (served || this.disposed) {
+        return served
       }
     }
     return null
   }
 
+  /**
+   * Every PTY the older relays still run, for the migration terminal gate. Null when one of them
+   * could not be asked: an unreachable or non-bridgeable relay is unverifiable, never empty.
+   */
+  async listHeld(): Promise<string[] | null> {
+    const held: string[] = []
+    for (const sockPath of await this.options.endpoints()) {
+      const listed = await this.use(sockPath, 'legacy-relay-listed-for-terminal-gate', (route) =>
+        route && !this.disposed ? route.heldPtyIds() : null
+      )
+      if (!listed) {
+        return null
+      }
+      held.push(...listed)
+    }
+    return held
+  }
+
   /** Releases a pane whose attach through the route did not complete. */
-  private release(route: SshLegacyRelayRoute, appPtyId: string): void {
+  private release(sockPath: string, route: SshLegacyRelayRoute, appPtyId: string): void {
     route.stopServing(appPtyId)
-    if (!route.servesAny) {
-      route.close('legacy-relay-attach-abandoned')
+    this.closeIfIdle(this.routes.get(sockPath), 'legacy-relay-attach-abandoned')
+  }
+
+  /** Never closes a route another caller is still awaiting: only the last user may hang it up. */
+  private async use<T>(
+    sockPath: string,
+    idleReason: string,
+    read: (route: SshLegacyRelayRoute | null) => T
+  ): Promise<T> {
+    const entry = this.entry(sockPath)
+    entry.users += 1
+    try {
+      return read(await entry.pending)
+    } finally {
+      entry.users -= 1
+      this.closeIfIdle(entry, idleReason)
+    }
+  }
+
+  private closeIfIdle(entry: RouteEntry | undefined, reason: string): void {
+    if (entry?.route && entry.users === 0 && !entry.route.servesAny) {
+      entry.route.close(reason)
     }
   }
 
@@ -75,20 +122,25 @@ export class SshLegacyRelayRouter implements SshPtyLegacyRelayRouting {
     return providers
   }
 
+  onDispose(listener: () => void): void {
+    this.disposeListeners.add(listener)
+  }
+
   dispose(): void {
     this.disposed = true
+    this.disposeListeners.forEach((listener) => listener())
     for (const { route } of this.routes.values()) {
       route?.close('legacy-relay-router-disposed')
     }
     this.routes.clear()
   }
 
-  private route(sockPath: string): Promise<SshLegacyRelayRoute | null> {
+  private entry(sockPath: string): RouteEntry {
     const existing = this.routes.get(sockPath)
     if (existing) {
-      return existing.pending
+      return existing
     }
-    const entry: RouteEntry = { pending: Promise.resolve(null) }
+    const entry: RouteEntry = { pending: Promise.resolve(null), users: 0 }
     entry.pending = this.options.openRoute(sockPath).then(
       (route) => {
         entry.route = route
@@ -115,6 +167,6 @@ export class SshLegacyRelayRouter implements SshPtyLegacyRelayRouting {
       }
     )
     this.routes.set(sockPath, entry)
-    return entry.pending
+    return entry
   }
 }

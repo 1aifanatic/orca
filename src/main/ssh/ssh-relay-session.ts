@@ -16,6 +16,7 @@ import type { TerminalUnavailableCause } from '../../shared/terminal-unavailable
 import { replayPendingSshPtyKills } from './ssh-pending-pty-kill-replay'
 import { sweepOrphanedRelayPtys } from './ssh-orphan-relay-pty-sweep'
 import {
+  clearPreviousRelayCensus,
   isReattachHeldByPreviousRelay,
   startPreviousRelayCensus
 } from './ssh-previous-relay-terminals'
@@ -340,6 +341,7 @@ export class SshRelaySession {
   private _onReady: ((targetId: string) => void) | null = null
   private portScanner: PortScanner | null = null
   private currentConnection: SshConnection | null = null
+  private previousRelayCensus: ReturnType<typeof startPreviousRelayCensus> | undefined
   // Why: a self-driven repair reconnect must not silently re-negotiate the target's grace window.
   private lastGraceTimeSeconds: number | undefined = undefined
   private hostPlatform: RemoteHostPlatform | null = null
@@ -936,6 +938,7 @@ export class SshRelaySession {
     // Why here and not on reconnect: an explicit disconnect is user action, so the host earns a
     // fresh node-pty repair attempt. A reconnect must not, or the repair becomes a loop.
     forgetRelayNodePtyRepairs(this.targetId)
+    clearPreviousRelayCensus(this.targetId, this.previousRelayCensus)
     const recoveryRemoval = forgetSshPtyConsumerRecovery(
       this.targetId,
       this.ptyConsumerClientInstanceId,
@@ -1056,7 +1059,7 @@ export class SshRelaySession {
   ): Promise<Awaited<ReturnType<typeof deployAndLaunchRelay>> | null> {
     try {
       const deployed = await deployAndLaunchRelay(conn, undefined, graceTimeSeconds, this.targetId)
-      startPreviousRelayCensus(conn, this.targetId, deployed)
+      this.previousRelayCensus = startPreviousRelayCensus(conn, this.targetId, deployed)
       return deployed
     } catch (err) {
       // Why system SSH is excluded: it has no ssh2 shell or SFTP channel to degrade onto.

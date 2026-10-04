@@ -121,6 +121,11 @@ export class SshLegacyRelayRoute {
     }
   }
 
+  /** The app PTY ids the old relay listed when the route opened, minus those that exited since. */
+  heldPtyIds(): string[] {
+    return this.closed ? [] : [...this.listed]
+  }
+
   holds(appPtyId: string): boolean {
     return !this.closed && this.listed.has(appPtyId)
   }

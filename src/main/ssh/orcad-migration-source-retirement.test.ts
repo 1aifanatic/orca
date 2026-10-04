@@ -114,6 +114,24 @@ describe('retiring a migrated source', () => {
     expect(h.store.getWorkspaceSession().activeConnectionIdsAtShutdown).toEqual(['ssh-other'])
   })
 
+  it("drops the moved host's relay recovery record and keeps other hosts'", async () => {
+    const h = await setup()
+    const record = (targetId: string) => ({
+      targetId,
+      clientInstanceId: 'client-1',
+      serverBuildId: '0.1.0',
+      clientGeneration: 1,
+      ownerGeneration: 1,
+      ownerLease: 'lease'
+    })
+    await h.store.upsertSshPtyConsumerRecovery(record(TARGET.id))
+    await h.store.upsertSshPtyConsumerRecovery(record('ssh-other'))
+
+    await expect(h.retire()).resolves.toMatchObject({ phase: 'source-retired' })
+    expect(h.store.getSshPtyConsumerRecovery(TARGET.id)).toBeNull()
+    expect(h.store.getSshPtyConsumerRecovery('ssh-other')).toMatchObject({ targetId: 'ssh-other' })
+  })
+
   it('refuses to retire anything before the destination proved its commit', async () => {
     const h = await setup({ commit: false })
     await expect(h.retire()).rejects.toThrow('orcad_migration_retire_before_commit')

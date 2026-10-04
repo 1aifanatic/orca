@@ -10,28 +10,28 @@ export type OrcadMigrationTerminalVerdict =
   | { verdict: 'exited'; provenPtyIds: string[] }
   | { verdict: 'live' | 'unverifiable'; ptyIds: string[]; reason: string }
 
-/** The relay's own process list for the target; `null` when it did not answer. */
-export type ListRelayPtyIds = () => Promise<string[] | null>
+/**
+ * The relay's own process list for the target; `null` when it did not answer. `previous` asks the
+ * relays an earlier Orca build left running the same way, `null` when they cannot be asked.
+ */
+export type ListRelayPtyIds = (() => Promise<string[] | null>) & {
+  previous?: () => Promise<string[] | null>
+}
 
 type LeaseStore = Pick<Store, 'getSshRemotePtyLeases'>
 
-/** Taken before the fence, while the relay can still be asked. */
+/** Taken before the fence, while the relay can still be asked. Read-only, so previews may ask. */
 export async function assessOrcadMigrationTerminals(
   store: LeaseStore,
   targetId: string,
   listRelayPtyIds: ListRelayPtyIds | null
 ): Promise<OrcadMigrationTerminalVerdict> {
   const leases = store.getSshRemotePtyLeases(targetId)
-  const live = leases.filter((lease) => lease.state === 'attached' || lease.state === 'detached')
-  if (live.length > 0) {
-    return refuse('live', live, 'terminals on this host are still running')
+  const attached = leases.filter((lease) => lease.state === 'attached')
+  if (attached.length > 0) {
+    return refuse('live', attached, 'terminals on this host are still running')
   }
-  let relayPtyIds: string[] | null
-  try {
-    relayPtyIds = listRelayPtyIds ? await listRelayPtyIds() : null
-  } catch {
-    relayPtyIds = null
-  }
+  const relayPtyIds = await ask(listRelayPtyIds)
   if (relayPtyIds && relayPtyIds.length > 0) {
     return {
       verdict: 'live',
@@ -39,12 +39,58 @@ export async function assessOrcadMigrationTerminals(
       reason: 'the SSH relay still runs terminals on this host'
     }
   }
-  // An expired lease lost its owner without an exit record; only the relay can rule it out.
-  const expired = leases.filter((lease) => lease.state === 'expired')
-  if (expired.length > 0 && relayPtyIds === null) {
-    return refuse('unverifiable', expired, 'the SSH relay could not confirm expired terminals')
+  // A detached or expired lease may run on this relay or one an earlier build left; both answer.
+  const unresolved = leases.filter(
+    (lease) => lease.state === 'detached' || lease.state === 'expired'
+  )
+  if (unresolved.length === 0) {
+    return { verdict: 'exited', provenPtyIds: leases.map((lease) => lease.ptyId) }
+  }
+  if (relayPtyIds === null) {
+    return refuse(
+      'unverifiable',
+      unresolved,
+      'the SSH relay could not confirm these terminals exited'
+    )
+  }
+  const previousPtyIds = await ask(listRelayPtyIds?.previous)
+  if (previousPtyIds === null) {
+    return refuse('unverifiable', unresolved, 'Orca could not confirm its terminals here exited')
+  }
+  const held = new Set(previousPtyIds)
+  const running = unresolved.filter((lease) => held.has(lease.ptyId))
+  if (running.length > 0) {
+    return refuse('live', running, 'an earlier Orca relay still runs terminals on this host')
   }
   return { verdict: 'exited', provenPtyIds: leases.map((lease) => lease.ptyId) }
+}
+
+/**
+ * A move acting on an exited proof marks the detached leases it covers terminated, so the checks
+ * after it (the fenced re-check, preflight's lease blocker) stop reading them as running.
+ */
+export function retireProvenDetachedLeases(
+  store: Pick<Store, 'getSshRemotePtyLeases' | 'markSshRemotePtyLease'>,
+  targetId: string,
+  proof: OrcadMigrationTerminalVerdict
+): void {
+  if (proof.verdict !== 'exited') {
+    return
+  }
+  const proven = new Set(proof.provenPtyIds)
+  for (const lease of store.getSshRemotePtyLeases(targetId)) {
+    if (lease.state === 'detached' && proven.has(lease.ptyId)) {
+      store.markSshRemotePtyLease(targetId, lease.ptyId, 'terminated')
+    }
+  }
+}
+
+async function ask(list: (() => Promise<string[] | null>) | null | undefined) {
+  try {
+    return list ? await list() : null
+  } catch {
+    return null
+  }
 }
 
 /**

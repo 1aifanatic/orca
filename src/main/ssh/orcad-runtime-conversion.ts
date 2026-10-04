@@ -30,6 +30,7 @@ import {
 } from './orcad-migration-source-fence'
 import {
   assessOrcadMigrationTerminals,
+  retireProvenDetachedLeases,
   type ListRelayPtyIds
 } from './orcad-migration-terminal-gate'
 import { createManagedOrcadEnvironment } from './orcad-runtime-deployment'
@@ -158,6 +159,7 @@ async function fenceOrResume(
   if (terminalProof.verdict !== 'exited') {
     return refuse(terminalProof.verdict, 'orcad_migration_terminals', terminalProof.reason)
   }
+  retireProvenDetachedLeases(store, target.id, terminalProof)
   await args.releaseDirectSession(target.id)
   const result = await runTargetLifecycle(target.id, () =>
     fenceOrcadMigrationSource({

@@ -13,6 +13,7 @@ function fakeRoute(listed: string[]) {
   const provider: SshPtyProvider = Object.create(null)
   const route = {
     provider,
+    heldPtyIds: () => [...listed],
     holds: (id: string) => listed.includes(id),
     serves: (id: string) => served.has(id),
     get servesAny() {
@@ -106,5 +107,35 @@ describe('SshLegacyRelayRouter', () => {
 
     expect(route.close).toHaveBeenCalledWith('legacy-relay-router-disposed')
     expect(router.providerFor(HELD)).toBeUndefined()
+  })
+
+  it('lists what older relays hold for the terminal gate, then hangs up unserved routes', async () => {
+    const route = fakeRoute([HELD])
+    const { router } = routerFor(route)
+
+    await expect(router.listHeld()).resolves.toEqual([HELD])
+    expect(route.close).toHaveBeenCalledWith('legacy-relay-listed-for-terminal-gate')
+  })
+
+  it('answers null, never empty, when an older relay cannot be asked', async () => {
+    const { router } = routerFor(null)
+
+    await expect(router.listHeld()).resolves.toBeNull()
+    await expect(routerFor(null, []).router.listHeld()).resolves.toEqual([])
+  })
+
+  it('never hangs up a route another attach is still awaiting', async () => {
+    const route = fakeRoute([HELD])
+    const { router } = routerFor(route)
+
+    const [missing, served] = await Promise.all([
+      router.attach('ssh:target-1@@pty2:new:9'),
+      router.attach(HELD)
+    ])
+
+    expect(missing).toBeNull()
+    expect(served?.provider).toBe(route.provider)
+    expect(route.close).not.toHaveBeenCalled()
+    expect(router.providerFor(HELD)).toBe(route.provider)
   })
 })
