@@ -282,4 +282,29 @@ describe("a conversation Stop's first press", () => {
     await pressWithStamp({ kind: 'not-done', notice: 'No.', answered: true }, true)
     expect(toast.error).toHaveBeenCalledExactlyOnceWith('No.')
   })
+
+  it('says a refusal that answers a resend, after a quiet lost answer on the press', async () => {
+    const outcomes: StructuredAgentSessionWriteOutcome<unknown>[] = [
+      { kind: 'not-done', notice: 'Lost.', answered: false },
+      { kind: 'not-done', notice: "The agent wasn't stopped.", answered: true }
+    ]
+    const writeAs = vi.fn<StopWrite>(async () => outcomes.shift() ?? DONE)
+    const { view, stopOutbox } = harness(writeAs)
+    let pressed: Promise<void> = Promise.resolve()
+    act(() => {
+      pressed = view.result.current()
+    })
+    view.rerender({ outbox: [stamped(stopOutbox.mock.calls[0]?.[0])], submissions: [] })
+    await act(async () => {
+      await pressed
+    })
+    for (let step = 0; step < 5; step += 1) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000)
+      })
+    }
+    // The mock outbox keeps the stamp owed, so the Stop may go once more; its answer is said once.
+    expect(writeAs.mock.calls.length).toBeGreaterThanOrEqual(2)
+    expect(toast.error).toHaveBeenCalledExactlyOnceWith("The agent wasn't stopped.")
+  })
 })

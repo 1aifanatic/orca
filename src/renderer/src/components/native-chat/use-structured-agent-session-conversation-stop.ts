@@ -102,12 +102,17 @@ export function useStructuredAgentSessionConversationStop(args: {
           recordStopAnswer(stopOperationId, { kind: 'answered', cursor: outcome.cursor })
           return
         }
-        // A refusal is said; a lost answer only when nothing will send the Stop again.
+        // A refusal is said on any attempt, a resend's too; a lost answer only on the press, and
+        // only when nothing will send the Stop again.
         if (
           outcome.kind === 'not-done' &&
-          firstPress &&
           (outcome.answered ||
-            !stopWillBeResent(latest.current.outbox, latest.current.submissions, stopOperationId))
+            (firstPress &&
+              !stopWillBeResent(
+                latest.current.outbox,
+                latest.current.submissions,
+                stopOperationId
+              )))
         ) {
           toast.error(outcome.notice)
         }
