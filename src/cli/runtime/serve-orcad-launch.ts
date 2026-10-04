@@ -3,7 +3,7 @@
  * app-side by `src/main/orcad/orcad-local-serve-selection.ts`; the CLI only asks and runs.
  */
 import { dirname, join } from 'node:path'
-import { runProcess } from '../../shared/child-process/run-process'
+import { runProcess, spawnProcess } from '../../shared/child-process/run-process'
 import {
   ORCAD_LOCAL_SERVE_SELECTION_ENTRY,
   ORCAD_LOCAL_SERVE_SELECTION_FLAGS as FLAGS,
@@ -38,7 +38,8 @@ export async function resolveLocalServeRuntime(
   },
   run: typeof runProcess = runProcess
 ): Promise<ServeRuntimeSelection> {
-  // Why before spawning: the app answers Electron for this case unconditionally.
+  // Why: only packaged macOS serve can take a remote app update, through Electron's updater and
+  // this CLI's supervisor; orcad has no updater, so switching would drop that.
   if (options.usesMacUpdateHandoff) {
     return {
       kind: 'electron',
@@ -71,6 +72,17 @@ export async function resolveLocalServeRuntime(
   }
 }
 
+/** The shared spawn chokepoint (windowsHide, no shell) in the supervisor's spawn shape. */
+const spawnThroughChokepoint: SupervisorArgs['spawnChild'] = (program, args, options) =>
+  spawnProcess({
+    program,
+    args,
+    cwd: typeof options.cwd === 'string' ? options.cwd : undefined,
+    env: options.env,
+    stdio: options.stdio,
+    detached: options.detached
+  })
+
 /** Electron serve binds every interface (`exposeNetworkByDefault`); orcad does it on request. */
 export function serveWithOrcad(
   selection: Extract<ServeRuntimeSelection, { kind: 'orcad' }>,
@@ -78,14 +90,13 @@ export function serveWithOrcad(
   userDataPath: string,
   /** The caller's environment without `ELECTRON_RUN_AS_NODE`. */
   baseEnv: NodeJS.ProcessEnv,
-  spawnProcess: SupervisorArgs['spawnChild']
+  spawnChild: SupervisorArgs['spawnChild'] = spawnThroughChokepoint
 ): Promise<number> {
   const childArgs = [selection.entry, ...orcadServeArgs(args)]
   const spawnOptions: SupervisorArgs['spawnOptions'] = {
     detached: args.recipeJson === true,
     cwd: dirname(selection.entry),
     stdio: args.recipeJson === true ? ['ignore', 'pipe', 'inherit'] : 'inherit',
-    windowsHide: true,
     env: {
       ...baseEnv,
       // The desktop's profile: its instance lock makes the two refuse each other.
@@ -93,7 +104,7 @@ export function serveWithOrcad(
       ORCA_VERSION: selection.version
     }
   }
-  const child = spawnProcess(selection.runtime, childArgs, spawnOptions)
+  const child = spawnChild(selection.runtime, childArgs, spawnOptions)
   if (args.recipeJson) {
     return waitForRecipeJson(child)
   }
@@ -101,7 +112,7 @@ export function serveWithOrcad(
     executable: selection.runtime,
     childArgs,
     spawnOptions,
-    spawnChild: spawnProcess,
+    spawnChild,
     child,
     handoffPath: null,
     expectedHandoff: null

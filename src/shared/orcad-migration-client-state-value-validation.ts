@@ -1,6 +1,6 @@
 import type { WorkspaceHostScope } from './ui-chrome-types'
 import type { SavedPortForward } from './ssh-types'
-import { isRecord } from './orcad-migration-manifest-fields'
+import { requiredRecord } from './orcad-migration-dormant-value-validation'
 
 export function parseStringArray(value: unknown, max: number): string[] {
   if (
@@ -67,11 +67,4 @@ export function isWorkspaceHostId(value: unknown): value is Exclude<WorkspaceHos
     value === 'local' ||
     (typeof value === 'string' && (value.startsWith('ssh:') || value.startsWith('runtime:')))
   )
-}
-
-export function requiredRecord(value: unknown, error: string): Record<string, unknown> {
-  if (!isRecord(value)) {
-    throw new Error(error)
-  }
-  return value
 }

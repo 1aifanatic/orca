@@ -16,9 +16,9 @@ import {
   isWorkspaceHostScope,
   nullableString,
   parseSavedPortForwards as parseSavedPortForwardsValue,
-  parseStringArray,
-  requiredRecord
+  parseStringArray
 } from './orcad-migration-client-state-value-validation'
+import { requiredRecord } from './orcad-migration-dormant-value-validation'
 
 export const MAX_ORCAD_MIGRATION_CLIENT_SELECTIONS = 4_096
 export const MAX_ORCAD_MIGRATION_CLIENT_ROUTING_ENTRIES = 16_384

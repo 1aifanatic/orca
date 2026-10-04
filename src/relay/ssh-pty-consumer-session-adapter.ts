@@ -28,7 +28,6 @@ export class SshPtyConsumerSessionAdapter {
   private readonly session: PtyConsumerSession
   private readonly sourceCredit: SshPtySourceCreditAdapter
   private readonly pausedDeliveryByPty = new Map<string, PtySourceDeliveryIdentity>()
-  private readonly pendingPublications = new Set<PtyConsumerSessionAdmission>()
 
   constructor(
     private readonly dispatcher: RelayDispatcher,
@@ -219,31 +218,6 @@ export class SshPtyConsumerSessionAdapter {
     return sshPtyDeliveryMode(this.session.activeGrant(String(clientId)))
   }
 
-  activeSessionOwner(
-    clientId: number
-  ): Readonly<{ ownerGeneration: number; ownerLease: string }> | null {
-    const grant = this.session.activeGrant(String(clientId))
-    const ownerGeneration = grant?.ownerGeneration
-    if (
-      grant?.role !== 'session-owner' ||
-      typeof ownerGeneration !== 'number' ||
-      !Number.isSafeInteger(ownerGeneration) ||
-      !grant.ownerLease
-    ) {
-      return null
-    }
-    return Object.freeze({
-      ownerGeneration,
-      ownerLease: grant.ownerLease
-    })
-  }
-
-  assertOwnerPublicationSettled(): void {
-    if (this.pendingPublications.size > 0) {
-      throw new Error('pty_consumer_owner_publication_pending')
-    }
-  }
-
   private async openClient(
     rawParams: Record<string, unknown>,
     context: RequestContext,
@@ -269,25 +243,14 @@ export class SshPtyConsumerSessionAdapter {
       admission.rollbackPublication()
       throw new Error('SSH PTY consumer response publication fence is unavailable')
     }
-    this.pendingPublications.add(admission)
-    try {
-      context.onResponseSettled((result) => {
-        try {
-          if (!result.ok) {
-            admission.rollbackPublication()
-            return
-          }
-          admission.commitPublication()
-          this.closeDisplacedOwner(admission.displacedOwner)
-        } finally {
-          this.pendingPublications.delete(admission)
-        }
-      })
-    } catch (error) {
-      this.pendingPublications.delete(admission)
-      admission.rollbackPublication()
-      throw error
-    }
+    context.onResponseSettled((result) => {
+      if (!result.ok) {
+        admission.rollbackPublication()
+        return
+      }
+      admission.commitPublication()
+      this.closeDisplacedOwner(admission.displacedOwner)
+    })
     return admission.grant
   }
 

@@ -123,7 +123,10 @@ import {
   WINDOWS_RELAY_LAUNCH_LOG_PREFIX,
   windowsRelayLaunchCommand
 } from './ssh-relay-windows-launch-command'
-import { parseRelayWindowsLaunchReport } from '../../shared/relay-windows-breakaway-launch'
+import {
+  parseWindowsBreakawayLaunchReport,
+  RELAY_WINDOWS_BREAKAWAY_CONTRACT
+} from '../../shared/windows-breakaway-launch'
 import { relaySocketNameForInstanceId } from './ssh-relay-instance-id'
 import { resolveRelayEndpointBeforeRelaunch } from './ssh-relay-endpoint-takeover'
 import {
@@ -2428,7 +2431,10 @@ async function launchWindowsRelay(
   ).catch((error: unknown) => {
     throw classifyWindowsRelayLaunchError(error)
   })
-  const launchReport = parseRelayWindowsLaunchReport(launchOutput)
+  const launchReport = parseWindowsBreakawayLaunchReport(
+    RELAY_WINDOWS_BREAKAWAY_CONTRACT,
+    launchOutput
+  )
   console.log(`${WINDOWS_RELAY_LAUNCH_LOG_PREFIX}${JSON.stringify(launchReport)}`)
 
   const POLL_INTERVAL_MS = 200

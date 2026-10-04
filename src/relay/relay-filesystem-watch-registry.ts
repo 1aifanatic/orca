@@ -211,7 +211,7 @@ export class RelayFilesystemWatchRegistry {
 
   reopen(): void {
     this.disposed = false
-    this.watcherPool.reopen?.()
+    this.watcherPool.reopen()
   }
 
   disposeAndWait = (): Promise<void> =>

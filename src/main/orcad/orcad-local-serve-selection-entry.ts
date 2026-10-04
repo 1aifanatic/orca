@@ -30,8 +30,7 @@ async function run(argv: readonly string[]): Promise<void> {
     templateDirs: [
       ...(process.resourcesPath ? [join(process.resourcesPath, 'orcad-template')] : []),
       join(appRoot, 'out', 'orcad-template')
-    ],
-    usesMacUpdateHandoff: argv.includes(FLAGS.macUpdateHandoff)
+    ]
   })
   // orcad serve never starts the desktop's startup pass, so the slot cache is bounded here too.
   await pruneDesktopOrcadArtifactCache(

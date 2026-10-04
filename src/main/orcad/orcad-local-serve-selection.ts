@@ -35,8 +35,6 @@ export type ServeRuntimeSelectionInput = {
   platform: NodeJS.Platform
   userDataPath: string
   templateDirs: readonly string[]
-  /** Packaged macOS serve keeps Electron: orcad has no app-update handoff yet. */
-  usesMacUpdateHandoff: boolean
   hostTarget?: () => string
   materializeSlot?: typeof materializeOrcadArtifact
   materializeRuntime?: typeof materializeCachedNodeRuntime
@@ -60,13 +58,6 @@ export async function selectServeRuntime(
   }
   if (requested && requested !== 'orcad') {
     return electron(`${SERVE_RUNTIME_ENV}=${requested} is neither orcad nor electron`)
-  }
-  // Why: only packaged macOS serve can take a remote app update, through Electron's updater
-  // and this CLI's supervisor; orcad has no updater, so switching would drop that.
-  if (input.usesMacUpdateHandoff) {
-    return electron(
-      'packaged macOS serve stays on Electron so paired clients can still update it (orcad has no app updater)'
-    )
   }
   const target = (input.hostTarget ?? (() => nativeSlotName(detectNativeHostAbi())))()
   if (!isServerTarget(target)) {

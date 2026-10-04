@@ -62,8 +62,7 @@ describe('orca serve host selection', () => {
       selection,
       { json: true },
       expect.any(String),
-      expect.not.objectContaining({ ELECTRON_RUN_AS_NODE: expect.anything() }),
-      expect.any(Function)
+      expect.not.objectContaining({ ELECTRON_RUN_AS_NODE: expect.anything() })
     )
     expect(spawnMock).not.toHaveBeenCalled()
     expect(stderr.join('')).toContain('[serve] running on orcad 1')
