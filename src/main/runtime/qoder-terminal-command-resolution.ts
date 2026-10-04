@@ -42,15 +42,17 @@ export async function resolveQoderTerminalCommandForWorkspace(
   })
 }
 
-export async function resolveQoderTerminalCommand(
-  options: TerminalCreateOptions,
+export async function resolveQoderTerminalCommand<
+  T extends Pick<TerminalCreateOptions, 'launchAgent' | 'command' | 'launchConfig'>
+>(
+  options: T,
   host: {
     connectionId?: string | null
     context?: PreflightRuntimeContext
     shell: AgentStartupShell
   },
   detect = detectAgentCommandsOnHost
-): Promise<TerminalCreateOptions> {
+): Promise<T> {
   if (options.launchAgent !== 'qoder' || !options.command) {
     return options
   }
