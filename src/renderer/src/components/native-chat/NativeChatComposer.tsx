@@ -14,6 +14,7 @@ import { useNativeChatLaunchDraftAdoption } from './use-native-chat-launch-draft
 import { NativeChatComposerField } from './NativeChatComposerField'
 import type { NativeChatResolvedTarget } from './native-chat-composer-target'
 import { useNativeChatComposerAttachments } from './use-native-chat-composer-attachments'
+import { nativeChatImageSendBlock } from './native-chat-image-reattach'
 import { useNativeChatComposerHandle } from './use-native-chat-composer-handle'
 import { useNativeChatExternalAttachments } from './use-native-chat-external-attachments'
 import { useNativeChatComposerKeyDown } from './use-native-chat-composer-keydown'
@@ -182,12 +183,10 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       attachResolvedPaths,
       setNotice
     })
-    // A pasted image has no agent-readable path until its save lands; sending
-    // mid-save would ship the message without the image the chip promises.
-    const hasPendingAttachment = imageAttachments.some((attachment) => attachment.pending)
+    const imageBlock = nativeChatImageSendBlock(imageAttachments)
     const sendButtonDisabled = isWorking
       ? !hasPty || !onStop
-      : disabled || hasPendingAttachment || (draft.trim() === '' && imageAttachments.length === 0)
+      : disabled || imageBlock.holdsSend || (draft.trim() === '' && imageAttachments.length === 0)
 
     const { attachExternalPaths, resolveAttachmentOwner } = useNativeChatExternalAttachments({
       terminalTabId,
@@ -372,6 +371,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
         notice={notice}
         imageAttachments={imageAttachments}
         sendButtonDisabled={sendButtonDisabled}
+        sendBlockedReason={imageBlock.reason}
         isWorking={isWorking}
         attachDisabled={disabled}
         dictationDisabled={dictationDisabled}

@@ -15,8 +15,11 @@ const MAX_STORED_DRAFT_CHARS = MAX_STORED_TOTAL_CHARS - 1_000
 
 export type NativeChatComposerDraftImage = {
   id: string
+  /** Empty for an image Orca could not keep. */
   path: string
   connectionId?: string
+  /** Set on an image Orca could not keep: the file name the user must attach again. */
+  unavailableName?: string
 }
 
 export type NativeChatComposerDraft = {
@@ -59,8 +62,14 @@ function parseImage(value: unknown): NativeChatComposerDraftImage | null {
   if (!isRecord(value)) {
     return null
   }
-  const { id, path, connectionId } = value
-  if (typeof id !== 'string' || typeof path !== 'string' || path === '') {
+  const { id, path, connectionId, unavailableName } = value
+  if (typeof id !== 'string') {
+    return null
+  }
+  if (typeof unavailableName === 'string') {
+    return { id, path: '', unavailableName }
+  }
+  if (typeof path !== 'string' || path === '') {
     return null
   }
   return { id, path, ...(typeof connectionId === 'string' ? { connectionId } : {}) }
@@ -214,6 +223,28 @@ export function enforceStoredNativeChatComposerDraftBounds(storage: Storage): vo
       return
     }
     removeStoredNativeChatComposerDraft(storage, key)
+  }
+}
+
+/** For a `storage` event from another window: the scope it changed, after re-indexing it; null
+ *  when the key is not a draft. */
+export function storedNativeChatComposerDraftChanged(
+  key: string | null,
+  newValue: string | null
+): string | null {
+  if (!key?.startsWith(STORAGE_KEY_PREFIX)) {
+    return null
+  }
+  const stored = parseStoredNativeChatComposerDraft(newValue)
+  if (newValue === null || !stored) {
+    unindexStoredDraft(key)
+  } else {
+    indexStoredDraft(key, { chars: key.length + newValue.length, savedAt: stored.savedAt })
+  }
+  try {
+    return decodeURIComponent(key.slice(STORAGE_KEY_PREFIX.length))
+  } catch {
+    return null
   }
 }
 

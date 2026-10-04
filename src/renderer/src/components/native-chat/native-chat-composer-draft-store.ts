@@ -5,6 +5,7 @@
 
 import type { JSONContent } from '@tiptap/react'
 import { setBoundedScopeCacheEntry } from './native-chat-composer-scope-cache'
+import { basename } from '@/lib/path'
 import { isNativeChatPastedImagePath } from './native-chat-image-paste'
 import {
   clearStoredNativeChatComposerDraftsForTests,
@@ -15,6 +16,7 @@ import {
   parseStoredNativeChatComposerDraft,
   removeStoredNativeChatComposerDraft,
   removeStoredNativeChatComposerDraftsWhere,
+  storedNativeChatComposerDraftChanged,
   writeStoredNativeChatComposerDraft,
   type NativeChatComposerDraft,
   type NativeChatComposerDraftImage,
@@ -45,6 +47,9 @@ let lastSavedAt = 0
 let flushTimer: ReturnType<typeof setTimeout> | null = null
 let flushOnHideInstalled = false
 const scopeListeners = new Map<string, Set<() => void>>()
+// Records read back from storage this run whose image files have not been checked yet.
+const unverifiedScopes = new Set<string>()
+let storageSyncInstalled = false
 
 // Why: a shown draft can hold what storage never does (pasted images, unsaved launch text).
 function isShown(scopeKey: string): boolean {
@@ -60,6 +65,7 @@ export function subscribeToNativeChatComposerDraft(
   scopeKey: string,
   listener: () => void
 ): () => void {
+  installStorageSync()
   const listeners = scopeListeners.get(scopeKey) ?? new Set()
   scopeListeners.set(scopeKey, listeners)
   listeners.add(listener)
@@ -69,6 +75,28 @@ export function subscribeToNativeChatComposerDraft(
       scopeListeners.delete(scopeKey)
     }
   }
+}
+
+// Why: another window of the same app (two web-client tabs) can send or edit this draft; its write
+// replaces what this window holds unless this window has an edit of its own still unsaved.
+function installStorageSync(): void {
+  if (storageSyncInstalled || typeof window === 'undefined' || !window.addEventListener) {
+    return
+  }
+  storageSyncInstalled = true
+  window.addEventListener('storage', (event) => {
+    const scopeKey = storedNativeChatComposerDraftChanged(event.key, event.newValue)
+    if (scopeKey === null || dirtyScopes.has(scopeKey)) {
+      return
+    }
+    records.delete(scopeKey)
+    notifyScope(scopeKey)
+  })
+}
+
+/** True once for a draft read back from storage this run, so its image files get checked once. */
+export function takeUnverifiedNativeChatComposerDraft(scopeKey: string): boolean {
+  return unverifiedScopes.delete(scopeKey)
 }
 
 function isEmptyDraft(draft: NativeChatComposerDraft): boolean {
@@ -85,7 +113,8 @@ function sameImages(
       (image, index) =>
         image.id === right[index].id &&
         image.path === right[index].path &&
-        image.connectionId === right[index].connectionId
+        image.connectionId === right[index].connectionId &&
+        image.unavailableName === right[index].unavailableName
     )
   )
 }
@@ -96,11 +125,22 @@ function nextSavedAt(): number {
   return lastSavedAt
 }
 
-/** What storage keeps: not an unsaved launch-seed copy, and not a pasted image, whose temp file
- *  and read grant need not outlive this run. Null when nothing is left. */
+/** An image the draft names but can no longer send, so the user can attach it again. */
+export function unavailableNativeChatComposerDraftImage(
+  image: NativeChatComposerDraftImage
+): NativeChatComposerDraftImage {
+  return image.unavailableName === undefined
+    ? { id: image.id, path: '', unavailableName: basename(image.path) }
+    : image
+}
+
+/** What storage keeps: not an unsaved launch-seed copy, and a pasted image only by name, since its
+ *  temp file and read grant need not outlive this run. Null when nothing is left. */
 function savedForm(record: DraftRecord): StoredNativeChatComposerDraft | null {
   const { unsavedText, ...saved } = record
-  const images = saved.images.filter((image) => !isNativeChatPastedImagePath(image.path))
+  const images = saved.images.map((image) =>
+    isNativeChatPastedImagePath(image.path) ? unavailableNativeChatComposerDraftImage(image) : image
+  )
   const text = saved.text === unsavedText ? '' : saved.text
   if (text === '' && images.length === 0) {
     return null
@@ -193,6 +233,7 @@ function loadRecord(scopeKey: string): DraftRecord | undefined {
       return undefined
     }
     setBoundedScopeCacheEntry(records, scopeKey, stored, writeEvictedRecord, isShown)
+    unverifiedScopes.add(scopeKey)
     return stored
   } catch {
     return undefined
@@ -305,5 +346,6 @@ export function clearNativeChatComposerDraftsForTests(): void {
   }
   records.clear()
   dirtyScopes.clear()
+  unverifiedScopes.clear()
   clearStoredNativeChatComposerDraftsForTests()
 }

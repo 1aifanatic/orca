@@ -9,6 +9,7 @@ import {
   type RefObject
 } from 'react'
 import { translate } from '@/i18n/i18n'
+import { basename } from '@/lib/path'
 import {
   nativeChatComposerTargetIsRemote,
   type NativeChatResolvedTarget
@@ -20,6 +21,7 @@ import {
   subscribeToNativeChatComposerDraft,
   updateNativeChatComposerDraft
 } from './native-chat-composer-draft-store'
+import { verifyRestoredNativeChatComposerDraftImages } from './native-chat-composer-draft-image-check'
 import type { NativeChatResolvedPathOptions } from './native-chat-resolved-path-ownership'
 import { useNativeChatResolvedPathAttachments } from './use-native-chat-resolved-path-attachments'
 
@@ -87,6 +89,9 @@ export function useNativeChatComposerAttachments({
     ],
     [local, settled]
   )
+  useEffect(() => {
+    void verifyRestoredNativeChatComposerDraftImages(attachmentScopeKey)
+  }, [attachmentScopeKey])
   // A preview whose image left the draft (sent, or removed elsewhere) is released.
   useEffect(() => {
     const current = localRef.current
@@ -281,8 +286,9 @@ export function readNativeChatAttachmentCache(
   return readNativeChatComposerDraft(scopeKey).images.map((image) => ({ ...image }))
 }
 
-/** Adds settled images after the ones the draft holds now. Saved at once: when Stop gives them
- *  back, the copy they came from goes right after this. */
+/** Adds settled images after the ones the draft holds now; one with the name of an image to
+ *  attach again takes its place. Saved at once: when Stop gives images back, the copy they came
+ *  from goes right after this. */
 export function appendNativeChatAttachmentCache(
   scopeKey: string,
   appended: readonly NativeChatComposerImageAttachment[]
@@ -290,21 +296,18 @@ export function appendNativeChatAttachmentCache(
   if (appended.length === 0) {
     return
   }
-  // Preview URLs can retain the full clipboard Blob, so only the path is kept.
-  updateNativeChatComposerDraft(
-    scopeKey,
-    {
-      images: [
-        ...readNativeChatComposerDraft(scopeKey).images,
-        ...appended.map(({ id, path, connectionId }) => ({
-          id,
-          path,
-          ...(connectionId ? { connectionId } : {})
-        }))
-      ]
-    },
-    'immediate'
-  )
+  const images = [...readNativeChatComposerDraft(scopeKey).images]
+  for (const { id, path, connectionId } of appended) {
+    // Preview URLs can retain the full clipboard Blob, so only the path is kept.
+    const image = { id, path, ...(connectionId ? { connectionId } : {}) }
+    const marker = images.findIndex((held) => held.unavailableName === basename(path))
+    if (marker === -1) {
+      images.push(image)
+    } else {
+      images[marker] = image
+    }
+  }
+  updateNativeChatComposerDraft(scopeKey, { images }, 'immediate')
 }
 
 export function clearNativeChatAttachmentCacheForTests(): void {

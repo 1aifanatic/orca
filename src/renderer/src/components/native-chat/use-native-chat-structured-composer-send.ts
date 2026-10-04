@@ -10,6 +10,7 @@ import { dispatchNativeChatStructuredComposerText } from './native-chat-structur
 import { pushHistory, type HistoryState } from './native-chat-composer-state'
 import type { NativeChatStructuredComposerTransport } from './native-chat-composer-types'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
+import { nativeChatAttachImagesAgainReason } from './native-chat-image-reattach'
 import {
   clearNativeChatComposerDraftIfUnchanged,
   readNativeChatComposerDraft
@@ -58,6 +59,12 @@ export function useNativeChatStructuredComposerSend({
       const hostCommand =
         isStructuredAgentSessionComposerCommand(text, agent) ||
         (structuredTransport.threadGoal !== undefined && isStructuredAgentSessionGoalCommand(text))
+      // A command picked while images await re-attaching would send them without a file.
+      const attachAgain = nativeChatAttachImagesAgainReason(attachments)
+      if (attachAgain) {
+        structuredTransport.onError(attachAgain)
+        return
+      }
       if (attachments.length > 0 && hostCommand) {
         structuredTransport.onError('Remove attachments before using a chat-session command.')
         return

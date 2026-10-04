@@ -4,6 +4,7 @@ import { applyPickerSuggestion, type NativeChatPickerItem } from './native-chat-
 import { pushHistory, type HistoryState } from './native-chat-composer-state'
 import type { NativeChatStructuredComposerTransport } from './native-chat-composer-types'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
+import { nativeChatImagesHoldSend } from './native-chat-image-reattach'
 import {
   clearNativeChatComposerDraftIfUnchanged,
   readNativeChatComposerDraft
@@ -108,7 +109,7 @@ export function useNativeChatComposerSubmit(args: {
   ])
 
   const send = useCallback(() => {
-    if (imageAttachments.some((attachment) => attachment.pending)) {
+    if (nativeChatImagesHoldSend(imageAttachments)) {
       return
     }
     if (threadGoal && structuredTransport && isBareStructuredAgentSessionGoalCommand(draft)) {

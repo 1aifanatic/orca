@@ -145,7 +145,7 @@ describe('native-chat composer draft store', () => {
     expect(reloaded.attachments.readNativeChatAttachmentCache('tab-1:pane')).toEqual(IMAGES)
   })
 
-  it('keeps a pasted image for this run only, and still saves the files the user attached', async () => {
+  it('brings a pasted image back after a reload as one to attach again, by name', async () => {
     const pasted = { id: 'p-1', path: '/var/folders/T/orca-paste-1-0f.png' }
     modules.attachments.appendNativeChatAttachmentCache('tab-1:pane', [pasted, IMAGES[0]])
     modules.drafts.writeNativeChatDraftCache('tab-1:pane', 'caption')
@@ -155,17 +155,42 @@ describe('native-chat composer draft store', () => {
       pasted,
       IMAGES[0]
     ])
-    expect(storedDraft('tab-1:pane')).toMatchObject({ text: 'caption', images: [IMAGES[0]] })
     const reloaded = await reload()
-    expect(reloaded.attachments.readNativeChatAttachmentCache('tab-1:pane')).toEqual([IMAGES[0]])
+    expect(reloaded.attachments.readNativeChatAttachmentCache('tab-1:pane')).toEqual([
+      { id: 'p-1', path: '', unavailableName: 'orca-paste-1-0f.png' },
+      IMAGES[0]
+    ])
   })
 
-  it('stores nothing for a draft that holds only a pasted image', () => {
+  it('keeps a draft that holds only a pasted image, as one to attach again', async () => {
     modules.attachments.appendNativeChatAttachmentCache('tab-1:pane', [
       { id: 'p-1', path: '/tmp/orca-paste-1-0f.png', connectionId: 'ssh-1' }
     ])
 
-    expect(storedDraftKeys()).toEqual([])
+    const reloaded = await reload()
+    expect(reloaded.attachments.readNativeChatAttachmentCache('tab-1:pane')).toEqual([
+      { id: 'p-1', path: '', unavailableName: 'orca-paste-1-0f.png' }
+    ])
+  })
+
+  it('puts a re-attached image in the place of the one to attach again', async () => {
+    storage.setItem(
+      `${DRAFT_KEY_PREFIX}${encodeURIComponent('tab-1:pane')}`,
+      JSON.stringify({
+        text: 'see',
+        images: [{ id: 'm', path: '', unavailableName: 'shot.png' }, IMAGES[0]],
+        savedAt: 1
+      })
+    )
+    const reloaded = await reload()
+
+    reloaded.attachments.appendNativeChatAttachmentCache('tab-1:pane', [
+      { id: 'again', path: '/Users/me/Desktop/shot.png' }
+    ])
+    expect(reloaded.attachments.readNativeChatAttachmentCache('tab-1:pane')).toEqual([
+      { id: 'again', path: '/Users/me/Desktop/shot.png' },
+      IMAGES[0]
+    ])
   })
 
   it('appends a given-back message after a draft restored from a reload', async () => {

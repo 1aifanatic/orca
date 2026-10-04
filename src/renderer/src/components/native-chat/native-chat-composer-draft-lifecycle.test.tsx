@@ -463,6 +463,86 @@ describe('native-chat composer draft lifecycle', () => {
     expect(storedDraft('tab-1:pane')).toMatchObject({ text: '@late.txt ' })
   })
 
+  it('turns a restored image whose file is gone into one to attach again', async () => {
+    const pathExists = vi.fn(async ({ filePath }: { filePath: string }) => {
+      if (filePath === '/Users/me/Desktop/elsewhere.png') {
+        throw new Error('Access denied: path resolves outside allowed directories.')
+      }
+      return filePath !== '/repo/gone.png'
+    })
+    vi.stubGlobal('api', { fs: { pathExists } })
+    localStorage.setItem(
+      `${DRAFT_KEY_PREFIX}${encodeURIComponent('tab-1:pane')}`,
+      JSON.stringify({
+        text: 'see these',
+        images: [
+          { id: 'a', path: '/repo/gone.png' },
+          { id: 'b', path: '/repo/here.png' },
+          { id: 'c', path: '/Users/me/Desktop/elsewhere.png' }
+        ],
+        savedAt: 1
+      })
+    )
+    const hooks = await loadHooks()
+    const seen: { api?: ComposerApi } = {}
+    try {
+      await mount(
+        createElement(
+          composer(hooks, (next) => (seen.api = next)),
+          { scopeKey: 'tab-1:pane' }
+        )
+      )
+      await act(async () => {})
+    } finally {
+      vi.unstubAllGlobals()
+    }
+
+    expect(seen.api?.attachments.imageAttachments).toEqual([
+      { id: 'a', path: '', unavailableName: 'gone.png' },
+      { id: 'b', path: '/repo/here.png' },
+      { id: 'c', path: '/Users/me/Desktop/elsewhere.png' }
+    ])
+  })
+
+  it('takes another window’s send of the same draft, unless an edit here is still unsaved', async () => {
+    const key = `${DRAFT_KEY_PREFIX}${encodeURIComponent('tab-1:pane')}`
+    localStorage.setItem(
+      key,
+      JSON.stringify({ text: 'sent in the other tab', images: [], savedAt: 1 })
+    )
+    const hooks = await loadHooks()
+    const seen: { api?: ComposerApi } = {}
+    await mount(
+      createElement(
+        composer(hooks, (next) => (seen.api = next)),
+        { scopeKey: 'tab-1:pane' }
+      )
+    )
+    expect(seen.api?.draft).toBe('sent in the other tab')
+
+    // The other tab sends: it removes the draft, and this window hears of it.
+    localStorage.removeItem(key)
+    await act(async () => {
+      window.dispatchEvent(new StorageEvent('storage', { key, newValue: null }))
+    })
+    expect(seen.api?.draft).toBe('')
+    await act(async () => seen.api?.setDraft((previous) => `${previous}next`))
+    window.dispatchEvent(new Event('pagehide'))
+    expect(storedDraft('tab-1:pane')).toMatchObject({ text: 'next' })
+
+    // An edit here not yet saved wins over the other window's write.
+    await act(async () => seen.api?.setDraft('mine, unsaved'))
+    await act(async () => {
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key,
+          newValue: JSON.stringify({ text: 'theirs', images: [], savedAt: 2 })
+        })
+      )
+    })
+    expect(seen.api?.draft).toBe('mine, unsaved')
+  })
+
   it('does not bring back an untouched launch link after a reload, when no seed is left to replace it', async () => {
     const link = 'https://github.com/o/r/issues/12'
     const seed: NativeChatLaunchDraft = {

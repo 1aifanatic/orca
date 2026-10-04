@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Image as ImageIcon, Loader2, X } from 'lucide-react'
+import { Image as ImageIcon, ImageOff, Loader2, X } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { translate } from '@/i18n/i18n'
 import { basename } from '@/lib/path'
@@ -17,6 +17,71 @@ export function NativeChatImageAttachmentPreview({
   attachment,
   onRemove
 }: Props): React.JSX.Element {
+  if (attachment.unavailableName !== undefined) {
+    return (
+      <NativeChatUnavailableImageChip
+        id={attachment.id}
+        name={attachment.unavailableName}
+        onRemove={onRemove}
+      />
+    )
+  }
+  return <NativeChatImageThumbnail attachment={attachment} onRemove={onRemove} />
+}
+
+function attachmentLabel(path: string): string {
+  return isNativeChatPastedImagePath(path)
+    ? translate('components.native-chat.composer.pastedImageLabel', 'Pasted image')
+    : basename(path)
+}
+
+function RemoveAttachmentButton({ onRemove }: { onRemove: () => void }): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onRemove}
+      aria-label={translate(
+        'components.native-chat.composer.removeAttachment',
+        'Remove attachment'
+      )}
+      className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <X className="size-3" />
+    </button>
+  )
+}
+
+/** An image the draft names but couldn't keep: it waits to be attached again, or removed. */
+function NativeChatUnavailableImageChip({
+  id,
+  name,
+  onRemove
+}: {
+  id: string
+  name: string
+  onRemove: (id: string) => void
+}): React.JSX.Element {
+  const explanation = translate(
+    'components.native-chat.composer.imageNotSavedWithDraft',
+    "{{name}} wasn't saved with this draft. Attach it again to send it.",
+    { name: attachmentLabel(name) }
+  )
+  return (
+    <div className="relative size-14 shrink-0">
+      <div
+        role="img"
+        aria-label={explanation}
+        title={explanation}
+        className="flex size-full items-center justify-center rounded-md border border-dashed border-border bg-background"
+      >
+        <ImageOff className="size-5 text-muted-foreground" />
+      </div>
+      <RemoveAttachmentButton onRemove={() => onRemove(id)} />
+    </div>
+  )
+}
+
+function NativeChatImageThumbnail({ attachment, onRemove }: Props): React.JSX.Element {
   const [isOpen, setIsOpen] = useState(false)
   const [isNearViewport, setIsNearViewport] = useState(false)
   const thumbnailRef = useRef<HTMLDivElement>(null)
@@ -51,9 +116,7 @@ export function NativeChatImageAttachmentPreview({
   // round-trip; the on-disk file only wins for the full-size dialog.
   const thumbnailSrc = attachment.previewUrl ?? localSrc
   const fullSizeSrc = localSrc ?? attachment.previewUrl
-  const filename = isNativeChatPastedImagePath(attachment.path)
-    ? translate('components.native-chat.composer.pastedImageLabel', 'Pasted image')
-    : basename(attachment.path)
+  const filename = attachmentLabel(attachment.path)
   const pendingLabel = translate(
     'components.native-chat.composer.imageSaving',
     'Saving pasted image…'
@@ -90,17 +153,7 @@ export function NativeChatImageAttachmentPreview({
             <Loader2 className="size-4 animate-spin text-muted-foreground" />
           </span>
         ) : null}
-        <button
-          type="button"
-          onClick={() => onRemove(attachment.id)}
-          aria-label={translate(
-            'components.native-chat.composer.removeAttachment',
-            'Remove attachment'
-          )}
-          className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <X className="size-3" />
-        </button>
+        <RemoveAttachmentButton onRemove={() => onRemove(attachment.id)} />
       </div>
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent className="flex max-h-[90vh] max-w-[90vw] flex-col gap-3 border-border bg-background p-3 sm:max-w-4xl">

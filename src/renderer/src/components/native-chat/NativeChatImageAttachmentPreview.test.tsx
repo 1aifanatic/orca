@@ -10,7 +10,8 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/i18n/i18n', () => ({
-  translate: (_key: string, fallback: string) => fallback
+  translate: (_key: string, fallback: string, options?: Record<string, string>) =>
+    fallback.replace(/\{\{(\w+)\}\}/g, (_match, name: string) => options?.[name] ?? '')
 }))
 
 vi.mock('@/components/editor/useLocalImageSrc', () => ({
@@ -51,5 +52,25 @@ describe('NativeChatImageAttachmentPreview', () => {
     renderPreview({ id: 'a1', path: '', previewUrl: 'blob:clipboard-1', pending: true })
 
     expect(mocks.useLocalImageSrc).toHaveBeenCalledWith(undefined, '', undefined)
+  })
+
+  it('shows an image the draft could not keep as one to attach again, and lets it be removed', () => {
+    mocks.useLocalImageSrc.mockReturnValue(undefined)
+    const onRemove = vi.fn()
+    vi.stubGlobal('IntersectionObserver', undefined)
+    render(
+      <NativeChatImageAttachmentPreview
+        attachment={{ id: 'm1', path: '', unavailableName: 'orca-paste-1-ab.png' }}
+        onRemove={onRemove}
+      />
+    )
+
+    expect(
+      screen.getByRole('img', {
+        name: "Pasted image wasn't saved with this draft. Attach it again to send it."
+      })
+    ).toBeTruthy()
+    screen.getByRole('button', { name: 'Remove attachment' }).click()
+    expect(onRemove).toHaveBeenCalledWith('m1')
   })
 })
