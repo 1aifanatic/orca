@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Activity } from 'lucide-react-native'
-import { Animated, Easing, StyleSheet, View } from 'react-native'
+import { Animated, Easing, Platform, StyleSheet, View } from 'react-native'
 import type { AgentDotState } from '../worktree/agent-row-display'
 import { colors } from '../theme/mobile-theme'
 
@@ -31,7 +31,8 @@ export function AgentStateDot({ state }: { state: AgentDotState }) {
           toValue: 1,
           duration: 1000,
           easing: Easing.linear,
-          useNativeDriver: true
+          // Why: loop hands a native-driver timing to a driver the web lacks, so it runs only once.
+          useNativeDriver: Platform.OS !== 'web'
         })
       )
       animation.start()

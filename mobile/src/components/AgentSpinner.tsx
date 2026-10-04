@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Activity } from 'lucide-react-native'
-import { Animated, Easing, StyleSheet, View } from 'react-native'
+import { Animated, Easing, Platform, StyleSheet, View } from 'react-native'
 import type { AgentWorkingMode } from '../../../src/shared/agent-status-types'
 
 type WorktreeStatus = 'working' | 'active' | 'permission' | 'done' | 'inactive'
@@ -36,7 +36,8 @@ export function AgentSpinner({
           toValue: 1,
           duration: 1000,
           easing: Easing.linear,
-          useNativeDriver: true
+          // Why: loop hands a native-driver timing to a driver the web lacks, so it runs only once.
+          useNativeDriver: Platform.OS !== 'web'
         })
       )
       animation.start()
