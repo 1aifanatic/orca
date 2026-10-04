@@ -52,7 +52,10 @@ async function submitStartupPrompt(ctx) {
     initial: { settled: false, expiresAt: Date.now() + 20000 }
   });
   if (memory.settled) return noop;
-  let timer, editor, seen = false, disposed = false, canceled = false, createHash, requestId, claiming = false, locationReady = false;
+  let timer, editor, seen = false, disposed = false, canceled = false, createHash, requestId, claiming = false, hydrating = false, readyLocation;
+  // Home can change location after plugin setup.
+  const locationKey = (location) => typeof location?.directory === "string" && location.directory ?
+    JSON.stringify([location.directory, location.workspaceID]) : undefined;
   const isComposer = (candidate) => candidate?.traits?.owner === "opencode" &&
     candidate.traits.role === "prompt" && !candidate.traits.status &&
     candidate.traits.capture?.length === 1 && candidate.traits.capture[0] === "tab";
@@ -96,9 +99,24 @@ async function submitStartupPrompt(ctx) {
         if (typeof editor?.plainText !== "string" || typeof editor?.insertText !== "function") return;
         if (editor.plainText !== "") return settle();
         seen = true;
-        const agents = ctx.data.location.agent.list(ctx.location);
-        const models = ctx.data.location.model.list(ctx.location);
-        if (!locationReady || !editor.focused || !agents?.length || !models?.length) return;
+        const location = ctx.location;
+        const key = locationKey(location);
+        if (!key) return;
+        if (readyLocation !== key) {
+          readyLocation = undefined;
+          if (!hydrating) {
+            hydrating = true;
+            const ref = { directory: location.directory, workspaceID: location.workspaceID };
+            void ctx.data.location.sync(ref).then(() => {
+              hydrating = false;
+              if (!disposed && !memory.settled && locationKey(ctx.location) === key) readyLocation = key;
+            }, settle);
+          }
+          return;
+        }
+        const agents = ctx.data.location.agent.list(location);
+        const models = ctx.data.location.model.list(location);
+        if (!editor.focused || !agents?.length || !models?.length) return;
         if (claiming) return;
         claiming = true;
         const allowed = await claimStartupPrompt(nonce, digest, endpoint, requestId);
@@ -106,6 +124,7 @@ async function submitStartupPrompt(ctx) {
         if (allowed === "pending") return;
         if (!allowed) return settle();
         if (disposed || memory.settled || Date.now() >= memory.expiresAt ||
+            locationKey(ctx.location) !== key ||
             ctx.ui.router.current()?.type !== "home" || ctx.renderer.currentFocusedEditor !== editor ||
             !editor.focused || !isComposer(editor) || editor.plainText !== "") return settle();
         setMemory((draft) => { draft.settled = true; });
@@ -114,6 +133,7 @@ async function submitStartupPrompt(ctx) {
         try {
           editor.insertText(prompt);
           if (disposed || canceled || Date.now() >= memory.expiresAt ||
+              locationKey(ctx.location) !== key ||
               ctx.ui.router.current()?.type !== "home" || ctx.renderer.currentFocusedEditor !== editor ||
               !editor.focused || !isComposer(editor) || !matches(editor)) return;
           ctx.keymap.dispatch("prompt.submit");
@@ -121,10 +141,6 @@ async function submitStartupPrompt(ctx) {
       } catch { settle(); }
     }, 100);
     timer.unref?.();
-    // Catalogs can be present before the configured model has hydrated.
-    void ctx.data.location.sync(ctx.location).then(() => {
-      if (!disposed && !memory.settled) locationReady = true;
-    }, settle);
     return dispose;
   } catch {
     settle();
