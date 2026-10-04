@@ -125,7 +125,8 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
       state: host.state,
       cursor: host.cursor,
       enqueue: host.enqueue,
-      enqueueEach: (resolve) => rowWriter.enqueueEach(resolve)
+      enqueueEach: (resolve) => rowWriter.enqueueEach(resolve),
+      enqueueRows: (plan) => rowWriter.enqueueRows(plan)
     })
   }
 }
