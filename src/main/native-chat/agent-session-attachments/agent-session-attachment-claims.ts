@@ -84,8 +84,8 @@ export type AgentSessionAttachmentClaim = {
   stateDirectory: string
   sessionId: string
   body: AgentJournalMessageItem
-  /** A client's own new message: every store reference must still be stored, or the whole message
-   *  is refused. The host's own writes (a /clear carry, a draft it sends) never refuse. */
+  /** A client's own new message: every upload of this host's store it names must still be stored,
+   *  or the whole message is refused. The host's own writes (a /clear carry, a draft it sends) never refuse. */
   required: boolean
   now: number
 }
@@ -101,25 +101,24 @@ export function claimAgentSessionAttachmentsInTransaction(
   claim: AgentSessionAttachmentClaim
 ): void {
   const root = agentSessionAttachmentStoreRoot(claim.stateDirectory)
-  const references = agentSessionAttachmentReferences(root, claim.body)
-  if (references.uploadIds.size === 0 && references.foreign === 0) {
+  const uploadIds = agentSessionAttachmentReferences(root, claim.body)
+  if (uploadIds.size === 0) {
     return
   }
   if (claim.required) {
     if (
-      references.foreign > 0 ||
-      [...references.uploadIds].some(
+      [...uploadIds].some(
         (uploadId) => isBeingSwept(db, uploadId) || !uploadIsStored(root, uploadId)
       )
     ) {
       throw new AgentSessionAttachmentExpiredError()
     }
-    insertClaims(db, references.uploadIds, claim.sessionId, claim.now)
+    insertClaims(db, uploadIds, claim.sessionId, claim.now)
     return
   }
   db.exec(`SAVEPOINT ${CLAIM_SAVEPOINT}`)
   try {
-    insertClaims(db, references.uploadIds, claim.sessionId, claim.now)
+    insertClaims(db, uploadIds, claim.sessionId, claim.now)
     db.exec(`RELEASE ${CLAIM_SAVEPOINT}`)
   } catch (error) {
     db.exec(`ROLLBACK TO ${CLAIM_SAVEPOINT}`)

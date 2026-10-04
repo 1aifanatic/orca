@@ -44,12 +44,8 @@ export function parseAgentSessionAttachmentStorePath(
   return { uploadId, name }
 }
 
-export type AgentSessionAttachmentReferences = {
-  /** Uploads in this host's store. */
-  uploadIds: Set<string>
-  /** Store-shaped references whose root is not this host's: another server's, or a stale path. */
-  foreign: number
-}
+// A root preceded by one of these is the tail of some other, longer path.
+const PATH_CHARACTER = /[\w.~\\/-]/
 
 function normalizedRoot(root: string, platform: NodeJS.Platform): string {
   const forward = root.replace(/\\/g, '/')
@@ -57,16 +53,18 @@ function normalizedRoot(root: string, platform: NodeJS.Platform): string {
 }
 
 /**
- * Every store reference in a message body: image paths and file references in its text alike.
- * Matched on the decoded body by `<store dir>/<upload id>`, so quoting or a file name with spaces
- * cannot hide one; Windows paths match with either separator and in any case.
+ * The uploads of this host's store a message body names, in image paths and file references in its
+ * text alike. Only a path that starts with this host's exact store root counts: matched on the
+ * decoded body by `<store root>/<upload id>`, so quoting or a file name with spaces cannot hide one,
+ * and Windows paths match with either separator and in any case. Any other mention of a store
+ * path (another server's, a `~` form, a bare name) is only text.
  */
 export function agentSessionAttachmentReferences(
   root: string,
   body: AgentJournalMessageItem,
   platform: NodeJS.Platform = process.platform
-): AgentSessionAttachmentReferences {
-  const references: AgentSessionAttachmentReferences = { uploadIds: new Set(), foreign: 0 }
+): Set<string> {
+  const uploadIds = new Set<string>()
   const ownRoot = normalizedRoot(root, platform)
   const pattern = new RegExp(
     `${AGENT_SESSION_ATTACHMENTS_DIR_NAME}[\\\\/](${UPLOAD_ID_SOURCE})(?![0-9a-z-])`,
@@ -80,14 +78,17 @@ export function agentSessionAttachmentReferences(
     }
     for (const match of text.matchAll(pattern)) {
       const rootEnd = match.index + AGENT_SESSION_ATTACHMENTS_DIR_NAME.length
-      const prefix = text.slice(Math.max(0, rootEnd - root.length), rootEnd)
+      const rootStart = rootEnd - root.length
       const uploadId = match[1]?.toLowerCase()
-      if (uploadId && normalizedRoot(prefix, platform) === ownRoot) {
-        references.uploadIds.add(uploadId)
-      } else {
-        references.foreign++
+      if (
+        uploadId &&
+        rootStart >= 0 &&
+        !PATH_CHARACTER.test(text.charAt(rootStart - 1)) &&
+        normalizedRoot(text.slice(rootStart, rootEnd), platform) === ownRoot
+      ) {
+        uploadIds.add(uploadId)
       }
     }
   }
-  return references
+  return uploadIds
 }

@@ -132,7 +132,8 @@ export class AgentSessionAttachmentStore {
     if (upload.writing) {
       throw new Error('Attachment chunk is still being written')
     }
-    this.uploads.delete(args.uploadId)
+    // In flight until the rename lands, so the sweep never takes a slow upload's part file.
+    upload.writing = true
     try {
       if (upload.receivedLength !== upload.expectedLength) {
         throw new Error('Attachment upload is incomplete')
@@ -143,6 +144,8 @@ export class AgentSessionAttachmentStore {
     } catch (error) {
       await removeQuietly(upload.uploadDir)
       throw error
+    } finally {
+      this.uploads.delete(args.uploadId)
     }
   }
 

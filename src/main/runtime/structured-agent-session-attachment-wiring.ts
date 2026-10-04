@@ -1,6 +1,7 @@
 // Installs the chat attachment store beside the structured host, and its sweeps. The store lives in
 // the same state directory as the journal, whose database holds the claims the sweeps honor.
 
+import { mkdirSync } from 'node:fs'
 import {
   AgentSessionAttachmentStore,
   setAgentSessionAttachmentStore
@@ -21,15 +22,27 @@ let sweeper: AgentSessionAttachmentSweeper | null = null
 
 export function installAgentSessionAttachments(deps: {
   stateDirectory: string
-  store: AgentSessionRecordStore
-  journalDatabase: JournalHostDatabase
+  store: Pick<AgentSessionRecordStore, 'getRecord' | 'listRecordedSessionIds'>
+  journalDatabase: Pick<
+    JournalHostDatabase,
+    'readOnly' | 'isClosed' | 'db' | 'legacyRecordImportOwed'
+  >
   logger: StructuredAgentSessionLogger
 }): void {
   stopAgentSessionAttachments()
-  const attachments = new AgentSessionAttachmentStore(
-    agentSessionAttachmentStoreRoot(deps.stateDirectory),
-    { hasSession: (sessionId) => deps.store.getRecord(sessionId) !== null }
-  )
+  const root = agentSessionAttachmentStoreRoot(deps.stateDirectory)
+  // Before any Claude starts: Claude drops an added directory that does not exist yet, for good.
+  try {
+    mkdirSync(root, { recursive: true })
+  } catch (error) {
+    deps.logger.warn('chat attachment store could not be created', {
+      scope: 'attachment-store',
+      error
+    })
+  }
+  const attachments = new AgentSessionAttachmentStore(root, {
+    hasSession: (sessionId) => deps.store.getRecord(sessionId) !== null
+  })
   setAgentSessionAttachmentStore(attachments)
   sweeper = startAgentSessionAttachmentSweeps(
     attachments,

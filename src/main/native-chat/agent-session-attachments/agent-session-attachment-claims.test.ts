@@ -41,18 +41,22 @@ describe('agentSessionAttachmentReferences', () => {
       ),
       'linux'
     )
-    expect([...references.uploadIds].sort()).toEqual([UPLOAD_A, UPLOAD_B].sort())
-    expect(references.foreign).toBe(0)
+    expect([...references].sort()).toEqual([UPLOAD_A, UPLOAD_B].sort())
   })
 
-  it("counts another server's store as foreign, never as this host's upload", () => {
-    const references = agentSessionAttachmentReferences(
-      root,
-      message({ type: 'text', text: `@/home/other/agent-session-attachments/${UPLOAD_A}/a.txt` }),
-      'linux'
-    )
-    expect(references.uploadIds.size).toBe(0)
-    expect(references.foreign).toBe(1)
+  it("leaves a mention of any other store path as text: another server's, a ~ form, a bare name", () => {
+    const mentions = [
+      `@/home/other/agent-session-attachments/${UPLOAD_A}/a.txt`,
+      `~/Library/Application Support/Orca/agent-session-attachments/${UPLOAD_A}/x.png`,
+      `see agent-session-attachments/${UPLOAD_A}`,
+      // This host's root as the tail of a longer path is still another path.
+      `/mnt${root}/${UPLOAD_A}/a.txt`
+    ]
+    for (const text of mentions) {
+      expect(
+        agentSessionAttachmentReferences(root, message({ type: 'text', text }), 'linux')
+      ).toEqual(new Set())
+    }
   })
 
   it('matches a Windows store with either separator and in any case', () => {
@@ -68,13 +72,7 @@ describe('agentSessionAttachmentReferences', () => {
       ),
       'win32'
     )
-    expect([...references.uploadIds].sort()).toEqual([UPLOAD_A, UPLOAD_B].sort())
-  })
-
-  it('ignores a message with no store reference', () => {
-    expect(
-      agentSessionAttachmentReferences(root, message({ type: 'text', text: 'hello' }), 'linux')
-    ).toEqual({ uploadIds: new Set(), foreign: 0 })
+    expect([...references].sort()).toEqual([UPLOAD_A, UPLOAD_B].sort())
   })
 })
 

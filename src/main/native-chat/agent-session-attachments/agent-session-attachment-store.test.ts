@@ -96,6 +96,20 @@ describe('AgentSessionAttachmentStore', () => {
     expect(await readdir(store.rootDir)).toEqual([])
   })
 
+  it('keeps an upload in flight until its file is renamed into place, so no sweep takes it', async () => {
+    const { uploadId } = await store.startUpload({
+      callerKey: caller,
+      sessionId: 'session-1',
+      name: 'a.txt',
+      byteLength: 1
+    })
+    await store.appendChunk({ callerKey: caller, uploadId, offset: 0, contentBase64: 'eA==' })
+    const committing = store.commitUpload({ callerKey: caller, uploadId })
+    expect(store.isUploadInFlight(uploadId)).toBe(true)
+    await committing
+    expect(store.isUploadInFlight(uploadId)).toBe(false)
+  })
+
   it('stores an empty file', async () => {
     const stored = await upload('empty.txt', Buffer.alloc(0))
     expect((await stat(stored.path)).size).toBe(0)
