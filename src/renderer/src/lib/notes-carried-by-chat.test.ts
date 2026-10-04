@@ -323,7 +323,7 @@ describe('notes sent to a new agent', () => {
 })
 
 describe('notes sent to a chat already open', () => {
-  const target = { kind: 'agent-session' as const, sessionId: 'session-open' }
+  const target = { kind: 'structured-session' as const, sessionId: 'session-open' }
 
   it('are held by the queued message until the host has it, then cleared as sent', async () => {
     await expect(
