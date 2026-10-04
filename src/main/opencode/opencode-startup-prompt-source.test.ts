@@ -47,6 +47,7 @@ function fixture() {
   const route = { type: 'home' }
   const agent = vi.fn((): unknown[] | undefined => [{}])
   const model = vi.fn((): unknown[] | undefined => [{}])
+  const sync = vi.fn(async () => {})
   const dispatch = vi.fn(() => editor.replace(''))
   const ctx = {
     app: { version: '2.0.16' },
@@ -55,9 +56,9 @@ function fixture() {
     keymap: { dispatch },
     ui: { router: { current: () => route } },
     location: { directory: '/private' },
-    data: { location: { agent: { list: agent }, model: { list: model } } }
+    data: { location: { sync, agent: { list: agent }, model: { list: model } } }
   }
-  return { ctx, editor, input, memory, route, agent, model, dispatch }
+  return { ctx, editor, input, memory, route, agent, model, sync, dispatch }
 }
 
 beforeEach(async () => {
@@ -87,6 +88,121 @@ afterEach(() => {
 })
 
 describe('installed-version native prompt intent plugin', () => {
+  it('waits for authoritative location config before claiming or selecting a model', async () => {
+    const f = fixture()
+    let configuredModel = 'unavailable-fallback'
+    let release = () => {}
+    f.sync.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          release = () => {
+            configuredModel = 'configured-model'
+            resolve()
+          }
+        })
+    )
+    const selections: string[] = []
+    f.dispatch.mockImplementation(() => {
+      selections.push(configuredModel)
+      f.editor.replace('')
+    })
+    const insert = vi.spyOn(f.editor, 'insertText')
+    const dispose = await setup(f.ctx)
+    try {
+      await vi.advanceTimersByTimeAsync(500)
+      expect(claim).not.toHaveBeenCalled()
+      expect(insert).not.toHaveBeenCalled()
+      expect(selections).toEqual([])
+      expect(f.sync).toHaveBeenCalledExactlyOnceWith(f.ctx.location)
+      release()
+      await vi.advanceTimersByTimeAsync(500)
+      await vi.waitFor(() => expect(f.dispatch).toHaveBeenCalledExactlyOnceWith('prompt.submit'))
+      expect(selections).toEqual(['configured-model'])
+      expect(insert).toHaveBeenCalledExactlyOnceWith(prompt)
+      expect(claim).toHaveBeenCalledTimes(1)
+      expect(f.sync).toHaveBeenCalledTimes(1)
+    } finally {
+      await dispose()
+    }
+  })
+
+  it.each(['keypress', 'paste', 'edit', 'route', 'expiry', 'dispose', 'editor', 'focus'])(
+    'cancels delayed location hydration on %s before any claim',
+    async (reason) => {
+      const f = fixture()
+      let release = () => {}
+      f.sync.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            release = resolve
+          })
+      )
+      const dispose = await setup(f.ctx)
+      try {
+        await vi.advanceTimersByTimeAsync(100)
+        expect(claim).not.toHaveBeenCalled()
+        if (reason === 'keypress' || reason === 'paste') {
+          f.input.emit(reason)
+        }
+        if (reason === 'edit') {
+          f.editor.replace('typed')
+          f.editor.replace('')
+        }
+        if (reason === 'route') {
+          f.route.type = 'session'
+        }
+        if (reason === 'expiry') {
+          f.memory.expiresAt = Date.now()
+        }
+        if (reason === 'dispose') {
+          await dispose()
+        }
+        if (reason === 'editor') {
+          f.ctx.renderer.currentFocusedEditor = new Editor()
+        }
+        if (reason === 'focus') {
+          f.editor.focused = false
+        }
+        await vi.advanceTimersByTimeAsync(100)
+        release()
+        await vi.advanceTimersByTimeAsync(500)
+        expect(claim).not.toHaveBeenCalled()
+        expect(f.dispatch).not.toHaveBeenCalled()
+        expect(f.editor.plainText).toBe('')
+        if (reason !== 'focus') {
+          expect(f.memory.settled).toBe(true)
+        }
+      } finally {
+        await dispose()
+      }
+      expect(f.input.listenerCount('keypress')).toBe(0)
+      expect(f.editor.listenerCount('line-info-change')).toBe(0)
+    }
+  )
+
+  it('fails closed when authoritative location sync rejects', async () => {
+    const f = fixture()
+    f.sync.mockRejectedValue(new Error('location unavailable'))
+    const dispose = await setup(f.ctx)
+    await vi.advanceTimersByTimeAsync(500)
+    expect(f.memory.settled).toBe(true)
+    expect(claim).not.toHaveBeenCalled()
+    expect(f.dispatch).not.toHaveBeenCalled()
+    expect(f.input.listenerCount('keypress')).toBe(0)
+    await dispose()
+  })
+
+  it('fails closed when authoritative location sync is missing', async () => {
+    const f = fixture()
+    const { sync: _sync, ...location } = f.ctx.data.location
+    const dispose = await setup({ ...f.ctx, data: { location } })
+    await vi.advanceTimersByTimeAsync(500)
+    expect(claim).not.toHaveBeenCalled()
+    expect(f.dispatch).not.toHaveBeenCalled()
+    expect(f.input.listenerCount('keypress')).toBe(0)
+    await dispose()
+  })
+
   it.each(['non-ok', 'json-rejected'])('cancels unread %s claim bodies', async (reason) => {
     const cancelled = vi.fn()
     const response = cancelTrackingResponse(reason === 'non-ok' ? 503 : 200, cancelled)

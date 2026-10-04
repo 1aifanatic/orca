@@ -45,13 +45,14 @@ async function submitStartupPrompt(ctx) {
   if (typeof ctx.storage?.memory !== "function" || typeof input?.on !== "function" ||
       typeof input?.off !== "function" || typeof ctx.keymap?.dispatch !== "function" ||
       typeof ctx.ui?.router?.current !== "function" ||
+      typeof ctx.data?.location?.sync !== "function" ||
       typeof ctx.data?.location?.agent?.list !== "function" ||
       typeof ctx.data?.location?.model?.list !== "function") return noop;
   const [memory, setMemory] = ctx.storage.memory("startup-prompt", {
     initial: { settled: false, expiresAt: Date.now() + 20000 }
   });
   if (memory.settled) return noop;
-  let timer, editor, seen = false, disposed = false, canceled = false, createHash, requestId, claiming = false;
+  let timer, editor, seen = false, disposed = false, canceled = false, createHash, requestId, claiming = false, locationReady = false;
   const isComposer = (candidate) => candidate?.traits?.owner === "opencode" &&
     candidate.traits.role === "prompt" && !candidate.traits.status &&
     candidate.traits.capture?.length === 1 && candidate.traits.capture[0] === "tab";
@@ -97,7 +98,7 @@ async function submitStartupPrompt(ctx) {
         seen = true;
         const agents = ctx.data.location.agent.list(ctx.location);
         const models = ctx.data.location.model.list(ctx.location);
-        if (!editor.focused || !agents?.length || !models?.length) return;
+        if (!locationReady || !editor.focused || !agents?.length || !models?.length) return;
         if (claiming) return;
         claiming = true;
         const allowed = await claimStartupPrompt(nonce, digest, endpoint, requestId);
@@ -120,6 +121,10 @@ async function submitStartupPrompt(ctx) {
       } catch { settle(); }
     }, 100);
     timer.unref?.();
+    // Catalogs can be present before the configured model has hydrated.
+    void ctx.data.location.sync(ctx.location).then(() => {
+      if (!disposed && !memory.settled) locationReady = true;
+    }, settle);
     return dispose;
   } catch {
     settle();
