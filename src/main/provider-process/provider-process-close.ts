@@ -11,6 +11,7 @@ export type ProviderProcessTree = {
 }
 
 export type ProviderProcessClosePolicy = {
+  /** Must cover the supervisor's own stop bound when supervising a real child. */
   gracefulExitMs: number
   forcedExitMs: number
   signalSupervisorOnClose?: boolean
@@ -38,7 +39,9 @@ export async function closeProviderProcess(
   input: ProviderProcessCloseInput
 ): Promise<ProviderProcessCloseResult> {
   const { child, policy, tree } = input
-  await tree?.capture()
+  if (tree) {
+    await tree.capture()
+  }
   try {
     child.stdin.end()
   } catch {

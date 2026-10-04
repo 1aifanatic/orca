@@ -118,6 +118,7 @@ describe('managed provider process', () => {
     const managed = launch(fixture)
     fixture.child.stdin.once('finish', () => fixture.child.emit('exit', 0, null))
     const closing = managed.close()
+    expect(fixture.child.stdin.writableEnded).toBe(true)
     await vi.advanceTimersByTimeAsync(0)
     await expect(closing).resolves.toBe('exited')
     expect(fixture.child.kill).not.toHaveBeenCalled()
