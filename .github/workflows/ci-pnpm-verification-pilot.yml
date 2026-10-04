@@ -22,6 +22,7 @@ on:
           - cursor
           - deadlines
           - binary
+          - nativechat
         default: all
 permissions:
   contents: read
@@ -384,5 +385,41 @@ jobs:
         if: "!cancelled()"
         with:
           name: unit-capacity-binary
+          path: ${{ runner.temp }}/capacity-output
+          retention-days: 14
+  nativechat:
+    name: unit capacity nativechat
+    if: inputs.cohort == 'all' || inputs.cohort == 'nativechat' || inputs.cohort == 'next-fixtures'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: node
+          node-version: "24"
+          cache-pnpm-store: "false"
+      - name: Typecheck modified Node sources
+        run: pnpm tc:node
+      - name: Expand frozen baseline and portable benchmark
+        run: |-
+          mkdir -p "$RUNNER_TEMP/capacity-support" "$RUNNER_TEMP/capacity-output"
+          tar -xzf config/ci-capacity-benchmark/nativechat.tar.gz -C "$RUNNER_TEMP/capacity-support"
+          git rev-parse HEAD > "$RUNNER_TEMP/capacity-output/source-sha.txt"
+          node --version > "$RUNNER_TEMP/capacity-output/node-version.txt"
+          pnpm --version > "$RUNNER_TEMP/capacity-output/pnpm-version.txt"
+      - name: Run alternating timed pairs and separate failure controls
+        run: |-
+          python3 "$RUNNER_TEMP/capacity-support/run-delivery-benchmark.py"
+          python3 "$RUNNER_TEMP/capacity-support/run-delivery-controls.py"
+          python3 "$RUNNER_TEMP/capacity-support/run-original-boundary-controls.py"
+          cp "$RUNNER_TEMP/capacity-support/"*.json "$RUNNER_TEMP/capacity-support/"*.log "$RUNNER_TEMP/capacity-output/"
+          cp -R "$RUNNER_TEMP/capacity-support/controls" "$RUNNER_TEMP/capacity-output/"
+      - uses: actions/upload-artifact@v7
+        if: "!cancelled()"
+        with:
+          name: unit-capacity-nativechat
           path: ${{ runner.temp }}/capacity-output
           retention-days: 14
