@@ -9,7 +9,10 @@
 // the client keeps its static seed.
 
 import { defineMethod } from '../core'
-import { requireInstalledStructuredHost } from './structured-agent-session-gate'
+import {
+  requireInstalledStructuredHost,
+  requireStructuredHost
+} from './structured-agent-session-gate'
 import { ModelCatalogParams, OptionsParams } from './structured-agent-session-schemas'
 
 export const STRUCTURED_AGENT_SESSION_OPTIONS_READ_METHODS = [
@@ -22,9 +25,14 @@ export const STRUCTURED_AGENT_SESSION_OPTIONS_READ_METHODS = [
   defineMethod({
     name: 'agentSession.modelCatalog',
     params: ModelCatalogParams,
-    // Builds the host like `options`: a new chat's picker reads before anything else has.
+    // A structured chat's read names its session and builds the host, since it may come first;
+    // terminal-backed chat's session-less read must not open the journal where none runs.
     handler: async ({ worktree, ...params }, ctx) => {
-      const catalog = (await requireInstalledStructuredHost(ctx)).deps.modelCatalog
+      const host =
+        params.sessionId === undefined
+          ? requireStructuredHost(ctx)
+          : await requireInstalledStructuredHost(ctx)
+      const catalog = host.deps.modelCatalog
       if (!catalog) {
         return { origin: 'unknown' as const }
       }
