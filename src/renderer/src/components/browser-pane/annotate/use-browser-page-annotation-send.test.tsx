@@ -266,4 +266,15 @@ describe('website annotations handed to a send', () => {
     act(() => mode?.onPromptHandedOff?.(new Promise(() => undefined)))
     expect(view.result.current.browserAnnotationsPrompt).toBe('')
   })
+
+  it('offers no send while every annotation is already on its way', () => {
+    const view = mount()
+    act(() => view.result.current.handleBrowserAnnotationsHandedOff(new Promise(() => undefined)))
+
+    act(() => view.result.current.handleAnnotationTraySendOpenChange(true))
+    expect(mode).toBeUndefined()
+
+    render(<AnnotationTrayHarness />)
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
+  })
 })

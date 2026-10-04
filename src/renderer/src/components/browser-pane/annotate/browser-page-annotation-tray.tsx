@@ -113,7 +113,12 @@ export function BrowserPageAnnotationTray({
           <Tooltip>
             <TooltipTrigger asChild>
               <DropdownMenuTrigger asChild>
-                <Button size="xs" variant="outline" className="gap-1.5">
+                <Button
+                  size="xs"
+                  variant="outline"
+                  className="gap-1.5"
+                  disabled={!browserAnnotationsPrompt}
+                >
                   <Send className="size-3" />
                   {translate('auto.components.browser.pane.BrowserPane.ac39b9366b', 'Send')}
                 </Button>

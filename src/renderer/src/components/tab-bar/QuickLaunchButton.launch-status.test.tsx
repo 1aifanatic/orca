@@ -203,4 +203,21 @@ describe('QuickLaunchAgentMenuItems launch status', () => {
 
     expect(onPromptHandedOff).toHaveBeenCalledWith(delivery)
   })
+
+  it('starts no agent when the menu has nothing left to send', () => {
+    launchMock.mockClear()
+    render(
+      <QuickLaunchAgentMenuItems
+        worktreeId={WORKTREE_ID}
+        groupId="group-1"
+        onFocusTerminal={vi.fn()}
+        prompt=""
+        disabled
+      />
+    )
+
+    expect(agentRowDisabled('Codex')).toBe('true')
+    fireEvent.click(document.querySelector('[title="Launch Codex in a new terminal"]')!)
+    expect(launchMock).not.toHaveBeenCalled()
+  })
 })

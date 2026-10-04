@@ -120,7 +120,8 @@ export function createUiAgentActions(
       }),
     sendPromptToSidebarAgentTarget: async (paneKey) => {
       const mode = get().agentSendPopoverTargetMode
-      if (!mode || mode.status === 'sending') {
+      // An empty prompt has nothing to send: every note may already be on its way.
+      if (!mode || mode.status === 'sending' || !mode.prompt.trim()) {
         return false
       }
 

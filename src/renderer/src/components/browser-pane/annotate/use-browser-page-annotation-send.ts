@@ -136,6 +136,10 @@ export function useBrowserPageAnnotationSend({
   const handleAnnotationSendOpenChange = useCallback(
     (modeId: string, open: boolean): void => {
       if (open) {
+        // Every annotation may already be on its way: there is nothing to send.
+        if (!browserAnnotationsPrompt) {
+          return
+        }
         openAgentSendPopoverTargetMode({
           id: modeId,
           worktreeId,

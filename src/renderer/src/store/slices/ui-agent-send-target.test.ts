@@ -406,6 +406,26 @@ describe('createUISlice agent send target mode', () => {
     expect(mocks.toastSuccess).toHaveBeenCalledWith('Sent to Claude')
   })
 
+  it('sends nothing to a sidebar agent when every note is already on its way', async () => {
+    const store = createAgentSendStore()
+    const onPromptHandedOff = vi.fn()
+    seedAgentSendState(store)
+    store.getState().openAgentSendPopoverTargetMode({
+      id: 'send-1',
+      worktreeId,
+      source: 'diff-notes',
+      prompt: '',
+      label: 'All unsent notes',
+      launchSource: 'notes_send',
+      onPromptHandedOff
+    })
+
+    await expect(store.getState().sendPromptToSidebarAgentTarget(readyPaneKey)).resolves.toBe(false)
+
+    expect(mocks.sendNotesToActiveAgentSession).not.toHaveBeenCalled()
+    expect(onPromptHandedOff).not.toHaveBeenCalled()
+  })
+
   it('keeps target mode open and does not run delivery callback when send fails', async () => {
     const store = createAgentSendStore()
     const onPromptDelivered = vi.fn()

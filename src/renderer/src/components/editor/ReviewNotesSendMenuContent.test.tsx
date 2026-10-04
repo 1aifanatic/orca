@@ -870,4 +870,12 @@ describe('ReviewNotesSendMenuContent', () => {
       onPromptHandedOff
     })
   })
+
+  // Every note already on its way leaves an empty prompt: no agent may start with no text.
+  it('disables the new-agent launcher when there is nothing left to send', () => {
+    expect(findByType(render({ prompt: '' }), 'QuickLaunchAgentMenuItems').props.disabled).toBe(
+      true
+    )
+    expect(findByType(render(), 'QuickLaunchAgentMenuItems').props.disabled).toBe(false)
+  })
 })

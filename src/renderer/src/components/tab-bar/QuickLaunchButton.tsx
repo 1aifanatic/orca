@@ -40,6 +40,8 @@ export type QuickLaunchAgentMenuItemsProps = {
   onPromptDelivered?: () => void
   /** Given the launch's own delivery result while the prompt is still on its way. */
   onPromptHandedOff?: (delivered: Promise<unknown>) => void
+  /** Nothing to send: e.g. every note is already on its way, so no agent is started. */
+  disabled?: boolean
 }
 
 function getCatalogEntry(agent: TuiAgent): { id: TuiAgent; label: string } | null {
@@ -107,7 +109,8 @@ function QuickLaunchAgentMenuItemsInner({
   promptDelivery,
   launchSource,
   onPromptDelivered,
-  onPromptHandedOff
+  onPromptHandedOff,
+  disabled = false
 }: QuickLaunchAgentMenuItemsProps): React.JSX.Element | null {
   // Why: resolving only the SSH connectionId here made paired-runtime
   // worktrees fall back to LOCAL detection, listing the client's agents
@@ -137,6 +140,9 @@ function QuickLaunchAgentMenuItemsInner({
 
   const runLaunch = useCallback(
     (agent: TuiAgent) => {
+      if (disabled) {
+        return
+      }
       const entry = getCatalogEntry(agent)
       const label = entry?.label ?? agent
       const result = launchAgentInNewTab({
@@ -195,7 +201,8 @@ function QuickLaunchAgentMenuItemsInner({
       promptDelivery,
       launchSource,
       onPromptDelivered,
-      onPromptHandedOff
+      onPromptHandedOff,
+      disabled
     ]
   )
 
@@ -227,7 +234,7 @@ function QuickLaunchAgentMenuItemsInner({
         return (
           <DropdownMenuItem
             key={agent}
-            disabled={isStructuredLaunchPending}
+            disabled={disabled || isStructuredLaunchPending}
             onSelect={() => runLaunch(agent)}
             className="gap-2 rounded-[7px] px-2 py-1.5 text-[12px] leading-5 font-medium"
             title={translate(

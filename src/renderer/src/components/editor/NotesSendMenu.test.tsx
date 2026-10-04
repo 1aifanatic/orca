@@ -536,4 +536,15 @@ describe('NotesSendMenu notes in flight', () => {
 
     expect(contentProps(renderMenu({ scopes: scopeOf([noteA]) })).prompt).toBe('note-a')
   })
+
+  it('offers no send once every note is on its way', () => {
+    contentProps(renderMenu({ scopes: scopeOf([noteA]) })).onPromptHandedOff(
+      new Promise(() => undefined)
+    )
+
+    const tree = renderMenu({ scopes: scopeOf([noteA]) })
+    expect(findByType(tree, 'button').props.disabled).toBe(true)
+    invoke(findByType(tree, 'DropdownMenu').props, 'onOpenChange', true)
+    expect(storeMocks.openAgentSendPopoverTargetMode).not.toHaveBeenCalled()
+  })
 })

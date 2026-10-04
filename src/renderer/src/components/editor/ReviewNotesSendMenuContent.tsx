@@ -213,6 +213,7 @@ export function ReviewNotesSendMenuContent({
         launchSource={launchSource}
         onPromptDelivered={onPromptDelivered}
         onPromptHandedOff={onPromptHandedOff}
+        disabled={!hasPrompt}
       />
     </>
   )
