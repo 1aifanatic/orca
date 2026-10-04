@@ -372,6 +372,17 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+      - name: Retain native CLI ratio evidence
+        if: always() && contains(inputs.test_files, 'tests/e2e/terminal-cli-ratio-native.spec.ts')
+        uses: actions/upload-artifact@v7
+        with:
+          name: terminal-cli-ratio-native-evidence
+          path: |
+            test-results/**/terminal-cli-ratio-native.json
+            test-results/**/terminal-cli-ratio-*.png
+          retention-days: 7
+          if-no-files-found: error
+
   ssh-docker-watcher-isolation:
     name: ssh docker watcher isolation (${{ matrix.shard }}/4)
     needs: [build, prepare-native-cache]
