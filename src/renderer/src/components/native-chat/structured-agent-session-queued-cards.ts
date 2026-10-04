@@ -3,7 +3,10 @@
 
 import type { UnreadAgentSessionFailureFact } from '../../../../shared/agent-session-failure'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
-import type { AgentSessionQueuedMessage } from '../../../../shared/agent-session-wire'
+import type {
+  AgentSessionQueuedMessage,
+  AgentSessionQueuePause
+} from '../../../../shared/agent-session-wire'
 import { handedOffQueuedMessageIds } from '../../../../shared/structured-agent-session-draft-hand-off'
 import {
   structuredAgentSessionEntryAsksToQueue,
@@ -18,8 +21,8 @@ import {
 /** Why a card is not on its way right now; decides the caption under the text. */
 export type QueuedMessageCardHold =
   | 'turn'
-  /** Held by a Stop, restart or /clear: no caption and no promise of when it sends — not even
-   *  after an answer. Resume, its own Send or Steer, or any new message releases it. */
+  /** Held by a Stop, restart or /clear: the header row above the cards says why and offers
+   *  Resume, so the card makes no promise of when it sends — not even after an answer. */
   | 'queue-paused'
   | 'awaiting-answer'
   | 'paused'
@@ -33,6 +36,9 @@ export type QueuedMessageCard = {
   text: string
   state: 'waiting' | 'returned'
   hold: QueuedMessageCardHold
+  /** The pause holding a 'queue-paused' card. A string: a newer host may name a reason this build
+   *  does not know. */
+  queuePause?: { reason: string }
   pausedReason?: string
   returnedReason?: string | null
   /** The typed fact the returned card's submission settled with; read like its `rejection`. */
@@ -53,7 +59,7 @@ function queuedMessageCardText(body: AgentSessionQueuedMessage['body']): string 
 export function projectQueuedMessageCards(
   queuedMessages: readonly AgentSessionQueuedMessage[] | null | undefined,
   submissions: readonly AgentJournalSubmission[],
-  session: { hasPendingPrompt: boolean; queuePaused?: boolean }
+  session: { hasPendingPrompt: boolean; queuePause?: AgentSessionQueuePause | null }
 ): QueuedMessageCard[] {
   const handedOff = handedOffQueuedMessageIds(
     submissions.filter((submission) => submission.dispatchState !== 'rejected')
@@ -64,8 +70,7 @@ export function projectQueuedMessageCards(
   let behindReturned = false
   return ordered.map((message) => {
     // A host that predates `heldBy` publishes only the queue's pause, which then covers every card.
-    const heldByPause =
-      message.heldBy === undefined ? session.queuePaused === true : message.heldBy !== null
+    const heldBy = message.heldBy === undefined ? (session.queuePause ?? null) : message.heldBy
     const hold: QueuedMessageCardHold =
       message.state === 'returned'
         ? 'returned'
@@ -73,7 +78,7 @@ export function projectQueuedMessageCards(
           ? 'paused'
           : behindReturned
             ? 'behind-returned'
-            : heldByPause
+            : heldBy
               ? 'queue-paused'
               : session.hasPendingPrompt
                 ? 'awaiting-answer'
@@ -85,6 +90,7 @@ export function projectQueuedMessageCards(
       text: queuedMessageCardText(message.body),
       state: message.state,
       hold,
+      ...(hold === 'queue-paused' && heldBy ? { queuePause: { reason: heldBy.reason } } : {}),
       ...(message.pausedReason !== undefined ? { pausedReason: message.pausedReason } : {}),
       ...(message.returnedReason !== undefined ? { returnedReason: message.returnedReason } : {}),
       ...(message.returnedRejection !== undefined
@@ -94,20 +100,27 @@ export function projectQueuedMessageCards(
   })
 }
 
-/** Whether Resume would release anything: nothing runs, and a queue-level pause holds a card. One
- *  held on its own, returned or behind a returned card would not send. `isWorking` counts the
- *  queue's coming send, which the host names. */
+/** The pause the header row names, from the oldest card it holds. A pause over cards Resume would
+ *  not send (returned, held on their own, or behind a returned one) offers nothing to press. */
+export function queuedMessagesQueuePause(
+  cards: readonly QueuedMessageCard[]
+): { reason: string } | null {
+  return cards.find((card) => card.hold === 'queue-paused')?.queuePause ?? null
+}
+
+/** Whether the composer's Resume would release anything: nothing runs, and a pause holds a card.
+ *  `isWorking` counts the queue's coming send, which the host names. */
 export function queuedMessagesResumable(
   cards: readonly QueuedMessageCard[],
   isWorking: boolean
 ): boolean {
-  return !isWorking && cards.some((card) => card.hold === 'queue-paused')
+  return !isWorking && queuedMessagesQueuePause(cards) !== null
 }
 
-/** Steer jumps into a running turn; with none running, or for a card held on its own or
- *  returned, the action is plainly Send. */
-export function queuedMessageCardSteers(card: QueuedMessageCard, turnRunning: boolean): boolean {
-  return turnRunning && card.hold !== 'paused' && card.hold !== 'returned'
+/** Steer names the mid-turn jump, also while the whole queue is paused; a card held on its own or
+ *  returned is not waiting on the turn, so its action is plainly Send. */
+export function queuedMessageCardSteers(card: QueuedMessageCard): boolean {
+  return card.hold !== 'paused' && card.hold !== 'returned'
 }
 
 /** The card Cmd/Ctrl+Enter steers: the newest one; every shown card takes Send-now. */

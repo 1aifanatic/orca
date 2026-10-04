@@ -16,6 +16,14 @@ export type NativeChatOptionPickerRequest = {
   sequence: number
 }
 
+/** A queue the host holds, with cards waiting. */
+export type NativeChatQueueHold = {
+  /** Every card shown, held or not. */
+  count: number
+  /** Delete every card; false when one could not be (already reported). */
+  clear: () => Promise<boolean>
+}
+
 export type NativeChatStructuredComposerTransport = {
   conversationCommands?: readonly AgentSessionConversationCommand[]
   send: (text: string, attachments: readonly NativeChatComposerImageAttachment[]) => boolean
@@ -37,6 +45,8 @@ export type NativeChatStructuredComposerTransport = {
   sessionId: string
   /** Owning runtime for that report; null is the local runtime. */
   runtimeEnvironmentId: string | null
+  /** Present while the queue is held: a message sent now first asks whether to clear its cards. */
+  queueHold?: NativeChatQueueHold
 }
 
 export type NativeChatOptimisticSendOutcome = {

@@ -11,6 +11,7 @@ import {
   outboxOutsideQueuedCards,
   projectQueuedMessageCards,
   queuedMessageCardSteers,
+  queuedMessagesQueuePause,
   queuedMessagesResumable
 } from './structured-agent-session-queued-cards'
 
@@ -148,7 +149,7 @@ describe('queued message cards', () => {
         draft('behind', 4)
       ],
       [],
-      { hasPendingPrompt: true, queuePaused: true }
+      { hasPendingPrompt: true, queuePause: { reason: 'stopped' } }
     )
     expect(cards.map((card) => card.hold)).toEqual([
       'queue-paused',
@@ -166,7 +167,7 @@ describe('queued message cards', () => {
       draft('held', 1, { heldBy: { reason: 'stopped' } }),
       draft('typed-after', 2, { heldBy: null })
     ]
-    const paused = { hasPendingPrompt: true, queuePaused: true }
+    const paused = { hasPendingPrompt: true, queuePause: { reason: 'restarted' } } as const
     // The card queued after the Stop still says it waits for the answer.
     expect(projectQueuedMessageCards(named, [], paused).map((card) => card.hold)).toEqual([
       'queue-paused',
@@ -181,7 +182,10 @@ describe('queued message cards', () => {
 
   it('Resume only over a card a pause holds, and only while nothing runs', () => {
     const project = (messages: AgentSessionQueuedMessage[]) =>
-      projectQueuedMessageCards(messages, [], { hasPendingPrompt: false, queuePaused: true })
+      projectQueuedMessageCards(messages, [], {
+        hasPendingPrompt: false,
+        queuePause: { reason: 'stopped' }
+      })
     const held = draft('held', 1, { heldBy: { reason: 'stopped' } })
     expect(queuedMessagesResumable(project([held]), false)).toBe(true)
     // Working counts the queue's coming send, which the host names.
@@ -193,7 +197,34 @@ describe('queued message cards', () => {
       'turn'
     ])
     const [card] = project([held])
-    expect(card && queuedMessageCardSteers(card, true)).toBe(true)
+    // Still Steer while nothing runs: the header row, not the card, says it waits.
+    expect(card && queuedMessageCardSteers(card)).toBe(true)
+  })
+
+  it("the header names the oldest held card's pause, and none over cards Resume would not send", () => {
+    const project = (messages: AgentSessionQueuedMessage[]) =>
+      projectQueuedMessageCards(messages, [], {
+        hasPendingPrompt: false,
+        queuePause: { reason: 'stopped' }
+      })
+    const restarted = draft('restarted', 1, { heldBy: { reason: 'restarted' } })
+    const stopped = draft('stopped', 2, { heldBy: { reason: 'stopped' } })
+    expect(queuedMessagesQueuePause(project([restarted, stopped]))).toEqual({ reason: 'restarted' })
+    // An older host names no per-card hold: its queue-level pause is the reason.
+    expect(queuedMessagesQueuePause(project([draft('older', 1)]))).toEqual({ reason: 'stopped' })
+    const unsendable = [
+      draft('returned', 1, { state: 'returned', returnedReason: null, heldBy: null }),
+      draft('behind', 2, { heldBy: { reason: 'stopped' } }),
+      draft('failed', 3, {
+        paused: true,
+        pausedReason: 'send_failed',
+        heldBy: { reason: 'stopped' }
+      })
+    ]
+    expect(queuedMessagesQueuePause(project(unsendable))).toBeNull()
+    expect(
+      queuedMessagesQueuePause(project([draft('typed-after', 1, { heldBy: null })]))
+    ).toBeNull()
   })
 
   it('steers the newest card', () => {

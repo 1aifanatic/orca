@@ -14,6 +14,7 @@ import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/struct
 import {
   projectQueuedMessageCards,
   queuedMessageCardSteers,
+  queuedMessagesQueuePause,
   queuedMessagesResumable
 } from '../../../renderer/src/components/native-chat/structured-agent-session-queued-cards'
 import {
@@ -72,6 +73,8 @@ type ClientView = {
   stopLive: boolean
   /** The empty composer's primary button. */
   button: NativeChatComposerPrimaryAction
+  /** The header row above the cards: the queue is held. */
+  header: boolean
   /** Each card's Send-now reads Steer. */
   steers: boolean[]
   cards: number
@@ -112,10 +115,7 @@ async function watchClient(): Promise<ClientView[]> {
       const hostWorking = isStructuredAgentSessionMainAgentWorking(running, all)
       // As use-structured-agent-session.ts derives it.
       const working = hostWorking || (nextQueuedMessageId !== null && !hostWorking)
-      const cards = projectQueuedMessageCards(queued, all, {
-        hasPendingPrompt: false,
-        queuePaused: queuePause !== null
-      })
+      const cards = projectQueuedMessageCards(queued, all, { hasPendingPrompt: false, queuePause })
       const queueHeld = queuedMessagesResumable(cards, working)
       views.push({
         working,
@@ -125,7 +125,8 @@ async function watchClient(): Promise<ClientView[]> {
           composerEmpty: true,
           queueHeld
         }),
-        steers: cards.map((card) => queuedMessageCardSteers(card, working)),
+        header: queuedMessagesQueuePause(cards) !== null,
+        steers: cards.map((card) => queuedMessageCardSteers(card)),
         cards: cards.length,
         nextQueuedMessageId
       })
@@ -188,6 +189,39 @@ describe('which pause holds each card', () => {
     await eventually(async () => expect(await rig.handoff(first)).toBeDefined())
     await eventually(() => expect(views.at(-1)?.stopLive).toBe(true))
     expectOneWorkingRun(views.slice(before))
+  })
+})
+
+describe("a message sent over a held queue (the confirmation's Send message)", () => {
+  it("goes out at once as the person's turn; the held cards stay, the header goes once that turn starts, and they follow in order", async () => {
+    const working = await rig.workingSend()
+    const first = await queuedDraft('first')
+    const second = await queuedDraft('second')
+    await rig.stop()
+    await rig.settleAccepted(working, 'stopped')
+    const views = await watchClient()
+    expect(views.at(-1)).toMatchObject({ header: true, button: 'resume', cards: 2 })
+    // Sent with the composer's queue delivery: no card ahead may send, so nothing queues it.
+    const message = rig.send('a new instruction', 'queue-if-active')
+    expect(await message.result).toMatchObject({
+      ok: true,
+      value: { submission: expect.anything() }
+    })
+    expect(await heldBy()).toEqual({
+      [first]: { reason: 'stopped' },
+      [second]: { reason: 'stopped' }
+    })
+    await rig.settleAccepted(message.id, 'message')
+    await eventually(async () => expect(await rig.handoff(first)).toBeDefined())
+    expect(await rig.handoff(second)).toBeUndefined()
+    await rig.settleAccepted(await rig.handoffId(first), 'first')
+    await eventually(async () => expect(await rig.handoff(second)).toBeDefined())
+    // The header goes while both cards still wait: the message's turn lifted the hold.
+    const lifted = views.findIndex((view) => !view.header)
+    expect(views[lifted]?.cards).toBe(2)
+    // Once lifted it stays lifted, and no card ever reads Send.
+    expect(views.slice(lifted).filter((view) => view.header)).toEqual([])
+    expect(views.flatMap((view) => view.steers)).not.toContain(false)
   })
 })
 

@@ -17905,7 +17905,17 @@
         "withdrawnHold": "Arrêté avant l'envoi",
         "pausedSendFailed": "Envoi impossible. Appuyez sur Envoyer pour réessayer.",
         "paused": "En pause",
-        "resume": "Reprendre"
+        "queuePausedStopped": "File d'attente en pause, car vous avez interrompu",
+        "queuePausedRestarted": "File d'attente en pause, car Orca a redémarré",
+        "queuePausedCleared": "File d'attente en pause après l'effacement de la conversation",
+        "queuePaused": "File d'attente en pause",
+        "resume": "Reprendre",
+        "sendConfirmTitle": "Envoyer le message ?",
+        "sendConfirmBody": "Vous êtes sur le point d'envoyer un message. Voulez-vous effacer les {{count}} messages déjà en file d'attente ?",
+        "sendConfirmBody_one": "Vous êtes sur le point d'envoyer un message. Voulez-vous effacer {{count}} message déjà en file d'attente ?",
+        "sendConfirmBody_other": "Vous êtes sur le point d'envoyer un message. Voulez-vous effacer les {{count}} messages déjà en file d'attente ?",
+        "sendConfirmClear": "Vider la file d'attente",
+        "sendConfirmSend": "Envoyer le message"
       },
       "structuredSessionHostDeclined": "{{value0}} ouvert dans un terminal",
       "structuredSessionHostDeclinedDescription": "Ce serveur ne peut pas exécuter de discussion {{value0}} dans cet espace de travail.",

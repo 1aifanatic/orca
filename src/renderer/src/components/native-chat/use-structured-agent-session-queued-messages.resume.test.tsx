@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 
 // Resume releases a held queue through its own RPC, over the same fenced write every card action
-// uses: offered only while no turn runs and the host holds a card it would send; a refusal or a
-// failure is one toast, and Resume stays the way to try again.
+// uses. The header row offers it whenever the host holds a card it would send, the composer only
+// while no turn runs too; one press at a time, a refusal or a failure is one toast, and Resume
+// stays the way to try again.
 
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -118,12 +119,53 @@ describe('whether Resume is offered', () => {
   })
 })
 
-describe('while the queue is about to send its next card', () => {
-  it('the cards steer and Resume is not offered: the chat reads as working', () => {
+describe('while a turn runs over held cards', () => {
+  it('the header row still names the pause and offers Resume; the composer does not', () => {
     // `isWorking` counts the queue's coming send, which the host names.
     const { result } = renderController({ isWorking: true })
-    expect(result.current.turnRunning).toBe(true)
+    expect(result.current.pause).toEqual({ reason: 'stopped' })
     expect(result.current.queueResume).toBeUndefined()
+  })
+})
+
+describe("the header row's pause", () => {
+  it.each(['stopped', 'restarted', 'cleared', 'some-newer-reason'])(
+    "names the reason the host holds a card for ('%s')",
+    (reason) => {
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a newer host may publish a reason this client's type does not list.
+      const heldBy = { reason } as AgentSessionQueuePause
+      const { result } = renderController({ queuedMessages: [card('held', { heldBy })] })
+      expect(result.current.pause).toEqual({ reason })
+    }
+  )
+
+  it('is absent over cards held only on their own or returned, and over cards no pause holds', () => {
+    const queuedMessages = [
+      card('failed', { paused: true, pausedReason: 'send_failed', heldBy: null }),
+      card('returned', { position: 2, state: 'returned', heldBy: null })
+    ]
+    expect(renderController({ queuedMessages }).result.current.pause).toBeNull()
+    const typedAfter = [card('typed-after', { heldBy: null })]
+    expect(renderController({ queuedMessages: typedAfter }).result.current.pause).toBeNull()
+  })
+
+  it("shares one Resume with the composer's: a press of either while one is in flight sends nothing", async () => {
+    const answer = Promise.withResolvers<unknown>()
+    mocks.call.mockReturnValueOnce(answer.promise)
+    const { result } = renderController()
+    let pending: Promise<void> = Promise.resolve()
+    act(() => {
+      pending = result.current.resume()
+    })
+    expect(result.current.resuming).toBe(true)
+    expect(result.current.queueResume?.resuming).toBe(true)
+    await act(() => resume(result))
+    expect(mocks.call).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      answer.resolve(RESUMED)
+      await pending
+    })
+    expect(result.current.resuming).toBe(false)
   })
 })
 

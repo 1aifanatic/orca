@@ -21,6 +21,8 @@ import {
   type NativeChatQueueResume
 } from './native-chat-composer-primary-action'
 import { NativeChatImageAttachmentPreview } from './NativeChatImageAttachmentPreview'
+import { NativeChatQueueSendConfirmDialog } from './NativeChatQueueSendConfirmDialog'
+import type { NativeChatQueueSendConfirm } from './use-native-chat-held-queue-composer-send'
 import type { NativeChatComposerGoalMode } from './use-native-chat-composer-submit'
 import { translate } from '@/i18n/i18n'
 
@@ -61,6 +63,7 @@ export type NativeChatComposerFieldProps = {
   onSend: () => void
   onStop?: () => void
   queueResume?: NativeChatQueueResume | undefined
+  queueSendConfirm?: NativeChatQueueSendConfirm | null
   sessionOptionsSurface: SessionOptionsSurface | null
   sessionOptionsSnapshot: SessionOptionDescriptor[]
   contextUsage?: NativeChatContextUsageSummary | null
@@ -136,6 +139,7 @@ export function NativeChatComposerField({
   onSend,
   onStop,
   queueResume,
+  queueSendConfirm = null,
   sessionOptionsSurface,
   sessionOptionsSnapshot,
   contextUsage,
@@ -326,6 +330,10 @@ export function NativeChatComposerField({
           </div>
         </div>
       </div>
+      <NativeChatQueueSendConfirmDialog
+        confirm={queueSendConfirm}
+        focusComposer={() => textareaRef.current?.focus()}
+      />
     </div>
   )
 }

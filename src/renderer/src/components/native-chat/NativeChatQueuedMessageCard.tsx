@@ -55,8 +55,8 @@ export function queuedMessageCardCaption(card: QueuedMessageCard): string | null
       )
     }
     case 'paused':
-      // A card's own hold. Markers localize; an absent or unknown one (newer host) is a plain
-      // pause, never shown raw.
+      // A card's own hold; the queue's pause is the list's header. Markers localize, and an absent
+      // or unknown one (newer host) is a plain pause, never shown raw.
       if (card.pausedReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED) {
         return translate(
           'components.native-chat.queuedMessages.pausedSendFailed',
@@ -76,22 +76,19 @@ export function queuedMessageCardCaption(card: QueuedMessageCard): string | null
       )
     case 'turn':
     case 'queue-paused':
-      // Plainly queued: a held queue shows no caption.
+      // Plainly queued; a paused queue's header row carries the why.
       return null
   }
 }
 
 /** Steer's or Send's label and tooltip (`queuedMessageCardSteers`). */
-export function queuedMessageCardSendNow(
-  card: QueuedMessageCard,
-  turnRunning: boolean
-): {
+export function queuedMessageCardSendNow(card: QueuedMessageCard): {
   /** Steer's ↳, or Send's paper plane. */
   steers: boolean
   label: string
   hint: string
 } {
-  if (!queuedMessageCardSteers(card, turnRunning)) {
+  if (!queuedMessageCardSteers(card)) {
     return {
       steers: false,
       label: translate('components.native-chat.queuedMessages.send', 'Send'),
@@ -110,7 +107,6 @@ export function queuedMessageCardSendNow(
 
 export function NativeChatQueuedMessageCard({
   card,
-  turnRunning,
   showsSteerShortcut,
   onSteer,
   onDelete,
@@ -118,7 +114,6 @@ export function NativeChatQueuedMessageCard({
   onTurnOffQueueing
 }: {
   card: QueuedMessageCard
-  turnRunning: boolean
   /** Only the newest card answers Cmd/Ctrl+Enter; only it may show the chord. */
   showsSteerShortcut: boolean
   onSteer: () => void
@@ -128,7 +123,7 @@ export function NativeChatQueuedMessageCard({
 }): React.JSX.Element {
   const caption = queuedMessageCardCaption(card)
   const returned = card.state === 'returned'
-  const sendNow = queuedMessageCardSendNow(card, turnRunning)
+  const sendNow = queuedMessageCardSendNow(card)
   const isMac = isMacPlatform()
   return (
     <li

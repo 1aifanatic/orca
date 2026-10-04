@@ -23,6 +23,18 @@ export type UseNativeChatStructuredComposerSendArgs = {
   setCaret: (caret: number) => void
 }
 
+/** A command the host runs itself (and `/goal` where the host sets goals), never a message. */
+export function isNativeChatStructuredHostCommand(
+  text: string,
+  agent: AgentType,
+  transport: NativeChatStructuredComposerTransport
+): boolean {
+  return (
+    isStructuredAgentSessionComposerCommand(text, agent) ||
+    (transport.threadGoal !== undefined && isStructuredAgentSessionGoalCommand(text))
+  )
+}
+
 /** Send through the structured journal transport, clearing the composer only
  *  once the transport accepts (the PTY path has its own sibling hook). */
 export function useNativeChatStructuredComposerSend({
@@ -48,9 +60,7 @@ export function useNativeChatStructuredComposerSend({
       if (!structuredTransport) {
         return
       }
-      const hostCommand =
-        isStructuredAgentSessionComposerCommand(text, agent) ||
-        (structuredTransport.threadGoal !== undefined && isStructuredAgentSessionGoalCommand(text))
+      const hostCommand = isNativeChatStructuredHostCommand(text, agent, structuredTransport)
       if (attachments.length > 0 && hostCommand) {
         structuredTransport.onError('Remove attachments before using a chat-session command.')
         return

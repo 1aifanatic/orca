@@ -281,7 +281,7 @@ describe('against a capable host', () => {
     nextQueuedMessageId = 'draft-1'
     const { result } = render()
     expect(result.current).toMatchObject({ isWorking: true, queueSendsNext: true, canStop: false })
-    expect(result.current.queuedMessages.turnRunning).toBe(true)
+    expect(result.current.queuedMessages.cards.map((card) => card.hold)).toEqual(['turn'])
     // Where the host would refuse that send, it names none: the chat reads idle.
     nextQueuedMessageId = null
     const refused = render()

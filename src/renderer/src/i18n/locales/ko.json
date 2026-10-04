@@ -17842,7 +17842,17 @@
         "withdrawnHold": "전송 전에 중지됨",
         "pausedSendFailed": "보낼 수 없습니다. 보내기를 눌러 다시 시도하세요.",
         "paused": "일시 중지됨",
-        "resume": "재개"
+        "queuePausedStopped": "중단했기 때문에 대기열이 일시 중지되었습니다",
+        "queuePausedRestarted": "Orca가 다시 시작되어 대기열이 일시 중지되었습니다",
+        "queuePausedCleared": "대화를 지워서 대기열이 일시 중지되었습니다",
+        "queuePaused": "대기열이 일시 중지되었습니다",
+        "resume": "재개",
+        "sendConfirmTitle": "메시지를 보낼까요?",
+        "sendConfirmBody": "메시지를 보내려고 합니다. 대기열에 있는 메시지 {{count}}개를 지울까요?",
+        "sendConfirmBody_one": "메시지를 보내려고 합니다. 대기열에 있는 메시지 {{count}}개를 지울까요?",
+        "sendConfirmBody_other": "메시지를 보내려고 합니다. 대기열에 있는 메시지 {{count}}개를 지울까요?",
+        "sendConfirmClear": "대기열 지우기",
+        "sendConfirmSend": "메시지 보내기"
       },
       "structuredSessionHostDeclined": "{{value0}}을(를) 터미널에서 열었습니다",
       "structuredSessionHostDeclinedDescription": "이 서버는 이 워크스페이스에서 {{value0}} 채팅을 실행할 수 없습니다.",
