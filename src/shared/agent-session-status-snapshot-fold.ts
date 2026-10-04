@@ -42,7 +42,6 @@ export function revokeAgentSessionStatusLive(
     const {
       hostExecutionOwned: _owned,
       hostExecutionPhase: _phase,
-      hostExecutionChild: _child,
       stopping: _stopping,
       ...retained
     } = summary

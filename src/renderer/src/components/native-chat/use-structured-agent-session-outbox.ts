@@ -14,6 +14,7 @@ import {
 } from '../../../../shared/structured-agent-session-outbox-admission'
 import {
   journalAnswersInFlightSend,
+  STRUCTURED_AGENT_SESSION_OUTBOX_NOT_SAVED,
   type StructuredAgentSessionSendDisposition
 } from '../../../../shared/structured-agent-session-send-disposition'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
@@ -46,6 +47,7 @@ import {
 } from '../../../../shared/structured-agent-session-outbox-delivery'
 import { retryStructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox-retry'
 import { useStructuredAgentSessionOutboxFailedHere } from './use-structured-agent-session-outbox-failed-here'
+import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 
 const NO_QUEUE_DELIVERY: StructuredAgentSessionQueueDelivery = {
   capability: 'unsupported',
@@ -183,7 +185,7 @@ export function useStructuredAgentSessionOutbox(args: {
       // Released here rather than in a `.finally`: the state write below is what re-runs the
       // drain, so a later microtask would leave the queue with no trigger to move on.
       inFlightIdRef.current = null
-      setError(disposition.error)
+      setError(disposition.error ? agentSessionWriteNoticeText(disposition.error) : null)
       recordFailures(getStructuredAgentSessionOutbox(sessionId), disposition.entries)
       commitStructuredAgentSessionOutbox(sessionId, disposition.entries)
     },
@@ -277,7 +279,7 @@ export function useStructuredAgentSessionOutbox(args: {
           sentWhileStopping
         )
       ) {
-        setError('Message could not be saved to the outbox')
+        setError(agentSessionWriteNoticeText(STRUCTURED_AGENT_SESSION_OUTBOX_NOT_SAVED))
         return false
       }
       setError(null)
