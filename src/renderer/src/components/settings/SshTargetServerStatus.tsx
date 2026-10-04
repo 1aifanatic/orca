@@ -26,7 +26,7 @@ export function SshTargetServerStatus({
     return null
   }
   const status = state?.managedServer
-  const terminals = status?.kind === 'relay' ? (status.terminals ?? 0) : 0
+  const terminals = status?.kind === 'relay' ? status.terminals : undefined
   const canMove = line.action === 'move' && canMoveSshHostToManagedServer()
   return (
     <div className="space-y-1">

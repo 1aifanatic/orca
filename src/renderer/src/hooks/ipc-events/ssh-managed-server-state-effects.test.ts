@@ -100,6 +100,6 @@ describe('the one-time move offer toast', () => {
     })
     lastToastOptions().action.onClick()
     await vi.waitFor(() => expect(mocks.toast.error).toHaveBeenCalled())
-    expect(mocks.toast.error.mock.calls[0][0]).toContain('couldn’t confirm that 1 terminals')
+    expect(mocks.toast.error.mock.calls[0][0]).toContain('couldn’t confirm that 1 terminal on')
   })
 })
