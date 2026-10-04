@@ -57,7 +57,10 @@ import {
   clearWindowsRemoteWriteCapabilitiesForTests,
   getWindowsRemoteWriteCapabilities
 } from './system-ssh-windows-write-capabilities'
-import { explainWindowsPowerShellStdinFailure } from './system-ssh-windows-write-strategy'
+import {
+  explainWindowsPowerShellStdinFailure,
+  writeWindowsRemoteFile
+} from './system-ssh-windows-write-strategy'
 import type { SshTarget } from '../../shared/ssh-types'
 
 type FakeChannel = EventEmitter & {
@@ -682,6 +685,63 @@ describe('Windows upload on a host with no sftp subsystem', () => {
     ])
     expect(getWindowsRemoteWriteCapabilities(target).shouldTry('pwsh')).toBe(false)
     expect(commands.some((command) => command.script.includes('::Move('))).toBe(true)
+  })
+
+  it.each([
+    'relay-CommandNotFoundException.js',
+    'is not recognized as an internal or external command.js'
+  ])('propagates a timeout whose filename resembles a missing command: %s', async (file) => {
+    vi.useFakeTimers()
+    const remotePath = `${remoteRoot}/${file}`
+    writeFileSync(join(localDir, file), 'x')
+    spawnSystemSshCommandMock.mockImplementation((_target: SshTarget, command: string) => {
+      const executable = command.split(' ')[0] ?? ''
+      return createFakeChannel((channel) => {
+        commands.push({
+          script: decodePowerShellCommand(command),
+          executable,
+          stdin: channel.written
+        })
+        if (executable !== 'pwsh.exe') {
+          setImmediate(() => channel.emit('close', 0, null))
+        }
+      })
+    })
+    try {
+      const result = expect(
+        uploadFileViaSystemSsh(target, join(localDir, file), remotePath, { hostPlatform })
+      ).rejects.toThrow('timed out')
+      await vi.advanceTimersByTimeAsync(WINDOWS_STDIN_WRITE_TIMEOUT_MS + 1)
+      await result
+
+      expect(fileWrites().map((write) => write.executable)).toEqual(['pwsh.exe'])
+      expect(getWindowsRemoteWriteCapabilities(target).shouldTry('pwsh')).toBe(true)
+      expect(commands.some((command) => command.script.includes('::Move('))).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it.each([
+    'relay-CommandNotFoundException.js',
+    'is not recognized as an internal or external command.js'
+  ])('propagates a short source whose filename resembles a missing command: %s', async (file) => {
+    await expect(
+      writeWindowsRemoteFile(
+        target,
+        `${remoteRoot}/${file}`,
+        {
+          totalBytes: 1,
+          readChunk: async () => Buffer.alloc(0),
+          withLocalFile: async (send) => send(join(localDir, file))
+        },
+        {}
+      )
+    ).rejects.toThrow('Source ran short')
+
+    expect(fileWrites()).toHaveLength(0)
+    expect(getWindowsRemoteWriteCapabilities(target).shouldTry('pwsh')).toBe(true)
+    expect(commands.some((command) => command.script.includes('::Move('))).toBe(false)
   })
 })
 
