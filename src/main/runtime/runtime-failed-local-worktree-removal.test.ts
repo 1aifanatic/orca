@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Repo } from '../../shared/repo-types'
+import type { GitPushTarget } from '../../shared/worktree/types'
 import { removeTree } from '../../shared/windows-transient-lock-removal'
 import type { Store } from '../persistence'
 import type * as HostTreeRemoval from '../host-tree-removal'
@@ -34,6 +35,8 @@ import {
   type WorktreeRemovalRecord
 } from '../worktree-removal-records'
 import { interruptedLocalWorktreeRemovalJob } from './runtime-interrupted-local-worktree-removal'
+import { removeRuntimeRegisteredLocalWorktree } from './runtime-registered-local-worktree-removal'
+import type { RuntimeStore } from './runtime-store-contract'
 
 vi.mock('../project-runtime-git-options', () => ({
   getLocalProjectWorktreeGitOptions: () => ({})
@@ -74,14 +77,34 @@ async function listedRows(): Promise<{ path: string; removalError?: string }[]> 
     .map(({ path, removalError }) => ({ path, ...(removalError ? { removalError } : {}) }))
 }
 
-function jobHost(purged: string[], stopPtys = vi.fn(async () => {})) {
+/** Reads only repos and worktree metadata, as the finish and the push-target cleanup do. */
+function storeStub(pushTarget?: GitPushTarget) {
+  const meta = pushTarget ? { pushTarget } : undefined
   return {
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the finish reads only repos and worktree metadata from the store here; git options are mocked and no push target is set.
-    store: {
-      getRepo: (id: string) => (id === repo.id ? repo : undefined),
-      getRepos: () => [repo],
-      getWorktreeMeta: () => undefined
-    } as unknown as Store,
+    getRepo: (id: string) => (id === repo.id ? repo : undefined),
+    getRepos: () => [repo],
+    getWorktreeMeta: (id: string) => (id === worktreeId ? meta : undefined),
+    getAllWorktreeMeta: () => (meta ? { [worktreeId]: meta } : {})
+  }
+}
+
+/** A remote Orca added for a fork PR's push target, as worktree create does. */
+async function addOrcaPushTargetRemote(): Promise<GitPushTarget> {
+  const pushTarget = {
+    remoteName: 'pr-contributor',
+    branchName: 'feature',
+    remoteUrl: 'https://github.com/contributor/repo.git',
+    remoteCreated: true
+  }
+  await git(['remote', 'add', pushTarget.remoteName, pushTarget.remoteUrl])
+  await git(['config', `remote.${pushTarget.remoteName}.orca-created`, 'true'])
+  return pushTarget
+}
+
+function jobHost(purged: string[], stopPtys = vi.fn(async () => {}), pushTarget?: GitPushTarget) {
+  return {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the finish reads only repos and worktree metadata from the store here; git options are mocked.
+    store: storeStub(pushTarget) as unknown as Store,
     acquireWatcherRemoval: async (path: string) => {
       const gate = acquireWatcherRemovalGate(path)
       return { finish: async () => gate.release() }
@@ -123,7 +146,7 @@ function failStartupFinish(): Promise<unknown> {
 }
 
 /** Resumes a recorded delete of the checkout as the next start does; resolves with its error. */
-async function finishAtStartup(purged: string[]): Promise<unknown> {
+async function finishAtStartup(purged: string[], pushTarget?: GitPushTarget): Promise<unknown> {
   const record: WorktreeRemovalRecord = {
     worktreeId,
     repoId: repo.id,
@@ -139,7 +162,7 @@ async function finishAtStartup(purged: string[]): Promise<unknown> {
   await loadWorktreeRemovalRecords(recordsDir)
   const joined = waitForPendingWorktreeRemoval(worktreeId)!
   resumeInterruptedWorktreeRemovals((interrupted) =>
-    interruptedLocalWorktreeRemovalJob(interrupted, jobHost(purged))
+    interruptedLocalWorktreeRemovalJob(interrupted, jobHost(purged, undefined, pushTarget))
   )
   const error = await joined.then(
     () => undefined,
@@ -321,6 +344,56 @@ describe.skipIf(process.platform !== 'darwin')('a worktree delete Git fails part
     expect(await isRegistered(other)).toBe(true)
     await rename(join(scratchDir, 'volume-unmounted'), parent)
     expect(await git(['status', '--porcelain'], other)).toBe('?? wip.txt\n')
+  })
+
+  it('removes the push-target remote Orca added when a runtime delete fails', async () => {
+    const pushTarget = await addOrcaPushTargetRemote()
+    const worktree = (await listWorktreesStrict(repoPath)).find((row) =>
+      areWorktreePathsEqual(row.path, worktreePath)
+    )!
+    const accepted = await removeRuntimeRegisteredLocalWorktree({
+      repo,
+      target: { id: worktreeId, repoId: repo.id, path: worktreePath, pushTarget },
+      registeredWorktree: worktree,
+      removedPushTarget: pushTarget,
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the delete reads only repos and worktree metadata from the store here.
+      store: storeStub(pushTarget) as unknown as RuntimeStore,
+      localOptions: {},
+      hasLocalOptions: false,
+      force: true,
+      runHooks: false,
+      allowFailedArchiveHook: false,
+      allowUnverifiedPtyStop: false,
+      deleteBranch: true,
+      acquireWatcherRemoval: async (path) => {
+        const gate = acquireWatcherRemovalGate(path)
+        return { finish: async () => gate.release() }
+      },
+      stopPtys: async () => {},
+      closeWatchers: async () => {},
+      preserveBranchHead: (result) => result ?? {},
+      finishRemoval: () => {},
+      onRemoved: () => {},
+      publish: () => {}
+    })
+    expect(accepted).toMatchObject({ removing: true })
+    const error = await waitForPendingWorktreeRemoval(worktreeId)?.catch(
+      (reason: unknown) => reason
+    )
+    await _settlePendingWorktreeRemovalsForTests()
+
+    expect(String(error)).toMatch(/Operation not permitted/)
+    expect(await git(['remote'])).not.toContain(pushTarget.remoteName)
+    expect(existsSync(lockedFile)).toBe(true)
+  })
+
+  it('removes the push-target remote Orca added when the startup finish fails', async () => {
+    const pushTarget = await addOrcaPushTargetRemote()
+
+    expect(String(await finishAtStartup([], pushTarget))).toMatch(/Operation not permitted/)
+
+    expect(await git(['remote'])).not.toContain(pushTarget.remoteName)
+    expect(existsSync(lockedFile)).toBe(true)
   })
 
   it('keeps an unmerged branch when the delete fails, as a normal delete does', async () => {

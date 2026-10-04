@@ -3,12 +3,13 @@
 // runtime-failed-local-worktree-removal.test.ts runs the real thing.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  gitExecFileAsyncMock,
   killAllProcessesForWorktreeMock,
   listWorktreesMock,
   removeWorktreeMock
 } from './worktrees-test-module-mocks'
 import { handlers, setupWorktreeHandlers, store } from './worktrees-test-harness'
-import { mockKnownFeatureWorktree } from './worktrees-test-fixtures'
+import { makeWorktreeMeta, mockKnownFeatureWorktree } from './worktrees-test-fixtures'
 import type { RemoveWorktreeResult } from '../../shared/worktree/create-types'
 import type { Worktree } from '../../shared/worktree/types'
 import { finishUnregisteredWorktreeRemoval } from '../git/worktree-removal'
@@ -165,6 +166,37 @@ describe('a failed delete Git no longer registers, over desktop IPC', () => {
     _resetPendingWorktreeRemovalsForTests()
     vi.mocked(finishUnregisteredWorktreeRemoval).mockClear()
     vi.mocked(worktreeCheckoutExists).mockResolvedValue(true)
+  })
+
+  it('removes the push-target remote Orca added when Delete fails partway', async () => {
+    const [main] = mockKnownFeatureWorktree()
+    const pushTarget = {
+      remoteName: 'pr-contributor-orca',
+      branchName: 'feature',
+      remoteUrl: 'https://github.com/contributor/orca.git',
+      remoteCreated: true
+    }
+    store.getWorktreeMeta.mockReturnValue(makeWorktreeMeta({ pushTarget }))
+    store.getAllWorktreeMeta.mockReturnValue({ [featureId]: makeWorktreeMeta({ pushTarget }) })
+    gitExecFileAsyncMock.mockImplementation(async (args: string[]) =>
+      args[0] === 'remote' && args[1] === 'get-url'
+        ? { stdout: `${pushTarget.remoteUrl}\n`, stderr: '' }
+        : { stdout: '', stderr: '' }
+    )
+    removeWorktreeMock.mockImplementation(async () => {
+      listWorktreesMock.mockResolvedValue([main])
+      throw new Error(GIT_ERROR)
+    })
+
+    await expect(remove({ worktreeId: featureId })).rejects.toThrow(/Operation not permitted/)
+    await _settlePendingWorktreeRemovalsForTests()
+
+    expect(gitExecFileAsyncMock).toHaveBeenCalledWith(['remote', 'remove', pushTarget.remoteName], {
+      cwd: '/workspace/repo'
+    })
+    expect(await listFeature()).toMatchObject({
+      removalError: expect.stringMatching(/Operation not permitted/)
+    })
   })
 
   it('stays in the listing with the error instead of vanishing', async () => {
