@@ -61,14 +61,10 @@ they do not establish whole-shard savings or queue-delay improvements.
 | Encrypted account storage, six cases                 | 18.277s         | 0.958s           | 94.8%     | [37184007241](https://github.com/stablyai/orca/actions/runs/37184007241) |
 | SSH remote commands, 27 cases                        | 6.840s          | 6.078s           | 11.1%     | [37184454532](https://github.com/stablyai/orca/actions/runs/37184454532) |
 | OpenCode subscription, 28 cases                      | 47.347s         | 6.284s           | 86.7%     | [37184858823](https://github.com/stablyai/orca/actions/runs/37184858823) |
-
-| Window-service attachment, 31 cases | 11.910s | 1.619s | 86.4% | [37186340840](https://github.com/stablyai/orca/actions/runs/37186340840) |
-
-| OpenCode 2 TUI ownership, 41 cases | 16.811s | 2.429s | 85.6% | [37187699312](https://github.com/stablyai/orca/actions/runs/37187699312) |
-
-| Title-send authorization, nine cases | 29.545s | 12.995s | 56.0% | [37188423318](https://github.com/stablyai/orca/actions/runs/37188423318) |
-
-| Range selection, 15 cases | 9.737s | 7.130s | 26.8% | [37188996198](https://github.com/stablyai/orca/actions/runs/37188996198) |
+| Window-service attachment, 31 cases                  | 11.910s         | 1.619s           | 86.4%     | [37186340840](https://github.com/stablyai/orca/actions/runs/37186340840) |
+| OpenCode 2 TUI ownership, 41 cases                   | 16.811s         | 2.429s           | 85.6%     | [37187699312](https://github.com/stablyai/orca/actions/runs/37187699312) |
+| Title-send authorization, nine cases                 | 29.545s         | 12.995s          | 56.0%     | [37188423318](https://github.com/stablyai/orca/actions/runs/37188423318) |
+| Range selection, 15 cases                            | 9.737s          | 7.130s           | 26.8%     | [37188996198](https://github.com/stablyai/orca/actions/runs/37188996198) |
 
 Provider tests wait for the real fake-child write/ready barrier and drain the
 host stream before installing a scoped parent clock. The original 2.5/5-second

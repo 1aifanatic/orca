@@ -16,7 +16,6 @@ vi.mock('electron', () => ({
 
 import { _internals } from './hook-service'
 import { fakeTui, type BusEvent } from './opencode-tui-session-fixture'
-import { withTimeout } from '../../shared/promise-timeout-fallback'
 
 type Post = {
   paneKey?: string
@@ -31,6 +30,8 @@ type Post = {
 type PluginModule = {
   default?: { setup?: (ctx: unknown) => Promise<(() => Promise<void>) | undefined> }
 }
+
+const { setTimeout: realSetTimeout, clearTimeout: realClearTimeout } = globalThis
 
 const PANE_A = 'tabA:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const PANE_B = 'tabB:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
@@ -110,11 +111,12 @@ describe('OpenCode 2 TUI reporter: each pane reports its own sessions', () => {
       if (postDelayMs > 0) {
         await new Promise<void>((resolve) => {
           const finish = (): void => {
+            clearTimeout(timer)
             delayedPosts.delete(finish)
             resolve()
           }
+          const timer = setTimeout(finish, postDelayMs)
           delayedPosts.add(finish)
-          setTimeout(finish, postDelayMs)
         })
       }
       if (failPosts) {
@@ -133,36 +135,45 @@ describe('OpenCode 2 TUI reporter: each pane reports its own sessions', () => {
   })
 
   afterEach(async () => {
-    const closing = [...cleanups].map((cleanup) => cleanup())
-    postDelayMs = 0
-    for (const finish of delayedPosts) {
-      finish()
-    }
-    if (vi.isFakeTimers()) {
-      vi.clearAllTimers()
-    }
-    vi.useRealTimers()
+    let deadline: ReturnType<typeof setTimeout> | undefined
     try {
+      postDelayMs = 0
+      for (const finish of delayedPosts) {
+        finish()
+      }
+      const closing = Promise.allSettled([...cleanups].map((cleanup) => cleanup()))
       expect(
-        await withTimeout(
-          Promise.all(closing).then(() => true),
-          2000,
-          false
-        )
+        await Promise.race([
+          closing.then((results) => results.every((result) => result.status === 'fulfilled')),
+          new Promise<boolean>((resolve) => {
+            deadline = realSetTimeout(() => resolve(false), 2000)
+          })
+        ])
       ).toBe(true)
     } finally {
-      cleanups.clear()
-      delayedPosts.clear()
-      globalThis.fetch = savedFetch
-      process.argv = savedArgv
-      for (const key of ENV_KEYS) {
-        if (savedEnv[key] === undefined) {
-          delete process.env[key]
-        } else {
-          process.env[key] = savedEnv[key]
+      realClearTimeout(deadline)
+      try {
+        if (vi.isFakeTimers()) {
+          expect(vi.getTimerCount()).toBe(0)
         }
+      } finally {
+        if (vi.isFakeTimers()) {
+          vi.clearAllTimers()
+        }
+        vi.useRealTimers()
+        cleanups.clear()
+        delayedPosts.clear()
+        globalThis.fetch = savedFetch
+        process.argv = savedArgv
+        for (const key of ENV_KEYS) {
+          if (savedEnv[key] === undefined) {
+            delete process.env[key]
+          } else {
+            process.env[key] = savedEnv[key]
+          }
+        }
+        rmSync(tempDir, { recursive: true, force: true })
       }
-      rmSync(tempDir, { recursive: true, force: true })
     }
   })
 
