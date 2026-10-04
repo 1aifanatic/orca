@@ -33,7 +33,15 @@ function started(id = taskId) {
   }
 }
 
-function completed(snapshot: object = { exit_code: 0 }) {
+type TaskCompletionEvidence = {
+  exit_code?: number | null
+  error?: string
+  output?: string
+  signal?: string | number | null
+  explicitly_killed?: boolean
+}
+
+function completed(snapshot: TaskCompletionEvidence = { exit_code: 0 }) {
   return {
     sessionId: 'session-1',
     update: { sessionUpdate: 'task_completed', task_snapshot: { task_id: taskId, ...snapshot } }
