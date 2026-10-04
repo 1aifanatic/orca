@@ -13,6 +13,7 @@ import { SHORT_RELAY_SOCKET_DIR_PREFIX } from './relay-socket-path-limit'
 import { execCommand } from './ssh-relay-deploy-helpers'
 import { probeRelayEndpointIncumbent } from './ssh-relay-endpoint-incumbent'
 import { classifySupersededRelay } from './ssh-relay-superseded-endpoints'
+import { countRelayEndpointPtys } from './ssh-relay-endpoint-pty-count'
 import { isWindowsRemoteHost, type RemoteHostPlatform } from './ssh-remote-platform'
 
 /** `unenumerable`: Windows named pipes cannot be listed, so the caller keeps today's path. */
@@ -74,17 +75,8 @@ export async function censusHostRelayEndpoints(
   let live = 0
   let unverifiable = 0
   for (const endpoint of endpoints) {
-    let outcome: ReturnType<typeof classifySupersededRelay>
-    try {
-      outcome = classifySupersededRelay(
-        await probeRelayEndpointIncumbent(conn, args.host, nodePath, endpoint, {
-          signal: args.signal
-        })
-      )
-    } catch {
-      outcome = 'unverifiable'
-    }
-    if (outcome === 'retained-live-work') {
+    const outcome = await classifyEndpoint(conn, args.host, nodePath, endpoint, args.signal)
+    if (outcome === 'live') {
       live += 1
     } else if (outcome === 'unverifiable') {
       unverifiable += 1
@@ -96,4 +88,33 @@ export async function censusHostRelayEndpoints(
   return unverifiable > 0
     ? { verdict: 'unverifiable', count: unverifiable }
     : { verdict: 'idle', count: 0 }
+}
+
+/**
+ * The probe proves a relay idle only when it can read its whole process tree; otherwise the relay
+ * itself is asked, and only when it cannot answer does the probe's conservative reading stand.
+ */
+async function classifyEndpoint(
+  conn: SshConnection,
+  host: RemoteHostPlatform,
+  nodePath: string,
+  endpoint: string,
+  signal: AbortSignal | undefined
+): Promise<'idle' | 'live' | 'unverifiable'> {
+  let outcome: ReturnType<typeof classifySupersededRelay>
+  try {
+    outcome = classifySupersededRelay(
+      await probeRelayEndpointIncumbent(conn, host, nodePath, endpoint, { signal })
+    )
+  } catch {
+    outcome = 'unverifiable'
+  }
+  if (outcome === 'reap-candidate' || outcome === 'stale-endpoint-removed') {
+    return 'idle'
+  }
+  const ptys = await countRelayEndpointPtys(conn, nodePath, endpoint, signal)
+  if (ptys !== null) {
+    return ptys > 0 ? 'live' : 'idle'
+  }
+  return outcome === 'retained-live-work' ? 'live' : 'unverifiable'
 }

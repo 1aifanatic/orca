@@ -3,12 +3,14 @@ import type { SshConnection } from './ssh-connection'
 import type { RelayEndpointIncumbent } from './ssh-relay-endpoint-incumbent'
 import { getRemoteHostPlatform } from './ssh-remote-platform'
 
-const { execCommand, probeRelayEndpointIncumbent } = vi.hoisted(() => ({
+const { execCommand, probeRelayEndpointIncumbent, countRelayEndpointPtys } = vi.hoisted(() => ({
   execCommand: vi.fn(),
-  probeRelayEndpointIncumbent: vi.fn()
+  probeRelayEndpointIncumbent: vi.fn(),
+  countRelayEndpointPtys: vi.fn()
 }))
 
 vi.mock('./ssh-relay-deploy-helpers', () => ({ execCommand }))
+vi.mock('./ssh-relay-endpoint-pty-count', () => ({ countRelayEndpointPtys }))
 vi.mock('./ssh-relay-endpoint-incumbent', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   probeRelayEndpointIncumbent
@@ -43,6 +45,8 @@ describe('the host-side relay endpoint census', () => {
   beforeEach(() => {
     execCommand.mockReset()
     probeRelayEndpointIncumbent.mockReset()
+    // By default the relay itself cannot be asked, so the probe's reading stands.
+    countRelayEndpointPtys.mockReset().mockResolvedValue(null)
   })
 
   it('finds none when no relay endpoint exists, without resolving node', async () => {
@@ -70,6 +74,26 @@ describe('the host-side relay endpoint census', () => {
     probeRelayEndpointIncumbent
       .mockResolvedValueOnce(incumbent({ verdict: 'exited', holders: [] }))
       .mockResolvedValueOnce(incumbent({ holders: [working] }))
+
+    await expect(census()).resolves.toEqual({ verdict: 'live', count: 1 })
+  })
+
+  it('asks a relay the probe could not prove idle, and trusts its empty answer', async () => {
+    execCommand.mockResolvedValue(`${sock(1)}\n${sock(2)}\n`)
+    // Holders not enumerable (no lsof): an accepting relay reads as live work to the probe.
+    probeRelayEndpointIncumbent
+      .mockResolvedValueOnce(incumbent({ holdersEnumerable: false }))
+      .mockResolvedValueOnce(incumbent({ verdict: 'unverifiable' }))
+    countRelayEndpointPtys.mockResolvedValue(0)
+
+    await expect(census()).resolves.toEqual({ verdict: 'idle', count: 0 })
+    expect(countRelayEndpointPtys).toHaveBeenCalledWith(conn, '/usr/bin/node', sock(1), undefined)
+  })
+
+  it('reports live work when the relay itself lists PTYs', async () => {
+    execCommand.mockResolvedValue(`${sock(1)}\n`)
+    probeRelayEndpointIncumbent.mockResolvedValue(incumbent({}))
+    countRelayEndpointPtys.mockResolvedValue(2)
 
     await expect(census()).resolves.toEqual({ verdict: 'live', count: 1 })
   })
