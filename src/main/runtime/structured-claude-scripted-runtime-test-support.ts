@@ -48,6 +48,8 @@ export type ScriptedClaudeBehavior = {
   optionWritesFail?: boolean
   /** The init frame names another provider session than the one launched. */
   initNamesForeignSession?: boolean
+  /** No start frame before the first turn, as with no SessionStart hook configured. */
+  sendsNoStartFrame?: boolean
 }
 
 export type ScriptedClaudeChild = {
@@ -123,7 +125,10 @@ export function createScriptedClaudeRuntime(sessionIds: readonly string[]) {
         exitVerdict: { root: 'live', tree: 'unverifiable' },
         initializationResult: () => {
           const initialized = { models: [{ value: 'sonnet', displayName: 'Sonnet' }] }
-          const announce = (): void =>
+          const announce = (): void => {
+            if (behavior.sendsNoStartFrame) {
+              return
+            }
             handlers.onMessage?.({
               type: 'system',
               subtype: 'init',
@@ -131,6 +136,7 @@ export function createScriptedClaudeRuntime(sessionIds: readonly string[]) {
               model: 'claude-sonnet-5',
               apiKeySource: 'none'
             })
+          }
           if (behavior.initHangs) {
             return new Promise((resolve, reject) => {
               failInit = reject

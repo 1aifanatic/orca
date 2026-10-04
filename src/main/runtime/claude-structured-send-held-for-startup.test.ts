@@ -143,6 +143,21 @@ describe('a send while the first Claude start is still answering initialize', ()
     expect(await statusRows(host)).toEqual([])
   })
 
+  // Only a SessionStart hook makes the CLI name its session before the first turn, and that hook
+  // comes from status hooks a user can turn off; the initialize answer alone starts the chat.
+  it('is written once the CLI answers initialize, with no start frame before the first turn', async () => {
+    claude.behave(SESSION, { initHangs: true, sendsNoStartFrame: true })
+    const host = await claude.install()
+    await host.attach(CALLER, claude.attachParams(SESSION, null))
+
+    await send(host, 'hello')
+    claude.child(SESSION).answerInit()
+
+    await vi.waitFor(() => expect(claude.child(SESSION).calls).toContain('send'))
+    expect(claude.children(SESSION)).toHaveLength(1)
+    expect(await statusRows(host)).toEqual([])
+  })
+
   it('is rejected with the diagnostic when the CLI dies first, and restarts nothing', async () => {
     claude.behave(SESSION, { initHangs: true })
     const host = await claude.install()

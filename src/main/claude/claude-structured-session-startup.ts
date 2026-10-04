@@ -1,7 +1,7 @@
 // What Claude reports at initialize, read after the session is already published. None of it
 // gates the create: a slow start is still a start, and every way it can fail (exit, auth,
-// a foreign session id, no answer within the startup deadline) faults the published session
-// through its exit path.
+// a foreign session id, no initialize answer within the startup deadline) faults the published
+// session through its exit path.
 
 import type {
   StructuredAgentSessionAcquireInput,
@@ -28,23 +28,62 @@ import {
   readClaudeSettingsEffort
 } from './claude-structured-session-options'
 import { failClaudeStartup } from './claude-structured-session-startup-state'
+import { STRUCTURED_AGENT_SESSION_START_WAIT_MS } from '../native-chat/agent-session-wire/structured-agent-session-send-settlement'
 import type { ClaudeSession, ClaudeStructuredSessionEvent } from './claude-structured-session-state'
 
+/** The CLI's own frame naming the session it runs (system/init or a SessionStart hook). Only a
+ *  SessionStart hook sends one before the first turn, so startup takes it when it came and never
+ *  waits for it. */
 export type ClaudeInitProof = {
   promise: Promise<ClaudeInitObservation>
   resolve: (init: ClaudeInitObservation) => void
   reject: (error: Error) => void
+  /** A frame named another provider session. */
+  refuse: () => void
+  /** The proof seen so far, or null; throws when it was refused or the child failed first. */
+  seen: () => ClaudeInitObservation | null
+  /** Set once startup has read the proof: a later refusal ends the session. */
+  onRefusal: ((error: Error) => void) | null
 }
 
 export function createClaudeInitProof(): ClaudeInitProof {
-  let resolve = (_init: ClaudeInitObservation): void => {}
-  let reject = (_error: Error): void => {}
-  const promise = new Promise<ClaudeInitObservation>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise
-    reject = rejectPromise
+  let resolvePromise = (_init: ClaudeInitObservation): void => {}
+  let rejectPromise = (_error: Error): void => {}
+  const promise = new Promise<ClaudeInitObservation>((resolve, reject) => {
+    resolvePromise = resolve
+    rejectPromise = reject
   })
   void promise.catch(() => {})
-  return { promise, resolve, reject }
+  let outcome: { init: ClaudeInitObservation } | { error: Error } | null = null
+  const reject = (error: Error): void => {
+    outcome ??= { error }
+    rejectPromise(error)
+  }
+  const proof: ClaudeInitProof = {
+    promise,
+    resolve: (init) => {
+      outcome ??= { init }
+      resolvePromise(init)
+    },
+    reject,
+    refuse: () => {
+      // A session already proven by its own frame keeps that proof.
+      if (outcome && 'init' in outcome) {
+        return
+      }
+      const error = new Error('claude provider session expected')
+      reject(error)
+      proof.onRefusal?.(error)
+    },
+    seen: () => {
+      if (outcome && 'error' in outcome) {
+        throw outcome.error
+      }
+      return outcome?.init ?? null
+    },
+    onRefusal: null
+  }
+  return proof
 }
 
 export type StructuredAgentSessionStartedOptions = Pick<
@@ -53,15 +92,17 @@ export type StructuredAgentSessionStartedOptions = Pick<
 >
 
 export type ClaudeStartupFacts = {
-  init: ClaudeInitObservation
+  init: ClaudeInitObservation | null
+  initProof: ClaudeInitProof
   initialization: unknown
   settings: unknown
   prepared: ReturnType<typeof prepareClaudeStructuredSessionAcquisitionOptions>
 }
 
 /** How long the CLI has to answer initialize. Generous for a slow machine or a first run; a CLI
- *  that stays alive but never answers would otherwise hold the chat's messages forever. */
-export const CLAUDE_STARTUP_DEADLINE_MS = 120_000
+ *  that stays alive but never answers would otherwise hold the chat's messages forever. Inside the
+ *  host's start wait, so a command waiting on this start hears its failure, not a timeout. */
+export const CLAUDE_STARTUP_DEADLINE_MS = STRUCTURED_AGENT_SESSION_START_WAIT_MS - 30_000
 
 /** The e2e rig shortens the deadline to capture its failure; production always uses the default. */
 function claudeStartupDeadlineMs(): number {
@@ -86,7 +127,7 @@ function withinClaudeStartupDeadline<T>(answers: Promise<T>, deadlineMs: number)
   return Promise.race([answers, expired]).finally(() => clearTimeout(timer))
 }
 
-/** Settles on the CLI's answers, on its exit, or at the startup deadline. */
+/** Settles on the CLI's initialize answer, on its exit, or at the startup deadline. */
 export async function readClaudeStartupFacts(input: {
   connection: ClaudeStreamJsonConnection
   initProof: ClaudeInitProof
@@ -98,17 +139,14 @@ export async function readClaudeStartupFacts(input: {
   emit: (event: ClaudeStructuredSessionEvent) => void
 }): Promise<ClaudeStartupFacts> {
   // The CLI's first answer has no request deadline of its own; the reads after it do.
-  const [initialization, init] = await withinClaudeStartupDeadline(
-    Promise.all([
-      input.connection.initializationResult().then((result) => {
-        const authError = claudeInitializationAuthError(result)
-        if (authError) {
-          throw authError
-        }
-        return result
-      }),
-      input.initProof.promise
-    ]),
+  const initialization = await withinClaudeStartupDeadline(
+    input.connection.initializationResult().then((result) => {
+      const authError = claudeInitializationAuthError(result)
+      if (authError) {
+        throw authError
+      }
+      return result
+    }),
     claudeStartupDeadlineMs()
   )
   if (input.connection.closed) {
@@ -119,22 +157,21 @@ export async function readClaudeStartupFacts(input: {
     sessionId: input.sessionId,
     models: readClaudeModels(initialization)
   })
-  if (init.providerSessionId !== input.providerSessionId) {
-    throw new Error(
-      `claude proved session ${init.providerSessionId}, expected ${input.providerSessionId}`
-    )
-  }
+  input.initProof.seen()
   const settings = await readClaudeStructuredSessionSettings(
     input.connection,
     input.requestTimeoutMs
   )
+  // Read again: a frame naming another session may have come during the settings read.
+  const init = input.initProof.seen()
   input.emit({
     type: 'auth-diagnostic',
     sessionId: input.sessionId,
-    diagnostic: claudeAuthDiagnostic(init, settings)
+    diagnostic: claudeAuthDiagnostic(initialization, init, settings)
   })
   return {
     init,
+    initProof: input.initProof,
     initialization,
     settings,
     prepared: prepareClaudeStructuredSessionAcquisitionOptions({
@@ -151,7 +188,7 @@ function applyClaudeStartupFacts(session: ClaudeSession, facts: ClaudeStartupFac
   const effort = readClaudeSettingsEffort(settings)
   const published = claudeStructuredSessionPublicationOptions(prepared)
   // A turn's own init frame may already have reported the running model.
-  if (init.model && session.reportedOptions.model === undefined) {
+  if (init?.model && session.reportedOptions.model === undefined) {
     session.reportedOptions.model = init.model
     session.reportedModelMutation = session.optionMutationSequence
   }
@@ -170,10 +207,10 @@ function applyClaudeStartupFacts(session: ClaudeSession, facts: ClaudeStartupFac
   session.fastModeState ??= published.fastModeState
   session.fastModeDisabledReason ??= published.fastModeDisabledReason
   session.options = prepared.options
-  session.capabilities = readClaudeCapabilities(session.capabilities, initialization, init.message)
+  session.capabilities = readClaudeCapabilities(session.capabilities, initialization, init?.message)
   // A catalog frame that streamed in after publish is newer than the initialize answer.
   if (session.commands.commands === undefined) {
-    session.commands = new ClaudeSlashCommandCatalog(init.message, initialization)
+    session.commands = new ClaudeSlashCommandCatalog(init?.message, initialization)
   }
   session.events?.publish()
 }
@@ -215,6 +252,13 @@ export async function settleClaudeSessionStartup(input: {
     const facts = await input.facts
     if (superseded()) {
       return
+    }
+    // From here no read of the proof is pending, so a frame naming another session ends it.
+    facts.initProof.onRefusal = (error) => {
+      failClaudeStartup(session, error)
+      if (input.isCurrent()) {
+        input.fault(error)
+      }
     }
     applyClaudeStartupFacts(session, facts)
     await restoreClaudeStructuredSessionOptions(session, input.requestTimeoutMs)

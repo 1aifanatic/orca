@@ -224,7 +224,7 @@ describe('Claude structured session publishes before the CLI answers initialize'
 
     // Orca ended it, so the chat says Claude couldn't start, not that it stopped on its own.
     expect(events.find((event) => event.type === 'ended')).toMatchObject({
-      reason: 'claude did not answer initialize within 120s',
+      reason: `claude did not answer initialize within ${CLAUDE_STARTUP_DEADLINE_MS / 1000}s`,
       cause: 'unexpected-exit',
       failure: { kind: 'startFailed' },
       startupUnproven: true
@@ -235,6 +235,40 @@ describe('Claude structured session publishes before the CLI answers initialize'
     expect(events.some((event) => event.type === 'started' || event.type === 'options')).toBe(false)
     expect(claude.connections[0].calls.map(({ subtype }) => subtype)).not.toContain('get_settings')
     expect(claude.connections[0].sent).toEqual([])
+  })
+
+  // Only a SessionStart hook sends a start frame before the first turn; without one, the
+  // initialize answer is the whole start.
+  it('lands a start whose CLI sends no start frame before its first turn', async () => {
+    const claude = fakeClaude({ initProof: 'none' })
+    const { adapter, events } = startingAdapter(claude)
+    await adapter.acquire(ACQUIRE)
+    await adapter.awaitStarted('session-1')
+
+    expect(events.some((event) => event.type === 'started')).toBe(true)
+    await expect(adapter.dispatch(PROMPT)).resolves.toEqual({ state: 'admitted' })
+    expect(claude.connections[0].sent).toEqual([expect.objectContaining({ type: 'user' })])
+    await adapter.closeAll()
+  })
+
+  it('ends a started session whose first frame names another provider session', async () => {
+    const claude = fakeClaude({ initProof: 'none' })
+    const { adapter, events } = startingAdapter(claude)
+    await adapter.acquire(ACQUIRE)
+    await adapter.awaitStarted('session-1')
+
+    claude.connections[0].handlers.onMessage?.({
+      type: 'system',
+      subtype: 'init',
+      session_id: 'foreign-session'
+    })
+    await adapter.drainObservedExits()
+
+    expect(events.find((event) => event.type === 'ended')).toMatchObject({
+      reason: 'claude provider session expected',
+      cause: 'unexpected-exit'
+    })
+    expect(claude.connections[0].closeCount).toBe(1)
   })
 
   it('ends an unauthenticated start with sign-in guidance', async () => {
