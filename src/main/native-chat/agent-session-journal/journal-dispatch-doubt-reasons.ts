@@ -8,8 +8,8 @@
 // That leaves the invariant this file exists to state: Orca NEVER re-delivers a
 // message under its own id on the strength of an `unknown`, whatever the reason
 // says. A retry that could be a second delivery is the harm this whole path
-// exists to remove, and a user who wants the message sent anyway rotates the id
-// — one re-typed message, and a first delivery by construction.
+// exists to remove, and a user who wants the message sent anyway sends it again
+// as a new message under a new id — a first delivery by construction.
 
 /** A previous process wrote the message and died before learning its outcome. */
 export const DISPATCH_DOUBT_HOST_RESTARTED = 'host_restarted_before_acknowledgement'

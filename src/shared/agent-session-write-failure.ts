@@ -16,9 +16,10 @@ import {
   type AgentSessionWireRefusalCode
 } from './agent-session-wire-refusals'
 
-/** What the person was doing, which decides what the notice says did not happen. `send` keeps
- *  the message behind a Retry control; `composer-send` puts it back in the composer, as the phone
- *  does. `read-history` is opening the chat to show its history, which writes nothing. */
+/** What the person was doing, which decides what the notice says did not happen. `send` says
+ *  only that the message was not sent; `composer-send` also says to send it again, for a message
+ *  that went back to the composer. `read-history` is opening the chat to show its history, which
+ *  writes nothing. */
 export type AgentSessionWriteKind =
   | 'read-history'
   | 'send'

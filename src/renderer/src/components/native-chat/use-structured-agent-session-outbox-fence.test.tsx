@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 // A moved fence is not a reason to send anything again on a host that records every send before it
-// starts an agent. There, only a Retry or a new send goes out. An older host, which restarts the
+// starts an agent. There, only a new send, or one still unanswered, goes out. An older host, which restarts the
 // agent inside the send and refuses it unrecorded when that fails, keeps the resend on a new fence.
 
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'

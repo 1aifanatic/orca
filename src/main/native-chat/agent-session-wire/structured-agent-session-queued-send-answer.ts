@@ -7,7 +7,7 @@ import type { AgentSessionJournal } from '../agent-session-journal/journal-store
 
 /** Null for a send this host never queued. A refused conversion answers with
  *  its returned card, never the rejected submission, or the same text would
- *  render twice — on a Retry row AND the card. */
+ *  render twice — as a message that was not sent AND as the card. */
 export function queuedSendAnswer(
   journal: Pick<AgentSessionJournal, 'queuedMessages' | 'submission' | 'submissions'>,
   clientMessageId: string

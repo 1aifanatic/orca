@@ -6,9 +6,9 @@
 // vouch for proves it never arrived. Anything the reconciler leaves `unknown`
 // is left exactly as the crash boundary wrote it.
 //
-// Nothing here dispatches. A `rejected` submission becomes re-sendable only
-// through the user's Retry, which rotates the client message id; Orca still
-// never puts a message back on the wire on the user's behalf.
+// Nothing here dispatches. A `rejected` submission is never sent again: the
+// user sends the text again as a new message, under a new client message id,
+// and Orca never puts a rejected message back on the wire on their behalf.
 
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'

@@ -24,7 +24,7 @@ export type StructuredAgentSessionCaller = { callerKey: string }
 /** What the host believes about a session it just made addressable again. The workspace and agent
  *  come from the record, so a caller publishes the host's view rather than a client's assertion.
  *  `readable` is false when the journal could not be opened — the tab is still worth publishing,
- *  because the chat shows that failure and its Retry. */
+ *  because the chat shows that failure. */
 export type StructuredAgentSessionReveal = {
   sessionId: string
   workspaceId: string

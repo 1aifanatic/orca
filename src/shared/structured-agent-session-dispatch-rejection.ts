@@ -7,7 +7,7 @@
 //
 // Every rejection makes the one claim that state exists to make: this message did not reach the
 // provider. None is ever re-delivered under its own id — `rejected` is terminal in the reducer — so
-// a retry rotates the client message id, which is a new message and cannot duplicate.
+// sending the text again is a new message under a new client message id, and cannot duplicate.
 
 import {
   isSubmissionRejectionKind,
