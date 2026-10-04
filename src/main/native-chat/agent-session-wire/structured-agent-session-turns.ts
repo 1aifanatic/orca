@@ -24,6 +24,7 @@ import {
 import { isAgentSessionRefusalError } from '../../../shared/agent-session-wire-refusals'
 import { DISPATCH_DOUBT_PERSISTENCE_FAILED } from '../agent-session-journal/journal-dispatch-doubt-reasons'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import type { JournalOperationReceipt } from '../agent-session-journal/journal-row-writer'
 import type {
   AgentSessionDispatchOutcome,
   StructuredAgentSessionAdapter,
@@ -64,6 +65,8 @@ export type AgentSessionTurnContext = {
   providerChildPhase?: () => StructuredAgentSessionProviderChildPhase | undefined
   /** Who a Stop's refusal row names. */
   failureTextContext?: AgentSessionFailureWordsContext
+  /** The operation's success, committed with the row that accepts it (`MutationPlan.settlesWithWrite`). */
+  operationReceipt?: JournalOperationReceipt
   now: () => number
 }
 
@@ -154,7 +157,11 @@ export async function performSend(
     }
   }
   try {
-    await ctx.journal.appendSubmission({ ...input, fence: ctx.fence, handoverRecorded: true })
+    await ctx.journal.appendSubmission(
+      { ...input, fence: ctx.fence, handoverRecorded: true },
+      undefined,
+      ctx.operationReceipt
+    )
   } catch (error) {
     if (isAgentSessionAttachmentExpiredError(error)) {
       return agentSessionAttachmentExpiredRefusal()
