@@ -83,21 +83,66 @@ env:
   ADHOC_RETAIN_DAYS: 30
 
 jobs:
+  # Why: every job below checks out its own copy, and a branch name read per job builds whatever
+  # the branch points at when that job starts. A push mid-run then mixes commits, e.g. slot lanes
+  # from one commit merged by a template step from the next. Resolving once pins the whole run.
+  # The mac job still vets this commit's reachability before anything is signed.
+  resolve-ref:
+    if: github.repository == 'stablyai/orca'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - name: Resolve the requested ref to one commit
+        id: resolve
+        shell: bash
+        env:
+          REQUESTED_REF: ${{ inputs.ref || github.ref_name }}
+          REPO_URL: https://github.com/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          case "$REQUESTED_REF" in
+            refs/pull/*|pull/*)
+              echo "::error::Refusing to build PR ref '$REQUESTED_REF'; push the code to a branch of stablyai/orca instead."
+              exit 1
+              ;;
+          esac
+          if [[ "$REQUESTED_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            sha="$REQUESTED_REF"
+          else
+            # Branch first, as the mac job's vet does; a peeled annotated tag names its commit.
+            refs="$(git ls-remote "$REPO_URL" "refs/heads/$REQUESTED_REF" "refs/tags/$REQUESTED_REF" "refs/tags/$REQUESTED_REF^{}")"
+            sha=""
+            for name in "refs/heads/$REQUESTED_REF" "refs/tags/$REQUESTED_REF^{}" "refs/tags/$REQUESTED_REF"; do
+              sha="$(awk -v ref="$name" '$2 == ref { print $1; exit }' <<<"$refs")"
+              [[ -n "$sha" ]] && break
+            done
+          fi
+          if [[ -z "$sha" ]]; then
+            echo "::error::'$REQUESTED_REF' is not a branch, tag, or full commit SHA of stablyai/orca."
+            exit 1
+          fi
+          echo "Resolved $REQUESTED_REF -> $sha"
+          echo "sha=$sha" >>"$GITHUB_OUTPUT"
+
   # Why its own job: this package ships relays for Windows SSH hosts, and only a
   # Windows runner compiles the addon that launches one outside sshd's job.
   # Why the unvetted ref is safe here: this job holds no secrets, and the mac job
   # vets the same ref before it downloads anything, so fork code never gets signed.
   relay-windows-process-tree:
-    if: github.repository == 'stablyai/orca'
+    needs: resolve-ref
     permissions:
       contents: read
     uses: ./.github/workflows/relay-windows-process-tree.yml
     with:
-      ref: ${{ inputs.ref || github.ref_name }}
+      ref: ${{ needs.resolve-ref.outputs.sha }}
 
   # Why: a branch cut before the orcad template landed has none to build or ship.
   orcad-template-support:
-    if: github.repository == 'stablyai/orca'
+    needs: resolve-ref
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -108,7 +153,7 @@ jobs:
       - name: Checkout the template packager only
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.ref || github.ref_name }}
+          ref: ${{ needs.resolve-ref.outputs.sha }}
           sparse-checkout: |
             /config/scripts/packaged-orcad-template.cjs
           sparse-checkout-cone-mode: false
@@ -129,17 +174,17 @@ jobs:
   # Without it an adhoc build cannot deploy managed orcad to an SSH host. No secrets, like the
   # relay job, and the mac job vets the ref before anything is signed.
   orcad-template:
-    needs: orcad-template-support
+    needs: [resolve-ref, orcad-template-support]
     if: needs.orcad-template-support.outputs.ships == 'true'
     permissions:
       contents: read
     uses: ./.github/workflows/node-server-tests.yml
     with:
-      ref: ${{ inputs.ref || github.ref_name }}
+      ref: ${{ needs.resolve-ref.outputs.sha }}
       build_template: true
 
   build-adhoc-mac:
-    needs: [relay-windows-process-tree, orcad-template-support, orcad-template]
+    needs: [resolve-ref, relay-windows-process-tree, orcad-template-support, orcad-template]
     # Why not the implicit success(): a ref without the orcad template skips that job on purpose.
     if: >-
       !cancelled() && github.repository == 'stablyai/orca' &&
@@ -181,7 +226,8 @@ jobs:
         id: vetted
         shell: bash
         env:
-          REQUESTED_REF: ${{ inputs.ref || github.ref_name }}
+          # The commit resolve-ref pinned for every job; vetting it keeps the reachability test.
+          REQUESTED_REF: ${{ needs.resolve-ref.outputs.sha }}
           REPO_URL: https://github.com/${{ github.repository }}
         run: |
           set -euo pipefail
