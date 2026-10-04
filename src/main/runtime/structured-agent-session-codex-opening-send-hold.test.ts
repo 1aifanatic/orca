@@ -8,6 +8,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentJournalSubmissionKey } from '../../shared/agent-session-journal-item-key'
+import { DISPATCH_DOUBT_PROVIDER_IDLE } from '../native-chat/agent-session-journal/journal-dispatch-doubt-reasons'
+import { CODEX_TURN_OPEN_WAIT_MS } from '../codex/codex-structured-turn-open-wait'
 import { projectStructuredAgentSessionMessages } from '../../shared/structured-agent-session-message-projection'
 import { projectNativeChatTranscriptMessages } from '../../shared/native-chat-transcript-projection'
 import { nativeChatRowsInDrawOrder } from '../../shared/native-chat-turn-grouping'
@@ -440,5 +442,52 @@ describe("a message queued behind a send whose turn hasn't opened", () => {
     expect(await rowScope(steered)).toMatchObject({ kind: 'turn' })
     expect(await rowScope(after)).toMatchObject({ kind: 'turn' })
     expect(openWaits.turnIds).toEqual([])
+  })
+})
+
+describe('a send whose turn Codex answered and never opened', () => {
+  async function heldBehindAnAnsweredSend(): Promise<{ first: string; second: string }> {
+    const first = await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    const second = await send('and check the tests')
+    await deliveryAtRest()
+    expect((await submission(second))?.handedOverAt).toBeUndefined()
+    return { first, second }
+  }
+
+  // Codex before 0.148 fails a turn before opening it with only an `error`, then goes idle.
+  it('releases the message behind it once Codex reports the thread idle', async () => {
+    turns = codexTurnLifecycleFake(
+      THREAD,
+      () => (method, params) => handlers?.onNotification?.(method, params),
+      { legacyStartAnswers: true }
+    )
+    const { first, second } = await heldBehindAnAnsweredSend()
+
+    turns.failUnopened('invalid turn settings')
+
+    await vi.waitFor(async () => expect((await submission(second))?.handedOverAt).toBeDefined())
+    expect(verdictOf((await settled()).submissions, first)).toBe('unknown')
+    expect((await submission(first))?.reason).toBe(DISPATCH_DOUBT_PROVIDER_IDLE)
+    await vi.waitFor(() => expect(answers).toBe(2))
+    expect(openWaits.turnIds).toEqual([])
+  })
+
+  // No clock: however long Codex takes to open the turn, the send ahead is never doubted for it.
+  it('never doubts a send whose turn is slow to open, and holds the next until it opens', async () => {
+    const { first, second } = await heldBehindAnAnsweredSend()
+
+    vi.useFakeTimers()
+    await vi.advanceTimersByTimeAsync(CODEX_TURN_OPEN_WAIT_MS * 3)
+    vi.useRealTimers()
+
+    expect(verdictOf((await settled()).submissions, first)).toBe('pending')
+    expect((await submission(second))?.handedOverAt).toBeUndefined()
+    turns.start()
+    await vi.waitFor(() => expect(steers).toBe(1))
+    turns.echo(first)
+    await vi.waitFor(async () =>
+      expect(verdictOf((await settled()).submissions, first)).toBe('accepted')
+    )
   })
 })

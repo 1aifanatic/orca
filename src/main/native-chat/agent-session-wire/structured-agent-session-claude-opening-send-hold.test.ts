@@ -33,6 +33,7 @@ import {
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
 import { recordingStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
+import { DISPATCH_DOUBT_PROVIDER_IDLE } from '../agent-session-journal/journal-dispatch-doubt-reasons'
 
 const CALLER = { callerKey: 'client-1' }
 const CAPABILITIES = ['interrupt_receipt_v1', 'interrupt_cancel_queued_v1', 'msg_lifecycle_v1']
@@ -242,4 +243,41 @@ it('holds a follow-up until the echo opens the turn, then folds it in, drawn ins
     rows.findIndex((row) => row.text === 'FIRST DONE banana')
   )
   expect(first).not.toBe(steer)
+})
+
+// Claude's own facts end the wait: a send the CLI started and then went idle on without echoing is
+// doubt (`releaseClaudeDispatchesUnansweredAtIdle`), with no clock in the host or the adapter.
+it('releases the follow-up when the CLI goes idle on a started send it never echoed', async () => {
+  const connection = claude.connections[0]!
+  const first = await send('FIRST prompt')
+  await eventually(() => expect(written(connection, 'FIRST prompt')).toBeDefined())
+  const steer = await send('STEER prompt')
+  await eventually(() =>
+    expect(host.collaboratorsForTests().conversationDelivery.loop.isRunning(SESSION)).toBe(false)
+  )
+  expect(written(connection, 'STEER prompt')).toBeUndefined()
+
+  frame(connection, {
+    type: 'system',
+    subtype: 'init',
+    uuid: 'init-1',
+    model: 'claude-sonnet-5',
+    capabilities: CAPABILITIES
+  })
+  const firstFrame = written(connection, 'FIRST prompt')!
+  frame(connection, {
+    type: 'command_lifecycle',
+    command_uuid: firstFrame.uuid,
+    state: 'started',
+    uuid: 'lifecycle-first'
+  })
+  frame(connection, { type: 'system', subtype: 'session_state_changed', state: 'idle' })
+
+  await eventually(() => expect(written(connection, 'STEER prompt')).toBeDefined())
+  const submissions = (await snapshot()).submissions
+  expect(submissions.find((entry) => entry.clientMessageId === first)).toMatchObject({
+    dispatchState: 'unknown',
+    reason: DISPATCH_DOUBT_PROVIDER_IDLE
+  })
+  expect(submissions.find((entry) => entry.clientMessageId === steer)?.handedOverAt).toBeDefined()
 })

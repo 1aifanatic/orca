@@ -44,6 +44,10 @@ export type CodexDispatchEchoes = {
   answeredUnopenedTurn: (threadId: string, openTurnIds: ReadonlySet<string>) => string | null
   /** Codex did not open this answered turn within a wait, so no later wait is spent on it. */
   leftUnopened: (threadId: string, turnId: string) => void
+  /** Codex reported the thread not running with no turn open: the sends answered into a turn it
+   *  never opened or ended, which nothing will open now. Each turn is reported once, and left
+   *  unopened; the sends stay armed, so a late echo still accepts one. */
+  leftUnopenedAtIdle: (threadId: string) => string[]
   /** The latest armed send's answered turn a wait left unopened, neither open nor ended: Codex may
    *  still open it, though no wait is spent on it again. */
   answeredTurnLeftUnopened: (threadId: string, openTurnIds: ReadonlySet<string>) => string | null
@@ -71,6 +75,15 @@ export function createCodexDispatchEchoes(): CodexDispatchEchoes {
   let nextSequence = 0
   const turnKey = (threadId: string, turnId: string): string => JSON.stringify([threadId, turnId])
   const settles = (end: CodexTurnEnd): boolean => end.status !== 'completed'
+  const leftUnopened = (threadId: string, turnId: string): void => {
+    unopenedTurns.add(turnKey(threadId, turnId))
+    for (const oldest of unopenedTurns) {
+      if (unopenedTurns.size <= MAX_CODEX_RECORDED_TURN_ENDS) {
+        break
+      }
+      unopenedTurns.delete(oldest)
+    }
+  }
   const answeredTurn = (
     threadId: string,
     openTurnIds: ReadonlySet<string>,
@@ -117,14 +130,19 @@ export function createCodexDispatchEchoes(): CodexDispatchEchoes {
       answeredTurn(threadId, openTurnIds, (key) => !unopenedTurns.has(key)),
     answeredTurnLeftUnopened: (threadId, openTurnIds) =>
       answeredTurn(threadId, openTurnIds, (key) => unopenedTurns.has(key)),
-    leftUnopened: (threadId, turnId) => {
-      unopenedTurns.add(turnKey(threadId, turnId))
-      for (const oldest of unopenedTurns) {
-        if (unopenedTurns.size <= MAX_CODEX_RECORDED_TURN_ENDS) {
-          break
-        }
-        unopenedTurns.delete(oldest)
+    leftUnopened,
+    leftUnopenedAtIdle: (threadId) => {
+      const unopened = [...armed].flatMap(([clientMessageId, { turn }]) =>
+        turn?.threadId === threadId &&
+        !endedTurns.has(turnKey(threadId, turn.turnId)) &&
+        !unopenedTurns.has(turnKey(threadId, turn.turnId))
+          ? [{ clientMessageId, turnId: turn.turnId }]
+          : []
+      )
+      for (const { turnId } of unopened) {
+        leftUnopened(threadId, turnId)
       }
+      return unopened.map(({ clientMessageId }) => clientMessageId)
     },
     endTurn: (threadId, turnId, end) => {
       const turn = turnKey(threadId, turnId)

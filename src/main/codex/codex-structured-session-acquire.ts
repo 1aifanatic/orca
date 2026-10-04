@@ -11,6 +11,7 @@ import {
 import { CodexBackgroundTaskTracker, codexChildWorkSink } from './codex-background-task-tracker'
 import { CodexSubagentExecutions } from './codex-subagent-executions'
 import { createCodexDispatchEchoes } from './codex-structured-dispatch-echo'
+import { DISPATCH_DOUBT_PROVIDER_IDLE } from '../native-chat/agent-session-journal/journal-dispatch-doubt-reasons'
 import { createCodexJournalTranslator } from './codex-structured-journal-translation'
 import { openCodexAppServerConnection } from './codex-app-server-connection'
 import {
@@ -86,7 +87,14 @@ export async function acquireCodexStructuredSession(input: {
         acquisitionId: acquisitionGeneration,
         ...(deps.now ? { now: deps.now } : {}),
         primaryThreadId: () => primaryThreadId,
-        onPrimaryThreadStoppedRunning: () => deps.onPrimaryThreadStoppedRunning?.({ sessionId }),
+        onPrimaryThreadStoppedRunning: () => {
+          // A send answered into a turn Codex never opened, now idle: nothing will open it.
+          for (const clientMessageId of dispatchEchoes.leftUnopenedAtIdle(primaryThreadId ?? '')) {
+            const reason = DISPATCH_DOUBT_PROVIDER_IDLE
+            deps.onDispatchSettledLate?.({ sessionId, clientMessageId, state: 'unknown', reason })
+          }
+          deps.onPrimaryThreadStoppedRunning?.({ sessionId })
+        },
         dispatchRequestOrigin: (clientMessageId) => dispatchEchoes.requestOrigin(clientMessageId),
         subagentExecutions,
         bindPromptItemId: (journalItemId, threadId, promptKey, turnId) =>

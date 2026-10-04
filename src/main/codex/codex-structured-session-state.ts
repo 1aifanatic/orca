@@ -79,12 +79,14 @@ export type CodexStructuredSessionAdapterDeps = {
   onEvent?: (event: CodexStructuredSessionEvent) => void
   /** What the session's child work did, delivered after the journal handled the frame. */
   onChildWorkEvidence?: (sessionId: string, evidence: AgentChildWorkEvidence[]) => void
-  /** A send admitted earlier: its identity once Codex echoes it, or its rejection when the turn
-   *  Codex answered it into ended without taking it. */
+  /** A send admitted earlier: its identity once Codex echoes it, its rejection when the turn
+   *  Codex answered it into ended without taking it, or doubt when Codex went idle without ever
+   *  opening that turn. */
   onDispatchSettledLate?: (
     input: { sessionId: string; clientMessageId: string } & (
       | { providerIdentity: AgentJournalItemIdentity }
       | ({ state: 'rejected' } & AgentJournalDispatchRejection)
+      | { state: 'unknown'; reason: string }
     )
   ) => void
   /** Codex reported its thread not running with no turn open: a send whose
