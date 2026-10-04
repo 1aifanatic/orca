@@ -5,7 +5,7 @@
 // file and are renamed into place on commit, so a stored name is always complete. Which chats hold
 // an upload is recorded by the message that names it (`agent-session-attachment-claims.ts`).
 
-import { appendFile, mkdir, rename, rm, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, rm, writeFile } from 'node:fs/promises'
 import { extname, join } from 'node:path'
 import {
   sanitizeAgentSessionAttachmentName,
@@ -13,6 +13,7 @@ import {
 } from '../../../shared/agent-session-attachments'
 import type { RuntimeFilePreviewResult } from '../../../shared/runtime-types'
 import { readAuthorizedDocPreviewFile } from '../../../shared/doc-preview-file-access'
+import { renameFileWithWindowsRetryAsync } from '../../../shared/windows-retry-file-operations'
 import { IMAGE_FILE_MIME_TYPES } from '../../../shared/image-file-extensions'
 import {
   LOCAL_PREVIEWABLE_BINARY_MAX_BYTES,
@@ -139,7 +140,11 @@ export class AgentSessionAttachmentStore {
         throw new Error('Attachment upload is incomplete')
       }
       const finalPath = join(upload.uploadDir, upload.name)
-      await rename(join(upload.uploadDir, AGENT_SESSION_ATTACHMENT_PART_FILE), finalPath)
+      // An antivirus or indexer briefly holding the part file on Windows must not lose the upload.
+      await renameFileWithWindowsRetryAsync(
+        join(upload.uploadDir, AGENT_SESSION_ATTACHMENT_PART_FILE),
+        finalPath
+      )
       return { path: finalPath, name: upload.name, byteLength: upload.receivedLength }
     } catch (error) {
       await removeQuietly(upload.uploadDir)

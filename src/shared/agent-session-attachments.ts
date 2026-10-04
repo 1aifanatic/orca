@@ -78,10 +78,11 @@ export function sanitizeAgentSessionAttachmentName(name: string): string {
       ? visible.slice(extensionAt)
       : ''
   const stem = visible.slice(0, visible.length - extension.length)
-  return (
+  const truncated =
     truncateUtf8(stem, AGENT_SESSION_ATTACHMENT_NAME_MAX_BYTES - utf8ByteLength(extension)) +
     extension
-  )
+  // Cutting can expose a trailing dot or space, which Windows drops from a name.
+  return truncated.replace(/[. ]+$/, '') || 'attachment'
 }
 
 /** Pins an upload to the server the attachment was meant for: every call re-checks the pairing,

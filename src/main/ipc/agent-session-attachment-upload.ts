@@ -61,6 +61,7 @@ async function callAttachmentMethod<TResult>(
   if (response.ok !== true) {
     throw new Error(response.error.message || response.error.code)
   }
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: each caller names the result type of the agentSessionAttachment.* method it calls, whose server handler returns exactly that shape.
   return response.result as TResult
 }
 
