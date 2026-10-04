@@ -1,5 +1,8 @@
 import { z } from 'zod'
-import { normalizeBackgroundTaskKind } from '../../../shared/native-chat-background-task-row'
+import {
+  isSettledBackgroundTaskState,
+  normalizeBackgroundTaskKind
+} from '../../../shared/native-chat-background-task-row'
 import type { NativeChatBackgroundTaskBlock } from '../../../shared/native-chat-types'
 import type { ToolCallUpdate } from '../generated/acp-protocol.generated'
 import type { AcpBackgroundTaskUpdate, AcpDialectNotification } from './acp-dialect'
@@ -53,10 +56,14 @@ function snapshot(
         : {}),
     ...(label === undefined ? {} : { label }),
     ...(task.output_file === undefined ? {} : { outputFile: task.output_file }),
-    ...(task.summary === undefined && task.output === undefined
+    ...(task.summary === undefined &&
+    task.output === undefined &&
+    !isSettledBackgroundTaskState(state)
       ? {}
-      : { summary: task.summary ?? task.output }),
-    ...(task.error === undefined ? {} : { error: task.error })
+      : { summary: task.summary ?? task.output ?? '' }),
+    ...(task.error === undefined && !isSettledBackgroundTaskState(state)
+      ? {}
+      : { error: task.error ?? '' })
   }
 }
 

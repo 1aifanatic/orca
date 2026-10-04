@@ -154,6 +154,7 @@ describe('Grok background tasks through the shared timeline', () => {
       outputFile: '/workspace/file-1',
       kind: 'command'
     })
+    expect(original && backgroundTaskFallbackText(original.block)).toContain('finished')
   })
 
   it('places a first task notice after restart beside its original tool while a different turn is active', async () => {
