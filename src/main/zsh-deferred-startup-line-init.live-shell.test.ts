@@ -55,11 +55,14 @@ describe('zsh deferred startup after prompt-hook replacement', () => {
     'status-startup',
     'sticky-startup',
     'scheduled-startup',
-    'unavailable-startup'
+    'unavailable-startup',
+    'repeat-history',
+    'repeat-startup'
   ] as const)(
     'restores CLI precedence and preserves the user widget in a %s pane',
     async (intent) => {
       const historyOnly = intent.endsWith('history')
+      const repeatSource = intent.startsWith('repeat-')
       const stockBinding = intent.startsWith('stock-')
       const chainedLineInit = intent === 'chained-startup'
       const chainedRedraw = intent === 'stock-chained-redraw'
@@ -85,7 +88,11 @@ describe('zsh deferred startup after prompt-hook replacement', () => {
       }
       writeFileSync(
         join(home, '.zshenv'),
-        (chainedLineInit || chainedRedraw ? '' : stockBinding ? USER_REDRAW : USER_WIDGET) +
+        (chainedLineInit || chainedRedraw || repeatSource
+          ? ''
+          : stockBinding
+            ? USER_REDRAW
+            : USER_WIDGET) +
           (statusPrecmd
             ? 'precmd() { O_FIRST_IN=${O_FIRST_IN:-$?}; }\n'
             : stickyPrecmd
@@ -113,7 +120,7 @@ describe('zsh deferred startup after prompt-hook replacement', () => {
           : ''
       writeFileSync(
         join(home, '.zshrc'),
-        `${statusPrecmd || stickyPrecmd ? 'PS1="ORCA_FIRST_PROMPT:%? "\n' : ''}${unavailableSched ? 'module_path=("${O_MP[@]}")\n' : ''}${stockWidget}export PATH="$HOME/ambient-bin:/usr/bin:/bin:$HOME/cli/bin"\n${orderedPrecmd ? '' : 'precmd_functions=()\n'}${
+        `${statusPrecmd || stickyPrecmd ? 'PS1="ORCA_FIRST_PROMPT:%? "\n' : ''}${repeatSource ? USER_WIDGET : ''}${unavailableSched ? 'module_path=("${O_MP[@]}")\n' : ''}${stockWidget}export PATH="$HOME/ambient-bin:/usr/bin:/bin:$HOME/cli/bin"\n${orderedPrecmd ? '' : 'precmd_functions=()\n'}${
           chainedLineInit
             ? `${USER_WIDGET.replace('zle -N zle-line-init orca_test_line_init', 'zle -N orca_test_line_init')}autoload -Uz add-zle-hook-widget\nadd-zle-hook-widget line-init orca_test_line_init\n`
             : chainedRedraw
@@ -154,6 +161,9 @@ describe('zsh deferred startup after prompt-hook replacement', () => {
       const result = await runZshPty({
         env,
         commands: [
+          ...(repeatSource
+            ? ['source -- "$HOME/wrapper/.zshenv"', 'source -- "$HOME/wrapper/.zshenv"']
+            : []),
           'O_LK=$(command -v orca-dev)',
           'O_IR=${+functions[__orca_deferred_line_init]}',
           'O_SR=${+widgets[__orca_saved_line_init]}',
@@ -194,16 +204,22 @@ describe('zsh deferred startup after prompt-hook replacement', () => {
       if (!chainedLineInit) {
         expect(result.values.O_UN).toBe('zle-line-init')
       }
-      if (!chainedLineInit && !chainedRedraw) {
+      if (!chainedLineInit && !chainedRedraw && !repeatSource) {
         expect(result.values.O_IR).toBe('0')
       }
       expect(result.values.O_SR).toBe('0')
+      if (repeatSource) {
+        expect(result.output).not.toContain('job table full or recursion limit exceeded')
+        expect(result.values.O_PC).not.toContain('__orca_deferred_init')
+      }
       if (scheduleCleanup) {
         expect(result.values.O_SC).toBe('0')
         expect(result.values.O_SE).not.toContain('orca')
       }
       if (unavailableSched) {
-        expect(result.output).not.toContain('failed to load module')
+        // Stock completion modules can fail before the fixture restores module_path.
+        expect(result.output).not.toContain('zsh/sched')
+        expect(result.output).not.toContain('__orca_arm_deferred_line_init:')
         expect(result.values.O_SE).toBe('UNSET')
       }
       if (scheduledPrecmd) {
