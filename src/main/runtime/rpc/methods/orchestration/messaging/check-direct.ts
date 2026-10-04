@@ -6,6 +6,7 @@ import { exposeMessages } from './mailbox-message-receipt'
 import { reconcileLifecycleMessage } from '../../../../orchestration/lifecycle-reconciliation'
 import { ORCHESTRATION_LEGACY_RUN_ID } from '../../../../../../shared/orchestration-rpc-contract'
 import type { CheckParams } from '../schemas'
+import { withoutQueuedChatMail, type QueuedChatMail } from './check-queued-chat-mail'
 import type { z } from 'zod'
 
 type CheckParamsInput = z.infer<typeof CheckParams>
@@ -17,15 +18,17 @@ export async function checkDirectMailbox(args: {
   handle: string
   typeFilter: MessageType[] | undefined
   signal: AbortSignal | undefined
+  queuedMail: QueuedChatMail
 }): Promise<unknown> {
   const { params, runtime, db, handle, typeFilter, signal } = args
+  let queued = await args.queuedMail()
   // Why: unread:false is honored for one release as a compat shim so in-flight callers don't break (design doc §5).
   const showAll = params.all === true || (params.unread === false && params.peek !== true)
   const consumeUnread = !showAll && params.peek !== true
   const readAndReturn = () => {
     const messages = showAll
       ? db.getAllMessagesForHandle(handle, undefined, typeFilter)
-      : db.getUnreadMessages(handle, typeFilter)
+      : withoutQueuedChatMail(db.getUnreadMessages(handle, typeFilter), queued)
     if (
       consumeUnread &&
       messages.some((message) => message.run_id === ORCHESTRATION_LEGACY_RUN_ID)
@@ -76,5 +79,6 @@ export async function checkDirectMailbox(args: {
       'This direct mailbox became owned by a Run while the check was waiting.'
     )
   }
+  queued = await args.queuedMail()
   return readAndReturn()
 }

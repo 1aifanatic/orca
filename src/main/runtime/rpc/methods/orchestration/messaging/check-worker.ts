@@ -4,10 +4,12 @@ import { OrchestrationError } from '../../../../orchestration/orchestration-erro
 import { formatMessageBanner } from '../../../../orchestration/formatter'
 import { exposeMessages } from './mailbox-message-receipt'
 import { routeAllMailboxPages } from '../schemas'
+import { directMailboxSnapshotRouter } from './direct-mailbox-snapshot'
 import { asDispatchFence, callerHoldsDispatchPane, dispatchFenced } from './dispatch-mailbox-fence'
 import { interruptedAcknowledgedCheck } from '../routing'
 import { currentDispatchAssigneeRun } from './recipient-routing'
 import type { CheckParams } from '../schemas'
+import { withoutQueuedChatMail, type QueuedChatMail } from './check-queued-chat-mail'
 import type { z } from 'zod'
 
 type CheckParamsInput = z.infer<typeof CheckParams>
@@ -30,6 +32,7 @@ export async function checkWorkerMailbox(args: {
   revalidateConsumer?: () => void
   deferDelivery?: () => boolean
   recordMutationReceipt?: (receipt: unknown) => void
+  queuedMail: QueuedChatMail
 }) {
   const {
     params,
@@ -58,6 +61,7 @@ export async function checkWorkerMailbox(args: {
   if (!workerMailbox) {
     return undefined
   }
+  let queued = await args.queuedMail()
   const deliveryRunId = workerMailbox.runId
   db.requireRun(deliveryRunId)
   const mailboxIdentity = { runId: deliveryRunId, dispatchId: workerMailbox.dispatchId }
@@ -68,16 +72,7 @@ export async function checkWorkerMailbox(args: {
     activeDispatch
       ? db.getDispatchContextById(workerMailbox.dispatchId)?.consumer_generation
       : db.getRemoteDispatchAttachment(workerMailbox.dispatchId)?.consumer_generation
-  const routeDirectSnapshot = async (
-    runId: string,
-    directHandle: string,
-    routePage: (throughSequence: number) => { routedCount: number; hasMore: boolean }
-  ): Promise<void> => {
-    const throughSequence = db.getLatestUnreadDirectMessageSequenceForRun(runId, directHandle)
-    if (throughSequence !== undefined) {
-      await routeAllMailboxPages(() => routePage(throughSequence), signal)
-    }
-  }
+  const routeDirectSnapshot = directMailboxSnapshotRouter(db, signal)
   const revalidateWorkerMailbox = async (): Promise<void> => {
     if (activeDispatch) {
       const current = db.getActiveDispatchForIdentity(handle, paneKey)
@@ -193,7 +188,7 @@ export async function checkWorkerMailbox(args: {
     )
   }
   const showAll = params.all === true || (params.unread === false && params.peek !== true)
-  const readPeek = () => db.getUnreadMessages(address, typeFilter)
+  const readPeek = () => withoutQueuedChatMail(db.getUnreadMessages(address, typeFilter), queued)
   const readDelivery = (wakeTypes?: MessageType[]) => {
     if (args.deferDelivery?.()) {
       return undefined
@@ -204,7 +199,8 @@ export async function checkWorkerMailbox(args: {
         mailboxHandle: address,
         consumerGeneration: workerMailbox.generation,
         consumerSource: activeDispatch ? 'dispatch' : 'attachment',
-        wakeTypes
+        wakeTypes,
+        excludeMessageIds: queued
       })
     } catch (error) {
       throw asDispatchFence(error)
@@ -263,6 +259,7 @@ export async function checkWorkerMailbox(args: {
           timeoutMs: params.timeoutMs ?? undefined,
           signal
         })
+  queued = await args.queuedMail()
   await revalidateWorkerMailbox()
   if (readCurrentGeneration() !== workerMailbox.generation) {
     throw dispatchFenced()

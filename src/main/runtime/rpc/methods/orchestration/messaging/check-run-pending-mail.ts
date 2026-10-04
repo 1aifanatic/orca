@@ -7,6 +7,7 @@ import { callerHoldsDispatchPane, dispatchFenced } from './dispatch-mailbox-fenc
 import { orchestrationCallerIdentity } from '../runs/run-scope'
 import type { OrchestrationSessionCaller } from '../../../../orchestration/orchestration-caller-identity'
 import type { CheckParams } from '../schemas'
+import type { QueuedChatMail } from './check-queued-chat-mail'
 import type { z } from 'zod'
 
 export async function checkRunPendingMail(args: {
@@ -21,6 +22,7 @@ export async function checkRunPendingMail(args: {
   signal: AbortSignal | undefined
   revalidateConsumer: () => void
   recordMutationReceipt: ((receipt: unknown) => void) | undefined
+  queuedMail: QueuedChatMail
 }): Promise<{ acknowledged?: string; result?: unknown }> {
   const {
     params,
@@ -101,7 +103,8 @@ export async function checkRunPendingMail(args: {
           throw dispatchFenced()
         }
       },
-      recordMutationReceipt
+      recordMutationReceipt,
+      queuedMail: args.queuedMail
     })
     if (result?.acknowledged) {
       acknowledged = { delivery: { id: result.acknowledged } }

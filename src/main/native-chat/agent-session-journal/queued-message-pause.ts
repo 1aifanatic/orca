@@ -6,12 +6,14 @@
 //   - 'cleared': a card /clear carried into this conversation waits, and no person's turn or
 //     Resume has happened here since.
 //   - 'restarted': a waiting card was written by another host process, and no person's turn has
-//     started since this conversation opened.
+//     started since this conversation opened. It holds only the person's cards: an agent's
+//     orchestration mail is safe to resend, since the mailbox is the record and reading is marked.
 // A person's turn is an accepted submission of origin `client`. Orchestration mail, a restart
 // continuation, a launch prompt and the queue's own drain are `host` and never lift it.
 
 import type { AgentJournalCursor } from '../../../shared/agent-session-journal-types'
 import type { JournalStopEvent, JournalTombstoneRow } from './journal-row-schema'
+import type { AgentSessionMessageSource } from '../../../shared/agent-session-message-source'
 
 export type QueuePauseReason = 'stopped' | 'cleared' | 'restarted'
 
@@ -34,6 +36,7 @@ type QueueCard = {
   hostInstance: string
   carriedFrom: string | null
   queuedAt: AgentJournalCursor | null
+  source: Pick<AgentSessionMessageSource, 'kind'>
 }
 
 export function createJournalQueuePauseMarks(): JournalQueuePauseMarks {
@@ -162,7 +165,11 @@ export function queuePauseHolding(
   if (card.state !== 'waiting' || card.holdReason !== null) {
     return undefined
   }
-  return pauses.find((pause) => PAUSE_HOLDS_CARDS_QUEUED_AFTER_IT || queuedBeforePause(pause, card))
+  return pauses.find(
+    (pause) =>
+      (pause.reason !== 'restarted' || card.source.kind === 'user') &&
+      (PAUSE_HOLDS_CARDS_QUEUED_AFTER_IT || queuedBeforePause(pause, card))
+  )
 }
 
 /** The card the queue sends next: the oldest waiting one with no hold of its own, unless a

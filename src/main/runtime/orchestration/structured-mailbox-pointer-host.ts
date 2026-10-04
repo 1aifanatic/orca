@@ -73,6 +73,19 @@ function readHandedOffMailCards(sessionId: string): Promise<readonly StructuredM
   })
 }
 
+/**
+ * Mail the chat's own queue carries in an agent's card it has not deleted: on its way to the chat
+ * as a turn, or taken, so its `check` leaves it out. A deleted card carries nothing.
+ */
+export async function readQueuedChatMail(sessionId: string): Promise<readonly string[]> {
+  const rows = await readSession(sessionId, (host) => host.queuedMessageRows(sessionId))
+  return (rows ?? []).flatMap(({ state, source }) =>
+    state !== 'withdrawn' && source.kind === 'agent'
+      ? source.orchestration.messages.map((message) => message.messageId)
+      : []
+  )
+}
+
 function mailCards(
   rows: readonly QueuedMessageRow[],
   submissions: readonly AgentJournalSubmission[]

@@ -5,6 +5,7 @@ import { parseMessageTypes } from '../routing'
 import { checkRunMailbox } from './check-run'
 import { checkWorkerMailbox } from './check-worker'
 import { checkDirectMailbox } from './check-direct'
+import { queuedChatMailOf } from './check-queued-chat-mail'
 import { orchestrationSkillRecoveryData } from '../../../../../../shared/orchestration-rpc-contract'
 import { hasRunBindingKey } from '../../../../orchestration/orchestration-caller-identity'
 import { orchestrationCallerIdentity } from '../runs/run-scope'
@@ -90,7 +91,8 @@ export const ORCHESTRATION_CHECK_METHODS = [
           signal,
           activeDispatch,
           remoteAttachment,
-          recordMutationReceipt
+          recordMutationReceipt,
+          queuedMail: queuedChatMailOf(orchestrationCaller)
         })
       }
       const consumingCheck = params.peek !== true && params.all !== true && params.unread !== false
@@ -110,7 +112,15 @@ export const ORCHESTRATION_CHECK_METHODS = [
           orchestrationSkillRecoveryData()
         )
       }
-      return checkDirectMailbox({ params, runtime, db, handle, typeFilter, signal })
+      return checkDirectMailbox({
+        params,
+        runtime,
+        db,
+        handle,
+        typeFilter,
+        signal,
+        queuedMail: queuedChatMailOf(orchestrationCaller)
+      })
     }
   })
 ]

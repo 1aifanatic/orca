@@ -33,8 +33,12 @@ export function getOrCreateMailboxDelivery(
     consumerSource?: 'dispatch' | 'attachment'
     limit?: number
     wakeTypes?: MessageType[]
+    /** Mail a new batch leaves out: what the caller's own chat queue already carries. */
+    excludeMessageIds?: readonly string[]
   }
 ): { delivery: DeliveryRow; messages: MessageRow[]; replayed: boolean } | undefined {
+  const excluded = params.excludeMessageIds ?? []
+  const notExcluded = excluded.length ? ` AND id NOT IN (${excluded.map(() => '?').join(',')})` : ''
   const limit = Math.min(
     Math.max(params.limit ?? ORCHESTRATION_DELIVERY_BATCH_LIMIT, 1),
     ORCHESTRATION_DELIVERY_BATCH_LIMIT
@@ -63,23 +67,24 @@ export function getOrCreateMailboxDelivery(
           `SELECT 1 FROM messages
            WHERE run_id = ? AND to_handle = ? AND read = 0
              AND delivery_contract = 'current_delivery'
-             AND type IN (${placeholders}) LIMIT 1`
+             AND type IN (${placeholders})${notExcluded} LIMIT 1`
         )
-        .get(params.runId, params.mailboxHandle, ...params.wakeTypes)
+        .get(params.runId, params.mailboxHandle, ...params.wakeTypes, ...excluded)
       if (!matching) {
         this.db.exec('COMMIT')
         return undefined
       }
     }
     const messages = exposeMessageListTimestamps(
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: `SELECT *` from `messages`, whose columns are MessageRow's.
       this.db
         .prepare(
           `SELECT * FROM messages
            WHERE run_id = ? AND to_handle = ? AND read = 0
-             AND delivery_contract = 'current_delivery'
+             AND delivery_contract = 'current_delivery'${notExcluded}
            ORDER BY sequence ASC LIMIT ?`
         )
-        .all(params.runId, params.mailboxHandle, limit) as MessageRow[]
+        .all(params.runId, params.mailboxHandle, ...excluded, limit) as MessageRow[]
     )
     if (messages.length === 0) {
       this.db.exec('COMMIT')

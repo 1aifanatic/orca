@@ -9,6 +9,7 @@ import { operationId, type FakeConnection } from './structured-chat-coordinator-
 import { QueuedMessageNotConsumableError } from '../native-chat/agent-session-journal/journal-queued-messages'
 import {
   COORDINATOR,
+  PEER_CHAT,
   WORKER_2_PANE,
   runtime,
   db,
@@ -37,7 +38,11 @@ async function idleEdgesSettled(sessionId = COORDINATOR): Promise<void> {
 }
 
 /** A turn running in the chat; resolves to its end. */
-async function runningTurn(chat: FakeConnection, index: number): Promise<() => Promise<void>> {
+async function runningTurn(
+  chat: FakeConnection,
+  index: number,
+  sessionId = COORDINATOR
+): Promise<() => Promise<void>> {
   await vi.waitFor(() => expect(chat.turns).toHaveLength(index + 1), WAIT)
   const notify = (method: string, params: unknown) => chat.handlers.onNotification?.(method, params)
   const turnId = `turn-${index + 1}`
@@ -50,10 +55,10 @@ async function runningTurn(chat: FakeConnection, index: number): Promise<() => P
       content: [{ type: 'text', text: 'echo' }]
     }
   })
-  await host.flushStreamedEvents(COORDINATOR)
+  await host.flushStreamedEvents(sessionId)
   return async () => {
     notify('turn/completed', { turn: { id: turnId } })
-    await host.flushStreamedEvents(COORDINATOR)
+    await host.flushStreamedEvents(sessionId)
   }
 }
 
@@ -191,6 +196,48 @@ describe("mail for a busy coordinator chat waits in the chat's queue", () => {
       mailTurn(`run:${runId}`, earlier!.id),
       mailTurn(`run:${runId}`, later!.id)
     ])
+  })
+
+  it("leaves mail out of the chat's own `check` while its card is queued, and gives it back once the card is deleted", async () => {
+    const chat = await openChat(COORDINATOR)
+    const { runId, taskId } = await coordinatorRunAndTask()
+    const endTurn = await runningUserTurn(chat)
+    await finishWorker(taskId)
+    await vi.waitFor(async () => expect(await queuedCardIds()).toHaveLength(1), WAIT)
+    const [mail] = db.getAllMessages(`run:${runId}`)
+
+    // On its way as a turn: the agent's check mid-turn does not read it a second time.
+    for (const params of [{}, { peek: true }, { wait: true, timeoutMs: 200 }]) {
+      expect(await call('orchestration.check', params, { sessionId: COORDINATOR })).toMatchObject({
+        count: 0
+      })
+    }
+    expect(unreadMail(`run:${runId}`)).toEqual([mail!.id])
+
+    const [card] = await queuedCardIds()
+    expect(await deleteCard(card!)).toMatchObject({ ok: true, value: { deleted: true } })
+    expect(await call('orchestration.check', {}, { sessionId: COORDINATOR })).toMatchObject({
+      count: 1,
+      messages: [{ id: mail!.id }]
+    })
+    await endTurn()
+  })
+
+  it("leaves mail out of a chat's own direct-mailbox `check` while its card is queued", async () => {
+    const peer = await openChat(PEER_CHAT)
+    expect(await sendUserMessage(PEER_CHAT, 'go')).toMatchObject({ ok: true })
+    const endTurn = await runningTurn(peer, 0, PEER_CHAT)
+    await call('orchestration.send', {
+      from: 'term_worker',
+      to: `orca_session_id:${PEER_CHAT}`,
+      subject: 'ping'
+    })
+    await vi.waitFor(async () => expect(await queuedCardTexts(PEER_CHAT)).toHaveLength(1), WAIT)
+    expect(await call('orchestration.check', {}, { sessionId: PEER_CHAT })).toMatchObject({
+      count: 0
+    })
+    expect(unreadMail(`orca_session_id:${PEER_CHAT}`)).toHaveLength(1)
+    await endTurn()
   })
 
   it("leaves a deleted card's mail unread for `check`, and never pushes it again", async () => {

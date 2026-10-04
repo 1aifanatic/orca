@@ -25,6 +25,7 @@ export function getOrCreateRunDelivery(
     consumerGeneration: number
     limit?: number
     wakeTypes?: MessageType[]
+    excludeMessageIds?: readonly string[]
   }
 ): { delivery: DeliveryRow; messages: MessageRow[]; replayed: boolean } | undefined {
   return this.getOrCreateMailboxDelivery({
@@ -32,7 +33,8 @@ export function getOrCreateRunDelivery(
     mailboxHandle: `run:${params.runId}`,
     consumerGeneration: params.consumerGeneration,
     limit: params.limit,
-    wakeTypes: params.wakeTypes
+    wakeTypes: params.wakeTypes,
+    excludeMessageIds: params.excludeMessageIds
   })
 }
 

@@ -10,6 +10,7 @@ vi.mock('../../native-chat/agent-session-wire/structured-agent-session-registry'
 
 const {
   createStructuredMailboxPointerHost,
+  readQueuedChatMail,
   readStructuredSessionGateFacts,
   structuredPointerCallerKey,
   structuredSessionPointerCallerKey
@@ -110,6 +111,28 @@ describe('structured mailbox pointer host', () => {
     hostRef.current = { journalSnapshot: snapshots, queuedMessageRows: () => rows.slice(1, 2) }
     expect(await createStructuredMailboxPointerHost().readHandedOffMailCards('s1')).toEqual([])
     expect(snapshots).not.toHaveBeenCalled()
+  })
+
+  it("names the mail a chat's queue carries in an agent's card it has not deleted", async () => {
+    const mail = (messageId: string) => ({
+      ...MAIL_SOURCE,
+      orchestration: {
+        ...MAIL_SOURCE.orchestration,
+        messages: [{ messageId, runId: 'r1', from: 'term_a' }]
+      }
+    })
+    hostRef.current = {
+      queuedMessageRows: () => [
+        { state: 'waiting', source: mail('m1') },
+        { state: 'returned', source: mail('m2') },
+        { state: 'dispatched', source: mail('m3') },
+        { state: 'withdrawn', source: mail('m4') },
+        { state: 'waiting', source: { kind: 'user' } }
+      ]
+    }
+    expect(await readQueuedChatMail('s1')).toEqual(['m1', 'm2', 'm3'])
+    hostRef.current = null
+    expect(await readQueuedChatMail('s1')).toEqual([])
   })
 
   it('answers null rather than nothing recorded when the session cannot be read', async () => {
