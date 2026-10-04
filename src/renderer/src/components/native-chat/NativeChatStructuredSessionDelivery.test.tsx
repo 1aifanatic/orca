@@ -424,8 +424,10 @@ describe('NativeChatStructuredSession delivery', () => {
     const send = mocks.composerProps?.structuredTransport?.send as
       | ((text: string, attachments: readonly { id: string; path: string }[]) => boolean)
       | undefined
-    expect(send?.('first', [])).toBe(true)
-    await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
+    await act(async () => {
+      expect(send?.('first', [])).toBe(true)
+    })
+    expect(mocks.call).toHaveBeenCalledOnce()
 
     await act(async () => {
       expect(send?.('second', [])).toBe(true)
@@ -435,7 +437,7 @@ describe('NativeChatStructuredSession delivery', () => {
     await advanceProbeClock(1)
     // The head is probed automatically, clears, and the queue drains.
     expect(mocks.call).toHaveBeenCalledTimes(3)
-    expect(screen.queryByText('Message delivery is unconfirmed.')).toBeNull()
+    expect(screen.queryByText('Sending…')).toBeNull()
   }, 20000)
 
   it('probes the same operation without marking an explicit user retry', async () => {
@@ -609,14 +611,12 @@ describe('NativeChatStructuredSession delivery', () => {
     const send = mocks.composerProps?.structuredTransport?.send as
       | ((text: string, attachments: readonly { id: string; path: string }[]) => boolean)
       | undefined
-    expect(send?.('first', [])).toBe(true)
-    await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
-
     await act(async () => {
       expect(send?.('first', [])).toBe(true)
     })
     expect(mocks.call).toHaveBeenCalledOnce()
-    expect(screen.getByText('Message delivery is unconfirmed.')).toBeTruthy()
+    // No answer is no failure: the message reads as sending while Orca resends it.
+    expect(screen.getByText('Sending…')).toBeTruthy()
 
     await advanceProbeClock(300)
     rerender(makeView({ kind: 'environment', environmentId: 'env-1' }))
