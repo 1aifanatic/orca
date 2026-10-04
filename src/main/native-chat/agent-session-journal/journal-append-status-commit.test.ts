@@ -82,9 +82,10 @@ function ledgerAnswers(): number {
 
 /** A send's ledger answer: one row inside the append's transaction, adopted after its COMMIT. */
 function ledgerReceipt(): JournalOperationReceipt & { adopted: number; inTransaction: boolean[] } {
+  const inTransaction: boolean[] = []
   const receipt = {
     adopted: 0,
-    inTransaction: [] as boolean[],
+    inTransaction,
     write: (connection: ReturnType<typeof db>) => {
       receipt.inTransaction.push(connection.isTransaction)
       connection.prepare('INSERT INTO ledger_answers VALUES (?)').run('op-1')
