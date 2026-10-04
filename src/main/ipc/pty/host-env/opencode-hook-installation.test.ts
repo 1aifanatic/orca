@@ -77,7 +77,9 @@ afterEach(() => {
 })
 
 describe('OpenCode installation uses the current enabled agents', () => {
-  it.each(process.platform === 'win32' ? (['home', 'xdg'] as const) : (['home', 'xdg', 'shell'] as const))(
+  it.each(
+    process.platform === 'win32' ? (['home', 'xdg'] as const) : (['home', 'xdg', 'shell'] as const)
+  )(
     'consumer config root follows the %s execution environment without redirecting JSON',
     (kind) => {
       const home = join(root, 'consumer-home')
@@ -94,7 +96,11 @@ describe('OpenCode installation uses the current enabled agents', () => {
         XDG_CONFIG_HOME: kind === 'xdg' ? xdg : '',
         SHELL: kind === 'shell' ? '/bin/zsh' : '/bin/sh'
       }
-      const env = buildPtyHostEnv('folder-pane', { ...input }, { ...options, launchAgent: 'opencode' })
+      const env = buildPtyHostEnv(
+        'folder-pane',
+        { ...input },
+        { ...options, launchAgent: 'opencode' }
+      )
       expect(existsSync(plugin(consumer, 'opencode'))).toBe(true)
       expect(existsSync(plugin(config, 'opencode'))).toBe(false)
       expect(readFileSync(join(consumer, 'opencode.json'), 'utf8')).toBe(settings)
