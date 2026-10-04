@@ -1959,3 +1959,27 @@ same ordering assertion. The gate was released, both controls drained the captur
 job, and the instrumentation was removed. Changed-code quality passed. This proves
 the teardown ordering mechanism, not a measured avoided-retry saving. Final-head
 hosted qualification remains required.
+
+## October 4 store oracle and retention fixtures
+
+The randomized in-place-store test validated the copying oracle twice after
+accepted mutations and compared snapshots through the same production parser.
+Its 5,000-step retention fixture generated enough tombstones to hit the count
+limit, but never reached the 4,096-revision age boundary.
+
+The test retains all four seeds and 1,500 mutations per seed, removes the duplicate
+validation, and projects snapshots directly from the copying oracle's validated
+maps. Separate fixtures now check the revision before, at and after expiry and
+count overflow. Production code is unchanged.
+
+Three alternating one-worker pairs on `ubuntu-24.04-arm` in
+[37180517143](https://github.com/stablyai/orca/actions/runs/37180517143)
+measured baseline invocation times 33.551 / 33.304 / 33.529 seconds and candidate
+13.848 / 13.816 / 13.875 seconds: median 33.529 to 13.848 seconds, saving 19.681
+seconds (58.7%). Baseline passed seven tests; candidate passed eight. This is a
+focused test saving, not a measured whole-shard or queue-delay change.
+
+Hosted Node typecheck passed. Separate fault controls failed the intended
+assertion for early, late and disabled age expiry, disabled count compaction,
+and a snapshot that drops child descriptions. The description fault passes with
+the original parser-sharing oracle and fails with the independent projection.
