@@ -14,6 +14,7 @@
 // stays exercised after a release ships the capability (docs/reference/remote-wire-compatibility.md).
 
 import { beforeAll, describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import { DESKTOP_RENDERER_RUNTIME_CLIENT_CAPABILITIES } from '../../../src/main/ipc/desktop-renderer-runtime-capabilities'
 import { projectSessionTabAgentStatus } from '../../../src/main/runtime/rpc/methods/session-tab-agent-status-projection'
 import { agentSessionRecordFixture } from '../../../src/shared/agent-session-record.test-fixture'
@@ -196,17 +197,14 @@ function newAgentRecord(): AgentSessionRecord {
   }
 }
 
+/** A parsed session's chat tabs in the test worktree, read through a named shape. */
+const parsedSessionTabs = z.object({
+  unifiedTabs: z.record(z.string(), z.array(z.record(z.string(), z.unknown())))
+})
+
 function unifiedTabsOf(parsed: { ok: boolean; value?: unknown }): Record<string, unknown>[] {
-  const value = parsed.value
-  if (typeof value !== 'object' || value === null || !('unifiedTabs' in value)) {
-    return []
-  }
-  const unified = value.unifiedTabs
-  if (typeof unified !== 'object' || unified === null || !(WORKTREE in unified)) {
-    return []
-  }
-  const tabs: unknown = Reflect.get(unified, WORKTREE)
-  return Array.isArray(tabs) ? tabs : []
+  const session = parsedSessionTabs.safeParse(parsed.value)
+  return session.success ? (session.data.unifiedTabs[WORKTREE] ?? []) : []
 }
 
 describe('a structured agent beyond Claude and Codex, across versions', () => {
