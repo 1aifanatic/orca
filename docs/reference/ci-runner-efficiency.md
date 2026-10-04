@@ -1967,6 +1967,32 @@ the imported helper has no top-level side effects, and the Linux rebuild branch
 is unchanged. Focused tests verify its Linux/macOS no-op behavior. Final-head PR
 checks qualify separately.
 
+## October 4 reusable cells for terminal context scans
+
+Terminal cursor-context scans now request one reusable cell per invocation when
+the adapter offers getNullCell, and pass it through all unchanged text/style
+scans. Adapters without that optional method keep the existing allocating path.
+The scratch cell is local and no cell reference escapes into returned context.
+Browser composer/readiness text, colors, bold flags and wrapping are unchanged.
+
+Three alternating one-worker ARM pairs in
+[37182789677](https://github.com/stablyai/orca/actions/runs/37182789677)
+ran all 19 original cases from readiness census suite 2. Baseline complete
+invocations were 37.141 / 37.879 / 37.090 seconds; candidate invocations were
+33.887 / 33.387 / 32.916 seconds. Median 37.141 to 33.387 seconds saves 10.1%.
+This is a focused workload measurement, not a whole-shard or queue-delay claim.
+
+Separate baseline/candidate captures retained all 192 cases across six census
+suites. Every context and visible projection matched: 643,926 of each, with
+7,465,308,324 complete length-prefixed payload bytes hashed per test/type/order.
+The canonical capture digest was
+`f7440c0f1b5bbb57127cd29245530029415c8e9e243c1744359f330b3c7ace19`.
+These captures run outside the timing samples. All 41 cursor/composer/browser
+consumer checks passed. Seven faults for lost dim filtering, wide continuation,
+bold prompt, custom foreground, wrap preservation, adapter fallback and scratch
+reuse failed their intended assertions. Node and web typecheck, lint and format
+passed. Two added controls prove per-call scratch lifetime and adapter parity.
+
 ## October 3 producer follow-up: automatic selection for the measured profile
 
 The first producer rollout in [#24927](https://github.com/stablyai/orca/pull/24927)
@@ -2003,6 +2029,36 @@ header placement, then its empty cache-miss output), and are excluded. This prov
 automatic selection and cold publication, not a new timing result. Local
 verification passed eight suites / 184 tests, the changed-code quality gate and
 compiled-composite actionlint.
+
+## October 4 shared PR preflight capacity
+
+Static analysis and the unchanged compiler now share one ARM runner and guarded
+Node 24 install. Static checks finish and all background work joins before the
+compiler starts; unit planning still overlaps compilation. Each phase keeps its
+classifier output. Successful no-op background bodies register every required
+join when a phase is unselected or an earlier step failed. Unit and package
+consumers depend on physical job success, including action cleanup.
+
+Three counterbalanced pairs in
+[37180613601](https://github.com/stablyai/orca/actions/runs/37180613601)
+used the same frozen checkout `f199a20c3acd`, Node 24.21.0, pnpm 12.8.1,
+policy hashes, native cache hits, warm TypeScript cache and 10,787-file unit plan.
+Both arms used the PR root-only download-store policy. Total active job time was
+152 / 153 / 151 seconds separately and 138 / 133 / 129 combined. Excluding the
+extra measurement-only evidence steps gives 151 / 151 / 149 versus
+136 / 132 / 128 seconds: median 151 to 132, saving 19 seconds (12.6%).
+Two heavy runner admissions become one. This saves capacity; it does not prove a
+whole-PR latency or queue gain. The median active dependency barrier increases
+from 116 to 132 seconds because compilation follows static checks.
+
+The separate physical-failure run
+[37180755694](https://github.com/stablyai/orca/actions/runs/37180755694)
+proved that an included TypeScript error failed the actual compiler, its planner
+still joined, and unit/package admissions skipped. A registered late action post
+failure also blocked both consumers after successful foreground checks and
+published shards. All 12 unselected/prior-failure no-op backgrounds joined, and
+the downstream audit passed. Local workflow contracts passed 239 tests across
+12 suites; lint and formatting passed.
 
 ## October 3 retired-cache collection observation
 
