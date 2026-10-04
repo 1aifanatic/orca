@@ -148,8 +148,9 @@ export async function openClaudeStreamJsonConnection(
       ...(handlers.onUserDialog ? { onUserDialog: handlers.onUserDialog } : {})
     }
   })
-  const child = spawner.child
-  if (!child) {
+  const managed = spawner.managed
+  const child = managed?.child
+  if (!child || !managed) {
     throw new Error('the claude agent SDK returned without spawning a child')
   }
   // This child owns the account's credentials for as long as it runs, exactly as a
@@ -158,11 +159,8 @@ export async function openClaudeStreamJsonConnection(
   // path exists.
   const authGateKey = randomUUID()
   const releaseAuthGate = (): void => markClaudeStructuredChildExited(authGateKey)
-  let exited = false
   let exitStatus: ExitStatus | null = null
   let closing = false
-  let processless = false
-  let prePidSpawnError = false
   let terminalError: Error | null = null
   let faultReported = false
   let exitReported = false
@@ -170,7 +168,7 @@ export async function openClaudeStreamJsonConnection(
   let readingBarrier: Promise<void> | null = null
   let releaseReadingBarrier: (() => void) | null = null
   const pauseReading = (): void => {
-    if (closing || exited || terminalError || readingBarrier) {
+    if (closing || managed.exited || terminalError || readingBarrier) {
       return
     }
     readingBarrier = new Promise<void>((resolve) => {
@@ -185,7 +183,7 @@ export async function openClaudeStreamJsonConnection(
   }
   const waitUntilReadable = (): Promise<void> => readingBarrier ?? Promise.resolve()
   // One reaper per child: every close attempt and error-path reap shares its proof.
-  const rootSettled = (): boolean => exited || processless
+  const rootSettled = (): boolean => managed.rootVerdict === 'exited'
   const tree = createClaudeChildTreeReaper(child, { exited: rootSettled })
 
   // Arm lazily on actual child output instead of issuing a process-table scan for
@@ -207,20 +205,7 @@ export async function openClaudeStreamJsonConnection(
     armTreeOnOutput()
   }
 
-  let settleExit = (): void => {}
-  const exitPromise = new Promise<void>((resolve) => {
-    settleExit = resolve
-  })
-  const markExited = (): void => {
-    exited = true
-    releaseAuthGate()
-    settleExit()
-  }
-  child.on('exit', (code, signal) => {
-    exitStatus = { code, signal }
-    markExited()
-    handleUnexpectedEnd()
-  })
+  const exitPromise = managed.exitPromise
 
   const handleUnexpectedEnd = (cause?: Error): void => {
     resumeReading()
@@ -230,7 +215,7 @@ export async function openClaudeStreamJsonConnection(
       faultReported = true
       handlers.onFault?.(terminalError)
     }
-    if (exited && !exitReported) {
+    if (managed.exited && !exitReported) {
       exitReported = true
       handlers.onExit?.(terminalError, { expected: closing })
     }
@@ -262,29 +247,26 @@ export async function openClaudeStreamJsonConnection(
     } catch (error: unknown) {
       // The SDK ends its generator in error when the child dies or the transport
       // fails; a transport failure with a live child still has to reap the tree.
-      if (!closing && !exited) {
+      if (!closing && !managed.exited) {
         void tree.reap()
       }
       handleUnexpectedEnd(error instanceof Error ? error : new Error(String(error)))
     }
   })()
 
+  managed.onExit((exit) => {
+    exitStatus = exit
+    releaseAuthGate()
+    handleUnexpectedEnd()
+  })
   child.on('error', (error) => {
-    if (spawner.pid === undefined) {
-      prePidSpawnError = true
-    }
-    if (!closing && !exited) {
+    if (!closing && !managed.exited) {
       void tree.reap()
     }
     handleUnexpectedEnd(error)
   })
   child.on('close', () => {
-    // Covers the spawn-failure path too, where no 'exit' ever arrives.
     releaseAuthGate()
-    if (prePidSpawnError && spawner.pid === undefined) {
-      processless = true
-      settleExit()
-    }
     handleUnexpectedEnd()
   })
   child.stdin.on('error', (error) => {
@@ -302,7 +284,13 @@ export async function openClaudeStreamJsonConnection(
   markClaudeStructuredChildSpawned(authGateKey)
 
   const send: ClaudeStreamJsonConnection['send'] = (message, beforeDispatch) => {
-    if (closing || exited || terminalError || child.stdin.destroyed || !child.stdin.writable) {
+    if (
+      closing ||
+      managed.exited ||
+      terminalError ||
+      child.stdin.destroyed ||
+      !child.stdin.writable
+    ) {
       return Promise.reject(
         claudeUnwrittenUserMessageError(
           terminalError ?? new Error('claude stream-json connection is closed')
@@ -326,11 +314,12 @@ export async function openClaudeStreamJsonConnection(
         exitPromise,
         exited: rootSettled,
         tree,
-        supervised: spawner.supervised
+        supervised: spawner.supervised,
+        managed
       })
       inbox.fail(new Error('claude stream-json connection closed'))
       if (!proven) {
-        if (exited && tree.treeVerdict === 'live') {
+        if (managed.exited && tree.treeVerdict === 'live') {
           console.warn('[claude-stream-json] root exited but a descendant survived the close:', {
             pid: spawner.pid
           })
@@ -359,11 +348,11 @@ export async function openClaudeStreamJsonConnection(
       return spawner.pid
     },
     get closed() {
-      return closing || exited || terminalError !== null
+      return closing || managed.exited || terminalError !== null
     },
     get exitVerdict() {
       return {
-        root: processless ? 'processless' : exited ? 'exited' : 'live',
+        root: managed.processless ? 'processless' : managed.exited ? 'exited' : 'live',
         tree: tree.treeVerdict
       } as const
     },
