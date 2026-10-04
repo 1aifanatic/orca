@@ -90,6 +90,8 @@ export type AgentCatalogRowProps = {
   permission?: {
     override: AgentPermissionMode | undefined
     defaultMode: AgentPermissionMode
+    /** The field that decides the launch instead of this choice, when Arguments or env set it. */
+    decidedBy: 'arguments' | 'environment' | null
     onChange: (choice: AgentPermissionMode | 'default') => void
   }
   /** A request from the Agent Permissions line to open this row and focus one of its controls. */
@@ -129,6 +131,26 @@ export function AgentCatalogRow({
       onChange={permission.onChange}
     />
   ) : null
+  const argumentsField = (
+    <div data-agent-reveal="arguments">
+      <AgentDefaultArgsInput
+        key={`${agentId}:${argsOverride}`}
+        defaultArgs={defaultArgs}
+        argsOverride={argsOverride}
+        onSaveArgs={onSaveArgs}
+      />
+    </div>
+  )
+  const environmentField = (
+    <div data-agent-reveal="environment">
+      <AgentDefaultEnvInput
+        key={`${agentId}:${envSummary}`}
+        defaultEnv={defaultEnv}
+        envOverride={envOverride}
+        onSaveEnv={onSaveEnv}
+      />
+    </div>
+  )
   const [cmdOpen, setCmdOpen] = useState(
     Boolean(cmdOverride) ||
       argsOverride !== defaultArgs ||
@@ -255,8 +277,11 @@ export function AgentCatalogRow({
 
       {/* An undetected agent's own choice still applies where it runs (an SSH host), so it stays clearable. */}
       {!isDetected && permission?.override !== undefined && (
-        <div className="mt-3 pl-10" data-agent-reveal="permissions">
-          {permissionControl}
+        <div className="mt-3 pl-10">
+          {/* When Arguments or env decide, show that field too, so its link lands where it says. */}
+          {permission.decidedBy === 'arguments' && <div className="mb-2">{argumentsField}</div>}
+          {permission.decidedBy === 'environment' && <div className="mb-2">{environmentField}</div>}
+          <div data-agent-reveal="permissions">{permissionControl}</div>
         </div>
       )}
 
@@ -268,28 +293,14 @@ export function AgentCatalogRow({
             cmdOverride={cmdOverride}
             onSaveOverride={onSaveOverride}
           />
-          <div className="mt-2" data-agent-reveal="arguments">
-            <AgentDefaultArgsInput
-              key={`${agentId}:${argsOverride}`}
-              defaultArgs={defaultArgs}
-              argsOverride={argsOverride}
-              onSaveArgs={onSaveArgs}
-            />
-          </div>
+          <div className="mt-2">{argumentsField}</div>
           {permissionControl && (
             <div className="mt-2" data-agent-reveal="permissions">
               {permissionControl}
             </div>
           )}
           {(envEditable || defaultEnvSummary || envSummary) && (
-            <div className="mt-2" data-agent-reveal="environment">
-              <AgentDefaultEnvInput
-                key={`${agentId}:${envSummary}`}
-                defaultEnv={defaultEnv}
-                envOverride={envOverride}
-                onSaveEnv={onSaveEnv}
-              />
-            </div>
+            <div className="mt-2">{environmentField}</div>
           )}
           {sessionSourceHome && (
             <div className="mt-2">

@@ -8,13 +8,19 @@ import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import { AgentsPane } from './AgentsPane'
 import { TooltipProvider } from '../ui/tooltip'
 
-const detected = vi.hoisted(() => ({ ids: ['claude', 'codex', 'goose'] }))
+const detected = vi.hoisted(() => {
+  const state: { ids: string[] | null; failed: boolean } = {
+    ids: ['claude', 'codex', 'goose'],
+    failed: false
+  }
+  return state
+})
 
 vi.mock('@/hooks/useDetectedAgents', () => ({
   useDetectedAgents: () => ({
     detectedIds: detected.ids,
-    isLoading: false,
-    detectionFailed: false,
+    isLoading: detected.ids === null && !detected.failed,
+    detectionFailed: detected.failed,
     isRefreshing: false,
     refresh: vi.fn()
   })
@@ -22,11 +28,12 @@ vi.mock('@/hooks/useDetectedAgents', () => ({
 
 beforeEach(() => {
   detected.ids = ['claude', 'codex', 'goose']
+  detected.failed = false
 })
 afterEach(cleanup)
 
-function renderPane(overrides: Partial<GlobalSettings>): void {
-  render(
+function pane(overrides: Partial<GlobalSettings>): React.JSX.Element {
+  return (
     <TooltipProvider>
       <AgentsPane
         settings={{ ...getDefaultSettings('/tmp'), agentPermissionMode: 'bypass', ...overrides }}
@@ -34,6 +41,10 @@ function renderPane(overrides: Partial<GlobalSettings>): void {
       />
     </TooltipProvider>
   )
+}
+
+function renderPane(overrides: Partial<GlobalSettings>): ReturnType<typeof render> {
+  return render(pane(overrides))
 }
 
 /** The line under the Agent Permissions switch that names the agents it won't move. */
@@ -174,5 +185,50 @@ describe('Agent Permissions line links', () => {
       await userEvent.keyboard(key)
       expect(document.activeElement).toBe(manual())
     }
+  })
+
+  // The line says Arguments decide, so the link must land on the Arguments field, installed or not.
+  it('focuses the Arguments field of a not-installed agent whose Arguments decide', async () => {
+    detected.ids = ['claude']
+    renderPane({
+      agentPermissionModeOverrides: { codex: 'bypass' },
+      agentDefaultArgs: { codex: '-a on-request' }
+    })
+    expect(permissionLine().textContent).toContain(
+      'Codex runs Manual: its Arguments set -a on-request.'
+    )
+
+    await userEvent.click(within(permissionLine()).getByRole('button', { name: 'Codex' }))
+
+    expect(document.activeElement).toHaveValue('-a on-request')
+    expect(row('codex').contains(document.activeElement)).toBe(true)
+  })
+})
+
+// Before detection finishes no rows render, so a name can't open anything yet.
+describe('Agent Permissions line before agents are detected', () => {
+  it.each([
+    ['pending', false],
+    ['failed', true]
+  ])('shows names as plain text while detection is %s', (_state, failed) => {
+    detected.ids = null
+    detected.failed = failed
+    renderPane({ agentPermissionModeOverrides: { claude: 'ask' } })
+
+    expect(permissionLine().textContent).toContain('Claude runs Manual: it has its own setting.')
+    expect(within(permissionLine()).queryByRole('button')).toBeNull()
+  })
+
+  it('turns names into working links once detection finishes', async () => {
+    detected.ids = null
+    const view = renderPane({ agentPermissionModeOverrides: { claude: 'ask' } })
+    detected.ids = ['claude']
+    view.rerender(pane({ agentPermissionModeOverrides: { claude: 'ask' } }))
+    await collapse('claude')
+
+    await userEvent.click(within(permissionLine()).getByRole('button', { name: 'Claude' }))
+
+    const group = within(row('claude')).getByRole('radiogroup', { name: 'Claude permissions' })
+    expect(document.activeElement).toBe(within(group).getByRole('radio', { name: 'Manual' }))
   })
 })

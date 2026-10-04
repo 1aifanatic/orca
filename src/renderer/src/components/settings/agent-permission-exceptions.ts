@@ -16,8 +16,8 @@ export type AgentPermissionException = {
   label: string
   effectiveBypass: boolean
   reason: AgentPermissionExceptionReason
-  /** Where its row edits that reason; an uninstalled agent's row shows only its Permissions control. */
-  target: AgentPermissionRevealTarget
+  /** Where its row edits that reason; null while detection hasn't finished and no rows render. */
+  target: AgentPermissionRevealTarget | null
 }
 
 /**
@@ -46,8 +46,8 @@ export function buildAgentPermissionExceptions(args: {
         : posture.typedEnvironmentOptions.length > 0
           ? { kind: 'environment', options: posture.typedEnvironmentOptions }
           : { kind: 'own-setting' }
-    const target: AgentPermissionRevealTarget =
-      detected && reason.kind !== 'own-setting' ? reason.kind : 'permissions'
+    const target: AgentPermissionRevealTarget | null =
+      args.detectedIds === null ? null : reason.kind === 'own-setting' ? 'permissions' : reason.kind
     return [
       {
         agentId: agent.id,

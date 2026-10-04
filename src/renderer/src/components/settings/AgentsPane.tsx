@@ -168,6 +168,12 @@ export function AgentsPane({
           // A stored choice this build doesn't know reads as Manual, like everywhere else.
           override: permissionOverrides[id] === undefined ? undefined : posture.mode,
           defaultMode: defaultPermissionMode,
+          decidedBy:
+            posture.typedArgumentOptions.length > 0
+              ? 'arguments'
+              : posture.typedEnvironmentOptions.length > 0
+                ? 'environment'
+                : null,
           onChange: (choice) => {
             const next = { ...permissionOverrides }
             if (choice === 'default') {
@@ -259,13 +265,15 @@ export function AgentsPane({
       <AgentPermissionsSetting
         mode={defaultPermissionMode}
         exceptions={permissionExceptions}
-        onRevealException={(exception) =>
-          setPermissionReveal((previous) => ({
-            agentId: exception.agentId,
-            target: exception.target,
-            nonce: (previous?.nonce ?? 0) + 1
-          }))
-        }
+        onRevealException={({ agentId, target }) => {
+          if (target) {
+            setPermissionReveal((previous) => ({
+              agentId,
+              target,
+              nonce: (previous?.nonce ?? 0) + 1
+            }))
+          }
+        }}
         onChange={(mode: AgentPermissionMode) => {
           // Only the shared default; each agent's own choice stays until its card says Default.
           if (mode !== defaultPermissionMode) {

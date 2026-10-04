@@ -70,14 +70,19 @@ export function AgentPermissionsSetting({
                 )}
                 {exceptions.map((exception) => (
                   <span key={exception.agentId} className="block">
-                    <Button
-                      type="button"
-                      variant="link"
-                      size="inline"
-                      onClick={() => onRevealException(exception)}
-                    >
-                      {exception.label}
-                    </Button>{' '}
+                    {exception.target ? (
+                      <Button
+                        type="button"
+                        variant="link"
+                        size="inline"
+                        onClick={() => onRevealException(exception)}
+                      >
+                        {exception.label}
+                      </Button>
+                    ) : (
+                      // Plain text until detection finishes and the row it would open exists.
+                      exception.label
+                    )}{' '}
                     {exceptionReasonText(exception)}
                   </span>
                 ))}
