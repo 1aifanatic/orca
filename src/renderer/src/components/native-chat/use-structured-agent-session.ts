@@ -148,8 +148,14 @@ export function useStructuredAgentSession(args: {
   // Stop before a turn opens needs that form. An older host can stop only a turn it has opened.
   const stopsConversation =
     useStructuredAgentSessionHostStopsConversation(target) && transportState.fence !== null
+  // Before the host publishes this chat to this view, nothing sent has reached it: a Stop takes back
+  // what this client holds, so a start that never answers cannot hold the message hostage.
+  const stopsUnpublishedSend =
+    !transportEnabled &&
+    hasUnsentStructuredAgentSessionOutboxEntry(outbox, transportState.submissions)
   const canStop =
     transportState.turnId !== null ||
+    stopsUnpublishedSend ||
     (stopsConversation &&
       (transportState.isWorking ||
         hasUnsentStructuredAgentSessionOutboxEntry(outbox, transportState.submissions)))
@@ -230,6 +236,10 @@ export function useStructuredAgentSession(args: {
     turnId: transportState.turnId,
     canStop,
     stop: () => {
+      if (!transportEnabled) {
+        outboxController.withdrawUnsent()
+        return Promise.resolve(null)
+      }
       if (stopsConversation) {
         // Unsent text this client still owns goes back to its composer — a local move.
         // Host-held drafts are never withdrawn by a Stop: the host pauses them and
