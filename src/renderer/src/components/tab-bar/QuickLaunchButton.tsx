@@ -18,7 +18,7 @@ import {
 import { translate } from '@/i18n/i18n'
 import { useStructuredAgentLaunchStatus } from '@/lib/structured-agent-session-launch'
 import { structuredLaunchRequest } from '@/lib/structured-agent-session-launch-request'
-import type { NotesSendHandOff } from '@/lib/notes-send-in-flight'
+import { newAgentPromptOutcome } from '@/lib/new-agent-prompt-outcome'
 
 export type QuickLaunchAgentMenuItemsProps = {
   worktreeId: string
@@ -39,9 +39,8 @@ export type QuickLaunchAgentMenuItemsProps = {
   launchSource?: LaunchSource
   /** Called after a prompt is queued into the agent, or immediately for argv prompt launches. */
   onPromptDelivered?: () => void
-  /** The notes this prompt was built from: a new chat saves their keys with its message, and the
-   *  launch's own delivery result holds them until then. */
-  notesHandOff?: NotesSendHandOff
+  /** Given the launch's own delivery result while the prompt is still on its way. */
+  onPromptHandedOff?: (delivered: Promise<unknown>) => void
   /** Nothing to send: e.g. every note is already on its way, so no agent is started. */
   disabled?: boolean
 }
@@ -111,7 +110,7 @@ function QuickLaunchAgentMenuItemsInner({
   promptDelivery,
   launchSource,
   onPromptDelivered,
-  notesHandOff,
+  onPromptHandedOff,
   disabled = false
 }: QuickLaunchAgentMenuItemsProps): React.JSX.Element | null {
   // Why: resolving only the SSH connectionId here made paired-runtime
@@ -154,8 +153,7 @@ function QuickLaunchAgentMenuItemsInner({
         ...(prompt !== undefined ? { prompt } : {}),
         ...(promptDelivery !== undefined ? { promptDelivery } : {}),
         ...(launchSource !== undefined ? { launchSource } : {}),
-        ...(onPromptDelivered !== undefined ? { onPromptDelivered } : {}),
-        ...(notesHandOff ? { carriedNoteKeys: notesHandOff.carriedNoteKeys } : {})
+        ...(onPromptDelivered !== undefined ? { onPromptDelivered } : {})
       })
       if (!result) {
         toast.error(
@@ -167,8 +165,16 @@ function QuickLaunchAgentMenuItemsInner({
         )
         return
       }
-      if (result.promptDeliveryResult) {
-        notesHandOff?.handOff(result.promptDeliveryResult)
+      if (onPromptHandedOff && result.promptDeliveryResult) {
+        onPromptHandedOff(
+          newAgentPromptOutcome({
+            prompt: prompt ?? '',
+            ...(result.surface.kind === 'local-agent-session'
+              ? { sessionId: result.surface.sessionId }
+              : {}),
+            delivery: result.promptDeliveryResult
+          })
+        )
       }
       if (result.surface.kind !== 'local-terminal') {
         return
@@ -204,7 +210,7 @@ function QuickLaunchAgentMenuItemsInner({
       promptDelivery,
       launchSource,
       onPromptDelivered,
-      notesHandOff,
+      onPromptHandedOff,
       disabled
     ]
   )

@@ -34,7 +34,6 @@ import { useWorktreeAgentRows } from '@/components/sidebar/useWorktreeAgentRows'
 import type { LaunchSource } from '../../../../shared/telemetry-events'
 import { agentRowDisplayDotState } from '@/lib/agent-row-dot-state'
 import { translate } from '@/i18n/i18n'
-import type { NotesSendHandOff } from '@/lib/notes-send-in-flight'
 
 type OrderedSendTarget = {
   target: NotesSendAgentTarget
@@ -48,7 +47,7 @@ export function ReviewNotesSendMenuContent({
   promptDelivery = 'submit-after-ready',
   launchSource = 'notes_send',
   onPromptDelivered,
-  notesHandOff
+  onPromptHandedOff
 }: {
   worktreeId: string
   groupId: string
@@ -56,8 +55,8 @@ export function ReviewNotesSendMenuContent({
   promptDelivery?: 'auto-submit' | 'draft' | 'submit-after-ready'
   launchSource?: LaunchSource
   onPromptDelivered?: () => void
-  /** The notes this prompt was built from: held from each send's hand-off until its result. */
-  notesHandOff?: NotesSendHandOff
+  /** Given each send's own result the moment its prompt is handed to an agent. */
+  onPromptHandedOff?: (delivered: Promise<unknown>) => void
 }): React.JSX.Element {
   const hasPrompt = prompt.trim().length > 0
 
@@ -151,9 +150,9 @@ export function ReviewNotesSendMenuContent({
             { id: pending }
           )
         })
-      notesHandOff?.handOff(sending)
+      onPromptHandedOff?.(sending)
     },
-    [notesHandOff]
+    [onPromptHandedOff]
   )
 
   const sendToAgentTarget = useCallback(
@@ -213,7 +212,7 @@ export function ReviewNotesSendMenuContent({
         promptDelivery={promptDelivery}
         launchSource={launchSource}
         onPromptDelivered={onPromptDelivered}
-        notesHandOff={notesHandOff}
+        onPromptHandedOff={onPromptHandedOff}
         disabled={!hasPrompt}
       />
     </>

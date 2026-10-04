@@ -14,7 +14,6 @@ import type { BrowserGrabPayload } from '../../../../../shared/browser-grab-type
 import type { GrabModeHook } from '../annotate/useGrabMode'
 import { preventAgentSendTargetOutsideDismiss } from '../annotate/prevent-agent-send-target-outside-dismiss'
 import type { GrabIntent } from '../describe-page/browser-page-types'
-import type { NotesSendHandOff } from '@/lib/notes-send-in-flight'
 
 export function BrowserPageChromeBanners({
   resourceNotice,
@@ -29,7 +28,7 @@ export function BrowserPageChromeBanners({
   activeGroupId,
   browserAnnotationsPrompt,
   handleBrowserAnnotationsSentToAgent,
-  browserAnnotationsHandOff,
+  handleBrowserAnnotationsHandedOff,
   handleCopyBrowserAnnotations,
   browserAnnotationsCopied,
   handleClearBrowserAnnotations,
@@ -47,7 +46,7 @@ export function BrowserPageChromeBanners({
   activeGroupId: string | undefined
   browserAnnotationsPrompt: string
   handleBrowserAnnotationsSentToAgent: () => void
-  browserAnnotationsHandOff: NotesSendHandOff
+  handleBrowserAnnotationsHandedOff: (delivered: Promise<unknown>) => void
   handleCopyBrowserAnnotations: () => void
   browserAnnotationsCopied: boolean
   handleClearBrowserAnnotations: () => void
@@ -163,7 +162,7 @@ export function BrowserPageChromeBanners({
                     groupId={activeGroupId ?? worktreeId}
                     prompt={browserAnnotationsPrompt}
                     onPromptDelivered={handleBrowserAnnotationsSentToAgent}
-                    notesHandOff={browserAnnotationsHandOff}
+                    onPromptHandedOff={handleBrowserAnnotationsHandedOff}
                   />
                 </DropdownMenuContent>
               </DropdownMenu>

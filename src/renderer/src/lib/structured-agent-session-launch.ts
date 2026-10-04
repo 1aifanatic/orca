@@ -174,11 +174,7 @@ function joinStructuredLaunchState(
   // Why: an unconfirmed launch keeps its draft/outbox, so a recheck must not stage it twice.
   const text = retrying || repeat ? '' : outboxPromptText(joined)
   const stagedPrompt = text
-    ? enqueueStructuredAgentSessionLaunchPrompt(
-        existing.intent.sessionId,
-        text,
-        options.carriedNoteKeys
-      )
+    ? enqueueStructuredAgentSessionLaunchPrompt(existing.intent.sessionId, text)
     : (repeat?.stagedEntry ?? null)
   // An unstaged claim stays unclaimed: the new launch it falls to reports the failure.
   if (claim && text && !stagedPrompt) {
@@ -230,7 +226,7 @@ function structuredAgentLaunchState(
   )
   const text = outboxPromptText(options)
   const stagedPrompt = text
-    ? enqueueStructuredAgentSessionLaunchPrompt(intent.sessionId, text, options.carriedNoteKeys)
+    ? enqueueStructuredAgentSessionLaunchPrompt(intent.sessionId, text)
     : null
   launchDraft.seedStructuredAgentLaunchDraft(intent.sessionId, agent, options)
   const callers = createStructuredLaunchCallerGroup({

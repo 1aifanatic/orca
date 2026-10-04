@@ -17,10 +17,8 @@ import type {
 import { formatBrowserAnnotationsAsMarkdown } from './browser-annotation-output'
 import { EMPTY_BROWSER_ANNOTATIONS } from '../describe-page/browser-annotation-geometry'
 import {
-  browserAnnotationSendKey,
+  holdNotesForSend,
   isNoteInFlight,
-  notesSendHandOff,
-  type NotesSendHandOff,
   useNotesInFlightVersion
 } from '@/lib/notes-send-in-flight'
 
@@ -49,7 +47,7 @@ export function useBrowserPageAnnotationSend({
     intent: BrowserAnnotationIntent
   ) => void
   handleBrowserAnnotationsSentToAgent: () => void
-  browserAnnotationsHandOff: NotesSendHandOff
+  handleBrowserAnnotationsHandedOff: (delivered: Promise<unknown>) => void
   activeGroupId: string | undefined
 } {
   const browserAnnotations = useAppStore(
@@ -68,9 +66,7 @@ export function useBrowserPageAnnotationSend({
   const inFlightVersion = useNotesInFlightVersion()
   const sendableAnnotations = useMemo(() => {
     void inFlightVersion
-    return browserAnnotations.filter(
-      (annotation) => !isNoteInFlight(browserAnnotationSendKey(annotation))
-    )
+    return browserAnnotations.filter((annotation) => !isNoteInFlight(annotation))
   }, [browserAnnotations, inFlightVersion])
   const browserAnnotationsPrompt = useMemo(
     () => formatBrowserAnnotationsAsMarkdown(sendableAnnotations),
@@ -122,9 +118,10 @@ export function useBrowserPageAnnotationSend({
     removeDeliveredBrowserPageAnnotations
   ])
 
-  const browserAnnotationsHandOff = useMemo(
-    () => notesSendHandOff(sendableAnnotations.map(browserAnnotationSendKey)),
-    [sendableAnnotations]
+  const handleBrowserAnnotationsHandedOff = useCallback(
+    (delivered: Promise<unknown>): void =>
+      holdNotesForSend(sendableAnnotations, delivered, handleBrowserAnnotationsSentToAgent),
+    [handleBrowserAnnotationsSentToAgent, sendableAnnotations]
   )
 
   const handleClearBrowserAnnotations = useCallback((): void => {
@@ -155,7 +152,7 @@ export function useBrowserPageAnnotationSend({
           ),
           launchSource: 'notes_send',
           onPromptDelivered: handleBrowserAnnotationsSentToAgent,
-          onPromptHandedOff: browserAnnotationsHandOff.handOff
+          onPromptHandedOff: handleBrowserAnnotationsHandedOff
         })
       } else {
         closeAgentSendPopoverTargetMode(modeId)
@@ -164,7 +161,7 @@ export function useBrowserPageAnnotationSend({
     [
       browserAnnotationsPrompt,
       handleBrowserAnnotationsSentToAgent,
-      browserAnnotationsHandOff,
+      handleBrowserAnnotationsHandedOff,
       closeAgentSendPopoverTargetMode,
       openAgentSendPopoverTargetMode,
       worktreeId
@@ -230,7 +227,7 @@ export function useBrowserPageAnnotationSend({
     handleDeleteBrowserAnnotation,
     handleUpdateBrowserAnnotation,
     handleBrowserAnnotationsSentToAgent,
-    browserAnnotationsHandOff,
+    handleBrowserAnnotationsHandedOff,
     activeGroupId
   }
 }

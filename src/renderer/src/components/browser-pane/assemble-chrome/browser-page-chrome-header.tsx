@@ -121,7 +121,7 @@ export function BrowserPageChromeHeader({
         activeGroupId={annotationSend.activeGroupId}
         browserAnnotationsPrompt={annotationSend.browserAnnotationsPrompt}
         handleBrowserAnnotationsSentToAgent={annotationSend.handleBrowserAnnotationsSentToAgent}
-        browserAnnotationsHandOff={annotationSend.browserAnnotationsHandOff}
+        handleBrowserAnnotationsHandedOff={annotationSend.handleBrowserAnnotationsHandedOff}
         handleCopyBrowserAnnotations={annotationSend.handleCopyBrowserAnnotations}
         browserAnnotationsCopied={annotationSend.browserAnnotationsCopied}
         handleClearBrowserAnnotations={annotationSend.handleClearBrowserAnnotations}

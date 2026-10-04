@@ -650,7 +650,7 @@ describe('ReviewNotesSendMenuContent', () => {
   it('sends notes to the chosen agent and tracks the send once it succeeds', async () => {
     const statusPaneKey = makePaneKey(TAB_A, LEAF_A)
     const onPromptDelivered = vi.fn()
-    const notesHandOff = { carriedNoteKeys: ['note-a'], handOff: vi.fn() }
+    const onPromptHandedOff = vi.fn()
     setStore({
       tabsByWorktree: { 'wt-1': [tab(TAB_A, { title: 'Terminal 1' })] },
       terminalLayoutsByTabId: { [TAB_A]: leafLayout(LEAF_A, 'pty-a') }
@@ -666,7 +666,7 @@ describe('ReviewNotesSendMenuContent', () => {
       }
     ]
 
-    const tree = render({ onPromptDelivered, notesHandOff })
+    const tree = render({ onPromptDelivered, onPromptHandedOff })
     ;(findByType(tree, 'DropdownMenuItem').props.onSelect as () => void)()
     await flushMicrotasks()
 
@@ -682,8 +682,8 @@ describe('ReviewNotesSendMenuContent', () => {
       request_kind: 'followup'
     })
     // The notes are held from the hand-off until this send's own outcome, after its delivery.
-    expect(notesHandOff.handOff).toHaveBeenCalledOnce()
-    await notesHandOff.handOff.mock.calls[0][0]
+    expect(onPromptHandedOff).toHaveBeenCalledOnce()
+    await onPromptHandedOff.mock.calls[0][0]
     expect(onPromptDelivered).toHaveBeenCalledTimes(1)
   })
 
@@ -859,15 +859,15 @@ describe('ReviewNotesSendMenuContent', () => {
   })
 
   it('always offers the new-agent launcher', () => {
-    const notesHandOff = { carriedNoteKeys: ['note-a'], handOff: vi.fn() }
-    const tree = render({ notesHandOff })
+    const onPromptHandedOff = vi.fn()
+    const tree = render({ onPromptHandedOff })
 
     expect(findByType(tree, 'QuickLaunchAgentMenuItems').props).toMatchObject({
       worktreeId: 'wt-1',
       groupId: 'group-1',
       prompt: 'my notes',
       launchSource: 'notes_send',
-      notesHandOff
+      onPromptHandedOff
     })
   })
 

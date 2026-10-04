@@ -228,7 +228,7 @@ describe('website annotations handed to a send', () => {
     const firstDelivered = view.result.current.handleBrowserAnnotationsSentToAgent
     let deliverFirst!: (result: { delivered: boolean }) => void
     act(() =>
-      view.result.current.browserAnnotationsHandOff.handOff(
+      view.result.current.handleBrowserAnnotationsHandedOff(
         new Promise((resolve) => (deliverFirst = resolve))
       )
     )
@@ -249,7 +249,7 @@ describe('website annotations handed to a send', () => {
   it('puts annotations back for the next send when their delivery fails', async () => {
     const view = mount()
     const delivered = Promise.resolve({ delivered: false, failureNotified: true })
-    act(() => view.result.current.browserAnnotationsHandOff.handOff(delivered))
+    act(() => view.result.current.handleBrowserAnnotationsHandedOff(delivered))
     expect(view.result.current.browserAnnotationsPrompt).toBe('')
 
     await act(async () => {
@@ -269,7 +269,7 @@ describe('website annotations handed to a send', () => {
 
   it('offers no send while every annotation is already on its way', () => {
     const view = mount()
-    act(() => view.result.current.browserAnnotationsHandOff.handOff(new Promise(() => undefined)))
+    act(() => view.result.current.handleBrowserAnnotationsHandedOff(new Promise(() => undefined)))
 
     act(() => view.result.current.handleAnnotationTraySendOpenChange(true))
     expect(mode).toBeUndefined()
