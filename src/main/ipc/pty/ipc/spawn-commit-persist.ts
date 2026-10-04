@@ -15,7 +15,6 @@ import { resolveCommittedPtySize, type PtyGrid } from '../delivery/attached-pty-
 import { discardUnpersistedPtySpawn } from '../pane/spawn-registration'
 import { spawnCommitBindingOrigin } from '../../../persistence/loading-store/pty-binding-span'
 import type { PtyIpcSpawnState } from './spawn-state'
-import { bindLeaf } from '../../../persistence/terminal-topology/terminal-topology-commit'
 
 export async function persistPtyIpcSpawnCommit(ctx: PtyIpcSpawnState): Promise<PtyGrid> {
   const args = ctx.args
@@ -62,8 +61,8 @@ export async function persistPtyIpcSpawnCommit(ctx: PtyIpcSpawnState): Promise<P
         origin: spawnCommitBindingOrigin(ctx.result)
       }
       const persisted = args.connectionId
-        ? await bindLeaf(ctx.deps.store, binding, toSshExecutionHostId(args.connectionId))
-        : await bindLeaf(ctx.deps.store, binding)
+        ? await ctx.deps.store.persistPtyBinding(binding, toSshExecutionHostId(args.connectionId))
+        : await ctx.deps.store.persistPtyBinding(binding)
       if (persisted === false) {
         throw new Error('terminal_pane_owner_changed')
       }

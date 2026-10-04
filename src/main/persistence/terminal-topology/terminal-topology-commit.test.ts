@@ -1,21 +1,17 @@
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ExecutionHostId } from '../../../shared/execution-host'
 import type { TerminalSurfaceCloseTarget } from '../../../shared/terminal-surface-close-target'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
 import { folderWorkspaceKey } from '../../../shared/workspace-scope'
 import { _resetTracerForTests, setActiveSink } from '../../observability/tracer'
-import { createStore, makeTerminalTab, testState } from '../../persistence-test-harness'
+import { makeTerminalTab, testState } from '../../persistence-test-harness'
 import { TEST_LEAF_1, TEST_LEAF_2 } from '../../persistence-session-fixtures'
 import {
   terminalSurfaceCloseMutation,
   type TerminalSurfaceCloseCommit,
   type TerminalSurfaceCloseOptions
 } from '../../runtime/terminal-surface-close'
-import type { PersistPtyBindingArgs } from '../loading-store/pty-binding-persistence'
-import { bindLeaf, closeLeaf, closeTab } from './terminal-topology-commit'
+import { closeLeafOrTab } from './terminal-topology-commit'
 
 vi.mock('electron', () => ({
   app: { getPath: () => testState.dir },
@@ -161,14 +157,7 @@ function runClose(
   })
 }
 
-function closeThroughCommitModule(
-  commit: TerminalSurfaceCloseCommit
-): () => { value: Error | undefined; persist?: boolean | 'if-dirty' } {
-  const { target } = commit
-  return target.kind === 'pane' ? closeLeaf({ ...commit, target }) : closeTab({ ...commit, target })
-}
-
-describe('closeLeaf / closeTab write exactly what the close mutation writes', () => {
+describe('closeLeafOrTab writes exactly what the close mutation writes', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(1_700_000_000_000)
@@ -181,7 +170,7 @@ describe('closeLeaf / closeTab write exactly what the close mutation writes', ()
     for (const closeCase of CLOSE_CASES) {
       it(`${fixture.name}: ${closeCase.name}`, () => {
         const legacy = runClose(fixture, closeCase, terminalSurfaceCloseMutation)
-        const committed = runClose(fixture, closeCase, closeThroughCommitModule)
+        const committed = runClose(fixture, closeCase, closeLeafOrTab)
         expect(committed).toBe(legacy)
       })
     }
@@ -211,7 +200,7 @@ describe('persistence.terminal-topology span', () => {
   const fixture = FIXTURES[1]
 
   function attributesOf(closeCase: CloseCase): Record<string, unknown> {
-    runClose(fixture, closeCase, closeThroughCommitModule)
+    runClose(fixture, closeCase, closeLeafOrTab)
     expect(records).toHaveLength(1)
     expect(records[0].name).toBe('persistence.terminal-topology')
     return records[0].attributes
@@ -241,7 +230,7 @@ describe('persistence.terminal-topology span', () => {
   })
 
   it('records a thrown commit as a failed span and rethrows', () => {
-    const mutation = closeTab({
+    const mutation = closeLeafOrTab({
       worktreeId: fixture.worktreeId,
       target: { kind: 'tab', tabId: SPLIT_TAB },
       options: {},
@@ -259,65 +248,4 @@ describe('persistence.terminal-topology span', () => {
     expect(records[0].attributes).toMatchObject({ 'topology.outcome': 'threw' })
     expect(records[0].exit).toMatchObject({ _tag: 'Failure' })
   })
-})
-
-describe('bindLeaf is the binding writer', () => {
-  const dirs: string[] = []
-  const freshStore = (): ReturnType<typeof createStore> => {
-    testState.dir = mkdtempSync(join(tmpdir(), 'orca-topology-commit-'))
-    dirs.push(testState.dir)
-    return createStore()
-  }
-  afterEach(() => {
-    for (const dir of dirs.splice(0)) {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  })
-
-  it('forwards its arguments and result unchanged', async () => {
-    const persistPtyBinding = vi.fn(async () => false)
-    const args: PersistPtyBindingArgs = {
-      worktreeId: 'repo1::/w',
-      tabId: SPLIT_TAB,
-      leafId: TEST_LEAF_1,
-      ptyId: 'pty-1'
-    }
-    await expect(bindLeaf({ persistPtyBinding }, args, 'ssh:target-1')).resolves.toBe(false)
-    expect(persistPtyBinding).toHaveBeenCalledWith(args, 'ssh:target-1')
-  })
-
-  for (const fixture of FIXTURES) {
-    it(`${fixture.name}: binds byte-identically to persistPtyBinding`, async () => {
-      const bindings: PersistPtyBindingArgs[] = [
-        // Rebind an existing leaf, mint a new tab, then graft a new leaf into it.
-        { worktreeId: fixture.worktreeId, tabId: SPLIT_TAB, leafId: TEST_LEAF_2, ptyId: 'pty-9' },
-        { worktreeId: fixture.worktreeId, tabId: 'tab-new', leafId: TEST_LEAF_1, ptyId: 'pty-7' },
-        { worktreeId: fixture.worktreeId, tabId: 'tab-new', leafId: TEST_LEAF_2, ptyId: 'pty-8' }
-      ]
-      const run = async (
-        bind: (
-          store: ReturnType<typeof createStore>,
-          args: PersistPtyBindingArgs
-        ) => Promise<boolean>
-      ): Promise<string> => {
-        const store = freshStore()
-        store.setWorkspaceSession(sessionFor(fixture), fixture.hostId)
-        const results: boolean[] = []
-        for (const args of bindings) {
-          results.push(await bind(store, { ...args, incarnationId: `inc-${args.ptyId}` }))
-        }
-        return JSON.stringify({ results, session: store.getWorkspaceSession(fixture.hostId) })
-      }
-      vi.useFakeTimers({ toFake: ['Date'] })
-      vi.setSystemTime(1_700_000_000_000)
-      try {
-        const legacy = await run((store, args) => store.persistPtyBinding(args, fixture.hostId))
-        const committed = await run((store, args) => bindLeaf(store, args, fixture.hostId))
-        expect(committed).toBe(legacy)
-        expect(legacy).toContain('pty-9')
-      } finally {
-        vi.useRealTimers()
-      }
-    })
-  }
 })

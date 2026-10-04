@@ -4,7 +4,6 @@ import {
   type TerminalSurfaceCloseCommit
 } from '../../runtime/terminal-surface-close'
 import type { DurableProfileStateMutation } from '../loading-store/store-runtime-state'
-import type { Store } from '../loading-store/store'
 import { withTopologyCommit } from './terminal-topology-write-guard'
 import {
   startTerminalTopologyWriteSpan,
@@ -13,26 +12,28 @@ import {
 
 /**
  * The commit boundary for class-(a) terminal topology (design §5.1). Each function wraps today's
- * writer unchanged; later stages route the remaining writers here.
+ * writer unchanged; later stages route the remaining writers here. Binding joins in B1-4, when its
+ * write first reaches a session sink.
  */
 
-/** `persistPtyBinding` is the binding commit; it marks its own write as inside the boundary. */
-export function bindLeaf(
-  store: Pick<Store, 'persistPtyBinding'>,
-  ...args: Parameters<Store['persistPtyBinding']>
-): ReturnType<Store['persistPtyBinding']> {
-  return store.persistPtyBinding(...args)
-}
-
+// Debt: the close transform still lives in runtime/; B1-8 moves it behind this module.
 type CloseCommit<Target> = Omit<TerminalSurfaceCloseCommit, 'target'> & { target: Target }
 
-export function closeLeaf(
+/** closeLeaf for a pane target, closeTab for a tab target. */
+export function closeLeafOrTab(
+  commit: TerminalSurfaceCloseCommit
+): () => DurableProfileStateMutation<Error | undefined> {
+  const { target } = commit
+  return target.kind === 'pane' ? closeLeaf({ ...commit, target }) : closeTab({ ...commit, target })
+}
+
+function closeLeaf(
   commit: CloseCommit<TerminalPaneCloseTarget>
 ): () => DurableProfileStateMutation<Error | undefined> {
   return topologyCommitMutation('close_leaf', terminalSurfaceCloseMutation(commit))
 }
 
-export function closeTab(
+function closeTab(
   commit: CloseCommit<{ kind: 'tab'; tabId: string }>
 ): () => DurableProfileStateMutation<Error | undefined> {
   return topologyCommitMutation('close_tab', terminalSurfaceCloseMutation(commit))
