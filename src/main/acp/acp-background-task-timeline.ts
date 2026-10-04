@@ -1,0 +1,86 @@
+import type { AgentJournalRenderItem } from '../../shared/agent-session-journal-types'
+import { BoundedMap } from '../../shared/bounded-map'
+import { backgroundTaskJournalBody } from '../../shared/native-chat-background-task-row'
+import {
+  isBackgroundTaskBlock,
+  type NativeChatBackgroundTaskBlock
+} from '../../shared/native-chat-types'
+import {
+  boundInlineText,
+  DEFAULT_JOURNAL_PAYLOAD_LIMITS
+} from '../native-chat/agent-session-journal/journal-payload-bounds'
+import type {
+  ProviderTimelineEvent,
+  ProviderTimelineJoin
+} from '../native-chat/agent-session-timeline/provider-timeline-event'
+import type { AcpBackgroundTaskUpdate } from './acp-dialects/acp-dialect'
+import { acpJournalToolTurn } from './acp-journal-turns'
+
+/** Partial provider snapshots only; the assembler owns settlement and durable placement. */
+export class AcpBackgroundTaskTimeline {
+  private readonly snapshots = new BoundedMap<string, NativeChatBackgroundTaskBlock>({
+    maxEntries: 128,
+    maxBytes: 1024 * 1024,
+    sizeOf: (block, key) => Buffer.byteLength(key) + Buffer.byteLength(JSON.stringify(block))
+  })
+
+  constructor(
+    private readonly journalItems: () => readonly AgentJournalRenderItem[],
+    private readonly toolTurn: (callId: string) => string | undefined
+  ) {}
+
+  translate(
+    updates: AcpBackgroundTaskUpdate[],
+    join: ProviderTimelineJoin,
+    replay = false
+  ): ProviderTimelineEvent[] {
+    return updates.map((update) => {
+      const { fallbackLabel, ...fields } = update
+      const previous = this.snapshots.get(update.taskId) ?? this.persisted(update.taskId)
+      const block: NativeChatBackgroundTaskBlock = {
+        type: 'background-task',
+        kind: 'unknown',
+        ...previous,
+        ...fields,
+        label: update.label ?? previous?.label ?? fallbackLabel ?? update.taskId,
+        // A historical launch proves no current liveness; explicit outcomes still settle it.
+        state:
+          replay && ['working', 'monitoring', 'waiting'].includes(update.state)
+            ? 'unverifiable'
+            : update.state
+      }
+      for (const key of ['label', 'summary', 'error', 'outputFile'] as const) {
+        const text = block[key]
+        if (text !== undefined) {
+          block[key] = boundInlineText(text, DEFAULT_JOURNAL_PAYLOAD_LIMITS).text
+        }
+      }
+      this.snapshots.set(block.taskId, block)
+      const turn = block.parentToolUseId
+        ? (this.toolTurn(block.parentToolUseId) ??
+          acpJournalToolTurn(this.journalItems(), block.parentToolUseId))
+        : undefined
+      return {
+        type: 'item.update',
+        item: `background-task:${block.taskId}`,
+        body: backgroundTaskJournalBody(block),
+        join: { ...join, ...(turn === undefined ? {} : { turn }) }
+      }
+    })
+  }
+
+  private persisted(taskId: string): NativeChatBackgroundTaskBlock | undefined {
+    for (const row of this.journalItems()) {
+      if (row.body.kind !== 'message') {
+        continue
+      }
+      const block = row.body.blocks.find(
+        (candidate) => isBackgroundTaskBlock(candidate) && candidate.taskId === taskId
+      )
+      if (block && isBackgroundTaskBlock(block)) {
+        return block
+      }
+    }
+    return undefined
+  }
+}

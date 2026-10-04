@@ -10,7 +10,12 @@ import type { JournalRow } from './journal-row-schema'
 
 const NOTHING_RESOLVED = new Error('journal_item_resolved_to_nothing')
 
-export type JournalResolvedItem = { identity: AgentJournalItemIdentity; body: AgentJournalItemBody }
+export type JournalResolvedItem = {
+  identity: AgentJournalItemIdentity
+  body: AgentJournalItemBody
+  /** Replaces the call's options when only the fold could say where the row belongs. */
+  options?: JournalItemAppendOptions
+}
 
 export class JournalItemAppender {
   constructor(
@@ -48,7 +53,7 @@ export class JournalItemAppender {
           this.deps.state,
           resolved.identity,
           resolved.body,
-          options
+          resolved.options ?? options
         )(seq, ts)
       })
       .then(
