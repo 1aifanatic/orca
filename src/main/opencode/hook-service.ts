@@ -7,10 +7,9 @@ import {
   readFileSync,
   readdirSync,
   realpathSync,
-  statSync,
-  writeFileSync
+  statSync
 } from 'node:fs'
-import { isSafeDescendCandidate, mirrorEntry, safeRemoveOverlay } from '../pty/overlay-mirror'
+import { isSafeDescendCandidate, mirrorEntry } from '../pty/overlay-mirror'
 import {
   getOpenCode2PluginSource,
   getOpenCodeFamilyPluginSource,
@@ -18,7 +17,8 @@ import {
 } from './status-plugin-module-source'
 import {
   readOpenCodeOverlayManifest,
-  OPENCODE_OVERLAY_MANIFEST_FILE,
+  clearOpenCodeOverlayManifestEntries,
+  writeOpenCodeOverlayManifest,
   type OpenCodeOverlayManifest
 } from './opencode-overlay-manifest'
 import { resolveOpenCodeConfigDirectory } from '../../shared/opencode-config-directory'
@@ -229,32 +229,11 @@ export class OpenCodeHookService {
     )
   }
 
-  private writeOverlayManifest(overlayDir: string, manifest: OpenCodeOverlayManifest): void {
-    writeFileSync(
-      join(overlayDir, OPENCODE_OVERLAY_MANIFEST_FILE),
-      `${JSON.stringify(manifest, null, 2)}\n`
-    )
-  }
-
-  private clearManifestEntries(overlayDir: string, manifest: OpenCodeOverlayManifest): void {
-    for (const entryName of manifest.topLevelEntries) {
-      safeRemoveOverlay(join(overlayDir, entryName), overlayDir)
-    }
-
-    const overlayPluginsDir = join(overlayDir, 'plugins')
-    for (const entryName of manifest.pluginEntries) {
-      if (entryName === this.pluginFileName) {
-        continue
-      }
-      safeRemoveOverlay(join(overlayPluginsDir, entryName), overlayPluginsDir)
-    }
-  }
-
   // Why: mirror user config entries as symlinks so edits propagate live; only plugins/ becomes a real overlay dir so Orca can drop a sibling plugin file.
   private mirrorUserConfig(sourceDir: string, overlayDir: string): void {
     const previousManifest = readOpenCodeOverlayManifest(overlayDir)
     // Why: overlays persist across terminals; remove only Orca-mirrored paths so stale user config clears but OpenCode runtime dirs (node_modules) survive.
-    this.clearManifestEntries(overlayDir, previousManifest)
+    clearOpenCodeOverlayManifestEntries(overlayDir, previousManifest, this.pluginFileName)
 
     const nextManifest: OpenCodeOverlayManifest = {
       topLevelEntries: [],
@@ -307,7 +286,7 @@ export class OpenCodeHookService {
       nextManifest.topLevelEntries.push(entry.name)
     }
 
-    this.writeOverlayManifest(overlayDir, nextManifest)
+    writeOpenCodeOverlayManifest(overlayDir, nextManifest)
   }
 
   private writePluginIntoOverlay(overlayDir: string): void {
