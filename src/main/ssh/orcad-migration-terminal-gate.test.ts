@@ -1,13 +1,20 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { SshRemotePtyLease } from '../../shared/ssh-types'
 import {
   assessOrcadMigrationTerminals,
-  confirmOrcadMigrationTerminalsUnderFence
+  confirmOrcadMigrationTerminalsUnderFence,
+  type ListRelayPtyIds
 } from './orcad-migration-terminal-gate'
 
 function store(leases: Pick<SshRemotePtyLease, 'ptyId' | 'state'>[]) {
   const full = leases.map((lease) => ({ ...lease, targetId: 'ssh-1', createdAt: 1, updatedAt: 1 }))
   return { getSshRemotePtyLeases: () => full }
+}
+
+function relay(current: string[] | null, previous: string[] | null): ListRelayPtyIds {
+  const list: ListRelayPtyIds = async () => current
+  list.previous = async () => previous
+  return list
 }
 
 describe('migration terminal gate', () => {
@@ -21,10 +28,50 @@ describe('migration terminal gate', () => {
     ).resolves.toEqual({ verdict: 'exited', provenPtyIds: ['a'] })
   })
 
-  it.each(['attached', 'detached'] as const)('blocks a %s lease as live', async (state) => {
+  it('blocks an attached lease as live', async () => {
     await expect(
-      assessOrcadMigrationTerminals(store([{ ptyId: 'a', state }]), 'ssh-1', async () => [])
+      assessOrcadMigrationTerminals(
+        store([{ ptyId: 'a', state: 'attached' }]),
+        'ssh-1',
+        async () => []
+      )
     ).resolves.toMatchObject({ verdict: 'live', ptyIds: ['a'] })
+  })
+
+  it('proves a detached terminal exited once this relay and earlier relays both answer without it', async () => {
+    const leases = store([{ ptyId: 'a', state: 'detached' }])
+    const markSshRemotePtyLease = vi.fn()
+
+    await expect(
+      assessOrcadMigrationTerminals({ ...leases, markSshRemotePtyLease }, 'ssh-1', relay([], []))
+    ).resolves.toEqual({ verdict: 'exited', provenPtyIds: ['a'] })
+    expect(markSshRemotePtyLease).toHaveBeenCalledWith('ssh-1', 'a', 'terminated')
+  })
+
+  it('blocks a detached terminal an earlier relay still runs as live', async () => {
+    await expect(
+      assessOrcadMigrationTerminals(
+        store([{ ptyId: 'a', state: 'detached' }]),
+        'ssh-1',
+        relay([], ['a'])
+      )
+    ).resolves.toMatchObject({ verdict: 'live', ptyIds: ['a'] })
+  })
+
+  it.each([
+    ['this relay did not answer', relay(null, [])],
+    ['earlier relays could not be asked (Windows, no census, unreachable)', relay([], null)],
+    ['no earlier-relay lister', async () => []]
+  ])('keeps a detached lease unverifiable when %s', async (_label, list) => {
+    const markSshRemotePtyLease = vi.fn()
+    await expect(
+      assessOrcadMigrationTerminals(
+        { ...store([{ ptyId: 'a', state: 'detached' }]), markSshRemotePtyLease },
+        'ssh-1',
+        list
+      )
+    ).resolves.toMatchObject({ verdict: 'unverifiable', ptyIds: ['a'] })
+    expect(markSshRemotePtyLease).not.toHaveBeenCalled()
   })
 
   it('blocks terminals the relay still runs even with no lease for them', async () => {

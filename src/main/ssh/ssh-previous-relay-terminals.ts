@@ -30,8 +30,20 @@ export type PreviousRelayCensusInput = {
 }
 
 const MAX_CENSUS_ENDPOINTS = 32
-type PreviousRelayCensus = { endpoints: string[]; nodePath?: string }
+/** `complete` only when the census ran on a host whose older endpoints can be enumerated. */
+type PreviousRelayCensus = { endpoints: string[]; nodePath?: string; complete: boolean }
 const censusByTarget = new Map<string, Promise<PreviousRelayCensus>>()
+
+/** Windows pipes are not enumerable (see the superseded sweep), so those hosts keep today's path. */
+function canCensusPreviousRelays(input: PreviousRelayCensusInput): boolean {
+  return Boolean(
+    input.hostPlatform &&
+    !isWindowsRemoteHost(input.hostPlatform) &&
+    input.remoteHome &&
+    input.remoteRelayDir &&
+    input.nodePath
+  )
+}
 
 /** An older relay that holds nothing, or is gone, cannot be running this target's terminals. */
 export function mayHoldTerminals(incumbent: RelayEndpointIncumbent): boolean {
@@ -45,11 +57,13 @@ export async function censusPreviousRelays(
   input: PreviousRelayCensusInput
 ): Promise<string[]> {
   const { hostPlatform, remoteHome, remoteRelayDir, nodePath, sockPath } = input
-  // Windows pipes are not enumerable (see the superseded sweep), so those hosts keep today's path.
-  if (!hostPlatform || isWindowsRemoteHost(hostPlatform) || !remoteHome || !remoteRelayDir) {
-    return []
-  }
-  if (!nodePath) {
+  if (
+    !canCensusPreviousRelays(input) ||
+    !hostPlatform ||
+    !remoteHome ||
+    !remoteRelayDir ||
+    !nodePath
+  ) {
     return []
   }
   const listing = await execCommand(
@@ -86,7 +100,11 @@ export function startPreviousRelayCensus(
   input: PreviousRelayCensusInput
 ): void {
   const census = censusPreviousRelays(conn, targetId, input).then(
-    (endpoints) => ({ endpoints, nodePath: input.nodePath }),
+    (endpoints) => ({
+      endpoints,
+      nodePath: input.nodePath,
+      complete: canCensusPreviousRelays(input)
+    }),
     (error: unknown) => {
       // A census that could not run leaves the reattach on today's path, which never kills anything.
       console.warn(
@@ -94,7 +112,7 @@ export function startPreviousRelayCensus(
           error instanceof Error ? error.message : String(error)
         }`
       )
-      return { endpoints: [] }
+      return { endpoints: [], complete: false }
     }
   )
   censusByTarget.set(targetId, census)
@@ -102,7 +120,7 @@ export function startPreviousRelayCensus(
 
 /** This deploy's census, with the node it ran under, which can also run an older bridge. */
 export function previousRelayCensus(targetId: string): Promise<PreviousRelayCensus> {
-  return censusByTarget.get(targetId) ?? Promise.resolve({ endpoints: [] })
+  return censusByTarget.get(targetId) ?? Promise.resolve({ endpoints: [], complete: false })
 }
 
 export async function previousRelayMayHoldTerminals(targetId: string): Promise<boolean> {

@@ -19,6 +19,7 @@ import {
   clearPreviousRelayCensus,
   isReattachHeldByPreviousRelay,
   mayHoldTerminals,
+  previousRelayCensus,
   startPreviousRelayCensus
 } from './ssh-previous-relay-terminals'
 
@@ -126,5 +127,27 @@ describe('previous relay terminals', () => {
     execCommand.mockRejectedValue(new Error('channel closed'))
     startPreviousRelayCensus(conn, 'target-1', deployed)
     await expect(isReattachHeldByPreviousRelay('target-1', notFound)).resolves.toBe(false)
+  })
+
+  it('marks a census complete only when it ran on a host it can enumerate', async () => {
+    await expect(previousRelayCensus('target-1')).resolves.toMatchObject({ complete: false })
+
+    execCommand.mockResolvedValue('')
+    startPreviousRelayCensus(conn, 'target-1', deployed)
+    await expect(previousRelayCensus('target-1')).resolves.toEqual({
+      endpoints: [],
+      nodePath: deployed.nodePath,
+      complete: true
+    })
+
+    startPreviousRelayCensus(conn, 'target-1', {
+      ...deployed,
+      hostPlatform: getRemoteHostPlatform('win32-x64')
+    })
+    await expect(previousRelayCensus('target-1')).resolves.toMatchObject({ complete: false })
+
+    execCommand.mockRejectedValue(new Error('channel closed'))
+    startPreviousRelayCensus(conn, 'target-1', deployed)
+    await expect(previousRelayCensus('target-1')).resolves.toMatchObject({ complete: false })
   })
 })

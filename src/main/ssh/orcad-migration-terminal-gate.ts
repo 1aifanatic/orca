@@ -10,10 +10,16 @@ export type OrcadMigrationTerminalVerdict =
   | { verdict: 'exited'; provenPtyIds: string[] }
   | { verdict: 'live' | 'unverifiable'; ptyIds: string[]; reason: string }
 
-/** The relay's own process list for the target; `null` when it did not answer. */
-export type ListRelayPtyIds = () => Promise<string[] | null>
+/**
+ * The relay's own process list for the target; `null` when it did not answer. `previous` asks the
+ * relays an earlier Orca build left running the same way, `null` when they cannot be asked.
+ */
+export type ListRelayPtyIds = (() => Promise<string[] | null>) & {
+  previous?: () => Promise<string[] | null>
+}
 
-type LeaseStore = Pick<Store, 'getSshRemotePtyLeases'>
+type LeaseStore = Pick<Store, 'getSshRemotePtyLeases'> &
+  Partial<Pick<Store, 'markSshRemotePtyLease'>>
 
 /** Taken before the fence, while the relay can still be asked. */
 export async function assessOrcadMigrationTerminals(
@@ -22,16 +28,11 @@ export async function assessOrcadMigrationTerminals(
   listRelayPtyIds: ListRelayPtyIds | null
 ): Promise<OrcadMigrationTerminalVerdict> {
   const leases = store.getSshRemotePtyLeases(targetId)
-  const live = leases.filter((lease) => lease.state === 'attached' || lease.state === 'detached')
-  if (live.length > 0) {
-    return refuse('live', live, 'terminals on this host are still running')
+  const attached = leases.filter((lease) => lease.state === 'attached')
+  if (attached.length > 0) {
+    return refuse('live', attached, 'terminals on this host are still running')
   }
-  let relayPtyIds: string[] | null
-  try {
-    relayPtyIds = listRelayPtyIds ? await listRelayPtyIds() : null
-  } catch {
-    relayPtyIds = null
-  }
+  const relayPtyIds = await ask(listRelayPtyIds)
   if (relayPtyIds && relayPtyIds.length > 0) {
     return {
       verdict: 'live',
@@ -39,12 +40,35 @@ export async function assessOrcadMigrationTerminals(
       reason: 'the SSH relay still runs terminals on this host'
     }
   }
+  // A detached terminal may run on this relay or on one an earlier build left; both must answer.
+  const detached = leases.filter((lease) => lease.state === 'detached')
+  if (detached.length > 0) {
+    const previousPtyIds = relayPtyIds ? await ask(listRelayPtyIds?.previous) : null
+    if (previousPtyIds === null) {
+      return refuse('unverifiable', detached, 'Orca could not confirm its terminals here exited')
+    }
+    const held = new Set(previousPtyIds)
+    const running = detached.filter((lease) => held.has(lease.ptyId))
+    if (running.length > 0) {
+      return refuse('live', running, 'an earlier Orca relay still runs terminals on this host')
+    }
+  }
   // An expired lease lost its owner without an exit record; only the relay can rule it out.
   const expired = leases.filter((lease) => lease.state === 'expired')
   if (expired.length > 0 && relayPtyIds === null) {
     return refuse('unverifiable', expired, 'the SSH relay could not confirm expired terminals')
   }
+  // Proven gone, so the lease no longer claims a running terminal anywhere that reads it.
+  detached.forEach((lease) => store.markSshRemotePtyLease?.(targetId, lease.ptyId, 'terminated'))
   return { verdict: 'exited', provenPtyIds: leases.map((lease) => lease.ptyId) }
+}
+
+async function ask(list: (() => Promise<string[] | null>) | null | undefined) {
+  try {
+    return list ? await list() : null
+  } catch {
+    return null
+  }
 }
 
 /**

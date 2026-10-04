@@ -42,4 +42,14 @@ describe('the terminal gate asking a relay what it still runs', () => {
   it('has no lister without a connected relay session', () => {
     expect(orcadMigrationRelayPtyLister(TARGET)).toBeNull()
   })
+
+  it("asks earlier-build relays in the leases' spelling, keeping an unknown answer null", async () => {
+    const provider = { listProcesses: async () => [] }
+    const held = orcadMigrationRelayPtyLister(TARGET, provider, Date.now, async () => [
+      toAppSshPtyId(TARGET, 'pty-old')
+    ])
+    expect(await held?.previous?.()).toEqual(['pty-old'])
+    const unknown = orcadMigrationRelayPtyLister(TARGET, provider, Date.now, async () => null)
+    expect(await unknown?.previous?.()).toBeNull()
+  })
 })

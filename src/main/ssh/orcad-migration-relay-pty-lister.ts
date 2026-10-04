@@ -10,6 +10,7 @@ import { getSshPtyProvider } from '../ipc/pty/provider/registry'
 import type { IPtyProvider } from '../providers/types'
 import { toRelaySshPtyId } from '../providers/ssh-pty-id'
 import type { ListRelayPtyIds } from './orcad-migration-terminal-gate'
+import { listPreviousRelayPtyIds } from './ssh-legacy-relay-routing'
 
 /** Long enough for a Windows relay's first process-table read, short enough to block a click. */
 export const ORCAD_MIGRATION_RELAY_LIST_BUDGET_MS = 10_000
@@ -18,15 +19,20 @@ export const ORCAD_MIGRATION_RELAY_LIST_BUDGET_MS = 10_000
 export function orcadMigrationRelayPtyLister(
   targetId: string,
   provider: Pick<IPtyProvider, 'listProcesses'> | undefined = getSshPtyProvider(targetId),
-  now: () => number = Date.now
+  now: () => number = Date.now,
+  listPrevious: (targetId: string) => Promise<string[] | null> = listPreviousRelayPtyIds
 ): ListRelayPtyIds | null {
   if (!provider) {
     return null
   }
-  return async () => {
+  const list: ListRelayPtyIds = async () => {
     const processes = await provider.listProcesses({
       deadlineMs: now() + ORCAD_MIGRATION_RELAY_LIST_BUDGET_MS
     })
     return processes.map((process) => toRelaySshPtyId(targetId, process.id))
   }
+  // Earlier-build relays answer through their own bridge, POSIX only; null keeps the gate blocked.
+  list.previous = async () =>
+    (await listPrevious(targetId))?.map((id) => toRelaySshPtyId(targetId, id)) ?? null
+  return list
 }

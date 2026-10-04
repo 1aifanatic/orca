@@ -23,6 +23,7 @@ type RouteEntry = {
 
 export class SshLegacyRelayRouter implements SshPtyLegacyRelayRouting {
   private readonly routes = new Map<string, RouteEntry>()
+  private readonly disposeListeners = new Set<() => void>()
   private disposed = false
 
   constructor(private readonly options: SshLegacyRelayRouterOptions) {}
@@ -45,6 +46,25 @@ export class SshLegacyRelayRouter implements SshPtyLegacyRelayRouting {
       }
     }
     return null
+  }
+
+  /**
+   * Every PTY the older relays still run, for the migration terminal gate. Null when one of them
+   * could not be asked: an unreachable or non-bridgeable relay is unverifiable, never empty.
+   */
+  async listHeld(): Promise<string[] | null> {
+    const held: string[] = []
+    for (const sockPath of await this.options.endpoints()) {
+      const route = await this.route(sockPath)
+      if (!route || this.disposed) {
+        return null
+      }
+      held.push(...route.heldPtyIds())
+      if (!route.servesAny) {
+        route.close('legacy-relay-listed-for-terminal-gate')
+      }
+    }
+    return held
   }
 
   /** Releases a pane whose attach through the route did not complete. */
@@ -75,8 +95,13 @@ export class SshLegacyRelayRouter implements SshPtyLegacyRelayRouting {
     return providers
   }
 
+  onDispose(listener: () => void): void {
+    this.disposeListeners.add(listener)
+  }
+
   dispose(): void {
     this.disposed = true
+    this.disposeListeners.forEach((listener) => listener())
     for (const { route } of this.routes.values()) {
       route?.close('legacy-relay-router-disposed')
     }

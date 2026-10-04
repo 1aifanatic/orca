@@ -23,6 +23,7 @@ export type OrcadMigrationRetirementStore = Pick<
   | 'flushPendingOrThrowAsync'
   | 'getSshRemotePtyLeases'
   | 'getSshTarget'
+  | 'removeSshPtyConsumerRecovery'
   | 'removeSshRemotePtyLease'
   | 'retireOrcadMigrationSourceCatalog'
 >
@@ -64,6 +65,8 @@ export async function retireOrcadMigrationSource(
     }
     context.store.retireOrcadMigrationSourceCatalog(cutover.manifest)
     retireProvenLeases(context.store, cutover)
+    // The relay consumer's recovery record would only re-dial a relay this host no longer runs.
+    await context.store.removeSshPtyConsumerRecovery(cutover.sshTargetId)
     await context.store.flushPendingOrThrowAsync({
       signal: context.signal,
       drainToStableGeneration: false

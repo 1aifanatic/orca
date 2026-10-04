@@ -4,6 +4,23 @@ import { SshLegacyRelayRoute, type LegacyRelayRouteSink } from './ssh-legacy-rel
 import { SshLegacyRelayRouter } from './ssh-legacy-relay-router'
 import { previousRelayCensus } from './ssh-previous-relay-terminals'
 
+const routersByTarget = new Map<string, SshLegacyRelayRouter>()
+
+/**
+ * The PTYs this target's earlier-build relays still run. Null when that cannot be known: no census
+ * for an enumerable host (Windows never has one), no router, or an older relay that did not answer.
+ */
+export async function listPreviousRelayPtyIds(targetId: string): Promise<string[] | null> {
+  const census = await previousRelayCensus(targetId)
+  if (!census.complete) {
+    return null
+  }
+  if (census.endpoints.length === 0) {
+    return []
+  }
+  return (await routersByTarget.get(targetId)?.listHeld()) ?? null
+}
+
 /** The router a target's provider consults for PTYs only an earlier build's relay still runs. */
 export function createSshLegacyRelayRouter(args: {
   targetId: string
@@ -12,7 +29,7 @@ export function createSshLegacyRelayRouter(args: {
   sink: LegacyRelayRouteSink
 }): SshLegacyRelayRouter {
   const { targetId } = args
-  return new SshLegacyRelayRouter({
+  const router = new SshLegacyRelayRouter({
     targetId,
     endpoints: async () => (await previousRelayCensus(targetId)).endpoints,
     openRoute: async (sockPath) => {
@@ -32,4 +49,11 @@ export function createSshLegacyRelayRouter(args: {
       })
     }
   })
+  routersByTarget.set(targetId, router)
+  router.onDispose(() => {
+    if (routersByTarget.get(targetId) === router) {
+      routersByTarget.delete(targetId)
+    }
+  })
+  return router
 }
