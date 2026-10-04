@@ -22,6 +22,7 @@ import { LAYOUT_SOURCE } from './mobile-web-app-terminal-probe-route.mjs'
  */
 
 const ROUTE = `/${MOBILE_WEB_APP_ROUTE_ROOT}/working-spinner-probe`
+// Only samples from 1.3 s on are asserted; the earlier two show the first turn in a failure.
 const SAMPLE_SECONDS = [0.3, 0.7, 1.3, 1.8, 2.4]
 const bundles = mobileWebAppDependenciesPresent()
 const describeRender = bundles ? describe : describe.skip

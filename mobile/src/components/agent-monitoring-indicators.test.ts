@@ -85,6 +85,11 @@ describe('mobile monitoring indicators', () => {
     })
 
     expect(animationTiming).toHaveBeenCalledOnce()
+    // Native keeps the native driver; only the web page opts out.
+    expect(animationTiming).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ useNativeDriver: true })
+    )
     expect(animationLoop).toHaveBeenCalledOnce()
   })
 
