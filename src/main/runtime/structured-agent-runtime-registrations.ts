@@ -24,6 +24,7 @@ import type { createStructuredAgentSessionDispatchFollowUps } from './structured
 import type { StructuredAgentSessionRuntimeDeps } from './structured-agent-session-runtime'
 import type { createStructuredAgentEnvironmentResolvers } from './structured-agent-shell-environment'
 import { createStructuredClaudeRuntimeAdapter } from './structured-claude-runtime-adapter'
+import { resolveStructuredEnvAccountHomePath } from './structured-agent-account-home'
 import { ACP_LAUNCH_SPECS, type AcpLaunchSpec } from '../acp/acp-launch-specs'
 import { acpStructuredAgentDefinition } from '../acp/acp-structured-agent-definitions'
 import { spawnAcpStructuredChild } from '../acp/acp-structured-child'
@@ -51,6 +52,9 @@ export type StructuredAgentRuntimeAdapter = StructuredAgentSessionAdapter & {
 export type StructuredAgentRuntimeRegistration = {
   definition: StructuredAgentDefinition
   createAdapter: (context: StructuredAgentAdapterContext) => StructuredAgentRuntimeAdapter
+  /** Where a new chat of this agent finds its account on this runtime's machine. Absent: the
+   *  runtime resolves it itself (Claude and Codex, which need its account services). */
+  resolveAccountHomePath?: (input: { launchEnv: NodeJS.ProcessEnv }) => string
 }
 
 function createCodexAdapter(context: StructuredAgentAdapterContext): StructuredAgentRuntimeAdapter {
@@ -117,6 +121,12 @@ function createClaudeAdapter(
 function acpRegistration(spec: AcpLaunchSpec): StructuredAgentRuntimeRegistration {
   return {
     definition: acpStructuredAgentDefinition(spec),
+    resolveAccountHomePath: ({ launchEnv }) =>
+      resolveStructuredEnvAccountHomePath({
+        launchEnv,
+        variable: spec.accountHomeVariable,
+        defaultPath: spec.defaultAccountHome
+      }),
     createAdapter: (context) => {
       const { deps, store, followUps } = context
       return new AcpStructuredSessionAdapter({
@@ -149,6 +159,16 @@ export const STRUCTURED_AGENT_RUNTIME_REGISTRATIONS: readonly StructuredAgentRun
     { definition: CLAUDE_STRUCTURED_AGENT, createAdapter: createClaudeAdapter },
     ...ACP_LAUNCH_SPECS.map(acpRegistration)
   ]
+
+export function structuredAgentRuntimeRegistration(
+  agent: string
+): StructuredAgentRuntimeRegistration | null {
+  return (
+    STRUCTURED_AGENT_RUNTIME_REGISTRATIONS.find(
+      (registration) => registration.definition.agent === agent
+    ) ?? null
+  )
+}
 
 /** What the record store admits: exactly the registered agents' declared storage. */
 export const STRUCTURED_AGENT_STORAGE: AgentSessionStoredAgents = agentSessionStoredAgents(

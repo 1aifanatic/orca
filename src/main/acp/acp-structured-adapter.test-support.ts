@@ -99,9 +99,10 @@ export type AcpAdapterRig = {
   spawned: string[]
   lifecycle: StructuredAgentSessionLifecycleEvent[]
   settled: Parameters<NonNullable<AcpStructuredSessionAdapterDeps['onDispatchSettledLate']>>[0][]
-  acquire(options?: { fence?: number; onSpawned?: () => Promise<void> }): ReturnType<
-    AcpStructuredSessionAdapter['acquire']
-  >
+  acquire(options?: {
+    fence?: number
+    onSpawned?: () => Promise<void>
+  }): ReturnType<AcpStructuredSessionAdapter['acquire']>
   /** Frames Orca wrote to the agent with this method. */
   sent(method: string): FakeFrame[]
   /** Waits for the `index`th frame Orca writes with this method. */
@@ -148,7 +149,9 @@ export async function openAcpAdapterRig(
       })
       const opened = { sessionId: PROVIDER_SESSION, configOptions: GROK_CONFIG_OPTIONS }
       agent.on('session/new', (frame) => agent.reply(frame, opened))
-      agent.on('session/load', (frame) => agent.reply(frame, { configOptions: GROK_CONFIG_OPTIONS }))
+      agent.on('session/load', (frame) =>
+        agent.reply(frame, { configOptions: GROK_CONFIG_OPTIONS })
+      )
       options.script?.(agent)
       return child
     },

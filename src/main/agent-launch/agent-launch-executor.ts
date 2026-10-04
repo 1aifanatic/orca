@@ -240,7 +240,7 @@ async function createSurface(
   settled: AgentLaunchModeReceipt
 ): Promise<CreatedSurface> {
   const { intent, surfaces } = execution
-  if (settled.mode === 'structured' && isStructuredProvider(intent.agent)) {
+  if (settled.mode === 'structured') {
     // One reservation serves either route: the tab half of the reserved pane is the chat's tab.
     const reservedTabId = intent.paneKey ? parsePaneKey(intent.paneKey)?.tabId : undefined
     const session = await surfaces.createStructuredSession({
@@ -342,10 +342,6 @@ function combineLaunchWarnings(
     return create ?? surface
   }
   return `${create} Also ${surface[0].toLowerCase()}${surface.slice(1)}`
-}
-
-function isStructuredProvider(agent: TuiAgent): agent is 'claude' | 'codex' {
-  return agent === 'claude' || agent === 'codex'
 }
 
 function existingWorktreeId(target: AgentLaunchTarget): string {

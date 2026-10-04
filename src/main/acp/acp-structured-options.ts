@@ -8,6 +8,9 @@ import type {
   AgentSessionOptionsResult,
   AgentSessionSlashCommand
 } from '../../shared/agent-session-wire'
+import { isAcpStructuredOptionKey } from './acp-structured-agent-definitions'
+import { AcpRpcError } from './acp-errors'
+import type { AcpSessionRuntime } from './acp-session-runtime'
 import {
   SessionConfigSelectGroupSchema,
   SessionConfigSelectOptionSchema,
@@ -153,4 +156,39 @@ export class AcpStructuredOptions {
     )
     return option && isSelect(option) ? option : null
   }
+}
+
+/** Re-applies the chat's saved picks to the agent's new session; a pick it refuses is skipped and
+ *  reported, never retried. */
+export async function restoreAcpSessionOptions(
+  runtime: Pick<AcpSessionRuntime, 'setConfigOption' | 'setModel'>,
+  options: AcpStructuredOptions,
+  saved: Readonly<Record<string, string>> | undefined
+): Promise<string[]> {
+  const skipped: string[] = []
+  for (const [key, value] of Object.entries(saved ?? {})) {
+    const reported = options.reported()
+    if (!isAcpStructuredOptionKey(key) || reported[key] === value) {
+      continue
+    }
+    const write = options.write(key, value)
+    try {
+      if (write?.method === 'config') {
+        options.adoptConfigOptions(
+          (await runtime.setConfigOption(write.configId, value)).configOptions
+        )
+      } else if (write?.method === 'model') {
+        await runtime.setModel(write.modelId)
+        options.adoptModel(write.modelId)
+      } else {
+        skipped.push(key)
+      }
+    } catch (error) {
+      if (!(error instanceof AcpRpcError)) {
+        throw error
+      }
+      skipped.push(key)
+    }
+  }
+  return skipped
 }

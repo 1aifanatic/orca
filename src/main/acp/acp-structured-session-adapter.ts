@@ -151,6 +151,9 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
   readOptions = async (input: { sessionId: string; fence: number }) =>
     this.live(input.sessionId).options.read()
 
+  readOptionRestoreFailures = (sessionId: string): readonly string[] =>
+    this.sessions.get(sessionId)?.restoreSkipped ?? []
+
   readCommands = (sessionId: string) => this.sessions.get(sessionId)?.options.readCommands()
 
   holdsDispatch = (sessionId: string): boolean =>

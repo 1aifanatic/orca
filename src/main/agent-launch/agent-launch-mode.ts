@@ -25,6 +25,7 @@ import type {
 } from '../../shared/agent-launch-intent'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { RUNTIME_CAPABILITIES } from '../../shared/protocol-version'
+import { STRUCTURED_AGENT_STORAGE } from '../runtime/structured-agent-runtime-registrations'
 import {
   prefersStructuredNativeChatByDefault,
   resolveStructuredNativeChatSupport,
@@ -82,6 +83,8 @@ export type AgentLaunchModePlacement = {
    *  requested `cwd` cannot be proven to name the root and is read as custom. */
   workspacePath?: string
 }
+
+const REGISTERED_STRUCTURED_AGENTS: readonly string[] = [...STRUCTURED_AGENT_STORAGE.keys()]
 
 const DOWNGRADE_DETAIL: Record<Exclude<AgentLaunchModeReason, 'user_default'>, string> = {
   remote_execution_host: 'this launch runs on a remote execution host',
@@ -144,13 +147,15 @@ export function decideAgentLaunchMode(args: {
   if (placement.on) {
     return downgraded('remote_execution_host', vocabulary)
   }
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: an unrecognized agent name is handled rather than trusted; isAgentSessionHandleProvider rejects it and the launch downgrades to a terminal.
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: an unrecognized agent name is handled rather than trusted; the registered-agent check rejects it and the launch downgrades to a terminal.
   const agent = placement.agent as TuiAgent
   const support = resolveStructuredNativeChatSupport({
     agent,
     executionHostId: 'local',
     reusesTerminal: Boolean(placement.terminal),
     hostCapabilities: RUNTIME_CAPABILITIES,
+    // This host is the one that will run the agent, so its own registrations answer.
+    hostStructuredAgents: REGISTERED_STRUCTURED_AGENTS,
     // The floating workspace has nowhere to keep a session, so it is decided here rather than left
     // to the host probe below, which cannot answer for a workspace with no record. WSL still is:
     // the create-support probe reads the resolved workspace rather than guessing from a
@@ -201,7 +206,7 @@ async function readStructuredCreateSupport(
   worktreeId: string,
   agent: TuiAgent | undefined
 ): Promise<{ supported: boolean; reason?: 'agent' | 'remote' | 'wsl' } | null> {
-  if (agent !== 'claude' && agent !== 'codex') {
+  if (!agent || !REGISTERED_STRUCTURED_AGENTS.includes(agent)) {
     return { supported: false, reason: 'agent' }
   }
   try {

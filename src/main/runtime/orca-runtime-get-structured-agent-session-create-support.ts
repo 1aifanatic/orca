@@ -20,6 +20,7 @@ import {
 import { resolveStructuredLaunchSeedOptions } from '../../shared/native-chat-session-option-defaults'
 import { hasPersistedStructuredAgentSessionStore as hasPersistedStructuredAgentSessionStoreOnDisk } from './structured-agent-session-runtime'
 import { ensureStructuredAgentSessionHostUnlessRefused } from './structured-agent-session-host-refusal'
+import { structuredAgentRuntimeRegistration } from './structured-agent-runtime-registrations'
 import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
 import { parseWslUncPath } from '../../shared/wsl-paths'
 import { parseWorkspaceKey } from '../../shared/workspace-scope'
@@ -64,7 +65,7 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
   }
 
   /** Where a launch of `agent` finds its account, resolved on this host; null for an agent with no
-   *  resolver here, whose create is refused. Claude and Codex are the agents with one today. */
+   *  resolver here, whose create is refused. Every other registered agent brings its own. */
   protected structuredAgentAccountHomePathResolver(
     agent: StructuredAgentId,
     worktree: string,
@@ -100,7 +101,10 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
         })
       }
     }
-    return null
+    const resolveAccountHomePath = structuredAgentRuntimeRegistration(agent)?.resolveAccountHomePath
+    return resolveAccountHomePath
+      ? async ({ launchEnv }) => resolveAccountHomePath({ launchEnv })
+      : null
   }
 
   /** The definition the installed host registered for `agent`: what its account home pins. */

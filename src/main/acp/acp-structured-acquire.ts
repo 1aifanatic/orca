@@ -24,7 +24,7 @@ import type { AcpStructuredChild } from './acp-structured-child'
 import { ACP_HANDLE_TRANSPORT } from './acp-structured-agent-definitions'
 import { AcpStructuredLane } from './acp-structured-lane'
 import type { AcpStructuredLaunch } from './acp-structured-launch-resolution'
-import { AcpStructuredOptions } from './acp-structured-options'
+import { AcpStructuredOptions, restoreAcpSessionOptions } from './acp-structured-options'
 import { AcpStructuredPrompts } from './acp-structured-prompts'
 import { routeAcpSessionEvent, type AcpStructuredSession } from './acp-structured-session'
 import type { AcpStructuredSessionAdapterDeps } from './acp-structured-session-adapter-deps'
@@ -190,6 +190,7 @@ export async function acquireAcpStructuredSession(input: {
     }
     options.adoptSession(started.response)
     liveLane.apply(liveLane.translator.contextModels(started.response.models, now()))
+    const restoreSkipped = await restoreAcpSessionOptions(runtime, options, acquire.options)
     const process = await identity.read(child.pid)
     const link: AgentSessionProviderHandleLink = {
       linkId:
@@ -217,6 +218,7 @@ export async function acquireAcpStructuredSession(input: {
         now,
         settle: input.onSettled
       }),
+      restoreSkipped,
       closeRequested: false,
       ended: false,
       exitObservedAt: null

@@ -23,6 +23,8 @@ export type AcpStructuredSession = {
   prompts: AcpStructuredPrompts
   options: AcpStructuredOptions
   turns: AcpStructuredTurns
+  /** Saved picks the agent refused when this child started. */
+  restoreSkipped: readonly string[]
   /** Orca asked this child to stop; its exit is then a requested close. */
   closeRequested: boolean
   ended: boolean

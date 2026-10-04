@@ -317,7 +317,12 @@ describe('ACP structured session adapter: close and exit', () => {
 
 describe('Grok launch spec', () => {
   it('never self-updates and asks for always-approve only with full access', () => {
-    expect(GROK.args({ fullAccess: false })).toEqual(['--no-auto-update', 'agent', '--no-leader', 'stdio'])
+    expect(GROK.args({ fullAccess: false })).toEqual([
+      '--no-auto-update',
+      'agent',
+      '--no-leader',
+      'stdio'
+    ])
     expect(GROK.args({ fullAccess: true })).toEqual([
       '--no-auto-update',
       'agent',
