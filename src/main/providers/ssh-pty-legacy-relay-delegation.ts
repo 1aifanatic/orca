@@ -47,7 +47,7 @@ export function installSshPtyLegacyRelayDelegation(
     hasPty: provider.hasPty,
     getAppliedSize: provider.getAppliedSize
   }
-  const routed = routing.providerFor
+  const routed = (id: string): SshPtyProvider | undefined => routing.providerFor(id)
 
   provider.dispose = () => {
     routing.dispose()

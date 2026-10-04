@@ -4,6 +4,7 @@ import { SshPtyProvider } from './ssh-pty-provider'
 import type { SshChannelMultiplexer } from '../ssh/ssh-channel-multiplexer'
 import { createMockMux, type MockMultiplexer } from './ssh-pty-provider-mock-multiplexer'
 import type { SshPtyLegacyRelayRouting } from './ssh-pty-legacy-relay-delegation'
+import { SshLegacyRelayRouter } from '../ssh/ssh-legacy-relay-router'
 
 const HELD = 'ssh:target-1@@pty2:old:1'
 const CURRENT = 'ssh:target-1@@pty2:new:1'
@@ -127,5 +128,24 @@ describe('SshPtyProvider delegation to an earlier build relay', () => {
     const { provider, routing } = setup()
     provider.dispose()
     expect(routing.dispose).toHaveBeenCalled()
+  })
+
+  it('reads a class router through its own instance, as the session installs it', () => {
+    const currentMux = createMockMux()
+    const provider = new SshPtyProvider('target-1', asMux(currentMux), undefined, 7)
+    provider.setLegacyRelayRouting(
+      new SshLegacyRelayRouter({
+        targetId: 'target-1',
+        endpoints: async () => [],
+        openRoute: async () => null
+      })
+    )
+
+    provider.acknowledgeDataEvent(CURRENT, 32)
+
+    expect(currentMux.notify).toHaveBeenCalledWith('pty.ackData', {
+      id: 'pty2:new:1',
+      charCount: 32
+    })
   })
 })
