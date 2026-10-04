@@ -21,7 +21,9 @@ class OpenCodeSqliteScanScope implements WorkerThreadRequestOwner {
     if (this.outstanding++ === 0) {
       this.armedAt = Date.now()
       this.timer = setTimeout(() => {
-        const error = new Error('OpenCode SQLite scan exceeded its 45s work budget')
+        const error = new Error(
+          `OpenCode SQLite scan exceeded its ${OPENCODE_SQLITE_SCAN_BUDGET_MS / 1000}s work budget`
+        )
         error.name = 'OpenCodeSqliteScanDeadlineError'
         this.controller.abort(error)
       }, this.remainingMs)
