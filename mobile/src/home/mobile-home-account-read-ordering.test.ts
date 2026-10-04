@@ -117,3 +117,27 @@ it('preserves last-good Home money on an ordinary request failure', async () => 
   expect(f.accounts().host).toEqual(f.original)
   f.dispose()
 })
+
+it.each([
+  undefined,
+  null,
+  { error: 'refused' },
+  { ok: false, error: 'inner refused' },
+  { ok: false, error: { message: 'inner refused' } }
+])('does not publish or retire Home money for an invalid result %j', async (result) => {
+  const f = fixture()
+  try {
+    const before = f.accounts()
+    f.read()
+    f.replies[0]!({ id: 'invalid', ok: true, result })
+    await vi.waitFor(() => expect(f.states.size).toBe(1))
+    expect(f.accounts()).toBe(before)
+    expect(f.accounts().other).toBe(f.original)
+    f.read()
+    f.replies[1]!({ id: 'recovery', ok: true, result: f.original })
+    await vi.waitFor(() => expect(f.states.size).toBe(1))
+    expect(f.accounts().host).toEqual(f.original)
+  } finally {
+    f.dispose()
+  }
+})

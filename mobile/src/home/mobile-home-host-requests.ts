@@ -1,5 +1,6 @@
 import { settingsRead } from '../transport/settings-read-operations'
 import { getHostAccountEvidence } from '../accounts/host-account-evidence'
+import { isHostAccountResult } from '../accounts/host-account-result'
 import { decodeAccountsSnapshot, type AccountsSnapshot } from '../components/AccountUsage'
 import type { HomeStatsRow } from '../stats/home-stats-total'
 import { taskLinearStatusRead, taskPreflightRead } from '../tasks/mobile-task-runtime-operations'
@@ -63,7 +64,13 @@ export function fetchMobileHomeAccounts(
   request
     .then((reply) => {
       const accounts = homeHostAccountsRead.interpret(reply)
-      if (!retired && !disposed() && accounts.accepted && read.accept()) {
+      if (
+        !retired &&
+        !disposed() &&
+        accounts.accepted &&
+        isHostAccountResult(accounts.value) &&
+        read.accept()
+      ) {
         try {
           const snapshot = decodeAccountsSnapshot(accounts.value)
           setSnapshots((previous) => ({ ...previous, [hostId]: snapshot }))

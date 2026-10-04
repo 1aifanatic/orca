@@ -3,6 +3,8 @@ import { decodeAccountsSnapshot, type AccountsSnapshot } from '../components/Acc
 import type { RpcClient } from '../transport/rpc-client'
 import type { ConnectionState } from '../transport/types'
 import { getHostAccountEvidence } from './host-account-evidence'
+import { homeHostAccountsRead } from '../home/mobile-home-host-operations'
+import { isHostAccountResult } from './host-account-result'
 
 export function useHostAccountsRefresh({
   client,
@@ -28,18 +30,19 @@ export function useHostAccountsRefresh({
     setRefreshing(true)
     let read: ReturnType<typeof accountEvidence.read> | undefined
     try {
-      const request = client.sendRequest('accounts.list')
+      const request = homeHostAccountsRead.request(client)
       read = accountEvidence.read(request)
       const res = await request
       if (!read.isCurrent()) {
         return
       }
-      if (res.ok) {
-        if (!read.accept()) {
+      const accounts = homeHostAccountsRead.interpret(res)
+      if (accounts.accepted) {
+        if (!isHostAccountResult(accounts.value) || !read.accept()) {
           return
         }
-        onSnapshot(decodeAccountsSnapshot(res.result))
-      } else {
+        onSnapshot(decodeAccountsSnapshot(accounts.value))
+      } else if (!res.ok) {
         onError(res.error.message)
       }
     } catch (e) {

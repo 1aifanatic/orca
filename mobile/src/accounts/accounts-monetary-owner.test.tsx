@@ -271,3 +271,74 @@ it('retires malformed current Accounts list evidence and recovers on a valid ref
   await act(async () => refresh())
   expect(paint()).toContain('22.2200')
 })
+
+it.each([
+  { ok: true },
+  { ok: true, result: null },
+  { ok: true, result: { error: 'refused' } },
+  { ok: true, result: { ok: false, error: 'inner refused' } },
+  { ok: true, result: { ok: false, error: { message: 'inner refused' } } }
+])('preserves Accounts money and presentation for an invalid envelope %j', async (reply) => {
+  await mount()
+  emit(boundary.streams[0]!, '11.1100')
+  const before = paint()
+  const refresh = renderer?.root.findByType(ScrollView).props.refreshControl.props.onRefresh
+  boundary.request.mockResolvedValue(reply)
+  await act(async () => refresh())
+  expect(paint()).toBe(before)
+  boundary.request.mockResolvedValue({ ok: true, result: balance('22.2200') })
+  await act(async () => refresh())
+  expect(paint()).toContain('22.2200')
+})
+
+it.each(['response-error', 'rejection'] as const)(
+  'preserves current Accounts money after an ordinary %s',
+  async (kind) => {
+    await mount()
+    emit(boundary.streams[0]!, '11.1100')
+    const refresh = renderer?.root.findByType(ScrollView).props.refreshControl.props.onRefresh
+    if (kind === 'response-error') {
+      boundary.request.mockResolvedValue({
+        ok: false,
+        error: { code: 'runtime_error', message: 'ordinary failure' }
+      })
+    } else {
+      boundary.request.mockRejectedValue(new Error('ordinary failure'))
+    }
+    await act(async () => refresh())
+    expect(paint()).toContain('11.1100')
+    expect(paint()).not.toContain('Invalid accounts snapshot from host')
+  }
+)
+
+it('does not let a newer missing Accounts result retire an older valid read', async () => {
+  await mount()
+  emit(boundary.streams[0]!, '11.1100')
+  const replies: Array<(reply: unknown) => void> = []
+  boundary.request.mockImplementation(() => new Promise((resolve) => replies.push(resolve)))
+  const refresh = renderer?.root.findByType(ScrollView).props.refreshControl.props.onRefresh
+  act(() => {
+    void refresh()
+    void refresh()
+  })
+  await act(async () => replies[1]!({ ok: true }))
+  expect(paint()).toContain('11.1100')
+  await act(async () => replies[0]!({ ok: true, result: balance('22.2200') }))
+  expect(paint()).toContain('22.2200')
+})
+
+it('accepts an account snapshot with unknown envelope-like extension fields', async () => {
+  await mount()
+  emit(boundary.streams[0]!, '11.1100')
+  const refresh = renderer?.root.findByType(ScrollView).props.refreshControl.props.onRefresh
+  const snapshot = balance('22.2200')
+  if (!snapshot || typeof snapshot !== 'object') {
+    throw new Error('Expected a snapshot fixture object')
+  }
+  boundary.request.mockResolvedValue({
+    ok: true,
+    result: { ...snapshot, ok: false, error: 'future host metadata' }
+  })
+  await act(async () => refresh())
+  expect(paint()).toContain('22.2200')
+})
