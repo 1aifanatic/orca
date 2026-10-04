@@ -4,6 +4,7 @@ import type { StructuredAgentSessionOutboxEntry } from '../../../shared/structur
 import type { StructuredAgentSessionResumeSource } from '../../../shared/structured-agent-session-create'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
 import type { ExecutionHostId } from '../../../shared/execution-host'
+import type { StructuredLaunchAttempt } from './structured-agent-session-launch-request'
 
 export type StructuredAgentLaunchOptions = {
   prompt?: string
@@ -24,15 +25,14 @@ export type StructuredLaunchCaller = {
 
 export type StructuredLaunchCallerGroup = {
   outcome: 'pending' | 'published' | 'failed' | 'unknown' | 'cancelled'
-  /** 'retry': a Retry or re-check of a chat that already exists, not a new start's own create. */
-  attempt: 'first' | 'retry'
+  attempt: StructuredLaunchAttempt
   entries: Set<StructuredLaunchCaller>
   promptDeliveryResults: Set<Promise<StructuredPromptDeliveryResult>>
   onSettled: () => void
 }
 
 export function createStructuredLaunchCallerGroup(
-  attempt: StructuredLaunchCallerGroup['attempt']
+  attempt: StructuredLaunchAttempt
 ): StructuredLaunchCallerGroup {
   return {
     outcome: 'pending',

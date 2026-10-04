@@ -291,12 +291,12 @@ describe('a new start beside an unconfirmed or retried chat', () => {
     await expect(pick.launchResult).resolves.toEqual({ sessionId: fresh.sessionId, fence: 1 })
   })
 
-  it('still coalesces two new starts racing for one chat', async () => {
+  it('still coalesces a repeat of one request racing for one chat', async () => {
     mocks.createIntent.mockReturnValueOnce(fresh)
     mocks.launch.mockImplementationOnce(() => new Promise(() => undefined))
 
     const first = startStructuredAgentLaunch(WORKTREE_ID, 'codex', { prompt: 'one' })
-    const second = startStructuredAgentLaunch(WORKTREE_ID, 'codex', { prompt: 'two' })
+    const second = startStructuredAgentLaunch(WORKTREE_ID, 'codex', { prompt: 'one' })
 
     expect(second.sessionId).toBe(first.sessionId)
     expect(mocks.createIntent).toHaveBeenCalledOnce()

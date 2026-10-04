@@ -17,6 +17,7 @@ import {
 } from '../../../../shared/tui-agent-selection'
 import { translate } from '@/i18n/i18n'
 import { useStructuredAgentLaunchStatus } from '@/lib/structured-agent-session-launch'
+import { structuredLaunchRequest } from '@/lib/structured-agent-session-launch-request'
 
 export type QuickLaunchAgentMenuItemsProps = {
   worktreeId: string
@@ -119,10 +120,11 @@ function QuickLaunchAgentMenuItemsInner({
   const openSettingsTarget = useAppStore((s) => s.openSettingsTarget)
   const newAgentShortcut = useOptionalShortcutLabel('tab.newAgent')
   // One hook per structured provider: the launch registry is keyed by agent, and hooks cannot run
-  // inside the agent list's render loop.
+  // inside the agent list's render loop. Only a start of this menu's own request is joined.
+  const launchRequest = structuredLaunchRequest({ prompt, promptDelivery })
   const structuredLaunchStatusByAgent = {
-    claude: useStructuredAgentLaunchStatus(worktreeId, 'claude'),
-    codex: useStructuredAgentLaunchStatus(worktreeId, 'codex')
+    claude: useStructuredAgentLaunchStatus(worktreeId, 'claude', launchRequest),
+    codex: useStructuredAgentLaunchStatus(worktreeId, 'codex', launchRequest)
   }
 
   const openAgentSettings = useCallback(() => {

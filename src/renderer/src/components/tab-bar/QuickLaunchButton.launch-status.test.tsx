@@ -4,6 +4,11 @@ import type { ReactNode } from 'react'
 import { cleanup, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { StructuredLaunchState } from '@/lib/structured-agent-session-launch-registry'
+import {
+  BLANK_STRUCTURED_LAUNCH_REQUEST,
+  structuredLaunchRequest,
+  type StructuredLaunchAttempt
+} from '@/lib/structured-agent-session-launch-request'
 
 vi.mock('@/hooks/useDetectedAgents', () => ({
   useDetectedAgents: () => ({ detectedIds: ['claude', 'codex'] })
@@ -56,7 +61,11 @@ const WORKTREE_ID = 'worktree-1'
 function registerLaunch(
   agent: 'claude' | 'codex',
   outcome: 'pending' | 'failed',
-  attempt: 'first' | 'retry' = 'first'
+  attempt: StructuredLaunchAttempt = {
+    kind: 'first',
+    request: BLANK_STRUCTURED_LAUNCH_REQUEST,
+    stagedEntry: null
+  }
 ): void {
   const sessionId = `${agent}-session`
   setStructuredLaunchState({
@@ -125,7 +134,7 @@ describe('QuickLaunchAgentMenuItems launch status', () => {
   // A pick then opens a new chat; only a new start's own create would be joined.
   it("keeps an agent launchable while a failed chat's Retry is in flight", () => {
     registerLaunch('claude', 'pending')
-    registerLaunch('codex', 'pending', 'retry')
+    registerLaunch('codex', 'pending', { kind: 'retry' })
 
     render(
       <QuickLaunchAgentMenuItems
@@ -137,5 +146,31 @@ describe('QuickLaunchAgentMenuItems launch status', () => {
 
     expect(agentRowDisabled('Claude')).toBe('true')
     expect(agentRowDisabled('Codex')).toBe('false')
+  })
+
+  // A pick joins only a start of the same request; any other opens its own chat.
+  it('disables an agent only for the request its starting chat carries', () => {
+    registerLaunch('codex', 'pending', {
+      kind: 'first',
+      request: structuredLaunchRequest({ prompt: 'review notes' }),
+      stagedEntry: null
+    })
+    const menu = (prompt?: string) => (
+      <QuickLaunchAgentMenuItems
+        worktreeId={WORKTREE_ID}
+        groupId="group-1"
+        onFocusTerminal={vi.fn()}
+        {...(prompt ? { prompt } : {})}
+      />
+    )
+
+    render(menu())
+    expect(agentRowDisabled('Codex')).toBe('false')
+    cleanup()
+    render(menu('other notes'))
+    expect(agentRowDisabled('Codex')).toBe('false')
+    cleanup()
+    render(menu('review notes'))
+    expect(agentRowDisabled('Codex')).toBe('true')
   })
 })
