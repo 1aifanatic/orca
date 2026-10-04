@@ -96,7 +96,7 @@ describePosix('daemon shell-ready bash wrapper', () => {
     })
     expect(result.error).toBeUndefined()
     expect(result.status).toBe(0)
-    expect(result.stdout.replace(/\x1b\]133;C\x07/g, '').trim()).toBe(expectedLauncher)
+    expect(result.stdout.split('\x1b]133;C\x07').join('').trim()).toBe(expectedLauncher)
   })
 
   // Why: regression guard for issue #2422 — bash wrapper must emit OSC 133 C/D so SSH sessions clear stale 'working' agent rows.
