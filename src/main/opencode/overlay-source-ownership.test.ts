@@ -6,6 +6,11 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { inspectSourceDirectory, resolveOwnedOverlaySource } from './overlay-source-ownership'
 import { sourceOverlayDirName } from './overlay-dir-names'
 
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...actual, lstat: vi.fn(actual.lstat) }
+})
+
 let root: string
 beforeEach(() => {
   root = realpathSync(mkdtempSync(join(tmpdir(), 'orca-overlay-source-')))
@@ -26,7 +31,7 @@ it('distinguishes a missing source from an inaccessible source and a linked ance
   symlinkSync(source, join(root, 'link'), process.platform === 'win32' ? 'junction' : 'dir')
   expect(await inspectSourceDirectory(join(root, 'link', 'missing'))).toBe('unverifiable')
   const error = Object.assign(new Error('Denied'), { code: 'EACCES' })
-  vi.spyOn(filesystem, 'lstat').mockRejectedValueOnce(error)
+  vi.mocked(filesystem.lstat).mockRejectedValueOnce(error)
   expect(await inspectSourceDirectory(source)).toBe('unverifiable')
 })
 
