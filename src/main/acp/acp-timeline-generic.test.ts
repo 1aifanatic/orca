@@ -4,8 +4,7 @@ import { contextTokensFromUsage } from '../../shared/agent-session-context-usage
 import {
   closeProviderTimelineRigs,
   messageText,
-  openProviderTimelineRig,
-  providerItemId
+  openProviderTimelineRig
 } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
 import type { ProviderTimelineEvent } from '../native-chat/agent-session-timeline/provider-timeline-event'
 import { AcpTimelineTranslator, acpTurnEnd } from './acp-timeline-translator'
@@ -101,7 +100,9 @@ describe('generic ACP translation', () => {
     // A settled journal row refuses a late provider update that says it is running again.
     update({ sessionUpdate: 'tool_call_update', toolCallId: 'tool-1', status: 'in_progress' })
     apply(translator.promptResult('send-1', { stopReason: 'end_turn' }, 1200))
-    const body = (await rig.row(providerItemId('item', 'tool:tool-1')))?.body
+    const body = (await rig.rows()).find(
+      (row) => row.body.kind === 'tool-call' && row.body.callId === 'tool-1'
+    )?.body
     expect(body).toMatchObject({
       name: 'edit_file',
       state: 'completed',
@@ -323,7 +324,11 @@ describe('generic ACP translation', () => {
     }
     update({ sessionUpdate: 'tool_call_update', toolCallId: 'active', status: 'failed' })
     apply(translator.promptResult('send-1', { stopReason: 'cancelled' }, 1200))
-    expect((await rig.row(providerItemId('item', 'tool:active')))?.body).toMatchObject({
+    expect(
+      (await rig.rows()).find(
+        (row) => row.body.kind === 'tool-call' && row.body.callId === 'active'
+      )?.body
+    ).toMatchObject({
       name: 'Active',
       input: { important: true },
       state: 'failed'

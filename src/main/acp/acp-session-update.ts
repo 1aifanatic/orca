@@ -19,7 +19,7 @@ export function acpSessionUpdate(
   replayUserBody?: AgentJournalMessageItem
 ): ProviderTimelineEvent[] {
   const update = notification.update
-  const join = turn === undefined ? {} : { join: { turn } }
+  const join = { join: { thread: notification.sessionId, ...(turn === undefined ? {} : { turn }) } }
   switch (update.sessionUpdate) {
     case 'agent_message_chunk':
     case 'agent_thought_chunk':
@@ -53,7 +53,7 @@ export function acpSessionUpdate(
         : []
     case 'tool_call':
     case 'tool_call_update':
-      return tools.translate(update, dialect, turn)
+      return tools.translate(update, dialect, join.join)
     case 'plan':
       return [
         {

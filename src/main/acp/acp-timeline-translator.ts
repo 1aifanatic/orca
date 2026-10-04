@@ -69,7 +69,12 @@ export class AcpTimelineTranslator {
     const turn = `prompt:${clientMessageId}`
     this.prompt = { turn }
     return [
-      { type: 'input.accepted', clientMessageId, requestedAt: at, join: { turn } },
+      {
+        type: 'input.accepted',
+        clientMessageId,
+        requestedAt: at,
+        join: { thread: this.options.sessionId, turn }
+      },
       { type: 'turn.open', turn, at }
     ]
   }
@@ -84,14 +89,14 @@ export class AcpTimelineTranslator {
       this.dialect.promptUsage?.(result, at) ??
       (result.usage ? acpResponseUsage(result.usage, at) : undefined)
     const events: ProviderTimelineEvent[] = usage
-      ? [{ type: 'context.usage', usage, join: { turn } }]
+      ? [{ type: 'context.usage', usage, join: { thread: this.options.sessionId, turn } }]
       : []
     if (!['end_turn', 'cancelled'].includes(result.stopReason)) {
       events.push({
         type: 'provider.frame',
         frameKind: `prompt:${result.stopReason}`,
         payload: result,
-        join: { turn }
+        join: { thread: this.options.sessionId, turn }
       })
     }
     events.push(
@@ -184,7 +189,9 @@ export class AcpTimelineTranslator {
       substantive || extension?.end !== undefined,
       isReplay
     )
-    const join = turn === undefined ? {} : { join: { turn } }
+    const join = {
+      join: { thread: this.options.sessionId, ...(turn === undefined ? {} : { turn }) }
+    }
     if (extension?.usage) {
       events.push({ type: 'context.usage', usage: extension.usage, ...join })
     }
@@ -243,9 +250,10 @@ export class AcpTimelineTranslator {
       method === 'session/request_permission'
         ? acpPermissionPresentation(params)
         : this.dialect.request?.(method, params)
+    const join = { thread: this.options.sessionId }
     if (!presentation) {
       return {
-        events: [{ type: 'provider.frame', frameKind: `request:${method}`, payload: params }]
+        events: [{ type: 'provider.frame', frameKind: `request:${method}`, payload: params, join }]
       }
     }
     return {
@@ -254,7 +262,8 @@ export class AcpTimelineTranslator {
         {
           type: 'request.open',
           request: `${method}:${JSON.stringify(id)}`,
-          body: presentation.body
+          body: presentation.body,
+          join
         }
       ]
     }

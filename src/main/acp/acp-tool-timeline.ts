@@ -6,7 +6,10 @@ import {
   boundToolInput,
   DEFAULT_JOURNAL_PAYLOAD_LIMITS
 } from '../native-chat/agent-session-journal/journal-payload-bounds'
-import type { ProviderTimelineEvent } from '../native-chat/agent-session-timeline/provider-timeline-event'
+import type {
+  ProviderTimelineEvent,
+  ProviderTimelineJoin
+} from '../native-chat/agent-session-timeline/provider-timeline-event'
 import type { AcpDialect } from './acp-dialects/acp-dialect'
 import type { ToolCallUpdate } from './generated/acp-protocol.generated'
 
@@ -71,7 +74,11 @@ export class AcpToolTimeline {
   private readonly tools = new Map<string, ToolSnapshot>()
   private bytes = 0
 
-  translate(update: ToolCallUpdate, dialect: AcpDialect, turn?: string): ProviderTimelineEvent[] {
+  translate(
+    update: ToolCallUpdate,
+    dialect: AcpDialect,
+    join: ProviderTimelineJoin
+  ): ProviderTimelineEvent[] {
     const previous = this.tools.get(update.toolCallId)
     const output = outputText(update)
     const state =
@@ -103,19 +110,17 @@ export class AcpToolTimeline {
           : {}
         : { output: boundPayload(output, DEFAULT_JOURNAL_PAYLOAD_LIMITS) })
     }
-    const joinedTurn = previous?.turn ?? turn
     const snapshot: ToolSnapshot = {
       body,
-      ...(joinedTurn === undefined ? {} : { turn: joinedTurn })
+      ...(join.turn === undefined ? {} : { turn: join.turn })
     }
     this.remember(update.toolCallId, snapshot)
-    const join = joinedTurn === undefined ? {} : { join: { turn: joinedTurn } }
     const events: ProviderTimelineEvent[] = [
       {
         type: state === 'running' ? (previous ? 'item.update' : 'item.open') : 'item.close',
         item: `tool:${update.toolCallId}`,
         body,
-        ...join
+        join
       }
     ]
     for (const content of update.content ?? []) {
@@ -131,14 +136,14 @@ export class AcpToolTimeline {
               DEFAULT_JOURNAL_PAYLOAD_LIMITS
             )
           },
-          ...join
+          join
         })
       } else if (content.type === 'terminal' || content.content.type !== 'text') {
         events.push({
           type: 'provider.frame',
           frameKind: `tool-content:${content.type}`,
           payload: content,
-          ...join
+          join
         })
       }
     }
