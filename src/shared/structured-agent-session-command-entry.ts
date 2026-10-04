@@ -70,6 +70,10 @@ export function structuredAgentSessionCommandResultRows(
 ): Set<string> {
   const ids = new Set<string>()
   for (const item of items) {
+    // Every result row is a status row; parsing only those keeps a long chat's scan cheap.
+    if (item.body.kind !== 'status') {
+      continue
+    }
     const identity = parseAgentJournalItemKey(item.itemId)
     if (identity?.provider === 'orca' && identity.clientMessageId.startsWith(COMMAND_RESULT_ROW)) {
       ids.add(identity.clientMessageId.slice(COMMAND_RESULT_ROW.length))
