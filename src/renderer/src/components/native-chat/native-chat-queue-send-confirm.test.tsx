@@ -230,6 +230,72 @@ describe('sending while the queue is held', () => {
     await waitFor(() => expect(input.contains(document.activeElement)).toBe(true))
   })
 
+  describe('a choice is taken once', () => {
+    /** The primitive's exit animation, which keeps the closing dialog mounted and clickable. */
+    function withExitAnimation(): () => void {
+      const style = document.createElement('style')
+      style.textContent =
+        '[role="dialog"][data-state="closed"] { animation-name: exit; animation-duration: 200ms; }'
+      document.head.appendChild(style)
+      return () => style.remove()
+    }
+
+    it('Send message pressed again while the dialog closes sends nothing more', async () => {
+      const removeAnimation = withExitAnimation()
+      try {
+        const structured = transport(heldQueue(1))
+        const input = renderComposer(structured)
+        changePrompt(input, 'once only')
+        await act(async () => pressEnter(input))
+        const sendButton = await screen.findByRole('button', { name: 'Send message' })
+        await act(async () => fireEvent.click(sendButton))
+        expect(document.body.contains(sendButton)).toBe(true)
+        await act(async () => fireEvent.click(sendButton))
+        await act(async () => {})
+        expect(structured.send).toHaveBeenCalledTimes(1)
+      } finally {
+        removeAnimation()
+      }
+    })
+
+    it('a double-click, or a held Enter, before any re-render sends once', async () => {
+      const structured = transport(heldQueue(1))
+      const input = renderComposer(structured)
+      changePrompt(input, 'once only')
+      await act(async () => pressEnter(input))
+      const sendButton = await screen.findByRole('button', { name: 'Send message' })
+      await act(async () => {
+        sendButton.click()
+        sendButton.click()
+      })
+      await act(async () => {})
+      expect(structured.send).toHaveBeenCalledTimes(1)
+    })
+
+    it('Clear queue pressed twice clears once and sends once', async () => {
+      const removeAnimation = withExitAnimation()
+      try {
+        const hold = heldQueue(2)
+        const structured = transport(hold)
+        const input = renderComposer(structured)
+        changePrompt(input, 'start over')
+        await act(async () => pressEnter(input))
+        const clearButton = await screen.findByRole('button', { name: 'Clear queue' })
+        await act(async () => {
+          clearButton.click()
+          clearButton.click()
+        })
+        await act(async () => fireEvent.click(clearButton))
+        await waitFor(() => expect(structured.send).toHaveBeenCalledTimes(1))
+        await act(async () => {})
+        expect(hold.clear).toHaveBeenCalledTimes(1)
+        expect(structured.send).toHaveBeenCalledTimes(1)
+      } finally {
+        removeAnimation()
+      }
+    })
+  })
+
   it('does not ask when the queue is not held, nor for a command the host runs itself', async () => {
     const free = transport()
     const input = renderComposer(free)

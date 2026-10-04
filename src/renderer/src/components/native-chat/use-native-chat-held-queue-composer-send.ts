@@ -43,6 +43,15 @@ export function useNativeChatHeldQueueComposerSend(args: UseNativeChatStructured
   const queueHold = structuredTransport?.queueHold
   const [pending, setPending] = useState<PendingSend | null>(null)
   const [open, setOpen] = useState(false)
+  // The send a choice may still take, taken once: the closing dialog stays clickable for its exit
+  // animation, and a double-click or a held Enter lands twice before any re-render.
+  const untakenRef = useRef<PendingSend | null>(null)
+  const take = useCallback((): PendingSend | null => {
+    const taken = untakenRef.current
+    untakenRef.current = null
+    setOpen(false)
+    return taken
+  }, [])
   // Clear queue sends once its deletes settle, through the send of that render.
   const sendNowRef = useRef(sendNow)
   useLayoutEffect(() => {
@@ -56,7 +65,9 @@ export function useNativeChatHeldQueueComposerSend(args: UseNativeChatStructured
         structuredTransport &&
         !isNativeChatStructuredHostCommand(text, agent, structuredTransport)
       ) {
-        setPending({ text, attachments, count: queueHold.count, clear: queueHold.clear })
+        const asked = { text, attachments, count: queueHold.count, clear: queueHold.clear }
+        untakenRef.current = asked
+        setPending(asked)
         setOpen(true)
         return
       }
@@ -66,23 +77,25 @@ export function useNativeChatHeldQueueComposerSend(args: UseNativeChatStructured
   )
 
   const sendMessage = useCallback(() => {
-    setOpen(false)
-    if (pending) {
-      sendNowRef.current(pending.text, pending.attachments)
+    const taken = take()
+    if (taken) {
+      sendNowRef.current(taken.text, taken.attachments)
     }
-  }, [pending])
+  }, [take])
   const clearQueue = useCallback(() => {
-    setOpen(false)
-    if (!pending) {
+    const taken = take()
+    if (!taken) {
       return
     }
-    void pending.clear().then((cleared) => {
+    void taken.clear().then((cleared) => {
       if (cleared) {
-        sendNowRef.current(pending.text, pending.attachments)
+        sendNowRef.current(taken.text, taken.attachments)
       }
     })
-  }, [pending])
-  const dismiss = useCallback(() => setOpen(false), [])
+  }, [take])
+  const dismiss = useCallback(() => {
+    take()
+  }, [take])
 
   const confirm = pending ? { open, count: pending.count, clearQueue, sendMessage, dismiss } : null
   return { send, confirm }

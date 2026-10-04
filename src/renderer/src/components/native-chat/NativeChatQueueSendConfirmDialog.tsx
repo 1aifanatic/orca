@@ -32,7 +32,7 @@ export function NativeChatQueueSendConfirmDialog({
       }}
     >
       <DialogContent
-        className="max-w-sm"
+        className="max-w-sm sm:max-w-sm"
         showCloseButton={false}
         onCloseAutoFocus={(event) => {
           event.preventDefault()

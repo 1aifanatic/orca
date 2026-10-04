@@ -169,6 +169,21 @@ describe("the header row's pause", () => {
   })
 })
 
+describe('Clear queue before a new message', () => {
+  it('one failed press is one toast, however many cards it held', async () => {
+    mocks.call.mockRejectedValue(new Error('socket closed'))
+    const { result } = renderController({
+      queuedMessages: [card('a'), card('b', { position: 2 }), card('c', { position: 3 })]
+    })
+    let cleared: boolean | undefined
+    await act(async () => {
+      cleared = await result.current.queueHold?.clear()
+    })
+    expect(cleared).toBe(false)
+    expect(mocks.toastError).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('Resume on a held queue', () => {
   it('calls queuedMessagesResume with only an envelope, and says nothing when it lands', async () => {
     mocks.call.mockResolvedValue(RESUMED)

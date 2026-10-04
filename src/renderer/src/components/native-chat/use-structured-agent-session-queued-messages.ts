@@ -215,11 +215,16 @@ export function useStructuredAgentSessionQueuedMessages(args: {
     () => (ownSendOnItsWay ? null : queuedMessagesQueuePause(cards)),
     [cards, ownSendOnItsWay]
   )
-  // Every card shown, held or not: Clear queue empties the list the person sees.
-  const clear = useCallback(async (): Promise<boolean> => {
-    const removed = await Promise.all(cardsRef.current.map((card) => removeCard(card.messageId)))
-    return removed.every(Boolean)
-  }, [removeCard])
+  // Every card shown, held or not: Clear queue empties the list the person sees. One at a time,
+  // stopping at the first failure, so one failed press is one toast.
+  const clear = useCallback(
+    (): Promise<boolean> =>
+      cardsRef.current.reduce<Promise<boolean>>(
+        (previous, card) => previous.then((removed) => removed && removeCard(card.messageId)),
+        Promise.resolve(true)
+      ),
+    [removeCard]
+  )
   const count = cards.length
   const held = enabled && pause !== null
   const queueHold = useMemo(() => (held ? { count, clear } : undefined), [held, count, clear])
