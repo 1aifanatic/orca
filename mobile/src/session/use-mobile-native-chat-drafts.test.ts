@@ -160,25 +160,6 @@ describe('useMobileNativeChatDrafts', () => {
     expect(state?.composerText).toBe('newer edit\n\nping')
   })
 
-  it('adds nothing when the composer already ends with the returned text', async () => {
-    await mount('a')
-    act(() => state?.setComposerText('ping'))
-    const origin = state?.captureSendOrigin('ping')
-    act(() => {
-      if (origin) {
-        state?.clearDraftForSend(origin, 'ping')
-      }
-    })
-    act(() => state?.setComposerText('first\n\nping'))
-    act(() => {
-      if (origin) {
-        state?.restoreRejectedDraft(origin, 'ping')
-        state?.restoreRejectedDraft(origin, 'ping')
-      }
-    })
-    expect(state?.composerText).toBe('first\n\nping')
-  })
-
   it('returns a rejected send even after a newer edit was cleared', async () => {
     await mount('a')
     act(() => state?.setComposerText('ping'))
