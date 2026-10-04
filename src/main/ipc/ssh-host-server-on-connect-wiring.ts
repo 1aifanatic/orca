@@ -10,7 +10,6 @@ import {
   retainOrcadMigrationSource
 } from '../ssh/orcad-migration-source-retention'
 import { retireRetainedOrcadSourceChain } from '../ssh/orcad-retained-source-retirement'
-import { assessOrcadMigrationTerminals } from '../ssh/orcad-migration-terminal-gate'
 import { hasOrcadTemplate } from '../ssh/orcad-artifact-materializer'
 import { managedServerUpdateDeps } from '../ssh/managed-server-update-deps'
 import { ensureOrcadManagedTunnel } from '../ssh/orcad-managed-tunnel'
@@ -19,6 +18,11 @@ import { convertSshTargetToManagedOrcad } from '../ssh/orcad-runtime-conversion'
 import { orcadMigrationDestinationFor } from '../ssh/orcad-runtime-conversion-wiring'
 import { createManagedOrcadEnvironment } from '../ssh/orcad-runtime-deployment'
 import type { HostServerOnConnectDeps } from '../ssh/ssh-host-server-on-connect'
+import {
+  censusSshHostRelaysBeforeSession,
+  relayTerminalsOnConnect
+} from '../ssh/ssh-host-relay-terminals-on-connect'
+import { requireManagedOrcadInfrastructure } from '../ssh/orcad-managed-runtime-context'
 import { setSshHostServerStatus } from '../ssh/ssh-host-server-status'
 import { trackSshHostServerEvent } from '../ssh/ssh-host-server-telemetry'
 import { knownSshHostPlatform } from '../ssh/ssh-host-platform-memo'
@@ -83,16 +87,16 @@ export function hostServerOnConnectDeps(userDataPath: string): HostServerOnConne
           : undefined
       ).claimable
     },
-    relayTerminals: async (target) => {
-      const proof = await assessOrcadMigrationTerminals(
+    relayTerminals: (target) =>
+      relayTerminalsOnConnect({
         store,
-        target.id,
-        orcadMigrationRelayPtyLister(target.id)
-      )
-      return proof.verdict === 'exited'
-        ? { verdict: 'exited', count: 0 }
-        : { verdict: proof.verdict, count: proof.ptyIds.length }
-    },
+        targetId: target.id,
+        listRelayPtyIds: orcadMigrationRelayPtyLister(target.id),
+        censusHost: async () =>
+          censusSshHostRelaysBeforeSession(
+            await requireManagedOrcadInfrastructure().connectionManager.connect(target)
+          )
+      }),
     deploy: (target) =>
       createManagedOrcadEnvironment(userDataPath, {
         name: target.orcadProvisioning?.name ?? target.label,

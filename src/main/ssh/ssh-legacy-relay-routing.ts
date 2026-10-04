@@ -3,6 +3,7 @@ import { execCommand, waitForSentinel } from './ssh-relay-deploy-helpers'
 import { SshLegacyRelayRoute, type LegacyRelayRouteSink } from './ssh-legacy-relay-route'
 import { SshLegacyRelayRouter } from './ssh-legacy-relay-router'
 import { previousRelayCensus } from './ssh-previous-relay-terminals'
+import { readRelayDaemonRuntimes } from './ssh-relay-endpoint-runtime'
 
 const routersByTarget = new Map<string, SshLegacyRelayRouter>()
 
@@ -33,9 +34,14 @@ export function createSshLegacyRelayRouter(args: {
     targetId,
     endpoints: async () => (await previousRelayCensus(targetId)).endpoints,
     openRoute: async (sockPath) => {
-      const { nodePath } = await previousRelayCensus(targetId)
+      const census = await previousRelayCensus(targetId)
       const conn = args.connection()
-      if (!nodePath || !conn) {
+      if (!conn) {
+        return null
+      }
+      // An older relay may run on an older Node pin or host Node; its bridge must use that runtime.
+      const nodePath = (await readRelayDaemonRuntimes(conn)).get(sockPath) ?? census.nodePath
+      if (!nodePath) {
         return null
       }
       return await SshLegacyRelayRoute.open({
