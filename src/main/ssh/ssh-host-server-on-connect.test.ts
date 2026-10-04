@@ -30,6 +30,7 @@ function deps(overrides: Partial<HostServerOnConnectDeps> = {}): HostServerOnCon
     progress: vi.fn(),
     isFencedBeforeStaging: () => false,
     releaseUnreachableSetup: vi.fn(async () => undefined),
+    report: vi.fn(),
     ...overrides
   }
 }
@@ -187,7 +188,8 @@ describe('which server an SSH host runs on connect', () => {
     })
     await expect(resolveHostServerOnConnect(target, d)).resolves.toEqual({
       route: 'relay',
-      reason: 'failed'
+      reason: 'failed',
+      detail: 'Connection lost'
     })
     expect(d.recordUnavailable).not.toHaveBeenCalled()
     warn.mockRestore()

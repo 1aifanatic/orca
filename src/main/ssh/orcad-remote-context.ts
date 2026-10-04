@@ -17,6 +17,7 @@ import {
 } from './ssh-remote-platform'
 import { detectRemoteHostPlatform } from './ssh-remote-platform-detection'
 import { OrcadHostUnsupportedError } from './orcad-host-unavailable'
+import { rememberSshHostPlatform } from './ssh-host-platform-memo'
 
 export type OrcadRemoteContext = {
   activationRecord: OrcadActivationRecord
@@ -47,6 +48,7 @@ export async function resolveOrcadRemoteContext(
     throw new Error(`Remote home is not a valid path: ${remoteHome.slice(0, 100)}`)
   }
   const serverTarget = await resolveOrcadDeploymentTarget({ conn: connection, host, signal })
+  rememberSshHostPlatform(target.id, host, serverTarget)
   if (isWindowsRemoteHost(host)) {
     // Every Windows host op, the activation record read included, runs on the pinned node.exe.
     await prepareWindowsOrcadHost({ conn: connection, host, remoteHome, serverTarget, signal })

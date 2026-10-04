@@ -3,6 +3,7 @@
  * wherever the host allows it, and the stdio bridge where its sshd refuses forwarding.
  */
 import { OrcadStdioBridgePortForwardProvider } from './orcad-stdio-bridge-provider'
+import { rememberOrcadTunnelTransport } from './orcad-tunnel-transport-memo'
 import type { SshConnection } from './ssh-connection'
 import type {
   PortForwardStartOptions,
@@ -36,12 +37,16 @@ export class OrcadManagedTunnelTransportProvider implements SshPortForwardProvid
     const { forwards, stdio, probe } = this.dependencies
     // Why only on refusal: an unverifiable answer keeps the forward, as before this transport.
     if ((await probe(conn, options.remotePort)) === 'refused' && stdio.canHandle(conn)) {
-      return stdio.start(conn, options)
+      const started = await stdio.start(conn, options)
+      rememberOrcadTunnelTransport(options.connectionId, 'stdio_bridge')
+      return started
     }
     const forward = forwards.find((provider) => provider.canHandle(conn))
     if (!forward) {
       throw new Error('SSH connection is not established')
     }
-    return forward.start(conn, options)
+    const started = await forward.start(conn, options)
+    rememberOrcadTunnelTransport(options.connectionId, 'tcp_forward')
+    return started
   }
 }

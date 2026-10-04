@@ -7,6 +7,8 @@ export type SshHostServerStatusLine = {
   tone: 'muted' | 'warning' | 'destructive'
   /** Offers "Move to managed server", which restarts the live relay terminals. */
   action?: 'move'
+  /** Why setup stopped, with the host's orcad.log tail when there is one; shown on request. */
+  detail?: string
 }
 
 export function sshHostServerStatusLine(
@@ -156,6 +158,6 @@ function relayLine(
       }
     case 'deferred':
     case 'failed':
-      return retryLine()
+      return { ...retryLine(), ...(status.detail ? { detail: status.detail } : {}) }
   }
 }

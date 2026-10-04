@@ -23,6 +23,7 @@ import {
   type RemoteRuntimeUnavailableReason
 } from './ssh-relay-runtime-ladder'
 import type { PinnedRuntimeRefusal } from './ssh-relay-runtime-self-test'
+import { rememberSshHostPlatform } from './ssh-host-platform-memo'
 import type { RemoteHostPlatform } from './ssh-remote-platform'
 import type { HostNodeVersion } from './ssh-remote-node-toolchain-probe'
 import {
@@ -141,6 +142,7 @@ export class RelayRuntimeLadderRun {
 
   private track(rung: SshRemoteRuntimeRung, outcome: SshRemoteRuntimeOutcome): void {
     if (this.host) {
+      rememberSshHostPlatform(this.targetId, this.host, this.facts?.target ?? null)
       trackSshRemoteRuntimeResolved(this.targetId, {
         rung,
         outcome,

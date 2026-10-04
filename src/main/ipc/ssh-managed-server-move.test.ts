@@ -38,7 +38,8 @@ function deps(
       calls.push('connect')
       status = options.afterConnect ?? { kind: 'managed', environmentId: 'env-1' }
     }),
-    serverStatus: vi.fn(() => status)
+    serverStatus: vi.fn(() => status),
+    report: vi.fn()
   }
 }
 
@@ -51,6 +52,7 @@ describe('moving an SSH host to its managed server on request', () => {
     })
     expect(move.calls).toEqual(['terminate', 'census', 'connect'])
     expect(move.relayTerminals).toHaveBeenCalledWith(target)
+    expect(move.report).toHaveBeenCalledWith('ssh-1', 'moved')
   })
 
   it('refuses without converting when the stop could not reach every terminal', async () => {
@@ -61,6 +63,7 @@ describe('moving an SSH host to its managed server on request', () => {
       terminals: 1
     })
     expect(move.calls).toEqual(['terminate'])
+    expect(move.report).toHaveBeenCalledWith('ssh-1', 'refused_unverifiable')
   })
 
   it('refuses without converting when the census is unverifiable or still live', async () => {
@@ -78,11 +81,13 @@ describe('moving an SSH host to its managed server on request', () => {
       verdict: 'live'
     })
     expect(live.connect).not.toHaveBeenCalled()
+    expect(live.report).toHaveBeenCalledWith('ssh-1', 'refused_live')
   })
 
   it('reports a connect that kept the relay for another reason', async () => {
     const move = deps({ afterConnect: { kind: 'relay', reason: 'refused', detail: 'blocked' } })
     await expect(moveSshHostToManagedServer('ssh-1', move)).resolves.toEqual({ outcome: 'stayed' })
+    expect(move.report).toHaveBeenCalledWith('ssh-1', 'stayed')
   })
 
   it('reattaches the relay first when preserved terminals need one to be stopped', async () => {
@@ -101,5 +106,6 @@ describe('moving an SSH host to its managed server on request', () => {
     move.terminate.mockRejectedValueOnce(new Error('Failed to terminate SSH host sessions'))
     await expect(moveSshHostToManagedServer('ssh-1', move)).rejects.toThrow('Failed to terminate')
     expect(move.connect).not.toHaveBeenCalled()
+    expect(move.report).toHaveBeenCalledWith('ssh-1', 'failed')
   })
 })

@@ -15,6 +15,9 @@ import { orcadMigrationDestinationFor } from '../ssh/orcad-runtime-conversion-wi
 import { createManagedOrcadEnvironment } from '../ssh/orcad-runtime-deployment'
 import type { HostServerOnConnectDeps } from '../ssh/ssh-host-server-on-connect'
 import { setSshHostServerStatus } from '../ssh/ssh-host-server-status'
+import { trackSshHostServerEvent } from '../ssh/ssh-host-server-telemetry'
+import { knownSshHostPlatform } from '../ssh/ssh-host-platform-memo'
+import { knownOrcadTunnelTransport } from '../ssh/orcad-tunnel-transport-memo'
 import {
   getSshTargetRegistryStore,
   hasRegisteredDirectSshAuthority
@@ -117,6 +120,13 @@ export function hostServerOnConnectDeps(userDataPath: string): HostServerOnConne
       findOrcadMigrationSourceCutoverForTarget(userDataPath, target.id)?.phase === 'source-fenced',
     releaseUnreachableSetup: (target) =>
       releaseUnreachableOrcadSetup({ userDataPath, claims, targetId: target.id }),
+    // Read at report time: a deploy or conversion learns the platform while the decision runs.
+    report: (target, event) =>
+      trackSshHostServerEvent(
+        event,
+        knownSshHostPlatform(target.id),
+        knownOrcadTunnelTransport(target.id)
+      ),
     progress: (target, phase) => {
       setSshHostServerStatus(target.id, { kind: 'setting-up', phase })
       broadcastSshState(getCurrentMainWindow, target.id, {

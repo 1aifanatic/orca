@@ -109,11 +109,15 @@ type HostScript = {
   comparisonResult?: string
   candidateStopResult?: string
   readinessAtMs?: number
+  orcadLog?: string
 }
 
 function scriptHost(script: HostScript): void {
   mockExec.mockImplementation(async (_conn, command: string) => {
     const text = String(command)
+    if (text.startsWith('tail -c')) {
+      return script.orcadLog ?? ''
+    }
     if (text.includes('__ORCAD_RECORD_PRESENT__') && text.includes('orcad-active.json')) {
       return script.activationRecord
         ? `__ORCAD_RECORD_PRESENT__\n${script.activationRecord}`
@@ -504,11 +508,16 @@ describe('deployOrcad', () => {
     const script: HostScript = {
       activationRecord: ACTIVE_OLD,
       readiness: { [NEW_VERSION]: readyLine({ daemonState: 'degraded' }) },
-      log: []
+      log: [],
+      orcadLog: 'daemon: starting\ndaemon: socket bind failed: EACCES\n'
     }
     scriptHost(script)
     const result = await deployOrcad(options())
     expect(result).toMatchObject({ code: 'orcad_activation_daemon_degraded' })
+    // The error carries why the candidate failed, not only where its log is.
+    expect(result).toMatchObject({
+      reason: expect.stringMatching(/Last lines of orcad\.log:\ndaemon: starting\n.*EACCES$/u)
+    })
     expect(
       vi
         .mocked(writeAtomicOrcadRemoteRecord)

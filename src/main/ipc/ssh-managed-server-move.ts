@@ -12,6 +12,11 @@ import type {
 } from '../../shared/ssh-types'
 import type { HostServerTerminalVerdict } from '../ssh/ssh-host-server-on-connect'
 import { getSshHostServerStatus } from '../ssh/ssh-host-server-status'
+import {
+  trackSshHostServerMove,
+  type SshHostServerMoveOutcome
+} from '../ssh/ssh-host-server-telemetry'
+import { knownSshHostPlatform } from '../ssh/ssh-host-platform-memo'
 import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
 import { connectTarget } from './ssh-connect-flow'
 import { terminateSshTargetSessions } from './ssh-terminate-sessions'
@@ -22,11 +27,32 @@ export type SshManagedServerMoveDeps = {
   relayTerminals: (target: SshTarget) => Promise<HostServerTerminalVerdict>
   connect: (targetId: string) => Promise<unknown>
   serverStatus: (targetId: string) => SshManagedServerStatus | undefined
+  report: (targetId: string, outcome: SshHostServerMoveOutcome) => void
 }
 
 export async function moveSshHostToManagedServer(
   targetId: string,
   deps: SshManagedServerMoveDeps = defaultMoveDeps()
+): Promise<SshManagedServerMoveResult> {
+  let result: SshManagedServerMoveResult | null = null
+  try {
+    result = await moveHost(targetId, deps)
+    return result
+  } finally {
+    deps.report(targetId, moveOutcome(result))
+  }
+}
+
+function moveOutcome(result: SshManagedServerMoveResult | null): SshHostServerMoveOutcome {
+  if (!result) {
+    return 'failed'
+  }
+  return result.outcome === 'refused' ? `refused_${result.verdict}` : result.outcome
+}
+
+async function moveHost(
+  targetId: string,
+  deps: SshManagedServerMoveDeps
 ): Promise<SshManagedServerMoveResult> {
   const target = deps.getTarget(targetId)
   if (!target) {
@@ -74,6 +100,7 @@ function defaultMoveDeps(): SshManagedServerMoveDeps {
       return hostServerOnConnectDeps(getAppEnvironment().getPath('userData')).relayTerminals(target)
     },
     connect: connectTarget,
-    serverStatus: getSshHostServerStatus
+    serverStatus: getSshHostServerStatus,
+    report: (targetId, outcome) => trackSshHostServerMove(outcome, knownSshHostPlatform(targetId))
   }
 }

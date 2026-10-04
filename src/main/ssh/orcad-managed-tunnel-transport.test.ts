@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { OrcadManagedTunnelTransportProvider } from './orcad-managed-tunnel-transport'
+import { knownOrcadTunnelTransport } from './orcad-tunnel-transport-memo'
 import type { SshConnection } from './ssh-connection'
 import type {
   PortForwardStartOptions,
@@ -49,6 +50,7 @@ describe('the managed tunnel’s transport', () => {
     })
     expect(refused.stdio.start).toHaveBeenCalledWith(conn, options)
     expect(refused.forward.start).not.toHaveBeenCalled()
+    expect(knownOrcadTunnelTransport('ssh-1')).toBe('stdio_bridge')
   })
 
   it('keeps the forward when forwarding is allowed or the answer is unverifiable', async () => {
@@ -58,6 +60,7 @@ describe('the managed tunnel’s transport', () => {
         entry: { id: 'forward' }
       })
       expect(chosen.stdio.start).not.toHaveBeenCalled()
+      expect(knownOrcadTunnelTransport('ssh-1')).toBe('tcp_forward')
     }
   })
 })

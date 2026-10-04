@@ -12411,7 +12411,8 @@
           "terminalsLive": "Runs the relay until its {{count}} open terminals are closed, then moves to a managed server.",
           "terminalsUnverifiable": "Runs the relay: Orca couldn’t confirm its terminals are closed. It moves on a later connect.",
           "refused": "Not moved to a managed server: {{blocker}}",
-          "retry": "Runs the relay this session; it moves to a managed server on a later connect."
+          "retry": "Runs the relay this session; it moves to a managed server on a later connect.",
+          "failureDetails": "Details"
         },
         "ZcodePlanAccountsSection": {
           "site": {
