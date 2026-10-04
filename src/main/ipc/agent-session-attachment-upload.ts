@@ -2,6 +2,7 @@
 // the runtime socket, so it pumps the bytes into the server's attachment store and hands the
 // renderer only the server path.
 
+import { lstat } from 'node:fs/promises'
 import { basename } from 'node:path'
 import {
   AGENT_SESSION_ATTACHMENT_CHUNK_BYTES,
@@ -21,6 +22,15 @@ import { streamExternalFileSlices } from './runtime-upload-file-stream'
 import { formatByteCeiling } from './runtime-import-limits'
 
 const ATTACHMENT_CALL_TIMEOUT_MS = 30_000
+
+async function isDirectory(path: string): Promise<boolean> {
+  try {
+    return (await lstat(path)).isDirectory()
+  } catch {
+    // The stager reports a path it cannot read with its own reason.
+    return false
+  }
+}
 
 type UploadContext = AgentSessionAttachmentUploadTarget & {
   userDataPath: string
@@ -123,6 +133,11 @@ export async function uploadExternalPathsToAgentSessionAttachments(
   const result: AgentSessionAttachmentPathUploadResult = { uploaded: [], skipped: [], failed: [] }
   for (const sourcePath of paths) {
     context.signal?.throwIfAborted()
+    // Before staging, which would walk and open everything inside a folder only to skip it.
+    if (await isDirectory(sourcePath)) {
+      result.skipped.push({ sourcePath, reason: 'unsupported' })
+      continue
+    }
     const staged = await stageOneSourceForRuntimeUpload(sourcePath)
     if (staged.status === 'skipped') {
       result.skipped.push({ sourcePath, reason: staged.reason })

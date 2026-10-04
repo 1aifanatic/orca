@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -77,7 +77,8 @@ const context = () => ({
 beforeEach(async () => {
   workDir = await mkdtemp(join(tmpdir(), 'orca-attachment-upload-'))
   serverStore = new AgentSessionAttachmentStore(
-    join(workDir, 'server', 'agent-session-attachments')
+    join(workDir, 'server', 'agent-session-attachments'),
+    { hasSession: () => true }
   )
   calls.length = 0
   failMethod = null
@@ -106,7 +107,7 @@ describe('uploadExternalPathsToAgentSessionAttachments', () => {
       join(workDir, 'notes.md')
     ])
     for (const { path } of result.uploaded) {
-      expect(path.startsWith(serverStore.sessionDirectory('session-1'))).toBe(true)
+      expect(path.startsWith(serverStore.rootDir)).toBe(true)
     }
     expect(await readFile(result.uploaded[0].path)).toEqual(big)
     expect(await readFile(result.uploaded[1].path, 'utf8')).toBe('# hi')
@@ -126,9 +127,11 @@ describe('uploadExternalPathsToAgentSessionAttachments', () => {
     }
   })
 
-  it('skips a folder as unsupported instead of uploading its contents', async () => {
-    await mkdir(join(workDir, 'folder'))
+  it('skips a folder as unsupported without walking into it', async () => {
+    await mkdir(join(workDir, 'folder', 'nested'), { recursive: true })
     await writeFile(join(workDir, 'folder', 'inside.txt'), 'x')
+    // A link inside would make the stager skip the folder as a symlink: never reached.
+    await symlink(join(workDir, 'folder', 'inside.txt'), join(workDir, 'folder', 'nested', 'link'))
     const result = await uploadExternalPathsToAgentSessionAttachments(context(), [
       join(workDir, 'folder')
     ])
