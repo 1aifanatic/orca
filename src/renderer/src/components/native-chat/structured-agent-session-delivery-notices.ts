@@ -8,10 +8,11 @@
 // queue moves.
 //
 // A message the host recorded and then rejected is worded from the journal's own fact, found by id;
-// the message keeps only a smaller copy, read when its submission is not loaded. A rejection that
-// is a failed start's, the fact its loaded row states, says only that it was not sent: the row
-// already says why. One no outbox entry here carries (another client's send, or one whose entry is
-// gone) is worded from the journal alone, with no Retry: this client holds nothing to send.
+// the message keeps only a smaller copy, read when its submission is not loaded. A rejection a
+// loaded host row already states (a failed start's, or a command's result row) says only that it
+// was not sent: the row already says why. One no outbox entry here carries (another client's
+// send, or one whose entry is gone) is worded from the journal alone, with no Retry: this client
+// holds nothing to send.
 
 import {
   readWholeAgentSessionFailureFact,
@@ -106,7 +107,9 @@ export function structuredAgentSessionDeliveryNotices(
   /** What the loaded start-failure rows state, from `structuredAgentSessionStartFailureFacts`. */
   startFailures: readonly AgentSessionFailureFact[],
   /** Ids whose send failed or was refused while this chat was open: only they word their cause. */
-  failedHere: ReadonlySet<string>
+  failedHere: ReadonlySet<string>,
+  /** Commands whose loaded result row says how they ended, from `structuredAgentSessionCommandResultRows`. */
+  commandResults?: ReadonlySet<string>
 ): ReadonlyMap<string, NativeChatDeliveryNotice> {
   const admission = admitStructuredAgentSessionOutboxEntry(outbox)
   const held = admission.state === 'blocked' ? admission.entry.clientMessageId : null
@@ -148,7 +151,8 @@ export function structuredAgentSessionDeliveryNotices(
           structuredAgentSessionRecordedRejectionParts(
             submission,
             { agentName, retryControl: false },
-            startFailures
+            startFailures,
+            commandResults
           )
         )
       })

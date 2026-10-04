@@ -33,6 +33,7 @@ function setup() {
       conversationCommands: ['clear', 'compact']
     },
     canRun: () => true,
+    recorded: () => false,
     onError: vi.fn(),
     timeoutMs: 15000
   }
@@ -118,6 +119,31 @@ describe('mobile structured conversation commands', () => {
     expect(Object.keys(fields).sort()).toEqual(['command', 'envelope'])
     expect(fields.command).toBe('clear')
     expect(asyncStorage.setItem).not.toHaveBeenCalled()
+  })
+  // Its row in the chat says it was not sent and why, for every viewer, so no banner repeats it.
+  it('banners a refused /compact only when the journal does not show the host recorded it', async () => {
+    const refused = {
+      ok: true,
+      result: {
+        ok: true,
+        value: { command: 'compact', state: 'completed', error: "This command didn't run." }
+      }
+    }
+    const { input, sendRequest } = setup()
+    sendRequest.mockResolvedValue(refused)
+    const sentId = () => {
+      const envelope = requestFields(sendRequest.mock.calls.at(-1)).envelope
+      return typeof envelope === 'object' && envelope !== null && 'clientOperationId' in envelope
+        ? envelope.clientOperationId
+        : undefined
+    }
+    input.recorded = (clientMessageId) => clientMessageId === sentId()
+    expect(await dispatchMobileStructuredCommand(input)).toBe('accepted')
+    expect(input.onError).not.toHaveBeenCalled()
+
+    input.recorded = () => false
+    expect(await dispatchMobileStructuredCommand(input)).toBe('rejected')
+    expect(input.onError).toHaveBeenCalledWith("This command didn't run.")
   })
   it('keeps ordinary messages on the existing send path', async () => {
     const { input, sendRequest } = setup()

@@ -10,6 +10,13 @@ import {
   agentJournalSubmissionKey
 } from '../../../../shared/agent-session-journal-item-key'
 import { agentJournalTurnBody } from '../../../../shared/agent-session-turn-record'
+import {
+  structuredAgentSessionCommandResultRowIdentity,
+  structuredAgentSessionCommandResultRows
+} from '../../../../shared/structured-agent-session-command-entry'
+import { structuredAgentSessionStartFailureFacts } from '../../../../shared/structured-agent-session-recorded-rejection-words'
+import { structuredAgentSessionStartFailureRowIdentity } from '../../../../shared/structured-agent-session-start-failure-row-key'
+import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
 import { projectStructuredAgentSessionMessages as projectForPhone } from '../../../../shared/structured-agent-session-message-projection'
 import { createStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import { projectStructuredAgentSessionMessages } from './structured-agent-session-message-projection'
@@ -122,31 +129,60 @@ describe('structured agent session message projection', () => {
     ])
   })
 
-  // The command's reply (blocked) or its turn's result row (refused) already says it failed.
+  // A rejected command is the host's like any send: its row stays, and its line says why only
+  // where no loaded host row already does. The sender's reply stays quiet (command-send tests).
   const busy = { text: 'thread busy', audience: 'person' as const }
+  const startFailed: AgentSessionFailureFact = { kind: 'providerStartFailed' }
   it.each<{
     name: string
     rejection: AgentSessionFailureFact
-    resultRow?: AgentSessionFailureFact
+    row?: 'result' | 'start'
+    line: string
   }>([
-    { name: 'blocked at handover', rejection: { kind: 'commandRefused' } },
+    {
+      name: 'blocked at handover',
+      rejection: { kind: 'commandRefused' },
+      line: "This command didn't run. Try it again."
+    },
     {
       name: 'refused by the provider',
       rejection: { kind: 'providerRejected', detail: busy },
-      resultRow: { kind: 'compactionFailed', detail: busy }
+      row: 'result',
+      line: 'Your message was not sent.'
+    },
+    {
+      name: 'rejected by a failed start',
+      rejection: startFailed,
+      row: 'start',
+      line: 'Your message was not sent.'
     }
-  ])(
-    'says a /compact $name failed only where the command reports it',
-    ({ rejection, resultRow }) => {
-      const opensTurn = resultRow !== undefined
-      const compact = {
-        ...submission(0),
-        dispatchState: 'rejected' as const,
-        providerItemId: null,
-        rejection
+  ])('keeps a /compact $name, said once', ({ rejection, row, line }) => {
+    const compact = {
+      ...submission(0),
+      dispatchState: 'rejected' as const,
+      providerItemId: null,
+      rejection
+    }
+    const userItemId = agentJournalSubmissionKey(compact.clientMessageId)
+    const turnItemId = agentJournalItemKey({ provider: 'orca', clientMessageId: 'command-turn:c' })
+    const hostRow = (
+      itemId: string,
+      fact: AgentSessionFailureFact,
+      turnScope?: AgentJournalRenderItem['turnScope']
+    ): AgentJournalRenderItem => ({
+      itemId,
+      revision: 1,
+      sequence: 2,
+      observedAt: 2,
+      ...(turnScope ? { turnScope } : {}),
+      body: {
+        kind: 'status',
+        tone: 'error',
+        ...agentSessionFailureWords(fact, { agentName: 'Codex', surface: 'row' })
       }
-      const userItemId = agentJournalSubmissionKey(compact.clientMessageId)
-      const commandItem: AgentJournalRenderItem = {
+    })
+    const items: AgentJournalRenderItem[] = [
+      {
         itemId: userItemId,
         revision: 1,
         sequence: 0,
@@ -157,16 +193,8 @@ describe('structured agent session message projection', () => {
           blocks: [{ type: 'text', text: '/compact' }],
           command: { name: 'compact' }
         }
-      }
-      const turnItemId = agentJournalItemKey({
-        provider: 'orca',
-        clientMessageId: 'command-turn:c'
-      })
-      const resultId = agentJournalItemKey({
-        provider: 'orca',
-        clientMessageId: 'command-result:c'
-      })
-      const turnRows: AgentJournalRenderItem[] = resultRow
+      },
+      ...(row === 'result'
         ? [
             {
               itemId: turnItemId,
@@ -183,31 +211,44 @@ describe('structured agent session message projection', () => {
                 completedAt: 2
               })
             },
-            {
-              itemId: resultId,
-              revision: 1,
-              sequence: 2,
-              observedAt: 2,
-              turnScope: { kind: 'turn', turnItemId },
-              body: {
-                kind: 'status',
-                tone: 'error',
-                ...agentSessionFailureWords(resultRow, { agentName: 'Codex', surface: 'row' })
-              }
-            }
+            hostRow(
+              agentJournalItemKey(
+                structuredAgentSessionCommandResultRowIdentity(compact.clientMessageId)
+              ),
+              { kind: 'compactionFailed', detail: busy },
+              { kind: 'turn', turnItemId }
+            )
           ]
-        : []
-      const items = [commandItem, ...turnRows]
-      for (const messages of [
-        projectStructuredAgentSessionMessages(items, [], [compact]),
-        projectForPhone(items, [], [compact])
-      ]) {
-        expect(messages.find((message) => message.id === userItemId)).toBeUndefined()
-        expect(messages.some((message) => message.unsent === true)).toBe(false)
-        expect(messages.some((message) => message.id === resultId)).toBe(opensTurn)
-      }
+        : []),
+      ...(row === 'start'
+        ? [
+            hostRow(
+              agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity('g')),
+              startFailed
+            )
+          ]
+        : [])
+    ]
+    for (const messages of [
+      projectStructuredAgentSessionMessages(items, [], [compact]),
+      projectForPhone(items, [], [compact])
+    ]) {
+      expect(messages.filter((message) => message.unsent === true).map((m) => m.id)).toEqual([
+        userItemId
+      ])
+      expect(messages).toHaveLength(row ? 2 : 1)
     }
-  )
+    const notices = structuredAgentSessionDeliveryNotices(
+      [],
+      'Codex',
+      () => {},
+      [compact],
+      structuredAgentSessionStartFailureFacts(items),
+      new Set(),
+      structuredAgentSessionCommandResultRows(items)
+    )
+    expect(notices.get(userItemId)?.text).toBe(line)
+  })
 
   // The host sends a queued draft under a fresh id per hand-off; its card keeps the text meanwhile.
   it('leaves a rejected queued-draft hand-off to its card: one bubble once a later hand-off lands', () => {

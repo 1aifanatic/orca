@@ -1,6 +1,6 @@
 // What a send the host recorded and then did not deliver says on its own row, on every client.
-// A rejection that is a failed start's, the fact its loaded row states, says only that it was not
-// sent: the row already says why.
+// A rejection a loaded host row already states says only that it was not sent: a failed start's,
+// the fact its row states, or a command's, whose turn's result row says how it ended.
 
 import {
   readAgentSessionFailureFact,
@@ -61,13 +61,20 @@ export function agentSessionFailureStatedByStartRow(
   )
 }
 
+const NO_COMMAND_RESULTS: ReadonlySet<string> = new Set()
+
 /** The words for a recorded rejection that no outbox entry on this client carries. */
 export function structuredAgentSessionRecordedRejectionParts(
   submission: AgentJournalSubmission,
   context: AgentSessionFailureWordsContext,
-  startFailures: readonly AgentSessionFailureFact[]
+  startFailures: readonly AgentSessionFailureFact[],
+  /** Commands whose result row is loaded, from `structuredAgentSessionCommandResultRows`. */
+  commandResults: ReadonlySet<string> = NO_COMMAND_RESULTS
 ): AgentSessionWriteNoticePart[] {
-  if (agentSessionFailureStatedByStartRow(submission.rejection, startFailures)) {
+  if (
+    commandResults.has(submission.clientMessageId) ||
+    agentSessionFailureStatedByStartRow(submission.rejection, startFailures)
+  ) {
     return agentSessionWriteNotDoneParts('send')
   }
   return structuredAgentSessionAttemptFailureParts(

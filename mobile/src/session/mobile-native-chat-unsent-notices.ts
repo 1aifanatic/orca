@@ -3,6 +3,7 @@
 
 import { formatAgentTypeLabel } from '../../../src/shared/agent-type-label'
 import { agentJournalSubmissionKey } from '../../../src/shared/agent-session-journal-item-key'
+import { structuredAgentSessionCommandResultRows } from '../../../src/shared/structured-agent-session-command-entry'
 import { agentSessionWriteNoticeEnglish } from '../../../src/shared/agent-session-refusal-notice'
 import type { NativeChatTurnJournal } from '../../../src/shared/native-chat-turn-membership'
 import {
@@ -22,6 +23,7 @@ export function mobileNativeChatUnsentNotices(
     return NO_NOTICES
   }
   const startFailures = structuredAgentSessionStartFailureFacts(journal.items)
+  const commandResults = structuredAgentSessionCommandResultRows(journal.items)
   const context = {
     retryControl: false,
     ...(agent ? { agentName: formatAgentTypeLabel(agent) } : {})
@@ -30,7 +32,12 @@ export function mobileNativeChatUnsentNotices(
     rejected.map((submission) => [
       agentJournalSubmissionKey(submission.clientMessageId),
       agentSessionWriteNoticeEnglish(
-        structuredAgentSessionRecordedRejectionParts(submission, context, startFailures)
+        structuredAgentSessionRecordedRejectionParts(
+          submission,
+          context,
+          startFailures,
+          commandResults
+        )
       )
     ])
   )

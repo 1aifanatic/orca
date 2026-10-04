@@ -8,8 +8,38 @@ import type { StructuredAgentSessionOutboxEntry } from './structured-agent-sessi
 import { structuredAgentSessionEntryHeldForRetry } from './structured-agent-session-outbox-admission'
 import { reconcileStructuredAgentSessionOutboxWithQueue } from './structured-agent-session-draft-hand-off'
 import { dispatchWasWithdrawn } from './structured-agent-session-dispatch-rejection'
-import { isStructuredAgentSessionCommandEntry } from './structured-agent-session-command-entry'
 import { projectStructuredItemsToNativeChat } from './structured-agent-session-projection'
+
+/**
+ * Whether the host's record of a send keeps it in the conversation, for every viewer. A send the
+ * host recorded and then did not deliver stays, shown as not sent: dropping the sender's outbox
+ * entry can never make it vanish. It leaves only where something else owns it: the user withdrew
+ * it with Stop, or its queued draft's card keeps the text.
+ */
+export function structuredAgentSessionRecordStaysInChat(
+  submission: Pick<
+    AgentJournalSubmission,
+    'dispatchState' | 'queuedMessageId' | 'reason' | 'rejection'
+  >
+): boolean {
+  return (
+    submission.dispatchState !== 'rejected' ||
+    (!dispatchWasWithdrawn(submission) && submission.queuedMessageId === undefined)
+  )
+}
+
+/** Whether the loaded journal draws the send recorded under `clientMessageId` in the chat, where
+ *  its row, not a reply, says how it went. */
+export function structuredAgentSessionJournalShowsSubmission(
+  submissions: readonly AgentJournalSubmission[],
+  clientMessageId: string
+): boolean {
+  return submissions.some(
+    (submission) =>
+      submission.clientMessageId === clientMessageId &&
+      structuredAgentSessionRecordStaysInChat(submission)
+  )
+}
 
 export function projectStructuredAgentSessionMessages(
   items: readonly AgentJournalRenderItem[],
@@ -18,10 +48,6 @@ export function projectStructuredAgentSessionMessages(
   projectItems = projectStructuredItemsToNativeChat
 ): NativeChatMessage[] {
   const optimistic = reconcileStructuredAgentSessionOutboxWithQueue(outbox, submissions)
-  // A send the host recorded and then did not deliver stays in the conversation from the host's
-  // record, shown as not sent, for every viewer: dropping the sender's outbox entry can never make
-  // it vanish. It leaves only where something else owns it: the user withdrew it with Stop, its
-  // queued draft's card keeps the text, or it is a command whose reply or result row says it failed.
   const notSent = new Set<string>()
   const ownedElsewhere = new Set<string>()
   for (const submission of submissions) {
@@ -29,19 +55,16 @@ export function projectStructuredAgentSessionMessages(
       continue
     }
     const key = agentJournalSubmissionKey(submission.clientMessageId)
-    if (dispatchWasWithdrawn(submission) || submission.queuedMessageId !== undefined) {
-      ownedElsewhere.add(key)
-    } else {
+    if (structuredAgentSessionRecordStaysInChat(submission)) {
       notSent.add(key)
+    } else {
+      ownedElsewhere.add(key)
     }
   }
   const visibleItems: AgentJournalRenderItem[] = []
   const refused = new Map<string, AgentJournalRenderItem>()
   for (const item of items) {
-    if (
-      ownedElsewhere.has(item.itemId) ||
-      (notSent.has(item.itemId) && isStructuredAgentSessionCommandEntry(item.body))
-    ) {
+    if (ownedElsewhere.has(item.itemId)) {
       refused.set(item.itemId, item)
     } else {
       visibleItems.push(item)

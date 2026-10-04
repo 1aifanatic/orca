@@ -27,7 +27,8 @@ import { structuredSessionOperationId } from './use-structured-agent-session-out
 import { agentSessionWriteFailureText } from './agent-session-write-notice-text'
 
 export type StructuredAgentSessionWriteOutcome<T> =
-  | { kind: 'done'; value: T }
+  /** `operationId`: the id the host recorded this write under. */
+  | { kind: 'done'; value: T; operationId: string }
   /** Refused or failed, with what to tell the person. */
   | { kind: 'not-done'; notice: string }
   /** Settled for an owner or session this pane no longer shows; there is nothing to say. */
@@ -105,12 +106,13 @@ export function useStructuredAgentSessionMutate(args: {
         }
         return enabledRef.current && (stateRef.current.fence === targetFence || waitedOn)
       }
+      const clientOperationId = structuredSessionOperationId()
       let result: AgentSessionMutationResult<T>
       try {
         result = await callStructuredAgentSession<AgentSessionMutationResult<T>>(target, method, {
           envelope: {
             sessionId,
-            clientOperationId: structuredSessionOperationId(),
+            clientOperationId,
             expectedRuntimeFence: targetFence,
             payloadFingerprint: structuredAgentSessionPayloadFingerprint({
               method: fingerprintMethod,
@@ -148,7 +150,7 @@ export function useStructuredAgentSessionMutate(args: {
       if (!settlesHere()) {
         return { kind: 'dropped' }
       }
-      return { kind: 'done', value: result.value }
+      return { kind: 'done', value: result.value, operationId: clientOperationId }
     },
     [enabled, sessionId, stateRef, target]
   )

@@ -53,7 +53,8 @@ function hostResult(
 
 async function sent(
   result: AgentSessionConversationCommandResult,
-  provider: 'claude' | 'codex' = 'claude'
+  provider: 'claude' | 'codex' = 'claude',
+  recordedIds: readonly string[] = []
 ) {
   return sendStructuredConversationCommand({
     command: result.command,
@@ -61,7 +62,8 @@ async function sent(
     pending: { current: false },
     blocked: false,
     startFailures: () => [],
-    send: async () => ({ kind: 'done', value: result })
+    recorded: (clientMessageId) => recordedIds.includes(clientMessageId),
+    send: async () => ({ kind: 'done', value: result, operationId: 'op-command' })
   })
 }
 
@@ -96,6 +98,30 @@ describe('the line under the composer after a conversation command failed', () =
     expect((await sent(hostResult('clear', { kind: 'notSignedIn' }, 'codex'), 'codex')).error).toBe(
       'Codex is not signed in for the selected account. Sign in, then run /clear again.'
     )
+  })
+
+  // Its row in the chat says it was not sent and why, for every viewer, so the reply stays quiet.
+  it('says nothing for a command the host recorded, and leaves its text to its row', async () => {
+    for (const result of [
+      hostResult('compact', { kind: 'commandRefused' }),
+      hostResult('compact', {
+        kind: 'providerRejected',
+        detail: { text: 'busy', audience: 'person' }
+      }),
+      hostResult('compact', START_FAILED)
+    ]) {
+      expect(await sent(result, 'codex', ['op-command'])).toEqual({ accepted: true, error: null })
+    }
+    // Not answered yet: nothing on its row says how it went.
+    const notStarted: AgentSessionConversationCommandResult = {
+      command: 'compact',
+      state: 'unknown',
+      error: 'The command has not started yet.'
+    }
+    expect(await sent(notStarted, 'codex', ['op-command'])).toEqual({
+      accepted: false,
+      error: 'The command has not started yet.'
+    })
   })
 
   it("says it in the reader's language", async () => {
@@ -156,7 +182,8 @@ describe('the line under the composer after a conversation command failed', () =
         pending: { current: false },
         blocked: false,
         startFailures: () => [START_FAILED],
-        send: async () => ({ kind: 'done', value: result })
+        recorded: () => false,
+        send: async () => ({ kind: 'done', value: result, operationId: 'op-command' })
       })
     ).toEqual({ accepted: false, error })
   })
