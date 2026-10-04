@@ -468,6 +468,35 @@ describe('the notice on each message that did not go through', () => {
     })
   })
 
+  // A resend of an id still running: the host can't say what became of it, so it may have landed.
+  it("keeps a send the host couldn't confirm in the doubt color, seen here or not", () => {
+    const unknown = entry('unknown', {
+      lastAttemptAt: 1,
+      lastFailure: { kind: 'refused', code: 'agent_session_operation_unknown' }
+    })
+    for (const failedHere of [new Set(['unknown']), NOT_FAILED_HERE]) {
+      const notice = structuredAgentSessionDeliveryNotices(
+        [unknown],
+        'Claude',
+        vi.fn(),
+        [],
+        [],
+        failedHere
+      ).get(agentJournalSubmissionKey('unknown'))
+      expect(notice?.notSent).toBeUndefined()
+    }
+    expect(
+      structuredAgentSessionDeliveryNotices(
+        [unknown],
+        'Claude',
+        vi.fn(),
+        [],
+        [],
+        new Set(['unknown'])
+      ).get(agentJournalSubmissionKey('unknown'))?.text
+    ).toBe("Orca couldn't confirm what happened. Check the chat.")
+  })
+
   it('words a kept message whose id expired as an outcome Orca cannot confirm', () => {
     const notices = structuredAgentSessionDeliveryNotices(
       [

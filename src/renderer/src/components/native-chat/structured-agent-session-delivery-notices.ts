@@ -17,6 +17,7 @@ import type { AgentSessionFailureFact } from '../../../../shared/agent-session-f
 import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import { agentSessionWriteNotDoneParts } from '../../../../shared/agent-session-refusal-notice'
+import { agentSessionRefusalOperationState } from '../../../../shared/agent-session-refusal-retry'
 import { structuredAgentSessionRecordedRejectionParts } from '../../../../shared/structured-agent-session-recorded-rejection-words'
 import {
   structuredAgentSessionEntryIdExpired,
@@ -41,10 +42,16 @@ function deliveryIsInDoubt(entry: StructuredAgentSessionOutboxEntry): boolean {
   return entry.state === 'unconfirmed' || attemptedAcrossStop
 }
 
-/** Whether the entry's words say only that it was not sent, never that it may have landed. */
+/** Whether the entry is known not to have gone out, so its line reads muted, not as a doubt. */
 function deliveryNoticeSaysNotSent(entry: StructuredAgentSessionOutboxEntry): boolean {
   return (
-    !deliveryIsInDoubt(entry) && !(entry.lastFailure && structuredAgentSessionEntryIdExpired(entry))
+    !deliveryIsInDoubt(entry) &&
+    !(entry.lastFailure && structuredAgentSessionEntryIdExpired(entry)) &&
+    // The host could not say what became of it: it may have landed.
+    !(
+      entry.lastFailure?.kind === 'refused' &&
+      agentSessionRefusalOperationState(entry.lastFailure.code) === 'unknown'
+    )
   )
 }
 
