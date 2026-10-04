@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
+import { admitStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox-admission'
 import { structuredAgentSessionEntryResendsUnconfirmed } from '../../../../shared/structured-agent-session-outbox-unconfirmed-resend'
 import {
   STRUCTURED_AGENT_SESSION_SEND_UNCONFIRMED_WORDS,
@@ -32,9 +33,10 @@ export function useStructuredAgentSessionOutboxUnconfirmedProbe(args: {
 
   // A send with no answer may never have reached the host, and nothing else moves it out of
   // `unconfirmed`, so one would wedge the whole FIFO queue. The same id again is idempotent: the
-  // host replays a recorded answer or performs a genuine first delivery. The first `unconfirmed`
-  // entry is the one holding the queue, at whatever index it sits.
-  const blocker = outbox.find((entry) => entry.state === 'unconfirmed')
+  // host replays a recorded answer or performs a genuine first delivery. The entry the queue's
+  // admission is blocked on is the one resent, never one a Stop outran or an older build left.
+  const admission = admitStructuredAgentSessionOutboxEntry(outbox)
+  const blocker = admission.state === 'blocked' ? admission.entry : undefined
   // The delivery notices read the same rule: while it is resent here, its row says it is sending.
   // Primitives only: `submissions` is rebuilt on every streaming batch, and an array-identity dep
   // would reset the backoff forever while the agent is working.

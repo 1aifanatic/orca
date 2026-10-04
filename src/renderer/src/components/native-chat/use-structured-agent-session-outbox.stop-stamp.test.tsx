@@ -227,6 +227,64 @@ describe('a send a Stop outran', () => {
   })
 })
 
+describe('a Stop answered while the journal is already read through it', () => {
+  it('an idle Stop answered at the cursor already held settles the send with no new journal batch', async () => {
+    seedAttempted()
+    const props: Props = { fence: 1, submissions: [], journalCursor: { epoch: 'e', sequence: 7 } }
+    const view = mount(props)
+    act(() => view.result.current.stop('stop-1'))
+    // An idle host writes nothing for a Stop, so its answer's cursor is the head already loaded.
+    act(() =>
+      view.result.current.recordStopAnswer('stop-1', {
+        kind: 'answered',
+        cursor: { epoch: 'e', sequence: 7 }
+      })
+    )
+    view.rerender(props)
+    expect(view.result.current.outbox).toEqual([])
+    expect(readNativeChatDraftCache(SCOPE)).toBe('follow-up')
+    expect(view.result.current.error).toBeNull()
+    expect(mocks.call).not.toHaveBeenCalled()
+  })
+
+  it('a refused Stop with the journal already loaded settles the send with no new journal batch', async () => {
+    seedAttempted()
+    const props: Props = { fence: 1, submissions: [], journalCursor: { epoch: 'e', sequence: 7 } }
+    const view = mount(props)
+    act(() => view.result.current.stop('stop-1'))
+    act(() => view.result.current.recordStopAnswer('stop-1', { kind: 'unanswerable' }))
+    view.rerender(props)
+    expect(view.result.current.outbox).toEqual([])
+    expect(readNativeChatDraftCache(SCOPE)).toBe('follow-up')
+    expect(view.result.current.error).toBe(CHECK_THE_CHAT)
+  })
+})
+
+describe('a send in doubt behind one a Stop outran', () => {
+  it('is the one resent: the queue waits on it, not on the stamped one', async () => {
+    const later = {
+      ...createStructuredAgentSessionOutboxEntry({
+        clientMessageId: 'later',
+        sessionId: 'session-1',
+        text: 'later message',
+        attachments: [],
+        queuedAt: 2
+      }),
+      lastAttemptAt: 6,
+      state: 'unconfirmed' as const
+    }
+    seedAttempted({ stoppedBy: { operationId: 'stop-1' } })
+    writeOutbox('session-1', [...readOutbox('session-1'), later])
+    mount({ fence: 1, submissions: [], journalCursor: { epoch: 'e', sequence: 3 } })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000)
+    })
+    const sent = mocks.call.mock.calls.map((call) => call[2].envelope.clientOperationId)
+    expect(sent).toContain('later')
+    expect(sent).not.toContain('out')
+  })
+})
+
 describe('a message an older build held for a Retry', () => {
   it.each([
     ['outlived by a Stop', { outlivedStop: true, state: 'queued' }],

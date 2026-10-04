@@ -137,8 +137,9 @@ export function useStructuredAgentSessionOutbox(args: {
   const [drains, setDrains] = useState(0)
   const drainAgain = useCallback(() => setDrains((count) => count + 1), [])
 
-  // Everything the journal settles, every time it moves: a row, a published card, the Stop's
-  // answer read through, or an entry an older build left waiting for a Retry.
+  // Everything the journal settles, every time it or the outbox moves: a row, a published card, the
+  // Stop's answer read through, or an entry an older build left. The outbox too, since an idle
+  // Stop answers at a cursor the journal already reached, and nothing else would move.
   useEffect(() => {
     const reading = {
       submissions,
@@ -189,7 +190,7 @@ export function useStructuredAgentSessionOutbox(args: {
       // Nothing above may have written the outbox, so the drain is told to look again.
       drainAgain()
     }
-  }, [drainAgain, journalCursor, queuedMessageIds, sessionId, submissions])
+  }, [drainAgain, journalCursor, outbox, queuedMessageIds, sessionId, submissions])
 
   const journalHasRow = useCallback(
     (clientMessageId: string) =>
