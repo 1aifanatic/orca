@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import type * as ReactModule from 'react'
 import type * as GhUtils from '../../src/main/github/gh-utils'
 import type * as IssueMetadata from '../../src/renderer/src/hooks/useIssueMetadata'
@@ -88,6 +90,10 @@ import {
   resetTaskPageGitHubMutationRegistryForTests,
   setTaskPageGitHubMutationQueryKey
 } from '../../src/renderer/src/components/task-page-github-work-item-mutation-registry'
+
+function renderEditSection(props: Parameters<typeof GHEditSection>[0]): void {
+  renderToStaticMarkup(createElement(GHEditSection, props))
+}
 
 const registeredRepo: Repo = {
   id: 'repo-1',
@@ -239,7 +245,7 @@ it.each([
   'loads $owner picker candidates while preference=$preference',
   async ({ preference, openedItem, owner }) => {
     fixture.preference = preference
-    GHEditSection({
+    renderEditSection({
       item: openedItem,
       repoPath: registeredRepo.path,
       repoId: fork.repoId,
@@ -341,7 +347,7 @@ it('keeps Project row metadata on the existing slug route', async () => {
   vi.stubGlobal('window', {
     api: { gh: { listLabelsBySlug: labels, listAssignableUsersBySlug: users } }
   })
-  GHEditSection({
+  renderEditSection({
     item: fork,
     repoPath: registeredRepo.path,
     repoId: fork.repoId,
