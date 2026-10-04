@@ -6,7 +6,6 @@ import type {
   AgentJournalStatusItem,
   AgentJournalSubmission
 } from '../../../shared/agent-session-journal-types'
-import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import type { AgentSessionCancelResult } from '../../../shared/agent-session-wire'
 import { latestJournalDispatchObservation } from '../agent-session-journal/journal-dispatch-observation'
@@ -28,6 +27,7 @@ import {
 } from './structured-agent-session-turn-stop-notes'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 import { runningTurnLifecycleRevisions } from './structured-agent-session-stale-turn-verdict'
+import { sendStopCanTakeBack } from './structured-agent-session-unopened-send-withdrawal'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 
 /** Whether the fold reads working. Every write has landed by its call's return, and the open paid
@@ -239,9 +239,7 @@ async function cancelAndNote(
     input.endSession !== undefined && ctx.adapter.stopEndsSession?.(ctx.sessionId) === true
   const stoppedAt = Date.now()
   // Read before the cancel: the sends a child end may take back.
-  const sentBeforeStop = ctx.journal
-    .submissions()
-    .filter((entry) => !isQueuedAgentJournalSubmission(entry) && entry.dispatchState === 'pending')
+  const sentBeforeStop = ctx.journal.submissions().filter(sendStopCanTakeBack)
   // The provider's own answer; unset when its cancel threw, leaving the effect unknown.
   let taken: boolean | undefined
   // The provider could not interrupt the turn, or its cancel threw: the turn may run on.
