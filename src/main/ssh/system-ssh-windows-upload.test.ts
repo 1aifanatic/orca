@@ -684,12 +684,45 @@ describe('Windows upload on a host with no sftp subsystem', () => {
   const capturedPowerShellMissingPwsh =
     "pwsh.exe : The term 'pwsh.exe' is not recognized as the name of a cmdlet, function, script file, or operable program. \r\nCheck the spelling of the name, or if a path was included, verify that the path is correct and try again.\r\nAt line:1 char:1\r\n+ pwsh.exe -NoProfile -NonInteractive -Command exit\r\n+ ~~~~~~~~\r\n    + CategoryInfo          : ObjectNotFound: (pwsh.exe:String) [], CommandNotFoundException\r\n    + FullyQualifiedErrorId : CommandNotFoundException"
 
+  // Source-derived resource/layout controls; these are not captured localized Windows errors.
+  const sourceDerivedLocalizedMissingPwsh = [
+    'pwsh.exe : La commande est introuvable.',
+    'Vérifiez le nom de la commande.',
+    'À la ligne:1 caractère:1',
+    '+ pwsh.exe -NoProfile -NonInteractive -EncodedCommand JABwAGEAdABoAA== ...',
+    '+ ~~~~~~~~',
+    '    + CategoryInfo : CommandNotFoundException — cible pwsh.exe, type String',
+    '    + FullyQualifiedErrorId : CommandNotFoundException'
+  ].join('\r\n')
+  const sourceDerivedWrappedMissingPwsh = [
+    'pwsh.exe : The term',
+    "'pwsh.exe' is not recognized.",
+    'At line:1 char:1',
+    '+ pwsh.exe -NoProfile ',
+    '-NonInteractive -EncodedCommand ',
+    'JABwAGEAdABoAA== ...',
+    '+ ~~~~~~~~',
+    '    + CategoryInfo : ObjectNotFound: ',
+    '(pwsh.exe:String) [], CommandNotFoundExcept',
+    'ion',
+    '    + FullyQualifiedErrorId : CommandNotFoundExcept',
+    'ion'
+  ].join('\r\n')
+
   it.each([
     "'missing-tool.exe' is not recognized as an internal or external command",
     `Access to the path 'relay.js' is denied.\n${capturedPowerShellMissingPwsh}`,
     `${capturedPowerShellMissingPwsh}\nAccess to the path 'relay.js' is denied.`,
     capturedPowerShellMissingPwsh.replaceAll('pwsh.exe', 'missing-tool.exe'),
     capturedPowerShellMissingPwsh.replace(/.*CategoryInfo.*\r?\n/, ''),
+    sourceDerivedLocalizedMissingPwsh.replace('cible pwsh.exe', 'cible relay-pwsh.exe.js'),
+    sourceDerivedLocalizedMissingPwsh.replace('cible pwsh.exe', 'cible C:\\bin\\pwsh.exe'),
+    sourceDerivedLocalizedMissingPwsh.replace('cible pwsh.exe', 'cible pwsh.exe-backup'),
+    sourceDerivedLocalizedMissingPwsh.replace('type String', 'type FileInfo'),
+    sourceDerivedWrappedMissingPwsh.replace('+ pwsh.exe', '+ missing-tool.exe'),
+    `${sourceDerivedWrappedMissingPwsh}\n${capturedPowerShellMissingPwsh}`,
+    `${sourceDerivedLocalizedMissingPwsh}\nAccess to the path 'relay.js' is denied.`,
+    `Access to the path 'relay.js' is denied.\n${sourceDerivedLocalizedMissingPwsh}`,
     'CommandNotFoundException: missing-tool.exe',
     "Access to the path 'relay.js' is denied.\nCommandNotFoundException: pwsh.exe",
     "Access to the path 'relay.js' is denied.\n'pwsh.exe' is not recognized as an internal or external command"
@@ -740,6 +773,23 @@ describe('Windows upload on a host with no sftp subsystem', () => {
     expect(getWindowsRemoteWriteCapabilities(target).shouldTry('pwsh')).toBe(false)
     expect(commands.some((command) => command.script.includes('::Move('))).toBe(true)
   })
+
+  it.each([sourceDerivedLocalizedMissingPwsh, sourceDerivedWrappedMissingPwsh])(
+    'falls back on a source-derived localized or wrapped missing-pwsh record: %s',
+    async (stderr) => {
+      writeFileSync(join(localDir, 'relay.js'), 'x')
+      failAtSpawn = 0
+      failedWriteStderr = stderr
+
+      await uploadFileViaSystemSsh(target, join(localDir, 'relay.js'), `${remoteRoot}/relay.js`, {
+        hostPlatform
+      })
+
+      expect(fileWrites().map((write) => write.executable)).toEqual(['pwsh.exe', 'powershell.exe'])
+      expect(getWindowsRemoteWriteCapabilities(target).shouldTry('pwsh')).toBe(false)
+      expect(commands.some((command) => command.script.includes('::Move('))).toBe(true)
+    }
+  )
 
   it.each([
     'relay-CommandNotFoundException.js',
