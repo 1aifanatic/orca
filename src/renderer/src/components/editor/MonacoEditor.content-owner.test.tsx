@@ -1,20 +1,39 @@
 // @vitest-environment happy-dom
 import { cleanup, render } from '@testing-library/react'
+import { useEffect } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildOwnedEditorFileId } from '@/store/slices/editor/file-ids/editor-file-ids'
 import type { OpenFile } from '@/store/slices/editor'
+import type { WorktreeOperationRouteState } from '@/lib/worktree-operation-route'
 
 const editorProps = vi.hoisted(() => {
-  const state: { current: Record<string, unknown> | null; files: OpenFile[] } = {
+  const state: {
+    current: Record<string, unknown> | null
+    files: OpenFile[]
+    ownerCatalog: WorktreeOperationRouteState
+    mounts: unknown[]
+    unmounts: unknown[]
+  } = {
     current: null,
-    files: []
+    files: [],
+    ownerCatalog: {
+      worktreesByRepo: { local: [{ id: 'local-worktree', repoId: 'local', hostId: 'local' }] }
+    },
+    mounts: [],
+    unmounts: []
   }
   return state
 })
 
 vi.mock('@monaco-editor/react', () => ({
-  default: (props: Record<string, unknown>) => {
+  default: function MockEditor(props: Record<string, unknown>) {
     editorProps.current = props
+    useEffect(() => {
+      editorProps.mounts.push(props.path)
+      return () => {
+        editorProps.unmounts.push(props.path)
+      }
+    }, [props.path])
     return null
   },
   loader: { config: vi.fn() }
@@ -25,7 +44,7 @@ vi.mock('@/store', () => ({
       settings: { theme: 'dark', terminalFontSize: 13, terminalFontFamily: 'monospace' },
       editorFontZoomLevel: 0,
       openFiles: editorProps.files,
-      worktreesByRepo: { local: [{ id: 'local-worktree', repoId: 'local', hostId: 'local' }] },
+      ...editorProps.ownerCatalog,
       setPendingEditorReveal: vi.fn(),
       setEditorCursorLine: vi.fn(),
       addDiffComment: vi.fn(),
@@ -49,6 +68,11 @@ afterEach(() => {
   cleanup()
   editorProps.current = null
   editorProps.files = []
+  editorProps.ownerCatalog = {
+    worktreesByRepo: { local: [{ id: 'local-worktree', repoId: 'local', hostId: 'local' }] }
+  }
+  editorProps.mounts = []
+  editorProps.unmounts = []
 })
 
 describe('MonacoEditor content ownership', () => {
@@ -115,5 +139,47 @@ describe('MonacoEditor content ownership', () => {
     remote.unmount()
     render(<MonacoEditor {...props} fileId={ownedId} viewStateKey="split-pane" content="remote" />)
     expect(editorProps.current?.path).toBe(remoteModel)
+  })
+
+  it('keeps the current draft when restored ownership resolves and remounts the widget', () => {
+    const file: OpenFile = {
+      id: 'restored-file',
+      filePath: '/repo/restored.ts',
+      relativePath: 'restored.ts',
+      worktreeId: 'restored-worktree',
+      mode: 'edit',
+      language: 'typescript',
+      isDirty: true
+    }
+    editorProps.files = [file]
+    editorProps.ownerCatalog = {}
+    const onContentChange = vi.fn()
+    const props = {
+      fileId: file.id,
+      filePath: file.filePath,
+      viewStateKey: 'pane:restored-file',
+      relativePath: file.relativePath,
+      language: file.language,
+      onContentChange,
+      onSave: vi.fn()
+    }
+    const rendered = render(<MonacoEditor {...props} content="restored draft" />)
+    const unresolvedModel = editorProps.current?.path
+    rendered.rerender(<MonacoEditor {...props} content="latest dirty draft" />)
+    expect(editorProps.mounts).toEqual([unresolvedModel])
+
+    editorProps.ownerCatalog = {
+      worktreesByRepo: {
+        repo: [{ id: file.worktreeId, repoId: 'repo', hostId: 'local' }]
+      }
+    }
+    rendered.rerender(<MonacoEditor {...props} content="latest dirty draft" />)
+
+    const resolvedModel = editorProps.current?.path
+    expect(resolvedModel).not.toBe(unresolvedModel)
+    expect(editorProps.current?.defaultValue).toBe('latest dirty draft')
+    expect(editorProps.mounts).toEqual([unresolvedModel, resolvedModel])
+    expect(editorProps.unmounts).toEqual([unresolvedModel])
+    expect(onContentChange).not.toHaveBeenCalled()
   })
 })

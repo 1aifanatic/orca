@@ -30,10 +30,10 @@ const HOSTS: readonly WorktreeOperationRoute[] = [
   { executionHostId: 'ssh:target', runtimeEnvironmentId: 'hub-b' }
 ]
 
-function file(id: string, route: WorktreeOperationRoute): OpenFile {
+function file(id: string, route: WorktreeOperationRoute, filePath = FILE_PATH): OpenFile {
   return {
     ...modelLifetimeFile(id),
-    filePath: FILE_PATH,
+    filePath,
     relativePath: 'same-path.txt',
     operationProvenance: {
       ownershipProjection: 'explicit',
@@ -49,10 +49,10 @@ function file(id: string, route: WorktreeOperationRoute): OpenFile {
   }
 }
 
-function createHostModels() {
+function createHostModels(filePath = FILE_PATH) {
   const fixture = createModelLifetimeFixture()
   const owners = HOSTS.map((route, index) => {
-    const ownedFile = file(`host-${index}`, route)
+    const ownedFile = file(`host-${index}`, route, filePath)
     const modelKey = toEditorModelUri(
       ownedFile.filePath,
       getEditorModelOwnerKey(ownedFile, fixture.store.getState())
@@ -77,34 +77,39 @@ afterEach(() => {
 })
 
 describe('same-path models on different execution hosts', () => {
-  it('keeps local, SSH, runtime and paired SSH text and undo histories independent', async () => {
-    const { owners } = createHostModels()
-    expect(new Set(owners.map((owner) => owner.modelKey)).size).toBe(HOSTS.length)
-    expect(new Set(owners.map((owner) => owner.model.uri.fsPath))).toEqual(new Set([FILE_PATH]))
-    for (const [index, owner] of owners.entries()) {
-      expect(monaco.editor.getModel(monaco.Uri.parse(owner.modelKey))).toBe(owner.model)
-      edit(owner.model, `edited host ${index}`)
-      expect(owner.model.canUndo()).toBe(true)
-      expect(owners.map((candidate) => candidate.model.getValue())).toEqual(
-        owners.map((candidate, candidateIndex) =>
-          candidateIndex <= index ? `edited host ${candidateIndex}` : candidate.initial
+  it.each([FILE_PATH, 'C:\\fixture\\workspace\\same-path.txt', '\\\\server\\share\\same-path.txt'])(
+    'keeps host text and undo histories independent for %s',
+    async (filePath) => {
+      const { owners } = createHostModels(filePath)
+      expect(new Set(owners.map((owner) => owner.modelKey)).size).toBe(HOSTS.length)
+      expect(new Set(owners.map((owner) => owner.model.uri.fsPath))).toEqual(
+        new Set([monaco.Uri.file(filePath).fsPath])
+      )
+      for (const [index, owner] of owners.entries()) {
+        expect(monaco.editor.getModel(monaco.Uri.parse(owner.modelKey))).toBe(owner.model)
+        edit(owner.model, `edited host ${index}`)
+        expect(owner.model.canUndo()).toBe(true)
+        expect(owners.map((candidate) => candidate.model.getValue())).toEqual(
+          owners.map((candidate, candidateIndex) =>
+            candidateIndex <= index ? `edited host ${candidateIndex}` : candidate.initial
+          )
         )
+      }
+      for (const [index, owner] of owners.entries()) {
+        await owner.model.undo()
+        expect(owner.model.canRedo()).toBe(true)
+        expect(owners.map((candidate) => candidate.model.getValue())).toEqual(
+          owners.map((candidate, candidateIndex) =>
+            candidateIndex <= index ? candidate.initial : `edited host ${candidateIndex}`
+          )
+        )
+      }
+      await owners[1]!.model.redo()
+      expect(owners.map((owner) => owner.model.getValue())).toEqual(
+        owners.map((owner, index) => (index === 1 ? 'edited host 1' : owner.initial))
       )
     }
-    for (const [index, owner] of owners.entries()) {
-      await owner.model.undo()
-      expect(owner.model.canRedo()).toBe(true)
-      expect(owners.map((candidate) => candidate.model.getValue())).toEqual(
-        owners.map((candidate, candidateIndex) =>
-          candidateIndex <= index ? candidate.initial : `edited host ${candidateIndex}`
-        )
-      )
-    }
-    await owners[1]!.model.redo()
-    expect(owners.map((owner) => owner.model.getValue())).toEqual(
-      owners.map((owner, index) => (index === 1 ? 'edited host 1' : owner.initial))
-    )
-  })
+  )
 
   it('suppresses watcher echoes in shared local panes without hiding an SSH user edit', () => {
     const { owners } = createHostModels()
