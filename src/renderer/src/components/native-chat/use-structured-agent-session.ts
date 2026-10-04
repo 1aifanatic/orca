@@ -41,6 +41,7 @@ import { outboxOutsideQueuedCards } from './structured-agent-session-queued-card
 import { structuredAgentSessionStartFailureFacts } from '../../../../shared/structured-agent-session-recorded-rejection-words'
 import { structuredAgentSessionJournalShowsSubmission } from '../../../../shared/structured-agent-session-message-projection'
 import { hostStatesTurnScopes } from '../../../../shared/native-chat-turn-membership'
+import { structuredAgentSessionJournalIsLive } from '../../../../shared/structured-agent-session-journal-liveness'
 
 export type { StructuredPromptItem } from './structured-agent-session-message-projection'
 
@@ -87,6 +88,7 @@ export function useStructuredAgentSession(args: {
   })
   const commandPending = useRef(false)
   const transportState = useStructuredAgentSessionTransportState(state, transportEnabled)
+  const journalLive = transportEnabled && structuredAgentSessionJournalIsLive(state)
   const {
     conversationCommands,
     optionSnapshot,
@@ -121,7 +123,9 @@ export function useStructuredAgentSession(args: {
     target,
     fence: transportState.fence,
     submissions: transportState.submissions,
-    journalCursor: transportEnabled ? state.cursor : null,
+    // Only a live journal may decide a message alone; a stale one kept through an outage says
+    // nothing about what the host holds now.
+    journalCursor: journalLive ? state.cursor : null,
     queueDelivery: { capability: queueCapability, enabled: queueFollowUps },
     // Absent until the host publishes a list: only a list says it holds no draft under an id.
     queuedMessageIds:
@@ -130,7 +134,7 @@ export function useStructuredAgentSession(args: {
   const stopConversation = useStructuredAgentSessionConversationStop({
     outbox: outboxController.outbox,
     submissions: transportState.submissions,
-    attached: transportState.fence !== null,
+    attached: journalLive,
     writeAs,
     stopOutbox: outboxController.stop,
     recordStopAnswer: outboxController.recordStopAnswer

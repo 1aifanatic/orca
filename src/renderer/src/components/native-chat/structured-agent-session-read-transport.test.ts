@@ -4,6 +4,10 @@ import {
   reduceStructuredAgentSession
 } from '../../../../shared/structured-agent-session-reducer'
 import type { AgentJournalCursor } from '../../../../shared/agent-session-journal-types'
+import {
+  reduceStructuredAgentSessionRead,
+  structuredAgentSessionJournalIsLive
+} from '../../../../shared/structured-agent-session-journal-liveness'
 import type {
   AgentSessionHistoryPage,
   AgentSessionSubscribeEvent
@@ -123,6 +127,46 @@ describe('structured agent-session read transport generations', () => {
       })
       attempts[1].closed.resolve({ unsubscribe: attempts[1].unsubscribe })
       await flushPromises()
+      transport.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // What is loaded stays on screen, but it is no longer the host's word on anything.
+  it('says the stream detached when it closes, and the journal is live again only on a frame', async () => {
+    vi.useFakeTimers()
+    try {
+      let state = EMPTY_STRUCTURED_AGENT_SESSION
+      const apply = (action: Parameters<typeof reduceStructuredAgentSessionRead>[1]): void => {
+        state = reduceStructuredAgentSessionRead(state, action, 0)
+      }
+      const transport = startStructuredAgentSessionReadTransport({
+        applyEvent: (event) => apply({ type: 'event', event }),
+        applyError: vi.fn(),
+        applyDetached: () => apply({ type: 'detached' }),
+        getCursor: () => state.cursor,
+        onHistoryReadInvalidated: () => undefined,
+        sessionId: 'session-a',
+        target
+      })
+      attempts[0].onEvent(snapshot(100))
+      attempts[0].closed.resolve({ unsubscribe: attempts[0].unsubscribe })
+      await vi.advanceTimersByTimeAsync(30)
+      expect(structuredAgentSessionJournalIsLive(state)).toBe(true)
+
+      attempts[0].onClose()
+      expect(structuredAgentSessionJournalIsLive(state)).toBe(false)
+      expect(state.cursor?.sequence).toBe(100)
+
+      await vi.advanceTimersByTimeAsync(5_000)
+      expect(attempts).toHaveLength(2)
+      attempts[1].closed.resolve({ unsubscribe: attempts[1].unsubscribe })
+      await flushPromises()
+      expect(structuredAgentSessionJournalIsLive(state)).toBe(false)
+      attempts[1].onEvent(snapshot(101))
+      await vi.advanceTimersByTimeAsync(30)
+      expect(structuredAgentSessionJournalIsLive(state)).toBe(true)
       transport.dispose()
     } finally {
       vi.useRealTimers()

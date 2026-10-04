@@ -81,6 +81,8 @@ export function startStructuredAgentSessionReadTransport(args: {
   applyEvent: (event: AgentSessionSubscribeEvent) => void
   /** `message` is the failure's own text, for logs; `refusal` is what a surface words. */
   applyError: (message: string, refusal?: AgentSessionRefusalReference) => void
+  /** The subscription closed or failed: what is loaded is no longer live. */
+  applyDetached?: () => void
   getCursor: () => AgentJournalCursor | null
   onHistoryReadInvalidated: () => void
   hydrate?: (shouldStop: () => boolean) => Promise<void>
@@ -219,6 +221,7 @@ export function startStructuredAgentSessionReadTransport(args: {
           }
           closedDuringOpen = true
           connected = false
+          args.applyDetached?.()
           reportReadFailure(error)
           reconnectScheduler.schedule()
         },
@@ -228,6 +231,7 @@ export function startStructuredAgentSessionReadTransport(args: {
           }
           closedDuringOpen = true
           connected = false
+          args.applyDetached?.()
           reconnectScheduler.schedule()
         }
       )
@@ -245,6 +249,7 @@ export function startStructuredAgentSessionReadTransport(args: {
         return
       }
       connected = false
+      args.applyDetached?.()
       reportReadFailure(error)
       reconnectScheduler.schedule()
     } finally {

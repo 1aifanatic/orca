@@ -148,11 +148,12 @@ export function useStructuredAgentSessionConversationStop(args: {
   // Its request still out may yet be answered, so the stamp is only given up once it ends.
   const owedInFlight = owed !== null && inFlightIds.includes(owed)
   useLayoutEffect(() => {
-    if (owed !== null && newer && !owedInFlight) {
+    // Detached, a newer send this client saw proves nothing about the Stop the host may yet run.
+    if (owed !== null && newer && !owedInFlight && attached) {
       sayQuietPress(owed)
       recordStopAnswer(owed, { kind: 'unanswerable' })
     }
-  }, [newer, owed, owedInFlight, recordStopAnswer, sayQuietPress])
+  }, [attached, newer, owed, owedInFlight, recordStopAnswer, sayQuietPress])
 
   useEffect(() => {
     if (owed === null || newer || !attached || owedInFlight) {

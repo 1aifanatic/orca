@@ -4,14 +4,9 @@ import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/struc
 import { admitStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox-admission'
 import { structuredAgentSessionEntryResendsUnconfirmed } from '../../../../shared/structured-agent-session-outbox-unconfirmed-resend'
 import {
-  STRUCTURED_AGENT_SESSION_SEND_UNCONFIRMED_WORDS,
-  structuredAgentSessionEntryOutlivedHostWindow
-} from '../../../../shared/structured-agent-session-outbox-settlement'
-import {
   commitStructuredAgentSessionOutbox,
   getStructuredAgentSessionOutbox
 } from './structured-agent-session-outbox-storage'
-import { settleStructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox-dispatch'
 
 const UNCONFIRMED_PROBE_BASE_DELAY_MS = 1_000
 /** No attempt ceiling: a transport outage outlives any fixed budget, and the host's answer is what
@@ -59,14 +54,8 @@ export function useStructuredAgentSessionOutboxUnconfirmedProbe(args: {
         if (!entry) {
           return
         }
-        // Past the host's window no answer can settle it, and the person checks the chat instead.
-        if (structuredAgentSessionEntryOutlivedHostWindow(entry, Date.now())) {
-          settleStructuredAgentSessionOutboxEntry(sessionId, probeId, {
-            kind: 'returned',
-            words: [...STRUCTURED_AGENT_SESSION_SEND_UNCONFIRMED_WORDS]
-          })
-          return
-        }
+        // Even past the host's window it goes again: the host's answer (expired, read with the
+        // journal) says whether it landed, never this client's clock after a sleep.
         commitStructuredAgentSessionOutbox(
           sessionId,
           current.map((candidate) =>

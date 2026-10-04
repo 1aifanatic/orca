@@ -70,6 +70,9 @@ export type StructuredAgentSessionState = {
   /** Bumped per live batch that leaves a turn row's newest revision outside the window
    *  (dropped or trimmed), so a whole-journal answer derived from turn rows is asked for again. */
   unloadedTurnRevisions?: number
+  /** A frame of the current subscription has arrived and it has not closed since (see
+   *  structured-agent-session-journal-liveness). */
+  live?: boolean
 }
 
 export type StructuredAgentSessionAction =
