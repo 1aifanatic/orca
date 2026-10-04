@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { DiffOnMount } from '@monaco-editor/react'
 import type { editor as monacoEditor } from 'monaco-editor'
 import { detectLanguage } from '@/lib/language-detect'
@@ -68,8 +68,11 @@ export function DiffSectionItem({
   const isEditable = section.area === 'unstaged'
   const liveSection = useRef(section)
   const draftChange = useRef(onDraftChange)
-  liveSection.current = section
-  draftChange.current = onDraftChange
+  // Event handlers must use committed ownership, even if a newer render is interrupted.
+  useLayoutEffect(() => {
+    liveSection.current = section
+    draftChange.current = onDraftChange
+  }, [onDraftChange, section])
   const modelPathBase = useMemo(
     () =>
       `diff-section:${encodeURIComponent(worktreeId ?? 'review')}:${encodeURIComponent(section.key)}:${section.contentGeneration ?? 0}`,
