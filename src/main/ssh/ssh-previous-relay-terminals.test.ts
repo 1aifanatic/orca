@@ -72,7 +72,7 @@ describe('previous relay terminals', () => {
     execCommand.mockResolvedValue(`${OLD_SOCK}\n`)
     probeRelayEndpointIncumbent.mockResolvedValue(incumbent({}))
 
-    await expect(censusPreviousRelays(conn, 'target-1', deployed)).resolves.toBe(true)
+    await expect(censusPreviousRelays(conn, 'target-1', deployed)).resolves.toEqual([OLD_SOCK])
 
     const listing = execCommand.mock.calls[0][1]
     expect(listing).toContain("current='/home/dev/.orca-remote/relay-0.1.0+new'")
@@ -86,7 +86,7 @@ describe('previous relay terminals', () => {
 
   it('finds nothing to hold on a host with no older relay', async () => {
     execCommand.mockResolvedValue('')
-    await expect(censusPreviousRelays(conn, 'target-1', deployed)).resolves.toBe(false)
+    await expect(censusPreviousRelays(conn, 'target-1', deployed)).resolves.toEqual([])
     expect(probeRelayEndpointIncumbent).not.toHaveBeenCalled()
   })
 
@@ -96,7 +96,7 @@ describe('previous relay terminals', () => {
         ...deployed,
         hostPlatform: getRemoteHostPlatform('win32-x64')
       })
-    ).resolves.toBe(false)
+    ).resolves.toEqual([])
     expect(execCommand).not.toHaveBeenCalled()
   })
 

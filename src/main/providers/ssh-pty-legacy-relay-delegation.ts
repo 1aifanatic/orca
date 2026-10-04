@@ -1,0 +1,118 @@
+/**
+ * Lets the target's provider hand a PTY to an earlier build's relay that still runs it.
+ *
+ * Every per-PTY caller resolves the target's one registered provider, so routing lives here rather
+ * than at each call site: a reattach the current relay answered with
+ * {@link SshPtyHeldByPreviousRelayError} is retried through the old relay, and once that pane is
+ * served there, every later operation on its id goes to the same relay.
+ */
+import { SshPtyHeldByPreviousRelayError } from './ssh-pty-errors'
+import type { SshPtyProvider } from './ssh-pty-provider'
+import type { PtySpawnOptions, PtySpawnResult } from './types'
+
+export type SshPtyLegacyRelayRouting = {
+  /** The served route for a held PTY, or null when no older relay holds it. */
+  attach: (appPtyId: string) => Promise<{ provider: SshPtyProvider; release: () => void } | null>
+  providerFor: (appPtyId: string) => SshPtyProvider | undefined
+  servedProviders: () => SshPtyProvider[]
+  dispose: () => void
+}
+
+export function installSshPtyLegacyRelayDelegation(
+  provider: SshPtyProvider,
+  routing: SshPtyLegacyRelayRouting
+): void {
+  const own = {
+    dispose: provider.dispose.bind(provider),
+    spawn: provider.spawn.bind(provider),
+    attach: provider.attach.bind(provider),
+    attachForReconnect: provider.attachForReconnect.bind(provider),
+    shutdown: provider.shutdown.bind(provider),
+    pauseProducer: provider.pauseProducer.bind(provider),
+    resumeProducer: provider.resumeProducer.bind(provider),
+    listProcesses: provider.listProcesses,
+    write: provider.write,
+    writeWithSettlement: provider.writeWithSettlement,
+    resize: provider.resize,
+    sendSignal: provider.sendSignal,
+    getCwd: provider.getCwd,
+    getInitialCwd: provider.getInitialCwd,
+    clearBuffer: provider.clearBuffer,
+    resetInputModes: provider.resetInputModes,
+    closeStartupQueryAuthority: provider.closeStartupQueryAuthority,
+    acknowledgeDataEvent: provider.acknowledgeDataEvent,
+    hasChildProcesses: provider.hasChildProcesses,
+    getForegroundProcess: provider.getForegroundProcess,
+    inspectProcess: provider.inspectProcess,
+    hasPty: provider.hasPty,
+    getAppliedSize: provider.getAppliedSize
+  }
+  const routed = routing.providerFor
+
+  provider.dispose = () => {
+    routing.dispose()
+    own.dispose()
+  }
+
+  provider.spawn = async (opts: PtySpawnOptions): Promise<PtySpawnResult> => {
+    try {
+      return await own.spawn(opts)
+    } catch (error) {
+      if (!(error instanceof SshPtyHeldByPreviousRelayError) || !opts.sessionId) {
+        throw error
+      }
+      const served = await routing.attach(opts.sessionId)
+      if (!served) {
+        throw error
+      }
+      try {
+        return await served.provider.spawn(opts)
+      } catch (legacyError) {
+        served.release()
+        throw legacyError
+      }
+    }
+  }
+  provider.attach = (id) => routed(id)?.attach(id) ?? own.attach(id)
+  provider.attachForReconnect = (id, expected, recovery) =>
+    routed(id)?.attachForReconnect(id, expected, recovery) ??
+    own.attachForReconnect(id, expected, recovery)
+  provider.shutdown = (id, opts) => routed(id)?.shutdown(id, opts) ?? own.shutdown(id, opts)
+  provider.pauseProducer = (id) => (routed(id) ?? own).pauseProducer(id)
+  provider.resumeProducer = (id) => (routed(id) ?? own).resumeProducer(id)
+  provider.write = (id, data) => routed(id)?.write(id, data) ?? own.write(id, data)
+  provider.writeWithSettlement = (id, data) =>
+    routed(id)?.writeWithSettlement(id, data) ?? own.writeWithSettlement(id, data)
+  provider.resize = (id, cols, rows) => (routed(id) ?? own).resize(id, cols, rows)
+  provider.sendSignal = (id, signal) =>
+    routed(id)?.sendSignal(id, signal) ?? own.sendSignal(id, signal)
+  provider.getCwd = (id) => routed(id)?.getCwd(id) ?? own.getCwd(id)
+  provider.getInitialCwd = (id) => routed(id)?.getInitialCwd(id) ?? own.getInitialCwd(id)
+  provider.clearBuffer = (id) => routed(id)?.clearBuffer(id) ?? own.clearBuffer(id)
+  provider.resetInputModes = (id) => routed(id)?.resetInputModes(id) ?? own.resetInputModes(id)
+  provider.closeStartupQueryAuthority = (id) =>
+    routed(id)?.closeStartupQueryAuthority(id) ?? own.closeStartupQueryAuthority(id)
+  provider.acknowledgeDataEvent = (id, charCount) =>
+    (routed(id) ?? own).acknowledgeDataEvent(id, charCount)
+  provider.hasChildProcesses = (id) =>
+    routed(id)?.hasChildProcesses(id) ?? own.hasChildProcesses(id)
+  provider.getForegroundProcess = (id) =>
+    routed(id)?.getForegroundProcess(id) ?? own.getForegroundProcess(id)
+  provider.inspectProcess = (id, options) =>
+    routed(id)?.inspectProcess(id, options) ?? own.inspectProcess(id, options)
+  provider.hasPty = (id) => routed(id) !== undefined || own.hasPty(id)
+  provider.getAppliedSize = (id) => (routed(id) ?? own).getAppliedSize(id)
+  // Why merged: a served PTY missing from the target's listing would read as gone to inventory.
+  provider.listProcesses = async (options) => {
+    const [current, ...previous] = await Promise.all([
+      own.listProcesses(options),
+      ...routing.servedProviders().map((legacy) =>
+        legacy.listProcesses(options).then(
+          (rows) => rows.filter((row) => routed(row.id) === legacy),
+          () => []
+        )
+      )
+    ])
+    return [...current, ...previous.flat()]
+  }
+}

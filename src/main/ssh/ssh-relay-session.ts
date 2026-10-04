@@ -19,6 +19,7 @@ import {
   isReattachHeldByPreviousRelay,
   startPreviousRelayCensus
 } from './ssh-previous-relay-terminals'
+import { createSshLegacyRelayRouter } from './ssh-legacy-relay-routing'
 import { SshChannelMultiplexer } from './ssh-channel-multiplexer'
 import { SshPtyProvider } from '../providers/ssh-pty-provider'
 import type { SshPtyAttachResult } from '../providers/ssh-pty-session-reattach'
@@ -1202,6 +1203,7 @@ export class SshRelaySession {
     ptyProvider.setTerminalUnavailableRecovery?.((cause) =>
       this.recoverRemoteTerminalRuntime(ptyProvider, cause)
     )
+    ptyProvider.setLegacyRelayRouting?.(this.createLegacyRelayRouter())
     const consumerOwnerState = this.activePtyConsumerOwner()
     if (consumerOwnerState) {
       ptyProvider.setPtyDeliveryPauseAdapter?.(({ id, providerGeneration: generation, paused }) => {
@@ -1314,6 +1316,29 @@ export class SshRelaySession {
     this.wireUpRemoteWorkspaceEvents(mux)
     void this.installManagedHooksOnRemote(mux, shouldContinue)
     return true
+  }
+
+  // Why not acceptPtyData: an earlier build's relay serves these panes without flow control.
+  private createLegacyRelayRouter(): ReturnType<typeof createSshLegacyRelayRouter> {
+    return createSshLegacyRelayRouter({
+      targetId: this.targetId,
+      connection: () => this.currentConnection,
+      clientInstanceId: this.ptyConsumerClientInstanceId,
+      sink: {
+        data: (payload) =>
+          void acceptSshPtyOutputData({
+            id: payload.id,
+            data: payload.data,
+            providerGeneration: payload.providerGeneration,
+            ptyIncarnation: payload.ptyIncarnation,
+            rawLength: payload.sequenceChars ?? payload.data.length,
+            transformed: payload.transformed === true,
+            ...(typeof payload.seq === 'number' ? { sequence: payload.seq } : {})
+          }).catch(() => {}),
+        exit: (payload) => void this.acceptPtyExit(payload).catch(() => {}),
+        replay: (payload) => this.forwardReattachReplay(payload.id, payload.data)
+      }
+    })
   }
 
   private activePtyConsumerOwner(): SshPtyConsumerOwnerState | null {
