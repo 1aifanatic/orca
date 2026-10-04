@@ -21,10 +21,12 @@ import {
   countUnsupportedSessionState,
   projectDormantSessionFocus,
   projectSessionToDestination,
-  shutdownMarkerHasTerminalAuthority,
   transferableSleepingAgentSession
 } from './orcad-source-workspace-session-eligibility'
-import { collectOwnedTerminalTabIds } from './orcad-source-workspace-session-layout'
+import {
+  collectOwnedTerminalTabIds,
+  dropOrcadMigrationTerminalBindings
+} from './orcad-source-workspace-session-layout'
 import {
   mergeSessionFragments,
   sessionPartitions
@@ -54,7 +56,6 @@ export function collectOrcadMigrationSourceWorkspaceSession(
     const sourceHostPartition = partitionId === scope.hostId
     const terminalTabIds = collectOwnedTerminalTabIds(session, scope)
     blockedCount += countUnsupportedSessionState(
-      state,
       session,
       scope,
       sourceHostPartition,
@@ -85,18 +86,7 @@ export function collectOrcadMigrationSourceWorkspaceSession(
       fragment.activeWorktreeId = null
       delete fragment.activeWorkspaceKey
     }
-    // A shutdown marker is only a reconnect hint. Once the source has no live
-    // PTY authority for that worktree, carrying it would make the destination
-    // try to resurrect a process that no longer exists.
-    if (fragment.activeWorktreeIdsOnShutdown) {
-      fragment.activeWorktreeIdsOnShutdown = fragment.activeWorktreeIdsOnShutdown.filter(
-        (worktreeId) =>
-          shutdownMarkerHasTerminalAuthority(state, session, scope, sourceHostPartition, worktreeId)
-      )
-      if (fragment.activeWorktreeIdsOnShutdown.length === 0) {
-        delete fragment.activeWorktreeIdsOnShutdown
-      }
-    }
+    dropOrcadMigrationTerminalBindings(fragment)
     if (hasTransferredSessionState(fragment)) {
       const projected = projectOrcadMigrationSessionScrollback(
         projectSessionToDestination(fragment, scope),

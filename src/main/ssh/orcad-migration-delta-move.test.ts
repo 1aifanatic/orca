@@ -8,6 +8,8 @@ import { addManagedOrcadEnvironment } from '../../shared/runtime-environment-man
 import { listEnvironments } from '../../shared/runtime-environment-store'
 import type { Repo } from '../../shared/repo-types'
 import type { SshTarget } from '../../shared/ssh-types'
+import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
+import { folderWorkspaceKey } from '../../shared/workspace-scope'
 import { closeTestStores, createSqliteTestStore } from '../persistence-test-harness'
 import { Store } from '../persistence/loading-store/store'
 import { listOrcadMigrationSourceCutovers } from './orcad-migration-cutover-journal'
@@ -135,6 +137,94 @@ function deltaMove() {
   })
 }
 
+const LEAF = '11111111-1111-4111-8111-111111111111'
+
+/** What v1.4.218 leaves after a downgrade: a terminal in what it added, and client focus there. */
+function olderBuildSessionAfterDowngrade(): void {
+  const hostId = `ssh:${TARGET.id}` as const
+  const group = store.createProjectGroup({
+    name: 'downgrade-added',
+    parentPath: '/srv/folders',
+    connectionId: TARGET.id,
+    createdFrom: 'manual'
+  })
+  const folder = store.createFolderWorkspace({
+    projectGroupId: group.id,
+    name: 'downgrade-added workspace',
+    folderPath: '/srv/folders/added',
+    connectionId: TARGET.id
+  })
+  const folderKey = folderWorkspaceKey(folder.id)
+  const environmentId = getManagedOrcadFenceEnvironmentId(store.getSshTarget(TARGET.id))!
+  const focus: Partial<WorkspaceSessionState> = {
+    activeRepoId: null,
+    activeWorktreeId: folderKey,
+    activeWorkspaceKey: folderKey,
+    activeWorkspaceExecutionHostId: hostId,
+    activeTabId: 'tab-term',
+    activeConnectionIdsAtShutdown: [TARGET.id]
+  }
+  store.setWorkspaceSession({ ...store.getWorkspaceSession(), ...focus })
+  store.setWorkspaceSession(
+    {
+      ...store.getWorkspaceSession(hostId),
+      ...focus,
+      tabsByWorktree: {
+        [folderKey]: [
+          {
+            id: 'tab-term',
+            ptyId: `${hostId}@@pty2:relay:1`,
+            worktreeId: folderKey,
+            title: 'Terminal 1',
+            customTitle: null,
+            color: null,
+            sortOrder: 0,
+            createdAt: 1
+          }
+        ]
+      },
+      terminalLayoutsByTabId: {
+        'tab-term': {
+          root: { type: 'leaf', leafId: LEAF },
+          activeLeafId: LEAF,
+          expandedLeafId: null,
+          ptyIdsByLeafId: { [LEAF]: `${hostId}@@pty2:relay:1` }
+        }
+      },
+      terminalPtyIncarnationsByPaneKey: { [`tab-term:${LEAF}`]: 'incarnation-1' },
+      terminalTopologyRevisionByRepoId: { [folderKey]: 1 },
+      activeWorktreeIdsOnShutdown: [folderKey],
+      unifiedTabs: {
+        // The managed build stamped repo-1's editor tab with its server before the downgrade.
+        'repo-1::/srv/app': [
+          {
+            id: 'tab-editor',
+            entityId: '/srv/app/README.md',
+            groupId: 'group-editor',
+            worktreeId: 'repo-1::/srv/app',
+            executionHostId: `runtime:${environmentId}`,
+            contentType: 'editor',
+            label: 'README.md',
+            customLabel: null,
+            color: null,
+            sortOrder: 0,
+            createdAt: 1
+          }
+        ]
+      }
+    },
+    hostId
+  )
+  store.upsertSshRemotePtyLease({
+    targetId: TARGET.id,
+    ptyId: 'pty2:relay:1',
+    worktreeId: folderKey,
+    tabId: 'tab-term',
+    leafId: LEAF,
+    state: 'expired'
+  })
+}
+
 describe('moving what an older build added to a converted host', () => {
   it('previews additions and what the server keeps, then moves only the additions', async () => {
     await convertedThenChangedOnOlderBuild()
@@ -223,5 +313,37 @@ describe('moving what an older build added to a converted host', () => {
     expect(destination.commits).toBe(3)
     expect(listOrcadMigrationSourceCutovers(userDataPath)).toHaveLength(3)
     expect(visibleRepos(store)).toEqual([])
+  })
+
+  it('moves what a downgrade added despite its exited terminal, tabs and client focus', async () => {
+    await convertedThenChangedOnOlderBuild()
+    olderBuildSessionAfterDowngrade()
+    await store.upsertSshPtyConsumerRecovery({
+      targetId: TARGET.id,
+      clientInstanceId: 'client-1',
+      serverBuildId: '0.1.0',
+      clientGeneration: 1,
+      ownerGeneration: 1,
+      ownerLease: 'lease'
+    })
+    reconcileManagedOrcadSshTargets(userDataPath, store, now)
+
+    const plan = planOrcadDeltaMove(userDataPath, store, store.getSshTarget(TARGET.id)!)
+    expect(plan.blockers).toEqual([])
+    expect(plan.added.map((row) => row.kind).sort()).toEqual([
+      'folder-workspace',
+      'project-group',
+      'repository'
+    ])
+    // The relay answers with no terminals, so the expired lease is proven exited.
+    await expect(deltaMove()).resolves.toMatchObject({ outcome: 'moved' })
+    const delta = listOrcadMigrationSourceCutovers(userDataPath).find(
+      (journal) => journal.supersedesMigrationId
+    )
+    const session = delta?.manifest.payload.dormantState?.workspaceSession
+    expect(Object.values(session?.tabsByWorktree ?? {}).flat()).toMatchObject([
+      { id: 'tab-term', ptyId: null }
+    ])
+    expect(session?.unifiedTabs?.['repo-1::/srv/app']).toBeUndefined()
   })
 })

@@ -19,6 +19,14 @@ export function retireOrcadMigrationSourceWorkspaceSession(
   if (!manifest.payload.dormantState?.workspaceSession) {
     return
   }
+  removeOrcadMigrationScopeWorkspaceSession(state, manifest)
+}
+
+/** Every partition's session state for the manifest's catalog, whether or not it could move. */
+export function removeOrcadMigrationScopeWorkspaceSession(
+  state: PersistedState,
+  manifest: OrcadMigrationManifest
+): void {
   const scope = createOrcadMigrationSourceScope({
     source: manifest.source,
     catalog: manifest.payload
