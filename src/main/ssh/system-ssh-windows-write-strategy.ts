@@ -274,9 +274,10 @@ function isPwshUnavailableError(error: unknown): boolean {
   // Only the remote exit/stderr establishes absence; the label can contain any filename.
   return (
     error.exitCode === 9009 ||
-    /is not recognized as an internal or external command|CommandNotFoundException/i.test(
+    /^'pwsh\.exe' is not recognized as an internal or external command,?\r?$/im.test(
       error.stderr
-    )
+    ) ||
+    /^CommandNotFoundException:\s*pwsh\.exe\s*$/im.test(error.stderr)
   )
 }
 
