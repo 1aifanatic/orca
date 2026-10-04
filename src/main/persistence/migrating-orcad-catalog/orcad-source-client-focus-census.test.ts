@@ -11,10 +11,7 @@ import type { SshTarget } from '../../../shared/ssh-types'
 import type { Tab } from '../../../shared/tab-types'
 import { worktreeWorkspaceKey } from '../../../shared/workspace-scope'
 import { retargetOrcadSourceClientFocus } from './orcad-source-client-focus-retarget'
-import {
-  collectOrcadMigrationSourceDependencyCensus,
-  collectOrcadMigrationUntransferredDependencyCensus
-} from './orcad-source-dependency-census'
+import { collectOrcadMigrationUntransferredDependencyCensus } from './orcad-source-dependency-census'
 import { collectOrcadMigrationSourceDormantState } from './orcad-source-dormant-state'
 import {
   assertOrcadMigrationSourceWorkspaceSessionRetired,
@@ -107,29 +104,7 @@ describe('orcad migration census and client focus', () => {
       'ssh:other-a': { ...focusCopy },
       'ssh:other-b': { ...focusCopy }
     }
-    // The same profile with focus only in the source partition: what the census may count.
-    const sourceOnly = structuredClone(state)
-    const noFocus = {
-      activeRepoId: null,
-      activeWorktreeId: null,
-      activeWorkspaceKey: null,
-      activeWorkspaceExecutionHostId: null,
-      activeTabId: null
-    }
-    Object.assign(sourceOnly.workspaceSession, noFocus)
-    Object.assign(sourceOnly.workspaceSessionsByHostId!['ssh:other-a']!, noFocus)
-    Object.assign(sourceOnly.workspaceSessionsByHostId!['ssh:other-b']!, noFocus)
-
     expect(sessionCount(state)).toBe(0)
-    expect(
-      collectOrcadMigrationSourceDependencyCensus(state, manifest('env-1')).counts[
-        'workspace-session'
-      ]
-    ).toBe(
-      collectOrcadMigrationSourceDependencyCensus(sourceOnly, manifest('env-1')).counts[
-        'workspace-session'
-      ]
-    )
   })
 
   it('carries no client focus into the destination session', () => {

@@ -17,7 +17,6 @@ import type {
 import { assertOrcadMigrationManifestDigest } from '../../orcad/orcad-migration-manifest-digest'
 import type { StoreRuntimeState } from '../loading-store/store-runtime-state'
 import {
-  collectOrcadMigrationSourceDependencyCensus,
   collectOrcadMigrationUntransferredDependencyCensus,
   type OrcadMigrationSourceDependencyCensus
 } from './orcad-source-dependency-census'
@@ -60,18 +59,6 @@ export class OrcadSourceExportPersistence {
   /** A copy of the source with `moved` retired from it, for a delta move. */
   createOrcadMigrationDeltaView(moved: OrcadMigrationManifest): OrcadMigrationDeltaView {
     return createOrcadMigrationDeltaView(this[orcadSourceExportContext], moved)
-  }
-
-  /** Every dependency on the target, transferable or not; preflight decides what blocks. */
-  inspectOrcadMigrationSourceDependencies(
-    manifest: OrcadMigrationManifest
-  ): OrcadMigrationSourceDependencyCensus {
-    const runtime = this[orcadSourceExportContext]
-    return collectOrcadMigrationSourceDependencyCensus(
-      runtime.state,
-      manifest,
-      runtime.terminalScrollbackSnapshotStorage
-    )
   }
 
   /** What still references the target that this manifest cannot carry. */
