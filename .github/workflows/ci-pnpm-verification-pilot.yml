@@ -8,6 +8,7 @@ on:
         type: choice
         options:
           - all
+          - next-fixtures
           - new-fixtures
           - fixtures
           - status-store
@@ -16,6 +17,8 @@ on:
           - antigravity
           - frame
           - fidelity
+          - imports
+          - recovery
         default: all
 permissions:
   contents: read
@@ -218,5 +221,70 @@ jobs:
         if: "!cancelled()"
         with:
           name: unit-capacity-fidelity
+          path: ${{ runner.temp }}/capacity-output
+          retention-days: 14
+  imports:
+    name: unit capacity imports
+    if: inputs.cohort == 'all' || inputs.cohort == 'imports' || inputs.cohort == 'next-fixtures'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: node
+          node-version: "24"
+          cache-pnpm-store: "false"
+      - name: Typecheck modified Node sources
+        run: pnpm tc:node
+      - name: Expand frozen baseline and portable benchmark
+        run: |-
+          mkdir -p "$RUNNER_TEMP/capacity-support" "$RUNNER_TEMP/capacity-output"
+          tar -xzf config/ci-capacity-benchmark/unit-fixtures.tar.gz -C "$RUNNER_TEMP/capacity-support"
+          git rev-parse HEAD > "$RUNNER_TEMP/capacity-output/source-sha.txt"
+          node --version > "$RUNNER_TEMP/capacity-output/node-version.txt"
+          pnpm --version > "$RUNNER_TEMP/capacity-output/pnpm-version.txt"
+      - name: Run alternating timed pairs and separate failure controls
+        run: |-
+          python3 "$RUNNER_TEMP/capacity-support/run-import-benchmark.py" --out "$RUNNER_TEMP/capacity-output/imports"
+          python3 "$RUNNER_TEMP/capacity-support/run-tail-final-benchmark.py" --out "$RUNNER_TEMP/capacity-output/final-tail"
+          python3 "$RUNNER_TEMP/capacity-support/run-tail-runtime-controls.py" --out "$RUNNER_TEMP/capacity-output/tail-controls"
+      - uses: actions/upload-artifact@v7
+        if: "!cancelled()"
+        with:
+          name: unit-capacity-imports
+          path: ${{ runner.temp }}/capacity-output
+          retention-days: 14
+  recovery:
+    name: unit capacity recovery
+    if: inputs.cohort == 'all' || inputs.cohort == 'recovery' || inputs.cohort == 'next-fixtures'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: node
+          node-version: "24"
+          cache-pnpm-store: "false"
+      - name: Typecheck modified Node sources
+        run: pnpm tc:node
+      - name: Expand frozen baseline and portable benchmark
+        run: |-
+          mkdir -p "$RUNNER_TEMP/capacity-support" "$RUNNER_TEMP/capacity-output"
+          tar -xzf config/ci-capacity-benchmark/recovery.tar.gz -C "$RUNNER_TEMP/capacity-support"
+          git rev-parse HEAD > "$RUNNER_TEMP/capacity-output/source-sha.txt"
+          node --version > "$RUNNER_TEMP/capacity-output/node-version.txt"
+          pnpm --version > "$RUNNER_TEMP/capacity-output/pnpm-version.txt"
+      - name: Run alternating timed pairs and separate failure controls
+        run: node "$RUNNER_TEMP/capacity-support/run.mjs" "$RUNNER_TEMP/capacity-output"
+      - uses: actions/upload-artifact@v7
+        if: "!cancelled()"
+        with:
+          name: unit-capacity-recovery
           path: ${{ runner.temp }}/capacity-output
           retention-days: 14
