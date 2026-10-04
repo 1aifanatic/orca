@@ -31,8 +31,33 @@ function queuedAnswer(clientMessageId: string, state: 'waiting' | 'withdrawn'): 
   })
 }
 
-/** Each `agentSession.send` answered in turn: a lost answer, or a queued draft in that state. */
-function hostAnswering(answers: readonly ('lost' | 'waiting' | 'withdrawn')[]) {
+function submissionAnswer(clientMessageId: string, dispatchState: 'accepted' | 'rejected') {
+  return ok({
+    ok: true,
+    replayed: false,
+    fence: 3,
+    cursor: { epoch: 'epoch-1', sequence: 1 },
+    value: {
+      clientMessageId,
+      submission: {
+        clientMessageId,
+        fence: 3,
+        payloadFingerprint: 'fingerprint',
+        dispatchState,
+        providerItemId: null,
+        reason: dispatchState === 'rejected' ? 'provider_write_failed: broken pipe' : null,
+        submittedAt: 1,
+        resolvedAt: 1
+      }
+    }
+  })
+}
+
+/** Each `agentSession.send` answered in turn: a lost answer, a queued draft in that state, or a
+ *  recorded submission in that state. */
+function hostAnswering(
+  answers: readonly ('lost' | 'waiting' | 'withdrawn' | 'accepted' | 'rejected')[]
+) {
   const ids: string[] = []
   const deliveries: unknown[] = []
   const sendRequest = vi.fn<RpcClient['sendRequest']>(async (_method, params) => {
@@ -44,7 +69,9 @@ function hostAnswering(answers: readonly ('lost' | 'waiting' | 'withdrawn')[]) {
     if (answer === 'lost' || answer === undefined) {
       throw markRpcDeliveryUnknown(new Error('Connection closed'))
     }
-    return queuedAnswer(id, answer)
+    return answer === 'accepted' || answer === 'rejected'
+      ? submissionAnswer(id, answer)
+      : queuedAnswer(id, answer)
   })
   const client: RpcClient = {
     sendRequest,
@@ -153,5 +180,28 @@ describe('a resend past a saved record storage would not clear', () => {
     expect(onError).toHaveBeenCalledWith(
       "Sent, but this phone couldn't update its record of sent messages."
     )
+  })
+
+  // Its row says it was not sent, so replaying the kept id would answer that again and do nothing.
+  it('sends the same text as a new message when its kept id answers as recorded and rejected', async () => {
+    const { client, ids } = hostAnswering(['lost', 'rejected', 'accepted'])
+    const onError = vi.fn()
+    expect(await sendAgain(client, onError, false)).toBe('unknown')
+    expect(await sendAgain(client, onError, false)).toBe('accepted')
+    expect(ids).toHaveLength(3)
+    expect(ids[1]).toBe(ids[0])
+    expect(ids[2]).not.toBe(ids[0])
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it('never says a resend went out when the host recorded and rejected it', async () => {
+    const { client, ids } = hostAnswering(['lost', 'withdrawn', 'rejected'])
+    const onError = vi.fn()
+    expect(await sendAgain(client, onError)).toBe('unknown')
+    asyncStorage.setItem.mockRejectedValue(new Error('disk full'))
+    asyncStorage.removeItem.mockRejectedValue(new Error('disk full'))
+    expect(await sendAgain(client, onError)).toBe('queued')
+    expect(ids).toHaveLength(3)
+    expect(onError).not.toHaveBeenCalled()
   })
 })
