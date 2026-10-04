@@ -2,6 +2,8 @@ import type { AgentSessionExecutionLocation } from '../../shared/agent-session-r
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { hasExplicitTuiLaunchCommand } from '../../shared/tui-agent-launch-command-override'
+import { isTuiAgent } from '../../shared/tui-agent-config'
+import type { StructuredAgentId } from '../../shared/agent-session-provider-handle'
 import {
   readClaudeManagedAccountGateSettings,
   structuredClaudeMatchesActiveManagedAccount,
@@ -19,7 +21,7 @@ export type StructuredAgentSessionCreateSupport = {
  * however wrong it was. The runtime hands over the two facts it owns and this decides.
  */
 export function resolveStructuredAgentSessionCreateSupport(input: {
-  agent: 'claude' | 'codex'
+  agent: StructuredAgentId
   location: AgentSessionExecutionLocation
   adapterSupportsCreate: boolean
   getSettings: () => ClaudeManagedAccountGateSettings &
@@ -38,7 +40,10 @@ export function resolveStructuredAgentSessionCreateSupport(input: {
   }
   // This host's own launch command override names a process only a terminal runs, whichever
   // client asked; a client routes on its own override for its own machine only.
-  if (hasExplicitTuiLaunchCommand(readSettingsOrNull(input.getSettings), input.agent)) {
+  if (
+    isTuiAgent(input.agent) &&
+    hasExplicitTuiLaunchCommand(readSettingsOrNull(input.getSettings), input.agent)
+  ) {
     return { supported: false, reason: 'agent' }
   }
   // Claude only: Codex resolves its account on a different path, so its answer is untouched here.

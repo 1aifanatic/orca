@@ -1,5 +1,7 @@
+import { isAgentSessionHandleProvider } from '../../../../shared/agent-session-provider-handle'
 import {
   STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY,
+  STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
 } from '../../../../shared/protocol-version'
 import type { OrcaRuntimeService } from '../../orca-runtime'
@@ -18,6 +20,21 @@ export function supportsStructuredAgentSessions(
   return (
     context.clientKind === undefined ||
     context.clientCapabilities?.includes(STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY) === true
+  )
+}
+
+/** Whether a published row naming `agent` is one this client reads. Every client knows Claude and
+ *  Codex; any other agent reaches only a client that renders the host's registered agents. */
+export function clientReadsStructuredAgent(
+  context: Pick<RpcContext, 'clientCapabilities' | 'clientKind'>,
+  agent: string
+): boolean {
+  return (
+    isAgentSessionHandleProvider(agent) ||
+    context.clientKind === undefined ||
+    context.clientCapabilities?.includes(
+      STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY
+    ) === true
   )
 }
 

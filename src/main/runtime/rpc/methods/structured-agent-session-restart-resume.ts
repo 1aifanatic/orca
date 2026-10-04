@@ -12,6 +12,13 @@ import {
   structuredCallerFor
 } from './structured-agent-session-gate'
 import { RestartResumableParams, RestartResumeParams } from './structured-agent-session-schemas'
+import { clientReadsStructuredAgent } from './structured-agent-session-policy'
+import type { RpcContext } from '../core'
+
+/** Offers for agents this client cannot show stay on the host for a client that can. */
+function readableOffers<T extends { agent: string }>(ctx: RpcContext, offers: readonly T[]): T[] {
+  return offers.filter((offer) => clientReadsStructuredAgent(ctx, offer.agent))
+}
 
 export const STRUCTURED_AGENT_SESSION_RESTART_RESUME_METHODS = [
   defineMethod({
@@ -21,9 +28,9 @@ export const STRUCTURED_AGENT_SESSION_RESTART_RESUME_METHODS = [
       await ensureStructuredHostInstalled(ctx)
       const host = requireStructuredHost(ctx)
       return {
-        sessions: await host.restartResume.list(),
+        sessions: readableOffers(ctx, await host.restartResume.list()),
         // Acted-on offers whose agent did not carry on. Optional on the wire; older clients ignore it.
-        failed: await host.restartResume.listFailures()
+        failed: readableOffers(ctx, await host.restartResume.listFailures())
       }
     }
   }),
@@ -43,8 +50,8 @@ export const STRUCTURED_AGENT_SESSION_RESTART_RESUME_METHODS = [
       }
       return {
         dismissed,
-        sessions: await host.restartResume.list(),
-        failed: await host.restartResume.listFailures()
+        sessions: readableOffers(ctx, await host.restartResume.list()),
+        failed: readableOffers(ctx, await host.restartResume.listFailures())
       }
     }
   }),

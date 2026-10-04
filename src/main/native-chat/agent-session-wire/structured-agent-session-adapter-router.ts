@@ -130,6 +130,9 @@ export class StructuredAgentSessionAdapterRouter implements StructuredAgentSessi
   definition = (agent: string): StructuredAgentDefinition | null =>
     this.registrations.get(agent)?.definition ?? null
 
+  definitions = (): readonly StructuredAgentDefinition[] =>
+    [...this.registrations.values()].map((registration) => registration.definition)
+
   stopBackgroundTasks: NonNullable<StructuredAgentSessionAdapter['stopBackgroundTasks']> = (
     input
   ) => {

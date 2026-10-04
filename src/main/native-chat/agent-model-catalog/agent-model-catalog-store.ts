@@ -19,7 +19,7 @@ export const AGENT_MODEL_CATALOG_VALIDATION_MIN_AGE_MS = 60_000
 export const AGENT_MODEL_CATALOG_MAX_ENTRIES = 256
 
 export type AgentModelCatalogEntry = {
-  agent: 'claude' | 'codex'
+  agent: string
   fingerprint: string
   models: AgentSessionModelOption[]
   fastModeSupport?: AgentSessionFastModeSupport
@@ -144,7 +144,7 @@ export class AgentModelCatalogStore {
 
   recordSuccess(
     fingerprint: string,
-    agent: 'claude' | 'codex',
+    agent: string,
     success: AgentModelCatalogSuccess
   ): AgentModelCatalogEntry | null {
     if (success.models.length === 0) {
@@ -180,7 +180,7 @@ export class AgentModelCatalogStore {
    *  Resolves with the entry on success and null on failure — never rejects. */
   refresh(
     fingerprint: string,
-    agent: 'claude' | 'codex',
+    agent: string,
     listModels: () => Promise<AgentModelCatalogSuccess>
   ): Promise<AgentModelCatalogEntry | null> {
     const inFlight = this.refreshes.get(fingerprint)

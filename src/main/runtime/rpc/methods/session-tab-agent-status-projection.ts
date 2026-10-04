@@ -1,6 +1,7 @@
 import {
   AGENT_SESSION_BOUNDARY_RUNTIME_CAPABILITY,
   CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
+  STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
   type RuntimeCapability
 } from '../../../../shared/protocol-version'
@@ -25,9 +26,15 @@ function clientCanRenderStructuredAgentSessionTab(
   if (!clientCapabilities?.includes(STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY)) {
     return false
   }
-  return (
-    tab.agent === 'codex' ||
-    clientCapabilities.includes(CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY)
+  if (tab.agent === 'codex') {
+    return true
+  }
+  // Every shipped client reads only Claude and Codex as chats; any other agent's tab would list
+  // with an empty pane, so it waits for a client that says it renders the host's agents.
+  return clientCapabilities.includes(
+    tab.agent === 'claude'
+      ? CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
+      : STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY
   )
 }
 
@@ -65,15 +72,14 @@ export function projectSessionTabAgentStatus<TPayload extends SessionTabsPayload
     })
   } else {
     projected = structuredVisible ? payload : projectAgentSessionTabsOut(payload, () => true)
-    // Why: a paired client renders only codex structured tabs unless it says otherwise
-    // (mobile's resolveMobileNativeChat returns null for every other agent), so an
-    // ungated row would list and select into a pane that shows neither chat nor terminal.
-    if (
-      structuredVisible &&
-      clientKind !== undefined &&
-      !clientCapabilities?.includes(CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY)
-    ) {
-      projected = projectAgentSessionTabsOut(projected, (tab) => tab.agent !== 'codex')
+    // Why: a paired client renders only the agents it says it does (mobile's
+    // resolveMobileNativeChat returns null for every other agent), so an ungated row would
+    // list and select into a pane that shows neither chat nor terminal.
+    if (structuredVisible && clientKind !== undefined) {
+      projected = projectAgentSessionTabsOut(
+        projected,
+        (tab) => !clientCanRenderStructuredAgentSessionTab(tab, clientCapabilities)
+      )
     }
   }
   // Why: only paired runtimes have legacy `done` completion side effects; mobile must keep its row without changing the exact v2 auth shape.

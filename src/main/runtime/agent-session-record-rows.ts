@@ -24,6 +24,7 @@ import {
   isReadableRetiredAgentSessionClaimKey
 } from './agent-session-store-row-rules'
 import { AgentSessionTabTable, type PersistedAgentSessionTab } from './agent-session-tab-table'
+import type { AgentSessionStoredAgents } from '../../shared/agent-session-stored-agent'
 
 /** "Never recorded" and "recorded, now empty" differ, and #17439's legacy fallback needs the first;
  *  no row count can say which. */
@@ -63,8 +64,8 @@ function parseJson(json: string | null): { ok: true; value: unknown } | { ok: fa
   }
 }
 
-function unreadableRecordReason(value: unknown): string {
-  if (isPersistedAgentSessionRecord(value)) {
+function unreadableRecordReason(value: unknown, agents: AgentSessionStoredAgents): string {
+  if (isPersistedAgentSessionRecord(value, agents)) {
     return 'record_key_session_id_mismatch'
   }
   const schemaVersion =
@@ -83,7 +84,8 @@ function unreadableRecordReason(value: unknown): string {
  */
 export function loadAgentSessionStoreRows(
   db: Database.Database,
-  hostId: string
+  hostId: string,
+  agents: AgentSessionStoredAgents
 ): AgentSessionStoreState {
   const state: AgentSessionStoreState = {
     schemaVersion: AGENT_SESSION_STORE_SCHEMA_VERSION,
@@ -111,14 +113,17 @@ export function loadAgentSessionStoreRows(
     }
     const parsed = parseJson(text(row, 'record_json'))
     const value = parsed.ok ? parsed.value : text(row, 'record_json')
-    if (parsed.ok && isReadableAgentSessionStoreRecord(sessionId, value)) {
+    if (parsed.ok && isReadableAgentSessionStoreRecord(sessionId, value, agents)) {
       const { record } = decodePersistedAgentSessionRecord(value)
       state.records.set(sessionId, {
         ...record,
         lease: { ...withoutRetiredLeaseLatches(record.lease), unreconciled: true }
       })
     } else {
-      state.unreadableRecords.set(sessionId, { reason: unreadableRecordReason(value), raw: value })
+      state.unreadableRecords.set(sessionId, {
+        reason: unreadableRecordReason(value, agents),
+        raw: value
+      })
     }
   }
   for (const row of db

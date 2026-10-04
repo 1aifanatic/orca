@@ -3,7 +3,6 @@ import type {
   AgentSessionAccountHome,
   AgentSessionRecord
 } from '../../../shared/agent-session-record'
-import type { AgentSessionHandleProvider } from '../../../shared/agent-session-provider-handle'
 import {
   agentModelCatalogFingerprint,
   agentModelCatalogFingerprintForRecord
@@ -20,12 +19,12 @@ export type AgentModelCatalogServiceDeps = {
   /** The account home a structured launch for this agent would pin right now —
    *  the SAME resolver the create path fills `record.accountHome` with, so a
    *  record-less read can never answer from another account's listing. */
-  resolveAccountHome: (agent: AgentSessionHandleProvider) => Promise<AgentSessionAccountHome>
+  resolveAccountHome: (agent: string) => Promise<AgentSessionAccountHome>
   /** Session-less listers, one per agent that has one on this host. */
-  probes?: Partial<Record<'claude' | 'codex', AgentModelCatalogProbe>>
+  probes?: Readonly<Partial<Record<string, AgentModelCatalogProbe>>>
   /** Whether the workspace's own config could pick a model other than the listed default. */
   workspaceMayOverrideDefaultModel?: (input: {
-    agent: 'claude' | 'codex'
+    agent: string
     workspacePath: string
     accountHomePath: string
   }) => Promise<boolean>
@@ -33,7 +32,7 @@ export type AgentModelCatalogServiceDeps = {
 
 export type AgentModelCatalogService = {
   read: (params: {
-    agent: 'claude' | 'codex'
+    agent: string
     sessionId?: string
     /** Where a new chat would run; null when one was named but is not a local directory. */
     workspacePath?: string | null
@@ -58,7 +57,7 @@ function resultFromEntry(
 /** A named workspace keeps the listed default only when none of its own config can replace it. */
 async function workspaceKeepsListedDefault(
   deps: AgentModelCatalogServiceDeps,
-  agent: 'claude' | 'codex',
+  agent: string,
   workspacePath: string | null | undefined,
   accountHomePath: string | null
 ): Promise<boolean> {

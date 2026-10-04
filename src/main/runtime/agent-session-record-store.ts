@@ -70,6 +70,7 @@ import { setAgentSessionTabVisibility, showAgentSessionTabs } from './agent-sess
 import type { JournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database'
 import { loadAgentSessionStoreRows } from './agent-session-record-rows'
 import { AgentSessionStoreTransactions } from './agent-session-store-transactions'
+import type { AgentSessionStoredAgents } from '../../shared/agent-session-stored-agent'
 
 export const AGENT_SESSION_LEASE_TTL_MS = 30_000,
   AGENT_SESSION_LEASE_RENEW_INTERVAL_MS = 10_000
@@ -83,14 +84,16 @@ export class AgentSessionRecordStore {
     readonly hostId: string
   ) {}
 
-  /** Reads every row once; nothing re-reads them. `hostId` is the execution host this runtime is. */
+  /** Reads every row once; nothing re-reads them. `hostId` is the execution host this runtime is;
+   *  `agents` are the agents it registered, the only ones whose records it reads or writes. */
   static open(args: {
     journalDatabase: JournalHostDatabase
     hostId: string
+    agents: AgentSessionStoredAgents
   }): AgentSessionRecordStore {
-    const loaded = loadAgentSessionStoreRows(args.journalDatabase.db, args.hostId)
+    const loaded = loadAgentSessionStoreRows(args.journalDatabase.db, args.hostId, args.agents)
     return new AgentSessionRecordStore(
-      new AgentSessionStoreTransactions(args.journalDatabase, loaded),
+      new AgentSessionStoreTransactions(args.journalDatabase, loaded, args.agents),
       args.hostId
     )
   }

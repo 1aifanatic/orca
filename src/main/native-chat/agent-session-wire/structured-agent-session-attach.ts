@@ -8,7 +8,7 @@
 import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
 import type {
-  AgentSessionHandleProvider,
+  StructuredAgentId,
   AgentSessionProviderHandleLink
 } from '../../../shared/agent-session-provider-handle'
 import {
@@ -56,8 +56,8 @@ import { structuredAgentSessionRefusalMessage } from './structured-agent-session
 export type AgentSessionAttachParams = {
   envelope: AgentSessionMutationEnvelope
   location: AgentSessionExecutionLocation
-  provider: AgentSessionHandleProvider
-  agent: AgentSessionHandleProvider
+  provider: StructuredAgentId
+  agent: StructuredAgentId
   accountHome: AgentSessionAccountHome
   /** Always `native`; kept on the params because the operation fingerprint covers it. */
   runtimeKind: 'native'

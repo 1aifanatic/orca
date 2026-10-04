@@ -22,14 +22,14 @@ import {
 } from './agent-session-conversation-command'
 import {
   decodePersistedAgentSessionProviderHandleChain,
-  type AgentSessionHandleProvider,
   type AgentSessionProviderHandleLink
 } from './agent-session-provider-handle'
-import { agentSessionProviderHandleBelongsTo } from './agent-session-provider-handle-encoding'
+import { isAgentSessionProviderHandleInNamespace } from './agent-session-provider-handle-encoding'
+import type { AgentSessionAccountHome } from './agent-session-account-home'
 import {
-  isAgentConfigDirectoryVariable,
-  type AgentSessionAccountHome
-} from './agent-session-account-home'
+  isDeclaredAccountHomeVariable,
+  type AgentSessionStoredAgents
+} from './agent-session-stored-agent'
 
 export type { AgentSessionAccountHome } from './agent-session-account-home'
 
@@ -134,7 +134,8 @@ export type AgentSessionRecord = {
   schemaVersion: typeof AGENT_SESSION_RECORD_SCHEMA_VERSION
   sessionId: string
   location: AgentSessionExecutionLocation
-  provider: AgentSessionHandleProvider
+  /** The registered agent this session runs; its definition decides what the record may store. */
+  provider: string
   providerHandleChain: AgentSessionProviderHandleLink[]
   accountHome: AgentSessionAccountHome
   /** Provider options the user chose, replayed whenever a new owner starts the session. */
@@ -226,13 +227,17 @@ export function isAgentSessionProcessIdentity(
   )
 }
 
-function isAgentSessionAccountHome(value: unknown): value is AgentSessionAccountHome {
+function isAgentSessionAccountHome(
+  value: unknown,
+  agents: AgentSessionStoredAgents
+): value is AgentSessionAccountHome {
   if (typeof value !== 'object' || value === null) {
     return false
   }
   const home = value as Partial<AgentSessionAccountHome>
   return (
-    isAgentConfigDirectoryVariable(home.variable) && isBoundedString(home.path, MAX_PATH_LENGTH)
+    isDeclaredAccountHomeVariable(agents, home.variable) &&
+    isBoundedString(home.path, MAX_PATH_LENGTH)
   )
 }
 
@@ -333,20 +338,23 @@ function isPersistedAgentSessionLease(value: unknown): value is PersistedAgentSe
 }
 
 /** The on-disk shape, which still admits the removed terminal handoff's lease values and stores
- *  handles in their typed form. Decode through `decodePersistedAgentSessionRecord` before use. */
+ *  handles in their typed form. Decode through `decodePersistedAgentSessionRecord` before use.
+ *  `agents` are the host's registered agents: a record of any other agent is not readable here. */
 export function isPersistedAgentSessionRecord(
-  value: unknown
+  value: unknown,
+  agents: AgentSessionStoredAgents
 ): value is PersistedAgentSessionRecord {
   if (typeof value !== 'object' || value === null) {
     return false
   }
   const record = value as Partial<AgentSessionRecord>
+  const agent = typeof record.provider === 'string' ? agents.get(record.provider) : undefined
   const fieldsValid =
     record.schemaVersion === AGENT_SESSION_RECORD_SCHEMA_VERSION &&
     isAgentSessionId(record.sessionId) &&
     isAgentSessionExecutionLocation(record.location) &&
-    (record.provider === 'claude' || record.provider === 'codex') &&
-    isAgentSessionAccountHome(record.accountHome) &&
+    agent !== undefined &&
+    isAgentSessionAccountHome(record.accountHome, agents) &&
     (record.options === undefined || isAgentSessionOptions(record.options)) &&
     (record.rewind === undefined || isAgentSessionRewindRecord(record.rewind)) &&
     (record.conversationCommand === undefined ||
@@ -366,9 +374,10 @@ export function isPersistedAgentSessionRecord(
   // The row holds stored handles; validate the chain they decode to.
   const chain = decodePersistedAgentSessionProviderHandleChain(validated.providerHandleChain)
   const head = chain?.at(-1)
+  const namespace = { transport: agent.handleTransport, agent: agent.agent }
   return (
     chain !== null &&
-    chain.every((link) => agentSessionProviderHandleBelongsTo(link.handle, validated.provider)) &&
+    chain.every((link) => isAgentSessionProviderHandleInNamespace(link.handle, namespace)) &&
     (validated.lease.claimStatus !== 'live' ||
       (validated.lease.ownerProcess !== null &&
         head?.linkId === validated.lease.provenHandleLinkId &&

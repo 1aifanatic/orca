@@ -327,6 +327,8 @@ export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & 
   /** The definition registered for `agent`, null for an agent this runtime does not drive. Answered
    *  by the router from its registrations, never by a single adapter. */
   definition?(agent: string): StructuredAgentDefinition | null
+  /** Every registered definition, in registration order: what the host publishes to clients. */
+  definitions?(): readonly StructuredAgentDefinition[]
   /** Stops exactly the tasks `taskIds` names, which the host resolves from its child records. */
   stopBackgroundTasks?(input: {
     sessionId: string

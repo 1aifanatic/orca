@@ -1,4 +1,5 @@
 import type { AgentSessionRewindParams } from '../../../shared/agent-session-rewind'
+import type { StructuredAgentDefinition } from './structured-agent-definition'
 import { rewindStructuredAgentSession } from './structured-agent-session-rewind'
 import { StructuredConversationCommandController } from './structured-conversation-command-controller'
 // Structured agent-session host: where the lease, journal, and provider adapter meet.
@@ -214,6 +215,11 @@ export class StructuredAgentSessionHost {
 
   supportsCreate = (location: AgentSessionExecutionLocation, agent: string): boolean =>
     providerSupport.adapterSupportsCreate(this.deps.adapter, location, agent)
+
+  /** What this runtime registered: one agent's definition (null when unregistered), or all of them. */
+  agentDefinition = (agent: string) => this.deps.adapter.definition?.(agent) ?? null
+  agentDefinitions = (): readonly StructuredAgentDefinition[] =>
+    this.deps.adapter.definitions?.() ?? []
 
   private readonly tabs = sessionTabs.createStructuredAgentSessionTabSurface(
     this,

@@ -12,6 +12,8 @@ import {
   isAgentSessionProviderHandle
 } from '../../shared/agent-session-provider-handle-encoding'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
+import type { AgentSessionStoredAgents } from '../../shared/agent-session-stored-agent'
+import { CLAUDE_AND_CODEX_STORED_AGENTS } from '../../shared/agent-session-stored-agent.test-fixture'
 import { JOURNAL_DB_SCHEMA_VERSION } from '../native-chat/agent-session-journal/journal-database-schema'
 import {
   closeTestJournalHostDatabase,
@@ -47,11 +49,12 @@ function databaseFor(stateDirectory: string): Database.Database {
 /** Opens, or reopens, the store in `stateDirectory`: what a fresh app process does at launch. */
 export async function openTestAgentSessionRecordStore(
   stateDirectory: string,
-  options: { hostId?: string } = {}
+  options: { hostId?: string; agents?: AgentSessionStoredAgents } = {}
 ): Promise<AgentSessionRecordStore> {
   return AgentSessionRecordStore.open({
     journalDatabase: openTestJournalHostDatabase(stateDirectory),
-    hostId: options.hostId ?? TEST_HOST_ID
+    hostId: options.hostId ?? TEST_HOST_ID,
+    agents: options.agents ?? CLAUDE_AND_CODEX_STORED_AGENTS
   })
 }
 

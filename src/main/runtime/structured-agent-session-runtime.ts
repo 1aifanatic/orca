@@ -29,6 +29,7 @@ import {
 import type { ClaudeStructuredSessionAdapterDeps } from '../claude/claude-structured-session-adapter'
 import { CODEX_STRUCTURED_AGENT } from '../codex/codex-structured-agent-definition'
 import { CLAUDE_STRUCTURED_AGENT } from '../claude/claude-structured-agent-definition'
+import { agentSessionStoredAgents } from '../../shared/agent-session-stored-agent'
 import {
   StructuredAgentSessionHost,
   type StructuredAgentSessionHostDeps
@@ -212,6 +213,13 @@ export async function stopStructuredAgentSessionRuntime(options?: {
   }
 }
 
+/** The agents this runtime registers. Their definitions bound what the record store reads and
+ *  writes, and each is routed to its adapter below. */
+const STRUCTURED_AGENT_STORAGE = agentSessionStoredAgents([
+  CODEX_STRUCTURED_AGENT,
+  CLAUDE_STRUCTURED_AGENT
+])
+
 async function install(deps: StructuredAgentSessionRuntimeDeps): Promise<InstalledRuntime> {
   // Why thrown rather than defaulted: the caller is `@ts-nocheck`, so a dropped
   // field arrives here as `undefined`. Refusing to install is loud; guessing a
@@ -227,6 +235,7 @@ async function install(deps: StructuredAgentSessionRuntimeDeps): Promise<Install
   const journalDatabase = await openStructuredAgentSessionJournalDatabase({
     stateDirectory: deps.stateDirectory,
     hostId: deps.hostId,
+    agents: STRUCTURED_AGENT_STORAGE,
     logger
   })
   try {
@@ -244,7 +253,11 @@ async function installOnJournal(
 ): Promise<InstalledRuntime> {
   const envResolvers = createStructuredAgentEnvironmentResolvers(deps)
   const { resolveCodexEnvironment, resolveClaudeInheritedEnv } = envResolvers
-  const store = AgentSessionRecordStore.open({ journalDatabase, hostId: deps.hostId })
+  const store = AgentSessionRecordStore.open({
+    journalDatabase,
+    hostId: deps.hostId,
+    agents: STRUCTURED_AGENT_STORAGE
+  })
   let host: StructuredAgentSessionHost | null = null
   const lifecycle = createStructuredAgentSessionLifecycleDelivery({
     handle: (event) => host?.handleAdapterEvent(event),
