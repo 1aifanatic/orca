@@ -28,7 +28,9 @@ class ScreenProbe extends OrcaRuntimeService {
     this.advancePtyLifecycleGeneration('pty')
   }
   isCurrent(screen: RuntimeVisibleTerminalState): boolean {
-    const deps: unknown = Reflect.get(this.antigravityScreenPermissions, 'deps')
+    const publisher: unknown = this.antigravityScreenPermissions
+    const deps: unknown =
+      publisher && typeof publisher === 'object' && 'deps' in publisher ? publisher.deps : null
     if (
       !deps ||
       typeof deps !== 'object' ||

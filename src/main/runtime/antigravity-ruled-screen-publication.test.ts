@@ -21,9 +21,13 @@ afterEach(() => {
 })
 
 function productionScreenReader(runtime: OrcaRuntimeService) {
-  const publisher: unknown = Reflect.get(runtime, 'antigravityScreenPermissions')
+  const source: unknown = runtime
+  if (!source || typeof source !== 'object' || !('antigravityScreenPermissions' in source)) {
+    throw new Error('Production Antigravity screen publisher missing')
+  }
+  const publisher = source.antigravityScreenPermissions
   const deps: unknown =
-    publisher && typeof publisher === 'object' ? Reflect.get(publisher, 'deps') : null
+    publisher && typeof publisher === 'object' && 'deps' in publisher ? publisher.deps : null
   if (
     !deps ||
     typeof deps !== 'object' ||
