@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import type { RmOptions } from 'node:fs'
 import { createServer } from 'node:net'
 import type { AddressInfo } from 'node:net'
 import os from 'node:os'
@@ -43,6 +44,18 @@ export type HeadlessPairedRuntimeHost = {
 }
 
 type HeadlessHostCleanup = () => Promise<void> | void
+
+// Why: Windows keeps a just-killed daemon's handles on the profile briefly, so removal sees EPERM.
+const PROFILE_REMOVAL: RmOptions = { recursive: true, force: true, maxRetries: 50, retryDelay: 100 }
+
+/** CI diagnostics: the profile's logs outlive its deletion when this names a directory. */
+function preserveProfileLogs(userDataDir: string): void {
+  const target = process.env.ORCA_E2E_PRESERVE_PROFILE_LOGS_DIR
+  const logs = path.join(userDataDir, 'logs')
+  if (target && existsSync(logs)) {
+    cpSync(logs, path.join(target, path.basename(userDataDir)), { recursive: true })
+  }
+}
 
 async function cleanupHeadlessHostResources(cleanups: HeadlessHostCleanup[]): Promise<void> {
   const failures: unknown[] = []
@@ -140,6 +153,9 @@ export async function launchHeadlessPairedRuntimeHost(
       ).then((home) => assertElectronResolvedIsolatedHome(home, isolation))
     ])
     let serveProcess = app
+    // Why: a failed relaunch leaves only the already-closed app, which dispose must not close again
+    // (that throw would replace the launch error).
+    let serveProcessOpen = true
     return {
       get app() {
         return serveProcess
@@ -156,16 +172,19 @@ export async function launchHeadlessPairedRuntimeHost(
           )
         }
         await closeElectronAppForE2E(serveProcess)
+        serveProcessOpen = false
         await restartOptions.betweenProcesses?.()
         const relaunched = await launchServeProcess()
         serveProcess = relaunched
+        serveProcessOpen = true
         await readServeReadiness(relaunched, { requirePairingOffer: false })
       },
       dispose: async () => {
         await cleanupHeadlessHostResources([
-          () => closeElectronAppForE2E(serveProcess),
+          ...(serveProcessOpen ? [() => closeElectronAppForE2E(serveProcess)] : []),
           () => cleanupE2EDaemons(userDataDir),
-          () => rmSync(userDataDir, { recursive: true, force: true }),
+          () => preserveProfileLogs(userDataDir),
+          () => rmSync(userDataDir, PROFILE_REMOVAL),
           ...(agentBrowserSocketDir
             ? [
                 () =>
@@ -183,7 +202,8 @@ export async function launchHeadlessPairedRuntimeHost(
       await cleanupHeadlessHostResources([
         ...(app ? [() => closeElectronAppForE2E(app)] : []),
         () => cleanupE2EDaemons(userDataDir),
-        () => rmSync(userDataDir, { recursive: true, force: true }),
+        () => preserveProfileLogs(userDataDir),
+        () => rmSync(userDataDir, PROFILE_REMOVAL),
         ...(agentBrowserSocketDir
           ? [() => rmSync(agentBrowserSocketDir, { recursive: true, force: true })]
           : [])

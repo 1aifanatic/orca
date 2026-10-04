@@ -11,7 +11,7 @@
  *     tests/e2e/orcad-serve-mode-switch.spec.ts --config tests/playwright.config.ts \
  *     --project electron-headless --workers=1
  */
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { runProcess, spawnProcess } from '../../src/shared/child-process/run-process'
@@ -28,6 +28,8 @@ import {
   launchHeadlessPairedRuntimeHost,
   type HeadlessPairedRuntimeHost
 } from './helpers/headless-paired-runtime-host'
+import { cleanupE2EDaemons } from './helpers/electron-process-shutdown'
+import { cliServeProfile, startCliServe } from './helpers/orca-serve-cli-host'
 
 const RUN = process.env.ORCA_E2E_ORCAD_SERVE === '1'
 const slotDir = path.resolve('out/orcad')
@@ -51,7 +53,7 @@ test.beforeAll(async () => {
 
 test.afterAll(() => {
   if (scratch) {
-    rmSync(scratch, { recursive: true, force: true })
+    rmSync(scratch, { recursive: true, force: true, maxRetries: 50, retryDelay: 100 })
   }
 })
 
@@ -78,7 +80,9 @@ async function terminal(
 type OrcadServe = { daemonPid: number; stop: () => Promise<void> }
 
 /** `orca serve` on orcad, as the T6-11 launcher runs it, on the host's own profile. */
-async function startOrcadServe(host: HeadlessPairedRuntimeHost): Promise<OrcadServe> {
+async function startOrcadServe(
+  host: Pick<HeadlessPairedRuntimeHost, 'env' | 'userDataDir'>
+): Promise<OrcadServe> {
   const child = spawnProcess({
     program: orcadRuntime!,
     args: [path.join(slotDir, 'orcad.js'), '--bind', '127.0.0.1', '--port', '0', '--json'],
@@ -118,6 +122,26 @@ async function startOrcadServe(host: HeadlessPairedRuntimeHost): Promise<OrcadSe
     }
   }
 }
+
+// Why: an SSH-managed orcad on this machine runs under ~/.orca, beside the desktop's own profile.
+test("Electron serve starts beside a live daemon another profile's orcad forked", async () => {
+  const other = cliServeProfile(scratch)
+  const orcad = await startOrcadServe(other)
+  try {
+    const host = await launchHeadlessPairedRuntimeHost({
+      pinnedServePort: true,
+      userDataParent: scratch
+    })
+    try {
+      expect(daemonPid(host.userDataDir)).not.toBe(orcad.daemonPid)
+    } finally {
+      await host.dispose()
+    }
+  } finally {
+    await orcad.stop()
+    await cleanupE2EDaemons(other.userDataDir)
+  }
+})
 
 test('a terminal survives Electron serve → orcad serve → Electron serve on one profile', async () => {
   const host = await launchHeadlessPairedRuntimeHost({
@@ -234,6 +258,43 @@ test('each serve host refuses a profile the other holds', async () => {
     })
   } finally {
     await host.dispose()
+  }
+})
+
+/** Which host holds the profile: both take `orcad.lock`, each under its own role. */
+function profileLockRole(userDataDir: string): unknown {
+  return JSON.parse(readFileSync(path.join(userDataDir, 'orcad.lock'), 'utf8')).role
+}
+
+// Needs out/orcad-template for this runner's target, as a packaged install carries.
+test('`orca serve` runs on orcad by default and on Electron with ORCA_SERVE_RUNTIME=electron', async () => {
+  const profile = cliServeProfile(scratch)
+  try {
+    const byDefault = await startCliServe(profile)
+    try {
+      // Windows still defaults to Electron serve; orcad is opt-in there.
+      if (process.platform === 'win32') {
+        expect(byDefault.stderr()).toContain('not the default on Windows yet')
+        expect(byDefault.readiness.health).toBeUndefined()
+      } else {
+        expect(byDefault.stderr()).toContain('[serve] running on orcad')
+        expect(byDefault.readiness.health).toBeDefined()
+        expect(profileLockRole(profile.userDataDir)).toBe('orcad')
+      }
+    } finally {
+      await byDefault.stop()
+    }
+
+    // Electron serve publishes no build-health block yet, which is what tells the two apart.
+    const electron = await startCliServe(profile, { ORCA_SERVE_RUNTIME: 'electron' })
+    try {
+      expect(electron.stderr()).not.toContain('[serve] running on orcad')
+      expect(electron.readiness.health).toBeUndefined()
+    } finally {
+      await electron.stop()
+    }
+  } finally {
+    await cleanupE2EDaemons(profile.userDataDir)
   }
 })
 
