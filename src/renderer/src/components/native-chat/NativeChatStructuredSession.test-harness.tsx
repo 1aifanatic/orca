@@ -27,7 +27,8 @@ function absent<T>(): T | undefined {
   return undefined
 }
 
-/** Stands in for the transcript: renders only each message's delivery notice and its Retry. */
+/** Stands in for the transcript: renders only each message's delivery notice and its Retry, or the
+ *  row's quiet "Sending…" while nothing has confirmed it. */
 export function DeliveryNoticesMock({
   notices
 }: {
@@ -37,7 +38,7 @@ export function DeliveryNoticesMock({
     <div data-testid="message-list">
       {[...(notices ?? [])].map(([id, notice]) => (
         <div key={id} data-message-id={id}>
-          <span>{notice.text}</span>
+          <span>{notice.sending ? 'Sending…' : notice.text}</span>
           {notice.onRetry ? (
             <button type="button" onClick={notice.onRetry}>
               Retry

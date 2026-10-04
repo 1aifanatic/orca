@@ -1,11 +1,13 @@
-// Which of the structured chat's own messages say, on their row, that they did not go through.
+// Which of the structured chat's own messages say, on their row, that they did not go through, and
+// which say quietly that they are still sending: every other one, until the host holds a row that
+// has it (pending or accepted). A row in doubt or rejected does not, so it still reads as sending.
 //
 // Derived from the outbox on every render and never stored: each failed or held message carries
 // its own typed failure, so each row words its own reason. Read through the drain's own rule: while
 // the queue is stopped, the message it stopped on and any failed one ahead of it have a Retry, as
-// each would go out at once; one behind it would wait unseen. One waiting behind says nothing; a
-// rejected or refused message holds nothing up, so it keeps its words and gets its Retry once the
-// queue moves.
+// each would go out at once; one behind it would wait unseen. One waiting behind has no failure of
+// its own, so it reads as sending; a rejected or refused message holds nothing up, so it keeps its
+// words and gets its Retry once the queue moves.
 //
 // A message the host recorded and then rejected is worded from the journal's own fact, found by id;
 // the message keeps only a smaller copy, read when its submission is not loaded. A rejection that
@@ -32,11 +34,16 @@ import {
   admitStructuredAgentSessionOutboxEntry,
   structuredAgentSessionEntryHeldForRetry
 } from '../../../../shared/structured-agent-session-outbox-admission'
+import { reconcileStructuredAgentSessionOutboxWithQueue } from '../../../../shared/structured-agent-session-draft-hand-off'
+import { structuredAgentSessionEntryResendsUnconfirmed } from '../../../../shared/structured-agent-session-outbox-unconfirmed-resend'
 import type { AgentSessionFailureWordsContext } from '../../../../shared/agent-session-failure-words'
 import { structuredAgentSessionAttemptFailureParts } from '../../../../shared/structured-agent-session-send-disposition'
 import { translate } from '@/i18n/i18n'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
+
+/** One shared value, so a rebuilt map re-renders no row still sending. */
+const STRUCTURED_AGENT_SESSION_DELIVERY_SENDING: NativeChatDeliveryNotice = { sending: true }
 
 /** The facts the chat's loaded start-failure rows state. */
 export function structuredAgentSessionStartFailureFacts(
@@ -135,27 +142,32 @@ export function structuredAgentSessionDeliveryNotices(
   outbox: readonly StructuredAgentSessionOutboxEntry[],
   agentName: string,
   retry: (clientMessageId: string) => void,
-  /** The journal's rows, whose rejected ones carry more of a rejection than the message keeps. */
+  /** The journal's rows: rejected ones carry more of a rejection than the message keeps, and a
+   *  message with no pending or accepted one is still sending. */
   submissions: readonly AgentJournalSubmission[],
   /** What the loaded start-failure rows state, from `structuredAgentSessionStartFailureFacts`. */
   startFailures: readonly AgentSessionFailureFact[],
   /** Ids whose send failed or was refused while this chat was open: only they word their cause. */
   failedHere: ReadonlySet<string>
 ): ReadonlyMap<string, NativeChatDeliveryNotice> {
-  const admission = admitStructuredAgentSessionOutboxEntry(outbox)
+  // As the transcript reads it, so a row that lands is answered here before the outbox commits it.
+  const entries = reconcileStructuredAgentSessionOutboxWithQueue(outbox, submissions)
+  const admission = admitStructuredAgentSessionOutboxEntry(entries)
   const held = admission.state === 'blocked' ? admission.entry.clientMessageId : null
-  const stalledFrom = admission.state === 'blocked' ? outbox.indexOf(admission.entry) : -1
+  const stalledFrom = admission.state === 'blocked' ? entries.indexOf(admission.entry) : -1
   const rejected = new Map(
     submissions
       .filter((submission) => submission.dispatchState === 'rejected')
       .map((submission) => [submission.clientMessageId, submission])
   )
   const notices = new Map<string, NativeChatDeliveryNotice>()
-  for (const [index, entry] of outbox.entries()) {
+  for (const [index, entry] of entries.entries()) {
+    // Resent under its own id until the journal answers, so still sending, not failed.
     if (
-      entry.state === 'rejected' ||
-      structuredAgentSessionEntryHeldForRetry(entry) ||
-      entry.clientMessageId === held
+      !structuredAgentSessionEntryResendsUnconfirmed(entry, submissions) &&
+      (entry.state === 'rejected' ||
+        structuredAgentSessionEntryHeldForRetry(entry) ||
+        entry.clientMessageId === held)
     ) {
       // Its own Retry is the step, so the words leave out sending again.
       const retryControl = stalledFrom === -1 || index <= stalledFrom
@@ -169,6 +181,17 @@ export function structuredAgentSessionDeliveryNotices(
       notices.set(
         agentJournalSubmissionKey(entry.clientMessageId),
         retryControl ? { text, onRetry: () => retry(entry.clientMessageId) } : { text }
+      )
+    } else if (
+      !submissions.some(
+        (submission) =>
+          submission.clientMessageId === entry.clientMessageId &&
+          (submission.dispatchState === 'pending' || submission.dispatchState === 'accepted')
+      )
+    ) {
+      notices.set(
+        agentJournalSubmissionKey(entry.clientMessageId),
+        STRUCTURED_AGENT_SESSION_DELIVERY_SENDING
       )
     }
   }
