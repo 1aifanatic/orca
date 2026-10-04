@@ -58,9 +58,14 @@ const summary = (used: number) => ({
   membershipType: 'pro',
   individualUsage: { plan: { enabled: true, used, limit: 100 } }
 })
+let stage = 'waiting-for-ready'
+const resultPath = requiredEnv('ORCA_CURSOR_WIRE_RESULT')
+writeFileSync(resultPath, JSON.stringify({ stage }))
 
 async function run(): Promise<void> {
   await app.whenReady()
+  stage = 'ready'
+  writeFileSync(resultPath, JSON.stringify({ stage }))
   const receipts: { arm: string; path: string; account: string; headerAccount: string }[] = []
   const outcomes: { arm: string; status: string; used?: number; failureKind?: string }[] = []
   let arm = ''
@@ -164,6 +169,7 @@ async function run(): Promise<void> {
     signal?: AbortSignal
   ): Promise<void> => {
     arm = name
+    stage = name
     const result = await fetchCursorRateLimits({ authReadResult: requested, signal })
     outcomes.push({
       arm: name,
@@ -224,7 +230,7 @@ async function run(): Promise<void> {
       await fetch(`${protocol}-aborted`, accountA, AbortSignal.abort())
     }
     writeFileSync(
-      requiredEnv('ORCA_CURSOR_WIRE_RESULT'),
+      resultPath,
       JSON.stringify({
         electron: process.versions.electron,
         chrome: process.versions.chrome,
@@ -244,5 +250,9 @@ async function run(): Promise<void> {
 
 void run().then(
   () => app.exit(0),
-  () => app.exit(1)
+  (error: unknown) => {
+    const detail = error instanceof Error ? (error.stack ?? error.message) : String(error)
+    writeFileSync(resultPath, JSON.stringify({ stage, error: detail }))
+    app.exit(1)
+  }
 )

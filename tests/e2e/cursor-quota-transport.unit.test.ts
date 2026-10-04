@@ -1,11 +1,12 @@
 import { createRequire } from 'node:module'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { build } from 'vite'
 import { expect, it } from 'vitest'
 import { z } from 'zod'
 import { runProcess } from '../../src/shared/child-process/run-process'
+import { resolveElectronProbeLaunch } from '../../src/main/browser/electron-probe-display-launch'
 import { createElectronHomeIsolation } from './helpers/electron-home-isolation'
 
 const outcomeSchema = z.object({
@@ -59,17 +60,31 @@ it('keeps Cursor account credentials independent of the native Electron cookie j
       }
     })
     delete isolation.env.ELECTRON_RUN_AS_NODE
+    const launch = resolveElectronProbeLaunch({
+      electronBinary: binary,
+      electronArgs: [join(root, 'fixture.cjs')],
+      platform: process.platform,
+      display: isolation.env.DISPLAY
+    })
     const result = await runProcess({
-      program: process.platform === 'linux' ? 'xvfb-run' : binary,
-      args:
-        process.platform === 'linux'
-          ? ['--auto-servernum', binary, join(root, 'fixture.cjs')]
-          : [join(root, 'fixture.cjs')],
+      program: launch.executable,
+      args: launch.args,
       env: isolation.env,
       timeoutMs: 60_000
     })
-    expect(result.code, result.stderr).toBe(0)
-    expect(result.timedOut).toBe(false)
+    const fixtureResult = existsSync(resultPath) ? readFileSync(resultPath, 'utf8') : 'no result'
+    const diagnostic = JSON.stringify({
+      platform: process.platform,
+      code: result.code,
+      signal: result.signal,
+      timedOut: result.timedOut,
+      outputTruncated: result.outputTruncated,
+      fixtureResult,
+      stdout: result.stdout,
+      stderr: result.stderr
+    })
+    expect(result.code, diagnostic).toBe(0)
+    expect(result.timedOut, diagnostic).toBe(false)
     const wire = wireSchema.parse(JSON.parse(readFileSync(resultPath, 'utf8')))
     for (const protocol of ['http', 'https']) {
       for (const [name, used] of [
