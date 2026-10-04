@@ -38,6 +38,7 @@ const ALWAYS_ON_CODE_JOBS = new Set(['static_analysis', 'typecheck', 'test'])
 const GLOBAL_FORCE_PREFIXES = [
   '.github/workflows/pr.yml',
   '.github/actions/install-node-dependencies/',
+  '.github/actions/restore-pnpm-verification/',
   '.github/actions/prepare-native-runtime/',
   'config/scripts/pr-code-change-scope'
 ]
@@ -325,6 +326,7 @@ const WINDOWS_PACKAGE_TESTS = [
   'src/shared/child-process/windows-cmd-shim-resolution.test.ts',
   'src/shared/child-process/windows-cmd-shim-resolution.win32.test.ts',
   'src/main/agent-hooks/windows-hook-payload-delivery.test.ts',
+  'src/main/jcode/hook-gate-script.test.ts',
   'src/main/agent-hooks/windows-direct-cmd-hook-command.test.ts',
   'src/main/codex/windows-hook-command.test.ts',
   'src/main/codex/windows-hook-upgrade.test.ts',
@@ -355,6 +357,8 @@ const WINDOWS_PACKAGE_TESTS = [
   'src/main/runtime/unreadable-secret-store-preservation.win32.test.ts',
   'src/main/ipc/pty-codex-account-attribution.test.ts',
   'src/main/ipc/pty-spawn-env-codex-resume-provenance.test.ts',
+  'src/main/ipc/preflight-provider-command-selection.test.ts',
+  'src/main/ipc/preflight-runnable-local-cli.test.ts',
   'src/relay/windows-port-scan.win32.test.ts',
   'src/main/ssh/ssh-relay-upload-stage-windows-identity.test.ts',
   'src/main/ssh/remote-node-runtime-store-windows.test.ts'
