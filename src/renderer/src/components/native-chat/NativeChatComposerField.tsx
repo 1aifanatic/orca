@@ -1,3 +1,4 @@
+import type { NativeChatAttachmentHostOwner } from './native-chat-attachment-upload'
 import { NativeChatPromptEditor } from './NativeChatPromptEditor'
 import type { NativeChatComposerInput } from './native-chat-composer-input'
 import type { ClipboardEventHandler, KeyboardEventHandler, RefObject } from 'react'
@@ -73,6 +74,11 @@ export type NativeChatComposerImageAttachment = {
   previewUrl?: string
   /** True while the pasted image is still being written to disk or uploaded. */
   pending?: boolean
+  /** Set when `path` is in a paired server's attachment store: the client never reads `path` from
+   *  its own disk, and a send to any other server or chat refuses it. */
+  hostOwner?: NativeChatAttachmentHostOwner
+  /** Shown while pending for an upload that is not a pasted image (a dropped or picked file). */
+  pendingName?: string
 }
 
 /**

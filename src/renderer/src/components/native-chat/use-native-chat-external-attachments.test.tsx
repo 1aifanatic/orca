@@ -8,7 +8,9 @@ const mocks = vi.hoisted(() => ({
   authorizeExternalPath: vi.fn(),
   resolveNativeChatAttachmentOwner: vi.fn(),
   resolveNativeChatAttachmentOwnerForWorktree: vi.fn(),
-  uploadNativeChatAttachmentPaths: vi.fn()
+  uploadNativeChatAttachmentPaths: vi.fn(),
+  prepareNativeChatSessionAttachmentUpload: vi.fn(),
+  uploadNativeChatSessionAttachmentPaths: vi.fn()
 }))
 
 vi.mock('@/store', () => ({
@@ -21,10 +23,14 @@ vi.mock('./native-chat-attachment-upload', async (importOriginal) => ({
   ...(await importOriginal<typeof AttachmentUploadModule>()),
   resolveNativeChatAttachmentOwner: mocks.resolveNativeChatAttachmentOwner,
   resolveNativeChatAttachmentOwnerForWorktree: mocks.resolveNativeChatAttachmentOwnerForWorktree,
-  uploadNativeChatAttachmentPaths: mocks.uploadNativeChatAttachmentPaths
+  uploadNativeChatAttachmentPaths: mocks.uploadNativeChatAttachmentPaths,
+  prepareNativeChatSessionAttachmentUpload: mocks.prepareNativeChatSessionAttachmentUpload,
+  uploadNativeChatSessionAttachmentPaths: mocks.uploadNativeChatSessionAttachmentPaths
 }))
 
 import { useNativeChatExternalAttachments } from './use-native-chat-external-attachments'
+import type { NativeChatPendingAttachmentChips } from './native-chat-session-attachment-drop'
+import { replaceRuntimeEnvironmentRevisions } from '@/runtime/runtime-environment-revision'
 
 type HookApi = ReturnType<typeof useNativeChatExternalAttachments>
 
@@ -36,16 +42,24 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   return { promise, resolve }
 }
 
+function noPendingChips(): NativeChatPendingAttachmentChips {
+  return { begin: vi.fn(() => null), resolve: vi.fn(), drop: vi.fn() }
+}
+
 function Probe({
   disabled,
   structuredWorktreeId,
+  structuredSession,
   attachResolvedPaths,
+  pendingChips,
   setNotice,
   onReady
 }: {
   disabled: boolean
   structuredWorktreeId?: string
+  structuredSession?: { sessionId: string; runtimeEnvironmentId: string | null }
   attachResolvedPaths: (paths: string[]) => void
+  pendingChips: NativeChatPendingAttachmentChips
   setNotice: (notice: string | null) => void
   onReady: (api: HookApi) => void
 }): null {
@@ -53,8 +67,10 @@ function Probe({
     useNativeChatExternalAttachments({
       terminalTabId: 'tab-1',
       structuredWorktreeId,
+      structuredSession,
       disabled,
       attachResolvedPaths,
+      pendingChips,
       setNotice
     })
   )
@@ -66,7 +82,9 @@ let root: Root | null = null
 async function renderProbe(args: {
   disabled?: boolean
   structuredWorktreeId?: string
+  structuredSession?: { sessionId: string; runtimeEnvironmentId: string | null }
   attachResolvedPaths: (paths: string[]) => void
+  pendingChips?: NativeChatPendingAttachmentChips
   setNotice?: (notice: string | null) => void
 }): Promise<{
   latest: () => HookApi
@@ -85,7 +103,9 @@ async function renderProbe(args: {
         createElement(Probe, {
           disabled,
           structuredWorktreeId,
+          structuredSession: args.structuredSession,
           attachResolvedPaths: args.attachResolvedPaths,
+          pendingChips: args.pendingChips ?? noPendingChips(),
           setNotice: args.setNotice ?? (() => {}),
           onReady: (next) => {
             api = next
@@ -434,5 +454,148 @@ describe('useNativeChatExternalAttachments', () => {
     expect(notices.at(-1)).toBe(
       'This workspace changed hosts while attaching — drop the files again.'
     )
+  })
+
+  describe('a structured chat on a paired server', () => {
+    const session = { sessionId: 'session-1', runtimeEnvironmentId: 'env-1' }
+    const hostOwner = { environmentId: 'env-1', pairingRevision: 7, sessionId: 'session-1' }
+    const target = {
+      environmentId: 'env-1',
+      sessionId: 'session-1',
+      expectedEnvironmentPairingRevision: 7,
+      expectedEnvironmentRuntimeId: 'runtime-a'
+    }
+
+    function trackingChips(): NativeChatPendingAttachmentChips & { begun: string[] } {
+      const begun: string[] = []
+      return {
+        begun,
+        begin: vi.fn((_preview?: string, name?: string) => {
+          begun.push(name ?? '')
+          return `chip-${begun.length}`
+        }),
+        resolve: vi.fn(),
+        drop: vi.fn()
+      }
+    }
+
+    beforeEach(() => {
+      replaceRuntimeEnvironmentRevisions([{ id: 'env-1', createdAt: 1, pairingRevision: 7 }])
+      mocks.prepareNativeChatSessionAttachmentUpload.mockReset().mockResolvedValue({
+        ok: true,
+        target
+      })
+      mocks.uploadNativeChatSessionAttachmentPaths.mockReset()
+    })
+
+    it('uploads into the chat store and attaches only server paths, with their owner', async () => {
+      const upload = deferred<Map<string, string>>()
+      mocks.uploadNativeChatSessionAttachmentPaths.mockReturnValueOnce(upload.promise)
+      const chips = trackingChips()
+      const attachResolvedPaths = vi.fn()
+      const probe = await renderProbe({
+        structuredWorktreeId: 'worktree-1',
+        structuredSession: session,
+        attachResolvedPaths,
+        pendingChips: chips
+      })
+
+      act(() => probe.latest().attachExternalPaths(['/Users/me/shot.png', '/Users/me/notes.md']))
+      // Pending chips appear before the upload settles, so Send waits for both files.
+      expect(chips.begun).toEqual(['shot.png', 'notes.md'])
+      await act(async () =>
+        upload.resolve(
+          new Map([
+            ['/Users/me/shot.png', '/srv/agent-session-attachments/s/u1/shot.png'],
+            ['/Users/me/notes.md', '/srv/agent-session-attachments/s/u2/notes.md']
+          ])
+        )
+      )
+
+      expect(mocks.uploadNativeChatSessionAttachmentPaths).toHaveBeenCalledWith(
+        ['/Users/me/shot.png', '/Users/me/notes.md'],
+        target
+      )
+      expect(chips.resolve).toHaveBeenCalledExactlyOnceWith(
+        'chip-1',
+        '/srv/agent-session-attachments/s/u1/shot.png',
+        null,
+        hostOwner
+      )
+      expect(chips.drop).toHaveBeenCalledExactlyOnceWith('chip-2')
+      expect(attachResolvedPaths).toHaveBeenCalledExactlyOnceWith(
+        ['/srv/agent-session-attachments/s/u2/notes.md'],
+        null,
+        { hostOwner }
+      )
+      expect(mocks.authorizeExternalPath).not.toHaveBeenCalled()
+    })
+
+    it('refuses on a server without the attachment store, uploading nothing', async () => {
+      mocks.prepareNativeChatSessionAttachmentUpload.mockResolvedValueOnce({
+        ok: false,
+        notice: 'needs newer server'
+      })
+      const chips = trackingChips()
+      const attachResolvedPaths = vi.fn()
+      const notices: (string | null)[] = []
+      const probe = await renderProbe({
+        structuredWorktreeId: 'worktree-1',
+        structuredSession: session,
+        attachResolvedPaths,
+        pendingChips: chips,
+        setNotice: (notice) => notices.push(notice)
+      })
+
+      await act(async () => probe.latest().attachExternalPaths(['/Users/me/shot.png']))
+
+      expect(mocks.uploadNativeChatSessionAttachmentPaths).not.toHaveBeenCalled()
+      expect(chips.drop).toHaveBeenCalledExactlyOnceWith('chip-1')
+      expect(attachResolvedPaths).not.toHaveBeenCalled()
+      expect(notices.at(-1)).toBe('needs newer server')
+    })
+
+    it('drops the upload when the server is re-paired meanwhile', async () => {
+      const upload = deferred<Map<string, string>>()
+      mocks.uploadNativeChatSessionAttachmentPaths.mockReturnValueOnce(upload.promise)
+      const chips = trackingChips()
+      const attachResolvedPaths = vi.fn()
+      const notices: (string | null)[] = []
+      const probe = await renderProbe({
+        structuredWorktreeId: 'worktree-1',
+        structuredSession: session,
+        attachResolvedPaths,
+        pendingChips: chips,
+        setNotice: (notice) => notices.push(notice)
+      })
+
+      act(() => probe.latest().attachExternalPaths(['/Users/me/shot.png']))
+      replaceRuntimeEnvironmentRevisions([{ id: 'env-1', createdAt: 1, pairingRevision: 8 }])
+      await act(async () =>
+        upload.resolve(
+          new Map([['/Users/me/shot.png', '/srv/agent-session-attachments/s/u1/shot.png']])
+        )
+      )
+
+      expect(chips.resolve).not.toHaveBeenCalled()
+      expect(chips.drop).toHaveBeenCalledExactlyOnceWith('chip-1')
+      expect(attachResolvedPaths).not.toHaveBeenCalled()
+      expect(notices.at(-1)).toBe(
+        'This workspace changed hosts while attaching — drop the files again.'
+      )
+    })
+
+    it('keeps a local structured chat on the worktree owner', async () => {
+      const attachResolvedPaths = vi.fn()
+      const probe = await renderProbe({
+        structuredWorktreeId: 'worktree-1',
+        structuredSession: { sessionId: 'session-1', runtimeEnvironmentId: null },
+        attachResolvedPaths
+      })
+      await act(async () => probe.latest().attachExternalPaths(['/local/a.txt']))
+      expect(mocks.resolveNativeChatAttachmentOwnerForWorktree).toHaveBeenCalled()
+      expect(mocks.prepareNativeChatSessionAttachmentUpload).not.toHaveBeenCalled()
+      expect(attachResolvedPaths).toHaveBeenCalledWith(['/local/a.txt'])
+    })
   })
 })

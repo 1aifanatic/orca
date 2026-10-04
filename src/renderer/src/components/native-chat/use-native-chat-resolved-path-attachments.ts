@@ -8,15 +8,26 @@ import {
   nativeChatWorkspaceAttachmentMismatchNotice,
   type NativeChatResolvedPathOptions
 } from './native-chat-resolved-path-ownership'
+import type { NativeChatAttachmentHostOwner } from './native-chat-attachment-upload'
+import type { NativeChatHostOwnedReference } from './native-chat-attachment-destination'
 
 type ResolvedAttachmentPath = {
   path: string
   connectionId?: string | null
   targetOwnerIsCurrent?: () => boolean
+  hostOwner?: NativeChatAttachmentHostOwner
 }
 
 type Args = {
-  appendImageAttachments: (paths: { path: string; connectionId?: string | null }[]) => void
+  appendImageAttachments: (
+    paths: {
+      path: string
+      connectionId?: string | null
+      hostOwner?: NativeChatAttachmentHostOwner
+    }[]
+  ) => void
+  /** Records `@path` references a paired server's store owns, so a send can recheck them. */
+  noteHostOwnedReferences: (references: NativeChatHostOwnedReference[]) => void
   attachmentTargetBlocked: (targetOwned?: boolean) => boolean
   caret: number
   disabled: boolean
@@ -35,6 +46,7 @@ export function useNativeChatResolvedPathAttachments({
   disabled,
   isComposing,
   noteAttachmentTargetBlocked,
+  noteHostOwnedReferences,
   setCaret,
   setDraft,
   setNotice,
@@ -61,8 +73,13 @@ export function useNativeChatResolvedPathAttachments({
   }, [disabled])
 
   const insertFileReferences = useCallback(
-    (paths: string[]) => {
-      const references = paths.map(formatNativeChatFileReference).join(' ')
+    (paths: ResolvedAttachmentPath[]) => {
+      noteHostOwnedReferences(
+        paths.flatMap(({ path, hostOwner }) =>
+          hostOwner ? [{ reference: formatNativeChatFileReference(path), hostOwner }] : []
+        )
+      )
+      const references = paths.map(({ path }) => formatNativeChatFileReference(path)).join(' ')
       if (references.length === 0) {
         return
       }
@@ -75,7 +92,7 @@ export function useNativeChatResolvedPathAttachments({
         return before + insertion + after
       })
     },
-    [caret, setCaret, setDraft, textareaRef]
+    [caret, noteHostOwnedReferences, setCaret, setDraft, textareaRef]
   )
 
   const applyResolvedPaths = useCallback(
@@ -108,11 +125,11 @@ export function useNativeChatResolvedPathAttachments({
         return
       }
       const imagePaths = attachable.filter(({ path }) => isNativeChatImageAttachmentPath(path))
-      const filePaths = attachable
-        .filter(({ path }) => !isNativeChatImageAttachmentPath(path))
-        .map(({ path }) => path)
+      const filePaths = attachable.filter(({ path }) => !isNativeChatImageAttachmentPath(path))
       // Images ride along on submit so chips and the TUI input cannot diverge.
-      appendImageAttachments(imagePaths.map(({ path, connectionId }) => ({ path, connectionId })))
+      appendImageAttachments(
+        imagePaths.map(({ path, connectionId, hostOwner }) => ({ path, connectionId, hostOwner }))
+      )
       insertFileReferences(filePaths)
       if (ownedBlocked || clientLocalBlocked) {
         noteAttachmentTargetBlocked()
@@ -167,7 +184,8 @@ export function useNativeChatResolvedPathAttachments({
           ...paths.map((path) => ({
             path,
             connectionId,
-            targetOwnerIsCurrent: options.targetOwnerIsCurrent
+            targetOwnerIsCurrent: options.targetOwnerIsCurrent,
+            hostOwner: options.hostOwner
           }))
         )
         return
@@ -176,7 +194,8 @@ export function useNativeChatResolvedPathAttachments({
         paths.map((path) => ({
           path,
           connectionId,
-          targetOwnerIsCurrent: options.targetOwnerIsCurrent
+          targetOwnerIsCurrent: options.targetOwnerIsCurrent,
+          hostOwner: options.hostOwner
         })),
         true
       )

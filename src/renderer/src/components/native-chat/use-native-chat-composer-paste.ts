@@ -1,7 +1,9 @@
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'react'
-import { nativeChatAttachmentOwnerUnchanged } from './native-chat-resolved-path-ownership'
+import {
+  nativeChatAttachmentOwnerUnchanged,
+  type NativeChatResolvedPathOptions
+} from './native-chat-resolved-path-ownership'
 import { assertClipboardTextWithinLimit } from '../../../../shared/clipboard-text'
-import { translate } from '@/i18n/i18n'
 import { extractIpcErrorMessage } from '@/lib/ipc-error'
 import type { AgentType } from '../../../../shared/agent-status-types'
 import { NATIVE_CHAT_CONTEXT_PASTE_MAX_BYTES } from './native-chat-composer-target'
@@ -13,10 +15,16 @@ import {
   type ClipboardEventLike
 } from './native-chat-clipboard-payload'
 import {
+  nativeChatAttachmentHostOwner,
   nativeChatLocalAttachmentUnsupportedNotice,
   nativeChatWorktreeNotReadyNotice,
+  type NativeChatAttachmentHostOwner,
   type NativeChatAttachmentOwner
 } from './native-chat-attachment-upload'
+import {
+  ownerAcceptsClipboardImage,
+  saveNativeChatClipboardImage
+} from './native-chat-clipboard-image-save'
 
 export type UseNativeChatComposerPasteArgs = {
   targetKey?: string
@@ -28,20 +36,22 @@ export type UseNativeChatComposerPasteArgs = {
   /** Resolved at paste time: SSH panes must save the clipboard image on the
    *  remote host, or the attached path names a file the agent cannot read. */
   resolveAttachmentOwner: () => NativeChatAttachmentOwner
-  attachResolvedPaths: (paths: string[], connectionId?: string | null) => void
+  attachResolvedPaths: (
+    paths: string[],
+    connectionId?: string | null,
+    options?: NativeChatResolvedPathOptions
+  ) => void
   beginPendingImageAttachment: (previewUrl?: string) => string | null
-  resolvePendingImageAttachment: (id: string, path: string, connectionId?: string | null) => void
+  resolvePendingImageAttachment: (
+    id: string,
+    path: string,
+    connectionId?: string | null,
+    hostOwner?: NativeChatAttachmentHostOwner
+  ) => void
   dropPendingImageAttachment: (id: string) => void
   insertTypedText: (text: string) => boolean
   setCaret: (caret: number) => void
   setNotice: (notice: string | null) => void
-}
-
-/** Owners whose attachment path is a file this client can write right now. */
-function ownerAcceptsClipboardImage(
-  owner: NativeChatAttachmentOwner
-): owner is Extract<NativeChatAttachmentOwner, { kind: 'local' | 'ssh' }> {
-  return owner.kind === 'local' || owner.kind === 'ssh'
 }
 
 export function useNativeChatComposerPaste({
@@ -93,34 +103,14 @@ export function useNativeChatComposerPaste({
 
   // Image failures do not decide whether text can be inserted.
   const saveClipboardImageForOwner = useCallback(
-    async (
-      owner: NativeChatAttachmentOwner
-    ): Promise<{ status: 'saved'; tempPath: string } | { status: 'empty' | 'failed' }> => {
-      if (owner.kind === 'runtime') {
-        setNotice(nativeChatLocalAttachmentUnsupportedNotice())
-        return { status: 'failed' }
-      }
-      try {
-        // SSH panes save the image on the remote host (SFTP) so the attached
-        // path is readable by the remote agent, matching terminal image paste.
-        const tempPath = await window.api.ui.saveClipboardImageAsTempFile(
-          owner.kind === 'ssh' ? { connectionId: owner.connectionId } : undefined
-        )
-        return tempPath ? { status: 'saved', tempPath } : { status: 'empty' }
-      } catch (error) {
-        // A failed save must be visible: over SSH it fails whenever the
-        // connection drops, and a silent no-op reads as a broken paste.
-        if (canPaste()) {
-          setNotice(
-            extractIpcErrorMessage(
-              error,
-              translate('components.native-chat.composer.imagePasteFailed', 'Image paste failed.')
-            )
-          )
+    (owner: NativeChatAttachmentOwner) =>
+      saveNativeChatClipboardImage(owner, {
+        setNotice: (notice) => {
+          if (canPaste()) {
+            setNotice(notice)
+          }
         }
-        return { status: 'failed' }
-      }
-    },
+      }),
     [canPaste, setNotice]
   )
 
@@ -137,11 +127,15 @@ export function useNativeChatComposerPaste({
         return
       }
       const connectionId = originalOwner.kind === 'ssh' ? originalOwner.connectionId : null
+      const hostOwner =
+        originalOwner.kind === 'runtime-session'
+          ? nativeChatAttachmentHostOwner(originalOwner)
+          : undefined
       if (pendingId) {
         lifetime.pending.delete(pendingId)
-        resolvePendingImageAttachment(pendingId, path, connectionId)
+        resolvePendingImageAttachment(pendingId, path, connectionId, hostOwner)
       } else {
-        attachResolvedPaths([path], connectionId)
+        attachResolvedPaths([path], connectionId, ...(hostOwner ? [{ hostOwner }] : []))
       }
     },
     [

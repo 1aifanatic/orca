@@ -50,6 +50,36 @@ describe('NativeChatImageAttachmentPreview', () => {
     mocks.useLocalImageSrc.mockReturnValue(undefined)
     renderPreview({ id: 'a1', path: '', previewUrl: 'blob:clipboard-1', pending: true })
 
-    expect(mocks.useLocalImageSrc).toHaveBeenCalledWith(undefined, '', undefined)
+    expect(mocks.useLocalImageSrc).toHaveBeenCalledWith(undefined, '', undefined, undefined)
+  })
+
+  // The path names a file on the paired server; this machine's disk must never be asked for it.
+  it('reads a stored chip back through the server that holds it', () => {
+    mocks.useLocalImageSrc.mockReturnValue('blob:from-server')
+    const path = '/srv/agent-session-attachments/s/u1/shot.png'
+    renderPreview({
+      id: 'a1',
+      path,
+      hostOwner: { environmentId: 'env-1', pairingRevision: 7, sessionId: 'session-1' }
+    })
+
+    for (const call of mocks.useLocalImageSrc.mock.calls) {
+      expect(call[3]).toEqual({
+        settings: { activeRuntimeEnvironmentId: 'env-1' },
+        worktreeId: null,
+        worktreePath: null
+      })
+    }
+    expect(mocks.useLocalImageSrc).toHaveBeenCalledWith(path, path, undefined, expect.anything())
+    expect(screen.getByRole('img', { name: 'shot.png' }).getAttribute('src')).toBe(
+      'blob:from-server'
+    )
+  })
+
+  it('labels a dropped file while it uploads', () => {
+    mocks.useLocalImageSrc.mockReturnValue(undefined)
+    renderPreview({ id: 'a1', path: '', pending: true, pendingName: 'notes.md' })
+
+    expect(screen.getByRole('button', { name: /^Uploading .* file\(s\) to remote…$/ })).toBeTruthy()
   })
 })

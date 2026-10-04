@@ -1,6 +1,5 @@
 import type { NativeChatComposerInput } from './native-chat-composer-input'
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
-import { translate } from '@/i18n/i18n'
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import {
   nativeChatComposerTargetIsRemote,
   type NativeChatResolvedTarget
@@ -9,6 +8,16 @@ import type { NativeChatComposerImageAttachment } from './NativeChatComposerFiel
 import { setBoundedScopeCacheEntry } from './native-chat-composer-scope-cache'
 import type { NativeChatResolvedPathOptions } from './native-chat-resolved-path-ownership'
 import { useNativeChatResolvedPathAttachments } from './use-native-chat-resolved-path-attachments'
+import {
+  nativeChatLocalAttachmentUnsupportedNotice,
+  type NativeChatAttachmentHostOwner
+} from './native-chat-attachment-upload'
+import type { NativeChatPendingAttachmentChips } from './native-chat-session-attachment-drop'
+import {
+  clearNativeChatHostOwnedReferences,
+  recordNativeChatHostOwnedReferences,
+  type NativeChatHostOwnedReference
+} from './native-chat-attachment-destination'
 
 export type UseNativeChatComposerAttachmentsArgs = {
   attachmentScopeKey: string
@@ -44,9 +53,15 @@ export function useNativeChatComposerAttachments({
   clearImageAttachments: () => void
   flushPendingAttachments: () => void
   removeImageAttachment: (id: string) => void
-  beginPendingImageAttachment: (previewUrl?: string) => string | null
-  resolvePendingImageAttachment: (id: string, path: string, connectionId?: string | null) => void
+  beginPendingImageAttachment: (previewUrl?: string, pendingName?: string) => string | null
+  resolvePendingImageAttachment: (
+    id: string,
+    path: string,
+    connectionId?: string | null,
+    hostOwner?: NativeChatAttachmentHostOwner
+  ) => void
   dropPendingImageAttachment: (id: string) => void
+  pendingChips: NativeChatPendingAttachmentChips
 } {
   const [imageAttachments, setImageAttachments] = useState<NativeChatComposerImageAttachment[]>(
     () => readNativeChatAttachmentCache(attachmentScopeKey)
@@ -95,29 +110,37 @@ export function useNativeChatComposerAttachments({
   )
 
   const noteAttachmentTargetBlocked = useCallback(() => {
-    setNotice(
-      translate(
-        'components.native-chat.composer.localAttachmentUnsupported',
-        'Local attachments are not available for remote sessions.'
-      )
-    )
+    setNotice(nativeChatLocalAttachmentUnsupportedNotice())
   }, [setNotice])
 
   const appendImageAttachments = useCallback(
-    (paths: { path: string; connectionId?: string | null }[]) => {
+    (
+      paths: {
+        path: string
+        connectionId?: string | null
+        hostOwner?: NativeChatAttachmentHostOwner
+      }[]
+    ) => {
       if (paths.length === 0) {
         return
       }
       updateImageAttachments((prev) => [
         ...prev,
-        ...paths.map(({ path, connectionId }) => ({
+        ...paths.map(({ path, connectionId, hostOwner }) => ({
           id: nextAttachmentId(),
           path,
-          connectionId: connectionId ?? undefined
+          connectionId: connectionId ?? undefined,
+          ...(hostOwner ? { hostOwner } : {})
         }))
       ])
     },
     [nextAttachmentId, updateImageAttachments]
+  )
+
+  const noteHostOwnedReferences = useCallback(
+    (references: NativeChatHostOwnedReference[]) =>
+      recordNativeChatHostOwnedReferences(attachmentScopeKey, references),
+    [attachmentScopeKey]
   )
 
   const { attachResolvedPaths, disabledRef, flushPendingAttachments } =
@@ -128,6 +151,7 @@ export function useNativeChatComposerAttachments({
       disabled,
       isComposing,
       noteAttachmentTargetBlocked,
+      noteHostOwnedReferences,
       setCaret,
       setDraft,
       setNotice,
@@ -137,7 +161,7 @@ export function useNativeChatComposerAttachments({
   // Placeholder chip shown the instant a paste starts, so a clipboard image that
   // takes a beat to save (or upload over SSH) never reads as a dropped paste.
   const beginPendingImageAttachment = useCallback(
-    (previewUrl?: string): string | null => {
+    (previewUrl?: string, pendingName?: string): string | null => {
       if (disabledRef.current) {
         return null
       }
@@ -146,7 +170,10 @@ export function useNativeChatComposerAttachments({
         return null
       }
       const id = nextAttachmentId()
-      updateImageAttachments((prev) => [...prev, { id, path: '', previewUrl, pending: true }])
+      updateImageAttachments((prev) => [
+        ...prev,
+        { id, path: '', previewUrl, pending: true, ...(pendingName ? { pendingName } : {}) }
+      ])
       return id
     },
     [
@@ -159,7 +186,12 @@ export function useNativeChatComposerAttachments({
   )
 
   const resolvePendingImageAttachment = useCallback(
-    (id: string, path: string, connectionId?: string | null) => {
+    (
+      id: string,
+      path: string,
+      connectionId?: string | null,
+      hostOwner?: NativeChatAttachmentHostOwner
+    ) => {
       updateImageAttachments((prev) =>
         prev.map((attachment) =>
           attachment.id === id
@@ -167,7 +199,9 @@ export function useNativeChatComposerAttachments({
                 ...attachment,
                 path,
                 connectionId: connectionId ?? undefined,
-                pending: undefined
+                pending: undefined,
+                pendingName: undefined,
+                ...(hostOwner ? { hostOwner } : {})
               }
             : attachment
         )
@@ -183,14 +217,26 @@ export function useNativeChatComposerAttachments({
     [updateImageAttachments]
   )
 
+  const pendingChips = useMemo(
+    () => ({
+      begin: beginPendingImageAttachment,
+      resolve: resolvePendingImageAttachment,
+      drop: dropPendingImageAttachment
+    }),
+    [beginPendingImageAttachment, dropPendingImageAttachment, resolvePendingImageAttachment]
+  )
+
   return {
+    pendingChips,
     imageAttachments,
     attachResolvedPaths,
-    clearImageAttachments: () =>
+    clearImageAttachments: () => {
+      clearNativeChatHostOwnedReferences(attachmentScopeKey)
       updateImageAttachments((prev) => {
         prev.forEach(releaseAttachmentPreview)
         return []
-      }),
+      })
+    },
     flushPendingAttachments,
     removeImageAttachment: (id) => updateImageAttachments((prev) => removeAttachmentById(prev, id)),
     beginPendingImageAttachment,

@@ -192,8 +192,10 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     const { attachExternalPaths, resolveAttachmentOwner } = useNativeChatExternalAttachments({
       terminalTabId,
       structuredWorktreeId: structuredTransport?.worktreeId,
+      structuredSession: structuredTransport,
       disabled,
       attachResolvedPaths,
+      pendingChips: attachments.pendingChips,
       setNotice
     })
 
@@ -292,6 +294,9 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       disabled,
       sendPty,
       sendStructured,
+      attachmentScopeKey: paneKey,
+      removeImageAttachment,
+      setNotice,
       setDraft,
       setCaret,
       setHistory

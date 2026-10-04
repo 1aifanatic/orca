@@ -72,6 +72,7 @@ function ComposerProbe({ pane, hidden = false }: { pane: string; hidden?: boolea
     terminalTabId: pane,
     disabled: false,
     attachResolvedPaths: attachments.attachResolvedPaths,
+    pendingChips: attachments.pendingChips,
     setNotice
   })
   useNativeChatFileAttachmentActions(pane, attachExternalPaths)

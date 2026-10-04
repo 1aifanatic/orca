@@ -17763,6 +17763,7 @@
         "skillScopeBuiltIn": "Built-in",
         "skillScopePlugin": "Plugin",
         "localAttachmentUnsupported": "Local attachments are not available for remote sessions.",
+        "attachmentsNeedNewerServer": "Attaching files to this chat needs a newer Orca on the server. Update Orca on that computer, then try again.",
         "removeAttachment": "Remove attachment",
         "pastedImageLabel": "Pasted image",
         "imagePasteFailed": "Image paste failed.",

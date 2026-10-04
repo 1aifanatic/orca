@@ -4,6 +4,7 @@ import { applyPickerSuggestion, type NativeChatPickerItem } from './native-chat-
 import { pushHistory, type HistoryState } from './native-chat-composer-state'
 import type { NativeChatStructuredComposerTransport } from './native-chat-composer-types'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
+import { useNativeChatAttachmentSendGuard } from './use-native-chat-attachment-send-guard'
 import {
   isBareStructuredAgentSessionGoalCommand,
   structuredAgentSessionGoalObjective
@@ -34,12 +35,25 @@ export function useNativeChatComposerSubmit(args: {
   disabled: boolean
   sendPty: () => void
   sendStructured: (text: string, attachments: readonly NativeChatComposerImageAttachment[]) => void
+  /** Scope of the composer's attachments, for the host check right before a structured send. */
+  attachmentScopeKey: string
+  removeImageAttachment: (id: string) => void
+  setNotice: (notice: string | null) => void
   setDraft: (value: string) => void
   setCaret: (caret: number) => void
   setHistory: (updater: (previous: HistoryState) => HistoryState) => void
 }): { send: () => void; goalMode: NativeChatComposerGoalMode } {
-  const { caret, disabled, draft, imageAttachments, sendPty, sendStructured } = args
+  const { caret, disabled, draft, imageAttachments, sendPty } = args
   const { setCaret, setDraft, setHistory, structuredTransport } = args
+  const sendStructured = useNativeChatAttachmentSendGuard({
+    scopeKey: args.attachmentScopeKey,
+    structuredTransport,
+    draft,
+    setDraft,
+    removeImageAttachment: args.removeImageAttachment,
+    setNotice: args.setNotice,
+    sendStructured: args.sendStructured
+  })
   const threadGoal = structuredTransport?.threadGoal
   const [entered, setEntered] = useState(false)
   const active = entered && threadGoal !== undefined

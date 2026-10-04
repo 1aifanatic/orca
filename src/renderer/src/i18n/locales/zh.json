@@ -17505,6 +17505,7 @@
         "stopDictation": "停止听写",
         "noSkills": "没有匹配的技能",
         "localAttachmentUnsupported": "远程会话不支持本地附件。",
+        "attachmentsNeedNewerServer": "要向此聊天附加文件，服务器上的 Orca 需要更新到较新版本。请在那台电脑上更新 Orca，然后重试。",
         "removeAttachment": "移除附件",
         "pastedImageLabel": "粘贴的图片",
         "imagePasteFailed": "图片粘贴失败。",

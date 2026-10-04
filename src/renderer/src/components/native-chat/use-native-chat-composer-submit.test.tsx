@@ -37,6 +37,8 @@ function harness(options: {
   const calls = {
     sendPty: vi.fn(),
     sendStructured: vi.fn(),
+    removeImageAttachment: vi.fn(),
+    setNotice: vi.fn(),
     setDraft: vi.fn(),
     setCaret: vi.fn(),
     setHistory: vi.fn()
@@ -49,6 +51,7 @@ function harness(options: {
         caret: props.caret,
         imageAttachments: options.imageAttachments ?? [],
         disabled: false,
+        attachmentScopeKey: 'pane-1',
         ...calls
       }),
     { initialProps: { draft: options.draft, caret: options.caret ?? options.draft.length } }

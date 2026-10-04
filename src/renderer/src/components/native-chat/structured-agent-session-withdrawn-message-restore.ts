@@ -5,6 +5,9 @@ import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/struc
 import { appendNativeChatDraftCache } from './native-chat-draft-cache'
 import { getStructuredAgentSessionOutbox } from './structured-agent-session-outbox-storage'
 import { appendNativeChatAttachmentCache } from './use-native-chat-composer-attachments'
+import { isAgentSessionAttachmentStorePath } from '../../../../shared/agent-session-attachments'
+import { getRuntimeEnvironmentRevision } from '@/runtime/runtime-environment-revision'
+import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
 
 /**
  * Gives the sender back what a Stop withdrew: its text and images go into this pane's composer,
@@ -14,6 +17,7 @@ import { appendNativeChatAttachmentCache } from './use-native-chat-composer-atta
  */
 function restoreWithdrawnMessages(
   sessionId: string,
+  target: RuntimeClientTarget,
   composerScopeKey: string | undefined,
   withdrawn: readonly StructuredAgentSessionOutboxEntry[]
 ): void {
@@ -35,17 +39,33 @@ function restoreWithdrawnMessages(
     )
     appendNativeChatAttachmentCache(
       composerScopeKey,
-      blocks.flatMap((block, index) =>
-        block.type === 'image-ref' && block.path
-          ? [{ id: `withdrawn-${entry.clientMessageId}-${index}`, path: block.path }]
-          : []
-      )
+      blocks.flatMap((block, index) => {
+        if (block.type !== 'image-ref' || !block.path) {
+          return []
+        }
+        const id = `withdrawn-${entry.clientMessageId}-${index}`
+        if (target.kind === 'local' || !isAgentSessionAttachmentStorePath(block.path)) {
+          return [{ id, path: block.path }]
+        }
+        // Stored on the paired server: the chip keeps its owner, so it is read and sent there only.
+        const pairingRevision = getRuntimeEnvironmentRevision(target.environmentId)
+        return pairingRevision === undefined
+          ? []
+          : [
+              {
+                id,
+                path: block.path,
+                hostOwner: { environmentId: target.environmentId, pairingRevision, sessionId }
+              }
+            ]
+      })
     )
   }
 }
 
 export function useStructuredAgentSessionWithdrawnRestore(
   sessionId: string,
+  target: RuntimeClientTarget,
   /** Absent where no composer shows this session; the entries are then only dropped. */
   composerScopeKey: string | undefined
 ): {
@@ -72,12 +92,13 @@ export function useStructuredAgentSessionWithdrawnRestore(
         )
         restoreWithdrawnMessages(
           sessionId,
+          target,
           composerScopeKey,
           entries.filter((entry) => withdrawn.has(entry.clientMessageId))
         )
       },
-      byStop: (entries) => restoreWithdrawnMessages(sessionId, composerScopeKey, entries)
+      byStop: (entries) => restoreWithdrawnMessages(sessionId, target, composerScopeKey, entries)
     }),
-    [composerScopeKey, sessionId]
+    [composerScopeKey, sessionId, target]
   )
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Image as ImageIcon, Loader2, X } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { translate } from '@/i18n/i18n'
@@ -42,10 +42,24 @@ export function NativeChatImageAttachmentPreview({
     return () => observer.disconnect()
   }, [])
   const isPending = attachment.pending === true
+  // A stored attachment is a path on the paired server, read back through that server.
+  const hostEnvironmentId = attachment.hostOwner?.environmentId
+  const hostReadContext = useMemo(
+    () =>
+      hostEnvironmentId
+        ? {
+            settings: { activeRuntimeEnvironmentId: hostEnvironmentId },
+            worktreeId: null,
+            worktreePath: null
+          }
+        : undefined,
+    [hostEnvironmentId]
+  )
   const localSrc = useLocalImageSrc(
     !isPending && (isNearViewport || isOpen) ? attachment.path : undefined,
     attachment.path,
-    attachment.connectionId
+    attachment.connectionId,
+    hostReadContext
   )
   // The clipboard thumbnail is already in this process, so it renders with no
   // round-trip; the on-disk file only wins for the full-size dialog.
@@ -54,10 +68,13 @@ export function NativeChatImageAttachmentPreview({
   const filename = isNativeChatPastedImagePath(attachment.path)
     ? translate('components.native-chat.composer.pastedImageLabel', 'Pasted image')
     : basename(attachment.path)
-  const pendingLabel = translate(
-    'components.native-chat.composer.imageSaving',
-    'Saving pasted image…'
-  )
+  const pendingLabel = attachment.pendingName
+    ? translate(
+        'components.native-chat.composer.uploadingAttachments',
+        'Uploading {{value0}} file(s) to remote…',
+        { value0: 1 }
+      )
+    : translate('components.native-chat.composer.imageSaving', 'Saving pasted image…')
   const label = isPending ? pendingLabel : filename
 
   return (
