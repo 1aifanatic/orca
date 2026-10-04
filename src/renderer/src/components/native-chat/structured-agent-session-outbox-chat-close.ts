@@ -1,8 +1,8 @@
 // What closing a chat does to its outbox: it never throws away a message the person sent. A
-// cancelled launch's own prompt, never sent, goes with the launch (its notes back on the shelf).
-// Any other message that never went out comes back to the conversation's draft, with its notes
-// following the text. One that went out may be the host's, so it stays and settles when the chat
-// is reopened.
+// cancelled launch's own prompt, never sent, goes with the launch. Any other message that never
+// went out comes back to the conversation's draft; its notes follow the text, except for a
+// cancelled launch, whose draft no chat shows, so they go back on the shelf. One that went out may
+// be the host's, so it stays and settles when the chat is reopened.
 
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import { structuredAgentSessionEntryAwaitsSettlement } from '../../../../shared/structured-agent-session-outbox-admission'
@@ -31,7 +31,7 @@ export function settleStructuredAgentSessionOutboxForClosedChat(
     } else if (!(options.cancelledLaunch && entry.source === 'launch')) {
       // The draft holds the text before the notes it carried are cleared.
       returnStructuredAgentSessionMessage(entry)
-      endStructuredAgentSessionEntry(entry, 'returned')
+      endStructuredAgentSessionEntry(entry, options.cancelledLaunch ? 'discarded' : 'returned')
     }
   }
   if (kept.length !== current.length) {

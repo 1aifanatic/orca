@@ -55,6 +55,7 @@ import { resetStructuredAgentSessionCarriedNotesForTests } from '@/components/na
 import { useStructuredAgentSessionOutbox } from '@/components/native-chat/use-structured-agent-session-outbox'
 import { markStructuredAgentSessionLaunchCancelled } from '@/lib/structured-agent-session-launch-registry'
 import { isNoteInFlight } from '@/lib/notes-send-in-flight'
+import { subscribeToStructuredAgentSessionEntryEndings } from '@/components/native-chat/structured-agent-session-entry-endings'
 
 const WT = 'repo1::/path/wt1'
 const SID = 'session-close-1'
@@ -192,5 +193,25 @@ describe('closing a chat tab while the host is out of reach', () => {
     expect(readOutbox(SID)).toEqual([])
     expect(draft()).toBe('')
     expect(isNoteInFlight('note-a')).toBe(false)
+  })
+
+  // No chat shows a cancelled launch's draft, so a message typed into it gives its notes back.
+  it("ends a cancelled launch's other unsent messages as discarded, so their notes come back", () => {
+    const { store, chat } = seed()
+    markStructuredAgentSessionLaunchCancelled(WT, SID, 'local')
+    const typed = entry('TYPED-TEXT', { carriedNoteKeys: ['note-b'] })
+    writeOutbox(SID, [typed])
+    const endings: string[] = []
+    const unsubscribe = subscribeToStructuredAgentSessionEntryEndings((ended, ending) => {
+      if (ended.clientMessageId === typed.clientMessageId) {
+        endings.push(ending)
+      }
+    })
+
+    store.getState().closeUnifiedTab(chat.id)
+    unsubscribe()
+    expect(endings).toEqual(['discarded'])
+    expect(readOutbox(SID)).toEqual([])
+    expect(isNoteInFlight('note-b')).toBe(false)
   })
 })
