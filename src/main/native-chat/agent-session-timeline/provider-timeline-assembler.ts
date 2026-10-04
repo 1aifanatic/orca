@@ -127,7 +127,7 @@ export function createProviderTimelineAssembler(
 
   const submit = (
     plan: ProviderTimelinePlan,
-    entry: InFlight
+    entry: ProviderTimelineInFlight
   ): StructuredAgentSessionSinkAdmission => {
     if (!plan.writes) {
       return plan.submit(deps.sink)
@@ -234,7 +234,16 @@ export function createProviderTimelineAssembler(
         )
       case 'provider.frame':
         return applyDecided({ ...event, minted: context.joins.mint('f') })
-      default:
+      case 'input.accepted':
+      case 'turn.end':
+      case 'item.open':
+      case 'item.update':
+      case 'item.close':
+      case 'request.open':
+      case 'request.withdrawn':
+      case 'context.usage':
+      case 'session.ended':
+      case 'session.reset':
         return applyDecided(event)
     }
   }

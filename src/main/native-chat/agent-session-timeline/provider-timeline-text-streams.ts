@@ -134,7 +134,8 @@ export class ProviderTimelineTextStreams {
   }): ProviderTimelineStream {
     this.serial += 1
     const named = 'id' in input.item
-    const join = named ? this.itemJoin(input.item, input.join) : this.anonymousJoin(input.join)
+    const join =
+      'id' in input.item ? this.itemJoin(input.item, input.join) : this.anonymousJoin(input.join)
     const placement = providerTimelinePlacement(this.deps.context, input.state, input.join)
     return {
       id: `${this.deps.generation}:s${this.serial}`,
