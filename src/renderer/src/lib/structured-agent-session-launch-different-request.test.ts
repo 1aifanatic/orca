@@ -59,7 +59,22 @@ vi.mock('@/lib/agent-catalog', () => ({
 
 import { refreshLocalStructuredSessionTabs } from '@/runtime/local-structured-session-tabs-sync'
 import {
+  appendStructuredAgentSessionOutboxMessage,
+  readOutbox
+} from '@/components/native-chat/structured-agent-session-outbox-storage'
+import {
+  clearNativeChatDraftCacheForTests,
+  readNativeChatDraftCache,
+  writeNativeChatDraftCache
+} from '@/components/native-chat/native-chat-draft-cache'
+import {
+  structuredAgentSessionPaneKey,
+  structuredAgentSessionTabId
+} from '../../../shared/structured-agent-session-projection'
+import { StructuredAgentSessionCreateRefusalError } from '@/lib/launch-structured-agent-session'
+import {
   getStructuredAgentLaunchStatus,
+  getStructuredAgentSessionLaunchLifecycle,
   startStructuredAgentLaunch
 } from './structured-agent-session-launch'
 import { resetStructuredAgentLaunchPersistenceForTests } from './structured-agent-session-launch-persistence'
@@ -289,6 +304,7 @@ describe('an empty chat still starting', () => {
       .mockReturnValueOnce(first)
       .mockReturnValueOnce(second)
       .mockReturnValueOnce(third)
+    clearNativeChatDraftCacheForTests()
     mocks.launch.mockImplementation((intent: StructuredAgentSessionLaunchIntent) =>
       intent.sessionId === first.sessionId
         ? new Promise((resolve) => (resolveFirstLaunch = resolve))
@@ -369,5 +385,66 @@ describe('an empty chat still starting', () => {
       })
     }
     expect(sends()).toEqual([[first.sessionId, 'review notes']])
+  })
+
+  it('leaves a chat its user already sent into to them, and opens a new chat for the notes', async () => {
+    const blank = startStructuredAgentLaunch(WORKTREE_ID, 'codex')
+    appendStructuredAgentSessionOutboxMessage(blank.sessionId, 'my own question')
+
+    const notes = startStructuredAgentLaunch(WORKTREE_ID, 'codex', notesRequest)
+
+    expect(notes.sessionId).toBe(second.sessionId)
+    await expect(notes.promptDeliveryResult).resolves.toEqual({
+      delivered: true,
+      failureNotified: false
+    })
+    expect(sends()).toEqual([[second.sessionId, 'review notes']])
+    expect(readOutbox(blank.sessionId).map((entry) => entry.body.blocks)).toEqual([
+      [{ type: 'text', text: 'my own question' }]
+    ])
+  })
+
+  it('leaves a chat its user is typing into to them, and opens a new chat for the notes', async () => {
+    const blank = startStructuredAgentLaunch(WORKTREE_ID, 'codex')
+    const paneKey = structuredAgentSessionPaneKey(
+      structuredAgentSessionTabId(blank.sessionId),
+      blank.sessionId
+    )
+    writeNativeChatDraftCache(paneKey, 'half a question')
+
+    const notes = startStructuredAgentLaunch(WORKTREE_ID, 'codex', notesRequest)
+
+    expect(notes.sessionId).toBe(second.sessionId)
+    await expect(notes.promptDeliveryResult).resolves.toEqual({
+      delivered: true,
+      failureNotified: false
+    })
+    expect(readOutbox(blank.sessionId)).toEqual([])
+    expect(readNativeChatDraftCache(paneKey)).toBe('half a question')
+  })
+
+  it('opens a new chat that shows the failure when the claiming text cannot be saved', async () => {
+    const blank = startStructuredAgentLaunch(WORKTREE_ID, 'codex')
+    const storageFailure = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('storage unavailable')
+    })
+    const notes = startStructuredAgentLaunch(WORKTREE_ID, 'codex', notesRequest)
+    storageFailure.mockRestore()
+
+    // The new chat fails with its Retry line, the failure the caller is told was shown.
+    expect(notes.sessionId).toBe(second.sessionId)
+    await expect(notes.launchResult).rejects.toBeInstanceOf(
+      StructuredAgentSessionCreateRefusalError
+    )
+    await expect(notes.promptDeliveryResult).resolves.toEqual({
+      delivered: false,
+      failureNotified: true
+    })
+    expect(getStructuredAgentSessionLaunchLifecycle(WORKTREE_ID, second.sessionId)).toBe('failed')
+    // No claim was recorded: the blank chat is still blank and still claimable.
+    expect(startStructuredAgentLaunch(WORKTREE_ID, 'codex').sessionId).toBe(blank.sessionId)
+    expect(startStructuredAgentLaunch(WORKTREE_ID, 'codex', notesRequest).sessionId).toBe(
+      blank.sessionId
+    )
   })
 })

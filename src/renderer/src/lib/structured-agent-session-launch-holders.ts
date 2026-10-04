@@ -8,6 +8,7 @@ import {
   type StructuredLaunchAttempt,
   type StructuredLaunchRequest
 } from './structured-agent-session-launch-request'
+import { isStructuredLaunchChatEmpty } from './structured-agent-session-launch-empty-chat'
 
 // Why: coalescing stops a repeat of one request (a double click) racing into two chats. A different
 // request, a failed or unconfirmed launch, or a Retry/re-check of one is not that race: a new start
@@ -39,7 +40,8 @@ export function structuredLaunchesHoldingIdentity(
 }
 
 /** An empty chat (a + pick, the empty-workspace default) still starting: the first request with text
- *  claims it once, and from then on it is that request's chat. A resume is never empty. */
+ *  claims it once, and from then on it is that request's chat. A resume is never empty, nor a chat
+ *  its user has already sent or typed into. */
 export function claimableStructuredLaunchAttempt(
   state: StructuredLaunchState,
   request: StructuredLaunchRequest
@@ -48,7 +50,8 @@ export function claimableStructuredLaunchAttempt(
   return !state.intent.params.resumeFrom &&
     attempt.kind === 'first' &&
     attempt.request.text === '' &&
-    request.text !== ''
+    request.text !== '' &&
+    isStructuredLaunchChatEmpty(state.intent.sessionId)
     ? attempt
     : undefined
 }

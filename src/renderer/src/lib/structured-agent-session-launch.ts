@@ -45,7 +45,8 @@ import { applyStructuredLaunchHeldOptions } from './structured-agent-session-lau
 import { trackLaunchSettlement } from './structured-agent-session-launch-outcome-tracking'
 import {
   repeatedStructuredLaunchAttempt,
-  structuredLaunchRequest
+  structuredLaunchRequest,
+  type StructuredLaunchRequest
 } from './structured-agent-session-launch-request'
 
 export type { StructuredAgentLaunchOptions, StructuredAgentLaunchReceipt }
@@ -155,6 +156,54 @@ function restartStructuredLaunchState(state: StructuredLaunchState): void {
   notifyStructuredLaunchListeners()
 }
 
+function joinStructuredLaunchState(
+  existing: StructuredLaunchState,
+  agent: AgentSessionHandleProvider,
+  options: StructuredAgentLaunchOptions,
+  request: StructuredLaunchRequest
+): StructuredLaunchStateResult | undefined {
+  // A repeat (a double click) shares the text the first click staged, so it is sent once.
+  const repeat = repeatedStructuredLaunchAttempt(existing.callers.attempt, request)
+  // An empty chat takes the first text sent to it, delivered the way that request asked.
+  const claim = claimableStructuredLaunchAttempt(existing, request)
+  const retrying = existing.visibilityUnknown
+  const joined = joinLaunchDelivery(
+    options,
+    claim ? options.promptDelivery : existing.promptDelivery
+  )
+  // Why: an unconfirmed launch keeps its draft/outbox, so a recheck must not stage it twice.
+  const text = retrying || repeat ? '' : outboxPromptText(joined)
+  const stagedPrompt = text
+    ? enqueueStructuredAgentSessionLaunchPrompt(existing.intent.sessionId, text)
+    : (repeat?.stagedEntry ?? null)
+  // An unstaged claim stays unclaimed: the new launch it falls to reports the failure.
+  if (claim && text && !stagedPrompt) {
+    return undefined
+  }
+  if (retrying) {
+    restartStructuredLaunchState(existing)
+  }
+  if (claim) {
+    existing.promptDelivery = options.promptDelivery
+    Object.assign(claim, { request, stagedEntry: stagedPrompt })
+  }
+  if (!retrying && !repeat) {
+    launchDraft.seedStructuredAgentLaunchDraft(existing.intent.sessionId, agent, joined)
+  }
+  const { prompt: _retryPrompt, ...joinedWithoutPrompt } = joined
+  const callerOptions = retrying ? joinedWithoutPrompt : joined
+  return {
+    state: existing,
+    caller: addStructuredLaunchCaller({
+      group: existing.callers,
+      launchResult: existing.promise,
+      target: existing.intent.target,
+      options: callerOptions,
+      stagedEntry: stagedPrompt
+    })
+  }
+}
+
 function structuredAgentLaunchState(
   worktreeId: string,
   agent: AgentSessionHandleProvider,
@@ -163,42 +212,9 @@ function structuredAgentLaunchState(
   const identity = structuredLaunchIdentity(worktreeId, agent, options.resumeFrom)
   const request = structuredLaunchRequest(options)
   const existing = getJoinableStructuredLaunchState(identity, request)
-  if (existing) {
-    // A repeat (a double click) shares the text the first click staged, so it is sent once.
-    const repeat = repeatedStructuredLaunchAttempt(existing.callers.attempt, request)
-    // An empty chat takes the first text sent to it, delivered the way that request asked.
-    const claim = claimableStructuredLaunchAttempt(existing, request)
-    if (claim) {
-      existing.promptDelivery = options.promptDelivery
-    }
-    const retrying = existing.visibilityUnknown
-    if (retrying) {
-      restartStructuredLaunchState(existing)
-    }
-    const joined = joinLaunchDelivery(options, existing.promptDelivery)
-    // Why: an unconfirmed launch keeps its draft/outbox, so a recheck must not stage it twice.
-    const text = retrying || repeat ? '' : outboxPromptText(joined)
-    const stagedPrompt = text
-      ? enqueueStructuredAgentSessionLaunchPrompt(existing.intent.sessionId, text)
-      : (repeat?.stagedEntry ?? null)
-    if (!retrying && !repeat) {
-      launchDraft.seedStructuredAgentLaunchDraft(existing.intent.sessionId, agent, joined)
-    }
-    if (claim) {
-      Object.assign(claim, { request, stagedEntry: stagedPrompt })
-    }
-    const { prompt: _retryPrompt, ...joinedWithoutPrompt } = joined
-    const callerOptions = retrying ? joinedWithoutPrompt : joined
-    return {
-      state: existing,
-      caller: addStructuredLaunchCaller({
-        group: existing.callers,
-        launchResult: existing.promise,
-        target: existing.intent.target,
-        options: callerOptions,
-        stagedEntry: stagedPrompt
-      })
-    }
+  const joined = existing && joinStructuredLaunchState(existing, agent, options, request)
+  if (joined) {
+    return joined
   }
 
   const intent = createStructuredAgentSessionLaunchIntent(
