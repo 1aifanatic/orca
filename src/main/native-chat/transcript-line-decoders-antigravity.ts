@@ -30,6 +30,12 @@ export function decodeAntigravityTranscriptLine(
   }
 
   const timestamp = parseTimestamp(record.created_at ?? record.timestamp)
+  // Antigravity's created_at clock is second-granular; a fallback timestamp has no such contract.
+  const coarseTimestamp =
+    (typeof record.created_at === 'string' ||
+      (typeof record.created_at === 'number' && record.created_at <= 1_000_000_000_000)) &&
+    timestamp !== null &&
+    timestamp % 1000 === 0
   const stepIndex =
     typeof record.step_index === 'number'
       ? String(record.step_index)
@@ -55,6 +61,7 @@ export function decodeAntigravityTranscriptLine(
       role: 'user',
       blocks: [{ type: 'text', text }],
       timestamp,
+      ...(coarseTimestamp ? { timestampPrecision: 'second' as const } : {}),
       ...(transcriptPosition === undefined ? {} : { transcriptPosition }),
       source: 'transcript'
     }
@@ -84,6 +91,7 @@ export function decodeAntigravityTranscriptLine(
       role: 'assistant',
       blocks,
       timestamp,
+      ...(coarseTimestamp ? { timestampPrecision: 'second' as const } : {}),
       ...(transcriptPosition === undefined ? {} : { transcriptPosition }),
       source: 'transcript'
     }
@@ -106,6 +114,7 @@ export function decodeAntigravityTranscriptLine(
       role: 'tool',
       blocks,
       timestamp,
+      ...(coarseTimestamp ? { timestampPrecision: 'second' as const } : {}),
       ...(transcriptPosition === undefined ? {} : { transcriptPosition }),
       source: 'transcript'
     }
