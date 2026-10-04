@@ -496,6 +496,30 @@ describe('useNativeChatComposerAttachments', () => {
     act(() => back.root.unmount())
   })
 
+  it('shows a dropped file still uploading as pending to a composer that comes back, then settles it there', async () => {
+    const first = await renderProbe('pty-drop')
+    const chips = first.latest().pendingChips
+    let chipId: string | null = null
+    act(() => {
+      chipId = chips.begin(undefined, 'shot.png')
+    })
+    if (!chipId) {
+      throw new Error('expected a pending chip')
+    }
+    const id: string = chipId
+    act(() => first.root.unmount())
+
+    const back = await renderProbe('pty-drop')
+    expect(back.latest().imageAttachments).toMatchObject([
+      { id, pending: true, pendingName: 'shot.png' }
+    ])
+    act(() => chips.resolve(id, '/srv/agent-session-attachments/u5/shot.png'))
+    expect(back.latest().imageAttachments).toEqual([
+      { id, path: '/srv/agent-session-attachments/u5/shot.png' }
+    ])
+    act(() => back.root.unmount())
+  })
+
   it('keeps a stored file whose reference is held for an input-method composition across a remount', async () => {
     let composing = true
     const probe = await renderProbe('pty-ime', true, { isComposing: () => composing })
