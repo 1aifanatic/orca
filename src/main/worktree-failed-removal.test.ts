@@ -1,5 +1,6 @@
 // A delete that fails after Git dropped the checkout's registration: the leftover stays listed with
-// the error until Delete retries it, the checkout disappears, or its repo leaves Orca. Git is mocked
+// the error until the checkout disappears, Git registers a checkout there again, or its repo leaves
+// Orca; Delete refuses while the folder is on disk. Git is mocked
 // here so this runs on every platform; the real-Git version is in
 // runtime/runtime-failed-local-worktree-removal.test.ts.
 import { mkdir, mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises'
@@ -24,7 +25,8 @@ import {
   snapshotPendingWorktreeRemovals,
   withUnregisteredRemovalCheckouts
 } from './worktree-removal-listing'
-import { readWorktreeRemovalRecords } from './worktree-removal-records'
+import { retryFailedRemovalUnlessRegistered } from './worktree-removal-leftover'
+import { readWorktreeRemovalRecords, writeWorktreeRemovalRecords } from './worktree-removal-records'
 import { loadWorktreeRemovalRecordsForStore } from './startup/worktree-removal-records-load'
 
 vi.mock('./git/worktree', () => ({ listWorktreesStrict: vi.fn(async () => []) }))
@@ -286,6 +288,82 @@ describe('a delete that fails after Git dropped the registration', () => {
 
     expect(await listRows()).toEqual([mainWorktree])
     expect(retryFailedWorktreeRemoval(worktreeId, 'local', vi.fn())).toBeUndefined()
+    await vi.waitFor(async () =>
+      expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toEqual([])
+    )
+  })
+
+  it('Delete refuses while the folder is on disk: nothing runs, the record and row stay', async () => {
+    await failRemoval()
+    const retry = vi.fn()
+
+    await expect(
+      retryFailedRemovalUnlessRegistered(worktreeId, checkout, [mainWorktree], retry)
+    ).rejects.toThrow(
+      `Git no longer tracks ${checkout}, so Orca won't delete it. Remove the folder yourself; Orca removes this workspace once the folder is gone.`
+    )
+
+    expect(retry).not.toHaveBeenCalled()
+    expect(await readdir(checkout)).toEqual(['node_modules'])
+    expect(await listRows()).toEqual([mainWorktree, leftoverRow()])
+    expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toHaveLength(1)
+  })
+
+  it('Delete finishes the recorded removal once the user removed the folder', async () => {
+    await failRemoval()
+    await rm(checkout, { recursive: true })
+    const retry = vi.fn(() => Promise.resolve({}))
+
+    await expect(
+      retryFailedRemovalUnlessRegistered(worktreeId, checkout, [mainWorktree], retry)
+    ).resolves.toBe(true)
+
+    expect(retry).toHaveBeenCalledTimes(1)
+  })
+
+  it('a delete resumed at startup that fails on a checkout Git still registers shows the error on Git’s row', async () => {
+    const registered = { ...leftoverRow(), removalError: undefined }
+    vi.mocked(listWorktreesStrict).mockResolvedValue([mainWorktree, registered])
+    const record = {
+      worktreeId,
+      repoId: 'repo-1',
+      repoPath: '/work/repo',
+      worktreePath: checkout,
+      branch: 'feature',
+      head: 'abc',
+      deleteBranch: true,
+      force: false,
+      requestedAt: 1
+    }
+    _resetPendingWorktreeRemovalsForTests()
+    await writeWorktreeRemovalRecords(join(directory, 'profile'), () => [record])
+    await loadWorktreeRemovalRecords(join(directory, 'profile'))
+
+    resumeInterruptedWorktreeRemovals(() => ({
+      run: async () => {
+        throw new Error('contains modified or untracked files, use --force to delete it')
+      },
+      publish: () => {}
+    }))
+    await _settlePendingWorktreeRemovalsForTests()
+
+    expect(await withUnregisteredRemovalCheckouts('repo-1', [mainWorktree, registered])).toEqual([
+      mainWorktree,
+      { ...registered, removalError: expect.stringMatching(/--force/) }
+    ])
+    expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toMatchObject([
+      { worktreeId, failure: { message: expect.stringMatching(/--force/) } }
+    ])
+  })
+
+  it('ends at the next listing once Git lists a different checkout at the path', async () => {
+    await failRemoval()
+    const other = { ...leftoverRow(), branch: 'refs/heads/other', removalError: undefined }
+
+    expect(await withUnregisteredRemovalCheckouts('repo-1', [mainWorktree, other])).toEqual([
+      mainWorktree,
+      other
+    ])
     await vi.waitFor(async () =>
       expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toEqual([])
     )

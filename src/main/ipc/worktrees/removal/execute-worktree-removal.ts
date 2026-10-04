@@ -37,7 +37,7 @@ import { removeUnregisteredWorktree } from './remove-unregistered-worktree'
 import { removeRegisteredRemoteWorktree } from './remove-registered-remote-worktree'
 import { removeRegisteredLocalWorktree } from './remove-registered-local-worktree'
 import { retryFailedLocalWorktreeRemoval } from './retry-failed-local-worktree-removal'
-import { retryFailedRemovalUnlessRegistered } from '../../../worktree-removal-table'
+import { retryFailedRemovalUnlessRegistered } from '../../../worktree-removal-leftover'
 
 /**
  * Refuses a repo row whose two host spellings disagree.
@@ -118,9 +118,12 @@ export async function executeWorktreeRemoval(
   )
   if (
     !repo.connectionId &&
-    retryFailedRemovalUnlessRegistered(args.worktreeId, worktreePath, registeredWorktrees, () =>
-      retryFailedLocalWorktreeRemoval(context, args, removalHostId)
-    )
+    (await retryFailedRemovalUnlessRegistered(
+      args.worktreeId,
+      worktreePath,
+      registeredWorktrees,
+      () => retryFailedLocalWorktreeRemoval(context, args, removalHostId)
+    ))
   ) {
     return { removing: true }
   }

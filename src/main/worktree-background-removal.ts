@@ -9,7 +9,7 @@ import { readWorktreeRemovalRecords, type WorktreeRemovalRecord } from './worktr
 import {
   differentCheckoutAtPathError,
   isCheckoutRegistered,
-  isUnregisteredRemovalLeftover
+  keepsFailedRemovalRow
 } from './worktree-removal-leftover'
 import {
   failedWorktreeRemovals,
@@ -160,9 +160,9 @@ export function startBackgroundWorktreeRemoval(
 }
 
 /**
- * Delete on a failed delete's leftover that Git's current listing still does not register: runs the
- * recorded removal again, with the choices the user made the first time, or joins the one another
- * request started while this one listed Git. Undefined when neither.
+ * Delete on a failed delete whose folder is gone and that Git's current listing still does not
+ * register: finishes the recorded removal with the choices the user made the first time, or joins
+ * the one another request started while this one listed Git. Undefined when neither.
  */
 export function retryFailedWorktreeRemoval(
   worktreeId: string,
@@ -201,7 +201,7 @@ export function resumeInterruptedWorktreeRemovals(
 ): void {
   for (const record of pendingWorktreeRemovals.values()) {
     if (!jobsByWorktreeId.has(record.worktreeId)) {
-      runBackgroundWorktreeRemoval(record, jobFor(record), Promise.resolve())
+      runBackgroundWorktreeRemoval(record, jobFor(record), Promise.resolve(), true)
     }
   }
 }
@@ -216,7 +216,8 @@ export function stopBackgroundWorktreeRemovals(): void {
 function runBackgroundWorktreeRemoval(
   record: WorktreeRemovalRecord,
   job: BackgroundWorktreeRemovalJob,
-  recorded: Promise<void>
+  recorded: Promise<void>,
+  resumed = false
 ): void {
   const controller = new AbortController()
   stopControllers.add(controller)
@@ -225,7 +226,8 @@ function runBackgroundWorktreeRemoval(
     settlementsByWorktreeId.get(record.worktreeId),
     job,
     recorded,
-    controller.signal
+    controller.signal,
+    resumed
   ).finally(() => {
     stopControllers.delete(controller)
     if (jobsByWorktreeId.get(record.worktreeId) === settled) {
@@ -240,7 +242,8 @@ async function settleBackgroundWorktreeRemoval(
   settlement: RemovalSettlement | undefined,
   job: BackgroundWorktreeRemovalJob,
   recorded: Promise<void>,
-  stopSignal: AbortSignal
+  stopSignal: AbortSignal,
+  resumed: boolean
 ): Promise<void> {
   await waitForRecordWrite(record, recorded)
   let settle: (settlement: RemovalSettlement) => void
@@ -261,7 +264,7 @@ async function settleBackgroundWorktreeRemoval(
     settle = (settlement) => settlement.reject(error)
     // Why: Git drops the registration even when it fails to delete the checkout, and Orca lists
     // workspaces from Git, so without the record the leftover would vanish with no way to retry.
-    if (await isCheckoutLeftUnregistered(record)) {
+    if (await keepsFailedRemovalRow(record, resumed)) {
       failure = {
         message: error instanceof Error ? error.message : String(error),
         failedAt: Date.now()
@@ -293,22 +296,6 @@ async function settleBackgroundWorktreeRemoval(
   publishSafely(job.publish)
   if (cleared) {
     await persistWorktreeRemovalRecords()
-  }
-}
-
-async function isCheckoutLeftUnregistered(record: WorktreeRemovalRecord): Promise<boolean> {
-  if (!(await worktreeCheckoutExists(record.worktreePath))) {
-    return false
-  }
-  try {
-    return (
-      !(await isCheckoutRegistered(record)) &&
-      (await isUnregisteredRemovalLeftover(record.repoPath, record.worktreePath))
-    )
-  } catch (error) {
-    // Unknowable: the row stays however Git lists it, as before this record existed.
-    console.warn(`[worktrees] could not list worktrees of ${record.repoPath}`, error)
-    return false
   }
 }
 

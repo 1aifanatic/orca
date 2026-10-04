@@ -1,5 +1,5 @@
 // Desktop IPC for a delete that failed after Git dropped the registration: the leftover stays in
-// `worktrees:list` with the error, Delete retries it. Git and the disk are mocked;
+// `worktrees:list` with the error; Delete refuses while it is on disk and finishes once it is gone. Git and the disk are mocked;
 // runtime-failed-local-worktree-removal.test.ts runs the real thing.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -12,6 +12,7 @@ import { mockKnownFeatureWorktree } from './worktrees-test-fixtures'
 import type { RemoveWorktreeResult } from '../../shared/worktree/create-types'
 import type { Worktree } from '../../shared/worktree/types'
 import { finishUnregisteredWorktreeRemoval } from '../git/worktree-removal'
+import { worktreeCheckoutExists } from '../worktree-removal-table'
 import type * as WorktreeRemovalModule from '../git/worktree-removal'
 import type * as WorktreeRemovalTable from '../worktree-removal-table'
 import type * as WorktreeRemovalLeftover from '../worktree-removal-leftover'
@@ -163,6 +164,7 @@ describe('a failed delete Git no longer registers, over desktop IPC', () => {
   afterEach(() => {
     _resetPendingWorktreeRemovalsForTests()
     vi.mocked(finishUnregisteredWorktreeRemoval).mockClear()
+    vi.mocked(worktreeCheckoutExists).mockResolvedValue(true)
   })
 
   it('stays in the listing with the error instead of vanishing', async () => {
@@ -173,13 +175,31 @@ describe('a failed delete Git no longer registers, over desktop IPC', () => {
     expect(row?.removing).toBeUndefined()
   })
 
-  it('Delete runs the recorded removal again: teardown, leftover, branch and metadata', async () => {
+  it('Delete refuses while the folder is on disk, deleting nothing and keeping the row', async () => {
     await failAfterGitDroppedIt()
     killAllProcessesForWorktreeMock.mockClear()
 
+    for (const force of [false, true]) {
+      await expect(remove({ worktreeId: featureId, force })).rejects.toThrow(
+        "Git no longer tracks /workspace/feature-wt, so Orca won't delete it. Remove the folder yourself; Orca removes this workspace once the folder is gone."
+      )
+    }
+    await _settlePendingWorktreeRemovalsForTests()
+
+    expect(finishUnregisteredWorktreeRemoval).not.toHaveBeenCalled()
+    expect(removeWorktreeMock).not.toHaveBeenCalled()
+    expect(killAllProcessesForWorktreeMock).not.toHaveBeenCalled()
+    expect(store.removeWorktreeMeta).not.toHaveBeenCalled()
+    expect(await listFeature()).toMatchObject({ removalError: GIT_ERROR })
+  })
+
+  it('once the user removed the folder, Delete finishes the rest: teardown, branch and metadata', async () => {
+    await failAfterGitDroppedIt()
+    killAllProcessesForWorktreeMock.mockClear()
+    vi.mocked(worktreeCheckoutExists).mockResolvedValue(false)
+
     await expect(remove({ worktreeId: featureId })).resolves.not.toHaveProperty('removing')
 
-    // Git has no registration to delete by; the leftover goes through Orca's own delete.
     expect(removeWorktreeMock).not.toHaveBeenCalled()
     expect(finishUnregisteredWorktreeRemoval).toHaveBeenCalledWith(
       '/workspace/repo',
@@ -194,17 +214,6 @@ describe('a failed delete Git no longer registers, over desktop IPC', () => {
     )
     expect(store.removeWorktreeMeta).toHaveBeenCalledWith(featureId, 'local')
     expect(await listFeature()).toBeUndefined()
-  })
-
-  it('keeps the row with the new error when the retry fails again', async () => {
-    await failAfterGitDroppedIt()
-    vi.mocked(finishUnregisteredWorktreeRemoval).mockRejectedValueOnce(new Error('EPERM again'))
-
-    await expect(remove({ worktreeId: featureId })).rejects.toThrow('EPERM again')
-    await _settlePendingWorktreeRemovalsForTests()
-
-    expect(await listFeature()).toMatchObject({ removalError: 'EPERM again' })
-    expect(store.removeWorktreeMeta).not.toHaveBeenCalled()
   })
 
   it('joins a retry another client started while this Delete listed Git', async () => {
