@@ -77,7 +77,7 @@ afterEach(() => {
 })
 
 describe('OpenCode installation uses the current enabled agents', () => {
-  it.each(['home', 'xdg', 'shell'] as const)(
+  it.each(process.platform === 'win32' ? (['home', 'xdg'] as const) : (['home', 'xdg', 'shell'] as const))(
     'consumer config root follows the %s execution environment without redirecting JSON',
     (kind) => {
       const home = join(root, 'consumer-home')
