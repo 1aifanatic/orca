@@ -137,7 +137,7 @@ describe('a conversation Stop', () => {
     })
     const stopId: string = stopOutbox.mock.calls[0]?.[0]
     // The outbox now holds a send stamped by it, still owed its answer.
-    view.rerender({ outbox: [stamped(stopId)] })
+    view.rerender({ outbox: [stamped(stopId)], submissions: [] })
     for (let step = 0; step < 10; step += 1) {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(1_000)
@@ -175,7 +175,7 @@ describe('a conversation Stop', () => {
         queuedAt: Date.now() + 1
       })
     }
-    view.rerender({ outbox: [stamped(stopId), newer] })
+    view.rerender({ outbox: [stamped(stopId), newer], submissions: [] })
     await act(async () => {
       await vi.advanceTimersByTimeAsync(60_000)
     })
@@ -233,7 +233,7 @@ describe('a conversation Stop', () => {
       attachments: [],
       queuedAt: Date.now() + 1_000
     })
-    view.rerender({ outbox: [stamped(stopId), newer] })
+    view.rerender({ outbox: [stamped(stopId), newer], submissions: [] })
     // Still out: its answer may yet come, and settle the stamp for real.
     expect(recordStopAnswer).not.toHaveBeenCalled()
     await act(async () => {
@@ -260,7 +260,7 @@ describe("a conversation Stop's first press", () => {
       pressed = view.result.current()
     })
     if (stampsSend) {
-      view.rerender({ outbox: [stamped(stopOutbox.mock.calls[0]?.[0])] })
+      view.rerender({ outbox: [stamped(stopOutbox.mock.calls[0]?.[0])], submissions: [] })
     }
     await act(async () => {
       answer.resolve(outcome)

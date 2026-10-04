@@ -128,7 +128,7 @@ const REASON_WORDS = {
     turnActive: causeWords('turnActive', 'wait', 'waitForTurn'),
     promptPending: causeWords('promptPending', 'actFirst', 'answerFirst'),
     backgroundTasksRunning: causeWords('backgroundTasksRunning', 'wait', 'waitForBackgroundTasks'),
-    messagesUnsettled: causeWords('messagesUnsettled', 'actFirst', 'settleEarlierMessage'),
+    messagesUnsettled: causeWords('messagesUnsettled', 'wait', 'settleEarlierMessage'),
     // No chat surface sends a rewind; a replayed one says only that it did not happen.
     rewindRefused: codeWords('hostFinding'),
     rewindUnconfirmed: codeWords('hostFinding'),

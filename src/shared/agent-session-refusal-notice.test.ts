@@ -369,6 +369,17 @@ describe('the notice for every reason a host names', () => {
     }
   })
 
+  // No chat surface offers a Retry on a message any more, so the step is only to wait for it.
+  it('asks a command blocked behind an unsettled message only to wait for it', () => {
+    const failure = agentSessionRefusalFailure({
+      code: 'agent_session_operation_invalid',
+      details: { reason: 'messagesUnsettled' }
+    })
+    const text = agentSessionWriteNoticeEnglish(agentSessionWriteNoticeParts(failure, 'command'))
+    expect(text).toContain('Wait for your earlier message to go through.')
+    expect(text).not.toMatch(/retry/i)
+  })
+
   // A retry is the control that sent the write; only an open that can clear says to try again.
   it('names a step exactly where the person has one to take', () => {
     for (const { words, cell } of cells) {
