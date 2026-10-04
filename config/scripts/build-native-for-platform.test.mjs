@@ -116,6 +116,12 @@ function startBuild(mode, options = {}) {
             `data:text/javascript,${encodeURIComponent(`import { appendFileSync } from 'node:fs'; setInterval(() => appendFileSync(process.env.NATIVE_BUILD_JOURNAL, JSON.stringify({ name: 'launcher', event: 'buffered', bytes: process.stdout.writableLength }) + '\\n'), 50).unref()`)}`
           ]
         : []),
+      ...(options.lateResume
+        ? [
+            '--import',
+            `data:text/javascript,${encodeURIComponent(`import childProcess from 'node:child_process'; import { syncBuiltinESMExports } from 'node:module'; const spawn = childProcess.spawn; childProcess.spawn = (...args) => { const child = spawn(...args); child.once('close', () => { child.stdout.pause(); setImmediate(() => child.stdout.resume()) }); return child }; syncBuiltinESMExports()`)}`
+          ]
+        : []),
       ...(options.lateOutputError
         ? [
             '--import',
@@ -292,6 +298,16 @@ describe.skipIf(process.platform !== 'darwin')('parallel native builds', () => {
     }
   )
 
+  it('does not rearm descendant reaping when a closed compiler stream resumes', async () => {
+    const build = startBuild('success', { lateResume: true })
+    await build.ready
+    build.release()
+    const result = await build.closed
+    expect(result).toMatchObject({ code: 0, signal: null })
+    expect(result.stderr).not.toContain('reaping')
+    expect(build.events().filter(({ event }) => event === 'completed')).toHaveLength(3)
+  })
+
   it('reports a missing build command without waiting forever', async () => {
     const build = startBuild('success', { missingCli: true })
     expect(await build.closed).toMatchObject({ code: 1, signal: null })
@@ -355,8 +371,11 @@ describe.skipIf(process.platform !== 'darwin')('parallel native builds', () => {
         try {
           process.kill(compiler.pid, 0)
           return false
-        } catch {
-          return true
+        } catch (error) {
+          if (error.code === 'ESRCH') {
+            return true
+          }
+          throw error
         }
       })
       const accepted = build.events().findLast(({ event }) => event === 'accepted')
