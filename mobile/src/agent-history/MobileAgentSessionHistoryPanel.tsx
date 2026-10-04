@@ -16,12 +16,12 @@ import { ChevronLeft, RefreshCw } from 'lucide-react-native'
 import { colors } from '../theme/mobile-theme'
 import { useHostClient } from '../transport/client-context'
 import type { RpcClient } from '../transport/rpc-client'
-import { readMobileRuntimeHostPlatform } from '../transport/mobile-runtime-host-platform'
 import { worktreeCatalogRead } from '../worktree/worktree-catalog-operations'
 import { getWorktreeLabel } from '../session/worktree-label'
 import {
   buildMobileAiVaultResumeLaunch,
   createMobileAiVaultResumeMutationRegistry,
+  readMobileAiVaultResumeHost,
   readMobileRuntimeTerminalWindowsShell,
   resolveMobileAiVaultResumePlatform,
   resumeAiVaultSessionInTerminal,
@@ -147,8 +147,8 @@ export function MobileAgentSessionHistoryPanel({
     [sessions, query, scope, scopeFilterPaths, activeWorktreePath, now]
   )
 
-  const hostPlatform = useMemo(
-    () => readMobileRuntimeHostPlatform(hostStatusResult),
+  const resumeHost = useMemo(
+    () => readMobileAiVaultResumeHost(hostStatusResult),
     [hostStatusResult]
   )
   const hostTerminalWindowsShell = useMemo(
@@ -207,7 +207,7 @@ export function MobileAgentSessionHistoryPanel({
 
         const platform = resolveMobileAiVaultResumePlatform(
           target.targetStatus,
-          hostPlatform,
+          resumeHost.platform,
           target.workspacePath,
           target.terminalPlatform
         )
@@ -226,6 +226,7 @@ export function MobileAgentSessionHistoryPanel({
         })
         await resumeAiVaultSessionInTerminal(client, target.worktreeId, {
           ...launch,
+          hostCapabilities: resumeHost.capabilities,
           clientMutationId: resumeMutationRegistryRef.current.claim(session.id)
         })
         resumeMutationRegistryRef.current.releaseOnSuccess(session.id)
@@ -244,16 +245,7 @@ export function MobileAgentSessionHistoryPanel({
         setResumingSessionId(null)
       }
     },
-    [
-      client,
-      connState,
-      hostId,
-      hostPlatform,
-      hostTerminalWindowsShell,
-      router,
-      worktreeId,
-      worktrees
-    ]
+    [client, connState, hostId, resumeHost, hostTerminalWindowsShell, router, worktreeId, worktrees]
   )
 
   return (

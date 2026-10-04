@@ -21,6 +21,17 @@ import { interpretOrThrowRefusalMessage } from '../transport/rpc-refusal-message
 import { reviewTerminalCreateRun, reviewTerminalSendRun } from './mobile-review-terminal-operations'
 import type { MobileReviewTerminalTab } from './review-terminal-reply-schema'
 import type { MobileAiVaultResumeTargetStatus } from '../agent-history/agent-history-resume-target'
+import { QODER_OWNED_TERMINAL_CREATE_CAPABILITY } from '../../../src/shared/qoder-terminal-create-capability'
+import { agentHistoryHostStatusSchema } from '../agent-history/agent-history-reply-schema'
+import { readMobileRuntimeHostPlatform } from '../transport/mobile-runtime-host-platform'
+
+export function readMobileAiVaultResumeHost(statusResult: unknown) {
+  const status = agentHistoryHostStatusSchema.safeParse(statusResult)
+  return {
+    platform: readMobileRuntimeHostPlatform(statusResult),
+    capabilities: status.success ? status.data.capabilities : undefined
+  }
+}
 
 export function buildMobileAiVaultResumeCommand(args: {
   session: Pick<AiVaultSession, 'agent' | 'sessionId' | 'cwd' | 'codexHome'> &
@@ -151,10 +162,16 @@ function normalizeMobileAiVaultResumeCommandOverrides(
 export async function resumeAiVaultSessionInTerminal(
   client: RpcOperationSender,
   worktreeId: string,
-  launch: MobileAiVaultResumeLaunch & { clientMutationId?: string }
+  launch: MobileAiVaultResumeLaunch & {
+    clientMutationId?: string
+    hostCapabilities?: readonly string[]
+  }
 ): Promise<MobileReviewTerminalTab> {
   // Qoder's execution host must select its installed executable before the resume starts.
-  const launchAtCreate = launch.launchAgent === 'qoder'
+  const launchAtCreate =
+    launch.launchAgent === 'qoder' &&
+    Boolean(launch.clientMutationId) &&
+    launch.hostCapabilities?.includes(QODER_OWNED_TERMINAL_CREATE_CAPABILITY) === true
   // Each request is awaited outside its catch so a transport drop propagates as the original error
   // object; only a refusal is rewritten into this step's own copy.
   const created = await reviewTerminalCreateRun.request(

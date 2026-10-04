@@ -29,6 +29,7 @@ export class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal extends Orca
       envToDelete?: string[]
       startupCommandDelivery?: WorktreeStartupLaunch['startupCommandDelivery']
       identity?: { tabId: string; leafId: string; sessionId?: string }
+      createMutation?: { clientIdentity: string; id: string }
       launchAgent?: TuiAgent
       viewMode?: 'terminal' | 'chat'
       targetGroupId?: string
@@ -43,34 +44,55 @@ export class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal extends Orca
     const stableSessionId =
       opts.identity?.sessionId ?? (workspace.connectionId ? undefined : `serve-${randomUUID()}`)
     const isNewSession = stableSessionId !== undefined && opts.identity?.sessionId === undefined
-    const terminal = await this.createTerminal(`id:${worktreeId}`, {
-      focus: false,
-      command: opts.command,
-      cwd,
-      env: opts.env,
-      envToDelete: opts.envToDelete,
-      ...(opts.launchConfig ? { launchConfig: opts.launchConfig } : {}),
-      ...(opts.launchAgent ? { launchAgent: opts.launchAgent } : {}),
-      ...(opts.viewMode ? { viewMode: opts.viewMode } : {}),
-      startupCommandDelivery: opts.startupCommandDelivery,
-      ...(opts.identity
-        ? {
-            tabId: opts.identity.tabId,
-            leafId: opts.identity.leafId,
-            ...(stableSessionId ? { sessionId: stableSessionId } : {})
-          }
-        : stableSessionId
-          ? { sessionId: stableSessionId }
-          : {}),
-      ...(isNewSession ? { isNewSession: true } : {}),
-      persistHostSessionBinding: true,
-      // Why: this method publishes the authoritative snapshot below; skip the intermediate publish to avoid a wrong-group flash.
-      deferMobileSessionPublish: true,
-      signal: opts.signal
-    })
+    const create = (preAllocatedHandle?: string) =>
+      this.createTerminal(`id:${worktreeId}`, {
+        focus: false,
+        ...(preAllocatedHandle ? { preAllocatedHandle } : {}),
+        command: opts.command,
+        cwd,
+        env: opts.env,
+        envToDelete: opts.envToDelete,
+        ...(opts.launchConfig ? { launchConfig: opts.launchConfig } : {}),
+        ...(opts.launchAgent ? { launchAgent: opts.launchAgent } : {}),
+        ...(opts.viewMode ? { viewMode: opts.viewMode } : {}),
+        startupCommandDelivery: opts.startupCommandDelivery,
+        ...(opts.identity
+          ? {
+              tabId: opts.identity.tabId,
+              leafId: opts.identity.leafId,
+              ...(stableSessionId ? { sessionId: stableSessionId } : {})
+            }
+          : stableSessionId
+            ? { sessionId: stableSessionId }
+            : {}),
+        ...(isNewSession ? { isNewSession: true } : {}),
+        persistHostSessionBinding: true,
+        // Why: this method publishes the authoritative snapshot below; skip the intermediate publish to avoid a wrong-group flash.
+        deferMobileSessionPublish: true,
+        signal: opts.signal
+      })
+    const terminal = opts.createMutation
+      ? await this.dedupeTerminalCreate(
+          opts.createMutation.clientIdentity,
+          `id:${worktreeId}`,
+          opts.createMutation.id,
+          true,
+          (_selector, handle) => create(handle)
+        )
+      : await create()
+    if (opts.createMutation && opts.identity && terminal.ptyId) {
+      this.registerPty(terminal.ptyId, worktreeId, workspace.connectionId ?? null, {
+        tabId: opts.identity.tabId,
+        leafId: opts.identity.leafId,
+        terminalHandle: terminal.handle
+      })
+    }
     const livePty = this.getLivePtyForHandle(terminal.handle)
     if (!livePty) {
       throw new Error('terminal_handle_stale')
+    }
+    if (opts.createMutation) {
+      livePty.pty.runtimeSessionOwned = true
     }
     const parentTabId = livePty.pty.tabId ?? `pty:${livePty.pty.ptyId}`
     const leafId = parsePaneKey(livePty.pty.paneKey ?? '')?.leafId ?? randomUUID()

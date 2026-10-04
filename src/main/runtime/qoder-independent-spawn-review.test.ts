@@ -224,3 +224,230 @@ it.each([
   expect(spawn.mock.calls[0]?.[0].command).toBe(command)
   expect(spawn.mock.calls[0]?.[0].telemetry).toBeUndefined()
 })
+
+it.each([
+  'client_disconnected',
+  'Terminal creation timed out',
+  'quoted-agent-command',
+  'wsl-inventory'
+])('reconciles a paired Qoder resume after ambiguous creation: %s', async (scenario) => {
+  const failure = ['quoted-agent-command', 'wsl-inventory'].includes(scenario)
+    ? 'client_disconnected'
+    : scenario
+  const { withPlatform } = await import('./orca-runtime-test-fixtures.spec')
+  await withPlatform(scenario === 'wsl-inventory' ? 'win32' : 'darwin', async () => {
+    vi.useFakeTimers()
+    try {
+      const { electronMocks } = await import('./orca-runtime-test-mocks.spec')
+      const { TEST_WORKTREE_ID } = await import('./orca-runtime-test-fixtures.spec')
+      vi.mocked(detectAgentCommandsOnHost).mockResolvedValue(new Set(['qoder']))
+      const runtime = new OrcaRuntimeService(store)
+      runtime.syncWindowGraph(0, { tabs: [], leaves: [] })
+      const acceptedCommands: string[] = []
+      const live: {
+        id: string
+        cwd: string
+        title: string
+        worktreeId: string
+        terminalHandle: string
+        wslDistro?: string
+      }[] = []
+      let connection = new AbortController()
+      const spawn = vi.fn(async (args: { command?: string; preAllocatedHandle?: string }) => {
+        if (args.command) {
+          acceptedCommands.push(args.command)
+        }
+        live.push({
+          id: 'qoder-live-resume',
+          cwd: TEST_WORKTREE_PATH,
+          title: 'Qoder',
+          worktreeId: TEST_WORKTREE_ID,
+          terminalHandle: args.preAllocatedHandle ?? '',
+          ...(scenario === 'wsl-inventory' ? { wslDistro: 'Ubuntu-Orca' } : {})
+        })
+        if (failure === 'client_disconnected') {
+          connection.abort()
+        }
+        throw new Error(failure)
+      })
+      runtime.setPtyController({
+        spawn,
+        listProcesses: async () => live,
+        write: () => true,
+        kill: vi.fn(),
+        getForegroundProcess: async () => null
+      })
+      const send = vi.fn((channel: string, payload: { command?: string }) => {
+        if (channel === 'terminal:requestTabCreate') {
+          if (payload.command) {
+            acceptedCommands.push(payload.command)
+          }
+          if (failure === 'client_disconnected') {
+            connection.abort()
+          }
+        }
+      })
+      runtime.attachWindow(1)
+      runtime.syncWindowGraph(1, { tabs: [], leaves: [] })
+      electronMocks.BrowserWindow.fromId.mockReturnValue({
+        isDestroyed: () => false,
+        webContents: { isDestroyed: () => false, send, setBackgroundThrottling: vi.fn() }
+      })
+      const plan = buildAgentResumeStartupPlan({
+        agent: 'qoder',
+        providerSession: { key: 'session_id', id: 'same-qoder-session' },
+        cmdOverrides: {},
+        platform: 'darwin',
+        ...(scenario === 'quoted-agent-command' ? { agentCommand: "'qodercli'" } : {})
+      })
+      expect(plan).not.toBeNull()
+      if (!plan) {
+        throw new Error('missing resume plan')
+      }
+      const resume = {
+        command: plan.launchCommand,
+        launchAgent: 'qoder' as const,
+        launchConfig: plan.launchConfig,
+        activate: false,
+        select: false,
+        navigation: 'caller' as const,
+        clientNavigationId: 'paired-phone',
+        clientMutationId: 'stable-resume-mutation'
+      }
+      const first = runtime
+        .createMobileSessionTerminal(`id:${TEST_WORKTREE_ID}`, {
+          ...resume,
+          signal: connection.signal
+        })
+        .then(
+          () => null,
+          (error: unknown) => error
+        )
+      await vi.advanceTimersByTimeAsync(10_001)
+      expect(await first).toBeInstanceOf(Error)
+      connection = new AbortController()
+      const retryPromise = runtime
+        .createMobileSessionTerminal(`id:${TEST_WORKTREE_ID}`, {
+          ...resume,
+          signal: connection.signal
+        })
+        .catch(() => null)
+      await vi.advanceTimersByTimeAsync(10_001)
+      const retry = await retryPromise
+      expect(acceptedCommands).toHaveLength(1)
+      expect(acceptedCommands[0]).toBe("qoder '--resume' 'same-qoder-session'")
+      expect(retry?.tab).toMatchObject({ ptyId: 'qoder-live-resume', launchAgent: 'qoder' })
+      expect(spawn).toHaveBeenCalledTimes(1)
+      expect(send).not.toHaveBeenCalled()
+      if (scenario === 'wsl-inventory' && retry) {
+        expect(
+          runtime.resolveTerminalPane(`${retry.tab.parentTabId}:${retry.tab.leafId}`).hostPlatform
+        ).toBe('linux')
+      }
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+it.each(['offline', 'legacy-identity'])(
+  'refuses a Qoder command-bearing create with unverifiable inventory: %s',
+  async (state) => {
+    const { TEST_WORKTREE_ID } = await import('./orca-runtime-test-fixtures.spec')
+    const runtime = new OrcaRuntimeService(store)
+    runtime.syncWindowGraph(0, { tabs: [], leaves: [] })
+    const spawn = vi.fn()
+    const kill = vi.fn()
+    runtime.setPtyController({
+      spawn,
+      kill,
+      write: () => true,
+      getForegroundProcess: async () => null,
+      listProcesses: async () => {
+        if (state === 'offline') {
+          throw new Error('host offline')
+        }
+        return [
+          {
+            id: 'older-live-pty',
+            cwd: TEST_WORKTREE_PATH,
+            title: 'shell',
+            worktreeId: TEST_WORKTREE_ID
+          }
+        ]
+      }
+    })
+    await expect(
+      runtime.createMobileSessionTerminal(`id:${TEST_WORKTREE_ID}`, {
+        command: "qodercli '--resume' 'same-session'",
+        launchAgent: 'qoder',
+        clientNavigationId: 'paired-phone',
+        clientMutationId: 'same-resume',
+        select: false,
+        activate: false
+      })
+    ).rejects.toThrow('runtime_unavailable')
+    expect(spawn).not.toHaveBeenCalled()
+    expect(kill).not.toHaveBeenCalled()
+  }
+)
+
+it('reconciles after the reply-cache expires and isolates deliberate forks and paired callers', async () => {
+  const { TEST_WORKTREE_ID } = await import('./orca-runtime-test-fixtures.spec')
+  vi.useFakeTimers()
+  try {
+    const runtime = new OrcaRuntimeService(store)
+    runtime.syncWindowGraph(0, { tabs: [], leaves: [] })
+    const live: {
+      id: string
+      cwd: string
+      title: string
+      worktreeId: string
+      terminalHandle: string
+    }[] = []
+    const spawn = vi.fn(async (args: { preAllocatedHandle?: string }) => {
+      const id = `qoder-${live.length + 1}`
+      live.push({
+        id,
+        cwd: TEST_WORKTREE_PATH,
+        title: 'Qoder',
+        worktreeId: TEST_WORKTREE_ID,
+        terminalHandle: args.preAllocatedHandle ?? ''
+      })
+      return { id }
+    })
+    runtime.setPtyController({
+      spawn,
+      listProcesses: async () => live,
+      kill: vi.fn(),
+      write: () => true,
+      getForegroundProcess: async () => null
+    })
+    const resume = {
+      command: "qodercli '--resume' 'same-session'",
+      launchAgent: 'qoder' as const,
+      clientNavigationId: 'phone-a',
+      clientMutationId: 'resume-a',
+      select: false,
+      activate: false
+    }
+    const first = await runtime.createMobileSessionTerminal(`id:${TEST_WORKTREE_ID}`, resume)
+    await vi.advanceTimersByTimeAsync(61_000)
+    const retry = await runtime.createMobileSessionTerminal(`id:${TEST_WORKTREE_ID}`, resume)
+    expect(retry.tab.id).toBe(first.tab.id)
+    expect(retry.tab.ptyId).toBe(first.tab.ptyId)
+    expect(spawn).toHaveBeenCalledTimes(1)
+    const fork = await runtime.createMobileSessionTerminal(`id:${TEST_WORKTREE_ID}`, {
+      ...resume,
+      clientMutationId: 'resume-b'
+    })
+    const otherPhone = await runtime.createMobileSessionTerminal(`id:${TEST_WORKTREE_ID}`, {
+      ...resume,
+      clientNavigationId: 'phone-b'
+    })
+    expect(spawn).toHaveBeenCalledTimes(3)
+    expect(new Set([first.tab.id, fork.tab.id, otherPhone.tab.id]).size).toBe(3)
+  } finally {
+    vi.useRealTimers()
+  }
+})
