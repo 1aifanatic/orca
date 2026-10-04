@@ -31,9 +31,7 @@ describe('orca serve asking the app which host to run', () => {
       version: '1'
     }
     const run = answering(`noise\n${formatServeRuntimeSelection(selection)}\n`)
-    expect(await resolveLocalServeRuntime({ ...options, usesMacUpdateHandoff: true }, run)).toEqual(
-      selection
-    )
+    expect(await resolveLocalServeRuntime(options, run)).toEqual(selection)
     expect(run).toHaveBeenCalledWith(
       expect.objectContaining({
         program: options.executable,
@@ -42,12 +40,23 @@ describe('orca serve asking the app which host to run', () => {
           '--user-data',
           options.userDataPath,
           '--app-root',
-          options.appRoot,
-          '--mac-update-handoff'
+          options.appRoot
         ],
-        env: expect.objectContaining({ ELECTRON_RUN_AS_NODE: '1' })
+        env: expect.objectContaining({ ELECTRON_RUN_AS_NODE: '1' }),
+        stdio: ['ignore', 'pipe', 'inherit']
       })
     )
+  })
+
+  it('keeps packaged macOS on Electron without starting the app to ask', async () => {
+    const run = answering('')
+    expect(await resolveLocalServeRuntime({ ...options, usesMacUpdateHandoff: true }, run)).toEqual(
+      {
+        kind: 'electron',
+        reason: expect.stringContaining('packaged macOS')
+      }
+    )
+    expect(run).not.toHaveBeenCalled()
   })
 
   it('serves on Electron, and says why, when the app gives no answer', async () => {

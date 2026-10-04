@@ -174,6 +174,39 @@ describe('orcad migration RPC', () => {
     ).rejects.toThrow('orcad_migration_manifest_digest_mismatch')
     expect(importCatalog).not.toHaveBeenCalled()
   })
+
+  it('verifies a newer client signature over fields this host does not know', async () => {
+    const importCatalog = vi.fn()
+    const method = migrationMethod()
+    const { manifestSha256: _, ...known } = manifest()
+    const unsigned = {
+      ...known,
+      futureField: { enabled: true },
+      source: { ...known.source, futureSourceField: 'x' }
+    }
+    const signed = {
+      ...unsigned,
+      manifestSha256: computeOrcadMigrationManifestSha256(unsigned)
+    }
+
+    await method.handler(method.params?.parse({ manifest: signed }), context(importCatalog))
+    expect(importCatalog).toHaveBeenCalledWith(
+      expect.objectContaining({ manifestSha256: signed.manifestSha256, source: known.source }),
+      expect.anything()
+    )
+    await expect(
+      method.handler(
+        method.params?.parse({ manifest: { ...signed, futureField: { enabled: false } } }),
+        context(importCatalog)
+      )
+    ).rejects.toThrow('orcad_migration_manifest_digest_mismatch')
+    const { futureField: __, ...stripped } = signed
+    await expect(
+      method.handler(method.params?.parse({ manifest: stripped }), context(importCatalog)),
+      'a peer that drops a signed field'
+    ).rejects.toThrow('orcad_migration_manifest_digest_mismatch')
+    expect(importCatalog).toHaveBeenCalledTimes(1)
+  })
 })
 
 function migrationSnapshotRequest(input: OrcadMigrationManifest) {

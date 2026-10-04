@@ -279,4 +279,9 @@ export class FsHandler {
   disposeWatchers(): Promise<void> {
     return this.watchRegistry.disposeAndWait()
   }
+
+  reopen(): void {
+    this.streamRegistry.reopen()
+    this.watchRegistry.reopen()
+  }
 }

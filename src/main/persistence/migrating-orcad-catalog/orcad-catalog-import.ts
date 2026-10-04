@@ -12,7 +12,6 @@ import type {
   OrcadMigrationSnapshotChunkRequest,
   OrcadMigrationSnapshotChunkResult
 } from '../../../shared/orcad-migration-scrollback'
-import { assertOrcadMigrationManifestDigest } from '../../orcad/orcad-migration-manifest-digest'
 import type { RepoLifecycleOperations } from '../loading-store/repo-lifecycle-operations'
 import type { StoreRuntimeState } from '../loading-store/store-runtime-state'
 import type { WriteSchedulingOperations } from '../loading-store/write-scheduling'
@@ -46,6 +45,7 @@ type OrcadCatalogImportContext = {
   scheduling: WriteSchedulingOperations
 }
 
+// Manifests arrive parsed; the RPC boundary verified the digest over the bytes as sent.
 export class OrcadCatalogImportPersistence {
   readonly [orcadCatalogImportContext]: OrcadCatalogImportContext
 
@@ -61,7 +61,6 @@ export class OrcadCatalogImportPersistence {
     manifest: OrcadMigrationManifest,
     options: { now?: () => Date } = {}
   ): OrcadMigrationImportResult {
-    assertOrcadMigrationManifestDigest(manifest)
     const context = this[orcadCatalogImportContext]
     const existingReceipt = findImportReceipt(context.runtime.state, manifest.migrationId)
     if (existingReceipt) {
@@ -86,7 +85,6 @@ export class OrcadCatalogImportPersistence {
     manifest: OrcadMigrationManifest,
     options: { now?: () => Date } = {}
   ): OrcadMigrationCatalogState {
-    assertOrcadMigrationManifestDigest(manifest)
     const context = this[orcadCatalogImportContext]
     pruneOrcadMigrationSnapshotStaging(
       stagedManifests(context.runtime.state),
@@ -139,7 +137,6 @@ export class OrcadCatalogImportPersistence {
     manifest: OrcadMigrationManifest,
     options: { now?: () => Date } = {}
   ): OrcadMigrationCatalogState {
-    assertOrcadMigrationManifestDigest(manifest)
     const context = this[orcadCatalogImportContext]
     const current = migrationCatalogState(
       context.runtime.state,
@@ -163,7 +160,6 @@ export class OrcadCatalogImportPersistence {
   abortStagedOrcadMigrationCatalog(
     manifest: OrcadMigrationManifest
   ): OrcadMigrationCatalogAbortResult {
-    assertOrcadMigrationManifestDigest(manifest)
     const context = this[orcadCatalogImportContext]
     const current = migrationCatalogState(
       context.runtime.state,
@@ -183,7 +179,6 @@ export class OrcadCatalogImportPersistence {
   }
 
   getOrcadMigrationCatalogState(manifest: OrcadMigrationManifest): OrcadMigrationCatalogState {
-    assertOrcadMigrationManifestDigest(manifest)
     const context = this[orcadCatalogImportContext]
     return migrationCatalogState(
       context.runtime.state,

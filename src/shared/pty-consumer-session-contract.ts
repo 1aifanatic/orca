@@ -1,4 +1,6 @@
 export const PTY_CONSUMER_SESSION_PROTOCOL_VERSION = 1
+// Why no capability: every shipped relay answers an unknown method with -32601 on the same open
+// channel, so the refusal is loud and immediate; that reply is the negotiation (see ssh-pty-consumer-session).
 export const PTY_CONSUMER_RESUME_CLIENT_METHOD = 'pty.resumeClient'
 export const PTY_CONSUMER_OWNER_GRACE_MS = 30_000
 export const PTY_CONSUMER_STALE_OWNER_RECOVERY_ERROR = -32041

@@ -13,19 +13,9 @@ import {
   parseSavedPortForwards,
   parseUiRouting
 } from './orcad-migration-client-state-parsing'
-import { isWorkspaceHostId, isRecord } from './orcad-migration-client-state-value-validation'
+import { isWorkspaceHostId } from './orcad-migration-client-state-value-validation'
+import { isRecord } from './orcad-migration-manifest-fields'
 import type { ClientHostedBrowserCloseIntent } from './client-hosted-browser-close-intent'
-
-export {
-  MAX_ORCAD_MIGRATION_CLIENT_HOSTED_BROWSER_CLOSE_INTENTS,
-  MAX_ORCAD_MIGRATION_CLIENT_ROUTING_ENTRIES,
-  MAX_ORCAD_MIGRATION_CLIENT_SELECTIONS,
-  MAX_ORCAD_MIGRATION_SAVED_PORT_FORWARDS,
-  parseClientHostedBrowserCloseIntents,
-  parseMobileSelections,
-  parseSavedPortForwards,
-  parseUiRouting
-} from './orcad-migration-client-state-parsing'
 
 export type OrcadMigrationUiRoutingState = {
   lastActiveRepoId?: string | null
@@ -79,20 +69,6 @@ export function parseOrcadMigrationClientState(value: unknown): OrcadMigrationCl
       ? { clientHostedBrowserCloseIntents: closeIntents }
       : {})
   }
-}
-
-export function parseOrcadMigrationUiRoutingState(value: unknown): OrcadMigrationUiRoutingState {
-  return parseUiRouting(value)
-}
-
-export function parseOrcadMigrationSavedPortForwards(value: unknown): SavedPortForward[] {
-  return parseSavedPortForwards(value)
-}
-
-export function parseOrcadMigrationClientHostedBrowserCloseIntents(
-  value: unknown
-): OrcadMigrationClientHostedBrowserCloseIntent[] {
-  return parseClientHostedBrowserCloseIntents(value)
 }
 
 export function assertOrcadMigrationClientStateReferences(args: {

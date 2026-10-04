@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { createProcessTableSnapshotReader } from '../../shared/process-table-snapshot-reader'
+import { RELAY_WINDOWS_PROCESS_TREE_FILENAME } from '../../shared/relay-artifacts'
 import { reportWindowsCommandLineRecoveryHealth } from './windows-command-line-recovery-health'
 import { readWindowsProcessRowsWithCim } from './windows-process-table-cim-scan'
 
@@ -132,7 +133,7 @@ type WindowsProcessTreeAddon = {
 const PROCESS_DATA_FLAG = { None: 0, Memory: 1, CommandLine: 2, CreationTime: 4 } as const
 
 /** Staged beside the relay bundle by build-relay; see RELAY_ARTIFACTS. */
-const RELAY_ADDON_FILENAME = './windows-process-tree.node'
+const RELAY_ADDON_FILENAME = `./${RELAY_WINDOWS_PROCESS_TREE_FILENAME}`
 
 /** The import whose absence tells the patched binary from the published prebuilt. */
 const FLAGGED_ADDON_IMPORT = 'ReadProcessMemory'

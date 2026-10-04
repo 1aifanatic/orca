@@ -151,6 +151,9 @@ export class RuntimeWatcherProcessPool {
 
   disposeAndWait = (): Promise<void> => this.disposalOwners.disposeAndWait(() => this.dispose())
 
+  /** Accepts subscriptions again after a disposal the owner decided not to follow with exit. */
+  reopen = (): void => this.lifecycle.reset()
+
   forgetRoot(dir: string): void {
     // Physical subscriptions release their assignment through unsubscribe or
     // terminal callbacks. This clears fault history after setup gives up.

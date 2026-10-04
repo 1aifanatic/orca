@@ -240,7 +240,7 @@ export class GitResponseStreamRegistry {
     }
   }
 
-  /** Permanently fences new streams and aborts every pump; use disposeAllAndWait to await them. */
+  /** Fences new streams until {@link reopen} and aborts every pump; disposeAllAndWait awaits them. */
   disposeAll(): void {
     this.disposed = true
     for (const entry of this.streams.values()) {
@@ -253,6 +253,10 @@ export class GitResponseStreamRegistry {
   async disposeAllAndWait(): Promise<void> {
     this.disposeAll()
     await Promise.all(this.pendingPumps)
+  }
+
+  reopen(): void {
+    this.disposed = false
   }
 }
 

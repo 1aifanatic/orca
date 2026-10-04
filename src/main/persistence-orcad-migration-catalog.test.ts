@@ -545,37 +545,4 @@ describe('orcad migration catalog persistence', () => {
     expect(store.getProjectGroups()).toEqual([])
     expect(store.getFolderWorkspaces()).toEqual([])
   })
-
-  it('rejects a digest mismatch before mutation', () => {
-    const store = createStore()
-    const input = manifest({ manifestSha256: '0'.repeat(64) })
-
-    expect(() => store.importOrcadMigrationCatalog(input)).toThrow(
-      'orcad_migration_manifest_digest_mismatch'
-    )
-    expect(store.getRepos()).toEqual([])
-  })
-
-  it('rejects a peer that strips optional automation state before mutation', () => {
-    const store = createStore()
-    const base = manifest()
-    const input = manifest({
-      payload: { ...base.payload, dormantState: dormantState() }
-    })
-    const strippedDormantState = structuredClone(input.payload.dormantState)
-    if (!strippedDormantState) {
-      throw new Error('expected dormant state')
-    }
-    delete strippedDormantState.automations
-    delete strippedDormantState.automationRuns
-
-    expect(() =>
-      store.importOrcadMigrationCatalog({
-        ...input,
-        payload: { ...input.payload, dormantState: strippedDormantState }
-      })
-    ).toThrow('orcad_migration_manifest_digest_mismatch')
-    expect(store.getRepos()).toEqual([])
-    expect(store.listAutomations()).toEqual([])
-  })
 })

@@ -1,9 +1,19 @@
 import type { RuntimeWorktreePsSummary } from '../shared/runtime-types'
+import type { PtyLivenessVerdict } from '../shared/pty-liveness-verdict'
 
 type TerminalCounts = Pick<
   RuntimeWorktreePsSummary,
   'liveTerminalCount' | 'hasAttachedPty' | 'unverifiableTerminalCount'
 >
+
+type TerminalVerdict = PtyLivenessVerdict['status']
+
+function terminalVerdict(row: TerminalCounts): TerminalVerdict {
+  if (row.liveTerminalCount > 0) {
+    return 'live'
+  }
+  return (row.unverifiableTerminalCount ?? 0) > 0 ? 'unverifiable' : 'exited'
+}
 
 /** `live:` and `pty:` words for one row; lost contact never reads as zero or no. */
 export function formatWorktreePsTerminalFields(row: TerminalCounts): string {
@@ -14,20 +24,15 @@ export function formatWorktreePsTerminalFields(row: TerminalCounts): string {
   if (row.liveTerminalCount === 0) {
     return 'live:unverifiable  pty:unverifiable'
   }
-  return `live:${row.liveTerminalCount}+${unverifiable} unverifiable  pty:yes`
+  return `live:${row.liveTerminalCount}+${unverifiable} unverifiable  pty:${row.hasAttachedPty ? 'yes' : 'unverifiable'}`
 }
 
-/** JSON counterpart: a row with only unverifiable terminals carries that word instead of 0/false. */
+/**
+ * JSON counterpart. The count fields keep their number/boolean types for existing scripts, so
+ * `terminalVerdict` is what says a 0/false came from a host that could not be asked.
+ */
 export function projectWorktreePsTerminalVerdict<TRow extends TerminalCounts>(
   row: TRow
-):
-  | TRow
-  | (Omit<TRow, 'liveTerminalCount' | 'hasAttachedPty'> & {
-      liveTerminalCount: 'unverifiable'
-      hasAttachedPty: 'unverifiable'
-    }) {
-  if ((row.unverifiableTerminalCount ?? 0) === 0 || row.liveTerminalCount > 0) {
-    return row
-  }
-  return { ...row, liveTerminalCount: 'unverifiable', hasAttachedPty: 'unverifiable' }
+): TRow & { terminalVerdict: TerminalVerdict } {
+  return { ...row, terminalVerdict: terminalVerdict(row) }
 }

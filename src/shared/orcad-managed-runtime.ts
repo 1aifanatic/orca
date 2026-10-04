@@ -1,8 +1,18 @@
 import type { PublicKnownRuntimeEnvironment } from './runtime-environments'
 import type { OrcadTerminalCensus } from './orcad-terminal-census'
 import type { OrcadMigrationBlocker } from './orcad-migration-preflight'
+import type { OrcadMigrationSourceCutoverPhase } from './orcad-migration-source-cutover'
+import type { OrcadDaemonRetirementVerdict } from './orcad-stop-request'
 
 export const ORCAD_MANAGED_REMOTE_PORT = 6_768
+
+/** Refused because terminals are, or may be, still running on the host. */
+export type OrcadManagedRefusal = {
+  outcome: 'refused'
+  verdict: 'live' | 'unverifiable'
+  code: string
+  reason: string
+}
 
 export type OrcadManagedDeferral = {
   outcome: 'deferred'
@@ -39,7 +49,7 @@ export type OrcadManagedRecoveryResult =
       activeVersion: string | null
       environment: PublicKnownRuntimeEnvironment
     }
-  | { outcome: 'refused'; verdict: 'live' | 'unverifiable'; code: string; reason: string }
+  | OrcadManagedRefusal
 
 /** Only a proven `exited` unlinks the server locally; anything less keeps it linked. */
 export type OrcadManagedStopResult =
@@ -49,9 +59,9 @@ export type OrcadManagedStopResult =
       environmentId: string
       sshTargetId: string
       stoppedVersion: string | null
-      retirement: 'retired' | 'live' | 'unverifiable' | null
+      retirement: OrcadDaemonRetirementVerdict | null
     }
-  | { outcome: 'refused'; verdict: 'live' | 'unverifiable'; code: string; reason: string }
+  | OrcadManagedRefusal
 
 export type OrcadManagedCancelStopResult =
   | { outcome: 'none' }
@@ -59,7 +69,7 @@ export type OrcadManagedCancelStopResult =
   | { outcome: 'canceled'; activeVersion: string }
   /** orcad had already exited; finish with stop to unlink the server. */
   | { outcome: 'already-stopped' }
-  | { outcome: 'refused'; verdict: 'live' | 'unverifiable'; code: string; reason: string }
+  | OrcadManagedRefusal
 
 export type OrcadManagedRuntimeStatus = {
   environmentId: string
@@ -98,7 +108,7 @@ export type OrcadManagedRuntimeStatus = {
   /** An unfinished dormant migration into this server; a rollback is refused while it runs. */
   migration: {
     migrationId: string
-    phase: 'source-fenced' | 'destination-staged' | 'destination-committed' | 'source-retired'
+    phase: OrcadMigrationSourceCutoverPhase
     startedAt: string
   } | null
   /** The last update this client deferred for this server, cleared once one goes through. */
@@ -113,19 +123,14 @@ export type OrcadManagedConversionResult =
       migrationId: string
     }
   | OrcadManagedDeferral
-  | {
-      outcome: 'refused'
-      verdict: 'live' | 'unverifiable'
-      code: string
-      reason: string
-    }
+  | OrcadManagedRefusal
 
 export type OrcadManagedPendingMigrationRow = {
   migrationId: string
   environmentId: string
   name: string
   sshTargetId: string
-  phase: 'source-fenced' | 'destination-staged' | 'destination-committed' | 'source-retired'
+  phase: OrcadMigrationSourceCutoverPhase
   startedAt: string
 }
 

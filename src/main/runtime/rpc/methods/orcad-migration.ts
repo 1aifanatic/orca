@@ -66,7 +66,8 @@ export const ORCAD_MIGRATION_METHODS = [
 
 function migrationManifest(params: z.infer<typeof OrcadMigrationCatalogParams>) {
   const manifest = parseOrcadMigrationManifest(params.manifest)
-  assertOrcadMigrationManifestDigest(manifest)
+  // Raw, not parsed: parsing drops fields this host predates, which a newer client signed.
+  assertOrcadMigrationManifestDigest(params.manifest)
   return manifest
 }
 

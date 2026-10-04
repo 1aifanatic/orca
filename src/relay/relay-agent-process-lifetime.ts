@@ -21,8 +21,8 @@ export class RelayAgentProcessLifetime {
     }
   }
 
+  /** Never throws: a child that slipped past a fence is killed, but still tracked to its close. */
   track(child: Child): void {
-    this.assertAdmission()
     // Why: no Promise.withResolvers — the relay bundle still targets Node 18 hosts.
     let resolveClosed!: () => void
     const closed = new Promise<void>((resolve) => {
@@ -37,6 +37,14 @@ export class RelayAgentProcessLifetime {
       this.children.delete(child)
       resolveClosed()
     })
+    if (this.fenced) {
+      this.signalled.add(child)
+      terminateRelaySubprocessTree(child)
+    }
+  }
+
+  reopen(): void {
+    this.fenced = false
   }
 
   dispose(): Promise<void> {
