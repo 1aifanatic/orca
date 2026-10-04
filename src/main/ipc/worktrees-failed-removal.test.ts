@@ -181,7 +181,7 @@ describe('a failed delete Git no longer registers, over desktop IPC', () => {
 
     for (const force of [false, true]) {
       await expect(remove({ worktreeId: featureId, force })).rejects.toThrow(
-        "Git no longer tracks /workspace/feature-wt, so Orca won't delete it. Remove the folder yourself; Orca removes this workspace once the folder is gone."
+        "Git no longer tracks /workspace/feature-wt, so Orca won't delete it. Remove the folder yourself, and Orca will drop this workspace from the list."
       )
     }
     await _settlePendingWorktreeRemovalsForTests()

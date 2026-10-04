@@ -115,7 +115,7 @@ async function deleteRow(purged: string[], stopPtys = vi.fn(async () => {})): Pr
 }
 
 const refusal = (): string =>
-  `Git no longer tracks ${worktreePath}, so Orca won't delete it. Remove the folder yourself; Orca removes this workspace once the folder is gone.`
+  `Git no longer tracks ${worktreePath}, so Orca won't delete it. Remove the folder yourself, and Orca will drop this workspace from the list.`
 
 /** A delete a quit interrupted, finished at the next start, where Git fails on the locked file. */
 function failStartupFinish(): Promise<unknown> {
@@ -382,7 +382,7 @@ describe.skipIf(process.platform !== 'darwin')('a worktree delete Git fails part
     expect(purged).toEqual([])
   })
 
-  it('at startup, restores no missing .git and deletes nothing: the row shows Git’s error', async () => {
+  it('at startup, restores no missing .git and deletes nothing: Git’s row returns as before', async () => {
     await setImmutable(false)
     await rm(join(worktreePath, '.git'))
     const purged: string[] = []
@@ -395,8 +395,7 @@ describe.skipIf(process.platform !== 'darwin')('a worktree delete Git fails part
     expect(await isRegistered(worktreePath)).toBe(true)
     expect(await git(['branch', '--list', 'feature'])).not.toBe('')
     expect(purged).toEqual([])
-    expect(await listedRows()).toEqual([
-      { path: worktreePath, removalError: expect.stringMatching(/validation failed/) }
-    ])
+    expect(await listedRows()).toEqual([{ path: worktreePath }])
+    expect(await readWorktreeRemovalRecords(recordsDir)).toEqual([])
   })
 })

@@ -1,4 +1,5 @@
 import type { RemoveWorktreeResult } from '../../shared/worktree/create-types'
+import type { GitWorktreeInfo } from '../../shared/worktree/types'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import type { Store } from '../persistence'
 import {
@@ -9,13 +10,13 @@ import { resolveWorktreeRemovalMetadata } from '../worktree-removal-repo-owner'
 import type { RuntimePreservedBranchCleanup } from './runtime-preserved-branch-cleanup'
 import { listWorktreesStrict } from '../git/worktree'
 import { finishUnregisteredWorktreeRemoval } from '../git/worktree-removal'
+import { normalizeLocalBranchRef } from '../git/worktree-operation-options'
 import { areWorktreePathsEqual } from '../git/worktree-path-comparison'
 import { getLocalProjectWorktreeGitOptions } from '../project-runtime-git-options'
 import { findRegisteredDeletableWorktree } from '../worktree-removal-safety'
 import {
   assertUnregisteredCheckoutGone,
-  differentCheckoutAtPathError,
-  isRecordedCheckout
+  differentCheckoutAtPathError
 } from '../worktree-removal-leftover'
 import { CLIENT_REMOVAL_HOME } from '../worktree-removal-home-guard'
 import type { WorktreeRemovalRecord } from '../worktree-removal-records'
@@ -177,4 +178,11 @@ async function finishInterruptedLocalWorktreeRemoval(
   await cleanupRemovedWorktreePushTarget(finishArgs)
   args.finishRemoval(result, true, record.head)
   return result
+}
+
+function isRecordedCheckout(worktree: GitWorktreeInfo, record: WorktreeRemovalRecord): boolean {
+  return (
+    normalizeLocalBranchRef(worktree.branch) === record.branch &&
+    (!record.head || worktree.head === record.head)
+  )
 }

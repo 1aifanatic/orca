@@ -5,9 +5,9 @@ import { writeWorktreeRemovalRecords, type WorktreeRemovalRecord } from './workt
 
 // The accepted removals, mirrored to disk on every change; listings and joins read only this.
 export const pendingWorktreeRemovals = new Map<string, WorktreeRemovalRecord>()
-// Failed deletes Git no longer registers, or a startup finish Git refused: listed with their error
-// until the checkout disappears or is replaced, Delete finds Git registering it, or the repo leaves
-// Orca. Never retried unasked.
+// Deletes that failed after Git dropped the registration: listed with their error until the
+// checkout disappears or is replaced, Delete finds Git registering it, or the repo leaves Orca.
+// Never retried unasked.
 export const failedWorktreeRemovals = new Map<string, WorktreeRemovalRecord>()
 // Why weak: a listing that read Git before a delete finished holds the record until it replies.
 export const finishedWorktreeRemovals = new WeakSet<WorktreeRemovalRecord>()

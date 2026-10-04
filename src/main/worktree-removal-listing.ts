@@ -1,7 +1,7 @@
 import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from '../shared/execution-host'
 import type { GitWorktreeInfo } from '../shared/worktree/types'
 import { areWorktreePathsEqual } from './git/worktree-path-comparison'
-import { isRecordedCheckout, isUnregisteredRemovalLeftover } from './worktree-removal-leftover'
+import { isUnregisteredRemovalLeftover } from './worktree-removal-leftover'
 import type { WorktreeRemovalRecord } from './worktree-removal-records'
 import {
   failedWorktreeRemovals,
@@ -19,43 +19,26 @@ const NO_PENDING_REMOVALS: PendingWorktreeRemovals = new Map()
 /**
  * Git's rows for a local repo plus one for each removal this host still owns whose checkout Git no
  * longer lists but is still on disk: a failed delete (carrying its error) or one still finishing.
- * A failed delete of a checkout Git still lists carries its error on Git's row. A failed delete ends
- * here once its checkout is gone or a different checkout took the path.
+ * A failed delete ends here once its checkout is gone or a different checkout took the path.
  */
 export async function withUnregisteredRemovalCheckouts(
   repoId: string,
   gitWorktrees: GitWorktreeInfo[]
 ): Promise<GitWorktreeInfo[]> {
-  const records = [...pendingWorktreeRemovals.values(), ...failedWorktreeRemovals.values()].filter(
-    (record) => record.repoId === repoId
+  const unlisted = [...pendingWorktreeRemovals.values(), ...failedWorktreeRemovals.values()].filter(
+    (record) =>
+      record.repoId === repoId &&
+      !gitWorktrees.some((worktree) => areWorktreePathsEqual(worktree.path, record.worktreePath))
   )
-  if (records.length === 0) {
+  if (unlisted.length === 0) {
     return gitWorktrees
   }
-  let rows = gitWorktrees
   const leftovers: GitWorktreeInfo[] = []
   let droppedFailure = false
-  for (const record of records) {
+  for (const record of unlisted) {
     const failed = failedWorktreeRemovals.get(record.worktreeId) === record
-    const listed = gitWorktrees.find((worktree) =>
-      areWorktreePathsEqual(worktree.path, record.worktreePath)
-    )
-    if (listed && !failed) {
-      continue
-    }
-    const exists = await worktreeCheckoutExists(record.worktreePath)
-    if (listed) {
-      if (exists && record.failure && isRecordedCheckout(listed, record)) {
-        const removalError = record.failure.message
-        rows = rows.map((row) => (row === listed ? { ...row, removalError } : row))
-      } else {
-        failedWorktreeRemovals.delete(record.worktreeId)
-        droppedFailure = true
-      }
-      continue
-    }
     if (
-      exists &&
+      (await worktreeCheckoutExists(record.worktreePath)) &&
       (!failed || (await isUnregisteredRemovalLeftover(record.repoPath, record.worktreePath)))
     ) {
       leftovers.push({
@@ -74,7 +57,7 @@ export async function withUnregisteredRemovalCheckouts(
   if (droppedFailure) {
     void persistWorktreeRemovalRecords()
   }
-  return leftovers.length === 0 ? rows : [...rows, ...leftovers]
+  return leftovers.length === 0 ? gitWorktrees : [...gitWorktrees, ...leftovers]
 }
 
 /** Taken before a listing reads Git; pass it to projectPendingWorktreeRemovals with the rows. */

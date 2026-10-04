@@ -194,7 +194,7 @@ describe('finishing an interrupted worktree removal after a restart', () => {
     expect(purged).toEqual([`repo-1::${worktreePath}`])
   })
 
-  it('keeps the user’s non-forced choice: Git refuses local changes and the row shows its error', async () => {
+  it('keeps the user’s non-forced choice: Git refuses local changes and the row returns as before', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     await writeFile(join(worktreePath, 'notes.txt'), 'mine\n')
 
@@ -206,13 +206,11 @@ describe('finishing an interrupted worktree removal after a restart', () => {
     expect(await isRegistered(worktreePath)).toBe(true)
     expect(await git(['branch', '--list', 'feature'])).not.toBe('')
     expect(purged).toEqual([])
-    expect(records).toMatchObject([{ failure: { message: expect.stringMatching(/--force/) } }])
-    expect(await listedRows()).toEqual([
-      { path: worktreePath, removalError: expect.stringMatching(/--force/) }
-    ])
+    expect(records).toEqual([])
+    expect(await listedRows()).toEqual([{ path: worktreePath }])
   })
 
-  it('restores no missing .git: a registered checkout without it becomes a failed row, files kept', async () => {
+  it('restores no missing .git: a registered checkout without it is left with its files', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     // Git deletes in directory order; without `.git` it refuses the checkout ("validation failed").
     await unlink(join(worktreePath, '.git'))
@@ -225,11 +223,10 @@ describe('finishing an interrupted worktree removal after a restart', () => {
     expect(removeHostTree).not.toHaveBeenCalled()
     expect(await isRegistered(worktreePath)).toBe(true)
     expect(await git(['branch', '--list', 'feature'])).not.toBe('')
+    expect(outcome).toMatchObject({ error: expect.stringMatching(/validation failed/) })
     expect(purged).toEqual([])
-    expect(records).toHaveLength(1)
-    expect(await listedRows()).toEqual([
-      { path: worktreePath, removalError: expect.stringMatching(/validation failed/) }
-    ])
+    expect(records).toEqual([])
+    expect(await listedRows()).toEqual([{ path: worktreePath }])
   })
 
   it('deletes nothing in a folder put at the path after Git unregistered the checkout', async () => {
@@ -240,7 +237,7 @@ describe('finishing an interrupted worktree removal after a restart', () => {
 
     const { outcome, purged, records } = await finishAfterRestart({ force: true })
 
-    const refusal = `Git no longer tracks ${worktreePath}, so Orca won't delete it. Remove the folder yourself; Orca removes this workspace once the folder is gone.`
+    const refusal = `Git no longer tracks ${worktreePath}, so Orca won't delete it. Remove the folder yourself, and Orca will drop this workspace from the list.`
     expect(outcome).toEqual({ status: 'failed', error: `Error: ${refusal}` })
     expect(await readFile(join(worktreePath, 'notes.txt'), 'utf8')).toBe('mine\n')
     expect(removeHostTree).not.toHaveBeenCalled()
@@ -310,7 +307,7 @@ describe('finishing an interrupted worktree removal after a restart', () => {
     expect(outcome).toMatchObject({ status: 'failed' })
     expect(existsSync(join(worktreePath, 'seed.txt'))).toBe(true)
     expect(purged).toEqual([])
-    expect(records).toHaveLength(1)
+    expect(records).toEqual([])
   })
 
   it('deletes the branch when Git finished the checkout but the quit came before the branch', async () => {
@@ -363,7 +360,7 @@ describe('finishing an interrupted worktree removal after a restart', () => {
     expect(purged).toEqual([`repo-1::${worktreePath}`])
   })
 
-  it('returns the row with the error when the finish fails, instead of retrying unseen', async () => {
+  it('returns the row live when the finish fails, instead of retrying unseen', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     // Another Git client locked it while Orca was not running.
     await git(['worktree', 'lock', worktreePath])
@@ -374,10 +371,8 @@ describe('finishing an interrupted worktree removal after a restart', () => {
     expect(existsSync(worktreePath)).toBe(true)
     expect(await isRegistered(worktreePath)).toBe(true)
     expect(purged).toEqual([])
-    expect(records).toMatchObject([{ failure: { message: expect.stringMatching(/locked/) } }])
-    expect(await listedRows()).toEqual([
-      { path: worktreePath, removalError: expect.stringMatching(/locked/) }
-    ])
+    expect(records).toEqual([])
+    expect(await listedRows()).toEqual([{ path: worktreePath }])
   })
 
   it('drops a record whose repo Orca no longer has', async () => {
