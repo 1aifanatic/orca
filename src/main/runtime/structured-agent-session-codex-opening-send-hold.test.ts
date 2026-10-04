@@ -268,6 +268,16 @@ async function drawn(): Promise<{ text: string; turn: string | undefined }[]> {
   return [...nativeChatRowsInDrawOrder(keyed, drawOrder)]
 }
 
+/** The turn the client draws as live: its bar carries the running clock. */
+async function liveTurn(): Promise<string | undefined> {
+  await host.flushStreamedEvents(SESSION)
+  const { items, submissions } = await host.journalSnapshot(SESSION)
+  const rows = projectNativeChatTranscriptMessages(
+    projectStructuredAgentSessionMessages(items, [], submissions)
+  )
+  return nativeChatTurnMembership(rows, { items, submissions }).liveTurnKey
+}
+
 /** The delivery loop has stopped: it handed over what it could, and holds the rest. */
 async function deliveryAtRest(): Promise<void> {
   const { loop } = host.collaboratorsForTests().conversationDelivery
@@ -488,6 +498,26 @@ describe('a send whose turn Codex answered and never opened', () => {
     await vi.waitFor(async () =>
       expect(verdictOf((await settled()).submissions, first)).toBe('accepted')
     )
+  })
+
+  // Steered in the moment the turn opens, it can be echoed before the send that opened the turn.
+  it('keeps the turn, and its live status, on the send that opened it when the steer echoes first', async () => {
+    const { first, second } = await heldBehindAnAnsweredSend()
+    turns.start()
+    await vi.waitFor(() => expect(steers).toBe(1))
+
+    turns.echo(second)
+    await vi.waitFor(async () =>
+      expect(verdictOf((await settled()).submissions, second)).toBe('accepted')
+    )
+
+    expect(verdictOf((await settled()).submissions, first)).toBe('pending')
+    const rows = await drawn()
+    expect(rows.map((row) => row.text)).toEqual(['look around', 'and check the tests'])
+    expect(new Set(rows.map((row) => row.turn))).toEqual(
+      new Set([agentJournalSubmissionKey(first)])
+    )
+    expect(await liveTurn()).toBe(agentJournalSubmissionKey(first))
   })
 })
 

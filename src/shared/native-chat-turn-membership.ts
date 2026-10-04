@@ -45,7 +45,9 @@ export type NativeChatTurnJournal = {
  * entry, directly or through a submission's adopted provider item; a record that names no entry
  * falls back to the nearest user entry before it, which only older hosts write. A key nothing
  * resolves yet is the send still in flight ahead of the record — Codex reports a turn open before
- * it echoes the send — and with none, the turn anchors on its own record.
+ * it echoes the send — and with none, the turn anchors on its own record. A steer Codex echoes
+ * before the send that opened its turn names that turn's key first, yet the send still in flight
+ * ahead of the record opened it.
  */
 export function structuredAgentTurnAnchors(
   items: readonly AgentJournalRenderItem[],
@@ -54,6 +56,13 @@ export function structuredAgentTurnAnchors(
   const userItemIds = new Set(
     items.flatMap((item) =>
       item.body.kind === 'message' && item.body.role === 'user' ? [item.itemId] : []
+    )
+  )
+  const steeredInto = new Map(
+    items.flatMap((item) =>
+      item.turnScope?.kind === 'turn' && userItemIds.has(item.itemId)
+        ? [[item.itemId, item.turnScope.turnItemId] as const]
+        : []
     )
   )
   const aliases = new Map<string, string>()
@@ -86,7 +95,15 @@ export function structuredAgentTurnAnchors(
     }
     anchors.set(
       item.itemId,
-      anchorOf(item.itemId, turn, userItemIds, aliases, precedingUserItemId, inFlightSinceLastTurn)
+      anchorOf(
+        item.itemId,
+        turn,
+        userItemIds,
+        aliases,
+        steeredInto,
+        precedingUserItemId,
+        inFlightSinceLastTurn
+      )
     )
     inFlightSinceLastTurn = null
   }
@@ -98,6 +115,7 @@ function anchorOf(
   turn: AgentJournalTurnLifecycle,
   userItemIds: ReadonlySet<string>,
   aliases: ReadonlyMap<string, string>,
+  steeredInto: ReadonlyMap<string, string>,
   precedingUserItemId: string | null,
   inFlightUserItemId: string | null
 ): string {
@@ -109,9 +127,12 @@ function anchorOf(
     return key
   }
   const aliased = aliases.get(key)
-  return aliased !== undefined && userItemIds.has(aliased)
-    ? aliased
-    : (inFlightUserItemId ?? turnItemId)
+  if (aliased === undefined || !userItemIds.has(aliased)) {
+    return inFlightUserItemId ?? turnItemId
+  }
+  return inFlightUserItemId !== null && steeredInto.get(aliased) === turnItemId
+    ? inFlightUserItemId
+    : aliased
 }
 
 export type NativeChatTurnMembership = {

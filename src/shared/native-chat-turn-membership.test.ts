@@ -181,6 +181,35 @@ describe('the live turn', () => {
     expect(liveTurnKey(items)).toBe('u1')
   })
 
+  // Codex can echo a steer before the send that opened the turn, under the turn's one provider key.
+  it('stays on the send that opened the running turn when a steer into it is echoed first', () => {
+    const opener = agentJournalSubmissionKey('first')
+    const steer = agentJournalSubmissionKey('second')
+    const providerKey = 'codex:thread:t1:0'
+    const items = [
+      user(opener),
+      turn('t1', providerKey, THREAD, 'running'),
+      user(steer, inTurn('t1'))
+    ]
+    const sent = (clientMessageId: string, echoed: boolean): AgentJournalSubmission => ({
+      clientMessageId,
+      fence: 1,
+      payloadFingerprint: clientMessageId,
+      dispatchState: echoed ? 'accepted' : 'pending',
+      providerItemId: echoed ? providerKey : null,
+      reason: null,
+      submittedAt: 1,
+      resolvedAt: echoed ? 2 : null,
+      handedOverAt: 1
+    })
+    const submissions = [sent('first', false), sent('second', true)]
+
+    expect(structuredAgentTurnAnchors(items, submissions).get('t1')).toBe(opener)
+    const membership = nativeChatTurnMembership(rows(items), { items, submissions })
+    expect(membership.liveTurnKey).toBe(opener)
+    expect(membership.turnKeys).toEqual([opener, opener])
+  })
+
   it('is the newest user row while its send has not opened a turn', () => {
     const items = [user('u1'), turn('t1', 'u1'), assistant('a1', inTurn('t1')), user('u2')]
     expect(liveTurnKey(items)).toBe('u2')

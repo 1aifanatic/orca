@@ -64,6 +64,16 @@ function submission(
 const openingItems = [userMessage('first', 5)]
 const openingSubmissions = [submission('first', { acceptedSequence: 3, handedOverAt: NOW })]
 
+/** The first send's turn record, written as its turn opens; Codex names its own provider key. */
+const FIRST_TURN_PROVIDER_KEY = 'codex:thread:turn-first:0'
+const firstTurnOpened = item('turn-first', 6, {
+  kind: 'turn',
+  turnId: 'turn-first',
+  state: 'running',
+  userItemId: FIRST_TURN_PROVIDER_KEY,
+  startedAt: NOW
+})
+
 const unrecorded = (clientMessageId: string): StructuredAgentSessionOutboxEntry => ({
   clientMessageId,
   sessionId: 'session-1',
@@ -209,6 +219,52 @@ describe('a message sent while the turn ahead is still opening, on the phone', (
     expect(
       frame(openingItems, openingSubmissions, [unrecorded('b'), typedWhileStopping], true).waiting
     ).toEqual([agentJournalSubmissionKey('b'), agentJournalSubmissionKey('c')])
+  })
+
+  // From the turn record to the steer's echo: "second" is listed in the turn it lands in, and the
+  // live status stays on "first", even when Codex echoes the steer before "first".
+  it('lists it in the turn ahead at every step of the turn opening, even with the steer echoed first', () => {
+    const opened = [...openingItems, firstTurnOpened]
+    const steered = [
+      ...opened,
+      {
+        ...userMessage('second', 8),
+        turnScope: { kind: 'turn' as const, turnItemId: 'turn-first' }
+      }
+    ]
+    const handedOver = submission('second', { acceptedSequence: 7, handedOverAt: NOW + 10 })
+    const echoed = (sent: AgentJournalSubmission): AgentJournalSubmission => ({
+      ...sent,
+      dispatchState: 'accepted',
+      providerItemId: FIRST_TURN_PROVIDER_KEY,
+      resolvedAt: NOW + 20
+    })
+    const [first] = openingSubmissions
+    if (!first) {
+      throw new Error('expected the first send')
+    }
+    const steps: [
+      AgentJournalRenderItem[],
+      AgentJournalSubmission[],
+      StructuredAgentSessionOutboxEntry[]
+    ][] = [
+      [opened, openingSubmissions, [unrecorded('second')]],
+      [
+        [...opened, userMessage('second', 7)],
+        [...openingSubmissions, submission('second', { acceptedSequence: 7 })],
+        []
+      ],
+      [steered, [first, handedOver], []],
+      [steered, [first, echoed(handedOver)], []],
+      [steered, [echoed(first), echoed(handedOver)], []]
+    ]
+    for (const step of steps) {
+      expect(frame(...step)).toEqual({
+        listed: [agentJournalSubmissionKey('first'), agentJournalSubmissionKey('second')],
+        waiting: [],
+        liveOn: agentJournalSubmissionKey('first')
+      })
+    }
   })
 
   it.each([

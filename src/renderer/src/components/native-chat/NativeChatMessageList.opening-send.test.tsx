@@ -90,6 +90,18 @@ function openingFirst(): {
   }
 }
 
+/** The first send's turn record, written as its turn opens; Codex names its own provider key. */
+const firstTurnOpened = (sequence: number) =>
+  item('turn-first', sequence, {
+    kind: 'turn',
+    turnId: 'turn-first',
+    state: 'running',
+    userItemId: FIRST_TURN_PROVIDER_KEY,
+    startedAt: NOW
+  })
+const FIRST_TURN_PROVIDER_KEY = 'codex:thread:turn-first:0'
+const inFirstTurn: AgentJournalTurnScope = { kind: 'turn', turnItemId: 'turn-first' }
+
 /** This client's own send the host has not recorded yet: its lane still runs the first handover. */
 const unrecorded = (clientMessageId: string, text: string): StructuredAgentSessionOutboxEntry => ({
   clientMessageId,
@@ -213,6 +225,51 @@ describe('a message sent while the turn ahead is still opening', () => {
     view.rerender(frame(items, submissions, [unrecorded('b', 'B'), typedWhileStopping], true))
     waitsAtTheTail('B')
     waitsAtTheTail('C')
+  })
+
+  // From the turn record to the steer's echo, one frame per commit: "second" stays under the first
+  // send's status and above its activity line, where it lands, and the status stays on "first".
+  it('draws it where it lands at every step of the turn opening, even with the steer echoed first', () => {
+    const { items, submissions } = openingFirst()
+    const opened = [...items, firstTurnOpened(6)]
+    const steered = [...opened, { ...userMessage('second', 8, 'second'), turnScope: inFirstTurn }]
+    const handedOver = submission('second', { acceptedSequence: 7, handedOverAt: NOW + 10 })
+    const echoed = (sent: AgentJournalSubmission): AgentJournalSubmission => ({
+      ...sent,
+      dispatchState: 'accepted',
+      providerItemId: FIRST_TURN_PROVIDER_KEY,
+      resolvedAt: NOW + 20
+    })
+    const [warm, first] = submissions
+    if (!warm || !first) {
+      throw new Error('expected the warm-up and the first send')
+    }
+    const steps: [
+      AgentJournalRenderItem[],
+      AgentJournalSubmission[],
+      StructuredAgentSessionOutboxEntry[]
+    ][] = [
+      // The turn record is in; the host has not recorded "second" yet.
+      [opened, submissions, [unrecorded('second', 'second')]],
+      // Recorded after the turn record, not yet handed over.
+      [
+        [...opened, userMessage('second', 7, 'second')],
+        [...submissions, submission('second', { acceptedSequence: 7 })],
+        []
+      ],
+      // Handed over as a steer.
+      [steered, [...submissions, handedOver], []],
+      // Codex echoes the steer before the send that opened the turn, then that send.
+      [steered, [warm, first, echoed(handedOver)], []],
+      [steered, [warm, echoed(first), echoed(handedOver)], []]
+    ]
+    const view = render(<div />)
+    for (const step of steps) {
+      view.rerender(frame(...step))
+      expect(follows(liveStatus(), screen.getByText('first'))).toBe(true)
+      expect(follows(screen.getByText('second'), liveStatus())).toBe(true)
+      expect(follows(liveActivity(), screen.getByText('second'))).toBe(true)
+    }
   })
 
   // The host holds nothing for a send only the user's Retry sends again, so it stays where it is.
