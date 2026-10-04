@@ -664,6 +664,46 @@ describe('Windows upload on a host with no sftp subsystem', () => {
   })
 
   it.each([
+    'relay-CommandNotFoundException.js',
+    'is not recognized as an internal or external command.js'
+  ])('propagates a write-denied stderr naming an absence-like filename: %s', async (file) => {
+    const remotePath = `${remoteRoot}/${file}`
+    writeFileSync(join(localDir, file), 'x')
+    failAtSpawn = 0
+    failedWriteStderr = `Access to the path '${remotePath}' is denied.`
+
+    await expect(
+      uploadFileViaSystemSsh(target, join(localDir, file), remotePath, { hostPlatform })
+    ).rejects.toThrow('Access to the path')
+
+    expect(fileWrites().map((write) => write.executable)).toEqual(['pwsh.exe'])
+    expect(getWindowsRemoteWriteCapabilities(target).shouldTry('pwsh')).toBe(true)
+    expect(commands.some((command) => command.script.includes('::Move('))).toBe(false)
+  })
+
+  it.each([
+    "'missing-tool.exe' is not recognized as an internal or external command",
+    'CommandNotFoundException: missing-tool.exe'
+  ])(
+    'does not mark PowerShell 7 absent when its script reports another missing command: %s',
+    async (stderr) => {
+      writeFileSync(join(localDir, 'relay.js'), 'x')
+      failAtSpawn = 0
+      failedWriteStderr = stderr
+
+      await expect(
+        uploadFileViaSystemSsh(target, join(localDir, 'relay.js'), `${remoteRoot}/relay.js`, {
+          hostPlatform
+        })
+      ).rejects.toThrow('failed (exit 1)')
+
+      expect(fileWrites().map((write) => write.executable)).toEqual(['pwsh.exe'])
+      expect(getWindowsRemoteWriteCapabilities(target).shouldTry('pwsh')).toBe(true)
+      expect(commands.some((command) => command.script.includes('::Move('))).toBe(false)
+    }
+  )
+
+  it.each([
     [9009, ''],
     [1, "'pwsh.exe' is not recognized as an internal or external command"],
     [1, 'CommandNotFoundException: pwsh.exe']
