@@ -207,11 +207,11 @@ const REASON_WORDS = {
     journalUnavailable: causeWords('historyUnavailable', 'retry', 'tryAgain'),
     journalWrittenByNewerOrca: causeWords('savedByNewerOrca', 'updateOrca', 'updateOrcaToKeepUsing')
   },
-  // Thrown, so a client meets these only as an RPC error. The code's own words ask for an update,
-  // which only a method the host doesn't know proves; no reason here means an older Orca. An
-  // unsupported location or agent, or no chat host, is not fixed by updating, and a client missing
-  // the capability words this with its own older copy. Only `hostUnsupported` names its cause:
-  // this agent or location can't run as a chat.
+  // Mostly thrown as an RPC error; `hostUnsupported` is also returned and recorded. The code's own
+  // words ask for an update, which only a method the host doesn't know proves; no reason here means
+  // an older Orca. An unsupported location or agent, or no chat host, is not fixed by updating, and
+  // a client missing the capability words this with its own older copy. Only `hostUnsupported`
+  // names its cause: this agent or location can't run as a chat.
   structured_agent_session_unsupported: {
     clientCapabilityMissing: causeWords('notAvailable', 'hostFinding'),
     hostDisabled: causeWords('notAvailable', 'hostFinding'),
