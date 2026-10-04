@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
-import type { Page, TestInfo } from '@stablyai/playwright-test'
+import type { ElectronApplication, Page, TestInfo } from '@stablyai/playwright-test'
 import type { BrowserWindow, Event as ElectronEvent, Input as ElectronInput } from 'electron'
 import { test, expect } from './helpers/orca-app'
 import { ensureTerminalVisible, waitForActiveWorktree, waitForSessionReady } from './helpers/store'
@@ -25,6 +25,7 @@ import {
   waitForTerminalImeBytes
 } from './terminal-ime-byte-reader'
 import { appendImeEngagementReceipt } from './terminal-ime-engagement-receipt'
+import { presentNativeIbusWindow } from './terminal-native-ibus-window'
 
 const DEFAULT_REPETITIONS = 30
 const MAX_REPETITIONS = 30
@@ -107,12 +108,14 @@ function typeSentenceSequence(repetitions: number): void {
 }
 
 async function runNativeIbusScenario(
+  electronApp: ElectronApplication,
   page: Page,
   testInfo: TestInfo,
   testRepoPath: string,
   expectedText: string,
   driveInput: (repetitions: number) => void
 ): Promise<void> {
+  await presentNativeIbusWindow(electronApp, page)
   await waitForSessionReady(page)
   await waitForActiveWorktree(page)
   await ensureTerminalVisible(page)
@@ -172,17 +175,27 @@ test.describe('Native IBus Hangul terminal input @headful', () => {
   )
 
   test('forwards the issue exact-byte sequence without loss or duplication', async ({
-    orcaPage,
-    testRepoPath
-  }, testInfo) => {
-    await runNativeIbusScenario(orcaPage, testInfo, testRepoPath, '한abc글', typeExactByteSequence)
-  })
-
-  test('forwards the issue sentence stress sequence without leaked ASCII', async ({
+    electronApp,
     orcaPage,
     testRepoPath
   }, testInfo) => {
     await runNativeIbusScenario(
+      electronApp,
+      orcaPage,
+      testInfo,
+      testRepoPath,
+      '한abc글',
+      typeExactByteSequence
+    )
+  })
+
+  test('forwards the issue sentence stress sequence without leaked ASCII', async ({
+    electronApp,
+    orcaPage,
+    testRepoPath
+  }, testInfo) => {
+    await runNativeIbusScenario(
+      electronApp,
       orcaPage,
       testInfo,
       testRepoPath,
@@ -208,14 +221,10 @@ test.describe('Native IBus Hangul workspace notes @headful', () => {
     expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted')
     expect(process.env.DISPLAY).toMatch(/^:\d+(?:\.\d+)?$/)
     const ownedWindow = await electronApp.browserWindow(orcaPage)
-    const windowId = await ownedWindow.evaluate((window: BrowserWindow) => {
-      if (!window || window.isVisible() || process.env.ORCA_BACKGROUND_LAUNCH !== '1') {
-        throw new Error('Native Notes requires an owned background window')
-      }
-      return window.getNativeWindowHandle().readUInt32LE(0).toString()
-    })
-    // Native input is confined to the harness-owned Xvfb display on hosted CI.
-    runXdotool('windowmap', '--sync', windowId)
+    await presentNativeIbusWindow(electronApp, orcaPage)
+    const windowId = await ownedWindow.evaluate((window: BrowserWindow) =>
+      window.getNativeWindowHandle().readUInt32LE(0).toString()
+    )
     execFileSync('ibus', ['engine', 'hangul'], { timeout: NATIVE_COMMAND_TIMEOUT_MS })
     expect(
       execFileSync('ibus', ['engine'], {
@@ -388,6 +397,8 @@ test.describe('Native IBus Hangul workspace notes @headful', () => {
       expect(main.nativeWindowId).toBe(windowId)
       expect(xFocus).toBe(windowId)
       expect(main.windowFocused).toBe(true)
+      expect(main.windowVisible).toBe(true)
+      expect(main.webContentsFocused).toBe(true)
       expect(renderer.documentFocused).toBe(true)
       expect(renderer.activeIsNotes).toBe(true)
       return snapshot
