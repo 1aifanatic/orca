@@ -408,20 +408,28 @@ describe.skipIf(process.platform !== 'darwin')('a worktree delete Git fails part
     expect(purged).toEqual([])
   })
 
-  it('at startup, restores no missing .git and deletes nothing: Git’s row returns as before', async () => {
+  it('at startup, unregisters a checkout whose .git is gone, keeping its files, until the user removes it', async () => {
     await setImmutable(false)
     await rm(join(worktreePath, '.git'))
     const purged: string[] = []
 
-    expect(String(await finishAtStartup(purged))).toMatch(/validation failed/)
+    expect(String(await finishAtStartup(purged))).toBe(`Error: ${refusal()}`)
 
     expect(existsSync(join(worktreePath, '.git'))).toBe(false)
     expect(existsSync(lockedFile)).toBe(true)
     expect(removeHostTree).not.toHaveBeenCalled()
-    expect(await isRegistered(worktreePath)).toBe(true)
-    expect(await git(['branch', '--list', 'feature'])).not.toBe('')
+    expect(await isRegistered(worktreePath)).toBe(false)
+    expect(await git(['branch', '--list', 'feature'])).toBe('')
     expect(purged).toEqual([])
-    expect(await listedRows()).toEqual([{ path: worktreePath }])
+    expect(await listedRows()).toEqual([{ path: worktreePath, removalError: refusal() }])
+
+    expect(String(await deleteRow(purged))).toBe(`Error: ${refusal()}`)
+    expect(existsSync(lockedFile)).toBe(true)
+
+    await rm(worktreePath, { recursive: true })
+    expect(await deleteRow(purged)).toBeUndefined()
+    expect(purged).toEqual([worktreeId])
     expect(await readWorktreeRemovalRecords(recordsDir)).toEqual([])
+    expect(await listedRows()).toEqual([])
   })
 })
