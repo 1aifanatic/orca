@@ -16974,9 +16974,10 @@
           "file": "src/renderer/src/components/terminal-pane/remote-snapshot-alt-screen-replay.test.ts",
           "assertions": [
             "repaints a pushed image exactly and keeps the history the TUI covers",
-            "replaces history exactly when the host screen has another grid",
-            "replaces history when the host image has no grid",
-            "replaces history once the host proves the TUI exited",
+            "keeps the pane's history when the host screen has another grid",
+            "keeps history unduplicated when a pushed image also carries history",
+            "paints the whole image when the TUI started while hidden",
+            "repaints from the normal buffer once the host TUI has exited",
             "clears a raw byte replay in place on the alt screen",
             "paints a requested image exactly over a live alt screen"
           ]
@@ -16985,7 +16986,7 @@
           "file": "src/renderer/src/components/terminal-pane/remote-snapshot-alt-screen-host-chain.test.ts",
           "assertions": [
             "keeps the covered history for a live TUI exactly as the host holds it",
-            "replaces history once the host proves the TUI exited"
+            "repaints from the normal buffer once the host TUI has exited"
           ]
         },
         {

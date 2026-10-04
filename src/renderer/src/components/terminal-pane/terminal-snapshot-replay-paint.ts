@@ -4,6 +4,7 @@ import {
   ABORT_TRUNCATED_CONTROL_STRING,
   buildSnapshotReplayPrologue
 } from '../../../../shared/terminal-mode-reset-profiles'
+import { splitAtAlternateScreenEntry } from '../../../../shared/terminal-alternate-screen-split'
 
 /**
  * Shared guards and write choreography for painting a main-model snapshot into
@@ -66,6 +67,32 @@ export function buildSnapshotReplayPreamble(
   args: Parameters<typeof buildSnapshotReplayPrologue>[0]
 ): string {
   return `${ABORT_TRUNCATED_CONTROL_STRING}${buildSnapshotReplayPrologue(args)}`
+}
+
+/**
+ * Writes for a remote image, which folds its normal buffer in ahead of its alt
+ * entry. Over a pane already on alt, an image that ends on alt repaints only its
+ * alt payload, so the pane's normal buffer and history stay as they are; any
+ * other image paints from the normal buffer.
+ */
+export function buildFoldedImageReplayWrites(
+  data: string,
+  paneOnAlternateScreen: boolean
+): { preamble: string; payload: string } {
+  const split = paneOnAlternateScreen ? splitAtAlternateScreenEntry(data) : null
+  if (split) {
+    return {
+      preamble: buildSnapshotReplayPreamble({
+        targetAlternateScreen: true,
+        paneOnAlternateScreen: true
+      }),
+      payload: split.alternateAnsi
+    }
+  }
+  return {
+    preamble: buildSnapshotReplayPreamble({ targetAlternateScreen: false, paneOnAlternateScreen }),
+    payload: data
+  }
 }
 
 /**

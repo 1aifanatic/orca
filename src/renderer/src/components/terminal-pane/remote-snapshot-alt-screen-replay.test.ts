@@ -84,7 +84,7 @@ function pushedImage(hostRows: number): string {
 }
 // What the multiplexer hands the pane for a recovery push (its own screen clear first).
 function recoveryPayload(hostRows: number): string {
-  return `\x1b[?2026l\x1b[2J\x1b[H${pushedImage(hostRows)}`
+  return `\x1b[?2026l\x1b[2J\x1b[3J\x1b[H${pushedImage(hostRows)}`
 }
 const REQUESTED_IMAGE = `${NORMAL_LINES.join('\r\n')}${ENTER_AGENT_FRAME}`
 
@@ -114,6 +114,11 @@ async function render(events: PaneEvent[], rows = ROWS): Promise<Terminal> {
   return term
 }
 
+/** The live pane's own buffers carried through the drain's grid changes and nothing else. */
+function untouchedPane(events: PaneEvent[]): Promise<Terminal> {
+  return render([LIVE_PANE, ...events.filter((event) => typeof event !== 'string')])
+}
+
 describe('remote snapshot replay onto a live alt screen', () => {
   beforeEach(() => {
     vi.resetModules()
@@ -131,7 +136,8 @@ describe('remote snapshot replay onto a live alt screen', () => {
   /** The pane's writes and grid changes, in order, ending back at the pane's own grid. */
   async function drainOntoLiveAltScreen(
     data: string,
-    meta: PtyReplayDataMeta
+    meta: PtyReplayDataMeta,
+    paneBuffer: 'normal' | 'alternate' = 'alternate'
   ): Promise<PaneEvent[]> {
     const { connectPanePty } = await import('./pty-connection')
     const transport = createMockTransport('agent-pty')
@@ -163,7 +169,7 @@ describe('remote snapshot replay onto a live alt screen', () => {
     await flushAsyncTicks(8)
     pane.terminal.cols = COLS
     pane.terminal.rows = ROWS
-    pane.terminal.buffer.active.type = 'alternate'
+    pane.terminal.buffer.active.type = paneBuffer
     replay.current?.(data, meta)
     for (let index = 0; index < 12; index += 1) {
       await flushAsyncTicks(4)
@@ -171,7 +177,9 @@ describe('remote snapshot replay onto a live alt screen', () => {
     }
     await flushAsyncTicks(8)
     binding.dispose()
-    expect(events).toContain(data)
+    expect(
+      events.some((event) => typeof event === 'string' && event.length > 0 && data.endsWith(event))
+    ).toBe(true)
     return [...events, { cols: COLS, rows: ROWS }]
   }
 
@@ -201,36 +209,65 @@ describe('remote snapshot replay onto a live alt screen', () => {
     }
   })
 
-  // Why: the pane's history continues the host's screen only on the same grid; on
-  // another grid, keeping it duplicates or drops lines, so the image replaces it.
-  it('replaces history exactly when the host screen has another grid', async () => {
+  // Why: the pane's normal buffer froze with the host's when the TUI entered alt, so a
+  // pushed image repaints only the alt frame, whatever grid the host serialized it at.
+  it("keeps the pane's history when the host screen has another grid", async () => {
     const hostRows = 10
-    const client = await render([
-      LIVE_PANE,
-      ...(await drainOntoLiveAltScreen(recoveryPayload(hostRows), {
-        carriesNormalBuffer: true,
-        snapshotCols: COLS,
-        snapshotRows: hostRows
-      }))
-    ])
+    const events = await drainOntoLiveAltScreen(recoveryPayload(hostRows), {
+      carriesNormalBuffer: true,
+      snapshotCols: COLS,
+      snapshotRows: hostRows
+    })
+    const client = await render([LIVE_PANE, ...events])
+    const untouched = await untouchedPane(events)
     const fresh = await render([pushedImage(hostRows), { cols: COLS, rows: ROWS }], hostRows)
     try {
       expect(viewport(client, 'alternate')).toEqual(viewport(fresh, 'alternate'))
-      expect(bufferLines(client, 'normal')).toEqual(bufferLines(fresh, 'normal'))
+      expect(bufferLines(client, 'normal')).toEqual(bufferLines(untouched, 'normal'))
     } finally {
       client.dispose()
+      untouched.dispose()
       fresh.dispose()
     }
   })
 
-  // Why: an image without its grid cannot prove the pane's history continues its screen.
-  it('replaces history when the host image has no grid', async () => {
+  // Why: a push can reuse a concurrent requested capture that folds history in too;
+  // painting that history over the kept one would duplicate it in scrollback.
+  it('keeps history unduplicated when a pushed image also carries history', async () => {
     const client = await render([
       LIVE_PANE,
-      ...(await drainOntoLiveAltScreen(recoveryPayload(ROWS), { carriesNormalBuffer: true }))
+      ...(await drainOntoLiveAltScreen(`\x1b[?2026l\x1b[2J\x1b[3J\x1b[H${REQUESTED_IMAGE}`, {
+        carriesNormalBuffer: true,
+        snapshotCols: COLS,
+        snapshotRows: ROWS
+      }))
+    ])
+    const host = await render([LIVE_PANE])
+    const fresh = await render([REQUESTED_IMAGE])
+    try {
+      expect(viewport(client, 'alternate')).toEqual(viewport(fresh, 'alternate'))
+      expect(bufferLines(client, 'normal')).toEqual(bufferLines(host, 'normal'))
+    } finally {
+      client.dispose()
+      host.dispose()
+      fresh.dispose()
+    }
+  })
+
+  // Why: a TUI that started while the tab was hidden left the pane on the normal
+  // buffer; the image must rebuild that buffer and enter alt itself.
+  it('paints the whole image when the TUI started while hidden', async () => {
+    const client = await render([
+      NORMAL_LINES.join('\r\n'),
+      ...(await drainOntoLiveAltScreen(
+        recoveryPayload(ROWS),
+        { carriesNormalBuffer: true, snapshotCols: COLS, snapshotRows: ROWS },
+        'normal'
+      ))
     ])
     const fresh = await render([pushedImage(ROWS)])
     try {
+      expect(client.buffer.active.type).toBe('alternate')
       expect(viewport(client, 'alternate')).toEqual(viewport(fresh, 'alternate'))
       expect(bufferLines(client, 'normal')).toEqual(bufferLines(fresh, 'normal'))
     } finally {
@@ -239,15 +276,15 @@ describe('remote snapshot replay onto a live alt screen', () => {
     }
   })
 
-  // Why: once the host's TUI exits, the shell writes past the pane's history, so the
-  // image replaces it instead of leaving a gap above the host's screen.
-  it('replaces history once the host proves the TUI exited', async () => {
+  // Why: once the host's TUI exits, its image no longer enters alt; the pane must leave
+  // alt and show the host's normal screen.
+  it('repaints from the normal buffer once the host TUI has exited', async () => {
     const hostScreen = [...NORMAL_LINES, 'Resume with claude --resume', '$ ']
       .slice(-ROWS)
       .join('\r\n')
     const client = await render([
       LIVE_PANE,
-      ...(await drainOntoLiveAltScreen(`\x1b[?2026l\x1b[2J\x1b[H${hostScreen}`, {
+      ...(await drainOntoLiveAltScreen(`\x1b[?2026l\x1b[2J\x1b[3J\x1b[H${hostScreen}`, {
         carriesNormalBuffer: true,
         terminalOwner: 'shell',
         alternateScreen: false,

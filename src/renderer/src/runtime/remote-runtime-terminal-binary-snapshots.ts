@@ -105,21 +105,23 @@ export abstract class RemoteRuntimeTerminalBinarySnapshots extends RemoteRuntime
           })
         } else if (target === 'recovery') {
           // Why: a server-pushed recovery snapshot replaces terminal state
-          // mid-session; clear the screen before applying it. An empty snapshot is
-          // still applied so stale dropped output does not linger on a terminal
-          // the model says is blank. No \x1b[3J: the image carries only its screen,
-          // and the pane's replay drain owns the history policy.
+          // mid-session; clear the screen and scrollback before applying it.
+          // An empty snapshot is still applied so stale dropped output does
+          // not linger on a terminal the model says is blank.
           // RELEASE_SYNCHRONIZED_OUTPUT: \x1b[2J does not clear mode 2026, so a pane
           // holding an open latch would not paint this recovery snapshot at all.
-          stream.callbacks.onSnapshot(`${RELEASE_SYNCHRONIZED_OUTPUT}\x1b[2J\x1b[H${data ?? ''}`, {
-            pendingEscapeTailAnsi: info?.pendingEscapeTailAnsi,
-            seq: info?.seq,
-            kittyKeyboardFlags: info?.kittyKeyboardFlags,
-            alternateScreen: info?.alternateScreen,
-            terminalOwner: info?.terminalOwner,
-            cols: info?.cols,
-            rows: info?.rows
-          })
+          stream.callbacks.onSnapshot(
+            `${RELEASE_SYNCHRONIZED_OUTPUT}\x1b[2J\x1b[3J\x1b[H${data ?? ''}`,
+            {
+              pendingEscapeTailAnsi: info?.pendingEscapeTailAnsi,
+              seq: info?.seq,
+              kittyKeyboardFlags: info?.kittyKeyboardFlags,
+              alternateScreen: info?.alternateScreen,
+              terminalOwner: info?.terminalOwner,
+              cols: info?.cols,
+              rows: info?.rows
+            }
+          )
         }
       } else if (matchesPendingRequest) {
         pendingRequest.resolve({
