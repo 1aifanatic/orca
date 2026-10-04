@@ -17,9 +17,9 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-function fakeChild(pid: number | undefined = 9_999_999) {
+function fakeChild(pid: number | null = 9_999_999) {
   const child = Object.assign(new EventEmitter(), {
-    pid,
+    pid: pid ?? undefined,
     stdin: new PassThrough(),
     stdout: new PassThrough(),
     stderr: new PassThrough(),
@@ -162,8 +162,7 @@ describe('managed provider process', () => {
   })
 
   it('requires error then close for a processless spawn to settle', async () => {
-    const fixture = fakeChild()
-    fixture.child.pid = undefined
+    const fixture = fakeChild(null)
     const managed = launch(fixture)
     fixture.child.emit('error', new Error('ENOENT'))
     expect(managed.rootVerdict).toBe('unverifiable')

@@ -43,7 +43,7 @@ export async function closeProviderProcess(
     await tree.capture()
   }
   try {
-    child.stdin.end()
+    child.stdin?.end()
   } catch {
     // A broken pipe still owes the reap.
   }
