@@ -226,6 +226,41 @@ describe('closing or stopping a Grok chat while it starts', () => {
     expect(rig.spawned.filter((step) => step === 'spawn')).toHaveLength(1)
   })
 
+  it('cancels a queued send whose start a Stop ended, with no start failure in the chat', async () => {
+    let spawns = 0
+    const { rig, host } = await openHostRig({
+      script: (agent) => {
+        spawns += 1
+        if (spawns > 1) {
+          agent.on('initialize', () => {})
+        }
+      },
+      deps: { startupTimeoutMs: 60_000 }
+    })
+    expect(await host.attach(CALLER, attachParams())).toMatchObject({ ok: true })
+    // The chat closes; the next send has to start Grok again, and that start never answers.
+    await host.close(SESSION, 'user-close')
+    await host.send(CALLER, {
+      envelope: envelope('agentSession.send', { body: hello }),
+      body: hello
+    })
+    await waitFor(() => expect(spawns).toBe(2))
+    await rig.frame('initialize')
+    const restarted = rig.child()
+    expect(
+      await host.cancel(CALLER, { envelope: envelope('agentSession.cancel', {}) })
+    ).toMatchObject({ ok: true, value: { cancelled: true } })
+    expect(restarted.exited).toBe(true)
+    await host.flushStreamedEvents(SESSION)
+    const journal = host.collaboratorsForTests().sessions.get(SESSION)!.journal
+    expect(journal.submissions()).toMatchObject([
+      { dispatchState: 'rejected', rejection: { kind: 'cancelled' } }
+    ])
+    const rows = (await host.history({ sessionId: SESSION, direction: 'tail' })).page.items
+    expect(rows.filter((row) => row.body.kind === 'status')).toEqual([])
+    await host.close(SESSION, 'user-close')
+  })
+
   it('leaves a start alone for a Stop that names a turn of a child already gone', async () => {
     const { rig, host } = await openHostRig({
       script: (agent) => agent.on('initialize', () => {}),
