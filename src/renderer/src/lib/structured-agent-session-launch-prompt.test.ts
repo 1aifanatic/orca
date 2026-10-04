@@ -4,6 +4,7 @@ import { cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY } from '../../../shared/protocol-version'
 import {
+  commitStructuredAgentSessionOutbox,
   enqueueStructuredAgentSessionLaunchPrompt,
   getStructuredAgentSessionOutbox
 } from '@/components/native-chat/structured-agent-session-outbox-storage'
@@ -23,6 +24,7 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-capabilities'
 import { useStructuredAgentSessionOutbox } from '@/components/native-chat/use-structured-agent-session-outbox'
 import { settleStructuredAgentLaunchPrompt } from './structured-agent-session-launch-prompt'
+import { shareStructuredAgentLaunchPromptDispatch } from './structured-agent-launch-prompt-in-flight-dispatches'
 
 type SentParams = { envelope: { clientOperationId: string } }
 
@@ -208,6 +210,34 @@ describe('settleStructuredAgentLaunchPrompt', () => {
     expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey('session-1'))).toBe(
       'review this'
     )
+  })
+
+  // The open chat's drain sent and settled it; the launch picks up that shared send after it
+  // resolved but before it left the in-flight map, so no ending reaches the launch's watch.
+  it('resolves from a shared send that already settled the prompt, never waiting forever', async () => {
+    const stagedEntry = enqueueStructuredAgentSessionLaunchPrompt('session-1', 'review this')
+    const onPromptDelivered = vi.fn()
+    shareStructuredAgentLaunchPromptDispatch(
+      'session-1',
+      stagedEntry!.clientMessageId,
+      1,
+      async () => {
+        commitStructuredAgentSessionOutbox('session-1', [])
+        return { kind: 'recorded' }
+      }
+    )
+    const settled = settleStructuredAgentLaunchPrompt({
+      launchResult: Promise.resolve({ sessionId: 'session-1', fence: 1 }),
+      target: { kind: 'local' },
+      options: { prompt: 'review this', onPromptDelivered },
+      stagedEntry
+    })
+
+    await expect(
+      Promise.race([settled, new Promise((resolve) => setTimeout(() => resolve('waiting'), 200))])
+    ).resolves.toEqual({ delivered: true, failureNotified: false })
+    expect(onPromptDelivered).toHaveBeenCalledOnce()
+    expect(mocks.call).not.toHaveBeenCalled()
   })
 
   it('reports a launch prompt that never went out as not handled', async () => {
