@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import type { Editor } from '@tiptap/react'
-import { TextSelection } from '@tiptap/pm/state'
 import { getShortcutPlatform } from '@/lib/shortcut-platform'
 import { useAppStore } from '@/store'
 import {
@@ -14,6 +13,7 @@ import {
   richMarkdownSearchPluginKey
 } from './rich-markdown-search'
 import { createRichMarkdownSearchMatchesCache } from './rich-markdown-search-matches-cache'
+import { useRichMarkdownSearchHighlights } from './useRichMarkdownSearchHighlights'
 
 export function useRichMarkdownSearch({
   editor,
@@ -42,6 +42,7 @@ export function useRichMarkdownSearch({
   const [matchCase, setMatchCase] = useState(false)
   const [wholeWord, setWholeWord] = useState(false)
   const [rawActiveMatchIndex, setRawActiveMatchIndex] = useState(-1)
+  const [navigationRequest, setNavigationRequest] = useState(0)
   const [searchRevision, setSearchRevision] = useState(0)
   // Why: debouncing the query that drives match computation prevents the
   // expensive full-doc walk from running on every keystroke — the old
@@ -178,6 +179,7 @@ export function useRichMarkdownSearch({
     // Why: removing the active match shifts the next match into the same index,
     // so leaving rawActiveMatchIndex untouched advances to it after recompute.
     replaceRange(match.from, match.to)
+    setNavigationRequest((request) => request + 1)
   }, [activeMatchIndex, getLiveMatches, replaceRange])
 
   const replaceAllMatches = useCallback(() => {
@@ -203,6 +205,7 @@ export function useRichMarkdownSearch({
       }
     }
     editor.view.dispatch(tr)
+    setNavigationRequest((request) => request + 1)
   }, [editor, getLiveMatches, replaceQuery])
 
   const moveToMatch = useCallback(
@@ -219,6 +222,7 @@ export function useRichMarkdownSearch({
         const baseIndex = Math.max(currentIndex, 0)
         return (baseIndex + direction + matchCount) % matchCount
       })
+      setNavigationRequest((request) => request + 1)
     },
     [matchCount]
   )
@@ -259,52 +263,16 @@ export function useRichMarkdownSearch({
     searchInputRef.current?.select()
   }, [isSearchOpen])
 
-  // Why: single effect to sync search state to ProseMirror. The old two-effect
-  // chain (compute matches → set state → dispatch) caused an extra render cycle
-  // and called findRichMarkdownSearchMatches twice per change.
-  useEffect(() => {
-    if (!editor) {
-      return
-    }
-
-    const query = isSearchOpen ? searchRequestQuery : ''
-
-    // Why: combining decoration meta and selection+scrollIntoView into one
-    // transaction avoids a split-dispatch where the first dispatch updates
-    // editor.state and the second dispatch's scrollIntoView can be lost
-    // when ProseMirror coalesces view updates.
-    // Why: passing pre-computed matches avoids the plugin re-walking the
-    // entire document — the old double-walk froze the UI on large files.
-    const tr = editor.state.tr
-    tr.setMeta(richMarkdownSearchPluginKey, {
-      activeIndex: activeMatchIndex,
-      matches,
-      query
-    })
-
-    const activeMatch = query && activeMatchIndex >= 0 ? matches[activeMatchIndex] : null
-    if (activeMatch) {
-      tr.setSelection(TextSelection.create(tr.doc, activeMatch.from, activeMatch.to))
-    }
-
-    editor.view.dispatch(tr)
-
-    // Why: ProseMirror's tr.scrollIntoView() delegates to the view's
-    // scrollDOMIntoView which may fail to reach the outer flex scroll container
-    // (the editor element itself has min-height: 100% and no overflow).
-    // Reading coordsAtPos *after* the dispatch and manually scrolling the
-    // container mirrors the approach used by MarkdownPreview search.
-    if (activeMatch) {
-      const container = scrollContainerRef.current
-      if (container) {
-        const coords = editor.view.coordsAtPos(activeMatch.from)
-        const containerRect = container.getBoundingClientRect()
-        const relativeTop = coords.top - containerRect.top
-        const targetScroll = container.scrollTop + relativeTop - containerRect.height / 2
-        container.scrollTo({ top: targetScroll, behavior: 'instant' })
-      }
-    }
-  }, [activeMatchIndex, searchRequestQuery, editor, isSearchOpen, matches, scrollContainerRef])
+  useRichMarkdownSearchHighlights({
+    activeMatchIndex,
+    editor,
+    matchCase,
+    matches,
+    navigationRequest,
+    query: isSearchOpen ? searchRequestQuery : '',
+    scrollContainerRef,
+    wholeWord
+  })
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
