@@ -271,13 +271,14 @@ function isPwshUnavailableError(error: unknown): boolean {
   if (!(error instanceof SystemSshCommandExitError)) {
     return false
   }
-  // Only the remote exit/stderr establishes absence; the label can contain any filename.
+  // A complete missing-pwsh diagnostic establishes absence; paths and mixed errors do not.
+  const stderr = error.stderr.trim()
   return (
     error.exitCode === 9009 ||
-    /^'pwsh\.exe' is not recognized as an internal or external command,?\r?$/im.test(
-      error.stderr
+    /^'pwsh\.exe' is not recognized as an internal or external command(?:,\r?\noperable program or batch file\.)?$/i.test(
+      stderr
     ) ||
-    /^CommandNotFoundException:\s*pwsh\.exe\s*$/im.test(error.stderr)
+    /^CommandNotFoundException:[ \t]*pwsh\.exe$/i.test(stderr)
   )
 }
 
