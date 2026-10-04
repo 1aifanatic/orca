@@ -63,16 +63,18 @@ export function settleStructuredAgentSessionOutboxFromJournal(
   return entries
 }
 
-/** When the soonest host window closes among entries only an owed answer settles, or null. */
+/** When the soonest host window still open closes among entries only an owed answer settles, or
+ *  null. One already closed waits for the journal to load, which re-runs the settlement anyway. */
 export function nextStructuredAgentSessionHostWindowEnd(
-  entries: readonly StructuredAgentSessionOutboxEntry[]
+  entries: readonly StructuredAgentSessionOutboxEntry[],
+  now: number
 ): number | null {
   let soonest: number | null = null
   for (const entry of entries) {
     const endsAt = structuredAgentSessionEntryAwaitsSettlement(entry)
       ? structuredAgentSessionEntryHostWindowEndsAt(entry)
       : null
-    if (endsAt !== null && (soonest === null || endsAt < soonest)) {
+    if (endsAt !== null && endsAt >= now && (soonest === null || endsAt < soonest)) {
       soonest = endsAt
     }
   }

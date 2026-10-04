@@ -171,13 +171,13 @@ export function useStructuredAgentSessionOutbox(args: {
     }
     // A send only an owed answer settles must still end when the host's window for it closes,
     // though nothing else moves by then.
-    const windowEnd = nextStructuredAgentSessionHostWindowEnd(entries)
+    const windowEnd = nextStructuredAgentSessionHostWindowEnd(entries, now)
     if (windowEnd === null) {
       return
     }
     const timer = setTimeout(
       () => setHostWindowsClosed((count) => count + 1),
-      Math.min(Math.max(windowEnd - now + 1, 0), MAX_TIMER_DELAY_MS)
+      Math.min(windowEnd - now + 1, MAX_TIMER_DELAY_MS)
     )
     return () => clearTimeout(timer)
   }, [

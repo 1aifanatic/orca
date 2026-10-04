@@ -11,6 +11,9 @@ import type {
   AgentJournalSubmission
 } from '../../../../shared/agent-session-journal-types'
 import { createStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
+import { createStructuredAgentSessionOperationId } from '../../../../shared/structured-agent-session-mutation'
+import { AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS } from '../../../../shared/agent-session-host-authority'
+import { createBrowserUuid } from '@/lib/browser-uuid'
 
 type SentParams = { envelope: { clientOperationId: string }; delivery?: string }
 
@@ -257,6 +260,26 @@ describe('a Stop answered while the journal is already read through it', () => {
     expect(view.result.current.outbox).toEqual([])
     expect(readNativeChatDraftCache(SCOPE)).toBe('follow-up')
     expect(view.result.current.error).toBe(CHECK_THE_CHAT)
+  })
+})
+
+describe("the host's window for a send a Stop outran", () => {
+  it('hands it back to check the chat once the window closes, though nothing else moved', async () => {
+    const id = createStructuredAgentSessionOperationId(
+      createBrowserUuid,
+      Date.now() - AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS + 5_000
+    )
+    seedAttempted({ clientMessageId: id, stoppedBy: { operationId: 'stop-1' } })
+    const view = mount({ fence: 1, submissions: [], journalCursor: { epoch: 'e', sequence: 3 } })
+    expect(view.result.current.outbox).toHaveLength(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6_000)
+    })
+    expect(view.result.current.outbox).toEqual([])
+    expect(readNativeChatDraftCache(SCOPE)).toBe('follow-up')
+    expect(view.result.current.error).toBe(CHECK_THE_CHAT)
+    expect(mocks.call).not.toHaveBeenCalled()
   })
 })
 
