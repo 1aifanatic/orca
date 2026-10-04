@@ -17,15 +17,27 @@ export function DeepSeekAccountsSection({
   unsupportedRuntime: boolean
   scopeLabel: string
 }): React.JSX.Element {
-  const { account, limits, readFailed, setStatus } = useDeepSeekAccount(
-    environmentId,
-    unsupportedRuntime
+  const state = useDeepSeekAccount(environmentId, unsupportedRuntime)
+  return (
+    <DeepSeekAccountForm
+      key={state.account?.supported ? state.account.ownerId || null : null}
+      environmentId={environmentId}
+      scopeLabel={scopeLabel}
+      state={state}
+    />
   )
-  const [entry, setEntry] = useState<{ ownerId: string | null; value: string }>({
-    ownerId: null,
-    value: ''
-  })
-  const draft = entry.ownerId === account?.ownerId ? entry.value : ''
+}
+
+function DeepSeekAccountForm({
+  environmentId,
+  scopeLabel,
+  state: { account, limits, readFailed, setStatus }
+}: {
+  environmentId: string | null
+  scopeLabel: string
+  state: ReturnType<typeof useDeepSeekAccount>
+}): React.JSX.Element {
+  const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
   const live = useRef(true)
@@ -45,7 +57,7 @@ export function DeepSeekAccountsSection({
     setBusy(true)
     setFailed(false)
     const enteredKey = draft.trim()
-    setEntry({ ownerId: null, value: '' })
+    setDraft('')
     try {
       if (action === 'refresh') {
         await refreshDeepSeekAccount(target, account.ownerId)
@@ -133,9 +145,7 @@ export function DeepSeekAccountsSection({
               id="deepseek-api-key"
               type="password"
               value={draft}
-              onChange={(event) =>
-                setEntry({ ownerId: account.ownerId, value: event.target.value })
-              }
+              onChange={(event) => setDraft(event.target.value)}
               autoComplete="off"
               spellCheck={false}
               disabled={busy}
