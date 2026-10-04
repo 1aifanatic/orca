@@ -80,26 +80,34 @@ export function useHostModelCatalogUpgrade(args: {
             })
           : current
       )
-    const waitForListing = (): Promise<AgentSessionModelCatalogResult> =>
-      joinHostModelListingWait(waitKey, () => read(true))
-    const first = isHostModelListingWaitInFlight(waitKey)
-      ? waitForListing()
-      : read(false).then((catalog) => {
-          // Only a host that reports the listing knows the wait param; an older one refuses it.
-          if (stale || catalog.origin !== 'unknown' || catalog.listingInProgress !== true) {
-            return catalog
-          }
-          return waitForListing()
-        })
-    void first
-      .then((catalog) => {
-        if (!stale) {
+    let leave: (() => void) | null = null
+    const waitForListing = (): void => {
+      leave = joinHostModelListingWait(waitKey, () => read(true), (catalog) => {
+        if (catalog) {
           apply(catalog)
         }
       })
-      .catch(() => {})
+    }
+    if (isHostModelListingWaitInFlight(waitKey)) {
+      waitForListing()
+    } else {
+      void read(false)
+        .then((catalog) => {
+          if (stale) {
+            return
+          }
+          // Only a host that reports the listing knows the wait param; an older one refuses it.
+          if (catalog.origin === 'unknown' && catalog.listingInProgress === true) {
+            waitForListing()
+          } else {
+            apply(catalog)
+          }
+        })
+        .catch(() => {})
+    }
     return () => {
       stale = true
+      leave?.()
     }
   }, [
     activeOptionRecordRef,

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
-import { act, renderHook } from '@testing-library/react'
+import { act, render, renderHook } from '@testing-library/react'
+import { useLayoutEffect } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ call: vi.fn() }))
@@ -294,4 +295,63 @@ describe('host model catalog read', () => {
     expect(model(result.current.optionSnapshot).choicesPending).toBeUndefined()
     unmount()
   })
+})
+
+function CommitRecorder(props: { sessionId: string; attached: boolean; commits: string[] }) {
+  const { optionSnapshot } = useStructuredAgentSessionOptions({
+    agent: 'codex',
+    sessionId: props.sessionId,
+    target: PAIRED_TARGET,
+    transportEnabled: props.attached,
+    isVisible: true,
+    providerVisible: false,
+    fence: props.attached ? 1 : null,
+    turnId: null,
+    unloadedTurnRevisions: undefined,
+    mutate,
+    launch: { kind: 'new', seedOptions: { model: 'gpt-5.5' }, heldOptions: {} }
+  })
+  const descriptor = model(optionSnapshot)
+  const state = `held=${descriptor.choicesPending === true} hosted=${modelChoices(optionSnapshot).includes('gpt-hosted')}`
+  // No deps: one entry per commit, which act() would otherwise batch out of sight.
+  useLayoutEffect(() => {
+    props.commits.push(state)
+  })
+  return null
+}
+
+describe('the end of a host listing wait', () => {
+  beforeEach(() => {
+    mocks.call.mockReset()
+    sessionCount += 1
+    sessionId = `session-${sessionCount}`
+  })
+
+  for (const attachedFirst of [false, true]) {
+    it(`never commits the built-in list unheld before the host list (${attachedFirst ? 'joined after attach' : 'started here'})`, async () => {
+      const waited = deferred()
+      answerCatalog([() => Promise.resolve(LISTING), () => waited.promise])
+      const commits: string[] = []
+      const view = render(
+        <CommitRecorder sessionId={sessionId} attached={false} commits={commits} />
+      )
+      await flush()
+      if (attachedFirst) {
+        view.rerender(<CommitRecorder sessionId={sessionId} attached commits={commits} />)
+        await flush()
+      }
+      expect(commits.at(-1)).toBe('held=true hosted=false')
+      const settledFrom = commits.length
+      Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', false)
+      try {
+        waited.resolve(HOST_CATALOG)
+        await vi.waitFor(() => expect(commits.at(-1)).toBe('held=false hosted=true'))
+        await new Promise((resolve) => setTimeout(resolve, 20))
+      } finally {
+        Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true)
+      }
+      expect(commits.slice(settledFrom)).not.toContain('held=false hosted=false')
+      view.unmount()
+    })
+  }
 })
