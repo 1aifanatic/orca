@@ -110,6 +110,11 @@ export function isExplainedTerminalError(error: string): boolean {
     )
 }
 
+/** A terminal the previous Orca version's relay runs on the host; this client's details say nothing about it. */
+export function isHeldByPreviousRelayError(error: string): boolean {
+  return HELD_BY_PREVIOUS_RELAY_PATTERN.test(error)
+}
+
 export function isPaneOwnerUnverifiedError(error: string): boolean {
   const lines = error.split('\n').filter((line) => line.length > 0)
   return lines.length > 0 && lines.every((line) => line.includes(PANE_OWNER_UNVERIFIED_MARKER))
@@ -209,6 +214,8 @@ export function TerminalErrorToast({
   onRetry?: () => Promise<boolean>
 }): React.JSX.Element {
   const ssh = isSshError(error)
+  // Why: the client's OS and shell describe neither the host nor its shell, and the renderer knows neither.
+  const showClientEnvironment = !ssh && !isHeldByPreviousRelayError(error)
   const paneOwnerUnverified = isPaneOwnerUnverifiedError(error)
   const showDaemonRestart = !ssh && onRestartDaemon && shouldOfferDaemonRestart(error)
   // Restart cannot recover a session after its owning daemon exits.
@@ -237,7 +244,7 @@ export function TerminalErrorToast({
 
   // Why: a select-all copy should carry details loaded asynchronously from preload.
   useEffect(() => {
-    if (ssh || hasClientEnvironmentFooter(displayError)) {
+    if (!showClientEnvironment || hasClientEnvironmentFooter(displayError)) {
       return
     }
     let cancelled = false
@@ -249,7 +256,7 @@ export function TerminalErrorToast({
     return () => {
       cancelled = true
     }
-  }, [displayError, ssh])
+  }, [displayError, showClientEnvironment])
 
   const footer = environmentFooter?.error === displayError ? environmentFooter.footer : ''
   const handleRetry = async (): Promise<void> => {
@@ -324,7 +331,7 @@ export function TerminalErrorToast({
               .
             </>
           ) : null}
-          {!ssh && footer ? `\n\n${footer}` : null}
+          {showClientEnvironment && footer ? `\n\n${footer}` : null}
           {paneOwnerUnverified && retryFailed
             ? `\n${translate(
                 'auto.components.terminal.pane.TerminalErrorToast.retryUnavailable',
