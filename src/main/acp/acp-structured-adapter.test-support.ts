@@ -2,6 +2,7 @@
 // protocol runtime, translator and assembler, and a real on-disk journal to read back.
 
 import { vi } from 'vitest'
+import type { AgentJournalMessageItem } from '../../shared/agent-session-journal-types'
 import type { ProviderProcessLaunch } from '../provider-process/provider-process-launch'
 import type { StructuredAgentSessionLifecycleEvent } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import {
@@ -212,7 +213,11 @@ export async function openAcpAdapterRig(
   }
 }
 
-const HELLO = { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'hello' }] } as const
+const HELLO: AgentJournalMessageItem = {
+  kind: 'message',
+  role: 'user',
+  blocks: [{ type: 'text', text: 'hello' }]
+}
 
 /** A person's send of `hello` under `clientMessageId`. */
 export function sendHello(rig: AcpAdapterRig, clientMessageId: string, fence = 1) {
