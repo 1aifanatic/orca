@@ -8,6 +8,8 @@ import { OrchestrationDb } from '../../../../orchestration/db'
 import { RpcDispatcher } from '../../../dispatcher'
 import type { RpcRequest } from '../../../core'
 import { ORCHESTRATION_METHODS } from '../../orchestration'
+import { prepareFederationWorkerLaunchOnHost } from './worker-opencode-model-preflight'
+import { FederationAttachStartParams } from '../federation/federation-start-schema'
 
 describe('orchestration new-worktree workers', () => {
   type CreateWorktreeResult = Awaited<ReturnType<OrcaRuntimeService['createManagedWorktree']>>
@@ -189,24 +191,49 @@ describe('orchestration new-worktree workers', () => {
     })
   })
 
-  it('probes the creation repo before accepting an OpenCode model', async () => {
-    mockCreatedWorktree()
+  it.each(['new-child', 'new-top-level'])(
+    'refuses an OpenCode model for %s without probing',
+    async (worktree) => {
+      mockCreatedWorktree()
+      const probe = vi
+        .spyOn(runtime, 'probeOrchestrationOpenCodeModelLaunchSupport')
+        .mockResolvedValue(true)
+      await expect(
+        startWorker({
+          worktree,
+          repo: 'repo',
+          agent: 'opencode',
+          model: 'opencode/fledge-alpha-free'
+        })
+      ).rejects.toMatchObject({ code: 'capability_unsupported' })
+      expect(probe).not.toHaveBeenCalled()
+      expect(runtime.createManagedWorktree).not.toHaveBeenCalled()
+      expect(runtime.createTerminal).not.toHaveBeenCalled()
+      expect(runtime.sendTerminalAgentPrompt).not.toHaveBeenCalled()
+    }
+  )
+
+  it('refuses a federated new-worktree model before probing its repository', async () => {
     const probe = vi
       .spyOn(runtime, 'probeOrchestrationOpenCodeModelLaunchSupport')
       .mockResolvedValue(true)
-    await expect(
-      startWorker({ agent: 'opencode', model: 'opencode/fledge-alpha-free' })
-    ).resolves.toMatchObject({
-      result: {
-        launch: {
-          effective: { agent: 'opencode', model: 'opencode/fledge-alpha-free', effort: null }
-        }
-      }
+    const params = FederationAttachStartParams.parse({
+      dispatchId: 'ctx_new',
+      taskId: 'task_new',
+      taskSpec: 'No effects',
+      protocolVersion: 3,
+      worktree: 'new-top-level',
+      name: 'new-worker',
+      repo: 'repo',
+      agent: 'opencode',
+      model: 'opencode/fledge-alpha-free'
     })
-    expect(probe).toHaveBeenCalledWith({ repo: 'repo', model: 'opencode/fledge-alpha-free' })
-    expect(runtime.createManagedWorktree).toHaveBeenCalledWith(
-      expect.objectContaining({ startupLaunchPreferences: { model: 'opencode/fledge-alpha-free' } })
-    )
+    await expect(
+      prepareFederationWorkerLaunchOnHost({ runtime, params, createsWorktree: true })
+    ).rejects.toMatchObject({ code: 'capability_unsupported' })
+    expect(probe).not.toHaveBeenCalled()
+    expect(runtime.createTerminal).not.toHaveBeenCalled()
+    expect(runtime.sendTerminalAgentPrompt).not.toHaveBeenCalled()
   })
 
   it('rejects an unsupported OpenCode model before creating a worker', async () => {

@@ -8,7 +8,7 @@ import type { OrcaRuntimeService } from '../../../../orca-runtime'
 export async function probeWorkerOpenCodeModelLaunchSupport(
   runtime: OrcaRuntimeService,
   params: { agent?: string; model?: string },
-  target: { worktree?: string; repo?: string }
+  target: { worktree?: string }
 ): Promise<boolean> {
   return Boolean(
     params.model &&
@@ -27,10 +27,10 @@ export async function prepareFederationWorkerLaunchOnHost(
   const params = await resolveWorkerConfiguredAgentParams(args.runtime, args.params, async () =>
     args.createsWorktree ? { repo: args.params.repo } : { worktree: args.params.worktree }
   )
-  const openCodeModelLaunchSupported = await probeWorkerOpenCodeModelLaunchSupport(
-    args.runtime,
-    params,
-    args.createsWorktree ? { repo: params.repo } : { worktree: params.worktree }
-  )
+  const openCodeModelLaunchSupported =
+    !args.createsWorktree &&
+    (await probeWorkerOpenCodeModelLaunchSupport(args.runtime, params, {
+      worktree: params.worktree
+    }))
   return prepareFederationConfiguredWorkerStart({ ...args, params, openCodeModelLaunchSupported })
 }
