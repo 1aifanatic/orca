@@ -76,7 +76,7 @@ function configure() {
   })
   fs.appendFileSync(
     process.env.GITHUB_ENV,
-    `ORCA_CI_NATIVE_GUARD_CONFIG=${file}\nNODE_OPTIONS=${guardOptions()}\n`
+    `ORCA_CI_NATIVE_GUARD_CONFIG=${file}\nORCA_CI_NATIVE_GUARD_OPTIONS=${guardOptions()}\n`
   )
 }
 
@@ -165,7 +165,6 @@ function summarizeGuard() {
   if (workers.size < 3 || unexpected.length || !controls.length) {
     throw new Error('Guard inheritance or runtime-load qualification failed')
   }
-  fs.appendFileSync(process.env.GITHUB_ENV, 'NODE_OPTIONS=\n')
 }
 
 function stageLabel(label) {
