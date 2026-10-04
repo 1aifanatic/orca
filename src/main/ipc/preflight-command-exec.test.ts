@@ -209,6 +209,7 @@ describe('findRunnableLocalCommand', () => {
   })
 
   it('probes a relative PATH entry as the absolute directory cwd gives it', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
     const relativeDir = path.join('.', 'tools')
     process.env.PATH = [shim.replace('/gh', ''), relativeDir].join(path.delimiter)
     const absoluteDir = path.resolve(relativeDir)
