@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
 import { closeProviderTimelineRigs } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
-import { AgentSessionAcquisitionRefusal } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
+import {
+  AgentSessionAcquisitionExitProvenError,
+  AgentSessionAcquisitionRefusal
+} from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import { ACP_CHILD_ENV_TO_DELETE } from './acp-launch-specs'
 import {
   GROK,
@@ -132,6 +135,21 @@ describe('ACP structured session adapter: acquire', () => {
     expect(failure).toMatchObject({ reason: 'notSignedIn' })
     expect(rig.child().closes).toBe(1)
   })
+})
+
+it('reports an agent that exits while starting with its own last words', async () => {
+  const rig = await openAcpAdapterRig({
+    script: (agent) =>
+      agent.on('session/new', () => {
+        const child = rig.child()
+        child.stderr = 'grok: config.toml is invalid'
+        child.exit()
+      })
+  })
+  const failure = await rig.acquire().catch((error: unknown) => error)
+  expect(failure).toBeInstanceOf(AgentSessionAcquisitionExitProvenError)
+  expect(failure).toMatchObject({ message: 'grok: config.toml is invalid' })
+  expect(rig.lifecycle).toEqual([])
 })
 
 describe('ACP structured session adapter: turns', () => {

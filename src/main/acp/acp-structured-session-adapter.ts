@@ -8,7 +8,9 @@ import { agentSessionFailureWords } from '../../shared/agent-session-failure-wor
 import type { AgentJournalMessageItem } from '../../shared/agent-session-journal-types'
 import type { AgentSessionExecutionLocation } from '../../shared/agent-session-record'
 import {
+  AgentSessionAcquisitionExitProvenError,
   AgentSessionAcquisitionExitUnprovenError,
+  isAgentSessionPreSpawnError,
   type AgentSessionAcquisition,
   type AgentSessionDispatchOutcome,
   type StructuredAgentSessionAcquireInput,
@@ -16,6 +18,7 @@ import {
   type StructuredAgentSessionSetOptionInput
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import { supportsCodexStructuredLocation } from '../codex/codex-structured-location-support'
+import { withObservedProviderExit } from '../native-chat/agent-session-wire/structured-agent-session-failure-text'
 import { acpAgentName, acquireAcpStructuredSession } from './acp-structured-acquire'
 import { AcpRequestTimeoutError } from './acp-errors'
 import type { AcpStructuredChild } from './acp-structured-child'
@@ -65,8 +68,17 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
       this.sessions.set(sessionId, session)
       return acquisition
     } catch (error) {
-      if (tracked.child && !(await tracked.child.close().catch(() => false))) {
+      const child = tracked.child
+      // Checked before the close below, which would make any exit look like one Orca asked for.
+      const exitedOnItsOwn = child?.exited === true
+      if (child && !(await child.close().catch(() => false))) {
         throw new AgentSessionAcquisitionExitUnprovenError(error)
+      }
+      if (child && exitedOnItsOwn && !isAgentSessionPreSpawnError(error)) {
+        // The agent's own last words are what a person can act on.
+        throw new AgentSessionAcquisitionExitProvenError(
+          withObservedProviderExit(new Error(child.stderrTail() || String(error), { cause: error }))
+        )
       }
       throw error
     } finally {
