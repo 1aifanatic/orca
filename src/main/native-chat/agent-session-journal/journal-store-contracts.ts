@@ -62,7 +62,10 @@ export type JournalItemLinkageVisitor = (
   itemId: string,
   sequence: number,
   body: AgentJournalItemBody,
-  attribution: AgentJournalProducerLinkage & { turnScope?: AgentJournalTurnScope }
+  attribution: AgentJournalProducerLinkage & {
+    turnScope?: AgentJournalTurnScope
+    providerItemRef?: string
+  }
 ) => void
 
 export type JournalLifecycleBatchInput = {
@@ -70,6 +73,11 @@ export type JournalLifecycleBatchInput = {
   mutations: readonly JournalLifecycleMutationInput[]
   fence: number
   recovered?: true
+}
+
+export type JournalResolvedLifecycleBatchInput = Omit<JournalLifecycleBatchInput, 'mutations'> & {
+  /** Read from the fold with every earlier write landed; may return none. */
+  resolve: () => readonly JournalLifecycleMutationInput[]
 }
 
 export type JournalSubmissionInput = {

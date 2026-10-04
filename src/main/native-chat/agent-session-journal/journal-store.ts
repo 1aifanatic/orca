@@ -8,6 +8,7 @@ import type {
   AgentJournalCursor,
   AgentJournalItemBody,
   AgentJournalItemIdentity,
+  AgentJournalRenderItem,
   AgentJournalSnapshot,
   AgentJournalSubmission,
   AgentJournalThreadGoal,
@@ -227,6 +228,11 @@ export class AgentSessionJournal {
   itemBody = (itemId: string): AgentJournalItemBody | null =>
     this.state.items.get(itemId)?.body ?? null
 
+  /** One reduced item with its attribution, for a writer that needs the turn a row joined. */
+  item = (itemId: string): AgentJournalRenderItem | null => this.state.items.get(itemId) ?? null
+  /** The row that carries this `providerItemRef`, if any. */
+  itemIdForProviderItemRef = (ref: string) => this.state.providerItemRefs.get(ref) ?? null
+
   /** Visits reduced items with the producer that wrote each, for a producer re-deriving what an
    *  earlier run of this session left. */
   visitItemsWithLinkage = (visit: JournalItemLinkageVisitor): void => {
@@ -330,6 +336,11 @@ export class AgentSessionJournal {
   appendLifecycleBatch(input: JournalLifecycleBatchInput): Promise<AgentJournalCursor> {
     return this.lifecycleBatchAppender.append(input)
   }
+
+  /** A lifecycle batch whose mutations are chosen from the fold at its own turn in the queue;
+   *  null when none are. */
+  appendResolvedLifecycleBatch: JournalLifecycleBatchAppender['appendResolved'] = (input) =>
+    this.lifecycleBatchAppender.appendResolved(input)
 
   /**
    * Write-ahead submission row. It is durable before the caller dispatches

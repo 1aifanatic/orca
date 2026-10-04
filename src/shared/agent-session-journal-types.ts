@@ -360,7 +360,15 @@ export const AGENT_JOURNAL_THREAD_SCOPE: AgentJournalTurnScope = { kind: 'thread
 /** Who produced a row and which turn it belongs to: what every item write states. */
 export type AgentJournalRowAttribution = AgentJournalProducerLinkage & {
   turnScope: AgentJournalTurnScope
+  providerItemRef?: AgentJournalProviderItemRef
 }
+
+/** The provider's own reference for the item a row is, as its producer joined it, on a row whose
+ *  identity does not spell it (a Codex message keys by its turn ordinal, and Codex renumbers its
+ *  item ids on resume). Set by the write that creates the row and kept by every revision, like the
+ *  turn scope. Only its producer reads it back, to find the row again after a restart; no client
+ *  depends on it. */
+export type AgentJournalProviderItemRef = string
 
 /** Where the journal placed an item: the sequence of the row that created it,
  *  then its place among that row's writes. The timeline's only ordering key. */
@@ -387,6 +395,7 @@ export type AgentJournalRenderItem = AgentJournalProducerLinkage & {
   recoveredAt?: number
   /** Absent only from a host that predates it. */
   turnScope?: AgentJournalTurnScope
+  providerItemRef?: AgentJournalProviderItemRef
 }
 
 // ─── Submissions ────────────────────────────────────────────────────────────

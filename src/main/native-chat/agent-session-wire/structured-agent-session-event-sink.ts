@@ -12,6 +12,10 @@ import { estimateStructuredAgentSessionItemBytes } from './structured-agent-sess
 import { StructuredAgentSessionSinkQueue } from './structured-agent-session-event-sink-queue'
 import { structuredAgentSessionJournalAppendOptions } from './structured-agent-session-journal-append-options'
 import { createStructuredAgentSessionResolvedAppend } from './structured-agent-session-resolved-append'
+import {
+  createStructuredAgentSessionTransitionMembers,
+  type StructuredAgentSessionTransitionSink
+} from './structured-agent-session-transition'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 export type StructuredAgentSessionSinkAdmission =
@@ -47,6 +51,8 @@ export type StructuredAgentSessionPublishOptions = Pick<
 /** An item write states which turn its row belongs to; the write that creates the row decides. */
 export type StructuredAgentSessionItemAppendOptions = StructuredAgentSessionAppendOptions & {
   turnScope: AgentJournalTurnScope
+  /** The provider's reference for the item, on the write that creates its row. */
+  providerItemRef?: string
 }
 
 export type StructuredAgentSessionLifecycleJournal = Pick<
@@ -80,7 +86,7 @@ export type StructuredAgentSessionRevisionOptions = StructuredAgentSessionItemAp
 /** Compatibility alias for lifecycle callers that already use this resolver. */
 export type StructuredAgentSessionLifecycleIdentityResolver = StructuredAgentSessionIdentityResolver
 
-export type StructuredAgentSessionEventSink = {
+export type StructuredAgentSessionEventSink = StructuredAgentSessionTransitionSink & {
   appendItem(
     identity: AgentJournalItemIdentity,
     body: AgentJournalItemBody,
@@ -286,6 +292,7 @@ export function createDeferredStructuredAgentSessionEventSink(deps: {
       },
       tryAppendItem: appendItem,
       ...resolvedAppend,
+      ...createStructuredAgentSessionTransitionMembers(queue),
       journalEpoch: queue.journalEpoch,
       journalLinkage: queue.journalLinkage,
       journalStopDecidesTurn: queue.journalStopDecidesTurn,
