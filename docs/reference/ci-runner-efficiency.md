@@ -1922,8 +1922,8 @@ proved that an included TypeScript error failed the actual compiler, its planner
 still joined, and unit/package admissions skipped. A registered late action post
 failure also blocked both consumers after successful foreground checks and
 published shards. All 12 unselected/prior-failure no-op backgrounds joined, and
-the downstream audit passed. Local workflow contracts passed 262 tests across
-11 suites; lint and formatting passed.
+the downstream audit passed. Local workflow contracts passed 239 tests across
+12 suites; lint and formatting passed.
 
 ## October 3 retired-cache collection observation
 
