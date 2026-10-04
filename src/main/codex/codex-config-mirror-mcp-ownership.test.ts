@@ -23,7 +23,13 @@ afterEach(() => rmSync(root, { recursive: true, force: true }))
 
 const BASELINE_FILE = '.orca-config-settings-baseline.json'
 
-function writeBaseline(baseline: object): string {
+type StoredBaselineFixture = {
+  version: 1 | 3
+  settings: Record<string, string | null>
+  mcpServers?: string[]
+}
+
+function writeBaseline(baseline: StoredBaselineFixture): string {
   const serialized = JSON.stringify(baseline)
   writeFileSync(join(runtimeHomePath, BASELINE_FILE), serialized)
   return serialized
