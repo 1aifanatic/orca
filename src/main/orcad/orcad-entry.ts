@@ -149,10 +149,9 @@ async function startOrcadRuntime(
   const { getAppEnvironment } = await import('../../shared/app-environment')
   const { installOrcadObservability } = await import('./orcad-observability')
   closeOrcadObservability = installOrcadObservability()
-  const { resolveAdvertisedPairingEndpoint } = await import('../runtime/pairing-endpoint')
   const { ServeReadinessPublisher } = await import('../server/serve-readiness')
-  const { assertServeProjectRoot, renderServePairingQr } =
-    await import('../server/serve-pairing-output')
+  const { assertServeProjectRoot } = await import('../server/serve-pairing-output')
+  const { buildOrcadServeReadiness } = await import('./orcad-serve-readiness')
   const { createOrcadProfileStateStartup } = await import('./orcad-profile-state-startup')
   const { startOrcadDaemon, stopOrcadDaemon } = await import('./orcad-daemon-supervision')
   const { daemonOwnsFreshPersistentPtys } = await import('../daemon/daemon-init')
@@ -173,10 +172,12 @@ async function startOrcadRuntime(
     | undefined
   let uninstallHookStatusRepublish = (): void => {}
   let uninstallObservedStatusIdentity = (): void => {}
+  let removeStatusHookSettingsListener = (): void => {}
   // Cleanups run in reverse: RPC, then recovery and watchers, then the final flush, then daemon.
   registerCleanup(() => agentHookServer.stop())
   registerCleanup(() => uninstallHookStatusRepublish())
   registerCleanup(() => uninstallObservedStatusIdentity())
+  registerCleanup(() => removeStatusHookSettingsListener())
   // Why disconnect and not shut down: the daemon must outlive this process, or an orcad
   // restart goes back to killing every running terminal.
   registerCleanup(() => stopOrcadDaemon())
@@ -209,9 +210,17 @@ async function startOrcadRuntime(
   uninstallObservedStatusIdentity = agentHookServer.subscribeEnrichedStatus((enriched) =>
     observedStatusCapture.observe(enriched)
   )
-  if (isAgentStatusHooksEnabled(profileStore.getSettings())) {
-    await agentHookServer.start({ env: 'production', userDataPath: runtimeUserDataPath })
-  }
+  await agentHookServer.start({
+    env: 'production',
+    userDataPath: runtimeUserDataPath,
+    statusHooksEnabled: isAgentStatusHooksEnabled(profileStore.getSettings())
+  })
+
+  removeStatusHookSettingsListener = profileStore.onSettingsChanged((updates, settings) => {
+    if ('agentStatusHooksEnabled' in updates) {
+      agentHookServer.setStatusHooksEnabled(isAgentStatusHooksEnabled(settings))
+    }
+  })
 
   // Why before the runtime and the PTY handlers: `setLocalPtyProvider` installs the daemon
   // adapter as THE local provider, and the registry's contract is that it lands before
@@ -351,49 +360,17 @@ async function startOrcadRuntime(
   getAppEnvironment().onWillQuit(() => pushService?.stop())
   console.error(`[orcad] ${describeOrcadBindExposure(bindHost)}`)
 
-  const boundEndpoint = rpc.getWebSocketEndpoint()
-  const advertised = boundEndpoint
-    ? resolveAdvertisedPairingEndpoint(boundEndpoint, options.pairingAddress)
-    : null
-  const offer = options.noPairing
-    ? ({
-        available: false,
-        reason: 'disabled_by_operator',
-        guidance: 'Restart without --no-pairing to create a client pairing offer.'
-      } as const)
-    : rpc.createPairingOffer({
-        address: options.pairingAddress,
-        name: `${options.mobilePairing ? 'Mobile' : 'CLI'} ${new Date().toLocaleDateString()}`,
-        scope: options.mobilePairing ? 'mobile' : 'runtime'
-      })
-
-  const readiness: ServeReadiness = {
+  const readiness = await buildOrcadServeReadiness({
+    options,
     runtimeId: runtime.getRuntimeId(),
-    boundEndpoint,
-    advertisedEndpoint: advertised?.ok ? advertised.endpoint : null,
-    // Why 'settled': the WSL CLI reconciliation barrier is a desktop-launch concern.
-    // orcad never runs it, so there is no pending repair a client could race.
-    managedWslCliReconciliation: 'settled',
-    pairing: offer.available
-      ? {
-          available: true,
-          url: offer.pairingUrl,
-          endpoint: offer.endpoint,
-          deviceId: offer.deviceId,
-          webClientUrl: offer.webClientUrl,
-          scope: options.mobilePairing ? 'mobile' : 'runtime',
-          qr: options.mobilePairing ? await renderServePairingQr(offer.pairingUrl) : null
-        }
-      : offer,
-    // Why in the readiness payload: this is the one message a supervisor and a deploy
-    // transaction both read, and a green orcad with a dead daemon is exactly the
-    // looks-healthy-but-useless state they must not activate.
-    health: await collectOrcadHealth(
-      getAppEnvironment().getVersion(),
-      profileStateAuthority,
-      idleExitStartup.previousIdleStop
-    )
-  }
+    rpc,
+    collectHealth: () =>
+      collectOrcadHealth(
+        getAppEnvironment().getVersion(),
+        profileStateAuthority,
+        idleExitStartup.previousIdleStop
+      )
+  })
 
   await new ServeReadinessPublisher().publish(
     readiness,

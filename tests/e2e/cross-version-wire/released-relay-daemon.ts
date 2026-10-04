@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, symlink, writeFile } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { join } from 'node:path'
-import { build } from 'esbuild'
+import { build, type Plugin } from 'esbuild'
 import type { MultiplexerTransport } from '../../../src/main/ssh/ssh-channel-multiplexer'
 import { RELAY_SENTINEL } from '../../../src/main/ssh/relay-protocol'
 import type { ReleaseCheckout } from './release-checkout'
@@ -19,6 +19,34 @@ export type ReleasedRelayInstall = {
 }
 
 const SENTINEL = Buffer.from(RELAY_SENTINEL, 'utf-8')
+const DROPPED_DEPENDENCY_NAMESPACE = 'dropped-release-dependency'
+
+// Why: the release bundles against this build's install, which may no longer ship a package the
+// release imported (e.g. @streamparser/json). Such imports become empty modules; the relay paths
+// these tests drive never call into them.
+const droppedReleaseDependencies: Plugin = {
+  name: DROPPED_DEPENDENCY_NAMESPACE,
+  setup(pluginBuild) {
+    pluginBuild.onResolve({ filter: /^[^./]/ }, async (args) => {
+      if (args.pluginData === DROPPED_DEPENDENCY_NAMESPACE) {
+        return undefined
+      }
+      const resolved = await pluginBuild.resolve(args.path, {
+        kind: args.kind,
+        resolveDir: args.resolveDir,
+        importer: args.importer,
+        pluginData: DROPPED_DEPENDENCY_NAMESPACE
+      })
+      return resolved.errors.length > 0
+        ? { path: args.path, namespace: DROPPED_DEPENDENCY_NAMESPACE }
+        : resolved
+    })
+    pluginBuild.onLoad({ filter: /.*/, namespace: DROPPED_DEPENDENCY_NAMESPACE }, () => ({
+      contents: 'module.exports = {}',
+      loader: 'js'
+    }))
+  }
+}
 
 /**
  * Bundles the release's relay the way its own build did, then lays it out as a host install:
@@ -43,6 +71,7 @@ export async function installReleasedRelay(
       outfile: join(bundleDir, 'relay.js'),
       external: ['node-pty', '@parcel/watcher', 'electron'],
       define: { 'process.env.NODE_ENV': '"production"' },
+      plugins: [droppedReleaseDependencies],
       logLevel: 'error'
     })
   }
