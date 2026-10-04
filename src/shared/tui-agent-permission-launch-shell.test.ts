@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { resolveTuiAgentLaunchArgs } from './tui-agent-launch-defaults'
-import { resolveAgentPermissionPosture } from './tui-agent-permission-args'
+import { LAUNCH_GRAMMARS, resolveAgentPermissionPosture } from './tui-agent-permission-args'
 import { cutTuiAgentBypassFlag, liftTuiAgentBypassArgs } from './tui-agent-bypass-lift'
 import { PERMISSION_AGENT_IDS, YOLO_TUI_AGENT_ARGS } from './tui-agent-permissions'
-import { resolveAgentLaunchGrammar, type AgentLaunchTarget } from './tui-agent-startup-shell'
+import {
+  resolveAgentLaunchGrammar,
+  tokenizeStartupCommand,
+  type AgentLaunchTarget
+} from './tui-agent-startup-shell'
+import { liftComposedAgentLaunchProfile } from './agent-launch-profile-lift'
 import { resolveLocalAgentLaunchTarget } from './windows-terminal-shell'
 import type { TuiAgent } from './tui-agent'
 
@@ -99,6 +104,133 @@ describe('the lift and escaped flags', () => {
 
   it('cuts the plain flag every grammar reads as its own word', () => {
     expect(cutTuiAgentBypassFlag('claude', `--model opus ${CLAUDE_BYPASS}`)).toBe('--model opus')
+  })
+})
+
+// The lift must leave every other word exactly as each shell read it.
+describe('the lift keeps every other word', () => {
+  const FLAG_AGENTS = PERMISSION_AGENT_IDS.filter(
+    (agent): agent is TuiAgent => YOLO_TUI_AGENT_ARGS[agent] !== undefined
+  )
+
+  // Trimming the gap would drop the escaped space and glue the neighbours into one word.
+  it.each([
+    `--add-dir C:\\code\\  ${CLAUDE_BYPASS} --model opus`,
+    `--name foo\`  ${CLAUDE_BYPASS} --model opus`,
+    `--name foo^  ${CLAUDE_BYPASS} --model opus`
+  ])('leaves %j whole rather than gluing words', (args) => {
+    expect(cutTuiAgentBypassFlag('claude', args)).toBe(args)
+  })
+
+  it.each(LOCAL_TARGETS)('still lifts every plain flag on %s', (_name, target) => {
+    for (const agent of FLAG_AGENTS) {
+      const flag = YOLO_TUI_AGENT_ARGS[agent] ?? ''
+      for (const args of [flag, `${flag} --model opus`, `--model opus ${flag}`]) {
+        expect(liftTuiAgentBypassArgs(agent, args, target)).toEqual({
+          bypass: true,
+          extraArgs: args === flag ? '' : '--model opus'
+        })
+      }
+    }
+  })
+
+  it.each(LOCAL_TARGETS)(
+    'upgrades a typical profile with no warnings or overrides on %s',
+    (_name, target) => {
+      const profile = liftComposedAgentLaunchProfile(
+        {
+          agentDefaultArgs: { ...YOLO_TUI_AGENT_ARGS, claude: `${CLAUDE_BYPASS} --model opus` },
+          agentDefaultEnv: { goose: { GOOSE_MODE: 'auto' } }
+        },
+        target
+      )
+      expect(profile.agentPermissionMode).toBe('bypass')
+      expect(profile.agentPermissionModeOverrides).toEqual({})
+      expect(profile.agentDefaultArgs.claude).toBe('--model opus')
+      for (const agent of PERMISSION_AGENT_IDS) {
+        expect(resolveAgentPermissionPosture(agent, profile, target)).toMatchObject({
+          effectiveBypass: true,
+          typedPermissionOptions: []
+        })
+      }
+    }
+  )
+
+  /** Words removed by the cut, in order, found by walking the old words against the new. */
+  function removedWords(before: readonly string[], after: readonly string[]): string[] | null {
+    const removed: string[] = []
+    let next = 0
+    for (const word of before) {
+      if (next < after.length && word === after[next]) {
+        next += 1
+      } else {
+        removed.push(word)
+      }
+    }
+    return next === after.length ? removed : null
+  }
+
+  // A small seeded generator, so a failure reproduces.
+  function seeded(seed: number): () => number {
+    let state = seed
+    return () => {
+      state = (state * 1103515245 + 12345) % 2147483648
+      return state / 2147483648
+    }
+  }
+
+  it('cuts only the flag, under every shell, across generated Arguments', () => {
+    const random = seeded(24508)
+    const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)]
+    const words = [
+      '--model',
+      'opus',
+      'C:\\code\\',
+      '"C:\\a b\\"',
+      "'C:\\x\\'",
+      'foo\\',
+      'foo`',
+      'foo^',
+      '"x y"',
+      "'z w'",
+      '--',
+      '-a',
+      'never',
+      '$HOME',
+      '%PATH%',
+      '"say \\"hi\\""'
+    ]
+    const gaps = [' ', '  ', '\t', ' \t ']
+    let cuts = 0
+    for (const agent of FLAG_AGENTS) {
+      const flag = YOLO_TUI_AGENT_ARGS[agent] ?? ''
+      const flagWords = tokenizeStartupCommand(flag, 'posix')
+      expect(flagWords.ok).toBe(true)
+      const flagTokens = flagWords.ok ? flagWords.tokens : []
+      for (let round = 0; round < 80; round += 1) {
+        const parts = Array.from({ length: 2 + Math.floor(random() * 5) }, () =>
+          random() < 0.3 ? flag : pick(words)
+        )
+        const args = parts.reduce((text, part) => (text ? `${text}${pick(gaps)}${part}` : part), '')
+        const cut = cutTuiAgentBypassFlag(agent, args)
+        if (cut === args.trim()) {
+          continue
+        }
+        cuts += 1
+        for (const grammar of LAUNCH_GRAMMARS) {
+          const before = tokenizeStartupCommand(args, grammar)
+          const after = tokenizeStartupCommand(cut, grammar)
+          expect(before.ok && after.ok, `${grammar} ${JSON.stringify(args)}`).toBe(true)
+          const removed = before.ok && after.ok ? removedWords(before.tokens, after.tokens) : null
+          expect(removed, `${grammar} ${JSON.stringify(args)}`).not.toBeNull()
+          for (let at = 0; at < (removed ?? []).length; at += flagTokens.length) {
+            expect((removed ?? []).slice(at, at + flagTokens.length)).toEqual(flagTokens)
+          }
+        }
+      }
+    }
+    // Not vacuous: plenty of generated texts really are cut.
+    expect(cuts).toBeGreaterThan(300)
   })
 })
 

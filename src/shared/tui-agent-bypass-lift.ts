@@ -6,7 +6,11 @@ import {
   LAUNCH_GRAMMARS,
   optionTokens
 } from './tui-agent-permission-args'
-import { resolveAgentLaunchGrammar, type AgentLaunchTarget } from './tui-agent-startup-shell'
+import {
+  resolveAgentLaunchGrammar,
+  tokenizeStartupCommand,
+  type AgentLaunchTarget
+} from './tui-agent-startup-shell'
 import { YOLO_TUI_AGENT_ENV } from './tui-agent-permissions'
 import type { TuiAgent } from './tui-agent'
 
@@ -57,6 +61,24 @@ function findBypassFlag(text: string, rawFlag: readonly string[]): FlagOccurrenc
 }
 
 /**
+ * Whether every grammar reads the cut text as exactly its old words minus the flag's. Trimming the
+ * gap can drop a space escaped by `\`, a backtick or `^`, gluing two words; such a cut is refused.
+ */
+function cutKeepsOtherWords(text: string, cut: string, hit: FlagOccurrence): boolean {
+  return LAUNCH_GRAMMARS.every((grammar) => {
+    const before = tokenizeStartupCommand(text, grammar)
+    const after = tokenizeStartupCommand(cut, grammar)
+    if (!before.ok || !after.ok) {
+      return false
+    }
+    const kept = before.tokens.filter(
+      (_, index) => before.spans[index].end <= hit.start || before.spans[index].start >= hit.end
+    )
+    return kept.length === after.tokens.length && kept.every((word, i) => word === after.tokens[i])
+  })
+}
+
+/**
  * Cuts each option of the bypass flag out of the text. A companion option the user set to another
  * value stays theirs; if any other part is missing the flag never launched whole, so nothing is cut.
  */
@@ -68,7 +90,11 @@ function stripBypassFlag(agent: TuiAgent, args: string): string {
     while (hit) {
       const before = text.slice(0, hit.start).trimEnd()
       const after = text.slice(hit.end).trimStart()
-      text = before && after ? `${before} ${after}` : before || after
+      const cut = before && after ? `${before} ${after}` : before || after
+      if (!cutKeepsOtherWords(text, cut, hit)) {
+        return args
+      }
+      text = cut
       hit = findBypassFlag(text, group.rawTokens)
     }
     const userSetsIt = LAUNCH_GRAMMARS.every((grammar) =>
