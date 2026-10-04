@@ -37,7 +37,7 @@ import { useStructuredAgentSessionRailOutline } from './use-structured-agent-ses
 import { useStructuredAgentSessionQueuedMessages } from './use-structured-agent-session-queued-messages'
 import { outboxOutsideQueuedCards } from './structured-agent-session-queued-cards'
 import { structuredAgentSessionStartFailureFacts } from '../../../../shared/structured-agent-session-recorded-rejection-words'
-import { structuredAgentSessionJournalShowsSubmission } from '../../../../shared/structured-agent-session-message-projection'
+import { structuredAgentSessionJournalShowsRejection } from '../../../../shared/structured-agent-session-message-projection'
 import { hostStatesTurnScopes } from '../../../../shared/native-chat-turn-membership'
 
 export type { StructuredPromptItem } from './structured-agent-session-message-projection'
@@ -194,8 +194,8 @@ export function useStructuredAgentSession(args: {
           outbox.length
         ),
         startFailures: () => structuredAgentSessionStartFailureFacts(stateRef.current.items),
-        recorded: (clientMessageId) =>
-          structuredAgentSessionJournalShowsSubmission(
+        shownNotSent: (clientMessageId) =>
+          structuredAgentSessionJournalShowsRejection(
             stateRef.current.submissions,
             clientMessageId
           ),

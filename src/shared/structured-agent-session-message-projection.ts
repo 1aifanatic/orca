@@ -66,19 +66,18 @@ export function structuredAgentSessionRejectedShownInPlace(
   return shown
 }
 
-/** Whether the loaded journal draws the send recorded under `clientMessageId` in the chat, where
- *  its row, not a reply, says how it went. */
-export function structuredAgentSessionJournalShowsSubmission(
+/** Whether the loaded journal already draws the send recorded under `clientMessageId` as not sent,
+ *  so its row, not a reply, says it failed. One still pending may yet be withdrawn and hidden. */
+export function structuredAgentSessionJournalShowsRejection(
   submissions: readonly AgentJournalSubmission[],
   clientMessageId: string
 ): boolean {
   const submission = submissions.find((entry) => entry.clientMessageId === clientMessageId)
   return (
-    submission !== undefined &&
-    (submission.dispatchState !== 'rejected' ||
-      structuredAgentSessionRejectedShownInPlace(submissions, []).has(
-        agentJournalSubmissionKey(clientMessageId)
-      ))
+    submission?.dispatchState === 'rejected' &&
+    structuredAgentSessionRejectedShownInPlace(submissions, []).has(
+      agentJournalSubmissionKey(clientMessageId)
+    )
   )
 }
 

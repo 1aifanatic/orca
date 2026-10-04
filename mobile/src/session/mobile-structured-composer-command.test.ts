@@ -33,7 +33,7 @@ function setup() {
       conversationCommands: ['clear', 'compact']
     },
     canRun: () => true,
-    recorded: () => false,
+    shownNotSent: () => false,
     onError: vi.fn(),
     timeoutMs: 15000
   }
@@ -137,11 +137,11 @@ describe('mobile structured conversation commands', () => {
         ? envelope.clientOperationId
         : undefined
     }
-    input.recorded = (clientMessageId) => clientMessageId === sentId()
+    input.shownNotSent = (clientMessageId) => clientMessageId === sentId()
     expect(await dispatchMobileStructuredCommand(input)).toBe('accepted')
     expect(input.onError).not.toHaveBeenCalled()
 
-    input.recorded = () => false
+    input.shownNotSent = () => false
     expect(await dispatchMobileStructuredCommand(input)).toBe('rejected')
     expect(input.onError).toHaveBeenCalledWith("This command didn't run.")
   })
