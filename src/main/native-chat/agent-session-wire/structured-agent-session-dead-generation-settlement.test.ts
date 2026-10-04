@@ -108,6 +108,7 @@ describe('dead structured-session generation settlement', () => {
     ])
     expect(snapshot.items.map((item) => item.body)).toEqual(
       expect.arrayContaining([
+        // An unverifiable end proves no interruption.
         expect.objectContaining({ kind: 'tool-call', state: 'failed' }),
         expect.objectContaining({
           kind: 'approval',
@@ -148,6 +149,21 @@ describe('dead structured-session generation settlement', () => {
             item.body.kind === 'status' && item.body.text === UNEXPECTED_PROVIDER_EXIT_OUTCOME
         )
     ).toHaveLength(1)
+  })
+
+  it('cuts short a call the proven death interrupted', async () => {
+    await seedUnfinishedWork()
+    await settleStructuredAgentSessionDeadGeneration({
+      journal,
+      sessionId: SESSION,
+      fence: 7,
+      settlementId: `provider-exit:${SESSION}:7:generation-1`,
+      pendingSubmissionReason: 'provider_exited_before_acknowledgement',
+      verdict: { state: 'interrupted', completedAt: 1_000 },
+      showUnexpectedExitOutcome: true
+    })
+    const tool = journal.snapshot().items.find((item) => item.body.kind === 'tool-call')
+    expect(tool?.body).toMatchObject({ state: 'failed', endedAs: 'interrupted' })
   })
 
   it('keeps a stderr wall out of the sentence, as a bounded detail for a log', async () => {

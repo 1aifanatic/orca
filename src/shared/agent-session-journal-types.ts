@@ -111,6 +111,11 @@ export type AgentJournalMessageItem = {
 
 export type AgentJournalToolCallState = 'running' | 'completed' | 'failed'
 
+/** How a call that did not finish on its own ended, finer than its `failed` state. Persisted and
+ *  open for growth: a reader that cannot place a value reads `state`. */
+export const AGENT_JOURNAL_TOOL_CALL_ENDINGS = ['interrupted'] as const
+export type AgentJournalToolCallEnding = (typeof AGENT_JOURNAL_TOOL_CALL_ENDINGS)[number]
+
 export type AgentJournalToolCallItem = NativeChatToolMetadata & {
   kind: 'tool-call'
   name: string
@@ -118,6 +123,9 @@ export type AgentJournalToolCallItem = NativeChatToolMetadata & {
   /** Provider-supplied identity within this item stream; optional for mixed-version peers. */
   callId?: string
   state: AgentJournalToolCallState
+  /** Only beside `state: 'failed'`, which builds that predate it read as they always did. Read
+   *  both through `agentJournalToolCallLifecycle`. */
+  endedAs?: AgentJournalToolCallEnding
   output?: AgentJournalBoundedPayload
 }
 

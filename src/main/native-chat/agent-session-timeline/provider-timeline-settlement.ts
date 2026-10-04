@@ -6,6 +6,7 @@
 // answered a moment earlier stays answered, a row a previous assembler opened is settled too, and
 // a second settlement finds nothing left to do.
 
+import { endedRunningAgentJournalToolCall } from '../../../shared/agent-journal-tool-call-lifecycle'
 import { parseAgentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
@@ -38,10 +39,11 @@ export type ProviderTimelineTurnEnd =
 
 /** What a row still open when its turn or the session ends becomes; null when it already stands. */
 export function settledProviderTimelineBody(
-  body: AgentJournalItemBody
+  body: AgentJournalItemBody,
+  end: ProviderTimelineTurnEnd
 ): AgentJournalItemBody | null {
   if (body.kind === 'tool-call') {
-    return body.state === 'running' ? { ...body, state: 'failed' } : null
+    return body.state === 'running' ? endedRunningAgentJournalToolCall(body, end.state) : null
   }
   if (body.kind === 'approval' || body.kind === 'question') {
     return body.resolution.state === 'pending' ? cancelledJournalPromptBody(body) : null
@@ -93,7 +95,7 @@ export function providerTimelineSettlement(
     // Background tasks outlive turns; only the session's end leaves them past seeing.
     const settled = !covered
       ? null
-      : (settledProviderTimelineBody(body) ??
+      : (settledProviderTimelineBody(body, end) ??
         (scope === 'session' ? lostProviderTimelineBackgroundTasks(body) : null))
     const identity = settled ? parseAgentJournalItemKey(itemId) : null
     if (settled && identity) {
