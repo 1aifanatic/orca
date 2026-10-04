@@ -9,10 +9,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type * as LaunchResolution from '../claude/claude-structured-launch-resolution'
 import type * as ClaudeRuntimeAdapter from './structured-claude-runtime-adapter'
 
-const captured = vi.hoisted(() => ({
-  adapter: [] as { attachmentDirectory?: string }[],
-  resolver: [] as { attachmentDirectory?: string }[]
-}))
+type GrantDeps = { attachmentDirectory?: string }
+
+const captured = vi.hoisted(() => {
+  const adapter: GrantDeps[] = []
+  const resolver: GrantDeps[] = []
+  return { adapter, resolver }
+})
 
 vi.mock('./structured-claude-runtime-adapter', async (importOriginal) => {
   const actual = await importOriginal<typeof ClaudeRuntimeAdapter>()
