@@ -51,6 +51,7 @@ import {
   writeBufferViaSystemSsh
 } from './system-ssh-file-binary-transfer'
 import { waitForChannelClose } from './system-ssh-operation-lifecycle'
+import * as windowsFileWrite from './system-ssh-windows-file-write'
 import { getRemoteHostPlatform } from './ssh-remote-platform'
 import {
   clearWindowsRemoteWriteCapabilitiesForTests,
@@ -106,6 +107,8 @@ const sftpBatches: RecordedSftpBatch[] = []
 const commands: RecordedCommand[] = []
 /** Index of the exec that should report a non-zero exit, to model a chunk failing mid-file. */
 let failAtSpawn = -1
+let failedWriteExit = 1
+let failedWriteStderr = ''
 let localDir: string
 
 const fileWrites = (): RecordedCommand[] =>
@@ -177,6 +180,8 @@ beforeEach(() => {
   commands.length = 0
   sftpBatches.length = 0
   failAtSpawn = -1
+  failedWriteExit = 1
+  failedWriteStderr = ''
   clearWindowsRemoteWriteCapabilitiesForTests()
   waitForChannelCloseSpy.mockClear()
   localDir = mkdtempSync(join(tmpdir(), 'orca-win-upload-'))
@@ -192,9 +197,14 @@ beforeEach(() => {
         executable: command.split(' ')[0] ?? '',
         stdin: channel.written
       })
-      setImmediate(() =>
-        spawnIndex === failAtSpawn ? channel.emit('close', 1, null) : channel.emit('close', 0, null)
-      )
+      setImmediate(() => {
+        if (spawnIndex === failAtSpawn) {
+          channel.stderr.write(failedWriteStderr)
+          channel.emit('close', failedWriteExit, null)
+        } else {
+          channel.emit('close', 0, null)
+        }
+      })
     })
   })
 })
@@ -623,6 +633,55 @@ describe('Windows upload on a host with no sftp subsystem', () => {
     expect(fileWrites().length).toBeGreaterThan(0)
     expect(fileWrites().map(writtenPath)).not.toContain(`${remoteRoot}/relay.js`)
     expect(commands.some((command) => command.script.includes('::Move('))).toBe(false)
+  })
+
+  it.each([
+    ['relay.js', 'aabb9009eeff'],
+    ['relay-9009.js', 'aabbccddeeff'],
+    ['relay-CommandNotFoundException.js', 'aabbccddeeff'],
+    ['is not recognized as an internal or external command.js', 'aabbccddeeff']
+  ])('propagates a failed write whose path contains absence-like text: %s', async (file, nonce) => {
+    const remotePath = `${remoteRoot}/${file}`
+    const staging = vi
+      .spyOn(windowsFileWrite, 'makeWindowsStagingPath')
+      .mockImplementation((path) => `${path}${WINDOWS_STAGED_WRITE_SUFFIX}-${nonce}`)
+    writeFileSync(join(localDir, file), Buffer.alloc(WINDOWS_STDIN_WRITE_CHUNK_BYTES * 3))
+    failAtSpawn = 0
+    try {
+      await expect(
+        uploadFileViaSystemSsh(target, join(localDir, file), remotePath, { hostPlatform })
+      ).rejects.toThrow('failed (exit 1)')
+
+      expect(fileWrites().map((write) => write.executable)).toEqual(['pwsh.exe'])
+      expect(getWindowsRemoteWriteCapabilities(target).shouldTry('pwsh')).toBe(true)
+      expect(commands.some((command) => command.script.includes('::Move('))).toBe(false)
+    } finally {
+      staging.mockRestore()
+    }
+  })
+
+  it.each([
+    [9009, ''],
+    [1, "'pwsh.exe' is not recognized as an internal or external command"],
+    [1, 'CommandNotFoundException: pwsh.exe']
+  ])('falls back on an actual missing PowerShell 7 signal: %s %s', async (exit, stderr) => {
+    writeFileSync(join(localDir, 'relay.js'), Buffer.alloc(WINDOWS_STDIN_WRITE_CHUNK_BYTES * 3))
+    failAtSpawn = 0
+    failedWriteExit = exit
+    failedWriteStderr = stderr
+
+    await uploadFileViaSystemSsh(target, join(localDir, 'relay.js'), `${remoteRoot}/relay.js`, {
+      hostPlatform
+    })
+
+    expect(fileWrites().map((write) => write.executable)).toEqual([
+      'pwsh.exe',
+      'powershell.exe',
+      'powershell.exe',
+      'powershell.exe'
+    ])
+    expect(getWindowsRemoteWriteCapabilities(target).shouldTry('pwsh')).toBe(false)
+    expect(commands.some((command) => command.script.includes('::Move('))).toBe(true)
   })
 })
 
