@@ -97,14 +97,11 @@ function jobHost(purged: string[], stopPtys = vi.fn(async () => {})) {
 
 /** Delete on the row, as desktop and runtime run it: Git's listing first, then the retry. */
 async function deleteRow(purged: string[], stopPtys = vi.fn(async () => {})): Promise<unknown> {
-  const retried = await retryFailedRemovalUnlessRegistered(
-    worktreeId,
-    worktreePath,
-    await listWorktreesStrict(repoPath),
-    () =>
-      retryFailedWorktreeRemoval(worktreeId, 'local', (record) =>
-        interruptedLocalWorktreeRemovalJob(record, jobHost(purged, stopPtys))
-      )
+  const listed = await listWorktreesStrict(repoPath)
+  const retried = await retryFailedRemovalUnlessRegistered(worktreeId, worktreePath, listed, () =>
+    retryFailedWorktreeRemoval(worktreeId, 'local', (record) =>
+      interruptedLocalWorktreeRemovalJob(record, jobHost(purged, stopPtys))
+    )
   ).catch((reason: unknown) => reason)
   if (retried !== true) {
     return retried
