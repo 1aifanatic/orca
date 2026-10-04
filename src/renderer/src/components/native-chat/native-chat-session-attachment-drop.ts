@@ -104,7 +104,7 @@ export async function attachNativeChatSessionAttachmentPaths(args: {
       references.push(storedPath)
     }
   }
-  // Attaching clears the notice, so what failed is said after.
+  // Inserting at the caret clears the notice, so what failed is said after.
   if (references.length > 0) {
     args.chips.attachReferences(references)
   }

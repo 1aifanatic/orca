@@ -83,12 +83,16 @@ export function useNativeChatPasteLifetime(args: {
         if (id) {
           track(id, '', owner)
         }
+        // Through the scope's cache, so it shows even in a composer that came back since.
         const reveal = (): void => {
-          if (id && lifetime.active) {
-            const previewUrl = URL.createObjectURL(imageFile)
-            lifetime.pending.set(id, previewUrl)
-            revealPendingImageAttachment?.(id, previewUrl)
+          if (!id) {
+            return
           }
+          const previewUrl = lifetime.active ? URL.createObjectURL(imageFile) : undefined
+          if (previewUrl) {
+            lifetime.pending.set(id, previewUrl)
+          }
+          revealPendingImageAttachment?.(id, previewUrl)
         }
         return { id, reveal }
       }

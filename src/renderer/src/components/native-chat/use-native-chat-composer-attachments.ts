@@ -1,5 +1,12 @@
 import type { NativeChatComposerInput } from './native-chat-composer-input'
-import { useCallback, useMemo, useRef, useSyncExternalStore, type RefObject } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+  type RefObject
+} from 'react'
 import {
   nativeChatComposerTargetIsRemote,
   type NativeChatResolvedTarget
@@ -90,6 +97,13 @@ export function useNativeChatComposerAttachments({
     [cached]
   )
   const imageAttachmentCounter = useRef(0)
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   const updateImageAttachments = useCallback(
     (
@@ -228,17 +242,25 @@ export function useNativeChatComposerAttachments({
       begin: beginPendingImageAttachment,
       resolve: resolvePendingImageAttachment,
       drop: dropPendingImageAttachment,
-      // Into the scope's draft, which keeps it through a composition or a remount.
-      attachReferences: (paths) =>
+      // At the caret, as every attach does; mid-composition or once the composer is gone, into the
+      // scope's draft, which keeps it until the composition settles or the composer comes back.
+      attachReferences: (paths) => {
+        if (mountedRef.current && !isComposing()) {
+          attachResolvedPaths(paths, null)
+          return
+        }
         appendNativeChatDraftCache(
           attachmentScopeKey,
           paths.map(formatNativeChatFileReference).join(' ')
         )
+      }
     }),
     [
+      attachResolvedPaths,
       attachmentScopeKey,
       beginPendingImageAttachment,
       dropPendingImageAttachment,
+      isComposing,
       resolvePendingImageAttachment
     ]
   )

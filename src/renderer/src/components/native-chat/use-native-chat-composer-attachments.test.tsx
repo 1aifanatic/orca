@@ -520,6 +520,16 @@ describe('useNativeChatComposerAttachments', () => {
     act(() => back.root.unmount())
   })
 
+  it('inserts a stored file at the caret while the composer is showing and not composing', async () => {
+    const probe = await renderProbe('pty-caret', true)
+    act(() =>
+      probe.latest().pendingChips.attachReferences(['/srv/agent-session-attachments/u6/a.pdf'])
+    )
+    expect(probe.draft()).toBe('@/srv/agent-session-attachments/u6/a.pdf ')
+    expect(readNativeChatDraftCache('pty-caret')).toBe('')
+    act(() => probe.root.unmount())
+  })
+
   it('keeps a stored file whose reference is held for an input-method composition across a remount', async () => {
     let composing = true
     const probe = await renderProbe('pty-ime', true, { isComposing: () => composing })

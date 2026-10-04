@@ -193,6 +193,8 @@ describe('a paste into a chat on a paired server', () => {
 
   it('still holds Send when the composer returns before the upload has finished', async () => {
     const finishUpload = holdUpload()
+    // Something typed, so only the pending image can hold Send.
+    writeNativeChatDraftCache(PANE, 'look at this')
     const first = render(composer())
     await act(async () => mocks.state.fieldProps?.onPaste?.(imagePaste()))
     first.unmount()
@@ -219,5 +221,36 @@ describe('a paste into a chat on a paired server', () => {
 
     // The text is in; the image is not yet anywhere, but it is owed to this message.
     expect(mocks.state.fieldProps?.sendButtonDisabled).toBe(true)
+  })
+
+  it("shows a rich-text paste's image once the server answers, even in a composer that came back", async () => {
+    const prepared = Promise.withResolvers<unknown>()
+    mocks.prepare.mockReturnValue(prepared.promise)
+    const finishUpload = holdUpload()
+    writeNativeChatDraftCache(PANE, 'look at this caption')
+    const first = render(composer())
+    await act(async () => mocks.state.fieldProps?.onPaste?.(imagePaste('caption')))
+    // A prompt card replaces the composer while the server is still being asked.
+    first.unmount()
+    render(composer())
+    expect(mocks.state.fieldProps?.sendButtonDisabled).toBe(true)
+
+    await act(async () =>
+      prepared.resolve({
+        ok: true,
+        target: {
+          environmentId: 'env-1',
+          sessionId: 'session-1',
+          expectedEnvironmentPairingRevision: 1,
+          expectedEnvironmentRuntimeId: 'runtime-a'
+        }
+      })
+    )
+    // Shown, so the user can see it and remove it while it uploads.
+    expect(mocks.state.fieldProps?.imageAttachments).toMatchObject([{ pending: true }])
+    expect(mocks.state.fieldProps?.imageAttachments?.[0]).not.toHaveProperty('hidden')
+
+    await act(async () => finishUpload(STORED))
+    expect(mocks.state.fieldProps?.imageAttachments).toMatchObject([{ path: STORED }])
   })
 })
