@@ -333,6 +333,24 @@ function render(props: Record<string, unknown> = {}): unknown {
   )
 }
 
+/** One eligible terminal agent, the target the send tests pick. */
+function seedEligibleTerminalTarget(): void {
+  setStore({
+    tabsByWorktree: { 'wt-1': [tab(TAB_A, { title: 'Terminal 1' })] },
+    terminalLayoutsByTabId: { [TAB_A]: leafLayout(LEAF_A, 'pty-a') }
+  })
+  harness.noteTargets = [
+    {
+      paneKey: makePaneKey(TAB_A, LEAF_A),
+      tabId: TAB_A,
+      messageTarget: { kind: 'terminal', tabId: TAB_A, leafId: LEAF_A },
+      agentType: 'claude',
+      tabTitle: 'Terminal 1',
+      status: 'eligible'
+    }
+  ]
+}
+
 async function flushMicrotasks(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0))
 }
@@ -650,7 +668,7 @@ describe('ReviewNotesSendMenuContent', () => {
   it('sends notes to the chosen agent and tracks the send once it succeeds', async () => {
     const statusPaneKey = makePaneKey(TAB_A, LEAF_A)
     const onPromptDelivered = vi.fn()
-    const onPromptHandedOff = vi.fn()
+    const notesHandOff = { carriedNoteKeys: ['note-a'], handOff: vi.fn() }
     setStore({
       tabsByWorktree: { 'wt-1': [tab(TAB_A, { title: 'Terminal 1' })] },
       terminalLayoutsByTabId: { [TAB_A]: leafLayout(LEAF_A, 'pty-a') }
@@ -666,14 +684,15 @@ describe('ReviewNotesSendMenuContent', () => {
       }
     ]
 
-    const tree = render({ onPromptDelivered, onPromptHandedOff })
+    const tree = render({ onPromptDelivered, notesHandOff })
     ;(findByType(tree, 'DropdownMenuItem').props.onSelect as () => void)()
     await flushMicrotasks()
 
     expect(harness.sendMessageToAgent).toHaveBeenCalledWith({
       worktreeId: 'wt-1',
       prompt: 'my notes',
-      target: { kind: 'terminal', tabId: TAB_A, leafId: LEAF_A }
+      target: { kind: 'terminal', tabId: TAB_A, leafId: LEAF_A },
+      carriedNoteKeys: ['note-a']
     })
     expect(onPromptDelivered).toHaveBeenCalledTimes(1)
     expect(harness.track).toHaveBeenCalledWith('agent_prompt_sent', {
@@ -682,29 +701,28 @@ describe('ReviewNotesSendMenuContent', () => {
       request_kind: 'followup'
     })
     // The notes are held from the hand-off until this send's own outcome, after its delivery.
-    expect(onPromptHandedOff).toHaveBeenCalledOnce()
-    await onPromptHandedOff.mock.calls[0][0]
+    expect(notesHandOff.handOff).toHaveBeenCalledOnce()
+    await notesHandOff.handOff.mock.calls[0][0]
     expect(onPromptDelivered).toHaveBeenCalledTimes(1)
   })
 
+  // A chat saves the notes' keys with its message and clears them once the host has it.
+  it('leaves notes a chat queued with their keys to that chat, not cleared at once', async () => {
+    const onPromptDelivered = vi.fn()
+    harness.sendMessageToAgent.mockResolvedValue({ status: 'sent', notesHeldByChat: true })
+    seedEligibleTerminalTarget()
+
+    const tree = render({ onPromptDelivered })
+    ;(findByType(tree, 'DropdownMenuItem').props.onSelect as () => void)()
+    await flushMicrotasks()
+
+    expect(onPromptDelivered).not.toHaveBeenCalled()
+  })
+
   it('keeps selected-target note failures undelivered and uses selected wording', async () => {
-    const statusPaneKey = makePaneKey(TAB_A, LEAF_A)
     const onPromptDelivered = vi.fn()
     harness.sendMessageToAgent.mockResolvedValue({ status: 'not-ready' })
-    setStore({
-      tabsByWorktree: { 'wt-1': [tab(TAB_A, { title: 'Terminal 1' })] },
-      terminalLayoutsByTabId: { [TAB_A]: leafLayout(LEAF_A, 'pty-a') }
-    })
-    harness.noteTargets = [
-      {
-        paneKey: statusPaneKey,
-        tabId: TAB_A,
-        messageTarget: { kind: 'terminal', tabId: TAB_A, leafId: LEAF_A },
-        agentType: 'claude',
-        tabTitle: 'Terminal 1',
-        status: 'eligible'
-      }
-    ]
+    seedEligibleTerminalTarget()
 
     const tree = render({ onPromptDelivered })
     ;(findByType(tree, 'DropdownMenuItem').props.onSelect as () => void)()
@@ -720,23 +738,9 @@ describe('ReviewNotesSendMenuContent', () => {
   })
 
   it('keeps selected-target thrown send errors undelivered', async () => {
-    const statusPaneKey = makePaneKey(TAB_A, LEAF_A)
     const onPromptDelivered = vi.fn()
     harness.sendMessageToAgent.mockRejectedValue(new Error('runtime unavailable'))
-    setStore({
-      tabsByWorktree: { 'wt-1': [tab(TAB_A, { title: 'Terminal 1' })] },
-      terminalLayoutsByTabId: { [TAB_A]: leafLayout(LEAF_A, 'pty-a') }
-    })
-    harness.noteTargets = [
-      {
-        paneKey: statusPaneKey,
-        tabId: TAB_A,
-        messageTarget: { kind: 'terminal', tabId: TAB_A, leafId: LEAF_A },
-        agentType: 'claude',
-        tabTitle: 'Terminal 1',
-        status: 'eligible'
-      }
-    ]
+    seedEligibleTerminalTarget()
 
     const tree = render({ onPromptDelivered })
     ;(findByType(tree, 'DropdownMenuItem').props.onSelect as () => void)()
@@ -859,15 +863,15 @@ describe('ReviewNotesSendMenuContent', () => {
   })
 
   it('always offers the new-agent launcher', () => {
-    const onPromptHandedOff = vi.fn()
-    const tree = render({ onPromptHandedOff })
+    const notesHandOff = { carriedNoteKeys: ['note-a'], handOff: vi.fn() }
+    const tree = render({ notesHandOff })
 
     expect(findByType(tree, 'QuickLaunchAgentMenuItems').props).toMatchObject({
       worktreeId: 'wt-1',
       groupId: 'group-1',
       prompt: 'my notes',
       launchSource: 'notes_send',
-      onPromptHandedOff
+      notesHandOff
     })
   })
 

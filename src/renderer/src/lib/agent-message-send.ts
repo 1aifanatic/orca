@@ -11,6 +11,8 @@ export async function sendMessageToAgent(args: {
   worktreeId: string
   target: AgentMessageTarget
   prompt: string
+  /** Send keys of the notes the prompt was built from; a chat saves them with its message. */
+  carriedNoteKeys?: readonly string[]
 }): Promise<ActiveAgentNotesSendResult> {
   const { target, worktreeId } = args
   const prompt = args.prompt.trim()
@@ -26,9 +28,18 @@ export async function sendMessageToAgent(args: {
   }
   // Why: queued on the chat's own outbox, as its composer does, so the message shows in the
   // chat and a failed send stays there with Retry. The open chat delivers it.
-  if (!appendStructuredAgentSessionOutboxMessage(target.sessionId, prompt)) {
+  const carriedNoteKeys = args.carriedNoteKeys ?? []
+  if (
+    !appendStructuredAgentSessionOutboxMessage(
+      target.sessionId,
+      prompt,
+      [],
+      undefined,
+      carriedNoteKeys
+    )
+  ) {
     return { status: 'not-writable', code: 'session-outbox-unsaved' }
   }
   relaunchFailedStructuredAgentSessionForMessage(worktreeId, target.sessionId)
-  return { status: 'sent' }
+  return carriedNoteKeys.length > 0 ? { status: 'sent', notesHeldByChat: true } : { status: 'sent' }
 }

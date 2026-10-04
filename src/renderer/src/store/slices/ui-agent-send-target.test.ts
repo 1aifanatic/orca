@@ -282,7 +282,7 @@ describe('createUISlice agent send target mode', () => {
   it('sends to the live leaf PTY, runs delivery callback, tracks followup, and closes', async () => {
     const store = createAgentSendStore()
     const onPromptDelivered = vi.fn()
-    const onPromptHandedOff = vi.fn()
+    const notesHandOff = { carriedNoteKeys: [], handOff: vi.fn() }
     seedAgentSendState(store)
     store.getState().openAgentSendPopoverTargetMode({
       id: 'send-1',
@@ -292,14 +292,14 @@ describe('createUISlice agent send target mode', () => {
       label: 'All unsent notes',
       launchSource: 'notes_send',
       onPromptDelivered,
-      onPromptHandedOff
+      notesHandOff
     })
 
     await expect(store.getState().sendPromptToSidebarAgentTarget(readyPaneKey)).resolves.toBe(true)
 
     // The notes leave the next send for exactly this send's lifetime.
-    expect(onPromptHandedOff).toHaveBeenCalledOnce()
-    await expect(onPromptHandedOff.mock.calls[0][0]).resolves.toMatchObject({ status: 'sent' })
+    expect(notesHandOff.handOff).toHaveBeenCalledOnce()
+    await expect(notesHandOff.handOff.mock.calls[0][0]).resolves.toMatchObject({ status: 'sent' })
 
     expect(mocks.sendNotesToActiveAgentSession).toHaveBeenCalledWith({
       worktreeId,
@@ -395,7 +395,10 @@ describe('createUISlice agent send target mode', () => {
 
     expect(mocks.appendStructuredAgentSessionOutboxMessage).toHaveBeenCalledWith(
       'claude_1',
-      'Review this'
+      'Review this',
+      [],
+      undefined,
+      []
     )
     expect(mocks.relaunchFailedStructuredAgentSessionForMessage).toHaveBeenCalledWith(
       worktreeId,
@@ -406,9 +409,48 @@ describe('createUISlice agent send target mode', () => {
     expect(mocks.toastSuccess).toHaveBeenCalledWith('Sent to Claude')
   })
 
+  // The chat saves the notes' keys with its message and clears them once the host has it.
+  it('queues notes on a structured chat with their keys, leaving them for that chat to clear', async () => {
+    const store = createAgentSendStore()
+    const onPromptDelivered = vi.fn()
+    const now = Date.now()
+    seedChatState(store, {
+      [chatPaneKey]: {
+        state: 'done',
+        prompt: 'previous',
+        updatedAt: now,
+        stateStartedAt: now,
+        agentType: 'claude',
+        paneKey: chatPaneKey,
+        stateHistory: []
+      }
+    })
+    store.getState().openAgentSendPopoverTargetMode({
+      id: 'send-1',
+      worktreeId,
+      source: 'diff-notes',
+      prompt: 'Review this',
+      label: 'All unsent notes',
+      launchSource: 'notes_send',
+      onPromptDelivered,
+      notesHandOff: { carriedNoteKeys: ['note-a'], handOff: vi.fn() }
+    })
+
+    await expect(store.getState().sendPromptToSidebarAgentTarget(chatPaneKey)).resolves.toBe(true)
+
+    expect(mocks.appendStructuredAgentSessionOutboxMessage).toHaveBeenCalledWith(
+      'claude_1',
+      'Review this',
+      [],
+      undefined,
+      ['note-a']
+    )
+    expect(onPromptDelivered).not.toHaveBeenCalled()
+  })
+
   it('sends nothing to a sidebar agent when every note is already on its way', async () => {
     const store = createAgentSendStore()
-    const onPromptHandedOff = vi.fn()
+    const notesHandOff = { carriedNoteKeys: [], handOff: vi.fn() }
     seedAgentSendState(store)
     store.getState().openAgentSendPopoverTargetMode({
       id: 'send-1',
@@ -417,13 +459,13 @@ describe('createUISlice agent send target mode', () => {
       prompt: '',
       label: 'All unsent notes',
       launchSource: 'notes_send',
-      onPromptHandedOff
+      notesHandOff
     })
 
     await expect(store.getState().sendPromptToSidebarAgentTarget(readyPaneKey)).resolves.toBe(false)
 
     expect(mocks.sendNotesToActiveAgentSession).not.toHaveBeenCalled()
-    expect(onPromptHandedOff).not.toHaveBeenCalled()
+    expect(notesHandOff.handOff).not.toHaveBeenCalled()
   })
 
   it('keeps target mode open and does not run delivery callback when send fails', async () => {

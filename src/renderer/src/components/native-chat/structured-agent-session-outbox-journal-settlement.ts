@@ -33,8 +33,10 @@ export function settleStructuredAgentSessionOutboxFromJournal(
   const current = getStructuredAgentSessionOutbox(sessionId)
   let entries = current
   const returned: NonNullable<StructuredAgentSessionSettledOutbox['returned']>[] = []
-  const settled: { clientMessageId: string; settlement: StructuredAgentSessionSendSettlement }[] =
-    []
+  const settled: {
+    entry: StructuredAgentSessionOutboxEntry
+    settlement: StructuredAgentSessionSendSettlement
+  }[] = []
   for (const entry of current) {
     const settlement = settleStructuredAgentSessionEntryFromJournal(entry, reading)
     if (settlement) {
@@ -44,7 +46,7 @@ export function settleStructuredAgentSessionOutboxFromJournal(
         settlement
       )
       entries = next.entries
-      settled.push({ clientMessageId: entry.clientMessageId, settlement })
+      settled.push({ entry, settlement })
       if (next.returned) {
         returned.push(next.returned)
       }
@@ -53,10 +55,10 @@ export function settleStructuredAgentSessionOutboxFromJournal(
   if (entries === current) {
     return entries
   }
-  for (const { clientMessageId, settlement } of settled) {
+  for (const { entry, settlement } of settled) {
     const ending = structuredAgentSessionSettlementEnding(settlement)
     if (ending) {
-      endStructuredAgentSessionEntry(sessionId, clientMessageId, ending)
+      endStructuredAgentSessionEntry(entry, ending)
     }
   }
   // Each returned message goes to the draft before the outbox that drops it is saved.
@@ -67,8 +69,8 @@ export function settleStructuredAgentSessionOutboxFromJournal(
     }
   }
   commitStructuredAgentSessionOutbox(sessionId, entries)
-  for (const { clientMessageId, settlement } of settled) {
-    sayStructuredAgentSessionSettlement(sessionId, clientMessageId, settlement)
+  for (const { entry, settlement } of settled) {
+    sayStructuredAgentSessionSettlement(sessionId, entry.clientMessageId, settlement)
   }
   return entries
 }

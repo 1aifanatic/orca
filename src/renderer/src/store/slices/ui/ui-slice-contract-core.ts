@@ -10,6 +10,7 @@ import type { LaunchSource } from '../../../../../shared/telemetry-events'
 import type { TaskSourceContext } from '../../../../../shared/task-source-context'
 import type { ExecutionHostId } from '../../../../../shared/execution-host'
 import type { TaskResumeState, TopLevelView } from '../../../../../shared/ui-chrome-types'
+import type { NotesSendHandOff } from '@/lib/notes-send-in-flight'
 
 export type PendingSidebarWorktreeReveal = {
   worktreeId: string
@@ -39,8 +40,9 @@ export type AgentSendPopoverTargetMode = {
   sendingPaneKey?: string
   error?: string
   onPromptDelivered?: () => void
-  /** Told the send's own result the moment the prompt is handed to an agent. */
-  onPromptHandedOff?: (delivered: Promise<unknown>) => void
+  /** The notes the prompt was built from: a chat saves their keys with its message, and the send's
+   *  own result holds them the moment the prompt is handed to an agent. */
+  notesHandOff?: NotesSendHandOff
 }
 
 export type OpenAgentSendPopoverTargetModeArgs = {
@@ -51,7 +53,7 @@ export type OpenAgentSendPopoverTargetModeArgs = {
   label: string
   launchSource: LaunchSource
   onPromptDelivered?: () => void
-  onPromptHandedOff?: (delivered: Promise<unknown>) => void
+  notesHandOff?: NotesSendHandOff
 }
 
 export type TaskPageData = {

@@ -34,6 +34,7 @@ import { useWorktreeAgentRows } from '@/components/sidebar/useWorktreeAgentRows'
 import type { LaunchSource } from '../../../../shared/telemetry-events'
 import { agentRowDisplayDotState } from '@/lib/agent-row-dot-state'
 import { translate } from '@/i18n/i18n'
+import type { NotesSendHandOff } from '@/lib/notes-send-in-flight'
 
 type OrderedSendTarget = {
   target: NotesSendAgentTarget
@@ -47,7 +48,7 @@ export function ReviewNotesSendMenuContent({
   promptDelivery = 'submit-after-ready',
   launchSource = 'notes_send',
   onPromptDelivered,
-  onPromptHandedOff
+  notesHandOff
 }: {
   worktreeId: string
   groupId: string
@@ -55,8 +56,9 @@ export function ReviewNotesSendMenuContent({
   promptDelivery?: 'auto-submit' | 'draft' | 'submit-after-ready'
   launchSource?: LaunchSource
   onPromptDelivered?: () => void
-  /** Given each send's own result the moment its prompt is handed to an agent. */
-  onPromptHandedOff?: (delivered: Promise<unknown>) => void
+  /** The notes the prompt was built from: a chat saves their keys with its message, and each
+   *  send's own result holds them the moment the prompt is handed to an agent. */
+  notesHandOff?: NotesSendHandOff
 }): React.JSX.Element {
   const hasPrompt = prompt.trim().length > 0
 
@@ -105,7 +107,7 @@ export function ReviewNotesSendMenuContent({
   const runNotesSend = useCallback(
     (
       send: () => Promise<ActiveAgentNotesSendResult>,
-      onSent: () => void,
+      onSent: (result: ActiveAgentNotesSendResult) => void,
       options: { explicitTarget?: boolean } = {}
     ) => {
       // Why: settle the loading toast in place; a separate dismiss can land before sonner mounts
@@ -120,7 +122,7 @@ export function ReviewNotesSendMenuContent({
       const sending = send()
         .then((result) => {
           if (result.status === 'sent') {
-            onSent()
+            onSent(result)
             toast.success(
               translate(
                 'auto.components.editor.ReviewNotesSendMenuContent.bb9c69a0c9',
@@ -150,9 +152,9 @@ export function ReviewNotesSendMenuContent({
             { id: pending }
           )
         })
-      onPromptHandedOff?.(sending)
+      notesHandOff?.handOff(sending)
     },
-    [onPromptHandedOff]
+    [notesHandOff]
   )
 
   const sendToAgentTarget = useCallback(
@@ -168,9 +170,18 @@ export function ReviewNotesSendMenuContent({
       }
 
       runNotesSend(
-        () => sendMessageToAgent({ worktreeId, prompt, target: target.messageTarget }),
-        () => {
-          onPromptDelivered?.()
+        () =>
+          sendMessageToAgent({
+            worktreeId,
+            prompt,
+            target: target.messageTarget,
+            ...(notesHandOff ? { carriedNoteKeys: notesHandOff.carriedNoteKeys } : {})
+          }),
+        (result) => {
+          // A chat holding the notes with its message clears them once the host has it.
+          if (!result.notesHeldByChat) {
+            onPromptDelivered?.()
+          }
           // Why: mirror the sidebar send-target telemetry so dropdown-routed
           // follow-up notes show up identically on `agent_prompt_sent`.
           track('agent_prompt_sent', {
@@ -182,7 +193,7 @@ export function ReviewNotesSendMenuContent({
         { explicitTarget: true }
       )
     },
-    [hasPrompt, runNotesSend, worktreeId, prompt, onPromptDelivered, launchSource]
+    [hasPrompt, runNotesSend, worktreeId, prompt, notesHandOff, onPromptDelivered, launchSource]
   )
 
   return (
@@ -212,7 +223,7 @@ export function ReviewNotesSendMenuContent({
         promptDelivery={promptDelivery}
         launchSource={launchSource}
         onPromptDelivered={onPromptDelivered}
-        onPromptHandedOff={onPromptHandedOff}
+        notesHandOff={notesHandOff}
         disabled={!hasPrompt}
       />
     </>

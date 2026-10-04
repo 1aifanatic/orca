@@ -155,7 +155,7 @@ export function settleStructuredAgentSessionOutboxEntry(
   }
   const ending = structuredAgentSessionSettlementEnding(settlement)
   if (ending) {
-    endStructuredAgentSessionEntry(sessionId, clientMessageId, ending)
+    endStructuredAgentSessionEntry(entry, ending)
   }
   // A send a Stop outran never goes again: no answer leaves it waiting for the Stop's.
   const kept =

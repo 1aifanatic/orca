@@ -2,7 +2,7 @@ import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildNotesSendTargetModeId, NotesSendMenu } from './NotesSendMenu'
 import type { DiffCommentDeliverySnapshot } from '@/store/slices/diffComments'
-import { resetNotesInFlightForTests } from '@/lib/notes-send-in-flight'
+import { diffCommentSendKey, resetNotesInFlightForTests } from '@/lib/notes-send-in-flight'
 
 type ReactElementLike = {
   type: unknown
@@ -475,13 +475,21 @@ describe('NotesSendMenu notes in flight', () => {
     }
     return callback(...args)
   }
+  const handOffOf = (props: Record<string, unknown>): Record<string, unknown> => {
+    const handOff = props.notesHandOff
+    if (typeof handOff !== 'object' || handOff === null) {
+      throw new Error('notesHandOff is missing')
+    }
+    return { ...handOff }
+  }
   const contentProps = (tree: unknown) => {
     const props = findByType(tree, 'ReviewNotesSendMenuContent').props
     return {
       prompt: props.prompt,
+      carriedNoteKeys: handOffOf(props).carriedNoteKeys,
       onPromptDelivered: () => invoke(props, 'onPromptDelivered'),
       onPromptHandedOff: (delivered: Promise<unknown>) =>
-        invoke(props, 'onPromptHandedOff', delivered)
+        invoke(handOffOf(props), 'handOff', delivered)
     }
   }
 
@@ -522,7 +530,10 @@ describe('NotesSendMenu notes in flight', () => {
     invoke(findByType(tree, 'DropdownMenu').props, 'onOpenChange', true)
 
     expect(storeMocks.openAgentSendPopoverTargetMode).toHaveBeenCalledWith(
-      expect.objectContaining({ prompt: 'note-b', onPromptHandedOff: expect.any(Function) })
+      expect.objectContaining({
+        prompt: 'note-b',
+        notesHandOff: expect.objectContaining({ handOff: expect.any(Function) })
+      })
     )
   })
 
@@ -561,15 +572,13 @@ describe('NotesSendMenu notes in flight', () => {
     expect(findByType(tree, 'button').props.title).toBe('Sending…')
   })
 
-  // A failed new chat's Retry delivers them after the send's own callback is gone.
-  it('clears notes whose send reports delivery later', async () => {
-    const onDelivered = vi.fn()
-    const delivered = Promise.resolve({ delivered: true })
-    contentProps(renderMenu({ scopes: scopeOf([noteA]), onDelivered })).onPromptHandedOff(delivered)
-
-    await delivered
-    await Promise.resolve()
-
-    expect(onDelivered).toHaveBeenCalledWith([noteA])
+  // The keys a chat saves with its message name the notes' workspace, so they find them again
+  // after a reload.
+  it('hands the route the keys of exactly the notes it sends', () => {
+    const { carriedNoteKeys } = contentProps(renderMenu({ scopes: scopeOf([noteA, noteB]) }))
+    expect(carriedNoteKeys).toEqual([
+      diffCommentSendKey('wt-1', noteA),
+      diffCommentSendKey('wt-1', noteB)
+    ])
   })
 })

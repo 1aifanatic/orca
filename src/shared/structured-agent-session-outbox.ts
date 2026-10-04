@@ -42,6 +42,9 @@ export type StructuredAgentSessionOutboxEntry = {
   /** Saved by an older build that held it for a Retry this build no longer has: it never goes out
    *  again on its own (the person was told it did not go), and the journal settles it once loaded. */
   legacyUnsettled?: true
+  /** The notes the message was built from, by their send keys: they stay off the shelf while this
+   *  client still holds the message, reload included, and are cleared once the host has it. */
+  carriedNoteKeys?: string[]
   /** Whether the first attempt asked the host to hold it as a draft (`null`: plain); every replay
    *  of this id asks the same (structured-agent-session-outbox-delivery). On a request's own copy,
    *  what that request carries. */
@@ -210,7 +213,12 @@ export function parseStructuredAgentSessionOutboxEntry(
     ...(entry.source === 'launch' ? { source: 'launch' as const } : {}),
     ...parseStructuredAgentSessionOutboxQueueFields(entry),
     ...(stoppedBy ? { stoppedBy } : {}),
-    ...(legacyUnsettled ? { legacyUnsettled: true as const } : {})
+    ...(legacyUnsettled ? { legacyUnsettled: true as const } : {}),
+    ...(Array.isArray(saved.carriedNoteKeys) &&
+    saved.carriedNoteKeys.length > 0 &&
+    saved.carriedNoteKeys.every((key) => typeof key === 'string')
+      ? { carriedNoteKeys: saved.carriedNoteKeys }
+      : {})
   }
 }
 

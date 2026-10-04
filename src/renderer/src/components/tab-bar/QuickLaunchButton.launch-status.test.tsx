@@ -180,14 +180,15 @@ describe('QuickLaunchAgentMenuItems launch status', () => {
     expect(agentRowDisabled('Codex')).toBe('true')
   })
 
-  // Why: the notes menu holds what it sent until this result, so a second send leaves them out.
-  it("hands the launch's own delivery outcome to the notes menu", async () => {
+  // Why: a new chat saves the notes' keys with its message; the launch's own result holds them
+  // until then, so a second send leaves them out.
+  it('gives the launch the notes keys and hands it its own delivery result', () => {
     const delivery = Promise.resolve({ delivered: true, failureNotified: false })
     launchMock.mockReturnValue({
       surface: { kind: 'local-agent-session', tabId: 'tab-1', sessionId: 'codex-session' },
       promptDeliveryResult: delivery
     })
-    const onPromptHandedOff = vi.fn()
+    const notesHandOff = { carriedNoteKeys: ['note-a'], handOff: vi.fn() }
 
     render(
       <QuickLaunchAgentMenuItems
@@ -196,13 +197,15 @@ describe('QuickLaunchAgentMenuItems launch status', () => {
         onFocusTerminal={vi.fn()}
         prompt="review notes"
         promptDelivery="submit-after-ready"
-        onPromptHandedOff={onPromptHandedOff}
+        notesHandOff={notesHandOff}
       />
     )
     fireEvent.click(document.querySelector('[title="Launch Codex in a new terminal"]')!)
 
-    expect(onPromptHandedOff).toHaveBeenCalledOnce()
-    await expect(onPromptHandedOff.mock.calls[0][0]).resolves.toEqual({ delivered: true })
+    expect(launchMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ carriedNoteKeys: ['note-a'] })
+    )
+    expect(notesHandOff.handOff).toHaveBeenCalledExactlyOnceWith(delivery)
   })
 
   it('starts no agent when the menu has nothing left to send', () => {

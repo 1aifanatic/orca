@@ -52,6 +52,8 @@ export type LaunchAgentInNewTabArgs = {
   launchPlatform?: NodeJS.Platform
   /** Called after the prompt is actually delivered to the agent input path. */
   onPromptDelivered?: () => void
+  /** Send keys of the notes the prompt was built from; a structured chat saves them with it. */
+  carriedNoteKeys?: readonly string[]
   /**
    * Called before `onPromptDelivered` when the paste was written without ever observing the
    * agent's composer, so the launch cannot claim the prompt arrived. Fires only on the
@@ -115,6 +117,7 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
     launchPlatform,
     onPromptDelivered,
     onPromptDeliveryUnconfirmed,
+    carriedNoteKeys,
     agentSessionLaunchPlan,
     pendingActivationSpawn,
     beforeSurfaceOpen
@@ -179,7 +182,8 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
       promptDelivery: viewModePromptDelivery,
       tuiCustomization: { cwd: initialCwd },
       initialSessionOptions: startupPlan.sessionOptions,
-      onPromptDelivered
+      onPromptDelivered,
+      ...(carriedNoteKeys ? { carriedNoteKeys } : {})
     })
   if (plan?.route === 'structured-native-chat') {
     const structured = launchStructuredAgentFromNewTab({

@@ -158,14 +158,15 @@ export function createUiAgentActions(
       const sending = sendMessageToAgent({
         worktreeId: mode.worktreeId,
         prompt: mode.prompt,
-        target: runningAgentMessageTarget(target)
+        target: runningAgentMessageTarget(target),
+        ...(mode.notesHandOff ? { carriedNoteKeys: mode.notesHandOff.carriedNoteKeys } : {})
       }).catch(() => {
         console.error('Failed to send notes to sidebar agent target:', {
           code: 'runtime-unverifiable'
         })
         return { status: 'status-unavailable' as const, code: 'runtime-unverifiable' as const }
       })
-      mode.onPromptHandedOff?.(sending)
+      mode.notesHandOff?.handOff(sending)
       const result = await sending
 
       const stillCurrent = (): boolean => {
@@ -206,7 +207,10 @@ export function createUiAgentActions(
 
       // Delivery ack, telemetry, and toast belong to the completed send, not to the
       // picker that launched it; only the close below is scoped to this instance.
-      mode.onPromptDelivered?.()
+      // A chat holding the notes with its message clears them once the host has it.
+      if (!result.notesHeldByChat) {
+        mode.onPromptDelivered?.()
+      }
       const [{ toast }, { track }] = await Promise.all([
         import('sonner'),
         import('@/lib/telemetry')

@@ -75,7 +75,7 @@ export function BrowserGuestAnnotateOverlays({
     activeGroupId,
     browserAnnotationsPrompt,
     handleBrowserAnnotationsSentToAgent,
-    handleBrowserAnnotationsHandedOff,
+    browserAnnotationsNotesHandOff,
     handleCopyBrowserAnnotations,
     browserAnnotationsCopied,
     handleClearBrowserAnnotations,
@@ -120,7 +120,7 @@ export function BrowserGuestAnnotateOverlays({
           activeGroupId={activeGroupId}
           browserAnnotationsPrompt={browserAnnotationsPrompt}
           handleBrowserAnnotationsSentToAgent={handleBrowserAnnotationsSentToAgent}
-          handleBrowserAnnotationsHandedOff={handleBrowserAnnotationsHandedOff}
+          browserAnnotationsNotesHandOff={browserAnnotationsNotesHandOff}
           handleCopyBrowserAnnotations={handleCopyBrowserAnnotations}
           browserAnnotationsCopied={browserAnnotationsCopied}
           handleClearBrowserAnnotations={handleClearBrowserAnnotations}

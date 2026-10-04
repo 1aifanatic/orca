@@ -1,19 +1,40 @@
-// How each outbox entry finally ended, for whoever waits on one (a launch prompt's caller): the
-// host holds it, or it left without reaching the host. A send with no answer yet has not ended;
-// the open chat keeps sending it under its id.
+// How each outbox entry finally ended, for whoever waits on one (a launch prompt's caller, the
+// notes it carries): the host holds it, or it left without reaching the host. A send with no answer
+// yet has not ended; the open chat keeps sending it under its id.
+
+import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 
 export type StructuredAgentSessionEntryEnding = 'delivered' | 'notDelivered'
 
 type Watcher = (ending: StructuredAgentSessionEntryEnding) => void
+type EndedEntry = Pick<
+  StructuredAgentSessionOutboxEntry,
+  'sessionId' | 'clientMessageId' | 'carriedNoteKeys'
+>
 
 const watchers = new Map<string, Map<string, Set<Watcher>>>()
+const deliveredListeners = new Set<(entry: EndedEntry) => void>()
 
-/** Says how an entry ended to everyone watching it. */
+/** Told every entry the host took, from any window's send or the journal, reload included. */
+export function subscribeToStructuredAgentSessionEntriesDelivered(
+  listener: (entry: EndedEntry) => void
+): () => void {
+  deliveredListeners.add(listener)
+  return () => deliveredListeners.delete(listener)
+}
+
+/** Says how an entry ended to everyone watching it. Run before the outbox that drops it is
+ *  committed, so what it carries is settled before anything reads the outbox without it. */
 export function endStructuredAgentSessionEntry(
-  sessionId: string,
-  clientMessageId: string,
+  entry: EndedEntry,
   ending: StructuredAgentSessionEntryEnding
 ): void {
+  if (ending === 'delivered') {
+    for (const listener of deliveredListeners) {
+      listener(entry)
+    }
+  }
+  const { clientMessageId, sessionId } = entry
   const session = watchers.get(sessionId)
   const watching = session?.get(clientMessageId)
   if (!session || !watching) {
@@ -40,7 +61,7 @@ export function noteStructuredAgentSessionOutboxCommitted(
   }
   for (const clientMessageId of session.keys()) {
     if (!entries.some((entry) => entry.clientMessageId === clientMessageId)) {
-      endStructuredAgentSessionEntry(sessionId, clientMessageId, 'notDelivered')
+      endStructuredAgentSessionEntry({ sessionId, clientMessageId }, 'notDelivered')
     }
   }
 }

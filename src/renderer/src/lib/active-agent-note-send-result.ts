@@ -38,6 +38,9 @@ export type ActiveAgentNotesSendFailureCode =
 export type ActiveAgentNotesSendResult = {
   status: ActiveAgentNotesSendStatus
   code?: ActiveAgentNotesSendFailureCode
+  /** Queued on a chat that saved the notes' keys with its message: the notes are cleared once the
+   *  host has it (notes-sent-by-chat), not now, and come back if it does not get there. */
+  notesHeldByChat?: true
 }
 
 export function activeAgentNotesSendFailureMessage(
