@@ -17,6 +17,7 @@ import {
   retireOrcadMigrationSourceDormantState
 } from './orcad-source-dormant-retirement'
 import { retireOrcadSourceReconnectHint } from './orcad-source-workspace-session-retirement'
+import { retargetOrcadSourceClientFocus } from './orcad-source-client-focus-retarget'
 
 const orcadSourceRetirementContext = Symbol('OrcadSourceRetirementPersistence')
 type OrcadSourceRetirementContext = {
@@ -42,6 +43,7 @@ export class OrcadSourceRetirementPersistence {
     const context = this[orcadSourceRetirementContext]
     const state = context.runtime.state
     retireOrcadSourceCatalogState(state, manifest)
+    retargetOrcadSourceClientFocus(state, manifest)
     retireOrcadMigrationSourceDormantState(state, manifest)
     retireOrcadSourceReconnectHint(state, manifest.source.sshTargetId)
     syncProjectHostSetupCompatibilityState(context.repos)

@@ -80,6 +80,11 @@ export function collectOrcadMigrationSourceWorkspaceSession(
             }
           : null
     })
+    if (!sourceHostPartition) {
+      // Client focus is not host state; retirement retargets it instead of the destination carrying it.
+      fragment.activeWorktreeId = null
+      delete fragment.activeWorkspaceKey
+    }
     // A shutdown marker is only a reconnect hint. Once the source has no live
     // PTY authority for that worktree, carrying it would make the destination
     // try to resurrect a process that no longer exists.

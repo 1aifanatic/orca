@@ -110,6 +110,10 @@ function inspectSession(
     }
   }
   result.dependencyCount += (session.activeWorktreeIdsOnShutdown ?? []).filter(matchesOwner).length
+  if (!sourceHostPartition) {
+    // Global fields here are copies of client focus and history, not this host's state.
+    return result
+  }
   result.dependencyCount += session.activeRepoId && scope.ownerMatches(session.activeRepoId) ? 1 : 0
   result.dependencyCount += matchesOwner(session.activeWorktreeId ?? '') ? 1 : 0
   result.dependencyCount += matchesOwner(session.activeWorkspaceKey ?? '') ? 1 : 0
