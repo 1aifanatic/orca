@@ -57,7 +57,8 @@ import type {
   JournalTombstoneInput,
   ResolveDispatchInput
 } from './journal-store-contracts'
-import { journalSubmissionHook, type JournalQueuedMessages } from './journal-queued-messages'
+import type { JournalQueuedMessages } from './journal-queued-messages'
+import { journalSubmissionHook } from './journal-submission-hook'
 import {
   journalQueueResumeRowBuilder,
   journalStopEventRowBuilder

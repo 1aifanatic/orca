@@ -13,8 +13,8 @@ import {
 import type { JournalHostDatabase } from './journal-host-database'
 import type { JournalReducerState } from './journal-reducer'
 import type { JournalRow } from './journal-row-schema'
-import type { JournalOperationReceipt, JournalRowTransactionHook } from './journal-row-writer'
-import type { JournalSubmissionConsume, JournalSubmissionInput } from './journal-store-contracts'
+import type { JournalOperationReceipt } from './journal-row-writer'
+import type { JournalSubmissionConsume } from './journal-store-contracts'
 import { adoptQueuedMessages, holdQueuedMessages } from './queued-message-holds'
 import {
   deriveQueuePauses,
@@ -359,26 +359,6 @@ export class JournalQueuedMessages {
       },
       (changed) => changed > 0
     ).then(() => undefined)
-  }
-}
-
-/** The submission append's hook, inside its transaction: converts the draft it hands off, if any,
- *  and claims the stored attachments it names. A client's new message must name only attachments
- *  still stored; a draft's conversion was claimed when the draft was written. */
-export function journalSubmissionHook(
-  queuedMessages: JournalQueuedMessages,
-  input: Pick<JournalSubmissionInput, 'clientMessageId' | 'body' | 'origin'>,
-  consume: JournalSubmissionConsume | undefined
-): JournalRowTransactionHook {
-  return (db) => {
-    if (consume) {
-      queuedMessages.consumeInTransaction(db, { ...consume, consumedAs: input.clientMessageId })
-    }
-    queuedMessages.claimAttachmentsInTransaction(
-      db,
-      input.body,
-      input.origin === 'client' && !consume
-    )
   }
 }
 
