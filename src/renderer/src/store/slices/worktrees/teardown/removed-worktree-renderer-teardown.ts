@@ -11,11 +11,7 @@ import { disposeRemovedWorktreeParkedTerminalWatchers } from '../../../../compon
 import { detachedHeadAutoDerivedDisplayNames } from '../metadata/detached-head-display-name'
 import { applyRemoveWorktreeSuccessState } from './remove-worktree-store-cleanup'
 import { purgeOrphanedRuntimeSshProjects } from './orphaned-runtime-ssh-project-purge'
-import {
-  deleteNativeChatComposerDraft,
-  deleteNativeChatComposerDraftsForTab,
-  structuredAgentSessionDraftScopeKey
-} from '@/components/native-chat/native-chat-composer-draft-store'
+import { deleteRemovedWorktreeChatDrafts } from './removed-worktree-chat-drafts'
 
 /**
  * Renderer-side teardown after the backend removal succeeded.
@@ -49,10 +45,11 @@ export async function tearDownRemovedWorktreeRendererState(args: {
       )
     )
   }
-  const structuredSessionIds: string[] = []
+  // Why before the closes: closing a structured chat keeps its conversation's draft, and the tab
+  // lists below are the only record of which drafts were this worktree's.
+  deleteRemovedWorktreeChatDrafts(get(), [worktreeId])
   for (const tab of get().unifiedTabsByWorktree[worktreeId] ?? []) {
     if (tab.contentType === 'agent-session') {
-      structuredSessionIds.push(tab.entityId)
       get().closeUnifiedTab(tab.id, {
         preserveWorktreeSelection: true,
         recordInteraction: false
@@ -86,14 +83,6 @@ export async function tearDownRemovedWorktreeRendererState(args: {
   detachedHeadAutoDerivedDisplayNames.delete(worktreeId)
   forgetForegroundTerminalTabs(tabIds)
   forgetAgentStartupDeliveriesForTabs(tabIds)
-  // Why: closing a structured chat keeps its conversation's draft, and terminal tabs skip
-  // closeTab, so both die with their worktree here.
-  for (const sessionId of structuredSessionIds) {
-    deleteNativeChatComposerDraft(structuredAgentSessionDraftScopeKey(sessionId))
-  }
-  for (const tabId of tabIds) {
-    deleteNativeChatComposerDraftsForTab(tabId)
-  }
 
   // Why: snapshot the sidebar top-row anchor in the same tick we remove the row; recording at click time goes stale across the await.
   requestVirtualizedScrollAnchorRecord('[data-worktree-sidebar]')

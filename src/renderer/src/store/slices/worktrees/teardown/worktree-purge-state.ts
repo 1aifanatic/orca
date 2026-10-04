@@ -6,6 +6,7 @@ import { pruneHostedReviewLinkMutationGenerations } from '../metadata/hosted-rev
 import { collectWorktreePurgeDoomedIds } from './worktree-purge-doomed-ids'
 import { createWorktreePurgeOmitters } from './worktree-purge-omitters'
 import { removeDeleteStatesForWorktreeIds } from './worktree-delete-state'
+import { deleteRemovedWorktreeChatDrafts } from './removed-worktree-chat-drafts'
 import { removeWorktreeVisitEntriesForTargets } from '@/lib/worktree-visit-recency'
 import { forgetAmbiguousOwnerWarnings } from '../listing/worktree-owner-settings'
 import { forgetWorktreeSleepIntent } from '@/lib/worktree-sleep-intent'
@@ -77,6 +78,8 @@ export function buildWorktreePurgeState(
     }
   }
   pruneHostedReviewLinkMutationGenerations(worktreeIdSet)
+  // Why: a listing refresh can purge a worktree before its removal's own teardown runs.
+  deleteRemovedWorktreeChatDrafts(s, worktreeIdSet)
   // Why: ids are repo::path, so a worktree recreated at the same path must not inherit a stale sleep.
   for (const id of worktreeIdSet) {
     forgetWorktreeSleepIntent(id)

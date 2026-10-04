@@ -47,6 +47,7 @@ import {
   makeUnifiedTab
 } from './store-test-helpers'
 import {
+  clearNativeChatComposerDraftsForTests,
   readNativeChatComposerDraft,
   structuredAgentSessionDraftScopeKey,
   updateNativeChatComposerDraft
@@ -84,6 +85,7 @@ describe('nativeChatLaunchDraftByTabId teardown', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockApi.worktrees.remove.mockResolvedValue(undefined)
+    clearNativeChatComposerDraftsForTests()
   })
 
   it('closeTab drops the closed tab’s draft only', () => {
@@ -245,5 +247,48 @@ describe('nativeChatLaunchDraftByTabId teardown', () => {
     expect(result).toEqual({ ok: true })
     expect(readNativeChatComposerDraft(removed).text).toBe('')
     expect(readNativeChatComposerDraft(other).text).toBe('kept')
+  })
+
+  function seedStructuredChatAndTerminal(store: ReturnType<typeof createTestStore>) {
+    seedStructuredChat(store)
+    seedStore(store, { tabsByWorktree: { [WT1]: [makeTab({ id: TAB1, worktreeId: WT1 })] } })
+    updateNativeChatComposerDraft(
+      structuredAgentSessionDraftScopeKey('session-1'),
+      { text: 'chat' },
+      'immediate'
+    )
+    updateNativeChatComposerDraft(`${TAB1}:leaf-a`, { text: 'pane' }, 'immediate')
+    updateNativeChatComposerDraft(`${TAB2}:leaf-a`, { text: 'kept' }, 'immediate')
+  }
+
+  function expectWorktreeDraftsDeleted(): void {
+    expect(readNativeChatComposerDraft(structuredAgentSessionDraftScopeKey('session-1')).text).toBe(
+      ''
+    )
+    expect(readNativeChatComposerDraft(`${TAB1}:leaf-a`).text).toBe('')
+    expect(readNativeChatComposerDraft(`${TAB2}:leaf-a`).text).toBe('kept')
+  }
+
+  it('a listing refresh that purges the worktree mid-removal still drops its drafts', async () => {
+    const store = createTestStore()
+    seedStructuredChatAndTerminal(store)
+    // The host announces the change before it replies, and the refresh it starts can land first.
+    mockApi.worktrees.remove.mockImplementation(async () => {
+      store.getState().purgeWorktreeTerminalState([WT1])
+    })
+
+    const result = await store.getState().removeWorktree({ id: WT1, executionHostId: null }, true)
+
+    expect(result).toEqual({ ok: true })
+    expectWorktreeDraftsDeleted()
+  })
+
+  it('a worktree a listing no longer has drops its open chats’ drafts only', () => {
+    const store = createTestStore()
+    seedStructuredChatAndTerminal(store)
+
+    store.getState().purgeWorktreeTerminalState([WT1])
+
+    expectWorktreeDraftsDeleted()
   })
 })
