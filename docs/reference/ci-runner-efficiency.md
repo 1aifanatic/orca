@@ -1983,3 +1983,36 @@ Hosted Node typecheck passed. Separate fault controls failed the intended
 assertion for early, late and disabled age expiry, disabled count compaction,
 and a snapshot that drops child descriptions. The description fault passes with
 the original parser-sharing oracle and fails with the independent projection.
+
+## October 4 Git contention and remaining readiness waits
+
+The full Git admission benchmark compared a disabled arm with no correctness
+assertions to an enabled arm with structural ledger checks. Its default CI test
+now saturates the real base and headroom budgets with FIFO-gated child processes,
+queues older background and newer interactive work, releases base slots, and
+requires interactive priority, matching outputs and complete permit release.
+The full original diagnostic remains opt-in through
+`ORCA_GIT_ADMISSION_STORM_MEASUREMENT=1`; both opt-in tests passed locally.
+The existing Windows real-Git parity tests remain unchanged; this fixture retains
+its existing POSIX platform scope.
+
+Two remaining Antigravity transcript tests used real 5,000ms refusal windows.
+They now use the existing scoped `waitForTranscriptIdle` timer harness after the
+emulator drains. All 60 tests, original captured transcripts, deadlines and
+readiness assertions remain.
+
+Three alternating one-worker hosted ARM pairs in
+[37180614492](https://github.com/stablyai/orca/actions/runs/37180614492)
+measured these complete focused invocations:
+
+| Suite | Baseline seconds | Candidate seconds | Median saving |
+| --- | --- | --- | --- |
+| Git admission storm | 26.619 / 26.635 / 26.582 | 1.017 / 1.018 / 1.016 | 25.602s (96.2%) |
+| Antigravity readiness | 27.347 / 27.910 / 27.550 | 13.855 / 13.894 / 13.800 | 13.695s (49.7%) |
+
+Each candidate passed its original meaningful checks. Hosted Node typecheck
+passed. Separate scheduler faults for bypassed admission, withheld release and
+FIFO-only priority failed the queued-contention or interactive-start assertion.
+Two additional local transcript faults failed the original picker-rejection and
+repaint-readiness assertions. These are focused suite savings; whole-shard time
+and queue delay were not measured by this experiment.
