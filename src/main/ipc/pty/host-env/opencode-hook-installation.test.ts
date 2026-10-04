@@ -113,6 +113,35 @@ describe('OpenCode installation uses the current enabled agents', () => {
     }
   )
 
+  it.skipIf(process.platform === 'win32').each([
+    { selected: '/bin/bash', inherited: '/bin/zsh', file: '.bash_profile' },
+    { selected: '/bin/zsh', inherited: '/bin/bash', file: '.zshrc' }
+  ])('consumer config follows selected $selected over inherited $inherited', (selection) => {
+    const home = join(root, 'selected-shell-home')
+    const selectedXdg = join(root, 'selected-shell-xdg')
+    const inheritedXdg = join(root, 'inherited-shell-xdg')
+    mkdirSync(home)
+    writeFileSync(
+      join(home, '.bash_profile'),
+      `export XDG_CONFIG_HOME='${selection.file === '.bash_profile' ? selectedXdg : inheritedXdg}'\n`
+    )
+    writeFileSync(
+      join(home, '.zshrc'),
+      `export XDG_CONFIG_HOME='${selection.file === '.zshrc' ? selectedXdg : inheritedXdg}'\n`
+    )
+    const input = { HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: '', SHELL: selection.inherited }
+    const launchOptions = {
+      ...options,
+      launchAgent: 'opencode' as const,
+      shellPath: selection.selected
+    }
+    const env = buildPtyHostEnv('selected-shell-pane', input, launchOptions)
+    expect(existsSync(plugin(join(selectedXdg, 'opencode'), 'opencode'))).toBe(true)
+    expect(existsSync(plugin(join(inheritedXdg, 'opencode'), 'opencode'))).toBe(false)
+    expect(env.SHELL).toBe(selection.inherited)
+    expect(env.OPENCODE_CONFIG_DIR).toBeUndefined()
+  })
+
   it.each([false, true])('consumer config root is untouched with hooks disabled %s', (disabled) => {
     const consumer = join(root, 'disabled-consumer')
     buildPtyHostEnv(

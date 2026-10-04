@@ -43,7 +43,7 @@ export function applyOpenCodeStatusPluginEnv(
   config: OpenCodeSourceConfig,
   options: Pick<
     BuildPtyHostEnvOptions,
-    'launchAgent' | 'agentStatusHooksEnabled' | 'disabledTuiAgents' | 'isWsl'
+    'launchAgent' | 'agentStatusHooksEnabled' | 'disabledTuiAgents' | 'isWsl' | 'shellPath'
   >,
   command: string | undefined
 ): 'opencode' | 'opencode2' | null {
@@ -72,7 +72,7 @@ export function applyOpenCodeStatusPluginEnv(
   // WSL owns its config writes; only the guest overlay may enter a WSL pane.
   if (!options.isWsl) {
     const executionEnv = { ...process.env, ...env }
-    const shellConfigHome = readSessionShellStartupEnvVar('XDG_CONFIG_HOME', env)
+    const shellConfigHome = readSessionShellStartupEnvVar('XDG_CONFIG_HOME', env, options.shellPath)
     const defaultConfigDir = resolveOpenCodeConfigDirectory({
       ...executionEnv,
       XDG_CONFIG_HOME: shellConfigHome ?? executionEnv.XDG_CONFIG_HOME
