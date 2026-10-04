@@ -691,7 +691,7 @@ describe('Windows upload on a host with no sftp subsystem', () => {
     'relay-CommandNotFoundException.js',
     'is not recognized as an internal or external command.js'
   ])('propagates a timeout whose filename resembles a missing command: %s', async (file) => {
-    vi.useFakeTimers()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const remotePath = `${remoteRoot}/${file}`
     writeFileSync(join(localDir, file), 'x')
     let noteWriteStarted: () => void = () => {}
