@@ -27,7 +27,7 @@ export async function sendMessageToAgent(args: {
     })
   }
   // Why: queued on the chat's own outbox, as its composer does, so the message shows in the
-  // chat and a failed send stays there with Retry. The open chat delivers it.
+  // chat and one that comes back goes to its composer. The open chat delivers it.
   const carriedNoteKeys = args.carriedNoteKeys ?? []
   if (
     !appendStructuredAgentSessionOutboxMessage(

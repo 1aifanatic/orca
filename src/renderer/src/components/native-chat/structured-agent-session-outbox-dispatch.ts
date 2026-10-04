@@ -136,7 +136,7 @@ export function structuredAgentSessionSettlementEnding(
       return 'delivered'
     case 'returned':
     case 'withdrawn':
-      return 'notDelivered'
+      return 'returned'
     case 'unanswered':
       return null
   }

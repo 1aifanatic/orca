@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 
 // Notes sent to a chat stay off the shelf for as long as this client still holds the message that
-// carries them, reload included, and the message's own ending decides what happens to them: the
-// host has it → cleared as sent; it came back, was withdrawn or discarded → back on the shelf.
-// Never inferred from tabs or host syncs; past the host's window for the message the hold lapses.
+// carries them, reload included, and the message's own ending decides what happens to them. Notes
+// follow their text: the host has it, or its text went back to the composer → used, cleared; only
+// a message thrown away with nothing handed back puts them back on the shelf. Never inferred from
+// tabs or host syncs; past the host's window for the message the hold lapses.
 
 import { cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -17,7 +18,8 @@ const mocks = vi.hoisted(() => ({
   createIntent: vi.fn(),
   launch: vi.fn(),
   clearDeliveredDiffComments: vi.fn(async () => true),
-  diffComments: Array.of<unknown>()
+  diffComments: Array.of<unknown>(),
+  storeListeners: new Set<() => void>()
 }))
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), message: vi.fn() } }))
@@ -53,7 +55,10 @@ vi.mock('@/store', () => ({
       browserAnnotationsByPageId: {},
       removeDeliveredBrowserPageAnnotations: vi.fn()
     }),
-    subscribe: () => () => undefined
+    subscribe: (listener: () => void) => {
+      mocks.storeListeners.add(listener)
+      return () => mocks.storeListeners.delete(listener)
+    }
   }
 }))
 
@@ -89,6 +94,10 @@ import {
   resetNotesInFlightForTests
 } from './notes-send-in-flight'
 import { installNotesSentByChat } from './notes-sent-by-chat'
+import {
+  acceptPairedHostStructuredSessions,
+  suppressCancelledStructuredSessionTabs
+} from '@/runtime/structured-agent-session-tab-retirement'
 import { sendMessageToAgent } from './agent-message-send'
 
 const WORKTREE_ID = 'wt-notes'
@@ -201,17 +210,25 @@ function reload(): void {
   resetStructuredAgentSessionCarriedNotesForTests()
 }
 
-/** The chat open on the session: its outbox sends what it holds, under the same id. */
-function openChat(sessionId: string): void {
-  renderHook(() =>
+/** The chat open on the session: its outbox sends what it holds, under the same id. With no
+ *  fence it is not attached yet, so nothing goes out. */
+function openChat(sessionId: string, fence: number | null = 1) {
+  return renderHook(() =>
     useStructuredAgentSessionOutbox({
       sessionId,
       target: { kind: 'local' },
-      fence: 1,
+      fence,
       submissions: [],
       journalCursor: { epoch: 'e', sequence: 1 }
     })
   )
+}
+
+/** A store change, as a workspace's notes loading makes. */
+function notifyStore(): void {
+  for (const listener of mocks.storeListeners) {
+    listener()
+  }
 }
 
 function sentIds(): string[] {
@@ -228,6 +245,7 @@ beforeEach(() => {
   resetStructuredAgentLaunchPersistenceForTests()
   resetStructuredAgentLaunchRegistryForTests()
   reload()
+  mocks.storeListeners.clear()
   mocks.diffComments = [NOTE_A, NOTE_B]
   mocks.clearDeliveredDiffComments.mockResolvedValue(true)
   mocks.createIntent.mockReturnValue(chat)
@@ -274,7 +292,7 @@ describe('notes sent to a new agent', () => {
     expect(isNoteInFlight(KEY_A)).toBe(false)
   })
 
-  it('come back to the shelf, with the text in the draft, when the resend is refused', async () => {
+  it('are used once the resend is refused: the text is in the draft, so the notes are cleared', async () => {
     mocks.launch.mockResolvedValue({ sessionId: chat.sessionId, fence: 1 })
     mocks.callStructuredAgentSession.mockRejectedValueOnce(new Error('socket closed'))
     mocks.callStructuredAgentSession.mockResolvedValue(REFUSED)
@@ -289,10 +307,11 @@ describe('notes sent to a new agent', () => {
     expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey(chat.sessionId))).toBe(
       NOTES
     )
-    expect(mocks.clearDeliveredDiffComments).not.toHaveBeenCalled()
+    // One owner: the draft holds the text, so the notes leave the shelf.
+    expect(mocks.clearDeliveredDiffComments).toHaveBeenCalledExactlyOnceWith(WORKTREE_ID, [NOTE_A])
   })
 
-  it('stay held while a failed chat keeps them for its Retry, and leave once it delivers', async () => {
+  it('stay held while a failed chat keeps them to start again, and leave once it delivers', async () => {
     mocks.launch.mockRejectedValueOnce(new StructuredAgentSessionCreateRefusalError('unsupported'))
     sendNotesToNewAgent()
     await settle()
@@ -309,7 +328,7 @@ describe('notes sent to a new agent', () => {
     expect(isNoteInFlight(KEY_A)).toBe(false)
   })
 
-  it('come back when this window closes the failed chat, which discards its message', async () => {
+  it('come back when this window closes the failed chat, which hands no text back', async () => {
     mocks.launch.mockRejectedValue(new StructuredAgentSessionCreateRefusalError('unsupported'))
     sendNotesToNewAgent()
     await settle()
@@ -345,7 +364,7 @@ describe('notes sent to a chat already open', () => {
     expect(isNoteInFlight(KEY_A)).toBe(false)
   })
 
-  it('come back, with the text in the draft, when the host turns the message away', async () => {
+  it('are used when the host turns the message away: the text is in the draft, notes cleared', async () => {
     await sendMessageToAgent({
       worktreeId: WORKTREE_ID,
       prompt: NOTES,
@@ -361,7 +380,47 @@ describe('notes sent to a chat already open', () => {
     expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey(target.sessionId))).toBe(
       NOTES
     )
+    expect(mocks.clearDeliveredDiffComments).toHaveBeenCalledExactlyOnceWith(WORKTREE_ID, [NOTE_A])
+  })
+
+  it('are used when a Stop takes back the message before it went out', async () => {
+    await sendMessageToAgent({
+      worktreeId: WORKTREE_ID,
+      prompt: NOTES,
+      target,
+      carriedNoteKeys: [KEY_A]
+    })
+    const view = openChat(target.sessionId, null)
+    view.result.current.stop('stop-1')
+
+    expect(readOutbox(target.sessionId)).toEqual([])
+    expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey(target.sessionId))).toBe(
+      NOTES
+    )
+    expect(isNoteInFlight(KEY_A)).toBe(false)
+    expect(mocks.clearDeliveredDiffComments).toHaveBeenCalledExactlyOnceWith(WORKTREE_ID, [NOTE_A])
+  })
+
+  it('are cleared once their workspace loads, when the host took the message before that', async () => {
+    await sendMessageToAgent({
+      worktreeId: WORKTREE_ID,
+      prompt: NOTES,
+      target,
+      carriedNoteKeys: [KEY_A]
+    })
+    reload()
+    // The workspace's notes are not in the store yet when the message is delivered.
+    mocks.diffComments = []
+    mocks.callStructuredAgentSession.mockImplementation(async (_t, _m, params) => accepted(params))
+    openChat(target.sessionId)
+    await waitFor(() => readOutbox(target.sessionId).length === 0)
     expect(mocks.clearDeliveredDiffComments).not.toHaveBeenCalled()
+
+    mocks.diffComments = [NOTE_A, NOTE_B]
+    notifyStore()
+    expect(mocks.clearDeliveredDiffComments).toHaveBeenCalledExactlyOnceWith(WORKTREE_ID, [NOTE_A])
+    notifyStore()
+    expect(mocks.clearDeliveredDiffComments).toHaveBeenCalledOnce()
   })
 
   it("lapse once the host's window for the message closes, with nothing deleted", async () => {
@@ -380,7 +439,9 @@ describe('notes sent to a chat already open', () => {
     expect(readOutbox(target.sessionId)).toHaveLength(1)
   })
 
-  it('are never released or discarded by a tab list or host sync that no longer shows the chat', async () => {
+  // The host-sync entry points a chat's absence passes through: a paired host's frame, and a
+  // local snapshot run through the cancelled-launch filter. Neither may touch the outbox.
+  it('are never released or discarded by a host frame that no longer lists the chat', async () => {
     await sendMessageToAgent({
       worktreeId: WORKTREE_ID,
       prompt: NOTES,
@@ -388,9 +449,9 @@ describe('notes sent to a chat already open', () => {
       carriedNoteKeys: [KEY_A]
     })
     reload()
-    // The host's tab list no longer names the chat (closed from the phone, or another host's frame).
-    vi.mocked(refreshLocalStructuredSessionTabs).mockResolvedValue([])
-    await refreshLocalStructuredSessionTabs()
+    const empty = { ...published(target.sessionId), tabs: [] }
+    acceptPairedHostStructuredSessions(empty, 'server-1')
+    suppressCancelledStructuredSessionTabs(empty, { kind: 'local' })
     await settle()
 
     expect(isNoteInFlight(KEY_A)).toBe(true)

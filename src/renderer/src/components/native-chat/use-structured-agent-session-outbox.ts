@@ -28,6 +28,7 @@ import {
   readMountedStructuredAgentSessionOutbox,
   requeueInterruptedStructuredAgentSessionDispatches
 } from './structured-agent-session-outbox-dispatch'
+import { endStructuredAgentSessionEntry } from './structured-agent-session-entry-endings'
 import {
   nextStructuredAgentSessionHostWindowEnd,
   settleStructuredAgentSessionOutboxFromJournal
@@ -294,6 +295,7 @@ export function useStructuredAgentSessionOutbox(args: {
         return
       }
       for (const entry of next.withdrawn) {
+        endStructuredAgentSessionEntry(entry, 'returned')
         returnStructuredAgentSessionMessage(entry)
         // Back in the composer, it is no longer being sent, so what the line said about it goes.
         clearStructuredAgentSessionChatLineHeldBy(sessionId, entry.clientMessageId)

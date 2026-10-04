@@ -1,10 +1,15 @@
 // How each outbox entry finally ended, for whoever waits on one (a launch prompt's caller, the
-// notes it carries): the host holds it, or it left without reaching the host. A send with no answer
-// yet has not ended; the open chat keeps sending it under its id.
+// notes it carries): the host holds it; its text went back to the composer; or it was thrown away
+// with nothing handed back. A send with no answer yet has not ended; the open chat keeps sending it.
 
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 
-export type StructuredAgentSessionEntryEnding = 'delivered' | 'notDelivered'
+export type StructuredAgentSessionEntryEnding =
+  | 'delivered'
+  /** Returned or withdrawn: the composer's draft holds the text now. */
+  | 'returned'
+  /** Gone with nothing handed back: a cancelled launch, or a chat this window closed. */
+  | 'discarded'
 
 type Watcher = (ending: StructuredAgentSessionEntryEnding) => void
 type EndedEntry = Pick<
@@ -13,14 +18,16 @@ type EndedEntry = Pick<
 >
 
 const watchers = new Map<string, Map<string, Set<Watcher>>>()
-const deliveredListeners = new Set<(entry: EndedEntry) => void>()
+const endingListeners = new Set<
+  (entry: EndedEntry, ending: StructuredAgentSessionEntryEnding) => void
+>()
 
-/** Told every entry the host took, from any window's send or the journal, reload included. */
-export function subscribeToStructuredAgentSessionEntriesDelivered(
-  listener: (entry: EndedEntry) => void
+/** Told how every entry ended, from any send, the journal or a Stop, reload included. */
+export function subscribeToStructuredAgentSessionEntryEndings(
+  listener: (entry: EndedEntry, ending: StructuredAgentSessionEntryEnding) => void
 ): () => void {
-  deliveredListeners.add(listener)
-  return () => deliveredListeners.delete(listener)
+  endingListeners.add(listener)
+  return () => endingListeners.delete(listener)
 }
 
 /** Says how an entry ended to everyone watching it. Run before the outbox that drops it is
@@ -29,10 +36,8 @@ export function endStructuredAgentSessionEntry(
   entry: EndedEntry,
   ending: StructuredAgentSessionEntryEnding
 ): void {
-  if (ending === 'delivered') {
-    for (const listener of deliveredListeners) {
-      listener(entry)
-    }
+  for (const listener of endingListeners) {
+    listener(entry, ending)
   }
   const { clientMessageId, sessionId } = entry
   const session = watchers.get(sessionId)
@@ -49,8 +54,8 @@ export function endStructuredAgentSessionEntry(
   }
 }
 
-/** An outbox committed without a watched entry: it left without a settlement saying how (a Stop
- *  took it back, a closed chat discarded it), so it was not delivered. */
+/** An outbox committed without a watched entry: it left without a settlement or a Stop saying how
+ *  (a closed chat discarded it), so it was thrown away. */
 export function noteStructuredAgentSessionOutboxCommitted(
   sessionId: string,
   entries: readonly { clientMessageId: string }[]
@@ -61,7 +66,7 @@ export function noteStructuredAgentSessionOutboxCommitted(
   }
   for (const clientMessageId of session.keys()) {
     if (!entries.some((entry) => entry.clientMessageId === clientMessageId)) {
-      endStructuredAgentSessionEntry({ sessionId, clientMessageId }, 'notDelivered')
+      endStructuredAgentSessionEntry({ sessionId, clientMessageId }, 'discarded')
     }
   }
 }
