@@ -1,11 +1,14 @@
 import { Loader2 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import type { SshManagedServerMoveResult } from '../../../../shared/ssh-managed-server-move'
 import { useMountedRef } from '@/hooks/useMountedRef'
 import { translate } from '@/i18n/i18n'
 import {
   describeManagedServerMove,
+  isSshHostMoveRunning,
   managedServerMoveErrorText,
-  managedServerMoveOfferText
+  managedServerMoveOfferText,
+  moveSshHostToManagedServer
 } from '@/ssh/ssh-managed-server-move'
 import { Button } from '../ui/button'
 import {
@@ -34,7 +37,8 @@ export function SshManagedServerMoveDialog({
   onClose
 }: SshManagedServerMoveDialogProps): React.JSX.Element {
   const mountedRef = useMountedRef()
-  const [running, setRunning] = useState(false)
+  // Why seeded: a remount mid-move must not offer an enabled Move for the run still in flight.
+  const [running, setRunning] = useState(() => isSshHostMoveRunning(targetId))
   const [refusal, setRefusal] = useState<string | null>(null)
 
   const close = (): void => {
@@ -42,16 +46,10 @@ export function SshManagedServerMoveDialog({
     onClose()
   }
 
-  const move = async (): Promise<void> => {
-    const moveToManagedServer = window.api.ssh.moveToManagedServer
-    if (!moveToManagedServer) {
-      return
-    }
-    setRunning(true)
-    setRefusal(null)
+  const settle = async (run: Promise<SshManagedServerMoveResult>): Promise<void> => {
     let message: string | null
     try {
-      const report = describeManagedServerMove(host, await moveToManagedServer({ targetId }))
+      const report = describeManagedServerMove(host, await run)
       message = report.level === 'success' ? null : report.message
     } catch (error) {
       message = managedServerMoveErrorText(host, error)
@@ -66,6 +64,27 @@ export function SshManagedServerMoveDialog({
       close()
     }
   }
+
+  const move = (): void => {
+    const run = moveSshHostToManagedServer(targetId)
+    if (!run) {
+      return
+    }
+    setRunning(true)
+    setRefusal(null)
+    void settle(run)
+  }
+
+  // Why: a dialog remounted mid-move reports that run's outcome instead of hanging disabled.
+  useEffect(() => {
+    if (isSshHostMoveRunning(targetId)) {
+      const run = moveSshHostToManagedServer(targetId)
+      if (run) {
+        void settle(run)
+      }
+    }
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- mount-only: joins a run already in flight.
+  }, [])
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && !running && close()}>
@@ -94,7 +113,7 @@ export function SshManagedServerMoveDialog({
               : translate('auto.ssh.managedServerMove.notNow', 'Not now')}
           </Button>
           {refusal ? null : (
-            <Button type="button" disabled={running} onClick={() => void move()}>
+            <Button type="button" disabled={running} onClick={move}>
               {translate('auto.ssh.managedServerMove.confirm', 'Move')}
             </Button>
           )}

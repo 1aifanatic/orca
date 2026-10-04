@@ -99,10 +99,16 @@ async function startOrcadServe(
       return newline === -1 ? null : stdout.slice(0, newline)
     }
   })
-  const daemon = JSON.parse(serve.ready).health?.terminalDaemon
-  expect(daemon?.state, serve.stderr()).toBe('live')
-  // POSIX: SIGTERM is orcad's graceful stop and leaves the daemon running by design.
-  return { daemonPid: daemon.pid, stop: serve.stop }
+  try {
+    const daemon = JSON.parse(serve.ready).health?.terminalDaemon
+    expect(daemon?.state, serve.stderr()).toBe('live')
+    // POSIX: SIGTERM is orcad's graceful stop and leaves the daemon running by design.
+    return { daemonPid: daemon.pid, stop: serve.stop }
+  } catch (error) {
+    // Why: the caller never gets stop(), and a leaked orcad keeps the profile lock.
+    await serve.stop()
+    throw error
+  }
 }
 
 // Why: an SSH-managed orcad on this machine runs under ~/.orca, beside the desktop's own profile.

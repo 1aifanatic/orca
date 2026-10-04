@@ -59,6 +59,14 @@ export function ManagedServersSection({
   }
   const managed = environments.filter((environment) => environment.orcadDeployment)
   const paired = environments.filter((environment) => !environment.orcadDeployment)
+  // Why: a host that already runs, or is moving to, a managed server can't take another.
+  const busyTargetIds = new Set([
+    ...managed.map((environment) => environment.orcadDeployment?.sshTargetId),
+    ...pending.map((row) => row.sshTargetId)
+  ])
+  const emptyTargets = targets.filter(
+    (target) => !target.orcadFence && !busyTargetIds.has(target.id)
+  )
 
   const deploy = async (): Promise<void> => {
     setDeploying(true)
@@ -131,7 +139,7 @@ export function ManagedServersSection({
           </Label>
           <SshTargetSelect
             id={hostFieldId}
-            targets={targets}
+            targets={emptyTargets}
             value={targetId}
             onChange={setTargetId}
             placeholder={translate(

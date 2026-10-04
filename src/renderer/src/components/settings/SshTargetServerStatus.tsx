@@ -22,12 +22,24 @@ export function SshTargetServerStatus({
   const state = useAppStore((s) => s.sshConnectionStates.get(target.id))
   const [moveOpen, setMoveOpen] = useState(false)
   const line = sshHostServerStatusLine(target, state)
-  if (!line) {
-    return null
-  }
   const status = state?.managedServer
   const terminals = status?.kind === 'relay' ? status.terminals : undefined
-  const canMove = line.action === 'move' && canMoveSshHostToManagedServer()
+  const canMove = line?.action === 'move' && canMoveSshHostToManagedServer()
+  // Why moveOpen too: a move publishes setting-up, which drops the action; the open dialog must
+  // stay mounted to show its outcome and keep Move disabled.
+  const moveDialog =
+    canMove || moveOpen ? (
+      <SshManagedServerMoveDialog
+        open={moveOpen}
+        targetId={target.id}
+        host={target.label}
+        terminals={terminals}
+        onClose={() => setMoveOpen(false)}
+      />
+    ) : null
+  if (!line) {
+    return moveDialog
+  }
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-2">
@@ -64,15 +76,7 @@ export function SshTargetServerStatus({
         </Collapsible>
       ) : null}
       <SshHostChangedActions target={target} onChanged={onChanged} />
-      {canMove ? (
-        <SshManagedServerMoveDialog
-          open={moveOpen}
-          targetId={target.id}
-          host={target.label}
-          terminals={terminals}
-          onClose={() => setMoveOpen(false)}
-        />
-      ) : null}
+      {moveDialog}
     </div>
   )
 }

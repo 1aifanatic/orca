@@ -1,6 +1,7 @@
 /** What a change in an SSH host's server means for the rest of the app. */
 import { toast } from 'sonner'
 import type { SshConnectionState } from '../../../../shared/ssh-types'
+import { getRepoExecutionHostId, toRuntimeExecutionHostId } from '../../../../shared/execution-host'
 import { translate } from '@/i18n/i18n'
 import {
   canMoveSshHostToManagedServer,
@@ -17,14 +18,19 @@ export function applySshManagedServerTransition(
   previous: ManagedServerStatus,
   next: ManagedServerStatus
 ): void {
-  if (
-    next?.kind === 'managed' &&
-    (previous?.kind !== 'managed' || previous.environmentId !== next.environmentId)
-  ) {
-    void loadManagedServerCatalogs(targetId, next.environmentId).catch((error: unknown) =>
-      console.warn('[ssh] Could not load the managed server catalogs:', error)
-    )
+  if (next?.kind === 'managed') {
+    // Why not `previous`: every start, wake and update passes through setting-up, which is no
+    // change of owner. Only a new environment for this host needs its catalogs loaded.
+    if (loadedEnvironmentByTarget.get(targetId) !== next.environmentId) {
+      loadedEnvironmentByTarget.set(targetId, next.environmentId)
+      void loadManagedServerCatalogs(targetId, next.environmentId).catch((error: unknown) =>
+        console.warn('[ssh] Could not load the managed server catalogs:', error)
+      )
+    }
     return
+  }
+  if (next?.kind === 'relay') {
+    loadedEnvironmentByTarget.delete(targetId)
   }
   if (isNewMoveOffer(previous, next) && canMoveSshHostToManagedServer()) {
     offerManagedServerMove(targetId, next.terminals)
@@ -49,7 +55,9 @@ export function applySshManagedServerTransition(
   }
 }
 
-/** Loads a newly managed host's server the way startup does, then drops its relay-era rows. */
+const loadedEnvironmentByTarget = new Map<string, string>()
+
+/** Loads a newly managed host's server and the local catalogs, then drops its relay-era rows. */
 async function loadManagedServerCatalogs(targetId: string, environmentId: string): Promise<void> {
   const store = useAppStore.getState()
   try {
@@ -59,14 +67,20 @@ async function loadManagedServerCatalogs(targetId: string, environmentId: string
   } catch (error) {
     console.warn('[ssh] Could not refresh the managed server list:', error)
   }
-  // Why all hosts: a host that just converted brings a new server whose projects must load.
-  await store.fetchReposForAllHosts()
-  // Why groups before folders: folder workspaces are owned through their project groups.
-  await store.fetchProjectGroupsForAllHosts()
-  await store.fetchFolderWorkspacesForAllHosts()
+  // Why local too: the host's relay-era rows come from the local catalog, which main now hides.
+  for (const runtimeEnvironmentId of [null, environmentId]) {
+    await store.fetchRepos({ runtimeEnvironmentId })
+    // Why groups before folders: folder workspaces are owned through their project groups.
+    await store.fetchProjectGroups({ runtimeEnvironmentId })
+    await store.fetchFolderWorkspaces({ runtimeEnvironmentId })
+  }
   // Why gated: startup runs its own scan once every host's catalog is in.
   if (useAppStore.getState().startupWorktreeRefreshCompleted) {
-    await store.fetchAllWorktrees()
+    const executionHostId = toRuntimeExecutionHostId(environmentId)
+    const repos = useAppStore
+      .getState()
+      .repos.filter((repo) => getRepoExecutionHostId(repo) === executionHostId)
+    await Promise.all(repos.map((repo) => store.fetchWorktrees(repo.id, { executionHostId })))
   }
   useAppStore.setState((state) => withoutConvertedSshHostRows(state, targetId))
 }

@@ -115,4 +115,18 @@ describe('a host that just moved to its managed server', () => {
     expect(state.projectGroups.map((entry) => entry.executionHostId)).toEqual(['runtime:env-1'])
     expect(state.folderWorkspaces.map((entry) => entry.executionHostId)).toEqual(['runtime:env-1'])
   })
+
+  it('loads once per server, not on every start or wake of it', async () => {
+    const managed = { kind: 'managed', environmentId: 'env-1' } as const
+    applySshManagedServerTransition('ssh-2', undefined, managed)
+    applySshManagedServerTransition('ssh-2', managed, { kind: 'setting-up', phase: 'connecting' })
+    applySshManagedServerTransition('ssh-2', { kind: 'setting-up', phase: 'connecting' }, managed)
+    await vi.waitFor(() =>
+      expect(store.getState().repos.map((entry) => entry.executionHostId)).toContain(
+        'runtime:env-1'
+      )
+    )
+    expect(window.api.runtimeEnvironments.list).toHaveBeenCalledTimes(1)
+    expect(window.api.repos.list).toHaveBeenCalledTimes(1)
+  })
 })

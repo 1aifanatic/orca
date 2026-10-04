@@ -117,6 +117,8 @@ export async function startReleasedRelayDaemon(
   const deadline = Date.now() + 15_000
   while (!(await accepts(sockPath)) || !existsSync(`${sockPath}.credential`)) {
     if (Date.now() > deadline || daemon.exitCode !== null) {
+      // Why: the caller never receives this child, so nothing else would kill it.
+      daemon.kill('SIGKILL')
       throw new Error('released relay daemon did not start')
     }
     await new Promise((resolve) => setTimeout(resolve, 50))

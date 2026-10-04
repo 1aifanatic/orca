@@ -37,21 +37,7 @@ export function describeManagedServerMove(
         )
       }
     case 'refused':
-      return {
-        level: 'error',
-        message:
-          result.verdict === 'live'
-            ? translate(
-                'auto.ssh.managedServerMove.refusedLive',
-                'Not moved: {{count}} terminals on {{host}} are still running.',
-                { host, count: result.terminals }
-              )
-            : translate(
-                'auto.ssh.managedServerMove.refusedUnverifiable',
-                'Not moved: Orca couldn’t confirm that {{count}} terminals on {{host}} stopped.',
-                { host, count: result.terminals }
-              )
-      }
+      return { level: 'error', message: refusedMoveText(host, result) }
     case 'stayed':
       return {
         level: 'error',
@@ -64,6 +50,31 @@ export function describeManagedServerMove(
   }
 }
 
+function refusedMoveText(
+  host: string,
+  result: Extract<SshManagedServerMoveResult, { outcome: 'refused' }>
+): string {
+  if (result.verdict === 'live') {
+    return translate(
+      'auto.ssh.managedServerMove.refusedLive',
+      'Not moved: {{count}} terminals on {{host}} are still running.',
+      { host, count: result.terminals }
+    )
+  }
+  // Why: a census that couldn't read the host reports 0, which means unknown, not none.
+  return result.terminals > 0
+    ? translate(
+        'auto.ssh.managedServerMove.refusedUnverifiable',
+        'Not moved: Orca couldn’t confirm that {{count}} terminals on {{host}} stopped.',
+        { host, count: result.terminals }
+      )
+    : translate(
+        'auto.ssh.managedServerMove.refusedUnverifiableUncounted',
+        'Not moved: Orca couldn’t confirm that the terminals on {{host}} stopped.',
+        { host }
+      )
+}
+
 export function managedServerMoveErrorText(host: string, error: unknown): string {
   return translate('auto.ssh.managedServerMove.failed', 'Could not move {{host}}: {{reason}}', {
     host,
@@ -71,9 +82,32 @@ export function managedServerMoveErrorText(host: string, error: unknown): string
   })
 }
 
+const inFlightMoves = new Map<string, Promise<SshManagedServerMoveResult>>()
+
+/** One move per host: a second request while one runs joins it instead of starting another. */
+export function moveSshHostToManagedServer(
+  targetId: string
+): Promise<SshManagedServerMoveResult> | null {
+  const move = window.api.ssh.moveToManagedServer
+  if (!move) {
+    return null
+  }
+  const running = inFlightMoves.get(targetId)
+  if (running) {
+    return running
+  }
+  const started = move({ targetId }).finally(() => inFlightMoves.delete(targetId))
+  inFlightMoves.set(targetId, started)
+  return started
+}
+
+export function isSshHostMoveRunning(targetId: string): boolean {
+  return inFlightMoves.has(targetId)
+}
+
 /** The toast's "Move" path: progress and outcome are reported as toasts. */
 export async function moveSshHostFromToast(targetId: string, host: string): Promise<void> {
-  const move = window.api.ssh.moveToManagedServer
+  const move = moveSshHostToManagedServer(targetId)
   if (!move) {
     return
   }
@@ -83,7 +117,7 @@ export async function moveSshHostFromToast(targetId: string, host: string): Prom
     })
   )
   try {
-    const report = describeManagedServerMove(host, await move({ targetId }))
+    const report = describeManagedServerMove(host, await move)
     toast[report.level](report.message, { id: progressId })
   } catch (error) {
     toast.error(managedServerMoveErrorText(host, error), { id: progressId })
