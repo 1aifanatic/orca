@@ -38,7 +38,7 @@ import {
   sourceOverlayDirName,
   toSafeDirName
 } from './overlay-dir-names'
-import { sweepOrphanedOpenCodeDirs, type OpenCodeDirGcResult } from './overlay-dir-gc'
+import { OpenCodeDirGcLifecycle } from './overlay-dir-gc-lifecycle'
 
 export { getOpenCode2PluginSource, getOpenCodeFamilyPluginSource, getOpenCodePluginSource }
 
@@ -68,8 +68,7 @@ export class OpenCodeHookService {
   private readonly overlayDir: string
   private readonly installsTuiPlugin: boolean
   private readonly tuiOnlyDirectory: string | undefined
-  private readonly handedOutConfigDirs = new Set<string>()
-  private orphanDirGcScheduled = false
+  readonly configDirGc: OpenCodeDirGcLifecycle
 
   constructor(variant?: OpenCodeHookVariant | (() => string)) {
     const config: OpenCodeHookVariant =
@@ -93,6 +92,7 @@ export class OpenCodeHookService {
     this.pluginFileName = config.pluginFileName
     this.legacyHooksDir = config.legacyHooksDir
     this.overlayDir = config.overlayDir
+    this.configDirGc = new OpenCodeDirGcLifecycle(() => this.getOverlayRoot(), this.pluginFileName)
   }
 
   clearPty(_ptyId: string): void {
@@ -114,7 +114,7 @@ export class OpenCodeHookService {
         }
       }
       this.writePluginIntoOverlay(directory)
-      owner.handedOutConfigDirs.add(directory)
+      owner.configDirGc.reference(directory)
       return 'installed'
     } catch {
       return 'failed'
@@ -153,49 +153,11 @@ export class OpenCodeHookService {
         this.mirrorUserConfig(existingConfigDir, overlayDir)
       }
       this.writePluginIntoOverlay(overlayDir)
-      this.handedOutConfigDirs.add(overlayDir)
+      this.configDirGc.reference(overlayDir)
       return { OPENCODE_CONFIG_DIR: overlayDir }
     } catch {
       return { OPENCODE_CONFIG_DIR: existingConfigDir }
     }
-  }
-
-  scheduleOrphanedDirGc(
-    readLivePtyIds: () => Promise<readonly string[] | null>,
-    delayMs = 3 * 60_000
-  ): void {
-    if (this.orphanDirGcScheduled) {
-      return
-    }
-    this.orphanDirGcScheduled = true
-    const timer = setTimeout(() => {
-      void this.runOrphanedDirGc(readLivePtyIds).catch((error) => {
-        console.warn('[OpenCode] Overlay cleanup skipped:', error)
-      })
-    }, delayMs)
-    timer.unref()
-  }
-
-  async runOrphanedDirGc(
-    readLivePtyIds: () => Promise<readonly string[] | null>
-  ): Promise<OpenCodeDirGcResult> {
-    const references = this.handedOutConfigDirs
-    for (const key of [
-      'OPENCODE_CONFIG_DIR',
-      'ORCA_OPENCODE_CONFIG_DIR',
-      'ORCA_OPENCODE_SOURCE_CONFIG_DIR'
-    ]) {
-      const value = process.env[key]
-      if (value) {
-        references.add(value)
-      }
-    }
-    return sweepOrphanedOpenCodeDirs({
-      overlayRoot: this.getOverlayRoot(),
-      pluginFileName: this.pluginFileName,
-      referencedConfigDirs: references,
-      readLivePtyIds
-    })
   }
 
   // Why: pre-1.4.209 Orca left a server()-only plugin here that OpenCode 2 rejects. Only helps

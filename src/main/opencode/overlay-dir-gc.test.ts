@@ -193,7 +193,7 @@ it('retains unowned names, ambiguous old manifests and mismatched source hashes'
 
 it('counts failed deletion attempts toward the bound and yields between them', async () => {
   for (let i = 0; i < 4; i += 1) {
-    createOverlay('retired-' + i)
+    createOverlay(`retired-${i}`)
   }
   const remove = vi.fn(() => {
     throw new Error('busy')
@@ -221,32 +221,7 @@ it('retains handed-out and inherited source references through clearPty', async 
   rmSync(source, { recursive: true })
   age(directory)
   service.clearPty('pane')
-  expect((await service.runOrphanedDirGc(async () => [])).keptReferenced).toBe(1)
+  expect((await service.configDirGc.run(async () => [])).keptReferenced).toBe(1)
   vi.stubEnv('ORCA_OPENCODE_SOURCE_CONFIG_DIR', source)
-  expect((await new OpenCodeHookService().runOrphanedDirGc(async () => [])).keptReferenced).toBe(1)
-})
-
-it('schedules one delayed sweep and releases the timer reference', async () => {
-  vi.useFakeTimers()
-  const timeout = vi.spyOn(globalThis, 'setTimeout')
-  const service = new OpenCodeHookService()
-  const run = vi
-    .spyOn(service, 'runOrphanedDirGc')
-    .mockResolvedValue({
-      scanned: 0,
-      removed: 0,
-      failed: 0,
-      keptReferenced: 0,
-      keptYoung: 0,
-      keptSourcePresent: 0,
-      keptUnverifiable: 0
-    })
-  const inventory = vi.fn(async () => [])
-  service.scheduleOrphanedDirGc(inventory)
-  service.scheduleOrphanedDirGc(inventory)
-  expect(timeout.mock.results[0]?.value.hasRef()).toBe(false)
-  await vi.advanceTimersByTimeAsync(179999)
-  expect(run).not.toHaveBeenCalled()
-  await vi.advanceTimersByTimeAsync(1)
-  expect(run).toHaveBeenCalledExactlyOnceWith(inventory)
+  expect((await new OpenCodeHookService().configDirGc.run(async () => [])).keptReferenced).toBe(1)
 })

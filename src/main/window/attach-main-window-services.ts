@@ -109,8 +109,8 @@ export function attachMainWindowServices(
   scheduleHistoryGc(async () => {
     return getKnownWorktreeIdsForHistoryGc(store)
   })
-  openCodeHookService.scheduleOrphanedDirGc(listLiveDaemonPtyIds)
-  openCode2HookService.scheduleOrphanedDirGc(listLiveDaemonPtyIds)
+  openCodeHookService.configDirGc.schedule(listLiveDaemonPtyIds)
+  openCode2HookService.configDirGc.schedule(listLiveDaemonPtyIds)
   const localPtyProviderStartupReady = options?.awaitLocalPtyProviderStartup?.()
   if (localPtyProviderStartupReady) {
     void localPtyProviderStartupReady

@@ -182,21 +182,24 @@ export async function sweepOrphanedOpenCodeDirs(
         result.keptReferenced += 1
         continue
       }
-      removeTree(directory, options.overlayRoot)
       try {
-        await lstat(directory)
-        result.failed += 1
-      } catch (error) {
-        if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
-          result.removed += 1
-        } else {
+        removeTree(directory, options.overlayRoot)
+        try {
+          await lstat(directory)
           result.failed += 1
+        } catch (error) {
+          if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+            result.removed += 1
+          } else {
+            result.failed += 1
+          }
         }
+      } catch {
+        result.failed += 1
       }
       await yieldBetween()
     } catch {
-      result.failed += 1
-      await yieldBetween()
+      result.keptUnverifiable += 1
     }
   }
   return result

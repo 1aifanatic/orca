@@ -1,5 +1,6 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import * as filesystem from 'node:fs/promises'
+import type * as Filesystem from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -7,7 +8,7 @@ import { inspectSourceDirectory, resolveOwnedOverlaySource } from './overlay-sou
 import { sourceOverlayDirName } from './overlay-dir-names'
 
 vi.mock('node:fs/promises', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  const actual = await importOriginal<typeof Filesystem>()
   return { ...actual, lstat: vi.fn(actual.lstat) }
 })
 
