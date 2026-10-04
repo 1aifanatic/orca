@@ -11,6 +11,14 @@ import type { JournalWriteBody } from './journal-write-queue'
  *  nothing can interleave inside the transaction. */
 export type JournalRowTransactionHook = (db: Database.Database, row: JournalRow) => void
 
+/** An operation's ledger answer, committed with the journal write that makes it true: `write` runs
+ *  inside that transaction on the same connection, `committed` synchronously right after its
+ *  COMMIT and never after a rollback. */
+export type JournalOperationReceipt = {
+  write: (db: Database.Database) => void
+  committed: () => void
+}
+
 export type JournalRowWriterDeps = {
   sessionId: string
   now: () => number
@@ -35,13 +43,15 @@ export class JournalRowWriter {
 
   enqueue(
     build: (seq: number, ts: number) => JournalRow,
-    hook?: JournalRowTransactionHook
+    hook?: JournalRowTransactionHook,
+    receipt?: JournalOperationReceipt
   ): Promise<JournalRow> {
-    return this.deps.serialize(() => this.write(build, hook))
+    return this.deps.serialize(() => this.write(build, hook, receipt))
   }
 
   /** Rows chosen at this write's turn in the queue and written back to back, so no other write
-   *  lands between them; each is built after the one before it is adopted. */
+   *  lands between them; each commits alone and is built after the one before it is adopted, so a
+   *  later row may revise an earlier one. `enqueueRows` is the all-or-nothing form. */
   enqueueEach(
     resolve: () => readonly ((seq: number, ts: number) => JournalRow)[]
   ): Promise<JournalRow[]> {
@@ -50,7 +60,8 @@ export class JournalRowWriter {
 
   private write(
     build: (seq: number, ts: number) => JournalRow,
-    hook?: JournalRowTransactionHook
+    hook?: JournalRowTransactionHook,
+    receipt?: JournalOperationReceipt
   ): JournalRow {
     assertJournalWritable(this.deps.readOnly(), this.deps.sessionId)
     const row = build(this.deps.nextSequence(), this.deps.now())
@@ -60,6 +71,7 @@ export class JournalRowWriter {
       this.deps.database().transaction((db) => {
         insertJournalRow(db, this.deps.sessionId, row)
         hook?.(db, row)
+        receipt?.write(db)
         this.runBookkeeping(db, row)
       })
     } catch (error) {
@@ -68,18 +80,57 @@ export class JournalRowWriter {
     }
     // COMMIT landed, so the row is durable: adopt it before anything that can
     // fail. Rejecting here instead would leave the next append reusing a
-    // sequence the table already holds.
+    // sequence the table already holds. The ledger first: it cannot throw, the fold can.
+    receipt?.committed()
     this.deps.commit(row)
     return row
+  }
+
+  /** Several rows in ONE transaction, in order, planned once the lane is this append's: none is
+   *  durable unless all are, so no reader ever meets some without the rest. */
+  enqueueRows(
+    plan: () => readonly ((seq: number, ts: number) => JournalRow)[]
+  ): Promise<JournalRow[]> {
+    return this.deps.serialize(() => {
+      assertJournalWritable(this.deps.readOnly(), this.deps.sessionId)
+      const first = this.deps.nextSequence()
+      const ts = this.deps.now()
+      const rows = plan().map((build, index) => build(first + index, ts))
+      if (rows.length === 0) {
+        return rows
+      }
+      for (const row of rows) {
+        assertJournalFence(row.fence, this.deps.highestFence())
+      }
+      try {
+        this.deps.database().transaction((db) => {
+          for (const row of rows) {
+            insertJournalRow(db, this.deps.sessionId, row)
+            this.runBookkeeping(db, row)
+          }
+        })
+      } catch (error) {
+        this.deps.rolledBack?.()
+        throw error
+      }
+      for (const row of rows) {
+        this.deps.commit(row)
+      }
+      return rows
+    })
   }
 
   /** Assign the next sequence, make the row durable, and fold it through the SAME reducer
    *  replay uses — all inside one serialized step — answering where the row landed. */
   append(
     build: (seq: number, ts: number) => JournalRow,
-    hook?: JournalRowTransactionHook
+    hook?: JournalRowTransactionHook,
+    receipt?: JournalOperationReceipt
   ): Promise<AgentJournalCursor> {
-    return this.enqueue(build, hook).then((row) => ({ epoch: row.epoch, sequence: row.seq }))
+    return this.enqueue(build, hook, receipt).then((row) => ({
+      epoch: row.epoch,
+      sequence: row.seq
+    }))
   }
 
   private runBookkeeping(db: Database.Database, row: JournalRow): void {
