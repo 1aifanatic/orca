@@ -22,7 +22,6 @@ import { restoredClaudeStructuredSessionOptions } from './claude-structured-opti
 import { createClaudeSessionJournalTranslator } from './claude-structured-journal-translation'
 import { observeClaudeFastModeFacts } from './claude-structured-session-options'
 import {
-  claudeStartupDeadlineMs,
   createClaudeInitProof,
   readClaudeStartupFacts,
   settleClaudeSessionStartup
@@ -287,7 +286,6 @@ export async function acquireClaudeSession({
           resumesTranscript: launch.resumesTranscript,
           inputOptions: input.options,
           requestTimeoutMs: deps.requestTimeoutMs,
-          deadlineMs: claudeStartupDeadlineMs(),
           emit
         }),
         isCurrent: () => sessions.get(sessionId) === session,

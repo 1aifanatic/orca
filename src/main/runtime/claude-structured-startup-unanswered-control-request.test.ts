@@ -1,5 +1,6 @@
-// A Claude start has no deadline of its own, but each option write the restore replays, and
-// startup's own settings read, is a control request under the ordinary request deadline. A CLI
+// Only a Claude start's initialize answer runs under the startup deadline; each option write the
+// restore replays, and startup's own settings read, is a control request under the ordinary
+// request deadline. A CLI
 // that answers initialize and then never answers one of those used to fault the whole session
 // when that deadline fired: a start that was merely slow died with the deadline's error as its
 // cause. Now the unanswered request is skipped and startup lands on the CLI's own values, while

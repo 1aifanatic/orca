@@ -64,7 +64,7 @@ export type ClaudeStartupFacts = {
 export const CLAUDE_STARTUP_DEADLINE_MS = 120_000
 
 /** The e2e rig shortens the deadline to capture its failure; production always uses the default. */
-export function claudeStartupDeadlineMs(): number {
+function claudeStartupDeadlineMs(): number {
   const configured = Number(process.env.ORCA_E2E_CLAUDE_STARTUP_DEADLINE_MS)
   return Number.isFinite(configured) && configured >= 1 && configured <= CLAUDE_STARTUP_DEADLINE_MS
     ? configured
@@ -95,7 +95,6 @@ export async function readClaudeStartupFacts(input: {
   resumesTranscript: boolean
   inputOptions: StructuredAgentSessionAcquireInput['options']
   requestTimeoutMs: number | undefined
-  deadlineMs: number
   emit: (event: ClaudeStructuredSessionEvent) => void
 }): Promise<ClaudeStartupFacts> {
   // The CLI's first answer has no request deadline of its own; the reads after it do.
@@ -110,7 +109,7 @@ export async function readClaudeStartupFacts(input: {
       }),
       input.initProof.promise
     ]),
-    input.deadlineMs
+    claudeStartupDeadlineMs()
   )
   if (input.connection.closed) {
     throw new Error('claude session closed before startup completed')
