@@ -27,6 +27,7 @@ import { useStructuredAgentSessionHostExecutionPhase } from './StructuredAgentSe
 import { NativeChatQueuedMessageList } from './NativeChatQueuedMessageList'
 import { useAppStore } from '../../store'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
+import { useStructuredAgentAcceptsImages } from '@/runtime/use-host-structured-agent'
 import { NativeChatThreadGoalBanner } from './NativeChatThreadGoalBanner'
 import { structuredAgentSessionReadFailureNotice } from './structured-agent-session-read-failure-notice'
 import { useStructuredAgentSessionStartFailureFacts } from './use-structured-agent-session-start-failure-facts'
@@ -199,6 +200,7 @@ export function NativeChatStructuredSession(
   })
   const questionBody = prompt?.body.kind === 'question' ? prompt.body : null
   const questions = questionBody ? agentSessionPromptQuestions(questionBody) : []
+  const acceptsImages = useStructuredAgentAcceptsImages(props.target, props.agent)
   const structuredTransport = useMemo(() => {
     const threadGoal = controller.threadGoal
     const setThreadGoalObjective = threadGoal
@@ -234,6 +236,7 @@ export function NativeChatStructuredSession(
       optionSnapshot: controller.optionSnapshot,
       optionPickerRequest,
       sessionCommands: controller.sessionCommands,
+      acceptsImages,
       contextUsage: controller.contextUsage,
       worktreeId: fileLinkContext?.worktreeId,
       onError: setComposerError,
@@ -243,6 +246,7 @@ export function NativeChatStructuredSession(
         props.target.kind === 'local' ? null : (props.target.environmentId ?? null)
     }
   }, [
+    acceptsImages,
     controller,
     fileLinkContext?.worktreeId,
     optionPickerRequest,

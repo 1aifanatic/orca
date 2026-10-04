@@ -33,8 +33,7 @@ import {
   getTabEntryOmniboxPlaceholder
 } from './tab-create-entry-copy'
 import { EMPTY_AGENT_OPTIONS, EMPTY_MENU_OPTIONS } from './tab-create-entry-empty-options'
-import { useStructuredAgentLaunchStatus } from '@/lib/structured-agent-session-launch'
-import { isAgentSessionHandleProvider } from '../../../../shared/agent-session-provider-handle'
+import { useStructuredAgentLaunchPendingAgents } from '@/lib/structured-agent-session-launch'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import type { TabEntryActionClassification } from './tab-create-entry-classifier'
 import type { TabBarCreateEntryProps } from './tab-create-entry-props'
@@ -62,14 +61,9 @@ function TabBarCreateEntrySession({
   const [error, setError] = useState<string | null>(null)
   const [switchError, setSwitchError] = useState<string | null>(null)
   const [selectionGuidance, setSelectionGuidance] = useState<string | null>(null)
-  // One hook per structured provider: the launch registry is keyed by agent, and hooks cannot run
-  // inside the option render loop.
-  const structuredLaunchStatusByAgent = {
-    claude: useStructuredAgentLaunchStatus(worktreeId, 'claude'),
-    codex: useStructuredAgentLaunchStatus(worktreeId, 'codex')
-  }
+  const pendingStructuredLaunchAgents = useStructuredAgentLaunchPendingAgents(worktreeId)
   const isStructuredLaunchPending = (agent: TuiAgent): boolean =>
-    isAgentSessionHandleProvider(agent) && structuredLaunchStatusByAgent[agent] === 'pending'
+    pendingStructuredLaunchAgents.has(agent)
   // null = follow ranking (deferred tabs can prepend); set on arrow keys only.
   const [pinnedOptionId, setPinnedOptionId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)

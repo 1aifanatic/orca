@@ -16,6 +16,8 @@ type ResolvedAttachmentPath = {
 }
 
 type Args = {
+  /** False when the agent takes no image input: an image is then referenced by path like any file. */
+  acceptsImages?: boolean
   appendImageAttachments: (paths: { path: string; connectionId?: string | null }[]) => void
   attachmentTargetBlocked: (targetOwned?: boolean) => boolean
   caret: number
@@ -29,6 +31,7 @@ type Args = {
 }
 
 export function useNativeChatResolvedPathAttachments({
+  acceptsImages = true,
   appendImageAttachments,
   attachmentTargetBlocked,
   caret,
@@ -107,9 +110,11 @@ export function useNativeChatResolvedPathAttachments({
         noteAttachmentTargetBlocked()
         return
       }
-      const imagePaths = attachable.filter(({ path }) => isNativeChatImageAttachmentPath(path))
+      const attachesAsImage = (path: string): boolean =>
+        acceptsImages && isNativeChatImageAttachmentPath(path)
+      const imagePaths = attachable.filter(({ path }) => attachesAsImage(path))
       const filePaths = attachable
-        .filter(({ path }) => !isNativeChatImageAttachmentPath(path))
+        .filter(({ path }) => !attachesAsImage(path))
         .map(({ path }) => path)
       // Images ride along on submit so chips and the TUI input cannot diverge.
       appendImageAttachments(imagePaths.map(({ path, connectionId }) => ({ path, connectionId })))
@@ -124,6 +129,7 @@ export function useNativeChatResolvedPathAttachments({
       }
     },
     [
+      acceptsImages,
       appendImageAttachments,
       attachmentTargetBlocked,
       insertFileReferences,

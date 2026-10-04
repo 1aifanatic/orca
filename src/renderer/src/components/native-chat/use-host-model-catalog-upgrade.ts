@@ -9,7 +9,6 @@ import {
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
 import type { NativeChatSessionOptionRecord } from '../../../../shared/native-chat-session-option-state'
-import { isAgentSessionHandleProvider } from '../../../../shared/agent-session-provider-handle'
 
 /**
  * Upgrades the static seed with the host's stored catalog without waiting on
@@ -48,7 +47,8 @@ export function useHostModelCatalogUpgrade(args: {
     worktree
   } = args
   useEffect(() => {
-    if (!enabled || !optionCatalog || !isAgentSessionHandleProvider(agent)) {
+    // Any agent the host registered: it answers `unknown` for one whose catalog it does not keep.
+    if (!enabled || !optionCatalog) {
       return
     }
     let stale = false

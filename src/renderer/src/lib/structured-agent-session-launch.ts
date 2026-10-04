@@ -1,4 +1,4 @@
-import type { AgentSessionHandleProvider } from '../../../shared/agent-session-provider-handle'
+import type { TuiAgent } from '../../../shared/tui-agent'
 import type { ExecutionHostId } from '../../../shared/execution-host'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
 import {
@@ -56,7 +56,10 @@ export {
   type StructuredAgentLaunchStatus,
   type StructuredAgentSessionLaunchLifecycle
 } from './structured-agent-session-launch-registry'
-export { useStructuredAgentLaunchStatus } from './structured-agent-session-launch-status'
+export {
+  hasStructuredAgentLaunchInWorktree,
+  useStructuredAgentLaunchPendingAgents
+} from './structured-agent-session-launch-status'
 export { useStructuredAgentSessionLaunchSelection } from './structured-agent-session-launch-options'
 
 type StructuredLaunchStateResult = {
@@ -151,7 +154,7 @@ function restartStructuredLaunchState(state: StructuredLaunchState): void {
 
 function structuredAgentLaunchState(
   worktreeId: string,
-  agent: AgentSessionHandleProvider,
+  agent: TuiAgent,
   options: StructuredAgentLaunchOptions
 ): StructuredLaunchStateResult {
   const identity = structuredLaunchIdentity(worktreeId, agent, options.resumeFrom)
@@ -249,7 +252,7 @@ export function cancelStructuredAgentLaunch(worktreeId: string, sessionId: strin
 
 export function startStructuredAgentLaunch(
   worktreeId: string,
-  agent: AgentSessionHandleProvider,
+  agent: TuiAgent,
   options: StructuredAgentLaunchOptions = {}
 ): StructuredAgentLaunchResult {
   const { state, caller } = structuredAgentLaunchState(worktreeId, agent, options)
