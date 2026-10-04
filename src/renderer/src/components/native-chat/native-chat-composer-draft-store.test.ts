@@ -484,6 +484,28 @@ describe('native-chat composer draft store', () => {
     expect(reloaded.drafts.readNativeChatDraftCache('tab-10:pane')).toBe('other tab')
   })
 
+  it('keeps a conversation’s draft when a tab is closed, and drops it when deleted by its key', async () => {
+    const conversation = modules.store.structuredAgentSessionDraftScopeKey('session-1')
+    expect(conversation).toBe('agent-session:session-1')
+    modules.drafts.writeNativeChatDraftCache(conversation, 'unsent')
+    modules.drafts.writeNativeChatDraftCache('tab-1:pane', 'pane draft')
+    modules.store.flushNativeChatComposerDrafts()
+    // The prefix before the conversation key's ':' must never read as a tab id.
+    modules.store.deleteNativeChatComposerDraftsForTab('agent-session')
+    modules.store.deleteNativeChatComposerDraftsForTab('tab-1')
+    expect(modules.drafts.readNativeChatDraftCache(conversation)).toBe('unsent')
+
+    const listener = vi.fn()
+    modules.store.subscribeToNativeChatComposerDraft(conversation, listener)
+    modules.drafts.writeNativeChatDraftCache(conversation, 'unsent, still deferred')
+    modules.store.deleteNativeChatComposerDraft(conversation)
+    expect(listener).toHaveBeenCalled()
+    expect(modules.drafts.readNativeChatDraftCache(conversation)).toBe('')
+    modules.store.flushNativeChatComposerDrafts()
+    const reloaded = await reload()
+    expect(reloaded.drafts.readNativeChatDraftCache(conversation)).toBe('')
+  })
+
   it('keeps the drafts of a tab whose id extends the closed one', async () => {
     // A second chat for one session gets `<tab id>:history-1`, so a prefix match would reach it.
     const closed = 'structured-agent-session-claude_1'

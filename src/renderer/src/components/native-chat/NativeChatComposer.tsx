@@ -55,6 +55,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     {
       terminalTabId,
       paneKey,
+      draftScopeKey = paneKey,
       targetPtyId,
       agent,
       canSend = true,
@@ -75,10 +76,10 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     // Scope key shared with image attachments so an unsent draft + its attached
     // images survive both TUI/GUI toggles and PTY replacement on reconnect.
     // Why: local, SSH, and runtime reconnects can replace or temporarily clear
-    // the PTY id. Pane identity is the stable ownership key for unsent input.
+    // the PTY id. Pane (or conversation) identity is the stable owner of unsent input.
     const imeEnterGesture = useImeEnterGestureOwnership()
     const { draft, setDraft, flushDraftAppends } = useNativeChatDraft(
-      paneKey,
+      draftScopeKey,
       imeEnterGesture.isComposing
     )
     const [caret, setCaret] = useState(draft.length)
@@ -155,7 +156,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     }, [])
 
     const attachments = useNativeChatComposerAttachments({
-      attachmentScopeKey: paneKey,
+      attachmentScopeKey: draftScopeKey,
       allowWithoutTarget: Boolean(structuredTransport),
       caret,
       disabled,
@@ -249,10 +250,10 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
 
     const sendStructured = useNativeChatStructuredComposerSend({
       agent,
-      draftScopeKey: paneKey,
+      draftScopeKey,
       imageAttachments,
       structuredTransport,
-      clearImageAttachments,
+      isComposing: imeEnterGesture.isComposing,
       clearSkillOrigin,
       setHistory,
       setDraft,
@@ -285,7 +286,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     })
     const { send, goalMode } = useNativeChatComposerSubmit({
       structuredTransport,
-      draftScopeKey: paneKey,
+      draftScopeKey,
       draft,
       caret,
       imageAttachments,
@@ -360,7 +361,8 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
 
     return (
       <NativeChatComposerField
-        composerScopeKey={paneKey}
+        dropScopeKey={paneKey}
+        draftScopeKey={draftScopeKey}
         textareaRef={textareaRef}
         draft={draft}
         disabled={disabled}

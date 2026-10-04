@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, createElement, useState } from 'react'
+import { act, createElement, Fragment, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import type { NativeChatLaunchDraft } from '@/lib/native-chat-launch-prompt'
 import type * as DraftHook from './use-native-chat-draft'
@@ -149,7 +149,7 @@ function composer(
       draftScopeKey: scopeKey,
       imageAttachments: attachments.imageAttachments,
       structuredTransport: transport,
-      clearImageAttachments: attachments.clearImageAttachments,
+      isComposing: () => false,
       clearSkillOrigin: () => {},
       setHistory: () => {},
       setDraft,
@@ -297,6 +297,82 @@ describe('native-chat composer draft lifecycle', () => {
     expect(seen.api?.attachments.imageAttachments.map(({ path }) => path)).toEqual([
       '/repo/shot.png'
     ])
+  })
+
+  it('clears an accepted send’s text and images from the shown composer', async () => {
+    const hooks = await loadHooks()
+    const held = heldTransport()
+    const seen: { api?: ComposerApi } = {}
+    await mount(
+      createElement(
+        composer(hooks, (next) => (seen.api = next), held.transport),
+        { scopeKey: 'agent-session:s1' }
+      )
+    )
+    await act(async () => {
+      seen.api?.setDraft('sent text')
+      seen.api?.attachments.attachResolvedPaths(['/repo/a.png'])
+    })
+    await act(async () => seen.api?.send('sent text'))
+
+    await held.settle()
+
+    expect(seen.api?.draft).toBe('')
+    expect(seen.api?.attachments.imageAttachments).toEqual([])
+    expect(storedDraft('agent-session:s1')).toBeNull()
+  })
+
+  it('leaves a draft replaced before the send was accepted as it is', async () => {
+    const hooks = await loadHooks()
+    const held = heldTransport()
+    const seen: { api?: ComposerApi } = {}
+    await mount(
+      createElement(
+        composer(hooks, (next) => (seen.api = next), held.transport),
+        { scopeKey: 'agent-session:s1' }
+      )
+    )
+    await act(async () => seen.api?.setDraft('sent text'))
+    await act(async () => seen.api?.send('sent text'))
+    await act(async () => seen.api?.setDraft('typed while it was on its way'))
+
+    await held.settle()
+
+    expect(seen.api?.draft).toBe('typed while it was on its way')
+  })
+
+  it('shares one conversation’s draft between its composers, and keeps what the other added', async () => {
+    const hooks = await loadHooks()
+    const held = heldTransport()
+    const sender: { api?: ComposerApi } = {}
+    const other: { api?: ComposerApi } = {}
+    await mount(
+      createElement(
+        Fragment,
+        null,
+        createElement(
+          composer(hooks, (next) => (sender.api = next), held.transport),
+          {
+            scopeKey: 'agent-session:s1'
+          }
+        ),
+        createElement(
+          composer(hooks, (next) => (other.api = next)),
+          {
+            scopeKey: 'agent-session:s1'
+          }
+        )
+      )
+    )
+    await act(async () => sender.api?.setDraft('sent text'))
+    expect(other.api?.draft).toBe('sent text')
+    await act(async () => sender.api?.send('sent text'))
+    await act(async () => other.api?.setDraft((previous) => `${previous} and more`))
+
+    await held.settle()
+
+    expect(sender.api?.draft).toBe(' and more')
+    expect(other.api?.draft).toBe(' and more')
   })
 
   it('keeps a shown composer’s pasted image when many other drafts are written', async () => {

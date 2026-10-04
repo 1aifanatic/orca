@@ -11,7 +11,11 @@ import { disposeRemovedWorktreeParkedTerminalWatchers } from '../../../../compon
 import { detachedHeadAutoDerivedDisplayNames } from '../metadata/detached-head-display-name'
 import { applyRemoveWorktreeSuccessState } from './remove-worktree-store-cleanup'
 import { purgeOrphanedRuntimeSshProjects } from './orphaned-runtime-ssh-project-purge'
-import { deleteNativeChatComposerDraftsForTab } from '@/components/native-chat/native-chat-composer-draft-store'
+import {
+  deleteNativeChatComposerDraft,
+  deleteNativeChatComposerDraftsForTab,
+  structuredAgentSessionDraftScopeKey
+} from '@/components/native-chat/native-chat-composer-draft-store'
 
 /**
  * Renderer-side teardown after the backend removal succeeded.
@@ -45,8 +49,10 @@ export async function tearDownRemovedWorktreeRendererState(args: {
       )
     )
   }
+  const structuredSessionIds: string[] = []
   for (const tab of get().unifiedTabsByWorktree[worktreeId] ?? []) {
     if (tab.contentType === 'agent-session') {
+      structuredSessionIds.push(tab.entityId)
       get().closeUnifiedTab(tab.id, {
         preserveWorktreeSelection: true,
         recordInteraction: false
@@ -80,7 +86,11 @@ export async function tearDownRemovedWorktreeRendererState(args: {
   detachedHeadAutoDerivedDisplayNames.delete(worktreeId)
   forgetForegroundTerminalTabs(tabIds)
   forgetAgentStartupDeliveriesForTabs(tabIds)
-  // Structured chats were closed above, which deleted their drafts; terminal tabs skip closeTab.
+  // Why: closing a structured chat keeps its conversation's draft, and terminal tabs skip
+  // closeTab, so both die with their worktree here.
+  for (const sessionId of structuredSessionIds) {
+    deleteNativeChatComposerDraft(structuredAgentSessionDraftScopeKey(sessionId))
+  }
   for (const tabId of tabIds) {
     deleteNativeChatComposerDraftsForTab(tabId)
   }

@@ -53,7 +53,7 @@ function send(structuredTransport: NativeChatStructuredComposerTransport): (text
       draftScopeKey: 'tab-1:pane',
       imageAttachments: [],
       structuredTransport,
-      clearImageAttachments: vi.fn(),
+      isComposing: () => false,
       clearSkillOrigin: vi.fn(),
       setHistory: vi.fn(),
       setDraft: vi.fn(),
