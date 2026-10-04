@@ -651,6 +651,32 @@ describe("a Stop pressed while Codex's turn/start is in flight", () => {
     })
   })
 
+  // Its turn/start answer lost, the send is in doubt rather than pending; the child's end takes it
+  // back all the same, so it writes no row either.
+  it('leaves no Stop row under the turn before when it takes back a send whose answer was lost', async () => {
+    const warmUp = await send('warm up')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    turns.start()
+    turns.echo(warmUp)
+    turns.end('completed')
+    const answer = turns.routes['turn/start']
+    turns.routes['turn/start'] = () => {
+      turns.routes['turn/start'] = answer
+      throw new Error('codex app-server request timed out: turn/start')
+    }
+    const sent = await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(2))
+    await vi.waitFor(async () =>
+      expect(verdictOf((await settled()).submissions, sent)).toBe('unknown')
+    )
+
+    expect(await settledWithin(stop(), CODEX_TURN_OPEN_WAIT_MS + 2_000)).not.toBe('held')
+
+    expect(childCloses).toBe(1)
+    expect(verdictOf((await settled()).submissions, sent)).toBe('withdrawn')
+    expect(await statusRows()).toEqual([])
+  })
+
   it('withdraws it too when the child end fails and a later retry lands it', async () => {
     failingCloses = 1
     const sent = await stoppedBeforeItsTurnOpened()
