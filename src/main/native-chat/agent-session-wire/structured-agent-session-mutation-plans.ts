@@ -53,15 +53,23 @@ export type MutationPlan<TValue> = {
   conversationWrite?: true
   /** Still runs, decided from the committed ledger, when its ledger row cannot be written. */
   runsWithoutLedgerRow?: true
-  /** Its success is the row its run writes, so it commits in that row's transaction
-   *  (`AgentSessionTurnContext.operationReceipt`): a row left pending wrote nothing. */
-  settlesWithWrite?: true
   run: (ctx: AgentSessionTurnContext) => Promise<TurnOutcome<TValue>>
   replay: (ctx: AgentSessionTurnContext, outcome: AgentSessionOperationOutcome) => TValue | null
   rerunWhenReplayMissing?: (ctx: AgentSessionTurnContext) => boolean
   recoverUnknownFromDurableState?: boolean
-  settledOutcome?: (value: TValue) => AgentSessionOperationOutcome
-}
+} & (
+  | {
+      /** Its success is the row its run writes, so it commits in that row's transaction
+       *  (`AgentSessionTurnContext.operationReceipt`): a row left pending wrote nothing. That
+       *  success is fixed before the value exists, so it records no `settledOutcome`. */
+      settlesWithWrite: true
+      settledOutcome?: never
+    }
+  | {
+      settlesWithWrite?: never
+      settledOutcome?: (value: TValue) => AgentSessionOperationOutcome
+    }
+)
 
 export function sendPlan(params: {
   envelope: AgentSessionMutationEnvelope

@@ -204,8 +204,10 @@ export const AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY =
 // written. `agent_session_operation_expired` — only the transcript can tell. An
 // `agent_session_operation_conflict` or `messageIdReused` — the id holds a different payload,
 // which proves nothing about this message; nor does `sessionNotAttached` (the chat's record is
-// gone or unreadable on this host). Any other — the chat holds no message under that id, and the
-// id will never send one. An older host may refuse an id it recorded: none of this holds there.
+// gone or unreadable on this host). Any other — the chat holds no message under that id and none
+// is in flight, but a resend of that id may still run as a new send, so a client that hands the
+// text back must not resend the old id. An older host may refuse an id it recorded: none of this
+// holds there.
 export const AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY =
   'agent-session.send-answers-proof.v1' as const
 // Why: `agentSession.send`'s params are strict, so an older host rejects `delivery`; and only a

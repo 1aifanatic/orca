@@ -4,15 +4,18 @@
 // own admission rules by sitting next to the call site.
 //
 // Admission is two-phase for a call that brings a `prepareSession`. The ledger's
-// answer comes first and places nothing; a call it will admit may then give the
-// session an owner, and only after that are the row placed and the lease
-// checked — against the lease as it stands once the owner is there. A recorded
-// id is answered from its row and the journal before any of that, and writes
-// nothing: a resend never meets a refusal its first run did not make.
+// answer comes first and places nothing. An id it refuses is answered then, with
+// nothing opened; so is a recorded id that settled refused. Any other recorded id
+// is answered after the plan's own preparation for a replay (a send's only opens
+// the conversation), from the journal, with no admit write. A call the ledger
+// admits, or a replay that proves nothing landed, may then give the session an
+// owner, and only after that are the row placed and the lease checked — against
+// the lease as it stands once the owner is there.
 
 import {
   admitAgentSessionMutation,
   agentSessionFingerprintConflict,
+  agentSessionLedgerRefusal,
   computeAgentSessionPayloadFingerprint
 } from '../../../shared/agent-session-mutation-envelope'
 import type {
@@ -111,7 +114,10 @@ export async function admitAndRunAgentSessionMutation<TValue>(
     if (!ledger) {
       return refuseAgentSessionMutation(AGENT_SESSION_NOT_ATTACHED)
     }
-    let decision = ledger.decision.decision
+    if (ledger.decision.decision === 'refused') {
+      // Nothing to read, prepare or write: a closed chat or a store that takes no write answers alike.
+      return refuseAgentSessionMutation(agentSessionLedgerRefusal(envelope, ledger.decision))
+    }
     if (ledger.decision.decision === 'replay') {
       const answered = await answerRecordedOperation(
         request,
@@ -123,14 +129,11 @@ export async function admitAndRunAgentSessionMutation<TValue>(
       if (answered !== 'rerun') {
         return answered
       }
-      decision = 'admit'
     }
-    if (decision !== 'refused') {
-      const record = request.store.getRecord(envelope.sessionId) ?? ledger.record
-      const prepared = await request.prepareSession(decision, record)
-      if (!prepared.ok) {
-        return prepared
-      }
+    const record = request.store.getRecord(envelope.sessionId) ?? ledger.record
+    const prepared = await request.prepareSession('admit', record)
+    if (!prepared.ok) {
+      return prepared
     }
   }
   const journal = request.journal()
@@ -253,7 +256,10 @@ async function answerRecordedOperation<TValue>(
       agentSessionOperationOutcomeUnknown(envelope.clientOperationId)
     )
   }
-  if (current.decision.decision !== 'replay') {
+  if (current.decision.decision === 'refused') {
+    return refuseAgentSessionMutation(agentSessionLedgerRefusal(envelope, current.decision))
+  }
+  if (current.decision.decision === 'admit') {
     // The row is gone since: the first-run path decides it from scratch.
     return 'rerun'
   }
