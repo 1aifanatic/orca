@@ -3,7 +3,7 @@ import { waitForSessionReady } from './helpers/store'
 
 test.use({ minimumSeededWorktreeCount: 1 })
 
-for (const scenario of ['single', 'children', 'batch'] as const) {
+for (const scenario of ['single', 'children', 'batch', 'known-dirty'] as const) {
   test(`keeps deletion geometry stable while checking ${scenario} workspaces`, async ({
     orcaPage: page,
     electronApp
@@ -12,12 +12,15 @@ for (const scenario of ['single', 'children', 'batch'] as const) {
     if (scenario === 'batch') {
       await page.emulateMedia({ reducedMotion: 'reduce' })
     }
-    await electronApp.evaluate(({ ipcMain }) => {
+    await electronApp.evaluate(({ ipcMain }, knownDirty) => {
       ipcMain.removeHandler('git:status')
       ipcMain.handle('git:status', async (_event, args: { worktreePath: string }) => {
         const childIndex = Number(args.worktreePath.match(/child-(\d+)$/)?.[1] ?? 0)
         await new Promise((resolve) => setTimeout(resolve, 1800 + (childIndex % 3) * 180))
-        if (args.worktreePath.endsWith('child-2')) {
+        if (
+          args.worktreePath.endsWith('child-2') ||
+          (knownDirty && args.worktreePath.endsWith('delete-layout-parent'))
+        ) {
           throw new Error('Simulated disconnected execution host')
         }
         return {
@@ -27,7 +30,7 @@ for (const scenario of ['single', 'children', 'batch'] as const) {
           conflictOperation: 'unknown'
         }
       })
-    })
+    }, scenario === 'known-dirty')
     await page.evaluate((mode) => {
       const store = window.__store
       const state = store?.getState()
@@ -78,7 +81,20 @@ for (const scenario of ['single', 'children', 'batch'] as const) {
           ...state.worktreesByRepo,
           [repo.id]: [...state.worktreesByRepo[repo.id], parent, ...children]
         },
-        gitStatusByWorktree: {}
+        gitStatusByWorktree: {},
+        ...(mode === 'known-dirty'
+          ? {
+              deleteStateByWorktreeId: {
+                [parent.id]: {
+                  isDeleting: false,
+                  error: null,
+                  canForceDelete: true,
+                  forceDeleteReason: 'dirty',
+                  executionHostId: parent.hostId
+                }
+              }
+            }
+          : {})
       })
       state.openModal(
         'delete-worktree',
@@ -90,7 +106,9 @@ for (const scenario of ['single', 'children', 'batch'] as const) {
     const dialog = page.getByRole('dialog', { name: /^Delete Workspace/ })
     await expect(dialog).toBeVisible()
     await page.waitForTimeout(250)
-    await expect(dialog.getByText('Checking for changes…').first()).toBeVisible()
+    await expect(
+      dialog.getByText(scenario === 'known-dirty' ? '· Checking…' : 'Checking for changes…').first()
+    ).toBeVisible()
     await expect(dialog.getByText(/will be permanently deleted/)).toHaveCount(1)
     await page.screenshot({ path: testInfo.outputPath('checking.png') })
     await dialog.screenshot({ path: testInfo.outputPath('checking-dialog.png') })
@@ -129,9 +147,18 @@ for (const scenario of ['single', 'children', 'batch'] as const) {
       return samples
     })
     await expect(
-      dialog.getByText('1 uncommitted or untracked change', { exact: true }).first()
+      dialog
+        .getByText(
+          scenario === 'known-dirty'
+            ? 'Uncommitted or untracked changes'
+            : '1 uncommitted or untracked change',
+          { exact: true }
+        )
+        .first()
     ).toBeVisible()
-    if (scenario !== 'single') {
+    if (scenario === 'known-dirty') {
+      await expect(dialog.getByText('· Details unavailable')).toBeVisible()
+    } else if (scenario !== 'single') {
       await expect(dialog.getByText('No uncommitted or untracked changes')).toBeVisible()
       await expect(dialog.getByText('Changes could not be checked')).toBeVisible()
     }
@@ -141,6 +168,12 @@ for (const scenario of ['single', 'children', 'batch'] as const) {
     expect(frames[0]?.confirmFocused).toBe(true)
     for (const frame of frames) {
       expect(frame).toEqual(frames[0])
+    }
+    if (scenario === 'known-dirty') {
+      await expect(dialog.getByRole('button', { name: /Show loaded paths/ })).toHaveCount(0)
+      await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+      await expect(dialog).toBeHidden()
+      return
     }
     const beforeDetails = await dialog.boundingBox()
     await dialog

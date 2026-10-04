@@ -219,7 +219,7 @@ describe('DeleteWorktreeTargetPreview loaded paths', () => {
     expect(screen.queryByText(/No files|clean|0 changes/)).not.toBeInTheDocument()
   })
 
-  it('expands each qualified batch target independently', () => {
+  it('opens the selected host preview and closes the previous preview', () => {
     const local = makeWorktree('same', 'collide', 'local')
     const runtime = makeWorktree('same', 'collide', 'runtime:runtime-7')
     const localKey = getWorktreeHostIdentity(local)

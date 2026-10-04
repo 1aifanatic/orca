@@ -53,10 +53,20 @@ export function DeleteWorktreeDirtyChangeHint({
   )
 
   if (!preview?.files.length) {
+    const detailsLabel =
+      checkState === 'checking'
+        ? translate('components.workspace.delete.changes.checkingDetails', 'Checking…')
+        : checkState === 'unavailable'
+          ? translate(
+              'components.workspace.delete.changes.unavailableDetails',
+              'Details unavailable'
+            )
+          : null
     return (
       <div className="mt-0.5 flex h-4 min-w-0 items-center">
         <div className="flex w-fit max-w-full items-center gap-1.5 text-destructive">
           {warningLabel}
+          {detailsLabel && <span className="shrink-0 text-muted-foreground">· {detailsLabel}</span>}
         </div>
       </div>
     )
