@@ -1,65 +1,708 @@
-name: pnpm verification cache pilot
-
+name: CI preflight physical failure pilot
 on:
-  pull_request:
-    paths: ['.github/workflows/ci-pnpm-verification-pilot.yml']
-  workflow_dispatch:
-
+  workflow_dispatch: {}
 permissions:
   contents: read
-
-concurrency:
-  group: pnpm-verification-pilot-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 env:
-  ORCA_BACKGROUND_LAUNCH: '1'
-
+  ORCA_BACKGROUND_LAUNCH: "1"
 jobs:
-  seed:
-    strategy:
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+  code_paths:
+    runs-on: ubuntu-slim
+    outputs:
+      static_analysis: "true"
+      typecheck: "true"
+      mobile_dependencies: "false"
     steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-      # PR caches are scoped to the PR merge ref; main never restores them.
-      - uses: actions/cache/save@v5
-        if: steps.deps.outputs.verification-cache-hit != 'true'
-        with:
-          path: ${{ steps.deps.outputs.verification-cache-path }}
-          key: ${{ steps.deps.outputs.verification-cache-key }}
-
-  measure:
-    needs: seed
-    name: measure ${{ matrix.runner }} sample ${{ matrix.sample }} cache ${{ matrix.cache }}
-    strategy:
-      fail-fast: false
-      max-parallel: 4
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-        sample: [1, 2, 3]
-        cache: ['false', 'true']
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+      - run: "true"
+  noops:
+    runs-on: ubuntu-slim
     steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-        with:
-          cache-pnpm-verification: ${{ matrix.cache }}
-      - name: Validate treatment and frozen install
+      - name: Lint
+        if: "!cancelled()"
+        id: unselected-root-lint
+        background: true
         env:
-          CACHE_ENABLED: ${{ matrix.cache }}
-          CACHE_HIT: ${{ steps.deps.outputs.verification-cache-hit }}
+          PREFLIGHT_PHASE_SELECTED: "false"
+          PREFLIGHT_PRIOR_SUCCESS: "true"
         run: |
-          if [ "$CACHE_ENABLED" = true ]; then test "$CACHE_HIT" = true; fi
-          git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
-          node -e "require.resolve('vitest'); require.resolve('electron')"
+          if [ "$PREFLIGHT_PHASE_SELECTED" != true ] || [ "$PREFLIGHT_PRIOR_SUCCESS" != true ]; then exit 0; fi
+          pnpm exec oxlint --format github
+      - wait: unselected-root-lint
+      - name: Enforce focused code-quality plugins
+        if: "!cancelled()"
+        id: unselected-native-code-quality
+        background: true
+        env:
+          PREFLIGHT_PHASE_SELECTED: "false"
+          PREFLIGHT_PRIOR_SUCCESS: "true"
+        run: |
+          if [ "$PREFLIGHT_PHASE_SELECTED" != true ] || [ "$PREFLIGHT_PRIOR_SUCCESS" != true ]; then exit 0; fi
+          pnpm run audit:code-quality:native
+      - wait: unselected-native-code-quality
+      - name: Enforce changed-code quality
+        if: "!cancelled()"
+        id: unselected-changed-code-quality
+        background: true
+        env:
+          PREFLIGHT_PHASE_SELECTED: "false"
+          PREFLIGHT_PRIOR_SUCCESS: "true"
+        run: |
+          if [ "$PREFLIGHT_PHASE_SELECTED" != true ] || [ "$PREFLIGHT_PRIOR_SUCCESS" != true ]; then exit 0; fi
+          pnpm run check:code-quality:changed -- "${{ github.event.pull_request.base.sha }}"
+      - wait: unselected-changed-code-quality
+      - name: Verify localization extraction
+        if: "!cancelled()"
+        id: unselected-localization-extraction
+        background: true
+        env:
+          PREFLIGHT_PHASE_SELECTED: "false"
+          PREFLIGHT_PRIOR_SUCCESS: "true"
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$PREFLIGHT_PHASE_SELECTED" != true ] || [ "$PREFLIGHT_PRIOR_SUCCESS" != true ]; then exit 0; fi
+          # Detection failures run the full check; renames retain the removed input path.
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --name-only --no-renames -z "$DIFF_BASE" HEAD > "$RUNNER_TEMP/localization-changes" &&
+            scope="$(node config/scripts/localization-extraction-change-scope.mjs "$RUNNER_TEMP/localization-changes")" && [ "$scope" = false ]; then
+            echo "Localization extraction inputs are unchanged."
+          else
+            pnpm run verify:localization-extraction
+          fi
+      - wait: unselected-localization-extraction
+      - name: Verify localization catalogs
+        if: "!cancelled()"
+        id: unselected-localization-catalogs
+        background: true
+        env:
+          PREFLIGHT_PHASE_SELECTED: "false"
+          PREFLIGHT_PRIOR_SUCCESS: "true"
+        run: |
+          if [ "$PREFLIGHT_PHASE_SELECTED" != true ] || [ "$PREFLIGHT_PRIOR_SUCCESS" != true ]; then exit 0; fi
+          pnpm run verify:localization-catalogs
+      - wait: unselected-localization-catalogs
+      - name: Plan unit selection
+        if: "!cancelled()"
+        id: unselected-unit-plan
+        background: true
+        env:
+          PREFLIGHT_PHASE_SELECTED: "false"
+          PREFLIGHT_PRIOR_SUCCESS: "true"
+          ORCA_UNIT_SELECTION_MODE: ${{ vars.ORCA_UNIT_SELECTION_MODE || 'shadow' }}
+        run: |
+          if [ "$PREFLIGHT_PHASE_SELECTED" != true ] || [ "$PREFLIGHT_PRIOR_SUCCESS" != true ]; then exit 0; fi
+          node config/scripts/ci-unit-plan.mjs
+      - wait: unselected-unit-plan
+      - name: Lint
+        if: "!cancelled()"
+        id: failed-root-lint
+        background: true
+        env:
+          PREFLIGHT_PHASE_SELECTED: "true"
+          PREFLIGHT_PRIOR_SUCCESS: "false"
+        run: |
+          if [ "$PREFLIGHT_PHASE_SELECTED" != true ] || [ "$PREFLIGHT_PRIOR_SUCCESS" != true ]; then exit 0; fi
+          pnpm exec oxlint --format github
+      - wait: failed-root-lint
+      - name: Enforce focused code-quality plugins
+        if: "!cancelled()"
+        id: failed-native-code-quality
+        background: true
+        env:
+          PREFLIGHT_PHASE_SELECTED: "true"
+          PREFLIGHT_PRIOR_SUCCESS: "false"
+        run: |
+          if [ "$PREFLIGHT_PHASE_SELECTED" != true ] || [ "$PREFLIGHT_PRIOR_SUCCESS" != true ]; then exit 0; fi
+          pnpm run audit:code-quality:native
+      - wait: failed-native-code-quality
+      - name: Enforce changed-code quality
+        if: "!cancelled()"
+        id: failed-changed-code-quality
+        background: true
+        env:
+          PREFLIGHT_PHASE_SELECTED: "true"
+          PREFLIGHT_PRIOR_SUCCESS: "false"
+        run: |
+          if [ "$PREFLIGHT_PHASE_SELECTED" != true ] || [ "$PREFLIGHT_PRIOR_SUCCESS" != true ]; then exit 0; fi
+          pnpm run check:code-quality:changed -- "${{ github.event.pull_request.base.sha }}"
+      - wait: failed-changed-code-quality
+      - name: Verify localization extraction
+        if: "!cancelled()"
+        id: failed-localization-extraction
+        background: true
+        env:
+          PREFLIGHT_PHASE_SELECTED: "true"
+          PREFLIGHT_PRIOR_SUCCESS: "false"
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$PREFLIGHT_PHASE_SELECTED" != true ] || [ "$PREFLIGHT_PRIOR_SUCCESS" != true ]; then exit 0; fi
+          # Detection failures run the full check; renames retain the removed input path.
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --name-only --no-renames -z "$DIFF_BASE" HEAD > "$RUNNER_TEMP/localization-changes" &&
+            scope="$(node config/scripts/localization-extraction-change-scope.mjs "$RUNNER_TEMP/localization-changes")" && [ "$scope" = false ]; then
+            echo "Localization extraction inputs are unchanged."
+          else
+            pnpm run verify:localization-extraction
+          fi
+      - wait: failed-localization-extraction
+      - name: Verify localization catalogs
+        if: "!cancelled()"
+        id: failed-localization-catalogs
+        background: true
+        env:
+          PREFLIGHT_PHASE_SELECTED: "true"
+          PREFLIGHT_PRIOR_SUCCESS: "false"
+        run: |
+          if [ "$PREFLIGHT_PHASE_SELECTED" != true ] || [ "$PREFLIGHT_PRIOR_SUCCESS" != true ]; then exit 0; fi
+          pnpm run verify:localization-catalogs
+      - wait: failed-localization-catalogs
+      - name: Plan unit selection
+        if: "!cancelled()"
+        id: failed-unit-plan
+        background: true
+        env:
+          PREFLIGHT_PHASE_SELECTED: "true"
+          PREFLIGHT_PRIOR_SUCCESS: "false"
+          ORCA_UNIT_SELECTION_MODE: ${{ vars.ORCA_UNIT_SELECTION_MODE || 'shadow' }}
+        run: |
+          if [ "$PREFLIGHT_PHASE_SELECTED" != true ] || [ "$PREFLIGHT_PRIOR_SUCCESS" != true ]; then exit 0; fi
+          node config/scripts/ci-unit-plan.mjs
+      - wait: failed-unit-plan
+      - name: Require all registered no-ops
+        env:
+          STEPS: ${{ toJSON(steps) }}
+        run: node -e 'const steps=JSON.parse(process.env.STEPS); for(const [id,step] of Object.entries(steps)) { if((id.startsWith("unselected-")||id.startsWith("failed-")) && step.outcome!=="success") throw new Error(id+" did not succeed"); }'
+  compiler_failure:
+    name: compiler_failure
+    needs:
+      - code_paths
+      - noops
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      shards: ${{ steps.unit-plan.outputs.shards }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 50
+          persist-credentials: false
+          ref: f199a20c3acd32973924a86cb342e9c27530d739
+      - uses: ./.github/actions/install-node-dependencies
+        if: needs.code_paths.outputs.mobile_dependencies != 'true'
+        with:
+          native-runtime: node
+          node-version: "24"
+          cache-pnpm-store: "false"
+      - uses: ./.github/actions/install-node-dependencies
+        if: needs.code_paths.outputs.mobile_dependencies == 'true'
+        with:
+          native-runtime: node
+          node-version: "24"
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            mobile/pnpm-lock.yaml
+          cache-pnpm-store: "false"
+      - name: Lint
+        if: "!cancelled()"
+        id: root-lint
+        background: true
+        env:
+          PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+          PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+        run: |
+          if [ "$PREFLIGHT_PHASE_SELECTED" != true ] || [ "$PREFLIGHT_PRIOR_SUCCESS" != true ]; then exit 0; fi
+          pnpm exec oxlint --format github
+      - name: Reject low-evidence patterns
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run audit:anti-slop
+      - wait: root-lint
+      - name: Enforce focused code-quality plugins
+        if: "!cancelled()"
+        id: native-code-quality
+        background: true
+        env:
+          PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+          PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+        run: |
+          if [ "$PREFLIGHT_PHASE_SELECTED" != true ] || [ "$PREFLIGHT_PRIOR_SUCCESS" != true ]; then exit 0; fi
+          pnpm run audit:code-quality:native
+      - name: Enforce type-aware code-quality baseline
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run audit:code-quality:type-aware
+      - wait: native-code-quality
+      - uses: ./.github/actions/install-mobile-dependencies
+        if: needs.code_paths.outputs.static_analysis == 'true' && needs.code_paths.outputs.mobile_dependencies == 'true'
+      - name: Enforce changed-code quality
+        if: "!cancelled()"
+        id: changed-code-quality
+        background: true
+        env:
+          PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+          PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+        run: |
+          if [ "$PREFLIGHT_PHASE_SELECTED" != true ] || [ "$PREFLIGHT_PRIOR_SUCCESS" != true ]; then exit 0; fi
+          pnpm run check:code-quality:changed -- "136b990a053333a577012d9a4caaca0785a7a13d"
+      - name: Enforce React Doctor on changed lines
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run check:react-doctor:changed -- "136b990a053333a577012d9a4caaca0785a7a13d"
+      - wait: changed-code-quality
+      - name: Check Zustand selector fan-out budget
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run check:zustand-selector-fanout
+      - name: Check reliability gate manifest
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run check:reliability-gates
+      - name: Enforce dead design-system classes
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run check:dead-classes
+      - name: Check VM runtime rollback compatibility
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        env:
+          BASE_SHA: 136b990a053333a577012d9a4caaca0785a7a13d
+        run: |
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --quiet "$DIFF_BASE" HEAD -- \
+            src/shared/ephemeral-vm-runtime-store.ts \
+            src/shared/ephemeral-vm-runtime-feature-store.ts \
+            src/shared/ephemeral-vm-runtime-rollback-projection.ts \
+            src/shared/ephemeral-vm-runtimes.ts \
+            src/shared/ephemeral-vm-recipes.ts \
+            src/shared/orca-yaml-hook-types.ts \
+            src/main/ephemeral-vm-runtime-service.ts \
+            src/main/ephemeral-vm-runtime-provisioning-persistence.ts \
+            src/main/ephemeral-vm-failed-start-cleanup.ts; then
+            echo "VM runtime persistence is unchanged."
+            exit 0
+          fi
+          node config/scripts/run-ephemeral-vm-runtime-store-rollback-repro.mjs \
+            config/scripts/ephemeral-vm-runtime-store-cross-version.test.ts
+      - name: Enforce max-lines ratchet
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run check:max-lines-ratchet
+      - name: Enforce ts-nocheck ratchet
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run check:ts-nocheck-ratchet
+      - name: Enforce runtime Electron-import ratchet
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run check:runtime-electron-ratchet
+      - name: Check Node runtime pin
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run check:node-runtime-pin
+      - name: Verify localization extraction
+        if: "!cancelled()"
+        id: localization-extraction
+        background: true
+        env:
+          PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+          PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+          BASE_SHA: 136b990a053333a577012d9a4caaca0785a7a13d
+        run: |
+          if [ "$PREFLIGHT_PHASE_SELECTED" != true ] || [ "$PREFLIGHT_PRIOR_SUCCESS" != true ]; then exit 0; fi
+          # Detection failures run the full check; renames retain the removed input path.
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --name-only --no-renames -z "$DIFF_BASE" HEAD > "$RUNNER_TEMP/localization-changes" &&
+            scope="$(node config/scripts/localization-extraction-change-scope.mjs "$RUNNER_TEMP/localization-changes")" && [ "$scope" = false ]; then
+            echo "Localization extraction inputs are unchanged."
+          else
+            pnpm run verify:localization-extraction
+          fi
+      - name: Boot orcad and round-trip a terminal
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        env:
+          BASE_SHA: 136b990a053333a577012d9a4caaca0785a7a13d
+          ORCA_BACKGROUND_LAUNCH: "1"
+        run: |
+          # Detection failures run the smoke; renames retain the removed input path.
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --name-only --no-renames -z "$DIFF_BASE" HEAD > "$RUNNER_TEMP/orcad-smoke-changes" &&
+            scope="$(node config/scripts/orcad-terminal-smoke-change-scope.mjs "$RUNNER_TEMP/orcad-smoke-changes")" && [ "$scope" = false ]; then
+            echo "Orcad terminal smoke inputs are unchanged."
+          else
+            pnpm run smoke:orcad-terminal
+          fi
+      - name: Verify the generated RPC params catalog
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run verify:rpc-params-catalog
+      - name: Verify bundled skill guides
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run verify:bundled-skill-guides
+      - name: Verify skill freshness manifest
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run verify:skill-bundle-manifest
+      - name: Verify localization catalogs
+        if: "!cancelled()"
+        id: localization-catalogs
+        background: true
+        env:
+          PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+          PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+        run: |
+          if [ "$PREFLIGHT_PHASE_SELECTED" != true ] || [ "$PREFLIGHT_PRIOR_SUCCESS" != true ]; then exit 0; fi
+          pnpm run verify:localization-catalogs
+      - name: Verify localization coverage
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run verify:localization-coverage
+      - wait:
+          - localization-catalogs
+          - localization-extraction
+      - name: Guard against project-owned .d.ts in preload/shared
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: |
+          matches=$(find src/preload src/shared -name '*.d.ts' 2>/dev/null || true)
+          if [ -n "$matches" ]; then
+            echo "::error::Project-owned .d.ts files are not allowed under src/preload or src/shared."
+            echo "Move type declarations into a .ts file so skipLibCheck does not hide errors."
+            echo "See .github/CONTRIBUTING.md#type-declarations-prefer-ts-over-dts."
+            echo "Found:"
+            echo "$matches"
+            exit 1
+          fi
+      - name: Check feature wall asset budget
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm check:feature-wall-assets
+      - name: Verify macOS entitlements
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm verify:macos-entitlements
+      - name: Cache TypeScript incremental state
+        if: needs.code_paths.outputs.typecheck == 'true'
+        uses: actions/cache@v5
+        with:
+          path: config/*.tsbuildinfo
+          key: tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-136b990a053333a577012d9a4caaca0785a7a13d
+          restore-keys: |
+            tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-
+      - name: Plan unit selection
+        if: "!cancelled()"
+        id: unit-plan
+        background: true
+        env:
+          PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.typecheck == 'true' }}
+          PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+          ORCA_UNIT_SELECTION_MODE: ${{ vars.ORCA_UNIT_SELECTION_MODE || 'shadow' }}
+        run: |
+          if [ "$PREFLIGHT_PHASE_SELECTED" != true ] || [ "$PREFLIGHT_PRIOR_SUCCESS" != true ]; then exit 0; fi
+          node config/scripts/ci-unit-plan.mjs
+      - name: Inject one included TypeScript type error after static checks
+        run: 'printf "export const controlledPreflightFault: string = 1\n" > src/shared/ci-preflight-controlled-fault.ts'
+      - run: pnpm run typecheck
+        if: needs.code_paths.outputs.typecheck == 'true'
+        id: compiler
+      - wait: unit-plan
+      - uses: actions/upload-artifact@v7
+        if: needs.code_paths.outputs.typecheck == 'true'
+        with:
+          name: compiler_failure-unit-plan
+          path: ci-shards/unit-selection.json
+          retention-days: 14
+      - name: Keep joined-plan and compiler outcome evidence
+        if: "!cancelled()"
+        env:
+          STEPS: ${{ toJSON(steps) }}
+        run: |-
+          mkdir -p "$RUNNER_TEMP/safety"
+          printenv STEPS > "$RUNNER_TEMP/safety/steps.json"
+          test -f ci-shards/unit-selection.json
+          cp ci-shards/unit-selection.json "$RUNNER_TEMP/safety/"
+      - uses: actions/upload-artifact@v7
+        if: "!cancelled()"
+        with:
+          name: compiler_failure-foreground-evidence
+          path: ${{ runner.temp }}/safety
+    timeout-minutes: 20
+  compiler_failure_unit:
+    needs:
+      - code_paths
+      - compiler_failure
+    if: "!cancelled() && needs.code_paths.outputs.typecheck == 'true' && needs.compiler_failure.result == 'success'"
+    runs-on: ubuntu-slim
+    steps:
+      - run: 'echo "ERROR: unit admission passed failed preflight"; exit 1'
+  compiler_failure_package:
+    needs:
+      - code_paths
+      - compiler_failure
+    if: needs.code_paths.outputs.typecheck == 'true'
+    runs-on: ubuntu-slim
+    steps:
+      - run: 'echo "ERROR: package admission passed failed preflight"; exit 1'
+  post_failure:
+    name: post_failure
+    needs:
+      - code_paths
+      - noops
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      shards: ${{ steps.unit-plan.outputs.shards }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 50
+          persist-credentials: false
+          ref: f199a20c3acd32973924a86cb342e9c27530d739
+      - name: Materialize controlled late post failure
+        run: |-
+          mkdir -p .tmp/ci-preflight-post-fault
+          cat > .tmp/ci-preflight-post-fault/action.yml <<'ACTION'
+          name: Controlled post failure
+          description: Private failure fixture
+          runs:
+            using: node24
+            main: main.cjs
+            post: post.cjs
+          ACTION
+          printf "console.log('controlled post registered')\n" > .tmp/ci-preflight-post-fault/main.cjs
+          printf "console.log('controlled late post failure'); process.exitCode=73\n" > .tmp/ci-preflight-post-fault/post.cjs
+      - name: Register late post failure before dependency action posts
+        uses: ./.tmp/ci-preflight-post-fault
+      - uses: ./.github/actions/install-node-dependencies
+        if: needs.code_paths.outputs.mobile_dependencies != 'true'
+        with:
+          native-runtime: node
+          node-version: "24"
+          cache-pnpm-store: "false"
+      - uses: ./.github/actions/install-node-dependencies
+        if: needs.code_paths.outputs.mobile_dependencies == 'true'
+        with:
+          native-runtime: node
+          node-version: "24"
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            mobile/pnpm-lock.yaml
+          cache-pnpm-store: "false"
+      - name: Lint
+        if: "!cancelled()"
+        id: root-lint
+        background: true
+        env:
+          PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+          PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+        run: |
+          if [ "$PREFLIGHT_PHASE_SELECTED" != true ] || [ "$PREFLIGHT_PRIOR_SUCCESS" != true ]; then exit 0; fi
+          pnpm exec oxlint --format github
+      - name: Reject low-evidence patterns
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run audit:anti-slop
+      - wait: root-lint
+      - name: Enforce focused code-quality plugins
+        if: "!cancelled()"
+        id: native-code-quality
+        background: true
+        env:
+          PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+          PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+        run: |
+          if [ "$PREFLIGHT_PHASE_SELECTED" != true ] || [ "$PREFLIGHT_PRIOR_SUCCESS" != true ]; then exit 0; fi
+          pnpm run audit:code-quality:native
+      - name: Enforce type-aware code-quality baseline
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run audit:code-quality:type-aware
+      - wait: native-code-quality
+      - uses: ./.github/actions/install-mobile-dependencies
+        if: needs.code_paths.outputs.static_analysis == 'true' && needs.code_paths.outputs.mobile_dependencies == 'true'
+      - name: Enforce changed-code quality
+        if: "!cancelled()"
+        id: changed-code-quality
+        background: true
+        env:
+          PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+          PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+        run: |
+          if [ "$PREFLIGHT_PHASE_SELECTED" != true ] || [ "$PREFLIGHT_PRIOR_SUCCESS" != true ]; then exit 0; fi
+          pnpm run check:code-quality:changed -- "136b990a053333a577012d9a4caaca0785a7a13d"
+      - name: Enforce React Doctor on changed lines
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run check:react-doctor:changed -- "136b990a053333a577012d9a4caaca0785a7a13d"
+      - wait: changed-code-quality
+      - name: Check Zustand selector fan-out budget
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run check:zustand-selector-fanout
+      - name: Check reliability gate manifest
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run check:reliability-gates
+      - name: Enforce dead design-system classes
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run check:dead-classes
+      - name: Check VM runtime rollback compatibility
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        env:
+          BASE_SHA: 136b990a053333a577012d9a4caaca0785a7a13d
+        run: |
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --quiet "$DIFF_BASE" HEAD -- \
+            src/shared/ephemeral-vm-runtime-store.ts \
+            src/shared/ephemeral-vm-runtime-feature-store.ts \
+            src/shared/ephemeral-vm-runtime-rollback-projection.ts \
+            src/shared/ephemeral-vm-runtimes.ts \
+            src/shared/ephemeral-vm-recipes.ts \
+            src/shared/orca-yaml-hook-types.ts \
+            src/main/ephemeral-vm-runtime-service.ts \
+            src/main/ephemeral-vm-runtime-provisioning-persistence.ts \
+            src/main/ephemeral-vm-failed-start-cleanup.ts; then
+            echo "VM runtime persistence is unchanged."
+            exit 0
+          fi
+          node config/scripts/run-ephemeral-vm-runtime-store-rollback-repro.mjs \
+            config/scripts/ephemeral-vm-runtime-store-cross-version.test.ts
+      - name: Enforce max-lines ratchet
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run check:max-lines-ratchet
+      - name: Enforce ts-nocheck ratchet
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run check:ts-nocheck-ratchet
+      - name: Enforce runtime Electron-import ratchet
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run check:runtime-electron-ratchet
+      - name: Check Node runtime pin
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run check:node-runtime-pin
+      - name: Verify localization extraction
+        if: "!cancelled()"
+        id: localization-extraction
+        background: true
+        env:
+          PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+          PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+          BASE_SHA: 136b990a053333a577012d9a4caaca0785a7a13d
+        run: |
+          if [ "$PREFLIGHT_PHASE_SELECTED" != true ] || [ "$PREFLIGHT_PRIOR_SUCCESS" != true ]; then exit 0; fi
+          # Detection failures run the full check; renames retain the removed input path.
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --name-only --no-renames -z "$DIFF_BASE" HEAD > "$RUNNER_TEMP/localization-changes" &&
+            scope="$(node config/scripts/localization-extraction-change-scope.mjs "$RUNNER_TEMP/localization-changes")" && [ "$scope" = false ]; then
+            echo "Localization extraction inputs are unchanged."
+          else
+            pnpm run verify:localization-extraction
+          fi
+      - name: Boot orcad and round-trip a terminal
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        env:
+          BASE_SHA: 136b990a053333a577012d9a4caaca0785a7a13d
+          ORCA_BACKGROUND_LAUNCH: "1"
+        run: |
+          # Detection failures run the smoke; renames retain the removed input path.
+          DIFF_BASE="$(node config/scripts/git-pull-request-diff-base.mjs "$BASE_SHA")"
+          if git diff --name-only --no-renames -z "$DIFF_BASE" HEAD > "$RUNNER_TEMP/orcad-smoke-changes" &&
+            scope="$(node config/scripts/orcad-terminal-smoke-change-scope.mjs "$RUNNER_TEMP/orcad-smoke-changes")" && [ "$scope" = false ]; then
+            echo "Orcad terminal smoke inputs are unchanged."
+          else
+            pnpm run smoke:orcad-terminal
+          fi
+      - name: Verify the generated RPC params catalog
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run verify:rpc-params-catalog
+      - name: Verify bundled skill guides
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run verify:bundled-skill-guides
+      - name: Verify skill freshness manifest
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run verify:skill-bundle-manifest
+      - name: Verify localization catalogs
+        if: "!cancelled()"
+        id: localization-catalogs
+        background: true
+        env:
+          PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.static_analysis == 'true' }}
+          PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+        run: |
+          if [ "$PREFLIGHT_PHASE_SELECTED" != true ] || [ "$PREFLIGHT_PRIOR_SUCCESS" != true ]; then exit 0; fi
+          pnpm run verify:localization-catalogs
+      - name: Verify localization coverage
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm run verify:localization-coverage
+      - wait:
+          - localization-catalogs
+          - localization-extraction
+      - name: Guard against project-owned .d.ts in preload/shared
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: |
+          matches=$(find src/preload src/shared -name '*.d.ts' 2>/dev/null || true)
+          if [ -n "$matches" ]; then
+            echo "::error::Project-owned .d.ts files are not allowed under src/preload or src/shared."
+            echo "Move type declarations into a .ts file so skipLibCheck does not hide errors."
+            echo "See .github/CONTRIBUTING.md#type-declarations-prefer-ts-over-dts."
+            echo "Found:"
+            echo "$matches"
+            exit 1
+          fi
+      - name: Check feature wall asset budget
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm check:feature-wall-assets
+      - name: Verify macOS entitlements
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        run: pnpm verify:macos-entitlements
+      - name: Cache TypeScript incremental state
+        if: needs.code_paths.outputs.typecheck == 'true'
+        uses: actions/cache@v5
+        with:
+          path: config/*.tsbuildinfo
+          key: tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-136b990a053333a577012d9a4caaca0785a7a13d
+          restore-keys: |
+            tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-
+      - name: Plan unit selection
+        if: "!cancelled()"
+        id: unit-plan
+        background: true
+        env:
+          PREFLIGHT_PHASE_SELECTED: ${{ needs.code_paths.outputs.typecheck == 'true' }}
+          PREFLIGHT_PRIOR_SUCCESS: ${{ job.status == 'success' }}
+          ORCA_UNIT_SELECTION_MODE: ${{ vars.ORCA_UNIT_SELECTION_MODE || 'shadow' }}
+        run: |
+          if [ "$PREFLIGHT_PHASE_SELECTED" != true ] || [ "$PREFLIGHT_PRIOR_SUCCESS" != true ]; then exit 0; fi
+          node config/scripts/ci-unit-plan.mjs
+      - run: pnpm run typecheck
+        if: needs.code_paths.outputs.typecheck == 'true'
+        id: compiler
+      - wait: unit-plan
+      - uses: actions/upload-artifact@v7
+        if: needs.code_paths.outputs.typecheck == 'true'
+        with:
+          name: post_failure-unit-plan
+          path: ci-shards/unit-selection.json
+          retention-days: 14
+      - name: Keep joined-plan and compiler outcome evidence
+        if: "!cancelled()"
+        env:
+          STEPS: ${{ toJSON(steps) }}
+        run: |-
+          mkdir -p "$RUNNER_TEMP/safety"
+          printenv STEPS > "$RUNNER_TEMP/safety/steps.json"
+          test -f ci-shards/unit-selection.json
+          cp ci-shards/unit-selection.json "$RUNNER_TEMP/safety/"
+      - uses: actions/upload-artifact@v7
+        if: "!cancelled()"
+        with:
+          name: post_failure-foreground-evidence
+          path: ${{ runner.temp }}/safety
+    timeout-minutes: 20
+  post_failure_unit:
+    needs:
+      - code_paths
+      - post_failure
+    if: "!cancelled() && needs.code_paths.outputs.typecheck == 'true' && needs.post_failure.result == 'success'"
+    runs-on: ubuntu-slim
+    steps:
+      - run: 'echo "ERROR: unit admission passed failed preflight"; exit 1'
+  post_failure_package:
+    needs:
+      - code_paths
+      - post_failure
+    if: needs.code_paths.outputs.typecheck == 'true'
+    runs-on: ubuntu-slim
+    steps:
+      - run: 'echo "ERROR: package admission passed failed preflight"; exit 1'
+  audit:
+    name: Require physical failure and skipped downstream jobs
+    if: "!cancelled()"
+    needs:
+      - noops
+      - compiler_failure
+      - compiler_failure_unit
+      - compiler_failure_package
+      - post_failure
+      - post_failure_unit
+      - post_failure_package
+    runs-on: ubuntu-slim
+    steps:
+      - env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: "node -e 'const needs=JSON.parse(process.env.NEEDS); for(const [name,job] of Object.entries(needs)) { const expected=name===\"noops\"?\"success\":name.endsWith(\"_unit\")||name.endsWith(\"_package\")?\"skipped\":\"failure\"; if(job.result!==expected) throw new Error(name+\": expected \"+expected+\" got \"+job.result); }'"
