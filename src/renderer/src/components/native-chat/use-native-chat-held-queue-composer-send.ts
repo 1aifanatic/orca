@@ -5,6 +5,8 @@ import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import {
   isNativeChatStructuredHostCommand,
   useNativeChatStructuredComposerSend,
+  type NativeChatComposerComposition,
+  type NativeChatStructuredComposerSend,
   type UseNativeChatStructuredComposerSendArgs
 } from './use-native-chat-structured-composer-send'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
@@ -32,6 +34,8 @@ type PendingSend = {
   attachments: readonly NativeChatComposerImageAttachment[] | undefined
   count: number
   clear: () => Promise<boolean>
+  /** The composer as it was when the message was asked for. */
+  sentFrom: NativeChatComposerComposition
 }
 
 export function useNativeChatHeldQueueComposerSend(args: UseNativeChatStructuredComposerSendArgs): {
@@ -53,25 +57,42 @@ export function useNativeChatHeldQueueComposerSend(args: UseNativeChatStructured
     return taken
   }, [])
   // Clear queue sends once its deletes settle, through the send of that render.
-  const sendNowRef = useRef(sendNow)
+  const sendNowRef = useRef<NativeChatStructuredComposerSend>(sendNow)
+  const compositionRef = useRef<NativeChatComposerComposition>({
+    draft: args.draft,
+    imageAttachments: args.imageAttachments
+  })
   useLayoutEffect(() => {
     sendNowRef.current = sendNow
-  }, [sendNow])
+    compositionRef.current = { draft: args.draft, imageAttachments: args.imageAttachments }
+  }, [args.draft, args.imageAttachments, sendNow])
+  // From a Clear queue choice until its message has gone out: the draft still holds that message,
+  // and sending it again meanwhile would send it twice.
+  const clearingRef = useRef(false)
 
   const send = useCallback<StructuredComposerSend>(
     (text, attachments) => {
+      if (clearingRef.current) {
+        return
+      }
       if (
         queueHold &&
         structuredTransport &&
         !isNativeChatStructuredHostCommand(text, agent, structuredTransport)
       ) {
-        const asked = { text, attachments, count: queueHold.count, clear: queueHold.clear }
+        const asked = {
+          text,
+          attachments,
+          count: queueHold.count,
+          clear: queueHold.clear,
+          sentFrom: compositionRef.current
+        }
         untakenRef.current = asked
         setPending(asked)
         setOpen(true)
         return
       }
-      sendNow(text, attachments)
+      void sendNow(text, attachments)
     },
     [agent, queueHold, sendNow, structuredTransport]
   )
@@ -79,7 +100,7 @@ export function useNativeChatHeldQueueComposerSend(args: UseNativeChatStructured
   const sendMessage = useCallback(() => {
     const taken = take()
     if (taken) {
-      sendNowRef.current(taken.text, taken.attachments)
+      void sendNowRef.current(taken.text, taken.attachments, taken.sentFrom)
     }
   }, [take])
   const clearQueue = useCallback(() => {
@@ -87,11 +108,17 @@ export function useNativeChatHeldQueueComposerSend(args: UseNativeChatStructured
     if (!taken) {
       return
     }
-    void taken.clear().then((cleared) => {
-      if (cleared) {
-        sendNowRef.current(taken.text, taken.attachments)
+    clearingRef.current = true
+    void (async () => {
+      try {
+        if (await taken.clear()) {
+          // Text typed during the deletes stays: the message was taken from what came before.
+          await sendNowRef.current(taken.text, taken.attachments, taken.sentFrom)
+        }
+      } finally {
+        clearingRef.current = false
       }
-    })
+    })()
   }, [take])
   const dismiss = useCallback(() => {
     take()

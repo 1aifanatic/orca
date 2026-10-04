@@ -296,6 +296,53 @@ describe('sending while the queue is held', () => {
     })
   })
 
+  describe("while Clear queue's deletes run", () => {
+    async function clearingQueue(text: string) {
+      const deleted = Promise.withResolvers<boolean>()
+      const hold = heldQueue(2)
+      hold.clear.mockReturnValue(deleted.promise)
+      const structured = transport(hold)
+      const input = renderComposer(structured)
+      changePrompt(input, text)
+      await act(async () => pressEnter(input))
+      await act(async () =>
+        fireEvent.click(await screen.findByRole('button', { name: 'Clear queue' }))
+      )
+      return { deleted, structured, input }
+    }
+
+    it('sending again sends nothing: the message goes out once, after the deletes', async () => {
+      const { deleted, structured, input } = await clearingQueue('start over')
+      // The draft still holds the message.
+      expect(promptValue(input)).toBe('start over')
+      await act(async () => pressEnter(input))
+      await act(async () => fireEvent.click(screen.getByTestId('composer-send')))
+      await act(async () => {})
+      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(structured.send).not.toHaveBeenCalled()
+      await act(async () => deleted.resolve(true))
+      await waitFor(() => expect(structured.send).toHaveBeenCalledWith('start over', []))
+      await act(async () => {})
+      expect(structured.send).toHaveBeenCalledTimes(1)
+    })
+
+    it('text typed meanwhile stays in the composer once the message is accepted', async () => {
+      const { deleted, structured, input } = await clearingQueue('start over')
+      changePrompt(input, 'start over, and also check the tests')
+      await act(async () => deleted.resolve(true))
+      await waitFor(() => expect(structured.send).toHaveBeenCalledWith('start over', []))
+      await act(async () => {})
+      expect(promptValue(input)).toBe('start over, and also check the tests')
+    })
+
+    it('an unchanged draft is cleared once the message is accepted', async () => {
+      const { deleted, structured, input } = await clearingQueue('start over')
+      await act(async () => deleted.resolve(true))
+      await waitFor(() => expect(structured.send).toHaveBeenCalledWith('start over', []))
+      await waitFor(() => expect(promptValue(input)).toBe(''))
+    })
+  })
+
   it('does not ask when the queue is not held, nor for a command the host runs itself', async () => {
     const free = transport()
     const input = renderComposer(free)

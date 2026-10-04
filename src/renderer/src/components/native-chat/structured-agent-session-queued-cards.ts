@@ -116,6 +116,9 @@ export function ownDirectSendOnItsWay(
   outbox: readonly StructuredAgentSessionOutboxEntry[],
   submissions: readonly AgentJournalSubmission[]
 ): boolean {
+  if (outbox.length === 0) {
+    return false
+  }
   const pending = new Set(
     submissions
       .filter((submission) => submission.dispatchState === 'pending')

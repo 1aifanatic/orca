@@ -35,6 +35,20 @@ export function isNativeChatStructuredHostCommand(
   )
 }
 
+/** What the composer held when a send was asked for. */
+export type NativeChatComposerComposition = {
+  draft: string | undefined
+  imageAttachments: readonly NativeChatComposerImageAttachment[]
+}
+
+/** A structured send. `sentFrom`: the composition the message was taken from, for a send that
+ *  goes out later than it was asked for; the composer is then cleared only if still unchanged. */
+export type NativeChatStructuredComposerSend = (
+  text: string,
+  attachments?: readonly NativeChatComposerImageAttachment[],
+  sentFrom?: NativeChatComposerComposition
+) => Promise<void>
+
 /** Send through the structured journal transport, clearing the composer only
  *  once the transport accepts (the PTY path has its own sibling hook). */
 export function useNativeChatStructuredComposerSend({
@@ -47,16 +61,13 @@ export function useNativeChatStructuredComposerSend({
   setHistory,
   setDraft,
   setCaret
-}: UseNativeChatStructuredComposerSendArgs): (
-  text: string,
-  attachments?: readonly NativeChatComposerImageAttachment[]
-) => void {
-  const composition = useRef({ draft, imageAttachments })
+}: UseNativeChatStructuredComposerSendArgs): NativeChatStructuredComposerSend {
+  const composition = useRef<NativeChatComposerComposition>({ draft, imageAttachments })
   useLayoutEffect(() => {
     composition.current = { draft, imageAttachments }
   }, [draft, imageAttachments])
-  return useCallback(
-    (text: string, attachments = imageAttachments): void => {
+  return useCallback<NativeChatStructuredComposerSend>(
+    async (text, attachments = imageAttachments, sentFrom): Promise<void> => {
       if (!structuredTransport) {
         return
       }
@@ -65,8 +76,8 @@ export function useNativeChatStructuredComposerSend({
         structuredTransport.onError('Remove attachments before using a chat-session command.')
         return
       }
-      const submitted = composition.current
-      void dispatchNativeChatStructuredComposerText(structuredTransport, text, attachments)
+      const submitted = sentFrom ?? composition.current
+      await dispatchNativeChatStructuredComposerText(structuredTransport, text, attachments)
         .then(({ accepted, error }) => {
           structuredTransport.onError(error)
           if (!accepted) {
@@ -82,7 +93,7 @@ export function useNativeChatStructuredComposerSend({
           )
           setHistory((previous) => pushHistory(previous, text))
           if (
-            hostCommand &&
+            (hostCommand || sentFrom !== undefined) &&
             (composition.current.draft !== submitted.draft ||
               composition.current.imageAttachments !== submitted.imageAttachments)
           ) {
