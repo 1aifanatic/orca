@@ -12,7 +12,7 @@ import {
 } from '../../../shared/agent-session-host-authority'
 import type { JournalHostDatabase } from './journal-host-database'
 import type { JournalReducerState } from './journal-reducer'
-import type { JournalRow } from './journal-row-schema'
+import type { JournalRow, JournalSubmissionOrigin } from './journal-row-schema'
 import type { JournalRowTransactionHook } from './journal-row-writer'
 import type { JournalSubmissionConsume } from './journal-store-contracts'
 import { adoptQueuedMessages, holdQueuedMessages } from './queued-message-holds'
@@ -108,6 +108,7 @@ export class JournalQueuedMessages {
     fingerprint: string
     hostInstance: string
     carriedFrom?: string
+    origin: JournalSubmissionOrigin
   }): Promise<QueuedMessageRow> {
     const { sessionId } = this.deps
     let inserted = false

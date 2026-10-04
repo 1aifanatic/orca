@@ -480,13 +480,6 @@ describe('Stop and Delete', () => {
     expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
   })
 
-  it('a host-internal send never becomes a card, even asking to queue: only a person writes cards', async () => {
-    await workingSend()
-    const mail = send('coordinator mail', 'queue-if-active', { internal: true })
-    expect(await mail.result).toMatchObject({ ok: true, value: { submission: expect.anything() } })
-    expect(await drafts()).toHaveLength(0)
-  })
-
   it("a user send lifts nothing from a 'send_failed' hold — that card waits for its explicit Send", async () => {
     const working = await workingSend()
     const queued = await send('conversion fails once', 'queue-if-active').result

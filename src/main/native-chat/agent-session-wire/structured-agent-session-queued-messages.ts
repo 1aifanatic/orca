@@ -201,12 +201,7 @@ export async function maybeQueueStructuredAgentSessionSend(
   | null
 > {
   const clientMessageId = params.envelope.clientOperationId
-  // Only a person's send becomes a card, so the drain's send of it is their turn too.
-  if (
-    params.delivery !== 'queue-if-active' ||
-    !params.userSend ||
-    !queuedMessageBodyIsTextOnly(params.body)
-  ) {
+  if (params.delivery !== 'queue-if-active' || !queuedMessageBodyIsTextOnly(params.body)) {
     return null
   }
   // Asked again with no ledger answer: a send this host queued answers as its replay would —
@@ -240,7 +235,8 @@ export async function maybeQueueStructuredAgentSessionSend(
     messageId: clientMessageId,
     body: params.body,
     fingerprint: queuedMessageFingerprint(ctx.sessionId, params.body),
-    hostInstance: structuredAgentSessionHostInstance()
+    hostInstance: structuredAgentSessionHostInstance(),
+    origin: params.userSend ? 'client' : 'host'
   })
   return {
     ok: true,
@@ -349,9 +345,9 @@ export class StructuredAgentSessionQueuedMessageDrain {
       await journal.appendSubmission(
         {
           clientMessageId: submissionId,
-          // A card is only ever a person's send (§accept): sending it is their turn, which ends a
-          // Stop's pause so the cards it held follow.
-          origin: 'client',
+          // Whoever wrote the card asked for this turn: a person's ends a Stop's pause, so the cards
+          // it held follow; Orca's own does not.
+          origin: next.origin,
           payloadFingerprint: next.fingerprint,
           body: next.body,
           fence,

@@ -129,10 +129,10 @@ export type JournalSubmissionRow = JournalRowBase & {
   /** The queued draft this submission hands off; absent for a direct send. Older readers keep
    *  the key and ignore it. */
   queuedMessageId?: string
-  /** Who asked for this turn: `client` for a person's send over the client send RPC (typed, or
-   *  a queued card, sent now or by the queue); `host` for Orca's own — orchestration mail, a
-   *  restart continuation, a launch prompt. Absent on rows from before it was recorded. Older
-   *  readers keep the key and ignore it. */
+  /** Who asked for this turn: `client` for a person — their send over the client send RPC, Send
+   *  on a card, or the queue's send of a card they wrote; `host` for Orca's own — orchestration
+   *  mail, a restart continuation, a launch prompt, or the queue's send of a card one of those
+   *  wrote. Absent on rows from before it was recorded. Older readers keep the key and ignore it. */
   origin?: JournalSubmissionOrigin
 }
 

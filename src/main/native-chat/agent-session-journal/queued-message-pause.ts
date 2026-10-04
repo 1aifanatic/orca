@@ -7,9 +7,9 @@
 //     Resume has happened here since.
 //   - 'restarted': a waiting card was written by another host process, and no person's turn has
 //     started since this conversation opened.
-// A person's turn is an accepted submission of origin `client`: their send, or a card of theirs
-// sent now or by the queue. Orchestration mail, a restart continuation and a launch prompt are
-// `host` and never lift it.
+// A person's turn is an accepted submission of origin `client`: their send, Send on any card, or
+// the queue's send of a card they wrote. Orchestration mail, a restart continuation, a launch
+// prompt and the queue's send of a card one of those wrote are `host` and never lift it.
 
 import type { AgentJournalCursor } from '../../../shared/agent-session-journal-types'
 import type { JournalStopEvent, JournalTombstoneRow } from './journal-row-schema'
@@ -150,8 +150,8 @@ function queuedBeforePause(pause: DerivedQueuePause, card: QueueCard): boolean {
 
 // Product decision: a card queued AFTER a Stop is a new instruction and is not held; only cards
 // queued before it, and a steer it withdrew, wait. The drain skips held cards, so it sends ahead of
-// them, and that send is the person's turn, so the held cards follow it. true instead holds every
-// waiting card, whenever it was queued.
+// them; when a person wrote that card its send is their turn, so the held cards follow it. true
+// instead holds every waiting card, whenever it was queued.
 const PAUSE_HOLDS_CARDS_QUEUED_AFTER_IT = false
 
 /** THE rule for which cards are held: by ANY pause in force, named by the first that holds it, so
