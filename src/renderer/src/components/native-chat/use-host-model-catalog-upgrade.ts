@@ -1,4 +1,4 @@
-import { useEffect, useState, type MutableRefObject } from 'react'
+import { useEffect, useSyncExternalStore, type MutableRefObject } from 'react'
 import type { AgentSessionModelCatalogResult } from '../../../../shared/agent-session-wire'
 import type { AgentType } from '../../../../shared/agent-status-types'
 import type { AgentSessionOptionCatalog } from '../../../../shared/agent-session-option-catalog'
@@ -8,7 +8,13 @@ import {
 } from '../../../../shared/structured-agent-session-options'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
+import { structuredAgentSessionHostKey } from '@/runtime/structured-agent-session-host-capability'
 import type { NativeChatSessionOptionRecord } from '../../../../shared/native-chat-session-option-state'
+import {
+  isHostModelListingWaitInFlight,
+  joinHostModelListingWait,
+  subscribeHostModelListingWaits
+} from './host-model-listing-waits'
 
 /**
  * Upgrades the static seed with the host's stored catalog without waiting on
@@ -18,7 +24,8 @@ import type { NativeChatSessionOptionRecord } from '../../../../shared/native-ch
  * stands until the live read lands.
  *
  * When the host says its first listing for the account is running, one more
- * read waits for it. Returns true for exactly that wait.
+ * read waits for it — one per chat, joined by every later run and remount.
+ * Returns true while that read is in flight.
  */
 export function useHostModelCatalogUpgrade(args: {
   agent: AgentType
@@ -49,7 +56,10 @@ export function useHostModelCatalogUpgrade(args: {
     updateOptionState,
     worktree
   } = args
-  const [awaitingListing, setAwaitingListing] = useState(false)
+  const waitKey = `${structuredAgentSessionHostKey(target)}\u0000${agent}\u0000${sessionId}`
+  const awaitingListing = useSyncExternalStore(subscribeHostModelListingWaits, () =>
+    isHostModelListingWaitInFlight(waitKey)
+  )
   useEffect(() => {
     if (!enabled || !optionCatalog || (agent !== 'claude' && agent !== 'codex')) {
       return
@@ -70,32 +80,26 @@ export function useHostModelCatalogUpgrade(args: {
             })
           : current
       )
-    void read(false)
-      .then(async (catalog) => {
-        if (stale) {
-          return
-        }
-        apply(catalog)
-        // Only a host that reports the listing knows the wait param; an older one refuses it.
-        if (catalog.origin !== 'unknown' || catalog.listingInProgress !== true) {
-          return
-        }
-        setAwaitingListing(true)
-        try {
-          const listed = await read(true)
-          if (!stale) {
-            apply(listed)
+    const waitForListing = (): Promise<AgentSessionModelCatalogResult> =>
+      joinHostModelListingWait(waitKey, () => read(true))
+    const first = isHostModelListingWaitInFlight(waitKey)
+      ? waitForListing()
+      : read(false).then((catalog) => {
+          // Only a host that reports the listing knows the wait param; an older one refuses it.
+          if (stale || catalog.origin !== 'unknown' || catalog.listingInProgress !== true) {
+            return catalog
           }
-        } finally {
-          if (!stale) {
-            setAwaitingListing(false)
-          }
+          return waitForListing()
+        })
+    void first
+      .then((catalog) => {
+        if (!stale) {
+          apply(catalog)
         }
       })
       .catch(() => {})
     return () => {
       stale = true
-      setAwaitingListing(false)
     }
   }, [
     activeOptionRecordRef,
@@ -107,6 +111,7 @@ export function useHostModelCatalogUpgrade(args: {
     sessionId,
     target,
     updateOptionState,
+    waitKey,
     worktree
   ])
   return awaitingListing

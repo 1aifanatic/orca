@@ -36,14 +36,18 @@ const HOST_CATALOG = {
 // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: no test here sends a pick over a fence, so mutate is never called.
 const mutate = vi.fn(async () => null) as unknown as StructuredAgentSessionMutate
 
-type Props = { hidden?: boolean; attached?: boolean }
+type Props = { hidden?: boolean; attached?: boolean; sessionId?: string }
+
+// A chat's waiting read outlives its mounts, so each test gets its own chat.
+let sessionId = ''
+let sessionCount = 0
 
 function renderOptions(initial: Props = {}) {
   return renderHook(
     (props: Props) =>
       useStructuredAgentSessionOptions({
         agent: 'codex',
-        sessionId: 'session-1',
+        sessionId: props.sessionId ?? sessionId,
         target: PAIRED_TARGET,
         transportEnabled: props.attached === true,
         isVisible: !props.hidden,
@@ -107,6 +111,8 @@ const flush = (): Promise<void> => act(async () => {})
 describe('host model catalog read', () => {
   beforeEach(() => {
     mocks.call.mockReset()
+    sessionCount += 1
+    sessionId = `session-${sessionCount}`
   })
 
   it('reads a warm catalog once and never holds the picker', async () => {
@@ -118,7 +124,7 @@ describe('host model catalog read', () => {
     expect(model(result.current.optionSnapshot).choicesPending).toBeUndefined()
     first.resolve(HOST_CATALOG)
     await flush()
-    expect(catalogReads()).toEqual([{ agent: 'codex', sessionId: 'session-1' }])
+    expect(catalogReads()).toEqual([{ agent: 'codex', sessionId }])
     expect(modelChoices(result.current.optionSnapshot)).toContain('gpt-hosted')
     expect(model(result.current.optionSnapshot).choicesPending).toBeUndefined()
     unmount()
@@ -130,8 +136,8 @@ describe('host model catalog read', () => {
     const { result, unmount } = renderOptions()
     await flush()
     expect(catalogReads()).toEqual([
-      { agent: 'codex', sessionId: 'session-1' },
-      { agent: 'codex', sessionId: 'session-1', waitForListing: true }
+      { agent: 'codex', sessionId },
+      { agent: 'codex', sessionId, waitForListing: true }
     ])
     const held = model(result.current.optionSnapshot)
     expect(held).toMatchObject({ choicesPending: true, settable: false })
@@ -196,31 +202,96 @@ describe('host model catalog read', () => {
     unmount()
   })
 
-  it('drops a waited answer that lands after the pane hid', async () => {
+  it('keeps the hold through attach and joins the wait already in flight', async () => {
+    const waited = deferred()
+    answerCatalog([() => Promise.resolve(LISTING), () => waited.promise])
+    const { result, rerender, unmount } = renderOptions()
+    await flush()
+    expect(model(result.current.optionSnapshot).choicesPending).toBe(true)
+    rerender({ attached: true })
+    // No frame on the stand-in list between the old fence and the new one.
+    expect(model(result.current.optionSnapshot).choicesPending).toBe(true)
+    await flush()
+    expect(model(result.current.optionSnapshot).choicesPending).toBe(true)
+    expect(catalogReads()).toHaveLength(2)
+    waited.resolve(HOST_CATALOG)
+    await flush()
+    expect(modelChoices(result.current.optionSnapshot)).toContain('gpt-hosted')
+    expect(model(result.current.optionSnapshot).choicesPending).toBeUndefined()
+    unmount()
+  })
+
+  it('joins the wait already in flight when the pane hides and shows again', async () => {
     const waited = deferred()
     answerCatalog([() => Promise.resolve(LISTING), () => waited.promise])
     const { result, rerender, unmount } = renderOptions()
     await flush()
     rerender({ hidden: true })
     await flush()
-    expect(model(result.current.optionSnapshot).choicesPending).toBeUndefined()
+    rerender({})
+    await flush()
+    expect(catalogReads()).toHaveLength(2)
+    expect(model(result.current.optionSnapshot).choicesPending).toBe(true)
     waited.resolve(HOST_CATALOG)
     await flush()
-    expect(modelChoices(result.current.optionSnapshot)).not.toContain('gpt-hosted')
+    expect(modelChoices(result.current.optionSnapshot)).toContain('gpt-hosted')
+    expect(model(result.current.optionSnapshot).choicesPending).toBeUndefined()
     unmount()
   })
 
-  it('drops a waited answer that lands after the chat attached to a new record', async () => {
+  it('joins the wait already in flight when the chat mounts again', async () => {
     const waited = deferred()
     answerCatalog([() => Promise.resolve(LISTING), () => waited.promise])
+    const first = renderOptions()
+    await flush()
+    first.unmount()
+    const { result, unmount } = renderOptions()
+    await flush()
+    expect(catalogReads()).toHaveLength(2)
+    expect(model(result.current.optionSnapshot).choicesPending).toBe(true)
+    waited.resolve(HOST_CATALOG)
+    await flush()
+    expect(modelChoices(result.current.optionSnapshot)).toContain('gpt-hosted')
+    expect(model(result.current.optionSnapshot).choicesPending).toBeUndefined()
+    unmount()
+  })
+
+  it('holds and answers only the chat whose host is listing', async () => {
+    const waited = deferred()
+    answerCatalog([
+      () => Promise.resolve(LISTING),
+      () => waited.promise,
+      () => Promise.resolve(UNKNOWN)
+    ])
     const { result, rerender, unmount } = renderOptions()
     await flush()
-    rerender({ attached: true })
+    rerender({ sessionId: `${sessionId}-other` })
     await flush()
     expect(model(result.current.optionSnapshot).choicesPending).toBeUndefined()
     waited.resolve(HOST_CATALOG)
     await flush()
     expect(modelChoices(result.current.optionSnapshot)).not.toContain('gpt-hosted')
+    expect(catalogReads()).toHaveLength(3)
+    unmount()
+  })
+
+  it('applies nothing and keeps nothing when the answer lands after the chat closed', async () => {
+    const waited = deferred()
+    answerCatalog([
+      () => Promise.resolve(LISTING),
+      () => waited.promise,
+      () => Promise.resolve(UNKNOWN)
+    ])
+    const first = renderOptions()
+    await flush()
+    first.unmount()
+    waited.resolve(HOST_CATALOG)
+    await flush()
+    // A later open of the same chat asks afresh instead of joining a finished wait.
+    const { result, unmount } = renderOptions()
+    await flush()
+    expect(catalogReads()).toHaveLength(3)
+    expect(model(result.current.optionSnapshot).choicesPending).toBeUndefined()
     unmount()
   })
 })
