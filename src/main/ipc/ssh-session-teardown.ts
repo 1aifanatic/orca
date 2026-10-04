@@ -1,6 +1,7 @@
 import type { SshConnection } from '../ssh/ssh-connection'
 import type { SshRelaySession } from '../ssh/ssh-relay-session'
 import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
+import { clearSshHostServerStatus } from '../ssh/ssh-host-server-status'
 import { activeSessions } from './ssh-active-relay-sessions'
 import { invalidateConnectAttempt } from './ssh-connect-attempt-registry'
 import { connectionManager, persistedStore, portForwardManager } from './ssh-ipc-context'
@@ -10,6 +11,7 @@ import { runTargetLifecycle } from './ssh-target-lifecycle-queue'
 
 export async function disconnectRegisteredSshTarget(targetId: string): Promise<void> {
   invalidateConnectAttempt(targetId)
+  clearSshHostServerStatus(targetId)
   await runTargetLifecycle(targetId, () =>
     teardownSshTargetTransport(targetId, (session) => session.detachAndPersist())
   )
@@ -21,6 +23,7 @@ export async function removeRegisteredSshTarget(targetId: string): Promise<void>
     return
   }
   invalidateConnectAttempt(targetId)
+  clearSshHostServerStatus(targetId)
   await runTargetLifecycle(targetId, async () => {
     try {
       // Why: removal is destructive; dispose so remote PTYs cannot reattach to a deleted target.

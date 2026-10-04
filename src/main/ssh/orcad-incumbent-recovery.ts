@@ -3,8 +3,8 @@
  *
  * Shared by the in-flight failure paths and by crash recovery, so both apply one rule: state
  * a launched slot may have changed is replaced only after that slot is proven exited, and only
- * when the change provably carries no terminals — the slot exposed RPC, so a pre-launch census
- * cannot vouch for it.
+ * when an operator accepts it — the slot exposed RPC, and with it stopped nothing on the host
+ * can count the terminals it started, so the snapshot may no longer describe them.
  */
 import { orcadRemoteBaseDir } from './orcad-remote-windows-node'
 import type { ServeReadiness } from '../server/serve-readiness'
@@ -27,13 +27,11 @@ import {
   type OrcadSlotOptions
 } from './orcad-recovery-slot'
 import { joinRemotePath } from './ssh-remote-platform'
+import { ORCAD_RECOVERY_CHANGED_STATE_CODE } from '../../shared/orcad-managed-runtime'
 
 export type OrcadIncumbentRecoveryOptions = OrcadSlotOptions & {
-  /**
-   * Terminals started on the host since `since`, from a census taken now. Absent when no fresh
-   * census is available; `null` when the daemon did not answer. Both keep changed state.
-   */
-  terminalsStartedSince?: (since: string) => Promise<number | null>
+  /** The operator accepted restoring the snapshot over state a launched build changed. */
+  acceptChangedState?: boolean
 }
 
 export type OrcadIncumbentRecovery =
@@ -69,7 +67,7 @@ export async function recoverOrcadIncumbent(
   // With no incumbent there is no older reader to protect; the record names nothing to serve.
   if (quiescence === 'exited' && input.restoreState && input.incumbent) {
     const decision = input.launchedVersion
-      ? await decideChangedStateRestore(options, input.transactionStartedAt, input.restoreState)
+      ? await decideChangedStateRestore(options, input.restoreState)
       : 'restore'
     if (decision !== 'restore' && decision !== 'unchanged') {
       return decision
@@ -91,7 +89,6 @@ export async function recoverOrcadIncumbent(
 
 async function decideChangedStateRestore(
   options: OrcadIncumbentRecoveryOptions,
-  since: string,
   state: OrcadSnapshotVerdict
 ): Promise<'unchanged' | 'restore' | Extract<OrcadIncumbentRecovery, { outcome: 'refused' }>> {
   if (state.state === 'captured') {
@@ -110,34 +107,22 @@ async function decideChangedStateRestore(
       return 'unchanged'
     }
   }
-  const started = options.terminalsStartedSince
-    ? await options.terminalsStartedSince(since)
-    : undefined
-  if (started === 0) {
+  if (options.acceptChangedState) {
     return 'restore'
   }
   const retained =
     state.state === 'captured' ? ` at ${orcadSnapshotPath(options, state.dirName)}` : ''
-  return started === undefined || started === null
-    ? {
-        outcome: 'refused',
-        verdict: 'unverifiable',
-        code: 'orcad_recovery_census_required',
-        reason:
-          'The launched build is stopped, but profile state changed or could not be verified, ' +
-          'so the previous build was not restarted against it. Current state and daemon ' +
-          'terminals are preserved; recovery requires a fresh host terminal census before ' +
-          `restoring the prelaunch snapshot${retained}.`
-      }
-    : {
-        outcome: 'refused',
-        verdict: 'live',
-        code: 'orcad_recovery_orphans_live_terminals',
-        reason:
-          `${started} terminal${started === 1 ? '' : 's'} started after the interrupted ` +
-          'change, and the prelaunch snapshot does not describe them. Restoring it would ' +
-          `orphan running work; state is preserved${retained}.`
-      }
+  return {
+    outcome: 'refused',
+    verdict: 'unverifiable',
+    code: ORCAD_RECOVERY_CHANGED_STATE_CODE,
+    reason:
+      'The launched build is stopped, but it changed profile state (or the change could not be ' +
+      'checked), so the previous build was not restarted against it and this host serves ' +
+      'nothing. Recover to restore the prelaunch snapshot' +
+      `${retained} and restart the previous build; terminals the launched build started keep ` +
+      'running but drop out of the restored state.'
+  }
 }
 
 async function restoreState(options: OrcadSlotOptions, state: OrcadSnapshotVerdict): Promise<void> {

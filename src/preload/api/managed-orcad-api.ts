@@ -27,7 +27,11 @@ export type ManagedOrcadPreloadApi = {
   getStatus: (args: { selector: string }) => Promise<OrcadManagedRuntimeStatus>
   update: (args: { selector: string; force?: boolean }) => Promise<OrcadManagedDeployResult>
   rollback: (args: { selector: string }) => Promise<OrcadManagedRollbackResult>
-  recover: (args: { selector: string }) => Promise<OrcadManagedRecoveryResult>
+  recover: (args: {
+    selector: string
+    /** Restore the snapshot over state a rejected build changed; see ORCAD_RECOVERY_CHANGED_STATE_CODE. */
+    acceptChangedState?: boolean
+  }) => Promise<OrcadManagedRecoveryResult>
   stop: (args: { selector: string }) => Promise<OrcadManagedStopResult>
   cancelStop: (args: { selector: string }) => Promise<OrcadManagedCancelStopResult>
   linkSshAccess: (args: RuntimeSshAccessLinkRequest) => Promise<PublicKnownRuntimeEnvironment>

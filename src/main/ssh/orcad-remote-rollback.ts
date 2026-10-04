@@ -43,8 +43,6 @@ export type OrcadRollbackOptions = {
   targetBuildHash: string
   /** The rollback target's daemon protocol facts, from the same copy. */
   targetDaemonProtocol: OrcadDaemonProtocolFacts
-  /** A fresh census for a failed target that changed state; see `orcad-incumbent-recovery.ts`. */
-  terminalsStartedSince?: (since: string) => Promise<number | null>
   readinessTimeoutMs?: number
   now?: () => Date
   sleep?: (ms: number) => Promise<void>

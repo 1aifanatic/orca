@@ -1,7 +1,10 @@
 import { Loader2, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import type { OrcadManagedRuntimeStatus } from '../../../../shared/orcad-managed-runtime'
+import {
+  ORCAD_RECOVERY_CHANGED_STATE_CODE,
+  type OrcadManagedRuntimeStatus
+} from '../../../../shared/orcad-managed-runtime'
 import type { PublicKnownRuntimeEnvironment } from '../../../../shared/runtime-environments'
 import type { ManagedOrcadPreloadApi } from '../../../../preload/api/managed-orcad-api'
 import { useMountedRef } from '@/hooks/useMountedRef'
@@ -14,7 +17,13 @@ import {
   terminalCensusLabel
 } from './managed-server-copy'
 
-type ManagedServerAction = 'update' | 'rollback' | 'recover' | 'stop' | 'cancelStop'
+type ManagedServerAction =
+  | 'update'
+  | 'rollback'
+  | 'recover'
+  | 'restoreSnapshot'
+  | 'stop'
+  | 'cancelStop'
 
 type ManagedServerRowProps = {
   api: ManagedOrcadPreloadApi
@@ -41,6 +50,7 @@ export function ManagedServerRow({
   const [statusError, setStatusError] = useState<string | null>(null)
   const [busy, setBusy] = useState<ManagedServerAction | 'status' | null>(null)
   const [confirmingStop, setConfirmingStop] = useState(false)
+  const [confirmingRestore, setConfirmingRestore] = useState(false)
 
   const loadStatus = useCallback(async () => {
     setBusy('status')
@@ -74,14 +84,26 @@ export function ManagedServerRow({
           ? await api.update(selector)
           : action === 'rollback'
             ? await api.rollback(selector)
-            : action === 'recover'
-              ? await api.recover(selector)
+            : action === 'recover' || action === 'restoreSnapshot'
+              ? await api.recover({
+                  ...selector,
+                  acceptChangedState: action === 'restoreSnapshot'
+                })
               : action === 'stop'
                 ? await api.stop(selector)
                 : await api.cancelStop(selector)
       const message = outcomeMessage(result)
       if (message) {
         toast.message(message)
+      }
+      if (
+        mountedRef.current &&
+        action === 'recover' &&
+        result.outcome === 'refused' &&
+        'code' in result &&
+        result.code === ORCAD_RECOVERY_CHANGED_STATE_CODE
+      ) {
+        setConfirmingRestore(true)
       }
       onChanged()
     } catch (error) {
@@ -172,7 +194,33 @@ export function ManagedServerRow({
             {translate('auto.components.settings.managedServers.row.rollback', 'Roll back')}
           </Button>
         ) : null}
-        {recovery ? (
+        {recovery && confirmingRestore ? (
+          <>
+            <Button
+              type="button"
+              size="xs"
+              variant="destructive"
+              disabled={disabled}
+              onClick={() => {
+                setConfirmingRestore(false)
+                void run('restoreSnapshot')
+              }}
+            >
+              {translate(
+                'auto.components.settings.managedServers.row.confirmRestore',
+                'Restore snapshot and restart'
+              )}
+            </Button>
+            <Button
+              type="button"
+              size="xs"
+              variant="ghost"
+              onClick={() => setConfirmingRestore(false)}
+            >
+              {translate('auto.components.settings.managedServers.row.keepState', 'Keep state')}
+            </Button>
+          </>
+        ) : recovery ? (
           <Button
             type="button"
             size="xs"

@@ -37,8 +37,11 @@ export function createManagedOrcadActions(
       }
       return result
     },
-    recover: async (selector) => {
-      const result = await recoverManagedOrcadEnvironment(userDataPath(), { selector })
+    recover: async (selector, acceptChangedState) => {
+      const result = await recoverManagedOrcadEnvironment(userDataPath(), {
+        selector,
+        acceptChangedState: acceptChangedState === true
+      })
       if (result.outcome === 'recovered' && result.activeVersion) {
         await options.invalidateTransport(result.environment.id)
       }

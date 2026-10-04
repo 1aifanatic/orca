@@ -31,12 +31,12 @@ import {
   getSshTargetRegistryStore,
   hasRegisteredDirectSshAuthority
 } from '../ssh/ssh-target-registry'
-import { LEGACY_TCP_FORWARDING_REFUSED_REASON } from '../ssh/ssh-tcp-forwarding-probe'
 import { releaseUnreachableOrcadSetup } from '../ssh/orcad-unreachable-setup-release'
 import { getCurrentMainWindow } from './ssh-ipc-context'
 import { broadcastSshState } from './ssh-renderer-broadcast'
 import { disconnectRegisteredSshTarget } from './ssh-session-teardown'
 import { runTargetLifecycle } from './ssh-target-lifecycle-queue'
+import { connectInFlight } from './ssh-connect-attempt-registry'
 
 export function hostServerOnConnectDeps(userDataPath: string): HostServerOnConnectDeps {
   const registry = getSshTargetRegistryStore()!
@@ -67,10 +67,8 @@ export function hostServerOnConnectDeps(userDataPath: string): HostServerOnConne
       }
     },
     hasTemplate: hasOrcadTemplate,
-    // Why the legacy reason is skipped: the stdio bridge now reaches hosts that refuse forwarding.
     recordedUnavailable: (target) =>
-      target.managedServerUnavailable?.appVersion === appVersion &&
-      target.managedServerUnavailable.reason !== LEGACY_TCP_FORWARDING_REFUSED_REASON
+      target.managedServerUnavailable?.appVersion === appVersion
         ? target.managedServerUnavailable.reason
         : null,
     recordUnavailable: (target, reason) => {
@@ -154,6 +152,10 @@ export function hostServerOnConnectDeps(userDataPath: string): HostServerOnConne
         knownOrcadTunnelTransport(target.id)
       ),
     progress: (target, phase) => {
+      // A cancelled connect's decision keeps running; its progress must not revive the status.
+      if (!connectInFlight.has(target.id)) {
+        return
+      }
       setSshHostServerStatus(target.id, { kind: 'setting-up', phase })
       broadcastSshState(getCurrentMainWindow, target.id, {
         targetId: target.id,

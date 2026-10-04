@@ -26,6 +26,7 @@ import {
 } from './orcad-migration-terminal-gate'
 import type { SshTargetOrcadClaims } from './ssh-target-orcad-claims'
 import {
+  isBlockingOrcadMigrationBlocker,
   preflightOrcadMigrationExport,
   type OrcadMigrationPreflightStore
 } from './ssh-target-orcad-preflight'
@@ -117,7 +118,12 @@ export async function fenceOrcadMigrationSource(args: {
   if (!preflight.claimable) {
     return {
       ...refuse(
-        'live',
+        // Only a proven blocker reads live; one that is merely unanswered stays unverifiable.
+        preflight.blockers
+          .filter(isBlockingOrcadMigrationBlocker)
+          .every((blocker) => blocker.category === 'live-or-unverifiable')
+          ? 'unverifiable'
+          : 'live',
         'orcad_migration_preflight_blocked',
         orcadMigrationRefusalReason(preflight.blockers)
       ),

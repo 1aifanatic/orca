@@ -37,10 +37,19 @@ const status: OrcadManagedRuntimeStatus = {
   }
 }
 
-async function render() {
+async function render(rowStatus: OrcadManagedRuntimeStatus = status) {
   const stop = vi.fn(async () => ({ outcome: 'unlinked' }))
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the row calls only getStatus and stop here.
-  const api = { getStatus: vi.fn(async () => status), stop } as unknown as ManagedOrcadPreloadApi
+  const recover = vi.fn(async (args: { acceptChangedState?: boolean }) =>
+    args.acceptChangedState
+      ? { outcome: 'none' }
+      : { outcome: 'refused', verdict: 'unverifiable', code: 'orcad_recovery_changed_state' }
+  )
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the row calls only getStatus, stop and recover here.
+  const api = {
+    getStatus: vi.fn(async () => rowStatus),
+    stop,
+    recover
+  } as unknown as ManagedOrcadPreloadApi
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the row reads only id and name.
   const environment = { id: 'env-1', name: 'Builder' } as PublicKnownRuntimeEnvironment
   const container = document.createElement('div')
@@ -50,7 +59,7 @@ async function render() {
   await act(async () => {
     root.render(<ManagedServerRow api={api} environment={environment} onChanged={() => {}} />)
   })
-  return { container, stop }
+  return { container, stop, recover }
 }
 
 const button = (container: HTMLElement, label: string) =>
@@ -73,5 +82,19 @@ describe('managed server row', () => {
     expect(stop).not.toHaveBeenCalled()
     await act(async () => button(container, 'Stop and remove server')?.click())
     expect(stop).toHaveBeenCalledWith({ selector: 'env-1' })
+  })
+
+  it('restores a snapshot over changed state only after the operator accepts it', async () => {
+    const recovery = {
+      operation: 'activate' as const,
+      phase: 'snapshot-captured' as const,
+      version: '1.3.0',
+      startedAt: 'now'
+    }
+    const { container, recover } = await render({ ...status, recovery })
+    await act(async () => button(container, 'Recover')?.click())
+    expect(recover).toHaveBeenLastCalledWith({ selector: 'env-1', acceptChangedState: false })
+    await act(async () => button(container, 'Restore snapshot and restart')?.click())
+    expect(recover).toHaveBeenLastCalledWith({ selector: 'env-1', acceptChangedState: true })
   })
 })

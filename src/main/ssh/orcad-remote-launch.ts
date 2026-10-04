@@ -118,7 +118,7 @@ export function readOrcadReadinessCommand(
  *
  * Answers `LIVE`, `DEAD`, or `UNKNOWN`. `UNKNOWN` covers a missing or unparseable PID file
  * and a `kill -0` that failed for a reason other than "no such process" — a permission
- * error means someone else's process holds that PID, which is not evidence of death.
+ * error means someone else's process holds that PID, which is evidence of neither.
  */
 export function orcadLivenessProbeCommand(
   host: RemoteHostPlatform,
@@ -129,16 +129,12 @@ export function orcadLivenessProbeCommand(
   }
   const pidFile = shellEscape(joinRemotePath(host, remoteInstallDir, ORCAD_PID_FILENAME))
   return [
-    posixProcessAliveShellFunction(),
+    posixProcessAliveShellFunction({ refuseUnverifiable: true }),
     `pid=$(cat ${pidFile} 2>/dev/null);`,
     'case "$pid" in',
     '"" ) echo UNKNOWN;;',
     '*[!0-9]* ) echo UNKNOWN;;',
-    // Why EPERM is LIVE and not DEAD: a permission error means some process holds that PID,
-    // and deleting a tree because we could not signal its owner is the wrong direction.
-    '* ) if orcad_alive "$pid"; then echo LIVE;',
-    'elif kill -0 "$pid" 2>&1 | grep -qi "not permitted"; then echo LIVE;',
-    'else echo DEAD; fi;;',
+    '* ) if orcad_alive "$pid"; then echo LIVE; else echo DEAD; fi;;',
     'esac'
   ].join(' ')
 }

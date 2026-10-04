@@ -37,6 +37,8 @@ vi.mock('./ssh-ipc-context', () => ({ getCurrentMainWindow: () => null }))
 vi.mock('./ssh-session-teardown', () => ({ disconnectRegisteredSshTarget: vi.fn() }))
 
 const { hostServerOnConnectDeps } = await import('./ssh-host-server-on-connect-wiring')
+const { connectInFlight } = await import('./ssh-connect-attempt-registry')
+const { getSshHostServerStatus } = await import('../ssh/ssh-host-server-status')
 
 const TARGET: SshTarget = {
   id: 'ssh-box',
@@ -94,12 +96,8 @@ describe('connect-time server decision against the real profile', () => {
     expect(mocks.deploy).not.toHaveBeenCalled()
   })
 
-  it('retries a host an older build kept on the relay for refusing forwarding', async () => {
-    store.updateSshTarget(TARGET.id, {
-      managedServerUnavailable: { reason: 'tcp_forwarding_refused', appVersion: '1.5.0' }
-    })
+  it('retries a host an older build kept on the relay', async () => {
     const deps = hostServerOnConnectDeps(userDataPath)
-    expect(deps.recordedUnavailable(target())).toBeNull()
     store.updateSshTarget(TARGET.id, {
       managedServerUnavailable: { reason: 'unsupported_host', appVersion: '1.4.0' }
     })
@@ -121,5 +119,22 @@ describe('connect-time server decision against the real profile', () => {
       resolveHostServerOnConnect(target(), hostServerOnConnectDeps(userDataPath))
     ).resolves.toEqual({ route: 'relay', reason: 'relay_terminals_unverifiable', terminals: 1 })
     expect(mocks.convert).not.toHaveBeenCalled()
+  })
+
+  it('drops progress from a decision whose connect was cancelled', () => {
+    const deps = hostServerOnConnectDeps(userDataPath)
+    deps.progress(target(), 'deploying')
+    expect(getSshHostServerStatus(TARGET.id)).toBeUndefined()
+    expect(mocks.broadcast).not.toHaveBeenCalled()
+
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: progress reads only presence.
+    connectInFlight.set(TARGET.id, {} as never)
+    try {
+      deps.progress(target(), 'deploying')
+      expect(getSshHostServerStatus(TARGET.id)).toEqual({ kind: 'setting-up', phase: 'deploying' })
+      expect(mocks.broadcast).toHaveBeenCalledTimes(1)
+    } finally {
+      connectInFlight.delete(TARGET.id)
+    }
   })
 })

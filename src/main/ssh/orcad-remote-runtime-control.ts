@@ -18,7 +18,7 @@ import {
   parseOrcadReadinessWaitOutput
 } from './orcad-remote-readiness-wait'
 import type { SshConnection } from './ssh-connection'
-import { execCommand } from './ssh-relay-deploy-helpers'
+import { execCommand, isUnconfirmedSshCommandTermination } from './ssh-relay-deploy-helpers'
 import { isWindowsRemoteHost, type RemoteHostPlatform } from './ssh-remote-platform'
 
 // Only between host-side waits, so a host that answers early cannot turn this into a tight loop.
@@ -40,6 +40,20 @@ export function execOrcadRemote(
   return execCommand(target.conn, command, {
     wrapCommand: target.host.commandDialect !== 'powershell',
     signal
+  })
+}
+
+/** A confirmed failure reads as `fallback`; an unconfirmed one propagates and keeps the fence. */
+export function execOrcadRemoteOr(
+  target: OrcadRemoteExecTarget,
+  command: string,
+  fallback = ''
+): Promise<string> {
+  return execOrcadRemote(target, command).catch((error: unknown) => {
+    if (isUnconfirmedSshCommandTermination(error)) {
+      throw error
+    }
+    return fallback
   })
 }
 

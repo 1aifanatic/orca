@@ -16,7 +16,8 @@ export type ManagedServerActions = {
   status: (selector: string) => Promise<OrcadManagedRuntimeStatus>
   update: (selector: string, force: boolean) => Promise<OrcadManagedDeployResult>
   rollback: (selector: string) => Promise<OrcadManagedRollbackResult>
-  recover: (selector: string) => Promise<OrcadManagedRecoveryResult>
+  /** `acceptChangedState` restores the snapshot over state a rejected build changed. */
+  recover: (selector: string, acceptChangedState?: boolean) => Promise<OrcadManagedRecoveryResult>
   stop: (selector: string) => Promise<OrcadManagedStopResult>
   cancelStop: (selector: string) => Promise<OrcadManagedCancelStopResult>
 }

@@ -17,25 +17,28 @@ import { sendRemoteRuntimeRequestWithStatusPreflight } from '../../shared/remote
 import type { OrcadActivationRecord } from './orcad-activation-record'
 import { ensureOrcadManagedTunnel } from './orcad-managed-tunnel'
 
-export const UNVERIFIABLE_ORCAD_TERMINAL_CENSUS: OrcadTerminalCensus = {
+const UNVERIFIABLE: OrcadTerminalCensus = {
   liveSessions: null,
   startedSinceActivation: null,
   daemonProtocolVersion: null
 }
 
-export async function collectRemoteOrcadTerminalCensus(
+/** The census through the server's ensured tunnel; a tunnel that cannot open is unverifiable. */
+export async function collectManagedTerminalCensus(
+  userDataPath: string,
   environment: KnownRuntimeEnvironment,
   record: OrcadActivationRecord,
   timeoutMs = 15_000
 ): Promise<OrcadTerminalCensus> {
   if (!record.active) {
-    return collectIdle()
+    return { liveSessions: 0, startedSinceActivation: 0, daemonProtocolVersion: null }
   }
   const activatedAt = record.activatedAt ? Date.parse(record.activatedAt) : Number.NaN
   if (!Number.isFinite(activatedAt) || activatedAt < 0) {
-    return UNVERIFIABLE_ORCAD_TERMINAL_CENSUS
+    return UNVERIFIABLE
   }
   try {
+    await ensureOrcadManagedTunnel(userDataPath, environment.id)
     const response = await sendRemoteRuntimeRequestWithStatusPreflight<unknown>(
       getPreferredPairingOffer(environment),
       ORCAD_TERMINAL_CENSUS_METHOD,
@@ -52,31 +55,8 @@ export async function collectRemoteOrcadTerminalCensus(
       undefined,
       ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES
     )
-    return response.ok
-      ? OrcadTerminalCensusSchema.parse(response.result)
-      : UNVERIFIABLE_ORCAD_TERMINAL_CENSUS
+    return response.ok ? OrcadTerminalCensusSchema.parse(response.result) : UNVERIFIABLE
   } catch {
-    return UNVERIFIABLE_ORCAD_TERMINAL_CENSUS
+    return UNVERIFIABLE
   }
-}
-
-/** The census through the server's ensured tunnel; a tunnel that cannot open is unverifiable. */
-export async function collectManagedTerminalCensus(
-  userDataPath: string,
-  environment: KnownRuntimeEnvironment,
-  record: OrcadActivationRecord
-): Promise<OrcadTerminalCensus> {
-  if (!record.active) {
-    return collectIdle()
-  }
-  try {
-    await ensureOrcadManagedTunnel(userDataPath, environment.id)
-  } catch {
-    return UNVERIFIABLE_ORCAD_TERMINAL_CENSUS
-  }
-  return collectRemoteOrcadTerminalCensus(environment, record)
-}
-
-function collectIdle(): OrcadTerminalCensus {
-  return { liveSessions: 0, startedSinceActivation: 0, daemonProtocolVersion: null }
 }

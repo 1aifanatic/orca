@@ -15,6 +15,7 @@ import type {
   OrcadDaemonRetirementVerdict,
   OrcadManagedStopRequest
 } from '../../shared/orcad-stop-request'
+import { errorMessage } from '../../shared/error-message'
 
 export type OrcadDecommissionStopSettlement =
   | { state: 'exited'; retirement: OrcadDaemonRetirementVerdict }
@@ -68,8 +69,4 @@ export async function settleOrcadDecommissionStop(
       reason: `${reason} Withdrawing the request gave no verifiable answer: ${errorMessage(error)}`
     }
   }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }

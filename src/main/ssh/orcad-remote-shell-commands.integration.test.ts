@@ -457,6 +457,18 @@ describe('liveness and stop commands, run for real', () => {
     expect(parseOrcadLiveness(sh(orcadLivenessProbeCommand(host, versionDir)))).toBe('DEAD')
   })
 
+  it('reports a permission-denied liveness probe as UNKNOWN in any locale', () => {
+    writeFileSync(join(versionDir, ORCAD_PID_FILENAME), '4242')
+    const deniedKill =
+      'kill() { if [ "$LC_ALL" = C ]; then echo "kill: Operation not permitted" >&2; ' +
+      'else echo "kill: Vorgang nicht zulässig" >&2; fi; return 1; };'
+    expect(
+      parseOrcadLiveness(
+        sh(`LC_ALL=de_DE.UTF-8; ${deniedKill} ${orcadLivenessProbeCommand(host, versionDir)}`)
+      )
+    ).toBe('UNKNOWN')
+  })
+
   it('reports LIVE for a running process and stops it with SIGTERM', async () => {
     const child = spawn('/bin/sh', ['-c', 'sleep 30'], { stdio: 'ignore' })
     try {
