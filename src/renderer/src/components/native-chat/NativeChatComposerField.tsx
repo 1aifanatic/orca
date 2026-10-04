@@ -226,7 +226,6 @@ export function NativeChatComposerField({
                   <NativeChatImageAttachmentPreview
                     key={attachment.id}
                     attachment={attachment}
-                    notSaved={draftNotSaved}
                     onRemove={onRemoveImageAttachment}
                   />
                 ))}

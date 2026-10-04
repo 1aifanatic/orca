@@ -1,46 +1,40 @@
-// Keeps storage a copy of the draft store's memory: writes each changed draft whole, loads every
-// draft once at startup, journals what storage has not confirmed when the window goes away, and
-// follows other windows' writes.
+// Keeps storage a copy of the draft store's memory: writes each changed draft whole, journals what
+// storage has not confirmed when the window goes away, and follows other windows' writes.
 
 import { basename } from '@/lib/path'
 import { isNativeChatKeptPastePath, isNativeChatPastedImagePath } from './native-chat-image-paste'
 import {
   dirtyScopes,
   hasLocalChange,
+  load,
   nextSavedAt,
   notifyScope,
   records,
   refusedScopes,
   unconfirmed,
   unverifiedScopes,
+  type DraftAppend,
   type DraftRecord,
   type UnconfirmedDraftChange
 } from './native-chat-composer-draft-memory'
 import {
+  journalNativeChatComposerDraftChanges,
+  pruneNativeChatComposerDraftJournal
+} from './native-chat-composer-draft-journal'
+import {
   nativeChatComposerDraftStorage,
   parseStoredNativeChatComposerDraft,
-  removeLegacyLocalStorageNativeChatComposerDrafts,
   type NativeChatComposerDraftImage,
   type StoredNativeChatComposerDraft
 } from './native-chat-composer-draft-storage'
 
 const PERSIST_DEBOUNCE_MS = 250
-const JOURNAL_KEY = 'orca:nativeChatComposerDraftJournal:v1'
 const CHANNEL_NAME = 'orca-native-chat-composer-drafts'
 
 let flushTimer: ReturnType<typeof setTimeout> | null = null
 let flushOnHideInstalled = false
-let journaled = false
 const inFlight = new Set<Promise<void>>()
 let channel: BroadcastChannel | null = null
-
-let hydrated = false
-let hydration: Promise<void> | null = null
-// Before the load lands, a scope changed here keeps its local version, and a deletion here also
-// applies to what the load brings.
-const touchedBeforeLoad = new Set<string>()
-const deletionsBeforeLoad: ((scopeKey: string, draft: StoredNativeChatComposerDraft) => boolean)[] =
-  []
 
 /** An image the draft names but can no longer send, so the user can attach it again. */
 export function unavailableNativeChatComposerDraftImage(
@@ -72,26 +66,14 @@ function savedForm(record: DraftRecord): StoredNativeChatComposerDraft | null {
   return { ...saved, text, images }
 }
 
-function clearJournalIfSettled(): void {
-  if (!journaled || unconfirmed.size > 0) {
-    return
-  }
-  journaled = false
-  try {
-    localStorage.removeItem(JOURNAL_KEY)
-  } catch {
-    // Nothing to clear without localStorage.
-  }
-}
-
 function confirm(scopeKey: string, change: UnconfirmedDraftChange): void {
   if (unconfirmed.get(scopeKey) === change) {
     unconfirmed.delete(scopeKey)
     if (refusedScopes.delete(scopeKey)) {
       notifyScope(scopeKey)
     }
-    clearJournalIfSettled()
   }
+  pruneNativeChatComposerDraftJournal(scopeKey, change.at)
   channel?.postMessage({ scopeKey })
 }
 
@@ -127,31 +109,20 @@ export function flushNativeChatComposerDrafts(): void {
     clearTimeout(flushTimer)
     flushTimer = null
   }
-  if (!hydrated) {
-    // Why: a load that failed is retried, so a later one can still bring the drafts back.
-    void hydrateNativeChatComposerDrafts()
-  }
   for (const scopeKey of dirtyScopes) {
     dirtyScopes.delete(scopeKey)
     persist(scopeKey)
   }
 }
 
-/** Why: storage commits after this task, so whatever it has not confirmed when the window goes
- *  away is also written here synchronously and replayed by the next run. */
+/** Why: storage commits after this task, so what it has not confirmed when the window goes away
+ *  is also written synchronously and replayed by the next load. A draft storage already refused
+ *  is left out: it is shown as not saved and retried instead. */
 function journalUnconfirmed(): void {
   flushNativeChatComposerDrafts()
-  try {
-    if (unconfirmed.size === 0) {
-      clearJournalIfSettled()
-      return
-    }
-    const entries = [...unconfirmed].map(([scopeKey, change]) => ({ scopeKey, ...change }))
-    localStorage.setItem(JOURNAL_KEY, JSON.stringify(entries))
-    journaled = true
-  } catch {
-    // A full localStorage loses only what storage itself had not yet confirmed.
-  }
+  journalNativeChatComposerDraftChanges(
+    new Map([...unconfirmed].filter(([scopeKey]) => !refusedScopes.has(scopeKey)))
+  )
 }
 
 function journalWhenHidden(): void {
@@ -176,14 +147,24 @@ function installFlushOnHide(): void {
 }
 
 /** Marks a scope changed in memory: `deferred` coalesces typing into one write, `immediate`
- *  writes now. */
+ *  writes now. Before the startup load lands, an edit wins over the loaded draft and an append
+ *  is applied again on top of it. */
 export function persistNativeChatComposerDraft(
   scopeKey: string,
-  persist: 'immediate' | 'deferred'
+  persist: 'immediate' | 'deferred',
+  append?: DraftAppend
 ): void {
   dirtyScopes.add(scopeKey)
-  if (!hydrated) {
-    touchedBeforeLoad.add(scopeKey)
+  if (!load.hydrated) {
+    if (append) {
+      const pending = load.appendsBeforeLoad.get(scopeKey)
+      load.appendsBeforeLoad.set(scopeKey, {
+        firstWrittenAt: pending?.firstWrittenAt ?? records.get(scopeKey)?.savedAt ?? 0,
+        appends: [...(pending?.appends ?? []), append]
+      })
+    } else {
+      load.editedBeforeLoad.add(scopeKey)
+    }
   }
   installFlushOnHide()
   if (persist === 'immediate') {
@@ -197,58 +178,17 @@ export function persistNativeChatComposerDraft(
 export function deleteLoadingNativeChatComposerDraftsWhere(
   matches: (scopeKey: string, draft: StoredNativeChatComposerDraft) => boolean
 ): void {
-  if (!hydrated) {
-    deletionsBeforeLoad.push(matches)
+  if (!load.hydrated) {
+    load.deletionsBeforeLoad.push(matches)
   }
 }
 
-function readJournal(): Map<string, UnconfirmedDraftChange> {
-  const journal = new Map<string, UnconfirmedDraftChange>()
-  try {
-    const entries: unknown = JSON.parse(localStorage.getItem(JOURNAL_KEY) ?? '[]')
-    journaled = Array.isArray(entries) && entries.length > 0
-    for (const entry of Array.isArray(entries) ? entries : []) {
-      const { scopeKey, draft, at } = entry ?? {}
-      if (typeof scopeKey === 'string' && typeof at === 'number') {
-        journal.set(scopeKey, { draft: parseStoredNativeChatComposerDraft(draft), at })
-      }
-    }
-  } catch {
-    // An unreadable journal holds nothing to replay.
-  }
-  return journal
-}
-
-function applyLoaded(loaded: ReadonlyMap<string, unknown>): void {
-  const drafts = new Map<string, StoredNativeChatComposerDraft | null>()
-  for (const [scopeKey, value] of loaded) {
-    drafts.set(scopeKey, parseStoredNativeChatComposerDraft(value))
-  }
-  for (const [scopeKey, change] of readJournal()) {
-    const stored = drafts.get(scopeKey)
-    if (!stored || stored.savedAt < change.at) {
-      drafts.set(scopeKey, change.draft)
-      dirtyScopes.add(scopeKey)
-    }
-  }
-  for (const [scopeKey, draft] of drafts) {
-    if (touchedBeforeLoad.has(scopeKey)) {
-      continue
-    }
-    if (!draft || deletionsBeforeLoad.some((matches) => matches(scopeKey, draft))) {
-      // An unreadable record, a journaled removal, or one deleted here while loading.
-      dirtyScopes.add(scopeKey)
-      continue
-    }
-    records.set(scopeKey, draft)
-    unverifiedScopes.add(scopeKey)
-    notifyScope(scopeKey)
-  }
-  hydrated = true
-  touchedBeforeLoad.clear()
-  deletionsBeforeLoad.length = 0
-  flushNativeChatComposerDrafts()
-  clearJournalIfSettled()
+function addsAnImage(
+  draft: StoredNativeChatComposerDraft,
+  previous: DraftRecord | undefined
+): boolean {
+  const held = new Set(previous?.images.map((image) => `${image.id}\0${image.path}`))
+  return draft.images.some((image) => !held.has(`${image.id}\0${image.path}`))
 }
 
 // Why: another window of the same app (two web-client tabs) can send or edit this draft; its write
@@ -269,8 +209,11 @@ function adoptForeignChange(message: unknown): void {
       }
       const draft = parseStoredNativeChatComposerDraft(value)
       if (draft) {
+        // Why: images this window already checked stay checked, so their chips don't flash.
+        if (addsAnImage(draft, records.get(scopeKey))) {
+          unverifiedScopes.add(scopeKey)
+        }
         records.set(scopeKey, draft)
-        unverifiedScopes.add(scopeKey)
       } else {
         records.delete(scopeKey)
       }
@@ -279,7 +222,7 @@ function adoptForeignChange(message: unknown): void {
     .catch(() => {})
 }
 
-function installBroadcast(): void {
+export function installNativeChatComposerDraftBroadcast(): void {
   if (channel || typeof BroadcastChannel === 'undefined') {
     return
   }
@@ -289,31 +232,6 @@ function installBroadcast(): void {
   if ('unref' in channel && typeof channel.unref === 'function') {
     channel.unref()
   }
-}
-
-/** Loads every saved draft into memory, once; a failed load is retried by the next flush. */
-export function hydrateNativeChatComposerDrafts(): Promise<void> {
-  hydration ??= (async () => {
-    removeLegacyLocalStorageNativeChatComposerDrafts()
-    installBroadcast()
-    applyLoaded(await nativeChatComposerDraftStorage().loadAll())
-  })().catch((error: unknown) => {
-    console.warn('[native-chat-drafts] saved drafts could not be loaded', error)
-    hydration = null
-  })
-  return hydration
-}
-
-/** Startup waits this long at most; a load still running fills its drafts in when it lands. */
-export async function waitForNativeChatComposerDrafts(timeoutMs: number): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  await Promise.race([
-    hydrateNativeChatComposerDrafts(),
-    new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, timeoutMs)
-    })
-  ])
-  clearTimeout(timer)
 }
 
 /** Settles once every write issued so far has been confirmed or refused. */
@@ -336,10 +254,5 @@ export function resetNativeChatComposerDraftPersistenceForTests(): void {
     window.removeEventListener('beforeunload', journalUnconfirmed)
     document.removeEventListener('visibilitychange', journalWhenHidden)
   }
-  hydrated = false
-  hydration = null
-  journaled = false
-  touchedBeforeLoad.clear()
-  deletionsBeforeLoad.length = 0
   inFlight.clear()
 }

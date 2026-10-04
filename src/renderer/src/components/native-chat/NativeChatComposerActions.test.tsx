@@ -157,7 +157,7 @@ describe('NativeChatComposerActions', () => {
       sessionOptionsSurface: null,
       sessionOptionsSnapshot: []
     }
-    const explanation = "This draft couldn't be saved. It's kept until Orca closes."
+    const explanation = "This draft couldn't be saved yet. Orca keeps trying."
     const { rerender } = render(<NativeChatComposerActions {...props} />)
     expect(screen.queryByRole('img', { name: explanation })).toBeNull()
 

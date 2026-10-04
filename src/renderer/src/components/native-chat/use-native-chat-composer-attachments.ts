@@ -16,14 +16,14 @@ import {
 } from './native-chat-composer-target'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
 import {
+  appendToNativeChatComposerDraft,
   clearNativeChatComposerDraftsForTests,
   isKeptLocalPaste,
-  isNativeChatComposerDraftUnverified,
   readNativeChatComposerDraft,
   subscribeToNativeChatComposerDraft,
   updateNativeChatComposerDraft
 } from './native-chat-composer-draft-store'
-import { verifyRestoredNativeChatComposerDraftImages } from './native-chat-composer-draft-image-check'
+import { useRestoredNativeChatComposerDraftImageCheck } from './native-chat-composer-draft-image-check'
 import type { NativeChatResolvedPathOptions } from './native-chat-resolved-path-ownership'
 import { useNativeChatResolvedPathAttachments } from './use-native-chat-resolved-path-attachments'
 
@@ -74,16 +74,8 @@ export function useNativeChatComposerAttachments({
     () => readNativeChatComposerDraft(attachmentScopeKey).images
   )
   // Why: a restored paste can be previewed only once main re-grants it, so until the restore check
-  // is done it waits like a chip still saving. A draft the startup load fills in late is checked
-  // when it arrives.
-  const restoring = useSyncExternalStore(subscribe, () =>
-    isNativeChatComposerDraftUnverified(attachmentScopeKey)
-  )
-  useEffect(() => {
-    if (restoring) {
-      void verifyRestoredNativeChatComposerDraftImages(attachmentScopeKey)
-    }
-  }, [attachmentScopeKey, restoring])
+  // is done it waits like a chip still saving.
+  const restoring = useRestoredNativeChatComposerDraftImageCheck(attachmentScopeKey, subscribe)
   // Chips still being written, and the clipboard previews this composer minted, are its own.
   const [local, setLocal] = useState<LocalAttachments>(NO_LOCAL_ATTACHMENTS)
   // Read by callbacks between renders; only they change it, always together with the state.
@@ -313,20 +305,22 @@ export function appendNativeChatAttachmentCache(
   if (appended.length === 0) {
     return
   }
-  const images = [...readNativeChatComposerDraft(scopeKey).images]
-  for (const { id, path, connectionId } of appended) {
-    // Preview URLs can retain the full clipboard Blob, so only the path is kept.
-    const image = { id, path, ...(connectionId ? { connectionId } : {}) }
-    const placeholder = options?.fromUser
-      ? images.findIndex((held) => held.unavailableName === basename(path))
-      : -1
-    if (placeholder === -1) {
-      images.push(image)
-    } else {
-      images[placeholder] = image
+  appendToNativeChatComposerDraft(scopeKey, (draft) => {
+    const images = [...draft.images]
+    for (const { id, path, connectionId } of appended) {
+      // Preview URLs can retain the full clipboard Blob, so only the path is kept.
+      const image = { id, path, ...(connectionId ? { connectionId } : {}) }
+      const placeholder = options?.fromUser
+        ? images.findIndex((held) => held.unavailableName === basename(path))
+        : -1
+      if (placeholder === -1) {
+        images.push(image)
+      } else {
+        images[placeholder] = image
+      }
     }
-  }
-  updateNativeChatComposerDraft(scopeKey, { images }, 'immediate')
+    return { images }
+  })
 }
 
 export function clearNativeChatAttachmentCacheForTests(): void {

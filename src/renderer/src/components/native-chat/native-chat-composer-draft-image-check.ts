@@ -2,6 +2,7 @@
 // re-grant its preview, which main does only for files really inside that folder; any other image
 // goes through the existing existence check (the workspace's read rules locally, the host over SSH).
 
+import { useEffect, useSyncExternalStore } from 'react'
 import type { NativeChatComposerDraftImage } from './native-chat-composer-draft-storage'
 import {
   isKeptLocalPaste,
@@ -88,4 +89,21 @@ async function replaceMissingImages(scopeKey: string): Promise<void> {
     },
     'immediate'
   )
+}
+
+/** Whether the scope's restored images still wait on their check, which runs as they arrive: at
+ *  mount, or later when the startup load or another window brings new ones. */
+export function useRestoredNativeChatComposerDraftImageCheck(
+  scopeKey: string,
+  subscribe: (listener: () => void) => () => void
+): boolean {
+  const restoring = useSyncExternalStore(subscribe, () =>
+    isNativeChatComposerDraftUnverified(scopeKey)
+  )
+  useEffect(() => {
+    if (restoring) {
+      void verifyRestoredNativeChatComposerDraftImages(scopeKey)
+    }
+  }, [scopeKey, restoring])
+  return restoring
 }

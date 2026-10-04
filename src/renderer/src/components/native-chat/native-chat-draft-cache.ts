@@ -6,6 +6,7 @@ import type { JSONContent } from '@tiptap/react'
 // reload or quit.
 
 import {
+  appendToNativeChatComposerDraft,
   clearNativeChatComposerDraftsForTests,
   readNativeChatComposerDraft,
   updateNativeChatComposerDraft
@@ -46,11 +47,10 @@ export function appendNativeChatDraftCache(scopeKey: string, text: string): void
   }
   const previous = readNativeChatDraftCache(scopeKey)
   // Saved now: the copy it came from (an outbox entry, a queued card) goes right after this.
-  updateNativeChatComposerDraft(
-    scopeKey,
-    { text: appendNativeChatDraftText(previous, text), document: undefined },
-    'immediate'
-  )
+  appendToNativeChatComposerDraft(scopeKey, (draft) => ({
+    text: appendNativeChatDraftText(draft.text, text),
+    document: undefined
+  }))
   appendListeners.get(scopeKey)?.forEach((listener) => listener(text, previous))
 }
 

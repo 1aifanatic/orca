@@ -251,7 +251,8 @@ export function createTerminalTabCloseActions(
       if (intentReason && closingWorktreeId && opts?.remoteCloseOwnedByHost !== true) {
         commitTerminalSurfaceClose(closingWorktreeId, { kind: 'tab', tabId }, intentReason)
       }
-      // Why only a user close: it is the explicit abandon; the drafts' count and size bounds retire the rest.
+      // Why only a user close: it is the explicit abandon. Other closes keep the drafts until their
+      // workspace is removed in Orca; drafts have no budget that retires them.
       if (closeReason === 'user') {
         deleteNativeChatComposerDraftsForTab(tabId)
       }

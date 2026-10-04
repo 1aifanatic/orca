@@ -1,9 +1,22 @@
 // How two copies of a composer draft compare, such as the draft now against the one that was sent.
 
+import type { JSONContent } from '@tiptap/react'
 import type {
   NativeChatComposerDraft,
   NativeChatComposerDraftImage
 } from './native-chat-composer-draft-storage'
+
+/** Equal documents count as unchanged even as new objects: an editor applying the stored draft
+ *  produces its own copy, which must not read as a change to save. */
+export function sameNativeChatComposerDraftDocument(
+  left: JSONContent | undefined,
+  right: JSONContent | undefined
+): boolean {
+  return (
+    left === right ||
+    (left !== undefined && right !== undefined && JSON.stringify(left) === JSON.stringify(right))
+  )
+}
 
 export function sameNativeChatComposerDraftImages(
   left: readonly NativeChatComposerDraftImage[],

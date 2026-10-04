@@ -3,7 +3,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import { NativeChatImageAttachmentPreview } from './NativeChatImageAttachmentPreview'
-import { TooltipProvider } from '@/components/ui/tooltip'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
 
 const mocks = vi.hoisted(() => ({
@@ -31,26 +30,6 @@ function renderPreview(attachment: NativeChatComposerImageAttachment): void {
 }
 
 describe('NativeChatImageAttachmentPreview', () => {
-  it('marks an image whose draft could not be saved, and only then', () => {
-    mocks.useLocalImageSrc.mockReturnValue('blob:on-disk-1')
-    vi.stubGlobal('IntersectionObserver', undefined)
-    const explanation = "This image couldn't be saved with this draft. It's kept until Orca closes."
-    const attachment = { id: 'a1', path: '/tmp/example.png' }
-    const { rerender } = render(
-      <TooltipProvider>
-        <NativeChatImageAttachmentPreview attachment={attachment} onRemove={vi.fn()} />
-      </TooltipProvider>
-    )
-    expect(screen.queryByRole('img', { name: explanation })).toBeNull()
-
-    rerender(
-      <TooltipProvider>
-        <NativeChatImageAttachmentPreview attachment={attachment} notSaved onRemove={vi.fn()} />
-      </TooltipProvider>
-    )
-    expect(screen.getByRole('img', { name: explanation })).toBeTruthy()
-  })
-
   it('shows the clipboard thumbnail and a spinner while pending', () => {
     mocks.useLocalImageSrc.mockReturnValue(undefined)
     renderPreview({ id: 'a1', path: '', previewUrl: 'blob:clipboard-1', pending: true })

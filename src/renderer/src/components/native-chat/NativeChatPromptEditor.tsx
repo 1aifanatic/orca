@@ -104,7 +104,9 @@ export function NativeChatPromptEditor({
           )
       },
       onTransaction: ({ editor: current, transaction }) => {
-        if (scopeKey && transaction.docChanged) {
+        // Why: a value set from outside (the store's own draft, another window's, a late load)
+        // is already the store's; saving it back would make it a local change of this window.
+        if (scopeKey && transaction.docChanged && !transaction.getMeta('preventUpdate')) {
           writeNativeChatDraftDocument(
             scopeKey,
             promptTextMap(current.state.doc).text,
@@ -146,6 +148,12 @@ export function NativeChatPromptEditor({
             set value(value: string) {
               const old = promptTextMap(editor.state.doc)
               if (old.text === value) {
+                return
+              }
+              // A draft loaded or adopted whole keeps its skill chips: its stored document wins.
+              const stored = scopeKey ? readNativeChatDraftDocument(scopeKey, value) : undefined
+              if (stored) {
+                editor.commands.setContent(stored, { emitUpdate: false })
                 return
               }
               if (!value) {
@@ -231,7 +239,7 @@ export function NativeChatPromptEditor({
             }
           }
         : null,
-    [editor]
+    [editor, scopeKey]
   )
   useImperativeHandle(inputRef, () => input!, [input])
 

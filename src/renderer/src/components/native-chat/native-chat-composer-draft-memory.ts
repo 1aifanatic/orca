@@ -23,6 +23,29 @@ export const refusedScopes = new Set<string>()
 export const unverifiedScopes = new Set<string>()
 export const scopeListeners = new Map<string, Set<() => void>>()
 
+/** How a change before the startup load lands meets the loaded draft: an edit replaces it, an
+ *  append (text or images given back, a paste) is applied again on top of it. */
+export type DraftAppend = (draft: StoredNativeChatComposerDraft) => StoredNativeChatComposerDraft
+
+type LoadBookkeeping = {
+  hydrated: boolean
+  readonly editedBeforeLoad: Set<string>
+  /** Per scope: the appends, and when the first of them was written. */
+  readonly appendsBeforeLoad: Map<string, { firstWrittenAt: number; appends: DraftAppend[] }>
+  readonly deletionsBeforeLoad: ((
+    scopeKey: string,
+    draft: StoredNativeChatComposerDraft
+  ) => boolean)[]
+}
+
+// The startup load's bookkeeping, emptied once it lands.
+export const load: LoadBookkeeping = {
+  hydrated: false,
+  editedBeforeLoad: new Set(),
+  appendsBeforeLoad: new Map(),
+  deletionsBeforeLoad: []
+}
+
 let lastSavedAt = 0
 
 /** Monotonic within a run, so drafts changed in the same millisecond still age in order. */
@@ -47,4 +70,8 @@ export function clearDraftMemoryForTests(): void {
   refusedScopes.clear()
   unverifiedScopes.clear()
   lastSavedAt = 0
+  load.hydrated = false
+  load.editedBeforeLoad.clear()
+  load.appendsBeforeLoad.clear()
+  load.deletionsBeforeLoad.length = 0
 }

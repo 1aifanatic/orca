@@ -361,6 +361,166 @@ describe('native-chat composer draft store', () => {
     expect(reloaded.drafts.readNativeChatDraftCache('tab-2:pane')).toBe('other chat')
   })
 
+  it('adds what is given back before a slow load lands to the saved draft, instead of replacing it', async () => {
+    storage.drafts.set('agent-session:s1', {
+      text: 'saved earlier',
+      images: [IMAGES[0]],
+      savedAt: 1
+    })
+    let land: () => void = () => {}
+    // Storage reads as of the load's start, as IndexedDB does for a transaction begun first.
+    const slow = {
+      ...storage,
+      loadAll: () => {
+        const snapshot = new Map(storage.drafts)
+        return new Promise<ReadonlyMap<string, unknown>>((resolve) => {
+          land = () => resolve(snapshot)
+        })
+      }
+    }
+    const reloaded = await reload({ using: slow, hydrate: false })
+    await reloaded.store.waitForNativeChatComposerDrafts(1)
+    // Stop's restore, and a paste, before the load lands.
+    reloaded.drafts.appendNativeChatDraftCache('agent-session:s1', 'returned by Stop')
+    reloaded.attachments.appendNativeChatAttachmentCache('agent-session:s1', [IMAGES[1]], {
+      fromUser: true
+    })
+
+    land()
+    await reloaded.store.hydrateNativeChatComposerDrafts()
+    await reloaded.store.nativeChatComposerDraftWritesSettled()
+    expect(reloaded.drafts.readNativeChatDraftCache('agent-session:s1')).toBe(
+      'saved earlier\n\nreturned by Stop'
+    )
+    expect(reloaded.attachments.readNativeChatAttachmentCache('agent-session:s1')).toEqual(IMAGES)
+    expect(storedDraft('agent-session:s1')).toMatchObject({
+      text: 'saved earlier\n\nreturned by Stop',
+      images: IMAGES
+    })
+  })
+
+  it('retries a failed load a few times, warns once, and then stops', async () => {
+    vi.useFakeTimers()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const broken = {
+      ...storage,
+      loadAll: vi.fn(() => Promise.reject(new Error('no backing store')))
+    }
+    const reloaded = await reload({ using: broken, hydrate: false })
+    await reloaded.store.hydrateNativeChatComposerDrafts()
+    for (let tick = 0; tick < 10; tick += 1) {
+      reloaded.drafts.writeNativeChatDraftCache('tab-1:pane', `typing ${tick}`)
+      await vi.advanceTimersByTimeAsync(60_000)
+    }
+
+    expect(broken.loadAll).toHaveBeenCalledTimes(4)
+    expect(warn.mock.calls.filter(([message]) => String(message).includes('loaded'))).toHaveLength(
+      1
+    )
+    expect(reloaded.drafts.readNativeChatDraftCache('tab-1:pane')).toBe('typing 9')
+    warn.mockRestore()
+  })
+
+  it('does not echo a draft adopted from another window as a change of its own', async () => {
+    const other = await reload()
+    const doc = (text: string) => ({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text }] }]
+    })
+    other.drafts.writeNativeChatDraftDocument('agent-session:s3', 'abc', doc('abc'))
+    other.store.flushNativeChatComposerDrafts()
+    await vi.waitFor(() =>
+      expect(modules.drafts.readNativeChatDraftCache('agent-session:s3')).toBe('abc')
+    )
+    // The editor here shows the adopted draft and hands back an equal document of its own.
+    modules.drafts.writeNativeChatDraftDocument('agent-session:s3', 'abc', doc('abc'))
+    other.drafts.writeNativeChatDraftDocument('agent-session:s3', 'abcd', doc('abcd'))
+    other.store.flushNativeChatComposerDrafts()
+    await other.store.nativeChatComposerDraftWritesSettled()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    modules.store.flushNativeChatComposerDrafts()
+    await modules.store.nativeChatComposerDraftWritesSettled()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    expect(other.drafts.readNativeChatDraftCache('agent-session:s3')).toBe('abcd')
+    expect(storedDraft('agent-session:s3')?.text).toBe('abcd')
+  })
+
+  it('never replays a closed window’s journal over a draft another window sent since', async () => {
+    const tabB = modules
+    // Tab A's write lands, but the page goes away before it is confirmed.
+    const landsUnconfirmed = {
+      ...storage,
+      write: (scopeKey: string, draft: Parameters<typeof storage.write>[1]) => {
+        storage.drafts.set(scopeKey, draft)
+        return new Promise<void>(() => {})
+      }
+    }
+    const tabA = await reload({ using: landsUnconfirmed })
+    tabA.drafts.writeNativeChatDraftCache('agent-session:s1', 'typed in A, then A closed')
+    window.dispatchEvent(new Event('pagehide'))
+    expect(localStorage.getItem('orca:nativeChatComposerDraftJournal:v1')).toContain('typed in A')
+    tabA.store.clearNativeChatComposerDraftsForTests()
+
+    tabB.drafts.writeNativeChatDraftCache('agent-session:s1', 'written in B')
+    tabB.store.clearNativeChatComposerDraftIfUnchanged('agent-session:s1', {
+      text: 'written in B',
+      images: []
+    })
+    await tabB.store.nativeChatComposerDraftWritesSettled()
+
+    const tabC = await reload()
+    expect(tabC.drafts.readNativeChatDraftCache('agent-session:s1')).toBe('')
+    expect(localStorage.getItem('orca:nativeChatComposerDraftJournal:v1')).toBeNull()
+  })
+
+  it('keeps the journal small: never a refused draft, and never past its cap', async () => {
+    storage.refuseWrites = true
+    for (let index = 0; index < 10; index += 1) {
+      modules.drafts.appendNativeChatDraftCache(
+        `agent-session:refused-${index}`,
+        'x'.repeat(200_000)
+      )
+    }
+    await modules.store.nativeChatComposerDraftWritesSettled()
+    window.dispatchEvent(new Event('pagehide'))
+    expect(localStorage.getItem('orca:nativeChatComposerDraftJournal:v1')).toBeNull()
+
+    storage.refuseWrites = false
+    const hanging = { ...storage, write: () => new Promise<void>(() => {}) }
+    const unconfirmedTab = await reload({ using: hanging })
+    for (let index = 0; index < 10; index += 1) {
+      unconfirmedTab.drafts.appendNativeChatDraftCache(
+        `agent-session:big-${index}`,
+        'y'.repeat(60_000)
+      )
+    }
+    window.dispatchEvent(new Event('pagehide'))
+    const journal = localStorage.getItem('orca:nativeChatComposerDraftJournal:v1') ?? ''
+    expect(journal.length).toBeGreaterThan(0)
+    expect(journal.length).toBeLessThanOrEqual(256_000)
+  })
+
+  it('keeps a restored image checked when another window saves the draft with the same image', async () => {
+    const other = await reload()
+    other.attachments.appendNativeChatAttachmentCache('tab-1:pane', [IMAGES[0]])
+    await vi.waitFor(() =>
+      expect(modules.attachments.readNativeChatAttachmentCache('tab-1:pane')).toEqual([IMAGES[0]])
+    )
+    modules.store.markNativeChatComposerDraftVerified('tab-1:pane')
+
+    other.drafts.appendNativeChatDraftCache('tab-1:pane', 'caption')
+    await vi.waitFor(() =>
+      expect(modules.drafts.readNativeChatDraftCache('tab-1:pane')).toBe('caption')
+    )
+    expect(modules.store.isNativeChatComposerDraftUnverified('tab-1:pane')).toBe(false)
+
+    other.attachments.appendNativeChatAttachmentCache('tab-1:pane', [IMAGES[1]])
+    await vi.waitFor(() =>
+      expect(modules.store.isNativeChatComposerDraftUnverified('tab-1:pane')).toBe(true)
+    )
+  })
+
   it('follows another window’s save of a draft, unless a change here is not saved yet', async () => {
     const other = await reload()
     other.drafts.appendNativeChatDraftCache('tab-1:pane', 'from the other tab')

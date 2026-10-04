@@ -4,7 +4,10 @@
 // skipped write is repaired by the next one.
 
 import type { JSONContent } from '@tiptap/react'
-import { sameNativeChatComposerDraftImages } from './native-chat-composer-draft-comparison'
+import {
+  sameNativeChatComposerDraftDocument,
+  sameNativeChatComposerDraftImages
+} from './native-chat-composer-draft-comparison'
 import {
   clearDraftMemoryForTests,
   dirtyScopes,
@@ -14,6 +17,7 @@ import {
   refusedScopes,
   scopeListeners,
   unverifiedScopes,
+  type DraftAppend,
   type DraftRecord
 } from './native-chat-composer-draft-memory'
 import {
@@ -21,6 +25,7 @@ import {
   persistNativeChatComposerDraft,
   resetNativeChatComposerDraftPersistenceForTests
 } from './native-chat-composer-draft-persistence'
+import { resetNativeChatComposerDraftLoadForTests } from './native-chat-composer-draft-load'
 import type {
   NativeChatComposerDraft,
   NativeChatComposerDraftImage,
@@ -30,12 +35,14 @@ import type {
 
 export {
   flushNativeChatComposerDrafts,
-  hydrateNativeChatComposerDrafts,
   isKeptLocalPaste,
   nativeChatComposerDraftWritesSettled,
-  unavailableNativeChatComposerDraftImage,
-  waitForNativeChatComposerDrafts
+  unavailableNativeChatComposerDraftImage
 } from './native-chat-composer-draft-persistence'
+export {
+  hydrateNativeChatComposerDrafts,
+  waitForNativeChatComposerDrafts
+} from './native-chat-composer-draft-load'
 
 export type NativeChatComposerDraftChange = {
   text?: string
@@ -105,7 +112,8 @@ export function readNativeChatComposerDraft(scopeKey: string): NativeChatCompose
 export function updateNativeChatComposerDraft(
   scopeKey: string,
   change: NativeChatComposerDraftChange,
-  persist: 'immediate' | 'deferred'
+  persist: 'immediate' | 'deferred',
+  append?: DraftAppend
 ): void {
   const current = records.get(scopeKey) ?? EMPTY_DRAFT
   const text = change.text ?? current.text
@@ -114,7 +122,7 @@ export function updateNativeChatComposerDraft(
   const unsavedText = change.unsavedText ?? current.unsavedText
   if (
     text === current.text &&
-    document === current.document &&
+    sameNativeChatComposerDraftDocument(document, current.document) &&
     unsavedText === current.unsavedText &&
     sameNativeChatComposerDraftImages(images, current.images)
   ) {
@@ -126,7 +134,7 @@ export function updateNativeChatComposerDraft(
   if (isEmptyDraft({ text, images })) {
     records.delete(scopeKey)
     notifyScope(scopeKey)
-    persistNativeChatComposerDraft(scopeKey, 'immediate')
+    persistNativeChatComposerDraft(scopeKey, 'immediate', append)
     return
   }
   // Why stamped once: a conversation never moves to another workspace, so its owner stays true.
@@ -141,7 +149,33 @@ export function updateNativeChatComposerDraft(
   }
   records.set(scopeKey, record)
   notifyScope(scopeKey)
-  persistNativeChatComposerDraft(scopeKey, persist)
+  persistNativeChatComposerDraft(scopeKey, persist, append)
+}
+
+/**
+ * Adds to the scope's draft as it is now: text or images given back, or attached. Saved at once.
+ * Before the startup load lands, the same addition is made again to the loaded draft, so nothing
+ * saved earlier is replaced by it.
+ */
+export function appendToNativeChatComposerDraft(
+  scopeKey: string,
+  append: (draft: NativeChatComposerDraft) => NativeChatComposerDraftChange
+): void {
+  updateNativeChatComposerDraft(
+    scopeKey,
+    append(readNativeChatComposerDraft(scopeKey)),
+    'immediate',
+    (loaded) => {
+      const change = append(loaded)
+      const document = 'document' in change ? change.document : loaded.document
+      return {
+        ...loaded,
+        text: change.text ?? loaded.text,
+        images: change.images ?? loaded.images,
+        ...(document ? { document } : { document: undefined })
+      }
+    }
+  )
 }
 
 /**
@@ -225,5 +259,6 @@ export function deleteNativeChatComposerDraftsOwnedBy(owner: NativeChatComposerD
 export function clearNativeChatComposerDraftsForTests(): void {
   clearDraftMemoryForTests()
   resetNativeChatComposerDraftPersistenceForTests()
+  resetNativeChatComposerDraftLoadForTests()
   resolveOwner = null
 }
