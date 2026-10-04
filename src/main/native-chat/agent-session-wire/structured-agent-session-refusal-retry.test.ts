@@ -15,7 +15,7 @@ import {
 import {
   agentSessionRefusalOperationState,
   type AgentSessionRefusalOperationState
-} from '../../../shared/agent-session-refusal-retry'
+} from '../../../shared/agent-session-refusal-operation-state'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'

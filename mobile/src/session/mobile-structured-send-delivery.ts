@@ -28,7 +28,7 @@
 
 import type { AgentJournalSubmission } from '../../../src/shared/agent-session-journal-types'
 import type { AgentSessionSendResult } from '../../../src/shared/agent-session-wire'
-import { agentSessionRefusalOperationState } from '../../../src/shared/agent-session-refusal-retry'
+import { agentSessionRefusalOperationState } from '../../../src/shared/agent-session-refusal-operation-state'
 import { structuredAgentSessionRejectionNotice } from '../../../src/shared/structured-agent-session-send-failure-words'
 import { dispatchWasWithdrawn } from '../../../src/shared/structured-agent-session-dispatch-rejection'
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
