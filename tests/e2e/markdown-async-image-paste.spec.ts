@@ -110,11 +110,14 @@ test('image paste replaces its selection after editing during clipboard import',
     )
     .toBe(true)
 
-  const startOfLine = await orcaPage.evaluate(() =>
-    navigator.userAgent.includes('Mac') ? 'Meta+ArrowLeft' : 'Home'
-  )
-  await orcaPage.keyboard.press('ArrowLeft')
-  await orcaPage.keyboard.press(startOfLine)
+  await editor.evaluate((element) => {
+    const editorElement =
+      document.querySelector<RichMarkdownImageEditorElement>('.rich-markdown-editor')
+    if (!editorElement || editorElement !== element || !editorElement.editor) {
+      throw new Error('Markdown editor unavailable')
+    }
+    editorElement.editor.commands.setTextSelection(1)
+  })
   await orcaPage.keyboard.type('prefix ')
   await expect(editor.locator('p').first()).toHaveText('prefix hello world')
   await electronApp.evaluate(() => {
