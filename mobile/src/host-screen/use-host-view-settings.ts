@@ -22,7 +22,7 @@ export function useHostViewSettings(args: {
   hostId: string | undefined
   state: HostScreenState
 }) {
-  const { client, connState, hostId, state } = args
+  const { client, connState, state } = args
   const {
     clientRef,
     collapsedGroups,
@@ -96,7 +96,6 @@ export function useHostViewSettings(args: {
       return
     }
     const requestClient = client
-    const requestHostId = hostId
     const viewReply = hostViewSettingsRead.request(requestClient)
     void pinnedDisplayPolicyRead
       .request(requestClient)
@@ -111,7 +110,7 @@ export function useHostViewSettings(args: {
       })
     try {
       const reply = await viewReply
-      if (clientRef.current !== requestClient || hostId !== requestHostId) {
+      if (clientRef.current !== requestClient) {
         return
       }
       const settings = hostViewSettingsRead.interpret(reply)
@@ -127,7 +126,7 @@ export function useHostViewSettings(args: {
     } catch {
       // Transient transport failure; retry on the next focus/connect.
     }
-  }, [client, connState, hostId, applyViewState])
+  }, [client, connState, applyViewState])
 
   const handleSortChange = useCallback(
     (value: MobileSortMode) => {

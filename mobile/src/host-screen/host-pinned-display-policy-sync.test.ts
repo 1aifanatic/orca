@@ -71,4 +71,50 @@ describe('the host list mirrors the desktop pinned-placement setting', () => {
     const late = settingsReply({ showPinnedWorktreesInGroups: true })
     expect(await syncedPolicies(late, true)).toEqual([])
   })
+
+  it('merges the view settings without waiting for a placement read that never answers', async () => {
+    const client = new FakeSession('connected')
+    client.sendRequest.mockImplementation((method: string) =>
+      method === 'ui.get'
+        ? Promise.resolve<RpcResponse>({
+            id: 'reply',
+            ok: true,
+            result: { ui: { sortBy: 'name' } },
+            _meta: { runtimeId: 'runtime' }
+          })
+        : new Promise<RpcResponse>(() => {})
+    )
+    const sortModes: string[] = []
+    const state = {
+      clientRef: { current: client },
+      collapsedGroups: new Set(),
+      filters: { filterRepoIds: new Set(), hideSleeping: false, hideDefaultBranch: false },
+      setCollapsedGroups: () => {},
+      setFilters: () => {},
+      setGroupMode: () => {},
+      setSortMode: (mode: string) => sortModes.push(mode),
+      setWorkspaceStatuses: () => {},
+      viewStateRef: { current: { groupMode: 'repo', sortMode: 'recent', collapsedGroups: [] } },
+      workspaceStatuses: []
+    }
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the merge reads clientRef and viewStateRef and calls only the setters given here.
+    const args = {
+      client,
+      connState: 'connected',
+      hostId: 'host-1',
+      state
+    } as unknown as Parameters<typeof useHostViewSettings>[0]
+    const held: { sync: (() => Promise<void>) | null } = { sync: null }
+    function Probe(): null {
+      held.sync = useHostViewSettings(args).syncViewSettingsFromDesktop
+      return null
+    }
+    await act(async () => {
+      create(createElement(Probe))
+    })
+    await act(async () => {
+      await held.sync?.()
+    })
+    expect(sortModes).toEqual(['name'])
+  })
 })

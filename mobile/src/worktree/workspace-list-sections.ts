@@ -126,14 +126,14 @@ export function isWorktreePinned(w: Worktree, localPins: Set<string>): boolean {
 // Descendants follow a pin through the visible chain only: a filtered-out child breaks it.
 function getPinnedSectionIdentities(rows: Worktree[], localPins: Set<string>): Set<string> {
   const childrenByParentId = getMobileWorkspaceLineageChildren(rows)
-  const pending = rows.filter((w) => isWorktreePinned(w, localPins))
+  const queue = rows.filter((w) => isWorktreePinned(w, localPins))
   const included = new Set<string>()
   // Iterating while appending walks the worklist; `included` stops a malformed cycle.
-  for (const w of pending) {
+  for (const w of queue) {
     const identity = getWorktreeRowIdentity(w)
     if (!included.has(identity)) {
       included.add(identity)
-      pending.push(...(childrenByParentId.get(identity) ?? []))
+      queue.push(...(childrenByParentId.get(identity) ?? []))
     }
   }
   return included
