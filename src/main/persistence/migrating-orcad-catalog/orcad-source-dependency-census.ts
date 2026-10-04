@@ -85,7 +85,12 @@ function collectDependencyCensus(
     targetId: scope.targetId
   })
   counts['workspace-session'] = sessions.dependencyCount
-  counts['terminal-recovery'] = countTerminalRecoveryState(state, scope, sessions)
+  counts['terminal-recovery'] = countTerminalRecoveryState(
+    state,
+    scope,
+    sessions,
+    ignoreTransferredDormantState
+  )
   const metadata = inspectOrcadSourceWorktreeMetadata(state, scope)
   counts['worktree-metadata'] = metadata.rows.length + metadata.blockedCount
   counts['worktree-lineage'] = Object.entries(state.worktreeLineageById).filter(
@@ -154,15 +159,19 @@ function collectDependencyCensus(
 function countTerminalRecoveryState(
   state: PersistedState,
   scope: OrcadMigrationSourceScope,
-  sessions: OrcadMigrationSourceSessionInspection
+  sessions: OrcadMigrationSourceSessionInspection,
+  untransferredOnly: boolean
 ): number {
   // Expired routes may still own remote work; only terminated leases resolve recovery authority.
   const hasActiveLease = state.sshRemotePtyLeases.some(
     (lease) => lease.targetId === scope.targetId && lease.state !== 'terminated'
   )
-  let count = (state.sshPtyConsumerRecoveries ?? []).filter(
-    (recovery) => recovery.targetId === scope.targetId && hasActiveLease
-  ).length
+  // Never blocking: the terminal gate proves before every move that those leases exited.
+  let count = untransferredOnly
+    ? 0
+    : (state.sshPtyConsumerRecoveries ?? []).filter(
+        (recovery) => recovery.targetId === scope.targetId && hasActiveLease
+      ).length
   count += state.migrationUnsupportedPtyEntries.filter(
     (entry) =>
       orcadMigrationOwnerMatchesScope(entry.worktreeId, scope) ||

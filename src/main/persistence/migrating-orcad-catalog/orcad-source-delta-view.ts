@@ -20,6 +20,7 @@ import {
 } from './orcad-source-dependency-census'
 import { retireOrcadMigrationSourceDormantState } from './orcad-source-dormant-retirement'
 import { collectOrcadMigrationSourceDormantState } from './orcad-source-dormant-state'
+import { removeOrcadMigrationScopeWorkspaceSession } from './orcad-source-workspace-session-retirement'
 
 export type OrcadMigrationDeltaView = {
   getRepos: () => Repo[]
@@ -43,6 +44,8 @@ export function createOrcadMigrationDeltaView(
   const state = structuredClone(runtime.state)
   retireOrcadSourceCatalogState(state, moved)
   retireOrcadMigrationSourceDormantState(state, moved)
+  // The server owns the moved projects' tabs now, even ones the older build left unmovable.
+  removeOrcadMigrationScopeWorkspaceSession(state, moved)
   const storage = runtime.terminalScrollbackSnapshotStorage
   return {
     getRepos: () => state.repos,

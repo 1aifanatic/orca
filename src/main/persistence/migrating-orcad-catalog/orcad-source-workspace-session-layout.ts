@@ -1,5 +1,6 @@
 import type { SleepingAgentSessionRecord } from '../../../shared/agent-session-resume'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
+import { parseWorkspaceKey } from '../../../shared/workspace-scope'
 import {
   orcadMigrationOwnerMatchesScope,
   type OrcadMigrationSourceScope
@@ -61,4 +62,28 @@ function terminalLayoutContainsLeaf(
 export function paneBelongsToTabs(paneKey: string, tabIds: ReadonlySet<string>): boolean {
   const separator = paneKey.lastIndexOf(':')
   return separator > 0 && tabIds.has(paneKey.slice(0, separator))
+}
+
+/**
+ * Relay PTY handles never move: the terminal gate proves their terminals exited before any move
+ * commits, so the destination gets the tabs and layouts without them and starts fresh shells.
+ */
+export function dropOrcadMigrationTerminalBindings(fragment: WorkspaceSessionState): void {
+  for (const tabs of Object.values(fragment.tabsByWorktree)) {
+    for (const tab of tabs) {
+      tab.ptyId = null
+    }
+  }
+  for (const layout of Object.values(fragment.terminalLayoutsByTabId)) {
+    delete layout.ptyIdsByLeafId
+  }
+  delete fragment.remoteSessionIdsByTabId
+  delete fragment.terminalPtyIncarnationsByPaneKey
+  delete fragment.activeWorktreeIdsOnShutdown
+  // A folder's topology fence guarded its relay PTYs only; the manifest carries repo fences alone.
+  for (const key of Object.keys(fragment.terminalTopologyRevisionByRepoId ?? {})) {
+    if (parseWorkspaceKey(key)?.type === 'folder') {
+      delete fragment.terminalTopologyRevisionByRepoId?.[key]
+    }
+  }
 }
