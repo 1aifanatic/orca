@@ -50,7 +50,7 @@ export async function openCodexAppServerConnection(
   const managed = spawnManagedProviderProcess(launch, {
     spawnImpl,
     site: 'codex-app-server-teardown',
-    closeEventIsExit: true,
+    acceptClose: (result) => result.root === 'exited',
     policy: (supervised) => ({
       gracefulExitMs: supervised ? PROVIDER_SUPERVISOR_MAX_STOP_MS : GRACEFUL_EXIT_MS,
       forcedExitMs: FORCED_EXIT_MS
@@ -146,7 +146,7 @@ export async function openCodexAppServerConnection(
   }
 
   function notify(method: string, params?: Record<string, unknown>): void {
-    if (managed.exited || managed.processless || terminalError) {
+    if (managed.rootVerdict === 'exited' || terminalError) {
       return
     }
     try {
@@ -192,8 +192,7 @@ export async function openCodexAppServerConnection(
 
   function writeResponse(payload: Record<string, unknown>): void {
     if (
-      managed.exited ||
-      managed.processless ||
+      managed.rootVerdict === 'exited' ||
       terminalError ||
       child.stdin.destroyed ||
       !child.stdin.writable
@@ -212,9 +211,9 @@ export async function openCodexAppServerConnection(
       return Promise.resolve(true)
     }
     closing = true
-    return managed.close().then((verdict) => {
+    return managed.close().then((result) => {
       dispatcher.failPending(new Error('codex app-server connection closed'))
-      return verdict === 'exited'
+      return result.root === 'exited'
     })
   }
 
@@ -226,7 +225,10 @@ export async function openCodexAppServerConnection(
       return closing || managed.rootVerdict === 'exited' || terminalError !== null
     },
     get processTreeUnproven() {
-      return managed.teardownUnproven
+      return (
+        managed.lastCloseResult?.root === 'exited' &&
+        managed.lastCloseResult.teardownAccepted === false
+      )
     },
     request,
     notify,

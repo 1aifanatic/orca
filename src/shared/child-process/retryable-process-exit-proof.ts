@@ -1,9 +1,7 @@
-export class RetryableProcessExitProof<Result = boolean> {
+export class RetryableProcessExitProof<Result> {
   private inFlight: Promise<Result> | null = null
 
-  constructor(
-    private readonly isProven: (result: Result) => boolean = (result) => result === true
-  ) {}
+  constructor(private readonly isProven: (result: Result) => boolean) {}
 
   run(proveExit: () => Promise<Result>): Promise<Result> {
     if (this.inFlight) {
