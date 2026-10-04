@@ -10991,10 +10991,10 @@
           "a42f6fbdd8": "Keeps this computer and display awake while agents are working. Orca also asks this device to stay awake when the lid is closed, subject to its power policy.",
           "modeTitle": "Keep computer awake",
           "modeDescriptionWindows": "Choose On, Agent, or Off. Agent mode stays awake while agents are working; lid-close behavior follows this device's power settings.",
-          "modeDescriptionMac": "Choose On, Agent, or Off. Agent mode stays awake while agents are working. Closing the lid may still put this Mac to sleep.",
+          "modeDescriptionMac": "Choose On, Agent, or Off. Agent mode prevents idle sleep while agents work, so long runs finish with the lid open. Closing the lid still puts this Mac to sleep.",
           "modeDescriptionDefault": "Choose On, Agent, or Off. Agent mode stays awake while agents are working. Orca also asks this device to stay awake when the lid is closed, subject to its power policy.",
           "lidNoteWindows": "Lid-close behavior follows this device's power settings.",
-          "lidNoteMac": "Closing the lid may still put this Mac to sleep.",
+          "lidNoteMac": "Prevents idle sleep with the lid open; closing the lid still puts this Mac to sleep.",
           "lidNoteDefault": "Orca also asks this device to stay awake when the lid is closed, subject to its power policy."
         },
         "agent-status-hooks-copy": {

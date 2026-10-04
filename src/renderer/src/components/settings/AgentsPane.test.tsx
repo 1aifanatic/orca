@@ -359,13 +359,13 @@ describe('AgentsPane', () => {
 
   it('describes macOS lid behavior without promising lid-closed wake', () => {
     expect(getAgentAwakeDescription('Macintosh')).toBe(
-      'Choose On, Agent, or Off. Agent mode stays awake while agents are working. Closing the lid may still put this Mac to sleep.'
+      'Choose On, Agent, or Off. Agent mode prevents idle sleep while agents work, so long runs finish with the lid open. Closing the lid still puts this Mac to sleep.'
     )
   })
 
   it('picks the lid note for each platform', () => {
     expect(getAgentAwakeLidNote('Macintosh')).toBe(
-      'Closing the lid may still put this Mac to sleep.'
+      'Prevents idle sleep with the lid open; closing the lid still puts this Mac to sleep.'
     )
     expect(getAgentAwakeLidNote('Windows')).toBe(
       "Lid-close behavior follows this device's power settings."

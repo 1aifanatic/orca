@@ -37,7 +37,7 @@ export function getAgentAwakeDescription(
   if (userAgent.includes('Mac')) {
     return translate(
       AGENT_AWAKE_DESCRIPTION_MAC_KEY,
-      'Choose On, Agent, or Off. Agent mode stays awake while agents are working. Closing the lid may still put this Mac to sleep.'
+      'Choose On, Agent, or Off. Agent mode prevents idle sleep while agents work, so long runs finish with the lid open. Closing the lid still puts this Mac to sleep.'
     )
   }
 
@@ -59,7 +59,7 @@ export function getAgentAwakeLidNote(
   if (userAgent.includes('Mac')) {
     return translate(
       'auto.components.settings.agent-awake-copy.lidNoteMac',
-      'Closing the lid may still put this Mac to sleep.'
+      'Prevents idle sleep with the lid open; closing the lid still puts this Mac to sleep.'
     )
   }
   return translate(
