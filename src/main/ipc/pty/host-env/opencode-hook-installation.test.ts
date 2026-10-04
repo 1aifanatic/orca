@@ -77,6 +77,48 @@ afterEach(() => {
 })
 
 describe('OpenCode installation uses the current enabled agents', () => {
+  it.each(['home', 'xdg', 'shell'] as const)(
+    'consumer config root follows the %s execution environment without redirecting JSON',
+    (kind) => {
+      const home = join(root, 'consumer-home')
+      const xdg = join(root, 'consumer-xdg')
+      const consumer = kind === 'home' ? join(home, '.config', 'opencode') : join(xdg, 'opencode')
+      mkdirSync(home, { recursive: true })
+      mkdirSync(consumer, { recursive: true })
+      const settings = '{"model":"consumer-model","description":"external-settings"}'
+      writeFileSync(join(consumer, 'opencode.json'), settings)
+      if (kind === 'shell') writeFileSync(join(home, '.zshrc'), `export XDG_CONFIG_HOME='${xdg}'\n`)
+      const input = {
+        HOME: home,
+        USERPROFILE: home,
+        XDG_CONFIG_HOME: kind === 'xdg' ? xdg : '',
+        SHELL: kind === 'shell' ? '/bin/zsh' : '/bin/sh'
+      }
+      const env = buildPtyHostEnv('folder-pane', { ...input }, { ...options, launchAgent: 'opencode' })
+      expect(existsSync(plugin(consumer, 'opencode'))).toBe(true)
+      expect(existsSync(plugin(config, 'opencode'))).toBe(false)
+      expect(readFileSync(join(consumer, 'opencode.json'), 'utf8')).toBe(settings)
+      expect(env.OPENCODE_CONFIG_DIR).toBeUndefined()
+      for (const key of ['HOME', 'USERPROFILE', 'XDG_CONFIG_HOME', 'SHELL'] as const) {
+        expect(env[key]).toBe(input[key])
+      }
+    }
+  )
+
+  it.each([false, true])('consumer config root is untouched with hooks disabled %s', (disabled) => {
+    const consumer = join(root, 'disabled-consumer')
+    buildPtyHostEnv(
+      'pane',
+      { XDG_CONFIG_HOME: consumer },
+      {
+        ...options,
+        agentStatusHooksEnabled: disabled,
+        disabledTuiAgents: disabled ? ['opencode', 'opencode2'] : []
+      }
+    )
+    expect(existsSync(join(consumer, 'opencode'))).toBe(false)
+  })
+
   it('refuses spawn if a prepared startup intent loses its owned installer', () => {
     mkdirSync(fixture.userData, { recursive: true })
     writeFileSync(
