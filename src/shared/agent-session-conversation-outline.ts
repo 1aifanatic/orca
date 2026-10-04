@@ -89,7 +89,7 @@ export function projectAgentSessionConversationOutline(
   }
   const entries: AgentSessionConversationOutlineEntry[] = []
   const transcript = projectNativeChatTranscriptMessages(
-    // Unchanged on the wire: a desktop's rejected rows tick once their page is loaded.
+    // A rejected message is no prompt the agent saw: it takes no tick, here or on the desktop rail.
     projectStructuredAgentSessionMessages(items, [], submissions, { rejectedInPlace: false })
   )
   for (const message of transcript) {
@@ -97,8 +97,6 @@ export function projectAgentSessionConversationOutline(
     if (
       sequence === undefined ||
       message.role !== 'user' ||
-      // Shown as not sent: never part of the conversation the agent saw, so no rail tick.
-      message.unsent === true ||
       !nativeChatRowRendersContent(message.blocks)
     ) {
       continue
