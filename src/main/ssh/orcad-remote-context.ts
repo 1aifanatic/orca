@@ -31,9 +31,10 @@ export type OrcadRemoteContext = {
 export async function resolveOrcadRemoteContext(
   target: SshTarget,
   connection: SshConnection,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  detectedHost?: RemoteHostPlatform
 ): Promise<OrcadRemoteContext> {
-  const host = await detectRemoteHostPlatform(connection, { signal })
+  const host = detectedHost ?? (await detectRemoteHostPlatform(connection, { signal }))
   if (!host) {
     throw new OrcadHostUnsupportedError('This SSH host platform is not supported by managed orcad.')
   }

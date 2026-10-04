@@ -5,18 +5,18 @@
  * the journaled migration, and a converted host connects through its tunnel. A host whose relay
  * terminals are live, or can't be proven exited, keeps the relay this session and converts on a
  * later connect. A host orcad can't run on keeps the pinned-relay ladder, with the reason recorded
- * so the deploy isn't retried on every connect.
+ * so the deploy isn't retried on every connect. A host whose sshd refuses port forwarding reaches
+ * its server through the stdio bridge (orcad-managed-tunnel-transport.ts) instead.
  */
 import type {
   OrcadManagedConversionResult,
   OrcadManagedDeployResult
 } from '../../shared/orcad-managed-runtime'
 import type { SshManagedServerRelayReason, SshTarget } from '../../shared/ssh-types'
-import { classifyOrcadHostUnavailable } from './orcad-host-unavailable'
 import {
-  TCP_FORWARDING_REFUSED_REASON,
-  type TcpForwardingVerdict
-} from './ssh-tcp-forwarding-probe'
+  classifyOrcadHostUnavailable,
+  ORCAD_TUNNEL_UNAVAILABLE_REASON
+} from './orcad-host-unavailable'
 
 export type HostServerPhase = 'deploying' | 'converting' | 'connecting'
 
@@ -56,8 +56,6 @@ export type HostServerOnConnectDeps = {
   /** Releases an empty-host deploy claim whose server was never registered. */
   abandonDeploy: (target: SshTarget) => Promise<void>
   progress: (target: SshTarget, phase: HostServerPhase) => void
-  /** Whether the host lets this client open the local forward a managed server is reached by. */
-  probeTcpForwarding: (target: SshTarget) => Promise<TcpForwardingVerdict>
   /** A conversion fenced the host and registered its server, but staged nothing there yet. */
   isFencedBeforeStaging: (target: SshTarget) => boolean
   /** Unregisters that unreachable server and releases its fence, so the relay serves again. */
@@ -72,18 +70,26 @@ export async function resolveHostServerOnConnect(
     return { route: 'relay', reason: 'source_changed' }
   }
   const existing = deps.managedEnvironmentId(target)
-  // Why only before staging: once the server holds staged state, only it can say what moved.
-  if (
-    existing &&
-    deps.isFencedBeforeStaging(target) &&
-    (await deps.probeTcpForwarding(target)) === 'refused'
-  ) {
-    await deps.releaseUnreachableSetup(target)
-    return forwardingRefused(target, deps)
-  }
   if (existing) {
     deps.progress(target, 'connecting')
-    await deps.ensureTunnel(existing)
+    try {
+      await deps.ensureTunnel(existing)
+    } catch (error) {
+      // Why only before staging: once the server holds staged state, only it can say what moved.
+      if (
+        classifyOrcadHostUnavailable(error) === ORCAD_TUNNEL_UNAVAILABLE_REASON &&
+        deps.isFencedBeforeStaging(target)
+      ) {
+        await deps.releaseUnreachableSetup(target)
+        deps.recordUnavailable(target, ORCAD_TUNNEL_UNAVAILABLE_REASON)
+        return {
+          route: 'relay',
+          reason: 'orcad_unavailable',
+          detail: ORCAD_TUNNEL_UNAVAILABLE_REASON
+        }
+      }
+      throw error
+    }
     await deps.retireRetainedSource(target).catch((error: unknown) => {
       console.warn('[ssh] Source retirement deferred to a later connect:', error)
     })
@@ -95,10 +101,6 @@ export async function resolveHostServerOnConnect(
   }
   if (!deps.hasTemplate()) {
     return { route: 'relay', reason: 'orcad_unavailable', detail: 'artifacts_unavailable' }
-  }
-  // Before any fence: a server this client can't forward to would strand the host.
-  if ((await deps.probeTcpForwarding(target)) === 'refused') {
-    return forwardingRefused(target, deps)
   }
   const empty = deps.isEmptyHost(target)
   try {
@@ -121,14 +123,6 @@ export async function resolveHostServerOnConnect(
     console.warn('[ssh] Managed Orca server setup failed; using the relay this session:', error)
     return unfinished(target, deps, classifyOrcadHostUnavailable(error), empty, 'failed')
   }
-}
-
-function forwardingRefused(
-  target: SshTarget,
-  deps: HostServerOnConnectDeps
-): HostServerOnConnectResult {
-  deps.recordUnavailable(target, TCP_FORWARDING_REFUSED_REASON)
-  return { route: 'relay', reason: 'orcad_unavailable', detail: TCP_FORWARDING_REFUSED_REASON }
 }
 
 function terminalReason(verdict: 'live' | 'unverifiable'): SshManagedServerRelayReason {

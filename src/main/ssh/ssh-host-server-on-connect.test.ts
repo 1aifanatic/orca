@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { SshTarget } from '../../shared/ssh-types'
-import { OrcadHostUnsupportedError } from './orcad-host-unavailable'
+import {
+  OrcadHostUnsupportedError,
+  OrcadStdioBridgeUnavailableError
+} from './orcad-host-unavailable'
 import {
   resolveHostServerOnConnect,
   type HostServerOnConnectDeps
@@ -25,7 +28,6 @@ function deps(overrides: Partial<HostServerOnConnectDeps> = {}): HostServerOnCon
     deploy: vi.fn(async () => ({ outcome: 'created' as const, environment, activeVersion: '1' })),
     convert: vi.fn(async () => ({ outcome: 'converted' as const, environment, migrationId: 'm' })),
     progress: vi.fn(),
-    probeTcpForwarding: vi.fn(async () => 'allowed' as const),
     isFencedBeforeStaging: () => false,
     releaseUnreachableSetup: vi.fn(async () => undefined),
     ...overrides
@@ -191,47 +193,50 @@ describe('which server an SSH host runs on connect', () => {
     warn.mockRestore()
   })
 
-  it('keeps a host whose sshd refuses forwarding on the relay, before any fence', async () => {
+  it('records why when even the stdio bridge cannot reach the deployed server', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const d = deps({
       isEmptyHost: () => true,
-      probeTcpForwarding: vi.fn(async () => 'refused' as const)
+      deploy: vi.fn(async () => {
+        throw new OrcadStdioBridgeUnavailableError('exit 127')
+      })
     })
     await expect(resolveHostServerOnConnect(target, d)).resolves.toEqual({
       route: 'relay',
       reason: 'orcad_unavailable',
-      detail: 'tcp_forwarding_refused'
+      detail: 'ssh_tunnel_unavailable'
     })
-    expect(d.recordUnavailable).toHaveBeenCalledWith(target, 'tcp_forwarding_refused')
-    expect(d.deploy).not.toHaveBeenCalled()
-    expect(d.convert).not.toHaveBeenCalled()
+    expect(d.abandonDeploy).toHaveBeenCalledWith(target)
+    expect(d.recordUnavailable).toHaveBeenCalledWith(target, 'ssh_tunnel_unavailable')
+    warn.mockRestore()
   })
 
-  it('proceeds when the forwarding answer is unverifiable', async () => {
-    const d = deps({ probeTcpForwarding: vi.fn(async () => 'unverifiable' as const) })
-    await expect(resolveHostServerOnConnect(target, d)).resolves.toMatchObject({
-      route: 'managed'
-    })
-    expect(d.convert).toHaveBeenCalled()
-  })
-
-  it('releases a conversion stranded before staging when forwarding is refused', async () => {
+  it('releases a conversion stranded before staging when no tunnel reaches its server', async () => {
     const d = deps({
       managedEnvironmentId: () => 'env-9',
       isFencedBeforeStaging: () => true,
-      probeTcpForwarding: vi.fn(async () => 'refused' as const)
+      ensureTunnel: vi.fn(async () => {
+        throw new OrcadStdioBridgeUnavailableError('exit 127')
+      })
     })
     await expect(resolveHostServerOnConnect(target, d)).resolves.toEqual({
       route: 'relay',
       reason: 'orcad_unavailable',
-      detail: 'tcp_forwarding_refused'
+      detail: 'ssh_tunnel_unavailable'
     })
     expect(d.releaseUnreachableSetup).toHaveBeenCalledWith(target)
-    expect(d.ensureTunnel).not.toHaveBeenCalled()
+    expect(d.recordUnavailable).toHaveBeenCalledWith(target, 'ssh_tunnel_unavailable')
   })
 
-  it('never probes an ordinary managed host on connect', async () => {
-    const d = deps({ managedEnvironmentId: () => 'env-9' })
-    await resolveHostServerOnConnect(target, d)
-    expect(d.probeTcpForwarding).not.toHaveBeenCalled()
+  it('keeps a staged or converted host fenced when its tunnel fails', async () => {
+    const failure = new OrcadStdioBridgeUnavailableError('exit 127')
+    const d = deps({
+      managedEnvironmentId: () => 'env-9',
+      ensureTunnel: vi.fn(async () => {
+        throw failure
+      })
+    })
+    await expect(resolveHostServerOnConnect(target, d)).rejects.toBe(failure)
+    expect(d.releaseUnreachableSetup).not.toHaveBeenCalled()
   })
 })

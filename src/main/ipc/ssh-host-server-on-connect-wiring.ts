@@ -16,13 +16,11 @@ import { createManagedOrcadEnvironment } from '../ssh/orcad-runtime-deployment'
 import type { HostServerOnConnectDeps } from '../ssh/ssh-host-server-on-connect'
 import { setSshHostServerStatus } from '../ssh/ssh-host-server-status'
 import {
-  getSshConnectionManager,
   getSshTargetRegistryStore,
   hasRegisteredDirectSshAuthority
 } from '../ssh/ssh-target-registry'
-import { probeTcpForwarding } from '../ssh/ssh-tcp-forwarding-probe'
+import { LEGACY_TCP_FORWARDING_REFUSED_REASON } from '../ssh/ssh-tcp-forwarding-probe'
 import { releaseUnreachableOrcadSetup } from '../ssh/orcad-unreachable-setup-release'
-import { ORCAD_MANAGED_REMOTE_PORT } from '../../shared/orcad-managed-runtime'
 import { getCurrentMainWindow } from './ssh-ipc-context'
 import { broadcastSshState } from './ssh-renderer-broadcast'
 import { disconnectRegisteredSshTarget } from './ssh-session-teardown'
@@ -50,8 +48,10 @@ export function hostServerOnConnectDeps(userDataPath: string): HostServerOnConne
       }
     },
     hasTemplate: hasOrcadTemplate,
+    // Why the legacy reason is skipped: the stdio bridge now reaches hosts that refuse forwarding.
     recordedUnavailable: (target) =>
-      target.managedServerUnavailable?.appVersion === appVersion
+      target.managedServerUnavailable?.appVersion === appVersion &&
+      target.managedServerUnavailable.reason !== LEGACY_TCP_FORWARDING_REFUSED_REASON
         ? target.managedServerUnavailable.reason
         : null,
     recordUnavailable: (target, reason) => {
@@ -113,11 +113,6 @@ export function hostServerOnConnectDeps(userDataPath: string): HostServerOnConne
         isDestinationRegistered: isRegistered
       })
     },
-    probeTcpForwarding: async (target) =>
-      probeTcpForwarding(
-        await getSshConnectionManager()!.connect(target),
-        ORCAD_MANAGED_REMOTE_PORT
-      ),
     isFencedBeforeStaging: (target) =>
       findOrcadMigrationSourceCutoverForTarget(userDataPath, target.id)?.phase === 'source-fenced',
     releaseUnreachableSetup: (target) =>

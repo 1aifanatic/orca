@@ -1,8 +1,7 @@
 /**
- * Whether an SSH host lets this client open a local forward, asked before a managed server is
- * set up there. That server is reached only through such a forward, so on a host whose sshd
- * refuses forwarding (`AllowTcpForwarding no`) a deploy or conversion would fence the host and
- * then strand it with neither the relay nor the server reachable.
+ * Whether an SSH host lets this client open a local forward, asked each time a managed tunnel
+ * starts. A host whose sshd refuses forwarding (`AllowTcpForwarding no`) is reached through the
+ * stdio bridge instead (orcad-managed-tunnel-transport.ts).
  */
 import type { ClientChannel } from 'ssh2'
 import type { SshConnection } from './ssh-connection'
@@ -13,7 +12,8 @@ export type TcpForwardingVerdict = 'allowed' | 'refused' | 'unverifiable'
 const ADMINISTRATIVELY_PROHIBITED = 1
 const CONNECT_FAILED = 2
 export const TCP_FORWARDING_PROBE_TIMEOUT_MS = 10_000
-export const TCP_FORWARDING_REFUSED_REASON = 'tcp_forwarding_refused'
+/** Recorded by builds before the stdio bridge, which kept such hosts on the relay. */
+export const LEGACY_TCP_FORWARDING_REFUSED_REASON = 'tcp_forwarding_refused'
 
 function closeQuietly(channel: ClientChannel | undefined): void {
   try {

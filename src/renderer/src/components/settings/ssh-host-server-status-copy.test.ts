@@ -65,16 +65,16 @@ describe('SSH host server status line', () => {
     ).toContain('native_preflight')
   })
 
-  it('says plainly when the host refuses the port forwarding a managed server needs', () => {
+  it('says plainly when neither port forwarding nor the SSH session reaches a managed server', () => {
     const live = sshHostServerStatusLine(plain, {
       managedServer: {
         kind: 'relay',
         reason: 'orcad_unavailable',
-        detail: 'tcp_forwarding_refused'
+        detail: 'ssh_tunnel_unavailable'
       }
     })
     const recorded = sshHostServerStatusLine(
-      { managedServerUnavailable: { reason: 'tcp_forwarding_refused', appVersion: '1.5.0' } },
+      { managedServerUnavailable: { reason: 'ssh_tunnel_unavailable', appVersion: '1.5.0' } },
       undefined
     )
     for (const line of [live, recorded]) {
@@ -83,5 +83,14 @@ describe('SSH host server status line', () => {
         text: expect.stringContaining('doesn’t allow port forwarding')
       })
     }
+  })
+
+  it('reads an older build’s forwarding refusal as a host that moves on a later connect', () => {
+    expect(
+      sshHostServerStatusLine(
+        { managedServerUnavailable: { reason: 'tcp_forwarding_refused', appVersion: '1.4.0' } },
+        undefined
+      )
+    ).toMatchObject({ tone: 'muted', text: expect.stringContaining('later connect') })
   })
 })

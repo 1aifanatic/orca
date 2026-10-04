@@ -80,7 +80,7 @@ export function targetLeases(userData: string, targetId: string): { state?: unkn
   return (Array.isArray(leases) ? leases : []).filter((lease) => lease?.targetId === targetId)
 }
 
-async function serverCall(
+export async function serverCall(
   page: Page,
   selector: string,
   method: string,

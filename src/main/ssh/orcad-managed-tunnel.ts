@@ -8,6 +8,7 @@ import { getManagedOrcadFenceEnvironmentId } from '../../shared/managed-orcad-ss
 import type { SshConnection } from './ssh-connection'
 import type { SshConnectionManager } from './ssh-connection-manager'
 import { SshPortForwardManager } from './ssh-port-forward'
+import { OrcadManagedTunnelTransportProvider } from './orcad-managed-tunnel-transport'
 import {
   OrcadManagedTunnelResumeRecovery,
   type ActiveOrcadTunnel,
@@ -32,7 +33,9 @@ export class OrcadManagedTunnelManager {
   private managerGeneration = 0
 
   constructor(private readonly dependencies: OrcadManagedTunnelDependencies) {
-    this.forwards = dependencies.forwardManager ?? new SshPortForwardManager()
+    this.forwards =
+      dependencies.forwardManager ??
+      new SshPortForwardManager({}, [new OrcadManagedTunnelTransportProvider()])
     this.resumeRecovery = new OrcadManagedTunnelResumeRecovery({
       active: this.active,
       forwards: this.forwards,

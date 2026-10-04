@@ -39,30 +39,46 @@ export function sshHostServerStatusLine(
     return relayLine(status)
   }
   if (target.managedServerUnavailable) {
-    if (target.managedServerUnavailable.reason === TCP_FORWARDING_REFUSED) {
-      return forwardingRefusedLine()
+    const { reason } = target.managedServerUnavailable
+    if (reason === TUNNEL_UNAVAILABLE) {
+      return tunnelUnavailableLine()
+    }
+    // An older build's verdict; this one reaches such hosts and retries on the next connect.
+    if (reason === LEGACY_FORWARDING_REFUSED) {
+      return retryLine()
     }
     return {
       tone: 'muted',
       text: translate(
         'auto.components.settings.sshHostServer.unavailable',
         'Runs the relay: a managed Orca server can’t run on this host ({{reason}}).',
-        { reason: target.managedServerUnavailable.reason }
+        { reason }
       )
     }
   }
   return null
 }
 
-// Mirrors main's TCP_FORWARDING_REFUSED_REASON; the renderer can't import main.
-const TCP_FORWARDING_REFUSED = 'tcp_forwarding_refused'
+// Mirror main's ORCAD_TUNNEL_UNAVAILABLE_REASON and LEGACY_TCP_FORWARDING_REFUSED_REASON.
+const TUNNEL_UNAVAILABLE = 'ssh_tunnel_unavailable'
+const LEGACY_FORWARDING_REFUSED = 'tcp_forwarding_refused'
 
-function forwardingRefusedLine(): SshHostServerStatusLine {
+function tunnelUnavailableLine(): SshHostServerStatusLine {
   return {
     tone: 'warning',
     text: translate(
-      'auto.components.settings.sshHostServer.forwardingRefused',
-      'Runs the relay: this host’s SSH server doesn’t allow port forwarding, which a managed Orca server needs.'
+      'auto.components.settings.sshHostServer.tunnelUnavailable',
+      'Runs the relay: this host’s SSH server doesn’t allow port forwarding, and Orca couldn’t reach a managed server through the SSH session either.'
+    )
+  }
+}
+
+function retryLine(): SshHostServerStatusLine {
+  return {
+    tone: 'muted',
+    text: translate(
+      'auto.components.settings.sshHostServer.retry',
+      'Runs the relay this session; it moves to a managed server on a later connect.'
     )
   }
 }
@@ -110,8 +126,8 @@ function relayLine(
         )
       }
     case 'orcad_unavailable':
-      if (status.detail === TCP_FORWARDING_REFUSED) {
-        return forwardingRefusedLine()
+      if (status.detail === TUNNEL_UNAVAILABLE) {
+        return tunnelUnavailableLine()
       }
       return {
         tone: 'muted',
@@ -140,12 +156,6 @@ function relayLine(
       }
     case 'deferred':
     case 'failed':
-      return {
-        tone: 'muted',
-        text: translate(
-          'auto.components.settings.sshHostServer.retry',
-          'Runs the relay this session; it moves to a managed server on a later connect.'
-        )
-      }
+      return retryLine()
   }
 }
