@@ -11,12 +11,26 @@ import { hasZsh, MARKERS, runZshPty, ZSH_PATH } from './zsh-startup-hook-pty-har
 
 const itWithZsh = hasZsh ? it : it.skip
 const USER_WIDGET = `orca_test_line_init() {
-  ORCA_USER_WIDGET_CALLS=$((\${ORCA_USER_WIDGET_CALLS:-0}+1))
-  ORCA_USER_WIDGET_NAME="$WIDGET"
+  O_UC=$((\${O_UC:-0}+1))
+  O_UN="$WIDGET"
   builtin printf 'ORCA_TEST_USER_WIDGET_CALL\\n'
   return 1
 }
 zle -N zle-line-init orca_test_line_init
+`
+const USER_REDRAW = `orca_test_redraw() {
+  O_RC=$((\${O_RC:-0}+1))
+  O_RN="$WIDGET"
+  return 1
+}
+zle -N zle-line-pre-redraw orca_test_redraw
+`
+const USER_PRECMD = `precmd() {
+  O_PCALLS=$((\${O_PCALLS:-0}+1))
+  O_PN="$0"
+  O_PO="\${O_PO:-\${options[ksharrays]}:\${options[nounset]}}"
+  return 1
+}
 `
 
 describe('zsh deferred startup after prompt-hook replacement', () => {
@@ -28,9 +42,26 @@ describe('zsh deferred startup after prompt-hook replacement', () => {
     }
   })
 
-  itWithZsh.each(['history', 'startup', 'chained-startup'] as const)(
+  itWithZsh.each([
+    'history',
+    'startup',
+    'chained-startup',
+    'stock-history',
+    'stock-startup',
+    'stock-chained-redraw',
+    'stock-nonzero-precmd',
+    'ordered-startup',
+    'replaced-precmd-startup'
+  ] as const)(
     'restores CLI precedence and preserves the user widget in a %s pane',
     async (intent) => {
+      const historyOnly = intent.endsWith('history')
+      const stockBinding = intent.startsWith('stock-')
+      const chainedLineInit = intent === 'chained-startup'
+      const chainedRedraw = intent === 'stock-chained-redraw'
+      const nonzeroPrecmd = intent === 'stock-nonzero-precmd'
+      const orderedPrecmd = intent === 'ordered-startup'
+      const replacedPrecmd = intent === 'replaced-precmd-startup'
       const home = mkdtempSync(join(tmpdir(), 'orca-deferred-line-init-'))
       roots.push(home)
       const cliBin = join(home, 'cli', 'bin')
@@ -43,14 +74,31 @@ describe('zsh deferred startup after prompt-hook replacement', () => {
         writeFileSync(join(bin, 'orca-dev'), '#!/bin/sh\nexit 0\n')
         chmodSync(join(bin, 'orca-dev'), 0o755)
       }
-      writeFileSync(join(home, '.zshenv'), intent === 'chained-startup' ? '' : USER_WIDGET)
+      writeFileSync(
+        join(home, '.zshenv'),
+        (chainedLineInit || chainedRedraw ? '' : stockBinding ? USER_REDRAW : USER_WIDGET) +
+          (nonzeroPrecmd || replacedPrecmd
+            ? USER_PRECMD
+            : orderedPrecmd
+              ? USER_PRECMD.replace('return 1', 'return 0')
+              : '')
+      )
+      if (stockBinding) {
+        // Ubuntu's global zshrc rebinds this widget between .zshenv and the user's .zshrc.
+        writeFileSync(
+          join(home, '.zprofile'),
+          USER_WIDGET.replaceAll('orca_test_line_init', 'zle-line-init')
+        )
+      }
       writeFileSync(
         join(home, '.zshrc'),
-        `export PATH="$HOME/ambient-bin:/usr/bin:/bin:$HOME/cli/bin"\nprecmd_functions=()\n${
-          intent === 'chained-startup'
+        `export PATH="$HOME/ambient-bin:/usr/bin:/bin:$HOME/cli/bin"\n${orderedPrecmd ? '' : 'precmd_functions=()\n'}${
+          chainedLineInit
             ? `${USER_WIDGET.replace('zle -N zle-line-init orca_test_line_init', 'zle -N orca_test_line_init')}autoload -Uz add-zle-hook-widget\nadd-zle-hook-widget line-init orca_test_line_init\n`
-            : ''
-        }`
+            : chainedRedraw
+              ? `${USER_REDRAW.replace('zle -N zle-line-pre-redraw orca_test_redraw', 'zle -N orca_test_redraw')}autoload -Uz add-zle-hook-widget\nadd-zle-hook-widget line-pre-redraw orca_test_redraw\n`
+              : ''
+        }${nonzeroPrecmd ? 'orca_test_array() { O_AC=called; }\nprecmd_functions=(orca_test_array)\nsetopt KSH_ARRAYS NO_UNSET\n' : orderedPrecmd ? 'orca_test_array() { O_AO=${O_AO:-${_orca_deferred_init_done:-0}}; }\nprecmd_functions=(orca_test_array "${precmd_functions[@]}")\n' : replacedPrecmd ? 'precmd() { O_NPC=$((${O_NPC:-0}+1)); O_NPN="$0"; }\n' : ''}`
       )
       writeFileSync(join(wrapperDir, '.zshenv'), getZshShellReadyWrapperFile())
       writeFileSync(join(wrapperDir, ZSH_WRAPPER_DIR_MARKER_FILE), '')
@@ -66,55 +114,93 @@ describe('zsh deferred startup after prompt-hook replacement', () => {
       const features = selectShellStartupFeatures({
         shellPath: ZSH_PATH,
         env,
-        hasStartupCommand: intent !== 'history',
-        waitsForShellReady: intent !== 'history',
+        hasStartupCommand: !historyOnly,
+        waitsForShellReady: !historyOnly,
         emitsStartupIdentity: false
       })
       env.ORCA_SHELL_FEATURES = encodeShellStartupFeatures(features)
-      if (intent !== 'history') {
-        env[POSIX_SHELL_STARTUP_COMMAND_ENV] = 'ORCA_STARTUP_RUNS=$((${ORCA_STARTUP_RUNS:-0}+1))'
+      if (!historyOnly) {
+        env[POSIX_SHELL_STARTUP_COMMAND_ENV] = 'O_SU=$((${O_SU:-0}+1))'
       }
 
       const result = await runZshPty({
         env,
         commands: [
-          'ORCA_LOOKUP=$(command -v orca-dev)',
-          'ORCA_INIT_REMAINS=$+functions[__orca_deferred_line_init]',
-          'ORCA_SAVED_WIDGET_REMAINS=$+widgets[__orca_saved_line_init]',
-          'ORCA_LINE_INIT=${widgets[zle-line-init]:-none}',
-          'ORCA_PRECMD="${precmd_functions[*]}"'
+          'O_LK=$(command -v orca-dev)',
+          'O_IR=${+functions[__orca_deferred_line_init]}',
+          'O_SR=${+widgets[__orca_saved_line_init]}',
+          ...(stockBinding ? ['O_RW=${widgets[zle-line-pre-redraw]:-none}'] : []),
+          'O_LI=${widgets[zle-line-init]:-none}',
+          'O_PC="${precmd_functions[*]}"',
+          ...(nonzeroPrecmd ? ['precmd; O_PS=$?'] : [])
         ],
         report: [
-          'ORCA_LOOKUP',
-          'ORCA_USER_WIDGET_CALLS',
-          'ORCA_USER_WIDGET_NAME',
-          'ORCA_INIT_REMAINS',
-          'ORCA_SAVED_WIDGET_REMAINS',
-          'ORCA_LINE_INIT',
-          'ORCA_PRECMD',
-          'ORCA_STARTUP_RUNS',
+          'O_LK',
+          'O_UC',
+          'O_UN',
+          'O_IR',
+          'O_SR',
+          ...(stockBinding ? ['O_RW', 'O_RC', 'O_RN'] : []),
+          ...(nonzeroPrecmd ? ['O_PCALLS', 'O_PN', 'O_PO', 'O_AC', 'O_PS'] : []),
+          ...(orderedPrecmd ? ['O_PCALLS', 'O_PN', 'O_AO'] : []),
+          ...(replacedPrecmd ? ['O_PCALLS', 'O_NPC', 'O_NPN'] : []),
+          'O_LI',
+          'O_PC',
+          'O_SU',
           'HISTFILE'
         ]
       })
 
-      expect(result.values.ORCA_LOOKUP).toBe(launcher)
-      expect(Number(result.values.ORCA_USER_WIDGET_CALLS)).toBeGreaterThan(0)
-      if (intent !== 'chained-startup') {
-        expect(result.values.ORCA_USER_WIDGET_NAME).toBe('zle-line-init')
-        expect(result.values.ORCA_INIT_REMAINS).toBe('0')
+      expect(result.values.O_LK).toBe(launcher)
+      expect(Number(result.values.O_UC)).toBeGreaterThan(0)
+      if (!chainedLineInit) {
+        expect(result.values.O_UN).toBe('zle-line-init')
       }
-      expect(result.values.ORCA_SAVED_WIDGET_REMAINS).toBe('0')
+      if (!chainedLineInit && !chainedRedraw) {
+        expect(result.values.O_IR).toBe('0')
+      }
+      expect(result.values.O_SR).toBe('0')
+      if (stockBinding) {
+        expect(Number(result.values.O_RC)).toBeGreaterThan(0)
+        expect(result.values.O_RN).toBe(chainedRedraw ? 'orca_test_redraw' : 'zle-line-pre-redraw')
+        if (!chainedRedraw) {
+          expect(result.values.O_RW).toBe('user:orca_test_redraw')
+        }
+      }
       expect(result.values.HISTFILE).toBe(join(home, 'scoped-history'))
-      if (intent === 'history') {
+      if (nonzeroPrecmd) {
+        expect(Number(result.values.O_PCALLS)).toBeGreaterThan(0)
+        expect(result.values.O_PN).toBe('precmd')
+        expect(result.values.O_PO).toBe('on:on')
+        expect(result.values.O_AC).toBe('called')
+        expect(result.values.O_PS).toBe('1')
+      }
+      if (orderedPrecmd) {
+        expect(Number(result.values.O_PCALLS)).toBeGreaterThan(0)
+        expect(result.values.O_PN).toBe('precmd')
+        expect(result.values.O_AO).toBe('0')
+      }
+      if (replacedPrecmd) {
+        expect(result.values.O_PCALLS).toBe('UNSET')
+        expect(Number(result.values.O_NPC)).toBeGreaterThan(0)
+        expect(result.values.O_NPN).toBe('precmd')
+      }
+      if (historyOnly) {
         expect(result.output).not.toContain('\x1b]133;')
-        expect(result.values.ORCA_LINE_INIT).toBe('user:orca_test_line_init')
-        expect(result.values.ORCA_PRECMD).not.toContain('orca')
-        expect(result.values.ORCA_STARTUP_RUNS).toBe('UNSET')
+        expect(result.values.O_LI).toBe(
+          stockBinding ? 'user:zle-line-init' : 'user:orca_test_line_init'
+        )
+        expect(result.values.O_PC).not.toContain('orca')
+        expect(result.values.O_SU).toBe('UNSET')
       } else {
         expect(result.output).toContain(MARKERS.ready)
-        expect(result.values.ORCA_LINE_INIT).toBe('user:__orca_prompt_mark')
-        expect(result.values.ORCA_PRECMD).toBe('__orca_osc133_precmd')
-        expect(result.values.ORCA_STARTUP_RUNS).toBe('1')
+        expect(result.values.O_LI).toBe('user:__orca_prompt_mark')
+        expect(result.values.O_PC).toBe(
+          nonzeroPrecmd || orderedPrecmd
+            ? 'orca_test_array __orca_osc133_precmd'
+            : '__orca_osc133_precmd'
+        )
+        expect(result.values.O_SU).toBe('1')
         expect(result.output.split('ORCA_TEST_USER_WIDGET_CALL\r\n').length - 1).toBe(
           result.output.split(MARKERS.ready).length - 1
         )

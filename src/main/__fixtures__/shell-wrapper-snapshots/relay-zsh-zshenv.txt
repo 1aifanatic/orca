@@ -44,13 +44,41 @@ __orca_deferred_line_init() {
     __orca_prompt_mark "$@"
   fi
 }
+__orca_deferred_precmd() {
+  local __orca_precmd_status=0
+  if (( ${+functions[__orca_saved_precmd]} )); then
+    local __orca_original_precmd="${functions[__orca_saved_precmd]}"
+    functions[precmd]="$__orca_original_precmd"
+    precmd "$@"
+    __orca_precmd_status=$?
+    if (( ${+functions[__orca_deferred_init]} )) &&
+       [[ "${functions[precmd]:-}" == "$__orca_original_precmd" ]]; then
+      functions[precmd]="${functions[__orca_deferred_precmd]}"
+    fi
+  fi
+  __orca_deferred_precmd_fallback
+  return $__orca_precmd_status
+}
+__orca_deferred_precmd_fallback() {
+  builtin emulate -L zsh
+  if (( ${+functions[__orca_deferred_init]} && ! precmd_functions[(Ie)__orca_deferred_init] )); then
+    __orca_deferred_init
+  fi
+}
 __orca_arm_deferred_line_init() {
   builtin emulate -L zsh
-  [[ "${widgets[zle-line-init]:-}" == user:__orca_deferred_line_init ]] && return 0
-  if (( ${+widgets[zle-line-init]} )); then
-    zle -A zle-line-init __orca_saved_line_init
+  if [[ "${widgets[zle-line-init]:-}" != user:__orca_deferred_line_init ]]; then
+    if (( ${+widgets[zle-line-init]} )); then
+      zle -A zle-line-init __orca_saved_line_init
+    fi
+    zle -N zle-line-init __orca_deferred_line_init
   fi
-  zle -N zle-line-init __orca_deferred_line_init
+  if [[ "${functions[precmd]:-}" != "${functions[__orca_deferred_precmd]}" ]]; then
+    if (( ${+functions[precmd]} )); then
+      functions[__orca_saved_precmd]="${functions[precmd]}"
+    fi
+    functions[precmd]="${functions[__orca_deferred_precmd]}"
+  fi
 }
 __orca_deferred_init() {
   # Why first: this body runs after the user's own config, so it would otherwise
@@ -61,6 +89,13 @@ __orca_deferred_init() {
   (( $+_orca_deferred_init_done )) && return 0
   builtin typeset -g _orca_deferred_init_done=1
   builtin typeset -g precmd_functions
+  if [[ "${functions[precmd]:-}" == "${functions[__orca_deferred_precmd]}" ]]; then
+    if (( ${+functions[__orca_saved_precmd]} )); then
+      functions[precmd]="${functions[__orca_saved_precmd]}"
+    else
+      builtin unfunction precmd
+    fi
+  fi
   if (( ${+widgets[__orca_saved_line_init]} )); then
     if [[ "${widgets[zle-line-init]:-}" == user:__orca_deferred_line_init ]]; then
       zle -A __orca_saved_line_init zle-line-init
@@ -205,6 +240,8 @@ __orca_deferred_init() {
     zle -N zle-line-init __orca_prompt_mark
   fi
   builtin unset _orca_shell_features _orca_histfile
+  builtin unfunction __orca_deferred_precmd __orca_deferred_precmd_fallback
+  (( ${+functions[__orca_saved_precmd]} )) && builtin unfunction __orca_saved_precmd
   local __orca_widget __orca_line_init_bound=0
   for __orca_widget in "${(v)widgets[@]}"; do
     if [[ "$__orca_widget" == user:__orca_deferred_line_init ]]; then
