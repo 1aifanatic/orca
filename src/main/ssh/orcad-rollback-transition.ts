@@ -42,6 +42,7 @@ import {
   type OrcadSlotIdentity
 } from './orcad-recovery-slot'
 import { orcadSnapshotPath, recoverOrcadIncumbent } from './orcad-incumbent-recovery'
+import { withOrcadLogTail } from './orcad-remote-log-tail'
 
 /** A confirmed failure reads as no answer; an unconfirmed one propagates and keeps the fence. */
 async function execOrEmpty(options: OrcadRollbackOptions, command: string): Promise<string> {
@@ -235,9 +236,12 @@ export async function rollbackOrcadLocked(
     return {
       outcome: 'failed',
       code: launchError === undefined ? verdict.code : 'orcad_rollback_target_launch_failed',
-      reason:
+      reason: await withOrcadLogTail(
+        options,
+        targetDir,
         `The rollback target ${safety.target} did not come up healthy: ${reason} ${recovered} ` +
-        `Its stderr is at ${joinRemotePath(options.host, targetDir, ORCAD_LOG_FILENAME)}.`
+          `Its stderr is at ${joinRemotePath(options.host, targetDir, ORCAD_LOG_FILENAME)}.`
+      )
     }
   }
 

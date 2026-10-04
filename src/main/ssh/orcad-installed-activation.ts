@@ -57,6 +57,7 @@ import {
   type OrcadSlotIdentity
 } from './orcad-recovery-slot'
 import { orcadSnapshotPath, recoverOrcadIncumbent } from './orcad-incumbent-recovery'
+import { withOrcadLogTail } from './orcad-remote-log-tail'
 
 type Outcome = Extract<OrcadDeployResult, { outcome: 'installed-not-activated' }>
 
@@ -242,11 +243,10 @@ export async function activateInstalledOrcad(
             `The candidate failed while starting: ${errorMessage(launchError)}`
           ]
     const restored = await restoreAfterRejectedCandidate(options, transaction, incumbent, lock)
-    return notActivated(
-      code,
+    const located =
       `${reason} Candidate stderr is at ` +
-        `${joinRemotePath(options.host, remoteDir, ORCAD_LOG_FILENAME)}. ${restored}`
-    )
+      `${joinRemotePath(options.host, remoteDir, ORCAD_LOG_FILENAME)}. ${restored}`
+    return notActivated(code, await withOrcadLogTail(options, remoteDir, located))
   }
 
   const recordAfter = withActivatedVersion(record, fullVersion, snapshot, now())

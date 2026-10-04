@@ -40,6 +40,7 @@ export const ORCAD_BUILD_HASH_MARKER = '__ORCAD_BUILD_HASH__'
 export const ORCAD_WINDOWS_READINESS_MARKER = '__ORCAD_READINESS__'
 export const ORCAD_WINDOWS_RUNTIME_MARKER = '__ORCAD_RUNTIME__'
 export const ORCAD_WINDOWS_LIVENESS_MANY_MARKER = '__ORCAD_LIVENESS__'
+export const ORCAD_WINDOWS_LOG_TAIL_MARKER = '__ORCAD_LOG_TAIL__'
 /** A slot whose marker names no usable runtime; the POSIX selector exits the same way. */
 export const ORCAD_WINDOWS_RUNTIME_MISSING_EXIT = 78
 /** The record exists but cannot be read within its bound. */
@@ -50,6 +51,7 @@ export type OrcadWindowsHostOp =
   | 'liveness-many'
   | 'stop'
   | 'readiness-wait'
+  | 'log-tail'
   | 'build-hash'
   | 'record-read'
   | 'record-publish'
@@ -161,6 +163,21 @@ const ops = {
       setTimeout(tick, 200)
     }
     tick()
+  },
+
+  // The last bytes of a log, as POSIX \`tail -c\` reads them; a missing log is empty.
+  'log-tail'(file, capArg) {
+    const cap = Number(capArg)
+    let fd
+    try { fd = fs.openSync(file, 'r') } catch { return encoded(${text(ORCAD_WINDOWS_LOG_TAIL_MARKER)}, Buffer.alloc(0)) }
+    let buffer = Buffer.alloc(0)
+    try {
+      const size = fs.fstatSync(fd).size
+      const length = Math.min(cap, size)
+      buffer = Buffer.alloc(length)
+      buffer = buffer.subarray(0, fs.readSync(fd, buffer, 0, length, size - length))
+    } catch { buffer = Buffer.alloc(0) } finally { fs.closeSync(fd) }
+    encoded(${text(ORCAD_WINDOWS_LOG_TAIL_MARKER)}, buffer)
   },
 
   'build-hash'(file) {

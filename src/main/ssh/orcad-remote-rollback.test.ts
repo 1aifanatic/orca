@@ -91,6 +91,9 @@ function scriptHost(log: string[], overrides: HostOverrides = {}): void {
   const restores = [...(overrides.restores ?? [])]
   mockExec.mockImplementation(async (_conn, command: string) => {
     const text = String(command)
+    if (text.startsWith('tail -c')) {
+      return text.includes(TARGET) ? 'orcad: listen EADDRINUSE 127.0.0.1\n' : ''
+    }
     if (text.includes('__ORCAD_RECORD_PRESENT__')) {
       return text.includes('transaction.json')
         ? '__ORCAD_RECORD_ABSENT__\n'
@@ -249,6 +252,9 @@ describe('rollbackOrcad', () => {
     const result = await rollbackOrcad(options())
     expect(result).toMatchObject({ outcome: 'failed', code: 'orcad_activation_no_readiness' })
     expect(result.outcome === 'failed' && result.reason).toContain('fresh host terminal census')
+    expect(result.outcome === 'failed' && result.reason).toContain(
+      'Last lines of orcad.log:\norcad: listen EADDRINUSE'
+    )
     expect(log).toEqual([
       `stop:${ACTIVE}`,
       'rescue',

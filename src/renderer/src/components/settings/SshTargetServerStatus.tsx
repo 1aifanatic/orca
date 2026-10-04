@@ -1,6 +1,7 @@
-import { ArrowRightLeft } from 'lucide-react'
+import { ArrowRightLeft, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 import type { SshTarget } from '../../../../shared/ssh-types'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { translate } from '@/i18n/i18n'
 import { cn } from '@/lib/utils'
 import { canMoveSshHostToManagedServer } from '@/ssh/ssh-managed-server-move'
@@ -47,6 +48,21 @@ export function SshTargetServerStatus({
           </Button>
         ) : null}
       </div>
+      {line.detail ? (
+        <Collapsible>
+          <CollapsibleTrigger asChild>
+            <Button type="button" variant="ghost" size="xs" className="group">
+              {translate('auto.components.settings.sshHostServer.failureDetails', 'Details')}
+              <ChevronDown className="transition-transform group-data-[state=open]:rotate-180" />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <pre className="scrollbar-sleek max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-background px-3 py-2 font-mono text-[11px] leading-relaxed text-muted-foreground">
+              {line.detail}
+            </pre>
+          </CollapsibleContent>
+        </Collapsible>
+      ) : null}
       <SshHostChangedActions target={target} onChanged={onChanged} />
       {canMove ? (
         <SshManagedServerMoveDialog

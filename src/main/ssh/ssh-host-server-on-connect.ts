@@ -17,6 +17,16 @@ import {
   classifyOrcadHostUnavailable,
   ORCAD_TUNNEL_UNAVAILABLE_REASON
 } from './orcad-host-unavailable'
+import {
+  decidedEvent,
+  reportHostServerConversion,
+  reportHostServerDeploy,
+  reportHostServerEvent,
+  reportHostServerSetupError,
+  startHostServerDecisionTrace,
+  type HostServerDecisionTrace,
+  type HostServerReport
+} from './ssh-host-server-connect-events'
 
 export type HostServerPhase = 'deploying' | 'converting' | 'connecting'
 
@@ -60,17 +70,38 @@ export type HostServerOnConnectDeps = {
   isFencedBeforeStaging: (target: SshTarget) => boolean
   /** Unregisters that unreachable server and releases its fence, so the relay serves again. */
   releaseUnreachableSetup: (target: SshTarget) => Promise<void>
+  /** Receives each decision, conversion and deploy failure as raw codes for telemetry. */
+  report: HostServerReport
 }
+
+// Bounds a failure's detail; the host log tail inside it is already capped.
+const MAX_FAILURE_DETAIL_CHARS = 16_000
 
 export async function resolveHostServerOnConnect(
   target: SshTarget,
   deps: HostServerOnConnectDeps
+): Promise<HostServerOnConnectResult> {
+  const trace = startHostServerDecisionTrace()
+  let result: HostServerOnConnectResult | null = null
+  try {
+    result = await decide(target, deps, trace)
+    return result
+  } finally {
+    reportHostServerEvent(deps.report, target, decidedEvent(result, trace))
+  }
+}
+
+async function decide(
+  target: SshTarget,
+  deps: HostServerOnConnectDeps,
+  trace: HostServerDecisionTrace
 ): Promise<HostServerOnConnectResult> {
   if (target.orcadFence?.sourceChangedAt) {
     return { route: 'relay', reason: 'source_changed' }
   }
   const existing = deps.managedEnvironmentId(target)
   if (existing) {
+    trace.path = 'existing'
     deps.progress(target, 'connecting')
     try {
       await deps.ensureTunnel(existing)
@@ -97,6 +128,7 @@ export async function resolveHostServerOnConnect(
   }
   const recorded = deps.recordedUnavailable(target)
   if (recorded) {
+    trace.recorded = true
     return { route: 'relay', reason: 'orcad_unavailable', detail: recorded }
   }
   if (!deps.hasTemplate()) {
@@ -105,8 +137,11 @@ export async function resolveHostServerOnConnect(
   const empty = deps.isEmptyHost(target)
   try {
     if (empty) {
+      trace.path = 'deploy'
       deps.progress(target, 'deploying')
-      return await afterDeploy(target, deps, await deps.deploy(target))
+      const deployed = await deps.deploy(target)
+      reportHostServerDeploy(deps.report, target, trace, deployed)
+      return await afterDeploy(target, deps, deployed)
     }
     const terminals = await deps.relayTerminals(target)
     if (terminals.verdict !== 'exited') {
@@ -117,11 +152,22 @@ export async function resolveHostServerOnConnect(
         terminals: terminals.count
       }
     }
+    trace.path = 'convert'
+    trace.conversionStartedAt = Date.now()
+    reportHostServerEvent(deps.report, target, { kind: 'conversion', phase: 'started' })
     deps.progress(target, 'converting')
-    return await afterConversion(target, deps, await deps.convert(target))
+    const converted = await deps.convert(target)
+    if (converted.outcome === 'refused') {
+      trace.refusal = converted.code
+    }
+    reportHostServerConversion(deps.report, target, trace, converted)
+    return await afterConversion(target, deps, converted)
   } catch (error) {
     console.warn('[ssh] Managed Orca server setup failed; using the relay this session:', error)
-    return unfinished(target, deps, classifyOrcadHostUnavailable(error), empty, 'failed')
+    reportHostServerSetupError(deps.report, target, trace, error)
+    const unavailable = classifyOrcadHostUnavailable(error)
+    const detail = error instanceof Error ? error.message : String(error)
+    return unfinished(target, deps, unavailable, empty, 'failed', detail)
   }
 }
 
@@ -135,7 +181,7 @@ async function afterDeploy(
   result: OrcadManagedDeployResult
 ): Promise<HostServerOnConnectResult> {
   if (result.outcome === 'deferred') {
-    return deferred(target, deps, result.code, true)
+    return deferred(target, deps, result, true)
   }
   return { route: 'managed', environmentId: result.environment.id }
 }
@@ -149,7 +195,7 @@ async function afterConversion(
     case 'converted':
       return { route: 'managed', environmentId: result.environment.id }
     case 'deferred':
-      return deferred(target, deps, result.code, false)
+      return deferred(target, deps, result, false)
     case 'refused':
       if (result.code === 'orcad_migration_terminals') {
         return { route: 'relay', reason: terminalReason(result.verdict) }
@@ -161,10 +207,12 @@ async function afterConversion(
 function deferred(
   target: SshTarget,
   deps: HostServerOnConnectDeps,
-  code: string,
+  result: { code: string; reason: string },
   empty: boolean
 ): Promise<HostServerOnConnectResult> {
-  return unfinished(target, deps, classifyOrcadHostUnavailable({ code }), empty, 'deferred')
+  console.warn(`[ssh] Managed Orca server setup deferred (${result.code}):`, result.reason)
+  const unavailable = classifyOrcadHostUnavailable({ code: result.code })
+  return unfinished(target, deps, unavailable, empty, 'deferred', result.reason)
 }
 
 /**
@@ -176,7 +224,8 @@ async function unfinished(
   deps: HostServerOnConnectDeps,
   unavailable: string | null,
   empty: boolean,
-  reason: 'deferred' | 'failed'
+  reason: 'deferred' | 'failed',
+  failure: string
 ): Promise<HostServerOnConnectResult> {
   try {
     await (empty ? deps.abandonDeploy(target) : deps.abandonConversion(target))
@@ -185,8 +234,13 @@ async function unfinished(
     console.warn('[ssh] The managed Orca server setup keeps its fence:', error)
   }
   if (!unavailable) {
-    return { route: 'relay', reason }
+    // Shown under the SSH host, with the host's orcad.log tail when the failure carries one.
+    return { route: 'relay', reason, detail: boundedDetail(failure) }
   }
   deps.recordUnavailable(target, unavailable)
   return { route: 'relay', reason: 'orcad_unavailable', detail: unavailable }
+}
+
+function boundedDetail(text: string): string {
+  return text.length > MAX_FAILURE_DETAIL_CHARS ? `…${text.slice(-MAX_FAILURE_DETAIL_CHARS)}` : text
 }

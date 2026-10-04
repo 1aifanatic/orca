@@ -47,6 +47,18 @@ describe('SSH host server status line', () => {
     ).not.toHaveProperty('action')
   })
 
+  it('offers the setup failure, log tail included, beside a retry line', () => {
+    const detail = 'No readiness line.\nLast lines of orcad.log:\nError: EADDRINUSE'
+    expect(
+      sshHostServerStatusLine(plain, {
+        managedServer: { kind: 'relay', reason: 'deferred', detail }
+      })
+    ).toMatchObject({ tone: 'muted', detail })
+    expect(
+      sshHostServerStatusLine(plain, { managedServer: { kind: 'relay', reason: 'failed' } })
+    ).not.toHaveProperty('detail')
+  })
+
   it('keeps durable reasons visible without a live state', () => {
     expect(sshHostServerStatusLine({ orcadFence: { environmentId: 'e' } }, undefined)?.text).toBe(
       'Runs a managed Orca server'

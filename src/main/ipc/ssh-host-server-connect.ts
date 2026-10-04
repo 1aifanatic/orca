@@ -4,6 +4,8 @@ import type { SshConnectionState, SshTarget } from '../../shared/ssh-types'
 import type { HostServerOnConnectResult } from '../ssh/ssh-host-server-on-connect'
 import { relayServerStatus, shouldToastManagedServerMove } from '../ssh/ssh-host-server-move-offer'
 import { setSshHostServerStatus } from '../ssh/ssh-host-server-status'
+import { trackSshHostServerMove } from '../ssh/ssh-host-server-telemetry'
+import { knownSshHostPlatform } from '../ssh/ssh-host-platform-memo'
 import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
 import { connectionManager, getCurrentMainWindow } from './ssh-ipc-context'
 import { broadcastSshState, getPublicSshState } from './ssh-renderer-broadcast'
@@ -57,6 +59,7 @@ export function recordRelayDecision(
     getSshTargetRegistryStore()!.updateTarget(target.id, {
       managedServerMoveOffered: { appVersion }
     })
+    trackSshHostServerMove('offered', knownSshHostPlatform(target.id))
   }
   setSshHostServerStatus(target.id, relayServerStatus(decision, offerMove))
 }

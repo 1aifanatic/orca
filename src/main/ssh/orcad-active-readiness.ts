@@ -16,6 +16,7 @@ import {
   readOrcadReadinessNowCommand
 } from './orcad-remote-readiness-wait'
 import type { ServeReadiness } from '../server/serve-readiness'
+import { withOrcadLogTail } from './orcad-remote-log-tail'
 
 /** `exited` is proven absence; `unverifiable` means the host could not say, which is not death. */
 export type OrcadReadinessFailureVerdict = 'exited' | 'unverifiable' | 'rejected'
@@ -116,5 +117,13 @@ export async function launchOrcadSlotAndAwaitReadiness(
   expectation: OrcadActivationExpectation
 ): Promise<ServeReadiness> {
   const parsed = await launchOrcadAndAwaitReadiness(target, spec)
-  return gatedReadiness(parsed, expectation, `orcad ${spec.fullVersion}`)
+  try {
+    return gatedReadiness(parsed, expectation, `orcad ${spec.fullVersion}`)
+  } catch (error) {
+    if (!(error instanceof OrcadActiveReadinessError)) {
+      throw error
+    }
+    const message = await withOrcadLogTail(target, spec.remoteInstallDir, error.message)
+    throw new OrcadActiveReadinessError(error.verdict, message)
+  }
 }
