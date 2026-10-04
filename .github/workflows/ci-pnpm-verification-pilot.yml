@@ -70,7 +70,7 @@ jobs:
           DEPS: ${{ toJSON(steps) }}
         run: |-
           mkdir -p "$RUNNER_TEMP/capacity-evidence"
-          node -e 'const fs=require("fs"); const crypto=require("crypto"); const paths=["package.json","pnpm-lock.yaml","pnpm-workspace.yaml",".npmrc"]; const record={source:"f199a20c3acd32973924a86cb342e9c27530d739",base:"136b990a053333a577012d9a4caaca0785a7a13d",node:process.version,hashes:Object.fromEntries(paths.map(p=>[p,crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex")])),steps:JSON.parse(process.env.DEPS)}; fs.writeFileSync(process.env.RUNNER_TEMP+"/capacity-evidence/evidence.json",JSON.stringify(record,null,2));'
+          node -e 'const fs=require("fs"); const crypto=require("crypto"); const paths=["package.json","pnpm-lock.yaml","pnpm-workspace.yaml",".npmrc"]; const record={source:"f199a20c3acd32973924a86cb342e9c27530d739",base:"136b990a053333a577012d9a4caaca0785a7a13d",node:process.version,hashes:Object.fromEntries(paths.filter(p=>fs.existsSync(p)).map(p=>[p,crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex")])),steps:JSON.parse(process.env.DEPS)}; fs.writeFileSync(process.env.RUNNER_TEMP+"/capacity-evidence/evidence.json",JSON.stringify(record,null,2));'
           if [ -e ci-shards/unit-selection.json ]; then cp ci-shards/unit-selection.json "$RUNNER_TEMP/capacity-evidence/"; fi
       - uses: actions/upload-artifact@v7
         if: "!cancelled()"
@@ -230,7 +230,7 @@ jobs:
           DEPS: ${{ toJSON(steps) }}
         run: |-
           mkdir -p "$RUNNER_TEMP/capacity-evidence"
-          node -e 'const fs=require("fs"); const crypto=require("crypto"); const paths=["package.json","pnpm-lock.yaml","pnpm-workspace.yaml",".npmrc"]; const record={source:"f199a20c3acd32973924a86cb342e9c27530d739",base:"136b990a053333a577012d9a4caaca0785a7a13d",node:process.version,hashes:Object.fromEntries(paths.map(p=>[p,crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex")])),steps:JSON.parse(process.env.DEPS)}; fs.writeFileSync(process.env.RUNNER_TEMP+"/capacity-evidence/evidence.json",JSON.stringify(record,null,2));'
+          node -e 'const fs=require("fs"); const crypto=require("crypto"); const paths=["package.json","pnpm-lock.yaml","pnpm-workspace.yaml",".npmrc"]; const record={source:"f199a20c3acd32973924a86cb342e9c27530d739",base:"136b990a053333a577012d9a4caaca0785a7a13d",node:process.version,hashes:Object.fromEntries(paths.filter(p=>fs.existsSync(p)).map(p=>[p,crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex")])),steps:JSON.parse(process.env.DEPS)}; fs.writeFileSync(process.env.RUNNER_TEMP+"/capacity-evidence/evidence.json",JSON.stringify(record,null,2));'
           if [ -e ci-shards/unit-selection.json ]; then cp ci-shards/unit-selection.json "$RUNNER_TEMP/capacity-evidence/"; fi
       - uses: actions/upload-artifact@v7
         if: "!cancelled()"
@@ -284,7 +284,7 @@ jobs:
           DEPS: ${{ toJSON(steps) }}
         run: |-
           mkdir -p "$RUNNER_TEMP/capacity-evidence"
-          node -e 'const fs=require("fs"); const crypto=require("crypto"); const paths=["package.json","pnpm-lock.yaml","pnpm-workspace.yaml",".npmrc"]; const record={source:"f199a20c3acd32973924a86cb342e9c27530d739",base:"136b990a053333a577012d9a4caaca0785a7a13d",node:process.version,hashes:Object.fromEntries(paths.map(p=>[p,crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex")])),steps:JSON.parse(process.env.DEPS)}; fs.writeFileSync(process.env.RUNNER_TEMP+"/capacity-evidence/evidence.json",JSON.stringify(record,null,2));'
+          node -e 'const fs=require("fs"); const crypto=require("crypto"); const paths=["package.json","pnpm-lock.yaml","pnpm-workspace.yaml",".npmrc"]; const record={source:"f199a20c3acd32973924a86cb342e9c27530d739",base:"136b990a053333a577012d9a4caaca0785a7a13d",node:process.version,hashes:Object.fromEntries(paths.filter(p=>fs.existsSync(p)).map(p=>[p,crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex")])),steps:JSON.parse(process.env.DEPS)}; fs.writeFileSync(process.env.RUNNER_TEMP+"/capacity-evidence/evidence.json",JSON.stringify(record,null,2));'
           if [ -e ci-shards/unit-selection.json ]; then cp ci-shards/unit-selection.json "$RUNNER_TEMP/capacity-evidence/"; fi
       - uses: actions/upload-artifact@v7
         if: "!cancelled()"
@@ -523,7 +523,7 @@ jobs:
           DEPS: ${{ toJSON(steps) }}
         run: |-
           mkdir -p "$RUNNER_TEMP/capacity-evidence"
-          node -e 'const fs=require("fs"); const crypto=require("crypto"); const paths=["package.json","pnpm-lock.yaml","pnpm-workspace.yaml",".npmrc"]; const record={source:"f199a20c3acd32973924a86cb342e9c27530d739",base:"136b990a053333a577012d9a4caaca0785a7a13d",node:process.version,hashes:Object.fromEntries(paths.map(p=>[p,crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex")])),steps:JSON.parse(process.env.DEPS)}; fs.writeFileSync(process.env.RUNNER_TEMP+"/capacity-evidence/evidence.json",JSON.stringify(record,null,2));'
+          node -e 'const fs=require("fs"); const crypto=require("crypto"); const paths=["package.json","pnpm-lock.yaml","pnpm-workspace.yaml",".npmrc"]; const record={source:"f199a20c3acd32973924a86cb342e9c27530d739",base:"136b990a053333a577012d9a4caaca0785a7a13d",node:process.version,hashes:Object.fromEntries(paths.filter(p=>fs.existsSync(p)).map(p=>[p,crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex")])),steps:JSON.parse(process.env.DEPS)}; fs.writeFileSync(process.env.RUNNER_TEMP+"/capacity-evidence/evidence.json",JSON.stringify(record,null,2));'
           if [ -e ci-shards/unit-selection.json ]; then cp ci-shards/unit-selection.json "$RUNNER_TEMP/capacity-evidence/"; fi
       - uses: actions/upload-artifact@v7
         if: "!cancelled()"
@@ -760,7 +760,7 @@ jobs:
           DEPS: ${{ toJSON(steps) }}
         run: |-
           mkdir -p "$RUNNER_TEMP/capacity-evidence"
-          node -e 'const fs=require("fs"); const crypto=require("crypto"); const paths=["package.json","pnpm-lock.yaml","pnpm-workspace.yaml",".npmrc"]; const record={source:"f199a20c3acd32973924a86cb342e9c27530d739",base:"136b990a053333a577012d9a4caaca0785a7a13d",node:process.version,hashes:Object.fromEntries(paths.map(p=>[p,crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex")])),steps:JSON.parse(process.env.DEPS)}; fs.writeFileSync(process.env.RUNNER_TEMP+"/capacity-evidence/evidence.json",JSON.stringify(record,null,2));'
+          node -e 'const fs=require("fs"); const crypto=require("crypto"); const paths=["package.json","pnpm-lock.yaml","pnpm-workspace.yaml",".npmrc"]; const record={source:"f199a20c3acd32973924a86cb342e9c27530d739",base:"136b990a053333a577012d9a4caaca0785a7a13d",node:process.version,hashes:Object.fromEntries(paths.filter(p=>fs.existsSync(p)).map(p=>[p,crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex")])),steps:JSON.parse(process.env.DEPS)}; fs.writeFileSync(process.env.RUNNER_TEMP+"/capacity-evidence/evidence.json",JSON.stringify(record,null,2));'
           if [ -e ci-shards/unit-selection.json ]; then cp ci-shards/unit-selection.json "$RUNNER_TEMP/capacity-evidence/"; fi
       - uses: actions/upload-artifact@v7
         if: "!cancelled()"
@@ -919,7 +919,7 @@ jobs:
           DEPS: ${{ toJSON(steps) }}
         run: |-
           mkdir -p "$RUNNER_TEMP/capacity-evidence"
-          node -e 'const fs=require("fs"); const crypto=require("crypto"); const paths=["package.json","pnpm-lock.yaml","pnpm-workspace.yaml",".npmrc"]; const record={source:"f199a20c3acd32973924a86cb342e9c27530d739",base:"136b990a053333a577012d9a4caaca0785a7a13d",node:process.version,hashes:Object.fromEntries(paths.map(p=>[p,crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex")])),steps:JSON.parse(process.env.DEPS)}; fs.writeFileSync(process.env.RUNNER_TEMP+"/capacity-evidence/evidence.json",JSON.stringify(record,null,2));'
+          node -e 'const fs=require("fs"); const crypto=require("crypto"); const paths=["package.json","pnpm-lock.yaml","pnpm-workspace.yaml",".npmrc"]; const record={source:"f199a20c3acd32973924a86cb342e9c27530d739",base:"136b990a053333a577012d9a4caaca0785a7a13d",node:process.version,hashes:Object.fromEntries(paths.filter(p=>fs.existsSync(p)).map(p=>[p,crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex")])),steps:JSON.parse(process.env.DEPS)}; fs.writeFileSync(process.env.RUNNER_TEMP+"/capacity-evidence/evidence.json",JSON.stringify(record,null,2));'
           if [ -e ci-shards/unit-selection.json ]; then cp ci-shards/unit-selection.json "$RUNNER_TEMP/capacity-evidence/"; fi
       - uses: actions/upload-artifact@v7
         if: "!cancelled()"
@@ -973,7 +973,7 @@ jobs:
           DEPS: ${{ toJSON(steps) }}
         run: |-
           mkdir -p "$RUNNER_TEMP/capacity-evidence"
-          node -e 'const fs=require("fs"); const crypto=require("crypto"); const paths=["package.json","pnpm-lock.yaml","pnpm-workspace.yaml",".npmrc"]; const record={source:"f199a20c3acd32973924a86cb342e9c27530d739",base:"136b990a053333a577012d9a4caaca0785a7a13d",node:process.version,hashes:Object.fromEntries(paths.map(p=>[p,crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex")])),steps:JSON.parse(process.env.DEPS)}; fs.writeFileSync(process.env.RUNNER_TEMP+"/capacity-evidence/evidence.json",JSON.stringify(record,null,2));'
+          node -e 'const fs=require("fs"); const crypto=require("crypto"); const paths=["package.json","pnpm-lock.yaml","pnpm-workspace.yaml",".npmrc"]; const record={source:"f199a20c3acd32973924a86cb342e9c27530d739",base:"136b990a053333a577012d9a4caaca0785a7a13d",node:process.version,hashes:Object.fromEntries(paths.filter(p=>fs.existsSync(p)).map(p=>[p,crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex")])),steps:JSON.parse(process.env.DEPS)}; fs.writeFileSync(process.env.RUNNER_TEMP+"/capacity-evidence/evidence.json",JSON.stringify(record,null,2));'
           if [ -e ci-shards/unit-selection.json ]; then cp ci-shards/unit-selection.json "$RUNNER_TEMP/capacity-evidence/"; fi
       - uses: actions/upload-artifact@v7
         if: "!cancelled()"
@@ -1134,7 +1134,7 @@ jobs:
           DEPS: ${{ toJSON(steps) }}
         run: |-
           mkdir -p "$RUNNER_TEMP/capacity-evidence"
-          node -e 'const fs=require("fs"); const crypto=require("crypto"); const paths=["package.json","pnpm-lock.yaml","pnpm-workspace.yaml",".npmrc"]; const record={source:"f199a20c3acd32973924a86cb342e9c27530d739",base:"136b990a053333a577012d9a4caaca0785a7a13d",node:process.version,hashes:Object.fromEntries(paths.map(p=>[p,crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex")])),steps:JSON.parse(process.env.DEPS)}; fs.writeFileSync(process.env.RUNNER_TEMP+"/capacity-evidence/evidence.json",JSON.stringify(record,null,2));'
+          node -e 'const fs=require("fs"); const crypto=require("crypto"); const paths=["package.json","pnpm-lock.yaml","pnpm-workspace.yaml",".npmrc"]; const record={source:"f199a20c3acd32973924a86cb342e9c27530d739",base:"136b990a053333a577012d9a4caaca0785a7a13d",node:process.version,hashes:Object.fromEntries(paths.filter(p=>fs.existsSync(p)).map(p=>[p,crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex")])),steps:JSON.parse(process.env.DEPS)}; fs.writeFileSync(process.env.RUNNER_TEMP+"/capacity-evidence/evidence.json",JSON.stringify(record,null,2));'
           if [ -e ci-shards/unit-selection.json ]; then cp ci-shards/unit-selection.json "$RUNNER_TEMP/capacity-evidence/"; fi
       - uses: actions/upload-artifact@v7
         if: "!cancelled()"
@@ -1189,7 +1189,7 @@ jobs:
           DEPS: ${{ toJSON(steps) }}
         run: |-
           mkdir -p "$RUNNER_TEMP/capacity-evidence"
-          node -e 'const fs=require("fs"); const crypto=require("crypto"); const paths=["package.json","pnpm-lock.yaml","pnpm-workspace.yaml",".npmrc"]; const record={source:"f199a20c3acd32973924a86cb342e9c27530d739",base:"136b990a053333a577012d9a4caaca0785a7a13d",node:process.version,hashes:Object.fromEntries(paths.map(p=>[p,crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex")])),steps:JSON.parse(process.env.DEPS)}; fs.writeFileSync(process.env.RUNNER_TEMP+"/capacity-evidence/evidence.json",JSON.stringify(record,null,2));'
+          node -e 'const fs=require("fs"); const crypto=require("crypto"); const paths=["package.json","pnpm-lock.yaml","pnpm-workspace.yaml",".npmrc"]; const record={source:"f199a20c3acd32973924a86cb342e9c27530d739",base:"136b990a053333a577012d9a4caaca0785a7a13d",node:process.version,hashes:Object.fromEntries(paths.filter(p=>fs.existsSync(p)).map(p=>[p,crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex")])),steps:JSON.parse(process.env.DEPS)}; fs.writeFileSync(process.env.RUNNER_TEMP+"/capacity-evidence/evidence.json",JSON.stringify(record,null,2));'
           if [ -e ci-shards/unit-selection.json ]; then cp ci-shards/unit-selection.json "$RUNNER_TEMP/capacity-evidence/"; fi
       - uses: actions/upload-artifact@v7
         if: "!cancelled()"
@@ -1428,7 +1428,7 @@ jobs:
           DEPS: ${{ toJSON(steps) }}
         run: |-
           mkdir -p "$RUNNER_TEMP/capacity-evidence"
-          node -e 'const fs=require("fs"); const crypto=require("crypto"); const paths=["package.json","pnpm-lock.yaml","pnpm-workspace.yaml",".npmrc"]; const record={source:"f199a20c3acd32973924a86cb342e9c27530d739",base:"136b990a053333a577012d9a4caaca0785a7a13d",node:process.version,hashes:Object.fromEntries(paths.map(p=>[p,crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex")])),steps:JSON.parse(process.env.DEPS)}; fs.writeFileSync(process.env.RUNNER_TEMP+"/capacity-evidence/evidence.json",JSON.stringify(record,null,2));'
+          node -e 'const fs=require("fs"); const crypto=require("crypto"); const paths=["package.json","pnpm-lock.yaml","pnpm-workspace.yaml",".npmrc"]; const record={source:"f199a20c3acd32973924a86cb342e9c27530d739",base:"136b990a053333a577012d9a4caaca0785a7a13d",node:process.version,hashes:Object.fromEntries(paths.filter(p=>fs.existsSync(p)).map(p=>[p,crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex")])),steps:JSON.parse(process.env.DEPS)}; fs.writeFileSync(process.env.RUNNER_TEMP+"/capacity-evidence/evidence.json",JSON.stringify(record,null,2));'
           if [ -e ci-shards/unit-selection.json ]; then cp ci-shards/unit-selection.json "$RUNNER_TEMP/capacity-evidence/"; fi
       - uses: actions/upload-artifact@v7
         if: "!cancelled()"
