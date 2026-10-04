@@ -130,7 +130,8 @@ function deltaMove() {
     target,
     environment: listEnvironments(userDataPath)[0]!,
     destination,
-    listRelayPtyIds: async () => [],
+    // This relay and every earlier-build relay answer that nothing runs.
+    listRelayPtyIds: Object.assign(async () => [], { previous: async () => [] }),
     releaseDirectSession: async () => {},
     ensureTunnel: async () => {},
     now

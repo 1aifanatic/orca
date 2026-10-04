@@ -123,4 +123,19 @@ describe('SshLegacyRelayRouter', () => {
     await expect(router.listHeld()).resolves.toBeNull()
     await expect(routerFor(null, []).router.listHeld()).resolves.toEqual([])
   })
+
+  it('never hangs up a route another attach is still awaiting', async () => {
+    const route = fakeRoute([HELD])
+    const { router } = routerFor(route)
+
+    const [missing, served] = await Promise.all([
+      router.attach('ssh:target-1@@pty2:new:9'),
+      router.attach(HELD)
+    ])
+
+    expect(missing).toBeNull()
+    expect(served?.provider).toBe(route.provider)
+    expect(route.close).not.toHaveBeenCalled()
+    expect(router.providerFor(HELD)).toBe(route.provider)
+  })
 })

@@ -30,6 +30,7 @@ import {
 import { retainOrcadMigrationSource } from './orcad-migration-source-retention'
 import {
   assessOrcadMigrationTerminals,
+  retireProvenDetachedLeases,
   type ListRelayPtyIds
 } from './orcad-migration-terminal-gate'
 import { currentOrcadSourceFingerprint } from './orcad-retained-source'
@@ -67,6 +68,7 @@ export async function runOrcadDeltaMove(args: OrcadDeltaMoveArgs): Promise<Orcad
   if (terminals.verdict !== 'exited') {
     return refuse('orcad_migration_terminals', terminals.reason)
   }
+  retireProvenDetachedLeases(store, target.id, terminals)
   await args.releaseDirectSession(target.id)
   const changedAt = target.orcadFence?.sourceChangedAt
   const timestamp = now().toISOString()

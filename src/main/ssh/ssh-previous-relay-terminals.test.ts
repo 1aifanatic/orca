@@ -121,15 +121,43 @@ describe('previous relay terminals', () => {
     ).resolves.toBe(false)
   })
 
-  it('keeps the existing path when the census could not run or never started', async () => {
+  it('keeps the existing path when no census started, and on Windows hosts', async () => {
     await expect(isReattachHeldByPreviousRelay('target-1', notFound)).resolves.toBe(false)
 
-    execCommand.mockRejectedValue(new Error('channel closed'))
-    startPreviousRelayCensus(conn, 'target-1', deployed)
+    startPreviousRelayCensus(conn, 'target-1', {
+      ...deployed,
+      hostPlatform: getRemoteHostPlatform('win32-x64')
+    })
     await expect(isReattachHeldByPreviousRelay('target-1', notFound)).resolves.toBe(false)
   })
 
-  it('marks a census complete only when it ran on a host it can enumerate', async () => {
+  it.each([
+    ['could not run', () => execCommand.mockRejectedValue(new Error('channel closed')), deployed],
+    ['had no node to probe with', () => {}, { ...deployed, nodePath: undefined }],
+    [
+      'listed more endpoints than it probes',
+      () => {
+        execCommand.mockResolvedValue(
+          Array.from({ length: 33 }, (_, i) => `/home/dev/.orca-remote/relay-${i}/r.sock`).join(
+            '\n'
+          )
+        )
+        probeRelayEndpointIncumbent.mockResolvedValue(incumbent({ verdict: 'exited' }))
+      },
+      deployed
+    ]
+  ])('holds a not-found reattach when the census %s', async (_label, arrange, input) => {
+    arrange()
+    startPreviousRelayCensus(conn, 'target-1', input)
+
+    await expect(previousRelayCensus('target-1')).resolves.toMatchObject({
+      complete: false,
+      unverifiable: true
+    })
+    await expect(isReattachHeldByPreviousRelay('target-1', notFound)).resolves.toBe(true)
+  })
+
+  it('marks a census complete only when every endpoint of an enumerable host was censused', async () => {
     await expect(previousRelayCensus('target-1')).resolves.toMatchObject({ complete: false })
 
     execCommand.mockResolvedValue('')
@@ -137,17 +165,19 @@ describe('previous relay terminals', () => {
     await expect(previousRelayCensus('target-1')).resolves.toEqual({
       endpoints: [],
       nodePath: deployed.nodePath,
-      complete: true
+      complete: true,
+      unverifiable: false
     })
+  })
 
-    startPreviousRelayCensus(conn, 'target-1', {
-      ...deployed,
-      hostPlatform: getRemoteHostPlatform('win32-x64')
-    })
-    await expect(previousRelayCensus('target-1')).resolves.toMatchObject({ complete: false })
+  it("forgets a session's census on teardown without dropping a newer deploy's", async () => {
+    execCommand.mockResolvedValue('')
+    const older = startPreviousRelayCensus(conn, 'target-1', deployed)
+    const newer = startPreviousRelayCensus(conn, 'target-1', deployed)
 
-    execCommand.mockRejectedValue(new Error('channel closed'))
-    startPreviousRelayCensus(conn, 'target-1', deployed)
+    clearPreviousRelayCensus('target-1', older)
+    await expect(previousRelayCensus('target-1')).resolves.toMatchObject({ complete: true })
+    clearPreviousRelayCensus('target-1', newer)
     await expect(previousRelayCensus('target-1')).resolves.toMatchObject({ complete: false })
   })
 })

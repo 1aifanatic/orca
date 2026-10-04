@@ -3,6 +3,7 @@ import type { SshRemotePtyLease } from '../../shared/ssh-types'
 import {
   assessOrcadMigrationTerminals,
   confirmOrcadMigrationTerminalsUnderFence,
+  retireProvenDetachedLeases,
   type ListRelayPtyIds
 } from './orcad-migration-terminal-gate'
 
@@ -40,11 +41,12 @@ describe('migration terminal gate', () => {
 
   it('proves a detached terminal exited once this relay and earlier relays both answer without it', async () => {
     const leases = store([{ ptyId: 'a', state: 'detached' }])
-    const markSshRemotePtyLease = vi.fn()
+    const proof = await assessOrcadMigrationTerminals(leases, 'ssh-1', relay([], []))
+    expect(proof).toEqual({ verdict: 'exited', provenPtyIds: ['a'] })
 
-    await expect(
-      assessOrcadMigrationTerminals({ ...leases, markSshRemotePtyLease }, 'ssh-1', relay([], []))
-    ).resolves.toEqual({ verdict: 'exited', provenPtyIds: ['a'] })
+    // Only the move acting on the proof retires the lease; asking alone changes nothing.
+    const markSshRemotePtyLease = vi.fn()
+    retireProvenDetachedLeases({ ...leases, markSshRemotePtyLease }, 'ssh-1', proof)
     expect(markSshRemotePtyLease).toHaveBeenCalledWith('ssh-1', 'a', 'terminated')
   })
 
@@ -62,16 +64,22 @@ describe('migration terminal gate', () => {
     ['this relay did not answer', relay(null, [])],
     ['earlier relays could not be asked (Windows, no census, unreachable)', relay([], null)],
     ['no earlier-relay lister', async () => []]
-  ])('keeps a detached lease unverifiable when %s', async (_label, list) => {
-    const markSshRemotePtyLease = vi.fn()
+  ])('keeps a detached or expired lease unverifiable when %s', async (_label, list) => {
+    for (const state of ['detached', 'expired'] as const) {
+      await expect(
+        assessOrcadMigrationTerminals(store([{ ptyId: 'a', state }]), 'ssh-1', list)
+      ).resolves.toMatchObject({ verdict: 'unverifiable', ptyIds: ['a'] })
+    }
+  })
+
+  it('blocks an expired terminal an earlier relay still runs as live', async () => {
     await expect(
       assessOrcadMigrationTerminals(
-        { ...store([{ ptyId: 'a', state: 'detached' }]), markSshRemotePtyLease },
+        store([{ ptyId: 'old', state: 'expired' }]),
         'ssh-1',
-        list
+        relay([], ['old'])
       )
-    ).resolves.toMatchObject({ verdict: 'unverifiable', ptyIds: ['a'] })
-    expect(markSshRemotePtyLease).not.toHaveBeenCalled()
+    ).resolves.toMatchObject({ verdict: 'live', ptyIds: ['old'] })
   })
 
   it('blocks terminals the relay still runs even with no lease for them', async () => {
@@ -95,12 +103,12 @@ describe('migration terminal gate', () => {
     ).resolves.toMatchObject({ verdict: 'unverifiable', ptyIds: ['old'] })
   })
 
-  it('accepts an expired lease once the relay answers that nothing runs', async () => {
+  it('accepts an expired lease once every relay answers that nothing runs', async () => {
     await expect(
       assessOrcadMigrationTerminals(
         store([{ ptyId: 'old', state: 'expired' }]),
         'ssh-1',
-        async () => []
+        relay([], [])
       )
     ).resolves.toEqual({ verdict: 'exited', provenPtyIds: ['old'] })
   })
