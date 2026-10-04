@@ -211,6 +211,23 @@ describe('closing or stopping a Grok chat while it starts', () => {
     expect(await rig.adapter.closeSession(SESSION)).toBe(true)
   })
 
+  it('refuses a new chat whose start never answered with why, worded like a host-stopped start', async () => {
+    const { rig, host } = await openHostRig({
+      script: (agent) => agent.on('initialize', () => {}),
+      deps: { startupTimeoutMs: 30 }
+    })
+    const attached = await host.attach(CALLER, attachParams())
+    expect(attached).toMatchObject({
+      ok: false,
+      refusal: {
+        code: 'agent_session_operation_invalid',
+        details: { reason: 'hostStopped' },
+        message: expect.stringContaining('Grok never finished starting, so Orca stopped it.')
+      }
+    })
+    expect(rig.child().exited).toBe(true)
+  })
+
   it('lets a Stop reach a child Grok never finished initializing', async () => {
     const { rig, host } = await openHostRig({
       script: (agent) => agent.on('initialize', () => {}),

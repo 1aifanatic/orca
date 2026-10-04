@@ -6,7 +6,6 @@ import {
   SESSION
 } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
 import { StructuredAgentSessionTaskQueue } from '../native-chat/agent-session-wire/structured-agent-session-task-queue'
-import { AcpStartupTimeoutError } from './acp-structured-acquire'
 import { tick } from './acp-scripted-agent.test-support'
 import {
   GROK,
@@ -270,7 +269,11 @@ describe('ACP startup that never answers', () => {
       deps: { startupTimeoutMs: 20 }
     })
     const failure = await rig.acquire().catch((error: unknown) => error)
-    expect(failure).toBeInstanceOf(AcpStartupTimeoutError)
+    expect(failure).toMatchObject({
+      name: 'AgentSessionAcquisitionRefusal',
+      reason: 'hostStopped',
+      message: 'Grok did not finish starting within 0 seconds'
+    })
     expect(rig.child().closes).toBe(1)
     await expect(rig.adapter.closeSession(SESSION)).resolves.toBe(true)
   })

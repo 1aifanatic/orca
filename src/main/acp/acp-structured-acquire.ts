@@ -288,6 +288,9 @@ export async function acquireAcpStructuredSession(input: {
         'notSignedIn'
       )
     }
+    if (error instanceof AcpStartupTimeoutError) {
+      throw new AgentSessionAcquisitionRefusal(error.message, 'hostStopped')
+    }
     throw error
   } finally {
     clearTimeout(startupDeadline)
