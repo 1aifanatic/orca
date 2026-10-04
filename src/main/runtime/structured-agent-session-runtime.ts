@@ -250,7 +250,9 @@ async function installOnJournal(
     logger: deps.logger,
     // An agent that publishes an observed exit only after its own close work drains it here.
     drainObservedExits: async () => {
-      await Promise.all(registrations.map(({ adapter }) => adapter.drainObservedExits?.()))
+      await Promise.all(
+        registrations.map(({ adapter }) => adapter.drainObservedExits?.() ?? Promise.resolve())
+      )
     }
   })
   const context: StructuredAgentAdapterContext = {
