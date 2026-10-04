@@ -715,6 +715,8 @@ describe('Windows upload on a host with no sftp subsystem', () => {
     `${capturedPowerShellMissingPwsh}\nAccess to the path 'relay.js' is denied.`,
     capturedPowerShellMissingPwsh.replaceAll('pwsh.exe', 'missing-tool.exe'),
     capturedPowerShellMissingPwsh.replace(/.*CategoryInfo.*\r?\n/, ''),
+    capturedPowerShellMissingPwsh.replace('At line:', 'pwsh.exe : Another failure.\r\nAt line:'),
+    capturedPowerShellMissingPwsh.replace('At line:', 'another.exe : Another failure.\r\nAt line:'),
     sourceDerivedLocalizedMissingPwsh.replace('cible pwsh.exe', 'cible relay-pwsh.exe.js'),
     sourceDerivedLocalizedMissingPwsh.replace('cible pwsh.exe', 'cible C:\\bin\\pwsh.exe'),
     sourceDerivedLocalizedMissingPwsh.replace('cible pwsh.exe', 'cible pwsh.exe-backup'),
@@ -774,7 +776,11 @@ describe('Windows upload on a host with no sftp subsystem', () => {
     expect(commands.some((command) => command.script.includes('::Move('))).toBe(true)
   })
 
-  it.each([sourceDerivedLocalizedMissingPwsh, sourceDerivedWrappedMissingPwsh])(
+  it.each([
+    sourceDerivedLocalizedMissingPwsh,
+    sourceDerivedWrappedMissingPwsh,
+    sourceDerivedLocalizedMissingPwsh.replace(' -NonInteractive', '\r\n -NonInteractive')
+  ])(
     'falls back on a source-derived localized or wrapped missing-pwsh record: %s',
     async (stderr) => {
       writeFileSync(join(localDir, 'relay.js'), 'x')
