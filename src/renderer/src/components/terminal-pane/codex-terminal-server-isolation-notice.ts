@@ -8,9 +8,9 @@ import { CODEX_TERMINAL_SERVER_ISOLATION_SETTINGS_TARGET_ID } from '@/lib/settin
 import { isCodexTerminalServerIsolationEnabled } from '../../../../shared/codex-terminal-server-isolation'
 import { whenCodexTerminalAppears } from './codex-terminal-presence'
 
+// Why no hydration check: the seen flag defaults to true until the persisted value arrives.
 function isNoticeDue(state: AppState): boolean {
   return (
-    state.persistedUIReady &&
     !state.codexTerminalServerIsolationNoticeSeen &&
     state.settings !== null &&
     // Why: a user who already opted out needs no announcement of the default.
