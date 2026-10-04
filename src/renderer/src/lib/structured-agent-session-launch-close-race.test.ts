@@ -177,7 +177,7 @@ describe('a close that races a structured launch', () => {
     expect(toast.error).not.toHaveBeenCalled()
   })
 
-  it('discards every coalesced prompt when a close cancels the launch', async () => {
+  it("discards a repeated request's one staged prompt when a close cancels the launch", async () => {
     const worktreeId = 'wt-close-coalesced-prompts'
     const intent = launchIntent(worktreeId)
     let resolveRefresh!: (snapshots: RuntimeMobileSessionTabsResult[]) => void
@@ -188,9 +188,9 @@ describe('a close that races a structured launch', () => {
     )
 
     startStructuredAgentLaunch(worktreeId, 'codex', { prompt: 'first prompt' })
-    startStructuredAgentLaunch(worktreeId, 'codex', { prompt: 'second prompt' })
+    startStructuredAgentLaunch(worktreeId, 'codex', { prompt: 'first prompt' })
     await vi.waitFor(() => expect(refreshLocalStructuredSessionTabs).toHaveBeenCalledOnce())
-    expect(readOutbox(intent.sessionId)).toHaveLength(2)
+    expect(readOutbox(intent.sessionId)).toHaveLength(1)
 
     expect(cancelStructuredAgentLaunch(worktreeId, intent.sessionId)).toBe(true)
     expect(readOutbox(intent.sessionId)).toEqual([])

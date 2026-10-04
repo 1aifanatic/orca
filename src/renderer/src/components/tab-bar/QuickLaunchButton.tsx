@@ -17,6 +17,8 @@ import {
 } from '../../../../shared/tui-agent-selection'
 import { translate } from '@/i18n/i18n'
 import { useStructuredAgentLaunchStatus } from '@/lib/structured-agent-session-launch'
+import { structuredLaunchRequest } from '@/lib/structured-agent-session-launch-request'
+import { newAgentPromptOutcome } from '@/lib/new-agent-prompt-outcome'
 
 export type QuickLaunchAgentMenuItemsProps = {
   worktreeId: string
@@ -37,6 +39,10 @@ export type QuickLaunchAgentMenuItemsProps = {
   launchSource?: LaunchSource
   /** Called after a prompt is queued into the agent, or immediately for argv prompt launches. */
   onPromptDelivered?: () => void
+  /** Given the launch's own delivery result while the prompt is still on its way. */
+  onPromptHandedOff?: (delivered: Promise<unknown>) => void
+  /** Nothing to send: e.g. every note is already on its way, so no agent is started. */
+  disabled?: boolean
 }
 
 function getCatalogEntry(agent: TuiAgent): { id: TuiAgent; label: string } | null {
@@ -103,7 +109,9 @@ function QuickLaunchAgentMenuItemsInner({
   prompt,
   promptDelivery,
   launchSource,
-  onPromptDelivered
+  onPromptDelivered,
+  onPromptHandedOff,
+  disabled = false
 }: QuickLaunchAgentMenuItemsProps): React.JSX.Element | null {
   // Why: resolving only the SSH connectionId here made paired-runtime
   // worktrees fall back to LOCAL detection, listing the client's agents
@@ -119,10 +127,11 @@ function QuickLaunchAgentMenuItemsInner({
   const openSettingsTarget = useAppStore((s) => s.openSettingsTarget)
   const newAgentShortcut = useOptionalShortcutLabel('tab.newAgent')
   // One hook per structured provider: the launch registry is keyed by agent, and hooks cannot run
-  // inside the agent list's render loop.
+  // inside the agent list's render loop. Only a start of this menu's own request is joined.
+  const launchRequest = structuredLaunchRequest({ prompt, promptDelivery })
   const structuredLaunchStatusByAgent = {
-    claude: useStructuredAgentLaunchStatus(worktreeId, 'claude'),
-    codex: useStructuredAgentLaunchStatus(worktreeId, 'codex')
+    claude: useStructuredAgentLaunchStatus(worktreeId, 'claude', launchRequest),
+    codex: useStructuredAgentLaunchStatus(worktreeId, 'codex', launchRequest)
   }
 
   const openAgentSettings = useCallback(() => {
@@ -132,6 +141,9 @@ function QuickLaunchAgentMenuItemsInner({
 
   const runLaunch = useCallback(
     (agent: TuiAgent) => {
+      if (disabled) {
+        return
+      }
       const entry = getCatalogEntry(agent)
       const label = entry?.label ?? agent
       const result = launchAgentInNewTab({
@@ -152,6 +164,17 @@ function QuickLaunchAgentMenuItemsInner({
           )
         )
         return
+      }
+      if (onPromptHandedOff && result.promptDeliveryResult) {
+        onPromptHandedOff(
+          newAgentPromptOutcome({
+            prompt: prompt ?? '',
+            ...(result.surface.kind === 'local-agent-session'
+              ? { sessionId: result.surface.sessionId }
+              : {}),
+            delivery: result.promptDeliveryResult
+          })
+        )
       }
       if (result.surface.kind !== 'local-terminal') {
         return
@@ -179,7 +202,17 @@ function QuickLaunchAgentMenuItemsInner({
         toast.message(getLaunchWatchdogTimeoutMessage(label))
       })
     },
-    [worktreeId, groupId, onFocusTerminal, prompt, promptDelivery, launchSource, onPromptDelivered]
+    [
+      worktreeId,
+      groupId,
+      onFocusTerminal,
+      prompt,
+      promptDelivery,
+      launchSource,
+      onPromptDelivered,
+      onPromptHandedOff,
+      disabled
+    ]
   )
 
   const enabledDetectedIds = detectedIds ? filterEnabledTuiAgents(detectedIds, disabledAgents) : []
@@ -210,7 +243,7 @@ function QuickLaunchAgentMenuItemsInner({
         return (
           <DropdownMenuItem
             key={agent}
-            disabled={isStructuredLaunchPending}
+            disabled={disabled || isStructuredLaunchPending}
             onSelect={() => runLaunch(agent)}
             className="gap-2 rounded-[7px] px-2 py-1.5 text-[12px] leading-5 font-medium"
             title={translate(

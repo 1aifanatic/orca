@@ -4,6 +4,7 @@ import type { StructuredAgentSessionOutboxEntry } from '../../../shared/structur
 import type { StructuredAgentSessionResumeSource } from '../../../shared/structured-agent-session-create'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
 import type { ExecutionHostId } from '../../../shared/execution-host'
+import type { StructuredLaunchAttempt } from './structured-agent-session-launch-request'
 
 export type StructuredAgentLaunchOptions = {
   prompt?: string
@@ -24,14 +25,18 @@ export type StructuredLaunchCaller = {
 
 export type StructuredLaunchCallerGroup = {
   outcome: 'pending' | 'published' | 'failed' | 'unknown' | 'cancelled'
+  attempt: StructuredLaunchAttempt
   entries: Set<StructuredLaunchCaller>
   promptDeliveryResults: Set<Promise<StructuredPromptDeliveryResult>>
   onSettled: () => void
 }
 
-export function createStructuredLaunchCallerGroup(): StructuredLaunchCallerGroup {
+export function createStructuredLaunchCallerGroup(
+  attempt: StructuredLaunchAttempt
+): StructuredLaunchCallerGroup {
   return {
     outcome: 'pending',
+    attempt,
     entries: new Set(),
     promptDeliveryResults: new Set(),
     onSettled: () => {}
