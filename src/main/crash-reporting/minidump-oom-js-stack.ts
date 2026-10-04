@@ -13,14 +13,28 @@ export const V8_OOM_STACK_ANNOTATION = 'v8-oom-stack'
 const MAX_FRAMES = 24
 const MAX_FRAME_LENGTH = 160
 
-// Script URLs embed the install dir (and so the OS user name); keep only the
-// bundle basename and any line:col, which release source maps resolve.
-const SCRIPT_LOCATION_PATTERN = /[^\s()]*[/\\]([^/\\\s()?#]+)(?:[?#][^\s():]*)?/g
 const ELECTRON_FRAME_PATTERN = /^#\d+ /
-const V8_FRAME_PATTERN = /^(.*?) in (\S+)$/
+const V8_FRAME_PATTERN = /^(.*?) in (.+)$/
+const QUERY_PATTERN = /[?#].*?((?::\d+){0,2})$/
 
+// Script locations embed the install dir (and so the OS user name); keep only
+// the bundle basename and any line:col, which release source maps resolve.
+// Why whole-span: preload frames are raw paths whose spaces are not escaped.
 function sanitizeFrame(frame: string): string {
-  const sanitized = frame.replace(SCRIPT_LOCATION_PATTERN, '$1')
+  const separator = frame.search(/[/\\]/)
+  let sanitized = frame
+  if (separator !== -1) {
+    const open = frame.lastIndexOf('(', separator)
+    const closed = open !== -1 && frame.endsWith(')')
+    const locationStart = open !== -1 ? open + 1 : frame.lastIndexOf(' ', separator) + 1
+    const location = frame
+      .slice(locationStart, closed ? -1 : undefined)
+      .replace(QUERY_PATTERN, '$1')
+    const basename = location.slice(
+      Math.max(location.lastIndexOf('/'), location.lastIndexOf('\\')) + 1
+    )
+    sanitized = `${frame.slice(0, locationStart)}${basename}${closed ? ')' : ''}`
+  }
   return sanitized.length > MAX_FRAME_LENGTH
     ? `${sanitized.slice(0, MAX_FRAME_LENGTH)}...`
     : sanitized

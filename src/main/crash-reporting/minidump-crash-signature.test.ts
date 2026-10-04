@@ -500,6 +500,38 @@ describe('minidumpSignatureDetails', () => {
     expect(JSON.stringify(details)).not.toMatch(/Users|PC|app\.asar|v8.oom/)
   })
 
+  it('drops a preload path whose user directory holds a space', async () => {
+    // Sandboxed preload frames carry raw, unescaped absolute paths.
+    const preload =
+      'C:\\Users\\Jane Doe\\AppData\\Local\\Programs\\orca\\resources\\app.asar\\out\\preload\\index.js'
+    const { dump } = buildDump({
+      annotations: {
+        'electron.v8-oom.stack': `#0 onEvent (${preload}:12:3)`,
+        'v8-oom-stack': `onEvent in ${preload}\n$\n`
+      }
+    })
+
+    const details = minidumpSignatureDetails((await parseMinidumpCrashSignature(dump))!)
+
+    expect(details.minidumpOomJsStack).toBe('#0 onEvent (index.js:12:3)')
+    expect(JSON.stringify(details)).not.toMatch(/Jane|Doe|Users|app\.asar/)
+  })
+
+  it('reduces V8 frames whose raw path holds a space', async () => {
+    const { dump } = buildDump({
+      annotations: {
+        'electron.v8-oom.stack': 'Heap: used=117.4MB limit=192.0MB (stack pending)',
+        'v8-oom-stack': 'onEvent in /Users/Jane Doe/orca/out/preload/index.js\n$\n'
+      }
+    })
+
+    const details = minidumpSignatureDetails((await parseMinidumpCrashSignature(dump))!)
+
+    expect(details.minidumpOomJsStack).toBe(
+      'Heap: used=117.4MB limit=192.0MB (stack pending)\nonEvent (index.js)'
+    )
+  })
+
   it('does not duplicate the fatal line into an annotation key', async () => {
     const { dump } = buildDump({ annotations: { LOG_FATAL: FATAL_LINE } })
 
