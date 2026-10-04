@@ -26,7 +26,7 @@ const IDENTITY: StructuredWorkerIdentity = {
 type Unread = PointerBatchMessage
 
 function mail(id: string, sequence: number, from = 'term_peer'): Unread {
-  return { id, type: 'status', sequence, from_handle: from, sender_pane_key: null, run_id: 'run_1' }
+  return { id, type: 'status', sequence, from_handle: from, run_id: 'run_1' }
 }
 
 type Submission = StructuredPointerFacts['submissions'][number]
@@ -62,7 +62,7 @@ function harness(options: {
   const dispatchId = options.dispatchId === undefined ? 'd1' : options.dispatchId
   let attached = options.attached ?? true
   let unread: Unread[] = [mail('m1', 3)]
-  let targetSession = IDENTITY.sessionId
+  let targetSession: string | null = IDENTITY.sessionId
   // The session's recorded sends and queue cards, as its journal reports them.
   let submissions: Submission[] = []
   let cards: StructuredPointerCard[] = []
@@ -116,7 +116,7 @@ function harness(options: {
     getDb: () => db as never,
     getMessageWaiters: () => undefined,
     resolveStructuredTarget: (mailboxHandle) =>
-      mailboxHandle === mailbox ? { sessionId: targetSession, dispatchId } : null,
+      mailboxHandle === mailbox && targetSession ? { sessionId: targetSession, dispatchId } : null,
     getCliCommand: () => 'orca-dev',
     host,
     onRetain
@@ -127,8 +127,8 @@ function harness(options: {
     send,
     onRetain,
     stored,
-    /** A /clear: the mailbox now reaches the conversation's successor. */
-    moveTarget: (sessionId: string) => {
+    /** A /clear moves the mailbox to the successor; settling the worker (abandon) to none. */
+    moveTarget: (sessionId: string | null) => {
       targetSession = sessionId
     },
     attach: () => {
@@ -527,6 +527,26 @@ describe("a pointer to a busy chat waits in the chat's own queue", () => {
     expect(h.send).toHaveBeenCalledTimes(2)
   })
 
+  it('waits on a card the provider refused (the host withdrew it) until a later turn ran', async () => {
+    const h = harness({ busy: true })
+    const card = await queuedCard(h)
+    h.setCards([noticeCard(card, 'withdrawn')])
+    h.setSubmissions([handedOff(card, 'rejected')])
+    h.delivery.onJournalActivity('session-1')
+    await flush()
+    expect(h.send).toHaveBeenCalledTimes(1)
+    expect(h.onRetain).toHaveBeenLastCalledWith(
+      expect.objectContaining({ reason: 'dispatch-rejected' })
+    )
+    h.setSubmissions([
+      handedOff(card, 'rejected'),
+      { clientMessageId: 'user-turn', dispatchState: 'accepted', submittedAt: Date.now() + 5 }
+    ])
+    h.delivery.onJournalActivity('session-1')
+    await flush()
+    expect(h.send).toHaveBeenCalledTimes(2)
+  })
+
   it('waits on a hand-off of unknown fate until a later turn shows it did not land', async () => {
     const h = harness({ busy: true })
     const card = await queuedCard(h)
@@ -598,7 +618,6 @@ describe('the queue judges a notice again as it sends', () => {
             party: {
               address: 'term_other',
               terminalHandle: 'term_other',
-              paneKey: null,
               orcaSessionId: null
             }
           }
@@ -611,6 +630,14 @@ describe('the queue judges a notice again as it sends', () => {
           messageIds: ['m2', 'm3']
         }
       }
+    })
+  })
+
+  it('withdraws a notice for a dispatch whose worker was released (abandoned), mail still unread', () => {
+    const h = harness({})
+    h.moveTarget(null)
+    expect(h.delivery.judgeQueuedCard({ sessionId: 'session-1', source: SOURCE })).toEqual({
+      kind: 'withdraw'
     })
   })
 

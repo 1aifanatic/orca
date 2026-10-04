@@ -26,7 +26,7 @@ export const SEND_AS_WRITTEN: QueuedAgentCardVerdict = { kind: 'send' }
 
 /** A person's card sends as written. A judge that fails answers the same: bookkeeping never holds
  *  the queue. */
-export function judgeQueuedCard(
+function judgeQueuedCard(
   judge: QueuedAgentCardJudge,
   input: {
     sessionId: string
@@ -53,7 +53,7 @@ export function judgeQueuedCard(
 
 /** The consume's restatement for a `restate` verdict, fingerprinted for the session sending it
  *  exactly as `queuedMessageFingerprint` does. */
-export function queuedCardRestatement(
+function queuedCardRestatement(
   sessionId: string,
   verdict: QueuedAgentCardVerdict
 ): QueuedMessageRestatement | undefined {

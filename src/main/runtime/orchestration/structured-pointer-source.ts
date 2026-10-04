@@ -8,7 +8,6 @@
  */
 
 import { parseOrcaSessionAddress } from '../../../shared/orca-session-address'
-import type { OrchestrationPartyIdentity } from '../../../shared/orchestration-party-identity'
 import type {
   AgentMessageSource,
   AgentMessageSender
@@ -18,7 +17,7 @@ import { resolveOrchestrationParty } from './orchestration-party'
 
 export type PointerBatchMessage = Pick<
   MessageRow,
-  'id' | 'type' | 'sequence' | 'from_handle' | 'sender_pane_key' | 'run_id'
+  'id' | 'type' | 'sequence' | 'from_handle' | 'run_id'
 >
 
 export function structuredPointerSource(input: {
@@ -46,23 +45,16 @@ export function structuredPointerSource(input: {
   }
 }
 
-/** The pane the row recorded at send time is the sender's; the live lookup only fills gaps. */
 function senderParty(
   message: PointerBatchMessage,
   db: OrchestrationDb | null
-): OrchestrationPartyIdentity {
+): AgentMessageSender['party'] {
   const address = message.from_handle
-  let party: OrchestrationPartyIdentity
   try {
-    party = resolveOrchestrationParty(address, db)
+    const { paneKey: _credential, ...party } = resolveOrchestrationParty(address, db)
+    return party
   } catch {
     // A worker this host lost the identity of: what the address itself says.
-    party = {
-      address,
-      terminalHandle: null,
-      paneKey: null,
-      orcaSessionId: parseOrcaSessionAddress(address)
-    }
+    return { address, terminalHandle: null, orcaSessionId: parseOrcaSessionAddress(address) }
   }
-  return { ...party, paneKey: message.sender_pane_key ?? party.paneKey }
 }

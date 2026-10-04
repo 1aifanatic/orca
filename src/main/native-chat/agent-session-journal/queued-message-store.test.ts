@@ -184,7 +184,6 @@ describe('draft rows', () => {
           party: {
             address: 'structworker_1',
             terminalHandle: 'structworker_1',
-            paneKey: 'tab:leaf',
             orcaSessionId: null
           }
         }

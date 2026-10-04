@@ -35,8 +35,8 @@ export type MailboxNoticeCards = {
   ids: ReadonlySet<string>
   /** One still waits (or came back to the person): the queue, or the person, owes its send. */
   waiting: boolean
-  /** A hand-off not settled yet: in flight, or of unknown fate with no turn run since. */
-  unsettled: 'send-unsettled' | 'dispatch-unknown' | null
+  /** A hand-off not settled yet: in flight; or refused, or of unknown fate, with no turn run since. */
+  unsettled: 'send-unsettled' | 'dispatch-unknown' | 'dispatch-rejected' | null
   /** Mail a notice already pointed at: handed off and accepted, or declined by the person. */
   pointed: ReadonlySet<string>
 }
@@ -56,32 +56,34 @@ export function readMailboxNoticeCards(
     }
     ids.add(card.messageId)
     const pointedAt = card.notice.messageIds
+    const handOff = facts.submissions.findLast((entry) => entry.queuedMessageId === card.messageId)
+    // A send that failed or is in doubt is retried only once a later turn shows the agent can run.
+    const awaitsTurn =
+      pointedAt.some((id) => owed.includes(id)) &&
+      !facts.submissions.some(
+        (entry) =>
+          entry.dispatchState === 'accepted' &&
+          handOff !== undefined &&
+          entry.submittedAt > handOff.submittedAt
+      )
     if (card.state === 'waiting' || card.state === 'returned') {
       waiting = true
     } else if (card.state === 'withdrawn') {
-      // The host's own withdrawal (it owed nothing, or moved it) declines nothing.
       if (card.withdrawnByRequest) {
         pointedAt.forEach((id) => pointed.add(id))
+      } else if (handOff?.dispatchState === 'rejected' && awaitsTurn) {
+        // The host withdrew a card the provider refused, which no one could act on.
+        unsettled ??= 'dispatch-rejected'
       }
-    } else {
-      const handOff = facts.submissions.findLast(
-        (entry) => entry.queuedMessageId === card.messageId
-      )
-      if (handOff?.dispatchState === 'accepted') {
-        pointedAt.forEach((id) => pointed.add(id))
-      } else if (handOff?.dispatchState === 'pending' || handOff?.dispatchState === 'rejected') {
-        // A refusal is settled back onto the card by the host; that write is the next edge.
-        unsettled = 'send-unsettled'
-      } else if (
-        handOff?.dispatchState === 'unknown' &&
-        pointedAt.some((id) => owed.includes(id)) &&
-        !facts.submissions.some(
-          (entry) => entry.dispatchState === 'accepted' && entry.submittedAt > handOff.submittedAt
-        )
-      ) {
-        // It may sit in the provider's input already; only a turn run since says it did not land.
-        unsettled ??= 'dispatch-unknown'
-      }
+      // Any other host withdrawal (it owed nothing, or was moved) declines nothing.
+    } else if (handOff?.dispatchState === 'accepted') {
+      pointedAt.forEach((id) => pointed.add(id))
+    } else if (handOff?.dispatchState === 'pending' || handOff?.dispatchState === 'rejected') {
+      // A refusal is settled back onto the card by the host; that write is the next edge.
+      unsettled = 'send-unsettled'
+    } else if (handOff?.dispatchState === 'unknown' && awaitsTurn) {
+      // It may sit in the provider's input already.
+      unsettled ??= 'dispatch-unknown'
     }
   }
   return { ids, waiting, unsettled, pointed }

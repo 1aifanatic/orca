@@ -29,7 +29,6 @@ const MAIL_SOURCE: AgentMessageSource = {
       party: {
         address: 'term_peer',
         terminalHandle: 'term_peer',
-        paneKey: null,
         orcaSessionId: null
       }
     }
@@ -75,11 +74,12 @@ describe('sendAgentTurn through the real host', () => {
       kind: 'queued',
       queued: { position: 1, state: 'waiting' }
     })
-    expect(await rig.drafts()).toMatchObject([{ state: 'waiting' }])
     // Stored with the card, read back whole: who it speaks for survives the round trip.
-    expect((await rig.host.queuedMessageRows(SESSION)).map((row) => row.source)).toEqual([
-      MAIL_SOURCE
-    ])
+    expect(
+      (await rig.host.queuedMessageRows(SESSION)).map(({ state, source }) => ({ state, source }))
+    ).toEqual([{ state: 'waiting', source: MAIL_SOURCE }])
+    // A mail notice is not shown in the chat's queue.
+    expect(await rig.drafts()).toEqual([])
   })
 
   it('replays a retried `queue` send instead of refusing it', async () => {
@@ -87,7 +87,7 @@ describe('sendAgentTurn through the real host', () => {
     const operationId = hostTestOperationId()
     const first = await sendTurn('queue', operationId)
     await expect(sendTurn('queue', operationId)).resolves.toEqual(first)
-    expect(await rig.drafts()).toHaveLength(1)
+    expect(await rig.host.queuedMessageRows(SESSION)).toHaveLength(1)
   })
 
   it('waits on the hand-off when a retried `queue` turn was already sent from the queue', async () => {
@@ -154,7 +154,7 @@ describe('sendAgentTurn through the real host', () => {
       kind: 'sent',
       submission: { dispatchState: 'accepted' }
     })
-    expect(await rig.drafts()).toEqual([])
+    expect(await rig.host.queuedMessageRows(SESSION)).toEqual([])
   })
 
   it('has a `now` send join the running turn, never the queue', async () => {
@@ -163,6 +163,6 @@ describe('sendAgentTurn through the real host', () => {
       kind: 'sent',
       submission: { dispatchState: 'accepted' }
     })
-    expect(await rig.drafts()).toEqual([])
+    expect(await rig.host.queuedMessageRows(SESSION)).toEqual([])
   })
 })

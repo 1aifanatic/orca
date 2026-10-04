@@ -13,21 +13,20 @@ function mail(
     type: 'status',
     sequence: 1,
     from_handle: from,
-    sender_pane_key: null,
     run_id: 'r1',
     ...overrides
   }
 }
 
 describe('who a mail notice speaks for', () => {
-  it('names each sender once, in mail order, with the pane the mail recorded and the records it counts', () => {
+  it('names each sender once, in mail order, without the pane key that would open its mailbox, and the records it counts', () => {
     const source = structuredPointerSource({
       // No database: a terminal handle and a session address name their party by themselves.
       db: null,
       mailboxHandle: 'run:r1',
       dispatchId: null,
       batch: [
-        mail('m1', 'term_a', { sender_pane_key: 'tab_a:leaf' }),
+        mail('m1', 'term_a'),
         mail('m2', `orca_session_id:${SESSION}`, { run_id: 'r2' }),
         mail('m3', 'term_a')
       ]
@@ -39,7 +38,6 @@ describe('who a mail notice speaks for', () => {
           party: {
             address: 'term_a',
             terminalHandle: 'term_a',
-            paneKey: 'tab_a:leaf',
             orcaSessionId: null
           }
         },
@@ -47,7 +45,6 @@ describe('who a mail notice speaks for', () => {
           party: {
             address: `orca_session_id:${SESSION}`,
             terminalHandle: null,
-            paneKey: null,
             orcaSessionId: SESSION
           }
         }

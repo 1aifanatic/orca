@@ -53,6 +53,18 @@ export function queuePausesHold(source: AgentSessionMessageSource): boolean {
   }
 }
 
+/** Whether the person sees a card in the queue. Orca's mail notice is a transient pointer every
+ *  orchestration flow passes through, so it is not shown until its sender can be labelled. */
+export function queueShowsCard(source: AgentSessionMessageSource): boolean {
+  if (source.kind === 'user') {
+    return true
+  }
+  switch (source.orchestration.message) {
+    case 'mail-notice':
+      return false
+  }
+}
+
 export function createJournalQueuePauseMarks(): JournalQueuePauseMarks {
   return { latestStop: null, resumedSequence: 0 }
 }
@@ -209,7 +221,8 @@ export function nextSendableQueuedCard<T extends QueueCard>(
 
 /** The pause to PUBLISH: the one holding the first card Resume would send, not behind a returned
  *  card, which blocks everything after it until the user acts. None otherwise, so its header
- *  never offers a Resume that sends nothing. */
+ *  never offers a Resume that sends nothing. A card the person cannot see is never held, and the
+ *  host never returns one to them, so it never names the pause. */
 export function resumableQueuePause(
   pauses: readonly DerivedQueuePause[],
   cards: readonly QueueCard[]

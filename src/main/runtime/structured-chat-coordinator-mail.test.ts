@@ -38,7 +38,7 @@ import {
   WAIT,
   POINTER,
   ptyPointer,
-  queuedCardTexts,
+  waitingCardTexts,
   turnText,
   restartRuntime,
   clearChat
@@ -414,7 +414,7 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     const pointer = formatMessagePointer(2, `run:${runId}`, localOrchestrationCliCommand()).trim()
     // The doubted send still reads as work in flight, so the pointer waits in the chat's queue.
     await vi.waitFor(
-      async () => expect(await queuedCardTexts(COORDINATOR)).toEqual([pointer]),
+      async () => expect(await waitingCardTexts(COORDINATOR)).toEqual([pointer]),
       WAIT
     )
     expect(chat.turns).toHaveLength(0)

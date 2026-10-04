@@ -1,6 +1,6 @@
-// An agent's card in a chat's queue, on the real host: no pause holds it or traps it behind a
-// person's held card, and its sender judges it again in the drain's own step, so it goes out as
-// written, restated, or not at all.
+// An agent's card in a chat's queue, on the real host: not shown to the person, no pause holds it or
+// traps it behind a person's held card, and its sender judges it again in the drain's own step, so
+// it goes out as written, restated, or not at all.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
@@ -65,6 +65,37 @@ async function sentText(draftId: string): Promise<string> {
   return block?.type === 'text' ? block.text : ''
 }
 
+describe("the person does not see Orca's mail notice", () => {
+  it("leaves it out of the published queue and its pause header; the person's card beside it shows", async () => {
+    rig = await createQueuedMessageTestRig()
+    const working = await rig.workingSend()
+    const agentCard = await queued(NOTICE, mailNotice(['m1']))
+    const personCard = await queued('typed by the person')
+    expect(await rig.drafts()).toEqual([{ messageId: personCard, state: 'waiting' }])
+    await rig.restartHostProcess()
+    expect(await rig.drafts()).toEqual([{ messageId: personCard, state: 'waiting' }])
+    expect(await rig.queuePause()).toEqual({ reason: 'restarted' })
+    await rig.settleAccepted(working, 'a')
+    await eventually(async () => expect(await rig.handoff(agentCard)).toBeDefined())
+    expect(await row(agentCard)).toMatchObject({ state: 'dispatched' })
+  })
+
+  it("withdraws one the provider refused, which no one could act on, and the person's card behind it sends", async () => {
+    rig = await createQueuedMessageTestRig()
+    const working = await rig.workingSend()
+    const agentCard = await queued(NOTICE, mailNotice(['m1']))
+    const personCard = await queued('typed by the person')
+    await rig.settleAccepted(working, 'a')
+    await eventually(async () => expect(await rig.handoff(agentCard)).toBeDefined())
+    await rig.settleRejected(await rig.handoffId(agentCard), 'The provider is unavailable.')
+    await eventually(async () =>
+      expect(await row(agentCard)).toMatchObject({ state: 'withdrawn', settledByOp: null })
+    )
+    await eventually(async () => expect(await rig.handoff(personCard)).toBeDefined())
+    expect(await rig.drafts()).toEqual([])
+  })
+})
+
 describe("no pause holds an agent's card", () => {
   it("after a restart, an agent's card behind a person's paused card still sends", async () => {
     rig = await createQueuedMessageTestRig()
@@ -106,7 +137,11 @@ describe('one card per agent message', () => {
     }
     const second = await queued(NOTICE, other)
     expect(second).not.toBe(first)
-    expect((await rig.drafts()).map((draft) => draft.messageId)).toEqual([first, second])
+    expect(
+      (await rig.host.queuedMessageRows(SESSION))
+        .filter((each) => each.state === 'waiting')
+        .map((each) => each.messageId)
+    ).toEqual([first, second])
   })
 })
 
@@ -171,22 +206,6 @@ describe("the drain judges an agent's card as it sends", () => {
     await eventually(async () => expect(await rig.handoff(personCard)).toBeDefined())
     expect(judge).not.toHaveBeenCalled()
   })
-
-  it("Send-now on an agent's card sends what it says now, and never withdraws it from under the person", async () => {
-    const restated = hostTestMessage('You have 2 orchestration messages.')
-    let verdict: ReturnType<QueuedAgentCardJudge> = { kind: 'withdraw' }
-    rig = await createQueuedMessageTestRig({ judgeQueuedAgentCard: () => verdict })
-    await rig.workingSend()
-    const stale = await queued(NOTICE, mailNotice(['m1']))
-    expect(await rig.sendNow(stale)).toMatchObject({ ok: true, value: { submission: {} } })
-    expect(await sentText(stale)).toBe(NOTICE)
-
-    verdict = { kind: 'restate', body: restated, source: mailNotice(['m1', 'm2']) }
-    const grown = await queued(NOTICE, mailNotice(['m1']))
-    expect(await rig.sendNow(grown)).toMatchObject({ ok: true })
-    expect(await sentText(grown)).toBe('You have 2 orchestration messages.')
-    expect(await row(grown)).toMatchObject({ source: mailNotice(['m1', 'm2']) })
-  })
 })
 
 describe('/clear and an agent card', () => {
@@ -204,11 +223,7 @@ describe('/clear and an agent card', () => {
     await rig.stop()
     await rig.settleAccepted(working, 'a')
     await eventually(async () =>
-      expect(await rig.drafts()).toContainEqual({
-        messageId: agentCard,
-        state: 'waiting',
-        paused: true
-      })
+      expect(await row(agentCard)).toMatchObject({ state: 'waiting', holdReason: 'send_failed' })
     )
     append.mockRestore()
     const fields = { command: 'clear' as const }

@@ -41,16 +41,6 @@ import {
   structuredAgentSessionSendBlock
 } from './structured-agent-session-send-preparation'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
-import {
-  judgeQueuedCard,
-  queuedCardRestatement,
-  SEND_AS_WRITTEN,
-  type QueuedAgentCardJudge
-} from './structured-agent-session-queued-agent-card'
-
-function judgeAgentCard(context: StructuredAgentSessionMutationContext): QueuedAgentCardJudge {
-  return (input) => context.deps.judgeQueuedAgentCard?.(input) ?? SEND_AS_WRITTEN
-}
 
 function invalid(message: string): {
   ok: false
@@ -226,23 +216,14 @@ export function sendQueuedStructuredAgentMessage(
           : invalid('This queued message was already sent.')
       }
       const submissionId = operationId
-      // An agent's card says what is owed now; a person's explicit send is never withdrawn under them.
-      const restated = queuedCardRestatement(
-        ctx.sessionId,
-        judgeQueuedCard(judgeAgentCard(context), {
-          sessionId: ctx.sessionId,
-          row,
-          logger: ctx.logger
-        })
-      )
       try {
         await ctx.journal.appendSubmission(
           {
             clientMessageId: submissionId,
             // The person asked for this turn, so it ends a Stop's pause once it starts.
             origin: 'client',
-            payloadFingerprint: restated?.fingerprint ?? row.fingerprint,
-            body: restated?.body ?? row.body,
+            payloadFingerprint: row.fingerprint,
+            body: row.body,
             fence: ctx.fence,
             handoverRecorded: true
           },
@@ -250,8 +231,7 @@ export function sendQueuedStructuredAgentMessage(
             messageId,
             expect: row.state,
             settledByOp: agentSessionOperationKey(ctx.resolvedBy, operationId),
-            hostInstance: structuredAgentSessionHostInstance(),
-            ...(restated ? { restated } : {})
+            hostInstance: structuredAgentSessionHostInstance()
           }
         )
       } catch (error) {

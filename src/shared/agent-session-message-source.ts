@@ -8,9 +8,10 @@ import type { OrchestrationPartyIdentity } from './orchestration-party-identity'
 
 /**
  * One agent a message speaks for, named by the orchestration database of the host that stores the
- * message: the only host whose agents can send today. A relayed sender adds its host here.
+ * message: the only host whose agents can send today. A relayed sender adds its host here. No pane
+ * key: it reads and consumes that agent's mailbox, so the host resolves it from the handle.
  */
-export type AgentMessageSender = Readonly<{ party: OrchestrationPartyIdentity }>
+export type AgentMessageSender = Readonly<{ party: Omit<OrchestrationPartyIdentity, 'paneKey'> }>
 
 /** The notice that orchestration mail is waiting, and the records it stands for while they exist. */
 export type OrchestrationMailNotice = Readonly<{
@@ -72,7 +73,6 @@ const storedSourceSchema = z.discriminatedUnion('kind', [
         party: z.object({
           address: z.string(),
           terminalHandle: z.string().nullable(),
-          paneKey: z.string().nullable(),
           orcaSessionId: orcaSessionIdSchema.nullable()
         })
       })

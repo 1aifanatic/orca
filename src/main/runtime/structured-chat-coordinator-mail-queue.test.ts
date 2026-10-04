@@ -1,7 +1,7 @@
 // Mail for a busy structured chat waits in the chat's own queue, the one a person's message waits
-// in: a card the person sees, which the queue sends when the turn ends counting the mail owed then,
-// or withdraws unsent when none is, and which is not queued again once the person deleted it. End
-// to end on the coordinator-mail rig.
+// in: a card, not shown until it can say who it is from, which the queue sends when the turn ends
+// counting the mail owed then, or withdraws unsent when none is. End to end on the coordinator-mail
+// rig.
 
 import { describe, expect, it, vi } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
@@ -23,6 +23,7 @@ import {
   POINTER,
   ptyPointer,
   queuedCardTexts,
+  waitingCardTexts,
   turnText,
   clearChat,
   connectionFor
@@ -88,10 +89,12 @@ describe("mail for a busy coordinator chat waits in the chat's queue", () => {
     // Not folded into the running turn: the person sees it waiting, like their own next message.
     await vi.waitFor(
       async () =>
-        expect(await queuedCardTexts(COORDINATOR)).toEqual([expect.stringMatching(POINTER)]),
+        expect(await waitingCardTexts(COORDINATOR)).toEqual([expect.stringMatching(POINTER)]),
       WAIT
     )
     expect(chat.turns).toHaveLength(1)
+    // Not shown in the chat's queue until it can say who it is from.
+    expect(await queuedCardTexts(COORDINATOR)).toEqual([])
     // The card records who it speaks for: the worker that sent the mail, and the Run it belongs to.
     const [card] = await host.queuedMessageRows(COORDINATOR)
     expect(card?.source).toMatchObject({
@@ -107,7 +110,7 @@ describe("mail for a busy coordinator chat waits in the chat's queue", () => {
     await endTurn()
     await vi.waitFor(() => expect(chat.turns).toHaveLength(2), WAIT)
     expect(turnText(chat.turns[1]!)).toBe(ptyPointer(`run:${runId}`))
-    expect(await queuedCardTexts(COORDINATOR)).toEqual([])
+    expect(await waitingCardTexts(COORDINATOR)).toEqual([])
     await settleTurn(COORDINATOR, 1)
     await vi.waitFor(
       () => expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toEqual([]),
@@ -122,15 +125,15 @@ describe("mail for a busy coordinator chat waits in the chat's queue", () => {
     const { taskId } = await coordinatorRunAndTask()
     const endTurn = await runningUserTurn(chat)
     await finishWorker(taskId)
-    await vi.waitFor(async () => expect(await queuedCardTexts(COORDINATOR)).toHaveLength(1), WAIT)
+    await vi.waitFor(async () => expect(await waitingCardTexts(COORDINATOR)).toHaveLength(1), WAIT)
 
     expect(await call('orchestration.check', {}, { sessionId: COORDINATOR })).toMatchObject({
       count: 1
     })
     // The check answers without touching the chat's queue; the card is judged when it would send.
-    expect(await queuedCardTexts(COORDINATOR)).toHaveLength(1)
+    expect(await waitingCardTexts(COORDINATOR)).toHaveLength(1)
     await endTurn()
-    await vi.waitFor(async () => expect(await queuedCardTexts(COORDINATOR)).toEqual([]), WAIT)
+    await vi.waitFor(async () => expect(await waitingCardTexts(COORDINATOR)).toEqual([]), WAIT)
     await idleEdgesSettled()
     expect(chat.turns).toHaveLength(1)
   })
@@ -145,7 +148,7 @@ describe("mail for a busy coordinator chat waits in the chat's queue", () => {
     )
     const endTurn = await runningUserTurn(chat)
     await finishWorker(taskId)
-    await vi.waitFor(async () => expect(await queuedCardTexts(COORDINATOR)).toHaveLength(1), WAIT)
+    await vi.waitFor(async () => expect(await waitingCardTexts(COORDINATOR)).toHaveLength(1), WAIT)
     const [card] = await host.queuedMessageRows(COORDINATOR)
     await finishWorker(idOf(second.task), { handle: 'term_worker_2', paneKey: WORKER_2_PANE })
     await idleEdgesSettled()
@@ -184,7 +187,7 @@ describe("mail for a busy coordinator chat waits in the chat's queue", () => {
     )
     const endTurn = await runningUserTurn(chat)
     await finishWorker(taskId)
-    await vi.waitFor(async () => expect(await queuedCardTexts(COORDINATOR)).toHaveLength(1), WAIT)
+    await vi.waitFor(async () => expect(await waitingCardTexts(COORDINATOR)).toHaveLength(1), WAIT)
     expect(await stopChat()).toMatchObject({ ok: true })
     await endTurn()
     // An unattended agent is not left without its mail: a person's Stop holds only their cards.
@@ -204,7 +207,7 @@ describe("mail for a busy coordinator chat waits in the chat's queue", () => {
     const { taskId } = await coordinatorRunAndTask()
     const endTurn = await runningUserTurn(chat)
     await finishWorker(taskId)
-    await vi.waitFor(async () => expect(await queuedCardTexts(COORDINATOR)).toHaveLength(1), WAIT)
+    await vi.waitFor(async () => expect(await waitingCardTexts(COORDINATOR)).toHaveLength(1), WAIT)
     expect(await stopChat()).toMatchObject({ ok: true })
     await endTurn()
     await vi.waitFor(() => expect(chat.turns).toHaveLength(2), WAIT)
@@ -215,14 +218,14 @@ describe("mail for a busy coordinator chat waits in the chat's queue", () => {
     })
 
     const successor = await clearChat(COORDINATOR)
-    expect(await queuedCardTexts(successor)).toEqual([])
+    expect(await waitingCardTexts(successor)).toEqual([])
     expect(await sendUserMessage(successor, 'hello')).toMatchObject({ ok: true })
     await vi.waitFor(() => expect(connectionFor(successor).turns).toHaveLength(1), WAIT)
     await settleTurn(successor, 0)
     runtime.onStructuredSessionStatusForMail({ sessionId: successor, status: 'idle' })
     await new Promise((resolve) => setTimeout(resolve, 300))
     expect(connectionFor(successor).turns.map(turnText)).toEqual(['hello'])
-    expect(await queuedCardTexts(successor)).toEqual([])
+    expect(await waitingCardTexts(successor)).toEqual([])
   })
 
   it('/clear moves a card still waiting: it sends once in the new conversation, and no second notice follows', async () => {
@@ -230,7 +233,7 @@ describe("mail for a busy coordinator chat waits in the chat's queue", () => {
     const { runId, taskId } = await coordinatorRunAndTask()
     const endTurn = await runningUserTurn(chat)
     await finishWorker(taskId)
-    await vi.waitFor(async () => expect(await queuedCardTexts(COORDINATOR)).toHaveLength(1), WAIT)
+    await vi.waitFor(async () => expect(await waitingCardTexts(COORDINATOR)).toHaveLength(1), WAIT)
     // Its conversion fails once, so the card is still waiting when the person clears the chat.
     const journal = host.collaboratorsForTests().sessions.get(COORDINATOR)!.journal
     const append = vi
@@ -239,7 +242,7 @@ describe("mail for a busy coordinator chat waits in the chat's queue", () => {
     await endTurn()
     await vi.waitFor(() => expect(append).toHaveBeenCalled(), WAIT)
     append.mockRestore()
-    expect(await queuedCardTexts(COORDINATOR)).toHaveLength(1)
+    expect(await waitingCardTexts(COORDINATOR)).toHaveLength(1)
 
     const successor = await clearChat(COORDINATOR)
     await vi.waitFor(() => expect(connectionFor(successor).turns).toHaveLength(1), WAIT)
@@ -258,7 +261,7 @@ describe("mail for a busy coordinator chat waits in the chat's queue", () => {
       ptyPointer(`run:${runId}`),
       'hello'
     ])
-    expect(await queuedCardTexts(successor)).toEqual([])
+    expect(await waitingCardTexts(successor)).toEqual([])
     expect(chat.turns).toHaveLength(1)
   })
 
@@ -267,12 +270,12 @@ describe("mail for a busy coordinator chat waits in the chat's queue", () => {
     const { taskId } = await coordinatorRunAndTask()
     const endTurn = await runningUserTurn(chat)
     await finishWorker(taskId)
-    await vi.waitFor(async () => expect(await queuedCardTexts(COORDINATOR)).toHaveLength(1), WAIT)
+    await vi.waitFor(async () => expect(await waitingCardTexts(COORDINATOR)).toHaveLength(1), WAIT)
     expect(await call('orchestration.reset', { messages: true })).toMatchObject({
       reset: 'messages'
     })
     await endTurn()
-    await vi.waitFor(async () => expect(await queuedCardTexts(COORDINATOR)).toEqual([]), WAIT)
+    await vi.waitFor(async () => expect(await waitingCardTexts(COORDINATOR)).toEqual([]), WAIT)
     await idleEdgesSettled()
     expect(chat.turns).toHaveLength(1)
   })
@@ -287,9 +290,9 @@ describe("mail for a busy coordinator chat waits in the chat's queue", () => {
     )
     const endTurn = await runningUserTurn(chat)
     await finishWorker(taskId)
-    await vi.waitFor(async () => expect(await queuedCardTexts(COORDINATOR)).toHaveLength(1), WAIT)
-    const page = await host.history({ sessionId: COORDINATOR, direction: 'tail' })
-    const card = page.ok ? page.page.queuedMessages?.[0]?.messageId : undefined
+    await vi.waitFor(async () => expect(await waitingCardTexts(COORDINATOR)).toHaveLength(1), WAIT)
+    // The Delete a labelled card will offer; hidden for now, so its id comes from the host.
+    const card = (await host.queuedMessageRows(COORDINATOR))[0]?.messageId
     expect(card).toBeDefined()
 
     const deleted = await host.queuedMessageDelete(
@@ -316,7 +319,7 @@ describe("mail for a busy coordinator chat waits in the chat's queue", () => {
     await settleTurn(COORDINATOR, 1)
     await idleEdgesSettled()
     expect(chat.turns).toHaveLength(2)
-    expect(await queuedCardTexts(COORDINATOR)).toEqual([])
+    expect(await waitingCardTexts(COORDINATOR)).toEqual([])
 
     await finishWorker(idOf(second.task), { handle: 'term_worker_2', paneKey: WORKER_2_PANE })
     await vi.waitFor(() => expect(chat.turns).toHaveLength(3), WAIT)

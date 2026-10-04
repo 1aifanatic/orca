@@ -12,6 +12,7 @@ import {
 } from './journal-dispatch-settlement'
 import type { JournalReducerState } from './journal-reducer'
 import type { JournalRow } from './journal-row-schema'
+import { queueShowsCard } from './queued-message-pause'
 import { draftDeliveredByEcho, draftsDeliveredByAppliedEcho } from './queued-message-delivered-echo'
 import {
   listQueuedMessages,
@@ -21,6 +22,29 @@ import {
 } from './queued-message-table'
 
 type Submissions = ReadonlyMap<string, AgentJournalSubmission>
+
+/** `settleRejectedQueuedMessage`, except that a card the person cannot see is never returned to
+ *  them: the host withdraws it, and whoever queued it re-derives it. */
+function settleRefusedQueuedMessage(
+  db: Database.Database,
+  input: Parameters<typeof settleRejectedQueuedMessage>[1]
+): boolean {
+  if (!settleRejectedQueuedMessage(db, input)) {
+    return false
+  }
+  const returned = listQueuedMessages(db, input.sessionId).find(
+    (row) => row.consumedAs === input.consumedRef && row.state === 'returned'
+  )
+  if (returned && !queueShowsCard(returned.source)) {
+    withdrawQueuedMessages(db, {
+      sessionId: input.sessionId,
+      messageIds: [returned.messageId],
+      settledByOp: null,
+      now: input.now
+    })
+  }
+  return true
+}
 
 /** Some dispatched draft still waits on a settlement the journal already decided. */
 export function queuedMessageSettlementOwed(
@@ -53,7 +77,7 @@ export function settleOwedQueuedMessages(
     ) {
       continue
     }
-    const changed = settleRejectedQueuedMessage(db, {
+    const changed = settleRefusedQueuedMessage(db, {
       sessionId: input.sessionId,
       consumedRef,
       reason: submission?.reason ?? null,
@@ -116,7 +140,7 @@ export function settleQueuedMessagesForRow(
   if (!journalDispatchRowNewlyRejects(input.state.submissions.get(row.clientMessageId), row)) {
     return changed
   }
-  const settled = settleRejectedQueuedMessage(db, {
+  const settled = settleRefusedQueuedMessage(db, {
     sessionId: input.sessionId,
     consumedRef: row.clientMessageId,
     reason: row.reason,

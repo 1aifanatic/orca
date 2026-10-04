@@ -159,7 +159,7 @@ export async function userTexts(sessionId: string): Promise<string[]> {
   )
 }
 
-/** The text of every card waiting in the chat's own queue, as the chat lists them. */
+/** The text of every card the chat lists in its queue: a mail notice is not one of them. */
 export async function queuedCardTexts(sessionId: string): Promise<string[]> {
   const page = await host.history({ sessionId, direction: 'tail' })
   if (!page.ok) {
@@ -168,6 +168,13 @@ export async function queuedCardTexts(sessionId: string): Promise<string[]> {
   return (page.page.queuedMessages ?? []).flatMap((card) =>
     card.body.blocks.map((block) => (block.type === 'text' ? block.text : ''))
   )
+}
+
+/** The text of every card waiting in the chat's own queue, shown or not. */
+export async function waitingCardTexts(sessionId: string): Promise<string[]> {
+  return (await host.queuedMessageRows(sessionId))
+    .filter((row) => row.state === 'waiting')
+    .flatMap((row) => row.body.blocks.map((block) => (block.type === 'text' ? block.text : '')))
 }
 
 /** `/clear` as the chat surface runs it: the conversation continues in a new session. */
