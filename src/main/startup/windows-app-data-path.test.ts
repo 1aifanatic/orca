@@ -11,7 +11,10 @@ import {
 
 const ERROR_MESSAGE = /could not find the Windows roaming AppData folder/
 
-function createHost(nativeAppData: string | Error): WindowsAppDataPathHost & {
+function createHost(
+  nativeAppData: string | Error,
+  switches: string[] = []
+): WindowsAppDataPathHost & {
   calls: string[]
   paths: Map<string, string>
 } {
@@ -21,6 +24,7 @@ function createHost(nativeAppData: string | Error): WindowsAppDataPathHost & {
     calls,
     paths,
     getName: () => 'orca',
+    commandLine: { hasSwitch: (name) => switches.includes(name) },
     getPath: (name) => {
       calls.push(`get:${name}`)
       const overridden = paths.get(name)
@@ -83,6 +87,12 @@ describe('ensureWindowsAppDataPath', () => {
     ensureWindowsAppDataPath(host, { APPDATA: 'D:\\ignored' }, 'win32')
     expect(host.calls).toEqual(['get:appData', 'set:userData'])
     expect(host.paths.get('userData')).toBe('C:\\Users\\me\\AppData\\Roaming\\orca')
+  })
+
+  it('leaves userData to an explicit --user-data-dir switch', () => {
+    const host = createHost('C:\\Users\\me\\AppData\\Roaming', ['user-data-dir'])
+    ensureWindowsAppDataPath(host, {}, 'win32')
+    expect(host.calls).toEqual(['get:appData'])
   })
 
   it('creates and sets appData from the environment before userData when the lookup throws', () => {

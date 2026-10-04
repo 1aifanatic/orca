@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { connect, type Socket } from 'node:net'
 import { encodeNdjson } from './ndjson'
+import { ptySpawnHealthPlatformCoverage } from './daemon-health-identity'
 import {
   PROTOCOL_VERSION,
   type HelloMessage,
@@ -24,24 +25,6 @@ export type DaemonHealth = 'healthy' | 'unreachable' | 'rejected' | 'pty-spawn-u
 export type DaemonHealthCheck = {
   verdict: DaemonHealth
   coverage: 'pty-spawn' | 'handshake'
-  /** Optional runtime proof from newer daemons; absent on mixed-version peers. */
-  runtimeKind?: 'node'
-  runtimeVersion?: string
-}
-
-function readRuntimeIdentity(
-  payload: unknown
-): Pick<DaemonHealthCheck, 'runtimeKind' | 'runtimeVersion'> {
-  if (typeof payload !== 'object' || payload === null) {
-    return {}
-  }
-  const runtimeKind = 'runtimeKind' in payload ? payload.runtimeKind : undefined
-  const runtimeVersion = 'runtimeVersion' in payload ? payload.runtimeVersion : undefined
-  // Why drop other kinds: only a Node daemon reports here; anything else is an unknown peer.
-  return {
-    ...(runtimeKind === 'node' ? { runtimeKind } : {}),
-    ...(typeof runtimeVersion === 'string' && runtimeVersion.length > 0 ? { runtimeVersion } : {})
-  }
 }
 
 function readPtySpawnHealthCoverage(
@@ -62,7 +45,7 @@ export function checkDaemonHealthWithCoverage(
   return new Promise((resolve) => {
     // Older Windows daemons answered this RPC without spawning; an absent optional coverage
     // field must preserve that weaker meaning during adoption.
-    const fallbackCoverage = process.platform === 'win32' ? 'handshake' : 'pty-spawn'
+    const fallbackCoverage = ptySpawnHealthPlatformCoverage()
     const resolveVerdict = (verdict: DaemonHealth): void =>
       resolve({ verdict, coverage: fallbackCoverage })
     if (process.env[E2E_FORCE_DAEMON_HEALTH_UNREACHABLE_ENV] === '1') {
@@ -148,11 +131,9 @@ export function checkDaemonHealthWithCoverage(
         }
 
         if (message.id === 'health-1') {
-          const identity = readRuntimeIdentity(message.payload)
           settle({
             verdict: message.ok === true ? 'healthy' : 'pty-spawn-unhealthy',
-            coverage: readPtySpawnHealthCoverage(message.payload, fallbackCoverage),
-            ...identity
+            coverage: readPtySpawnHealthCoverage(message.payload, fallbackCoverage)
           })
           return
         }

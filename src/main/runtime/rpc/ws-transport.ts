@@ -13,11 +13,12 @@ import {
   type WebSocketMessageHandler
 } from './node-websocket-lifecycle'
 import { RemoteRuntimeServerHeartbeat } from './remote-runtime-server-heartbeat'
-import {
-  WEBSOCKET_TRANSPORT_MAX_CONNECTIONS,
-  WEBSOCKET_TRANSPORT_MAX_MESSAGE_BYTES,
-  WEBSOCKET_TRANSPORT_MAX_TCP_CONNECTIONS
-} from './websocket-transport-limits'
+
+const WEBSOCKET_TRANSPORT_MAX_MESSAGE_BYTES = 1024 * 1024
+// Why: one desktop remote-host client can hold many concurrent streams, so keep the cap high enough that stale streams don't starve control RPCs.
+const WEBSOCKET_TRANSPORT_MAX_CONNECTIONS = 128
+// Why: bound pre-upgrade descriptor use above the WS cap so raw sockets can't grow without bound.
+const WEBSOCKET_TRANSPORT_MAX_TCP_CONNECTIONS = WEBSOCKET_TRANSPORT_MAX_CONNECTIONS * 2
 
 const PRE_AUTH_TIMEOUT_MS = 10_000
 

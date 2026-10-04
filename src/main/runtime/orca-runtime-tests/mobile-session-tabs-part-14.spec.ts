@@ -97,4 +97,22 @@ describe('editor tabs a headless host persisted', () => {
     expect(getSession().unifiedTabs?.[TEST_WORKTREE_ID]).toEqual([])
     expect((await runtime.listMobileSessionTabs(`id:${TEST_WORKTREE_ID}`)).tabs).toEqual([])
   })
+
+  it('keeps an unsaved draft unless the close is forced', async () => {
+    const session = sessionWithMigratedEditor()
+    const [file] = session.openFilesByWorktree?.[TEST_WORKTREE_ID] ?? []
+    session.openFilesByWorktree = { [TEST_WORKTREE_ID]: [{ ...file, dirtyDraftContent: 'draft' }] }
+    const { runtime, getSession } = headlessRuntime(session)
+    await runtime.listMobileSessionTabs(`id:${TEST_WORKTREE_ID}`)
+
+    await expect(
+      runtime.closeMobileSessionTab(`id:${TEST_WORKTREE_ID}`, 'tab-readme')
+    ).rejects.toThrow('editor_tab_has_unsaved_draft')
+    expect(getSession().openFilesByWorktree?.[TEST_WORKTREE_ID]?.[0]?.dirtyDraftContent).toBe(
+      'draft'
+    )
+
+    await runtime.closeMobileSessionTab(`id:${TEST_WORKTREE_ID}`, 'tab-readme', { force: true })
+    expect(getSession().openFilesByWorktree?.[TEST_WORKTREE_ID]).toEqual([])
+  })
 })

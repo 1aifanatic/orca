@@ -10,7 +10,7 @@ import {
   ORCAD_LOCAL_SERVE_SELECTION_FLAGS as FLAGS
 } from '../../shared/orcad-local-serve-selection'
 import { selectServeRuntime } from './orcad-local-serve-selection'
-import { pruneOrcadArtifactCache } from './orcad-artifact-cache-retention'
+import { pruneDesktopOrcadArtifactCache } from './orcad-artifact-cache-retention'
 
 function flagValue(argv: readonly string[], flag: string): string | null {
   const index = argv.indexOf(flag)
@@ -34,9 +34,10 @@ async function run(argv: readonly string[]): Promise<void> {
     usesMacUpdateHandoff: argv.includes(FLAGS.macUpdateHandoff)
   })
   // orcad serve never starts the desktop's startup pass, so the slot cache is bounded here too.
-  await pruneOrcadArtifactCache(join(userDataPath, 'orcad-artifacts'), {
-    inUseVersions: new Set(selection.kind === 'orcad' ? [selection.version] : [])
-  }).catch(() => [])
+  await pruneDesktopOrcadArtifactCache(
+    userDataPath,
+    selection.kind === 'orcad' ? [selection.version] : []
+  ).catch(() => [])
   process.stdout.write(`${formatServeRuntimeSelection(selection)}\n`, () => process.exit(0))
 }
 

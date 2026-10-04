@@ -1,7 +1,6 @@
 /**
- * Bounds the desktop's `<userData>/orcad-artifacts` slot cache, the way VS Code bounds its
- * server downloads: per target, keep the most recently used slots and evict the rest at
- * startup. The cache survives uninstall (it lives in userData); this is what keeps it small.
+ * Bounds the desktop's `<userData>/orcad-artifacts` slot cache: per target, keep the most
+ * recently used slots and evict the rest at startup. The cache survives uninstall (it lives in userData); this is what keeps it small.
  *
  * Never evicted: a slot this process materialized (an SSH deploy may be reading it) and the
  * slot a live local orcad serve runs from, named by the profile's instance lock.
@@ -11,6 +10,7 @@ import { join } from 'node:path'
 import { NODE_RUNTIME_ASSETS } from '../../shared/node-runtime-pin'
 import { ORCAD_LOCK_FILE_NAME, readOrcadInstanceLockRecord } from './orcad-instance-lock'
 import { materializedOrcadArtifactVersions } from '../ssh/orcad-artifact-materializer'
+import { isProcessAlive } from '../daemon/daemon-process-inspection'
 
 /** The in-use slot plus the two most recent others (the newest three when none is in use). */
 export const ORCAD_ARTIFACT_CACHE_KEEP = 3
@@ -68,30 +68,28 @@ export async function pruneOrcadArtifactCache(
   return removed
 }
 
-/** The desktop's startup pass over its own `<userData>/orcad-artifacts`. */
-export function pruneDesktopOrcadArtifactCache(userDataPath: string): Promise<string[]> {
+/** A pass over `<userData>/orcad-artifacts` that never evicts a slot something still runs from. */
+export function pruneDesktopOrcadArtifactCache(
+  userDataPath: string,
+  alsoInUse: readonly string[] = []
+): Promise<string[]> {
   const live = liveLocalOrcadServeVersion(userDataPath)
   return pruneOrcadArtifactCache(join(userDataPath, 'orcad-artifacts'), {
-    inUseVersions: new Set([...materializedOrcadArtifactVersions(), ...(live ? [live] : [])])
+    inUseVersions: new Set([
+      ...materializedOrcadArtifactVersions(),
+      ...(live ? [live] : []),
+      ...alsoInUse
+    ])
   })
 }
 
 /** The slot version a live local orcad serve runs from, or null when none holds the profile. */
 export function liveLocalOrcadServeVersion(
   userDataPath: string,
-  isAlive: (pid: number) => boolean = processIsAlive
+  isAlive: (pid: number) => boolean = isProcessAlive
 ): string | null {
   const record = readOrcadInstanceLockRecord(join(userDataPath, ORCAD_LOCK_FILE_NAME))
   return record && record.role !== 'desktop' && isAlive(record.pid) ? record.version : null
-}
-
-function processIsAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (error) {
-    return error instanceof Error && 'code' in error && error.code === 'EPERM'
-  }
 }
 
 async function listNames(directory: string): Promise<string[]> {

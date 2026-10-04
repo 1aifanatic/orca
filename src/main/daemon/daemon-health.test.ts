@@ -106,11 +106,9 @@ describe('daemon health', () => {
     try {
       await expect(checkDaemonHealth(socketPath, tokenPath)).resolves.toBe('healthy')
       await expect(healthCheckDaemon(socketPath, tokenPath)).resolves.toBe(true)
-      await expect(checkDaemonHealthWithCoverage(socketPath, tokenPath)).resolves.toMatchObject({
+      await expect(checkDaemonHealthWithCoverage(socketPath, tokenPath)).resolves.toEqual({
         verdict: 'healthy',
-        coverage: process.platform === 'win32' ? 'handshake' : 'pty-spawn',
-        runtimeKind: 'node',
-        runtimeVersion: process.version
+        coverage: process.platform === 'win32' ? 'handshake' : 'pty-spawn'
       })
       expect(ptySpawnHealthCheck).toHaveBeenCalledTimes(3)
     } finally {

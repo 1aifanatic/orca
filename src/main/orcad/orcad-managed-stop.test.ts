@@ -22,6 +22,11 @@ import {
 } from './orcad-completed-stop-receipt'
 import { prepareOrcadManagedStop } from './orcad-managed-stop-admission'
 import { runOrcadManagedStopCommand } from './orcad-managed-stop-command'
+import {
+  ORCAD_DAEMON_RETIREMENT_TIMEOUT_MS,
+  ORCAD_SHUTDOWN_DEADLINE_MS,
+  ORCAD_STOP_COMPLETION_POLL_MS
+} from './orcad-stop-deadlines'
 
 const roots: string[] = []
 afterEach(() => {
@@ -163,6 +168,18 @@ describe('completing a managed stop', () => {
   it('reports a still-running instance as live after its attempts', async () => {
     const { request } = running()
     expect(await completeOrcadManagedStop(request, options())).toBe('live')
+  })
+
+  it('waits out daemon retirement plus the shutdown deadline before answering live', async () => {
+    const { request } = running()
+    let polls = 0
+    const exitAfterMs = 2 * ORCAD_DAEMON_RETIREMENT_TIMEOUT_MS + ORCAD_SHUTDOWN_DEADLINE_MS
+    const verdict = await completeOrcadManagedStop(request, {
+      ...options({ attempts: undefined }),
+      sleep: async () => void polls++,
+      probeProcess: () => (polls * ORCAD_STOP_COMPLETION_POLL_MS >= exitAfterMs ? 'missing' : 'alive')
+    })
+    expect(verdict).toBe('exited')
   })
 
   it('does not address a live process that no longer holds the lock it published', async () => {

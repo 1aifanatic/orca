@@ -2,10 +2,12 @@ import {
   chmodSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
   statSync,
+  utimesSync,
   writeFileSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -146,19 +148,34 @@ describe('acquireOrcadInstanceLock', () => {
     expect(JSON.parse(readFileSync(lock.path, 'utf8')).nonce).toBe('successor')
   })
 
-  it.each([
+  const garbledLocks = [
+    ['nothing (a torn write)', ''],
     ['invalid JSON', '{'],
     ['an incomplete record', JSON.stringify({ pid: 424242, identity: 'uid-1000' })],
     ['an invalid pid', JSON.stringify(persistedRecord({ pid: -1 }))],
     ['an invalid start time', JSON.stringify({ ...persistedRecord(), startedAtMs: 'yesterday' })]
-  ])('fails closed when the existing lock contains %s', (_label, contents) => {
+  ]
+
+  it.each(garbledLocks)('leaves a lock still being written alone: %s', (_label, contents) => {
     const root = makeRoot()
     writeFileSync(join(root, ORCAD_LOCK_FILE_NAME), contents)
 
     expect(() => acquireOrcadInstanceLock(root, hooks())).toThrow(
-      expect.objectContaining({ code: 'orcad_instance_lock_unreadable' })
+      expect.objectContaining({ code: 'orcad_instance_lock_held' })
     )
     expect(readFileSync(join(root, ORCAD_LOCK_FILE_NAME), 'utf8')).toBe(contents)
+  })
+
+  it.each(garbledLocks)('reclaims an abandoned lock containing %s', (_label, contents) => {
+    const root = makeRoot()
+    const lockPath = join(root, ORCAD_LOCK_FILE_NAME)
+    writeFileSync(lockPath, contents)
+    const longAgo = new Date(Date.now() - 60_000)
+    utimesSync(lockPath, longAgo, longAgo)
+
+    const lock = acquireOrcadInstanceLock(root, hooks())
+    expect(JSON.parse(readFileSync(lockPath, 'utf8')).nonce).toBe(lock.record.nonce)
+    expect(readdirSync(root).sort()).toEqual([ORCAD_LOCK_FILE_NAME])
   })
 
   it('fails closed when the existing lock is not a regular file', () => {

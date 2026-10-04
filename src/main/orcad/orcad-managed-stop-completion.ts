@@ -19,6 +19,7 @@ import {
   startTimesWithinTolerance
 } from '../daemon/daemon-process-start-time'
 import { readOrcadProcessStartedAtMs } from './orcad-process-start-time'
+import { hasErrorCode, inspectProcessSignal } from '../daemon/daemon-process-inspection'
 import { persistOrcadCompletedStopReceipt } from './orcad-completed-stop-receipt'
 import { readOrcadManagedStopDecision } from './orcad-managed-stop-decision'
 import {
@@ -26,6 +27,10 @@ import {
   orcadManagedStopRequestPath,
   readOrcadManagedStopRequest
 } from './orcad-managed-stop-request'
+import {
+  ORCAD_STOP_COMPLETION_POLL_ATTEMPTS,
+  ORCAD_STOP_COMPLETION_POLL_MS
+} from './orcad-stop-deadlines'
 
 export type OrcadProcessProbe = (pid: number) => 'alive' | 'missing' | 'unverifiable'
 
@@ -38,14 +43,9 @@ export type OrcadManagedStopCompletionOptions = {
 }
 
 function defaultProbe(pid: number): ReturnType<OrcadProcessProbe> {
-  try {
-    process.kill(pid, 0)
-    return 'alive'
-  } catch (error) {
-    const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : null
-    // EPERM proves some process holds the PID; it cannot prove ours exited.
-    return code === 'ESRCH' ? 'missing' : 'unverifiable'
-  }
+  const signal = inspectProcessSignal(pid)
+  // EPERM proves some process holds the PID; it cannot prove ours exited.
+  return signal === 'occupied' ? 'alive' : signal === 'missing' ? 'missing' : 'unverifiable'
 }
 
 function observeInstance(
@@ -75,7 +75,7 @@ export async function completeOrcadManagedStop(
   options: OrcadManagedStopCompletionOptions = {}
 ): Promise<OrcadManagedStopVerdict> {
   const request = OrcadManagedStopRequestSchema.parse(input)
-  const attempts = options.attempts ?? 80
+  const attempts = options.attempts ?? ORCAD_STOP_COMPLETION_POLL_ATTEMPTS
   if (!Number.isSafeInteger(attempts) || attempts < 1 || attempts > 240) {
     throw new Error('orcad_managed_stop_invalid_attempts')
   }
@@ -103,7 +103,7 @@ export async function completeOrcadManagedStop(
     throw new Error('orcad_managed_stop_request_permissions_unconfirmed')
   }
   for (let attempt = 0; attempt < attempts; attempt++) {
-    await (options.sleep ?? (() => delay(250)))()
+    await (options.sleep ?? (() => delay(ORCAD_STOP_COMPLETION_POLL_MS)))()
     verdict = observeInstance(request.instance, options)
     if (verdict !== 'live') {
       return verdict === 'exited' ? completed() : verdict
@@ -125,6 +125,6 @@ function existingRequestMatches(path: string, request: OrcadManagedStopRequest):
   try {
     return JSON.stringify(readOrcadManagedStopRequest(path)) === JSON.stringify(request)
   } catch (error) {
-    return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT'
+    return hasErrorCode(error, 'ENOENT')
   }
 }

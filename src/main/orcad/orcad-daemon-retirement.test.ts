@@ -69,4 +69,22 @@ describe('best-effort daemon retirement', () => {
     })
     expect(unanswered.releaseFence).toHaveBeenCalledOnce()
   })
+
+  it('reopens admission again once a timed-out attempt is refused late', async () => {
+    let answer: (result: DaemonIdleRetirementResult) => void = () => {}
+    const late = ports(() => new Promise((resolve) => (answer = resolve)))
+    await retireOrcadDaemonIfIdle(late)
+    expect(late.releaseFence).toHaveBeenCalledOnce()
+    answer({ state: 'busy', liveSessions: 1 })
+    await vi.waitFor(() => expect(late.releaseFence).toHaveBeenCalledTimes(2))
+  })
+
+  it('keeps the fence when a timed-out attempt turns out to retire the daemon', async () => {
+    let answer: (result: DaemonIdleRetirementResult) => void = () => {}
+    const late = ports(() => new Promise((resolve) => (answer = resolve)))
+    await retireOrcadDaemonIfIdle(late)
+    answer({ state: 'retiring' })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(late.releaseFence).toHaveBeenCalledOnce()
+  })
 })

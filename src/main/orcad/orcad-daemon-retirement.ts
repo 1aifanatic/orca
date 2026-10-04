@@ -11,8 +11,8 @@ import {
   requestIdleDaemonRetirement
 } from '../daemon/daemon-init'
 import type { OrcadDaemonRetirementVerdict } from '../../shared/orcad-stop-request'
+import { ORCAD_DAEMON_RETIREMENT_TIMEOUT_MS } from './orcad-stop-deadlines'
 
-export const ORCAD_DAEMON_RETIREMENT_TIMEOUT_MS = 5_000
 
 export type OrcadDaemonRetirement = {
   retirement: OrcadDaemonRetirementVerdict
@@ -48,11 +48,12 @@ export async function retireOrcadDaemonIfIdle(
   ports: Partial<RetirementPorts> = {}
 ): Promise<OrcadDaemonRetirement> {
   const { request, releaseFence, countLiveSessions, timeoutMs } = { ...DEFAULT_PORTS, ...ports }
-  const result = await withTimeout(
-    request().catch(() => ({ state: 'unverifiable' as const })),
-    timeoutMs,
-    { state: 'timed-out' as const }
-  )
+  const attempt = request().catch(() => ({ state: 'unverifiable' as const }))
+  const result = await withTimeout(attempt, timeoutMs, { state: 'timed-out' as const })
+  if (result.state === 'timed-out') {
+    // The fence cannot reopen while the attempt is pending; reopen it once a late refusal lands.
+    void attempt.then((late) => late.state !== 'retiring' && releaseFence())
+  }
   if (result.state === 'retiring') {
     return { retirement: 'retired', liveSessions: 0, reason: null }
   }
