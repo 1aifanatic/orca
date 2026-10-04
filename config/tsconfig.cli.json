@@ -127,6 +127,7 @@
     "../src/main/codex/codex-config-settings-removal.ts",
     "../src/main/codex/codex-config-settings-upsert.ts",
     "../src/main/codex/codex-daemon-socket-path-guard.ts",
+    "../src/main/codex/codex-default-home.ts",
     "../src/main/codex/codex-home-paths.ts",
     "../src/main/codex/codex-hook-command-form.ts",
     "../src/main/codex/codex-hook-definition.ts",

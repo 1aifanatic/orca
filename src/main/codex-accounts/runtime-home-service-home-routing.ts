@@ -134,8 +134,8 @@ export abstract class CodexRuntimeHomeRouting extends CodexRuntimeHomeManagedHom
   }
 
   // Why: the real-home hook installer flips this gate off when the trust-grant
-  // client reports the host incapable, keeping that host byte-identical to the
-  // managed lane instead of shipping status-blind panes.
+  // client reports the host incapable, or when Codex's default home is not
+  // Orca's ~/.codex, keeping that host byte-identical to the managed lane.
   protected realHomeLaneGate: () => boolean = () => true
 
   setRealHomeLaneGate(gate: () => boolean): void {
