@@ -184,7 +184,7 @@ describe('a turn recovery settled after its host went away', () => {
   )
 
   // The chat's turn bar and the tab's mark read one verdict: a turn nobody stopped failed, and
-  // must never show the done tick of a finished turn. The tab's mark lasts until the user sees it.
+  // must never show the done tick of a finished turn.
   it.each([
     [
       'a restart',
@@ -208,7 +208,7 @@ describe('a turn recovery settled after its host went away', () => {
         )
     ]
   ] as const)(
-    'reads Failed after N, marked failed until seen, for a turn cut off by %s',
+    'reads Failed after N, marked failed, for a turn cut off by %s',
     async (_label, cut) => {
       const session = await sessionWithRunningTurn()
       session.recoverAt(RECOVERED)
