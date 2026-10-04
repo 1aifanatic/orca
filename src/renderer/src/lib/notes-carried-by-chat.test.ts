@@ -408,6 +408,7 @@ describe('notes sent to a chat already open', () => {
     const cleared = draftWhenNotesClear(target.sessionId)
     const view = openChat(target.sessionId, null)
     view.result.current.stop('stop-1')
+    await Promise.resolve()
 
     expect(readOutbox(target.sessionId)).toEqual([])
     expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey(target.sessionId))).toBe(

@@ -44,11 +44,13 @@ function storeWrite(): void {
   }
 }
 
-function used(keys: string[], clientMessageId = 'm'): void {
+async function used(keys: string[], clientMessageId = 'm'): Promise<void> {
   endStructuredAgentSessionEntry(
     { sessionId: 's', clientMessageId, carriedNoteKeys: keys },
     'delivered'
   )
+  // The clear runs after the ending's own work, outside any store update it fired inside.
+  await Promise.resolve()
 }
 
 let uninstall = (): void => {}
@@ -74,18 +76,28 @@ beforeEach(() => {
 afterEach(() => uninstall())
 
 describe('notes a used message carried', () => {
+  it('are cleared after the ending returns, never inside the work that ended it', async () => {
+    endStructuredAgentSessionEntry(
+      { sessionId: 's', clientMessageId: 'm', carriedNoteKeys: [KEY] },
+      'delivered'
+    )
+    expect(mocks.clearDeliveredDiffComments).not.toHaveBeenCalled()
+    await Promise.resolve()
+    expect(mocks.clearDeliveredDiffComments).toHaveBeenCalledExactlyOnceWith('wt', [NOTE])
+  })
+
   // A pending answer, then the journal's row: the same message ends delivered twice.
-  it('are cleared once, and a second ending for them adds nothing', () => {
-    used([KEY])
-    used([KEY])
+  it('are cleared once, and a second ending for them adds nothing', async () => {
+    await used([KEY])
+    await used([KEY])
     expect(mocks.clearDeliveredDiffComments).toHaveBeenCalledExactlyOnceWith('wt', [NOTE])
     expect(mocks.storeListeners.size).toBe(0)
   })
 
-  it('wait for a workspace that has not loaded, and are cleared once it does', () => {
+  it('wait for a workspace that has not loaded, and are cleared once it does', async () => {
     mocks.workspaceSessionReady = false
     mocks.diffComments = new Map()
-    used([KEY])
+    await used([KEY])
     expect(mocks.clearDeliveredDiffComments).not.toHaveBeenCalled()
     expect(mocks.storeListeners.size).toBe(1)
 
@@ -95,7 +107,7 @@ describe('notes a used message carried', () => {
     expect(mocks.storeListeners.size).toBe(0)
   })
 
-  it('are dropped when their note can no longer appear, and leave nothing watching', () => {
+  it('are dropped when their note can no longer appear, and leave nothing watching', async () => {
     const edited = diffCommentSendKey('wt', { ...NOTE, body: 'what it said when sent' })
     const removedWorktree = diffCommentSendKey('removed-wt', NOTE)
     const closedPage = browserAnnotationSendKey({
@@ -104,15 +116,15 @@ describe('notes a used message carried', () => {
       comment: 'c',
       intent: 'fix'
     })
-    used([edited, removedWorktree, closedPage])
+    await used([edited, removedWorktree, closedPage])
     expect(mocks.clearDeliveredDiffComments).not.toHaveBeenCalled()
     expect(mocks.storeListeners.size).toBe(0)
   })
 
-  it('stop being looked for once the session loads without them, so no write scans again', () => {
+  it('stop being looked for once the session loads without them, so no write scans again', async () => {
     mocks.workspaceSessionReady = false
     mocks.diffComments = new Map()
-    used([diffCommentSendKey('removed-wt', NOTE)])
+    await used([diffCommentSendKey('removed-wt', NOTE)])
     expect(mocks.storeListeners.size).toBe(1)
 
     mocks.workspaceSessionReady = true

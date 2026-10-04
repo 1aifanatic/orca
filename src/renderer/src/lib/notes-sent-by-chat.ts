@@ -121,7 +121,9 @@ export function installNotesSentByChat(): () => void {
         pending.seen = NOT_SEEN
       }
     }
-    clearWhenLoaded()
+    // An ending can fire inside a store update (a removed workspace's chats settle there), and a
+    // clear written into it could be overwritten by that update's own result.
+    queueMicrotask(clearWhenLoaded)
   })
   return () => {
     unsubscribeEndings()
