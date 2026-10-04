@@ -201,16 +201,6 @@ function sentText(params: unknown): string | undefined {
     : undefined
 }
 
-function useProbeClock(): void {
-  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
-}
-
-async function advanceProbeClock(milliseconds: number): Promise<void> {
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(milliseconds)
-  })
-}
-
 describe('NativeChatStructuredSession delivery', () => {
   afterEach(() => {
     cleanup()
