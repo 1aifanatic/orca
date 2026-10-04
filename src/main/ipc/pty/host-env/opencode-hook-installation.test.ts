@@ -89,7 +89,9 @@ describe('OpenCode installation uses the current enabled agents', () => {
       mkdirSync(consumer, { recursive: true })
       const settings = '{"model":"consumer-model","description":"external-settings"}'
       writeFileSync(join(consumer, 'opencode.json'), settings)
-      if (kind === 'shell') writeFileSync(join(home, '.zshrc'), `export XDG_CONFIG_HOME='${xdg}'\n`)
+      if (kind === 'shell') {
+        writeFileSync(join(home, '.zshrc'), `export XDG_CONFIG_HOME='${xdg}'\n`)
+      }
       const input = {
         HOME: home,
         USERPROFILE: home,

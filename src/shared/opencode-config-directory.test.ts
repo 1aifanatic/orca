@@ -4,7 +4,9 @@ import { resolveOpenCodeConfigDirectory } from './opencode-config-directory'
 
 const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform')
 afterEach(() => {
-  if (originalPlatform) Object.defineProperty(process, 'platform', originalPlatform)
+  if (originalPlatform) {
+    Object.defineProperty(process, 'platform', originalPlatform)
+  }
 })
 
 describe('OpenCode consumer config directory', () => {

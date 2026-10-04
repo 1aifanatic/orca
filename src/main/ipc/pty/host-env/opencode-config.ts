@@ -72,7 +72,7 @@ export function applyOpenCodeStatusPluginEnv(
   // WSL owns its config writes; only the guest overlay may enter a WSL pane.
   if (!options.isWsl) {
     const executionEnv = { ...process.env, ...env }
-    const shellConfigHome = readSessionShellStartupEnvVar('XDG_CONFIG_HOME', executionEnv)
+    const shellConfigHome = readSessionShellStartupEnvVar('XDG_CONFIG_HOME', env)
     const defaultConfigDir = resolveOpenCodeConfigDirectory({
       ...executionEnv,
       XDG_CONFIG_HOME: shellConfigHome ?? executionEnv.XDG_CONFIG_HOME

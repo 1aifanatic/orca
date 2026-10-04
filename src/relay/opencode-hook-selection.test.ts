@@ -107,12 +107,18 @@ describe('relay OpenCode source selection on real fixture files', () => {
       mkdirSync(home, { recursive: true })
       mkdirSync(consumer, { recursive: true })
       writeFileSync(join(consumer, 'opencode.json'), '{"model":"remote-model"}')
-      if (kind === 'shell') writeFileSync(join(home, '.zshrc'), `export XDG_CONFIG_HOME='${xdg}'\n`)
+      if (kind === 'shell') {
+        writeFileSync(join(home, '.zshrc'), `export XDG_CONFIG_HOME='${xdg}'\n`)
+      }
       const env = await spawn({
         cwd: home,
-        shellOverride: kind === 'shell' ? '/bin/zsh' : '/bin/sh',
         launchAgent: 'opencode',
-        env: { HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: kind === 'xdg' ? xdg : '' }
+        env: {
+          HOME: home,
+          USERPROFILE: home,
+          XDG_CONFIG_HOME: kind === 'xdg' ? xdg : '',
+          SHELL: kind === 'shell' ? '/bin/zsh' : '/bin/sh'
+        }
       })
       expect(readFileSync(plugin(consumer, 'opencode'), 'utf8')).toBe('// remote plugin')
       expect(existsSync(plugin(join(root, 'xdg', 'opencode'), 'opencode'))).toBe(false)
