@@ -268,6 +268,20 @@ describe('withNativeChatCutTurnNotices', () => {
     expect(notices(noteOnly)).toEqual([{ index: 3, text: NOTICE, scope: inTurn('t1') }])
   })
 
+  // An unconfirmed continuation whose turn opened before its warning: the warning is about that
+  // turn, so the cut keeps its own notice beside it.
+  it('keeps the notice when a restart note follows a turn the continuation opened', () => {
+    const items = [
+      user('u1'),
+      turn('t1', 'u1', CUT),
+      reply('a1', inTurn('t1')),
+      user('u2'),
+      turn('t2', 'u2', { state: 'running' }),
+      restartNote(AGENT_SESSION_RESTART_CONTINUATION_UNCONFIRMED_NOTE, 'warning')
+    ]
+    expect(notices(items)).toEqual([{ index: 3, text: NOTICE, scope: inTurn('t1') }])
+  })
+
   // A send after the cut, whose new agent died before its turn opened: that exit is about the send.
   it('lets no exit row about the conversation explain a cut a message was sent after', () => {
     const items = [
