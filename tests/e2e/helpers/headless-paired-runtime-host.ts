@@ -1,4 +1,5 @@
 import { cpSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import type { RmOptions } from 'node:fs'
 import { createServer } from 'node:net'
 import type { AddressInfo } from 'node:net'
 import os from 'node:os'
@@ -43,6 +44,9 @@ export type HeadlessPairedRuntimeHost = {
 }
 
 type HeadlessHostCleanup = () => Promise<void> | void
+
+// Why: Windows keeps a just-killed daemon's handles on the profile briefly, so removal sees EPERM.
+const PROFILE_REMOVAL: RmOptions = { recursive: true, force: true, maxRetries: 50, retryDelay: 100 }
 
 /** CI diagnostics: the profile's logs outlive its deletion when this names a directory. */
 function preserveProfileLogs(userDataDir: string): void {
@@ -180,7 +184,7 @@ export async function launchHeadlessPairedRuntimeHost(
           ...(serveProcessOpen ? [() => closeElectronAppForE2E(serveProcess)] : []),
           () => cleanupE2EDaemons(userDataDir),
           () => preserveProfileLogs(userDataDir),
-          () => rmSync(userDataDir, { recursive: true, force: true }),
+          () => rmSync(userDataDir, PROFILE_REMOVAL),
           ...(agentBrowserSocketDir
             ? [
                 () =>
@@ -199,7 +203,7 @@ export async function launchHeadlessPairedRuntimeHost(
         ...(app ? [() => closeElectronAppForE2E(app)] : []),
         () => cleanupE2EDaemons(userDataDir),
         () => preserveProfileLogs(userDataDir),
-        () => rmSync(userDataDir, { recursive: true, force: true }),
+        () => rmSync(userDataDir, PROFILE_REMOVAL),
         ...(agentBrowserSocketDir
           ? [() => rmSync(agentBrowserSocketDir, { recursive: true, force: true })]
           : [])

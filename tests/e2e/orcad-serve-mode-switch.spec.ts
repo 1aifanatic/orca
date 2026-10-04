@@ -53,7 +53,7 @@ test.beforeAll(async () => {
 
 test.afterAll(() => {
   if (scratch) {
-    rmSync(scratch, { recursive: true, force: true })
+    rmSync(scratch, { recursive: true, force: true, maxRetries: 50, retryDelay: 100 })
   }
 })
 
