@@ -15,6 +15,10 @@ import { forgetRelayNodePtyRepairs, recoverRelayNodePtyForSpawn } from './ssh-re
 import type { TerminalUnavailableCause } from '../../shared/terminal-unavailable-cause'
 import { replayPendingSshPtyKills } from './ssh-pending-pty-kill-replay'
 import { sweepOrphanedRelayPtys } from './ssh-orphan-relay-pty-sweep'
+import {
+  isReattachHeldByPreviousRelay,
+  startPreviousRelayCensus
+} from './ssh-previous-relay-terminals'
 import { SshChannelMultiplexer } from './ssh-channel-multiplexer'
 import { SshPtyProvider } from '../providers/ssh-pty-provider'
 import type { SshPtyAttachResult } from '../providers/ssh-pty-session-reattach'
@@ -1050,7 +1054,9 @@ export class SshRelaySession {
     isAttemptCurrent: () => boolean
   ): Promise<Awaited<ReturnType<typeof deployAndLaunchRelay>> | null> {
     try {
-      return await deployAndLaunchRelay(conn, undefined, graceTimeSeconds, this.targetId)
+      const deployed = await deployAndLaunchRelay(conn, undefined, graceTimeSeconds, this.targetId)
+      startPreviousRelayCensus(conn, this.targetId, deployed)
+      return deployed
     } catch (err) {
       // Why system SSH is excluded: it has no ssh2 shell or SFTP channel to degrade onto.
       if (
@@ -2783,6 +2789,15 @@ export class SshRelaySession {
     } catch (error) {
       if (isSourceRecoveryCancellationError(error)) {
         throw error
+      }
+      if (!shouldContinue()) {
+        return
+      }
+      if (await isReattachHeldByPreviousRelay(this.targetId, error)) {
+        console.warn(
+          `[ssh-relay-session] Keeping PTY ${ptyId} for ${this.targetId}: an older Orca relay on this host may still run it`
+        )
+        return
       }
       if (!shouldContinue()) {
         return
