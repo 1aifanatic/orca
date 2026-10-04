@@ -42,6 +42,19 @@ type StartupDiagnosticDetails = {
   dataBytes?: number
 }
 
+type StartupDiagnosticRow = StartupDiagnosticDetails & {
+  event: StartupDiagnosticEvent | 'created' | 'capture-limit'
+  id?: string
+  incarnationId?: string
+  nativePid?: number
+  slavePath?: string | null
+  nativeStartTicks?: string | null
+  command?: string
+  commandSha256?: string
+  waitForShellReady?: boolean
+  omittedChunkBytes?: number
+}
+
 export function sshStartupDiagnosticCommand(runId: string): string {
   const marker = `STA4067_STARTUP_READY_${runId}`
   const split = Math.floor(marker.length / 2)
@@ -121,7 +134,7 @@ export class PtyStartupDiagnostic {
     }
   }
 
-  private append(details: object): void {
+  private append(details: StartupDiagnosticRow): void {
     const row = `${JSON.stringify({
       sequence: ++this.sequence,
       elapsedNs: String(process.hrtime.bigint() - this.started),

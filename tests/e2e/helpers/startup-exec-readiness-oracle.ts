@@ -108,8 +108,21 @@ export async function callStartupExecRuntime<TResult>(
   method: string,
   params: unknown
 ): Promise<TResult> {
-  const startedNs = process.hrtime.bigint()
-  const pending = page.evaluate(
+  return observeStartupExecRuntime(
+    page,
+    method,
+    params,
+    process.hrtime.bigint(),
+    callStartupExecRuntimeUnobserved<TResult>(page, method, params)
+  )
+}
+
+function callStartupExecRuntimeUnobserved<TResult>(
+  page: Page,
+  method: string,
+  params: unknown
+): Promise<TResult> {
+  return page.evaluate(
     async ({ method, params }) => {
       const response = await window.api.runtime.call({ method, params })
       if (!response.ok) {
@@ -119,7 +132,6 @@ export async function callStartupExecRuntime<TResult>(
     },
     { method, params }
   ) as Promise<TResult>
-  return observeStartupExecRuntime(page, method, params, startedNs, pending)
 }
 
 export function installBashExecProfile(

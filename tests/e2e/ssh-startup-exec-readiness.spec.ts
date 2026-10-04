@@ -29,7 +29,9 @@ test.describe('startup exec readiness over live SSH', () => {
   test.skip(process.platform === 'win32', 'Docker SSH E2E uses POSIX ssh tooling.')
 
   test('survives an SSH reconnect while the replacement shell is not ready @headful', async ({
-    orcaPage
+    orcaPage,
+    electronApp,
+    registerPostElectronShutdownCleanup
   }, testInfo) => {
     test.setTimeout(150_000)
     const runId = `ssh_${Date.now()}`
@@ -56,6 +58,8 @@ test.describe('startup exec readiness over live SSH', () => {
       )
       if (process.env.ORCA_E2E_SSH_STARTUP_DIAGNOSTIC === '1') {
         diagnostic = new SshStartupDiagnostic(orcaPage, target, runId, testInfo)
+        const appChild = electronApp.process()
+        registerPostElectronShutdownCleanup(async () => diagnostic?.afterAppShutdown(appChild))
       }
       const created = await createStartupExecTerminal(
         orcaPage,

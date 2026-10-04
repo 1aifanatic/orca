@@ -1,6 +1,7 @@
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import type { Page, TestInfo } from '@stablyai/playwright-test'
 import { isRecord } from '../../../src/shared/agent-status-child-work-value-guards'
+import type { ChildProcessHandle } from '../../../src/shared/child-process/run-process'
 import { runProcessSync } from '../../../src/shared/child-process/run-process'
 import {
   SSH_STARTUP_DIAGNOSTIC_RUN_ENV,
@@ -176,21 +177,38 @@ export class SshStartupDiagnostic {
     }
   }
 
+  afterAppShutdown(child: ChildProcessHandle): void {
+    const exited = child.exitCode !== null || child.signalCode !== null
+    try {
+      writeFileSync(
+        this.testInfo.outputPath('ssh-startup-app-child-cleanup.json'),
+        `${JSON.stringify({ pid: child.pid, spawnargs: child.spawnargs, exitCode: child.exitCode, signalCode: child.signalCode, verdict: exited ? 'exited' : 'unverifiable', childProcessObjectAttestsOwnedIncarnation: true }, null, 2)}\n`,
+        { mode: 0o600 }
+      )
+    } catch {
+      // Keep the existing teardown result when diagnostic storage fails.
+    }
+  }
+
   afterContainerCleanup(): void {
     observers.delete(this.page)
-    const result = runProcessSync({
-      program: 'docker',
-      args: ['inspect', '--format', '{{.State.Running}}', this.target.containerName],
-      timeoutMs: 10_000,
-      maxOutputBytes: 4_096
-    })
-    const positivelyRemoved =
-      result.code !== 0 && result.stderr.includes(`No such object: ${this.target.containerName}`)
-    writeFileSync(
-      this.testInfo.outputPath('ssh-startup-container-cleanup.json'),
-      `${JSON.stringify({ container: this.target.containerName, code: result.code, stdout: result.stdout, stderr: result.stderr, positivelyRemoved, verdict: positivelyRemoved ? 'exited' : 'unverifiable', closeTabAloneDoesNotProveDeath: true }, null, 2)}\n`,
-      { mode: 0o600 }
-    )
+    try {
+      const result = runProcessSync({
+        program: 'docker',
+        args: ['inspect', '--format', '{{.State.Running}}', this.target.containerName],
+        timeoutMs: 10_000,
+        maxOutputBytes: 4_096
+      })
+      const positivelyRemoved =
+        result.code !== 0 && result.stderr.includes(`No such object: ${this.target.containerName}`)
+      writeFileSync(
+        this.testInfo.outputPath('ssh-startup-container-cleanup.json'),
+        `${JSON.stringify({ container: this.target.containerName, code: result.code, stdout: result.stdout, stderr: result.stderr, positivelyRemoved, verdict: positivelyRemoved ? 'exited' : 'unverifiable', closeTabAloneDoesNotProveDeath: true }, null, 2)}\n`,
+        { mode: 0o600 }
+      )
+    } catch {
+      // Preserve original cleanup; missing proof remains unverifiable.
+    }
   }
 }
 
