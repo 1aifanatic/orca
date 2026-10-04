@@ -93,6 +93,7 @@ const SSH_IPC_CHANNELS = [
   'ssh:connect',
   'ssh:disconnect',
   'ssh:terminateSessions',
+  'ssh:moveToManagedServer',
   'ssh:resetRelay',
   'ssh:getState',
   'ssh:needsPassphrasePrompt',

@@ -12,6 +12,7 @@ import type {
   SshTargetUpdateInput,
   SshTerminateSessionsResult
 } from '../../shared/ssh-types'
+import type { SshManagedServerMoveResult } from '../../shared/ssh-managed-server-move'
 import type { FilesystemPathFlavor } from '../../shared/filesystem-entry-types'
 
 export type SshApi = {
@@ -27,6 +28,8 @@ export type SshApi = {
   connect: (args: { targetId: string }) => Promise<SshConnectionState | null>
   disconnect: (args: { targetId: string }) => Promise<void>
   terminateSessions: (args: { targetId: string }) => Promise<SshTerminateSessionsResult>
+  /** Desktop-only: stops the host's relay terminals and moves it to a managed Orca server. */
+  moveToManagedServer?: (args: { targetId: string }) => Promise<SshManagedServerMoveResult>
   resetRelay: (args: { targetId: string }) => Promise<void>
   getState: (args: { targetId: string }) => Promise<SshConnectionState | null>
   needsPassphrasePrompt: (args: { targetId: string }) => Promise<boolean>

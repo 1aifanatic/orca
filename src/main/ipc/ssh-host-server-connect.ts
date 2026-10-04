@@ -2,7 +2,9 @@
 import { getAppEnvironment } from '../../shared/app-environment'
 import type { SshConnectionState, SshTarget } from '../../shared/ssh-types'
 import type { HostServerOnConnectResult } from '../ssh/ssh-host-server-on-connect'
+import { relayServerStatus, shouldToastManagedServerMove } from '../ssh/ssh-host-server-move-offer'
 import { setSshHostServerStatus } from '../ssh/ssh-host-server-status'
+import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
 import { connectionManager, getCurrentMainWindow } from './ssh-ipc-context'
 import { broadcastSshState, getPublicSshState } from './ssh-renderer-broadcast'
 
@@ -42,4 +44,19 @@ export function publishManagedServerConnect(
   }
   broadcastSshState(getCurrentMainWindow, targetId, state)
   return getPublicSshState(targetId) ?? state
+}
+
+/** Records why the host keeps the relay; the first live-terminals stop this version offers a move. */
+export function recordRelayDecision(
+  target: SshTarget,
+  decision: Extract<HostServerOnConnectResult, { route: 'relay' }>
+): void {
+  const appVersion = getAppEnvironment().getVersion()
+  const offerMove = shouldToastManagedServerMove(target, decision, appVersion)
+  if (offerMove) {
+    getSshTargetRegistryStore()!.updateTarget(target.id, {
+      managedServerMoveOffered: { appVersion }
+    })
+  }
+  setSshHostServerStatus(target.id, relayServerStatus(decision, offerMove))
 }

@@ -30,4 +30,17 @@ describe('loading a managed Orca server fence', () => {
     const malformed = { ...base, orcadFence: { environmentId: 7 } } as unknown as SshTarget
     expect(normalizeSshTarget(malformed).orcadFence).toBeUndefined()
   })
+
+  it('keeps the recorded move offer and drops a malformed one', () => {
+    expect(
+      normalizeSshTarget({ ...base, managedServerMoveOffered: { appVersion: '1.5.0' } })
+        .managedServerMoveOffered
+    ).toEqual({ appVersion: '1.5.0' })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: simulates a hand-edited or corrupt stored record.
+    const malformed = {
+      ...base,
+      managedServerMoveOffered: { appVersion: 7 }
+    } as unknown as SshTarget
+    expect(normalizeSshTarget(malformed).managedServerMoveOffered).toBeUndefined()
+  })
 })

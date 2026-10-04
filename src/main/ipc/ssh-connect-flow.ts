@@ -11,8 +11,11 @@ import {
 } from '../ssh/ssh-provider-authority'
 import { allowsDirectSshRelay } from '../ssh/ssh-connection-store'
 import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
-import { setSshHostServerStatus } from '../ssh/ssh-host-server-status'
-import { decideHostServer, publishManagedServerConnect } from './ssh-host-server-connect'
+import {
+  decideHostServer,
+  publishManagedServerConnect,
+  recordRelayDecision
+} from './ssh-host-server-connect'
 import { activeSessions } from './ssh-active-relay-sessions'
 import {
   assertSshConnectsNotFenced,
@@ -179,12 +182,7 @@ async function doConnect(
     return publishManagedServerConnect(targetId, server.environmentId)
   }
   if (server) {
-    setSshHostServerStatus(targetId, {
-      kind: 'relay',
-      reason: server.reason,
-      ...(server.detail ? { detail: server.detail } : {}),
-      ...(server.terminals !== undefined ? { terminals: server.terminals } : {})
-    })
+    recordRelayDecision(target, server)
   }
   // Re-read: a conversion attempt may have fenced the host since the lookup above.
   const relayTarget = getSshTargetRegistryStore()!.getTarget(targetId) ?? target

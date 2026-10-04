@@ -52,6 +52,20 @@ describe('SSH retained payload admission', () => {
     expect(malformed).not.toHaveProperty('plainSsh')
   })
 
+  it('admits only a literal move offer on a relay server status', () => {
+    const state = { targetId: 'ssh-a', status: 'connected', error: null, reconnectAttempt: 0 }
+    const relay = { kind: 'relay', reason: 'relay_terminals_live', terminals: 2 }
+
+    expect(
+      admitSshConnectionState({ ...state, managedServer: { ...relay, offerMove: true } }, 'ssh-a')
+        ?.managedServer
+    ).toEqual({ ...relay, offerMove: true })
+    expect(
+      admitSshConnectionState({ ...state, managedServer: { ...relay, offerMove: 'yes' } }, 'ssh-a')
+        ?.managedServer
+    ).toEqual(relay)
+  })
+
   it('rejects partial and malformed provider authority', () => {
     const state = {
       targetId: 'ssh-a',

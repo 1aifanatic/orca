@@ -157,7 +157,7 @@ export function registerDirectSshStateIpcBridge(
     const store = useAppStore.getState()
     const previousManagedServer = store.sshConnectionStates.get(targetId)?.managedServer
     store.setSshConnectionState(targetId, state)
-    applySshManagedServerTransition(previousManagedServer, state.managedServer)
+    applySshManagedServerTransition(targetId, previousManagedServer, state.managedServer)
 
     if (canConnectSshStatus(state.status)) {
       routedAuthorityByTarget.delete(targetId)

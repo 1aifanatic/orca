@@ -31,6 +31,22 @@ describe('SSH host server status line', () => {
     })
   })
 
+  it('offers the move only while live relay terminals keep the host on the relay', () => {
+    expect(
+      sshHostServerStatusLine(plain, {
+        managedServer: { kind: 'relay', reason: 'relay_terminals_live', terminals: 3 }
+      })
+    ).toMatchObject({ action: 'move', text: expect.stringContaining('3 open terminals') })
+    expect(
+      sshHostServerStatusLine(plain, {
+        managedServer: { kind: 'relay', reason: 'relay_terminals_unverifiable' }
+      })
+    ).not.toHaveProperty('action')
+    expect(
+      sshHostServerStatusLine(plain, { managedServer: { kind: 'managed', environmentId: 'e' } })
+    ).not.toHaveProperty('action')
+  })
+
   it('keeps durable reasons visible without a live state', () => {
     expect(sshHostServerStatusLine({ orcadFence: { environmentId: 'e' } }, undefined)?.text).toBe(
       'Runs a managed Orca server'

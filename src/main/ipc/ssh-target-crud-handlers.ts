@@ -43,6 +43,7 @@ function omitRendererSshTargetGeneration<
     orcadProvisioning?: unknown
     orcadFence?: unknown
     managedServerUnavailable?: unknown
+    managedServerMoveOffered?: unknown
     remoteRuntimeResolution?: unknown
   }
 >(
@@ -53,6 +54,7 @@ function omitRendererSshTargetGeneration<
   | 'orcadProvisioning'
   | 'orcadFence'
   | 'managedServerUnavailable'
+  | 'managedServerMoveOffered'
   | 'remoteRuntimeResolution'
 > {
   const {
@@ -60,6 +62,7 @@ function omitRendererSshTargetGeneration<
     orcadProvisioning: _orcadProvisioning,
     orcadFence: _orcadFence,
     managedServerUnavailable: _managedServerUnavailable,
+    managedServerMoveOffered: _managedServerMoveOffered,
     remoteRuntimeResolution: _remoteRuntimeResolution,
     ...rest
   } = value
