@@ -15126,7 +15126,12 @@
         "CsvViewer": {
           "eedd0d37a7": "columns",
           "ac31d2cd60": "rows",
-          "a233d55b77": "Empty file"
+          "a233d55b77": "Empty file",
+          "delimiterComma": "Comma",
+          "delimiterSemicolon": "Semicolon",
+          "delimiterTab": "Tab",
+          "delimiterAuto": "Auto ({{delimiter}})",
+          "delimiter": "Delimiter"
         },
         "DiffNotesSendMenu": {
           "f1aa04b5cf": "This file",
@@ -17590,6 +17595,7 @@
         "providerStartFailed": "{{agent}} stopped before it finished starting.",
         "runCommandAgain": "Run /{{command}} again.",
         "sendToTryAgain": "Send your message to try again.",
+        "sendAgainToTryOnceMore": "Send your message again to try once more.",
         "couldNotStart": "{{agent}} couldn't start.",
         "couldNotRestart": "{{agent}} couldn't restart.",
         "notSignedIn": "{{agent}} is not signed in for the selected account.",
@@ -17643,7 +17649,7 @@
         "providerRateLimited": "{{agent}} is rate-limited and retrying.",
         "providerRetrying": "{{agent}} hit a temporary problem and is retrying.",
         "providerRetryingQuoted": "{{agent}} is retrying: {{detail}}.",
-        "previousExitUnverifiable": "{{agent}} from before may still be running. Your messages will send once it stops."
+        "previousExitUnverifiable": "Couldn't stop {{agent}} from before."
       },
       "writeNotice": {
         "notDoneReadHistory": "This chat's history couldn't be loaded.",
@@ -18888,5 +18894,8 @@
       "removeDescription": "Stop agents using this profile first. Removal deletes its saved credentials and conversation data. Your system login stays unchanged.",
       "cancel": "Cancel"
     }
+  },
+  "fileSearch": {
+    "failed": "Search failed. Try again."
   }
 }

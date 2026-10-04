@@ -1,6 +1,10 @@
 import type { SpawnOptions as ClaudeAgentSdkSpawnOptions } from '@anthropic-ai/claude-agent-sdk'
 import { spawnProcess } from '../../shared/child-process/run-process'
-import { createProviderSpawnSpec } from '../codex/codex-app-server-posix-supervisor'
+import {
+  spawnManagedProviderProcess,
+  type ManagedProviderProcess
+} from '../provider-process/managed-provider-process'
+import { claudeChildClosePolicy } from './claude-child-exit-proof-ladder'
 
 /** Derived rather than imported: only src/shared/child-process may name node:child_process. */
 type ClaudeCodeChild = ReturnType<typeof spawnProcess>
@@ -12,6 +16,7 @@ export type ClaudeCodeProcessSpawn = {
   spawn: (options: ClaudeAgentSdkSpawnOptions) => ClaudeCodeChild
   /** The retained child, so Orca keeps its own tree-kill and exit-proof ladder. Null until the SDK spawns. */
   readonly child: ClaudeCodeChild | null
+  readonly managed: ManagedProviderProcess | null
   /**
    * Ownership proof: the durable lease adjudicates on this pid plus start time plus the spawn
    * token. On POSIX it is the provider supervisor's, which outlives Claude by construction.
@@ -46,32 +51,26 @@ export function createClaudeCodeProcessSpawn(
   spawnImpl: typeof spawnProcess = spawnProcess,
   platform: NodeJS.Platform = process.platform
 ): ClaudeCodeProcessSpawn {
-  let child: ClaudeCodeChild | null = null
+  let managed: ManagedProviderProcess | null = null
   let stderrTail = ''
-  let supervised = false
   return {
     spawn: (options) => {
-      const spec = createProviderSpawnSpec(
+      // The SDK's abort signal cannot bypass Orca's child-owned close.
+      managed = spawnManagedProviderProcess(
         {
           command: options.command,
           args: [...options.args],
           ...(options.cwd === undefined ? {} : { cwd: options.cwd })
         },
-        definedEnv(options.env),
-        platform
+        {
+          spawnImpl,
+          platform,
+          inheritedEnv: definedEnv(options.env),
+          site: 'claude-stream-json-teardown',
+          policy: claudeChildClosePolicy
+        }
       )
-      // Why `options.signal` is dropped: it would let the SDK kill the child outside
-      // Orca's ladder, and close() may never report an exit it did not observe.
-      const spawned = spawnImpl({
-        program: spec.program,
-        args: spec.args,
-        cwd: spec.cwd,
-        env: spec.env,
-        detached: spec.detached,
-        stdio: ['pipe', 'pipe', 'pipe']
-      })
-      child = spawned
-      supervised = spec.supervised
+      const spawned = managed.child
       // The SDK drains stderr only for its own local spawn, so a custom spawner must:
       // otherwise the child blocks on a full pipe and exit errors lose their tail.
       spawned.stderr.setEncoding('utf8').on('data', (chunk: string) => {
@@ -80,13 +79,16 @@ export function createClaudeCodeProcessSpawn(
       return spawned
     },
     get child() {
-      return child
+      return managed?.child ?? null
+    },
+    get managed() {
+      return managed
     },
     get pid() {
-      return child?.pid
+      return managed?.child.pid
     },
     get supervised() {
-      return supervised
+      return managed?.supervised ?? false
     },
     get stderrTail() {
       return stderrTail

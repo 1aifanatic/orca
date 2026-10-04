@@ -67,8 +67,10 @@ function createCodexAdapter(context: StructuredAgentAdapterContext): StructuredA
       host()?.publishChildWorkEvidence(sessionId, evidence),
     onDispatchSettledLate: followUps.onDispatchSettledLate,
     onPrimaryThreadStoppedRunning: followUps.releaseUnansweredDispatches,
+    logger: deps.logger,
     onEvent: (event) => {
-      if (event.type === 'ended' && 'cause' in event && event.cause === 'unexpected-exit') {
+      // Every exit, expected or not: the host ends that child's record.
+      if (event.type === 'ended' && 'cause' in event) {
         context.deliverLifecycle(event)
       }
     }
@@ -96,6 +98,7 @@ function createClaudeAdapter(
         }
       : {}),
     onLifecycleEvent: context.deliverLifecycle,
+    logger: deps.logger,
     onChildWorkEvidence: (sessionId, evidence) =>
       host()?.publishChildWorkEvidence(sessionId, evidence),
     onDispatchSettledLate: followUps.onDispatchSettledLate,
