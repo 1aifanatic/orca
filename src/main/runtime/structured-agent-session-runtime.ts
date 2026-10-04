@@ -59,6 +59,7 @@ import {
   modelCatalogHostDeps,
   type RuntimeAgentAccountHomeResolver
 } from './structured-agent-model-catalog-wiring'
+import type { SpawnAcpStructuredChild } from '../acp/acp-structured-child'
 
 /** Whether this profile holds a structured chat: a record or tab in the journal database, or the
  *  records file a profile from before it carries while the database still owes its copy. */
@@ -108,6 +109,12 @@ export type StructuredAgentSessionRuntimeDeps = {
   resolveClaudePermissionMode?: () => Promise<PermissionMode> | PermissionMode
   /** The same setting for Codex, as app-server thread policy. */
   resolveCodexPermissionPolicy?: () => CodexStructuredPermissionPolicy
+  /** The same setting for a protocol-driven (ACP) agent: whether it runs with full access. */
+  resolveAgentFullAccess?: (agent: string) => boolean
+  /** The user's per-agent environment overlay, for agents with no lane-specific resolver. */
+  resolveAgentLaunchEnv?: (agent: string) => Record<string, string>
+  /** ACP agent processes are overridden only to drive the runtime against scripted agents. */
+  spawnAcpChild?: SpawnAcpStructuredChild
   /** Raw settings getter; the reader that fails closed around it is built here, in checked code. */
   getClaudeManagedAccountGateSettings?: () => ClaudeManagedAccountGateSettings
   resolveEnvironment?: () => Promise<NodeJS.ProcessEnv>

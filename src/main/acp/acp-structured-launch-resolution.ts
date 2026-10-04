@@ -1,0 +1,104 @@
+// How a durable session record becomes an ACP agent launch, on the machine this runtime runs on.
+//
+// Every input is read back from the record the store made durable, never from the call that
+// triggered the acquire: the working directory, the account home, and the provider session a
+// resume names are the ones this session proved.
+
+import { delimiter } from 'node:path'
+import { homedir } from 'node:os'
+import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
+import {
+  agentSessionProviderHandleChainHead,
+  agentSessionProviderHandleKey
+} from '../../shared/agent-session-provider-handle'
+import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
+import { resolveCliCommand } from '../../shared/node-cli-command-resolution'
+import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
+import type { AcpLaunchSpec } from './acp-launch-specs'
+
+export type AcpStructuredLaunch = {
+  spec: AcpLaunchSpec
+  command: string
+  args: string[]
+  cwd: string
+  env: Record<string, string>
+  fullAccess: boolean
+  /** The provider session to load; null starts a new one. */
+  resume: {
+    sessionId: string
+    /** Only a session this chat created may be one the agent never saved, and so be replaced. */
+    replaceableKey: string | null
+  } | null
+}
+
+export type AcpStructuredLaunchResolverDeps = {
+  store: Pick<AgentSessionRecordStore, 'getRecord'>
+  resolveWorkspacePath: (workspaceId: string) => Promise<string>
+  /** The shared base env; re-read per acquisition. */
+  resolveEnvironment: () => Promise<Record<string, string>>
+  /** The user's per-agent environment overlay from settings. */
+  resolveLaunchEnv?: (agent: string) => Record<string, string>
+  /** The Agent Permissions setting's bypass posture for this agent, re-read per acquisition. */
+  resolveFullAccess?: (agent: string) => boolean
+  resolveCommand?: typeof resolveCliCommand
+  homePath?: string
+}
+
+export function createAcpStructuredLaunchResolver(
+  spec: AcpLaunchSpec,
+  deps: AcpStructuredLaunchResolverDeps
+): (input: { identity: AgentSessionJournalIdentity }) => Promise<AcpStructuredLaunch> {
+  return async ({ identity }) => {
+    const record = deps.store.getRecord(identity.sessionId)
+    if (!record) {
+      throw new Error(`no durable agent-session record for ${identity.sessionId}`)
+    }
+    if (record.provider !== spec.agent) {
+      throw new Error(`session ${identity.sessionId} is a ${record.provider} session`)
+    }
+    const { location, accountHome } = record
+    // A session pinned elsewhere belongs to that host's runtime; starting it here would put a
+    // second writer on the same provider session.
+    if (location.executionHostId !== LOCAL_EXECUTION_HOST_ID || location.wslDistro !== null) {
+      throw new Error(
+        `${spec.agent} structured sessions run on this runtime's host, not ${location.executionHostId}`
+      )
+    }
+    if (accountHome.variable !== spec.accountHomeVariable) {
+      throw new Error(
+        `${spec.agent} sessions pin ${spec.accountHomeVariable}, not ${accountHome.variable}`
+      )
+    }
+    const base = await deps.resolveEnvironment()
+    const env: Record<string, string> = {
+      ...base,
+      ...deps.resolveLaunchEnv?.(spec.agent),
+      ...spec.env,
+      [spec.accountHomeVariable]: accountHome.path
+    }
+    const pathEnv = [env.PATH ?? env.Path, ...spec.installDirectories(accountHome.path)]
+      .filter((entry): entry is string => Boolean(entry))
+      .join(delimiter)
+    const command = (deps.resolveCommand ?? resolveCliCommand)(spec.command, {
+      pathEnv,
+      homePath: env.HOME ?? env.USERPROFILE ?? deps.homePath ?? homedir()
+    })
+    const fullAccess = deps.resolveFullAccess?.(spec.agent) ?? false
+    const head = agentSessionProviderHandleChainHead(record.providerHandleChain)
+    return {
+      spec,
+      command,
+      args: spec.args({ fullAccess }),
+      cwd: await deps.resolveWorkspacePath(location.workspaceId),
+      env,
+      fullAccess,
+      resume: head
+        ? {
+            sessionId: head.handle.nativeId,
+            replaceableKey:
+              head.origin === 'created' ? agentSessionProviderHandleKey(head.handle) : null
+          }
+        : null
+    }
+  }
+}

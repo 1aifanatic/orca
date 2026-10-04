@@ -1,5 +1,5 @@
 import type { Readable, Writable } from 'node:stream'
-import { z } from 'zod'
+import type { z } from 'zod'
 import { MAX_TIMER_DELAY_MS } from '../../shared/timer-delay'
 import { AcpAuthRequiredError, AcpRequestTimeoutError, AcpRpcError } from './acp-errors'
 import { AcpJsonRpcPeer, type AcpPeerOptions, type AcpRequestContext } from './acp-json-rpc-peer'
@@ -16,7 +16,6 @@ import {
   AuthenticateResponseSchema,
   PromptResponseSchema,
   RequestPermissionRequestSchema,
-  SessionNotificationSchema,
   SetSessionModeResponseSchema,
   SetSessionModelResponseSchema,
   SetSessionConfigOptionResponseSchema,
@@ -25,20 +24,14 @@ import {
   type AuthenticateResponse,
   type PromptRequest,
   type PromptResponse,
-  type SessionNotification,
   type SetSessionConfigOptionRequest,
   type SetSessionConfigOptionResponse,
   type SetSessionModeResponse,
   type SetSessionModelResponse
 } from './generated/acp-protocol.generated'
 
-const updateEnvelopeSchema = z.looseObject({
-  sessionId: z.string(),
-  update: z.looseObject({ sessionUpdate: z.string() })
-})
-export type AcpSessionEvent =
-  | { kind: 'known'; notification: SessionNotification }
-  | { kind: 'unrecognized'; sessionId: string; raw: z.infer<typeof updateEnvelopeSchema> }
+import { readAcpSessionEvent, type AcpSessionEvent } from './acp-session-events'
+export type { AcpSessionEvent } from './acp-session-events'
 
 export type AcpSessionRuntimeOptions = {
   clientInfo?: InitializeRequest['clientInfo']
@@ -46,6 +39,8 @@ export type AcpSessionRuntimeOptions = {
   cancelTimeoutMs?: number
   onPermission?: AcpPermissionHandler
   onRequest?: (method: string, params: unknown, context: AcpRequestContext) => unknown
+  /** Agent notifications other than `session/update`: a dialect's protocol extensions. */
+  onExtensionNotification?: (method: string, params: unknown) => void
   onDiagnostic?: (message: string) => void
   onClose?: (error: Error) => void
 }
@@ -148,14 +143,18 @@ export class AcpSessionRuntime {
     return this.starting
   }
 
-  async prompt(prompt: PromptRequest['prompt']): Promise<PromptResponse> {
+  async prompt(
+    prompt: PromptRequest['prompt'],
+    meta?: PromptRequest['_meta']
+  ): Promise<PromptResponse> {
     if (this.activePrompt) {
       throw new Error('ACP prompt already in progress')
     }
     const sessionId = this.sessionId()
+    const params: PromptRequest = { sessionId, prompt, ...(meta ? { _meta: meta } : {}) }
     const active: ActivePrompt = {
       cancelling: false,
-      response: this.call('session/prompt', { sessionId, prompt }, PromptResponseSchema)
+      response: this.call('session/prompt', params, PromptResponseSchema)
     }
     this.activePrompt = active
     active.response = active.response.finally(() => {
@@ -291,18 +290,19 @@ export class AcpSessionRuntime {
 
   private handleNotification(method: string, params: unknown): void {
     if (method !== 'session/update') {
+      try {
+        this.options.onExtensionNotification?.(method, params)
+      } catch (error) {
+        this.diagnose(`ACP extension listener failed: ${String(error)}`)
+      }
       return
     }
-    const envelope = updateEnvelopeSchema.safeParse(params)
-    if (!envelope.success) {
+    const event = readAcpSessionEvent(params)
+    if (!event) {
       this.diagnose('Ignored invalid ACP session update envelope')
       return
     }
-    const parsed = SessionNotificationSchema.safeParse(params)
-    const event: AcpSessionEvent = parsed.success
-      ? { kind: 'known', notification: parsed.data }
-      : { kind: 'unrecognized', sessionId: envelope.data.sessionId, raw: envelope.data }
-    if (!parsed.success && !this.reportedUpdateAnomaly) {
+    if (event.kind === 'unrecognized' && !this.reportedUpdateAnomaly) {
       this.reportedUpdateAnomaly = true
       this.diagnose('Forwarded unrecognized ACP session update')
     }

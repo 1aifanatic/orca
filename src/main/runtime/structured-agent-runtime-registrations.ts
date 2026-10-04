@@ -24,6 +24,11 @@ import type { createStructuredAgentSessionDispatchFollowUps } from './structured
 import type { StructuredAgentSessionRuntimeDeps } from './structured-agent-session-runtime'
 import type { createStructuredAgentEnvironmentResolvers } from './structured-agent-shell-environment'
 import { createStructuredClaudeRuntimeAdapter } from './structured-claude-runtime-adapter'
+import { ACP_LAUNCH_SPECS, type AcpLaunchSpec } from '../acp/acp-launch-specs'
+import { acpStructuredAgentDefinition } from '../acp/acp-structured-agent-definitions'
+import { spawnAcpStructuredChild } from '../acp/acp-structured-child'
+import { createAcpStructuredLaunchResolver } from '../acp/acp-structured-launch-resolution'
+import { AcpStructuredSessionAdapter } from '../acp/acp-structured-session-adapter'
 
 /** What an agent's adapter is built from: the open store and the runtime around it. */
 export type StructuredAgentAdapterContext = {
@@ -109,10 +114,40 @@ function createClaudeAdapter(
   })
 }
 
+function acpRegistration(spec: AcpLaunchSpec): StructuredAgentRuntimeRegistration {
+  return {
+    definition: acpStructuredAgentDefinition(spec),
+    createAdapter: (context) => {
+      const { deps, store, followUps } = context
+      return new AcpStructuredSessionAdapter({
+        spec,
+        resolveLaunch: createAcpStructuredLaunchResolver(spec, {
+          store,
+          resolveWorkspacePath: deps.resolveWorkspacePath,
+          resolveEnvironment: context.environment.resolveBaseEnvironment,
+          ...(deps.resolveAgentLaunchEnv ? { resolveLaunchEnv: deps.resolveAgentLaunchEnv } : {}),
+          ...(deps.resolveAgentFullAccess ? { resolveFullAccess: deps.resolveAgentFullAccess } : {})
+        }),
+        spawnChild: deps.spawnAcpChild ?? ((launch) => spawnAcpStructuredChild(launch)),
+        ...(deps.readProcessStartTime ? { readProcessStartTime: deps.readProcessStartTime } : {}),
+        onDispatchSettledLate: followUps.onDispatchSettledLate,
+        logger: deps.logger,
+        // Every exit, expected or not: the host ends that child's record.
+        onEvent: (event) => {
+          if (event.type === 'ended') {
+            context.deliverLifecycle(event)
+          }
+        }
+      })
+    }
+  }
+}
+
 export const STRUCTURED_AGENT_RUNTIME_REGISTRATIONS: readonly StructuredAgentRuntimeRegistration[] =
   [
     { definition: CODEX_STRUCTURED_AGENT, createAdapter: createCodexAdapter },
-    { definition: CLAUDE_STRUCTURED_AGENT, createAdapter: createClaudeAdapter }
+    { definition: CLAUDE_STRUCTURED_AGENT, createAdapter: createClaudeAdapter },
+    ...ACP_LAUNCH_SPECS.map(acpRegistration)
   ]
 
 /** What the record store admits: exactly the registered agents' declared storage. */
