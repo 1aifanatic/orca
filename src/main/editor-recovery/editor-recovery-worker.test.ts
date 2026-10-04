@@ -7,6 +7,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { spawnProcess } from '../../shared/child-process/run-process'
 import { getDefaultWorkspaceSession } from '../../shared/constants'
 import type { EditorRecoveryChange, EditorRecoveryMetadata } from '../../shared/editor-recovery'
+import { createEditorRecoveryTextPatch } from '../../shared/editor-recovery-text-patch'
 import { EditorRecoveryWorker } from './editor-recovery-worker'
 import { EditorRecoveryService } from './editor-recovery-service'
 
@@ -68,15 +69,33 @@ describe('recovery writer process boundaries', () => {
   it('survives an abrupt process kill after acknowledgement, with no graceful shutdown checkpoint', async () => {
     const f = fixture()
     const text = 'most recent unsaved text 😀\r\n'.repeat(30_000)
+    const finalText = `${text}last incremental edit`
+    const patch = createEditorRecoveryTextPatch(text, finalText)
+    if (!patch) {
+      throw new Error('Expected an incremental edit')
+    }
     const input = join(f.root, 'draft.json')
-    writeFileSync(input, JSON.stringify([put(text)]))
+    writeFileSync(
+      input,
+      JSON.stringify([
+        put(text),
+        {
+          ...patch,
+          kind: 'patch',
+          id: 'buffer',
+          expectedRevision: 1,
+          metadata: metadata(),
+          state: 'active'
+        }
+      ])
+    )
     const script = `
       const { Worker } = require('node:worker_threads');
       const { readFileSync } = require('node:fs');
       const worker = new Worker(process.argv[1], { workerData: { databasePath: process.argv[2] } });
       worker.on('error', error => { console.error(error); process.exit(1); });
       worker.on('message', response => {
-        if (!response.ok || response.result[0]?.revision !== 1) process.exit(2);
+        if (!response.ok || response.result.at(-1)?.revision !== 2) process.exit(2);
         process.stdout.write('committed\\n');
       });
       worker.postMessage({ requestId: 1, command: { kind: 'apply', changes: JSON.parse(readFileSync(process.argv[3], 'utf8')) } });
@@ -125,7 +144,7 @@ describe('recovery writer process boundaries', () => {
       }
     }
     const reopened = client(f.path)
-    expect(await reopened.read('buffer')).toMatchObject({ content: text, revision: 1 })
+    expect(await reopened.read('buffer')).toMatchObject({ content: finalText, revision: 2 })
   })
 
   it('exports an exact copy, keeps the source draft, and refuses stale revisions and the original file', async () => {

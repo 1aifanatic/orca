@@ -228,11 +228,89 @@ describe('buffer checkpoints independent of layout persistence', () => {
       expect.objectContaining({ content: oversized, expectedRevision: 0 }),
       expect.objectContaining({
         id: firstChange.id,
-        content: `${large}new first`,
+        kind: 'patch',
+        inserted: 'new first',
+        baseLength: large.length,
         expectedRevision: 1
       })
     ])
     expect(f.onError).not.toHaveBeenCalled()
+  })
+
+  it('batches small edits to large drafts and bases queued patches on acknowledged text', async () => {
+    const large = 'a'.repeat(2 * 1024 * 1024)
+    const f = fixture(
+      ['one', 'two'].map((id) => file({ id })),
+      { one: large, two: large }
+    )
+    await f.subscriber.flush()
+    f.apply.mockClear()
+    const blocked = deferred<EditorRecoveryAck[]>()
+    f.apply.mockImplementationOnce(() => blocked.promise)
+    useAppStore.setState({ editorDrafts: { one: `${large}first`, two: `${large}second` } })
+    const writing = f.subscriber.flush()
+    expect(f.apply).toHaveBeenCalledTimes(1)
+    expect(f.changes()).toEqual([
+      expect.objectContaining({ kind: 'patch', inserted: 'first', expectedRevision: 1 }),
+      expect.objectContaining({ kind: 'patch', inserted: 'second', expectedRevision: 1 })
+    ])
+    useAppStore.setState({ editorDrafts: { one: `${large}first!`, two: `${large}second` } })
+    const latest = f.subscriber.flush()
+    blocked.resolve(f.changes().map((change) => ({ id: change.id, revision: 2 })))
+    await Promise.all([writing, latest])
+    expect(f.changes().at(-1)).toMatchObject({
+      kind: 'patch',
+      baseLength: large.length + 5,
+      start: large.length + 5,
+      inserted: '!',
+      removed: 0,
+      expectedRevision: 2
+    })
+    useAppStore.setState({ openFiles: [], editorDrafts: {} })
+    await f.subscriber.flush()
+    expect(
+      f
+        .changes()
+        .slice(-2)
+        .map((change) => change.kind)
+    ).toEqual(['retain', 'retain'])
+  })
+
+  it('refreshes a bounded edit log from renderer text and keeps its revision after a snapshot request', async () => {
+    const large = 'a'.repeat(5_000)
+    const f = fixture([file()], { note: large })
+    await f.subscriber.flush()
+    const id = f.changes()[0]?.id
+    useAppStore.getState().setEditorDraft('note', `${large}first`)
+    f.apply.mockImplementationOnce(async (changes) =>
+      changes.map((change) => ({
+        id: change.id,
+        revision: change.expectedRevision + 1,
+        snapshotRequired: true
+      }))
+    )
+    await f.subscriber.flush()
+    useAppStore.getState().setEditorDraft('note', `${large}next`)
+    await f.subscriber.flush()
+    expect(f.changes().at(-1)).toMatchObject({
+      kind: 'put',
+      id,
+      content: `${large}next`,
+      expectedRevision: 2
+    })
+    useAppStore.getState().setEditorDraft('note', `${large}last`)
+    f.apply.mockImplementationOnce(async (changes) =>
+      changes.map((change) => ({
+        id: change.id,
+        revision: null,
+        snapshotRequired: true
+      }))
+    )
+    await f.subscriber.flush()
+    expect(f.changes().slice(-2)).toEqual([
+      expect.objectContaining({ kind: 'patch', id, expectedRevision: 3 }),
+      expect.objectContaining({ kind: 'put', id, content: `${large}last`, expectedRevision: 3 })
+    ])
   })
 
   it('keeps text entered while retirement is pending under a fresh checkpoint', async () => {

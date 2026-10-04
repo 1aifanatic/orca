@@ -4,6 +4,7 @@ import type { WorkspaceSessionPatch } from '../../../shared/workspace-session-st
 import { SESSION_RELEVANT_FIELDS, shouldPersistWorkspaceSession } from './workspace-session'
 import { buildWorkspaceSessionPatch } from './workspace-session-patch'
 import { createWorktreeTabBucketProjection } from './worktree-tab-bucket-projection'
+import { createDeadlineDebouncer } from './deadline-debouncer'
 
 type SessionRelevantField = (typeof SESSION_RELEVANT_FIELDS)[number]
 type TabsByWorktree = AppState['tabsByWorktree']
@@ -120,8 +121,6 @@ export function createSessionWriteSubscriber({
   debounceMs = 150,
   maxWaitMs = 1_000
 }: SessionWriteSubscriberDeps): () => void {
-  let timer: ReturnType<typeof setTimeout> | null = null
-  let firstPendingAt: number | null = null
   // Why: the subscriber fires on every store update (agent status, usage
   // refreshes, runtime title ticks, …). Without this gate each fire reset
   // the debounce, and when it finally expired buildWorkspaceSessionPayload
@@ -142,8 +141,7 @@ export function createSessionWriteSubscriber({
   const terminalTabsProjection = createTerminalSessionTabsProjection()
   const unifiedTabsProjection = createUnifiedSessionTabsProjection()
 
-  const flushPendingWrite = (): void => {
-    timer = null
+  const flushPendingWrite = (): void | false => {
     // Why: rebuild from the freshest store state rather than the snapshot
     // captured when this timer was scheduled. Today this is equivalent
     // because buildWorkspaceSessionPayload reads only SESSION_RELEVANT_FIELDS
@@ -157,14 +155,13 @@ export function createSessionWriteSubscriber({
     // the write owed; the next store update or gate-open wake-up re-arms it. Nothing re-arms from
     // here, so a gate that never reopens costs no timer.
     if (!shouldPersistWorkspaceSession(fresh)) {
-      return
+      return false
     }
     if (shouldSchedulePersist && !shouldSchedulePersist()) {
-      return
+      return false
     }
     const changed = new Set(pendingChangedFields)
     pendingChangedFields.clear()
-    firstPendingAt = null
     const patch = buildWorkspaceSessionPatch(fresh, changed)
     if (Object.keys(patch).length === 0) {
       return
@@ -172,16 +169,8 @@ export function createSessionWriteSubscriber({
     persist({ patch })
   }
 
-  const armFlushTimer = (): void => {
-    firstPendingAt ??= Date.now()
-    if (timer !== null) {
-      clearTimeout(timer)
-    }
-    timer = setTimeout(
-      flushPendingWrite,
-      Math.max(0, Math.min(debounceMs, maxWaitMs - (Date.now() - firstPendingAt)))
-    )
-  }
+  const debouncer = createDeadlineDebouncer(flushPendingWrite, debounceMs, maxWaitMs)
+  const armFlushTimer = debouncer.schedule
 
   /**
    * Identity-only scan over exactly SESSION_RELEVANT_FIELDS, allocating nothing.
@@ -224,7 +213,7 @@ export function createSessionWriteSubscriber({
         return
       }
       // An unrelated update may wake a deferred write but must never reset an armed debounce.
-      if (timer !== null) {
+      if (debouncer.isScheduled) {
         return
       }
       armFlushTimer()
@@ -259,7 +248,7 @@ export function createSessionWriteSubscriber({
     }
     // Why: an unrelated update may wake a deferred write but must never reset an armed debounce —
     // that reset storm is exactly what the changed-field gate above exists to prevent.
-    if (timer !== null && changedFields.length === 0) {
+    if (debouncer.isScheduled && changedFields.length === 0) {
       return
     }
     armFlushTimer()
@@ -273,7 +262,7 @@ export function createSessionWriteSubscriber({
   const unsub = store.subscribe(evaluateSessionState)
 
   const unsubGateOpen = subscribeToPersistGateOpen?.(() => {
-    if (pendingChangedFields.size === 0 || timer !== null) {
+    if (pendingChangedFields.size === 0 || debouncer.isScheduled) {
       return
     }
     armFlushTimer()
@@ -282,9 +271,7 @@ export function createSessionWriteSubscriber({
   return () => {
     unsub()
     unsubGateOpen?.()
-    if (timer !== null) {
-      clearTimeout(timer)
-    }
+    debouncer.cancel()
     pendingChangedFields.clear()
   }
 }

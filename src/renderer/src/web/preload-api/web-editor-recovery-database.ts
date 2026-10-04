@@ -1,8 +1,10 @@
 import { z } from 'zod'
+import { replayEditorRecoveryTextPatches } from '../../../../shared/editor-recovery-text-patch'
 import {
   editorRecoveryDraftSchema,
   editorRecoveryEntrySchema,
   editorRecoveryStatusSchema,
+  editorRecoveryResourceKey,
   type EditorRecoveryAck,
   type EditorRecoveryChange,
   type EditorRecoveryDraft,
@@ -135,16 +137,31 @@ export class WebEditorRecoveryDatabase {
           continue
         }
         const revision = change.expectedRevision + 1
-        if (change.kind === 'put') {
+        if (change.kind === 'put' || change.kind === 'patch') {
+          let content: string
+          if (change.kind === 'patch') {
+            const saved = z.string().parse(await requestValue(contents.get(change.id)))
+            if (
+              saved.length !== change.baseLength ||
+              editorRecoveryResourceKey(editorRecoveryEntrySchema.parse(raw)) !==
+                editorRecoveryResourceKey(change.metadata)
+            ) {
+              acknowledgements.push({ id: change.id, revision: null })
+              continue
+            }
+            content = replayEditorRecoveryTextPatches(saved, [change])
+          } else {
+            content = change.content
+          }
           entries.put({
             ...change.metadata,
             id: change.id,
             revision,
             updatedAt: imported ? 0 : Date.now(),
             state: change.state,
-            byteLength: new Blob([change.content]).size
+            byteLength: new Blob([content]).size
           })
-          contents.put(change.content, change.id)
+          contents.put(content, change.id)
         } else if (change.kind === 'retain') {
           entries.put({
             ...editorRecoveryEntrySchema.parse(raw),

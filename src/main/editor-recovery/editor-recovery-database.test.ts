@@ -5,6 +5,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import SyncDatabase from '../sqlite/sync-database'
 import { EditorRecoveryDatabase } from './editor-recovery-database'
 import type { EditorRecoveryChange, EditorRecoveryMetadata } from '../../shared/editor-recovery'
+import { createEditorRecoveryTextPatch } from '../../shared/editor-recovery-text-patch'
+import { EDITOR_RECOVERY_PATCH_LIMIT } from './editor-recovery-draft-bodies'
+import { editorRecoveryResourceKey } from '../../shared/editor-recovery'
 
 const roots: string[] = []
 const databases = new Set<EditorRecoveryDatabase>()
@@ -176,11 +179,245 @@ describe('durable editor recovery journal', () => {
     rmSync(f.path)
     const newer = new SyncDatabase(f.path)
     newer.exec(
-      "CREATE TABLE future_drafts(content TEXT); INSERT INTO future_drafts VALUES ('future text'); PRAGMA user_version = 2"
+      "CREATE TABLE future_drafts(content TEXT); INSERT INTO future_drafts VALUES ('future text'); PRAGMA user_version = 3"
     )
     newer.close()
     const bytes = readFileSync(f.path)
     expect(() => f.open()).toThrow('newer application version')
     expect(readFileSync(f.path)).toEqual(bytes)
+  })
+
+  it('bounds patch replay, compacts atomically and recovers exact text after reopening', () => {
+    const f = fixture()
+    const database = f.open()
+    const original = 'line\0😀\ud800\r\n'.repeat(1_000)
+    let content = original
+    let revision = 1
+    database.apply([put('incremental', original)])
+    const inspect = new SyncDatabase(f.path, { readonly: true })
+    try {
+      for (let index = 0; index < EDITOR_RECOVERY_PATCH_LIMIT + 3; index++) {
+        const next = index % 2 === 0 ? `${index}\udc00${content}` : `${content}\ud800`
+        const patch = createEditorRecoveryTextPatch(content, next)
+        if (!patch) {
+          throw new Error('Expected an incremental edit')
+        }
+        const change: EditorRecoveryChange = {
+          ...patch,
+          kind: 'patch',
+          id: 'incremental',
+          expectedRevision: revision,
+          metadata: metadata(),
+          state: 'active'
+        }
+        const ack = database.apply([change])[0]
+        if (ack?.revision === null && ack.snapshotRequired) {
+          expect(database.read('incremental')).toMatchObject({ content, revision })
+          expect(database.apply([put('incremental', next, revision)])).toEqual([
+            { id: 'incremental', revision: revision + 1 }
+          ])
+        } else {
+          expect(ack).toMatchObject({ id: 'incremental', revision: revision + 1 })
+        }
+        revision++
+        content = next
+        expect(database.read('incremental')).toMatchObject({
+          content,
+          revision,
+          byteLength: Buffer.byteLength(content)
+        })
+        const count = inspect
+          .prepare('SELECT COUNT(*) AS count FROM editor_draft_patches')
+          .get()?.count
+        expect(Number(count)).toBeLessThan(EDITOR_RECOVERY_PATCH_LIMIT)
+        if (index === EDITOR_RECOVERY_PATCH_LIMIT - 2) {
+          expect(
+            JSON.parse(
+              String(inspect.prepare('SELECT content FROM editor_draft_bodies').get()?.content)
+            )
+          ).toBe(original)
+        }
+      }
+      expect(inspect.prepare('SELECT content, patch_count FROM editor_drafts').get()).toMatchObject(
+        { content: null, patch_count: 3 }
+      )
+    } finally {
+      inspect.close()
+    }
+    database.apply([{ kind: 'retain', id: 'incremental', expectedRevision: revision++ }])
+    database.close()
+    databases.delete(database)
+    const reopened = f.open()
+    expect(reopened.read('incremental')).toMatchObject({ content, revision, state: 'retained' })
+    expect(
+      reopened.apply([{ kind: 'resolve', id: 'incremental', expectedRevision: revision }])[0]
+        ?.revision
+    ).toBe(revision + 1)
+    const remaining = new SyncDatabase(f.path, { readonly: true })
+    try {
+      expect(
+        remaining.prepare('SELECT COUNT(*) AS count FROM editor_draft_bodies').get()?.count
+      ).toBe(0)
+      expect(
+        remaining.prepare('SELECT COUNT(*) AS count FROM editor_draft_patches').get()?.count
+      ).toBe(0)
+    } finally {
+      remaining.close()
+    }
+  })
+
+  it('rejects stale, mismatched and out-of-bounds patches and rolls back a failed patch batch', () => {
+    const database = fixture().open()
+    const original = 'a'.repeat(5_000)
+    database.apply([put('one', original)])
+    const patch = createEditorRecoveryTextPatch(original, `${original}edit`)
+    if (!patch) {
+      throw new Error('Expected an incremental edit')
+    }
+    const change: EditorRecoveryChange = {
+      ...patch,
+      kind: 'patch',
+      id: 'one',
+      expectedRevision: 1,
+      metadata: metadata(),
+      state: 'active'
+    }
+    for (const invalid of [
+      { ...change, expectedRevision: 2 },
+      { ...change, baseLength: 4_999 },
+      { ...change, start: 5_001 },
+      { ...change, metadata: metadata({ hostId: 'ssh:other' }) }
+    ]) {
+      expect(database.apply([invalid])).toEqual([{ id: 'one', revision: null }])
+    }
+    const originalExec = SyncDatabase.prototype.exec
+    const fault = vi.spyOn(SyncDatabase.prototype, 'exec').mockImplementation(function (
+      this: SyncDatabase,
+      sql: string
+    ) {
+      if (sql === 'COMMIT') {
+        throw new Error('checkpoint failed')
+      }
+      originalExec.call(this, sql)
+    })
+    expect(() => database.apply([change, put('two', 'second')])).toThrow('checkpoint failed')
+    expect(database.read('one')).toMatchObject({ content: original, revision: 1 })
+    expect(database.read('two')).toBeNull()
+    fault.mockRestore()
+    expect(database.apply([change])).toEqual([{ id: 'one', revision: 2 }])
+    expect(database.read('one')?.content).toBe(`${original}edit`)
+  })
+
+  it('requests a snapshot before the byte budget and keeps the old checkpoint when that snapshot fails', () => {
+    const database = fixture().open()
+    let content = 'a'.repeat(150_000)
+    let revision = 1
+    database.apply([put('budgeted', content)])
+    for (let index = 0; index < 2; index++) {
+      const patch = createEditorRecoveryTextPatch(content, `${content}${'b'.repeat(70_000)}`)
+      if (!patch) {
+        throw new Error('Expected an incremental edit')
+      }
+      database.apply([
+        {
+          ...patch,
+          kind: 'patch',
+          id: 'budgeted',
+          expectedRevision: revision++,
+          metadata: metadata(),
+          state: 'active'
+        }
+      ])
+      content += 'b'.repeat(70_000)
+    }
+    const next = `${content}${'b'.repeat(70_000)}`
+    const patch = createEditorRecoveryTextPatch(content, next)
+    if (!patch) {
+      throw new Error('Expected an incremental edit')
+    }
+    expect(
+      database.apply([
+        {
+          ...patch,
+          kind: 'patch',
+          id: 'budgeted',
+          expectedRevision: revision,
+          metadata: metadata(),
+          state: 'active'
+        }
+      ])
+    ).toEqual([{ id: 'budgeted', revision: null, snapshotRequired: true }])
+    const originalExec = SyncDatabase.prototype.exec
+    const fault = vi.spyOn(SyncDatabase.prototype, 'exec').mockImplementation(function (
+      this: SyncDatabase,
+      sql: string
+    ) {
+      if (sql === 'COMMIT') {
+        throw new Error('snapshot failed')
+      }
+      originalExec.call(this, sql)
+    })
+    expect(() => database.apply([put('budgeted', next, revision)])).toThrow('snapshot failed')
+    expect(database.read('budgeted')).toMatchObject({ content, revision })
+    fault.mockRestore()
+    expect(database.apply([put('budgeted', next, revision)])).toEqual([
+      { id: 'budgeted', revision: revision + 1 }
+    ])
+    expect(database.read('budgeted')?.content).toBe(next)
+  })
+
+  it('reads version-one bodies without eagerly copying them and migrates only an edited buffer', () => {
+    const f = fixture()
+    const original = '😀\ud800\0\r\n'.repeat(1_000)
+    const previous = new SyncDatabase(f.path)
+    previous.exec(`CREATE TABLE editor_drafts (
+      id TEXT PRIMARY KEY, resource_key TEXT NOT NULL, metadata TEXT NOT NULL, content TEXT,
+      revision INTEGER NOT NULL, updated_at INTEGER NOT NULL, state TEXT NOT NULL, byte_length INTEGER NOT NULL
+    ) STRICT; PRAGMA user_version = 1;`)
+    for (const id of ['edited', 'untouched']) {
+      previous
+        .prepare('INSERT INTO editor_drafts VALUES (?, ?, ?, ?, 7, 0, ?, ?)')
+        .run(
+          id,
+          editorRecoveryResourceKey(metadata()),
+          JSON.stringify(metadata()),
+          JSON.stringify(original),
+          'active',
+          Buffer.byteLength(original)
+        )
+    }
+    previous.close()
+    const database = f.open()
+    expect(database.read('edited')?.content).toBe(original)
+    const patch = createEditorRecoveryTextPatch(original, `${original}new`)
+    if (!patch) {
+      throw new Error('Expected an incremental edit')
+    }
+    expect(
+      database.apply([
+        {
+          ...patch,
+          kind: 'patch',
+          id: 'edited',
+          expectedRevision: 7,
+          metadata: metadata(),
+          state: 'active'
+        }
+      ])
+    ).toEqual([{ id: 'edited', revision: 8 }])
+    expect(database.read('edited')?.content).toBe(`${original}new`)
+    expect(database.read('untouched')?.content).toBe(original)
+    const inspect = new SyncDatabase(f.path, { readonly: true })
+    try {
+      expect(inspect.pragma('user_version', { simple: true })).toBe(2)
+      expect(inspect.prepare('SELECT id FROM editor_draft_bodies').all()).toEqual([
+        { id: 'edited' }
+      ])
+      expect(
+        inspect.prepare('SELECT content FROM editor_drafts WHERE id = ?').get('untouched')?.content
+      ).toBe(JSON.stringify(original))
+    } finally {
+      inspect.close()
+    }
   })
 })

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { normalizeExecutionHostId } from './execution-host'
+import { editorRecoveryTextPatchSchema } from './editor-recovery-text-patch'
 
 export const EDITOR_RECOVERY_BATCH_RECORD_LIMIT = 64
 // Large cross-thread text messages leave substantial resident allocator memory behind.
@@ -51,6 +52,13 @@ export const editorRecoveryChangeSchema = z.discriminatedUnion('kind', [
     content: z.string(),
     state: z.enum(['active', 'retained'])
   }),
+  editorRecoveryTextPatchSchema.safeExtend({
+    kind: z.literal('patch'),
+    id: z.string(),
+    expectedRevision: z.number().int().positive(),
+    metadata: editorRecoveryMetadataSchema,
+    state: z.enum(['active', 'retained'])
+  }),
   z.object({
     kind: z.literal('retain'),
     id: z.string(),
@@ -65,7 +73,8 @@ export const editorRecoveryChangeSchema = z.discriminatedUnion('kind', [
 export type EditorRecoveryChange = z.infer<typeof editorRecoveryChangeSchema>
 export const editorRecoveryAckSchema = z.object({
   id: z.string(),
-  revision: z.number().int().positive().nullable()
+  revision: z.number().int().positive().nullable(),
+  snapshotRequired: z.literal(true).optional()
 })
 export type EditorRecoveryAck = z.infer<typeof editorRecoveryAckSchema>
 export const editorRecoveryStatusSchema = z.object({

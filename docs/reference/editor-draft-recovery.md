@@ -33,10 +33,23 @@ buffers cannot be discarded from this dialog.
 The subscriber schedules work from draft-map identity changes without scanning all
 tabs on every keystroke. Checkpoints inspect buffers, reuse captured metadata,
 write only changed records, coalesce edits behind an in-flight write, and batch at
-most 64 records and 4 MiB of estimated UTF-16 draft text per transaction. A draft
+most 64 records and 4 MiB of estimated UTF-16 message text per transaction. A draft
 larger than that text budget travels alone without truncation. Legacy imports use
 the same limits. This avoids large cross-thread messages retaining excess resident
-memory. The journal holds the latest text per buffer.
+memory. Large drafts send only the replacement between their common prefix and
+suffix after the first acknowledged snapshot. Small drafts, large replacements,
+and major deletions send a full snapshot. Differences are computed at checkpoint
+time, against acknowledged text, including when newer edits arrive during a write.
+
+Desktop metadata, full bodies, and incremental edits use separate tables. Small
+edits do not load or rewrite the unchanged body. Before 64 edits or when inserted
+JSON text would reach half the current draft's UTF-8 size (with a 64 KiB minimum),
+the worker requests a full snapshot from the renderer. This refresh replaces the
+body and deletes its edit log atomically, without rebuilding a full worker-side
+copy first. Recovery replays bounded slices and joins once,
+preserving every UTF-16 code unit. Browser transactions apply the same edits to
+their content store. Both persistence subscribers reuse a timer until its deadline
+instead of allocating and cancelling one for each keystroke.
 Active copies retire after a matching successful save; closed copies remain
 available for explicit recovery or discard.
 
@@ -58,6 +71,9 @@ does not write the original file automatically.
 On first use, dirty writable buffers from legacy session snapshots are imported
 across all host partitions. Stable IDs make retries idempotent, and retired IDs
 remain as tombstones. The source snapshots stay intact if import fails.
+Desktop journal version 2 reads version-one bodies in place and moves each body
+into separate storage on its next changed checkpoint. Older journal readers refuse
+the new version; released builds can still use the compatibility session snapshot.
 
 Session snapshots continue to include dirty text for older builds, alongside optional
 recovery IDs, revisions, and buffer-kind fields. No paired-host upgrade is required.
@@ -80,25 +96,11 @@ versions, continuous typing, and edits during saves. Hidden-renderer integration
 tests exercise the recovery dialog, complete exports, combined-view editing,
 browser storage, and a hard-killed app followed by an external disk change.
 
-A local macOS arm64 / Node 24.20.0 comparison used 2,000 open-file records and
-10,000 synthetic draft updates grouped behind 20 forced checkpoints. Five fresh
-processes per version ran the production session subscriber, adding the production
-recovery subscriber and SQLite worker in the feature version. With one 2 MiB draft,
-store updates plus persistence scheduling took 2.05 microseconds median without
-recovery and 2.36 with it. Independent committed checkpoints took 2.97 ms median
-and 3.68 ms p95; the baseline has no independent journal to compare.
-
-For ten 2 MiB drafts, settled process RSS after updates was 170.4 MiB without
-recovery and 224.1 MiB with it. The initial implementation's 64-record-only batches
-measured 656.4 MiB: a clone-only control reproduced the high RSS without database
-writes, while splitting the messages removed most of that cost. The text budget
-reduces large-message allocation and retention; it is not a cap on total RAM.
-Committing all ten drafts took 25.03 ms median and 31.98 ms p95, compared with
-24.86 / 28.75 ms before splitting. Every final journal body matched exactly.
-
-RSS includes the worker thread and retained allocator pages; parent-thread JS heap
-alone misses that cost. Parent GC preceded settled samples; worker GC was normal.
-These isolated persistence measurements exclude the renderer and editor painting,
-and do not establish keyboard latency or cross-platform memory guarantees. A single
-oversized draft, restore responses, and compatibility-session snapshots can still
-carry larger payloads.
+The pull request records repeated local comparisons against a pinned main snapshot,
+covering persistence scheduling, committed checkpoints, process RSS and hidden-app
+memory. Main has no independent journal, so checkpoint latency is added durability
+work. Recovery still requires a worker and an acknowledged text reference; reducing
+message sizes does not remove all additional RAM. A single oversized draft, restore
+responses, compaction and compatibility-session snapshots can still carry larger
+payloads. Local measurements do not establish keyboard latency or cross-platform
+memory guarantees.

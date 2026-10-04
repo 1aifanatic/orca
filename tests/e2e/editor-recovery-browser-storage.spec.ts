@@ -70,6 +70,32 @@ test('uses real browser transactions for recovery, rollback, migration and retir
     ])
     const reopened = new WebEditorRecoveryDatabase()
     const recovered = (await reopened.readMany(['durable']))[0]
+    const patch = {
+      kind: 'patch' as const,
+      id: 'durable',
+      expectedRevision: 1,
+      metadata,
+      baseLength: content.length,
+      start: content.length,
+      removed: 0,
+      inserted: '\ud800',
+      byteLengthDelta: 3,
+      state: 'active' as const
+    }
+    const patchAck = await reopened.apply([patch])
+    const stalePatch = await reopened.apply([patch])
+    await reopened.apply([
+      {
+        ...patch,
+        expectedRevision: 2,
+        baseLength: content.length + 1,
+        removed: 1,
+        inserted: '\ud800\udc00',
+        byteLengthDelta: 1
+      }
+    ])
+    const patched = (await reopened.readMany(['durable']))[0]
+    const expectedPatched = `${content}\ud800\udc00`
     const nativePut = IDBObjectStore.prototype.put
     let contentsWritten = 0
     let failed = false
@@ -84,7 +110,14 @@ test('uses real browser transactions for recovery, rollback, migration and retir
         return nativePut.apply(this, args)
       }
       await reopened.apply([
-        { ...put, id: 'abort-first' },
+        {
+          ...patch,
+          expectedRevision: 3,
+          baseLength: expectedPatched.length,
+          start: expectedPatched.length,
+          inserted: 'rolled back',
+          byteLengthDelta: 11
+        },
         { ...put, id: 'abort-second' }
       ])
     } catch (error) {
@@ -93,6 +126,7 @@ test('uses real browser transactions for recovery, rollback, migration and retir
       IDBObjectStore.prototype.put = nativePut
     }
     const rolledBack = await reopened.readMany(['abort-first', 'abort-second'])
+    const rolledBackPatch = (await reopened.readMany(['durable']))[0]
     const legacy = {
       activeRepoId: null,
       activeWorktreeId: null,
@@ -133,6 +167,12 @@ test('uses real browser transactions for recovery, rollback, migration and retir
         .sort(),
       exact: recovered?.content === content,
       revision: recovered?.revision,
+      patchAck,
+      stalePatch,
+      patchExact: patched?.content === expectedPatched,
+      patchBytes: patched?.byteLength === new Blob([expectedPatched]).size,
+      rolledBackPatchExact:
+        rolledBackPatch?.content === expectedPatched && rolledBackPatch.revision === 3,
       failed,
       rolledBack,
       importedCount: imported.length,
@@ -145,6 +185,11 @@ test('uses real browser transactions for recovery, rollback, migration and retir
     revisions: [1, null],
     exact: true,
     revision: 1,
+    patchAck: [{ id: 'durable', revision: 2 }],
+    stalePatch: [{ id: 'durable', revision: null }],
+    patchExact: true,
+    patchBytes: true,
+    rolledBackPatchExact: true,
     failed: true,
     rolledBack: [null, null],
     importedCount: 2,

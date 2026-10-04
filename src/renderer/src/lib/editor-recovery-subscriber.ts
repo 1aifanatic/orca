@@ -17,6 +17,8 @@ import {
   getExternalRecoveryBuffers,
   subscribeExternalRecoveryBuffers
 } from './editor-recovery-external-buffers'
+import { createEditorRecoveryTextPatch } from '../../../shared/editor-recovery-text-patch'
+import { createDeadlineDebouncer } from './deadline-debouncer'
 type RecoverySubscriberDeps = {
   store: {
     getState: () => AppState
@@ -47,8 +49,7 @@ export function createEditorRecoverySubscriber({
   const tracker = new EditorRecoveryBufferTracker()
   const { buffers, pending } = tracker
   let previous = store.getState()
-  let timer: ReturnType<typeof setTimeout> | null = null
-  let firstPendingAt: number | null = null
+  let retryTimer: ReturnType<typeof setTimeout> | null = null
   let draining: Promise<void> | null = null
   let disposed = false
   const capture = (state: AppState): void => {
@@ -66,6 +67,7 @@ export function createEditorRecoverySubscriber({
           buffer: EditorRecoveryBuffer
           version: number
           change: EditorRecoveryChange
+          content: string
         }[] = []
         for (const id of pending) {
           const buffer = buffers.get(id)
@@ -73,24 +75,42 @@ export function createEditorRecoverySubscriber({
             pending.delete(id)
             continue
           }
+          const patch =
+            !buffer.snapshotRequired && buffer.revision > 0 && buffer.durableContent !== undefined
+              ? createEditorRecoveryTextPatch(buffer.durableContent, buffer.content)
+              : null
           const change: EditorRecoveryChange =
             buffer.state === 'resolved'
               ? { kind: 'resolve', id, expectedRevision: buffer.revision }
               : buffer.state === 'retained' && buffer.durableContent === buffer.content
                 ? { kind: 'retain', id, expectedRevision: buffer.revision }
-                : {
-                    kind: 'put',
-                    id,
-                    expectedRevision: buffer.revision,
-                    metadata: buffer.metadata,
-                    content: buffer.content,
-                    state: buffer.state
-                  }
-          const textBytes = change.kind === 'put' ? change.content.length * 2 : 0
+                : patch
+                  ? {
+                      ...patch,
+                      kind: 'patch',
+                      id,
+                      expectedRevision: buffer.revision,
+                      metadata: buffer.metadata,
+                      state: buffer.state
+                    }
+                  : {
+                      kind: 'put',
+                      id,
+                      expectedRevision: buffer.revision,
+                      metadata: buffer.metadata,
+                      content: buffer.content,
+                      state: buffer.state
+                    }
+          const textBytes =
+            change.kind === 'put'
+              ? change.content.length * 2
+              : change.kind === 'patch'
+                ? change.inserted.length * 2
+                : 0
           if (batch.length > 0 && batchTextBytes + textBytes > EDITOR_RECOVERY_BATCH_TEXT_BYTES) {
             break
           }
-          batch.push({ buffer, version: buffer.version, change })
+          batch.push({ buffer, version: buffer.version, change, content: buffer.content })
           batchTextBytes += textBytes
           pending.delete(id)
           if (
@@ -105,12 +125,12 @@ export function createEditorRecoverySubscriber({
         }
         try {
           const acknowledgements = await api.apply(batch.map(({ change }) => change))
-          for (const { buffer, version, change } of batch) {
+          for (const { buffer, version, change, content } of batch) {
             const ack = acknowledgements.find((entry) => entry.id === change.id)
             if (!ack || (ack.revision !== null && ack.revision !== change.expectedRevision + 1)) {
               throw new Error('Invalid recovery write acknowledgement')
             }
-            tracker.acknowledge(buffer, version, change, ack.revision, !disposed)
+            tracker.acknowledge(buffer, version, change, content, ack, !disposed)
           }
         } catch (error) {
           for (const { buffer } of batch) {
@@ -130,11 +150,11 @@ export function createEditorRecoverySubscriber({
   }
 
   const flush = async (): Promise<void> => {
-    if (timer !== null) {
-      clearTimeout(timer)
-      timer = null
+    debouncer.cancel()
+    if (retryTimer !== null) {
+      clearTimeout(retryTimer)
+      retryTimer = null
     }
-    firstPendingAt = null
     const state = store.getState()
     if (shouldPersistWorkspaceSession(state)) {
       for (const file of state.openFiles) {
@@ -159,28 +179,30 @@ export function createEditorRecoverySubscriber({
     }
   }
 
+  const debouncer = createDeadlineDebouncer(
+    () => {
+      void flush().catch((error) => {
+        onError(error)
+        if (!disposed) {
+          retryTimer = setTimeout(() => {
+            retryTimer = null
+            schedule()
+          }, 5_000)
+        }
+      })
+    },
+    delayMs,
+    maxWaitMs
+  )
   const schedule = (): void => {
     if (disposed) {
       return
     }
-    firstPendingAt ??= Date.now()
-    if (timer !== null) {
-      clearTimeout(timer)
+    if (retryTimer !== null) {
+      clearTimeout(retryTimer)
+      retryTimer = null
     }
-    timer = setTimeout(
-      () => {
-        void flush().catch((error) => {
-          onError(error)
-          if (!disposed) {
-            timer = setTimeout(() => {
-              timer = null
-              schedule()
-            }, 5_000)
-          }
-        })
-      },
-      Math.max(0, Math.min(delayMs, maxWaitMs - (Date.now() - firstPendingAt)))
-    )
+    debouncer.schedule()
   }
 
   const evaluate = (state: AppState): void => {
@@ -225,8 +247,9 @@ export function createEditorRecoverySubscriber({
       unsubscribeExternal()
       unregisterFlush()
       unregisterResolver()
-      if (timer !== null) {
-        clearTimeout(timer)
+      debouncer.cancel()
+      if (retryTimer !== null) {
+        clearTimeout(retryTimer)
       }
       tracker.dispose()
     }
