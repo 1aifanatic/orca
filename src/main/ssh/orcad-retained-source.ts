@@ -8,6 +8,7 @@
  */
 import { createHash } from 'node:crypto'
 import type { FolderWorkspace } from '../../shared/folder-workspace-types'
+import type { ProjectGroup } from '../../shared/project-group-types'
 import type { OrcadMigrationCatalogPayload } from '../../shared/orcad-migration-manifest'
 import {
   isRetainedOrcadMigrationSourceCutover,
@@ -20,6 +21,7 @@ import type { Store } from '../persistence'
 import { collectOrcadMigrationSourceCatalog } from '../persistence/migrating-orcad-catalog/orcad-source-catalog'
 import {
   orcadSourceFolderWorkspaceIds,
+  projectGroupBelongsToOrcadSource,
   repoBelongsToOrcadSource
 } from '../persistence/migrating-orcad-catalog/orcad-source-ownership'
 import { findOrcadMigrationSourceCutoverForTarget } from './orcad-migration-cutover-journal'
@@ -42,6 +44,20 @@ export function visibleRepos(store: CatalogStore & Pick<Store, 'getSshTargets'>)
   }
   return repos.filter(
     (repo) => !hidden.some((targetId) => repoBelongsToOrcadSource(repo, targetId))
+  )
+}
+
+/** Hides only groups the host owns; a local group holding one of its projects stays. */
+export function visibleProjectGroups(
+  store: Pick<Store, 'getProjectGroups' | 'getSshTargets'>
+): ProjectGroup[] {
+  const hidden = hiddenRetainedSourceTargetIds(store.getSshTargets())
+  const groups = store.getProjectGroups()
+  if (hidden.length === 0) {
+    return groups
+  }
+  return groups.filter(
+    (group) => !hidden.some((targetId) => projectGroupBelongsToOrcadSource(group, targetId))
   )
 }
 

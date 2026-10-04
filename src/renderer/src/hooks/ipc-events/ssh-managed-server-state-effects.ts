@@ -8,6 +8,7 @@ import {
   moveSshHostFromToast
 } from '@/ssh/ssh-managed-server-move'
 import { useAppStore } from '../../store'
+import { withoutConvertedSshHostRows } from '../../store/repos/converted-ssh-host-rows'
 
 type ManagedServerStatus = SshConnectionState['managedServer']
 
@@ -20,8 +21,9 @@ export function applySshManagedServerTransition(
     next?.kind === 'managed' &&
     (previous?.kind !== 'managed' || previous.environmentId !== next.environmentId)
   ) {
-    // Why all hosts: a host that just converted brings a new server whose projects must load.
-    void useAppStore.getState().fetchReposForAllHosts()
+    void loadManagedServerCatalogs(targetId, next.environmentId).catch((error: unknown) =>
+      console.warn('[ssh] Could not load the managed server catalogs:', error)
+    )
     return
   }
   if (isNewMoveOffer(previous, next) && canMoveSshHostToManagedServer()) {
@@ -45,6 +47,28 @@ export function applySshManagedServerTransition(
       )
     )
   }
+}
+
+/** Loads a newly managed host's server the way startup does, then drops its relay-era rows. */
+async function loadManagedServerCatalogs(targetId: string, environmentId: string): Promise<void> {
+  const store = useAppStore.getState()
+  try {
+    // Why: host badges read server names from this catalog, which a conversion does not refresh.
+    store.setRuntimeEnvironments(await window.api.runtimeEnvironments.list())
+    void store.refreshRuntimeEnvironmentStatus(environmentId)
+  } catch (error) {
+    console.warn('[ssh] Could not refresh the managed server list:', error)
+  }
+  // Why all hosts: a host that just converted brings a new server whose projects must load.
+  await store.fetchReposForAllHosts()
+  // Why groups before folders: folder workspaces are owned through their project groups.
+  await store.fetchProjectGroupsForAllHosts()
+  await store.fetchFolderWorkspacesForAllHosts()
+  // Why gated: startup runs its own scan once every host's catalog is in.
+  if (useAppStore.getState().startupWorktreeRefreshCompleted) {
+    await store.fetchAllWorktrees()
+  }
+  useAppStore.setState((state) => withoutConvertedSshHostRows(state, targetId))
 }
 
 /** Main marks only the first live-terminals stop per host per app version with `offerMove`. */
