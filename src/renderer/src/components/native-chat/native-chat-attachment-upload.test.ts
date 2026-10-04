@@ -288,7 +288,7 @@ describe('a structured chat on a paired server', () => {
     await expect(prepareNativeChatSessionAttachmentUpload(owner)).resolves.toEqual({
       ok: false,
       notice:
-        'Attaching files to this chat needs a newer Orca on the server. Update Orca on that computer, then try again.'
+        'This needs a newer Orca on the computer running this chat. Update Orca there, then try again.'
     })
   })
 })

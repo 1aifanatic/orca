@@ -1,8 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'react'
-import {
-  nativeChatAttachmentOwnerUnchanged,
-  type NativeChatResolvedPathOptions
-} from './native-chat-resolved-path-ownership'
+import { nativeChatAttachmentOwnerUnchanged } from './native-chat-resolved-path-ownership'
 import { assertClipboardTextWithinLimit } from '../../../../shared/clipboard-text'
 import { extractIpcErrorMessage } from '@/lib/ipc-error'
 import type { AgentType } from '../../../../shared/agent-status-types'
@@ -34,11 +31,7 @@ export type UseNativeChatComposerPasteArgs = {
   /** Resolved at paste time: SSH panes must save the clipboard image on the
    *  remote host, or the attached path names a file the agent cannot read. */
   resolveAttachmentOwner: () => NativeChatAttachmentOwner
-  attachResolvedPaths: (
-    paths: string[],
-    connectionId?: string | null,
-    options?: NativeChatResolvedPathOptions
-  ) => void
+  attachResolvedPaths: (paths: string[], connectionId?: string | null) => void
   beginPendingImageAttachment: (previewUrl?: string) => string | null
   resolvePendingImageAttachment: (id: string, path: string, connectionId?: string | null) => void
   dropPendingImageAttachment: (id: string) => void

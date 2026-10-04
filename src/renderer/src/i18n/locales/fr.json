@@ -17568,7 +17568,6 @@
         "skillScopeBuiltIn": "Intégrée",
         "skillScopePlugin": "Plugin",
         "localAttachmentUnsupported": "Les pièces jointes locales ne sont pas disponibles pour les sessions distantes.",
-        "attachmentsNeedNewerServer": "Pour joindre des fichiers à ce chat, le serveur doit utiliser une version plus récente d’Orca. Mettez à jour Orca sur cet ordinateur, puis réessayez.",
         "attachFailed": "Impossible de joindre {{files}}.",
         "uploadingFile": "Envoi de {{name}}…",
         "removeAttachment": "Retirer la pièce jointe",

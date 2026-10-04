@@ -1,9 +1,6 @@
 import { useCallback, useLayoutEffect, useRef } from 'react'
 import { useAppStore } from '@/store'
-import {
-  nativeChatAttachmentOwnerUnchanged,
-  type NativeChatResolvedPathOptions
-} from './native-chat-resolved-path-ownership'
+import { nativeChatAttachmentOwnerUnchanged } from './native-chat-resolved-path-ownership'
 import {
   nativeChatAttachmentOwnerChangedNotice,
   nativeChatAttachmentUnreadableNotice,
@@ -29,11 +26,7 @@ export type UseNativeChatExternalAttachmentsArgs = {
   /** Live composer-disabled state; read at await-resume via a ref so a flip
    *  mid-upload doesn't attach into a guarded composer. */
   disabled: boolean
-  attachResolvedPaths: (
-    paths: string[],
-    connectionId?: string | null,
-    options?: NativeChatResolvedPathOptions
-  ) => void
+  attachResolvedPaths: (paths: string[], connectionId?: string | null) => void
   /** Chips shown while a file uploads, so Send waits for it. */
   pendingChips: NativeChatPendingAttachmentChips
   setNotice: (notice: string | null) => void

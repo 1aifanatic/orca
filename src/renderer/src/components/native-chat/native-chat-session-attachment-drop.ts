@@ -7,7 +7,6 @@ import {
   uploadNativeChatSessionAttachmentPaths,
   type NativeChatRuntimeSessionAttachmentOwner
 } from './native-chat-attachment-upload'
-import type { NativeChatResolvedPathOptions } from './native-chat-resolved-path-ownership'
 
 /** The composer's pending-chip controls, as an upload drives them. */
 export type NativeChatPendingAttachmentChips = {
@@ -30,11 +29,7 @@ export async function attachNativeChatSessionAttachmentPaths(args: {
   /** The composer was disabled or torn down meanwhile. */
   isAbandoned: () => boolean
   ownerStillCurrent: () => boolean
-  attachResolvedPaths: (
-    paths: string[],
-    connectionId?: string | null,
-    options?: NativeChatResolvedPathOptions
-  ) => void
+  attachResolvedPaths: (paths: string[], connectionId?: string | null) => void
   setNotice: (notice: string | null) => void
 }): Promise<void> {
   const pending = args.paths.flatMap((path) => {

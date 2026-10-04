@@ -17490,7 +17490,6 @@
         "stopDictation": "ディクテーションを停止する",
         "noSkills": "一致するスキルがありません",
         "localAttachmentUnsupported": "ローカル添付ファイルはリモートセッションでは使用できません。",
-        "attachmentsNeedNewerServer": "このチャットにファイルを添付するには、サーバーの Orca を新しいバージョンにする必要があります。そのコンピューターの Orca を更新してから、もう一度お試しください。",
         "attachFailed": "{{files}} を添付できませんでした。",
         "uploadingFile": "{{name}} をアップロードしています…",
         "removeAttachment": "添付ファイルを削除する",

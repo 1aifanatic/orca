@@ -15084,7 +15084,6 @@
         "stopDictation": "Detener dictado",
         "noSkills": "Sin habilidades coincidentes",
         "localAttachmentUnsupported": "Los archivos adjuntos locales no están disponibles para sesiones remotas.",
-        "attachmentsNeedNewerServer": "Para adjuntar archivos a este chat, el servidor necesita una versión más reciente de Orca. Actualiza Orca en ese equipo y vuelve a intentarlo.",
         "attachFailed": "No se pudo adjuntar {{files}}.",
         "uploadingFile": "Subiendo {{name}}…",
         "removeAttachment": "Quitar archivo adjunto",

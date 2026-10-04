@@ -13,6 +13,7 @@ import { getRuntimeEnvironmentRevision } from '@/runtime/runtime-environment-rev
 import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
 import type { RuntimeStatus } from '../../../../shared/runtime-types'
 import { AGENT_SESSION_ATTACHMENTS_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
+import { AGENT_SESSION_WRITE_NOTICE_COPY } from '../../../../shared/agent-session-write-notice-copy'
 import type {
   AgentSessionAttachmentPathUploadResult,
   AgentSessionAttachmentUploadTarget
@@ -167,13 +168,6 @@ export function nativeChatAttachFailedNotice(names: readonly string[]): string {
   })
 }
 
-export function nativeChatAttachmentsNeedNewerServerNotice(): string {
-  return translate(
-    'components.native-chat.composer.attachmentsNeedNewerServer',
-    'Attaching files to this chat needs a newer Orca on the server. Update Orca on that computer, then try again.'
-  )
-}
-
 export function nativeChatLocalAttachmentUnsupportedNotice(): string {
   return translate(
     'components.native-chat.composer.localAttachmentUnsupported',
@@ -234,7 +228,14 @@ export async function prepareNativeChatSessionAttachmentUpload(
     { timeoutMs: 15_000, expectedEnvironmentPairingRevision: owner.pairingRevision }
   )
   if (!status.capabilities?.includes(AGENT_SESSION_ATTACHMENTS_RUNTIME_CAPABILITY)) {
-    return { ok: false, notice: nativeChatAttachmentsNeedNewerServerNotice() }
+    // The same words as any write a server too old for it refuses.
+    return {
+      ok: false,
+      notice: translate(
+        'components.native-chat.writeNotice.unsupported',
+        AGENT_SESSION_WRITE_NOTICE_COPY.unsupported
+      )
+    }
   }
   return {
     ok: true,
