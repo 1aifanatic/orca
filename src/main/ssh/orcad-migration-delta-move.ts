@@ -34,6 +34,7 @@ import {
 } from './orcad-migration-terminal-gate'
 import { currentOrcadSourceFingerprint } from './orcad-retained-source'
 import type { SshTargetOrcadClaims } from './ssh-target-orcad-claims'
+import { orcadMigrationRefusalReason } from './orcad-migration-refusal-reason'
 
 export type OrcadDeltaMoveArgs = {
   userDataPath: string
@@ -58,7 +59,7 @@ export async function runOrcadDeltaMove(args: OrcadDeltaMoveArgs): Promise<Orcad
   }
   if (plan.blockers.length > 0) {
     return {
-      ...refuse('orcad_migration_preflight_blocked', 'This SSH host cannot move yet.'),
+      ...refuse('orcad_migration_preflight_blocked', orcadMigrationRefusalReason(plan.blockers)),
       blockers: plan.blockers
     }
   }

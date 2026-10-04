@@ -29,6 +29,7 @@ import {
   preflightOrcadMigrationExport,
   type OrcadMigrationPreflightStore
 } from './ssh-target-orcad-preflight'
+import { orcadMigrationRefusalReason } from './orcad-migration-refusal-reason'
 
 export type OrcadMigrationFenceState =
   | { state: 'none' }
@@ -115,7 +116,11 @@ export async function fenceOrcadMigrationSource(args: {
   const preflight = preflightOrcadMigrationExport(args.store, target.id)
   if (!preflight.claimable) {
     return {
-      ...refuse('live', 'orcad_migration_preflight_blocked', 'This SSH host cannot move yet.'),
+      ...refuse(
+        'live',
+        'orcad_migration_preflight_blocked',
+        orcadMigrationRefusalReason(preflight.blockers)
+      ),
       blockers: preflight.blockers
     }
   }
