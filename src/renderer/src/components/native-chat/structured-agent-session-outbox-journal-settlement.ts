@@ -55,17 +55,18 @@ export function settleStructuredAgentSessionOutboxFromJournal(
   if (entries === current) {
     return entries
   }
-  for (const { entry, settlement } of settled) {
-    const ending = structuredAgentSessionSettlementEnding(settlement)
-    if (ending) {
-      endStructuredAgentSessionEntry(entry, ending)
-    }
-  }
-  // Each returned message goes to the draft before the outbox that drops it is saved.
+  // Each returned message goes to the draft before its entry ends (clearing the notes it carried)
+  // and before the outbox that drops it is saved.
   for (const back of returned) {
     returnStructuredAgentSessionMessage(back.entry)
     if (back.words) {
       setStructuredAgentSessionChatLine(sessionId, back.words)
+    }
+  }
+  for (const { entry, settlement } of settled) {
+    const ending = structuredAgentSessionSettlementEnding(settlement)
+    if (ending) {
+      endStructuredAgentSessionEntry(entry, ending)
     }
   }
   commitStructuredAgentSessionOutbox(sessionId, entries)

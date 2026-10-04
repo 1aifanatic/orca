@@ -224,6 +224,17 @@ function openChat(sessionId: string, fence: number | null = 1) {
   )
 }
 
+/** What the session's draft held each time notes were cleared: the text must already be there,
+ *  so a crash between the two never loses both. */
+function draftWhenNotesClear(sessionId: string): string[] {
+  const seen: string[] = []
+  mocks.clearDeliveredDiffComments.mockImplementation(async () => {
+    seen.push(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey(sessionId)))
+    return true
+  })
+  return seen
+}
+
 /** A store change, as a workspace's notes loading makes. */
 function notifyStore(): void {
   for (const listener of mocks.storeListeners) {
@@ -301,6 +312,7 @@ describe('notes sent to a new agent', () => {
     reload()
     expect(isNoteInFlight(KEY_A)).toBe(true)
 
+    const cleared = draftWhenNotesClear(chat.sessionId)
     openChat(chat.sessionId)
     await waitFor(() => readOutbox(chat.sessionId).length === 0)
     expect(isNoteInFlight(KEY_A)).toBe(false)
@@ -309,6 +321,7 @@ describe('notes sent to a new agent', () => {
     )
     // One owner: the draft holds the text, so the notes leave the shelf.
     expect(mocks.clearDeliveredDiffComments).toHaveBeenCalledExactlyOnceWith(WORKTREE_ID, [NOTE_A])
+    expect(cleared).toEqual([NOTES])
   })
 
   it('stay held while a failed chat keeps them to start again, and leave once it delivers', async () => {
@@ -373,6 +386,7 @@ describe('notes sent to a chat already open', () => {
     })
     expect(isNoteInFlight(KEY_A)).toBe(true)
 
+    const cleared = draftWhenNotesClear(target.sessionId)
     mocks.callStructuredAgentSession.mockResolvedValue(REFUSED)
     openChat(target.sessionId)
     await waitFor(() => readOutbox(target.sessionId).length === 0)
@@ -381,6 +395,7 @@ describe('notes sent to a chat already open', () => {
       NOTES
     )
     expect(mocks.clearDeliveredDiffComments).toHaveBeenCalledExactlyOnceWith(WORKTREE_ID, [NOTE_A])
+    expect(cleared).toEqual([NOTES])
   })
 
   it('are used when a Stop takes back the message before it went out', async () => {
@@ -390,6 +405,7 @@ describe('notes sent to a chat already open', () => {
       target,
       carriedNoteKeys: [KEY_A]
     })
+    const cleared = draftWhenNotesClear(target.sessionId)
     const view = openChat(target.sessionId, null)
     view.result.current.stop('stop-1')
 
@@ -399,6 +415,7 @@ describe('notes sent to a chat already open', () => {
     )
     expect(isNoteInFlight(KEY_A)).toBe(false)
     expect(mocks.clearDeliveredDiffComments).toHaveBeenCalledExactlyOnceWith(WORKTREE_ID, [NOTE_A])
+    expect(cleared).toEqual([NOTES])
   })
 
   it('are cleared once their workspace loads, when the host took the message before that', async () => {

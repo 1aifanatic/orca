@@ -295,8 +295,9 @@ export function useStructuredAgentSessionOutbox(args: {
         return
       }
       for (const entry of next.withdrawn) {
-        endStructuredAgentSessionEntry(entry, 'returned')
+        // The draft holds the text before the notes it carried are cleared.
         returnStructuredAgentSessionMessage(entry)
+        endStructuredAgentSessionEntry(entry, 'returned')
         // Back in the composer, it is no longer being sent, so what the line said about it goes.
         clearStructuredAgentSessionChatLineHeldBy(sessionId, entry.clientMessageId)
       }

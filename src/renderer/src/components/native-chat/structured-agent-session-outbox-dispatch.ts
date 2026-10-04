@@ -93,11 +93,13 @@ export function requeueInterruptedStructuredAgentSessionDispatches(
 
 /**
  * Commits a settlement: a message coming back goes to its conversation's draft before its entry
- * leaves the outbox, so a failure between the two repeats the text and never loses it.
+ * ends (which clears the notes it carried) and before it leaves the outbox, so a failure between
+ * them repeats the text and never loses it.
  */
 export function commitStructuredAgentSessionSettledOutbox(
   sessionId: string,
-  settled: StructuredAgentSessionSettledOutbox
+  settled: StructuredAgentSessionSettledOutbox,
+  endEntry: () => void = () => {}
 ): void {
   if (settled.returned) {
     returnStructuredAgentSessionMessage(settled.returned.entry)
@@ -105,6 +107,7 @@ export function commitStructuredAgentSessionSettledOutbox(
       setStructuredAgentSessionChatLine(sessionId, settled.returned.words)
     }
   }
+  endEntry()
   commitStructuredAgentSessionOutbox(sessionId, settled.entries)
 }
 
@@ -154,9 +157,6 @@ export function settleStructuredAgentSessionOutboxEntry(
     return
   }
   const ending = structuredAgentSessionSettlementEnding(settlement)
-  if (ending) {
-    endStructuredAgentSessionEntry(entry, ending)
-  }
   // A send a Stop outran never goes again: no answer leaves it waiting for the Stop's.
   const kept =
     entry.stoppedBy !== undefined && settlement.kind === 'unanswered'
@@ -164,7 +164,12 @@ export function settleStructuredAgentSessionOutboxEntry(
       : settlement
   commitStructuredAgentSessionSettledOutbox(
     sessionId,
-    applyStructuredAgentSessionSendSettlement(current, clientMessageId, kept)
+    applyStructuredAgentSessionSendSettlement(current, clientMessageId, kept),
+    () => {
+      if (ending) {
+        endStructuredAgentSessionEntry(entry, ending)
+      }
+    }
   )
   sayStructuredAgentSessionSettlement(sessionId, clientMessageId, kept)
 }
