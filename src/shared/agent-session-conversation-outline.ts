@@ -89,7 +89,8 @@ export function projectAgentSessionConversationOutline(
   }
   const entries: AgentSessionConversationOutlineEntry[] = []
   const transcript = projectNativeChatTranscriptMessages(
-    projectStructuredAgentSessionMessages(items, [], submissions)
+    // A rejected message never reached the agent, so it has no rail tick here either.
+    projectStructuredAgentSessionMessages(items, [], submissions, { rejectedInPlace: false })
   )
   for (const message of transcript) {
     const sequence = sequences.get(message.id)

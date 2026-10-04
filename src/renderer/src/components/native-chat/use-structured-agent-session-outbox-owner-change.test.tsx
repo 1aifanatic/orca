@@ -31,6 +31,10 @@ import type { AgentSessionWireRefusalCode } from '../../../../shared/agent-sessi
 import { createStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
 
+import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
+
+const NO_JOURNAL_ITEMS: readonly AgentJournalRenderItem[] = []
+
 type SendRequest = { envelope?: { clientOperationId?: string; expectedRuntimeFence?: number } }
 
 // Stable, as the view passes it: a new object each render would re-run the owner-change requeue.
@@ -84,6 +88,7 @@ function mount(fence: number) {
   return renderHook(
     ({ fence: current }: { fence: number }) =>
       useStructuredAgentSessionOutbox({
+        journalItems: NO_JOURNAL_ITEMS,
         sessionId: 'session-1',
         target: TARGET,
         fence: current,

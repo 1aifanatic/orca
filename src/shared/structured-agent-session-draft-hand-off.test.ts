@@ -41,7 +41,9 @@ function handOff(dispatchState: AgentJournalSubmission['dispatchState']): AgentJ
 describe('a queued draft handed off under a fresh submission id', () => {
   it('takes the outbox entry off the client, in every dispatch state', () => {
     for (const state of ['pending', 'accepted', 'rejected', 'unknown'] as const) {
-      expect(reconcileStructuredAgentSessionOutboxWithQueue([entry], [handOff(state)])).toEqual([])
+      expect(reconcileStructuredAgentSessionOutboxWithQueue([entry], [handOff(state)], [])).toEqual(
+        []
+      )
     }
   })
 
@@ -63,7 +65,13 @@ describe('a queued draft handed off under a fresh submission id', () => {
           }
         },
         'draft',
-        { firstAttempt: false, answersProve: true, journalHasRow: false, outlivedHostWindow: false }
+        {
+          firstAttempt: false,
+          answersProve: true,
+          journalHasRow: false,
+          rowLoaded: true,
+          outlivedHostWindow: false
+        }
       )
     ).toEqual({ kind: 'recorded' })
   })

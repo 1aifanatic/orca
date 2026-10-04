@@ -62,7 +62,9 @@ vi.mock('./use-structured-agent-session', async () => {
         journalItems: [],
         messages:
           mocks.mode === 'outbox'
-            ? projectStructuredAgentSessionMessages([], outbox.outbox, [])
+            ? projectStructuredAgentSessionMessages([], outbox.outbox, [], {
+                rejectedInPlace: true
+              })
             : [
                 {
                   id: 'message-1',

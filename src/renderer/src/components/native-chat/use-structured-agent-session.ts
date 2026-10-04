@@ -18,6 +18,7 @@ import {
   useStructuredAgentSessionHostStopsConversation
 } from '@/runtime/structured-agent-session-host-capability'
 import { hasUnsentStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox-stop-withdrawal'
+import { structuredAgentSessionOutboxOwesDelivery } from '../../../../shared/structured-agent-session-outbox'
 import { useStructuredAgentSessionConversationStop } from './use-structured-agent-session-conversation-stop'
 import { structuredAgentSessionDraftScopeKey } from './native-chat-composer-draft-store'
 import {
@@ -126,6 +127,7 @@ export function useStructuredAgentSession(args: {
     // Only a live journal may decide a message alone; a stale one kept through an outage says
     // nothing about what the host holds now.
     journalCursor: journalLive ? state.cursor : null,
+    journalItems: transportState.journalItems,
     queueDelivery: { capability: queueCapability, enabled: queueFollowUps },
     // Absent until the host publishes a list: only a list says it holds no draft under an id.
     queuedMessageIds:
@@ -181,7 +183,8 @@ export function useStructuredAgentSession(args: {
   const messages = useStructuredAgentSessionMessages(
     transportState.journalItems,
     transcriptOutbox,
-    transportState.submissions
+    transportState.submissions,
+    queuedMessageIds
   )
   const queuedController = useStructuredAgentSessionQueuedMessages({
     enabled: queueCapable && transportState.fence !== null,
@@ -203,7 +206,7 @@ export function useStructuredAgentSession(args: {
           transportState.turnId ||
           prompts.length ||
           transportState.backgroundTasks.isMonitoring ||
-          outbox.length
+          structuredAgentSessionOutboxOwesDelivery(outbox, transportState.submissions)
         ),
         startFailures: () => structuredAgentSessionStartFailureFacts(stateRef.current.items),
         recorded: (clientMessageId) =>
@@ -235,6 +238,8 @@ export function useStructuredAgentSession(args: {
     outbox,
     /** The journal's rows for sent messages, which carry a rejected message's whole fact. */
     submissions: transportState.submissions,
+    /** The host's queued cards, which hold their own rejected hand-offs. */
+    queuedMessageIds,
     // A message typed during a command queues behind it on the host.
     send: (...input: Parameters<typeof outboxController.send>) =>
       // Legacy: an older host refuses sends while a command runs; removable once those hosts age out.

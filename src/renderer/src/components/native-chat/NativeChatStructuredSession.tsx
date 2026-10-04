@@ -117,6 +117,7 @@ export function NativeChatStructuredSession(
     journalItems: controller.journalItems,
     submissions: controller.submissions,
     outbox: controller.outbox,
+    queuedMessageIds: controller.queuedMessageIds,
     agentLabel,
     // A lost outcome may still resolve while the agent works or starts.
     agentActive:

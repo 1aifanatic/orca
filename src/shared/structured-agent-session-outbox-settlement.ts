@@ -1,13 +1,15 @@
 // How a desktop chat send ends. Every send ends one of three ways, decided only by what the host
 // said, never by a flag this client stored:
 //   1. recorded: the host holds a row, a queued card or a hand-off, and from then on the host's row
-//      shows the message to every viewer, however it ends;
+//      shows the message to every viewer, however it ends (a rejected one's entry draws it until
+//      its row loads);
 //   2. returned: the host proved it has no record and never will, so the text goes back to the
 //      chat's draft and the reason is said once;
 //   3. unanswered: nothing proves either, so the same id is sent again until the host answers. The
 //      host records an id at most once, so a resend can't deliver twice.
 // Pure on purpose: the callers own the outbox, the draft and the chat line.
 
+import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import type { AgentJournalCursor, AgentJournalSubmission } from './agent-session-journal-types'
 import type { AgentSessionMutationResult, AgentSessionSendResult } from './agent-session-wire'
 import { agentSessionWriteNoticeParts } from './agent-session-refusal-notice'
@@ -24,14 +26,18 @@ import {
 import { dispatchWasWithdrawn } from './structured-agent-session-dispatch-rejection'
 import { DISPATCH_DOUBT_SUBMISSION_MISSING } from './structured-agent-session-unanswered-dispatch'
 import { structuredAgentSessionStillSendingWords } from './structured-agent-session-still-sending-words'
-import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
+import {
+  structuredAgentSessionRejectionAwaitsItsRow,
+  type StructuredAgentSessionOutboxEntry
+} from './structured-agent-session-outbox'
 import { structuredAgentSessionEntryAwaitsSettlement } from './structured-agent-session-outbox-admission'
 
 export type StructuredAgentSessionOutboxSettlement =
   /** Case 1: the host's row (or card) holds the message from here. */
   | { kind: 'recorded' }
-  /** Case 1, not final yet: the host wrote the row and has not handed it to the agent. The entry
-   *  stays until the row settles, since a Stop may still withdraw it back to this composer. */
+  /** Case 1, not final yet: the entry stays and is never sent again. Either the host wrote the row
+   *  and has not handed it to the agent (a Stop may still withdraw it back to this composer), or
+   *  the host rejected it and this client has not loaded its row, which the entry draws until then. */
   | { kind: 'pending' }
   /** A Stop took it back: the text returns to the draft and nothing is said. */
   | { kind: 'withdrawn' }
@@ -57,6 +63,8 @@ export type StructuredAgentSessionOutboxSettlementContext = {
   answersProve: boolean
   /** The loaded journal holds a row for this id. */
   journalHasRow: boolean
+  /** The loaded journal pages hold the message's own row, which draws it. */
+  rowLoaded: boolean
   /** The host's window for this id has closed, by the id's own time
    *  (`structuredAgentSessionEntryOutlivedHostWindow`). */
   outlivedHostWindow: boolean
@@ -191,7 +199,7 @@ function settleAnswer(
   ) {
     return settledByJournal(context)
   }
-  return settleStructuredAgentSessionSendRow(submission)
+  return settleStructuredAgentSessionSendRow(submission, context.rowLoaded)
 }
 
 /** When the host's replay window for this id closes, measured as the host measures it from the
@@ -216,9 +224,13 @@ export function structuredAgentSessionEntryOutlivedHostWindow(
 
 /** A row the host holds for the send. */
 function settleStructuredAgentSessionSendRow(
-  submission: AgentJournalSubmission
+  submission: AgentJournalSubmission,
+  rowLoaded: boolean
 ): StructuredAgentSessionOutboxSettlement {
-  if (submission.dispatchState === 'pending') {
+  if (
+    submission.dispatchState === 'pending' ||
+    structuredAgentSessionRejectionAwaitsItsRow(submission, rowLoaded)
+  ) {
     return { kind: 'pending' }
   }
   // A withdrawn hand-off of a queued draft is never given back: the Stop put the card back.
@@ -241,6 +253,8 @@ export type StructuredAgentSessionJournalReading = {
   inFlightClientMessageId: string | null
   /** Ids of the drafts the host publishes as queued; null until it has published a list. */
   queuedMessageIds: readonly string[] | null
+  /** The item ids of the loaded journal rows. */
+  loadedItemIds: ReadonlySet<string>
   /** This client's clock, for the host window. */
   now: number
 }
@@ -283,8 +297,16 @@ export function settleStructuredAgentSessionEntryFromJournal(
     (candidate) => candidate.clientMessageId === entry.clientMessageId
   )
   if (submission) {
-    const settlement = settleStructuredAgentSessionSendRow(submission)
-    // A pending row changes nothing an attempt in flight doesn't already show.
+    // Only a drawn entry waits for its row: an older build's is never drawn, and past the host's
+    // window the copy goes too, so it can't wait forever for a page nobody loads.
+    const settlement = settleStructuredAgentSessionSendRow(
+      submission,
+      entry.legacyUnsettled === true ||
+        structuredAgentSessionEntryOutlivedHostWindow(entry, reading.now) ||
+        reading.loadedItemIds.has(agentJournalSubmissionKey(entry.clientMessageId))
+    )
+    // A pending row (or a rejected one not loaded) changes nothing a dispatching entry doesn't
+    // already show, so an unchanged batch writes nothing.
     return settlement.kind === 'pending' && entry.state === 'dispatching' ? null : settlement
   }
   // The host holds it as a queued draft: its card carries the text.

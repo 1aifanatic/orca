@@ -158,8 +158,13 @@ export function useMobileStructuredAgentSession(args: {
   })
 
   const messages = useMemo(
-    () => projectStructuredAgentSessionMessages(state.items, [], state.submissions),
-    [state.items, state.submissions]
+    // A message the host recorded and then rejected stays in place, said once on its row.
+    () =>
+      projectStructuredAgentSessionMessages(state.items, [], state.submissions, {
+        rejectedInPlace: true,
+        queuedMessageIds: (queuedMessages ?? []).map((draft) => draft.messageId)
+      }),
+    [queuedMessages, state.items, state.submissions]
   )
   const turnId = activeStructuredAgentSessionTurnId(state.items)
   const turnTiming = useMobileStructuredAgentTurnTiming(state, turnId)

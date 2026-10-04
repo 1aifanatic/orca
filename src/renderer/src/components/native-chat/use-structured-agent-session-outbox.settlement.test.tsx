@@ -7,7 +7,11 @@
 
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
+import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
+import type {
+  AgentJournalRenderItem,
+  AgentJournalSubmission
+} from '../../../../shared/agent-session-journal-types'
 import { AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
 
 type SentParams = { envelope: { clientOperationId: string }; body: { blocks: { text?: string }[] } }
@@ -96,16 +100,27 @@ function transportError(code: string, message: string): RuntimeRpcCallError {
 
 function mount(submissions: AgentJournalSubmission[] = []) {
   return renderHook(
-    (props: { submissions: AgentJournalSubmission[] }) =>
+    (props: { submissions: AgentJournalSubmission[]; rows?: AgentJournalRenderItem[] }) =>
       useStructuredAgentSessionOutbox({
         sessionId: 'session-1',
         target: TARGET,
         fence: 1,
         submissions: props.submissions,
+        journalItems: props.rows,
         journalCursor: { epoch: 'epoch-1', sequence: 1 }
       }),
     { initialProps: { submissions } }
   )
+}
+
+function userRow(clientMessageId: string): AgentJournalRenderItem {
+  return {
+    itemId: agentJournalSubmissionKey(clientMessageId),
+    revision: 1,
+    sequence: 2,
+    observedAt: 2,
+    body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'hello' }] }
+  }
 }
 
 describe('case 3: no answer yet', () => {
@@ -321,6 +336,34 @@ describe('case 1: the host has a record', () => {
 
     await waitFor(() => expect(sentTexts()).toEqual(['first', 'second']))
     await waitFor(() => expect(view.result.current.outbox).toEqual([]))
+    expect(readNativeChatDraftCache(SCOPE)).toBe('')
+  })
+
+  it("the journal's rejection before the send's own answer settles it, and the late answer brings nothing back", async () => {
+    let reply: (value: unknown) => void = () => undefined
+    mocks.call.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          reply = resolve
+        })
+    )
+    const view = mount()
+    act(() => expect(view.result.current.send('hello')).toBe(true))
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
+    const id = sentIds()[0]!
+    const params = mocks.call.mock.calls[0]![2]
+
+    // A start refused at once: the rejection lands before the send's own pending answer.
+    view.rerender({
+      submissions: [submission(id, 'rejected', { reason: "Codex couldn't restart." })],
+      rows: [userRow(id)]
+    })
+    await waitFor(() => expect(view.result.current.outbox).toEqual([]))
+    await act(async () => reply(answer(params, 'pending')))
+
+    expect(view.result.current.outbox).toEqual([])
+    expect(mocks.call).toHaveBeenCalledOnce()
+    expect(view.result.current.error).toBeNull()
     expect(readNativeChatDraftCache(SCOPE)).toBe('')
   })
 })

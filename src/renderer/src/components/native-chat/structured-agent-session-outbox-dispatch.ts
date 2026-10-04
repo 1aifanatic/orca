@@ -239,6 +239,8 @@ export async function sendStructuredAgentSessionOutboxEntry(args: {
   beforeSettle?: () => void
   /** Whether the loaded journal holds a row for the id; absent where no journal is loaded. */
   journalHasRow?: (clientMessageId: string) => boolean
+  /** Whether the loaded journal pages hold the message's own row; absent where none is loaded. */
+  rowLoaded?: (clientMessageId: string) => boolean
 }): Promise<StructuredAgentSessionOutboxSettlement | null> {
   const { next } = args
   const sessionId = next.sessionId
@@ -281,6 +283,7 @@ export async function sendStructuredAgentSessionOutboxEntry(args: {
     firstAttempt: onlyAttempt,
     answersProve,
     journalHasRow: args.journalHasRow?.(next.clientMessageId) ?? false,
+    rowLoaded: args.rowLoaded?.(next.clientMessageId) ?? false,
     outlivedHostWindow: structuredAgentSessionEntryOutlivedHostWindow(next, Date.now())
   })
   settle(settlement)
@@ -299,6 +302,7 @@ export function dispatchStructuredAgentSessionOutboxEntry(args: {
   dispatchGenerationRef: MutableRef<number>
   inFlightIdRef: MutableRef<string | null>
   journalHasRow: (clientMessageId: string) => boolean
+  rowLoaded: (clientMessageId: string) => boolean
 }): { promise: Promise<StructuredAgentSessionOutboxSettlement | null>; started: boolean } {
   const start = async (): Promise<StructuredAgentSessionOutboxSettlement | null> => {
     args.inFlightIdRef.current = args.next.clientMessageId
@@ -314,6 +318,7 @@ export function dispatchStructuredAgentSessionOutboxEntry(args: {
       target: args.target,
       fence: args.fence,
       journalHasRow: args.journalHasRow,
+      rowLoaded: args.rowLoaded,
       isCurrent,
       // Held through the capability probe, so nothing overtakes it; released before the settling
       // write, which is what runs the drain again.

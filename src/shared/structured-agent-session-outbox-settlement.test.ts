@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import type { AgentJournalSubmission } from './agent-session-journal-types'
 import type { AgentSessionWireRefusalCode } from './agent-session-wire'
 import {
@@ -50,6 +51,9 @@ function entry(
   }
 }
 
+/** The message's own row is loaded. */
+const LOADED: ReadonlySet<string> = new Set([agentJournalSubmissionKey(ID)])
+
 function row(patch: Partial<AgentJournalSubmission> = {}): AgentJournalSubmission {
   return {
     clientMessageId: ID,
@@ -91,6 +95,7 @@ const FIRST: StructuredAgentSessionOutboxSettlementContext = {
   firstAttempt: true,
   answersProve: true,
   journalHasRow: false,
+  rowLoaded: true,
   outlivedHostWindow: false
 }
 const RESEND_PROVING: StructuredAgentSessionOutboxSettlementContext = {
@@ -119,6 +124,26 @@ describe('a send answer settles one of three ways', () => {
         RESEND_OLD_HOST
       )
     ).toEqual({ kind: 'recorded' })
+  })
+
+  it("case 1, not final: a rejected row this client hasn't loaded keeps the entry, which draws it until then", () => {
+    const unloaded = { ...FIRST, rowLoaded: false }
+    expect(
+      settleStructuredAgentSessionSendAnswer(sent(row({ dispatchState: 'rejected' })), ID, unloaded)
+    ).toEqual({ kind: 'pending' })
+    // Only a rejection waits for its row: any other state, or a Stop's withdrawal, settles as before.
+    for (const state of ['accepted', 'unknown'] as const) {
+      expect(
+        settleStructuredAgentSessionSendAnswer(sent(row({ dispatchState: state })), ID, unloaded)
+      ).toEqual({ kind: 'recorded' })
+    }
+    expect(
+      settleStructuredAgentSessionSendAnswer(
+        sent(row({ dispatchState: 'rejected', reason: DISPATCH_REJECTED_CANCELLED })),
+        ID,
+        unloaded
+      )
+    ).toEqual({ kind: 'withdrawn' })
   })
 
   it('case 1: a queued receipt or its hand-off belongs to the host', () => {
@@ -444,6 +469,7 @@ describe('the journal settles what an answer did not', () => {
     cursor: { epoch: 'e', sequence: 10 },
     inFlightClientMessageId: null,
     queuedMessageIds: null,
+    loadedItemIds: LOADED,
     now: NOW
   }
 
@@ -453,6 +479,35 @@ describe('the journal settles what an answer did not', () => {
       submissions: [row({ dispatchState: 'unknown', recovered: true })]
     })
     expect(settled).toEqual({ kind: 'recorded' })
+  })
+
+  it("keeps a rejected message's entry until its row loads, writing nothing meanwhile", () => {
+    const rejected = { ...reading, submissions: [row({ dispatchState: 'rejected' })] }
+    const unloaded = { ...rejected, loadedItemIds: new Set<string>() }
+    // Read back after a reload: no longer sent again, and it draws the message.
+    expect(
+      settleStructuredAgentSessionEntryFromJournal(entry({ state: 'unconfirmed' }), unloaded)
+    ).toEqual({ kind: 'pending' })
+    expect(
+      settleStructuredAgentSessionEntryFromJournal(entry({ state: 'dispatching' }), unloaded)
+    ).toBeNull()
+    expect(
+      settleStructuredAgentSessionEntryFromJournal(entry({ state: 'dispatching' }), rejected)
+    ).toEqual({ kind: 'recorded' })
+    // An older build's entry is never drawn, so it leaves at once.
+    expect(
+      settleStructuredAgentSessionEntryFromJournal(
+        entry({ state: 'queued', legacyUnsettled: true }),
+        unloaded
+      )
+    ).toEqual({ kind: 'recorded' })
+    // Past the host's window the copy goes too: the row still shows it once its page loads.
+    expect(
+      settleStructuredAgentSessionEntryFromJournal(entry({ state: 'dispatching' }), {
+        ...unloaded,
+        now: MADE_AT + AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS + 1
+      })
+    ).toEqual({ kind: 'recorded' })
   })
 
   it('a row while the send is in flight as pending changes nothing', () => {
@@ -568,6 +623,7 @@ describe('entries an older build saved are migrated, never sent again', () => {
       cursor: null,
       inFlightClientMessageId: null,
       queuedMessageIds: null,
+      loadedItemIds: LOADED,
       now: NOW
     }
     expect(settleStructuredAgentSessionEntryFromJournal(legacy, reading)).toBeNull()
@@ -667,6 +723,7 @@ describe('the host window bounds every entry', () => {
     cursor: { epoch: 'e', sequence: 10 },
     inFlightClientMessageId: null,
     queuedMessageIds: null,
+    loadedItemIds: LOADED,
     now: pastWindow
   }
 

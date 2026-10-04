@@ -4,7 +4,11 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { useLayoutEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
+import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
+import type {
+  AgentJournalRenderItem,
+  AgentJournalSubmission
+} from '../../../../shared/agent-session-journal-types'
 import type { AgentSessionWireRefusalCode } from '../../../../shared/agent-session-wire'
 import { enqueueStructuredAgentSessionLaunchPrompt } from './structured-agent-session-outbox-storage'
 import { structuredAgentSessionDraftScopeKey } from './native-chat-composer-draft-store'
@@ -144,6 +148,19 @@ function sentOperationId(params: unknown): string | undefined {
     typeof envelope.clientOperationId === 'string'
     ? envelope.clientOperationId
     : undefined
+}
+
+const NO_SUBMISSIONS: readonly AgentJournalSubmission[] = []
+const NO_ROWS: readonly AgentJournalRenderItem[] = []
+
+function userRow(clientMessageId: string): AgentJournalRenderItem {
+  return {
+    itemId: agentJournalSubmissionKey(clientMessageId),
+    revision: 1,
+    sequence: 1,
+    observedAt: 1,
+    body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: clientMessageId }] }
+  }
 }
 
 describe('useStructuredAgentSessionOutbox', () => {
@@ -564,7 +581,7 @@ describe('useStructuredAgentSessionOutbox', () => {
     })
   })
 
-  it('lets a head the journal rejects leave without a resend, so the queued tail advances', async () => {
+  it('keeps a head the journal rejects until its row loads, never resending it, so the queued tail advances', async () => {
     mocks.call
       .mockImplementationOnce(async () => {
         throw new Error('socket closed')
@@ -576,35 +593,48 @@ describe('useStructuredAgentSessionOutbox', () => {
         )
       )
     const { result, rerender } = renderHook(
-      ({ submissions }: { submissions: readonly AgentJournalSubmission[] }) =>
+      ({
+        submissions,
+        journalItems
+      }: {
+        submissions: readonly AgentJournalSubmission[]
+        journalItems: readonly AgentJournalRenderItem[]
+      }) =>
         useStructuredAgentSessionOutbox({
           sessionId: 'session-1',
           target: LOCAL_TARGET,
           fence: 1,
-          submissions
+          submissions,
+          journalItems
         }),
-      { initialProps: { submissions: [] as readonly AgentJournalSubmission[] } }
+      { initialProps: { submissions: NO_SUBMISSIONS, journalItems: NO_ROWS } }
     )
 
     act(() => expect(result.current.send('first')).toBe(true))
     await waitFor(() => expect(result.current.outbox[0]?.state).toBe('unconfirmed'))
     const firstId = result.current.outbox[0]!.clientMessageId
     act(() => expect(result.current.send('second')).toBe(true))
-    rerender({
-      submissions: [
-        {
-          clientMessageId: firstId,
-          fence: 1,
-          payloadFingerprint: 'fingerprint',
-          dispatchState: 'rejected',
-          providerItemId: null,
-          reason: 'not_delivered',
-          submittedAt: 10,
-          resolvedAt: 10
-        }
-      ]
-    })
+    const submissions: AgentJournalSubmission[] = [
+      {
+        clientMessageId: firstId,
+        fence: 1,
+        payloadFingerprint: 'fingerprint',
+        dispatchState: 'rejected',
+        providerItemId: null,
+        reason: 'not_delivered',
+        submittedAt: 10,
+        resolvedAt: 10
+      }
+    ]
+    rerender({ submissions, journalItems: [] })
 
+    // Its row is on a page not loaded: the entry draws it meanwhile, and nothing sends it again.
+    await waitFor(() =>
+      expect(result.current.outbox.map((entry) => [entry.clientMessageId, entry.state])).toEqual([
+        [firstId, 'dispatching']
+      ])
+    )
+    rerender({ submissions, journalItems: [userRow(firstId)] })
     await waitFor(() => expect(result.current.outbox).toHaveLength(0))
     const ids = mocks.call.mock.calls.map((call) => sentOperationId(call[2]))
     // The first went once; its row says it was not sent, and its text is not handed back.
@@ -635,18 +665,32 @@ describe('useStructuredAgentSessionOutbox', () => {
         value: { clientMessageId, submission: writeFailed(clientMessageId) }
       }
     })
-    const { result } = renderHook(() =>
-      useStructuredAgentSessionOutbox({
-        sessionId: 'session-1',
-        target: LOCAL_TARGET,
-        fence: 1,
-        submissions: []
-      })
+    const { result, rerender } = renderHook(
+      ({
+        submissions,
+        journalItems
+      }: {
+        submissions: readonly AgentJournalSubmission[]
+        journalItems: readonly AgentJournalRenderItem[]
+      }) =>
+        useStructuredAgentSessionOutbox({
+          sessionId: 'session-1',
+          target: LOCAL_TARGET,
+          fence: 1,
+          submissions,
+          journalItems
+        }),
+      { initialProps: { submissions: NO_SUBMISSIONS, journalItems: NO_ROWS } }
     )
 
     act(() => expect(result.current.send('first')).toBe(true))
-    await waitFor(() => expect(result.current.outbox).toHaveLength(0))
+    // The reply came first: the entry draws it until the journal's row loads.
+    await waitFor(() => expect(result.current.outbox[0]?.state).toBe('dispatching'))
     await act(() => new Promise((resolve) => setTimeout(resolve, 50)))
+    expect(mocks.call).toHaveBeenCalledOnce()
+    const id = result.current.outbox[0]!.clientMessageId
+    rerender({ submissions: [writeFailed(id)], journalItems: [userRow(id)] })
+    await waitFor(() => expect(result.current.outbox).toHaveLength(0))
     expect(mocks.call).toHaveBeenCalledOnce()
     expect(result.current.error).toBeNull()
     expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey('session-1'))).toBe('')

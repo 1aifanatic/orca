@@ -32,6 +32,7 @@ import {
 import { resetStructuredAgentSessionChatLinesForTests } from './structured-agent-session-returned-send'
 
 const SCOPE = structuredAgentSessionDraftScopeKey('session-1')
+const DESKTOP = { rejectedInPlace: true }
 const ID = 'legacy'
 
 type Props = { submissions: AgentJournalSubmission[]; journalCursor: AgentJournalCursor | null }
@@ -105,7 +106,9 @@ describe('a message an older build saved behind its Retry', () => {
     const outbox = view.result.current.outbox
     expect(outbox).toMatchObject([{ clientMessageId: ID, legacyUnsettled: true }])
 
-    expect(projectStructuredAgentSessionMessages([], outbox, [])).toEqual([])
+    expect(
+      projectStructuredAgentSessionMessages([], outbox, [], { rejectedInPlace: true })
+    ).toEqual([])
     expect(structuredAgentSessionDeliveryNotices(outbox, 'Claude', [], [])).toEqual(new Map())
   })
 
@@ -121,7 +124,7 @@ describe('a message an older build saved behind its Retry', () => {
     const before = view.result.current.outbox
     // Even drawn against the row before the outbox drops it, the row is the only bubble.
     expect(
-      projectStructuredAgentSessionMessages([ROW_ITEM], before, [row()]).map(
+      projectStructuredAgentSessionMessages([ROW_ITEM], before, [row()], DESKTOP).map(
         (message) => message.id
       )
     ).toEqual([agentJournalSubmissionKey(ID)])
@@ -129,5 +132,47 @@ describe('a message an older build saved behind its Retry', () => {
     view.rerender({ submissions: [row()], journalCursor: { epoch: 'e', sequence: 2 } })
     expect(view.result.current.outbox).toEqual([])
     expect(readNativeChatDraftCache(SCOPE)).toBe('')
+  })
+})
+
+// The build before this one kept a message the host recorded and then rejected as its own copy
+// until the row loaded: the same rejected state, with the host's rejection as its failure.
+describe('a message an older build kept as the host rejected it', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    writeOutbox('session-1', [
+      {
+        ...createStructuredAgentSessionOutboxEntry({
+          clientMessageId: ID,
+          sessionId: 'session-1',
+          text: 'rejected by the host',
+          attachments: [],
+          queuedAt: 1
+        }),
+        lastAttemptAt: 5,
+        state: 'rejected',
+        lastFailure: { kind: 'rejected', reason: 'Orca restarted before this message was sent.' }
+      }
+    ])
+  })
+
+  it("leaves for the host's row, even one not loaded, without a resend or a hand-back", () => {
+    const view = mount({ submissions: [], journalCursor: null })
+    expect(view.result.current.outbox).toMatchObject([
+      { clientMessageId: ID, legacyUnsettled: true }
+    ])
+    expect(
+      projectStructuredAgentSessionMessages([], view.result.current.outbox, [], DESKTOP)
+    ).toEqual([])
+
+    view.rerender({
+      submissions: [
+        { ...row(), dispatchState: 'rejected', reason: 'host_restarted_before_delivery' }
+      ],
+      journalCursor: { epoch: 'e', sequence: 2 }
+    })
+    expect(view.result.current.outbox).toEqual([])
+    expect(readNativeChatDraftCache(SCOPE)).toBe('')
+    expect(mocks.call).not.toHaveBeenCalled()
   })
 })

@@ -21,6 +21,9 @@ import { projectStructuredAgentSessionMessages as projectForPhone } from '../../
 import { createStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import { projectStructuredAgentSessionMessages } from './structured-agent-session-message-projection'
 
+const NO_CARDS: readonly string[] = []
+const PHONE = { rejectedInPlace: true }
+
 function submission(index: number): AgentJournalSubmission {
   return {
     clientMessageId: `client-${index}`,
@@ -49,11 +52,12 @@ describe('structured agent session message projection', () => {
     const rejected = { ...submission(0), dispatchState: 'rejected' as const, providerItemId: null }
     const refusedItem = { ...item(0), itemId: agentJournalSubmissionKey(rejected.clientMessageId) }
     const acceptedItem = item(1)
+    // In no turn, after the conversation; its journal position keeps its place when drawn.
     expect(
-      projectStructuredAgentSessionMessages([refusedItem, acceptedItem], [], [rejected])
+      projectStructuredAgentSessionMessages([refusedItem, acceptedItem], [], [rejected], NO_CARDS)
     ).toMatchObject([
-      { id: refusedItem.itemId, role: 'user', unsent: true },
-      { id: acceptedItem.itemId, role: 'user' }
+      { id: acceptedItem.itemId, role: 'user' },
+      { id: refusedItem.itemId, role: 'user', unsent: true, journalPosition: expect.anything() }
     ])
   })
 
@@ -70,7 +74,12 @@ describe('structured agent session message projection', () => {
       ...item(0),
       itemId: agentJournalSubmissionKey(notDelivered.clientMessageId)
     }
-    const messages = projectStructuredAgentSessionMessages([recordedItem], [], [notDelivered])
+    const messages = projectStructuredAgentSessionMessages(
+      [recordedItem],
+      [],
+      [notDelivered],
+      NO_CARDS
+    )
     expect(messages).toMatchObject([
       {
         id: recordedItem.itemId,
@@ -92,7 +101,9 @@ describe('structured agent session message projection', () => {
       ...item(0),
       itemId: agentJournalSubmissionKey(withdrawn.clientMessageId)
     }
-    expect(projectStructuredAgentSessionMessages([withdrawnItem], [], [withdrawn])).toEqual([])
+    expect(
+      projectStructuredAgentSessionMessages([withdrawnItem], [], [withdrawn], NO_CARDS)
+    ).toEqual([])
   })
 
   it("shows the sender's recorded rejection once, from the journal, even before its entry leaves", () => {
@@ -108,9 +119,9 @@ describe('structured agent session message projection', () => {
       }),
       state: 'dispatching' as const
     }
-    expect(projectStructuredAgentSessionMessages([refusedItem], [draft], [rejected])).toEqual([
-      expect.objectContaining({ id: refusedItem.itemId, unsent: true })
-    ])
+    expect(
+      projectStructuredAgentSessionMessages([refusedItem], [draft], [rejected], NO_CARDS)
+    ).toEqual([expect.objectContaining({ id: refusedItem.itemId, unsent: true })])
   })
 
   it('keeps the not-sent original when the same text is sent again as a new message', () => {
@@ -123,7 +134,9 @@ describe('structured agent session message projection', () => {
       attachments: [],
       queuedAt: 2
     })
-    expect(projectStructuredAgentSessionMessages([refusedItem], [resend], [rejected])).toEqual([
+    expect(
+      projectStructuredAgentSessionMessages([refusedItem], [resend], [rejected], NO_CARDS)
+    ).toEqual([
       expect.objectContaining({ id: refusedItem.itemId, unsent: true }),
       expect.objectContaining({ id: agentJournalSubmissionKey('rotated-id') })
     ])
@@ -230,8 +243,8 @@ describe('structured agent session message projection', () => {
         : [])
     ]
     for (const messages of [
-      projectStructuredAgentSessionMessages(items, [], [compact]),
-      projectForPhone(items, [], [compact])
+      projectStructuredAgentSessionMessages(items, [], [compact], NO_CARDS),
+      projectForPhone(items, [], [compact], PHONE)
     ]) {
       expect(messages.filter((message) => message.unsent === true).map((m) => m.id)).toEqual([
         userItemId
@@ -271,8 +284,8 @@ describe('structured agent session message projection', () => {
     const items = [handOffRow(1), handOffRow(2)]
     const submissions = [handOff(1, 'rejected'), handOff(2, 'accepted')]
     for (const messages of [
-      projectStructuredAgentSessionMessages(items, [], submissions),
-      projectForPhone(items, [], submissions)
+      projectStructuredAgentSessionMessages(items, [], submissions, NO_CARDS),
+      projectForPhone(items, [], submissions, PHONE)
     ]) {
       expect(messages).toEqual([
         expect.objectContaining({ id: agentJournalSubmissionKey('handoff-2') })
@@ -294,7 +307,8 @@ describe('structured agent session message projection', () => {
     const messages = projectStructuredAgentSessionMessages(
       Array.from({ length: sendCount }, (_, index) => item(index)),
       outbox,
-      Array.from({ length: sendCount }, (_, index) => submission(sendCount - index - 1))
+      Array.from({ length: sendCount }, (_, index) => submission(sendCount - index - 1)),
+      NO_CARDS
     )
 
     expect(messages.filter((message) => message.role === 'user')).toHaveLength(sendCount)
@@ -329,8 +343,8 @@ describe('structured agent session message projection', () => {
       resolvedAt: null
     }
 
-    const messages = projectStructuredAgentSessionMessages([walItem], outbox, [pending])
-    const optimistic = projectStructuredAgentSessionMessages([], outbox, [])
+    const messages = projectStructuredAgentSessionMessages([walItem], outbox, [pending], NO_CARDS)
+    const optimistic = projectStructuredAgentSessionMessages([], outbox, [], NO_CARDS)
 
     expect(messages.filter((message) => message.role === 'user')).toHaveLength(1)
     expect(messages.map((message) => message.id)).toEqual([walItem.itemId])
@@ -348,7 +362,7 @@ describe('structured agent session message projection', () => {
       })
     ]
 
-    expect(projectStructuredAgentSessionMessages([], outbox, [])).toMatchObject([
+    expect(projectStructuredAgentSessionMessages([], outbox, [], NO_CARDS)).toMatchObject([
       { id: agentJournalSubmissionKey('client-pending'), role: 'user' }
     ])
   })

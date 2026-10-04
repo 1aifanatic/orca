@@ -41,7 +41,8 @@ function row(
   return {
     clientMessageId,
     fence: 1,
-    payloadFingerprint: 'fp',
+    // Each its own body: a later copy of the same body would supersede a rejected one.
+    payloadFingerprint: `fp-${clientMessageId}`,
     dispatchState,
     providerItemId: null,
     reason: null,

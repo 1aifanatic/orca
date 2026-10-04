@@ -8,6 +8,7 @@ import {
 } from 'react'
 import type {
   AgentJournalCursor,
+  AgentJournalRenderItem,
   AgentJournalSubmission
 } from '../../../../shared/agent-session-journal-types'
 import { createStructuredAgentSessionOperationId } from '../../../../shared/structured-agent-session-mutation'
@@ -37,6 +38,7 @@ import {
 import { getStructuredAgentLaunchPromptDispatch } from '@/lib/structured-agent-launch-prompt-in-flight-dispatches'
 import { useStructuredAgentSessionOutboxOwnerChange } from '@/runtime/structured-agent-session-accepted-send-capability'
 import { useStructuredAgentSessionOutboxUnconfirmedProbe } from './use-structured-agent-session-outbox-unconfirmed-probe'
+import { useStructuredAgentSessionLoadedUserRows } from './use-structured-agent-session-loaded-user-rows'
 import { createBrowserUuid } from '@/lib/browser-uuid'
 import {
   clearStructuredAgentSessionChatLineHeldBy,
@@ -51,6 +53,8 @@ import {
 
 /** setTimeout's longest delay; a longer wait fires early and is simply armed again. */
 const MAX_TIMER_DELAY_MS = 2 ** 31 - 1
+
+const NO_ITEMS: readonly AgentJournalRenderItem[] = []
 
 const NO_QUEUE_DELIVERY: StructuredAgentSessionQueueDelivery = {
   capability: 'unsupported',
@@ -73,6 +77,8 @@ export function useStructuredAgentSessionOutbox(args: {
   target: RuntimeClientTarget
   fence: number | null
   submissions: readonly AgentJournalSubmission[]
+  /** The loaded journal rows: a rejected message's entry draws it until its row is here. */
+  journalItems?: readonly AgentJournalRenderItem[]
   /** How far the journal has been read; null until a page has loaded. */
   journalCursor?: AgentJournalCursor | null
   /** The host's queued-messages capability and the user's setting; a send stamped
@@ -85,6 +91,7 @@ export function useStructuredAgentSessionOutbox(args: {
   const {
     fence,
     journalCursor = null,
+    journalItems = NO_ITEMS,
     queueDelivery = NO_QUEUE_DELIVERY,
     queuedMessageIds,
     sessionId,
@@ -118,6 +125,7 @@ export function useStructuredAgentSessionOutbox(args: {
   useLayoutEffect(() => {
     submissionsRef.current = submissions
   }, [submissions])
+  const { loadedItemIds, rowLoaded } = useStructuredAgentSessionLoadedUserRows(journalItems)
   const error = useStructuredAgentSessionChatLine(sessionId)
 
   useLayoutEffect(() => {
@@ -153,6 +161,7 @@ export function useStructuredAgentSessionOutbox(args: {
       cursor: journalCursor,
       inFlightClientMessageId: inFlightIdRef.current,
       queuedMessageIds: queuedMessageIds ?? null,
+      loadedItemIds,
       now
     }
     const entries = settleStructuredAgentSessionOutboxFromJournal(sessionId, reading)
@@ -187,6 +196,7 @@ export function useStructuredAgentSessionOutbox(args: {
     drainAgain,
     hostWindowsClosed,
     journalCursor,
+    loadedItemIds,
     outbox,
     queuedMessageIds,
     sessionId,
@@ -241,7 +251,8 @@ export function useStructuredAgentSessionOutbox(args: {
       dispatchGeneration: dispatchGenerationRef.current,
       dispatchGenerationRef,
       inFlightIdRef,
-      journalHasRow
+      journalHasRow,
+      rowLoaded
     })
     // Whatever settles it writes the outbox, which runs this again; an unsaved stage or a voided
     // answer writes nothing, so drain again when it ends either way.
@@ -253,6 +264,7 @@ export function useStructuredAgentSessionOutbox(args: {
     journalHasRow,
     outbox,
     queueCapability,
+    rowLoaded,
     queueEnabled,
     sessionId,
     target

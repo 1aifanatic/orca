@@ -2,7 +2,7 @@
 // under a fresh submission id, so this link, never a draft id compared with a `clientMessageId`,
 // is how a client knows the host has taken a message over.
 
-import type { AgentJournalSubmission } from './agent-session-journal-types'
+import type { AgentJournalRenderItem, AgentJournalSubmission } from './agent-session-journal-types'
 import {
   reconcileStructuredAgentSessionOutbox,
   type StructuredAgentSessionOutboxEntry
@@ -31,14 +31,16 @@ export function handedOffQueuedMessageIds(
  */
 export function reconcileStructuredAgentSessionOutboxWithQueue(
   entries: readonly StructuredAgentSessionOutboxEntry[],
-  submissions: readonly AgentJournalSubmission[]
-): StructuredAgentSessionOutboxEntry[] {
+  submissions: readonly AgentJournalSubmission[],
+  items: readonly AgentJournalRenderItem[]
+): readonly StructuredAgentSessionOutboxEntry[] {
   const handedOff = handedOffQueuedMessageIds(submissions)
   const drawn = entries.filter(
     (entry) => entry.legacyUnsettled !== true && !handedOff.has(entry.clientMessageId)
   )
   return reconcileStructuredAgentSessionOutbox(
     drawn.length === entries.length ? entries : drawn,
-    submissions
+    submissions,
+    items
   )
 }

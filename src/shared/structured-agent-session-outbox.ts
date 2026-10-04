@@ -1,11 +1,14 @@
 import type { AgentSessionFailureFact } from './agent-session-failure'
 import { readWholeAgentSessionFailureFact } from './agent-session-failure'
+import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import type {
   AgentJournalCursor,
   AgentJournalMessageItem,
+  AgentJournalRenderItem,
   AgentJournalSubmission
 } from './agent-session-journal-types'
 import type { AgentSessionWriteFailure } from './agent-session-write-failure'
+import { dispatchWasWithdrawn } from './structured-agent-session-dispatch-rejection'
 import {
   structuredAgentSessionMessageSendMutation,
   type StructuredAgentSessionSendMutation
@@ -156,26 +159,62 @@ export function stageStructuredAgentSessionOutboxEntryForSend(
   return { ...entry, state: 'dispatching', lastAttemptAt: now }
 }
 
+/** The host recorded this send and then rejected it, and this client has not loaded the row: the
+ *  entry draws the message until it does. An older host leaves that row where the message was
+ *  sent, which may be on a page not loaded; a newer one moves it to the rejection. */
+export function structuredAgentSessionRejectionAwaitsItsRow(
+  submission: Pick<AgentJournalSubmission, 'dispatchState' | 'reason' | 'rejection'>,
+  rowLoaded: boolean
+): boolean {
+  return submission.dispatchState === 'rejected' && !dispatchWasWithdrawn(submission) && !rowLoaded
+}
+
+/** Whether any entry still owes a delivery: one the host recorded and then rejected owes none, and
+ *  only waits for its row to load. */
+export function structuredAgentSessionOutboxOwesDelivery(
+  entries: readonly StructuredAgentSessionOutboxEntry[],
+  submissions: readonly AgentJournalSubmission[]
+): boolean {
+  if (entries.length === 0) {
+    return false
+  }
+  const rejected = new Set(
+    submissions
+      .filter((submission) => submission.dispatchState === 'rejected')
+      .map((submission) => submission.clientMessageId)
+  )
+  return entries.some((entry) => !rejected.has(entry.clientMessageId))
+}
+
 /**
  * The outbox as the journal reads it: an entry the host holds a row for leaves once that row has
- * settled (the row shows it from there), and stays out while it is pending. A view's reading; the
- * outbox hook settles the stored copy (structured-agent-session-outbox-settlement).
+ * settled and is loaded (the row shows it from there), and stays out while it is pending. A view's
+ * reading; the outbox hook settles the stored copy (structured-agent-session-outbox-settlement).
+ * Returns `entries` itself when it changes nothing.
  */
 export function reconcileStructuredAgentSessionOutbox(
   entries: readonly StructuredAgentSessionOutboxEntry[],
-  submissions: readonly AgentJournalSubmission[]
-): StructuredAgentSessionOutboxEntry[] {
+  submissions: readonly AgentJournalSubmission[],
+  /** The loaded journal rows. */
+  items: readonly AgentJournalRenderItem[]
+): readonly StructuredAgentSessionOutboxEntry[] {
   const rows = new Map(submissions.map((entry) => [entry.clientMessageId, entry]))
-  return entries.flatMap((entry) => {
+  let loaded: Set<string> | undefined
+  const next = entries.flatMap((entry) => {
     const submission = rows.get(entry.clientMessageId)
     if (!submission) {
       return [entry]
     }
-    if (submission.dispatchState !== 'pending') {
-      return []
+    if (submission.dispatchState === 'pending') {
+      return entry.state === 'dispatching' ? [entry] : [{ ...entry, state: 'dispatching' as const }]
     }
-    return entry.state === 'dispatching' ? [entry] : [{ ...entry, state: 'dispatching' as const }]
+    loaded ??= new Set(items.map((item) => item.itemId))
+    const rowLoaded = loaded.has(agentJournalSubmissionKey(entry.clientMessageId))
+    return structuredAgentSessionRejectionAwaitsItsRow(submission, rowLoaded) ? [entry] : []
   })
+  return next.length === entries.length && next.every((entry, index) => entry === entries[index])
+    ? entries
+    : next
 }
 
 export function parseStructuredAgentSessionOutboxEntry(

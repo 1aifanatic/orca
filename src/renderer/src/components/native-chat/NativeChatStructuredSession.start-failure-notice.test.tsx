@@ -94,7 +94,9 @@ function renderPane(messages: ReturnType<typeof rejected>[]): void {
   ]
   const submissions = messages.map((message) => message.submission)
   mocks.submissions = submissions
-  mocks.messages = projectStructuredAgentSessionMessages(mocks.journalItems, [], submissions)
+  mocks.messages = projectStructuredAgentSessionMessages(mocks.journalItems, [], submissions, {
+    rejectedInPlace: true
+  })
   render(
     <NativeChatStructuredSession
       isVisible
@@ -192,7 +194,9 @@ it('words a recorded rejection this window holds no outbox entry for, with no Re
     ).submission
   ]
   mocks.submissions = submissions
-  mocks.messages = projectStructuredAgentSessionMessages(mocks.journalItems, [], submissions)
+  mocks.messages = projectStructuredAgentSessionMessages(mocks.journalItems, [], submissions, {
+    rejectedInPlace: true
+  })
   render(
     <NativeChatStructuredSession
       isVisible
