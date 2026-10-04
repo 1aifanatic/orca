@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeAll, afterAll, describe, expect, it } from 'vitest'
+import { JSONC_PARSER_ESM_ALIAS } from '../../config/build-plugins/jsonc-parser-esm'
 import { runProcess } from '../shared/child-process/run-process'
 import { RelayOwnerResetPreparationJournal } from './relay-owner-reset-preparation-journal'
 import { RELAY_RESET_PREPARATION_READ_FLAG } from './relay-reset-preparation-reader'
@@ -38,6 +39,7 @@ beforeAll(async () => {
     format: 'cjs',
     outfile: entry,
     external: ['node-pty', '@parcel/watcher', 'electron'],
+    alias: JSONC_PARSER_ESM_ALIAS,
     sourcemap: false
   })
 }, 30_000)
