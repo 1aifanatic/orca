@@ -14,12 +14,17 @@ import { SshPortForwardManager } from './ssh-port-forward'
 import { OrcadManagedTunnelTransportProvider } from './orcad-managed-tunnel-transport'
 import {
   OrcadManagedTunnelResumeRecovery,
-  type ActiveOrcadTunnel,
   type OrcadManagedServingCheck,
   type OrcadManagedTunnelProbe,
   type OrcadManagedTunnelResumeOptions
 } from './orcad-managed-tunnel-resume'
 import type { OrcadManagedServing } from './orcad-managed-serving'
+import {
+  dropActiveOrcadTunnel,
+  managedTunnelAccess,
+  recordActiveOrcadTunnel,
+  type ActiveOrcadTunnel
+} from './orcad-managed-tunnel-active'
 import { checkManagedTunnelServing, type OrcadTunnelServing } from './orcad-managed-tunnel-serving'
 import type { getSshTargetRegistryStore } from './ssh-target-registry'
 import {
@@ -132,11 +137,8 @@ export class OrcadManagedTunnelManager {
     if (!forward) {
       throw new Error('Orca SSH tunnel setup was superseded.')
     }
-    this.active.set(environmentId, {
+    recordActiveOrcadTunnel(this.active, environmentId, forward, {
       connection,
-      forwardId: forward.id,
-      localPort: forward.localPort,
-      remotePort: forward.remotePort,
       preferredPort: checks.preferredPort ?? remotePort,
       sshTargetGeneration: target.generation,
       targetId: target.id,
@@ -220,24 +222,16 @@ export class OrcadManagedTunnelManager {
 
     const managerGeneration = this.managerGeneration
     const ownershipGeneration = this.ownershipGenerations.get(environment.id) ?? 0
+    const expected = { environmentId: environment.id, ...deployment }
     const stillOwned = (): boolean => {
-      const currentTarget = targetStore.getTarget(target.id)
       const currentEnvironment = resolveCurrent()
-      const currentAccess = currentEnvironment ? getRuntimeSshAccess(currentEnvironment) : undefined
       return (
         this.managerGeneration === managerGeneration &&
         (this.ownershipGenerations.get(environment.id) ?? 0) === ownershipGeneration &&
-        currentTarget?.generation === target.generation &&
-        getManagedOrcadFenceEnvironmentId(currentTarget) === environment.id &&
-        currentEnvironment?.id === environment.id &&
-        currentEnvironment.runtimeId === environment.runtimeId &&
+        currentEnvironment?.runtimeId === environment.runtimeId &&
         (currentEnvironment.pairingRevision ?? currentEnvironment.createdAt) ===
           (environment.pairingRevision ?? environment.createdAt) &&
-        currentEnvironment.connectionDependency === 'ssh-tunnel' &&
-        currentAccess?.sshTargetId === deployment.sshTargetId &&
-        currentAccess.sshTargetGeneration === deployment.sshTargetGeneration &&
-        currentAccess.localPort === deployment.localPort &&
-        currentAccess.remotePort === deployment.remotePort
+        managedTunnelAccess(currentEnvironment, targetStore.getTarget(target.id), expected) !== null
       )
     }
     const connection = await connectionManager.connect(target)
@@ -262,10 +256,7 @@ export class OrcadManagedTunnelManager {
       connection
     })
     if (active && stillOwned()) {
-      await this.forwards.removeForwardAndWait(active.forwardId)
-      if (this.active.get(environment.id) === active) {
-        this.active.delete(environment.id)
-      }
+      await dropActiveOrcadTunnel(this.active, this.forwards, environment.id, active)
     }
     if (!stillOwned()) {
       return
@@ -283,11 +274,8 @@ export class OrcadManagedTunnelManager {
     if (!forward) {
       return
     }
-    this.active.set(environment.id, {
+    recordActiveOrcadTunnel(this.active, environment.id, forward, {
       connection,
-      forwardId: forward.id,
-      localPort: forward.localPort,
-      remotePort: forward.remotePort,
       preferredPort: deployment.remotePort,
       sshTargetGeneration: target.generation,
       targetId: target.id,

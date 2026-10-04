@@ -5,7 +5,8 @@
  */
 import type { KnownRuntimeEnvironment } from '../../shared/runtime-environments'
 import type { OrcadManagedServing } from './orcad-managed-serving'
-import type { ActiveOrcadTunnel, OrcadManagedServingCheck } from './orcad-managed-tunnel-resume'
+import type { OrcadManagedServingCheck } from './orcad-managed-tunnel-resume'
+import type { ActiveOrcadTunnel } from './orcad-managed-tunnel-active'
 import type { SshPortForwardManager } from './ssh-port-forward'
 import type { SshTarget } from '../../shared/ssh-types'
 
