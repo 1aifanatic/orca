@@ -22,8 +22,7 @@ import { LAYOUT_SOURCE } from './mobile-web-app-terminal-probe-route.mjs'
  */
 
 const ROUTE = `/${MOBILE_WEB_APP_ROUTE_ROOT}/working-spinner-probe`
-// Only samples from 1.3 s on are asserted; the earlier two show the first turn in a failure.
-const SAMPLE_SECONDS = [0.3, 0.7, 1.3, 1.8, 2.4]
+const SAMPLE_SECONDS = [1.3, 1.8, 2.4]
 const bundles = mobileWebAppDependenciesPresent()
 const describeRender = bundles ? describe : describe.skip
 
@@ -134,9 +133,8 @@ describeRender('working rings on the page', () => {
       await page.waitForTimeout(Math.max(0, started + seconds * 1000 - Date.now()))
       samples.push(await readRotations(page))
     }
-    const late = samples.slice(SAMPLE_SECONDS.indexOf(1.3))
     for (const ring of [0, 1]) {
-      const angles = late.map((sample) => sample[ring])
+      const angles = samples.map((sample) => sample[ring])
       expect(new Set(angles).size, `ring ${ring} after 1.3 s: ${angles.join(', ')}`).toBe(
         angles.length
       )
