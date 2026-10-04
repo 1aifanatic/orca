@@ -236,7 +236,9 @@ export function createFolderWorkspaceMutationActions(
       )
       const workspaceKey = folderWorkspaceKey(folderWorkspaceId)
       // Why before the host call: its announcement can start a refresh that drops these tabs.
-      const chatDraftKeys = captureWorkspaceChatDraftKeys(state, [workspaceKey])
+      const chatDraftKeys = captureWorkspaceChatDraftKeys(state, [
+        { workspaceId: workspaceKey, executionHostId: ownerHostId }
+      ])
       try {
         // Why: deletion targets the folder's owner; focus may be on a different host.
         const target = getActiveRuntimeTarget({ activeRuntimeEnvironmentId: runtimeEnvironmentId })

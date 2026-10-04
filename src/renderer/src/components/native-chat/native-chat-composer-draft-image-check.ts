@@ -6,7 +6,8 @@ import type { NativeChatComposerDraftImage } from './native-chat-composer-draft-
 import {
   isKeptLocalPaste,
   readNativeChatComposerDraft,
-  takeUnverifiedNativeChatComposerDraft,
+  isNativeChatComposerDraftUnverified,
+  markNativeChatComposerDraftVerified,
   unavailableNativeChatComposerDraftImage,
   updateNativeChatComposerDraft
 } from './native-chat-composer-draft-store'
@@ -53,11 +54,23 @@ export async function findMissingNativeChatComposerDraftImages(
   return missing
 }
 
+const checking = new Set<string>()
+
 /** Once per restored draft: an image whose file is gone comes back as one to attach again. */
 export async function verifyRestoredNativeChatComposerDraftImages(scopeKey: string): Promise<void> {
-  if (!takeUnverifiedNativeChatComposerDraft(scopeKey)) {
+  if (!isNativeChatComposerDraftUnverified(scopeKey) || checking.has(scopeKey)) {
     return
   }
+  checking.add(scopeKey)
+  try {
+    await replaceMissingImages(scopeKey)
+  } finally {
+    checking.delete(scopeKey)
+    markNativeChatComposerDraftVerified(scopeKey)
+  }
+}
+
+async function replaceMissingImages(scopeKey: string): Promise<void> {
   const checked = readNativeChatComposerDraft(scopeKey).images
   const missing = await findMissingNativeChatComposerDraftImages(checked)
   if (missing.size === 0) {

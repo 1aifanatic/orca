@@ -19,6 +19,7 @@ import type { NativeChatOptionPickerRequest } from './native-chat-composer-types
 import { NativeChatImageAttachmentPreview } from './NativeChatImageAttachmentPreview'
 import type { NativeChatComposerGoalMode } from './use-native-chat-composer-submit'
 import { translate } from '@/i18n/i18n'
+import { useNativeChatComposerDraftUnsaved } from './use-native-chat-draft-unsaved'
 
 export type NativeChatComposerFieldProps = {
   /** Pane identity published to the drop pipeline so a native file drop lands
@@ -144,6 +145,7 @@ export function NativeChatComposerField({
   sessionOptionsPickerRequest,
   goalMode
 }: NativeChatComposerFieldProps): React.JSX.Element {
+  const draftNotSaved = useNativeChatComposerDraftUnsaved(draftScopeKey)
   // Value the IME started from, and whether a programmatic clear was dropped on top of it.
   const compositionBaseRef = useRef('')
   const droppedDraftClearRef = useRef(false)
@@ -224,6 +226,7 @@ export function NativeChatComposerField({
                   <NativeChatImageAttachmentPreview
                     key={attachment.id}
                     attachment={attachment}
+                    notSaved={draftNotSaved}
                     onRemove={onRemoveImageAttachment}
                   />
                 ))}
@@ -294,6 +297,7 @@ export function NativeChatComposerField({
                 dictationDisabled={dictationDisabled}
                 sendDisabled={sendButtonDisabled}
                 sendBlockedReason={sendBlockedReason}
+                draftNotSaved={draftNotSaved}
                 isWorking={isWorking}
                 isDictating={isDictating}
                 isDictationHoldMode={isDictationHoldMode}

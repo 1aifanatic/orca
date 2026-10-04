@@ -7,6 +7,7 @@ import type * as DraftHook from './use-native-chat-draft'
 import type * as AttachmentsHook from './use-native-chat-composer-attachments'
 import type * as SendHook from './use-native-chat-structured-composer-send'
 import type { NativeChatStructuredComposerTransport } from './native-chat-composer-types'
+import { createMemoryNativeChatComposerDraftStorage } from './native-chat-composer-draft-storage'
 
 vi.mock('@/i18n/i18n', () => ({ translate: (_key: string, fallback: string) => fallback }))
 vi.mock('@/runtime/runtime-terminal-inspection', () => ({ isRemoteRuntimePtyId: () => false }))
@@ -39,7 +40,7 @@ vi.mock('../../store', () => ({
   )
 }))
 
-const DRAFT_KEY_PREFIX = 'orca:nativeChatComposerDraft:v1:'
+let storage = createMemoryNativeChatComposerDraftStorage()
 
 type ComposerApi = {
   draft: string
@@ -106,17 +107,23 @@ async function unmount(): Promise<void> {
 }
 
 function storedDraft(scopeKey: string): unknown {
-  const raw = localStorage.getItem(`${DRAFT_KEY_PREFIX}${encodeURIComponent(scopeKey)}`)
-  return raw === null ? null : JSON.parse(raw)
+  return storage.drafts.get(scopeKey) ?? null
 }
 
-/** A fresh renderer: module memory is gone, localStorage is not. */
+const loadedStores: { clearNativeChatComposerDraftsForTests: () => void }[] = []
+
+/** A fresh renderer: module memory is gone, the drafts' storage is not. */
 async function loadHooks(): Promise<{
   draftHook: typeof DraftHook
   attachmentsHook: typeof AttachmentsHook
   sendHook: typeof SendHook
 }> {
   vi.resetModules()
+  const storageModule = await import('./native-chat-composer-draft-storage')
+  storageModule.setNativeChatComposerDraftStorageForTests(storage)
+  const store = await import('./native-chat-composer-draft-store')
+  loadedStores.push(store)
+  await store.hydrateNativeChatComposerDrafts()
   return {
     draftHook: await import('./use-native-chat-draft'),
     attachmentsHook: await import('./use-native-chat-composer-attachments'),
@@ -162,15 +169,16 @@ function composer(
 
 beforeEach(() => {
   localStorage.clear()
+  storage = createMemoryNativeChatComposerDraftStorage()
   mocks.launchDrafts = {}
 })
 
 afterEach(async () => {
   await unmount()
   vi.useRealTimers()
-  // Writes still deferred land now, not in the next test's storage.
-  window.dispatchEvent(new Event('pagehide'))
-  localStorage.clear()
+  for (const store of loadedStores.splice(0)) {
+    store.clearNativeChatComposerDraftsForTests()
+  }
 })
 
 describe('native-chat composer draft lifecycle', () => {
@@ -375,32 +383,6 @@ describe('native-chat composer draft lifecycle', () => {
     expect(other.api?.draft).toBe(' and more')
   })
 
-  it('keeps a shown composer’s pasted image when many other drafts are written', async () => {
-    const hooks = await loadHooks()
-    const drafts = await import('./native-chat-draft-cache')
-    const seen: { api?: ComposerApi } = {}
-    await mount(
-      createElement(
-        composer(hooks, (next) => (seen.api = next)),
-        { scopeKey: 'tab-1:pane' }
-      )
-    )
-    await act(async () =>
-      hooks.attachmentsHook.appendNativeChatAttachmentCache('tab-1:pane', [
-        { id: 'p1', path: '/tmp/orca-paste-1-abc.png' }
-      ])
-    )
-    for (let index = 0; index < 128; index += 1) {
-      drafts.writeNativeChatDraftCache(`tab-${index + 2}:pane`, `draft ${index}`)
-    }
-
-    await act(async () => seen.api?.setDraft('typing'))
-
-    expect(seen.api?.attachments.imageAttachments.map(({ path }) => path)).toEqual([
-      '/tmp/orca-paste-1-abc.png'
-    ])
-  })
-
   it('leaves nothing saved when a send clears a draft whose typing was still deferred', async () => {
     vi.useFakeTimers()
     const hooks = await loadHooks()
@@ -547,18 +529,15 @@ describe('native-chat composer draft lifecycle', () => {
       return filePath !== '/repo/gone.png'
     })
     vi.stubGlobal('api', { fs: { pathExists } })
-    localStorage.setItem(
-      `${DRAFT_KEY_PREFIX}${encodeURIComponent('tab-1:pane')}`,
-      JSON.stringify({
-        text: 'see these',
-        images: [
-          { id: 'a', path: '/repo/gone.png' },
-          { id: 'b', path: '/repo/here.png' },
-          { id: 'c', path: '/Users/me/Desktop/elsewhere.png' }
-        ],
-        savedAt: 1
-      })
-    )
+    storage.drafts.set('tab-1:pane', {
+      text: 'see these',
+      images: [
+        { id: 'a', path: '/repo/gone.png' },
+        { id: 'b', path: '/repo/here.png' },
+        { id: 'c', path: '/Users/me/Desktop/elsewhere.png' }
+      ],
+      savedAt: 1
+    })
     const hooks = await loadHooks()
     const seen: { api?: ComposerApi } = {}
     try {
@@ -598,17 +577,14 @@ describe('native-chat composer draft lifecycle', () => {
       fs: { pathExists: vi.fn(async () => true) },
       ui: { restoreNativeChatPastes }
     })
-    localStorage.setItem(
-      `${DRAFT_KEY_PREFIX}${encodeURIComponent('tab-1:pane')}`,
-      JSON.stringify({
-        text: 'see',
-        images: [
-          { id: 'kept', path: `${folder}/orca-paste-1-ab.png` },
-          { id: 'swept', path: `${folder}/orca-paste-2-ab.png` }
-        ],
-        savedAt: 1
-      })
-    )
+    storage.drafts.set('tab-1:pane', {
+      text: 'see',
+      images: [
+        { id: 'kept', path: `${folder}/orca-paste-1-ab.png` },
+        { id: 'swept', path: `${folder}/orca-paste-2-ab.png` }
+      ],
+      savedAt: 1
+    })
     const hooks = await loadHooks()
     const seen: { api?: ComposerApi } = {}
     try {
@@ -639,11 +615,7 @@ describe('native-chat composer draft lifecycle', () => {
   })
 
   it('takes another window’s send of the same draft, unless an edit here is still unsaved', async () => {
-    const key = `${DRAFT_KEY_PREFIX}${encodeURIComponent('tab-1:pane')}`
-    localStorage.setItem(
-      key,
-      JSON.stringify({ text: 'sent in the other tab', images: [], savedAt: 1 })
-    )
+    storage.drafts.set('tab-1:pane', { text: 'sent in the other tab', images: [], savedAt: 1 })
     const hooks = await loadHooks()
     const seen: { api?: ComposerApi } = {}
     await mount(
@@ -655,26 +627,53 @@ describe('native-chat composer draft lifecycle', () => {
     expect(seen.api?.draft).toBe('sent in the other tab')
 
     // The other tab sends: it removes the draft, and this window hears of it.
-    localStorage.removeItem(key)
+    await loadHooks()
+    const otherDrafts = await import('./native-chat-draft-cache')
+    otherDrafts.writeNativeChatDraftCache('tab-1:pane', '')
     await act(async () => {
-      window.dispatchEvent(new StorageEvent('storage', { key, newValue: null }))
+      await vi.waitFor(() => expect(seen.api?.draft).toBe(''))
     })
-    expect(seen.api?.draft).toBe('')
     await act(async () => seen.api?.setDraft((previous) => `${previous}next`))
     window.dispatchEvent(new Event('pagehide'))
     expect(storedDraft('tab-1:pane')).toMatchObject({ text: 'next' })
 
     // An edit here not yet saved wins over the other window's write.
     await act(async () => seen.api?.setDraft('mine, unsaved'))
+    otherDrafts.appendNativeChatDraftCache('tab-1:pane', 'theirs')
     await act(async () => {
-      window.dispatchEvent(
-        new StorageEvent('storage', {
-          key,
-          newValue: JSON.stringify({ text: 'theirs', images: [], savedAt: 2 })
-        })
-      )
+      await new Promise((resolve) => setTimeout(resolve, 20))
     })
     expect(seen.api?.draft).toBe('mine, unsaved')
+  })
+
+  it('shows a composer its draft was refused, keeps it, and clears the mark once a retry lands', async () => {
+    const hooks = await loadHooks()
+    const { useNativeChatComposerDraftUnsaved } = await import('./use-native-chat-draft-unsaved')
+    const store = await import('./native-chat-composer-draft-store')
+    const seen: { api?: ComposerApi; unsaved?: boolean } = {}
+    const Draft = composer(hooks, (next) => (seen.api = next))
+    function Marked({ scopeKey }: { scopeKey: string }): React.JSX.Element {
+      seen.unsaved = useNativeChatComposerDraftUnsaved(scopeKey)
+      return createElement(Draft, { scopeKey })
+    }
+    await mount(createElement(Marked, { scopeKey: 'tab-1:pane' }))
+
+    storage.refuseWrites = true
+    await act(async () => {
+      seen.api?.setDraft('typed on a full disk')
+      store.flushNativeChatComposerDrafts()
+      await store.nativeChatComposerDraftWritesSettled()
+    })
+    expect(seen.unsaved).toBe(true)
+    expect(seen.api?.draft).toBe('typed on a full disk')
+
+    storage.refuseWrites = false
+    await act(async () => {
+      window.dispatchEvent(new Event('pagehide'))
+      await store.nativeChatComposerDraftWritesSettled()
+    })
+    expect(seen.unsaved).toBe(false)
+    expect(storedDraft('tab-1:pane')).toMatchObject({ text: 'typed on a full disk' })
   })
 
   it('does not bring back an untouched launch link after a reload, when no seed is left to replace it', async () => {

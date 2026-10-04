@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Image as ImageIcon, ImageOff, Loader2, X } from 'lucide-react'
+import { CircleAlert, Image as ImageIcon, ImageOff, Loader2, X } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { translate } from '@/i18n/i18n'
 import { basename } from '@/lib/path'
 import { useLocalImageSrc } from '@/components/editor/useLocalImageSrc'
@@ -9,12 +10,15 @@ import type { NativeChatComposerImageAttachment } from './NativeChatComposerFiel
 
 type Props = {
   attachment: NativeChatComposerImageAttachment
+  /** The draft holding this image could not be saved, so the image lasts only this run. */
+  notSaved?: boolean
   onRemove: (id: string) => void
 }
 
 /** Thumbnail for a pending image, with an in-app full-size preview on click. */
 export function NativeChatImageAttachmentPreview({
   attachment,
+  notSaved,
   onRemove
 }: Props): React.JSX.Element {
   if (attachment.unavailableName !== undefined) {
@@ -26,7 +30,9 @@ export function NativeChatImageAttachmentPreview({
       />
     )
   }
-  return <NativeChatImageThumbnail attachment={attachment} onRemove={onRemove} />
+  return (
+    <NativeChatImageThumbnail attachment={attachment} notSaved={notSaved} onRemove={onRemove} />
+  )
 }
 
 function attachmentLabel(path: string): string {
@@ -48,6 +54,33 @@ function RemoveAttachmentButton({ onRemove }: { onRemove: () => void }): React.J
     >
       <X className="size-3" />
     </button>
+  )
+}
+
+/** Marks an image its draft couldn't save, as the common pattern marks a draft attachment. */
+function NotSavedBadge({ shown }: { shown: boolean }): React.JSX.Element | null {
+  if (!shown) {
+    return null
+  }
+  const explanation = translate(
+    'components.native-chat.composer.imageNotSavedWithDraft',
+    "This image couldn't be saved with this draft. It's kept until Orca closes."
+  )
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          role="img"
+          aria-label={explanation}
+          className="absolute left-1 top-1 inline-flex items-center justify-center rounded bg-background/85 p-0.5 text-status-warning"
+        >
+          <CircleAlert className="size-3" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" sideOffset={4}>
+        {explanation}
+      </TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -96,7 +129,7 @@ function NativeChatUnavailableImageChip({
   )
 }
 
-function NativeChatImageThumbnail({ attachment, onRemove }: Props): React.JSX.Element {
+function NativeChatImageThumbnail({ attachment, notSaved, onRemove }: Props): React.JSX.Element {
   const [isOpen, setIsOpen] = useState(false)
   const [isNearViewport, setIsNearViewport] = useState(false)
   const thumbnailRef = useRef<HTMLDivElement>(null)
@@ -168,6 +201,7 @@ function NativeChatImageThumbnail({ attachment, onRemove }: Props): React.JSX.El
             <Loader2 className="size-4 animate-spin text-muted-foreground" />
           </span>
         ) : null}
+        <NotSavedBadge shown={notSaved === true && !isPending} />
         <RemoveAttachmentButton onRemove={() => onRemove(attachment.id)} />
       </div>
       <Dialog open={isOpen} onOpenChange={setIsOpen}>

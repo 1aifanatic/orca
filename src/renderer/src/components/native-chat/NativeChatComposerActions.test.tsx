@@ -140,4 +140,29 @@ describe('NativeChatComposerActions', () => {
     })
     expect(send.hasAttribute('disabled')).toBe(true)
   })
+
+  it('marks a draft that could not be saved only after storage refused it', () => {
+    const props = {
+      attachDisabled: false,
+      dictationDisabled: false,
+      sendDisabled: false,
+      isWorking: false,
+      isDictating: false,
+      isDictationHoldMode: false,
+      onAttach: vi.fn(),
+      onDictationToggle: vi.fn(),
+      onDictationHoldStart: vi.fn(),
+      onDictationHoldEnd: vi.fn(),
+      onSend: vi.fn(),
+      sessionOptionsSurface: null,
+      sessionOptionsSnapshot: []
+    }
+    const explanation = "This draft couldn't be saved. It's kept until Orca closes."
+    const { rerender } = render(<NativeChatComposerActions {...props} />)
+    expect(screen.queryByRole('img', { name: explanation })).toBeNull()
+
+    rerender(<NativeChatComposerActions {...props} draftNotSaved />)
+    expect(screen.getByRole('img', { name: explanation })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Send' }).hasAttribute('disabled')).toBe(false)
+  })
 })

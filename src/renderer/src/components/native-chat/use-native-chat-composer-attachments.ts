@@ -74,15 +74,16 @@ export function useNativeChatComposerAttachments({
     () => readNativeChatComposerDraft(attachmentScopeKey).images
   )
   // Why: a restored paste can be previewed only once main re-grants it, so until the restore check
-  // is done it waits like a chip still saving.
-  const [restoring, setRestoring] = useState(() =>
+  // is done it waits like a chip still saving. A draft the startup load fills in late is checked
+  // when it arrives.
+  const restoring = useSyncExternalStore(subscribe, () =>
     isNativeChatComposerDraftUnverified(attachmentScopeKey)
   )
   useEffect(() => {
-    void verifyRestoredNativeChatComposerDraftImages(attachmentScopeKey).finally(() =>
-      setRestoring(false)
-    )
-  }, [attachmentScopeKey])
+    if (restoring) {
+      void verifyRestoredNativeChatComposerDraftImages(attachmentScopeKey)
+    }
+  }, [attachmentScopeKey, restoring])
   // Chips still being written, and the clipboard previews this composer minted, are its own.
   const [local, setLocal] = useState<LocalAttachments>(NO_LOCAL_ATTACHMENTS)
   // Read by callbacks between renders; only they change it, always together with the state.

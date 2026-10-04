@@ -1,4 +1,5 @@
 import type { AppState } from '../../../types'
+import type { ExecutionHostId } from '../../../../../../shared/execution-host'
 import {
   captureWorkspaceChatDraftKeys,
   type WorkspaceChatDraftKeys
@@ -13,12 +14,15 @@ export type WorktreeStateBeforeRemoval = {
 
 export function captureWorktreeStateBeforeRemoval(
   state: Pick<AppState, 'tabsByWorktree' | 'unifiedTabsByWorktree' | 'ptyIdsByTabId'>,
-  worktreeId: string
+  worktreeId: string,
+  executionHostId: ExecutionHostId | undefined
 ): WorktreeStateBeforeRemoval {
   return {
     terminalPtyIds: (state.tabsByWorktree[worktreeId] ?? []).flatMap(
       (tab) => state.ptyIdsByTabId[tab.id] ?? []
     ),
-    chatDraftKeys: captureWorkspaceChatDraftKeys(state, [worktreeId])
+    chatDraftKeys: captureWorkspaceChatDraftKeys(state, [
+      { workspaceId: worktreeId, executionHostId }
+    ])
   }
 }

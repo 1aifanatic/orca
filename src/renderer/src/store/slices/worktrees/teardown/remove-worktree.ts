@@ -109,7 +109,7 @@ export function createRemoveWorktree(
         worktreeId,
         requiredExecutionHostId
       )
-      const beforeRemoval = captureWorktreeStateBeforeRemoval(get(), worktreeId)
+      const beforeRemoval = captureWorktreeStateBeforeRemoval(get(), worktreeId, hostId)
       if (!forgetLocalOnly) {
         removalGenerationGuard?.assertCurrent()
       }

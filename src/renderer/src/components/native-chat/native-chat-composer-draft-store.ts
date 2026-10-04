@@ -4,27 +4,38 @@
 // skipped write is repaired by the next one.
 
 import type { JSONContent } from '@tiptap/react'
-import { setBoundedScopeCacheEntry } from './native-chat-composer-scope-cache'
 import { sameNativeChatComposerDraftImages } from './native-chat-composer-draft-comparison'
-import { basename } from '@/lib/path'
-import { isNativeChatKeptPastePath, isNativeChatPastedImagePath } from './native-chat-image-paste'
 import {
-  clearStoredNativeChatComposerDraftsForTests,
-  enforceStoredNativeChatComposerDraftBounds,
-  indexStoredNativeChatComposerDrafts,
-  nativeChatComposerDraftStorage,
-  nativeChatComposerDraftStorageKey,
-  parseStoredNativeChatComposerDraft,
-  removeStoredNativeChatComposerDraft,
-  removeStoredNativeChatComposerDraftsWhere,
-  storedNativeChatComposerDraftChanged,
-  writeStoredNativeChatComposerDraft,
-  type NativeChatComposerDraft,
-  type NativeChatComposerDraftImage,
-  type StoredNativeChatComposerDraft
+  clearDraftMemoryForTests,
+  dirtyScopes,
+  nextSavedAt,
+  notifyScope,
+  records,
+  refusedScopes,
+  scopeListeners,
+  unverifiedScopes,
+  type DraftRecord
+} from './native-chat-composer-draft-memory'
+import {
+  deleteLoadingNativeChatComposerDraftsWhere,
+  persistNativeChatComposerDraft,
+  resetNativeChatComposerDraftPersistenceForTests
+} from './native-chat-composer-draft-persistence'
+import type {
+  NativeChatComposerDraft,
+  NativeChatComposerDraftImage,
+  NativeChatComposerDraftOwner,
+  StoredNativeChatComposerDraft
 } from './native-chat-composer-draft-storage'
 
-const PERSIST_DEBOUNCE_MS = 250
+export {
+  flushNativeChatComposerDrafts,
+  hydrateNativeChatComposerDrafts,
+  isKeptLocalPaste,
+  nativeChatComposerDraftWritesSettled,
+  unavailableNativeChatComposerDraftImage,
+  waitForNativeChatComposerDrafts
+} from './native-chat-composer-draft-persistence'
 
 export type NativeChatComposerDraftChange = {
   text?: string
@@ -35,30 +46,15 @@ export type NativeChatComposerDraftChange = {
   unsavedText?: string
 }
 
-// Why unsavedText: an adopted launch seed is also parked in the agent's input line, and only this
-// run's seed knows to replace it, so a reload must not bring the copy back.
-type DraftRecord = StoredNativeChatComposerDraft & { readonly unsavedText?: string }
-
 const EMPTY_DRAFT: DraftRecord = { text: '', images: [], savedAt: 0 }
 
-const records = new Map<string, DraftRecord>()
-// Scopes whose record storage does not hold yet; a refused write stays here for the next flush.
-const dirtyScopes = new Set<string>()
-let lastSavedAt = 0
-let flushTimer: ReturnType<typeof setTimeout> | null = null
-let flushOnHideInstalled = false
-const scopeListeners = new Map<string, Set<() => void>>()
-// Records read back from storage this run whose image files have not been checked yet.
-const unverifiedScopes = new Set<string>()
-let storageSyncInstalled = false
+let resolveOwner: ((scopeKey: string) => NativeChatComposerDraftOwner | undefined) | null = null
 
-// Why: a shown draft can hold what storage never does (pasted images, unsaved launch text).
-function isShown(scopeKey: string): boolean {
-  return scopeListeners.has(scopeKey)
-}
-
-function notifyScope(scopeKey: string): void {
-  scopeListeners.get(scopeKey)?.forEach((listener) => listener())
+/** Names the workspace a scope's chat belongs to, so a new draft can record its owner. */
+export function setNativeChatComposerDraftOwnerResolver(
+  resolver: (scopeKey: string) => NativeChatComposerDraftOwner | undefined
+): void {
+  resolveOwner = resolver
 }
 
 /** Composers render from the store; this tells one that its pane's draft changed. */
@@ -66,7 +62,6 @@ export function subscribeToNativeChatComposerDraft(
   scopeKey: string,
   listener: () => void
 ): () => void {
-  installStorageSync()
   const listeners = scopeListeners.get(scopeKey) ?? new Set()
   scopeListeners.set(scopeKey, listeners)
   listeners.add(listener)
@@ -78,166 +73,28 @@ export function subscribeToNativeChatComposerDraft(
   }
 }
 
-// Why: another window of the same app (two web-client tabs) can send or edit this draft; its write
-// replaces what this window holds unless this window has an edit of its own still unsaved.
-function installStorageSync(): void {
-  if (storageSyncInstalled || typeof window === 'undefined' || !window.addEventListener) {
-    return
-  }
-  storageSyncInstalled = true
-  window.addEventListener('storage', (event) => {
-    const scopeKey = storedNativeChatComposerDraftChanged(event.key, event.newValue)
-    if (scopeKey === null || dirtyScopes.has(scopeKey)) {
-      return
-    }
-    records.delete(scopeKey)
-    notifyScope(scopeKey)
-  })
-}
-
-/** True once for a draft read back from storage this run, so its image files get checked once. */
-export function takeUnverifiedNativeChatComposerDraft(scopeKey: string): boolean {
-  return unverifiedScopes.delete(scopeKey)
-}
-
+/** A draft read back from storage this run whose image files have not been checked yet. */
 export function isNativeChatComposerDraftUnverified(scopeKey: string): boolean {
   return unverifiedScopes.has(scopeKey)
+}
+
+export function markNativeChatComposerDraftVerified(scopeKey: string): void {
+  if (unverifiedScopes.delete(scopeKey)) {
+    notifyScope(scopeKey)
+  }
+}
+
+/** A draft storage refused to save: it is kept in memory only until a later write lands. */
+export function isNativeChatComposerDraftUnsaved(scopeKey: string): boolean {
+  return refusedScopes.has(scopeKey) && records.has(scopeKey)
 }
 
 function isEmptyDraft(draft: NativeChatComposerDraft): boolean {
   return draft.text === '' && draft.images.length === 0
 }
 
-/** Monotonic within a run, so drafts changed in the same millisecond still age in order. */
-function nextSavedAt(): number {
-  lastSavedAt = Math.max(Date.now(), lastSavedAt + 1)
-  return lastSavedAt
-}
-
-/** An image the draft names but can no longer send, so the user can attach it again. */
-export function unavailableNativeChatComposerDraftImage(
-  image: NativeChatComposerDraftImage
-): NativeChatComposerDraftImage {
-  return image.unavailableName === undefined
-    ? { id: image.id, path: '', unavailableName: basename(image.path) }
-    : image
-}
-
-/** A local paste in Orca's paste folder: it outlives the run, so a restore can show and send it. */
-export function isKeptLocalPaste(image: NativeChatComposerDraftImage): boolean {
-  return !image.connectionId && isNativeChatKeptPastePath(image.path)
-}
-
-/** What storage keeps: not an unsaved launch-seed copy, and a paste outside Orca's paste folder
- *  (over SSH, or from before it) only by name. Null when nothing is left. */
-function savedForm(record: DraftRecord): StoredNativeChatComposerDraft | null {
-  const { unsavedText, ...saved } = record
-  const images = saved.images.map((image) =>
-    isNativeChatPastedImagePath(image.path) && !isKeptLocalPaste(image)
-      ? unavailableNativeChatComposerDraftImage(image)
-      : image
-  )
-  const text = saved.text === unsavedText ? '' : saved.text
-  if (text === '' && images.length === 0) {
-    return null
-  }
-  return text === saved.text ? { ...saved, images } : { text, images, savedAt: saved.savedAt }
-}
-
-function writeRecord(storage: Storage, scopeKey: string, record: DraftRecord): void {
-  const saved = savedForm(record)
-  if (!saved) {
-    removeStoredNativeChatComposerDraft(storage, nativeChatComposerDraftStorageKey(scopeKey))
-    dirtyScopes.delete(scopeKey)
-    return
-  }
-  if (writeStoredNativeChatComposerDraft(storage, scopeKey, saved)) {
-    dirtyScopes.delete(scopeKey)
-  }
-}
-
-// A draft leaving memory before its write landed is written on the way out.
-function writeEvictedRecord(scopeKey: string, record: DraftRecord): void {
-  const storage = dirtyScopes.has(scopeKey) ? nativeChatComposerDraftStorage() : null
-  if (storage) {
-    writeRecord(storage, scopeKey, record)
-  }
-  dirtyScopes.delete(scopeKey)
-}
-
-export function flushNativeChatComposerDrafts(): void {
-  if (flushTimer !== null) {
-    clearTimeout(flushTimer)
-    flushTimer = null
-  }
-  if (dirtyScopes.size === 0) {
-    return
-  }
-  const storage = nativeChatComposerDraftStorage()
-  if (!storage) {
-    dirtyScopes.clear()
-    return
-  }
-  indexStoredNativeChatComposerDrafts(storage)
-  for (const scopeKey of dirtyScopes) {
-    const record = records.get(scopeKey)
-    if (record) {
-      writeRecord(storage, scopeKey, record)
-    } else {
-      dirtyScopes.delete(scopeKey)
-    }
-  }
-  enforceStoredNativeChatComposerDraftBounds(storage)
-}
-
-function installFlushOnHide(): void {
-  if (
-    flushOnHideInstalled ||
-    typeof window === 'undefined' ||
-    typeof window.addEventListener !== 'function' ||
-    typeof document === 'undefined'
-  ) {
-    return
-  }
-  flushOnHideInstalled = true
-  // Why: a deferred write still pending when the window reloads or closes would lose the last
-  // keystrokes.
-  window.addEventListener('pagehide', flushNativeChatComposerDrafts)
-  window.addEventListener('beforeunload', flushNativeChatComposerDrafts)
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') {
-      flushNativeChatComposerDrafts()
-    }
-  })
-}
-
-/** The scope's record, read from storage the first time this run asks for it. */
-function loadRecord(scopeKey: string): DraftRecord | undefined {
-  const held = records.get(scopeKey)
-  if (held) {
-    return held
-  }
-  const storage = nativeChatComposerDraftStorage()
-  if (!storage) {
-    return undefined
-  }
-  try {
-    const stored = parseStoredNativeChatComposerDraft(
-      storage.getItem(nativeChatComposerDraftStorageKey(scopeKey))
-    )
-    if (!stored) {
-      return undefined
-    }
-    setBoundedScopeCacheEntry(records, scopeKey, stored, writeEvictedRecord, isShown)
-    unverifiedScopes.add(scopeKey)
-    return stored
-  } catch {
-    return undefined
-  }
-}
-
 export function readNativeChatComposerDraft(scopeKey: string): NativeChatComposerDraft {
-  return loadRecord(scopeKey) ?? EMPTY_DRAFT
+  return records.get(scopeKey) ?? EMPTY_DRAFT
 }
 
 /**
@@ -250,7 +107,7 @@ export function updateNativeChatComposerDraft(
   change: NativeChatComposerDraftChange,
   persist: 'immediate' | 'deferred'
 ): void {
-  const current = loadRecord(scopeKey) ?? EMPTY_DRAFT
+  const current = records.get(scopeKey) ?? EMPTY_DRAFT
   const text = change.text ?? current.text
   const document = 'document' in change ? change.document : current.document
   const images = change.images ?? current.images
@@ -262,36 +119,29 @@ export function updateNativeChatComposerDraft(
     sameNativeChatComposerDraftImages(images, current.images)
   ) {
     if (persist === 'immediate' && dirtyScopes.has(scopeKey)) {
-      flushNativeChatComposerDrafts()
+      persistNativeChatComposerDraft(scopeKey, 'immediate')
     }
     return
   }
   if (isEmptyDraft({ text, images })) {
     records.delete(scopeKey)
-    dirtyScopes.delete(scopeKey)
-    const storage = nativeChatComposerDraftStorage()
-    if (storage) {
-      removeStoredNativeChatComposerDraft(storage, nativeChatComposerDraftStorageKey(scopeKey))
-    }
     notifyScope(scopeKey)
+    persistNativeChatComposerDraft(scopeKey, 'immediate')
     return
   }
+  // Why stamped once: a conversation never moves to another workspace, so its owner stays true.
+  const owner = current.owner ?? resolveOwner?.(scopeKey)
   const record: DraftRecord = {
     text,
     ...(document ? { document } : {}),
     images: [...images],
     savedAt: nextSavedAt(),
+    ...(owner ? { owner } : {}),
     ...(unsavedText === undefined ? {} : { unsavedText })
   }
-  setBoundedScopeCacheEntry(records, scopeKey, record, writeEvictedRecord, isShown)
-  dirtyScopes.add(scopeKey)
-  installFlushOnHide()
+  records.set(scopeKey, record)
   notifyScope(scopeKey)
-  if (persist === 'immediate') {
-    flushNativeChatComposerDrafts()
-    return
-  }
-  flushTimer ??= setTimeout(flushNativeChatComposerDrafts, PERSIST_DEBOUNCE_MS)
+  persistNativeChatComposerDraft(scopeKey, persist)
 }
 
 /**
@@ -320,16 +170,18 @@ export function structuredAgentSessionDraftScopeKey(sessionId: string): string {
   return `${STRUCTURED_AGENT_SESSION_DRAFT_SCOPE_PREFIX}${sessionId}`
 }
 
-function deleteDraftsWhere(owned: (scopeKey: string) => boolean): void {
-  const storage = nativeChatComposerDraftStorage()
-  if (storage) {
-    removeStoredNativeChatComposerDraftsWhere(storage, owned)
-  }
+function deleteDraftsWhere(
+  matches: (scopeKey: string, draft: StoredNativeChatComposerDraft | undefined) => boolean
+): void {
+  deleteLoadingNativeChatComposerDraftsWhere(matches)
   for (const scopeKey of new Set([...records.keys(), ...scopeListeners.keys()])) {
-    if (owned(scopeKey)) {
+    const draft = records.get(scopeKey)
+    if (matches(scopeKey, draft)) {
       records.delete(scopeKey)
-      dirtyScopes.delete(scopeKey)
       notifyScope(scopeKey)
+      if (draft) {
+        persistNativeChatComposerDraft(scopeKey, 'immediate')
+      }
     }
   }
 }
@@ -339,8 +191,15 @@ export function deleteNativeChatComposerDraft(scopeKey: string): void {
   deleteDraftsWhere((key) => key === scopeKey)
 }
 
+/** The conversation a structured chat's draft belongs to, or null for a pane's draft. */
+export function structuredAgentSessionIdOfDraftScope(scopeKey: string): string | null {
+  return scopeKey.startsWith(STRUCTURED_AGENT_SESSION_DRAFT_SCOPE_PREFIX)
+    ? scopeKey.slice(STRUCTURED_AGENT_SESSION_DRAFT_SCOPE_PREFIX.length)
+    : null
+}
+
 /** A pane key is `<tabId>:<leaf>`; the leaf is a UUID, while a tab id may hold ':' itself. */
-function scopeTabId(scopeKey: string): string {
+export function nativeChatDraftScopeTabId(scopeKey: string): string {
   return scopeKey.slice(0, scopeKey.lastIndexOf(':'))
 }
 
@@ -350,17 +209,21 @@ export function deleteNativeChatComposerDraftsForTab(tabId: string): void {
   deleteDraftsWhere(
     (scopeKey) =>
       !scopeKey.startsWith(STRUCTURED_AGENT_SESSION_DRAFT_SCOPE_PREFIX) &&
-      scopeTabId(scopeKey) === tabId
+      nativeChatDraftScopeTabId(scopeKey) === tabId
+  )
+}
+
+/** Drops every draft written in a workspace the user removed, open and closed chats alike. */
+export function deleteNativeChatComposerDraftsOwnedBy(owner: NativeChatComposerDraftOwner): void {
+  deleteDraftsWhere(
+    (_scopeKey, draft) =>
+      draft?.owner?.workspaceId === owner.workspaceId &&
+      draft.owner.executionHostId === owner.executionHostId
   )
 }
 
 export function clearNativeChatComposerDraftsForTests(): void {
-  if (flushTimer !== null) {
-    clearTimeout(flushTimer)
-    flushTimer = null
-  }
-  records.clear()
-  dirtyScopes.clear()
-  unverifiedScopes.clear()
-  clearStoredNativeChatComposerDraftsForTests()
+  clearDraftMemoryForTests()
+  resetNativeChatComposerDraftPersistenceForTests()
+  resolveOwner = null
 }
