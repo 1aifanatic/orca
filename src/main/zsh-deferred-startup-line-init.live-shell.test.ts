@@ -83,16 +83,13 @@ describe('zsh deferred startup after prompt-hook replacement', () => {
               ? USER_PRECMD.replace('return 1', 'return 0')
               : '')
       )
-      if (stockBinding) {
-        // Ubuntu's global zshrc rebinds this widget between .zshenv and the user's .zshrc.
-        writeFileSync(
-          join(home, '.zprofile'),
-          USER_WIDGET.replaceAll('orca_test_line_init', 'zle-line-init')
-        )
-      }
+      // Replay Ubuntu's later widget binding before the user's own startup changes.
+      const stockWidget = stockBinding
+        ? USER_WIDGET.replaceAll('orca_test_line_init', 'zle-line-init')
+        : ''
       writeFileSync(
         join(home, '.zshrc'),
-        `export PATH="$HOME/ambient-bin:/usr/bin:/bin:$HOME/cli/bin"\n${orderedPrecmd ? '' : 'precmd_functions=()\n'}${
+        `${stockWidget}export PATH="$HOME/ambient-bin:/usr/bin:/bin:$HOME/cli/bin"\n${orderedPrecmd ? '' : 'precmd_functions=()\n'}${
           chainedLineInit
             ? `${USER_WIDGET.replace('zle -N zle-line-init orca_test_line_init', 'zle -N orca_test_line_init')}autoload -Uz add-zle-hook-widget\nadd-zle-hook-widget line-init orca_test_line_init\n`
             : chainedRedraw
