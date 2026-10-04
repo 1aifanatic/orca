@@ -32,6 +32,8 @@ import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client'
  *  surface can send it again. */
 export type NativeChatDeliveryNotice = {
   text: string
+  /** Says only that the message did not go out, so it reads muted, not as an error. */
+  notSent?: true
   onRetry?: () => void
   onDismiss?: () => void
 }
@@ -187,7 +189,12 @@ export const MessageRow = memo(function MessageRow({
           </div>
         ) : null}
         {deliveryNotice ? (
-          <div className="flex max-w-[85%] items-center gap-2 text-[11px] text-destructive/80">
+          <div
+            className={cn(
+              'flex max-w-[85%] items-center gap-2 text-[11px]',
+              deliveryNotice.notSent ? 'text-muted-foreground' : 'text-destructive/80'
+            )}
+          >
             <span className="min-w-0 break-words">{deliveryNotice.text}</span>
             {deliveryNotice.onDismiss ? (
               <Button type="button" variant="ghost" size="xs" onClick={deliveryNotice.onDismiss}>

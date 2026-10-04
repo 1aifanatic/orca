@@ -164,7 +164,7 @@ describe('MessageRow send mode', () => {
 })
 
 describe('a user message that did not go through', () => {
-  function renderUser(deliveryNotice?: { text: string; onRetry?: () => void }) {
+  function renderUser(deliveryNotice?: { text: string; notSent?: true; onRetry?: () => void }) {
     return render(
       <MessageRow
         message={{
@@ -197,6 +197,20 @@ describe('a user message that did not go through', () => {
 
     expect(screen.getByText('Not delivered — check the terminal')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+  })
+
+  // A plain "not sent" is a label, not an error; a doubt to check keeps the error color.
+  it('reads muted when it says only that the message was not sent', () => {
+    renderUser({ text: 'Your message was not sent.', notSent: true })
+    const notSent = screen.getByText('Your message was not sent.').parentElement
+    expect(notSent).toHaveClass('text-muted-foreground')
+    expect(notSent).not.toHaveClass('text-destructive/80')
+    cleanup()
+
+    renderUser({ text: 'Message delivery is unconfirmed.' })
+    expect(screen.getByText('Message delivery is unconfirmed.').parentElement).toHaveClass(
+      'text-destructive/80'
+    )
   })
 
   it('says nothing when it went through', () => {

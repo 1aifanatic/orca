@@ -34,7 +34,7 @@ export const styles = StyleSheet.create({
   },
   unsentLabel: {
     marginTop: spacing.xs,
-    color: colors.statusRed,
+    color: colors.textMuted,
     fontSize: typography.metaSize
   },
   toolRun: {

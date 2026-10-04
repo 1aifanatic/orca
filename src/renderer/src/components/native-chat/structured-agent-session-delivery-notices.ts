@@ -39,6 +39,20 @@ import { translate } from '@/i18n/i18n'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
 
+/** Whether the entry's words say only that it was not sent, never that it may have landed. */
+function deliveryNoticeSaysNotSent(entry: StructuredAgentSessionOutboxEntry): boolean {
+  return (
+    !deliveryIsInDoubt(entry) && !(entry.lastFailure && structuredAgentSessionEntryIdExpired(entry))
+  )
+}
+
+function deliveryIsInDoubt(entry: StructuredAgentSessionOutboxEntry): boolean {
+  // A send attempted before a Stop and then interrupted may already be with the host.
+  const attemptedAcrossStop =
+    entry.outlivedStop === true && entry.lastAttemptAt !== null && !entry.lastFailure
+  return entry.state === 'unconfirmed' || attemptedAcrossStop
+}
+
 function deliveryNoticeText(
   entry: StructuredAgentSessionOutboxEntry,
   context: AgentSessionFailureWordsContext,
@@ -46,10 +60,7 @@ function deliveryNoticeText(
   startFailures: readonly AgentSessionFailureFact[],
   failedHere: ReadonlySet<string>
 ): string {
-  // A send attempted before a Stop and then interrupted may already be with the host.
-  const attemptedAcrossStop =
-    entry.outlivedStop === true && entry.lastAttemptAt !== null && !entry.lastFailure
-  if (entry.state === 'unconfirmed' || attemptedAcrossStop) {
+  if (deliveryIsInDoubt(entry)) {
     return translate(
       'auto.components.native.chat.NativeChatStructuredSession.1f772bb5d0',
       'Message delivery is unconfirmed.'
@@ -121,16 +132,18 @@ export function structuredAgentSessionDeliveryNotices(
         startFailures,
         failedHere
       )
-      notices.set(
-        agentJournalSubmissionKey(entry.clientMessageId),
-        retryControl ? { text, onRetry: () => retry(entry.clientMessageId) } : { text }
-      )
+      notices.set(agentJournalSubmissionKey(entry.clientMessageId), {
+        text,
+        ...(deliveryNoticeSaysNotSent(entry) ? { notSent: true as const } : {}),
+        ...(retryControl ? { onRetry: () => retry(entry.clientMessageId) } : {})
+      })
     }
   }
   for (const submission of rejected.values()) {
     const id = agentJournalSubmissionKey(submission.clientMessageId)
     if (!notices.has(id) && !dispatchWasWithdrawn(submission)) {
       notices.set(id, {
+        notSent: true,
         text: agentSessionWriteNoticeText(
           structuredAgentSessionRecordedRejectionParts(
             submission,

@@ -3,6 +3,7 @@ import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'rea
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MAX_TOOL_DETAIL_LENGTH } from '../../../src/shared/native-chat-tool-summary'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
+import { colors } from '../theme/mobile-theme'
 
 vi.mock('react-native', async () => {
   const React = await import('react')
@@ -122,6 +123,15 @@ describe('MobileNativeChatMessage', () => {
   it('still says it was not sent when no words for it are loaded', () => {
     const tree = render({ ...userMessage([{ type: 'text', text: 'hello' }]), unsent: true })
     expect(textIn(tree.root)).toEqual(['hello', 'Your message was not sent.'])
+  })
+
+  it('says it was not sent as a muted label, not an error', () => {
+    const tree = render({ ...userMessage([{ type: 'text', text: 'hello' }]), unsent: true })
+    const [label] = tree.root.findAll(
+      (node) =>
+        node.props.style !== undefined && node.children.join('') === 'Your message was not sent.'
+    )
+    expect(label?.props.style).toMatchObject({ color: colors.textMuted })
   })
 
   it('says nothing more under a delivered message', () => {
