@@ -1,7 +1,11 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { runPtySpawnHealthProbe } from '../daemon/pty-subprocess/spawn-preflight'
+import {
+  PtySpawnHealthTimeoutError,
+  PTY_SPAWN_HEALTH_TIMEOUT_MS,
+  runPtySpawnHealthProbe
+} from '../daemon/pty-subprocess/spawn-preflight'
 import { WatcherProcessSupervisor } from '../ipc/parcel-watcher-process-supervisor'
 import { resolveWatcherProcessEntryPath } from '../ipc/parcel-watcher-entry-path'
 import { resolveOrcadInstallRoot } from './orcad-app-paths'
@@ -10,6 +14,9 @@ import {
   isWindowsProcessStartTimeAvailable,
   readWindowsProcessIdentityTableFresh
 } from '../windows/windows-process-table'
+
+// A cold first conpty spawn on a slow (arm64, AV-scanned) Windows host can outlast the steady-state budget.
+const WINDOWS_FIRST_PTY_PROBE_TIMEOUT_MS = 15_000
 
 /** The candidate process owns disposable PTY and watcher probes before it touches user state. */
 export async function preflightOrcadNativeRuntime(
@@ -22,7 +29,7 @@ export async function preflightOrcadNativeRuntime(
   if (options.nativeFeatures === false) {
     return
   }
-  await runPtySpawnHealthProbe()
+  await probePtySpawn()
   const directory = await mkdtemp(join(tmpdir(), 'orca-native-ready-'))
   const supervisor = new WatcherProcessSupervisor({
     entryPath: resolveWatcherProcessEntryPath(resolveOrcadInstallRoot(), false),
@@ -67,6 +74,20 @@ export async function preflightOrcadNativeRuntime(
       supervisor.dispose()
       await rm(directory, { recursive: true, force: true })
     }
+  }
+}
+
+/** Retries once only after a timeout; a spawn error or non-zero exit fails immediately. */
+async function probePtySpawn(): Promise<void> {
+  const firstTimeoutMs =
+    process.platform === 'win32' ? WINDOWS_FIRST_PTY_PROBE_TIMEOUT_MS : PTY_SPAWN_HEALTH_TIMEOUT_MS
+  try {
+    await runPtySpawnHealthProbe(firstTimeoutMs)
+  } catch (error) {
+    if (!(error instanceof PtySpawnHealthTimeoutError)) {
+      throw error
+    }
+    await runPtySpawnHealthProbe(PTY_SPAWN_HEALTH_TIMEOUT_MS)
   }
 }
 
