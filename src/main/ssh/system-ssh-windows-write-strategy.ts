@@ -278,7 +278,26 @@ function isPwshUnavailableError(error: unknown): boolean {
     /^'pwsh\.exe' is not recognized as an internal or external command(?:,\r?\noperable program or batch file\.)?$/i.test(
       stderr
     ) ||
-    /^CommandNotFoundException:[ \t]*pwsh\.exe$/i.test(stderr)
+    /^CommandNotFoundException:[ \t]*pwsh\.exe$/i.test(stderr) ||
+    isPowerShellMissingPwshDiagnostic(stderr)
+  )
+}
+
+function isPowerShellMissingPwshDiagnostic(stderr: string): boolean {
+  const lines = stderr.split(/\r?\n/).map((line) => line.trim())
+  return (
+    lines.length === 7 &&
+    lines[0] ===
+      "pwsh.exe : The term 'pwsh.exe' is not recognized as the name of a cmdlet, function, script file, or operable program." &&
+    lines[1] ===
+      'Check the spelling of the name, or if a path was included, verify that the path is correct and try again.' &&
+    /^At line:\d+ char:\d+$/.test(lines[2] ?? '') &&
+    /^\+ pwsh\.exe(?: [^\r\n]*)?$/.test(lines[3] ?? '') &&
+    /^\+ ~{8}$/.test(lines[4] ?? '') &&
+    /^\+ CategoryInfo[ \t]+: ObjectNotFound: \(pwsh\.exe:String\) \[\], CommandNotFoundException$/.test(
+      lines[5] ?? ''
+    ) &&
+    /^\+ FullyQualifiedErrorId[ \t]+: CommandNotFoundException$/.test(lines[6] ?? '')
   )
 }
 
