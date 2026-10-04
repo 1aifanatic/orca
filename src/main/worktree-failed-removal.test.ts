@@ -28,7 +28,7 @@ import {
 } from './worktree-removal-listing'
 import { readWorktreeRemovalRecords, writeWorktreeRemovalRecords } from './worktree-removal-records'
 import { readCheckoutDirectoryIdentity } from './worktree-checkout-identity'
-import { setUnfinishedWorktreeRemovalHost } from './worktree-removal-table'
+import { failedWorktreeRemovals, setUnfinishedWorktreeRemovalHost } from './worktree-removal-table'
 import { loadWorktreeRemovalRecordsForStore } from './startup/worktree-removal-records-load'
 
 vi.mock('./git/worktree', () => ({ listWorktreesStrict: vi.fn(async () => []) }))
@@ -148,6 +148,33 @@ describe('a delete that fails after Git dropped the registration', () => {
 
     expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toEqual([])
     // The workspace is still Git's, row and all.
+    expect(endWorkspace).not.toHaveBeenCalled()
+  })
+
+  it('drops a failed delete Git could not be asked about once Git says it still registers the checkout', async () => {
+    const endWorkspace = vi.fn()
+    setUnfinishedWorktreeRemovalHost(endWorkspace)
+    const checkoutRow = { ...leftoverRow(), removalError: undefined }
+    vi.mocked(listWorktreesStrict).mockRejectedValueOnce(new Error('git worktree list timed out'))
+    await failRemoval()
+    expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toHaveLength(1)
+    const listRegistered = () =>
+      withUnregisteredRemovalCheckouts('repo-1', [mainWorktree, checkoutRow])
+
+    // A cached scan can still list a checkout Git dropped, so the rows alone never decide.
+    expect(await listRegistered()).toEqual([mainWorktree, checkoutRow])
+    vi.mocked(listWorktreesStrict).mockRejectedValueOnce(new Error('git worktree list timed out'))
+    expect(await listRegistered()).toEqual([mainWorktree, checkoutRow])
+    expect(failedWorktreeRemovals.has(worktreeId)).toBe(true)
+    expect(endWorkspace).not.toHaveBeenCalled()
+
+    vi.mocked(listWorktreesStrict).mockResolvedValue([mainWorktree, checkoutRow])
+    expect(await listRegistered()).toEqual([mainWorktree, checkoutRow])
+    expect(failedWorktreeRemovals.has(worktreeId)).toBe(false)
+    await vi.waitFor(async () =>
+      expect(await readWorktreeRemovalRecords(join(directory, 'profile'))).toEqual([])
+    )
+    // The workspace is still Git's.
     expect(endWorkspace).not.toHaveBeenCalled()
   })
 

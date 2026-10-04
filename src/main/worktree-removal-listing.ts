@@ -24,18 +24,23 @@ const NO_PENDING_REMOVALS: PendingWorktreeRemovals = new Map()
  * Git's rows for a local repo plus one for each removal this host still owns whose checkout Git no
  * longer lists but is still on disk: a failed delete (carrying its error) or one still finishing.
  * A failed delete ends here, with its workspace, once its checkout is gone or a different folder
- * took the path.
+ * took the path, and on its own once Git registers its path again.
  */
 export async function withUnregisteredRemovalCheckouts(
   repoId: string,
   gitWorktrees: GitWorktreeInfo[]
 ): Promise<GitWorktreeInfo[]> {
+  const listsPath = (record: WorktreeRemovalRecord): boolean =>
+    gitWorktrees.some((worktree) => areWorktreePathsEqual(worktree.path, record.worktreePath))
   const unlisted = [...pendingWorktreeRemovals.values(), ...failedWorktreeRemovals.values()].filter(
-    (record) =>
-      record.repoId === repoId &&
-      !gitWorktrees.some((worktree) => areWorktreePathsEqual(worktree.path, record.worktreePath))
+    (record) => record.repoId === repoId && !listsPath(record)
   )
-  if (unlisted.length === 0) {
+  // Why: a delete that failed while Git could not be asked stays failed though Git may still
+  // register its checkout, and nothing else asks Git again.
+  const listedFailures = [...failedWorktreeRemovals.values()].filter(
+    (record) => record.repoId === repoId && listsPath(record)
+  )
+  if (unlisted.length === 0 && listedFailures.length === 0) {
     return gitWorktrees
   }
   const leftovers: GitWorktreeInfo[] = []
@@ -60,13 +65,17 @@ export async function withUnregisteredRemovalCheckouts(
   }
   let dropped = false
   const endings: Promise<void>[] = []
-  for (const record of notLeftovers) {
+  for (const record of [...notLeftovers, ...listedFailures]) {
     // Why ask Git again: the rows may be a cached scan, and a checkout Git registers at the path
     // since is a new workspace. Unknowable keeps the record for the next listing to decide.
     const registered = await isCheckoutRegistered(record).catch(() => undefined)
     // Read again: a Delete may have retried it meanwhile. No await from here to the end, or a
     // Delete in between would find neither the record nor the end of its workspace.
-    if (registered === undefined || failedWorktreeRemovals.get(record.worktreeId) !== record) {
+    if (
+      registered === undefined ||
+      (!registered && listedFailures.includes(record)) ||
+      failedWorktreeRemovals.get(record.worktreeId) !== record
+    ) {
       continue
     }
     failedWorktreeRemovals.delete(record.worktreeId)
