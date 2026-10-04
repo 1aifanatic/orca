@@ -17,6 +17,7 @@ const BUNDLED_MAIN_DEPENDENCIES = new Set([
   '@xterm/headless',
   '@xterm/addon-serialize',
   'tldts',
+  'smol-toml',
   // Why: Windows NSIS deploys app.asar before external resources; bootstrap must
   // not race the later resources/node_modules copy.
   'zod'
@@ -238,9 +239,6 @@ export const electronViteConfig: UserConfig = {
           'warp-theme-parser-worker': resolve('src/main/warp-themes/warp-theme-parser-worker.ts'),
           'foreign-sqlite-reader-entry': resolve(
             'src/main/foreign-sqlite-readers/foreign-sqlite-reader-entry.ts'
-          ),
-          'session-scanner-worker-entry': resolve(
-            'src/main/ai-vault/session-scanner-worker-entry.ts'
           ),
           'session-scanner-service-entry': resolve(
             'src/main/ai-vault/session-scanner-service-entry.ts'
