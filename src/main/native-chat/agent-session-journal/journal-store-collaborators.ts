@@ -18,6 +18,7 @@ import { journalQueuePauseRestatement } from './queued-message-pause'
 import type { JournalReducerState } from './journal-reducer'
 import { JournalRowWriter } from './journal-row-writer'
 import { restoreJournalStore } from './journal-store-restore'
+import { JournalSubmissionWriter } from './journal-submission-writer'
 import type { JournalRow } from './journal-row-schema'
 import type { AgentSessionJournal } from './journal-store'
 import type { JournalWriteBody } from './journal-write-queue'
@@ -57,6 +58,7 @@ export type JournalStoreCollaborators = {
   epochController: JournalEpochController
   itemAppender: JournalItemAppender
   lifecycleBatchAppender: JournalLifecycleBatchAppender
+  submissionWriter: JournalSubmissionWriter
   queuedMessages: JournalQueuedMessages
   stopMarks: JournalStopMarks
   /** Restores the store's state from disk. Owned here because it needs the same
@@ -117,6 +119,12 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
         queuedMessages.repairAndPruneAtOpen()
       ),
     rowWriter,
+    submissionWriter: new JournalSubmissionWriter({
+      state: host.state,
+      identity: host.identity,
+      rowWriter,
+      queuedMessages
+    }),
     itemAppender: new JournalItemAppender({
       state: host.state,
       enqueue: host.enqueue
