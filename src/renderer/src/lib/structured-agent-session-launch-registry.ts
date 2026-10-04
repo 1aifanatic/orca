@@ -78,11 +78,18 @@ export function structuredLaunchIdentity(
     : `${agent}:${worktreeId}`
 }
 
-// Why: coalescing stops two creates racing for one chat. A failed launch is not racing; it gives up
-// its identity, so a new start makes a new chat while the failed one keeps its own Retry.
+// Why: coalescing stops two new starts racing for one chat. A failed or unconfirmed launch, or a
+// Retry/re-check of one, is not that race: a new start opens a new chat carrying its own text, and
+// that chat keeps its own Retry. A resume keeps holding: the host refuses a second adoption.
 function holdsLaunchIdentity(state: StructuredLaunchState): boolean {
   const lifecycle = launchStateLifecycle(state)
-  return lifecycle !== 'failed' && lifecycle !== 'cancelled'
+  if (lifecycle === 'failed' || lifecycle === 'cancelled') {
+    return false
+  }
+  if (state.intent.params.resumeFrom) {
+    return true
+  }
+  return state.callers.attempt === 'first' && lifecycle !== 'visibility-unknown'
 }
 
 export function structuredLaunchesHoldingIdentity(
@@ -93,7 +100,7 @@ export function structuredLaunchesHoldingIdentity(
   )
 }
 
-/** The launch a new start for `identity` joins; the newest wins if a retried chat holds it too. */
+/** The launch a new start for `identity` joins; the newest wins if a retried resume holds it too. */
 export function getJoinableStructuredLaunchState(
   identity: string
 ): StructuredLaunchState | undefined {

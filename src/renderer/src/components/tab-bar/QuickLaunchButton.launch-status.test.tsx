@@ -53,7 +53,11 @@ import {
 
 const WORKTREE_ID = 'worktree-1'
 
-function registerLaunch(agent: 'claude' | 'codex', outcome: 'pending' | 'failed'): void {
+function registerLaunch(
+  agent: 'claude' | 'codex',
+  outcome: 'pending' | 'failed',
+  attempt: 'first' | 'retry' = 'first'
+): void {
   const sessionId = `${agent}-session`
   setStructuredLaunchState({
     identity: `${agent}:${WORKTREE_ID}`,
@@ -77,6 +81,7 @@ function registerLaunch(agent: 'claude' | 'codex', outcome: 'pending' | 'failed'
     promptDelivery: undefined,
     callers: {
       outcome,
+      attempt,
       entries: new Set(),
       promptDeliveryResults: new Set(),
       onSettled: () => undefined
@@ -104,6 +109,23 @@ describe('QuickLaunchAgentMenuItems launch status', () => {
   it('keeps an agent whose chat failed to start launchable while a starting one waits', () => {
     registerLaunch('claude', 'pending')
     registerLaunch('codex', 'failed')
+
+    render(
+      <QuickLaunchAgentMenuItems
+        worktreeId={WORKTREE_ID}
+        groupId="group-1"
+        onFocusTerminal={vi.fn()}
+      />
+    )
+
+    expect(agentRowDisabled('Claude')).toBe('true')
+    expect(agentRowDisabled('Codex')).toBe('false')
+  })
+
+  // A pick then opens a new chat; only a new start's own create would be joined.
+  it("keeps an agent launchable while a failed chat's Retry is in flight", () => {
+    registerLaunch('claude', 'pending')
+    registerLaunch('codex', 'pending', 'retry')
 
     render(
       <QuickLaunchAgentMenuItems

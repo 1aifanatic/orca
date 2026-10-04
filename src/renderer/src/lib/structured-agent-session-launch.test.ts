@@ -496,7 +496,7 @@ describe('startStructuredAgentLaunch', () => {
     })
   })
 
-  it('keeps one launch identity per worktree while the outcome is unknown', async () => {
+  it('opens a new chat for a new start while an earlier outcome is unknown', async () => {
     const worktreeId = 'wt-unknown-different-prompts'
     const intent = launchIntent(worktreeId)
     mocks.createIntent.mockReturnValueOnce(intent)
@@ -505,10 +505,16 @@ describe('startStructuredAgentLaunch', () => {
 
     startStructuredAgentLaunch(worktreeId, 'codex', { prompt: 'first prompt' })
     await flushLaunchSettlement()
-    startStructuredAgentLaunch(worktreeId, 'codex', { prompt: 'second prompt' })
+    const second = startStructuredAgentLaunch(worktreeId, 'codex', { prompt: 'second prompt' })
     await flushLaunchSettlement()
 
-    expect(mocks.createIntent).toHaveBeenCalledOnce()
+    expect(mocks.createIntent).toHaveBeenCalledTimes(2)
+    expect(second.sessionId).not.toBe(intent.sessionId)
+    expect(readOutbox(second.sessionId)).toEqual([
+      expect.objectContaining({
+        body: expect.objectContaining({ blocks: [{ type: 'text', text: 'second prompt' }] })
+      })
+    ])
   })
 
   it('reconciles a host commit when the create reply is lost', async () => {
@@ -572,20 +578,22 @@ describe('startStructuredAgentLaunch', () => {
     expect(toast.error).not.toHaveBeenCalled()
   })
 
-  it('keeps an unresolved identity reserved until inventory reconciles it', async () => {
+  // Why a resume: the host refuses a second adoption of the conversation, so a new resume re-checks.
+  it('keeps an unresolved resume identity reserved until inventory reconciles it', async () => {
     const worktreeId = 'wt-still-unknown'
+    const resumeFrom = { providerSessionId: 'provider-still-unknown' }
     const intent = launchIntent(worktreeId)
-    mocks.createIntent.mockReturnValueOnce(intent)
+    mocks.createIntent.mockReturnValueOnce({ ...intent, params: { ...intent.params, resumeFrom } })
     mocks.launch.mockRejectedValue(new Error('offline'))
     vi.mocked(refreshLocalStructuredSessionTabs).mockResolvedValue([])
 
-    startStructuredAgentLaunch(worktreeId, 'codex')
+    startStructuredAgentLaunch(worktreeId, 'codex', { resumeFrom })
     await flushLaunchSettlement()
 
     vi.mocked(refreshLocalStructuredSessionTabs).mockResolvedValue([
       publishedSnapshot(worktreeId, intent.sessionId)
     ])
-    startStructuredAgentLaunch(worktreeId, 'codex')
+    startStructuredAgentLaunch(worktreeId, 'codex', { resumeFrom })
     await flushLaunchSettlement()
 
     expect(mocks.createIntent).toHaveBeenCalledOnce()
@@ -607,8 +615,10 @@ describe('startStructuredAgentLaunch', () => {
     vi.mocked(refreshLocalStructuredSessionTabs).mockResolvedValue([
       publishedSnapshot(worktreeId, intent.sessionId)
     ])
-    const retry = startStructuredAgentLaunch(worktreeId, 'codex')
-    await expect(retry.launchResult).resolves.toEqual({ sessionId: intent.sessionId, fence: 1 })
+    // The chat's own Retry re-checks it; a new start would open a new chat instead.
+    expect(retryStructuredAgentSessionLaunch(worktreeId, intent.sessionId)).toBe(true)
+    await flushLaunchSettlement()
+    expect(getStructuredAgentSessionLaunchLifecycle(worktreeId, intent.sessionId)).toBeNull()
 
     expect(readOutbox(intent.sessionId)).toEqual([
       expect.objectContaining({
@@ -668,32 +678,6 @@ describe('startStructuredAgentLaunch', () => {
       first.params.envelope.clientOperationId
     )
     expect(toast.error).not.toHaveBeenCalled()
-  })
-
-  it('does not stage the preserved launch prompt again on retry', async () => {
-    const worktreeId = 'wt-refused-prompt-retry'
-    const intent = launchIntent(worktreeId, 'session-refused-prompt-retry')
-    mocks.createIntent.mockReturnValueOnce(intent)
-    mocks.launch
-      .mockRejectedValueOnce(new StructuredAgentSessionCreateRefusalError('unsupported'))
-      .mockResolvedValueOnce({ sessionId: intent.sessionId, fence: 1 })
-    vi.mocked(refreshLocalStructuredSessionTabs).mockResolvedValue([
-      publishedSnapshot(worktreeId, intent.sessionId)
-    ])
-
-    startStructuredAgentLaunch(worktreeId, 'codex', {
-      prompt: 'only once',
-      promptDelivery: 'draft'
-    })
-    await flushLaunchSettlement()
-    expect(readOutbox(intent.sessionId)).toEqual([])
-
-    expect(retryStructuredAgentSessionLaunch(worktreeId, intent.sessionId)).toBe(true)
-    await flushLaunchSettlement()
-    expect(getStructuredAgentSessionLaunchLifecycle(worktreeId, intent.sessionId)).toBeNull()
-
-    expect(readOutbox(intent.sessionId)).toEqual([])
-    expect(mocks.seedDraft).toHaveBeenCalledOnce()
   })
 
   // A paired server's create seeds from its settings at create time, which its probe reports.

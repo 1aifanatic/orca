@@ -24,14 +24,19 @@ export type StructuredLaunchCaller = {
 
 export type StructuredLaunchCallerGroup = {
   outcome: 'pending' | 'published' | 'failed' | 'unknown' | 'cancelled'
+  /** 'retry': a Retry or re-check of a chat that already exists, not a new start's own create. */
+  attempt: 'first' | 'retry'
   entries: Set<StructuredLaunchCaller>
   promptDeliveryResults: Set<Promise<StructuredPromptDeliveryResult>>
   onSettled: () => void
 }
 
-export function createStructuredLaunchCallerGroup(): StructuredLaunchCallerGroup {
+export function createStructuredLaunchCallerGroup(
+  attempt: StructuredLaunchCallerGroup['attempt']
+): StructuredLaunchCallerGroup {
   return {
     outcome: 'pending',
+    attempt,
     entries: new Set(),
     promptDeliveryResults: new Set(),
     onSettled: () => {}

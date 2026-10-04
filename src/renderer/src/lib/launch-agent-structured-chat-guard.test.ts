@@ -471,7 +471,7 @@ describe('structured chat adoption guard on the launch path', () => {
     await vi.waitFor(() => expect(mockToastError).not.toHaveBeenCalled())
   })
 
-  it('does not create a sibling when post-create visibility proof is unknown', async () => {
+  it('re-checks a chat whose visibility proof is unknown through its own Retry, with its own intent', async () => {
     store.unifiedTabsByWorktree = {}
     const firstIntent = structuredLaunchIntent('wt-1', 'codex-session-1')
     const secondIntent = structuredLaunchIntent('wt-1', 'codex-session-2')
@@ -519,7 +519,9 @@ describe('structured chat adoption guard on the launch path', () => {
     )
     expect(mockToastError).not.toHaveBeenCalled()
 
-    launchAgentInNewTab({ agent: 'codex', worktreeId: 'wt-1' })
+    // A new launch would open a new chat; the unconfirmed one is re-checked by its own Retry.
+    const { retryStructuredAgentSessionLaunch } = await import('./structured-agent-session-launch')
+    expect(retryStructuredAgentSessionLaunch('wt-1', firstIntent.sessionId)).toBe(true)
     await vi.waitFor(() => expect(mockRefreshLocalStructuredSessionTabs).toHaveBeenCalledTimes(3))
 
     expect(mockCreateStructuredCodexSessionLaunchIntent).toHaveBeenCalledTimes(1)

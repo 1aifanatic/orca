@@ -124,7 +124,7 @@ function adoptPairedHostSeed(
 }
 
 function resetStructuredLaunchCallers(state: StructuredLaunchState): void {
-  state.callers = createStructuredLaunchCallerGroup()
+  state.callers = createStructuredLaunchCallerGroup('retry')
   state.callers.onSettled = () => maybeCleanupLaunchState(state)
 }
 
@@ -195,7 +195,7 @@ function structuredAgentLaunchState(
     ? enqueueStructuredAgentSessionLaunchPrompt(intent.sessionId, text)
     : null
   launchDraft.seedStructuredAgentLaunchDraft(intent.sessionId, agent, options)
-  const callers = createStructuredLaunchCallerGroup()
+  const callers = createStructuredLaunchCallerGroup('first')
   const state: StructuredLaunchState = {
     identity,
     intent,

@@ -254,16 +254,4 @@ describe('a new launch after a failed one', () => {
       fresh.sessionId
     )
   })
-
-  it('keeps an unconfirmed launch coalescing and reading unknown', async () => {
-    mocks.createIntent.mockReturnValueOnce(failed).mockReturnValueOnce(fresh)
-    mocks.launch.mockRejectedValue(new Error('offline'))
-    vi.mocked(refreshLocalStructuredSessionTabs).mockResolvedValue([])
-    startStructuredAgentLaunch(WORKTREE_ID, 'codex')
-    await flushLaunchSettlement()
-    expect(getStructuredAgentLaunchStatus(WORKTREE_ID, 'codex')).toBe('unknown')
-
-    expect(startStructuredAgentLaunch(WORKTREE_ID, 'codex').sessionId).toBe(failed.sessionId)
-    expect(mocks.createIntent).toHaveBeenCalledOnce()
-  })
 })
