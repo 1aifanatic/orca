@@ -3,6 +3,7 @@ import { OrcaRuntimeWithCreatePtyHeadlessTerminalState } from './orca-runtime-cr
 import type { TerminalOscLinkRange } from '../../shared/terminal-osc-link-ranges'
 import type { PtyProviderBufferSnapshot } from '../providers/types'
 import { withTimeout } from './runtime-async-boundaries'
+import { isOnTerminalGrid, relayTerminalScreenOnGrid } from './terminal-screen-grid-relayout'
 
 export class OrcaRuntimeWithSerializeTerminalBufferFromAvailableState extends OrcaRuntimeWithCreatePtyHeadlessTerminalState {
   protected async serializeTerminalBufferFromAvailableState(
@@ -101,6 +102,21 @@ export class OrcaRuntimeWithSerializeTerminalBufferFromAvailableState extends Or
       // Why: terminal snapshots should not depend on a mounted renderer pane.
       // If renderer serialization races reload/unmount, callers can still use
       // their existing null fallback paths.
+    }
+    // Why: a phone fit resizes the PTY but not the desktop xterm; its screen
+    // must be reflowed onto the PTY grid before it can stand for the PTY.
+    const ptyGrid = this.getTerminalSize(ptyId)
+    if (rendererSnapshot && ptyGrid && !isOnTerminalGrid(rendererSnapshot, ptyGrid)) {
+      try {
+        rendererSnapshot = await relayTerminalScreenOnGrid(
+          rendererSnapshot,
+          ptyGrid,
+          opts.scrollbackRows
+        )
+      } catch {
+        // A snapshot that cannot be laid out on the PTY grid would paint wrong.
+        rendererSnapshot = null
+      }
     }
     return rendererSnapshot
       ? this.preferTrackedLastTitle(ptyId, {
