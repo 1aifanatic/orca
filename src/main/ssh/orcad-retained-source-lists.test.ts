@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { FolderWorkspace } from '../../shared/folder-workspace-types'
 import type { ProjectGroup } from '../../shared/project-group-types'
@@ -5,12 +8,19 @@ import type { Repo } from '../../shared/repo-types'
 import type { SshTarget } from '../../shared/ssh-types'
 import { isAdmissibleDirectSshAuthority } from '../../shared/ssh-retained-payload-admission'
 import type { Store } from '../persistence'
+import { orcadMigrationCutoverFixture } from './orcad-migration-cutover-fixture'
+import { writeOrcadMigrationSourceCutover } from './orcad-migration-cutover-journal'
 
+// No journal on disk: a fenced host reads as converted.
+vi.mock('../../shared/app-environment', () => ({
+  getAppEnvironment: () => ({ getPath: () => '/nonexistent-orca-user-data' })
+}))
 vi.mock('./ssh-provider-authority', () => ({ isCurrentSshProviderAuthority: () => true }))
 const provider = {}
 vi.mock('../providers/ssh-git-dispatch', () => ({ getSshGitProvider: () => provider }))
 
-const { visibleProjectGroups } = await import('./orcad-retained-source')
+const { isHiddenRetainedSourceSessionPartition, visibleProjectGroups } =
+  await import('./orcad-retained-source')
 const { listReposForExecutionHost } = await import('../ipc/repos/host-repo-catalog-snapshot')
 
 const FENCED: SshTarget = {
@@ -19,6 +29,7 @@ const FENCED: SshTarget = {
   host: 'box.example.com',
   port: 22,
   username: 'me',
+  generation: 2,
   orcadFence: { environmentId: 'env-1' }
 }
 
@@ -73,6 +84,30 @@ describe('lists while a converted host keeps its source rows', () => {
       'source-group',
       'local-group'
     ])
+  })
+
+  it('shows them while the migration has not committed, and only then freezes the session', () => {
+    const userDataPath = mkdtempSync(join(tmpdir(), 'orcad-retained-lists-'))
+    try {
+      const cutover = orcadMigrationCutoverFixture('m-1', FENCED.id)
+      writeOrcadMigrationSourceCutover(userDataPath, cutover)
+      const store = catalog([FENCED])
+      const lookup = { getSshTarget: () => FENCED }
+      expect(visibleProjectGroups(store, () => userDataPath)).toHaveLength(2)
+      expect(
+        isHiddenRetainedSourceSessionPartition(lookup, 'ssh:ssh-box', () => userDataPath)
+      ).toBe(false)
+      writeOrcadMigrationSourceCutover(userDataPath, { ...cutover, phase: 'destination-committed' })
+      expect(visibleProjectGroups(store, () => userDataPath)).toHaveLength(1)
+      expect(
+        isHiddenRetainedSourceSessionPartition(lookup, 'ssh:ssh-box', () => userDataPath)
+      ).toBe(true)
+      expect(isHiddenRetainedSourceSessionPartition(lookup, 'local', () => userDataPath)).toBe(
+        false
+      )
+    } finally {
+      rmSync(userDataPath, { recursive: true, force: true })
+    }
   })
 
   it('leaves the source repos out of the host catalog the SSH bridge hydrates from', async () => {

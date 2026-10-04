@@ -7,6 +7,8 @@
  * and it needs a new move. A second manifest is never merged into the server automatically.
  */
 import { createHash } from 'node:crypto'
+import { getAppEnvironment } from '../../shared/app-environment'
+import { parseExecutionHostId } from '../../shared/execution-host'
 import type { FolderWorkspace } from '../../shared/folder-workspace-types'
 import type { ProjectGroup } from '../../shared/project-group-types'
 import type { OrcadMigrationCatalogPayload } from '../../shared/orcad-migration-manifest'
@@ -26,18 +28,64 @@ import {
 } from '../persistence/migrating-orcad-catalog/orcad-source-ownership'
 import { findOrcadMigrationSourceCutoverForTarget } from './orcad-migration-cutover-journal'
 
+const appUserDataPath = (): string => getAppEnvironment().getPath('userData')
+
 type CatalogStore = Pick<Store, 'getFolderWorkspaces' | 'getProjectGroups' | 'getRepos'>
 type TargetStore = Pick<Store, 'getSshTargets' | 'updateSshTarget'>
 
-/** Hosts whose source rows this build hides: fenced, and not changed by an older build since. */
-export function hiddenRetainedSourceTargetIds(targets: readonly SshTarget[]): string[] {
+/**
+ * Whether this build hides the host's source rows: committed to its server and not changed by an
+ * older build since. Mid-migration the rows stay shown, since the source is still authoritative.
+ */
+export function isHiddenRetainedSourceTarget(
+  userDataPath: string,
+  target: Pick<SshTarget, 'id' | 'orcadFence'>
+): boolean {
+  if (!target.orcadFence || target.orcadFence.sourceChangedAt) {
+    return false
+  }
+  let head: OrcadMigrationSourceCutover | null
+  try {
+    head = findOrcadMigrationSourceCutoverForTarget(userDataPath, target.id)
+  } catch {
+    return true // An unreadable journal keeps the host fenced, and so hidden.
+  }
+  return (
+    !head ||
+    head.phase === 'destination-committed' ||
+    head.phase === 'source-retired' ||
+    head.destinationEnvironmentId !== target.orcadFence.environmentId
+  )
+}
+
+/** `getUserDataPath` is read only once a host is fenced, so unfenced lists never touch the journal. */
+export function hiddenRetainedSourceTargetIds(
+  getUserDataPath: () => string,
+  targets: readonly SshTarget[]
+): string[] {
   return targets
-    .filter((target) => target.orcadFence && !target.orcadFence.sourceChangedAt)
+    .filter(
+      (target) => target.orcadFence && isHiddenRetainedSourceTarget(getUserDataPath(), target)
+    )
     .map((target) => target.id)
 }
 
-export function visibleRepos(store: CatalogStore & Pick<Store, 'getSshTargets'>): Repo[] {
-  const hidden = hiddenRetainedSourceTargetIds(store.getSshTargets())
+/** A hidden host's `ssh:` session partition is migration source a renderer save would strip. */
+export function isHiddenRetainedSourceSessionPartition(
+  store: Pick<Store, 'getSshTarget'>,
+  hostId: string | null | undefined,
+  getUserDataPath = appUserDataPath
+): boolean {
+  const parsed = parseExecutionHostId(hostId)
+  const target = parsed?.kind === 'ssh' ? store.getSshTarget(parsed.targetId) : undefined
+  return hiddenRetainedSourceTargetIds(getUserDataPath, target ? [target] : []).length > 0
+}
+
+export function visibleRepos(
+  store: CatalogStore & Pick<Store, 'getSshTargets'>,
+  getUserDataPath = appUserDataPath
+): Repo[] {
+  const hidden = hiddenRetainedSourceTargetIds(getUserDataPath, store.getSshTargets())
   const repos = store.getRepos()
   if (hidden.length === 0) {
     return repos
@@ -49,9 +97,10 @@ export function visibleRepos(store: CatalogStore & Pick<Store, 'getSshTargets'>)
 
 /** Hides only groups the host owns; a local group holding one of its projects stays. */
 export function visibleProjectGroups(
-  store: Pick<Store, 'getProjectGroups' | 'getSshTargets'>
+  store: Pick<Store, 'getProjectGroups' | 'getSshTargets'>,
+  getUserDataPath = appUserDataPath
 ): ProjectGroup[] {
-  const hidden = hiddenRetainedSourceTargetIds(store.getSshTargets())
+  const hidden = hiddenRetainedSourceTargetIds(getUserDataPath, store.getSshTargets())
   const groups = store.getProjectGroups()
   if (hidden.length === 0) {
     return groups
@@ -62,9 +111,10 @@ export function visibleProjectGroups(
 }
 
 export function visibleFolderWorkspaces(
-  store: CatalogStore & Pick<Store, 'getSshTargets'>
+  store: CatalogStore & Pick<Store, 'getSshTargets'>,
+  getUserDataPath = appUserDataPath
 ): FolderWorkspace[] {
-  const hidden = hiddenRetainedSourceTargetIds(store.getSshTargets())
+  const hidden = hiddenRetainedSourceTargetIds(getUserDataPath, store.getSshTargets())
   const folderWorkspaces = store.getFolderWorkspaces()
   if (hidden.length === 0) {
     return folderWorkspaces
@@ -165,12 +215,19 @@ function markChangedRetainedSources(
       !fence ||
       !head ||
       fence.environmentId !== head.destinationEnvironmentId ||
-      fence.sourceChangedAt ||
-      !isRetainedOrcadMigrationSourceCutover(head)
+      fence.sourceChangedAt
     ) {
       continue
     }
-    if (compareRetainedOrcadSource(store, target, head) === 'changed') {
+    // A delta move a crash interrupted lost its mark with it; the mark leads back to resuming it.
+    const interruptedDelta =
+      head.supersedesMigrationId !== undefined &&
+      (head.phase === 'source-fenced' || head.phase === 'destination-staged')
+    if (
+      interruptedDelta ||
+      (isRetainedOrcadMigrationSourceCutover(head) &&
+        compareRetainedOrcadSource(store, target, head) === 'changed')
+    ) {
       store.updateSshTarget(target.id, {
         orcadFence: { ...fence, sourceChangedAt: now().toISOString() }
       })

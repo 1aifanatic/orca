@@ -8,6 +8,10 @@ const { syncHandlers, invokeHandlers } = vi.hoisted(() => ({
   invokeHandlers: new Map<string, () => Promise<{ ok: boolean }>>()
 }))
 
+// No journal on disk: a fenced host reads as converted, so its partition stays frozen.
+vi.mock('../../shared/app-environment', () => ({
+  getAppEnvironment: () => ({ getPath: () => '/nonexistent-orca-user-data' })
+}))
 vi.mock('electron', () => ({
   ipcMain: {
     on: vi.fn(

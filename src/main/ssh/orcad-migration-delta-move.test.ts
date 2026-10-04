@@ -263,7 +263,7 @@ describe('moving what an older build added to a converted host', () => {
     expect(delta?.manifest.payload.repositories.map((row) => row.id)).toEqual(['repo-2'])
     expect(journals.every((journal) => journal.sourceRetainedAt)).toBe(true)
     expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeUndefined()
-    expect(visibleRepos(store)).toEqual([])
+    expect(visibleRepos(store, () => userDataPath)).toEqual([])
     // Back to managed, and a start with nothing new keeps it there.
     reconcileManagedOrcadSshTargets(userDataPath, store, now)
     expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeUndefined()
@@ -283,7 +283,7 @@ describe('moving what an older build added to a converted host', () => {
     expect(listOrcadMigrationSourceCutovers(userDataPath)).toHaveLength(1)
     expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeDefined()
     expect(
-      visibleRepos(store)
+      visibleRepos(store, () => userDataPath)
         .map((row) => row.id)
         .sort()
     ).toEqual(['repo-1', 'repo-2'])
@@ -298,7 +298,7 @@ describe('moving what an older build added to a converted host', () => {
       target: store.getSshTarget(TARGET.id)!
     })
     expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeUndefined()
-    expect(visibleRepos(store)).toEqual([])
+    expect(visibleRepos(store, () => userDataPath)).toEqual([])
     reconcileManagedOrcadSshTargets(userDataPath, store, now)
     expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeUndefined()
     expect(destination.commits).toBe(1)
@@ -334,7 +334,7 @@ describe('moving what an older build added to a converted host', () => {
     await expect(deltaMove()).resolves.toMatchObject({ outcome: 'moved' })
     expect(destination.commits).toBe(3)
     expect(listOrcadMigrationSourceCutovers(userDataPath)).toHaveLength(3)
-    expect(visibleRepos(store)).toEqual([])
+    expect(visibleRepos(store, () => userDataPath)).toEqual([])
   })
 
   it('moves what a downgrade added despite its exited terminal, tabs and client focus', async () => {
@@ -429,5 +429,33 @@ describe('moving what an older build added to a converted host', () => {
     expect(results.map((result) => result.outcome).sort()).toEqual(['moved', 'refused'])
     expect(destination.commits).toBe(2)
     expect(listOrcadMigrationSourceCutovers(userDataPath)).toHaveLength(2)
+  })
+
+  it('gives a delta a crash interrupted its mark back on the next start', async () => {
+    await convertedThenChangedOnOlderBuild()
+    const reconnect = loseContactAtDeltaCommit()
+    await expect(deltaMove()).rejects.toThrow('socket closed')
+    reconnect()
+    // What a crash before the mark came back leaves: the delta journal, a fence without its mark.
+    const environmentId = store.getSshTarget(TARGET.id)!.orcadFence!.environmentId
+    store.updateSshTarget(TARGET.id, { orcadFence: { environmentId } })
+    expect(visibleRepos(store, () => userDataPath)).toHaveLength(2)
+    reconcileManagedOrcadSshTargets(userDataPath, store, now)
+    expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeDefined()
+    await expect(deltaMove()).resolves.toMatchObject({ outcome: 'moved' })
+  })
+
+  it('retires a moved project with metadata an older build added to it', async () => {
+    await convertedThenChangedOnOlderBuild()
+    store.setWorktreeMetaForHost('repo-1::/srv/app-feature', `ssh:${TARGET.id}`, {
+      displayName: 'feature'
+    })
+    await deltaMove()
+    const lifecycle = <T>(_id: string, run: () => Promise<T>) => run()
+    await expect(
+      retireRetainedOrcadSourceChain(userDataPath, store, store.getSshTarget(TARGET.id)!, lifecycle)
+    ).resolves.toBe('retired')
+    expect(store.getAllWorktreeMetaForHost(`ssh:${TARGET.id}`)).toEqual({})
+    expect(listOrcadMigrationSourceCutovers(userDataPath)).toEqual([])
   })
 })

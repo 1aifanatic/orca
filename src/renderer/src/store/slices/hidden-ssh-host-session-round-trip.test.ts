@@ -2,10 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import type * as AgentStatusModule from '@/lib/agent-status'
 import { getDefaultWorkspaceSession } from '../../../../shared/constants'
 import type { ExecutionHostId } from '../../../../shared/execution-host'
-import type { SshTarget } from '../../../../shared/ssh-types'
 import { folderWorkspaceKey } from '../../../../shared/workspace-scope'
 import type { WorkspaceSessionState } from '../../../../shared/workspace-session-state-types'
-import { isFencedOrcadSourceSessionPartition } from '../../../../shared/orcad-fenced-source-session'
 import { buildWorkspaceSessionPayload } from '../../lib/workspace-session'
 import { fetchWorkspaceSessionWithRuntimeHostOwners } from '../../lib/workspace-session-host-hydration'
 import {
@@ -41,15 +39,13 @@ function hiddenHostPartition(): WorkspaceSessionState {
   }
 }
 
-/** Main's session channels over in-memory partitions, with or without the fence guard. */
-function createSessionBoundary(fence: SshTarget['orcadFence'] | null) {
+/** Main's session channels over in-memory partitions, with or without its hidden-host guard. */
+function createSessionBoundary(guarded: boolean) {
   const partitions: Record<string, WorkspaceSessionState> = {
     local: getDefaultWorkspaceSession(),
     [SSH_HOST]: hiddenHostPartition()
   }
-  const targets = new Map([[TARGET_ID, fence ? { orcadFence: fence } : {}]])
-  const writable = (hostId?: ExecutionHostId): boolean =>
-    !isFencedOrcadSourceSessionPartition((id) => targets.get(id), hostId)
+  const writable = (hostId?: ExecutionHostId): boolean => !guarded || hostId !== SSH_HOST
   const read = (hostId?: ExecutionHostId): WorkspaceSessionState =>
     structuredClone(partitions[hostId ?? 'local'] ?? getDefaultWorkspaceSession())
   return {
@@ -108,7 +104,7 @@ async function saveQuitSnapshot(api: ReturnType<typeof createSessionBoundary>) {
 
 describe('a fenced SSH host keeps its source session partition through renderer saves', () => {
   it('a renderer save alone rewrites the hidden partition without the hidden worktree', async () => {
-    const api = createSessionBoundary(null)
+    const api = createSessionBoundary(false)
     await saveQuitSnapshot(api)
     expect(Object.keys(api.partitions[SSH_HOST]?.tabsByWorktree ?? {})).toEqual([HIDDEN_FOLDER])
   })
@@ -117,7 +113,7 @@ describe('a fenced SSH host keeps its source session partition through renderer 
     ['debounced patch', saveDebouncedPatch],
     ['quit snapshot', saveQuitSnapshot]
   ])('the %s leaves the fenced partition exactly as exported', async (_name, save) => {
-    const api = createSessionBoundary({ environmentId: 'env-1' })
+    const api = createSessionBoundary(true)
     await save(api)
     expect(api.partitions[SSH_HOST]).toEqual(hiddenHostPartition())
   })

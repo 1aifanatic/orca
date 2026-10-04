@@ -284,14 +284,14 @@ describe('a converted host across a downgrade and back', () => {
     expect(visible.map((target) => target.id)).toEqual([TARGET.id])
     expect(store.getRepos().filter((repo) => repo.connectionId === TARGET.id)).toHaveLength(1)
     // This build hides the retained rows and serves the host from its managed server instead.
-    expect(visibleRepos(store)).toEqual([])
+    expect(visibleRepos(store, () => userDataPath)).toEqual([])
   })
 
   it('goes back to managed after a downgrade that changed nothing', async () => {
     await convertRetained()
     reconcileManagedOrcadSshTargets(userDataPath, store)
     expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeUndefined()
-    expect(visibleRepos(store)).toEqual([])
+    expect(visibleRepos(store, () => userDataPath)).toEqual([])
   })
 
   it('keeps a host an older build changed on the relay, never merging a second manifest', async () => {
@@ -310,7 +310,7 @@ describe('a converted host across a downgrade and back', () => {
       sourceChangedAt: '2026-10-05T00:00:00.000Z'
     })
     expect(
-      visibleRepos(store)
+      visibleRepos(store, () => userDataPath)
         .map((repo) => repo.id)
         .sort()
     ).toEqual(['repo-1', 'repo-2'])
