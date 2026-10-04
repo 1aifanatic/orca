@@ -395,9 +395,7 @@ describe('a message whose send could not be saved before it went out', () => {
       })
     const { result } = mount()
     act(() => expect(result.current.send('first')).toBe(true))
-    await waitFor(() =>
-      expect(result.current.error).toBe('Message could not be saved to the outbox')
-    )
+    await waitFor(() => expect(result.current.error).toBe("Couldn't save your message. Try again."))
     setItem.mockRestore()
     const firstId = result.current.outbox[0]!.clientMessageId
 
@@ -459,7 +457,7 @@ describe('a message whose send could not be saved before it went out', () => {
     const before = mount()
     act(() => expect(before.result.current.send('first')).toBe(true))
     await waitFor(() =>
-      expect(before.result.current.error).toBe('Message could not be saved to the outbox')
+      expect(before.result.current.error).toBe("Couldn't save your message. Try again.")
     )
     const firstId = before.result.current.outbox[0]!.clientMessageId
     before.unmount()
