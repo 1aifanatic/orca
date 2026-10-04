@@ -93,7 +93,7 @@ describe('destination client-state migration', () => {
     const destination = state()
     destination.ui.lastActiveRepoId = 'other-repo'
     expect(() => prepareOrcadMigrationClientState(incoming, destination)).toThrow(
-      'orcad_migration_client_state_conflict:ui:last-active-repo'
+      'orcad_migration_client_state_conflict:ui:lastActiveRepoId'
     )
   })
 })

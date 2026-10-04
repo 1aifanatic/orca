@@ -24,9 +24,9 @@ import { resolveDurableOrcadCatalogMutation } from './orcad-catalog-durable-muta
 import { ORCAD_MIGRATION_DESTINATION_UNSUPPORTED } from './orcad-migration-catalog-client'
 import {
   listOrcadMigrationSourceCutovers,
-  removeOrcadMigrationSourceCutover,
   writeOrcadMigrationSourceCutover
 } from './orcad-migration-cutover-journal'
+import { releaseOrcadMigrationFence } from './orcad-migration-source-fence'
 import {
   transferOrcadMigrationSnapshots,
   type OrcadMigrationSnapshotSource
@@ -51,6 +51,8 @@ export type OrcadMigrationCutoverContext = {
   store: OrcadMigrationPreflightStore & OrcadMigrationSnapshotSource
   claims: SshTargetOrcadClaims
   destination: OrcadMigrationDestinationCatalog
+  /** Rebuilt for every check when `store` is a copy that would never see a later edit. */
+  freshSource?: () => OrcadMigrationPreflightStore
   now?: () => Date
 }
 
@@ -62,7 +64,7 @@ export async function stageOrcadMigrationDestination(
   if (cutover.phase === 'destination-committed' || cutover.phase === 'source-retired') {
     return cutover
   }
-  assertOrcadMigrationSourceUnchanged(context, cutover)
+  assertSourceUnchanged(context, cutover)
   const { destination } = context
   let state = await destination.readState(cutover.manifest)
   if (state.state !== 'committed') {
@@ -92,7 +94,7 @@ export async function commitOrcadMigrationDestination(
   if (staged.phase !== 'destination-staged') {
     return staged
   }
-  assertOrcadMigrationSourceUnchanged(context, staged)
+  assertSourceUnchanged(context, staged)
   const { destination } = context
   // Why re-read: a lost commit reply may hide a commit that landed; the read decides.
   const state = await resolveDurableOrcadCatalogMutation(
@@ -110,10 +112,15 @@ export type OrcadMigrationAbortResult =
   | { outcome: 'released'; evidence: 'catalog-absent' | 'destination-unsupported' }
   | { outcome: 'refused'; code: string; reason: string }
 
-/** Releases the source fence only on proof the destination holds nothing of this migration. */
+/**
+ * Releases the source only on proof the destination holds nothing of this migration. `release`
+ * defaults to dropping the fence and journal; a delta move keeps the fence instead.
+ */
 export async function abortOrcadMigrationCutover(
   context: OrcadMigrationCutoverContext,
-  migrationId: string
+  migrationId: string,
+  release: (cutover: OrcadMigrationSourceCutover) => Promise<void> = (cutover) =>
+    releaseOrcadMigrationFence(context, cutover)
 ): Promise<OrcadMigrationAbortResult> {
   const cutover = requireCutover(context.userDataPath, migrationId)
   if (cutover.phase === 'destination-committed' || cutover.phase === 'source-retired') {
@@ -126,7 +133,7 @@ export async function abortOrcadMigrationCutover(
   } catch (error) {
     // Unsupported means nothing could have been staged, but only if nothing ever was.
     if (isDestinationUnsupported(error) && cutover.phase === 'source-fenced') {
-      await releaseFence(context, cutover)
+      await release(cutover)
       return { outcome: 'released', evidence: 'destination-unsupported' }
     }
     throw error
@@ -141,8 +148,16 @@ export async function abortOrcadMigrationCutover(
   if (state.state !== 'absent') {
     throw new Error(`orcad_migration_abort_not_absent:${state.state}`)
   }
-  await releaseFence(context, cutover)
+  await release(cutover)
   return { outcome: 'released', evidence: 'catalog-absent' }
+}
+
+function assertSourceUnchanged(
+  context: OrcadMigrationCutoverContext,
+  cutover: OrcadMigrationSourceCutover
+): void {
+  const store = context.freshSource?.() ?? context.store
+  assertOrcadMigrationSourceUnchanged({ userDataPath: context.userDataPath, store }, cutover)
 }
 
 /** Moves the journal to what the destination reported; durable before it returns. */
@@ -206,16 +221,6 @@ async function abortWithRecovery(
     }
     throw abortError
   }
-}
-
-/** Owner first, then the journal: a crash between leaves a stale journal, never an orphan owner. */
-async function releaseFence(
-  context: OrcadMigrationCutoverContext,
-  cutover: OrcadMigrationSourceCutover
-): Promise<void> {
-  context.claims.release(cutover.sshTargetId, cutover.destinationEnvironmentId)
-  await context.claims.flush()
-  removeOrcadMigrationSourceCutover(context.userDataPath, cutover.migrationId)
 }
 
 function requireCutover(userDataPath: string, migrationId: string): OrcadMigrationSourceCutover {

@@ -38,24 +38,6 @@ export function createMockStore() {
     getProjectGroups: vi.fn(() => [...projectGroups]),
     getFolderWorkspaces: vi.fn(() => [...folderWorkspaces]),
     getSshRemotePtyLeases: vi.fn(() => [...leases]),
-    inspectOrcadMigrationSourceDependencies: vi.fn(() => ({
-      totalCount: 0,
-      counts: {
-        automation: 0,
-        'automation-run': 0,
-        'mobile-tab-selection': 0,
-        'retired-worktree-name': 0,
-        'saved-port-forward': 0,
-        'sparse-preset': 0,
-        'terminal-lease': 0,
-        'terminal-recovery': 0,
-        'ui-routing': 0,
-        'workspace-lineage': 0,
-        'workspace-session': 0,
-        'worktree-lineage': 0,
-        'worktree-metadata': 0
-      }
-    })),
     addSshTarget: vi.fn((target: SshTarget) => targets.push(target)),
     updateSshTarget: vi.fn((id: string, updates: Partial<Omit<SshTarget, 'id'>>) => {
       const target = targets.find((t) => t.id === id)

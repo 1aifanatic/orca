@@ -8,6 +8,10 @@ const { syncHandlers, invokeHandlers } = vi.hoisted(() => ({
   invokeHandlers: new Map<string, () => Promise<{ ok: boolean }>>()
 }))
 
+// No journal on disk: a fenced host reads as converted, so its partition stays frozen.
+vi.mock('../../shared/app-environment', () => ({
+  getAppEnvironment: () => ({ getPath: () => '/nonexistent-orca-user-data' })
+}))
 vi.mock('electron', () => ({
   ipcMain: {
     on: vi.fn(
@@ -79,6 +83,26 @@ describe('registerRendererShutdownCheckpointHandler', () => {
       expect.objectContaining({ drainToStableGeneration: false })
     )
     expect(callOrder).toEqual(['session:local', 'session:runtime:host-1', 'ui', 'persist'])
+    expect(event.returnValue).toEqual({ ok: true })
+  })
+
+  it('never stages the source partition of a fenced host', () => {
+    const store = {
+      stageWorkspaceSessionBeforeUnload: vi.fn(),
+      getSshTarget: vi.fn(() => ({ orcadFence: { environmentId: 'env-1' } })),
+      updateUI: vi.fn(),
+      flushPendingOrThrowAsync: vi.fn(() => Promise.resolve())
+    }
+    registerRendererShutdownCheckpointHandler(store as never)
+
+    const event: { returnValue?: unknown } = {}
+    syncHandlers.get('app:stage-before-unload-sync')?.(event, {
+      sessions: [{ state: {} }, { state: {}, hostId: 'ssh:target-1' }],
+      ui: {}
+    })
+
+    expect(store.stageWorkspaceSessionBeforeUnload).toHaveBeenCalledTimes(1)
+    expect(store.stageWorkspaceSessionBeforeUnload).toHaveBeenCalledWith({}, undefined)
     expect(event.returnValue).toEqual({ ok: true })
   })
 

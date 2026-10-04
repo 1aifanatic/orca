@@ -42,6 +42,12 @@ describe('migration cutover journal sidecar', () => {
     expect(() => listOrcadMigrationSourceCutovers(userDataPath)).toThrow('stays fenced')
   })
 
+  it("reads a newer build's journal that adds an optional field", () => {
+    mkdirSync(orcadMigrationCutoverJournalDirectory(userDataPath), { recursive: true })
+    writeFileSync(journalPath('migration-1'), JSON.stringify({ ...cutover(), addedLater: true }))
+    expect(listOrcadMigrationSourceCutovers(userDataPath)).toEqual([cutover()])
+  })
+
   it('fails closed on a file whose name disagrees with its migration', () => {
     mkdirSync(orcadMigrationCutoverJournalDirectory(userDataPath), { recursive: true })
     writeFileSync(journalPath('other'), JSON.stringify(cutover()))

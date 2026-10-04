@@ -1,8 +1,8 @@
 /**
  * Exclusive managed-orcad ownership of an SSH target, recorded as its `orcadFence`. A claimed
- * target serves only its environment's tunnel; direct relay connects are refused. Only empty targets are claimable, including no
- * saved sessions, automations, worktree metadata or terminal leases: moving a direct SSH host's
- * state into a managed server is the catalog migration, which this does not do.
+ * target serves only its environment's tunnel; direct relay connects are refused. Only empty
+ * targets are claimable, with no saved sessions, automations, worktree metadata or terminal
+ * leases: moving a direct SSH host's state into a managed server is the catalog migration.
  */
 import type { Store } from '../persistence'
 import { getManagedOrcadFenceEnvironmentId } from '../../shared/managed-orcad-ssh-owner'

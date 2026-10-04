@@ -4,7 +4,10 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getManagedOrcadFenceEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
 import { encodePairingOffer, PAIRING_OFFER_VERSION } from '../../shared/pairing'
-import { addManagedOrcadEnvironment } from '../../shared/runtime-environment-managed-orcad-store'
+import {
+  addManagedOrcadEnvironment,
+  removeManagedOrcadEnvironment
+} from '../../shared/runtime-environment-managed-orcad-store'
 import { listEnvironments } from '../../shared/runtime-environment-store'
 import type { SshTarget } from '../../shared/ssh-types'
 import { closeTestStores, createSqliteTestStore } from '../persistence-test-harness'
@@ -24,9 +27,13 @@ vi.mock('./ssh-target-registry', () => ({
   hasRegisteredDirectSshAuthority: mocks.directAuthority
 }))
 vi.mock('./orcad-runtime-deployment', () => ({ createManagedOrcadEnvironment: mocks.deploy }))
-vi.mock('./orcad-managed-tunnel', () => ({ ensureOrcadManagedTunnel: mocks.ensureTunnel }))
+vi.mock('./orcad-managed-tunnel', () => ({
+  ensureOrcadManagedTunnel: mocks.ensureTunnel,
+  closeOrcadManagedTunnel: async () => {}
+}))
 
 const { convertSshTargetToManagedOrcad } = await import('./orcad-runtime-conversion')
+const { abandonOrcadConversion } = await import('./orcad-conversion-abandon')
 
 const TARGET: SshTarget = {
   id: 'ssh-prod',
@@ -203,6 +210,57 @@ describe('converting an SSH host into a managed server', () => {
   })
 })
 
+describe('backing out a conversion whose server is registered but never committed', () => {
+  const abandon = () =>
+    abandonOrcadConversion({
+      userDataPath,
+      store,
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the test registry is the SshConnectionStore built above.
+      claims: (mocks.state.targetStore as SshConnectionStore).getOrcadRuntimeClaims(),
+      targetId: TARGET.id,
+      destinationFor: () => destination
+    })
+
+  it('aborts the staged catalog, unregisters the server and gives the host back', async () => {
+    destination.commit.mockRejectedValueOnce(new Error('orcad_migration_source_changed'))
+    await expect(convert()).rejects.toThrow('orcad_migration_source_changed')
+    expect(listOrcadMigrationSourceCutovers(userDataPath)[0]?.phase).toBe('destination-staged')
+
+    await expect(abandon()).resolves.toMatchObject({ outcome: 'released' })
+    expect(destination.abort).toHaveBeenCalled()
+    expect(listEnvironments(userDataPath)).toEqual([])
+    expect(listOrcadMigrationSourceCutovers(userDataPath)).toEqual([])
+    expect(store.getSshTarget(TARGET.id)?.orcadFence).toBeUndefined()
+    // The next start finds no server to re-fence the host to.
+    reconcileManagedOrcadSshTargets(userDataPath, store)
+    expect(store.getSshTarget(TARGET.id)?.orcadFence).toBeUndefined()
+  })
+
+  it('keeps the fence while the server cannot say what it holds', async () => {
+    destination.commit.mockRejectedValueOnce(new Error('socket closed'))
+    await expect(convert()).rejects.toThrow('socket closed')
+    destination.readState.mockRejectedValue(new Error('socket closed'))
+    await expect(abandon()).rejects.toThrow('socket closed')
+    expect(listEnvironments(userDataPath)).toHaveLength(1)
+    expect(listOrcadMigrationSourceCutovers(userDataPath)).toHaveLength(1)
+  })
+
+  it('clears a stale journal a stopped server left, so the host converts again', async () => {
+    retireSource = false
+    try {
+      await expect(convert()).resolves.toMatchObject({ outcome: 'converted' })
+      // A stopped server from a build that left its journal behind.
+      const [environment] = listEnvironments(userDataPath)
+      removeManagedOrcadEnvironment(userDataPath, environment!.id)
+      store.updateSshTarget(TARGET.id, { orcadFence: undefined })
+      await expect(convert()).resolves.toMatchObject({ outcome: 'converted' })
+      expect(listOrcadMigrationSourceCutovers(userDataPath)).toHaveLength(1)
+    } finally {
+      retireSource = true
+    }
+  })
+})
+
 /** What v1.4.218 and current main do with a stored target: keep every field, hide only `owner`. */
 function shippedBuildView(targets: SshTarget[]): SshTarget[] {
   return JSON.parse(JSON.stringify(targets)).filter(
@@ -226,14 +284,14 @@ describe('a converted host across a downgrade and back', () => {
     expect(visible.map((target) => target.id)).toEqual([TARGET.id])
     expect(store.getRepos().filter((repo) => repo.connectionId === TARGET.id)).toHaveLength(1)
     // This build hides the retained rows and serves the host from its managed server instead.
-    expect(visibleRepos(store)).toEqual([])
+    expect(visibleRepos(store, () => userDataPath)).toEqual([])
   })
 
   it('goes back to managed after a downgrade that changed nothing', async () => {
     await convertRetained()
     reconcileManagedOrcadSshTargets(userDataPath, store)
     expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeUndefined()
-    expect(visibleRepos(store)).toEqual([])
+    expect(visibleRepos(store, () => userDataPath)).toEqual([])
   })
 
   it('keeps a host an older build changed on the relay, never merging a second manifest', async () => {
@@ -252,7 +310,7 @@ describe('a converted host across a downgrade and back', () => {
       sourceChangedAt: '2026-10-05T00:00:00.000Z'
     })
     expect(
-      visibleRepos(store)
+      visibleRepos(store, () => userDataPath)
         .map((repo) => repo.id)
         .sort()
     ).toEqual(['repo-1', 'repo-2'])

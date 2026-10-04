@@ -27,12 +27,23 @@ import type { OrcadMigrationPreflightStore } from './ssh-target-orcad-preflight'
 
 export type OrcadDeltaSourceStore = OrcadMigrationPreflightStore & OrcadMigrationSnapshotSource
 
+/** A delta move journaled but not yet committed and kept: the next move resumes it. */
+export function unfinishedOrcadDelta(
+  chain: readonly OrcadMigrationSourceCutover[]
+): OrcadMigrationSourceCutover | null {
+  const head = chain.at(-1)
+  return head?.supersedesMigrationId &&
+    head.phase !== 'source-retired' &&
+    !isRetainedOrcadMigrationSourceCutover(head)
+    ? head
+    : null
+}
+
 /** The committed migrations a delta extends, oldest first, excluding any delta in flight. */
 export function committedOrcadMigrationChain(
-  userDataPath: string,
-  targetId: string
+  chain: readonly OrcadMigrationSourceCutover[]
 ): OrcadMigrationSourceCutover[] {
-  return listOrcadMigrationCutoverChainForTarget(userDataPath, targetId).filter(
+  return (unfinishedOrcadDelta(chain) ? chain.slice(0, -1) : chain).filter(
     (cutover) => cutover.phase === 'destination-committed' || cutover.phase === 'source-retired'
   )
 }
@@ -63,6 +74,11 @@ export function orcadDeltaSourceStore(
 export type OrcadDeltaMovePlan = OrcadDeltaMovePreview & {
   manifest: OrcadMigrationManifest
   moved: OrcadMigrationSourceCutover[]
+  /** The retained migration a new delta supersedes. */
+  head: OrcadMigrationSourceCutover
+  /** An interrupted delta this move resumes from its journaled manifest instead of a new one. */
+  resumes: OrcadMigrationSourceCutover | null
+  source: OrcadDeltaSourceStore
 }
 
 /** Throws when the host is not a converted host an older build changed. */
@@ -76,8 +92,10 @@ export function planOrcadDeltaMove(
   if (!environmentId || !target.orcadFence?.sourceChangedAt) {
     throw new Error('orcad_delta_not_changed')
   }
-  const moved = committedOrcadMigrationChain(userDataPath, target.id)
-  const head = listOrcadMigrationCutoverChainForTarget(userDataPath, target.id).at(-1)
+  const chain = listOrcadMigrationCutoverChainForTarget(userDataPath, target.id)
+  const resumes = unfinishedOrcadDelta(chain)
+  const moved = committedOrcadMigrationChain(chain)
+  const head = chain.at(resumes ? -2 : -1)
   if (
     !head ||
     !isRetainedOrcadMigrationSourceCutover(head) ||
@@ -85,11 +103,14 @@ export function planOrcadDeltaMove(
   ) {
     throw new Error('orcad_delta_no_retained_migration')
   }
-  const manifest = createOrcadMigrationManifest(
-    orcadDeltaSourceStore(store, target, moved),
-    target,
-    { migrationId: options.migrationId, now: options.now, destinationEnvironmentId: environmentId }
-  )
+  const source = orcadDeltaSourceStore(store, target, moved)
+  const manifest =
+    resumes?.manifest ??
+    createOrcadMigrationManifest(source, target, {
+      migrationId: options.migrationId,
+      now: options.now,
+      destinationEnvironmentId: environmentId
+    })
   const current = collectOrcadMigrationSourceCatalog(store, target)
   return {
     sshTargetId: target.id,
@@ -99,12 +120,12 @@ export function planOrcadDeltaMove(
       current,
       moved.map((cutover) => cutover.manifest.payload)
     ),
-    blockers: collectUntransferredDependentBlockers(
-      orcadDeltaSourceStore(store, target, moved),
-      manifest
-    ),
+    blockers: collectUntransferredDependentBlockers(source, manifest),
     manifest,
-    moved
+    moved,
+    head,
+    resumes,
+    source
   }
 }
 

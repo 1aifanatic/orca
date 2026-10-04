@@ -2,6 +2,7 @@ import { serializeOrcadMigrationValue } from '../../../shared/orcad-migration-ma
 import { isRecord } from '../../../shared/orcad-migration-manifest-fields'
 import type { PersistedState } from '../../../shared/persisted-state-types'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
+import { SESSION_FOCUS_FIELDS } from '../../../shared/workspace-session-host-field-ownership'
 import { mergeWorkspaceSessions } from '../../orca-profiles/profile-project-session-state'
 import { collectLayoutLeafIdsInOrder } from '../restoring-sessions/terminal-layout-normalization'
 
@@ -53,14 +54,7 @@ function assertNoSessionFocusConflicts(
   existing: WorkspaceSessionState,
   incoming: WorkspaceSessionState
 ): void {
-  const fields = [
-    'activeRepoId',
-    'activeWorktreeId',
-    'activeWorkspaceKey',
-    'activeWorkspaceExecutionHostId',
-    'activeTabId'
-  ] as const
-  for (const field of fields) {
+  for (const field of SESSION_FOCUS_FIELDS) {
     const current = existing[field]
     const next = incoming[field]
     if (

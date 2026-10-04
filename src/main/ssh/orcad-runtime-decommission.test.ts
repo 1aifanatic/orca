@@ -4,6 +4,11 @@ import { getManagedOrcadFenceEnvironmentId } from '../../shared/managed-orcad-ss
 import { getRuntimeEnvironmentSidecarPath } from '../../shared/runtime-environment-sidecar'
 import { listEnvironments } from '../../shared/runtime-environment-store'
 import {
+  listOrcadMigrationSourceCutovers,
+  writeOrcadMigrationSourceCutover
+} from './orcad-migration-cutover-journal'
+import { orcadMigrationCutoverFixture } from './orcad-migration-cutover-fixture'
+import {
   createManagedLifecycleHarness,
   MANAGED_VERSION
 } from './orcad-managed-lifecycle-test-fixture'
@@ -81,6 +86,11 @@ afterEach(() => rmSync(harness.userDataPath, { recursive: true, force: true }))
 
 describe('stopManagedOrcadEnvironment', () => {
   it('unlinks the server only after the host proves orcad exited', async () => {
+    writeOrcadMigrationSourceCutover(harness.userDataPath, {
+      ...orcadMigrationCutoverFixture('migration-1', 'ssh-1', { environmentId: 'environment-1' }),
+      phase: 'destination-committed',
+      sourceRetainedAt: '2026-10-01T00:00:00.000Z'
+    })
     mocks.decommission.mockResolvedValueOnce({
       outcome: 'decommissioned',
       version: MANAGED_VERSION,
@@ -103,6 +113,8 @@ describe('stopManagedOrcadEnvironment', () => {
     expect(harness.flushes).toHaveLength(1)
     expect(mocks.retire).toHaveBeenCalledWith('environment-1')
     expect(mocks.closeTunnel).toHaveBeenCalledWith('environment-1')
+    // Its retained journal would otherwise block every later conversion of the host.
+    expect(listOrcadMigrationSourceCutovers(harness.userDataPath)).toEqual([])
   })
 
   it.each([

@@ -92,7 +92,13 @@ export function retireOrcadSourceWorktreeMetadata(
     catalog: manifest.payload
   })
   const entries = manifest.payload.dormantState?.worktreeMeta ?? []
-  const worktreeIds = new Set(entries.map((entry) => entry.worktreeId))
+  // Rows a downgraded build added in a moved project go too: the server's copy of it wins.
+  const added = inspectOrcadSourceWorktreeMetadata(state, scope).rows.map((row) => row.sourceKey)
+  const sourceKeys = new Set([...entries.map((entry) => entry.sourceKey), ...added])
+  const worktreeIds = new Set([
+    ...entries.map((entry) => entry.worktreeId),
+    ...added.map(unqualifyOrcadMigrationOwnerKey)
+  ])
   const removedIdentities = new Set<string>()
   for (const [alias, identities] of Object.entries(state.worktreeIdentityAliases ?? {})) {
     if (
@@ -103,7 +109,7 @@ export function retireOrcadSourceWorktreeMetadata(
       delete state.worktreeIdentityAliases?.[alias]
     }
   }
-  entries.forEach((entry) => delete state.worktreeMeta[entry.sourceKey])
+  sourceKeys.forEach((sourceKey) => delete state.worktreeMeta[sourceKey])
   pruneUnreferencedWorktreeIdentityMeta(state, removedIdentities)
 }
 
@@ -115,8 +121,8 @@ export function assertOrcadSourceWorktreeMetadataRetired(
     source: manifest.source,
     catalog: manifest.payload
   })
-  const inspection = inspectOrcadSourceWorktreeMetadata(state, scope)
-  if (inspection.rows.length || inspection.blockedCount) {
+  // Rows only: the host's rows outside this manifest belong to another migration of its chain.
+  if (inspectOrcadSourceWorktreeMetadata(state, scope).rows.length) {
     throw new Error('orcad_migration_source_worktree_metadata_reappeared')
   }
 }

@@ -22,6 +22,7 @@ export function assertOrcadMigrationSourceDormantStateRetired(
   state: PersistedState,
   manifest: OrcadMigrationManifest
 ): void {
+  assertOrcadSourceWorktreeMetadataRetired(state, manifest)
   const dormant = manifest.payload.dormantState
   if (!dormant) {
     return
@@ -44,7 +45,6 @@ export function assertOrcadMigrationSourceDormantStateRetired(
   if (hasRows) {
     throw new Error('orcad_migration_source_dormant_state_reappeared')
   }
-  assertOrcadSourceWorktreeMetadataRetired(state, manifest)
   assertOrcadMigrationSourceWorkspaceSessionRetired(state, manifest)
   assertOrcadMigrationSourceAutomationStateRetired(state, manifest)
   assertOrcadMigrationClientStateRetired(state, manifest)
@@ -54,11 +54,13 @@ export function retireOrcadMigrationSourceDormantState(
   state: PersistedState,
   manifest: OrcadMigrationManifest
 ): void {
+  // By scope, even with no dormant state: a downgraded build may have added some since.
+  retireOrcadSourceWorktreeMetadata(state, manifest)
+  retireOrcadMigrationSourceAutomationState(state, manifest)
   const dormant = manifest.payload.dormantState
   if (!dormant) {
     return
   }
-  retireOrcadSourceWorktreeMetadata(state, manifest)
   dormant.worktreeLineage.forEach((entry) => delete state.worktreeLineageById[entry.sourceKey])
   dormant.workspaceLineage.forEach(
     (entry) => delete state.workspaceLineageByChildKey[entry.sourceKey]
@@ -77,7 +79,6 @@ export function retireOrcadMigrationSourceDormantState(
     delete state.retiredWorktreeNamesByRepo?.[entry.repoId]
   }
   retireOrcadMigrationSourceWorkspaceSession(state, manifest)
-  retireOrcadMigrationSourceAutomationState(state, manifest)
   retireOrcadMigrationClientState(state, manifest)
   // Retain snapshot files: the prior durable profile and rollback evidence can still reference them.
 }

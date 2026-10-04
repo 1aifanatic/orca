@@ -70,7 +70,9 @@ export type HostServerOnConnectDeps = {
   relayTerminals: (target: SshTarget) => Promise<HostServerTerminalVerdict>
   deploy: (target: SshTarget) => Promise<OrcadManagedDeployResult>
   convert: (target: SshTarget) => Promise<OrcadManagedConversionResult>
-  /** Releases a conversion fence nothing remote holds, so the relay can serve the host. */
+  /** A registered server whose conversion has not committed and been kept or retired yet. */
+  hasUnfinishedConversion: (target: SshTarget) => boolean
+  /** Releases a conversion fence once its server provably holds nothing, so the relay serves. */
   abandonConversion: (target: SshTarget) => Promise<void>
   /** Releases an empty-host deploy claim whose server was never registered. */
   abandonDeploy: (target: SshTarget) => Promise<void>
@@ -130,6 +132,10 @@ async function decide(
       }
       throw error
     }
+    if (deps.hasUnfinishedConversion(target)) {
+      // Why before routing: until the commit lands the server is empty, so finish it or back out.
+      return await convertHost(target, deps, trace, { checkTerminals: false })
+    }
     await deps.retireRetainedSource(target).catch((error: unknown) => {
       console.warn('[ssh] Source retirement deferred to a later connect:', error)
     })
@@ -148,17 +154,29 @@ async function decide(
   if (!deps.hasTemplate()) {
     return { route: 'relay', reason: 'orcad_unavailable', detail: 'artifacts_unavailable' }
   }
-  const empty = deps.isEmptyHost(target)
-  try {
-    if (empty) {
+  if (deps.isEmptyHost(target)) {
+    try {
       trace.path = 'deploy'
       deps.progress(target, 'deploying')
       const deployed = await deps.deploy(target)
       reportHostServerDeploy(deps.report, target, trace, deployed)
       return await afterDeploy(target, deps, deployed)
+    } catch (error) {
+      return setupFailed(target, deps, trace, error, true)
     }
-    const terminals = await deps.relayTerminals(target)
-    if (terminals.verdict !== 'exited') {
+  }
+  return convertHost(target, deps, trace, { checkTerminals: true })
+}
+
+async function convertHost(
+  target: SshTarget,
+  deps: HostServerOnConnectDeps,
+  trace: HostServerDecisionTrace,
+  options: { checkTerminals: boolean }
+): Promise<HostServerOnConnectResult> {
+  try {
+    const terminals = options.checkTerminals ? await deps.relayTerminals(target) : null
+    if (terminals && terminals.verdict !== 'exited') {
       // Why unverifiable too: loss of contact is never evidence that a relay terminal exited.
       return {
         route: 'relay',
@@ -177,12 +195,22 @@ async function decide(
     reportHostServerConversion(deps.report, target, trace, converted)
     return await afterConversion(target, deps, converted)
   } catch (error) {
-    console.warn('[ssh] Managed Orca server setup failed; using the relay this session:', error)
-    reportHostServerSetupError(deps.report, target, trace, error)
-    const unavailable = classifyOrcadHostUnavailable(error)
-    const detail = error instanceof Error ? error.message : String(error)
-    return unfinished(target, deps, unavailable, empty, 'failed', detail)
+    return setupFailed(target, deps, trace, error, false)
   }
+}
+
+function setupFailed(
+  target: SshTarget,
+  deps: HostServerOnConnectDeps,
+  trace: HostServerDecisionTrace,
+  error: unknown,
+  empty: boolean
+): Promise<HostServerOnConnectResult> {
+  console.warn('[ssh] Managed Orca server setup failed; using the relay this session:', error)
+  reportHostServerSetupError(deps.report, target, trace, error)
+  const unavailable = classifyOrcadHostUnavailable(error)
+  const detail = error instanceof Error ? error.message : String(error)
+  return unfinished(target, deps, unavailable, empty, 'failed', detail)
 }
 
 function terminalReason(verdict: 'live' | 'unverifiable'): SshManagedServerRelayReason {
