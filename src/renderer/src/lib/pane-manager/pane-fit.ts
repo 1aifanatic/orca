@@ -88,12 +88,16 @@ function performSafeFit(pane: ManagedPane): boolean {
   if (deferTerminalGeometryMutationDuringRebuild(pane.terminal, 'safe-fit', () => safeFit(pane))) {
     return false
   }
-  if (!canMeasurePaneForFit(pane)) {
-    return false
-  }
+  const ptyId = pane.container?.dataset?.ptyId
+  const override = ptyId ? getFitOverrideForPty(ptyId) : null
+  let measurable = canMeasurePaneForFit(pane)
   // Why here: metric options deferred while the pane was unmeasurable must land
   // before this fit reads dimensions, then the fit floor must be checked again.
-  if (flushDeferredPaneMetricOptions(pane) && !canMeasurePaneForFit(pane)) {
+  if (measurable && flushDeferredPaneMetricOptions(pane)) {
+    measurable = canMeasurePaneForFit(pane)
+  }
+  // Why: an override needs no measurement; a hidden pane skipping it parses and serves phone-width output on the desktop grid.
+  if (!measurable && !override) {
     return false
   }
   let scrollIntent = null as ReturnType<typeof captureTerminalStructuralScrollIntent>
@@ -109,8 +113,6 @@ function performSafeFit(pane: ManagedPane): boolean {
   }
   try {
     // Why: a mobile-owned PTY must stay at its phone grid on passive desktop panes.
-    const ptyId = pane.container?.dataset?.ptyId
-    const override = ptyId ? getFitOverrideForPty(ptyId) : null
     if (override) {
       if (pane.terminal.cols !== override.cols || pane.terminal.rows !== override.rows) {
         if (canPreserveScrollIntentForFit(pane)) {
@@ -120,7 +122,8 @@ function performSafeFit(pane: ManagedPane): boolean {
       } else {
         resumePendingFitScrollRestoreAfterFit(pane.terminal)
       }
-      return true
+      // Hidden: parked, but not a completed fit that proves layout to its listeners.
+      return measurable
     }
 
     const dims = getProposedPaneDimensions(pane)
