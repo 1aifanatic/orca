@@ -36,7 +36,11 @@ afterEach(async () => {
   }
 })
 
-async function stopEndingTheChild(options: { turnRunning: boolean; takesSendBack: boolean }) {
+async function stopEndingTheChild(options: {
+  turnRunning: boolean
+  takesSendBack: boolean
+  earlierProcessSendInDoubt?: boolean
+}) {
   root = await mkdtemp(join(tmpdir(), 'orca-stop-note-withdrawn-'))
   const journal = await journals.open({ identity: IDENTITY, stateDirectory: root })
   if (options.turnRunning) {
@@ -45,6 +49,21 @@ async function stopEndingTheChild(options: { turnRunning: boolean; takesSendBack
       { kind: 'turn', turnId: 'turn-1', state: 'running' },
       { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
+  }
+  if (options.earlierProcessSendInDoubt) {
+    await journal.appendSubmission({
+      clientMessageId: 'send-0',
+      payloadFingerprint: 'send-0',
+      body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'before the crash' }] },
+      fence: 1
+    })
+    await journal.resolveDispatch({
+      clientMessageId: 'send-0',
+      state: 'unknown',
+      reason: 'host_restarted',
+      fence: 1,
+      recovered: true
+    })
   }
   await journal.appendSubmission({
     clientMessageId: 'send-1',
@@ -108,6 +127,17 @@ describe('a Stop that ends the child after its interrupt failed', () => {
       cancelled: true,
       rows: ['Cancellation requested.']
     })
+  })
+
+  // That send was never this child's to take back, so it does not keep the row.
+  it("leaves no row when the only other send in doubt was an earlier process's", async () => {
+    expect(
+      await stopEndingTheChild({
+        turnRunning: false,
+        takesSendBack: true,
+        earlierProcessSendInDoubt: true
+      })
+    ).toEqual({ cancelled: true, rows: [] })
   })
 
   it('says cancellation was requested on the turn it stopped, whatever became of the send', async () => {
