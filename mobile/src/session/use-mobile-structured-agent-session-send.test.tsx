@@ -152,7 +152,9 @@ describe('mobile structured send retries', () => {
     expect(calls().every(([, params]) => !('retryUnknown' in (params as object)))).toBe(true)
   })
 
-  it('reads a replay a Stop took back as sent, saying nothing, and spends its id', async () => {
+  // A replay of a retained id cannot be told from a new send of the same text, and a Stop took the
+  // first one back before the agent started it, so this press goes out as a new message.
+  it('sends a replay a Stop took back once more, under a fresh id, saying nothing', async () => {
     let attempts = 0
     sendRequest.mockImplementation(async (method) => {
       if (method !== 'agentSession.send') {
@@ -162,21 +164,41 @@ describe('mobile structured send retries', () => {
       if (attempts === 1) {
         throw markRpcDeliveryUnknown(new Error('Connection closed'))
       }
-      // Recorded, then withdrawn by a Stop before the agent started it.
-      return sendResult('rejected', DISPATCH_REJECTED_CANCELLED)
+      return attempts === 2
+        ? sendResult('rejected', DISPATCH_REJECTED_CANCELLED)
+        : sendResult('pending')
     })
     await mountSession()
 
     await act(async () => {
       expect(await hook!.sendWithOutcome('stopped one')).toBe('unknown')
-      // The chat draws it, stopped: nothing goes back to the draft and no "not sent" shows.
-      expect(await hook!.sendWithOutcome('stopped one')).toBe('accepted')
       expect(await hook!.sendWithOutcome('stopped one')).toBe('accepted')
     })
 
     expect(onSendError).not.toHaveBeenCalled()
-    const [first, replay, later] = sentIds()
+    const [first, replay, resent, ...rest] = sentIds()
     expect(replay).toBe(first)
+    expect(resent).not.toBe(first)
+    expect(rest).toEqual([])
+  })
+
+  it('reads a first answer a Stop took back as sent, saying nothing, and spends its id', async () => {
+    sendRequest.mockImplementation(async (method) =>
+      method === 'agentSession.send'
+        ? sendResult('rejected', DISPATCH_REJECTED_CANCELLED)
+        : method === 'agentSession.options'
+          ? ok({ models: [], current: {} })
+          : ok({})
+    )
+    await mountSession()
+
+    await act(async () => {
+      expect(await hook!.sendWithOutcome('stopped first')).toBe('accepted')
+      expect(await hook!.sendWithOutcome('stopped first')).toBe('accepted')
+    })
+
+    expect(onSendError).not.toHaveBeenCalled()
+    const [first, later] = sentIds()
     expect(later).not.toBe(first)
   })
 

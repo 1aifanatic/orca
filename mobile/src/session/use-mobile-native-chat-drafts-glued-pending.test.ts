@@ -158,6 +158,22 @@ describe('useMobileNativeChatDrafts glued pending sends', () => {
     expect(renderedPendingTexts(history, state)).toEqual(['fix the', 'bug'])
   })
 
+  // A send of the same text as a message a Stop took back is resent as a new message: its bubble
+  // waits beside the stopped row for that new row, never for the stopped one.
+  it('keeps a resend bubble beside a stopped row of the same text until its own row lands', async () => {
+    const history = [userTurn('m1', 'run the tests', 1000), assistantTurn('m2', 'stopped', 1100)]
+    await mount(history)
+    act(() => send('run the tests'))
+
+    await update([...history])
+    expect(pendingTexts()).toEqual(['run the tests'])
+
+    const resent = [...history, userTurn('m3', 'run the tests', 5000)]
+    await update(resent)
+    expect(state?.pending).toEqual([])
+    expect(renderedPendingTexts(resent, state)).toEqual([])
+  })
+
   it('still retires each bubble on its own when the sends do not glue', async () => {
     const history = [assistantTurn('m1', 'ready', 1000)]
     await mount(history)

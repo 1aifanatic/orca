@@ -13,6 +13,11 @@
 //
 //   accepted/pending — the send happened. The id is spent; a later identical
 //     message is a new message and must carry a new id.
+//   withdrawn — a submission a Stop took back before the agent started it is
+//     drawn in the chat with its stop row, so it spends the id and goes back to no
+//     draft. Answering a first send, it is that message: sent, then stopped. As a
+//     retained replay it cannot be told from a new send of the same text, and it
+//     provably never ran, so the caller sends it again under a fresh id.
 //   rejected — a terminal refusal or rejected submission spends a fresh id. A
 //     pending-admission refusal, or any refusal after earlier transport doubt,
 //     keeps it because neither proves a retained delivery did not happen. Two
@@ -40,6 +45,21 @@ export type MobileStructuredSendDelivery = {
   operationIdSpent: boolean
   /** Copy for the user, or null when the outcome needs none. */
   error: string | null
+}
+
+/** Whether a send answer is its own submission, which a Stop took back before the agent started it. */
+export function mobileStructuredSendWithdrawnBeforeStart(
+  result: StructuredAgentSessionMutationCallResult<AgentSessionSendResult>
+): boolean {
+  if (result.status !== 'accepted' || !('submission' in result.value)) {
+    return false
+  }
+  const { submission } = result.value
+  return (
+    submission.queuedMessageId === undefined &&
+    submission.dispatchState === 'rejected' &&
+    dispatchWasWithdrawn(submission)
+  )
 }
 
 export function mobileStructuredSendDelivery(
@@ -97,10 +117,10 @@ export function mobileStructuredSendDelivery(
   if (!submission || submission.dispatchState === 'unknown') {
     return { outcome: 'unknown', operationIdSpent: false, error: null }
   }
-  if (submission.dispatchState === 'rejected' && dispatchWasWithdrawn(submission)) {
-    // The host recorded it, then a Stop took it back: the chat draws it with its stop row, so it is
-    // not handed back to the composer, which would show it twice.
-    return { outcome: 'accepted', operationIdSpent: true, error: null }
+  if (mobileStructuredSendWithdrawnBeforeStart(result)) {
+    // The chat draws it with its stop row, so it is never handed back to the composer as well. A
+    // retained replay is resent by the caller.
+    return { outcome: retained ? 'rejected' : 'accepted', operationIdSpent: true, error: null }
   }
   if (submission.dispatchState === 'rejected') {
     return {

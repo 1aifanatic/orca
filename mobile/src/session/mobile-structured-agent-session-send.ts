@@ -14,7 +14,10 @@ import {
   timeoutForDeadline
 } from './mobile-structured-agent-session-rpc'
 import { structuredSessionOperationId } from './structured-session-operation-id'
-import { mobileStructuredSendDelivery } from './mobile-structured-send-delivery'
+import {
+  mobileStructuredSendDelivery,
+  mobileStructuredSendWithdrawnBeforeStart
+} from './mobile-structured-send-delivery'
 import {
   bypassedMobileStructuredSendOperationId,
   clearMobileStructuredSendOperation,
@@ -162,11 +165,12 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
     }
   }
   const withdrawnReplay =
-    result.status === 'accepted' &&
-    'queued' in result.value &&
-    result.value.queued?.state === 'withdrawn'
+    (result.status === 'accepted' &&
+      'queued' in result.value &&
+      result.value.queued?.state === 'withdrawn') ||
+    (operation.retained && mobileStructuredSendWithdrawnBeforeStart(result))
   if (withdrawnReplay && operation.retained && !input.resendingAfterWithdrawal) {
-    // The retained id's draft was withdrawn, so it never reached the agent:
+    // The retained id's draft or submission was withdrawn, so it never reached the agent:
     // this identical message is a new one, not a replay to swallow. A record
     // storage would not clear is bookkeeping: it is reported, never allowed to
     // block the send.
