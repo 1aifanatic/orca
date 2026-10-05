@@ -20,6 +20,7 @@ import type { CodexHookHashes } from './codex-hook-trust-derivation'
 const mocks = vi.hoisted(() => ({
   homedir: vi.fn<() => string>(),
   codexPath: '',
+  resolveCodexCommand: vi.fn<() => string>(),
   probeCodexVersion: vi.fn(),
   deriveCodexHookHashes: vi.fn(),
   listCodexHooks: vi.fn(),
@@ -32,7 +33,7 @@ vi.mock('node:os', async (importOriginal) => ({
 }))
 vi.mock('../codex-cli/command', async (importOriginal) => ({
   ...(await importOriginal<typeof CodexCommand>()),
-  resolveCodexCommand: () => mocks.codexPath
+  resolveCodexCommand: mocks.resolveCodexCommand
 }))
 vi.mock('./codex-hook-trust-derivation', () => ({
   probeCodexVersion: mocks.probeCodexVersion,
@@ -167,6 +168,7 @@ beforeEach(() => {
   mocks.homedir.mockReturnValue(home)
   mocks.codexPath = join(userData, 'codex')
   writeFileSync(mocks.codexPath, 'codex 0.150.1')
+  mocks.resolveCodexCommand.mockImplementation(() => mocks.codexPath)
   mocks.beforeHooksJsonWrite = null
   mocks.listCodexHooks.mockImplementation(async () => listLikeCodex())
   answerWith(computeCodexHookHashesForTests())
@@ -463,14 +465,44 @@ describe('reconcileCodexHooks', () => {
     const hooks = readHooks()
     delete hooks.Stop
     writeHooks(hooks)
-    mocks.listCodexHooks.mockClear()
+    mocks.resolveCodexCommand.mockClear()
 
     scheduleCodexHookReconcile()
     scheduleCodexHookReconcile()
     scheduleCodexHookReconcile()
     await vi.waitFor(() => expect(readHooks().Stop).toHaveLength(1))
     await reconcileCodexHooks()
+    mocks.resolveCodexCommand.mockClear()
+    scheduleCodexHookReconcile()
+    scheduleCodexHookReconcile()
+    await new Promise((resolve) => setImmediate(resolve))
+    await reconcileCodexHooks()
 
-    expect(mocks.listCodexHooks).toHaveBeenCalledTimes(1)
+    // Why 2: one run for the burst, one for the explicit call after it.
+    expect(mocks.resolveCodexCommand).toHaveBeenCalledTimes(2)
+  })
+
+  it('writes nothing when hooks turn off while Codex is being asked', async () => {
+    start()
+    let releaseDerive!: () => void
+    mocks.deriveCodexHookHashes.mockImplementationOnce(async () => {
+      await new Promise<void>((resolve) => {
+        releaseDerive = resolve
+      })
+      return {
+        codexVersion: 'codex-cli 0.150.1',
+        hashes: computeCodexHookHashesForTests(),
+        failure: null,
+        transient: false
+      }
+    })
+    const run = reconcileCodexHooks()
+    await vi.waitFor(() => expect(mocks.deriveCodexHookHashes).toHaveBeenCalledTimes(1))
+
+    enabled = false
+    releaseDerive()
+    await run
+
+    expect(existsSync(codexHome())).toBe(false)
   })
 })
