@@ -677,7 +677,8 @@ describe('a follow-up Codex never echoed, when a Stop whose interrupt failed', (
     await queueStaysOpen(await nextMessageGoesOut(followUpId, 0))
   })
 
-  // The owed stop is proven by the next send, which settles the follow-up in doubt only then.
+  // The stop's unproven close is joined, and proven, by the next send, which settles the follow-up
+  // in doubt only then.
   it.each(['internal error', 'unanswered'] as const)(
     'stays in doubt once a Stop that could not prove the exit (%s) is proven, and the queue never stops',
     async (failure) => {
@@ -689,11 +690,11 @@ describe('a follow-up Codex never echoed, when a Stop whose interrupt failed', (
 
       await stop()
       await host.flushStreamedEvents(SESSION)
-      expect(host['sessions'].get(SESSION)?.owesProviderChildWindDown).toBeDefined()
+      expect(host['sessions'].get(SESSION)?.child?.close).toBeDefined()
       expect(await followUpRow(followUpId)).toMatchObject({ dispatchState: 'pending' })
 
       const outbox = await nextMessageGoesOut(followUpId, 1)
-      expect(host['sessions'].get(SESSION)?.owesProviderChildWindDown).toBeUndefined()
+      expect(host['sessions'].get(SESSION)?.child?.close).toBeUndefined()
       expect(await followUpRow(followUpId)).toMatchObject({
         dispatchState: 'unknown',
         recovered: true
