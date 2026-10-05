@@ -101,7 +101,6 @@ describe('Codex structured session close lifecycle', () => {
       fence: 7,
       acquisitionGeneration: 'generation-1',
       threadId: THREAD,
-      historyPath: null,
       prompts,
       options: new Map(),
       reportedOptions: {},

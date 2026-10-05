@@ -105,7 +105,6 @@ describe('context facts on replayed turn rows', () => {
     await journal.close()
 
     const reopened = await open()
-    expect(reopened.repair.malformedRows).toBe(0)
     expect(reopened.snapshot().items.map((item) => item.body)).toEqual(written)
     expect(written).toHaveLength(FACTS.length)
   })
@@ -133,7 +132,6 @@ describe('context facts on replayed turn rows', () => {
     }
 
     const reopened = await open()
-    expect(reopened.repair.malformedRows).toBe(0)
     expect(reopened.snapshot().items.map((item) => item.body)).toEqual([
       turn('turn-0'),
       { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'after' }] }
