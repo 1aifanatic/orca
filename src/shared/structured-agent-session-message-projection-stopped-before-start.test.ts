@@ -286,6 +286,26 @@ describe('a send a Stop took back before the agent started it', () => {
     ])
   })
 
+  // A turn the provider opened on its own, recorded before the send was made: the send did not
+  // open it, though the take-back moved the send's row past its record.
+  it('keeps its row when the turn record came before it was sent', () => {
+    const before = [
+      entry('wake', {
+        kind: 'turn',
+        turnId: 'wake',
+        state: 'completed',
+        userItemId: 'codex:thread-1:wake:0'
+      }),
+      sent('never-ran', 'look around')
+    ]
+    const { items, sent: position } = takenBackOn(true, before, 'never-ran', sequence + 1)
+
+    expect(rows(items, [stopped('never-ran', position)])).toEqual([
+      user('never-ran'),
+      stopRow('never-ran')
+    ])
+  })
+
   it('keeps its row when a turn starts only after the Stop took it back', () => {
     const items = [
       sent('never-ran', 'look around'),
