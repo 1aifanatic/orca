@@ -64,7 +64,8 @@ function rollBackCodexHookApprovals(
       const state = current.get(computeTrustKey(entry))
       return (
         !holdsEntry(entry) &&
-        state?.trustedHash === entry.trustedHash &&
+        state !== undefined &&
+        state.trustedHash === entry.trustedHash &&
         state.enabled === entry.enabled
       )
     })
