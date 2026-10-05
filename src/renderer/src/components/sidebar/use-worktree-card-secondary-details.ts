@@ -230,11 +230,14 @@ export function useWorktreeCardSecondaryDetails({
     },
     [linearIssue, openTaskPage]
   )
+  // Why: the new card shows its review in the status lane; a read-only card has none, so its review
+  // joins the badges as in the legacy card.
+  const reviewInBadges = !newCardStyle || readOnly
   const hasDetails = hasWorktreeCardDetails({
     issue: metaIssue,
     linearIssue: metaLinearIssue,
     jiraIssue: metaJiraIssue,
-    review: newCardStyle ? null : metaReview,
+    review: reviewInBadges ? metaReview : null,
     comment: metaComment,
     automationProvenance: metaAutomationProvenance,
     cliProvenance: metaCliProvenance
@@ -260,6 +263,7 @@ export function useWorktreeCardSecondaryDetails({
     metaAutomationProvenance,
     metaCliProvenance,
     metaComment,
+    reviewInBadges,
     showInlineAgentList,
     compactInlineAgentRows,
     handleOpenGitHubIssueInOrca,

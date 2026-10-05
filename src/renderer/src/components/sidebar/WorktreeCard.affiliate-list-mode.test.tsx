@@ -387,6 +387,16 @@ describe('WorktreeCard read-only mode', () => {
     expect(container.querySelector('[data-testid="inline-agents"]')).toBeNull()
   })
 
+  it('shows no status, even with the status property on', () => {
+    for (const newCardStyle of [false, true]) {
+      settings = { experimentalNewWorktreeCardStyle: newCardStyle }
+      renderReadOnly()
+
+      expect(worktreeCardProperties).toContain('status')
+      expect(container.querySelector('[data-worktree-card-status-slot]')).toBeNull()
+    }
+  })
+
   it('names the host even when the sidebar hides the host chip', () => {
     renderReadOnly()
 

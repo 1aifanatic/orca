@@ -31,7 +31,9 @@ export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
     prDisplay: review.prDisplay
   })
 
-  const showStatus = foundation.cardProps.includes('status')
+  // Why: a read-only card stands in for another moment (e.g. before a restart), so the live status
+  // it would show belongs to now and would mislead there.
+  const showStatus = !props.readOnly && foundation.cardProps.includes('status')
   const showIssue = foundation.cardProps.includes('issue')
   const showLinearIssue = foundation.cardProps.includes('linear-issue')
   const showJiraIssue = foundation.cardProps.includes('jira-issue')
@@ -41,7 +43,7 @@ export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
   const showComment = foundation.cardProps.includes('comment')
   // Why: the ports trigger is a control, and live ports say nothing a read-only picture needs.
   const showPorts = !props.readOnly && foundation.cardProps.includes('ports')
-  const shouldRefreshHostedReview = foundation.newCardStyle ? showStatus : showPR
+  const shouldRefreshHostedReview = foundation.newCardStyle && !props.readOnly ? showStatus : showPR
   const detailsHoverControl = useWorktreeCardDetailsHoverControl()
   const hoverDetailsOpen = detailsHoverControl.hoverOpen
 
