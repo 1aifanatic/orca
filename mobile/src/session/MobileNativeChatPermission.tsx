@@ -4,6 +4,10 @@ import { ShieldQuestion, X } from 'lucide-react-native'
 import { approvalBlockedPathToShow } from '../../../src/shared/agent-session-approval-blocked-path'
 import { MobileMarkdown } from '../components/MobileMarkdown'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
+import {
+  isNewerApprovalSubject,
+  isPlanApprovalSubject
+} from '../../../src/shared/agent-session-approval-subject'
 import type { MobileChatPermission } from './mobile-native-chat-permission'
 
 // Renders a detected agent permission ask as a card with tappable options.
@@ -20,6 +24,8 @@ function MobileNativeChatPermissionImpl({
 }): React.JSX.Element {
   const [submitting, setSubmitting] = useState(false)
   const submittingRef = useRef(false)
+  // A newer Orca's subject: its detail is shown, and only the card's cancel answers.
+  const newerSubject = isNewerApprovalSubject(permission.subject)
   const respond = async (send: string): Promise<void> => {
     if (submittingRef.current) {
       return
@@ -56,7 +62,7 @@ function MobileNativeChatPermissionImpl({
           </Pressable>
         ) : null}
       </View>
-      <MobileNativeChatPermissionContext permission={permission} />
+      <MobileNativeChatPermissionContext permission={permission} newerSubject={newerSubject} />
       <View testID="native-chat-approval-actions" style={styles.options}>
         {permission.options.map((option, index) => {
           const isPrimary = index === 0
@@ -66,11 +72,12 @@ function MobileNativeChatPermissionImpl({
               style={({ pressed }) => [
                 styles.option,
                 isPrimary ? styles.optionPrimary : styles.optionSecondary,
-                pressed && !submitting && styles.optionPressed
+                pressed && !submitting && styles.optionPressed,
+                newerSubject && styles.disabled
               ]}
               hitSlop={6}
               onPress={() => respond(option.send)}
-              disabled={submitting}
+              disabled={submitting || newerSubject}
             >
               <Text style={[styles.optionText, isPrimary && styles.optionTextPrimary]}>
                 {option.label}
@@ -86,9 +93,11 @@ function MobileNativeChatPermissionImpl({
 export const MobileNativeChatPermission = memo(MobileNativeChatPermissionImpl)
 
 function MobileNativeChatPermissionContext({
-  permission
+  permission,
+  newerSubject
 }: {
   permission: MobileChatPermission
+  newerSubject: boolean
 }): React.JSX.Element | null {
   const neededPath = approvalBlockedPathToShow(permission)
   if (
@@ -120,7 +129,7 @@ function MobileNativeChatPermissionContext({
           {neededPath}
         </Text>
       ) : null}
-      {permission.subject?.kind === 'plan' ? (
+      {isPlanApprovalSubject(permission.subject) ? (
         <View>
           <MobileMarkdown content={permission.subject.text} />
           {permission.subject.filePath ? (
@@ -129,6 +138,11 @@ function MobileNativeChatPermissionContext({
         </View>
       ) : permission.detail ? (
         <Text style={styles.detail}>{permission.detail}</Text>
+      ) : null}
+      {newerSubject ? (
+        <Text testID="native-chat-approval-needs-newer-orca" style={styles.detail}>
+          This request needs a newer version of Orca.
+        </Text>
       ) : null}
     </ScrollView>
   )
@@ -212,6 +226,9 @@ const styles = StyleSheet.create({
   },
   optionPressed: {
     opacity: 0.7
+  },
+  disabled: {
+    opacity: 0.5
   },
   optionText: {
     color: colors.textPrimary,

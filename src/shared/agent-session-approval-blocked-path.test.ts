@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { approvalBlockedPathToShow } from './agent-session-approval-blocked-path'
+import {
+  approvalBlockedPathToShow,
+  type ApprovalCardText
+} from './agent-session-approval-blocked-path'
 
 describe('approvalBlockedPathToShow', () => {
   it('shows a path the request does not name', () => {
@@ -51,6 +54,16 @@ describe('approvalBlockedPathToShow', () => {
         detail: '/outside/x'
       })
     ).toBe('/outside/x')
+  })
+
+  it("checks the detail a newer Orca's subject falls back to", () => {
+    const subject: ApprovalCardText['subject'] = JSON.parse('{"kind":"diff"}')
+    expect(
+      approvalBlockedPathToShow({ blockedPath: '/outside/x', subject, detail: 'edit /outside/x' })
+    ).toBeNull()
+    expect(approvalBlockedPathToShow({ blockedPath: '/outside/x', subject, detail: 'edit' })).toBe(
+      '/outside/x'
+    )
   })
 
   it('shows a resolved path when the request names it relatively', () => {
