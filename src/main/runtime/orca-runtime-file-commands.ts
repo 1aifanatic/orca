@@ -26,6 +26,8 @@ import { openHostDiffTab, openHostEditFileTab } from './host-editor-tab-commands
 import { getHostEditorTabState } from './host-editor-tab-state'
 import { getRuntimeDesktopSurface } from './runtime-desktop-surface'
 import { HEADLESS_RUNTIME_WINDOW_ID } from '../../shared/runtime-types'
+import { parseWorkspaceKey } from '../../shared/workspace-scope'
+import { splitWorktreeIdForFilesystem } from '../../shared/worktree/id'
 
 export class OrcaRuntimeWithFileCommands extends OrcaRuntimeWithPreservedBranchCleanup {
   protected readonly fileCommands = new RuntimeFileCommands({
@@ -138,6 +140,19 @@ export class OrcaRuntimeWithFileCommands extends OrcaRuntimeWithPreservedBranchC
       }
     }
     return false
+  }
+
+  // Why: projection is synchronous, so the root comes from the workspace id or its folder record.
+  getHostEditorWorkspaceRoot(worktreeId: string): string | null {
+    const scope = parseWorkspaceKey(worktreeId)
+    if (scope?.type === 'folder') {
+      return (
+        this.store
+          ?.getFolderWorkspaces?.()
+          .find((workspace) => workspace.id === scope.folderWorkspaceId)?.folderPath ?? null
+      )
+    }
+    return splitWorktreeIdForFilesystem(worktreeId)?.worktreePath ?? null
   }
 
   // Why: diffs are never persisted, so a window taking editor authority starts without them.

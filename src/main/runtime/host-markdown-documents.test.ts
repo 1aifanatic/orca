@@ -250,4 +250,73 @@ describe('host Markdown documents with no desktop window', () => {
       'tab_not_found'
     )
   })
+
+  it('reports a save as done when the tab closes after its bytes landed', async () => {
+    const { runtime, selector, tabId, filePath, worktreeId, getSession, setSession } =
+      await openedMarkdown('base')
+    const write = vi.spyOn(
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: these are protected runtime members with the shapes named here.
+      runtime as never as { writeHostMarkdownFile: (args: never) => Promise<void> },
+      'writeHostMarkdownFile'
+    )
+    write.mockImplementationOnce(async () => {
+      await writeFile(filePath, 'landed')
+      setSession({ ...getSession(), openFilesByWorktree: { [worktreeId]: [] } })
+    })
+
+    await expect(
+      runtime.saveMobileMarkdownTab(selector, tabId, hashMarkdownContent('base'), 'landed')
+    ).resolves.toMatchObject({ isDirty: false, content: 'landed' })
+    expect(await readFile(filePath, 'utf8')).toBe('landed')
+    write.mockRestore()
+  })
+
+  it('lists no tab for a row naming a file outside the workspace', async () => {
+    const harness = await createHeadlessEditorHarness((worktreeId, worktreePath) => ({
+      ...getDefaultWorkspaceSession(),
+      activeRepoId: TEST_REPO_ID,
+      activeWorktreeId: worktreeId,
+      openFilesByWorktree: {
+        [worktreeId]: [
+          // Absolute relative path: opened from a terminal link outside the worktree.
+          {
+            filePath: '/elsewhere/todo.md',
+            relativePath: '/elsewhere/todo.md',
+            worktreeId,
+            language: 'markdown'
+          },
+          // Root mismatch: a source file whose row names another root.
+          {
+            filePath: '/elsewhere/app.ts',
+            relativePath: 'app.ts',
+            worktreeId,
+            language: 'typescript'
+          },
+          // Another SSH target's file.
+          {
+            filePath: `${worktreePath}/remote.md`,
+            relativePath: 'remote.md',
+            worktreeId,
+            language: 'markdown',
+            externalSshTargetId: 'other-target'
+          },
+          {
+            filePath: `${worktreePath}/inside.md`,
+            relativePath: 'inside.md',
+            worktreeId,
+            language: 'markdown'
+          }
+        ]
+      }
+    }))
+
+    const listed = await harness.runtime.listMobileSessionTabs(`id:${harness.worktreeId}`)
+
+    expect(
+      listed.tabs.map((tab) =>
+        tab.type === 'markdown' || tab.type === 'file' ? tab.relativePath : tab.type
+      )
+    ).toEqual(['inside.md'])
+    expect(harness.getSession().openFilesByWorktree?.[harness.worktreeId]).toHaveLength(4)
+  })
 })

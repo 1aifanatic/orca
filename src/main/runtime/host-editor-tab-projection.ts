@@ -13,9 +13,14 @@ import type {
   RuntimeMobileSessionTabsSnapshot
 } from '../../shared/runtime-types'
 import type { TabGroupLayoutNode } from '../../shared/tab-types'
-import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
+import type {
+  PersistedOpenFile,
+  WorkspaceSessionState
+} from '../../shared/workspace-session-state-types'
 import { isUnifiedWorkspaceSession, listHostEditTabs } from './host-editor-session-model'
 import type { HostDiffTabRecord } from './host-editor-tab-state'
+import { isSafeMobileRelativePath } from './runtime-file-command-host'
+import { joinWorktreeRelativePath } from './runtime-relative-paths'
 import {
   collectHeadlessTopLevelTabOrder,
   getHeadlessMobileSessionGroupId
@@ -39,14 +44,40 @@ function isEditorSnapshotTab(
   return tab.type === 'markdown' || tab.type === 'file'
 }
 
-/** Editor tabs a host with no window publishes for one worktree: persisted edits, then live diffs. */
+export function sameFilePath(a: string, b: string): boolean {
+  return a.replace(/\\/g, '/') === b.replace(/\\/g, '/')
+}
+
+/** Whether a phone may reach a row's file: on this workspace's host, under its root. */
+export function isHostEditRowInsideWorkspace(
+  file: PersistedOpenFile,
+  workspaceRoot: string | null
+): boolean {
+  if (file.externalSshTargetId?.trim() || !isSafeMobileRelativePath(file.relativePath)) {
+    return false
+  }
+  return (
+    workspaceRoot === null ||
+    sameFilePath(joinWorktreeRelativePath(workspaceRoot, file.relativePath), file.filePath)
+  )
+}
+
+/**
+ * Editor tabs a host with no window publishes for one worktree: persisted edits, then live diffs.
+ * Rows naming files outside the workspace stay in the session but are not listed, since no phone
+ * read of them is allowed.
+ */
 export function buildHostEditorMobileTabs(
   session: WorkspaceSessionState | null,
   worktreeId: string,
-  diffs: readonly HostDiffTabRecord[]
+  diffs: readonly HostDiffTabRecord[],
+  workspaceRoot: string | null
 ): HostEditorMobileTab[] {
   const tabs: HostEditorMobileTab[] = []
   for (const record of session ? listHostEditTabs(session, worktreeId) : []) {
+    if (!isHostEditRowInsideWorkspace(record.file, workspaceRoot)) {
+      continue
+    }
     const draft = record.file.readOnly === true ? undefined : record.file.dirtyDraftContent
     const facts: MobileSessionEditorFileFacts = {
       id: record.fileId,

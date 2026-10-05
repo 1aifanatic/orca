@@ -20,10 +20,7 @@ import {
   advanceSshConnectionGeneration,
   resetSshConnectionGenerations
 } from '../ssh/ssh-connection-generation'
-import {
-  MARKDOWN_DOCUMENT_TOO_LARGE_FOR_RELAY,
-  readSshMarkdownDocument
-} from './host-markdown-document-reader'
+import { readSshMarkdownDocument } from './host-markdown-document-reader'
 import {
   readHostMarkdownTab,
   saveHostMarkdownTab,
@@ -92,11 +89,11 @@ describe('SSH Markdown document reads', () => {
     expect(provider.readFile).not.toHaveBeenCalled()
   })
 
-  it('refuses a large file plainly on a relay without ranged reads', async () => {
+  it('answers the too-large code phones explain on a relay without ranged reads', async () => {
     const body = Buffer.alloc(MOBILE_MARKDOWN_READ_MAX_BYTES + 10, 0x61)
     await expect(
       readSshMarkdownDocument(FILE, memoryProvider(new Map([[FILE, body]]), { ranged: false }))
-    ).rejects.toThrow(MARKDOWN_DOCUMENT_TOO_LARGE_FOR_RELAY)
+    ).rejects.toThrow(/^file_too_large$/)
   })
 
   it('refuses binary content', async () => {
@@ -129,6 +126,7 @@ function sshRuntime(
     getMobileSessionTabsForWorktree: vi.fn(),
     applyMobileSessionTabNavigation: vi.fn(),
     hasLiveWindowDocument: () => false,
+    getHostEditorWorkspaceRoot: () => '/srv/work',
     requireStore: vi.fn(),
     getWorkspaceSessionHostIdForWorktree: () => hostId,
     resolveRuntimeFileTarget: async () => ({

@@ -24,7 +24,7 @@ import {
   readSshMarkdownDocument,
   type MarkdownDocumentRead
 } from './host-markdown-document-reader'
-import { isSafeMobileRelativePath } from './runtime-file-command-host'
+import { isHostEditRowInsideWorkspace, sameFilePath } from './host-editor-tab-projection'
 import {
   requireRuntimeFileProvider,
   type ResolvedRuntimeFileTarget
@@ -59,10 +59,6 @@ type HostExpectations = {
   executionHostId: ExecutionHostId
   sshTargetId: string | undefined
   sshConnectionGeneration: number | undefined
-}
-
-function samePath(a: string, b: string): boolean {
-  return a.replace(/\\/g, '/') === b.replace(/\\/g, '/')
 }
 
 function findHostMarkdownRecord(
@@ -114,14 +110,12 @@ async function resolveHostMarkdownTab(
   }
   // Why re-read after the await: the tab may have closed or moved while the target resolved.
   const record = findHostMarkdownRecord(runtime, worktreeId, tabId)
-  const { relativePath, filePath } = record.file
-  const joined = isSafeMobileRelativePath(relativePath)
-    ? joinWorktreeRelativePath(target.worktree.path, relativePath)
-    : null
   // Why: a row naming a file outside this workspace (or on another SSH target) is never re-joined
-  // onto this root; the phone may show it but not write it.
-  const outsideWorkspace =
-    Boolean(record.file.externalSshTargetId?.trim()) || !joined || !samePath(joined, filePath)
+  // onto this root; such rows are not listed to phones, and a request naming one is refused.
+  const outsideWorkspace = !isHostEditRowInsideWorkspace(record.file, target.worktree.path)
+  const joined = outsideWorkspace
+    ? null
+    : joinWorktreeRelativePath(target.worktree.path, record.file.relativePath)
   const recordedHost =
     record.groupId !== null ? recordedWrapperHost(runtime, worktreeId, record) : null
   if (recordedHost && recordedHost !== target.executionHostId) {
@@ -208,7 +202,7 @@ function assertSaveStillOwned(
 ): HostEditTabRecord {
   assertHostEditorAuthority(runtime)
   const record = findHostMarkdownRecord(runtime, worktreeId, tabId)
-  if (record.file.filePath !== filePath && !samePath(record.file.filePath, filePath)) {
+  if (record.file.filePath !== filePath && !sameFilePath(record.file.filePath, filePath)) {
     throw new Error('tab_not_found')
   }
   if (hasHostDraft(record) || record.file.readOnly === true) {
@@ -276,7 +270,7 @@ export async function saveHostMarkdownTab(
       sshConnectionGeneration: expectations.sshConnectionGeneration,
       beforeWrite: recheck
     })
-    recheck()
+    // Why no ownership recheck here: the bytes have landed; the verify read is the post-condition.
     const verified = await readDocument(runtime, tab)
     if (verified.content !== content) {
       throw new Error('save_verification_failed')

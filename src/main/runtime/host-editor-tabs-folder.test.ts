@@ -53,8 +53,12 @@ function sshFolderRuntime() {
   } as never)
 }
 
-async function folderRuntime(initial: WorkspaceSessionState = getDefaultWorkspaceSession()) {
-  const folderPath = await mkdtemp(join(tmpdir(), 'orca-host-editor-folder-'))
+async function folderRuntime(
+  initial: WorkspaceSessionState = getDefaultWorkspaceSession(),
+  existingFolderPath?: string
+) {
+  const folderPath =
+    existingFolderPath ?? (await mkdtemp(join(tmpdir(), 'orca-host-editor-folder-')))
   const folderStore = createFolderWorkspaceRuntimeStore(
     makeFolderWorkspace({ folderPath }),
     makeFolderProjectGroup({ parentPath: folderPath })
@@ -103,7 +107,7 @@ describe('host-owned editor tabs in a folder workspace', () => {
     await writeFile(join(folderPath, 'plan.md'), 'x')
     await runtime.openMobileFile(selector, 'plan.md')
 
-    const restarted = await folderRuntime(getSession())
+    const restarted = await folderRuntime(getSession(), folderPath)
     const all = await restarted.runtime.listAllMobileSessionTabs()
 
     expect(all.find((snapshot) => snapshot.worktree === TEST_FOLDER_WORKSPACE_KEY)?.tabs).toEqual([

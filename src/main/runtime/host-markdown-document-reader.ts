@@ -9,8 +9,6 @@ import type { Store } from '../persistence'
 import type { IFilesystemProvider } from '../providers/types'
 import { isBinaryBuffer } from './runtime-file-command-host'
 
-export const MARKDOWN_DOCUMENT_TOO_LARGE_FOR_RELAY = 'This file is too large to open on the phone.'
-
 export type MarkdownDocumentRead = {
   content: string
   /** The whole file's UTF-8 size, even when `content` is a prefix. */
@@ -63,7 +61,8 @@ export async function readLocalMarkdownDocument(
 
 /**
  * Reads through the SSH provider on the execution host. Small files come whole; larger ones need
- * the relay's positional reads for a bounded prefix, and a relay without them refuses plainly.
+ * the relay's positional reads for a bounded prefix; a relay without them answers the too-large
+ * code phones already explain.
  */
 export async function readSshMarkdownDocument(
   filePath: string,
@@ -83,7 +82,7 @@ export async function readSshMarkdownDocument(
     return { content: result.content, byteLength: utf8ByteLength(result.content), truncated: false }
   }
   if (!provider.readFileRange || !(await provider.supportsFileRangeRead?.())) {
-    throw new Error(MARKDOWN_DOCUMENT_TOO_LARGE_FOR_RELAY)
+    throw new Error('file_too_large')
   }
   const chunks: Buffer[] = []
   let position = 0

@@ -22,6 +22,8 @@ export type HostEditorTabsRuntime = EditorAuthorityHost & {
   getWorkspaceSessionForWorktree(worktreeId: string): WorkspaceSessionState | null
   setWorkspaceSessionForWorktree(worktreeId: string, session: WorkspaceSessionState): void
   hydrateHeadlessMobileSessionTabsFromWorkspaceSession(worktreeId?: string): Set<string>
+  /** The workspace root rows are joined onto, or null when it cannot be known synchronously. */
+  getHostEditorWorkspaceRoot(worktreeId: string): string | null
   readonly mobileSessionTabsByWorktree: Map<string, RuntimeMobileSessionTabsSnapshot>
   storeMobileSessionSnapshot(
     worktreeId: string,
@@ -104,7 +106,8 @@ export function listHostEditorMobileTabs(
   return buildHostEditorMobileTabs(
     session,
     worktreeId,
-    getHostEditorTabState(runtime).listDiffs(worktreeId)
+    getHostEditorTabState(runtime).listDiffs(worktreeId),
+    runtime.getHostEditorWorkspaceRoot(worktreeId)
   )
 }
 
