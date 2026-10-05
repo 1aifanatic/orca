@@ -80,6 +80,50 @@ describe('renderer side of the desktop chat-view relay', () => {
     })
   })
 
+  it("uses the host's owner pick for a parent-addressed chat only when the tab has no owner (F1)", () => {
+    const split = {
+      root: {
+        type: 'split' as const,
+        direction: 'vertical' as const,
+        first: { type: 'leaf' as const, leafId: A },
+        second: { type: 'leaf' as const, leafId: B }
+      },
+      activeLeafId: B,
+      expandedLeafId: null
+    }
+    const ownerless = useAppStore.getState().createTab(WT, undefined, undefined, {})
+    useAppStore.getState().setTabLayout(ownerless.id, split)
+    onRequest!({
+      requestId: 'r-pick',
+      worktreeId: WT,
+      tabId: ownerless.id,
+      leafId: null,
+      viewMode: 'chat',
+      ownerPickLeafId: A
+    })
+    expect(respond).toHaveBeenCalledWith({
+      requestId: 'r-pick',
+      chatView: { viewMode: 'chat', chatLeafId: A }
+    })
+
+    // An owner the desktop already holds is never moved by a host pick that raced it.
+    const owned = useAppStore.getState().createTab(WT, undefined, undefined, {})
+    useAppStore.getState().setTabLayout(owned.id, split)
+    useAppStore.getState().applyTerminalChatPair(owned.id, B, 'chat')
+    onRequest!({
+      requestId: 'r-raced',
+      worktreeId: WT,
+      tabId: owned.id,
+      leafId: null,
+      viewMode: 'chat',
+      ownerPickLeafId: A
+    })
+    expect(respond).toHaveBeenCalledWith({
+      requestId: 'r-raced',
+      chatView: { viewMode: 'chat', chatLeafId: B }
+    })
+  })
+
   it('reports an unknown tab', () => {
     onRequest!({
       requestId: 'r-2',

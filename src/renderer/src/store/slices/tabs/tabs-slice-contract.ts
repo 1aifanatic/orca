@@ -113,7 +113,11 @@ export type TabsSlice = {
     terminalTabId: string,
     leafId: string | null,
     mode: 'terminal' | 'chat',
-    options?: { userToggle?: boolean }
+    options?: {
+      userToggle?: boolean
+      /** A host relay's owner for a parent-addressed chat, used only when the tab has none. */
+      ownerPickLeafId?: string
+    }
   ) => RuntimeSessionTabChatView | null
   /** Set a tab's view mode (terminal vs native chat). Patches only that tab. */
   setTabViewMode: (tabId: string, mode: 'terminal' | 'chat') => void
