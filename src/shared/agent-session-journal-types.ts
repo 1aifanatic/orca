@@ -391,6 +391,18 @@ export type AgentJournalRenderItem = AgentJournalProducerLinkage & {
 
 // ─── Submissions ────────────────────────────────────────────────────────────
 
+/** The turn a send was answered into: its record's item id, and how the send joined it. `start`:
+ *  the provider answered the send's start request with that turn; `steer`: Orca steered it into
+ *  that running turn. Known limit: a start the provider silently folds into a running turn reads
+ *  as `start`. Open: a newer host may name another way, which a reader leaves unclaimed. */
+export type AgentJournalAnsweredTurn = { turnItemId: string; via: AgentJournalTurnJoin }
+export type AgentJournalTurnJoin = 'start' | 'steer'
+/** The same, as a writer names it: the turn record's identity, keyed when the row is written. */
+export type AgentJournalAnsweredTurnIdentity = {
+  turn: AgentJournalItemIdentity
+  via: AgentJournalTurnJoin
+}
+
 export const AGENT_JOURNAL_DISPATCH_STATES = ['pending', 'accepted', 'rejected', 'unknown'] as const
 export type AgentJournalDispatchState = (typeof AGENT_JOURNAL_DISPATCH_STATES)[number]
 
@@ -415,10 +427,10 @@ export type AgentJournalSubmission = {
    *  never stored. Needed because a rejected send's own row moves to its rejection, which erases
    *  where it was sent. Absent from hosts that predate it. */
   submittedSequence?: number
-  /** On `rejected`: the item id of the turn record a Codex send was answered into, when that turn
-   *  ended without taking it. Absent on every other send: accepted ones (the echo places them),
-   *  Claude, queued take-backs, restart recovery, and rows from hosts that predate it. */
-  answeredInTurnItemId?: string
+  /** On `rejected`: the turn a Codex send was answered into, when that turn ended without taking
+   *  it. Absent on every other send: accepted ones (the echo places them), Claude, queued
+   *  take-backs, restart recovery, and rows from hosts that predate it. */
+  answeredInTurn?: AgentJournalAnsweredTurn
   /** Set when crash reconciliation resolved the dispatch, not the provider. A live
    *  `unknown` is a send still outstanding; a recovered one outlived its writer. */
   recovered?: true

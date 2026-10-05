@@ -111,7 +111,12 @@ export function journalDispatchRowBuilder(
     reason: boundedDispatchReason(input),
     ...(input.state === 'rejected' ? { rejection: input.rejection } : {}),
     ...(input.state === 'rejected' && input.answeredInTurn
-      ? { answeredInTurnItemId: agentJournalItemKey(input.answeredInTurn) }
+      ? {
+          answeredInTurn: {
+            turnItemId: agentJournalItemKey(input.answeredInTurn.turn),
+            via: input.answeredInTurn.via
+          }
+        }
       : {}),
     ...journalRowBase(state().epoch, seq, input.fence, ts),
     ...(input.recovered ? { recovered: input.recovered } : {}),

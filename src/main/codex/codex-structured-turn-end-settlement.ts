@@ -17,7 +17,7 @@ import {
   agentSessionFailureWords,
   type AgentJournalDispatchRejection
 } from '../../shared/agent-session-failure-words'
-import type { AgentJournalItemIdentity } from '../../shared/agent-session-journal-types'
+import type { AgentJournalAnsweredTurnIdentity } from '../../shared/agent-session-journal-types'
 import type { CodexTurnEnd } from './codex-structured-dispatch-echo'
 import { codexTurnLifecycleIdentity } from './codex-structured-journal-translation-turns'
 import type { CodexSession } from './codex-structured-session-state'
@@ -43,8 +43,8 @@ export function codexDispatchRejection(
 export type CodexTurnEndSettlement = {
   clientMessageId: string
   state: 'rejected'
-  /** The turn Codex answered the send into, whose end settled it. */
-  answeredInTurn: AgentJournalItemIdentity
+  /** The turn Codex answered the send into, whose end settled it, and how the send joined it. */
+  answeredInTurn: AgentJournalAnsweredTurnIdentity
 } & AgentJournalDispatchRejection
 
 function errorDetail(params: unknown): ProviderDiagnostic | undefined {
@@ -97,10 +97,14 @@ export function settleCodexSendsInEndedTurn(
     return
   }
   const rejection = codexTurnEndRejection(end)
-  const answeredInTurn = codexTurnLifecycleIdentity(frame.sessionId, turnId)
-  for (const clientMessageId of session.dispatchEchoes.endTurn(session.threadId, turnId, end)) {
+  const turn = codexTurnLifecycleIdentity(frame.sessionId, turnId)
+  for (const { clientMessageId, via } of session.dispatchEchoes.endTurn(
+    session.threadId,
+    turnId,
+    end
+  )) {
     if (rejection) {
-      settle({ clientMessageId, state: 'rejected', answeredInTurn, ...rejection })
+      settle({ clientMessageId, state: 'rejected', answeredInTurn: { turn, via }, ...rejection })
     }
   }
 }

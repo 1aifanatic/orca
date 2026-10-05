@@ -1,4 +1,7 @@
-import type { AgentJournalItemIdentity } from '../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalAnsweredTurnIdentity,
+  AgentJournalItemIdentity
+} from '../../../shared/agent-session-journal-types'
 import type { AgentJournalDispatchRejection } from '../../../shared/agent-session-failure-words'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
@@ -14,7 +17,7 @@ export async function settleStructuredAgentSessionLateDispatch(
     | { providerIdentity: AgentJournalItemIdentity }
     | ({
         state: 'rejected'
-        answeredInTurn?: AgentJournalItemIdentity
+        answeredInTurn?: AgentJournalAnsweredTurnIdentity
       } & AgentJournalDispatchRejection)
     | { state: 'unknown'; reason: string }
   )

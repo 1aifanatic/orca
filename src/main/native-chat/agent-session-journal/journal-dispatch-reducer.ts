@@ -6,6 +6,7 @@ import {
   type UnreadAgentSessionFailureFact
 } from '../../../shared/agent-session-failure'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
+import type { AgentJournalAnsweredTurn } from '../../../shared/agent-session-journal-types'
 import { journalDispatchRowApplies } from './journal-dispatch-settlement'
 import type { JournalReducerState } from './journal-reducer'
 import {
@@ -34,14 +35,11 @@ export function applyJournalDispatchRow(
   } else {
     delete submission.rejection
   }
-  if (
-    row.state === 'rejected' &&
-    typeof row.answeredInTurnItemId === 'string' &&
-    row.answeredInTurnItemId
-  ) {
-    submission.answeredInTurnItemId = row.answeredInTurnItemId
+  const answeredInTurn = row.state === 'rejected' ? readAnsweredTurn(row.answeredInTurn) : undefined
+  if (answeredInTurn) {
+    submission.answeredInTurn = answeredInTurn
   } else {
-    delete submission.answeredInTurnItemId
+    delete submission.answeredInTurn
   }
   submission.resolvedAt = row.state === 'pending' ? null : row.ts
   if (row.state === 'pending') {
@@ -68,6 +66,19 @@ export function applyJournalDispatchRow(
     cursor: { epoch: row.epoch, sequence: row.seq },
     acceptedAt: row.ts
   })
+}
+
+/** A stored answered turn; one malformed, or naming a way of joining this build does not know, is
+ *  dropped, never the row. */
+function readAnsweredTurn(value: unknown): AgentJournalAnsweredTurn | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined
+  }
+  const turnItemId = 'turnItemId' in value ? value.turnItemId : undefined
+  const via = 'via' in value ? value.via : undefined
+  return typeof turnItemId === 'string' && turnItemId && (via === 'start' || via === 'steer')
+    ? { turnItemId, via }
+    : undefined
 }
 
 /** A stored rejection fact, read where it can be placed; a kind it cannot place is kept as
