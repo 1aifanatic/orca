@@ -64,8 +64,7 @@ export function getChatAppearanceEntriesByKey(shortcuts?: { increase: string; de
 export function getChatAppearanceSearchEntries(): SettingsSearchEntry[] {
   return [
     {
-      title: translate('auto.components.settings.Settings.2b4474780a', 'Appearance'),
-      targetSectionId: 'chat-appearance'
+      title: translate('auto.components.settings.Settings.2b4474780a', 'Appearance')
     },
     ...Object.values(getChatAppearanceEntriesByKey())
   ]

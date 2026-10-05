@@ -81,6 +81,23 @@ describe('Chat settings page', () => {
     expect(screen.getByRole('button', { name: 'Reset' })).toBeTruthy()
   })
 
+  it('indexes Appearance on Chat without adding ambiguous palette rows', () => {
+    const sections = buildSettingsNavigationMetadata({
+      isMac: true,
+      isWindows: false,
+      isWebClient: false,
+      experimentalStructuredNativeChat: true,
+      repos: []
+    })
+    const results = buildCmdJSettingsResults(sections)
+    expect(results.filter((entry) => entry.title === 'Appearance')).toHaveLength(1)
+    const chatResults = results.filter((entry) => entry.sectionId === 'chat')
+    expect(chatResults.map((entry) => entry.title)).not.toContain('Appearance')
+    expect(chatResults.find((entry) => !entry.targetSectionId)?.configKeywords).toEqual(
+      expect.arrayContaining(['appearance'])
+    )
+  })
+
   it('searches a moved row and resolves its deep link within the Chat page', () => {
     state.settingsSearchQuery = 'Code text size'
     const { container, element, rerender } = renderChat(true)
@@ -107,7 +124,7 @@ describe('Chat settings page', () => {
     expect(container.querySelector('#chat')).toBeNull()
     state.settingsSearchQuery = ''
     rerender(element())
-    for (const entry of getChatAppearanceSearchEntries()) {
+    for (const entry of getChatAppearanceSearchEntries().filter((entry) => entry.targetSectionId)) {
       expect(getSettingsScrollTarget(entry.targetSectionId ?? '', container)).toBeTruthy()
     }
   })
