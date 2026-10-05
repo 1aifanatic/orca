@@ -109,7 +109,13 @@ describe('desktop renderer runtime client capabilities', () => {
     ['a paired host', PAIRED_HOST_RECEIVES],
     ['its own main process', DESKTOP_RENDERER_RUNTIME_CLIENT_CAPABILITIES]
   ] as const)('reads every agent %s registered', (_host, clientCapabilities) => {
-    expect(structuredAgentsReadBy({ clientKind: 'runtime', clientCapabilities })).toBeUndefined()
+    expect(
+      structuredAgentsReadBy({ clientKind: 'runtime', clientCapabilities }, [
+        { agent: 'claude' },
+        { agent: 'codex' },
+        { agent: 'grok' }
+      ])
+    ).toBeUndefined()
   })
 
   it('diverges from what a paired host receives only where a decision was recorded', () => {

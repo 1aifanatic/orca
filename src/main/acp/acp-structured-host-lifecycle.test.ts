@@ -81,9 +81,7 @@ async function openHostRig(
 ) {
   const state = hostTestState()
   const store = await openTestAgentSessionRecordStore(state.root, {
-    agents: agentSessionStoredAgents([
-      { agent: 'grok', handleTransport: 'acp', accountHomeVariable: 'GROK_HOME' }
-    ])
+    agents: agentSessionStoredAgents([{ agent: 'grok' }])
   })
   let generation = 0
   // As the runtime wires it: every exit the adapter observes reaches the host.
@@ -183,7 +181,7 @@ describe('resuming a Grok chat through the host', () => {
     expect(count.resumes).toBe(1)
     expect(await messages()).toEqual(['hello', 'hi'])
     const after = (await host.history({ sessionId: SESSION, direction: 'tail' })).page.items
-    expect(after.filter((row) => row.body.kind === 'background-task')).toEqual([])
+    expect(after.filter((row) => row.itemId.includes('background-task'))).toEqual([])
     expect(after.filter((row) => readAgentJournalTurn(row.body))).toHaveLength(
       before.filter((row) => readAgentJournalTurn(row.body)).length
     )

@@ -158,7 +158,7 @@ function restartStructuredLaunchState(state: StructuredLaunchState): void {
 
 function joinStructuredLaunchState(
   existing: StructuredLaunchState,
-  agent: AgentSessionHandleProvider,
+  agent: TuiAgent,
   options: StructuredAgentLaunchOptions,
   request: StructuredLaunchRequest
 ): StructuredLaunchStateResult | undefined {

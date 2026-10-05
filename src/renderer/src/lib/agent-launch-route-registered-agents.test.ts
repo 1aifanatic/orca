@@ -82,7 +82,7 @@ function store(
 }
 
 const routeFor = (appStore: AgentLaunchRouteStore, agent: TuiAgent, workspace = LOCAL) =>
-  planAgentSessionLaunch(appStore, { agent, workspace }).route
+  planAgentSessionLaunch(appStore, { requestId: 'request-1', agent, workspace }).route
 
 beforeEach(() => {
   resetHostStructuredAgentsForTests()

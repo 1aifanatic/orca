@@ -1,3 +1,4 @@
+import type { StructuredAgentDefinition } from './structured-agent-definition'
 import type { AgentSessionRewindParams } from '../../../shared/agent-session-rewind'
 import { rewindStructuredAgentSession } from './structured-agent-session-rewind'
 import { StructuredConversationCommandController } from './structured-conversation-command-controller'

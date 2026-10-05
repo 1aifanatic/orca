@@ -102,12 +102,7 @@ export class AcpTimelineTranslator {
   /** The agent refused the prompt before its turn began: forgets it and answers the agent's reason.
    *  Null once the turn opened, when the refusal ends that turn instead (`promptFailed`). */
   promptRefused(clientMessageId: string, error: AcpAgentError): string | null {
-    const prompt = this.prompts.current
-    if (prompt?.clientMessageId !== clientMessageId || prompt.opened) {
-      return null
-    }
-    this.prompts.current = undefined
-    return acpPromptErrorDetail(this.dialect, error)
+    return this.prompts.refuse(clientMessageId) ? acpPromptErrorDetail(this.dialect, error) : null
   }
 
   private finishPrompt(

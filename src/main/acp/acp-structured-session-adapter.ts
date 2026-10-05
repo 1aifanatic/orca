@@ -29,11 +29,11 @@ import {
   type AcpStructuredSession
 } from './acp-structured-session'
 import { AcpStructuredStarts, type AcpStartAttempt } from './acp-structured-starts'
+import { acpPromptBlocks } from './acp-structured-turns'
 import {
   ACP_CANCEL_TIMEOUT_MS,
   type AcpStructuredSessionAdapterDeps
 } from './acp-structured-session-adapter-deps'
-import type { ContentBlock } from './generated/acp-protocol.generated'
 
 export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapter {
   /** Live children, and ones whose exit is not yet proven; a proven exit removes its entry. */
@@ -132,7 +132,7 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
     beforeDispatch?: () => Promise<void>
   }): Promise<AgentSessionDispatchOutcome> {
     const session = this.live(input.sessionId)
-    const prompt = this.promptBlocks(input.body)
+    const prompt = acpPromptBlocks(input.body)
     if (!prompt) {
       return {
         state: 'rejected',
@@ -260,8 +260,7 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
     }
   }
 
-  /** A requested close. The root's exit proves it; a process tree the close could not prove gone is
-   *  reported to the caller that owns the child's record, as the adapter contract asks. */
+  /** A requested close: proven by the root's exit; a tree not proven gone is the caller's to report. */
   private async close(sessionId: string): Promise<boolean> {
     const child = this.sessions.get(sessionId)?.child
     const closed = await this.stop(sessionId, true)
@@ -332,18 +331,6 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
       `${session.spec.agent} ACP connection closed: ${error.message || error.name}`
     )
     void this.stop(session.sessionId, false)
-  }
-
-  private promptBlocks(body: AgentJournalMessageItem): ContentBlock[] | null {
-    const blocks: ContentBlock[] = []
-    for (const block of body.blocks) {
-      if (block.type !== 'text') {
-        // Images wait for an ACP image path; the chat offers none while `imagePrompts` is off.
-        return null
-      }
-      blocks.push({ type: 'text', text: block.text })
-    }
-    return blocks
   }
 
   private live(sessionId: string): AcpStructuredSession {

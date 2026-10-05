@@ -13,7 +13,10 @@ import {
   agentSessionFailureWords,
   type AgentJournalDispatchRejection
 } from '../../shared/agent-session-failure-words'
-import type { AgentJournalItemIdentity } from '../../shared/agent-session-journal-types'
+import type {
+  AgentJournalItemIdentity,
+  AgentJournalMessageItem
+} from '../../shared/agent-session-journal-types'
 import { AcpAgentError } from './acp-errors'
 import type { AcpSessionRuntime } from './acp-session-runtime'
 import type { AcpStructuredLane } from './acp-structured-lane'
@@ -24,6 +27,19 @@ export type AcpDispatchSettlement = { clientMessageId: string } & (
   | ({ state: 'rejected' } & AgentJournalDispatchRejection)
   | { state: 'unknown'; reason: string }
 )
+
+/** A person's message as an ACP prompt; null when it carries what the agent cannot take. */
+export function acpPromptBlocks(body: AgentJournalMessageItem): ContentBlock[] | null {
+  const blocks: ContentBlock[] = []
+  for (const block of body.blocks) {
+    if (block.type !== 'text') {
+      // Images wait for an ACP image path; the chat offers none while `imagePrompts` is off.
+      return null
+    }
+    blocks.push({ type: 'text', text: block.text })
+  }
+  return blocks
+}
 
 type Send = { clientMessageId: string; prompt: ContentBlock[]; requestedAt: number }
 
