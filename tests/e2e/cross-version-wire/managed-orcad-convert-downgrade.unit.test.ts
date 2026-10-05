@@ -1,5 +1,10 @@
-import { beforeAll, describe, expect, it } from 'vitest'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { normalizeSshTarget } from '../../../src/main/persistence/leasing-ssh-ptys/ssh-normalization'
+import { orcadMigrationCutoverFixture } from '../../../src/main/ssh/orcad-migration-cutover-fixture'
+import { writeOrcadMigrationSourceCutover } from '../../../src/main/ssh/orcad-migration-cutover-journal'
 import { visibleRepos } from '../../../src/main/ssh/orcad-retained-source'
 import type { Repo } from '../../../src/shared/repo-types'
 import { importReleaseCheckoutModule, materializeReleaseCheckout } from './release-checkout'
@@ -49,8 +54,17 @@ const retainedRepo: Repo = {
 describe(`managed orcad conversion read back by ${LAST_RELAY_ONLY_REF}`, () => {
   let oldNormalize: (target: unknown) => unknown
   let OldConnectionStore: ConnectionStore
+  let userDataPath: string
 
   beforeAll(async () => {
+    // A real conversion leaves a committed cutover journal; it is what makes this build hide the rows.
+    userDataPath = mkdtempSync(join(tmpdir(), 'orcad-convert-downgrade-'))
+    writeOrcadMigrationSourceCutover(userDataPath, {
+      ...orcadMigrationCutoverFixture('migration-converted', TARGET_ID, {
+        environmentId: 'env-managed'
+      }),
+      phase: 'destination-committed'
+    })
     const checkout = await materializeReleaseCheckout(LAST_RELAY_ONLY_REF)
     const normalization = await importReleaseCheckoutModule(
       checkout,
@@ -70,6 +84,7 @@ describe(`managed orcad conversion read back by ${LAST_RELAY_ONLY_REF}`, () => {
     oldNormalize = (target) => normalize(target)
     OldConnectionStore = connections.SshConnectionStore
   }, SUITE_TIMEOUT_MS)
+  afterAll(() => rmSync(userDataPath, { recursive: true, force: true }))
 
   it('still lists the converted host with its relay endpoint', () => {
     const oldTarget = oldNormalize(persistedTarget)
@@ -87,7 +102,7 @@ describe(`managed orcad conversion read back by ${LAST_RELAY_ONLY_REF}`, () => {
       getFolderWorkspaces: () => [],
       getProjectGroups: () => []
     }
-    expect(visibleRepos(store)).toEqual([])
+    expect(visibleRepos(store, () => userDataPath)).toEqual([])
     expect(store.getRepos()).toEqual([expect.objectContaining({ connectionId: TARGET_ID })])
   })
 })
