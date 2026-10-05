@@ -51,6 +51,7 @@ import {
   selectAgentLaunchTabForCaller
 } from './agent-launch-caller-selection'
 import { agentLaunchWorkspaceFactory } from './agent-launch-worktree-creation'
+import { clientRendersStructuredAgent } from './structured-agent-session-policy'
 
 /**
  * Advertising `agent.launch.v2` is a client's statement that it understands EITHER outcome — a
@@ -164,7 +165,12 @@ async function runAgentLaunch(
       callerNavigationId === null,
       terminalSpawn
     ),
-    workspaces: agentLaunchWorkspaceFactory(context, intent.agent)
+    workspaces: agentLaunchWorkspaceFactory(context, intent.agent),
+    // The rule tabs and restart offers use: a phone that cannot show this agent's chat gets a terminal.
+    ...(context.clientKind !== undefined &&
+    !clientRendersStructuredAgent(context.clientCapabilities, intent.agent)
+      ? { callerRendersStructured: false }
+      : {})
   })
   if (callerNavigationId !== null) {
     selectAgentLaunchTabForCaller(context.runtime, result, callerNavigationId)

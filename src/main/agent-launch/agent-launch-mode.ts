@@ -82,6 +82,9 @@ export type AgentLaunchModePlacement = {
   /** The root of the workspace the launch lands in, when the host has resolved it. Without it a
    *  requested `cwd` cannot be proven to name the root and is read as custom. */
   workspacePath?: string
+  /** False when the client asking for the launch cannot show this agent's chat; absent for the
+   *  host's own callers, which can. */
+  callerRendersStructured?: boolean
 }
 
 const REGISTERED_STRUCTURED_AGENTS: readonly string[] = [...STRUCTURED_AGENT_STORAGE.keys()]
@@ -169,6 +172,10 @@ export function decideAgentLaunchMode(args: {
   })
   if (!support.supported) {
     return downgraded(BLOCKER_REASON[support.blocker], vocabulary)
+  }
+  // A chat its caller can neither show nor close is no launch; that caller gets the terminal.
+  if (placement.callerRendersStructured === false) {
+    return downgraded(BLOCKER_REASON['client-capability'], vocabulary)
   }
   return {
     mode: 'structured',

@@ -68,6 +68,8 @@ export type AgentLaunchExecution = {
   surfaces: AgentLaunchSurfaceFactory
   workspaces?: AgentLaunchWorkspaceFactory
   vocabulary?: AgentLaunchModeVocabulary
+  /** False when the calling client cannot show the agent's chat; absent for the host's own callers. */
+  callerRendersStructured?: boolean
   /** Attributes a throw to the step that was running, the way a dispatch's own stages do. */
   onStage?: (stage: 'worktree_create' | 'mode_settle' | 'surface_create') => void
 }
@@ -89,7 +91,8 @@ export async function executeAgentLaunch(
       ...(intent.cwd ? { cwd: intent.cwd } : {}),
       ...(intent.target.kind === 'existing' && intent.target.workspacePath
         ? { workspacePath: intent.target.workspacePath }
-        : {})
+        : {}),
+      ...(execution.callerRendersStructured === false ? { callerRendersStructured: false } : {})
     },
     settings,
     vocabulary

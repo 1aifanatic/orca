@@ -38,6 +38,7 @@ import type { OrcaRuntimeService } from '../../orca-runtime'
 import { RpcDispatcher } from '../dispatcher'
 import {
   methodNamed,
+  PHONE_LAUNCH_CAPABILITIES,
   rpcContext,
   runtimeStub,
   type AgentLaunchRuntimeStub
@@ -83,12 +84,12 @@ const PAIRED_CLIENT: Partial<RpcContext> = {
   clientKind: 'mobile',
   pairedDeviceId: 'device-1',
   clientId: 'credential-a',
-  clientCapabilities: [AGENT_LAUNCH_RUNTIME_CAPABILITY]
+  clientCapabilities: PHONE_LAUNCH_CAPABILITIES
 }
 const ROTATED_CREDENTIAL_CLIENT: Partial<RpcContext> = {
   ...PAIRED_CLIENT,
   clientId: 'credential-b',
-  clientCapabilities: [AGENT_LAUNCH_RUNTIME_CAPABILITY]
+  clientCapabilities: PHONE_LAUNCH_CAPABILITIES
 }
 
 let directory: string
