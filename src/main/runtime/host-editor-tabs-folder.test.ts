@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { hashMarkdownContent } from '../../shared/mobile-markdown-document'
+import { getHostEditorTabState } from './host-editor-tab-state'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 
 // Fragments stay side-effect ordered: mocks, then lifecycle, then fixtures.
@@ -20,6 +21,37 @@ const {
   makeFolderWorkspace,
   makeRuntimeStoreWithWorkspaceSession
 } = await import('./orca-runtime-test-fixtures.spec')
+
+function sshFolderRuntime() {
+  const folderStore = createFolderWorkspaceRuntimeStore(
+    makeFolderWorkspace({ folderPath: '/srv/notes', executionHostId: 'ssh:target-1' }),
+    makeFolderProjectGroup({ parentPath: '/srv' })
+  )
+  const { runtimeStore } = makeRuntimeStoreWithWorkspaceSession(
+    {
+      ...getDefaultWorkspaceSession(),
+      openFilesByWorktree: {
+        [TEST_FOLDER_WORKSPACE_KEY]: [
+          {
+            filePath: '/srv/notes/plan.md',
+            relativePath: 'plan.md',
+            worktreeId: TEST_FOLDER_WORKSPACE_KEY,
+            language: 'markdown'
+          }
+        ]
+      }
+    },
+    'ssh:target-1'
+  )
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the merged fixture implements every store method these folder paths call.
+  return new OrcaRuntimeService({
+    ...runtimeStore,
+    ...folderStore,
+    getWorkspaceSession: runtimeStore.getWorkspaceSession,
+    setWorkspaceSession: runtimeStore.setWorkspaceSession,
+    getWorkspaceSessionHostIds: () => ['local', 'ssh:target-1']
+  } as never)
+}
 
 async function folderRuntime(initial: WorkspaceSessionState = getDefaultWorkspaceSession()) {
   const folderPath = await mkdtemp(join(tmpdir(), 'orca-host-editor-folder-'))
@@ -79,35 +111,43 @@ describe('host-owned editor tabs in a folder workspace', () => {
     ])
   })
 
+  it.each([false, true])(
+    'keeps an SSH folder workspace edit tab beside a live diff in the full list (scoped first: %s)',
+    async (scopedFirst) => {
+      const runtime = sshFolderRuntime()
+      // A live diff stands in for one the phone opened; folder workspaces only get diffs via Git.
+      getHostEditorTabState(runtime).addDiff({
+        tabId: 'diff-1',
+        fileId: `${TEST_FOLDER_WORKSPACE_KEY}::diff::unstaged::plan.md`,
+        worktreeId: TEST_FOLDER_WORKSPACE_KEY,
+        filePath: '/srv/notes/plan.md',
+        relativePath: 'plan.md',
+        diffSource: 'unstaged',
+        language: 'markdown',
+        executionHostId: 'ssh:target-1',
+        groupId: null,
+        returnFocusTabId: null
+      })
+      const scopedTypes = async () =>
+        (await runtime.listMobileSessionTabs(`id:${TEST_FOLDER_WORKSPACE_KEY}`)).tabs.map(
+          (tab) => tab.type
+        )
+      const allTypes = async () =>
+        (await runtime.listAllMobileSessionTabs())
+          .find((snapshot) => snapshot.worktree === TEST_FOLDER_WORKSPACE_KEY)
+          ?.tabs.map((tab) => tab.type)
+
+      if (scopedFirst) {
+        expect(await scopedTypes()).toEqual(['markdown', 'file'])
+      }
+      expect(await allTypes()).toEqual(['markdown', 'file'])
+      expect(await scopedTypes()).toEqual(['markdown', 'file'])
+      expect(await allTypes()).toEqual(['markdown', 'file'])
+    }
+  )
+
   it('finds an editor-only workspace stored in an SSH folder partition', async () => {
-    const folderStore = createFolderWorkspaceRuntimeStore(
-      makeFolderWorkspace({ folderPath: '/srv/notes', executionHostId: 'ssh:target-1' }),
-      makeFolderProjectGroup({ parentPath: '/srv' })
-    )
-    const { runtimeStore } = makeRuntimeStoreWithWorkspaceSession(
-      {
-        ...getDefaultWorkspaceSession(),
-        openFilesByWorktree: {
-          [TEST_FOLDER_WORKSPACE_KEY]: [
-            {
-              filePath: '/srv/notes/plan.md',
-              relativePath: 'plan.md',
-              worktreeId: TEST_FOLDER_WORKSPACE_KEY,
-              language: 'markdown'
-            }
-          ]
-        }
-      },
-      'ssh:target-1'
-    )
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the merged fixture implements every store method these folder paths call.
-    const runtime = new OrcaRuntimeService({
-      ...runtimeStore,
-      ...folderStore,
-      getWorkspaceSession: runtimeStore.getWorkspaceSession,
-      setWorkspaceSession: runtimeStore.setWorkspaceSession,
-      getWorkspaceSessionHostIds: () => ['local', 'ssh:target-1']
-    } as never)
+    const runtime = sshFolderRuntime()
 
     const all = await runtime.listAllMobileSessionTabs()
 

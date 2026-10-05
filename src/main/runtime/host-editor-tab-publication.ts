@@ -5,7 +5,6 @@ import type {
 import type { RuntimeNavigationTarget } from '../../shared/runtime-navigation'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import { assertHostEditorAuthority, type EditorAuthorityHost } from './editor-authority'
-import { listWorkspaceSessionEditRowWorktreeIds } from './host-editor-session-model'
 import {
   buildHostEditorMobileTabs,
   overlayHostEditorTabs,
@@ -107,19 +106,6 @@ export function listHostEditorMobileTabs(
     worktreeId,
     getHostEditorTabState(runtime).listDiffs(worktreeId)
   )
-}
-
-/** Worktrees with host editor tabs that a terminal-only census would miss. */
-export function listHostEditorWorktreeIds(
-  runtime: HostEditorTabStateOwner,
-  session: WorkspaceSessionState | null
-): string[] {
-  return [
-    ...new Set([
-      ...(session ? listWorkspaceSessionEditRowWorktreeIds(session) : []),
-      ...getHostEditorTabState(runtime).listDiffWorktreeIds()
-    ])
-  ]
 }
 
 export function overlayHostEditorTabsOnSnapshot(
