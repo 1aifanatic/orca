@@ -20,7 +20,8 @@ export type OrcadSourceStateStore = Pick<
   'inspectOrcadMigrationSourceState' | 'getFolderWorkspaces' | 'getProjectGroups' | 'getRepos'
 >
 
-export const ORCAD_SOURCE_STATE_FINGERPRINT_VERSION = 'v1'
+// v2: worktree metadata covers identity-backed rows and hostId-attributed unqualified keys.
+export const ORCAD_SOURCE_STATE_FINGERPRINT_VERSION = 'v2'
 
 /**
  * The whole retained source as it is now, so a delta's baseline covers every row still kept. Null

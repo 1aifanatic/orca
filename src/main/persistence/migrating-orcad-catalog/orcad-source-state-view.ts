@@ -4,7 +4,8 @@
  * partitions, a tab kind no move carries) still holds drafts an older build may have edited, and
  * leaving them out would let their edit read as unchanged and be retired.
  *
- * Null when any session cannot be read: the retained source is then unverified, never "unchanged".
+ * Null when any session cannot be read, or worktree metadata claims the source host but cannot be
+ * attributed: the retained source is then unverified, never "unchanged".
  */
 import { getAutomationRunRepoId } from '../../../shared/automation-run-identity'
 import { LOCAL_EXECUTION_HOST_ID } from '../../../shared/execution-host'
@@ -20,6 +21,7 @@ import {
   unqualifyOrcadMigrationOwnerKey
 } from './orcad-source-scope'
 import { sessionPartitions } from './orcad-source-workspace-session-fragments'
+import { inspectOrcadSourceWorktreeMetadata } from './orcad-source-worktree-metadata'
 
 export type OrcadSourceStateView = {
   drafts: unknown[]
@@ -79,9 +81,17 @@ export function collectOrcadSourceStateView(
         automation.reuseSession,
         automation.missedRunPolicy
       ])
-    const worktrees = Object.entries(state.worktreeMeta)
-      .filter(([key]) => orcadMigrationOwnerMatchesScope(key, scope))
-      .map(([key, meta]) => [unqualifyOrcadMigrationOwnerKey(key), meta.displayName, meta.comment])
+    // Why export's attribution: retirement deletes what it owns, so the view must see every
+    // representation it owns too; metadata it cannot attribute leaves the source unverified.
+    const metadata = inspectOrcadSourceWorktreeMetadata(state, scope)
+    if (metadata.blockedCount > 0) {
+      return null
+    }
+    const worktrees = metadata.rows.map(({ sourceKey, meta }) => [
+      unqualifyOrcadMigrationOwnerKey(sourceKey),
+      meta.displayName,
+      meta.comment
+    ])
     return { drafts, automations, worktrees }
   } catch (error) {
     console.warn('[migration] Unreadable retained source state; it stays unverified:', error)
