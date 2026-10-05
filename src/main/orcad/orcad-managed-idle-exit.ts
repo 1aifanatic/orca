@@ -47,6 +47,8 @@ export type OrcadManagedIdleExitPorts = {
   hasDaemon: () => boolean
   agentStates: () => readonly { state: string }[]
   hasStagedMigration: () => boolean
+  /** An enabled schedule or an unsettled run; nothing would fire either once the host exits. */
+  automationsBusy: () => boolean
   /** Exists while a client holds the host's activation fence (update, rollback, decommission). */
   activationFenceExists: (root: string) => Promise<boolean>
 }
@@ -83,6 +85,7 @@ export function createOrcadIdleProbes(
       read: () => verdict(ports.agentStates().some((entry) => entry.state === 'working'))
     },
     { name: 'migration', read: () => verdict(ports.hasStagedMigration()) },
+    { name: 'automations', read: () => verdict(ports.automationsBusy()) },
     {
       name: 'activation',
       read: async () => verdict(await ports.activationFenceExists(config.activationRoot))

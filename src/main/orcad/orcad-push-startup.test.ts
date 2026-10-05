@@ -41,6 +41,11 @@ vi.mock('./orcad-daemon-supervision', () => ({
   stopOrcadDaemon: async () => {}
 }))
 vi.mock('./orcad-health', () => ({ collectOrcadHealth: async () => ({}) }))
+// The runtime stub has no automation surface; orcad-automations.test.ts covers that wiring.
+vi.mock('./orcad-automations', () => ({
+  startOrcadAutomations: () => {},
+  orcadAutomationsKeepHostBusy: () => false
+}))
 // Why: the real updater would fetch rules from GitHub inside a unit test.
 vi.mock('../runtime/agent-state-rules/agent-state-rules-live-update', () => ({
   startAgentStateRulesLiveUpdates: () => {}
