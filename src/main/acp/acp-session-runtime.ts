@@ -14,7 +14,12 @@ import {
   type AcpPermissionHandler
 } from './acp-permission-requests'
 import { readAcpSessionEvent, type AcpSessionEvent } from './acp-session-events'
-import { confirmAcpPromptCancel, type ActivePrompt } from './acp-prompt-cancel'
+import {
+  cancelAcpPromptForStop,
+  requestAcpSteerCancel,
+  type AcpCancelChannel,
+  type ActivePrompt
+} from './acp-prompt-cancel'
 import {
   setupAcpSession,
   type AcpSessionStarted,
@@ -173,29 +178,19 @@ export class AcpSessionRuntime {
     return active.response
   }
 
-  /** Sends `session/cancel` whenever the session runs: the agent may be in a turn it began itself.
-   *  With Orca's prompt running, also waits (bounded) for that prompt to settle. */
+  /** A Stop's cancel (`cancelAcpPromptForStop`): bounded, and past the bound it closes. A prompt
+   *  that settles in time leaves the agent running; the Stop's owner ends its process. */
   cancel(options: { meta?: CancelNotification['_meta'] } = {}): Promise<void> {
-    if (!this.started) {
-      return Promise.reject(new Error('ACP session has not started'))
-    }
-    const params: CancelNotification = {
-      sessionId: this.started.sessionId,
-      ...withMeta(options.meta)
-    }
-    this.peer.cancelIncomingRequests()
-    const active = this.activePrompt
-    if (!active) {
-      return this.peer.notify('session/cancel', params)
-    }
-    active.cancelling = true
-    active.cancelPromise ??= confirmAcpPromptCancel(active, {
-      send: () => this.peer.notify('session/cancel', params),
-      close: (error) => this.peer.close(error),
-      closed: () => this.peer.closed,
-      timeoutMs: Math.min(this.options.cancelTimeoutMs ?? 10_000, MAX_TIMER_DELAY_MS)
-    })
-    return active.cancelPromise
+    const channel = this.cancelChannel(options.meta)
+    return channel
+      ? cancelAcpPromptForStop(this.activePrompt, channel)
+      : Promise.reject(new Error('ACP session has not started'))
+  }
+
+  /** A steer's cancel (`requestAcpSteerCancel`): never bounded and never closes. */
+  requestSteerCancel(options: { meta?: CancelNotification['_meta'] } = {}): Promise<void> {
+    const channel = this.cancelChannel(options.meta)
+    return channel ? requestAcpSteerCancel(this.activePrompt, channel) : Promise.resolve()
   }
 
   async setMode(modeId: string, meta?: Meta): Promise<SetSessionModeResponse> {
@@ -238,6 +233,20 @@ export class AcpSessionRuntime {
   close(error?: Error): void {
     this.peer.close(error)
     this.listeners.clear()
+  }
+
+  private cancelChannel(meta: CancelNotification['_meta']): AcpCancelChannel | null {
+    if (!this.started) {
+      return null
+    }
+    const params: CancelNotification = { sessionId: this.started.sessionId, ...withMeta(meta) }
+    return {
+      send: () => this.peer.notify('session/cancel', params),
+      cancelIncomingRequests: () => this.peer.cancelIncomingRequests(),
+      close: (error) => this.peer.close(error),
+      closed: () => this.peer.closed,
+      timeoutMs: Math.min(this.options.cancelTimeoutMs ?? 10_000, MAX_TIMER_DELAY_MS)
+    }
   }
 
   private sessionId(): string {
