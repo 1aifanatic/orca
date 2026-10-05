@@ -3,7 +3,6 @@
 
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 import { withTimeout } from '../../../shared/promise-timeout-fallback'
-import type { AgentJournalItemIdentity } from '../../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionStopCause } from './structured-agent-session-adapter'
 import type { StructuredAgentSessionLifetimeContext } from './structured-agent-session-host-lifetime'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
@@ -15,8 +14,7 @@ import { sentSinceStop } from './structured-agent-session-queued-stop'
  *  own step (`recorded` names its reason); any other stop names the reason its event records, with
  *  the host's text for it. Quit writes none: its resume marker's trigger records why. */
 export type StructuredAgentSessionStopEnding =
-  /** `settlesStopNote`: the note of the session-ending Stop whose wind-down this end is. */
-  | { recorded: 'user-stop'; settlesStopNote?: AgentJournalItemIdentity }
+  | { recorded: 'user-stop' }
   | {
       cause: Exclude<StructuredAgentSessionStopCause, 'user-stop'>
       reason?: string
