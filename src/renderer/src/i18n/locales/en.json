@@ -16871,7 +16871,10 @@
           "goToWorkspace": "Go to workspace",
           "copy": "Copy",
           "clear": "Clear from list",
-          "agentSection": "Agent"
+          "agentSection": "Agent",
+          "markManyRead": "Mark {{count}} as read",
+          "markManyUnread": "Mark {{count}} as unread",
+          "clearMany": "Clear {{count}} from list"
         }
       },
       "confirmation": {
