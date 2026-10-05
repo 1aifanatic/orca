@@ -17,12 +17,7 @@ import {
 } from '../../shared/orcad-migration-scrollback'
 import type { Store } from '../persistence'
 
-export type OrcadMigrationSnapshotSource = Pick<
-  Store,
-  | 'readOrcadMigrationSourceSnapshotChunk'
-  | 'retainOrcadMigrationScrollback'
-  | 'releaseOrcadMigrationScrollback'
->
+export type OrcadMigrationSnapshotSource = Pick<Store, 'readOrcadMigrationSourceSnapshotChunk'>
 
 export type OrcadMigrationSnapshotDestination = {
   readState: (manifest: OrcadMigrationManifest) => Promise<OrcadMigrationCatalogState>
@@ -42,13 +37,8 @@ export async function transferOrcadMigrationSnapshots(args: {
   if (snapshots.length === 0) {
     return
   }
-  // Closing a tab mid-transfer must not delete the bytes this manifest promised.
-  args.source.retainOrcadMigrationScrollback(args.manifest)
-  try {
-    await sendSnapshots(args, snapshots)
-  } finally {
-    args.source.releaseOrcadMigrationScrollback(args.manifest.migrationId)
-  }
+  // The journal holds these bytes until commit or abort, so a closed tab still sends on a retry.
+  await sendSnapshots(args, snapshots)
 }
 
 async function sendSnapshots(

@@ -64,10 +64,7 @@ export function orcadDeltaSourceStore(
     getSshTarget: (id) => store.getSshTarget(id),
     getSshRemotePtyLeases: (id) => store.getSshRemotePtyLeases(id),
     readOrcadMigrationSourceSnapshotChunk: (...args) =>
-      store.readOrcadMigrationSourceSnapshotChunk(...args),
-    retainOrcadMigrationScrollback: (manifest) => store.retainOrcadMigrationScrollback(manifest),
-    releaseOrcadMigrationScrollback: (migrationId) =>
-      store.releaseOrcadMigrationScrollback(migrationId)
+      store.readOrcadMigrationSourceSnapshotChunk(...args)
   }
 }
 

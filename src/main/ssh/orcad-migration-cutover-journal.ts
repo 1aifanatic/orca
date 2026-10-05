@@ -31,6 +31,25 @@ export class OrcadMigrationCutoverJournalUnreadableError extends Error {
   }
 }
 
+type JournalChangeListener = (userDataPath: string) => void
+let journalChangeListener: JournalChangeListener | null = null
+
+/** Persistence state that follows the journal (scrollback retention) re-syncs on every change. */
+export function setOrcadMigrationJournalChangeListener(
+  listener: JournalChangeListener | null
+): void {
+  journalChangeListener = listener
+}
+
+function notifyJournalChanged(userDataPath: string): void {
+  try {
+    journalChangeListener?.(userDataPath)
+  } catch (error) {
+    // The journal write is already durable; a follower failing must not undo or fail it.
+    console.warn('[orcad-migration] Journal change follower failed:', error)
+  }
+}
+
 // Why: hidden-row checks run on every list call, and each journal embeds a full manifest.
 const parsedJournals = new Map<string, { key: string; cutovers: OrcadMigrationSourceCutover[] }>()
 
@@ -140,6 +159,7 @@ export function writeOrcadMigrationSourceCutover(
   )
   syncDirectoryDurablySync(directory)
   parsedJournals.delete(directory)
+  notifyJournalChanged(userDataPath)
 }
 
 export function removeOrcadMigrationSourceCutover(userDataPath: string, migrationId: string): void {
@@ -152,6 +172,7 @@ export function removeOrcadMigrationSourceCutover(userDataPath: string, migratio
   if (existsSync(directory)) {
     syncDirectoryDurablySync(directory)
   }
+  notifyJournalChanged(userDataPath)
 }
 
 /** Every journal a host's stopped or never-registered server leaves behind; they grant nothing. */
