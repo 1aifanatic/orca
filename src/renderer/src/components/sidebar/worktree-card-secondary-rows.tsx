@@ -36,7 +36,7 @@ export function WorktreeCardSecondaryRows({
     childWorkspaceShortLabel,
     isDeleting
   } = card
-  const { hasMetaRow } = presentation
+  const { hasMetaRow, showCombinedStatusSlot } = presentation
 
   return (
     <>
@@ -140,7 +140,16 @@ export function WorktreeCardSecondaryRows({
       )}
 
       {!newCardStyle && lineageChildren && (
-        <div className="-ml-[1.125rem] mt-1.5 w-[calc(100%+1.125rem)] space-y-1">
+        <div
+          className={cn(
+            'mt-1.5 space-y-1',
+            // Why: the outdent pulls children back over the 22px status lane; with no lane, ml-1
+            // keeps the same step between parent and child titles.
+            showCombinedStatusSlot
+              ? '-ml-[1.125rem] w-[calc(100%+1.125rem)]'
+              : 'ml-1 w-[calc(100%-0.25rem)]'
+          )}
+        >
           {lineageChildren}
         </div>
       )}

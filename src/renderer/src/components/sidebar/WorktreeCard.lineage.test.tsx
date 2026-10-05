@@ -44,6 +44,10 @@ vi.mock('@/components/ui/tooltip', () => ({
   TooltipTrigger: ({ children }: { children: ReactNode }) => <>{children}</>
 }))
 
+vi.mock('./use-worktree-activity-status', () => ({
+  useWorktreeActivityStatus: () => 'idle'
+}))
+
 vi.mock('./use-worktree-sleep-state', () => ({
   useIsSleepingWorktree: () => false
 }))
@@ -140,6 +144,30 @@ describe('WorktreeCard lineage indicators', () => {
       expect(markup).toContain('aria-label="Hide 1 child workspace"')
       expect(markup).toContain('1 child')
       expect(markup).not.toContain('Parent workspace')
+    },
+    WORKTREE_CARD_IMPORT_TIMEOUT_MS
+  )
+
+  // Why: the legacy outdent is sized against the status lane; without one it would undercut the step.
+  it(
+    'outdents legacy lineage children only over a status lane',
+    async () => {
+      const { default: WorktreeCard } = await import('./WorktreeCard')
+      const render = (): string =>
+        renderToStaticMarkup(
+          <WorktreeCard
+            worktree={makeWorktree()}
+            repo={makeRepo()}
+            isActive={false}
+            lineageChildren={<span>child</span>}
+          />
+        )
+
+      worktreeCardProperties = ['status']
+      expect(render()).toContain('-ml-[1.125rem] w-[calc(100%+1.125rem)]')
+      worktreeCardProperties = []
+      expect(render()).not.toContain('-ml-[1.125rem]')
+      expect(render()).toContain('ml-1 w-[calc(100%-0.25rem)]')
     },
     WORKTREE_CARD_IMPORT_TIMEOUT_MS
   )
