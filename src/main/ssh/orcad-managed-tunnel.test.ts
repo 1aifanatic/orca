@@ -11,6 +11,7 @@ import type { SshConnectionStore } from './ssh-connection-store'
 import type { SshPortForwardManager } from './ssh-port-forward'
 import { OrcadManagedTunnelManager } from './orcad-managed-tunnel'
 import type { OrcadManagedTunnelTargeting } from './orcad-managed-tunnel-target'
+import { createCancelledConnectAttemptError } from './ssh-connect-attempt-cancellation'
 
 function createEnvironment(linkKind: 'orcadDeployment' | 'sshAccess'): KnownRuntimeEnvironment {
   const paired = createEnvironmentFromPairingOffer({
@@ -343,6 +344,35 @@ describe.each(['orcadDeployment', 'sshAccess'] as const)(
       await expect(first).rejects.toThrow('superseded')
       await expect(joined).resolves.toBeUndefined()
       expect(state.addForward).toHaveBeenCalledTimes(2)
+    })
+
+    it('lets a caller that joined a run a disconnect cancelled build its own, once', async () => {
+      const state = setup()
+      let cancel!: () => void
+      state.connect.mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            cancel = () => reject(createCancelledConnectAttemptError())
+          })
+      )
+      const restore = state.manager.ensure(environment())
+      const connect = state.manager.ensure(environment())
+      cancel()
+      await expect(restore).rejects.toThrow('SSH connection attempt was cancelled')
+      await expect(connect).resolves.toBeUndefined()
+      expect(state.connect).toHaveBeenCalledTimes(2)
+      expect(state.addForward).toHaveBeenCalledOnce()
+    })
+
+    it('hands a joiner the joined run’s auth failure instead of prompting again', async () => {
+      const state = setup()
+      const auth = new Error('All configured authentication methods failed')
+      state.connect.mockRejectedValueOnce(auth)
+      const first = state.manager.ensure(environment())
+      const joined = state.manager.ensure(environment())
+      await expect(first).rejects.toBe(auth)
+      await expect(joined).rejects.toBe(auth)
+      expect(state.connect).toHaveBeenCalledOnce()
     })
 
     it('re-reads the saved environment after connection rather than trusting its initial snapshot', async () => {

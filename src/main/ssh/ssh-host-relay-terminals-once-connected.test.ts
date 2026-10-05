@@ -48,9 +48,23 @@ describe('re-checking relay terminals once the relay session is up', () => {
         store: detached,
         targetId: 'ssh-1',
         decision: unverifiable,
-        listRelayPtyIds: relay(['pty-1'])
+        listRelayPtyIds: relay(['pty-1']),
+        isCurrent: () => true
       })
     ).resolves.toEqual({ route: 'relay', reason: 'relay_terminals_live', terminals: 1 })
+  })
+
+  it('reports and retires nothing for a connect cancelled while the relay answered', async () => {
+    await expect(
+      relayTerminalsOnceConnected({
+        store: detached,
+        targetId: 'ssh-1',
+        decision: unverifiable,
+        listRelayPtyIds: relay([]),
+        isCurrent: () => false
+      })
+    ).resolves.toBeNull()
+    expect(detached.markSshRemotePtyLease).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -62,7 +76,8 @@ describe('re-checking relay terminals once the relay session is up', () => {
         store: detached,
         targetId: 'ssh-1',
         decision: unverifiable,
-        listRelayPtyIds: list
+        listRelayPtyIds: list,
+        isCurrent: () => true
       })
     ).resolves.toBeNull()
     expect(detached.markSshRemotePtyLease).not.toHaveBeenCalled()
@@ -93,7 +108,8 @@ describe('re-checking relay terminals once the relay session is up', () => {
         targetId: 'ssh-1',
         decision: sixUnverifiable,
         // The old relay is gone (only its .credential is left), so it lists nothing.
-        listRelayPtyIds: relay(['pty2:8ea088dc:2', 'pty2:8ea088dc:3'], [])
+        listRelayPtyIds: relay(['pty2:8ea088dc:2', 'pty2:8ea088dc:3'], []),
+        isCurrent: () => true
       })
     ).resolves.toEqual({ route: 'relay', reason: 'relay_terminals_live', terminals: 2 })
     expect(upgraded.markSshRemotePtyLease).not.toHaveBeenCalled()
@@ -106,7 +122,8 @@ describe('re-checking relay terminals once the relay session is up', () => {
         store: upgraded,
         targetId: 'ssh-1',
         decision: sixUnverifiable,
-        listRelayPtyIds: relay([], [])
+        listRelayPtyIds: relay([], []),
+        isCurrent: () => true
       })
     ).resolves.toBeNull()
     expect(new Set(upgraded.getSshRemotePtyLeases().map((lease) => lease.state))).toEqual(
@@ -136,7 +153,8 @@ describe('re-checking relay terminals once the relay session is up', () => {
         store: detached,
         targetId: 'ssh-1',
         decision,
-        listRelayPtyIds: relay(['pty-1'])
+        listRelayPtyIds: relay(['pty-1']),
+        isCurrent: () => true
       })
     ).resolves.toBeNull()
   })
@@ -147,7 +165,8 @@ describe('re-checking relay terminals once the relay session is up', () => {
         store: detached,
         targetId: 'ssh-1',
         decision: unverifiable,
-        listRelayPtyIds: null
+        listRelayPtyIds: null,
+        isCurrent: () => true
       })
     ).resolves.toBeNull()
   })

@@ -1,8 +1,10 @@
 /**
  * Why a fence answered "held": a run that is still working clears on its own and is retried on
- * a later connect, while an interrupted run (a journal, or a lock past its stale age) needs Recover.
+ * a later connect. Only a lock past its stale age, or a journal no fence guards, needs Recover: a
+ * live run journals under a fresh fence too, and Recover cannot take a fresh fence anyway.
  */
 import {
+  orcadActivationFenceExists,
   orcadActivationTransactionRoot,
   type OrcadActivationLockOptions
 } from './orcad-activation-lock'
@@ -25,9 +27,10 @@ export async function orcadActivationFenceRefusal(
     RELAY_INSTALL_LOCK_NAME
   )
   // An unreadable answer reads as busy: retrying later is never wrong, a sticky failure can be.
-  const journal = await readOrcadActivationTransaction(options).catch(() => null)
   const stuck =
-    journal !== null || (await isRelayInstallLockStale(options.conn, lockDir, options.host))
+    (await isRelayInstallLockStale(options.conn, lockDir, options.host)) ||
+    ((await readOrcadActivationTransaction(options).catch(() => null)) !== null &&
+      !(await orcadActivationFenceExists(options).catch(() => true)))
   return stuck
     ? {
         code: ORCAD_ACTIVATION_RECOVERY_REQUIRED_CODE,

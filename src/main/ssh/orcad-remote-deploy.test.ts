@@ -381,7 +381,7 @@ describe('deployOrcad', () => {
   it.each([
     ['a fresh fence with no journal', false, false, 'orcad_activation_fence_busy'],
     ['a fence past its stale age', true, false, 'orcad_activation_recovery_required'],
-    ['a fence with a journal', false, true, 'orcad_activation_recovery_required']
+    ['a fresh fence over a live run journal', false, true, 'orcad_activation_fence_busy']
   ])('refuses before uploading on %s', async (_label, stale, journal, code) => {
     vi.mocked(isRelayInstallLockStale).mockResolvedValueOnce(stale)
     const JOURNAL = serializeOrcadActivationTransaction(

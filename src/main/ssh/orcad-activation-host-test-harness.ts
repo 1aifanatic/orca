@@ -23,10 +23,13 @@ export function isReadinessRead(command: string): boolean {
   return command.startsWith('head -c ') || command.includes('orcad_readiness_wait')
 }
 
+const WAKE_OWNER = '.orca-wake-owner'
+
 export class FakeOrcadHost {
   record: string | null = null
   journal: string | null = null
   fence = false
+  wakeOwner: string | null = null
   readonly alive = new Set<string>()
   readonly pidFiles = new Set<string>()
   data = 'profiles-v1'
@@ -117,6 +120,17 @@ export class FakeOrcadHost {
 
   exec(command: string): string {
     this.commands.push(command)
+    // A wake's owner token lives inside the fence's lock dir, so the fence's release drops it.
+    if (command.includes(WAKE_OWNER)) {
+      const written = /printf %s '([^']*)'/u.exec(command)?.[1]
+      if (written !== undefined) {
+        this.wakeOwner = this.fence ? written : null
+        return ''
+      }
+      return this.wakeOwner === null || !this.fence
+        ? '__ORCAD_RECORD_ABSENT__\n'
+        : `__ORCAD_RECORD_PRESENT__\n${this.wakeOwner}`
+    }
     const version = /\/orcad-(\d+\.\d+\.\d+\+[0-9a-f]+)/u.exec(command)?.[1] ?? null
     const snapshot = /orcad-state-snapshots\/([A-Za-z0-9][A-Za-z0-9.+-]*)/u.exec(command)?.[1]
     if (command.includes('__ORCAD_RECORD_PRESENT__') && command.includes('orcad.lock')) {
