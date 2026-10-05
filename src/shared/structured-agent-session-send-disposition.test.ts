@@ -183,25 +183,6 @@ describe('what a rejection shows the user', () => {
     ).toBeNull()
   })
 
-  // A Retry would only be blocked again; the journal row shows it on every device.
-  it("keeps no copy of a message a hook blocked, whether it's answered or reconciled", () => {
-    const result = rejectedWith('A hook blocked this message: No secrets.', {
-      rejection: { kind: 'hookBlocked', detail: { text: 'No secrets', audience: 'person' } }
-    })
-    if (!result.ok || !('submission' in result.value)) {
-      throw new Error('expected rejected submission fixture')
-    }
-    expect(reconcileStructuredAgentSessionOutbox([entry], [result.value.submission], [])).toEqual([])
-    expect(
-      disposeStructuredAgentSessionSendResult({
-        entries: [entry],
-        entry,
-        result,
-        createOperationId: () => 'unused'
-      })
-    ).toEqual({ entries: [], error: null })
-  })
-
   it('claims no cause when the rejection names none', () => {
     expect(notice(null)).toBe('Your message was not sent.')
   })

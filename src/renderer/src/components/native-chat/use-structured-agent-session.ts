@@ -189,8 +189,7 @@ export function useStructuredAgentSession(args: {
     transcriptItems,
     transcriptOutbox,
     submissions,
-    queuedMessageIds,
-    outbox
+    queuedMessageIds
   )
   const queuedController = useStructuredAgentSessionQueuedMessages({
     enabled: queueCapable && transportState.fence !== null,

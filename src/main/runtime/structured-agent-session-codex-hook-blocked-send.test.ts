@@ -23,13 +23,15 @@ import { classifyDispatchRejection } from '../../shared/structured-agent-session
 import { CodexAppServerRequestError } from '../codex/codex-app-server-connection'
 import { MAX_CODEX_HOOK_REASON_CHARS } from '../codex/codex-structured-prompt-block'
 import { owesStructuredAgentSessionWork } from '../../shared/structured-agent-session-owed-work'
-import { projectStructuredAgentSessionMessages } from '../../shared/structured-agent-session-message-projection'
+import {
+  projectStructuredAgentSessionMessages,
+  structuredAgentSessionRejectedShownInPlace
+} from '../../shared/structured-agent-session-message-projection'
 import { createStructuredAgentSessionOutboxEntry } from '../../shared/structured-agent-session-outbox'
 import { reconcileStructuredAgentSessionOutbox } from '../../shared/structured-agent-session-outbox-reconcile'
 import { admitStructuredAgentSessionOutboxEntry } from '../../shared/structured-agent-session-outbox-admission'
 import { readWholeAgentSessionFailureFact } from '../../shared/agent-session-failure'
 import { agentSessionFailureSentence } from '../../shared/agent-session-failure-words'
-import { undeliveredSentElsewhere } from '../../shared/structured-agent-session-failed-start-elsewhere'
 import {
   HOST_TEST_SESSION as SESSION,
   HOST_TEST_THREAD as THREAD,
@@ -169,10 +171,13 @@ async function blockedAndTheChatMovesOn(clientMessageId: string) {
   return journal.submissions.find((entry) => entry.clientMessageId === clientMessageId)
 }
 
-/** What a desktop shows for the message, read from its journal row. */
+/** What a desktop shows for the message, read from the journal row it draws in place. */
 function sentenceFor(journal: AgentJournalSnapshot, clientMessageId: string): string | undefined {
-  const row = undeliveredSentElsewhere(journal.submissions, []).find(
-    (entry) => entry.clientMessageId === clientMessageId
+  const shown = structuredAgentSessionRejectedShownInPlace(journal.submissions, [], new Set())
+  const row = journal.submissions.find(
+    (entry) =>
+      entry.clientMessageId === clientMessageId &&
+      shown.has(agentJournalSubmissionKey(entry.clientMessageId))
   )
   const fact = readWholeAgentSessionFailureFact(row?.rejection)
   return (
@@ -435,7 +440,7 @@ describe('a Codex send a Codex hook blocked', () => {
     const journal = await snapshot()
     const key = agentJournalSubmissionKey(followUp)
 
-    // The sending desktop lets its copy go, as no Retry can get past the hook.
+    // The sending desktop lets its copy go once the row that draws it is loaded, as for any rejection.
     const queued = (clientMessageId: string, text: string) =>
       createStructuredAgentSessionOutboxEntry({
         clientMessageId,
@@ -485,8 +490,7 @@ describe('a Codex send a Codex hook blocked', () => {
     )
     // The phone, which can't mark a message unsent yet, draws it as sent, as before the block.
     const onPhone = projectStructuredAgentSessionMessages(journal.items, [], journal.submissions, {
-      rejectedInPlace: false,
-      showsUndeliveredSentElsewhere: false
+      rejectedInPlace: false
     }).filter(({ id }) => id === key)
     expect(onPhone).toHaveLength(1)
     expect(onPhone[0]).not.toHaveProperty('unsent')

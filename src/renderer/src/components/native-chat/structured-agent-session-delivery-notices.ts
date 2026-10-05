@@ -54,7 +54,6 @@ import {
   structuredAgentSessionRejectionParts
 } from '../../../../shared/structured-agent-session-send-disposition'
 import { structuredAgentSessionRejectedShownInPlace } from '../../../../shared/structured-agent-session-message-projection'
-import { structuredAgentSessionReplacedIds } from '../../../../shared/structured-agent-session-outbox-rotation'
 import { translate } from '@/i18n/i18n'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
@@ -280,8 +279,7 @@ export function structuredAgentSessionDeliveryNotices(
   const shown = structuredAgentSessionRejectedShownInPlace(
     submissions,
     queuedMessageIds,
-    commandItemIds,
-    structuredAgentSessionReplacedIds(outbox)
+    commandItemIds
   )
   for (const submission of rejected.values()) {
     const { clientMessageId } = submission

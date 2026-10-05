@@ -2,9 +2,6 @@
 
 import { cleanup, renderHook } from '@testing-library/react'
 import { afterEach, expect, it } from 'vitest'
-import { agentSessionFailureWords } from '../../../../shared/agent-session-failure-words'
-import { agentSessionFailureFact } from '../../../../shared/agent-session-failure'
-import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import { DISPATCH_REJECTED_CANCELLED } from '../../../../shared/structured-agent-session-dispatch-rejection'
 import { useStructuredAgentSessionDeliveryNotices } from './use-structured-agent-session-delivery-notices'
@@ -124,39 +121,4 @@ it('keeps the notice of a row that did not change when another one does', () => 
 
   expect(result.current.size).toBe(2)
   expect(result.current.get('orca:lost')).toBe(lost)
-})
-
-// A message the agent's history showed it never got is drawn from its row on a client with no
-// entry for it, and says so.
-it('says a message the agent never got was not delivered, with no Retry, on a client with no entry', () => {
-  const undelivered: AgentJournalSubmission = {
-    clientMessageId: 'op-undelivered',
-    fence: 1,
-    payloadFingerprint: 'fingerprint',
-    dispatchState: 'rejected',
-    providerItemId: null,
-    submittedAt: 4,
-    resolvedAt: 7,
-    handoverRecorded: true,
-    handedOverAt: 5,
-    recovered: true,
-    ...agentSessionFailureWords(agentSessionFailureFact('notDelivered'), { surface: 'rejection' })
-  }
-  const { result } = renderHook(() =>
-    useStructuredAgentSessionDeliveryNotices({
-      outbox: EMPTY,
-      submissions: [undelivered],
-      journalItems: EMPTY,
-      failedHere: NONE,
-      queuedMessageIds: NO_CARDS,
-      retry: () => {},
-      retriesInPlace: true,
-      retryWaitsForHost: NONE,
-      agentName: 'Claude'
-    })
-  )
-
-  expect(result.current.get(agentJournalSubmissionKey('op-undelivered'))).toEqual({
-    text: 'This message was not delivered. Send it again to continue.'
-  })
 })

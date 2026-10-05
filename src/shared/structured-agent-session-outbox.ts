@@ -15,10 +15,6 @@ import {
   type StructuredAgentSessionSendMutation
 } from './structured-agent-session-send-mutation'
 import { parseStructuredAgentSessionOutboxQueueFields } from './structured-agent-session-outbox-delivery'
-import {
-  parseStructuredAgentSessionOutboxRotation,
-  rotateStructuredAgentSessionOutboxEntryId
-} from './structured-agent-session-outbox-rotation'
 
 /** `rejected`: settled as not delivered. The drain never sends it again and nothing queues behind
  *  it. One the host refused unrecorded waits for the user's Retry. One it recorded owes no delivery
@@ -51,9 +47,6 @@ export type StructuredAgentSessionOutboxEntry = {
    *  is sent again or delivered, instead of outliving it as a separate error. On a `queued` entry
    *  it is also the hold (structured-agent-session-outbox-admission). */
   lastFailure?: StructuredAgentSessionAttemptFailure
-  /** The ids this message went out under before a new one replaced them, oldest first
-   *  (structured-agent-session-outbox-rotation). */
-  rotatedFrom?: string[]
 }
 
 /** A host's rejection fact as a message keeps it: never its provider detail, whose log text is not
@@ -216,7 +209,8 @@ export function requeueStructuredAgentSessionSendRefusal(
   // doubt, may have landed, so those keep it. Only a settled refusal proves the message never
   // landed.
   return {
-    ...rotateStructuredAgentSessionOutboxEntryId(entry, createOperationId()),
+    ...entry,
+    clientMessageId: createOperationId(),
     state: refusalSettled ? 'rejected' : 'queued',
     lastAttemptAt: null,
     retryAfterUnknownSubmittedAt: null
@@ -261,7 +255,6 @@ export function parseStructuredAgentSessionOutboxEntry(
         ? entry.retryAfterUnknownSubmittedAt
         : null,
     ...(entry.source === 'launch' ? { source: 'launch' as const } : {}),
-    ...parseStructuredAgentSessionOutboxRotation(entry),
     ...parseStructuredAgentSessionOutboxQueueFields(entry),
     ...(lastFailure ? { lastFailure } : {})
   }

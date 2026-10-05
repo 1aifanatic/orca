@@ -4,17 +4,15 @@ import { isQueuedAgentJournalSubmission } from './agent-session-queued-submissio
 import { isRetryingStructuredAgentSessionStart } from './structured-agent-session-start-retry'
 import { collapseProviderRetryRuns } from './native-chat-provider-retry-runs'
 import type { NativeChatMessage } from './native-chat-types'
-import { dispatchWasWithdrawn } from './structured-agent-session-dispatch-rejection'
+import {
+  dispatchWasBlockedByHook,
+  dispatchWasWithdrawn
+} from './structured-agent-session-dispatch-rejection'
 import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
 import { structuredAgentSessionEntryHeldForRetry } from './structured-agent-session-outbox-admission'
 import { reconcileStructuredAgentSessionOutboxWithQueue } from './structured-agent-session-draft-hand-off'
-import {
-  failedStartsSentElsewhere,
-  undeliveredSentElsewhere
-} from './structured-agent-session-failed-start-elsewhere'
+import { failedStartsSentElsewhere } from './structured-agent-session-failed-start-elsewhere'
 import { projectStructuredItemsToNativeChat } from './structured-agent-session-projection'
-import { dispatchWasBlockedByHook } from './structured-agent-session-dispatch-rejection'
-import { structuredAgentSessionReplacedIds } from './structured-agent-session-outbox-rotation'
 
 export type StructuredAgentSessionMessageProjectionOptions = {
   /** Draw a message the host accepted and then rejected where the host recorded it, as not sent.
@@ -25,12 +23,6 @@ export type StructuredAgentSessionMessageProjectionOptions = {
   /** With `rejectedInPlace` off, still draw a failed start sent from elsewhere as not sent, for a
    *  host that can queue it again: no composer here holds it. */
   showsFailedStartsSentElsewhere?: boolean
-  /** With `rejectedInPlace` off, still draw one sent from elsewhere that was rejected after it was
-   *  handed over, as not sent, on a surface that marks a message so. */
-  showsUndeliveredSentElsewhere?: boolean
-  /** This client's whole outbox, cards' sends included, where `outbox` is only what the transcript
-   *  draws: no row of a message it holds, or of an id its Retry replaced, is drawn beside it. */
-  sentHere?: readonly Pick<StructuredAgentSessionOutboxEntry, 'clientMessageId' | 'rotatedFrom'>[]
 }
 
 /** The loaded items that are a conversation command such as `/compact`, by item id. */
@@ -53,10 +45,7 @@ export function structuredAgentSessionCommandItemIds(
 export function structuredAgentSessionRejectedShownInPlace(
   submissions: readonly AgentJournalSubmission[],
   queuedMessageIds: readonly string[],
-  commandItemIds: ReadonlySet<string>,
-  /** Ids a Retry here replaced with a new one (`structuredAgentSessionReplacedIds`): the copy is
-   *  the message, so the old row is never drawn beside it. */
-  replacedIds: ReadonlySet<string> = new Set()
+  commandItemIds: ReadonlySet<string>
 ): Set<string> {
   const cards = new Set(queuedMessageIds)
   // Each body's copies, as positions in submission order. A withdrawn one is hidden too, so it
@@ -81,7 +70,6 @@ export function structuredAgentSessionRejectedShownInPlace(
       dispatchWasWithdrawn(submission) ||
       submission.queuedMessageId !== undefined ||
       cards.has(submission.clientMessageId) ||
-      replacedIds.has(submission.clientMessageId) ||
       commandItemIds.has(agentJournalSubmissionKey(submission.clientMessageId)) ||
       // Collapses resends of a rejected message: past Retries resent it under a new id, and the
       // host re-delivers its own messages under new ids. Only a later copy sent once the rejection
@@ -112,37 +100,32 @@ export function projectStructuredAgentSessionMessages(
       .filter((submission) => submission.dispatchState === 'rejected')
       .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
   )
-  const sentHere = options.sentHere ?? outbox
   const inPlace = options.rejectedInPlace
     ? structuredAgentSessionRejectedShownInPlace(
         submissions,
         options.queuedMessageIds ?? [],
-        structuredAgentSessionCommandItemIds(items),
-        structuredAgentSessionReplacedIds(sentHere)
+        structuredAgentSessionCommandItemIds(items)
       )
     : new Set<string>()
-  // Sent from elsewhere and refused for good by a failed start, or rejected after it was handed
-  // over: shown as unsent where the journal put it, by a client that draws no other rejection in
-  // place.
+  // Sent from elsewhere and refused for good by a failed start: shown as unsent where the journal
+  // recorded it, by a client that draws no other rejection in place.
   const unsentElsewhere = new Set(
+    !options.rejectedInPlace && options.showsFailedStartsSentElsewhere
+      ? failedStartsSentElsewhere(submissions, outbox).map((submission) =>
+          agentJournalSubmissionKey(submission.clientMessageId)
+        )
+      : []
+  )
+  // A client that can't mark one unsent still draws a message a hook blocked, as sent, as it drew
+  // it before the block was known: no composer holds it back, so hidden it would vanish.
+  const shownAsSent = new Set(
     options.rejectedInPlace
       ? []
-      : [
-          ...(options.showsFailedStartsSentElsewhere
-            ? failedStartsSentElsewhere(submissions, sentHere)
-            : []),
-          ...(options.showsUndeliveredSentElsewhere
-            ? undeliveredSentElsewhere(submissions, sentHere)
-            : [])
-        ].map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
-  )
-  // A surface that can't mark one unsent still draws a message a hook blocked, as sent, as it
-  // drew it before the block was known; it never vanishes.
-  const shownAsSent = new Set(
-    options.rejectedInPlace || options.showsUndeliveredSentElsewhere
-      ? []
-      : undeliveredSentElsewhere(submissions, sentHere)
-          .filter(dispatchWasBlockedByHook)
+      : submissions
+          .filter(
+            (submission) =>
+              dispatchWasBlockedByHook(submission) && submission.queuedMessageId === undefined
+          )
           .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
   )
   const visibleItems: AgentJournalRenderItem[] = []

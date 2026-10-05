@@ -21,10 +21,7 @@ import {
 } from './agent-session-write-failure'
 import type { AgentSessionFailureFact } from './agent-session-failure'
 import type { AgentSessionFailureWordsContext } from './agent-session-failure-words'
-import {
-  classifyDispatchRejection,
-  dispatchWasBlockedByHook
-} from './structured-agent-session-dispatch-rejection'
+import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
 import {
   classifyStructuredAgentSessionSendFailure,
   requeueStructuredAgentSessionSendRefusal,
@@ -271,11 +268,10 @@ export function disposeStructuredAgentSessionSendResult(
     }
   }
   // A Stop's withdrawal failed nothing, first reply or replay: the entry leaves as the reconcile
-  // drops it, with no notice. One a hook blocked leaves too: its journal row shows it.
+  // drops it, with no notice.
   if (
     submission.dispatchState === 'rejected' &&
-    (classifyDispatchRejection(submission).category === 'withdrawn' ||
-      dispatchWasBlockedByHook(submission))
+    classifyDispatchRejection(submission).category === 'withdrawn'
   ) {
     return {
       entries: dropEntry(input),
