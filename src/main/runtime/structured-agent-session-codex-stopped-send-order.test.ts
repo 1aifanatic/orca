@@ -302,3 +302,33 @@ describe('a send a Stop took back, then a send made while it read Stopping', () 
     expect(await drawn()).toEqual(live)
   })
 })
+
+describe('a send a Stop took back before Codex echoed it', () => {
+  it('is drawn as the opener of the turn Codex opened for it, with no row of its own', async () => {
+    const sent = await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    turns.start()
+    await stop()
+    await vi.waitFor(async () => expect(verdictOf(await submissions(), sent)).toBe('withdrawn'))
+
+    // That turn, ended interrupted, carries the stop.
+    expect(await drawn()).toEqual(['look around', 'Cancellation requested.'])
+  })
+
+  it('is drawn where it was sent, then the one row saying it never started, when no turn opened', async () => {
+    const warmUp = await send('warm up')
+    await vi.waitFor(() => expect(answers).toBe(1))
+    turns.start()
+    turns.echo(warmUp)
+    turns.end('completed')
+    const release = turns.holdNextAnswer()
+    const sent = await send('look around')
+    await vi.waitFor(() => expect(answers).toBe(2))
+    const stopping = stop()
+    release()
+    await settledWithin(stopping, 5_000)
+    await vi.waitFor(async () => expect(verdictOf(await submissions(), sent)).toBe('withdrawn'))
+
+    expect(await drawn()).toEqual(['warm up', 'look around', NATIVE_CHAT_STOPPED_BEFORE_START_TEXT])
+  })
+})

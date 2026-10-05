@@ -25,13 +25,7 @@ import type { AgentJournalSubmission } from '../../shared/agent-session-journal-
 import { classifyDispatchRejection } from '../../shared/structured-agent-session-dispatch-rejection'
 import { owesStructuredAgentSessionWork } from '../../shared/structured-agent-session-owed-work'
 import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
-import {
-  agentJournalItemKey,
-  agentJournalSubmissionKey
-} from '../../shared/agent-session-journal-item-key'
-import { NATIVE_CHAT_STOPPED_BEFORE_START_TEXT } from '../../shared/native-chat-stopped-before-start'
-import { structuredAgentTurnAnchors } from '../../shared/native-chat-turn-membership'
-import { projectStructuredAgentSessionMessages } from '../../shared/structured-agent-session-message-projection'
+import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
 import { structuredAgentSessionStopNoteIdentity } from '../native-chat/agent-session-wire/structured-agent-session-command-turn'
 import {
   HOST_TEST_SESSION as SESSION,
@@ -319,22 +313,6 @@ describe('a Codex send its turn ended without taking it', () => {
     const after = await settled()
     expect(verdictOf(after.submissions, sent)).toBe('withdrawn')
     expect(after.owesWork).toBe(false)
-    // Codex opened its turn before echoing it, so that turn, ended interrupted, is the send's: it
-    // carries the stop, and no row of its own follows the send.
-    const snapshot = await host.journalSnapshot(SESSION)
-    const turnRecord = snapshot.items.find(
-      (item) => readAgentJournalTurn(item.body)?.turnId === 'turn-1'
-    )
-    expect(
-      structuredAgentTurnAnchors(snapshot.items, snapshot.submissions).get(turnRecord!.itemId)
-    ).toBe(agentJournalSubmissionKey(sent))
-    expect(
-      projectStructuredAgentSessionMessages(snapshot.items, [], snapshot.submissions, {
-        rejectedInPlace: true
-      }).map((message) =>
-        message.blocks.map((block) => ('text' in block ? block.text : block.type))
-      )
-    ).not.toContainEqual([NATIVE_CHAT_STOPPED_BEFORE_START_TEXT])
 
     // Codex echoing it late changes nothing: a settled answer stands.
     await host.settleLateDispatch({
@@ -820,16 +798,9 @@ describe("a Stop pressed while Codex's turn/start is in flight", () => {
 
     expect(verdictOf((await settled()).submissions, sent)).toBe('withdrawn')
     expect(await statusRows()).toEqual([])
-    const snapshot = await host.journalSnapshot(SESSION)
-    expect(turnRow(snapshot.items)).toMatchObject({ state: 'completed' })
-    // Every client draws the send where it was sent, then the one row saying it never started.
-    const drawn = projectStructuredAgentSessionMessages(snapshot.items, [], snapshot.submissions, {
-      rejectedInPlace: true
+    expect(turnRow((await host.journalSnapshot(SESSION)).items)).toMatchObject({
+      state: 'completed'
     })
-    expect(drawn.slice(-2).map((message) => [message.role, message.blocks])).toEqual([
-      ['user', [{ type: 'text', text: 'look around' }]],
-      ['system', [expect.objectContaining({ text: NATIVE_CHAT_STOPPED_BEFORE_START_TEXT })]]
-    ])
   })
 
   // Its turn/start answer lost, the send is in doubt rather than pending; the child's end takes it
