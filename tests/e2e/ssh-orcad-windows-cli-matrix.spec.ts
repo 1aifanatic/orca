@@ -587,7 +587,7 @@ test('@orcad-cli-relay-kept an open relay terminal keeps a Windows host on the r
       .poll(async () => ((await section.count()) ? await section.innerText() : ''), {
         timeout: 30_000
       })
-      .toContain(`Runs the relay until its ${count} open terminals are closed`)
+      .toMatch(new RegExp(`Runs the relay until its ${count} open terminals? (is|are) closed`, 'u'))
     expect((await hostRows(session.userDataDir)).find((row) => row.id === targetId)).toMatchObject({
       kind: 'ssh',
       connected: true
