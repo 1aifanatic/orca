@@ -202,7 +202,7 @@ function writePtyBinding(
 ): () => void {
   const { runtime, sessions } = owner[ptyBindingPersistenceOperationsContext]
   const sessionBeforeBinding = cloneWorkspaceSessionState(session)
-  const publish = (restoredSession = sessionBeforeBinding): void => {
+  const restore = (restoredSession = sessionBeforeBinding): void => {
     if (resolvedHostId === LOCAL_EXECUTION_HOST_ID) {
       runtime.state.workspaceSession = restoredSession
     } else {
@@ -213,12 +213,17 @@ function writePtyBinding(
     }
   }
   try {
-    const bound = applyPtyBinding(args, session, bindingWorktreeId, paneKey)
-    publish(bound)
+    if (resolvedHostId !== LOCAL_EXECUTION_HOST_ID) {
+      runtime.state.workspaceSessionsByHostId = {
+        ...runtime.state.workspaceSessionsByHostId,
+        [resolvedHostId]: session
+      }
+    }
+    applyPtyBinding(args, session, bindingWorktreeId, paneKey)
     runtime.dirtyProfileStateDomains?.add(
       resolvedHostId === LOCAL_EXECUTION_HOST_ID ? 'workspaceSession' : 'workspaceSessionsByHostId'
     )
-    const boundSession = cloneWorkspaceSessionState(bound)
+    const boundSession = cloneWorkspaceSessionState(session)
     return () => {
       const current = sessions.getWorkspaceSession(resolvedHostId)
       const ownerState = (value: WorkspaceSessionState) => {
@@ -246,11 +251,11 @@ function writePtyBinding(
         args.leafId
       )
       if (rolledBack !== current) {
-        publish(rolledBack)
+        restore(rolledBack)
       }
     }
   } catch (error) {
-    publish()
+    restore()
     throw error
   }
 }
