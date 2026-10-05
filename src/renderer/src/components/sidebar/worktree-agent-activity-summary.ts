@@ -1,5 +1,5 @@
 import type { AppState } from '@/store'
-import { isExplicitAgentStatusFresh } from '@/lib/agent-status'
+import { isAgentStatusShownOnDot } from '@/lib/pane-agent-evidence'
 import { migrationUnsupportedToAgentStatusEntry } from '@/lib/migration-unsupported-agent-entry'
 import {
   mergeAgentStatusOrchestration,
@@ -19,7 +19,7 @@ export type WorktreeAgentActivitySummary = {
   hasLiveMonitoring: boolean
   /** A fresh failed main agent, also while its subagents run; kept apart from clean done. */
   hasFailed: boolean
-  /** Fresh interrupted completion, kept separate from clean done outcomes. */
+  /** An interrupted turn (fresh, cut short, or retained), kept separate from clean done outcomes. */
   hasInterrupted: boolean
   /** A fresh end Orca cannot prove, likewise never a clean done. */
   hasUnconfirmed: boolean
@@ -133,7 +133,7 @@ function getWorktreeAgentActivitySummaries(
       addAgentStatusPaneId(summary, paneIdentity.tabId, paneIdentity.paneId)
       continue
     }
-    if (!isExplicitAgentStatusFresh(entry, now, AGENT_STATUS_STALE_AFTER_MS)) {
+    if (!isAgentStatusShownOnDot(entry, now, AGENT_STATUS_STALE_AFTER_MS)) {
       // Why: staleness ends this row's authority but not the pane's identity — see
       // `stalePaneIdsByTabId`. Dropping both let Orca's self-authored permission title outlive
       // the row it came from and pin the card to a question nobody was asking.
@@ -157,11 +157,17 @@ function getWorktreeAgentActivitySummaries(
 
   for (const retained of Object.values(state.retainedAgentsByPaneKey ?? {})) {
     const summary = summaryForWorktree(retained.worktreeId)
-    // Why: a failed agent is retained so its failure stays visible, not so it reads done.
-    if (agentVerdictDisplayMark(retained.entry) === 'failed') {
-      summary.hasRetainedFailed = true
-    } else {
-      summary.hasRetainedDone = true
+    // Why: a failed or cut-short agent is retained so that stays visible, not so it reads done.
+    switch (agentVerdictDisplayMark(retained.entry)) {
+      case 'failed':
+        summary.hasRetainedFailed = true
+        break
+      case 'interrupted':
+        summary.hasInterrupted = true
+        break
+      case 'unconfirmed':
+      case null:
+        summary.hasRetainedDone = true
     }
     const paneIdentity = parseAgentStatusPaneIdentity(retained.entry?.paneKey)
     if (paneIdentity) {

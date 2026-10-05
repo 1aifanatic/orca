@@ -217,7 +217,7 @@ describe('a turn a crash cut short mid-tool', () => {
     expect(completedStructuredAgentTurnSeconds(timing)).toBe(27)
   })
 
-  // The turn bar reads like a finished turn, so this row is the one place the chat says why.
+  // The turn bar says only that it was interrupted, so this row is the one place the chat says why.
   it('explains the cut once, with one notice row and a turn bar that does not repeat it', async () => {
     openHost({ probeOwner: async () => ({ outcome: 'pid-absent' }) })
 
@@ -242,7 +242,7 @@ describe('a turn a crash cut short mid-tool', () => {
         workedSeconds: completedStructuredAgentTurnSeconds(timing),
         verdict: timing?.verdict
       })
-    ).toEqual({ key: 'workedFor', duration: '27s' })
+    ).toEqual({ key: 'interruptedAfter', duration: '27s' })
   })
 
   it('ends at the pre-crash renewal when the child outlived Orca and recovery stopped it', async () => {
@@ -327,7 +327,7 @@ describe('a turn a read reached before the reconcile proved its owner dead', () 
     unsubscribe()
   })
 
-  it('reports the revision to the status feed as an interruption, which the chat folds as worked', async () => {
+  it('reports the revision to the status feed as an interruption, which the chat folds as interrupted', async () => {
     const published: AgentSessionStatusSummary[] = []
     openHost({
       probeOwner: async () => ({ outcome: 'pid-absent' }),
@@ -343,7 +343,8 @@ describe('a turn a read reached before the reconcile proved its owner dead', () 
     await host.reconcileRestartLeases()
     await drainSession()
 
-    // The sidebar's red Failed until seen; the turn folds as "Worked for 27s" beside its notice row.
+    // Interrupted in the sidebar until the chat's state changes; the turn folds as "Interrupted after
+    // 27s" beside its notice row.
     await vi.waitFor(() => expect(outcomes().at(-1)).toBe('interruption'))
     const [timing] = selectStructuredAgentTurnTimings(
       (await host.journalSnapshot(SESSION)).items
@@ -354,7 +355,7 @@ describe('a turn a read reached before the reconcile proved its owner dead', () 
         workedSeconds: completedStructuredAgentTurnSeconds(timing),
         verdict: timing?.verdict
       })
-    ).toEqual({ key: 'workedFor', duration: '27s' })
+    ).toEqual({ key: 'interruptedAfter', duration: '27s' })
   })
 
   it('revises nothing twice, whoever re-runs the settle', async () => {

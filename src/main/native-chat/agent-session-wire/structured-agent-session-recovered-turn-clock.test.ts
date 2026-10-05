@@ -145,14 +145,14 @@ describe('a turn recovery settled after its host went away', () => {
       'an exit observed before the restart',
       { state: 'interrupted', completedAt: EXIT_OBSERVED },
       'interruption',
-      // A turn the user did not stop is a fault, marked as a failure is.
-      'failed'
+      // A turn a crash, quit or restart cut short reads interrupted, as a Stop does.
+      'interrupted'
     ]
   ] satisfies [
     string,
     StructuredAgentSessionTurnVerdict,
     'unconfirmed' | 'interruption',
-    'unconfirmed' | 'failed'
+    'unconfirmed' | 'interrupted'
   ][])(
     'is done as of the recovery with the end the host observed, never a success: %s',
     async (_label, verdict, outcome, mark) => {
@@ -183,8 +183,8 @@ describe('a turn recovery settled after its host went away', () => {
     }
   )
 
-  // The tab's mark reads a turn nobody stopped as failed; the chat's turn bar reads it like a
-  // finished turn, since the chat's notice row says why it stopped.
+  // The tab's mark and the chat's turn bar both read a turn nobody stopped as interrupted; the
+  // chat's notice row says why it stopped.
   it.each([
     [
       'a restart',
@@ -208,7 +208,7 @@ describe('a turn recovery settled after its host went away', () => {
         )
     ]
   ] as const)(
-    'reads Worked for N, marked failed, for a turn cut off by %s',
+    'reads Interrupted after N, marked interrupted, for a turn cut off by %s',
     async (_label, cut) => {
       const session = await sessionWithRunningTurn()
       session.recoverAt(RECOVERED)
@@ -216,12 +216,12 @@ describe('a turn recovery settled after its host went away', () => {
       session.publish()
 
       const [row] = session.server.getStatusSnapshot()
-      expect(row && agentVerdictDisplayMark(row)).toBe('failed')
+      expect(row && agentVerdictDisplayMark(row)).toBe('interrupted')
       const [settled] = [
         ...selectStructuredAgentSettledTurns(session.journal.snapshot().items).values()
       ]
       expect(settled && formatNativeChatTurnStatusLabel({ elapsedSeconds: 0, ...settled })).toBe(
-        'Worked for 1s'
+        'Interrupted after 1s'
       )
     }
   )

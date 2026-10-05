@@ -204,9 +204,9 @@ describe('selectWorktreeAgentActivitySummary', () => {
   it.each([
     ['success', { hasLiveDone: true }],
     ['failure', { hasFailed: true, hasLiveDone: false }],
-    // A user's Stop reads interrupted; a turn anything else cut short is a fault, like a failure.
+    // A user's Stop and a crash, quit or restart cut alike read interrupted; only a failure is red.
     ['cancellation', { hasInterrupted: true, hasLiveDone: false }],
-    ['interruption', { hasFailed: true, hasInterrupted: false, hasLiveDone: false }],
+    ['interruption', { hasFailed: false, hasInterrupted: true, hasLiveDone: false }],
     ['unconfirmed', { hasUnconfirmed: true, hasLiveDone: false }]
   ] as const)('flags a %s outcome apart from the others', (outcome, flags) => {
     vi.spyOn(Date, 'now').mockReturnValue(2_000)
@@ -328,6 +328,38 @@ describe('selectWorktreeAgentActivitySummary', () => {
         status: resolveWorktreeStatus({ tabs: [], browserTabs: [], ptyIdsByTabId: {}, ...summary })
       }
     }
+
+    // A cut is the chat's state, not a live report: no freshness window clears it, and a departed
+    // agent's cut stays interrupted rather than reading done.
+    it('keeps a crash-cut chat interrupted past the freshness window and after it departs', () => {
+      const cut = { state: 'done', outcome: 'interruption', stateStartedAt: 1_000 } as const
+      const cutEntry = makeAgentStatusEntry({ paneKey: failedKey, state: 'done', mainAgent: cut })
+      vi.spyOn(Date, 'now').mockReturnValue(1_000 + AGENT_STATUS_STALE_AFTER_MS + 60_000)
+      const stale = selectWorktreeAgentActivitySummary(
+        {
+          tabsByWorktree: { [worktreeId]: [liveTab] },
+          agentStatusEpoch: epoch++,
+          agentStatusByPaneKey: { [failedKey]: cutEntry },
+          migrationUnsupportedByPtyId: {},
+          runtimeAgentOrchestrationByPaneKey: {},
+          retainedAgentsByPaneKey: {}
+        },
+        worktreeId
+      )
+      expect(stale).toMatchObject({ hasInterrupted: true, hasFailed: false })
+
+      const departed = cardFor(
+        {},
+        {
+          'tab-2:0': {
+            ...retainedFailure['tab-2:0'],
+            entry: makeAgentStatusEntry({ paneKey: 'tab-2:0', state: 'done', mainAgent: cut })
+          }
+        }
+      )
+      expect(departed.summary).toMatchObject({ hasInterrupted: true, hasRetainedDone: false })
+      expect(departed.status).toBe('interrupted')
+    })
 
     it('reads a retained failure as failed once nothing else is live, not done', () => {
       const { summary, status } = cardFor({}, retainedFailure)

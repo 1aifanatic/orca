@@ -155,9 +155,9 @@ describe('resolveTerminalTabActivityStatus', () => {
   it.each([
     ['success', 'done'],
     ['failure', 'failed'],
-    // A user's Stop reads interrupted; a turn anything else cut short is a fault, like a failure.
+    // A user's Stop and a crash, quit or restart cut alike read interrupted; only a failure is red.
     ['cancellation', 'interrupted'],
-    ['interruption', 'failed'],
+    ['interruption', 'interrupted'],
     ['unconfirmed', 'unconfirmed']
   ] as const)('reports a %s done as %s, matching the worktree card', (outcome, status) => {
     const ended = entry(FIRST_LEAF_ID, 'done', {
@@ -231,6 +231,30 @@ describe('resolveTerminalTabActivityStatus', () => {
         ptyIdsByTabId: LIVE_PTY
       })
     ).toBe('interrupted')
+  })
+
+  // The cut is the chat's state, not a live report, so the freshness window never clears it; a
+  // Stop's row, which a live report carries, still ages out.
+  it('keeps a crash-cut tab interrupted past the freshness window, until the chat changes', () => {
+    const cut = entry(FIRST_LEAF_ID, 'done', {
+      updatedAt: 0,
+      mainAgent: { state: 'done', outcome: 'interruption', stateStartedAt: 0 }
+    })
+    const stopped = entry(FIRST_LEAF_ID, 'done', {
+      updatedAt: 0,
+      mainAgent: { state: 'done', outcome: 'cancellation', stateStartedAt: 0 }
+    })
+    vi.setSystemTime(AGENT_STATUS_STALE_AFTER_MS + 60_000)
+    const status = (row: typeof cut) =>
+      resolveTerminalTabActivityStatus({
+        tab: TAB,
+        agentStatusByPaneKey: { [row.paneKey]: row },
+        ptyIdsByTabId: LIVE_PTY
+      })
+    expect(status(cut)).toBe('interrupted')
+    expect(status(stopped)).not.toBe('interrupted')
+    // The next turn replaces it.
+    expect(status(entry(FIRST_LEAF_ID, 'working', { updatedAt: Date.now() }))).toBe('working')
   })
 
   it('falls back to a live working title when hook status is stale', () => {

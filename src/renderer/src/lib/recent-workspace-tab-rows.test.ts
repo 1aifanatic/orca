@@ -158,12 +158,13 @@ describe('resolveRecentWorkspaceTabStatus', () => {
     expect(resolveRecentWorkspaceTabStatus(row('split'), paneSources, NOW)).toBe('permission')
   })
 
-  it('surfaces a turn a crash cut short as failed', () => {
-    const cut = entry('cut', 'done', NOW - 1_000, {
-      mainAgent: { state: 'done', outcome: 'interruption', stateStartedAt: NOW - 1_000 }
-    })
-
-    expect(resolveRecentWorkspaceTabStatus(row('cut'), sources([cut]), NOW)).toBe('failed')
+  it('reads a turn a crash cut short as interrupted, as a Stop does, past the freshness window', () => {
+    for (const at of [NOW - 1_000, NOW - AGENT_STATUS_STALE_AFTER_MS - 60_000]) {
+      const cut = entry('cut', 'done', at, {
+        mainAgent: { state: 'done', outcome: 'interruption', stateStartedAt: at }
+      })
+      expect(resolveRecentWorkspaceTabStatus(row('cut'), sources([cut]), NOW)).toBe('interrupted')
+    }
   })
 
   it("reads a user's Stop as interrupted though attention demotes it, whether recorded or an old host's flag", () => {

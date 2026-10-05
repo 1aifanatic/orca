@@ -130,7 +130,7 @@ async function settledTurn() {
   return { turn, settled, label, notices }
 }
 
-/** A turn nobody stopped reads like a finished one, with exactly one row saying it stopped. */
+/** A turn nobody stopped reads interrupted, with exactly one row saying why it stopped. */
 const ONE_NOTICE = [
   'Codex stopped while this response was in progress. You can continue in this conversation.'
 ]
@@ -164,8 +164,8 @@ describe('a turn cut short by closing its provider', () => {
     const { turn, label, notices } = await settledTurn()
     expect(turn).toMatchObject({ state: 'interrupted' })
     expect(turn).not.toHaveProperty('outcome')
-    // News for the sidebar; the turn reads like a finished one beside its one notice.
-    expect(label).toBe('workedFor')
+    // Interrupted, as a Stop is, beside the one notice that says why.
+    expect(label).toBe('interruptedAfter')
     expect(notices).toEqual(ONE_NOTICE)
   })
 
@@ -259,7 +259,7 @@ describe('a turn cut short by closing its provider', () => {
       session: { status: 'idle', turnOutcome: 'interruption' }
     })
     const { label, notices } = await settledTurn()
-    expect(label).toBe('workedFor')
+    expect(label).toBe('interruptedAfter')
     expect(notices).toEqual(ONE_NOTICE)
   })
 
