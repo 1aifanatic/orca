@@ -311,7 +311,7 @@ describe('host rewind', () => {
     })
     expect(rewind).not.toHaveBeenCalled()
   })
-  it('keeps a failed hydration epoch intact and blocks sends and duplicate rewind', async () => {
+  it('keeps a failed hydration epoch intact and blocks sends and duplicate rewind while it stays unknown', async () => {
     const target = await seed()
     const request = await params(target)
     const before = await host.journalSnapshot(HOST_TEST_SESSION)
@@ -322,6 +322,8 @@ describe('host rewind', () => {
       ok: false,
       refusal: { code: 'agent_session_operation_unknown' }
     })
+    // The send asks the provider first; it still cannot say.
+    recoverRewind.mockResolvedValueOnce({ ok: false, reason: 'outcome-unknown' })
     const body = hostTestMessage('new prompt')
     const envelope = {
       ...(await params(target)).envelope,

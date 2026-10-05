@@ -18,7 +18,7 @@ const reasonCopy = {
   busy: () =>
     translate(
       'components.native-chat.rewind.busy',
-      'Wait for the current turn, queued messages, approvals, and background work to finish first.'
+      'Available once the agent is idle and nothing in this chat is waiting on you.'
     ),
   'stale-epoch': () =>
     translate(
@@ -80,7 +80,7 @@ export function nativeChatRewindReturnedUnknownCopy(): string {
 export function nativeChatRewindTimeoutCopy(): string {
   return translate(
     'components.native-chat.rewind.timeout',
-    "Orca couldn't confirm in time that the conversation went back to this message. Check the conversation before continuing."
+    "The chat didn't update after going back to this message. Reopen it to see the latest."
   )
 }
 

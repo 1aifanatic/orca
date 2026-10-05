@@ -65,7 +65,11 @@ export function NativeChatStructuredSession(
     composerScopeKey: paneKey,
     queueFollowUps,
     providerStarting: startupPhase === 'starting',
-    rewind: { hostBlockedReason: rewindBlockedReason, onMessageReturned: focusComposer },
+    rewind: {
+      hostBlockedReason: rewindBlockedReason,
+      onMessageReturned: focusComposer,
+      isVisible: props.isVisible
+    },
     transportEnabled: provisionalLaunch.transportEnabled,
     ...(provisionalLaunch.launch ? { launch: provisionalLaunch.launch } : {})
   })

@@ -37,6 +37,8 @@ type RewindInput = {
   composerScopeKey?: string
   /** Called once the discarded message is back in the composer. */
   onMessageReturned?: () => void
+  /** Whether the pane is shown, and so reading; absent means shown. */
+  isVisible?: boolean
   state: StructuredAgentSessionState
   /** Undefined until the host has answered for the current runtime. */
   support: AgentSessionRewindSupport | undefined
@@ -142,13 +144,24 @@ export function useNativeChatRewind(input: RewindInput) {
   const [awaiting, setAwaiting] = useState<{ sessionId: string; epoch: string } | null>(null)
   const awaitingReset =
     awaiting?.sessionId === input.sessionId && awaiting.epoch === input.state.epoch
+  // A hidden pane stops reading, so its new conversation cannot arrive; that is no failure to report.
+  const hiddenWhileAwaiting = useRef(false)
+  const visible = input.isVisible !== false
+  useLayoutEffect(() => {
+    if (!visible) {
+      hiddenWhileAwaiting.current = true
+    }
+  }, [visible])
   useEffect(() => {
     if (!awaitingReset) {
       return
     }
+    hiddenWhileAwaiting.current = latest.current.isVisible === false
     const timer = setTimeout(() => {
       setAwaiting(null)
-      toast.error(nativeChatRewindTimeoutCopy())
+      if (!hiddenWhileAwaiting.current) {
+        toast.error(nativeChatRewindTimeoutCopy())
+      }
     }, NATIVE_CHAT_REWIND_RESET_TIMEOUT_MS)
     return () => clearTimeout(timer)
   }, [awaitingReset])
@@ -271,17 +284,19 @@ export type NativeChatRewindHost = {
   /** The host's in-doubt latch, from its status feed. */
   hostBlockedReason?: AgentSessionRewindReason | null
   onMessageReturned?: () => void
+  isVisible?: boolean
 }
 
 /** The rewind a structured session's user rows offer, sent through the session's own writes. */
 export function useStructuredAgentSessionRewind(
-  args: Omit<RewindInput, 'hostBlockedReason' | 'onMessageReturned' | 'send'> &
+  args: Omit<RewindInput, keyof NativeChatRewindHost | 'send'> &
     NativeChatRewindHost & { write: StructuredAgentSessionWrite }
 ) {
   const {
     blocked,
     composerScopeKey,
     hostBlockedReason,
+    isVisible,
     onMessageReturned,
     sessionId,
     state,
@@ -293,6 +308,7 @@ export function useStructuredAgentSessionRewind(
       sessionId,
       composerScopeKey,
       onMessageReturned,
+      isVisible,
       hostBlockedReason: hostBlockedReason ?? undefined,
       state,
       support,
@@ -304,6 +320,7 @@ export function useStructuredAgentSessionRewind(
       blocked,
       composerScopeKey,
       hostBlockedReason,
+      isVisible,
       onMessageReturned,
       sessionId,
       state,

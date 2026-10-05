@@ -313,6 +313,30 @@ describe('structured chat rewind', () => {
     }
   })
 
+  it.each(['hidden throughout', 'hidden part way'] as const)(
+    'lets go silently when the pane was %s, since a hidden pane reads nothing',
+    async (mode) => {
+      vi.useFakeTimers()
+      try {
+        const props: Input = { ...input(), isVisible: mode !== 'hidden throughout' }
+        const view = render(props)
+        await act(() => view.result.current.request('user', async () => true))
+        expect(view.result.current.blockedRef.current).toBe(true)
+        if (mode === 'hidden part way') {
+          await act(() => vi.advanceTimersByTimeAsync(1_000))
+          view.rerender({ ...props, isVisible: false })
+          view.rerender({ ...props, isVisible: true })
+        }
+        await act(() => vi.advanceTimersByTimeAsync(NATIVE_CHAT_REWIND_RESET_TIMEOUT_MS))
+        expect(view.result.current.pending).toBe(false)
+        expect(view.result.current.blockedRef.current).toBe(false)
+        expect(toastError).not.toHaveBeenCalled()
+      } finally {
+        vi.useRealTimers()
+      }
+    }
+  )
+
   it.each([...AGENT_SESSION_REWIND_REASONS.filter((r) => r !== 'outcome-unknown'), 'future'])(
     'toasts refusal %s once, unblocks, and keeps the message where it is',
     async (rewindReason) => {
