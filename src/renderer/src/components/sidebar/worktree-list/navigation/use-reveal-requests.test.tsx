@@ -18,7 +18,7 @@ const state = vi.hoisted(() => ({
   pendingRevealSidebarRow: null,
   revealSidebarRow: vi.fn(),
   revealWorktreeInSidebar: vi.fn(),
-  setContextualToursBlockingSurfaceVisible: vi.fn()
+  setPromptBlockingDialogVisible: vi.fn()
 }))
 vi.mock('@/store', () => ({
   useAppStore: (selector: (value: typeof state) => unknown) => selector(state)

@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/store', () => ({
   useAppStore: (selector: (state: Record<string, unknown>) => unknown) =>
-    selector({ setContextualToursBlockingSurfaceVisible: vi.fn() })
+    selector({ setPromptBlockingDialogVisible: vi.fn() })
 }))
 
 import { ConfirmationDialogProvider } from './confirmation-dialog'

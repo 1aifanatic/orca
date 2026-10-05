@@ -5,6 +5,7 @@ import {
   type FeatureInteractionState
 } from '../../../../shared/feature-interactions'
 import { useAppStore } from '@/store'
+import { selectTourBlockedByPrompts } from '@/store/slices/ui/automatic-prompt-turns'
 
 const TOUR_SOURCES = {
   'workspace-board': 'workspace_board_visible',
@@ -76,9 +77,7 @@ export function useContextualTour(
   const contextualToursAutoEligible = useAppStore((s) => s.contextualToursAutoEligible)
   const contextualTourShownThisSession = useAppStore((s) => s.contextualTourShownThisSession)
   const contextualToursOnboardingVisible = useAppStore((s) => s.contextualToursOnboardingVisible)
-  const contextualToursBlockingSurfaceVisible = useAppStore(
-    (s) => s.contextualToursBlockingSurfaceVisible
-  )
+  const blockedByPrompts = useAppStore((s) => selectTourBlockedByPrompts(s, false))
   const enabledInteractionSnapshotRef = useRef<{
     id: ContextualTourId
     source: string
@@ -168,7 +167,7 @@ export function useContextualTour(
       !persistedUIReady ||
       contextualToursAutoEligible !== true ||
       contextualToursOnboardingVisible ||
-      contextualToursBlockingSurfaceVisible ||
+      blockedByPrompts ||
       activeContextualTourId !== null ||
       contextualTourShownThisSession ||
       contextualToursSeenIds.includes(id)
@@ -249,7 +248,7 @@ export function useContextualTour(
     }
   }, [
     activeContextualTourId,
-    contextualToursBlockingSurfaceVisible,
+    blockedByPrompts,
     activeModal,
     contextualToursAutoEligible,
     contextualTourShownThisSession,

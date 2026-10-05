@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog'
 import { useAppStore } from '@/store'
 import { translate } from '@/i18n/i18n'
+import { usePromptBlockingDialog } from '@/components/automatic-prompts/use-automatic-prompt-turn'
 
 export function SshPassphraseDialog(): React.JSX.Element | null {
   const request = useAppStore((s) => s.sshCredentialQueue[0] ?? null)
@@ -23,6 +24,9 @@ export function SshPassphraseDialog(): React.JSX.Element | null {
   const focusFrameRef = useRef<number | null>(null)
 
   const open = request !== null
+  // Why: a connection is waiting on this with a deadline in main, so it is never queued behind an
+  // automatic prompt; one that is showing steps aside until this closes.
+  usePromptBlockingDialog('ssh-credential', open)
 
   const requestId = request?.requestId
 

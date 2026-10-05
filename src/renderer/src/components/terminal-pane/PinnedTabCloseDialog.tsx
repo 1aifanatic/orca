@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { useAppStore } from '@/store'
+import { usePromptBlockingDialog } from '@/components/automatic-prompts/use-automatic-prompt-turn'
 import { translate } from '@/i18n/i18n'
 
 /** Confirmation prompt shown when a pinned tab is about to be closed. Driven by
@@ -24,6 +25,9 @@ export default function PinnedTabCloseDialog(): React.JSX.Element {
   const updateSettings = useAppStore((state) => state.updateSettings)
   const [dontAskAgain, setDontAskAgain] = useState(false)
   const [previousRequest, setPreviousRequest] = useState(request)
+
+  // A background PTY exit, a phone, or the CLI can raise this; it answers a close in flight.
+  usePromptBlockingDialog('pinned-tab-close', request !== null)
 
   const tabLabel = request?.tabLabel.trim()
 

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PersistedUIState } from '../../../../shared/persisted-ui-state-types'
 import type { ContextualTourId } from '../../../../shared/contextual-tours'
 import { createUIStore, makePersistedUI } from './ui-slice-test-harness'
+import { selectVisibleAutomaticPromptId } from './ui/automatic-prompt-turns'
 
 const mocks = vi.hoisted(() => ({
   sendNotesToActiveAgentSession: vi.fn(),
@@ -225,11 +226,47 @@ describe('createUISlice contextual tours', () => {
     stubContextualTourTargets(['[data-contextual-tour-target="tasks-source-filters"]'])
     store.getState().hydratePersistedUI(makeAutoTourEligibleUI())
 
-    store.getState().setContextualToursBlockingSurfaceVisible(true)
+    store.getState().setPromptBlockingDialogVisible('confirmation', true)
     store.getState().requestContextualTour('tasks', 'tasks_open')
 
     expect(store.getState().activeContextualTourId).toBeNull()
     expect(store.getState().contextualTourShownThisSession).toBe(false)
+  })
+
+  it('waits for the resume offer at launch, then starts once it closes', () => {
+    const store = createUIStore({ launchPromptDiscoveryPending: true })
+    stubContextualTourTargets(['[data-contextual-tour-target="tasks-source-filters"]'])
+    store.getState().hydratePersistedUI(makeAutoTourEligibleUI())
+
+    store.getState().requestContextualTour('tasks', 'tasks_open')
+    expect(store.getState().activeContextualTourId).toBeNull()
+
+    store.getState().requestAutomaticPrompt('native-chat-resume')
+    store.getState().settleLaunchPromptDiscovery()
+    store.getState().markAutomaticPromptShown('native-chat-resume')
+    store.getState().requestContextualTour('tasks', 'tasks_open')
+    expect(store.getState().activeContextualTourId).toBeNull()
+
+    store.getState().releaseAutomaticPrompt('native-chat-resume')
+    store.getState().requestContextualTour('tasks', 'tasks_open')
+    expect(store.getState().activeContextualTourId).toBe('tasks')
+  })
+
+  it('does not start behind a waiting feature tip, and the tip waits for a running tour', () => {
+    const store = createUIStore()
+    stubContextualTourTargets(['[data-contextual-tour-target="tasks-source-filters"]'])
+    store.getState().hydratePersistedUI(makeAutoTourEligibleUI())
+
+    store.getState().requestAutomaticPrompt('feature-tip')
+    store.getState().requestContextualTour('tasks', 'tasks_open')
+    expect(store.getState().activeContextualTourId).toBeNull()
+
+    store.getState().releaseAutomaticPrompt('feature-tip')
+    store.getState().requestContextualTour('tasks', 'tasks_open')
+    expect(store.getState().activeContextualTourId).toBe('tasks')
+
+    store.getState().requestAutomaticPrompt('feature-tip')
+    expect(selectVisibleAutomaticPromptId(store.getState())).toBeNull()
   })
 
   it('does not auto-start tours for profiles that are not eligible', () => {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react'
 import { useAppStore } from '@/store'
+import { selectPromptSurfaceVisible } from '@/store/slices/ui/automatic-prompt-turns'
 import {
   getContextualTour,
   type ContextualTourId,
@@ -39,7 +40,7 @@ export function ContextualTourOverlay(): JSX.Element | null {
   )
   const activeModal = useAppStore((s) => s.activeModal)
   const onboardingVisible = useAppStore((s) => s.contextualToursOnboardingVisible)
-  const blockingSurfaceVisible = useAppStore((s) => s.contextualToursBlockingSurfaceVisible)
+  const blockingSurfaceVisible = useAppStore(selectPromptSurfaceVisible)
   const activeTourSuppressed = useAppStore((s) => s.activeContextualTourSuppressed)
   const keybindings = useAppStore((s) => s.keybindings)
   const activeTabId = useAppStore((s) => s.activeTabId)

@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog'
 import { translate } from '@/i18n/i18n'
 import { useAppStore } from '@/store'
+import { usePromptBlockingDialog } from '@/components/automatic-prompts/use-automatic-prompt-turn'
 import {
   dismissWorktreeBaseFallbackNotice,
   getWorktreeBaseFallbackNotice,
@@ -24,9 +25,6 @@ export default function WorktreeBaseFallbackDialog(): React.JSX.Element {
     getWorktreeBaseFallbackNotice
   )
   const activeModal = useAppStore((state) => state.activeModal)
-  const setContextualToursBlockingSurfaceVisible = useAppStore(
-    (state) => state.setContextualToursBlockingSurfaceVisible
-  )
   const lastNoticeRef = useRef(notice)
   const displayedNotice = notice ?? lastNoticeRef.current
   const open = notice !== null && activeModal === 'none'
@@ -37,10 +35,7 @@ export default function WorktreeBaseFallbackDialog(): React.JSX.Element {
     }
   }, [notice])
 
-  useEffect(() => {
-    setContextualToursBlockingSurfaceVisible(open)
-    return () => setContextualToursBlockingSurfaceVisible(false)
-  }, [open, setContextualToursBlockingSurfaceVisible])
+  usePromptBlockingDialog('worktree-base-fallback', open)
 
   return (
     <Dialog

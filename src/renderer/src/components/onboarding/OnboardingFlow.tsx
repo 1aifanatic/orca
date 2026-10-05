@@ -15,6 +15,7 @@ import { OnboardingFooter } from './OnboardingFooter'
 import { shouldRequestOnboardingSkipConfirmation } from './onboarding-dismiss-target'
 import logo from '../../../../../resources/logo.svg'
 import { translate } from '@/i18n/i18n'
+import { usePromptBlockingDialog } from '@/components/automatic-prompts/use-automatic-prompt-turn'
 
 const stepCopy = {
   agent: {
@@ -127,6 +128,8 @@ export default function OnboardingFlow({
   onOnboardingChange
 }: OnboardingFlowProps): React.JSX.Element {
   const flow = useOnboardingFlow(onboarding, onOnboardingChange)
+  // Mounted only while shown; a crash report from a first-run crash waits until setup is done.
+  usePromptBlockingDialog('onboarding', true)
   const continueShortcutModifierLabel = getScreenSubmitModifierLabel()
   const { currentStep, stepIndex, busyLabel } = flow
   const copy = stepCopy[currentStep.id]

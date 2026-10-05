@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useNativeChatRestartOfferEnabled } from './native-chat-restart-offer-gate'
 import { RotateCcw } from 'lucide-react'
 import { Button } from './ui/button'
@@ -23,9 +23,14 @@ import {
 import type { ResumeCandidate, ResumeFailure } from './native-chat-resume-on-restart-grouping'
 import {
   consumeNativeChatResumeOnRestartDialogRequest,
+  getNativeChatResumeLaunchDecided,
   getNativeChatResumeOnRestartDialogRequest,
   subscribeNativeChatResumeOnRestartDialog
 } from './native-chat-resume-on-restart-dialog'
+import {
+  useAutomaticPromptTurn,
+  usePromptBlockingDialog
+} from './automatic-prompts/use-automatic-prompt-turn'
 import {
   continueNativeChatRestartOffer,
   dismissNativeChatRestartOffer,
@@ -74,11 +79,34 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
   )
   // Open is an external one-shot request, never mirrored into local state: the launch load and the
   // status-bar entry both raise it, and a copy here would go stale against whichever raised it last.
-  const open = useSyncExternalStore(
+  const request = useSyncExternalStore(
     subscribeNativeChatResumeOnRestartDialog,
     getNativeChatResumeOnRestartDialogRequest,
     getNativeChatResumeOnRestartDialogRequest
   )
+  const launchDecided = useSyncExternalStore(
+    subscribeNativeChatResumeOnRestartDialog,
+    getNativeChatResumeLaunchDecided,
+    getNativeChatResumeLaunchDecided
+  )
+  // Only a dialog that can render asks for a turn, so a hidden one never holds others back.
+  const renderable = offerEnabled && rows.length > 0
+  // Raised by the launch, it takes its turn among the dialogs that open by themselves; opened by the
+  // user, it shows at once and the others wait for it.
+  const launchTurn = useAutomaticPromptTurn(
+    'native-chat-resume',
+    request === 'launch' && renderable
+  )
+  usePromptBlockingDialog('native-chat-resume', request === 'user' && renderable)
+  const open = request === 'user' || launchTurn
+  const settleLaunchPromptDiscovery = useAppStore((store) => store.settleLaunchPromptDiscovery)
+  useEffect(() => {
+    // After the turn request above (effects run in order), so a fast crash report or tip cannot
+    // take the first turn in between.
+    if (launchDecided) {
+      settleLaunchPromptDiscovery()
+    }
+  }, [launchDecided, settleLaunchPromptDiscovery])
   const updateSettings = useAppStore((store) => store.updateSettings)
   const [dontAskAgain, setDontAskAgain] = useState(false)
   // The store's: the resume outlives this dialog, which can close or reopen mid-run.
@@ -90,10 +118,12 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
   const [overrides, setOverrides] = useState<ReadonlyMap<string, boolean>>(() => new Map())
   // Each opening starts from the rows' defaults. This component never unmounts, so an untick made
   // before a close would otherwise greet a reopen, e.g. as "Resume 0 chats" over what a run left.
-  const [openedWith, setOpenedWith] = useState(open)
-  if (openedWith !== open) {
-    setOpenedWith(open)
-    if (open) {
+  // Keyed on the request, not visibility: stepping aside for another dialog keeps the user's ticks.
+  const requested = request !== null
+  const [openedWith, setOpenedWith] = useState(requested)
+  if (openedWith !== requested) {
+    setOpenedWith(requested)
+    if (requested) {
       setOverrides(new Map())
     }
   }

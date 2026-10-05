@@ -18,7 +18,9 @@ import {
   type ResumeFailure
 } from './native-chat-resume-on-restart-grouping'
 import {
+  _resetNativeChatResumeOnRestartDialog,
   consumeNativeChatResumeOnRestartDialogRequest,
+  markNativeChatResumeLaunchDecided,
   requestNativeChatResumeOnRestartDialog
 } from './native-chat-resume-on-restart-dialog'
 
@@ -260,7 +262,7 @@ export async function refreshNativeChatRestartOffer(): Promise<
 /** What the failure toast can do. The dialog request is external state the toast may raise after
  *  the dialog that started the action has closed. */
 const failureToastActions = {
-  show: () => requestNativeChatResumeOnRestartDialog(),
+  show: () => requestNativeChatResumeOnRestartDialog('user'),
   dismiss: (sessionIds: readonly string[]) => {
     void dismissNativeChatRestartOffer([...sessionIds])
   }
@@ -378,9 +380,11 @@ async function loadLaunchOffer(): Promise<void> {
     return
   }
   if (!autoResume) {
-    requestNativeChatResumeOnRestartDialog()
+    requestNativeChatResumeOnRestartDialog('launch')
     return
   }
+  // Nothing will ask, so other launch prompts need not wait for the resume to settle.
+  markNativeChatResumeLaunchDecided()
   await continueNativeChatRestartOffer(undefined, allResumeSessionIds(offered))
 }
 
@@ -394,7 +398,8 @@ export function useNativeChatRestartOffer(enabled: boolean): NativeChatRestartOf
   useEffect(() => {
     if (enabled) {
       // Fetched after mount, never awaited by startup: the workspace is usable first.
-      launch ??= loadLaunchOffer()
+      // Decided either way, so other launch prompts stop waiting on this read.
+      launch ??= loadLaunchOffer().finally(markNativeChatResumeLaunchDecided)
     }
   }, [enabled])
   return useSyncExternalStore(subscribe, getNativeChatRestartOffer, getNativeChatRestartOffer)
@@ -415,4 +420,5 @@ export function _resetNativeChatRestartOffer(): void {
   actionsSettled = 0
   launch = undefined
   listeners.clear()
+  _resetNativeChatResumeOnRestartDialog()
 }

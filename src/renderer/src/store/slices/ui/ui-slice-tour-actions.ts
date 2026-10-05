@@ -7,6 +7,7 @@ import {
   getPreviousVisibleContextualTourStepIndex
 } from '../../../components/contextual-tours/contextual-tour-gate'
 import { hasFeatureInteraction } from '../../../../../shared/feature-interactions'
+import { selectTourBlockedByPrompts } from './automatic-prompt-turns'
 
 export function createUiTourActions(set: UISliceSet, get: UISliceGet): Partial<UISlice> {
   return {
@@ -21,7 +22,6 @@ export function createUiTourActions(set: UISliceSet, get: UISliceGet): Partial<U
     activeContextualTourSuppressed: false,
     contextualTourShownThisSession: false,
     contextualToursOnboardingVisible: false,
-    contextualToursBlockingSurfaceVisible: false,
     lastCompletedContextualTourId: null,
     setContextualToursAutoEligible: (eligible) =>
       set((s) => {
@@ -39,12 +39,6 @@ export function createUiTourActions(set: UISliceSet, get: UISliceGet): Partial<U
           ? s
           : { contextualToursOnboardingVisible: visible }
       ),
-    setContextualToursBlockingSurfaceVisible: (visible) =>
-      set((s) =>
-        s.contextualToursBlockingSurfaceVisible === visible
-          ? s
-          : { contextualToursBlockingSurfaceVisible: visible }
-      ),
     requestContextualTour: (id, source, wasFeaturePreviouslyInteracted, options) =>
       set((s) => {
         const tour = getContextualTour(id)
@@ -57,7 +51,7 @@ export function createUiTourActions(set: UISliceSet, get: UISliceGet): Partial<U
           sessionConsumed: options?.force === true ? false : s.contextualTourShownThisSession,
           activeTourId: s.activeContextualTourId,
           activeModal: s.activeModal,
-          blockingSurfaceVisible: s.contextualToursBlockingSurfaceVisible,
+          blockingSurfaceVisible: selectTourBlockedByPrompts(s, options?.force === true),
           targetExists: hasContextualTourTarget
         })
         if (decision.kind !== 'start') {

@@ -6,7 +6,18 @@ import { createUISlice } from './ui'
 import { createWorktreeNavHistorySlice } from './worktree-nav-history'
 import { createSettingsSearchState } from './settings-search-state'
 
-export function createUIStore(): StoreApi<AppState> {
+export function createUIStore(
+  options: { launchPromptDiscoveryPending?: boolean } = {}
+): StoreApi<AppState> {
+  const store = buildUIStore()
+  // Why: most cases model a running app, past the launch wait for this machine's resume offer.
+  if (options.launchPromptDiscoveryPending !== true) {
+    store.getState().settleLaunchPromptDiscovery()
+  }
+  return store
+}
+
+function buildUIStore(): StoreApi<AppState> {
   // Only the UI slice, repo/worktree ids, and right sidebar width fallback are
   // needed for these tests. The worktree-nav-history slice is also included
   // because page opens record view visits.

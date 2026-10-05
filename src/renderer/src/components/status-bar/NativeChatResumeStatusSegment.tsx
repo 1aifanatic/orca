@@ -21,12 +21,12 @@ import {
 async function reopenOffer(): Promise<void> {
   // Mid-resume the host's answer is already on its way; a re-read racing it could undo it.
   if (getNativeChatRestartResuming().length > 0) {
-    requestNativeChatResumeOnRestartDialog()
+    requestNativeChatResumeOnRestartDialog('user')
     return
   }
   const { candidates, failed } = await refreshNativeChatRestartOffer()
   if (candidates.length > 0 || failed.length > 0) {
-    requestNativeChatResumeOnRestartDialog()
+    requestNativeChatResumeOnRestartDialog('user')
   }
 }
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -16,7 +16,7 @@ import {
   type ConfirmationDialogContextValue,
   type ConfirmationDialogOptions
 } from '@/components/confirmation-dialog-context'
-import { useAppStore } from '@/store'
+import { usePromptBlockingDialog } from '@/components/automatic-prompts/use-automatic-prompt-turn'
 import { translate } from '@/i18n/i18n'
 import { cn } from '@/lib/utils'
 
@@ -37,9 +37,6 @@ export function ConfirmationDialogProvider({
   const [dontAskAgain, setDontAskAgain] = useState(false)
   const activeRequest = queue[0] ?? null
   const activeRequestRef = useRef<ConfirmationDialogRequest | null>(activeRequest)
-  const setContextualToursBlockingSurfaceVisible = useAppStore(
-    (s) => s.setContextualToursBlockingSurfaceVisible
-  )
   const lastDisplayedRequestRef = useRef<ConfirmationDialogRequest | null>(activeRequest)
   activeRequestRef.current = activeRequest
   if (activeRequest) {
@@ -49,12 +46,9 @@ export function ConfirmationDialogProvider({
   const displayedRequest = activeRequest ?? lastDisplayedRequestRef.current
   const Icon = displayedRequest?.options.icon
 
-  useEffect(() => {
-    // Why: this provider's dialog is not represented by activeModal. Block
-    // contextual tours so they cannot appear behind confirmation prompts.
-    setContextualToursBlockingSurfaceVisible(activeRequest !== null)
-    return () => setContextualToursBlockingSurfaceVisible(false)
-  }, [activeRequest, setContextualToursBlockingSurfaceVisible])
+  // Why: this provider's dialog is not represented by activeModal, so it registers itself; tours and
+  // automatic prompts then cannot appear behind or over it.
+  usePromptBlockingDialog('confirmation', activeRequest !== null)
 
   const confirm = useCallback<ConfirmationDialogContextValue>((options) => {
     return new Promise((resolve) => {

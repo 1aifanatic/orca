@@ -68,11 +68,9 @@ export type UISliceContextual = {
   activeContextualTourSuppressed: boolean
   contextualTourShownThisSession: boolean
   contextualToursOnboardingVisible: boolean
-  contextualToursBlockingSurfaceVisible: boolean
   lastCompletedContextualTourId: ContextualTourId | null
   setContextualToursAutoEligible: (eligible: boolean) => void
   setContextualToursOnboardingVisible: (visible: boolean) => void
-  setContextualToursBlockingSurfaceVisible: (visible: boolean) => void
   requestContextualTour: (
     id: ContextualTourId,
     source: string,

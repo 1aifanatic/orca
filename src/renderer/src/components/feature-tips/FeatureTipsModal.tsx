@@ -7,6 +7,7 @@ import {
   notifyOrchestrationSetupStateChanged
 } from '@/lib/orchestration-setup-state'
 import { useAppStore } from '@/store'
+import { selectAutomaticPromptSlotSuspended } from '@/store/slices/ui/automatic-prompt-turns'
 import { CliSetupTipDialog } from './CliSetupTipDialog'
 import { CmdJPaletteTipDialog } from './CmdJPaletteTipDialog'
 import { installCliFromFeatureTip } from './feature-tip-cli-install-action'
@@ -41,7 +42,9 @@ export default function FeatureTipsModal(): JSX.Element | null {
   const setupRequestIdRef = useRef(0)
   const [primaryBusy, setPrimaryBusy] = useState(false)
   const [skillTerminalOpen, setSkillTerminalOpen] = useState(false)
-  const isOpen = activeModal === 'feature-tips'
+  // Raised by the app, it steps aside while a dialog the user opened is up, then comes back.
+  const suspended = useAppStore(selectAutomaticPromptSlotSuspended)
+  const isOpen = activeModal === 'feature-tips' && !suspended
   const currentTip = getFeatureTipForModal({
     cliInstalled: true,
     modalData,

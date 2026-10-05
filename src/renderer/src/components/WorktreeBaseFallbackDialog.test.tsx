@@ -17,7 +17,7 @@ let root: Root | null = null
 async function renderDialog(activeModal: AppState['activeModal'] = 'none'): Promise<void> {
   useAppStore.setState({
     activeModal,
-    setContextualToursBlockingSurfaceVisible: vi.fn()
+    setPromptBlockingDialogVisible: vi.fn()
   })
   const container = document.createElement('div')
   document.body.appendChild(container)
