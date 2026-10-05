@@ -33,6 +33,7 @@ function fakeChild(
   }
 ): ChildProcessWithoutNullStreams {
   const child = new EventEmitter()
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The connection reads only pid, the three pipes and kill, which this fake carries.
   return Object.assign(child, {
     pid: 424242,
     stdin: new PassThrough(),
