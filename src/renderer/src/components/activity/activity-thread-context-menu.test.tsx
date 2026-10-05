@@ -71,15 +71,44 @@ afterEach(() => {
 })
 
 describe('ActivityThreadContextMenu', () => {
-  it('opens the thread and enables only the applicable read action', () => {
+  it('opens the thread', () => {
     const thread = makeThread()
     openMenu(thread)
 
-    expect(menuItem('Mark as read').hasAttribute('data-disabled')).toBe(false)
-    expect(menuItem('Mark as unread').hasAttribute('data-disabled')).toBe(true)
-
     fireEvent.click(menuItem('Open'))
     expect(handlers.onOpen).toHaveBeenCalledWith(thread)
+  })
+
+  it('shows one read toggle that marks an unread thread read', () => {
+    const thread = makeThread()
+    openMenu(thread)
+
+    expect(screen.queryByRole('menuitem', { name: 'Mark Unread' })).toBeNull()
+    fireEvent.click(menuItem('Mark Read'))
+    expect(handlers.onMarkRead).toHaveBeenCalledWith(thread)
+  })
+
+  it('shows one read toggle that marks a read thread unread', () => {
+    const thread = makeThread({ unread: false })
+    openMenu(thread)
+
+    expect(screen.queryByRole('menuitem', { name: 'Mark Read' })).toBeNull()
+    fireEvent.click(menuItem('Mark Unread'))
+    expect(handlers.onMarkUnread).toHaveBeenCalledWith(thread)
+  })
+
+  it('disables Mark Unread for the open thread', () => {
+    openMenu(makeThread({ unread: false }), true, true)
+
+    expect(menuItem('Mark Unread').hasAttribute('data-disabled')).toBe(true)
+  })
+
+  it('lists copy actions flat instead of in a submenu', () => {
+    openMenu(makeThread())
+
+    expect(menuItem('Copy Title')).toBeTruthy()
+    expect(menuItem('Copy Branch')).toBeTruthy()
+    expect(menuItem('Copy Path')).toBeTruthy()
   })
 
   it('tells the row while the menu is open so it can keep its preview closed', () => {
@@ -90,13 +119,13 @@ describe('ActivityThreadContextMenu', () => {
     expect(screen.getByTestId('row').hasAttribute('data-menu-open')).toBe(false)
   })
 
-  it('offers Go to workspace only for threads with a real workspace', () => {
+  it('offers Go to Workspace only for threads with a real workspace', () => {
     openMenu(makeThread(), false)
 
-    expect(screen.queryByRole('menuitem', { name: 'Go to workspace' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: 'Go to Workspace' })).toBeNull()
   })
 
-  it('offers Clear from list only for finished threads', () => {
+  it('offers Clear from List only for finished threads', () => {
     const done = makeThread({
       currentAgentState: null,
       paneEntry: {
@@ -111,19 +140,19 @@ describe('ActivityThreadContextMenu', () => {
     })
     openMenu(done)
 
-    fireEvent.click(menuItem('Clear from list'))
+    fireEvent.click(menuItem('Clear from List'))
     expect(mocks.clearActivityThread).toHaveBeenCalledWith(done)
     cleanup()
 
     openMenu(makeThread())
-    expect(screen.queryByRole('menuitem', { name: 'Clear from list' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: 'Clear from List' })).toBeNull()
   })
 
   it('copies the title, branch, and path of a real workspace', () => {
     expect(getActivityThreadCopyTargets(makeThread(), true)).toEqual([
-      { key: 'title', label: 'Agent title', value: 'Fix the flaky test' },
-      { key: 'branch', label: 'Branch', value: 'feat/flaky' },
-      { key: 'path', label: 'Path', value: '/repo/wt-1' }
+      { key: 'title', label: 'Copy Title', value: 'Fix the flaky test' },
+      { key: 'branch', label: 'Copy Branch', value: 'feat/flaky' },
+      { key: 'path', label: 'Copy Path', value: '/repo/wt-1' }
     ])
   })
 
@@ -133,7 +162,7 @@ describe('ActivityThreadContextMenu', () => {
     })
 
     expect(getActivityThreadCopyTargets(synthetic, false)).toEqual([
-      { key: 'title', label: 'Agent title', value: 'Fix the flaky test' }
+      { key: 'title', label: 'Copy Title', value: 'Fix the flaky test' }
     ])
   })
 })
