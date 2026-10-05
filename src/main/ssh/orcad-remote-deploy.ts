@@ -23,13 +23,12 @@ import { readOrcadBundleTarget } from './orcad-deployment-target'
 import { resolveOrcadRuntimeTarget } from './orcad-runtime-target'
 import { materializeNodeRuntimeArchive } from './pinned-runtime-materializer'
 import {
-  ORCAD_ACTIVATION_FENCE_HELD_CODE,
   orcadActivationFenceExists,
-  orcadActivationFenceHeldReason,
   resolveOrcadActivationReadinessTimeout,
   withOrcadActivationLock
 } from './orcad-activation-lock'
 import { activateInstalledOrcad } from './orcad-installed-activation'
+import { orcadActivationFenceRefusal } from './orcad-activation-fence-hold'
 
 export type OrcadDeployOptions = {
   conn: SshConnection
@@ -90,11 +89,10 @@ export async function deployOrcad(input: OrcadDeployOptions): Promise<OrcadDeplo
   }
   const fullVersion = readLocalFullVersion(options.localOrcadDir)
   const remoteDir = computeRemoteInstallDir(ORCAD_INSTALL_MODEL, options.remoteHome, fullVersion)
-  const held = (): OrcadDeployResult => ({
+  const held = async (): Promise<OrcadDeployResult> => ({
     outcome: 'installed-not-activated',
     fullVersion,
-    code: ORCAD_ACTIVATION_FENCE_HELD_CODE,
-    reason: orcadActivationFenceHeldReason('update')
+    ...(await orcadActivationFenceRefusal(options, 'update'))
   })
   // Fail fast before upload; the activation re-reads both under the fence.
   await readOrcadActivationRecord(options)

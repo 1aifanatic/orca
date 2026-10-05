@@ -73,5 +73,8 @@ describe('ssh:terminateSessions while an older relay may hold terminals', () => 
       'pty-held',
       'terminated'
     )
+    // The final teardown must not bulk-mark the held lease terminated either.
+    expect(mockStore.markSshRemotePtyLeasesAsync).not.toHaveBeenCalledWith('ssh-1', 'terminated')
+    expect(mockStore.markSshRemotePtyLeasesAsync).toHaveBeenCalledWith('ssh-1', 'detached')
   })
 })

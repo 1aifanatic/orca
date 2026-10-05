@@ -15,11 +15,8 @@ import {
 } from './orcad-activation-record-store'
 import { sameOrcadActivationRecord } from './orcad-activation-transaction'
 import { writeOrcadActivationTransaction } from './orcad-activation-transaction-store'
-import {
-  ORCAD_ACTIVATION_FENCE_HELD_CODE,
-  orcadActivationFenceHeldReason,
-  withOrcadActivationLock
-} from './orcad-activation-lock'
+import { withOrcadActivationLock } from './orcad-activation-lock'
+import { orcadActivationFenceRefusal } from './orcad-activation-fence-hold'
 import {
   createOrcadDecommissionTransaction,
   withOrcadDecommissionProcessExited,
@@ -133,11 +130,9 @@ export async function decommissionRemoteOrcad(
         retirement: settlement.retirement
       }
     },
-    () =>
-      refuse(
-        'unverifiable',
-        ORCAD_ACTIVATION_FENCE_HELD_CODE,
-        orcadActivationFenceHeldReason('stop')
-      )
+    async () => {
+      const refusal = await orcadActivationFenceRefusal(options, 'stop')
+      return refuse('unverifiable', refusal.code, refusal.reason)
+    }
   )
 }

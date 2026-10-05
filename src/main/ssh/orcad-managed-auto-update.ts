@@ -10,6 +10,7 @@ import type { OrcadActivationRecord } from './orcad-activation-record'
 import { materializeOrcadArtifact } from './orcad-artifact-materializer'
 import { OrcadArtifactsUnavailableError, OrcadHostUnsupportedError } from './orcad-host-unavailable'
 import { findIncompleteManagedOrcadMigration } from './orcad-managed-migration-status'
+import { ORCAD_ACTIVATION_FENCE_BUSY_CODE } from './orcad-activation-fence-hold'
 import { resolveLinkedOrcadContext } from './orcad-managed-runtime-context'
 import { runManagedOrcadUpdate, withManagedOrcadLifecycle } from './orcad-runtime-maintenance'
 import type { OrcadUpdateDeferCode } from './orcad-update-plan'
@@ -63,7 +64,10 @@ export function planManagedOrcadAutoUpdate(input: {
   return input.failedBefore ? { action: 'skip', reason: 'failed-before' } : { action: 'update' }
 }
 
-const WAITING_CODES: ReadonlySet<string> = new Set<OrcadUpdateDeferCode>([
+const WAITING_CODES: ReadonlySet<string> = new Set<
+  OrcadUpdateDeferCode | typeof ORCAD_ACTIVATION_FENCE_BUSY_CODE
+>([
+  ORCAD_ACTIVATION_FENCE_BUSY_CODE,
   'orcad_update_terminals_running',
   'orcad_update_terminal_census_unavailable',
   'orcad_update_strands_live_terminals',
