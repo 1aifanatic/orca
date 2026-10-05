@@ -153,6 +153,42 @@ describe('rich Markdown native clipboard slices', () => {
     expect(copyRange(editor, to, from).text).toBe('8. Second numbered\n9. Third numbered')
   })
 
+  it('copies a selected ordered-list node with its owner number', () => {
+    const editor = createEditor()
+    let pos: number | undefined
+    editor.state.doc.descendants((node, offset) => {
+      if (node.type.name === 'listItem' && node.textContent === 'Second numbered') {
+        pos = offset
+      }
+    })
+    if (pos === undefined) {
+      throw new Error('Fixture list item missing')
+    }
+    editor.view.dispatch(editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, pos)))
+    expect(editor.view.serializeForClipboard(editor.state.selection.content()).text).toBe(
+      '8. Second numbered'
+    )
+  })
+
+  it('does not wrap a transformed foreign item with the selected node owner', () => {
+    const editor = createEditor()
+    const from = textPos(editor, 'Second numbered') - 2
+    editor.view.dispatch(editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, from)))
+    const foreign = editor.schema.nodes.listItem.create(
+      null,
+      editor.schema.nodes.paragraph.create(null, editor.schema.text('Foreign item'))
+    )
+    editor.setOptions({
+      editorProps: {
+        ...editor.options.editorProps,
+        transformCopied: () => new Slice(Fragment.from(foreign), 0, 0)
+      }
+    })
+    expect(editor.view.serializeForClipboard(editor.state.selection.content()).text).toBe(
+      '- Foreign item'
+    )
+  })
+
   it('preserves nested ordered-list starts', () => {
     const editor = createEditor(
       '1. Outer\n   7. First nested\n   8. Second nested\n   9. Third nested'

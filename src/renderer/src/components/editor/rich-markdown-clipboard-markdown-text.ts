@@ -10,6 +10,28 @@ export function serializeRichMarkdownSliceToMarkdown(
   if (!manager) {
     return slice.content.textBetween(0, slice.content.size, '\n\n')
   }
+  const selected = slice.content.firstChild
+  const parent = $from.parent
+  // Node selections supply the item itself, so its owner must supply the list marker.
+  if (
+    slice.openStart === 0 &&
+    slice.content.childCount === 1 &&
+    selected === $from.nodeAfter &&
+    selected &&
+    (selected.type.name === 'listItem' || selected.type.name === 'taskItem') &&
+    ['bulletList', 'orderedList', 'taskList'].includes(parent.type.name)
+  ) {
+    return manager.serialize({
+      type: 'doc',
+      content:
+        normalizeOpenListContext(
+          Fragment.from(parent.copy(slice.content)),
+          $from,
+          $from.depth,
+          $from.depth
+        ).toJSON() ?? []
+    })
+  }
   let inline = slice.content
   let block = inline.firstChild
   let depth = 0
