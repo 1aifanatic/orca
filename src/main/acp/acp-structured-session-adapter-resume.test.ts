@@ -99,7 +99,15 @@ describe('the reattach window', () => {
   })
 
   it('leaves no turn from the window for a later Stop to find', async () => {
-    const rig = await openAcpAdapterRig(resumesUnmarked)
+    const rig = await openAcpAdapterRig({
+      ...resumesUnmarked,
+      script: (agent: AcpScriptedAgent) =>
+        agent.on('session/resume', (frame) => {
+          // An old reply with no end and no replay mark.
+          agent.notify('session/update', replyChunk('prompt:old', 'stale text'))
+          agent.reply(frame, { configOptions: GROK_CONFIG_OPTIONS })
+        })
+    })
     await rig.acquire()
     await rig.settle()
     await expect(rig.adapter.cancelTurn({ sessionId: SESSION, fence: 1 })).resolves.toEqual({
