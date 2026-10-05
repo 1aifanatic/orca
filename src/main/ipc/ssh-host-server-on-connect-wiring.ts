@@ -92,7 +92,8 @@ export function hostServerOnConnectDeps(userDataPath: string): HostServerOnConne
         listRelayPtyIds: orcadMigrationRelayPtyLister(target.id),
         censusHost: async () =>
           censusSshHostRelaysBeforeSession(
-            await requireManagedOrcadInfrastructure().connectionManager.connect(target)
+            await requireManagedOrcadInfrastructure().connectionManager.connect(target),
+            target.id
           )
       }),
     deploy: (target) =>

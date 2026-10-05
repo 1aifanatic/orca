@@ -121,6 +121,7 @@ import { powerShellCommand, powerShellLiteral, powerShellNativeArg } from './ssh
 import {
   classifyWindowsRelayLaunchError,
   WINDOWS_RELAY_LAUNCH_LOG_PREFIX,
+  windowsRelayConnectCommand,
   windowsRelayLaunchCommand
 } from './ssh-relay-windows-launch-command'
 import {
@@ -2498,21 +2499,6 @@ async function connectWindowsRelay(
     { wrapCommand: false, signal }
   )
   return waitForSentinel(channel, signal)
-}
-
-function windowsRelayConnectCommand(
-  hostPlatform: RemoteHostPlatform,
-  nodePath: string,
-  remoteDir: string,
-  sockPath: string,
-  credentialFile: string
-): string {
-  return commandWithNodePath(
-    hostPlatform,
-    nodePath,
-    remoteDir,
-    `& ${powerShellLiteral(nodePath)} relay.js --connect --sock-path ${powerShellLiteral(sockPath)} --credential-file ${powerShellLiteral(credentialFile)}`
-  )
 }
 
 async function probeWindowsRelayPipe(

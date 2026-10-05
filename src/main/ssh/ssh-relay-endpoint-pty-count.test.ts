@@ -34,7 +34,7 @@ describe('asking a relay how many PTYs it runs', () => {
     request.mockResolvedValue([{ id: 'pty-1' }, { id: 'pty-2' }])
 
     await expect(countRelayEndpointPtys(conn, '/usr/bin/node', SOCK)).resolves.toBe(2)
-    expect(exec).toHaveBeenCalledWith(expect.stringContaining('relay.js --connect'))
+    expect(exec).toHaveBeenCalledWith(expect.stringContaining('relay.js --connect'), undefined)
     expect(request).toHaveBeenCalledTimes(1)
     expect(request).toHaveBeenCalledWith(
       'pty.listProcesses',

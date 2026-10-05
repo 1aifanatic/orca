@@ -10,6 +10,7 @@ import {
   type HostRelayEndpointCensus
 } from './ssh-host-relay-endpoint-census'
 import type { SshConnection } from './ssh-connection'
+import { censusWindowsHostRelays, windowsCensusNodePath } from './ssh-host-relay-windows-census'
 import { execCommand } from './ssh-relay-deploy-helpers'
 import { readRemoteHomeCommand } from './ssh-remote-commands'
 import { resolveRemoteNodePath } from './ssh-remote-node-resolution'
@@ -40,7 +41,6 @@ export async function relayTerminalsOnConnect(args: {
   } catch {
     return { verdict: 'unverifiable', count: 0 }
   }
-  // Windows pipes cannot be listed (`unenumerable`); those hosts keep deciding from the leases.
   return census.verdict === 'live' || census.verdict === 'unverifiable'
     ? { verdict: census.verdict, count: census.count }
     : { verdict: 'exited', count: 0 }
@@ -49,21 +49,29 @@ export async function relayTerminalsOnConnect(args: {
 /** The census over the connect's bootstrap connection, before any relay session exists. */
 export async function censusSshHostRelaysBeforeSession(
   conn: SshConnection,
+  targetId: string,
   signal?: AbortSignal
 ): Promise<HostRelayEndpointCensus> {
   const host = await detectRemoteHostPlatform(conn, { signal })
   if (!host) {
     return { verdict: 'unverifiable', count: 0 }
   }
-  if (isWindowsRemoteHost(host)) {
-    return { verdict: 'unenumerable', count: 0 }
-  }
+  const windows = isWindowsRemoteHost(host)
   const remoteHome = normalizeRemoteHome(
-    await execCommand(conn, readRemoteHomeCommand(host), { signal }),
+    await execCommand(conn, readRemoteHomeCommand(host), { signal, wrapCommand: !windows }),
     host
   )
   if (!validateRemoteHome(remoteHome, host)) {
     return { verdict: 'unverifiable', count: 0 }
+  }
+  if (windows) {
+    return censusWindowsHostRelays(conn, {
+      host,
+      remoteHome,
+      targetId,
+      nodePath: () => windowsCensusNodePath(conn, host, remoteHome, signal),
+      signal
+    })
   }
   return censusHostRelayEndpoints(conn, {
     host,

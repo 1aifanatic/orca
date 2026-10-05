@@ -21,13 +21,20 @@ export async function countRelayEndpointPtys(
   signal?: AbortSignal
 ): Promise<number | null> {
   const bridge = legacyRelayBridge(nodePath, sockPath)
-  if (!bridge) {
-    return null
-  }
+  return bridge ? countRelayPtysOverBridge(conn, bridge.connectCommand, signal) : null
+}
+
+/** The same question over an already-built bridge command, such as a Windows relay's PowerShell. */
+export async function countRelayPtysOverBridge(
+  conn: SshConnection,
+  connectCommand: string,
+  signal?: AbortSignal,
+  execOptions?: { wrapCommand: boolean }
+): Promise<number | null> {
   let mux: SshChannelMultiplexer | null = null
   try {
     mux = new SshChannelMultiplexer(
-      await waitForSentinel(await conn.exec(bridge.connectCommand), signal)
+      await waitForSentinel(await conn.exec(connectCommand, execOptions), signal)
     )
     const rows = await mux.request(
       'pty.listProcesses',
