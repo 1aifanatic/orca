@@ -16,7 +16,7 @@ describe('background task results in adopted history', () => {
   ] as const)(
     'settles replay from a TaskOutput result with status %s and exit code %s',
     async (status, exitCode, state) => {
-      const fixture = await openAcpFixtureRig()
+      const fixture = await openAcpFixtureRig({ adopt: true })
       const lane = fixture.lane()
       lane.beginLoad()
       for (const [index, rawOutput] of [

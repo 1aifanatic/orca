@@ -1,4 +1,3 @@
-import type { AgentJournalMessageItem } from '../../shared/agent-session-journal-types'
 import type { ProviderTimelineEvent } from '../native-chat/agent-session-timeline/provider-timeline-event'
 import {
   boundInlineText,
@@ -14,38 +13,26 @@ export function acpSessionUpdate(
   notification: SessionNotification,
   turn: string | undefined,
   at: number,
-  replay: boolean,
-  tools: AcpToolTimeline,
-  dialect: AcpDialect,
-  backgroundTasks: AcpBackgroundTaskTimeline,
-  replayUserBody?: AgentJournalMessageItem,
-  messageKey?: string
+  context: {
+    /** Adopted history: background-task starts in it prove no current liveness. */
+    history: boolean
+    tools: AcpToolTimeline
+    dialect: AcpDialect
+    backgroundTasks: AcpBackgroundTaskTimeline
+    messageKey?: string
+  }
 ): ProviderTimelineEvent[] {
   const update = notification.update
   const join = { join: { thread: notification.sessionId, ...(turn === undefined ? {} : { turn }) } }
   switch (update.sessionUpdate) {
     case 'agent_message_chunk':
     case 'agent_thought_chunk':
-      if (replay && messageKey && update.content.type === 'text') {
-        return [
-          {
-            type: 'item.update',
-            item: messageKey,
-            body: {
-              kind: 'message',
-              role: update.sessionUpdate === 'agent_thought_chunk' ? 'reasoning' : 'assistant',
-              blocks: [{ type: 'text', text: update.content.text }]
-            },
-            ...join
-          }
-        ]
-      }
       return update.content.type === 'text'
         ? [
             {
               type: 'text.delta',
-              item: messageKey
-                ? { id: messageKey }
+              item: context.messageKey
+                ? { id: context.messageKey }
                 : update.messageId
                   ? { id: `message:${update.messageId}` }
                   : { stream: update.sessionUpdate },
@@ -56,29 +43,18 @@ export function acpSessionUpdate(
           ]
         : [{ type: 'provider.frame', frameKind: update.sessionUpdate, payload: update, ...join }]
     case 'user_message_chunk':
-      return replay && update.content.type === 'text'
-        ? [
-            {
-              type: 'item.update',
-              item: `replay-user:${turn}:${update.messageId ?? ''}`,
-              body: replayUserBody ?? {
-                kind: 'message',
-                role: 'user',
-                blocks: [{ type: 'text', text: update.content.text }]
-              },
-              ...join
-            }
-          ]
-        : []
+      // A live echo of the send is the send's own row; adopted history comes as `input.history`.
+      return []
     case 'tool_call':
     case 'tool_call_update': {
+      const { tools, dialect, backgroundTasks } = context
       const events = tools.translate(update, dialect, join.join)
       const tool = events[0]
       const tasks =
         tool && 'body' in tool && tool.body?.kind === 'tool-call'
           ? (dialect.toolBackgroundTasks?.(update, tool.body) ?? [])
           : []
-      return [...events, ...backgroundTasks.translate(tasks, join.join, replay)]
+      return [...events, ...backgroundTasks.translate(tasks, join.join, context.history)]
     }
     case 'plan':
       return [

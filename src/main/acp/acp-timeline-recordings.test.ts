@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { contextTokensFromUsage } from '../../shared/agent-session-context-usage'
 import {
   closeProviderTimelineRigs,
-  messageText
+  messageText,
+  providerItemId
 } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
 import { openAcpFixtureRig, readAcpFixture } from './acp-timeline-fixture.test-support'
 
@@ -71,23 +73,42 @@ describe('recorded ACP traffic through the journal', () => {
     expect(rows.some((row) => messageText(row.body)?.includes('ok'))).toBe(true)
   })
 
-  it('suppresses load replay from the existing journal after an assembler restart', async () => {
+  it('drops load history a journal already holds, except its context usage', async () => {
     const fixture = await openAcpFixtureRig()
     const frames = await readAcpFixture('s4-resume')
     await fixture.feed(frames.filter((frame) => frame.process === 'A'))
     const before = await fixture.rig.rows()
-    fixture.restart()
+    await fixture.restart({ adopt: false })
     const loading = frames.filter((frame) => frame.process === 'B')
     const nextPrompt = loading.findIndex((frame) => frame.message.method === 'session/prompt')
     await fixture.feed(loading.slice(0, nextPrompt))
+    fixture.apply(
+      fixture.lane().notification(
+        'session/update',
+        {
+          sessionId: 'session-1',
+          _meta: { isReplay: true },
+          update: { sessionUpdate: 'usage_update', used: 5000, size: 256000 }
+        },
+        1900
+      )
+    )
     fixture.finishLoad()
-    expect(await fixture.rig.rows()).toEqual(before)
+    const after = await fixture.rig.rows()
+    const items = (rows: typeof before) => rows.filter((row) => row.body.kind !== 'turn')
+    expect(items(after)).toEqual(items(before))
+    const [turn] = await fixture.rig.turns()
+    expect(turn?.contextUsage?.window?.tokens).toBe(256000)
+    expect(
+      turn?.contextUsage?.used?.kind === 'estimate' &&
+        contextTokensFromUsage(turn.contextUsage.used.usage)
+    ).toBe(5000)
     await fixture.feed(loading.slice(nextPrompt))
     expect(await fixture.rig.turns()).toHaveLength(2)
   })
 
   it('adopts coalesced load replay into an empty journal, including user and completed tools', async () => {
-    const fixture = await openAcpFixtureRig()
+    const fixture = await openAcpFixtureRig({ adopt: true })
     const frames = (await readAcpFixture('s4-resume')).filter((frame) => frame.process === 'B')
     const nextPrompt = frames.findIndex((frame) => frame.message.method === 'session/prompt')
     await fixture.feed(frames.slice(0, nextPrompt))
@@ -104,6 +125,40 @@ describe('recorded ACP traffic through the journal', () => {
     )
     await fixture.feed(frames.slice(nextPrompt))
     expect(await fixture.rig.turns()).toHaveLength(2)
+  })
+
+  it('adopts history as rows with the provider ids, and a re-run of the adoption adds no copy', async () => {
+    const fixture = await openAcpFixtureRig({ adopt: true })
+    const frames = (await readAcpFixture('s4-resume')).filter((frame) => frame.process === 'B')
+    const load = frames.slice(
+      0,
+      frames.findIndex((frame) => frame.message.method === 'session/prompt')
+    )
+    await fixture.feed(load)
+    fixture.finishLoad()
+    const adopted = await fixture.rig.rows()
+    const user = adopted.find((row) => row.body.kind === 'message' && row.body.role === 'user')
+    expect(user?.itemId).toBe(
+      providerItemId('item', `history-user:${JSON.stringify(['prompt:A:3', null])}`, {
+        thread: 'session-1'
+      })
+    )
+    expect(await fixture.rig.turn('prompt:A:3')).toMatchObject({
+      userItemId: user?.itemId,
+      state: 'completed'
+    })
+    expect(
+      adopted.flatMap((row) => (row.body.kind === 'tool-call' ? [row.itemId] : [])).sort()
+    ).toEqual(
+      ['tool:call-1', 'tool:call-2']
+        .map((key) => providerItemId('item', key, { thread: 'session-1' }))
+        .sort()
+    )
+
+    await fixture.restart({ adopt: true })
+    await fixture.feed(load)
+    fixture.finishLoad()
+    expect(await fixture.rig.rows()).toEqual(adopted)
   })
 
   it('answers questions and plan approval with the recorded exact reply shapes', async () => {

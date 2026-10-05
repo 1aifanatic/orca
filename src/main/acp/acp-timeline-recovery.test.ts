@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { contextTokensFromUsage } from '../../shared/agent-session-context-usage'
-import {
-  closeProviderTimelineRigs,
-  messageText
-} from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
+import { closeProviderTimelineRigs } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
 import { openAcpFixtureRig, readAcpFixture } from './acp-timeline-fixture.test-support'
 import { AcpTimelineTranslator } from './acp-timeline-translator'
 import { GROK_ACP_DIALECT } from './acp-dialects/grok-dialect'
@@ -35,59 +32,6 @@ describe('ACP reviewed traffic and recovery', () => {
     expect(usage?.kind === 'estimate' && contextTokensFromUsage(usage.usage)).toBe(39190)
   })
 
-  it('adopts missing history into a partial journal after a restart without duplicating partial text', async () => {
-    const f = await openAcpFixtureRig()
-    const frames = await readAcpFixture('s4-resume')
-    const live = frames.filter((frame) => frame.process === 'A')
-    const firstText = live.findIndex(
-      (frame) =>
-        frame.message.params && JSON.stringify(frame.message.params).includes('agent_message_chunk')
-    )
-    await f.feed(live.slice(0, firstText + 1))
-    const partial = (await f.rig.rows()).find((row) => row.body.kind === 'message')
-    expect(partial).toBeDefined()
-    f.restart()
-    const replay = frames.filter((frame) => frame.process === 'B')
-    const next = replay.findIndex((frame) => frame.message.method === 'session/prompt')
-    await f.feed(replay.slice(0, next))
-    f.finishLoad()
-    const rows = await f.rig.rows()
-    const messages = rows.filter(
-      (row) => row.body.kind === 'message' && row.body.role === 'assistant'
-    )
-    expect(messages).toHaveLength(2)
-    expect(messages[0]?.itemId).toBe(partial?.itemId)
-    expect(messages.map((row) => messageText(row.body))).toEqual([
-      "I'll read `notes.txt` and report the second line.",
-      'The second line of `notes.txt` is `bananas`.'
-    ])
-    expect(rows.filter((row) => row.body.kind === 'tool-call')).toHaveLength(2)
-    expect((await f.rig.turns())[0]?.outcome).toBe('success')
-  })
-
-  it('re-derives replay adoption after adoption itself was interrupted', async () => {
-    const f = await openAcpFixtureRig()
-    const replay = (await readAcpFixture('s4-resume')).filter((frame) => frame.process === 'B')
-    const next = replay.findIndex((frame) => frame.message.method === 'session/prompt')
-    await f.feed(replay.slice(0, 4))
-    const original = (await f.rig.rows()).find(
-      (row) => row.body.kind === 'message' && row.body.role === 'assistant'
-    )
-    f.restart()
-    await f.feed(replay.slice(0, next))
-    f.finishLoad()
-    const rows = await f.rig.rows()
-    expect(
-      rows.filter((row) => row.body.kind === 'message' && row.body.role === 'user')
-    ).toHaveLength(1)
-    const assistants = rows.filter(
-      (row) => row.body.kind === 'message' && row.body.role === 'assistant'
-    )
-    expect(assistants).toHaveLength(2)
-    expect(assistants[0]?.itemId).toBe(original?.itemId)
-    expect((await f.rig.turns())[0]?.outcome).toBe('success')
-  })
-
   it.each([undefined, null])(
     'accepts an empty plan request and replies with the valid approval shape (%s)',
     async (planContent) => {
@@ -112,11 +56,7 @@ describe('ACP reviewed traffic and recovery', () => {
   )
 
   it('degrades tool snapshots under forty large concurrent tools without throwing or losing later updates', () => {
-    const lane = new AcpTimelineTranslator({
-      sessionId: 'session-1',
-      journalItems: () => [],
-      dialect: GROK_ACP_DIALECT
-    })
+    const lane = new AcpTimelineTranslator({ sessionId: 'session-1', dialect: GROK_ACP_DIALECT })
     const big = 'x"\\'.repeat(12000)
     for (let index = 0; index < 40; index += 1) {
       expect(() =>

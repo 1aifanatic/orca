@@ -11,12 +11,9 @@ import { AcpTimelineTranslator, acpTurnEnd } from './acp-timeline-translator'
 
 afterEach(closeProviderTimelineRigs)
 
-async function genericRig() {
+async function genericRig(options: { adopt?: boolean } = {}) {
   const rig = await openProviderTimelineRig()
-  const translator = new AcpTimelineTranslator({
-    sessionId: 'provider-1',
-    journalItems: () => rig.journal.snapshot().items
-  })
+  const translator = new AcpTimelineTranslator({ sessionId: 'provider-1', ...options })
   const apply = (events: ProviderTimelineEvent[]) => {
     for (const event of events) {
       expect(rig.assembler.apply(event).admission.accepted).toBe(true)
@@ -220,7 +217,7 @@ describe('generic ACP translation', () => {
   })
 
   it('adopts generic unmarked load history and never invents a success verdict', async () => {
-    const { rig, translator, apply, update } = await genericRig()
+    const { rig, translator, apply, update } = await genericRig({ adopt: true })
     translator.beginLoad()
     update({ sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'User' } })
     update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'History' } })
@@ -230,6 +227,23 @@ describe('generic ACP translation', () => {
     expect(
       (await rig.rows()).flatMap((row) => (row.body.kind === 'message' ? [row.body.role] : []))
     ).toEqual(['user', 'assistant'])
+  })
+
+  it('drops unmarked load history its creator does not adopt, except context usage', () => {
+    const translator = new AcpTimelineTranslator({ sessionId: 'provider-1' })
+    translator.beginLoad()
+    const events = [
+      { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'User' } },
+      { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'History' } },
+      { sessionUpdate: 'tool_call', toolCallId: 'old-tool', title: 'Read', status: 'completed' },
+      { sessionUpdate: 'usage_update', used: 5000, size: 256000 }
+    ].flatMap((update) =>
+      translator.notification('session/update', { sessionId: 'provider-1', update }, 1100)
+    )
+    expect(events).toEqual([
+      expect.objectContaining({ type: 'context.usage', join: { thread: 'provider-1' } })
+    ])
+    expect(translator.finishLoad(1200)).toEqual([])
   })
 
   it('requires an explicit journal decision for marked replay and uses typed standard events', async () => {
@@ -268,7 +282,7 @@ describe('generic ACP translation', () => {
     expect((await rig.rows()).some((row) => messageText(row.body) === 'typed')).toBe(true)
   })
   it('adopts streamed user history across multiple turns without replacing earlier users', async () => {
-    const { rig, translator, apply, update } = await genericRig()
+    const { rig, translator, apply, update } = await genericRig({ adopt: true })
     translator.beginLoad()
     update({
       sessionUpdate: 'user_message_chunk',

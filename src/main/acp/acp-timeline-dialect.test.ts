@@ -14,7 +14,6 @@ async function dialectRig() {
   const rig = await openProviderTimelineRig()
   const translator = new AcpTimelineTranslator({
     sessionId: 'provider-1',
-    journalItems: () => rig.journal.snapshot().items,
     dialect: GROK_ACP_DIALECT
   })
   const apply = (events: ProviderTimelineEvent[]) => {

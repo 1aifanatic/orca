@@ -110,12 +110,11 @@ describe('background task outcome evidence', () => {
     )
   })
 
-  it('replays the captured task and queue notices into one completed row beside its launch tool', async () => {
+  it('joins the captured task and queue notices into one completed row beside its launch tool', async () => {
     const fixture = await openAcpFixtureRig()
     const tail = await launch(fixture)
     const [before] = await taskRows(fixture)
     expect(before?.block.state).toBe('working')
-    fixture.restart()
     await fixture.feed(tail)
     const [after] = await taskRows(fixture)
     expect(await taskRows(fixture)).toHaveLength(1)
@@ -130,7 +129,7 @@ describe('background task outcome evidence', () => {
     expect((await taskRows(fixture))[0]?.block.state).toBe('done')
   })
 
-  it.each(['partial', 'restart', 'eviction'] as const)(
+  it.each(['partial', 'eviction'] as const)(
     'SF2 settles named tasks on a completed kill call after %s',
     async (boundary) => {
       const fixture = await openAcpFixtureRig()
@@ -144,12 +143,9 @@ describe('background task outcome evidence', () => {
         rawInput: { task_id: taskId, task_ids: [taskId, 'other-task'] }
       })
       await fixture.rig.rows()
-      if (boundary === 'restart') {
-        fixture.restart()
-      }
       if (boundary === 'eviction') {
-        for (let index = 0; index < 70; index += 1) {
-          // Pressure only the translator cache; the target still goes through the journal.
+        for (let index = 0; index < 200; index += 1) {
+          // Pressure only the translator's snapshots: settled ones go first, the running call stays.
           fixture.lane().notification(
             'session/update',
             {
@@ -159,7 +155,7 @@ describe('background task outcome evidence', () => {
                 sessionUpdate: 'tool_call',
                 title: 'Read file',
                 toolCallId: `unrelated-${index}`,
-                status: 'in_progress',
+                status: 'completed',
                 name: 'read_file',
                 rawInput: { content: 'x'.repeat(40000) },
                 rawOutput: 'y'.repeat(40000)
@@ -202,7 +198,7 @@ describe('background task outcome evidence', () => {
   it.each(['launch', 'notification'] as const)(
     'SF3 treats replayed %s evidence as unverifiable and accepts a later completion',
     async (source) => {
-      const fixture = await openAcpFixtureRig()
+      const fixture = await openAcpFixtureRig({ adopt: true })
       fixture.lane().beginLoad()
       if (source === 'launch') {
         tool(
@@ -225,7 +221,6 @@ describe('background task outcome evidence', () => {
       }
       fixture.finishLoad()
       expect((await taskRows(fixture))[0]?.block.state).toBe('unverifiable')
-      fixture.restart()
       taskNotice(fixture, taskId, false, true)
       expect((await taskRows(fixture))[0]?.block.state).toBe('done')
     }
@@ -234,7 +229,7 @@ describe('background task outcome evidence', () => {
   it.each(['notification', 'kill'] as const)(
     'SF3 preserves the explicit %s outcome included in adopted history',
     async (completion) => {
-      const fixture = await openAcpFixtureRig()
+      const fixture = await openAcpFixtureRig({ adopt: true })
       fixture.lane().beginLoad()
       tool(
         fixture,
@@ -270,42 +265,4 @@ describe('background task outcome evidence', () => {
       )
     }
   )
-
-  it('SF3 adopts a missing task into unfinished journal history without claiming it is live', async () => {
-    const fixture = await openAcpFixtureRig()
-    fixture.apply(
-      fixture.lane().notification(
-        'session/update',
-        {
-          sessionId: 'session-1',
-          _meta: { promptId: 'historic-turn' },
-          update: {
-            sessionUpdate: 'tool_call',
-            title: 'Historical launch',
-            toolCallId: 'historic-tool',
-            status: 'in_progress'
-          }
-        },
-        1000
-      )
-    )
-    await fixture.rig.rows()
-    fixture.lane().beginLoad()
-    tool(
-      fixture,
-      {
-        toolCallId: 'historic-tool',
-        status: 'completed',
-        rawOutput: {
-          type: 'BackgroundTaskStarted',
-          task_id: taskId,
-          task_type: 'bash',
-          command: 'sleep 99'
-        }
-      },
-      true
-    )
-    fixture.finishLoad()
-    expect((await taskRows(fixture))[0]?.block.state).toBe('unverifiable')
-  })
 })
