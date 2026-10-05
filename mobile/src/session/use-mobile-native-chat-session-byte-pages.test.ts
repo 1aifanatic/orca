@@ -187,5 +187,10 @@ describe('mobile native chat with byte-bounded history pages', () => {
 
     expect(chat?.messages).toHaveLength(2000)
     expect(chat?.hasMore).toBe(false)
+
+    await act(async () => emit({ type: 'appended', messages: [row(5000)] }))
+
+    expect(chat?.messages).toHaveLength(2000)
+    expect(chat?.hasMore).toBe(false)
   })
 })

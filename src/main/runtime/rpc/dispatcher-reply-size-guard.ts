@@ -8,8 +8,8 @@ export const RPC_REPLY_TOO_LARGE_MESSAGE =
 
 export type DispatcherReplySizeGuard = {
   reply: (response: string) => void
-  /** Aborts on the caller's signal, or when this request's reply overflowed. */
-  signal: AbortSignal | undefined
+  /** For a streaming handler: aborts on the caller's signal, or when this request's reply overflowed. */
+  streamSignal: () => AbortSignal | undefined
 }
 
 /** Why: a remote socket closes the whole connection on a reply over its frame cap, killing every
@@ -24,7 +24,7 @@ export function createDispatcherReplySizeGuard(args: {
 }): DispatcherReplySizeGuard {
   const { requestId, meta, reply, replyFitsTransport, signal } = args
   if (!replyFitsTransport) {
-    return { reply, signal }
+    return { reply, streamSignal: () => signal }
   }
   const overflow = new AbortController()
   let overflowed = false
@@ -50,6 +50,15 @@ export function createDispatcherReplySizeGuard(args: {
       )
       overflow.abort()
     },
-    signal: signal ? AbortSignal.any([signal, overflow.signal]) : overflow.signal
+    // Why: a linked child, not AbortSignal.any, so a handler that never removes its abort
+    // listener cannot keep this request's state alive; the caller's signal is per-request.
+    streamSignal: () => {
+      if (signal?.aborted) {
+        overflow.abort(signal.reason)
+      } else {
+        signal?.addEventListener('abort', () => overflow.abort(signal.reason), { once: true })
+      }
+      return overflow.signal
+    }
   }
 }

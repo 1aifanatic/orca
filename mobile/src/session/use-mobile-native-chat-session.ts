@@ -204,7 +204,8 @@ export function useMobileNativeChatSession(args: {
         }
         setMessages(applied.messages)
         if (!applied.windowReplaced && applied.hasMore != null) {
-          setHasMore(applied.hasMore)
+          // A live trim at the retention ceiling leaves nothing loadEarlier may fetch.
+          setHasMore(applied.hasMore && applied.messages.length < MAX_MESSAGES)
         }
         if (!applied.windowReplaced && applied.beforeOffset != null) {
           beforeOffsetRef.current = applied.beforeOffset

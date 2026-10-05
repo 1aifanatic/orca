@@ -21,7 +21,10 @@ import type { RuntimeCapability } from '../../../shared/protocol-version'
 import type { EventProps } from '../../../shared/telemetry-events'
 import { track } from '../../telemetry/client'
 
-type OutboundBudgetEmitter = EventProps<'remote_outbound_budget_close'>['emitter']
+type OutboundBudgetEmitter = Exclude<
+  EventProps<'remote_outbound_budget_close'>['emitter'],
+  'reply-size'
+>
 
 const HANDSHAKE_TIMEOUT_MS = 10_000
 const MAX_CONSECUTIVE_DECRYPT_FAILURES = 5

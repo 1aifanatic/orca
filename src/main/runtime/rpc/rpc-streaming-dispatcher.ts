@@ -196,7 +196,7 @@ export class RpcStreamingDispatcher {
         params,
         {
           runtime,
-          signal: replyGuard.signal,
+          signal: replyGuard.streamSignal(),
           requestId: request.id,
           connectionId: options?.connectionId,
           clientId: options?.clientId,
