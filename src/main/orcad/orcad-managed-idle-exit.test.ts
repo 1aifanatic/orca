@@ -124,11 +124,13 @@ describe('activationFenceExists', () => {
     }
   })
 
-  it('follows the fence directory a client holds during an update', async () => {
+  it('follows the lock a client holds during an update, not a root an aborted acquire left', async () => {
     root = mkdtempSync(join(tmpdir(), 'orcad-fence-'))
     const fence = join(root, '.orcad-activation-transaction')
     expect(await activationFenceExists(fence)).toBe(false)
     mkdirSync(fence)
+    expect(await activationFenceExists(fence)).toBe(false)
+    mkdirSync(join(fence, '.install-lock'))
     expect(await activationFenceExists(fence)).toBe(true)
   })
 })
