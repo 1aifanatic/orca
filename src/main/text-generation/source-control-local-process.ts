@@ -1,8 +1,6 @@
 import type { CommitMessagePlan } from '../../shared/commit-message-plan'
-import {
-  stopSupervisedProvider,
-  supervisedProviderSpawnFailure
-} from '../codex/codex-app-server-posix-supervisor'
+import { stopSupervisedProvider } from '../codex/codex-app-server-posix-supervisor'
+import { supervisedProviderSpawnFailure } from '../codex/provider-spawn-failure-report'
 import { terminateCodexAppServerProcessTree } from '../codex/codex-app-server-process-teardown'
 import { UnsafeWindowsBatchArgumentsError } from '../win32-utils'
 import { terminateWindowsProcessTree } from '../windows-process-tree-kill'

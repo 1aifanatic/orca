@@ -1,5 +1,6 @@
 import type { CodexAppServerLaunch } from './codex-app-server-connection'
 import { waitForProcessExitUntil } from './codex-process-exit-deadline'
+import { PROVIDER_SPAWN_FAILURE_MARKER } from './provider-spawn-failure-report'
 
 /** Time the provider gets to exit on its own after its stdin ends, before SIGTERM. */
 export const PROVIDER_STDIN_END_GRACE_MS = 1_000
@@ -19,9 +20,6 @@ export const PROVIDER_OUTPUT_DRAIN_TIMEOUT_MS = 1_000
  */
 export const PROVIDER_SUPERVISOR_MAX_STOP_MS =
   PROVIDER_STDIN_END_GRACE_MS + PROVIDER_SIGTERM_GRACE_MS + PROVIDER_GROUP_REAP_TIMEOUT_MS
-
-/** Starts the one stderr line that reports a provider the supervisor could not start. */
-export const PROVIDER_SPAWN_FAILURE_MARKER = '[orca-provider-supervisor] spawn failed: '
 
 /** Inline supervisor source kept dependency-free for the spawned Node child. */
 export const POSIX_PROVIDER_SUPERVISOR_SCRIPT = `
@@ -162,39 +160,6 @@ child.once('exit', (code, signal) => {
  * `one-shot`: stdin end only completes the request; the provider runs until it exits or is stopped.
  */
 export type ProviderSupervisorLifetime = 'session' | 'one-shot'
-
-/** A provider the supervisor could not start: `thrown` when a direct spawn would have thrown. */
-export type SupervisedProviderSpawnFailure = { thrown: boolean; error: NodeJS.ErrnoException }
-
-/** The failure a supervisor reported on its last stderr line before exiting 127; null otherwise. */
-export function supervisedProviderSpawnFailure(
-  code: number | null,
-  stderr: string
-): SupervisedProviderSpawnFailure | null {
-  const line = stderr.trimEnd().split('\n').at(-1) ?? ''
-  if (code !== 127 || !line.startsWith(PROVIDER_SPAWN_FAILURE_MARKER)) {
-    return null
-  }
-  let report: unknown
-  try {
-    report = JSON.parse(line.slice(PROVIDER_SPAWN_FAILURE_MARKER.length))
-  } catch {
-    return null
-  }
-  if (
-    !report ||
-    typeof report !== 'object' ||
-    !('thrown' in report && typeof report.thrown === 'boolean') ||
-    !('code' in report && typeof report.code === 'string') ||
-    !('message' in report && typeof report.message === 'string')
-  ) {
-    return null
-  }
-  return {
-    thrown: report.thrown,
-    error: Object.assign(new Error(report.message), { code: report.code })
-  }
-}
 
 export type ProviderStopInput = {
   /** Asks the child to stop: a SIGTERM, or the stdin end that closes a session. */
