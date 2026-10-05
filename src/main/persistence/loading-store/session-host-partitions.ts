@@ -222,7 +222,7 @@ export function setHostWorkspaceSession(
   )
   owner[sessionHostPartitionOperationsContext].runtime.state.workspaceSessionsByHostId = {
     ...owner[sessionHostPartitionOperationsContext].runtime.state.workspaceSessionsByHostId,
-    [hostId]: pruned
+    [hostId]: withRequiredWorkspaceSessionMaps(pruned)
   }
   scheduleSave(owner[sessionHostPartitionOperationsContext].scheduling, [
     'workspaceSessionsByHostId'
@@ -236,4 +236,18 @@ export function installSessionHostPartitionOperationsContext(
   Object.defineProperty(target, sessionHostPartitionOperationsContext, {
     value: source[sessionHostPartitionOperationsContext]
   })
+}
+
+/**
+ * The renderer splits a full snapshot per host and leaves out maps a host has no rows in, so a
+ * host partition written as sent lacks maps the type requires and every reader iterates.
+ */
+export function withRequiredWorkspaceSessionMaps(
+  session: WorkspaceSessionState
+): WorkspaceSessionState {
+  return {
+    ...session,
+    tabsByWorktree: session.tabsByWorktree ?? {},
+    terminalLayoutsByTabId: session.terminalLayoutsByTabId ?? {}
+  }
 }

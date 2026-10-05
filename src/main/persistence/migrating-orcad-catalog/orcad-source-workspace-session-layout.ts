@@ -11,7 +11,7 @@ export function collectOwnedTerminalTabIds(
   scope: OrcadMigrationSourceScope
 ): Set<string> {
   const tabIds = new Set(
-    Object.entries(session.tabsByWorktree).flatMap(([ownerKey, tabs]) =>
+    Object.entries(session.tabsByWorktree ?? {}).flatMap(([ownerKey, tabs]) =>
       orcadMigrationOwnerMatchesScope(ownerKey, scope) ? tabs.map((tab) => tab.id) : []
     )
   )
@@ -69,12 +69,12 @@ export function paneBelongsToTabs(paneKey: string, tabIds: ReadonlySet<string>):
  * commits, so the destination gets the tabs and layouts without them and starts fresh shells.
  */
 export function dropOrcadMigrationTerminalBindings(fragment: WorkspaceSessionState): void {
-  for (const tabs of Object.values(fragment.tabsByWorktree)) {
+  for (const tabs of Object.values(fragment.tabsByWorktree ?? {})) {
     for (const tab of tabs) {
       tab.ptyId = null
     }
   }
-  for (const layout of Object.values(fragment.terminalLayoutsByTabId)) {
+  for (const layout of Object.values(fragment.terminalLayoutsByTabId ?? {})) {
     delete layout.ptyIdsByLeafId
   }
   delete fragment.remoteSessionIdsByTabId

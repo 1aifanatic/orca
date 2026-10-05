@@ -38,7 +38,7 @@ function inspectSession(
   const sourceHostPartition = partitionHostId === scope.hostId
   const matchesOwner = (ownerKey: string): boolean =>
     Boolean(ownerKey) && (sourceHostPartition || scope.ownerMatches(ownerKey, partitionHostId))
-  for (const [ownerKey, tabs] of Object.entries(session.tabsByWorktree)) {
+  for (const [ownerKey, tabs] of Object.entries(session.tabsByWorktree ?? {})) {
     if (!matchesOwner(ownerKey)) {
       continue
     }

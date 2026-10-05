@@ -128,10 +128,10 @@ export function collectOrcadMigrationSessionEntityOwners(
     // with already-committed state.
     owners.set(key, current === undefined ? owner : '\0')
   }
-  for (const [owner, tabs] of Object.entries(session.tabsByWorktree)) {
+  for (const [owner, tabs] of Object.entries(session.tabsByWorktree ?? {})) {
     tabs.forEach((tab) => add(`terminal:${tab.id}`, owner))
   }
-  for (const [tabId, layout] of Object.entries(session.terminalLayoutsByTabId)) {
+  for (const [tabId, layout] of Object.entries(session.terminalLayoutsByTabId ?? {})) {
     const topologyLeaves = collectLayoutLeafIdsInOrder(layout.root)
     topologyLeaves.forEach((leafId) => add(`terminal-leaf:${leafId}`, tabId))
     const topologyIds = new Set(topologyLeaves)
