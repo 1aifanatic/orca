@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { hashMarkdownContent } from '../../shared/mobile-markdown-document'
+import { projectMobileSessionFileTab } from '../../shared/mobile-session-editor-tab-projection'
 import { getHostEditorTabState } from './host-editor-tab-state'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 
@@ -19,8 +20,11 @@ const {
   createFolderWorkspaceRuntimeStore,
   makeFolderProjectGroup,
   makeFolderWorkspace,
-  makeRuntimeStoreWithWorkspaceSession
+  makeRuntimeStoreWithWorkspaceSession,
+  TEST_WINDOW_ID
 } = await import('./orca-runtime-test-fixtures.spec')
+const { attachEditorWindow, detachEditorWindow } =
+  await import('./host-editor-tabs-test-harness.spec')
 
 function sshFolderRuntime() {
   const folderStore = createFolderWorkspaceRuntimeStore(
@@ -149,6 +153,54 @@ describe('host-owned editor tabs in a folder workspace', () => {
       expect(await allTypes()).toEqual(['markdown', 'file'])
     }
   )
+
+  it("drops the closed window's last tabs for an SSH folder workspace from the full list too", async () => {
+    const runtime = sshFolderRuntime()
+    attachEditorWindow(runtime)
+    const windowDiff = projectMobileSessionFileTab(
+      { tabId: 'win-diff-1', isActive: true },
+      {
+        id: 'win-diff-file',
+        filePath: '/srv/notes/plan.md',
+        relativePath: 'plan.md',
+        language: 'markdown',
+        mode: 'diff',
+        isDirty: false,
+        diffSource: 'unstaged'
+      }
+    )
+    runtime.syncWindowGraph(TEST_WINDOW_ID, {
+      tabs: [],
+      leaves: [],
+      rendererGeneration: 'g-1',
+      mobileSessionTabs: [
+        {
+          worktree: TEST_FOLDER_WORKSPACE_KEY,
+          publicationEpoch: 'window-1',
+          snapshotVersion: 1,
+          activeGroupId: 'g-1',
+          activeTabId: 'win-diff-1',
+          activeTabType: 'file',
+          tabGroups: [{ id: 'g-1', activeTabId: 'win-diff-1', tabOrder: ['win-diff-1'] }],
+          tabs: [windowDiff]
+        }
+      ]
+    })
+    runtime.markGraphUnavailable(TEST_WINDOW_ID)
+    detachEditorWindow(runtime)
+
+    const all = (await runtime.listAllMobileSessionTabs()).find(
+      (snapshot) => snapshot.worktree === TEST_FOLDER_WORKSPACE_KEY
+    )
+    const scoped = await runtime.listMobileSessionTabs(`id:${TEST_FOLDER_WORKSPACE_KEY}`)
+
+    expect(all?.tabs.map((tab) => [tab.type, tab.id])).toEqual(
+      scoped.tabs.map((tab) => [tab.type, tab.id])
+    )
+    expect(scoped.tabs).toEqual([
+      expect.objectContaining({ type: 'markdown', relativePath: 'plan.md' })
+    ])
+  })
 
   it('finds an editor-only workspace stored in an SSH folder partition', async () => {
     const runtime = sshFolderRuntime()

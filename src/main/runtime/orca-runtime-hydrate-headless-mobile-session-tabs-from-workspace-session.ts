@@ -266,19 +266,22 @@ export class OrcaRuntimeWithHydrateHeadlessMobileSessionTabsFromWorkspaceSession
       this.storeMobileSessionSnapshot(entryWorktreeId, nextSnapshot)
     }
     if (worktreeId === undefined && hostOwnsEditors && options.onlyRuntimeOwnedTerminals !== true) {
-      // Why: the unscoped session is the local partition; a workspace with live diffs or editor-only
-      // rows in another partition (an SSH workspace) is built against its own partition instead.
+      // Why: the unscoped session is the local partition; any other workspace whose editor tabs
+      // can differ from that partition's (live diffs, its own edit rows, or a closed window's last
+      // editor tabs) is built or reconciled against its own partition instead.
       const handled = new Set(entries.map(([entryWorktreeId]) => entryWorktreeId))
       const scoped = [
         ...getHostEditorTabState(this).listDiffWorktreeIds(),
+        ...[...this.mobileSessionTabsByWorktree]
+          .filter(([, snapshot]) =>
+            snapshot.tabs.some((tab) => tab.type === 'markdown' || tab.type === 'file')
+          )
+          .map(([snapshotWorktreeId]) => snapshotWorktreeId),
         ...[...this.getKnownWorkspaceSessionWorktreeIds()].filter(
           (knownWorktreeId) =>
-            !this.mobileSessionTabsByWorktree.has(knownWorktreeId) &&
-            listHostEditorMobileTabs(
-              this,
-              knownWorktreeId,
-              this.getWorkspaceSessionForWorktree(knownWorktreeId)
-            ).length > 0
+            (this.getWorkspaceSessionForWorktree(knownWorktreeId)?.openFilesByWorktree?.[
+              knownWorktreeId
+            ]?.length ?? 0) > 0
         )
       ]
       for (const scopedWorktreeId of new Set(scoped)) {
