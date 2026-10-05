@@ -1,37 +1,34 @@
-// The phone's own hooks: a phone that sent the never-opened send itself, holding its echo, and
-// reading the host's Stopping from the status feed, must show the same list after every frame as a
-// phone that opened the chat fresh at that frame; and the real overlay and chat view must hand the
-// FlatList the stop row from the frame that took the send back. Not covered: the row components and
+// The phone's own hooks, overlay and chat view: a phone that sent the never-opened send itself,
+// holding its echo, and reading the host's Stopping from the status feed, must hand its FlatList the
+// same rows, bars and footer after every frame as a phone that opened the chat fresh at that frame,
+// and the stop row from the frame that took the send back. Not covered: the row components and
 // native rendering, the controller and lane that build the overlay's inputs, and a transport that
 // reconnects and resubscribes.
 
-import { createElement } from 'react'
-import { act, create, type ReactTestRenderer } from 'react-test-renderer'
+import { createElement, isValidElement, type ReactElement, type ReactNode } from 'react'
+import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
   AgentSessionStatusEvent,
   AgentSessionSubscribeEvent
 } from '../../../src/shared/agent-session-wire'
+import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import type { RpcClient } from '../transport/rpc-client'
 import { MobileNativeChatOverlay } from './MobileNativeChatOverlay'
-import {
-  buildMobileNativeChatTransientData,
-  foldMobileNativeChatMessages
-} from './mobile-native-chat-render-data'
+import { MobileNativeChatView } from './MobileNativeChatView'
 import {
   NEVER_OPENED,
   STOP_JOURNAL_SESSION,
   stopJournal
 } from './mobile-native-chat-stop-journal.test-fixture'
 import { useMobileNativeChatDrafts } from './use-mobile-native-chat-drafts'
-import { useMobileNativeChatTurnDisclosure } from './use-mobile-native-chat-turn-disclosure'
 import type { MobileNativeChatController } from './use-mobile-native-chat-controller'
 import { useMobileStructuredAgentSession } from './use-mobile-structured-agent-session'
 
 vi.mock('@react-native-async-storage/async-storage', () => ({
   default: { getItem: vi.fn(async () => null), setItem: vi.fn(), removeItem: vi.fn() }
 }))
-// The chat view's own test mocks: the FlatList is a host element whose `data` the test reads.
+// The chat view's own test mocks: the FlatList is a host element whose props the test reads.
 vi.mock('react-native', async () => {
   const React = await import('react')
   return {
@@ -100,9 +97,50 @@ type Phone = {
   status: (stopping: boolean) => void
   /** The phone's own send of the never-opened message, answered before its row streams in. */
   send: () => void
+  /** What the chat view hands its FlatList: each row as drawn, with its bar, then the footer. */
   read: () => string
-  /** The ids the overlay's chat view hands its FlatList. */
+  /** The ids the chat view hands its FlatList. */
   listed: () => string[]
+  /** Keys the FlatList would collide on, or a changed list it was handed in the same array. */
+  listFaults: string[]
+}
+
+type DrawnRowProps = {
+  message: NativeChatMessage
+  turnStatus: { workedSeconds: number | null } | null
+  activeTurnIsWorking: boolean
+}
+
+/** A row element as the list draws it: its message, its bar, and whether its turn is live. */
+function drawnRow(row: ReactNode): unknown {
+  if (!isValidElement<DrawnRowProps>(row)) {
+    return row ?? null
+  }
+  const { message, turnStatus, activeTurnIsWorking } = row.props
+  const bar = turnStatus === null ? '-' : (turnStatus.workedSeconds ?? 'live')
+  return [
+    message.id,
+    message.role,
+    message.stoppedBeforeStart === true,
+    message.blocks,
+    bar,
+    activeTurnIsWorking
+  ]
+}
+
+/** The footer: the live status and the rows waiting behind it. */
+function drawnFooter(node: ReactNode): unknown {
+  if (Array.isArray(node)) {
+    return node.map(drawnFooter)
+  }
+  if (!isValidElement<{ children?: ReactNode; stopping?: boolean }>(node)) {
+    return node ?? null
+  }
+  const element: ReactElement<{ children?: ReactNode; stopping?: boolean }> = node
+  if (element.type === 'LiveStatus') {
+    return ['live', element.props.stopping === true]
+  }
+  return element.type === 'ChatMessage' ? drawnRow(element) : drawnFooter(element.props.children)
 }
 
 const mounted: ReactTestRenderer[] = []
@@ -133,10 +171,7 @@ async function mountPhone(): Promise<Phone> {
     notifyForeground: () => {},
     close: () => {}
   }
-  let latest: {
-    drafts: ReturnType<typeof useMobileNativeChatDrafts>
-    shown: string
-  } | null = null
+  let latest: ReturnType<typeof useMobileNativeChatDrafts> | null = null
   function Harness(): ReturnType<typeof createElement> {
     const session = useMobileStructuredAgentSession({
       client,
@@ -148,54 +183,16 @@ async function mountPhone(): Promise<Phone> {
       hostSupport: HOST_SUPPORT,
       onSendError: () => {}
     })
-    const messages = session.session.messages
     const drafts = useMobileNativeChatDrafts({
       hostId: 'host',
       worktreeId: 'workspace',
       tabId: 'tab',
       sessionId: STOP_JOURNAL_SESSION,
-      messages,
+      messages: session.session.messages,
       transcriptSettled: session.session.status === 'ready'
     })
-    const { data } = buildMobileNativeChatTransientData({
-      messages,
-      folded: foldMobileNativeChatMessages(messages),
-      streaming: null,
-      pending: drafts.pending,
-      imagePreviewsByMessageId: drafts.imagePreviewsByMessageId
-    })
-    const turns = useMobileNativeChatTurnDisclosure({
-      messages: data,
-      enabled: true,
-      isWorking: session.isWorking,
-      workingStartedAt: session.workingStartedAt,
-      settledTurns: session.settledTurns,
-      turnJournal: session.turnJournal,
-      thinking: session.turnIndicator.thinking,
-      activityText: session.turnIndicator.activityText,
-      stopping: session.turnIndicator.stopping,
-      scopeKey: 'host\0workspace\0tab'
-    })
-    const active =
-      turns.active === null ? 'none' : turns.active.workedSeconds === null ? 'live' : 'worked'
-    latest = {
-      drafts,
-      shown: JSON.stringify({
-        working: session.isWorking,
-        stopping: session.turnIndicator.stopping,
-        data: data.map((row) => [row.id, row.role, row.stoppedBeforeStart === true, row.blocks]),
-        list: turns.listMessages.map((row, index) => {
-          const status = turns.resolveRow(index, row).turnStatus
-          return [
-            row.id,
-            status === null ? '-' : status.workedSeconds === null ? 'live' : status.workedSeconds
-          ]
-        }),
-        waiting: turns.waitingRows.map((row) => row.item.id),
-        active
-      })
-    }
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the overlay reads only these controller members, which the controller builds from the same two hooks.
+    latest = drafts
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: every member the list's rows, bars and footer read comes from the two hooks above, as the controller passes them; showNativeChat, nativeChatAgent, nativeChatCanStop, nativeChatStructured and the scope key are constants; the overlay's other members stay undefined: the composer's and Stop's handlers, files and options never reach the list, the streaming text is undefined on a structured tab too, and the prompts, which would hide the live status, are absent in this flow.
     const controller = {
       showNativeChat: true,
       nativeChatSession: session.session,
@@ -237,6 +234,22 @@ async function mountPhone(): Promise<Phone> {
   await act(async () => {
     renderer = create(createElement(Harness))
   })
+  const listFaults: string[] = []
+  let handed: { data: unknown; ids: string } | null = null
+  const flatList = (): { data: NativeChatMessage[]; props: ReactTestInstance['props'] } => {
+    const props = renderer!.root.find((node) => String(node.type) === 'FlatList').props
+    const data: NativeChatMessage[] = props.data
+    const ids = data.map((row) => row.id).join(',')
+    const keys = data.map((row, index) => props.keyExtractor(row, index))
+    if (new Set(keys).size !== keys.length) {
+      listFaults.push(`colliding keys: ${keys.join(',')}`)
+    }
+    if (handed && handed.data === data && handed.ids !== ids) {
+      listFaults.push(`changed rows in the same array: ${ids}`)
+    }
+    handed = { data, ids }
+    return { data, props }
+  }
   mounted.push(renderer!)
   await vi.waitFor(() => expect(listeners.get('agentSession.subscribe')).toBeDefined())
   await vi.waitFor(() => expect(listeners.get('agentSession.subscribeStatus')).toBeDefined())
@@ -260,15 +273,23 @@ async function mountPhone(): Promise<Phone> {
       act(() => listeners.get('agentSession.subscribeStatus')!(event))
     },
     send: () => {
-      const origin = latest!.drafts.captureSendOrigin(NEVER_OPENED)!
-      act(() => latest!.drafts.acceptSend(origin, NEVER_OPENED))
+      const origin = latest!.captureSendOrigin(NEVER_OPENED)!
+      act(() => latest!.acceptSend(origin, NEVER_OPENED))
     },
-    read: () => latest!.shown,
-    listed: () => {
-      const data: unknown = renderer!.root.find((node) => String(node.type) === 'FlatList').props
-        .data
-      return Array.isArray(data) ? data.map((row: { id: string }) => row.id) : []
-    }
+    read: () => {
+      const view = renderer!.root.findByType(MobileNativeChatView).props
+      const { data, props } = flatList()
+      const renderRow: (row: { item: NativeChatMessage; index: number }) => ReactNode =
+        props.renderItem
+      return JSON.stringify({
+        working: view.agentWorking,
+        stopping: view.turnIndicator.stopping,
+        rows: data.map((item, index) => drawnRow(renderRow({ item, index }))),
+        footer: drawnFooter(props.ListFooterComponent)
+      })
+    },
+    listed: () => flatList().data.map((row) => row.id),
+    listFaults
   }
 }
 
@@ -314,6 +335,7 @@ describe("the phone's hooks, from merged frames and from a fresh snapshot", () =
         if (live.read() !== fresh.read()) {
           differing.push(`frame through ${upTo}`)
         }
+        differing.push(...live.listFaults.splice(0), ...fresh.listFaults.splice(0))
         if (upTo >= journal.takenBack && !live.listed().includes(STOP_ROW)) {
           differing.push(`no stop row in the merged list through ${upTo}`)
         }
