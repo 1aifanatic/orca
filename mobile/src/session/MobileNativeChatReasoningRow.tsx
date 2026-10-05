@@ -8,6 +8,7 @@ import {
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import { MobileMarkdown } from '../components/MobileMarkdown'
 import { colors } from '../theme/mobile-theme'
+import { MobileNativeChatLongPressContent } from './MobileNativeChatLongPressContent'
 import { styles } from './mobile-native-chat-message-styles'
 
 /** A reasoning row, collapsed to its headline; its text mounts only once opened. Desktop parity:
@@ -16,12 +17,15 @@ export function MobileNativeChatReasoningRow({
   message,
   markdown,
   fontScale,
-  onOpenFile
+  onOpenFile,
+  onLongPress
 }: {
   message: Pick<NativeChatMessage, 'state' | 'completedAt' | 'timestamp'>
   markdown: string
   fontScale: number
   onOpenFile?: (relativePath: string) => void
+  /** Android only: opens the message's actions sheet, as a long press on any other message does. */
+  onLongPress?: () => void
 }): React.JSX.Element {
   const [expanded, setExpanded] = useState(false)
   const headline = nativeChatReasoningHeadlineText(nativeChatReasoningHeadline(message))
@@ -46,14 +50,15 @@ export function MobileNativeChatReasoningRow({
         </View>
       </Pressable>
       {expanded ? (
-        <View style={styles.reasoning}>
+        <MobileNativeChatLongPressContent onLongPress={onLongPress} style={styles.reasoning}>
           <MobileMarkdown
             content={markdown}
             rangeSelectable
             textScale={1.25 * fontScale}
             onOpenFile={onOpenFile}
+            onLongPress={onLongPress}
           />
-        </View>
+        </MobileNativeChatLongPressContent>
       ) : null}
     </View>
   )

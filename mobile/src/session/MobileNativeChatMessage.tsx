@@ -1,8 +1,9 @@
 import { MobileSelectableText as Text } from '../components/MobileSelectableText'
-import { memo, useCallback, useState, type ComponentProps, type ReactNode } from 'react'
-import { Image, Text as NativeText, Pressable, View } from 'react-native'
+import { memo, useCallback, useState } from 'react'
+import { Image, Text as NativeText, View } from 'react-native'
 import { INLINE_TEXT_SELECTION } from '../components/inline-text-selection'
 import { MobileNativeChatMessageActionsSheet } from './MobileNativeChatMessageActionsSheet'
+import { MobileNativeChatLongPressContent as Content } from './MobileNativeChatLongPressContent'
 import { splitNativeChatBlocks } from '../../../src/shared/native-chat-tool-fold'
 import { selectActiveToolCall } from '../../../src/shared/native-chat-tool-activity'
 import { isImageRefBlock, isTextBlock } from '../../../src/shared/native-chat-types'
@@ -90,25 +91,6 @@ function Prose({
   return null
 }
 
-// Keep the existing responder hierarchy on platforms with inline selection.
-function Content({
-  onLongPress,
-  style,
-  children
-}: {
-  onLongPress?: () => void
-  style: ComponentProps<typeof View>['style']
-  children: ReactNode
-}): React.JSX.Element {
-  return onLongPress ? (
-    <Pressable onLongPress={onLongPress} style={style}>
-      {children}
-    </Pressable>
-  ) : (
-    <View style={style}>{children}</View>
-  )
-}
-
 function MobileNativeChatMessageImpl({
   message,
   toolsExpanded = false,
@@ -193,8 +175,15 @@ function MobileNativeChatMessageImpl({
               markdown={markdown}
               fontScale={fontScale}
               onOpenFile={onOpenFile}
+              onLongPress={onLongPress}
             />
           </View>
+        ) : null}
+        {actionsOpen ? (
+          <MobileNativeChatMessageActionsSheet
+            message={message}
+            onClose={() => setActionsOpen(false)}
+          />
         ) : null}
         {turnStatusAbove ? null : statusRow}
       </>
