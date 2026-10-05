@@ -1,6 +1,6 @@
 // The phone draws a message the host recorded and then rejected in place, as not sent. The user's
-// way on is to send its text again, after which the host hides the not-sent original: the phone's
-// own echo of that resend must land on the new copy alone.
+// way on is to send its text again, as a new message; the not-sent original stays where it was. The
+// phone's own echo of that resend must land on the new copy alone, never on the original.
 
 import { describe, expect, it } from 'vitest'
 import { agentJournalSubmissionKey } from '../../../src/shared/agent-session-journal-item-key'
@@ -83,7 +83,7 @@ const AFTER_ITEMS = [...BEFORE_ITEMS, user('m2', 20, TEXT), answer('done', 21, '
 const AFTER_SUBMISSIONS = [REJECTED, submission('m2', TEXT, 20)]
 
 describe('resending a not-sent message from the phone', () => {
-  it('ends as exactly one bubble once the resend lands', () => {
+  it('ends as the not-sent original plus the delivered resend, with no echo left', () => {
     const before = phone(BEFORE_ITEMS, [REJECTED])
     const normalizedText = normalizeReconcileText(TEXT)
     const origin = {
@@ -101,7 +101,7 @@ describe('resending a not-sent message from the phone', () => {
     const after = phone(AFTER_ITEMS, AFTER_SUBMISSIONS)
     expect(
       after.filter((message) => message.role === 'user').map((message) => message.unsent ?? false)
-    ).toEqual([false])
+    ).toEqual([true, false])
     expect(retireLandedMobileNativeChatPending(after, pending ?? [], new Set())).toEqual([])
   })
 

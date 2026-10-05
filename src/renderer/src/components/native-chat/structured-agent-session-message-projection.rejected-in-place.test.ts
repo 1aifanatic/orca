@@ -209,7 +209,8 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
     ).toEqual({ muted: true, text: 'Your message was not sent.' })
   })
 
-  it('is hidden by a copy of the same body sent once its rejection was known', () => {
+  // A resend of its text is a new message: the original stays the record that it failed.
+  it('stays at its place when the same text is sent again after it was rejected', () => {
     // An earlier build's Retry resent it under a new id, and that copy was delivered.
     const items = [...SEED_ROWS, userItem('old', 3, 'retry me'), userItem('resent', 4, 'retry me')]
     const submissions = [
@@ -220,7 +221,15 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
 
     expect(rows(projectStructuredAgentSessionMessages(items, [], submissions, NO_CARDS))).toEqual([
       { id: agentJournalSubmissionKey('seed'), text: 'seed', unsent: false },
+      { id: agentJournalSubmissionKey('old'), text: 'retry me', unsent: true },
       { id: agentJournalSubmissionKey('resent'), text: 'retry me', unsent: false }
+    ])
+    // Only the original says it was not sent; the delivered resend says nothing.
+    expect([...notices([], submissions)]).toEqual([
+      [
+        agentJournalSubmissionKey('old'),
+        { muted: true, text: 'Orca restarted before this message was sent.' }
+      ]
     ])
   })
 
@@ -241,8 +250,8 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
     ])
   })
 
-  // The host re-delivers its own message under new ids; however close their times, one row stays.
-  it('keeps the last of several copies rejected in the same instant', () => {
+  // Each rejected submission is its own record, however close their times or texts.
+  it('keeps every copy rejected in the same instant, each at its place', () => {
     const items = [...SEED_ROWS, userItem('a', 3, 'pointer'), userItem('b', 4, 'pointer')]
     const submissions = [
       SEED,
@@ -252,6 +261,7 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
 
     expect(rows(projectStructuredAgentSessionMessages(items, [], submissions, NO_CARDS))).toEqual([
       { id: agentJournalSubmissionKey('seed'), text: 'seed', unsent: false },
+      { id: agentJournalSubmissionKey('a'), text: 'pointer', unsent: true },
       { id: agentJournalSubmissionKey('b'), text: 'pointer', unsent: true }
     ])
   })
@@ -365,7 +375,7 @@ describe("one row per rejected message, the host's once it records the rejection
     ])
   })
 
-  it("keeps the old row beside an earlier build's resend until the host records the resend", () => {
+  it("keeps the old row beside an earlier build's resend, before and after the host records it", () => {
     const hostItems = [...SEED_ROWS, userItem('held', 3, 'outbox copy')]
     const resent = restartRejected('held', 'outbox copy', 3)
     const resend = outboxEntry('resend', 'outbox copy')
@@ -393,6 +403,7 @@ describe("one row per rejected message, the host's once it records the rejection
       )
     ).toEqual([
       seedRow,
+      { id: agentJournalSubmissionKey('held'), text: 'outbox copy', unsent: true },
       { id: agentJournalSubmissionKey('resend'), text: 'outbox copy', unsent: false }
     ])
   })
