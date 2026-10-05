@@ -220,9 +220,12 @@ export function activateHostEditorTab(
     publishHostEditorTabs(runtime, worktreeId, diff.tabId)
     return
   }
-  const session = requireOwnSession(runtime, worktreeId)
-  const record = listHostEditTabs(session, worktreeId).find((tab) => tab.tabId === tabId)
-  if (!record) {
+  // Why: persisting focus is bookkeeping; without an owned session the activation still navigates.
+  const session = runtime.getOwnWorkspaceSessionForWorktree(worktreeId)
+  const record = session
+    ? listHostEditTabs(session, worktreeId).find((tab) => tab.tabId === tabId)
+    : undefined
+  if (!session || !record) {
     return
   }
   commitHostEditorSession(runtime, worktreeId, activateHostEditTab(session, worktreeId, record))

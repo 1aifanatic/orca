@@ -242,8 +242,8 @@ export class OrcaRuntimeWithPerformMobileSessionPtyRecordsRefresh extends OrcaRu
         navigation,
         opts.clientNavigationId
       )
-    } else if (tab.type === 'browser') {
-      // Why: browser mobile tabs are renderer-owned unified tabs; focusing the
+    } else if (tab.type === 'browser' || tab.type === 'agent-session') {
+      // Why: browser and chat mobile tabs are renderer-owned unified tabs; focusing the
       // session tab keeps desktop tab order/group state authoritative.
       if (targetsHost) {
         this.notifier?.focusEditorTab?.(tab.id, worktreeId)

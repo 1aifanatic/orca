@@ -209,6 +209,23 @@ describe('host-owned editor tab lifecycle', () => {
     ).toBe('terminal')
   })
 
+  it('still activates an editor tab when the host owns no session partition to record it in', async () => {
+    const { runtime, worktreeId, writeWorktreeFile, getSession } =
+      await createHeadlessEditorHarness()
+    await writeWorktreeFile('notes.md', 'a')
+    await runtime.openMobileFile(`id:${worktreeId}`, 'notes.md', 'caller')
+    const editor = (await runtime.listMobileSessionTabs(`id:${worktreeId}`)).tabs.find(
+      (tab) => tab.type === 'markdown'
+    )!
+    const recorded = getSession()
+    Object.assign(runtime, { getOwnWorkspaceSessionForWorktree: () => null })
+
+    const result = await runtime.activateMobileSessionTab(`id:${worktreeId}`, editor.id)
+
+    expect(result.activeTabId).toBe(editor.id)
+    expect(getSession()).toBe(recorded)
+  })
+
   it('persists a single-group reorder of mixed terminal and editor tabs', async () => {
     const { runtime, worktreeId, writeWorktreeFile, getSession } =
       await createHeadlessEditorHarness(sessionWithTerminal)
