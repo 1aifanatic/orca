@@ -421,4 +421,60 @@ describe('ACP session runtime', () => {
     await Promise.all([rejectedPrompt, cancelled])
     await expect(runtime.prompt([...textPrompt])).rejects.toBeInstanceOf(AcpRequestTimeoutError)
   })
+
+  describe("a steer's cancel", () => {
+    const cancels = (agent: AcpScriptedAgent) =>
+      agent.frames.filter((frame) => frame.method === 'session/cancel')
+
+    it("asks once, never times out or closes, and the prompt's own reply ends it", async () => {
+      vi.useFakeTimers()
+      const { runtime, agent } = fixture({}, { cancelTimeoutMs: 100 })
+      const promptFrame = deferred<Parameters<AcpScriptedAgent['reply']>[0]>()
+      agent.on('session/prompt', (frame) => promptFrame.resolve(frame))
+      await runtime.start(startOptions)
+      const prompt = runtime.prompt([...textPrompt])
+      const frame = await promptFrame.promise
+
+      await runtime.requestSteerCancel()
+      await runtime.requestSteerCancel()
+      await vi.advanceTimersByTimeAsync(1_000)
+
+      expect(cancels(agent)).toHaveLength(1)
+      // The agent's late permission is answered cancelled while its prompt winds down.
+      expect(await agent.request('late', 'session/request_permission', permission)).toMatchObject({
+        result: { outcome: { outcome: 'cancelled' } }
+      })
+      agent.reply(frame, { stopReason: 'cancelled' })
+      expect(await prompt).toEqual({ stopReason: 'cancelled' })
+      // The connection is still open, so the steer's own prompt follows.
+      agent.on('session/prompt', (next) => agent.reply(next, { stopReason: 'end_turn' }))
+      expect(await runtime.prompt([...textPrompt])).toEqual({ stopReason: 'end_turn' })
+    })
+
+    it('leaves a later Stop bounded, closing the connection when the prompt never settles', async () => {
+      vi.useFakeTimers()
+      const { runtime, agent } = fixture({}, { cancelTimeoutMs: 100 })
+      agent.on('session/prompt', () => {})
+      await runtime.start(startOptions)
+      const prompt = runtime.prompt([...textPrompt])
+      const rejectedPrompt = expect(prompt).rejects.toBeInstanceOf(AcpRequestTimeoutError)
+
+      await runtime.requestSteerCancel()
+      const stopped = expect(runtime.cancel()).rejects.toBeInstanceOf(AcpRequestTimeoutError)
+      await vi.advanceTimersByTimeAsync(100)
+
+      await Promise.all([rejectedPrompt, stopped])
+      expect(cancels(agent)).toHaveLength(2)
+      await expect(runtime.prompt([...textPrompt])).rejects.toBeInstanceOf(AcpRequestTimeoutError)
+    })
+
+    it("writes nothing with no prompt of Orca's running", async () => {
+      const { runtime, agent } = fixture()
+      await expect(runtime.requestSteerCancel()).resolves.toBeUndefined()
+      await runtime.start(startOptions)
+      await runtime.requestSteerCancel()
+      await tick()
+      expect(cancels(agent)).toHaveLength(0)
+    })
+  })
 })
