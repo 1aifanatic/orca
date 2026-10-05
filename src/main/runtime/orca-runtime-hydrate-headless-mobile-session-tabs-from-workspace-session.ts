@@ -269,7 +269,13 @@ export class OrcaRuntimeWithHydrateHeadlessMobileSessionTabsFromWorkspaceSession
     if (!normalized) {
       return null
     }
-    this.setWorkspaceSessionForWorktree(worktreeId, normalized)
+    try {
+      this.setWorkspaceSessionForWorktree(worktreeId, normalized)
+    } catch (error) {
+      // Why: housekeeping must never fail the read; the next rebuild re-derives the repair.
+      console.warn('[session-tabs] chat owner repair not saved:', error)
+      return null
+    }
     return this.getWorkspaceSessionForWorktree(worktreeId) ?? normalized
   }
 }

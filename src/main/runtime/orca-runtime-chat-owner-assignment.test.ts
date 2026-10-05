@@ -329,6 +329,24 @@ describe('F1: hydration repairs an ownerless chat with two or more panes once', 
     expect(host.hostPair()).toEqual({ viewMode: 'chat', owner: A })
   })
 
+  it('still answers the read, unrepaired, when the store refuses the repair write', async () => {
+    const host = makeOwnerHost({ leaves: 2, viewMode: 'chat', agentOn: [A], shellOn: [B] })
+    vi.mocked(host.store.setWorkspaceSession!).mockImplementation(() => {
+      throw new Error('Profile maintenance or finalization is blocking new terminal snapshot work')
+    })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(await host.publishedPairs()).toEqual([
+        { viewMode: 'chat', owner: undefined },
+        { viewMode: 'chat', owner: undefined }
+      ])
+      expect(host.hostPair()).toEqual({ viewMode: 'chat', owner: undefined })
+      expect(warn).toHaveBeenCalledOnce()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
   it('leaves absent view modes, single panes and stored owners alone', async () => {
     for (const host of [
       makeOwnerHost({ leaves: 2, agentOn: [A] }),
