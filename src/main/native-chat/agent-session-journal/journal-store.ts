@@ -64,12 +64,12 @@ import {
   journalStopEventRowBuilder
 } from './journal-stop-and-resume-rows'
 import type { AgentJournalEpochReason, JournalStopEvent } from './journal-row-schema'
-import type { JournalRowWriter } from './journal-row-writer'
+import type { JournalOperationReceipt, JournalRowWriter } from './journal-row-writer'
 import type { JournalEpochController } from './journal-epoch-controller'
 import { JournalWriteQueue } from './journal-write-queue'
 import { createJournalStoreCollaborators } from './journal-store-collaborators'
 import { journalStoreLoadedFields } from './journal-store-open'
-import type { JournalItemAppender, JournalResolvedItem } from './journal-item-appender'
+import type { JournalItemAppender } from './journal-item-appender'
 import type { JournalLifecycleBatchAppender } from './journal-lifecycle-batch-appender'
 import type { JournalStopMarks } from './journal-stop-marks'
 
@@ -306,12 +306,8 @@ export class AgentSessionJournal {
   }
 
   /** An upsert whose row is chosen from the fold at its own turn in the queue; null writes nothing. */
-  appendResolvedItem(
-    resolve: () => JournalResolvedItem | null,
-    options: JournalItemAppendOptions
-  ): Promise<JournalAppendResult | null> {
-    return this.itemAppender.appendResolved(resolve, options)
-  }
+  appendResolvedItem: JournalItemAppender['appendResolved'] = (resolve, options) =>
+    this.itemAppender.appendResolved(resolve, options)
 
   appendTombstone(
     identity: AgentJournalItemIdentity,
@@ -351,11 +347,14 @@ export class AgentSessionJournal {
     input: JournalSubmissionInput,
     /** Present: this submission is a queued draft's conversion, and the draft's
      *  state transition commits in the SAME transaction — exactly-once consume. */
-    consume?: JournalSubmissionConsume
+    consume?: JournalSubmissionConsume,
+    /** The send's ledger answer, committed with this row. */
+    receipt?: JournalOperationReceipt
   ): Promise<AgentJournalCursor> {
     return this.rowWriter.append(
       journalSubmissionRowBuilder(() => this.state, this.identity.providerHandle, input, consume),
-      consume && queuedMessageConsumeHook(this.queuedMessages, input.clientMessageId, consume)
+      consume && queuedMessageConsumeHook(this.queuedMessages, input.clientMessageId, consume),
+      receipt
     )
   }
 
