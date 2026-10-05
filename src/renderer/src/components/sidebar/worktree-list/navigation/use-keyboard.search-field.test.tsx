@@ -8,6 +8,7 @@ import type { HostSectionRow } from '../../host-section-rows'
 import type { RenderRow } from '../listing/render-row'
 import { getShortcutPlatform } from '@/lib/shortcut-platform'
 import { repo, worktree } from '../../worktree-list-groups-test-fixtures'
+import type { KeybindingOverrides } from '../../../../../../shared/keybindings'
 
 const activateAndRevealWorktree = vi.fn()
 
@@ -15,9 +16,9 @@ vi.mock('@/lib/worktree-activation', () => ({
   activateAndRevealWorktree: (...args: unknown[]) => activateAndRevealWorktree(...args)
 }))
 
+const state: { keybindings: KeybindingOverrides } = { keybindings: {} }
 vi.mock('@/store', () => ({
-  useAppStore: (selector: (state: { keybindings: undefined }) => unknown) =>
-    selector({ keybindings: undefined })
+  useAppStore: (selector: (value: typeof state) => unknown) => selector(state)
 }))
 
 const { useWorktreeListKeyboardNavigation } = await import('./use-keyboard')
@@ -47,7 +48,7 @@ let container: HTMLDivElement
 let root: Root
 let focusHost: HTMLDivElement
 
-function pressNextWorktreeOn(target: Element): void {
+function pressNextWorktreeOn(target: Element, init: KeyboardEventInit = {}): void {
   const mod = getShortcutPlatform() === 'darwin' ? { metaKey: true } : { ctrlKey: true }
   act(() => {
     target.dispatchEvent(
@@ -57,7 +58,8 @@ function pressNextWorktreeOn(target: Element): void {
         shiftKey: true,
         bubbles: true,
         cancelable: true,
-        ...mod
+        ...mod,
+        ...init
       })
     )
   })
@@ -97,6 +99,7 @@ function mountFocusTarget(markup: string, selector: string): Element {
 
 beforeEach(() => {
   activateAndRevealWorktree.mockClear()
+  state.keybindings = {}
   container = document.createElement('div')
   document.body.appendChild(container)
   focusHost = document.createElement('div')
@@ -125,6 +128,31 @@ describe('worktree cycling while a search field holds focus', () => {
       revealInSidebar: false
     })
   })
+
+  it.each([{ isComposing: true }, { keyCode: 229 }])(
+    'keeps the composing search chord with the IME: %j',
+    (init) => {
+      const input = mountFocusTarget(
+        '<input type="text" data-keyboard-surface="search-field" />',
+        'input'
+      )
+      state.keybindings['worktree.navigateDown'] = ['Mod+Q']
+      const chord = { key: 'q', code: 'KeyQ', shiftKey: false }
+      pressNextWorktreeOn(input, { ...chord, ...init })
+      expect(activateAndRevealWorktree).not.toHaveBeenCalled()
+      pressNextWorktreeOn(input, chord)
+      expect(activateAndRevealWorktree).toHaveBeenCalledOnce()
+    }
+  )
+
+  it.each(['<button>go</button>', '<textarea class="xterm-helper-textarea"></textarea>'])(
+    'preserves composing navigation outside opted search fields: %s',
+    (markup) => {
+      const target = mountFocusTarget(markup, 'button,textarea')
+      pressNextWorktreeOn(target, { isComposing: true })
+      expect(activateAndRevealWorktree).toHaveBeenCalledOnce()
+    }
+  )
 
   it('leaves an undeclared text field suppressed', () => {
     const input = mountFocusTarget('<input type="text" />', 'input')

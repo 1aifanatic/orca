@@ -12,6 +12,7 @@ import {
   type KeybindingMatchOptions
 } from '../../../../../../shared/keybindings'
 import { resolveKeyboardShortcutSurface } from '@/lib/keyboard-shortcut-surface'
+import { isImeOwnedKeyboardEvent } from '@/lib/ime-composition-keyboard-event'
 import type { HostSectionRow } from '../../host-section-rows'
 import type { PinnedWorktreeDisplayPolicy } from '../grouping/row-types'
 import type { RenderRow } from '../listing/render-row'
@@ -102,7 +103,7 @@ export function useWorktreeListKeyboardNavigation(args: {
         return
       }
       const surface = resolveKeyboardShortcutSurface(e.target)
-      if (surface === 'blocked') {
+      if (surface === 'blocked' || (surface === 'search-field' && isImeOwnedKeyboardEvent(e))) {
         return
       }
       const options: KeybindingMatchOptions = {

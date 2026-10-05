@@ -31,6 +31,7 @@ import {
 } from '../../../shared/modifier-double-tap-detector'
 import { shortcutPlatform } from './app-window-chrome'
 import { resolveKeyboardShortcutSurface } from '@/lib/keyboard-shortcut-surface'
+import { isImeOwnedKeyboardEvent } from '@/lib/ime-composition-keyboard-event'
 import {
   createAppCommandHandlers,
   useAppShortcutActions,
@@ -264,6 +265,12 @@ export function useGlobalKeybindings(args: {
     }
 
     const onKeyDown = (e: KeyboardEvent): void => {
+      if (
+        resolveKeyboardShortcutSurface(e.target) === 'search-field' &&
+        isImeOwnedKeyboardEvent(e)
+      ) {
+        return
+      }
       const detected = doubleTapDetector.process(
         toModifierDoubleTapEvent({
           type: 'keyDown',
