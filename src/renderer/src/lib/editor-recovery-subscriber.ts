@@ -19,6 +19,11 @@ import {
 } from './editor-recovery-external-buffers'
 import { createEditorRecoveryTextPatch } from '../../../shared/editor-recovery-text-patch'
 import { createDeadlineDebouncer } from './deadline-debouncer'
+import {
+  flushPendingEditorChanges,
+  subscribePendingEditorChanges
+} from '@/components/editor/editor-pending-flush'
+import { isPublishingEditorModelContent } from '@/components/editor/editor-model-content-checkpoint'
 type RecoverySubscriberDeps = {
   store: {
     getState: () => AppState
@@ -157,6 +162,7 @@ export function createEditorRecoverySubscriber({
     }
     const state = store.getState()
     if (shouldPersistWorkspaceSession(state)) {
+      flushPendingEditorChanges()
       for (const file of state.openFiles) {
         if (file.isDirty) {
           flushPendingChanges(file.id)
@@ -198,6 +204,9 @@ export function createEditorRecoverySubscriber({
     if (disposed) {
       return
     }
+    if (debouncer.isScheduled && isPublishingEditorModelContent()) {
+      return
+    }
     if (retryTimer !== null) {
       clearTimeout(retryTimer)
       retryTimer = null
@@ -229,6 +238,11 @@ export function createEditorRecoverySubscriber({
     schedule()
   }
   const unsubscribe = store.subscribe(evaluate)
+  const unsubscribeInput = subscribePendingEditorChanges(() => {
+    if (shouldPersistWorkspaceSession(store.getState())) {
+      schedule()
+    }
+  })
   const unsubscribeExternal = subscribeExternalRecoveryBuffers((removed) => {
     if (removed) {
       tracker.capture(store.getState(), [...getExternalRecoveryBuffers(), removed])
@@ -244,6 +258,7 @@ export function createEditorRecoverySubscriber({
     dispose: () => {
       disposed = true
       unsubscribe()
+      unsubscribeInput()
       unsubscribeExternal()
       unregisterFlush()
       unregisterResolver()

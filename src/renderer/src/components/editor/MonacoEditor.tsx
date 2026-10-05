@@ -24,6 +24,8 @@ import { useMonacoEditorMount } from './use-monaco-editor-mount'
 import { useDocumentDarkTheme } from '@/hooks/use-document-dark-theme'
 import { snapshotMonacoViewState } from './monaco-view-state-persistence'
 import { MonacoMarkdownAnnotationOverlay } from './MonacoMarkdownAnnotationOverlay'
+import { useEditorModelContentCheckpoint } from './use-editor-model-content-checkpoint'
+import { shouldIgnoreMonacoContentChange } from './monaco-programmatic-sync'
 
 type MonacoEditorProps = {
   fileId: string
@@ -129,6 +131,20 @@ export default function MonacoEditor({
     contentSyncModeRef,
     filePath,
     onContentChange
+  })
+  useEditorModelContentCheckpoint({
+    editor: mountedEditor,
+    enabled: !readOnly,
+    fileId,
+    publish: contentSync.handleChange,
+    onPending: () => useAppStore.getState().markFileDirty(fileId, true),
+    shouldIgnore: () =>
+      readOnlyRef.current ||
+      contentSync.isApplyingLargePasteRef.current ||
+      shouldIgnoreMonacoContentChange({
+        filePath,
+        isApplyingProgrammaticContent: contentSync.isApplyingProgrammaticContentRef.current
+      })
   })
   const annotations = useMonacoMarkdownAnnotations({
     mountedEditor,
@@ -237,7 +253,6 @@ export default function MonacoEditor({
         // Why: defaultValue, not controlled value — Orca owns post-mount content sync; a controlled path would double setValue.
         defaultValue={content}
         theme={isDark ? 'vs-dark' : 'vs'}
-        onChange={contentSync.handleChange}
         onMount={handleMount}
         options={{
           // `IGlobalEditorOptions`, not per-editor: setting it here pins it for every

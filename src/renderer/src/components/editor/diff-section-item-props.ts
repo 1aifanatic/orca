@@ -5,6 +5,7 @@ import type { DiffSection } from './diff-section-types'
 
 export type DiffSectionItemProps = {
   section: DiffSection
+  pendingFileId?: string
   index: number
   isBranchMode: boolean
   sideBySide: boolean

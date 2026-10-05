@@ -58,5 +58,6 @@ describe('MonacoEditor content ownership', () => {
 
     expect(editorProps.current?.defaultValue).toBe('initial content')
     expect(editorProps.current).not.toHaveProperty('value')
+    expect(editorProps.current).not.toHaveProperty('onChange')
   })
 })

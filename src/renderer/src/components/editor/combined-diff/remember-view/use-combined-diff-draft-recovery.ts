@@ -11,6 +11,7 @@ import {
 } from '@/lib/editor-recovery-external-buffers'
 import { getDiskBaselineSignature } from '../../diff-content-signature'
 import type { DiffSection } from '../../diff-section-types'
+import { flushPendingEditorChange } from '../../editor-pending-flush'
 
 type CapturedSection = {
   parent: OpenFile
@@ -94,12 +95,13 @@ export function useCombinedDiffDraftRecovery(
   useLayoutEffect(() => {
     const entries = captured.current
     return () => {
+      flushPendingEditorChange(file.id)
       for (const entry of entries.values()) {
         removeExternalRecoveryBuffer(entry.buffer.file.id)
       }
       entries.clear()
     }
-  }, [])
+  }, [file.id])
 
   return {
     onDraftChange,

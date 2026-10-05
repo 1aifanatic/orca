@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useRef } from 'react'
+import { flushPendingEditorChange } from './editor-pending-flush'
 import type { OnMount } from '@monaco-editor/react'
 import { useAppStore } from '@/store'
 import { registerFileSearchSelectedTextProvider } from '@/lib/file-search-selection'
@@ -102,13 +103,16 @@ export function useMonacoEditorMount(params: MonacoEditorMountParams): OnMount {
       ensureMarkdownDocCompletionProvider(monaco)
       updateMarkdownCompletionDocuments()
 
-      // Why: see contentRef — reconcile the retained model to the current prop before user interaction (surfaces edits made while unmounted).
+      // Why: a sibling pane may hold newer edits than this mount's React snapshot.
+      flushPendingEditorChange(fileIdRef.current)
+      const mountContent =
+        useAppStore.getState().editorDrafts?.[fileIdRef.current] ?? contentRef.current
       beginProgrammaticContentSync(filePath)
       isApplyingProgrammaticContentRef.current = true
       try {
         const didSyncOnMount = syncContentOnMount(
           editorInstance,
-          contentRef.current,
+          mountContent,
           contentSyncModeRef.current
         )
         if (didSyncOnMount) {

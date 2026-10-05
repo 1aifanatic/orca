@@ -6,6 +6,11 @@ import {
   endProgrammaticContentSync,
   shouldIgnoreMonacoContentChange
 } from './monaco-programmatic-sync'
+import {
+  flushEditorModelContentCheckpoint,
+  isCurrentEditorModelContent,
+  isStaleEditorModelContent
+} from './editor-model-content-checkpoint'
 
 export type MonacoContentSyncBridge = {
   contentRef: MutableRefObject<string>
@@ -63,6 +68,17 @@ export function useMonacoContentSyncBridge(params: {
     const ed = editorRef.current
     if (!ed || lastSyncedContentRef.current === content) {
       return
+    }
+    const model = ed.getModel()
+    if (model) {
+      if (
+        isStaleEditorModelContent(model, content) ||
+        isCurrentEditorModelContent(model, content)
+      ) {
+        lastSyncedContentRef.current = content
+        return
+      }
+      flushEditorModelContentCheckpoint(model)
     }
     beginProgrammaticContentSync(filePath)
     isApplyingProgrammaticContentRef.current = true

@@ -109,6 +109,7 @@ export function CombinedDiffSectionList({
               >
                 <DiffSectionItem
                   section={section}
+                  pendingFileId={file.id}
                   onDraftChange={onDraftChange}
                   index={virtualItem.index}
                   isBranchMode={isBranchMode}
