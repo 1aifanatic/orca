@@ -6,6 +6,7 @@ import { encodePairingOffer } from './pairing'
 import {
   getEnvironmentStorePath,
   listEnvironments,
+  markEnvironmentUsed,
   removeEnvironment,
   updateEnvironmentFromPairingCode
 } from './runtime-environment-store'
@@ -155,6 +156,36 @@ describe('managed orcad environment store', () => {
       environments[0]!.pairingRevision = 500
     })
     expect(listEnvironments(userDataPath)[0]?.orcadDeployment, 'store written').toEqual(deployment)
+  })
+
+  it('keeps the re-paired device identity when a reply from the previous pairing lands late', () => {
+    const offer = (deviceToken: string, pairedDeviceId: string) =>
+      encodePairingOffer({
+        v: 2,
+        endpoint: 'ws://127.0.0.1:46768',
+        deviceToken,
+        publicKeyB64: Buffer.alloc(32, 1).toString('base64'),
+        pairedDeviceId
+      })
+    add({ pairingCode: offer('token-old', 'device-old') })
+    const repaired = refreshManagedOrcadPairing(
+      userDataPath,
+      'environment-1',
+      offer('token-new', 'device-new'),
+      500
+    )
+    expect(repaired).toMatchObject({ pairedDeviceId: 'device-new', pairingRevision: 500 })
+
+    // A status reply authenticated with the old token finishes after the re-pair.
+    markEnvironmentUsed(userDataPath, 'environment-1', {
+      pairedDeviceId: 'device-old',
+      pairingDeviceToken: 'token-old',
+      now: 600
+    })
+    const after = listEnvironments(userDataPath)[0]
+    expect(after?.pairedDeviceId).toBe('device-new')
+    expect(after?.endpoints[0]?.deviceToken).toBe('token-new')
+    expect(after?.orcadDeployment).toEqual(deployment)
   })
 
   it('keeps the earliest migration mark, across a downgrade rewrite and a re-pair', () => {
