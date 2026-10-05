@@ -7,8 +7,9 @@ import {
   NATIVE_CHAT_SUPPORTED_AGENT_LIST
 } from '../../../../shared/native-chat-agent-support'
 import type { TuiAgent } from '../../../../shared/tui-agent'
+import { pluginLanguageResourceId } from '../../../../shared/plugins/plugin-language-pack-artifact'
 import en from '@/i18n/locales/en.json'
-import { i18n } from '@/i18n/i18n'
+import { i18n, setRendererPluginLanguagePacks, setRendererUiLanguage } from '@/i18n/i18n'
 import { getAgentCatalog } from '@/lib/agent-catalog'
 import { NativeChatSupportedAgents } from './NativeChatSupportedAgents'
 
@@ -36,6 +37,7 @@ function getRenderedChips(): { agent: string; label: string; role: string }[] {
 
 describe('NativeChatSupportedAgents', () => {
   afterEach(async () => {
+    setRendererPluginLanguagePacks([])
     await i18n.changeLanguage('en')
   })
 
@@ -85,8 +87,23 @@ describe('NativeChatSupportedAgents', () => {
   })
 
   it('renders the English fallback when the active locale lacks the label key', async () => {
-    await i18n.changeLanguage('es')
-    expect(i18n.getResource('es', 'translation', SUPPORTED_AGENTS_LABEL_KEY)).toBeUndefined()
+    // Why: an injected catalog stays without the key; a shipped locale gains it once translated.
+    const id = 'plugin:test.untranslated/pt-BR' as const
+    const resourceLanguage = pluginLanguageResourceId(id)
+    setRendererPluginLanguagePacks([
+      {
+        id,
+        resourceLanguage,
+        pluginKey: 'test.untranslated',
+        locale: 'pt-BR',
+        catalog: { menu: { file: 'Arquivo' } }
+      }
+    ])
+    await setRendererUiLanguage(id)
+    expect(i18n.language).toBe(resourceLanguage)
+    expect(
+      i18n.getResource(resourceLanguage, 'translation', SUPPORTED_AGENTS_LABEL_KEY)
+    ).toBeUndefined()
 
     const markup = renderToStaticMarkup(<NativeChatSupportedAgents />)
 
