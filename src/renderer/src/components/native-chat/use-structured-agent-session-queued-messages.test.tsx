@@ -154,21 +154,21 @@ describe('queued message actions', () => {
     expect(toast.error).toHaveBeenCalledWith('Already sent — your text is still in the composer.')
   })
 
-  it('Edit keeps the card while its text is neither journaled nor saved', async () => {
+  it('Edit deletes the card only once storage holds the text, and keeps it when storage refuses', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const storage = createMemoryNativeChatComposerDraftStorage()
     storage.refuseWrites = true
     setNativeChatComposerDraftStorageForTests(storage)
-    const setItem = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
-      throw new DOMException('full', 'QuotaExceededError')
-    })
     try {
       const harness = createHarness()
       await act(() => harness.result.current.edit('draft-1'))
       expect(readNativeChatDraftCache(SCOPE)).toBe('text of draft-1')
       expect(harness.mutate).not.toHaveBeenCalled()
+
+      storage.refuseWrites = false
+      await act(() => harness.result.current.edit('draft-2'))
+      expect(harness.mutate).toHaveBeenCalledTimes(1)
     } finally {
-      setItem.mockRestore()
       warn.mockRestore()
     }
   })

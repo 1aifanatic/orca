@@ -47,6 +47,7 @@ import {
 export {
   flushNativeChatComposerDrafts,
   isKeptLocalPaste,
+  nativeChatComposerDraftWriteSettled,
   nativeChatComposerDraftWritesSettled,
   unavailableNativeChatComposerDraftImage
 } from './native-chat-composer-draft-persistence'

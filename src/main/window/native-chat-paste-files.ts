@@ -49,8 +49,8 @@ export function isInsideNativeChatPasteFolder(
 
 /**
  * For each restored local paste: kept only when its real path is a file inside the real paste
- * folder (symlinks and junctions resolved) and the stored spelling names that same file. Anything
- * else comes back as a placeholder. Never throws.
+ * folder (symlinks and junctions resolved). Anything else comes back as a placeholder. Nothing is
+ * granted: the preview reads a paste with chat-image access. Never throws.
  */
 export async function restoreNativeChatPastes(paths: unknown): Promise<RestoredNativeChatPaste[]> {
   if (!Array.isArray(paths)) {
@@ -100,13 +100,7 @@ async function restoreNativeChatPaste(
     if (!isInsideNativeChatPasteFolder(folders.real, real) || !(await stat(real)).isFile()) {
       return refused
     }
-    // Why: the preview and the send read by the stored spelling, which a link inside the folder
-    // could point at another file than the real path checked above.
-    const sameFile = await realpath(named).then(
-      (namedReal) => namedReal === real,
-      () => false
-    )
-    return sameFile ? { path: restored, kept: true, exists: true } : refused
+    return { path: restored, kept: true, exists: true }
   } catch {
     // Missing or unreadable: not kept, and nothing about an outside path is reported.
     return refused
