@@ -19,7 +19,7 @@ import { useNativeChatComposerKeyDown } from './use-native-chat-composer-keydown
 import { useNativeChatSendLifecycle } from './use-native-chat-send-lifecycle'
 import { useNativeChatSessionOptions } from './use-native-chat-session-options'
 import { useNativeChatFileAttachmentActions } from './use-native-chat-file-attachment-actions'
-import { useNativeChatDictationActions } from './use-native-chat-dictation-actions'
+import { useNativeChatDictation } from './use-native-chat-dictation'
 import { useNativeChatSessionOptionCommand } from './use-native-chat-session-option-command'
 import { useNativeChatComposerCatalog } from './use-native-chat-composer-catalog'
 import { useNativeChatPickerState } from './use-native-chat-picker-state'
@@ -104,7 +104,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       toggleDictation,
       startHoldDictation,
       stopHoldDictation
-    } = useNativeChatDictationActions(textareaRef)
+    } = useNativeChatDictation(textareaRef)
     const { cancelPendingSends, trackPendingSend } = useNativeChatSendLifecycle(
       terminalTabId,
       targetPtyId,
