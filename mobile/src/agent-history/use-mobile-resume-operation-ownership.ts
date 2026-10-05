@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef } from 'react'
 import type { RpcClient } from '../transport/rpc-client'
 import type { ConnectionState } from '../transport/types'
 
@@ -10,12 +10,11 @@ export function useMobileResumeOperationOwnership(
 ) {
   const generation = client?.getGeneration?.()
   const owner = useMemo(
-    () => ({ client, connection, generation }),
+    () => ({ hostId, worktreeId, client, connection, generation }),
     [hostId, worktreeId, client, connection, generation]
   )
   const currentOwner = useRef<typeof owner | null>(owner)
-  currentOwner.current = owner
-  useEffect(() => {
+  useLayoutEffect(() => {
     currentOwner.current = owner
     return () => {
       currentOwner.current = null

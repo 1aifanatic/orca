@@ -181,7 +181,7 @@ it.each([
       if (method === 'terminal.send') {
         return { id: 'owned-reply', ok: true, result: { send: { accepted: true } } }
       }
-      throw new Error('Unexpected method ' + method)
+      throw new Error(`Unexpected method ${method}`)
     }
   )
   const client = {
