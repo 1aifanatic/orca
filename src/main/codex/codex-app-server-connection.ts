@@ -1,10 +1,10 @@
 import { spawnProcess } from '../../shared/child-process/run-process'
 import { RetryableProcessExitProof } from '../../shared/child-process/retryable-process-exit-proof'
+import { CODEX_APP_SERVER_CLOSE_REQUEST } from './codex-app-server-close-request'
 import {
   createProviderSpawnSpec,
   requestProviderClose,
-  stopSupervisedProvider,
-  type ProviderCloseRequest
+  stopSupervisedProvider
 } from './codex-app-server-posix-supervisor'
 import { buildCodexAppServerExitError } from './codex-app-server-exit-error'
 import { initializeCodexAppServerConnection } from './codex-app-server-handshake'
@@ -49,8 +49,6 @@ export type CodexAppServerLaunch = {
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
 export const GRACEFUL_EXIT_MS = 1_500
-// Codex finishes its writes (auth.json, the state database) and exits on its stdin end.
-const CODEX_APP_SERVER_CLOSE_REQUEST: ProviderCloseRequest = 'stdin-end'
 const FORCED_EXIT_MS = 1_000
 const STDERR_TAIL_MAX_BYTES = 8192
 
