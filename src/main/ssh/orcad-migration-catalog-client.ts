@@ -14,7 +14,7 @@ import {
 } from '../../shared/orcad-migration-scrollback'
 import { parsePairingCode } from '../../shared/pairing'
 import { ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES } from '../../shared/electron-remote-runtime-client-capabilities'
-import { ORCAD_MIGRATION_CATALOG_RUNTIME_CAPABILITY } from '../../shared/protocol-version'
+import { ORCAD_MIGRATION_CATALOG_RUNTIME_CAPABILITY } from '../../shared/orcad-runtime-capabilities'
 import { sendRemoteRuntimeRequestWithStatusPreflight } from '../../shared/remote-runtime-client'
 import type { RuntimeRpcResponse } from '../../shared/runtime-rpc-envelope'
 

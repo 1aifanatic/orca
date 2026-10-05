@@ -2,7 +2,7 @@
  * Asks a managed orcad, through its tunnel, how many terminals its daemon runs. Every failure,
  * including an older host without the method, reads as an unverifiable census, never as zero.
  */
-import { ORCAD_TERMINAL_CENSUS_RUNTIME_CAPABILITY } from '../../shared/protocol-version'
+import { ORCAD_TERMINAL_CENSUS_RUNTIME_CAPABILITY } from '../../shared/orcad-runtime-capabilities'
 import { ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES } from '../../shared/electron-remote-runtime-client-capabilities'
 import {
   getPreferredPairingOffer,

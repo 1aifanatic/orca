@@ -64,7 +64,6 @@ vi.mock('./useLocalLogTail', () => ({ useLocalLogTail: vi.fn() }))
 
 import { useEditorPanelContentState } from './useEditorPanelContentState'
 
-const authorizeExternalPath = vi.fn()
 let latestFileContents: Record<string, FileContent> = {}
 
 function createOpenFile(overrides: Partial<OpenFile>): OpenFile {
@@ -97,9 +96,7 @@ describe('remote sibling editor content routing', () => {
 
   beforeEach(() => {
     latestFileContents = {}
-    authorizeExternalPath.mockReset()
-    authorizeExternalPath.mockResolvedValue(undefined)
-    ;(window as unknown as { api: unknown }).api = { fs: { authorizeExternalPath } }
+    vi.stubGlobal('api', { fs: {} })
     mocks.readRuntimeFileContent.mockReset()
     mocks.findWorkspaceFileRoute.mockReset()
     mocks.findWorkspaceFileRoute.mockReturnValue(null)
@@ -136,9 +133,12 @@ describe('remote sibling editor content routing', () => {
 
     await vi.waitFor(() => expect(latestFileContents[activeFile.id]?.content).toBe('log line'))
     expect(mocks.findWorkspaceFileRoute).not.toHaveBeenCalled()
-    expect(authorizeExternalPath).toHaveBeenCalledWith({ targetPath: logPath })
     expect(mocks.readRuntimeFileContent).toHaveBeenCalledWith(
-      expect.objectContaining({ connectionId: undefined, includeLocalLogMetadata: true })
+      expect.objectContaining({
+        connectionId: undefined,
+        includeLocalLogMetadata: true,
+        access: { kind: 'user-file' }
+      })
     )
   })
 
@@ -165,7 +165,6 @@ describe('remote sibling editor content routing', () => {
         'runtime-1'
       )
     )
-    expect(authorizeExternalPath).not.toHaveBeenCalled()
     expect(mocks.readRuntimeFileContent).not.toHaveBeenCalled()
   })
 
