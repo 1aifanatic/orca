@@ -16,6 +16,7 @@
 import { z } from 'zod'
 import { AgentSessionContextUsageSchema } from './agent-session-context-usage-schema'
 import { AgentSessionFailureFactSchema } from './agent-session-failure-fact-schema'
+import { AgentJournalAnsweredTurnSchema } from './agent-session-answered-turn-schema'
 import type {
   AgentJournalItemBody,
   AgentJournalMessageItem,
@@ -319,11 +320,7 @@ export const AgentJournalSubmissionSchema = z.object({
   submittedAt: z.number(),
   resolvedAt: z.number().nullable(),
   submittedSequence: z.number().int().optional(),
-  // `via` is a string, as `dispatchState` is: a newer host may name another way of joining.
-  answeredInTurn: z
-    .object({ turnItemId: z.string().min(1), via: z.string().min(1) })
-    .nullable()
-    .optional(),
+  answeredInTurn: AgentJournalAnsweredTurnSchema.optional(),
   recovered: z.literal(true).optional(),
   handoverRecorded: z.literal(true).optional(),
   handedOverAt: z.number().optional(),
