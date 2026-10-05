@@ -194,6 +194,7 @@ function projectStatus(
     {
       ...(summary.providerSession ? { providerSession: summary.providerSession } : {}),
       terminalResumeEligible: false,
+      statusSource: 'structured-journal',
       ...(summary.hostExecutionOwned ? { structuredHostOwned: true as const } : {})
     }
   )

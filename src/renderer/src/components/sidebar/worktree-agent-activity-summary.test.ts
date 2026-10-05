@@ -329,25 +329,53 @@ describe('selectWorktreeAgentActivitySummary', () => {
       }
     }
 
-    // A cut is the chat's state, not a live report: no freshness window clears it, and a departed
-    // agent's cut stays interrupted rather than reading done.
-    it('keeps a crash-cut chat interrupted past the freshness window and after it departs', () => {
-      const cut = { state: 'done', outcome: 'interruption', stateStartedAt: 1_000 } as const
-      const cutEntry = makeAgentStatusEntry({ paneKey: failedKey, state: 'done', mainAgent: cut })
-      vi.spyOn(Date, 'now').mockReturnValue(1_000 + AGENT_STATUS_STALE_AFTER_MS + 60_000)
-      const stale = selectWorktreeAgentActivitySummary(
-        {
-          tabsByWorktree: { [worktreeId]: [liveTab] },
-          agentStatusEpoch: epoch++,
-          agentStatusByPaneKey: { [failedKey]: cutEntry },
-          migrationUnsupportedByPtyId: {},
-          runtimeAgentOrchestrationByPaneKey: {},
-          retainedAgentsByPaneKey: {}
-        },
-        worktreeId
-      )
-      expect(stale).toMatchObject({ hasInterrupted: true, hasFailed: false })
+    // A native chat's settled verdict is its state, re-derived from its journal: no freshness window
+    // clears it, whoever ended the turn. Hook rows, a clean done and live work still age out.
+    it("keeps a native chat's settled verdict past the freshness window, and only that", () => {
+      const ended = (
+        outcome: 'interruption' | 'cancellation' | 'failure' | 'unconfirmed' | 'success',
+        overrides: Partial<AgentStatusEntry> = {}
+      ): AgentStatusEntry => ({
+        ...makeAgentStatusEntry({
+          paneKey: failedKey,
+          state: 'done',
+          mainAgent: { state: 'done', outcome, stateStartedAt: 1_000 }
+        }),
+        statusSource: 'structured-journal',
+        ...overrides
+      })
+      const staleCard = (row: AgentStatusEntry) => {
+        vi.spyOn(Date, 'now').mockReturnValue(1_000 + AGENT_STATUS_STALE_AFTER_MS + 60_000)
+        return selectWorktreeAgentActivitySummary(
+          {
+            tabsByWorktree: { [worktreeId]: [liveTab] },
+            agentStatusEpoch: epoch++,
+            agentStatusByPaneKey: { [failedKey]: row },
+            migrationUnsupportedByPtyId: {},
+            runtimeAgentOrchestrationByPaneKey: {},
+            retainedAgentsByPaneKey: {}
+          },
+          worktreeId
+        )
+      }
 
+      expect(staleCard(ended('interruption'))).toMatchObject({ hasInterrupted: true })
+      expect(staleCard(ended('cancellation'))).toMatchObject({ hasInterrupted: true })
+      expect(staleCard(ended('failure'))).toMatchObject({ hasFailed: true })
+      expect(staleCard(ended('unconfirmed'))).toMatchObject({ hasUnconfirmed: true })
+      // A clean done is news that ages; a terminal hook row can go quiet; neither is kept.
+      expect(staleCard(ended('success'))).toMatchObject({ hasLiveDone: false })
+      expect(staleCard(ended('cancellation', { statusSource: undefined }))).toMatchObject({
+        hasInterrupted: false
+      })
+      // A native chat's stale working row is not a verdict, so it ages out as any report does.
+      expect(
+        staleCard(ended('failure', { state: 'working', mainAgent: undefined }))
+      ).toMatchObject({ hasLiveWorking: false, hasFailed: false })
+    })
+
+    it('reads a retained cut-short agent as interrupted, not done', () => {
+      const cut = { state: 'done', outcome: 'interruption', stateStartedAt: 1_000 } as const
       const departed = cardFor(
         {},
         {

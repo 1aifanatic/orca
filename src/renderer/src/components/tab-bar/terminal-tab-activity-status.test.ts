@@ -233,28 +233,35 @@ describe('resolveTerminalTabActivityStatus', () => {
     ).toBe('interrupted')
   })
 
-  // The cut is the chat's state, not a live report, so the freshness window never clears it; a
-  // Stop's row, which a live report carries, still ages out.
-  it('keeps a crash-cut tab interrupted past the freshness window, until the chat changes', () => {
-    const cut = entry(FIRST_LEAF_ID, 'done', {
-      updatedAt: 0,
-      mainAgent: { state: 'done', outcome: 'interruption', stateStartedAt: 0 }
-    })
-    const stopped = entry(FIRST_LEAF_ID, 'done', {
-      updatedAt: 0,
-      mainAgent: { state: 'done', outcome: 'cancellation', stateStartedAt: 0 }
-    })
+  // A native chat's settled verdict is its state, re-derived from its journal, so the freshness
+  // window never clears it, whoever ended the turn. A hook row and a clean done still age out.
+  it("keeps a native chat's settled verdict past the freshness window, until the chat changes", () => {
+    const ended = (
+      outcome: 'interruption' | 'cancellation' | 'failure' | 'success',
+      overrides: Partial<AgentStatusEntry> = {}
+    ) =>
+      entry(FIRST_LEAF_ID, 'done', {
+        updatedAt: 0,
+        statusSource: 'structured-journal',
+        mainAgent: { state: 'done', outcome, stateStartedAt: 0 },
+        ...overrides
+      })
     vi.setSystemTime(AGENT_STATUS_STALE_AFTER_MS + 60_000)
-    const status = (row: typeof cut) =>
+    const status = (row: AgentStatusEntry) =>
       resolveTerminalTabActivityStatus({
         tab: TAB,
         agentStatusByPaneKey: { [row.paneKey]: row },
         ptyIdsByTabId: LIVE_PTY
       })
-    expect(status(cut)).toBe('interrupted')
-    expect(status(stopped)).not.toBe('interrupted')
+    expect(status(ended('interruption'))).toBe('interrupted')
+    expect(status(ended('cancellation'))).toBe('interrupted')
+    expect(status(ended('failure'))).toBe('failed')
+    expect(status(ended('success'))).not.toBe('done')
+    expect(status(ended('cancellation', { statusSource: undefined }))).not.toBe('interrupted')
     // The next turn replaces it.
-    expect(status(entry(FIRST_LEAF_ID, 'working', { updatedAt: Date.now() }))).toBe('working')
+    expect(
+      status(entry(FIRST_LEAF_ID, 'working', { updatedAt: Date.now(), statusSource: 'structured-journal' }))
+    ).toBe('working')
   })
 
   it('falls back to a live working title when hook status is stale', () => {

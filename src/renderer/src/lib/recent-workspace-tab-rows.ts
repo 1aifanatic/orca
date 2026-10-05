@@ -8,7 +8,7 @@ import {
 } from '@/components/sidebar/smart-attention'
 import { tabHasLivePty } from './tab-has-live-pty'
 import { agentVerdictDisplayMark } from '../../../shared/agent-main-agent-verdict'
-import { isAgentStatusShownOnDot } from './pane-agent-evidence'
+import { isExplicitAgentStatusFresh } from './pane-agent-evidence'
 import type { WorktreeStatus } from './worktree-status'
 import type { TerminalTab } from '../../../shared/terminal-tab-types'
 import type { ExecutionHostId } from '../../../shared/execution-host'
@@ -80,7 +80,8 @@ export function resolveRecentWorkspaceTabStatus(
   }
   const verdicts = new Set(
     panes.flatMap((pane) =>
-      pane.kind === 'hook' && isAgentStatusShownOnDot(pane.entry, now, AGENT_STATUS_STALE_AFTER_MS)
+      pane.kind === 'hook' &&
+      isExplicitAgentStatusFresh(pane.entry, now, AGENT_STATUS_STALE_AFTER_MS)
         ? [agentVerdictDisplayMark(pane.entry)]
         : []
     )

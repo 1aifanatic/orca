@@ -1,7 +1,7 @@
 import type { AgentStatus } from '../../../shared/agent-detection'
 import { detectAgentStatusFromTitle, getAgentLabel } from '../../../shared/agent-detection'
 import { resolveExplicitTerminalTitleAgentType } from '../../../shared/terminal-title-agent-type'
-import { agentMainAgentVerdict } from '../../../shared/agent-main-agent-verdict'
+import { agentVerdictDisplayMark } from '../../../shared/agent-main-agent-verdict'
 import type { TerminalAgent } from '../../../shared/terminal-agent'
 import {
   AGENT_STATUS_STALE_AFTER_MS,
@@ -37,21 +37,24 @@ export function isExplicitAgentStatusFresh(
 }
 
 /**
- * Whether a row still sets its pane's status dot: while its evidence is fresh, and, for a turn a
- * crash, quit or restart cut short, until the chat's next turn replaces it. That cut is the chat's
- * state read from its journal, not a live report that goes quiet, so no timer may clear it.
+ * Whether a row still sets its pane's status dot: while its evidence is fresh, and, for a native
+ * chat's settled verdict (Interrupted, Failed, Couldn't confirm), until the chat's next turn
+ * replaces it. That verdict is the chat's state, re-derived from its journal on every change, not a
+ * live report that can go quiet, so no timer may clear it. A clean done, and a row still held open
+ * by work, decay as before.
  */
 export function isAgentStatusShownOnDot(
   entry: Parameters<typeof isExplicitAgentStatusFresh>[0] &
-    Pick<AgentStatusEntry, 'state' | 'interrupted' | 'mainAgent'>,
+    Pick<AgentStatusEntry, 'state' | 'interrupted' | 'mainAgent' | 'statusSource'>,
   now: number,
   staleAfterMs: number
 ): boolean {
   return (
     isExplicitAgentStatusFresh(entry, now, staleAfterMs) ||
-    (entry.restoredUnconfirmed !== true &&
+    (entry.statusSource === 'structured-journal' &&
+      entry.restoredUnconfirmed !== true &&
       entry.state === 'done' &&
-      agentMainAgentVerdict(entry) === 'interruption')
+      agentVerdictDisplayMark(entry) !== null)
   )
 }
 

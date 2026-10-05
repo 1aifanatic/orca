@@ -90,6 +90,9 @@ export type AgentStatusEntry = {
   evidenceObservedAt?: number
   /** True only while a host-held structured session is represented by its live status feed. */
   structuredHostOwned?: true
+  /** Renderer-local: a native chat's row, which its host re-derives from the chat's journal on every
+   *  change. Absent on hook and terminal reports, which can go quiet without a final update. */
+  statusSource?: 'structured-journal'
   /** Timestamp (ms) when the current `state` was first reported.
    *  Why: separate from updatedAt so tool/prompt pings (which reset updatedAt) don't move it. */
   stateStartedAt: number
