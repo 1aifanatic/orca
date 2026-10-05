@@ -15,6 +15,7 @@ import {
   projectStructuredQuestion
 } from './mobile-structured-agent-prompts'
 import type { RpcClient } from '../transport/rpc-client'
+import type { AgentSessionSlashCommand } from '../../../src/shared/agent-session-wire'
 import type { MobileChatPermission } from './mobile-native-chat-permission'
 import type { MobileChatQuestion } from './mobile-native-chat-question'
 import type { MobileNativeChatSession } from './use-mobile-native-chat-session'
@@ -60,6 +61,8 @@ type StructuredMobileSession = ReturnType<typeof useMobileStructuredAgentOptions
     cancelPrompt: (prompt?: { itemId: string; expectedRevision: number }) => Promise<boolean>
     /** The queued-draft cards and their actions; empty and inert off capable hosts. */
     queued: MobileStructuredQueuedMessageControls
+    /** The `/` surface the session reports; undefined until one arrives or on an older host. */
+    sessionCommands: readonly AgentSessionSlashCommand[] | undefined
   }
 
 export function useMobileStructuredAgentSession(args: {
@@ -243,6 +246,7 @@ export function useMobileStructuredAgentSession(args: {
     question: projectStructuredQuestion(questionPrompt, groupedDraft),
     respondPermission,
     respondQuestion,
-    queued
+    queued,
+    sessionCommands: enabled ? (state.commands ?? undefined) : undefined
   }
 }

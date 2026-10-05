@@ -15,8 +15,8 @@ import {
 
 export type { NativeChatSendClassification }
 
-/** Classify a mobile chat send for the tab's agent. Mobile has no skill picker,
- *  so there is never a picker-origin token that reclassifies a `/token` as chat. */
+/** Classify a mobile terminal-lane chat send for the tab's agent. That lane has no
+ *  skill picker, so no picker-origin token ever reclassifies a `/token` as chat. */
 export function classifyMobileNativeChatSend(
   agent: string | null,
   text: string
