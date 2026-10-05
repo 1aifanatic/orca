@@ -5,6 +5,7 @@ import {
   ORCA_EDITOR_SAVE_AND_CLOSE_EVENT,
   ORCA_EDITOR_SAVE_FILE_EVENT,
   type EditorSaveFileDetail,
+  type EditorSaveAndCloseResult,
   type EditorSaveQuiesceDetail
 } from './editor-autosave'
 import { flushPendingEditorChange } from './editor-pending-flush'
@@ -38,9 +39,21 @@ export function attachEditorAutosaveController(store: AppStoreApi): () => void {
   })
 
   const handleSaveAndClose = async (event: Event): Promise<void> => {
-    const { fileId } = (event as CustomEvent<{ fileId: string }>).detail
+    if (!(event instanceof CustomEvent) || typeof event.detail?.fileId !== 'string') {
+      return
+    }
+    const { fileId, claim, resolve } = event.detail
+    if (typeof claim === 'function') {
+      claim()
+    }
+    const complete = (result: EditorSaveAndCloseResult): void => {
+      if (typeof resolve === 'function') {
+        resolve(result)
+      }
+    }
     const file = store.getState().openFiles.find((openFile) => openFile.id === fileId)
     if (!file) {
+      complete('closed')
       return
     }
 
@@ -52,15 +65,20 @@ export function attachEditorAutosaveController(store: AppStoreApi): () => void {
       }
       flushPendingEditorChange(fileId)
     } catch {
+      complete('failed')
       return
     }
 
     const state = store.getState()
     const currentFile = state.openFiles.find((openFile) => openFile.id === fileId)
-    if (!currentFile || currentFile.isDirty || state.editorDrafts[fileId] !== undefined) {
+    if (currentFile && (currentFile.isDirty || state.editorDrafts[fileId] !== undefined)) {
+      complete('retained')
       return
     }
-    state.closeFile(fileId)
+    if (currentFile) {
+      state.closeFile(fileId)
+    }
+    complete('closed')
   }
 
   const handleSaveFile = async (event: Event): Promise<void> => {
