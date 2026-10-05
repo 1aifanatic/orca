@@ -4,6 +4,11 @@ import type { MobileFileMutationRuntimeStatus } from '../files/mobile-file-mutat
 export const MARKDOWN_NOTE_NEEDS_HOST_UPDATE_MESSAGE =
   'Update Orca on this computer to create notes from your phone'
 
+// Why no "try again": tapping Note again creates another file instead of opening this one.
+export function markdownNoteOpenedOnDeviceMessage(fileName: string): string {
+  return `Opened ${fileName} on this phone. Orca on the computer couldn't open it as a tab.`
+}
+
 /**
  * Whether the host is known to refuse opening a new note as a tab, read from this tap's own status.
  * Only a host without the capability that reports a window state other than `available` is known

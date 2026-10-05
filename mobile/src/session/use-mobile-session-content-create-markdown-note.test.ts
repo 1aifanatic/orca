@@ -227,6 +227,10 @@ describe('Markdown Note on a host that may not open editor tabs', () => {
         })
       )
       expect(ui.showToast).toHaveBeenCalledTimes(1)
+      expect(ui.showToast).toHaveBeenCalledWith(
+        "Opened untitled.md on this phone. Orca on the computer couldn't open it as a tab.",
+        2400
+      )
       expect(ui.setCreateError).not.toHaveBeenCalledWith(expect.stringMatching(/\S/))
     }
   )

@@ -21,6 +21,7 @@ import { interpretOrThrowRefusalMessage } from '../transport/rpc-refusal-message
 import { isRendererUnavailableRefusal } from '../transport/renderer-unavailable-refusal'
 import {
   hostRefusesMarkdownNoteTab,
+  markdownNoteOpenedOnDeviceMessage,
   MARKDOWN_NOTE_NEEDS_HOST_UPDATE_MESSAGE
 } from './markdown-note-host-editor-tabs'
 import type { MobileBrowserNavigationMethod } from './MobileBrowserTabActionSheet'
@@ -117,10 +118,13 @@ export function useMobileSessionContentCreateActions(
             return
           }
           interpretOrThrowRefusalMessage(() => sourceFileOpenRun.interpret(openResponse), '')
-        } catch (err) {
+        } catch {
           // Why: the note exists now, so show it rather than leave a stray file; the toast is the one notice.
           previewCreatedNote()
-          showToast(err instanceof Error ? err.message : 'Failed to open markdown note', 1800)
+          showToast(
+            markdownNoteOpenedOnDeviceMessage(displayNameFromPreviewPath(relativePath)),
+            2400
+          )
           return
         }
         scheduleDelayedAction(() => void fetchSessionTabs(), 300)
