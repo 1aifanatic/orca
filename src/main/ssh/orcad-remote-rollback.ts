@@ -13,6 +13,7 @@
  * before restoring would let the old build migrate the new build's state. The rescue copy of
  * the newer state, and the journal under the activation fence, make each step undoable.
  */
+import { logOrcadActivationOutcome } from './orcad-activation-outcome-log'
 import type { SshConnection } from './ssh-connection'
 import type { OrcadActivationRecord } from './orcad-activation-record'
 import type { OrcadTerminalCensus } from './orcad-update-plan'
@@ -62,23 +63,30 @@ export async function rollbackOrcad(input: OrcadRollbackOptions): Promise<OrcadR
       ORCAD_STARTUP_READINESS_TIMEOUT_MS
     )
   }
-  return withOrcadActivationLock(
-    options,
-    async (lock) => {
-      if (!sameOrcadActivationRecord(await readOrcadActivationRecord(options), options.record)) {
-        return {
+  return logOrcadActivationOutcome(
+    `rollback to ${options.record.previous ?? 'none'}`,
+    () =>
+      withOrcadActivationLock(
+        options,
+        async (lock) => {
+          if (
+            !sameOrcadActivationRecord(await readOrcadActivationRecord(options), options.record)
+          ) {
+            return {
+              outcome: 'refused',
+              code: 'orcad_rollback_record_changed',
+              reason:
+                'The host activation record changed while this rollback was waiting. Refresh the ' +
+                'host state and review the new rollback target before trying again.'
+            }
+          }
+          return rollbackOrcadLocked(options, lock)
+        },
+        async () => ({
           outcome: 'refused',
-          code: 'orcad_rollback_record_changed',
-          reason:
-            'The host activation record changed while this rollback was waiting. Refresh the ' +
-            'host state and review the new rollback target before trying again.'
-        }
-      }
-      return rollbackOrcadLocked(options, lock)
-    },
-    async () => ({
-      outcome: 'refused',
-      ...(await orcadActivationFenceRefusal(options, 'rollback'))
-    })
+          ...(await orcadActivationFenceRefusal(options, 'rollback'))
+        })
+      ),
+    ['rolled-back']
   )
 }

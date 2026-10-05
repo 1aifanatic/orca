@@ -34,15 +34,17 @@ function posixReadinessWaitCommand(
   const file = shellEscape(joinRemotePath(host, remoteInstallDir, ORCAD_READINESS_FILENAME))
   const read = `head -c ${ORCAD_READINESS_MAX_BYTES + 1} ${file} 2>/dev/null`
   return [
-    // Fractional sleep is not POSIX; probe it once so the deadline stays in seconds either way.
-    'if sleep 0.25 2>/dev/null; then orcad_readiness_wait_step=0.25; orcad_readiness_wait_per=4;',
-    'else orcad_readiness_wait_step=1; orcad_readiness_wait_per=1; fi;',
-    `orcad_readiness_wait_left=$((${waitSeconds} * orcad_readiness_wait_per));`,
-    'while [ "$orcad_readiness_wait_left" -gt 0 ]; do',
+    // Fractional sleep is not POSIX; probe it once so polling stays fine-grained where it can.
+    'if sleep 0.25 2>/dev/null; then orcad_readiness_wait_step=0.25;',
+    'else orcad_readiness_wait_step=1; fi;',
+    // Why a wall-clock deadline, not a step count: on a loaded host each step's reads take far
+    // longer than its sleep, a counted loop overran the client's exec timeout, and the launch
+    // was failed while the candidate was still starting (BUG-17).
+    `orcad_readiness_wait_end=$(($(date +%s) + ${waitSeconds}));`,
+    'while [ "$(date +%s)" -lt "$orcad_readiness_wait_end" ]; do',
     `[ "$(${read} | wc -l)" -gt 0 ] && break;`,
     `[ "$(${read} | wc -c)" -gt ${ORCAD_READINESS_MAX_BYTES} ] && break;`,
-    'sleep "$orcad_readiness_wait_step";',
-    'orcad_readiness_wait_left=$((orcad_readiness_wait_left - 1)); done;',
+    'sleep "$orcad_readiness_wait_step"; done;',
     `${read} || true`
   ].join(' ')
 }
