@@ -112,11 +112,11 @@ export function SshManagedServerMoveDialog({
               ? translate('auto.ssh.managedServerMove.close', 'Close')
               : translate('auto.ssh.managedServerMove.notNow', 'Not now')}
           </Button>
-          {refusal ? null : (
-            <Button type="button" disabled={running} onClick={move}>
-              {translate('auto.ssh.managedServerMove.confirm', 'Move')}
-            </Button>
-          )}
+          <Button type="button" disabled={running} onClick={move}>
+            {refusal
+              ? translate('auto.ssh.managedServerMove.retry', 'Try again')
+              : translate('auto.ssh.managedServerMove.confirm', 'Move')}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

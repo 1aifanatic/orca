@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 
-const { exitListeners } = vi.hoisted(() => {
+const { exitListeners, shutdownMock } = vi.hoisted(() => {
   const listeners: ((payload: { id: string }) => void)[] = []
-  return { exitListeners: listeners }
+  return { exitListeners: listeners, shutdownMock: vi.fn() }
 })
 
 vi.mock('./ssh-channel-multiplexer', () => ({
@@ -27,6 +27,7 @@ vi.mock('../providers/ssh-pty-provider', () => ({
     onReplay = vi.fn()
     onExit = (listener: (payload: { id: string }) => void) => exitListeners.push(listener)
     listProcesses = vi.fn(async () => [{ id: SERVED }, { id: UNSERVED }])
+    shutdown = shutdownMock
     dispose = vi.fn()
   }
 }))
@@ -84,4 +85,37 @@ describe('SshLegacyRelayRoute', () => {
     expect(route!.serves(SERVED)).toBe(true)
     expect(sink.exit).not.toHaveBeenCalled()
   })
+
+  it('settles a shutdown whose PTY exit closed the route before the reply arrived', async () => {
+    exitListeners.length = 0
+    const route = await openRoute()
+    route.beginServing(SERVED)
+    // The exit arrives first and closes the route (its last served PTY), disposing the mux.
+    shutdownMock.mockImplementationOnce(async () => {
+      for (const listener of exitListeners) {
+        listener({ id: SERVED })
+      }
+      throw new Error('Multiplexer disposed')
+    })
+    await expect(route.provider.shutdown(SERVED, { immediate: true })).resolves.toBeUndefined()
+    expect(route.serves(SERVED)).toBe(false)
+
+    shutdownMock.mockRejectedValueOnce(new Error('Multiplexer disposed'))
+    await expect(route.provider.shutdown(UNSERVED, { immediate: true })).rejects.toThrow(
+      'Multiplexer disposed'
+    )
+  })
 })
+
+async function openRoute(): Promise<SshLegacyRelayRoute> {
+  const route = await SshLegacyRelayRoute.open({
+    targetId: 'target-1',
+    sockPath: '/home/dev/.orca-remote/relay-0.1.0+f6e4b640b122/relay-92ff.sock',
+    nodePath: '/usr/bin/node',
+    clientInstanceId: 'this-build',
+    openTransport: vi.fn(),
+    readText: vi.fn(async () => '0.1.0+f6e4b640b122\n'),
+    sink: { data: vi.fn(), exit: vi.fn(), replay: vi.fn() }
+  })
+  return route!
+}

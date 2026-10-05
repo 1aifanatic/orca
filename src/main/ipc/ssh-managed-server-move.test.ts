@@ -5,6 +5,8 @@ import type { HostServerTerminalVerdict } from '../ssh/ssh-host-server-on-connec
 
 vi.mock('./ssh-connect-flow', () => ({ connectTarget: vi.fn() }))
 vi.mock('./ssh-terminate-sessions', () => ({ terminateSshTargetSessions: vi.fn() }))
+vi.mock('./ssh-session-teardown', () => ({ teardownSshTargetTransport: vi.fn() }))
+vi.mock('./ssh-host-server-connect', () => ({ publishRelayTerminalsStatus: vi.fn() }))
 
 const { moveSshHostToManagedServer } = await import('./ssh-managed-server-move')
 
@@ -39,7 +41,11 @@ function deps(
       status = options.afterConnect ?? { kind: 'managed', environmentId: 'env-1' }
     }),
     serverStatus: vi.fn(() => status),
-    report: vi.fn()
+    report: vi.fn(),
+    releaseRelay: vi.fn(async () => {
+      calls.push('release')
+    }),
+    publishRelayStatus: vi.fn()
   }
 }
 
@@ -64,6 +70,10 @@ describe('moving an SSH host to its managed server on request', () => {
     })
     expect(move.calls).toEqual(['terminate'])
     expect(move.report).toHaveBeenCalledWith('ssh-1', 'refused_unverifiable')
+    expect(move.publishRelayStatus).toHaveBeenCalledWith(target, {
+      verdict: 'unverifiable',
+      count: 1
+    })
   })
 
   it('refuses without converting when the census is unverifiable or still live', async () => {
@@ -101,11 +111,37 @@ describe('moving an SSH host to its managed server on request', () => {
     expect(move.calls).toEqual(['connect', 'terminate', 'census', 'connect'])
   })
 
-  it('surfaces any other stop failure without converting', async () => {
+  it('converts when a stop that failed after its shells died is proven exited by the census', async () => {
     const move = deps()
+    // BUG-15: the second terminal's reply was lost to a relay that hung up on its last exit.
+    move.terminate.mockRejectedValueOnce(
+      new Error('Failed to terminate SSH host sessions: pty2:a:3: Multiplexer disposed')
+    )
+    await expect(moveSshHostToManagedServer('ssh-1', move)).resolves.toMatchObject({
+      outcome: 'moved'
+    })
+    expect(move.calls).toEqual(['census', 'release', 'connect'])
+  })
+
+  it('refuses a failed stop the census cannot clear and refreshes the stale status', async () => {
+    const move = deps({ census: { verdict: 'live', count: 1 } })
     move.terminate.mockRejectedValueOnce(new Error('Failed to terminate SSH host sessions'))
-    await expect(moveSshHostToManagedServer('ssh-1', move)).rejects.toThrow('Failed to terminate')
+    await expect(moveSshHostToManagedServer('ssh-1', move)).resolves.toEqual({
+      outcome: 'refused',
+      verdict: 'live',
+      terminals: 1
+    })
     expect(move.connect).not.toHaveBeenCalled()
-    expect(move.report).toHaveBeenCalledWith('ssh-1', 'failed')
+    expect(move.publishRelayStatus).toHaveBeenCalledWith(target, { verdict: 'live', count: 1 })
+  })
+
+  it('moves a host with two live relay terminals once both stop', async () => {
+    const move = deps()
+    move.terminate.mockResolvedValueOnce({ terminated: 2, unverifiable: 0 })
+    await expect(moveSshHostToManagedServer('ssh-1', move)).resolves.toMatchObject({
+      outcome: 'moved'
+    })
+    expect(move.releaseRelay).not.toHaveBeenCalled()
+    expect(move.report).toHaveBeenCalledWith('ssh-1', 'moved')
   })
 })
