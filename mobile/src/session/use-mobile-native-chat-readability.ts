@@ -19,11 +19,65 @@ type ReadabilityState = {
   readability: MobileNativeChatReadability
 }
 
+const READABILITY_RETRY_DELAYS_MS = [2_000, 10_000, 30_000]
+
 // Why per host and worktree: a re-read after a client swap must not regress a settled answer to unknown or failed.
 const settledReadabilityByScope = new Map<string, 'readable' | 'unreadable'>()
 
 function readabilityScope(hostId: string | null, worktreeId: string): string | null {
   return hostId === null ? null : `${hostId}\0${worktreeId}`
+}
+
+async function readTranscriptReadability(client: RpcClient, worktreeId: string): Promise<boolean> {
+  if (worktreeId.startsWith('folder:')) {
+    const result = resumeFolderWorkspaceListRead.interpret(
+      await resumeFolderWorkspaceListRead.request(client)
+    )
+    return result.accepted && isMobileFolderNativeChatReadable(result.value, worktreeId)
+  }
+  const accepted = nativeChatRepoListRead.interpret(await nativeChatRepoListRead.request(client))
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Preserve the established response shape at this boundary.
+  const repos = accepted.accepted ? ((accepted.value as MobileRuntimeRepoSummary[]) ?? []) : []
+  const repoId = getRepoIdFromMobileWorktreeId(worktreeId)
+  const repo = repos.find((candidate) => candidate.id === repoId)
+  return repo ? isMobileNativeChatTranscriptReadable(repo.connectionId ?? null) : false
+}
+
+/** Reads until an answer, retrying a failure a bounded number of times; returns the cancel. */
+function readWithBoundedRetry(
+  read: () => Promise<boolean>,
+  onAnswer: (readable: boolean) => void,
+  onFailure: () => void
+): () => void {
+  let cancelled = false
+  let timer: ReturnType<typeof setTimeout> | null = null
+  const attempt = (failures: number): void => {
+    void read().then(
+      (readable) => {
+        if (!cancelled) {
+          onAnswer(readable)
+        }
+      },
+      () => {
+        if (cancelled) {
+          return
+        }
+        onFailure()
+        // Why bounded: a host that keeps failing must not be polled for the life of the screen.
+        const delay = READABILITY_RETRY_DELAYS_MS[failures]
+        if (delay !== undefined) {
+          timer = setTimeout(() => attempt(failures + 1), delay)
+        }
+      }
+    )
+  }
+  attempt(0)
+  return () => {
+    cancelled = true
+    if (timer) {
+      clearTimeout(timer)
+    }
+  }
 }
 
 export function useMobileNativeChatReadability(
@@ -48,57 +102,21 @@ export function useMobileNativeChatReadabilityState(
   })
   useEffect(() => {
     // Why: the floating workspace always runs on the paired host and has no repo connection to resolve.
-    if (isFloatingWorkspace) {
+    // With no client the render already falls back to the stored answer.
+    if (isFloatingWorkspace || !client) {
       return
     }
-    let active = true
-    const settle = (readable: boolean): void => {
-      if (!active) {
-        return
-      }
-      const readability = readable ? 'readable' : 'unreadable'
-      if (scope !== null) {
-        settledReadabilityByScope.set(scope, readability)
-      }
-      setState({ client, worktreeId, readability })
-    }
-    const fail = (): void => {
-      if (active) {
-        setState({ client, worktreeId, readability: 'failed' })
-      }
-    }
-    if (!client) {
-      setState({ client, worktreeId, readability: 'unknown' })
-      return
-    }
-    if (worktreeId.startsWith('folder:')) {
-      void resumeFolderWorkspaceListRead
-        .request(client)
-        .then((response) => {
-          const result = resumeFolderWorkspaceListRead.interpret(response)
-          settle(result.accepted && isMobileFolderNativeChatReadable(result.value, worktreeId))
-        })
-        .catch(fail)
-      return () => {
-        active = false
-      }
-    }
-    void nativeChatRepoListRead
-      .request(client)
-      .then((response) => {
-        const accepted = nativeChatRepoListRead.interpret(response)
-        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Preserve the established response shape at this boundary.
-        const repos = accepted.accepted
-          ? ((accepted.value as MobileRuntimeRepoSummary[]) ?? [])
-          : []
-        const repoId = getRepoIdFromMobileWorktreeId(worktreeId)
-        const repo = repos.find((candidate) => candidate.id === repoId)
-        settle(repo ? isMobileNativeChatTranscriptReadable(repo.connectionId ?? null) : false)
-      })
-      .catch(fail)
-    return () => {
-      active = false
-    }
+    return readWithBoundedRetry(
+      () => readTranscriptReadability(client, worktreeId),
+      (readable) => {
+        const readability = readable ? 'readable' : 'unreadable'
+        if (scope !== null) {
+          settledReadabilityByScope.set(scope, readability)
+        }
+        setState({ client, worktreeId, readability })
+      },
+      () => setState({ client, worktreeId, readability: 'failed' })
+    )
   }, [client, isFloatingWorkspace, scope, worktreeId])
   if (isFloatingWorkspace) {
     return 'readable'

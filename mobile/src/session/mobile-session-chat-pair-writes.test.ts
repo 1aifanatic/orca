@@ -14,6 +14,7 @@ function route(): MobileChatPairRouteBinding & { sends: number; failures: number
   const binding = {
     sends: 0,
     failures: 0,
+    ready: () => true,
     readHostPair: () => ({}),
     // Why never settling: the overlay must stay up while the write is in flight.
     send: vi.fn(() => {

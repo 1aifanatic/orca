@@ -14,6 +14,8 @@ export type MobileChatPairKey = { hostId: string; worktreeId: string; parentTabI
 
 /** What one mounted session route lends the process-wide writer for its host and worktree. */
 export type MobileChatPairRouteBinding = {
+  /** Whether the route has accepted a snapshot for this worktree; before that its rows are empty. */
+  ready: () => boolean
   readHostPair: (parentTabId: string) => TerminalChatPair | null
   send: (
     parentTabId: string,
@@ -46,9 +48,21 @@ export function mobileChatPairKeyId(key: MobileChatPairKey): string {
 }
 
 /** The most recently mounted route for the key's worktree: the one on top of the stack. */
-function bindingFor(key: MobileChatPairKey): MobileChatPairRouteBinding | undefined {
+function topBinding(key: MobileChatPairKey): MobileChatPairRouteBinding | undefined {
   const routes = bindings.get(scopeId(key.hostId, key.worktreeId))
   return routes?.[routes.length - 1]
+}
+
+/** Reads and sends go through the topmost route that holds rows, so a just-pushed one cannot read "gone". */
+function bindingFor(key: MobileChatPairKey): MobileChatPairRouteBinding | undefined {
+  const routes = bindings.get(scopeId(key.hostId, key.worktreeId)) ?? []
+  for (let index = routes.length - 1; index >= 0; index -= 1) {
+    const route = routes[index]
+    if (route?.ready()) {
+      return route
+    }
+  }
+  return topBinding(key)
 }
 
 function showPending(key: MobileChatPairKey, pair: TerminalChatPair | null): void {
@@ -99,7 +113,8 @@ export function getMobileChatPairWrites(): ChatPairPendingWrites<MobileChatPairK
     },
     isDeliveryUnknown: isMobileChatPairDeliveryUnknown,
     showPending,
-    reportFailure: (key, error) => bindingFor(key)?.reportFailure(key.parentTabId, error),
+    // Why the top route: the failure toast belongs on the screen the user is looking at.
+    reportFailure: (key, error) => topBinding(key)?.reportFailure(key.parentTabId, error),
     setTimer: (callback, ms) => setTimeout(callback, ms),
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the only handles passed back are the ones setTimer returned.
     clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>)

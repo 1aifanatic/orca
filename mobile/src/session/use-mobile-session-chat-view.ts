@@ -85,11 +85,21 @@ export function useMobileSessionChatView(args: {
   sessionTabs: readonly MobileSessionTab[]
   sessionTabsRef: MutableRefObject<MobileSessionTab[]>
   markerSession: boolean
+  /** Whether this screen has accepted a snapshot for its scope; until then its rows are empty. */
+  snapshotAccepted: boolean
   readability: MobileNativeChatReadability
   onSwitchUnconfirmed: (message: string) => void
 }): MobileSessionChatView {
-  const { hostId, worktreeId, client, sessionTabs, sessionTabsRef, markerSession, readability } =
-    args
+  const {
+    hostId,
+    worktreeId,
+    client,
+    sessionTabs,
+    sessionTabsRef,
+    markerSession,
+    snapshotAccepted,
+    readability
+  } = args
   // Why always mounted: hooks cannot be conditional; on marker sessions its overrides are never consulted or written.
   const { isTabChatView: legacyIsTabChatView, toggleTabChatView: legacyToggleTabChatView } =
     useMobileSessionViewMode({ hostId, worktreeId })
@@ -100,6 +110,10 @@ export function useMobileSessionChatView(args: {
   onSwitchUnconfirmedRef.current = args.onSwitchUnconfirmed
   const overlay = useSyncExternalStore(subscribeMobileChatPairOverlay, readMobileChatPairOverlay)
   const scope = `${hostId}\0${worktreeId}`
+  const snapshotAcceptedRef = useRef(snapshotAccepted)
+  useEffect(() => {
+    snapshotAcceptedRef.current = snapshotAccepted
+  }, [snapshotAccepted])
 
   useFocusEffect(
     useCallback(() => {
@@ -111,6 +125,7 @@ export function useMobileSessionChatView(args: {
     const readRows = (parentTabId: string): TerminalRow[] =>
       terminalRows(sessionTabsRef.current).filter((row) => chatViewParentTabId(row) === parentTabId)
     const binding: MobileChatPairRouteBinding = {
+      ready: () => snapshotAcceptedRef.current,
       readHostPair: (parentTabId) => {
         const row = readRows(parentTabId)[0]
         return row ? hostChatPairForRow(row) : null
@@ -163,8 +178,9 @@ export function useMobileSessionChatView(args: {
           : EMPTY_CHAT_VIEW_RETENTION,
         {
           rows: terminalRows(sessionTabs),
-          readable: readability === 'readable',
-          pairFor: (row) => pendingPairFor(row) ?? hostChatPairForRow(row)
+          readability,
+          hostPairFor: hostChatPairForRow,
+          pendingPairFor
         }
       ),
     [pendingPairFor, readability, scope, sessionTabs]
@@ -173,41 +189,49 @@ export function useMobileSessionChatView(args: {
     retentionRef.current = { scope, retention }
   }, [retention, scope])
 
-  const appliedRef = useRef<{ scope: string; marker: boolean }>({ scope: '', marker: false })
+  const appliedRef = useRef<{ scope: string; marker: boolean | null }>({ scope: '', marker: null })
   useEffect(() => {
+    // Why: switches are shared by every screen for the worktree; one with no snapshot yet knows nothing.
+    if (!snapshotAccepted) {
+      return
+    }
     const writes = getMobileChatPairWrites()
     const rows = terminalRows(sessionTabs)
     const previous = appliedRef.current
     appliedRef.current = { scope, marker: markerSession }
-    const sameScope = previous.scope === scope
+    const markerFlipped =
+      previous.scope === scope && previous.marker !== null && previous.marker !== markerSession
     for (const key of mobileChatPairKeysInScope(hostId, worktreeId)) {
       const parentRows = rows.filter((row) => chatViewParentTabId(row) === key.parentTabId)
       const processChanged = parentRows.some((row) => retention.processChanged.has(row.id))
       // Why: a marker flip changes which logic decides, and a new PTY is a different session.
-      if (
-        (sameScope && previous.marker !== markerSession) ||
-        parentRows.length === 0 ||
-        processChanged
-      ) {
+      if (markerFlipped || parentRows.length === 0 || processChanged) {
         writes.drop(key)
         continue
       }
       writes.hostPairChanged(key)
     }
     // Why not on retention: it changes with the overlay too, and only a new snapshot settles writes.
-  }, [hostId, markerSession, scope, sessionTabs, worktreeId])
+  }, [hostId, markerSession, scope, sessionTabs, snapshotAccepted, worktreeId])
 
   /** The pair this device shows: its pending click, else the host's, with an ownerless chat placed. */
   const displayPair = useCallback(
-    (row: TerminalRow, shown: ChatViewRetention): TerminalChatPair => {
+    (row: TerminalRow): TerminalChatPair | 'undecided' => {
       const pair = pendingPairFor(row) ?? hostChatPairForRow(row)
       if (pair.viewMode !== 'chat' || pair.chatLeafId) {
         return pair
       }
-      const leaf = shown.ownerlessChatLeaves.get(chatViewParentTabId(row))
-      return leaf ? { viewMode: 'chat', chatLeafId: leaf } : { viewMode: 'terminal' }
+      const placed = retention.ownerlessChatLeaves.get(chatViewParentTabId(row))
+      if (!placed) {
+        return { viewMode: 'terminal' }
+      }
+      if (!placed.settled) {
+        // Why: the same wait as an unswitched tab, so a gated agent does not flash terminal first.
+        return placed.leafId === chatViewLeafId(row) ? 'undecided' : { viewMode: 'terminal' }
+      }
+      return { viewMode: 'chat', chatLeafId: placed.leafId }
     },
-    [pendingPairFor]
+    [pendingPairFor, retention]
   )
 
   const tabLeafView = useCallback(
@@ -224,22 +248,15 @@ export function useMobileSessionChatView(args: {
           ? 'chat'
           : 'terminal'
       }
-      return resolveMobileLeafView(
-        tab,
-        displayPair(tab, retention),
-        chatViewLeafIds(tab, terminalRows(sessionTabs)),
-        { defaultView, readability }
-      )
+      const pair = displayPair(tab)
+      return pair === 'undecided'
+        ? 'undecided'
+        : resolveMobileLeafView(tab, pair, chatViewLeafIds(tab, terminalRows(sessionTabs)), {
+            defaultView,
+            readability
+          })
     },
-    [
-      defaultView,
-      displayPair,
-      legacyIsTabChatView,
-      markerSession,
-      readability,
-      retention,
-      sessionTabs
-    ]
+    [defaultView, displayPair, legacyIsTabChatView, markerSession, readability, sessionTabs]
   )
 
   const isTabChatView = useCallback(

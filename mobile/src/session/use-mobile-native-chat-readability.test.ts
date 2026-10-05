@@ -161,6 +161,46 @@ describe('useMobileNativeChatReadabilityState (A1c-8)', () => {
     expect(readability).toBe('unknown')
   })
 
+  it('retries a failed first read a bounded number of times (R2b-F3)', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const sendRequest = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('timeout'))
+        .mockResolvedValueOnce({
+          ok: true,
+          result: { repos: [{ id: 'repo', connectionId: null }] }
+        })
+      await act(async () => {
+        renderer = create(
+          createElement(Harness, { client: clientWith(sendRequest), hostId: 'host-retry' })
+        )
+        await Promise.resolve()
+      })
+      expect(readability).toBe('failed')
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000)
+      })
+      expect(readability).toBe('readable')
+
+      const failing = vi.fn().mockRejectedValue(new Error('timeout'))
+      act(() => renderer?.unmount())
+      await act(async () => {
+        renderer = create(
+          createElement(Harness, { client: clientWith(failing), hostId: 'host-retry-cap' })
+        )
+        await Promise.resolve()
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(120_000)
+      })
+      expect(failing).toHaveBeenCalledTimes(4)
+      expect(readability).toBe('failed')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('keeps the stored answer when a re-read fails or no client is left (R1-F2, R4-n2)', async () => {
     const first = clientWith(
       vi

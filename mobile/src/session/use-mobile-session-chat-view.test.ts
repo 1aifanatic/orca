@@ -155,6 +155,7 @@ describe('useMobileSessionChatView', () => {
       sessionTabs: props.tabs,
       sessionTabsRef: tabsRef,
       markerSession: props.marker,
+      snapshotAccepted: true,
       readability: 'readable',
       onSwitchUnconfirmed: (message) => toasts.push(message)
     })

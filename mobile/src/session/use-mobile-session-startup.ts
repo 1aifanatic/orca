@@ -73,7 +73,7 @@ export function useMobileSessionStartup(scope: MobileSessionKeyboardStateModel) 
     setTerminals([])
     terminalsRef.current = []
     setSessionTabs([])
-    setChatViewHostOwned(false)
+    setChatViewHostOwned(null)
     setActiveSessionTabId(null)
     clearPendingLiveInputCommit()
     setMarkdownDocs(new Map())

@@ -1,3 +1,4 @@
+import { nativeChatRequiresLocalTranscript } from '../../../src/shared/native-chat-agent-support'
 import type { TerminalChatPair } from '../../../src/shared/terminal-tab-view-mode'
 import {
   resolveMobileNativeChat,
@@ -11,7 +12,9 @@ import {
   chatViewParentTabId,
   ownerlessChatDisplayLeaf,
   type ChatViewProcessFence,
-  type MobileChatViewRow
+  type MobileChatViewRow,
+  type MobileNativeChatReadability,
+  type OwnerlessChatPlacement
 } from './mobile-session-chat-view'
 
 export type RetainedChatViewRow = {
@@ -25,8 +28,8 @@ export type ChatViewRetention = {
   rows: ReadonlyMap<string, RetainedChatViewRow>
   /** Rows whose terminal process changed since the previous snapshot. */
   processChanged: ReadonlySet<string>
-  /** Parent tab id -> the leaf its ownerless chat shows on. */
-  ownerlessChatLeaves: ReadonlyMap<string, string>
+  /** Parent tab id -> where its ownerless chat shows. */
+  ownerlessChatLeaves: ReadonlyMap<string, OwnerlessChatPlacement>
 }
 
 export const EMPTY_CHAT_VIEW_RETENTION: ChatViewRetention = {
@@ -53,21 +56,39 @@ function retainIdentity(
   return current
 }
 
+function isOwnerlessChat(pair: TerminalChatPair | null): boolean {
+  return pair?.viewMode === 'chat' && !pair.chatLeafId
+}
+
+/** Whether a row can show chat on live evidence alone, like the desktop's claim check. */
+function canShowChatNow(
+  row: MobileNativeChatTab,
+  readability: MobileNativeChatReadability
+): boolean | 'unknown' {
+  const ifReadable = resolveMobileNativeChat(row, true)
+  if (!ifReadable || !nativeChatRequiresLocalTranscript(ifReadable.agent)) {
+    return ifReadable !== null
+  }
+  return readability === 'unknown' ? 'unknown' : readability === 'readable'
+}
+
 /**
  * Re-derives the retention from the previous one and the latest rows. Entries die with their row,
- * on a new terminal process, or (ownerless chat) once the pair stops being an ownerless chat.
+ * on a new terminal process, or (ownerless chat) once neither the host nor a pending reply holds
+ * an ownerless chat; a pending switch to a named view never erases where it shows.
  */
 export function advanceChatViewRetention(
   previous: ChatViewRetention,
   args: {
     rows: readonly (MobileChatViewRow & MobileNativeChatTab)[]
-    readable: boolean
-    pairFor: (row: MobileChatViewRow) => TerminalChatPair
+    readability: MobileNativeChatReadability
+    hostPairFor: (row: MobileChatViewRow) => TerminalChatPair
+    pendingPairFor: (row: MobileChatViewRow) => TerminalChatPair | null
   }
 ): ChatViewRetention {
   const rows = new Map<string, RetainedChatViewRow>()
   const processChanged = new Set<string>()
-  const rowIdByLeaf = new Map<string, string>()
+  const rowByLeaf = new Map<string, MobileNativeChatTab>()
   for (const row of args.rows) {
     const before = previous.rows.get(row.id)
     const { fence, changed } = advanceChatViewProcessFence(before?.fence, row)
@@ -75,11 +96,9 @@ export function advanceChatViewRetention(
       processChanged.add(row.id)
     }
     const kept = changed ? null : (before?.identity ?? null)
-    rows.set(row.id, {
-      fence,
-      identity: retainIdentity(kept, resolveMobileNativeChat(row, args.readable))
-    })
-    rowIdByLeaf.set(`${chatViewParentTabId(row)}\0${chatViewLeafId(row)}`, row.id)
+    const current = resolveMobileNativeChat(row, args.readability === 'readable')
+    rows.set(row.id, { fence, identity: retainIdentity(kept, current) })
+    rowByLeaf.set(`${chatViewParentTabId(row)}\0${chatViewLeafId(row)}`, row)
   }
   const ownerlessChatLeaves = new Map<string, string>()
   const seenParents = new Set<string>()
@@ -89,21 +108,22 @@ export function advanceChatViewRetention(
       continue
     }
     seenParents.add(parent)
-    const pair = args.pairFor(row)
-    if (pair.viewMode !== 'chat' || pair.chatLeafId) {
+    if (!isOwnerlessChat(args.hostPairFor(row)) && !isOwnerlessChat(args.pendingPairFor(row))) {
       continue
     }
-    const leaf = ownerlessChatDisplayLeaf({
-      shown: previous.ownerlessChatLeaves.get(parent) ?? null,
+    const shown = previous.ownerlessChatLeaves.get(parent)
+    const placement = ownerlessChatDisplayLeaf({
+      shown: shown?.settled ? shown.leafId : null,
       leafIds: chatViewLeafIds(row, args.rows),
       activeLeafId: row.parentLayout?.activeLeafId,
+      // Why live evidence: a retained identity outlives an exited agent on the same shell.
       canShowChat: (leafId) => {
-        const rowId = rowIdByLeaf.get(`${parent}\0${leafId}`)
-        return rowId !== undefined && rows.get(rowId)?.identity != null
+        const leafRow = rowByLeaf.get(`${parent}\0${leafId}`)
+        return leafRow ? canShowChatNow(leafRow, args.readability) : false
       }
     })
-    if (leaf) {
-      ownerlessChatLeaves.set(parent, leaf)
+    if (placement) {
+      ownerlessChatLeaves.set(parent, placement)
     }
   }
   return { rows, processChanged, ownerlessChatLeaves }

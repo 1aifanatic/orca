@@ -45,6 +45,7 @@ export function useMobileSessionNativeChatDictation(
     sessionTabs,
     sessionTabsRef,
     chatViewHostOwned,
+    chatViewSnapshotAccepted,
     flushPendingLiveInputBeforeExternalSend,
     canSend,
     liveInputEnabled,
@@ -69,6 +70,7 @@ export function useMobileSessionNativeChatDictation(
     sessionTabs,
     sessionTabsRef,
     markerSession: chatViewHostOwned,
+    snapshotAccepted: chatViewSnapshotAccepted,
     readability: nativeChatTranscriptReadability,
     onSwitchUnconfirmed: showToast
   })
