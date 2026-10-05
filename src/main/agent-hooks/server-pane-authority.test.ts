@@ -53,6 +53,17 @@ describe('AgentHookServer pane authority', () => {
     ])
   })
 
+  // A pane move main committed is re-announced by the renderer; the IPC gate reads this to skip it.
+  it('reports a transfer main already committed', () => {
+    const server = new AgentHookServer()
+    expect(server.isPaneAuthorityTransferredTo(SOURCE, TARGET)).toBe(false)
+
+    server.transferPaneAuthority(SOURCE, TARGET, 'pty-1', Date.now(), { authorityVerified: true })
+
+    expect(server.isPaneAuthorityTransferredTo(SOURCE, TARGET)).toBe(true)
+    expect(server.isPaneAuthorityTransferredTo(TARGET, SOURCE)).toBe(false)
+  })
+
   it('persists one physical alias while chained transfers advance its owner', () => {
     const server = new AgentHookServer()
     const listener = vi.fn()
@@ -153,5 +164,33 @@ describe('AgentHookServer pane authority', () => {
         expect.objectContaining({ legacyPaneKey: expect.stringContaining('source-0:') })
       ])
     )
+  })
+
+  // Review S6: a committed pane move the renderer could not apply is put back by a reverse move.
+  it('routes the live pane to its source again after a move is put back', () => {
+    const server = new AgentHookServer()
+    const leaf = '55555555-5555-4555-8555-555555555555'
+    const from = makePaneKey('tab-source', leaf)
+    const to = makePaneKey('tab-target', leaf)
+    server.ingestTerminalStatus({
+      paneKey: from,
+      tabId: 'tab-source',
+      worktreeId: 'wt-1',
+      payload: { state: 'working', prompt: 'before move' }
+    })
+
+    server.transferPaneAuthority(from, to, 'pty-1', Date.now(), { authorityVerified: true })
+    server.transferPaneAuthority(to, from, 'pty-1', Date.now(), { authorityVerified: true })
+    server.ingestTerminalStatus({
+      paneKey: from,
+      tabId: 'tab-source',
+      worktreeId: 'wt-1',
+      payload: { state: 'working', prompt: 'after undo' }
+    })
+
+    expect(server.isPaneAuthorityTransferredTo(from, to)).toBe(false)
+    expect(server.getStatusSnapshot()).toEqual([
+      expect.objectContaining({ paneKey: from, tabId: 'tab-source', prompt: 'after undo' })
+    ])
   })
 })

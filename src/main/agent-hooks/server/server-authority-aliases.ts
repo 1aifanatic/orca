@@ -85,6 +85,11 @@ export abstract class AgentHookServerAuthorityAliases extends AgentHookServerAut
     return alias?.authorityVerified === true
   }
 
+  /** True once `fromPaneKey` already routes to `toPaneKey`, e.g. after main committed a pane move. */
+  isPaneAuthorityTransferredTo(fromPaneKey: string, toPaneKey: string): boolean {
+    return isValidPaneKey(fromPaneKey) && this.resolvePaneKeyAlias(fromPaneKey) === toPaneKey
+  }
+
   registerPaneKeyAlias(
     legacyPaneKey: string,
     stablePaneKey: string,

@@ -1,5 +1,12 @@
+import { toast } from 'sonner'
 import type { AppState } from '@/store'
+import { translate } from '@/i18n/i18n'
+import { createBrowserUuid } from '@/lib/browser-uuid'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
+import type {
+  TerminalLeafMoveRequest,
+  TerminalLeafMoveResult
+} from '../../../../shared/terminal-leaf-move'
 import type { PaneCwdEntry } from './resolve-split-cwd'
 import { detachTerminalLayoutLeaf } from './terminal-layout-leaf-detach'
 export {
@@ -76,7 +83,39 @@ function moveCreatedTabToIndex(args: {
   args.store.reorderUnifiedTabs(args.groupId, nextOrder, { recordInteraction: false })
 }
 
-export function detachTerminalPaneToTab(args: {
+function reportMoveNotApplied(): void {
+  toast.error(
+    translate(
+      'terminal.paneMove.failed',
+      "Couldn't move the pane to a new tab. It stays where it was."
+    )
+  )
+}
+
+export type CommitTerminalLeafMove = (
+  request: TerminalLeafMoveRequest
+) => Promise<TerminalLeafMoveResult>
+
+async function undoCommittedMove(
+  commitMove: CommitTerminalLeafMove | undefined,
+  request: TerminalLeafMoveRequest
+): Promise<void> {
+  if (!commitMove) {
+    return
+  }
+  try {
+    const undone = await commitMove({ ...request, undo: true })
+    // 'retired': the source closed meanwhile, so main dropped the moved tab instead.
+    if (undone.status !== 'moved' && undone.status !== 'retired') {
+      console.warn('[terminal-pane-detach] main could not put the move back', undone)
+    }
+  } catch (error) {
+    console.warn('[terminal-pane-detach] main could not put the move back', error)
+  }
+}
+
+type DetachTerminalPaneToTabArgs = {
+  commitMove?: CommitTerminalLeafMove
   fallbackPtyId?: string | null
   getStore: () => TerminalPaneTabDetachStore
   manager: TerminalPaneTabDetachManager | null
@@ -87,18 +126,40 @@ export function detachTerminalPaneToTab(args: {
   targetGroupId: string
   targetIndex?: number
   worktreeId: string
-}): DetachedTerminalPaneTab | null {
+}
+
+// Leaves whose move main is committing; a repeat drop meanwhile is a no-op (review-2 N3).
+const leavesMovingToNewTab = new Set<string>()
+
+/**
+ * Moves a pane into a new tab. Main commits the move (leaf, binding and pane-keyed records) before
+ * the target tab exists here, so the moved pane's reattach never races a second owner (STA-9259).
+ */
+export async function detachTerminalPaneToTab(
+  args: DetachTerminalPaneToTabArgs
+): Promise<DetachedTerminalPaneTab | null> {
+  const sourceLeafId = args.manager?.getLeafId(args.sourcePaneId)
+  if (!sourceLeafId || leavesMovingToNewTab.has(sourceLeafId)) {
+    return null
+  }
+  leavesMovingToNewTab.add(sourceLeafId)
+  try {
+    return await detachLeafToNewTab(args, sourceLeafId)
+  } finally {
+    leavesMovingToNewTab.delete(sourceLeafId)
+  }
+}
+
+async function detachLeafToNewTab(
+  args: DetachTerminalPaneToTabArgs,
+  sourceLeafId: string
+): Promise<DetachedTerminalPaneTab | null> {
   const initialStore = args.getStore()
   const targetGroupExists =
     initialStore.groupsByWorktree[args.worktreeId]?.some(
       (group) => group.id === args.targetGroupId
     ) ?? false
   if (!args.manager || !targetGroupExists || args.manager.getPanes().length <= 1) {
-    return null
-  }
-
-  const sourceLeafId = args.manager.getLeafId(args.sourcePaneId)
-  if (!sourceLeafId) {
     return null
   }
 
@@ -112,16 +173,58 @@ export function detachTerminalPaneToTab(args: {
   }
 
   args.persistLayoutSnapshot()
+  const planned = detachTerminalLayoutLeaf(
+    args.getStore().terminalLayoutsByTabId[args.sourceTabId],
+    sourceLeafId
+  )
+  if (!planned) {
+    return null
+  }
+  const targetTabId = createBrowserUuid()
+  // Why: the live transport id is what the PTY is bound to now; the snapshot can lag a respawn.
+  const livePtyId = args.fallbackPtyId ?? planned.ptyId ?? null
+  const request: TerminalLeafMoveRequest = {
+    worktreeId: args.worktreeId,
+    sourceTabId: args.sourceTabId,
+    targetTabId,
+    leafId: sourceLeafId,
+    ptyId: livePtyId
+  }
+  if (args.commitMove) {
+    let moved: TerminalLeafMoveResult
+    try {
+      moved = await args.commitMove(request)
+    } catch (error) {
+      console.warn('[terminal-pane-detach] main did not commit the move; pane stays put', error)
+      reportMoveNotApplied()
+      return null
+    }
+    if (moved.status === 'refused') {
+      console.warn('[terminal-pane-detach] main refused the move; pane stays put', {
+        reason: moved.reason
+      })
+      reportMoveNotApplied()
+      return null
+    }
+  }
+
   const store = args.getStore()
   const detached = detachTerminalLayoutLeaf(
     store.terminalLayoutsByTabId[args.sourceTabId],
     sourceLeafId
   )
-  if (!detached) {
+  if (!detached || args.manager.getLeafId(args.sourcePaneId) !== sourceLeafId) {
+    console.warn('[terminal-pane-detach] pane changed while main committed its move', {
+      sourceTabId: args.sourceTabId,
+      targetTabId
+    })
+    // Why: main already holds the leaf in the new tab; put it back so both sides agree again.
+    await undoCommittedMove(args.commitMove, request)
+    reportMoveNotApplied()
     return null
   }
 
-  const ptyId = detached.ptyId ?? args.fallbackPtyId ?? null
+  const ptyId = args.fallbackPtyId ?? detached.ptyId ?? null
   const detachedLayout = withDetachedPtyFallback({
     leafId: sourceLeafId,
     ptyId,
@@ -131,6 +234,8 @@ export function detachTerminalPaneToTab(args: {
   // Why: remove the renderer pane only after the layout/PTY handoff has been
   // computed; the close callback detaches listeners but must not kill the PTY.
   if (!args.manager.detachPaneForExternalMove(args.sourcePaneId)) {
+    await undoCommittedMove(args.commitMove, request)
+    reportMoveNotApplied()
     return null
   }
 
@@ -139,6 +244,7 @@ export function detachTerminalPaneToTab(args: {
     (candidate) => candidate.id === args.sourceTabId
   )?.shellOverride
   const tab = latestStore.createTab(args.worktreeId, args.targetGroupId, sourceShellOverride, {
+    id: targetTabId,
     activate: true,
     ...(detachedLayout.chatLeafId ? { viewMode: 'chat' as const } : {}),
     initialPtyId: ptyId ?? undefined,
@@ -147,7 +253,7 @@ export function detachTerminalPaneToTab(args: {
           pendingActivationSpawn: true,
           ...(args.sourcePaneCwd?.cwd ? { startupCwd: args.sourcePaneCwd.cwd } : {})
         }
-      : {}),
+      : { initialLeafId: sourceLeafId }),
     recordInteraction: true
   })
   const afterCreateStore = args.getStore()

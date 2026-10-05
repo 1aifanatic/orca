@@ -14,6 +14,12 @@ import { evaluatePtyBindingFastLane } from './pty-binding-fast-lane'
 import { ptyBindingIsRefused } from './pty-binding-refusals'
 import { startPtyBindingSpan, type PtyBindingOrigin, type PtyBindingSpan } from './pty-binding-span'
 import { applyPtyBinding } from './pty-binding-session-update'
+import type {
+  TerminalLeafMoveRequest,
+  TerminalLeafMoveResult
+} from '../../../shared/terminal-leaf-move'
+import { moveLeaf } from '../terminal-topology/terminal-topology-commit'
+import { TerminalLeafMoveOriginLedger } from '../terminal-topology/terminal-leaf-move-origin-ledger'
 
 type PtyBindingPersistenceOperationsRuntime = Pick<
   StoreRuntimeState,
@@ -55,6 +61,7 @@ const ptyBindingPersistenceOperationsContext = Symbol('PtyBindingPersistenceOper
 type PtyBindingPersistenceOperationsContext = {
   runtime: PtyBindingPersistenceOperationsRuntime
   sessions: SessionHostPartitionOperations
+  moveOrigins: TerminalLeafMoveOriginLedger
 }
 
 export class PtyBindingPersistenceOperations {
@@ -64,7 +71,11 @@ export class PtyBindingPersistenceOperations {
     runtime: PtyBindingPersistenceOperationsRuntime,
     sessions: SessionHostPartitionOperations
   ) {
-    this[ptyBindingPersistenceOperationsContext] = { runtime, sessions }
+    this[ptyBindingPersistenceOperationsContext] = {
+      runtime,
+      sessions,
+      moveOrigins: new TerminalLeafMoveOriginLedger()
+    }
   }
 
   async persistPtyBinding(
@@ -121,6 +132,23 @@ export class PtyBindingPersistenceOperations {
       span?.finish('threw', error)
       throw error
     }
+  }
+
+  /** Detach-to-new-tab, committed before the renderer mounts the target tab (STA-9259). */
+  moveTerminalLeafToNewTab(request: TerminalLeafMoveRequest): Promise<TerminalLeafMoveResult> {
+    const { runtime, sessions, moveOrigins } = this[ptyBindingPersistenceOperationsContext]
+    return runtime.runDurableMutation(
+      moveLeaf(request, {
+        state: runtime.state,
+        partitions: () =>
+          sessions
+            .getWorkspaceSessionHostIds()
+            .map((hostId) => ({ hostId, session: sessions.getWorkspaceSession(hostId) })),
+        getSession: (hostId) => sessions.getWorkspaceSession(hostId),
+        markDirty: (domain) => runtime.dirtyProfileStateDomains?.add(domain),
+        origins: moveOrigins
+      })
+    )
   }
 }
 

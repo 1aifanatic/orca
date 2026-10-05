@@ -57,6 +57,8 @@ export function registerAgentPaneAuthorityIpcHandlers(
       !isValidPaneKey(args.fromPaneKey) ||
       !isValidPaneKey(args.toPaneKey) ||
       args.fromPaneKey === args.toPaneKey ||
+      // Main's pane move already aliased it; repeating the transfer would clear the pane's polls.
+      agentHookServer.isPaneAuthorityTransferredTo(args.fromPaneKey, args.toPaneKey) ||
       (args.ptyId !== undefined &&
         (typeof args.ptyId !== 'string' ||
           args.ptyId.length > MAX_PTY_ID_LENGTH ||

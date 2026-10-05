@@ -18798,6 +18798,9 @@
       "confirmStopDescription": "This closes any open Codex sessions that share it, including ones outside Orca.",
       "cancel": "Cancel",
       "runs": "Runs"
+    },
+    "paneMove": {
+      "failed": "Couldn't move the pane to a new tab. It stays where it was."
     }
   },
   "fileExplorer": {

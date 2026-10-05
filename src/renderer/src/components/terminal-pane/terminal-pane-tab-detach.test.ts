@@ -1,11 +1,19 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppState } from '@/store'
 import type { TerminalLayoutSnapshot, TerminalTab } from '../../../../shared/terminal-tab-types'
+import type {
+  TerminalLeafMoveRequest,
+  TerminalLeafMoveResult
+} from '../../../../shared/terminal-leaf-move'
 import {
   detachTerminalPaneToTab,
   resolveTerminalTabStripDropTarget,
   type TerminalPaneTabDetachStore
 } from './terminal-pane-tab-detach'
+
+const toastErrorMock = vi.hoisted(() => vi.fn())
+vi.mock('sonner', () => ({ toast: { error: toastErrorMock } }))
+beforeEach(() => toastErrorMock.mockClear())
 
 const WORKTREE_ID = 'repo-1::/worktree'
 const SOURCE_TAB_ID = 'tab-source'
@@ -134,7 +142,7 @@ function createStore(
 
 type SourcePaneCwd = NonNullable<Parameters<typeof detachTerminalPaneToTab>[0]['sourcePaneCwd']>
 
-function expectDeferredSplitDetachRejected(sourcePaneCwd: SourcePaneCwd): void {
+async function expectDeferredSplitDetachRejected(sourcePaneCwd: SourcePaneCwd): Promise<void> {
   const store = createStore(unboundSplitLayout())
   const manager = {
     getPanes: vi.fn(() => [{ id: 1 }, { id: 2 }]),
@@ -143,7 +151,7 @@ function expectDeferredSplitDetachRejected(sourcePaneCwd: SourcePaneCwd): void {
   }
   const persistLayoutSnapshot = vi.fn()
 
-  const result = detachTerminalPaneToTab({
+  const result = await detachTerminalPaneToTab({
     getStore: () => store,
     manager,
     persistLayoutSnapshot,
@@ -271,9 +279,9 @@ describe('resolveTerminalTabStripDropTarget', () => {
 })
 
 describe('detachTerminalPaneToTab', () => {
-  it.each([LEAF_1, LEAF_2])('moves chat mode only with its owning leaf %s', (chatLeafId) => {
+  it.each([LEAF_1, LEAF_2])('moves chat mode only with its owning leaf %s', async (chatLeafId) => {
     const store = createStore({ ...splitLayout(), chatLeafId })
-    detachTerminalPaneToTab({
+    await detachTerminalPaneToTab({
       getStore: () => store,
       manager: {
         getPanes: () => [{ id: 1 }, { id: 2 }],
@@ -296,7 +304,7 @@ describe('detachTerminalPaneToTab', () => {
     )
   })
 
-  it('creates a new terminal tab with the detached leaf layout and PTY id', () => {
+  it('creates a new terminal tab with the detached leaf layout and PTY id', async () => {
     const store = createStore()
     const manager = {
       getPanes: vi.fn(() => [{ id: 1 }, { id: 2 }]),
@@ -305,7 +313,7 @@ describe('detachTerminalPaneToTab', () => {
     }
     const persistLayoutSnapshot = vi.fn()
 
-    const result = detachTerminalPaneToTab({
+    const result = await detachTerminalPaneToTab({
       manager,
       getStore: () => store,
       persistLayoutSnapshot,
@@ -324,8 +332,10 @@ describe('detachTerminalPaneToTab', () => {
     expect(result?.ptyId).toBe('remote:env-1@@terminal-1')
     expect(manager.detachPaneForExternalMove).toHaveBeenCalledWith(2)
     expect(store.createTab).toHaveBeenCalledWith(WORKTREE_ID, TARGET_GROUP_ID, 'powershell.exe', {
+      id: expect.any(String),
       activate: true,
       initialPtyId: 'remote:env-1@@terminal-1',
+      initialLeafId: LEAF_2,
       recordInteraction: true
     })
     expect(store.setTabLayout).toHaveBeenCalledWith(SOURCE_TAB_ID, {
@@ -361,7 +371,7 @@ describe('detachTerminalPaneToTab', () => {
 
   it.each(['powershell.exe', 'wsl.exe'])(
     'preserves the moved PTY shell override when the source uses %s',
-    (shellOverride) => {
+    async (shellOverride) => {
       const store = createStore(splitLayout(), [EXISTING_TAB_1], shellOverride)
       const manager = {
         getPanes: vi.fn(() => [{ id: 1 }, { id: 2 }]),
@@ -369,7 +379,7 @@ describe('detachTerminalPaneToTab', () => {
         detachPaneForExternalMove: vi.fn(() => true)
       }
 
-      detachTerminalPaneToTab({
+      await detachTerminalPaneToTab({
         getStore: () => store,
         manager,
         persistLayoutSnapshot: vi.fn(),
@@ -388,7 +398,7 @@ describe('detachTerminalPaneToTab', () => {
     }
   )
 
-  it('syncs PTY ownership when the primary source pane is detached', () => {
+  it('syncs PTY ownership when the primary source pane is detached', async () => {
     const store = createStore()
     const manager = {
       getPanes: vi.fn(() => [{ id: 1 }, { id: 2 }]),
@@ -396,7 +406,7 @@ describe('detachTerminalPaneToTab', () => {
       detachPaneForExternalMove: vi.fn(() => true)
     }
 
-    const result = detachTerminalPaneToTab({
+    const result = await detachTerminalPaneToTab({
       getStore: () => store,
       manager,
       persistLayoutSnapshot: vi.fn(),
@@ -431,7 +441,7 @@ describe('detachTerminalPaneToTab', () => {
     })
   })
 
-  it('moves the detached tab into the requested group slot', () => {
+  it('moves the detached tab into the requested group slot', async () => {
     const store = createStore(splitLayout(), [EXISTING_TAB_1, EXISTING_TAB_2])
     const manager = {
       getPanes: vi.fn(() => [{ id: 1 }, { id: 2 }]),
@@ -439,7 +449,7 @@ describe('detachTerminalPaneToTab', () => {
       detachPaneForExternalMove: vi.fn(() => true)
     }
 
-    detachTerminalPaneToTab({
+    await detachTerminalPaneToTab({
       getStore: () => store,
       manager,
       persistLayoutSnapshot: vi.fn(),
@@ -457,7 +467,7 @@ describe('detachTerminalPaneToTab', () => {
     )
   })
 
-  it('uses the live transport PTY id when the snapshot has not persisted it yet', () => {
+  it('uses the live transport PTY id when the snapshot has not persisted it yet', async () => {
     const store = createStore({
       root: {
         type: 'split',
@@ -474,7 +484,7 @@ describe('detachTerminalPaneToTab', () => {
       detachPaneForExternalMove: vi.fn(() => true)
     }
 
-    detachTerminalPaneToTab({
+    await detachTerminalPaneToTab({
       fallbackPtyId: 'remote:env-2@@terminal-9',
       getStore: () => store,
       manager,
@@ -499,30 +509,30 @@ describe('detachTerminalPaneToTab', () => {
     })
   })
 
-  it('rejects a deferred split while inherited cwd is pending', () => {
-    expectDeferredSplitDetachRejected({
+  it('rejects a deferred split while inherited cwd is pending', async () => {
+    await expectDeferredSplitDetachRejected({
       cwd: '/remote/repo',
       deferredSplitSpawn: true,
       pendingCwd: new Promise<string>(() => {})
     })
   })
 
-  it('rejects a pending cwd even when the deferred marker is absent', () => {
-    expectDeferredSplitDetachRejected({
+  it('rejects a pending cwd even when the deferred marker is absent', async () => {
+    await expectDeferredSplitDetachRejected({
       cwd: '/remote/repo',
       pendingCwd: new Promise<string>(() => {})
     })
   })
 
-  it('still rejects a deferred split after cwd resolves but before PTY bind', () => {
-    expectDeferredSplitDetachRejected({
+  it('still rejects a deferred split after cwd resolves but before PTY bind', async () => {
+    await expectDeferredSplitDetachRejected({
       cwd: '/remote/repo/packages/app',
       confirmed: false,
       deferredSplitSpawn: true
     })
   })
 
-  it('carries resolved cwd when detaching an unbound non-deferred pane', () => {
+  it('carries resolved cwd when detaching an unbound non-deferred pane', async () => {
     const store = createStore(unboundSplitLayout())
     const manager = {
       getPanes: vi.fn(() => [{ id: 1 }, { id: 2 }]),
@@ -530,7 +540,7 @@ describe('detachTerminalPaneToTab', () => {
       detachPaneForExternalMove: vi.fn(() => true)
     }
 
-    const result = detachTerminalPaneToTab({
+    const result = await detachTerminalPaneToTab({
       getStore: () => store,
       manager,
       persistLayoutSnapshot: vi.fn(),
@@ -546,10 +556,185 @@ describe('detachTerminalPaneToTab', () => {
 
     expect(result?.ptyId).toBeNull()
     expect(store.createTab).toHaveBeenCalledWith(WORKTREE_ID, TARGET_GROUP_ID, 'powershell.exe', {
+      id: expect.any(String),
       activate: true,
       pendingActivationSpawn: true,
       recordInteraction: true,
       startupCwd: '/remote/repo/packages/app'
     })
+  })
+
+  // STA-9259: main moves leaf, binding and pane-keyed records before the target tab mounts.
+  it('commits the move in main before the target tab exists, using the same tab id', async () => {
+    const store = createStore()
+    const manager = {
+      getPanes: vi.fn(() => [{ id: 1 }, { id: 2 }]),
+      getLeafId: vi.fn((paneId: number) => (paneId === 2 ? LEAF_2 : LEAF_1)),
+      detachPaneForExternalMove: vi.fn(() => true)
+    }
+    let releaseMove!: () => void
+    const commitMove = vi.fn(
+      (_request: TerminalLeafMoveRequest) =>
+        new Promise<{ status: 'moved'; ptyId: string }>((resolve) => {
+          releaseMove = () => resolve({ status: 'moved', ptyId: 'remote:env-1@@terminal-1' })
+        })
+    )
+
+    const detaching = detachTerminalPaneToTab({
+      commitMove,
+      getStore: () => store,
+      manager,
+      persistLayoutSnapshot: vi.fn(),
+      sourcePaneId: 2,
+      sourceTabId: SOURCE_TAB_ID,
+      targetGroupId: TARGET_GROUP_ID,
+      worktreeId: WORKTREE_ID
+    })
+    await vi.waitFor(() => expect(commitMove).toHaveBeenCalledOnce())
+    expect(store.createTab).not.toHaveBeenCalled()
+    expect(manager.detachPaneForExternalMove).not.toHaveBeenCalled()
+
+    releaseMove()
+    await detaching
+
+    const request = commitMove.mock.calls[0]?.[0]
+    expect(request).toEqual({
+      worktreeId: WORKTREE_ID,
+      sourceTabId: SOURCE_TAB_ID,
+      targetTabId: expect.any(String),
+      leafId: LEAF_2,
+      ptyId: 'remote:env-1@@terminal-1'
+    })
+    expect(store.createTab).toHaveBeenCalledWith(
+      WORKTREE_ID,
+      TARGET_GROUP_ID,
+      'powershell.exe',
+      expect.objectContaining({ id: request?.targetTabId, initialLeafId: LEAF_2 })
+    )
+  })
+
+  // Review-2 N3: a second drop of the same pane while main commits the first is not a failure.
+  it('ignores a repeat drop of a pane whose move is still committing', async () => {
+    const store = createStore()
+    const manager = {
+      getPanes: vi.fn(() => [{ id: 1 }, { id: 2 }]),
+      getLeafId: vi.fn(() => LEAF_2),
+      detachPaneForExternalMove: vi.fn(() => true)
+    }
+    let releaseMove!: () => void
+    const commitMove = vi.fn((request: TerminalLeafMoveRequest): Promise<TerminalLeafMoveResult> =>
+      commitMove.mock.calls.length > 1
+        ? Promise.resolve({ status: 'refused', reason: 'leaf_in_other_tab' })
+        : new Promise((resolve) => {
+            releaseMove = () => resolve({ status: 'moved', ptyId: request.ptyId })
+          })
+    )
+    const drop = () =>
+      detachTerminalPaneToTab({
+        commitMove,
+        getStore: () => store,
+        manager,
+        persistLayoutSnapshot: vi.fn(),
+        sourcePaneId: 2,
+        sourceTabId: SOURCE_TAB_ID,
+        targetGroupId: TARGET_GROUP_ID,
+        worktreeId: WORKTREE_ID
+      })
+
+    const first = drop()
+    await vi.waitFor(() => expect(commitMove).toHaveBeenCalledOnce())
+    await expect(drop()).resolves.toBeNull()
+    releaseMove()
+
+    await expect(first).resolves.toMatchObject({ leafId: LEAF_2 })
+    expect(commitMove).toHaveBeenCalledOnce()
+    expect(store.createTab).toHaveBeenCalledOnce()
+    expect(toastErrorMock).not.toHaveBeenCalled()
+  })
+
+  it('leaves the pane in place when main refuses the move', async () => {
+    const store = createStore()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const manager = {
+      getPanes: vi.fn(() => [{ id: 1 }, { id: 2 }]),
+      getLeafId: vi.fn(() => LEAF_2),
+      detachPaneForExternalMove: vi.fn(() => true)
+    }
+
+    const result = await detachTerminalPaneToTab({
+      commitMove: async () => ({ status: 'refused', reason: 'pty_mismatch' }),
+      getStore: () => store,
+      manager,
+      persistLayoutSnapshot: vi.fn(),
+      sourcePaneId: 2,
+      sourceTabId: SOURCE_TAB_ID,
+      targetGroupId: TARGET_GROUP_ID,
+      worktreeId: WORKTREE_ID
+    })
+
+    expect(result).toBeNull()
+    expect(manager.detachPaneForExternalMove).not.toHaveBeenCalled()
+    expect(store.createTab).not.toHaveBeenCalled()
+    expect(toastErrorMock).toHaveBeenCalledOnce()
+    warn.mockRestore()
+  })
+
+  it('asks main to put a committed move back when the pane cannot leave its tab', async () => {
+    const store = createStore()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const commitMove = vi.fn(async (request: TerminalLeafMoveRequest) => ({
+      status: 'moved' as const,
+      ptyId: request.ptyId
+    }))
+
+    const result = await detachTerminalPaneToTab({
+      commitMove,
+      getStore: () => store,
+      manager: {
+        getPanes: vi.fn(() => [{ id: 1 }, { id: 2 }]),
+        getLeafId: vi.fn(() => LEAF_2),
+        detachPaneForExternalMove: vi.fn(() => false)
+      },
+      persistLayoutSnapshot: vi.fn(),
+      sourcePaneId: 2,
+      sourceTabId: SOURCE_TAB_ID,
+      targetGroupId: TARGET_GROUP_ID,
+      worktreeId: WORKTREE_ID
+    })
+
+    expect(result).toBeNull()
+    expect(store.createTab).not.toHaveBeenCalled()
+    expect(commitMove).toHaveBeenCalledTimes(2)
+    const [first, undo] = commitMove.mock.calls.map(([request]) => request)
+    expect(undo).toEqual({ ...first, undo: true })
+    expect(toastErrorMock).toHaveBeenCalledOnce()
+    warn.mockRestore()
+  })
+
+  it('commits and binds the live transport PTY id over a stale snapshot id', async () => {
+    const store = createStore()
+    const commitMove = vi.fn(async (request: TerminalLeafMoveRequest) => ({
+      status: 'moved' as const,
+      ptyId: request.ptyId
+    }))
+
+    const result = await detachTerminalPaneToTab({
+      commitMove,
+      fallbackPtyId: 'remote:env-1@@terminal-2',
+      getStore: () => store,
+      manager: {
+        getPanes: vi.fn(() => [{ id: 1 }, { id: 2 }]),
+        getLeafId: vi.fn(() => LEAF_2),
+        detachPaneForExternalMove: vi.fn(() => true)
+      },
+      persistLayoutSnapshot: vi.fn(),
+      sourcePaneId: 2,
+      sourceTabId: SOURCE_TAB_ID,
+      targetGroupId: TARGET_GROUP_ID,
+      worktreeId: WORKTREE_ID
+    })
+
+    expect(commitMove.mock.calls[0]?.[0].ptyId).toBe('remote:env-1@@terminal-2')
+    expect(result?.ptyId).toBe('remote:env-1@@terminal-2')
   })
 })

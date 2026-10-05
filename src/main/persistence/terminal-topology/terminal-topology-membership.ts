@@ -1,3 +1,4 @@
+import { parseExecutionHostId, type ExecutionHostId } from '../../../shared/execution-host'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
 import { getRepoIdFromWorktreeId } from '../../../shared/worktree/id'
 import { layoutContainsLeafId } from '../restoring-sessions/terminal-layout-normalization'
@@ -53,4 +54,15 @@ export function hasHostAuthoritativeTerminalMembership(
       (tombstone) => tombstone.worktreeId === worktreeId
     )
   )
+}
+
+export type TerminalSessionPartition = {
+  hostId: ExecutionHostId
+  session: WorkspaceSessionState
+}
+
+/** Partitions that own terminal panes; `runtime:` partitions mirror another host's. */
+export function isTerminalOwnerPartition(hostId: ExecutionHostId): boolean {
+  const kind = parseExecutionHostId(hostId)?.kind
+  return kind === 'local' || kind === 'ssh'
 }
