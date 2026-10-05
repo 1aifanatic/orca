@@ -2,9 +2,18 @@
   "worktree": "wt-1",
   "publicationEpoch": "headless:fixture",
   "snapshotVersion": 1,
-  "activeGroupId": null,
+  "activeGroupId": "headless-terminals:wt-1",
   "activeTabId": "tab-1::11111111-1111-4111-8111-111111111111",
   "activeTabType": "terminal",
+  "tabGroups": [
+    {
+      "id": "headless-terminals:wt-1",
+      "activeTabId": "tab-1",
+      "tabOrder": [
+        "tab-1"
+      ]
+    }
+  ],
   "tabs": [
     {
       "type": "terminal",
@@ -12,6 +21,18 @@
       "parentTabId": "tab-1",
       "leafId": "11111111-1111-4111-8111-111111111111",
       "title": "Say hi | my-repo",
+      "ptyId": "pty-agent",
+      "parentLayout": {
+        "root": {
+          "type": "leaf",
+          "leafId": "11111111-1111-4111-8111-111111111111"
+        },
+        "activeLeafId": "11111111-1111-4111-8111-111111111111",
+        "expandedLeafId": null,
+        "ptyIdsByLeafId": {
+          "11111111-1111-4111-8111-111111111111": "pty-agent"
+        }
+      },
       "isActive": true,
       "status": "ready",
       "terminal": "terminal-fixture",
@@ -27,5 +48,6 @@
       },
       "conversationOfferedWithoutStatus": true
     }
-  ]
+  ],
+  "clientHostedPagesUnreconciled": true
 }

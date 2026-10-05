@@ -1,6 +1,7 @@
 // STA-7370: on a headless host a Codex pane that finished its turn and sits idle under its
 // neutral `<thread> | <project>` title must still give a cold phone the pane's conversation,
 // driven here through real hook HTTP posts, real OSC titles and the real completed-hook recovery.
+import { readFileSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -9,6 +10,7 @@ import { installHookStatusSessionTabsRepublish } from '../agent-hooks/hook-statu
 import { AgentHookServer } from '../agent-hooks/server'
 import { buildBody, PANE, postHookEvent } from '../agent-hooks/server.test-fixtures'
 import { readNativeChatTranscriptTail } from '../native-chat/transcript-tail-reader'
+import { TERMINAL_CONVERSATION_IDENTITY_CLIENT_CAPABILITY } from '../../shared/protocol-version'
 import { HEADLESS_RUNTIME_WINDOW_ID } from '../../shared/runtime-types'
 import { OrcaRuntimeService } from './orca-runtime'
 import { RpcDispatcher } from './rpc/dispatcher'
@@ -73,6 +75,8 @@ async function writeCodexRollout(sessionId = SESSION_ID): Promise<string> {
 type Presence = 'unverifiable' | null
 
 class InspectableRuntime extends OrcaRuntimeService {
+  worktreeId = WORKTREE_ID
+
   ptyRecord(ptyId: string): RuntimePtyWorktreeRecord | undefined {
     return this.ptysById.get(ptyId)
   }
@@ -83,7 +87,7 @@ class InspectableRuntime extends OrcaRuntimeService {
 
   protected override async resolveTerminalWorkspaceLaunchScope(): Promise<TerminalWorkspaceLaunchScope> {
     return {
-      id: WORKTREE_ID,
+      id: this.worktreeId,
       path: '/repo/app',
       connectionId: null,
       repo: null,
@@ -101,7 +105,13 @@ type Pane = {
   observeTitle: (title: string) => void
 }
 
-async function createPane(args: { presence: Presence; agent?: 'codex' | 'claude' }): Promise<Pane> {
+async function createPane(args: {
+  presence: Presence
+  agent?: 'codex' | 'claude'
+  /** False for an agent the user started by hand: no launch record. */
+  launched?: boolean
+  worktreeId?: string
+}): Promise<Pane> {
   const agent = args.agent ?? 'codex'
   const userDataPath = await tempDir('orca-codex-idle-store-')
   let store = new AgentHookServer()
@@ -113,11 +123,14 @@ async function createPane(args: { presence: Presence; agent?: 'codex' | 'claude'
       store.getStatusSnapshot().filter((entry) => entry.providerSessionOnly !== true),
     getAgentProviderSessionSnapshot: () => store.getStatusSnapshot(),
     getAgentProviderSessionRowsForPane: (paneKey) => store.getStatusSnapshotForPane(paneKey),
+    getAgentConversationForPane: (paneKey, terminalHandle) =>
+      store.getConversationIdentityForPane(paneKey, terminalHandle),
     reconcileAgentStatusForEndedProcess: (paneKeys) =>
       store.reconcileEndedProcessForPaneKeys(paneKeys),
     // Why: real hosts with no live-process verdict take the legacy completed-hook recovery.
     ...(args.presence ? { checkHookAgentPresence: async () => args.presence } : {})
   })
+  runtime.worktreeId = args.worktreeId ?? WORKTREE_ID
   let detachRepublish = installHookStatusSessionTabsRepublish(store, () => runtime)
   cleanups.push(() => detachRepublish())
   // Why: as `orca serve` does at launch; the aggregate census waits for this publication.
@@ -128,10 +141,10 @@ async function createPane(args: { presence: Presence; agent?: 'codex' | 'claude'
     kill: () => true,
     getForegroundProcess: async () => agent
   })
-  await runtime.createTerminal(`id:${WORKTREE_ID}`, {
+  await runtime.createTerminal(`id:${runtime.worktreeId}`, {
     tabId: TAB_ID,
     leafId: LEAF_ID,
-    launchAgent: agent,
+    ...(args.launched === false ? {} : { launchAgent: agent }),
     title: 'Terminal'
   })
   return {
@@ -184,14 +197,16 @@ function makeRequest(method: string, params?: unknown): RpcRequest {
 async function dispatchFrames(
   runtime: OrcaRuntimeService,
   method: string,
-  clientKind: 'mobile' | 'runtime'
+  clientKind: 'mobile' | 'runtime',
+  clientCapabilities?: readonly string[]
 ): Promise<RpcResponse[]> {
   const dispatcher = new RpcDispatcher({ runtime, methods: SESSION_TAB_METHODS })
   const frames: RpcResponse[] = []
+  const worktreeId = runtime instanceof InspectableRuntime ? runtime.worktreeId : WORKTREE_ID
   await dispatcher.dispatchStreaming(
-    makeRequest(method, { worktree: `id:${WORKTREE_ID}` }),
+    makeRequest(method, { worktree: `id:${worktreeId}` }),
     (raw) => frames.push(JSON.parse(raw)),
-    { clientKind, connectionId: `conn-${clientKind}` }
+    { clientKind, connectionId: `conn-${clientKind}`, clientCapabilities }
   )
   return frames
 }
@@ -446,5 +461,146 @@ describe('idle Codex pane conversation identity on a headless host', () => {
       })
       expect(status).not.toHaveProperty('sessionBoundary')
     }
+  })
+})
+
+describe('the published conversation field on a headless host', () => {
+  const FIXTURE_PATH = join(
+    __dirname,
+    '../../shared/__fixtures__/terminal-conversation-identity-idle-frame.json'
+  )
+
+  it('gives a runtime client and a capable phone the field and the offer, with no status', async () => {
+    const pane = await createPane({ presence: null })
+    const transcriptPath = await finishCodexTurn(pane, SESSION_ID)
+    const expected = {
+      conversationIdentity: {
+        agentType: 'codex',
+        providerSession: { key: 'session_id', id: SESSION_ID, transcriptPath },
+        source: 'live'
+      },
+      conversationOfferedWithoutStatus: true
+    }
+    for (const method of ['session.tabs.list', 'session.tabs.subscribe']) {
+      const runtimeTab = firstTerminalTab(
+        (await dispatchFrames(pane.runtime, method, 'runtime'))[0]
+      )
+      expect(runtimeTab).toMatchObject(expected)
+      expect(runtimeTab).not.toHaveProperty('agentStatus')
+      const capable = firstTerminalTab(
+        (
+          await dispatchFrames(pane.runtime, method, 'mobile', [
+            TERMINAL_CONVERSATION_IDENTITY_CLIENT_CAPABILITY
+          ])
+        )[0]
+      )
+      expect(capable).toMatchObject(expected)
+      expect(capable).not.toHaveProperty('agentStatus')
+      const oldPhone = firstTerminalTab((await dispatchFrames(pane.runtime, method, 'mobile'))[0])
+      expect(oldPhone).toMatchObject({
+        ...expected,
+        agentStatus: { state: 'done', sessionBoundary: true, providerSession: { id: SESSION_ID } }
+      })
+    }
+    for (const method of ['session.tabs.listAll', 'session.tabs.subscribeAll']) {
+      const runtimeTab = aggregateTerminalTab(
+        (await dispatchFrames(pane.runtime, method, 'runtime'))[0]
+      )
+      expect(runtimeTab).toMatchObject(expected)
+      expect(runtimeTab).not.toHaveProperty('agentStatus')
+    }
+  })
+
+  it('keeps the field through the done -> OSC working window before the next hook', async () => {
+    const pane = await createPane({ presence: null })
+    const transcriptPath = await finishCodexTurn(pane, SESSION_ID)
+    pane.store().ingestTerminalStatus({
+      paneKey: PANE,
+      payload: { state: 'working', agentType: 'codex', prompt: '' }
+    })
+    expect(pane.store().getStatusSnapshotForPane(PANE)[0]?.providerSession).toBeUndefined()
+    expect(await listTab(pane.runtime, 'runtime')).toMatchObject({
+      conversationIdentity: { providerSession: { id: SESSION_ID, transcriptPath } }
+    })
+  })
+
+  it('publishes exactly the frame the cold-desktop fixture was authored as', async () => {
+    const now = 1_791_108_000_000
+    vi.spyOn(Date, 'now').mockReturnValue(now)
+    const pane = await createPane({ presence: null, launched: false })
+    const transcriptPath = await finishCodexTurn(pane, SESSION_ID)
+    const frame = (await dispatchFrames(pane.runtime, 'session.tabs.list', 'runtime'))[0]
+    const result = frame?.ok ? structuredClone(frame.result) : null
+    const tab = terminalTabOf(result)
+    expect(tab).toBeDefined()
+    expect(tab).not.toHaveProperty('launchAgent')
+    expect(tab).not.toHaveProperty('agentStatus')
+    // Why: only run-specific values differ from the fixture: the epoch, handle and temp path.
+    const normalized = JSON.parse(
+      JSON.stringify(result)
+        .replaceAll(JSON.stringify(transcriptPath), JSON.stringify('/fixture/rollout.jsonl'))
+        .replaceAll(JSON.stringify(String(tab?.terminal)), JSON.stringify('terminal-fixture'))
+    )
+    normalized.publicationEpoch = 'headless:fixture'
+    normalized.snapshotVersion = 1
+    expect(JSON.stringify(normalized, null, 2) + '\n').toBe(readFileSync(FIXTURE_PATH, 'utf8'))
+  })
+
+  it('passes a Windows transcript path through opaquely', async () => {
+    const pane = await createPane({ presence: null })
+    const windowsPath = 'C:\\Users\\me\\.codex\\sessions\\rollout-ac1f.jsonl'
+    await pane.postHooks(SESSION_ID, ['SessionStart', 'UserPromptSubmit', 'Stop'], windowsPath)
+    pane.observeTitle(`⠋ ${NEUTRAL_TITLE}`)
+    pane.observeTitle(NEUTRAL_TITLE)
+    await vi.waitFor(() => expect(pane.runtime.ptyRecord(PTY_ID)?.lastAgentStatus).toBe('idle'))
+    expect(await listTab(pane.runtime, 'runtime')).toMatchObject({
+      conversationIdentity: { providerSession: { id: SESSION_ID, transcriptPath: windowsPath } }
+    })
+  })
+
+  it('publishes the field for a folder workspace', async () => {
+    const pane = await createPane({ presence: null, worktreeId: 'folder:notes' })
+    await finishCodexTurn(pane, SESSION_ID)
+    expect(await listTab(pane.runtime, 'runtime')).toMatchObject({
+      conversationIdentity: { providerSession: { id: SESSION_ID } },
+      conversationOfferedWithoutStatus: true
+    })
+  })
+
+  it('sends no extra frame for five neutral repaints and five same-status OSC refreshes', async () => {
+    const pane = await createPane({ presence: null })
+    await finishCodexTurn(pane, SESSION_ID)
+    const dispatcher = new RpcDispatcher({ runtime: pane.runtime, methods: SESSION_TAB_METHODS })
+    const frames: RpcResponse[] = []
+    const controller = new AbortController()
+    const streaming = dispatcher.dispatchStreaming(
+      makeRequest('session.tabs.subscribe', { worktree: `id:${WORKTREE_ID}` }),
+      (raw) => frames.push(JSON.parse(raw)),
+      { clientKind: 'runtime', connectionId: 'conn-churn', signal: controller.signal }
+    )
+    await vi.waitFor(() => expect(frames.length).toBeGreaterThan(0))
+    // Why one round first: the first OSC row is a genuine change (its prompt clears).
+    pane.store().ingestTerminalStatus({
+      paneKey: PANE,
+      payload: { state: 'done', agentType: 'codex', prompt: '' }
+    })
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    const settled = frames.length
+    for (let index = 0; index < 5; index += 1) {
+      pane.observeTitle(NEUTRAL_TITLE)
+      pane.runtime.onPtyData(PTY_ID, 'output\r\n', Date.now())
+      pane.store().ingestTerminalStatus({
+        paneKey: PANE,
+        payload: { state: 'done', agentType: 'codex', prompt: '' }
+      })
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    const identities = frames
+      .slice(settled)
+      .map((frame) => JSON.stringify(firstTerminalTab(frame)?.conversationIdentity))
+    expect(new Set(identities).size).toBeLessThanOrEqual(1)
+    expect(frames.length - settled).toBe(0)
+    controller.abort()
+    await streaming.catch(() => undefined)
   })
 })
