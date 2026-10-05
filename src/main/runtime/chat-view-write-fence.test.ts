@@ -33,4 +33,15 @@ describe('ChatViewWriteFence', () => {
     expect(fence.admit('wt', 'tab-2', 'W', 1)).toBe('apply')
     expect(fence.admit('wt-other', 'tab', 'W', 1)).toBe('superseded')
   })
+
+  it('lets a resend apply after its relay failed, unless the writer moved on', () => {
+    const fence = new ChatViewWriteFence()
+    fence.admit('wt', 'tab', 'W', 2)
+    fence.markUnconfirmed('wt', 'tab', 'W', 2)
+    expect(fence.admit('wt', 'tab', 'W', 2)).toBe('apply')
+    expect(fence.admit('wt', 'tab', 'W', 2)).toBe('duplicate')
+    fence.admit('wt', 'tab', 'W', 3)
+    fence.markUnconfirmed('wt', 'tab', 'W', 2)
+    expect(fence.admit('wt', 'tab', 'W', 3)).toBe('duplicate')
+  })
 })

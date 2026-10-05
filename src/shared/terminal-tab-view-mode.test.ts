@@ -39,9 +39,10 @@ describe('resolveTerminalChatPairWrite', () => {
   })
 
   it('keeps only a valid owner for a parent-addressed chat', () => {
+    expect(write({ chatLeafId: 'a' }, 'chat', null)).toEqual({ viewMode: 'chat', chatLeafId: 'a' })
+    // A terminal tab's leftover owner is stale: the route claims the focused pane instead.
     expect(write({ viewMode: 'terminal', chatLeafId: 'a' }, 'chat', null)).toEqual({
-      viewMode: 'chat',
-      chatLeafId: 'a'
+      viewMode: 'chat'
     })
     expect(write({ viewMode: 'chat', chatLeafId: 'gone' }, 'chat', null)).toEqual({
       viewMode: 'chat'

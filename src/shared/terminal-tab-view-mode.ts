@@ -38,8 +38,11 @@ export function resolveTerminalChatPairWrite(args: {
     return { viewMode: 'chat', chatLeafId: leafId }
   }
   // Why: older paired clients address the parent; keep a valid owner rather than guessing one.
+  // A terminal tab's leftover owner (saved before owners cleared on exit) is not kept.
   const owner =
-    current.chatLeafId && terminalLayoutNodeContainsLeaf(root, current.chatLeafId)
+    current.viewMode !== 'terminal' &&
+    current.chatLeafId &&
+    terminalLayoutNodeContainsLeaf(root, current.chatLeafId)
       ? current.chatLeafId
       : undefined
   return owner ? { viewMode: 'chat', chatLeafId: owner } : { viewMode: 'chat' }

@@ -1,6 +1,7 @@
 export type ChatViewWriteAdmission = 'apply' | 'duplicate' | 'superseded'
 
-type LastSeqByWriter = Map<string, number>
+/** `confirmed: false` lets a resend of a failed relay apply instead of reading as a duplicate. */
+type LastSeqByWriter = Map<string, { seq: number; confirmed: boolean }>
 
 /**
  * Orders each client process's chat-pair writes per parent tab at the host's mutation point.
@@ -21,10 +22,10 @@ export class ChatViewWriteFence {
   ): ChatViewWriteAdmission {
     let parents = this.byWorktree.get(worktreeId)
     const last = parents?.get(parentTabId)?.get(writerId)
-    if (last !== undefined && seq < last) {
+    if (last && seq < last.seq) {
       return 'superseded'
     }
-    if (last === seq) {
+    if (last?.seq === seq && last.confirmed) {
       return 'duplicate'
     }
     if (!parents) {
@@ -36,8 +37,16 @@ export class ChatViewWriteFence {
       lastSeqByWriter = new Map()
       parents.set(parentTabId, lastSeqByWriter)
     }
-    lastSeqByWriter.set(writerId, seq)
+    lastSeqByWriter.set(writerId, { seq, confirmed: true })
     return 'apply'
+  }
+
+  /** The write admitted at `seq` failed before it was known to apply. */
+  markUnconfirmed(worktreeId: string, parentTabId: string, writerId: string, seq: number): void {
+    const last = this.byWorktree.get(worktreeId)?.get(parentTabId)?.get(writerId)
+    if (last?.seq === seq) {
+      last.confirmed = false
+    }
   }
 
   /** Drops the marks of every parent tab the worktree's current snapshot no longer holds. */

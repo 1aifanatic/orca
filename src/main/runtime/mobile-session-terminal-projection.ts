@@ -2,11 +2,6 @@ import type { RuntimeMobileSessionTerminalTab } from '../../shared/runtime-types
 import type { TerminalTab } from '../../shared/terminal-tab-types'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import {
-  isNativeChatTabWideFallbackSafe,
-  nativeChatLaunchAgentForLeaf,
-  resolveNativeChatActiveLayoutLeafId
-} from '../../shared/native-chat-leaf-ownership'
-import {
   normalizeTerminalChatPair,
   resolveTerminalTabViewMode
 } from '../../shared/terminal-tab-view-mode'
@@ -28,13 +23,6 @@ export function buildHeadlessMobileSessionTerminalTabs(
     .flatMap((tab, index) => {
       const layout = session.terminalLayoutsByTabId?.[tab.id]
       const leafIds = collectPersistedTerminalLeafIds(layout)
-      // Why: a legacy tab with no layout has one derived pane, which owns the tab-wide launch hint.
-      const launchAgentLeafId =
-        leafIds.length === 0
-          ? deriveHeadlessLegacyTerminalLeafId(tab.id)
-          : isNativeChatTabWideFallbackSafe(layout)
-            ? resolveNativeChatActiveLayoutLeafId(layout)
-            : null
       if (leafIds.length === 0) {
         leafIds.push(deriveHeadlessLegacyTerminalLeafId(tab.id))
       }
@@ -55,12 +43,6 @@ export function buildHeadlessMobileSessionTerminalTabs(
         delete parentLayout.chatLeafId
       }
       return leafIds.flatMap((leafId) => {
-        const launchAgent = nativeChatLaunchAgentForLeaf({
-          launchAgent: tab.launchAgent,
-          launchAgentLeafId,
-          leafId,
-          leafIds
-        })
         const ptyId = layout?.ptyIdsByLeafId?.[leafId] ?? (leafIds.length === 1 ? tab.ptyId : null)
         const title =
           tab.customTitle?.trim() ||
@@ -77,7 +59,7 @@ export function buildHeadlessMobileSessionTerminalTabs(
             title,
             ...(ptyId ? { ptyId } : {}),
             ...(tab.startupCwd ? { startupCwd: tab.startupCwd } : {}),
-            ...(launchAgent ? { launchAgent } : {}),
+            ...(tab.launchAgent ? { launchAgent: tab.launchAgent } : {}),
             ...(parentLayout ? { parentLayout: cloneTerminalLayoutSnapshot(parentLayout) } : {}),
             ...(tab.color != null ? { color: tab.color } : {}),
             ...(tab.isPinned ? { isPinned: true } : {}),
