@@ -25,7 +25,10 @@ export type SubscriberFieldHooks = {
   readCommands?: (sessionId: string) => AgentSessionSlashCommand[] | undefined
   readQueuePublication?: (sessionId: string) => QueuePublication | undefined
   /** Host-derived from the whole journal, so it never depends on the page a client holds. */
-  readAsyncQuestions?: (journal: AgentSessionJournal) => NativeChatAsyncQuestionsField | undefined
+  readAsyncQuestions?: (
+    sessionId: string,
+    journal: AgentSessionJournal
+  ) => NativeChatAsyncQuestionsField | undefined
 }
 
 export type SubscriberFrame = {
@@ -62,7 +65,7 @@ export function buildSubscriberFrame(
   const asyncQuestions =
     withholdQueued || !journal || event.type === 'end'
       ? undefined
-      : hooks.readAsyncQuestions?.(journal)
+      : hooks.readAsyncQuestions?.(subscriber.sessionId, journal)
   const attachedAsync =
     asyncQuestions !== undefined &&
     (event.type !== 'batch' || asyncQuestions !== subscriber.asyncQuestions)

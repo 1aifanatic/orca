@@ -64,13 +64,47 @@ export function nativeChatTranscriptAsyncQuestionFacts(
   return [...calls, ...askedFacts(message.blocks, 'root', message.id, (id) => id)]
 }
 
-function isDeliveredUserItem(
-  item: AgentJournalRenderItem,
-  submissionsByKey: ReadonlyMap<string, AgentJournalSubmission>
-): boolean {
-  const submission = submissionsByKey.get(item.itemId)
-  // No submission backs it: the provider recorded it.
-  return submission === undefined || submission.dispatchState === 'accepted'
+/** What the fold reads of a journal item. */
+export type AsyncQuestionJournalItem = Pick<
+  AgentJournalRenderItem,
+  'itemId' | 'sequence' | 'sequenceIndex' | 'agentId' | 'body'
+>
+
+/** The submission behind a user item, by its journal key. */
+export type AsyncQuestionSubmissionLookup = (itemId: string) => AgentJournalSubmission | undefined
+
+function journalItemFacts(
+  item: AsyncQuestionJournalItem,
+  submissionFor: AsyncQuestionSubmissionLookup
+): NativeChatAsyncQuestionFact[] {
+  if (item.body.kind !== 'message') {
+    return []
+  }
+  const author = isRootAgentJournalItem(item) ? 'root' : 'child'
+  if (item.body.role === 'user') {
+    const submission = submissionFor(item.itemId)
+    // No submission backs it: the provider recorded it.
+    return submission === undefined || submission.dispatchState === 'accepted'
+      ? [{ kind: 'delivered-user-message', author }]
+      : []
+  }
+  if (item.body.role !== 'assistant') {
+    return []
+  }
+  // The canonical journal item id survives resume; raw provider ids are renumbered.
+  return askedFacts(item.body.blocks, author, item.itemId, () => item.itemId)
+}
+
+export function journalSubmissionLookup(
+  submissions: readonly AgentJournalSubmission[]
+): AsyncQuestionSubmissionLookup {
+  const byKey = new Map(
+    submissions.map((submission) => [
+      agentJournalSubmissionKey(submission.clientMessageId),
+      submission
+    ])
+  )
+  return (itemId) => byKey.get(itemId)
 }
 
 /** Facts of the journal in the reducer's order (a queued message sits at its handover). */
@@ -78,29 +112,30 @@ export function journalAsyncQuestionFacts(
   items: readonly AgentJournalRenderItem[],
   submissions: readonly AgentJournalSubmission[]
 ): NativeChatAsyncQuestionFact[] {
-  const submissionsByKey = new Map(
-    submissions.map((submission) => [
-      agentJournalSubmissionKey(submission.clientMessageId),
-      submission
-    ])
+  const submissionFor = journalSubmissionLookup(submissions)
+  return items
+    .toSorted(compareAgentJournalItems)
+    .flatMap((item) => journalItemFacts(item, submissionFor))
+}
+
+/** The pending set of items in journal order, and the newest delivered root user message among
+ *  them: nothing before it can still be pending, so a later read may start after it. */
+export function deriveJournalAsyncQuestionSuffix<T extends AsyncQuestionJournalItem>(
+  ordered: readonly T[],
+  submissionFor: AsyncQuestionSubmissionLookup
+): { questions: NativeChatAsyncQuestion[]; boundary: T | null } {
+  const facts = ordered.map((item) => journalItemFacts(item, submissionFor))
+  const boundaryIndex = facts.findLastIndex((itemFacts) =>
+    itemFacts.some((fact) => fact.kind === 'delivered-user-message' && fact.author === 'root')
   )
-  const ordered = items.toSorted(compareAgentJournalItems)
-  return ordered.flatMap((item): NativeChatAsyncQuestionFact[] => {
-    if (item.body.kind !== 'message') {
-      return []
-    }
-    const author = isRootAgentJournalItem(item) ? 'root' : 'child'
-    if (item.body.role === 'user') {
-      return isDeliveredUserItem(item, submissionsByKey)
-        ? [{ kind: 'delivered-user-message', author }]
-        : []
-    }
-    if (item.body.role !== 'assistant') {
-      return []
-    }
-    // The canonical journal item id survives resume; raw provider ids are renumbered.
-    return askedFacts(item.body.blocks, author, item.itemId, () => item.itemId)
-  })
+  const state = createNativeChatAsyncQuestionFoldState()
+  for (const fact of facts.slice(boundaryIndex + 1).flat()) {
+    foldNativeChatAsyncQuestionFact(state, fact)
+  }
+  return {
+    questions: nativeChatAsyncQuestionsFromFold(state),
+    boundary: ordered[boundaryIndex] ?? null
+  }
 }
 
 export function deriveJournalAsyncQuestions(

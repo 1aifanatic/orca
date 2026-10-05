@@ -58,7 +58,8 @@ export class StructuredAgentSessionClientDelivery {
       readCommands: (sessionId) => this.readCommands(sessionId),
       readQueuePublication: (sessionId) =>
         tryReadQueuePublication(sessions.get(sessionId)?.journal),
-      readAsyncQuestions: readStructuredAgentSessionAsyncQuestions,
+      readAsyncQuestions: (sessionId, journal) =>
+        readStructuredAgentSessionAsyncQuestions(journal, sessions.get(sessionId)?.params.provider),
       onJournalPublished: (sessionId, journal) => this.publishJournal(sessionId, journal)
     })
   }

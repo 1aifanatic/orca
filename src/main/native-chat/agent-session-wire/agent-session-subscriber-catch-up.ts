@@ -125,7 +125,7 @@ function emitCaughtUp(
     (port.hooks.readCommands(subscriber.sessionId) ?? null) !== subscriber.commands
   const queuedChanged = subscriberQueuedMessagesChanged(port.hooks, subscriber)
   // A resumed cursor that is already caught up still owes the async-question set.
-  const asyncQuestions = port.hooks.readAsyncQuestions?.(journal)
+  const asyncQuestions = port.hooks.readAsyncQuestions?.(subscriber.sessionId, journal)
   const asyncQuestionsChanged =
     asyncQuestions !== undefined && asyncQuestions !== subscriber.asyncQuestions
   if (

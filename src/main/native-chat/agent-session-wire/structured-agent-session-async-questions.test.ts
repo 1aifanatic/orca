@@ -20,6 +20,7 @@ import {
 } from '../../../shared/native-chat-async-questions'
 import { serializeRemoteRuntimePayload } from '../../../shared/remote-runtime-memory-limits'
 import { AGENT_SESSION_HISTORY_MAX_PAGE_BYTES } from './agent-session-history-page-bounds'
+import { deriveJournalAsyncQuestions } from '../../../shared/native-chat-async-question-facts'
 import { readStructuredAgentSessionAsyncQuestions } from './structured-agent-session-status-journal-projection'
 import { AgentSessionSubscribers } from './structured-agent-session-subscribers'
 
@@ -162,6 +163,47 @@ describe('structured async questions retire at the transport canonical order', (
     expect(readStructuredAgentSessionAsyncQuestions(journal)).toBe(first)
   })
 
+  it('reads only what follows the newest delivered user message, never a sorted snapshot', async () => {
+    const journal = await open()
+    const steps: (() => Promise<void>)[] = [
+      () => ask(journal, 'A?'),
+      () => submit(journal, 'm1'),
+      () => ask(journal, 'B?'),
+      () => accept(journal, 'm1'),
+      () => ask(journal, 'C?'),
+      () => submit(journal, 'm2'),
+      () => accept(journal, 'm2'),
+      () => ask(journal, 'D?')
+    ]
+    for (const step of steps) {
+      await step()
+      const snapshot = vi.spyOn(journal, 'snapshot')
+      const incremental = titles(journal)
+      expect(snapshot).not.toHaveBeenCalled()
+      snapshot.mockRestore()
+      const { items, submissions } = journal.snapshot()
+      expect(incremental).toEqual(
+        deriveJournalAsyncQuestions(items, submissions).map((question) => question.title)
+      )
+    }
+    // With no send pending after the boundary, the submissions aren't read either.
+    const submissions = vi.spyOn(journal, 'submissions')
+    await ask(journal, 'E?')
+    expect(titles(journal)).toEqual(['D?', 'E?'])
+    expect(submissions).not.toHaveBeenCalled()
+  })
+
+  it('does no work for a session whose provider never asks async questions', async () => {
+    const journal = await open()
+    await ask(journal, 'A?')
+    const visit = vi.spyOn(journal, 'visitItemsWithLinkage')
+    expect(readStructuredAgentSessionAsyncQuestions(journal, 'claude')).toEqual({
+      state: 'ready',
+      questions: []
+    })
+    expect(visit).not.toHaveBeenCalled()
+  })
+
   it('publishes nothing for a read-only journal, which cannot derive the set', async () => {
     const journal = await open()
     await ask(journal, 'A?')
@@ -232,7 +274,7 @@ describe('structured async questions on subscribe frames', () => {
     }
     const events: AgentSessionSubscribeEvent[] = []
     const subscribers = new AgentSessionSubscribers({
-      readAsyncQuestions: readStructuredAgentSessionAsyncQuestions
+      readAsyncQuestions: (_sessionId, journal) => readStructuredAgentSessionAsyncQuestions(journal)
     })
     subscribers.open({
       id: 's',
@@ -263,7 +305,7 @@ describe('structured async questions on subscribe frames', () => {
     const journal = await open()
     const events: AgentSessionSubscribeEvent[] = []
     const subscribers = new AgentSessionSubscribers({
-      readAsyncQuestions: readStructuredAgentSessionAsyncQuestions
+      readAsyncQuestions: (_sessionId, journal) => readStructuredAgentSessionAsyncQuestions(journal)
     })
     subscribers.open({
       id: 's',
@@ -294,7 +336,7 @@ describe('structured async questions on subscribe frames', () => {
     await ask(journal, 'A?')
     const events: AgentSessionSubscribeEvent[] = []
     new AgentSessionSubscribers({
-      readAsyncQuestions: readStructuredAgentSessionAsyncQuestions
+      readAsyncQuestions: (_sessionId, journal) => readStructuredAgentSessionAsyncQuestions(journal)
     }).open({
       id: 's',
       sessionId: IDENTITY.sessionId,
@@ -333,7 +375,7 @@ describe('structured async questions against the frame byte budget', () => {
   function snapshotOf(journal: AgentSessionJournal) {
     const events: AgentSessionSubscribeEvent[] = []
     new AgentSessionSubscribers({
-      readAsyncQuestions: readStructuredAgentSessionAsyncQuestions
+      readAsyncQuestions: (_sessionId, journal) => readStructuredAgentSessionAsyncQuestions(journal)
     }).open({
       id: 's',
       sessionId: IDENTITY.sessionId,

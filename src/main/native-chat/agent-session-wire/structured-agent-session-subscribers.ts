@@ -50,7 +50,10 @@ export type AgentSessionSubscribersHooks = {
   /** Revision-stable per emit: an unchanged list keeps its reference, so token
    *  streams never re-serialize it; any draft-table write changes it. */
   readQueuePublication?: (sessionId: string) => QueuePublication | undefined
-  readAsyncQuestions?: (journal: AgentSessionJournal) => NativeChatAsyncQuestionsField | undefined
+  readAsyncQuestions?: (
+    sessionId: string,
+    journal: AgentSessionJournal
+  ) => NativeChatAsyncQuestionsField | undefined
   /** Fires after publications that can change journal content. */
   onJournalPublished?: (sessionId: string, journal: AgentSessionJournal) => void
   now?: () => number

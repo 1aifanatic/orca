@@ -2,7 +2,14 @@
 // row is, and the user's newest send the provider accepted.
 
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
-import { deriveJournalAsyncQuestions } from '../../../shared/native-chat-async-question-facts'
+import type { AgentSessionHandleProvider } from '../../../shared/agent-session-provider-handle'
+import { compareAgentJournalItems } from '../../../shared/agent-session-journal-position'
+import {
+  deriveJournalAsyncQuestionSuffix,
+  journalSubmissionLookup,
+  type AsyncQuestionJournalItem,
+  type AsyncQuestionSubmissionLookup
+} from '../../../shared/native-chat-async-question-facts'
 import {
   nativeChatAsyncQuestionsFieldsEqual,
   publishNativeChatAsyncQuestions,
@@ -79,26 +86,45 @@ type AsyncQuestionsProjection = {
   sequence: number
   readOnly: boolean
   field: NativeChatAsyncQuestionsField | undefined
+  /** The newest delivered root user message so far; nothing before it can be pending. */
+  boundary: AsyncQuestionJournalItem | null
 }
 
 // One derivation per journal commit, shared by every subscriber of the session.
 const asyncQuestionsByJournal = new WeakMap<AgentSessionJournal, AsyncQuestionsProjection>()
 
-function journalHasAsyncQuestions(journal: AgentSessionJournal): boolean {
-  let found = false
-  journal.visitItems((_itemId, _sequence, body) => {
-    found ||=
-      body.kind === 'message' &&
-      body.blocks.some((block) => block.type === 'text' && block.asyncQuestions !== undefined)
+/** Messages after `after` in journal order, read without a full sorted snapshot. */
+function journalMessagesAfter(
+  journal: AgentSessionJournal,
+  after: AsyncQuestionJournalItem | null
+): AsyncQuestionJournalItem[] {
+  const messages: AsyncQuestionJournalItem[] = []
+  journal.visitItemsWithLinkage((itemId, sequence, body, item) => {
+    if (body.kind !== 'message') {
+      return
+    }
+    const message: AsyncQuestionJournalItem = {
+      itemId,
+      sequence,
+      body,
+      ...(item.sequenceIndex === undefined ? {} : { sequenceIndex: item.sequenceIndex }),
+      ...(item.agentId === undefined ? {} : { agentId: item.agentId })
+    }
+    if (!after || compareAgentJournalItems(message, after) > 0) {
+      messages.push(message)
+    }
   })
-  return found
+  return messages.sort(compareAgentJournalItems)
 }
 
-/** The pending Codex async questions the whole journal records, as published. Identity is
- *  stable while the set is unchanged, so subscribers can deduplicate it by reference.
- *  Undefined for a read-only journal: it can't derive, so it publishes nothing (old host). */
+/** The pending Codex async questions the journal records, as published. Identity is stable while
+ *  the set is unchanged, so subscribers can deduplicate it by reference. Only the messages after
+ *  the newest delivered root user message are read, a boundary kept per epoch while its item
+ *  stays. A known non-Codex provider never asks one. Undefined for a read-only journal: it can't
+ *  derive, so it publishes nothing (old host). */
 export function readStructuredAgentSessionAsyncQuestions(
-  journal: AgentSessionJournal
+  journal: AgentSessionJournal,
+  provider?: AgentSessionHandleProvider
 ): NativeChatAsyncQuestionsField | undefined {
   const cursor = journal.cursor()
   const readOnly = journal.isReadOnly
@@ -112,16 +138,27 @@ export function readStructuredAgentSessionAsyncQuestions(
     return cached.field
   }
   let field: NativeChatAsyncQuestionsField | undefined = readOnly ? undefined : NO_ASYNC_QUESTIONS
-  // Most journals never asked one; skip the sorted snapshot for them.
-  if (!readOnly && journalHasAsyncQuestions(journal)) {
-    const snapshot = journal.snapshot()
-    field = publishNativeChatAsyncQuestions(
-      deriveJournalAsyncQuestions(snapshot.items, snapshot.submissions)
-    )
+  let boundary: AsyncQuestionJournalItem | null = null
+  if (!readOnly && (provider === undefined || provider === 'codex')) {
+    const after =
+      cached?.epoch === cursor.epoch && cached.boundary && journal.itemBody(cached.boundary.itemId)
+        ? cached.boundary
+        : null
+    const messages = journalMessagesAfter(journal, after)
+    // Only a pending send's message needs its submission; most suffixes hold none.
+    let submissionFor: AsyncQuestionSubmissionLookup | null = null
+    const derived = deriveJournalAsyncQuestionSuffix(messages, (itemId) => {
+      submissionFor ??= journalSubmissionLookup(journal.submissions())
+      return submissionFor(itemId)
+    })
+    boundary = derived.boundary ?? after
+    if (derived.questions.length > 0) {
+      field = publishNativeChatAsyncQuestions(derived.questions)
+    }
   }
   if (cached && nativeChatAsyncQuestionsFieldsEqual(cached.field, field)) {
     field = cached.field
   }
-  asyncQuestionsByJournal.set(journal, { ...cursor, readOnly, field })
+  asyncQuestionsByJournal.set(journal, { ...cursor, readOnly, field, boundary })
   return field
 }
