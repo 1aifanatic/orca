@@ -20,6 +20,8 @@ export const AGENT_SESSION_FAILURE_KINDS = [
   'startFailed',
   'notSignedIn',
   'historyTooLarge',
+  'customCommandInvalid',
+  'customCommandConflict',
   'managedAccountEnvOverride',
   'accountSwitchInProgress',
   'managedAccountUnsupported',

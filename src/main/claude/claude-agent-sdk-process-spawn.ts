@@ -1,4 +1,5 @@
 import type { SpawnOptions as ClaudeAgentSdkSpawnOptions } from '@anthropic-ai/claude-agent-sdk'
+import type { StructuredAgentCommandInvocation } from '../../shared/tui-agent-launch-command-override'
 import { spawnProcess } from '../../shared/child-process/run-process'
 import { createProviderSpawnSpec } from '../codex/codex-app-server-posix-supervisor'
 
@@ -44,17 +45,26 @@ function definedEnv(env: Record<string, string | undefined>): Record<string, str
  */
 export function createClaudeCodeProcessSpawn(
   spawnImpl: typeof spawnProcess = spawnProcess,
-  platform: NodeJS.Platform = process.platform
+  platform: NodeJS.Platform = process.platform,
+  invocation?: StructuredAgentCommandInvocation
 ): ClaudeCodeProcessSpawn {
   let child: ClaudeCodeChild | null = null
   let stderrTail = ''
   let supervised = false
   return {
     spawn: (options) => {
+      let structuredArgs = options.args
+      if (invocation && options.command !== invocation.command) {
+        // The SDK inserts the script path when it chooses a JavaScript runtime.
+        if (structuredArgs[0] !== invocation.command) {
+          throw new Error('Claude SDK executable contract changed')
+        }
+        structuredArgs = structuredArgs.slice(1)
+      }
       const spec = createProviderSpawnSpec(
         {
-          command: options.command,
-          args: [...options.args],
+          command: invocation?.command ?? options.command,
+          args: [...(invocation?.prefixArgs ?? []), ...structuredArgs],
           ...(options.cwd === undefined ? {} : { cwd: options.cwd })
         },
         definedEnv(options.env),

@@ -133,6 +133,7 @@ for (const daemonSessionGone of [false, true]) {
       await first.page.evaluate(
         async ({ agentCommand, terminalWindowsShell }) => {
           await window.__store?.getState().updateSettings({
+            experimentalStructuredNativeChat: false,
             agentCmdOverrides: { codex: agentCommand },
             terminalWindowsShell,
             disabledTuiAgents: [],

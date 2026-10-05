@@ -441,6 +441,7 @@ for (const contractVersion of [LEGACY_CONTRACT_VERSION, CURRENT_CONTRACT_VERSION
       await first.page.evaluate(
         async ({ agentCommand, terminalWindowsShell }) => {
           await window.__store?.getState().updateSettings({
+            experimentalStructuredNativeChat: false,
             agentCmdOverrides: { codex: agentCommand },
             terminalWindowsShell
           })

@@ -1,3 +1,4 @@
+import type { StructuredAgentCommandInvocation } from '../../shared/tui-agent-launch-command-override'
 import type {
   AgentJournalItemIdentity,
   AgentSessionJournalIdentity
@@ -28,6 +29,7 @@ import type {
 export type CodexSessionCatalogAccess = AgentModelCatalogSessionAccess
 
 export type CodexStructuredLaunch = {
+  invocation?: StructuredAgentCommandInvocation
   command: string
   args: string[]
   cwd: string

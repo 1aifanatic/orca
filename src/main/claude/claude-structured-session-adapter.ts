@@ -45,11 +45,8 @@ import {
 import { claudePromptCancelRoute } from './claude-structured-prompt-replies'
 
 export type { ClaudeStructuredLaunch } from './claude-structured-launch-resolution'
-export type {
-  ClaudeAuthDiagnostic,
-  ClaudeStructuredSessionAdapterDeps,
-  ClaudeStructuredSessionEvent
-} from './claude-structured-session-state'
+export type { ClaudeAuthDiagnostic } from './claude-structured-session-state'
+export type { ClaudeStructuredSessionAdapterDeps, ClaudeStructuredSessionEvent }
 
 function backgroundTaskState(session: ClaudeSession): AgentSessionBackgroundTaskState | null {
   const state = session.backgroundTasks.state
@@ -275,6 +272,8 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
       this.sessions.get(sessionId),
       this.deps.requestTimeoutMs ?? CLAUDE_DEFAULT_REQUEST_TIMEOUT_MS
     )
+  readCatalogAccess = (sessionId: string) => this.sessions.get(sessionId)?.catalogAccess
+
   readOptions = (input: { sessionId: string; fence: number }) =>
     readClaudeStructuredSessionOptions(this.session(input.sessionId), this.deps.requestTimeoutMs)
   // Provider-level: a session at rest still reports the usage its journal recorded.

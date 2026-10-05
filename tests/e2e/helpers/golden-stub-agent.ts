@@ -40,6 +40,7 @@ export async function configureGoldenStubAgent(
       }
       await store.getState().updateSettings({
         defaultTuiAgent: agent,
+        experimentalStructuredNativeChat: false,
         agentCmdOverrides: { [agent]: 'golden-stub-agent' },
         agentDefaultArgs: { [agent]: agentArgs },
         ...(windowsShell ? { terminalWindowsShell: windowsShell } : {})

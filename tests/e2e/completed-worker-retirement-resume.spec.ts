@@ -50,6 +50,7 @@ for (const closeMode of ['terminal-close-cli', 'worker-release'] as const) {
     await orcaPage.evaluate(
       async ({ agentCommand, terminalWindowsShell }) => {
         await window.__store?.getState().updateSettings({
+          experimentalStructuredNativeChat: false,
           agentCmdOverrides: { codex: agentCommand },
           terminalWindowsShell,
           disabledTuiAgents: [],

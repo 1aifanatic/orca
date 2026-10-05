@@ -5,11 +5,7 @@ import {
   STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
 } from '../../../shared/protocol-version'
 import { ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES } from '../../../shared/electron-remote-runtime-client-capabilities'
-import {
-  hasExplicitTuiLaunchCommand,
-  resolveAgentLaunchRoute,
-  structuredAgentLaunchSupported
-} from './agent-launch-routing'
+import { resolveAgentLaunchRoute, structuredAgentLaunchSupported } from './agent-launch-routing'
 
 const settings = {
   experimentalNativeChat: true,
@@ -178,15 +174,6 @@ describe('resolveAgentLaunchRoute', () => {
         }
       })
     ).toBe('legacy-native-chat')
-  })
-
-  it('treats a whitespace-only command override as no override', () => {
-    expect(hasExplicitTuiLaunchCommand({ agentCmdOverrides: { codex: '   ' } }, 'codex')).toBe(
-      false
-    )
-    expect(
-      hasExplicitTuiLaunchCommand({ agentCmdOverrides: { codex: 'codex-nightly' } }, 'codex')
-    ).toBe(true)
   })
 })
 

@@ -16,6 +16,7 @@ import { spawnProcess } from '../../shared/child-process/run-process'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
+import { createClaudeCodeProcessSpawn } from './claude-agent-sdk-process-spawn'
 import { claudeQuerySettingsReader } from './claude-agent-sdk-control-requests'
 import { createClaudeStructuredLaunchResolver } from './claude-structured-launch-resolution'
 
@@ -517,4 +518,38 @@ describe('Claude Agent SDK contract pins', () => {
       ).toBe(false)
     }
   })
+})
+
+it('pins the SDK script-path insertion and runs Orca-owned prefix args exactly once', async () => {
+  const scenario = scriptScenario([{ awaitUserMessage: true }, { emit: RESULT_FRAME }])
+  const sdkCalls: SdkSpawnOptions[] = []
+  const spawner = createClaudeCodeProcessSpawn(spawnProcess, 'win32', {
+    command: process.execPath,
+    prefixArgs: [FAKE_CLI]
+  })
+  await drainQuery({
+    pathToClaudeCodeExecutable: process.execPath,
+    cwd: scenario.cwd,
+    env: scenarioEnv(scenario),
+    spawnClaudeCodeProcess: (options) => {
+      sdkCalls.push(options)
+      return spawner.spawn(options)
+    }
+  })
+  expect(sdkCalls).toHaveLength(1)
+  expect(sdkCalls[0]?.command).toBe(process.execPath)
+  expect(sdkCalls[0]?.args[0]).toBe('--output-format')
+  expect(scenario.readReport().argv.filter((arg) => arg === FAKE_CLI)).toHaveLength(1)
+
+  const scriptScenarioInput = scriptScenario([{ awaitUserMessage: true }, { emit: RESULT_FRAME }])
+  const scriptSpawns: SpawnSeen[] = []
+  await drainQuery({
+    pathToClaudeCodeExecutable: FAKE_CLI,
+    cwd: scriptScenarioInput.cwd,
+    env: scenarioEnv(scriptScenarioInput),
+    spawnClaudeCodeProcess: recordingSpawner(scriptSpawns)
+  })
+  expect(scriptSpawns[0]?.command).toBe('node')
+  expect(scriptSpawns[0]?.args[0]).toBe(FAKE_CLI)
+  expect(scriptSpawns[0]?.args[1]).toBe('--output-format')
 })

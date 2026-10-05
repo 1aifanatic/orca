@@ -17590,6 +17590,8 @@
         "signInThenRunCommand": "Connectez-vous, puis relancez /{{command}}.",
         "signInThenSend": "Connectez-vous, puis renvoyez votre message.",
         "historyTooLarge": "L'historique de cette conversation est trop volumineux pour être restauré ici.",
+        "customCommandInvalid": "{{agent}} n’a pas pu démarrer avec votre commande personnalisée. Indiquez un programme et ses arguments dans Paramètres → Agents → Commande, ou effacez la commande.",
+        "customCommandConflict": "La commande personnalisée entre en conflit avec le modèle ou l’effort de ce chat. Supprimez les options de modèle ou d’effort dans Paramètres → Agents → Commande.",
         "managedAccountEnvOverride": "Ce lancement de Claude définit ses propres variables de connexion Anthropic. Supprimez-les pour utiliser un compte Claude géré.",
         "accountSwitchInProgress": "Un changement de compte Claude est en cours. Réessayez une fois qu'il sera terminé.",
         "managedAccountUnsupported": "Tant qu'un compte Claude est ajouté dans WSL, les chats Claude nécessitent un compte Claude Windows.",

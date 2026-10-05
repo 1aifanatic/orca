@@ -1,7 +1,7 @@
 // How a durable session record becomes a Codex process launch.
 //
-// Every input is read back from the record the store already made durable, not
-// from the call that triggered the acquire. A client that attaches twice must
+// Session identity is read back from the durable record; the host's launch settings
+// are re-read per acquisition. A client that attaches twice must
 // land in the same working directory under the same account home, and a resume
 // must name the thread this session actually proved — never one a caller asks
 // for, which is how a resume becomes a fork wearing a resume's name.
@@ -9,6 +9,11 @@
 import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
 import { agentSessionProviderHandleChainHead } from '../../shared/agent-session-provider-handle'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
+import {
+  resolveStructuredAgentCommand,
+  assertStructuredAgentCommandPreferences
+} from '../native-chat/structured-agent-command-resolution'
+import type { StructuredAgentCommandInvocation } from '../../shared/tui-agent-launch-command-override'
 import { resolveCodexCommand } from '../codex-cli/command'
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
 import type { CodexStructuredLaunch } from './codex-structured-session-adapter'
@@ -25,6 +30,7 @@ export type CodexStructuredLaunchResolverDeps = {
   resolveCommand?: (options?: { pathEnv?: string | null; homePath?: string }) => string
   /** Fresh shell/configured environment for this spawn; never written to the session record. */
   resolveEnvironment?: () => Promise<NodeJS.ProcessEnv>
+  resolveCommandOverride?: () => string | null | undefined
   resolveRollout?: typeof resolvePinnedCodexRolloutProof
   /** Test seam for the host capability; production uses the native process table. */
   isWindowsProcessStartTimeAvailable?: () => boolean
@@ -33,8 +39,7 @@ export type CodexStructuredLaunchResolverDeps = {
   resolvePermissionPolicy?: () => CodexStructuredPermissionPolicy
 }
 
-export type CodexStructuredInvocation = {
-  command: string
+export type CodexStructuredInvocation = StructuredAgentCommandInvocation & {
   environment: NodeJS.ProcessEnv | undefined
 }
 
@@ -46,16 +51,28 @@ export type CodexStructuredInvocation = {
  * drift there heals on the next refresh.
  */
 export async function resolveCodexStructuredInvocation(
-  deps: Pick<CodexStructuredLaunchResolverDeps, 'resolveCommand' | 'resolveEnvironment'>
+  deps: Pick<
+    CodexStructuredLaunchResolverDeps,
+    'resolveCommand' | 'resolveEnvironment' | 'resolveCommandOverride'
+  >,
+  cwd?: string
 ): Promise<CodexStructuredInvocation> {
   const environment = await deps.resolveEnvironment?.()
   const pathEnv = environment?.PATH ?? environment?.Path ?? null
   const homePath = environment?.HOME ?? environment?.USERPROFILE
-  const command = (deps.resolveCommand ?? resolveCodexCommand)({
-    pathEnv,
-    ...(homePath ? { homePath } : {})
+  const selected = resolveStructuredAgentCommand({
+    agent: 'codex',
+    override: deps.resolveCommandOverride?.(),
+    env: environment ?? process.env,
+    cwd
   })
-  return { command, environment }
+  const command =
+    selected?.command ??
+    (deps.resolveCommand ?? resolveCodexCommand)({
+      pathEnv,
+      ...(homePath ? { homePath } : {})
+    })
+  return { ...selected, command, prefixArgs: selected?.prefixArgs ?? [], environment }
 }
 
 export function createCodexStructuredLaunchResolver(
@@ -88,7 +105,10 @@ export function createCodexStructuredLaunchResolver(
     if (accountHome.variable !== 'CODEX_HOME') {
       throw new Error(`codex sessions pin CODEX_HOME, not ${accountHome.variable}`)
     }
-    const { command, environment } = await resolveCodexStructuredInvocation(deps)
+    const cwd = await deps.resolveWorkspacePath(location.workspaceId)
+    const invocation = await resolveCodexStructuredInvocation(deps, cwd)
+    const { command, environment } = invocation
+    assertStructuredAgentCommandPreferences('codex', invocation, record.options ?? {})
     // `record.launchArgs` is deliberately not read: the configured CLI arguments are a terminal
     // concern, and the permission posture they used to smuggle in is derived per acquisition.
     const permissionPolicy = deps.resolvePermissionPolicy?.()
@@ -98,8 +118,13 @@ export function createCodexStructuredLaunchResolver(
     const model = record.options?.model
     return {
       command,
-      args: ['app-server'],
-      cwd: await deps.resolveWorkspacePath(location.workspaceId),
+      args: [...invocation.prefixArgs, 'app-server'],
+      invocation: {
+        command,
+        prefixArgs: invocation.prefixArgs,
+        ...(invocation.cwd ? { cwd: invocation.cwd } : {})
+      },
+      cwd,
       codexHome: accountHome.path,
       ...(environment ? { env: { ...environment } as Record<string, string> } : {}),
       // An empty chain is a session that has never proved a thread, so it

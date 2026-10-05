@@ -248,19 +248,29 @@ describe('buildAgentLaunchRouteInput', () => {
     expect(structuredFeasibleFor(store(), args)).toBe(true)
   })
 
-  it.each([
-    ['a cwd', { cwd: '/repo/sub' }, {}],
-    ['a settings command override', {}, { agentCmdOverrides: { codex: 'codex-nightly' } }]
-  ] as const)('requires a terminal for %s', (_name, tuiCustomization, settingsOverride) => {
-    const input = buildAgentLaunchRouteInput(
-      store({ ...STRUCTURED_SETTINGS, ...settingsOverride }),
-      {
-        agent: 'codex',
-        workspace: { kind: 'git-worktree', worktreeId: 'wt-1' },
-        tuiCustomization
-      }
-    )
-    expect(input.requiresTuiLaunchCommand).toBe(true)
+  it.each([['a cwd', { cwd: '/repo/sub' }, {}]] as const)(
+    'requires a terminal for %s',
+    (_name, tuiCustomization, settingsOverride) => {
+      const input = buildAgentLaunchRouteInput(
+        store({ ...STRUCTURED_SETTINGS, ...settingsOverride }),
+        {
+          agent: 'codex',
+          workspace: { kind: 'git-worktree', worktreeId: 'wt-1' },
+          tuiCustomization
+        }
+      )
+      expect(input.requiresTuiLaunchCommand).toBe(true)
+    }
+  )
+
+  it.each(['claude', 'codex'] as const)('keeps %s structured with a custom Command', (agent) => {
+    const appStore = store({
+      ...STRUCTURED_SETTINGS,
+      agentCmdOverrides: { [agent]: 'wrapper subcommand' }
+    })
+    const args = { agent, workspace: { kind: 'git-worktree' as const, worktreeId: 'wt-1' } }
+    expect(routeFor(appStore, args)).toBe('structured-native-chat')
+    expect(buildAgentLaunchRouteInput(appStore, args).requiresTuiLaunchCommand).toBe(false)
   })
 
   // The reported P0: `--dangerously-skip-permissions --model Opus` matched no blessed string, so
@@ -399,7 +409,7 @@ describe('buildAgentLaunchRouteInput', () => {
       }
     })
 
-    // The override is this machine's; the server's createSupport applies its own.
+    // The execution host resolves its own Command setting.
     it("does not apply this machine's launch command override to the server", () => {
       const settings = { ...STRUCTURED_SETTINGS, agentCmdOverrides: { claude: 'claude-wrapper' } }
       expect(

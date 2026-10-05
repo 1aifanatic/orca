@@ -87,12 +87,12 @@ describe('a structured default this dispatch cannot honour', () => {
     expect(decide({ params: { agent: 'codex', worktree: 'current' } }).mode).toBe('structured')
   })
 
-  it('falls back rather than dropping a custom TUI launch the session cannot apply', () => {
+  it('keeps a custom Command on the structured worker route', () => {
     expect(
       decide({
         settings: { ...STRUCTURED_DEFAULT, agentCmdOverrides: { claude: 'claude-wrapper' } }
       })
-    ).toMatchObject({ mode: 'terminal', reason: 'tui_launch_command' })
+    ).toMatchObject({ mode: 'structured', reason: 'user_default' })
   })
 })
 

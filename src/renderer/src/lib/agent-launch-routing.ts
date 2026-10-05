@@ -11,8 +11,6 @@ import {
   type NativeChatLaunchPromptDelivery
 } from '@/lib/native-chat-initial-view-mode'
 
-export { hasExplicitTuiLaunchCommand } from '../../../shared/tui-agent-launch-command-override'
-
 export type AgentLaunchRoute = 'structured-native-chat' | 'legacy-native-chat' | 'terminal-tui'
 
 export type AgentLaunchRoutingInput = {

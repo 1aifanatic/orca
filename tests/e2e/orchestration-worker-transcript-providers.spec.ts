@@ -215,6 +215,7 @@ test('worker-read uses provider transcripts across supported orchestration agent
   await orcaPage.evaluate(
     async ({ commands, terminalWindowsShell }) => {
       await window.__store?.getState().updateSettings({
+        experimentalStructuredNativeChat: false,
         agentCmdOverrides: commands,
         terminalWindowsShell,
         disabledTuiAgents: [],

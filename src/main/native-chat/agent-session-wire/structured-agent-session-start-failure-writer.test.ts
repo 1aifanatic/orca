@@ -196,3 +196,25 @@ describe('a queued message whose start fails and whose child then exits', () => 
     expect(publishedStartRows()).toEqual([EXIT_TEXT])
   })
 })
+
+it.each(['customCommandInvalid', 'customCommandConflict'] as const)(
+  'persists one actionable row for %s and keeps the same rejection on replay',
+  async (kind) => {
+    const queued = await sendQueued('hello')
+    const failure = agentSessionFailureFact(kind)
+    settleStart(failure)
+    await eventually(async () =>
+      expect(await submission(queued)).toMatchObject({
+        dispatchState: 'rejected',
+        rejection: failure
+      })
+    )
+    await exitBeforeProof()
+    await host.flushStreamedEvents(SESSION)
+    const rows = await startRows()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toContain('Settings → Agents → Command')
+    expect(publishedStartRows()).toEqual(rows)
+    expect(await submission(queued)).toMatchObject({ rejection: failure, reason: rows[0] })
+  }
+)

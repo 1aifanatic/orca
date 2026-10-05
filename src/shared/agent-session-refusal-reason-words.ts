@@ -93,6 +93,8 @@ const REASON_WORDS = {
     providerStartFailed: { fact: 'providerStartFailed', action: 'retry' },
     notSignedIn: { fact: 'notSignedIn', action: 'actFirst' },
     historyTooLarge: { fact: 'historyTooLarge', action: 'goElsewhere' },
+    customCommandInvalid: { fact: 'customCommandInvalid', action: 'actFirst' },
+    customCommandConflict: { fact: 'customCommandConflict', action: 'actFirst' },
     managedAccountEnvOverride: { fact: 'managedAccountEnvOverride', action: 'actFirst' },
     accountSwitchInProgress: { fact: 'accountSwitchInProgress', action: 'wait' },
     managedAccountUnsupported: { fact: 'managedAccountUnsupported', action: 'actFirst' },

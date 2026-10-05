@@ -149,9 +149,7 @@ export async function acquireClaudeSession({
         ...observedAt
       })
     )
-    for (const settle of settlements) {
-      settle()
-    }
+    settlements.forEach((settle) => settle())
   }
   const { canUseTool, onUserDialog } = buildClaudePermissionCallbacks({
     sessionId,
@@ -178,6 +176,7 @@ export async function acquireClaudeSession({
       open(
         {
           pathToClaudeCodeExecutable: launch.pathToClaudeCodeExecutable,
+          ...(launch.invocation ? { invocation: launch.invocation } : {}),
           options: launch.options,
           cwd: launch.cwd,
           env: {
@@ -260,7 +259,8 @@ export async function acquireClaudeSession({
     const catalogAccess = agentModelCatalogSessionAccess(
       deps.modelCatalog,
       'claude',
-      launch.claudeConfigDir
+      launch.claudeConfigDir,
+      launch.invocation
     )
     if (catalogAccess) {
       session.catalogAccess = catalogAccess

@@ -20,10 +20,12 @@ describe('Claude structured processless acquisition', () => {
   it('classifies pre-pid error and close as processless with idempotent cleanup', async () => {
     const fault = new Error('spawn claude ENOENT')
     const close = vi.fn(async () => true)
-    const openConnection: typeof openClaudeStreamJsonConnection = async (
-      _launch,
-      handlers = {}
-    ) => {
+    const openConnection: typeof openClaudeStreamJsonConnection = async (launch, handlers = {}) => {
+      expect(launch.invocation).toMatchObject({
+        command: '/fake/wrapper',
+        prefixArgs: ['code'],
+        customCommand: true
+      })
       // A failed spawn reports its error on a later tick, as child_process does.
       setTimeout(() => handlers.onFault?.(fault), 0)
       const connection: ClaudeStreamJsonConnection = {
@@ -49,7 +51,13 @@ describe('Claude structured processless acquisition', () => {
     }
     const adapter = new ClaudeStructuredSessionAdapter({
       resolveLaunch: async () => ({
-        pathToClaudeCodeExecutable: 'claude',
+        pathToClaudeCodeExecutable: '/fake/wrapper',
+        invocation: {
+          command: '/fake/wrapper',
+          prefixArgs: ['code'],
+          env: {},
+          customCommand: true
+        },
         options: {},
         cwd: '/work/repo',
         claudeConfigDir: '/accounts/claude',

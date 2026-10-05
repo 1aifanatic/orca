@@ -111,6 +111,18 @@ async function firstAnswerAndReplay(thrown: AgentSessionPreSpawnError) {
 describe('a create that fails before any process spawns', () => {
   it.each<[string, string, AgentSessionPreSpawnReason | undefined, string]>([
     [
+      'a command that cannot be spawned',
+      'ENOENT /private/custom-wrapper',
+      'customCommandInvalid',
+      "Claude couldn't start with your custom command. Use a program and its arguments in Settings → Agents → Command, or clear it."
+    ],
+    [
+      'a command that conflicts with the chat preferences',
+      'custom command singleton flags',
+      'customCommandConflict',
+      'The custom command conflicts with this chat’s model or effort. Remove model or effort flags in Settings → Agents → Command.'
+    ],
+    [
       'the managed account env override',
       'This Claude launch defines explicit Anthropic auth environment variables.',
       'managedAccountEnvOverride',

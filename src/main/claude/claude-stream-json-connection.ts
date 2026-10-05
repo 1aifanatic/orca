@@ -21,7 +21,10 @@ import {
   claudeUnwrittenUserMessageError,
   createClaudeUserMessageQueue
 } from './claude-agent-sdk-user-message-queue'
-import type { ClaudeStructuredSdkOptions } from './claude-structured-launch-resolution'
+import type {
+  ClaudeStructuredInvocation,
+  ClaudeStructuredSdkOptions
+} from './claude-structured-launch-resolution'
 
 export { ClaudeControlRequestError }
 
@@ -47,6 +50,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export type ClaudeStreamJsonLaunch = {
   /** Orca's resolved user CLI; the SDK falls back to a bundled binary that is not installed. */
   pathToClaudeCodeExecutable: string
+  invocation?: ClaudeStructuredInvocation
   options: ClaudeStructuredSdkOptions
   cwd: string
   env?: Record<string, string>
@@ -119,7 +123,11 @@ export async function openClaudeStreamJsonConnection(
   queryImpl?: typeof ClaudeAgentSdk.query
 ): Promise<ClaudeStreamJsonConnection> {
   const { query } = await loadClaudeAgentSdk()
-  const spawner = createClaudeCodeProcessSpawn(spawnImpl)
+  const spawner = createClaudeCodeProcessSpawn(
+    spawnImpl,
+    process.platform,
+    launch.invocation?.customCommand ? launch.invocation : undefined
+  )
   const inbox = createClaudeUserMessageQueue()
   const session = (queryImpl ?? query)({
     prompt: inbox.messages,

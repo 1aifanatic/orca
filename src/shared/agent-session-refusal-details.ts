@@ -47,6 +47,8 @@ export const AGENT_SESSION_REFUSAL_REASONS = {
     'notSignedIn',
     'historyTooLarge',
     /** The launch's own Anthropic sign-in variables would override the managed Claude account. */
+    'customCommandInvalid',
+    'customCommandConflict',
     'managedAccountEnvOverride',
     'accountSwitchInProgress',
     /** A Claude account is added in WSL and no Windows one is selected, which a chat can't run under. */

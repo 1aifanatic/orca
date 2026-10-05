@@ -10,7 +10,6 @@ import {
   LOCAL_COMMIT_MESSAGE_HOST_KEY
 } from '../../../../shared/commit-message-host-key'
 import { getSettingsForAgentTabRuntimeOwner } from '@/lib/agent-paste-draft'
-import { hasExplicitTuiLaunchCommand } from '../../../../shared/tui-agent-launch-command-override'
 import { getConnectionIdFromState } from '@/lib/connection-context'
 import {
   getLocalProjectExecutionRuntimeContext,
@@ -100,13 +99,14 @@ function catalogModelsFromHostCatalog(
 /** Null when the host has no listing yet or predates the surface (`forbidden`
  *  or `method_not_found`) — the caller then falls back to the CLI listing. */
 async function readLocalHostCatalogModels(
-  agent: 'claude' | 'codex'
+  agent: 'claude' | 'codex',
+  context: RuntimeGitContext
 ): Promise<CatalogModel[] | null> {
   try {
     const result = await callStructuredAgentSession<AgentSessionModelCatalogResult>(
       { kind: 'local' },
       'agentSession.modelCatalog',
-      { agent }
+      { agent, ...(context.worktreeId ? { worktree: context.worktreeId } : {}) }
     )
     if (result.origin === 'unknown' || result.models.length === 0) {
       return null
@@ -127,13 +127,8 @@ export async function discoverNativeChatCatalogModels(
   const hostCatalogAgent =
     agent === 'claude' ? ('claude' as const) : agent === 'codex' ? ('codex' as const) : null
   // Only `local` proves a native pane: a paired runtime's key also covers its SSH/WSL worktrees.
-  // A custom launch command runs a binary the structured catalog never lists; the CLI listing honors it.
-  if (
-    hostCatalogAgent &&
-    hostKey === LOCAL_COMMIT_MESSAGE_HOST_KEY &&
-    !hasExplicitTuiLaunchCommand(context.settings, hostCatalogAgent)
-  ) {
-    const fromHost = await readLocalHostCatalogModels(hostCatalogAgent)
+  if (hostCatalogAgent && hostKey === LOCAL_COMMIT_MESSAGE_HOST_KEY) {
+    const fromHost = await readLocalHostCatalogModels(hostCatalogAgent, context)
     if (fromHost) {
       return fromHost
     }

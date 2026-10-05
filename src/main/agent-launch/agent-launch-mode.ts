@@ -32,7 +32,6 @@ import {
   type StructuredNativeChatBlocker
 } from '../../shared/structured-native-chat-launch-route'
 import type { TuiAgent } from '../../shared/tui-agent'
-import { hasExplicitTuiLaunchCommand } from '../../shared/tui-agent-launch-command-override'
 import type { WorkspaceLaunchKind } from '../../shared/workspace-launch-kind'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 
@@ -87,7 +86,7 @@ const DOWNGRADE_DETAIL: Record<Exclude<AgentLaunchModeReason, 'user_default'>, s
   remote_execution_host: 'this launch runs on a remote execution host',
   reused_terminal: 'it reuses a running terminal agent',
   agent_without_structured_session: 'this agent has no structured session',
-  tui_launch_command: 'this agent has a custom launch command that only a terminal runs',
+  tui_launch_command: 'this launch starts outside the workspace root',
   structured_sessions_unavailable: 'this runtime does not support structured agent sessions',
   structured_support_unknown: 'the execution host has not established structured session support',
   wsl_execution_runtime: 'this workspace runs under WSL',
@@ -158,9 +157,10 @@ export function decideAgentLaunchMode(args: {
     ...(placement.workspaceKind ? { workspaceKind: placement.workspaceKind } : {}),
     // Mirrors the renderer's own route input (`agent-launch-route-input.ts`): a cwd is terminal-only
     // when it names somewhere other than the workspace root, by the same shared rule.
-    requiresTuiLaunchCommand:
-      requestsCwdOutsideWorkspaceRoot(placement.workspacePath, placement.cwd) ||
-      hasExplicitTuiLaunchCommand(settings, agent)
+    requiresTuiLaunchCommand: requestsCwdOutsideWorkspaceRoot(
+      placement.workspacePath,
+      placement.cwd
+    )
   })
   if (!support.supported) {
     return downgraded(BLOCKER_REASON[support.blocker], vocabulary)

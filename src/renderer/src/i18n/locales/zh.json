@@ -17491,6 +17491,8 @@
         "signInThenRunCommand": "请登录，然后重新运行 /{{command}}。",
         "signInThenSend": "请登录，然后重新发送您的消息。",
         "historyTooLarge": "此对话的历史记录过大，无法在此恢复。",
+        "customCommandInvalid": "无法使用自定义命令启动 {{agent}}。请在设置 → 智能体 → 命令中填写程序及其参数，或清空命令。",
+        "customCommandConflict": "自定义命令与此聊天的模型或推理强度冲突。请在设置 → 智能体 → 命令中移除模型或推理强度选项。",
         "managedAccountEnvOverride": "此次 Claude 启动设置了自己的 Anthropic 登录变量。请移除这些变量以使用受管理的 Claude 账户。",
         "accountSwitchInProgress": "正在切换 Claude 账户。请在切换完成后重试。",
         "managedAccountUnsupported": "当 WSL 中添加了 Claude 账户时，Claude 聊天需要 Windows Claude 账户。",

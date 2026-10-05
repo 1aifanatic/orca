@@ -278,6 +278,8 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
     )
   }
 
+  readCatalogAccess = (sessionId: string) => this.sessions.get(sessionId)?.catalogAccess
+
   readOptions = (input: { sessionId: string; fence: number }) =>
     readLiveCodexSessionOptions(this.session(input.sessionId), this.deps.requestTimeoutMs)
 

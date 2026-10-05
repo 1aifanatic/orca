@@ -26,6 +26,11 @@ import {
   structuredClaudeMatchesActiveManagedAccount,
   type ClaudeManagedAccountGateSettings
 } from '../native-chat/claude-structured-managed-account-support'
+import {
+  resolveStructuredAgentCommand,
+  assertStructuredAgentCommandPreferences
+} from '../native-chat/structured-agent-command-resolution'
+import type { StructuredAgentCommandInvocation } from '../../shared/tui-agent-launch-command-override'
 import { resolveClaudeCommand } from '../codex-cli/command'
 import { resolveSessionFilePath } from '../native-chat/session-file-resolver'
 import { withoutInheritedClaudeConfigDir } from './claude-config-dir-pin'
@@ -91,6 +96,7 @@ export function claudeStructuredPermissionOptions(
 export type ClaudeStructuredLaunch = {
   /** Always Orca's resolved user CLI: the SDK's bundled binaries are excluded from the install. */
   pathToClaudeCodeExecutable: string
+  invocation?: ClaudeStructuredInvocation
   options: ClaudeStructuredSdkOptions
   cwd: string
   env?: Record<string, string>
@@ -109,6 +115,7 @@ export type ClaudeStructuredLaunchResolverDeps = {
   store: AgentSessionRecordStore
   resolveWorkspacePath: (workspaceId: string) => Promise<string>
   resolveCommand?: () => string
+  resolveCommandOverride?: () => string | null | undefined
   resolveEnv?: () =>
     | Promise<Record<string, string> | undefined>
     | Record<string, string>
@@ -145,7 +152,10 @@ async function claudeTranscriptExists(input: {
   return path !== null
 }
 
-export type ClaudeStructuredInvocation = { command: string; env: Record<string, string> }
+export type ClaudeStructuredInvocation = StructuredAgentCommandInvocation & {
+  env: Record<string, string>
+  customCommand?: true
+}
 
 /**
  * The one place a structured Claude child's binary and environment are
@@ -157,11 +167,15 @@ export type ClaudeStructuredInvocation = { command: string; env: Record<string, 
 export async function resolveClaudeStructuredInvocation(
   deps: Pick<
     ClaudeStructuredLaunchResolverDeps,
-    'resolveCommand' | 'resolveEnv' | 'resolveInheritedEnv' | 'resolveAuthPolicy'
+    | 'resolveCommand'
+    | 'resolveCommandOverride'
+    | 'resolveEnv'
+    | 'resolveInheritedEnv'
+    | 'resolveAuthPolicy'
   > & { authSwitchSettleTimeoutMs?: number },
-  decorateEnv: (env: Record<string, string>) => Record<string, string> = (env) => env
+  decorateEnv: (env: Record<string, string>) => Record<string, string> = (env) => env,
+  cwd?: string
 ): Promise<ClaudeStructuredInvocation> {
-  const command = (deps.resolveCommand ?? resolveClaudeCommand)()
   const auth = await deps.resolveAuthPolicy()
   const overlay = await deps.resolveEnv?.()
   const inheritedEnv = deps.resolveInheritedEnv
@@ -182,22 +196,41 @@ export async function resolveClaudeStructuredInvocation(
   // derives PATH from what it is handed. Ambient Anthropic auth is stripped from the
   // inherited half only when a managed account owns the credential; a system-auth
   // user's own key is their sign-in and must reach the child.
-  const env = withCliRuntimeOnPath(
+  const baseEnv = decorateEnv({
+    ...applyClaudeEnvPatch(
+      withoutInheritedClaudeConfigDir(inheritedEnv, process.platform),
+      {},
+      {
+        stripAuthEnv: auth.stripAuthEnv,
+        platform: process.platform
+      }
+    ),
+    ...(overlay ? cloneDefinedEnv(overlay) : {})
+  })
+  const selected = resolveStructuredAgentCommand({
+    agent: 'claude',
+    override: deps.resolveCommandOverride?.(),
+    env: baseEnv,
+    cwd
+  })
+  const command =
+    selected?.command ??
+    (
+      deps.resolveCommand ??
+      (() =>
+        resolveClaudeCommand({
+          pathEnv: baseEnv.PATH ?? baseEnv.Path,
+          homePath: baseEnv.HOME ?? baseEnv.USERPROFILE
+        }))
+    )()
+  const env = withCliRuntimeOnPath(command, baseEnv, { platform: process.platform })
+  return {
+    ...selected,
     command,
-    decorateEnv({
-      ...applyClaudeEnvPatch(
-        withoutInheritedClaudeConfigDir(inheritedEnv, process.platform),
-        {},
-        {
-          stripAuthEnv: auth.stripAuthEnv,
-          platform: process.platform
-        }
-      ),
-      ...(overlay ? cloneDefinedEnv(overlay) : {})
-    }),
-    { platform: process.platform }
-  )
-  return { command, env }
+    prefixArgs: selected?.prefixArgs ?? [],
+    env,
+    ...(selected ? { customCommand: true } : {})
+  }
 }
 
 /**
@@ -287,16 +320,22 @@ export function createClaudeStructuredLaunchResolver(
     const permission = claudeStructuredPermissionOptions(
       (await deps.resolvePermissionMode?.()) ?? 'default'
     )
-    const { command, env } = await resolveClaudeStructuredInvocation(deps, (base) =>
-      // Every structured session speaks orchestration as itself: its injected id and the Orca CLI.
-      structuredSessionChildIdentityEnv(record.sessionId, {
-        ...base,
-        // The turn translator relies on Claude's authoritative idle frame when no result arrives.
-        [CLAUDE_SESSION_STATE_EVENTS_ENV]: '1'
-      })
+    const cwd = await deps.resolveWorkspacePath(record.location.workspaceId)
+    const invocation = await resolveClaudeStructuredInvocation(
+      deps,
+      (base) =>
+        // Every structured session speaks orchestration as itself: its injected id and the Orca CLI.
+        structuredSessionChildIdentityEnv(record.sessionId, {
+          ...base,
+          // The turn translator relies on Claude's authoritative idle frame when no result arrives.
+          [CLAUDE_SESSION_STATE_EVENTS_ENV]: '1'
+        }),
+      cwd
     )
+    assertStructuredAgentCommandPreferences('claude', invocation, record.options ?? {})
     return {
-      pathToClaudeCodeExecutable: command,
+      pathToClaudeCodeExecutable: invocation.command,
+      invocation,
       options: {
         ...CLAUDE_STRUCTURED_BASE_OPTIONS,
         ...permission,
@@ -304,8 +343,8 @@ export function createClaudeStructuredLaunchResolver(
         // Claude owns where a resumed conversation continues; the stored leaf is Orca's bookkeeping.
         ...(resumesTranscript ? { resume: providerSessionId } : { sessionId: providerSessionId })
       },
-      cwd: await deps.resolveWorkspacePath(record.location.workspaceId),
-      env,
+      cwd,
+      env: invocation.env,
       claudeConfigDir: record.accountHome.path,
       providerSessionId,
       resumeLeafUuid:

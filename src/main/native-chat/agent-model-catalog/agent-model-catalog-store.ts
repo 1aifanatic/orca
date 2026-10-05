@@ -1,3 +1,4 @@
+import type { StructuredAgentCommandInvocation } from '../../../shared/tui-agent-launch-command-override'
 import type {
   AgentSessionFastModeSupport,
   AgentSessionModelOption
@@ -47,6 +48,7 @@ export type AgentModelCatalogSessionAccess = {
   store: AgentModelCatalogStore
   fingerprint: string
   accountHomePath: string
+  invocation?: StructuredAgentCommandInvocation
 }
 
 function tierRecord(tiers: ReadonlyMap<string, string>): Record<string, string> {

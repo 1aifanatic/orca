@@ -3,7 +3,10 @@ import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import type { AgentSessionProviderHandleLink } from '../../shared/agent-session-provider-handle'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
-import { createCodexStructuredLaunchResolver } from './codex-structured-launch-resolution'
+import {
+  createCodexStructuredLaunchResolver,
+  type CodexStructuredLaunchResolverDeps
+} from './codex-structured-launch-resolution'
 import { codexStructuredPermissionPolicyForSettings } from './codex-structured-permission-policy'
 
 const SESSION_ID = 'session-1'
@@ -41,7 +44,8 @@ function resolverFor(
   value: AgentSessionRecord | null,
   resolveWorkspacePath: (workspaceId: string) => Promise<string> = async (id) => `/repos/${id}`,
   resolveRollout: () => Promise<string | null> = async () => null,
-  agentDefaultArgs: Record<string, string> = { codex: '' }
+  agentDefaultArgs: Record<string, string> = { codex: '' },
+  commandDeps: Partial<CodexStructuredLaunchResolverDeps> = {}
 ) {
   return createCodexStructuredLaunchResolver({
     store: { getRecord: () => value } as unknown as AgentSessionRecordStore,
@@ -49,7 +53,8 @@ function resolverFor(
     resolveCommand: () => '/usr/local/bin/codex',
     resolveRollout,
     isWindowsProcessStartTimeAvailable: () => true,
-    resolvePermissionPolicy: () => codexStructuredPermissionPolicyForSettings({ agentDefaultArgs })
+    resolvePermissionPolicy: () => codexStructuredPermissionPolicyForSettings({ agentDefaultArgs }),
+    ...commandDeps
   })
 }
 
@@ -59,6 +64,7 @@ describe('codex structured launch resolution', () => {
 
     expect(launch).toEqual({
       command: '/usr/local/bin/codex',
+      invocation: { command: '/usr/local/bin/codex', prefixArgs: [] },
       args: ['app-server'],
       cwd: '/repos/workspace-1',
       codexHome: '/home/work/.codex',
@@ -259,5 +265,60 @@ describe('codex structured launch resolution', () => {
         throw new Error('workspace-1 is gone')
       })({ identity: IDENTITY })
     ).rejects.toThrow('workspace-1 is gone')
+  })
+})
+
+describe('Codex custom Command setting', () => {
+  it('prepends wrapper arguments and rereads the host setting per acquisition', async () => {
+    let command = `"${process.execPath}" wrapper.js --profile work`
+    const resolver = resolverFor(record(), undefined, undefined, undefined, {
+      resolveCommandOverride: () => command
+    })
+    const first = await resolver({ identity: IDENTITY })
+    expect(first.command).toBe(process.execPath)
+    expect(first.args).toEqual(['wrapper.js', '--profile', 'work', 'app-server'])
+    expect(first.codexHome).toBe('/home/work/.codex')
+    command = `"${process.execPath}" another-wrapper.js`
+    expect((await resolver({ identity: IDENTITY })).args).toEqual([
+      'another-wrapper.js',
+      'app-server'
+    ])
+  })
+  it.each([
+    { command: 'missing-custom-codex', options: {}, reason: 'customCommandInvalid' },
+    {
+      command: `"${process.execPath}" --model gpt-live`,
+      options: { model: 'gpt-live' },
+      reason: 'customCommandConflict'
+    },
+    {
+      command: `"${process.execPath}" -c model_reasoning_effort=high`,
+      options: { effort: 'high' },
+      reason: 'customCommandConflict'
+    },
+    {
+      command: `"${process.execPath}" --listen http://localhost`,
+      options: {},
+      reason: 'customCommandInvalid'
+    }
+  ])('refuses $reason before any process starts', async ({ command, options, reason }) => {
+    const defaultCommand = vi.fn(() => '/must-not-fall-back/codex')
+    const resolver = resolverFor(
+      record({
+        options: {
+          ...(options.model !== undefined ? { model: options.model } : {}),
+          ...(options.effort !== undefined ? { effort: options.effort } : {})
+        }
+      }),
+      undefined,
+      undefined,
+      undefined,
+      {
+        resolveCommand: defaultCommand,
+        resolveCommandOverride: () => command
+      }
+    )
+    await expect(resolver({ identity: IDENTITY })).rejects.toMatchObject({ reason })
+    expect(defaultCommand).not.toHaveBeenCalled()
   })
 })

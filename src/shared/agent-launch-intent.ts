@@ -68,8 +68,8 @@ export type AgentLaunchIntent = {
    * caller explicitly wants none, and collapsing the two would make a recipe that clears its args
    * silently inherit whatever the settings happen to hold.
    *
-   * Deliberately NOT a route input. `hasExplicitTuiLaunchCommand` reads the launch *command* and
-   * pointedly not the arguments, because structured chat drives Claude through the Agent SDK and
+   * Deliberately not a route input: structured chat honors Command, while Arguments remain a
+   * terminal concern because structured chat drives Claude through the Agent SDK and
    * Codex through app-server, whose option sets are versioned independently of the interactive
    * CLI's. So args reaching a structured launch are ignored rather than forcing a terminal — the
    * host says so in `warning` instead of quietly honouring neither the args nor the preference.

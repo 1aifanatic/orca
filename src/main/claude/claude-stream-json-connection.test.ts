@@ -833,3 +833,28 @@ describe('the managed-auth live gate', () => {
     }
   }, 30_000)
 })
+
+it('runs a custom interpreter wrapper with prefix args through the real SDK connection', async () => {
+  const scenario = scriptScenario([HOLD_OPEN])
+  const connection = await open({
+    ...launchFor(scenario),
+    pathToClaudeCodeExecutable: process.execPath,
+    invocation: {
+      command: process.execPath,
+      prefixArgs: [FAKE_CLI, '--profile', 'work'],
+      env: scenario.env,
+      customCommand: true
+    }
+  })
+  await connection.initializationResult()
+  const report = await until(() => readReportSafely(scenario), 'the wrapper report')
+  expect(launchedArgv(spawned[0]).slice(0, 4)).toEqual([
+    process.execPath,
+    FAKE_CLI,
+    '--profile',
+    'work'
+  ])
+  expect(report.argv.filter((arg) => arg === FAKE_CLI)).toHaveLength(1)
+  expect(report.argv).toContain('--input-format')
+  expect(report.argv).toContain(`--session-id=${SESSION_ID}`)
+})

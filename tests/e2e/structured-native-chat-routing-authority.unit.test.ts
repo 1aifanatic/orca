@@ -58,7 +58,7 @@ describe('shared feasibility owns every caller decision', () => {
       for (const agent of ['claude', 'codex', 'grok', 'openclaude'] as const) {
         for (const customized of [false, true]) {
           // Arguments and environment are customized on BOTH passes, so the flag below tracks the
-          // launch command alone. A caller that resumed reading either one fails here.
+          // launch command alone. None of these settings changes structured feasibility.
           const launchSettings: Partial<GlobalSettings> & typeof settings = {
             ...settings,
             agentDefaultArgs: { [agent]: '--custom' },
@@ -73,7 +73,7 @@ describe('shared feasibility owns every caller decision', () => {
               agent,
               executionHostId: 'local',
               reusesTerminal: Boolean(placement.terminal),
-              requiresTuiLaunchCommand: customized
+              requiresTuiLaunchCommand: false
             })
           )
           for (const blocker of blockers) {

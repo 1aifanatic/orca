@@ -4,6 +4,7 @@ import { spawnSourceControlAgent } from '../text-generation/source-control-agent
 import { claudeConfigDirEnvPatch } from './claude-config-dir-pin'
 import {
   resolveClaudeStructuredInvocation,
+  type ClaudeStructuredInvocation,
   type ClaudeStructuredLaunchResolverDeps
 } from './claude-structured-launch-resolution'
 import type {
@@ -13,9 +14,15 @@ import type {
 
 export type ClaudeModelCatalogProbeDeps = Pick<
   ClaudeStructuredLaunchResolverDeps,
-  'resolveCommand' | 'resolveEnv' | 'resolveInheritedEnv' | 'resolveAuthPolicy'
+  | 'resolveCommand'
+  | 'resolveCommandOverride'
+  | 'resolveEnv'
+  | 'resolveInheritedEnv'
+  | 'resolveAuthPolicy'
 > & {
   authSwitchSettleTimeoutMs?: number
+  invocation?: ClaudeStructuredInvocation
+  cwd?: string
   /** Test seams; production runs the one-shot listing child. */
   discover?: typeof discoverModelsLocal
   spawnAgent?: typeof spawnSourceControlAgent
@@ -33,20 +40,37 @@ export function createClaudeModelCatalogProbe(
   return async (accountHomePath: string): Promise<AgentModelCatalogSuccess> => {
     // Same pin rule as the session spawn: naming the CLI's default dir would move
     // it off the default Keychain item and list under another identity.
-    const { command, env } = await resolveClaudeStructuredInvocation(deps, (base) => ({
-      ...base,
-      ...claudeConfigDirEnvPatch(accountHomePath, { env: base })
-    }))
+    const invocation =
+      deps.invocation ??
+      (await resolveClaudeStructuredInvocation(
+        deps,
+        (base) => ({
+          ...base,
+          ...claudeConfigDirEnvPatch(accountHomePath, { env: base })
+        }),
+        deps.cwd
+      ))
+    const { command, prefixArgs } = invocation
+    const env = {
+      ...invocation.env,
+      ...claudeConfigDirEnvPatch(accountHomePath, { env: invocation.env })
+    }
     const result = await (deps.discover ?? discoverModelsLocal)({
       agentId: 'claude',
       env,
-      options: {},
+      options: { cwd: deps.cwd },
       backslash: commandBackslashMode({ kind: 'local', cwd: '' }),
       // The resolved absolute command replaces the plan's bare binary directly:
       // routing it through the command-override template would re-tokenize a
       // path that may contain spaces.
       spawnAgent: (input) =>
-        (deps.spawnAgent ?? spawnSourceControlAgent)({ ...input, binary: command })
+        (deps.spawnAgent ?? spawnSourceControlAgent)({
+          ...input,
+          cwd: deps.cwd,
+          useCwdForNative: deps.cwd !== undefined,
+          binary: command,
+          args: [...prefixArgs, ...input.args]
+        })
     })
     // The spec's static fallback must never pass as a listing: Claude's real
     // list replaces the seed, so only a probe-origin answer is a catalog.

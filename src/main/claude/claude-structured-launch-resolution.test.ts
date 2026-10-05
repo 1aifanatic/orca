@@ -13,7 +13,8 @@ import {
   CLAUDE_SESSION_STATE_EVENTS_ENV,
   CLAUDE_STRUCTURED_BASE_OPTIONS,
   claudeSessionIdForOrcaSession,
-  createClaudeStructuredLaunchResolver
+  createClaudeStructuredLaunchResolver,
+  type ClaudeStructuredLaunchResolverDeps
 } from './claude-structured-launch-resolution'
 import { claudeStructuredPermissionModeForSettings } from './claude-structured-permission-mode'
 
@@ -59,7 +60,8 @@ function resolverFor(
   stripAuthEnv = false,
   // Manual by default so a test that is not about permissions is not silently about them.
   agentDefaultArgs: Record<string, string> = { claude: '' },
-  hasTranscript: () => Promise<boolean> = async () => true
+  hasTranscript: () => Promise<boolean> = async () => true,
+  commandDeps: Partial<ClaudeStructuredLaunchResolverDeps> = {}
 ) {
   return createClaudeStructuredLaunchResolver({
     store: { getRecord: () => value } as unknown as AgentSessionRecordStore,
@@ -68,7 +70,8 @@ function resolverFor(
     resolveAuthPolicy: () => ({ stripAuthEnv }),
     resolvePermissionMode: () => claudeStructuredPermissionModeForSettings({ agentDefaultArgs }),
     hasTranscript,
-    ...(resolveEnv ? { resolveEnv } : {})
+    ...(resolveEnv ? { resolveEnv } : {}),
+    ...commandDeps
   })
 }
 
@@ -523,5 +526,62 @@ describe('claude structured launch resolution', () => {
         resolverFor(RESUMABLE)({ identity: identityAt('leaf-current') })
       ).resolves.toMatchObject({ providerSessionId: 'provider-current' })
     })
+  })
+})
+
+describe('Claude custom Command setting', () => {
+  it('rereads the command per acquisition while keeping account and resume controls', async () => {
+    let command = `"${process.execPath}" wrapper.js --profile work`
+    const resolver = resolverFor(record(), undefined, false, { claude: '' }, async () => true, {
+      resolveCommandOverride: () => command
+    })
+    const first = await resolver({ identity: IDENTITY })
+    expect(first.pathToClaudeCodeExecutable).toBe(process.execPath)
+    expect(first.invocation?.prefixArgs).toEqual(['wrapper.js', '--profile', 'work'])
+    expect(first.claudeConfigDir).toBe('/home/work/.claude')
+    command = `"${process.execPath}" another-wrapper.js`
+    const second = await resolver({ identity: IDENTITY })
+    expect(second.invocation?.prefixArgs).toEqual(['another-wrapper.js'])
+    expect(second.providerSessionId).toBe(first.providerSessionId)
+  })
+  it.each([
+    { command: 'missing-custom-claude', options: {}, reason: 'customCommandInvalid' },
+    {
+      command: `"${process.execPath}" --model sonnet`,
+      options: { model: 'sonnet' },
+      reason: 'customCommandConflict'
+    },
+    {
+      command: `"${process.execPath}" --effort high`,
+      options: { effort: 'high' },
+      reason: 'customCommandConflict'
+    },
+    { command: `"${process.execPath}" --resume alien`, options: {}, reason: 'customCommandInvalid' }
+  ])('refuses $reason before any process starts', async ({ command, options, reason }) => {
+    const defaultCommand = vi.fn(() => '/must-not-fall-back/claude')
+    const resolver = resolverFor(
+      record({
+        options: {
+          ...(options.model !== undefined ? { model: options.model } : {}),
+          ...(options.effort !== undefined ? { effort: options.effort } : {})
+        }
+      }),
+      undefined,
+      false,
+      { claude: '' },
+      async () => true,
+      {
+        resolveCommand: defaultCommand,
+        resolveCommandOverride: () => command
+      }
+    )
+    await expect(resolver({ identity: IDENTITY })).rejects.toMatchObject({ reason })
+    expect(defaultCommand).not.toHaveBeenCalled()
+  })
+  it('allows an override default model when the chat has no model preference', async () => {
+    const launch = await resolverFor(record(), undefined, false, { claude: '' }, async () => true, {
+      resolveCommandOverride: () => `"${process.execPath}" --model sonnet`
+    })({ identity: IDENTITY })
+    expect(launch.invocation?.prefixArgs).toEqual(['--model', 'sonnet'])
   })
 })

@@ -96,6 +96,7 @@ export type StructuredAgentSessionRuntimeDeps = {
   resolveWorkspacePath: (workspaceId: string) => Promise<string>
   resolveCodexCommand?: (options?: { pathEnv?: string | null; homePath?: string }) => string
   resolveClaudeCommand?: () => string
+  resolveCommandOverride?: (agent: 'claude' | 'codex') => string | null | undefined
   /** Provider transports are overridden only to drive the runtime against scripted children. */
   openCodexConnection?: CodexStructuredSessionAdapterDeps['openConnection']
   openClaudeConnection?: ClaudeStructuredSessionAdapterDeps['openConnection']
@@ -258,6 +259,7 @@ async function installOnJournal(
       store,
       resolveWorkspacePath: deps.resolveWorkspacePath,
       resolveEnvironment: resolveCodexEnvironment,
+      resolveCommandOverride: () => deps.resolveCommandOverride?.('codex'),
       ...(deps.resolveCodexPermissionPolicy
         ? { resolvePermissionPolicy: deps.resolveCodexPermissionPolicy }
         : {}),
@@ -282,6 +284,7 @@ async function installOnJournal(
     ...(deps.resolveClaudeCommand ? { resolveClaudeCommand: deps.resolveClaudeCommand } : {}),
     ...(deps.resolveClaudeLaunchEnv ? { resolveClaudeLaunchEnv: deps.resolveClaudeLaunchEnv } : {}),
     resolveClaudeInheritedEnv,
+    resolveClaudeCommandOverride: () => deps.resolveCommandOverride?.('claude'),
     resolveClaudeAuthPolicy: deps.resolveClaudeAuthPolicy,
     ...(deps.resolveClaudePermissionMode
       ? { resolveClaudePermissionMode: deps.resolveClaudePermissionMode }
@@ -322,7 +325,15 @@ async function installOnJournal(
     ...(deps.onSessionStatusChanged ? { onSessionStatusChanged: deps.onSessionStatusChanged } : {}),
     ...(deps.statusSink ? { statusSink: deps.statusSink } : {}),
     ...(deps.hasOpenDispatch ? { hasOpenDispatch: deps.hasOpenDispatch } : {}),
-    ...(await modelCatalogHostDeps({ store, deps, envResolvers }))
+    ...(await modelCatalogHostDeps({
+      store,
+      deps,
+      envResolvers,
+      readSessionCatalogAccess: (agent, sessionId) =>
+        agent === 'claude'
+          ? claude.readCatalogAccess(sessionId)
+          : codex.readCatalogAccess(sessionId)
+    }))
   })
   setStructuredAgentSessionHost(host)
   return {

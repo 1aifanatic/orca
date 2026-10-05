@@ -82,14 +82,14 @@ describe('resolveStructuredAgentSessionCreateSupport', () => {
   })
 
   it.each(['claude', 'codex'] as const)(
-    "refuses %s when this host overrides the agent's launch command",
+    "supports %s when this host overrides the agent's launch command",
     (agent) => {
       expect(
         support({
           agent,
           getSettings: () => ({ ...HOST_SELECTED, agentCmdOverrides: { [agent]: 'wrapper' } })
         })
-      ).toEqual({ supported: false, reason: 'agent' })
+      ).toEqual({ supported: true })
     }
   )
 

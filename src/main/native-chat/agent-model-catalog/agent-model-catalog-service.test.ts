@@ -2,9 +2,13 @@ import { describe, expect, it, vi } from 'vitest'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import {
   agentModelCatalogFingerprint,
-  agentModelCatalogFingerprintForRecord
+  agentModelCatalogFingerprintForRecord,
+  agentModelCatalogSessionAccess
 } from './agent-model-catalog-fingerprint'
-import { createAgentModelCatalogService } from './agent-model-catalog-service'
+import {
+  createAgentModelCatalogService,
+  type AgentModelCatalogServiceDeps
+} from './agent-model-catalog-service'
 import {
   AGENT_MODEL_CATALOG_FRESH_MS,
   AgentModelCatalogStore,
@@ -311,4 +315,163 @@ describe('agent model catalog service', () => {
       expect(workspaceMayOverrideDefaultModel).not.toHaveBeenCalled()
     })
   })
+})
+
+describe('catalog identity of the selected command', () => {
+  it('keeps legacy cached listings and each command/prefix pair separate', async () => {
+    const store = new AgentModelCatalogStore()
+    store.recordSuccess(selectedHomeFingerprint('/homes/a'), 'codex', listing('legacy'))
+    let command = '/commands/first'
+    let prefixArgs = ['--profile', 'work']
+    const service = createAgentModelCatalogService({
+      store,
+      getRecord: () => undefined,
+      resolveAccountHome: async () => CODEX_HOME('/homes/a'),
+      prepareProbe: async () => {
+        const invocation = { command, prefixArgs: [...prefixArgs] }
+        return {
+          invocation,
+          probe: async () => listing(`${invocation.command}:${invocation.prefixArgs.join(' ')}`)
+        }
+      }
+    })
+    const first = await service.read({ agent: 'codex', waitForListing: true })
+    expect(first.origin === 'unknown' ? null : first.models[0]?.id).toBe(
+      '/commands/first:--profile work'
+    )
+    command = '/commands/second'
+    const second = await service.read({ agent: 'codex', waitForListing: true })
+    expect(second.origin === 'unknown' ? null : second.models[0]?.id).toBe(
+      '/commands/second:--profile work'
+    )
+    prefixArgs = ['--profile', 'personal']
+    const third = await service.read({ agent: 'codex', waitForListing: true })
+    expect(third.origin === 'unknown' ? null : third.models[0]?.id).toBe(
+      '/commands/second:--profile personal'
+    )
+    expect(store.get(selectedHomeFingerprint('/homes/a'))?.models[0]?.id).toBe('legacy')
+  })
+
+  it('pins an in-flight probe to the invocation that named its cache key', async () => {
+    const store = new AgentModelCatalogStore()
+    let command = '/commands/first'
+    let firstStarted = false
+    let finishFirst: (value: AgentModelCatalogSuccess) => void = () => {}
+    const firstResult = new Promise<AgentModelCatalogSuccess>((resolve) => {
+      finishFirst = resolve
+    })
+    const service = createAgentModelCatalogService({
+      store,
+      getRecord: () => undefined,
+      resolveAccountHome: async () => CODEX_HOME('/homes/a'),
+      prepareProbe: async () => {
+        const invocation = { command, prefixArgs: [] }
+        return {
+          invocation,
+          probe: async () => {
+            firstStarted = true
+            return invocation.command.endsWith('first') ? firstResult : listing('second')
+          }
+        }
+      }
+    })
+    const first = service.read({ agent: 'codex', waitForListing: true })
+    await vi.waitFor(() => expect(firstStarted).toBe(true))
+    command = '/commands/second'
+    const second = await service.read({ agent: 'codex', waitForListing: true })
+    finishFirst(listing('first'))
+    const firstListed = await first
+    expect(firstListed.origin === 'unknown' ? null : firstListed.models[0]?.id).toBe('first')
+    expect(second.origin === 'unknown' ? null : second.models[0]?.id).toBe('second')
+  })
+
+  it('refreshes a live session through its pinned command after the setting changes', async () => {
+    const store = new AgentModelCatalogStore()
+    const invocation = { command: '/commands/live', prefixArgs: ['code'] }
+    const access = agentModelCatalogSessionAccess(store, 'codex', '/homes/a', invocation)
+    const prepareProbe = vi.fn<NonNullable<AgentModelCatalogServiceDeps['prepareProbe']>>(
+      async (_agent, _cwd, pinned) => ({
+        invocation: pinned ?? { command: '/commands/new-setting', prefixArgs: [] },
+        probe: async () => listing(pinned?.command ?? 'new-setting')
+      })
+    )
+    const service = createAgentModelCatalogService({
+      store,
+      getRecord: () => record('/homes/a'),
+      resolveAccountHome: async () => CODEX_HOME('/homes/selected'),
+      readSessionCatalogAccess: () => access,
+      resolveWorkspacePath: async () => '/workspace',
+      prepareProbe
+    })
+    const result = await service.read({
+      agent: 'codex',
+      sessionId: 'session-1',
+      waitForListing: true
+    })
+    expect(prepareProbe).toHaveBeenCalledWith('codex', '/workspace', invocation)
+    expect(result.origin === 'unknown' ? null : result.models[0]?.id).toBe('/commands/live')
+    expect(store.get(access?.fingerprint ?? '')?.models[0]?.id).toBe('/commands/live')
+  })
+
+  it('does not serve the default listing when the current command fails resolution', async () => {
+    const store = new AgentModelCatalogStore()
+    store.recordSuccess(selectedHomeFingerprint('/homes/a'), 'codex', listing('legacy'))
+    const service = createAgentModelCatalogService({
+      store,
+      getRecord: () => undefined,
+      resolveAccountHome: async () => CODEX_HOME('/homes/a'),
+      prepareProbe: async () => {
+        throw new Error('command missing')
+      }
+    })
+    expect(await service.read({ agent: 'codex' })).toEqual({ origin: 'unknown' })
+  })
+})
+
+it('keeps a live child’s cached listing when fresh probe environment resolution fails', async () => {
+  const store = new AgentModelCatalogStore()
+  const access = agentModelCatalogSessionAccess(store, 'codex', '/homes/a', {
+    command: '/live/wrapper',
+    prefixArgs: ['code']
+  })
+  if (!access) {
+    throw new Error('missing session catalog')
+  }
+  store.recordSuccess(access.fingerprint, 'codex', listing('live'))
+  const service = createAgentModelCatalogService({
+    store,
+    getRecord: () => record('/homes/a'),
+    resolveAccountHome: async () => CODEX_HOME('/homes/a'),
+    readSessionCatalogAccess: () => access,
+    prepareProbe: async () => {
+      throw new Error('fresh environment unavailable')
+    }
+  })
+  const result = await service.read({ agent: 'codex', sessionId: 'session-1' })
+  expect(result.origin === 'unknown' ? null : result.models[0]?.id).toBe('live')
+})
+
+it('isolates identical relative wrapper arguments by their execution directory', async () => {
+  const store = new AgentModelCatalogStore()
+  const service = createAgentModelCatalogService({
+    store,
+    getRecord: () => undefined,
+    resolveAccountHome: async () => CODEX_HOME('/homes/a'),
+    prepareProbe: async (_agent, cwd) => ({
+      invocation: { command: '/runtime/node', prefixArgs: ['./wrapper.js'], cwd },
+      probe: async () => listing(cwd ?? 'no-workspace')
+    })
+  })
+  const first = await service.read({
+    agent: 'codex',
+    workspacePath: '/workspace/a',
+    waitForListing: true
+  })
+  const second = await service.read({
+    agent: 'codex',
+    workspacePath: '/workspace/b',
+    waitForListing: true
+  })
+  expect(first.origin === 'unknown' ? null : first.models[0]?.id).toBe('/workspace/a')
+  expect(second.origin === 'unknown' ? null : second.models[0]?.id).toBe('/workspace/b')
 })

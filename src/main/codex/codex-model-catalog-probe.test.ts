@@ -102,3 +102,34 @@ describe('codex model catalog probe', () => {
     await expect(probe('/homes/a')).rejects.toThrow(/listed no models/)
   })
 })
+
+it('prepends the prepared wrapper arguments and uses the chat workspace', async () => {
+  const invocation = {
+    command: '/chosen/wrapper',
+    prefixArgs: ['--profile', 'work'],
+    environment: { PATH: '/chosen/bin' }
+  }
+  const resolveCommand = vi.fn(() => '/must-not-resolve-again')
+  const seen: CodexAppServerInvocation[] = []
+  const probe = createCodexModelCatalogProbe({
+    invocation,
+    cwd: '/workspace',
+    resolveCommand,
+    runSession: async (input, body) => {
+      seen.push(input)
+      return body({
+        request: async () => ({ data: [MODEL_ROW], nextCursor: null }),
+        notify: () => {}
+      })
+    }
+  })
+  await probe('/homes/account-a')
+  expect(seen[0]).toMatchObject({
+    command: invocation.command,
+    cwd: '/workspace',
+    env: { CODEX_HOME: '/homes/account-a' }
+  })
+  expect(seen[0]?.args.slice(0, 2)).toEqual(['--profile', 'work'])
+  expect(seen[0]?.args.filter((arg) => arg === 'app-server')).toHaveLength(1)
+  expect(resolveCommand).not.toHaveBeenCalled()
+})

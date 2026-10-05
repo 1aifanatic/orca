@@ -24,6 +24,8 @@ import { AgentSessionAcquisitionRefusal } from './structured-agent-session-adapt
 const TYPED_START_REFUSALS = [
   'notSignedIn',
   'historyTooLarge',
+  'customCommandInvalid',
+  'customCommandConflict',
   'managedAccountEnvOverride',
   'accountSwitchInProgress',
   'managedAccountUnsupported'

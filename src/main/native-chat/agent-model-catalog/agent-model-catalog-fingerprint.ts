@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import type { StructuredAgentCommandInvocation } from '../../../shared/tui-agent-launch-command-override'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type {
   AgentModelCatalogSessionAccess,
@@ -7,7 +8,7 @@ import type {
 
 /**
  * Everything that changes which models a listing can answer with: the agent,
- * the account home the CLI reads credentials/config from, and the execution
+ * the account home the CLI reads credentials/config from, its command and leading arguments, and the execution
  * host that runs the binary. Login-state or CLI-version drift under the same
  * key is corrected by the next refresh, never by the fingerprint.
  */
@@ -17,6 +18,7 @@ export type AgentModelCatalogIdentity = {
   accountHomePath: string
   /** Null on the native host; WSL distros each carry their own CLI. */
   wslDistro: string | null
+  invocation?: StructuredAgentCommandInvocation
 }
 
 export function agentModelCatalogFingerprint(identity: AgentModelCatalogIdentity): string {
@@ -26,7 +28,14 @@ export function agentModelCatalogFingerprint(identity: AgentModelCatalogIdentity
         identity.agent,
         identity.accountHomeVariable,
         identity.accountHomePath,
-        identity.wslDistro ?? ''
+        identity.wslDistro ?? '',
+        ...(identity.invocation
+          ? [
+              identity.invocation.command,
+              identity.invocation.prefixArgs,
+              ...(identity.invocation.cwd ? [identity.invocation.cwd] : [])
+            ]
+          : [])
       ])
     )
     .digest('hex')
@@ -51,24 +60,34 @@ export function agentModelCatalogFingerprintForRecord(
   return agentModelCatalogFingerprint(agentModelCatalogIdentityForRecord(record))
 }
 
-/** A live session's store handle, pinned to the account home it spawned under.
+/** A live session's store handle, pinned to its account home and command invocation.
  *  Native only: both structured adapters refuse non-native locations at launch. */
 export function agentModelCatalogSessionAccess(
   store: AgentModelCatalogStore | undefined,
   agent: 'claude' | 'codex',
-  accountHomePath: string | null
+  accountHomePath: string | null,
+  invocation?: StructuredAgentCommandInvocation
 ): AgentModelCatalogSessionAccess | undefined {
   if (!store || !accountHomePath) {
     return undefined
   }
+  const pinned = invocation
+    ? {
+        command: invocation.command,
+        prefixArgs: [...invocation.prefixArgs],
+        ...(invocation.cwd ? { cwd: invocation.cwd } : {})
+      }
+    : undefined
   return {
     store,
     fingerprint: agentModelCatalogFingerprint({
       agent,
       accountHomeVariable: agent === 'claude' ? 'CLAUDE_CONFIG_DIR' : 'CODEX_HOME',
       accountHomePath,
-      wslDistro: null
+      wslDistro: null,
+      ...(pinned ? { invocation: pinned } : {})
     }),
-    accountHomePath
+    accountHomePath,
+    ...(pinned ? { invocation: pinned } : {})
   }
 }

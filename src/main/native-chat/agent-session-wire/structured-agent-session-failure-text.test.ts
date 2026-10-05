@@ -55,6 +55,14 @@ describe('structuredAgentSessionStartFailure', () => {
 
   it.each([
     [
+      'customCommandInvalid',
+      "Claude couldn't start with your custom command. Use a program and its arguments in Settings → Agents → Command, or clear it."
+    ],
+    [
+      'customCommandConflict',
+      'The custom command conflicts with this chat’s model or effort. Remove model or effort flags in Settings → Agents → Command.'
+    ],
+    [
       'managedAccountEnvOverride',
       'This Claude launch sets its own Anthropic sign-in variables. Remove them to use a managed Claude account.'
     ],

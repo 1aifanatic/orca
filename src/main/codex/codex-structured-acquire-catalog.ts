@@ -14,9 +14,14 @@ import { agentModelCatalogSessionAccess } from '../native-chat/agent-model-catal
 
 export function codexAcquireCatalogAccess(
   deps: Pick<CodexStructuredSessionAdapterDeps, 'modelCatalog'>,
-  launch: Pick<CodexStructuredLaunch, 'codexHome'>
+  launch: Pick<CodexStructuredLaunch, 'codexHome' | 'invocation'>
 ): CodexSessionCatalogAccess | undefined {
-  return agentModelCatalogSessionAccess(deps.modelCatalog, 'codex', launch.codexHome)
+  return agentModelCatalogSessionAccess(
+    deps.modelCatalog,
+    'codex',
+    launch.codexHome,
+    launch.invocation
+  )
 }
 
 /** The one catalog read a fast-mode restore needs, store-first. Null degrades

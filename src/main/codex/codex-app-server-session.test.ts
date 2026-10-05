@@ -1,3 +1,6 @@
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { runCodexAppServerSession } from './codex-app-server-session'
 
@@ -69,4 +72,31 @@ describe('runCodexAppServerSession environment', () => {
 
     expect(result).toEqual({ largeBytes: 1024 * 1024 + 1, followup: { alive: true } })
   })
+})
+
+it('runs a catalog wrapper in the chosen workspace directory', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'orca-catalog-cwd-'))
+  const server = String.raw`
+    const readline = require('node:readline')
+    readline.createInterface({ input: process.stdin }).on('line', (line) => {
+      const message = JSON.parse(line)
+      if (typeof message.id !== 'number') return
+      process.stdout.write(JSON.stringify({ id: message.id, result: { cwd: process.cwd() } }) + '\n')
+    })
+  `
+  try {
+    const result = await runCodexAppServerSession(
+      {
+        command: process.execPath,
+        cliPath: null,
+        args: ['-e', server],
+        cwd: root,
+        timeoutMs: 5_000
+      },
+      ({ request }) => request('cwd/get')
+    )
+    expect(result).toEqual({ cwd: realpathSync(root) })
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })

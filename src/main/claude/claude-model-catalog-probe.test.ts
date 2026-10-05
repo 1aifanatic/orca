@@ -125,3 +125,42 @@ describe('claude model catalog probe', () => {
     await expect(probe('/homes/a')).rejects.toThrow(/listed no models/)
   })
 })
+
+it('prepends the prepared wrapper arguments and uses the chat workspace', async () => {
+  const deps = probeDeps()
+  const invocation = {
+    command: '/chosen/wrapper',
+    prefixArgs: ['code', '--profile', 'work'],
+    env: { PATH: '/chosen/bin' }
+  }
+  const spawnAgent = vi.fn<SpawnSourceControlAgent>()
+  const resolveCommand = vi.fn(() => '/must-not-resolve-again')
+  const probe = createClaudeModelCatalogProbe({
+    ...deps,
+    resolveCommand,
+    invocation,
+    cwd: '/workspace',
+    spawnAgent,
+    discover: async (input) => {
+      expect(input.options.cwd).toBe('/workspace')
+      input.spawnAgent({
+        binary: 'claude',
+        args: ['--list'],
+        env: input.env,
+        stdinMode: 'ignore',
+        useCwdForNative: false
+      })
+      return listedResult()
+    }
+  })
+  await probe('/homes/account-a')
+  expect(spawnAgent).toHaveBeenCalledWith(
+    expect.objectContaining({
+      binary: invocation.command,
+      args: ['code', '--profile', 'work', '--list'],
+      cwd: '/workspace',
+      useCwdForNative: true
+    })
+  )
+  expect(resolveCommand).not.toHaveBeenCalled()
+})

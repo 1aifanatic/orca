@@ -201,3 +201,47 @@ describe('claude agent SDK process spawn', () => {
     expect(resolved.args[0]).toContain('"--setting-sources=user,project,local"')
   })
 })
+
+describe('custom Claude invocation through the SDK spawn callback', () => {
+  it('builds argv from the selected wrapper and the SDK structured arguments', () => {
+    const process = fakeSpawn()
+    createClaudeCodeProcessSpawn(process.spawnImpl, 'win32', {
+      command: '/selected/wrapper',
+      prefixArgs: ['code', '--profile', 'work']
+    }).spawn(sdkOptions({ command: '/selected/wrapper' }))
+    expect(process.specs[0]).toMatchObject({
+      program: '/selected/wrapper',
+      args: ['code', '--profile', 'work', '--output-format', 'stream-json']
+    })
+  })
+  it('drops only the exact script path inserted by the SDK runtime selection', () => {
+    const process = fakeSpawn()
+    const spawn = createClaudeCodeProcessSpawn(process.spawnImpl, 'win32', {
+      command: '/selected/wrapper.mjs',
+      prefixArgs: ['code']
+    })
+    spawn.spawn(
+      sdkOptions({
+        command: '/runtime/node',
+        args: ['/selected/wrapper.mjs', '--output-format', 'stream-json']
+      })
+    )
+    expect(process.specs[0]).toMatchObject({
+      program: '/selected/wrapper.mjs',
+      args: ['code', '--output-format', 'stream-json']
+    })
+  })
+  it('refuses SDK script-path drift instead of dropping another token', () => {
+    const process = fakeSpawn()
+    const spawn = createClaudeCodeProcessSpawn(process.spawnImpl, 'win32', {
+      command: '/selected/wrapper.mjs',
+      prefixArgs: ['code']
+    })
+    expect(() =>
+      spawn.spawn(
+        sdkOptions({ command: '/runtime/node', args: ['/different/wrapper.mjs', '--verbose'] })
+      )
+    ).toThrow('SDK executable contract changed')
+    expect(process.specs).toEqual([])
+  })
+})

@@ -29,9 +29,8 @@ export type StructuredNativeChatBlocker =
   | 'reused-terminal'
   | 'agent-without-structured-session'
   | 'floating-workspace'
-  /** The agent's launch command is overridden, or the launch names its own working directory:
-   *  a process shape only a PTY can produce. The configured *arguments* are not read here —
-   *  they are a terminal concern the structured transports do not share a vocabulary with. */
+  /** The launch starts outside the workspace root. Command overrides stay on the structured
+   *  route; the separate Arguments field remains a terminal concern. */
   | 'tui-launch-command'
   | 'remote-execution-host'
   | 'project-runtime'

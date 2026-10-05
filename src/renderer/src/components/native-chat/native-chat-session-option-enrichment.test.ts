@@ -49,6 +49,11 @@ describe('native chat session option enrichment', () => {
 
     const local = await discoverNativeChatCatalogModels('codex', context, 'local')
     expect(local?.map(({ id }) => id)).toEqual(['gpt-host'])
+    expect(mocks.callStructuredAgentSession).toHaveBeenCalledWith(
+      { kind: 'local' },
+      'agentSession.modelCatalog',
+      { agent: 'codex', worktree: context.worktreeId }
+    )
     expect(mocks.discoverRuntimeCommitMessageModels).not.toHaveBeenCalled()
 
     // A paired runtime's key also covers its SSH and WSL worktrees, which its
@@ -59,7 +64,7 @@ describe('native chat session option enrichment', () => {
     expect(paired?.map(({ id }) => id)).toContain('gpt-cli')
   })
 
-  it('lists through the CLI when this machine runs a custom launch command', async () => {
+  it('reads the host catalog with the host’s custom launch command', async () => {
     mocks.discoverRuntimeCommitMessageModels.mockResolvedValue({
       success: true,
       catalogOrigin: 'probe',
@@ -71,10 +76,11 @@ describe('native chat session option enrichment', () => {
       worktreePath: '/worktree'
     }
 
-    // The structured catalog lists the built-in binary, which this terminal does not run.
+    // The host catalog and the session use the same executable.
     const models = await discoverNativeChatCatalogModels('codex', context, 'local')
-    expect(mocks.callStructuredAgentSession).not.toHaveBeenCalled()
-    expect(models?.map(({ id }) => id)).toContain('gpt-custom')
+    expect(mocks.callStructuredAgentSession).toHaveBeenCalled()
+    expect(mocks.discoverRuntimeCommitMessageModels).not.toHaveBeenCalled()
+    expect(models?.map(({ id }) => id)).toContain('gpt-host')
   })
 
   it('bounds settled host enrichment entries', async () => {

@@ -1,10 +1,12 @@
 import type { AgentSessionModelCatalogResult } from '../../../shared/agent-session-wire'
+import type { StructuredAgentCommandInvocation } from '../../../shared/tui-agent-launch-command-override'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import {
   agentModelCatalogFingerprint,
   agentModelCatalogFingerprintForRecord
 } from './agent-model-catalog-fingerprint'
 import type {
+  AgentModelCatalogSessionAccess,
   AgentModelCatalogEntry,
   AgentModelCatalogProbe,
   AgentModelCatalogStore
@@ -19,6 +21,16 @@ export type AgentModelCatalogServiceDeps = {
   resolveAccountHome: (
     agent: 'claude' | 'codex'
   ) => Promise<{ variable: 'CLAUDE_CONFIG_DIR' | 'CODEX_HOME'; path: string }>
+  readSessionCatalogAccess?: (
+    agent: 'claude' | 'codex',
+    sessionId: string
+  ) => AgentModelCatalogSessionAccess | undefined
+  resolveWorkspacePath?: (workspaceId: string) => Promise<string>
+  prepareProbe?: (
+    agent: 'claude' | 'codex',
+    cwd?: string,
+    invocation?: StructuredAgentCommandInvocation
+  ) => Promise<{ invocation: StructuredAgentCommandInvocation; probe: AgentModelCatalogProbe }>
   /** Session-less listers, one per agent that has one on this host. */
   probes?: Partial<Record<'claude' | 'codex', AgentModelCatalogProbe>>
   /** Whether the workspace's own config could pick a model other than the listed default. */
@@ -113,15 +125,55 @@ export function createAgentModelCatalogService(
         })
         accountHomePath = resolved.path
       }
+      const active =
+        scoped && params.sessionId
+          ? deps.readSessionCatalogAccess?.(params.agent, params.sessionId)
+          : undefined
+      let probe = deps.probes?.[params.agent]
+      if (deps.prepareProbe && accountHomePath) {
+        try {
+          const cwd =
+            active?.invocation?.cwd ??
+            (scoped && deps.resolveWorkspacePath
+              ? await deps.resolveWorkspacePath(scoped.location.workspaceId)
+              : (params.workspacePath ?? undefined))
+          const prepared = await deps.prepareProbe(params.agent, cwd, active?.invocation)
+          fingerprint =
+            active?.fingerprint ??
+            agentModelCatalogFingerprint({
+              agent: params.agent,
+              accountHomeVariable:
+                scoped?.accountHome.variable ??
+                (params.agent === 'claude' ? 'CLAUDE_CONFIG_DIR' : 'CODEX_HOME'),
+              accountHomePath,
+              wslDistro: scoped?.location.wslDistro ?? null,
+              invocation: prepared.invocation
+            })
+          probe = prepared.probe
+        } catch {
+          const cached = active && deps.store.get(active.fingerprint)
+          return cached
+            ? resultFromEntry(
+                cached,
+                await workspaceKeepsListedDefault(
+                  deps,
+                  params.agent,
+                  params.workspacePath,
+                  accountHomePath
+                )
+              )
+            : { origin: 'unknown' }
+        }
+      }
       let entry = deps.store.get(fingerprint)
-      const probe = deps.probes?.[params.agent]
       const home = accountHomePath
       // Without an entry, join a running listing too: that is the one a waiting read answers from.
+      const selectedProbe = probe
       const listing =
-        probe &&
+        selectedProbe &&
         home &&
         (entry ? deps.store.shouldRefresh(fingerprint) : !deps.store.hasActiveFailure(fingerprint))
-          ? deps.store.refresh(fingerprint, params.agent, () => probe(home))
+          ? deps.store.refresh(fingerprint, params.agent, () => selectedProbe(home))
           : null
       if (!entry) {
         if (!listing) {
