@@ -14,6 +14,7 @@ import {
   nativeChatAsyncQuestionsFromFold,
   publishNativeChatAsyncQuestions,
   readNativeChatAsyncQuestionsField,
+  reduceNativeChatAsyncQuestionsView,
   type NativeChatAsyncQuestion,
   type NativeChatAsyncQuestionFact
 } from './native-chat-async-questions'
@@ -233,6 +234,40 @@ describe('publication and the client view', () => {
       omittedCount: 2
     })
     expect(readNativeChatAsyncQuestionsField({ state: 'future' })).toBeUndefined()
+    expect(readNativeChatAsyncQuestionsField({ state: 'absent' })).toEqual({ state: 'absent' })
+  })
+
+  it("keeps the last ready set over a re-subscribe's pending until a new ready, absent or reset", () => {
+    const shown = { state: 'ready' as const, questions: [question(1, 3)] }
+    const resubscribed = reduceNativeChatAsyncQuestionsView(shown, {
+      type: 'snapshot',
+      asyncQuestions: { state: 'pending' }
+    })
+    expect(resubscribed).toBe(shown)
+    const rederived = { state: 'ready' as const, questions: [question(2, 3)] }
+    expect(
+      reduceNativeChatAsyncQuestionsView(resubscribed, {
+        type: 'appended',
+        asyncQuestions: rederived
+      })
+    ).toEqual(rederived)
+    expect(
+      reduceNativeChatAsyncQuestionsView(shown, {
+        type: 'appended',
+        asyncQuestions: { state: 'absent' }
+      })
+    ).toEqual({ state: 'absent' })
+    expect(reduceNativeChatAsyncQuestionsView(shown, null)).toEqual({ state: 'absent' })
+    // A first load has nothing to keep.
+    expect(
+      reduceNativeChatAsyncQuestionsView(
+        { state: 'absent' },
+        {
+          type: 'snapshot',
+          asyncQuestions: { state: 'pending' }
+        }
+      )
+    ).toEqual({ state: 'pending' })
   })
 })
 

@@ -302,7 +302,8 @@ export function readNativeChatAsyncQuestionsField(
 }
 
 /** Folds a transcript stream frame into the client view: a hydrating frame states the whole
- *  set (no field = older host); an append states only a change. Null resets (new source). */
+ *  set (no field = older host); an append states only a change. Null resets (new source).
+ *  A re-subscribe's `pending` keeps the last `ready` set on screen until it re-derives. */
 export function reduceNativeChatAsyncQuestionsView(
   previous: NativeChatAsyncQuestionsView,
   frame: { type?: string; asyncQuestions?: unknown } | null
@@ -311,10 +312,8 @@ export function reduceNativeChatAsyncQuestionsView(
     return NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT
   }
   const field = readNativeChatAsyncQuestionsField(frame.asyncQuestions)
-  if (frame.type === 'appended') {
-    return field ?? previous
-  }
-  return field ?? NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT
+  const next = field ?? (frame.type === 'appended' ? previous : NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT)
+  return next.state === 'pending' && previous.state === 'ready' ? previous : next
 }
 
 /** The side field of an unvalidated stream frame, or undefined (older host / bad shape). */

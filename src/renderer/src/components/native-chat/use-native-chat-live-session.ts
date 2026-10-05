@@ -119,7 +119,7 @@ export function useNativeChatLiveSession(
     if (!enabled) {
       if (sourceChanged) {
         limitRef.current = NATIVE_CHAT_INITIAL_LIMIT
-        transcriptLifecycleControl.reset()
+        transcriptLifecycleControl.reset(true)
         setRead({ phase: 'loading' })
         replaceList(appendMergerRef.current, [])
         setAppended([])
@@ -127,8 +127,7 @@ export function useNativeChatLiveSession(
       }
       return () => undefined
     }
-    transcriptLifecycleControl.reset()
-    transcriptLifecycleControl.applyAsyncQuestionsFrame(null)
+    transcriptLifecycleControl.reset(sourceChanged)
     if (!sessionId) {
       // No session id yet: surface live hook state on an empty transcript; backfills once the id arrives.
       setRead({ phase: 'ready', messages: [] })

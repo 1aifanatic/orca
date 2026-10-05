@@ -84,6 +84,25 @@ describe('useMobileNativeChatSession async questions', () => {
     expect(state?.asyncQuestions).toEqual(ready('Old?'))
   })
 
+  it('keeps the shown questions through a resubscribe until the host re-derives them', async () => {
+    const rpc = client()
+    await act(async () => {
+      renderer = create(createElement(Harness, { client: rpc, sessionId: 's1' }))
+    })
+    await act(async () => {
+      emit({ type: 'snapshot', messages: [], hasMore: false, asyncQuestions: ready('Keep?') })
+    })
+    // A reconnect resubscribes: its snapshot is pending while the host re-derives.
+    await act(async () => {
+      emit({ type: 'snapshot', messages: [], hasMore: false, asyncQuestions: { state: 'pending' } })
+    })
+    expect(state?.asyncQuestions).toEqual(ready('Keep?'))
+    await act(async () => {
+      emit({ type: 'appended', messages: [], asyncQuestions: ready('Next?') })
+    })
+    expect(state?.asyncQuestions).toEqual(ready('Next?'))
+  })
+
   it('reads a host that publishes nothing as absent, and never carries a set to another chat', async () => {
     const rpc = client()
     await act(async () => {

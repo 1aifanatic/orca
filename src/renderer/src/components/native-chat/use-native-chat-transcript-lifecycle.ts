@@ -8,7 +8,8 @@ type TranscriptLifecycleState = {
 }
 
 type TranscriptLifecycleControl = {
-  reset: () => void
+  /** A new source also drops its async questions; the same source keeps them until re-derived. */
+  reset: (newSource?: boolean) => void
   replace: (lifecycle: NativeChatTurnLifecycle | undefined) => void
   append: (lifecycle: NativeChatTurnLifecycle | undefined) => void
   revision: () => number
@@ -32,7 +33,15 @@ export function useNativeChatTranscriptLifecycle(): readonly [
     revisionRef.current += 1
     setState({ lifecycle })
   }, [])
-  const reset = useCallback((): void => replace(undefined), [replace])
+  const reset = useCallback(
+    (newSource = false): void => {
+      replace(undefined)
+      if (newSource) {
+        applyAsyncQuestionsFrame(null)
+      }
+    },
+    [applyAsyncQuestionsFrame, replace]
+  )
   const append = useCallback((lifecycle: NativeChatTurnLifecycle | undefined): void => {
     if (!lifecycle) {
       return
