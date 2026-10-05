@@ -113,10 +113,8 @@ import {
   clearNativeChatDraftCacheForTests,
   writeNativeChatDraftCache
 } from '@/components/native-chat/native-chat-draft-cache'
-import {
-  structuredAgentSessionPaneKey,
-  structuredAgentSessionTabId
-} from '../../../shared/structured-agent-session-projection'
+import { structuredAgentSessionTabId } from '../../../shared/structured-agent-session-projection'
+import { structuredAgentSessionDraftScopeKey } from '@/components/native-chat/native-chat-composer-draft-store'
 import { adoptAgentSessionLaunchVerdict } from './agent-session-launch-plan'
 import {
   beginStructuredAgentSessionProvisionalLaunch,
@@ -279,8 +277,8 @@ describe('a second "new chat" with no text', () => {
   it('opens a new chat when the idle chat has a typed draft', async () => {
     pick('plus-pick-1')
     await publishIdle(first.sessionId)
-    const tabId = structuredAgentSessionTabId(first.sessionId)
-    writeNativeChatDraftCache(structuredAgentSessionPaneKey(tabId, first.sessionId), 'half a q')
+    // Under the conversation's key, which the composer and every hand-back write.
+    writeNativeChatDraftCache(structuredAgentSessionDraftScopeKey(first.sessionId), 'half a q')
 
     expect(pick('plus-pick-2').sessionId).toBe(second.sessionId)
   })
@@ -288,8 +286,7 @@ describe('a second "new chat" with no text', () => {
   it('opens a new chat when the idle chat has an image in its composer', async () => {
     pick('plus-pick-1')
     await publishIdle(first.sessionId)
-    const tabId = structuredAgentSessionTabId(first.sessionId)
-    appendNativeChatAttachmentCache(structuredAgentSessionPaneKey(tabId, first.sessionId), [
+    appendNativeChatAttachmentCache(structuredAgentSessionDraftScopeKey(first.sessionId), [
       { id: 'shot', path: '/tmp/shot.png' }
     ])
 
@@ -482,6 +479,15 @@ describe('a "new chat" with text', () => {
     expect(pick('notes-send', { prompt: 'review notes', group: 'group-right' }).sessionId).toBe(
       blank.sessionId
     )
+  })
+
+  it('leaves a starting chat whose draft holds text, given back or typed, to its user', () => {
+    mocks.launch.mockImplementation(() => new Promise(() => undefined))
+    const blank = pick('plus-pick-1')
+    writeNativeChatDraftCache(structuredAgentSessionDraftScopeKey(blank.sessionId), 'my words')
+
+    expect(pick('notes-send', { prompt: 'review notes' }).sessionId).toBe(second.sessionId)
+    expect(readOutbox(blank.sessionId)).toEqual([])
   })
 
   it('takes an empty chat still starting, as before', () => {
