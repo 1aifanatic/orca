@@ -71,6 +71,7 @@ describe('worktree script preparation', () => {
     read.resolve({ template: 'issue {{number}}', trustDecision: 'run' })
     expect(await preparing).toMatchObject({
       issueCommand: { command: 'issue 42' },
+      executionHostId: 'ssh:remote-1',
       hookPreparation: undefined
     })
     expect(mocks.buildTrustedComposerIssueCommand).toHaveBeenCalledWith({

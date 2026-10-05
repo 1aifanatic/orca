@@ -91,6 +91,9 @@ describe('background script preparation', () => {
     trust.resolve('run')
     await vi.waitFor(() => expect(store.createWorktree).toHaveBeenCalledOnce())
     expect(store.pendingWorktreeCreations['creation-1'].phase).toBe('fetching')
+    expect(store.createWorktree.mock.calls[0]).toContainEqual(
+      expect.objectContaining({ executionHostId: 'ssh:remote-1' })
+    )
   })
 
   it('does not create after cancellation during slow script inspection', async () => {

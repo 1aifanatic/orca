@@ -61,6 +61,7 @@ export async function prepareWorktreeCreationHooks(
   const prepared: WorktreeCreationRequest = {
     ...request,
     hookPreparation: undefined,
+    executionHostId: request.executionHostId ?? preparation.executionHostId,
     setupDecision: trustDecision === 'skip' ? 'skip' : request.setupDecision,
     issueCommand
   }

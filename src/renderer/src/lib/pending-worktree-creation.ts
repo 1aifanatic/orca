@@ -30,6 +30,8 @@ export type WorktreeCreationProgressMode = 'stepped' | 'indeterminate'
  * after the composer closes. Retained by the pending panel for Retry. */
 export type WorktreeCreationRequest = {
   repoId: string
+  /** Execution owner retained after script preparation, including retries. */
+  executionHostId?: ExecutionHostId
   /** Source host/account that produced the linked task. Kept separate from the
    *  run context so Retry does not infer provider ownership from the run host. */
   taskSourceContext?: TaskSourceContext | null
