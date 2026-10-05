@@ -448,4 +448,39 @@ describe('rich markdown key handler', () => {
       editor.destroy()
     }
   })
+
+  it('splits the trailing text into a paragraph on Enter in the middle of a heading', () => {
+    const editor = createEditor({
+      type: 'doc',
+      content: [
+        {
+          type: 'heading',
+          attrs: { level: 2 },
+          content: [{ type: 'text', text: 'SectionTwo' }]
+        }
+      ]
+    })
+
+    try {
+      // Position after "Section", before "Two".
+      editor.commands.setTextSelection(1 + 'Section'.length)
+      const event = keyEvent('Enter')
+
+      expect(createRichMarkdownKeyHandler(createContext(editor, false))(null, event)).toBe(true)
+      expect(event.preventDefault).toHaveBeenCalled()
+      expect(editor.state.doc.toJSON()).toMatchObject({
+        content: [
+          {
+            type: 'heading',
+            attrs: { level: 2 },
+            content: [{ type: 'text', text: 'Section' }]
+          },
+          { type: 'paragraph', content: [{ type: 'text', text: 'Two' }] }
+        ]
+      })
+    } finally {
+      editor.destroy()
+    }
+  })
+
 })
