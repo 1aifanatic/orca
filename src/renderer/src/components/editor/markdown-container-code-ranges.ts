@@ -19,7 +19,7 @@ function countLineBreaks(content: string): number {
 
 export function getRichMarkdownFenceRanges(content: string): MarkdownFenceRanges | null {
   if (!hasMarkdownContainerFenceCandidate(content)) {
-    return getMarkdownFenceRanges(content)
+    return getMarkdownFenceRanges(content, [], true)
   }
   if (content.length > MAX_CONTAINER_SCAN_CHARS) {
     return null
@@ -92,5 +92,5 @@ export function getRichMarkdownFenceRanges(content: string): MarkdownFenceRanges
   if (!valid) {
     return null
   }
-  return [...ranges, ...getMarkdownFenceRanges(content, ranges)].sort((a, b) => a[0] - b[0])
+  return [...ranges, ...getMarkdownFenceRanges(content, ranges, true)].sort((a, b) => a[0] - b[0])
 }
