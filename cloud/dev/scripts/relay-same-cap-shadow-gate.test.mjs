@@ -19,7 +19,6 @@ import {
   formatTimestamp,
   judgeCellServing,
   judgeCloudSqlFatal,
-  judgeDirector503,
   judgeDrainDeferrals,
   judgeNonDrain503Budget,
   judgePool,
@@ -135,22 +134,6 @@ test('a sub-window that came back at the entry limit is truncated, never a count
     },
     { peak: 4722, peakMinute: '2026-09-19T15:34', total: 5000, truncated: false }
   )
-})
-
-test('director 503s are judged against the pre-drain peak, not a fixed rate', () => {
-  const background = { peakPerMinute: 69, medianPerMinute: 30, unverified: false }
-  const observed = (peak, unverified = false) => ({ peak, total: peak, unverified })
-  // The 2026-09-19 c28 wave: 4722/min against a 69/min pre-drain peak.
-  assert.equal(judgeDirector503({ observed: observed(4722), background }).status, 'would-block')
-  // The false positive a literal rule produced: a US ramp at 71/min over a 20-60/min background.
-  assert.equal(judgeDirector503({
-    observed: observed(71), background: { ...background, peakPerMinute: 60 }
-  }).status, 'pass')
-  // A failed read on either side cannot settle to pass, however calm its visible counts are.
-  assert.equal(judgeDirector503({ observed: observed(3, true), background }).status, 'unverified')
-  assert.equal(judgeDirector503({
-    observed: observed(3), background: { ...background, unverified: true }
-  }).status, 'unverified')
 })
 
 test('the cell has to announce its listener and stay up across the whole apply', () => {
@@ -294,7 +277,9 @@ function productionLikeEntries() {
     ...metricSamples({ cellId: 'production-gce-c27', from: '2026-09-20T20:20:00Z', count: 20 }),
     ...metricSamples({ cellId: 'production-gce-c29', from: '2026-09-20T20:20:00Z', count: 20 }),
     ...metricSamples({ cellId: 'production-gce-c30', from: '2026-09-20T20:20:00Z', count: 20 }),
-    ...metricSamples({ cellId: 'production-gce-c31', from: '2026-09-20T20:20:00Z', count: 20 })
+    ...metricSamples({ cellId: 'production-gce-c31', from: '2026-09-20T20:20:00Z', count: 20 }),
+    // One director instance's samples from ten minutes before the drain to the window's end.
+    ...directorSamples({ from: '2026-09-20T19:50:00Z', count: 80, payload: {} })
   ]
 }
 
@@ -373,7 +358,6 @@ test('a healthy roll reads as PASS and names the instance it proved serving', as
     'cellPool',
     'cellServing',
     'cloudSqlFatal',
-    'director503',
     'drainDeferrals',
     'fleetPool:production-gce-c27',
     'fleetPool:production-gce-c29',
@@ -482,7 +466,7 @@ test('a gcloud read that never completes is unverified, not a crashed gate', asy
     runGcloud: async () => { throw new Error('PERMISSION_DENIED') }
   })
   assert.equal(report.verdict, 'WARN')
-  assert.equal(report.checks.director503.status, 'unverified')
+  assert.equal(report.checks.nonDrain503Budget.status, 'unverified')
   assert.equal(report.checks.cellServing.status, 'unverified')
 })
 
@@ -500,7 +484,7 @@ test('every read is given a bounded timeout, and a timed-out read is just a fail
     retryDelayMs: 0,
     runGcloud: async () => { throw Object.assign(new Error('ETIMEDOUT'), { killed: true }) }
   })
-  assert.equal(timedOut.checks.director503.status, 'unverified')
+  assert.equal(timedOut.checks.nonDrain503Budget.status, 'unverified')
   assert.equal(timedOut.verdict, 'WARN')
 })
 
@@ -661,8 +645,16 @@ test('scheduled 503s come out of the count, split across the minutes they cover'
   assert.equal(split.drainDeferralsTotal, 70)
   assert.equal(split.ownRetriesTotal, 9)
   assert.equal(split.unverified, false)
-  // A failed count, or a metrics read that failed or hit its limit, leaves the answer unverified.
+  // A failed count, or a metrics read that failed, hit its limit, or came back short of one
+  // instance's samples, leaves the answer unverified: an empty answer is not a calm director.
   assert.equal(drainReturnByMinute([{ failed: true, samples: [] }], 1000).truncated, true)
+  assert.equal(drainReturnByMinute([{ samples: [], minSamples: 20 }], 1000).truncated, true)
+  assert.equal(drainReturnByMinute([{
+    samples: Array.from({ length: 19 }, (_, index) => ({
+      timestamp: new Date(Date.parse('2026-10-05T20:00:30Z') + index * 30_000).toISOString()
+    })),
+    minSamples: 20
+  }], 1000).truncated, true)
   assert.equal(withoutDrainDeferrals({ perMinute: {}, failed: true }, drain, minutes).unverified, true)
   assert.equal(withoutDrainDeferrals(
     { perMinute: {} },
@@ -679,7 +671,6 @@ test('the background is the median pre-drain minute, so one incident minute cann
     unverified: false
   })
   assert.equal(background.medianPerMinute, 1.5)
-  assert.equal(background.peakPerMinute, 900)
   assert.equal(backgroundOf({ minutes: [], series: [], peak: 0, unverified: false }).unverified, true)
 })
 
@@ -689,6 +680,7 @@ test('the rung budget needs two straight minutes over its line, never one', () =
     background: { medianPerMinute, unverified: false }
   })
   const calm = judge([0, 3, 87, 1, 0, 39, 0, 22, 12])
+  assert.equal(calm.peakPerMinute, 87)
   // 10-02 c16 and c21: single minutes at 87 and 39 are transients.
   assert.equal(calm.status, 'pass')
   assert.equal(calm.warnAbove, 21.5)
@@ -697,6 +689,13 @@ test('the rung budget needs two straight minutes over its line, never one', () =
   // 10-01 c29: thousands a minute for nine minutes.
   assert.equal(judge([288, 2619, 4226, 5357, 6256, 6662]).status, 'would-block')
   assert.equal(judge([0, 42, 42, 0]).status, 'would-block')
+  // One minute past max(10x, 200) blocks alone: a short herd is over before a second minute.
+  const spike = judge([0, 201, 0])
+  assert.equal(spike.spikeAbove, 200)
+  assert.equal(spike.status, 'would-block')
+  assert.equal(judge([0, 112, 0]).status, 'pass')
+  // 10-01 00:30 c28: a brownout already under way lifts the median, and the sustained rule holds.
+  assert.equal(judge([8136, 7000, 3000], 824).status, 'would-block')
   // A busy background lifts both lines by its multiple, not just the margin.
   const busy = judge([100, 100], 60)
   assert.equal(busy.warnAbove, 90)
@@ -755,11 +754,10 @@ test('a fast drain\'s deferrals do not read as a brownout', async () => {
   assert.match(seam.monitoringCalls[0].query.get('filter'), /"response_code"="503"/)
   assert.equal(seam.monitoringCalls[0].init.headers.authorization, 'Bearer token')
   assert.equal(report.background.minutes, 10)
-  assert.equal(report.background.peakPerMinute, 25)
-  assert.equal(report.checks.director503.allPeakPerMinute, 400)
-  assert.equal(report.checks.director503.drainDeferralsTotal, 760)
-  assert.equal(report.checks.director503.peakPerMinute, 30)
-  assert.equal(report.checks.director503.status, 'pass')
+  assert.equal(Math.max(...report.background.perMinute), 25)
+  assert.equal(report.checks.nonDrain503Budget.allPeakPerMinute, 400)
+  assert.equal(report.checks.nonDrain503Budget.drainDeferralsTotal, 760)
+  assert.equal(report.checks.nonDrain503Budget.peakPerMinute, 30)
   assert.equal(report.checks.nonDrain503Budget.status, 'pass')
   assert.equal(report.checks.drainDeferrals.status, 'pass')
   assert.equal(report.checks.drainDeferrals.replacementsTotal, 520)
@@ -769,9 +767,8 @@ test('a fast drain\'s deferrals do not read as a brownout', async () => {
   // The same 503s with no deferrals behind them are exactly what the gate exists to catch.
   const brownout = await evaluateShadowGate(
     parseShadowGateArguments(ARGV),
-    gcloudSeam(entries.filter((entry) => !entry.matches?.includes('resource.type="cloud_run_revision"')))
+    gcloudSeam(entries.filter((entry) => !entry.payload?.drainReturnDeferralsDelta))
   )
-  assert.equal(brownout.checks.director503.status, 'would-block')
   assert.equal(brownout.checks.nonDrain503Budget.status, 'would-block')
   assert.equal(brownout.paceVerdict, 'WOULD_BLOCK')
 })
@@ -785,5 +782,19 @@ test('the pace verdict reads only the checks a drain pace can move', async () =>
   assert.equal(report.checks.cloudSqlFatal.status, 'warn')
   assert.equal(report.verdict, 'WARN')
   assert.equal(report.paceVerdict, 'PASS')
-  assert.deepEqual(PACE_CHECKS, ['director503', 'nonDrain503Budget', 'drainDeferrals'])
+  assert.deepEqual(PACE_CHECKS, ['nonDrain503Budget', 'drainDeferrals'])
+})
+
+// Reproduced in final review: every read succeeds and returns nothing. That must not read as a calm
+// drain, or it seals a canary PASS that authorizes a fast batch.
+test('a gate whose reads all come back empty is unverified, never a pace PASS', async () => {
+  const seam = {
+    retryDelayMs: 0,
+    fetch: async () => ({ ok: true, json: async () => ({}) }),
+    runGcloud: async (args) => ({ stdout: args[0] === 'auth' ? 'token\n' : '[]' })
+  }
+  const report = await evaluateShadowGate(parseShadowGateArguments(ARGV), seam)
+  assert.equal(report.checks.nonDrain503Budget.status, 'unverified')
+  assert.equal(report.checks.drainDeferrals.status, 'unverified')
+  assert.equal(report.paceVerdict, 'WARN')
 })

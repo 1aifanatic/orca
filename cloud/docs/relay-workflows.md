@@ -544,10 +544,11 @@ window (20 minutes at the default).
 - A canary's authority records its window and its pace verdict (below). A batch may use that
   window or a slower one, never a faster one. A batch below `300000` also needs the canary's pace
   verdict to be PASS. Stepping back to `300000` mid-ladder needs no new canary.
-- A cell on an image without paced drains ignores the window and drains at once. The job records
-  what the cell accepted, and a canary that did not drain at its own window seals `UNVERIFIED`.
+- A cell on an image without paced drains rejects the window, and the job falls back to an
+  unpaced drain. The job records what the cell accepted, and a canary that did not drain at its own
+  window seals `UNVERIFIED`.
 
-**What judges a paced drain.** The shadow health gate (report only, after each cell) judges three
+**What judges a paced drain.** The shadow health gate (report only, after each cell) judges two
 checks the pace can move. Together they are the report's `paceVerdict`, which the canary seals:
 
 - **Director 503s** come from Cloud Run's own request counter (`run.googleapis.com/request_count`,
@@ -566,15 +567,22 @@ checks the pace can move. Together they are the report's `paceVerdict`, which th
 
 | check | rule |
 |---|---|
-| `director503` | Peak non-drain minute: warn above max(3x the pre-drain peak, 100), would-block above max(10x, 200) |
-| `nonDrain503Budget` | Two consecutive minutes above max(1.5x background, background + 20) warn; above max(2x, background + 40) would-block. A single minute is a transient and never counts |
+| `nonDrain503Budget` | Two consecutive minutes above max(1.5x background, background + 20) warn; above max(2x, background + 40) would-block. One minute above max(10x, 200) would-block on its own; any other single minute is a transient |
 | `drainDeferrals` | Warn if the largest Retry-After exceeds 30 s; would-block above 60 s. Reports deferrals and re-placements |
 
+A read that fails, hits its limit, or returns fewer director-metric samples than one instance
+emits (one per 30 s) makes both checks `unverified`. An empty answer is not a calm director.
+
 Replayed read-only against past rolls:
-- The 10-01 c29 brownout is `would-block` on both 503 checks: 9 minutes in a row over a 41.5/min
-  line.
-- All nine 10-02 cells and 10-01 c25 have a pace verdict of PASS. Their largest single minutes
-  were 87 and 39, and they never had two consecutive minutes over the warn line.
+- Every brownout and herd replayed is `would-block`: 10-01 c29, 09-23 c27, 09-24 c30, both 10-01
+  c28 windows, and the 09-28 and 09-30 herds. Each peaked at 5,999 non-drain 503s a minute or
+  more. 10-01 c29, for example, ran 9 minutes in a row over a 41.5/min line.
+- Clean rolls: all nine 10-02 cells, 10-01 c25, and 11 other US and Asia rolls have a pace
+  verdict of PASS. Their largest minute was 87, and none held two minutes over the warn line.
+- Two daytime Asia c29 rolls on 10-01 read WARN and WOULD_BLOCK on sustained non-drain 503s at the
+  default pace. Their largest minute was 112, still under the 200 single-minute line.
+- These 30 verdicts are unchanged from before the per-minute peak check was folded into this
+  one.
 
 The other checks (`cellServing`, `cellPool`, `cloudSqlFatal`, `fleetPool:*`) stay in the overall
 verdict as context. They read the new boot and fleet-wide pools, so a clean roll at any pace can
@@ -601,12 +609,15 @@ monitor already excludes 503s from its director 5xx rule.
    under about 190 ms.
 3. A rung is clean when:
    - the canary job succeeded;
-   - its `paceVerdict` is PASS;
+   - its `paceVerdict` is PASS, sealed only from a report on that cell that drained at least 400
+     hosts at that pace;
    - time to empty is within window + hosts / 50 s + 10 s. Take `settledAfterSeconds` minus the
      restart-safe quiet; this is an upper bound, since it includes the isolate.
 
    The batch check enforces the PASS. A canary that sealed anything else authorizes only
-   `300000` batches.
+   `300000` batches. The 400-host floor exists because a pace is an arrival rate (hosts /
+   window). A canary that small would test less than half the rate a 692-782-host US cell
+   (10-02) reaches at the same window. Pick a canary cell above it.
 4. Record each rung, and keep the shadow gate JSON artifact with the row:
 
    | Field | Source |

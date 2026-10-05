@@ -364,24 +364,25 @@ jobs:
         with: { node-version: 24 }
 
       # Its pace checks are what let a batch drain faster than the default; a missing artifact
-      # seals UNVERIFIED, which only the default accepts.
+      # seals UNVERIFIED, which only the default accepts. Named from the gate's normalized cell,
+      # as cell_1 uploaded it, so a padded cell-ids input cannot miss it.
       - name: Download the canary cell's shadow health verdict
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
-          name: relay-same-cap-shadow-gate-${{ inputs.cell-ids }}-${{ github.run_id }}.json
+          name: relay-same-cap-shadow-gate-${{ fromJSON(needs.gate.outputs.cells)[0] }}-${{ github.run_id }}.json
           path: ${{ runner.temp }}/relay-same-cap-shadow-gate
 
       - name: Seal exact successful canary authority
         run: |
           mkdir -p "${RUNNER_TEMP}/relay-same-cap-canary"
           node dev/scripts/relay-production-same-cap-wave.mjs create-canary \
-            --cell-id "${{ inputs.cell-ids }}" \
+            --cell-id "${{ fromJSON(needs.gate.outputs.cells)[0] }}" \
             --target-digest "${{ inputs.target-image-digest }}" \
             --rollback-digest "${{ inputs.rollback-image-digest }}" \
             --confirmation "${{ inputs.confirmation }}" \
             --drain-pace-window-ms "${{ inputs.drain-pace-window-ms }}" \
-            --shadow-report "${RUNNER_TEMP}/relay-same-cap-shadow-gate/relay-same-cap-shadow-gate-${{ inputs.cell-ids }}-${GITHUB_RUN_ID}.json" \
+            --shadow-report "${RUNNER_TEMP}/relay-same-cap-shadow-gate/relay-same-cap-shadow-gate-${{ fromJSON(needs.gate.outputs.cells)[0] }}-${GITHUB_RUN_ID}.json" \
             --commit-sha "${GITHUB_SHA}" --run-id "${GITHUB_RUN_ID}" \
             --selector-generation "${{ inputs.expected-selector-generation }}" \
             --rehome-generation "${{ inputs.expected-rehome-generation }}" \

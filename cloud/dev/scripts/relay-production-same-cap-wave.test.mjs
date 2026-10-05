@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import {
+  CANARY_MIN_DRAINED_HOSTS,
   DEFAULT_SAME_CAP_DRAIN_PACE_WINDOW_MS,
   SAME_CAP_CELLS,
   SAME_CAP_DRAIN_PACE_WINDOWS_MS,
@@ -699,7 +700,7 @@ function shadowReport(pace, paceVerdict = 'PASS', overrides = {}) {
   return {
     cellId: 'production-gce-c7',
     paceVerdict,
-    drain: { paceWindowMs: Number(pace), appliedPaceWindowMs: Number(pace) },
+    drain: { paceWindowMs: Number(pace), appliedPaceWindowMs: Number(pace), targetHosts: 692 },
     ...overrides
   }
 }
@@ -767,6 +768,10 @@ test('only a canary whose pace checks passed authorizes a faster batch', () => {
     rehomeGeneration: '4'
   })
   assert.equal(seal(shadowReport('60000')).paceVerdict, 'PASS')
+  assert.equal(CANARY_MIN_DRAINED_HOSTS, 400)
+  assert.equal(seal(shadowReport('60000', 'PASS', {
+    drain: { paceWindowMs: 60000, appliedPaceWindowMs: 60000, targetHosts: 400 }
+  })).paceVerdict, 'PASS')
   for (const [report, sealed] of [
     [shadowReport('60000', 'WARN'), 'WARN'],
     [shadowReport('60000', 'WOULD_BLOCK'), 'WOULD_BLOCK'],
@@ -774,7 +779,11 @@ test('only a canary whose pace checks passed authorizes a faster batch', () => {
     // Another cell's report, another pace's, or a cell that fell back to an unpaced drain.
     [shadowReport('60000', 'PASS', { cellId: 'production-gce-c8' }), 'UNVERIFIED'],
     [shadowReport('300000'), 'UNVERIFIED'],
-    [shadowReport('60000', 'PASS', { drain: { paceWindowMs: 60000, appliedPaceWindowMs: 0 } }), 'UNVERIFIED'],
+    [shadowReport('60000', 'PASS', { drain: { paceWindowMs: 60000, appliedPaceWindowMs: 0, targetHosts: 692 } }), 'UNVERIFIED'],
+    // Too few hosts to have tested the pace, or no host count at all.
+    [shadowReport('60000', 'PASS', { drain: { paceWindowMs: 60000, appliedPaceWindowMs: 60000, targetHosts: 399 } }), 'UNVERIFIED'],
+    [shadowReport('60000', 'PASS', { drain: { paceWindowMs: 60000, appliedPaceWindowMs: 60000, targetHosts: 0 } }), 'UNVERIFIED'],
+    [shadowReport('60000', 'PASS', { drain: { paceWindowMs: 60000, appliedPaceWindowMs: 60000, targetHosts: null } }), 'UNVERIFIED'],
     [shadowReport('60000', 'MAYBE'), 'UNVERIFIED']
   ]) {
     const authority = seal(report)
@@ -823,10 +832,14 @@ test('the workflows offer exactly the closed set and scale the drain wait with i
   const seal = dispatch.slice(dispatch.indexOf('\n  seal_canary:'))
   assert.match(
     seal,
-    /name: relay-same-cap-shadow-gate-\$\{\{ inputs\.cell-ids \}\}-\$\{\{ github\.run_id \}\}\.json\n/
+    /name: relay-same-cap-shadow-gate-\$\{\{ fromJSON\(needs\.gate\.outputs\.cells\)\[0\] \}\}-\$\{\{ github\.run_id \}\}\.json\n/
   )
   assert.ok(seal.indexOf('download-artifact') < seal.indexOf('create-canary'))
-  assert.match(seal, /--shadow-report "\$\{RUNNER_TEMP\}\/relay-same-cap-shadow-gate\/relay-same-cap-shadow-gate-\$\{\{ inputs\.cell-ids \}\}-\$\{GITHUB_RUN_ID\}\.json"/)
+  assert.match(seal, /--shadow-report "\$\{RUNNER_TEMP\}\/relay-same-cap-shadow-gate\/relay-same-cap-shadow-gate-\$\{\{ fromJSON\(needs\.gate\.outputs\.cells\)\[0\] \}\}-\$\{GITHUB_RUN_ID\}\.json"/)
+  // The seal names the cell the gate normalized, never the raw input a padded form could carry.
+  assert.doesNotMatch(seal.slice(0, seal.indexOf('\n  release_lease:')), /inputs\.cell-ids/)
+  // The job uploads under the same normalized cell, which cell_1 receives as target-cell-id.
+  assert.match(dispatch, /target-cell-id: \$\{\{ fromJSON\(needs\.gate\.outputs\.cells\)\[0\] \}\}/)
   for (const command of ['validate', 'verify-canary', 'create-canary']) {
     const at = dispatch.indexOf(`relay-production-same-cap-wave.mjs ${command}`)
     assert.notEqual(at, -1, command)

@@ -13,6 +13,7 @@ import { pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 import {
   BACKGROUND_MINUTES,
+  DIRECTOR_METRICS_INTERVAL_MS,
   ENTRY_LIMIT,
   PACE_CHECKS,
   FLEET_POOL_CELL_IDS,
@@ -24,7 +25,6 @@ import {
   backgroundOf,
   judgeCellServing,
   judgeCloudSqlFatal,
-  judgeDirector503,
   judgeDrainDeferrals,
   judgeNonDrain503Budget,
   judgePool,
@@ -221,7 +221,10 @@ async function readDirectorDrainReturn(reader, { config, window }) {
     })
     reads.push({
       failed: read.failed,
-      samples: read.entries.map((entry) => ({ timestamp: entry.timestamp, ...entry.jsonPayload }))
+      samples: read.entries.map((entry) => ({ timestamp: entry.timestamp, ...entry.jsonPayload })),
+      minSamples: Math.floor(
+        (subWindow.endedAt.getTime() - subWindow.startedAt.getTime()) / DIRECTOR_METRICS_INTERVAL_MS
+      )
     })
   }
   return reads
@@ -245,15 +248,20 @@ async function readDirector503(reader, { config, window }) {
     .filter((key) => !windowMinutes.includes(key))
   const observed = withoutDrainDeferrals(counts, deferrals, windowMinutes)
   const background = backgroundOf(withoutDrainDeferrals(counts, deferrals, backgroundMinutes))
-  // Only the roll window's own samples describe this drain.
-  const drain = drainReturnByMinute(reads.map((read) => ({
-    ...read,
-    samples: read.samples.filter((sample) => Date.parse(sample.timestamp) > window.startedAt.getTime())
-  })), DIRECTOR_METRICS_LIMIT)
+  // Only the roll window's own samples describe this drain; whether the reads were whole is a
+  // question about all of them.
+  const drain = {
+    ...drainReturnByMinute(reads.map((read) => ({
+      failed: read.failed,
+      samples: read.samples.filter(
+        (sample) => Date.parse(sample.timestamp) > window.startedAt.getTime()
+      )
+    })), DIRECTOR_METRICS_LIMIT),
+    truncated: deferrals.truncated
+  }
   return {
     background,
     checks: {
-      director503: judgeDirector503({ observed, background }),
       nonDrain503Budget: judgeNonDrain503Budget({ observed, background }),
       drainDeferrals: judgeDrainDeferrals(drain)
     }

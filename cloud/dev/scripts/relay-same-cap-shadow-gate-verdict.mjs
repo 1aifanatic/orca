@@ -32,22 +32,21 @@ export const FLEET_POOL_CELL_IDS = [
 ]
 
 export const SHADOW_GATE_THRESHOLDS = {
-  // A US ramp legitimately lifts director 503s far above a quiet baseline (61-71/min against a
-  // 20-60/min baseline was healthy), so this is a multiple of the pre-drain peak with an
-  // absolute floor underneath it, never a fixed rate.
-  director503: { blockMultiple: 10, blockFloor: 200, warnMultiple: 3, warnFloor: 100 },
   // One sample at 71 waiters is a burst that drains; three in a row is a pool that does not.
   pool: { waitersMax: 50, waitersConsecutiveSamples: 3, sqlFailuresDelta: 200 },
   // Pace-ladder rung budget (cloud/docs/relay-workflows.md), on non-drain 503s against the
-  // pre-drain median. One minute over is a transient and never counts; two in a row past
-  // max(1.5x, +20) warns and past max(2x, +40) is the abort. On ten clean rolls (10-01, 10-02) no
-  // two consecutive minutes passed +20, while single minutes reached 87.
+  // pre-drain median. One ordinary minute over is a transient; two in a row past max(1.5x, +20)
+  // warn and past max(2x, +40) is the abort. One minute past max(10x, 200) is a block on its own,
+  // the shape of a short sharp drain herd. Replayed (30 windows): no roll without a brownout
+  // passed 112 in a minute, and every brownout or herd peaked at 5,999 or more.
   nonDrain503Budget: {
     warnMultiple: 1.5,
     warnMarginPerMinute: 20,
     blockMultiple: 2,
     blockMarginPerMinute: 40,
-    consecutiveMinutes: 2
+    consecutiveMinutes: 2,
+    spikeMultiple: 10,
+    spikeFloor: 200
   },
   // A drain-return deferral tells the host when to come back; past a minute the drain is no
   // longer paced by the window but queued behind the director's lane.
@@ -201,7 +200,11 @@ export function drainReturnByMinute(reads, limit) {
     }
   }
   for (const read of reads) {
-    if (read.failed || read.samples.length >= limit) truncated = true
+    // The director always runs, so a read short of one instance's samples is a short answer (a
+    // Logging 429 can return one), not a quiet minute.
+    if (read.failed || read.samples.length >= limit || read.samples.length < (read.minSamples ?? 0)) {
+      truncated = true
+    }
     for (const sample of read.samples) {
       const endedAt = Date.parse(sample.timestamp)
       charge(deferrals, endedAt, sample.drainReturnDeferralsDelta ?? 0)
@@ -270,32 +273,45 @@ export function backgroundOf(nonDrain) {
     startedAt: nonDrain.minutes[0] ?? null,
     minutes: nonDrain.minutes.length,
     medianPerMinute: median,
-    peakPerMinute: nonDrain.peak,
     perMinute: nonDrain.series,
     unverified: nonDrain.unverified || nonDrain.minutes.length === 0
   }
 }
 
 export function judgeNonDrain503Budget({ observed, background }) {
-  const { warnMultiple, warnMarginPerMinute, blockMultiple, blockMarginPerMinute, consecutiveMinutes } =
-    SHADOW_GATE_THRESHOLDS.nonDrain503Budget
+  const {
+    warnMultiple,
+    warnMarginPerMinute,
+    blockMultiple,
+    blockMarginPerMinute,
+    consecutiveMinutes,
+    spikeMultiple,
+    spikeFloor
+  } = SHADOW_GATE_THRESHOLDS.nonDrain503Budget
   const perMinute = background.medianPerMinute
   const warnAbove = Math.max(perMinute * warnMultiple, perMinute + warnMarginPerMinute)
   const blockAbove = Math.max(perMinute * blockMultiple, perMinute + blockMarginPerMinute)
   const detail = {
     backgroundPerMinute: perMinute,
     peakPerMinute: observed.peak,
+    peakMinute: observed.peakMinute,
+    // The raw count and what was taken out of it, so the subtraction can be checked by hand.
+    allPeakPerMinute: observed.allPeak,
+    drainDeferralsTotal: observed.drainDeferralsTotal,
+    ownRetriesTotal: observed.ownRetriesTotal,
     warnAbove,
     blockAbove,
+    spikeAbove: Math.max(perMinute * spikeMultiple, spikeFloor),
     consecutiveMinutesOverWarn: longestRunAtOrAbove(observed.series, warnAbove),
     consecutiveMinutesOverBlock: longestRunAtOrAbove(observed.series, blockAbove),
     // The record a ladder rung keeps: non-drain 503s per minute from the drain start.
     perMinute: observed.series
   }
   if (observed.unverified || background.unverified) return { status: 'unverified', ...detail }
-  if (detail.consecutiveMinutesOverBlock >= consecutiveMinutes) {
-    return { status: 'would-block', ...detail }
-  }
+  if (
+    detail.consecutiveMinutesOverBlock >= consecutiveMinutes ||
+    observed.peak > detail.spikeAbove
+  ) return { status: 'would-block', ...detail }
   if (detail.consecutiveMinutesOverWarn >= consecutiveMinutes) return { status: 'warn', ...detail }
   return { status: 'pass', ...detail }
 }
@@ -323,24 +339,6 @@ export function judgeDrainDeferrals(drain) {
   return { status: 'pass', ...detail }
 }
 
-export function judgeDirector503({ observed, background }) {
-  const { blockMultiple, blockFloor, warnMultiple, warnFloor } = SHADOW_GATE_THRESHOLDS.director503
-  const detail = {
-    peakPerMinute: observed.peak,
-    peakMinute: observed.peakMinute,
-    total: observed.total,
-    allPeakPerMinute: observed.allPeak,
-    drainDeferralsTotal: observed.drainDeferralsTotal,
-    ownRetriesTotal: observed.ownRetriesTotal,
-    backgroundPeakPerMinute: background.peakPerMinute,
-    blockAbove: Math.max(background.peakPerMinute * blockMultiple, blockFloor),
-    warnAbove: Math.max(background.peakPerMinute * warnMultiple, warnFloor)
-  }
-  if (observed.unverified || background.unverified) return { status: 'unverified', ...detail }
-  if (observed.peak > detail.blockAbove) return { status: 'would-block', ...detail }
-  if (observed.peak > detail.warnAbove) return { status: 'warn', ...detail }
-  return { status: 'pass', ...detail }
-}
 
 /**
  * The cell's own container: it has to have announced its listener since the apply began, and it
@@ -411,7 +409,7 @@ export function judgeCloudSqlFatal({ count, truncated = false, failed = false })
 
 // The checks a drain pace can move. The rest (Cloud SQL, the Asia pools, the new boot) read the
 // fleet or the image, so a clean roll at any pace can still WARN on them.
-export const PACE_CHECKS = ['director503', 'nonDrain503Budget', 'drainDeferrals']
+export const PACE_CHECKS = ['nonDrain503Budget', 'drainDeferrals']
 
 export function combineVerdict(checks) {
   const statuses = Object.values(checks).map((check) => check.status)

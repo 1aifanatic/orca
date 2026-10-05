@@ -134,13 +134,19 @@ export function validateSameCapWave(input) {
 
 const CANARY_PACE_VERDICTS = ['PASS', 'WARN', 'WOULD_BLOCK', 'UNVERIFIED']
 
-// The canary cell's own pace checks, trusted only from a report on this cell that drained at this
-// pace; a cell whose image fell back to an unpaced drain proved nothing about the pace.
+// A pace is a host arrival rate (hosts / window), so a canary proves it only with a real cohort:
+// at least about half the 692-782 hosts a US general cell carried on 10-02, keeping any batch
+// cell within ~2x of the rate the canary actually drained at.
+export const CANARY_MIN_DRAINED_HOSTS = 400
+
+// The canary cell's own pace checks, trusted only from a report on this cell that drained enough
+// hosts at this pace; a cell whose image fell back to an unpaced drain proved nothing about it.
 export function canaryPaceVerdict(report, cellId, paceWindowMs) {
   if (
     report?.cellId !== cellId ||
     report.drain?.paceWindowMs !== paceWindowMs ||
     report.drain?.appliedPaceWindowMs !== paceWindowMs ||
+    !(report.drain?.targetHosts >= CANARY_MIN_DRAINED_HOSTS) ||
     !CANARY_PACE_VERDICTS.includes(report.paceVerdict)
   ) return 'UNVERIFIED'
   return report.paceVerdict
