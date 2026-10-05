@@ -12,6 +12,8 @@ vi.mock('./ssh-relay-deploy-helpers', () => ({
 vi.mock('./ssh-connection-utils', () => ({ shellEscape: (s: string) => `'${s}'` }))
 vi.mock('./ssh-relay-install-lock', () => ({
   acquireInstallLock: vi.fn().mockResolvedValue(undefined),
+  isRelayInstallLockStale: vi.fn().mockResolvedValue(false),
+  RemoteInstallLockBusyError: class extends Error {},
   RELAY_INSTALL_LOCK_NAME: '.install-lock'
 }))
 vi.mock('./ssh-relay-install-transfers', () => ({
@@ -30,7 +32,7 @@ vi.mock('./orcad-local-build-hash', () => ({
 }))
 
 import { execCommand } from './ssh-relay-deploy-helpers'
-import { acquireInstallLock } from './ssh-relay-install-lock'
+import { acquireInstallLock, isRelayInstallLockStale } from './ssh-relay-install-lock'
 import { uploadRelayDirectory } from './ssh-relay-install-transfers'
 import { writeAtomicOrcadRemoteRecord } from './orcad-remote-record-file'
 import { deployOrcad, type OrcadDeployOptions } from './orcad-remote-deploy'
@@ -46,6 +48,8 @@ import { getRemoteHostPlatform } from './ssh-remote-platform'
 import { isReadinessRead } from './orcad-activation-host-test-harness'
 import type { SshConnection } from './ssh-connection'
 import { NODE_RUNTIME_PIN } from '../../shared/node-runtime-pin'
+import { serializeOrcadActivationTransaction } from './orcad-activation-transaction'
+import { createOrcadActivationTransaction } from './orcad-activation-transaction-transitions'
 
 const mockExec = vi.mocked(execCommand)
 const NEW_VERSION = '0.2.0+bb0100000000'
@@ -374,17 +378,34 @@ describe('deployOrcad', () => {
     )
   })
 
-  it('refuses at once, before uploading, while the activation fence is held', async () => {
+  it.each([
+    ['a fresh fence with no journal', false, false, 'orcad_activation_fence_busy'],
+    ['a fence past its stale age', true, false, 'orcad_activation_recovery_required'],
+    ['a fence with a journal', false, true, 'orcad_activation_recovery_required']
+  ])('refuses before uploading on %s', async (_label, stale, journal, code) => {
+    vi.mocked(isRelayInstallLockStale).mockResolvedValueOnce(stale)
+    const JOURNAL = serializeOrcadActivationTransaction(
+      createOrcadActivationTransaction({
+        transactionId: '00000000-0000-4000-8000-000000000001',
+        candidateVersion: NEW_VERSION,
+        recordBefore: emptyOrcadActivationRecord(),
+        snapshotDirName: 'pre-1',
+        now: new Date(0)
+      })
+    )
     mockExec.mockImplementation(async (_conn, command) => {
       const text = String(command)
       if (text.includes('echo LOCKED || echo OPEN')) {
         return 'LOCKED\n'
       }
+      if (text.includes('__ORCAD_RECORD_ABSENT__') && text.includes('transaction.json')) {
+        return journal ? `__ORCAD_RECORD_PRESENT__\n${JOURNAL}` : '__ORCAD_RECORD_ABSENT__\n'
+      }
       return text.includes('__ORCAD_RECORD_ABSENT__') ? '__ORCAD_RECORD_ABSENT__\n' : ''
     })
     await expect(deployOrcad(options())).resolves.toMatchObject({
       outcome: 'installed-not-activated',
-      code: 'orcad_activation_recovery_required'
+      code
     })
     expect(uploadRelayDirectory).not.toHaveBeenCalled()
   })

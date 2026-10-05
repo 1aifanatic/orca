@@ -22,11 +22,10 @@ import { readOrcadActivationRecord } from './orcad-activation-record-store'
 import { sameOrcadActivationRecord } from './orcad-activation-transaction'
 import type { RemoteHostPlatform } from './ssh-remote-platform'
 import {
-  ORCAD_ACTIVATION_FENCE_HELD_CODE,
-  orcadActivationFenceHeldReason,
   resolveOrcadActivationReadinessTimeout,
   withOrcadActivationLock
 } from './orcad-activation-lock'
+import { orcadActivationFenceRefusal } from './orcad-activation-fence-hold'
 import { ORCAD_STARTUP_READINESS_TIMEOUT_MS } from '../../shared/orcad-profile-preflight'
 import { rollbackOrcadLocked } from './orcad-rollback-transition'
 
@@ -77,10 +76,9 @@ export async function rollbackOrcad(input: OrcadRollbackOptions): Promise<OrcadR
       }
       return rollbackOrcadLocked(options, lock)
     },
-    () => ({
+    async () => ({
       outcome: 'refused',
-      code: ORCAD_ACTIVATION_FENCE_HELD_CODE,
-      reason: orcadActivationFenceHeldReason('rollback')
+      ...(await orcadActivationFenceRefusal(options, 'rollback'))
     })
   )
 }

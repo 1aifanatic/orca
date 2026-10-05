@@ -44,6 +44,14 @@ export async function reconnect(page: Page, targetId: string): Promise<string> {
       )
       throw new Error(`ssh ${step} hung; main state ${main}`)
     }
+    // Why: callers parse the connect's JSON, which would hide the error text behind a parse error.
+    if (result.startsWith(`${step} threw:`)) {
+      const main = await page.evaluate(
+        async (id) => JSON.stringify(await window.api.ssh.getState({ targetId: id })),
+        targetId
+      )
+      throw new Error(`${result}; main state ${main}`)
+    }
     if (step === 'connect') {
       return result
     }

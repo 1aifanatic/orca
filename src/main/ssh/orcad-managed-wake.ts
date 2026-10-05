@@ -5,7 +5,13 @@
  */
 import type { ServeReadiness } from '../server/serve-readiness'
 import { readOrcadActivationRecord } from './orcad-activation-record-store'
-import { orcadActivationFenceExists, withOrcadActivationLock } from './orcad-activation-lock'
+import {
+  orcadActivationFenceExists,
+  releaseOrcadActivationFence,
+  withOrcadActivationLock
+} from './orcad-activation-lock'
+import { readOrcadActivationTransaction } from './orcad-activation-transaction-store'
+import { isUnconfirmedSshCommandTermination } from './ssh-relay-deploy-helpers'
 import { orcadLivenessProbeCommand, parseOrcadLiveness } from './orcad-remote-launch'
 import { execOrcadRemote } from './orcad-remote-runtime-control'
 import {
@@ -34,8 +40,11 @@ export async function wakeStoppedManagedOrcad(
   if (liveness !== 'DEAD') {
     return { outcome: liveness === 'LIVE' ? 'serving' : 'unverifiable' }
   }
+  const host = wakeHostKey(options)
   if (await orcadActivationFenceExists(options)) {
-    return { outcome: 'fenced' }
+    if (!(await releaseOwnInterruptedWakeFence(options, host))) {
+      return { outcome: 'fenced' }
+    }
   }
   return withOrcadActivationLock(
     options,
@@ -47,10 +56,41 @@ export async function wakeStoppedManagedOrcad(
       }
       const identity = await resolveOrcadSlotIdentity(options, active)
       onStarting()
-      return { outcome: 'started', readiness: await ensureOrcadSlotServing(options, identity) }
+      try {
+        return { outcome: 'started', readiness: await ensureOrcadSlotServing(options, identity) }
+      } catch (error) {
+        // A lost connection keeps the fence on the host; only this client knows it is its own.
+        if (isUnconfirmedSshCommandTermination(error)) {
+          interruptedWakes.add(host)
+        }
+        throw error
+      }
     },
     () => ({ outcome: 'fenced' })
   )
+}
+
+// Hosts where this client's own wake lost its connection while holding the fence.
+const interruptedWakes = new Set<string>()
+
+function wakeHostKey(options: OrcadSlotOptions): string {
+  return `${options.conn.getTarget().id}\0${options.remoteHome}`
+}
+
+/**
+ * A wake journals nothing, so a fence with no journal that this client's own interrupted wake
+ * left is released; the slot was just proven exited and orcad's instance lock bars a double start.
+ */
+async function releaseOwnInterruptedWakeFence(
+  options: OrcadSlotOptions,
+  host: string
+): Promise<boolean> {
+  if (!interruptedWakes.has(host) || (await readOrcadActivationTransaction(options))) {
+    return false
+  }
+  await releaseOrcadActivationFence(options)
+  interruptedWakes.delete(host)
+  return true
 }
 
 async function slotLiveness(

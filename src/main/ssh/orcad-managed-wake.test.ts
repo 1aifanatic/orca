@@ -26,8 +26,8 @@ import {
 let host = new FakeOrcadHost()
 
 const slot = {
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: execCommand is mocked, so the connection is never used.
-  conn: {} as SshConnection,
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: execCommand is mocked; the wake reads only the target id.
+  conn: { getTarget: () => ({ id: 'ssh-1' }) } as unknown as SshConnection,
   host: getRemoteHostPlatform('linux-x64'),
   remoteHome: '/home/u',
   nodePath: '/usr/bin/node',
@@ -106,6 +106,37 @@ describe('wakeStoppedManagedOrcad', () => {
 
     expect(await wakeStoppedManagedOrcad(slot)).toEqual({ outcome: 'fenced' })
     expect(launches()).toEqual([])
+    expect(host.fence).toBe(true)
+  })
+
+  it('releases the fence its own wake left when the connection dropped, and starts the slot', async () => {
+    host = stoppedHost()
+    const lost = Object.assign(new Error('connection lost'), { sshChannelCloseConfirmed: false })
+    vi.mocked(execCommand).mockImplementation(async (_conn, command) => {
+      if (command.includes('nohup')) {
+        throw lost
+      }
+      return host.exec(command)
+    })
+    await expect(wakeStoppedManagedOrcad(slot)).rejects.toBe(lost)
+    expect(host.fence).toBe(true)
+
+    vi.mocked(execCommand).mockImplementation(async (_conn, command) => host.exec(command))
+    expect(await wakeStoppedManagedOrcad(slot)).toMatchObject({ outcome: 'started' })
+    expect(launches()).toHaveLength(1)
+    expect(host.fence).toBe(false)
+  })
+
+  it('never releases a fence another client may hold, even after its own wake dropped', async () => {
+    host = stoppedHost()
+    host.fence = true
+    expect(
+      await wakeStoppedManagedOrcad({
+        ...slot,
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: as above, a different target.
+        conn: { getTarget: () => ({ id: 'ssh-2' }) } as unknown as SshConnection
+      })
+    ).toEqual({ outcome: 'fenced' })
     expect(host.fence).toBe(true)
   })
 
