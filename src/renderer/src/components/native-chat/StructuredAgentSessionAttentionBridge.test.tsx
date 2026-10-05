@@ -391,6 +391,101 @@ describe('StructuredAgentSessionAttentionBridge', () => {
     })
   })
 
+  it('keeps a legacy published paired chat subscribed and delivers after a workspace-id collision', async () => {
+    const store = mocks.store
+    if (!store) {
+      throw new Error('test store was not initialized')
+    }
+    const remoteWorktree = makeWorktree({
+      id: WORKSPACE,
+      repoId: 'repo1',
+      hostId: 'runtime:env-1',
+      runtimeOwnerEnvironmentId: 'env-1'
+    })
+    store.setState({
+      activeWorktreeId: WORKSPACE,
+      activeWorkspaceExecutionHostId: 'runtime:env-1',
+      worktreesByRepo: { repo1: [remoteWorktree] },
+      unifiedTabsByWorktree: {},
+      runtimeEnvironments: [
+        {
+          id: 'env-1',
+          name: 'Paired server',
+          createdAt: 1,
+          updatedAt: 1,
+          lastUsedAt: null,
+          runtimeId: null,
+          endpoints: [],
+          preferredEndpointId: 'endpoint'
+        }
+      ]
+    })
+    store.setState(
+      applyWebSessionTabsSnapshot(
+        store.getState(),
+        {
+          worktree: WORKSPACE,
+          publicationEpoch: 'remote-epoch',
+          snapshotVersion: 1,
+          activeGroupId: GROUP,
+          activeTabId: 'agent-session:session-1',
+          activeTabType: 'agent-session',
+          tabs: [
+            {
+              type: 'agent-session',
+              id: 'agent-session:session-1',
+              title: 'Remote chat',
+              sessionId: SESSION,
+              agent: 'codex',
+              isActive: true
+            }
+          ]
+        },
+        'env-1',
+        100
+      )
+    )
+    const publishedTab = store.getState().unifiedTabsByWorktree[WORKSPACE][0]
+    if (!publishedTab) {
+      throw new Error('snapshot did not publish a chat tab')
+    }
+    // Why: restored tabs from before host stamping can still have ambiguous catalog ownership.
+    const { executionHostId, ...legacyTab } = publishedTab
+    expect(executionHostId).toBe('runtime:env-1')
+    const tab = makeUnifiedTab(legacyTab)
+    store.setState({ unifiedTabsByWorktree: { [WORKSPACE]: [tab] } })
+    expect(tab.contentType).toBe('agent-session')
+    expect(tab.executionHostId).toBeUndefined()
+    render(<StructuredAgentSessionAttentionBridge />)
+    await waitFor(() => expect(mocks.subscribeCompletions).toHaveBeenCalledOnce())
+    expect(mocks.subscribeCompletions.mock.calls[0]?.[0]).toEqual({
+      kind: 'environment',
+      environmentId: 'env-1'
+    })
+
+    await act(async () =>
+      store.setState({
+        worktreesByRepo: {
+          repo1: [remoteWorktree, makeWorktree({ id: WORKSPACE, repoId: 'repo1', hostId: 'local' })]
+        },
+        groupsByWorktree: {
+          [WORKSPACE]: store
+            .getState()
+            .groupsByWorktree[WORKSPACE].map((group) => ({ ...group, activeTabId: 'other-tab' }))
+        }
+      })
+    )
+    expect(resolveNotificationTabOwner(store.getState(), tab)).toBeNull()
+    expect(mocks.unsubscribe).not.toHaveBeenCalled()
+    expect(mocks.subscribeCompletions).toHaveBeenCalledOnce()
+
+    act(() => hostStream()(completionFrame()))
+    const paneKey = structuredAgentSessionPaneKey(tab.id, SESSION)
+    expect(onlyDispatch()).toMatchObject({ notificationSourceId: 'runtime:env-1', paneKey })
+    expect(store.getState().unreadAgentCompletionPanes[paneKey]).toBe('agent-completion')
+    expect(store.getState().unreadTerminalTabs[tab.id]).toBe('agent-completion')
+  })
+
   it.each<{ selected: string; activeAfterCollision: Partial<AppState> }>([
     { selected: 'the paired workspace', activeAfterCollision: {} },
     {
