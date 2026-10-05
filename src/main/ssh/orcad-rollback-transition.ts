@@ -47,9 +47,13 @@ import {
 import { orcadSnapshotPath } from './orcad-incumbent-recovery'
 import {
   putTransactionIncumbentBack,
-  restoreAfterRejectedCandidate,
-  stopTransactionIncumbent
+  restoreAfterRejectedCandidate
 } from './orcad-transaction-incumbent'
+import {
+  readOrcadRollbackBarrierTarget,
+  rollbackBarrierRefusal,
+  stopIncumbentBehindTerminalBarrier
+} from './orcad-rollback-terminal-barrier'
 import { withOrcadLogTail } from './orcad-remote-log-tail'
 import { errorMessage } from '../../shared/error-message'
 
@@ -120,6 +124,11 @@ export async function rollbackOrcadLocked(
     }
   }
 
+  const barrierTarget = await readOrcadRollbackBarrierTarget(options, incumbent.version)
+  if (barrierTarget.state === 'refused') {
+    return { outcome: 'refused', code: barrierTarget.code, reason: barrierTarget.reason }
+  }
+
   const startedAt = now()
   let transaction: OrcadRollbackTransaction = createOrcadRollbackTransaction({
     transactionId: randomUUID(),
@@ -135,15 +144,22 @@ export async function rollbackOrcadLocked(
   // Past the first mutation a cancel would strand a stopped host, so the run finishes or rolls back.
   options = withoutAbortSignal(options)
 
-  const unstopped = await stopTransactionIncumbent(options, incumbent, lock)
-  if (unstopped) {
-    return {
-      outcome: 'failed',
-      code: 'orcad_rollback_stop_incomplete',
-      reason:
-        `${unstopped} Nothing was restored. Orca requires matching runtime readiness before ` +
-        'signaling an incumbent and confirmed exit before replacing its state.'
+  // The census above was taken while orcad admitted work; this stop is the proof that counts.
+  const blocked = rollbackBarrierRefusal(
+    await stopIncumbentBehindTerminalBarrier(
+      options,
+      transaction.transactionId,
+      barrierTarget.context
+    )
+  )
+  if (blocked) {
+    if (blocked.retainFence) {
+      lock.retain()
     }
+    const recovered = blocked.restartIncumbent
+      ? ` ${await putIncumbentBack(options, lock, transaction, incumbent)}`
+      : ''
+    return { outcome: blocked.outcome, code: blocked.code, reason: blocked.reason + recovered }
   }
   transaction = withOrcadRollbackPhase(transaction, 'incumbent-stopped', now())
   await writeOrcadActivationTransaction(options, transaction)

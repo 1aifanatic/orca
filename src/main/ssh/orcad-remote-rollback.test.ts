@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as RecordFile from './orcad-remote-record-file'
 import type * as InstallLock from './ssh-relay-install-lock'
+import type * as TerminalBarrier from './orcad-rollback-terminal-barrier'
 
 vi.mock('./ssh-relay-deploy-helpers', () => ({
   execCommand: vi.fn(),
@@ -18,6 +19,36 @@ vi.mock('./ssh-relay-install-lock', async (importOriginal) => ({
 vi.mock('./orcad-remote-record-file', async (importOriginal) => ({
   ...(await importOriginal<typeof RecordFile>()),
   writeAtomicOrcadRemoteRecord: vi.fn().mockResolvedValue(undefined)
+}))
+
+const barrier = vi.hoisted(() => {
+  const state: { log: string[] | null; state: 'retired' | 'unproven' } = {
+    log: null,
+    state: 'retired'
+  }
+  return state
+})
+// The managed stop and its terminal barrier are proven in orcad-activation-crash-recovery.test.ts.
+vi.mock('./orcad-rollback-terminal-barrier', async (importOriginal) => ({
+  ...(await importOriginal<typeof TerminalBarrier>()),
+  readOrcadRollbackBarrierTarget: async (_options: unknown, version: string) => ({
+    state: 'ready',
+    context: {
+      version,
+      runtimeId: 'r1',
+      instance: { pid: 1, startedAtMs: 1, nonce: 'n', lockPath: '/l' }
+    }
+  }),
+  stopIncumbentBehindTerminalBarrier: async (
+    _options: unknown,
+    _id: string,
+    context: { version: string }
+  ) => {
+    barrier.log?.push(`stop:${context.version}`)
+    return barrier.state === 'retired'
+      ? { state: 'retired' }
+      : { state: 'unproven', reason: 'A terminal started after the census.' }
+  }
 }))
 
 import { execCommand } from './ssh-relay-deploy-helpers'
@@ -88,6 +119,8 @@ type HostOverrides = {
 }
 
 function scriptHost(log: string[], overrides: HostOverrides = {}): void {
+  barrier.log = log
+  barrier.state = 'retired'
   const restores = [...(overrides.restores ?? [])]
   mockExec.mockImplementation(async (_conn, command: string) => {
     const text = String(command)
@@ -282,6 +315,15 @@ describe('rollbackOrcad', () => {
       .map((call) => String(call[1]))
       .find((command) => command.includes('verdict=UNCHANGED'))
     expect(compare).not.toContain('rollback-rescue-')
+  })
+
+  it('keeps the newer state and restarts the newer build when work appeared after the census', async () => {
+    const log: string[] = []
+    scriptHost(log)
+    barrier.state = 'unproven'
+    const result = await rollbackOrcad(options())
+    expect(result).toMatchObject({ outcome: 'refused', code: 'orcad_rollback_terminals_at_stop' })
+    expect(log).toEqual([`stop:${ACTIVE}`, `launch:${ACTIVE}`])
   })
 
   it('records the rollback only after the target answers healthy', async () => {

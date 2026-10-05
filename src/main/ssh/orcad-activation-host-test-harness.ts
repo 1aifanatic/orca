@@ -40,6 +40,8 @@ export class FakeOrcadHost {
   crashMode: CrashMode = 'before'
   /** How the slot's managed-stop command behaves: orcad exits, or keeps serving. */
   managedStop: 'exits' | 'stays' | 'stays-dispatched' = 'exits'
+  /** What the daemon reports at a managed stop's terminal fence. */
+  retirement: 'retired' | 'live' | 'unverifiable' = 'retired'
   readonly dispatched = new Set<string>()
 
   static deployedOld(): FakeOrcadHost {
@@ -248,7 +250,7 @@ export class FakeOrcadHost {
       kind: 'orcad_managed_stop_completion',
       verdict,
       receiptPersisted: verdict === 'exited',
-      ...(verdict === 'exited' ? { retirement: 'retired' } : {})
+      ...(verdict === 'exited' ? { retirement: this.retirement } : {})
     })
   }
 }
