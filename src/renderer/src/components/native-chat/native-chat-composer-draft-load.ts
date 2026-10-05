@@ -14,7 +14,11 @@ import {
   flushNativeChatComposerDrafts,
   installNativeChatComposerDraftBroadcast
 } from './native-chat-composer-draft-persistence'
-import { replayNativeChatComposerDraftJournal } from './native-chat-composer-draft-journal'
+import {
+  replayNativeChatComposerDraftJournal,
+  snapshotNativeChatComposerDraftJournal,
+  type NativeChatComposerDraftJournalSnapshot
+} from './native-chat-composer-draft-journal'
 import {
   nativeChatComposerDraftStorage,
   parseStoredNativeChatComposerDraft,
@@ -48,12 +52,16 @@ function withAppends(
 
 type DraftLoadResult = { draft: StoredNativeChatComposerDraft; changed: boolean }
 
-function applyLoaded(loaded: ReadonlyMap<string, unknown>, readAtSequence: number): void {
+function applyLoaded(
+  loaded: ReadonlyMap<string, unknown>,
+  readAtSequence: number,
+  journal: NativeChatComposerDraftJournalSnapshot
+): void {
   const drafts = new Map<string, StoredNativeChatComposerDraft | null>()
   for (const [scopeKey, value] of loaded) {
     drafts.set(scopeKey, parseStoredNativeChatComposerDraft(value))
   }
-  for (const scopeKey of replayNativeChatComposerDraftJournal(drafts)) {
+  for (const scopeKey of replayNativeChatComposerDraftJournal(drafts, journal)) {
     dirtyScopes.add(scopeKey)
   }
   for (const [scopeKey, appends] of load.appendsBeforeLoad) {
@@ -114,7 +122,8 @@ export function hydrateNativeChatComposerDrafts(): Promise<void> {
     installNativeChatComposerDraftBroadcast()
     // Why read here: storage applies changes in order, so this load reads every append made so far.
     const readAtSequence = load.appendSequence
-    applyLoaded(await nativeChatComposerDraftStorage().loadAll(), readAtSequence)
+    const journal = snapshotNativeChatComposerDraftJournal()
+    applyLoaded(await nativeChatComposerDraftStorage().loadAll(), readAtSequence, journal)
   })().catch(retryLater)
   return hydration
 }

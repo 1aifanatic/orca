@@ -184,6 +184,74 @@ describe('native-chat composer draft store', () => {
     expect(storedDraft('agent-session:s1')?.text).toBe('typed earlier\n\nreturned by Stop')
   })
 
+  it('never brings back a draft sent while storage refused, however much was given back to it', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    storage.drafts.set('agent-session:s1', { text: 'old saved', images: [], savedAt: 1 })
+    const refuse = () => Promise.reject(new DOMException('refused', 'UnknownError'))
+    const broken = { ...storage, write: refuse, remove: refuse, update: refuse }
+    const refusing = await reload({ using: broken })
+    refusing.drafts.appendNativeChatDraftCache('agent-session:s1', 'a'.repeat(150_000))
+    refusing.drafts.appendNativeChatDraftCache('agent-session:s1', 'b'.repeat(150_000))
+    // The user sends it: the draft is cleared, and storage refuses that too.
+    refusing.drafts.writeNativeChatDraftCache('agent-session:s1', '')
+    await refusing.store.nativeChatComposerDraftWritesSettled()
+    window.dispatchEvent(new Event('pagehide'))
+    refusing.store.clearNativeChatComposerDraftsForTests()
+
+    const next = await reload()
+    expect(next.drafts.readNativeChatDraftCache('agent-session:s1')).toBe('')
+    warn.mockRestore()
+  })
+
+  it('does not replay a live window’s addition journaled after this load began reading', async () => {
+    storage.drafts.set('agent-session:s1', { text: 'saved', images: [], savedAt: 1 })
+    let commitA: () => void = () => {}
+    let aCommitted: () => void = () => {}
+    const aDone = new Promise<void>((resolve) => (aCommitted = resolve))
+    const aStorage = {
+      ...storage,
+      write: (scopeKey: string, draft: Parameters<typeof storage.write>[1]) =>
+        new Promise<void>((resolve) => {
+          commitA = () => {
+            storage.drafts.set(scopeKey, draft)
+            resolve()
+            aCommitted()
+          }
+        })
+    }
+    const a = await reload({ using: aStorage })
+    let land: () => void = () => {}
+    const bStorage = {
+      ...storage,
+      loadAll: () => {
+        const snapshot = new Map(storage.drafts)
+        return new Promise<ReadonlyMap<string, unknown>>((resolve) => {
+          land = () => resolve(snapshot)
+        })
+      },
+      // IndexedDB orders B's write after A's, which was issued first.
+      write: async (scopeKey: string, draft: Parameters<typeof storage.write>[1]) => {
+        await aDone
+        storage.drafts.set(scopeKey, draft)
+      }
+    }
+    const b = await reload({ using: bStorage, hydrate: false })
+    const bLoad = b.store.hydrateNativeChatComposerDrafts()
+    a.drafts.writeNativeChatDraftCache('agent-session:s1', 'saved typed in A')
+    a.drafts.appendNativeChatDraftCache('agent-session:s1', 'returned')
+    land()
+    await bLoad
+    commitA()
+    await a.store.nativeChatComposerDraftWritesSettled()
+    await b.store.nativeChatComposerDraftWritesSettled()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    expect(storedDraft('agent-session:s1')?.text).toBe('saved typed in A\n\nreturned')
+    expect(a.drafts.readNativeChatDraftCache('agent-session:s1')).toBe(
+      'saved typed in A\n\nreturned'
+    )
+  })
+
   it('keeps text given back through a crash before storage commits it, once', async () => {
     storage.drafts.set('agent-session:s1', { text: 'typed earlier', images: [], savedAt: 1 })
     const crashing = { ...storage, write: () => new Promise<void>(() => {}) }
@@ -711,7 +779,8 @@ describe('native-chat composer draft store', () => {
     window.dispatchEvent(new Event('pagehide'))
 
     const journal = localStorage.getItem('orca:nativeChatComposerDraftJournal:v1') ?? ''
-    expect(journal.length).toBeLessThanOrEqual(800_000)
+    // Additions keep to their own cap, whole drafts to theirs.
+    expect(journal.length).toBeLessThanOrEqual(800_000 + 256_000)
     // What no longer fits is reported, so its source is kept until storage confirms it.
     expect(durable).toContain(false)
     warn.mockRestore()

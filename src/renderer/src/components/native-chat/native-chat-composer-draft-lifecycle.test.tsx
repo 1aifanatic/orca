@@ -559,14 +559,14 @@ describe('native-chat composer draft lifecycle', () => {
     ])
   })
 
-  it('shows a restored paste from Orca’s paste folder once main re-grants it, and marks the rest', async () => {
+  it('shows a restored paste from Orca’s paste folder once main confirms it is kept, and marks the rest', async () => {
     const folder = '/Users/me/Library/Application Support/orca/native-chat-pastes'
-    let regrant: () => void = () => {}
-    const regranted = new Promise<void>((resolve) => {
-      regrant = resolve
+    let answer: () => void = () => {}
+    const answered = new Promise<void>((resolve) => {
+      answer = resolve
     })
     const restoreNativeChatPastes = vi.fn(async (paths: string[]) => {
-      await regranted
+      await answered
       return paths.map((path) => ({
         path,
         kept: path.endsWith('orca-paste-1-ab.png'),
@@ -597,8 +597,8 @@ describe('native-chat composer draft lifecycle', () => {
       // Until main answers, the restored paste waits, so its preview is not read before the grant.
       expect(seen.api?.attachments.imageAttachments[0]?.pending).toBe(true)
       await act(async () => {
-        regrant()
-        await regranted
+        answer()
+        await answered
       })
     } finally {
       vi.unstubAllGlobals()

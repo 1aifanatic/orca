@@ -18,10 +18,12 @@ import {
 
 const JOURNAL_KEY = 'orca:nativeChatComposerDraftJournal:v1'
 // Why: localStorage also holds the send outbox, and a send is refused when its entry can't be
-// saved, so the journal stays small: whole drafts stop at the first cap, and additions, at most
-// one message each with their source deleted right after, at the second, which fits the largest.
+// saved, so the journal stays small: whole drafts together stop at the first cap, and additions,
+// at most one message each with their source deleted right after, at the second, which fits the
+// largest. A removal is never capped: it is tiny, and it is what keeps a sent draft from coming
+// back.
 export const MAX_JOURNAL_CHARS = 256_000
-export const MAX_JOURNAL_WITH_ADDITIONS_CHARS = 800_000
+export const MAX_JOURNAL_ADDITIONS_CHARS = 800_000
 
 // Why: a load replays only what earlier runs left, never this run's own entries, which its
 // memory already holds.
@@ -98,16 +100,24 @@ function writeEntries(entries: readonly JournalEntry[]): boolean {
   }
 }
 
+export type NativeChatComposerDraftJournalSnapshot = readonly JournalEntry[]
+
+/** Other runs' entries as a load begins reading storage. Why then: an entry journaled later is a
+ *  live window's, whose own write is ordered after this read and must not be overwritten by it. */
+export function snapshotNativeChatComposerDraftJournal(): NativeChatComposerDraftJournalSnapshot {
+  return readEntries().filter((entry) => entry.run !== THIS_RUN)
+}
+
 /**
- * Replays what earlier runs journaled onto the loaded drafts: a whole draft newer than the stored
- * one replaces it, then each addition newer than the draft it meets is made again, once. Returns
- * the drafts it changed, which must be written; entries already older than storage are dropped.
+ * Replays a snapshot onto the loaded drafts: a whole draft newer than the stored one replaces it,
+ * then each addition newer than the draft it meets is made again, once. Returns the drafts it
+ * changed, which must be written; entries already older than storage are dropped.
  */
 export function replayNativeChatComposerDraftJournal(
-  drafts: Map<string, StoredNativeChatComposerDraft | null>
+  drafts: Map<string, StoredNativeChatComposerDraft | null>,
+  entries: NativeChatComposerDraftJournalSnapshot
 ): Set<string> {
   const changed = new Set<string>()
-  const entries = readEntries().filter((entry) => entry.run !== THIS_RUN)
   const removedAt = new Map<string, number>()
   for (const entry of entries) {
     if (isAddition(entry)) {
@@ -153,15 +163,19 @@ export function journalNativeChatComposerDraftChanges(
     return
   }
   const kept = readEntries().filter((entry) => isAddition(entry) || !changes.has(entry.scopeKey))
-  let used = JSON.stringify(kept).length
+  let used = JSON.stringify(kept.filter((entry) => !isAddition(entry) && entry.draft)).length
   const added: JournalEntry[] = []
   const bySize = [...changes]
     .map(([scopeKey, change]) => ({ scopeKey, ...change, run: THIS_RUN }))
     .map((entry) => ({ entry, size: JSON.stringify(entry).length + 1 }))
     .sort((left, right) => left.size - right.size)
   for (const { entry, size } of bySize) {
+    if (!entry.draft) {
+      added.push(entry)
+      continue
+    }
     if (used + size > MAX_JOURNAL_CHARS) {
-      break
+      continue
     }
     added.push(entry)
     used += size
@@ -179,7 +193,8 @@ export function journalNativeChatComposerDraftAddition(
   at: number
 ): boolean {
   const entries: JournalEntry[] = [...readEntries(), { scopeKey, at, run: THIS_RUN, addition }]
-  return JSON.stringify(entries).length <= MAX_JOURNAL_WITH_ADDITIONS_CHARS && writeEntries(entries)
+  const additions = JSON.stringify(entries.filter(isAddition)).length
+  return additions <= MAX_JOURNAL_ADDITIONS_CHARS && writeEntries(entries)
 }
 
 /** Drops a draft's entries once a change to it at least as new is confirmed, by any window, so a
