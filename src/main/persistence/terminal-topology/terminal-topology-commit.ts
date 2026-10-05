@@ -141,12 +141,16 @@ function commitLeafMove(
   if (!request.undo) {
     context.origins.remember(request, planned.origins)
   }
-  const rekeyed = rekeyMovedLeafProfileRecords(
-    state,
-    request.undo
-      ? { ...request, sourceTabId: request.targetTabId, targetTabId: request.sourceTabId }
-      : request
-  )
+  // A retired undo's source tab is closed; its pane-keyed marks would be orphans there.
+  const rekeyed =
+    planned.result.status === 'retired'
+      ? {}
+      : rekeyMovedLeafProfileRecords(
+          state,
+          request.undo
+            ? { ...request, sourceTabId: request.targetTabId, targetTabId: request.sourceTabId }
+            : request
+        )
   if (rekeyed.ui) {
     state.ui = rekeyed.ui
     context.markDirty('ui')

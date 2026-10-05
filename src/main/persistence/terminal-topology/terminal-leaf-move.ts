@@ -109,6 +109,12 @@ function moveLeafInPartition(
   }
   const fromPaneKey = `${sourceTabId}:${leafId}`
   const toPaneKey = `${targetTabId}:${leafId}`
+  const boundHere = sourceLayout.ptyIdsByLeafId?.[leafId]
+  // A stale copy's incarnation belongs to the PTY it no longer names.
+  const incarnations = { ...session.terminalPtyIncarnationsByPaneKey }
+  if (boundHere && boundHere !== ptyId) {
+    delete incarnations[fromPaneKey]
+  }
   const remainingLayout = retireLeavesFromTerminalLayout(sourceLayout, new Set([leafId]))
   const remainingPtyIds = Object.values(remainingLayout?.ptyIdsByLeafId ?? {})
   const { pendingActivationSpawn, ...minimalTab } = createMinimalPersistedTerminalTab({
@@ -165,7 +171,7 @@ function moveLeafInPartition(
       terminalLayoutsByTabId,
       ...(session.remoteSessionIdsByTabId ? { remoteSessionIdsByTabId } : {}),
       terminalPtyIncarnationsByPaneKey: moveRecordKey(
-        session.terminalPtyIncarnationsByPaneKey,
+        session.terminalPtyIncarnationsByPaneKey ? incarnations : undefined,
         fromPaneKey,
         toPaneKey
       ),
@@ -247,13 +253,17 @@ export function planTerminalLeafMove(
       ({ session }) => session.terminalLayoutsByTabId?.[sourceTabId]?.ptyIdsByLeafId?.[leafId] ?? []
     )
   )
+  // Copies disagree after an SSH respawn bound one partition before the other caught up; the
+  // renderer's live PTY id names the current one, and the stale copy is overwritten.
+  const liveMatchesOne = Boolean(request.ptyId && boundPtyIds.has(request.ptyId))
   if (
-    boundPtyIds.size > 1 ||
-    (request.ptyId && boundPtyIds.size === 1 && !boundPtyIds.has(request.ptyId))
+    (boundPtyIds.size > 1 && !liveMatchesOne) ||
+    (request.ptyId && boundPtyIds.size === 1 && !liveMatchesOne)
   ) {
     return refuse('pty_mismatch')
   }
-  const ptyId = [...boundPtyIds][0] ?? request.ptyId ?? null
+  const ptyId =
+    boundPtyIds.size > 1 ? request.ptyId : ([...boundPtyIds][0] ?? request.ptyId ?? null)
   const moves = holders.flatMap((holder) => moveLeafInPartition(holder, request, ptyId) ?? [])
   return {
     result: { status: 'moved', ptyId },

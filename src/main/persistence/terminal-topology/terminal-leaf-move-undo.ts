@@ -170,8 +170,11 @@ export function planTerminalLeafMoveUndo(
 ): PlannedTerminalLeafMove {
   const { worktreeId, sourceTabId, targetTabId, leafId } = request
   const owners = partitions.filter(({ hostId }) => isTerminalOwnerPartition(hostId))
+  // A layout whose tab row is gone owns nothing, as in planTerminalLeafMove.
   const targetLeaves = owners.map(({ session }) =>
-    collectLayoutLeafIdsInOrder(session.terminalLayoutsByTabId?.[targetTabId]?.root ?? null)
+    session.tabsByWorktree?.[worktreeId]?.some((tab) => tab.id === targetTabId)
+      ? collectLayoutLeafIdsInOrder(session.terminalLayoutsByTabId?.[targetTabId]?.root ?? null)
+      : []
   )
   const holders = owners.filter(
     (_, index) => targetLeaves[index].length === 1 && targetLeaves[index][0] === leafId

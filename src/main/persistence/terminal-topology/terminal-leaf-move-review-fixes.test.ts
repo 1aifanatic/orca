@@ -63,6 +63,22 @@ function sourceSession(layouts: WorkspaceSessionState['terminalLayoutsByTabId'])
   } satisfies WorkspaceSessionState
 }
 
+async function closeSourceTab(store: ReturnType<typeof openStore>): Promise<void> {
+  await store.runDurableMutation(
+    closeLeafOrTab({
+      worktreeId: WT,
+      target: { kind: 'tab', tabId: SOURCE },
+      options: { force: true, reason: 'user' },
+      requestedSession: store.getWorkspaceSession(),
+      ownerMatches: () => true,
+      hostId: () => 'local',
+      getSession: (hostId) => store.getWorkspaceSession(hostId),
+      setSession: (session, hostId) => store.setWorkspaceSession(session, hostId),
+      onClosed: () => {}
+    })
+  )
+}
+
 // Review-2 SF1: the source tab closed while the move was in flight, then the renderer asked to undo.
 describe('undo after the source tab closed', () => {
   it('retires the moved tab instead of leaving a ghost that returns on restart', async () => {
@@ -77,19 +93,7 @@ describe('undo after the source tab closed', () => {
       }
     })
     await store.moveTerminalLeafToNewTab(request)
-    await store.runDurableMutation(
-      closeLeafOrTab({
-        worktreeId: WT,
-        target: { kind: 'tab', tabId: SOURCE },
-        options: { force: true, reason: 'user' },
-        requestedSession: store.getWorkspaceSession(),
-        ownerMatches: () => true,
-        hostId: () => 'local',
-        getSession: (hostId) => store.getWorkspaceSession(hostId),
-        setSession: (session, hostId) => store.setWorkspaceSession(session, hostId),
-        onClosed: () => {}
-      })
-    )
+    await closeSourceTab(store)
 
     await expect(store.moveTerminalLeafToNewTab({ ...request, undo: true })).resolves.toEqual({
       status: 'retired'
@@ -240,4 +244,72 @@ describe('persistence.terminal-topology span for a move', () => {
     ])
     expect(JSON.stringify(spans)).not.toMatch(/pty-|tab-source|tab-target|2222/)
   })
+})
+
+// B1-2 review-1 nits.
+describe('undo and move edge cases', () => {
+  it('ignores an undo whose target layout has no tab row', () => {
+    const session = sourceSession({
+      [SOURCE]: { root: leaf(LEFT), activeLeafId: LEFT, expandedLeafId: null },
+      [TARGET]: { root: leaf(MOVED), activeLeafId: MOVED, expandedLeafId: null }
+    })
+    expect(
+      planTerminalLeafMoveUndo([{ hostId: 'local', session }], { ...request, undo: true }).result
+    ).toEqual({ status: 'not_held' })
+  })
+
+  it('does not re-key UI marks to a source tab a retired undo found closed', async () => {
+    const store = openStore(newDataFile())
+    await seedSplitSource(store)
+    store.updateUI({ acknowledgedAgentsByPaneKey: { [`${SOURCE}:${MOVED}`]: 10 } })
+    await store.moveTerminalLeafToNewTab(request)
+    await closeSourceTab(store)
+
+    await expect(store.moveTerminalLeafToNewTab({ ...request, undo: true })).resolves.toEqual({
+      status: 'retired'
+    })
+    expect(store.getUI().acknowledgedAgentsByPaneKey).toEqual({ [TO]: 10 })
+  })
+
+  it('moves an SSH pane whose partitions disagree after a respawn, using the live PTY', async () => {
+    const store = openStore(newDataFile())
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const hostId = toSshExecutionHostId('ssh-1')
+    await seedSplitSource(store, hostId)
+    const relay = { worktreeId: WT, tabId: SOURCE, leafId: MOVED, incarnationId: 'inc-1' }
+    await store.persistPtyBinding({ ...relay, ptyId: 'pty-agent', origin: 'relay_reattach' })
+    await store.persistPtyBinding(
+      { ...relay, ptyId: 'pty-respawn', incarnationId: 'inc-2' },
+      hostId
+    )
+
+    await expect(
+      store.moveTerminalLeafToNewTab({ ...request, ptyId: 'pty-respawn' })
+    ).resolves.toEqual({ status: 'moved', ptyId: 'pty-respawn' })
+
+    for (const session of [store.getWorkspaceSession(), store.getWorkspaceSession(hostId)]) {
+      expect(tabsHoldingLeaf(session, MOVED)).toEqual([TARGET])
+      expect(session.terminalLayoutsByTabId[TARGET]?.ptyIdsByLeafId).toEqual({
+        [MOVED]: 'pty-respawn'
+      })
+    }
+    expect(store.getWorkspaceSession(hostId).terminalPtyIncarnationsByPaneKey?.[TO]).toBe('inc-2')
+    expect(store.getWorkspaceSession().terminalPtyIncarnationsByPaneKey?.[TO]).toBeUndefined()
+  })
+})
+
+// B1-2 review-1 SF1: why the renderer refuses a drag while the pane's spawn is in flight. A move
+// with no PTY id lets the late spawn result bind SOURCE:L, and the bind grafts L back into SOURCE.
+it('pins the late-spawn graft that the renderer guard exists for', async () => {
+  const store = openStore(newDataFile())
+  await seedSplitSource(store)
+  await store.moveTerminalLeafToNewTab({ ...request, ptyId: null })
+  await store.persistPtyBinding({
+    worktreeId: WT,
+    tabId: SOURCE,
+    leafId: MOVED,
+    ptyId: 'pty-late',
+    incarnationId: 'inc-late'
+  })
+  expect(tabsHoldingLeaf(store.getWorkspaceSession(), MOVED).sort()).toEqual([SOURCE, TARGET])
 })
