@@ -258,7 +258,7 @@ async function drawn(): Promise<{ text: string; turn: string | undefined }[]> {
   await host.flushStreamedEvents(SESSION)
   const { items, submissions } = await host.journalSnapshot(SESSION)
   const rows = projectNativeChatTranscriptMessages(
-    projectStructuredAgentSessionMessages(items, [], submissions)
+    projectStructuredAgentSessionMessages(items, [], submissions, { rejectedInPlace: true })
   )
   const { drawOrder, turnKeys } = nativeChatTurnMembership(rows, { items, submissions })
   const keyed = rows.map((row, index) => ({
@@ -273,7 +273,7 @@ async function liveTurn(): Promise<string | undefined> {
   await host.flushStreamedEvents(SESSION)
   const { items, submissions } = await host.journalSnapshot(SESSION)
   const rows = projectNativeChatTranscriptMessages(
-    projectStructuredAgentSessionMessages(items, [], submissions)
+    projectStructuredAgentSessionMessages(items, [], submissions, { rejectedInPlace: true })
   )
   return nativeChatTurnMembership(rows, { items, submissions }).liveTurnKey
 }

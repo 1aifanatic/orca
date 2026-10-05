@@ -88,10 +88,12 @@ function Harness(props: {
   pending: MobileNativeChatPendingItem[]
   seen: (disclosure: Disclosure) => void
 }): null {
+  // As the phone projects: no other rejected send drawn in place.
   const messages: NativeChatMessage[] = projectStructuredAgentSessionMessages(
     props.items,
     [],
-    props.submissions
+    props.submissions,
+    { rejectedInPlace: false }
   )
   const { data } = buildMobileNativeChatTransientData({
     messages,

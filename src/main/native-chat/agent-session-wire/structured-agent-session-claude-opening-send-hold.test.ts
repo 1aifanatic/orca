@@ -140,7 +140,7 @@ async function snapshot() {
 async function drawn(): Promise<{ text: string; turn: string | undefined }[]> {
   const { items, submissions } = await snapshot()
   const rows = projectNativeChatTranscriptMessages(
-    projectStructuredAgentSessionMessages(items, [], submissions)
+    projectStructuredAgentSessionMessages(items, [], submissions, { rejectedInPlace: true })
   )
   const { drawOrder, turnKeys } = nativeChatTurnMembership(rows, { items, submissions })
   const keyed = rows.map((row, index) => ({

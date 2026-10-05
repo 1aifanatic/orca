@@ -123,7 +123,9 @@ function frame(
   return (
     <NativeChatMessageList
       session={{
-        messages: projectStructuredAgentSessionMessages(items, outbox, submissions),
+        messages: projectStructuredAgentSessionMessages(items, outbox, submissions, {
+          rejectedInPlace: true
+        }),
         status: 'ready',
         sessionId: 'session-1',
         agent: 'codex',
