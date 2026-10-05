@@ -131,16 +131,20 @@ describe('parseInteractivePrompt', () => {
     expect(parseInteractivePrompt('')).toBeNull()
   })
 
-  it('shows a prompt it cannot place as unsupported, with no options to approve', () => {
-    for (const prompt of ['{}', 'not json', JSON.stringify({ choice: { title: 'Plan?' } })]) {
-      const card = parseInteractivePrompt(prompt)
-      expect(card?.kind).toBe('unsupported')
-      expect(card?.kind === 'unsupported' ? card.approval.options : null).toEqual([])
-    }
+  it('shows a newer envelope arm as unsupported, with no options to approve', () => {
     const card = parseInteractivePrompt(JSON.stringify({ choice: { title: 'Plan?' } }))
+    expect(card?.kind).toBe('unsupported')
+    expect(card?.kind === 'unsupported' ? card.approval.options : null).toEqual([])
     expect(card).toMatchObject({
       approval: { title: 'Plan?', description: 'This request needs a newer version of Orca.' }
     })
+  })
+
+  it('shows no card for a prompt that is not an envelope (as before), never "needs a newer version"', () => {
+    const rawToolInput = JSON.stringify({ action: 'delete the bucket', reason: 'cleanup' })
+    for (const prompt of ['{}', 'not json', '{"questions":[{"question":"Pick', rawToolInput]) {
+      expect(parseInteractivePrompt(prompt)).toBeNull()
+    }
   })
 })
 

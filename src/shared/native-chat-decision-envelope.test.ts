@@ -35,8 +35,16 @@ describe('parseNativeChatDecisionEnvelope', () => {
     })
   })
 
-  it('treats non-JSON as unsupported', () => {
-    expect(parseNativeChatDecisionEnvelope('Do you approve?')).toEqual({ kind: 'unsupported' })
+  it('reads non-JSON as no envelope (a truncated or prose prompt)', () => {
+    expect(parseNativeChatDecisionEnvelope('Do you approve?')).toEqual({ kind: 'none' })
+    expect(parseNativeChatDecisionEnvelope('{"questions":[{"question":"Pick')).toEqual({
+      kind: 'none'
+    })
+  })
+
+  it('reads raw tool input with no arm as no envelope', () => {
+    const prompt = JSON.stringify({ action: 'delete the staging bucket', reason: 'cleanup' })
+    expect(parseNativeChatDecisionEnvelope(prompt, 'request_permission')).toEqual({ kind: 'none' })
   })
 
   it('treats an unknown arm as unsupported and keeps its own words', () => {
@@ -47,13 +55,12 @@ describe('parseNativeChatDecisionEnvelope', () => {
     })
   })
 
-  it('treats a malformed approval as unsupported', () => {
+  it('reads a known approval arm that does not parse as no envelope', () => {
     expect(parseNativeChatDecisionEnvelope(JSON.stringify({ approval: { summary: 'x' } }))).toEqual(
-      {
-        kind: 'unsupported',
-        text: 'x'
-      }
+      { kind: 'none' }
     )
+    const badPlan = JSON.stringify({ approval: { tool: 'Plan', subject: { kind: 'plan' } } })
+    expect(parseNativeChatDecisionEnvelope(badPlan)).toEqual({ kind: 'none' })
   })
 
   it('treats an approval with an unknown subject kind as unsupported', () => {
@@ -66,10 +73,10 @@ describe('parseNativeChatDecisionEnvelope', () => {
     })
   })
 
-  it('treats a question arm that does not parse as unsupported', () => {
+  it('reads a question arm that does not parse as no envelope', () => {
     expect(
       parseNativeChatDecisionEnvelope(JSON.stringify({ questions: [] }), 'AskUserQuestion')
-    ).toEqual({ kind: 'unsupported' })
+    ).toEqual({ kind: 'none' })
   })
 
   it('clips long display text', () => {

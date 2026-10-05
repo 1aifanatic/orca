@@ -1,6 +1,9 @@
 // The one parser for the live status `interactivePrompt` envelope. Both clients
-// read it here, so an envelope this build cannot place is "unsupported" on both:
-// shown, never approvable, and never a reason to guess from the agent's prose.
+// read it here, so a well-formed envelope this build cannot place (an arm or an
+// approval subject it doesn't know) is "unsupported" on both: shown, never
+// approvable, and never a reason to guess from the agent's prose. A prompt that
+// isn't such an envelope (not JSON, raw tool input, a known arm that doesn't
+// parse) is no envelope at all, as before.
 
 import type { AgentJournalApprovalSubject } from './agent-session-journal-types'
 import { parseAskFromStatus, type AskPrompt } from './native-chat-ask'
@@ -57,6 +60,17 @@ function unsupported(parsed: unknown): NativeChatDecisionEnvelope {
   return text ? { kind: 'unsupported', text } : { kind: 'unsupported' }
 }
 
+/** A newer arm of the envelope: one key naming it, whose value is the arm's record. */
+function isUnknownArm(parsed: Record<string, unknown>): boolean {
+  const values = Object.values(parsed)
+  return values.length === 1 && isRecord(values[0])
+}
+
+/** A subject a newer host names: well-formed, of a kind this build does not know. */
+function isUnknownSubjectKind(subject: unknown): boolean {
+  return isRecord(subject) && typeof subject.kind === 'string' && subject.kind !== 'plan'
+}
+
 /** Closed-set subject reader: a kind this build does not know is not approvable. */
 export function readNativeChatApprovalSubject(
   subject: unknown
@@ -79,13 +93,13 @@ function parseApprovalArm(
   parsed: Record<string, unknown>
 ): NativeChatDecisionEnvelope {
   if (!isRecord(approval) || typeof approval.tool !== 'string' || approval.tool.length === 0) {
-    return unsupported(parsed)
+    return { kind: 'none' }
   }
   let subject: AgentJournalApprovalSubject | null = null
   if (approval.subject !== undefined) {
     subject = readNativeChatApprovalSubject(approval.subject)
     if (!subject) {
-      return unsupported(parsed)
+      return isUnknownSubjectKind(approval.subject) ? unsupported(parsed) : { kind: 'none' }
     }
   }
   const summary =
@@ -111,7 +125,7 @@ export function parseNativeChatDecisionEnvelope(
   try {
     parsed = JSON.parse(interactivePrompt)
   } catch {
-    return { kind: 'unsupported' }
+    return { kind: 'none' }
   }
   // Registered question parsers first: a tool's own input shape is not an arm.
   const prompt = parseAskFromStatus(interactivePrompt, toolName)
@@ -119,11 +133,11 @@ export function parseNativeChatDecisionEnvelope(
     return { kind: 'question', prompt }
   }
   if (!isRecord(parsed)) {
-    return { kind: 'unsupported' }
+    return { kind: 'none' }
   }
   if ('approval' in parsed) {
     return parseApprovalArm(parsed.approval, parsed)
   }
-  // A question tool or `questions` arm that did not parse is malformed, not absent.
-  return unsupported(parsed)
+  // A `questions` arm that did not parse is a known arm, malformed: no envelope.
+  return !('questions' in parsed) && isUnknownArm(parsed) ? unsupported(parsed) : { kind: 'none' }
 }

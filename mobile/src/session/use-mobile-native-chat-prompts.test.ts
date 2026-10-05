@@ -138,6 +138,26 @@ describe('useMobileNativeChatPrompts approval-envelope state gate', () => {
   })
 })
 
+describe('useMobileNativeChatPrompts with a prompt that is not an envelope', () => {
+  it.each([
+    ['a truncated prompt', '{"questions":[{"question":"Implement'],
+    ['raw tool input', JSON.stringify({ action: 'delete the bucket', reason: 'cleanup' })]
+  ])(
+    'keeps today\'s behaviour for %s: no "newer version" card, the guess still runs',
+    (_case, prompt) => {
+      const prompts = promptsFor({
+        state: 'waiting',
+        interactivePrompt: prompt,
+        lastAssistantMessage: 'Allow this Bash command?\n1. Yes\n2. No'
+      })
+      expect(prompts.permission?.description).not.toBe(
+        'This request needs a newer version of Orca.'
+      )
+      expect(prompts.permission?.options.map((option) => option.label)).toEqual(['Yes', 'No'])
+    }
+  )
+})
+
 describe('useMobileNativeChatPrompts with Codex async questions', () => {
   const prose = 'Which color would you like to use?\n1. Red\n2. Blue'
   const blocked = { state: 'blocked' as const, agentType: 'codex', lastAssistantMessage: prose }
