@@ -106,8 +106,11 @@ export function readQueuePublication(
   const queuedMessages = readPublishedQueuedMessages(journal)
   // Read per emit: the pause also turns on submissions (a turn starting). Shown only over a card
   // Resume would send, so its header never offers to send nothing; deleting a blocking returned
-  // card shows it again. A restart's pause is never shown: the chat's next turn lifts it.
-  const pause = resumableQueuePause(structuredQueuePauses(journal), journal.queuedMessages.list())
+  // card shows it again. After a restart nothing is shown, a Stop's or /clear's included: the
+  // chat's next turn lifts every pause, and the cards read as plain waiting cards until then.
+  const pauses = structuredQueuePauses(journal)
+  const restarted = pauses.some((pause) => pause.reason === 'restarted')
+  const pause = restarted ? null : resumableQueuePause(pauses, journal.queuedMessages.list())
   const queuePause = pause && pause.reason !== 'restarted' ? { reason: pause.reason } : null
   const nextQueuedMessageId = nextStructuredQueuedMessage({ journal, ...gate() })?.messageId ?? null
   const previous = publications.get(journal)

@@ -29,6 +29,20 @@ export function structuredQueuePauses(journal: PauseJournal): DerivedQueuePause[
   return journal.queuedMessages.pauses(hostInstance)
 }
 
+/** The process a new card is written for. While a restart's hold is in force (no turn since this
+ *  conversation opened, a card from an earlier process waiting), the earlier process: the card
+ *  joins that hold, so it never sends by itself even once the older cards are gone. */
+export function structuredQueuedCardHostInstance(journal: PauseJournal): string {
+  const { queuedMessages } = journal
+  if (queuedMessages.restartEnded()) {
+    return hostInstance
+  }
+  const earlier = queuedMessages
+    .list()
+    .find((row) => row.state === 'waiting' && row.hostInstance !== hostInstance)
+  return earlier?.hostInstance ?? hostInstance
+}
+
 /**
  * Every journal publish: a restart's rows are adopted into this instance once a turn started. The derivation already reads them as lifted; the write keeps that answer when the
  * handle reopens (its "since this conversation opened" moves). Bookkeeping: a failure is reported.

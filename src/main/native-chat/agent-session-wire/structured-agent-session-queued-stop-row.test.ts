@@ -165,7 +165,7 @@ describe("Stop's event", () => {
     await eventually(async () => expect(await rig.handoffId(sentId)).not.toBe(handoffId))
   })
 
-  it('survives a host crash: the next open marks the hand-off unknown, the pause stays, Resume sends', async () => {
+  it('survives a host crash, unshown: the next open marks the hand-off unknown, nothing sends, Resume releases', async () => {
     await rig.workingSend()
     const sentId = await queuedDraft('sent now into the turn')
     const waiting = await queuedDraft('waiting behind it')
@@ -175,7 +175,12 @@ describe("Stop's event", () => {
     // The process dies with no close; a new host opens the same state directory.
     rig.crashRestartHostProcess()
     expect((await rig.handoff(sentId))?.dispatchState).toBe('unknown')
-    await expectHeld('stopped', waiting)
+    // After a restart no row shows, the Stop's included, and nothing sends.
+    await expectHeld(null, waiting)
+    expect(structuredQueuePauses(journal()).map((pause) => pause.reason)).toEqual([
+      'stopped',
+      'restarted'
+    ])
     expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
     await eventually(async () => expect(await rig.handoff(waiting)).toBeDefined())
   })

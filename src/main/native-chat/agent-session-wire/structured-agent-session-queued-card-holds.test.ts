@@ -112,6 +112,8 @@ type ClientView = {
   dialog: boolean
   /** Each card's Send-now reads Steer. */
   steers: boolean[]
+  /** Why each card waits, which picks its caption: 'turn' is a plain waiting card. */
+  holds: string[]
   cards: number
   nextQueuedMessageId: string | null
 }
@@ -198,6 +200,7 @@ async function watchClient(outbox: ComposerOutbox = { entries: [] }): Promise<Cl
         header,
         dialog: queueHeld,
         steers: cards.map((card) => queuedMessageCardSteers(card)),
+        holds: cards.map((card) => card.hold),
         cards: cards.length,
         nextQueuedMessageId
       })
@@ -293,7 +296,9 @@ describe('after a restart, nothing sends by itself', () => {
       header: false,
       dialog: false,
       button: 'send',
-      cards: 2
+      cards: 2,
+      holds: ['turn', 'turn'],
+      steers: [true, true]
     })
     expect(await rig.drafts()).toEqual([
       { messageId: first, state: 'waiting' },
@@ -344,6 +349,63 @@ describe('after a restart, nothing sends by itself', () => {
     await rig.settleAccepted(await rig.handoffId(first), 'A')
     await eventually(async () => expect(await rig.handoff(second)).toBeDefined())
     expect(views.filter((view) => view.header || view.dialog)).toEqual([])
+  })
+
+  it('Steer on a card sends it now, and the rest follow it in order', async () => {
+    const { first, second } = await restartedIdleWithCards()
+    expect(await rig.sendNow(second)).toMatchObject({
+      ok: true,
+      value: { submission: { queuedMessageId: second } }
+    })
+    await eventually(async () => expect((await rig.handoff(second))?.handedOverAt).toBeDefined())
+    await expectNothingSent(first)
+    await rig.settleAccepted(await rig.handoffId(second), 'B')
+    await eventually(async () => expect(await rig.handoff(first)).toBeDefined())
+  })
+
+  it("a Stop's row from before the restart is not shown either; the carry-on releases every card, in order", async () => {
+    const working = await rig.workingSend()
+    const first = await queuedDraft('A')
+    const second = await queuedDraft('B')
+    await rig.stop()
+    await rig.settleAccepted(working, 'stopped')
+    expect((await published()).queuePause).toEqual({ reason: 'stopped' })
+    await rig.restartHostProcess()
+    expect(await published()).toEqual({ queuePause: null, nextQueuedMessageId: null })
+    expect(derivedPauses()).toEqual(['stopped', 'restarted'])
+    const views = await watchClient()
+    expect(views.at(-1)).toMatchObject({ header: false, dialog: false, button: 'send' })
+    const carryOn = rig.send('continue where you left off')
+    await carryOn.result
+    await expectNothingSent(first, second)
+    await rig.settleAccepted(carryOn.id, 'carry-on')
+    await eventually(async () => expect(await rig.handoff(first)).toBeDefined())
+    expect(await rig.handoff(second)).toBeUndefined()
+    await rig.settleAccepted(await rig.handoffId(first), 'A')
+    await eventually(async () => expect(await rig.handoff(second)).toBeDefined())
+    expect(views.filter((view) => view.header || view.dialog)).toEqual([])
+  })
+
+  it('a card written after the restart, before any turn, never sends by itself, even once the older cards are gone', async () => {
+    const { first, second } = await restartedIdleWithCards()
+    // Your message goes straight to the agent; while it waits, the next one queues.
+    const message = rig.send('a new instruction')
+    await message.result
+    await eventually(async () =>
+      expect((await rig.submission(message.id))?.handedOverAt).toBeDefined()
+    )
+    const typed = await queuedDraft('typed while it waits')
+    expect(await rig.deleteQueued(first)).toMatchObject({ ok: true, value: { deleted: true } })
+    expect(await rig.deleteQueued(second)).toMatchObject({ ok: true, value: { deleted: true } })
+    // The agent refuses it: no turn started, so the card written meanwhile still waits.
+    await rig.settleRejected(message.id, 'turn/start refused')
+    await expectNothingSent(typed)
+    expect(derivedPauses()).toEqual(['restarted'])
+    expect(await published()).toEqual({ queuePause: null, nextQueuedMessageId: null })
+    const next = rig.send('asked again')
+    await next.result
+    await rig.settleAccepted(next.id, 'next')
+    await eventually(async () => expect(await rig.handoff(typed)).toBeDefined())
   })
 
   it('a hand-off the quit cut short goes back to waiting first, and nothing sends', async () => {

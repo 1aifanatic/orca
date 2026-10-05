@@ -29,6 +29,7 @@ import type { QueuedMessageRow } from '../agent-session-journal/queued-message-t
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
 import {
   structuredAgentSessionHostInstance,
+  structuredQueuedCardHostInstance,
   structuredQueuePauses
 } from './structured-agent-session-queued-pause'
 import { nextSendableQueuedCard } from '../agent-session-journal/queued-message-pause'
@@ -252,7 +253,7 @@ export async function maybeQueueStructuredAgentSessionSend(
       messageId: clientMessageId,
       body: params.body,
       fingerprint: queuedMessageFingerprint(ctx.sessionId, params.body),
-      hostInstance: structuredAgentSessionHostInstance()
+      hostInstance: structuredQueuedCardHostInstance(ctx.journal)
     },
     ctx.operationReceipt
   )
