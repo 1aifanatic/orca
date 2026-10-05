@@ -17725,7 +17725,8 @@
         "notNow": "Not now",
         "close": "Close",
         "offerUncounted": "Move {{host}} to a managed Orca server for more reliable connections. Its open terminals will restart.",
-        "refusedUnverifiableUncounted": "Not moved: Orca couldn’t confirm that the terminals on {{host}} stopped."
+        "refusedUnverifiableUncounted": "Not moved: Orca couldn’t confirm that the terminals on {{host}} stopped.",
+        "retry": "Try again"
       }
     },
     "main": {

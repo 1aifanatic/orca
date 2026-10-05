@@ -19,6 +19,9 @@ import {
 import { knownSshHostPlatform } from '../ssh/ssh-host-platform-memo'
 import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
 import { connectTarget } from './ssh-connect-flow'
+import { publishRelayTerminalsStatus } from './ssh-host-server-connect'
+import { teardownSshTargetTransport } from './ssh-session-teardown'
+import { runTargetLifecycle } from './ssh-target-lifecycle-queue'
 import { terminateSshTargetSessions } from './ssh-terminate-sessions'
 
 export type SshManagedServerMoveDeps = {
@@ -28,6 +31,13 @@ export type SshManagedServerMoveDeps = {
   connect: (targetId: string) => Promise<unknown>
   serverStatus: (targetId: string) => SshManagedServerStatus | undefined
   report: (targetId: string, outcome: SshHostServerMoveOutcome) => void
+  /** Closes a relay session whose terminals the census proved exited. */
+  releaseRelay: (targetId: string) => Promise<void>
+  /** Replaces a stale relay-terminals status after a move that stopped short. */
+  publishRelayStatus: (
+    target: SshTarget,
+    census: { verdict: 'live' | 'unverifiable'; count: number }
+  ) => void
 }
 
 export async function moveSshHostToManagedServer(
@@ -58,14 +68,25 @@ async function moveHost(
   if (!target) {
     throw new Error(`SSH target "${targetId}" not found`)
   }
-  const stopped = await stopRelayTerminals(targetId, deps)
-  if (stopped.unverifiable > 0) {
-    // Why: an unreached shell is never evidence that it exited (ssh-execution-boundary.md).
-    return { outcome: 'refused', verdict: 'unverifiable', terminals: stopped.unverifiable }
-  }
-  const census = await deps.relayTerminals(deps.getTarget(targetId) ?? target)
+  // Why the census decides, not the stop: a stop can fail after its shells died (a relay that
+  // hung up on its last exit), and the census is what the conversion itself trusts.
+  const stopped = await stopRelayTerminals(targetId, deps).catch((error: unknown) => {
+    console.warn('[ssh] Stopping relay terminals for the move failed; asking the census:', error)
+    return null
+  })
+  const current = deps.getTarget(targetId) ?? target
+  const census: HostServerTerminalVerdict =
+    stopped && stopped.unverifiable > 0
+      ? // Why: an unreached shell is never evidence that it exited (ssh-execution-boundary.md).
+        { verdict: 'unverifiable', count: stopped.unverifiable }
+      : await deps.relayTerminals(current)
   if (census.verdict !== 'exited') {
+    deps.publishRelayStatus(current, { verdict: census.verdict, count: census.count })
     return { outcome: 'refused', verdict: census.verdict, terminals: census.count }
+  }
+  if (!stopped) {
+    // The failed stop left the relay up; a live session would make the reconnect a no-op refresh.
+    await deps.releaseRelay(targetId)
   }
   await deps.connect(targetId)
   const status = deps.serverStatus(targetId)
@@ -101,6 +122,11 @@ function defaultMoveDeps(): SshManagedServerMoveDeps {
     },
     connect: connectTarget,
     serverStatus: getSshHostServerStatus,
-    report: (targetId, outcome) => trackSshHostServerMove(outcome, knownSshHostPlatform(targetId))
+    report: (targetId, outcome) => trackSshHostServerMove(outcome, knownSshHostPlatform(targetId)),
+    publishRelayStatus: publishRelayTerminalsStatus,
+    releaseRelay: (targetId) =>
+      runTargetLifecycle(targetId, () =>
+        teardownSshTargetTransport(targetId, (session) => session.disposeAndPersist())
+      )
   }
 }

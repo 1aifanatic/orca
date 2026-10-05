@@ -78,6 +78,8 @@ export class SshLegacyRelayRoute {
   private readonly listed = new Set<string>()
   /** App PTY ids whose panes this route currently serves. */
   private readonly attached = new Set<string>()
+  /** App PTY ids whose exit the old relay reported. */
+  private readonly exited = new Set<string>()
   private closed = false
   private readonly closeListeners = new Set<() => void>()
 
@@ -110,6 +112,7 @@ export class SshLegacyRelayRoute {
       const provider = new SshPtyProvider(options.targetId, mux, undefined, generation)
       const route = new SshLegacyRelayRoute(options.sockPath, provider, mux)
       route.wire(options.sink)
+      route.settleShutdownOnExit()
       sshProvidersByGeneration.set(generation, provider)
       for (const process of await provider.listProcesses()) {
         route.listed.add(process.id)
@@ -168,6 +171,23 @@ export class SshLegacyRelayRoute {
     }
   }
 
+  /**
+   * The old relay reports the exit before the shutdown reply, and that exit can close the route; a
+   * shutdown whose PTY was seen exiting then succeeded, whatever the hung-up transport says.
+   */
+  private settleShutdownOnExit(): void {
+    const shutdown = this.provider.shutdown.bind(this.provider)
+    this.provider.shutdown = async (id, opts) => {
+      try {
+        await shutdown(id, opts)
+      } catch (error) {
+        if (!this.exited.has(id)) {
+          throw error
+        }
+      }
+    }
+  }
+
   private wire(sink: LegacyRelayRouteSink): void {
     // Why filtered: the owner role delivers every PTY on the old relay, and only served panes want it.
     this.provider.onData((payload) => {
@@ -183,6 +203,7 @@ export class SshLegacyRelayRoute {
     this.provider.onExit((payload) => {
       // Why before the serves check: an unserved PTY that exits is no longer held either.
       this.listed.delete(payload.id)
+      this.exited.add(payload.id)
       if (!this.serves(payload.id)) {
         return
       }

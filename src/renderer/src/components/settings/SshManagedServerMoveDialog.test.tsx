@@ -100,6 +100,11 @@ describe('SshManagedServerMoveDialog', () => {
     )
     expect(onClose).not.toHaveBeenCalled()
     expect(button(container, 'Close')).toBeTruthy()
+
+    moveToManagedServer.mockResolvedValue({ outcome: 'moved', environmentId: 'env-1' })
+    await act(async () => button(container, 'Try again').click())
+    expect(moveToManagedServer).toHaveBeenCalledTimes(2)
+    expect(onClose).toHaveBeenCalled()
   })
 
   it('shows a move that failed outright', async () => {
