@@ -75,8 +75,8 @@ function foldableJournalSessionEpoch(
 
 /** The chat's rows folded a part per task, as a replay folds them, and its status derived. Null when
  *  the chat already has a row, has no epoch in this database (it is still in a per-chat file), the
- *  database or the chat's rows are a newer build's, its history is damaged, or `signal` aborted, which is checked before each
- *  part. Writes nothing. */
+ *  database or the chat's rows are a newer build's, its history is damaged or has no row, or
+ *  `signal` aborted, which is checked before each part. Writes nothing. */
 export async function foldJournalSessionStatus(
   database: JournalHostDatabase,
   sessionId: string,
@@ -92,6 +92,11 @@ export async function foldJournalSessionStatus(
     return null
   }
   const tip = readJournalTip(database.db, sessionId, epoch)
+  // An epoch with no row (a quit inside an older build's repair) has nothing to fold: its open
+  // founds the epoch afresh and writes the row.
+  if (tip === 0) {
+    return null
+  }
   const fold = startJournalRowFold({ sessionId, epoch })
   for (let afterSeq = Number.MIN_SAFE_INTEGER; ;) {
     if (signal?.aborted) {
@@ -130,7 +135,7 @@ export async function foldJournalSessionStatus(
 }
 
 /** Every folded chat's row in ONE transaction, each only while it still has no current row and its
- *  rows are where its fold read them; a chat skipped is left to its open. */
+ *  rows are where its fold read them; a chat skipped, or whose write fails, is left to its open. */
 export function writeJournalSessionStatuses(
   database: JournalHostDatabase,
   folded: readonly FoldedJournalSessionStatus[]
@@ -148,7 +153,16 @@ export function writeJournalSessionStatuses(
       ) {
         continue
       }
-      writeJournalSessionStatus(db, sessionId, status)
+      // Its own savepoint: one chat's failed write costs only that chat's row.
+      db.exec('SAVEPOINT status_row')
+      try {
+        writeJournalSessionStatus(db, sessionId, status)
+        db.exec('RELEASE status_row')
+      } catch (error) {
+        db.exec('ROLLBACK TO status_row')
+        db.exec('RELEASE status_row')
+        console.warn('[agent-session-journal] writing a chat status failed', { sessionId, error })
+      }
     }
   })
 }

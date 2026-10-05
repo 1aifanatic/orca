@@ -363,4 +363,33 @@ describe('a row from the rows alone', () => {
     expect(readTestJournalSessionStatus(root, 'rowed')).toEqual(rowedBefore)
     expect(readTestJournalSessionStatus(root, 'replaced')).toBeNull()
   })
+
+  it('folds nothing for an epoch with no row, and one chat whose write fails costs only its own row', async () => {
+    const ids = ['first', 'refused', 'last']
+    for (const sessionId of ids) {
+      await JOURNAL_SESSION_STATE_CORPUS.settled(await open(sessionId))
+      dropRow(sessionId)
+    }
+    await journals.closeAll()
+    // A quit inside an older build's repair: the epoch is published and holds no row.
+    publishTestJournalEpoch(database().db, 'empty', 'epoch-empty')
+    expect(await foldJournalSessionStatus(database(), 'empty')).toBeNull()
+    const folded: FoldedJournalSessionStatus[] = []
+    for (const sessionId of ids) {
+      folded.push((await foldJournalSessionStatus(database(), sessionId))!)
+    }
+    // Written as if folded before its rows went: the empty epoch's write finds no tip.
+    folded.splice(1, 0, { ...folded[0]!, sessionId: 'empty', epoch: 'epoch-empty', tip: 0 })
+    database().db
+      .exec(`CREATE TEMP TRIGGER refuse_status BEFORE INSERT ON main.journal_session_state
+      WHEN NEW.session_id = 'refused' BEGIN SELECT RAISE(ABORT, 'status write refused'); END`)
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    expect(() => writeJournalSessionStatuses(database(), folded)).not.toThrow()
+
+    expect(readTestJournalSessionStatus(root, 'first')).toEqual(folded[0]!.status)
+    expect(readTestJournalSessionStatus(root, 'last')).toEqual(folded[3]!.status)
+    expect(readTestJournalSessionStatus(root, 'empty')).toBeNull()
+    expect(readTestJournalSessionStatus(root, 'refused')).toBeNull()
+  })
 })
