@@ -3,7 +3,7 @@ import type { SshRemotePtyLease } from '../../shared/ssh-types'
 import {
   assessOrcadMigrationTerminals,
   confirmOrcadMigrationTerminalsUnderFence,
-  retireProvenDetachedLeases,
+  retireProvenExitedLeases,
   type ListRelayPtyIds
 } from './orcad-migration-terminal-gate'
 
@@ -46,7 +46,7 @@ describe('migration terminal gate', () => {
 
     // Only the move acting on the proof retires the lease; asking alone changes nothing.
     const markSshRemotePtyLease = vi.fn()
-    retireProvenDetachedLeases({ ...leases, markSshRemotePtyLease }, 'ssh-1', proof)
+    retireProvenExitedLeases({ ...leases, markSshRemotePtyLease }, 'ssh-1', proof)
     expect(markSshRemotePtyLease).toHaveBeenCalledWith('ssh-1', 'a', 'terminated')
   })
 
