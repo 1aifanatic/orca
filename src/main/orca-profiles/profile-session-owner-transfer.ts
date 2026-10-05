@@ -105,7 +105,7 @@ export function extractSessionOwnersForTransfer(
   )
   transferred.terminalLayoutsByTabId = Object.fromEntries(
     [...terminalTabIds].flatMap((tabId) => {
-      const layout = source.terminalLayoutsByTabId[tabId]
+      const layout = source.terminalLayoutsByTabId?.[tabId]
       return layout ? [[tabId, structuredClone(layout)] as const] : []
     })
   )
@@ -169,7 +169,7 @@ export function extractSessionOwnersForTransfer(
 
 export function hasTransferredSessionState(session: WorkspaceSessionState): boolean {
   return (
-    Object.keys(session.tabsByWorktree).length > 0 ||
+    Object.keys(session.tabsByWorktree ?? {}).length > 0 ||
     Object.keys(session.openFilesByWorktree ?? {}).length > 0 ||
     Object.keys(session.markdownFrontmatterVisible ?? {}).length > 0 ||
     Object.keys(session.browserTabsByWorktree ?? {}).length > 0 ||

@@ -14,6 +14,7 @@ import type { TerminalScrollbackSnapshotStorage } from '../../terminal-scrollbac
 import {
   createOrcadMigrationSourceScope,
   orcadMigrationOwnerMatchesScope,
+  orcadMigrationPartitionScope,
   unqualifyOrcadMigrationOwnerKey
 } from './orcad-source-scope'
 import {
@@ -42,17 +43,33 @@ export type OrcadMigrationSourceWorkspaceSessionInspection = {
   blockedCount: number
 }
 
+/** Fails closed: a session shape no collector expects blocks the move instead of failing connect. */
 export function collectOrcadMigrationSourceWorkspaceSession(
   state: PersistedState,
   source: OrcadMigrationManifestSource,
   catalog: OrcadMigrationCatalogPayload,
   storage?: TerminalScrollbackSnapshotStorage
 ): OrcadMigrationSourceWorkspaceSessionInspection {
-  const scope = createOrcadMigrationSourceScope({ source, catalog })
+  try {
+    return collectWorkspaceSession(state, source, catalog, storage)
+  } catch (error) {
+    console.warn('[migration] Unreadable workspace session blocks the move:', error)
+    return { payload: undefined, snapshots: [], blockedCount: 1 }
+  }
+}
+
+function collectWorkspaceSession(
+  state: PersistedState,
+  source: OrcadMigrationManifestSource,
+  catalog: OrcadMigrationCatalogPayload,
+  storage?: TerminalScrollbackSnapshotStorage
+): OrcadMigrationSourceWorkspaceSessionInspection {
+  const sourceScope = createOrcadMigrationSourceScope({ source, catalog })
   const fragments: WorkspaceSessionState[] = []
   const snapshots: OrcadMigrationTerminalScrollbackSnapshot[] = []
   let blockedCount = 0
   for (const [partitionId, session] of sessionPartitions(state, LOCAL_EXECUTION_HOST_ID)) {
+    const scope = orcadMigrationPartitionScope(sourceScope, partitionId)
     const sourceHostPartition = partitionId === scope.hostId
     const terminalTabIds = collectOwnedTerminalTabIds(session, scope)
     blockedCount += countUnsupportedSessionState(
