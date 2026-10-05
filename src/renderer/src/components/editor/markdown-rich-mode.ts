@@ -66,7 +66,7 @@ const UNSUPPORTED_PATTERNS: UnsupportedMatch[] = [
       )
     },
     // Large documents retain conservative colon matching.
-    pattern: /^\uFEFF?[ \t>*+\-\d.)]*\[[^\]]+\]:/m
+    pattern: /^\uFEFF?[ \t>*+\-\d.)]*\[(?:\\[\s\S]|[^\\[\]])+\]:/m
   },
   {
     reason: 'footnotes',

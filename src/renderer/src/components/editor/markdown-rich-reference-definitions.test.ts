@@ -31,6 +31,15 @@ describe('reference definition eligibility at actual parser boundaries', () => {
     expect(getMarkdownRichModeUnsupportedReason(content)).toBeNull()
   })
 
+  it('keeps large definitions with an escaped closing bracket blocked', () => {
+    const content = `[a\\]b]: /x\n\n${'x'.repeat(50_001)}`
+    expect(getMarkdownRichModeUnsupportedReason(content)).toBe('reference-links')
+  })
+
+  it('keeps repeated unclosed labels in a large document eligible', () => {
+    expect(getMarkdownRichModeUnsupportedReason('[\n'.repeat(32_000))).toBeNull()
+  })
+
   it('keeps ordinary label prose eligible beside a code example', () => {
     const content = '```md\n[id]: /x\n```\n\n[Bug]: text with spaces\n'
     expect(getMarkdownRichModeUnsupportedReason(content)).toBeNull()
