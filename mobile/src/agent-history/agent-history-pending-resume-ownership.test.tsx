@@ -10,9 +10,18 @@ const state = vi.hoisted(
     generation: number
     client: RpcClient | null
     connection: ConnectionState
+    legacy: boolean
+    completedBoundary: boolean
     session: AiVaultSession | null
     onResume?: (session: AiVaultSession) => Promise<void>
-  } => ({ generation: 1, client: null, connection: 'connected', session: null })
+  } => ({
+    generation: 1,
+    client: null,
+    connection: 'connected',
+    legacy: false,
+    completedBoundary: false,
+    session: null
+  })
 )
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
@@ -32,10 +41,14 @@ vi.mock('react-native-safe-area-context', () => ({
 }))
 vi.mock('react-native-svg', () => ({ default: 'Svg', Path: 'Path' }))
 vi.mock('lucide-react-native', () => ({ ChevronLeft: 'Icon', Play: 'Icon', RefreshCw: 'Icon' }))
-vi.mock('../platform/haptics', () => ({ triggerError: vi.fn(), triggerSuccess: vi.fn() }))
+const notifications = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn(), push: vi.fn() }))
+vi.mock('../platform/haptics', () => ({
+  triggerError: notifications.error,
+  triggerSuccess: notifications.success
+}))
 vi.mock('../components/MobileAgentIcon', () => ({ MobileAgentIcon: () => null }))
 vi.mock('../navigation/route-handoff', () => ({
-  useRouteHandoff: () => ({ push: vi.fn(), back: vi.fn(), canGoBack: () => false })
+  useRouteHandoff: () => ({ push: notifications.push, back: vi.fn(), canGoBack: () => false })
 }))
 vi.mock('../transport/client-context', () => ({
   useHostClient: () => ({ client: state.client, state: state.connection }),
@@ -50,9 +63,11 @@ vi.mock('./use-mobile-agent-history-state', () => ({
       state.generation === 1
         ? {
             hostPlatform: 'darwin',
-            capabilities: ['aiVault.v1', 'session.tabs.qoderOwnedCreate.v1']
+            capabilities: state.legacy ? [] : ['aiVault.v1', 'session.tabs.qoderOwnedCreate.v1']
           }
-        : null,
+        : state.completedBoundary
+          ? { hostPlatform: 'darwin', capabilities: [] }
+          : null,
     activeWorktreePath: '/owned/workspace',
     scopeFilterPaths: ['/owned/workspace'],
     onSelectScope: vi.fn(),
@@ -83,10 +98,21 @@ it.each([
   ['generation', 'preparation'],
   ['disconnect', 'preparation'],
   ['stable', 'terminal creation'],
-  ['generation', 'terminal creation']
+  ['generation', 'terminal creation'],
+  ['stable', 'accepted send'],
+  ['generation', 'accepted send'],
+  ['generation without render', 'accepted send'],
+  ['host', 'accepted send'],
+  ['unmount', 'accepted send'],
+  ['generation', 'owned create accepted']
 ])('pending resume keeps its owner: %s during %s', async (scenario, boundary) => {
   const cutover = scenario !== 'stable'
   let hostId = 'owned-host'
+  notifications.error.mockClear()
+  notifications.success.mockClear()
+  notifications.push.mockClear()
+  state.legacy = boundary === 'accepted send'
+  state.completedBoundary = state.legacy || boundary === 'owned create accepted'
   state.generation = 1
   state.connection = 'connected'
   state.session = {
@@ -168,7 +194,7 @@ it.each([
         return { id: 'owned-reply', ok: true, result: {} }
       }
       if (method === 'session.tabs.createTerminal') {
-        return boundary === 'terminal creation'
+        return boundary === 'terminal creation' || boundary === 'owned create accepted'
           ? pendingOptional
           : {
               id: 'owned-reply',
@@ -179,6 +205,9 @@ it.each([
             }
       }
       if (method === 'terminal.send') {
+        if (boundary === 'accepted send') {
+          return pendingOptional
+        }
         return { id: 'owned-reply', ok: true, result: { send: { accepted: true } } }
       }
       throw new Error(`Unexpected method ${method}`)
@@ -214,7 +243,11 @@ it.each([
     })
     expect(calls.some((call) => call.method === 'repo.list')).toBe(true)
     expect(calls.some((call) => call.method === 'folderWorkspace.list')).toBe(true)
-    if (boundary === 'terminal creation') {
+    if (
+      boundary === 'terminal creation' ||
+      boundary === 'owned create accepted' ||
+      boundary === 'accepted send'
+    ) {
       expect(calls.some((call) => call.method === 'session.tabs.createTerminal')).toBe(true)
     }
     if (boundary === 'preparation') {
@@ -248,7 +281,7 @@ it.each([
       })
     }
     await act(async () => {
-      if (boundary === 'terminal creation') {
+      if (boundary === 'terminal creation' || boundary === 'owned create accepted') {
         resolveOptional({
           id: 'owned-reply',
           ok: true,
@@ -256,6 +289,8 @@ it.each([
             tab: { type: 'terminal', id: 'owned-tab', terminal: 'owned-pty', title: 'Terminal' }
           }
         })
+      } else if (boundary === 'accepted send') {
+        resolveOptional({ id: 'owned-reply', ok: true, result: { send: { accepted: true } } })
       } else if (boundary === 'preparation' && !cutover) {
         resolveOptional({ id: 'owned-reply', ok: true, result: { useRealCodexHome: true } })
       } else {
@@ -264,7 +299,39 @@ it.each([
       await resume
     })
     const createCall = calls.find((call) => call.method === 'session.tabs.createTerminal')
-    if (cutover) {
+    if (boundary === 'accepted send' || boundary === 'owned create accepted') {
+      expect(createCall).toBeDefined()
+      expect(calls.filter((call) => call.method === 'terminal.send')).toHaveLength(
+        state.legacy ? 1 : 0
+      )
+      const completion = {
+        errors: notifications.error.mock.calls.length,
+        successes: notifications.success.mock.calls.length,
+        navigations: notifications.push.mock.calls.length
+      }
+      if (scenario !== 'unmount') {
+        await act(async () => {
+          if (!state.session || !state.onResume) {
+            throw new Error('missing retry')
+          }
+          await state.onResume(state.session)
+        })
+        const creates = calls.filter((call) => call.method === 'session.tabs.createTerminal')
+        expect(creates).toHaveLength(2)
+        expect(createCall?.params).toEqual(
+          expect.objectContaining({ clientMutationId: expect.any(String) })
+        )
+        expect(creates[1].params).toEqual(
+          expect.objectContaining({ clientMutationId: expect.any(String) })
+        )
+        expect(creates[1].params).not.toEqual(
+          expect.objectContaining({
+            clientMutationId: Reflect.get(Object(createCall?.params), 'clientMutationId')
+          })
+        )
+      }
+      expect(completion).toEqual({ errors: 0, successes: 1, navigations: cutover ? 0 : 1 })
+    } else if (cutover) {
       if (boundary === 'terminal creation') {
         expect(createCall).toBeDefined()
       } else {

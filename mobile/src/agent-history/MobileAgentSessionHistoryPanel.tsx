@@ -225,9 +225,14 @@ export function MobileAgentSessionHistoryPanel({
           },
           assertCurrentOwner
         )
-        assertCurrentOwner()
         resumeMutationRegistryRef.current.releaseOnSuccess(session.id)
         triggerSuccess()
+        // The host accepted the resume; a cutover now only stops navigation.
+        try {
+          assertCurrentOwner()
+        } catch {
+          return
+        }
         setResumeMessage('Agent session queued.')
         router.push(
           `/h/${encodeURIComponent(hostId)}/session/${encodeURIComponent(target.worktreeId)}` as Parameters<
