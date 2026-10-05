@@ -379,6 +379,14 @@ describe('applyMobileNativeChatStreamFrame', () => {
     expect(
       applyMobileNativeChatStreamFrame({
         merger,
+        frame: { type: 'end', error: 'This chat is too large to show on this device' },
+        limit: 40,
+        replaceSnapshot: true
+      })
+    ).toEqual({ kind: 'error', error: 'This chat is too large to show on this device' })
+    expect(
+      applyMobileNativeChatStreamFrame({
+        merger,
         frame: { type: 'subscribed' },
         limit: 40,
         replaceSnapshot: true

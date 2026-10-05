@@ -1,4 +1,7 @@
-import type { NativeChatMessage } from '../../../../shared/native-chat-types'
+import type {
+  NativeChatMessage,
+  NativeChatTurnLifecycle
+} from '../../../../shared/native-chat-types'
 import { resolveNativeChatTranscriptAgent } from '../../../../shared/native-chat-agent-support'
 import {
   readNativeChatTranscriptTail,
@@ -8,6 +11,10 @@ import {
 } from '../../../native-chat/transcript-watch'
 import { defineMethod, defineStreamingMethod, type RpcContext } from '../core'
 import { sanitizeNativeChatRpcBlock } from './native-chat-rpc-block-sanitize'
+import {
+  admitNativeChatMobileResult,
+  NATIVE_CHAT_FRAME_TOO_LARGE_ERROR
+} from './native-chat-rpc-envelope-admission'
 import {
   boundNativeChatRpcPageByBytes,
   nativeChatRpcAppendBatches
@@ -68,7 +75,7 @@ function pageForClient(
   const sanitized = (isOpenCode ? messages : windowTranscript(messages, limit)).map((message) =>
     sanitizeMessage(message, clientKind)
   )
-  return isOpenCode
+  return isOpenCode || clientKind === 'mobile'
     ? boundNativeChatRpcPageByBytes(sanitized, hasMore, beforeOffset)
     : { messages: sanitized, hasMore, beforeOffset }
 }
@@ -77,7 +84,7 @@ export const NATIVE_CHAT_METHODS = [
   defineMethod({
     name: 'nativeChat.readSession',
     params: NativeChatSession,
-    handler: async (params, { clientKind, signal }) => {
+    handler: async (params, { clientKind, requestId, signal }) => {
       const limit = params.limit ?? MOBILE_NATIVE_CHAT_DEFAULT_WINDOW
       const result = await readNativeChatTranscriptTail(
         {
@@ -89,25 +96,34 @@ export const NATIVE_CHAT_METHODS = [
         },
         signal
       )
-      return 'messages' in result
-        ? {
-            ...pageForClient(
-              result.messages,
-              result.hasMore,
-              result.beforeOffset,
-              clientKind,
-              limit,
-              params.agent
-            ),
-            ...(result.lifecycle ? { lifecycle: result.lifecycle } : {})
-          }
-        : result
+      if (!('messages' in result)) {
+        return result
+      }
+      const page = {
+        ...pageForClient(
+          result.messages,
+          result.hasMore,
+          result.beforeOffset,
+          clientKind,
+          limit,
+          params.agent
+        ),
+        ...(result.lifecycle ? { lifecycle: result.lifecycle } : {})
+      }
+      if (clientKind !== 'mobile') {
+        return page
+      }
+      return (
+        admitNativeChatMobileResult(page, requestId) ?? {
+          error: NATIVE_CHAT_FRAME_TOO_LARGE_ERROR
+        }
+      )
     }
   }),
   defineStreamingMethod({
     name: 'nativeChat.subscribe',
     params: NativeChatSession,
-    handler: async (params, { runtime, connectionId, clientKind, signal }, emit) => {
+    handler: async (params, { runtime, connectionId, clientKind, requestId, signal }, emit) => {
       if (signal?.aborted) {
         return
       }
@@ -124,6 +140,8 @@ export const NATIVE_CHAT_METHODS = [
       const cleanupToken = params.subscriptionId ?? `${params.agent}:${params.sessionId}`
       const subscriptionId = `nativeChat:${connectionId ?? 'local'}:${cleanupToken}`
       const limit = params.limit ?? MOBILE_NATIVE_CHAT_DEFAULT_WINDOW
+      // The one terminal frame; an oversized frame swaps in its error so the stream ends exactly once.
+      let endFrame: { type: 'end'; error?: string } = { type: 'end' }
       const cleanup = (): void => {
         if (closed) {
           return
@@ -132,10 +150,24 @@ export const NATIVE_CHAT_METHODS = [
         signal?.removeEventListener('abort', handleAbort)
         setupController.abort()
         unsubscribe()
-        emit({ type: 'end' })
+        emit(endFrame)
       }
       function handleAbort(): void {
         runtime.cleanupSubscription(subscriptionId)
+      }
+      // Why: a phone frame over the socket's JSON cap would close the whole connection; end only this stream.
+      const emitFrame = <T extends { type: string; lifecycle?: NativeChatTurnLifecycle }>(
+        frame: T
+      ): void => {
+        const admitted =
+          clientKind === 'mobile' ? admitNativeChatMobileResult(frame, requestId) : frame
+        if (admitted) {
+          emit(admitted)
+          return
+        }
+        endFrame = { type: 'end', error: NATIVE_CHAT_FRAME_TOO_LARGE_ERROR }
+        runtime.cleanupSubscription(subscriptionId)
+        cleanup()
       }
       signal?.addEventListener('abort', handleAbort, { once: true })
       runtime.registerSubscriptionCleanup(subscriptionId, cleanup, connectionId)
@@ -157,7 +189,7 @@ export const NATIVE_CHAT_METHODS = [
           }
           // Forward an initial-drain error so a watching client's first frame carries it
           // instead of stranding the view at 'loading' when the read keeps throwing.
-          emit({
+          emitFrame({
             type: 'snapshot',
             ...pageForClient(messages, hasMore, beforeOffset, clientKind, limit, params.agent),
             ...(error ? { error } : {}),
@@ -168,7 +200,7 @@ export const NATIVE_CHAT_METHODS = [
           ? {
               onTranscriptPending: () => {
                 if (!closed) {
-                  emit({ type: 'snapshot', messages: [], hasMore: false, pending: true })
+                  emitFrame({ type: 'snapshot', messages: [], hasMore: false, pending: true })
                 }
               }
             }
@@ -177,7 +209,7 @@ export const NATIVE_CHAT_METHODS = [
           if (closed) {
             return
           }
-          emit({
+          emitFrame({
             type: 'replacement',
             ...pageForClient(messages, hasMore, beforeOffset, clientKind, limit, params.agent),
             ...(lifecycle ? { lifecycle } : {})
@@ -189,11 +221,16 @@ export const NATIVE_CHAT_METHODS = [
           }
           const sanitized = sanitizeAppendForClient(messages, clientKind)
           const batches =
-            sanitized.length > 0 && resolveNativeChatTranscriptAgent(params.agent) === 'opencode'
+            sanitized.length > 0 &&
+            (clientKind === 'mobile' ||
+              resolveNativeChatTranscriptAgent(params.agent) === 'opencode')
               ? nativeChatRpcAppendBatches(sanitized)
               : [sanitized]
           for (const batch of batches) {
-            emit({
+            if (closed) {
+              return
+            }
+            emitFrame({
               type: 'appended',
               messages: batch,
               ...(lifecycle && batch === batches.at(-1) ? { lifecycle } : {})
@@ -216,7 +253,7 @@ export const NATIVE_CHAT_METHODS = [
         return
       }
       if (!subscription.watching) {
-        emit({
+        emitFrame({
           type: 'snapshot',
           messages: [],
           hasMore: false,
