@@ -53,8 +53,10 @@ export const sshApi = {
   disconnect: (args: { targetId: string }): Promise<void> =>
     ipcRenderer.invoke('ssh:disconnect', args),
 
-  terminateSessions: (args: { targetId: string }): Promise<SshTerminateSessionsResult> =>
-    ipcRenderer.invoke('ssh:terminateSessions', args),
+  terminateSessions: (args: {
+    targetId: string
+    forRemoval?: boolean
+  }): Promise<SshTerminateSessionsResult> => ipcRenderer.invoke('ssh:terminateSessions', args),
 
   moveToManagedServer: (args: { targetId: string }): Promise<SshManagedServerMoveResult> =>
     ipcRenderer.invoke('ssh:moveToManagedServer', args),

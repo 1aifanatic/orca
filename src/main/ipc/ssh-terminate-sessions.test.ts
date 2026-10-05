@@ -45,6 +45,23 @@ describe('SSH IPC handlers', () => {
 
   beforeEach(harness.reset)
 
+  it('ssh:terminateSessions refuses a removal of a managed server host before ending anything', async () => {
+    mockSshStore.getTarget.mockReturnValue({
+      id: 'ssh-1',
+      label: 'Server',
+      host: 'example.com',
+      port: 22,
+      username: 'deploy',
+      orcadFence: { environmentId: 'env-1' }
+    })
+    vi.mocked(getSshPtyProvider).mockReturnValue(mockPtyProvider as never)
+    vi.mocked(getPtyIdsForConnection).mockReturnValue(['pty-1'])
+    expect(() =>
+      handlers.get('ssh:terminateSessions')!(null, { targetId: 'ssh-1', forRemoval: true })
+    ).toThrow('Settings › Managed servers')
+    expect(mockPtyProvider.shutdown).not.toHaveBeenCalled()
+  })
+
   it('ssh:terminateSessions preserves tracking when relay shutdown fails', async () => {
     const target: SshTarget = {
       id: 'ssh-1',

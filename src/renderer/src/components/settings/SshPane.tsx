@@ -170,8 +170,7 @@ export function SshPane({ addTargetIntentSignal }: SshPaneProps): React.JSX.Elem
 
   const handleRemove = async (id: string): Promise<void> => {
     try {
-      const target = targets.find((entry) => entry.id === id)
-      await removeSshTargetWithBestEffortCleanup(window.api.ssh, id, target)
+      await removeSshTargetWithBestEffortCleanup(window.api.ssh, id)
       // Why: a deleted passphrase-gated target may still have deferred
       // reconnect metadata; clear it so focused SSH tabs stop retrying it.
       clearRemovedSshTargetState(id)
