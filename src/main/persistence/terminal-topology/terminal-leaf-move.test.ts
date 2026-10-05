@@ -129,21 +129,6 @@ describe('moving a pane to a new tab', () => {
     expect(tabsHoldingLeaf(store.getWorkspaceSession(), MOVED)).toEqual([SOURCE])
   })
 
-  // The renderer retries a move whose answer was lost; the write may already have landed.
-  it('answers a repeat of a committed move with moved and writes nothing', async () => {
-    const store = openStore(newDataFile())
-    await seedSplitSource(store)
-    const request = { ...moveRequest, ptyId: 'pty-agent' }
-    await store.moveTerminalLeafToNewTab(request)
-    const committed = store.getWorkspaceSession()
-
-    await expect(store.moveTerminalLeafToNewTab(request)).resolves.toEqual({
-      status: 'moved',
-      ptyId: 'pty-agent'
-    })
-    expect(store.getWorkspaceSession()).toBe(committed)
-  })
-
   it('moves a leaf that a stray layout of a removed tab still names', () => {
     const planned = planTerminalLeafMove(
       [
@@ -200,7 +185,12 @@ describe('moving a pane to a new tab', () => {
       const spans = records.filter((record) => record.name === 'persistence.terminal-topology')
       expect(spans.map((span) => span.attributes)).toEqual([
         { kind: 'persistence', 'topology.kind': 'move_leaf', 'topology.outcome': 'committed' },
-        { kind: 'persistence', 'topology.kind': 'move_leaf', 'topology.outcome': 'noop' },
+        {
+          kind: 'persistence',
+          'topology.kind': 'move_leaf',
+          'topology.outcome': 'refused',
+          'topology.refusal': 'target_tab_exists'
+        },
         {
           kind: 'persistence',
           'topology.kind': 'move_leaf',

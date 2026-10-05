@@ -3,7 +3,7 @@ import { agentHookServer } from '../../../agent-hooks/server'
 import type { Store } from '../../../persistence'
 import type { OrcaRuntimeService } from '../../../runtime/orca-runtime'
 import type { TerminalLeafMoveResult } from '../../../../shared/terminal-leaf-move'
-import { moveTerminalLeafToNewTab } from './leaf-move'
+import { commitLeafMoveAndRekey } from './leaf-move'
 
 const LEAF = '22222222-2222-4222-8222-222222222222'
 const request = {
@@ -37,7 +37,7 @@ describe('pty:moveLeafToNewTab', () => {
       ptyId: 'pty-agent'
     })
 
-    await expect(moveTerminalLeafToNewTab({ store, runtime }, request)).resolves.toEqual({
+    await expect(commitLeafMoveAndRekey({ store, runtime }, request)).resolves.toEqual({
       status: 'moved',
       ptyId: 'pty-agent'
     })
@@ -55,16 +55,6 @@ describe('pty:moveLeafToNewTab', () => {
     })
   })
 
-  it('does not transfer agent status again when a repeated move answers moved', async () => {
-    vi.spyOn(agentHookServer, 'isPaneAuthorityTransferredTo').mockReturnValue(true)
-    const transfer = vi.spyOn(agentHookServer, 'transferPaneAuthority').mockImplementation(() => {})
-    const { store, runtime } = deps({ status: 'moved', ptyId: 'pty-agent' })
-
-    await moveTerminalLeafToNewTab({ store, runtime }, request)
-
-    expect(transfer).not.toHaveBeenCalled()
-  })
-
   it.each<TerminalLeafMoveResult>([
     { status: 'not_held' },
     { status: 'refused', reason: 'pty_mismatch' }
@@ -72,7 +62,7 @@ describe('pty:moveLeafToNewTab', () => {
     const transfer = vi.spyOn(agentHookServer, 'transferPaneAuthority').mockImplementation(() => {})
     const { store, runtime, rekeyWorkerTerminalResourcePaneKey } = deps(result)
 
-    await expect(moveTerminalLeafToNewTab({ store, runtime }, request)).resolves.toEqual(result)
+    await expect(commitLeafMoveAndRekey({ store, runtime }, request)).resolves.toEqual(result)
 
     expect(transfer).not.toHaveBeenCalled()
     expect(rekeyWorkerTerminalResourcePaneKey).not.toHaveBeenCalled()

@@ -10,7 +10,7 @@ import {
 } from '../../../../shared/terminal-leaf-move'
 
 /** Durable move first; agent-status and orchestration keys follow only a committed move. */
-export async function moveTerminalLeafToNewTab(
+export async function commitLeafMoveAndRekey(
   deps: { store?: Store; runtime?: OrcaRuntimeService },
   request: TerminalLeafMoveRequest
 ): Promise<TerminalLeafMoveResult> {
@@ -23,17 +23,14 @@ export async function moveTerminalLeafToNewTab(
   }
   const { from: fromPaneKey, to: toPaneKey } = terminalLeafMovePaneKeys(request)
   try {
-    // The process keeps the pane key baked into its env, so status must alias old to new. A
-    // repeated move is already aliased; transferring again would clear the pane's polls.
-    if (!agentHookServer.isPaneAuthorityTransferredTo(fromPaneKey, toPaneKey)) {
-      agentHookServer.transferPaneAuthority(
-        fromPaneKey,
-        toPaneKey,
-        result.ptyId ?? undefined,
-        Date.now(),
-        { authorityVerified: true }
-      )
-    }
+    // The process keeps the pane key baked into its env, so status must alias old to new.
+    agentHookServer.transferPaneAuthority(
+      fromPaneKey,
+      toPaneKey,
+      result.ptyId ?? undefined,
+      Date.now(),
+      { authorityVerified: true }
+    )
   } catch (error) {
     console.warn('[pty] moved pane kept its old agent-status key:', error)
   }
@@ -56,6 +53,6 @@ export function installPtyLeafMoveIpcHandler(deps: {
     if (!isTerminalLeafMoveRequest(args)) {
       return { status: 'refused', reason: 'invalid_request' } satisfies TerminalLeafMoveResult
     }
-    return moveTerminalLeafToNewTab(deps, args)
+    return commitLeafMoveAndRekey(deps, args)
   })
 }

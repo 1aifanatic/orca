@@ -11,7 +11,7 @@ export type TerminalLeafMoveRequest = {
 }
 
 export type TerminalLeafMoveResult =
-  /** Main holds the leaf in the target tab, with every pane-keyed record (also on a repeat). */
+  /** Main moved the leaf and every pane-keyed record into the target tab in one durable write. */
   | { status: 'moved'; ptyId: string | null }
   /** Main's session never held the leaf, so there is nothing to move there. */
   | { status: 'not_held' }
@@ -50,13 +50,8 @@ export function isTerminalLeafMoveRequest(value: unknown): value is TerminalLeaf
     return false
   }
   try {
-    terminalLeafMovePaneKeys({
-      worktreeId: candidate.worktreeId,
-      sourceTabId: candidate.sourceTabId,
-      targetTabId: candidate.targetTabId,
-      leafId: candidate.leafId,
-      ptyId: candidate.ptyId
-    })
+    makePaneKey(candidate.sourceTabId, candidate.leafId)
+    makePaneKey(candidate.targetTabId, candidate.leafId)
     return true
   } catch {
     return false
