@@ -35,7 +35,8 @@ type TargetStore = Pick<Store, 'getSshTargets' | 'updateSshTarget'>
 
 /**
  * Whether this build hides the host's source rows: committed to its server and not changed by an
- * older build since. Mid-migration the rows stay shown, since the source is still authoritative.
+ * older build since. Mid-migration the rows stay shown, since the source is still authoritative,
+ * and so does a fence no journal explains (an empty host's deploy): no move owns those rows.
  */
 export function isHiddenRetainedSourceTarget(
   userDataPath: string,
@@ -51,10 +52,10 @@ export function isHiddenRetainedSourceTarget(
     return true // An unreadable journal keeps the host fenced, and so hidden.
   }
   return (
-    !head ||
-    head.phase === 'destination-committed' ||
-    head.phase === 'source-retired' ||
-    head.destinationEnvironmentId !== target.orcadFence.environmentId
+    head !== null &&
+    (head.phase === 'destination-committed' ||
+      head.phase === 'source-retired' ||
+      head.destinationEnvironmentId !== target.orcadFence.environmentId)
   )
 }
 

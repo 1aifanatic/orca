@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FolderWorkspace } from '../../shared/folder-workspace-types'
 import type { ProjectGroup } from '../../shared/project-group-types'
 import type { Repo } from '../../shared/repo-types'
@@ -11,9 +11,9 @@ import type { Store } from '../persistence'
 import { orcadMigrationCutoverFixture } from './orcad-migration-cutover-fixture'
 import { writeOrcadMigrationSourceCutover } from './orcad-migration-cutover-journal'
 
-// No journal on disk: a fenced host reads as converted.
+const userData = vi.hoisted(() => ({ dir: '' }))
 vi.mock('../../shared/app-environment', () => ({
-  getAppEnvironment: () => ({ getPath: () => '/nonexistent-orca-user-data' })
+  getAppEnvironment: () => ({ getPath: () => userData.dir })
 }))
 vi.mock('./ssh-provider-authority', () => ({ isCurrentSshProviderAuthority: () => true }))
 const provider = {}
@@ -72,6 +72,25 @@ function catalog(targets: SshTarget[]): Store {
 }
 
 describe('lists while a converted host keeps its source rows', () => {
+  beforeEach(() => {
+    userData.dir = mkdtempSync(join(tmpdir(), 'orcad-retained-lists-'))
+    writeOrcadMigrationSourceCutover(userData.dir, {
+      ...orcadMigrationCutoverFixture('m-0', FENCED.id),
+      phase: 'destination-committed'
+    })
+  })
+  afterEach(() => rmSync(userData.dir, { recursive: true, force: true }))
+
+  it('shows every row of a fenced host no journal explains, as after an empty-host deploy', () => {
+    const emptyDeploy = mkdtempSync(join(tmpdir(), 'orcad-retained-lists-'))
+    try {
+      // An older build added these after the deploy; no move owns them, so they stay visible.
+      expect(visibleProjectGroups(catalog([FENCED]), () => emptyDeploy)).toHaveLength(2)
+    } finally {
+      rmSync(emptyDeploy, { recursive: true, force: true })
+    }
+  })
+
   it('hides the host own project groups, but not a local group', () => {
     expect(visibleProjectGroups(catalog([FENCED])).map((entry) => entry.id)).toEqual([
       'local-group'

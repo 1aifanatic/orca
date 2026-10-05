@@ -3,7 +3,14 @@ import type { SshTarget } from '../../shared/ssh-types'
 
 const mocks = vi.hoisted(() => {
   const state: { target?: SshTarget } = {}
-  return { handle: vi.fn(), remove: vi.fn(), state, addTarget: vi.fn(), updateTarget: vi.fn() }
+  return {
+    handle: vi.fn(),
+    remove: vi.fn(),
+    state,
+    addTarget: vi.fn(),
+    updateTarget: vi.fn(),
+    closeTunnel: vi.fn(async () => {})
+  }
 })
 
 vi.mock('electron', () => ({ ipcMain: { handle: mocks.handle } }))
@@ -16,6 +23,7 @@ vi.mock('../ssh/ssh-target-registry', () => ({
   })
 }))
 vi.mock('./ssh-session-teardown', () => ({ removeRegisteredSshTarget: mocks.remove }))
+vi.mock('../ssh/orcad-managed-tunnel', () => ({ closeOrcadManagedTunnel: mocks.closeTunnel }))
 vi.mock('./ssh-ipc-context', () => ({ getCurrentMainWindow: () => null }))
 
 const { registerSshTargetCrudHandlers } = await import('./ssh-target-crud-handlers')
@@ -37,25 +45,28 @@ describe('SSH target CRUD against managed orcad targets', () => {
     registerSshTargetCrudHandlers()
   })
 
-  it('refuses to edit or remove a target a managed server owns', async () => {
-    expect(() =>
-      handler('ssh:updateTarget')(null, { id: 'ssh-1', updates: { host: 'elsewhere' } })
-    ).toThrow('cannot be edited')
-    await expect(handler('ssh:removeTarget')(null, { id: 'ssh-1' })).rejects.toThrow(
-      'cannot be removed'
-    )
-    expect(mocks.updateTarget).not.toHaveBeenCalled()
-    expect(mocks.remove).not.toHaveBeenCalled()
+  it("edits a managed host's connection, keeping its fence and redialing its tunnel", () => {
+    mocks.updateTarget.mockReturnValue({ ...mocks.state.target, host: 'elsewhere' })
+    handler('ssh:updateTarget')(null, {
+      id: 'ssh-1',
+      updates: { host: 'elsewhere', orcadFence: undefined, generation: 9 }
+    })
+    expect(mocks.updateTarget).toHaveBeenCalledWith('ssh-1', { host: 'elsewhere' })
+    expect(mocks.closeTunnel).toHaveBeenCalledWith('environment-1')
   })
 
-  it('refuses a target with a pending provisioning request too', () => {
+  it('refuses to remove a managed host, pointing at Stop instead', async () => {
+    await expect(handler('ssh:removeTarget')(null, { id: 'ssh-1' })).rejects.toThrow(
+      'Settings › Managed servers'
+    )
     mocks.state.target = {
       ...target,
       orcadProvisioning: { requestId: 'request-1', name: 'Managed' }
     }
-    expect(() => handler('ssh:updateTarget')(null, { id: 'ssh-1', updates: {} })).toThrow(
-      'cannot be edited'
+    await expect(handler('ssh:removeTarget')(null, { id: 'ssh-1' })).rejects.toThrow(
+      'managed Orca server'
     )
+    expect(mocks.remove).not.toHaveBeenCalled()
   })
 
   it('never lets the renderer write a provisioning intent', () => {

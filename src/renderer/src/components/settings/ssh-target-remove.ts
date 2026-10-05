@@ -1,4 +1,5 @@
 import { SSH_TERMINATE_RECONNECT_REQUIRED } from '../../../../shared/constants'
+import type { SshTarget } from '../../../../shared/ssh-types'
 
 export type SshTargetRemoveApi = {
   terminateSessions: (args: { targetId: string }) => Promise<unknown>
@@ -13,8 +14,14 @@ export type SshTargetRemoveApi = {
 // always succeed; the relay layer disposes any live session on its own side.
 export async function removeSshTargetWithBestEffortCleanup(
   api: SshTargetRemoveApi,
-  id: string
+  id: string,
+  target?: Pick<SshTarget, 'orcadFence' | 'orcadProvisioning'>
 ): Promise<void> {
+  if (target?.orcadFence || target?.orcadProvisioning) {
+    // Main refuses and says how to stop the server; its terminals must not end first.
+    await api.removeTarget({ id })
+    return
+  }
   try {
     await api.terminateSessions({ targetId: id })
   } catch (err) {
