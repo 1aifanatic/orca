@@ -20,10 +20,7 @@ import {
   agentSessionFailureFact,
   type SubmissionRejectionFact
 } from '../../../shared/agent-session-failure'
-import {
-  isStructuredAgentSessionPreviousExitUnverifiable,
-  type StructuredAgentSessionResumeOutcome
-} from './structured-agent-session-agent-start'
+import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-agent-start'
 import type {
   StructuredAgentSessionHostSession,
   StructuredAgentSessionProviderChildIdentity
@@ -49,10 +46,6 @@ import {
 } from './structured-agent-session-ended-child-failure'
 import { handOverSubmission } from './structured-agent-session-turns'
 import type { StructuredAgentSessionStartFailureCause } from './structured-agent-session-failure-text'
-import {
-  recordStructuredAgentSessionWindDownWait,
-  structuredAgentSessionWindDownWaitHolds
-} from './structured-agent-session-wind-down-wait-row'
 import { structuredAgentSessionCommandRunning } from './structured-agent-session-command-turn'
 import type { StructuredAgentSessionDeliveryLoopDeps } from './structured-agent-session-delivery-loop-deps'
 
@@ -191,20 +184,7 @@ export class StructuredAgentSessionDeliveryLoop {
     if (!next || (session.child && structuredAgentSessionCommandRunning(session.journal))) {
       return this.stop(sessionId, decidedAt)
     }
-    // Already waiting on a stop that could not prove its child gone: a new message retries it, and
-    // any other retry that lands wakes this loop itself, so the waiting row's own commit does not.
-    // Another operation's retry may have failed first, so the row is made sure of here too.
-    if (structuredAgentSessionWindDownWaitHolds(session)) {
-      await recordStructuredAgentSessionWindDownWait(session, sessionId, this.deps)
-      return this.stop(sessionId, decidedAt)
-    }
     const ready = await this.deps.ensureProviderChild(sessionId, next.clientMessageId)
-    if (!ready.ok && isStructuredAgentSessionPreviousExitUnverifiable(ready.refusal)) {
-      // The start retried that stop first and still could not prove the exit: the message waits,
-      // saying why, rather than being refused. The row is written once per unproven child.
-      await recordStructuredAgentSessionWindDownWait(session, sessionId, this.deps)
-      return this.stop(sessionId, decidedAt)
-    }
     if (!ready.ok) {
       return { ...ready, startedFor: next.clientMessageId }
     }

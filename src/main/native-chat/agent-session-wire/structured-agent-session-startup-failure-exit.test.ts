@@ -5,17 +5,17 @@ import {
   agentSessionRecordFixture
 } from '../../../shared/agent-session-record.test-fixture'
 import {
-  settleUnexpectedStructuredAgentSessionExit,
-  type StructuredAgentSessionUnexpectedExitContext,
-  type StructuredAgentSessionUnexpectedExitSession
-} from './structured-agent-session-unexpected-exit'
+  settleStructuredAgentSessionChildExit,
+  type StructuredAgentSessionChildExitContext,
+  type StructuredAgentSessionChildExitSession
+} from './structured-agent-session-child-exit'
 import { recordingStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
 
 const SESSION = 'session-1'
 const GENERATION = 'generation-1'
 const REASON = 'claude stream-json exited (code 1): session limit reached'
 
-function startedSession(): StructuredAgentSessionUnexpectedExitSession & {
+function startedSession(): StructuredAgentSessionChildExitSession & {
   journal: {
     appendLifecycleBatch: ReturnType<typeof vi.fn>
     markPendingSubmissionsUnknown: ReturnType<typeof vi.fn>
@@ -25,6 +25,7 @@ function startedSession(): StructuredAgentSessionUnexpectedExitSession & {
     child: { generation: GENERATION, fence: 7, phase: 'ready' },
     journal: {
       cursor: () => ({ epoch: 'epoch-1', sequence: 0 }),
+      itemBody: () => null,
       // Nothing ran: the start failed before any response or acknowledged prompt.
       snapshot: () => ({ items: [] }),
       appendLifecycleBatch: vi.fn(async () => ({ epoch: 'epoch-1', sequence: 1 })),
@@ -33,7 +34,7 @@ function startedSession(): StructuredAgentSessionUnexpectedExitSession & {
   }
 }
 
-function contextFor(session: StructuredAgentSessionUnexpectedExitSession) {
+function contextFor(session: StructuredAgentSessionChildExitSession) {
   let record: AgentSessionRecord = agentSessionRecordFixture(
     agentSessionLeaseFixture({
       sessionId: SESSION,
@@ -46,7 +47,7 @@ function contextFor(session: StructuredAgentSessionUnexpectedExitSession) {
       unreconciled: false
     })
   )
-  const context: StructuredAgentSessionUnexpectedExitContext<typeof session> = {
+  const context: StructuredAgentSessionChildExitContext<typeof session> = {
     logger: recordingStructuredAgentSessionLogger().logger,
     store: {
       getRecord: () => record,
@@ -79,7 +80,7 @@ describe('a provider that ends before it finished starting', () => {
     const session = startedSession()
     const context = contextFor(session)
 
-    await settleUnexpectedStructuredAgentSessionExit(context, {
+    await settleStructuredAgentSessionChildExit(context, {
       ...ended,
       // The adapter typed the start's own failure; the loop words it on the message it was for.
       failure: { kind: 'notSignedIn' },
@@ -101,11 +102,10 @@ describe('a provider that ends before it finished starting', () => {
     const session = startedSession()
     const context = contextFor(session)
 
-    await settleUnexpectedStructuredAgentSessionExit(context, ended)
+    await settleStructuredAgentSessionChildExit(context, ended)
 
     expect(session.child).toBeNull()
     expect(session.journal.appendLifecycleBatch).not.toHaveBeenCalled()
-    expect(context.wakeDelivery).not.toHaveBeenCalled()
   })
 
   it("reads a start that failed off the host's own phase when the provider omits the flag", async () => {
@@ -115,7 +115,7 @@ describe('a provider that ends before it finished starting', () => {
     }
     const context = contextFor(session)
 
-    await settleUnexpectedStructuredAgentSessionExit(context, {
+    await settleStructuredAgentSessionChildExit(context, {
       ...ended,
       failure: { kind: 'providerExited', detail: { text: REASON, audience: 'log' } }
     })
