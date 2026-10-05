@@ -4,6 +4,7 @@
 
 // Status vocabulary, worst-first. 'unverified' is a read that did not complete or that hit the
 // entry limit; it can never settle to 'pass', because a truncated count is not evidence of calm.
+// A partial count already past a block line is a block, though: more data only adds to it.
 export const CHECK_STATUSES = ['would-block', 'unverified', 'warn', 'pass']
 
 export const VERDICTS = { PASS: 'PASS', WARN: 'WARN', WOULD_BLOCK: 'WOULD_BLOCK' }
@@ -386,12 +387,14 @@ export function judgePool({ label, samples, failed = false, truncated = false })
     sqlFailuresDeltaThreshold: sqlFailuresDelta,
     truncated
   }
-  // A truncated sample run has holes, and the consecutive-sample rule reads a hole as a recovery.
+  // A sample over the failure line is a fact however many others are missing.
+  if (detail.sqlFailuresDeltaMax > sqlFailuresDelta) return { status: 'would-block', ...detail }
+  // A truncated sample run has holes, and the consecutive-sample rule reads a hole as a recovery
+  // (or joins two runs across one), so it is judged only on a complete run.
   if (failed || truncated || samples.length === 0) return { status: 'unverified', ...detail }
-  if (
-    detail.consecutiveSamplesOverWaitersThreshold >= waitersConsecutiveSamples
-    || detail.sqlFailuresDeltaMax > sqlFailuresDelta
-  ) return { status: 'would-block', ...detail }
+  if (detail.consecutiveSamplesOverWaitersThreshold >= waitersConsecutiveSamples) {
+    return { status: 'would-block', ...detail }
+  }
   if (detail.waitersMax > waitersMax) return { status: 'warn', ...detail }
   return { status: 'pass', ...detail }
 }
@@ -399,8 +402,9 @@ export function judgePool({ label, samples, failed = false, truncated = false })
 export function judgeCloudSqlFatal({ count, truncated = false, failed = false }) {
   const { warnAbove, blockAbove } = SHADOW_GATE_THRESHOLDS.cloudSqlFatal
   const detail = { count, warnAbove, blockAbove }
-  if (failed || truncated) return { status: 'unverified', ...detail }
+  // A truncated count is a lower bound: already over the line is a block, under it proves nothing.
   if (count > blockAbove) return { status: 'would-block', ...detail }
+  if (failed || truncated) return { status: 'unverified', ...detail }
   if (count > warnAbove) return { status: 'warn', ...detail }
   return { status: 'pass', ...detail }
 }

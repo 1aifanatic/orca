@@ -213,6 +213,18 @@ test('pool pressure blocks only when it persists across consecutive samples', ()
     samples: [{ databasePoolWaitersMax: 1 }],
     truncated: true
   }).status, 'unverified')
+  // So is a run read across holes, which may join two separate runs into one.
+  assert.equal(judgePool({
+    label: 'production-gce-c29',
+    samples: Array.from({ length: 3 }, () => ({ databasePoolWaitersMax: 80 })),
+    truncated: true
+  }).status, 'unverified')
+  // But one sample past the failure line is a fact, whatever the read missed.
+  assert.equal(judgePool({
+    label: 'production-gce-c29',
+    samples: [{ databasePoolWaitersMax: 1, sqlFailuresDelta: 201 }],
+    truncated: true
+  }).status, 'would-block')
 })
 
 test('Cloud SQL FATALs warn from the first one and block on a run of them', () => {
@@ -220,6 +232,9 @@ test('Cloud SQL FATALs warn from the first one and block on a run of them', () =
   assert.equal(judgeCloudSqlFatal({ count: 1 }).status, 'warn')
   assert.equal(judgeCloudSqlFatal({ count: 21 }).status, 'would-block')
   assert.equal(judgeCloudSqlFatal({ count: 0, truncated: true }).status, 'unverified')
+  // A truncated count is a floor: already past the block line, more entries only add to it.
+  assert.equal(judgeCloudSqlFatal({ count: 20000, truncated: true }).status, 'would-block')
+  assert.equal(judgeCloudSqlFatal({ count: 5, truncated: true }).status, 'unverified')
 })
 
 test('the verdict is the worst check, and an unverified read never reads as PASS', () => {
