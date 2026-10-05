@@ -16863,7 +16863,6 @@
         },
         "ActivityThreadContextMenu": {
           "copyTitle": "Copy Title",
-          "copyBranch": "Copy Branch",
           "copyPath": "Copy Path",
           "open": "Open",
           "markRead": "Mark Read",

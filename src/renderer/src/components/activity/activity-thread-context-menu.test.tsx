@@ -154,9 +154,9 @@ describe('ActivityThreadContextMenu', () => {
   it('lists copy actions flat instead of in a submenu', () => {
     openMenu(makeThread())
 
-    expect(menuItem('Copy Title')).toBeTruthy()
-    expect(menuItem('Copy Branch')).toBeTruthy()
     expect(menuItem('Copy Path')).toBeTruthy()
+    expect(menuItem('Copy Title')).toBeTruthy()
+    expect(screen.queryByRole('menuitem', { name: 'Copy Branch' })).toBeNull()
   })
 
   it('tells the row while the menu is open so it can keep its preview closed', () => {
@@ -266,11 +266,10 @@ describe('ActivityThreadContextMenu', () => {
     window.removeEventListener(CLOSE_ALL_CONTEXT_MENUS_EVENT, onCloseAll)
   })
 
-  it('copies the title, branch, and path of a real workspace', () => {
+  it('copies the path, then the title, of a real workspace like the workspace menu', () => {
     expect(getActivityThreadCopyTargets(makeThread(), true)).toEqual([
-      { key: 'title', label: 'Copy Title', value: 'Fix the flaky test' },
-      { key: 'branch', label: 'Copy Branch', value: 'feat/flaky' },
-      { key: 'path', label: 'Copy Path', value: '/repo/wt-1' }
+      { key: 'path', label: 'Copy Path', value: '/repo/wt-1' },
+      { key: 'title', label: 'Copy Title', value: 'Fix the flaky test' }
     ])
   })
 

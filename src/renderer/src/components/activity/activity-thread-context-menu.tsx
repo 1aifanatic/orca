@@ -9,7 +9,6 @@ import {
   ContextMenuTrigger
 } from '@/components/ui/context-menu'
 import { translate } from '@/i18n/i18n'
-import { getWorktreeGitIdentityDisplay } from '@/lib/worktree-git-identity-display'
 import { CLOSE_ALL_CONTEXT_MENUS_EVENT } from '@/lib/close-all-context-menus'
 import {
   clearActivityThread,
@@ -25,39 +24,22 @@ export function getActivityThreadCopyTargets(
   thread: AgentPaneThread,
   hasWorkspace: boolean
 ): CopyTarget[] {
-  const targets: CopyTarget[] = [
-    {
-      key: 'title',
-      label: translate(
-        'auto.components.activity.ActivityThreadContextMenu.copyTitle',
-        'Copy Title'
-      ),
-      value: activityThreadRowCopy(thread).taskTitle
-    }
-  ]
-  // Why gated: synthetic floating/standalone worktrees fake a branch label and have no path.
-  if (!hasWorkspace) {
-    return targets
+  const title: CopyTarget = {
+    key: 'title',
+    label: translate('auto.components.activity.ActivityThreadContextMenu.copyTitle', 'Copy Title'),
+    value: activityThreadRowCopy(thread).taskTitle
   }
-  const identity = getWorktreeGitIdentityDisplay(thread.worktree)
-  if (identity?.kind === 'branch') {
-    targets.push({
-      key: 'branch',
-      label: translate(
-        'auto.components.activity.ActivityThreadContextMenu.copyBranch',
-        'Copy Branch'
-      ),
-      value: identity.branchName
-    })
+  // Why gated: synthetic floating/standalone worktrees have no path.
+  if (!hasWorkspace || !thread.worktree.path) {
+    return [title]
   }
-  if (thread.worktree.path) {
-    targets.push({
-      key: 'path',
-      label: translate('auto.components.activity.ActivityThreadContextMenu.copyPath', 'Copy Path'),
-      value: thread.worktree.path
-    })
+  const path: CopyTarget = {
+    key: 'path',
+    label: translate('auto.components.activity.ActivityThreadContextMenu.copyPath', 'Copy Path'),
+    value: thread.worktree.path
   }
-  return targets
+  // Same order as the workspace menu: Copy Path, then the name.
+  return [path, title]
 }
 
 /** Right-click actions for an activity row; mirrors the row's own click and hover actions. */
