@@ -3,6 +3,7 @@ import { onDriverChange } from '@/lib/pane-manager/mobile-driver-state'
 import { onOverrideChange } from '@/lib/pane-manager/mobile-fit-overrides'
 import type { ManagedPane, PaneManager } from '@/lib/pane-manager/pane-manager'
 import { safeFit } from '@/lib/pane-manager/pane-tree-ops'
+import { canMeasurePaneForFit } from '@/lib/pane-manager/pane-fit'
 import { applyDesktopFitFallbackAfterReplay } from './desktop-fit-fallback'
 import { getOverrideAffectedPanes, getPanesNeedingOverrideFit } from './override-affected-panes'
 import type { PtyTransport } from './pty-transport'
@@ -78,7 +79,7 @@ export function useMobileOverlayTicks({ managerRef, paneTransportsRef }: MobileO
         )
       if (event.mode === 'mobile-fit' || event.mode === 'remote-desktop-fit') {
         // Why: when mobile drives, xterm must shrink to phone dims or the wide desktop grid garbles the phone-wrapped stream.
-        // Why sync: the override fit is a plain resize that reads no layout, so it lands before any phone-painted byte parses.
+        // Why sync: the override grid needs no measurement, so the park lands before any phone-painted byte parses.
         for (const pane of getPanesNeedingOverrideFit(getAffectedPanes(), event.cols, event.rows)) {
           safeFit(pane)
         }
@@ -89,6 +90,12 @@ export function useMobileOverlayTicks({ managerRef, paneTransportsRef }: MobileO
         const fitAffectedPanes = (): void => {
           for (const pane of getAffectedPanes()) {
             safeFit(pane)
+          }
+        }
+        // Why: a hidden pane parked at the phone grid cannot refit, so follow the PTY back to desktop before hidden bytes parse.
+        for (const pane of getAffectedPanes()) {
+          if (!canMeasurePaneForFit(pane)) {
+            applyDesktopFitFallbackAfterReplay(pane, event)
           }
         }
         scheduleFitFrame(fitAffectedPanes)

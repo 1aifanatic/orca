@@ -209,23 +209,27 @@ describe('mobile-fit override on a hidden desktop pane', () => {
     terminal.dispose()
   })
 
-  it('refits to the desktop grid on reveal after the override is released while hidden', async () => {
+  it('follows the PTY back to the desktop grid when the override is released while hidden', async () => {
     const { pane, terminal, setVisible } = createHiddenPane(true)
     pane.container.dataset.ptyId = PTY_ID
     registerSerializer(pane)
     render(<Ticks pane={pane} />)
-    // Visible first, so the reveal sees unchanged pixels and must notice the grid instead.
+    // Visible first, so the reveal sees unchanged pixels and cannot be what restores the grid.
     terminal.resize(160, DESKTOP.rows)
     safeFit(pane)
     expect(terminal.cols).toBe(DESKTOP.cols)
 
     setVisible(false)
     act(() => setFitOverride(PTY_ID, 'mobile-fit', PHONE.cols, PHONE.rows))
-    act(() => flushFrames())
     expect({ cols: terminal.cols, rows: terminal.rows }).toEqual(PHONE)
     act(() => setFitOverride(PTY_ID, 'desktop-fit', DESKTOP.cols, DESKTOP.rows))
-    act(() => flushFrames())
-    expect({ cols: terminal.cols, rows: terminal.rows }).toEqual(PHONE)
+    expect({ cols: terminal.cols, rows: terminal.rows }).toEqual(DESKTOP)
+    // What the desktop-sized PTY paints while the pane is still hidden.
+    await new Promise<void>((resolve) => terminal.write(`\r\n${'B'.repeat(60)}`, resolve))
+    const buffer = terminal.buffer.active
+    expect(buffer.getLine(buffer.baseY + buffer.cursorY)?.translateToString(true)).toBe(
+      'B'.repeat(60)
+    )
 
     setVisible(true)
     fitRevealedPane(pane)
