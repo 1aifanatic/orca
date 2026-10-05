@@ -119,6 +119,31 @@ describe('a send a Stop took back before its echo', () => {
     ])
   })
 
+  it('opens no turn whose echoed opener the record names, though the host says it started it', () => {
+    // A start Codex folded into a turn already running reads as `start`; the echo still decides.
+    const items = [
+      sent('opener', 1),
+      turn('t1', 2, 'codex:thread-1:t1:0'),
+      stopNote('t1', 4),
+      sent('folded', 5)
+    ]
+    const submissions = [
+      submission('opener', { submittedSequence: 1, providerItemId: 'codex:thread-1:t1:0' }),
+      stopped('folded', {
+        submittedSequence: 3,
+        answeredInTurn: { turnItemId: 't1', via: 'start' }
+      })
+    ]
+
+    expect(structuredAgentTurnAnchors(items, submissions).get('t1')).toBe(key('opener'))
+    expect(drawn(items, submissions).map(({ id }) => id)).toEqual([
+      key('opener'),
+      'stop:t1',
+      key('folded'),
+      `${STOPPED_ROW}${key('folded')}`
+    ])
+  })
+
   it('opens no turn the provider resumed on its own, whose record names itself', () => {
     // An older host's clock claim would hand this turn to a send sent before it and taken back after.
     const items = [sent('never-ran', 1), turn('wake', 2, 'wake', 5)]
