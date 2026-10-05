@@ -19,6 +19,8 @@ export type ResolvedAgentLaunchCommand =
       command: string
       commandWithoutSessionOptions: string
       appliedSessionOptions: Record<string, SessionOptionValue>
+      /** Exactly the tokens that follow the executable or override, unquoted. */
+      args: string[]
     }
   | { ok: false; error: string }
 
@@ -98,7 +100,10 @@ export function resolveAgentLaunchCommand(args: {
         ? `${commandWithOptions} ${suffix.suffix}`
         : commandWithOptions,
     commandWithoutSessionOptions,
-    appliedSessionOptions: resolvedOptions.appliedValues
+    appliedSessionOptions: resolvedOptions.appliedValues,
+    args: args.sessionOptionsOverrideAgentArgs
+      ? overrideTokens
+      : [...resolvedOptions.args, ...trailingTokens.tokens]
   }
 }
 

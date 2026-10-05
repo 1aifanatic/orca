@@ -31,6 +31,7 @@ const TUI_AGENT_CONFIG_SOURCE: Record<TuiAgent, TuiAgentConfigSource> = {
     pasteNeedsTypedRequest: true,
     // Why: `claude --prefill <text>` seeds the input without submitting, avoiding the paste-after-ready race (PR https://github.com/stablyai/orca/pull/926).
     draftPromptFlag: '--prefill',
+    competingDraftFlags: ['--prefill-b64'],
     preflightTrust: 'claude'
   },
   'claude-agent-teams': {
@@ -64,6 +65,7 @@ const TUI_AGENT_CONFIG_SOURCE: Record<TuiAgent, TuiAgentConfigSource> = {
   codex: {
     detectCmd: 'codex',
     promptInjectionMode: 'argv',
+    singletonOptions: [['--model', '-m']],
     windowsInputRecordPasteNewline: 'alt-enter',
     preflightTrust: 'codex',
     draftPasteReadySignal: 'codex-composer-prompt',
@@ -92,6 +94,7 @@ const TUI_AGENT_CONFIG_SOURCE: Record<TuiAgent, TuiAgentConfigSource> = {
   opencode: {
     detectCmd: 'opencode',
     promptInjectionMode: 'flag-prompt',
+    singletonOptions: [['--model', '-m']],
     // Why: opencode enables bracketed paste before its composer mounts; wait for the post-\x1b[?2004h show-cursor so paste lands.
     draftPasteReadySignal: 'render-cursor-after-bracketed-paste',
     // Why: OpenCode 2 draws its input box before its agent list loads and drops an Enter sent
@@ -116,6 +119,7 @@ const TUI_AGENT_CONFIG_SOURCE: Record<TuiAgent, TuiAgentConfigSource> = {
     // The private server inherits this pane's hook endpoint and identity.
     launchCmd: 'opencode2 --standalone',
     promptInjectionMode: 'flag-prompt',
+    singletonOptions: [['--model', '-m']],
     draftPasteReadySignal: 'render-cursor-after-bracketed-paste',
     submitPasteReadySignal: 'opencode-agent-row',
     draftPasteReadyTimeoutMs: 20_000,
@@ -173,11 +177,15 @@ const TUI_AGENT_CONFIG_SOURCE: Record<TuiAgent, TuiAgentConfigSource> = {
   },
   gemini: {
     detectCmd: 'gemini',
-    promptInjectionMode: 'flag-prompt-interactive'
+    promptInjectionMode: 'flag-prompt-interactive',
+    // Why: gemini exits on `--prompt` next to `--prompt-interactive`.
+    competingPromptFlags: ['-i', '--prompt', '-p'],
+    singletonOptions: [['--model', '-m']]
   },
   antigravity: {
     detectCmd: 'agy',
     promptInjectionMode: 'flag-prompt-interactive',
+    competingPromptFlags: ['-i'],
     // Why: agy's first-launch trust menu consumes the bracketed paste, and its trust is
     // exact-path rather than inherited, so every freshly created child worktree raises it
     // again — a supervised worker would otherwise always fail at agent_readiness
@@ -286,7 +294,11 @@ const TUI_AGENT_CONFIG_SOURCE: Record<TuiAgent, TuiAgentConfigSource> = {
     // Why: bare `hermes` opens the classic REPL; `--tui` starts the full-screen agent UI Orca hosts.
     launchCmd: 'hermes --tui',
     // Why: Hermes delivers the prompt via its startup-query contract, submitting only after the composer is ready.
-    promptInjectionMode: 'hermes-query'
+    promptInjectionMode: 'hermes-query',
+    // Why: hermes exits on `--query-file` next to `--query`.
+    competingPromptFlags: ['-q', '--query-file'],
+    abbreviatesLongFlags: true,
+    singletonOptions: [['--model', '-m']]
   },
   openclaw: {
     detectCmd: 'openclaw',
@@ -296,6 +308,7 @@ const TUI_AGENT_CONFIG_SOURCE: Record<TuiAgent, TuiAgentConfigSource> = {
     detectCmd: 'copilot',
     // Why: `--prompt` exits on completion (kills the hosted session); `-i/--interactive` keeps it interactive.
     promptInjectionMode: 'flag-interactive',
+    competingPromptFlags: ['--interactive', '--prompt', '-p'],
     // Why: first-launch trust menu swallows the bracketed paste; pre-write trust so it skips (see agent-trust-presets.ts).
     preflightTrust: 'copilot'
   },
@@ -305,6 +318,9 @@ const TUI_AGENT_CONFIG_SOURCE: Record<TuiAgent, TuiAgentConfigSource> = {
     promptInjectionMode: 'argv',
     // Why: separator so prompts like `help`/`--version` aren't parsed as Grok CLI syntax.
     argvPromptSeparator: '--',
+    singletonOptions: [['--model', '-m']],
+    // Why: grok exits on these next to a positional prompt.
+    competingPromptFlags: ['-p', '--single', '--print', '--prompt-file', '--prompt-json'],
     // Why: grok shimmers its startup logo until the session opens, so the quiet
     // window never settles and launch drafts waited out the full 8s hard
     // timeout; its composer glyph lands ~0.6s in.

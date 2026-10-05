@@ -87,11 +87,15 @@ function stripOrcaOwnedHermesArgs(args: readonly string[]): string[] {
   return normalized
 }
 
+type NormalizedHermesArgv =
+  | { ok: true; argv: string[]; keptAgentArgs: string[] }
+  | { ok: false; cause: 'no-hermes-executable' | 'env-assignments-need-posix' }
+
 function normalizeHermesArgv(
   baseArgv: string[],
   configuredArgv: string[],
   shell: AgentStartupShell
-): string[] | null {
+): NormalizedHermesArgv {
   const executableCandidates: number[] = []
   for (let index = 0; index < baseArgv.length; index += 1) {
     if (isHermesExecutableToken(baseArgv[index])) {
@@ -107,7 +111,7 @@ function normalizeHermesArgv(
   }
   const executableIndex = anchoredExecutable ?? executableCandidates.at(-1) ?? -1
   if (executableIndex === -1) {
-    return null
+    return { ok: false, cause: 'no-hermes-executable' }
   }
   let commandPrefix = baseArgv.slice(0, executableIndex + 1)
   let assignmentCount = 0
@@ -116,7 +120,7 @@ function normalizeHermesArgv(
   }
   if (assignmentCount > 0) {
     if (!isPosixStartupShell(shell)) {
-      return null
+      return { ok: false, cause: 'env-assignments-need-posix' }
     }
     commandPrefix = ['env', ...commandPrefix]
   }
@@ -129,14 +133,19 @@ function normalizeHermesArgv(
     configuredChatIndex === -1
       ? configuredArgv
       : configuredArgv.filter((_, index) => index !== configuredChatIndex)
-  return [
-    ...commandPrefix,
-    'chat',
-    QUERY_ARG_PLACEHOLDER,
-    ...stripOrcaOwnedHermesArgs(baseArgsWithoutChat),
-    ...stripOrcaOwnedHermesArgs(configuredArgsWithoutChat),
-    '--tui'
-  ]
+  const keptAgentArgs = stripOrcaOwnedHermesArgs(configuredArgsWithoutChat)
+  return {
+    ok: true,
+    argv: [
+      ...commandPrefix,
+      'chat',
+      QUERY_ARG_PLACEHOLDER,
+      ...stripOrcaOwnedHermesArgs(baseArgsWithoutChat),
+      ...keptAgentArgs,
+      '--tui'
+    ],
+    keptAgentArgs
+  }
 }
 
 function buildQueryCommand(argv: string[], shell: AgentStartupShell): string {
@@ -166,7 +175,18 @@ function buildQueryCommand(argv: string[], shell: AgentStartupShell): string {
   return `sh -c ${quoteStartupArg(script, shell)}`
 }
 
-export function planHermesStartupQuery(args: {
+export type HermesStartupQueryFailure =
+  | 'unparseable-command'
+  | 'unparseable-agent-args'
+  | 'no-hermes-executable'
+  | 'env-assignments-need-posix'
+  | 'too-large'
+
+export type HermesStartupQueryPlan =
+  | { ok: true; command: string; env: Record<string, string>; keptAgentArgs: string[] }
+  | { ok: false; cause: HermesStartupQueryFailure }
+
+type HermesStartupQueryArgs = {
   baseCommand: string
   agentArgs?: string | null
   prompt: string
@@ -174,17 +194,24 @@ export function planHermesStartupQuery(args: {
   platform: NodeJS.Platform
   shell: AgentStartupShell
   isRemote?: boolean
-}): { command: string; env: Record<string, string> } | null {
+}
+
+/** Like `planHermesStartupQuery`, but names why a plan can't be built and which of the configured
+ *  arguments survive, so a caller can preview them or report the cause. */
+export function resolveHermesStartupQuery(args: HermesStartupQueryArgs): HermesStartupQueryPlan {
   const baseArgv = tokenizeCommand(args.baseCommand, args.shell)
+  if (!baseArgv) {
+    return { ok: false, cause: 'unparseable-command' }
+  }
   const configuredArgv = args.agentArgs?.trim() ? tokenizeCommand(args.agentArgs, args.shell) : []
-  if (!baseArgv || !configuredArgv) {
-    return null
+  if (!configuredArgv) {
+    return { ok: false, cause: 'unparseable-agent-args' }
   }
-  const argv = normalizeHermesArgv(baseArgv, configuredArgv, args.shell)
-  if (!argv) {
-    return null
+  const normalized = normalizeHermesArgv(baseArgv, configuredArgv, args.shell)
+  if (!normalized.ok) {
+    return normalized
   }
-  const command = buildQueryCommand(argv, args.shell)
+  const command = buildQueryCommand(normalized.argv, args.shell)
   const env = {
     ...args.agentEnv,
     [ORCA_HERMES_STARTUP_QUERY_ENV]: args.prompt
@@ -199,5 +226,14 @@ export function planHermesStartupQuery(args: {
     args.platform === 'win32' ? command.length : new TextEncoder().encode(command).byteLength
   // Why: WSL plans execute as Linux but cross the Windows environment block;
   // the conservative shared bound is safe for every transport host.
-  return commandSize + envSize <= QUERY_ENV_LIMIT ? { command, env } : null
+  return commandSize + envSize <= QUERY_ENV_LIMIT
+    ? { ok: true, command, env, keptAgentArgs: normalized.keptAgentArgs }
+    : { ok: false, cause: 'too-large' }
+}
+
+export function planHermesStartupQuery(
+  args: HermesStartupQueryArgs
+): { command: string; env: Record<string, string> } | null {
+  const plan = resolveHermesStartupQuery(args)
+  return plan.ok ? { command: plan.command, env: plan.env } : null
 }

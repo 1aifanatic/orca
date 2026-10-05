@@ -38,6 +38,11 @@ export const YOLO_TUI_AGENT_ARGS: Partial<Record<TuiAgent, string>> = {
   droid: '--auto high'
 }
 
+/** Bypass-default flags the CLI repeats on purpose, so a typed copy adds rather than repeats. */
+export const REPEATABLE_YOLO_TUI_AGENT_FLAGS: Partial<Record<TuiAgent, readonly string[]>> = {
+  continue: ['--allow']
+}
+
 export const YOLO_TUI_AGENT_ENV: Partial<Record<TuiAgent, Record<string, string>>> = {
   goose: { GOOSE_MODE: 'auto' }
 }

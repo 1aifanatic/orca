@@ -35,6 +35,15 @@ export type TuiAgentConfig = {
   promptInjectionMode: AgentPromptInjectionMode
   /** Option terminator required before positional prompts that may look like CLI syntax. */
   argvPromptSeparator?: '--'
+  /** Other flags that carry a prompt, which the CLI won't take next to the one Orca passes. */
+  competingPromptFlags?: readonly string[]
+  /** The CLI accepts unambiguous prefixes of long flags, as Python's argparse does. */
+  abbreviatesLongFlags?: true
+  /** Other flags that seed a draft, which would compete with `draftPromptFlag`. */
+  competingDraftFlags?: readonly string[]
+  /** Single-value flags that aren't catalog options; each list holds one flag's aliases.
+   *  Only flags that take a value, since removal treats the next token as the value. */
+  singletonOptions?: readonly (readonly string[])[]
   /** Native CLI flag that seeds the input without submitting (e.g. Claude's `--prefill <text>`); preferred over the paste-after-ready path. */
   draftPromptFlag?: string
   /** Startup env var that seeds the input without submitting, for agents with no `--prefill`-style flag (e.g. pi); avoids the paste-after-ready race. */

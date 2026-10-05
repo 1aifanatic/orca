@@ -23,15 +23,19 @@ const VALUE_FLAGS = new Set([
 ])
 const SWITCH_FLAGS = new Set(['--no-extensions', '--no-skills', '--no-prompt-templates'])
 
-/** Apply fresh intent to one launch command, never the saved resume configuration. */
-export function withFreshOmpLaunch(command: string, shell: AgentStartupShell, suffix = ''): string {
+/** Why the wrapper leaves `command` bare: `null` when it can wrap it, `''` when the command itself
+ *  isn't a plain OMP invocation, else the first argument the wrapper doesn't accept. */
+export function findFreshOmpLaunchBlocker(
+  command: string,
+  shell: AgentStartupShell
+): string | null {
   const parsed = tokenizeStartupCommand(command, shell)
   if (!parsed.ok || parsed.spans.some((span) => span.divergesFromShell)) {
-    return command + suffix
+    return ''
   }
   const executable = parsed.tokens[0]?.split(/[\\/]/).at(-1)?.toLowerCase()
   if (!['omp', 'omp.exe', 'omp.cmd', 'omp.bat', 'omp.sh', 'omp.js'].includes(executable ?? '')) {
-    return command + suffix
+    return ''
   }
   let index = parsed.tokens[1] === 'launch' ? 2 : 1
   for (; index < parsed.tokens.length; index++) {
@@ -40,11 +44,19 @@ export function withFreshOmpLaunch(command: string, shell: AgentStartupShell, su
     const flag = equals === -1 ? token : token.slice(0, equals)
     if (VALUE_FLAGS.has(flag)) {
       if (equals === -1 && ++index >= parsed.tokens.length) {
-        return command + suffix
+        return token
       }
     } else if (!SWITCH_FLAGS.has(token)) {
-      return command + suffix
+      return token
     }
+  }
+  return null
+}
+
+/** Apply fresh intent to one launch command, never the saved resume configuration. */
+export function withFreshOmpLaunch(command: string, shell: AgentStartupShell, suffix = ''): string {
+  if (findFreshOmpLaunchBlocker(command, shell) !== null) {
+    return command + suffix
   }
   const path =
     shell === 'cmd'
