@@ -316,6 +316,8 @@ out.
   that does not answer keeps orcad up);
 - no agent reporting `working`;
 - no staged migration into this server;
+- no enabled automation and no automation run still in flight (nothing on the host would start
+  orcad again for the next scheduled run, so a server with an enabled automation never idles out);
 - no activation fence on the host (an update, rollback, decommission or recovery in flight).
 
 The stop is the ordinary graceful shutdown, which disconnects from the daemon and never shuts it
