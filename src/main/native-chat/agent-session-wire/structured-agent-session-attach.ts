@@ -122,6 +122,17 @@ export function attachFingerprintFields(params: AgentSessionAttachParams): Recor
 export function admitAttachOrRefuse(
   params: AgentSessionAttachParams
 ): { ok: true; fingerprint: string } | { ok: false; refusal: AgentSessionWireRefusal } {
+  // The start check judges the record's agent and the router starts `agent`'s adapter: one agent.
+  if (params.agent !== params.provider) {
+    return {
+      ok: false,
+      refusal: refuse(
+        'agent_session_operation_invalid',
+        { reason: 'requestMalformed' },
+        `A ${params.provider} session cannot be started as ${params.agent}.`
+      )
+    }
+  }
   if (
     params.providerHandle &&
     !agentSessionProviderHandleBelongsTo(

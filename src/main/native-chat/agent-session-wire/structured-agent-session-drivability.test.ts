@@ -9,7 +9,6 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionAccountHome } from '../../../shared/agent-session-record'
 import { agentSessionStoredAgents } from '../../../shared/agent-session-stored-agent'
-import { CLAUDE_AND_CODEX_STORED_AGENTS } from '../../../shared/agent-session-stored-agent.test-fixture'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import { CODEX_STRUCTURED_AGENT } from '../../codex/codex-structured-agent-definition'
@@ -54,7 +53,7 @@ const GROK: StructuredAgentDefinition = {
     effortDefaultsToModel: false
   }
 }
-const STORAGE = agentSessionStoredAgents([...CLAUDE_AND_CODEX_STORED_AGENTS.values(), GROK])
+const STORAGE = agentSessionStoredAgents([{ agent: 'claude' }, { agent: 'codex' }, GROK])
 
 // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the registry reads only the methods a declaration needs; this one declares none of them.
 const NO_METHODS = {} as StructuredAgentSessionAdapter
@@ -163,7 +162,7 @@ async function createdGrokChat(relaunched: StructuredAgentDefinition = GROK) {
   })
   expect(created.result).toMatchObject({ ok: true })
   const store = await openTestAgentSessionRecordStore(root, {
-    agents: agentSessionStoredAgents([...CLAUDE_AND_CODEX_STORED_AGENTS.values(), relaunched])
+    agents: agentSessionStoredAgents([{ agent: 'claude' }, { agent: 'codex' }, relaunched])
   })
   await store.reconcileOnRestart({ probe: async () => ({ outcome: 'pid-absent' }), now: NOW + 1 })
   return { store, fence: store.getRecord(SESSION)!.lease.runtimeFence }
@@ -228,4 +227,34 @@ it('starts the same chat again once its agent is declared as it was', async () =
 
   expect(result).toMatchObject({ ok: true })
   expect(adapter.acquire).toHaveBeenCalledOnce()
+})
+
+it('refuses an attach whose agent is not the session it names', async () => {
+  root = await mkdtemp(join(tmpdir(), 'orca-drivability-'))
+  const adapter = grokAdapter()
+  const mismatched = { ...params('1', null), agent: 'codex' }
+
+  const { result, store } = await attach({
+    agents: grokRegistered(),
+    adapter,
+    params: {
+      ...mismatched,
+      envelope: {
+        ...mismatched.envelope,
+        payloadFingerprint: computeAgentSessionPayloadFingerprint({
+          method: 'agentSession.attach',
+          sessionId: SESSION,
+          fields: attachFingerprintFields(mismatched)
+        })
+      }
+    },
+    spawnToken: 'spawn-a'
+  })
+
+  expect(result).toMatchObject({
+    ok: false,
+    refusal: { code: 'agent_session_operation_invalid', details: { reason: 'requestMalformed' } }
+  })
+  expect(adapter.acquire).not.toHaveBeenCalled()
+  expect(store.getRecord(SESSION)).toBeNull()
 })
