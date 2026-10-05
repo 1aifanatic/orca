@@ -15,13 +15,15 @@ import type { StructuredAgentSessionAdapter } from './structured-agent-session-a
 import { structuredAgentSessionStopNoteIdentity } from './structured-agent-session-command-turn'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { performCancel, type AgentSessionTurnContext } from './structured-agent-session-turns'
+import { claudeAndCodexDeclared } from './structured-agent-session-adapter-router-test-support'
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-1',
   workspaceId: 'workspace-1',
   hostId: 'host-1',
   agent: 'codex',
-  providerHandle: { kind: 'codex', threadId: 'thread-1' }
+  providerHandle: codexProviderHandle('thread-1')
 }
 const TURN = { provider: 'codex' as const, threadId: 'thread-1', turnId: 'turn-1', ordinal: 0 }
 
@@ -47,6 +49,8 @@ async function stopWhileTheTurnOpens(
     sessionId: 'session-1',
     journal,
     fence: 1,
+    agents: claudeAndCodexDeclared(),
+    agent: 'codex',
     adapter: {
       acquire: vi.fn(),
       dispatch: vi.fn(),
