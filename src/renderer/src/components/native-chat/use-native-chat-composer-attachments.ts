@@ -17,12 +17,11 @@ import type { NativeChatComposerImageAttachment } from './NativeChatComposerFiel
 import {
   clearNativeChatComposerDraftsForTests,
   isKeptLocalPaste,
-  isNativeChatComposerDraftUnverified,
   readNativeChatComposerDraft,
   subscribeToNativeChatComposerDraft,
   updateNativeChatComposerDraft
 } from './native-chat-composer-draft-store'
-import { verifyRestoredNativeChatComposerDraftImages } from './native-chat-composer-draft-image-check'
+import { useRestoredNativeChatComposerDraftImageCheck } from './native-chat-composer-draft-image-check'
 import type { NativeChatResolvedPathOptions } from './native-chat-resolved-path-ownership'
 import { useNativeChatResolvedPathAttachments } from './use-native-chat-resolved-path-attachments'
 import { appendNativeChatAttachmentCache } from './native-chat-draft-images'
@@ -77,14 +76,7 @@ export function useNativeChatComposerAttachments({
   )
   // Why: a restored paste can be previewed only once main re-grants it, so until the restore check
   // is done it waits like a chip still saving.
-  const [restoring, setRestoring] = useState(() =>
-    isNativeChatComposerDraftUnverified(attachmentScopeKey)
-  )
-  useEffect(() => {
-    void verifyRestoredNativeChatComposerDraftImages(attachmentScopeKey).finally(() =>
-      setRestoring(false)
-    )
-  }, [attachmentScopeKey])
+  const restoring = useRestoredNativeChatComposerDraftImageCheck(attachmentScopeKey, subscribe)
   // Chips still being written, and the clipboard previews this composer minted, are its own.
   const [local, setLocal] = useState<LocalAttachments>(NO_LOCAL_ATTACHMENTS)
   // Read by callbacks between renders; only they change it, always together with the state.

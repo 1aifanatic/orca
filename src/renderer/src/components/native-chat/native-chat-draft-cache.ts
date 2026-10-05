@@ -6,6 +6,7 @@ import type { JSONContent } from '@tiptap/react'
 // reload or quit.
 
 import {
+  appendToNativeChatComposerDraft,
   clearNativeChatComposerDraftsForTests,
   readNativeChatComposerDraft,
   updateNativeChatComposerDraft
@@ -40,12 +41,22 @@ export function appendNativeChatDraftText(draft: string, text: string): string {
 // Why: a composer mid-IME-composition keeps showing what it had, so it is told what was appended.
 const appendListeners = new Map<string, Set<(text: string, previous: string) => void>>()
 
-function appendToDraft(scopeKey: string, text: string, previous: string): void {
+/** Appends `text` unless `holds` says the draft already ends with it, checked against the draft as
+ *  it is now and, before the startup load lands, against the loaded one too. */
+function appendToDraft(
+  scopeKey: string,
+  text: string,
+  holds: (draft: string) => boolean = () => false
+): void {
+  const previous = readNativeChatDraftCache(scopeKey)
+  if (holds(previous)) {
+    return
+  }
   // Saved now: the copy it came from (an outbox entry, a queued card) goes right after this.
-  updateNativeChatComposerDraft(
-    scopeKey,
-    { text: appendNativeChatDraftText(previous, text), document: undefined },
-    'immediate'
+  appendToNativeChatComposerDraft(scopeKey, (draft) =>
+    holds(draft.text)
+      ? {}
+      : { text: appendNativeChatDraftText(draft.text, text), document: undefined }
   )
   appendListeners.get(scopeKey)?.forEach((listener) => listener(text, previous))
 }
@@ -55,7 +66,7 @@ export function appendNativeChatDraftCache(scopeKey: string, text: string): void
   if (text === '') {
     return
   }
-  appendToDraft(scopeKey, text, readNativeChatDraftCache(scopeKey))
+  appendToDraft(scopeKey, text)
 }
 
 /**
@@ -71,12 +82,10 @@ export function returnNativeChatDraftText(scopeKey: string, text: string): void 
   if (returned.trim() === '') {
     return
   }
-  const previous = readNativeChatDraftCache(scopeKey)
-  const draft = previous.trimEnd()
-  if (draft === returned || draft.endsWith(`\n\n${returned}`)) {
-    return
-  }
-  appendToDraft(scopeKey, returned, previous)
+  appendToDraft(scopeKey, returned, (draft) => {
+    const held = draft.trimEnd()
+    return held === returned || held.endsWith(`\n\n${returned}`)
+  })
 }
 
 export function subscribeToNativeChatDraftAppend(

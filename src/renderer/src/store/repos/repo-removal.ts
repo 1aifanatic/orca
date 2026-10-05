@@ -90,7 +90,10 @@ export function createRepoRemovalActions(
         // Why before the host call: its announcement can start a listing refresh that drops these tabs.
         const chatDraftKeys = captureWorkspaceChatDraftKeys(
           get(),
-          getKnownRepoWorktreeIds(get(), projectId, ownerHostId)
+          getKnownRepoWorktreeIds(get(), projectId, ownerHostId).map((workspaceId) => ({
+            workspaceId,
+            executionHostId: ownerHostId
+          }))
         )
         try {
           await (target.kind === 'local'

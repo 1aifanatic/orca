@@ -2,11 +2,13 @@
 // re-grant its preview, which main does only for files really inside that folder; any other image
 // goes through the existing existence check (the workspace's read rules locally, the host over SSH).
 
+import { useEffect, useSyncExternalStore } from 'react'
 import type { NativeChatComposerDraftImage } from './native-chat-composer-draft-storage'
 import {
   isKeptLocalPaste,
   readNativeChatComposerDraft,
-  takeUnverifiedNativeChatComposerDraft,
+  isNativeChatComposerDraftUnverified,
+  markNativeChatComposerDraftVerified,
   unavailableNativeChatComposerDraftImage,
   updateNativeChatComposerDraft
 } from './native-chat-composer-draft-store'
@@ -53,11 +55,23 @@ export async function findMissingNativeChatComposerDraftImages(
   return missing
 }
 
+const checking = new Set<string>()
+
 /** Once per restored draft: an image whose file is gone comes back as one to attach again. */
 export async function verifyRestoredNativeChatComposerDraftImages(scopeKey: string): Promise<void> {
-  if (!takeUnverifiedNativeChatComposerDraft(scopeKey)) {
+  if (!isNativeChatComposerDraftUnverified(scopeKey) || checking.has(scopeKey)) {
     return
   }
+  checking.add(scopeKey)
+  try {
+    await replaceMissingImages(scopeKey)
+  } finally {
+    checking.delete(scopeKey)
+    markNativeChatComposerDraftVerified(scopeKey)
+  }
+}
+
+async function replaceMissingImages(scopeKey: string): Promise<void> {
   const checked = readNativeChatComposerDraft(scopeKey).images
   const missing = await findMissingNativeChatComposerDraftImages(checked)
   if (missing.size === 0) {
@@ -75,4 +89,21 @@ export async function verifyRestoredNativeChatComposerDraftImages(scopeKey: stri
     },
     'immediate'
   )
+}
+
+/** Whether the scope's restored images still wait on their check, which runs as they arrive: at
+ *  mount, or later when the startup load or another window brings new ones. */
+export function useRestoredNativeChatComposerDraftImageCheck(
+  scopeKey: string,
+  subscribe: (listener: () => void) => () => void
+): boolean {
+  const restoring = useSyncExternalStore(subscribe, () =>
+    isNativeChatComposerDraftUnverified(scopeKey)
+  )
+  useEffect(() => {
+    if (restoring) {
+      void verifyRestoredNativeChatComposerDraftImages(scopeKey)
+    }
+  }, [scopeKey, restoring])
+  return restoring
 }

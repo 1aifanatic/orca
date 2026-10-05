@@ -1,4 +1,4 @@
-import { ArrowUp, Mic, Plus, Square } from 'lucide-react'
+import { ArrowUp, CircleAlert, Mic, Plus, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { translate } from '@/i18n/i18n'
@@ -18,6 +18,8 @@ export type NativeChatComposerActionsProps = {
   sendDisabled: boolean
   /** Shown on the disabled send button: what the user can do to send. */
   sendBlockedReason?: string | null
+  /** Storage refused this draft; it is held in memory only. */
+  draftNotSaved?: boolean
   isWorking: boolean
   isDictating: boolean
   isDictationHoldMode: boolean
@@ -41,6 +43,7 @@ export function NativeChatComposerActions({
   dictationDisabled,
   sendDisabled,
   sendBlockedReason,
+  draftNotSaved,
   isWorking,
   isDictating,
   isDictationHoldMode,
@@ -168,6 +171,7 @@ export function NativeChatComposerActions({
             {dictationLabel}
           </TooltipContent>
         </Tooltip>
+        <DraftNotSavedIcon shown={draftNotSaved === true} />
         {sendReason ? (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -183,5 +187,28 @@ export function NativeChatComposerActions({
         )}
       </div>
     </div>
+  )
+}
+
+/** Shown only after storage refused the draft, so it never appears on a normal save. */
+function DraftNotSavedIcon({ shown }: { shown: boolean }): React.JSX.Element | null {
+  if (!shown) {
+    return null
+  }
+  const explanation = translate(
+    'components.native-chat.composer.draftNotSaved',
+    "This draft couldn't be saved yet. Orca keeps trying."
+  )
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span role="img" aria-label={explanation} className="inline-flex text-status-warning">
+          <CircleAlert className="size-4" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" sideOffset={4}>
+        {explanation}
+      </TooltipContent>
+    </Tooltip>
   )
 }

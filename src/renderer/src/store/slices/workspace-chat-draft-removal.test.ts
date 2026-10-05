@@ -44,9 +44,11 @@ import {
 import {
   clearNativeChatComposerDraftsForTests,
   readNativeChatComposerDraft,
+  setNativeChatComposerDraftOwnerResolver,
   structuredAgentSessionDraftScopeKey,
   updateNativeChatComposerDraft
 } from '@/components/native-chat/native-chat-composer-draft-store'
+import { resolveNativeChatDraftOwner } from '@/lib/native-chat-draft-owner'
 
 const WT1 = 'repo1::/path/wt1'
 const WT2 = 'repo1::/path/wt2'
@@ -118,6 +120,38 @@ describe('workspace chat drafts on removal', () => {
     const result = await store.getState().removeWorktree({ id: WT1, executionHostId: null }, true)
 
     expect(result).toEqual({ ok: true })
+    expect(draftTexts()).toEqual(['', '', 'other'])
+  })
+
+  it('removing a worktree deletes the draft of a chat whose tab was closed earlier', async () => {
+    const store = createTestStore()
+    seedWorktree(store)
+    setNativeChatComposerDraftOwnerResolver((scopeKey) =>
+      resolveNativeChatDraftOwner(store.getState(), scopeKey)
+    )
+    const closed = structuredAgentSessionDraftScopeKey('session-closed')
+    seedStore(store, {
+      unifiedTabsByWorktree: {
+        [WT1]: [
+          ...(store.getState().unifiedTabsByWorktree[WT1] ?? []),
+          makeUnifiedTab({
+            id: 'closed-tab',
+            entityId: 'session-closed',
+            contentType: 'agent-session',
+            worktreeId: WT1,
+            groupId: 'group-1'
+          })
+        ]
+      }
+    })
+    updateNativeChatComposerDraft(closed, { text: 'written, then its tab closed' }, 'immediate')
+    store.getState().closeUnifiedTab('closed-tab')
+    expect(readNativeChatComposerDraft(closed).text).toBe('written, then its tab closed')
+
+    const result = await store.getState().removeWorktree({ id: WT1, executionHostId: null }, true)
+
+    expect(result).toEqual({ ok: true })
+    expect(readNativeChatComposerDraft(closed).text).toBe('')
     expect(draftTexts()).toEqual(['', '', 'other'])
   })
 
