@@ -84,14 +84,16 @@ describe('pty spawn placement threading', () => {
       onPtyExit: vi.fn(),
       onPtyData: vi.fn()
     }
-    registerPtyHandlers(
-      mainWindow as never,
-      runtime as never,
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: spawn reads only the window, runtime and store members these fakes define.
+    const args = [
+      mainWindow,
+      runtime,
       undefined,
       undefined,
       undefined,
-      store as never
-    )
+      store
+    ] as unknown as Parameters<typeof registerPtyHandlers>
+    registerPtyHandlers(...args)
     return {
       store,
       controller: () => {
