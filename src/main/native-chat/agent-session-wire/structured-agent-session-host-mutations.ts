@@ -37,7 +37,7 @@ import {
   setOptionPlan,
   type MutationPlan
 } from './structured-agent-session-mutation-plans'
-import { agentSessionMutationAdmitsNow } from './structured-agent-session-mutation-admission'
+import { agentSessionMutationAdmitsNow } from './structured-agent-session-mutation-admits-now'
 import { runQueueableStructuredAgentSessionSend } from './structured-agent-session-queued-send'
 import { cancelStructuredAgentSessionPrompt } from './structured-agent-session-prompt-cancel'
 import { mutateWithChatStop } from './structured-agent-session-chat-stop'
