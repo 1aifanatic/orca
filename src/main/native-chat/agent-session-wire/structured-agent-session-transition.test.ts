@@ -8,7 +8,11 @@ import {
   type AgentJournalItemIdentity,
   type AgentJournalToolCallItem
 } from '../../../shared/agent-session-journal-types'
-import { createTrackedJournalOpener } from '../agent-session-journal/journal-host-database-test-support'
+import {
+  createTrackedJournalOpener,
+  openTestJournalHostDatabase
+} from '../agent-session-journal/journal-host-database-test-support'
+import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { createAgentSessionDeltaCoalescer } from './agent-session-delta-coalescer'
 import {
@@ -36,6 +40,15 @@ function identity(recordId: string): AgentJournalItemIdentity {
 
 function tool(name: string, state: AgentJournalToolCallItem['state']): AgentJournalToolCallItem {
   return { kind: 'tool-call', name, input: { name }, state }
+}
+
+function failedTool(id: AgentJournalItemIdentity): JournalLifecycleMutationInput {
+  return {
+    kind: 'item',
+    identity: id,
+    body: tool('read', 'failed'),
+    turnScope: AGENT_JOURNAL_THREAD_SCOPE
+  }
 }
 
 function itemStep(
@@ -69,7 +82,7 @@ async function rig(watermarks: Partial<StructuredAgentSessionSinkWatermarks> = {
     watermarks
   })
   const bind = () => deferred.bind({ journal, fence: 1, publish: () => publishes.push(1) })
-  return { journal, deferred, sink: deferred.sink, publishes, bind }
+  return { root, journal, deferred, sink: deferred.sink, publishes, bind }
 }
 
 describe('structured agent-session transitions', () => {
@@ -108,10 +121,9 @@ describe('structured agent-session transitions', () => {
     expect(publishes).toHaveLength(1)
   })
 
-  it('places a row where its resolver says, and hears every landing', async () => {
+  it('places a row where its resolver says', async () => {
     const { journal, deferred, sink, bind } = await rig()
     bind()
-    const landed: (readonly boolean[])[] = []
     const scope = { kind: 'turn', turnItemId: 'turn-row' } as const
     sink.tryAppendTransition?.({
       lifecycle: false,
@@ -120,19 +132,44 @@ describe('structured agent-session transitions', () => {
         itemStep(() => ({
           identity: identity('placed'),
           body: tool('read', 'running'),
-          options: { turnScope: scope, providerItemRef: 'item:read' }
+          options: { turnScope: scope }
         })),
         itemStep(() => null)
-      ],
-      landed: (wrote) => landed.push(wrote)
+      ]
     })
     await deferred.drained()
 
     expect(journal.item(agentJournalItemKey(identity('placed')))).toMatchObject({
-      turnScope: scope,
-      providerItemRef: 'item:read'
+      turnScope: scope
     })
-    expect(landed).toEqual([[true, false]])
+  })
+
+  it('admitted whole is not executed whole: a failed step keeps the ones before it and fails the sink', async () => {
+    const { journal, deferred, sink, publishes, bind } = await rig()
+    bind()
+    sink.tryAppendTransition?.({
+      lifecycle: false,
+      publish: true,
+      steps: [
+        itemStep(() => ({ identity: identity('kept'), body: tool('read', 'running') })),
+        itemStep(() => {
+          throw new Error('resolver failed')
+        })
+      ]
+    })
+
+    await expect(deferred.drained()).resolves.toMatchObject({ ok: false })
+    expect(journal.snapshot().items.map((item) => item.itemId)).toEqual([
+      agentJournalItemKey(identity('kept'))
+    ])
+    expect(publishes).toEqual([])
+    expect(
+      sink.tryAppendTransition?.({
+        lifecycle: false,
+        publish: false,
+        steps: [itemStep(() => null)]
+      })
+    ).toEqual({ accepted: false, reason: 'failed' })
   })
 
   it('refuses a transition whole, so none of its steps ever lands', async () => {
@@ -165,14 +202,10 @@ describe('structured agent-session transitions', () => {
     sink.tryAppendItem?.(identity('done'), tool('read', 'completed'), {
       turnScope: AGENT_JOURNAL_THREAD_SCOPE
     })
-    let wrote: readonly boolean[] = []
     expect(
       sink.tryAppendTransition?.({
         lifecycle: true,
         publish: true,
-        landed: (result) => {
-          wrote = result
-        },
         steps: [
           {
             kind: 'settlement',
@@ -213,20 +246,50 @@ describe('structured agent-session transitions', () => {
     ).toMatchObject({ state: 'completed' })
     // Two batch rows, back to back, between the last append before it and the first after it.
     expect(sequenceOf('after') - sequenceOf('done')).toBe(3)
-    expect(wrote).toEqual([true])
     expect(publishes).toHaveLength(1)
+  })
+
+  it('leaves no row of a settlement durable when a later one of its rows fails to write', async () => {
+    const { root, journal, deferred, sink, bind } = await rig()
+    bind()
+    const running = Array.from({ length: 250 }, (_, index) => identity(`tool-${index}`))
+    for (const id of running) {
+      sink.tryAppendItem?.(id, tool('read', 'running'), { turnScope: AGENT_JOURNAL_THREAD_SCOPE })
+    }
+    await deferred.drained()
+    const before = journal.cursor().sequence
+    // The settlement needs two rows; the second one's insert aborts inside the transaction.
+    openTestJournalHostDatabase(root).db.exec(`CREATE TEMP TRIGGER fail_second_chunk
+BEFORE INSERT ON main.journal_rows WHEN NEW.seq = ${before + 2}
+BEGIN SELECT RAISE(ABORT, 'second chunk refused'); END`)
+    sink.tryAppendTransition?.({
+      lifecycle: true,
+      publish: true,
+      steps: [
+        {
+          kind: 'settlement',
+          settlementId: 'settle-all',
+          reservedBytes: 1,
+          resolve: () => running.map(failedTool)
+        }
+      ]
+    })
+
+    await expect(deferred.drained()).resolves.toMatchObject({ ok: false })
+    expect(journal.cursor().sequence).toBe(before)
+    expect(
+      journal
+        .snapshot()
+        .items.filter((item) => item.body.kind === 'tool-call' && item.body.state === 'failed')
+    ).toEqual([])
   })
 
   it('writes and announces nothing when a step resolves to nothing', async () => {
     const { journal, deferred, sink, publishes, bind } = await rig()
     bind()
-    let wrote: readonly boolean[] = []
     sink.tryAppendTransition?.({
       lifecycle: true,
       publish: true,
-      landed: (result) => {
-        wrote = result
-      },
       steps: [
         itemStep(() => null),
         { kind: 'settlement', settlementId: 'none', reservedBytes: 1, resolve: () => [] }
@@ -235,8 +298,24 @@ describe('structured agent-session transitions', () => {
     await deferred.drained()
 
     expect(journal.snapshot().items).toEqual([])
-    expect(wrote).toEqual([false, false])
     expect(publishes).toEqual([])
+  })
+})
+
+describe('resolved lifecycle batches', () => {
+  it('refuses, before writing anything, a settlement that names one item twice', async () => {
+    const { journal } = await rig()
+    const before = journal.cursor().sequence
+    const twice = identity('twice')
+
+    await expect(
+      journal.appendResolvedLifecycleBatch({
+        settlementId: 'twice',
+        fence: 1,
+        resolve: () => [failedTool(identity('once')), failedTool(twice), failedTool(twice)]
+      })
+    ).rejects.toThrow('journal_resolved_lifecycle_batch_names_item_twice')
+    expect(journal.cursor().sequence).toBe(before)
   })
 })
 
