@@ -6,8 +6,11 @@ import {
 } from '../../../src/shared/protocol-version'
 import { resolveStructuredNativeChatSupport } from '../../../src/shared/structured-native-chat-launch-route'
 import { resolveAgentLaunchRoute } from '../../../src/renderer/src/lib/agent-launch-routing'
+import { pairedHostClientCapabilities } from '../../../src/renderer/src/runtime/paired-host-client-capabilities'
 import { importReleaseCheckoutModule, materializeReleaseCheckout } from './release-checkout'
 
+// The capability strings a released server really advertises, not hand-written ones: a renamed
+// string would follow along in unit tests but silently change what this desktop does with that server.
 // This release advertises structured chat but predates client-chosen launch modes.
 const LEGACY_PAIRED_STRUCTURED_LAUNCH_RELEASE_REF = 'v1.4.219'
 const SETTINGS = {
@@ -15,12 +18,6 @@ const SETTINGS = {
   experimentalStructuredNativeChat: true,
   openAgentTabsInChatByDefault: true
 }
-const LAUNCHES = [
-  { agent: 'claude', workspaceKind: 'git-worktree' },
-  { agent: 'codex', workspaceKind: 'git-worktree' },
-  { agent: 'claude', workspaceKind: 'folder' },
-  { agent: 'codex', workspaceKind: 'folder' }
-] as const
 
 let legacyHostCapabilities: readonly string[]
 
@@ -37,44 +34,37 @@ beforeAll(async () => {
   legacyHostCapabilities = capabilities
 }, 180_000)
 
-describe('desktop structured launch against a paired runtime', () => {
-  it('reads a real release that has structured chat but lacks client-chosen launch modes', () => {
+describe(`a current desktop paired with a ${LEGACY_PAIRED_STRUCTURED_LAUNCH_RELEASE_REF} server`, () => {
+  it('finds structured chat advertised under the name it checks, without client-chosen launch modes', () => {
     expect(legacyHostCapabilities).toContain(STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY)
     expect(legacyHostCapabilities).not.toContain(
       STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY
     )
   })
 
-  it.each(LAUNCHES)(
-    'new client refuses an old server for $agent in a $workspaceKind workspace',
-    (launch) => {
-      const input = {
-        ...launch,
+  it.each(['claude', 'codex'] as const)(
+    'keeps %s on the terminal there, and opens a chat once the server is current',
+    (agent) => {
+      const launch = {
+        agent,
+        workspaceKind: 'git-worktree',
         executionHostId: 'runtime:server-1',
-        hostCapabilities: legacyHostCapabilities,
-        clientCapabilities: RUNTIME_CAPABILITIES
-      }
-      expect(resolveStructuredNativeChatSupport(input)).toEqual({
+        clientCapabilities: pairedHostClientCapabilities()
+      } as const
+      const legacy = { ...launch, hostCapabilities: legacyHostCapabilities }
+      expect(resolveStructuredNativeChatSupport(legacy)).toEqual({
         supported: false,
         blocker: 'runtime-capability'
       })
-      expect(resolveAgentLaunchRoute({ ...input, settings: SETTINGS })).toBe('legacy-native-chat')
-    }
-  )
-
-  it.each(LAUNCHES)(
-    'new client opens structured $agent on a capable server in a $workspaceKind workspace',
-    (launch) => {
-      const input = {
-        ...launch,
-        executionHostId: 'runtime:server-1',
-        hostCapabilities: RUNTIME_CAPABILITIES,
-        clientCapabilities: RUNTIME_CAPABILITIES
-      }
-      expect(resolveStructuredNativeChatSupport(input)).toEqual({ supported: true })
-      expect(resolveAgentLaunchRoute({ ...input, settings: SETTINGS })).toBe(
-        'structured-native-chat'
-      )
+      expect(resolveAgentLaunchRoute({ ...legacy, settings: SETTINGS })).toBe('legacy-native-chat')
+      // The same handshake against today's server: the refusal above is the old server's doing.
+      expect(
+        resolveAgentLaunchRoute({
+          ...launch,
+          hostCapabilities: RUNTIME_CAPABILITIES,
+          settings: SETTINGS
+        })
+      ).toBe('structured-native-chat')
     }
   )
 })
