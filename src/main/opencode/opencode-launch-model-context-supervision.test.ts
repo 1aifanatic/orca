@@ -59,6 +59,7 @@ describe.runIf(process.platform !== 'win32')('supervised OpenCode launch-context
       cwd: rig.dir,
       env: { ...process.env, ...rig.env }
     })
+    const stoppedAt = Date.now()
     const pids = await rig.readPids()
 
     expect(context).toEqual({
@@ -71,6 +72,9 @@ describe.runIf(process.platform !== 'win32')('supervised OpenCode launch-context
     // A descendant that ignores SIGTERM holds none of the probe's pipes, so a closed pipe never
     // proved it gone; only the supervisor's group SIGKILL ends it.
     expect(alive(pids.grandchild)).toBe(false)
+    // Once the server exits on its SIGTERM, the rest of its group is killed at once, not after the
+    // SIGTERM grace; every launch waits on this preflight.
+    expect(stoppedAt - (rig.readEvents().SIGTERM ?? 0)).toBeLessThan(1_000)
   })
 
   it('stops the server group when its owner is SIGKILLed mid-probe', async () => {

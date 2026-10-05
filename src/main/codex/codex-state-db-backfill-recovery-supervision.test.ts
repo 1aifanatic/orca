@@ -2,7 +2,10 @@ import { ChildProcess } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CODEX_READ_ONLY_APP_SERVER_ARGS } from '../codex-cli/codex-read-only-app-server-args'
-import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from './codex-app-server-posix-supervisor'
+import {
+  PROVIDER_STDIN_END_GRACE_MS,
+  PROVIDER_SUPERVISOR_MAX_STOP_MS
+} from './codex-app-server-posix-supervisor'
 import type { CodexAppServerSpawn } from './codex-app-server-process-tree-kill'
 import type { CodexStateDbBackfillStatus } from './codex-state-db'
 import { runCodexStateDbBackfillRecovery } from './codex-state-db-backfill-recovery'
@@ -115,7 +118,7 @@ describe.runIf(process.platform !== 'win32')('supervised Codex backfill recovery
     expect(alive(pids.grandchild)).toBe(false)
   })
 
-  it('stops the recovery group when its owner is SIGKILLed', async () => {
+  it('drains, then stops the recovery group, when its owner is SIGKILLed', async () => {
     rig = createSupervisedProbeRig()
     const standIn = rig.writeStandIn('codex')
     const bundle = await rig.bundleOwner(OWNER, __dirname)
@@ -133,5 +136,11 @@ describe.runIf(process.platform !== 'win32')('supervised Codex backfill recovery
         PROVIDER_SUPERVISOR_MAX_STOP_MS + 1_000
       )
     ).toBe(true)
+    // A gone owner gets the close its owner makes: the stdin end, its grace, and only then SIGTERM.
+    const events = rig.readEvents()
+    expect(events['stdin-end']).toBeDefined()
+    expect((events.SIGTERM ?? 0) - (events['stdin-end'] ?? 0)).toBeGreaterThanOrEqual(
+      PROVIDER_STDIN_END_GRACE_MS - 50
+    )
   })
 })

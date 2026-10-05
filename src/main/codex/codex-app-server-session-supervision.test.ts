@@ -3,7 +3,10 @@ import { existsSync, readFileSync } from 'node:fs'
 import { PassThrough } from 'node:stream'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from './codex-app-server-posix-supervisor'
+import {
+  PROVIDER_STDIN_END_GRACE_MS,
+  PROVIDER_SUPERVISOR_MAX_STOP_MS
+} from './codex-app-server-posix-supervisor'
 import type { CodexAppServerSpawn } from './codex-app-server-process-tree-kill'
 import { CodexAppServerTimeoutError, runCodexAppServerSession } from './codex-app-server-session'
 import { classifyCodexTrustGrantError } from './codex-trust-grant-telemetry'
@@ -167,7 +170,7 @@ describe.runIf(process.platform !== 'win32')('supervised Codex app-server sessio
     expect(alive(pids.grandchild)).toBe(false)
   })
 
-  it('stops the session group when its owner is SIGKILLed mid-session', async () => {
+  it('drains, then stops the session group, when its owner is SIGKILLed mid-session', async () => {
     rig = createSupervisedProbeRig()
     const standIn = rig.writeStandIn('codex', WEDGED_APP_SERVER)
     const bundle = await rig.bundleOwner(OWNER, __dirname)
@@ -182,6 +185,12 @@ describe.runIf(process.platform !== 'win32')('supervised Codex app-server sessio
         PROVIDER_SUPERVISOR_MAX_STOP_MS + 1_000
       )
     ).toBe(true)
+    // A gone owner gets the close its owner makes: the stdin end, its grace, and only then SIGTERM.
+    const events = rig.readEvents()
+    expect(events['stdin-end']).toBeDefined()
+    expect((events.SIGTERM ?? 0) - (events['stdin-end'] ?? 0)).toBeGreaterThanOrEqual(
+      PROVIDER_STDIN_END_GRACE_MS - 50
+    )
   })
 
   it('reports a missing Codex binary as the spawn error, not an early exit', async () => {
