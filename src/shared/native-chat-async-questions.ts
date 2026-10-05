@@ -248,3 +248,19 @@ export function readNativeChatAsyncQuestionsField(
       : undefined
   return omittedCount ? { state: 'ready', questions, omittedCount } : { state: 'ready', questions }
 }
+
+/** Folds a transcript stream frame into the client view: a hydrating frame states the whole
+ *  set (no field = older host); an append states only a change. Null resets (new source). */
+export function reduceNativeChatAsyncQuestionsView(
+  previous: NativeChatAsyncQuestionsView,
+  frame: { type?: string; asyncQuestions?: unknown } | null
+): NativeChatAsyncQuestionsView {
+  if (!frame) {
+    return NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT
+  }
+  const field = readNativeChatAsyncQuestionsField(frame.asyncQuestions)
+  if (frame.type === 'appended') {
+    return field ?? previous
+  }
+  return field ?? NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT
+}

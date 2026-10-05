@@ -37,6 +37,8 @@ export function useMobileStructuredNativeChatSendBridge(args: {
     deadline?: number,
     attachments?: readonly StructuredNativeChatAttachment[]
   ) => Promise<MobileNativeChatSendOutcome>
+  /** An async question answer: an ordinary message that never touches the composer draft. */
+  answer: (text: string) => Promise<MobileNativeChatSendOutcome>
 } {
   const {
     acceptSend,
@@ -114,5 +116,24 @@ export function useMobileStructuredNativeChatSendBridge(args: {
     ) => (await sendWithOutcome(text, images, deadline, attachments)) !== 'rejected',
     [sendWithOutcome]
   )
-  return { send, sendWithOutcome }
+  const answer = useCallback(
+    async (text: string): Promise<MobileNativeChatSendOutcome> => {
+      const origin = captureSendOrigin(text.trimEnd())
+      if (!origin) {
+        onSendError('Answer not sent (disconnected)')
+        return 'rejected'
+      }
+      const outcome = await sendStructured(text)
+      if (outcome === 'accepted') {
+        acceptSend(origin, text.trimEnd())
+      } else if (outcome === 'unknown') {
+        holdUnconfirmedSend(origin, text.trimEnd(), () =>
+          onSendError('Delivery unconfirmed — check chat before retrying')
+        )
+      }
+      return outcome
+    },
+    [acceptSend, captureSendOrigin, holdUnconfirmedSend, onSendError, sendStructured]
+  )
+  return { send, sendWithOutcome, answer }
 }

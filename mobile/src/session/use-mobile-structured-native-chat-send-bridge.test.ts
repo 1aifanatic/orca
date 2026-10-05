@@ -19,6 +19,7 @@ const ORIGIN: MobileNativeChatSendOrigin = {
 describe('useMobileStructuredNativeChatSendBridge', () => {
   let renderer: ReactTestRenderer | null = null
   let sendWithOutcome: (text: string) => Promise<MobileNativeChatSendOutcome>
+  let answer: (text: string) => Promise<MobileNativeChatSendOutcome>
   const acceptSend = vi.fn()
   const captureSendOrigin = vi.fn(() => ORIGIN)
   const clearDraftForSend = vi.fn()
@@ -28,7 +29,7 @@ describe('useMobileStructuredNativeChatSendBridge', () => {
   const sendStructured = vi.fn()
 
   function Harness({ agent }: { agent: AgentSessionHandleProvider }): null {
-    sendWithOutcome = useMobileStructuredNativeChatSendBridge({
+    const bridge = useMobileStructuredNativeChatSendBridge({
       agent,
       acceptSend,
       captureSendOrigin,
@@ -37,7 +38,9 @@ describe('useMobileStructuredNativeChatSendBridge', () => {
       onSendError,
       restoreRejectedDraft,
       sendStructured
-    }).sendWithOutcome
+    })
+    sendWithOutcome = bridge.sendWithOutcome
+    answer = bridge.answer
     return null
   }
 
@@ -98,4 +101,20 @@ describe('useMobileStructuredNativeChatSendBridge', () => {
     expect(restoreRejectedDraft).toHaveBeenCalledWith(ORIGIN, '/review')
     expect(holdUnconfirmedSend).not.toHaveBeenCalled()
   })
+
+  it.each(['accepted', 'queued', 'unknown', 'rejected'] as const)(
+    'answers an async question without touching the composer draft (%s)',
+    async (outcome) => {
+      sendStructured.mockResolvedValue(outcome)
+      mount('codex')
+
+      await expect(answer('Question: /model\nAnswer: gpt-5')).resolves.toBe(outcome)
+
+      expect(sendStructured).toHaveBeenCalledWith('Question: /model\nAnswer: gpt-5')
+      expect(clearDraftForSend).not.toHaveBeenCalled()
+      expect(restoreRejectedDraft).not.toHaveBeenCalled()
+      expect(acceptSend).toHaveBeenCalledTimes(outcome === 'accepted' ? 1 : 0)
+      expect(holdUnconfirmedSend).toHaveBeenCalledTimes(outcome === 'unknown' ? 1 : 0)
+    }
+  )
 })

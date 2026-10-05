@@ -34,8 +34,8 @@ export type MobileNativeChatMessageSend = {
     images?: string[],
     deadline?: number
   ) => Promise<MobileNativeChatSendOutcome>
-  /** Answer to an agent question — never touches the composer draft. */
-  answerQuestion: (text: string) => Promise<boolean>
+  /** Answer to an agent question — never touches the composer draft; settles honestly. */
+  answerQuestion: (text: string) => Promise<MobileNativeChatSendOutcome>
   /** Session-option command dispatch (e.g. `/model sonnet`) — never touches the
    *  composer draft; callers need the outcome to track dispatched state. */
   dispatchCommand: (
@@ -255,14 +255,14 @@ export function useMobileNativeChatMessageSend(args: {
   // it takes the per-terminal write lock itself: an answer landing mid-flight
   // in an image paste sequence would interleave bytes into the PTY.
   const answerQuestion = useCallback(
-    async (text: string): Promise<boolean> => {
+    async (text: string): Promise<MobileNativeChatSendOutcome> => {
       const terminal = handleRef.current
       if (terminal && !acquireMobileNativeChatTerminalWrite(terminal)) {
         onSendError('Answer not sent')
-        return false
+        return 'rejected'
       }
       try {
-        return (await sendMessage(text, undefined, false, true)) !== 'rejected'
+        return await sendMessage(text, undefined, false, true)
       } finally {
         if (terminal) {
           releaseMobileNativeChatTerminalWrite(terminal)

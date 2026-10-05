@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { MobileNativeChatAsyncQuestions } from './MobileNativeChatAsyncQuestions'
 import { StyleSheet, View } from 'react-native'
 import { MobileNativeChatView, type MobileNativeChatInputLockReason } from './MobileNativeChatView'
 import { foldMobileNativeChatMessages } from './mobile-native-chat-render-data'
@@ -73,6 +74,20 @@ export function MobileNativeChatOverlay({
   if (!controller.showNativeChat) {
     return null
   }
+  // Non-blocking: only in the prompt slot when no blocking card holds it; the composer stays.
+  const blockingCard =
+    controller.nativeChatAsk ?? controller.nativeChatPermission ?? controller.nativeChatQuestion
+  const promptSlot = blockingCard
+    ? queuedSlot
+    : {
+        ...queuedSlot,
+        cards: (
+          <>
+            {queuedSlot.cards}
+            <MobileNativeChatAsyncQuestions model={controller.nativeChatAsyncQuestions} />
+          </>
+        )
+      }
   return (
     <View style={styles.overlay}>
       <MobileNativeChatView
@@ -100,7 +115,7 @@ export function MobileNativeChatOverlay({
         onAnswerQuestion={controller.handleNativeChatQuestionAnswer}
         permission={controller.nativeChatPermission}
         onRespondPermission={controller.handleNativeChatRespondPermission}
-        queuedSlot={queuedSlot}
+        queuedSlot={promptSlot}
         onOpenFile={onOpenFile}
         hasMore={session.hasMore}
         loadingEarlier={session.loadingEarlier}

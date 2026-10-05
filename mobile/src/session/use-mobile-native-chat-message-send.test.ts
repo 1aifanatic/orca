@@ -29,6 +29,7 @@ import {
   resetMobileNativeChatTerminalWritesForTests
 } from './mobile-native-chat-terminal-write-lock'
 import { buildAgentTuiClearInputForText } from '../../../src/shared/agent-tui-input-clear'
+import { formatAsyncQuestionReply } from '../../../src/shared/native-chat-async-questions'
 
 type Send = ReturnType<typeof useMobileNativeChatMessageSend>
 
@@ -378,11 +379,11 @@ describe('useMobileNativeChatMessageSend', () => {
     // An image paste sequence is mid-flight into the same PTY.
     expect(acquireMobileNativeChatTerminalWrite('term')).toBe(true)
 
-    let result: boolean | undefined
+    let result: string | undefined
     await act(async () => {
       result = await api!.answerQuestion('1')
     })
-    expect(result).toBe(false)
+    expect(result).toBe('rejected')
     expect(sendWithOutcome).not.toHaveBeenCalled()
     expect(onSendError).toHaveBeenCalledWith('Answer not sent')
 
@@ -390,7 +391,7 @@ describe('useMobileNativeChatMessageSend', () => {
     await act(async () => {
       result = await api!.answerQuestion('1')
     })
-    expect(result).toBe(true)
+    expect(result).toBe('accepted')
     // The answer released its own hold on the way out.
     expect(acquireMobileNativeChatTerminalWrite('term')).toBe(true)
     releaseMobileNativeChatTerminalWrite('term')
@@ -444,4 +445,36 @@ describe('useMobileNativeChatMessageSend', () => {
     expect(sendWithOutcome).not.toHaveBeenCalled()
     expect(restoreRejectedDraft.mock.calls[0]![1]).toBe(draft)
   })
+
+  it('answers an async question as an ordinary message, never a typed Codex command', async () => {
+    mount(() => null, 'codex')
+    let result: string | undefined
+    await act(async () => {
+      result = await api!.answerQuestion(
+        formatAsyncQuestionReply([{ title: '/model', answer: 'gpt-5' }])
+      )
+    })
+    expect(result).toBe('accepted')
+    expect(typeCommandWithOutcome).not.toHaveBeenCalled()
+    expect(sentArgs().text).toBe('Question: /model\nAnswer: gpt-5')
+    expect(clearArgs().clearInput).toBe('\x15')
+    expect(onCommandSend).not.toHaveBeenCalled()
+    expect(clearDraftForSend).not.toHaveBeenCalled()
+  })
+
+  it.each(['unknown', 'rejected'] as const)(
+    'returns %s honestly from an answer and leaves the draft alone',
+    async (outcome) => {
+      sendWithOutcome.mockResolvedValue(outcome)
+      mount(() => null, 'codex')
+      let result: string | undefined
+      await act(async () => {
+        result = await api!.answerQuestion('Question: Color?\nAnswer: Red')
+      })
+      expect(result).toBe(outcome)
+      expect(clearDraftForSend).not.toHaveBeenCalled()
+      expect(restoreRejectedDraft).not.toHaveBeenCalled()
+      expect(holdUnconfirmedSend).toHaveBeenCalledTimes(outcome === 'unknown' ? 1 : 0)
+    }
+  )
 })

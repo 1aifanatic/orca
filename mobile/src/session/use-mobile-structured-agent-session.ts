@@ -14,6 +14,9 @@ import {
   projectStructuredPermission,
   projectStructuredQuestion
 } from './mobile-structured-agent-prompts'
+import { projectUnsupportedStructuredPrompt } from './mobile-native-chat-unsupported-decision'
+import { resolveStructuredSessionDecision } from '../../../src/shared/native-chat-pending-decision'
+import { NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT } from '../../../src/shared/native-chat-async-questions'
 import type { RpcClient } from '../transport/rpc-client'
 import type { MobileChatPermission } from './mobile-native-chat-permission'
 import type { MobileChatQuestion } from './mobile-native-chat-question'
@@ -172,21 +175,25 @@ export function useMobileStructuredAgentSession(args: {
   const thinking = isStructuredAgentSessionThinking(state.items)
   const turnIndicator = useMemo(() => ({ thinking, activityText }), [thinking, activityText])
   const status = state.status === 'idle' ? 'idle' : state.status
-  const approvalPrompt = useMemo(
-    () => state.items.find(pendingStructuredApproval) ?? null,
+  // The shared projection: the first pending prompt in journal order, as on desktop.
+  const decision = useMemo(
+    () =>
+      resolveStructuredSessionDecision(
+        state.items.filter(
+          (item) => pendingStructuredApproval(item) || pendingStructuredQuestion(item)
+        )
+      ),
     [state.items]
   )
-  const questionPrompt = useMemo(
-    () => state.items.find(pendingStructuredQuestion) ?? null,
-    [state.items]
-  )
+  const approvalPrompt = decision?.kind === 'approval' ? decision.item : null
+  const questionPrompt = decision?.kind === 'question' ? decision.item : null
   const queued = useMobileStructuredQueuedMessageControls({
     queueCapable,
     sessionKey,
     queuedMessages,
     queuePause,
     submissions: state.submissions,
-    pendingPrompt: approvalPrompt !== null || questionPrompt !== null,
+    pendingPrompt: decision !== null,
     mutate,
     appendComposerText,
     onSendError,
@@ -227,7 +234,8 @@ export function useMobileStructuredAgentSession(args: {
       error: state.error,
       hasMore: state.hasOlder,
       loadingEarlier: loadingOlder,
-      loadEarlier
+      loadEarlier,
+      asyncQuestions: state.asyncQuestions ?? NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT
     },
     isWorking: isStructuredAgentSessionMainAgentWorking(turnId, state.submissions, state.fence),
     turnId,
@@ -239,7 +247,10 @@ export function useMobileStructuredAgentSession(args: {
     },
     cancelPrompt: (prompt?: { itemId: string; expectedRevision: number }) =>
       requestCancel(prompt ?? pendingStructuredPromptIdentity(stateRef.current.items)),
-    permission: projectStructuredPermission(approvalPrompt),
+    permission:
+      decision?.kind === 'unsupported'
+        ? projectUnsupportedStructuredPrompt(decision.item, decision.text)
+        : projectStructuredPermission(approvalPrompt),
     question: projectStructuredQuestion(questionPrompt, groupedDraft),
     respondPermission,
     respondQuestion,
