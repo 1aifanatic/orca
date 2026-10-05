@@ -82,7 +82,7 @@ function assertNotRuntimeOwned(targetId: string, action: string): void {
 }
 
 /** Removing a managed host would strand its server; Stop removes both and proves the exit. */
-function assertNotManagedServerHost(targetId: string): void {
+export function assertNotManagedServerHost(targetId: string): void {
   const target = getSshTargetRegistryStore()!.getTarget(targetId)
   if (target && isManagedOrcadSshTarget(target)) {
     throw new Error(

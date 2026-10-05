@@ -1,8 +1,7 @@
 import { SSH_TERMINATE_RECONNECT_REQUIRED } from '../../../../shared/constants'
-import type { SshTarget } from '../../../../shared/ssh-types'
 
 export type SshTargetRemoveApi = {
-  terminateSessions: (args: { targetId: string }) => Promise<unknown>
+  terminateSessions: (args: { targetId: string; forRemoval?: boolean }) => Promise<unknown>
   connect: (args: { targetId: string }) => Promise<unknown>
   removeTarget: (args: { id: string }) => Promise<unknown>
 }
@@ -14,22 +13,17 @@ export type SshTargetRemoveApi = {
 // always succeed; the relay layer disposes any live session on its own side.
 export async function removeSshTargetWithBestEffortCleanup(
   api: SshTargetRemoveApi,
-  id: string,
-  target?: Pick<SshTarget, 'orcadFence' | 'orcadProvisioning'>
+  id: string
 ): Promise<void> {
-  if (target?.orcadFence || target?.orcadProvisioning) {
-    // Main refuses and says how to stop the server; its terminals must not end first.
-    await api.removeTarget({ id })
-    return
-  }
+  // Main refuses a managed server's host here, before any terminal ends; removeTarget then says why.
   try {
-    await api.terminateSessions({ targetId: id })
+    await api.terminateSessions({ targetId: id, forRemoval: true })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     if (message.includes(SSH_TERMINATE_RECONNECT_REQUIRED)) {
       try {
         await api.connect({ targetId: id })
-        await api.terminateSessions({ targetId: id })
+        await api.terminateSessions({ targetId: id, forRemoval: true })
       } catch (reconnectErr) {
         console.warn(
           '[ssh] Skipping remote session cleanup during target removal:',

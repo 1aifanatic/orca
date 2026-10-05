@@ -19,6 +19,7 @@ import { connectionManager, persistedStore } from './ssh-ipc-context'
 import { getPublicSshState } from './ssh-renderer-broadcast'
 import { disconnectRegisteredSshTarget, teardownActiveSshSession } from './ssh-session-teardown'
 import { terminateSshTargetSessions } from './ssh-terminate-sessions'
+import { assertNotManagedServerHost } from './ssh-target-crud-handlers'
 import { moveSshHostToManagedServer } from './ssh-managed-server-move'
 import { runTargetLifecycle } from './ssh-target-lifecycle-queue'
 
@@ -102,8 +103,15 @@ export function registerSshConnectionHandlers(): void {
     await disconnectRegisteredSshTarget(args.targetId)
   })
 
-  ipcMain.handle('ssh:terminateSessions', (_event, args: { targetId: string }) =>
-    terminateSshTargetSessions(args.targetId)
+  ipcMain.handle(
+    'ssh:terminateSessions',
+    (_event, args: { targetId: string; forRemoval?: boolean }) => {
+      // Why here: only main sees a fence that landed after the renderer loaded its targets.
+      if (args.forRemoval) {
+        assertNotManagedServerHost(args.targetId)
+      }
+      return terminateSshTargetSessions(args.targetId)
+    }
   )
 
   ipcMain.handle('ssh:moveToManagedServer', (_event, args: { targetId: string }) =>
