@@ -9,6 +9,7 @@ import {
 import type { SshTarget } from '../../shared/ssh-types'
 import { getManagedOrcadFenceEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
 import type { SshConnection } from './ssh-connection'
+import { isAuthError } from './ssh-connection-utils'
 import type { SshConnectionManager } from './ssh-connection-manager'
 import { SshPortForwardManager } from './ssh-port-forward'
 import { OrcadManagedTunnelTransportProvider } from './orcad-managed-tunnel-transport'
@@ -24,7 +25,6 @@ import {
   managedTunnelAccess,
   recordActiveOrcadTunnel,
   supersededTunnelError,
-  OrcadTunnelSupersededError,
   type ActiveOrcadTunnel
 } from './orcad-managed-tunnel-active'
 import { checkManagedTunnelServing, type OrcadTunnelServing } from './orcad-managed-tunnel-serving'
@@ -86,17 +86,19 @@ export class OrcadManagedTunnelManager {
 
   ensure(
     environment: KnownRuntimeEnvironment,
-    resolveCurrent: () => KnownRuntimeEnvironment | null = () => environment
+    resolveCurrent: () => KnownRuntimeEnvironment | null = () => environment,
+    retryJoined = true
   ): Promise<void> {
     if (!getRuntimeSshAccess(environment)) {
       return Promise.resolve()
     }
     const pending = this.inFlight.get(environment.id)
     if (pending) {
-      // A joiner did not start that run: if a close() or transport change overtook it, build anew.
+      // A joiner did not start that run, so its end (a close(), a disconnect that cancelled its
+      // connect, a lost exec) is not this caller's answer: build once anew. An auth failure is.
       return pending.catch((error: unknown) =>
-        error instanceof OrcadTunnelSupersededError
-          ? this.ensure(environment, resolveCurrent)
+        retryJoined && !(error instanceof Error && isAuthError(error))
+          ? this.ensure(environment, resolveCurrent, false)
           : Promise.reject(error)
       )
     }
