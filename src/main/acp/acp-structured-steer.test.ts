@@ -162,47 +162,27 @@ describe('a send while a Grok prompt runs', () => {
 })
 
 describe('a send while a turn Grok began itself runs', () => {
-  async function steerBehindGrokTurn() {
+  it('goes to Grok at once, with no cancel of that turn', async () => {
     const rig = await openAcpAdapterRig()
     await rig.acquire()
-    rig.child().agent.notify('session/update', replyChunk(GROK_TURN, 'Build finished; now'))
+    const { agent } = rig.child()
+    agent.notify('session/update', replyChunk(GROK_TURN, 'Build finished; now'))
     await rig.settle()
-    await sendHello(rig, 'steer')
+    await sendHello(rig, 'during')
+    const prompt = await rig.frame('session/prompt')
+    expect(rig.sent('session/cancel')).toHaveLength(0)
+    agent.notify('x.ai/session_notification', {
+      sessionId: PROVIDER_SESSION,
+      update: { sessionUpdate: 'turn_completed', prompt_id: GROK_TURN, stop_reason: 'end_turn' }
+    })
+    agent.notify('session/update', replyChunk(promptIdOf(prompt), 'on it'))
+    agent.reply(prompt, { stopReason: 'end_turn' })
     await rig.settle()
-    expect(rig.sent('session/cancel')).toHaveLength(1)
-    expect(rig.sent('session/prompt')).toHaveLength(0)
-    return rig
-  }
-
-  it('withdraws the steer a Stop reaches while it waits for that turn to end', async () => {
-    const rig = await steerBehindGrokTurn()
-    await expect(rig.adapter.cancelTurn({ sessionId: ADAPTER_SESSION, fence: 1 })).resolves.toEqual(
-      { cancelled: true }
-    )
-    endsGrokTurn(rig.child().agent)
-    await rig.settle()
-    expect(rig.sent('session/prompt')).toHaveLength(0)
     expect(rig.settled).toEqual([
-      expect.objectContaining({
-        clientMessageId: 'steer',
-        state: 'rejected',
-        reason: DISPATCH_REJECTED_CANCELLED
-      })
+      expect.objectContaining({ clientMessageId: 'during', providerIdentity: expect.anything() })
     ])
-  })
-
-  it('rejects the waiting steer as never sent when Grok exits', async () => {
-    const rig = await steerBehindGrokTurn()
-    rig.child().exit()
-    await rig.settle()
-    expect(rig.sent('session/prompt')).toHaveLength(0)
-    expect(rig.settled).toEqual([
-      expect.objectContaining({
-        clientMessageId: 'steer',
-        state: 'rejected',
-        reason: 'Grok stopped before this message was sent.'
-      })
-    ])
+    const turns = (await rig.rig.rows()).flatMap((row) => readAgentJournalTurn(row.body) ?? [])
+    expect(turns.map((turn) => turn.state)).toEqual(['completed', 'completed'])
   })
 })
 
@@ -310,21 +290,19 @@ describe('Steer on a Grok card, through the host', () => {
     await host.close(SESSION, 'user-close')
   })
 
-  it('cancels a turn Grok began itself on Steer, and sends the card once that turn ends', async () => {
+  it('sends the card at once on Steer during a turn Grok began itself, with no cancel', async () => {
     const rig = await openAttachedHostRig({ stopGraceMs: 20 })
     const child = rig.rig.child()
     child.agent.notify('session/update', replyChunk(GROK_TURN, 'Build finished; now'))
     await rig.rig.settle()
     const { sendNow, sends } = await queueCard(rig)
     expect(await sendNow()).toMatchObject({ ok: true })
-    await waitFor(() => expect(framesOf(child, 'session/cancel')).toHaveLength(1))
-    // Not into Grok's own queue behind its turn, where Orca could no longer withdraw it.
-    expect(framesOf(child, 'session/prompt')).toHaveLength(0)
-    endsGrokTurn(child.agent)
     const steered = await rig.rig.frame('session/prompt')
+    expect(framesOf(child, 'session/cancel')).toHaveLength(0)
+    endsGrokTurn(child.agent)
     child.agent.notify('session/update', replyChunk(promptIdOf(steered), 'on it'))
     await waitFor(async () => expect(await sends()).toMatchObject([{ state: 'accepted' }]))
-    expect(framesOf(child, 'session/cancel')).toHaveLength(1)
+    expect(framesOf(child, 'session/cancel')).toHaveLength(0)
     expect(child.exited).toBe(false)
     await rig.host.close(SESSION, 'user-close')
   })
