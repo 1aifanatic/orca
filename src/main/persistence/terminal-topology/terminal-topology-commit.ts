@@ -4,70 +4,59 @@ import type {
   TerminalLeafMoveRequest,
   TerminalLeafMoveResult
 } from '../../../shared/terminal-leaf-move'
-import type { TerminalPaneCloseTarget } from '../../../shared/terminal-surface-close-target'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
 import {
   terminalSurfaceCloseMutation,
   type TerminalSurfaceCloseCommit
 } from '../../runtime/terminal-surface-close'
 import type { DurableProfileStateMutation } from '../loading-store/store-runtime-state'
-import { commitWorkspaceSessionPartition } from '../loading-store/workspace-session-partition-commit'
+import { publishWorkspaceSessionPartition } from '../loading-store/workspace-session-partition-publication'
 import { planTerminalLeafMove, rekeyMovedLeafProfileRecords } from './terminal-leaf-move'
 import type { TerminalLeafMoveOriginLedger } from './terminal-leaf-move-origin-ledger'
 import { planTerminalLeafMoveUndo } from './terminal-leaf-move-undo'
 import type { TerminalSessionPartition } from './terminal-topology-membership'
-import { withTopologyCommit } from './terminal-topology-write-guard'
 import {
   startTerminalTopologyWriteSpan,
   type TerminalTopologyCommitKind
 } from './terminal-topology-write-span'
 
 /**
- * The commit boundary for class-(a) terminal topology (design §5.1). Each function wraps today's
- * writer unchanged; later stages route the remaining writers here. Binding joins in B1-4, when its
- * write first reaches a session sink.
+ * The commit boundary for class-(a) terminal topology (design §5.1). Today it wraps the explicit
+ * close and the pane move; later stages route the remaining writers here, binding in B1-4. Debt:
+ * the close transform still lives in runtime/ until B1-8 moves it behind this module.
  */
 
-// Debt: the close transform still lives in runtime/; B1-8 moves it behind this module.
-type CloseCommit<Target> = Omit<TerminalSurfaceCloseCommit, 'target'> & { target: Target }
-
-/** closeLeaf for a pane target, closeTab for a tab target. */
+/** Closes one pane (close_leaf) or a whole tab (close_tab), unchanged, inside the topology span. */
 export function closeLeafOrTab(
   commit: TerminalSurfaceCloseCommit
 ): () => DurableProfileStateMutation<Error | undefined> {
-  const { target } = commit
-  return target.kind === 'pane' ? closeLeaf({ ...commit, target }) : closeTab({ ...commit, target })
+  return topologyCommitMutation(
+    commit.target.kind === 'pane' ? 'close_leaf' : 'close_tab',
+    terminalSurfaceCloseMutation(commit),
+    // Close refusals are fixed reason codes, never ids.
+    (value) => (value instanceof Error ? value.message : undefined)
+  )
 }
 
-function closeLeaf(
-  commit: CloseCommit<TerminalPaneCloseTarget>
-): () => DurableProfileStateMutation<Error | undefined> {
-  return topologyCommitMutation('close_leaf', terminalSurfaceCloseMutation(commit))
-}
-
-function closeTab(
-  commit: CloseCommit<{ kind: 'tab'; tabId: string }>
-): () => DurableProfileStateMutation<Error | undefined> {
-  return topologyCommitMutation('close_tab', terminalSurfaceCloseMutation(commit))
-}
-
-function topologyCommitMutation(
+/** Runs one commit inside the topology span; `refusalOf` names a refusal's reason code. */
+function topologyCommitMutation<T>(
   kind: TerminalTopologyCommitKind,
-  mutate: () => DurableProfileStateMutation<Error | undefined>
-): () => DurableProfileStateMutation<Error | undefined> {
+  mutate: () => DurableProfileStateMutation<T>,
+  refusalOf: (value: T) => string | undefined
+): () => DurableProfileStateMutation<T> {
   return () => {
     const span = startTerminalTopologyWriteSpan(kind)
     try {
-      const result = withTopologyCommit(mutate)
-      if (result.value instanceof Error) {
-        // Close refusals are fixed reason codes, never ids.
-        span.finish({ outcome: 'refused', refusal: result.value.message })
+      const result = mutate()
+      const refusal = refusalOf(result.value)
+      if (refusal !== undefined) {
+        span.finish('refused', refusal)
       } else {
-        span.finish({ outcome: result.persist === false ? 'noop' : 'committed' })
+        span.finish(result.persist === false ? 'noop' : 'committed')
       }
       return result
     } catch (error) {
-      span.fail(error)
+      span.finish('threw', error)
       throw error
     }
   }
@@ -94,22 +83,11 @@ export function moveLeaf(
   request: TerminalLeafMoveRequest,
   context: TerminalLeafMoveCommitContext
 ): () => DurableProfileStateMutation<TerminalLeafMoveResult> {
-  return () => {
-    const span = startTerminalTopologyWriteSpan(request.undo ? 'undo_move_leaf' : 'move_leaf')
-    try {
-      const mutation = withTopologyCommit(() => commitLeafMove(request, context))
-      const result = mutation.value
-      if (result.status === 'refused') {
-        span.finish({ outcome: 'refused', refusal: result.reason })
-      } else {
-        span.finish({ outcome: mutation.persist === false ? 'noop' : 'committed' })
-      }
-      return mutation
-    } catch (error) {
-      span.fail(error)
-      throw error
-    }
-  }
+  return topologyCommitMutation(
+    request.undo ? 'undo_move_leaf' : 'move_leaf',
+    () => commitLeafMove(request, context),
+    (result) => (result.status === 'refused' ? result.reason : undefined)
+  )
 }
 
 function commitLeafMove(
@@ -127,14 +105,14 @@ function commitLeafMove(
   const priorLeases = state.sshRemotePtyLeases
   const restores = planned.sessions.map(({ hostId, session: next }) => {
     const prior = context.getSession(hostId)
-    commitWorkspaceSessionPartition(state, hostId, next)
+    publishWorkspaceSessionPartition(state, hostId, next)
     context.markDirty(
       hostId === LOCAL_EXECUTION_HOST_ID ? 'workspaceSession' : 'workspaceSessionsByHostId'
     )
     // A later write already replaced what this move wrote; never rewind it.
     return () => {
       if (context.getSession(hostId) === next) {
-        commitWorkspaceSessionPartition(state, hostId, prior)
+        publishWorkspaceSessionPartition(state, hostId, prior)
       }
     }
   })
@@ -161,17 +139,16 @@ function commitLeafMove(
   }
   return {
     value: planned.result,
-    rollback: () =>
-      withTopologyCommit(() => {
-        for (const restore of restores) {
-          restore()
-        }
-        if (rekeyed.ui && state.ui === rekeyed.ui) {
-          state.ui = priorUi
-        }
-        if (rekeyed.sshRemotePtyLeases && state.sshRemotePtyLeases === rekeyed.sshRemotePtyLeases) {
-          state.sshRemotePtyLeases = priorLeases
-        }
-      })
+    rollback: () => {
+      for (const restore of restores) {
+        restore()
+      }
+      if (rekeyed.ui && state.ui === rekeyed.ui) {
+        state.ui = priorUi
+      }
+      if (rekeyed.sshRemotePtyLeases && state.sshRemotePtyLeases === rekeyed.sshRemotePtyLeases) {
+        state.sshRemotePtyLeases = priorLeases
+      }
+    }
   }
 }
