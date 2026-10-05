@@ -62,11 +62,6 @@ export class ClaudeOpenTurn {
   }
 
   /** The open turn's row, where a fact about the running turn lands. */
-  /** The submission that opened the open turn, when known (`ClaudeCurrentTurn.openedBy`). */
-  get openedBy(): string | null {
-    return this.current?.openedBy ?? null
-  }
-
   get identity(): AgentJournalItemIdentity | null {
     return this.current ? claudeCurrentTurnIdentity(this.current) : null
   }
@@ -215,7 +210,7 @@ export class ClaudeOpenTurn {
       { lifecycle: item.body, ...(contextUsage ? { contextUsage } : {}) },
       { publish: false, options: item.options }
     )
-    // Preserve first-work evidence when completion arrives before the journal drains.
+    // Keyed apart, so this never replaces the start's publication while it still waits to run.
     this.deps.sink.publish({ coalescingKey: item.publishCoalescingKey })
   }
 }

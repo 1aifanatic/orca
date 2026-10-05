@@ -1,4 +1,3 @@
-import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
   type AgentJournalRowAttribution
@@ -118,7 +117,6 @@ export function createCodexStructuredItemStreams(
     // A stream only ever carries an item that has not completed yet.
     const body = withJournalReasoningLifecycle(translated.body, { state: 'running' })
     return appendCodexItemAndPublish(deps.sink, state.identity, body, {
-      coalescingKey: `checkpoint:${agentJournalItemKey(state.identity)}`,
       ...attributionOf(key),
       ...(state.startedAt === undefined ? {} : { observedAt: state.startedAt })
     }).accepted
