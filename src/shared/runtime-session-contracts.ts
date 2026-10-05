@@ -1,3 +1,4 @@
+import type { AgentExitRetirementDisposition } from './agent-exit-retirement'
 import type { AgentStatusOrchestrationContext } from './agent-status-types'
 import type { RemoteServerUpdateSupport } from './remote-server-update'
 import type { RemoteRuntimeSharedConnectionDiagnostics } from './remote-runtime-shared-control-types'
@@ -308,6 +309,8 @@ export type RuntimeSessionTabPropsResult = {
   updated: true
   chatView?: RuntimeSessionTabChatView
   superseded?: true
+  /** For a write carrying `agentExit`: what the host's conditional retirement did. */
+  agentExitDisposition?: AgentExitRetirementDisposition
 }
 
 export type RuntimeMobileSessionCreateTerminalResult = {

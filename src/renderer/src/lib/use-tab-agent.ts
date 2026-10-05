@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { readTerminalPresentationStamp } from '@/store/slices/tabs/terminal-presentation-stamp'
 import { useAppStore } from '@/store'
 import { isShellProcess } from '../../../shared/agent-detection'
 import { worktreeUsesRemoteConnection } from '@/store/terminals/terminal-workspace-routing'
@@ -257,13 +258,17 @@ export function useTabAgent(tab: TerminalTab): TerminalAgent | null {
   const [hasObservedAgentSignal, setHasObservedAgentSignal] = useState(false)
   const hasObservedAgentSignalRef = useRef(false)
   const signalGenerationRef = useRef<string | null>(null)
+  const armedLaunchRevisionRef = useRef<number | null>(null)
   const completedHookEvidence = hasCompletedHook && completedHookScopeKnown
 
   useEffect(() => {
     // Why: reset+re-seed in one effect so a respawn drops the stale-generation signal yet re-observes a still-live hook, not left stuck false.
-    const generation = `${ptyId ?? ''}|${String(isRemoteLike)}`
+    // Why the launch revision: evidence belongs to one launch; a relaunch in the same PTY starts over.
+    const launchRevision = readTerminalPresentationStamp(tab.id).launchRevision
+    const generation = `${ptyId ?? ''}|${String(isRemoteLike)}|${launchRevision}`
     if (signalGenerationRef.current !== generation) {
       signalGenerationRef.current = generation
+      armedLaunchRevisionRef.current = launchRevision
       hasObservedAgentSignalRef.current = false
       setHasObservedAgentSignal(false)
     }
@@ -286,6 +291,7 @@ export function useTabAgent(tab: TerminalTab): TerminalAgent | null {
   }, [
     ptyId,
     isRemoteLike,
+    tab.id,
     focusedHookAgent,
     completedHookEvidence,
     processAgent,
@@ -310,7 +316,11 @@ export function useTabAgent(tab: TerminalTab): TerminalAgent | null {
       processAgent,
       processShellForeground
     })
-    if (launchedAgentExited) {
+    // Why compare in the same turn: never retire a hint a newer launch wrote after the evidence.
+    if (
+      launchedAgentExited &&
+      readTerminalPresentationStamp(tab.id).launchRevision === armedLaunchRevisionRef.current
+    ) {
       clearTabLaunchAgent(tab.id)
     }
   }, [

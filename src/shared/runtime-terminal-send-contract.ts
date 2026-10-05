@@ -3,8 +3,9 @@ export type RuntimeTerminalSend = {
   handle: string
   accepted: boolean
   bytesWritten: number
-  /** `agent-exited`: a chat-input write after the host proved its agent exited (or that cancelled
-   *  the write's action). Older clients read only `accepted`. */
+  /** `agent-exited`: the legacy name of the opaque chat-action refusal: the tagged write's pane no
+   *  longer shows chat (an exit, a switch to terminal, a removed owner) or its action was already
+   *  cancelled. Not a claim that a process died. Older clients read only `accepted`. */
   refusedReason?: 'no-agent' | 'permission' | 'agent-exited'
   /** A chat-input write whose transport settlement was lost: `bytesWritten` is the settled prefix
    *  and later bytes may or may not have arrived. Never sent with `accepted: true`. */

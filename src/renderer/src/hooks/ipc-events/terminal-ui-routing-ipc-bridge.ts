@@ -8,8 +8,8 @@ import {
 import { hasRegisteredRuntimeTerminalTab } from '@/runtime/sync-runtime-graph'
 import { activateTabAndFocusPane } from '@/lib/activate-tab-and-focus-pane'
 import { resolveChatPairAuthority } from '@/store/slices/tabs/terminal-chat-pair-authority'
-import { resolveExitedAgentChatRetirement } from '@/store/slices/tabs/terminal-chat-exit-retirement'
 import { readTerminalChatPair } from '@/store/slices/tabs/terminal-chat-pair-state'
+import { readNativeChatTargetFromStore } from '@/store/slices/tabs/terminal-chat-target-read'
 import { useAppStore } from '../../store'
 import type { AppState } from '../../store/types'
 import { resolveBrowserSessionTabTarget } from './browser-session-tab-target'
@@ -133,19 +133,15 @@ export function registerTerminalUiRoutingIpcBridge(unsubs: (() => void)[]): void
           return
         }
         if (agentExit && leafId) {
-          // Why synchronous: the owner/binding check and the write happen in one store turn.
-          const retirement = resolveExitedAgentChatRetirement(state, tabId, leafId, agentExit.ptyId)
-          if (retirement?.retireChat) {
-            state.applyTerminalChatPair(tabId, null, 'terminal')
-          }
-          if (retirement?.clearLaunchAgent) {
-            useAppStore.getState().clearTabLaunchAgent(tabId)
-          }
+          const agentExitDisposition = state.retireTerminalChatForAgentExit(tabId, {
+            ...agentExit,
+            leafId
+          })
           const chatView = readTerminalChatPair(useAppStore.getState(), tabId)
           window.api.ui.respondTerminalChatView(
             chatView
-              ? { requestId, chatView }
-              : { requestId, error: TERMINAL_CHAT_VIEW_TAB_NOT_FOUND_ERROR }
+              ? { requestId, chatView, agentExitDisposition }
+              : { requestId, agentExitDisposition, error: TERMINAL_CHAT_VIEW_TAB_NOT_FOUND_ERROR }
           )
           return
         }
@@ -163,6 +159,16 @@ export function registerTerminalUiRoutingIpcBridge(unsubs: (() => void)[]): void
         )
       }
     )
+  )
+
+  unsubs.push(
+    window.api.ui.onNativeChatTargetRead(({ requestId, ptyId }) => {
+      // Why synchronous and read-only: main checks again after this reply, right before writing.
+      window.api.ui.respondNativeChatTargetRead({
+        requestId,
+        read: readNativeChatTargetFromStore(useAppStore.getState(), ptyId)
+      })
+    })
   )
 
   unsubs.push(

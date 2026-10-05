@@ -27,6 +27,9 @@ export function sendNativeChatObservedWrites(
         }
         const write = writes[index]
         if (!write) {
+          if (!reportedUnconfirmed) {
+            options.onWritesAccepted?.()
+          }
           markSubmitted()
           return
         }

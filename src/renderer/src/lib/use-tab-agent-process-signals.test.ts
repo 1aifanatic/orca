@@ -13,6 +13,7 @@ import {
   resolveTabAgentFromSignals
 } from './tab-agent-from-signals'
 import { useTabAgent } from './use-tab-agent'
+import { noteTerminalPresentationLaunch } from '@/store/slices/tabs/terminal-presentation-stamp'
 
 const initialAppState = useAppStore.getInitialState()
 const LEAF_ID = '11111111-1111-4111-8111-111111111111'
@@ -224,6 +225,45 @@ describe('useTabAgent process signals', () => {
     await setPaneForeground({ agent: null, shellForeground: true })
 
     expect(latestHookAgent).toBe('aider')
+    expect(clearTabLaunchAgent).not.toHaveBeenCalled()
+  })
+
+  it("never clears a relaunched agent's hint with the previous run's cached exit evidence (R4.2-2)", async () => {
+    const launchedTab = { ...baseTab, launchAgent: 'aider' as const }
+    const root = await renderHookProbe(launchedTab)
+    await setPaneForeground({ agent: 'aider', shellForeground: false })
+    // A same-name agent is relaunched in the same PTY before it paints a title or hook.
+    noteTerminalPresentationLaunch('tab-1')
+    await act(async () => {
+      root.render(createElement(HookProbe, { tab: { ...launchedTab } }))
+    })
+    await setPaneForeground({ agent: null, shellForeground: true })
+    await act(async () => {
+      root.render(createElement(HookProbe, { tab: { ...launchedTab } }))
+    })
+    expect(clearTabLaunchAgent).not.toHaveBeenCalled()
+  })
+
+  it('drops cached evidence when the pane is rebound to a new PTY', async () => {
+    const launchedTab = { ...baseTab, launchAgent: 'aider' as const }
+    const root = await renderHookProbe(launchedTab)
+    await setPaneForeground({ agent: 'aider', shellForeground: false })
+    // The pane respawns: the new PTY's first observation is its shell.
+    await act(async () => {
+      useAppStore
+        .getState()
+        .setPaneForegroundAgent(PANE_KEY, { agent: null, shellForeground: true })
+      useAppStore.setState((state) => ({
+        ptyIdsByTabId: { 'tab-1': ['pty-2'] },
+        terminalLayoutsByTabId: {
+          'tab-1': {
+            ...state.terminalLayoutsByTabId['tab-1']!,
+            ptyIdsByLeafId: { [LEAF_ID]: 'pty-2' }
+          }
+        }
+      }))
+      root.render(createElement(HookProbe, { tab: { ...launchedTab, ptyId: 'pty-2' } }))
+    })
     expect(clearTabLaunchAgent).not.toHaveBeenCalled()
   })
 })

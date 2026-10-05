@@ -1,0 +1,116 @@
+import type { AgentProcessIdentity } from '../../shared/agent-process-presence'
+import type { TerminalProcessInspection } from '../../shared/terminal-process-inspection'
+import { recognizeAgentProcess } from '../../shared/agent-process-recognition'
+
+// Why 15 s: a silent exit nothing reported is still found while the user reads.
+export const AGENT_PRESENCE_FALLBACK_INTERVAL_MS = 15_000
+// Why stop after three: an unreadable host must not become a poll; a change signal re-arms it.
+export const AGENT_PRESENCE_BACKOFF_MS = [30_000, 60_000] as const
+
+/**
+ * One agent run in one PTY incarnation: the process an exit proof must be about. A new owner, a
+ * new recognized process or a relaunch begins a new run before anything asynchronous happens, so
+ * evidence about an older run can never act on a newer one.
+ */
+export type AgentExitRun = {
+  readonly runId: number
+  readonly ptyId: string
+  readonly incarnationId: string | null
+  agent: string | null
+  identity: AgentProcessIdentity | null
+  source: 'hook' | 'foreground'
+  /** Its end was consumed (a retirement started, or a replacement superseded it). */
+  endHandled: boolean
+  /** When its canonical owner reported its own end; a later look may still need to confirm it. */
+  ownerEndedAtMs?: number
+  failedProbes: number
+  nextProbeAtMs: number
+}
+
+export class AgentExitRunRegistry {
+  private nextRunId = 1
+  private readonly runs = new Map<string, AgentExitRun>()
+
+  current(ptyId: string): AgentExitRun | undefined {
+    return this.runs.get(ptyId)
+  }
+
+  isCurrent(run: AgentExitRun): boolean {
+    return this.runs.get(run.ptyId) === run
+  }
+
+  begin(
+    ptyId: string,
+    init: Pick<AgentExitRun, 'incarnationId' | 'agent' | 'identity' | 'source'>,
+    nowMs = Date.now()
+  ): AgentExitRun {
+    const run: AgentExitRun = {
+      runId: this.nextRunId++,
+      ptyId,
+      ...init,
+      endHandled: false,
+      failedProbes: 0,
+      nextProbeAtMs: nowMs + AGENT_PRESENCE_FALLBACK_INTERVAL_MS
+    }
+    this.runs.set(ptyId, run)
+    return run
+  }
+
+  forget(ptyId: string): void {
+    this.runs.delete(ptyId)
+  }
+
+  all(): AgentExitRun[] {
+    return [...this.runs.values()]
+  }
+}
+
+/**
+ * The recognized agent a fenced, incarnation-matched foreground capture names, with the PID and
+ * start marker the host measured; null for a shell, an unrecognized program, an ambiguous group,
+ * an unverifiable capture or a different incarnation.
+ */
+export function readRecognizedForegroundAgent(
+  inspection: TerminalProcessInspection | null | undefined,
+  incarnationId: string | null
+): { agent: string; pid: number; startTime: string } | null {
+  const evidence =
+    inspection && 'foregroundProcessEvidence' in inspection
+      ? inspection.foregroundProcessEvidence
+      : undefined
+  if (
+    !evidence ||
+    evidence.verdict !== 'live' ||
+    evidence.ptyIncarnationId !== incarnationId ||
+    evidence.fence.platform !== 'posix' ||
+    !evidence.fence.process
+  ) {
+    return null
+  }
+  const recognized = recognizeAgentProcess(evidence.processName)
+  return recognized
+    ? {
+        agent: recognized.agent,
+        pid: evidence.fence.process.pid,
+        startTime: evidence.fence.process.startTime
+      }
+    : null
+}
+
+/** A fenced capture of this incarnation that names no recognized agent in front: the shell is back. */
+export function isFencedShellForeground(
+  inspection: TerminalProcessInspection | null | undefined,
+  incarnationId: string | null
+): boolean {
+  const evidence =
+    inspection && 'foregroundProcessEvidence' in inspection
+      ? inspection.foregroundProcessEvidence
+      : undefined
+  return (
+    evidence?.verdict === 'live' &&
+    evidence.ptyIncarnationId === incarnationId &&
+    evidence.fence.platform === 'posix' &&
+    !evidence.fence.process &&
+    !recognizeAgentProcess(evidence.processName)
+  )
+}

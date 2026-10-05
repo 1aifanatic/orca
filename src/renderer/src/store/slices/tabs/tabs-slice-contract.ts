@@ -1,3 +1,7 @@
+import type {
+  AgentExitRetirementCondition,
+  AgentExitRetirementDisposition
+} from '../../../../../shared/agent-exit-retirement'
 import type { StateCreator } from 'zustand'
 import type { AppState } from '../../types'
 import type {
@@ -123,6 +127,14 @@ export type TabsSlice = {
       ownerPickLeafId?: string | null
     }
   ) => RuntimeSessionTabChatView | null
+  /**
+   * A pane's agent exit: turns that pane's chat terminal and clears a sole pane's launch hint in
+   * one store turn, never moving chat elsewhere; a newer presentation change supersedes it.
+   */
+  retireTerminalChatForAgentExit: (
+    terminalTabId: string,
+    condition: AgentExitRetirementCondition
+  ) => AgentExitRetirementDisposition
   /** Set a tab's view mode (terminal vs native chat). Patches only that tab. */
   setTabViewMode: (tabId: string, mode: 'terminal' | 'chat') => void
   /** Flip a tab between terminal and native-chat renderings; the live TerminalPane stays mounted. */

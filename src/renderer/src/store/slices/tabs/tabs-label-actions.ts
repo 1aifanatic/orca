@@ -16,6 +16,9 @@ import {
   writeHostOwnedChatPair
 } from './terminal-chat-pair-routing'
 import { locateTerminalTab } from '../../terminals/terminal-tab-location'
+import { resolveAgentExitRetirement } from './terminal-chat-exit-retirement'
+import { noteTerminalPresentationIntent } from './terminal-presentation-stamp'
+import { scheduleRuntimeGraphSync } from '@/runtime/sync-runtime-graph'
 
 export function createTabsLabelActions(
   set: TabsSliceSet,
@@ -25,6 +28,7 @@ export function createTabsLabelActions(
   | 'reorderUnifiedTabs'
   | 'setTabLabel'
   | 'applyTerminalChatPair'
+  | 'retireTerminalChatForAgentExit'
   | 'setTabViewMode'
   | 'toggleTabViewMode'
   | 'setTabCustomLabel'
@@ -81,6 +85,8 @@ export function createTabsLabelActions(
           options
         )
       }
+      // Why every accepted write: a client's switch, even to the shown value, orders after older exits.
+      noteTerminalPresentationIntent(terminalTabId)
       const toggle: { committed: { from: 'terminal' | 'chat'; to: 'terminal' | 'chat' } | null } = {
         committed: null
       }
@@ -104,6 +110,21 @@ export function createTabsLabelActions(
         emitNativeChatToggled({ ...committed, agent: agent ?? null })
       }
       return readTerminalChatPair(get(), terminalTabId)
+    },
+
+    retireTerminalChatForAgentExit: (terminalTabId, condition) => {
+      const outcome: { disposition: ReturnType<typeof resolveAgentExitRetirement>['disposition'] } =
+        { disposition: 'missing' }
+      // Why inside set: the condition check and the pair + hint patch are one store turn.
+      set((state) => {
+        const resolved = resolveAgentExitRetirement(state, terminalTabId, condition)
+        outcome.disposition = resolved.disposition
+        return resolved.patch ?? state
+      })
+      if (outcome.disposition === 'applied') {
+        scheduleRuntimeGraphSync()
+      }
+      return outcome.disposition
     },
 
     setTabViewMode: (tabId, mode) => {

@@ -1,183 +1,176 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { OrcaRuntimeService } from './orca-runtime-test-mocks.spec'
-import {
-  HEADLESS_LEAF_ID,
-  HEADLESS_SECOND_LEAF_ID,
-  TEST_WORKTREE_ID,
-  makeHeadlessTerminalLayout,
-  makeRuntimeStoreWithWorkspaceSession,
-  makeWorkspaceSessionWithHeadlessTerminal
-} from './orca-runtime-test-fixtures.spec'
-import type { RuntimeStore } from './runtime-store-contract'
-import type { Tab } from '../../shared/tab-types'
-import type { TerminalLayoutSnapshot } from '../../shared/terminal-tab-types'
-import type { TerminalProcessInspection } from '../../shared/terminal-process-inspection'
-import { settledWriteStub } from '../providers/settled-pty-write-stub'
+import { A, B, PTY, WT, flush, makeAgentExitHost } from './agent-exit-host.test-fixture'
 
-const A = HEADLESS_LEAF_ID
-const B = HEADLESS_SECOND_LEAF_ID
-const PTY: Record<string, string> = { [A]: 'pty-a', [B]: 'pty-b' }
-
-type Presence = 'live' | 'unverifiable' | 'exited' | null
-const NO_CHILDREN: TerminalProcessInspection = {
-  foregroundProcess: 'zsh',
-  hasChildProcesses: false,
-  childProcessEvidence: 'no-children'
-}
-const CHILDREN: TerminalProcessInspection = {
-  foregroundProcess: 'claude',
-  hasChildProcesses: true,
-  childProcessEvidence: 'children'
-}
-
-function unifiedTab(viewMode?: 'terminal' | 'chat'): Tab {
-  return {
-    id: 'host-tab',
-    entityId: 'host-tab',
-    groupId: 'group-1',
-    worktreeId: TEST_WORKTREE_ID,
-    contentType: 'terminal',
-    label: 'Persisted Terminal',
-    customLabel: null,
-    color: null,
-    sortOrder: 0,
-    createdAt: 1,
-    ...(viewMode ? { viewMode } : {})
-  }
-}
-
-/** A headless host tab whose panes run PTYs launched as Claude; no renderer consumes facts. */
-function makeExitHost(options: {
-  viewMode?: 'terminal' | 'chat'
-  leaves: 1 | 2
-  chatLeafId?: string
-  tabLaunchAgent?: 'claude'
-  presence?: () => Promise<Presence>
-  inspection?: () => Promise<TerminalProcessInspection>
-}) {
-  const ptyIds = options.leaves === 2 ? { [A]: PTY[A], [B]: PTY[B] } : { [A]: PTY[A] }
-  const layout: TerminalLayoutSnapshot = {
-    ...makeHeadlessTerminalLayout(ptyIds),
-    ...(options.chatLeafId ? { chatLeafId: options.chatLeafId } : {})
-  }
-  const base = makeWorkspaceSessionWithHeadlessTerminal()
-  const row = base.tabsByWorktree[TEST_WORKTREE_ID]![0]!
-  const session = {
-    ...base,
-    tabsByWorktree: {
-      [TEST_WORKTREE_ID]: [
-        {
-          ...row,
-          ptyId: PTY[A]!,
-          ...(options.tabLaunchAgent ? { launchAgent: options.tabLaunchAgent } : {})
-        }
-      ]
-    },
-    unifiedTabs: { [TEST_WORKTREE_ID]: [unifiedTab(options.viewMode)] },
-    terminalLayoutsByTabId: { 'host-tab': layout }
-  }
-  const { runtimeStore, getSession } = makeRuntimeStoreWithWorkspaceSession(session)
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The shared fixture implements RuntimeStore; its annotation erases the Vitest mock call signatures.
-  const store = runtimeStore as RuntimeStore
-  const presence = vi.fn(options.presence ?? (async (): Promise<Presence> => null))
-  const runtime = new OrcaRuntimeService(store, undefined, {
-    checkHookAgentPresence: () => presence()
-  })
-  const write = vi.fn((_ptyId: string, _data: string) => true)
-  const inspectProcess = vi.fn(options.inspection ?? (async () => NO_CHILDREN))
-  runtime.setPtyController({
-    write,
-    writeWithSettlement: settledWriteStub(write),
-    kill: vi.fn(),
-    getForegroundProcess: vi.fn(async () => null),
-    inspectProcess
-  })
-  for (const leafId of Object.keys(ptyIds)) {
-    runtime.registerPty(PTY[leafId]!, TEST_WORKTREE_ID, null, {
-      tabId: 'host-tab',
-      leafId,
-      incarnationId: `inc-${leafId}`,
-      agentLaunchAuthority: { launchToken: `token-${leafId}`, launchAgent: 'claude' }
-    })
-  }
-  const hostPair = () => ({
-    viewMode: getSession().unifiedTabs?.[TEST_WORKTREE_ID]?.[0]?.viewMode,
-    owner: getSession().terminalLayoutsByTabId['host-tab']?.chatLeafId
-  })
-  const hostLaunchAgent = () => getSession().tabsByWorktree[TEST_WORKTREE_ID]?.[0]?.launchAgent
-  const published = async () =>
-    (await runtime.listMobileSessionTabs(`id:${TEST_WORKTREE_ID}`)).tabs.flatMap((tab) =>
-      tab.type === 'terminal' ? [tab] : []
-    )
-  const snapshotVersion = () =>
-    runtime['mobileSessionTabsByWorktree'].get(TEST_WORKTREE_ID)?.snapshotVersion
-  const writeCount = () => vi.mocked(store.setWorkspaceSession!).mock.calls.length
-  const handleFor = (leafId: string): string => {
-    const handle = runtime['handleByPtyId'].get(PTY[leafId]!)
-    if (!handle) {
-      throw new Error(`no handle for ${leafId}`)
-    }
-    return handle
-  }
-  const chatSend = (leafId: string, actionId: string, text = 'rm -rf build') =>
-    runtime.sendTerminal(
-      handleFor(leafId),
-      { text, enter: true },
-      { inputKind: 'driving', chatInput: { actionId } }
-    )
-  return {
-    runtime,
-    store,
-    presence,
-    inspectProcess,
-    write,
-    hostPair,
-    hostLaunchAgent,
-    published,
-    snapshotVersion,
-    writeCount,
-    handleFor,
-    chatSend
-  }
-}
-
-async function flush(): Promise<void> {
-  for (let index = 0; index < 10; index += 1) {
-    await Promise.resolve()
-  }
-}
+const CLAUDE = { pid: 4242, platform: 'darwin' as const, startTime: 'utc:claude-start' }
 
 afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('F2: the host turns a chat tab to terminal on a proven agent exit (headless)', () => {
-  it('retires the owner pane chat and its launch hint when the hook owner check says exited', async () => {
-    const host = makeExitHost({
-      viewMode: 'chat',
-      leaves: 1,
-      tabLaunchAgent: 'claude',
-      presence: async () => 'exited'
-    })
+describe('F2: a proven agent run exit retires the chat it was shown in (headless)', () => {
+  it("consumes the canonical owner's own end even though a presence probe would say null (R1A-1)", async () => {
+    const host = makeAgentExitHost({ viewMode: 'chat', leaves: 1, tabLaunchAgent: 'claude' })
     await host.published()
+    host.owner(A, { agent: 'claude', process: CLAUDE })
     const writes = host.writeCount()
     const version = host.snapshotVersion()!
 
-    host.runtime['confirmPtyAgentExit'](PTY[A]!)
+    // Claude /exit: its process-ending SessionEnd marks the owner ended; the shell is in front.
+    host.owner(A, { agent: 'claude', process: CLAUDE, ended: true })
     await flush()
 
     expect(host.hostPair()).toEqual({ viewMode: 'terminal', owner: undefined })
     expect(host.hostLaunchAgent()).toBeUndefined()
+    // R1C-3: one session write and one snapshot bump for the whole retirement.
     expect(host.writeCount()).toBe(writes + 1)
-    expect(host.snapshotVersion()).toBeGreaterThan(version)
-    const rows = await host.published()
-    expect(rows.map((row) => [row.viewMode, row.launchAgent])).toEqual([['terminal', undefined]])
+    expect(host.snapshotVersion()).toBe(version + 1)
+    expect(host.probe).not.toHaveBeenCalled()
   })
 
-  it('refuses a later composer send with zero bytes, while raw terminal input still writes', async () => {
-    const host = makeExitHost({ viewMode: 'chat', leaves: 1, presence: async () => 'exited' })
+  it('learns a Codex run from one fenced capture and proves its exit by PID, with no exit hook', async () => {
+    const host = makeAgentExitHost({ leaves: 1, tabLaunchAgent: 'codex' })
+    host.foreground.set(PTY[A]!, { name: 'codex', pid: 5151, startTime: 'codex-start' })
+    host.alive.add(5151)
     await host.published()
+    host.owner(A, { agent: 'codex' })
+    await flush()
+    expect(host.bootstrap).toHaveBeenCalledWith(
+      expect.objectContaining({ pid: 5151, startTime: 'codex-start' })
+    )
+
+    // Codex quits to its shell; the title exit is only a reason to look.
+    host.alive.delete(5151)
+    host.foreground.set(PTY[A]!, null)
     host.runtime['confirmPtyAgentExit'](PTY[A]!)
+    await vi.waitFor(() => expect(host.hostLaunchAgent()).toBeUndefined())
+    // An unswitched tab keeps its view unset; the cleared hint turns the phone to terminal.
+    expect(host.hostPair().viewMode).toBeUndefined()
+    const rows = await host.published()
+    expect(rows.map((row) => [row.viewMode, row.launchAgent])).toEqual([[undefined, undefined]])
+  })
+
+  it('adopts a same-name replacement already in front instead of retiring for it (R4.1-1)', async () => {
+    const host = makeAgentExitHost({ viewMode: 'chat', leaves: 1 })
+    host.foreground.set(PTY[A]!, { name: 'codex', pid: 1001, startTime: 'a' })
+    host.alive.add(1001)
+    await host.published()
+    host.owner(A, { agent: 'codex' })
+    await flush()
+    // A exits and B (also codex) is already running before A's result resolves; no hook, no title.
+    host.alive.delete(1001)
+    host.foreground.set(PTY[A]!, { name: 'codex', pid: 2002, startTime: 'b' })
+    host.alive.add(2002)
+    host.runtime['confirmPtyAgentExit'](PTY[A]!)
+    await vi.waitFor(() =>
+      expect(host.runtime['agentExitRuns'].current(PTY[A]!)?.identity?.pid).toBe(2002)
+    )
+    expect(host.hostPair()).toEqual({ viewMode: 'chat', owner: undefined })
+  })
+
+  it("never retires for B when A's old end arrives after B became the owner (R1A-4)", async () => {
+    const host = makeAgentExitHost({ viewMode: 'chat', leaves: 1 })
+    await host.published()
+    host.owner(A, { agent: 'claude', process: CLAUDE })
+    host.owner(A, { agent: 'claude', process: { ...CLAUDE, pid: 777, startTime: 'b' } })
+    // A replayed/late end for the old process is not this run's end.
+    host.inspectProcess.mockClear()
+    host.owner(A, { agent: 'claude', process: CLAUDE, ended: true })
+    await flush()
+    expect(host.inspectProcess).not.toHaveBeenCalled()
+    expect(host.hostPair()).toEqual({ viewMode: 'chat', owner: undefined })
+  })
+
+  it('leaves the end unproven while the ended process is still in front, then confirms it', async () => {
+    const host = makeAgentExitHost({ viewMode: 'chat', leaves: 1 })
+    await host.published()
+    host.owner(A, { agent: 'claude', process: CLAUDE })
+    // The SessionEnd hook can precede the process leaving the pane.
+    host.foreground.set(PTY[A]!, { name: 'claude', pid: CLAUDE.pid, startTime: 'raw' })
+    host.owner(A, { agent: 'claude', process: CLAUDE, ended: true })
+    await flush()
+    expect(host.hostPair().viewMode).toBe('chat')
+    host.foreground.set(PTY[A]!, null)
+    host.runtime['confirmPtyAgentExit'](PTY[A]!)
+    await vi.waitFor(() => expect(host.hostPair().viewMode).toBe('terminal'))
+  })
+
+  it('ignores an exit on a pane that is not the chat owner', async () => {
+    const host = makeAgentExitHost({ viewMode: 'chat', leaves: 2, chatLeafId: B })
+    await host.published()
+    host.owner(A, { agent: 'claude', process: CLAUDE })
+    host.owner(A, { agent: 'claude', process: CLAUDE, ended: true })
+    await flush()
+    expect(host.hostPair()).toEqual({ viewMode: 'chat', owner: B })
+  })
+
+  it('runs no probe, capture or remote scan for an SSH pane, whatever happens (R1E-1)', async () => {
+    const host = makeAgentExitHost({ viewMode: 'chat', leaves: 1, connectionId: 'ssh-win' })
+    await host.published()
+    host.owner(A, { agent: 'codex' })
+    for (let index = 0; index < 5; index += 1) {
+      host.runtime['confirmPtyAgentExit'](PTY[A]!)
+      host.runtime['noteNativeChatAgentEvidence'](PTY[A]!)
+    }
+    await flush()
+    expect(host.inspectProcess).not.toHaveBeenCalled()
+    expect(host.probe).not.toHaveBeenCalled()
+  })
+
+  it('starts no probe for 1,000 unchanged-owner status updates (R1E-2)', async () => {
+    const host = makeAgentExitHost({ viewMode: 'chat', leaves: 1 })
+    await host.published()
+    host.owner(A, { agent: 'claude', process: CLAUDE })
+    host.alive.add(CLAUDE.pid)
+    await flush()
+    host.probe.mockClear()
+    host.inspectProcess.mockClear()
+    for (let index = 0; index < 1_000; index += 1) {
+      host.owner(A, { agent: 'claude', process: CLAUDE })
+    }
+    await flush()
+    expect(host.probe).not.toHaveBeenCalled()
+    expect(host.inspectProcess).not.toHaveBeenCalled()
+  })
+
+  it('stops discovery after three captures on a pane whose agent never shows (R1E-3)', async () => {
+    vi.useFakeTimers()
+    const host = makeAgentExitHost({ viewMode: 'chat', leaves: 1, tabLaunchAgent: 'codex' })
+    await host.published()
+    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    expect(host.inspectProcess.mock.calls.length).toBeLessThanOrEqual(3)
+    expect(host.probe).not.toHaveBeenCalled()
+  })
+
+  it('finds a silent exit of a known agent with one targeted probe per 15 s, no table scan', async () => {
+    vi.useFakeTimers()
+    const host = makeAgentExitHost({ viewMode: 'chat', leaves: 1 })
+    await host.published()
+    host.owner(A, { agent: 'claude', process: CLAUDE })
+    host.alive.add(CLAUDE.pid)
+    await vi.advanceTimersByTimeAsync(6_000)
+    host.inspectProcess.mockClear()
+    host.probe.mockClear()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(host.probe.mock.calls.length).toBeGreaterThanOrEqual(3)
+    expect(host.probe.mock.calls.length).toBeLessThanOrEqual(4)
+    expect(host.inspectProcess).not.toHaveBeenCalled()
+    // The agent crashes without any title or hook; the next fallback finds it.
+    host.alive.delete(CLAUDE.pid)
+    await vi.advanceTimersByTimeAsync(15_000)
+    expect(host.hostPair().viewMode).toBe('terminal')
+    // Nothing left to watch: no further timer work.
+    const probes = host.probe.mock.calls.length
+    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    expect(host.probe.mock.calls.length).toBe(probes)
+  })
+})
+
+describe('F2: composer admission follows the committed presentation (headless)', () => {
+  it('refuses a stale tagged send with zero bytes after the retirement; raw input still writes', async () => {
+    const host = makeAgentExitHost({ viewMode: 'chat', leaves: 1 })
+    await host.published()
+    host.owner(A, { agent: 'claude', process: CLAUDE })
+    host.owner(A, { agent: 'claude', process: CLAUDE, ended: true })
     await flush()
     host.write.mockClear()
 
@@ -187,273 +180,32 @@ describe('F2: the host turns a chat tab to terminal on a proven agent exit (head
       refusedReason: 'agent-exited'
     })
     expect(host.write).not.toHaveBeenCalled()
-
-    await expect(
-      host.runtime.sendTerminal(host.handleFor(A), { text: 'ls' }, { inputKind: 'driving' })
-    ).resolves.toMatchObject({ accepted: true })
-    expect(host.write).toHaveBeenCalledWith(PTY[A], 'ls', 'driving')
+    await expect(host.rawSend(A, 'ls')).resolves.toMatchObject({ accepted: true })
+    expect(host.write).toHaveBeenCalled()
   })
 
-  it('proves an exit from the execution host when no hook owner is identified', async () => {
-    const host = makeExitHost({ viewMode: 'chat', leaves: 2, chatLeafId: A })
+  it('admits a new action as soon as the user switches back to chat; the refused one stays refused (R1B-1)', async () => {
+    const host = makeAgentExitHost({ viewMode: 'terminal', leaves: 1 })
     await host.published()
-
-    host.runtime['confirmPtyAgentExit'](PTY[A]!)
-    await flush()
-
-    expect(host.inspectProcess).toHaveBeenCalledWith(PTY[A], {
-      expectedIncarnationId: `inc-${A}`,
-      scanChildProcesses: true
-    })
-    expect(host.hostPair()).toEqual({ viewMode: 'terminal', owner: undefined })
-  })
-
-  it('treats a finished launch command (OSC 133;D) as a reason to look, then retires on proof', async () => {
-    const host = makeExitHost({ viewMode: 'chat', leaves: 1 })
-    await host.published()
-    host.runtime['noteAgentSightedForExitProof'](PTY[A]!)
-
-    host.runtime.onPtyData(PTY[A]!, '\x1b]133;D;0\x07', 1)
-    await flush()
-
-    expect(host.hostPair()).toEqual({ viewMode: 'terminal', owner: undefined })
-  })
-
-  it("leaves the tab alone when the exited agent is not the chat owner's", async () => {
-    const host = makeExitHost({
-      viewMode: 'chat',
-      leaves: 2,
-      chatLeafId: A,
-      presence: async () => 'exited'
-    })
-    await host.published()
-    const writes = host.writeCount()
-
-    host.runtime['confirmPtyAgentExit'](PTY[B]!)
-    await flush()
-
-    expect(host.hostPair()).toEqual({ viewMode: 'chat', owner: A })
-    expect(host.writeCount()).toBe(writes)
-    await expect(host.chatSend(A, 'owner-still-live')).resolves.toMatchObject({ accepted: true })
-  })
-
-  it('discards an exit observation once new agent evidence arrives before it commits', async () => {
-    let resolveInspection: (value: TerminalProcessInspection) => void = () => {}
-    const host = makeExitHost({
-      viewMode: 'chat',
-      leaves: 1,
-      inspection: () =>
-        new Promise<TerminalProcessInspection>((resolve) => {
-          resolveInspection = resolve
-        })
-    })
-    await host.published()
-    host.runtime['confirmPtyAgentExit'](PTY[A]!)
-    await flush()
-
-    // A replacement agent on the same PTY incarnation reports itself before the proof lands.
-    host.runtime['noteNativeChatAgentEvidence'](PTY[A]!)
-    resolveInspection(NO_CHILDREN)
-    await flush()
-
-    expect(host.hostPair()).toEqual({ viewMode: 'chat', owner: undefined })
-    await expect(host.chatSend(A, 'to-new-agent')).resolves.toMatchObject({ accepted: true })
-  })
-})
-
-describe('F2: the host advertises that it owns exits', () => {
-  it('stamps chatViewAgentExitHostOwned beside chatViewHostOwned on session-tabs results', async () => {
-    const host = makeExitHost({ viewMode: 'chat', leaves: 1 })
-    const result = await host.runtime.listMobileSessionTabs(`id:${TEST_WORKTREE_ID}`)
-    expect(result).toMatchObject({ chatViewHostOwned: true, chatViewAgentExitHostOwned: true })
-    host.runtime['stopAgentExitReconcile']()
-  })
-})
-
-describe('F2: weak or missing evidence never retires chat (narrow guard)', () => {
-  it.each<[string, Presence, () => Promise<TerminalProcessInspection>]>([
-    [
-      'an identified owner whose process cannot be checked',
-      'unverifiable',
-      async () => NO_CHILDREN
-    ],
-    [
-      'an SSH host the relay cannot reach (no identified owner)',
-      null,
-      async () => ({
-        foregroundProcess: null,
-        hasChildProcesses: false,
-        verdict: 'unverifiable',
-        reason: 'transport_loss'
-      })
-    ],
-    [
-      'a host read that throws',
-      null,
-      async () => {
-        throw new Error('process_table_unreadable')
-      }
-    ],
-    ['a running child (agent suspended or still alive)', null, async () => CHILDREN],
-    ['a live hook owner', 'live', async () => NO_CHILDREN]
-  ])('keeps chat and accepts sends for %s', async (_label, presence, inspection) => {
-    const host = makeExitHost({
-      viewMode: 'chat',
-      leaves: 1,
-      presence: async () => presence,
-      inspection
-    })
-    await host.published()
-    if (presence === 'unverifiable') {
-      host.runtime['ptysById'].get(PTY[A]!)!.connected = false
-    }
-
-    host.runtime['confirmPtyAgentExit'](PTY[A]!)
-    await flush()
-
-    expect(host.hostPair()).toEqual({ viewMode: 'chat', owner: undefined })
-    host.runtime['ptysById'].get(PTY[A]!)!.connected = true
-    await expect(host.chatSend(A, 'still-agent')).resolves.toMatchObject({ accepted: true })
-  })
-
-  it('does not take an empty shell for an exit while a fresh launch may still be starting', async () => {
-    vi.useFakeTimers()
-    const host = makeExitHost({ viewMode: 'chat', leaves: 1 })
-    await host.published()
-
-    host.runtime['runAgentExitReconcilePass']()
-    await vi.advanceTimersByTimeAsync(0)
-
-    expect(host.inspectProcess).toHaveBeenCalled()
-    expect(host.hostPair()).toEqual({ viewMode: 'chat', owner: undefined })
-  })
-})
-
-describe('F2: bounded reconciliation finds exits nothing reported', () => {
-  it('retires an unswitched sole-pane tab launched as Claude: hint cleared, view stays absent', async () => {
-    vi.useFakeTimers()
-    const host = makeExitHost({ leaves: 1, tabLaunchAgent: 'claude' })
-    const before = await host.published()
-    expect(before.map((row) => [row.viewMode, row.launchAgent])).toEqual([[undefined, 'claude']])
-    expect(host.runtime['agentExitReconcileTimer']).not.toBeNull()
-
-    // First pass records the candidate; past the launch grace an empty shell is proof.
-    host.runtime['runAgentExitReconcilePass']()
-    await vi.advanceTimersByTimeAsync(31_000)
-    host.runtime['runAgentExitReconcilePass']()
-    await vi.advanceTimersByTimeAsync(0)
-
-    expect(host.hostPair().viewMode).toBeUndefined()
-    expect(host.hostLaunchAgent()).toBeUndefined()
-    // Why both absent: the phone resolver then answers terminal for an unswitched tab.
-    const [row] = await host.published()
-    expect([row?.viewMode, row?.launchAgent]).toEqual([undefined, undefined])
-    await expect(host.chatSend(A, 'stale-composer')).resolves.toMatchObject({
+    await expect(host.chatSend(A, 'old')).resolves.toMatchObject({ accepted: false })
+    await host.runtime.setMobileSessionTabProps(`id:${WT}`, { tabId: 'host-tab', viewMode: 'chat' })
+    await expect(host.chatSend(A, 'new')).resolves.toMatchObject({ accepted: true })
+    await expect(host.chatSend(A, 'old')).resolves.toMatchObject({
       accepted: false,
-      refusedReason: 'agent-exited'
+      bytesWritten: 0
     })
-
-    host.runtime['runAgentExitReconcilePass']()
-    expect(host.runtime['agentExitReconcileTimer']).toBeNull()
   })
 
-  it('keeps an unswitched tab when its SSH host cannot be read', async () => {
-    vi.useFakeTimers()
-    const host = makeExitHost({
-      leaves: 1,
-      tabLaunchAgent: 'claude',
-      inspection: async () => ({
-        foregroundProcess: null,
-        hasChildProcesses: false,
-        verdict: 'unverifiable',
-        reason: 'transport_loss'
-      })
-    })
+  it('admits a sole unswitched pane with a supported hint and refuses it once the hint is retired', async () => {
+    const host = makeAgentExitHost({ leaves: 1, tabLaunchAgent: 'claude' })
     await host.published()
-    host.runtime['runAgentExitReconcilePass']()
-    await vi.advanceTimersByTimeAsync(31_000)
-    host.runtime['runAgentExitReconcilePass']()
-    await vi.advanceTimersByTimeAsync(0)
-
-    expect(host.hostLaunchAgent()).toBe('claude')
-    host.runtime['stopAgentExitReconcile']()
-    // Why real timers: an accepted send waits out its body-to-Enter gap.
-    vi.useRealTimers()
-    await expect(host.chatSend(A, 'still-agent')).resolves.toMatchObject({ accepted: true })
-  })
-})
-
-describe('F2: a proven exit cancels the in-flight chat action for good', () => {
-  it('refuses the old Enter after the exit even when a new agent re-admits new actions', async () => {
-    const host = makeExitHost({ viewMode: 'chat', leaves: 1, presence: async () => 'exited' })
-    await host.published()
-    await expect(
-      host.runtime.writeNativeChatInputToPty(PTY[A]!, 'hello', 'driving', 'action-k')
-    ).resolves.toMatchObject({ accepted: true })
-
-    host.runtime['confirmPtyAgentExit'](PTY[A]!)
+    await expect(host.chatSend(A, 'legacy')).resolves.toMatchObject({ accepted: true })
+    host.owner(A, { agent: 'claude', process: CLAUDE })
+    host.owner(A, { agent: 'claude', process: CLAUDE, ended: true })
     await flush()
-    host.runtime['noteNativeChatAgentEvidence'](PTY[A]!)
-    host.write.mockClear()
-
-    await expect(
-      host.runtime.writeNativeChatInputToPty(PTY[A]!, '\r', 'driving', 'action-k')
-    ).resolves.toEqual({ accepted: false, bytesWritten: 0, refusedReason: 'agent-exited' })
-    expect(host.write).not.toHaveBeenCalled()
-    await expect(
-      host.runtime.writeNativeChatInputToPty(PTY[A]!, 'next', 'driving', 'action-new')
-    ).resolves.toMatchObject({ accepted: true })
-  })
-})
-
-describe('F2: a desktop-owned host relays a conditional exit write', () => {
-  it('asks the renderer to retire only that pane, bound to that PTY', async () => {
-    const host = makeExitHost({
-      viewMode: 'chat',
-      leaves: 2,
-      chatLeafId: A,
-      presence: async () => 'exited'
+    await expect(host.chatSend(A, 'legacy-2')).resolves.toMatchObject({
+      accepted: false,
+      bytesWritten: 0
     })
-    await host.published()
-    const setTerminalChatView = vi.fn(async () => ({ viewMode: 'terminal', chatLeafId: null }))
-    Reflect.set(host.runtime, 'getAvailableAuthoritativeWindow', () => ({}))
-    Reflect.set(host.runtime, 'notifier', { setTerminalChatView })
-    const writes = host.writeCount()
-
-    host.runtime['confirmPtyAgentExit'](PTY[A]!)
-    await flush()
-
-    expect(setTerminalChatView).toHaveBeenCalledTimes(1)
-    expect(setTerminalChatView).toHaveBeenCalledWith(
-      TEST_WORKTREE_ID,
-      'host-tab',
-      A,
-      'terminal',
-      undefined,
-      { ptyId: PTY[A] }
-    )
-    // Why: the renderer owns a desktop host's tabs; main never writes its own copy.
-    expect(host.writeCount()).toBe(writes)
-  })
-
-  it('still refuses composer sends when the renderer relay fails', async () => {
-    const host = makeExitHost({ viewMode: 'chat', leaves: 1, presence: async () => 'exited' })
-    await host.published()
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    Reflect.set(host.runtime, 'getAvailableAuthoritativeWindow', () => ({}))
-    Reflect.set(host.runtime, 'notifier', {
-      setTerminalChatView: vi.fn(async () => {
-        throw new Error('renderer_unavailable')
-      })
-    })
-
-    host.runtime['confirmPtyAgentExit'](PTY[A]!)
-    await flush()
-
-    await expect(host.chatSend(A, 'after-exit')).resolves.toMatchObject({
-      refusedReason: 'agent-exited'
-    })
-    expect(warn).toHaveBeenCalled()
-    warn.mockRestore()
   })
 })

@@ -67,22 +67,26 @@ export function useNativeChatPtyComposerSend(args: {
       readScreen: () => args.readTerminalScreen?.()
     })
     let pendingId: string | undefined
-    const rejectSend = (): void => {
+    const rejectSend = (refusal?: { nothingWritten: boolean }): void => {
       if (pendingId) {
         args.optimisticSendOutcome?.reject(pendingId)
       } else if (classification !== 'chat') {
         // Why: a command has no message row; the composer's notice line is its failure surface.
         args.setNotice(nativeChatMessageNotSentText())
+        if (refusal?.nothingWritten) {
+          // Why only when nothing landed: a partly typed command must not be invited to resend.
+          args.setDraft(text)
+        }
       }
     }
-    // Why every agent: a refusal after the host proved the agent exited is not Claude-specific.
+    // Why every agent: the host refuses a composer write once its pane no longer shows chat.
     const chatAction = createNativeChatWriteAction(args.terminalTabId, rejectSend)
     const sendOptions =
       args.agent === 'claude' && classification === 'chat'
         ? {
             ...launchSendOptions,
             chatAction,
-            onWriteRejected: rejectSend,
+            onWriteRejected: () => rejectSend(),
             onWriteUnconfirmed: () => {
               if (pendingId) {
                 args.optimisticSendOutcome?.holdUnconfirmed(pendingId)

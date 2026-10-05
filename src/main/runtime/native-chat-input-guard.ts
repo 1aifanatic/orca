@@ -1,84 +1,76 @@
+import type { NativeChatTargetRead } from '../../shared/native-chat-target-read'
+
 // Why bounded: action ids are client-chosen; a PTY only needs the recent ones to fence delayed steps.
 const MAX_TRACKED_ACTIONS_PER_PTY = 64
 
-type PtyChatInputState = {
-  /** Set when the host proved this incarnation's agent exited; new actions are refused. */
-  exitedIncarnationId: string | null | undefined
-  started: Set<string>
-  /** Actions a proven exit interrupted or refused; never admitted again on this PTY. */
+type PinnedAction = { incarnationId: string | null; presentationToken: string | null }
+
+type PtyChatActions = {
+  started: Map<string, PinnedAction>
+  /** Refused or interrupted actions; never admitted again on this PTY, even if chat returns. */
   cancelled: Set<string>
 }
 
-export type NativeChatInputVerdict = 'admitted' | 'agent-exited'
+export type NativeChatInputVerdict = 'admitted' | 'refused'
 
-function remember(set: Set<string>, actionId: string): void {
-  set.delete(actionId)
-  set.add(actionId)
-  while (set.size > MAX_TRACKED_ACTIONS_PER_PTY) {
-    const oldest = set.values().next().value
+/** The committed presentation could not be read now (renderer down/slow): not an exit verdict. */
+export type NativeChatTargetObservation = NativeChatTargetRead | 'unverifiable'
+
+function trim<T>(entries: Map<string, T> | Set<string>): void {
+  while (entries.size > MAX_TRACKED_ACTIONS_PER_PTY) {
+    const oldest = entries.keys().next().value
     if (oldest === undefined) {
       return
     }
-    set.delete(oldest)
+    entries.delete(oldest)
   }
 }
 
 /**
- * Host-side fence for chat composer writes. A proven agent exit refuses later chat actions on that
- * PTY incarnation and permanently cancels every action already started there; later agent evidence
- * re-admits only NEW actions. Raw terminal input never passes through here (narrow guard).
+ * Host-side fence for chat composer writes, decided per chunk from the committed presentation (no
+ * exit latch): a write lands only while the PTY's pane may still render chat. An action pins its
+ * PTY incarnation and presentation token at admission; a refusal, a rebinding or any presentation
+ * change after that cancels it for good, while a new action may use a newly committed chat at once.
  */
 export class NativeChatInputGuard {
-  private readonly byPtyId = new Map<string, PtyChatInputState>()
+  private readonly byPtyId = new Map<string, PtyChatActions>()
 
-  private stateFor(ptyId: string): PtyChatInputState {
-    let state = this.byPtyId.get(ptyId)
-    if (!state) {
-      state = { exitedIncarnationId: undefined, started: new Set(), cancelled: new Set() }
-      this.byPtyId.set(ptyId, state)
+  admit(
+    ptyId: string,
+    incarnationId: string | null,
+    actionId: string,
+    target: NativeChatTargetObservation
+  ): NativeChatInputVerdict {
+    const existing = this.byPtyId.get(ptyId)
+    if (existing?.cancelled.has(actionId)) {
+      return 'refused'
     }
-    return state
-  }
-
-  /** Before an action's first write: refuses (and cancels it) once the agent is proven gone. */
-  admit(ptyId: string, incarnationId: string | null, actionId: string): NativeChatInputVerdict {
-    const state = this.stateFor(ptyId)
-    if (state.cancelled.has(actionId)) {
-      return 'agent-exited'
+    // Why before allocating: an unknown target must not grow the registry (and writes nothing).
+    if (target !== 'unverifiable' && target.kind === 'unknown-target') {
+      return 'refused'
     }
-    if (this.isExited(ptyId, incarnationId)) {
-      remember(state.cancelled, actionId)
-      return 'agent-exited'
+    const state = existing ?? { started: new Map(), cancelled: new Set() }
+    this.byPtyId.set(ptyId, state)
+    const pinned = state.started.get(actionId)
+    const token =
+      target !== 'unverifiable' && target.kind === 'chat-target' ? target.presentationToken : null
+    const moved =
+      pinned !== undefined &&
+      (pinned.incarnationId !== incarnationId ||
+        (pinned.presentationToken !== null && token !== null && pinned.presentationToken !== token))
+    if ((target !== 'unverifiable' && target.kind === 'not-chat-target') || moved) {
+      state.started.delete(actionId)
+      state.cancelled.add(actionId)
+      trim(state.cancelled)
+      return 'refused'
     }
-    remember(state.started, actionId)
+    if (!pinned) {
+      state.started.set(actionId, { incarnationId, presentationToken: token })
+      trim(state.started)
+    } else if (pinned.presentationToken === null && token !== null) {
+      pinned.presentationToken = token
+    }
     return 'admitted'
-  }
-
-  /** Before every later write of an admitted action (next chunk, delayed Enter, next step). */
-  recheck(ptyId: string, incarnationId: string | null, actionId: string): NativeChatInputVerdict {
-    return this.admit(ptyId, incarnationId, actionId)
-  }
-
-  confirmExit(ptyId: string, incarnationId: string | null): void {
-    const state = this.stateFor(ptyId)
-    state.exitedIncarnationId = incarnationId
-    for (const actionId of state.started) {
-      remember(state.cancelled, actionId)
-    }
-    state.started.clear()
-  }
-
-  /** New agent evidence on the PTY: new actions may write again; cancelled ones stay cancelled. */
-  clearExit(ptyId: string): void {
-    const state = this.byPtyId.get(ptyId)
-    if (state) {
-      state.exitedIncarnationId = undefined
-    }
-  }
-
-  isExited(ptyId: string, incarnationId: string | null): boolean {
-    const exited = this.byPtyId.get(ptyId)?.exitedIncarnationId
-    return exited !== undefined && exited === incarnationId
   }
 
   /** The PTY itself exited or was replaced; its ids can never be addressed again. */

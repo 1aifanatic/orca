@@ -344,3 +344,47 @@ describe('host-owned hook presence', () => {
     expect(state(server)).toBe('working')
   })
 })
+
+describe('owner presence signal for the execution host (F2)', () => {
+  it('signals each owner start and end once, not every status update (R1E-2)', async () => {
+    const server = await createServer()
+    const changes: string[] = []
+    server.subscribeAgentPresenceChanges((change) => {
+      changes.push(`${change.presence?.agent}:${change.presence?.ended ? 'ended' : 'live'}`)
+    })
+    await hook(server, 'SessionStart')
+    for (let index = 0; index < 5; index += 1) {
+      await hook(server, 'PostToolUse')
+    }
+    await hook(server, 'SessionEnd', 'session-a', 'prompt_input_exit')
+    expect(changes).toEqual(['claude:live', 'claude:ended'])
+  })
+
+  it('signals an ended owner even when another caller probed first and no row remains', async () => {
+    const server = await createServer()
+    await hook(server, 'SessionStart')
+    const ended = vi.fn()
+    server.subscribeAgentPresenceChanges((change) => {
+      if (change.presence?.ended) {
+        ended(change.presence.process?.pid)
+      }
+    })
+    probe.mockResolvedValueOnce('exited')
+    await expect(server.checkAgentPresence(PANE)).resolves.toBe('exited')
+    // The canonical end is now recorded; a later probe answers null, yet the signal was sent.
+    await expect(server.checkAgentPresence(PANE)).resolves.toBeNull()
+    expect(ended).toHaveBeenCalledWith(4001)
+  })
+
+  it('does not treat /clear or /resume as an end', async () => {
+    const server = await createServer()
+    const changes: string[] = []
+    server.subscribeAgentPresenceChanges((change) => {
+      changes.push(change.presence?.ended ? 'ended' : 'live')
+    })
+    await hook(server, 'SessionStart')
+    await hook(server, 'SessionEnd', 'session-a', 'clear')
+    await hook(server, 'SessionEnd', 'session-a', 'resume')
+    expect(changes).toEqual(['live'])
+  })
+})

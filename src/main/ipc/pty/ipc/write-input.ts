@@ -40,7 +40,10 @@ export function createPtyWriteInput(deps: {
 }): {
   writePtyInput: (args: PtyWritePayload) => boolean | Promise<boolean>
   writePtyInputAccepted: (args: PtyWritePayload) => boolean | Promise<boolean>
-  writePtyChatInput: (args: PtyChatInputPayload) => Promise<NativeChatInputWriteResult>
+  writePtyChatInput: (
+    args: PtyChatInputPayload,
+    viewportClaim?: Promise<boolean>
+  ) => Promise<NativeChatInputWriteResult>
   isPtyWritePayload: (value: unknown) => value is PtyWritePayload
   isPtyChatInputPayload: (value: unknown) => value is PtyChatInputPayload
   isPtyViewportClaimPayload: (value: unknown) => value is PtyViewportClaimPayload
@@ -214,23 +217,31 @@ export function createPtyWriteInput(deps: {
   // Why not writePtyInputAccepted: that ack cannot settle SSH writes, and its callers fell back to
   // a raw write, which would type a refused chat message into a shell.
   const writePtyChatInput = async (
-    args: PtyChatInputPayload
+    args: PtyChatInputPayload,
+    viewportClaim?: Promise<boolean>
   ): Promise<NativeChatInputWriteResult> => {
     if (!runtime || runtime.getDriver(args.id).kind === 'mobile') {
       return { accepted: false, bytesWritten: 0 }
     }
-    const tooLarge = isTerminalInputTooLargeWithDeferredMeasurement(args.data)
-    if (typeof tooLarge === 'boolean' ? tooLarge : await tooLarge) {
-      return { accepted: false, bytesWritten: 0 }
-    }
-    lastInputAtByPty.set(args.id, performance.now())
-    interactiveOutputCharsByPty.set(args.id, 0)
     try {
+      // Why every wait inside: the action joins its PTY's chat order the moment it arrives.
       return await runtime.writeNativeChatInputToPty(
         args.id,
         args.data,
         args.inputKind,
-        args.actionId
+        args.actionId,
+        async () => {
+          if (viewportClaim && !(await viewportClaim)) {
+            return false
+          }
+          const tooLarge = isTerminalInputTooLargeWithDeferredMeasurement(args.data)
+          if (typeof tooLarge === 'boolean' ? tooLarge : await tooLarge) {
+            return false
+          }
+          lastInputAtByPty.set(args.id, performance.now())
+          interactiveOutputCharsByPty.set(args.id, 0)
+          return true
+        }
       )
     } catch {
       return { accepted: false, bytesWritten: 0, deliveryUnknown: true }

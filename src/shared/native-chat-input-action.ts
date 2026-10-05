@@ -15,6 +15,7 @@ export function createNativeChatInputAction(): NativeChatInputAction {
 export type NativeChatInputWriteResult = {
   accepted: boolean
   bytesWritten: number
+  /** The opaque chat-action refusal (see `RuntimeTerminalSend.refusedReason`). */
   refusedReason?: 'agent-exited'
   deliveryUnknown?: true
 }

@@ -26,8 +26,11 @@ import type {
   RuntimeSessionTabPropsResult
 } from '../../shared/runtime-session-contracts'
 import { resolveTerminalChatPairWrite } from '../../shared/terminal-tab-view-mode'
+import { HeadlessPresentationStamps } from './headless-presentation-stamps'
 
 export class OrcaRuntimeWithPersistHeadlessSessionTabProps extends OrcaRuntimeWithCloseHeadlessMobileTerminalTab {
+  protected readonly headlessPresentationStamps = new HeadlessPresentationStamps()
+
   protected persistHeadlessSessionTabProps(
     worktreeId: string,
     tabId: string,
@@ -39,6 +42,13 @@ export class OrcaRuntimeWithPersistHeadlessSessionTabProps extends OrcaRuntimeWi
     }
     const nextSession = buildHeadlessSessionTabPropsPatch(session, worktreeId, tabId, props)
     if (nextSession) {
+      if (
+        props.viewMode !== undefined ||
+        props.chatLeafId !== undefined ||
+        props.launchAgent !== undefined
+      ) {
+        this.headlessPresentationStamps.bump(worktreeId, tabId)
+      }
       this.setWorkspaceSessionForWorktree(worktreeId, nextSession)
     }
   }
@@ -237,6 +247,7 @@ export class OrcaRuntimeWithPersistHeadlessSessionTabProps extends OrcaRuntimeWi
         }
       }
     }
+    this.headlessPresentationStamps.bump(worktreeId, args.tabId)
     this.setWorkspaceSessionForWorktree(worktreeId, candidate)
     // Why: persistence may reject stale membership while accepting its metadata; publish only that rebased layout.
     return (

@@ -31,6 +31,8 @@ export type HostPairSnapshot = {
   leaves?: string[]
   /** The host also owns exits (`chatViewAgentExitHostOwned`). */
   exitMarker?: boolean
+  /** The host's presentation token for the tab. */
+  token?: string
 }
 
 function splitRoot(leaves: string[]): TerminalPaneLayoutNode {
@@ -66,6 +68,7 @@ export function makeHostPairSnapshot(pair: HostPairSnapshot = {}): RuntimeMobile
       status: 'ready' as const,
       terminal: `terminal-${index + 1}`,
       ...(pair.viewMode ? { viewMode: pair.viewMode } : {}),
+      ...(pair.token ? { presentationToken: pair.token } : {}),
       parentLayout: {
         root: splitRoot(leaves),
         activeLeafId: leaves[0]!,

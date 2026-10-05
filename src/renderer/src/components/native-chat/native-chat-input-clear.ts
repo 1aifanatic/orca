@@ -23,6 +23,8 @@ export type NativeChatSendOptions = {
   onWriteRejected?: () => void
   /** A write's acknowledgment was lost; it may or may not have landed. */
   onWriteUnconfirmed?: () => void
+  /** Every write was settled as accepted by the host. */
+  onWritesAccepted?: () => void
   /** Bytes that empty the agent's input line. Defaults to a single Ctrl+U. */
   clearInput?: string
   /**

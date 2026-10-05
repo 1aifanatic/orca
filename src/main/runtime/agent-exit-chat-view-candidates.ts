@@ -1,6 +1,6 @@
 import type { RuntimeMobileSessionTabsSnapshot } from '../../shared/runtime-types'
 import type { RuntimeMobileSessionTerminalTab } from '../../shared/runtime-mobile-session-tab-contracts'
-import { isNativeChatSupportedAgent } from '../../shared/native-chat-agent-support'
+import { isComposerChatTarget } from '../../shared/native-chat-target-read'
 
 /**
  * A pane whose agent exit must change what clients show: `owner` is the chat-owning pane of a chat
@@ -17,19 +17,22 @@ export type AgentExitChatViewCandidate = {
   incarnationId: string | null
 }
 
-function isChatOwnerRow(row: RuntimeMobileSessionTerminalTab, leafCount: number): boolean {
-  if (row.viewMode !== 'chat') {
-    return false
+function chatTargetKind(
+  row: RuntimeMobileSessionTerminalTab,
+  leafIds: readonly string[]
+): AgentExitChatViewCandidate['kind'] | null {
+  if (
+    !isComposerChatTarget({
+      viewMode: row.viewMode,
+      chatLeafId: row.parentLayout?.chatLeafId,
+      launchAgent: row.launchAgent,
+      leafIds,
+      leafId: row.leafId
+    })
+  ) {
+    return null
   }
-  const owner = row.parentLayout?.chatLeafId
-  // Why: a tab with one pane owns chat on that pane without an owner id.
-  return owner ? owner === row.leafId : leafCount === 1
-}
-
-function isLegacyChatRow(row: RuntimeMobileSessionTerminalTab, leafCount: number): boolean {
-  return (
-    row.viewMode === undefined && leafCount === 1 && isNativeChatSupportedAgent(row.launchAgent)
-  )
+  return row.viewMode === 'chat' ? 'owner' : 'legacy'
 }
 
 /** Re-derived from the published rows on every pass; nothing is stored between passes. */
@@ -41,20 +44,19 @@ export function collectAgentExitChatViewCandidates(
     const rows = snapshot.tabs.filter(
       (tab): tab is RuntimeMobileSessionTerminalTab => tab.type === 'terminal'
     )
-    const leafCountByParent = new Map<string, number>()
+    const leafIdsByParent = new Map<string, string[]>()
     for (const row of rows) {
-      leafCountByParent.set(row.parentTabId, (leafCountByParent.get(row.parentTabId) ?? 0) + 1)
+      leafIdsByParent.set(row.parentTabId, [
+        ...(leafIdsByParent.get(row.parentTabId) ?? []),
+        row.leafId
+      ])
     }
     for (const row of rows) {
       if (!row.ptyId) {
         continue
       }
-      const leafCount = leafCountByParent.get(row.parentTabId) ?? 0
-      const kind = isChatOwnerRow(row, leafCount)
-        ? 'owner'
-        : isLegacyChatRow(row, leafCount)
-          ? 'legacy'
-          : null
+      // Why the published rows: this is only an index of candidates; every action re-reads truth.
+      const kind = chatTargetKind(row, leafIdsByParent.get(row.parentTabId) ?? [])
       if (kind) {
         candidates.push({
           kind,

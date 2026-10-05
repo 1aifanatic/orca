@@ -58,4 +58,21 @@ describe('mobile chat input guard', () => {
       sendMobileNativeChatMessageWithOutcome({ client, terminal: 'term', text: 'hello' })
     ).resolves.toBe('unknown')
   })
+
+  it('reads a refusal after a settled prefix as unconfirmed, never a clean failure (R1B-3)', async () => {
+    const client = clientWithResponse({
+      id: 'request',
+      ok: true,
+      result: { send: { accepted: false, bytesWritten: 4096, refusedReason: 'agent-exited' } },
+      _meta: { runtimeId: 'runtime' }
+    })
+    await expect(
+      sendMobileNativeChatMessageWithOutcome({
+        client,
+        terminal: 'term',
+        text: 'hello',
+        chatInput: { actionId: 'chat-1' }
+      })
+    ).resolves.toBe('unknown')
+  })
 })

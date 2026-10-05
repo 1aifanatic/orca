@@ -18,7 +18,9 @@ export type TerminalSideEffectFact =
   | { kind: 'bell' }
   | { kind: 'agent-working' }
   | { kind: 'agent-idle'; title: string; staleWorkingTitleClear?: boolean }
-  | { kind: 'agent-exited' }
+  /** `observedAtMs`: when the exit was first seen, before its confirmation; a presentation
+   *  change at or after it supersedes the exit (same machine clock as the renderer). */
+  | { kind: 'agent-exited'; observedAtMs?: number }
   /** OSC 133;D — foreground shell command exited (exit code best-effort). */
   | { kind: 'command-finished'; exitCode: number | null }
   /** Carries the parsed link so the renderer store consumer never re-parses

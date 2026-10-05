@@ -20,7 +20,29 @@ export type RuntimeChatInputAction = {
   hostGuarded: boolean
   /** Set by the first refusal; later writes of the action are never dispatched. */
   refused: boolean
-  onRefused?: () => void
+  /** Settled bytes of every earlier step; a refusal is clean only while this is zero. */
+  bytesWritten?: number
+  /** A pending view switch's answer: the action writes nothing unless it committed chat. */
+  ready?: Promise<boolean>
+  /** `nothingWritten`: no step of the action reached the PTY, so the input is safe to restore. */
+  onRefused?: (refusal: { nothingWritten: boolean }) => void
+}
+
+const chatInputTailByPtyId = new Map<string, Promise<unknown>>()
+
+/** One lane per PTY, entered synchronously at the call, before any measurement or wait. */
+function enqueueChatInput<T>(ptyId: string, write: () => Promise<T>): Promise<T> {
+  const previous = chatInputTailByPtyId.get(ptyId) ?? Promise.resolve()
+  const next = previous.catch(() => undefined).then(write)
+  chatInputTailByPtyId.set(ptyId, next)
+  void next
+    .catch(() => undefined)
+    .finally(() => {
+      if (chatInputTailByPtyId.get(ptyId) === next) {
+        chatInputTailByPtyId.delete(ptyId)
+      }
+    })
+  return next
 }
 
 const REFUSED: NativeChatInputWriteResult = { accepted: false, bytesWritten: 0 }
@@ -31,9 +53,10 @@ const DELIVERY_UNKNOWN: NativeChatInputWriteResult = {
 }
 
 function noteRefusal(action: RuntimeChatInputAction, result: NativeChatInputWriteResult): void {
+  action.bytesWritten = (action.bytesWritten ?? 0) + result.bytesWritten
   if (!result.accepted && !result.deliveryUnknown && !action.refused) {
     action.refused = true
-    action.onRefused?.()
+    action.onRefused?.({ nothingWritten: action.bytesWritten === 0 })
   }
 }
 
@@ -42,7 +65,18 @@ function noteRefusal(action: RuntimeChatInputAction, result: NativeChatInputWrit
  * guarded, settled IPC; a paired host gets `terminal.send` tagged with the action when it says it
  * guards. A refusal is final: there is no raw fallback that could type the text into a shell.
  */
-export async function sendRuntimeChatInput(
+export function sendRuntimeChatInput(
+  settings: Pick<GlobalSettings, 'activeRuntimeEnvironmentId'> | null | undefined,
+  ptyId: string,
+  data: string,
+  inputKind: TerminalInputKind,
+  action: RuntimeChatInputAction
+): Promise<NativeChatInputWriteResult> {
+  // Why a lane: a large body's deferred measurement must never let its Enter overtake it.
+  return enqueueChatInput(ptyId, () => sendChatInputStep(settings, ptyId, data, inputKind, action))
+}
+
+async function sendChatInputStep(
   settings: Pick<GlobalSettings, 'activeRuntimeEnvironmentId'> | null | undefined,
   ptyId: string,
   data: string,
@@ -50,6 +84,10 @@ export async function sendRuntimeChatInput(
   action: RuntimeChatInputAction
 ): Promise<NativeChatInputWriteResult> {
   if (action.refused) {
+    return REFUSED
+  }
+  if (action.ready && !(await action.ready)) {
+    noteRefusal(action, REFUSED)
     return REFUSED
   }
   const tooLarge = isTerminalInputTooLargeWithDeferredMeasurement(data)

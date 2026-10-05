@@ -265,6 +265,7 @@ export class OrcaRuntimeWithCloseHeadlessMobileTerminalTab extends OrcaRuntimeWi
       isPinned?: boolean
       viewMode?: 'terminal' | 'chat'
       chatViewWrite?: RuntimeSessionTabChatViewWrite
+      agentExit?: { presentationToken: string }
     }
   ): Promise<RuntimeSessionTabPropsResult> {
     const explicitWorktreeId = this.getValidatedExplicitWorktreeIdSelector(worktreeSelector)
@@ -286,6 +287,12 @@ export class OrcaRuntimeWithCloseHeadlessMobileTerminalTab extends OrcaRuntimeWi
       return { updated: true }
     }
     const target = resolveSessionTabChatPairTarget(snapshot, args.tabId, hostTabId)
+    if (args.agentExit && target.leafId) {
+      return this.retireObservedAgentExitChat(worktreeId, target.parentTabId, {
+        leafId: target.leafId,
+        presentationToken: args.agentExit.presentationToken
+      })
+    }
     if (authoritativeWindow) {
       // Why: today's paired clients mirror their own view, auto-exits included; a desktop host
       // takes view writes only from clients that use the fenced pair writer.
@@ -306,6 +313,8 @@ export class OrcaRuntimeWithCloseHeadlessMobileTerminalTab extends OrcaRuntimeWi
         return refused
       }
     }
+    // Why even when nothing changes: a client's switch orders after any older exit observation.
+    this.headlessPresentationStamps.bump(worktreeId, target.parentTabId)
     this.applyHeadlessChatPairWrite(worktreeId, target.parentTabId, target.leafId, args.viewMode, {
       ...(args.color !== undefined ? { color: args.color } : {}),
       ...(args.isPinned !== undefined ? { isPinned: args.isPinned } : {})

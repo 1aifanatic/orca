@@ -46,11 +46,8 @@ export function installPtyWriteIpcHandlers(deps: {
     if (!isPtyWriteEventFromMainWindow(event) || !isPtyChatInputPayload(args)) {
       return { accepted: false, bytesWritten: 0 }
     }
-    const claimTail = hostViewportClaimTails.get(args.id)
-    if (claimTail && !(await claimTail)) {
-      return { accepted: false, bytesWritten: 0 }
-    }
-    return writePtyChatInput(args)
+    // Why read now: the claim this write must follow is the one in flight when it arrived.
+    return writePtyChatInput(args, hostViewportClaimTails.get(args.id))
   })
   ipcMain.removeAllListeners('pty:claimViewport')
   ipcMain.on('pty:claimViewport', (event, args: unknown) => {

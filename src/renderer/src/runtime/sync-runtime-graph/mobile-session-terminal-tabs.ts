@@ -1,4 +1,5 @@
 import { normalizeTerminalLayoutSnapshot } from '@/components/terminal-pane/layout-serialization'
+import { readTerminalPresentationToken } from '@/store/slices/tabs/terminal-presentation-stamp'
 import { sanitizeTerminalLayoutPaneTitles } from '@/lib/terminal-pane-title-sanitization'
 import type { AppState } from '@/store/types'
 import type { RuntimeMobileSessionSnapshotTab } from '../../../../shared/runtime-types'
@@ -138,6 +139,7 @@ export function buildMobileTerminalSurfaceTabs(
         : {}),
       parentLayout: publishedParentLayout,
       ...(chatPair.viewMode ? { viewMode: chatPair.viewMode } : {}),
+      presentationToken: readTerminalPresentationToken(terminal.id),
       isActive: isDesktopTabActive && leafId === activeLeafId
     }
   })

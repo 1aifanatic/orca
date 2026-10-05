@@ -28,7 +28,8 @@ describe('pty:writeChatInput adapter', () => {
       'ssh:conn@@pty-1',
       'hello',
       'driving',
-      'a1'
+      'a1',
+      expect.any(Function)
     )
     // The fire-and-forget ack this replaces refuses every non-local PTY.
     expect(await writePtyInputAccepted(args)).toBe(false)

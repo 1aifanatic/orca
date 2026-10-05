@@ -32,6 +32,11 @@ export const terminalSendDeliveryUnknownSchema = z.looseObject({
   send: z.looseObject({ deliveryUnknown: z.literal(true) })
 })
 
+/** A refused chat write that had already settled a prefix: partly sent, never a clean failure. */
+export const terminalSendPartialRefusalSchema = z.looseObject({
+  send: z.looseObject({ accepted: z.literal(false), bytesWritten: z.number().positive() })
+})
+
 /**
  * What the runtime did with a viewport the refit sent in place.
  *

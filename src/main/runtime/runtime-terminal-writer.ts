@@ -17,8 +17,8 @@ export type RuntimeTerminalWriteOptions = {
 export type RuntimeChatInputWriteResult = NativeChatInputWriteResult
 
 export type RuntimeChatInputWriteOptions = RuntimeTerminalWriteOptions & {
-  /** The chat action's fence, rechecked before every chunk and the suffix. */
-  admit: () => 'admitted' | 'agent-exited'
+  /** The chat action's fence, rechecked after every other await, right before each chunk/suffix. */
+  admit: () => 'admitted' | 'refused' | Promise<'admitted' | 'refused'>
 }
 
 export class RuntimeTerminalWriter {
@@ -45,13 +45,19 @@ export class RuntimeTerminalWriter {
   ): Promise<RuntimeChatInputWriteResult> {
     let bytesWritten = 0
     const writeOne = async (data: string): Promise<RuntimeChatInputWriteResult | null> => {
-      if (options.admit() !== 'admitted') {
+      await options.beforeWrite?.(ptyId)
+      if ((await options.admit()) !== 'admitted') {
         return { accepted: false, bytesWritten, refusedReason: 'agent-exited' }
       }
-      await options.beforeWrite?.(ptyId)
       options.reserveWrite?.(ptyId)
-      const settlement = await (this.writeSettled?.(ptyId, data, options.inputKind) ??
-        writeRefused('provider_cannot_settle'))
+      let settlement: WriteSettlement
+      try {
+        settlement = await (this.writeSettled?.(ptyId, data, options.inputKind) ??
+          writeRefused('provider_cannot_settle'))
+      } catch {
+        // Why unknown: a throwing transport may have sent part of this chunk after the prefix.
+        return { accepted: false, bytesWritten, deliveryUnknown: true }
+      }
       if (settlement.outcome === 'refused') {
         return { accepted: false, bytesWritten }
       }

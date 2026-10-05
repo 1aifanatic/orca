@@ -122,4 +122,39 @@ describe('sendRuntimeChatInput', () => {
     ).resolves.toEqual({ accepted: false, bytesWritten: 0, refusedReason: 'agent-exited' })
     expect(step.onRefused).toHaveBeenCalledOnce()
   })
+
+  it('keeps a body ahead of its Enter even while the body is still being measured (R1B-2)', async () => {
+    const order: string[] = []
+    localWriteChatInput.mockImplementation(async (_ptyId: string, data: string) => {
+      order.push(data.length > 10 ? 'body' : JSON.stringify(data))
+      return { accepted: true, bytesWritten: data.length }
+    })
+    const step = action()
+    const body = sendRuntimeChatInput(null, 'local-pty', 'x'.repeat(300_000), 'driving', step)
+    const enter = sendRuntimeChatInput(null, 'local-pty', '\r', 'driving', step)
+    await Promise.all([body, enter])
+    expect(order).toEqual(['body', '"\\r"'])
+  })
+
+  it('writes nothing until a pending switch commits chat, and refuses when it does not', async () => {
+    localWriteChatInput.mockResolvedValue({ accepted: true, bytesWritten: 5 })
+    let commit: (value: boolean) => void = () => {}
+    const pending = action()
+    pending.ready = new Promise<boolean>((resolve) => {
+      commit = resolve
+    })
+    const sent = sendRuntimeChatInput(null, 'local-pty', 'hello', 'driving', pending)
+    await Promise.resolve()
+    expect(localWriteChatInput).not.toHaveBeenCalled()
+    commit(true)
+    await expect(sent).resolves.toMatchObject({ accepted: true })
+
+    const normalized = action()
+    normalized.ready = Promise.resolve(false)
+    await expect(
+      sendRuntimeChatInput(null, 'local-pty', 'hello', 'driving', normalized)
+    ).resolves.toEqual({ accepted: false, bytesWritten: 0 })
+    expect(normalized.onRefused).toHaveBeenCalledWith({ nothingWritten: true })
+    expect(localWriteChatInput).toHaveBeenCalledTimes(1)
+  })
 })

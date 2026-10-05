@@ -13,6 +13,7 @@ import { createNativeChatInputAction } from '../../../../shared/native-chat-inpu
 import { locateTerminalTab } from '@/store/terminals/terminal-tab-location'
 import { hostOwnsChatAgentExit } from '@/store/slices/tabs/terminal-chat-pair-authority'
 import { useAppStore } from '../../store'
+import { awaitPendingChatPairSettlement } from '@/runtime/terminal-chat-pair-outbound'
 import { translate } from '@/i18n/i18n'
 
 type RuntimeSettings = ReturnType<typeof getSettingsForAgentTabRuntimeOwner>
@@ -20,14 +21,26 @@ type RuntimeSettings = ReturnType<typeof getSettingsForAgentTabRuntimeOwner>
 /** Starts one composer action for the chat in `terminalTabId`; `onRefused` fires at most once. */
 export function createNativeChatWriteAction(
   terminalTabId: string,
-  onRefused?: () => void
+  onRefused?: RuntimeChatInputAction['onRefused']
 ): RuntimeChatInputAction {
   const state = useAppStore.getState()
   const worktreeId = locateTerminalTab(state.tabsByWorktree, terminalTabId)?.worktreeId
+  const hostGuarded = worktreeId ? hostOwnsChatAgentExit(state, worktreeId) : false
+  // Why: a send right after a switch waits for the host to commit it, so the guard never refuses
+  // a chat the user just chose; only an answer that commits chat lets the first byte go.
+  const pending =
+    hostGuarded && worktreeId ? awaitPendingChatPairSettlement(worktreeId, terminalTabId) : null
   return {
     ...createNativeChatInputAction(),
-    hostGuarded: worktreeId ? hostOwnsChatAgentExit(state, worktreeId) : false,
+    hostGuarded,
     refused: false,
+    ...(pending
+      ? {
+          ready: pending.then(
+            (settlement) => settlement.kind === 'applied' && settlement.pair.viewMode === 'chat'
+          )
+        }
+      : {}),
     ...(onRefused ? { onRefused } : {})
   }
 }

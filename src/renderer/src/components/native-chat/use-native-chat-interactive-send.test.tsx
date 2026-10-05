@@ -83,7 +83,12 @@ describe('useNativeChatInteractiveSend', () => {
       { terminalTabId: 'tab-1' },
       'pty-1',
       'B',
-      { chatAction: expect.objectContaining({ actionId: 'chat-action' }) }
+      expect.objectContaining({
+        chatAction: expect.objectContaining({ actionId: 'chat-action' }),
+        onWriteRejected: expect.any(Function),
+        onWritesAccepted: expect.any(Function),
+        onWriteUnconfirmed: expect.any(Function)
+      })
     )
     expect(mocks.sendNativeChatAskAnswer).not.toHaveBeenCalled()
   })
@@ -346,16 +351,20 @@ describe('useNativeChatInteractiveSend refusals (F2)', () => {
     mocks.sendNativeChatMessage.mockReturnValue(handle)
   })
 
-  it('reports a refused pasted-label answer to the card, so it stays up for retry', () => {
+  it('reports a pasted-label answer by its settled writes, never a fixed timer (R1B-4)', () => {
     const settled = vi.fn()
     const { result } = renderHook(() =>
       useNativeChatInteractiveSend('tab-1', PANE_KEY, 'pty-1', 'grok')
     )
+    let sent: { waitsForVerifiedDelivery: boolean } | undefined
     act(() => {
-      result.current.sendAnswer(PROMPT, [{ indices: [1] }], settled)
+      sent = result.current.sendAnswer(PROMPT, [{ indices: [1] }], settled)
     })
+    expect(sent?.waitsForVerifiedDelivery).toBe(true)
     const [, , , options] = mocks.sendNativeChatMessage.mock.calls[0] ?? []
-    options?.chatAction?.onRefused?.()
-    expect(settled).toHaveBeenCalledWith(false)
+    options?.onWriteRejected?.()
+    expect(settled).toHaveBeenLastCalledWith(false)
+    options?.onWritesAccepted?.()
+    expect(settled).toHaveBeenLastCalledWith(true)
   })
 })

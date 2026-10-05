@@ -134,11 +134,8 @@ export function useNativeChatInteractiveSend(
             onDeliverySettled?.(delivered)
           }
         : undefined
-      // Why: a refusal keeps the card up on either path (paced answers report it via onSettled).
-      const chatAction = createNativeChatWriteAction(
-        terminalTabId,
-        stepsAnswer ? undefined : () => onDeliverySettled?.(false)
-      )
+      // Why: paced answers report through onSettled; a pasted label reports its settled writes.
+      const chatAction = createNativeChatWriteAction(terminalTabId)
       const handle: NativeChatSendHandle = stepsAnswer
         ? sendNativeChatAskAnswer(
             settings,
@@ -150,7 +147,12 @@ export function useNativeChatInteractiveSend(
             chatAction
           )
         : sendNativeChatMessage(settings, targetPtyId, formatAskAnswer(prompt, selections), {
-            chatAction
+            chatAction,
+            // Why settled, not a fixed timer: a slow host's refusal must keep the answer actionable.
+            onWriteRejected: () => onDeliverySettled?.(false),
+            onWritesAccepted: () => onDeliverySettled?.(true),
+            // Why dismiss: it may have landed; inviting a resend could answer twice.
+            onWriteUnconfirmed: () => onDeliverySettled?.(true)
           })
       // Why: native-chat answer writes bypass xterm.onData. Infer only after
       // every paced selector write has fired, so an early digit in a multi-step
@@ -159,7 +161,7 @@ export function useNativeChatInteractiveSend(
       inFlightRef.current = handle
       return {
         settleAfterMs: handle.settleAfterMs,
-        waitsForVerifiedDelivery: onSettled !== undefined
+        waitsForVerifiedDelivery: onSettled !== undefined || onDeliverySettled !== undefined
       }
     },
     [terminalTabId, paneKey, targetPtyId, agent, cancelInFlight]

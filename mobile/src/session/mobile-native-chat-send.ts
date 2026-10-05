@@ -3,7 +3,10 @@ import type { RpcClient } from '../transport/rpc-client'
 import { isRpcDeliveryUnknown } from '../transport/rpc-delivery-ambiguity'
 import { isLogicalClientCutoverError } from '../transport/stable-logical-rpc-client'
 import { nativeChatTerminalWrite } from './mobile-session-write-operations'
-import { terminalSendDeliveryUnknownSchema } from '../terminal/terminal-reply-schema'
+import {
+  terminalSendDeliveryUnknownSchema,
+  terminalSendPartialRefusalSchema
+} from '../terminal/terminal-reply-schema'
 import { typeAgentTuiCommand } from '../../../src/shared/agent-tui-command-typing'
 import type { NativeChatInputAction } from '../../../src/shared/native-chat-input-action'
 
@@ -79,8 +82,11 @@ export async function sendMobileNativeChatMessageWithOutcome(
       { timeoutMs, budgetSpansConnect: true }
     )
     if (nativeChatTerminalWrite.interpret(response) !== true) {
-      // Why: a lost settlement may have delivered a prefix; a retry must not be invited as if not.
-      return response.ok && terminalSendDeliveryUnknownSchema.safeParse(response.result).success
+      // Why: a lost settlement or a refusal after a settled prefix may have delivered part of the
+      // message; a retry must not be invited as if nothing was sent.
+      return response.ok &&
+        (terminalSendDeliveryUnknownSchema.safeParse(response.result).success ||
+          terminalSendPartialRefusalSchema.safeParse(response.result).success)
         ? 'unknown'
         : 'rejected'
     }

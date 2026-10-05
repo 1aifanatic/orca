@@ -10,6 +10,9 @@ import { buildMobileSessionTabSnapshots } from '@/runtime/sync-runtime-graph/mob
 import { useAppStore } from '../../store'
 import { EMPTY_LAYOUT } from './layout-serialization'
 
+import type { AgentExitObservationOrigin } from '../../../../shared/agent-exit-retirement'
+import { installTerminalPresentationStampTracking } from '@/store/slices/tabs/terminal-presentation-stamp'
+
 vi.mock('sonner', () => ({ toast: { info: vi.fn(), success: vi.fn(), error: vi.fn() } }))
 vi.mock('../../store', async () => {
   const { createTestStore } = await import('../../store/slices/store-test-helpers')
@@ -24,6 +27,9 @@ const B = '22222222-2222-4222-8222-222222222222'
 type FakePane = { id: number; leafId: string; container: HTMLElement }
 
 /** Mirrors PaneManager's synchronous close: pane removal, then onLayoutChanged → persist. */
+
+installTerminalPresentationStampTracking(useAppStore)
+
 function makeManager(onLayoutChanged: () => void) {
   const container = document.createElement('div')
   const split = document.createElement('div')
@@ -110,7 +116,9 @@ function published(tabId: string) {
 function renderPane(tabId: string) {
   const persistRef: { current: () => void } = { current: () => {} }
   const { manager, container } = makeManager(() => persistRef.current())
-  const onAgentExitedRef: { current: (leafId: string) => void } = { current: () => {} }
+  const onAgentExitedRef: {
+    current: (leafId: string, origin?: AgentExitObservationOrigin) => void
+  } = { current: () => {} }
   const hook = renderHook(() => {
     // Same source the pane foundation uses on a local worktree.
     const savedLayout = useAppStore((state) => state.terminalLayoutsByTabId[tabId] ?? EMPTY_LAYOUT)
@@ -231,17 +239,43 @@ describe('closing the chat-owning pane on a local tab', () => {
 })
 
 describe("a confirmed agent exit on this desktop's own tab (F2)", () => {
-  it('writes no pair and never moves chat to an eligible sibling: the host relays its own exit', async () => {
-    const tabId = seedTab({ viewMode: 'chat', owner: A })
-    useAppStore.setState({ runtimePaneTitlesByTabId: { [tabId]: { 1: 'codex', 2: 'codex' } } })
-    const { onAgentExitedRef } = renderPane(tabId)
-    await act(async () => {})
-    act(() => onAgentExitedRef.current(A))
-    await act(async () => {})
-    expect(published(tabId)).toEqual([
-      { viewMode: 'chat', owner: A },
-      { viewMode: 'chat', owner: A }
-    ])
+  it('turns the pane chat terminal once and never moves it to an eligible sibling (R1C-1)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: 1_000 })
+    try {
+      const tabId = seedTab({ viewMode: 'chat', owner: A })
+      useAppStore.setState({ runtimePaneTitlesByTabId: { [tabId]: { 1: 'codex', 2: 'codex' } } })
+      const { onAgentExitedRef } = renderPane(tabId)
+      await act(async () => {})
+      vi.setSystemTime(5_000)
+      act(() => onAgentExitedRef.current(A, { ptyId: null, observedAtMs: 5_000 }))
+      await act(async () => {})
+      expect(storePair(tabId)).toEqual({ viewMode: 'terminal', owner: undefined })
+      expect(published(tabId)).toEqual([
+        { viewMode: 'terminal', owner: undefined },
+        { viewMode: 'terminal', owner: undefined }
+      ])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('ignores an exit observed before the user chose chat again on that pane (R4.1-2)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: 1_000 })
+    try {
+      const tabId = seedTab({ viewMode: 'chat', owner: A })
+      const { onAgentExitedRef } = renderPane(tabId)
+      await act(async () => {})
+      // The exit is seen at 2 s, then terminal -> chat(A) commits before the fact is delivered.
+      vi.setSystemTime(3_000)
+      act(() => useAppStore.getState().applyTerminalChatPair(tabId, null, 'terminal'))
+      act(() => useAppStore.getState().applyTerminalChatPair(tabId, A, 'chat'))
+      await act(async () => {})
+      act(() => onAgentExitedRef.current(A, { ptyId: null, observedAtMs: 2_000 }))
+      await act(async () => {})
+      expect(storePair(tabId)).toEqual({ viewMode: 'chat', owner: A })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

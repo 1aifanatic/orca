@@ -6,6 +6,11 @@ import {
 import { useAppStore } from '../../store'
 import type * as AuthorityModule from '../../store/slices/tabs/terminal-chat-pair-authority'
 import { registerTerminalUiRoutingIpcBridge } from './terminal-ui-routing-ipc-bridge'
+import { installTerminalPresentationStampTracking } from '../../store/slices/tabs/terminal-presentation-stamp'
+import type {
+  NativeChatTargetReadRequest,
+  NativeChatTargetReadResponse
+} from '../../../../shared/native-chat-target-read'
 
 vi.mock('sonner', () => ({ toast: { info: vi.fn(), success: vi.fn(), error: vi.fn() } }))
 const authority = vi.hoisted(() => {
@@ -31,12 +36,16 @@ const B = '22222222-2222-4222-8222-222222222222'
 
 describe('renderer side of the desktop chat-view relay', () => {
   let onRequest: ((request: TerminalChatViewRequest) => void) | null
+  let onTargetRead: ((request: NativeChatTargetReadRequest) => void) | null = null
   const respond = vi.fn()
+  const respondTargetRead = vi.fn<(response: NativeChatTargetReadResponse) => void>()
+  installTerminalPresentationStampTracking(useAppStore)
 
   beforeEach(() => {
     onRequest = null
     authority.override = null
     respond.mockClear()
+    respondTargetRead.mockClear()
     const subscribe = () => () => {}
     globalThis.window = {
       api: {
@@ -51,7 +60,12 @@ describe('renderer side of the desktop chat-view relay', () => {
             onRequest = callback
             return () => {}
           },
-          respondTerminalChatView: respond
+          respondTerminalChatView: respond,
+          onNativeChatTargetRead: (callback: (request: NativeChatTargetReadRequest) => void) => {
+            onTargetRead = callback
+            return () => {}
+          },
+          respondNativeChatTargetRead: respondTargetRead
         }
       }
     }
@@ -168,79 +182,147 @@ describe('renderer side of the desktop chat-view relay', () => {
     expect(respond.mock.calls.at(-1)?.[0]?.chatView?.viewMode).toBe('chat')
   })
 
-  it('retires an exited agent only while its pane still owns chat and is bound to that PTY (F2)', () => {
-    const split = (bound: Record<string, string>) => ({
-      root: {
-        type: 'split' as const,
-        direction: 'vertical' as const,
-        first: { type: 'leaf' as const, leafId: A },
-        second: { type: 'leaf' as const, leafId: B }
-      },
-      activeLeafId: A,
-      expandedLeafId: null,
-      ptyIdsByLeafId: bound
+  const split = (bound: Record<string, string>) => ({
+    root: {
+      type: 'split' as const,
+      direction: 'vertical' as const,
+      first: { type: 'leaf' as const, leafId: A },
+      second: { type: 'leaf' as const, leafId: B }
+    },
+    activeLeafId: A,
+    expandedLeafId: null,
+    ptyIdsByLeafId: bound
+  })
+  const exit = (tabId: string, requestId: string, observedAtMs: number): void =>
+    onRequest!({
+      requestId,
+      worktreeId: WT,
+      tabId,
+      leafId: A,
+      viewMode: 'terminal',
+      agentExit: { ptyId: 'pty-a', observedAtMs }
     })
-    const exit = (tabId: string, requestId: string): void =>
-      onRequest!({
-        requestId,
-        worktreeId: WT,
-        tabId,
-        leafId: A,
-        viewMode: 'terminal',
-        agentExit: { ptyId: 'pty-a' }
+
+  it('retires an exited agent only while its pane still owns chat and is bound to that PTY (F2)', () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: 1_000 })
+    try {
+      const owned = useAppStore.getState().createTab(WT, undefined, undefined, {})
+      useAppStore.getState().setTabLayout(owned.id, split({ [A]: 'pty-a', [B]: 'pty-b' }))
+      useAppStore.getState().applyTerminalChatPair(owned.id, A, 'chat')
+      vi.setSystemTime(2_000)
+      exit(owned.id, 'r-exit', 2_000)
+      expect(respond).toHaveBeenCalledWith({
+        requestId: 'r-exit',
+        chatView: { viewMode: 'terminal', chatLeafId: null },
+        agentExitDisposition: 'applied'
       })
 
-    const owned = useAppStore.getState().createTab(WT, undefined, undefined, {})
-    useAppStore.getState().setTabLayout(owned.id, split({ [A]: 'pty-a', [B]: 'pty-b' }))
-    useAppStore.getState().applyTerminalChatPair(owned.id, A, 'chat')
-    exit(owned.id, 'r-exit')
-    expect(respond).toHaveBeenCalledWith({
-      requestId: 'r-exit',
-      chatView: { viewMode: 'terminal', chatLeafId: null }
-    })
+      // A newer user switch moved chat to B: the stale exit of A changes nothing.
+      vi.setSystemTime(3_000)
+      const moved = useAppStore.getState().createTab(WT, undefined, undefined, {})
+      useAppStore.getState().setTabLayout(moved.id, split({ [A]: 'pty-a', [B]: 'pty-b' }))
+      useAppStore.getState().applyTerminalChatPair(moved.id, B, 'chat')
+      vi.setSystemTime(4_000)
+      exit(moved.id, 'r-moved', 4_000)
+      expect(respond).toHaveBeenCalledWith({
+        requestId: 'r-moved',
+        chatView: { viewMode: 'chat', chatLeafId: B },
+        agentExitDisposition: 'unchanged'
+      })
 
-    // A newer user switch moved chat to B: the stale exit of A changes nothing.
-    const moved = useAppStore.getState().createTab(WT, undefined, undefined, {})
-    useAppStore.getState().setTabLayout(moved.id, split({ [A]: 'pty-a', [B]: 'pty-b' }))
-    useAppStore.getState().applyTerminalChatPair(moved.id, B, 'chat')
-    exit(moved.id, 'r-moved')
-    expect(respond).toHaveBeenCalledWith({
-      requestId: 'r-moved',
-      chatView: { viewMode: 'chat', chatLeafId: B }
-    })
+      // A respawned in another PTY: the exit belongs to the old process.
+      const rebound = useAppStore.getState().createTab(WT, undefined, undefined, {})
+      useAppStore.getState().setTabLayout(rebound.id, split({ [A]: 'pty-a2', [B]: 'pty-b' }))
+      useAppStore.getState().applyTerminalChatPair(rebound.id, A, 'chat')
+      vi.setSystemTime(5_000)
+      exit(rebound.id, 'r-rebound', 5_000)
+      expect(respond).toHaveBeenCalledWith({
+        requestId: 'r-rebound',
+        chatView: { viewMode: 'chat', chatLeafId: A },
+        agentExitDisposition: 'superseded'
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 
-    // A respawned in another PTY: the exit belongs to the old process.
-    const rebound = useAppStore.getState().createTab(WT, undefined, undefined, {})
-    useAppStore.getState().setTabLayout(rebound.id, split({ [A]: 'pty-a2', [B]: 'pty-b' }))
-    useAppStore.getState().applyTerminalChatPair(rebound.id, A, 'chat')
-    exit(rebound.id, 'r-rebound')
-    expect(respond).toHaveBeenCalledWith({
-      requestId: 'r-rebound',
-      chatView: { viewMode: 'chat', chatLeafId: A }
-    })
+  it('never undoes a switch made after the exit was observed, even back to the same pane (R4.1-2)', () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: 1_000 })
+    try {
+      const tab = useAppStore.getState().createTab(WT, undefined, undefined, {})
+      useAppStore.getState().setTabLayout(tab.id, split({ [A]: 'pty-a', [B]: 'pty-b' }))
+      useAppStore.getState().applyTerminalChatPair(tab.id, A, 'chat')
+      // The exit is seen at 2 s; the user goes terminal and back to chat(A) before it lands.
+      vi.setSystemTime(3_000)
+      useAppStore.getState().applyTerminalChatPair(tab.id, null, 'terminal')
+      useAppStore.getState().applyTerminalChatPair(tab.id, A, 'chat')
+      exit(tab.id, 'r-late', 2_000)
+      expect(respond).toHaveBeenCalledWith({
+        requestId: 'r-late',
+        chatView: { viewMode: 'chat', chatLeafId: A },
+        agentExitDisposition: 'superseded'
+      })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("clears a sole pane's launch hint on exit and leaves an unswitched view unset (F2)", () => {
-    const tab = useAppStore
+    vi.useFakeTimers({ toFake: ['Date'], now: 1_000 })
+    try {
+      const tab = useAppStore
+        .getState()
+        .createTab(WT, undefined, undefined, { launchAgent: 'claude' })
+      useAppStore.getState().setTabLayout(tab.id, {
+        root: { type: 'leaf', leafId: A },
+        activeLeafId: A,
+        expandedLeafId: null,
+        ptyIdsByLeafId: { [A]: 'pty-a' }
+      })
+      vi.setSystemTime(2_000)
+      exit(tab.id, 'r-legacy', 2_000)
+      const row = useAppStore.getState().tabsByWorktree[WT]?.find((t) => t.id === tab.id)
+      expect(row?.launchAgent).toBeUndefined()
+      expect(respond.mock.calls.at(-1)?.[0]?.chatView?.viewMode).toBeNull()
+      expect(respond.mock.calls.at(-1)?.[0]?.agentExitDisposition).toBe('applied')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('answers a composer target read from committed state only', () => {
+    const chat = useAppStore.getState().createTab(WT, undefined, undefined, {})
+    useAppStore.getState().setTabLayout(chat.id, split({ [A]: 'pty-read-a', [B]: 'pty-read-b' }))
+    useAppStore.getState().applyTerminalChatPair(chat.id, A, 'chat')
+    const legacy = useAppStore
       .getState()
-      .createTab(WT, undefined, undefined, { launchAgent: 'claude' })
-    useAppStore.getState().setTabLayout(tab.id, {
+      .createTab(WT, undefined, undefined, { launchAgent: 'codex' })
+    useAppStore.getState().setTabLayout(legacy.id, {
       root: { type: 'leaf', leafId: A },
       activeLeafId: A,
       expandedLeafId: null,
-      ptyIdsByLeafId: { [A]: 'pty-a' }
+      ptyIdsByLeafId: { [A]: 'pty-legacy' }
     })
-    onRequest!({
-      requestId: 'r-legacy',
-      worktreeId: WT,
-      tabId: tab.id,
-      leafId: A,
-      viewMode: 'terminal',
-      agentExit: { ptyId: 'pty-a' }
-    })
-    const row = useAppStore.getState().tabsByWorktree[WT]?.find((t) => t.id === tab.id)
-    expect(row?.launchAgent).toBeUndefined()
-    expect(respond.mock.calls.at(-1)?.[0]?.chatView?.viewMode).toBeNull()
+    const read = (ptyId: string): void => onTargetRead!({ requestId: ptyId, ptyId })
+
+    read('pty-read-a')
+    read('pty-read-b')
+    read('pty-legacy')
+    read('pty-missing')
+    useAppStore.getState().clearTabLaunchAgent(legacy.id)
+    read('pty-legacy')
+
+    const kinds = respondTargetRead.mock.calls.map(([response]) => [
+      response.requestId,
+      response.read?.kind
+    ])
+    expect(kinds).toEqual([
+      ['pty-read-a', 'chat-target'],
+      ['pty-read-b', 'not-chat-target'],
+      ['pty-legacy', 'chat-target'],
+      ['pty-missing', 'unknown-target'],
+      ['pty-legacy', 'not-chat-target']
+    ])
   })
 
   it('reports an unknown tab', () => {
