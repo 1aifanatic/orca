@@ -13,8 +13,6 @@ export type OrcadMigrationTerminalVerdict =
       verdict: 'live' | 'unverifiable'
       ptyIds: string[]
       reason: string
-      /** No host-wide census was taken, and only one can prove the host idle. */
-      needsHostCensus?: true
       /** Terminals the host-wide census counted, which it reports without ids. */
       hostTerminals?: number
     }
@@ -125,8 +123,7 @@ async function hostWideVerdict(
   return {
     verdict: 'unverifiable',
     ptyIds: [],
-    reason: "no census of every relay on this host's account was taken",
-    needsHostCensus: true
+    reason: "no census of every relay on this host's account was taken"
   }
 }
 

@@ -69,7 +69,10 @@ describe('a connected desktop converting while another desktop runs a shell on t
   it('never proves exit from this target’s empty lists alone', async () => {
     await expect(
       assessOrcadMigrationTerminals(noLeases, 'desktop-a', desktopAConnectedIdle())
-    ).resolves.toMatchObject({ verdict: 'unverifiable', needsHostCensus: true })
+    ).resolves.toMatchObject({
+      verdict: 'unverifiable',
+      reason: "no census of every relay on this host's account was taken"
+    })
   })
 
   it('stays live on a POSIX host where only desktop B’s socket runs a shell', async () => {

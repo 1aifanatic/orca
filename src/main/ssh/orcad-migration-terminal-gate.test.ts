@@ -47,7 +47,7 @@ describe('migration terminal gate', () => {
   it('needs a host census, not silence, when no relay session can be asked', async () => {
     await expect(assessOrcadMigrationTerminals(store([]), 'ssh-1', null)).resolves.toMatchObject({
       verdict: 'unverifiable',
-      needsHostCensus: true
+      reason: "no census of every relay on this host's account was taken"
     })
     await expect(
       assessOrcadMigrationTerminals(store([]), 'ssh-1', null, async () => ({
