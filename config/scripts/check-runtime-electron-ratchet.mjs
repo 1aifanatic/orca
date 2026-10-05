@@ -5,7 +5,7 @@
  * The runtime boots on plain Node, where Electron is unavailable. Keep desktop
  * dependencies out of its graph, including structured chat not yet wired into it.
  *
- * This bundles the runtime with esbuild, reads the metafile for every module that
+ * This bundles the runtime and the structured-chat lanes with esbuild, reads the metafile for every module that
  * imports `electron`, and compares that set to a checked-in baseline. A NEW module
  * fails the build; a removed one must be dropped from the baseline. The baseline
  * may only shrink, so the migration is measurable and cannot regress.
@@ -16,10 +16,11 @@
  * Usage: node config/scripts/check-runtime-electron-ratchet.mjs [--write]
  */
 import { build } from 'esbuild'
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import process from 'node:process'
+import { isTestOnlyDirectoryName, isTestOnlySourcePath } from './test-only-source-path.mjs'
 
 // Why absolute, not cwd-relative: `pnpm lint` runs from the repo root but CI steps and
 // editors do not always, and a cwd-relative miss surfaced as an unhandled ENOENT stack
@@ -38,49 +39,54 @@ const ENTRY_POINTS = [
   path.join(ROOT, 'src', 'main', 'orcad', 'main.ts')
 ]
 
-export function collectStructuredChatEntryPoints(root = ROOT) {
-  const lanes = [
-    ['native-chat', []],
-    ['acp', []],
-    ['provider-process', []],
-    ['claude', ['claude-structured-', 'claude-agent-sdk-']],
-    ['codex', ['codex-structured-', 'codex-app-server-']],
-    ['runtime', ['structured-agent-session-', 'agent-session-']]
-  ]
-  const testOnly = /(?:\.(?:test|spec)\.|[.-]test-(?:support|harness|fixtures?)\.|-fixtures?\.)/
+// Code that must run in orcad whether or not a runtime entry reaches it yet. Whole directories,
+// so a new file is covered by default; src/main/runtime still holds desktop-only code (browser
+// commands, desktop relay), so only its structured-chat files are entries there.
+const STRUCTURED_CHAT_LANES = [
+  { directory: ['src', 'main', 'native-chat'] },
+  { directory: ['src', 'main', 'claude'] },
+  { directory: ['src', 'main', 'codex'] },
+  { directory: ['src', 'shared'] },
+  { directory: ['src', 'main', 'runtime'], basename: /^(?:structured-|agent-session-)/ },
+  // Allowed absent until they land; every other lane throws if missing, so a rename can't empty it.
+  { directory: ['src', 'main', 'acp'], mayBeAbsent: true },
+  { directory: ['src', 'main', 'provider-process'], mayBeAbsent: true }
+]
 
-  function collect(directory, prefixes) {
-    let entries
-    try {
-      entries = readdirSync(directory, { withFileTypes: true })
-    } catch (error) {
-      if (error.code === 'ENOENT') {
+export function collectStructuredChatEntryPoints(root = ROOT) {
+  return STRUCTURED_CHAT_LANES.flatMap((lane) => {
+    const directory = path.join(root, ...lane.directory)
+    if (!existsSync(directory)) {
+      if (lane.mayBeAbsent) {
         return []
       }
-      throw error
+      throw new Error(
+        `[runtime-electron-ratchet] ${lane.directory.join('/')} is missing. If it moved, update STRUCTURED_CHAT_LANES; otherwise the gate would silently check nothing there.`
+      )
     }
-    return entries.flatMap((entry) => {
-      const file = path.join(directory, entry.name)
-      if (entry.isDirectory()) {
-        return prefixes.length === 0 &&
-          !/^(?:__)?(?:tests?|fixtures?|test-support|test-harness)(?:__)?$/.test(entry.name)
-          ? collect(file, prefixes)
-          : []
-      }
-      return entry.isFile() &&
-        /\.[cm]?[jt]sx?$/.test(entry.name) &&
-        !testOnly.test(entry.name) &&
-        (prefixes.length === 0 || prefixes.some((prefix) => entry.name.startsWith(prefix)))
-        ? [file]
-        : []
-    })
-  }
+    return collectLaneFiles(directory, lane.basename)
+  }).sort()
+}
 
-  return lanes
-    .flatMap(([directory, prefixes]) =>
-      collect(path.join(root, 'src', 'main', directory), prefixes)
-    )
-    .sort()
+function collectLaneFiles(directory, basename) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const file = path.join(directory, entry.name)
+    if (entry.isDirectory()) {
+      return isTestOnlyDirectoryName(entry.name) ? [] : collectLaneFiles(file, basename)
+    }
+    return entry.isFile() &&
+      /\.[cm]?[jt]sx?$/.test(entry.name) &&
+      !entry.name.endsWith('.d.ts') &&
+      !isTestOnlySourcePath(entry.name) &&
+      (!basename || basename.test(entry.name))
+      ? [file]
+      : []
+  })
+}
+
+/** What the CLI and CI check: the runtime graph plus every structured-chat lane file. */
+export function defaultEntryPoints(root = ROOT) {
+  return [...ENTRY_POINTS, ...collectStructuredChatEntryPoints(root)]
 }
 
 // Native addons and electron cannot be bundled; externalising them is what the
@@ -108,9 +114,10 @@ const externalNativeAddons = {
   }
 }
 
-// Structured chat must run in headless orcad, even before every lane file reaches a runtime entry.
+// Why `plugins`: lets a test add an Electron import to a real file in memory, never on disk.
 export async function collectElectronImporters(
-  entryPoints = [...ENTRY_POINTS, ...collectStructuredChatEntryPoints()]
+  entryPoints = defaultEntryPoints(),
+  { plugins = [] } = {}
 ) {
   const result = await build({
     entryPoints,
@@ -126,7 +133,7 @@ export async function collectElectronImporters(
     metafile: true,
     absWorkingDir: ROOT,
     logLevel: 'silent',
-    plugins: [externalNativeAddons]
+    plugins: [externalNativeAddons, ...plugins]
   })
   const importers = new Set()
   for (const [file, info] of Object.entries(result.metafile.inputs)) {
@@ -159,10 +166,10 @@ export function diffAgainstBaseline(current, baseline) {
 
 function renderBaseline(files) {
   return [
-    '# Modules reachable from the Orca runtime that import `electron`.',
+    '# Modules reachable from the Orca runtime or structured-chat code that import `electron`.',
     '# Generated by config/scripts/check-runtime-electron-ratchet.mjs.',
-    '# This list is EMPTY and must stay that way: the runtime boots on plain Node',
-    '# (see `pnpm run build:orcad`). Any entry means the runtime got less portable;',
+    '# This list is EMPTY and must stay that way: both run in orcad, the headless runtime,',
+    '# on plain Node (see `pnpm run build:orcad`). Any entry means that code got less portable;',
     '# migrate the module behind a host port instead (src/main/host/).',
     '',
     ...files
@@ -184,12 +191,13 @@ async function main() {
 
   if (added.length > 0) {
     console.error(
-      `[runtime-electron-ratchet] ${added.length} new module(s) reachable from the Orca runtime or structured chat now import electron:
+      `[runtime-electron-ratchet] ${added.length} new module(s) reachable from the Orca runtime or structured-chat code now import electron:
 ${added.map((file) => `  + ${file}`).join('\n')}
 
-The runtime must stay bootable on plain Node. Put the Electron facility behind a port in
-src/main/host/ and depend on the port, or move the code out of the runtime and structured-chat import graphs.
-See docs/design/node-only-runtime-backend.html.`
+The runtime and structured chat must run in orcad, the headless runtime, where Electron is
+unavailable. That holds for structured-chat code the runtime doesn't load yet, so renaming or
+moving the file is not a fix. Put the Electron facility behind a port in src/main/host/ and
+depend on the port, or drop the import that pulls Electron in.`
     )
     process.exitCode = 1
     return

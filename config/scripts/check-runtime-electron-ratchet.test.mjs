@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import process from 'node:process'
 import {
   collectElectronImporters,
   collectStructuredChatEntryPoints,
+  defaultEntryPoints,
   diffAgainstBaseline,
   readBaseline
 } from './check-runtime-electron-ratchet.mjs'
@@ -28,50 +30,123 @@ describe('structured chat coverage', () => {
     return root
   }
 
-  it('covers standalone lane sources while excluding tests and allowing absent future lanes', () => {
+  // Every lane that must exist; acp/ and provider-process/ may be absent until they land.
+  const requiredLanes = {
+    'src/main/native-chat/reader.ts': 'export {}',
+    'src/main/claude/claude-session.ts': 'export {}',
+    'src/main/codex/codex-session.ts': 'export {}',
+    'src/main/runtime/structured-agent-session-host.ts': 'export {}',
+    'src/shared/agent-session-record.ts': 'export {}'
+  }
+
+  it('covers whole lane directories, structured runtime files at any depth, and no test code', () => {
     const sources = [
-      'native-chat/nested/reader.ts',
-      'native-chat/worker.mjs',
-      'claude/claude-structured-session.ts',
-      'claude/claude-agent-sdk-query.ts',
-      'codex/codex-structured-session.ts',
-      'codex/codex-app-server-connection.ts',
-      'runtime/structured-agent-session-host.ts',
-      'runtime/agent-session-record.ts'
+      ...Object.keys(requiredLanes),
+      'src/main/native-chat/nested/reader.ts',
+      'src/main/native-chat/worker.mjs',
+      'src/main/claude/other.ts',
+      'src/main/codex/codex-provider-timeline-identity.ts',
+      'src/shared/nested/agent-session-account-home.ts',
+      'src/shared/relay-runtime-self-test-report.ts',
+      'src/main/runtime/agent-session-record.ts',
+      'src/main/runtime/structured-agent-runtime-registrations.ts',
+      'src/main/runtime/rpc/methods/structured-agent-session-agents.ts',
+      'src/main/acp/adapter.ts',
+      'src/main/provider-process/worker.ts'
     ]
     const excluded = [
-      'native-chat/reader.test.ts',
-      'native-chat/reader.spec.ts',
-      'native-chat/reader-test-support.ts',
-      'native-chat/reader.test-support.ts',
-      'native-chat/reader-test-harness.ts',
-      'native-chat/reader.test-fixture.ts',
-      'native-chat/reader-fixture.ts',
-      'native-chat/__fixtures__/reader.ts',
-      'native-chat/test-support/reader.ts',
-      'claude/other.ts',
-      'codex/other.ts',
-      'runtime/other.ts'
+      'src/main/native-chat/reader.test.ts',
+      'src/main/native-chat/reader.spec.ts',
+      'src/main/native-chat/reader-test-support.ts',
+      'src/main/native-chat/reader.test-support.ts',
+      'src/main/native-chat/structured-agent-session-rest-test-rig.ts',
+      'src/main/native-chat/structured-agent-session-host-test-data.ts',
+      'src/main/native-chat/reader.test-fixture.ts',
+      'src/main/native-chat/reader-fixtures.ts',
+      'src/main/codex/codex-turn-lifecycle-fake.ts',
+      'src/main/codex/codex-session-backfill-fs-mocks.ts',
+      'src/main/native-chat/__fixtures__/reader.ts',
+      'src/main/native-chat/test-support/reader.ts',
+      'src/main/runtime/orca-runtime-tests/structured-agent-session-host.ts',
+      'src/shared/types.d.ts',
+      'src/main/runtime/other.ts',
+      'src/main/runtime/rpc/methods/browser.ts'
     ]
     const root = fixture(
-      Object.fromEntries([...sources, ...excluded].map((file) => [`src/main/${file}`, 'export {}']))
+      Object.fromEntries([...sources, ...excluded].map((file) => [file, 'export {}']))
     )
     expect(collectStructuredChatEntryPoints(root)).toEqual(
-      sources.map((file) => path.join(root, 'src', 'main', file)).sort()
+      sources.map((file) => path.join(root, ...file.split('/'))).sort()
     )
   })
 
-  it('finds Electron through a package imported by an unwired future lane', async () => {
+  it('fails loudly when a lane that exists today goes missing, so a rename cannot empty it', () => {
+    const withoutCodex = Object.fromEntries(
+      Object.entries(requiredLanes).filter(([file]) => !file.startsWith('src/main/codex/'))
+    )
+    expect(() => collectStructuredChatEntryPoints(fixture(withoutCodex))).toThrow(
+      /src\/main\/codex is missing/
+    )
+    expect(collectStructuredChatEntryPoints(fixture(requiredLanes))).toHaveLength(5)
+  })
+
+  it('finds Electron through a package imported by each unwired future lane', async () => {
     const root = fixture({
-      'src/main/acp/adapter.ts': "import 'desktop-package'",
-      'src/main/provider-process/worker.ts': 'export {}',
-      'node_modules/desktop-package/package.json': '{"main":"index.js"}',
-      'node_modules/desktop-package/index.js': "require('electron')"
+      ...requiredLanes,
+      'src/main/acp/adapter.ts': "import 'acp-desktop-package'",
+      'src/main/provider-process/worker.ts': "import 'provider-desktop-package'",
+      'node_modules/acp-desktop-package/package.json': '{"main":"index.js"}',
+      'node_modules/acp-desktop-package/index.js': "require('electron')",
+      'node_modules/provider-desktop-package/package.json': '{"main":"index.js"}',
+      'node_modules/provider-desktop-package/index.js': "require('electron')"
     })
     const current = await collectElectronImporters(collectStructuredChatEntryPoints(root))
-    expect(current).toHaveLength(1)
-    expect(current[0].endsWith('/node_modules/desktop-package/index.js')).toBe(true)
+    expect(current.map((file) => file.split('/node_modules/').pop())).toEqual([
+      'acp-desktop-package/index.js',
+      'provider-desktop-package/index.js'
+    ])
   })
+})
+
+describe('the default entry points', () => {
+  const lanes = ['native-chat', 'claude', 'codex', 'runtime'].map((lane) => `src/main/${lane}/`)
+
+  it('are the runtime entries plus a file from every lane that exists', () => {
+    const entries = defaultEntryPoints().map((file) =>
+      path.relative(process.cwd(), file).split(path.sep).join('/')
+    )
+    expect(entries.slice(0, 3)).toEqual([
+      'src/main/runtime/orca-runtime.ts',
+      'src/main/runtime/runtime-rpc.ts',
+      'src/main/orcad/main.ts'
+    ])
+    for (const lane of [...lanes, 'src/shared/']) {
+      expect(entries.some((file) => file.startsWith(lane))).toBe(true)
+    }
+  })
+
+  // Why a file the runtime doesn't load: this fails if the CLI/CI default stops including the lanes.
+  it('catch Electron in structured-chat code the runtime graph does not reach', async () => {
+    const target = path.join(
+      process.cwd(),
+      'src',
+      'main',
+      'native-chat',
+      'transcript-read-cache.ts'
+    )
+    const addElectron = {
+      name: 'add-electron-import',
+      setup(pluginBuild) {
+        pluginBuild.onLoad({ filter: /transcript-read-cache\.ts$/ }, (args) =>
+          args.path === target
+            ? { contents: `import 'electron'\n${readFileSync(target, 'utf8')}`, loader: 'ts' }
+            : undefined
+        )
+      }
+    }
+    const current = await collectElectronImporters(undefined, { plugins: [addElectron] })
+    expect(current).toEqual(['src/main/native-chat/transcript-read-cache.ts'])
+  }, 120_000)
 })
 
 describe('readBaseline', () => {
