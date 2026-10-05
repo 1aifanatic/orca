@@ -20,7 +20,8 @@ export type OrcadSourceStateStore = Pick<
   'inspectOrcadMigrationSourceState' | 'getFolderWorkspaces' | 'getProjectGroups' | 'getRepos'
 >
 
-// v2: worktree metadata covers identity-backed rows and hostId-attributed unqualified keys.
+// v2: worktree metadata and automations use the move's attribution (identity-backed rows,
+// hostId-attributed keys, repo ids another host shares).
 export const ORCAD_SOURCE_STATE_FINGERPRINT_VERSION = 'v2'
 
 /**

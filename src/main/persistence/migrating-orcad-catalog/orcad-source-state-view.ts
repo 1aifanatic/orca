@@ -7,7 +7,6 @@
  * Null when any session cannot be read, or worktree metadata claims the source host but cannot be
  * attributed: the retained source is then unverified, never "unchanged".
  */
-import { getAutomationRunRepoId } from '../../../shared/automation-run-identity'
 import { LOCAL_EXECUTION_HOST_ID } from '../../../shared/execution-host'
 import type {
   OrcadMigrationCatalogPayload,
@@ -21,6 +20,7 @@ import {
   unqualifyOrcadMigrationOwnerKey
 } from './orcad-source-scope'
 import { sessionPartitions } from './orcad-source-workspace-session-fragments'
+import { automationTouchesScope } from './orcad-source-automation-state'
 import { inspectOrcadSourceWorktreeMetadata } from './orcad-source-worktree-metadata'
 
 export type OrcadSourceStateView = {
@@ -57,14 +57,9 @@ export function collectOrcadSourceStateView(
         }
       }
     }
+    // Why the move's predicate: a repo id another host shares is not this host's to fingerprint.
     const automations = state.automations
-      .filter(
-        (automation) =>
-          (automation.executionTargetType === 'ssh' &&
-            automation.executionTargetId === scope.targetId) ||
-          scope.repoIds.has(getAutomationRunRepoId(automation)) ||
-          orcadMigrationOwnerMatchesScope(automation.workspaceId, scope)
-      )
+      .filter((automation) => automationTouchesScope(automation, scope))
       .map((automation) => [
         automation.id,
         automation.name,
