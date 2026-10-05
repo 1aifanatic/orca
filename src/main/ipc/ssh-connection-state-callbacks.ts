@@ -79,7 +79,7 @@ export function handleSshConnectionStateChange(targetId: string, state: SshConne
     return
   } else if (
     state.status === 'connected' &&
-    session !== undefined &&
+    // No session yet: the server decision's census, deploy or conversion opened the transport.
     sessionState !== 'ready' &&
     !completedTransportReconnect &&
     connectInFlight.has(targetId)
@@ -96,7 +96,8 @@ export function handleSshConnectionStateChange(targetId: string, state: SshConne
     clearRelayStateOverride(targetId)
     broadcastSshState(getCurrentMainWindow, targetId, {
       targetId,
-      status: 'deploying-relay',
+      // Before any session the connect is still deciding the host's server.
+      status: session ? 'deploying-relay' : 'connecting',
       error: state.error,
       reconnectAttempt: state.reconnectAttempt
     })

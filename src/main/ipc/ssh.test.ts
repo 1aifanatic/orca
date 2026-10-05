@@ -27,6 +27,7 @@ import { RelayVersionMismatchError } from '../ssh/ssh-relay-version-mismatch-err
 import type { SshConnectionState, SshConnectionStatus, SshTarget } from '../../shared/ssh-types'
 import { assertSshMutationExpectation } from '../ssh/ssh-connection-generation'
 import { createSshIpcHarness } from './ssh-ipc-test-harness'
+import { decideHostServer } from './ssh-host-server-connect'
 
 const {
   mockSshStore,
@@ -374,6 +375,44 @@ describe('SSH IPC handlers', () => {
         (payload as { state?: SshConnectionState }).state?.status === 'connected'
     )
     expect(connectedBroadcasts).toEqual([])
+  })
+
+  it('holds a raw connected the server decision causes before any relay session exists', async () => {
+    const target: SshTarget = {
+      id: 'ssh-1',
+      label: 'Server',
+      host: 'example.com',
+      port: 22,
+      username: 'deploy'
+    }
+    const conn = {}
+    mockSshStore.getTarget.mockReturnValue(target)
+    mockConnectionManager.connect.mockResolvedValue(conn)
+    mockConnectionManager.getConnection.mockReturnValue(conn)
+    let broadcastsDuringDecision: unknown[] = []
+    vi.mocked(decideHostServer).mockImplementationOnce(async () => {
+      await Promise.resolve()
+      // The census dials the shared pool before doConnect has a session.
+      const callbacks = mockConnectionManager.callbacksRef.current as {
+        onStateChange: (targetId: string, state: SshConnectionState) => void
+      }
+      callbacks.onStateChange('ssh-1', {
+        targetId: 'ssh-1',
+        status: 'connected',
+        error: null,
+        reconnectAttempt: 0
+      })
+      broadcastsDuringDecision = mockWindow.webContents.send.mock.calls
+        .filter(([channel]) => channel === 'ssh:state-changed')
+        .map(([, payload]) => payload)
+      return null
+    })
+
+    await handlers.get('ssh:connect')!(null, { targetId: 'ssh-1' })
+    expect(broadcastsDuringDecision).not.toContainEqual(
+      expect.objectContaining({ state: expect.objectContaining({ status: 'connected' }) })
+    )
+    expect(broadcastsDuringDecision.at(-1)).toMatchObject({ state: { status: 'connecting' } })
   })
 
   // Why: guards the fix's scope. A relay version mismatch during a relay reconnect
