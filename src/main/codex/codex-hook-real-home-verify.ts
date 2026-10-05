@@ -27,8 +27,11 @@ export async function verifyRealHomeCodexHook(
     return 'unverified'
   }
   try {
-    // Why the same home spelling as panes: an explicit CODEX_HOME keys entries by its real path.
-    const explicitHome = process.env.CODEX_HOME?.trim() ? systemHome : null
+    // Why explicit on Windows: Codex finds its default home from the Profile folder, not
+    // USERPROFILE, so only CODEX_HOME pins it to the home Orca wrote (keyed by its real path,
+    // a spelling Orca approves too). On POSIX, HOME drives both, so the default home is checked.
+    const explicitHome =
+      process.platform === 'win32' || process.env.CODEX_HOME?.trim() ? systemHome : null
     const listings = await listCodexHooks(codexPath, explicitHome, tmpdir())
     const byKey = new Map(
       listings.map((listing) => [normalizeHookTrustKeyForLookup(listing.key), listing])

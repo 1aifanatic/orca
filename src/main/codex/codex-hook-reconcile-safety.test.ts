@@ -472,3 +472,27 @@ describe('what a reconcile may spawn and when it waits', () => {
     expect(mocks.listCodexHooks).not.toHaveBeenCalled()
   })
 })
+
+describe('which home the post-write check reads', () => {
+  it.each([
+    ['win32', (): string => join(home, '.codex')],
+    ['darwin', (): null => null]
+  ] as const)('on %s it lists the home Orca wrote', async (platform, expectedHome) => {
+    const original = Object.getOwnPropertyDescriptor(process, 'platform')
+    Object.defineProperty(process, 'platform', { configurable: true, value: platform })
+    try {
+      start()
+      await reconcileCodexHooks()
+    } finally {
+      if (original) {
+        Object.defineProperty(process, 'platform', original)
+      }
+    }
+
+    expect(mocks.listCodexHooks).toHaveBeenCalledWith(
+      mocks.codexPath,
+      expectedHome(),
+      expect.any(String)
+    )
+  })
+})
