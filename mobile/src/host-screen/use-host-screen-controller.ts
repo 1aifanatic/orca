@@ -67,7 +67,11 @@ export function useHostScreenController({
   const { hostCapabilities, floatingWorkspaceEnabled } = useHostProtocolGates()
   const state = useHostScreenState(hostId, action)
   const settings = useHostViewSettings({ client, connState, hostId, state })
-  const pinnedPlacement = useHostShowPinnedInGroups({ client, connState })
+  const pinnedPlacement = useHostShowPinnedInGroups({
+    client,
+    connState,
+    clientRef: state.clientRef
+  })
   const hostDisplay = useHostDisplay(
     hostId && state.hostName
       ? { id: hostId, name: state.hostName, ...state.hostStoredDescriptor }

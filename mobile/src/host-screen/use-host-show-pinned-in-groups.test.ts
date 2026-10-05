@@ -19,10 +19,12 @@ function settingsReply(settings: unknown): RpcResponse {
 
 type Hook = ReturnType<typeof useHostShowPinnedInGroups>
 
+// clientRef is the screen's current client, which lags a switch until the identity effect runs.
 async function mountHook(client: RpcClient) {
   const held: { current: Hook | null } = { current: null }
+  const clientRef: { current: RpcClient | null } = { current: client }
   function Probe({ client }: { client: RpcClient }): null {
-    held.current = useHostShowPinnedInGroups({ client, connState: 'connected' })
+    held.current = useHostShowPinnedInGroups({ client, connState: 'connected', clientRef })
     return null
   }
   let renderer: ReactTestRenderer | null = null
@@ -34,6 +36,7 @@ async function mountHook(client: RpcClient) {
     switchTo: (next: RpcClient) =>
       act(async () => {
         renderer?.update(createElement(Probe, { client: next }))
+        clientRef.current = next
       })
   }
 }
@@ -80,5 +83,20 @@ describe('the host list mirrors the desktop pinned-placement setting', () => {
       await pending
     })
     expect(hook().showPinnedInGroups).toBe(false)
+  })
+
+  it("keeps the current host's setting when the previous host answers last", async () => {
+    const previous = new FakeSession('connected')
+    let answer: (reply: RpcResponse) => void = () => {}
+    previous.sendRequest.mockReturnValue(new Promise((resolve) => (answer = resolve)))
+    const { hook, switchTo } = await mountHook(previous)
+    const pending = hook().syncShowPinnedInGroups()
+    await switchTo(sessionReplying(showInGroups))
+    await act(() => hook().syncShowPinnedInGroups())
+    await act(async () => {
+      answer(settingsReply({ showPinnedWorktreesInGroups: false }))
+      await pending
+    })
+    expect(hook().showPinnedInGroups).toBe(true)
   })
 })
