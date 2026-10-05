@@ -133,8 +133,8 @@ describe('naming the group header', () => {
 
 describe('nesting child workspaces', () => {
   const group = (workspaceId: string) => ({ workspaceId, candidates: [] })
-  const shape = (nodes: ReturnType<typeof nestResumeWorkspaces>): unknown =>
-    nodes.map((node) => [node.group.workspaceId, shape(node.children)])
+  const nestedWorkspaceIds = (nodes: ReturnType<typeof nestResumeWorkspaces>): unknown =>
+    nodes.map((node) => [node.group.workspaceId, nestedWorkspaceIds(node.children)])
 
   it('puts a child under its nearest listed ancestor, skipping one with nothing to resume', () => {
     // grandchild -> child (not listed) -> parent
@@ -144,7 +144,7 @@ describe('nesting child workspaces', () => {
       (id) => ancestors[id] ?? []
     )
 
-    expect(shape(nested)).toEqual([
+    expect(nestedWorkspaceIds(nested)).toEqual([
       ['other', []],
       ['parent', [['grandchild', []]]]
     ])
@@ -153,7 +153,7 @@ describe('nesting child workspaces', () => {
   it('keeps a child whose ancestors are all unlisted at the top, in offer order', () => {
     const nested = nestResumeWorkspaces([group('a'), group('b')], () => ['elsewhere'])
 
-    expect(shape(nested)).toEqual([
+    expect(nestedWorkspaceIds(nested)).toEqual([
       ['a', []],
       ['b', []]
     ])
