@@ -4,17 +4,19 @@ import type { TerminalWorkspaceLaunchScope } from './runtime-legacy-worker-termi
 import type { TerminalCreateOptions } from './runtime-terminal-contracts'
 import { isTuiAgentEnabled } from '../../shared/tui-agent-selection'
 import { resolveBareAgentLaunchCommand } from './runtime-agent-launch-resolution'
-import { buildAgentStartupPlan } from '../../shared/tui-agent-startup'
+import { buildExecutionHostAgentStartupPlan } from '../opencode/opencode-model-startup-plan'
+import { resolveTerminalStartupCwd } from '../../shared/terminal-startup-cwd'
 import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
 import { agentStartedTelemetry } from '../agent-launch/agent-started-telemetry'
 
-export function buildRuntimeAgentTerminalStartupOptions(
+export async function buildRuntimeAgentTerminalStartupOptions(
   workspace: TerminalWorkspaceLaunchScope,
   opts: TerminalCreateOptions,
   settings: ReturnType<RuntimeStore['getSettings']>,
   platform: NodeJS.Platform,
-  sessionOptions: Record<string, SessionOptionValue> | undefined
-): TerminalCreateOptions {
+  sessionOptions: Record<string, SessionOptionValue> | undefined,
+  hostIdentity: string
+): Promise<TerminalCreateOptions> {
   // Why: `workspace.repo` is display metadata and may be a row from another host; the launch
   // shape must match the PTY route this scope already resolved.
   const isRemote = Boolean(workspace.connectionId)
@@ -33,8 +35,8 @@ export function buildRuntimeAgentTerminalStartupOptions(
     return opts
   }
 
-  const startupPlan = buildAgentStartupPlan({
-    ...resolveAgentStartupPlanInputs({
+  const startupPlan = await buildExecutionHostAgentStartupPlan({
+    inputs: resolveAgentStartupPlanInputs({
       agent,
       settings,
       platform,
@@ -45,7 +47,8 @@ export function buildRuntimeAgentTerminalStartupOptions(
       sessionOptions: sessionOptions
     }),
     prompt: opts.startupPrompt ?? '',
-    allowEmptyPromptLaunch: true
+    cwd: resolveTerminalStartupCwd(workspace.path, opts.cwd) ?? workspace.path,
+    hostIdentity
   })
   if (!startupPlan) {
     // Why: an explicit agent that yields no plan would otherwise spawn a bare
@@ -57,7 +60,7 @@ export function buildRuntimeAgentTerminalStartupOptions(
   }
   // A prompt this launch command cannot carry has nowhere to go from here — the create returns
   // options, not a live PTY — so refuse rather than spawn the agent and drop the text.
-  if (opts.startupPrompt && startupPlan.followupPrompt) {
+  if (opts.startupPrompt && 'followupPrompt' in startupPlan && startupPlan.followupPrompt) {
     throw new Error(`Agent ${agent} does not take a startup prompt on its launch command.`)
   }
 

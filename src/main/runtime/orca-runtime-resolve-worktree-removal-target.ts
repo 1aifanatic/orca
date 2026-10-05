@@ -302,7 +302,8 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
       opts,
       store.getSettings(),
       this.getAgentLaunchPlatformForWorkspace(workspace),
-      this.toAgentSessionOptions(opts.launchPreferences)
+      this.toAgentSessionOptions(opts.launchPreferences),
+      this.runtimeId
     )
   }
 }

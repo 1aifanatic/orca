@@ -408,7 +408,15 @@ it('releases abandoned dispatch capacity without guessing an expired live recipe
       })
     ).rejects.toThrow('runtime_unavailable')
     expect(spawn).toHaveBeenCalledTimes(4096)
-    await vi.advanceTimersByTimeAsync(16 * 60_000)
+    await vi.advanceTimersByTimeAsync(14 * 60_000)
+    await expect(
+      runtime.createMobileSessionTerminal(`id:${TEST_WORKTREE_ID}`, {
+        ...request,
+        clientMutationId: 'fresh-mutation'
+      })
+    ).rejects.toThrow('runtime_unavailable')
+    expect(spawn).toHaveBeenCalledTimes(4096)
+    await vi.advanceTimersByTimeAsync(2 * 60_000)
     const fresh = await runtime.createMobileSessionTerminal(`id:${TEST_WORKTREE_ID}`, {
       ...request,
       clientMutationId: 'fresh-mutation'

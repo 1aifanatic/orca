@@ -165,8 +165,10 @@ export async function resumeAiVaultSessionInTerminal(
   launch: MobileAiVaultResumeLaunch & {
     clientMutationId?: string
     hostCapabilities?: readonly string[]
-  }
+  },
+  assertCurrentOwner?: () => void
 ): Promise<MobileReviewTerminalTab> {
+  assertCurrentOwner?.()
   // Qoder's execution host must select its installed executable before the resume starts.
   const launchAtCreate =
     launch.launchAgent === 'qoder' &&
@@ -198,6 +200,7 @@ export async function resumeAiVaultSessionInTerminal(
   if (launchAtCreate) {
     return terminalTab
   }
+  assertCurrentOwner?.()
   const sent = await reviewTerminalSendRun.request(
     client,
     {
