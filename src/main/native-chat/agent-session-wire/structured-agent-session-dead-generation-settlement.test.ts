@@ -248,7 +248,9 @@ describe('dead structured-session generation settlement', () => {
       | 'rejectPendingSubmissions'
       | 'rejectQueuedSubmissions'
       | 'appendLifecycleBatch'
+      | 'itemFence'
     > = {
+      itemFence: () => undefined,
       snapshot: () => ({
         ...settledSnapshot,
         items: [settledItem]

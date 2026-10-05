@@ -38,7 +38,9 @@ import {
   runningTurnLifecycleRevisions,
   stopFoundTurnLiveAt,
   turnVerdictFromDeathEvidence,
-  type StructuredAgentSessionTurnVerdict
+  watchedExitRevisions,
+  type StructuredAgentSessionTurnVerdict,
+  type StructuredAgentSessionWatchedExit
 } from './structured-agent-session-stale-turn-verdict'
 import {
   exitedRootTurnScope,
@@ -74,15 +76,12 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
   /** The provider never finished starting: the start that failed, keyed by the child's
    *  generation. Its row is the one the delivery loop writes for the same start. */
   exitedDuringStartup?: { generation: string | null }
-  /** The exit as proof naming the exited child's fence: what that child's own translator could only
-   *  end `unverifiable` (its stream closed before the exit was proven) is revised in this batch. */
-  exitProof?: AgentSessionDeathEvidence
+  /** The exit, watched: what that child's own translator could only end `unverifiable` (its stream
+   *  closed before the exit was proven) is revised in this batch. */
+  exit?: StructuredAgentSessionWatchedExit
 }): Promise<StructuredAgentSessionDeadGenerationSettlement> {
   try {
-    const hasUnfinishedWork = hasUnfinishedStructuredAgentSessionWork(
-      input.journal,
-      input.exitProof
-    )
+    const hasUnfinishedWork = hasUnfinishedStructuredAgentSessionWork(input.journal, input.exit)
     const showUnexpectedExitOutcome = input.showUnexpectedExitOutcome ?? hasUnfinishedWork
     if (!showUnexpectedExitOutcome && !hasUnfinishedWork) {
       return { ok: true }
@@ -98,10 +97,7 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
       ? input.journal.rejectPendingSubmissions(input.fence, startupFailure)
       : input.journal.markPendingSubmissionsUnknown(input.fence, input.pendingSubmissionReason))
     const items = input.journal.snapshot().items
-    const proven = [
-      ...provenUnverifiedToolCallRevisions(items, input.exitProof, input.journal),
-      ...provenUnverifiableTurnRevisions(items, input.exitProof, input.journal)
-    ]
+    const proven = watchedExitRevisions(items, input.exit, input.journal)
     const mutations: JournalLifecycleMutationInput[] = []
     if (showUnexpectedExitOutcome && input.exitedDuringStartup && startupFailure) {
       const startKey = input.exitedDuringStartup.generation ?? input.settlementId

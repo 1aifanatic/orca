@@ -1,11 +1,13 @@
 // What a gone child generation left unfinished in the journal, and whether its exit interrupted it.
 
 import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
-import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import { requiresTerminalSettlement } from '../agent-session-journal/journal-terminal-settlement'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
-import { provenUnverifiableTurnRevisions } from './structured-agent-session-stale-turn-verdict'
+import {
+  watchedExitRevisions,
+  type StructuredAgentSessionWatchedExit
+} from './structured-agent-session-stale-turn-verdict'
 
 type DeadGenerationSubmission = Pick<
   ReturnType<AgentSessionJournal['submissions']>[number],
@@ -20,7 +22,6 @@ export type DeadGenerationJournal = {
   pendingSubmissions?: AgentSessionJournal['pendingSubmissions']
   submissions?: () => DeadGenerationSubmission[]
   itemFence: AgentSessionJournal['itemFence']
-  stopMarks: AgentSessionJournal['stopMarks']
 }
 
 export type StructuredAgentSessionUnfinishedWork = {
@@ -37,16 +38,16 @@ export function captureUnfinishedStructuredAgentSessionWork(
   }
 }
 
-/** `exitProof`: see `unfinishedStructuredAgentSessionWorkWasInterrupted`. */
+/** `exit`: see `unfinishedStructuredAgentSessionWorkWasInterrupted`. */
 export function hasUnfinishedStructuredAgentSessionWork(
   journal: DeadGenerationJournal,
-  exitProof?: AgentSessionDeathEvidence
+  exit?: StructuredAgentSessionWatchedExit
 ): boolean {
   const work = captureUnfinishedStructuredAgentSessionWork(journal)
   return (
     work.hadUnsettledSubmissions ||
     work.items.length > 0 ||
-    provenUnverifiableTurnRevisions(journal.snapshot().items, exitProof, journal).length > 0
+    watchedExitRevisions(journal.snapshot().items, exit, journal).length > 0
   )
 }
 
@@ -54,7 +55,7 @@ export function unfinishedStructuredAgentSessionWorkWasInterrupted(
   before: StructuredAgentSessionUnfinishedWork,
   journal: DeadGenerationJournal,
   observedExitAt: number,
-  exitProof?: AgentSessionDeathEvidence
+  exit?: StructuredAgentSessionWatchedExit
 ): boolean {
   const currentSnapshot = journal.snapshot()
   if (
@@ -64,7 +65,7 @@ export function unfinishedStructuredAgentSessionWorkWasInterrupted(
     return true
   }
   // A turn the exited child left `unverifiable` (its stream closed first) was running when it went.
-  if (provenUnverifiableTurnRevisions(currentSnapshot.items, exitProof, journal).length > 0) {
+  if (watchedExitRevisions(currentSnapshot.items, exit, journal).length > 0) {
     return true
   }
   if (
