@@ -1,65 +1,368 @@
-name: pnpm verification cache pilot
-
-on:
-  pull_request:
-    paths: ['.github/workflows/ci-pnpm-verification-pilot.yml']
-  workflow_dispatch:
-
+name: Bun runtime reuse x64 first screen
+'on':
+  workflow_dispatch: null
 permissions:
   contents: read
-
-concurrency:
-  group: pnpm-verification-pilot-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-env:
-  ORCA_BACKGROUND_LAUNCH: '1'
-
 jobs:
-  seed:
-    strategy:
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+  paired:
+    name: Bun runtime reuse original candidate x64
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      NODE_DISABLE_COMPILE_CACHE: '1'
+      UPDATE_READINESS_CENSUS: '0'
+      ORCA_BALANCE_UNIT_SHARDS: '0'
     steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-      # PR caches are scoped to the PR merge ref; main never restores them.
-      - uses: actions/cache/save@v5
-        if: steps.deps.outputs.verification-cache-hit != 'true'
-        with:
-          path: ${{ steps.deps.outputs.verification-cache-path }}
-          key: ${{ steps.deps.outputs.verification-cache-key }}
+    - name: Checkout screen support
+      uses: actions/checkout@v6
+      with:
+        persist-credentials: false
+    - name: Extract frozen source-bound screen outside checkout
+      run: |-
+        python3 - <<'EXTRACT_SCREEN'
+        import hashlib
+        import json
+        import os
+        from pathlib import Path, PurePosixPath
+        import shutil
+        import subprocess
+        import tarfile
 
-  measure:
-    needs: seed
-    name: measure ${{ matrix.runner }} sample ${{ matrix.sample }} cache ${{ matrix.cache }}
-    strategy:
-      fail-fast: false
-      max-parallel: 4
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-        sample: [1, 2, 3]
-        cache: ['false', 'true']
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-        with:
-          cache-pnpm-verification: ${{ matrix.cache }}
-      - name: Validate treatment and frozen install
-        env:
-          CACHE_ENABLED: ${{ matrix.cache }}
-          CACHE_HIT: ${{ steps.deps.outputs.verification-cache-hit }}
-        run: |
-          if [ "$CACHE_ENABLED" = true ]; then test "$CACHE_HIT" = true; fi
-          git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
-          node -e "require.resolve('vitest'); require.resolve('electron')"
+        root = Path(os.environ['GITHUB_WORKSPACE'])
+        temporary = Path(os.environ['RUNNER_TEMP'])
+        bundle = temporary / 'bun-runtime-first-screen-bundle'
+        output = temporary / 'bun-runtime-first-screen-results'
+        bundle.mkdir(exist_ok=False)
+        output.mkdir(exist_ok=False)
+        archive = root / 'config/ci-capacity-benchmark/bun-runtime-first-screen.tar.gz'
+        sha = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
+        bootstrap = {'runId': os.environ['GITHUB_RUN_ID'], 'runAttempt': os.environ['GITHUB_RUN_ATTEMPT'],
+                     'bootstrapSha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+                     'bootstrapTree': subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], text=True).strip(),
+                     'eventSha': os.environ['GITHUB_SHA'], 'workflowRef': os.environ['GITHUB_WORKFLOW_REF'],
+                     'archiveSha256': sha(archive)}
+        assert bootstrap['bootstrapSha'] == bootstrap['eventSha']
+        (output / 'bootstrap.json').write_text(json.dumps(bootstrap, indent=2) + '\n')
+        with tarfile.open(archive, 'r:gz') as stream:
+            members = stream.getmembers()
+            assert len(members) <= 128 and len({member.name for member in members}) == len(members)
+            assert sum(member.size for member in members) <= 16 * 1024 * 1024
+            for member in members:
+                path = PurePosixPath(member.name)
+                assert member.isfile() and not path.is_absolute() and '..' not in path.parts
+                target = bundle / member.name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(stream.extractfile(member).read())
+        manifest = json.loads((bundle / 'manifest.json').read_text())
+        actual = {str(path.relative_to(bundle)) for path in bundle.rglob('*') if path.is_file()}
+        assert actual == set(manifest['inputHashes']) | {'manifest.json'}
+        for name, expected in manifest['inputHashes'].items():
+            assert sha(bundle / name) == expected, name
+        assert sha(bundle / 'prototype/manifest.json') == 'abe95ebe178523a651b588aba6e90bb8330e673970872571fba1a38806cc8797'
+        shutil.copytree(bundle, output / 'portable-inputs')
+        (output / 'manifest.json').write_bytes((bundle / 'manifest.json').read_bytes())
+        environment = {'SCREEN_BUNDLE': str(bundle), 'SCREEN_RESULTS': str(output),
+                       'SCREEN_DRIVER': str(bundle / 'run-first-screen.mjs'),
+                       'SCREEN_NARROW_OUTPUT': str(output / 'narrow-workflow-checks'),
+                       'SCREEN_CONTROL_LEGACY': str(temporary / 'bun-runtime-control-source'),
+                       'SCREEN_CONTROL_OUTPUT': str(output / 'runtime-controls')}
+        with open(os.environ['GITHUB_ENV'], 'a') as stream:
+            for name, value in environment.items():
+                stream.write(name + '=' + value + '\n')
+        EXTRACT_SCREEN
+    - name: Checkout fixed production source
+      uses: actions/checkout@v6
+      with:
+        ref: 1bec53ceb23b5f296a38ffa0e085778d32fc7849
+        persist-credentials: false
+    - name: Require clean fixed source and record shared setup start
+      run: |-
+        test "$(git rev-parse HEAD)" = 1bec53ceb23b5f296a38ffa0e085778d32fc7849
+        test "$(git rev-parse 'HEAD^{tree}')" = 8dda0783bd3355b2ae8068b9ca4e3e21f65240e8
+        test -z "$(git status --porcelain --untracked-files=all)"
+        printf 'SCREEN_SOURCE_ROOT=%s
+        ' "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+        python3 - <<'PYSETUP'
+        import json,os,pathlib,subprocess,time
+        out=pathlib.Path(os.environ['SCREEN_RESULTS'])
+        (out/'checkout.json').write_text(json.dumps({'runId':os.environ['GITHUB_RUN_ID'],'runAttempt':os.environ['GITHUB_RUN_ATTEMPT'],'sourceSha':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'tree':subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip(),'sharedSetupStartedUnixMs':int(time.time()*1000)},indent=2))
+        PYSETUP
+    - uses: ./.github/actions/install-node-dependencies
+      id: dependencies
+      with:
+        native-runtime: none
+        node-version: 24.21.0
+        cache-pnpm-store-lookup-only: 'true'
+    - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      with:
+        bun-version: 1.4.2
+      id: legacy-bun-runtime
+    - uses: actions/setup-node@v6
+      if: runner.arch == 'X64'
+      with:
+        node-version: '18'
+        package-manager-cache: false
+    - name: Keep the actual Node 18 executable for each X64 arm
+      if: runner.arch == 'X64'
+      shell: bash
+      run: |
+        echo "PILOT_NODE18_EXECUTABLE=$(node -p 'process.execPath')" >> "$GITHUB_ENV"
+        echo "PILOT_NODE18_VERSION=$(node --version)" >> "$GITHUB_ENV"
+    - uses: actions/setup-node@v6
+      with:
+        node-version: ${{ steps.dependencies.outputs.node-version }}
+        package-manager-cache: false
+    - name: Normalize historical Git objects and capture fixed pilot inputs
+      shell: bash
+      env:
+        BUN_ORCAD_COMMIT: f4092c06d639ee13ad446261dcabc78b27a21fbc
+      run: |
+        git diff --exit-code
+        git diff --cached --exit-code
+        git fetch --no-tags --depth=1 origin "$BUN_ORCAD_COMMIT" 2>&1 | tee "$RUNNER_TEMP/bun-git-normalization.log"
+        test "$(git rev-parse "$BUN_ORCAD_COMMIT")" = "$BUN_ORCAD_COMMIT"
+        git ls-files -z -- src config native tests package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc .pnpmfile.cjs .github/actions .github/workflows/node-server-tests.yml > "$RUNNER_TEMP/bun-pilot-source-files"
+        {
+          echo "PILOT_SOURCE_SHA=$(git rev-parse HEAD)"
+          echo "PILOT_TREE_SHA=$(git rev-parse 'HEAD^{tree}')"
+          echo "PILOT_SOURCE_FILES=$RUNNER_TEMP/bun-pilot-source-files"
+          echo "PILOT_PNPM_VERSION=$(pnpm --version)"
+          echo "PILOT_HOST_NODE_VERSION=$(node --version)"
+          echo "PILOT_BUN_VERSION=$(bun --version)"
+          echo "PILOT_COMPILER_VERSION=$(c++ --version | head -1)"
+          echo "PILOT_KERNEL=$(uname -srmo)"
+          echo "PILOT_CPU=$(getconf _NPROCESSORS_ONLN)"
+        } >> "$GITHUB_ENV"
+    - name: Require actual canonical installed x64 binary before timing
+      env:
+        SCREEN_INSTALLED_BUN: ${{ steps.legacy-bun-runtime.outputs.bun-path }}
+      run: |-
+        node --input-type=module - <<'JS'
+        import assert from 'node:assert/strict'
+        import { createHash } from 'node:crypto'
+        import { readFileSync, writeFileSync } from 'node:fs'
+        import { join } from 'node:path'
+        import { pathToFileURL } from 'node:url'
+        const { ORCAD_BUN_RELEASE_ASSETS, ORCAD_BUN_VERSION } = await import(pathToFileURL(join(process.env.SCREEN_BUNDLE, 'prototype/frozen-legacy-inputs/src/shared/orcad-bun-runtime.ts')).href)
+        const bytes = readFileSync(process.env.SCREEN_INSTALLED_BUN)
+        const hash = createHash('sha256').update(bytes).digest('hex')
+        const expected = ORCAD_BUN_RELEASE_ASSETS['linux-x64-glibc'].executableSha256
+        writeFileSync(join(process.env.SCREEN_RESULTS, 'installed-x64-proof.json'), JSON.stringify({ installedPath: process.env.SCREEN_INSTALLED_BUN, sha256: hash, expectedSha256: expected, bytes: bytes.length, expectedVersion: ORCAD_BUN_VERSION }, null, 2))
+        assert.equal(process.platform, 'linux')
+        assert.equal(process.arch, 'x64')
+        assert.equal(hash, expected, 'Visible no-reuse stop: setup-bun installed a noncanonical x64 variant')
+        JS
+        printf 'SCREEN_INSTALLED_BUN=%s
+        ' "$SCREEN_INSTALLED_BUN" >> "$GITHUB_ENV"
+        "$SCREEN_INSTALLED_BUN" --version | tee "$SCREEN_RESULTS/installed-bun-version.txt"
+        test "$(cat "$SCREEN_RESULTS/installed-bun-version.txt")" = 1.4.2
+    - name: Normalize historical delegated manager and default store before both samples
+      run: python3 "$SCREEN_BUNDLE/normalize-legacy-store.py"
+    - name: Qualify unchanged narrow scope and barrier checks with owned temporary inputs
+      run: python3 "$SCREEN_BUNDLE/narrow-workflow-checks.py"
+    - name: Capture every installed input before native warmup
+      run: node "$SCREEN_DRIVER" warmup-before
+    - name: Warm identical Python compiler caches outside the comparison
+      uses: ./.github/actions/prepare-orcad-prebuilds
+    - name: Verify the warmup left tracked inputs unchanged
+      run: |
+        git diff --exit-code
+        git diff --cached --exit-code
+    - name: Record the two-arm screen and shared inventories
+      id: plan
+      shell: bash
+      run: node "$SCREEN_DRIVER" init
+    - name: Begin B1 overlap arm with fresh owned outputs
+      shell: bash
+      run: |-
+        test "$(git rev-parse HEAD)" = 1bec53ceb23b5f296a38ffa0e085778d32fc7849
+        test -z "$(git status --porcelain --untracked-files=all)"
+        rm -rf -- node_modules/.vite node_modules/.vite-temp
+        node "$SCREEN_DRIVER" begin B1
+    - name: Build historical Bun artifact B1
+      id: bun-b1
+      background: true
+      shell: bash
+      run: |
+        node "$SCREEN_DRIVER" start "$PILOT_CASE" bun
+        set +e
+        bash -e -o pipefail <<'BUN_BUILD' 2>&1 | tee "$PILOT_CASE_DIR/bun-build.log"
+        BUN_ORCAD_COMMIT=f4092c06d639ee13ad446261dcabc78b27a21fbc
+        git fetch --no-tags --depth=1 origin "$BUN_ORCAD_COMMIT"
+        git worktree add --detach "$RUNNER_TEMP/bun-orcad-source" "$BUN_ORCAD_COMMIT"
+        pnpm --dir "$RUNNER_TEMP/bun-orcad-source" install --frozen-lockfile --ignore-scripts
+        pnpm --dir "$RUNNER_TEMP/bun-orcad-source" --version > "$PILOT_CASE_DIR/legacy-pnpm-version.txt"
+        pnpm --dir "$RUNNER_TEMP/bun-orcad-source" store path --silent > "$PILOT_CASE_DIR/legacy-store-path.txt"
+        node "$RUNNER_TEMP/bun-orcad-source/config/scripts/build-orcad-bun.mjs" --out-dir "$RUNNER_TEMP/bun-orcad"
+        BUN_BUILD
+        status=$?
+        set -e
+        node "$SCREEN_DRIVER" end "$PILOT_CASE" bun "$status"
+        echo "slot=$RUNNER_TEMP/bun-orcad" >> "$GITHUB_OUTPUT"
+        echo "executable=$SCREEN_INSTALLED_BUN" >> "$GITHUB_OUTPUT"
+    - name: Start current Node preparation B1
+      shell: bash
+      run: node "$SCREEN_DRIVER" start "$PILOT_CASE" node
+    - uses: ./.github/actions/prepare-orcad-prebuilds
+    - name: Build current Node artifact B1
+      shell: bash
+      run: |
+        set +e
+        pnpm build:orcad 2>&1 | tee "$PILOT_CASE_DIR/node-build.log"
+        status=$?
+        set -e
+        node "$SCREEN_DRIVER" end "$PILOT_CASE" node "$status"
+    - wait: bun-b1
+    - name: End B1 preparation interval after native join
+      shell: bash
+      run: node "$SCREEN_DRIVER" ready "$PILOT_CASE"
+    - name: Test actual B1 artifact and cross-runtime contracts
+      shell: bash
+      env:
+        ORCA_BUN_ORCAD_SLOT: ${{ steps.bun-b1.outputs.slot }}
+        BUN_EXECUTABLE: ${{ steps.bun-b1.outputs.executable }}
+      run: |
+        node --input-type=module - <<'SELECTORS' > "$PILOT_CASE_DIR/test-selectors.nul"
+        import { nodeServerTestPaths } from './config/scripts/node-server-test-paths.mjs'
+        import { writeFileSync } from 'node:fs'
+        import { join } from 'node:path'
+        const selectors = nodeServerTestPaths({ artifact: true, crossRuntime: true })
+        writeFileSync(join(process.env.PILOT_CASE_DIR, 'test-command.json'), JSON.stringify({ argv: ['pnpm', 'test:node-server', '--artifact', '--cross-runtime', ...selectors, '--reporter=default', '--reporter=json', '--outputFile=' + join(process.env.PILOT_CASE_DIR, 'vitest.json')], cwd: process.cwd(), environment: { ORCA_BACKGROUND_LAUNCH: process.env.ORCA_BACKGROUND_LAUNCH, NODE_DISABLE_COMPILE_CACHE: process.env.NODE_DISABLE_COMPILE_CACHE, ORCA_BUN_ORCAD_SLOT: process.env.ORCA_BUN_ORCAD_SLOT, BUN_EXECUTABLE: process.env.BUN_EXECUTABLE } }, null, 2))
+        for (const path of selectors) process.stdout.write(path + '\0')
+        SELECTORS
+        mapfile -d '' -t selectors < "$PILOT_CASE_DIR/test-selectors.nul"
+        test "${#selectors[@]}" -gt 0
+        node "$SCREEN_DRIVER" start "$PILOT_CASE" artifact
+        set +e
+        pnpm test:node-server --artifact --cross-runtime "${selectors[@]}" --reporter=default --reporter=json --outputFile="$PILOT_CASE_DIR/vitest.json" 2>&1 | tee "$PILOT_CASE_DIR/artifact.log"
+        status=$?
+        set -e
+        node "$SCREEN_DRIVER" end "$PILOT_CASE" artifact "$status"
+    - name: Verify actual Node 18 loading and pinned handoff B1
+      if: runner.arch == 'X64'
+      shell: bash
+      run: |
+        node "$SCREEN_DRIVER" start "$PILOT_CASE" node18
+        "$PILOT_NODE18_EXECUTABLE" out/orcad/orcad.js --orcad-smoke-load-check
+        "$PILOT_NODE18_EXECUTABLE" out/orcad/orcad.js --orcad-profile-state-preflight 00000000-0000-4000-8000-000000000018 | tee "$PILOT_CASE_DIR/node18-preflight.json"
+        "$PILOT_NODE18_EXECUTABLE" -e "const r=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));if(r.runtime!=='node'||!/^24\./.test(r.runtimeVersion))process.exit(1)" "$PILOT_CASE_DIR/node18-preflight.json"
+        node "$SCREEN_DRIVER" end "$PILOT_CASE" node18 0
+    - name: Qualify B1 evidence and owned process exit
+      shell: bash
+      run: |-
+        node "$SCREEN_DRIVER" finish "$PILOT_CASE"
+        test "$(git rev-parse HEAD)" = 1bec53ceb23b5f296a38ffa0e085778d32fc7849
+        test -z "$(git status --porcelain --untracked-files=all)"
+    - name: Begin B2 overlap arm with fresh owned outputs
+      shell: bash
+      run: |-
+        test "$(git rev-parse HEAD)" = 1bec53ceb23b5f296a38ffa0e085778d32fc7849
+        test -z "$(git status --porcelain --untracked-files=all)"
+        rm -rf -- node_modules/.vite node_modules/.vite-temp
+        node "$SCREEN_DRIVER" begin B2
+    - name: Build historical Bun artifact B2
+      id: bun-b2
+      background: true
+      shell: bash
+      run: |
+        node "$SCREEN_DRIVER" start "$PILOT_CASE" bun
+        set +e
+        bash -e -o pipefail <<'BUN_BUILD' 2>&1 | tee "$PILOT_CASE_DIR/bun-build.log"
+        BUN_ORCAD_COMMIT=f4092c06d639ee13ad446261dcabc78b27a21fbc
+        git fetch --no-tags --depth=1 origin "$BUN_ORCAD_COMMIT"
+        git worktree add --detach "$RUNNER_TEMP/bun-orcad-source" "$BUN_ORCAD_COMMIT"
+        pnpm --dir "$RUNNER_TEMP/bun-orcad-source" install --frozen-lockfile --ignore-scripts
+        pnpm --dir "$RUNNER_TEMP/bun-orcad-source" --version > "$PILOT_CASE_DIR/legacy-pnpm-version.txt"
+        pnpm --dir "$RUNNER_TEMP/bun-orcad-source" store path --silent > "$PILOT_CASE_DIR/legacy-store-path.txt"
+        node "$SCREEN_DRIVER" reuse "$PILOT_CASE"
+        node "$RUNNER_TEMP/bun-orcad-source/config/scripts/build-orcad-bun.mjs" --out-dir "$RUNNER_TEMP/bun-orcad"
+        BUN_BUILD
+        status=$?
+        set -e
+        node "$SCREEN_DRIVER" end "$PILOT_CASE" bun "$status"
+        echo "slot=$RUNNER_TEMP/bun-orcad" >> "$GITHUB_OUTPUT"
+        echo "executable=$SCREEN_INSTALLED_BUN" >> "$GITHUB_OUTPUT"
+    - name: Start current Node preparation B2
+      shell: bash
+      run: node "$SCREEN_DRIVER" start "$PILOT_CASE" node
+    - uses: ./.github/actions/prepare-orcad-prebuilds
+    - name: Build current Node artifact B2
+      shell: bash
+      run: |
+        set +e
+        pnpm build:orcad 2>&1 | tee "$PILOT_CASE_DIR/node-build.log"
+        status=$?
+        set -e
+        node "$SCREEN_DRIVER" end "$PILOT_CASE" node "$status"
+    - wait: bun-b2
+    - name: End B2 preparation interval after native join
+      shell: bash
+      run: node "$SCREEN_DRIVER" ready "$PILOT_CASE"
+    - name: Test actual B2 artifact and cross-runtime contracts
+      shell: bash
+      env:
+        ORCA_BUN_ORCAD_SLOT: ${{ steps.bun-b2.outputs.slot }}
+        BUN_EXECUTABLE: ${{ steps.bun-b2.outputs.executable }}
+      run: |
+        node --input-type=module - <<'SELECTORS' > "$PILOT_CASE_DIR/test-selectors.nul"
+        import { nodeServerTestPaths } from './config/scripts/node-server-test-paths.mjs'
+        import { writeFileSync } from 'node:fs'
+        import { join } from 'node:path'
+        const selectors = nodeServerTestPaths({ artifact: true, crossRuntime: true })
+        writeFileSync(join(process.env.PILOT_CASE_DIR, 'test-command.json'), JSON.stringify({ argv: ['pnpm', 'test:node-server', '--artifact', '--cross-runtime', ...selectors, '--reporter=default', '--reporter=json', '--outputFile=' + join(process.env.PILOT_CASE_DIR, 'vitest.json')], cwd: process.cwd(), environment: { ORCA_BACKGROUND_LAUNCH: process.env.ORCA_BACKGROUND_LAUNCH, NODE_DISABLE_COMPILE_CACHE: process.env.NODE_DISABLE_COMPILE_CACHE, ORCA_BUN_ORCAD_SLOT: process.env.ORCA_BUN_ORCAD_SLOT, BUN_EXECUTABLE: process.env.BUN_EXECUTABLE } }, null, 2))
+        for (const path of selectors) process.stdout.write(path + '\0')
+        SELECTORS
+        mapfile -d '' -t selectors < "$PILOT_CASE_DIR/test-selectors.nul"
+        test "${#selectors[@]}" -gt 0
+        node "$SCREEN_DRIVER" start "$PILOT_CASE" artifact
+        set +e
+        pnpm test:node-server --artifact --cross-runtime "${selectors[@]}" --reporter=default --reporter=json --outputFile="$PILOT_CASE_DIR/vitest.json" 2>&1 | tee "$PILOT_CASE_DIR/artifact.log"
+        status=$?
+        set -e
+        node "$SCREEN_DRIVER" end "$PILOT_CASE" artifact "$status"
+    - name: Verify actual Node 18 loading and pinned handoff B2
+      if: runner.arch == 'X64'
+      shell: bash
+      run: |
+        node "$SCREEN_DRIVER" start "$PILOT_CASE" node18
+        "$PILOT_NODE18_EXECUTABLE" out/orcad/orcad.js --orcad-smoke-load-check
+        "$PILOT_NODE18_EXECUTABLE" out/orcad/orcad.js --orcad-profile-state-preflight 00000000-0000-4000-8000-000000000018 | tee "$PILOT_CASE_DIR/node18-preflight.json"
+        "$PILOT_NODE18_EXECUTABLE" -e "const r=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));if(r.runtime!=='node'||!/^24\./.test(r.runtimeVersion))process.exit(1)" "$PILOT_CASE_DIR/node18-preflight.json"
+        node "$SCREEN_DRIVER" end "$PILOT_CASE" node18 0
+    - name: Qualify B2 evidence and owned process exit
+      shell: bash
+      run: |-
+        node "$SCREEN_DRIVER" finish "$PILOT_CASE"
+        test "$(git rev-parse HEAD)" = 1bec53ceb23b5f296a38ffa0e085778d32fc7849
+        test -z "$(git status --porcelain --untracked-files=all)"
+    - name: One real runtime reuse and corrupt-cache fallback plus tiny ownership controls outside timing
+      run: |-
+        git worktree add --detach "$SCREEN_CONTROL_LEGACY" f4092c06d639ee13ad446261dcabc78b27a21fbc
+        pnpm --dir "$SCREEN_CONTROL_LEGACY" install --frozen-lockfile --ignore-scripts
+        node "$SCREEN_BUNDLE/runtime-controls.mjs"
+        python3 "$SCREEN_BUNDLE/prototype/verify-input-bindings.py" --manifest-sha256 abe95ebe178523a651b588aba6e90bb8330e673970872571fba1a38806cc8797 --current-root "$SCREEN_SOURCE_ROOT" --legacy-root "$SCREEN_CONTROL_LEGACY"
+    - name: Collect full paired evidence and verify owned exits
+      if: always() && steps.plan.outcome == 'success'
+      run: node "$SCREEN_DRIVER" collect
+    - name: Record final clean source outside owned samples
+      if: always()
+      run: |-
+        python3 - <<'FINAL'
+        import json,os,pathlib,subprocess,time
+        p=pathlib.Path(os.environ['SCREEN_RESULTS'])
+        git=lambda *args: subprocess.check_output(['git',*args],text=True).strip()
+        value={'runId':os.environ['GITHUB_RUN_ID'],'runAttempt':os.environ['GITHUB_RUN_ATTEMPT'],'head':git('rev-parse','HEAD'),'tree':git('rev-parse','HEAD^{tree}'),'status':git('status','--porcelain','--untracked-files=all'),'capturedUnixMs':int(time.time()*1000)}
+        (p/'final-source.json').write_text(json.dumps(value,indent=2))
+        assert value['head']=='1bec53ceb23b5f296a38ffa0e085778d32fc7849' and value['tree']=='8dda0783bd3355b2ae8068b9ca4e3e21f65240e8' and value['status']==''
+        FINAL
+    - name: Upload raw controls/source/installed/case/phase and incomplete evidence
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: bun-runtime-first-screen-attempt-${{ github.run_attempt }}
+        path: |-
+          ${{ runner.temp }}/bun-runtime-first-screen-results
+          ${{ runner.temp }}/ci-headless-bun-*
+        retention-days: 14
+        if-no-files-found: error
