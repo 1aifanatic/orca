@@ -1,9 +1,6 @@
 import type { CommitMessagePlan } from '../../shared/commit-message-plan'
-import {
-  stopSupervisedProvider,
-  supervisedProviderSpawnError
-} from '../codex/codex-app-server-posix-supervisor'
-import { terminateCodexAppServerProcessTree } from '../codex/codex-app-server-process-teardown'
+import { supervisedProviderSpawnError } from '../codex/codex-app-server-posix-supervisor'
+import { stopSupervisedChildProcess } from '../codex/supervised-child-process-stop'
 import { UnsafeWindowsBatchArgumentsError } from '../win32-utils'
 import { terminateWindowsProcessTree } from '../windows-process-tree-kill'
 import {
@@ -35,7 +32,7 @@ export async function killSourceControlAgentProcess(
     return
   }
   if (child.supervised) {
-    await stopSupervisedAgent(child)
+    await stopSupervisedChildProcess(child)
     return
   }
   if (process.platform === 'win32') {
@@ -50,26 +47,6 @@ export async function killSourceControlAgentProcess(
   } catch {
     // The process may exit between the PID check and kill.
   }
-}
-
-async function stopSupervisedAgent(child: SpawnedSourceControlAgentProcess): Promise<void> {
-  const exited = (): boolean => child.exitCode !== null || child.signalCode !== null
-  if (exited()) {
-    return
-  }
-  await stopSupervisedProvider({
-    request: () => {
-      try {
-        child.kill('SIGTERM')
-      } catch {
-        // The process may exit between the exit check and kill.
-      }
-    },
-    exitPromise: new Promise<void>((resolve) => child.once('exit', () => resolve())),
-    exited,
-    force: () => terminateCodexAppServerProcessTree(child),
-    supervised: true
-  })
 }
 
 // Why: Windows caps the CreateProcess command line at 32,767 UTF-16 code units,
