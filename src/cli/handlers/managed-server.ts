@@ -11,6 +11,7 @@ import type {
   OrcadManagedRuntimeStatus,
   OrcadManagedStopResult
 } from '../../shared/orcad-managed-runtime'
+import { ORCAD_RECOVERY_CHANGED_STATE_CODE } from '../../shared/orcad-managed-runtime'
 import { MANAGED_SERVER_RUNTIME_CAPABILITY } from '../../shared/protocol-version'
 import type { RuntimeStatus } from '../../shared/runtime-types'
 import type { CommandHandler, HandlerContext } from '../dispatch'
@@ -76,13 +77,16 @@ function report<TResult extends Outcome, TSettled extends TResult['outcome']>(
   response: RuntimeRpcSuccess<TResult>,
   json: boolean,
   settled: readonly TSettled[],
-  done: (result: Extract<TResult, { outcome: TSettled }>) => string
+  done: (result: Extract<TResult, { outcome: TSettled }>) => string,
+  nextStep?: (result: TResult) => string | null
 ): void {
   const result = response.result
   if (!isSettled(result, settled)) {
+    const reason = result.reason ?? `The managed Orca server action was ${result.outcome}.`
+    const step = nextStep?.(result)
     throw new RuntimeClientError(
       `managed_server_${result.outcome}`,
-      result.reason ?? `The managed Orca server action was ${result.outcome}.`,
+      step ? `${reason} ${step}` : reason,
       result
     )
   }
@@ -132,15 +136,31 @@ export const MANAGED_SERVER_HANDLERS: Record<string, CommandHandler> = {
     )
   },
   'environment recover': async (context) => {
+    const params = selectorOf(context)
+    const acceptChangedState = context.flags.get('accept-changed-state') === true
+    if (acceptChangedState && context.flags.get('yes') !== true) {
+      throw new RuntimeClientError(
+        'confirmation_required',
+        `Restoring ${params.selector}'s prelaunch snapshot discards what the rejected build changed. Re-run with --yes to confirm.`
+      )
+    }
     const response = await callManagedServer<OrcadManagedRecoveryResult>(
       context,
       'managedServer.recover',
-      selectorOf(context)
+      acceptChangedState ? { ...params, acceptChangedState } : params
     )
-    report(response, context.json, ['recovered', 'none'], (result) =>
-      result.outcome === 'recovered'
-        ? `Recovered ${result.environment.name} (${result.resolution}); active version ${result.activeVersion ?? 'none'}.`
-        : 'Nothing to recover.'
+    report(
+      response,
+      context.json,
+      ['recovered', 'none'],
+      (result) =>
+        result.outcome === 'recovered'
+          ? `Recovered ${result.environment.name} (${result.resolution}); active version ${result.activeVersion ?? 'none'}.`
+          : 'Nothing to recover.',
+      (result) =>
+        !acceptChangedState && 'code' in result && result.code === ORCAD_RECOVERY_CHANGED_STATE_CODE
+          ? 'To restore it from the CLI, re-run with --accept-changed-state --yes.'
+          : null
     )
   },
   'environment stop': async (context) => {

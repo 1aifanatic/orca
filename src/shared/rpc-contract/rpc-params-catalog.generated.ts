@@ -354,7 +354,11 @@ import {
   WorkspaceSelection
 } from './linear-params'
 import { CreateProject } from './linear-project-create-params'
-import { ManagedServerSelector, ManagedServerUpdate } from './managed-server-params'
+import {
+  ManagedServerRecover,
+  ManagedServerSelector,
+  ManagedServerUpdate
+} from './managed-server-params'
 import { NativeChatSession, NativeChatUnsubscribe } from './native-chat-params'
 import {
   NotificationGetMissedSinceParams,
@@ -992,7 +996,7 @@ export const RPC_PARAMS_BY_METHOD = {
   'linear.testConnection': WorkspaceSelection,
   'linear.updateIssue': IssueUpdateOfLinearParams,
   'managedServer.cancelStop': ManagedServerSelector,
-  'managedServer.recover': ManagedServerSelector,
+  'managedServer.recover': ManagedServerRecover,
   'managedServer.rollback': ManagedServerSelector,
   'managedServer.status': ManagedServerSelector,
   'managedServer.stop': ManagedServerSelector,

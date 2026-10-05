@@ -73,4 +73,15 @@ describe('managed server RPC', () => {
     expect(response).toMatchObject({ ok: false })
     expect(registered.recover).not.toHaveBeenCalled()
   })
+
+  it('passes the confirmed changed-state restore through to recover', async () => {
+    const registered = actions()
+    registerManagedServerActions(registered)
+    await dispatcher().dispatch(
+      request('managedServer.recover', { selector: 'build-box', acceptChangedState: true })
+    )
+    expect(registered.recover).toHaveBeenLastCalledWith('build-box', true)
+    await dispatcher().dispatch(request('managedServer.recover', { selector: 'build-box' }))
+    expect(registered.recover).toHaveBeenLastCalledWith('build-box', false)
+  })
 })

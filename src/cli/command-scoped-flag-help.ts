@@ -17,6 +17,11 @@ const COMMAND_SCOPED_FLAG_HELP: Record<string, Record<string, string>> = {
   'environment update': {
     force: '--force                Restart over running terminals instead of deferring the update'
   },
+  'environment recover': {
+    'accept-changed-state':
+      '--accept-changed-state Restore the prelaunch snapshot over state a rejected build changed',
+    yes: '--yes                  Confirm discarding what the rejected build changed'
+  },
   'environment stop': {
     yes: '--yes                  Confirm stopping the server and unlinking it from this machine'
   },

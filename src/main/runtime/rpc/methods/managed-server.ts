@@ -1,4 +1,5 @@
 import {
+  ManagedServerRecover,
   ManagedServerSelector,
   ManagedServerUpdate
 } from '../../../../shared/rpc-contract/managed-server-params'
@@ -36,8 +37,9 @@ export const MANAGED_SERVER_METHODS = [
   }),
   defineMethod({
     name: 'managedServer.recover',
-    params: ManagedServerSelector,
-    handler: ({ selector }) => actions().recover(selector)
+    params: ManagedServerRecover,
+    handler: ({ selector, acceptChangedState }) =>
+      actions().recover(selector, acceptChangedState === true)
   }),
   defineMethod({
     name: 'managedServer.stop',
