@@ -2,6 +2,9 @@
 // JSON-RPC call it is until a person answers it, a Stop cancels it, or the agent withdraws it.
 // An answer claims the request, commits the journal compare-and-set while the claim is held, and
 // only then replies, so a second client loses the commit and the agent hears exactly one answer.
+// Each request is this module's to answer: once the agent or a Stop cancels it, an unclaimed one is
+// answered with the agent's own cancelled reply, and a claimed one still sends the committed answer
+// — except a permission, which the protocol answers `cancelled` itself the moment it is cancelled.
 
 import type { AgentSessionPromptResponse } from '../../shared/agent-session-question-answer'
 import {
@@ -16,6 +19,9 @@ import type { AcpStructuredLane } from './acp-structured-lane'
 type OpenRequest = {
   key: string
   presentation: AcpRequestPresentation
+  /** A permission, whose cancellation the protocol answers itself. */
+  permission: boolean
+  signal: AbortSignal
   claimed: boolean
   settle: (reply: unknown) => void
 }
@@ -47,6 +53,8 @@ export class AcpStructuredPrompts {
       const entry: OpenRequest = {
         key,
         presentation,
+        permission: method === 'session/request_permission',
+        signal: context.signal,
         claimed: false,
         settle: (reply) => {
           if (this.open.get(key) === entry) {
@@ -56,13 +64,13 @@ export class AcpStructuredPrompts {
         }
       }
       this.open.set(key, entry)
-      // The agent or a Stop gave up on it: its card can no longer be answered.
+      // The agent or a Stop gave up on it: its card can no longer be answered, and the agent hears
+      // its own cancelled reply. A claimed one finishes its answer.
       context.signal.addEventListener(
         'abort',
         () => {
           if (this.open.get(key) === entry && !entry.claimed) {
-            this.open.delete(key)
-            this.lane()?.apply([{ type: 'request.withdrawn', request: key }])
+            this.withdraw(entry)
           }
         },
         { once: true }
@@ -92,21 +100,21 @@ export class AcpStructuredPrompts {
       await input.commit()
     } catch (error) {
       entry.claimed = false
+      if (entry.signal.aborted) {
+        this.withdraw(entry)
+      }
       throw error
     }
     entry.settle(reply)
+    if (entry.permission && entry.signal.aborted) {
+      // Cancelled while the answer was saved: the agent already heard `cancelled`, not this answer.
+      throw new Error(`the agent stopped waiting for the answer to ${input.itemId}`)
+    }
   }
 
-  /** Declines every unclaimed request the way the agent's protocol spells a cancellation, and
-   *  closes its card. */
-  cancelAll(): void {
-    for (const entry of Array.from(this.open.values())) {
-      if (entry.claimed) {
-        continue
-      }
-      entry.settle(entry.presentation.reply(null))
-      this.lane()?.apply([{ type: 'request.withdrawn', request: entry.key }])
-    }
+  private withdraw(entry: OpenRequest): void {
+    entry.settle(entry.presentation.reply(null))
+    this.lane()?.apply([{ type: 'request.withdrawn', request: entry.key }])
   }
 
   /** The child is gone: nobody can answer for it any more. */

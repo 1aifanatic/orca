@@ -51,6 +51,7 @@ export class FakeAcpChild implements AcpStructuredChild {
   readonly pid: number | undefined = PID
   readonly spawned = Promise.resolve()
   stderr = ''
+  treeUnproven = false
   private listeners: (() => void)[] = []
   private gone = false
   closes = 0

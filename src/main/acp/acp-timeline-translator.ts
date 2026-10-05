@@ -99,15 +99,15 @@ export class AcpTimelineTranslator {
     return this.finishPrompt(clientMessageId, 'error', at, detail)
   }
 
-  /** The agent refused the prompt before its turn began: forgets it and answers true. False once
-   *  the turn opened, when the refusal ends that turn instead (`promptFailed`). */
-  promptRefused(clientMessageId: string): boolean {
+  /** The agent refused the prompt before its turn began: forgets it and answers the agent's reason.
+   *  Null once the turn opened, when the refusal ends that turn instead (`promptFailed`). */
+  promptRefused(clientMessageId: string, error: AcpAgentError): string | null {
     const prompt = this.prompts.current
     if (prompt?.clientMessageId !== clientMessageId || prompt.opened) {
-      return false
+      return null
     }
     this.prompts.current = undefined
-    return true
+    return acpPromptErrorDetail(this.dialect, error)
   }
 
   private finishPrompt(

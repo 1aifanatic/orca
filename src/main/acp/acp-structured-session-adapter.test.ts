@@ -6,7 +6,8 @@ import {
 } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
 import {
   AgentSessionAcquisitionExitProvenError,
-  AgentSessionAcquisitionRefusal
+  AgentSessionAcquisitionRefusal,
+  AgentSessionAcquisitionRootExitObservedError
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import { ACP_CHILD_ENV_TO_DELETE } from './acp-launch-specs'
 import {
@@ -241,6 +242,60 @@ describe('ACP structured session adapter: approvals', () => {
   })
 })
 
+describe('ACP structured session adapter: requests a Stop cancels', () => {
+  it("answers an open plan approval with Grok's own cancelled reply once a Stop cancels it", async () => {
+    const rig = await openAcpAdapterRig()
+    await rig.acquire()
+    await send(rig, 'send-1')
+    const prompt = await rig.frame('session/prompt')
+    const { agent } = rig.child()
+    const plan = agent.request(5, '_x.ai/exit_plan_mode', {
+      sessionId: PROVIDER_SESSION,
+      toolCallId: 'call-2',
+      planContent: '# Plan'
+    })
+    await waitFor(async () => {
+      expect((await rig.rig.rows()).some((row) => row.body.kind === 'approval')).toBe(true)
+    })
+    agent.on('session/cancel', () => agent.reply(prompt, { stopReason: 'cancelled' }))
+    await expect(rig.adapter.cancelTurn({ sessionId: SESSION, fence: 1 })).resolves.toEqual({
+      cancelled: true
+    })
+    expect(await plan).toMatchObject({ result: { outcome: 'abandoned' } })
+    expect(agent.frames.filter((frame) => frame.id === 5)).toHaveLength(1)
+  })
+
+  it('reports a permission answer whose save outlived the Stop as unconfirmed, not given', async () => {
+    const rig = await openAcpAdapterRig()
+    await rig.acquire()
+    await send(rig, 'send-1')
+    const prompt = await rig.frame('session/prompt')
+    const { agent } = rig.child()
+    const permission = agent.request(6, 'session/request_permission', {
+      sessionId: PROVIDER_SESSION,
+      toolCall: { toolCallId: 'call-1', title: 'Write file' },
+      options: [{ optionId: 'allow-once', name: 'Allow', kind: 'allow_once' }]
+    })
+    const row = await waitFor(async () => {
+      const found = (await rig.rig.rows()).find((item) => item.body.kind === 'approval')
+      expect(found).toBeDefined()
+      return found!
+    })
+    agent.on('session/cancel', () => agent.reply(prompt, { stopReason: 'cancelled' }))
+    const answering = rig.adapter.answerPrompt({
+      sessionId: SESSION,
+      itemId: row.itemId,
+      kind: 'approval',
+      response: { kind: 'option', optionId: 'allow-once' },
+      fence: 1,
+      // The Stop lands while the person's answer is being saved.
+      commit: () => rig.adapter.cancelTurn({ sessionId: SESSION, fence: 1 }).then(() => {})
+    })
+    await expect(answering).rejects.toThrow(/stopped waiting/)
+    expect(await permission).toMatchObject({ result: { outcome: { outcome: 'cancelled' } } })
+  })
+})
+
 describe('ACP structured session adapter: options and commands', () => {
   it('reads the agent own models and effort and writes a pick through set_config_option', async () => {
     const rig = await openAcpAdapterRig({
@@ -286,6 +341,16 @@ describe('ACP structured session adapter: options and commands', () => {
 })
 
 describe('ACP structured session adapter: close and exit', () => {
+  it('reports a close whose root exited but whose process tree was not proven gone', async () => {
+    const rig = await openAcpAdapterRig()
+    await rig.acquire()
+    rig.child().treeUnproven = true
+    await expect(rig.adapter.closeSession(SESSION)).rejects.toBeInstanceOf(
+      AgentSessionAcquisitionRootExitObservedError
+    )
+    expect(rig.lifecycle).toMatchObject([{ type: 'ended', cause: 'requested-close' }])
+  })
+
   it('closes with proof and reports a requested close', async () => {
     const rig = await openAcpAdapterRig()
     await rig.acquire()

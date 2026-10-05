@@ -9,6 +9,7 @@ import type { AgentJournalMessageItem } from '../../shared/agent-session-journal
 import type { AgentSessionExecutionLocation } from '../../shared/agent-session-record'
 import {
   AgentSessionAcquisitionExitProvenError,
+  AgentSessionAcquisitionRootExitObservedError,
   AgentSessionAcquisitionExitUnprovenError,
   AgentSessionPreSpawnError,
   isAgentSessionPreSpawnError,
@@ -160,11 +161,11 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
       return { cancelled: false, refusal: { turnNotRunning: true } }
     }
     const withdrew = session.turns.withdrawQueued()
-    session.prompts.cancelAll()
     if (session.turns.running) {
       try {
-        // Ends when the agent answers the prompt `cancelled`; open permissions are declined first.
-        // Past the bound the connection closes, which stops the child.
+        // Ends when the agent answers the prompt `cancelled`. The cancel aborts every open request
+        // first, each answered as the agent spells a cancellation. Past the bound the connection
+        // closes, which stops the child.
         await session.runtime.cancel()
         return { cancelled: true }
       } catch {
@@ -190,7 +191,7 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
     })
     try {
       const left = session.lane.whenTurnLeaves(turnId).then(() => true)
-      await session.runtime.cancel({ agentTurn: true })
+      await session.runtime.cancel()
       if ((await Promise.race([left, deadline])) && session.journalClosed === null) {
         return { cancelled: true }
       }
@@ -244,19 +245,34 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
   ) =>
     this.sessions.has(sessionId) ? { supportsTaskStop: false, supportsStopAll: false } : undefined
 
-  closeSession = (sessionId: string): Promise<boolean> => this.stop(sessionId, true)
-  disposeSession = (sessionId: string): Promise<boolean> => this.stop(sessionId, true)
+  closeSession = (sessionId: string): Promise<boolean> => this.close(sessionId)
+  disposeSession = (sessionId: string): Promise<boolean> => this.close(sessionId)
   releaseAcquisition = (input: { sessionId: string }): Promise<boolean> =>
-    this.stop(input.sessionId, true)
+    this.close(input.sessionId)
   /** After a sink failure: the exit is recovered as unexpected. */
   forceCloseSession = (sessionId: string): Promise<boolean> => this.stop(sessionId, false)
 
   async closeAll(): Promise<void> {
     const ids = new Set([...this.sessions.keys(), ...this.starts.sessionIds()])
-    const proven = await Promise.all([...ids].map((sessionId) => this.closeSession(sessionId)))
+    const proven = await Promise.all([...ids].map((sessionId) => this.stop(sessionId, true)))
     if (proven.includes(false)) {
       throw new Error('an ACP agent child could not be proven stopped')
     }
+  }
+
+  /** A requested close. The root's exit proves it; a process tree the close could not prove gone is
+   *  reported to the caller that owns the child's record, as the adapter contract asks. */
+  private async close(sessionId: string): Promise<boolean> {
+    const child = this.sessions.get(sessionId)?.child
+    const closed = await this.stop(sessionId, true)
+    if (closed && child?.treeUnproven) {
+      throw new AgentSessionAcquisitionRootExitObservedError(
+        new Error(
+          `${this.deps.spec.agent} ACP agent exited, but its process tree was not proven gone`
+        )
+      )
+    }
+    return closed
   }
 
   /** True only once every child is proven gone, or when this adapter runs none for the session. */

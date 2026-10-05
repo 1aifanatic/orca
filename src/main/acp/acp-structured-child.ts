@@ -6,11 +6,6 @@ import type { Readable, Writable } from 'node:stream'
 import { spawnProcess } from '../../shared/child-process/run-process'
 import { spawnManagedProviderProcess } from '../provider-process/managed-provider-process'
 import type { ProviderProcessLaunch } from '../provider-process/provider-process-launch'
-import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from '../provider-process/provider-process-supervisor'
-
-const GRACEFUL_EXIT_MS = 1_500
-const FORCED_EXIT_MS = 1_000
-const STDERR_TAIL_MAX_CHARS = 8_192
 
 export type AcpStructuredChild = {
   readonly pid: number | undefined
@@ -26,6 +21,8 @@ export type AcpStructuredChild = {
   stderrTail(): string
   /** True only once the exit is proven. */
   close(): Promise<boolean>
+  /** The root exited but the close could not prove its process tree gone. */
+  readonly treeUnproven: boolean
 }
 
 export type SpawnAcpStructuredChild = (launch: ProviderProcessLaunch) => AcpStructuredChild
@@ -34,20 +31,9 @@ export function spawnAcpStructuredChild(
   launch: ProviderProcessLaunch,
   spawnImpl: typeof spawnProcess = spawnProcess
 ): AcpStructuredChild {
-  const managed = spawnManagedProviderProcess(launch, {
-    spawnImpl,
-    site: 'acp-agent-teardown',
-    acceptClose: (result) => result.root === 'exited',
-    policy: (supervised) => ({
-      gracefulExitMs: supervised ? PROVIDER_SUPERVISOR_MAX_STOP_MS : GRACEFUL_EXIT_MS,
-      forcedExitMs: FORCED_EXIT_MS
-    })
-  })
+  // The managed process owns the close ladder, its root-only defaults, and the stderr tail.
+  const managed = spawnManagedProviderProcess(launch, { spawnImpl, site: 'acp-agent-teardown' })
   const { child } = managed
-  let stderr = ''
-  child.stderr.setEncoding('utf8').on('data', (chunk: string) => {
-    stderr = (stderr + chunk).slice(-STDERR_TAIL_MAX_CHARS)
-  })
   // A broken pipe surfaces as the exit the managed process observes; never as an uncaught error.
   child.stdin.on('error', () => {})
   const spawned = new Promise<void>((resolve) => {
@@ -69,7 +55,11 @@ export function spawnAcpStructuredChild(
     },
     spawned,
     onExit: (listener) => managed.onExit(() => listener()),
-    stderrTail: () => stderr.trim(),
-    close: async () => managed.rootVerdict === 'exited' || (await managed.close()).root === 'exited'
+    stderrTail: () => managed.stderrTail().trim(),
+    close: async () => (await managed.close()).root === 'exited',
+    get treeUnproven() {
+      const result = managed.lastCloseResult
+      return result?.root === 'exited' && result.tree === 'unverifiable'
+    }
   }
 }

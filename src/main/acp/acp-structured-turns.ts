@@ -125,9 +125,10 @@ export class AcpStructuredTurns {
           this.deps.onTransportFault(error)
           return
         }
-        if (lane.translator.promptRefused(send.clientMessageId)) {
+        const refusal = lane.translator.promptRefused(send.clientMessageId, error)
+        if (refusal !== null) {
           // The agent answered the prompt with an error before starting it: its own refusal.
-          const detail = providerDiagnostic(error.message, 'person')
+          const detail = providerDiagnostic(refusal, 'person')
           this.reject(
             send.clientMessageId,
             agentSessionFailureFact('providerRejected', detail ? { detail } : {})

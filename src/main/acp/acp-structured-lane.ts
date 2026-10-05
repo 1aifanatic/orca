@@ -10,7 +10,7 @@ import {
   type ProviderTimelineAssembler
 } from '../native-chat/agent-session-timeline/provider-timeline-assembler'
 import type { ProviderTimelineEvent } from '../native-chat/agent-session-timeline/provider-timeline-event'
-import { spellProviderTimelineKey } from '../native-chat/agent-session-timeline/provider-timeline-identity'
+import { createLegacyProviderTimelineIdentityScheme } from '../native-chat/agent-session-timeline/provider-timeline-identity'
 import type { ProviderTimelineSink } from '../native-chat/agent-session-timeline/provider-timeline-plan'
 import type { AcpDialect } from './acp-dialects/acp-dialect'
 import { AcpTimelineTranslator } from './acp-timeline-translator'
@@ -49,6 +49,7 @@ export class AcpStructuredLane {
   private readonly assembler: ProviderTimelineAssembler
   private readonly backlog: ProviderTimelineEvent[] = []
   private readonly turnWatchers = new Set<() => void>()
+  private readonly requestIdentity: ReturnType<typeof createLegacyProviderTimelineIdentityScheme>
   private retryTimer: ReturnType<typeof setTimeout> | null = null
   private failed = false
   private disposed = false
@@ -58,6 +59,10 @@ export class AcpStructuredLane {
       sessionId: deps.providerSessionId,
       journalItems: () => journalRenderItems(deps.sink.journalItems()),
       dialect: deps.dialect
+    })
+    this.requestIdentity = createLegacyProviderTimelineIdentityScheme({
+      agent: deps.agent,
+      sessionId: deps.sessionId
     })
     this.assembler = createProviderTimelineAssembler({
       sink: deps.sink,
@@ -99,22 +104,19 @@ export class AcpStructuredLane {
     this.drain()
   }
 
-  /** The legacy-scheme record a request row of `requestKey` is written under, before any
-   *  incarnation suffix a reused key adds. */
-  requestRecordPrefix(requestKey: string): string {
-    return `request:${spellProviderTimelineKey(this.deps.providerSessionId, {
-      source: 'provider',
-      value: requestKey
-    })}`
-  }
-
-  /** Whether the journal row `itemId` is the row of request `requestKey`. */
+  /** Whether the journal row `itemId` is the row of request `requestKey`, which the assembler
+   *  writes under this acquisition's generation (any incarnation a reused key adds). */
   isRequestRow(itemId: string, requestKey: string): boolean {
     const identity = parseAgentJournalItemKey(itemId)
     if (identity?.provider !== 'legacy' || identity.sessionId !== this.deps.sessionId) {
       return false
     }
-    const prefix = this.requestRecordPrefix(requestKey)
+    const first = this.requestIdentity.request({
+      generation: this.deps.generation,
+      key: requestKey,
+      incarnation: 1
+    })
+    const prefix = first.provider === 'legacy' ? first.recordId : null
     return identity.recordId === prefix || identity.recordId.startsWith(`${prefix}#`)
   }
 
