@@ -1,6 +1,7 @@
 import remarkGfm from 'remark-gfm'
 import remarkParse from 'remark-parse'
 import { unified } from 'unified'
+import type { Nodes } from 'mdast'
 import { defaultSchema } from 'rehype-sanitize'
 import { normalizeDetailsOpeningTag } from './details-markdown-html'
 import { getRichMarkdownRoundTripOutput } from './markdown-round-trip'
@@ -39,6 +40,8 @@ export type MarkdownRichModeEligibilityDecision = {
 }
 
 const KNOWN_MARKDOWN_HTML_TAG_NAMES = new Set(defaultSchema.tagNames ?? [])
+const MAX_RICH_MARKDOWN_PROBE_CHARS = 50_000
+const REFERENCE_LINK_CANDIDATE = /^[ \t>*+\-\d.)]*\[/m
 
 const UNSUPPORTED_PATTERNS: UnsupportedMatch[] = [
   {
@@ -62,11 +65,7 @@ const UNSUPPORTED_PATTERNS: UnsupportedMatch[] = [
         'Editable only in code mode because this file contains reference-style links.'
       )
     },
-    // Why: a cheap, linear-time pre-filter — a single non-nested character
-    // class, so it can't backtrack. It deliberately over-admits shapes no
-    // container nesting produces (e.g. `1) [x]:`); `[label]: ` also opens
-    // ordinary prose, so `hasLinkReferenceDefinition` confirms a real
-    // definition per CommonMark.
+    // Large documents retain conservative colon matching.
     pattern: /^[ \t>*+\-\d.)]*\[[^\]]+\]:/m
   },
   {
@@ -122,10 +121,14 @@ export function getMarkdownRichModeUnsupportedReason(
     if (matcher.reason === 'html-or-jsx') {
       continue
     }
-    if (!matcher.pattern.test(contentWithoutCode)) {
+    const confirmsReference =
+      matcher.reason === 'reference-links' && body.length <= MAX_RICH_MARKDOWN_PROBE_CHARS
+    const candidate = confirmsReference ? body : contentWithoutCode
+    const pattern = confirmsReference ? REFERENCE_LINK_CANDIDATE : matcher.pattern
+    if (!pattern.test(candidate)) {
       continue
     }
-    if (matcher.reason === 'reference-links' && !hasLinkReferenceDefinition(contentWithoutCode)) {
+    if (matcher.reason === 'reference-links' && !hasLinkReferenceDefinition(body)) {
       continue
     }
     return matcher.reason
@@ -135,7 +138,8 @@ export function getMarkdownRichModeUnsupportedReason(
     // Why: the round-trip check creates a throwaway TipTap Editor synchronously
     // on the main thread. For large files this blocks for seconds, so we skip it and conservatively block rich mode for HTML files
     // above this threshold.
-    const roundTripOutput = body.length <= 50_000 ? getRichMarkdownRoundTripOutput(body) : null
+    const roundTripOutput =
+      body.length <= MAX_RICH_MARKDOWN_PROBE_CHARS ? getRichMarkdownRoundTripOutput(body) : null
     if (roundTripOutput && preservesEmbeddedHtml(contentWithoutCode, roundTripOutput)) {
       return null
     }
@@ -171,28 +175,21 @@ export function getMarkdownRichModeEligibility(params: {
 
 const linkReferenceDefinitionProcessor = unified().use(remarkParse).use(remarkGfm)
 
-// Why: only an mdast `definition` node proves a `[label]:` line is a link
-// reference definition and not prose. Definitions can sit inside blockquotes
-// and list items, so the whole tree is walked. Above the same size cap as the
-// HTML round-trip check, parsing is skipped and the pre-filter match is
-// trusted as a definition, since blocking rich mode is the safe default.
+// Unparsed documents keep the existing conservative Source fallback.
 function hasLinkReferenceDefinition(content: string): boolean {
-  if (content.length > 50_000) {
+  if (content.length > MAX_RICH_MARKDOWN_PROBE_CHARS) {
     return true
   }
-  const tree = linkReferenceDefinitionProcessor.parse(content)
-  return containsDefinitionNode(tree)
+  try {
+    return containsDefinitionNode(linkReferenceDefinitionProcessor.parse(content))
+  } catch {
+    return true
+  }
 }
 
-function containsDefinitionNode(node: { type: string; children?: unknown[] }): boolean {
-  if (node.type === 'definition') {
-    return true
-  }
-  if (!Array.isArray(node.children)) {
-    return false
-  }
-  return node.children.some((child) =>
-    containsDefinitionNode(child as { type: string; children?: unknown[] })
+function containsDefinitionNode(node: Nodes): boolean {
+  return (
+    node.type === 'definition' || ('children' in node && node.children.some(containsDefinitionNode))
   )
 }
 
