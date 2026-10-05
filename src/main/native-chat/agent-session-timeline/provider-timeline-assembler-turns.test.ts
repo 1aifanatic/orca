@@ -3,6 +3,7 @@ import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal
 import {
   closeProviderTimelineRigs,
   openProviderTimelineRig,
+  openUnboundProviderTimelineAssembler,
   providerTurnId,
   providerTurnItemId
 } from './provider-timeline-assembler-test-support'
@@ -149,9 +150,9 @@ describe('provider timeline turns', () => {
     expect(rig.assembler.apply({ type: 'turn.end', at: 3_000, state: 'completed' }).dropped).toBe(
       'no-turn'
     )
-    // A replayed open of a settled turn neither reopens nor rewrites it.
+    // An open of a turn the journal holds settled neither reopens nor rewrites it.
     expect(rig.assembler.apply({ type: 'turn.open', turn: 'turn-1', at: 4_000 }).dropped).toBe(
-      'turn-replayed'
+      'turn-settled'
     )
     expect(await rig.turn('turn-1')).toMatchObject({
       state: 'completed',
@@ -161,16 +162,18 @@ describe('provider timeline turns', () => {
     })
   })
 
-  it('never rewrites a settled turn when a restarted host replays its history', async () => {
+  it('writes nothing for an open admitted before bind whose row the journal already holds settled', async () => {
     const rig = await openProviderTimelineRig()
     rig.assembler.apply({ type: 'turn.open', turn: 'turn-1', at: 1_000 })
     rig.assembler.apply({ type: 'turn.end', at: 2_000, state: 'completed', outcome: 'success' })
     await rig.rows()
 
-    // A new host process has no memory of the turn; only the journal knows it ended.
-    const restarted = rig.restart({ generation: 'gen-2' })
-    restarted.apply({ type: 'turn.open', turn: 'turn-1', at: 5_000 })
-    restarted.apply({ type: 'turn.end', at: 6_000, state: 'interrupted', outcome: 'cancellation' })
+    // Admitted without the journal's view, so only its write can see the row is there.
+    const { assembler, bind } = openUnboundProviderTimelineAssembler(rig.journal)
+    expect(
+      assembler.apply({ type: 'turn.open', turn: 'turn-1', at: 5_000 }).dropped
+    ).toBeUndefined()
+    await bind()
     expect(await rig.turn('turn-1')).toEqual({
       turnId: providerTurnId('turn-1'),
       state: 'completed',
@@ -179,5 +182,8 @@ describe('provider timeline turns', () => {
       startedAt: 1_000,
       completedAt: 2_000
     })
+    // The journal's settlement reaches the state at the next event.
+    assembler.apply({ type: 'activity', text: 'reading' })
+    expect(assembler.openTurnId).toBeNull()
   })
 })

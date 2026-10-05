@@ -1,30 +1,45 @@
-// Text events: planning-side streams, admitted like every other event.
+// Text events: streams admitted like every other event.
 
-import type { StructuredAgentSessionTransitionJournal } from '../agent-session-wire/structured-agent-session-transition'
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionSinkAdmission } from '../agent-session-wire/structured-agent-session-event-sink'
-import type {
-  ProviderTimelineApplyHost,
-  ProviderTimelineApplyResult,
-  ProviderTimelineInFlight
-} from './provider-timeline-apply-host'
+import type { StructuredAgentSessionTransitionJournal } from '../agent-session-wire/structured-agent-session-transition'
+import type { ProviderTimelineHold } from './provider-timeline-budget'
 import { PROVIDER_TIMELINE_OVER_BUDGET } from './provider-timeline-budget'
+import type { ProviderTimelineDropRule } from './provider-timeline-decision'
 import type { ProviderTimelineEvent } from './provider-timeline-event'
-import { ProviderTimelinePlan } from './provider-timeline-plan'
+import { ProviderTimelinePlan, type ProviderTimelineSink } from './provider-timeline-plan'
+import { providerTimelineTurnRowState, turnOf } from './provider-timeline-rows'
+import type { ProviderTimelineState } from './provider-timeline-state'
+import type { ProviderTimelineTextStreams } from './provider-timeline-text-streams'
+
+export type ProviderTimelineApplyResult = {
+  /** The sink's answer for the event's writes; refused means nothing changed. */
+  admission: StructuredAgentSessionSinkAdmission
+  dropped?: ProviderTimelineDropRule
+}
+
+/** What the text appliers share with the assembler that owns them. */
+export type ProviderTimelineTextHost = {
+  sink: ProviderTimelineSink
+  state: ProviderTimelineState
+  streams: ProviderTimelineTextStreams
+  journal: StructuredAgentSessionTransitionJournal | null
+  admits(hold: ProviderTimelineHold): boolean
+}
 
 const ADMITTED: StructuredAgentSessionSinkAdmission = { accepted: true }
 
 export function applyProviderTimelineTextDelta(
-  host: ProviderTimelineApplyHost,
+  host: ProviderTimelineTextHost,
   event: Extract<ProviderTimelineEvent, { type: 'text.delta' }>
 ): ProviderTimelineApplyResult {
-  const { streams } = host
-  const forecast = host.forecast()
-  if (forecast.ended) {
+  const { streams, state } = host
+  if (state.ended) {
     return { admission: ADMITTED, dropped: 'session-ended' }
   }
-  const journal = host.journal()
   const plan = new ProviderTimelinePlan()
-  let stream = streams.get(streams.key(event.item, event.join, forecast))
+  const key = streams.key(event.item, event.join)
+  let stream = streams.get(key)
   if (stream && !streams.continues(stream, event.channel, event.producer)) {
     if (stream.named) {
       return { admission: ADMITTED, dropped: 'stream-mismatch' }
@@ -36,70 +51,59 @@ export function applyProviderTimelineTextDelta(
     stream = undefined
   }
   if (!stream) {
-    if ('id' in event.item && settledNamedItem(host, event, journal)) {
+    if ('id' in event.item && settledNamedItem(host, key)) {
       return { admission: ADMITTED, dropped: 'item-settled' }
     }
+    const serials = state.serials()
     stream = streams.start({
       item: event.item,
       join: event.join,
       channel: event.channel,
       producer: event.producer,
-      state: forecast
+      state,
+      serial: serials.next()
     })
     if (!host.admits({ key: stream.key, bytes: stream.bytes })) {
       return { admission: PROVIDER_TIMELINE_OVER_BUDGET }
     }
+    plan.onAdmitted(serials.commit)
   }
   streams.planAppend(plan, stream, event.text)
-  return { admission: host.submit(plan, { executed: false, commit: undefined }) }
+  return { admission: plan.submit(host.sink) }
 }
 
 /** A named delta for an item this run closed, or one the journal holds in a settled turn. */
-function settledNamedItem(
-  host: ProviderTimelineApplyHost,
-  event: Extract<ProviderTimelineEvent, { type: 'text.delta' }>,
-  journal: StructuredAgentSessionTransitionJournal | null
-): boolean {
-  const { context } = host
-  const forecast = host.forecast()
-  if (!('id' in event.item)) {
-    return false
-  }
-  const join = {
-    family: 'item' as const,
-    key: { source: 'provider' as const, value: event.item.id },
-    thread: event.join?.thread ?? null
-  }
-  if (forecast.closed.has(context.joins.reference(join, forecast.namespace))) {
+function settledNamedItem(host: ProviderTimelineTextHost, key: string): boolean {
+  if (host.state.items.get(key)?.closed) {
     return true
   }
-  const row = context.joins.find(join, journal, forecast.namespace)
-  const turnItemId = row?.scope.kind === 'turn' ? row.scope.turnItemId : null
-  return turnItemId !== null && forecast.status({ itemId: turnItemId }, journal) === 'settled'
+  const held = host.journal?.item(key)
+  const turn = held ? turnOf(held.turnScope ?? AGENT_JOURNAL_THREAD_SCOPE) : null
+  return (
+    host.journal !== null &&
+    turn !== null &&
+    providerTimelineTurnRowState(host.journal, turn) === 'settled'
+  )
 }
 
 export function applyProviderTimelineTextClose(
-  host: ProviderTimelineApplyHost,
+  host: ProviderTimelineTextHost,
   event: Extract<ProviderTimelineEvent, { type: 'text.close' }>
 ): ProviderTimelineApplyResult {
-  const { streams } = host
-  const forecast = host.forecast()
-  if (forecast.ended) {
+  const { streams, state } = host
+  if (state.ended) {
     return { admission: ADMITTED, dropped: 'session-ended' }
   }
-  const stream = streams.get(streams.key(event.item, event.join, forecast))
+  const stream = streams.get(streams.key(event.item, event.join))
   if (!stream) {
     return { admission: ADMITTED, dropped: 'stream-unknown' }
   }
   const plan = new ProviderTimelinePlan()
   streams.planFlush(plan, stream)
   streams.planClose(plan, stream, event.text)
-  const entry: ProviderTimelineInFlight = {
-    executed: false,
-    commit: stream.named ? (state) => state.closed.set(stream.key, stream.turnItemId) : undefined
+  if (stream.named) {
+    // The close settles the item for full snapshots too.
+    plan.onAdmitted(() => state.close(stream.key, turnOf(stream.scope)))
   }
-  plan.atExecution(() => {
-    entry.executed = true
-  })
-  return { admission: host.submit(plan, entry) }
+  return { admission: plan.submit(host.sink) }
 }

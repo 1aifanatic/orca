@@ -1,10 +1,10 @@
 // What a turn's end or the session's end settles, read from the journal when the settlement runs.
 //
-// The same mechanism the dead-generation settlement uses after a restart: every row still waiting
-// on the row that settles it — a running tool call, a pending prompt — is settled from its body as
-// the journal holds it then. Nothing about open work is trusted from memory, so a prompt a client
-// answered a moment earlier stays answered, a row a previous assembler opened is settled too, and
-// a second settlement finds nothing left to do.
+// The same mechanism, and the same terminal bodies, as the dead-generation settlement after a
+// restart: every row still waiting on the row that settles it — a running tool call, a pending
+// prompt — is settled from its body as the journal holds it then. Nothing about open work is
+// trusted from memory, so a prompt a client answered a moment earlier stays answered, and a
+// second settlement finds nothing left to do.
 
 import { parseAgentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import {
@@ -17,8 +17,8 @@ import {
   agentJournalTurnBody,
   readAgentJournalTurn
 } from '../../../shared/agent-session-turn-record'
-import { cancelledJournalPromptBody } from '../agent-session-journal/journal-prompt-body-bounds'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
+import { terminalAgentJournalBody } from '../agent-session-journal/journal-terminal-settlement'
 import type { StructuredAgentSessionTransitionJournal } from '../agent-session-wire/structured-agent-session-transition'
 import { lostProviderTimelineBackgroundTasks } from './provider-timeline-background-tasks'
 import {
@@ -35,19 +35,6 @@ export type ProviderTimelineTurnEnd =
       durationMs?: number
     }
   | { state: 'unverifiable' }
-
-/** What a row still open when its turn or the session ends becomes; null when it already stands. */
-export function settledProviderTimelineBody(
-  body: AgentJournalItemBody
-): AgentJournalItemBody | null {
-  if (body.kind === 'tool-call') {
-    return body.state === 'running' ? { ...body, state: 'failed' } : null
-  }
-  if (body.kind === 'approval' || body.kind === 'question') {
-    return body.resolution.state === 'pending' ? cancelledJournalPromptBody(body) : null
-  }
-  return null
-}
 
 /** The end owns the turn's terminal fields; `unverifiable` carries no end and no verdict. Fields
  *  keep the order every lane writes them in, so the row is the same bytes whoever ends it. */
@@ -93,7 +80,7 @@ export function providerTimelineSettlement(
     // Background tasks outlive turns; only the session's end leaves them past seeing.
     const settled = !covered
       ? null
-      : (settledProviderTimelineBody(body) ??
+      : (terminalAgentJournalBody(body) ??
         (scope === 'session' ? lostProviderTimelineBackgroundTasks(body) : null))
     const identity = settled ? parseAgentJournalItemKey(itemId) : null
     if (settled && identity) {

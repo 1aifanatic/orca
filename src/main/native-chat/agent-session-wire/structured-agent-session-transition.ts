@@ -32,10 +32,8 @@ export type StructuredAgentSessionTransitionJournal = Pick<
 export type StructuredAgentSessionTransitionStep =
   | {
       kind: 'item'
-      /** Bounds what `resolve` may write; a larger write fails the sink, unless `paced`. */
+      /** Bounds what `resolve` may write; a larger write fails the sink. */
       reservedBytes: number
-      /** The size only paces the queue: the row grows by text the fold holds (a resumed message). */
-      paced?: true
       /** The row and its whole body; null writes nothing. Resolved `options` replace the planned
        *  ones, for a writer that learns the row's turn or producer only from the fold. */
       resolve: (journal: StructuredAgentSessionTransitionJournal) => {
@@ -105,9 +103,8 @@ function transitionAppend(
                       return null
                     }
                     if (
-                      !step.paced &&
                       estimateStructuredAgentSessionItemBytes(resolved.identity, resolved.body) >
-                        step.reservedBytes
+                      step.reservedBytes
                     ) {
                       throw new Error(STEP_OVERFLOW)
                     }
