@@ -1,5 +1,8 @@
 /** The terminal census a managed orcad reports to the client planning an update or stop. */
-import { listLiveDaemonSessionsWithProtocol } from '../daemon/daemon-provider-state'
+import {
+  countInProcessFallbackTerminals,
+  listLiveDaemonSessionsWithProtocol
+} from '../daemon/daemon-provider-state'
 import type { DaemonSessionInfo } from '../daemon/types'
 import type { OrcadTerminalCensus } from '../../shared/orcad-terminal-census'
 
@@ -11,14 +14,17 @@ const UNVERIFIABLE: OrcadTerminalCensus = {
 
 export async function collectOrcadTerminalCensus(
   activatedAt: number,
-  listSessions: () => Promise<DaemonSessionInfo[] | null> = listLiveDaemonSessionsWithProtocol
+  listSessions: () => Promise<DaemonSessionInfo[] | null> = listLiveDaemonSessionsWithProtocol,
+  countInProcess: () => Promise<number> = countInProcessFallbackTerminals
 ): Promise<OrcadTerminalCensus> {
-  let sessions: DaemonSessionInfo[] | null
+  // Degraded mode runs fresh terminals in orcad itself; a restart kills those too.
+  let inventory: [DaemonSessionInfo[] | null, number]
   try {
-    sessions = await listSessions()
+    inventory = await Promise.all([listSessions(), countInProcess()])
   } catch {
-    sessions = null
+    return UNVERIFIABLE
   }
+  const [sessions, inProcess] = inventory
   if (!sessions) {
     return UNVERIFIABLE
   }
@@ -28,8 +34,9 @@ export async function collectOrcadTerminalCensus(
   const protocols = new Set(sessions.map((session) => session.protocolVersion))
   const [protocol] = protocols
   return {
-    liveSessions: sessions.length,
-    startedSinceActivation: timestampsKnown
+    liveSessions: sessions.length + inProcess,
+    // In-process terminals carry no creation time to compare against activation.
+    startedSinceActivation: timestampsKnown && inProcess === 0
       ? sessions.filter((session) => session.createdAt >= activatedAt).length
       : null,
     // Why one protocol only: sessions split across daemon generations have no single owner to
