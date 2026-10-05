@@ -115,7 +115,9 @@ vi.mock('./editor-shortcuts', () => ({
     fixture.saves.set(dom, save)
     return () => fixture.saves.delete(dom)
   },
-  installMonacoEditorFindShortcut: (editor: object) => {
+  installMonacoEditorFindShortcut: (
+    editor: ReturnType<typeof fixture.createEditor>['modified']
+  ) => {
     fixture.finds.add(editor)
     return () => fixture.finds.delete(editor)
   }
