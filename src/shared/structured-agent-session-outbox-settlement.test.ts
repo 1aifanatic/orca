@@ -4,9 +4,9 @@ import type { AgentJournalSubmission } from './agent-session-journal-types'
 import type { AgentSessionWireRefusalCode } from './agent-session-wire'
 import {
   createStructuredAgentSessionOutboxEntry,
-  parseStructuredAgentSessionOutboxEntry,
   type StructuredAgentSessionOutboxEntry
 } from './structured-agent-session-outbox'
+import { parseStructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox-saved-entry'
 import {
   applyStructuredAgentSessionOutboxSettlement,
   settleStructuredAgentSessionEntryFromJournal,
@@ -126,11 +126,24 @@ describe('a send answer settles one of three ways', () => {
     ).toEqual({ kind: 'recorded' })
   })
 
-  it("case 1, not final: a rejected row this client hasn't loaded keeps the entry, which draws it until then", () => {
+  it("case 1: a rejected row this client hasn't loaded keeps the entry with the host's fact, to draw it until then", () => {
     const unloaded = { ...FIRST, rowLoaded: false }
     expect(
-      settleStructuredAgentSessionSendAnswer(sent(row({ dispatchState: 'rejected' })), ID, unloaded)
-    ).toEqual({ kind: 'pending' })
+      settleStructuredAgentSessionSendAnswer(
+        sent(
+          row({
+            dispatchState: 'rejected',
+            reason: 'Not now.',
+            rejection: { kind: 'hostRestarted' }
+          })
+        ),
+        ID,
+        unloaded
+      )
+    ).toEqual({
+      kind: 'rejectedUnseen',
+      recorded: { reason: 'Not now.', rejection: { kind: 'hostRestarted' } }
+    })
     // Only a rejection waits for its row: any other state, or a Stop's withdrawal, settles as before.
     for (const state of ['accepted', 'unknown'] as const) {
       expect(
@@ -481,16 +494,26 @@ describe('the journal settles what an answer did not', () => {
     expect(settled).toEqual({ kind: 'recorded' })
   })
 
-  it("keeps a rejected message's entry until its row loads, writing nothing meanwhile", () => {
-    const rejected = { ...reading, submissions: [row({ dispatchState: 'rejected' })] }
+  it("keeps the host's fact on a rejected message until its row loads, writing nothing meanwhile", () => {
+    const rejected = {
+      ...reading,
+      submissions: [row({ dispatchState: 'rejected', reason: 'Not now.' })]
+    }
     const unloaded = { ...rejected, loadedItemIds: new Set<string>() }
-    // Read back after a reload: no longer sent again, and it draws the message.
     expect(
       settleStructuredAgentSessionEntryFromJournal(entry({ state: 'unconfirmed' }), unloaded)
-    ).toEqual({ kind: 'pending' })
+    ).toEqual({ kind: 'rejectedUnseen', recorded: { reason: 'Not now.' } })
+    // Once kept, an unchanged batch, or one with no submission for it (a reopened page), settles
+    // nothing.
+    const kept = entry({ state: 'unconfirmed', recordedRejection: { reason: 'Not now.' } })
+    expect(settleStructuredAgentSessionEntryFromJournal(kept, unloaded)).toBeNull()
     expect(
-      settleStructuredAgentSessionEntryFromJournal(entry({ state: 'dispatching' }), unloaded)
+      settleStructuredAgentSessionEntryFromJournal(kept, { ...unloaded, submissions: NO_ROWS })
     ).toBeNull()
+    // Its row loaded: the host's row is the message.
+    expect(settleStructuredAgentSessionEntryFromJournal(kept, rejected)).toEqual({
+      kind: 'recorded'
+    })
     expect(
       settleStructuredAgentSessionEntryFromJournal(entry({ state: 'dispatching' }), rejected)
     ).toEqual({ kind: 'recorded' })
@@ -502,10 +525,18 @@ describe('the journal settles what an answer did not', () => {
       )
     ).toEqual({ kind: 'recorded' })
     // Past the host's window the copy goes too: the row still shows it once its page loads.
+    const pastWindow = MADE_AT + AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS + 1
     expect(
       settleStructuredAgentSessionEntryFromJournal(entry({ state: 'dispatching' }), {
         ...unloaded,
-        now: MADE_AT + AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS + 1
+        now: pastWindow
+      })
+    ).toEqual({ kind: 'recorded' })
+    expect(
+      settleStructuredAgentSessionEntryFromJournal(kept, {
+        ...unloaded,
+        submissions: NO_ROWS,
+        now: pastWindow
       })
     ).toEqual({ kind: 'recorded' })
   })

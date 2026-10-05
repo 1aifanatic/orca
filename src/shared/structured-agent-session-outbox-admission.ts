@@ -1,6 +1,7 @@
 // Which outbox entry goes out next.
 
 import {
+  structuredAgentSessionEntryRejectedByHost,
   structuredAgentSessionEntryReturning,
   type StructuredAgentSessionOutboxEntry
 } from './structured-agent-session-outbox'
@@ -25,7 +26,7 @@ export type StructuredAgentSessionOutboxAdmission =
  * per-session serialize chain before dispatching, so nothing behind it can overtake it. An
  * `unconfirmed` entry is, while it is sent again: sending past it would reorder around a message
  * that may yet land, and its resend settles it. One that never goes out again holds nothing up,
- * nor does one whose text is on its way back to the draft.
+ * nor does one whose text is on its way back to the draft, or one the host recorded and rejected.
  */
 export function admitStructuredAgentSessionOutboxEntry(
   entries: readonly StructuredAgentSessionOutboxEntry[]
@@ -33,7 +34,8 @@ export function admitStructuredAgentSessionOutboxEntry(
   for (const entry of entries) {
     if (
       structuredAgentSessionEntryAwaitsSettlement(entry) ||
-      structuredAgentSessionEntryReturning(entry)
+      structuredAgentSessionEntryReturning(entry) ||
+      structuredAgentSessionEntryRejectedByHost(entry)
     ) {
       continue
     }

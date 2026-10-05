@@ -1,5 +1,6 @@
 import type { AgentJournalSubmission } from './agent-session-journal-types'
 import {
+  structuredAgentSessionEntryRejectedByHost,
   structuredAgentSessionEntryReturning,
   type StructuredAgentSessionOutboxEntry
 } from './structured-agent-session-outbox'
@@ -22,7 +23,8 @@ function goesOutOnItsOwn(
   return (entry) =>
     !held.has(entry.clientMessageId) &&
     !structuredAgentSessionEntryAwaitsSettlement(entry) &&
-    !structuredAgentSessionEntryReturning(entry)
+    !structuredAgentSessionEntryReturning(entry) &&
+    !structuredAgentSessionEntryRejectedByHost(entry)
 }
 
 /**

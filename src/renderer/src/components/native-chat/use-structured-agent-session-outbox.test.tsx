@@ -627,9 +627,9 @@ describe('useStructuredAgentSessionOutbox', () => {
 
     // Its row is on a page not loaded: the entry draws it meanwhile, and nothing sends it again.
     await waitFor(() =>
-      expect(result.current.outbox.map((entry) => [entry.clientMessageId, entry.state])).toEqual([
-        [firstId, 'dispatching']
-      ])
+      expect(
+        result.current.outbox.map((entry) => [entry.clientMessageId, entry.recordedRejection])
+      ).toEqual([[firstId, { reason: 'not_delivered' }]])
     )
     rerender({ submissions, journalItems: [userRow(firstId)] })
     await waitFor(() => expect(result.current.outbox).toHaveLength(0))
@@ -680,8 +680,8 @@ describe('useStructuredAgentSessionOutbox', () => {
     )
 
     act(() => expect(result.current.send('first')).toBe(true))
-    // The reply came first: the entry draws it until the journal's row loads.
-    await waitFor(() => expect(result.current.outbox[0]?.state).toBe('dispatching'))
+    // The reply came first: the entry keeps the host's fact and draws it until the row loads.
+    await waitFor(() => expect(result.current.outbox[0]?.recordedRejection).toBeDefined())
     await act(() => new Promise((resolve) => setTimeout(resolve, 50)))
     expect(mocks.call).toHaveBeenCalledOnce()
     const id = result.current.outbox[0]!.clientMessageId

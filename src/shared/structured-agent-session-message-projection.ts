@@ -166,7 +166,7 @@ export function projectStructuredAgentSessionMessages(
           timestamp: entry.queuedAt,
           blocks: entry.body.blocks,
           // The host rejected it and its row is not loaded yet: this copy draws it until it is.
-          ...(rejected.has(id) ? { unsent: true as const } : {})
+          ...(rejected.has(id) || entry.recordedRejection ? { unsent: true as const } : {})
         }
       })
   ]

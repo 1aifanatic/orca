@@ -84,7 +84,10 @@ export function requeueInterruptedStructuredAgentSessionDispatches(
   fence: number | null
 ): StructuredAgentSessionOutboxEntry[] {
   return entries.map((entry) =>
-    entry.state === 'dispatching' && entry.stoppedBy === undefined && !entry.returning
+    entry.state === 'dispatching' &&
+    entry.stoppedBy === undefined &&
+    !entry.returning &&
+    !entry.recordedRejection
       ? hasInFlightLaunchDispatch(entry, fence)
         ? entry
         : { ...entry, state: 'queued' as const }
@@ -137,6 +140,7 @@ export function structuredAgentSessionSettlementEnding(
   switch (settlement.kind) {
     case 'recorded':
     case 'pending':
+    case 'rejectedUnseen':
       return 'delivered'
     case 'returned':
     case 'withdrawn':
@@ -163,8 +167,8 @@ export function settleStructuredAgentSessionOutboxEntry(
 ): void {
   const current = getStructuredAgentSessionOutbox(sessionId)
   const entry = current.find((candidate) => candidate.clientMessageId === clientMessageId)
-  // A returning one is settled already: no later answer changes it.
-  if (!entry || entry.returning) {
+  // A returning one, or one the host rejected, is settled already: no later answer changes it.
+  if (!entry || entry.returning || entry.recordedRejection) {
     return
   }
   const ending = structuredAgentSessionSettlementEndingNow(settlement)

@@ -27,18 +27,22 @@ import { dispatchWasWithdrawn } from './structured-agent-session-dispatch-reject
 import { DISPATCH_DOUBT_SUBMISSION_MISSING } from './structured-agent-session-unanswered-dispatch'
 import { structuredAgentSessionStillSendingWords } from './structured-agent-session-still-sending-words'
 import {
+  structuredAgentSessionRejectedFailure,
   structuredAgentSessionRejectionAwaitsItsRow,
-  type StructuredAgentSessionOutboxEntry
+  type StructuredAgentSessionOutboxEntry,
+  type StructuredAgentSessionRecordedRejection
 } from './structured-agent-session-outbox'
 import { structuredAgentSessionEntryAwaitsSettlement } from './structured-agent-session-outbox-admission'
 
 export type StructuredAgentSessionOutboxSettlement =
   /** Case 1: the host's row (or card) holds the message from here. */
   | { kind: 'recorded' }
-  /** Case 1, not final yet: the entry stays and is never sent again. Either the host wrote the row
-   *  and has not handed it to the agent (a Stop may still withdraw it back to this composer), or
-   *  the host rejected it and this client has not loaded its row, which the entry draws until then. */
+  /** Case 1, not final yet: the host wrote the row and has not handed it to the agent. The entry
+   *  stays until the row settles, since a Stop may still withdraw it back to this composer. */
   | { kind: 'pending' }
+  /** Case 1: the host recorded it and rejected it, and this client has not loaded its row. The
+   *  entry keeps the host's fact and draws it, never sent again, until that row loads. */
+  | { kind: 'rejectedUnseen'; recorded: StructuredAgentSessionRecordedRejection }
   /** A Stop took it back: the text returns to the draft and nothing is said. */
   | { kind: 'withdrawn' }
   /** Case 2: the text returns to the draft with these words on the chat line. */
@@ -227,11 +231,12 @@ function settleStructuredAgentSessionSendRow(
   submission: AgentJournalSubmission,
   rowLoaded: boolean
 ): StructuredAgentSessionOutboxSettlement {
-  if (
-    submission.dispatchState === 'pending' ||
-    structuredAgentSessionRejectionAwaitsItsRow(submission, rowLoaded)
-  ) {
+  if (submission.dispatchState === 'pending') {
     return { kind: 'pending' }
+  }
+  if (structuredAgentSessionRejectionAwaitsItsRow(submission, rowLoaded)) {
+    const { reason, rejection } = structuredAgentSessionRejectedFailure(submission)
+    return { kind: 'rejectedUnseen', recorded: { reason, ...(rejection ? { rejection } : {}) } }
   }
   // A withdrawn hand-off of a queued draft is never given back: the Stop put the card back.
   if (
@@ -291,6 +296,13 @@ export function settleStructuredAgentSessionEntryFromJournal(
   if (entry.returning) {
     return null
   }
+  // The host's row owns it: the copy goes once that row draws it, or once nothing could anymore.
+  if (entry.recordedRejection) {
+    return reading.loadedItemIds.has(agentJournalSubmissionKey(entry.clientMessageId)) ||
+      structuredAgentSessionEntryOutlivedHostWindow(entry, reading.now)
+      ? { kind: 'recorded' }
+      : null
+  }
   // The host handed it off as a queued draft, in whatever state: the card carries it.
   if (
     reading.submissions.some((candidate) => candidate.queuedMessageId === entry.clientMessageId)
@@ -302,15 +314,15 @@ export function settleStructuredAgentSessionEntryFromJournal(
   )
   if (submission) {
     // Only a drawn entry waits for its row: an older build's is never drawn, and past the host's
-    // window the copy goes too, so it can't wait forever for a page nobody loads.
+    // window the copy is not kept, so it can't wait forever for a page nobody loads.
     const settlement = settleStructuredAgentSessionSendRow(
       submission,
       entry.legacyUnsettled === true ||
         structuredAgentSessionEntryOutlivedHostWindow(entry, reading.now) ||
         reading.loadedItemIds.has(agentJournalSubmissionKey(entry.clientMessageId))
     )
-    // A pending row (or a rejected one not loaded) changes nothing a dispatching entry doesn't
-    // already show, so an unchanged batch writes nothing.
+    // A pending row changes nothing a dispatching entry doesn't already show, so an unchanged batch
+    // writes nothing.
     return settlement.kind === 'pending' && entry.state === 'dispatching' ? null : settlement
   }
   // The host holds it as a queued draft: its card carries the text.
@@ -379,6 +391,13 @@ export function applyStructuredAgentSessionOutboxSettlement(
         }
       }
     }
+    case 'rejectedUnseen':
+      return {
+        entries: entries.map((candidate) =>
+          candidate === entry ? { ...candidate, recordedRejection: settlement.recorded } : candidate
+        ),
+        returned: null
+      }
     case 'pending':
     case 'unanswered': {
       const state = settlement.kind === 'pending' ? 'dispatching' : 'unconfirmed'

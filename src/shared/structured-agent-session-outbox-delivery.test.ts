@@ -4,9 +4,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   createStructuredAgentSessionOutboxEntry,
-  parseStructuredAgentSessionOutboxEntry,
   type StructuredAgentSessionOutboxEntry
 } from './structured-agent-session-outbox'
+import { parseStructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox-saved-entry'
 import {
   structuredAgentSessionEntryAttempt,
   type StructuredAgentSessionQueueCapability

@@ -19,7 +19,10 @@ import type { AgentSessionFailureFact } from '../../../../shared/agent-session-f
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import { reconcileStructuredAgentSessionOutboxWithQueue } from '../../../../shared/structured-agent-session-draft-hand-off'
 import { structuredAgentSessionRejectedShownInPlace } from '../../../../shared/structured-agent-session-message-projection'
-import { structuredAgentSessionRecordedRejectionParts } from '../../../../shared/structured-agent-session-recorded-rejection-words'
+import {
+  structuredAgentSessionKeptRejectionParts,
+  structuredAgentSessionRecordedRejectionParts
+} from '../../../../shared/structured-agent-session-recorded-rejection-words'
 import { isRecoveredStructuredAgentSessionSubmission } from '../../../../shared/structured-agent-session-unanswered-dispatch'
 import { translate } from '@/i18n/i18n'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
@@ -60,7 +63,23 @@ export function structuredAgentSessionDeliveryNotices(
   // As the transcript reads it, so a row that lands is answered here before the outbox commits it.
   const entries = reconcileStructuredAgentSessionOutboxWithQueue(outbox, submissions, journalItems)
   for (const entry of entries) {
-    if (!hostHoldsIt(submissions, entry.clientMessageId)) {
+    if (entry.recordedRejection) {
+      // Its submission is on a page not loaded: the copy says why, until the row takes over.
+      if (!submissions.some((submission) => submission.clientMessageId === entry.clientMessageId)) {
+        notices.set(agentJournalSubmissionKey(entry.clientMessageId), {
+          muted: true,
+          text: agentSessionWriteNoticeText(
+            structuredAgentSessionKeptRejectionParts(
+              entry.clientMessageId,
+              entry.recordedRejection,
+              { agentName },
+              startFailures,
+              commandResults
+            )
+          )
+        })
+      }
+    } else if (!hostHoldsIt(submissions, entry.clientMessageId)) {
       notices.set(
         agentJournalSubmissionKey(entry.clientMessageId),
         STRUCTURED_AGENT_SESSION_DELIVERY_SENDING

@@ -38,7 +38,11 @@ const SCOPE = structuredAgentSessionDraftScopeKey('session-1')
 const DESKTOP = { rejectedInPlace: true }
 const ID = 'legacy'
 
-type Props = { submissions: AgentJournalSubmission[]; journalCursor: AgentJournalCursor | null }
+type Props = {
+  submissions: AgentJournalSubmission[]
+  journalCursor: AgentJournalCursor | null
+  journalItems?: AgentJournalRenderItem[]
+}
 
 afterEach(cleanup)
 
@@ -76,7 +80,8 @@ function mount(initialProps: Props) {
         target: { kind: 'local' },
         fence: 1,
         submissions: props.submissions,
-        journalCursor: props.journalCursor
+        journalCursor: props.journalCursor,
+        ...(props.journalItems ? { journalItems: props.journalItems } : {})
       }),
     { initialProps }
   )
@@ -173,20 +178,40 @@ describe('a message an older build kept as the host rejected it', () => {
     )
   })
 
-  it("leaves for the host's row, even one not loaded, without a resend or a hand-back", async () => {
+  // That build's copy is the host's fact: drawn not sent in the host's words, never handed back
+  // with "couldn't confirm", never sent, and gone once the host's row draws it.
+  it('is drawn as the host rejected it until its row loads, and never comes back to the composer', async () => {
     const view = mount({ submissions: [], journalCursor: null })
     expect(view.result.current.outbox).toMatchObject([
-      { clientMessageId: ID, legacyUnsettled: true }
+      {
+        clientMessageId: ID,
+        recordedRejection: { reason: 'Orca restarted before this message was sent.' }
+      }
     ])
+    expect(view.result.current.outbox[0]?.legacyUnsettled).toBeUndefined()
     expect(
-      projectStructuredAgentSessionMessages([], view.result.current.outbox, [], DESKTOP)
-    ).toEqual([])
+      projectStructuredAgentSessionMessages([], view.result.current.outbox, [], DESKTOP).map(
+        ({ id, unsent }) => ({ id, unsent })
+      )
+    ).toEqual([{ id: agentJournalSubmissionKey(ID), unsent: true }])
+    expect(
+      structuredAgentSessionDeliveryNotices(view.result.current.outbox, 'Claude', [], []).get(
+        agentJournalSubmissionKey(ID)
+      )
+    ).toEqual({ muted: true, text: 'Orca restarted before this message was sent.' })
+
+    // The journal loads without its row: nothing settles it, and nothing is handed back.
+    view.rerender({ submissions: [], journalCursor: { epoch: 'e', sequence: 2 } })
+    await handBacksSettled()
+    expect(view.result.current.outbox).toHaveLength(1)
+    expect(readNativeChatDraftCache(SCOPE)).toBe('')
 
     view.rerender({
       submissions: [
         { ...row(), dispatchState: 'rejected', reason: 'host_restarted_before_delivery' }
       ],
-      journalCursor: { epoch: 'e', sequence: 2 }
+      journalCursor: { epoch: 'e', sequence: 3 },
+      journalItems: [ROW_ITEM]
     })
     await handBacksSettled()
     expect(view.result.current.outbox).toEqual([])

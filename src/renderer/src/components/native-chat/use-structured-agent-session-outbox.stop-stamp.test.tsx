@@ -329,7 +329,10 @@ describe('a send in doubt behind one a Stop outran', () => {
 describe('a message an older build held for a Retry', () => {
   it.each([
     ['outlived by a Stop', { outlivedStop: true, state: 'queued' }],
-    ['rejected', { state: 'rejected', lastFailure: { kind: 'rejected', reason: null } }],
+    [
+      'refused before the host recorded it',
+      { state: 'rejected', lastFailure: { kind: 'refused', code: 'agent_session_conflict' } }
+    ],
     ['held with its failure', { state: 'queued', lastFailure: { kind: 'failed' } }]
   ])('one %s is never sent, and settles once the journal loads', async (_label, saved) => {
     seedAttempted(saved)

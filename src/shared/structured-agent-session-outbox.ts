@@ -13,7 +13,6 @@ import {
   structuredAgentSessionMessageSendMutation,
   type StructuredAgentSessionSendMutation
 } from './structured-agent-session-send-mutation'
-import { parseStructuredAgentSessionOutboxQueueFields } from './structured-agent-session-outbox-delivery'
 
 /** `queued`: waits to go out. `dispatching`: out, or held by the host as a row it has not handed
  *  to the agent yet. `unconfirmed`: no answer yet, so the same id goes again
@@ -59,6 +58,24 @@ export type StructuredAgentSessionOutboxEntry = {
    *  sent again and drawing nothing, until the draft is saved, then leaves with this ending
    *  (structured-agent-session-outbox-returning). */
   returning?: { ending: 'returned' | 'discarded' }
+  /** The host recorded this message and then rejected it, while its row was on a page not loaded:
+   *  submissions come only with their page's rows, so after a reopen only this says so. It is never
+   *  sent again, draws "Not sent" in these words, and leaves once its row loads or the host's window
+   *  for it closes (case 1: the host's row is the message). */
+  recordedRejection?: StructuredAgentSessionRecordedRejection
+}
+
+/** The host's record of a rejection, as an entry keeps it. */
+export type StructuredAgentSessionRecordedRejection = {
+  reason: string | null
+  rejection?: StructuredAgentSessionRejectionFact
+}
+
+/** Whether the host recorded the entry and rejected it: the host's row, not this copy, owns it. */
+export function structuredAgentSessionEntryRejectedByHost(
+  entry: Pick<StructuredAgentSessionOutboxEntry, 'recordedRejection'>
+): boolean {
+  return entry.recordedRejection !== undefined
 }
 
 /** Whether the entry's text is on its way back to the draft: it never goes out again (its id
@@ -196,7 +213,10 @@ export function structuredAgentSessionOutboxOwesDelivery(
       .map((submission) => submission.clientMessageId)
   )
   return entries.some(
-    (entry) => !rejected.has(entry.clientMessageId) && !structuredAgentSessionEntryReturning(entry)
+    (entry) =>
+      !rejected.has(entry.clientMessageId) &&
+      !structuredAgentSessionEntryReturning(entry) &&
+      !structuredAgentSessionEntryRejectedByHost(entry)
   )
 }
 
@@ -216,6 +236,10 @@ export function reconcileStructuredAgentSessionOutbox(
   let loaded: Set<string> | undefined
   const next = entries.flatMap((entry) => {
     const submission = rows.get(entry.clientMessageId)
+    if (entry.recordedRejection) {
+      loaded ??= new Set(items.map((item) => item.itemId))
+      return loaded.has(agentJournalSubmissionKey(entry.clientMessageId)) ? [] : [entry]
+    }
     if (!submission) {
       return [entry]
     }
@@ -229,100 +253,6 @@ export function reconcileStructuredAgentSessionOutbox(
   return next.length === entries.length && next.every((entry, index) => entry === entries[index])
     ? entries
     : next
-}
-
-export function parseStructuredAgentSessionOutboxEntry(
-  value: unknown,
-  sessionId: string
-): StructuredAgentSessionOutboxEntry | null {
-  if (typeof value !== 'object' || value === null) {
-    return null
-  }
-  const entry = value as Partial<StructuredAgentSessionOutboxEntry>
-  const body = entry.body
-  if (
-    entry.sessionId !== sessionId ||
-    typeof entry.clientMessageId !== 'string' ||
-    typeof entry.queuedAt !== 'number' ||
-    !body ||
-    body.kind !== 'message' ||
-    body.role !== 'user' ||
-    !Array.isArray(body.blocks) ||
-    !Array.isArray(entry.previewUris) ||
-    !entry.previewUris.every((uri) => typeof uri === 'string')
-  ) {
-    return null
-  }
-  const saved: Record<string, unknown> = { ...entry }
-  // `rejected` is an older build's: read as queued and never sent again (below).
-  const state = saved.state === 'rejected' ? 'queued' : saved.state
-  if (state !== 'queued' && state !== 'dispatching' && state !== 'unconfirmed') {
-    return null
-  }
-  // Older builds held these for a Retry: a rejected one, one with a saved failure, one a Stop
-  // outlived. Read as they were left, never sent again.
-  const legacyUnsettled =
-    saved.legacyUnsettled === true ||
-    saved.state === 'rejected' ||
-    (state === 'queued' && saved.lastFailure !== undefined) ||
-    saved.outlivedStop === true
-  const stoppedBy = parseStructuredAgentSessionOutboxStop(saved.stoppedBy)
-  const returning = parseStructuredAgentSessionOutboxReturning(saved.returning)
-  return {
-    clientMessageId: entry.clientMessageId,
-    sessionId,
-    body,
-    previewUris: entry.previewUris,
-    ...(Array.isArray(saved.attachmentConnectionIds) &&
-    saved.attachmentConnectionIds.every((id) => id === null || typeof id === 'string')
-      ? { attachmentConnectionIds: saved.attachmentConnectionIds }
-      : {}),
-    state,
-    queuedAt: entry.queuedAt,
-    lastAttemptAt: typeof entry.lastAttemptAt === 'number' ? entry.lastAttemptAt : null,
-    ...(entry.source === 'launch' ? { source: 'launch' as const } : {}),
-    ...parseStructuredAgentSessionOutboxQueueFields(entry),
-    ...(stoppedBy ? { stoppedBy } : {}),
-    ...(returning ? { returning } : {}),
-    ...(legacyUnsettled ? { legacyUnsettled: true as const } : {}),
-    ...(Array.isArray(saved.carriedNoteKeys) &&
-    saved.carriedNoteKeys.length > 0 &&
-    saved.carriedNoteKeys.every((key) => typeof key === 'string')
-      ? { carriedNoteKeys: saved.carriedNoteKeys }
-      : {})
-  }
-}
-
-function parseStructuredAgentSessionOutboxReturning(
-  value: unknown
-): StructuredAgentSessionOutboxEntry['returning'] {
-  if (typeof value !== 'object' || value === null) {
-    return undefined
-  }
-  const returning: Record<string, unknown> = { ...value }
-  // An ending this build doesn't know still hands the text back, which is what keeps it.
-  return { ending: returning.ending === 'discarded' ? 'discarded' : 'returned' }
-}
-
-function parseStructuredAgentSessionOutboxStop(
-  value: unknown
-): StructuredAgentSessionOutboxStop | undefined {
-  if (typeof value !== 'object' || value === null) {
-    return undefined
-  }
-  const stop: Record<string, unknown> = { ...value }
-  if (typeof stop.operationId !== 'string') {
-    return undefined
-  }
-  const cursor: Record<string, unknown> | null =
-    typeof stop.cursor === 'object' && stop.cursor !== null ? { ...stop.cursor } : null
-  return {
-    operationId: stop.operationId,
-    ...(cursor && typeof cursor.epoch === 'string' && typeof cursor.sequence === 'number'
-      ? { cursor: { epoch: cursor.epoch, sequence: cursor.sequence } }
-      : {}),
-    ...(stop.unanswerable === true ? { unanswerable: true as const } : {})
-  }
 }
 
 /** The `agentSession.send` arguments an entry stands for. */

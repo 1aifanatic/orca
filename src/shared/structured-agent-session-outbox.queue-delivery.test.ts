@@ -6,12 +6,12 @@ import { describe, expect, it } from 'vitest'
 import { structuredAgentSessionPayloadFingerprint } from './structured-agent-session-mutation'
 import {
   createStructuredAgentSessionOutboxEntry,
-  parseStructuredAgentSessionOutboxEntry,
   stageStructuredAgentSessionOutboxEntryForSend,
   structuredAgentSessionSendMutation,
   structuredAgentSessionSendRequest,
   type StructuredAgentSessionOutboxState
 } from './structured-agent-session-outbox'
+import { parseStructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox-saved-entry'
 import { admitStructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox-admission'
 import { structuredAgentSessionEntryAttempt } from './structured-agent-session-outbox-delivery'
 import {

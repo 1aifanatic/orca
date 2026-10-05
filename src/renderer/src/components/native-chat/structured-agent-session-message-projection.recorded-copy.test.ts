@@ -205,14 +205,23 @@ it('draws once, with no control, while its row is outside the window, and leaves
   })
 })
 
-// Until the journal holds the rejection, nothing says the host has it: the copy reads as sending,
-// and goes again only under its own id, which the host records at most once.
-it('reads a stored copy whose record is not held yet as sending, and the drain passes over it', () => {
+// After a reopen the page may hold neither the row nor its submission; the copy keeps the host's
+// fact, so it still draws not sent in the host's words, and nothing sends it again.
+it("draws a stored copy of the host's rejection whose record is not held, and never sends it", () => {
   const state = opened(WINDOW, [])
-  const after = shown(state, [SENT_COPY])
+  const kept = copy({
+    state: 'unconfirmed',
+    lastAttemptAt: 9,
+    recordedRejection: {
+      reason: DISPATCH_REJECTED_HOST_RESTARTED,
+      rejection: { kind: 'hostRestarted' }
+    }
+  })
+  const after = shown(state, [kept])
 
-  expect(after.kept).toEqual([SENT_COPY])
-  expect(after.rows).toEqual([{ id: MESSAGE_ID, unsent: undefined }])
-  expect(after.notice).toEqual({ sending: true })
+  expect(after.kept).toEqual([kept])
+  expect(after.rows).toEqual([{ id: MESSAGE_ID, unsent: true }])
+  expect(after.notice).toEqual(NOT_SENT)
+  // Unconfirmed, as a reopen reads any copy: the host's fact still keeps every send off it.
   expect(admitStructuredAgentSessionOutboxEntry(after.kept)).toEqual({ state: 'idle', entry: null })
 })

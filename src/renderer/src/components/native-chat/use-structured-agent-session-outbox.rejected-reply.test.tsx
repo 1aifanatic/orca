@@ -82,7 +82,12 @@ it('draws a send its reply rejected in place once, and leaves the composer empty
   // The host has it: the entry stays only to draw it until the journal's row loads, and never
   // goes out again.
   await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
-  await waitFor(() => expect(result.current.outbox[0]?.state).toBe('dispatching'))
+  await waitFor(() =>
+    expect(result.current.outbox[0]?.recordedRejection).toEqual({
+      reason: DISPATCH_REJECTED_NOT_DELIVERED,
+      rejection: { kind: 'notDelivered' }
+    })
+  )
   expect(readNativeChatDraftCache(SCOPE)).toBe('')
 
   const submission = reply.submission

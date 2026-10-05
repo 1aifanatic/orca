@@ -115,7 +115,10 @@ describe('a message an older build saved', () => {
 
   // Each one was held for a Retry this build no longer has: never sent again on its own.
   it.each([
-    ['rejected', { state: 'rejected', lastFailure: { kind: 'rejected', reason: 'Nope.' } }],
+    [
+      'refused before the host recorded it',
+      { state: 'rejected', lastFailure: { kind: 'refused', code: 'agent_session_conflict' } }
+    ],
     ['held for its Retry', { lastFailure: { kind: 'refused', code: 'agent_session_conflict' } }],
     ['held for a Retry with a failure this build cannot read', { lastFailure: 'restarting' }],
     ['outlived by a Stop', { state: 'unconfirmed', lastAttemptAt: 2, outlivedStop: true }]
@@ -128,6 +131,31 @@ describe('a message an older build saved', () => {
       { clientMessageId: 'client-1', legacyUnsettled: true }
     ])
     expect(readOutbox('session-a')[0]).not.toHaveProperty('lastFailure')
+  })
+
+  // The build before this one kept a copy of the host's own rejection: that is the host's fact.
+  it('reads back one the host recorded and rejected as that rejection, never to hand back', () => {
+    localStorage.setItem(
+      'orca:desktopStructuredAgentSessionOutbox:v1:session-a',
+      JSON.stringify([
+        {
+          ...entry('session-a', 'client-1'),
+          state: 'rejected',
+          lastFailure: {
+            kind: 'rejected',
+            reason: 'Nope.',
+            rejection: { kind: 'hostRestarted' }
+          }
+        }
+      ])
+    )
+    const [read] = readOutbox('session-a')
+    expect(read).toMatchObject({
+      clientMessageId: 'client-1',
+      recordedRejection: { reason: 'Nope.', rejection: { kind: 'hostRestarted' } }
+    })
+    expect(read).not.toHaveProperty('legacyUnsettled')
+    expect(read).not.toHaveProperty('lastFailure')
   })
 
   it("reads back a Stop's stamp with its answer, and drops a malformed one", () => {

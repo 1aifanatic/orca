@@ -20,7 +20,8 @@ function neverWentOut(entry: StructuredAgentSessionOutboxEntry): boolean {
   return (
     entry.lastAttemptAt === null &&
     !structuredAgentSessionEntryAwaitsSettlement(entry) &&
-    entry.returning === undefined
+    entry.returning === undefined &&
+    entry.recordedRejection === undefined
   )
 }
 

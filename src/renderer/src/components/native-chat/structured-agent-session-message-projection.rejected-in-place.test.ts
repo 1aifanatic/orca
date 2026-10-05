@@ -318,12 +318,22 @@ describe("one row per rejected message, the host's once it records the rejection
   const hostRow = { id: agentJournalSubmissionKey('held'), text: 'host copy', unsent: true }
   const seedRow = { id: agentJournalSubmissionKey('seed'), text: 'seed', unsent: false }
 
-  // Nothing stored says the reply rejected it, so until the journal holds the rejection the copy
-  // reads as sending; it never goes out again on its own while dispatching.
-  it('the reply first: the outbox draws it as sending until the journal holds the rejection', () => {
-    const messages = projectStructuredAgentSessionMessages(SEED_ROWS, [held], [SEED], NO_CARDS)
-    expect(rows(messages)).toEqual([seedRow, { ...heldRow, unsent: false }])
-    expect(notices([held], [SEED]).get(heldRow.id)).toEqual({ sending: true })
+  // The reply says the host recorded and rejected it: the entry keeps that fact, so it draws not sent
+  // in the host's words before the journal holds anything.
+  it("the reply first: the outbox copy draws it in the host's words, with no control", () => {
+    const answered = {
+      ...held,
+      recordedRejection: {
+        reason: DISPATCH_REJECTED_HOST_RESTARTED,
+        rejection: { kind: 'hostRestarted' as const }
+      }
+    }
+    const messages = projectStructuredAgentSessionMessages(SEED_ROWS, [answered], [SEED], NO_CARDS)
+    expect(rows(messages)).toEqual([seedRow, heldRow])
+    expect(notices([answered], [SEED]).get(heldRow.id)).toEqual({
+      muted: true,
+      text: 'Orca restarted before this message was sent.'
+    })
   })
 
   it("the journal first, or next: the host's row replaces the outbox copy at once", () => {

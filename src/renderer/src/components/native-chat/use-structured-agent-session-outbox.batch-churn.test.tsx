@@ -119,9 +119,10 @@ it("writes nothing across 50 batches while a rejected message's row is not loade
     { initialProps: { items: streamed(1), submissions: [rejected('rejected')] } }
   )
   await act(async () => {})
-  // Settled once: no longer sent again, and it draws the message until its row loads.
+  // Settled once: it keeps the host's fact, is never sent again, and draws the message until its row
+  // loads.
   expect(result.current.outbox).toMatchObject([
-    { clientMessageId: 'rejected', state: 'dispatching' }
+    { clientMessageId: 'rejected', recordedRejection: { reason: expect.any(String) } }
   ])
   const writes = vi.spyOn(localStorage, 'setItem')
 

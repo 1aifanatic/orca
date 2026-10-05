@@ -1,9 +1,9 @@
 import {
   createStructuredAgentSessionOutboxEntry,
-  parseStructuredAgentSessionOutboxEntry,
   type StructuredAgentSessionAttachment,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
+import { parseStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox-saved-entry'
 import { createStructuredAgentSessionOperationId } from '../../../../shared/structured-agent-session-mutation'
 import { createBrowserUuid } from '@/lib/browser-uuid'
 import { noteStructuredAgentSessionOutboxCommitted } from './structured-agent-session-entry-endings'
@@ -59,9 +59,15 @@ function publishUndelivered(sessionId: string, undelivered: boolean): void {
   }
 }
 
+/** Whether any entry still needs the journal: a copy of a host rejection, or a message on its way
+ *  back to the draft, settles without it. */
+function owesDelivery(entries: readonly StructuredAgentSessionOutboxEntry[]): boolean {
+  return entries.some((entry) => !entry.recordedRejection && !entry.returning)
+}
+
 /** Keep the journal subscription alive while this session still owes delivery. */
 export function hasUndeliveredStructuredAgentSessionOutbox(sessionId: string): boolean {
-  return undeliveredSessions.get(sessionId)?.undelivered ?? readOutbox(sessionId).length > 0
+  return undeliveredSessions.get(sessionId)?.undelivered ?? owesDelivery(readOutbox(sessionId))
 }
 
 export function subscribeToUndeliveredStructuredAgentSessionOutbox(
@@ -70,7 +76,7 @@ export function subscribeToUndeliveredStructuredAgentSessionOutbox(
 ): () => void {
   let subscription = undeliveredSessions.get(sessionId)
   if (!subscription) {
-    subscription = { undelivered: readOutbox(sessionId).length > 0, listeners: new Set() }
+    subscription = { undelivered: owesDelivery(readOutbox(sessionId)), listeners: new Set() }
     undeliveredSessions.set(sessionId, subscription)
   }
   const owned = subscription
@@ -97,7 +103,7 @@ export function writeOutbox(
     } else {
       localStorage.setItem(storageKey(sessionId), JSON.stringify(entries))
     }
-    publishUndelivered(sessionId, entries.length > 0)
+    publishUndelivered(sessionId, owesDelivery(entries))
     return true
   } catch {
     return false
