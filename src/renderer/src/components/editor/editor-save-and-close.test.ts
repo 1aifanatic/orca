@@ -1,3 +1,4 @@
+import { createTabsSlice } from '@/store/slices/tabs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ORCA_EDITOR_SAVE_AND_CLOSE_EVENT, requestEditorFileSave } from './editor-autosave'
 import { attachEditorAutosaveController } from './editor-autosave-controller'
@@ -16,12 +17,15 @@ const fileId = '/repo/file.ts'
 function createSaveAndCloseFixture() {
   const writeFile = stubEditorWindow()
   const store = createEditorStore()
+  store.setState(createTabsSlice(store.setState, store.getState, store))
   const settings = store.getState().settings
   if (!settings) {
     throw new Error('Editor fixture must provide settings')
   }
   store.setState({
     settings: { ...settings, editorAutoSave: false },
+    folderWorkspaces: [],
+    projectGroups: [],
     browserTabsByWorktree: {},
     tabsByWorktree: {},
     unifiedTabsByWorktree: {}

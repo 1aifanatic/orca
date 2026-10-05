@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { createTabsSlice } from '@/store/slices/tabs'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { attachEditorAutosaveController } from './editor/editor-autosave-controller'
@@ -36,12 +37,15 @@ const fileId = '/repo/file.md'
 
 function createFixture() {
   const store = createEditorStore()
+  store.setState(createTabsSlice(store.setState, store.getState, store))
   const settings = store.getState().settings
   if (!settings) {
     throw new Error('Editor settings unavailable')
   }
   store.setState({
     settings: { ...settings, editorAutoSave: false },
+    folderWorkspaces: [],
+    projectGroups: [],
     browserTabsByWorktree: {},
     tabsByWorktree: {},
     unifiedTabsByWorktree: {}
