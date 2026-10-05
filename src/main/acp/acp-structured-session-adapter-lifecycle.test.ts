@@ -157,13 +157,13 @@ describe('ACP Stop of a turn Grok began itself', () => {
 })
 
 describe('ACP connection loss', () => {
-  it('settles a send the agent never took as unknown, stops the child and tells the host', async () => {
+  it('settles a send the agent never took as unknown when its stdin breaks, stops the child and tells the host', async () => {
     const rig = await openAcpAdapterRig()
     await rig.acquire()
     await sendHello(rig, 'lost')
     await rig.frame('session/prompt')
     await sendHello(rig, 'held')
-    rig.child().stdout.end()
+    rig.child().stdin.destroy()
     await rig.settle()
     await waitFor(() =>
       expect(rig.lifecycle).toMatchObject([
@@ -182,11 +182,14 @@ describe('ACP connection loss', () => {
     await expect(sendHello(rig, 'after')).rejects.toThrow(/no live grok child/)
   })
 
-  it("ends a crash whose stdout closed before its exit with Grok's last words", async () => {
+  it("ends a crash whose stdout closed before its exit at that exit, with Grok's last words", async () => {
     const rig = await openAcpAdapterRig()
     await rig.acquire()
     rig.child().stderr = 'panic: out of memory'
     rig.child().stdout.end()
+    await rig.settle()
+    expect(rig.lifecycle).toEqual([])
+    rig.child().exit()
     await waitFor(() => expect(rig.lifecycle).toHaveLength(1))
     expect(rig.lifecycle[0]).toMatchObject({
       type: 'ended',
@@ -205,7 +208,7 @@ describe('ACP connection loss', () => {
       return false
     }
     child.stderr = 'panic: late'
-    child.stdout.end()
+    child.agent.close()
     await rig.settle()
     expect(rig.lifecycle).toEqual([])
     // Never left Orca, so it is not recorded as unconfirmed.
@@ -234,31 +237,49 @@ describe('ACP connection loss', () => {
     })
   })
 
-  it('leaves a running turn unverifiable, never completed, when the stream breaks mid-turn', async () => {
+  it('leaves a running turn unverifiable, never completed, when its stdin breaks mid-turn', async () => {
     const rig = await openAcpAdapterRig()
     await rig.acquire()
     await sendHello(rig, 'lost')
     await rig.frame('session/prompt')
     rig.child().agent.notify('session/update', replyChunk('prompt:lost', 'partial'))
     await rig.settle()
-    rig.child().stdout.end()
+    rig.child().stdin.destroy()
     await waitFor(async () =>
       expect((await journalTurns(rig)).at(-1)).toMatchObject({ state: 'unverifiable' })
     )
     expect(rig.child().closes).toBe(1)
   })
 
-  it('treats an answer Orca cannot read as a broken connection, not a finished turn', async () => {
+  it('leaves the turn running on an answer Orca cannot read, until a Stop ends Grok', async () => {
     const rig = await openAcpAdapterRig()
     await rig.acquire()
     await sendHello(rig, 'garbled')
     const prompt = await rig.frame('session/prompt')
     rig.child().agent.notify('session/update', replyChunk('prompt:garbled', 'partial'))
     rig.child().agent.reply(prompt, { stopReason: 42 })
-    await waitFor(async () =>
-      expect((await journalTurns(rig)).at(-1)).toMatchObject({ state: 'unverifiable' })
-    )
-    expect(rig.child().closes).toBe(1)
+    await rig.settle()
+    expect((await journalTurns(rig)).at(-1)).toMatchObject({ state: 'running' })
+    expect(rig.child().closes).toBe(0)
+    expect(rig.lifecycle).toEqual([])
+    await expect(rig.adapter.closeSession(SESSION)).resolves.toBe(true)
+    expect(rig.child().exited).toBe(true)
+  })
+
+  it('leaves Grok running when it ends its stdout but can still be written to', async () => {
+    const rig = await openAcpAdapterRig()
+    await rig.acquire()
+    await sendHello(rig, 'quiet')
+    await rig.frame('session/prompt')
+    rig.child().agent.notify('session/update', replyChunk('prompt:quiet', 'partial'))
+    await rig.settle()
+    rig.child().stdout.end()
+    await rig.settle()
+    expect((await journalTurns(rig)).at(-1)).toMatchObject({ state: 'running' })
+    expect(rig.child().closes).toBe(0)
+    expect(rig.lifecycle).toEqual([])
+    await expect(rig.adapter.closeSession(SESSION)).resolves.toBe(true)
+    expect(rig.lifecycle).toMatchObject([{ type: 'ended', cause: 'requested-close' }])
   })
 })
 

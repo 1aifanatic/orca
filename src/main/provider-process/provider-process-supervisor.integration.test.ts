@@ -281,27 +281,6 @@ describe.runIf(process.platform !== 'win32')('POSIX provider supervisor processe
     expect(alive(pids.grandchild)).toBe(false)
   })
 
-  it('ends its own stdout when the provider closes stdout but keeps running', async () => {
-    const { supervisor } = launchSupervisor(
-      {},
-      {},
-      {
-        command: process.execPath,
-        args: [
-          '-e',
-          "process.stdout.write(JSON.stringify({ provider: process.pid }) + '\\n', () => require('node:fs').closeSync(1)); setInterval(() => {}, 60000)"
-        ]
-      }
-    )
-    const ended = new Promise<void>((resolve) => supervisor.stdout!.once('end', resolve))
-    const { provider } = await readPids(supervisor, ['provider'])
-    supervisor.stdout!.resume()
-
-    await ended
-    expect(alive(provider)).toBe(true)
-    expect(alive(supervisor.pid!)).toBe(true)
-  })
-
   it('closes a provider that exits on stdin end without waiting out any grace', async () => {
     const { supervisor, exit } = launchSupervisor(
       {},

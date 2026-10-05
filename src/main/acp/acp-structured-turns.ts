@@ -52,9 +52,6 @@ export type AcpStructuredTurnsDeps = {
   agentName: string
   now: () => number
   settle: (settlement: AcpDispatchSettlement) => void
-  /** The prompt failed without an answer from the agent: the connection is no longer trustworthy,
-   *  and the session's end settles the send. */
-  onTransportFault: (error: unknown) => void
 }
 
 export class AcpStructuredTurns {
@@ -148,8 +145,7 @@ export class AcpStructuredTurns {
         }
         if (!(error instanceof AcpAgentError)) {
           // No answer from the agent, so neither a refusal nor an end: the send stays running here
-          // until the session's end settles it `unknown`.
-          this.deps.onTransportFault(error)
+          // until a Stop or the session's end settles it.
           return
         }
         const refusal = lane.translator.promptRefused(send.clientMessageId, error)

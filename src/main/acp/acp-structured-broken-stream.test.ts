@@ -1,12 +1,16 @@
 // A real child (plain Node, never an agent CLI) that stops talking mid-turn by closing its stdout
-// while the process itself keeps running: the connection broke, nothing exited.
+// while the process itself keeps running: nothing exited and Orca can still write to it, so, as in
+// the common pattern, the turn runs on until a Stop or close ends the agent.
 
 import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
-import { closeProviderTimelineRigs } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
+import {
+  closeProviderTimelineRigs,
+  SESSION
+} from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
 import {
   GROK_CONFIG_OPTIONS,
   openAcpAdapterRig,
@@ -58,7 +62,7 @@ function alive(pid: number): boolean {
 }
 
 describe('ACP agent that closes its stdout but keeps running', () => {
-  it('reads the closed stream as a broken connection: turn unverifiable, child stopped, ended once', async () => {
+  it('leaves the turn running and the agent alive until Orca closes it', async () => {
     const pidFile = join(mkdtempSync(join(tmpdir(), 'orca-acp-broken-stream-')), 'pid')
     const rig = await openAcpAdapterRig({
       deps: {
@@ -85,17 +89,17 @@ describe('ACP agent that closes its stdout but keeps running', () => {
     const turns = async () =>
       (await rig.rig.rows()).flatMap((row) => readAgentJournalTurn(row.body) ?? [])
     await vi.waitFor(
-      async () => expect((await turns()).at(-1)).toMatchObject({ state: 'unverifiable' }),
+      async () => expect((await turns()).at(-1)).toMatchObject({ state: 'running' }),
       { timeout: 10_000, interval: 20 }
     )
-    await vi.waitFor(
-      () =>
-        expect(rig.lifecycle).toMatchObject([
-          { type: 'ended', cause: 'unexpected-exit', acquisitionGeneration: 'gen-acp' }
-        ]),
-      { timeout: 15_000, interval: 20 }
-    )
-    expect(alive(Number(readFileSync(pidFile, 'utf8')))).toBe(false)
-    expect((await turns()).some((turn) => turn.state === 'completed')).toBe(false)
+    const pid = Number(readFileSync(pidFile, 'utf8'))
+    // Long enough for a closed stream to have reached the adapter.
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    expect((await turns()).at(-1)).toMatchObject({ state: 'running' })
+    expect(rig.lifecycle).toEqual([])
+    expect(alive(pid)).toBe(true)
+    await expect(rig.adapter.closeSession(SESSION)).resolves.toBe(true)
+    expect(alive(pid)).toBe(false)
+    expect(rig.lifecycle).toMatchObject([{ type: 'ended', cause: 'requested-close' }])
   }, 30_000)
 })

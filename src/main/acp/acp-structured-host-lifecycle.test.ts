@@ -132,7 +132,8 @@ describe('a Grok crash whose exit is not proven yet', () => {
       return proves
     }
     child.stderr = 'panic: out of memory'
-    child.stdout.end()
+    // Both pipes close as the process dies, before its exit is seen.
+    child.agent.close()
     await rig.settle()
     const next = await send(host, 'next')
     await waitFor(async () =>

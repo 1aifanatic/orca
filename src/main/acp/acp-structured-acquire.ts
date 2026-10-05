@@ -59,7 +59,7 @@ export async function acquireAcpStructuredSession(input: {
   track: (child: AcpStructuredChild) => void
   /** The child's exit, observed while or after the session exists. */
   onExit: (session: AcpStructuredSession | null) => void
-  /** The connection closed with the child perhaps still running. Null while starting: then the
+  /** The connection broke with the child perhaps still running. Null while starting: then the
    *  start itself fails. */
   onConnectionLost: (session: AcpStructuredSession | null, error: Error) => void
   onSettled: AcpStructuredTurnsDeps['settle']
@@ -150,7 +150,13 @@ export async function acquireAcpStructuredSession(input: {
       }),
     onClose: (error) => {
       connection.closed = true
-      input.onConnectionLost(session, error)
+      // An agent that ended its stdout but can still be written to may still run: Stop or its exit
+      // ends it. Any other close (a broken stdin, or Orca's own) loses the agent.
+      const outputOnlyEnded =
+        child.stdout.readableEnded && child.stdin.writable && !child.stdin.destroyed
+      if (!outputOnlyEnded) {
+        input.onConnectionLost(session, error)
+      }
     }
   })
   // An abort fails whatever the agent left unanswered at once, as a kill does, whether or not the
@@ -273,10 +279,7 @@ export async function acquireAcpStructuredSession(input: {
         lane: liveLane,
         agentName,
         now,
-        settle: input.onSettled,
-        // An answer Orca cannot read leaves the connection untrustworthy, as a broken one is.
-        onTransportFault: (error) =>
-          runtime.close(error instanceof Error ? error : new Error(String(error)))
+        settle: input.onSettled
       }),
       restoreSkipped,
       closeRequested: false,

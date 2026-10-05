@@ -1,6 +1,6 @@
 // A Grok crash mid-reply, through the real host: the host's settlement of the proven exit writes one
 // `provider-exit:` batch whose cut-short row reports on the turn the crash ended, carrying the
-// adapter's failure with Grok's last words. Whether Grok's stdout closed before its exit was seen
+// adapter's failure with Grok's last words. Whether Grok's pipes closed before its exit was seen
 // changes only what the chat shows in between.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -85,7 +85,7 @@ describe('a Grok crash with its exit seen first', () => {
   })
 })
 
-describe('a Grok crash whose stdout closes before its exit is seen (every POSIX crash)', () => {
+describe('a Grok crash whose pipes close before its exit is seen', () => {
   it('is unverifiable only until the exit is proven; the provider-exit batch then revises the turn', async () => {
     const rig = await midReply()
     // The child outlives its stream until Orca's close of it is proven.

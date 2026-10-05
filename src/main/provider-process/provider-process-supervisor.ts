@@ -96,9 +96,6 @@ process.stdin.once('end', scheduleOwnerShutdown)
 process.stdin.once('close', scheduleOwnerShutdown)
 process.stdin.pipe(child.stdin)
 child.stdout.pipe(process.stdout)
-// pipe() never ends process.stdout: forward the provider's closed stdout so the owner reads EOF.
-child.stdout.once('end', () => process.stdout.end())
-child.stdout.once('error', () => process.stdout.end())
 child.stderr.pipe(process.stderr)
 // A dead owner's stdout pipe raises EPIPE; unhandled, it would end this pid before the group.
 for (const stream of [process.stdin, process.stdout, process.stderr, child.stdin, child.stdout, child.stderr]) {
