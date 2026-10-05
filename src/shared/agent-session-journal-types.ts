@@ -412,12 +412,9 @@ export type AgentJournalSubmission = {
   submittedAt: number
   resolvedAt: number | null
   /** Where the journal wrote this submission's row: its sequence, recomputed on every fold and
-   *  never stored. Absent from hosts that predate it. */
+   *  never stored. Needed because a rejected send's own row moves to its rejection, which erases
+   *  where it was sent. Absent from hosts that predate it. */
   submittedSequence?: number
-  /** Where the journal wrote the row that resolved it, in the same order: its dispatch row, or the
-   *  provider's echo (an item or lifecycle-batch row) when that accepted it. Absent while it is
-   *  pending, and from hosts that predate it. */
-  resolvedSequence?: number
   /** Set when crash reconciliation resolved the dispatch, not the provider. A live
    *  `unknown` is a send still outstanding; a recovered one outlived its writer. */
   recovered?: true

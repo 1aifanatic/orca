@@ -113,7 +113,6 @@ export function acceptSubmissionFromProviderItem(
   submission.providerItemId = providerItemId
   submission.reason = null
   submission.resolvedAt = row.ts
-  submission.resolvedSequence = row.seq
   delete submission.recovered
   state.receipts.set(submission.clientMessageId, {
     clientMessageId: submission.clientMessageId,
