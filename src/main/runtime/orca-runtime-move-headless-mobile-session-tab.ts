@@ -12,6 +12,8 @@ import {
 } from './headless-tab-group-split-layout'
 import { randomUUID } from 'node:crypto'
 import type { TabGroupLayoutNode } from '../../shared/tab-types'
+import { resolveEditorAuthority } from './editor-authority'
+import { persistHostEditorLayout } from './host-editor-tab-commands'
 
 export class OrcaRuntimeWithMoveHeadlessMobileSessionTab extends OrcaRuntimeWithPersistHeadlessSessionTabProps {
   protected moveHeadlessMobileSessionTab(
@@ -72,6 +74,7 @@ export class OrcaRuntimeWithMoveHeadlessMobileSessionTab extends OrcaRuntimeWith
     if (nextGroups.length > 1 && snapshot.tabGroupLayout) {
       this.persistHeadlessTabGroups(worktreeId, nextGroups, snapshot.tabGroupLayout)
     }
+    this.persistHostEditorLayoutIfHostOwned(worktreeId, nextSnapshot)
     this.storeMobileSessionSnapshot(worktreeId, nextSnapshot)
     this.emitMobileSessionTabsSnapshot(nextSnapshot)
     return { moved: true }
@@ -111,6 +114,7 @@ export class OrcaRuntimeWithMoveHeadlessMobileSessionTab extends OrcaRuntimeWith
       tabGroupLayout: split.layout
     }
     this.persistHeadlessTabGroups(worktreeId, split.groups, split.layout)
+    this.persistHostEditorLayoutIfHostOwned(worktreeId, nextSnapshot)
     this.storeMobileSessionSnapshot(worktreeId, nextSnapshot)
     this.emitMobileSessionTabsSnapshot(nextSnapshot)
     return { moved: true }
@@ -147,9 +151,20 @@ export class OrcaRuntimeWithMoveHeadlessMobileSessionTab extends OrcaRuntimeWith
       tabGroupLayout: layout
     }
     this.persistHeadlessTabGroups(worktreeId, moved.groups, layout)
+    this.persistHostEditorLayoutIfHostOwned(worktreeId, nextSnapshot)
     this.storeMobileSessionSnapshot(worktreeId, nextSnapshot)
     this.emitMobileSessionTabsSnapshot(nextSnapshot)
     return { moved: true }
+  }
+
+  // Why: editor wrappers carry their own group and order, which a window restore trusts over tabOrder.
+  protected persistHostEditorLayoutIfHostOwned(
+    worktreeId: string,
+    snapshot: RuntimeMobileSessionTabsSnapshot
+  ): void {
+    if (resolveEditorAuthority(this) === 'host') {
+      persistHostEditorLayout(this, worktreeId, snapshot)
+    }
   }
 
   // Persist the headless tab-GROUP layout so snapshot rebuilds keep the split.

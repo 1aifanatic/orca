@@ -1,5 +1,7 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
 import { OrcaRuntimeWithBuildHeadlessMobileSessionBrowserTabs } from './orca-runtime-build-headless-mobile-session-browser-tabs'
+import { resolveEditorAuthority } from './editor-authority'
+import { activateHostEditorTab, releaseHostEditorFocus } from './host-editor-tab-commands'
 import type { PtyControllerInventory } from './runtime-pty-controller-contract'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../shared/constants'
 import type { RuntimeNavigationTarget } from '../../shared/runtime-navigation'
@@ -129,6 +131,14 @@ export class OrcaRuntimeWithPerformMobileSessionPtyRecordsRefresh extends OrcaRu
     if (!tab) {
       throw new Error('tab_not_found')
     }
+    if (
+      targetsHost &&
+      tab.type !== 'markdown' &&
+      tab.type !== 'file' &&
+      resolveEditorAuthority(this) === 'host'
+    ) {
+      releaseHostEditorFocus(this, worktreeId, tab.type)
+    }
 
     if (tab.type === 'terminal') {
       const publicTab = this.toMobileSessionTabsResult(snapshot!).tabs.find(
@@ -239,7 +249,9 @@ export class OrcaRuntimeWithPerformMobileSessionPtyRecordsRefresh extends OrcaRu
         this.notifier?.focusEditorTab?.(tab.id, worktreeId)
       }
     } else {
-      if (targetsHost) {
+      if (targetsHost && resolveEditorAuthority(this) === 'host') {
+        activateHostEditorTab(this, worktreeId, tab.id)
+      } else if (targetsHost) {
         this.notifier?.focusEditorTab?.(tab.id, worktreeId)
       }
     }

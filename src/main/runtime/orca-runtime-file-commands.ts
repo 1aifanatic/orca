@@ -21,6 +21,10 @@ import { ClientHostedBrowserRowPublisher } from './client-hosted-browser-row-pub
 import { getRuntimeBrowserPageRegistry } from './runtime-browser-page-registry'
 import { getBrowserHostLeaseRegistry } from './browser-host-lease-registry-instance'
 import type { RuntimeLeafRecord } from './runtime-terminal-state-records'
+import { resolveEditorAuthority } from './editor-authority'
+import { openHostDiffTab, openHostEditFileTab } from './host-editor-tab-commands'
+import { getHostEditorTabState } from './host-editor-tab-state'
+import { obsoleteWindowDocuments } from '../window/obsolete-window-documents'
 
 export class OrcaRuntimeWithFileCommands extends OrcaRuntimeWithPreservedBranchCleanup {
   protected readonly fileCommands = new RuntimeFileCommands({
@@ -44,13 +48,43 @@ export class OrcaRuntimeWithFileCommands extends OrcaRuntimeWithPreservedBranchC
         absolutePath
       }),
     resolveRuntimeGitTarget: (selector) => this.resolveRuntimeGitTarget(selector),
-    openFile: (worktreeId, filePath, relativePath, runtimeEnvironmentId, navigation) => {
+    captureEditorAuthority: () => resolveEditorAuthority(this),
+    openFile: (worktreeId, filePath, relativePath, runtimeEnvironmentId, navigation, context) => {
+      if (context?.authority === 'host') {
+        openHostEditFileTab(this, {
+          worktreeId,
+          filePath,
+          relativePath,
+          executionHostId: context.executionHostId,
+          navigation
+        })
+        return
+      }
       if (!this.notifier?.openFile) {
         throw new Error('renderer_unavailable')
       }
       this.notifier.openFile(worktreeId, filePath, relativePath, runtimeEnvironmentId, navigation)
     },
-    openDiff: (worktreeId, filePath, relativePath, staged, runtimeEnvironmentId, navigation) => {
+    openDiff: (
+      worktreeId,
+      filePath,
+      relativePath,
+      staged,
+      runtimeEnvironmentId,
+      navigation,
+      context
+    ) => {
+      if (context?.authority === 'host') {
+        openHostDiffTab(this, {
+          worktreeId,
+          filePath,
+          relativePath,
+          staged,
+          executionHostId: context.executionHostId,
+          navigation
+        })
+        return
+      }
       if (!this.notifier?.openDiff) {
         throw new Error('renderer_unavailable')
       }
@@ -64,6 +98,45 @@ export class OrcaRuntimeWithFileCommands extends OrcaRuntimeWithPreservedBranchC
       )
     }
   })
+
+  protected async writeHostMarkdownFile(args: {
+    worktreeId: string
+    relativePath: string
+    content: string
+    executionHostId: string
+    sshTargetId: string | undefined
+    sshConnectionGeneration: number | undefined
+    beforeWrite: () => void
+  }): Promise<void> {
+    await this.fileCommands.writeFileExplorerFile(
+      `id:${args.worktreeId}`,
+      args.relativePath,
+      args.content,
+      args.sshConnectionGeneration,
+      args.sshTargetId,
+      args.executionHostId,
+      args.beforeWrite
+    )
+  }
+
+  // Why: a window document alive through a host editor commit holds a stale editor view.
+  recordHostEditorCommit(): void {
+    obsoleteWindowDocuments.markAllObsolete()
+  }
+
+  // Why: diffs are never persisted, so a window taking editor authority starts without them.
+  protected retireHostEditorDiffTabsForWindowTakeover(): void {
+    for (const worktreeId of getHostEditorTabState(this).clearAllDiffs()) {
+      const snapshot = this.mobileSessionTabsByWorktree.get(worktreeId)
+      if (snapshot) {
+        this.storeMobileSessionSnapshot(worktreeId, {
+          ...snapshot,
+          snapshotVersion: snapshot.snapshotVersion + 1,
+          tabs: snapshot.tabs.filter((tab) => tab.type !== 'file' || tab.mode !== 'diff')
+        })
+      }
+    }
+  }
 
   protected readonly fileWatcherRemoval = createRuntimeFileWatcherRemoval(this.fileCommands)
 

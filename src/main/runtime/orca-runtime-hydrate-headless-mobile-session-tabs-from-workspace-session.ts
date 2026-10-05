@@ -26,6 +26,13 @@ import {
   collectBrowserGroupAssignment
 } from './mobile-session-browser-group-projection'
 import { headlessMobileSnapshotContentUnchanged } from './mobile-session-snapshot-equality'
+import { resolveEditorAuthority } from './editor-authority'
+import {
+  listHostEditorMobileTabs,
+  listHostEditorWorktreeIds,
+  overlayHostEditorTabsOnSnapshot
+} from './host-editor-tab-publication'
+import { overlayHostEditorTabs } from './host-editor-tab-projection'
 
 export class OrcaRuntimeWithHydrateHeadlessMobileSessionTabsFromWorkspaceSession extends OrcaRuntimeWithWaitForSessionTabsInventoryPublication {
   protected hydrateHeadlessMobileSessionTabsFromWorkspaceSession(
@@ -72,10 +79,18 @@ export class OrcaRuntimeWithHydrateHeadlessMobileSessionTabsFromWorkspaceSession
     ) {
       return reconciledWorktreeIds
     }
+    const hostOwnsEditors = resolveEditorAuthority(this) === 'host'
     const entries =
       worktreeId !== undefined
         ? ([[worktreeId, session.tabsByWorktree[worktreeId] ?? []]] as const)
-        : Object.entries(session.tabsByWorktree ?? {})
+        : [
+            ...Object.entries(session.tabsByWorktree ?? {}),
+            ...(hostOwnsEditors
+              ? listHostEditorWorktreeIds(this, session)
+                  .filter((id) => !Object.hasOwn(session.tabsByWorktree ?? {}, id))
+                  .map((id) => [id, []] as const)
+              : [])
+          ]
     // Why: workspaceSession keys are `${repoId}::${path}` and are not pruned when
     // a repo disappears from this client's view (e.g. removed on another client,
     // or a stale browser-persisted session). Hydrating such a key would surface a
@@ -108,6 +123,9 @@ export class OrcaRuntimeWithHydrateHeadlessMobileSessionTabsFromWorkspaceSession
         // Reconcile just the browser tabs against the live bridge instead of
         // leaving a stale snapshot that omits a freshly-opened browser tab.
         this.reconcileHeadlessMobileSessionBrowserTabs(entryWorktreeId, existing)
+        if (hostOwnsEditors) {
+          this.reconcileHostEditorTabsInSnapshot(entryWorktreeId, session)
+        }
         reconciledWorktreeIds.add(entryWorktreeId)
         continue
       }
@@ -126,7 +144,10 @@ export class OrcaRuntimeWithHydrateHeadlessMobileSessionTabsFromWorkspaceSession
       // filter, which is about terminal PTY ownership and never applies to browsers.
       const browserTabs = this.buildHeadlessMobileSessionBrowserTabs(entryWorktreeId)
       const tabs: RuntimeMobileSessionSnapshotTab[] = [...terminalTabs, ...browserTabs]
-      if (tabs.length === 0) {
+      const hostEditorTabs = hostOwnsEditors
+        ? listHostEditorMobileTabs(this, entryWorktreeId, session)
+        : []
+      if (tabs.length === 0 && hostEditorTabs.length === 0) {
         continue
       }
       const activeTab = pickHeadlessActiveTerminalTab(terminalTabs)
@@ -210,7 +231,7 @@ export class OrcaRuntimeWithHydrateHeadlessMobileSessionTabsFromWorkspaceSession
         options.onlyRuntimeOwnedTerminals === true &&
         existing !== undefined &&
         !this.isHeadlessBuiltMobileSessionPublicationBase(existing.publicationEpoch)
-      const nextSnapshot: RuntimeMobileSessionTabsSnapshot = {
+      let nextSnapshot: RuntimeMobileSessionTabsSnapshot = {
         worktree: existing?.worktree ?? entryWorktreeId,
         publicationEpoch: mergedIntoRendererPublication
           ? this.getMergedMobileSessionPublicationEpoch(existing, tabs)
@@ -229,6 +250,11 @@ export class OrcaRuntimeWithHydrateHeadlessMobileSessionTabsFromWorkspaceSession
             : {}),
         tabs: mergedTabs
       }
+      if (hostOwnsEditors) {
+        nextSnapshot = overlayHostEditorTabs(nextSnapshot, hostEditorTabs, session, {
+          preferPersistedEditorFocus: !existing
+        })
+      }
       // Why: the runtime-owned hydrate runs on EVERY graph sync; when the rebuilt
       // projection matches the existing snapshot, keep the existing object and
       // (epoch, version) untouched so identity-based change detection stays a
@@ -238,6 +264,42 @@ export class OrcaRuntimeWithHydrateHeadlessMobileSessionTabsFromWorkspaceSession
       }
       this.storeMobileSessionSnapshot(entryWorktreeId, nextSnapshot)
     }
+    if (worktreeId === undefined && hostOwnsEditors && options.onlyRuntimeOwnedTerminals !== true) {
+      // Why: the unscoped session is the local partition; an editor-only workspace stored in
+      // another partition (an SSH folder) is built through its own scoped hydrate.
+      for (const knownWorktreeId of this.getKnownWorkspaceSessionWorktreeIds()) {
+        if (
+          !this.mobileSessionTabsByWorktree.has(knownWorktreeId) &&
+          listHostEditorMobileTabs(
+            this,
+            knownWorktreeId,
+            this.getWorkspaceSessionForWorktree(knownWorktreeId)
+          ).length > 0
+        ) {
+          this.hydrateHeadlessMobileSessionTabsFromWorkspaceSession(knownWorktreeId, options)
+        }
+      }
+    }
     return reconciledWorktreeIds
+  }
+
+  // Why: editor tabs are re-derived from the session and live diffs on every hydrate, so a closed
+  // tab cannot be resurrected by a stale snapshot and an opened one appears without a rebuild.
+  protected reconcileHostEditorTabsInSnapshot(
+    worktreeId: string,
+    session: WorkspaceSessionState
+  ): void {
+    const current = this.mobileSessionTabsByWorktree.get(worktreeId)
+    if (!current) {
+      return
+    }
+    const next = overlayHostEditorTabsOnSnapshot(this, current, session)
+    if (headlessMobileSnapshotContentUnchanged(current, next)) {
+      return
+    }
+    this.storeMobileSessionSnapshot(worktreeId, {
+      ...next,
+      snapshotVersion: current.snapshotVersion + 1
+    })
   }
 }

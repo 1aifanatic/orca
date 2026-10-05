@@ -21,6 +21,8 @@ import type { RuntimeCommandSurfaceHost } from './orca-runtime-core'
 import { SESSION_TAB_NOT_FOUND_ERROR } from '../../shared/session-tab-close'
 import { rendererPublicationThrottle } from '../window/renderer-publication-throttle'
 import { structuredAgentSessionTabCloseCause } from './structured-agent-session-tab-close-cause'
+import { resolveEditorAuthority } from './editor-authority'
+import { closeHostEditorTab } from './host-editor-tab-commands'
 
 export class OrcaRuntimeWithCloseMobileSessionTab extends OrcaRuntimeWithRefuseUnattributedMobileSessionTabClose {
   async closeMobileSessionTab(
@@ -36,6 +38,7 @@ export class OrcaRuntimeWithCloseMobileSessionTab extends OrcaRuntimeWithRefuseU
       force?: boolean
     } = {}
   ): Promise<MobileSessionTabCloseOutcome> {
+    const editorAuthorityAtStart = resolveEditorAuthority(this)
     const graphEpoch = options.clientNavigationId ? this.captureReadyGraphEpoch() : null
     const explicitWorktreeId = this.getValidatedExplicitWorktreeIdSelector(worktreeSelector)
     const worktreeId =
@@ -305,6 +308,9 @@ export class OrcaRuntimeWithCloseMobileSessionTab extends OrcaRuntimeWithRefuseU
         tab,
         structuredAgentSessionTabCloseCause(options.reason)
       )
+    } else if (editorAuthorityAtStart === 'host') {
+      // Why: no window owns editors, so the host closes the tab in the session it persists.
+      closeHostEditorTab(this, worktreeId, tab)
     } else {
       if (!this.notifier?.closeSessionTab) {
         throw new Error('runtime_unavailable')

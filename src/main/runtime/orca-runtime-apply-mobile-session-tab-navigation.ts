@@ -228,6 +228,15 @@ export class OrcaRuntimeWithApplyMobileSessionTabNavigation extends OrcaRuntimeW
         ...session.activeTabIdByWorktree,
         [worktreeId]: tab.parentTabId
       },
+      // Why: host-owned editor focus is persisted; a terminal activation must hand focus back.
+      ...(session.activeTabTypeByWorktree?.[worktreeId] === 'editor'
+        ? {
+            activeTabTypeByWorktree: {
+              ...session.activeTabTypeByWorktree,
+              [worktreeId]: 'terminal'
+            }
+          }
+        : {}),
       terminalLayoutsByTabId: nextLayouts
     })
   }
