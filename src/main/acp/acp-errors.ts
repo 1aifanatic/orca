@@ -31,6 +31,32 @@ export class AcpAuthRequiredError extends AcpAgentError {
   }
 }
 
+/** Orca could not read the agent's answer; `data` keeps the raw answer, `issues` why it failed. */
+export class AcpInvalidResponseError extends AcpRpcError {
+  constructor(
+    message: string,
+    raw: unknown,
+    readonly issues?: unknown
+  ) {
+    super(-32603, message, raw)
+    this.name = 'AcpInvalidResponseError'
+  }
+}
+
+/** A line from the agent exceeded the framing limit, so the message it carried was never read. */
+export class AcpFrameTooLargeError extends Error {
+  constructor(
+    readonly method: string | null,
+    readonly observedBytes: number,
+    readonly maxBytes: number
+  ) {
+    super(
+      `ACP${method ? ` ${method}` : ''} message exceeds ${maxBytes} byte limit (${observedBytes} bytes received)`
+    )
+    this.name = 'AcpFrameTooLargeError'
+  }
+}
+
 export class AcpConnectionClosedError extends Error {
   constructor(message = 'ACP connection closed') {
     super(message)

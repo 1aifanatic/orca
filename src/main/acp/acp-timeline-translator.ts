@@ -1,8 +1,4 @@
 import { z } from 'zod'
-import type {
-  AgentJournalMessageItem,
-  AgentJournalRenderItem
-} from '../../shared/agent-session-journal-types'
 import { BoundedMap } from '../../shared/bounded-map'
 import type { ProviderTimelineEvent } from '../native-chat/agent-session-timeline/provider-timeline-event'
 import { acpNotificationEnvelopeSchema, AcpContextTimeline } from './acp-context-usage'
@@ -12,50 +8,58 @@ import {
   type AcpDialect,
   type AcpRequestPresentation
 } from './acp-dialects/acp-dialect'
+import type { AcpAgentError } from './acp-errors'
+import { AcpHistoryAdoption } from './acp-history-adoption'
 import { acpTurnEnd, AcpPromptTurns } from './acp-prompt-turns'
-import { acpMarkedReplay, acpReplayedUser, AcpReplayUserMessages } from './acp-load-replay'
-import type { AcpSessionEvent } from './acp-session-runtime'
+import { readAcpSessionEvent, type AcpSessionEvent } from './acp-session-events'
 import { translateAcpRequest } from './acp-timeline-requests'
-export { acpTurnEnd } from './acp-prompt-turns'
 import { acpSessionUpdate } from './acp-session-update'
 import { AcpToolTimeline } from './acp-tool-timeline'
+import { AcpTurnFailures, acpPromptErrorDetail } from './acp-turn-failures'
 import { AcpTurnMessages } from './acp-turn-messages'
-import { SessionNotificationSchema, type PromptResponse } from './generated/acp-protocol.generated'
+import type { PromptResponse, SessionNotification } from './generated/acp-protocol.generated'
+
+export { acpTurnEnd } from './acp-prompt-turns'
 
 const requestSessionSchema = z.object({ sessionId: z.string() })
+const SUBSTANTIVE_UPDATES = [
+  'user_message_chunk',
+  'agent_message_chunk',
+  'agent_thought_chunk',
+  'tool_call',
+  'tool_call_update',
+  'plan'
+]
 
-type LoadReplay = {
-  adopt: boolean
-  turn?: string
-  serial: number
-  users: AcpReplayUserMessages
-  pendingUser?: AgentJournalMessageItem
-}
 export type AcpTimelineTranslatorOptions = {
   sessionId: string
-  /** Committed journal after the host drains earlier writes before session/load. */
-  journalItems(): readonly AgentJournalRenderItem[]
   dialect?: AcpDialect
+  /** The creator's decision, made from the journal before spawn: translate `session/load` history
+   *  because the journal is empty (an adopted session). Otherwise history stays out of the
+   *  timeline and only its context usage reads on. */
+  adopt?: boolean
+  /** The agent's display name, for a failed turn the provider gave no words for. */
+  agentName?: string
 }
 
-/** Consumes each frame once; the host retries the returned grammar events. */
+/** Consumes each frame once; the host retries the returned grammar events. Lives exactly as long
+ *  as its provider child, so it never reads the journal. */
 export class AcpTimelineTranslator {
   private readonly dialect: AcpDialect
   private readonly prompts: AcpPromptTurns
-  private readonly tools: AcpToolTimeline
+  private readonly tools = new AcpToolTimeline()
   private readonly backgroundTasks: AcpBackgroundTaskTimeline
   private readonly messages = new AcpTurnMessages()
   private readonly started = new BoundedMap<string, true>({ maxEntries: 128 })
-  private replay?: LoadReplay
+  private readonly failures: AcpTurnFailures
+  private load?: { adoption?: AcpHistoryAdoption }
   private readonly context = new AcpContextTimeline()
   private activeTurn?: string
 
   constructor(private readonly options: AcpTimelineTranslatorOptions) {
     this.dialect = options.dialect ?? GENERIC_ACP_DIALECT
-    this.tools = new AcpToolTimeline(options.journalItems)
-    this.backgroundTasks = new AcpBackgroundTaskTimeline(options.journalItems, (callId) =>
-      this.tools.turn(callId)
-    )
+    this.failures = new AcpTurnFailures(options.sessionId, this.dialect, options.agentName)
+    this.backgroundTasks = new AcpBackgroundTaskTimeline((callId) => this.tools.turn(callId))
     this.prompts = new AcpPromptTurns(
       options.sessionId,
       this.dialect.injectedPromptIdentity === true
@@ -67,7 +71,7 @@ export class AcpTimelineTranslator {
     clientMessageId: string,
     at: number
   ): { promptId: string; events: ProviderTimelineEvent[] } {
-    if (this.replay) {
+    if (this.load) {
       throw new Error('ACP prompt overlaps a prompt or load')
     }
     return this.prompts.open(clientMessageId, at)
@@ -81,8 +85,18 @@ export class AcpTimelineTranslator {
     return this.finishPrompt(clientMessageId, result.stopReason, at)
   }
 
-  promptFailed(clientMessageId: string, _error: unknown, at: number): ProviderTimelineEvent[] {
-    return this.finishPrompt(clientMessageId, 'error', at)
+  /** The agent's own error answer to the prompt; Orca's errors about it (a timeout, an unreadable
+   *  answer, a closed connection) are no provider words and never reach here. */
+  promptFailed(clientMessageId: string, error: AcpAgentError, at: number): ProviderTimelineEvent[] {
+    const detail = acpPromptErrorDetail(this.dialect, error)
+    const ended = this.prompts.last
+    if (this.prompts.current?.clientMessageId !== clientMessageId) {
+      // The provider already ended this turn; its answer may carry the only copy of the reason.
+      return ended?.clientMessageId === clientMessageId && this.failures.has(ended.turn)
+        ? this.failures.row(ended.turn, detail)
+        : []
+    }
+    return this.finishPrompt(clientMessageId, 'error', at, detail)
   }
 
   /** The agent refused the prompt before its turn began: forgets it and answers true. False once
@@ -99,16 +113,15 @@ export class AcpTimelineTranslator {
   private finishPrompt(
     clientMessageId: string,
     stopReason: string,
-    at: number
+    at: number,
+    failureDetail?: string
   ): ProviderTimelineEvent[] {
     const prompt = this.prompts.current
     if (prompt?.clientMessageId !== clientMessageId) {
       return []
     }
-    const events = this.prompts.start(prompt.turn, at)
-    events.push(acpTurnEnd(prompt.turn, stopReason, at, prompt.durationMs))
-    this.end(prompt.turn)
-    this.prompts.current = undefined
+    const events = this.start(prompt.turn, at)
+    events.push(...this.endTurn(prompt.turn, stopReason, at, prompt.durationMs, failureDetail))
     return events
   }
 
@@ -117,24 +130,24 @@ export class AcpTimelineTranslator {
   }
 
   beginLoad(): void {
-    if (this.prompts.current || this.replay) {
+    if (this.prompts.current || this.load) {
       throw new Error('ACP load overlaps a prompt or load')
     }
-    this.replay = {
-      adopt: this.options.journalItems().length === 0,
-      serial: 0,
-      users: new AcpReplayUserMessages()
-    }
+    this.load = this.options.adopt
+      ? { adoption: new AcpHistoryAdoption(this.options.sessionId) }
+      : {}
   }
 
   finishLoad(at: number): ProviderTimelineEvent[] {
-    const turn = this.replay?.turn
-    this.replay = undefined
-    if (!turn) {
+    const adoption = this.load?.adoption
+    this.load = undefined
+    if (!adoption) {
       return []
     }
-    this.end(turn)
-    return [{ type: 'turn.end', turn, at, state: 'completed' }]
+    const events = adoption.holdsUser
+      ? this.openHistory(adoption, adoption.turnFor(undefined), at)
+      : []
+    return [...events, ...this.endHistory(adoption, at)]
   }
 
   sessionEvent(event: AcpSessionEvent, at: number): ProviderTimelineEvent[] {
@@ -150,136 +163,89 @@ export class AcpTimelineTranslator {
     if (session.success && session.data.sessionId !== this.options.sessionId) {
       return []
     }
-    const interpreted = this.dialect.notification?.(method, params, at)
-    if (interpreted?.disposition === 'ignore') {
+    const extension = this.dialect.notification?.(method, params, at)
+    if (extension?.disposition === 'ignore') {
       return []
     }
-    const extension = interpreted
     if (method !== 'session/update' && !extension) {
       return []
     }
     const envelope = acpNotificationEnvelopeSchema.safeParse(params)
+    const read = method === 'session/update' ? readAcpSessionEvent(params) : null
+    const standard = read?.kind === 'known' ? read.notification : undefined
+    const update = standard?.update
     const markedReplay =
       (envelope.success && envelope.data._meta?.isReplay === true) || extension?.replay === true
-    if (markedReplay && !this.replay) {
-      return []
+    const history = markedReplay || (extension?.replay === undefined && this.load !== undefined)
+    const adoption = history ? this.load?.adoption : undefined
+    if (history && !adoption) {
+      return this.context.history(update, extension?.usage, at, { thread: this.options.sessionId })
     }
-    const isReplay = extension?.replay ?? (markedReplay || this.replay !== undefined)
+    if (adoption && update?.sessionUpdate === 'user_message_chunk') {
+      return this.historyUser(adoption, update, at)
+    }
     const providerTurn = extension?.turn
-    // What the journal already holds of a replayed turn is decided at each write, against the
-    // journal then: a load runs before its sink can read the journal.
-    if (
-      isReplay &&
-      this.replay &&
-      !providerTurn &&
-      !this.replay.adopt &&
-      !this.dialect.injectedPromptIdentity
-    ) {
-      this.replay.pendingUser = undefined
-      return []
-    }
-    const standard =
-      method === 'session/update' ? SessionNotificationSchema.safeParse(params) : undefined
+    const opens =
+      (update !== undefined && SUBSTANTIVE_UPDATES.includes(update.sessionUpdate)) ||
+      extension?.end !== undefined ||
+      extension?.started === true
+    const turn = adoption
+      ? opens
+        ? adoption.turnFor(providerTurn)
+        : (providerTurn ?? adoption.turn)
+      : (providerTurn ??
+        (this.prompts.current?.opened ? this.prompts.current.turn : this.activeTurn))
     const events: ProviderTimelineEvent[] = []
-    const replayUser =
-      isReplay && this.replay && standard?.success
-        ? this.replay.users.observe(standard.data.update)
-        : undefined
-    if (
-      isReplay &&
-      this.replay &&
-      this.dialect.injectedPromptIdentity &&
-      replayUser?.body &&
-      !providerTurn
-    ) {
-      this.replay.pendingUser = replayUser.body
-      return []
-    }
-    if (replayUser?.startsMessage && this.replay?.turn && !providerTurn) {
-      events.push({ type: 'turn.end', turn: this.replay.turn, at, state: 'completed' })
-      this.end(this.replay.turn)
-    }
-    const substantive =
-      standard?.success &&
-      [
-        'user_message_chunk',
-        'agent_message_chunk',
-        'agent_thought_chunk',
-        'tool_call',
-        'tool_call_update',
-        'plan'
-      ].includes(standard.data.update.sessionUpdate)
-    let turn =
-      providerTurn ??
-      (isReplay
-        ? this.replay?.turn
-        : this.prompts.current?.opened
-          ? this.prompts.current.turn
-          : this.activeTurn)
-    if (!turn && isReplay && this.replay?.adopt && substantive) {
-      turn = `replay:${this.replay.serial++}`
-    }
-    if (turn && (substantive || extension?.end || extension?.started)) {
-      events.push(...this.start(turn, extension?.at ?? at))
-      if (isReplay && this.replay) {
-        this.replay.turn = turn
-        if (this.replay.pendingUser) {
-          events.push(
-            acpReplayedUser({ thread: this.options.sessionId, turn }, this.replay.pendingUser)
-          )
-          this.replay.pendingUser = undefined
-        }
-      }
+    if (turn && opens) {
+      events.push(
+        ...(adoption
+          ? this.openHistory(adoption, turn, extension?.at ?? at)
+          : this.start(turn, extension?.at ?? at))
+      )
     }
     const join = { thread: this.options.sessionId, ...(turn === undefined ? {} : { turn }) }
     if (extension?.backgroundTasks) {
-      events.push(...this.backgroundTasks.translate(extension.backgroundTasks, join, isReplay))
+      events.push(...this.backgroundTasks.translate(extension.backgroundTasks, join, history))
     }
     if (extension?.usage) {
       events.push(...this.context.update(extension.usage, join))
     }
-    if (extension?.end && turn) {
+    if (extension?.failureDetail && turn) {
+      events.push(...this.failures.row(turn, extension.failureDetail))
+    }
+    const end = extension?.end
+    if (end && turn) {
       if (
         this.prompts.current?.turn === turn &&
-        ['end_turn', 'cancelled'].includes(extension.end.stopReason)
+        ['end_turn', 'cancelled'].includes(end.stopReason)
       ) {
-        this.prompts.current.durationMs = extension.end.durationMs
+        this.prompts.current.durationMs = end.durationMs
       } else {
-        events.push(acpTurnEnd(turn, extension.end.stopReason, at, extension.end.durationMs))
-        this.end(turn)
-        if (this.prompts.current?.turn === turn) {
-          this.prompts.current = undefined
-        }
+        events.push(...this.endTurn(turn, end.stopReason, at, end.durationMs, end.failureDetail))
       }
-      return acpMarkedReplay(events, isReplay)
+      return events
     }
-    if (standard?.success) {
+    if (standard) {
+      // History text is keyed by its position so a re-run of the adoption lands on the same rows.
       const messageKey =
-        turn && this.dialect.injectedPromptIdentity
-          ? this.messages.key(turn, standard.data.update)
+        turn && (this.dialect.injectedPromptIdentity || history)
+          ? this.messages.key(turn, standard.update)
           : undefined
-      return acpMarkedReplay(
-        [
-          ...events,
-          ...acpSessionUpdate(
-            standard.data,
-            turn,
-            at,
-            isReplay,
-            this.tools,
-            this.dialect,
-            this.backgroundTasks,
-            replayUser?.body,
-            messageKey
-          )
-        ],
-        isReplay
-      )
+      return [
+        ...events,
+        ...acpSessionUpdate(standard, turn, at, {
+          history,
+          tools: this.tools,
+          dialect: this.dialect,
+          backgroundTasks: this.backgroundTasks,
+          messageKey
+        })
+      ]
     }
     if (method === 'session/update') {
       events.push({ type: 'provider.frame', frameKind: method, payload: params, join })
     }
-    return acpMarkedReplay(events, isReplay)
+    return events
   }
 
   request(
@@ -288,15 +254,72 @@ export class AcpTimelineTranslator {
     id: string | number
   ): { events: ProviderTimelineEvent[]; presentation?: AcpRequestPresentation } {
     return translateAcpRequest(method, params, id, {
-      ...this.options,
+      sessionId: this.options.sessionId,
       dialect: this.dialect,
       tools: this.tools
     })
   }
 
+  /** A failed end writes the reason row before the end, so it joins the turn while open. */
+  private endTurn(
+    turn: string,
+    stopReason: string,
+    at: number,
+    durationMs: number | undefined,
+    failureDetail: string | undefined
+  ): ProviderTimelineEvent[] {
+    const events = this.failures.ended(turn, stopReason, failureDetail)
+    events.push(acpTurnEnd(turn, stopReason, at, durationMs))
+    this.end(turn)
+    if (this.prompts.current?.turn === turn) {
+      this.prompts.finish()
+    }
+    return events
+  }
+
+  /** A saved user message opens a new history turn, unless the provider names its turn. */
+  private historyUser(
+    adoption: AcpHistoryAdoption,
+    update: Extract<SessionNotification['update'], { sessionUpdate: 'user_message_chunk' }>,
+    at: number
+  ): ProviderTimelineEvent[] {
+    if (adoption.continuesUser(update)) {
+      adoption.observeUser(update)
+      return []
+    }
+    const events = adoption.holdsUser
+      ? this.openHistory(adoption, adoption.turnFor(undefined), at)
+      : []
+    events.push(...this.endHistory(adoption, at))
+    adoption.observeUser(update)
+    return events
+  }
+
+  private openHistory(
+    adoption: AcpHistoryAdoption,
+    turn: string,
+    at: number
+  ): ProviderTimelineEvent[] {
+    adoption.turn = turn
+    return [...this.start(turn, at), ...adoption.takeUser(turn)]
+  }
+
+  /** History carries no verdict for a turn it does not end itself. */
+  private endHistory(adoption: AcpHistoryAdoption, at: number): ProviderTimelineEvent[] {
+    const turn = adoption.turn
+    if (!turn) {
+      return []
+    }
+    this.end(turn)
+    adoption.turn = undefined
+    return [{ type: 'turn.end', turn, at, state: 'completed' }]
+  }
+
   private start(turn: string, at: number): ProviderTimelineEvent[] {
     if (turn === this.prompts.current?.turn) {
       const events = this.prompts.start(turn, at)
+      // Marked so a late frame for this prompt after its end neither reopens nor retargets it.
+      this.started.set(turn, true)
       this.activeTurn = turn
       return events
     }
@@ -314,8 +337,8 @@ export class AcpTimelineTranslator {
     if (this.activeTurn === turn) {
       this.activeTurn = undefined
     }
-    if (this.replay?.turn === turn) {
-      this.replay.turn = undefined
+    if (this.load?.adoption?.turn === turn) {
+      this.load.adoption.turn = undefined
     }
   }
 }

@@ -1,12 +1,11 @@
 import { createPatch } from 'diff'
 import { z } from 'zod'
-import { parseAgentJournalItemKey } from '../../shared/agent-session-journal-item-key'
-import type {
-  AgentJournalRenderItem,
-  AgentJournalToolCallItem
-} from '../../shared/agent-session-journal-types'
-import { acpJournalToolTurn } from './acp-journal-turns'
-import { providerTimelineKeyPart } from '../native-chat/agent-session-timeline/provider-timeline-identity'
+import type { AgentJournalToolCallItem } from '../../shared/agent-session-journal-types'
+import { BoundedMap } from '../../shared/bounded-map'
+import {
+  MAX_PROVIDER_TIMELINE_OPEN_BYTES,
+  MAX_PROVIDER_TIMELINE_OPEN_ENTRIES
+} from '../native-chat/agent-session-timeline/provider-timeline-budget'
 import {
   boundPayload,
   boundToolInput,
@@ -75,20 +74,26 @@ function boundedDiffPatch(path: string, oldText: string, newText: string): strin
 
 type ToolSnapshot = { body: AgentJournalToolCallItem; turn?: string }
 
-/** Holds only bounded snapshots needed to fill ACP's partial tool updates. */
+/** Holds the snapshots that fill ACP's partial tool updates, settled ones evicted first. Its bound
+ *  is the assembler's open budget, which counts each running tool at no fewer bytes, so a running
+ *  tool is evicted only after the assembler refused one past that budget, which ends the session.
+ *  An update for an evicted settled tool is dropped by the assembler as settled.
+ *  A tool's turn is held once: on its snapshot while that lives, then in `turns`. */
 export class AcpToolTimeline {
   private readonly tools = new Map<string, ToolSnapshot>()
   private bytes = 0
-
-  constructor(private readonly journalItems: () => readonly AgentJournalRenderItem[] = () => []) {}
+  /** Turns of tools whose snapshot is gone, so a later task or request still lands beside the tool
+   *  that started it. */
+  private readonly turns = new BoundedMap<string, string>({
+    maxEntries: MAX_PROVIDER_TIMELINE_OPEN_ENTRIES
+  })
 
   translate(
     update: ToolCallUpdate,
     dialect: AcpDialect,
     join: ProviderTimelineJoin
   ): ProviderTimelineEvent[] {
-    const previous =
-      this.tools.get(update.toolCallId) ?? this.persisted(update.toolCallId, join.thread)
+    const previous = this.tools.get(update.toolCallId)
     const output = outputText(update)
     const state =
       update.status === 'completed'
@@ -119,11 +124,9 @@ export class AcpToolTimeline {
           : {}
         : { output: boundPayload(output, DEFAULT_JOURNAL_PAYLOAD_LIMITS) })
     }
-    const snapshot: ToolSnapshot = {
-      body,
-      ...(join.turn === undefined ? {} : { turn: join.turn })
-    }
-    this.remember(update.toolCallId, snapshot)
+    const turn = join.turn ?? this.turn(update.toolCallId)
+    this.turns.delete(update.toolCallId)
+    this.remember(update.toolCallId, { body, ...(turn === undefined ? {} : { turn }) })
     const events: ProviderTimelineEvent[] = [
       {
         type: state === 'running' ? (previous ? 'item.update' : 'item.open') : 'item.close',
@@ -160,31 +163,27 @@ export class AcpToolTimeline {
   }
 
   turn(toolCallId: string): string | undefined {
-    return this.tools.get(toolCallId)?.turn
-  }
-
-  private persisted(callId: string, thread: string | undefined): ToolSnapshot | undefined {
-    const rows = this.journalItems()
-    const suffix = `${thread ? `${providerTimelineKeyPart(thread)}/` : ''}${providerTimelineKeyPart(`tool:${callId}`)}`
-    const row = rows.find((item) => {
-      if (item.body.kind !== 'tool-call' || item.body.callId !== callId) {
-        return false
-      }
-      const identity = parseAgentJournalItemKey(item.itemId)
-      return identity?.provider === 'legacy' && identity.recordId.endsWith(`:${suffix}`)
-    })
-    return row?.body.kind === 'tool-call'
-      ? { body: row.body, turn: acpJournalToolTurn(rows, callId) }
-      : undefined
+    return this.tools.get(toolCallId)?.turn ?? this.turns.get(toolCallId)
   }
 
   end(turn: string): void {
     for (const [key, snapshot] of this.tools) {
       if (snapshot.turn === turn) {
         this.bytes -= this.size(key, snapshot)
-        this.tools.delete(key)
+        this.retire(key, snapshot)
       }
     }
+  }
+
+  private retire(key: string, snapshot: ToolSnapshot): void {
+    this.tools.delete(key)
+    if (snapshot.turn !== undefined) {
+      this.turns.set(key, snapshot.turn)
+    }
+  }
+
+  private fits(count: number, bytes: number): boolean {
+    return count <= MAX_PROVIDER_TIMELINE_OPEN_ENTRIES && bytes <= MAX_PROVIDER_TIMELINE_OPEN_BYTES
   }
 
   private size(key: string, snapshot: ToolSnapshot): number {
@@ -193,18 +192,18 @@ export class AcpToolTimeline {
 
   private remember(key: string, snapshot: ToolSnapshot): void {
     const previous = this.tools.get(key)
-    if (this.size(key, snapshot) > 1024 * 1024) {
+    if (this.size(key, snapshot) > MAX_PROVIDER_TIMELINE_OPEN_BYTES) {
       if (previous) {
         this.bytes -= this.size(key, previous)
-        this.tools.delete(key)
       }
+      this.retire(key, snapshot)
       return
     }
     let bytes = this.bytes - (previous ? this.size(key, previous) : 0) + this.size(key, snapshot)
     let count = this.tools.size + (previous ? 0 : 1)
     const evicted: string[] = []
     for (const [candidate, stored] of this.tools) {
-      if (count <= 128 && bytes <= 1024 * 1024) {
+      if (this.fits(count, bytes)) {
         break
       }
       if (candidate !== key && stored.body.state !== 'running') {
@@ -214,7 +213,7 @@ export class AcpToolTimeline {
       }
     }
     for (const [candidate, stored] of this.tools) {
-      if (count <= 128 && bytes <= 1024 * 1024) {
+      if (this.fits(count, bytes)) {
         break
       }
       if (candidate !== key && !evicted.includes(candidate)) {
@@ -224,7 +223,10 @@ export class AcpToolTimeline {
       }
     }
     for (const candidate of evicted) {
-      this.tools.delete(candidate)
+      const stored = this.tools.get(candidate)
+      if (stored) {
+        this.retire(candidate, stored)
+      }
     }
     this.tools.delete(key)
     this.tools.set(key, snapshot)

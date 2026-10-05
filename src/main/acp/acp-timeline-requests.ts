@@ -1,11 +1,9 @@
 import { z } from 'zod'
-import type { AgentJournalRenderItem } from '../../shared/agent-session-journal-types'
 import type { ProviderTimelineEvent } from '../native-chat/agent-session-timeline/provider-timeline-event'
 import type { AcpDialect, AcpRequestPresentation } from './acp-dialects/acp-dialect'
-import { acpJournalToolTurn } from './acp-journal-turns'
 import type { AcpToolTimeline } from './acp-tool-timeline'
 import { AcpRpcError } from './acp-errors'
-import { RequestPermissionRequestSchema } from './generated/acp-protocol.generated'
+import { readAcpPermissionRequest } from './acp-permission-requests'
 
 export const pendingAcpResolution = {
   state: 'pending',
@@ -15,11 +13,12 @@ export const pendingAcpResolution = {
 } as const
 
 export function acpPermissionPresentation(params: unknown): AcpRequestPresentation {
-  const parsed = RequestPermissionRequestSchema.safeParse(params)
-  if (!parsed.success) {
+  // The runtime already read this request and reported any field it dropped.
+  const request = readAcpPermissionRequest(params, () => {})
+  if (!request) {
     throw new AcpRpcError(-32602, 'Invalid ACP permission request')
   }
-  const { toolCall, options } = parsed.data
+  const { toolCall, options } = request
   return {
     body: {
       kind: 'approval',
@@ -55,7 +54,6 @@ export function translateAcpRequest(
   id: string | number,
   options: {
     sessionId: string
-    journalItems(): readonly AgentJournalRenderItem[]
     dialect: AcpDialect
     tools: AcpToolTimeline
   }
@@ -70,9 +68,7 @@ export function translateAcpRequest(
       : options.dialect.request?.(method, params)
   const tool = requestToolSchema.safeParse(params)
   const callId = tool.success ? (tool.data.toolCall?.toolCallId ?? tool.data.toolCallId) : undefined
-  const turn = callId
-    ? (options.tools.turn(callId) ?? acpJournalToolTurn(options.journalItems(), callId))
-    : undefined
+  const turn = callId ? options.tools.turn(callId) : undefined
   const join = { thread: options.sessionId, ...(turn === undefined ? {} : { turn }) }
   if (!presentation) {
     return {

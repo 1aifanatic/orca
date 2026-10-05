@@ -3,6 +3,7 @@ import type { AgentJournalToolCallItem } from '../../../shared/agent-session-jou
 import type { AgentSessionPromptResponse } from '../../../shared/agent-session-question-answer'
 import type { NativeChatBackgroundTaskBlock } from '../../../shared/native-chat-types'
 import type { ProviderTimelineRequestBody } from '../../native-chat/agent-session-timeline/provider-timeline-event'
+import type { AcpAgentError } from '../acp-errors'
 import type { ToolCallUpdate } from '../generated/acp-protocol.generated'
 
 export type AcpRequestPresentation = {
@@ -14,6 +15,8 @@ export type AcpBackgroundTaskUpdate = Pick<NativeChatBackgroundTaskBlock, 'taskI
   Partial<Omit<NativeChatBackgroundTaskBlock, 'type' | 'taskId' | 'state'>> & {
     /** Used only until a provider description is known. */
     fallbackLabel?: string
+    /** Used only until a frame names the task's kind. */
+    fallbackKind?: NativeChatBackgroundTaskBlock['kind']
   }
 
 export type AcpDialectNotification =
@@ -24,7 +27,9 @@ export type AcpDialectNotification =
       replay?: boolean
       at?: number
       started?: boolean
-      end?: { stopReason: string; durationMs?: number }
+      end?: { stopReason: string; durationMs?: number; failureDetail?: string }
+      /** The provider's own words for why `turn` failed, sent apart from its end. */
+      failureDetail?: string
       usage?: AgentSessionContextUsage
       backgroundTasks?: AcpBackgroundTaskUpdate[]
     }
@@ -40,6 +45,10 @@ export type AcpDialect = {
   notification?(method: string, params: unknown, at: number): AcpDialectNotification | undefined
   contextWindow?(models: unknown): number | undefined
   request?(method: string, params: unknown): AcpRequestPresentation | undefined
+  /** The provider's words in a `session/prompt` error answer, when its message is generic. */
+  promptErrorDetail?(error: AcpAgentError): string | undefined
+  /** The row for a failed turn the provider gave no words for. */
+  failedTurnText?(stopReason: string): string
 }
 
 export const GENERIC_ACP_DIALECT: AcpDialect = {}

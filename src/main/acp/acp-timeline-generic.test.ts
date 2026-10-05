@@ -7,16 +7,14 @@ import {
   openProviderTimelineRig
 } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
 import type { ProviderTimelineEvent } from '../native-chat/agent-session-timeline/provider-timeline-event'
+import { AcpAgentError } from './acp-errors'
 import { AcpTimelineTranslator, acpTurnEnd } from './acp-timeline-translator'
 
 afterEach(closeProviderTimelineRigs)
 
-async function genericRig() {
+async function genericRig(options: { adopt?: boolean; agentName?: string } = {}) {
   const rig = await openProviderTimelineRig()
-  const translator = new AcpTimelineTranslator({
-    sessionId: 'provider-1',
-    journalItems: () => rig.journal.snapshot().items
-  })
+  const translator = new AcpTimelineTranslator({ sessionId: 'provider-1', ...options })
   const apply = (events: ProviderTimelineEvent[]) => {
     for (const event of events) {
       expect(rig.assembler.apply(event).admission.accepted).toBe(true)
@@ -170,6 +168,32 @@ describe('generic ACP translation', () => {
     }
   )
 
+  it.each([
+    [undefined, 'The agent ended this turn with an error.'],
+    ['Agent X', 'Agent X ended this turn with an error.']
+  ])(
+    "writes a failed turn row in the agent's words, or names the agent (%s) without any",
+    async (agentName, fallback) => {
+      const { rig, translator, apply } = await genericRig(agentName ? { agentName } : {})
+      apply(translator.openPrompt('send-1', 1000).events)
+      apply(translator.promptResult('send-1', { stopReason: 'end_turn' }, 1100))
+      apply(translator.openPrompt('send-2', 1200).events)
+      apply(translator.promptFailed('send-2', new AcpAgentError(-32603, 'Upstream failed'), 1300))
+      apply(translator.openPrompt('send-3', 1400).events)
+      apply(translator.promptFailed('send-3', new AcpAgentError(-32603, ''), 1500))
+      const rows = (await rig.rows()).filter((row) => row.body.kind === 'status')
+      expect(rows.map((row) => row.body)).toEqual([
+        { kind: 'status', tone: 'error', text: 'Upstream failed' },
+        { kind: 'status', tone: 'error', text: fallback }
+      ])
+      expect((await rig.turns()).map((turn) => turn.outcome)).toEqual([
+        'success',
+        'failure',
+        'failure'
+      ])
+    }
+  )
+
   it('keeps unknown verdicts unknown and preserves unknown frames without opening a turn', async () => {
     const { rig, translator, apply } = await genericRig()
     expect(acpTurnEnd('turn', 'future_stop', 1200)).not.toHaveProperty('outcome')
@@ -220,7 +244,7 @@ describe('generic ACP translation', () => {
   })
 
   it('adopts generic unmarked load history and never invents a success verdict', async () => {
-    const { rig, translator, apply, update } = await genericRig()
+    const { rig, translator, apply, update } = await genericRig({ adopt: true })
     translator.beginLoad()
     update({ sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'User' } })
     update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'History' } })
@@ -230,6 +254,23 @@ describe('generic ACP translation', () => {
     expect(
       (await rig.rows()).flatMap((row) => (row.body.kind === 'message' ? [row.body.role] : []))
     ).toEqual(['user', 'assistant'])
+  })
+
+  it('drops unmarked load history its creator does not adopt, except context usage', () => {
+    const translator = new AcpTimelineTranslator({ sessionId: 'provider-1' })
+    translator.beginLoad()
+    const events = [
+      { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'User' } },
+      { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'History' } },
+      { sessionUpdate: 'tool_call', toolCallId: 'old-tool', title: 'Read', status: 'completed' },
+      { sessionUpdate: 'usage_update', used: 5000, size: 256000 }
+    ].flatMap((update) =>
+      translator.notification('session/update', { sessionId: 'provider-1', update }, 1100)
+    )
+    expect(events).toEqual([
+      expect.objectContaining({ type: 'context.usage', join: { thread: 'provider-1' } })
+    ])
+    expect(translator.finishLoad(1200)).toEqual([])
   })
 
   it('requires an explicit journal decision for marked replay and uses typed standard events', async () => {
@@ -268,7 +309,7 @@ describe('generic ACP translation', () => {
     expect((await rig.rows()).some((row) => messageText(row.body) === 'typed')).toBe(true)
   })
   it('adopts streamed user history across multiple turns without replacing earlier users', async () => {
-    const { rig, translator, apply, update } = await genericRig()
+    const { rig, translator, apply, update } = await genericRig({ adopt: true })
     translator.beginLoad()
     update({
       sessionUpdate: 'user_message_chunk',

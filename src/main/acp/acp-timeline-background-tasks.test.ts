@@ -55,51 +55,43 @@ function completed(snapshot: TaskCompletionEvidence = { exit_code: 0 }) {
 }
 
 describe('Grok background tasks through the shared timeline', () => {
-  it.each(['end', 'reset'] as const)(
-    'renders the recorded task outside turn settlement and marks it unverifiable on session %s after restart',
-    async (boundary) => {
-      const fixture = await openAcpFixtureRig()
-      await fixture.feed(await runningFrames())
-      const [before] = await taskRows(fixture)
-      expect(before?.block).toMatchObject({
-        taskId,
-        kind: 'command',
-        state: 'working',
-        parentToolUseId: 'call-1',
-        outputFile: '/workspace/file-1'
-      })
-      expect(before?.row.turnScope?.kind).toBe('turn')
-      expect((await fixture.rig.turns()).map((turn) => turn.state)).toEqual([
-        'completed',
-        'completed'
-      ])
-      expect(
-        (await fixture.rig.rows()).find((row) => row.body.kind === 'tool-call')?.body
-      ).toMatchObject({ state: 'completed' })
-      if (!before || before.row.body.kind !== 'message') {
-        throw new Error('Missing background-task row')
-      }
-      const render = deriveNativeChatRowContent(before.row.body.blocks)
-      expect(render.backgroundTasks).toEqual([before.block])
-      expect(render.prose).toEqual([])
-
-      fixture.restart()
-      fixture.apply([
-        boundary === 'end'
-          ? { type: 'session.ended', verdict: { state: 'unverifiable' } }
-          : { type: 'session.reset', namespace: 'replacement-session' }
-      ])
-      const [after] = await taskRows(fixture)
-      expect(after?.row.itemId).toBe(before.row.itemId)
-      expect(after?.block.state).toBe('unverifiable')
-      expect(after?.row.body).toMatchObject({
-        blocks: [{ type: 'text', text: backgroundTaskFallbackText(after!.block) }, after!.block]
-      })
+  it('renders the recorded task outside turn settlement and marks it unverifiable when the session ends', async () => {
+    const fixture = await openAcpFixtureRig()
+    await fixture.feed(await runningFrames())
+    const [before] = await taskRows(fixture)
+    expect(before?.block).toMatchObject({
+      taskId,
+      kind: 'command',
+      state: 'working',
+      parentToolUseId: 'call-1',
+      outputFile: '/workspace/file-1'
+    })
+    expect(before?.row.turnScope?.kind).toBe('turn')
+    expect((await fixture.rig.turns()).map((turn) => turn.state)).toEqual([
+      'completed',
+      'completed'
+    ])
+    expect(
+      (await fixture.rig.rows()).find((row) => row.body.kind === 'tool-call')?.body
+    ).toMatchObject({ state: 'completed' })
+    if (!before || before.row.body.kind !== 'message') {
+      throw new Error('Missing background-task row')
     }
-  )
+    const render = deriveNativeChatRowContent(before.row.body.blocks)
+    expect(render.backgroundTasks).toEqual([before.block])
+    expect(render.prose).toEqual([])
+
+    fixture.apply([{ type: 'session.ended', verdict: { state: 'unverifiable' } }])
+    const [after] = await taskRows(fixture)
+    expect(after?.row.itemId).toBe(before.row.itemId)
+    expect(after?.block.state).toBe('unverifiable')
+    expect(after?.row.body).toMatchObject({
+      blocks: [{ type: 'text', text: backgroundTaskFallbackText(after!.block) }, after!.block]
+    })
+  })
 
   it.each(['x.ai/', '_x.ai/'])(
-    'joins %s task notifications and the tool result into one row and keeps its origin after restart',
+    'joins %s task notifications and the tool result into one row that keeps its origin',
     async (prefix) => {
       const fixture = await openAcpFixtureRig()
       const frames = await runningFrames()
@@ -109,7 +101,6 @@ describe('Grok background tasks through the shared timeline', () => {
       const [before] = await taskRows(fixture)
       expect(await taskRows(fixture)).toHaveLength(1)
       expect(before?.block.label).toBe('Sleep then write bg-marker.txt')
-      fixture.restart()
       fixture.apply(
         fixture
           .lane()
@@ -150,9 +141,10 @@ describe('Grok background tasks through the shared timeline', () => {
     }
   )
 
-  it('recovers partial task metadata from the journal after bounded snapshots are evicted', async () => {
+  it('keeps the row and placement of a task whose snapshot the bound evicted', async () => {
     const fixture = await openAcpFixtureRig()
     await fixture.feed(await runningFrames())
+    const [before] = await taskRows(fixture)
     for (let index = 0; index < 130; index += 1) {
       fixture.apply(
         fixture
@@ -160,19 +152,14 @@ describe('Grok background tasks through the shared timeline', () => {
           .notification('x.ai/task_backgrounded', started(`task-${index}`), 1500 + index)
       )
     }
-    await fixture.rig.rows()
     fixture.apply(fixture.lane().notification('x.ai/task_completed', completed(), 2000))
     const original = (await taskRows(fixture)).find((task) => task.block.taskId === taskId)
-    expect(original?.block).toMatchObject({
-      state: 'done',
-      parentToolUseId: 'call-1',
-      outputFile: '/workspace/file-1',
-      kind: 'command'
-    })
-    expect(original && backgroundTaskFallbackText(original.block)).toContain('finished')
+    expect(original?.row.itemId).toBe(before?.row.itemId)
+    expect(original?.row.turnScope).toEqual(before?.row.turnScope)
+    expect(original?.block.state).toBe('done')
   })
 
-  it('places a first task notice after restart beside its original tool while a different turn is active', async () => {
+  it('places a first task notice beside its original tool after its turn ended and another began', async () => {
     const fixture = await openAcpFixtureRig()
     await fixture.feed((await runningFrames()).slice(0, 5))
     fixture.apply(
@@ -187,7 +174,6 @@ describe('Grok background tasks through the shared timeline', () => {
     )
     fixture.apply(fixture.lane().promptResult('p1:3', { stopReason: 'end_turn' }, 1300))
     const original = (await fixture.rig.rows()).find((row) => row.body.kind === 'tool-call')
-    fixture.restart()
     fixture.apply(fixture.lane().openPrompt('next', 1400).events)
     fixture.apply(
       fixture.lane().notification(

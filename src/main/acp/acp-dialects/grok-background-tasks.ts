@@ -43,6 +43,8 @@ const resultOutputSchema = z.object({
   MultiResult: z.object({ results: z.array(taskResultSchema) }).optional()
 })
 type GrokTask = z.infer<typeof taskSchema>
+/** Grok's output reads name a monitor only by this command prefix. */
+const MONITOR_COMMAND = /^\[monitor[:\]]/
 
 function completedState(task: GrokTask): NativeChatBackgroundTaskBlock['state'] {
   return task.explicitly_killed
@@ -76,30 +78,33 @@ function snapshot(
   state: NativeChatBackgroundTaskBlock['state']
 ): AcpBackgroundTaskUpdate {
   const kind = task.kind ?? task.task_type
-  const monitor = kind === 'monitor' || task.monitor_description != null
+  const monitor =
+    kind === 'monitor' ||
+    task.monitor_description != null ||
+    MONITOR_COMMAND.test(task.command ?? '')
   const label = task.monitor_description?.trim() || task.description?.trim()
   const fallbackLabel = task.display_command?.trim() || task.command?.trim()
+  const settled = isSettledBackgroundTaskState(state)
   return {
     taskId: task.task_id,
     state,
     ...(monitor
       ? { kind: 'monitor' as const }
-      : kind !== undefined || task.command !== undefined
+      : kind !== undefined
         ? {
             kind:
               kind === 'bash' || kind === 'shell' || task.command !== undefined
                 ? ('command' as const)
-                : normalizeBackgroundTaskKind(kind ?? 'unknown')
+                : normalizeBackgroundTaskKind(kind)
           }
-        : {}),
+        : task.command !== undefined
+          ? { fallbackKind: 'command' as const }
+          : {}),
     ...(label ? { label } : fallbackLabel ? { fallbackLabel } : {}),
     ...(task.output_file === undefined ? {} : { outputFile: task.output_file }),
-    ...(task.summary === undefined && !isSettledBackgroundTaskState(state)
-      ? {}
-      : { summary: task.summary ?? '' }),
-    ...(task.error === undefined && !isSettledBackgroundTaskState(state)
-      ? {}
-      : { error: task.error ?? '' })
+    // A running task's summary is Grok's "Background task <id> started", not the task's result.
+    ...(settled ? { summary: task.summary ?? '' } : {}),
+    ...(task.error === undefined && !settled ? {} : { error: task.error ?? '' })
   }
 }
 
