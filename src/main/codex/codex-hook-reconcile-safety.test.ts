@@ -466,6 +466,23 @@ describe('what a reconcile may spawn and when it waits', () => {
     expect(mocks.probeCodexVersion).toHaveBeenCalledTimes(1)
   })
 
+  it('spawns a fast-failing `codex --version` once for a burst of lookups', async () => {
+    start()
+    await reconcileCodexHooks()
+    _internals.resetForTesting()
+    memoInternals.resetForTesting()
+    start()
+    mocks.probeCodexVersion.mockClear()
+    mocks.probeCodexVersion.mockResolvedValue({ version: null, timedOut: false })
+    writeFileSync(mocks.codexPath, 'codex, now broken')
+
+    for (let lookup = 0; lookup < 5; lookup += 1) {
+      await resolveCodexHookHashes()
+    }
+
+    expect(mocks.probeCodexVersion).toHaveBeenCalledTimes(1)
+  })
+
   it('lets a launch go ahead without an answer that is still on its way', async () => {
     start()
     mocks.probeCodexVersion.mockImplementation(() => new Promise(() => {}))

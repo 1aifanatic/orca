@@ -67,6 +67,8 @@ async function askCodexForHookHashes(
     // Why re-probe a persisted binary: a shim's bytes stay the same when the codex behind it updates.
     const probe = await probeCodexVersion(codexPath, 30_000)
     if (!probe.version) {
+      // Why held back even when it exits fast: the same bytes fail the same way, and a
+      // PATH hydrating at boot can fix it, so retry after the window, not on every spawn.
       return rememberTransient(
         fingerprint,
         {
@@ -74,7 +76,7 @@ async function askCodexForHookHashes(
           hashes: null,
           failure: `${codexPath} did not report its version`
         },
-        probe.timedOut
+        true
       )
     }
     const failure = readPersistedCodexHookFailure(codexPath, fingerprint, probe.version)
