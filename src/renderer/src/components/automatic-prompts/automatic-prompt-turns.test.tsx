@@ -15,6 +15,11 @@ import type { ResumeCandidate } from '../native-chat-resume-on-restart-grouping'
 import { _resetNativeChatRestartOffer } from '../native-chat-resume-on-restart-store'
 import { useOnboardingAndFeatureTips } from '../../app-shell/use-onboarding-and-feature-tips'
 import { AUTOMATIC_PROMPT_MODAL_KEY } from '@/store/slices/ui/automatic-prompt-turns'
+import { resetLocalStructuredChatsForTests } from '@/runtime/local-structured-chats'
+import { AutomaticPromptDialogScope } from '@/lib/dialog-presence'
+import { Dialog, DialogContent, DialogTitle } from '../ui/dialog'
+import FeatureTipsModal from '../feature-tips/FeatureTipsModal'
+import { FailedFeatureTip } from '../feature-tips/use-app-open-feature-tip'
 
 const rpc = vi.hoisted(() => vi.fn())
 vi.mock('@/runtime/structured-agent-session-client', () => ({
@@ -26,22 +31,46 @@ vi.mock('@/lib/activate-ai-vault-structured-session', () => ({
 }))
 vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { error: vi.fn() }) }))
 vi.mock('@/lib/telemetry', () => ({ track: vi.fn() }))
+const surface = vi.hoisted(() => ({ loaded: Promise.resolve(), suspended: false }))
 // The real surface is covered by its own tests; here only whether it is on screen matters.
-vi.mock('../crash-report/CrashReportDialogSurface', () => ({
-  CrashReportDialogSurface: ({
-    report,
-    onOpenChange
-  }: {
-    report: CrashReportRecord | null
-    onOpenChange: (open: boolean) => void
-  }) => (
-    <div role="dialog" data-testid="crash-report">
-      {report?.status}
-      <button type="button" onClick={() => onOpenChange(false)}>
-        Close crash report
-      </button>
-    </div>
-  )
+vi.mock('../crash-report/CrashReportDialogSurface', async () => {
+  const { useEffect } = await import('react')
+  return {
+    CrashReportDialogSurface: ({
+      open,
+      report,
+      onOpenChange,
+      onShown
+    }: {
+      open: boolean
+      report: CrashReportRecord | null
+      onOpenChange: (open: boolean) => void
+      onShown?: () => void
+    }) => {
+      useEffect(() => {
+        if (open) {
+          onShown?.()
+        }
+      }, [open, onShown])
+      if (surface.suspended) {
+        // A lazy chunk still loading: granted the turn, nothing on screen yet.
+        throw surface.loaded
+      }
+      return (
+        <div role="dialog" data-testid="crash-report" data-report={report?.id}>
+          {report?.status}
+          <button type="button" onClick={() => onOpenChange(false)}>
+            Close crash report
+          </button>
+        </div>
+      )
+    }
+  }
+})
+const boundaryReports = vi.hoisted((): CrashReportRecord[] => [])
+vi.mock('@/lib/react-error-boundary-reporting', () => ({
+  REACT_ERROR_BOUNDARY_REPORT_AVAILABLE_EVENT: 'test-boundary-report',
+  takePendingReactErrorBoundaryReport: () => boundaryReports.shift() ?? null
 }))
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
@@ -109,6 +138,20 @@ function sshOnScreen(): boolean {
   return document.body.textContent?.includes('SSH Key Passphrase') === true
 }
 
+function screenButton(label: string): HTMLButtonElement {
+  const found = [...document.querySelectorAll('button')].find(
+    (button) => button.textContent?.trim() === label
+  )
+  if (!found) {
+    throw new Error(`Missing button: ${label}`)
+  }
+  return found
+}
+
+function shownCrashReportId(): string | null {
+  return document.querySelector('[data-testid="crash-report"]')?.getAttribute('data-report') ?? null
+}
+
 function closeResume(): void {
   act(() => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
@@ -121,6 +164,9 @@ beforeEach(() => {
   crashReports.getLatestReport.mockReset().mockResolvedValue(null)
   crashReports.dismiss.mockReset().mockResolvedValue(undefined)
   _resetNativeChatRestartOffer()
+  resetLocalStructuredChatsForTests()
+  surface.suspended = false
+  boundaryReports.length = 0
   useAppStore.setState(useAppStore.getInitialState(), true)
   useAppStore.setState({
     settings: { ...getDefaultSettings(''), experimentalStructuredNativeChat: true },
@@ -133,7 +179,11 @@ beforeEach(() => {
       ui: { onOpenCrashReport: () => () => {}, set: vi.fn(async () => undefined) },
       ssh: { submitCredential: vi.fn(async () => undefined) },
       cli: { getInstallStatus: vi.fn(async () => ({ supported: false })) },
-      gh: { viewer: vi.fn(async () => null) }
+      gh: { viewer: vi.fn(async () => null) },
+      app: {
+        holdsStructuredAgentSessions: vi.fn(async () => false),
+        onStructuredAgentSessionsHeldChanged: () => () => {}
+      }
     }
   })
   container = document.createElement('div')
@@ -289,35 +339,197 @@ it('an owner that unmounts mid-turn releases it', async () => {
 })
 
 function FeatureTipHarness(): null {
-  const gate = useOnboardingAndFeatureTips()
-  const { applyStartupOnboardingState } = gate
+  const { applyStartupOnboardingState } = useOnboardingAndFeatureTips()
   useEffect(() => {
     applyStartupOnboardingState({ ...getDefaultOnboardingState(), closedAt: 1 })
   }, [applyStartupOnboardingState])
   return null
 }
 
-it('marks a feature tip seen only when it is actually shown', async () => {
-  useAppStore.setState({ persistedUIReady: true, featureTipsSeenIds: [] })
+/** Leaves one tip to show, the keyboard palette one, whose dialog needs nothing else. */
+function seedOneFeatureTip(): void {
+  useAppStore.setState({
+    persistedUIReady: true,
+    featureTipsSeenIds: ['voice-dictation', 'agent-session-search']
+  })
   useAppStore.getState().settleLaunchPromptDiscovery()
+}
+
+it('marks a feature tip seen only once its dialog is on screen', async () => {
+  seedOneFeatureTip()
   // The resume offer holds the turn.
   useAppStore.getState().requestAutomaticPrompt('native-chat-resume')
   useAppStore.getState().markAutomaticPromptShown('native-chat-resume')
 
-  await mount(<FeatureTipHarness />)
+  await mount(
+    <>
+      <FeatureTipHarness />
+      <AutomaticPromptDialogScope.Provider value>
+        <FeatureTipsModal />
+      </AutomaticPromptDialogScope.Provider>
+    </>
+  )
   expect(useAppStore.getState().automaticPromptRequests.map((r) => r.id)).toContain('feature-tip')
-  expect(useAppStore.getState().featureTipsSeenIds).toEqual([])
   expect(useAppStore.getState().activeModal).toBe('none')
+  expect(useAppStore.getState().featureTipsSeenIds).not.toContain('cmd-j-palette')
 
   await act(async () => useAppStore.getState().releaseAutomaticPrompt('native-chat-resume'))
   await flush()
-  const { activeModal, modalData, featureTipsSeenIds } = useAppStore.getState()
+  const { activeModal, modalData, featureTipsSeenIds, automaticPromptShownId } =
+    useAppStore.getState()
   expect(activeModal).toBe('feature-tips')
   expect(modalData[AUTOMATIC_PROMPT_MODAL_KEY]).toBe('feature-tip')
-  expect(featureTipsSeenIds).toEqual([modalData.tipId])
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+  expect(featureTipsSeenIds).toContain('cmd-j-palette')
+  expect(automaticPromptShownId).toBe('feature-tip')
 
   // Closing the tip ends its turn.
   await act(async () => useAppStore.getState().closeModal())
   await flush()
   expect(useAppStore.getState().automaticPromptRequests).toEqual([])
+})
+
+it('a tip replaced by the user before it was ever on screen keeps its turn and opens later', async () => {
+  seedOneFeatureTip()
+  // Only the owner: the tip's dialog never renders here, as when its lazy chunk is slow.
+  await mount(<FeatureTipHarness />)
+  expect(useAppStore.getState().activeModal).toBe('feature-tips')
+
+  await act(async () => useAppStore.getState().openModal('settings'))
+  expect(useAppStore.getState().featureTipsSeenIds).not.toContain('cmd-j-palette')
+  expect(useAppStore.getState().automaticPromptRequests.map((r) => r.id)).toEqual(['feature-tip'])
+
+  await act(async () => useAppStore.getState().closeModal())
+  await flush()
+  expect(useAppStore.getState().activeModal).toBe('feature-tips')
+})
+
+it('a tip whose dialog fails to render gives up its turn', async () => {
+  seedOneFeatureTip()
+  await mount(<FeatureTipHarness />)
+  expect(useAppStore.getState().activeModal).toBe('feature-tips')
+
+  await mount(
+    <>
+      <FeatureTipHarness />
+      <FailedFeatureTip />
+    </>
+  )
+  expect(useAppStore.getState().activeModal).toBe('none')
+  expect(useAppStore.getState().automaticPromptRequests).toEqual([])
+})
+
+it('a resume offer read after the wait ended is shown after what went first, not skipped', async () => {
+  const read = Promise.withResolvers<unknown>()
+  rpc.mockImplementation(async () => read.promise)
+  crashReports.getLatestPending.mockResolvedValue(pendingCrash)
+  await mount(
+    <>
+      <NativeChatResumeOnRestartModal />
+      <CrashReportDialog />
+    </>
+  )
+  expect(crashOnScreen()).toBe(false)
+
+  // The bound from the read's start runs out before the read answers.
+  await act(async () => useAppStore.getState().settleLaunchPromptDiscovery())
+  await flush()
+  expect(crashOnScreen()).toBe(true)
+
+  await act(async () => read.resolve({ sessions: offered }))
+  await flush()
+  expect(resumeOnScreen()).toBe(false)
+  expect(crashOnScreen()).toBe(true)
+
+  await act(async () => screenButton('Close crash report').click())
+  await flush()
+  expect(crashOnScreen()).toBe(false)
+  expect(resumeOnScreen()).toBe(true)
+})
+
+it('a crash report whose dialog has not rendered yet is neither acknowledged nor holding its turn', async () => {
+  useAppStore.getState().settleLaunchPromptDiscovery()
+  surface.suspended = true
+  surface.loaded = new Promise<void>(() => {})
+  crashReports.getLatestPending.mockResolvedValue(pendingCrash)
+  await mount(<CrashReportDialog />)
+
+  expect(useAppStore.getState().automaticPromptRequests.map((r) => r.id)).toEqual(['crash-report'])
+  expect(useAppStore.getState().automaticPromptShownId).toBeNull()
+  expect(crashReports.dismiss).not.toHaveBeenCalled()
+})
+
+it('each crash report takes its own turn; a second never replaces the first', async () => {
+  useAppStore.getState().settleLaunchPromptDiscovery()
+  await mount(<CrashReportDialog />)
+  boundaryReports.push({ ...pendingCrash, id: 'boundary-1' }, { ...pendingCrash, id: 'boundary-2' })
+  await act(async () => {
+    window.dispatchEvent(new Event('test-boundary-report'))
+    window.dispatchEvent(new Event('test-boundary-report'))
+  })
+  await flush()
+  expect(shownCrashReportId()).toBe('boundary-1')
+
+  await act(async () => screenButton('Close crash report').click())
+  await flush()
+  expect(shownCrashReportId()).toBe('boundary-2')
+  await act(async () => screenButton('Close crash report').click())
+  await flush()
+  expect(crashOnScreen()).toBe(false)
+  expect(useAppStore.getState().automaticPromptRequests).toEqual([])
+})
+
+it('any other dialog on screen holds a visible resume offer back until it closes', async () => {
+  rpc.mockResolvedValue({ sessions: offered })
+  await mount(<NativeChatResumeOnRestartModal />)
+  expect(resumeOnScreen()).toBe(true)
+
+  await mount(
+    <>
+      <NativeChatResumeOnRestartModal />
+      <Dialog open>
+        <DialogContent>
+          <DialogTitle>Unsaved changes</DialogTitle>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+  expect(resumeOnScreen()).toBe(false)
+
+  await mount(<NativeChatResumeOnRestartModal />)
+  expect(resumeOnScreen()).toBe(true)
+})
+
+it('a machine with no chats ends the launch wait by itself', async () => {
+  useAppStore.setState({
+    settings: { ...getDefaultSettings(''), experimentalStructuredNativeChat: false }
+  })
+  await mount(<NativeChatResumeOnRestartModal />)
+  expect(rpc).not.toHaveBeenCalled()
+  expect(useAppStore.getState().launchPromptDiscoveryPending).toBe(false)
+})
+
+it('the tip owner going away closes its own tip, never a modal the user opened instead', async () => {
+  seedOneFeatureTip()
+  await mount(
+    <Toggle>
+      <FeatureTipHarness />
+    </Toggle>
+  )
+  expect(useAppStore.getState().activeModal).toBe('feature-tips')
+  await act(async () => window.dispatchEvent(new Event('test-unmount')))
+  expect(useAppStore.getState().activeModal).toBe('none')
+  expect(useAppStore.getState().automaticPromptRequests).toEqual([])
+
+  act(() => root.unmount())
+  root = createRoot(container)
+  useAppStore.setState({ featureTipsSeenIds: ['voice-dictation', 'agent-session-search'] })
+  await mount(
+    <Toggle>
+      <FeatureTipHarness />
+    </Toggle>
+  )
+  await act(async () => useAppStore.getState().openModal('settings'))
+  await act(async () => window.dispatchEvent(new Event('test-unmount')))
+  expect(useAppStore.getState().activeModal).toBe('settings')
 })

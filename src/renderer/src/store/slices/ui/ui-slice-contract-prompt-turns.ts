@@ -8,6 +8,9 @@ export type UISlicePromptTurns = PromptTurnState & {
   /** Called once the prompt is on screen: from here it keeps the turn until released. */
   markAutomaticPromptShown: (id: AutomaticPromptId) => void
   setPromptBlockingDialogVisible: (id: string, visible: boolean) => void
-  /** This machine's resume offer has been read and decided; launch prompts may now take turns. */
+  /** This machine's resume read has started; the launch wait now ends a fixed time after this. */
+  beginLaunchPromptDiscovery: () => void
+  /** This machine's resume offer has been read and decided, or none needs reading; launch prompts
+   *  may now take turns. */
   settleLaunchPromptDiscovery: () => void
 }

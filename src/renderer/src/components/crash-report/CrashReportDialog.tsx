@@ -9,6 +9,7 @@ import {
   useAutomaticPromptTurn,
   usePromptBlockingDialog
 } from '@/components/automatic-prompts/use-automatic-prompt-turn'
+import { AutomaticPromptDialogScope } from '@/lib/dialog-presence'
 import type { CrashReportRecord } from '../../../../shared/crash-reporting'
 
 const CrashReportDialogSurface = lazy(() =>
@@ -32,12 +33,22 @@ export function CrashReportDialog(): React.JSX.Element | null {
   const [userOpen, setUserOpen] = useState(false)
   const [userReport, setUserReport] = useState<CrashReportRecord | null>(null)
   const [loading, setLoading] = useState(false)
-  const [automatic, setAutomatic] = useState<AutomaticCrashReport | null>(null)
-  const automaticVisible = useAutomaticPromptTurn('crash-report', automatic !== null && !userOpen)
+  // Each report the app raises by itself waits its own turn; a later one never replaces it.
+  const [queue, setQueue] = useState<readonly AutomaticCrashReport[]>([])
+  const automatic = queue[0] ?? null
+  const [automaticVisible, markAutomaticShown] = useAutomaticPromptTurn(
+    'crash-report',
+    automatic !== null && !userOpen,
+    automatic?.report.id
+  )
   usePromptBlockingDialog('crash-report', userOpen)
 
   const raiseCrashReport = useCallback((report: CrashReportRecord, acknowledgeOnShow = false) => {
-    setAutomatic({ report, acknowledgeOnShow })
+    setQueue((current) =>
+      current.some((entry) => entry.report.id === report.id)
+        ? current
+        : [...current, { report, acknowledgeOnShow }]
+    )
   }, [])
 
   const loadUserCrashReport = useCallback(async (): Promise<void> => {
@@ -71,38 +82,39 @@ export function CrashReportDialog(): React.JSX.Element | null {
       .catch((error) => console.error('Failed to load crash report:', error))
   }, [mountedRef, raiseCrashReport])
 
-  useEffect(() => {
-    if (!automaticVisible || !automatic?.acknowledgeOnShow) {
+  const changeAutomaticReport = useCallback((report: CrashReportRecord | null) => {
+    if (report) {
+      setQueue((current) =>
+        current.map((entry) => (entry.report.id === report.id ? { ...entry, report } : entry))
+      )
+    }
+  }, [])
+
+  // From the committed dialog content: the lazy surface may load well after the turn is granted.
+  const onAutomaticShown = useCallback((): void => {
+    markAutomaticShown()
+    if (!automatic?.acknowledgeOnShow || acknowledgedIds.current.has(automatic.report.id)) {
       return
     }
-    const reportId = automatic.report.id
-    if (acknowledgedIds.current.has(reportId)) {
-      return
-    }
-    acknowledgedIds.current.add(reportId)
-    // Why: startup crash prompts are one-shot. Acknowledged only once on screen, and never awaited:
-    // a failed write must not delay the prompt, and the dialog dismisses a still-pending report on
-    // close. Help > Report Crash can still reopen dismissed unsent reports.
+    const { report } = automatic
+    acknowledgedIds.current.add(report.id)
+    // Why: startup crash prompts are one-shot. Never awaited: a failed write must not hold the
+    // prompt back, and the dialog dismisses a still-pending report on close. Help > Report Crash
+    // can still reopen dismissed unsent reports.
     void window.api.crashReports
-      .dismiss({ reportId })
+      .dismiss({ reportId: report.id })
       .then(() => {
         if (mountedRef.current) {
-          setAutomatic((current) =>
-            current?.report.id === reportId
-              ? { ...current, report: { ...current.report, status: 'dismissed' as const } }
-              : current
-          )
+          changeAutomaticReport({ ...report, status: 'dismissed' as const })
         }
       })
       .catch((error) => {
         console.error('Failed to dismiss crash report after startup prompt:', error)
       })
-  }, [automatic, automaticVisible, mountedRef])
+  }, [automatic, changeAutomaticReport, markAutomaticShown, mountedRef])
 
   useEffect(() => {
     return window.api.ui.onOpenCrashReport(() => {
-      // The user is now looking at crash reports; a queued one would only repeat what they see.
-      setAutomatic(null)
       setUserReport(null)
       setUserOpen(true)
       void loadUserCrashReport()
@@ -131,33 +143,35 @@ export function CrashReportDialog(): React.JSX.Element | null {
     }
   }, [raiseCrashReport])
 
-  const changeAutomaticReport = useCallback((report: CrashReportRecord | null) => {
-    setAutomatic((current) => (current && report ? { ...current, report } : current))
-  }, [])
-
   const open = userOpen || automaticVisible
   if (!open) {
     return null
   }
 
   return (
-    <Suspense fallback={null}>
-      <CrashReportDialogSurface
-        open={open}
-        report={userOpen ? userReport : (automatic?.report ?? null)}
-        loading={userOpen && loading}
-        onOpenChange={(nextOpen) => {
-          if (nextOpen) {
-            return
-          }
-          if (userOpen) {
-            setUserOpen(false)
-          } else {
-            setAutomatic(null)
-          }
-        }}
-        onReportChange={userOpen ? setUserReport : changeAutomaticReport}
-      />
-    </Suspense>
+    // Its own dialog never counts as another one it waits for.
+    <AutomaticPromptDialogScope.Provider value>
+      <Suspense fallback={null}>
+        <CrashReportDialogSurface
+          // A new report is a new dialog, so its notes and viewer state start fresh.
+          key={userOpen ? 'user' : automatic?.report.id}
+          open={open}
+          report={userOpen ? userReport : (automatic?.report ?? null)}
+          loading={userOpen && loading}
+          onOpenChange={(nextOpen) => {
+            if (nextOpen) {
+              return
+            }
+            if (userOpen) {
+              setUserOpen(false)
+            } else {
+              setQueue((current) => current.slice(1))
+            }
+          }}
+          onReportChange={userOpen ? setUserReport : changeAutomaticReport}
+          onShown={userOpen ? undefined : onAutomaticShown}
+        />
+      </Suspense>
+    </AutomaticPromptDialogScope.Provider>
   )
 }

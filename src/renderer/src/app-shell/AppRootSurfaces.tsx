@@ -18,6 +18,8 @@ import { shouldRenderPetOverlay } from '../components/pet/pet-overlay-visibility
 import { useAppStore } from '../store'
 import type { UpdateStatus } from '../../../shared/update-status-types'
 import { useLazyModalMounts } from './use-lazy-modal-mounts'
+import { AutomaticPromptDialogScope } from '@/lib/dialog-presence'
+import { FailedFeatureTip } from '../components/feature-tips/use-app-open-feature-tip'
 import {
   selectAppRootSurfacePetEnabled,
   selectAppRootSurfaceTelemetryOptedIn,
@@ -93,6 +95,7 @@ type BoundaryProps = {
   resetKey?: string | number | boolean | null
   title?: string
   description?: string
+  fallback?: () => React.ReactNode
   children: React.ReactNode
 }
 
@@ -102,6 +105,10 @@ function ModalBoundary({ children, ...props }: BoundaryProps): React.JSX.Element
       {children}
     </RecoverableRenderErrorBoundary>
   )
+}
+
+function renderFailedFeatureTip(): React.ReactNode {
+  return <FailedFeatureTip />
 }
 
 function OverlayBoundary({ children, ...props }: BoundaryProps): React.JSX.Element {
@@ -257,8 +264,15 @@ export function AppRootSurfaces(props: {
           </ModalBoundary>
         ) : null}
         {mountedLazyModalIds.has('feature-tips') ? (
-          <ModalBoundary boundaryId="modal.feature-tips" resetKey={activeModal === 'feature-tips'}>
-            <FeatureTipsModal />
+          <ModalBoundary
+            boundaryId="modal.feature-tips"
+            resetKey={activeModal === 'feature-tips'}
+            fallback={renderFailedFeatureTip}
+          >
+            {/* Opens by itself, so its own dialogs never count as another dialog it waits for. */}
+            <AutomaticPromptDialogScope.Provider value>
+              <FeatureTipsModal />
+            </AutomaticPromptDialogScope.Provider>
           </ModalBoundary>
         ) : null}
       </Suspense>

@@ -7,7 +7,12 @@ import {
   notifyOrchestrationSetupStateChanged
 } from '@/lib/orchestration-setup-state'
 import { useAppStore } from '@/store'
-import { selectAutomaticPromptSlotSuspended } from '@/store/slices/ui/automatic-prompt-turns'
+import {
+  AUTOMATIC_PROMPT_MODAL_KEY,
+  selectAutomaticPromptSlotSuspended
+} from '@/store/slices/ui/automatic-prompt-turns'
+import { useOtherDialogOpen } from '@/lib/dialog-presence'
+import { useAppOpenFeatureTipShown } from './use-app-open-feature-tip'
 import { CliSetupTipDialog } from './CliSetupTipDialog'
 import { CmdJPaletteTipDialog } from './CmdJPaletteTipDialog'
 import { installCliFromFeatureTip } from './feature-tip-cli-install-action'
@@ -43,8 +48,10 @@ export default function FeatureTipsModal(): JSX.Element | null {
   const [primaryBusy, setPrimaryBusy] = useState(false)
   const [skillTerminalOpen, setSkillTerminalOpen] = useState(false)
   // Raised by the app, it steps aside while a dialog the user opened is up, then comes back.
+  const automaticTip = modalData[AUTOMATIC_PROMPT_MODAL_KEY] === 'feature-tip'
   const suspended = useAppStore(selectAutomaticPromptSlotSuspended)
-  const isOpen = activeModal === 'feature-tips' && !suspended
+  const otherDialogOpen = useOtherDialogOpen()
+  const isOpen = activeModal === 'feature-tips' && !(automaticTip && (suspended || otherDialogOpen))
   const currentTip = getFeatureTipForModal({
     cliInstalled: true,
     modalData,
@@ -53,6 +60,7 @@ export default function FeatureTipsModal(): JSX.Element | null {
     settings,
     webClient: isWebClientLocation()
   })
+  useAppOpenFeatureTipShown({ visible: isOpen, tipId: currentTip?.id, automatic: automaticTip })
   const sessionSearchSetup = useSessionSearchTipSetup({
     dialogOpen: isOpen && currentTip?.id === 'agent-session-search'
   })

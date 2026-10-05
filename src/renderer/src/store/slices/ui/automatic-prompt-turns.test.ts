@@ -4,6 +4,7 @@ import type { AppState } from '../../types'
 import { createUIStore } from '../ui-slice-test-harness'
 import {
   AUTOMATIC_PROMPT_MODAL_KEY,
+  LAUNCH_PROMPT_DISCOVERY_BACKSTOP_MS,
   LAUNCH_PROMPT_DISCOVERY_BOUND_MS,
   selectAutomaticPromptSlotSuspended,
   selectPromptSurfaceVisible,
@@ -138,10 +139,13 @@ describe('automatic prompt turns', () => {
       expect(show(store)).toBe('native-chat-resume')
     })
 
-    it('stops waiting at the bound when the resume read never decides', () => {
+    it('stops waiting a fixed time after the resume read starts', () => {
       vi.useFakeTimers()
       const store = createUIStore({ launchPromptDiscoveryPending: true })
       store.getState().requestAutomaticPrompt('crash-report')
+      // A loaded machine can start the read well after boot; the bound runs from the read.
+      vi.advanceTimersByTime(5_000)
+      store.getState().beginLaunchPromptDiscovery()
 
       vi.advanceTimersByTime(LAUNCH_PROMPT_DISCOVERY_BOUND_MS - 1)
       expect(visible(store)).toBeNull()
@@ -149,13 +153,28 @@ describe('automatic prompt turns', () => {
       expect(visible(store)).toBe('crash-report')
     })
 
-    it('measures the bound from boot, not from the request', () => {
+    it('ends by itself when no prompt ever asks, so tours can start', () => {
       vi.useFakeTimers()
       const store = createUIStore({ launchPromptDiscoveryPending: true })
-      vi.advanceTimersByTime(LAUNCH_PROMPT_DISCOVERY_BOUND_MS + 500)
-      store.getState().requestAutomaticPrompt('feature-tip')
-      vi.advanceTimersByTime(0)
-      expect(visible(store)).toBe('feature-tip')
+      expect(selectTourBlockedByPrompts(store.getState(), false)).toBe(true)
+
+      vi.advanceTimersByTime(LAUNCH_PROMPT_DISCOVERY_BACKSTOP_MS)
+      expect(store.getState().launchPromptDiscoveryPending).toBe(false)
+      expect(selectTourBlockedByPrompts(store.getState(), false)).toBe(false)
+    })
+
+    it('a resume offer read after the bound still takes its turn, after what went first', () => {
+      vi.useFakeTimers()
+      const store = createUIStore({ launchPromptDiscoveryPending: true })
+      store.getState().beginLaunchPromptDiscovery()
+      store.getState().requestAutomaticPrompt('crash-report')
+      vi.advanceTimersByTime(LAUNCH_PROMPT_DISCOVERY_BOUND_MS)
+      expect(show(store)).toBe('crash-report')
+
+      store.getState().requestAutomaticPrompt('native-chat-resume')
+      expect(visible(store)).toBe('crash-report')
+      store.getState().releaseAutomaticPrompt('crash-report')
+      expect(visible(store)).toBe('native-chat-resume')
     })
 
     it('never waits for discovery while a user dialog is what is up', () => {

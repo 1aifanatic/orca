@@ -73,6 +73,8 @@ type CrashReportDialogSurfaceProps = {
   loading: boolean
   onOpenChange: (open: boolean) => void
   onReportChange: (report: CrashReportRecord | null) => void
+  /** Runs once this content is on screen, which a lazy load can delay past being asked to open. */
+  onShown?: () => void
 }
 
 export function CrashReportDialogSurface({
@@ -80,7 +82,8 @@ export function CrashReportDialogSurface({
   report,
   loading,
   onOpenChange,
-  onReportChange
+  onReportChange,
+  onShown
 }: CrashReportDialogSurfaceProps): React.JSX.Element {
   const mountedRef = useMountedRef()
   const [notes, setNotes] = useState('')
@@ -121,6 +124,12 @@ export function CrashReportDialogSurface({
         }
       })
   }, [mountedRef])
+
+  useEffect(() => {
+    if (open) {
+      onShown?.()
+    }
+  }, [onShown, open])
 
   useEffect(() => {
     if (!open) {

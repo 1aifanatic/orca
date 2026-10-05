@@ -6,17 +6,10 @@ import {
   getFeatureTipsAppOpenDecision,
   isCliFeatureTipCompleted
 } from '../components/feature-tips/feature-tip-startup-gate'
-import {
-  trackCmdJPaletteFeatureTipShown,
-  trackOrcaCliFeatureTipShown
-} from '../components/feature-tips/feature-tip-telemetry'
 import { useAppStore } from '../store'
 import { isWebClientLocation } from '../lib/web-client-location'
-import { useAutomaticPromptTurn } from '../components/automatic-prompts/use-automatic-prompt-turn'
-import { AUTOMATIC_PROMPT_MODAL_KEY } from '../store/slices/ui/automatic-prompt-turns'
-import { MODAL_DISMISSED_KEY } from '../store/slices/modal-slot-dismissal'
+import { useAppOpenFeatureTip } from '../components/feature-tips/use-app-open-feature-tip'
 import type { OnboardingState } from '../../../shared/onboarding-state-types'
-import type { FeatureTipId } from '../../../shared/feature-tips'
 
 export type OnboardingGate = ReturnType<typeof useOnboardingAndFeatureTips>
 
@@ -29,10 +22,7 @@ export function useOnboardingAndFeatureTips() {
   const [onboardingLoaded, setOnboardingLoaded] = useState(false)
   const [featureTipCliInstalled, setFeatureTipCliInstalled] = useState<boolean | null>(null)
   const promptedThisSessionRef = useRef(false)
-  // The app-open tip, chosen and waiting for its turn among dialogs that open by themselves.
-  const [pendingTipId, setPendingTipId] = useState<FeatureTipId | null>(null)
-  const shownTipIdRef = useRef<FeatureTipId | null>(null)
-  const tipTurn = useAutomaticPromptTurn('feature-tip', pendingTipId !== null)
+  const queueAppOpenFeatureTip = useAppOpenFeatureTip()
   const suppressedByOnboardingThisSessionRef = useRef(false)
 
   const activeModal = useAppStore((s) => s.activeModal)
@@ -43,8 +33,6 @@ export function useOnboardingAndFeatureTips() {
   const contextualToursAutoEligible = useAppStore((s) => s.contextualToursAutoEligible)
   const actions = useAppStore(
     useShallow((s) => ({
-      openModal: s.openModal,
-      markFeatureTipsSeen: s.markFeatureTipsSeen,
       setContextualToursAutoEligible: s.setContextualToursAutoEligible,
       setContextualToursOnboardingVisible: s.setContextualToursOnboardingVisible
     }))
@@ -123,7 +111,7 @@ export function useOnboardingAndFeatureTips() {
     }
 
     promptedThisSessionRef.current = true
-    setPendingTipId(featureTipsDecision.tipId)
+    queueAppOpenFeatureTip(featureTipsDecision.tipId)
   }, [
     activeModal,
     actions,
@@ -132,30 +120,9 @@ export function useOnboardingAndFeatureTips() {
     featureTipsSeenIds,
     onboarding,
     persistedUIReady,
+    queueAppOpenFeatureTip,
     settings
   ])
-
-  useEffect(() => {
-    if (!tipTurn || pendingTipId === null || shownTipIdRef.current === pendingTipId) {
-      return
-    }
-    shownTipIdRef.current = pendingTipId
-    if (pendingTipId === 'orca-cli') {
-      trackOrcaCliFeatureTipShown('app_open')
-    } else if (pendingTipId === 'cmd-j-palette') {
-      trackCmdJPaletteFeatureTipShown('app_open')
-    }
-    // Why: mark seen on show so a quit/crash before dismiss doesn't reappear it next launch.
-    actions.markFeatureTipsSeen([pendingTipId])
-    actions.openModal('feature-tips', {
-      source: 'app_open',
-      tipId: pendingTipId,
-      [AUTOMATIC_PROMPT_MODAL_KEY]: 'feature-tip',
-      // Closing it, or a modal the user opens replacing it, ends its turn. It was shown, so it is
-      // not raised again.
-      [MODAL_DISMISSED_KEY]: () => setPendingTipId(null)
-    })
-  }, [actions, pendingTipId, tipTurn])
 
   return {
     applyStartupOnboardingState,

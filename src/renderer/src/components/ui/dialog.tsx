@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { handleImeOverlayEscape } from '@/lib/ime-overlay-escape'
 import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
+import { DialogPresenceMarker } from '@/lib/dialog-presence'
 
 function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
@@ -74,6 +75,7 @@ function DialogContent({
         {...props}
         onEscapeKeyDown={(event) => handleImeOverlayEscape(event, props.onEscapeKeyDown)}
       >
+        <DialogPresenceMarker />
         {children}
         {showCloseButton && (
           <DialogPrimitive.Close

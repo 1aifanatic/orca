@@ -20,9 +20,13 @@ export type AutomaticPromptId = keyof typeof AUTOMATIC_PROMPT_PRIORITY
  *  modal that the prompt has to wait for. */
 export const AUTOMATIC_PROMPT_MODAL_KEY = 'automaticPromptId'
 
-/** How long automatic prompts wait at launch for this machine's resume offer to be read. Local only;
- *  a remote host is never awaited. */
+/** How long automatic prompts wait at launch for this machine's resume read, measured from when the
+ *  read starts. Local only; a remote host is never awaited. Expiry only changes the order: a resume
+ *  offer read later still takes its turn after whatever went first. */
 export const LAUNCH_PROMPT_DISCOVERY_BOUND_MS = 2000
+
+/** The wait's backstop when the read never starts and nothing says none is needed (no bridge). */
+export const LAUNCH_PROMPT_DISCOVERY_BACKSTOP_MS = 10_000
 
 export type AutomaticPromptRequest = Readonly<{ id: AutomaticPromptId; seq: number }>
 
@@ -33,7 +37,8 @@ export type PromptTurnState = {
   automaticPromptShownId: AutomaticPromptId | null
   promptBlockingDialogIds: readonly string[]
   launchPromptDiscoveryPending: boolean
-  /** When the launch wait ends regardless (epoch ms), fixed at boot. */
+  /** When the launch wait ends regardless (epoch ms): the backstop from boot, then the bound from
+   *  the start of the resume read. */
   launchPromptDiscoveryDeadline: number
 }
 

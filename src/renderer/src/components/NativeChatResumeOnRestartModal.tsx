@@ -23,7 +23,6 @@ import {
 import type { ResumeCandidate, ResumeFailure } from './native-chat-resume-on-restart-grouping'
 import {
   consumeNativeChatResumeOnRestartDialogRequest,
-  getNativeChatResumeLaunchDecided,
   getNativeChatResumeOnRestartDialogRequest,
   subscribeNativeChatResumeOnRestartDialog
 } from './native-chat-resume-on-restart-dialog'
@@ -31,6 +30,8 @@ import {
   useAutomaticPromptTurn,
   usePromptBlockingDialog
 } from './automatic-prompts/use-automatic-prompt-turn'
+import { useNativeChatResumeLaunchDiscovery } from './native-chat-resume-launch-discovery'
+import { AutomaticPromptDialogScope } from '@/lib/dialog-presence'
 import {
   continueNativeChatRestartOffer,
   dismissNativeChatRestartOffer,
@@ -84,29 +85,23 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
     getNativeChatResumeOnRestartDialogRequest,
     getNativeChatResumeOnRestartDialogRequest
   )
-  const launchDecided = useSyncExternalStore(
-    subscribeNativeChatResumeOnRestartDialog,
-    getNativeChatResumeLaunchDecided,
-    getNativeChatResumeLaunchDecided
-  )
   // Only a dialog that can render asks for a turn, so a hidden one never holds others back.
   const renderable = offerEnabled && rows.length > 0
   // Raised by the launch, it takes its turn among the dialogs that open by themselves; opened by the
   // user, it shows at once and the others wait for it.
-  const launchTurn = useAutomaticPromptTurn(
+  const [launchTurn, markLaunchShown] = useAutomaticPromptTurn(
     'native-chat-resume',
     request === 'launch' && renderable
   )
   usePromptBlockingDialog('native-chat-resume', request === 'user' && renderable)
+  // After the turn request above (effects run in order), so nothing takes the first turn between.
+  useNativeChatResumeLaunchDiscovery(offerEnabled)
   const open = request === 'user' || launchTurn
-  const settleLaunchPromptDiscovery = useAppStore((store) => store.settleLaunchPromptDiscovery)
   useEffect(() => {
-    // After the turn request above (effects run in order), so a fast crash report or tip cannot
-    // take the first turn in between.
-    if (launchDecided) {
-      settleLaunchPromptDiscovery()
+    if (launchTurn && renderable) {
+      markLaunchShown()
     }
-  }, [launchDecided, settleLaunchPromptDiscovery])
+  }, [launchTurn, markLaunchShown, renderable])
   const updateSettings = useAppStore((store) => store.updateSettings)
   const [dontAskAgain, setDontAskAgain] = useState(false)
   // The store's: the resume outlives this dialog, which can close or reopen mid-run.
@@ -208,115 +203,121 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
   const interruptedByUpdate = rows.some((row) => row.trigger === 'update')
 
   return (
-    <Dialog
-      open
-      onOpenChange={(next) => {
-        if (!next) {
-          snooze()
-        }
-      }}
-    >
-      {/* Height is capped, never the data: the list scrolls inside the dialog so the header and
-          the primary action stay put however many chats were interrupted. */}
-      <DialogContent className="grid-rows-[auto_minmax(0,1fr)_auto_auto] sm:max-w-xl max-h-[85vh]">
-        <DialogHeader>
-          <DialogTitle>
-            {/* Plain wrapper owns the icon spacing; DialogTitle owns its own. */}
-            <span className="flex items-center gap-2">
-              <RotateCcw className="size-4 text-muted-foreground" />
-              {translate(
-                'auto.components.NativeChatResumeOnRestartModal.title',
-                'Resume interrupted chats?'
-              )}
-            </span>
-          </DialogTitle>
-          <DialogDescription>
-            {interruptedByUpdate
-              ? translate(
-                  'auto.components.NativeChatResumeOnRestartModal.updateBody',
-                  'These chats were working when Orca installed an update. Resuming restores each one where it stopped, with its full context, and asks the agent to check what it was doing before carrying on. Your own prompt is not re-sent.'
-                )
-              : translate(
-                  'auto.components.NativeChatResumeOnRestartModal.body',
-                  'These chats were working when Orca closed. Resuming restores each one where it stopped, with its full context, and asks the agent to check what it was doing before carrying on. Your own prompt is not re-sent.'
+    // Its own dialog never counts as another one it waits for.
+    <AutomaticPromptDialogScope.Provider value>
+      <Dialog
+        open
+        onOpenChange={(next) => {
+          if (!next) {
+            snooze()
+          }
+        }}
+      >
+        {/* Height is capped, never the data: the list scrolls inside the dialog so the header and
+            the primary action stay put however many chats were interrupted. */}
+        <DialogContent className="grid-rows-[auto_minmax(0,1fr)_auto_auto] sm:max-w-xl max-h-[85vh]">
+          <DialogHeader>
+            <DialogTitle>
+              {/* Plain wrapper owns the icon spacing; DialogTitle owns its own. */}
+              <span className="flex items-center gap-2">
+                <RotateCcw className="size-4 text-muted-foreground" />
+                {translate(
+                  'auto.components.NativeChatResumeOnRestartModal.title',
+                  'Resume interrupted chats?'
                 )}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div
-          tabIndex={0}
-          aria-label={translate(
-            'auto.components.NativeChatResumeOnRestartModal.listLabel',
-            'Chats that would be resumed'
-          )}
-          className="min-h-0 overflow-y-auto scrollbar-sleek rounded-md border bg-muted/35 p-1.5"
-        >
-          <ResumeOnRestartGroups
-            candidates={rows}
-            listedAt={listedAt}
-            busy={busy}
-            selected={ticked}
-            onToggle={toggleSelected}
-            failureFor={(sessionId) => failureBySession.get(sessionId)}
-            onFailureAction={(action, sessionId) => void actOnFailure(action, sessionId)}
-          />
-        </div>
-
-        <label className="flex items-start gap-2.5">
-          <Checkbox
-            checked={dontAskAgain}
-            disabled={busy}
-            onCheckedChange={(next) => setDontAskAgain(next === true)}
-            className="mt-0.5"
-          />
-          <span className="min-w-0 space-y-0.5">
-            <span className="block text-sm">
-              {translate(
-                'auto.components.NativeChatResumeOnRestartModal.dontAskAgain',
-                "Don't ask again (resume automatically)"
-              )}
-            </span>
-            {/* Where to undo it; what it does is the body copy's job. */}
-            <span className="block text-xs text-muted-foreground">
-              {translate(
-                'auto.components.NativeChatResumeOnRestartModal.dontAskAgainHint',
-                'You can turn this off in Settings → Experimental → Chat UI.'
-              )}
-            </span>
-          </span>
-        </label>
-
-        {/* Two controls: one deletes the offer, one acts on it. Closing snoozes, so it needs none. */}
-        <DialogFooter className="sm:justify-between">
-          {/* Quiet, explicit cleanup of the durable records. */}
-          <Button variant="ghost" size="sm" disabled={busy} onClick={() => void dismissAll()}>
-            {translate('auto.components.NativeChatResumeOnRestartModal.dismissAll', 'Dismiss all')}
-          </Button>
-          <Button
-            variant="default"
-            size="sm"
-            disabled={busy || chosen.length === 0}
-            onClick={() => {
-              // Resume hands the run to the status bar.
-              consumeNativeChatResumeOnRestartDialogRequest()
-              void resume(chosen)
-            }}
-          >
-            {busy
-              ? translate('auto.components.NativeChatResumeOnRestartModal.resuming', 'Resuming…')
-              : chosen.length === 1
+              </span>
+            </DialogTitle>
+            <DialogDescription>
+              {interruptedByUpdate
                 ? translate(
-                    'auto.components.NativeChatResumeOnRestartModal.resumeSelectedOne',
-                    'Resume 1 chat'
+                    'auto.components.NativeChatResumeOnRestartModal.updateBody',
+                    'These chats were working when Orca installed an update. Resuming restores each one where it stopped, with its full context, and asks the agent to check what it was doing before carrying on. Your own prompt is not re-sent.'
                   )
                 : translate(
-                    'auto.components.NativeChatResumeOnRestartModal.resumeSelected',
-                    'Resume {{value0}} chats',
-                    { value0: chosen.length }
+                    'auto.components.NativeChatResumeOnRestartModal.body',
+                    'These chats were working when Orca closed. Resuming restores each one where it stopped, with its full context, and asks the agent to check what it was doing before carrying on. Your own prompt is not re-sent.'
                   )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div
+            tabIndex={0}
+            aria-label={translate(
+              'auto.components.NativeChatResumeOnRestartModal.listLabel',
+              'Chats that would be resumed'
+            )}
+            className="min-h-0 overflow-y-auto scrollbar-sleek rounded-md border bg-muted/35 p-1.5"
+          >
+            <ResumeOnRestartGroups
+              candidates={rows}
+              listedAt={listedAt}
+              busy={busy}
+              selected={ticked}
+              onToggle={toggleSelected}
+              failureFor={(sessionId) => failureBySession.get(sessionId)}
+              onFailureAction={(action, sessionId) => void actOnFailure(action, sessionId)}
+            />
+          </div>
+
+          <label className="flex items-start gap-2.5">
+            <Checkbox
+              checked={dontAskAgain}
+              disabled={busy}
+              onCheckedChange={(next) => setDontAskAgain(next === true)}
+              className="mt-0.5"
+            />
+            <span className="min-w-0 space-y-0.5">
+              <span className="block text-sm">
+                {translate(
+                  'auto.components.NativeChatResumeOnRestartModal.dontAskAgain',
+                  "Don't ask again (resume automatically)"
+                )}
+              </span>
+              {/* Where to undo it; what it does is the body copy's job. */}
+              <span className="block text-xs text-muted-foreground">
+                {translate(
+                  'auto.components.NativeChatResumeOnRestartModal.dontAskAgainHint',
+                  'You can turn this off in Settings → Experimental → Chat UI.'
+                )}
+              </span>
+            </span>
+          </label>
+
+          {/* Two controls: one deletes the offer, one acts on it. Closing snoozes, so it needs none. */}
+          <DialogFooter className="sm:justify-between">
+            {/* Quiet, explicit cleanup of the durable records. */}
+            <Button variant="ghost" size="sm" disabled={busy} onClick={() => void dismissAll()}>
+              {translate(
+                'auto.components.NativeChatResumeOnRestartModal.dismissAll',
+                'Dismiss all'
+              )}
+            </Button>
+            <Button
+              variant="default"
+              size="sm"
+              disabled={busy || chosen.length === 0}
+              onClick={() => {
+                // Resume hands the run to the status bar.
+                consumeNativeChatResumeOnRestartDialogRequest()
+                void resume(chosen)
+              }}
+            >
+              {busy
+                ? translate('auto.components.NativeChatResumeOnRestartModal.resuming', 'Resuming…')
+                : chosen.length === 1
+                  ? translate(
+                      'auto.components.NativeChatResumeOnRestartModal.resumeSelectedOne',
+                      'Resume 1 chat'
+                    )
+                  : translate(
+                      'auto.components.NativeChatResumeOnRestartModal.resumeSelected',
+                      'Resume {{value0}} chats',
+                      { value0: chosen.length }
+                    )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </AutomaticPromptDialogScope.Provider>
   )
 }
