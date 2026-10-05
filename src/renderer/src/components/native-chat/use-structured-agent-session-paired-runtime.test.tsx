@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
-// A chat on a paired server belongs to that server: every read, write, and capability question goes
-// to it, never to this machine. The server here advertises today's capabilities and this machine
+// A chat on a paired server belongs to that server: its reads (history, live updates, rail outline),
+// writes, and the capability questions behind them go to it, never to this machine. The server here advertises today's capabilities and this machine
 // advertises none, so a question asked of the wrong runtime changes what is sent.
 
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
@@ -75,18 +75,32 @@ function runtimeOf(target: RuntimeClientTarget): string {
   return target.kind === 'local' ? 'local' : target.environmentId
 }
 
+let olderHistoryUnloaded = false
+
 function historyPage(target: RuntimeClientTarget): AgentSessionHistoryPage {
   const cursor = (sequence: number): AgentJournalCursor => ({ epoch: 'epoch-a', sequence })
   return {
     sessionId: 'session-a',
     epoch: 'epoch-a',
     direction: 'tail',
-    items: [],
+    items: olderHistoryUnloaded
+      ? [
+          {
+            itemId: 'turn-0',
+            revision: 1,
+            sequence: 5,
+            observedAt: 5,
+            body: { kind: 'turn', turnId: 'turn-0', state: 'completed' }
+          }
+        ]
+      : [],
     removedItemIds: [],
     submissions: [],
-    window: { oldest: null, newest: null, nextCursor: cursor(0) },
-    liveCursor: cursor(0),
-    hasOlder: false,
+    window: olderHistoryUnloaded
+      ? { oldest: cursor(5), newest: cursor(5), nextCursor: cursor(6) }
+      : { oldest: null, newest: null, nextCursor: cursor(0) },
+    liveCursor: cursor(olderHistoryUnloaded ? 6 : 0),
+    hasOlder: olderHistoryUnloaded,
     hasNewer: false,
     fence: FENCE[runtimeOf(target)]
   }
@@ -115,6 +129,7 @@ describe('a structured chat on a paired server', () => {
     resetStructuredAgentSessionReadOwnersForTests()
     resetUndeliveredStructuredAgentSessionOutboxForTests()
     localStorage.clear()
+    olderHistoryUnloaded = false
     mocks.hostCapabilities.clear()
     mocks.hostCapabilities.set('server-1', RUNTIME_CAPABILITIES)
     setLocalRuntimeCapabilitiesForTests([])
@@ -206,6 +221,18 @@ describe('a structured chat on a paired server', () => {
     )
     expect(mocks.subscribe.mock.calls.every(([target]) => target === PAIRED_TARGET)).toBe(true)
     expect(mocks.call.mock.calls.every(([target]) => target === PAIRED_TARGET)).toBe(true)
+  })
+
+  // The rail asks for the outline only while older history is unloaded.
+  it("reads the rail's conversation outline from the server", async () => {
+    olderHistoryUnloaded = true
+    render(PAIRED_TARGET)
+
+    await waitFor(() =>
+      expect(calls('agentSession.conversationOutline')).toEqual([
+        { target: PAIRED_TARGET, params: { sessionId: 'session-a' } }
+      ])
+    )
   })
 
   it('keeps a local session apart from a paired session with the same id', async () => {
