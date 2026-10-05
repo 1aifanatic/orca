@@ -150,6 +150,10 @@ export type JournalDispatchRow = JournalRowBase & {
   /** On `rejected`: why, typed. Older readers keep the key and ignore it; a malformed one is
    *  dropped when read, never the row. */
   rejection?: AgentSessionFailureFact
+  /** On `rejected`: the turn record a Codex send was answered into (`turn/start` or `turn/steer`)
+   *  when that turn's end settled the send. Absent on every other row. Older readers keep the key
+   *  and ignore it. */
+  answeredInTurnItemId?: string
 }
 
 /** An item mutation may name its own producer, because one batch can CREATE

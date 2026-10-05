@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AgentJournalItemBody } from '../../shared/agent-session-journal-types'
+import type {
+  AgentJournalItemBody,
+  AgentJournalItemIdentity
+} from '../../shared/agent-session-journal-types'
+import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
 import { classifyDispatchRejection } from '../../shared/structured-agent-session-dispatch-rejection'
 import { createCodexDispatchEchoes } from './codex-structured-dispatch-echo'
 import {
@@ -20,11 +24,17 @@ async function turnEndRig() {
   Object.assign(codex.routes, turns.routes)
   const settlements: LateSettlement[] = []
   const bodies: AgentJournalItemBody[] = []
+  const turnRecords: AgentJournalItemIdentity[] = []
   const adapter = await acquiredCodexAdapter({
     codex,
     settlements,
     sink: {
-      appendItem: (_identity, body) => bodies.push(body),
+      appendItem: (identity, body) => {
+        bodies.push(body)
+        if (body.kind === 'turn') {
+          turnRecords.push(identity)
+        }
+      },
       appendTombstone: () => {},
       publish: () => {}
     }
@@ -46,7 +56,18 @@ async function turnEndRig() {
   const settledIds = () => settlements.map(({ clientMessageId }) => clientMessageId)
   const categoryOf = (settlement: LateSettlement | undefined) =>
     settlement && 'state' in settlement ? classifyDispatchRejection(settlement).category : null
-  return { codex, turns, adapter, send, sendAndOpen, settlements, settledIds, categoryOf, bodies }
+  return {
+    codex,
+    turns,
+    adapter,
+    send,
+    sendAndOpen,
+    settlements,
+    settledIds,
+    categoryOf,
+    bodies,
+    turnRecords
+  }
 }
 
 describe('a Codex send its turn ended without echoing', () => {
@@ -282,6 +303,64 @@ describe('a Codex send its turn ended without echoing', () => {
       turn: { id: 'turn-1', status: 'interrupted' }
     })
 
+    expect(rig.settlements).toEqual([])
+  })
+})
+
+describe('the turn a withdrawn Codex send names', () => {
+  it('is the record of the turn it opened, when that turn is interrupted', async () => {
+    const rig = await turnEndRig()
+    await rig.sendAndOpen('client-1')
+
+    rig.turns.end('interrupted')
+
+    expect(rig.turnRecords.length).toBeGreaterThan(0)
+    expect(new Set(rig.turnRecords.map(agentJournalItemKey)).size).toBe(1)
+    expect(rig.settlements).toEqual([
+      expect.objectContaining({ clientMessageId: 'client-1', answeredInTurn: rig.turnRecords[0] })
+    ])
+  })
+
+  it('is the running turn for a send steered into it', async () => {
+    const rig = await turnEndRig()
+    await rig.sendAndOpen('client-1')
+    await rig.send('client-2')
+
+    rig.turns.end('interrupted')
+
+    expect(rig.settlements.map((settlement) => [settlement.clientMessageId, settlement])).toEqual([
+      ['client-1', expect.objectContaining({ answeredInTurn: rig.turnRecords[0] })],
+      ['client-2', expect.objectContaining({ answeredInTurn: rig.turnRecords[0] })]
+    ])
+  })
+
+  it('is the ended turn whose end was read before the answer', async () => {
+    const rig = await turnEndRig()
+    const release = rig.turns.holdNextAnswer()
+    const sending = rig.send('client-1')
+    await vi.waitFor(() => expect(rig.turns.turnId).toBe('turn-1'))
+    rig.turns.start()
+    rig.turns.end('interrupted')
+    release()
+
+    await expect(sending).resolves.toMatchObject({
+      state: 'rejected',
+      answeredInTurn: rig.turnRecords[0]
+    })
+  })
+
+  it('is not named when its turn completes without echoing it: the send stays pending', async () => {
+    const rig = await turnEndRig()
+    const release = rig.turns.holdNextAnswer()
+    const sending = rig.send('client-1')
+    await vi.waitFor(() => expect(rig.turns.turnId).toBe('turn-1'))
+    rig.turns.start()
+    rig.turns.end('completed')
+    release()
+
+    await expect(sending).resolves.toEqual({ state: 'admitted' })
+    await rig.sendAndOpen('client-2')
+    rig.turns.end('completed')
     expect(rig.settlements).toEqual([])
   })
 })

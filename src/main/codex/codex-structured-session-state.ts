@@ -84,7 +84,10 @@ export type CodexStructuredSessionAdapterDeps = {
   onDispatchSettledLate?: (
     input: { sessionId: string; clientMessageId: string } & (
       | { providerIdentity: AgentJournalItemIdentity }
-      | ({ state: 'rejected' } & AgentJournalDispatchRejection)
+      | ({
+          state: 'rejected'
+          answeredInTurn: AgentJournalItemIdentity
+        } & AgentJournalDispatchRejection)
     )
   ) => void
   /** Codex reported its thread not running with no turn open: a send whose

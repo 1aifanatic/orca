@@ -1,6 +1,7 @@
 // Each submission carries where the journal wrote its row. A rejected send's own row moves to its
 // rejection, so this is the only journal-order record of where it was sent. Derived on every fold: a
-// replay of the same rows gives the same value, and a history page carries it.
+// replay of the same rows gives the same value, and a history page carries it. A rejection a turn's
+// end made also names that turn.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -8,7 +9,10 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
-import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
+import {
+  agentJournalItemKey,
+  agentJournalSubmissionKey
+} from '../../../shared/agent-session-journal-item-key'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
   type AgentJournalMessageItem,
@@ -68,6 +72,61 @@ async function sendHandedOverThenWithdrawn() {
   })
   return { journal, submitted, handedOver, pending, withdrawn }
 }
+
+const TURN = {
+  provider: 'legacy',
+  agent: 'codex',
+  sessionId: 'session-1',
+  recordId: 'turn-lifecycle:turn-1'
+} as const
+
+/** A send its turn ended without taking: the rejection names that turn. */
+async function sendWithdrawnByItsTurnEnd() {
+  root = await mkdtemp(join(tmpdir(), 'orca-submission-positions-'))
+  const journal = await journals.open({ identity: IDENTITY, stateDirectory: root })
+  await journal.appendSubmission({
+    clientMessageId: 'send-1',
+    payloadFingerprint: 'send-1',
+    body: BODY,
+    fence: 1
+  })
+  await journal.resolveDispatch({
+    clientMessageId: 'send-1',
+    state: 'rejected',
+    ...agentSessionFailureWords(agentSessionFailureFact('cancelled'), { surface: 'rejection' }),
+    answeredInTurn: TURN,
+    fence: 1
+  })
+  return journal
+}
+
+describe('the turn a rejected submission was answered into', () => {
+  it('is the turn record its rejection named, on the snapshot, a replay, and the page', async () => {
+    const journal = await sendWithdrawnByItsTurnEnd()
+    const turnItemId = agentJournalItemKey(TURN)
+
+    expect(journal.submission('send-1')).toMatchObject({
+      dispatchState: 'rejected',
+      answeredInTurnItemId: turnItemId
+    })
+    expect(readAgentSessionHydrationPage(journal).submissions).toEqual([
+      expect.objectContaining({ answeredInTurnItemId: turnItemId })
+    ])
+    await journals.closeAll()
+    const replayed = await journals.open({ identity: IDENTITY, stateDirectory: root! })
+    expect(replayed.submission('send-1')).toMatchObject({ answeredInTurnItemId: turnItemId })
+  })
+
+  it('is absent on a take-back that names no turn, as on rows from older hosts', async () => {
+    const { journal } = await sendHandedOverThenWithdrawn()
+
+    expect(journal.submission('send-1')).toMatchObject({ dispatchState: 'rejected' })
+    expect(journal.submission('send-1')).not.toHaveProperty('answeredInTurnItemId')
+    expect(readAgentSessionHydrationPage(journal).submissions[0]).not.toHaveProperty(
+      'answeredInTurnItemId'
+    )
+  })
+})
 
 describe("a submission's journal position", () => {
   it('is its own row, which a take-back does not move', async () => {
