@@ -37,7 +37,7 @@ export type StructuredAgentSessionStopWindDown = {
 export async function endStoppedStructuredAgentSession(
   ctx: Pick<AgentSessionTurnContext, 'sessionId' | 'adapter' | 'journal' | 'fence'>,
   windDown: StructuredAgentSessionStopWindDown,
-  stopChild: () => Promise<void>,
+  stopChild: (settlesStopNote: AgentJournalItemIdentity) => Promise<void>,
   onError: (error: unknown) => void
 ): Promise<void> {
   let failedOn: JournalStopFailedOn | undefined
@@ -45,7 +45,7 @@ export async function endStoppedStructuredAgentSession(
     if (windDown.waitsForProvider) {
       await ctx.adapter.awaitStoppedRequestEnd?.(ctx.sessionId, windDown.stoppedAt)
     }
-    await stopChild()
+    await stopChild(windDown.stopNote)
   } catch (error) {
     onError(error)
     failedOn = structuredAgentSessionFailedStopMark(ctx.journal)

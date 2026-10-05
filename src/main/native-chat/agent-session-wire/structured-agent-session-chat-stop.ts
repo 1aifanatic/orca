@@ -17,6 +17,7 @@ import {
   mutateStructuredAgentSession,
   type StructuredAgentSessionMutationContext
 } from './structured-agent-session-mutation-context'
+import type { AgentJournalItemIdentity } from '../../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
 import {
@@ -61,7 +62,11 @@ export function mutateWithChatStop<TValue>(
   let eventAfterEnd: Promise<void> | undefined
   const named = turnId !== undefined ? { turnId } : {}
   // Its own step wrote the Stop's event first.
-  const stopChild = () => context.stopAgent(sessionId, { recorded: 'user-stop' })
+  const stopChild = (settlesStopNote?: AgentJournalItemIdentity) =>
+    context.stopAgent(sessionId, {
+      recorded: 'user-stop',
+      ...(settlesStopNote ? { settlesStopNote } : {})
+    })
   // The same for every client: once the Stop takes effect its event is written, and the queue's
   // pause follows from it. The cards stay published; no text rides the answer.
   const stop = (ctx: AgentSessionTurnContext): Promise<ChatStopOutcome> =>

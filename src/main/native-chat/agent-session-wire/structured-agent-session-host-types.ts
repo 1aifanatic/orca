@@ -1,6 +1,9 @@
 import type { SubmissionRejectionFact } from '../../../shared/agent-session-failure'
 import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
-import type { AgentJournalCursor } from '../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalCursor,
+  AgentJournalItemIdentity
+} from '../../../shared/agent-session-journal-types'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type {
   AgentSessionStatusSummary,
@@ -56,6 +59,9 @@ export type StructuredAgentSessionChildClose = {
   /** Where the journal stood when that stop was asked for: the child's end is ordered there, so a
    *  message accepted while the exit was being proven came after it. A repeated ask moves it. */
   requestedAt: AgentJournalCursor
+  /** The note of the session-ending Stop this close carries out. Once the exit is proven the work
+   *  ended, so a note an unproven attempt left unconfirmed says the Stop took. */
+  readonly settlesStopNote?: AgentJournalItemIdentity
 }
 
 /** The provider process behind a conversation. Written only in

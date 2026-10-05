@@ -424,7 +424,7 @@ describe('a Stop whose provider ends its session', () => {
     expect(status()).toMatchObject({ status: 'working', stopping: true })
   })
 
-  it("says the Stop went unconfirmed once the child's end fails, and the next Stop retries it", async () => {
+  it("says the Stop went unconfirmed once the child's end fails, and that it took once the next Stop's joined close proves the exit", async () => {
     const { status } = await runningTurn({ stopEndsSession: true })
     rig.closeSession.mockRejectedValueOnce(new Error('the kill timed out'))
 
@@ -434,13 +434,51 @@ describe('a Stop whose provider ends its session', () => {
     // Still the person's Stop while the work runs on: Stop stays enabled for the retry.
     expect(status()).toMatchObject({ status: 'working', stopping: true })
 
-    // The retry's child end is held, so the status can be read while it runs.
+    // The retry's child end is held, so the status can be read while it runs. The retry joins the
+    // child's close, which runs the stop again since the last one came back unproven.
     const retried = Promise.withResolvers<boolean>()
     rig.closeSession.mockImplementationOnce(() => retried.promise)
-    expect(await rig.stop()).toMatchObject({ ok: true })
+    const retry = rig.stop()
     await eventually(() => expect(rig.closeSession).toHaveBeenCalledTimes(2))
-    expect(stopAnswers()).toEqual(['took'])
     expect(status()).toMatchObject({ status: 'working', stopping: true })
     retried.resolve(true)
+    expect(await retry).toMatchObject({ ok: true })
+    expect(stopAnswers()).toEqual(['took'])
+  })
+
+  it('keeps the note unconfirmed when the next Stop joins a close that fails again', async () => {
+    const { status } = await runningTurn({ stopEndsSession: true })
+    rig.closeSession.mockRejectedValueOnce(new Error('the kill timed out'))
+    expect(await rig.stop()).toMatchObject({ ok: true })
+    await eventually(() => expect(stopAnswers()).toEqual(['cancelUnconfirmed']))
+
+    rig.closeSession.mockRejectedValueOnce(new Error('the kill timed out again'))
+    expect(await rig.stop()).toMatchObject({ ok: true })
+
+    expect(rig.closeSession).toHaveBeenCalledTimes(2)
+    expect(stopAnswers()).toEqual(['cancelUnconfirmed'])
+    expect(status()).toMatchObject({ status: 'working', stopping: true })
+  })
+
+  // The close lives on the child, in memory, and dies with the host. The new host cannot prove the
+  // old process exited either, so the turn reads unverifiable and the note's "unconfirmed" stays true.
+  it('leaves the note unconfirmed across a host crash, beside a turn that reads unverifiable', async () => {
+    await runningTurn({ stopEndsSession: true })
+    rig.closeSession.mockRejectedValueOnce(new Error('the kill timed out'))
+    expect(await rig.stop()).toMatchObject({ ok: true })
+    await eventually(() => expect(stopAnswers()).toEqual(['cancelUnconfirmed']))
+
+    rig.crashRestartHostProcess()
+    await rig.queuePause()
+
+    const turnState = journal()
+      .snapshot()
+      .items.flatMap((item) =>
+        item.body.kind === 'turn' && item.body.turnId === 'turn-1' ? [item.body.state] : []
+      )
+    expect({ notes: stopAnswers(), turn: turnState }).toEqual({
+      notes: ['cancelUnconfirmed'],
+      turn: ['unverifiable']
+    })
   })
 })

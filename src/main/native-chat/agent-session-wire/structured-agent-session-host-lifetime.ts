@@ -117,7 +117,10 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
       cause,
       reason: ('reason' in ending ? ending.reason : undefined) ?? null,
       recorded,
-      requestedAt: session.journal.cursor()
+      requestedAt: session.journal.cursor(),
+      ...('settlesStopNote' in ending && ending.settlesStopNote
+        ? { settlesStopNote: ending.settlesStopNote }
+        : {})
     }
   } else if (child.close.cause === cause) {
     // The same stop asked again, such as a second close of the chat, closes what came since, and
