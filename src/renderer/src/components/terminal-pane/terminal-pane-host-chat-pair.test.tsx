@@ -252,13 +252,54 @@ describe('a paired desktop pane on a host-owned pair', () => {
     expect(effectivePair()).toEqual({ viewMode: 'chat', chatLeafId: C })
   })
 
-  it('claims an ownerless host chat for the active leaf through one fenced write', async () => {
+  it('shows an ownerless host chat on the active leaf without writing', async () => {
     hostSays({ viewMode: 'chat' })
-    renderPane()
+    const { hook } = renderPane()
+    await settle()
+    expect(hook.result.current.isChatViewMode).toBe(true)
+    expect(hook.result.current.chatLeafId).toBe(A)
+    expect(host.pairWrites()).toEqual([])
+    expect(storedPair()).toEqual({ row: 'chat', unified: 'chat', owner: undefined })
+    hostSays({ viewMode: 'chat', owner: B })
+    await settle()
+    expect(hook.result.current.chatLeafId).toBe(B)
+    hostSays({ viewMode: 'terminal' })
+    await settle()
+    expect(hook.result.current.isChatViewMode).toBe(false)
+    hostSays({ viewMode: 'chat' })
+    await settle()
+    expect(hook.result.current.chatLeafId).toBe(A)
+    expect(host.pairWrites()).toEqual([])
+  })
+
+  it('turns a confirmed agent exit on an ownerless host chat into one terminal write', async () => {
+    hostSays({ viewMode: 'chat' })
+    const { hook, onAgentExitedRef } = renderPane()
+    await settle()
+    act(() => onAgentExitedRef.current(A))
     await settle()
     expect(host.pairWrites().map((write) => [write.params.tabId, write.params.viewMode])).toEqual([
-      [`host-tab-1::${A}`, 'chat']
+      ['host-tab-1', 'terminal']
     ])
+    expect(hook.result.current.isChatViewMode).toBe(false)
+  })
+
+  it('keeps a click on the clicked leaf when the host answers with an ownerless chat', async () => {
+    // A headless host with no stored layout cannot hold an owner and answers every claim this way.
+    hostSays({ viewMode: 'chat' })
+    const { hook } = renderPane()
+    await settle()
+    act(() => hook.result.current.toggleNativeChatForLeaf(B))
+    await settle()
+    host.pairWrites()[0]!.resolve({
+      updated: true,
+      chatView: { viewMode: 'chat', chatLeafId: null }
+    })
+    await settle()
+    expect(useAppStore.getState().pendingChatPairByTabId).toEqual({})
+    expect(hook.result.current.isChatViewMode).toBe(true)
+    expect(hook.result.current.chatLeafId).toBe(B)
+    expect(host.pairWrites()).toHaveLength(1)
   })
 
   it('never lets a sibling claim chat whose present owner left the tree', async () => {

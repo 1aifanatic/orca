@@ -19,7 +19,10 @@ export type ChatPairWriteReply = {
 }
 
 export type ChatPairPendingDeps<Key> = {
-  /** Fixed for the client process; the host fences each writer's sequence numbers. */
+  /**
+   * New per client process, never persisted: sequences restart at 1 and the host keeps each
+   * writer's high-water mark for the tab's lifetime, so a reused id would be refused as stale.
+   */
   writerId: string
   keyId: (key: Key) => string
   /** The latest accepted host pair, or null once the parent tab is gone. */
