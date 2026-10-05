@@ -8,12 +8,6 @@
 // waiting reaches that handler as the adapter's report of the exit.
 
 import { refuse } from '../../../shared/agent-session-wire-refusals'
-import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
-import {
-  AGENT_JOURNAL_THREAD_SCOPE,
-  type AgentJournalTurnScope
-} from '../../../shared/agent-session-journal-types'
-import { STOP_NOTE_CANCELLATION_REQUESTED } from './structured-agent-session-turn-stop-notes'
 import type { AgentSessionWireRefusal } from '../../../shared/agent-session-wire'
 import type { StructuredAgentSessionLifetimeContext } from './structured-agent-session-host-lifetime'
 import type { StructuredAgentSessionProviderChild } from './structured-agent-session-host-types'
@@ -34,48 +28,9 @@ export async function joinStructuredAgentSessionChildClose(
   if (!(await closeProviderRoot(context, sessionId))) {
     return 'unverifiable'
   }
-  await settleStopNoteOnExit(context, sessionId, child).catch((error: unknown) =>
-    context.deps.logger.warn("revising a Stop's note after its agent exited failed", {
-      scope: 'stop-note-settle',
-      sessionId,
-      error
-    })
-  )
   await context.endExitedChild(sessionId, child, { expected: true, reason: 'closed by Orca' })
   context.restartWitness?.stopped(sessionId)
   return 'exited'
-}
-
-/** The exit is proven, so the work the close's Stop ended did end: a note an unproven attempt left
- *  unconfirmed says the Stop took. Bookkeeping: a failure is reported, never the exit's. */
-async function settleStopNoteOnExit(
-  context: StructuredAgentSessionLifetimeContext,
-  sessionId: string,
-  child: StructuredAgentSessionProviderChild
-): Promise<void> {
-  const note = child.close?.settlesStopNote
-  const journal = context.sessions.get(sessionId)?.journal
-  if (!note || !journal) {
-    return
-  }
-  const itemId = agentJournalItemKey(note)
-  let written: { unconfirmed: boolean; turnScope?: AgentJournalTurnScope } | undefined
-  journal.visitItemsWithLinkage((id, _sequence, body, linkage) => {
-    if (id === itemId) {
-      written = {
-        unconfirmed: body.kind === 'status' && body.failure?.kind === 'cancelUnconfirmed',
-        ...(linkage.turnScope ? { turnScope: linkage.turnScope } : {})
-      }
-    }
-  })
-  if (!written?.unconfirmed) {
-    return
-  }
-  await journal.appendItem(
-    note,
-    { kind: 'status', text: STOP_NOTE_CANCELLATION_REQUESTED },
-    { fence: child.fence, turnScope: written.turnScope ?? AGENT_JOURNAL_THREAD_SCOPE }
-  )
 }
 
 /** The refusal of an operation that met a child whose close is still unproven. */
