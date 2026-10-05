@@ -124,11 +124,8 @@ function journalDelta(
     supersedesMigrationId: plan.head.migrationId,
     // The whole source as it is now: what the retained rows must keep matching afterwards.
     sourceBaselineFingerprint: currentOrcadSourceFingerprint(args.store, args.target),
-    sourceStateFingerprint: currentOrcadSourceStateFingerprint(
-      args.store,
-      args.target,
-      plan.environmentId
-    ),
+    sourceStateFingerprint:
+      currentOrcadSourceStateFingerprint(args.store, args.target) ?? undefined,
     manifest: plan.manifest
   }
   writeOrcadMigrationSourceCutover(args.userDataPath, cutover)
@@ -225,11 +222,7 @@ export async function keepOrcadServerVersion(args: {
     ...head,
     sourceBaselineFingerprint: currentOrcadSourceFingerprint(args.store, args.target),
     // Keeping the server's version is the explicit reconcile: the source as it is now is the baseline.
-    sourceStateFingerprint: currentOrcadSourceStateFingerprint(
-      args.store,
-      args.target,
-      environmentId
-    )
+    sourceStateFingerprint: currentOrcadSourceStateFingerprint(args.store, args.target) ?? undefined
   })
   args.store.updateSshTarget(args.target.id, { orcadFence: { environmentId } })
   await args.claims.flush()

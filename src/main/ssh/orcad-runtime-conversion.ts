@@ -7,7 +7,6 @@
  * the same migration instead of starting another. The source stays authoritative until the
  * destination proves its commit, and only then is retired.
  */
-import { currentOrcadSourceStateFingerprint } from './orcad-retained-source-state'
 import { randomUUID } from 'node:crypto'
 import type { OrcadManagedConversionResult } from '../../shared/orcad-managed-runtime'
 import type { OrcadMigrationSourceCutover } from '../../shared/orcad-migration-source-cutover'
@@ -112,17 +111,7 @@ export async function convertSshTargetToManagedOrcad(
     committed.phase === 'destination-committed' &&
     !(args.retireSource ?? isOrcadSourceRetirementEnabled)()
   ) {
-    const source = targetStore.getOrcadMigrationSource()
-    const target = targetStore.getTarget(fenced.sshTargetId)
-    retainOrcadMigrationSource(
-      userDataPath,
-      committed.migrationId,
-      args.now,
-      target
-        ? () =>
-            currentOrcadSourceStateFingerprint(source, target, committed.destinationEnvironmentId)
-        : undefined
-    )
+    retainOrcadMigrationSource(userDataPath, committed.migrationId, args.now)
   } else {
     await runTargetLifecycle(fenced.sshTargetId, () =>
       retireOrcadMigrationSource(

@@ -185,10 +185,12 @@ export function compareRetainedOrcadSource(
   if (!head.sourceStateFingerprint?.startsWith(`${ORCAD_SOURCE_STATE_FINGERPRINT_VERSION}:`)) {
     return 'unverified'
   }
-  return currentOrcadSourceStateFingerprint(store, target, head.destinationEnvironmentId) ===
-    head.sourceStateFingerprint
-    ? 'unchanged'
-    : 'changed'
+  // Null: a session could not be read, so nothing proves the drafts it holds are unchanged.
+  const current = currentOrcadSourceStateFingerprint(store, target)
+  if (current === null) {
+    return 'unverified'
+  }
+  return current === head.sourceStateFingerprint ? 'unchanged' : 'changed'
 }
 
 /**

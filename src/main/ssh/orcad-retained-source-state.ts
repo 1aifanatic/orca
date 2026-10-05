@@ -10,7 +10,6 @@
  * a later build that changes this list read an older fingerprint as unverified, never as changed.
  */
 import { createHash } from 'node:crypto'
-import type { OrcadMigrationDormantStatePayload } from '../../shared/orcad-migration-manifest'
 import { serializeOrcadMigrationValue } from '../../shared/orcad-migration-manifest'
 import type { SshTarget } from '../../shared/ssh-types'
 import type { Store } from '../persistence'
@@ -18,37 +17,31 @@ import { collectOrcadMigrationSourceCatalog } from '../persistence/migrating-orc
 
 export type OrcadSourceStateStore = Pick<
   Store,
-  | 'collectOrcadMigrationSourceDormantState'
-  | 'getFolderWorkspaces'
-  | 'getProjectGroups'
-  | 'getRepos'
+  'inspectOrcadMigrationSourceState' | 'getFolderWorkspaces' | 'getProjectGroups' | 'getRepos'
 >
 
 export const ORCAD_SOURCE_STATE_FINGERPRINT_VERSION = 'v1'
 
-function drafts(dormantState: OrcadMigrationDormantStatePayload): unknown[] {
-  return Object.values(dormantState.workspaceSession?.openFilesByWorktree ?? {})
-    .flat()
-    .filter((file) => file.dirtyDraftContent !== undefined)
-    .map((file) => [file.worktreeId, file.filePath, file.dirtyDraftContent])
-}
-
-/** The whole retained source as it is now, so a delta's baseline covers every row still kept. */
+/**
+ * The whole retained source as it is now, so a delta's baseline covers every row still kept. Null
+ * when a session cannot be read: nothing proves the source unchanged, so it is never retired.
+ */
 export function currentOrcadSourceStateFingerprint(
   store: OrcadSourceStateStore,
-  target: Pick<SshTarget, 'id' | 'generation' | 'label'>,
-  destinationEnvironmentId?: string
-): string {
+  target: Pick<SshTarget, 'id' | 'generation' | 'label'>
+): string | null {
   const catalog = collectOrcadMigrationSourceCatalog(store, target)
-  const dormantState = store.collectOrcadMigrationSourceDormantState(
+  const view = store.inspectOrcadMigrationSourceState(
     {
       sshTargetId: target.id,
       sshTargetGeneration: target.generation ?? null,
       targetLabel: target.label
     },
-    catalog,
-    destinationEnvironmentId
+    catalog
   )
+  if (!view) {
+    return null
+  }
   const substantive = {
     repositories: catalog.repositories.map((repo) => [
       repo.id,
@@ -82,28 +75,7 @@ export function currentOrcadSourceStateFingerprint(
       group.parentGroupId,
       group.color
     ]),
-    worktrees: dormantState.worktreeMeta.map(({ worktreeId, meta }) => [
-      worktreeId,
-      meta.displayName,
-      meta.comment
-    ]),
-    drafts: drafts(dormantState),
-    automations: (dormantState.automations ?? []).map((automation) => [
-      automation.id,
-      automation.name,
-      automation.prompt,
-      automation.precheck,
-      automation.agentId,
-      automation.workspaceMode,
-      automation.workspaceId,
-      automation.baseBranch,
-      automation.timezone,
-      automation.rrule,
-      automation.dtstart,
-      automation.enabled,
-      automation.reuseSession,
-      automation.missedRunPolicy
-    ])
+    ...view
   }
   // Sorted: a build that only reorders rows or partitions has changed nothing a user wrote.
   const ordered = Object.fromEntries(

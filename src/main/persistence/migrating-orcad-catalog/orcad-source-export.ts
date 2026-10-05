@@ -21,6 +21,7 @@ import {
   type OrcadMigrationSourceDependencyCensus
 } from './orcad-source-dependency-census'
 import { collectOrcadMigrationSourceDormantState } from './orcad-source-dormant-state'
+import { collectOrcadSourceStateView, type OrcadSourceStateView } from './orcad-source-state-view'
 import { readOrcadMigrationSourceScrollbackChunk } from './orcad-source-scrollback-state'
 import {
   createOrcadMigrationDeltaView,
@@ -55,6 +56,14 @@ export class OrcadSourceExportPersistence {
       runtime.terminalScrollbackSnapshotStorage,
       destinationEnvironmentId
     ).payload
+  }
+
+  /** What a user wrote in the retained source, movable or not; null when a session is unreadable. */
+  inspectOrcadMigrationSourceState(
+    source: OrcadMigrationManifestSource,
+    catalog: OrcadMigrationCatalogPayload
+  ): OrcadSourceStateView | null {
+    return collectOrcadSourceStateView(this[orcadSourceExportContext].state, source, catalog)
   }
 
   /** A copy of the source with `moved` retired from it, for a delta move. */
