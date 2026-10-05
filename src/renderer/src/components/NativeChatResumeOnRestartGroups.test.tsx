@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { useAppStore } from '../store'
 import { getDefaultSettings } from '../../../shared/constants'
+import type { ExecutionHostId } from '../../../shared/execution-host'
 import type { Worktree } from '../../../shared/worktree/types'
 import { ResumeOnRestartGroups } from './NativeChatResumeOnRestartGroups'
 import { TooltipProvider } from './ui/tooltip'
@@ -38,10 +39,6 @@ function worktree(name: string, overrides: Partial<Worktree> = {}): Worktree {
   }
 }
 
-// An older parent whose metadata carries no host, as the sidebar still nests children under.
-const parent = worktree('parent')
-const child = worktree('child', { hostId: 'local' })
-
 function candidate(sessionId: string, workspace: Worktree): ResumeCandidate {
   return {
     sessionId,
@@ -55,13 +52,17 @@ function candidate(sessionId: string, workspace: Worktree): ResumeCandidate {
   }
 }
 
-const candidates = [
-  candidate('in-child', child),
-  candidate('in-parent', parent),
-  candidate('also-in-child', child)
-]
-
-function render(newCardStyle: boolean): void {
+function render(
+  newCardStyle: boolean,
+  hosts: { parent?: ExecutionHostId; child?: ExecutionHostId } = { parent: 'local', child: 'local' }
+): void {
+  const parent = worktree('parent', { hostId: hosts.parent })
+  const child = worktree('child', { hostId: hosts.child })
+  const candidates = [
+    candidate('in-child', child),
+    candidate('in-parent', parent),
+    candidate('also-in-child', child)
+  ]
   useAppStore.setState({
     settings: { ...getDefaultSettings(''), experimentalNewWorktreeCardStyle: newCardStyle },
     repos: [
@@ -120,22 +121,52 @@ afterEach(() => {
   useAppStore.setState(useAppStore.getInitialState(), true)
 })
 
-for (const newCardStyle of [false, true]) {
-  it(`shows every offered chat inside its sidebar card, the child nested (${newCardStyle ? 'new' : 'legacy'} cards)`, () => {
-    render(newCardStyle)
-
-    const checkboxes = [...container.querySelectorAll('[role="checkbox"]')]
-    expect(checkboxes.map((box) => box.getAttribute('aria-checked'))).toEqual([
-      'true',
-      'true',
-      'true'
-    ])
-    const parentCard = cardTitled('parent')
-    const childCard = cardTitled('child')
-    expect(parentCard.contains(childCard)).toBe(true)
-    expect(childCard.textContent).toContain('Prompt in-child')
-    expect(childCard.textContent).toContain('Prompt also-in-child')
-    // Why: a legacy child sits one sidebar step (14px) in, as its own lineage depth puts it there.
-    expect(childCard.parentElement?.style.paddingLeft ?? '').toBe(newCardStyle ? '' : '14px')
-  })
+function checkedBoxes(): (string | null)[] {
+  return [...container.querySelectorAll('[role="checkbox"]')].map((box) =>
+    box.getAttribute('aria-checked')
+  )
 }
+
+// Why: the sidebar nests a child only under a parent on its own host; no host id matches only none.
+it.each([
+  ['both local', 'local', 'local', true],
+  ['neither with a host id', undefined, undefined, true],
+  ['parent without a host id, child local', undefined, 'local', false],
+  ['parent local, child without a host id', 'local', undefined, false]
+] as const)(
+  '%s: nests the child exactly as the sidebar does',
+  (_, parentHost, childHost, nests) => {
+    render(false, { parent: parentHost, child: childHost })
+
+    expect(checkedBoxes()).toEqual(['true', 'true', 'true'])
+    expect(cardTitled('parent').contains(cardTitled('child'))).toBe(nests)
+    expect(cardTitled('child').textContent).toContain('Prompt in-child')
+    expect(cardTitled('child').textContent).toContain('Prompt also-in-child')
+  }
+)
+
+// Title step, child minus parent = list margin + wrapper inset + 7px (ml-1, border, padding). The
+// sidebar's legacy cards add their 22px status lane and outdent the list 18px: -18 + 14 + 7 + 22 =
+// 25px. A status-free card keeps 25px with an ml-1 list: 4 + 14 + 7.
+it('steps a legacy child in as far as the sidebar does, with no status lane', () => {
+  render(false)
+
+  const childCard = cardTitled('child')
+  const wrapper = childCard.parentElement
+  expect(container.querySelector('[data-worktree-card-status-slot]')).toBeNull()
+  expect(wrapper?.style.paddingLeft).toBe('14px')
+  expect(wrapper?.parentElement?.className).toContain('ml-1')
+  expect(wrapper?.parentElement?.className).not.toContain('-ml-')
+})
+
+it('keeps the new card style geometry', () => {
+  render(true)
+
+  const childCard = cardTitled('child')
+  expect(checkedBoxes()).toEqual(['true', 'true', 'true'])
+  expect(cardTitled('parent').contains(childCard)).toBe(true)
+  expect(childCard.parentElement?.style.paddingLeft).toBe('')
+  expect(childCard.closest<HTMLElement>('[data-worktree-lineage-children]')?.style.marginLeft).toBe(
+    '14px'
+  )
+})

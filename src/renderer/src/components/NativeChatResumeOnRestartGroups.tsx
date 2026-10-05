@@ -7,8 +7,19 @@ import {
   getLineageChildrenInlineStyle,
   getLineageNestedRowGeometry
 } from '@/components/sidebar/worktree-list/rows/indentation'
-import { getWorktreeLineageAncestorsOnHost } from '@/components/sidebar/worktree-lineage-projection'
-import { getAllWorktreesFromState } from '@/store/selectors'
+import {
+  getCyclicProjectedWorktreeLineageIds,
+  getSidebarLineageAncestors
+} from '@/components/sidebar/worktree-lineage-projection'
+import {
+  getAllWorktreesFromState,
+  getWorktreeMapFromState,
+  getWorktreeOnHostFromState
+} from '@/store/selectors'
+import {
+  composeWorktreeHostIdentity,
+  getWorktreeHostIdentity
+} from '../../../shared/worktree/host-qualified-identity'
 import { getHostContextLabel } from '../../../shared/worktree/host-context-labels'
 import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from '../../../shared/execution-host'
 import type { AgentSessionWorkspaceKind } from '../../../shared/agent-session-record'
@@ -33,7 +44,7 @@ export type { ResumeCandidate } from './native-chat-resume-on-restart-grouping'
  * The offered chats in the sidebar's three tiers: repo/project, then workspace, then agent sessions.
  *
  * Each workspace IS the sidebar's own `WorktreeCard`, rendered read-only, so the user recognizes it
- * exactly as they know it — title, status, branch, PR and host as their sidebar settings show them —
+ * exactly as they know it — title, branch, PR and host as their sidebar settings show them —
  * with the offered chats in place of its live agent rows. Child workspaces nest under a listed
  * parent the way the sidebar nests them.
  *
@@ -75,24 +86,38 @@ function useRepoIdByWorkspace(
   }
 }
 
-/** Each workspace's lineage ancestors, nearest first, on its own host as the sidebar nests them. */
+/** Each workspace's lineage ancestors, nearest first, by the sidebar's own nesting rule. */
 function useLineageAncestors(
   workspaces: readonly ResumeWorkspaceGroup[]
 ): (workspaceId: string) => readonly string[] {
   const worktreesByRepo = useAppStore((store) => store.worktreesByRepo)
   const worktreeLineageById = useAppStore((store) => store.worktreeLineageById)
   const ancestors = useMemo(() => {
-    const all = getAllWorktreesFromState({ worktreesByRepo })
+    const state = { worktreesByRepo }
+    // Why: archived rows never render in the sidebar, so nothing nests under them.
+    const rows = new Map(
+      getAllWorktreesFromState(state)
+        .filter((worktree) => !worktree.isArchived)
+        .map((worktree) => [getWorktreeHostIdentity(worktree), worktree])
+    )
+    const cyclic = getCyclicProjectedWorktreeLineageIds(
+      worktreeLineageById,
+      getWorktreeMapFromState(state)
+    )
     return new Map(
-      workspaces.map((group) => [
-        group.workspaceId,
-        getWorktreeLineageAncestorsOnHost(
-          group.workspaceId,
-          all,
-          worktreeLineageById,
-          group.candidates[0]?.executionHostId
-        ).map((parent) => parent.id)
-      ])
+      workspaces.map((group) => {
+        // Why: a row with no host id (older metadata) is still the chat's workspace.
+        const target =
+          getWorktreeOnHostFromState(
+            state,
+            group.workspaceId,
+            group.candidates[0]?.executionHostId
+          ) ?? rows.get(composeWorktreeHostIdentity(undefined, group.workspaceId))
+        const parents = target
+          ? getSidebarLineageAncestors(target, worktreeLineageById, rows, cyclic)
+          : []
+        return [group.workspaceId, parents.map((parent) => parent.id)]
+      })
     )
   }, [workspaces, worktreesByRepo, worktreeLineageById])
   return (workspaceId) => ancestors.get(workspaceId) ?? []
