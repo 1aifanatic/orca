@@ -1,6 +1,7 @@
 import type { SpawnOptions as ClaudeAgentSdkSpawnOptions } from '@anthropic-ai/claude-agent-sdk'
 import { spawnProcess } from '../../shared/child-process/run-process'
 import { createProviderSpawnSpec } from '../codex/codex-app-server-posix-supervisor'
+import { CLAUDE_CODE_CLOSE_REQUEST } from './claude-child-exit-proof-ladder'
 
 /** Derived rather than imported: only src/shared/child-process may name node:child_process. */
 type ClaudeCodeChild = ReturnType<typeof spawnProcess>
@@ -58,7 +59,9 @@ export function createClaudeCodeProcessSpawn(
           ...(options.cwd === undefined ? {} : { cwd: options.cwd })
         },
         definedEnv(options.env),
-        platform
+        platform,
+        // A gone Orca closes Claude the way Orca's own close does.
+        { closeRequest: CLAUDE_CODE_CLOSE_REQUEST }
       )
       // Why `options.signal` is dropped: it would let the SDK kill the child outside
       // Orca's ladder, and close() may never report an exit it did not observe.

@@ -39,6 +39,7 @@ describe('structured provider supervision', () => {
         cwd: '/work/repo',
         ownerPid: process.pid,
         lifetime: 'session',
+        closeRequest: 'stdin-end-and-sigterm',
         stdinEndGraceMs: PROVIDER_STDIN_END_GRACE_MS,
         sigtermGraceMs: PROVIDER_SIGTERM_GRACE_MS
       })

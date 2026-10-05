@@ -337,8 +337,8 @@ describe.runIf(process.platform !== 'win32')('POSIX provider supervisor processe
     owner.kill('SIGKILL')
 
     expect(await waitFor(() => !alive(-pids.provider), 3_000)).toBe(true)
-    // The provider ignores its stdin end, so its group lasts through the stdin-end grace.
-    expect(Date.now() - killedAt).toBeGreaterThanOrEqual(PROVIDER_STDIN_END_GRACE_MS - 20)
+    // Closed with SIGTERM at once; its SIGTERM-ignoring grandchild dies with the provider.
+    expect(Date.now() - killedAt).toBeLessThan(PROVIDER_STDIN_END_GRACE_MS)
     expect(await waitFor(() => !alive(pids.supervisor), 3_000)).toBe(true)
     expect(alive(pids.grandchild)).toBe(false)
   })
@@ -415,12 +415,33 @@ describe.runIf(process.platform !== 'win32')('POSIX provider supervisor processe
     expect(existsSync(signalFile) && readFileSync(signalFile, 'utf8')).toBe('SIGTERM')
   })
 
-  it('gives a session provider its stdin end and grace when its owner dies', async () => {
+  it('stops a session closed with SIGTERM at once when its owner dies', async () => {
+    const signalFile = join(tempDir(), 'provider-sigterm-at')
+    const { owner, pids } = await launchUnderOwner(
+      { sigtermGraceMs: 200 },
+      { ORCA_TEST_PROVIDER_SIGNAL_FILE: signalFile },
+      { script: RECORDS_SIGTERM_PROVIDER, pids: ['provider'] }
+    )
+
+    const killedAt = Date.now()
+    owner.kill('SIGKILL')
+
+    // Non-empty, not just present: a read between create and write would pass any bound.
+    const signalledAt = (): number =>
+      existsSync(signalFile) ? Number(readFileSync(signalFile, 'utf8')) : 0
+    expect(await waitFor(() => signalledAt() > 0, 3_000)).toBe(true)
+    // No unwatched stdin-end grace: the owner-death watch's 100 ms poll is the whole delay.
+    expect(signalledAt() - killedAt).toBeGreaterThanOrEqual(0)
+    expect(signalledAt() - killedAt).toBeLessThan(PROVIDER_STDIN_END_GRACE_MS / 2)
+    expect(await waitFor(() => !alive(-pids.provider), 3_000)).toBe(true)
+  })
+
+  it('gives a session closed by its stdin end that EOF and grace when its owner dies', async () => {
     const dir = tempDir()
     const signalFile = join(dir, 'provider-signal')
     const flushFile = join(dir, 'provider-flushed')
     const { owner, pids } = await launchUnderOwner(
-      {},
+      { closeRequest: 'stdin-end' },
       { ORCA_TEST_PROVIDER_SIGNAL_FILE: signalFile, ORCA_TEST_PROVIDER_FLUSH_FILE: flushFile },
       { script: FLUSHES_ON_STDIN_END_PROVIDER, pids: ['provider'] }
     )
@@ -433,11 +454,11 @@ describe.runIf(process.platform !== 'win32')('POSIX provider supervisor processe
     expect(existsSync(signalFile)).toBe(false)
   })
 
-  it('stops a session provider that ignores its stdin end once the grace after owner death ends', async () => {
+  it('stops a stdin-end session that ignores its EOF once the grace after owner death ends', async () => {
     const signalFile = join(tempDir(), 'provider-sigterm-at')
     const stdinEndGraceMs = 400
     const { owner, pids } = await launchUnderOwner(
-      { stdinEndGraceMs, sigtermGraceMs: 200 },
+      { closeRequest: 'stdin-end', stdinEndGraceMs, sigtermGraceMs: 200 },
       { ORCA_TEST_PROVIDER_SIGNAL_FILE: signalFile },
       { script: RECORDS_SIGTERM_PROVIDER, pids: ['provider'] }
     )

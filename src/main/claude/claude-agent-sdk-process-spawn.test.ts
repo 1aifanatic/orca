@@ -99,6 +99,7 @@ describe('claude agent SDK process spawn', () => {
         Buffer.from(String(spec.env?.ORCA_PROVIDER_SUPERVISOR_SPEC), 'base64').toString()
       )
       expect(supervisorSpec).toMatchObject({
+        closeRequest: 'stdin-end-and-sigterm',
         cwd: '/work/repo',
         ownerPid: globalThis.process.pid
       })
