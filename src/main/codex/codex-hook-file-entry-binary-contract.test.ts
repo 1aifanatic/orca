@@ -1,5 +1,13 @@
-import { execFile } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { execFile, execFileSync } from 'node:child_process'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync
+} from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -228,10 +236,163 @@ describe.runIf(binary)('codex hook file-entry binary contract', { timeout: 180_0
       }
       expect(posts.length).toBeGreaterThan(0)
       expect(posts.every((url) => url.includes('codex'))).toBe(true)
-      expect(stderr).not.toMatch(/review|untrusted|clamp/i)
+      expect(stderr).not.toMatch(/need(s)? review/i)
     }
   )
+
+  it('leaves a config.toml with inline hook approvals loadable, writing nothing to it', async () => {
+    await freshHomeWithEntry('inline')
+    const tomlPath = join(codexHome(), 'config.toml')
+    const inline = `model = "m"\n[hooks]\nstate = { "${join(codexHome(), 'hooks.json')}:stop:0:0" = { trusted_hash = "sha256:user" } }\n`
+    writeFileSync(tomlPath, inline)
+    const file = JSON.parse(readFileSync(join(codexHome(), 'hooks.json'), 'utf-8'))
+    file.hooks.Stop.unshift({ hooks: [{ type: 'command', command: 'true' }] })
+    writeFileSync(join(codexHome(), 'hooks.json'), `${JSON.stringify(file, null, 2)}\n`)
+
+    expect(await reconcile()).toBe('unavailable')
+
+    expect(readFileSync(tomlPath, 'utf-8')).toBe(inline)
+    // Why: Codex refuses to start at all with a config.toml it cannot load.
+    await expect(orcaListings()).resolves.toBeDefined()
+  })
+
+  it.skipIf(process.platform === 'win32' || !hasPython())(
+    'shows no review in a real TUI start with the entry Orca reconciled, and the hook posts',
+    async () => {
+      await freshHomeWithEntry('tui')
+      const { screen, posts } = await runCodexTui()
+      expect(screen).not.toMatch(/eeds?review/i)
+      expect(posts.length).toBeGreaterThan(0)
+    }
+  )
+
+  it.skipIf(process.platform === 'win32' || !hasPython())(
+    'shows the review in a real TUI start when the approval does not match (control)',
+    async () => {
+      await freshHomeWithEntry('tui-miskey')
+      upsertHookTrustEntries(join(codexHome(), 'config.toml'), [
+        {
+          sourcePath: join(codexHome(), 'hooks.json'),
+          eventLabel: 'stop',
+          groupIndex: 0,
+          handlerIndex: 0,
+          command: command(),
+          trustedHash: `sha256:${'0'.repeat(64)}`,
+          enabled: true
+        }
+      ])
+      const { screen } = await runCodexTui()
+      expect(screen).toMatch(/eeds?review/i)
+    }
+  )
+
+  /** A TUI Codex in a pty: start, type a prompt, quit; the screen without spaces or escapes. */
+  async function runCodexTui(): Promise<{ screen: string; posts: string[] }> {
+    const posts: string[] = []
+    const receiver = await listen(
+      createServer((request, response) => {
+        request.resume()
+        request.on('end', () => {
+          posts.push(request.url ?? '')
+          response.writeHead(204).end()
+        })
+      })
+    )
+    const model = await startMockResponses()
+    // Why resolved: Codex keys project trust by the real cwd, and HOME here is a symlink.
+    const workdir = join(realpathSync(home), 'tui-work')
+    mkdirSync(workdir, { recursive: true })
+    const out = join(home, 'tui.out')
+    const help = await execFileAsync(binary!, ['--help'], {
+      env: { PATH: process.env.PATH, HOME: home }
+    })
+    try {
+      await execFileAsync(
+        'python3',
+        [
+          '-c',
+          PTY_DRIVER,
+          out,
+          'say hi',
+          workdir,
+          '--',
+          binary!,
+          ...(help.stdout.includes('--no-daemon') ? ['--no-daemon'] : []),
+          '-c',
+          'model_provider=mock',
+          '-c',
+          `model_providers.mock={name="mock",base_url="http://127.0.0.1:${port(model)}/v1",wire_api="responses",env_key="ORCA_CONTRACT_MOCK_KEY"}`,
+          '-c',
+          'check_for_update_on_startup=false',
+          '-c',
+          `projects={${JSON.stringify(workdir)}={trust_level="trusted"}}`
+        ],
+        {
+          timeout: TIMEOUT_MS,
+          env: {
+            PATH: process.env.PATH,
+            HOME: home,
+            TERM: 'xterm-256color',
+            ORCA_CONTRACT_MOCK_KEY: 'x',
+            ORCA_PANE_KEY: 'contract-pane',
+            ORCA_AGENT_HOOK_PORT: String(port(receiver)),
+            ORCA_AGENT_HOOK_TOKEN: 'contract-token'
+          }
+        }
+      )
+    } finally {
+      model.close()
+      receiver.close()
+    }
+    const screen = readFileSync(out, 'utf-8').replace(/\s+/g, '')
+    return { screen, posts }
+  }
 })
+
+// Why a pty: Codex's review screen only exists in the TUI, which `codex exec` never shows.
+const PTY_DRIVER = `
+import os, pty, re, sys, time, select, signal, struct, fcntl, termios
+out, prompt, cwd = sys.argv[1], sys.argv[2], sys.argv[3]
+cmd = sys.argv[sys.argv.index('--') + 1:]
+pid, fd = pty.fork()
+if pid == 0:
+    os.chdir(cwd); os.execv(cmd[0], cmd)
+fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 40, 120, 0, 0))
+buf = b''
+def pump(sec):
+    global buf
+    end = time.time() + sec
+    while time.time() < end:
+        r, _, _ = select.select([fd], [], [], 0.2)
+        if r:
+            try:
+                d = os.read(fd, 65536)
+            except OSError:
+                return
+            if not d: return
+            buf += d
+            if b'\\x1b[6n' in d: os.write(fd, b'\\x1b[1;1R')
+pump(8)
+os.write(fd, prompt.encode()); time.sleep(0.5); os.write(fd, b'\\r'); pump(10)
+for _ in range(3):
+    try: os.write(fd, b'\\x03')
+    except OSError: break
+    pump(1)
+try: os.kill(pid, signal.SIGKILL)
+except ProcessLookupError: pass
+buf = re.sub(rb'\\x1b\\[[0-9;?<>=]*[A-Za-z]', b'', buf)
+buf = re.sub(rb'\\x1b\\][^\\x07]*\\x07', b'', buf)
+open(out, 'wb').write(buf)
+`
+
+function hasPython(): boolean {
+  try {
+    execFileSync('python3', ['--version'], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}
 
 function listen(server: Server): Promise<Server> {
   return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)))

@@ -170,6 +170,8 @@ describe('per-job path classification', () => {
     for (const file of [
       'src/main/codex/codex-hook-trust-derivation.ts',
       'src/main/codex/codex-real-home-hook-install.ts',
+      'src/main/codex/config-toml-hook-trust-edit.ts',
+      'src/main/codex-cli/codex-read-only-app-server-args.ts',
       'src/main/codex/codex-app-server-capability-signal.ts',
       'src/main/codex/codex-process-exit-deadline.ts',
       'src/main/codex/codex-session-backfill.ts',
