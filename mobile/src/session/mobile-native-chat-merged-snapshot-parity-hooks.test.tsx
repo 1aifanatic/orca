@@ -1,8 +1,9 @@
 // The phone's own hooks: a phone that sent the never-opened send itself, holding its echo, and
 // reading the host's Stopping from the status feed, must show the same list after every frame as a
-// phone that opened the chat fresh at that frame, and the stop row from the frame that took the
-// send back. Not covered: the view (MobileNativeChatView, its memos, the FlatList and its rows),
-// the controller, lane and overlay wiring, and a transport that reconnects and resubscribes.
+// phone that opened the chat fresh at that frame; and the real overlay and chat view must hand the
+// FlatList the stop row from the frame that took the send back. Not covered: the row components and
+// native rendering, the controller and lane that build the overlay's inputs, and a transport that
+// reconnects and resubscribes.
 
 import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
@@ -12,6 +13,7 @@ import type {
   AgentSessionSubscribeEvent
 } from '../../../src/shared/agent-session-wire'
 import type { RpcClient } from '../transport/rpc-client'
+import { MobileNativeChatOverlay } from './MobileNativeChatOverlay'
 import {
   buildMobileNativeChatTransientData,
   foldMobileNativeChatMessages
@@ -23,13 +25,66 @@ import {
 } from './mobile-native-chat-stop-journal.test-fixture'
 import { useMobileNativeChatDrafts } from './use-mobile-native-chat-drafts'
 import { useMobileNativeChatTurnDisclosure } from './use-mobile-native-chat-turn-disclosure'
+import type { MobileNativeChatController } from './use-mobile-native-chat-controller'
 import { useMobileStructuredAgentSession } from './use-mobile-structured-agent-session'
 
 vi.mock('@react-native-async-storage/async-storage', () => ({
   default: { getItem: vi.fn(async () => null), setItem: vi.fn(), removeItem: vi.fn() }
 }))
+// The chat view's own test mocks: the FlatList is a host element whose `data` the test reads.
+vi.mock('react-native', async () => {
+  const React = await import('react')
+  return {
+    ActivityIndicator: 'ActivityIndicator',
+    FlatList: React.forwardRef((props, ref) => {
+      React.useImperativeHandle(ref, () => ({ scrollToEnd: vi.fn(), scrollToOffset: vi.fn() }), [])
+      return React.createElement('FlatList', props)
+    }),
+    Pressable: 'Pressable',
+    StyleSheet: { create: (styles: unknown) => styles, hairlineWidth: 1, absoluteFillObject: {} },
+    Text: 'Text',
+    View: 'View'
+  }
+})
+vi.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 })
+}))
+vi.mock('react-native-gesture-handler', () => {
+  const chain = { runOnJS: () => chain, onStart: () => chain, onUpdate: () => chain }
+  return {
+    Gesture: { Simultaneous: () => ({}), Native: () => ({}), Pinch: () => chain },
+    GestureDetector: 'GestureDetector',
+    GestureHandlerRootView: 'GestureHandlerRootView'
+  }
+})
+vi.mock('lucide-react-native', () => ({
+  ArrowDown: 'ArrowDown',
+  ChevronsDownUp: 'ChevronsDownUp',
+  ChevronsUpDown: 'ChevronsUpDown',
+  Square: 'Square'
+}))
+vi.mock('./MobileNativeChatMessage', () => ({ MobileNativeChatMessage: 'ChatMessage' }))
+vi.mock('./MobileNativeChatTurnStatus', () => ({ MobileNativeChatTurnActivity: 'LiveStatus' }))
+vi.mock('./MobileNativeChatComposer', () => ({ MobileNativeChatComposer: 'Composer' }))
+vi.mock('./MobileNativeChatQueuedMessages', () => ({ MobileNativeChatQueuedMessages: 'Queued' }))
+vi.mock('../components/ActionSheetModal', () => ({ ActionSheetModal: 'ActionSheetModal' }))
+vi.mock('./MobileNativeChatAsk', () => ({ MobileNativeChatAsk: 'ChatAsk' }))
+vi.mock('./MobileNativeChatPermission', () => ({ MobileNativeChatPermission: 'ChatPermission' }))
+vi.mock('./MobileNativeChatQuestion', () => ({ MobileNativeChatQuestion: 'ChatQuestion' }))
+vi.mock('./MobileAgentWorkingIndicator', () => ({
+  MobileAgentWorkingIndicator: 'WorkingIndicator'
+}))
 
 const STOP_ROW = `stopped-before-start:orca:${NEVER_OPENED}`
+
+// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the overlay reads only these members of the image attachments, none of which this test exercises.
+const OVERLAY_IMAGES = {
+  sendNativeChat: async () => true,
+  attachImage: async () => {},
+  attachments: [],
+  removeAttachment: () => {},
+  isAttaching: false
+} as unknown as Parameters<typeof MobileNativeChatOverlay>[0]['images']
 
 const HOST_SUPPORT = {
   promptCancel: true,
@@ -46,7 +101,7 @@ type Phone = {
   /** The phone's own send of the never-opened message, answered before its row streams in. */
   send: () => void
   read: () => string
-  /** The ids the list shows. */
+  /** The ids the overlay's chat view hands its FlatList. */
   listed: () => string[]
 }
 
@@ -81,9 +136,8 @@ async function mountPhone(): Promise<Phone> {
   let latest: {
     drafts: ReturnType<typeof useMobileNativeChatDrafts>
     shown: string
-    listed: string[]
   } | null = null
-  function Harness(): null {
+  function Harness(): ReturnType<typeof createElement> {
     const session = useMobileStructuredAgentSession({
       client,
       sessionId: STOP_JOURNAL_SESSION,
@@ -126,7 +180,6 @@ async function mountPhone(): Promise<Phone> {
       turns.active === null ? 'none' : turns.active.workedSeconds === null ? 'live' : 'worked'
     latest = {
       drafts,
-      listed: turns.listMessages.map((row) => row.id),
       shown: JSON.stringify({
         working: session.isWorking,
         stopping: session.turnIndicator.stopping,
@@ -142,7 +195,43 @@ async function mountPhone(): Promise<Phone> {
         active
       })
     }
-    return null
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the overlay reads only these controller members, which the controller builds from the same two hooks.
+    const controller = {
+      showNativeChat: true,
+      nativeChatSession: session.session,
+      nativeChatAgent: 'codex',
+      nativeChatAgentWorking: session.isWorking,
+      nativeChatCanStop: false,
+      nativeChatStructured: true,
+      nativeChatTurnIndicator: session.turnIndicator,
+      nativeChatWorkingStartedAt: session.workingStartedAt,
+      nativeChatSettledTurns: session.settledTurns,
+      nativeChatTurnJournal: session.turnJournal,
+      nativeChatStreamLive: session.isWorking,
+      nativeChatStreamScopeKey: 'host\0workspace\0tab',
+      chatPending: drafts.pending,
+      chatImagePreviewsByMessageId: drafts.imagePreviewsByMessageId,
+      chatComposerText: drafts.composerText,
+      setChatComposerText: drafts.setComposerText,
+      getChatComposerEditGeneration: drafts.getComposerEditGeneration,
+      nativeChatQueued: session.queued
+    } as unknown as MobileNativeChatController
+    return createElement(MobileNativeChatOverlay, {
+      controller,
+      onOpenFile: () => {},
+      images: OVERLAY_IMAGES,
+      onMicPress: () => {},
+      micActive: false,
+      dictationMode: 'toggle',
+      onMicPressIn: () => {},
+      onMicPressOut: () => {},
+      inputLockReason: null,
+      sendErrorMessage: null,
+      onClearSendError: () => {},
+      sendSurfaceId: 'host\0workspace\0tab',
+      getSendCompletionGeneration: () => 0,
+      keyboardInset: 0
+    })
   }
   let renderer: ReactTestRenderer | null = null
   await act(async () => {
@@ -175,7 +264,11 @@ async function mountPhone(): Promise<Phone> {
       act(() => latest!.drafts.acceptSend(origin, NEVER_OPENED))
     },
     read: () => latest!.shown,
-    listed: () => latest!.listed
+    listed: () => {
+      const data: unknown = renderer!.root.find((node) => String(node.type) === 'FlatList').props
+        .data
+      return Array.isArray(data) ? data.map((row: { id: string }) => row.id) : []
+    }
   }
 }
 
@@ -185,8 +278,13 @@ describe("the phone's hooks, from merged frames and from a fresh snapshot", () =
   const stoppingAt = (upTo: number): boolean =>
     journal.stopping.some((window) => upTo >= window.from && upTo <= window.until)
 
-  // Subscribed before the turn a send was made into while stopping, and just before the send.
-  it.each([journal.neverOpenedSent - 30, journal.neverOpenedSent - 1])(
+  const lastRemoval = journal.rows.findLast(
+    (row) => row.kind === 'tombstone' && row.stopEvent === undefined
+  )!.seq
+
+  // Subscribed before the history's last dropped status, before the turn a send was made into
+  // while stopping, and just before the send.
+  it.each([lastRemoval - 3, journal.neverOpenedSent - 30, journal.neverOpenedSent - 1])(
     'show the same list after every frame, subscribed at row %i',
     async (start) => {
       const live = await mountPhone()
