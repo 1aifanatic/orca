@@ -6,9 +6,9 @@ import { describe, expect, it } from 'vitest'
 import type { AgentJournalSubmission } from './agent-session-journal-types'
 import {
   createStructuredAgentSessionOutboxEntry,
-  reconcileStructuredAgentSessionOutbox,
   type StructuredAgentSessionOutboxEntry
 } from './structured-agent-session-outbox'
+import { reconcileStructuredAgentSessionOutbox } from './structured-agent-session-outbox-reconcile'
 import { admitStructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox-admission'
 import { disposeStructuredAgentSessionSendResult } from './structured-agent-session-send-disposition'
 
@@ -48,7 +48,7 @@ function unknown(
 
 function answered(
   submission: AgentJournalSubmission,
-  entries: StructuredAgentSessionOutboxEntry[]
+  entries: readonly StructuredAgentSessionOutboxEntry[]
 ) {
   return disposeStructuredAgentSessionSendResult({
     entries,
@@ -80,7 +80,8 @@ describe('a message the host records in doubt', () => {
   ])('leaves the outbox when the journal records it, %s', (_case, entryPatch, recorded) => {
     const outbox = reconcileStructuredAgentSessionOutbox(
       [entry('doubt', { lastAttemptAt: 2, ...entryPatch }), entry('next')],
-      [unknown('doubt', recorded)]
+      [unknown('doubt', recorded)],
+      []
     )
     expect(outbox.map((candidate) => candidate.clientMessageId)).toEqual(['next'])
     expect(admitStructuredAgentSessionOutboxEntry(outbox)).toEqual({
@@ -111,7 +112,9 @@ describe('a message the host records in doubt', () => {
   // A Retry asked of this very submission waits for the host's answer to it.
   it('stays while the user retries that same submission', () => {
     const retried = entry('doubt', { lastAttemptAt: 2, retryAfterUnknownSubmittedAt: 5 })
-    expect(reconcileStructuredAgentSessionOutbox([retried], [unknown('doubt')])).toEqual([retried])
+    expect(reconcileStructuredAgentSessionOutbox([retried], [unknown('doubt')], [])).toEqual([
+      retried
+    ])
   })
 })
 
@@ -120,7 +123,8 @@ describe('a message the host may never have received', () => {
     const outbox = reconcileStructuredAgentSessionOutbox(
       [entry('doubt', { state: 'unconfirmed', lastAttemptAt: 2 }), entry('next')],
       // Another message's row, or the window of rows loaded after this one's aged out.
-      [unknown('other')]
+      [unknown('other')],
+      []
     )
     expect(admitStructuredAgentSessionOutboxEntry(outbox)).toEqual({
       state: 'blocked',

@@ -9,7 +9,10 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
-import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalRenderItem,
+  AgentJournalSubmission
+} from '../../../../shared/agent-session-journal-types'
 
 const mocks = vi.hoisted(() => ({ call: vi.fn() }))
 
@@ -27,6 +30,7 @@ import { writeOutbox } from './structured-agent-session-outbox-storage'
 
 const SESSION = 'session-1'
 const LOCAL_TARGET = { kind: 'local' } as const
+const NO_JOURNAL_ITEMS: readonly AgentJournalRenderItem[] = []
 
 type SendRequest = { envelope?: { clientOperationId?: string } }
 type SentText = { body?: { blocks?: { text?: string }[] } }
@@ -131,6 +135,7 @@ describe('a queue saved behind a message the host holds in doubt', () => {
 
       const { result } = renderHook(() =>
         useStructuredAgentSessionOutbox({
+          journalItems: NO_JOURNAL_ITEMS,
           sessionId: SESSION,
           target: LOCAL_TARGET,
           fence: 1,
@@ -151,6 +156,7 @@ describe('a queue saved behind a message the host holds in doubt', () => {
     writeOutbox(SESSION, [saved('op-follow-up', { state: 'dispatching', lastAttemptAt: 2 })])
     const before = renderHook(() =>
       useStructuredAgentSessionOutbox({
+        journalItems: NO_JOURNAL_ITEMS,
         sessionId: SESSION,
         target: LOCAL_TARGET,
         fence: 1,
@@ -162,6 +168,7 @@ describe('a queue saved behind a message the host holds in doubt', () => {
 
     const after = renderHook(() =>
       useStructuredAgentSessionOutbox({
+        journalItems: NO_JOURNAL_ITEMS,
         sessionId: SESSION,
         target: LOCAL_TARGET,
         fence: 1,
@@ -182,6 +189,7 @@ describe('a queue saved behind a message the host holds in doubt', () => {
     ])
     const { result } = renderHook(() =>
       useStructuredAgentSessionOutbox({
+        journalItems: NO_JOURNAL_ITEMS,
         sessionId: SESSION,
         target: LOCAL_TARGET,
         fence: 1,
@@ -206,6 +214,7 @@ describe('a queue saved behind a message the host holds in doubt', () => {
 
     renderHook(() =>
       useStructuredAgentSessionOutbox({
+        journalItems: NO_JOURNAL_ITEMS,
         sessionId: SESSION,
         target: LOCAL_TARGET,
         fence: 1,
@@ -229,6 +238,7 @@ describe('a queue saved behind a message the host holds in doubt', () => {
     const { rerender } = renderHook(
       ({ submissions }: { submissions: readonly AgentJournalSubmission[] }) =>
         useStructuredAgentSessionOutbox({
+          journalItems: NO_JOURNAL_ITEMS,
           sessionId: SESSION,
           target: LOCAL_TARGET,
           fence: 1,
@@ -253,6 +263,7 @@ describe('a queue saved behind a message the host holds in doubt', () => {
     )
     const { result } = renderHook(() =>
       useStructuredAgentSessionOutbox({
+        journalItems: NO_JOURNAL_ITEMS,
         sessionId: SESSION,
         target: LOCAL_TARGET,
         fence: 1,
@@ -279,6 +290,7 @@ describe('a queue saved behind a message the host holds in doubt', () => {
     ])
     const { result } = renderHook(() =>
       useStructuredAgentSessionOutbox({
+        journalItems: NO_JOURNAL_ITEMS,
         sessionId: SESSION,
         target: LOCAL_TARGET,
         fence: 1,

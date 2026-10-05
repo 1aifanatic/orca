@@ -1,5 +1,6 @@
 // A message this client did not send — the host's own restart continuation, a phone's, an
-// orchestration worker's first — whose start failed for good still shows in the chat, saying why.
+// orchestration worker's first — whose start failed for good still shows in the chat, saying why:
+// on the desktop as any rejection drawn in place, on the phone by this rule alone.
 
 import { describe, expect, it, vi } from 'vitest'
 import {
@@ -14,11 +15,33 @@ import type {
 } from '../../../../shared/agent-session-journal-types'
 import type { SubmissionRejectionFact } from '../../../../shared/agent-session-failure'
 import { projectStructuredAgentSessionMessages } from '../../../../shared/structured-agent-session-message-projection'
-import {
-  createStructuredAgentSessionOutboxEntry,
-  reconcileStructuredAgentSessionOutbox
-} from '../../../../shared/structured-agent-session-outbox'
+import { createStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
+import { reconcileStructuredAgentSessionOutbox } from '../../../../shared/structured-agent-session-outbox-reconcile'
 import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
+
+const DESKTOP = { rejectedInPlace: true } as const
+/** The phone draws no other rejection in place: it hands its own back to its composer. */
+const PHONE = { rejectedInPlace: false, showsFailedStartsSentElsewhere: true } as const
+
+/** The desktop's notices, on a host that queues a message no agent took again. */
+function notices(
+  submissions: readonly AgentJournalSubmission[],
+  retry: (clientMessageId: string) => void,
+  retriesInPlace = true
+) {
+  return structuredAgentSessionDeliveryNotices(
+    [],
+    'Codex',
+    retry,
+    submissions,
+    [],
+    new Set(),
+    [],
+    new Set(),
+    [],
+    retriesInPlace
+  )
+}
 
 const ID = '1759312345678-0123456789abcdef0123456789abcdef'
 const KEY = agentJournalSubmissionKey(ID)
@@ -55,32 +78,27 @@ describe('a message sent from elsewhere whose start failed for good', () => {
     const submissions = [rejected(fact)]
     const retry = vi.fn()
 
-    expect(projectStructuredAgentSessionMessages([TEXT], [], submissions)).toEqual([
-      expect.objectContaining({ id: KEY, unsent: true })
-    ])
-    const notice = structuredAgentSessionDeliveryNotices(
-      [],
-      'Codex',
-      retry,
-      submissions,
-      [],
-      new Set()
-    ).get(KEY)
+    for (const options of [DESKTOP, PHONE]) {
+      expect(projectStructuredAgentSessionMessages([TEXT], [], submissions, options)).toEqual([
+        expect.objectContaining({ id: KEY, unsent: true })
+      ])
+    }
+    const notice = notices(submissions, retry).get(KEY)
     expect(notice?.text).toBe(why)
     notice?.onRetry?.()
     expect(retry).toHaveBeenCalledWith(ID)
   })
 
-  // An older host cannot queue it again, and its words alone would make it a second message; an
-  // original this desktop already sent again as a new one is one of these.
-  it('stays hidden where the host cannot queue it again, as before', () => {
+  // An older host cannot queue it again: the desktop shows it as any rejection, with no Retry, and
+  // the phone leaves it hidden, as before.
+  it('offers no Retry, and the phone hides it, where the host cannot queue it again', () => {
+    const submissions = [rejected({ kind: 'providerStartFailed' })]
+    expect(notices(submissions, vi.fn(), false).get(KEY)).not.toHaveProperty('onRetry')
     expect(
-      projectStructuredAgentSessionMessages(
-        [TEXT],
-        [],
-        [rejected({ kind: 'providerStartFailed' })],
-        { showsFailedStartsSentElsewhere: false }
-      )
+      projectStructuredAgentSessionMessages([TEXT], [], submissions, {
+        rejectedInPlace: false,
+        showsFailedStartsSentElsewhere: false
+      })
     ).toEqual([])
   })
 
@@ -98,20 +116,17 @@ describe('a message sent from elsewhere whose start failed for good', () => {
       ...fields
     })
     const shown = (submissions: AgentJournalSubmission[]) => ({
-      rows: projectStructuredAgentSessionMessages([TEXT], [], submissions).map((row) => row.id),
-      notice: structuredAgentSessionDeliveryNotices(
-        [],
-        'Codex',
-        vi.fn(),
-        submissions,
-        [],
-        new Set()
-      ).get(KEY)
+      rows: projectStructuredAgentSessionMessages([TEXT], [], submissions, DESKTOP).map(
+        (row) => row.id
+      ),
+      notice: notices(submissions, vi.fn()).get(KEY)
     })
 
     it.each([
       ['delivered', { dispatchState: 'accepted' }],
-      ['handed over', { dispatchState: 'pending', handedOverAt: 10 }]
+      ['handed over', { dispatchState: 'pending', handedOverAt: 10 }],
+      // The copy, sent once the rejection was known, is the one the chat shows as not sent.
+      ['rejected', { dispatchState: 'rejected', reason: 'no' }]
     ] as const)('is hidden, with no Retry, once that copy was %s', (_how, fields) => {
       expect(shown([rejected({ kind: 'providerStartFailed' }), copy(fields)])).toEqual({
         rows: [],
@@ -119,8 +134,19 @@ describe('a message sent from elsewhere whose start failed for good', () => {
       })
     })
 
+    it('still shows on the phone beside a copy that did not go through', () => {
+      const failedCopy = copy({ dispatchState: 'rejected', reason: 'no' })
+      expect(
+        projectStructuredAgentSessionMessages(
+          [TEXT],
+          [],
+          [rejected({ kind: 'providerStartFailed' }), failedCopy],
+          PHONE
+        ).map((row) => row.id)
+      ).toEqual([KEY])
+    })
+
     it.each([
-      ['a copy that did not go through', copy({ dispatchState: 'rejected', reason: 'no' })],
       [
         'other words that went through',
         copy({ dispatchState: 'accepted', payloadFingerprint: 'other' })
@@ -164,7 +190,7 @@ describe('a message sent from elsewhere whose start failed for good', () => {
     ]
 
     expect(
-      projectStructuredAgentSessionMessages(items, [], submissions).map((row) => row.id)
+      projectStructuredAgentSessionMessages(items, [], submissions, PHONE).map((row) => row.id)
     ).toEqual([
       agentJournalSubmissionKey('first'),
       'codex:first-answer',
@@ -176,7 +202,7 @@ describe('a message sent from elsewhere whose start failed for good', () => {
 
   it('stays hidden when it failed for anything but its start, as before', () => {
     expect(
-      projectStructuredAgentSessionMessages([TEXT], [], [rejected({ kind: 'queueFull' })])
+      projectStructuredAgentSessionMessages([TEXT], [], [rejected({ kind: 'queueFull' })], PHONE)
     ).toEqual([])
   })
 
@@ -184,21 +210,20 @@ describe('a message sent from elsewhere whose start failed for good', () => {
   it("is never drawn for a queued card's message, whose card shows it", () => {
     const card = { ...rejected({ kind: 'providerStartFailed' }), queuedMessageId: 'card-1' }
 
-    expect(projectStructuredAgentSessionMessages([TEXT], [], [card])).toEqual([])
+    for (const options of [DESKTOP, PHONE]) {
+      expect(projectStructuredAgentSessionMessages([TEXT], [], [card], options)).toEqual([])
+    }
   })
 
   // Only an older host's rows: a current one never keeps a failed start's hand-over. Its Retry can't
   // queue a message an agent already took; drawn with its own words and no Retry.
   it("is drawn with no Retry once an agent already took it, in an older host's rows", () => {
     const handedOver = { ...rejected({ kind: 'providerStartFailed' }), handedOverAt: 5 }
-    expect(projectStructuredAgentSessionMessages([TEXT], [], [handedOver])).toEqual([
+    expect(projectStructuredAgentSessionMessages([TEXT], [], [handedOver], DESKTOP)).toEqual([
       expect.objectContaining({ id: KEY, unsent: true })
     ])
-    expect(
-      structuredAgentSessionDeliveryNotices([], 'Codex', vi.fn(), [handedOver], [], new Set()).get(
-        KEY
-      )
-    ).toEqual({
+    // Not one the host can queue again, so no Retry even where it queues others.
+    expect(notices([handedOver], vi.fn()).get(KEY)).toEqual({
       text: 'Codex stopped before it finished starting. Send your message to try again.'
     })
   })
@@ -216,9 +241,11 @@ describe('a message whose start failed for good, queued again by its Retry', () 
   }
 
   it('is drawn once, queued, wherever it was sent from', () => {
-    expect(projectStructuredAgentSessionMessages([TEXT], [], [requeued])).toEqual([
-      expect.objectContaining({ id: KEY, queued: true })
-    ])
+    for (const options of [DESKTOP, PHONE]) {
+      expect(projectStructuredAgentSessionMessages([TEXT], [], [requeued], options)).toEqual([
+        expect.objectContaining({ id: KEY, queued: true })
+      ])
+    }
   })
 
   it("moves this desktop's own rejected entry back to sending, with its failure gone", () => {
@@ -235,11 +262,11 @@ describe('a message whose start failed for good, queued again by its Retry', () 
       lastFailure: { kind: 'rejected' as const, reason: 'no' }
     }
 
-    const [entry] = reconcileStructuredAgentSessionOutbox([own], [requeued])
+    const [entry] = reconcileStructuredAgentSessionOutbox([own], [requeued], [TEXT])
 
     expect(entry).toMatchObject({ clientMessageId: ID, state: 'dispatching' })
     expect(entry).not.toHaveProperty('lastFailure')
-    expect(projectStructuredAgentSessionMessages([TEXT], [entry!], [requeued])).toEqual([
+    expect(projectStructuredAgentSessionMessages([TEXT], [entry!], [requeued], DESKTOP)).toEqual([
       expect.objectContaining({ id: KEY, queued: true })
     ])
   })
@@ -262,18 +289,23 @@ describe('a message rejected after it was handed over', () => {
       vi.fn(),
       submissions,
       [],
-      new Set()
+      new Set(),
+      [],
+      new Set(),
+      [],
+      true
     ).get(KEY)
   }
 
   it('shows as unsent with no Retry, on any desktop host', () => {
     const submissions = [undelivered()]
-    for (const showsFailedStartsSentElsewhere of [true, false]) {
-      expect(
-        projectStructuredAgentSessionMessages([TEXT], [], submissions, {
-          showsFailedStartsSentElsewhere
-        })
-      ).toEqual([expect.objectContaining({ id: KEY, unsent: true })])
+    for (const options of [
+      DESKTOP,
+      { rejectedInPlace: false, showsUndeliveredSentElsewhere: true }
+    ]) {
+      expect(projectStructuredAgentSessionMessages([TEXT], [], submissions, options)).toEqual([
+        expect.objectContaining({ id: KEY, unsent: true })
+      ])
     }
     // The host cannot queue a message it handed over again, so the person sends it anew.
     expect(noticeOf(submissions)).toEqual({
@@ -285,6 +317,7 @@ describe('a message rejected after it was handed over', () => {
   it('stays hidden on a surface that cannot mark it unsent', () => {
     expect(
       projectStructuredAgentSessionMessages([TEXT], [], [undelivered()], {
+        rejectedInPlace: false,
         showsUndeliveredSentElsewhere: false
       })
     ).toEqual([])
@@ -309,10 +342,10 @@ describe('a message rejected after it was handed over', () => {
       reason: 'provider_write_outcome_unknown: EPIPE',
       rejection: undefined
     }
-    expect(reconcileStructuredAgentSessionOutbox([dispatching], [inDoubt])).toEqual([])
+    expect(reconcileStructuredAgentSessionOutbox([dispatching], [inDoubt], [TEXT])).toEqual([])
 
     const refused = { ...undelivered(), ...rejected({ kind: 'providerRejected' }), handedOverAt: 5 }
-    expect(projectStructuredAgentSessionMessages([TEXT], [], [refused])).toEqual([
+    expect(projectStructuredAgentSessionMessages([TEXT], [], [refused], DESKTOP)).toEqual([
       expect.objectContaining({ id: KEY, unsent: true })
     ])
     expect(noticeOf([refused])?.text).toBe(
@@ -324,7 +357,7 @@ describe('a message rejected after it was handed over', () => {
     expect(noticeOf([refused])?.onRetry).toBeUndefined()
 
     const withdrawn = { ...undelivered(), ...rejected({ kind: 'cancelled' }), handedOverAt: 5 }
-    expect(projectStructuredAgentSessionMessages([TEXT], [], [withdrawn])).toEqual([])
+    expect(projectStructuredAgentSessionMessages([TEXT], [], [withdrawn], DESKTOP)).toEqual([])
     expect(noticeOf([withdrawn])).toBeUndefined()
   })
   it('is drawn once by the entry of the client that still holds it', () => {
@@ -341,10 +374,13 @@ describe('a message rejected after it was handed over', () => {
           state: 'dispatching'
         }
       ],
-      [undelivered()]
+      [undelivered()],
+      []
     )
     expect(
-      projectStructuredAgentSessionMessages([TEXT], own, [undelivered()]).map(({ id }) => id)
+      projectStructuredAgentSessionMessages([TEXT], own, [undelivered()], DESKTOP).map(
+        ({ id }) => id
+      )
     ).toEqual([KEY])
   })
 
@@ -356,6 +392,8 @@ describe('a message rejected after it was handed over', () => {
       submittedAt: 9,
       resolvedAt: 9
     }
-    expect(projectStructuredAgentSessionMessages([TEXT], [], [undelivered(), copy])).toEqual([])
+    expect(
+      projectStructuredAgentSessionMessages([TEXT], [], [undelivered(), copy], DESKTOP)
+    ).toEqual([])
   })
 })

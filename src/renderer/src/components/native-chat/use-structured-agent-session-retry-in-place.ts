@@ -1,8 +1,8 @@
 // A Retry of a message no agent ever took. A host that can queues that same message again, under its
 // own id, so the chat never holds two copies and a second press from anywhere sends nothing more.
-// A host known not to: this desktop's own message is sent again as a new one, from its outbox, and
-// one sent elsewhere is not shown. Until the host has said which, that Retry takes no press: a new
-// copy sent then would leave the original with a live Retry once the host says it can.
+// A host known not to offers no such Retry: the host recorded the message, so sending it again is a
+// new message. Until the host has said which, that Retry takes no press: a new copy sent then would
+// leave the original with a live Retry once the host says it can.
 
 import { useCallback, useMemo } from 'react'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'

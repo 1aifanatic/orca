@@ -16,9 +16,9 @@ import type {
 import { projectStructuredAgentSessionMessages } from '../../../../shared/structured-agent-session-message-projection'
 import {
   createStructuredAgentSessionOutboxEntry,
-  reconcileStructuredAgentSessionOutbox,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
+import { reconcileStructuredAgentSessionOutbox } from '../../../../shared/structured-agent-session-outbox-reconcile'
 import { structuredAgentSessionEntryAttempt } from '../../../../shared/structured-agent-session-outbox-delivery'
 import { disposeStructuredAgentSessionSendResult } from '../../../../shared/structured-agent-session-send-disposition'
 import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
@@ -73,7 +73,8 @@ function copyRow(patch: Partial<AgentJournalSubmission>): AgentJournalSubmission
   }
 }
 
-/** What the chat draws: each row's id, and the ids that carry a notice. */
+/** What the chat draws: each row's id, and the ids that say they did not go through (a quiet
+ *  "Sending…" is not one). */
 function drawn(
   outbox: readonly StructuredAgentSessionOutboxEntry[],
   submissions: AgentJournalSubmission[]
@@ -83,7 +84,7 @@ function drawn(
       [ITEM],
       outboxOutsideQueuedCards(outbox, [], true, QUEUEING),
       submissions,
-      { sentHere: outbox }
+      { rejectedInPlace: true, sentHere: outbox }
     ).map(({ id }) => id),
     noticed: [
       ...structuredAgentSessionDeliveryNotices(
@@ -93,8 +94,10 @@ function drawn(
         submissions,
         [],
         new Set()
-      ).keys()
+      )
     ]
+      .filter(([, notice]) => !notice.sending)
+      .map(([id]) => id)
   }
 }
 
@@ -117,7 +120,8 @@ describe("a Retry on this client's own message the agent never got", () => {
           lastAttemptAt: 4
         }
       ],
-      [UNDELIVERED]
+      [UNDELIVERED],
+      []
     )
     writeOutbox(SESSION, own)
     retryStructuredAgentSessionOutboxEntry({
@@ -182,7 +186,10 @@ describe("a Retry on this client's own message the agent never got", () => {
   // The transcript leaves out a send it draws as a card; the whole outbox still names the row.
   it('hides the old row while the transcript leaves its copy out', () => {
     expect(
-      projectStructuredAgentSessionMessages([ITEM], [], [UNDELIVERED], { sentHere: afterRetry })
+      projectStructuredAgentSessionMessages([ITEM], [], [UNDELIVERED], {
+        rejectedInPlace: true,
+        sentHere: afterRetry
+      })
     ).toEqual([])
   })
 

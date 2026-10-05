@@ -202,9 +202,13 @@ function drawnPromptRows(): string[][] {
   const { receipts } = structuredQuestionTranscript(client.items)
   // The desktop list's projection: its comparator adds only a rank for rows the host never writes.
   const rows = projectNativeChatTranscriptMessages(
-    projectStructuredAgentSessionMessages(client.items, [], client.submissions, {
-      projectItems: projectStructuredQuestionMessages
-    })
+    projectStructuredAgentSessionMessages(
+      client.items,
+      [],
+      client.submissions,
+      { rejectedInPlace: true },
+      projectStructuredQuestionMessages
+    )
   )
   return rows.flatMap((row) => {
     const prompt = receipts.get(row.id)
@@ -240,9 +244,9 @@ describe('a Codex ask with several questions', () => {
     ])
     // Mobile draws the shared projection in journal order, one row per question.
     expect(
-      projectStructuredAgentSessionMessages(client.items, [], client.submissions).map(
-        ({ blocks }) => (blocks[0]?.type === 'text' ? blocks[0].text.split('\n')[0] : null)
-      )
+      projectStructuredAgentSessionMessages(client.items, [], client.submissions, {
+        rejectedInPlace: false
+      }).map(({ blocks }) => (blocks[0]?.type === 'text' ? blocks[0].text.split('\n')[0] : null))
     ).toEqual(ASKED.map(({ question }) => question))
   })
 

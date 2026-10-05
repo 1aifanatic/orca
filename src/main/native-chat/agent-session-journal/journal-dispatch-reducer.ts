@@ -11,7 +11,6 @@ import {
   type AgentJournalSubmission
 } from '../../../shared/agent-session-journal-types'
 import {
-  failedBeforeHandover,
   isFailedStartRejection,
   isRequeueableAgentJournalSubmission
 } from '../../../shared/structured-agent-session-dispatch-rejection'
@@ -20,7 +19,7 @@ import type { JournalReducerState } from './journal-reducer'
 import {
   notePersonTurnAccepted,
   placeHandedOverMessage,
-  placeQueuedMessageAt
+  placeRejectedMessage
 } from './journal-submission-fold'
 import type { JournalRow, JournalStartRetryRecord } from './journal-row-schema'
 
@@ -82,15 +81,9 @@ export function applyJournalDispatchRow(
   } else {
     delete submission.rejectionCause
   }
-  const handedOver = submission.handedOverAt !== undefined
   if (rejection && isFailedStartRejection({ reason: row.reason, rejection })) {
     // Its child took nothing it was handed: never handed over.
     delete submission.handedOverAt
-  }
-  // Drawn below the conversation while it waited, it stays where its failure was written rather
-  // than jump back to where it was accepted, above what came since.
-  if (!handedOver && failedBeforeHandover(submission)) {
-    placeQueuedMessageAt(state, submission, row)
   }
   submission.resolvedAt = row.state === 'pending' ? null : row.ts
   const startRetry = row.state === 'pending' ? readStoredStartRetry(row.startRetry) : undefined
@@ -108,6 +101,8 @@ export function applyJournalDispatchRow(
   if (row.state === 'pending' && !startRetry) {
     submission.handedOverAt = row.ts
     placeHandedOverMessage(state, submission, row)
+  } else if (row.state === 'rejected') {
+    placeRejectedMessage(state, submission, row)
   }
   if (row.recovered) {
     submission.recovered = row.recovered

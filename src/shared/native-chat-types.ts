@@ -205,6 +205,8 @@ export type NativeChatMessage = AgentJournalProducerLinkage & {
    *  supply one (e.g. some scrape segments). Null sorts before any timestamp. */
   timestamp: number | null
   source: NativeChatSource
+  /** Optional provider row cursor; split projections share it for whole-row paging. */
+  transcriptOffset?: number
   /** Optional explicit turn key. When present, two messages with the same
    *  `turnId` are treated as the same turn for dedup regardless of `id`. */
   turnId?: string
@@ -215,8 +217,8 @@ export type NativeChatMessage = AgentJournalProducerLinkage & {
   /** Queued, waiting for its next start after a refused one: nothing runs for it, so it is in no
    *  turn and no bar or clock lands on it until it is handed over. */
   waitingToStart?: true
-  /** Shown as not sent, waiting for the user's Retry: in no turn, so a newer turn's bar and clock
-   *  never land on it, and drawn after the conversation. */
+  /** Shown as not sent: in no turn, so a newer turn's bar and clock never land on it. Drawn where
+   *  the journal recorded it, or after the conversation when it holds no place there. */
   unsent?: true
   /** Set only by the structured projection, on rows the journal holds, and ranks
    *  them ahead of time. Terminal-backed messages never carry it, and worker reads strip it. */
@@ -224,6 +226,28 @@ export type NativeChatMessage = AgentJournalProducerLinkage & {
   /** Set only by the tool fold, on a row that absorbed later tool rows: the newest
    *  absorbed row's journal position. The row still sorts by its own. */
   foldedJournalPosition?: AgentJournalPosition
+}
+
+/** Split reasoning and its answer share the provider's row identity. */
+export function nativeChatSemanticRowId(message: NativeChatMessage): string {
+  return message.role === 'reasoning' && message.id.endsWith(':reasoning')
+    ? message.id.slice(0, -':reasoning'.length)
+    : message.id
+}
+
+/** New hosts expose the cursor; older messages retain their reasoning/answer id convention. */
+export function nativeChatMessagesShareTranscriptRow(
+  first: NativeChatMessage,
+  second: NativeChatMessage
+): boolean {
+  if (typeof first.transcriptOffset === 'number' && typeof second.transcriptOffset === 'number') {
+    return first.transcriptOffset === second.transcriptOffset
+  }
+  return (
+    first.role === 'reasoning' &&
+    second.role === 'assistant' &&
+    nativeChatSemanticRowId(first) === second.id
+  )
 }
 
 export const NATIVE_CHAT_TURN_LIFECYCLE_STATES = ['working', 'completed', 'interrupted'] as const
