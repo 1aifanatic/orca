@@ -25,7 +25,7 @@ import {
   jiraUpdateIssue,
   type RuntimeJiraSettings
 } from '../../runtime/runtime-jira-client'
-import { requireActiveEnvironment } from './web-runtime-session'
+import { requireActiveEnvironment, WEB_CLIENT_UNPAIRED_MESSAGE } from './web-runtime-session'
 
 export type WebJiraApi = PreloadApi['jira']
 
@@ -34,7 +34,12 @@ const jiraRequestAbortControllers = new Map<string, AbortController>()
 // Why: in the web client "local" is the paired server; target it as a remote server so Jira reuses
 // that path's stream fallbacks, capability gates and cancellation instead of a second copy.
 function pairedServer(): RuntimeJiraSettings {
-  return { activeRuntimeEnvironmentId: requireActiveEnvironment().id }
+  const activeRuntimeEnvironmentId = requireActiveEnvironment().id
+  // Why: a blank id resolves to the 'local' target, which would call back into this adapter.
+  if (!activeRuntimeEnvironmentId.trim()) {
+    throw new Error(WEB_CLIENT_UNPAIRED_MESSAGE)
+  }
+  return { activeRuntimeEnvironmentId }
 }
 
 async function withRequestSignal<T>(

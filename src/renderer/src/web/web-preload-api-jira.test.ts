@@ -69,9 +69,9 @@ function mockRuntimeClient(
   return { calls, subscriptions }
 }
 
-async function installPairedWebApi() {
+async function installPairedWebApi(environmentId?: string) {
   const globals = installBrowserGlobals('Linux')
-  writeStoredRuntimeEnvironment(globals.storage)
+  writeStoredRuntimeEnvironment(globals.storage, environmentId)
   const { installWebPreloadApi } = await import('./web-preload-api')
   installWebPreloadApi()
   // Why: wrap it; withFallback answers `then`, so a bare namespace would never resolve from an async fn.
@@ -103,6 +103,15 @@ describe('web Jira preload API', () => {
     const { jira } = await installPairedWebApi()
 
     expect(Object.keys(jira).sort()).toEqual(Object.keys(jiraApi).sort())
+  })
+
+  it('treats a blank stored server id as unpaired instead of re-entering itself', async () => {
+    const { calls, subscriptions } = mockRuntimeClient()
+    const { jira } = await installPairedWebApi(' ')
+
+    await expect(jira.status()).rejects.toThrow('Pair this web client with an Orca server first.')
+    expect(calls).toEqual([])
+    expect(subscriptions).toEqual([])
   })
 
   it('reads status and other one-shot calls from the paired server', async () => {

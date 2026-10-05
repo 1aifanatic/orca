@@ -4,8 +4,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-// Why: the paired web client has no Jira preload, so its fallback proxy resolves
-// undefined; any reply the store's status comparisons can't read is disconnected.
+// Why: a missing or malformed reply (e.g. another host version's) must store as disconnected, never undefined.
 export function parseJiraConnectionStatus(value: unknown): JiraConnectionStatus {
   if (
     !isRecord(value) ||

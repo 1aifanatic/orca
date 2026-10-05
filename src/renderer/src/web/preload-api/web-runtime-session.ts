@@ -158,11 +158,13 @@ export function resolveEnvironment(selector: string): StoredWebRuntimeEnvironmen
   throw new Error(`Unknown Orca runtime environment: ${selector}`)
 }
 
+export const WEB_CLIENT_UNPAIRED_MESSAGE = 'Pair this web client with an Orca server first.'
+
 export function requireActiveEnvironment(): StoredWebRuntimeEnvironment {
   webRuntimeState.activeEnvironment =
     webRuntimeState.activeEnvironment ?? readStoredWebRuntimeEnvironment()
   if (!webRuntimeState.activeEnvironment) {
-    throw new Error('Pair this web client with an Orca server first.')
+    throw new Error(WEB_CLIENT_UNPAIRED_MESSAGE)
   }
   return webRuntimeState.activeEnvironment
 }
