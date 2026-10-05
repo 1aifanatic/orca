@@ -100,7 +100,7 @@ export function advanceChatViewRetention(
     rows.set(row.id, { fence, identity: retainIdentity(kept, current) })
     rowByLeaf.set(`${chatViewParentTabId(row)}\0${chatViewLeafId(row)}`, row)
   }
-  const ownerlessChatLeaves = new Map<string, string>()
+  const ownerlessChatLeaves = new Map<string, OwnerlessChatPlacement>()
   const seenParents = new Set<string>()
   for (const row of args.rows) {
     const parent = chatViewParentTabId(row)
