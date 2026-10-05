@@ -97,6 +97,7 @@ export interface RelayDatabase {
 // relay_confirmable_splices, relay_cell_drain_attempts and relay_migration_leases are no longer
 // created; nothing ever wrote them. Databases that have them keep them empty until a drop is safe:
 // an older image still creates them at boot, and a drop racing that CREATE can fail its schema step.
+// Account erasure in orca-cloud must be deployed with retired-table support (orca-cloud#493) first.
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS relay_invites (
   user_id TEXT NOT NULL,
