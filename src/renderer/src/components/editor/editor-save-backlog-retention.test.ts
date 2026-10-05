@@ -38,9 +38,6 @@ describe('editor save backlog retention', () => {
   it.each(['draft', 'fallback', 'restart', 'save-close', 'autosave'] as const)(
     'keeps only the newest queued %s content while one write stalls',
     async (route) => {
-      if (route === 'autosave') {
-        vi.useFakeTimers()
-      }
       const write = stubEditorWindow()
       let release = (): void => {}
       const blocked = new Promise<void>((resolve) => {
@@ -87,24 +84,35 @@ describe('editor save backlog retention', () => {
       }
       await collect()
       const baseline = process.memoryUsage().external
-      const operations = Array.from({ length: 32 }, (_, index) => {
+      const operations: Promise<void>[] = []
+      for (let index = 0; index < 32; index += 1) {
         const content = Buffer.alloc(2 * 1024 * 1024, (index % 26) + 65).toString('utf8')
         if (route === 'fallback') {
-          return requestEditorFileSave({ fileId, fallbackContent: content })
+          operations.push(
+            requestEditorFileSave({ fileId, fallbackContent: content }).catch((error: Error) => {
+              if (!error.message.includes('superseded')) {
+                throw error
+              }
+            })
+          )
+          continue
         }
         store.getState().setEditorDraft(fileId, content)
         if (route === 'save-close') {
           window.dispatchEvent(
             new CustomEvent(ORCA_EDITOR_SAVE_AND_CLOSE_EVENT, { detail: { fileId } })
           )
-          return Promise.resolve()
+          continue
         }
         if (route === 'autosave') {
-          vi.advanceTimersByTime(250)
-          return Promise.resolve()
+          // Real timers keep the harness from retaining callbacks that already fired.
+          await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 270))
+          continue
         }
-        return route === 'restart' ? requestRestartSave() : requestEditorFileSave({ fileId })
-      })
+        operations.push(
+          route === 'restart' ? requestRestartSave() : requestEditorFileSave({ fileId })
+        )
+      }
       try {
         await collect()
         expect(process.memoryUsage().external - baseline).toBeLessThan(8 * 1024 * 1024)

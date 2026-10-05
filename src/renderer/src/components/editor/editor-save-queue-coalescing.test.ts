@@ -61,13 +61,15 @@ describe('coalesced editor saves', () => {
   })
 
   it('acknowledges pending requests only after the latest content is written and emits exact saved content', async () => {
-    const { write, file, queue, saved } = setup()
+    const { write, store, file, queue, saved } = setup()
     const firstWrite = deferred(),
       latestWrite = deferred()
     write.mockReturnValueOnce(firstWrite.promise).mockReturnValueOnce(latestWrite.promise)
     const first = queue.queueSave(file, 'first')
     await nextTurn()
+    store.getState().setEditorDraft(file.id, 'superseded')
     const older = queue.queueSave(file, 'superseded')
+    store.getState().setEditorDraft(file.id, 'latest')
     const latest = queue.queueSave(file, 'latest')
     let acknowledged = false
     const all = Promise.all([older, latest]).then(() => {
@@ -104,7 +106,9 @@ describe('coalesced editor saves', () => {
       write.mockReturnValueOnce(blocked.promise)
       const first = queue.queueSave(file, 'first')
       await nextTurn()
+      store.getState().setEditorDraft(file.id, 'older')
       const pending = queue.queueSave(file, 'older', firstTrigger)
+      store.getState().setEditorDraft(file.id, 'latest')
       const latest = queue.queueSave(file, 'latest', lastTrigger)
       const conflict = first.then(() => store.getState().setExternalMutation(file.id, 'changed'))
       blocked.resolve()
@@ -118,13 +122,15 @@ describe('coalesced editor saves', () => {
   )
 
   it('lets the latest queued save recover after an earlier write fails', async () => {
-    const { write, file, queue, saved } = setup()
+    const { write, store, file, queue, saved } = setup()
     const blocked = deferred()
     write.mockReturnValueOnce(blocked.promise)
     const failure = new Error('first write failed')
     const first = queue.queueSave(file, 'first').catch((error: unknown) => error)
     await nextTurn()
+    store.getState().setEditorDraft(file.id, 'older')
     const pending = queue.queueSave(file, 'older')
+    store.getState().setEditorDraft(file.id, 'latest')
     const latest = queue.queueSave(file, 'latest')
     blocked.reject(failure)
     expect(await first).toBe(failure)
@@ -156,7 +162,9 @@ describe('coalesced editor saves', () => {
     const first = queue.queueSave(file, 'first')
     await nextTurn()
     store.getState().setEditorDraft(file.id, 'unsaved latest')
-    const pending = queue.queueSave(file, 'obsolete fallback')
+    const pending = queue
+      .queueSave(file, 'obsolete fallback')
+      .catch((error: Error) => error.message)
     let quiesced = false
     const drain = queue.quiesceFileSave(file.id).then(() => {
       quiesced = true
@@ -164,7 +172,8 @@ describe('coalesced editor saves', () => {
     await nextTurn()
     expect(quiesced).toBe(false)
     blocked.resolve()
-    await Promise.all([first, pending, drain])
+    await Promise.all([first, drain])
+    expect(await pending).toContain('cancelled')
     expect(write).toHaveBeenCalledTimes(1)
     expect(saved).toEqual([])
     expect(store.getState().editorDrafts[file.id]).toBe('unsaved latest')
@@ -177,7 +186,7 @@ describe('coalesced editor saves', () => {
     write.mockReturnValueOnce(blocked.promise)
     const first = queue.queueSave(file, 'first')
     await nextTurn()
-    const old = queue.queueSave(file, 'old generation')
+    const old = queue.queueSave(file, 'old generation').catch((error: Error) => error.message)
     queue.bumpSaveGeneration(file.id)
     const current = queue.queueSave(file, 'new generation')
     blocked.resolve()
