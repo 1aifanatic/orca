@@ -14,7 +14,6 @@ import {
   AgentSessionPreSpawnError,
   isAgentSessionPreSpawnError,
   type AgentSessionAcquisition,
-  type AgentSessionCancelOutcome,
   type AgentSessionDispatchOutcome,
   type StructuredAgentSessionAcquireInput,
   type StructuredAgentSessionAdapter,
@@ -31,7 +30,7 @@ import {
 import { AcpStructuredStarts, type AcpStartAttempt } from './acp-structured-starts'
 import { acpPromptBlocks } from './acp-structured-turns'
 import {
-  ACP_CANCEL_TIMEOUT_MS,
+  ACP_STOP_GRACE_MS,
   type AcpStructuredSessionAdapterDeps
 } from './acp-structured-session-adapter-deps'
 
@@ -154,57 +153,50 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
 
   cancelTurn: StructuredAgentSessionAdapter['cancelTurn'] = async (input) => {
     const session = this.live(input.sessionId)
-    // `session/cancel` stops whatever the session runs, so a Stop naming a turn that has since
+    // The Stop ends the child unless it is declined here, so a Stop naming a turn that has since
     // ended must stop nothing newer: not the turn running now, nor the follow-ups behind it.
     const liveTurnId = input.resolveLiveTurnId?.() ?? session.lane.openTurnId
     if (input.turnId !== undefined && input.turnId !== liveTurnId) {
       return { cancelled: false, refusal: { turnNotRunning: true } }
     }
     const withdrew = session.turns.withdrawQueued()
-    if (session.turns.running) {
-      try {
-        // Ends when the agent answers the prompt `cancelled`. The cancel aborts every open request
-        // first, each answered as the agent spells a cancellation. Past the bound the connection
-        // closes, which stops the child.
-        await session.runtime.cancel()
-        return { cancelled: true }
-      } catch {
-        return { cancelled: false }
-      }
+    if (!session.turns.running && session.lane.openTurnId === null) {
+      return withdrew
+        ? { cancelled: true }
+        : { cancelled: false, refusal: { turnNotRunning: true } }
     }
-    const agentTurnId = session.lane.openTurnId
-    if (agentTurnId !== null) {
-      return this.cancelAgentTurn(session, agentTurnId)
-    }
-    return withdrew ? { cancelled: true } : { cancelled: false, refusal: { turnNotRunning: true } }
+    // Answers every open request cancelled and lets Grok end its turn its own way; the host ends
+    // the child once that lands or the grace runs out (`awaitStoppedRequestEnd`).
+    void session.runtime.cancel().catch(() => undefined)
+    return { cancelled: true }
   }
 
-  /** A turn the agent began itself, as it does when a background task finishes: no prompt of Orca's
-   *  answers, so the turn's own end does, within the same bound a prompt's cancel has. */
-  private async cancelAgentTurn(
-    session: AcpStructuredSession,
-    turnId: string
-  ): Promise<AgentSessionCancelOutcome> {
+  // Stop is a session boundary: Grok's cancel ends only the running turn, and work it already moved
+  // to the background runs on and can begin a turn of its own. The next send resumes the session.
+  stopEndsSession = (): boolean => true
+
+  awaitStoppedRequestEnd = async (sessionId: string, stoppedAt: number): Promise<void> => {
+    const session = this.sessions.get(sessionId)
+    if (!session) {
+      return
+    }
+    const grace = this.deps.stopGraceMs ?? ACP_STOP_GRACE_MS
     let timer: ReturnType<typeof setTimeout> | undefined
-    const deadline = new Promise<false>((resolve) => {
-      timer = setTimeout(() => resolve(false), this.deps.cancelTimeoutMs ?? ACP_CANCEL_TIMEOUT_MS)
+    const elapsed = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, Math.max(0, stoppedAt + grace - Date.now()))
     })
+    const turnId = session.lane.openTurnId
     try {
-      const left = session.lane.whenTurnLeaves(turnId).then(() => true)
-      await session.runtime.cancel()
-      if ((await Promise.race([left, deadline])) && session.journalClosed === null) {
-        return { cancelled: true }
-      }
-    } catch {
-      // The notification could not be written: the connection's own close ends the session.
+      await Promise.race([
+        Promise.all([
+          session.turns.whenIdle(),
+          turnId === null ? undefined : session.lane.whenTurnLeaves(turnId)
+        ]),
+        elapsed
+      ])
     } finally {
       clearTimeout(timer)
     }
-    if (session.journalClosed === null) {
-      // The agent never ended its turn, so the child goes and the turn ends with it.
-      void this.forceCloseSession(session.sessionId)
-    }
-    return { cancelled: false }
   }
 
   answerPrompt: StructuredAgentSessionAdapter['answerPrompt'] = (input) =>

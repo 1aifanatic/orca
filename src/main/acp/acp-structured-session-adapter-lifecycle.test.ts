@@ -114,7 +114,7 @@ describe('ACP Stop names a turn', () => {
 })
 
 describe('ACP Stop of a turn Grok began itself', () => {
-  it('cancels a turn opened by a background completion and waits for it to end', async () => {
+  it('cancels a turn opened by a background completion; the Stop waits for it to end', async () => {
     const rig = await openAcpAdapterRig()
     await rig.acquire()
     const { agent } = rig.child()
@@ -131,26 +131,28 @@ describe('ACP Stop of a turn Grok began itself', () => {
         }
       })
     )
+    expect(rig.adapter.stopEndsSession()).toBe(true)
     await expect(rig.adapter.cancelTurn({ sessionId: SESSION, fence: 1 })).resolves.toEqual({
       cancelled: true
     })
+    await rig.adapter.awaitStoppedRequestEnd(SESSION, Date.now())
     expect(rig.sent('session/cancel')).toHaveLength(1)
     expect((await journalTurns(rig)).at(-1)).toMatchObject({ state: 'interrupted' })
+    // The host ends the child next; the adapter does not end it on its own.
     expect(rig.child().closes).toBe(0)
   })
 
-  it('closes the child when Grok never ends its own turn after the cancel', async () => {
-    const rig = await openAcpAdapterRig({ deps: { cancelTimeoutMs: 20 } })
+  it("ends the Stop's wait at its grace when Grok never ends its own turn", async () => {
+    const rig = await openAcpAdapterRig({ deps: { stopGraceMs: 20 } })
     await rig.acquire()
     rig.child().agent.notify('session/update', replyChunk('task-completed-background-1', 'Busy'))
     await rig.settle()
     await expect(rig.adapter.cancelTurn({ sessionId: SESSION, fence: 1 })).resolves.toEqual({
-      cancelled: false
+      cancelled: true
     })
-    await waitFor(() => expect(rig.child().closes).toBe(1))
-    await waitFor(async () =>
-      expect((await journalTurns(rig)).at(-1)).toMatchObject({ state: 'unverifiable' })
-    )
+    await rig.adapter.awaitStoppedRequestEnd(SESSION, Date.now())
+    expect((await journalTurns(rig)).at(-1)).toMatchObject({ state: 'running' })
+    expect(rig.child().closes).toBe(0)
   })
 })
 

@@ -58,6 +58,7 @@ export class AcpStructuredTurns {
   private active: Send | null = null
   private readonly queue: Send[] = []
   private readonly unsettled = new Set<string>()
+  private readonly idleWaiters = new Set<() => void>()
   private ended = false
 
   constructor(private readonly deps: AcpStructuredTurnsDeps) {}
@@ -72,6 +73,14 @@ export class AcpStructuredTurns {
       this.queue.length > 0 ||
       (this.active !== null && this.unsettled.has(this.active.clientMessageId))
     )
+  }
+
+  /** Resolves once no prompt of Orca's is running. */
+  whenIdle(): Promise<void> {
+    if (!this.active) {
+      return Promise.resolve()
+    }
+    return new Promise((resolve) => this.idleWaiters.add(resolve))
   }
 
   dispatch(send: Send): void {
@@ -113,6 +122,7 @@ export class AcpStructuredTurns {
       this.deps.settle({ clientMessageId: active.clientMessageId, state: 'unknown', reason })
     }
     this.active = null
+    this.notifyIdle()
   }
 
   private start(send: Send): void {
@@ -164,7 +174,16 @@ export class AcpStructuredTurns {
     const next = this.ended ? undefined : this.queue.shift()
     if (next) {
       this.start(next)
+    } else if (!this.active) {
+      this.notifyIdle()
     }
+  }
+
+  private notifyIdle(): void {
+    for (const wake of this.idleWaiters) {
+      wake()
+    }
+    this.idleWaiters.clear()
   }
 
   private reject(clientMessageId: string, fact: SubmissionRejectionFact): void {
