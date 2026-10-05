@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -833,6 +833,65 @@ test('G3: a failed enable run is never reported RE-ENABLED, whatever it printed 
     true
   )
   assert.equal(dispatched(world, REHOME('enable')).length, 1)
+})
+
+test('Q1 and C1: after a hard kill mid-pause, the re-run names the pause its log recorded and finishes with it', async () => {
+  const world = fakeWorld()
+  const deps = dependencies(world)
+  const directory = logDirectory()
+  let logAtKill
+  deps.stream = () => {
+    if (world.dispatches().at(-1)?.key !== REHOME('pause')) return 0
+    // SIGKILL writes no stop report: only what was logged before the watch survives.
+    logAtKill = readFileSync(join(directory, readdirSync(directory)[0]), 'utf8')
+    throw new Error('SIGKILL')
+  }
+  await stopped(
+    createDriver(
+      parseDriverArguments(['--commit', COMMIT, '--log-directory', directory]),
+      deps
+    ).run()
+  )
+  world.printed.length = 0
+  const [pause] = dispatched(world, REHOME('pause'))
+  assert.match(logAtKill, new RegExp(`runs/${pause.id}`))
+  const publishRun = String(dispatched(world, PUBLISH)[0].id)
+  assert.match(
+    (await stopped(drive(world, ['--commit', COMMIT, '--publish-run', publishRun]))).message,
+    /did not pause it.*--pause-run its log printed/
+  )
+  assert.deepEqual(live(world), [40, false])
+  const argv = ['--commit', COMMIT, '--publish-run', publishRun, '--pause-run', String(pause.id)]
+  assert.equal((await drive(world, argv)).done, true)
+  assert.deepEqual(live(world), [41, true])
+})
+
+test('Q5: a failed enable followed by an unexplained disable is never adopted', async () => {
+  const world = fakeWorld()
+  const deps = dependencies(world)
+  const run = deps.run
+  deps.run = (program, args, input) => {
+    const result = run(program, args, input)
+    if (args[0] === 'workflow' && JSON.parse(input).mode === 'enable') {
+      world.runs.at(-1).conclusion = 'failure'
+      world.control = { ...world.control, generation: 42, enabled: false }
+    }
+    return result
+  }
+  await stopped(start(world, [], deps))
+  assert.match(report(world), /ENABLE UNCONFIRMED/)
+  assert.doesNotMatch(report(world), /RE-ENABLED|DONE/)
+  const commands = ['failed before applying', 'paused rehome again'].map((marker) => {
+    const line = world.printed.findLast((printed) => printed.includes(marker))
+    return line.slice(line.indexOf('.mjs ') + 5).split(' ')
+  })
+  for (const argv of commands) {
+    assert.match((await stopped(drive(world, argv))).message, /--rehome-generation|cannot prove/)
+    const pinned = await stopped(drive(world, [...argv, '--rehome-generation', '42']))
+    assert.match(pinned.message, /not the pause|cannot prove/)
+  }
+  assert.equal(dispatched(world, REHOME('enable')).length, 1)
+  assert.deepEqual(live(world), [42, false])
 })
 
 test('C1: a pause whose run cannot be viewed, or printed no URL, is reported as REHOME IS CHANGING', async () => {
