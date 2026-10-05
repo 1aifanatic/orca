@@ -2,6 +2,21 @@ import { app, dialog } from 'electron'
 import { formatProfileStateStartupFailure } from '../persistence/profile-state/profile-state-startup-failure'
 import { isBackgroundLaunch } from '../window/foreground-activation-policy'
 import { mainProcessState as state } from './main-process-state'
+import { SINGLE_INSTANCE_ALREADY_RUNNING_EXIT_CODE } from './single-instance-lock'
+import { acquireDesktopProfileInstanceLock } from './desktop-profile-instance-lock'
+
+/** False when orcad holds the profile; unlike a second desktop, nothing else would say why. */
+export function acquireDesktopProfileLockOrExplain(userDataPath: string): boolean {
+  const profileLock = acquireDesktopProfileInstanceLock(userDataPath)
+  if (profileLock.state !== 'held') {
+    return true
+  }
+  handleMainProcessPreflightFailure(
+    new Error(profileLock.message),
+    SINGLE_INSTANCE_ALREADY_RUNNING_EXIT_CODE
+  )
+  return false
+}
 
 /** Ends a failed preflight without showing a Linux dialog before Electron is ready. */
 export function handleMainProcessPreflightFailure(error: unknown, exitCode = 1): void {
