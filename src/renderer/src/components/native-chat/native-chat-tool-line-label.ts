@@ -46,8 +46,8 @@ export function nativeChatToolLineLabel(
     title = fullCommand ?? target
     if (fullCommand !== null) {
       const plainCommand = nativeChatPlainCommandInput(call.input)
-      if (plainCommand === fullCommand) {
-        commandDetail = fullCommand === target ? null : fullCommand
+      if (plainCommand?.trim() === fullCommand) {
+        commandDetail = plainCommand === target ? null : plainCommand
       }
     }
     if (running) {

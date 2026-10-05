@@ -325,6 +325,18 @@ describe('tool sentence rows', () => {
     }
   )
 
+  it('keeps a long plain command with surrounding whitespace complete', () => {
+    const command = `  pnpm test ${'src/renderer/tests/long-path/'.repeat(170)}end.test.ts  `
+    const { container } = render(
+      <NativeChatToolLine
+        block={{ type: 'tool-call', name: 'Bash', input: { command }, state: 'completed' }}
+        initiallyExpanded={false}
+      />
+    )
+    fireEvent.click(screen.getByRole('button'))
+    expect(container.querySelector('pre')?.textContent).toBe(command)
+  })
+
   it('retains structured input detail for other tools', () => {
     const input = { file_path: '/repo/a.ts', offset: 10 }
     const { container } = render(
