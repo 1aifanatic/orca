@@ -1,3 +1,4 @@
+import './rpc/unused-default-rpc-methods.test-fixture'
 // A worker's result reaching the structured chat that coordinates it, end to end in one process,
 // on the coordinator-mail rig.
 

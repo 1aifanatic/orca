@@ -19,7 +19,6 @@ import { OrcaRuntimeService } from './orca-runtime'
 import { OrchestrationDb } from './orchestration/db'
 import { localOrchestrationCliCommand } from './orchestration/cli-command'
 import { formatMessagePointer } from './orchestration/formatter'
-import type { RpcRequest } from './rpc/core'
 import { RpcDispatcher } from './rpc/dispatcher'
 import { ORCHESTRATION_METHODS } from './rpc/methods/orchestration'
 import { idOf, isRecord, resultOf } from './rpc/orchestration-session-caller-test-fixture'
@@ -55,7 +54,7 @@ export function request(
   method: string,
   params: Record<string, unknown>,
   options: { sessionId?: string } = {}
-): RpcRequest {
+): Parameters<RpcDispatcher['dispatch']>[0] {
   requests += 1
   return {
     id: `rpc-${requests}`,

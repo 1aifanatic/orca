@@ -1,3 +1,4 @@
+import './rpc/unused-default-rpc-methods.test-fixture'
 // A busy structured chat holds the orchestration pointer as a card in its own queue, sent when the
 // turn ends, as it holds a message the person sends then. End to end on the coordinator-mail rig.
 
