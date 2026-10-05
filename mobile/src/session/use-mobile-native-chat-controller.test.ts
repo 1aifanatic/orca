@@ -63,7 +63,6 @@ const structuredSessionState = {
   messages: [] as unknown[],
   status: 'ready',
   transcriptLoading: false,
-  error: undefined,
   hasMore: false,
   loadingEarlier: false,
   loadEarlier: vi.fn()
