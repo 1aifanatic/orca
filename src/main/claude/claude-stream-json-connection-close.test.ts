@@ -133,6 +133,50 @@ describe('Claude stream-json close ordering', () => {
     await expect(connection.close()).resolves.toBe(true)
   })
 
+  // The provider supervisor ends Orca's stdout when Claude's ends, so EOF now comes before the exit.
+  it('reports an exit whose stdout ended first once the exit is seen, with its usual reason', async () => {
+    mocks.refresh.mockReset()
+    mocks.proveClaudeChildExit.mockReset()
+    mocks.refresh.mockResolvedValue(undefined)
+    mocks.proveClaudeChildExit.mockResolvedValue(true)
+    const child = fakeChild()
+    // The SDK's stream ends with the child's stdout.
+    const next = vi
+      .fn<() => Promise<IteratorResult<Record<string, unknown>>>>()
+      .mockResolvedValue({ value: undefined, done: true })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This injected query exercises only the async iterator used by the connection.
+    const queryImpl = ((params: Parameters<typeof query>[0]) => {
+      params.options?.spawnClaudeCodeProcess?.({
+        command: 'claude',
+        args: [],
+        env: {},
+        signal: new AbortController().signal
+      })
+      return {
+        [Symbol.asyncIterator]: () => ({ next })
+      }
+    }) as unknown as typeof query
+    const exits: string[] = []
+    const connection = await openClaudeStreamJsonConnection(
+      { pathToClaudeCodeExecutable: 'claude', options: {}, cwd: '/work/repo' },
+      { onExit: (error, exit) => exits.push(`${exit?.expected}: ${error.message}`) },
+      () => child,
+      queryImpl
+    )
+
+    child.stderr.write('session limit reached\n')
+    child.stdout.end()
+    await vi.waitFor(() => expect(next).toHaveBeenCalledOnce())
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(exits).toEqual([])
+
+    child.emit('exit', 1, null)
+    await vi.waitFor(() =>
+      expect(exits).toEqual(['false: claude stream-json exited (code 1): session limit reached'])
+    )
+    await connection.close()
+  })
+
   it('returns an unproven close without waiting on a live output reader', async () => {
     mocks.refresh.mockReset()
     mocks.proveClaudeChildExit.mockReset()
