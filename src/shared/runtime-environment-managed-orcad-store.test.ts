@@ -188,14 +188,15 @@ describe('managed orcad environment store', () => {
     expect(after?.orcadDeployment).toEqual(deployment)
   })
 
-  it('keeps the earliest migration mark, across a downgrade rewrite and a re-pair', () => {
+  it('keeps the latest migration mark and never moves it back, across a downgrade rewrite and a re-pair', () => {
     add()
     recordManagedOrcadMigration(userDataPath, 'environment-1', '2026-02-01T00:00:00.000Z')
     recordManagedOrcadMigration(userDataPath, 'environment-1', '2026-03-01T00:00:00.000Z')
+    recordManagedOrcadMigration(userDataPath, 'environment-1', '2026-02-15T00:00:00.000Z')
     shippedBuildRewrite(userDataPath, (environments) => {
       environments[0]!.lastUsedAt = 900
     })
-    expect(listEnvironments(userDataPath)[0]?.orcadMigratedAt).toBe('2026-02-01T00:00:00.000Z')
+    expect(listEnvironments(userDataPath)[0]?.orcadMigratedAt).toBe('2026-03-01T00:00:00.000Z')
     const rotated = encodePairingOffer({
       v: 2,
       endpoint: 'ws://127.0.0.1:46768',
@@ -204,6 +205,6 @@ describe('managed orcad environment store', () => {
     })
     expect(
       refreshManagedOrcadPairing(userDataPath, 'environment-1', rotated, 500).orcadMigratedAt
-    ).toBe('2026-02-01T00:00:00.000Z')
+    ).toBe('2026-03-01T00:00:00.000Z')
   })
 })

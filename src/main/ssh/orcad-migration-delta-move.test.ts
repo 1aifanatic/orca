@@ -19,6 +19,7 @@ import {
 import { fakeOrcadMigrationDestination } from './orcad-migration-destination-fake'
 import { keepOrcadServerVersion, runOrcadDeltaMove } from './orcad-migration-delta-move'
 import { planOrcadDeltaMove } from './orcad-migration-delta-plan'
+import { latestOrcadMigrationInto } from './orcad-migration-rollback-mark'
 import { reconcileManagedOrcadSshTargets, visibleRepos } from './orcad-retained-source'
 import { retireRetainedOrcadSourceChain } from './orcad-retained-source-retirement'
 import { SshConnectionStore } from './ssh-connection-store'
@@ -125,7 +126,7 @@ async function convertedThenChangedOnOlderBuild(): Promise<void> {
   expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeDefined()
 }
 
-function deltaMove() {
+function deltaMove(at: () => Date = now) {
   const target = store.getSshTarget(TARGET.id)!
   return runOrcadDeltaMove({
     userDataPath,
@@ -139,7 +140,7 @@ function deltaMove() {
     releaseDirectSession: async () => {},
     ensureTunnel: async () => {},
     runTargetLifecycle,
-    now
+    now: at
   })
 }
 
@@ -620,5 +621,67 @@ describe('a draft an older build edited in a retained source', () => {
     expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeUndefined()
     await expect(retireChain()).resolves.toBe('skipped')
     expect(savedDraft('repo-1::/srv/app')).toBe('draft after downgrade')
+  })
+})
+
+describe('a delta move against a rollback of an update taken before it', () => {
+  const later = () => new Date('2026-10-05T00:00:00.000Z')
+  // An update activated after the conversion and before the delta: its snapshot lacks the delta.
+  const updateActivatedAt = Date.parse('2026-10-04T00:00:00.000Z')
+  const rollbackCrossesMigration = () =>
+    updateActivatedAt <
+    Date.parse(latestOrcadMigrationInto(userDataPath, listEnvironments(userDataPath)[0]!) ?? '')
+
+  it('marks the server before the delta commits, so the rollback is refused', async () => {
+    await convertedThenChangedOnOlderBuild()
+    expect(rollbackCrossesMigration()).toBe(false)
+    const commit = destination.commit.getMockImplementation()!
+    destination.commit.mockImplementationOnce(async (manifest) => {
+      expect(listEnvironments(userDataPath)[0]?.orcadMigratedAt).toBe(later().toISOString())
+      return commit(manifest)
+    })
+    await expect(deltaMove(later)).resolves.toMatchObject({ outcome: 'moved' })
+    expect(rollbackCrossesMigration()).toBe(true)
+  })
+
+  it('keeps the mark when the commit lands but its reply is lost', async () => {
+    await convertedThenChangedOnOlderBuild()
+    const commit = destination.commit.getMockImplementation()!
+    const read = destination.readState.getMockImplementation()!
+    let lost = false
+    destination.commit.mockImplementationOnce(async (manifest) => {
+      await commit(manifest)
+      lost = true
+      throw new Error('socket closed')
+    })
+    destination.readState.mockImplementation(async (manifest) => {
+      if (lost) {
+        throw new Error('socket closed')
+      }
+      return read(manifest)
+    })
+    await expect(deltaMove(later)).rejects.toThrow('socket closed')
+    expect(destination.commits).toBe(2)
+    expect(rollbackCrossesMigration()).toBe(true)
+  })
+
+  it('protects a folder-only delta the same way', async () => {
+    await convertedThenChangedOnOlderBuild()
+    store.removeProject('repo-2')
+    const group = store.createProjectGroup({
+      name: 'folders',
+      parentPath: '/srv/folders',
+      connectionId: TARGET.id,
+      createdFrom: 'manual'
+    })
+    store.createFolderWorkspace({
+      projectGroupId: group.id,
+      folderPath: '/srv/folders/notes',
+      connectionId: TARGET.id
+    })
+    const plan = planOrcadDeltaMove(userDataPath, store, store.getSshTarget(TARGET.id)!)
+    expect(plan.added.map((row) => row.kind).sort()).toEqual(['folder-workspace', 'project-group'])
+    await expect(deltaMove(later)).resolves.toMatchObject({ outcome: 'moved' })
+    expect(rollbackCrossesMigration()).toBe(true)
   })
 })
