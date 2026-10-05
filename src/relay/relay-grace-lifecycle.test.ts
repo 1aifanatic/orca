@@ -26,6 +26,7 @@ function fixture(options: { clients?: number; dispose?: () => Promise<void> } = 
   }
   const disposeOwnedProcesses = vi.fn(async () => {})
   const reopenOwnedProcesses = vi.fn()
+  const disposeExitOnlyServices = vi.fn(async () => {})
   const disposeRuntime = vi.fn()
   const lifecycle = new RelayGraceLifecycle({
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the stub implements every dispatcher member the lifecycle calls.
@@ -40,6 +41,7 @@ function fixture(options: { clients?: number; dispose?: () => Promise<void> } = 
     ownsSocketPath: () => true,
     disposeOwnedProcesses,
     reopenOwnedProcesses,
+    disposeExitOnlyServices,
     disposeRuntime
   })
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: process.exit never returns; the stub only records the call.
@@ -50,6 +52,7 @@ function fixture(options: { clients?: number; dispose?: () => Promise<void> } = 
     dispatcher,
     disposeOwnedProcesses,
     reopenOwnedProcesses,
+    disposeExitOnlyServices,
     disposeRuntime,
     exit,
     graceCallbacks
@@ -63,6 +66,7 @@ it('exits after idle shutdown', async () => {
   expect(f.ptyHandler.dispose).toHaveBeenCalledOnce()
   expect(f.disposeOwnedProcesses).toHaveBeenCalledOnce()
   expect(f.disposeRuntime).toHaveBeenCalledOnce()
+  expect(f.disposeExitOnlyServices).toHaveBeenCalledOnce()
   expect(f.reopenOwnedProcesses).not.toHaveBeenCalled()
 })
 
@@ -108,5 +112,9 @@ it('keeps every PTY when owned-process cleanup defers the shutdown', async () =>
   f.lifecycle.shutdown()
   await vi.waitFor(() => expect(f.reopenOwnedProcesses).toHaveBeenCalledOnce())
   expect(f.ptyHandler.dispose).not.toHaveBeenCalled()
+  expect(
+    f.disposeExitOnlyServices,
+    'AI Vault and skill uploads keep serving'
+  ).not.toHaveBeenCalled()
   expect(f.exit).not.toHaveBeenCalled()
 })

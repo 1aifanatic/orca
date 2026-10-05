@@ -21,12 +21,12 @@ function terminalVerdict(row: TerminalCounts): TerminalVerdict {
 
 /** `live:` and `pty:` words for one row; lost contact never reads as zero or no. */
 export function formatWorktreePsTerminalFields(row: TerminalCounts): string {
+  if (terminalVerdict(row) === 'unverifiable') {
+    return 'live:unverifiable  pty:unverifiable'
+  }
   const unverifiable = row.unverifiableTerminalCount ?? 0
   if (unverifiable === 0) {
     return `live:${row.liveTerminalCount}  pty:${row.hasAttachedPty ? 'yes' : 'no'}`
-  }
-  if (row.liveTerminalCount === 0) {
-    return 'live:unverifiable  pty:unverifiable'
   }
   return `live:${row.liveTerminalCount}+${unverifiable} unverifiable  pty:${row.hasAttachedPty ? 'yes' : 'unverifiable'}`
 }

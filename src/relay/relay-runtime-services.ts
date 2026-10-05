@@ -125,12 +125,26 @@ export class RelayRuntimeServices {
   // Why: answering a stream's request does not prove its detached pumps, descriptors or children
   // are gone; only these registry drains do.
   async disposeOwnedProcesses(): Promise<void> {
-    const owned = Promise.allSettled([
+    const owned = await Promise.allSettled([
       this.agentExecHandler.dispose(),
       this.responseStreams.disposeAllAndWait(),
       this.fsHandler.disposeFileStreams(),
       this.fsHandler.disposeWatchers()
     ])
+    const failures = owned.flatMap((result) =>
+      result.status === 'rejected' ? [result.reason] : []
+    )
+    // Why: an unclosed fd, watcher child or agent child defers shutdown so the next attempt retries it.
+    if (failures.length > 0) {
+      throw new AggregateError(failures, 'relay_owned_process_shutdown_incomplete')
+    }
+  }
+
+  /**
+   * One-way disposals, so they run only once shutdown can no longer defer; a deferred relay keeps
+   * serving reconnecting clients. Log-and-continue: they never hold the exit.
+   */
+  async disposeExitOnlyServices(): Promise<void> {
     await this.skillInstallHandler.dispose().catch((error) => {
       relayLogLine(
         `[relay] Skill upload cleanup failed: ${error instanceof Error ? error.message : String(error)}`
@@ -141,14 +155,6 @@ export class RelayRuntimeServices {
         `[relay] AI Vault sidecar shutdown failed: ${error instanceof Error ? error.message : String(error)}`
       )
     })
-    const failures = (await owned).flatMap((result) =>
-      result.status === 'rejected' ? [result.reason] : []
-    )
-    // Why: an unclosed fd, watcher child or agent child defers shutdown so the next attempt retries
-    // it; skill/AI Vault cleanup stays log-and-continue until a later T2 slice.
-    if (failures.length > 0) {
-      throw new AggregateError(failures, 'relay_owned_process_shutdown_incomplete')
-    }
   }
 
   reopenOwnedProcesses(): void {

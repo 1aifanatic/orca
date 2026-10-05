@@ -142,12 +142,13 @@ export function refreshManagedOrcadPairing(
   const environments = store.environments.map((candidate) =>
     candidate.id === existing.id ? next : candidate
   )
-  const { binding: _binding, ...state } = entry ?? {}
-  writeRuntimeEnvironmentSidecarEntry(userDataPath, environments, next, {
-    ...state,
-    orcadDeployment: deployment
-  })
+  const { binding: _binding, ...rest } = entry ?? {}
+  const state = { ...rest, orcadDeployment: deployment }
+  // Why three writes: the entry stays current for both store states, so a failed or interrupted
+  // store write can never strand the deployment link.
+  writeRuntimeEnvironmentSidecarEntry(userDataPath, store.environments, existing, state, next)
   writeEnvironmentStore(userDataPath, { version: 1, environments })
+  writeRuntimeEnvironmentSidecarEntry(userDataPath, environments, next, state)
   return resolveEnvironmentFromStore(readEnvironmentStore(userDataPath), environmentId)
 }
 

@@ -20,6 +20,8 @@ type RelayGraceLifecycleOptions = {
   disposeOwnedProcesses: () => Promise<void>
   /** Lifts the admission fences disposal raised, for a relay that stays up after a deferral. */
   reopenOwnedProcesses: () => void
+  /** Never rejects; runs only after nothing can defer the exit. */
+  disposeExitOnlyServices: () => Promise<void>
   disposeRuntime: () => void
 }
 
@@ -128,6 +130,7 @@ export class RelayGraceLifecycle {
       .disposeOwnedProcesses()
       .then(async () => {
         await this.options.ptyHandler.dispose()
+        await this.options.disposeExitOnlyServices()
         this.stopPoolWatch()
         this.stopPoolActiveWatch()
         this.options.disposeRuntime()

@@ -10,7 +10,7 @@ function fixture() {
   const responses = vi.fn(async () => {})
   const fileStreams = vi.fn(async () => {})
   const watchers = vi.fn(async () => {})
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: disposeOwnedProcesses only reads the owners stubbed here.
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the shutdown paths only read the owners stubbed here.
   const runtime = Object.assign(Object.create(RelayRuntimeServices.prototype), {
     agentExecHandler: { dispose: agents },
     skillInstallHandler: { dispose: skill },
@@ -34,7 +34,7 @@ it.each(['agents', 'responses', 'fileStreams', 'watchers'] as const)(
     const finished = vi.fn()
     const shutdown = f.runtime.disposeOwnedProcesses().then(finished)
     expect(f[owner]).toHaveBeenCalledOnce()
-    await vi.waitFor(() => expect(f.vault).toHaveBeenCalledOnce())
+    await Promise.resolve()
     expect(finished).not.toHaveBeenCalled()
     release()
     await shutdown
@@ -52,25 +52,25 @@ it('rejects stream drain failures after attempting every owner and supports retr
     message: 'relay_owned_process_shutdown_incomplete',
     errors: [responseError, fileError]
   })
-  expect(f.skill).toHaveBeenCalledOnce()
-  expect(f.vault).toHaveBeenCalledOnce()
+  expect(f.skill, 'a deferrable pass leaves one-way services serving').not.toHaveBeenCalled()
+  expect(f.vault).not.toHaveBeenCalled()
   await expect(f.runtime.disposeOwnedProcesses()).resolves.toBeUndefined()
 })
 
-it('keeps skill and AI Vault cleanup failures log-and-continue', async () => {
+it('keeps exit-only skill and AI Vault cleanup failures log-and-continue', async () => {
   const f = fixture()
   vi.spyOn(process.stderr, 'write').mockReturnValue(true)
   f.skill.mockRejectedValueOnce(new Error('skill cleanup failed'))
   f.vault.mockRejectedValueOnce(new Error('vault cleanup failed'))
-  await expect(f.runtime.disposeOwnedProcesses()).resolves.toBeUndefined()
-  expect(f.responses).toHaveBeenCalledOnce()
-  expect(f.fileStreams).toHaveBeenCalledOnce()
+  await expect(f.runtime.disposeExitOnlyServices()).resolves.toBeUndefined()
+  expect(f.skill).toHaveBeenCalledOnce()
+  expect(f.vault).toHaveBeenCalledOnce()
 })
 
 it('handles hosts without a vault service', async () => {
   const f = fixture()
   Object.assign(f.runtime, { aiVaultService: null })
-  await expect(f.runtime.disposeOwnedProcesses()).resolves.toBeUndefined()
+  await expect(f.runtime.disposeExitOnlyServices()).resolves.toBeUndefined()
   expect(f.vault).not.toHaveBeenCalled()
 })
 
@@ -84,8 +84,6 @@ it('rejects a failed agent or watcher shutdown after cleaning every other owner'
     message: 'relay_owned_process_shutdown_incomplete',
     errors: [agentError, watcherError]
   })
-  expect(f.skill).toHaveBeenCalledOnce()
-  expect(f.vault).toHaveBeenCalledOnce()
   expect(f.fileStreams).toHaveBeenCalledOnce()
   await expect(f.runtime.disposeOwnedProcesses()).resolves.toBeUndefined()
 })
