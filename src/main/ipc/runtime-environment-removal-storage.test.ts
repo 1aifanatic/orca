@@ -47,6 +47,7 @@ describe('runtime environment removal storage clearing', () => {
     })
     clearStorageMock.mockResolvedValue({ clearedPartitions: ['persist:one'], livePartitions: [] })
     registerRuntimeEnvironmentConnectivityHandlers({
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: remove reads only settings and the session-host prune.
       store: { getSettings: () => ({}), removeWorkspaceSessionHost: vi.fn() } as never,
       getUserDataPath: () => '/tmp/orca-user-data',
       invalidateTransport: () => teardown
@@ -67,6 +68,7 @@ describe('runtime environment removal storage clearing', () => {
       .mockResolvedValueOnce({ clearedPartitions: [], livePartitions: ['persist:one'] })
       .mockResolvedValueOnce({ clearedPartitions: ['persist:one'], livePartitions: [] })
     registerRuntimeEnvironmentConnectivityHandlers({
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: remove reads only settings and the session-host prune.
       store: { getSettings: () => ({}), removeWorkspaceSessionHost: vi.fn() } as never,
       getUserDataPath: () => '/tmp/orca-user-data',
       invalidateTransport: () => Promise.resolve()
