@@ -1,4 +1,5 @@
 import type { AgentSessionFailureWordsContext } from '../../../shared/agent-session-failure-words'
+import { PROVIDER_EXIT_ROW_PREFIX } from '../../../shared/agent-session-stop-row-identity'
 import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionEndedEvent } from './structured-agent-session-adapter'
@@ -89,8 +90,8 @@ export async function settleUnexpectedStructuredAgentSessionExit<
     }
 
     const stableSettlementId = providerExitSettlementId(unexpectedEvent)
-    const unfinishedWork = captureUnfinishedStructuredAgentSessionWork(session.journal)
     try {
+      // The exited child's own writes land first: its dead generation is settled from all of them.
       try {
         const barrier = await context.flushLifecycle(unexpectedEvent.sessionId)
         if (!barrier.ok) {
@@ -99,6 +100,7 @@ export async function settleUnexpectedStructuredAgentSessionExit<
       } catch (error) {
         logExitFailure(context, unexpectedEvent, 'exit-lifecycle-barrier', error)
       }
+      const unfinishedWork = captureUnfinishedStructuredAgentSessionWork(session.journal)
       await retryUnexpectedExitSettlement({
         context,
         event: unexpectedEvent,
@@ -192,5 +194,5 @@ function logExitFailure(
 }
 
 function providerExitSettlementId(event: UnexpectedExitLifecycleEvent): string {
-  return `provider-exit:${event.sessionId}:${event.fence}:${event.acquisitionGeneration}`
+  return `${PROVIDER_EXIT_ROW_PREFIX}${event.sessionId}:${event.fence}:${event.acquisitionGeneration}`
 }
