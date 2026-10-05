@@ -96,10 +96,6 @@ export function useMobileOverlayTicks({ managerRef, paneTransportsRef }: MobileO
         // Why: a deferred fallback can outlive this pane binding or this release; never apply old server dims to a replacement PTY or a re-parked pane.
         const shouldApplyRelease = (pane: ManagedPane): boolean =>
           getFitOverrideForPty(event.ptyId) === null && getAffectedPanes().includes(pane)
-        const releaseFallback = (pane: ManagedPane) => ({
-          ...event,
-          shouldApply: () => shouldApplyRelease(pane)
-        })
         // Why: a hidden pane parked at the phone grid cannot refit, so follow the PTY back to desktop before hidden bytes parse.
         if (event.priorCols !== null && event.cols > 0 && event.rows > 0) {
           for (const pane of getAffectedPanes()) {
@@ -136,7 +132,10 @@ export function useMobileOverlayTicks({ managerRef, paneTransportsRef }: MobileO
             if (rect.width === 0 || rect.height === 0) {
               continue
             }
-            applyDesktopFitFallbackAfterReplay(pane, releaseFallback(pane))
+            applyDesktopFitFallbackAfterReplay(pane, {
+              ...event,
+              shouldApply: () => shouldApplyRelease(pane)
+            })
           }
         })
       }
