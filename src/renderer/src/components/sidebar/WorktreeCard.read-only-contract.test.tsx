@@ -2,13 +2,12 @@
 
 import { act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { Repo } from '../../../../shared/repo-types'
 import type { WorktreeCardProperty } from '../../../../shared/ui-chrome-types'
 import type { Worktree } from '../../../../shared/worktree/types'
 import { issueCacheKey } from '@/store/github/cache-identity'
-import type WorktreeCardComponent from './WorktreeCard'
 
 const activateWorktreeFromSidebar = vi.hoisted(() => vi.fn())
 const callbacks = {
@@ -40,7 +39,6 @@ const ALL_CARD_PROPERTIES: WorktreeCardProperty[] = [
   'host'
 ]
 
-let WorktreeCard: typeof WorktreeCardComponent
 let settings: Partial<GlobalSettings> = {}
 let deleteStateByWorktreeId: Record<string, unknown> = {}
 
@@ -164,6 +162,8 @@ vi.mock('./WorktreeContextMenu', () => ({
   WORKTREE_NATIVE_CONTEXT_MENU_ATTR: 'data-worktree-native-context-menu'
 }))
 
+import WorktreeCard from './WorktreeCard'
+
 const INTERACTIVE =
   'button, a[href], input, textarea, select, [tabindex]:not([tabindex="-1"]), [role="button"], [draggable="true"]'
 
@@ -211,10 +211,6 @@ const worktree: Worktree = {
 describe('WorktreeCard read-only contract', () => {
   let container: HTMLDivElement
   let root: Root
-
-  beforeAll(async () => {
-    WorktreeCard = (await import('./WorktreeCard')).default
-  }, 20_000)
 
   beforeEach(() => {
     vi.clearAllMocks()
