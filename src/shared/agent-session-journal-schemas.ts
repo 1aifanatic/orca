@@ -26,8 +26,10 @@
 // no row `v`, so older clients see such a value too. It must be safe for every older build.
 
 import { z } from 'zod'
-import { AgentJournalStartRetrySchema, FailureFact } from './agent-session-journal-failure-schemas'
 import { AgentSessionContextUsageSchema } from './agent-session-context-usage-schema'
+import { AgentSessionFailureFactSchema } from './agent-session-failure-fact-schema'
+import { AgentJournalAnsweredTurnSchema } from './agent-session-answered-turn-schema'
+import { AgentJournalStartRetrySchema } from './agent-session-journal-start-retry-schema'
 import { knownTags, openDiscriminatedUnion } from './agent-session-journal-open-union'
 import type {
   AgentJournalItemBody,
@@ -255,7 +257,7 @@ const KnownItemBody = z.discriminatedUnion('kind', [
       .optional(),
     providerFrame: ProviderFrame.optional(),
     threadGoal: ThreadGoalState.optional(),
-    failure: FailureFact.optional()
+    failure: AgentSessionFailureFactSchema.optional()
   }),
   z.object({
     kind: z.literal('turn'),
@@ -322,10 +324,12 @@ export const AgentJournalSubmissionSchema = z.object({
   reason: z.string().nullable(),
   submittedAt: z.number(),
   resolvedAt: z.number().nullable(),
+  submittedSequence: z.number().int().optional(),
+  answeredInTurn: AgentJournalAnsweredTurnSchema.optional(),
   recovered: z.literal(true).optional(),
   handoverRecorded: z.literal(true).optional(),
   handedOverAt: z.number().optional(),
-  rejection: FailureFact.optional(),
+  rejection: AgentSessionFailureFactSchema.optional(),
   // A malformed one drops the field, never the submission.
   startRetry: AgentJournalStartRetrySchema.optional().catch(undefined),
   // Listed, or the parse strips it: this schema drops unknown keys.
