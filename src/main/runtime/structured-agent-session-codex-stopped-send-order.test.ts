@@ -14,13 +14,18 @@ import type {
 } from '../codex/codex-app-server-connection'
 import { codexTurnLifecycleFake } from '../codex/codex-turn-lifecycle-fake'
 import { settledWithin } from '../codex/codex-structured-dispatch-test-support'
+import { CODEX_TURN_OPEN_WAIT_MS } from '../codex/codex-structured-turn-open-wait'
+import { agentJournalSubmissionKey } from '../../shared/agent-session-journal-item-key'
 import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
 import type { AgentJournalSubmission } from '../../shared/agent-session-journal-types'
 import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
 import { NATIVE_CHAT_STOPPED_BEFORE_START_TEXT } from '../../shared/native-chat-stopped-before-start'
 import { projectNativeChatTranscript } from '../../shared/native-chat-transcript-projection'
 import { nativeChatRowsInDrawOrder } from '../../shared/native-chat-turn-grouping'
-import { nativeChatTurnMembership } from '../../shared/native-chat-turn-membership'
+import {
+  nativeChatTurnMembership,
+  structuredAgentTurnAnchors
+} from '../../shared/native-chat-turn-membership'
 import { classifyDispatchRejection } from '../../shared/structured-agent-session-dispatch-rejection'
 import { projectStructuredAgentSessionMessages } from '../../shared/structured-agent-session-message-projection'
 import {
@@ -84,8 +89,10 @@ async function send(text: string): Promise<string> {
   return sent.value.clientMessageId
 }
 
-function stop(): Promise<unknown> {
-  return host.cancel(CALLER, { envelope: envelope('agentSession.cancel', {}) })
+/** The chat's Stop; `turnId` names the turn it stops, as the phone does. */
+function stop(turnId?: string): Promise<unknown> {
+  const fields = turnId === undefined ? {} : { turnId }
+  return host.cancel(CALLER, { envelope: envelope('agentSession.cancel', fields), ...fields })
 }
 
 function verdictOf(submissions: readonly AgentJournalSubmission[], clientMessageId: string) {
@@ -308,10 +315,18 @@ describe('a send a Stop took back before Codex echoed it', () => {
     const sent = await send('look around')
     await vi.waitFor(() => expect(answers).toBe(1))
     turns.start()
-    await stop()
+    await stop('turn-1')
     await vi.waitFor(async () => expect(verdictOf(await submissions(), sent)).toBe('withdrawn'))
 
-    // That turn, ended interrupted, carries the stop.
+    // Codex opened its turn before echoing it, so that turn, ended interrupted, is the send's: it
+    // carries the stop, and no row of its own follows the send.
+    const snapshot = await host.journalSnapshot(SESSION)
+    const turnRecord = snapshot.items.find(
+      (item) => readAgentJournalTurn(item.body)?.turnId === 'turn-1'
+    )
+    expect(
+      structuredAgentTurnAnchors(snapshot.items, snapshot.submissions).get(turnRecord!.itemId)
+    ).toBe(agentJournalSubmissionKey(sent))
     expect(await drawn()).toEqual(['look around', 'Cancellation requested.'])
   })
 
@@ -326,9 +341,20 @@ describe('a send a Stop took back before Codex echoed it', () => {
     await vi.waitFor(() => expect(answers).toBe(2))
     const stopping = stop()
     release()
-    await settledWithin(stopping, 5_000)
-    await vi.waitFor(async () => expect(verdictOf(await submissions(), sent)).toBe('withdrawn'))
+    // The Stop waits out the turn-open wait for a turn that never opens, then ends there.
+    expect(await settledWithin(stopping, CODEX_TURN_OPEN_WAIT_MS + 2_000)).not.toBe('held')
+    expect(verdictOf(await submissions(), sent)).toBe('withdrawn')
 
+    // Every client draws the send where it was sent, then the one row saying it never started.
+    await host.flushStreamedEvents(SESSION)
+    const { items, submissions: settled } = await host.journalSnapshot(SESSION)
+    const messages = projectStructuredAgentSessionMessages(items, [], settled, {
+      rejectedInPlace: true
+    })
+    expect(messages.slice(-2).map((message) => [message.role, message.blocks])).toEqual([
+      ['user', [{ type: 'text', text: 'look around' }]],
+      ['system', [expect.objectContaining({ text: NATIVE_CHAT_STOPPED_BEFORE_START_TEXT })]]
+    ])
     expect(await drawn()).toEqual(['warm up', 'look around', NATIVE_CHAT_STOPPED_BEFORE_START_TEXT])
   })
 })
