@@ -15,13 +15,6 @@ const STRIP = '.terminal-tab-strip'
 
 type DockSample = { scrollLeft: number; activeLeft: number; activeRight: number }
 
-declare global {
-  // oxlint-disable-next-line typescript-eslint/consistent-type-definitions -- declaration merging requires interface
-  interface Window {
-    __tabStripDockSamples?: DockSample[]
-  }
-}
-
 function slotSelector(tabId: string): string {
   return `${STRIP} > [data-tab-strip-slot="${tabId}"]`
 }
@@ -127,7 +120,7 @@ test.describe('Tab strip active-tab dock', () => {
           requestAnimationFrame(sample)
         }
         requestAnimationFrame(sample)
-        window.__tabStripDockSamples = samples
+        Reflect.set(window, '__tabStripDockSamples', samples)
       },
       { strip: STRIP, slot: slotSelector(lastTabId) }
     )
@@ -148,7 +141,9 @@ test.describe('Tab strip active-tab dock', () => {
     const finalScrollLeft = await strip.evaluate((el) => el.scrollLeft)
     expect(finalScrollLeft).toBeGreaterThan(0)
     const view = await readSlotViewportSpan(orcaPage, lastTabId)
-    const samples = await orcaPage.evaluate(() => window.__tabStripDockSamples ?? [])
+    const samples: DockSample[] = await orcaPage.evaluate(() =>
+      Reflect.get(window, '__tabStripDockSamples')
+    )
     expect(samples.length).toBeGreaterThan(0)
     for (const sample of samples) {
       // One jump from the docked position to the reveal; any value in between is visible scrolling.
