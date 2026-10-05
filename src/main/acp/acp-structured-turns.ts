@@ -1,7 +1,7 @@
 // The sends of one ACP session. ACP runs one prompt at a time, so a message sent while Orca's prompt
 // runs steers: that prompt is cancelled (the session stays) and the message goes as the next prompt
-// once the agent answers the cancel. A steer waits here until then; one behind it cancels it in turn,
-// so the last one runs, and a Stop withdraws what waits. A turn the agent began itself is not Orca's
+// once the agent answers the cancel, however long that takes. A steer waits here until then; one
+// behind it cancels it in turn, so the last one runs, and a Stop withdraws what waits. A turn the agent began itself is not Orca's
 // to cut short: a message sent during it goes to the agent at once. Each send is settled exactly once:
 // accepted when the agent's first event for its turn (or its answer) arrives, rejected when the
 // agent refused it or it never left Orca, unknown when the agent died with it or its connection
@@ -47,7 +47,7 @@ export function acpPromptBlocks(body: AgentJournalMessageItem): ContentBlock[] |
 type Send = { clientMessageId: string; prompt: ContentBlock[]; requestedAt: number }
 
 export type AcpStructuredTurnsDeps = {
-  runtime: Pick<AcpSessionRuntime, 'prompt' | 'cancel'>
+  runtime: Pick<AcpSessionRuntime, 'prompt' | 'requestSteerCancel'>
   lane: AcpStructuredLane
   agentName: string
   now: () => number
@@ -176,10 +176,10 @@ export class AcpStructuredTurns {
     }
   }
 
-  /** Answers the agent's open requests cancelled and ends the running prompt. One the agent never
-   *  answers closes the connection past the runtime's bound, which ends the session. */
+  /** Answers the agent's open requests cancelled and asks once to end the running prompt; never
+   *  bounded, so a slow answer only delays the steer, and a Stop still ends the session. */
   private cancelForSteer(): void {
-    void this.deps.runtime.cancel().catch(() => undefined)
+    void this.deps.runtime.requestSteerCancel().catch(() => undefined)
   }
 
   private notifyIdle(): void {

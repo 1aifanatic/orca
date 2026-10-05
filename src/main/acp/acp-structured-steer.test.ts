@@ -129,9 +129,7 @@ describe('a send while a Grok prompt runs', () => {
     )
   })
 
-  // Unlike the common pattern, which waits on a steer's cancel without a bound: a Grok that ignores
-  // a cancel that long is hung, and its connection is not trusted further.
-  it('ends a Grok that never answers a steer cancel, and rejects the steer as never sent', async () => {
+  it('waits as long as Grok takes to answer a steer cancel, and a Stop then still ends it', async () => {
     const rig = await openAcpAdapterRig({ deps: { cancelTimeoutMs: 30 } })
     await rig.acquire()
     await sendHello(rig, 'first')
@@ -139,25 +137,20 @@ describe('a send while a Grok prompt runs', () => {
     rig.child().agent.notify('session/update', replyChunk('prompt:first', 'working'))
     await rig.settle()
     await sendHello(rig, 'steer')
-    await waitFor(() => expect(rig.lifecycle).toHaveLength(1))
-    expect(rig.lifecycle[0]).toMatchObject({
-      type: 'ended',
-      cause: 'unexpected-exit',
-      failure: { kind: 'providerExited' },
-      reason: expect.stringContaining('session/cancel')
-    })
-    expect(rig.sent('session/prompt')).toHaveLength(1)
+    await new Promise((resolve) => setTimeout(resolve, 120))
+    await rig.settle()
+    expect(rig.sent('session/cancel')).toHaveLength(1)
+    expect(rig.lifecycle).toEqual([])
+    expect(rig.child().closes).toBe(0)
+    expect(rig.settled.map((settled) => settled.clientMessageId)).toEqual(['first'])
+    // The Stop's own cancel keeps its bound.
+    await rig.adapter.cancelTurn({ sessionId: ADAPTER_SESSION, fence: 1 })
+    expect(rig.sent('session/cancel')).toHaveLength(2)
     expect(rig.settled).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          clientMessageId: 'steer',
-          state: 'rejected',
-          reason: 'Grok stopped before this message was sent.'
-        })
+        expect.objectContaining({ clientMessageId: 'steer', state: 'rejected' })
       ])
     )
-    const turns = (await rig.rig.rows()).flatMap((row) => readAgentJournalTurn(row.body) ?? [])
-    expect(turns.map((turn) => turn.state)).toEqual(['unverifiable'])
   })
 })
 
@@ -183,6 +176,40 @@ describe('a send while a turn Grok began itself runs', () => {
     ])
     const turns = (await rig.rig.rows()).flatMap((row) => readAgentJournalTurn(row.body) ?? [])
     expect(turns.map((turn) => turn.state)).toEqual(['completed', 'completed'])
+  })
+
+  it("cuts Grok's turn on a second send and runs both messages, never ending Grok", async () => {
+    const rig = await openAcpAdapterRig({ deps: { cancelTimeoutMs: 30 } })
+    await rig.acquire()
+    const { agent } = rig.child()
+    agent.notify('session/update', replyChunk(GROK_TURN, 'Build finished; now'))
+    await rig.settle()
+    await sendHello(rig, 'a')
+    const a = await rig.frame('session/prompt')
+    // Grok queues `a` behind its own turn; a cancel ends only the running turn and promotes `a`.
+    agent.on('session/cancel', () => {
+      endsGrokTurn(agent)
+      agent.notify('session/update', replyChunk(promptIdOf(a), 'working on a'))
+    })
+    await sendHello(rig, 'b')
+    await rig.settle()
+    expect(rig.sent('session/cancel')).toHaveLength(1)
+    // `a` runs a whole turn, well past the Stop bound: a steer's cancel never ends Grok.
+    await new Promise((resolve) => setTimeout(resolve, 120))
+    await rig.settle()
+    expect(rig.lifecycle).toEqual([])
+    expect(rig.child().closes).toBe(0)
+    agent.reply(a, { stopReason: 'end_turn' })
+    const b = await rig.frame('session/prompt', 1)
+    expect(promptIdOf(b)).toBe('prompt:b')
+    agent.notify('session/update', replyChunk('prompt:b', 'on b'))
+    agent.reply(b, { stopReason: 'end_turn' })
+    await waitFor(async () => {
+      const turns = (await rig.rig.rows()).flatMap((row) => readAgentJournalTurn(row.body) ?? [])
+      expect(turns.map((turn) => turn.state)).toEqual(['interrupted', 'completed', 'completed'])
+    })
+    expect(rig.settled.map((settled) => settled.clientMessageId)).toEqual(['a', 'b'])
+    expect(rig.child().closes).toBe(0)
   })
 })
 
