@@ -118,6 +118,47 @@ describe('the reattach window', () => {
   })
 })
 
+describe('the context meter across a resume', () => {
+  it('keeps the last reading the journal holds; the resume only refreshes the window', async () => {
+    const models = {
+      currentModelId: 'grok-4.7',
+      availableModels: [
+        { modelId: 'grok-4.7', name: 'Grok 4.7', _meta: { totalContextTokens: 256_000 } }
+      ]
+    }
+    const rig = await openAcpAdapterRig({
+      ...resume,
+      initialize: RESUMES,
+      script: (agent) =>
+        // Grok replays no usage on resume; its answer carries only the models.
+        agent.on('session/resume', (frame) =>
+          agent.reply(frame, { configOptions: GROK_CONFIG_OPTIONS, models })
+        )
+    })
+    await rig.acquire()
+    await sendHello(rig, 'm1')
+    const prompt = await rig.frame('session/prompt')
+    const { agent } = rig.child()
+    agent.notify('session/update', replyChunk('prompt:m1', 'hi'))
+    agent.notify('session/update', {
+      sessionId: PROVIDER_SESSION,
+      update: { sessionUpdate: 'usage_update', used: 4_000, size: 200_000 }
+    })
+    agent.reply(prompt, { stopReason: 'end_turn' })
+    await rig.settle()
+    await rig.adapter.closeSession(SESSION)
+    await rig.acquire({ fence: 2 })
+    await rig.settle()
+    const usage = (await rig.rig.rows())
+      .flatMap((row) => readAgentJournalTurn(row.body) ?? [])
+      .at(-1)?.contextUsage
+    expect(usage).toMatchObject({
+      window: { tokens: 256_000 },
+      used: { usage: { inputTokens: 4_000 } }
+    })
+  })
+})
+
 describe('reattaching a Grok chat the journal holds', () => {
   it('resumes with session/resume and writes nothing Grok sends while it resumes', async () => {
     const rig = await openAcpAdapterRig({
