@@ -38,7 +38,14 @@ export type StopJournal = HostJournalFrames & {
   stopping: readonly StopJournalStopping[]
 }
 
-export function stopJournal(historyTurns: number): StopJournal {
+/** Where the host writes a send made while a Stop is ending a turn: after that turn's end (a host
+ *  that holds sends while Stopping, as the QA journal shows), or while the turn still runs. */
+export type SendWhileStoppingWritten = 'after-end' | 'during-turn'
+
+export function stopJournal(
+  historyTurns: number,
+  sendWhileStopping: SendWhileStoppingWritten = 'after-end'
+): StopJournal {
   const rows: JournalRow[] = []
   const stopping: StopJournalStopping[] = []
   let fence = 0
@@ -176,8 +183,9 @@ export function stopJournal(historyTurns: number): StopJournal {
     submit(id)
     handOver(id)
     openTurn(id, turnId)
-    if (index < 2) {
-      // A provider status the turn revises, then drops again (the first turn) or keeps.
+    // A provider status the turn revises, then drops again or keeps: early on, and near the end.
+    const revisesStatus = index < 2 || index >= historyTurns - 2
+    if (revisesStatus) {
       const progress = `codex:${THREAD}:${turnId}:progress`
       for (const [revision, text] of [
         [1, 'Compacting context'],
@@ -191,7 +199,7 @@ export function stopJournal(historyTurns: number): StopJournal {
           turnScope: inTurn(turnId)
         })
       }
-      if (index === 0) {
+      if (index % 2 === 0) {
         add({ kind: 'tombstone', itemId: progress, revision: 3 })
       }
     }
@@ -203,15 +211,19 @@ export function stopJournal(historyTurns: number): StopJournal {
       endTurn(id, turnId, 'completed')
     }
   }
-  // A Stop is ending a turn when a send arrives: the host writes it then and hands it over once
-  // the turn has ended.
+  // A Stop is ending a turn when a send arrives; the host hands it over once the turn has ended.
   submit('stopped')
   handOver('stopped')
   openTurn('stopped', 't-stopped')
   const stoppedAt = stopEvent('t-stopped')
-  submit('sent-while-stopping')
+  if (sendWhileStopping === 'during-turn') {
+    submit('sent-while-stopping')
+  }
   endTurn('stopped', 't-stopped', 'interrupted')
   stopping.push({ from: stoppedAt, until: rows.length })
+  if (sendWhileStopping === 'after-end') {
+    submit('sent-while-stopping')
+  }
   handOver('sent-while-stopping')
   openTurn('sent-while-stopping', 't-sent-while-stopping')
   endTurn('sent-while-stopping', 't-sent-while-stopping', 'completed')

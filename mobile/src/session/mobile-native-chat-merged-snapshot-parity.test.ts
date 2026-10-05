@@ -1,8 +1,14 @@
 // The phone's list built from the frames it merged must equal the list a fresh snapshot of the same
-// journal builds. Covers journal -> host readers -> phone reducer -> projection -> fold -> turn
-// membership and bars; the phone's own hooks, its echo and the host's Stopping are covered by
-// mobile-native-chat-merged-snapshot-parity-hooks.test.tsx.
+// journal builds, and must show the stop row from the frame that took the send back. Covers journal
+// -> host readers -> phone reducer -> projection -> fold -> turn membership, bars and the list's
+// disclosure; the phone's own hooks, its echo and the host's Stopping are covered by
+// mobile-native-chat-merged-snapshot-parity-hooks.test.tsx. Not covered:
+// - a batch that carries a new fence (the background-task publish, rows an attach drains);
+// - what the exit's settlement writes after the withdrawal (unknown marks, a lifecycle batch);
+// - a queue-capable phone's send while stopping as a queued draft card and its hand-off.
 
+import { createElement } from 'react'
+import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { describe, expect, it } from 'vitest'
 import type { AgentSessionSubscribeEvent } from '../../../src/shared/agent-session-wire'
 import { nativeChatRowsInDrawOrder } from '../../../src/shared/native-chat-turn-grouping'
@@ -28,6 +34,9 @@ import {
   stopJournal,
   type StopJournal
 } from './mobile-native-chat-stop-journal.test-fixture'
+import { useMobileNativeChatTurnDisclosure } from './use-mobile-native-chat-turn-disclosure'
+
+const STOP_ROW = `stopped-before-start:orca:${NEVER_OPENED}`
 
 type Drawn = { header: string; rows: { id: string; role: string; line: string }[] }
 
@@ -35,8 +44,10 @@ function apply(
   state: StructuredAgentSessionState,
   events: readonly AgentSessionSubscribeEvent[]
 ): StructuredAgentSessionState {
+  // Each phone gets its own copy, as it would off the wire.
   return events.reduce(
-    (next, event) => reduceStructuredAgentSession(next, { type: 'event', event }, 0),
+    (next, event) =>
+      reduceStructuredAgentSession(next, { type: 'event', event: structuredClone(event) }, 0),
     state
   )
 }
@@ -68,6 +79,39 @@ function drawn(state: StructuredAgentSessionState): Drawn {
       return { id: row.id, role: row.role, line: line.join(' ') }
     })
   }
+}
+
+/** The ids the phone's list shows: its rows through the list's own turn disclosure. */
+function listed(state: StructuredAgentSessionState): string[] {
+  const messages = projectStructuredAgentSessionMessages(state.items, [], state.submissions)
+  const folded = foldMobileNativeChatMessages(messages)
+  const { data } = buildMobileNativeChatTransientData({
+    messages,
+    folded,
+    streaming: null,
+    pending: []
+  })
+  const turnId = activeStructuredAgentSessionTurnId(state.items)
+  const { settledTurns } = selectStructuredAgentTurnBars(state.items, state.submissions, turnId)
+  let ids: string[] = []
+  function List(): null {
+    const turns = useMobileNativeChatTurnDisclosure({
+      messages: data,
+      enabled: true,
+      isWorking: isStructuredAgentSessionMainAgentWorking(turnId, state.submissions, state.fence),
+      settledTurns,
+      turnJournal: state,
+      scopeKey: 'host\0workspace\0tab'
+    })
+    ids = turns.listMessages.map((row) => row.id)
+    return null
+  }
+  let renderer: ReactTestRenderer | null = null
+  act(() => {
+    renderer = create(createElement(List))
+  })
+  act(() => renderer!.unmount())
+  return ids
 }
 
 /**
@@ -107,6 +151,18 @@ function compareFrames(
     fresh.set(upTo, drawnThen)
     return drawnThen
   }
+  const freshListing = new Map<number, boolean>()
+  const freshListed = (upTo: number): boolean => {
+    const cached = freshListing.get(upTo)
+    if (cached !== undefined) {
+      return cached
+    }
+    const shown = listed(
+      apply(EMPTY_STRUCTURED_AGENT_SESSION, [journal.snapshotAt(upTo)])
+    ).includes(STOP_ROW)
+    freshListing.set(upTo, shown)
+    return shown
+  }
   const differing: string[] = []
   let windowed = 0
   for (const start of starts) {
@@ -121,6 +177,12 @@ function compareFrames(
       if (JSON.stringify(compared.merged) !== JSON.stringify(compared.fresh)) {
         differing.push(`subscribed at ${start}, frame through ${upTo}`)
       }
+      if (upTo >= journal.takenBack && !listed(merged).includes(STOP_ROW)) {
+        differing.push(`subscribed at ${start}, no stop row in the list through ${upTo}`)
+      }
+      if (upTo >= journal.takenBack && !freshListed(upTo)) {
+        differing.push(`fresh at ${upTo}, no stop row in the list`)
+      }
       upTo = upTo === last ? last + 1 : Math.min(upTo + rowsPerFrame, last)
     }
   }
@@ -130,31 +192,37 @@ function compareFrames(
 const range = (from: number, to: number): number[] =>
   Array.from({ length: to - from }, (_, index) => from + index)
 
-describe('a short chat: the phone draws the same from merged frames as from a fresh snapshot', () => {
-  const journal = stopJournal(8)
+// The QA journal has the host write a send made while stopping after the stopped turn's end; a host
+// that writes it while the turn still runs is covered too.
+describe.each(['after-end', 'during-turn'] as const)(
+  'a short chat, the send while stopping written %s: merged frames draw as a fresh snapshot does',
+  (sendWhileStopping) => {
+    const journal = stopJournal(8, sendWhileStopping)
 
-  it('draws the send the exit took back with its stop row, from the frame that took it back', () => {
-    const fresh = drawn(
-      apply(EMPTY_STRUCTURED_AGENT_SESSION, [journal.snapshotAt(journal.takenBack)])
-    )
-    expect(fresh.rows.slice(-2).map((row) => row.line.split(' ').slice(0, 3).join(' '))).toEqual([
-      `orca:${NEVER_OPENED} user stopped`,
-      `stopped-before-start:orca:${NEVER_OPENED} system `
-    ])
-  })
+    it('draws the send the exit took back with its stop row, from the frame that took it back', () => {
+      const fresh = drawn(
+        apply(EMPTY_STRUCTURED_AGENT_SESSION, [journal.snapshotAt(journal.takenBack)])
+      )
+      expect(fresh.rows.slice(-2).map((row) => row.line.split(' ').slice(0, 3).join(' '))).toEqual([
+        `orca:${NEVER_OPENED} user stopped`,
+        `stopped-before-start:orca:${NEVER_OPENED} system `
+      ])
+    })
 
-  it.each([1, 2, 3])('from every subscribe point, %i row(s) per frame', (rowsPerFrame) => {
-    expect(compareFrames(journal, range(2, journal.rows.length), rowsPerFrame).differing).toEqual(
-      []
-    )
-  })
-})
+    it.each([1, 2, 3])('from every subscribe point, %i row(s) per frame', (rowsPerFrame) => {
+      expect(compareFrames(journal, range(2, journal.rows.length), rowsPerFrame).differing).toEqual(
+        []
+      )
+    })
+  }
+)
 
 describe('a chat longer than the phone first loads', () => {
   const journal = stopJournal(70)
   const last = journal.rows.length
-  // Every 37th row of the history, then every row from the stopped turn on.
-  const lastTurns = journal.neverOpenedSent - 40
+  // Every 37th row of the history, then every row from the last two history turns on, which revise
+  // and drop a status the window then holds.
+  const lastTurns = journal.neverOpenedSent - 70
   const starts = [...range(2, lastTurns).filter((row) => row % 37 === 0), ...range(lastTurns, last)]
 
   it('draws the same at every frame from each subscribe point, from a window of the chat', () => {

@@ -1,6 +1,8 @@
 // The phone's own hooks: a phone that sent the never-opened send itself, holding its echo, and
 // reading the host's Stopping from the status feed, must show the same list after every frame as a
-// phone that opened the chat fresh at that frame.
+// phone that opened the chat fresh at that frame, and the stop row from the frame that took the
+// send back. Not covered: the view (MobileNativeChatView, its memos, the FlatList and its rows),
+// the controller, lane and overlay wiring, and a transport that reconnects and resubscribes.
 
 import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
@@ -27,6 +29,8 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
   default: { getItem: vi.fn(async () => null), setItem: vi.fn(), removeItem: vi.fn() }
 }))
 
+const STOP_ROW = `stopped-before-start:orca:${NEVER_OPENED}`
+
 const HOST_SUPPORT = {
   promptCancel: true,
   questionAnswers: true,
@@ -42,6 +46,8 @@ type Phone = {
   /** The phone's own send of the never-opened message, answered before its row streams in. */
   send: () => void
   read: () => string
+  /** The ids the list shows. */
+  listed: () => string[]
 }
 
 const mounted: ReactTestRenderer[] = []
@@ -75,6 +81,7 @@ async function mountPhone(): Promise<Phone> {
   let latest: {
     drafts: ReturnType<typeof useMobileNativeChatDrafts>
     shown: string
+    listed: string[]
   } | null = null
   function Harness(): null {
     const session = useMobileStructuredAgentSession({
@@ -119,6 +126,7 @@ async function mountPhone(): Promise<Phone> {
       turns.active === null ? 'none' : turns.active.workedSeconds === null ? 'live' : 'worked'
     latest = {
       drafts,
+      listed: turns.listMessages.map((row) => row.id),
       shown: JSON.stringify({
         working: session.isWorking,
         stopping: session.turnIndicator.stopping,
@@ -166,7 +174,8 @@ async function mountPhone(): Promise<Phone> {
       const origin = latest!.drafts.captureSendOrigin(NEVER_OPENED)!
       act(() => latest!.drafts.acceptSend(origin, NEVER_OPENED))
     },
-    read: () => latest!.shown
+    read: () => latest!.shown,
+    listed: () => latest!.listed
   }
 }
 
@@ -186,7 +195,6 @@ describe("the phone's hooks, from merged frames and from a fresh snapshot", () =
       let cursor = { epoch: 'epoch-1', sequence: start }
       let fence = journal.fenceAt(start)
       const differing: string[] = []
-      let stoppingShown = 0
       for (let upTo = start + 1; upTo <= last; upTo += 1) {
         if (upTo === journal.neverOpenedSent) {
           live.send()
@@ -198,19 +206,25 @@ describe("the phone's hooks, from merged frames and from a fresh snapshot", () =
         }
         cursor = { epoch: 'epoch-1', sequence: upTo }
         live.status(stoppingAt(upTo))
-        stoppingShown += live.read().includes('"stopping":true') ? 1 : 0
+        if (upTo === journal.takenBack - 1) {
+          // The never-opened send's own Stop, still settling.
+          expect(live.read()).toContain('"stopping":true')
+        }
         const fresh = await mountPhone()
         fresh.transcript(journal.snapshotAt(upTo))
         fresh.status(stoppingAt(upTo))
         if (live.read() !== fresh.read()) {
           differing.push(`frame through ${upTo}`)
         }
+        if (upTo >= journal.takenBack && !live.listed().includes(STOP_ROW)) {
+          differing.push(`no stop row in the merged list through ${upTo}`)
+        }
+        if (upTo >= journal.takenBack && !fresh.listed().includes(STOP_ROW)) {
+          differing.push(`no stop row in the fresh list at ${upTo}`)
+        }
         act(() => fresh.renderer.unmount())
         mounted.splice(mounted.indexOf(fresh.renderer), 1)
       }
-      expect(live.read()).toContain(`stopped-before-start:orca:${NEVER_OPENED}`)
-      // The never-opened send's Stop showed Stopping until the exit took the send back.
-      expect(stoppingShown).toBeGreaterThan(0)
       expect(differing).toEqual([])
     },
     60_000
