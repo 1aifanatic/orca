@@ -69,7 +69,7 @@ import type { JournalEpochController } from './journal-epoch-controller'
 import { JournalWriteQueue } from './journal-write-queue'
 import { createJournalStoreCollaborators } from './journal-store-collaborators'
 import { journalStoreLoadedFields } from './journal-store-open'
-import type { JournalItemAppender, JournalResolvedItem } from './journal-item-appender'
+import type { JournalItemAppender } from './journal-item-appender'
 import type { JournalLifecycleBatchAppender } from './journal-lifecycle-batch-appender'
 import type { JournalStopMarks } from './journal-stop-marks'
 
@@ -306,12 +306,8 @@ export class AgentSessionJournal {
   }
 
   /** An upsert whose row is chosen from the fold at its own turn in the queue; null writes nothing. */
-  appendResolvedItem(
-    resolve: () => JournalResolvedItem | null,
-    options: JournalItemAppendOptions
-  ): Promise<JournalAppendResult | null> {
-    return this.itemAppender.appendResolved(resolve, options)
-  }
+  appendResolvedItem: JournalItemAppender['appendResolved'] = (resolve, options) =>
+    this.itemAppender.appendResolved(resolve, options)
 
   appendTombstone(
     identity: AgentJournalItemIdentity,
