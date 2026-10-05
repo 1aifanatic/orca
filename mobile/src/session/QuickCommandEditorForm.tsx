@@ -23,7 +23,6 @@ type Props = {
   // worktree's repo — no cross-repo picker like desktop.
   repoId: string | null
   repoName: string | null
-  /** The host's agent-prompt cap. */
   /** An older host's agent-prompt character cap; `null` means none. */
   agentPromptMaxLength: number | null
   onChange: (patch: Partial<QuickCommandDraft>) => void
