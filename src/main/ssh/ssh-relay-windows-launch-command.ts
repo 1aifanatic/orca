@@ -124,3 +124,19 @@ export function classifyWindowsRelayLaunchError(error: unknown): unknown {
     { cause: error }
   )
 }
+
+/** Reaches a running Windows relay through its own bridge, as a reconnect or a census does. */
+export function windowsRelayConnectCommand(
+  hostPlatform: RemoteHostPlatform,
+  nodePath: string,
+  remoteDir: string,
+  sockPath: string,
+  credentialFile: string
+): string {
+  return commandWithNodePath(
+    hostPlatform,
+    nodePath,
+    remoteDir,
+    `& ${powerShellLiteral(nodePath)} relay.js --connect --sock-path ${powerShellLiteral(sockPath)} --credential-file ${powerShellLiteral(credentialFile)}`
+  )
+}

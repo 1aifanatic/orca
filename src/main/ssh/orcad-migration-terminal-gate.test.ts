@@ -39,6 +39,37 @@ describe('migration terminal gate', () => {
     ).resolves.toMatchObject({ verdict: 'live', ptyIds: ['a'] })
   })
 
+  // B4 after an app update: a shell a respawn superseded on its tab still runs on the previous
+  // relay, with no live lease here; only the leased shells were counted before.
+  it('counts a shell an earlier relay still runs that no lease here knows', async () => {
+    await expect(
+      assessOrcadMigrationTerminals(
+        store([
+          { ptyId: 'pty2:8ea088dc:1', state: 'terminated' },
+          { ptyId: 'pty2:8ea088dc:2', state: 'attached' }
+        ]),
+        'ssh-1',
+        relay(['pty2:8ea088dc:2'], ['pty2:8ea088dc:2', 'pty2:8ea088dc:cli'])
+      )
+    ).resolves.toMatchObject({
+      verdict: 'live',
+      ptyIds: ['pty2:8ea088dc:2', 'pty2:8ea088dc:cli']
+    })
+    await expect(
+      assessOrcadMigrationTerminals(store([]), 'ssh-1', relay([], ['pty2:8ea088dc:cli']))
+    ).resolves.toMatchObject({ verdict: 'live', ptyIds: ['pty2:8ea088dc:cli'] })
+  })
+
+  it('counts every shell the relay lists alongside the attached leases', async () => {
+    await expect(
+      assessOrcadMigrationTerminals(
+        store([{ ptyId: 'a', state: 'attached' }]),
+        'ssh-1',
+        async () => ['a', 'cli-shell']
+      )
+    ).resolves.toMatchObject({ verdict: 'live', ptyIds: ['a', 'cli-shell'] })
+  })
+
   it('proves a detached terminal exited once this relay and earlier relays both answer without it', async () => {
     const leases = store([{ ptyId: 'a', state: 'detached' }])
     const proof = await assessOrcadMigrationTerminals(leases, 'ssh-1', relay([], []))

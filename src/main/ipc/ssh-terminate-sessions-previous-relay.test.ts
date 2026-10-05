@@ -22,6 +22,13 @@ vi.mock('../providers/ssh-git-provider', () => mocks.sshGitProvider)
 vi.mock('../providers/ssh-git-dispatch', () => mocks.sshGitDispatch)
 vi.mock('../ssh/ssh-port-forward', () => mocks.sshPortForward)
 vi.mock('../ssh/ssh-port-scanner', () => mocks.sshPortScanner)
+const { listPreviousRelayPtyIds } = vi.hoisted(() => ({
+  listPreviousRelayPtyIds: vi.fn(async (): Promise<string[] | null> => null)
+}))
+vi.mock('../ssh/ssh-legacy-relay-routing', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  listPreviousRelayPtyIds
+}))
 vi.mock('../ssh/ssh-previous-relay-terminals', () => ({
   isReattachHeldByPreviousRelay: vi.fn(async () => true),
   startPreviousRelayCensus: vi.fn(),
@@ -38,7 +45,10 @@ describe('ssh:terminateSessions while an older relay may hold terminals', () => 
   const harness = createSshIpcHarness(mocks)
   const { handlers, mockStore } = harness
 
-  beforeEach(harness.reset)
+  beforeEach(() => {
+    harness.reset()
+    listPreviousRelayPtyIds.mockReset().mockResolvedValue(null)
+  })
 
   it('keeps a not-found terminal the previous relay may run and reports it unverifiable', async () => {
     const target: SshTarget = {
@@ -76,5 +86,32 @@ describe('ssh:terminateSessions while an older relay may hold terminals', () => 
     // The final teardown must not bulk-mark the held lease terminated either.
     expect(mockStore.markSshRemotePtyLeasesAsync).not.toHaveBeenCalledWith('ssh-1', 'terminated')
     expect(mockStore.markSshRemotePtyLeasesAsync).toHaveBeenCalledWith('ssh-1', 'detached')
+  })
+
+  // B4: a shell a respawn superseded on its tab still runs on the previous relay, leaseless.
+  it('stops a shell only an older relay lists, through the provider that routes it there', async () => {
+    mockSshStore.getTarget.mockReturnValue({
+      id: 'ssh-1',
+      label: 'Server',
+      host: 'example.com',
+      port: 22,
+      username: 'deploy'
+    })
+    mockConnectionManager.connect.mockResolvedValue({})
+    mockStore.getSshRemotePtyLeases.mockReturnValue([])
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the shared IPC mock provider implements the shutdown this path calls.
+    vi.mocked(getSshPtyProvider).mockReturnValue(mockPtyProvider as never)
+    vi.mocked(getPtyIdsForConnection).mockReturnValue([])
+    listPreviousRelayPtyIds.mockResolvedValue(['ssh:ssh-1@@pty2:old:1'])
+    mockPtyProvider.shutdown.mockResolvedValue(undefined)
+
+    await handlers.get('ssh:connect')!(null, { targetId: 'ssh-1' })
+    await expect(
+      handlers.get('ssh:terminateSessions')!(null, { targetId: 'ssh-1' })
+    ).resolves.toEqual({ terminated: 1, unverifiable: 0 })
+    expect(mockPtyProvider.shutdown).toHaveBeenCalledWith('ssh:ssh-1@@pty2:old:1', {
+      immediate: true,
+      keepHistory: false
+    })
   })
 })

@@ -29,15 +29,20 @@ export async function assessOrcadMigrationTerminals(
 ): Promise<OrcadMigrationTerminalVerdict> {
   const leases = store.getSshRemotePtyLeases(targetId)
   const attached = leases.filter((lease) => lease.state === 'attached')
-  if (attached.length > 0) {
-    return refuse('live', attached, 'terminals on this host are still running')
-  }
+  // The relays' own listings are the authority on what runs, leased or not: a CLI-created shell, or
+  // one a respawn superseded on its tab, keeps running with no live lease here. Asking the earlier
+  // relays only once this relay answered keeps a relay that answered nothing from counting as none.
   const relayPtyIds = await ask(listRelayPtyIds)
-  if (relayPtyIds && relayPtyIds.length > 0) {
+  const previousPtyIds = relayPtyIds ? await ask(listRelayPtyIds?.previous) : null
+  const running = [...(relayPtyIds ?? []), ...(previousPtyIds ?? [])]
+  if (attached.length > 0 || running.length > 0) {
     return {
       verdict: 'live',
-      ptyIds: [...relayPtyIds],
-      reason: 'the SSH relay still runs terminals on this host'
+      ptyIds: [...new Set([...attached.map((lease) => lease.ptyId), ...running])],
+      reason:
+        attached.length > 0 || (relayPtyIds?.length ?? 0) > 0
+          ? 'terminals on this host are still running'
+          : 'an earlier Orca relay still runs terminals on this host'
     }
   }
   // A detached or expired lease may run on this relay or one an earlier build left; both answer.
@@ -54,14 +59,8 @@ export async function assessOrcadMigrationTerminals(
       'the SSH relay could not confirm these terminals exited'
     )
   }
-  const previousPtyIds = await ask(listRelayPtyIds?.previous)
   if (previousPtyIds === null) {
     return refuse('unverifiable', unresolved, 'Orca could not confirm its terminals here exited')
-  }
-  const held = new Set(previousPtyIds)
-  const running = unresolved.filter((lease) => held.has(lease.ptyId))
-  if (running.length > 0) {
-    return refuse('live', running, 'an earlier Orca relay still runs terminals on this host')
   }
   return { verdict: 'exited', provenPtyIds: leases.map((lease) => lease.ptyId) }
 }
