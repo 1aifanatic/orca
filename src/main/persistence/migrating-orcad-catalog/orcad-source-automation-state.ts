@@ -71,7 +71,10 @@ export function collectOrcadMigrationSourceAutomationState(
   return { automations, automationRuns, blockedAutomationCount, blockedRunCount }
 }
 
-function automationTouchesScope(automation: Automation, scope: OrcadMigrationSourceScope): boolean {
+export function automationTouchesScope(
+  automation: Automation,
+  scope: OrcadMigrationSourceScope
+): boolean {
   return (
     (automation.executionTargetType === 'ssh' && automation.executionTargetId === scope.targetId) ||
     // Why the target too: a generation is per target, so another host's can share the number.
