@@ -1,3 +1,4 @@
+import { nativeChatAppearanceStyle } from './native-chat-appearance-style'
 import { useMemo, useRef, useState } from 'react'
 import { agentSessionPromptQuestions } from '../../../../shared/agent-session-question-answer'
 import { dispatchStructuredAgentSessionComposerCommand } from '../../../../shared/structured-agent-session-composer'
@@ -134,7 +135,11 @@ export function NativeChatStructuredSession(
   // already on screen: nothing in it can act, and its words say why once.
   const readFailedFinally = readFailure?.final === true
   const viewState = selectNativeChatViewState(session, { readRetries: !readFailedFinally })
-  const fontScale = useNativeChatFontScale(viewState.kind === 'ready')
+  useNativeChatFontScale(
+    viewState.kind === 'ready' && props.isVisible && props.isFocusedGroup,
+    rootRef
+  )
+  const appearanceSettings = useAppStore((state) => state.settings)
   const imageRuntimeContext = useNativeChatImageRuntimeContext(props.tabId)
   const { onLinkClick, linkActionRequest, closeLinkActions } = useNativeChatLinkActions(
     fileLinkContext,
@@ -248,7 +253,8 @@ export function NativeChatStructuredSession(
       onKeyUpCapture={paneCommands.onSelectionCapture}
       onKeyDownCapture={paneCommands.onKeyDownCapture}
       onContextMenuCapture={paneCommands.onContextMenuCapture}
-      className="flex h-full min-h-0 w-full flex-col bg-chat-canvas focus:outline-none"
+      className="native-chat-appearance flex h-full min-h-0 w-full flex-col bg-chat-canvas focus:outline-none"
+      style={nativeChatAppearanceStyle(appearanceSettings)}
     >
       <div className="flex min-h-0 flex-1 flex-col">
         {viewState.kind === 'loading' ? (
@@ -271,7 +277,6 @@ export function NativeChatStructuredSession(
             isVisible={props.isVisible}
             isWorking={controller.isWorking}
             expandSignal={false}
-            fontScale={fontScale.scale}
             workingStartedAt={controller.workingStartedAt}
             settledTurns={controller.settledTurns}
             awaitingInput={prompt === null ? null : 'shown'}
