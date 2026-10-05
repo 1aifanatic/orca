@@ -17,8 +17,6 @@ import {
 export type StructuredPointerRetainReason =
   | 'session-not-attached'
   | 'turn-unsettled'
-  /** The mailbox holds mail it was pointed at and has not read. */
-  | 'pointer-unread'
   | 'dispatch-rejected'
   | 'dispatch-unknown'
 

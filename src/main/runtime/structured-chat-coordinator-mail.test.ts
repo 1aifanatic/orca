@@ -615,7 +615,7 @@ describe('a /clear keeps the chat its orchestration address', () => {
       expect(sent).toMatchObject({ message: { to_handle: `orca_session_id:${PEER_CHAT}` } })
       await vi.waitFor(() => expect(connectionFor(successor).turns).toHaveLength(index + 1), WAIT)
       await settleTurn(successor, index)
-      // Read, so the next ping is pointed: no second pointer while one is unread.
+      // Read each ping before the next is sent, so each check holds exactly one.
       const checked = await call('orchestration.check', {}, { sessionId: successor })
       expect(checked).toMatchObject({ count: 1, messages: [{ subject: `ping ${index}` }] })
       await call('orchestration.check', { ack: checked.deliveryId }, { sessionId: successor })

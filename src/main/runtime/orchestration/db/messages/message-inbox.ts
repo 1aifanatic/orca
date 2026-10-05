@@ -137,13 +137,6 @@ export function getUndeliveredUnreadMailboxHandles(this: OrchestrationDb): strin
   ).map((row) => row.to_handle)
 }
 
-/** Whether a mailbox holds mail it was pointed at and has not read yet. */
-export function hasPointedUnreadMessages(this: OrchestrationDb, toHandle: string): boolean {
-  const sql = `SELECT 1 FROM messages WHERE to_handle = ? AND read = 0
-    AND delivered_at IS NOT NULL AND delivery_contract = 'current_delivery' LIMIT 1`
-  return Boolean(this.db.prepare(sql).get(toHandle))
-}
-
 export function getAllMessages(this: OrchestrationDb, toHandle: string, limit = 20): MessageRow[] {
   return exposeMessageListTimestamps(
     this.db
@@ -287,7 +280,6 @@ export type MessageInboxMethods = {
   convertLifecycleMessageToRejection: typeof convertLifecycleMessageToRejection
   getUndeliveredUnreadMessages: typeof getUndeliveredUnreadMessages
   getUndeliveredUnreadMailboxHandles: typeof getUndeliveredUnreadMailboxHandles
-  hasPointedUnreadMessages: typeof hasPointedUnreadMessages
   getAllMessages: typeof getAllMessages
   getMessageById: typeof getMessageById
   markAsRead: typeof markAsRead
@@ -306,7 +298,6 @@ export function attachMessageInbox(ctor: { prototype: object }): void {
     convertLifecycleMessageToRejection,
     getUndeliveredUnreadMessages,
     getUndeliveredUnreadMailboxHandles,
-    hasPointedUnreadMessages,
     getAllMessages,
     getMessageById,
     markAsRead,

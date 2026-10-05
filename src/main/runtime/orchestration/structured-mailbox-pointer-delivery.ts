@@ -175,12 +175,6 @@ export class OrchestrationStructuredMailboxPointerDelivery<
     if (db.hasOutstandingMailboxDelivery?.(mailboxHandle)) {
       return
     }
-    // One pointer at a time, read off the mailbox alone: until the agent reads what it was pointed
-    // at, it has a pointer to act on, and its `check` returns everything unread.
-    if (db.hasPointedUnreadMessages(mailboxHandle)) {
-      this.retain(mailboxHandle, target.sessionId, 'pointer-unread', reservedTypes)
-      return
-    }
     const unread = selectOrchestrationPointerBatch({
       db,
       mailboxHandle,

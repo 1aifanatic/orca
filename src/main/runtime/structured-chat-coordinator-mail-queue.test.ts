@@ -58,12 +58,6 @@ function queuedRows() {
   return host.collaboratorsForTests().sessions.get(COORDINATOR)?.journal.queuedMessages.list() ?? []
 }
 
-/** The person's agent reads its mail as `check` hands it out, and acknowledges it. */
-async function readMail(): Promise<void> {
-  const checked = await call('orchestration.check', {}, { sessionId: COORDINATOR })
-  await call('orchestration.check', { ack: checked.deliveryId }, { sessionId: COORDINATOR })
-}
-
 /** A second task, for a second worker result. */
 async function secondTask(): Promise<string> {
   return idOf(
@@ -106,7 +100,7 @@ describe("a busy chat's orchestration pointer waits in its queue", () => {
     expect(chat.turns).toHaveLength(2)
   })
 
-  it('sends no second pointer while the first is unread, and a new one once the agent has read it', async () => {
+  it('queues a second card for mail that arrives while the first waits, each counting its own mail', async () => {
     const chat = await openChat(COORDINATOR)
     const { runId, taskId } = await coordinatorRunAndTask()
     const second = await secondTask()
@@ -114,21 +108,18 @@ describe("a busy chat's orchestration pointer waits in its queue", () => {
     await finishWorker(taskId)
     await vi.waitFor(async () => expect(await queuedCardTexts()).toHaveLength(1), WAIT)
     await finishWorker(second, { handle: 'term_worker_2', paneKey: WORKER_2_PANE })
-    await idleEdgesSettled()
-    expect(await queuedCardTexts()).toEqual([ptyPointer(`run:${runId}`)])
+    const pointer = ptyPointer(`run:${runId}`)
+    await vi.waitFor(async () => expect(await queuedCardTexts()).toEqual([pointer, pointer]), WAIT)
 
     await endTurn()
     await vi.waitFor(() => expect(chat.turns).toHaveLength(2), WAIT)
     await settleTurn(COORDINATOR, 1)
-    await idleEdgesSettled()
-    expect(chat.turns).toHaveLength(2)
-
-    // `check` returned both results; mail after that is pointed again.
-    await readMail()
-    db.insertMessage({ from: 'term_worker_2', to: `run:${runId}`, subject: 'later', runId })
-    runtime.deliverPendingMessagesForHandle(`run:${runId}`)
     await vi.waitFor(() => expect(chat.turns).toHaveLength(3), WAIT)
-    expect(turnText(chat.turns[2]!)).toBe(ptyPointer(`run:${runId}`))
+    expect(turnText(chat.turns[2]!)).toBe(pointer)
+    await settleTurn(COORDINATOR, 2)
+    await idleEdgesSettled()
+    expect(chat.turns).toHaveLength(3)
+    expect(await queuedCardTexts()).toEqual([])
   })
 
   it("leaves the chat's own `check` as it is: the mail stays readable, and the card stays", async () => {
