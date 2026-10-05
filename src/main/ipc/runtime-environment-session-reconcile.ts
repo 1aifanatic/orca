@@ -30,6 +30,7 @@ export function reconcileOrphanedRuntimeSessions(
     console.warn('[runtime-environments] skipped orphaned session reconcile:', error)
     return []
   }
+  // Safe because a runtime:<id> session is only ever written after that server is registered.
   const dropped = store.getWorkspaceSessionHostIds().filter((hostId) => {
     const parsed = parseExecutionHostId(hostId)
     return parsed?.kind === 'runtime' && !known.has(parsed.environmentId)
