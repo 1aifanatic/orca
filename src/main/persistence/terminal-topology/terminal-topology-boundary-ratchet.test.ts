@@ -63,15 +63,12 @@ const ALLOWED_REFERENCES: Record<string, readonly string[]> = {
   ]
 }
 
-/** A writer's own definition, as opposed to any other mention of its name. */
+/** A writer's own definition (a function or class member), as opposed to any other mention. */
 function isDefinitionName(node: ts.Node): boolean {
   const parent = node.parent
   return (
     (ts.isFunctionDeclaration(parent) ||
-      ts.isMethodDeclaration(parent) ||
-      ts.isPropertyDeclaration(parent) ||
-      ts.isGetAccessorDeclaration(parent) ||
-      ts.isSetAccessorDeclaration(parent)) &&
+      (ts.isClassElement(parent) && ts.isClassLike(parent.parent))) &&
     parent.name === node
   )
 }
