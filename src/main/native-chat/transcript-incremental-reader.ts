@@ -104,8 +104,9 @@ export async function readIncrementalTranscriptMessages(
     }
     state.pendingBytes += part.length
     if (state.pendingBytes > MAX_NATIVE_CHAT_TRANSCRIPT_RECORD_BYTES) {
+      // Copies only the head: a sliced join would pin the whole record until its line ends.
       state.oversizedHead = onOversizedRecord
-        ? Buffer.concat([...state.pendingChunks, part]).subarray(0, OVERSIZED_RECORD_HEAD_BYTES)
+        ? Buffer.concat([...state.pendingChunks, part], OVERSIZED_RECORD_HEAD_BYTES)
         : null
       state.pendingChunks.length = 0
       state.droppingOversizedRecord = true
