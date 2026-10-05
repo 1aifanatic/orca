@@ -21,6 +21,8 @@ import type { TuiAgent } from '../../shared/tui-agent'
 import type { RuntimeTerminalWait } from '../../shared/runtime-terminal-contracts'
 import { resolveDraftPasteReadyTimeoutMs } from '../../shared/draft-paste-ready-timeout'
 import { TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
+import { draftPasteReadySignalHasMarker } from '../../shared/draft-paste-ready-scanner'
+import { nameOnlyIdleNeedsCorroboration } from './tui-idle-evidence'
 import type { OrcaRuntimeService } from './orca-runtime'
 import { showsHoldAnchor } from './agent-state-rules/agent-state-text-anchors'
 import { detectTerminalWaitBlockedReason } from './terminal-wait-detection'
@@ -59,7 +61,7 @@ export function readFreshComposerHold(
  * own ready title instead of a quiet window after it. That dispatch waits for the render to settle
  * before Enter, so it never needed the desktop paste's later cue.
  */
-export function waitForWorkerStartComposer(
+export async function waitForWorkerStartComposer(
   runtime: LaunchedAgentReadinessRuntime,
   handle: string,
   agent: TuiAgent,
@@ -68,10 +70,65 @@ export function waitForWorkerStartComposer(
   if (getLaunchedAgentReadinessLane(agent) === 'composer-marker') {
     return runtime.waitForFreshWorkerComposer(handle, agent, timeoutMs)
   }
-  return runtime.waitForTerminal(handle, {
-    condition: 'tui-idle',
-    timeoutMs,
-    launchReadiness: true
+  if (!workerStartReadsComposerMarker(agent)) {
+    return runtime.waitForTerminal(handle, {
+      condition: 'tui-idle',
+      timeoutMs,
+      launchReadiness: true
+    })
+  }
+  const stop = new AbortController()
+  try {
+    return await firstAnswer(
+      runtime.waitForTerminal(handle, {
+        condition: 'tui-idle',
+        timeoutMs,
+        launchReadiness: true,
+        signal: stop.signal
+      }),
+      runtime.waitForFreshWorkerComposer(handle, agent, timeoutMs, {
+        requireComposerMarker: true,
+        signal: stop.signal
+      })
+    )
+  } finally {
+    stop.abort()
+  }
+}
+
+/**
+ * An agent whose only rest signal is its bare name, which a launch holds to quiet output, and whose
+ * composer draws a marker: that marker answers first. Grok draws its glyph at 0.6 s, then animates
+ * its logo for ten.
+ */
+export function workerStartReadsComposerMarker(agent: TuiAgent): boolean {
+  const signal = TUI_AGENT_CONFIG[agent].draftPasteReadySignal
+  return (
+    signal !== undefined &&
+    draftPasteReadySignalHasMarker(signal) &&
+    !nameOnlyIdleNeedsCorroboration(agent)
+  )
+}
+
+/** The first wait to answer; a failure counts only once both failed, and then as the idle wait's. */
+function firstAnswer(
+  idle: Promise<RuntimeTerminalWait>,
+  marker: Promise<RuntimeTerminalWait>
+): Promise<RuntimeTerminalWait> {
+  return new Promise((resolve, reject) => {
+    let failures = 0
+    let idleError: unknown
+    const fail = (error: unknown, fromIdle: boolean): void => {
+      if (fromIdle) {
+        idleError = error
+      }
+      failures += 1
+      if (failures === 2) {
+        reject(idleError ?? error)
+      }
+    }
+    idle.then(resolve, (error: unknown) => fail(error, true))
+    marker.then(resolve, (error: unknown) => fail(error, false))
   })
 }
 

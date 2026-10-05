@@ -211,12 +211,15 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
     timeoutMs: number,
     {
       requireComposerMarker = true,
-      stopOnDialog = false
-    }: { requireComposerMarker?: boolean; stopOnDialog?: boolean } = {}
+      stopOnDialog = false,
+      signal
+    }: { requireComposerMarker?: boolean; stopOnDialog?: boolean; signal?: AbortSignal } = {}
   ): Promise<RuntimeTerminalWait> {
     const initialPtyId =
       this.getLivePtyForHandle(handle)?.pty.ptyId ?? this.getLiveLeafForHandle(handle).leaf.ptyId
     const stop = new AbortController()
+    const onAbort = (): void => stop.abort()
+    signal?.addEventListener('abort', onAbort, { once: true })
     const ptyId = await waitForWorktreeStartupDraft(
       { ...this.getWorktreeStartupReadinessHost(), getPtyId: () => initialPtyId },
       handle,
@@ -242,8 +245,15 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
         }
       }
     )
+    signal?.removeEventListener('abort', onAbort)
     if (!ptyId) {
-      throw new Error(stop.signal.aborted ? 'agent_startup_dialog' : 'timeout')
+      throw new Error(
+        signal?.aborted
+          ? 'request_aborted'
+          : stop.signal.aborted
+            ? 'agent_startup_dialog'
+            : 'timeout'
+      )
     }
     this.assertLiveTerminalHandleTargetsPty(handle, ptyId)
     if (!this.ptysById.get(ptyId)?.connected) {
@@ -264,18 +274,27 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
     ptyId: string,
     agent: TuiAgent
   ): Promise<TerminalForegroundVerdict> {
-    const pty = this.ptysById.get(ptyId)
-    const remote = !!pty?.connectionId
     return readTerminalForegroundVerdict(
       this.ptyController,
-      // A local WSL pane still runs on a Windows host, whose process reads cannot see into it.
-      {
-        remote,
-        windows: remote ? this.pathFlavorForPty(pty) === 'win32' : process.platform === 'win32'
-      },
+      this.launchedAgentHost(ptyId),
       ptyId,
       agent
     )
+  }
+
+  /** Whether the pane's execution host can find a launched agent in front: a Windows one cannot. */
+  launchedAgentHostProvesAgent(ptyId: string): boolean {
+    return !this.launchedAgentHost(ptyId).windows
+  }
+
+  private launchedAgentHost(ptyId: string): { remote: boolean; windows: boolean } {
+    const pty = this.ptysById.get(ptyId)
+    const remote = !!pty?.connectionId
+    // A local WSL pane still runs on a Windows host, whose process reads cannot see into it.
+    return {
+      remote,
+      windows: remote ? this.pathFlavorForPty(pty) === 'win32' : process.platform === 'win32'
+    }
   }
 
   protected sendStartupFollowupWhenReady(handle: string, followup: WorktreeStartupFollowup): void {
