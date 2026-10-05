@@ -227,7 +227,7 @@ export function isAgentSessionProcessIdentity(
 const ENVIRONMENT_VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/
 
 /** Shape only: whether the variable is the one the record's agent pins is a launch-time question
- *  (`agentDrivesRecord`), so an agent that renames its variable never hides its chats. */
+ *  (`agentDrivesSession`), so an agent that renames its variable never hides its chats. */
 function isAgentSessionAccountHome(value: unknown): value is AgentSessionAccountHome {
   if (typeof value !== 'object' || value === null) {
     return false

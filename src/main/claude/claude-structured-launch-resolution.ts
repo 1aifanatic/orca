@@ -266,7 +266,7 @@ export function createClaudeStructuredLaunchResolver(
         gate && hasWslBoundClaudeAccount(gate) ? { reason: 'managedAccountUnsupported' } : {}
       )
     }
-    // A Claude record's chain holds only Claude handles; the record store refuses anything else.
+    // A Claude record's chain holds only Claude handles; the attach admission refuses anything else.
     const head = agentSessionProviderHandleChainHead(record.providerHandleChain)?.handle ?? null
     if (
       head &&

@@ -7,14 +7,10 @@ import { agentSessionStoredAgents } from './agent-session-stored-agent'
 import { CLAUDE_AND_CODEX_STORED_AGENTS } from './agent-session-stored-agent.test-fixture'
 
 describe('agent session account home', () => {
-  it('pins the variables older builds wrote and read', () => {
-    expect(CLAUDE_AND_CODEX_STORED_AGENTS.get('claude')?.accountHomeVariable).toBe(
-      'CLAUDE_CONFIG_DIR'
-    )
-    expect(CLAUDE_AND_CODEX_STORED_AGENTS.get('codex')?.accountHomeVariable).toBe('CODEX_HOME')
+  it('stores the variable and path exactly as older builds wrote them', () => {
     expect(
       JSON.stringify(
-        agentSessionAccountHome(CLAUDE_AND_CODEX_STORED_AGENTS.get('codex')!, '/home/dev/.codex')
+        agentSessionAccountHome({ accountHomeVariable: 'CODEX_HOME' }, '/home/dev/.codex')
       )
     ).toBe('{"variable":"CODEX_HOME","path":"/home/dev/.codex"}')
   })
@@ -37,10 +33,7 @@ describe('agent session account home', () => {
 
   it('refuses registering one agent twice', () => {
     expect(() =>
-      agentSessionStoredAgents([
-        ...CLAUDE_AND_CODEX_STORED_AGENTS.values(),
-        { agent: 'codex', handleTransport: 'acp', accountHomeVariable: 'CODEX_HOME' }
-      ])
+      agentSessionStoredAgents([{ agent: 'claude' }, { agent: 'codex' }, { agent: 'codex' }])
     ).toThrow('registered twice')
   })
 })

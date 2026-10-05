@@ -49,9 +49,10 @@ export function isAgentSessionProviderHandleInNamespace(
 
 /**
  * Whether a handle belongs to a record of this agent. Compares namespaces; never reads its data.
- * Claude and Codex handles are pinned to their typed lane's transport. Another agent's transport is
- * its registered definition's, which the record store checks on every row it loads or writes; a
- * chain never changes transport after its first link.
+ * Claude and Codex handles are pinned to their typed lane's transport. Another agent's handle may be
+ * in any transport: the record store asks only that a chain keep one namespace owned by the
+ * record's agent, and whether this build speaks that transport is asked when the agent would start
+ * (`agentDrivesSession`).
  */
 export function agentSessionProviderHandleBelongsTo(
   handle: AgentSessionProviderHandle,

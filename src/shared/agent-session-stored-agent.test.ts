@@ -9,7 +9,7 @@ import { agentSessionStoredAgents } from './agent-session-stored-agent'
 import { CLAUDE_AND_CODEX_STORED_AGENTS } from './agent-session-stored-agent.test-fixture'
 
 const GROK = { agent: 'grok', handleTransport: 'acp', accountHomeVariable: 'GROK_HOME' }
-const WITH_GROK = agentSessionStoredAgents([...CLAUDE_AND_CODEX_STORED_AGENTS.values(), GROK])
+const WITH_GROK = agentSessionStoredAgents([{ agent: 'claude' }, { agent: 'codex' }, GROK])
 
 function grokRecord(transport = 'acp'): AgentSessionRecord {
   const record = agentSessionRecordFixture()
