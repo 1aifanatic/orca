@@ -28,6 +28,7 @@ import {
   createPreflightApi,
   createSkillsApi
 } from './preload-api/web-host-capability-api'
+import { createWebJiraApi } from './preload-api/web-jira-api'
 import { createWebKeybindingsApi } from './preload-api/web-keybindings-api'
 import { createMacosTccPromptsApi } from './preload-api/web-macos-tcc-api'
 import { createEmptyMemorySnapshot } from './preload-api/web-memory-api'
@@ -91,6 +92,7 @@ function createWebPreloadApi(): Partial<PreloadApi> {
     gl: createGitLabApi(),
     hostedReview: createRuntimeNamespaceApi('hostedReview'),
     linear: createRuntimeNamespaceApi('linear'),
+    jira: createWebJiraApi(),
     hooks: createHooksApi(),
     stats: {
       getSummary: async () =>
