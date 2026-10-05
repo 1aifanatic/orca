@@ -66,8 +66,8 @@ export function routeAcpSessionEvent(
   )
 }
 
-/** While a chat the journal holds reattaches, everything the agent sends is history the journal
- *  already has, whatever the agent marked: marked as replay, the translator keeps only its usage. */
+/** While a chat reattaches, everything the agent sends is replayed history, whatever the agent
+ *  marked: marked as replay, the translator drops it and keeps only its usage. */
 export function asReattachHistory(params: unknown): unknown {
   if (typeof params !== 'object' || params === null || Array.isArray(params)) {
     return params
