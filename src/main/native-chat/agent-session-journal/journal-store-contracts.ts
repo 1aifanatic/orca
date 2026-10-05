@@ -79,7 +79,10 @@ export type JournalLifecycleBatchInput = {
   rejectsQueued?: AgentJournalDispatchRejection
 }
 
-export type JournalResolvedLifecycleBatchInput = Omit<JournalLifecycleBatchInput, 'mutations'> & {
+export type JournalResolvedLifecycleBatchInput = Omit<
+  JournalLifecycleBatchInput,
+  'mutations' | 'rejectsQueued'
+> & {
   /** Read from the fold with every earlier write landed; may return none. */
   resolve: () => readonly JournalLifecycleMutationInput[]
 }
