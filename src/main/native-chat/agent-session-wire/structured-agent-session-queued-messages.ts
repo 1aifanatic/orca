@@ -23,6 +23,7 @@ import { isUnsettledQueuedMessage } from '../agent-session-journal/queued-messag
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import type { AgentSessionTurnContext } from './structured-agent-session-turns'
 import { QueuedMessageNotConsumableError } from '../agent-session-journal/journal-queued-messages'
 import type { QueuedMessageRow } from '../agent-session-journal/queued-message-table'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
@@ -185,11 +186,7 @@ export async function maybeQueueStructuredAgentSessionSend(
   context: {
     deps: { store: { getRecord: (sessionId: string) => AgentSessionRecord | null } }
   },
-  ctx: {
-    sessionId: string
-    journal: AgentSessionJournal
-    fence: number
-  },
+  ctx: Pick<AgentSessionTurnContext, 'sessionId' | 'journal' | 'fence' | 'operationReceipt'>,
   params: {
     envelope: { clientOperationId: string }
     body: AgentJournalMessageItem
@@ -231,12 +228,15 @@ export async function maybeQueueStructuredAgentSessionSend(
   }
   // The insert notifies through the journal's commit listener: publication and
   // the drain re-derive with no call here to forget.
-  const row = await ctx.journal.queuedMessages.insert({
-    messageId: clientMessageId,
-    body: params.body,
-    fingerprint: queuedMessageFingerprint(ctx.sessionId, params.body),
-    hostInstance: structuredAgentSessionHostInstance()
-  })
+  const row = await ctx.journal.queuedMessages.insert(
+    {
+      messageId: clientMessageId,
+      body: params.body,
+      fingerprint: queuedMessageFingerprint(ctx.sessionId, params.body),
+      hostInstance: structuredAgentSessionHostInstance()
+    },
+    ctx.operationReceipt
+  )
   return {
     ok: true,
     value: {
@@ -250,9 +250,6 @@ export type QueuedMessageDrainDeps = {
   sessions: ReadonlyMap<string, StructuredAgentSessionHostSession>
   getRecord: (sessionId: string) => AgentSessionRecord | null
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
-  /** The streamed-event barrier: a turn-open already accepted by the host is
-   *  committed before the gates are read, so no stored busy flag is needed. */
-  flushStreamedEvents: (sessionId: string) => Promise<void>
   conversationFence: (sessionId: string) => number
   /** The consumed submission is ordinary #22821 work from here on. */
   wakeDelivery: (sessionId: string) => void
@@ -277,7 +274,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
     }
     // Cheap pre-check so token streams do not pay a serialized step per delta.
     // Skipping while working is safe: whatever ends the work is itself a commit
-    // that schedules again, and the step re-reads every gate after its flush.
+    // that schedules again, and the step re-reads every gate from the fold.
     try {
       if (
         !journal.queuedMessages.settlementOwed() &&
@@ -318,7 +315,6 @@ export class StructuredAgentSessionQueuedMessageDrain {
     if (!session || session.journal.isReadOnly) {
       return
     }
-    await this.deps.flushStreamedEvents(sessionId)
     const journal = session.journal
     if (journal.queuedMessages.settlementOwed() || journal.queuedMessages.deliveredByEchoOwed()) {
       // A live per-row hook was skipped; heal now, before a draft sends, rather than at reopen.

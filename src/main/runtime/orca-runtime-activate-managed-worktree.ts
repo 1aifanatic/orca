@@ -8,7 +8,7 @@ import type { Repo } from '../../shared/repo-types'
 import { repoIsRemote } from '../../shared/agent-launch-remote'
 import { probeWslLaunchFolderBeforePlanning } from './this-orca-launch-host'
 import type { TuiAgent } from '../../shared/tui-agent'
-import type { RuntimeTerminalWait } from '../../shared/runtime-types'
+import type { RuntimeTerminalWait } from '../../shared/runtime-terminal-contracts'
 import type { WorktreeStartupLaunch } from '../../shared/worktree/launch-types'
 import type {
   WorktreeStartupDraftPaste,

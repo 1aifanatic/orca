@@ -1,3 +1,4 @@
+import { waitForWorkerAgentReady } from '../../../../launched-agent-composer-readiness'
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import { describeTerminalWaitBlockedReason } from '../../../../../../shared/terminal-wait-blocked-reason-legacy-alias'
 import type { OrchestrationDb } from '../../../../orchestration/db'
@@ -28,9 +29,8 @@ import { assertExplicitWorkerTerminalUsable } from './explicit-worker-terminal-v
 import { recordCreatedWorkerTerminalCustody } from './created-worker-terminal-custody'
 import { tearDownFailedWorkerStart } from './failed-worker-start-teardown'
 import { requireWorkerAuthority, type WorkerEffect } from './worker-topology'
-import { prepareLocalWorkerStart } from './worker-start-validation'
+import { prepareLocalWorkerAgentLaunch } from './local-worker-agent-launch'
 import { deliverAndSettleWorkerStartReadiness } from './worker-start-readiness-settlement'
-import { waitForWorkerStartComposer } from '../../../../launched-agent-composer-readiness'
 import { createWorkerLaunchBriefFactory } from './worker-launch-brief'
 
 type WorkerStartMutation = {
@@ -57,7 +57,13 @@ export async function startLocalWorker(args: {
   const coordinatorPane = coordinator?.paneKey ?? null
   const requestedWorktree = params.worktree ?? 'current'
   const createsWorktree = requestedWorktree === 'new-child' || requestedWorktree === 'new-top-level'
-  const { agent, launch } = prepareLocalWorkerStart({ params, createsWorktree, runtime })
+  const { agent, launch } = await prepareLocalWorkerAgentLaunch({
+    runtime,
+    params,
+    callerSession,
+    createsWorktree,
+    requestedWorktree
+  })
 
   const coordinatorWorktreeId = await resolveDispatchCallerWorktreeId(
     runtime,
@@ -209,13 +215,11 @@ export async function startLocalWorker(args: {
             effects,
             timeoutMs
           })
-        : // A caller-supplied terminal was not freshly launched, so its composer marker may be long gone.
-          params.terminal || !agent
-          ? await runtime.waitForTerminal(terminalHandle, {
-              condition: 'tui-idle',
-              timeoutMs
-            })
-          : await waitForWorkerStartComposer(runtime, terminalHandle, agent, timeoutMs)
+        : await waitForWorkerAgentReady(runtime, terminalHandle, {
+            agent,
+            reusesTerminal: Boolean(params.terminal),
+            timeoutMs
+          })
     if (wait) {
       persistWorkerSetupWaitOutcome({ ...setupStage, wait })
       if (!wait.satisfied) {

@@ -42,7 +42,7 @@ export function createPtyApi(): NonNullable<Partial<PreloadApi>['pty']> {
     confirmForegroundProcess: () => Promise.resolve(null),
     readLaunchedAgentForeground: () => Promise.resolve('unknown' as const),
     // Why: a paired client's terminals belong to the host, whose Codex settings this client does not own.
-    isCodexOnSharedServer: () => Promise.resolve(false),
+    isCodexOnSharedServer: () => Promise.resolve({ joined: false }),
     disableCodexSharedServerAutoStart: () => Promise.resolve(false),
     stopCodexSharedServer: () => Promise.resolve(false),
     getCwd: () => Promise.resolve('~'),

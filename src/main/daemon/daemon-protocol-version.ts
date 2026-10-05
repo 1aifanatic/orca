@@ -3,6 +3,8 @@
 export const PROTOCOL_VERSION = 41
 // Why: an older daemon drops `launchFile` and would type a line naming a file nobody wrote.
 export const LAUNCH_FILE_DAEMON_PROTOCOL_VERSION = 41
+// v39 gives plain fish panes Orca's codex function through XDG_DATA_DIRS.
+export const CODEX_FISH_SHELL_FUNCTION_DAEMON_PROTOCOL_VERSION = 39
 // Why: older daemons reject `setColorQueryReplyColors` as an unknown request type.
 export const COLOR_QUERY_REPLY_COLORS_DAEMON_PROTOCOL_VERSION = 38
 export const CODEX_NO_DAEMON_SHELL_LAUNCH_DAEMON_PROTOCOL_VERSION = 37
