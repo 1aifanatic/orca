@@ -190,7 +190,7 @@ describe('useMobileSessionChatView', () => {
         leafView: chatView.tabLeafView(active),
         nativeChatTranscriptIsLocalReadable: true,
         onClose: () => {},
-        onToggle: () => {}
+        onSetView: () => {}
       }).map((action) => action.label)
     }
     return null
