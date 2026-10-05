@@ -113,7 +113,7 @@ describe('a record row older builds wrote', () => {
     }
     const { record } = decodePersistedAgentSessionRecord(stored)
     expect(record.providerHandleChain.map((link) => link.handle)).toEqual([
-      { transport: 'claude-sdk', agent: 'claude', nativeId: 'sess-1', providerData: 'leaf-1' },
+      { transport: 'claude-sdk', agent: 'claude', nativeId: 'sess-1', resumeCursor: 'leaf-1' },
       { transport: 'claude-sdk', agent: 'claude', nativeId: 'sess-2' }
     ])
   })
@@ -170,7 +170,7 @@ describe('what this build writes', () => {
       transport: 'acp',
       agent: 'grok',
       nativeId: 'acp-session-1',
-      providerData: '{"cwd":"/repo"}'
+      resumeCursor: '{"cwd":"/repo"}'
     }
     const stored = encodePersistedAgentSessionProviderHandle(grok)
     expect(stored).toEqual(grok)
@@ -181,7 +181,7 @@ describe('what this build writes', () => {
     expect(olderBuildReadsHandle(stored)).toBe(false)
     expect(isAgentSessionHandleProvider(grok.agent)).toBe(false)
     expect(agentSessionWireProviderHandle(grok)).toBeNull()
-    // Root, not provider data: provider data is resume state, not identity.
+    // Root, not the resume cursor: the cursor is resume state, not identity.
     expect(agentSessionProviderHandleRoot(grok)).toBe('acp/grok:"acp-session-1"')
     expect(agentSessionProviderHandleKey(grok)).toBe(agentSessionProviderHandleRoot(grok))
   })
@@ -199,7 +199,7 @@ describe('what this build writes', () => {
         transport: 'acp',
         agent: 'grok',
         nativeId: 'acp-thread',
-        providerData: 'resume-token'
+        resumeCursor: 'resume-token'
       },
       { provider: 'codex', threadId: 'thread-1', nativeId: 'other-thread' },
       {
@@ -210,12 +210,12 @@ describe('what this build writes', () => {
         agent: 'grok',
         nativeId: 'other'
       },
-      { provider: 'claude', sessionId: 'sess-1', leafUuid: null, providerData: 'leaf-2' },
+      { provider: 'claude', sessionId: 'sess-1', leafUuid: null, resumeCursor: 'leaf-2' },
       { provider: 'claude', sessionId: 'sess-1' },
       { provider: 'claude', sessionId: 'sess-1', leafUuid: '' },
       { provider: 'codex', threadId: ' padded ' },
       { transport: 'a:b', agent: 'grok', nativeId: 'x' },
-      { transport: 'acp', agent: 'grok', nativeId: 'x', providerData: '' },
+      { transport: 'acp', agent: 'grok', nativeId: 'x', resumeCursor: '' },
       null
     ]) {
       expect(decodePersistedAgentSessionProviderHandle(value)).toBeNull()
@@ -236,6 +236,30 @@ describe('what this build writes', () => {
     ).toEqual(claudeProviderHandle('sess-1', 'leaf-1'))
   })
 
+  it('drops a field a later build put on a handle, but keeps one on the link or record', () => {
+    const stored = JSON.parse(STORED_CODEX_ROW)
+    stored.providerHandleChain[0].handle.laterHandleField = 'x'
+    stored.providerHandleChain[0].laterLinkField = 'y'
+    stored.laterRecordField = 'z'
+    expect(isPersistedAgentSessionRecord(stored)).toBe(true)
+    if (!isPersistedAgentSessionRecord(stored)) {
+      return
+    }
+    const written = JSON.parse(
+      JSON.stringify(encodeAgentSessionRecord(decodePersistedAgentSessionRecord(stored).record))
+    )
+    expect(written.laterRecordField).toBe('z')
+    expect(written.providerHandleChain[0].laterLinkField).toBe('y')
+    expect(written.providerHandleChain[0].handle).toEqual({
+      provider: 'codex',
+      threadId: 'thread-new'
+    })
+
+    const neutral = { transport: 'acp', agent: 'grok', nativeId: 's', resumeCursor: 'c' }
+    const decoded = decodePersistedAgentSessionProviderHandle({ ...neutral, laterHandleField: 1 })
+    expect(decoded && encodePersistedAgentSessionProviderHandle(decoded)).toEqual(neutral)
+  })
+
   it.each([
     ['Claude', STORED_CLAUDE_ROW],
     ['Codex', STORED_CODEX_ROW]
@@ -245,7 +269,7 @@ describe('what this build writes', () => {
       transport: 'acp',
       agent: 'grok',
       nativeId: 'acp-thread',
-      providerData: 'resume-token'
+      resumeCursor: 'resume-token'
     })
     expect(isPersistedAgentSessionRecord(stored)).toBe(false)
   })

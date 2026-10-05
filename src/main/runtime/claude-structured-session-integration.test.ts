@@ -775,7 +775,7 @@ describe('a structured Claude session over agentSession.*', () => {
       deps: {
         store: {
           getRecord: (sessionId: string) => {
-            providerHandleChain: { handle: { transport: string; providerData?: string } }[]
+            providerHandleChain: { handle: { transport: string; resumeCursor?: string } }[]
           }
         }
       }
@@ -783,7 +783,7 @@ describe('a structured Claude session over agentSession.*', () => {
     // A completed turn advances the durable resume point in place while the owner is live.
     expect(host.deps.store.getRecord(SESSION).providerHandleChain.at(-1)?.handle).toMatchObject({
       transport: 'claude-sdk',
-      providerData: 'assistant-leaf'
+      resumeCursor: 'assistant-leaf'
     })
     // A Claude Stop ends its child once Claude ends the stopped turn, so the chat rests; the next
     // open resumes the conversation.

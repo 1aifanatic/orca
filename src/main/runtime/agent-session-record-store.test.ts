@@ -753,7 +753,7 @@ describe('claim keys and unreadable rows', () => {
         transport: 'acp',
         agent: 'grok',
         nativeId: 'acp-thread',
-        providerData: 'resume-token'
+        resumeCursor: 'resume-token'
       })
     })
     const reopened = await open()
