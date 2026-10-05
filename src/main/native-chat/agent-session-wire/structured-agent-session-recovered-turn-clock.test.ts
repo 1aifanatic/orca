@@ -242,7 +242,10 @@ describe('a turn recovery settled after its host went away', () => {
   it('reads Failed after N, marked failed, for a turn the agent cut by exiting on its own', async () => {
     const session = await sessionWithRunningTurn()
     session.recoverAt(RECOVERED)
-    await settleDeadGeneration(session.journal, { state: 'interrupted', completedAt: EXIT_OBSERVED })
+    await settleDeadGeneration(session.journal, {
+      state: 'interrupted',
+      completedAt: EXIT_OBSERVED
+    })
     session.publish()
 
     const [row] = session.server.getStatusSnapshot()

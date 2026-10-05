@@ -40,8 +40,7 @@ const hostRow = (
   clientMessageId: string,
   body: AgentJournalItemBody,
   scope: AgentJournalTurnScope = THREAD
-) =>
-  item(agentJournalItemKey({ provider: 'orca', clientMessageId }), body, scope)
+) => item(agentJournalItemKey({ provider: 'orca', clientMessageId }), body, scope)
 /** The row the agent's own exit leaves: its fact, in error red. */
 const exitRow = (scope: AgentJournalTurnScope = THREAD) =>
   hostRow(
@@ -76,7 +75,10 @@ function readings(items: readonly AgentJournalRenderItem[]) {
 describe('structuredAgentTurnVerdictReader', () => {
   it.each([
     ['scoped to the turn', () => [user('u1'), cutTurn('t1', 'u1'), exitRow(IN_CUT)]],
-    ['about the conversation, right after the cut', () => [user('u1'), cutTurn('t1', 'u1'), exitRow()]],
+    [
+      'about the conversation, right after the cut',
+      () => [user('u1'), cutTurn('t1', 'u1'), exitRow()]
+    ],
     [
       // The exit settle wrote its row but not the turn's end, which the next reopen then wrote.
       'followed by a reopen row for the same death',

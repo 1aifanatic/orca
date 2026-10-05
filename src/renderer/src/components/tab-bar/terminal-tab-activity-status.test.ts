@@ -260,7 +260,12 @@ describe('resolveTerminalTabActivityStatus', () => {
     expect(status(ended('cancellation', { statusSource: undefined }))).not.toBe('interrupted')
     // The next turn replaces it.
     expect(
-      status(entry(FIRST_LEAF_ID, 'working', { updatedAt: Date.now(), statusSource: 'structured-journal' }))
+      status(
+        entry(FIRST_LEAF_ID, 'working', {
+          updatedAt: Date.now(),
+          statusSource: 'structured-journal'
+        })
+      )
     ).toBe('working')
   })
 

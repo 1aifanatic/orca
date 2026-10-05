@@ -369,9 +369,9 @@ describe('selectWorktreeAgentActivitySummary', () => {
         hasInterrupted: false
       })
       // A native chat's stale working row is not a verdict, so it ages out as any report does.
-      expect(
-        staleCard(ended('failure', { state: 'working', mainAgent: undefined }))
-      ).toMatchObject({ hasLiveWorking: false, hasFailed: false })
+      expect(staleCard(ended('failure', { state: 'working', mainAgent: undefined }))).toMatchObject(
+        { hasLiveWorking: false, hasFailed: false }
+      )
     })
 
     it('reads a retained cut-short agent as interrupted, not done', () => {
