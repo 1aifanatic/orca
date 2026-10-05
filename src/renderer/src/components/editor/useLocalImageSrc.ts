@@ -268,19 +268,5 @@ export function acquireLocalImageSrcLease(
   return () => unpinLocalImageCache(key)
 }
 
-/** Evict one no-longer-visible transcript preview immediately. */
-export function releaseLocalImageSrc(
-  rawSrc: string,
-  filePath: string,
-  connectionId?: string | null,
-  runtimeContext?: LocalImageRuntimeContext | null,
-  access?: LocalFileAccess
-): void {
-  const key = getLocalImageSrcCacheKey(rawSrc, filePath, connectionId, runtimeContext, access)
-  if (key) {
-    releaseLocalImageBlob(key)
-  }
-}
-
-/** Evict one no-longer-visible preview by the key from `getLocalImageSrcCacheKey`. */
+/** Evict the image cached under a `getLocalImageSrcCacheKey` key unless a preview pins it. */
 export const releaseLocalImageSrcByKey = releaseLocalImageBlob
