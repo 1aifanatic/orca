@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ORCAD_RECOVERY_CHANGED_STATE_CODE } from '../../shared/orcad-managed-runtime'
 import { MANAGED_SERVER_RUNTIME_CAPABILITY } from '../../shared/protocol-version'
 import { RuntimeClientError } from '../runtime-client'
 import { MANAGED_SERVER_ACTION_TIMEOUT_MS, MANAGED_SERVER_HANDLERS } from './managed-server'
@@ -200,5 +201,36 @@ describe('managed server CLI verbs', () => {
       code: 'managed_server_in_progress',
       message: expect.stringContaining('orca environment status')
     })
+  })
+
+  it('restores changed state only with --accept-changed-state --yes, and its refusal names the flags', async () => {
+    const refusal = {
+      outcome: 'refused',
+      verdict: 'unverifiable',
+      code: ORCAD_RECOVERY_CHANGED_STATE_CODE,
+      reason: 'The launched build changed profile state. Recover to restore the prelaunch snapshot.'
+    }
+    await expect(run('environment recover', client(refusal), [])).rejects.toMatchObject({
+      code: 'managed_server_refused',
+      message: expect.stringContaining('--accept-changed-state --yes')
+    })
+
+    const unconfirmed = client({ outcome: 'none' })
+    await expect(
+      run('environment recover', unconfirmed, [['accept-changed-state', true]])
+    ).rejects.toMatchObject({ code: 'confirmation_required' })
+    expect(unconfirmed).not.toHaveBeenCalled()
+
+    vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const confirmed = client({ outcome: 'none' })
+    await run('environment recover', confirmed, [
+      ['accept-changed-state', true],
+      ['yes', true]
+    ])
+    expect(confirmed).toHaveBeenCalledWith(
+      'managedServer.recover',
+      { selector: 'build-box', acceptChangedState: true },
+      { timeoutMs: MANAGED_SERVER_ACTION_TIMEOUT_MS }
+    )
   })
 })

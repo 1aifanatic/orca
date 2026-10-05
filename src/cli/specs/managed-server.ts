@@ -37,9 +37,18 @@ export const MANAGED_SERVER_COMMAND_SPECS: CommandSpec[] = [
   {
     path: ['environment', 'recover'],
     summary: 'Finish or undo a managed Orca server’s interrupted update, rollback or stop',
-    usage: 'orca environment recover --environment <selector> [--json]',
-    allowedFlags: [...GLOBAL_FLAGS],
-    notes: [SELECTOR_NOTE, DESKTOP_NOTE]
+    usage:
+      'orca environment recover --environment <selector> [--accept-changed-state --yes] [--json]',
+    allowedFlags: [...GLOBAL_FLAGS, 'accept-changed-state', 'yes'],
+    notes: [
+      'When a rejected build changed profile state, recover refuses rather than restart the previous build over it. --accept-changed-state --yes restores the prelaunch snapshot instead, the same as Restore in Settings > Managed servers; what the rejected build changed is discarded.',
+      SELECTOR_NOTE,
+      DESKTOP_NOTE
+    ],
+    examples: [
+      'orca environment recover --environment build-box',
+      'orca environment recover --environment build-box --accept-changed-state --yes'
+    ]
   },
   {
     path: ['environment', 'stop'],
