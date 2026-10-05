@@ -319,8 +319,8 @@ describe('registerNotificationHandlers', () => {
   it.each([
     { agentTurnOutcome: 'cancellation', word: 'stopped' },
     { agentTurnOutcome: 'failure', word: 'failed' },
-    // A crash, quit or restart cut it short: worded as the Stop it reads as, not a fault.
-    { agentTurnOutcome: 'interruption', word: 'stopped' },
+    // A turn cut short by anything but the user is a fault, worded as one.
+    { agentTurnOutcome: 'interruption', word: 'failed' },
     { agentTurnOutcome: 'unconfirmed', word: 'stopped' },
     { agentTurnOutcome: 'superseded', word: 'stopped' },
     { agentTurnOutcome: 'success', word: 'finished' },
