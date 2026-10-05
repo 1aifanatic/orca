@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import {
   normalizeAgentProviderSession,
   type AgentProviderSessionMetadata
@@ -32,41 +33,28 @@ export type TerminalConversationAddress = {
   providerSession: AgentProviderSessionMetadata
 }
 
+const conversationIdentityFieldsSchema = z.object({
+  agentType: z
+    .string()
+    .min(1)
+    .max(AGENT_TYPE_MAX_LENGTH)
+    .refine((agentType) => agentType !== 'unknown'),
+  providerSession: z.unknown(),
+  model: z.string().min(1).max(AGENT_MODEL_MAX_LENGTH).optional(),
+  modelSwitchCommand: z.literal('orca-model').optional(),
+  capturedAt: z.number().finite().positive()
+})
+
 /** Parses the shared identity fields; null when any is missing or malformed. */
 export function readConversationIdentityFields(raw: unknown): ConversationIdentityFields | null {
-  if (typeof raw !== 'object' || raw === null) {
+  const parsed = conversationIdentityFieldsSchema.safeParse(raw)
+  const providerSession = parsed.success
+    ? normalizeAgentProviderSession(parsed.data.providerSession)
+    : null
+  if (!parsed.success || !providerSession) {
     return null
   }
-  const agentType: unknown = Reflect.get(raw, 'agentType')
-  if (
-    typeof agentType !== 'string' ||
-    agentType.length === 0 ||
-    agentType.length > AGENT_TYPE_MAX_LENGTH ||
-    agentType === 'unknown'
-  ) {
-    return null
-  }
-  const providerSession = normalizeAgentProviderSession(Reflect.get(raw, 'providerSession'))
-  const capturedAt: unknown = Reflect.get(raw, 'capturedAt')
-  if (
-    !providerSession ||
-    typeof capturedAt !== 'number' ||
-    !Number.isFinite(capturedAt) ||
-    capturedAt <= 0
-  ) {
-    return null
-  }
-  const model: unknown = Reflect.get(raw, 'model')
-  if (
-    model !== undefined &&
-    (typeof model !== 'string' || model.length === 0 || model.length > AGENT_MODEL_MAX_LENGTH)
-  ) {
-    return null
-  }
-  const modelSwitchCommand: unknown = Reflect.get(raw, 'modelSwitchCommand')
-  if (modelSwitchCommand !== undefined && modelSwitchCommand !== 'orca-model') {
-    return null
-  }
+  const { agentType, model, modelSwitchCommand, capturedAt } = parsed.data
   return {
     agentType,
     providerSession,
@@ -76,6 +64,8 @@ export function readConversationIdentityFields(raw: unknown): ConversationIdenti
   }
 }
 
+const sourceSchema = z.object({ source: z.string() })
+
 /** Absent and malformed both read as `undefined` (a malformed field is discarded for its tab only); `null` is an explicit clear. */
 export function readTerminalConversationIdentity(
   raw: unknown
@@ -84,9 +74,9 @@ export function readTerminalConversationIdentity(
     return null
   }
   const fields = readConversationIdentityFields(raw)
-  const source: unknown = fields ? Reflect.get(Object(raw), 'source') : undefined
+  const provenance = sourceSchema.safeParse(raw)
   // Why: an unknown provenance value is kept as is; readers only compare it.
-  return fields && typeof source === 'string' ? { ...fields, source } : undefined
+  return fields && provenance.success ? { ...fields, source: provenance.data.source } : undefined
 }
 
 /** Every locator member; unlike `agentProviderSessionsEqual`, never ignores the path. */

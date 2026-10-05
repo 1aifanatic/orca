@@ -1,4 +1,4 @@
-import { appliedReportByScope, getScopedRecord } from './mobile-session-option-records'
+import { getScopedRecord, takeReportedModel } from './mobile-session-option-records'
 export { clearMobileSessionOptionRecordsForTests } from './mobile-session-option-records'
 import { mobileOmpSessionCatalog } from './mobile-omp-session-catalog'
 import type { AgentSessionConversationCommand } from '../../../src/shared/agent-session-conversation-command'
@@ -21,10 +21,7 @@ import {
   buildNativeChatSessionOptionSnapshot,
   withTrackedNativeChatModel
 } from '../../../src/shared/native-chat-session-option-snapshot'
-import {
-  decideConversationModelReport,
-  type ConversationModelReport
-} from '../../../src/shared/terminal-conversation-model-report'
+import type { ConversationModelReport } from '../../../src/shared/terminal-conversation-model-report'
 import {
   applyNativeChatReportedSessionOptions,
   clearNativeChatSessionModel,
@@ -109,11 +106,12 @@ export function useMobileNativeChatSessionOptions(args: {
 
   // Seed the current model from live agent status; hook reports are authority
   // over locally dispatched guesses (desktop 'reported' source parity).
-  const modelReport = args.modelReport
-  const reportedModelSource = modelReport?.modelSource ?? (reportedModel ? 'status' : null)
-  const fieldReportKey = modelReport?.fieldReportKey ?? null
-  const conversationKey = modelReport?.conversationKey ?? null
-  const conversationCleared = modelReport?.cleared === true
+  const {
+    cleared = false,
+    conversationKey = null,
+    fieldReportKey = null,
+    modelSource = reportedModel ? 'status' : null
+  } = args.modelReport ?? {}
   useEffect(() => {
     if (!catalog || !scopeKey || !agent) {
       return
@@ -128,15 +126,8 @@ export function useMobileNativeChatSessionOptions(args: {
     // status stream reconnects, and a session-start report cannot have observed a
     // `/model` sent after it. Re-applying it would revert the user's pick. Only a
     // report that CHANGES is evidence; the value itself still wins when it does.
-    const decision = decideConversationModelReport(appliedReportByScope.get(scopeKey), {
-      cleared: conversationCleared,
-      conversationKey,
-      model: matched || null,
-      modelSource: reportedModelSource,
-      fieldReportKey
-    })
-    appliedReportByScope.set(scopeKey, decision.baseline)
-    if (!decision.apply || !matched) {
+    const report = { cleared, conversationKey, model: matched || null, modelSource, fieldReportKey }
+    if (!takeReportedModel(scopeKey, report) || !matched) {
       return
     }
     const record = getScopedRecord(scopeKey, agent)
@@ -147,11 +138,11 @@ export function useMobileNativeChatSessionOptions(args: {
     agent,
     bump,
     catalog,
-    conversationCleared,
+    cleared,
     conversationKey,
     fieldReportKey,
+    modelSource,
     reportedModel,
-    reportedModelSource,
     scopeKey
   ])
 

@@ -26,6 +26,23 @@ import {
 } from './server-conversation-facet'
 
 export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusApplication {
+  /** For events that carry the provider's own report: only these may move the conversation facet. */
+  protected applyReportedStatus(
+    incoming: AgentHookEventPayload & { authorityRestartId?: string },
+    onAccepted?: () => void,
+    origin?: AgentStatusObservationOrigin,
+    observedAt?: number
+  ): EnrichedAgentHookEventPayload | undefined {
+    return this.applyNormalizedStatus(
+      incoming,
+      onAccepted,
+      origin,
+      observedAt,
+      undefined,
+      'reported'
+    )
+  }
+
   protected applyNormalizedStatus(
     incoming: AgentHookEventPayload & { authorityRestartId?: string },
     onAccepted?: () => void,
