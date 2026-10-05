@@ -158,4 +158,24 @@ describe('nesting child workspaces', () => {
       ['b', []]
     ])
   })
+
+  // Lineage from two hosts can disagree; a chat under no root would be resumed without being seen.
+  it('places every workspace when ancestors loop', () => {
+    const ancestors: Record<string, string[]> = { a: ['b'], b: ['a'], c: ['a'] }
+    const nested = nestResumeWorkspaces(
+      [group('a'), group('b'), group('c'), group('d')],
+      (id) => ancestors[id] ?? []
+    )
+
+    expect(nestedWorkspaceIds(nested)).toEqual([
+      [
+        'a',
+        [
+          ['b', []],
+          ['c', []]
+        ]
+      ],
+      ['d', []]
+    ])
+  })
 })

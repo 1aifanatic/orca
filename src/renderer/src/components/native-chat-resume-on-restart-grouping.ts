@@ -129,12 +129,32 @@ export function nestResumeWorkspaces(
   const nodes = new Map<string, ResumeWorkspaceNode>(
     workspaces.map((group) => [group.workspaceId, { group, children: [] }])
   )
-  const roots: ResumeWorkspaceNode[] = []
+  const parentOf = new Map<ResumeWorkspaceNode, ResumeWorkspaceNode>()
   for (const node of nodes.values()) {
     const parentId = ancestorsOf(node.group.workspaceId).find(
       (id) => id !== node.group.workspaceId && nodes.has(id)
     )
     const parent = parentId === undefined ? undefined : nodes.get(parentId)
+    if (parent) {
+      parentOf.set(node, parent)
+    }
+  }
+  // Why: a loop in the parent chain would leave its members under no root, and a ticked chat that
+  // renders nowhere would still be resumed; the loop is cut where the walk first comes back.
+  for (const node of nodes.values()) {
+    const seen = new Set([node])
+    let up = parentOf.get(node)
+    while (up && !seen.has(up)) {
+      seen.add(up)
+      up = parentOf.get(up)
+    }
+    if (up) {
+      parentOf.delete(up)
+    }
+  }
+  const roots: ResumeWorkspaceNode[] = []
+  for (const node of nodes.values()) {
+    const parent = parentOf.get(node)
     if (parent) {
       parent.children.push(node)
     } else {
