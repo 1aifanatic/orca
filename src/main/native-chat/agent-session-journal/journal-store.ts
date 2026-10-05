@@ -208,6 +208,11 @@ export class AgentSessionJournal {
     return this.queue.owing
   }
 
+  /** Write bodies that returned so far; see `JournalWriteQueue.completedWrites`. */
+  get completedWrites(): number {
+    return this.queue.completedWrites
+  }
+
   cursor = (): AgentJournalCursor => ({
     epoch: this.state.epoch,
     sequence: this.state.lastSequence
