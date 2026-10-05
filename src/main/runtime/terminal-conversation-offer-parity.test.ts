@@ -93,6 +93,7 @@ function ptyRecord(overrides: Partial<RuntimePtyWorktreeRecord> = {}): RuntimePt
 function leafRecord(paneTitle: string): RuntimeLeafRecord {
   return {
     tabId: 'tab',
+    worktreeId: 'wt-1',
     leafId: LEAF,
     paneRuntimeId: 1,
     ptyId: null,
@@ -341,6 +342,6 @@ describe('one host offer decision for every phone', () => {
   })
 
   it('pins the frames the mobile half reads', () => {
-    expect(JSON.stringify(projectAll(), null, 2) + '\n').toBe(readFileSync(FIXTURE_PATH, 'utf8'))
+    expect(`${JSON.stringify(projectAll(), null, 2)}\n`).toBe(readFileSync(FIXTURE_PATH, 'utf8'))
   })
 })

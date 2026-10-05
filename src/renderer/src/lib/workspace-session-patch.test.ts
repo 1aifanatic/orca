@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Repo } from '../../../shared/repo-types'
+import type { TerminalTab } from '../../../shared/terminal-tab-types'
 import { buildSanitizedTabsByWorktree, type WorkspaceSessionSnapshot } from './workspace-session'
 import { buildWorkspaceSessionPatch } from './workspace-session-patch'
 
@@ -183,17 +184,6 @@ describe('buildWorkspaceSessionPatch', () => {
               ptyId: 'pty-1',
               worktreeId: localWorktreeId,
               pendingActivationSpawn: true,
-              hostConversationByLeafId: {
-                'pane:1': {
-                  identity: {
-                    agentType: 'codex',
-                    providerSession: { key: 'session_id', id: 'S' },
-                    capturedAt: 1,
-                    source: 'live'
-                  },
-                  offeredWithoutStatus: true
-                }
-              },
               recovery: {
                 attemptedAt: [1],
                 generation: 1,
@@ -240,8 +230,6 @@ describe('buildWorkspaceSessionPatch', () => {
     // Why: the recovery ledger describes a mounted pane's in-flight heal; a
     // persisted one would refuse the first legitimate recovery after restart.
     expect('recovery' in patch.tabsByWorktree![localWorktreeId][0]).toBe(false)
-    // Why: the host republishes its conversation field every frame; a stored copy could only be stale.
-    expect('hostConversationByLeafId' in patch.tabsByWorktree![localWorktreeId][0]).toBe(false)
     expect(patch.terminalLayoutsByTabId?.['tab-local'].buffersByLeafId).toBeUndefined()
     expect(patch.terminalLayoutsByTabId?.['tab-local'].scrollbackRefsByLeafId).toBeUndefined()
   })
@@ -540,24 +528,30 @@ describe('buildWorkspaceSessionPatch', () => {
     })
   })
 
-  it('keeps the host conversation mirror out of a full session write too', () => {
-    const tabs = buildSanitizedTabsByWorktree({
-      'wt-1': [
-        {
-          id: 'tab-1',
-          ptyId: null,
-          worktreeId: 'wt-1',
-          title: 'Say hi',
-          customTitle: null,
-          color: null,
-          sortOrder: 0,
-          createdAt: 0,
-          hostConversationByLeafId: {
-            leaf: { identity: null, offeredWithoutStatus: false }
-          }
-        }
-      ]
-    })
-    expect('hostConversationByLeafId' in tabs['wt-1']![0]!).toBe(false)
+  it('keeps the host conversation mirror out of full and patch session writes', () => {
+    // Why: the host republishes its conversation field every frame; a stored copy could only be stale.
+    const mirroredTab: TerminalTab = {
+      id: 'tab-1',
+      ptyId: null,
+      worktreeId: 'wt-1',
+      title: 'Say hi',
+      customTitle: null,
+      color: null,
+      sortOrder: 0,
+      createdAt: 0,
+      hostConversationByLeafId: {
+        leaf: { identity: null, offeredWithoutStatus: false }
+      }
+    }
+    const full = buildSanitizedTabsByWorktree({ 'wt-1': [mirroredTab] })
+    expect('hostConversationByLeafId' in full['wt-1']![0]!).toBe(false)
+    const patch = buildWorkspaceSessionPatch(
+      createSnapshot({
+        tabsByWorktree: { 'wt-1': [mirroredTab] },
+        repos: [createRepo('repo-1', null)]
+      }),
+      ['tabsByWorktree']
+    )
+    expect('hostConversationByLeafId' in patch.tabsByWorktree!['wt-1']![0]!).toBe(false)
   })
 })

@@ -545,7 +545,7 @@ describe('the published conversation field on a headless host', () => {
     )
     normalized.publicationEpoch = 'headless:fixture'
     normalized.snapshotVersion = 1
-    expect(JSON.stringify(normalized, null, 2) + '\n').toBe(readFileSync(FIXTURE_PATH, 'utf8'))
+    expect(`${JSON.stringify(normalized, null, 2)}\n`).toBe(readFileSync(FIXTURE_PATH, 'utf8'))
   })
 
   it('passes a Windows transcript path through opaquely', async () => {

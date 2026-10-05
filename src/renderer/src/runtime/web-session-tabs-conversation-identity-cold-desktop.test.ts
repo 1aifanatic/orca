@@ -170,14 +170,22 @@ describe('cold paired desktop, idle headless Codex pane', () => {
     const frame = readFixtureFrame()
     const tab = fixtureTab(frame)
     const siblingLeaf = '22222222-2222-4222-8222-222222222222'
+    const host = frame.tabs[0]
+    if (host?.type !== 'terminal') {
+      throw new Error('fixture must hold one terminal tab')
+    }
+    const {
+      conversationIdentity: _identity,
+      conversationOfferedWithoutStatus: _offer,
+      ...plain
+    } = host
     frame.tabs.push({
-      ...tab,
+      ...plain,
       id: `${tab.parentTabId}::${siblingLeaf}`,
       leafId: siblingLeaf,
       isActive: false,
-      terminal: 'terminal-sibling',
-      conversationIdentity: undefined,
-      conversationOfferedWithoutStatus: undefined
+      status: 'ready',
+      terminal: 'terminal-sibling'
     })
 
     applyFrame(frame)

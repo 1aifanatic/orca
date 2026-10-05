@@ -105,7 +105,7 @@ class OwnerRuleServer extends AgentHookServer {
   ): EnrichedAgentHookEventPayload {
     const previous = this._getStateForTests().lastStatusByPaneKey.get(payload.paneKey)
     const borrowed =
-      payload.toolAgentId && previous?.payload.agentType === payload.payload.agentType
+      previous && payload.toolAgentId && previous.payload.agentType === payload.payload.agentType
         ? previous.providerSession
         : undefined
     return super.attachStatusTiming(
@@ -362,7 +362,7 @@ function seedRow(
 ): void {
   const state = server._getStateForTests()
   const row = state.lastStatusByPaneKey.get(PANE)
-  if (!row || !('receivedAt' in row)) {
+  if (!row || !('receivedAt' in row) || !('stateStartedAt' in row)) {
     throw new Error('expected a row to seed')
   }
   const { ...enriched } = row
