@@ -341,37 +341,101 @@ describe('selectWorktreeAgentActivitySummary', () => {
           state: 'done',
           mainAgent: { state: 'done', outcome, stateStartedAt: 1_000 }
         }),
-        statusSource: 'structured-journal',
+        structuredHost: 'held',
         ...overrides
       })
-      const staleCard = (row: AgentStatusEntry) => {
+      const staleCard = (...rows: AgentStatusEntry[]) => {
         vi.spyOn(Date, 'now').mockReturnValue(1_000 + AGENT_STATUS_STALE_AFTER_MS + 60_000)
-        return selectWorktreeAgentActivitySummary(
+        const summary = selectWorktreeAgentActivitySummary(
           {
             tabsByWorktree: { [worktreeId]: [liveTab] },
             agentStatusEpoch: epoch++,
-            agentStatusByPaneKey: { [failedKey]: row },
+            agentStatusByPaneKey: Object.fromEntries(rows.map((row) => [row.paneKey, row])),
             migrationUnsupportedByPtyId: {},
             runtimeAgentOrchestrationByPaneKey: {},
             retainedAgentsByPaneKey: {}
           },
           worktreeId
         )
+        return {
+          ...summary,
+          status: resolveWorktreeStatus({
+            tabs: [],
+            browserTabs: [],
+            ptyIdsByTabId: {},
+            ...summary
+          })
+        }
       }
 
-      expect(staleCard(ended('interruption'))).toMatchObject({ hasInterrupted: true })
-      expect(staleCard(ended('cancellation'))).toMatchObject({ hasInterrupted: true })
-      expect(staleCard(ended('failure'))).toMatchObject({ hasFailed: true })
-      expect(staleCard(ended('unconfirmed'))).toMatchObject({ hasUnconfirmed: true })
+      // Alone on the card, each still shows.
+      expect(staleCard(ended('interruption'))).toMatchObject({
+        hasRetainedInterrupted: true,
+        status: 'interrupted'
+      })
+      expect(staleCard(ended('cancellation'))).toMatchObject({
+        hasRetainedInterrupted: true,
+        status: 'interrupted'
+      })
+      expect(staleCard(ended('failure'))).toMatchObject({
+        hasRetainedFailed: true,
+        hasFailed: false,
+        status: 'failed'
+      })
+      expect(staleCard(ended('unconfirmed'))).toMatchObject({
+        hasRetainedUnconfirmed: true,
+        status: 'unconfirmed'
+      })
       // A clean done is news that ages; a terminal hook row can go quiet; neither is kept.
-      expect(staleCard(ended('success'))).toMatchObject({ hasLiveDone: false })
-      expect(staleCard(ended('cancellation', { statusSource: undefined }))).toMatchObject({
-        hasInterrupted: false
+      expect(staleCard(ended('success'))).toMatchObject({
+        hasLiveDone: false,
+        hasRetainedDone: false
+      })
+      expect(staleCard(ended('cancellation', { structuredHost: undefined }))).toMatchObject({
+        hasInterrupted: false,
+        hasRetainedInterrupted: false
       })
       // A native chat's stale working row is not a verdict, so it ages out as any report does.
       expect(staleCard(ended('failure', { state: 'working', mainAgent: undefined }))).toMatchObject(
-        { hasLiveWorking: false, hasFailed: false }
+        { hasLiveWorking: false, hasFailed: false, hasRetainedFailed: false }
       )
+    })
+
+    // A mark that never expires must not hide what another agent is doing or just finished.
+    it("shows live work and a fresh finish over a native chat's old verdict", () => {
+      const at = 1_000 + AGENT_STATUS_STALE_AFTER_MS + 60_000
+      const old = (outcome: 'failure' | 'cancellation' | 'interruption'): AgentStatusEntry => ({
+        ...makeAgentStatusEntry({
+          paneKey: failedKey,
+          state: 'done',
+          mainAgent: { state: 'done', outcome, stateStartedAt: 1_000 }
+        }),
+        structuredHost: 'held'
+      })
+      const fresh = (state: 'working' | 'done'): AgentStatusEntry => ({
+        ...makeAgentStatusEntry({ paneKey: workingKey, state }),
+        updatedAt: at,
+        stateStartedAt: at
+      })
+      const card = (...rows: AgentStatusEntry[]) => {
+        vi.spyOn(Date, 'now').mockReturnValue(at)
+        const summary = selectWorktreeAgentActivitySummary(
+          {
+            tabsByWorktree: { [worktreeId]: [liveTab] },
+            agentStatusEpoch: epoch++,
+            agentStatusByPaneKey: Object.fromEntries(rows.map((row) => [row.paneKey, row])),
+            migrationUnsupportedByPtyId: {},
+            runtimeAgentOrchestrationByPaneKey: {},
+            retainedAgentsByPaneKey: {}
+          },
+          worktreeId
+        )
+        return resolveWorktreeStatus({ tabs: [], browserTabs: [], ptyIdsByTabId: {}, ...summary })
+      }
+
+      expect(card(fresh('working'), old('failure'))).toBe('working')
+      expect(card(fresh('done'), old('cancellation'))).toBe('done')
+      expect(card(old('interruption'))).toBe('interrupted')
     })
 
     it('reads a retained cut-short agent as interrupted, not done', () => {
@@ -385,7 +449,10 @@ describe('selectWorktreeAgentActivitySummary', () => {
           }
         }
       )
-      expect(departed.summary).toMatchObject({ hasInterrupted: true, hasRetainedDone: false })
+      expect(departed.summary).toMatchObject({
+        hasRetainedInterrupted: true,
+        hasRetainedDone: false
+      })
       expect(departed.status).toBe('interrupted')
     })
 

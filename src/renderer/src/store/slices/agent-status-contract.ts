@@ -105,7 +105,7 @@ export type AgentStatusMetadata = {
   authorityRestartId?: string
   /** Structured status rows remain fresh while the host owns the session; cleared on feed loss. */
   structuredHostOwned?: true
-  statusSource?: AgentStatusEntry['statusSource']
+  structuredHost?: AgentStatusEntry['structuredHost']
   providerSession?: AgentProviderSessionMetadata
   launchConfig?: SleepingAgentLaunchConfig
   launchToken?: string

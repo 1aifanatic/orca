@@ -55,7 +55,7 @@ describe('isAgentStatusShownOnDot', () => {
     entry({
       state: 'done',
       updatedAt: STALE,
-      statusSource: 'structured-journal',
+      structuredHost: 'held',
       mainAgent: { state: 'done', outcome: 'cancellation', stateStartedAt: STALE },
       ...overrides
     })
@@ -68,7 +68,7 @@ describe('isAgentStatusShownOnDot', () => {
   })
 
   it.each([
-    ['a hook row', { statusSource: undefined }],
+    ['a hook row', { structuredHost: undefined }],
     ['a clean done', { mainAgent: { state: 'done', outcome: 'success', stateStartedAt: STALE } }],
     [
       'a failed lead still held open by its subagents',

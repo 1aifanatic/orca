@@ -220,7 +220,7 @@ describe('StructuredAgentSessionStatusBridge', () => {
     )
     act(() => feed().emit({ type: 'end' }))
     const entry = statuses()[0]!
-    expect(entry).toMatchObject({ state: 'done', statusSource: 'structured-journal' })
+    expect(entry).toMatchObject({ state: 'done', structuredHost: 'held' })
     expect(isExplicitAgentStatusFresh(entry, Date.now(), 30 * 60 * 1000)).toBe(false)
     expect(isAgentStatusShownOnDot(entry, Date.now(), 30 * 60 * 1000)).toBe(true)
   })

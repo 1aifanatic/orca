@@ -171,7 +171,8 @@ export function getWorktreeStatusLabel(status: WorktreeStatus): string {
  *
  * Map args are narrowed to this worktree. `hasPermission`/`hasLiveWorking`/
  * `hasLiveDone` are fresh hook entries ({blocked,waiting} / {working} / {done});
- * `hasRetainedDone`/`hasRetainedFailed` are retained-agent snapshots scoped to this worktreeId.
+ * `hasRetained*` are marks with no expiry (retained agents, kept native-chat verdicts) scoped to this
+ * worktreeId.
  */
 export function resolveWorktreeStatus(args: {
   tabs: readonly Pick<TerminalTab, 'id' | 'title' | 'launchAgent'>[]
@@ -191,6 +192,8 @@ export function resolveWorktreeStatus(args: {
   hasLiveDone: boolean
   hasRetainedDone: boolean
   hasRetainedFailed?: boolean
+  hasRetainedInterrupted?: boolean
+  hasRetainedUnconfirmed?: boolean
 }): WorktreeStatus {
   const heuristic = getWorktreeStatus(
     args.tabs,
@@ -223,7 +226,8 @@ export function resolveWorktreeStatus(args: {
   if (args.hasLiveMonitoring || heuristic === 'monitoring') {
     return 'monitoring'
   }
-  // Why: a departed agent's failure has no expiry, so it must not pin the card over live work.
+  // Why: a failure with no expiry (a departed agent's, an old native chat's) must not pin the card
+  // over live work.
   if (args.hasRetainedFailed) {
     return 'failed'
   }
@@ -237,6 +241,13 @@ export function resolveWorktreeStatus(args: {
   }
   if (args.hasLiveDone || args.hasRetainedDone) {
     return 'done'
+  }
+  // Why: an old end that never expires must not hide another agent's fresh finish.
+  if (args.hasRetainedUnconfirmed) {
+    return 'unconfirmed'
+  }
+  if (args.hasRetainedInterrupted) {
+    return 'interrupted'
   }
   return heuristic
 }

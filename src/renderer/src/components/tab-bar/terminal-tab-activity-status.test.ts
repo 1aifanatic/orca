@@ -237,12 +237,12 @@ describe('resolveTerminalTabActivityStatus', () => {
   // window never clears it, whoever ended the turn. A hook row and a clean done still age out.
   it("keeps a native chat's settled verdict past the freshness window, until the chat changes", () => {
     const ended = (
-      outcome: 'interruption' | 'cancellation' | 'failure' | 'success',
+      outcome: 'interruption' | 'cancellation' | 'failure' | 'unconfirmed' | 'success',
       overrides: Partial<AgentStatusEntry> = {}
     ) =>
       entry(FIRST_LEAF_ID, 'done', {
         updatedAt: 0,
-        statusSource: 'structured-journal',
+        structuredHost: 'held',
         mainAgent: { state: 'done', outcome, stateStartedAt: 0 },
         ...overrides
       })
@@ -256,14 +256,17 @@ describe('resolveTerminalTabActivityStatus', () => {
     expect(status(ended('interruption'))).toBe('interrupted')
     expect(status(ended('cancellation'))).toBe('interrupted')
     expect(status(ended('failure'))).toBe('failed')
+    expect(status(ended('unconfirmed'))).toBe('unconfirmed')
     expect(status(ended('success'))).not.toBe('done')
-    expect(status(ended('cancellation', { statusSource: undefined }))).not.toBe('interrupted')
+    // A stale working row is not a verdict: it ages out as any report does.
+    expect(status(ended('failure', { state: 'working', mainAgent: undefined }))).not.toBe('working')
+    expect(status(ended('cancellation', { structuredHost: undefined }))).not.toBe('interrupted')
     // The next turn replaces it.
     expect(
       status(
         entry(FIRST_LEAF_ID, 'working', {
           updatedAt: Date.now(),
-          statusSource: 'structured-journal'
+          structuredHost: 'held'
         })
       )
     ).toBe('working')

@@ -1,5 +1,5 @@
 import type { AppState } from '@/store'
-import { isAgentStatusShownOnDot } from '@/lib/pane-agent-evidence'
+import { isExplicitAgentStatusFresh, isSettledNativeChatVerdict } from '@/lib/pane-agent-evidence'
 import { migrationUnsupportedToAgentStatusEntry } from '@/lib/migration-unsupported-agent-entry'
 import {
   mergeAgentStatusOrchestration,
@@ -19,14 +19,18 @@ export type WorktreeAgentActivitySummary = {
   hasLiveMonitoring: boolean
   /** A fresh failed main agent, also while its subagents run; kept apart from clean done. */
   hasFailed: boolean
-  /** An interrupted turn (fresh, cut short, or retained), kept separate from clean done outcomes. */
+  /** A fresh interrupted turn, kept separate from clean done outcomes. */
   hasInterrupted: boolean
   /** A fresh end Orca cannot prove, likewise never a clean done. */
   hasUnconfirmed: boolean
   hasLiveDone: boolean
   hasRetainedDone: boolean
-  /** A departed agent's failure; unlike `hasFailed` it yields to live work. */
+  /** A failure with no expiry (a departed agent's, or a native chat's kept past the freshness
+   *  window); unlike `hasFailed` it yields to live work. The retained marks below yield to a
+   *  fresh finish too. */
   hasRetainedFailed: boolean
+  hasRetainedInterrupted: boolean
+  hasRetainedUnconfirmed: boolean
   agentStatusPaneIdsByTabId: Record<string, ReadonlySet<string>>
   /** Stale rows suppress generated permission labels while preserving native title fallback. */
   stalePaneIdsByTabId: Record<string, ReadonlySet<string>>
@@ -44,6 +48,8 @@ const EMPTY_SUMMARY: WorktreeAgentActivitySummary = {
   hasLiveDone: false,
   hasRetainedDone: false,
   hasRetainedFailed: false,
+  hasRetainedInterrupted: false,
+  hasRetainedUnconfirmed: false,
   agentStatusPaneIdsByTabId: EMPTY_AGENT_STATUS_PANE_IDS_BY_TAB_ID,
   stalePaneIdsByTabId: EMPTY_AGENT_STATUS_PANE_IDS_BY_TAB_ID
 }
@@ -133,7 +139,8 @@ function getWorktreeAgentActivitySummaries(
       addAgentStatusPaneId(summary, paneIdentity.tabId, paneIdentity.paneId)
       continue
     }
-    if (!isAgentStatusShownOnDot(entry, now, AGENT_STATUS_STALE_AFTER_MS)) {
+    const fresh = isExplicitAgentStatusFresh(entry, now, AGENT_STATUS_STALE_AFTER_MS)
+    if (!fresh && !isSettledNativeChatVerdict(entry)) {
       // Why: staleness ends this row's authority but not the pane's identity — see
       // `stalePaneIdsByTabId`. Dropping both let Orca's self-authored permission title outlive
       // the row it came from and pin the card to a question nobody was asking.
@@ -144,7 +151,11 @@ function getWorktreeAgentActivitySummaries(
     if (entry.state === 'done') {
       addParentPaneId(summary, orchestration, worktreeId, tabIdToWorktreeId)
     }
-    applyAgentPaneActivityFlags(summary, entry)
+    if (fresh) {
+      applyAgentPaneActivityFlags(summary, entry)
+    } else {
+      applyRetainedAgentMark(summary, entry)
+    }
   }
 
   for (const unsupported of Object.values(state.migrationUnsupportedByPtyId ?? {})) {
@@ -157,18 +168,7 @@ function getWorktreeAgentActivitySummaries(
 
   for (const retained of Object.values(state.retainedAgentsByPaneKey ?? {})) {
     const summary = summaryForWorktree(retained.worktreeId)
-    // Why: a failed or cut-short agent is retained so that stays visible, not so it reads done.
-    switch (agentVerdictDisplayMark(retained.entry)) {
-      case 'failed':
-        summary.hasRetainedFailed = true
-        break
-      case 'interrupted':
-        summary.hasInterrupted = true
-        break
-      case 'unconfirmed':
-      case null:
-        summary.hasRetainedDone = true
-    }
+    applyRetainedAgentMark(summary, retained.entry)
     const paneIdentity = parseAgentStatusPaneIdentity(retained.entry?.paneKey)
     if (paneIdentity) {
       addAgentStatusPaneId(summary, paneIdentity.tabId, paneIdentity.paneId)
@@ -203,6 +203,28 @@ function getWorktreeAgentActivitySummaries(
   return summaries
 }
 
+/** A mark with no expiry: a departed agent's, or a native chat's settled verdict past the freshness
+ *  window. It keeps showing, but in the retained tier, so live work and a fresh finish show over it;
+ *  a failed or cut-short agent is retained so that stays visible, not so it reads done. */
+function applyRetainedAgentMark(
+  summary: WorktreeAgentActivitySummary,
+  entry: Parameters<typeof agentVerdictDisplayMark>[0]
+): void {
+  switch (agentVerdictDisplayMark(entry)) {
+    case 'failed':
+      summary.hasRetainedFailed = true
+      return
+    case 'interrupted':
+      summary.hasRetainedInterrupted = true
+      return
+    case 'unconfirmed':
+      summary.hasRetainedUnconfirmed = true
+      return
+    case null:
+      summary.hasRetainedDone = true
+  }
+}
+
 function summariesEqual(
   previous: WorktreeAgentActivitySummary,
   next: WorktreeAgentActivitySummary
@@ -217,6 +239,8 @@ function summariesEqual(
     previous.hasLiveDone === next.hasLiveDone &&
     previous.hasRetainedDone === next.hasRetainedDone &&
     previous.hasRetainedFailed === next.hasRetainedFailed &&
+    previous.hasRetainedInterrupted === next.hasRetainedInterrupted &&
+    previous.hasRetainedUnconfirmed === next.hasRetainedUnconfirmed &&
     agentStatusPaneIdsByTabIdEqual(
       previous.agentStatusPaneIdsByTabId,
       next.agentStatusPaneIdsByTabId

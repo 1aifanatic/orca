@@ -37,25 +37,34 @@ export function isExplicitAgentStatusFresh(
 }
 
 /**
- * Whether a row still sets its pane's status dot: while its evidence is fresh, and, for a native
- * chat's settled verdict (Interrupted, Failed, Couldn't confirm), until the chat's next turn
- * replaces it. That verdict is the chat's state, re-derived from its journal on every change, not a
- * live report that can go quiet, so no timer may clear it. A clean done, and a row still held open
- * by work, decay as before.
+ * A native chat's settled verdict (Interrupted, Failed, Couldn't confirm) that no timer may clear: it
+ * is the chat's state, re-derived from its journal on every change, not a live report that can go
+ * quiet, so it stays until the chat's next turn replaces it. A clean done, and a row still held open
+ * by work, are not kept.
  */
+export function isSettledNativeChatVerdict(
+  entry: Pick<
+    AgentStatusEntry,
+    'state' | 'interrupted' | 'mainAgent' | 'structuredHost' | 'restoredUnconfirmed'
+  >
+): boolean {
+  return (
+    entry.structuredHost !== undefined &&
+    entry.restoredUnconfirmed !== true &&
+    entry.state === 'done' &&
+    agentVerdictDisplayMark(entry) !== null
+  )
+}
+
+/** Whether a row still sets its pane's status dot: while its evidence is fresh, or while it is a
+ *  native chat's settled verdict. */
 export function isAgentStatusShownOnDot(
   entry: Parameters<typeof isExplicitAgentStatusFresh>[0] &
-    Pick<AgentStatusEntry, 'state' | 'interrupted' | 'mainAgent' | 'statusSource'>,
+    Parameters<typeof isSettledNativeChatVerdict>[0],
   now: number,
   staleAfterMs: number
 ): boolean {
-  return (
-    isExplicitAgentStatusFresh(entry, now, staleAfterMs) ||
-    (entry.statusSource === 'structured-journal' &&
-      entry.restoredUnconfirmed !== true &&
-      entry.state === 'done' &&
-      agentVerdictDisplayMark(entry) !== null)
-  )
+  return isExplicitAgentStatusFresh(entry, now, staleAfterMs) || isSettledNativeChatVerdict(entry)
 }
 
 /**
