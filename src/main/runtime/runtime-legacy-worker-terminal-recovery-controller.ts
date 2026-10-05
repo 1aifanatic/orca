@@ -49,6 +49,9 @@ export class RuntimeLegacyWorkerTerminalRecoveryController {
     })
     const run = this.queue.then(async () => {
       try {
+        if (!options.retry) {
+          this.cancelScope(options.connectionId ? `ssh:${options.connectionId}` : 'local')
+        }
         resolveResult(await runLegacyWorkerTerminalRecovery(this, this.ports, options))
       } catch (error) {
         rejectResult(error)
