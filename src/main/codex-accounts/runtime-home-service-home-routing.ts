@@ -16,8 +16,7 @@ import {
 import { hasCustomCodexHomeOverrideForLaunch } from '../codex/codex-real-home-path'
 import {
   hasRecordedLegacySharedCodexPane,
-  getCodexPaneAccount,
-  type CodexPaneHomeRoute
+  getCodexPaneAccount
 } from '../codex/codex-pane-account-registry'
 import { ManagedCodexHomeTemporarilyUnavailableError } from './host-codex-managed-home-ownership'
 import { syncLegacySharedCodexConfigForRetainedPanes } from './legacy-shared-config-compatibility'
@@ -90,13 +89,6 @@ export abstract class CodexRuntimeHomeRouting extends CodexRuntimeHomeManagedHom
     return resolved.kind === 'owned'
       ? { kind: 'ready', homePath: resolved.homePath }
       : { kind: 'skip' }
-  }
-
-  getSelectedHostCodexHomeRoute(): CodexPaneHomeRoute {
-    if (this.getSelfContainedManagedHostAccount()) {
-      return 'account-home'
-    }
-    return this.isHostSystemDefaultRealHome() ? 'real-home' : 'shared-home'
   }
 
   getRetainedHostCodexHookHomePaths(ptyIds: readonly string[]): string[] {

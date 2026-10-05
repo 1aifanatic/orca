@@ -7,6 +7,7 @@ export type CodexPaneHomeRoute =
   | 'real-home'
   | 'shared-home'
   | 'account-home'
+  /** Older builds only; kept so their surviving panes still parse. */
   | 'custom-home'
   | 'wsl-home'
 

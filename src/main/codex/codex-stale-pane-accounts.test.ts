@@ -359,8 +359,7 @@ describe('listStaleCodexPanes', () => {
       {
         ptyId: 'pty-1',
         launchAccountId: 'account-a',
-        activeAccountId: 'account-b',
-        reason: 'account-change'
+        activeAccountId: 'account-b'
       }
     ])
   })
@@ -374,8 +373,7 @@ describe('listStaleCodexPanes', () => {
       {
         ptyId: 'pty-1',
         launchAccountId: 'account-a',
-        activeAccountId: null,
-        reason: 'account-change'
+        activeAccountId: null
       }
     ])
   })
@@ -388,7 +386,7 @@ describe('listStaleCodexPanes', () => {
     ).toEqual([])
   })
 
-  it('reports a system-default pane after its home route changes', () => {
+  it('leaves a pane on an older Codex home alone while its account is unchanged', () => {
     recordCodexPaneAccount('pty-1', {
       selectionKey: 'host',
       accountId: null,
@@ -396,86 +394,7 @@ describe('listStaleCodexPanes', () => {
     })
 
     expect(
-      listStaleCodexPanes({
-        ptyIds: ['pty-1'],
-        settings: settingsWithSelection(null),
-        activeHostHomeRoute: 'real-home'
-      })
-    ).toEqual([
-      {
-        ptyId: 'pty-1',
-        launchAccountId: null,
-        activeAccountId: null,
-        reason: 'home-route-change'
-      }
-    ])
-  })
-
-  it('keeps account-switch copy when the account and home route both change', () => {
-    recordCodexPaneAccount('pty-1', {
-      selectionKey: 'host',
-      accountId: null,
-      homeRoute: 'real-home'
-    })
-
-    expect(
-      listStaleCodexPanes({
-        ptyIds: ['pty-1'],
-        settings: settingsWithSelection('account-a'),
-        activeHostHomeRoute: 'account-home'
-      })
-    ).toEqual([
-      {
-        ptyId: 'pty-1',
-        launchAccountId: null,
-        activeAccountId: 'account-a',
-        reason: 'account-change'
-      }
-    ])
-  })
-
-  it('does not guess a route for panes recorded before route provenance', () => {
-    recordCodexPaneAccount('pty-1', { selectionKey: 'host', accountId: null })
-
-    expect(
-      listStaleCodexPanes({
-        ptyIds: ['pty-1'],
-        settings: settingsWithSelection(null),
-        activeHostHomeRoute: 'real-home'
-      })
-    ).toEqual([])
-  })
-
-  it('does not compare a pane-local custom home with the selected host route', () => {
-    recordCodexPaneAccount('pty-1', {
-      selectionKey: 'host',
-      accountId: null,
-      homeRoute: 'custom-home'
-    })
-
-    expect(
-      listStaleCodexPanes({
-        ptyIds: ['pty-1'],
-        settings: settingsWithSelection(null),
-        activeHostHomeRoute: 'real-home'
-      })
-    ).toEqual([])
-  })
-
-  it('leaves a retained pane alone while its process CODEX_HOME is unchanged', () => {
-    recordCodexPaneAccount('pty-1', {
-      selectionKey: 'host',
-      accountId: null,
-      homeRoute: 'shared-home',
-      environmentHomeOverride: { codexHome: '/custom/codex-home' }
-    })
-
-    expect(
-      listStaleCodexPanes({
-        ptyIds: ['pty-1'],
-        settings: settingsWithSelection(null),
-        activeHostHomeRoute: 'shared-home'
-      })
+      listStaleCodexPanes({ ptyIds: ['pty-1'], settings: settingsWithSelection(null) })
     ).toEqual([])
   })
 
@@ -502,8 +421,7 @@ describe('listStaleCodexPanes', () => {
       {
         ptyId: 'pty-2',
         launchAccountId: 'account-a',
-        activeAccountId: 'account-b',
-        reason: 'account-change'
+        activeAccountId: 'account-b'
       }
     ])
   })
@@ -523,8 +441,7 @@ describe('listStaleCodexPanes', () => {
       {
         ptyId: 'pty-2',
         launchAccountId: 'account-c',
-        activeAccountId: 'account-d',
-        reason: 'account-change'
+        activeAccountId: 'account-d'
       }
     ])
   })

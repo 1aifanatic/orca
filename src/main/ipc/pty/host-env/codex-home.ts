@@ -248,14 +248,6 @@ export function recordCodexPaneAccountForSpawn(args: {
     ? resolveCodexPaneLaunchAccount({
         pinnedByResume: args.pinnedByResume,
         launchCodexHomePath: args.launchCodexHomePath,
-        // Why: pane-local overrides cannot be re-derived when a restart builds
-        // a fresh launch env, so route prompts would guess and block valid input.
-        recordComparableHomeRoute:
-          args.pinnedByResume ||
-          ((customHomeOverride?.source !== 'environment' ||
-            recheckableEnvironmentOverride !== undefined) &&
-            (customHomeOverride?.source !== 'shell-startup' ||
-              recheckableShellStartupOverride !== undefined)),
         shellStartupHomeOverride: args.pinnedByResume ? undefined : recheckableShellStartupOverride,
         environmentHomeOverride: args.pinnedByResume ? undefined : recheckableEnvironmentOverride,
         systemCodexHomePath: getSystemCodexHomePath(),

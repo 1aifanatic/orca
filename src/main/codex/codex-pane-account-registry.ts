@@ -242,7 +242,7 @@ export function getCodexPaneAccount(ptyId: string): CodexPaneAccountRecord | nul
   return readRegistry().panes[ptyId] ?? null
 }
 
-/** `custom-home` stays conservative because it can mask a non-comparable shared-home route. */
+/** `custom-home` (written only by older builds) stays conservative: it could hide a shared-home route. */
 export function isCodexPaneHomeRouteProvenAwayFromSharedHome(
   route: CodexPaneHomeRoute | undefined
 ): boolean {

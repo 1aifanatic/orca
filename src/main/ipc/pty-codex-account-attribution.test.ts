@@ -105,7 +105,7 @@ describe('registerPtyHandlers', () => {
       }
     }
   })
-  it('does not guess route provenance for a pane-local environment CODEX_HOME', async () => {
+  it('does not record a pane-local environment CODEX_HOME as a recheckable override', async () => {
     setLocalPtyProvider({
       spawn: vi.fn(async () => ({ id: 'pty-pane-env-home' })),
       write: vi.fn(),
@@ -129,7 +129,7 @@ describe('registerPtyHandlers', () => {
     expect(recordCodexPaneAccountMock).toHaveBeenCalledWith('pty-pane-env-home', {
       selectionKey: 'host',
       accountId: null,
-      homeRoute: 'custom-home'
+      homeRoute: 'shared-home'
     })
   })
   it('does not resume under another account when the origin auth stays unavailable', async () => {
