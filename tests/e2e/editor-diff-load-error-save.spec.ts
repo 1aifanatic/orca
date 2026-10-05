@@ -14,6 +14,7 @@ test('a failed diff cannot replace file bytes, and recovery remains editable', a
   registerPostElectronShutdownCleanup
 }, testInfo) => {
   const context = await getActiveWorktreeContext(orcaPage)
+  await orcaPage.setViewportSize({ width: 1000, height: 850 })
   const filePath = path.join(context.rootPath, 'README.md')
   const original = await readFile(filePath, 'utf8')
   const protectedContent = 'PROTECTED_FILE_CONTENT\n'
@@ -72,8 +73,9 @@ test('a failed diff cannot replace file bytes, and recovery remains editable', a
     { filePath, worktreeId: context.worktreeId }
   )
   const pane = orcaPage.locator('.modified-in-monaco-diff-editor')
+  const textLines = pane.locator('.view-lines[role="presentation"]')
   await expect(pane).toBeVisible({ timeout: 25_000 })
-  await expect(pane.locator('.view-lines')).toContainText('controlled diff load failure')
+  await expect(textLines).toContainText('controlled diff load failure')
   await pane.click()
   await orcaPage.keyboard.press('ControlOrMeta+S')
   await orcaPage.screenshot({
@@ -105,7 +107,7 @@ test('a failed diff cannot replace file bytes, and recovery remains editable', a
       })
     )
   }, context)
-  await expect(pane.locator('.view-lines')).toContainText('PROTECTED_FILE_CONTENT')
+  await expect(textLines).toContainText('PROTECTED_FILE_CONTENT')
   await pane.click()
   await orcaPage.keyboard.press('ControlOrMeta+End')
   await orcaPage.keyboard.type(' RECOVERED_EDIT')
