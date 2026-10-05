@@ -1,6 +1,6 @@
 // The adapter's starts: each acquire under way, stopped when the host aborts its signal (a close,
 // a Stop that must not wait behind it, or quit), and each failed start's child until its exit is
-// proven, so a later close retries it instead of answering for a child it no longer knows.
+// proven, so the next start or quit retries it instead of answering for a child it no longer knows.
 
 import type { AcpStructuredChild } from './acp-structured-child'
 

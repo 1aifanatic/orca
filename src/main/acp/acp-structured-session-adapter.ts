@@ -160,14 +160,15 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
         ? { cancelled: true }
         : { cancelled: false, refusal: { turnNotRunning: true } }
     }
-    // Answers every open request cancelled and lets Grok end its turn its own way; the host ends
-    // the child once that lands or the grace runs out (`awaitStoppedRequestEnd`).
+    // Answers every open request cancelled and lets the agent end its turn its own way; the host
+    // ends the child once that lands or the grace runs out (`awaitStoppedRequestEnd`).
     void session.runtime.cancel().catch(() => undefined)
     return { cancelled: true }
   }
 
-  // Stop is a session boundary: Grok's cancel ends only the running turn, and work it already moved
-  // to the background runs on and can begin a turn of its own. The next send resumes the session.
+  // Stop is a session boundary for every ACP agent, as in the common pattern: a cancel ends only
+  // the running turn, and work the agent moved to the background could begin a turn of its own.
+  // The next send reloads the session.
   stopEndsSession = (): boolean => true
 
   awaitStoppedRequestEnd = async (sessionId: string, stoppedAt: number): Promise<void> => {

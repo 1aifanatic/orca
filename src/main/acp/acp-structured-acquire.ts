@@ -223,8 +223,6 @@ export async function acquireAcpStructuredSession(input: {
     let liveLane: AcpStructuredLane | null = null
     let supersedesKey: string | undefined
     if (resume) {
-      // Adoption would plug in here: a chat whose journal holds none of the agent's history would
-      // load with the translator adopting the replay. No Grok chat reaches that state today.
       const attaching = makeLane(resume.sessionId, true)
       liveLane = attaching
       try {
