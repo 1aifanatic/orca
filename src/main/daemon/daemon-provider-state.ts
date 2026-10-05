@@ -171,6 +171,13 @@ export async function listLiveDaemonSessionsWithProtocol(): Promise<DaemonSessio
   )
 }
 
+/** Terminals the degraded provider ran in-process; none outside degraded mode. */
+export async function countInProcessFallbackTerminals(): Promise<number> {
+  return adapter instanceof DegradedDaemonPtyProvider
+    ? (await adapter.fallback.listProcesses()).length
+    : 0
+}
+
 /** Atomically fence new daemon terminals and retire only an idle, single-generation daemon. */
 export async function requestIdleDaemonRetirement(): Promise<DaemonIdleRetirementResult> {
   if (!adapter) {
