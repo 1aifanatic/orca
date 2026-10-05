@@ -187,9 +187,11 @@ async function doConnect(
   const server = await runAttributedToSshOwner(owner, () => decideHostServer(target)).catch(
     async (error: unknown) => {
       if (!isCurrentConnectAttempt(targetId, authority)) {
-        await abandonDecisionTransport(targetId, owner)
+        await abandonDecisionTransport(targetId, owner, authority)
         throw createCancelledConnectAttemptError()
       }
+      // A failed setup leaves no relay to own the transport its decision dialed.
+      await abandonDecisionTransport(targetId, owner, authority)
       publishHostServerDecisionFailure(targetId, error)
       throw error
     }
@@ -197,7 +199,7 @@ async function doConnect(
   // A shutdown that began during the decision is the actionable reason, ahead of the rotation.
   assertSshConnectsNotFenced()
   if (!isCurrentConnectAttempt(targetId, authority)) {
-    await abandonDecisionTransport(targetId, owner)
+    await abandonDecisionTransport(targetId, owner, authority)
     throw createCancelledConnectAttemptError()
   }
   adoptCurrentTransport(targetId, owner)
@@ -220,6 +222,7 @@ async function doConnect(
       server?.detail ??
         'This SSH host serves a managed Orca server; it is reached through that server.'
     )
+    await abandonDecisionTransport(targetId, owner, authority)
     publishHostServerDecisionFailure(targetId, blocked)
     throw blocked
   }
