@@ -16860,6 +16860,17 @@
         },
         "ActivityThreadRow": {
           "clearNotification": "Clear notification"
+        },
+        "ActivityThreadContextMenu": {
+          "copyTitle": "Agent title",
+          "copyBranch": "Branch",
+          "copyPath": "Path",
+          "open": "Open",
+          "markRead": "Mark as read",
+          "markUnread": "Mark as unread",
+          "goToWorkspace": "Go to workspace",
+          "copy": "Copy",
+          "clear": "Clear from list"
         }
       },
       "confirmation": {
