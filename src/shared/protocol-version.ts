@@ -221,9 +221,8 @@ export const AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY =
 // matrix (#21062) in the shipped host, and the desktop and phone clients that render the queue.
 // v1 includes `submission.queuedMessageId` on every draft hand-off: a client reads that link and
 // never compares a draft id with a submission id. It also publishes the queue's pause once, as
-// `queuePause` beside the list, lifted by `agentSession.queuedMessagesResume` or the user's next
-// turn. Each card may carry `heldBy`, the pause holding it or null; when it is absent (an older
-// host) a client falls back to `queuePause` for every card. `nextQueuedMessageId` beside the list
+// `queuePause` beside the list, lifted by `agentSession.queuedMessagesResume` or any turn sent
+// after it starting; while it is set every waiting card waits. `nextQueuedMessageId` beside the list
 // names the card the queue sends next once nothing runs, null while anything holds it; absent (an
 // older host) reads as null. A card's own hold (`paused`) means only that its conversion failed.
 // The host mechanism lands first; the constant gates the rollout.

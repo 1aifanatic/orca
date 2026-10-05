@@ -89,7 +89,7 @@ function waitingDraft(
 }
 
 /** The list over the real controller: cards and header as the host's publication projects them.
- *  Nothing runs after a Stop, a restart or a /clear. */
+ *  Nothing runs after a Stop or a /clear. */
 function renderHeldQueue(
   queuedMessages: AgentSessionQueuedMessage[],
   queuePause: AgentSessionQueuePause | null
@@ -288,7 +288,6 @@ describe('NativeChatQueuedMessageList', () => {
 
   it.each([
     ['stopped', 'Queue paused because you interrupted'],
-    ['restarted', 'Queue paused because Orca restarted'],
     ['cleared', 'Queue paused after you cleared the conversation'],
     ['some-newer-reason', 'Queue paused']
   ])(
@@ -296,10 +295,7 @@ describe('NativeChatQueuedMessageList', () => {
     (reason, text) => {
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a newer host may publish a reason this client's type does not list.
       const pause = { reason } as AgentSessionQueuePause
-      const { container, mutate } = renderHeldQueue(
-        [waitingDraft('held', 1, { heldBy: pause })],
-        pause
-      )
+      const { container, mutate } = renderHeldQueue([waitingDraft('held', 1)], pause)
       expect(container.textContent).toContain(text)
       const list = screen.getByRole('list')
       // The row sits above the list, not inside it: it is not a queued message.
@@ -318,14 +314,15 @@ describe('NativeChatQueuedMessageList', () => {
     }
   )
 
-  it('an older host that names no per-card hold: its queue pause holds every card and heads them', () => {
+  it('a paused queue holds every card, in order, under one header', () => {
     renderHeldQueue([waitingDraft('a', 1), waitingDraft('b', 2)], { reason: 'stopped' })
     expect(screen.getByText('Queue paused because you interrupted')).toBeTruthy()
     expect(screen.getAllByRole('button', { name: 'Steer' })).toHaveLength(2)
   })
 
-  it('no header row when the queue drains on its own, or when there are no cards', () => {
-    renderHeldQueue([waitingDraft('typed-after', 1, { heldBy: null })], { reason: 'stopped' })
+  it('no header row when the queue drains on its own (or after a restart), or with no cards', () => {
+    renderHeldQueue([waitingDraft('waiting', 1)], null)
+    expect(screen.queryByText(/Queue paused/)).toBeNull()
     expect(screen.queryByRole('button', { name: 'Resume' })).toBeNull()
     cleanup()
     const { container } = renderHeldQueue([], { reason: 'stopped' })
@@ -337,9 +334,9 @@ describe('NativeChatQueuedMessageList', () => {
     const stopped = { reason: 'stopped' } as const
     const { container } = renderHeldQueue(
       [
-        waitingDraft('refused', 1, { state: 'returned', returnedReason: null, heldBy: null }),
-        waitingDraft('behind', 2, { heldBy: stopped }),
-        waitingDraft('failed', 3, { paused: true, pausedReason: 'send_failed', heldBy: stopped })
+        waitingDraft('refused', 1, { state: 'returned', returnedReason: null }),
+        waitingDraft('behind', 2),
+        waitingDraft('failed', 3, { paused: true, pausedReason: 'send_failed' })
       ],
       stopped
     )

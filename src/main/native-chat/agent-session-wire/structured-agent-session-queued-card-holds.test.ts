@@ -1,8 +1,9 @@
-// The host publishes which pause holds each card and the card its queue sends next. A client
-// reading its updates one at a time, as the chat does, reads one working state across a turn's end
-// or a Resume and the queue's send of the next card: the working status and row, the pickers, the
-// composer button and the card labels never flip in between. Where the host would refuse the send,
-// it names no next card, so the chat reads idle.
+// The queue sends its cards strictly in order. The host publishes the queue's pause and the card it
+// sends next. A client reading its updates one at a time, as the chat does, reads one working state
+// across a turn's end or a Resume and the queue's send of the next card: the working status and
+// row, the pickers, the composer button and the card labels never flip in between. After a restart
+// nothing sends by itself and no pause shows: the chat's next turn runs first, then the cards.
+// Where the host would refuse the send, it names no next card, so the chat reads idle.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
@@ -20,8 +21,7 @@ import {
   ownDirectSendOnItsWay,
   projectQueuedMessageCards,
   queuedMessageCardSteers,
-  queuedMessagesQueuePause,
-  queuedMessagesResumable
+  queuedMessagesQueuePause
 } from '../../../renderer/src/components/native-chat/structured-agent-session-queued-cards'
 import {
   nativeChatComposerPrimaryAction,
@@ -32,7 +32,11 @@ import {
   readQueuePublication,
   structuredQueueSendGate
 } from './structured-agent-session-queued-publication'
-import { structuredAgentSessionHostInstance } from './structured-agent-session-queued-pause'
+import {
+  structuredAgentSessionHostInstance,
+  structuredQueuePauses
+} from './structured-agent-session-queued-pause'
+import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 import {
   HOST_TEST_SESSION,
   hostTestMessage,
@@ -46,6 +50,8 @@ import {
 } from './structured-agent-session-queued-message-rig.test-fixture'
 
 let rig: QueuedMessageTestRig
+
+const MANUAL_IDLE_SWEEP = { idleMs: 0, intervalMs: 60 * 60 * 1000 }
 
 beforeEach(async () => {
   rig = await createQueuedMessageTestRig({ restartable: true })
@@ -61,15 +67,36 @@ async function queuedDraft(text: string): Promise<string> {
   return queued.value.queued.messageId
 }
 
-/** Each waiting card's published hold, by id. */
-async function heldBy(): Promise<Record<string, AgentSessionQueuePause | null | undefined>> {
+/** What a reader opening the chat now is told: the queue's pause and the card it sends next. */
+async function published(): Promise<{
+  queuePause: AgentSessionQueuePause | null
+  nextQueuedMessageId: string | null
+}> {
   const page = await rig.host.history({ sessionId: HOST_TEST_SESSION, direction: 'tail' })
   if (!page.ok) {
     throw new Error('history refused')
   }
-  return Object.fromEntries(
-    (page.page.queuedMessages ?? []).map((card) => [card.messageId, card.heldBy])
-  )
+  return {
+    queuePause: page.page.queuePause ?? null,
+    nextQueuedMessageId: page.page.nextQueuedMessageId ?? null
+  }
+}
+
+/** The pauses in force, published or not: a restart's is never published. */
+function derivedPauses(): string[] {
+  const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.journal
+  if (!journal) {
+    throw new Error('expected the conversation open')
+  }
+  return structuredQueuePauses(journal).map((pause) => pause.reason)
+}
+
+/** Lets the drain run its steps; none may hand a card off. */
+async function expectNothingSent(...draftIds: string[]): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 250))
+  for (const draftId of draftIds) {
+    expect(await rig.handoff(draftId)).toBeUndefined()
+  }
 }
 
 type ClientView = {
@@ -81,6 +108,8 @@ type ClientView = {
   button: NativeChatComposerPrimaryAction
   /** The header row above the cards: the queue is held. */
   header: boolean
+  /** A new message first asks whether to clear the cards ("Send message?"). */
+  dialog: boolean
   /** Each card's Send-now reads Steer. */
   steers: boolean[]
   cards: number
@@ -146,11 +175,18 @@ async function watchClient(outbox: ComposerOutbox = { entries: [] }): Promise<Cl
       const hostWorking = isStructuredAgentSessionMainAgentWorking(running, all)
       // As use-structured-agent-session.ts derives it.
       const working = hostWorking || (nextQueuedMessageId !== null && !hostWorking)
-      const cards = projectQueuedMessageCards(queued, all, { hasPendingPrompt: false, queuePause })
-      const queueHeld = queuedMessagesResumable(cards, working)
+      const cards = projectQueuedMessageCards(queued, all, {
+        hasPendingPrompt: false,
+        queuePaused: queuePause !== null
+      })
       outbox.entries = [
         ...reconcileStructuredAgentSessionOutboxWithQueue(outbox.entries, all, [...items.values()])
       ]
+      // As use-structured-agent-session-queued-messages.ts derives them.
+      const header =
+        !ownDirectSendOnItsWay(outbox.entries, all) &&
+        queuedMessagesQueuePause(cards, queuePause) !== null
+      const queueHeld = header && !working
       views.push({
         working,
         stopLive: hostWorking,
@@ -159,8 +195,8 @@ async function watchClient(outbox: ComposerOutbox = { entries: [] }): Promise<Cl
           composerEmpty: true,
           queueHeld
         }),
-        header:
-          !ownDirectSendOnItsWay(outbox.entries, all) && queuedMessagesQueuePause(cards) !== null,
+        header,
+        dialog: queueHeld,
         steers: cards.map((card) => queuedMessageCardSteers(card)),
         cards: cards.length,
         nextQueuedMessageId
@@ -178,37 +214,27 @@ function expectOneWorkingRun(views: readonly ClientView[]): void {
   expect(views.some((view) => !view.stopLive && view.nextQueuedMessageId !== null)).toBe(true)
 }
 
-describe('which pause holds each card', () => {
-  it("a Stop's: the card queued before it, not the one typed while it lands; Resume and Send never show as the queue sends them", async () => {
+describe('a Stop holds the queue, in order', () => {
+  it('a card typed while the Stop lands waits behind the held one; Resume sends both in order, with no Resume or Send between them', async () => {
     const working = await rig.workingSend()
     const held = await queuedDraft('held by the stop')
     await rig.stop()
     const typed = await queuedDraft('typed while the stop lands')
-    expect(await heldBy()).toEqual({ [held]: { reason: 'stopped' }, [typed]: null })
     const views = await watchClient()
+    // Still winding down: the paused row shows, but neither Resume nor "Send message?" while it runs.
+    expect(views.at(-1)).toMatchObject({ working: true, header: true, dialog: false })
     await rig.settleAccepted(working, 'stopped')
-    await eventually(async () => expect(await rig.handoff(typed)).toBeDefined())
-    await rig.settleAccepted(await rig.handoffId(typed), 'typed')
+    await eventually(() => expect(views.at(-1)).toMatchObject({ header: true, dialog: true }))
+    expect(views.at(-1)?.button).toBe('resume')
+    await expectNothingSent(held, typed)
+    expect((await published()).queuePause).toEqual({ reason: 'stopped' })
+    const resumedAt = views.length
+    expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
     await eventually(async () => expect(await rig.handoff(held)).toBeDefined())
-    expectOneWorkingRun(views.slice())
-  })
-
-  it("a restart's: the card from before it, not one typed during Orca's own turn since; the same holds as that turn ends", async () => {
-    const working = await rig.workingSend()
-    const before = await queuedDraft('written before the restart')
-    await rig.restartHostProcess()
-    await rig.settleAccepted(working, 'a')
-    const continuation = rig.send('continue where you left off', undefined, { internal: true })
-    await continuation.result
-    await eventually(async () =>
-      expect((await rig.submission(continuation.id))?.handedOverAt).toBeDefined()
-    )
-    const typed = await queuedDraft('typed during the continuation')
-    expect(await heldBy()).toEqual({ [before]: { reason: 'restarted' }, [typed]: null })
-    const views = await watchClient()
-    await rig.settleAccepted(continuation.id, 'continuation')
+    expect(await rig.handoff(typed)).toBeUndefined()
+    await rig.settleAccepted(await rig.handoffId(held), 'held')
     await eventually(async () => expect(await rig.handoff(typed)).toBeDefined())
-    expectOneWorkingRun(views.slice())
+    expectOneWorkingRun(views.slice(resumedAt))
   })
 
   it('after Resume over held cards the chat goes from idle with Resume straight to working with Stop', async () => {
@@ -227,6 +253,154 @@ describe('which pause holds each card', () => {
   })
 })
 
+describe('after a restart, nothing sends by itself', () => {
+  /** A turn runs with cards A and B waiting, and Orca quits: a quit writes no Stop event. */
+  async function restartedWithCards(): Promise<{ first: string; second: string }> {
+    await rig.workingSend()
+    const first = await queuedDraft('A')
+    const second = await queuedDraft('B')
+    rig.crashRestartHostProcess()
+    // The new host opens the chat for its first reader.
+    await published()
+    return { first, second }
+  }
+
+  /** The same, through a restart whose old agent this rig can still settle, so the next turn can
+   *  reach the agent: the turn that ran ends before anything new is sent. */
+  async function restartedIdleWithCards(): Promise<{ first: string; second: string }> {
+    const working = await rig.workingSend()
+    const first = await queuedDraft('A')
+    const second = await queuedDraft('B')
+    await rig.restartHostProcess()
+    await rig.settleAccepted(working, 'before-restart')
+    await published()
+    return { first, second }
+  }
+
+  it('idle: no card is handed off across opens and commits, and no pause or next card is published', async () => {
+    const { first, second } = await restartedWithCards()
+    const views = await watchClient()
+    await expectNothingSent(first, second)
+    expect(await published()).toEqual({ queuePause: null, nextQueuedMessageId: null })
+    expect(derivedPauses()).toEqual(['restarted'])
+    // Closed and opened again (the idle sweep, a reconnect): the same.
+    await rig.host.close(HOST_TEST_SESSION, 'evict')
+    expect(await published()).toEqual({ queuePause: null, nextQueuedMessageId: null })
+    await expectNothingSent(first, second)
+    // The chat reads idle with plain cards: no paused row, no Resume, no "Send message?".
+    expect(views.at(-1)).toMatchObject({
+      working: false,
+      header: false,
+      dialog: false,
+      button: 'send',
+      cards: 2
+    })
+    expect(await rig.drafts()).toEqual([
+      { messageId: first, state: 'waiting' },
+      { messageId: second, state: 'waiting' }
+    ])
+  })
+
+  it("Resume: Orca's carry-on turn runs first, then A, then B, as if no restart happened", async () => {
+    const { first, second } = await restartedIdleWithCards()
+    expect(await published()).toEqual({ queuePause: null, nextQueuedMessageId: null })
+    const views = await watchClient()
+    // The restart prompt's Resume sends the carry-on as Orca's own message, straight to the agent.
+    const carryOn = rig.send('continue where you left off')
+    expect(await carryOn.result).toMatchObject({
+      ok: true,
+      value: { submission: expect.anything() }
+    })
+    await eventually(async () =>
+      expect((await rig.submission(carryOn.id))?.handedOverAt).toBeDefined()
+    )
+    await expectNothingSent(first, second)
+    await rig.settleAccepted(carryOn.id, 'carry-on')
+    await eventually(async () => expect(await rig.handoff(first)).toBeDefined())
+    expect(await rig.handoff(second)).toBeUndefined()
+    await rig.settleAccepted(await rig.handoffId(first), 'A')
+    await eventually(async () => expect(await rig.handoff(second)).toBeDefined())
+    expect(views.filter((view) => view.header || view.dialog)).toEqual([])
+    expectOneWorkingRun(views.slice(views.findIndex((view) => view.working)))
+  })
+
+  it("the person's own message goes straight to the agent first, then A, then B", async () => {
+    const { first, second } = await restartedIdleWithCards()
+    const outbox: ComposerOutbox = { entries: [] }
+    const views = await watchClient(outbox)
+    // Sent with the composer's queue delivery: nothing ahead may send, so it is not queued.
+    const message = composerSend(outbox, 'a new instruction')
+    expect(await message.result).toMatchObject({
+      ok: true,
+      value: { submission: expect.anything() }
+    })
+    await eventually(async () =>
+      expect((await rig.submission(message.id))?.handedOverAt).toBeDefined()
+    )
+    await expectNothingSent(first, second)
+    await rig.settleAccepted(message.id, 'message')
+    await eventually(async () => expect(await rig.handoff(first)).toBeDefined())
+    expect(await rig.handoff(second)).toBeUndefined()
+    await rig.settleAccepted(await rig.handoffId(first), 'A')
+    await eventually(async () => expect(await rig.handoff(second)).toBeDefined())
+    expect(views.filter((view) => view.header || view.dialog)).toEqual([])
+  })
+
+  it('a hand-off the quit cut short goes back to waiting first, and nothing sends', async () => {
+    rig.dispose()
+    rig = await createQueuedMessageTestRig({ restartable: true, idleSweep: MANUAL_IDLE_SWEEP })
+    const working = await rig.workingSend()
+    const first = await queuedDraft('A')
+    const second = await queuedDraft('B')
+    await rig.stop()
+    await rig.settleAccepted(working, 'stopped')
+    // The agent at rest goes; Resume's hand-off of A must start a new one, which never starts.
+    await rig.host.collaboratorsForTests().lifetime.idleSweep.tick()
+    let release: () => void = () => undefined
+    rig.awaitStarted.mockImplementation(
+      () => new Promise<undefined>((resolve) => (release = () => resolve(undefined)))
+    )
+    expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
+    await eventually(async () => expect(await rig.handoff(first)).toBeDefined())
+    const cutShort = await rig.handoffId(first)
+    expect((await rig.handoff(first))?.handedOverAt).toBeUndefined()
+    rig.crashRestartHostProcess()
+    rig.awaitStarted.mockImplementation(async () => undefined)
+    release()
+    await published()
+    // The new host refuses the leftover hand-off, and A waits again in its own place.
+    await eventually(async () =>
+      expect(await rig.drafts()).toEqual([
+        { messageId: first, state: 'waiting' },
+        { messageId: second, state: 'waiting' }
+      ])
+    )
+    await expectNothingSent()
+    expect(await rig.handoffId(first)).toBe(cutShort)
+    expect(await rig.handoff(second)).toBeUndefined()
+    expect(derivedPauses()).toEqual(['restarted'])
+    expect(await published()).toEqual({ queuePause: null, nextQueuedMessageId: null })
+  })
+
+  it('an epoch replacement (a rewind or a legacy import) before any turn still holds the cards', async () => {
+    // A turn happened in this chat before, so the new epoch restates a lift.
+    await rig.settleAccepted(await rig.workingSend(), 'earlier')
+    const { first, second } = await restartedWithCards()
+    const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.journal
+    if (!journal) {
+      throw new Error('expected the conversation open')
+    }
+    await journal.replaceEpochItems(
+      'legacy_import',
+      structuredAgentSessionConversationFence(rig.store, HOST_TEST_SESSION),
+      []
+    )
+    await expectNothingSent(first, second)
+    expect(derivedPauses()).toEqual(['restarted'])
+    expect(await published()).toEqual({ queuePause: null, nextQueuedMessageId: null })
+  })
+})
+
 describe("a message sent over a held queue (the confirmation's Send message)", () => {
   /** Two cards a Stop holds, the stopped turn over: the paused row and Resume show. */
   async function heldIdleQueue(outbox: ComposerOutbox) {
@@ -236,11 +410,11 @@ describe("a message sent over a held queue (the confirmation's Send message)", (
     await rig.stop()
     await rig.settleAccepted(working, 'stopped')
     const views = await watchClient(outbox)
-    expect(views.at(-1)).toMatchObject({ header: true, button: 'resume', cards: 2 })
+    expect(views.at(-1)).toMatchObject({ header: true, button: 'resume', dialog: true, cards: 2 })
     return { first, second, views }
   }
 
-  it("goes out at once as the person's turn: the paused row goes as it is sent and never comes back, and the held cards follow it in order", async () => {
+  it('goes out at once: the paused row goes as it is sent and never comes back, and the held cards follow it in order', async () => {
     const outbox: ComposerOutbox = { entries: [] }
     const { first, second, views } = await heldIdleQueue(outbox)
     // Sent with the composer's queue delivery: no card ahead may send, so nothing queues it.
@@ -251,10 +425,7 @@ describe("a message sent over a held queue (the confirmation's Send message)", (
       value: { submission: expect.anything() }
     })
     // The cards stay held until the agent accepts the message's turn.
-    expect(await heldBy()).toEqual({
-      [first]: { reason: 'stopped' },
-      [second]: { reason: 'stopped' }
-    })
+    expect((await published()).queuePause).toEqual({ reason: 'stopped' })
     await eventually(async () =>
       expect((await rig.submission(message.id))?.handedOverAt).toBeDefined()
     )
@@ -331,8 +502,7 @@ describe('where the host would refuse the send', () => {
       messageId: card,
       body: hostTestMessage('left on the source'),
       fingerprint: 'fp-left-behind',
-      hostInstance: structuredAgentSessionHostInstance(),
-      origin: 'client'
+      hostInstance: structuredAgentSessionHostInstance()
     })
     const record = rig.store.getRecord(HOST_TEST_SESSION)
     if (!record) {

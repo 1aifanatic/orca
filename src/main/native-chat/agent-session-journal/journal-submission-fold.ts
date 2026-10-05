@@ -29,8 +29,7 @@ export function applyJournalSubmission(
     // A malformed stored link is dropped, never the row.
     ...(typeof row.queuedMessageId === 'string' && row.queuedMessageId.length > 0
       ? { queuedMessageId: row.queuedMessageId }
-      : {}),
-    ...(row.origin === 'client' || row.origin === 'host' ? { origin: row.origin } : {})
+      : {})
   })
   const itemId = agentJournalSubmissionKey(row.clientMessageId)
   // A message handed over later belongs to no turn until its handover names one.
@@ -108,7 +107,7 @@ export function acceptSubmissionFromProviderItem(
   }
   submission.fence = row.fence
   submission.dispatchState = 'accepted'
-  notePersonTurnAccepted(state, submission)
+  noteTurnAccepted(state, submission)
   submission.providerItemId = providerItemId
   submission.reason = null
   submission.resolvedAt = row.ts
@@ -121,14 +120,14 @@ export function acceptSubmissionFromProviderItem(
   })
 }
 
-/** A person's turn the provider accepted: the fact the queue's pause is lifted by. */
-export function notePersonTurnAccepted(
+/** A turn the provider accepted, whoever sent it: the fact the queue's pause is lifted by. */
+export function noteTurnAccepted(
   state: JournalReducerState,
-  submission: Pick<AgentJournalSubmission, 'origin' | 'acceptedSequence'>
+  submission: Pick<AgentJournalSubmission, 'acceptedSequence'>
 ): void {
-  if (submission.origin === 'client' && submission.acceptedSequence !== undefined) {
-    state.latestPersonTurnSequence = Math.max(
-      state.latestPersonTurnSequence,
+  if (submission.acceptedSequence !== undefined) {
+    state.latestAcceptedTurnSequence = Math.max(
+      state.latestAcceptedTurnSequence,
       submission.acceptedSequence
     )
   }

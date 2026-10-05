@@ -21,7 +21,6 @@ import {
   newestSteerableQueuedMessageCard,
   projectQueuedMessageCards,
   queuedMessagesQueuePause,
-  queuedMessagesResumable,
   type QueuedMessageCard
 } from './structured-agent-session-queued-cards'
 import type { StructuredAgentSessionMutate } from './use-structured-agent-session-mutate'
@@ -44,10 +43,10 @@ export type StructuredAgentSessionQueuedMessagesController = {
   edit: (messageId: string) => Promise<void>
   /** Cmd/Ctrl+Enter: Send-now the newest card. False when there is none to steer. */
   steerNewest: () => boolean
-  /** Present while no turn runs and the host holds a card Resume would send: the composer offers
+  /** Present while the header row shows and the queue could send now: the composer offers
    *  Resume. A failure is a toast, and Resume stays the retry. */
   queueResume: StructuredAgentSessionQueueResume | undefined
-  /** Present while the header row shows: a new message first asks whether to clear the cards. */
+  /** Present while `queueResume` is: a new message first asks whether to clear the cards. */
   queueHold: NativeChatQueueHold | undefined
 }
 
@@ -81,7 +80,11 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   const { queuePause } = args
 
   const cards = useMemo(
-    () => projectQueuedMessageCards(queuedMessages, submissions, { hasPendingPrompt, queuePause }),
+    () =>
+      projectQueuedMessageCards(queuedMessages, submissions, {
+        hasPendingPrompt,
+        queuePaused: queuePause !== null
+      }),
     [hasPendingPrompt, queuePause, queuedMessages, submissions]
   )
   const cardsRef = useRef(cards)
@@ -204,17 +207,20 @@ export function useStructuredAgentSessionQueuedMessages(args: {
       setResuming(false)
     }
   }, [mutate])
-  const resumable = enabled && queuedMessagesResumable(cards, args.isWorking)
-  const queueResume = useMemo(
-    () => (resumable ? { resume, resuming } : undefined),
-    [resumable, resume, resuming]
-  )
-
   const ownSendOnItsWay = args.ownSendOnItsWay === true
   const pause = useMemo(
-    () => (ownSendOnItsWay ? null : queuedMessagesQueuePause(cards)),
-    [cards, ownSendOnItsWay]
+    () => (ownSendOnItsWay ? null : queuedMessagesQueuePause(cards, queuePause)),
+    [cards, ownSendOnItsWay, queuePause]
   )
+  // Resume and the "Send message?" choice only where the queue could send now: no turn runs (the
+  // queue's coming send counts, as the host names it) and no prompt waits, which holds the queue
+  // too; the composer shows beside a prompt only when this build cannot answer it.
+  const held = enabled && pause !== null && !args.isWorking && !hasPendingPrompt
+  const queueResume = useMemo(
+    () => (held ? { resume, resuming } : undefined),
+    [held, resume, resuming]
+  )
+
   // Every card shown, held or not: Clear queue empties the list the person sees. One at a time,
   // stopping at the first failure, so one failed press is one toast.
   const clear = useCallback(
@@ -226,7 +232,6 @@ export function useStructuredAgentSessionQueuedMessages(args: {
     [removeCard]
   )
   const count = cards.length
-  const held = enabled && pause !== null
   const queueHold = useMemo(() => (held ? { count, clear } : undefined), [held, count, clear])
 
   return {

@@ -9,11 +9,7 @@ import {
   type AgentSessionQueuePause
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
-import {
-  queuePauseHolding,
-  resumableQueuePause,
-  type DerivedQueuePause
-} from '../agent-session-journal/queued-message-pause'
+import { resumableQueuePause } from '../agent-session-journal/queued-message-pause'
 import { structuredQueuePauses } from './structured-agent-session-queued-pause'
 import { nextStructuredQueuedMessage } from './structured-agent-session-queued-messages'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
@@ -42,11 +38,8 @@ export function structuredQueueSendGate(
 }
 
 /** Waiting and returned rows only. `paused` is a per-card hold (a failed
- *  conversion); `heldBy` names the queue-level pause holding the card, if any. */
-function computePublishedQueuedMessages(
-  journal: AgentSessionJournal,
-  pauses: readonly DerivedQueuePause[]
-): AgentSessionQueuedMessage[] {
+ *  conversion); a Stop or a /clear pauses the queue, published once beside it. */
+function computePublishedQueuedMessages(journal: AgentSessionJournal): AgentSessionQueuedMessage[] {
   const published: AgentSessionQueuedMessage[] = []
   for (const row of journal.queuedMessages.list()) {
     if (row.state !== 'waiting' && row.state !== 'returned') {
@@ -63,7 +56,6 @@ function computePublishedQueuedMessages(
       ...(held && row.holdReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED
         ? { pausedReason: QUEUED_MESSAGE_PAUSED_SEND_FAILED }
         : {}),
-      heldBy: heldBy(pauses, row),
       ...(row.state === 'returned' ? { returnedReason: row.returnedReason } : {}),
       ...(row.state === 'returned' && row.returnedRejection
         ? { returnedRejection: row.returnedRejection }
@@ -73,33 +65,21 @@ function computePublishedQueuedMessages(
   return published
 }
 
-function heldBy(
-  pauses: readonly DerivedQueuePause[],
-  row: Parameters<typeof queuePauseHolding>[1]
-): AgentSessionQueuePause | null {
-  const holding = queuePauseHolding(pauses, row)
-  return holding ? { reason: holding.reason } : null
-}
-
 type ListMemo = { key: string; serialized: string; list: AgentSessionQueuedMessage[] }
 
 /** Reference-stable per journal handle: an unchanged list is never
- *  re-serialized onto token-stream frames, and any draft-table write or change
- *  of the pauses in force changes the reference by construction. */
+ *  re-serialized onto token-stream frames, and any draft-table write changes
+ *  the reference by construction. */
 const listMemos = new WeakMap<AgentSessionJournal, ListMemo>()
 const publications = new WeakMap<AgentSessionJournal, QueuePublication>()
 
-function readPublishedQueuedMessages(
-  journal: AgentSessionJournal,
-  pauses: readonly DerivedQueuePause[]
-): AgentSessionQueuedMessage[] {
-  // The pauses also turn on journal rows (a Stop, a person's turn), not only on the drafts.
-  const key = `${journal.queuedMessages.revision()}:${JSON.stringify(pauses)}`
+function readPublishedQueuedMessages(journal: AgentSessionJournal): AgentSessionQueuedMessage[] {
+  const key = String(journal.queuedMessages.revision())
   const memo = listMemos.get(journal)
   if (memo && memo.key === key) {
     return memo.list
   }
-  const list = computePublishedQueuedMessages(journal, pauses)
+  const list = computePublishedQueuedMessages(journal)
   // Belt for the identity dedup: equal recomputed content keeps the previous reference.
   const serialized = JSON.stringify(list)
   if (memo && memo.serialized === serialized) {
@@ -123,13 +103,12 @@ export function readQueuePublication(
   journal: AgentSessionJournal,
   gate: QueueSendGate
 ): QueuePublication {
-  // Read per emit: the pauses also turn on submissions (a person's turn starting).
-  const pauses = structuredQueuePauses(journal)
-  const queuedMessages = readPublishedQueuedMessages(journal, pauses)
-  // Shown only over a card Resume would send, so a header never offers to send nothing;
-  // deleting a blocking returned card shows it again.
-  const pause = resumableQueuePause(pauses, journal.queuedMessages.list())
-  const queuePause = pause ? { reason: pause.reason } : null
+  const queuedMessages = readPublishedQueuedMessages(journal)
+  // Read per emit: the pause also turns on submissions (a turn starting). Shown only over a card
+  // Resume would send, so its header never offers to send nothing; deleting a blocking returned
+  // card shows it again. A restart's pause is never shown: the chat's next turn lifts it.
+  const pause = resumableQueuePause(structuredQueuePauses(journal), journal.queuedMessages.list())
+  const queuePause = pause && pause.reason !== 'restarted' ? { reason: pause.reason } : null
   const nextQueuedMessageId = nextStructuredQueuedMessage({ journal, ...gate() })?.messageId ?? null
   const previous = publications.get(journal)
   if (

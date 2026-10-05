@@ -125,8 +125,6 @@ export async function performSend(
     clientMessageId: string
     payloadFingerprint: string
     body: AgentJournalMessageItem
-    /** Who asked for the turn; absent on callers that predate it. */
-    origin?: 'client' | 'host'
   }
 ): Promise<TurnOutcome<AgentSessionSendResult>> {
   const existing = ctx.journal

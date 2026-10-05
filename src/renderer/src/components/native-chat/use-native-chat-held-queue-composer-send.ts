@@ -23,7 +23,7 @@ export type NativeChatQueueSendConfirm = {
   count: number
   /** Delete every card, then send; a failed delete sends nothing. */
   clearQueue: () => void
-  /** Send and keep the cards: the message is the person's turn, so they follow it. */
+  /** Send and keep the cards: the message's turn lifts the pause, so they follow it. */
   sendMessage: () => void
   /** Send nothing; the draft and its attachments stay in the composer. */
   dismiss: () => void

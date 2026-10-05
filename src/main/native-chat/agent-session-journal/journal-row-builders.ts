@@ -71,7 +71,6 @@ export function journalSubmissionRowBuilder(
     fence: number
     handoverRecorded?: true
     queuedMessageId?: string
-    origin?: 'client' | 'host'
   },
   /** Present when the append hands off a queued draft: the row names that draft, stamped here
    *  from the consume itself so no hand-off path can leave the link off. */
@@ -307,7 +306,6 @@ export function buildJournalSubmissionRow(input: {
   ts: number
   handoverRecorded?: true
   queuedMessageId?: string
-  origin?: 'client' | 'host'
 }): JournalSubmissionRow {
   return {
     kind: 'submission',
@@ -317,7 +315,6 @@ export function buildJournalSubmissionRow(input: {
     body: input.body,
     ...journalRowBase(input.state.epoch, input.seq, input.fence, input.ts),
     ...(input.handoverRecorded ? { handoverRecorded: true } : {}),
-    ...(input.queuedMessageId !== undefined ? { queuedMessageId: input.queuedMessageId } : {}),
-    ...(input.origin !== undefined ? { origin: input.origin } : {})
+    ...(input.queuedMessageId !== undefined ? { queuedMessageId: input.queuedMessageId } : {})
   }
 }

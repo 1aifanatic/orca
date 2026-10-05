@@ -47,8 +47,7 @@ async function handOff(journal: AgentSessionJournal, draftId: string, submission
     messageId: draftId,
     body: BODY,
     fingerprint: 'fp',
-    hostInstance: 'p',
-    origin: 'client'
+    hostInstance: 'p'
   })
   await journal.appendSubmission(
     { clientMessageId: submissionId, payloadFingerprint: 'fp', body: BODY, fence: 0 },
@@ -97,8 +96,7 @@ describe('the submission names the queued draft it hands off', () => {
       messageId: 'draft-1',
       body: BODY,
       fingerprint: 'fp',
-      hostInstance: 'p',
-      origin: 'client'
+      hostInstance: 'p'
     })
     await expect(
       journal.appendSubmission(

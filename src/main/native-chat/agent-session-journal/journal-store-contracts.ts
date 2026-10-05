@@ -85,8 +85,6 @@ export type JournalSubmissionInput = {
   handoverRecorded?: true
   /** Stamped by `appendSubmission` from its consume; a caller-passed value must match it. */
   queuedMessageId?: string
-  /** Who asked for this turn (`JournalSubmissionRow.origin`). */
-  origin?: 'client' | 'host'
 }
 
 /** A submission append that converts a queued draft, in one transaction. */

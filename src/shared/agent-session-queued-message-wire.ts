@@ -10,13 +10,12 @@ export const QUEUED_MESSAGE_PAUSED_SEND_FAILED = 'send_failed' as const
 export type AgentSessionQueuedMessagePausedReason = typeof QUEUED_MESSAGE_PAUSED_SEND_FAILED
 
 /** The whole queue is paused and sends nothing on its own: 'stopped' — the user
- *  interrupted ("Queue paused because you interrupted") — 'cleared' — a /clear
- *  carried the cards into a fresh conversation — or 'restarted' — Orca restarted
- *  with cards waiting. Resume (`agentSession.queuedMessagesResume`), or the user's own next
- *  turn starting, lifts it; Send-now on one card sends that card and leaves the
+ *  interrupted ("Queue paused because you interrupted") — or 'cleared' — a /clear
+ *  carried the cards into a fresh conversation. Resume (`agentSession.queuedMessagesResume`),
+ *  or any turn starting, lifts it; Send-now on one card sends that card and leaves the
  *  rest paused until its turn starts. A client treats an unknown reason as a
  *  plain pause, so a newer host can add one. */
-export type AgentSessionQueuePause = { reason: 'stopped' | 'restarted' | 'cleared' }
+export type AgentSessionQueuePause = { reason: 'stopped' | 'cleared' }
 
 /** What rides beside a frame's `queuedMessages`, published together with the list. */
 export type AgentSessionQueuePublicationFields = {
@@ -46,10 +45,6 @@ export type AgentSessionQueuedMessage = {
    *  marker as a plain hold, so a newer host can add one. The queue-level
    *  pause is `queuePause`, published beside the list. */
   pausedReason?: AgentSessionQueuedMessagePausedReason
-  /** The queue-level pause holding this card, or null when none does: a card queued after a Stop
-   *  is not held by it. Absent from a host that predates it; a client then treats every waiting
-   *  card as held while `queuePause` is set. */
-  heldBy?: AgentSessionQueuePause | null
   /** A returned card's refusal: the `reason` and `rejection` pair its submission settled with.
    *  Only a failure returns a card; a draft a Stop or restart took back waits again. Clients classify it from `returnedRejection` (falling back to `returnedReason` when a host
    *  wrote no fact) exactly as they classify a rejected submission's `rejection`, e.g.

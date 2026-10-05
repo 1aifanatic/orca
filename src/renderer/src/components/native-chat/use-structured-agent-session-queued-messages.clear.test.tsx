@@ -32,6 +32,7 @@ function renderController(
   options: {
     queuePause?: AgentSessionQueuePause | null
     enabled?: boolean
+    isWorking?: boolean
     ownSendOnItsWay?: boolean
     answer?: (messageId: string) => DeleteAnswer
   } = {}
@@ -48,7 +49,7 @@ function renderController(
       queuePause: options.queuePause === undefined ? STOPPED : options.queuePause,
       submissions: [],
       hasPendingPrompt: false,
-      isWorking: options.ownSendOnItsWay === true,
+      isWorking: options.isWorking === true || options.ownSendOnItsWay === true,
       ownSendOnItsWay: options.ownSendOnItsWay === true,
       composerScopeKey: undefined,
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the controller only awaits mutate; the stub answers Delete's shape.
@@ -66,26 +67,35 @@ afterEach(async () => {
 describe('the held queue a new message asks about', () => {
   it('is offered while a pause holds a card, counting every card shown, held or not', () => {
     const { result } = renderController([
-      card('held', 1, { heldBy: STOPPED }),
-      card('typed-after', 2, { heldBy: null }),
-      card('failed', 3, { paused: true, pausedReason: 'send_failed', heldBy: null })
+      card('held', 1),
+      card('typed-after', 2),
+      card('failed', 3, { paused: true, pausedReason: 'send_failed' })
     ])
     expect(result.current.pause).toEqual(STOPPED)
     expect(result.current.queueHold?.count).toBe(3)
   })
 
   it('is not offered when no pause holds a card, with no cards, or without the queue', () => {
-    const unheld = [card('typed-after', 1, { heldBy: null })]
-    expect(renderController(unheld).result.current.queueHold).toBeUndefined()
-    const ownHeld = [card('failed', 1, { paused: true, heldBy: null })]
+    const unheld = [card('waiting', 1)]
+    expect(renderController(unheld, { queuePause: null }).result.current.queueHold).toBeUndefined()
+    const ownHeld = [card('failed', 1, { paused: true })]
     expect(renderController(ownHeld).result.current.queueHold).toBeUndefined()
     expect(renderController([]).result.current.queueHold).toBeUndefined()
-    const held = [card('held', 1, { heldBy: STOPPED })]
+    const held = [card('held', 1)]
     expect(renderController(held, { enabled: false }).result.current.queueHold).toBeUndefined()
   })
 
+  it('is not offered while a turn runs, though the paused row shows as the Stop winds down', () => {
+    const held = [card('held', 1)]
+    const { result } = renderController(held, { isWorking: true })
+    expect(result.current.pause).toEqual(STOPPED)
+    expect(result.current.queueHold).toBeUndefined()
+    // Enter queues behind the held cards as usual; once nothing runs it asks again.
+    expect(renderController(held).result.current.queueHold?.count).toBe(1)
+  })
+
   it("goes, with the paused row, while the person's own message is on its way to lift the pause", () => {
-    const held = [card('held', 1, { heldBy: STOPPED })]
+    const held = [card('held', 1)]
     const { result } = renderController(held, { ownSendOnItsWay: true })
     expect(result.current.pause).toBeNull()
     expect(result.current.queueHold).toBeUndefined()
@@ -95,10 +105,7 @@ describe('the held queue a new message asks about', () => {
   })
 
   it('Clear queue deletes every card shown, and answers true once all are gone', async () => {
-    const { result, mutate } = renderController([
-      card('held', 1, { heldBy: STOPPED }),
-      card('typed-after', 2, { heldBy: null })
-    ])
+    const { result, mutate } = renderController([card('held', 1), card('typed-after', 2)])
     let cleared: boolean | undefined
     await act(async () => {
       cleared = await result.current.queueHold?.clear()
@@ -111,10 +118,9 @@ describe('the held queue a new message asks about', () => {
   })
 
   it('a delete that fails makes Clear queue answer false', async () => {
-    const { result } = renderController(
-      [card('held', 1, { heldBy: STOPPED }), card('typed-after', 2, { heldBy: null })],
-      { answer: (messageId) => (messageId === 'held' ? null : { deleted: true, messageId }) }
-    )
+    const { result } = renderController([card('held', 1), card('typed-after', 2)], {
+      answer: (messageId) => (messageId === 'held' ? null : { deleted: true, messageId })
+    })
     let cleared: boolean | undefined
     await act(async () => {
       cleared = await result.current.queueHold?.clear()

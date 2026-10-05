@@ -14,16 +14,14 @@ import type {
   AgentJournalMessageItem
 } from '../../../shared/agent-session-journal-types'
 import { rejectedDraftSettlement } from './journal-dispatch-settlement'
-import type { JournalSubmissionOrigin } from './journal-row-schema'
 import { readStoredRejectionFact } from './journal-dispatch-reducer'
 
 export type QueuedMessageState = 'waiting' | 'dispatched' | 'returned' | 'withdrawn'
 
 /** Why ONE waiting draft is held from auto-sending: its conversion failed.
  *  Stored on the row, so it survives handle eviction and restart; a wire marker
- *  (it publishes as `pausedReason`). A Stop, restart or /clear instead holds the
- *  cards written before it, derived, and the queue skips held cards. A reader
- *  treats an unknown stored value as a plain hold. */
+ *  (it publishes as `pausedReason`). A Stop or a restart pauses the whole queue
+ *  instead. A reader treats an unknown stored value as a plain hold. */
 export type QueuedMessageHoldReason = 'send_failed'
 
 /** Definitively unsettled: what Stop, /clear, Edit and the budget count, and
@@ -61,13 +59,10 @@ export type QueuedMessageRow = {
   /** Where the journal stood when it was queued: a Stop's pause holds only cards queued before
    *  it. Null on rows from builds before it was recorded, which read as queued before any Stop. */
   queuedAt: AgentJournalCursor | null
-  /** Who wrote the card, in the submission's vocabulary: the queue's send of it carries this.
-   *  Unrecorded reads as a person's: before it, no production caller queued an Orca send. */
-  origin: JournalSubmissionOrigin
 }
 
 const COLUMNS =
-  'session_id, message_id, position, body_json, fingerprint, created_at, host_instance, state, hold_reason, returned_reason, returned_rejection, settled_at, settled_by_op, consumed_as, carried_from, queued_epoch, queued_sequence, origin'
+  'session_id, message_id, position, body_json, fingerprint, created_at, host_instance, state, hold_reason, returned_reason, returned_rejection, settled_at, settled_by_op, consumed_as, carried_from, queued_epoch, queued_sequence'
 
 export function insertQueuedMessage(
   db: Database.Database,
@@ -79,7 +74,6 @@ export function insertQueuedMessage(
     hostInstance: string
     carriedFrom?: string
     queuedAt: AgentJournalCursor
-    origin: JournalSubmissionOrigin
     now: number
   }
 ): QueuedMessageRow {
@@ -90,7 +84,7 @@ export function insertQueuedMessage(
   const position = Number(highest?.p ?? 0) + 1
   db.prepare(
     `INSERT INTO queued_messages (${COLUMNS})
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'waiting', NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'waiting', NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?)`
   ).run(
     input.sessionId,
     input.messageId,
@@ -101,8 +95,7 @@ export function insertQueuedMessage(
     input.hostInstance,
     input.carriedFrom ?? null,
     input.queuedAt.epoch,
-    input.queuedAt.sequence,
-    input.origin
+    input.queuedAt.sequence
   )
   return {
     sessionId: input.sessionId,
@@ -120,8 +113,7 @@ export function insertQueuedMessage(
     settledByOp: null,
     consumedAs: null,
     carriedFrom: input.carriedFrom ?? null,
-    queuedAt: input.queuedAt,
-    origin: input.origin
+    queuedAt: input.queuedAt
   }
 }
 
@@ -303,7 +295,6 @@ function toStoredRow(row: unknown): QueuedMessageRow | null {
     carried_from: string | null
     queued_epoch: string | null
     queued_sequence: number | null
-    origin: string | null
   }
   let body: AgentJournalMessageItem
   try {
@@ -342,14 +333,8 @@ function toStoredRow(row: unknown): QueuedMessageRow | null {
     queuedAt:
       record.queued_epoch !== null && typeof record.queued_sequence === 'number'
         ? { epoch: record.queued_epoch, sequence: record.queued_sequence }
-        : null,
-    origin: storedOrigin(record.origin)
+        : null
   }
-}
-
-/** A row from before the column was a person's send; a value no build writes is not a person's. */
-function storedOrigin(value: string | null): JournalSubmissionOrigin {
-  return value === null || value === 'client' ? 'client' : 'host'
 }
 
 function storedRejection(json: string | null): UnreadAgentSessionFailureFact | null {

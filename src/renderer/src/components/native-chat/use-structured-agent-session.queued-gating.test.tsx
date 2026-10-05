@@ -341,7 +341,7 @@ describe('against a capable host', () => {
   it("hides the paused row while the person's own message is on its way, and shows it again once that send is refused", () => {
     items = []
     queuePause = { reason: 'stopped' }
-    queuedMessages = [{ ...draft('held'), heldBy: queuePause }]
+    queuedMessages = [draft('held')]
     const held = render()
     expect(held.result.current.queuedMessages.pause).toEqual({ reason: 'stopped' })
     const sent = createStructuredAgentSessionOutboxEntry({

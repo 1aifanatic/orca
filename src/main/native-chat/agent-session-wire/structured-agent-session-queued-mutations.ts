@@ -117,8 +117,7 @@ export async function carryQueuedMessagesToClearReplacement(
         body: row.body,
         fingerprint: queuedMessageFingerprint(input.replacementSessionId, row.body),
         hostInstance: structuredAgentSessionHostInstance(),
-        carriedFrom: ctx.sessionId,
-        origin: row.origin
+        carriedFrom: ctx.sessionId
       })
     }
     await withdrawQueuedMessagesForOperation(ctx.journal, {
@@ -222,8 +221,6 @@ export function sendQueuedStructuredAgentMessage(
         await ctx.journal.appendSubmission(
           {
             clientMessageId: submissionId,
-            // The person asked for this turn, so it ends a Stop's pause once it starts.
-            origin: 'client',
             payloadFingerprint: row.fingerprint,
             body: row.body,
             fence: ctx.fence,

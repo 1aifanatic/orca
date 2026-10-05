@@ -437,9 +437,6 @@ export type AgentJournalSubmission = {
   /** The queued draft this submission hands off; absent for a direct send. Read this, never
    *  a draft id compared with `clientMessageId`. */
   queuedMessageId?: string
-  /** Host-only: who asked for this turn — a person over the client send RPC, or Orca itself.
-   *  A person's turn is what ends a Stop's queue pause. */
-  origin?: 'client' | 'host'
 }
 
 /** Durable answer to "did my send land?", keyed by client message id. Only an

@@ -384,8 +384,7 @@ describe('a Codex Stop whose interrupt failed', () => {
         })
       },
       body,
-      delivery,
-      userSend: true
+      delivery
     })
     if (!queued.ok || !('queued' in queued.value)) {
       throw new Error(`expected a queued receipt: ${JSON.stringify(queued)}`)

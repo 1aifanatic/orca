@@ -12,8 +12,7 @@ import {
   ownDirectSendOnItsWay,
   projectQueuedMessageCards,
   queuedMessageCardSteers,
-  queuedMessagesQueuePause,
-  queuedMessagesResumable
+  queuedMessagesQueuePause
 } from './structured-agent-session-queued-cards'
 
 function draft(
@@ -150,7 +149,7 @@ describe('queued message cards', () => {
         draft('behind', 4)
       ],
       [],
-      { hasPendingPrompt: true, queuePause: { reason: 'stopped' } }
+      { hasPendingPrompt: true, queuePaused: true }
     )
     expect(cards.map((card) => card.hold)).toEqual([
       'queue-paused',
@@ -163,69 +162,34 @@ describe('queued message cards', () => {
     ).toBe('awaiting-answer')
   })
 
-  it("a host that names each card's hold holds only those cards; one that does not holds every card", () => {
-    const named = [
-      draft('held', 1, { heldBy: { reason: 'stopped' } }),
-      draft('typed-after', 2, { heldBy: null })
-    ]
-    const paused = { hasPendingPrompt: true, queuePause: { reason: 'restarted' } } as const
-    // The card queued after the Stop still says it waits for the answer.
-    expect(projectQueuedMessageCards(named, [], paused).map((card) => card.hold)).toEqual([
-      'queue-paused',
-      'awaiting-answer'
-    ])
-    const older = [draft('held', 1), draft('typed-after', 2)]
-    expect(projectQueuedMessageCards(older, [], paused).map((card) => card.hold)).toEqual([
-      'queue-paused',
-      'queue-paused'
-    ])
+  it('a paused queue holds every waiting card, in order: an answer does not drain it', () => {
+    const cards = projectQueuedMessageCards([draft('held', 1), draft('typed-after', 2)], [], {
+      hasPendingPrompt: true,
+      queuePaused: true
+    })
+    expect(cards.map((card) => card.hold)).toEqual(['queue-paused', 'queue-paused'])
+    // Still Steer: the header row, not the card, says it waits.
+    expect(cards.map((card) => queuedMessageCardSteers(card))).toEqual([true, true])
   })
 
-  it('Resume only over a card a pause holds, and only while nothing runs', () => {
-    const project = (messages: AgentSessionQueuedMessage[]) =>
-      projectQueuedMessageCards(messages, [], {
-        hasPendingPrompt: false,
-        queuePause: { reason: 'stopped' }
-      })
-    const held = draft('held', 1, { heldBy: { reason: 'stopped' } })
-    expect(queuedMessagesResumable(project([held]), false)).toBe(true)
-    // Working counts the queue's coming send, which the host names.
-    expect(queuedMessagesResumable(project([held]), true)).toBe(false)
-    const failed = draft('failed', 1, { paused: true, pausedReason: 'send_failed', heldBy: null })
-    expect(queuedMessagesResumable(project([failed]), false)).toBe(false)
-    expect(project([held, draft('next', 2, { heldBy: null })]).map((card) => card.hold)).toEqual([
-      'queue-paused',
-      'turn'
-    ])
-    const [card] = project([held])
-    // Still Steer while nothing runs: the header row, not the card, says it waits.
-    expect(card && queuedMessageCardSteers(card)).toBe(true)
-  })
-
-  it("the header names the oldest held card's pause, and none over cards Resume would not send", () => {
-    const project = (messages: AgentSessionQueuedMessage[]) =>
-      projectQueuedMessageCards(messages, [], {
-        hasPendingPrompt: false,
-        queuePause: { reason: 'stopped' }
-      })
-    const restarted = draft('restarted', 1, { heldBy: { reason: 'restarted' } })
-    const stopped = draft('stopped', 2, { heldBy: { reason: 'stopped' } })
-    expect(queuedMessagesQueuePause(project([restarted, stopped]))).toEqual({ reason: 'restarted' })
-    // An older host names no per-card hold: its queue-level pause is the reason.
-    expect(queuedMessagesQueuePause(project([draft('older', 1)]))).toEqual({ reason: 'stopped' })
+  it("the header names the queue's pause while it holds a card, and none over cards Resume would not send", () => {
+    const stopped = { reason: 'stopped' } as const
+    const project = (messages: AgentSessionQueuedMessage[], queuePaused = true) =>
+      projectQueuedMessageCards(messages, [], { hasPendingPrompt: false, queuePaused })
+    expect(queuedMessagesQueuePause(project([draft('held', 1)]), stopped)).toEqual(stopped)
+    expect(queuedMessagesQueuePause(project([draft('held', 1)]), { reason: 'cleared' })).toEqual({
+      reason: 'cleared'
+    })
     const unsendable = [
-      draft('returned', 1, { state: 'returned', returnedReason: null, heldBy: null }),
-      draft('behind', 2, { heldBy: { reason: 'stopped' } }),
-      draft('failed', 3, {
-        paused: true,
-        pausedReason: 'send_failed',
-        heldBy: { reason: 'stopped' }
-      })
+      draft('returned', 1, { state: 'returned', returnedReason: null }),
+      draft('behind', 2),
+      draft('failed', 3, { paused: true, pausedReason: 'send_failed' })
     ]
-    expect(queuedMessagesQueuePause(project(unsendable))).toBeNull()
-    expect(
-      queuedMessagesQueuePause(project([draft('typed-after', 1, { heldBy: null })]))
-    ).toBeNull()
+    expect(queuedMessagesQueuePause(project(unsendable), stopped)).toBeNull()
+    // No published pause (an idle chat after a restart): plain cards, no header.
+    const unpaused = project([draft('waiting', 1)], false)
+    expect(unpaused.map((card) => card.hold)).toEqual(['turn'])
+    expect(queuedMessagesQueuePause(unpaused, null)).toBeNull()
   })
 
   it("only the person's own direct send, recorded and not yet accepted, is on its way to lift a pause", () => {

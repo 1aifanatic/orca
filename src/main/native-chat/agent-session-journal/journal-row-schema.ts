@@ -139,14 +139,8 @@ export type JournalSubmissionRow = JournalRowBase & {
   /** The queued draft this submission hands off; absent for a direct send. Older readers keep
    *  the key and ignore it. */
   queuedMessageId?: string
-  /** Who asked for this turn: `client` for a person — their send over the client send RPC, Send
-   *  on a card, or the queue's send of a card they wrote; `host` for Orca's own — orchestration
-   *  mail, a restart continuation, a launch prompt, or the queue's send of a card one of those
-   *  wrote. Absent on rows from before it was recorded. Older readers keep the key and ignore it. */
-  origin?: JournalSubmissionOrigin
+  // Rows from earlier builds may carry `origin` ('client' | 'host'); nothing reads it.
 }
-
-export type JournalSubmissionOrigin = 'client' | 'host'
 
 export type JournalDispatchRow = JournalRowBase & {
   kind: 'dispatch'

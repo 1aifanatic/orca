@@ -30,8 +30,7 @@ export function structuredQueuePauses(journal: PauseJournal): DerivedQueuePause[
 }
 
 /**
- * Every journal publish: a restart's rows are adopted into this instance once a person's turn
- * started. The derivation already reads them as lifted; the write keeps that answer when the
+ * Every journal publish: a restart's rows are adopted into this instance once a turn started. The derivation already reads them as lifted; the write keeps that answer when the
  * handle reopens (its "since this conversation opened" moves). Bookkeeping: a failure is reported.
  */
 export async function adoptEndedRestartPause(

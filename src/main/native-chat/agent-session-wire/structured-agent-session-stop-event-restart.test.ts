@@ -322,7 +322,7 @@ describe('a restart between a Stop and its turn end', () => {
     )
     expect(settled(TURN).turn).toMatchObject({ outcome: 'cancellation' })
     // A host send after the Stop opens its own turn.
-    const drained = rig.send('drained after the Stop', undefined, { internal: true })
+    const drained = rig.send('drained after the Stop')
     await drained.result
     await rig.settleAccepted(drained.id, 'drained')
     await journal().appendItem(

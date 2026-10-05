@@ -21,8 +21,8 @@ import {
 /** Why a card is not on its way right now; decides the caption under the text. */
 export type QueuedMessageCardHold =
   | 'turn'
-  /** Held by a Stop, restart or /clear: the header row above the cards says why and offers
-   *  Resume, so the card makes no promise of when it sends — not even after an answer. */
+  /** The whole queue is paused: the header row says why and offers Resume, so the card makes
+   *  no promise about when it sends — not even after an answer, which does not drain it. */
   | 'queue-paused'
   | 'awaiting-answer'
   | 'paused'
@@ -36,9 +36,6 @@ export type QueuedMessageCard = {
   text: string
   state: 'waiting' | 'returned'
   hold: QueuedMessageCardHold
-  /** The pause holding a 'queue-paused' card. A string: a newer host may name a reason this build
-   *  does not know. */
-  queuePause?: { reason: string }
   pausedReason?: string
   returnedReason?: string | null
   /** The typed fact the returned card's submission settled with; read like its `rejection`. */
@@ -59,7 +56,7 @@ function queuedMessageCardText(body: AgentSessionQueuedMessage['body']): string 
 export function projectQueuedMessageCards(
   queuedMessages: readonly AgentSessionQueuedMessage[] | null | undefined,
   submissions: readonly AgentJournalSubmission[],
-  session: { hasPendingPrompt: boolean; queuePause?: AgentSessionQueuePause | null }
+  session: { hasPendingPrompt: boolean; queuePaused?: boolean }
 ): QueuedMessageCard[] {
   const handedOff = handedOffQueuedMessageIds(
     submissions.filter((submission) => submission.dispatchState !== 'rejected')
@@ -69,8 +66,6 @@ export function projectQueuedMessageCards(
     .filter((message) => message.state === 'returned' || !handedOff.has(message.messageId))
   let behindReturned = false
   return ordered.map((message) => {
-    // A host that predates `heldBy` publishes only the queue's pause, which then covers every card.
-    const heldBy = message.heldBy === undefined ? (session.queuePause ?? null) : message.heldBy
     const hold: QueuedMessageCardHold =
       message.state === 'returned'
         ? 'returned'
@@ -78,7 +73,7 @@ export function projectQueuedMessageCards(
           ? 'paused'
           : behindReturned
             ? 'behind-returned'
-            : heldBy
+            : session.queuePaused
               ? 'queue-paused'
               : session.hasPendingPrompt
                 ? 'awaiting-answer'
@@ -90,7 +85,6 @@ export function projectQueuedMessageCards(
       text: queuedMessageCardText(message.body),
       state: message.state,
       hold,
-      ...(hold === 'queue-paused' && heldBy ? { queuePause: { reason: heldBy.reason } } : {}),
       ...(message.pausedReason !== undefined ? { pausedReason: message.pausedReason } : {}),
       ...(message.returnedReason !== undefined ? { returnedReason: message.returnedReason } : {}),
       ...(message.returnedRejection !== undefined
@@ -100,18 +94,19 @@ export function projectQueuedMessageCards(
   })
 }
 
-/** The pause the header row names, from the oldest card it holds. A pause over cards Resume would
- *  not send (returned, held on their own, or behind a returned one) offers nothing to press. */
+/** The pause the header row names, while it holds a card. A pause over cards Resume would not
+ *  send (returned, held on their own, or behind a returned one) offers nothing to press. */
 export function queuedMessagesQueuePause(
-  cards: readonly QueuedMessageCard[]
-): { reason: string } | null {
-  return cards.find((card) => card.hold === 'queue-paused')?.queuePause ?? null
+  cards: readonly QueuedMessageCard[],
+  queuePause: AgentSessionQueuePause | null
+): AgentSessionQueuePause | null {
+  return cards.some((card) => card.hold === 'queue-paused') ? queuePause : null
 }
 
 /** The person's own message from this composer has reached the host as a direct send and waits
  *  for the agent to accept it. Its turn will lift the queue's pause, so the header row does not
- *  say paused meanwhile; a refusal settles the entry and the row comes back. An Orca send never
- *  enters this outbox, and the queue's send of a card goes under a fresh id. */
+ *  say paused meanwhile; a refusal settles the entry and the row comes back. The queue's send of a
+ *  card goes under a fresh id, so it never counts. */
 export function ownDirectSendOnItsWay(
   outbox: readonly StructuredAgentSessionOutboxEntry[],
   submissions: readonly AgentJournalSubmission[]
@@ -125,15 +120,6 @@ export function ownDirectSendOnItsWay(
       .map((submission) => submission.clientMessageId)
   )
   return outbox.some((entry) => entry.state !== 'rejected' && pending.has(entry.clientMessageId))
-}
-
-/** Whether the composer's Resume would release anything: nothing runs, and a pause holds a card.
- *  `isWorking` counts the queue's coming send, which the host names. */
-export function queuedMessagesResumable(
-  cards: readonly QueuedMessageCard[],
-  isWorking: boolean
-): boolean {
-  return !isWorking && queuedMessagesQueuePause(cards) !== null
 }
 
 /** Steer names the mid-turn jump, also while the whole queue is paused; a card held on its own or

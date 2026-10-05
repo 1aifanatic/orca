@@ -64,8 +64,7 @@ async function queueAndConsume(journal: AgentSessionJournal, messageId: string):
     messageId,
     body,
     fingerprint: `fp-${messageId}`,
-    hostInstance: 'proc-1',
-    origin: 'client'
+    hostInstance: 'proc-1'
   })
   await journal.appendSubmission(
     {
@@ -172,8 +171,7 @@ describe('draft bookkeeping inside a journal append', () => {
         messageId: 'draft-1',
         body: BODY,
         fingerprint: 'fp-draft-1',
-        hostInstance: 'proc-1',
-        origin: 'client'
+        hostInstance: 'proc-1'
       })
       expect(journal.queuedMessages.list()).toMatchObject([{ state: 'waiting' }])
       const commit = failNextCommit()

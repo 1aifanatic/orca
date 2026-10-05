@@ -80,11 +80,6 @@ function queuePauseText(pause: { reason: string }): string {
         'components.native-chat.queuedMessages.queuePausedStopped',
         'Queue paused because you interrupted'
       )
-    case 'restarted':
-      return translate(
-        'components.native-chat.queuedMessages.queuePausedRestarted',
-        'Queue paused because Orca restarted'
-      )
     case 'cleared':
       return translate(
         'components.native-chat.queuedMessages.queuePausedCleared',

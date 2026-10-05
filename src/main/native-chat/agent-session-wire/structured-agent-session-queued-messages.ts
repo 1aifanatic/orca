@@ -60,8 +60,9 @@ export function pendingPromptExists(journal: Pick<AgentSessionJournal, 'visitIte
   return pending
 }
 
-/** Waiting, held by nothing, and not positioned behind a returned card; held cards
- *  are skipped. The admission rule (§accept) and the drain's selection both read it. */
+/** Waiting, not held on its own, and not positioned behind a returned card or a
+ *  card the queue's pause holds: the queue never reorders. The admission rule
+ *  (§accept) and the drain's selection both read it. */
 function oldestActionableQueuedMessage(
   journal: Pick<AgentSessionJournal, 'queuedMessages'>
 ): QueuedMessageRow | null {
@@ -211,7 +212,6 @@ export async function maybeQueueStructuredAgentSessionSend(
     envelope: { clientOperationId: string }
     body: AgentJournalMessageItem
     delivery?: 'queue-if-active'
-    userSend?: true
   }
 ): Promise<
   | { ok: true; value: AgentSessionSendResult }
@@ -252,8 +252,7 @@ export async function maybeQueueStructuredAgentSessionSend(
       messageId: clientMessageId,
       body: params.body,
       fingerprint: queuedMessageFingerprint(ctx.sessionId, params.body),
-      hostInstance: structuredAgentSessionHostInstance(),
-      origin: params.userSend ? 'client' : 'host'
+      hostInstance: structuredAgentSessionHostInstance()
     },
     ctx.operationReceipt
   )
@@ -362,9 +361,6 @@ export class StructuredAgentSessionQueuedMessageDrain {
       await journal.appendSubmission(
         {
           clientMessageId: submissionId,
-          // Whoever wrote the card asked for this turn: a person's ends a Stop's pause, so the cards
-          // it held follow; Orca's own does not.
-          origin: next.origin,
           payloadFingerprint: next.fingerprint,
           body: next.body,
           fence,

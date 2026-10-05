@@ -165,18 +165,16 @@ export async function interruptedRestart(
   return { ...hostTestState(), host, store, log, closeSession, marker, clock }
 }
 
-/** The continuation's submission commits, then its send throws: a send Orca may have taken. */
+/** The continuation's submission commits, then its send throws: a send Orca may have taken.
+ *  Install it right before the continuation, the only submission written from then on. */
 export function throwAfterContinuationAccepted(): void {
   const append = AgentSessionJournal.prototype.appendSubmission
   vi.spyOn(AgentSessionJournal.prototype, 'appendSubmission').mockImplementation(async function (
     this: AgentSessionJournal,
     ...args: Parameters<AgentSessionJournal['appendSubmission']>
   ) {
-    const cursor = await append.apply(this, args)
-    if (args[0].origin === 'host') {
-      throw new Error('the accepted continuation could not be answered')
-    }
-    return cursor
+    await append.apply(this, args)
+    throw new Error('the accepted continuation could not be answered')
   })
 }
 

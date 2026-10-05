@@ -12,7 +12,7 @@ import {
 } from '../../../shared/agent-session-host-authority'
 import type { JournalHostDatabase } from './journal-host-database'
 import type { JournalReducerState } from './journal-reducer'
-import type { JournalRow, JournalSubmissionOrigin } from './journal-row-schema'
+import type { JournalRow } from './journal-row-schema'
 import type { JournalOperationReceipt, JournalRowTransactionHook } from './journal-row-writer'
 import type { JournalSubmissionConsume } from './journal-store-contracts'
 import { adoptQueuedMessages, holdQueuedMessages } from './queued-message-holds'
@@ -110,7 +110,6 @@ export class JournalQueuedMessages {
       fingerprint: string
       hostInstance: string
       carriedFrom?: string
-      origin: JournalSubmissionOrigin
     },
     receipt?: JournalOperationReceipt
   ): Promise<QueuedMessageRow> {
@@ -158,7 +157,7 @@ export class JournalQueuedMessages {
   /** The person's Stop still pausing the queue, if any (`journalUserStopInForce`). */
   userStopInForce(): JournalQueuePauseMarks['latestStop'] {
     const state = this.deps.state()
-    return journalUserStopInForce(state.queuePauseMarks, state.latestPersonTurnSequence)
+    return journalUserStopInForce(state.queuePauseMarks, state.latestAcceptedTurnSequence)
   }
 
   private derivePauses(
@@ -169,16 +168,16 @@ export class JournalQueuedMessages {
     return deriveQueuePauses({
       epoch: state.epoch,
       marks: state.queuePauseMarks,
-      latestPersonTurnSequence: state.latestPersonTurnSequence,
+      latestAcceptedTurnSequence: state.latestAcceptedTurnSequence,
       cards,
       hostInstance,
       restartEnded: this.restartEnded()
     })
   }
 
-  /** A person's turn started since this handle opened, which ends a restart's pause. */
+  /** A turn started since this handle opened, which ends a restart's pause. */
   restartEnded(): boolean {
-    const latest = this.deps.state().latestPersonTurnSequence
+    const latest = this.deps.state().latestAcceptedTurnSequence
     return latest > 0 && !this.deps.wroteBeforeOpen(latest)
   }
 
@@ -258,7 +257,7 @@ export class JournalQueuedMessages {
     if (input.yieldsToPause) {
       // Judged again here, by the drain's own rule. Today a Stop cannot land between the drain's
       // pick and this claim (both run on the session's serialized lane, held across the send), so
-      // this guards any pause-relevant row written off that lane from sending a card now held.
+      // this guards any pause-relevant row written off that lane from overtaking a held card.
       const cards = listQueuedMessages(db, this.deps.sessionId)
       const pauses = this.derivePauses(cards, input.yieldsToPause.hostInstance)
       if (nextSendableQueuedCard(pauses, cards)?.messageId !== input.messageId) {

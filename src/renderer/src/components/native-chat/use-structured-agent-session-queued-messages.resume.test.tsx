@@ -89,7 +89,7 @@ afterEach(() => {
 })
 
 describe('whether Resume is offered', () => {
-  it.each(['stopped', 'restarted', 'cleared', 'some-newer-reason'])(
+  it.each(['stopped', 'cleared', 'some-newer-reason'])(
     "over a card the host holds ('%s') with no turn running",
     (reason) => {
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a newer host may publish a reason this client's type does not list.
@@ -107,6 +107,21 @@ describe('whether Resume is offered', () => {
     expect(renderController({ isWorking: true }).result.current.queueResume).toBeUndefined()
     expect(renderController({ queuePause: null }).result.current.queueResume).toBeUndefined()
     expect(renderController({ queuedMessages: [] }).result.current.queueResume).toBeUndefined()
+  })
+
+  it('not while a prompt waits, which holds the queue too: the composer shows beside one this build cannot answer', () => {
+    const { result } = renderController({ hasPendingPrompt: true })
+    expect(result.current.pause).toEqual({ reason: 'stopped' })
+    expect(result.current.queueResume).toBeUndefined()
+    expect(result.current.queueHold).toBeUndefined()
+  })
+
+  it('an idle chat with cards and no published pause (as after a restart): no row, Resume or "Send message?"', () => {
+    const { result } = renderController({ queuePause: null })
+    expect(result.current.cards.map((entry) => entry.hold)).toEqual(['turn'])
+    expect(result.current.pause).toBeNull()
+    expect(result.current.queueResume).toBeUndefined()
+    expect(result.current.queueHold).toBeUndefined()
   })
 
   it('not over cards Resume would not send: held on their own, returned, or behind one', () => {
@@ -129,24 +144,23 @@ describe('while a turn runs over held cards', () => {
 })
 
 describe("the header row's pause", () => {
-  it.each(['stopped', 'restarted', 'cleared', 'some-newer-reason'])(
-    "names the reason the host holds a card for ('%s')",
+  it.each(['stopped', 'cleared', 'some-newer-reason'])(
+    "names the reason the host holds the queue for ('%s')",
     (reason) => {
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a newer host may publish a reason this client's type does not list.
-      const heldBy = { reason } as AgentSessionQueuePause
-      const { result } = renderController({ queuedMessages: [card('held', { heldBy })] })
+      const queuePause = { reason } as AgentSessionQueuePause
+      const { result } = renderController({ queuePause })
       expect(result.current.pause).toEqual({ reason })
     }
   )
 
-  it('is absent over cards held only on their own or returned, and over cards no pause holds', () => {
+  it('is absent over cards held only on their own or returned, and with no published pause', () => {
     const queuedMessages = [
-      card('failed', { paused: true, pausedReason: 'send_failed', heldBy: null }),
-      card('returned', { position: 2, state: 'returned', heldBy: null })
+      card('failed', { paused: true, pausedReason: 'send_failed' }),
+      card('returned', { position: 2, state: 'returned' })
     ]
     expect(renderController({ queuedMessages }).result.current.pause).toBeNull()
-    const typedAfter = [card('typed-after', { heldBy: null })]
-    expect(renderController({ queuedMessages: typedAfter }).result.current.pause).toBeNull()
+    expect(renderController({ queuePause: null }).result.current.pause).toBeNull()
   })
 
   it("shares one Resume with the composer's: a press of either while one is in flight sends nothing", async () => {

@@ -1,15 +1,14 @@
 // The queue's pauses: a pure function of the journal fold and the cards, never a stored flag, so
 // nothing has to retire them. Each holds its own cards (`queuePauseHolding`). In force when:
 //   - 'stopped': the latest Stop event is a person's (reason `user-stop`), with no later Resume row
-//     and no turn a person asked for sent after it and accepted. A later Stop of any reason
-//     supersedes it; only a person's pauses.
-//   - 'cleared': a card /clear carried into this conversation waits, and no person's turn or
-//     Resume has happened here since.
-//   - 'restarted': a waiting card was written by another host process, and no person's turn has
-//     started since this conversation opened. It holds only those cards, never one written since.
-// A person's turn is an accepted submission of origin `client`: their send, Send on any card, or
-// the queue's send of a card they wrote. Orchestration mail, a restart continuation, a launch
-// prompt and the queue's send of a card one of those wrote are `host` and never lift it.
+//     and no turn sent after it and accepted. A later Stop of any reason supersedes it; only a
+//     person's pauses.
+//   - 'cleared': a card /clear carried into this conversation waits, and no turn or Resume has
+//     happened here since.
+//   - 'restarted': a waiting card was written by another host process, and no turn has started
+//     since this conversation opened. Never published: after a restart nothing sends by itself,
+//     and the next turn (the carry-on or the person's own message) runs first.
+// Any accepted turn lifts them, whoever sent it: a person, Orca's own messages, or the queue.
 
 import type { AgentJournalCursor } from '../../../shared/agent-session-journal-types'
 import type { JournalStopEvent, JournalTombstoneRow } from './journal-row-schema'
@@ -27,12 +26,11 @@ export type JournalQueuePauseMarks = {
   resumedSequence: number
 }
 
-export type DerivedQueuePause =
-  /** `since`: where the Stop was written; a card queued at or after it is newer. */
-  | { reason: 'stopped'; since: AgentJournalCursor }
-  | { reason: 'cleared' }
-  /** `hostInstance`: this process; a card it wrote came after the restart. */
-  | { reason: 'restarted'; hostInstance: string }
+export type DerivedQueuePause = {
+  reason: QueuePauseReason
+  /** Where a Stop's pause began: a card queued at or after it is newer. Null for the others. */
+  since: AgentJournalCursor | null
+}
 
 type QueueCard = {
   state: string
@@ -70,28 +68,28 @@ export function foldJournalQueuePauseMark(
   }
 }
 
-/** A person's Stop still pauses: it is the latest Stop, and nothing a person did since, and no
+/** A person's Stop still pauses: it is the latest Stop, and no turn accepted since, and no
  *  Resume, ended it. A later Stop for any other reason ends it without pausing itself. */
 export function journalQueueStopHolds(
   marks: JournalQueuePauseMarks,
-  latestPersonTurnSequence: number
+  latestAcceptedTurnSequence: number
 ): boolean {
   return (
     marks.latestStop?.event.reason === 'user-stop' &&
-    marks.latestStop.sequence > Math.max(latestPersonTurnSequence, marks.resumedSequence)
+    marks.latestStop.sequence > Math.max(latestAcceptedTurnSequence, marks.resumedSequence)
   )
 }
 
 /** The latest person's Stop while it still pauses, with where it was written; else null. */
 export function journalUserStopInForce(
   marks: JournalQueuePauseMarks,
-  latestPersonTurnSequence: number
+  latestAcceptedTurnSequence: number
 ): JournalQueuePauseMarks['latestStop'] {
-  return journalQueueStopHolds(marks, latestPersonTurnSequence) ? marks.latestStop : null
+  return journalQueueStopHolds(marks, latestAcceptedTurnSequence) ? marks.latestStop : null
 }
 
 /** What a rewind's new epoch restates so its pauses read as they did: a lift of /clear's pause (a
- *  person's turn or a Resume happened), then the Stop still in force, in that order so the lift
+ *  turn or a Resume happened), then the Stop still in force, in that order so the lift
  *  never ends the Stop. */
 export type JournalQueuePauseRestatement = {
   lifted: boolean
@@ -100,11 +98,11 @@ export type JournalQueuePauseRestatement = {
 
 export function journalQueuePauseRestatement(
   marks: JournalQueuePauseMarks,
-  latestPersonTurnSequence: number
+  latestAcceptedTurnSequence: number
 ): JournalQueuePauseRestatement {
   return {
-    lifted: latestPersonTurnSequence > 0 || marks.resumedSequence > 0,
-    liveStop: journalUserStopInForce(marks, latestPersonTurnSequence)?.event ?? null
+    lifted: latestAcceptedTurnSequence > 0 || marks.resumedSequence > 0,
+    liveStop: journalUserStopInForce(marks, latestAcceptedTurnSequence)?.event ?? null
   }
 }
 
@@ -113,53 +111,45 @@ export function deriveQueuePauses(input: {
   /** The journal's epoch: sequences compare only within one. */
   epoch: string
   marks: JournalQueuePauseMarks
-  latestPersonTurnSequence: number
+  latestAcceptedTurnSequence: number
   cards: readonly QueueCard[]
   hostInstance: string
-  /** A person's turn started since this conversation opened. */
+  /** A turn started since this conversation opened. */
   restartEnded: boolean
 }): DerivedQueuePause[] {
-  const { epoch, marks, latestPersonTurnSequence } = input
+  const { epoch, marks, latestAcceptedTurnSequence } = input
   const pauses: DerivedQueuePause[] = []
-  const stop = journalUserStopInForce(marks, latestPersonTurnSequence)
+  const stop = journalUserStopInForce(marks, latestAcceptedTurnSequence)
   if (stop) {
     pauses.push({ reason: 'stopped', since: { epoch, sequence: stop.sequence } })
   }
   const waiting = input.cards.filter((card) => card.state === 'waiting')
   const carried = waiting.filter((card) => card.carriedFrom !== null)
-  if (carried.length > 0 && latestPersonTurnSequence === 0 && marks.resumedSequence === 0) {
-    pauses.push({ reason: 'cleared' })
+  if (carried.length > 0 && latestAcceptedTurnSequence === 0 && marks.resumedSequence === 0) {
+    pauses.push({ reason: 'cleared', since: null })
   }
   if (!input.restartEnded && waiting.some((card) => card.hostInstance !== input.hostInstance)) {
-    pauses.push({ reason: 'restarted', hostInstance: input.hostInstance })
+    // The process that wrote a card is gone: every card waits, whenever it was written.
+    pauses.push({ reason: 'restarted', since: null })
   }
   return pauses
 }
 
-/** Queued before the pause began: for /clear, a card it carried; for a restart, a card another
- *  process wrote. For a Stop, a card queued before its row; one from another epoch (before a
- *  rewind) or from a build that recorded no position counts as before. A withdrawn steer keeps its
- *  position, so is held. */
+/** Queued before the pause began: for /clear, a card it carried; for a restart, every card. For a
+ *  Stop, a card queued before its row; one from another epoch (before a rewind) or from a build
+ *  that recorded no position counts as before. A withdrawn steer keeps its position, so is held. */
 function queuedBeforePause(pause: DerivedQueuePause, card: QueueCard): boolean {
   if (pause.reason === 'cleared') {
     return card.carriedFrom !== null
   }
-  if (pause.reason === 'restarted') {
-    return card.hostInstance !== pause.hostInstance
-  }
   const { since } = pause
   return (
+    since === null ||
     card.queuedAt === null ||
     card.queuedAt.epoch !== since.epoch ||
     card.queuedAt.sequence < since.sequence
   )
 }
-
-// Product decision: a card queued AFTER a Stop or a restart is a new instruction and is not held;
-// only cards queued before it, and a steer a Stop withdrew, wait. The drain skips held cards, so
-// it sends ahead of them; when a person wrote that card its send is their turn, so the held cards
-// follow it. true instead holds every waiting card, whenever it was queued.
-const PAUSE_HOLDS_CARDS_QUEUED_AFTER_IT = false
 
 /** THE rule for which cards are held: by ANY pause in force, named by the first that holds it, so
  *  a Stop's that holds nothing never hides a restart's. The drain, its consume, and publication
@@ -171,21 +161,22 @@ export function queuePauseHolding(
   if (card.state !== 'waiting' || card.holdReason !== null) {
     return undefined
   }
-  return pauses.find((pause) => PAUSE_HOLDS_CARDS_QUEUED_AFTER_IT || queuedBeforePause(pause, card))
+  // A card queued AFTER a Stop is a new instruction and is not held; it still waits behind a held one.
+  return pauses.find((pause) => queuedBeforePause(pause, card))
 }
 
-/** The card the queue sends next: the oldest waiting one that nothing holds, unless a returned
- *  card comes first. Held cards are skipped, not waited on; a returned card blocks what follows it.
- *  The drain's pick, its consume, and send admission all read this. */
+/** The card the queue sends next: the oldest waiting one with no hold of its own, unless a
+ *  returned card or a held one comes first. The queue never reorders, so a newer card never
+ *  overtakes a held one. The drain's pick and its consume both read this. */
 export function nextSendableQueuedCard<T extends QueueCard>(
   pauses: readonly DerivedQueuePause[],
   cards: readonly T[]
 ): T | null {
   for (const card of cards) {
-    if (card.state === 'returned') {
+    if (card.state === 'returned' || queuePauseHolding(pauses, card)) {
       return null
     }
-    if (card.state === 'waiting' && card.holdReason === null && !queuePauseHolding(pauses, card)) {
+    if (card.state === 'waiting' && card.holdReason === null) {
       return card
     }
   }
@@ -193,8 +184,8 @@ export function nextSendableQueuedCard<T extends QueueCard>(
 }
 
 /** The pause to PUBLISH: the one holding the first card Resume would send, not behind a returned
- *  card, which blocks everything after it until the user acts. None otherwise, so a client that
- *  still shows a paused header (mobile, older desktops) never offers a Resume that sends nothing. */
+ *  card, which blocks everything after it until the user acts. None otherwise, so its header
+ *  never offers a Resume that sends nothing. */
 export function resumableQueuePause(
   pauses: readonly DerivedQueuePause[],
   cards: readonly QueueCard[]

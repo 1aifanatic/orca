@@ -138,17 +138,15 @@ export async function createQueuedMessageTestRig(
     }
   }
 
-  /** A client's send, as the `agentSession.send` RPC hands it to the host;
-   *  `internal` is a host-side sender (orchestration mail, a restart continuation). */
-  function send(text: string, delivery?: 'queue-if-active', options?: { internal?: true }) {
+  /** A send as the host takes it: a client's over the `agentSession.send` RPC, or Orca's own. */
+  function send(text: string, delivery?: 'queue-if-active') {
     const body = hostTestMessage(text)
     const clientOperationId = hostTestOperationId()
     const fields = { body, ...(delivery ? { delivery } : {}) }
     const result = host.send(QUEUED_RIG_CALLER, {
       envelope: envelope(fields, 'agentSession.send', clientOperationId),
       body,
-      ...(delivery ? { delivery } : {}),
-      ...(options?.internal ? {} : { userSend: true as const })
+      ...(delivery ? { delivery } : {})
     })
     return { id: clientOperationId, result }
   }

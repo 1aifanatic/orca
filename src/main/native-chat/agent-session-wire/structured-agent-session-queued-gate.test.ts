@@ -128,8 +128,7 @@ describe('replay preference', () => {
         clientOperationId
       ),
       body,
-      delivery: 'queue-if-active' as const,
-      userSend: true as const
+      delivery: 'queue-if-active' as const
     }
     expect(await host.send(CALLER, params)).toMatchObject({
       ok: true,
@@ -167,8 +166,7 @@ describe('replay of a deleted card', () => {
         clientOperationId
       ),
       body,
-      delivery: 'queue-if-active' as const,
-      userSend: true as const
+      delivery: 'queue-if-active' as const
     }
     await host.send(CALLER, params)
     await settleAccepted(working, 'a')
@@ -211,8 +209,7 @@ describe('the hand-off link on answers', () => {
         clientOperationId
       ),
       body,
-      delivery: 'queue-if-active' as const,
-      userSend: true as const
+      delivery: 'queue-if-active' as const
     }
     await host.send(CALLER, params)
     await settleAccepted(working, 'a')
@@ -244,8 +241,7 @@ describe('the hand-off link on answers', () => {
         clientOperationId
       ),
       body,
-      delivery: 'queue-if-active' as const,
-      userSend: true as const
+      delivery: 'queue-if-active' as const
     }
     await host.send(CALLER, params)
     await settleAccepted(working, 'a')

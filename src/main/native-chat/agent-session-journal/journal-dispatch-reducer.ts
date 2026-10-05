@@ -9,7 +9,7 @@ import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal
 import { journalDispatchRowApplies } from './journal-dispatch-settlement'
 import type { JournalReducerState } from './journal-reducer'
 import {
-  notePersonTurnAccepted,
+  noteTurnAccepted,
   placeHandedOverMessage,
   placeRejectedMessage
 } from './journal-submission-fold'
@@ -47,7 +47,7 @@ export function applyJournalDispatchRow(
     delete submission.recovered
   }
   if (row.state === 'accepted') {
-    notePersonTurnAccepted(state, submission)
+    noteTurnAccepted(state, submission)
   }
   if (row.state !== 'accepted' || !row.providerItemId) {
     return

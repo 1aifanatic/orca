@@ -76,8 +76,7 @@ async function handOffAndReject(
     messageId: 'draft-1',
     body,
     fingerprint,
-    hostInstance: 'p',
-    origin: 'client'
+    hostInstance: 'p'
   })
   await journal.appendSubmission(
     {

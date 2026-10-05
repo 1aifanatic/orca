@@ -18193,7 +18193,6 @@
         "pausedSendFailed": "Couldn't send — press Send to retry.",
         "paused": "Paused",
         "queuePausedStopped": "Queue paused because you interrupted",
-        "queuePausedRestarted": "Queue paused because Orca restarted",
         "queuePausedCleared": "Queue paused after you cleared the conversation",
         "queuePaused": "Queue paused",
         "resume": "Resume",

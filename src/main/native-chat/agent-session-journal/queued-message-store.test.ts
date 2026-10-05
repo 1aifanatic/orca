@@ -75,42 +75,13 @@ async function open(): Promise<AgentSessionJournal> {
   return journal
 }
 
-async function queueDraft(
-  journal: AgentSessionJournal,
-  messageId: string,
-  text = 'queued text',
-  origin: 'client' | 'host' = 'client'
-) {
+async function queueDraft(journal: AgentSessionJournal, messageId: string, text = 'queued text') {
   return journal.queuedMessages.insert({
     messageId,
     body: message(text),
     fingerprint: `fp-${messageId}`,
-    hostInstance: 'proc-1',
-    origin
+    hostInstance: 'proc-1'
   })
-}
-
-/** A row as a build that knows only the columns it names writes it, the host closed around it. */
-function insertAsOlderBuild(messageId: string, position: number, origin?: string): void {
-  closeTestJournalHostDatabases()
-  const db = new Database(journalDatabasePath(root))
-  try {
-    db.prepare(
-      `INSERT INTO queued_messages (session_id, message_id, position, body_json, fingerprint,
-         created_at, host_instance, state${origin === undefined ? '' : ', origin'})
-       VALUES (?, ?, ?, ?, ?, ?, 'proc-0', 'waiting'${origin === undefined ? '' : ', ?'})`
-    ).run(
-      IDENTITY.sessionId,
-      messageId,
-      position,
-      JSON.stringify(message(messageId)),
-      `fp-${messageId}`,
-      tick(),
-      ...(origin === undefined ? [] : [origin])
-    )
-  } finally {
-    db.close()
-  }
 }
 
 async function consumeDraft(
@@ -181,37 +152,6 @@ describe('draft rows', () => {
     const journal = await open()
     const row = await queueDraft(journal, 'draft-1')
     expect(row.position).toBe(1)
-  })
-
-  it("keeps who wrote a card; one from before that was recorded reads as a person's", async () => {
-    const first = await open()
-    await queueDraft(first, 'draft-host', 'mail', 'host')
-    await first.close()
-    // An older build's insert leaves the author empty; a value no build writes is not a person's.
-    insertAsOlderBuild('draft-older', 2)
-    insertAsOlderBuild('draft-unknown', 3, 'automation')
-    const journal = await open()
-    expect(journal.queuedMessages.list().map((row) => [row.messageId, row.origin])).toEqual([
-      ['draft-host', 'host'],
-      ['draft-older', 'client'],
-      ['draft-unknown', 'host']
-    ])
-  })
-
-  it("heals an older build's draft table that has no author column", async () => {
-    const first = await open()
-    await queueDraft(first, 'draft-1')
-    await first.close()
-    closeTestJournalHostDatabases()
-    const db = new Database(journalDatabasePath(root))
-    db.exec('ALTER TABLE queued_messages DROP COLUMN origin')
-    db.close()
-    const journal = await open()
-    await queueDraft(journal, 'draft-2', 'mail', 'host')
-    expect(journal.queuedMessages.list().map((row) => [row.messageId, row.origin])).toEqual([
-      ['draft-1', 'client'],
-      ['draft-2', 'host']
-    ])
   })
 
   it('assigns monotonic positions and lists in order', async () => {
