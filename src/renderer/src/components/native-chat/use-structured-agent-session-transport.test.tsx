@@ -105,7 +105,8 @@ describe('useStructuredAgentSessionTransport', () => {
         sessionId: 'session-a',
         target,
         fence: transport.state.fence,
-        submissions: transport.state.submissions
+        submissions: transport.state.submissions,
+        journalItems: transport.state.items
       })
       return { transport, outbox }
     })
