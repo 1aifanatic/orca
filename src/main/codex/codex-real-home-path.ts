@@ -6,7 +6,6 @@ import { readPowerShellProfileEnvValues } from '../pty/powershell-profile-env'
 export type CodexShellStartupHomeOverride = {
   home: string
   shell?: string
-  /** Why recorded: fish reads config under it, so re-reads must use the same root. */
   configHome?: string
   codexHome: string
 }
@@ -72,39 +71,6 @@ export function getCustomCodexHomeOverrideForLaunch(
   }
 }
 
-export function shellStartupCodexHomeOverrideMatches(
-  context: CodexShellStartupHomeOverride,
-  currentContext: CodexShellStartupHomeOverride = context
-): boolean {
-  if (!shellStartupCodexHomeOverrideContextsEqual(context, currentContext)) {
-    return false
-  }
-  return readCustomShellStartupCodexHomes(
-    currentContext.home,
-    currentContext.shell,
-    currentContext.configHome
-  ).some(
-    (codexHome) =>
-      normalizePathForComparison(codexHome) === normalizePathForComparison(context.codexHome)
-  )
-}
-
-export function shellStartupCodexHomeOverrideContextsEqual(
-  left: CodexShellStartupHomeOverride,
-  right: CodexShellStartupHomeOverride
-): boolean {
-  return (
-    normalizePathForComparison(left.home) === normalizePathForComparison(right.home) &&
-    left.shell === right.shell &&
-    left.configHome === right.configHome &&
-    normalizePathForComparison(left.codexHome) === normalizePathForComparison(right.codexHome)
-  )
-}
-
-/**
- * Custom CODEX_HOMEs the pane's shell startup may set. A Windows pane may run
- * either PowerShell edition or Git Bash, so any of their startup files counts.
- */
 function readCustomShellStartupCodexHomes(
   home: string | undefined,
   shell: string | undefined,

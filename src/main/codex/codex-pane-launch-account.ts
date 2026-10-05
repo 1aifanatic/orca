@@ -39,35 +39,23 @@ export function resolveCodexPaneLaunchAccount(args: {
   settings: CodexPaneLaunchAccountSettings
   target: CodexAccountSelectionTarget
 }): CodexPaneAccountRecord | null {
-  const selectionKey = getCodexSelectionLaneKey(args.target)
-  const homeRoute = resolveCodexPaneHomeRoute(args)
-  if (!args.pinnedByResume) {
-    return {
-      selectionKey,
-      accountId: getSelectedCodexAccountIdForTarget(args.settings, args.target),
-      ...(homeRoute ? { homeRoute } : {}),
-      ...(args.shellStartupHomeOverride
-        ? { shellStartupHomeOverride: args.shellStartupHomeOverride }
-        : {}),
-      ...(args.environmentHomeOverride
-        ? { environmentHomeOverride: args.environmentHomeOverride }
-        : {})
-    }
+  const accountId = args.pinnedByResume
+    ? resolveCodexHomeOwnerAccountId(args)
+    : getSelectedCodexAccountIdForTarget(args.settings, args.target)
+  if (accountId === undefined) {
+    return null
   }
-  const accountId = resolveCodexHomeOwnerAccountId(args)
-  return accountId === undefined
-    ? null
-    : {
-        selectionKey,
-        accountId,
-        ...(homeRoute ? { homeRoute } : {}),
-        ...(args.shellStartupHomeOverride
-          ? { shellStartupHomeOverride: args.shellStartupHomeOverride }
-          : {}),
-        ...(args.environmentHomeOverride
-          ? { environmentHomeOverride: args.environmentHomeOverride }
-          : {})
-      }
+  return {
+    selectionKey: getCodexSelectionLaneKey(args.target),
+    accountId,
+    homeRoute: resolveCodexPaneHomeRoute(args),
+    ...(args.shellStartupHomeOverride
+      ? { shellStartupHomeOverride: args.shellStartupHomeOverride }
+      : {}),
+    ...(args.environmentHomeOverride
+      ? { environmentHomeOverride: args.environmentHomeOverride }
+      : {})
+  }
 }
 
 function resolveCodexPaneHomeRoute(args: {

@@ -97,7 +97,6 @@ describe('resolveCodexPaneHome', () => {
       },
       '/custom/codex'
     ],
-    [{ selectionKey: 'host', accountId: null, homeRoute: 'custom-home' }, null],
     // Orca's mirror: a fallback lane or a pre-upgrade pane's retired home.
     [{ selectionKey: 'host', accountId: null, homeRoute: 'shared-home' }, null],
     [{ selectionKey: 'host', accountId: 'acct', homeRoute: 'account-home' }, null],

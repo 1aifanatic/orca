@@ -53,7 +53,6 @@ describe('codex pane account registry', () => {
     ['account-home', true],
     ['wsl-home', true],
     ['shared-home', false],
-    ['custom-home', false],
     [undefined, false]
   ] as const)('classifies whether %s proves a pane avoided the shared home', (route, expected) => {
     expect(isCodexPaneHomeRouteProvenAwayFromSharedHome(route)).toBe(expected)
@@ -99,6 +98,23 @@ describe('codex pane account registry', () => {
     expect(hasRecordedLegacySharedCodexPane()).toBe(true)
   })
 
+  it('reads a custom-home record from an older build as the shared home it was', () => {
+    writeFileSync(
+      join(userDataPath, 'codex-pane-accounts.json'),
+      JSON.stringify({
+        version: 2,
+        panes: { 'pty-1': { selectionKey: 'host', accountId: null, homeRoute: 'custom-home' } }
+      })
+    )
+    _internals.resetCache()
+
+    expect(getCodexPaneAccount('pty-1')).toEqual({
+      selectionKey: 'host',
+      accountId: null,
+      homeRoute: 'shared-home'
+    })
+  })
+
   it('runs legacy reconciliation only for host panes that may use the shared home', () => {
     recordCodexPaneAccount('pty-real', {
       selectionKey: 'host',
@@ -116,17 +132,6 @@ describe('codex pane account registry', () => {
       homeRoute: 'wsl-home'
     })
 
-    expect(hasRecordedLegacySharedCodexPane()).toBe(false)
-
-    recordCodexPaneAccount('pty-custom', {
-      selectionKey: 'host',
-      accountId: null,
-      homeRoute: 'custom-home'
-    })
-
-    expect(hasRecordedLegacySharedCodexPane()).toBe(true)
-
-    forgetCodexPaneAccount('pty-custom')
     expect(hasRecordedLegacySharedCodexPane()).toBe(false)
 
     recordCodexPaneAccount('pty-shared', {

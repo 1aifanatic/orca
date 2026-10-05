@@ -99,11 +99,7 @@ export abstract class CodexRuntimeHomeRouting extends CodexRuntimeHomeManagedHom
       if (!record || record.selectionKey !== 'host') {
         continue
       }
-      if (
-        record.homeRoute === undefined ||
-        record.homeRoute === 'shared-home' ||
-        record.homeRoute === 'custom-home'
-      ) {
+      if (record.homeRoute === undefined || record.homeRoute === 'shared-home') {
         const homePath = this.getRuntimeHomePath()
         homes.set(normalizeRuntimePathForComparison(homePath), homePath)
         continue

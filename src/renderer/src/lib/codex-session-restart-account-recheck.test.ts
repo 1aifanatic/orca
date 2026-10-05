@@ -4,13 +4,16 @@ import { markLiveCodexSessionsForRestart } from './codex-session-restart'
 
 const ACCOUNT_A = 'account-a@example.com'
 const ACCOUNT_B = 'account-b@example.com'
-const originalWindow = (globalThis as { window?: typeof window }).window
+const ACCOUNT_C = 'account-c@example.com'
 
-/** Main's per-PTY record decides a recorded pane's notice; these pin both of its answers. */
+/** Main's per-PTY record decides a recorded pane's notice, and the switch decides it when main cannot. */
 describe('Codex account switch recheck against main', () => {
+  const listStalePanes = vi.fn()
+
   beforeEach(() => {
+    listStalePanes.mockReset().mockResolvedValue([])
     useAppStore.setState({
-      settings: null as never,
+      settings: null,
       tabsByWorktree: {
         wt1: [
           {
@@ -29,32 +32,24 @@ describe('Codex account switch recheck against main', () => {
       pendingCodexPaneRestartIds: {},
       codexRestartNoticeByPtyId: {}
     })
-    ;(globalThis as { window: typeof window }).window = {
-      ...originalWindow,
+    vi.stubGlobal('window', {
       api: {
-        ...originalWindow?.api,
         pty: {
-          ...originalWindow?.api?.pty,
           inspectProcess: vi
             .fn()
             .mockResolvedValue({ foregroundProcess: 'codex', hasChildProcesses: false }),
           confirmForegroundProcess: vi.fn().mockResolvedValue(null)
         },
         codexAccounts: {
-          ...originalWindow?.api?.codexAccounts,
           listRecordedPaneLanes: vi.fn().mockResolvedValue({ 'pty-1': 'host' }),
-          listStalePanes: vi.fn().mockResolvedValue([])
+          listStalePanes
         }
       }
-    } as unknown as typeof window
+    })
   })
 
   afterEach(() => {
-    if (originalWindow) {
-      ;(globalThis as { window: typeof window }).window = originalWindow
-    } else {
-      delete (globalThis as { window?: typeof window }).window
-    }
+    vi.unstubAllGlobals()
   })
 
   it('clears an open notice and its queued restart once main reports the pane current', async () => {
@@ -71,18 +66,18 @@ describe('Codex account switch recheck against main', () => {
 
     await markLiveCodexSessionsForRestart({
       previousAccountLabel: ACCOUNT_B,
-      nextAccountLabel: 'account-c@example.com',
+      nextAccountLabel: ACCOUNT_C,
       previousAccountId: 'account-b',
       nextAccountId: 'account-c'
     })
 
-    expect(window.api.codexAccounts.listStalePanes).toHaveBeenCalledWith({ ptyIds: ['pty-1'] })
+    expect(listStalePanes).toHaveBeenCalledWith({ ptyIds: ['pty-1'] })
     expect(useAppStore.getState().codexRestartNoticeByPtyId).toEqual({})
     expect(useAppStore.getState().pendingCodexPaneRestartIds).toEqual({})
   })
 
   it('falls back to the switch it was given when main cannot answer', async () => {
-    vi.mocked(window.api.codexAccounts.listStalePanes).mockRejectedValue(new Error('ipc failed'))
+    listStalePanes.mockRejectedValue(new Error('ipc failed'))
 
     await markLiveCodexSessionsForRestart({
       previousAccountLabel: ACCOUNT_A,

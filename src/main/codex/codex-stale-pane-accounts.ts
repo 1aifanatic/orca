@@ -14,10 +14,7 @@ export type StaleCodexPane = {
 /**
  * Reports which of the given PTYs still launch Codex as a previously selected
  * account, so the restart prompt survives an app restart the shells outlive.
- *
- * Why only the account: a pane left on an older Codex home keeps working, and that
- * home stays refreshed from ~/.codex, so a home change alone is not worth a prompt
- * that blocks input and ends the session.
+ * Why only the account: a pane on an older Codex home keeps working, refreshed from ~/.codex.
  */
 export function listStaleCodexPanes(args: {
   ptyIds: readonly string[]

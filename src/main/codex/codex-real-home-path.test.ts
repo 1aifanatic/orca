@@ -5,8 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   getCustomCodexHomeOverrideForLaunch,
   hasCustomCodexHomeOverride,
-  hasCustomCodexHomeOverrideForLaunch,
-  shellStartupCodexHomeOverrideMatches
+  hasCustomCodexHomeOverrideForLaunch
 } from './codex-real-home-path'
 import { __resetShellStartupEnvCache } from '../pty/shell-startup-env'
 
@@ -46,7 +45,7 @@ describe('hasCustomCodexHomeOverride', () => {
     ).toBe(true)
   })
 
-  it('captures explicit environment provenance for restart comparison', () => {
+  it('reports an explicit environment CODEX_HOME as the override', () => {
     const codexHome = join(process.cwd(), 'custom-codex-home')
 
     expect(getCustomCodexHomeOverrideForLaunch({ CODEX_HOME: codexHome })).toEqual({
@@ -78,10 +77,6 @@ describe('hasCustomCodexHomeOverride', () => {
           codexHome: join(paneHome, 'custom-codex-home')
         }
       })
-      expect(
-        override?.source === 'shell-startup' &&
-          shellStartupCodexHomeOverrideMatches(override.context)
-      ).toBe(true)
     }
   )
 
@@ -123,11 +118,6 @@ describe('hasCustomCodexHomeOverride', () => {
           codexHome: join(paneHome, 'custom-codex-home')
         }
       })
-      // And the recorded configHome is what a later re-check resolves against.
-      expect(
-        override?.source === 'shell-startup' &&
-          shellStartupCodexHomeOverrideMatches(override.context)
-      ).toBe(true)
     }
   )
 })

@@ -51,7 +51,7 @@ export default function CodexRestartChip({
   return (
     <LoudRestartOverlay
       isVisible={isVisible}
-      noticeKey={`${ptyId}:${restartNotice.previousAccountLabel}:${restartNotice.nextAccountLabel}`}
+      ptyId={ptyId}
       restartNotice={restartNotice}
       shouldFocus={shouldFocus}
       onDismiss={handleDismiss}
@@ -62,14 +62,14 @@ export default function CodexRestartChip({
 
 function LoudRestartOverlay({
   isVisible,
-  noticeKey,
+  ptyId,
   restartNotice,
   shouldFocus,
   onDismiss,
   onRestart
 }: {
   isVisible: boolean
-  noticeKey: string
+  ptyId: string
   restartNotice: RestartNotice
   shouldFocus: boolean
   onDismiss: () => void
@@ -96,7 +96,13 @@ function LoudRestartOverlay({
     if (shouldFocusMobileDriverAction(document.activeElement, document.body, paneScope)) {
       root.focus()
     }
-  }, [isVisible, noticeKey, shouldFocus])
+  }, [
+    isVisible,
+    ptyId,
+    restartNotice.previousAccountLabel,
+    restartNotice.nextAccountLabel,
+    shouldFocus
+  ])
 
   return (
     <div
