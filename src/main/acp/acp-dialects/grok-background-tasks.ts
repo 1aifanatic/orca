@@ -43,6 +43,8 @@ const resultOutputSchema = z.object({
   MultiResult: z.object({ results: z.array(taskResultSchema) }).optional()
 })
 type GrokTask = z.infer<typeof taskSchema>
+/** Grok's output reads name a monitor only by this command prefix. */
+const MONITOR_COMMAND = /^\[monitor[:\]]/
 
 function completedState(task: GrokTask): NativeChatBackgroundTaskBlock['state'] {
   return task.explicitly_killed
@@ -76,11 +78,10 @@ function snapshot(
   state: NativeChatBackgroundTaskBlock['state']
 ): AcpBackgroundTaskUpdate {
   const kind = task.kind ?? task.task_type
-  // Grok's output reads name a monitor only by this command prefix.
   const monitor =
     kind === 'monitor' ||
     task.monitor_description != null ||
-    task.command?.startsWith('[monitor') === true
+    MONITOR_COMMAND.test(task.command ?? '')
   const label = task.monitor_description?.trim() || task.description?.trim()
   const fallbackLabel = task.display_command?.trim() || task.command?.trim()
   const settled = isSettledBackgroundTaskState(state)

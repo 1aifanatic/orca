@@ -84,7 +84,7 @@ describe('what a background task row says', () => {
       status: 'completed',
       rawOutput: {
         type: 'TaskOutput',
-        Result: { task_id: 'watch-2', command: '[monitor] Tail the log', status: 'running' }
+        Result: { task_id: 'watch-2', command: '[monitor:tail] Tail the log', status: 'running' }
       }
     })
     expect((await taskBlocks(fixture))[0]?.kind).toBe('monitor')
