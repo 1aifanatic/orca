@@ -24,7 +24,8 @@ function createIdempotentOrcadCleanup(cleanup: () => Promise<void>): () => Promi
 
 export { ORCAD_SHUTDOWN_DEADLINE_MS }
 
-export type OrcadShutdownTrigger = (reason: string, onFailed?: () => void) => void
+/** True when this call began the stop; false when another source already owns it. */
+export type OrcadShutdownTrigger = (reason: string, onFailed?: () => void) => boolean
 
 /**
  * A launcher and its child can both receive the same process-group or service stop signal.
@@ -38,7 +39,7 @@ export function installOrcadShutdownSignals(
   let stopping = false
   const shutdown: OrcadShutdownTrigger = (signal, onFailed) => {
     if (stopping) {
-      return
+      return false
     }
     stopping = true
     setTimeout(() => {
@@ -53,6 +54,7 @@ export function installOrcadShutdownSignals(
         onFailed?.()
         process.exit(resolveOrcadExitCode(error))
       })
+    return true
   }
   process.on('SIGINT', () => shutdown('SIGINT'))
   process.on('SIGTERM', () => shutdown('SIGTERM'))

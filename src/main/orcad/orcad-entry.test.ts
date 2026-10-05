@@ -21,9 +21,10 @@ describe('orcad profile-state shutdown', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const stop = vi.fn(() => new Promise<void>(() => {}))
     try {
-      installOrcadShutdownSignals(stop)
+      const shutdown = installOrcadShutdownSignals(stop)
       signal?.()
       signal?.()
+      expect(shutdown('idle')).toBe(false)
       expect(stop).toHaveBeenCalledOnce()
       expect(exit).not.toHaveBeenCalled()
       expect(() => vi.advanceTimersByTime(ORCAD_SHUTDOWN_DEADLINE_MS)).toThrow('shutdown deadline')

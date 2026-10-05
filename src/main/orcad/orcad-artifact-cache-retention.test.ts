@@ -118,4 +118,31 @@ describe('orcad artifact cache retention', () => {
     expect(existsSync(running)).toBe(true)
     expect(existsSync(selected)).toBe(true)
   })
+
+  it('keeps the slot a surviving terminal daemon runs from after orcad exits', async () => {
+    const userData = cacheRoot()
+    const root = join(userData, 'orcad-artifacts')
+    const daemonSlot = slot(root, 'linux-x64-glibc', '0.1.0+old', 90)
+    const others = [1, 2, 3, 4].map((age) => slot(root, 'linux-x64-glibc', `v${age}`, age))
+    mkdirSync(join(userData, 'daemon'))
+    writeFileSync(
+      join(userData, 'daemon', 'daemon-v30.pid'),
+      JSON.stringify({ pid: process.pid, entryPath: join(daemonSlot, 'out', 'daemon-entry.js') })
+    )
+    expect((await pruneDesktopOrcadArtifactCache(userData)).sort()).toEqual(
+      [others[2], others[3]].sort()
+    )
+    expect(existsSync(daemonSlot)).toBe(true)
+  })
+
+  it('evicts nothing while a daemon record cannot be read', async () => {
+    const userData = cacheRoot()
+    const root = join(userData, 'orcad-artifacts')
+    for (const age of [1, 2, 3, 4, 5]) {
+      slot(root, 'linux-x64-glibc', `v${age}`, age)
+    }
+    mkdirSync(join(userData, 'daemon'))
+    writeFileSync(join(userData, 'daemon', 'daemon-v30.pid'), '')
+    expect(await pruneDesktopOrcadArtifactCache(userData)).toEqual([])
+  })
 })

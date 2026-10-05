@@ -77,12 +77,25 @@ async function startOrcadManagedIdleExit(
     },
     stop: (evidence) => {
       void stopForIdle(input, evidence, retireOrcadDaemonIfIdle).finally(() =>
-        // A stop that fails or overruns is not clean; the next start must not report it as idle.
-        requestIdleShutdown?.('idle', () => discardOrcadIdleStopRecord(input.userDataPath))
+        requestRecordedIdleShutdown(input.userDataPath, requestIdleShutdown)
       )
     }
   })
   input.registerCleanup(dispose)
+}
+
+/**
+ * A stop that fails or overruns is not clean, and one another source (a signal, a stop request)
+ * took over is not idle; the next start must report neither as an idle stop.
+ */
+export function requestRecordedIdleShutdown(
+  userDataPath: string,
+  request: OrcadShutdownTrigger | null
+): void {
+  const discard = (): void => discardOrcadIdleStopRecord(userDataPath)
+  if (!request?.('idle', discard)) {
+    discard()
+  }
 }
 
 async function stopForIdle(
