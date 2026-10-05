@@ -6,7 +6,8 @@ import { EMPTY_LAYOUT } from './layout-serialization'
 
 /**
  * Where a pane reads its tab's chat owner: the store when it holds the pair (`'local'`, or
- * `'host'` with this desktop's pending click on top), otherwise the pane's own copy.
+ * `'host'` with this desktop's pending click on top), otherwise the pane's own copy. On `'host'`
+ * the pane's copy is only a display owner for a host chat that names no pane.
  */
 export function useTerminalPaneChatPairSource(tabId: string, chatPairAuthority: ChatPairAuthority) {
   const [localChatLeafId, setChatLeafId] = useState<string | null>(
@@ -22,10 +23,14 @@ export function useTerminalPaneChatPairSource(tabId: string, chatPairAuthority: 
   )
   // Why: when the store holds the pair, a pane copy could write a stale owner back.
   const storeOwnsChatPair = chatPairAuthority !== 'legacy'
-  const chatLeafId = pendingChatPair
+  const hostChatLeafId = pendingChatPair
     ? (pendingChatPair.chatLeafId ?? null)
-    : storeOwnsChatPair
-      ? (savedLayout.chatLeafId ?? null)
-      : localChatLeafId
+    : (savedLayout.chatLeafId ?? null)
+  const chatLeafId =
+    chatPairAuthority === 'host'
+      ? (hostChatLeafId ?? localChatLeafId)
+      : storeOwnsChatPair
+        ? hostChatLeafId
+        : localChatLeafId
   return { chatLeafId, pendingChatPair, savedLayout, setChatLeafId, storeOwnsChatPair }
 }

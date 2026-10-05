@@ -19,7 +19,10 @@ export type ChatPairWriteReply = {
 }
 
 export type ChatPairPendingDeps<Key> = {
-  /** Fixed for the client process; the host fences each writer's sequence numbers. */
+  /**
+   * New per client process, never persisted: sequences restart at 1 and the host keeps each
+   * writer's high-water mark for the tab's lifetime, so a reused id would be refused as stale.
+   */
   writerId: string
   keyId: (key: Key) => string
   /** The latest accepted host pair, or null once the parent tab is gone. */
@@ -63,6 +66,14 @@ export function chatPairsEqual(a: TerminalChatPair, b: TerminalChatPair): boolea
     (a.viewMode ?? null) === (b.viewMode ?? null) &&
     (a.chatLeafId ?? null) === (b.chatLeafId ?? null)
   )
+}
+
+/** True once the host shows `target`; a chat naming no pane is shown by a host chat on any pane. */
+function hostShowsChatPair(host: TerminalChatPair, target: TerminalChatPair): boolean {
+  if (target.viewMode === 'chat' && !target.chatLeafId) {
+    return host.viewMode === 'chat'
+  }
+  return chatPairsEqual(host, target)
 }
 
 export function chatPairFromChatView(view: RuntimeSessionTabChatView): TerminalChatPair {
@@ -116,7 +127,7 @@ export function createChatPairPendingWrites<Key>(
     // Why adopt: the host normalizes (parent chat keeps its owner; a refused write names the current pair).
     entry.target = chatPairFromChatView(reply.chatView)
     const host = deps.readHostPair(entry.key)
-    if (!host || chatPairsEqual(host, entry.target)) {
+    if (!host || hostShowsChatPair(host, entry.target)) {
       remove(id, entry)
       return
     }
@@ -181,7 +192,7 @@ export function createChatPairPendingWrites<Key>(
         return
       }
       const host = deps.readHostPair(key)
-      if (!host || chatPairsEqual(host, entry.target)) {
+      if (!host || hostShowsChatPair(host, entry.target)) {
         remove(id, entry)
       }
     },

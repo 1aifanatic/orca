@@ -6,6 +6,7 @@ import {
 } from '@/components/terminal-pane/terminal-pane-split-request-routing'
 import { hasRegisteredRuntimeTerminalTab } from '@/runtime/sync-runtime-graph'
 import { activateTabAndFocusPane } from '@/lib/activate-tab-and-focus-pane'
+import { resolveChatPairAuthority } from '@/store/slices/tabs/terminal-chat-pair-authority'
 import { useAppStore } from '../../store'
 import type { AppState } from '../../store/types'
 import { resolveBrowserSessionTabTarget } from './browser-session-tab-target'
@@ -117,13 +118,21 @@ export function registerTerminalUiRoutingIpcBridge(unsubs: (() => void)[]): void
   )
 
   unsubs.push(
-    window.api.ui.onTerminalChatViewRequest(({ requestId, tabId, leafId, viewMode }) => {
-      // Why synchronous: IPC arrival order is the host's admit order, so apply before replying.
-      const chatView = useAppStore.getState().applyTerminalChatPair(tabId, leafId, viewMode)
-      window.api.ui.respondTerminalChatView(
-        chatView ? { requestId, chatView } : { requestId, error: 'tab_not_found' }
-      )
-    })
+    window.api.ui.onTerminalChatViewRequest(
+      ({ requestId, worktreeId, tabId, leafId, viewMode }) => {
+        const state = useAppStore.getState()
+        // Why: a worktree another Orca host owns is only mirrored here; its pair is not ours to write.
+        if (resolveChatPairAuthority(state, worktreeId) !== 'local') {
+          window.api.ui.respondTerminalChatView({ requestId, error: 'tab_not_found' })
+          return
+        }
+        // Why synchronous: IPC arrival order is the host's admit order, so apply before replying.
+        const chatView = state.applyTerminalChatPair(tabId, leafId, viewMode)
+        window.api.ui.respondTerminalChatView(
+          chatView ? { requestId, chatView } : { requestId, error: 'tab_not_found' }
+        )
+      }
+    )
   )
 
   unsubs.push(

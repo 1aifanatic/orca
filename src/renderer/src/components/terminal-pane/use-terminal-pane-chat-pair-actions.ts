@@ -44,20 +44,22 @@ export function useTerminalPaneChatPairActions(args: {
         ? effective.viewMode === 'chat'
         : selectUnifiedTerminalTabFields(state.unifiedTabsByWorktree, worktreeId, tabId)
             .isChatViewMode
+      if (hostOwned && !options?.confirmedAgentExit) {
+        // Why: only user actions write the host's pair. The host removes a closed owner itself and
+        // its owner may not be mounted here yet; a chat naming no pane is shown on this pane's
+        // routed leaf without a write, since a host that cannot hold an owner refuses every claim.
+        // The pane copy mirrors the shown owner so a flip to 'legacy' keeps it.
+        const hostOwner = effective?.chatLeafId ?? null
+        setChatLeafId(isChatViewMode ? (hostOwner ?? route.chatLeafId) : null)
+        return
+      }
       if (storeOwnsChatPair) {
         // Why compare-and-set: the route was derived from this render's pair; a newer write wins.
+        // On 'host' an ownerless chat's owner is this pane's display owner.
         const currentOwner = effective
-          ? (effective.chatLeafId ?? null)
+          ? (effective.chatLeafId ?? chatLeafId)
           : (state.terminalLayoutsByTabId[tabId]?.chatLeafId ?? null)
         if (currentMode !== isChatViewMode || currentOwner !== chatLeafId) {
-          return
-        }
-        if (hostOwned && !options?.confirmedAgentExit) {
-          // Why: the host removes a closed owner itself, and its owner may not be mounted here yet;
-          // this pane only claims an ownerless chat.
-          if (isChatViewMode && chatLeafId === null && route.chatLeafId && !route.exitChat) {
-            applyTerminalChatPair(tabId, route.chatLeafId, 'chat')
-          }
           return
         }
         if (route.exitChat) {
