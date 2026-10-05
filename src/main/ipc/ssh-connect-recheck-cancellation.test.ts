@@ -104,4 +104,30 @@ describe('a connect cancelled during the relay-terminal re-check', () => {
       expect.objectContaining({ message: 'The destination could not stage the migration.' })
     )
   })
+
+  it('closes a transport the cancelled decision opened after the user disconnected', async () => {
+    const target: SshTarget = {
+      id: 'ssh-1',
+      label: 'Server',
+      host: 'example.com',
+      port: 22,
+      username: 'deploy'
+    }
+    const opened = { id: 'census-transport' }
+    mockSshStore.getTarget.mockReturnValue(target)
+    mockConnectionManager.getConnection.mockReturnValue(undefined)
+    mockConnectionManager.disconnect.mockResolvedValue(undefined)
+    vi.mocked(decideHostServer).mockImplementationOnce(async () => {
+      // The real decision awaits its module loads before any census, as here.
+      await Promise.resolve()
+      await handlers.get('ssh:disconnect')!(null, { targetId: 'ssh-1' })
+      // The census dials after the teardown, opening a transport no one else holds.
+      mockConnectionManager.getConnection.mockReturnValue(opened)
+      return null
+    })
+    await expect(
+      Promise.resolve(handlers.get('ssh:connect')!(null, { targetId: 'ssh-1' }))
+    ).rejects.toThrow('SSH connection attempt was cancelled')
+    expect(mockConnectionManager.disconnectConnection).toHaveBeenCalledWith('ssh-1', opened)
+  })
 })

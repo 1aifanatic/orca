@@ -60,6 +60,17 @@ describe('SSH target CRUD against managed orcad targets', () => {
     expect(mocks.closeTunnel).toHaveBeenCalledWith('environment-1')
   })
 
+  it('leaves the relay session of a host an older build changed alone when its connection is edited', async () => {
+    mocks.state.target = {
+      ...target,
+      orcadFence: { environmentId: 'environment-1', sourceChangedAt: '2026-10-01T00:00:00.000Z' }
+    }
+    mocks.updateTarget.mockReturnValue({ ...mocks.state.target, port: 2222 })
+    handler('ssh:updateTarget')(null, { id: 'ssh-1', updates: { port: 2222 } })
+    await vi.waitFor(() => expect(mocks.closeTunnel).toHaveBeenCalledWith('environment-1'))
+    expect(mocks.disconnect).not.toHaveBeenCalled()
+  })
+
   it('keeps the SSH transport when only a label changes', async () => {
     mocks.updateTarget.mockReturnValue({ ...mocks.state.target, label: 'renamed' })
     handler('ssh:updateTarget')(null, { id: 'ssh-1', updates: { label: 'renamed' } })

@@ -3,7 +3,11 @@ import type { SshRelaySession } from '../ssh/ssh-relay-session'
 import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
 import { clearSshHostServerStatus } from '../ssh/ssh-host-server-status'
 import { activeSessions } from './ssh-active-relay-sessions'
-import { invalidateConnectAttempt } from './ssh-connect-attempt-registry'
+import {
+  connectInFlight,
+  invalidateConnectAttempt,
+  isCurrentConnectAttempt
+} from './ssh-connect-attempt-registry'
 import { connectionManager, persistedStore, portForwardManager } from './ssh-ipc-context'
 import { clearRelayLostBackoff } from './ssh-relay-lost-backoff'
 import { clearRelayStateOverride } from './ssh-renderer-broadcast'
@@ -165,6 +169,33 @@ export async function abandonCancelledConnectAttempt(
     // Why: the caller is about to throw the cancellation; a teardown throw must not replace it.
     console.warn(
       `[ssh] Failed to disconnect cancelled connect transport for ${targetId}: ${error instanceof Error ? error.message : String(error)}`
+    )
+  }
+}
+
+/**
+ * A cancelled connect whose server decision opened the transport (a census, deploy or
+ * conversion) closes it, unless a newer connect is already using it.
+ */
+export async function abandonDecisionTransport(
+  targetId: string,
+  priorConnection: SshConnection | undefined
+): Promise<void> {
+  const opened = connectionManager!.getConnection(targetId)
+  const newer = connectInFlight.get(targetId)
+  if (
+    !opened ||
+    opened === priorConnection ||
+    (newer && isCurrentConnectAttempt(targetId, newer.authority))
+  ) {
+    return
+  }
+  try {
+    await connectionManager!.disconnectConnection(targetId, opened)
+  } catch (error) {
+    // Why: the caller is about to throw the cancellation; a teardown throw must not replace it.
+    console.warn(
+      `[ssh] Failed to close the transport a cancelled decision opened for ${targetId}: ${error instanceof Error ? error.message : String(error)}`
     )
   }
 }

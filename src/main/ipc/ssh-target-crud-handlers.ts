@@ -13,7 +13,11 @@ import { getManagedOrcadFenceEnvironmentId } from '../../shared/managed-orcad-ss
 import { closeOrcadManagedTunnel } from '../ssh/orcad-managed-tunnel'
 import { rotateSshProviderAuthority } from '../ssh/ssh-provider-authority'
 import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
-import { isManagedOrcadSshTarget, isRuntimeOwnedSshTarget } from '../ssh/ssh-connection-store'
+import {
+  allowsDirectSshRelay,
+  isManagedOrcadSshTarget,
+  isRuntimeOwnedSshTarget
+} from '../ssh/ssh-connection-store'
 import { connectionManager, getCurrentMainWindow } from './ssh-ipc-context'
 import { runTargetLifecycle } from './ssh-target-lifecycle-queue'
 import { fingerprintRuntimeSshTarget } from '../ssh/runtime-ssh-access'
@@ -123,10 +127,12 @@ export function registerSshTargetCrudHandlers(): void {
       )
       const environmentId = getManagedOrcadFenceEnvironmentId(updated ?? undefined)
       if (environmentId && updated) {
-        // Why: the tunnel and the SSH transport under it were built from the old fields; a managed
-        // host has no direct relay session, so both go and the next use dials the edited target.
+        // Why: the tunnel and the SSH transport under it were built from the old fields, so both go
+        // and the next use dials the edited target. Only a host reached through its managed server:
+        // one an older build changed runs on the relay directly, whose session owns the transport.
         const redial =
-          !before || fingerprintRuntimeSshTarget(before) !== fingerprintRuntimeSshTarget(updated)
+          !allowsDirectSshRelay(updated) &&
+          (!before || fingerprintRuntimeSshTarget(before) !== fingerprintRuntimeSshTarget(updated))
         void runTargetLifecycle(args.id, async () => {
           await closeOrcadManagedTunnel(environmentId)
           if (redial) {

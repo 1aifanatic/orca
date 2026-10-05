@@ -47,7 +47,11 @@ import {
   getPublicSshState,
   relayStateOverrides
 } from './ssh-renderer-broadcast'
-import { abandonCancelledConnectAttempt, abandonFailedSshSession } from './ssh-session-teardown'
+import {
+  abandonCancelledConnectAttempt,
+  abandonDecisionTransport,
+  abandonFailedSshSession
+} from './ssh-session-teardown'
 import { awaitTargetLifecycle } from './ssh-target-lifecycle-queue'
 
 export async function connectTarget(targetId: string): Promise<SshConnectionState> {
@@ -172,10 +176,14 @@ async function doConnect(
     }
   }
 
+  // Why before the decision: its census, deploy or conversion may open the transport, and only a
+  // transport this attempt opened is this attempt's to close when it loses the race.
+  const priorConnection = connectionManager!.getConnection(targetId)
   // Why after the teardown above: deploy and conversion refuse while a direct session or transport
   // exists, and the authority rotated synchronously so concurrent connects still join this one.
-  const server = await decideHostServer(target).catch((error: unknown) => {
+  const server = await decideHostServer(target).catch(async (error: unknown) => {
     if (!isCurrentConnectAttempt(targetId, authority)) {
+      await abandonDecisionTransport(targetId, priorConnection)
       throw createCancelledConnectAttemptError()
     }
     publishHostServerDecisionFailure(targetId, error)
@@ -184,6 +192,7 @@ async function doConnect(
   // A shutdown that began during the decision is the actionable reason, ahead of the rotation.
   assertSshConnectsNotFenced()
   if (!isCurrentConnectAttempt(targetId, authority)) {
+    await abandonDecisionTransport(targetId, priorConnection)
     throw createCancelledConnectAttemptError()
   }
   if (server?.route === 'managed') {
@@ -228,9 +237,6 @@ async function doConnect(
   const ownsSession = (): boolean =>
     isCurrentConnectAttempt(targetId, authority) && activeSessions.get(targetId) === session
 
-  // Why captured here and not with existingState: connect() reuses an already-connected transport,
-  // and only a transport this attempt opened is this attempt's to close when it loses the race.
-  const priorConnection = connectionManager!.getConnection(targetId)
   const mintedConnection = (): SshConnection | null =>
     conn && conn !== priorConnection ? conn : null
 
