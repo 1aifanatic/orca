@@ -50,9 +50,8 @@ export type StructuredAgentSessionChildClose = {
   /** The first stop's, which the child's end keeps however many asks join it. */
   readonly cause: StructuredAgentSessionStopCause
   readonly reason: string | null
-  /** The Stop event that stop wrote, folded before the work it ends is settled. */
-  /** Resolves to the settle a person's close opened, which the stop closes once the child's end is
-   *  done. */
+  /** The Stop event that stop wrote, folded before the work it ends is settled. Resolves to the
+   *  settle a person's close opened, which the stop closes once the child's end is done. */
   readonly recorded: Promise<JournalStopSettle | null>
   /** Where the journal stood when that stop was asked for: the child's end is ordered there, so a
    *  message accepted while the exit was being proven came after it. A repeated ask moves it. */
