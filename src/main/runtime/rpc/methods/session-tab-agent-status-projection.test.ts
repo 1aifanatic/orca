@@ -377,6 +377,11 @@ describe('projectSessionTabAgentStatus conversation identity carrier', () => {
     }
   )
 
+  it('returns a frame with no carrier as is, allocating nothing', () => {
+    const snapshot = statuslessSnapshot()
+    expect(projectSessionTabAgentStatus(snapshot, 'mobile', undefined)).toBe(snapshot)
+  })
+
   it('projects one shared payload for every audience without mutating it', () => {
     const shared = carrierSnapshot()
     const before = { ...shared, tabs: shared.tabs.map((tab) => ({ ...tab })) }

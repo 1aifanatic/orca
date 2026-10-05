@@ -9,6 +9,7 @@ import { installHookStatusSessionTabsRepublish } from '../agent-hooks/hook-statu
 import { AgentHookServer } from '../agent-hooks/server'
 import { buildBody, PANE, postHookEvent } from '../agent-hooks/server.test-fixtures'
 import { readNativeChatTranscriptTail } from '../native-chat/transcript-tail-reader'
+import { HEADLESS_RUNTIME_WINDOW_ID } from '../../shared/runtime-types'
 import { OrcaRuntimeService } from './orca-runtime'
 import { RpcDispatcher } from './rpc/dispatcher'
 import { SESSION_TAB_METHODS } from './rpc/methods/session-tabs'
@@ -119,6 +120,8 @@ async function createPane(args: { presence: Presence; agent?: 'codex' | 'claude'
   })
   let detachRepublish = installHookStatusSessionTabsRepublish(store, () => runtime)
   cleanups.push(() => detachRepublish())
+  // Why: as `orca serve` does at launch; the aggregate census waits for this publication.
+  runtime.syncWindowGraph(HEADLESS_RUNTIME_WINDOW_ID, { tabs: [], leaves: [] })
   runtime.setPtyController({
     spawn: vi.fn().mockResolvedValue({ id: PTY_ID }),
     write: () => true,
@@ -193,12 +196,29 @@ async function dispatchFrames(
   return frames
 }
 
-function firstTerminalTab(frame: RpcResponse | undefined): Record<string, unknown> | undefined {
-  const result = frame?.ok ? frame.result : null
+function terminalTabOf(result: unknown): Record<string, unknown> | undefined {
   if (!result || typeof result !== 'object' || !('tabs' in result) || !Array.isArray(result.tabs)) {
     return undefined
   }
   return result.tabs.find((tab) => tab?.type === 'terminal')
+}
+
+function firstTerminalTab(frame: RpcResponse | undefined): Record<string, unknown> | undefined {
+  return terminalTabOf(frame?.ok ? frame.result : null)
+}
+
+/** The pane's tab in an aggregate (`listAll` result or `subscribeAll` census) frame. */
+function aggregateTerminalTab(frame: RpcResponse | undefined): Record<string, unknown> | undefined {
+  const result = frame?.ok ? frame.result : null
+  if (
+    !result ||
+    typeof result !== 'object' ||
+    !('snapshots' in result) ||
+    !Array.isArray(result.snapshots)
+  ) {
+    return undefined
+  }
+  return terminalTabOf(result.snapshots.find((entry) => entry?.worktree === WORKTREE_ID))
 }
 
 async function listTab(
@@ -249,6 +269,27 @@ describe('idle Codex pane conversation identity on a headless host', () => {
       expect(await listTab(pane.runtime, 'runtime')).not.toHaveProperty('agentStatus')
     }
   )
+
+  it('gives a cold phone the session through the aggregate listAll and subscribeAll census', async () => {
+    const pane = await createPane({ presence: null })
+    const transcriptPath = await finishCodexTurn(pane, SESSION_ID)
+    const expected = {
+      state: 'done',
+      sessionBoundary: true,
+      agentType: 'codex',
+      providerSession: { id: SESSION_ID, transcriptPath }
+    }
+
+    for (const method of ['session.tabs.listAll', 'session.tabs.subscribeAll']) {
+      const mobileFrame = (await dispatchFrames(pane.runtime, method, 'mobile'))[0]
+      expect(aggregateTerminalTab(mobileFrame)?.agentStatus).toMatchObject(expected)
+      const runtimeTab = aggregateTerminalTab(
+        (await dispatchFrames(pane.runtime, method, 'runtime'))[0]
+      )
+      expect(runtimeTab).toMatchObject({ type: 'terminal' })
+      expect(runtimeTab).not.toHaveProperty('agentStatus')
+    }
+  })
 
   it('the seeded rollout the identity addresses is readable as the conversation', async () => {
     const transcriptPath = await writeCodexRollout()
