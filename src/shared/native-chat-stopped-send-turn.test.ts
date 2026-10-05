@@ -103,7 +103,7 @@ describe('a send a Stop took back before its echo', () => {
       sent('opener', 6)
     ]
     const submissions = [
-      stopped('queued', { submittedSequence: 1 }),
+      stopped('queued', { submittedSequence: 1, answeredInTurn: null }),
       stopped('opener', {
         submittedSequence: 2,
         answeredInTurn: { turnItemId: 't1', via: 'start' }
@@ -156,12 +156,17 @@ describe('a send a Stop took back before its echo', () => {
     ])
   })
 
-  it('opens no turn the host does not name, though it was sent before the record and taken back after', () => {
+  it('opens no turn the host states it named none for, though it was sent before the record and taken back after', () => {
     // A page whose turn's echoed opener is on an older page: only the record is loaded.
     // Its times would pass an older host's clock claim.
     const items = [turn('t1', 3, 'codex:thread-1:t1:0', 5), stopNote('t1', 4), sent('queued', 5)]
     const submissions = [
-      stopped('queued', { submittedSequence: 2, submittedAt: 4, resolvedAt: 10 })
+      stopped('queued', {
+        submittedSequence: 2,
+        submittedAt: 4,
+        resolvedAt: 10,
+        answeredInTurn: null
+      })
     ]
 
     expect(structuredAgentTurnAnchors(items, submissions).get('t1')).toBe('t1')
@@ -185,7 +190,7 @@ describe('a send a Stop took back before its echo', () => {
         submittedSequence: 1,
         answeredInTurn: { turnItemId: 't1', via: 'start' }
       }),
-      stopped('follow-up', { submittedSequence: 3 })
+      stopped('follow-up', { submittedSequence: 3, answeredInTurn: null })
     ]
 
     expect(drawn(items, submissions).map(({ id }) => id)).toEqual([
@@ -194,6 +199,100 @@ describe('a send a Stop took back before its echo', () => {
       key('follow-up'),
       `${STOPPED_ROW}${key('follow-up')}`
     ])
+  })
+})
+
+// Rows a host wrote before it named turns carry neither the turn nor `null`. A newer host still
+// publishes where each was sent and has moved its row to the take-back, so journal order places it.
+describe('a send a Stop took back before its echo, in history written before the host named turns', () => {
+  it('opens the turn recorded after it was sent and before it was taken back', () => {
+    const items = [turn('t1', 2, 'codex:thread-1:t1:0'), stopNote('t1', 3), sent('opener', 4)]
+    const submissions = [stopped('opener', { submittedSequence: 1 })]
+
+    expect(drawn(items, submissions).map(({ id }) => id)).toEqual([key('opener'), 'stop:t1'])
+  })
+
+  it('opens it as the first sent, leaving a later send its own row after the turn', () => {
+    const items = [
+      turn('t1', 3, 'codex:thread-1:t1:0'),
+      stopNote('t1', 4),
+      sent('opener', 5),
+      sent('follow-up', 6)
+    ]
+    const submissions = [
+      stopped('follow-up', { submittedSequence: 2, submittedAt: 1 }),
+      stopped('opener', { submittedSequence: 1, submittedAt: 2 })
+    ]
+
+    expect(drawn(items, submissions).map(({ id }) => id)).toEqual([
+      key('opener'),
+      'stop:t1',
+      key('follow-up'),
+      `${STOPPED_ROW}${key('follow-up')}`
+    ])
+  })
+
+  it('opens no turn recorded before it was sent', () => {
+    const items = [turn('t1', 1, 'codex:thread-1:t1:0'), stopNote('t1', 3), sent('late', 4)]
+    const submissions = [stopped('late', { submittedSequence: 2 })]
+
+    expect(structuredAgentTurnAnchors(items, submissions).get('t1')).toBe('t1')
+  })
+})
+
+describe('a send a Stop took back that the host stated was answered into no turn', () => {
+  it('opens no turn the provider resumed on its own, as a Claude rejection reads', () => {
+    const items = [
+      turn('wake', 2, 'wake', 5),
+      sent('never-ran', 3),
+      row(
+        'wake-note',
+        4,
+        { kind: 'status', text: 'Background task finished.' },
+        {
+          kind: 'turn',
+          turnItemId: 'wake'
+        }
+      )
+    ]
+    const submissions = [
+      stopped('never-ran', {
+        submittedSequence: 1,
+        submittedAt: 4,
+        resolvedAt: 10,
+        answeredInTurn: null
+      })
+    ]
+
+    expect(structuredAgentTurnAnchors(items, submissions).get('wake')).toBe('wake')
+    expect(drawn(items, submissions).map(({ id }) => id)).toContain(
+      `${STOPPED_ROW}${key('never-ran')}`
+    )
+  })
+
+  it('opens no turn a later Codex record names by key', () => {
+    const items = [turn('t1', 2, 'codex:thread-1:t1:0'), stopNote('t1', 3), sent('queued', 4)]
+    const submissions = [stopped('queued', { submittedSequence: 1, answeredInTurn: null })]
+
+    expect(structuredAgentTurnAnchors(items, submissions).get('t1')).toBe('t1')
+    expect(drawn(items, submissions).map(({ id }) => id)).toEqual([
+      'stop:t1',
+      key('queued'),
+      `${STOPPED_ROW}${key('queued')}`
+    ])
+  })
+
+  it('opens no turn when it names a way of joining this build does not know', () => {
+    const items = [turn('t1', 2, 'codex:thread-1:t1:0'), stopNote('t1', 3), sent('later', 4)]
+    const submissions = [
+      stopped('later', {
+        submittedSequence: 1,
+        // A newer host's value, which this build's type does not name.
+        answeredInTurn: JSON.parse('{"turnItemId":"t1","via":"resume"}')
+      })
+    ]
+
+    expect(structuredAgentTurnAnchors(items, submissions).get('t1')).toBe('t1')
   })
 })
 

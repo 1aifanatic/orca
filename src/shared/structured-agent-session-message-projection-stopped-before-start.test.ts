@@ -95,14 +95,14 @@ const HOSTS = [
 ] as const
 
 /** A host that publishes `submittedSequence` also moves a taken-back send's row to the row that
- *  took it back (`at`), in no turn, and names the turn it was answered into, if any; an older host
- *  leaves the row where it was sent. */
+ *  took it back (`at`), in no turn, and states the turn it was answered into, null for none; an
+ *  older host leaves the row where it was sent. */
 function takenBackOn(
   published: boolean,
   items: AgentJournalRenderItem[],
   id: string,
   at: number,
-  answeredInTurn?: AgentJournalAnsweredTurn
+  answeredInTurn: AgentJournalAnsweredTurn | null = null
 ): { items: AgentJournalRenderItem[]; sent: Partial<AgentJournalSubmission> } {
   const key = agentJournalSubmissionKey(id)
   const row = items.find((item) => item.itemId === key)!
@@ -118,7 +118,7 @@ function takenBackOn(
     items: moved.sort((left, right) => left.sequence - right.sequence),
     sent: {
       submittedSequence: row.sequence,
-      ...(answeredInTurn !== undefined ? { answeredInTurn } : {})
+      answeredInTurn
     }
   }
 }

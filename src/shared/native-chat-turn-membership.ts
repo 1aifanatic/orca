@@ -71,7 +71,8 @@ export function structuredAgentTurnAnchors(
       .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
   )
   // A send a Stop took back after its turn opened but before the provider echoed it: the record
-  // still names the provider's key, and the host names the turn the send was answered into.
+  // still names the provider's key, and the host names the turn the send was answered into, or
+  // none (null). A rejection written before that field is placed by journal order instead.
   const takenBack = submissions.filter(
     (submission) =>
       !submission.providerItemId &&
@@ -82,13 +83,18 @@ export function structuredAgentTurnAnchors(
   const itemsById =
     takenBack.length > 0 ? new Map(items.map((item) => [item.itemId, item])) : undefined
   const openedBy = stoppedTurnOpeners(takenBack)
-  const unnamed = takenBack
-    .filter((submission) => submission.submittedSequence === undefined)
+  const unstated = takenBack
+    .filter((submission) => submission.answeredInTurn === undefined)
     .flatMap((submission) => {
       const sent = itemsById?.get(agentJournalSubmissionKey(submission.clientMessageId))
       return sent ? [{ sent, submission }] : []
     })
-    .sort((left, right) => left.submission.submittedAt - right.submission.submittedAt)
+  const byJournal = unstated.every(({ submission }) => submission.submittedSequence !== undefined)
+  unstated.sort(({ submission: left }, { submission: right }) =>
+    byJournal
+      ? left.submittedSequence! - right.submittedSequence!
+      : left.submittedAt - right.submittedAt
+  )
   const claimed = new Set<string>()
   const anchors = new Map<string, string>()
   let precedingUserItemId: string | null = null
@@ -122,7 +128,7 @@ export function structuredAgentTurnAnchors(
       if (named !== undefined && itemsById?.has(named)) {
         anchor = named
       } else if (anchor === item.itemId) {
-        const opener = unnamed.find(
+        const opener = unstated.find(
           ({ sent, submission }) =>
             !claimed.has(sent.itemId) && sentBeforeAndTakenBackAfter(item, turn, submission, sent)
         )
@@ -152,16 +158,20 @@ export function stoppedTurnOpeners(
   return openers
 }
 
-/** Whether a send was sent before a turn record and taken back after it, by its row's place and by
- *  times. Temporary: the journal-order fallback for a host that names no turn, which also lacks
- *  `submittedSequence` and leaves rows where they were sent or only moves them (#24710); a resume
- *  rewrites its times to whole seconds. Dropped once no supported remote host lacks the field. */
+/** Whether a send was sent before a turn record and taken back after it: by journal order where
+ *  the host publishes where it was sent (a rejection written before the host named turns, whose row
+ *  it moves to the take-back), else by its row's place and by times, which a resume rewrites to
+ *  whole seconds. Temporary, and long-lived: kept until no supported chat holds a rejection written
+ *  before #25073, which old chats do indefinitely. */
 function sentBeforeAndTakenBackAfter(
   record: AgentJournalRenderItem,
   turn: AgentJournalTurnLifecycle,
   submission: AgentJournalSubmission,
   sent: AgentJournalRenderItem
 ): boolean {
+  if (submission.submittedSequence !== undefined) {
+    return submission.submittedSequence < record.sequence && record.sequence < sent.sequence
+  }
   if (turn.startedAt === undefined || submission.resolvedAt === null) {
     return false
   }
