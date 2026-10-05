@@ -18,7 +18,7 @@ function buildActions(overrides: Partial<SheetArgs> = {}) {
     tabLeafView: () => 'terminal',
     nativeChatTranscriptIsLocalReadable: true,
     onDismiss: vi.fn(),
-    onToggleChat: vi.fn(),
+    onSetChatView: vi.fn(),
     isPhoneMode: () => false,
     onToggleDisplayMode: vi.fn(),
     onRename: vi.fn(),
@@ -98,20 +98,21 @@ describe('getMobileTerminalActionSheetActions', () => {
   })
 
   it('reaches the view switch and Close on a chat row that has no terminal handle yet (A1c-7)', () => {
-    const onToggleChat = vi.fn()
+    const onSetChatView = vi.fn()
     const onCloseSessionTab = vi.fn()
     const row = terminalTab('P::L', null)
     const actions = buildActions({
       target: { tabId: 'P::L', handle: null },
       tabs: [row],
       tabLeafView: () => 'chat',
-      onToggleChat,
+      onSetChatView,
       onCloseSessionTab
     })
 
     expect(actions.map((action) => action.label)).toEqual(['Switch to terminal view', 'Close'])
     actions[0]?.onPress()
-    expect(onToggleChat).toHaveBeenCalledWith('P::L')
+    // The item sends the view it names, not a toggle worked out when it runs.
+    expect(onSetChatView).toHaveBeenCalledWith('P::L', 'terminal')
     actions[1]?.onPress()
     expect(onCloseSessionTab).toHaveBeenCalledWith(row)
   })
@@ -126,5 +127,18 @@ describe('getMobileTerminalActionSheetActions', () => {
       })[0]?.label
     expect(labels('terminal')).toBe('Switch to Phone')
     expect(labels('chat')).toBe('Switch to terminal view')
+  })
+
+  it('sends chat from "Switch to chat view" (R2-F3)', () => {
+    const onSetChatView = vi.fn()
+    const actions = buildActions({
+      target: { tabId: 'P::A', handle: 'terminal-1' },
+      tabs: [{ ...terminalTab('P::A', 'terminal-1'), launchAgent: 'claude' }],
+      tabLeafView: () => 'terminal',
+      onSetChatView
+    })
+    expect(actions[0]?.label).toBe('Switch to chat view')
+    actions[0]?.onPress()
+    expect(onSetChatView).toHaveBeenCalledWith('P::A', 'chat')
   })
 })

@@ -1,4 +1,5 @@
 import { Eraser, Monitor, Smartphone } from 'lucide-react-native'
+import type { TerminalTabViewMode } from '../../../src/shared/terminal-tab-view-mode'
 import type { ActionSheetAction } from '../components/ActionSheetModal'
 import type { MobileNativeChatTab } from './mobile-native-chat-eligibility'
 import { getMobileNativeChatToggleActions } from './mobile-native-chat-toggle-action'
@@ -17,7 +18,7 @@ export function getMobileTerminalActionSheetActions<
   tabLeafView: (tab: Tab) => MobileLeafView
   nativeChatTranscriptIsLocalReadable: boolean
   onDismiss: () => void
-  onToggleChat: (tabId: string) => void
+  onSetChatView: (tabId: string, view: TerminalTabViewMode) => void
   isPhoneMode: (handle: string) => boolean
   onToggleDisplayMode: (handle: string) => void
   onRename: (target: Target & { handle: string }) => void
@@ -45,7 +46,7 @@ export function getMobileTerminalActionSheetActions<
       leafView: sessionTab ? args.tabLeafView(sessionTab) : 'terminal',
       nativeChatTranscriptIsLocalReadable: args.nativeChatTranscriptIsLocalReadable,
       onClose: args.onDismiss,
-      onToggle: args.onToggleChat
+      onSetView: args.onSetChatView
     }),
     ...(handleTarget
       ? [

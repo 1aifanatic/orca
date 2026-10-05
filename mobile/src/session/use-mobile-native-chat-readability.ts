@@ -19,7 +19,7 @@ type ReadabilityState = {
   readability: MobileNativeChatReadability
 }
 
-// Why per host and worktree: a client swap re-reads, and a settled answer should not regress to unknown meanwhile.
+// Why per host and worktree: a re-read after a client swap must not regress a settled answer to unknown or failed.
 const settledReadabilityByScope = new Map<string, 'readable' | 'unreadable'>()
 
 function readabilityScope(hostId: string | null, worktreeId: string): string | null {
@@ -105,8 +105,11 @@ export function useMobileNativeChatReadabilityState(
   }
   // Why: route reuse renders before its new effect resolves; never expose the
   // previous repo's readability under a different client/worktree key.
-  if (state.client === client && state.worktreeId === worktreeId) {
-    return state.readability
+  const current =
+    state.client === client && state.worktreeId === worktreeId ? state.readability : 'unknown'
+  if (current === 'readable' || current === 'unreadable') {
+    return current
   }
-  return (scope !== null ? settledReadabilityByScope.get(scope) : undefined) ?? 'unknown'
+  // Why: a pending, failed or client-less read keeps the answer stored for this host and worktree.
+  return (scope !== null ? settledReadabilityByScope.get(scope) : undefined) ?? current
 }

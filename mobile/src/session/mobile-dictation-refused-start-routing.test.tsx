@@ -55,7 +55,8 @@ vi.mock('./use-mobile-session-chat-view', () => ({
     markerSession: false,
     tabLeafView: () => 'terminal',
     isTabChatView: () => false,
-    toggleTabChatView: () => {}
+    setTabChatView: () => {},
+    retainedIdentity: () => null
   })
 }))
 vi.mock('./use-mobile-native-chat-input-lease', () => ({
@@ -69,7 +70,7 @@ vi.mock('./use-mobile-native-chat-input-lease', () => ({
 }))
 vi.mock('./use-mobile-native-chat-controller', () => ({
   useMobileNativeChatController: () => ({
-    toggleTabChatView: () => {},
+    setTabChatView: () => {},
     showNativeChat: false,
     showNativeChatRef: { current: false },
     setChatComposerText: () => {}

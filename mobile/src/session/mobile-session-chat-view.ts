@@ -2,7 +2,11 @@ import {
   isNativeChatSupportedAgent,
   nativeChatRequiresLocalTranscript
 } from '../../../src/shared/native-chat-agent-support'
-import type { TerminalChatPair } from '../../../src/shared/terminal-tab-view-mode'
+import {
+  normalizeTerminalChatPair,
+  type TerminalChatPair,
+  type TerminalTabViewMode
+} from '../../../src/shared/terminal-tab-view-mode'
 import type { MobileSessionView } from '../storage/session-view-preferences'
 import type { MobileSessionParentLayout } from './mobile-session-route-types'
 import { terminalLayoutLeafIds } from './mobile-terminal-records'
@@ -37,9 +41,40 @@ export function chatViewLeafId(row: MobileChatViewRow): string {
   return row.leafId ?? row.id
 }
 
-/** Fences retained identity and pending writes to one PTY; main publishes no incarnation yet. */
-export function chatViewIdentityFence(row: MobileChatViewRow): string {
-  return row.incarnationId ?? row.ptyId ?? ''
+/** Which terminal process a row shows; an empty id is unknown, never a new process. */
+export type ChatViewProcessFence = { ptyId: string | null; incarnationId: string | null }
+
+export function chatViewProcessFence(row: MobileChatViewRow): ChatViewProcessFence {
+  return { ptyId: row.ptyId || null, incarnationId: row.incarnationId || null }
+}
+
+/**
+ * The one "same terminal process" rule for pending writes and retained identity. Only main-side
+ * publishers send an incarnation, so it can appear or vanish when the desktop republishes a leaf;
+ * the PTY id decides then. The fence kept carries the last known ids forward.
+ */
+export function advanceChatViewProcessFence(
+  before: ChatViewProcessFence | undefined,
+  row: MobileChatViewRow
+): { fence: ChatViewProcessFence; changed: boolean } {
+  const after = chatViewProcessFence(row)
+  if (!before) {
+    return { fence: after, changed: false }
+  }
+  const changed =
+    before.incarnationId && after.incarnationId
+      ? before.incarnationId !== after.incarnationId
+      : Boolean(before.ptyId && after.ptyId && before.ptyId !== after.ptyId)
+  if (changed) {
+    return { fence: after, changed: true }
+  }
+  return {
+    fence: {
+      ptyId: after.ptyId ?? before.ptyId,
+      incarnationId: after.incarnationId ?? before.incarnationId
+    },
+    changed: false
+  }
 }
 
 /** The parent's leaves: the published tree, else the sibling rows the snapshot carries. */
@@ -68,7 +103,27 @@ export function hostChatPairForRow(row: MobileChatViewRow): TerminalChatPair {
 }
 
 /**
- * The view of one terminal leaf. `pair` is the pending click, else the accepted host pair.
+ * Where an ownerless host chat shows, as on the paired desktop: on the leaf it already shows on
+ * while that leaf exists, else on the active (or sole) leaf only when that leaf can show chat.
+ * Null means every leaf shows terminal.
+ */
+export function ownerlessChatDisplayLeaf(args: {
+  shown: string | null
+  leafIds: readonly string[]
+  activeLeafId: string | null | undefined
+  canShowChat: (leafId: string) => boolean
+}): string | null {
+  const { shown, leafIds } = args
+  if (shown && leafIds.includes(shown)) {
+    return shown
+  }
+  const candidate = leafIds.length === 1 ? leafIds[0] : args.activeLeafId
+  return candidate && leafIds.includes(candidate) && args.canShowChat(candidate) ? candidate : null
+}
+
+/**
+ * The view of one terminal leaf. `pair` is the pending click, else the accepted host pair, with an
+ * ownerless chat already resolved to its display leaf (`ownerlessChatDisplayLeaf`).
  * Live agent status is deliberately not an input: it only decides whether chat is offered.
  */
 export function resolveMobileLeafView(
@@ -78,18 +133,12 @@ export function resolveMobileLeafView(
   inputs: MobileChatViewInputs
 ): MobileLeafView {
   const leafId = chatViewLeafId(row)
-  // Why first: an owner outside the tree means its pane closed, so no sibling may claim chat.
-  if (pair.chatLeafId && !leafIds.includes(pair.chatLeafId)) {
-    return 'terminal'
+  // Why the shared rule: an owner outside the tree means its pane closed, so no sibling may claim chat.
+  const normalized = normalizeTerminalChatPair(pair, row.parentLayout?.root)
+  if (normalized.viewMode === 'chat') {
+    return normalized.chatLeafId === leafId ? 'chat' : 'terminal'
   }
-  if (pair.viewMode === 'chat') {
-    // Why display-only: an ownerless host chat shows on the sole or active leaf and is never claimed.
-    const owner =
-      pair.chatLeafId ??
-      (leafIds.length === 1 ? leafIds[0] : (row.parentLayout?.activeLeafId ?? null))
-    return owner === leafId && leafIds.includes(owner) ? 'chat' : 'terminal'
-  }
-  if (pair.viewMode === 'terminal') {
+  if (normalized.viewMode === 'terminal') {
     return 'terminal'
   }
   // Nobody switched this tab: this device's default, for a sole leaf launched as a supported agent.
@@ -119,14 +168,12 @@ export function resolveMobileLeafView(
   return 'chat'
 }
 
-/** The absolute pair a switch on `row` asks the host for, given the pair the user sees. */
-export function chatPairToggleTarget(
+/** The absolute pair a switch of `row` to `view` asks the host for. */
+export function chatPairTargetForView(
   row: MobileChatViewRow,
-  pair: TerminalChatPair,
-  leafIds: readonly string[],
-  inputs: MobileChatViewInputs
+  view: TerminalTabViewMode
 ): TerminalChatPair {
-  return resolveMobileLeafView(row, pair, leafIds, inputs) === 'chat'
-    ? { viewMode: 'terminal' }
-    : { viewMode: 'chat', chatLeafId: chatViewLeafId(row) }
+  return view === 'chat'
+    ? { viewMode: 'chat', chatLeafId: chatViewLeafId(row) }
+    : { viewMode: 'terminal' }
 }

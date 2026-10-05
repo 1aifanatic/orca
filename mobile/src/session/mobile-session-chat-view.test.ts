@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { TerminalPaneLayoutNode } from '../../../src/shared/terminal-tab-types'
 import {
-  chatPairToggleTarget,
-  chatViewIdentityFence,
+  advanceChatViewProcessFence,
+  chatPairTargetForView,
   chatViewLeafIds,
   hostChatPairForRow,
+  ownerlessChatDisplayLeaf,
   resolveMobileLeafView,
   type MobileChatViewInputs,
   type MobileChatViewRow
@@ -56,15 +57,12 @@ describe('resolveMobileLeafView (A1c-1)', () => {
     )
   })
 
-  it('shows an ownerless chat on the sole leaf, or on the active leaf of a split, without claiming it', () => {
-    expect(view(row({ viewMode: 'chat' }))).toBe('chat')
-    const activeB = { root: split, activeLeafId: 'B' }
-    expect(view(row({ viewMode: 'chat', parentLayout: activeB }))).toBe('terminal')
-    expect(view(row({ id: 'P::B', leafId: 'B', viewMode: 'chat', parentLayout: activeB }))).toBe(
+  it('shows an ownerless chat only on the display leaf its caller resolved, never claiming it', () => {
+    expect(view(row({ viewMode: 'chat' }))).toBe('terminal')
+    const placed = { viewMode: 'chat' as const, chatLeafId: 'A' }
+    expect(resolveMobileLeafView(row({ viewMode: 'chat' }), placed, ['A'], chatDefault)).toBe(
       'chat'
     )
-    // No active leaf named: no leaf can be shown as the owner.
-    expect(view(row({ viewMode: 'chat', parentLayout: { root: split } }))).toBe('terminal')
   })
 
   it('treats an owner outside the tree as a closed chat pane: terminal, and no survivor claims it', () => {
@@ -130,27 +128,62 @@ describe('resolveMobileLeafView (A1c-1)', () => {
   })
 })
 
-describe('chatPairToggleTarget', () => {
-  it('claims the pressed leaf, and leaves chat from the chat leaf', () => {
-    const a = row({ parentLayout: { root: split } })
-    expect(chatPairToggleTarget(a, {}, ['A', 'B'], chatDefault)).toEqual({
-      viewMode: 'chat',
-      chatLeafId: 'A'
-    })
-    expect(
-      chatPairToggleTarget(a, { viewMode: 'chat', chatLeafId: 'A' }, ['A', 'B'], chatDefault)
-    ).toEqual({ viewMode: 'terminal' })
-    // A sibling of the chat leaf moves ownership instead of leaving chat.
-    expect(
-      chatPairToggleTarget(a, { viewMode: 'chat', chatLeafId: 'B' }, ['A', 'B'], chatDefault)
-    ).toEqual({ viewMode: 'chat', chatLeafId: 'A' })
+describe('ownerlessChatDisplayLeaf (R1-F1)', () => {
+  const canShow = (leaves: string[]) => (leafId: string) => leaves.includes(leafId)
+
+  it('takes the sole or active leaf only when that leaf can show chat', () => {
+    const at = (args: Partial<Parameters<typeof ownerlessChatDisplayLeaf>[0]>) =>
+      ownerlessChatDisplayLeaf({
+        shown: null,
+        leafIds: ['A', 'B'],
+        activeLeafId: 'B',
+        canShowChat: canShow(['A', 'B']),
+        ...args
+      })
+    expect(at({ leafIds: ['A'], activeLeafId: null })).toBe('A')
+    expect(at({})).toBe('B')
+    expect(at({ canShowChat: canShow(['A']) })).toBeNull()
+    expect(at({ activeLeafId: null })).toBeNull()
+    expect(at({ activeLeafId: 'gone' })).toBeNull()
+  })
+
+  it('stays on the leaf it shows while that leaf exists, whatever is active or eligible now', () => {
+    const shownOnA = { shown: 'A', activeLeafId: 'B', canShowChat: canShow([]) }
+    expect(ownerlessChatDisplayLeaf({ ...shownOnA, leafIds: ['A', 'B'] })).toBe('A')
+    expect(ownerlessChatDisplayLeaf({ ...shownOnA, leafIds: ['B'] })).toBeNull()
   })
 })
 
-describe('chatViewIdentityFence', () => {
-  it('prefers the incarnation and falls back to the PTY id', () => {
-    expect(chatViewIdentityFence(row({ incarnationId: 'inc-1', ptyId: 'pty-1' }))).toBe('inc-1')
-    expect(chatViewIdentityFence(row({ ptyId: 'pty-1' }))).toBe('pty-1')
-    expect(chatViewIdentityFence(row())).toBe('')
+describe('chatPairTargetForView', () => {
+  it('names the pressed leaf for chat, and no leaf for terminal', () => {
+    const a = row({ parentLayout: { root: split } })
+    expect(chatPairTargetForView(a, 'chat')).toEqual({ viewMode: 'chat', chatLeafId: 'A' })
+    expect(chatPairTargetForView(a, 'terminal')).toEqual({ viewMode: 'terminal' })
+  })
+})
+
+describe('advanceChatViewProcessFence (R2-F2, R4-n1)', () => {
+  const advance = (
+    before: Parameters<typeof advanceChatViewProcessFence>[0],
+    next: Partial<MobileChatViewRow>
+  ) => advanceChatViewProcessFence(before, row(next))
+
+  it('compares incarnations when both sides have one, else PTY ids', () => {
+    const main = { ptyId: 'pty-1', incarnationId: 'inc-1' }
+    expect(advance(main, { ptyId: 'pty-1' }).changed).toBe(false)
+    expect(advance(main, { ptyId: 'pty-2' }).changed).toBe(true)
+    expect(advance(main, { ptyId: 'pty-1', incarnationId: 'inc-2' }).changed).toBe(true)
+    expect(
+      advance({ ptyId: 'pty-1', incarnationId: null }, { ptyId: 'pty-1', incarnationId: 'inc-1' })
+        .changed
+    ).toBe(false)
+  })
+
+  it('treats an empty id as unknown and carries the last known one forward', () => {
+    const missing = advance({ ptyId: 'pty-1', incarnationId: null }, { ptyId: null })
+    expect(missing).toEqual({ fence: { ptyId: 'pty-1', incarnationId: null }, changed: false })
+    expect(advance(missing.fence, { ptyId: '' }).changed).toBe(false)
+    expect(advance(missing.fence, { ptyId: 'pty-2' }).changed).toBe(true)
+    expect(advance(undefined, { ptyId: 'pty-1' }).changed).toBe(false)
   })
 })

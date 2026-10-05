@@ -20,7 +20,6 @@ export type MobileChatPairRouteBinding = {
     request: ChatPairWriteRequest,
     write: RuntimeSessionTabChatViewWrite
   ) => Promise<ChatPairWriteReply>
-  showPending: (parentTabId: string, pair: TerminalChatPair | null) => void
   reportFailure: (parentTabId: string, error: unknown) => void
 }
 
@@ -31,15 +30,54 @@ export class MobileChatPairRouteGoneError extends Error {
   }
 }
 
-const bindings = new Map<string, MobileChatPairRouteBinding>()
+// Why a list: a pushed route (history -> resume) can mount a second screen for the same worktree.
+const bindings = new Map<string, MobileChatPairRouteBinding[]>()
 let writes: ChatPairPendingWrites<MobileChatPairKey> | null = null
+// Why module-level: one overlay copy that every mounted route for the worktree renders.
+let shownPairs: ReadonlyMap<string, TerminalChatPair> = new Map()
+const overlayListeners = new Set<() => void>()
 
 function scopeId(hostId: string, worktreeId: string): string {
   return `${hostId}\0${worktreeId}`
 }
 
+export function mobileChatPairKeyId(key: MobileChatPairKey): string {
+  return `${scopeId(key.hostId, key.worktreeId)}\0${key.parentTabId}`
+}
+
+/** The most recently mounted route for the key's worktree: the one on top of the stack. */
 function bindingFor(key: MobileChatPairKey): MobileChatPairRouteBinding | undefined {
-  return bindings.get(scopeId(key.hostId, key.worktreeId))
+  const routes = bindings.get(scopeId(key.hostId, key.worktreeId))
+  return routes?.[routes.length - 1]
+}
+
+function showPending(key: MobileChatPairKey, pair: TerminalChatPair | null): void {
+  const id = mobileChatPairKeyId(key)
+  if (!pair && !shownPairs.has(id)) {
+    return
+  }
+  const next = new Map(shownPairs)
+  if (pair) {
+    next.set(id, pair)
+  } else {
+    next.delete(id)
+  }
+  shownPairs = next
+  for (const listener of overlayListeners) {
+    listener()
+  }
+}
+
+export function subscribeMobileChatPairOverlay(listener: () => void): () => void {
+  overlayListeners.add(listener)
+  return () => {
+    overlayListeners.delete(listener)
+  }
+}
+
+/** Pending pairs shown over the host pair, by `mobileChatPairKeyId`. */
+export function readMobileChatPairOverlay(): ReadonlyMap<string, TerminalChatPair> {
+  return shownPairs
 }
 
 /** The write may have reached the host, so the same sequence number is resent once. */
@@ -51,7 +89,7 @@ export function isMobileChatPairDeliveryUnknown(error: unknown): boolean {
 export function getMobileChatPairWrites(): ChatPairPendingWrites<MobileChatPairKey> {
   writes ??= createChatPairPendingWrites<MobileChatPairKey>({
     writerId: structuredSessionRandomUuid(),
-    keyId: (key) => `${scopeId(key.hostId, key.worktreeId)}\0${key.parentTabId}`,
+    keyId: mobileChatPairKeyId,
     readHostPair: (key) => bindingFor(key)?.readHostPair(key.parentTabId) ?? null,
     send: (key, request, write) => {
       const binding = bindingFor(key)
@@ -60,7 +98,7 @@ export function getMobileChatPairWrites(): ChatPairPendingWrites<MobileChatPairK
         : Promise.reject(new MobileChatPairRouteGoneError())
     },
     isDeliveryUnknown: isMobileChatPairDeliveryUnknown,
-    showPending: (key, pair) => bindingFor(key)?.showPending(key.parentTabId, pair),
+    showPending,
     reportFailure: (key, error) => bindingFor(key)?.reportFailure(key.parentTabId, error),
     setTimer: (callback, ms) => setTimeout(callback, ms),
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the only handles passed back are the ones setTimer returned.
@@ -75,17 +113,26 @@ export function mobileChatPairKeysInScope(hostId: string, worktreeId: string): M
     .filter((key) => key.hostId === hostId && key.worktreeId === worktreeId)
 }
 
-/** Lends a route's reads and sends to the writer; returns the unbind for its cleanup. */
+/**
+ * Lends a route's reads and sends to the writer. The unbind removes only this route's binding and
+ * drops the worktree's pending writes once no route for it is left.
+ */
 export function bindMobileChatPairRoute(
   hostId: string,
   worktreeId: string,
   binding: MobileChatPairRouteBinding
 ): () => void {
   const id = scopeId(hostId, worktreeId)
-  bindings.set(id, binding)
+  bindings.set(id, [...(bindings.get(id) ?? []), binding])
   return () => {
-    if (bindings.get(id) === binding) {
-      bindings.delete(id)
+    const remaining = (bindings.get(id) ?? []).filter((candidate) => candidate !== binding)
+    if (remaining.length > 0) {
+      bindings.set(id, remaining)
+      return
+    }
+    bindings.delete(id)
+    for (const key of mobileChatPairKeysInScope(hostId, worktreeId)) {
+      getMobileChatPairWrites().drop(key)
     }
   }
 }

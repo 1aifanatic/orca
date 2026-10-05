@@ -14,8 +14,8 @@ const holdUnconfirmedSend = vi.fn()
 // Mutable stand-ins so the launch-draft wiring below can drive chat resolution
 // and transcript state; defaults keep the send-seam tests unchanged.
 // A host without the chat-pair marker: the legacy per-device override decides.
-const legacy = { markerSession: false, activeLeafView: 'terminal' as const, identityFence: '' }
-const viewMode = { ...legacy, isTabChatView: (_tabId: string) => true, toggleTabChatView: vi.fn() }
+const legacy = { markerSession: false, activeLeafView: 'terminal' as const, retainedIdentity: null }
+const viewMode = { ...legacy, isTabChatView: (_tabId: string) => true, setTabChatView: vi.fn() }
 const sessionState = { messages: [] as unknown[], status: 'ready', transcriptLoading: false }
 const structuredSendWithOutcome = vi.fn()
 const structuredCancel = vi.fn()

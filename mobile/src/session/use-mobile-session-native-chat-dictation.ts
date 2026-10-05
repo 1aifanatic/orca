@@ -13,7 +13,6 @@ import {
 import { useMobileNativeChatController } from './use-mobile-native-chat-controller'
 import { useMobileNativeChatReadabilityState } from './use-mobile-native-chat-readability'
 import { useMobileSessionChatView } from './use-mobile-session-chat-view'
-import { chatViewIdentityFence } from './mobile-session-chat-view'
 import { resolveMobileNativeChatGate } from './mobile-native-chat-render-data'
 import { useMobileNativeChatInputLease } from './use-mobile-native-chat-input-lease'
 import { useMobileNativeChatSendError } from './use-mobile-native-chat-send-error'
@@ -95,9 +94,9 @@ export function useMobileSessionNativeChatDictation(
     view: {
       markerSession: chatView.markerSession,
       activeLeafView: chatView.tabLeafView(activeSessionTab),
-      identityFence: activeSessionTab ? chatViewIdentityFence(activeSessionTab) : '',
+      retainedIdentity: chatView.retainedIdentity(activeSessionTabId),
       isTabChatView: chatView.isTabChatView,
-      toggleTabChatView: chatView.toggleTabChatView
+      setTabChatView: chatView.setTabChatView
     },
     nativeChatInputLeaseReady,
     connState,
@@ -105,14 +104,15 @@ export function useMobileSessionNativeChatDictation(
     onSendError: nativeChatSendError.show,
     onSendResolved: nativeChatSendError.clear
   })
-  const { toggleTabChatView, showNativeChat, showNativeChatRef } = nativeChatController
+  const { setTabChatView, showNativeChat, showNativeChatRef } = nativeChatController
   const nativeChatGate = resolveMobileNativeChatGate({
     showNativeChat,
     agent: nativeChatController.nativeChatAgent,
     tab: activeSessionTab,
     readability: nativeChatTranscriptReadability
   })
-  nativeChatSendError.bannerMountedRef.current = showNativeChat
+  // Why: the identity gate replaces the composer, so its send-error banner is not mounted then.
+  nativeChatSendError.bannerMountedRef.current = showNativeChat && !nativeChatGate
   const nativeChatOverlayInputLockReason =
     activeSessionTab?.type === 'agent-session'
       ? connState === 'connected'
@@ -274,7 +274,7 @@ export function useMobileSessionNativeChatDictation(
     clearNativeChatInputLease,
     nativeChatController,
     getSendCompletionGeneration,
-    toggleTabChatView,
+    setTabChatView,
     showNativeChat,
     showNativeChatRef,
     dictation,

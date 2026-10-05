@@ -33,6 +33,7 @@ const pendingChatRow = {
 
 type Flags = {
   activeChatSurface?: boolean
+  showEmptyState?: boolean
   activeViewUndecided?: boolean
   toastMessage?: string | null
 }
@@ -42,7 +43,7 @@ function contentElement(flags: Flags) {
   const controller = {
     terminals: [],
     showLoadingState: false,
-    showEmptyState: false,
+    showEmptyState: flags.showEmptyState ?? false,
     activeMarkdownTab: null,
     activeFileTab: null,
     activeBrowserTab: null,
@@ -105,5 +106,17 @@ describe('MobileSessionActiveContent with a chat row that has no terminal handle
     expect(has('ActivityIndicator')).toBe(true)
     expect(has('ChatOverlay')).toBe(false)
     expect(texts()).toEqual([])
+  })
+
+  it('shows a failed switch toast once under the spinner and the empty state too (R3-F3)', () => {
+    const toast = "Couldn't confirm the view switch"
+    render({ activeViewUndecided: true, toastMessage: toast })
+    expect(texts()).toEqual([toast])
+    act(() => renderer?.unmount())
+    render({ showEmptyState: true, toastMessage: toast })
+    expect(texts().filter((text) => text === toast)).toHaveLength(1)
+    act(() => renderer?.unmount())
+    render({ activeChatSurface: true, toastMessage: toast })
+    expect(texts().filter((text) => text === toast)).toHaveLength(1)
   })
 })

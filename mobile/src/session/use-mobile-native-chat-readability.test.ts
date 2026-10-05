@@ -110,7 +110,7 @@ describe('useMobileNativeChatReadabilityState (A1c-8)', () => {
     readability = null
   })
 
-  function Harness({ client, hostId }: { client: RpcClient; hostId: string }): null {
+  function Harness({ client, hostId }: { client: RpcClient | null; hostId: string }): null {
     readability = useMobileNativeChatReadabilityState(client, hostId, 'repo::/worktree')
     return null
   }
@@ -159,5 +159,25 @@ describe('useMobileNativeChatReadabilityState (A1c-8)', () => {
     expect(readability).toBe('readable')
     act(() => renderer?.update(createElement(Harness, { client: second, hostId: 'other-host' })))
     expect(readability).toBe('unknown')
+  })
+
+  it('keeps the stored answer when a re-read fails or no client is left (R1-F2, R4-n2)', async () => {
+    const first = clientWith(
+      vi
+        .fn()
+        .mockResolvedValue({ ok: true, result: { repos: [{ id: 'repo', connectionId: null }] } })
+    )
+    await act(async () => {
+      renderer = create(createElement(Harness, { client: first, hostId: 'host-refail' }))
+      await Promise.resolve()
+    })
+    const failing = clientWith(vi.fn().mockRejectedValue(new Error('timeout')))
+    await act(async () => {
+      renderer?.update(createElement(Harness, { client: failing, hostId: 'host-refail' }))
+      await Promise.resolve()
+    })
+    expect(readability).toBe('readable')
+    act(() => renderer?.update(createElement(Harness, { client: null, hostId: 'host-refail' })))
+    expect(readability).toBe('readable')
   })
 })

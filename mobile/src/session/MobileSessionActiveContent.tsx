@@ -129,11 +129,6 @@ export function MobileSessionActiveContent({
         onDiscard={() => discardMarkdownLocalContent(activeMarkdownTab)}
         keyboardLift={keyboardLift}
       />
-      {toastMessage && (
-        <Animated.View pointerEvents="none" style={[styles.toast, toastAnimatedStyle]}>
-          <Text style={styles.toastText}>{toastMessage}</Text>
-        </Animated.View>
-      )}
     </View>
   ) : activeFileTab ? (
     <View style={styles.markdownFrame}>
@@ -156,11 +151,6 @@ export function MobileSessionActiveContent({
             : undefined
         }
       />
-      {toastMessage && (
-        <Animated.View pointerEvents="none" style={[styles.toast, toastAnimatedStyle]}>
-          <Text style={styles.toastText}>{toastMessage}</Text>
-        </Animated.View>
-      )}
     </View>
   ) : activeBrowserTab ? (
     <View style={styles.browserFrame}>
@@ -175,11 +165,6 @@ export function MobileSessionActiveContent({
         bottomInset={insets.bottom}
         onToast={showToast}
       />
-      {toastMessage && (
-        <Animated.View pointerEvents="none" style={[styles.toast, toastAnimatedStyle]}>
-          <Text style={styles.toastText}>{toastMessage}</Text>
-        </Animated.View>
-      )}
     </View>
   ) : activePendingTerminalTab && !activeChatSurface ? (
     <View style={styles.emptyState}>
@@ -201,7 +186,6 @@ export function MobileSessionActiveContent({
           <Text style={styles.createButtonText}>Retry</Text>
         </Pressable>
       )}
-      {toast}
     </View>
   ) : (
     <View style={styles.terminalFrame}>
@@ -251,11 +235,6 @@ export function MobileSessionActiveContent({
         keyboardInset={keyboardLift}
         gate={nativeChatGate}
       />
-      {toastMessage && (
-        <Animated.View pointerEvents="none" style={[styles.toast, toastAnimatedStyle]}>
-          <Text style={styles.toastText}>{toastMessage}</Text>
-        </Animated.View>
-      )}
     </View>
   )
   return (
@@ -268,6 +247,8 @@ export function MobileSessionActiveContent({
       }}
     >
       {content}
+      {/* Why once here: every branch, the spinner and empty state included, shows a failed switch. */}
+      {toast}
     </View>
   )
 }

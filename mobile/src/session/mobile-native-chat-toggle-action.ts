@@ -1,4 +1,5 @@
 import { MessageSquare, SquareTerminal } from 'lucide-react-native'
+import type { TerminalTabViewMode } from '../../../src/shared/terminal-tab-view-mode'
 import type { ActionSheetAction } from '../components/ActionSheetModal'
 import { resolveMobileNativeChat, type MobileNativeChatTab } from './mobile-native-chat-eligibility'
 import type { MobileLeafView } from './mobile-session-chat-view'
@@ -12,9 +13,10 @@ export function getMobileNativeChatToggleActions(args: {
   leafView: MobileLeafView
   nativeChatTranscriptIsLocalReadable: boolean
   onClose: () => void
-  onToggle: (tabId: string) => void
+  /** Receives the view the pressed item names, never a toggle computed later. */
+  onSetView: (tabId: string, view: TerminalTabViewMode) => void
 }): ActionSheetAction[] {
-  const { tab, onClose, onToggle } = args
+  const { tab, onClose, onSetView } = args
   if (!tab) {
     return []
   }
@@ -29,7 +31,7 @@ export function getMobileNativeChatToggleActions(args: {
       icon: isChat ? SquareTerminal : MessageSquare,
       onPress: () => {
         onClose()
-        onToggle(tab.id)
+        onSetView(tab.id, isChat ? 'terminal' : 'chat')
       }
     }
   ]

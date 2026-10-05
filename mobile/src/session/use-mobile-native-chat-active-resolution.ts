@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, type MutableRefObject } from 'react'
 import { encodeNativeChatTranscriptIdentity } from '../../../src/shared/native-chat-transcript-retention'
+import type { TerminalTabViewMode } from '../../../src/shared/terminal-tab-view-mode'
 import {
   resolveMobileNativeChat,
   type MobileNativeChatResolution,
@@ -11,35 +12,10 @@ import type { MobileLeafView } from './mobile-session-chat-view'
 export type MobileNativeChatActiveView = {
   markerSession: boolean
   activeLeafView: MobileLeafView
-  /** `incarnationId ?? ptyId`: a new PTY drops the retained transcript identity. */
-  identityFence: string
+  /** The route's last identity for the active row's terminal process, kept through status lapses. */
+  retainedIdentity: MobileNativeChatResolution | null
   isTabChatView: (tabId: string) => boolean
-  toggleTabChatView: (tabId: string) => void
-}
-
-type RetainedIdentity = { key: string; identity: MobileNativeChatResolution | null }
-
-/** Keeps the last identity through a status lapse, and a session id the next status omits. */
-function retainIdentity(
-  retained: RetainedIdentity,
-  key: string,
-  current: MobileNativeChatResolution | null
-): RetainedIdentity {
-  const previous = retained.key === key ? retained.identity : null
-  if (!current) {
-    return { key, identity: previous }
-  }
-  if (previous && previous.agent === current.agent && !current.sessionId && previous.sessionId) {
-    return {
-      key,
-      identity: {
-        ...current,
-        sessionId: previous.sessionId,
-        transcriptPath: current.transcriptPath ?? previous.transcriptPath
-      }
-    }
-  }
-  return { key, identity: current }
+  setTabChatView: (tabId: string, view: TerminalTabViewMode) => void
 }
 
 export function useMobileNativeChatActiveResolution(args: {
@@ -52,7 +28,7 @@ export function useMobileNativeChatActiveResolution(args: {
   view: MobileNativeChatActiveView
 }): {
   isTabChatView: (tabId: string) => boolean
-  toggleTabChatView: (tabId: string) => void
+  setTabChatView: (tabId: string, view: TerminalTabViewMode) => void
   showNativeChat: boolean
   showNativeChatRef: MutableRefObject<boolean>
   activeChatAgent: string | null
@@ -74,7 +50,8 @@ export function useMobileNativeChatActiveResolution(args: {
     nativeChatTranscriptIsLocalReadable,
     worktreeId
   } = args
-  const { isTabChatView, toggleTabChatView, markerSession, activeLeafView } = args.view
+  const { isTabChatView, setTabChatView, markerSession, activeLeafView, retainedIdentity } =
+    args.view
   const hostOwnedTerminal = markerSession && activeSessionTab?.type === 'terminal'
   const tabWantsChat =
     activeSessionTab?.type === 'agent-session' ||
@@ -83,13 +60,6 @@ export function useMobileNativeChatActiveResolution(args: {
     activeSessionTab && activeSessionTabId
       ? resolveMobileNativeChat(activeSessionTab, nativeChatTranscriptIsLocalReadable)
       : null
-  const retainedIdentityRef = useRef<RetainedIdentity>({ key: '', identity: null })
-  const retained = retainIdentity(
-    retainedIdentityRef.current,
-    JSON.stringify([hostId, worktreeId, activeSessionTabId ?? '', args.view.identityFence]),
-    currentIdentity
-  )
-  retainedIdentityRef.current = retained
   // Why: on a host that owns the pair, status picks the identity shown, never whether chat shows.
   const showNativeChat = hostOwnedTerminal
     ? activeLeafView === 'chat'
@@ -97,7 +67,7 @@ export function useMobileNativeChatActiveResolution(args: {
   const activeChatResolution = !showNativeChat
     ? null
     : hostOwnedTerminal
-      ? retained.identity
+      ? retainedIdentity
       : currentIdentity
   const showNativeChatRef = useRef(showNativeChat)
   const activeChatAgent = activeChatResolution?.agent ?? null
@@ -122,7 +92,7 @@ export function useMobileNativeChatActiveResolution(args: {
 
   return {
     isTabChatView,
-    toggleTabChatView,
+    setTabChatView,
     showNativeChat,
     showNativeChatRef,
     activeChatAgent,

@@ -169,9 +169,9 @@ describe('useMobileSessionChatView', () => {
       view: {
         markerSession: chatView.markerSession,
         activeLeafView: chatView.tabLeafView(active),
-        identityFence: active?.type === 'terminal' ? (active.ptyId ?? '') : '',
+        retainedIdentity: chatView.retainedIdentity(active?.id ?? null),
         isTabChatView: chatView.isTabChatView,
-        toggleTabChatView: chatView.toggleTabChatView
+        setTabChatView: chatView.setTabChatView
       }
     })
     probe = {
@@ -215,8 +215,10 @@ describe('useMobileSessionChatView', () => {
     return probe
   }
 
+  /** A press of the sheet item the leaf offers: it names the opposite of the view it shows. */
   async function toggle(tabId = 'P::A'): Promise<void> {
-    act(() => current().chatView.toggleTabChatView(tabId))
+    const chat = current().chatView.isTabChatView(tabId)
+    act(() => current().chatView.setTabChatView(tabId, chat ? 'terminal' : 'chat'))
     await flush()
   }
 
@@ -399,6 +401,115 @@ describe('useMobileSessionChatView', () => {
     expect(current().gate).toBe('No conversation here')
   })
 
+  it('keeps each tab its own identity through a status lapse across a visit to another tab (R2-F1)', async () => {
+    const { client } = fakeClient()
+    const chosen = { viewMode: 'chat' as const, parentLayout: { root: sole, chatLeafId: 'A' } }
+    const other = (isActive: boolean) =>
+      terminalRow({
+        id: 'Q::A',
+        parentTabId: 'Q',
+        terminal: 'term-Q',
+        ptyId: 'pty-Q',
+        isActive
+      })
+    await render(
+      [terminalRow({ ...chosen, agentStatus: claudeStatus() }), other(false)],
+      true,
+      client
+    )
+    await render([terminalRow({ ...chosen, isActive: false }), other(true)], true, client)
+    await render([terminalRow({ ...chosen }), other(false)], true, client)
+    expect(current()).toMatchObject({ showNativeChat: true, agent: 'claude', gate: null })
+    expect(current().chatView.retainedIdentity('P::A')?.sessionId).toBe('session-1')
+  })
+
+  it('keeps identity and a pending click across a snapshot that omits the PTY id (R2-F2)', async () => {
+    const { client } = fakeClient()
+    const chosen = { viewMode: 'chat' as const, parentLayout: { root: sole, chatLeafId: 'A' } }
+    await render([terminalRow({ ...chosen, agentStatus: claudeStatus() })], true, client)
+    await render([terminalRow({ ...chosen, ptyId: null })], true, client)
+    await render([terminalRow({ ...chosen, ptyId: '' })], true, client)
+    await render([terminalRow({ ...chosen })], true, client)
+    expect(current()).toMatchObject({ agent: 'claude', gate: null })
+
+    await toggle()
+    await render([terminalRow({ ...chosen, ptyId: null })], true, client)
+    expect(getMobileChatPairWrites().pendingKeys()).toHaveLength(1)
+    // An unknown id carries the last known one forward, so a new PTY after it still counts.
+    await render([terminalRow({ ...chosen, ptyId: 'pty-A2' })], true, client)
+    expect(getMobileChatPairWrites().pendingKeys()).toEqual([])
+  })
+
+  it('treats an incarnation id appearing or vanishing for the same PTY as the same process (R4-n1)', async () => {
+    const { client } = fakeClient()
+    const chosen = { viewMode: 'chat' as const, parentLayout: { root: sole, chatLeafId: 'A' } }
+    // Main publishes the incarnation; the desktop republishes the same leaf without it.
+    await render(
+      [terminalRow({ ...chosen, incarnationId: 'inc-1', agentStatus: claudeStatus() })],
+      true,
+      client
+    )
+    await toggle()
+    await render([terminalRow({ ...chosen })], true, client)
+    await render([terminalRow({ ...chosen, incarnationId: 'inc-1' })], true, client)
+    expect(getMobileChatPairWrites().pendingKeys()).toHaveLength(1)
+    expect(current().chatView.retainedIdentity('P::A')?.agent).toBe('claude')
+    await render([terminalRow({ ...chosen, incarnationId: 'inc-2' })], true, client)
+    expect(getMobileChatPairWrites().pendingKeys()).toEqual([])
+    expect(current().chatView.retainedIdentity('P::A')).toBeNull()
+  })
+
+  it('keeps an ownerless chat on its agent leaf when the tab is split, as the desktop does (R1-F1)', async () => {
+    const { client } = fakeClient()
+    const agent = (overrides: Partial<TerminalRow> = {}) =>
+      terminalRow({ viewMode: 'chat', launchAgent: 'claude', ...overrides })
+    await render([agent({ parentLayout: { root: sole, activeLeafId: 'A' } })], true, client)
+    expect(current().showNativeChat).toBe(true)
+    // A headless split makes the new shell leaf active and names no owner.
+    const split = {
+      root: {
+        type: 'split' as const,
+        direction: 'vertical' as const,
+        first: sole,
+        second: { type: 'leaf' as const, leafId: 'N' }
+      },
+      activeLeafId: 'N'
+    }
+    const shell = terminalRow({
+      id: 'P::N',
+      leafId: 'N',
+      terminal: 'term-N',
+      ptyId: 'pty-N',
+      viewMode: 'chat',
+      parentLayout: split,
+      isActive: false
+    })
+    await render([agent({ parentLayout: split }), shell], true, client)
+    expect(current().chatView.tabLeafView(agent({ parentLayout: split }))).toBe('chat')
+    expect(current().chatView.tabLeafView(shell)).toBe('terminal')
+  })
+
+  it('shows terminal, not the empty chat, for an ownerless chat on a leaf that cannot show chat (R1-F1)', async () => {
+    const { client } = fakeClient()
+    await render([terminalRow({ viewMode: 'chat' })], true, client)
+    expect(current()).toMatchObject({ showNativeChat: false, gate: null })
+    // Once an agent shows up there, the chat claims that leaf and keeps it through a lapse.
+    await render([terminalRow({ viewMode: 'chat', agentStatus: claudeStatus() })], true, client)
+    await render([terminalRow({ viewMode: 'chat' })], true, client)
+    expect(current()).toMatchObject({ showNativeChat: true, agent: 'claude', gate: null })
+  })
+
+  it('writes the view the user named even after another device switched meanwhile (R2-F3)', async () => {
+    const { client, calls } = fakeClient()
+    const chosen = { viewMode: 'chat' as const, parentLayout: { root: sole, chatLeafId: 'A' } }
+    await render([terminalRow({ ...chosen, agentStatus: claudeStatus() })], true, client)
+    // The desktop switched to terminal while the composer's agent-picker command was in flight.
+    await render([terminalRow({ viewMode: 'terminal', agentStatus: claudeStatus() })], true, client)
+    act(() => current().chatView.setTabChatView('P::A', 'terminal'))
+    await flush()
+    expect(calls.map((call) => call.params.viewMode)).toEqual(['terminal'])
+  })
+
   it('switches a chat row with no terminal handle back by tab id, with no terminal call (A1c-6 iii)', async () => {
     const { client, calls } = fakeClient()
     const handleless = terminalRow({
@@ -422,17 +533,13 @@ describe('useMobileSessionChatView', () => {
   it('ends the overlay with no further write when the host answers with an ownerless chat', async () => {
     const { client, calls } = fakeClient()
     // A headless tab with no stored layout cannot hold an owner.
-    const unlaidOut = terminalRow({ parentLayout: undefined })
-    await render([unlaidOut], true, client)
+    const unlaidOut = { parentLayout: undefined, agentStatus: claudeStatus() }
+    await render([terminalRow(unlaidOut)], true, client)
     await toggle()
     calls[0]!.settle(applied({ viewMode: 'chat', chatLeafId: null }))
     await flush()
-    await render([terminalRow({ parentLayout: undefined, viewMode: 'chat' })], true, client)
-    await render(
-      [terminalRow({ parentLayout: undefined, viewMode: 'chat', title: 'retitled' })],
-      true,
-      client
-    )
+    await render([terminalRow({ ...unlaidOut, viewMode: 'chat' })], true, client)
+    await render([terminalRow({ ...unlaidOut, viewMode: 'chat', title: 'retitled' })], true, client)
     await flush()
     expect(calls).toHaveLength(1)
     expect(getMobileChatPairWrites().pendingKeys()).toEqual([])
@@ -455,7 +562,8 @@ describe('useMobileSessionChatView', () => {
     expect(current().showNativeChat).toBe(true)
     await render([terminalRow()], false, client)
     expect(current().showNativeChat).toBe(false)
-    await toggle()
+    act(() => current().chatView.setTabChatView('P::A', 'terminal'))
+    await flush()
     expect(calls).toEqual([])
     expect(updateSessionViewOverride).toHaveBeenCalledWith('h', 'w', 'P::A', 'terminal')
   })

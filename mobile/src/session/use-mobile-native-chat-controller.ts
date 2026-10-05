@@ -75,7 +75,7 @@ export function useMobileNativeChatController(args: {
     sourceIdentity,
     streamIdentity,
     streamScopeKey,
-    toggleTabChatView
+    setTabChatView
   } = useMobileNativeChatActiveResolution({
     hostId,
     worktreeId,
@@ -265,7 +265,7 @@ export function useMobileNativeChatController(args: {
         setOption: structuredNativeChat.setStructuredOption,
         invokeAction: structuredNativeChat.invokeStructuredOption
       },
-      toggleTabChatView,
+      setTabChatView,
       worktreeId
     })
   useLayoutEffect(() => {
@@ -286,7 +286,7 @@ export function useMobileNativeChatController(args: {
 
   return {
     isTabChatView,
-    toggleTabChatView,
+    setTabChatView,
     showNativeChat,
     showNativeChatRef,
     nativeChatAgent: activeChatResolution?.agent ?? null,
