@@ -345,7 +345,11 @@ export function createDriver(config, deps) {
 
   async function typed(phrase) {
     if (typedPhrases.has(phrase)) return phrase
-    const answer = (await deps.prompt(`Type ${phrase} to continue: `)).trim()
+    const meaning =
+      phrase === 'ENABLE_REGIONAL_REHOMING'
+        ? ' (this arms an automatic enable, sent about 17 min from now and only if the monitor is green)'
+        : ''
+    const answer = (await deps.prompt(`Type ${phrase} to continue${meaning}: `)).trim()
     if (answer !== phrase)
       throw new DriverStop(`expected ${phrase}; nothing further was dispatched`)
     typedPhrases.set(phrase, answer)

@@ -326,6 +326,7 @@ function dependencies(world) {
     print: (line) => world.printed.push(line),
     prompt: async (question) => {
       world.prompts.push(question.match(/^Type (.+) to continue/)[1])
+      world.questions = [...(world.questions ?? []), question]
       return world.answer(question)
     }
   }
@@ -382,6 +383,13 @@ test('runs the audited sequence with typed phrases and enables on the digests no
     'PAUSE_REGIONAL_REHOMING',
     'ENABLE_REGIONAL_REHOMING'
   ])
+  assert.ok(
+    world.questions.some((question) =>
+      question.includes(
+        'arms an automatic enable, sent about 17 min from now and only if the monitor is green'
+      )
+    )
+  )
   const [deploy] = dispatched(world, DEPLOY)
   assert.deepEqual(
     [
