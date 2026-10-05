@@ -232,18 +232,22 @@ describe('MobileNativeChatView', () => {
       status: 'error' as const,
       error: words,
       canStop: true,
-      permission: { title: 'Approve?', options: [{ label: 'Allow', send: '1' }] }
+      permission: { title: 'Approve?', options: [{ label: 'Allow', send: '1' }] },
+      // A resend answered unknown says nothing beside the read's words.
+      sendErrorMessage: 'Message unconfirmed — check chat before retrying'
     }
     await render({ ...failure, readFailedFinally: true })
     expect(shown(words)).toHaveLength(1)
     expect(composers()).toHaveLength(0)
     expect(lists()).toHaveLength(0)
+    expect(banners()).toHaveLength(0)
     expect(renderer!.root.findAllByProps({ accessibilityLabel: 'Stop the agent' })).toHaveLength(0)
 
     // A failure that can clear keeps the transcript and the composer.
     await update({ ...failure, error: "Orca couldn't open this chat's history right now." })
     expect(listIds()).toEqual(['m1'])
     expect(composers()).toHaveLength(1)
+    expect(banners()).toHaveLength(1)
   })
 
   it('renders the route-reported failure verbatim', async () => {
