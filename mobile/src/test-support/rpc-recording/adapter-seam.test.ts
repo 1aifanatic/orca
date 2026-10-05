@@ -1,3 +1,4 @@
+import type * as RpcClientContextModule from '../../transport/rpc-client-react-context'
 import { readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { createElement } from 'react'
@@ -26,9 +27,9 @@ describe('the adapter directory', () => {
   it('mounts the public host-client context read by the product hook', () => {
     const modules = operationModuleLoader(root)
     const context = loadHostClientContext(modules)
-    const { useRpcClientContext } = modules.load<
-      typeof import('../../transport/rpc-client-react-context')
-    >('mobile/src/transport/rpc-client-react-context.ts')
+    const { useRpcClientContext } = modules.load<typeof RpcClientContextModule>(
+      'mobile/src/transport/rpc-client-react-context.ts'
+    )
     const value = mountFixture<RpcClientContextValue>({ getClientId: () => 'scripted-client' })
     const observed: { value?: RpcClientContextValue } = {}
     function Harness(): null {
