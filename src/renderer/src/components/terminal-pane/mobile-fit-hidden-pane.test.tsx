@@ -8,6 +8,10 @@ import type { ManagedPane, PaneManager } from '@/lib/pane-manager/pane-manager'
 import { safeFit } from '@/lib/pane-manager/pane-tree-ops'
 import { fitRevealedPane } from '@/lib/pane-manager/pane-reveal-fit'
 import { markTerminalPinnedViewport } from '@/lib/pane-manager/terminal-scroll-intent'
+import {
+  beginTerminalScrollIntentBufferRebuild,
+  endTerminalScrollIntentBufferRebuild
+} from '@/lib/pane-manager/terminal-scroll-intent-rebuild'
 import { bindRegisterPaneSerializer } from './pty-connection/pane-serializer-register'
 import type { ConnectPanePtySession } from './pty-connection/connect-pane-pty-session'
 import type { PtyTransport } from './pty-transport'
@@ -206,6 +210,23 @@ describe('mobile-fit override on a hidden desktop pane', () => {
     expect(terminal.cols).toBe(PHONE.cols)
     const top = terminal.buffer.active.getLine(terminal.buffer.active.viewportY)
     expect(top?.translateToString(true).slice(0, 4)).toBe('L100')
+    terminal.dispose()
+  })
+
+  it('keeps a pane re-parked by a newer override when a deferred release fallback runs', async () => {
+    const { pane, terminal } = createHiddenPane()
+    pane.container.dataset.ptyId = PTY_ID
+    render(<Ticks pane={pane} />)
+    act(() => setFitOverride(PTY_ID, 'mobile-fit', PHONE.cols, PHONE.rows))
+    expect({ cols: terminal.cols, rows: terminal.rows }).toEqual(PHONE)
+
+    beginTerminalScrollIntentBufferRebuild(terminal)
+    act(() => setFitOverride(PTY_ID, 'desktop-fit', DESKTOP.cols, DESKTOP.rows))
+    act(() => setFitOverride(PTY_ID, 'mobile-fit', PHONE.cols, PHONE.rows))
+    endTerminalScrollIntentBufferRebuild(terminal)
+    await Promise.resolve()
+
+    expect({ cols: terminal.cols, rows: terminal.rows }).toEqual(PHONE)
     terminal.dispose()
   })
 

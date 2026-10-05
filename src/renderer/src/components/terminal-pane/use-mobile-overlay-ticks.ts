@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { onDriverChange } from '@/lib/pane-manager/mobile-driver-state'
-import { onOverrideChange } from '@/lib/pane-manager/mobile-fit-overrides'
+import { getFitOverrideForPty, onOverrideChange } from '@/lib/pane-manager/mobile-fit-overrides'
 import type { ManagedPane, PaneManager } from '@/lib/pane-manager/pane-manager'
 import { safeFit } from '@/lib/pane-manager/pane-tree-ops'
 import { canMeasurePaneForFit } from '@/lib/pane-manager/pane-fit'
@@ -92,10 +92,16 @@ export function useMobileOverlayTicks({ managerRef, paneTransportsRef }: MobileO
             safeFit(pane)
           }
         }
+        // Why: a deferred fallback can outlive this pane binding or this release; never apply old server dims to a replacement PTY or a re-parked pane.
+        const releaseFallback = (pane: ManagedPane) => ({
+          ...event,
+          shouldApply: () =>
+            getFitOverrideForPty(event.ptyId) === null && getAffectedPanes().includes(pane)
+        })
         // Why: a hidden pane parked at the phone grid cannot refit, so follow the PTY back to desktop before hidden bytes parse.
         for (const pane of getAffectedPanes()) {
           if (!canMeasurePaneForFit(pane)) {
-            applyDesktopFitFallbackAfterReplay(pane, event)
+            applyDesktopFitFallbackAfterReplay(pane, releaseFallback(pane))
           }
         }
         scheduleFitFrame(fitAffectedPanes)
@@ -107,11 +113,7 @@ export function useMobileOverlayTicks({ managerRef, paneTransportsRef }: MobileO
             if (rect.width === 0 || rect.height === 0) {
               continue
             }
-            applyDesktopFitFallbackAfterReplay(pane, {
-              ...event,
-              // Why: the timeout/replay queue can outlive this pane binding; never apply old server dims to a replacement PTY.
-              shouldApply: () => getAffectedPanes().includes(pane)
-            })
+            applyDesktopFitFallbackAfterReplay(pane, releaseFallback(pane))
           }
         })
       }
