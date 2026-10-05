@@ -1,7 +1,7 @@
 // A real host over a real store and journal, with a scripted provider and a clock the test moves,
 // for the tests of a conversation that outlives its agent and of what a restarted host owes. The
 // idle sweep runs on its own short interval; a test moves `clock.now` past the idle window and
-// waits for the outcome. Every journal open calls `historyFilePath` once, so that mock is the open
+// waits for the outcome. Every journal open calls `journalOpens` once, so that mock is the open
 // counter, and holding it holds the open.
 
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -38,6 +38,7 @@ import {
 } from './structured-agent-session-host-test-data'
 import { STRUCTURED_AGENT_SESSION_IDLE_MS } from './structured-agent-session-idle-sweep'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import { watchRestTestJournalOpens } from './structured-agent-session-rest-test-journal-opens'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 
 export const REST_TEST_CALLER = { callerKey: 'client-1' }
@@ -53,8 +54,6 @@ export type RestTestAdapter = {
   >
   holdsDispatch: Mock<NonNullable<StructuredAgentSessionAdapter['holdsDispatch']>>
   readOptions: Mock<NonNullable<StructuredAgentSessionAdapter['readOptions']>>
-  /** Called once per journal open, with the session id; replace its implementation to hold one. */
-  historyFilePath: Mock<(sessionId: string) => Promise<string | null>>
 }
 
 export type RestTestRig = {
@@ -62,6 +61,9 @@ export type RestTestRig = {
   store: AgentSessionRecordStore
   host: StructuredAgentSessionHost
   adapter: RestTestAdapter
+  /** Called once per journal open in this rig, with the session id; replace its implementation to
+   *  hold one. */
+  journalOpens: Mock<(sessionId: string) => Promise<void>>
   clock: { now: number }
   statusEvents: AgentSessionStatusEvent[]
   /** `readChildWork` serves the session's child records, as the host's store does. */
@@ -189,16 +191,16 @@ export async function createRestTestRig(
     dispatch: vi.fn(async (input) => acceptedDispatch(input.sessionId)),
     acknowledgeSessionRelease: vi.fn(),
     holdsDispatch: vi.fn(() => false),
-    readOptions: vi.fn(async () => ({ models: [], current: { model: 'gpt-live' } })),
-    historyFilePath: vi.fn(async (_sessionId: string): Promise<string | null> => null)
+    readOptions: vi.fn(async () => ({ models: [], current: { model: 'gpt-live' } }))
   }
+  const journalOpens = vi.fn(async (_sessionId: string): Promise<void> => undefined)
+  watchRestTestJournalOpens(root, (sessionId) => journalOpens(sessionId))
   const hostFor = (overrides: Partial<StructuredAgentSessionHostDeps>) => {
     const host = new StructuredAgentSessionHost({
       logger: createStructuredAgentSessionLogger(),
       store,
       adapter: {
         ...adapter,
-        historyFilePath: ({ identity }) => adapter.historyFilePath(identity.sessionId),
         supportsCreate: (location, agent) =>
           agent === 'codex' && !unsupportedWorkspaceIds.has(location.workspaceId),
         releaseAcquisition: vi.fn(async () => true),
@@ -230,6 +232,7 @@ export async function createRestTestRig(
     store,
     host: hostFor({}),
     adapter,
+    journalOpens,
     clock,
     statusEvents,
     sink,
@@ -249,7 +252,7 @@ export async function createRestTestRig(
       sessions.clear()
     },
     boot: (overrides = {}) => {
-      for (const mock of [adapter.historyFilePath, adapter.acquire, adapter.dispatch, probeOwner]) {
+      for (const mock of [journalOpens, adapter.acquire, adapter.dispatch, probeOwner]) {
         mock.mockClear()
       }
       sink.publish.mockClear()

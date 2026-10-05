@@ -124,13 +124,6 @@ export class StructuredAgentSessionHost {
       trackStart: (start) => this.tasks.trackAttach(start),
       ensureProviderChild: (sessionId, startedFor) =>
         agentStart.ensureStructuredAgentSessionAgent(this.attachContext(), sessionId, startedFor),
-      reset: (sessionId, journal, reset) =>
-        this.subscribers.reset(
-          sessionId,
-          journal,
-          reset,
-          structuredAgentSessionConversationFence(deps.store, sessionId)
-        ),
       clientDelivery: this.clientDelivery
     })
     this.restore = createStructuredAgentSessionHostRestore(deps, {

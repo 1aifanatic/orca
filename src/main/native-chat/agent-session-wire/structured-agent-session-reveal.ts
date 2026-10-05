@@ -18,6 +18,7 @@ import {
   hostCanSettleRecord
 } from './structured-agent-session-provider-support'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import { journalOpenRefusal } from '../agent-session-journal/journal-open-failure'
 import { StructuredAgentSessionReadableRestorer } from './structured-agent-session-readable-restorer'
 import {
   restoreStructuredAgentSessionsOnRestart,
@@ -56,9 +57,9 @@ export async function revealStructuredAgentSession(
   // Lease state is not consulted on purpose: this neither claims the lease nor spawns a child, so a
   // contested or reconciling chat still reveals and the send that follows adjudicates it. Refusing
   // here would hide the one view of a session a user needs when its ownership is in doubt.
-  const readable = await openConversation(sessionId).then(
-    () => true,
-    () => false
+  const openRefusal = await openConversation(sessionId).then(
+    () => null,
+    (error: unknown) => journalOpenRefusal(error)
   )
   return {
     sessionId,
@@ -66,7 +67,8 @@ export async function revealStructuredAgentSession(
     // to aim the tab publication at another workspace.
     workspaceId: record.location.workspaceId,
     agent: record.provider,
-    readable
+    readable: openRefusal === null,
+    ...(openRefusal ? { openRefusal } : {})
   }
 }
 

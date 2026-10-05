@@ -38,7 +38,6 @@ async function wiredSession() {
   })
   const journal = {
     cursor: () => ({ epoch: 'epoch-1', sequence: ++sequence }),
-    isReadOnly: false,
     lastActivityAt: () => 1,
     submissions: () => snapshot().submissions,
     // The journal's own projection, which the feed shares with the status stored beside it.
@@ -55,7 +54,7 @@ async function wiredSession() {
       [
         parent.sessionId,
         {
-          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the feed reads only the cursor, read-only flag, activity clock, submissions and projection served here.
+          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the feed reads only the cursor, activity clock, submissions and projection served here.
           journal: journal as unknown as Journal,
           params: {
             location: {

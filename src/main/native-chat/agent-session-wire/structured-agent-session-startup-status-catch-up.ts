@@ -82,8 +82,7 @@ async function foldAndWrite(
       yieldTask: yieldWhenDue,
       signal: quit.signal
     })
-    // A corrupt history gets no row, so every launch opens it until its open rebuilds it.
-    if (folded && !folded.load.corrupt) {
+    if (folded) {
       batch.push(folded)
     }
     if (batch.length >= WRITE_BATCH_CHATS) {

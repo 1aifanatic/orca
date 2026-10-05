@@ -42,7 +42,7 @@ describe('the tab list after a restart', () => {
       tab('session-a'),
       tab('session-b')
     ])
-    expect(rig.adapter.historyFilePath).not.toHaveBeenCalled()
+    expect(rig.journalOpens).not.toHaveBeenCalled()
   })
 
   it('keeps a chat with no history on disk, which then reads empty and takes a send (T3)', async () => {
@@ -75,11 +75,10 @@ describe('the tab list after a restart', () => {
     await restTestChat(rig, 'session-good', { message: 'kept' })
     await rig.crash()
     const host = await rig.boot()
-    rig.adapter.historyFilePath.mockImplementation(async (sessionId) => {
+    rig.journalOpens.mockImplementation(async (sessionId) => {
       if (sessionId === 'session-bad') {
         throw new Error('EACCES: permission denied')
       }
-      return null
     })
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const ids = ['session-bad', 'session-good']

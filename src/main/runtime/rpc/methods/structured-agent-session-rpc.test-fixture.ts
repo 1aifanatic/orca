@@ -102,9 +102,8 @@ function statusFeed(): StructuredAgentSessionStatusFeed {
       [
         STATUS_SESSION,
         {
-          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a stand-in journal offering only what the status feed reads (submissions, cursor, its projection, activity, read-only).
+          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a stand-in journal offering only what the status feed reads (submissions, cursor, its projection, activity).
           journal: {
-            isReadOnly: false,
             cursor: () => ({ epoch: 'epoch-status', sequence: 2 }),
             lastActivityAt: () => 2,
             submissions: () => [],

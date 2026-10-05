@@ -44,20 +44,14 @@ export type JournalStoreHost = {
   database: () => JournalHostDatabase
   state: () => JournalReducerState
   readOnly: () => boolean
-  setReadOnly: (readOnly: boolean) => void
   cursor: () => AgentJournalCursor
   adopt: (loaded: JournalLoad) => void
   /** That re-read failed too: the fold is re-read before its next use, never served as it is. */
   markFoldStale: () => void
-  /** Whether a fresh replay would report the history corrupt. */
-  loadCorrupt: () => boolean
-  setLoadCorrupt: (corrupt: boolean) => void
   /** The conversation's fence, which the stored status reads as the status feed does. */
   currentFence: () => number | undefined
   /** A per-chat file's copy is still owed: the fold is not the database's yet. */
   importPending: () => boolean
-  malformedRows: () => number
-  setMalformedRows: (count: number) => void
   journal: () => AgentSessionJournal
   enqueue: (build: (seq: number, ts: number) => JournalRow) => Promise<JournalRow>
 }
@@ -85,7 +79,6 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
     serialize: host.serialize,
     database: host.database,
     readOnly: host.readOnly,
-    setReadOnly: host.setReadOnly,
     highestFence: () => host.state().highestFence,
     queuePauseRestatement: () =>
       journalQueuePauseRestatement(
@@ -93,11 +86,8 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
         host.state().latestPersonTurnSequence
       ),
     cursor: host.cursor,
-    adopt: (loaded) => {
-      host.setLoadCorrupt(loaded.corrupt)
-      host.adopt(loaded)
-    },
-    writeState: (db, state, corrupt) => sessionStatus.write(db, state, corrupt, false)
+    adopt: host.adopt,
+    writeState: (db, state) => sessionStatus.write(db, state, false)
   })
   const queuedMessages = new JournalQueuedMessages({
     sessionId: host.identity.sessionId,
@@ -118,8 +108,8 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
     highestFence: () => host.state().highestFence,
     nextSequence: () => host.state().lastSequence + 1,
     apply: (rows) => sessionStatus.apply(rows),
-    writeStatus: (db, rows) => sessionStatus.writeAppended(db, rows),
-    committed: (rows) => sessionStatus.committed(rows),
+    writeStatus: (db) => sessionStatus.writeAppended(db),
+    committed: () => sessionStatus.committed(),
     recoverFold: () => sessionStatus.recover(),
     // Every rejection is a dispatch row through this one writer; the draft
     // returned-transition rides it so no path can bypass the hook.
@@ -140,8 +130,7 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
             host.identity.sessionId,
             host.state().epoch,
             limit
-          ),
-          readOnly: host.readOnly()
+          )
         },
         cursor,
         host.cursor
@@ -150,7 +139,7 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
     // Behind the stored fact: settles drafts whose consumed submission the loaded journal shows
     // refused (a downgrade wrote no hook), then prunes. Bookkeeping, never failing the open.
     restore: () =>
-      restoreJournalStore(host, { epochController }).then(() =>
+      restoreJournalStore(host, { epochController, sessionStatus }).then(() =>
         queuedMessages.repairAndPruneAtOpen()
       ),
     rowWriter,

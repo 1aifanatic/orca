@@ -65,8 +65,7 @@ export type JournalSettlementFacts = {
   handedOverSends: number
   /** Sends accepted and never handed over. */
   queuedSends: number
-  /** A working subagent roster or live background-task row; not counted on a corrupt load, whose
-   *  settle leaves rosters for the rebuild. */
+  /** A working subagent roster or live background-task row. */
   liveChildWork: boolean
   /** The newest turn record by sequence, when it is running (`activeStructuredAgentSessionTurnIdBySequence`). */
   activeTurnId: string | null
@@ -101,8 +100,7 @@ function itemFacts(item: AgentJournalRenderItem): ItemFacts {
 }
 
 export function journalSettlementFacts(
-  fold: Pick<JournalReducerState, 'items' | 'submissions'>,
-  options: { settlesRosters: boolean }
+  fold: Pick<JournalReducerState, 'items' | 'submissions'>
 ): JournalSettlementFacts {
   let handedOverSends = 0
   let queuedSends = 0
@@ -122,7 +120,7 @@ export function journalSettlementFacts(
     const facts = itemFacts(item)
     runningWork ||= facts.running
     pendingPrompts ||= facts.prompt
-    liveChildWork ||= options.settlesRosters && facts.roster
+    liveChildWork ||= facts.roster
     // Ties go to the later item, as the by-sequence reader decides them.
     if (facts.turn && item.sequence >= newestSequence) {
       newestSequence = item.sequence

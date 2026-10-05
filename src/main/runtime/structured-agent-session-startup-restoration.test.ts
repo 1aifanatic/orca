@@ -262,11 +262,10 @@ it('never fails startup: each failure is logged by chat and the rest still settl
   await rig.crash()
   await rig.boot()
   const warn = vi.spyOn(rig.host.deps.logger, 'warn')
-  rig.adapter.historyFilePath.mockImplementation(async (sessionId) => {
+  rig.journalOpens.mockImplementation(async (sessionId) => {
     if (sessionId === 'session-open-fails') {
       throw new Error('EACCES: permission denied')
     }
-    return null
   })
   const markUnknown = AgentSessionJournal.prototype.markPendingSubmissionsUnknown
   vi.spyOn(AgentSessionJournal.prototype, 'markPendingSubmissionsUnknown').mockImplementation(

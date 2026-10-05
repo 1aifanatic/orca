@@ -19,13 +19,12 @@ import {
   type StructuredAgentSessionStatusProjection
 } from '../../../shared/structured-agent-session-projection'
 import { journalSettlementFacts } from './journal-open-settlement-plan'
-import { replayJournal } from './journal-open'
 import { renderJournalState, type JournalReducerState } from './journal-reducer'
 
 /** What the stored status is derived by: the derivation below and the shared projection it reads.
  *  Bump it with any change to what either produces for the same journal; the corpus digest test
  *  fails until it is bumped. */
-export const JOURNAL_SESSION_STATUS_RULES = 2
+export const JOURNAL_SESSION_STATUS_RULES = 3
 
 /** Work a gone process can have left: running work, a waiting prompt, unanswered or queued sends,
  *  or live child work. Startup settles exactly these chats. */
@@ -66,8 +65,6 @@ export type JournalSessionStatus = {
 }
 
 export type JournalSessionStatusInput = {
-  /** False while the chat's load is corrupt: its settle leaves rosters for the rebuild. */
-  settlesRosters: boolean
   currentFence?: number
   /** The fold's status summary, when the caller already projects this tip. */
   statusSummary?: () => StructuredAgentSessionStatusProjection
@@ -75,9 +72,9 @@ export type JournalSessionStatusInput = {
 
 export function deriveJournalSessionStatus(
   state: JournalReducerState,
-  input: JournalSessionStatusInput
+  input: JournalSessionStatusInput = {}
 ): JournalSessionStatus {
-  const facts = journalSettlementFacts(state, input)
+  const facts = journalSettlementFacts(state)
   return {
     lifecycle: facts.runningWork ? 'running' : facts.pendingPrompts ? 'attention' : 'idle',
     activeTurnId: facts.activeTurnId,
@@ -139,19 +136,6 @@ export function writeJournalSessionStatus(
     status.lastActivityAt,
     JOURNAL_SESSION_STATUS_RULES
   )
-}
-
-/** For a write that publishes rows it did not fold (a per-chat file's copy, a repair): the status
- *  of what a replay of them reads, written in the same transaction. */
-export function writeJournalSessionStatusFromDisk(db: Database.Database, sessionId: string): void {
-  const loaded = replayJournal(db, sessionId)
-  if (loaded) {
-    writeJournalSessionStatus(
-      db,
-      sessionId,
-      deriveJournalSessionStatus(loaded.state, { settlesRosters: !loaded.corrupt })
-    )
-  }
 }
 
 export function deleteJournalSessionStatus(db: Database.Database, sessionId: string): void {

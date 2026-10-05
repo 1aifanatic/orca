@@ -15,7 +15,8 @@ import {
   createTrackedJournalOpener,
   insertTestJournalRowJson,
   liveTestJournalRows,
-  openTestJournalHostDatabase
+  openTestJournalHostDatabase,
+  SAVED_BY_NEWER_ORCA
 } from '../../../src/main/native-chat/agent-session-journal/journal-host-database-test-support'
 import type { JournalRow } from '../../../src/main/native-chat/agent-session-journal/journal-row-schema'
 import { importReleaseCheckoutModule, materializeReleaseCheckout } from './release-checkout'
@@ -218,7 +219,6 @@ test("an older schema's build reads this build's journal read-only, writes nothi
 
     // Upgraded again: the history is as this build left it, and the person's Stop still pauses.
     const upgraded = await journals.open({ identity: IDENTITY, stateDirectory: directory })
-    expect(upgraded.isReadOnly).toBe(false)
     expect(upgraded.cursor()).toEqual(wrote.cursor)
     expect(itemIds(upgraded)).toEqual(wrote.items)
     expect(upgraded.queuedMessages.pauses('host-a').map((pause) => pause.reason)).toEqual([
@@ -231,11 +231,12 @@ test("an older schema's build reads this build's journal read-only, writes nothi
 }, 120_000)
 
 // Why a Stop's event cannot have a row kind of its own yet: this build keeps a kind it does not know
-// and goes read-only, but a build from before that deletes the journal from it when it can write it.
+// and refuses the load as a newer Orca's chat, but a build from before that deletes the journal from
+// it when it can write it.
 // So a Stop kind ships its reader first and is written once no supported build lacks that reader, or
 // is written at a bumped `v`. The pinned older build is at the schema before 5, which opens this
 // build's database read-only, so it keeps the row too; a released build at version 5 has this rule.
-test("this build keeps a newer build's row kind and goes read-only; an older schema's build keeps it too", async () => {
+test("this build keeps a newer build's row kind and refuses the load; an older schema's build keeps it too", async () => {
   const directory = mkdtempSync(join(tmpdir(), 'orca-newer-kind-downgrade-'))
   const journals = createTrackedJournalOpener()
   const newerKinds = () => storedRows(directory).filter((row) => row.includes('"future-mark"'))
@@ -263,12 +264,9 @@ test("this build keeps a newer build's row kind and goes read-only; an older sch
     closeTestJournalHostDatabase(directory)
     const rowsBefore = storedRows(directory)
 
-    const reopened = await journals.open({ identity: IDENTITY, stateDirectory: directory })
-    expect(reopened.isReadOnly).toBe(true)
-    expect(reopened.repair).toEqual({ malformedRows: 0 })
     await expect(
-      reopened.appendItem(item(1), { kind: 'status', text: 'after' }, scope)
-    ).rejects.toMatchObject({ code: 'journal_read_only' })
+      journals.open({ identity: IDENTITY, stateDirectory: directory })
+    ).rejects.toMatchObject(SAVED_BY_NEWER_ORCA)
     await journals.closeAll()
     expect(storedRows(directory)).toEqual(rowsBefore)
     expect(newerKinds()).toEqual([newer])

@@ -110,10 +110,7 @@ function expectFoldIsTheDisk(journal: AgentSessionJournal, sessionId: string): v
   const loaded = loadTestJournal(root, sessionId)!
   expect(comparableFold(servedFold(journal))).toEqual(comparableFold(loaded.state))
   expect(readTestJournalSessionStatus(root, sessionId)).toEqual(
-    deriveJournalSessionStatus(loaded.state, {
-      settlesRosters: !loaded.corrupt,
-      currentFence: CORPUS_FENCE
-    })
+    deriveJournalSessionStatus(loaded.state, { currentFence: CORPUS_FENCE })
   )
 }
 

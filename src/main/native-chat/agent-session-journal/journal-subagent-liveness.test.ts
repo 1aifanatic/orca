@@ -59,14 +59,9 @@ async function open(overrides: Partial<Parameters<typeof openAgentSessionJournal
 /** The conversation open's settlement, which now carries the roster step the store open did. */
 async function reopenAfterHostGone() {
   const journal = await open()
-  await appendOpenSettlement(
-    journal,
-    planOpenSettlement(journal, null, { settlesRosters: true }),
-    0,
-    (error) => {
-      throw error
-    }
-  )
+  await appendOpenSettlement(journal, planOpenSettlement(journal, null), 0, (error) => {
+    throw error
+  })
   return journal
 }
 

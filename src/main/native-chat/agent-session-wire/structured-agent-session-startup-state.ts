@@ -216,8 +216,12 @@ async function settleOwedSessions(
         (listedOrder.get(left.sessionId) ?? 0) - (listedOrder.get(right.sessionId) ?? 0)
     )
     await deps.restoreListed(listed, leases)
-    // A listed chat the worker left closed (its tab closed meanwhile) is settled like any other.
-    others.push(...listed.filter((record) => !deps.hasSession(record.sessionId)))
+    // A listed chat the worker left closed (its tab closed meanwhile) is settled like any other,
+    // unless its row is gone: an open that failed on its rows dropped it.
+    const owed = new Set(readUnsettledJournalSessionIds(database.db))
+    others.push(
+      ...listed.filter((record) => !deps.hasSession(record.sessionId) && owed.has(record.sessionId))
+    )
     for (const record of others) {
       // A journal open is synchronous SQLite: one chat per macrotask.
       await yieldToEventLoop()

@@ -105,27 +105,16 @@ describe('a row from the rows alone', () => {
     expect(readTestJournalSessionStatus(root, name)).toEqual(byOpen)
   })
 
-  it('folds a chat whose history is corrupt to the status an open writes, and writes nothing', async () => {
-    const journal = await open('corrupt')
+  it("folds nothing for a chat whose rows are damaged or a newer build's, as its open fails", async () => {
+    const journal = await open('damaged')
     await JOURNAL_SESSION_STATE_CORPUS['working subagent roster'](journal)
     const tip = journal.cursor()
     await journals.closeAll()
-    insertTestJournalRowJson(database().db, 'corrupt', tip.sequence + 1, '{"not a row"')
-    dropRow('corrupt')
-    const reopened = await open('corrupt')
-    reopened.sessionStatus.backfill()
-    const byOpen = readTestJournalSessionStatus(root, 'corrupt')
-    await journals.closeAll()
-    dropRow('corrupt')
+    insertTestJournalRowJson(database().db, 'damaged', tip.sequence + 1, '{"not a row"')
+    dropRow('damaged')
 
-    // Folded only: the startup pass leaves a corrupt chat rowless, for its open to rebuild.
-    const derived = await foldJournalSessionStatus(database(), 'corrupt')
-
-    // The rebuild the corruption owes decides the roster, so neither row counts it as live work.
-    expect(derived?.load.corrupt).toBe(true)
-    expect(byOpen?.liveChildWork).toBe(false)
-    expect(derived?.status ?? null).toEqual(byOpen)
-    expect(readTestJournalSessionStatus(root, 'corrupt')).toBeNull()
+    expect(await foldJournalSessionStatus(database(), 'damaged')).toBeNull()
+    expect(readTestJournalSessionStatus(root, 'damaged')).toBeNull()
   })
 
   it("folds nothing from a newer build's database", async () => {

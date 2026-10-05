@@ -10,7 +10,6 @@ import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type { JournalHostDatabase } from './journal-host-database'
 import { startJournalRowFold, type JournalLoad } from './journal-open'
 import { IMPORT_BATCH_ROWS } from './journal-per-session-source'
-import { pendingJournalRepairSequence } from './journal-repair-marker'
 import { readJournalRowsAfter, readJournalSessionEpoch, readJournalTip } from './journal-row-table'
 import {
   deriveJournalSessionStatus,
@@ -75,7 +74,7 @@ function foldableJournalSessionEpoch(
 
 /** The chat's rows folded a part per task, as a replay folds them, and its status derived. Null when
  *  the chat already has a row, has no epoch in this database (it is still in a per-chat file), the
- *  database or the chat's rows are a newer build's, or `signal` aborted, which is checked before each
+ *  database or the chat's rows are a newer build's, its history is damaged, or `signal` aborted, which is checked before each
  *  part. Writes nothing. */
 export async function foldJournalSessionStatus(
   database: JournalHostDatabase,
@@ -92,11 +91,7 @@ export async function foldJournalSessionStatus(
     return null
   }
   const tip = readJournalTip(database.db, sessionId, epoch)
-  const fold = startJournalRowFold({
-    sessionId,
-    epoch,
-    repairedFrom: pendingJournalRepairSequence(database.db, sessionId, epoch)
-  })
+  const fold = startJournalRowFold({ sessionId, epoch })
   for (let afterSeq = Number.MIN_SAFE_INTEGER; ;) {
     if (signal?.aborted) {
       return null
@@ -125,11 +120,11 @@ export async function foldJournalSessionStatus(
     return null
   }
   const load = fold.finish()
-  // A newer build's rows: as an open of it does, this build writes nothing for the chat.
-  if (load.readOnly) {
+  // A newer build's rows or damage: the chat's open fails, so this build writes nothing for it.
+  if (load.newer || load.damage) {
     return null
   }
-  const status = deriveJournalSessionStatus(load.state, { settlesRosters: !load.corrupt })
+  const status = deriveJournalSessionStatus(load.state)
   return { sessionId, epoch, tip, load, status }
 }
 

@@ -7,10 +7,11 @@ import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-
 import type Database from '../../sqlite/sync-database'
 import { beginJournalFoldUndo, type JournalFoldUndo } from './journal-fold-undo'
 import type { JournalHostDatabase } from './journal-host-database'
+import type { JournalLoad } from './journal-open'
 import { applyJournalRow, type JournalReducerState } from './journal-reducer'
-import { JOURNAL_REPAIR_DISCLOSURE_ITEM_ID } from './journal-repair-disclosure'
 import type { JournalRow } from './journal-row-schema'
 import {
+  deleteJournalSessionStatus,
   deriveJournalSessionStatus,
   hasJournalSessionStatus,
   writeJournalSessionStatus
@@ -24,14 +25,10 @@ export type JournalSessionStatusHost = {
   identity: AgentSessionJournalIdentity
   state: () => JournalReducerState
   database: () => JournalHostDatabase
-  readOnly: () => boolean
   /** A per-chat file's copy is still owed: the fold is not the database's yet. */
   importPending: () => boolean
   /** The conversation's fence, which the stored status reads as the status feed does. */
   currentFence: () => number | undefined
-  /** Whether a fresh replay would report the history corrupt. */
-  loadCorrupt: () => boolean
-  setLoadCorrupt: (corrupt: boolean) => void
   /** The undo failed too: the fold is re-read before its next use, never served as it is. */
   markFoldStale: () => void
   notifyCommitted: () => void
@@ -55,13 +52,12 @@ export class JournalSessionStatusWriter {
   /** `live`: the store's own fold, whose projection the status feed shares; an epoch's new fold
    *  projects its own. Decided by the caller, so nothing reads the store's fold inside the
    *  transaction. */
-  write(db: Database.Database, state: JournalReducerState, corrupt: boolean, live: boolean): void {
+  write(db: Database.Database, state: JournalReducerState, live: boolean): void {
     const currentFence = this.host.currentFence()
     writeJournalSessionStatus(
       db,
       this.host.identity.sessionId,
       deriveJournalSessionStatus(state, {
-        settlesRosters: !corrupt,
         currentFence,
         ...(live ? { statusSummary: () => this.projection.at(currentFence).summary } : {})
       })
@@ -78,15 +74,14 @@ export class JournalSessionStatusWriter {
   }
 
   /** Inside an append's transaction, after `apply`: the status of the fold that holds its rows. */
-  writeAppended(db: Database.Database, rows: readonly JournalRow[]): void {
-    this.write(db, this.host.state(), this.corruptAfter(rows), true)
+  writeAppended(db: Database.Database): void {
+    this.write(db, this.host.state(), true)
   }
 
   /** After the append's COMMIT. */
-  committed(rows: readonly JournalRow[]): void {
+  committed(): void {
     this.undo?.commit()
     this.undo = null
-    this.host.setLoadCorrupt(this.corruptAfter(rows))
     this.host.notifyCommitted()
   }
 
@@ -115,12 +110,29 @@ export class JournalSessionStatusWriter {
     this.host.markFoldStale()
   }
 
+  /** A load whose open fails (damage, or a newer build's rows) drops the chat's row, so no startup
+   *  selects it again; an open that succeeds writes it back. Bookkeeping: a failure only logs. */
+  forgetUnloadable = (load: JournalLoad): void => {
+    const database = this.host.database()
+    if ((!load.newer && !load.damage) || database.readOnly) {
+      return
+    }
+    try {
+      database.transaction((db) => deleteJournalSessionStatus(db, this.host.identity.sessionId))
+    } catch (error) {
+      console.warn('[agent-session-journal] dropping an unloadable chat status failed', {
+        sessionId: this.host.identity.sessionId,
+        error
+      })
+    }
+  }
+
   /** Writes the chat's status if it has none: a chat an older build last wrote. Bookkeeping: a
    *  failure leaves the chat without a row, which its next open writes again. */
   backfill = (): void => {
     const { host } = this
     const database = host.database()
-    if (host.readOnly() || database.readOnly || host.importPending()) {
+    if (database.readOnly || host.importPending()) {
       return
     }
     try {
@@ -128,7 +140,7 @@ export class JournalSessionStatusWriter {
       const state = host.state()
       database.transaction((db) => {
         if (!hasJournalSessionStatus(db, host.identity.sessionId)) {
-          this.write(db, state, host.loadCorrupt(), true)
+          this.write(db, state, true)
         }
       })
     } catch (error) {
@@ -137,13 +149,5 @@ export class JournalSessionStatusWriter {
         error
       })
     }
-  }
-
-  // Any row but the repair's own disclosure retires the rebuild a repair owed, as replay reads it.
-  private corruptAfter(rows: readonly JournalRow[]): boolean {
-    return (
-      this.host.loadCorrupt() &&
-      rows.every((row) => row.kind === 'item' && row.itemId === JOURNAL_REPAIR_DISCLOSURE_ITEM_ID)
-    )
   }
 }

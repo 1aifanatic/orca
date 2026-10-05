@@ -1,17 +1,16 @@
 // The one way a conversation's journal becomes open on this host: for a send, for a reader, and
 // for an attach that finds none open.
 //
-// It opens with recovery, so an unusable journal is rebuilt rather than refused, and it appends
-// the chat's open settlement plan (structured-agent-session-open-settlement.ts): what an earlier
+// A damaged journal fails the open, which refuses it as unloadable. It appends the chat's open
+// settlement plan (structured-agent-session-open-settlement.ts): what an earlier
 // host process handed over and left unanswered becomes doubt, what it accepted and never handed
 // over is rejected, and what it left running is settled — the crash boundary. That needs no lease:
 // provider history decides a doubtful row later, under a won lease, in the attach. Nothing here
 // starts a provider child. The plan's appends keep the chat's stored state current, and the open
-// re-derives it when something else (an older build, an import, a repair) left it behind.
+// re-derives it when something else (an older build, an import) left it behind.
 
-import type { AgentJournalResetReason } from '../../../shared/agent-session-journal-types'
 import type { JournalHostDatabase } from '../agent-session-journal/journal-host-database'
-import { openAgentSessionJournalWithRecovery } from './agent-session-journal-recovery'
+import { openAgentSessionJournal } from '../agent-session-journal/journal-store-factory'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import {
@@ -20,7 +19,6 @@ import {
   type AgentSessionAttachParams
 } from './structured-agent-session-attach'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
-import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import {
   appendGoneGenerationSettlement,
   appendOpenSettlement,
@@ -35,13 +33,10 @@ import type {
 
 export type OpenedStructuredAgentSessionConversation = {
   session: StructuredAgentSessionHostSession
-  /** Set when the journal was rebuilt on the way; readers reload from a snapshot. */
-  reset: AgentJournalResetReason | null
 }
 
 export type StructuredAgentSessionConversationOpenDeps = {
   store: Pick<AgentSessionRecordStore, 'getRecord'>
-  adapter: Pick<StructuredAgentSessionAdapter, 'historyFilePath'>
   journalDatabase: JournalHostDatabase
   logger: StructuredAgentSessionHostDeps['logger']
 }
@@ -98,11 +93,9 @@ export async function openStructuredAgentSessionConversationJournal(
     expectedRuntimeFence: fence
   })
   const identity = journalIdentityFor(record, params)
-  const opened = await openAgentSessionJournalWithRecovery({
+  const journal = await openAgentSessionJournal({
     identity,
     database: deps.journalDatabase,
-    fence,
-    historyFilePath: (await deps.adapter.historyFilePath?.({ identity })) ?? null,
     deferPerSessionImport: options.deferPerSessionImport,
     // The fence the status feed reads, which a child's end moves after this open.
     currentFence: () => deps.store?.getRecord(sessionId)?.lease.runtimeFence ?? fence
@@ -110,22 +103,18 @@ export async function openStructuredAgentSessionConversationJournal(
   // No child in this process writes to a journal nobody had open, so whatever it shows running
   // belongs to a generation that is gone, whatever the lease still claims. Settled before any
   // reader or child sees it; an acquisition settles against the generation it takes instead.
-  const plan = planOpenSettlement(opened.journal, openSettlementRecordFacts(record), {
-    acquisition: options.acquisition,
-    settlesRosters: !opened.journal.needsRebuild
+  const plan = planOpenSettlement(journal, openSettlementRecordFacts(record), {
+    acquisition: options.acquisition
   })
-  await appendOpenSettlement(opened.journal, plan, fence, (error) =>
+  await appendOpenSettlement(journal, plan, fence, (error) =>
     deps.logger.warn("settling a gone agent's work on open failed", {
       scope: 'open-dead-generation',
       sessionId,
       error
     })
   )
-  opened.journal.sessionStatus.backfill()
-  return {
-    session: { journal: opened.journal, params, child: null },
-    reset: opened.recovery?.reset ?? null
-  }
+  journal.sessionStatus.backfill()
+  return { session: { journal, params, child: null } }
 }
 
 /**
@@ -142,11 +131,7 @@ export async function resettleOpenStructuredAgentSessionConversation(
   if (!session || !record?.lease.deathEvidence) {
     return
   }
-  const { goneGeneration } = planOpenSettlement(
-    session.journal,
-    openSettlementRecordFacts(record),
-    { settlesRosters: false }
-  )
+  const { goneGeneration } = planOpenSettlement(session.journal, openSettlementRecordFacts(record))
   try {
     if (goneGeneration && goneGeneration.mutations.length > 0) {
       await appendGoneGenerationSettlement(

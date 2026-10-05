@@ -1,9 +1,7 @@
 // Republishing a live item set into a fresh epoch.
 //
 // One transaction: discard the old epoch's rows, insert the epoch row plus the
-// replacement items, move the session projection, retire any repair marker
-// — this republished history is exactly what the marker was holding out for —
-// and write the chat's status for the new epoch.
+// replacement items, move the session projection, and write the chat's status for the new epoch.
 
 import type {
   AgentJournalItemBody,
@@ -14,7 +12,6 @@ import type {
 } from '../../../shared/agent-session-journal-types'
 import type { JournalHostDatabase } from './journal-host-database'
 import type { JournalLoad } from './journal-open'
-import { clearJournalRepairMarker } from './journal-repair-marker'
 import type { JournalEpochStateWriter } from './journal-epoch-rollover'
 import { applyJournalRow, createJournalReducerState } from './journal-reducer'
 import { buildJournalItemRow, journalRowBase } from './journal-row-builders'
@@ -100,17 +97,16 @@ export function replaceJournalEpoch(input: {
     if (retired !== null) {
       deleteJournalEpochRows(db, sessionId, retired)
     }
-    clearJournalRepairMarker(db, sessionId)
     for (const row of rows) {
       insertJournalRow(db, sessionId, row)
     }
     publishJournalSessionEpoch(db, input.identity, epoch)
-    input.writeState(db, state, false)
+    input.writeState(db, state)
   })
 
   // COMMIT landed: on disk the superseded rows are gone and this epoch is the
   // live one. The caller adopts that immediately, or a later failure leaves the
   // live store writing into an epoch whose rows were just deleted.
   state.oldestSequence = 1
-  input.onPublished({ state, readOnly: false, corrupt: false, malformedRows: 0 })
+  input.onPublished({ state, newer: null, damage: null })
 }

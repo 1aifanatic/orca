@@ -461,7 +461,7 @@ describe('a Claude subagent resumed after its provider restarted', () => {
     // What the conversation's open appends before an acquisition reads the journal.
     await appendOpenSettlement(
       journal,
-      planOpenSettlement(journal, null, { acquisition: true, settlesRosters: true }),
+      planOpenSettlement(journal, null, { acquisition: true }),
       0,
       (error) => {
         throw error

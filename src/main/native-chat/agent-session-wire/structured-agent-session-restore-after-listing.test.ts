@@ -37,14 +37,13 @@ async function bootWithHeldPass() {
   const host = await rig.boot()
   const held = Promise.withResolvers<void>()
   releaseHeld = held.resolve
-  rig.adapter.historyFilePath.mockImplementation(async (sessionId) => {
+  rig.journalOpens.mockImplementation(async (sessionId) => {
     if (sessionId === IDS[0]) {
       await held.promise
     }
-    return null
   })
   const pass = host.restoreReadableSessions(IDS)
-  await vi.waitFor(() => expect(rig.adapter.historyFilePath).toHaveBeenCalledOnce())
+  await vi.waitFor(() => expect(rig.journalOpens).toHaveBeenCalledOnce())
   return { host, pass, release: held.resolve }
 }
 

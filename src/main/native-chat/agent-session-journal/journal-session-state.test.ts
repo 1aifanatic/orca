@@ -5,7 +5,10 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
+import {
+  AGENT_SESSION_JOURNAL_SCHEMA_VERSION,
+  type AgentSessionJournalIdentity
+} from '../../../shared/agent-session-journal-types'
 import { projectStructuredAgentSessionStatusState } from '../../../shared/structured-agent-session-projection'
 import { activeStructuredAgentSessionTurnIdBySequence } from '../../../shared/structured-agent-session-live-turn'
 import { JOURNAL_DB_SCHEMA_VERSION } from './journal-database-schema'
@@ -14,20 +17,19 @@ import { journalDatabasePath } from './journal-host-database'
 import Database from '../../sqlite/sync-database'
 import {
   createTrackedJournalOpener,
-  insertTestJournalRowJson,
+  liveTestJournalRows,
   loadTestJournal,
   openTestJournalHostDatabase,
-  readTestJournalSessionStatus
+  readTestJournalSessionStatus,
+  updateTestJournalRowJson
 } from './journal-host-database-test-support'
 import * as JournalFoldUndo from './journal-fold-undo'
 import * as JournalOpen from './journal-open'
 import { renderJournalState } from './journal-reducer'
-import { deleteJournalRepairedSuffix } from './journal-repair-marker'
 import {
   deriveJournalSessionStatus,
   isUnsettledJournalSessionStatus,
   readUnsettledJournalSessionIds,
-  writeJournalSessionStatusFromDisk,
   type JournalSessionStatus
 } from './journal-session-state'
 import {
@@ -83,10 +85,7 @@ function freshDerivation(sessionId: string): JournalSessionStatus {
   if (!loaded) {
     throw new Error(`no journal for ${sessionId}`)
   }
-  return deriveJournalSessionStatus(loaded.state, {
-    settlesRosters: !loaded.corrupt,
-    currentFence: CORPUS_FENCE
-  })
+  return deriveJournalSessionStatus(loaded.state, { currentFence: CORPUS_FENCE })
 }
 
 const stored = (sessionId: string) => readTestJournalSessionStatus(root, sessionId)
@@ -197,74 +196,31 @@ describe('observers hear of a write only once it is committed (T13)', () => {
   })
 })
 
-describe('a chat that opened corrupt stores what a fresh replay derives (T3)', () => {
-  const name = 'working subagent roster'
-
-  async function openCorrupt(): Promise<AgentSessionJournal> {
+describe('an open that fails on its rows drops the stored status (T10)', () => {
+  // Each rewrites a row in place, so the stored row still names the chat's tip and is selected.
+  it.each([
+    ['damage', (rowJson: string) => `${rowJson.slice(0, 8)}`],
+    [
+      "a newer build's row",
+      (rowJson: string) =>
+        JSON.stringify({ ...JSON.parse(rowJson), v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION + 1 })
+    ]
+  ] as const)('%s', async (_case, rewrite) => {
+    const name = 'running tool'
     const journal = await write(name)
     const tip = journal.cursor()
     await journal.close()
-    // A bad write past the tip: the next open drops it and owes a rebuild from provider history.
-    insertTestJournalRowJson(db(), name, tip.sequence + 1, '{"not a row"')
-    const reopened = await open(name)
-    expect(reopened.needsRebuild).toBe(true)
-    // The repair wrote the status; rosters wait for the rebuild, as the settle does.
-    expect(stored(name)).toEqual(freshDerivation(name))
-    expect(stored(name)).toMatchObject({ liveChildWork: false })
-    return reopened
-  }
+    expect(readUnsettledJournalSessionIds(db())).toContain(name)
+    const row = liveTestJournalRows(db(), name).find((stored) => stored.seq === 2)!
+    updateTestJournalRowJson(db(), name, 2, rewrite(row.rowJson))
+    expect(readUnsettledJournalSessionIds(db())).toContain(name)
 
-  it('shows the roster again once the chat writes past the repair', async () => {
-    const journal = await openCorrupt()
-    await note(journal, 'note-1')
-    expect(journal.needsRebuild).toBe(false)
-    expect(stored(name)).toEqual(freshDerivation(name))
-    expect(stored(name)).toMatchObject({ liveChildWork: true })
-  })
+    await expect(open(name)).rejects.toThrow()
 
-  it('shows the roster again once provider history rebuilds the chat', async () => {
-    const journal = await openCorrupt()
-    await journal.replaceEpochItems('legacy_import', 3, [
-      {
-        identity: { provider: 'orca', clientMessageId: 'roster-1' },
-        body: {
-          kind: 'message',
-          role: 'system',
-          blocks: [
-            {
-              type: 'subagent-group',
-              groupId: 'group-1',
-              agents: [{ id: 'child-1', label: 'reads', state: 'working', startedAt: 10 }]
-            }
-          ]
-        }
-      }
-    ])
-    expect(journal.needsRebuild).toBe(false)
-    expect(stored(name)).toEqual(freshDerivation(name))
-    expect(stored(name)).toMatchObject({ liveChildWork: true })
-  })
-})
-
-describe('a repair writes the status of what it leaves (T10)', () => {
-  it('drops the rejected suffix and the status that described it, in one transaction', async () => {
-    const journal = await write('running tool')
-    const tip = journal.cursor()
-    await journal.close()
-    expect(stored('running tool')).toMatchObject({ lifecycle: 'running' })
-
-    deleteJournalRepairedSuffix({
-      database: openTestJournalHostDatabase(root),
-      sessionId: 'running tool',
-      epoch: tip.epoch,
-      fromSeq: tip.sequence,
-      contentFrom: tip.sequence,
-      now: clock + 1,
-      writeStatus: (database) => writeJournalSessionStatusFromDisk(database, 'running tool')
-    })
-
-    expect(stored('running tool')).toEqual(freshDerivation('running tool'))
-    expect(stored('running tool')).toMatchObject({ lifecycle: 'idle' })
+    // Nothing selects it again, and no stale status is seeded; every row stays.
+    expect(stored(name)).toBeNull()
+    expect(readUnsettledJournalSessionIds(db())).not.toContain(name)
+    expect(liveTestJournalRows(db(), name)).toHaveLength(tip.sequence)
   })
 })
 

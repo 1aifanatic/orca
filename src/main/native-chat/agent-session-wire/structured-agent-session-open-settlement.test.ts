@@ -15,7 +15,6 @@ import {
 import {
   createTrackedJournalOpener,
   insertTestJournalRow,
-  insertTestJournalRowJson,
   liveTestJournalRows,
   openTestJournalHostDatabase,
   readTestJournalSessionStatus
@@ -100,7 +99,7 @@ describe('the stored status and the plan agree (T4)', () => {
 
     // Pinned per case, so agreement between the status and the plan cannot hide both being wrong.
     expect(selected(sessionId)).toBe(CORPUS_UNSETTLED[name])
-    const plan = planOpenSettlement(journal, record, { settlesRosters: true })
+    const plan = planOpenSettlement(journal, record)
     // Evidence naming an `unverifiable` turn's writer lets an open revise it; startup never selects
     // a chat for that (main's acquisition path does it when the chat is next used).
     const revisesVerdictOnly =
@@ -124,9 +123,7 @@ describe('the stored status and the plan agree (T4)', () => {
 
     // Every entry revised its entity out of the state that selected it (T4b, T15b).
     expect(selected(sessionId)).toBe(false)
-    expect(
-      openSettlementPlanIsEmpty(planOpenSettlement(journal, record, { settlesRosters: true }))
-    ).toBe(true)
+    expect(openSettlementPlanIsEmpty(planOpenSettlement(journal, record))).toBe(true)
   })
 
   it("ends a turn a person's Stop found as theirs, with no row saying the provider stopped", async () => {
@@ -143,7 +140,7 @@ describe('the stored status and the plan agree (T4)', () => {
       await JOURNAL_SESSION_STATE_CORPUS["running turn a person's Stop found"](journal)
       const deathEvidence = CORPUS_DEATH_EVIDENCE[evidenceName] ?? null
       const record: OpenSettlementRecordFacts = { sessionId, fence: CORPUS_FENCE, deathEvidence }
-      const plan = planOpenSettlement(journal, record, { settlesRosters: true })
+      const plan = planOpenSettlement(journal, record)
       await appendOpenSettlement(journal, plan, CORPUS_FENCE, (error) => {
         throw error
       })
@@ -166,39 +163,6 @@ describe('the stored status and the plan agree (T4)', () => {
     // Found dead before the Stop event's time: the death explains the end, and says so.
     const before = await settle('names the writer')
     expect(providerStoppedRows(before.plan)).toHaveLength(1)
-  })
-
-  it('agrees on a chat that opened corrupt, and again once it writes past the repair', async () => {
-    const first = await open('corrupt')
-    await JOURNAL_SESSION_STATE_CORPUS['working subagent roster'](first)
-    const tip = first.cursor()
-    await first.close()
-    insertTestJournalRowJson(openTestJournalHostDatabase(root).db, 'corrupt', tip.sequence + 1, '{')
-    const journal = await open('corrupt')
-    const record: OpenSettlementRecordFacts = {
-      sessionId: 'corrupt',
-      fence: CORPUS_FENCE,
-      deathEvidence: null
-    }
-    const plan = () =>
-      planOpenSettlement(journal, record, { settlesRosters: !journal.needsRebuild })
-
-    // The rebuild is still owed, so neither touches the roster.
-    expect(journal.needsRebuild).toBe(true)
-    expect(selected('corrupt')).toBe(false)
-    expect(openSettlementPlanIsEmpty(plan())).toBe(true)
-
-    await journal.appendItem(
-      { provider: 'orca', clientMessageId: 'note-1' },
-      { kind: 'status', text: 'a note' },
-      { fence: CORPUS_FENCE, turnScope: { kind: 'thread' } }
-    )
-    expect(selected('corrupt')).toBe(true)
-    expect(plan().rosters).toHaveLength(1)
-    await appendOpenSettlement(journal, plan(), CORPUS_FENCE, (error) => {
-      throw error
-    })
-    expect(selected('corrupt')).toBe(false)
   })
 
   it('selects nothing for an item whose key will not parse, which no plan can revise (R1J-4)', async () => {
@@ -245,11 +209,11 @@ describe('the stored status and the plan agree (T4)', () => {
     journal.sessionStatus.backfill()
     expect(readTestJournalSessionStatus(root, 'unkeyed')).not.toBeNull()
     const deathEvidence = CORPUS_DEATH_EVIDENCE['names the writer'] ?? null
-    const plan = planOpenSettlement(
-      journal,
-      { sessionId: 'unkeyed', fence: CORPUS_FENCE, deathEvidence },
-      { settlesRosters: true }
-    )
+    const plan = planOpenSettlement(journal, {
+      sessionId: 'unkeyed',
+      fence: CORPUS_FENCE,
+      deathEvidence
+    })
 
     expect(openSettlementPlanIsEmpty(plan)).toBe(true)
     expect(storedStatus('unkeyed')).toMatchObject({ lifecycle: 'idle' })
@@ -267,7 +231,7 @@ describe('the stored status and the plan agree (T4)', () => {
     const journal = await open('queued')
     await JOURNAL_SESSION_STATE_CORPUS['queued leftover'](journal)
     expect(storedStatus('queued')).toMatchObject({ lifecycle: 'idle', queuedSends: 1 })
-    const plan = planOpenSettlement(journal, null, { settlesRosters: true })
+    const plan = planOpenSettlement(journal, null)
     expect(plan.leftoverQueued).toEqual(['send-queued'])
 
     await appendOpenSettlement(journal, plan, CORPUS_FENCE, (error) => {

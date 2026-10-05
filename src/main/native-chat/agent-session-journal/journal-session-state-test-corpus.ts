@@ -5,6 +5,7 @@ import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journa
 import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
+import { agentSessionHostStatusBody } from '../../../shared/agent-session-host-status-rows'
 import { structuredAgentSessionPayloadFingerprint } from '../../../shared/structured-agent-session-mutation'
 import type { AgentSessionJournal } from './journal-store'
 import {
@@ -226,6 +227,16 @@ export const JOURNAL_SESSION_STATE_CORPUS = {
       startedAt: 10
     })
     await journal.appendStopEvent({ reason: 'user-stop', turnId: 'turn-2' }, CORPUS_FENCE)
+  },
+  // An older build's repair left its notice newest; nothing here owes a rebuild, so the roster counts.
+  'working roster under a former repair notice': async (journal: AgentSessionJournal) => {
+    await settledTurn(journal, 'turn-1')
+    await item(journal, { provider: 'orca', clientMessageId: 'roster-1' }, roster('working'))
+    await item(
+      journal,
+      { provider: 'orca', clientMessageId: 'journal-malformed-lines' },
+      agentSessionHostStatusBody('history-repaired')
+    )
   }
 } satisfies Record<string, (journal: AgentSessionJournal) => Promise<void>>
 
@@ -254,7 +265,8 @@ export const CORPUS_UNSETTLED: Record<JournalSessionStateCase, boolean> = {
   'running turn on a legacy status row': true,
   'running work settled by a batch': false,
   'unknown send recovered': false,
-  "running turn a person's Stop found": true
+  "running turn a person's Stop found": true,
+  'working roster under a former repair notice': true
 }
 
 export const JOURNAL_SESSION_STATE_CASES = Object.keys(JOURNAL_SESSION_STATE_CORPUS).filter(

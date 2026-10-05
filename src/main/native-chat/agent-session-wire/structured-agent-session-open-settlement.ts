@@ -72,14 +72,12 @@ export type OpenSettlementJournal = Pick<
 
 export type OpenSettlementOptions = {
   acquisition?: boolean
-  /** False on a corrupt load, which still owes a rebuild that a roster write would retire. */
-  settlesRosters: boolean
 }
 
 export function planOpenSettlement(
   journal: OpenSettlementJournal,
   record: OpenSettlementRecordFacts | null,
-  options: OpenSettlementOptions
+  options: OpenSettlementOptions = {}
 ): OpenSettlementPlan {
   const { items } = journal.snapshot()
   const submissions = journal.submissions()
@@ -102,7 +100,7 @@ export function planOpenSettlement(
           deathEvidence: record?.deathEvidence ?? null,
           failureTextContext: record?.failureTextContext
         }),
-    rosters: options.settlesRosters ? staleSubagentRosterRevisions(items) : []
+    rosters: staleSubagentRosterRevisions(items)
   }
 }
 

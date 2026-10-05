@@ -8,7 +8,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type * as JournalSessionStateModule from '../agent-session-journal/journal-session-state'
 import { JOURNAL_SESSION_STATUS_RULES } from '../agent-session-journal/journal-session-state'
 import type * as StatusBackfillModule from '../agent-session-journal/journal-session-status-backfill'
-import type * as JournalRecoveryModule from './agent-session-journal-recovery'
 import type * as PerSessionImportModule from '../agent-session-journal/journal-per-session-import'
 import {
   closeTestJournalHostDatabases,
@@ -92,28 +91,6 @@ vi.mock('../agent-session-journal/journal-session-status-backfill', async (impor
   }
 })
 
-// Each chat an open found corrupt and sent through its rebuild.
-const rebuilds = vi.hoisted(() => {
-  const opened: { sessionIds: string[] } = { sessionIds: [] }
-  return opened
-})
-
-vi.mock('./agent-session-journal-recovery', async (importOriginal) => {
-  const actual = await importOriginal<typeof JournalRecoveryModule>()
-  return {
-    ...actual,
-    openAgentSessionJournalWithRecovery: async (
-      ...args: Parameters<typeof actual.openAgentSessionJournalWithRecovery>
-    ) => {
-      const opened = await actual.openAgentSessionJournalWithRecovery(...args)
-      if (opened.recovery?.trigger === 'journal_corrupt') {
-        rebuilds.sessionIds.push(args[0].identity.sessionId)
-      }
-      return opened
-    }
-  }
-})
-
 // Each preview of a chat still in its per-chat file, and the chats whose file reads as damaged.
 const previews = vi.hoisted(() => {
   const seen: { sessionIds: string[]; damaged: Set<string> } = {
@@ -148,7 +125,6 @@ afterEach(async () => {
   work.folded.length = 0
   work.commits = 0
   work.afterFold = null
-  rebuilds.sessionIds.length = 0
   previews.sessionIds.length = 0
   previews.damaged.clear()
   for (const rig of rigs.splice(0)) {
@@ -204,11 +180,10 @@ const firstStatus = (rig: RestTestRig, sessionId: string) =>
 /** The status stream's length when each chat first opened. */
 function recordOpens(rig: RestTestRig): Map<string, number> {
   const openedAt = new Map<string, number>()
-  rig.adapter.historyFilePath.mockImplementation(async (sessionId) => {
+  rig.journalOpens.mockImplementation(async (sessionId) => {
     if (!openedAt.has(sessionId)) {
       openedAt.set(sessionId, rig.statusEvents.length)
     }
-    return null
   })
   return openedAt
 }
@@ -317,25 +292,31 @@ describe('listed chats with no stored status after the upgrade', () => {
     expect(frames).toBeLessThanOrEqual(150)
   }, 120_000)
 
-  it('gives a corrupt one no row, so the restore after the listing opens it and its rebuild runs', async () => {
+  it('gives a damaged one no row, and its open after the listing fails, logged once, every row kept', async () => {
     const rig = await newRig()
-    await restTestChat(rig, 'session-corrupt', { message: 'asked' })
+    await restTestChat(rig, 'session-damaged', { message: 'asked' })
     await rig.host.flushAllStreamedEvents()
     await rig.crash()
     const { db } = openTestJournalHostDatabase(rig.root)
-    const tip = liveTestJournalRows(db, 'session-corrupt').at(-1)!
-    insertTestJournalRowJson(db, 'session-corrupt', tip.seq + 1, '{')
+    const tip = liveTestJournalRows(db, 'session-damaged').at(-1)!
+    insertTestJournalRowJson(db, 'session-damaged', tip.seq + 1, '{')
     upgradeToEmptyStatusTable(rig)
-    expect(loadTestJournal(rig.root, 'session-corrupt')).toMatchObject({ corrupt: true })
+    expect(loadTestJournal(rig.root, 'session-damaged')?.damage).not.toBeNull()
     await rig.boot()
+    const warn = vi.spyOn(rig.host.deps.logger, 'warn')
 
     const background = await startup(rig)
 
-    expect(readTestJournalSessionStatus(rig.root, 'session-corrupt')).toBeNull()
-    expect(latestRestTestStatus(rig, 'session-corrupt')).toBeUndefined()
-    expect(background).toEqual(['session-corrupt'])
+    expect(readTestJournalSessionStatus(rig.root, 'session-damaged')).toBeNull()
+    expect(latestRestTestStatus(rig, 'session-damaged')).toBeUndefined()
+    expect(background).toEqual(['session-damaged'])
     await rig.host.restoreReadableSessions(background)
-    expect(rebuilds.sessionIds).toEqual(['session-corrupt'])
+    expect(rig.host.hasSession('session-damaged')).toBe(false)
+    expect(
+      warn.mock.calls.filter(([, fields]) => fields?.sessionId === 'session-damaged')
+    ).toHaveLength(1)
+    expect(readTestJournalSessionStatus(rig.root, 'session-damaged')).toBeNull()
+    expect(liveTestJournalRows(db, 'session-damaged').length).toBe(tip.seq + 1)
   })
 
   it('derives a row again on the next launch when its unsynced commit was lost', async () => {

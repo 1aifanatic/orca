@@ -231,7 +231,7 @@ describe('listing chat tabs at startup', () => {
         ids.filter((id) => readTestJournalSessionStatus(rig.root, id) !== null).length
       const seen = () => ({
         started: restore.mock.calls.length,
-        opens: rig.adapter.historyFilePath.mock.calls.length,
+        opens: rig.journalOpens.mock.calls.length,
         rows: rows()
       })
 
@@ -372,11 +372,10 @@ describe('listing chat tabs at startup', () => {
     for (const sessionId of failing) {
       failingDerives.add(sessionId)
     }
-    rig.adapter.historyFilePath.mockImplementation(async (sessionId) => {
+    rig.journalOpens.mockImplementation(async (sessionId) => {
       if (failing.includes(sessionId)) {
         throw new Error('EACCES: permission denied')
       }
-      return null
     })
     const warn = vi.spyOn(rig.host.deps.logger, 'warn').mockImplementation(() => undefined)
     const restore = vi.spyOn(rig.host, 'restoreReadableSessions')

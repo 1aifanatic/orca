@@ -4,7 +4,7 @@
 import type { RestTestRig } from './structured-agent-session-rest-test-rig'
 
 export function restTestOpens(rig: RestTestRig, sessionId: string): number {
-  return rig.adapter.historyFilePath.mock.calls.filter(([id]) => id === sessionId).length
+  return rig.journalOpens.mock.calls.filter(([id]) => id === sessionId).length
 }
 
 /** The newest row the status stream carried for a session. */

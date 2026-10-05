@@ -100,10 +100,7 @@ function ledgerReceipt(): JournalOperationReceipt & { adopted: number; inTransac
 /** What a fresh open of the chat derives, read back from disk. */
 function freshDerivation() {
   const loaded = loadTestJournal(root, SESSION)!
-  return deriveJournalSessionStatus(loaded.state, {
-    settlesRosters: !loaded.corrupt,
-    currentFence: FENCE
-  })
+  return deriveJournalSessionStatus(loaded.state, { currentFence: FENCE })
 }
 
 /** Fails the next COMMIT the connection runs, once. */
