@@ -19,7 +19,6 @@ import type { HostScreenState } from './use-host-screen-state'
 export function useHostViewSettings(args: {
   client: RpcClient | null
   connState: ConnectionState
-  hostId: string | undefined
   state: HostScreenState
 }) {
   const { client, connState, state } = args

@@ -65,7 +65,7 @@ export function useHostScreenController({
   const now = useNow(30_000)
   const { hostCapabilities, floatingWorkspaceEnabled } = useHostProtocolGates()
   const state = useHostScreenState(hostId, action)
-  const settings = useHostViewSettings({ client, connState, hostId, state })
+  const settings = useHostViewSettings({ client, connState, state })
   const hostDisplay = useHostDisplay(
     hostId && state.hostName
       ? { id: hostId, name: state.hostName, ...state.hostStoredDescriptor }

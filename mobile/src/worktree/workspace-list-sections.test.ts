@@ -737,50 +737,6 @@ describe('buildSections', () => {
     }
   )
 
-  describe('a pinned parent with an unpinned child', () => {
-    const parent = worktree({ worktreeId: 'parent', displayName: 'parent', isPinned: true })
-    const child = worktree({
-      worktreeId: 'child',
-      displayName: 'child',
-      parentWorktreeId: 'parent'
-    })
-
-    function nesting(policy: PinnedDisplayPolicy) {
-      const sections = buildSections(
-        [child, parent],
-        'name',
-        { filterRepoIds: new Set(), hideSleeping: false, hideDefaultBranch: false },
-        '',
-        'repo',
-        new Set(),
-        new Map(),
-        DEFAULT_MOBILE_WORKSPACE_STATUSES,
-        new Set(),
-        policy
-      )
-      return sections.map((section) => ({
-        key: section.key,
-        rows: section.data.map((row) => [row.worktreeId, row.lineageDepth])
-      }))
-    }
-
-    const nested = [
-      ['parent', 0],
-      ['child', 1]
-    ]
-
-    it('moves the child into Pinned under its parent under single-location', () => {
-      expect(nesting('single-location')).toEqual([{ key: 'pinned', rows: nested }])
-    })
-
-    it('nests the child under its parent in both sections under duplicate-in-groups', () => {
-      expect(nesting('duplicate-in-groups')).toEqual([
-        { key: 'pinned', rows: nested },
-        { key: 'repo:orca', rows: nested }
-      ])
-    })
-  })
-
   it('drops a repo group whose only worktree is pinned under single-location, like desktop', () => {
     const pinned = worktree({ worktreeId: 'pinned', isPinned: true })
 

@@ -37,7 +37,7 @@ async function syncedPolicies(reply: RpcResponse, swapClientMidRead = false): Pr
     workspaceStatuses: []
   }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the sync reads only clientRef and setPinnedDisplayPolicy; the rest feed the mount-time ref mirror.
-  const args = { client, connState: 'connected', hostId: 'host-1', state } as unknown as Parameters<
+  const args = { client, connState: 'connected', state } as unknown as Parameters<
     typeof useHostViewSettings
   >[0]
   const held: { sync: (() => Promise<void>) | null } = { sync: null }
@@ -101,7 +101,6 @@ describe('the host list mirrors the desktop pinned-placement setting', () => {
     const args = {
       client,
       connState: 'connected',
-      hostId: 'host-1',
       state
     } as unknown as Parameters<typeof useHostViewSettings>[0]
     const held: { sync: (() => Promise<void>) | null } = { sync: null }

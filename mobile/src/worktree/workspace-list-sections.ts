@@ -123,20 +123,24 @@ export function isWorktreePinned(w: Worktree, localPins: Set<string>): boolean {
   return w.isPinned || localPins.has(w.worktreeId)
 }
 
-// Descendants follow a pin through the visible chain only: a filtered-out child breaks it.
-function getPinnedSectionIdentities(rows: Worktree[], localPins: Set<string>): Set<string> {
-  const childrenByParentId = getMobileWorkspaceLineageChildren(rows)
-  const queue = rows.filter((w) => isWorktreePinned(w, localPins))
-  const included = new Set<string>()
-  // Iterating while appending walks the worklist; `included` stops a malformed cycle.
+// Descendants follow a visible pin through filtered-out rows too, as desktop's Pinned section does.
+function getPinnedSectionIdentities(
+  allRows: readonly Worktree[],
+  visibleRows: readonly Worktree[],
+  localPins: Set<string>
+): Set<string> {
+  const childrenByParentId = getMobileWorkspaceLineageChildren(allRows)
+  const queue = visibleRows.filter((w) => isWorktreePinned(w, localPins))
+  const seen = new Set<string>()
+  // Iterating while appending walks the worklist; `seen` stops a malformed cycle.
   for (const w of queue) {
     const identity = getWorktreeRowIdentity(w)
-    if (!included.has(identity)) {
-      included.add(identity)
+    if (!seen.has(identity)) {
+      seen.add(identity)
       queue.push(...(childrenByParentId.get(identity) ?? []))
     }
   }
-  return included
+  return seen
 }
 
 export function buildSections(
@@ -154,7 +158,7 @@ export function buildSections(
   const filtered = filterWorktrees(worktrees, filters, search)
   const sorted = sortWorktrees(filtered, sortMode)
 
-  const pinnedIdentities = getPinnedSectionIdentities(sorted, pinnedIds)
+  const pinnedIdentities = getPinnedSectionIdentities(worktrees, sorted, pinnedIds)
   const pinned = sorted.filter((w) => pinnedIdentities.has(getWorktreeRowIdentity(w)))
   // Pinned placement is what the user sees, so device-local pins leave their groups too.
   const canonicalGroupWorktrees =
