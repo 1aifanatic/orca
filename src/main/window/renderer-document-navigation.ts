@@ -29,7 +29,8 @@ export function isRendererDocumentNavigation(currentUrl: string, nextUrl: string
 
 export function registerRendererDocumentNavigation(
   webContents: Pick<WebContents, 'getURL' | 'isLoadingMainFrame' | 'on'>,
-  onStarted: () => (() => void) | void
+  onStarted: () => (() => void) | void,
+  onCommitted?: () => void
 ): void {
   let documentGeneration = 0
   let fenceGeneration = 0
@@ -83,6 +84,7 @@ export function registerRendererDocumentNavigation(
       documentGeneration += 1
       fenceActive = false
       cancelReload = null
+      onCommitted?.()
     }
   })
 }

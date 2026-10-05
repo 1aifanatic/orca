@@ -6,6 +6,43 @@ import type {
   WorkspaceSessionPatch,
   WorkspaceSessionState
 } from '../../shared/workspace-session-state-types'
+import {
+  classifyRendererSessionWrite,
+  obsoleteWindowDocuments,
+  type RendererSessionWriteEvent
+} from '../window/obsolete-window-documents'
+import { mergeObsoleteDocumentDrafts } from './obsolete-document-session-writes'
+
+/**
+ * True when the write may land as today. A document that missed a host editor commit (or a
+ * superseded main frame) gets the normal success reply, but only its unsaved drafts are kept.
+ */
+function admitRendererSessionWrite(
+  store: Store,
+  event: RendererSessionWriteEvent,
+  payload: WorkspaceSessionPatch,
+  hostId: string | null | undefined
+): boolean {
+  const admission = classifyRendererSessionWrite(event)
+  if (admission === 'admit') {
+    return true
+  }
+  const webContentsId = typeof event.sender?.id === 'number' ? event.sender.id : -1
+  if (obsoleteWindowDocuments.shouldLogDiscard(webContentsId)) {
+    console.warn(`[session] Discarding session writes from a ${admission} window document`)
+  }
+  if (admission === 'obsolete') {
+    const merge = mergeObsoleteDocumentDrafts(store.getWorkspaceSession(hostId), payload)
+    if (merge.absentDrafts > 0) {
+      // Why only logged: the live document still holds the text; its unload checkpoint refuses.
+      console.warn(`[session] Kept ${merge.absentDrafts} draft(s) out of a stale window document`)
+    }
+    if (merge.changed) {
+      store.setWorkspaceSession(merge.merged, hostId)
+    }
+  }
+  return false
+}
 
 export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeService): void {
   // Why: hostId is an optional second arg so an older renderer that invokes
@@ -22,12 +59,16 @@ export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeServic
     return store.getWorkspaceSessionHostIds()
   })
 
-  ipcMain.handle('session:set', (_event, args: WorkspaceSessionState, hostId?: string | null) => {
-    store.setWorkspaceSession(args, hostId)
+  ipcMain.handle('session:set', (event, args: WorkspaceSessionState, hostId?: string | null) => {
+    if (admitRendererSessionWrite(store, event, args, hostId)) {
+      store.setWorkspaceSession(args, hostId)
+    }
   })
 
-  ipcMain.handle('session:patch', (_event, args: WorkspaceSessionPatch, hostId?: string | null) => {
-    store.patchWorkspaceSession(args, hostId)
+  ipcMain.handle('session:patch', (event, args: WorkspaceSessionPatch, hostId?: string | null) => {
+    if (admitRendererSessionWrite(store, event, args, hostId)) {
+      store.patchWorkspaceSession(args, hostId)
+    }
   })
 
   // Why: a renderer save cannot shrink membership main owns, so each close commits it explicitly.
@@ -57,7 +98,9 @@ export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeServic
   ipcMain.on('session:set-sync', (event, args: WorkspaceSessionState, hostId?: string | null) => {
     void (async () => {
       try {
-        store.setWorkspaceSession(args, hostId)
+        if (admitRendererSessionWrite(store, event, args, hostId)) {
+          store.setWorkspaceSession(args, hostId)
+        }
         await store.flushPendingOrThrowAsync({ drainToStableGeneration: false })
       } catch (error) {
         console.error('[persistence] Failed to flush legacy session checkpoint:', error)
