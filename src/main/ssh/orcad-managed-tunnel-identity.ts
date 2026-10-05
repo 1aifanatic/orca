@@ -69,7 +69,11 @@ export function verifyManagedOrcadTunnelIdentity(
   if (!environment.orcadDeployment) {
     return Promise.resolve({ verdict: 'verified' })
   }
-  return verifyOrcadPairingIdentity(getPreferredPairingOffer(environment), environment)
+  // Why no device id: the runtime id, our pinned key and our own token being accepted prove the
+  // server; a saved device id left stale by a racing reply must not block it (status re-records it).
+  return verifyOrcadPairingIdentity(getPreferredPairingOffer(environment), {
+    runtimeId: environment.runtimeId
+  })
 }
 
 /**

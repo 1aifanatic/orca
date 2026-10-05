@@ -52,21 +52,12 @@ export async function verifyRuntimePairingIdentity(
   const runtimeId = status.runtimeStatus.runtimeId
   if (
     response._meta.runtimeId !== runtimeId ||
-    (expected.runtimeId !== null && runtimeId !== expected.runtimeId)
+    (expected.runtimeId !== null && runtimeId !== expected.runtimeId) ||
+    (expected.pairedDeviceId !== undefined &&
+      status.runtimeStatus.pairedDeviceId !== undefined &&
+      status.runtimeStatus.pairedDeviceId !== expected.pairedDeviceId)
   ) {
     throw new Error(RUNTIME_IDENTITY_MISMATCH_MESSAGE)
-  }
-  const reportedDeviceId = status.runtimeStatus.pairedDeviceId
-  if (
-    expected.pairedDeviceId !== undefined &&
-    reportedDeviceId !== undefined &&
-    reportedDeviceId !== expected.pairedDeviceId
-  ) {
-    // Why not a mismatch: this runtime holds our key and accepted our own saved token, so the
-    // device it names for that token is authoritative; the saved device id is what is stale.
-    console.warn(
-      '[runtime] The saved pairing is stale; Orca will re-pair from the runtime that answered.'
-    )
   }
   return {
     verifiedPairing,
