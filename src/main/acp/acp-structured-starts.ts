@@ -1,31 +1,24 @@
-// The adapter's starts: each acquire under way, stopped when its signal aborts (a close or a Stop
-// that must not wait behind it) or at quit, and each failed start's child until its exit is
+// The adapter's starts: each acquire under way, stopped when the host aborts its signal (a close,
+// a Stop that must not wait behind it, or quit), and each failed start's child until its exit is
 // proven, so a later close retries it instead of answering for a child it no longer knows.
 
 import type { AcpStructuredChild } from './acp-structured-child'
 
 export type AcpStartAttempt = {
-  /** Aborted by the acquire's own signal, or by quit. */
+  /** The host's: the start's one canceller. */
   readonly signal: AbortSignal
   child: AcpStructuredChild | null
 }
 
 export class AcpStructuredStarts {
-  /** Each start under way, with what quit aborts it by. */
-  private readonly starting = new Map<AcpStartAttempt, AbortController>()
   private readonly failed = new Map<string, AcpStructuredChild>()
 
   /** Registered before anything awaits, so an abort from here on stops this start. */
   begin(signal: AbortSignal | undefined): AcpStartAttempt {
-    const quit = new AbortController()
-    const attempt: AcpStartAttempt = {
-      signal: signal ? AbortSignal.any([signal, quit.signal]) : quit.signal,
-      child: null
-    }
+    const attempt: AcpStartAttempt = { signal: signal ?? new AbortController().signal, child: null }
     attempt.signal.addEventListener('abort', () => void attempt.child?.close().catch(() => false), {
       once: true
     })
-    this.starting.set(attempt, quit)
     return attempt
   }
 
@@ -35,21 +28,6 @@ export class AcpStructuredStarts {
     if (attempt.signal.aborted) {
       void child.close().catch(() => false)
     }
-  }
-
-  end(attempt: AcpStartAttempt): void {
-    this.starting.delete(attempt)
-  }
-
-  /** Quit: every start under way stops; true once none has a child left unproven gone. */
-  async stopAll(): Promise<boolean> {
-    const proven = await Promise.all(
-      [...this.starting].map(async ([attempt, quit]) => {
-        quit.abort()
-        return attempt.child ? attempt.child.close().catch(() => false) : true
-      })
-    )
-    return !proven.includes(false)
   }
 
   /** A failed start whose child is not proven gone keeps it until its exit is. */

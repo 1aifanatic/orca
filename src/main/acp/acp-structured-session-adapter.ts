@@ -48,18 +48,14 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
   async acquire(input: StructuredAgentSessionAcquireInput): Promise<AgentSessionAcquisition> {
     const sessionId = input.identity.sessionId
     const attempt = this.starts.begin(input.signal)
-    try {
-      if (!(await this.stop(sessionId))) {
-        throw new AgentSessionAcquisitionExitUnprovenError(
-          new Error(
-            `the previous ${this.deps.spec.agent} child for ${sessionId} could not be stopped`
-          )
+    if (!(await this.stop(sessionId))) {
+      throw new AgentSessionAcquisitionExitUnprovenError(
+        new Error(
+          `the previous ${this.deps.spec.agent} child for ${sessionId} could not be stopped`
         )
-      }
-      return await this.start(input, attempt)
-    } finally {
-      this.starts.end(attempt)
+      )
     }
+    return await this.start(input, attempt)
   }
 
   private async start(
@@ -236,10 +232,8 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
 
   async closeAll(): Promise<void> {
     const ids = new Set([...this.sessions.keys(), ...this.starts.failedSessionIds()])
-    const proven = await Promise.all([
-      this.starts.stopAll(),
-      ...[...ids].map((sessionId) => this.stop(sessionId, true))
-    ])
+    // A start still under way is the host's to abort: its teardown does, before this runs.
+    const proven = await Promise.all([...ids].map((sessionId) => this.stop(sessionId, true)))
     if (proven.includes(false)) {
       throw new Error('an ACP agent child could not be proven stopped')
     }
