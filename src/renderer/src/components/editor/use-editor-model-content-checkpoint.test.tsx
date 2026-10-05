@@ -92,6 +92,27 @@ describe('checkpoint subscription ownership', () => {
     expect(nextPublish).not.toHaveBeenCalled()
   })
 
+  it('flushes the previous model owner before a same-file ownership key changes', () => {
+    const f = fixture()
+    const previous = vi.fn()
+    const next = vi.fn()
+    const hook = renderHook(
+      ({ ownerKey, publish }) =>
+        useEditorModelContentCheckpoint({
+          editor: f.editorInstance,
+          enabled: true,
+          fileId: 'same-file',
+          ownerKey,
+          publish
+        }),
+      { initialProps: { ownerKey: 'unresolved-host', publish: previous } }
+    )
+    act(() => f.first.edit('last input before owner resolves'))
+    hook.rerender({ ownerKey: 'local-host', publish: next })
+    expect(previous).toHaveBeenCalledExactlyOnceWith('last input before owner resolves')
+    expect(next).not.toHaveBeenCalled()
+  })
+
   it('flushes the old model rather than reading its replacement after a model swap', () => {
     const f = fixture()
     const publish = vi.fn()

@@ -18,6 +18,7 @@ export function useDiffSectionContentCheckpoint({
     editor: modifiedEditor,
     enabled,
     fileId: pendingFileId,
+    ownerKey: `${section.key}:${section.contentGeneration ?? 0}`,
     publish: (content) => {
       if (!modifiedEditor) {
         return

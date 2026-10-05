@@ -89,6 +89,7 @@ export default function DiffViewer({
     editor: modifiedEditor,
     enabled: Boolean(editable),
     fileId,
+    ownerKey: modifiedModelKey ?? modelKey,
     publish: (content) => onContentChange?.(content),
     onPending: () => {
       if (fileId) {

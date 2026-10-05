@@ -1777,7 +1777,8 @@
         "c679af7ad9": "Actualizar My Todos",
         "dfd72673e7": "No se pudo guardar la selección del proyecto.",
         "b797bdd7c3": "Borrar búsqueda",
-        "99c2755218": "Jira JQL, p. ej. project = ABC AND statusCategory != Done",
+        "jiraTextMatchesNotice": "Mostrando coincidencias de texto. Jira no pudo ejecutar esta búsqueda como JQL.",
+        "99c2755218": "Busca issues o escribe JQL, p. ej. project = ABC",
         "2ff9fd71fd": "Actualizar issues de Jira",
         "0b65d3fb2c": "Buscar proyectos de Linear...",
         "eec0c5c079": "Buscar issues de Linear...",
@@ -1896,7 +1897,7 @@
         "6edf402e11": "descripción general",
         "9ae151b26b": "lineal",
         "94d900518d": "Ningún issue coincide con el preset seleccionado.",
-        "f51e254d35": "Prueba con otra consulta JQL.",
+        "f51e254d35": "Prueba con otros términos de búsqueda o JQL.",
         "4645a7814f": "jira",
         "e224d76876": "MR",
         "bbec4717ee": "mr",
@@ -2756,18 +2757,9 @@
           },
           "MobileDriverOverlay": {
             "c6460cf584": "Recuperar control",
-            "c8f2e1a4b9": "Recuperar control de este terminal",
             "c44659e09f": "Teléfono controlando",
-            "7cffad954c": "Contraer",
             "3eed73394f": "Tu teclado está en pausa",
-            "faa367dc74": "Tu teléfono dejó esto en tamaño móvil",
-            "54f7d6f69d": "Recuperar control de todos los terminales",
-            "b3d8e1f42a": "Restaurar este terminal",
-            "e8c4f2a91b": "Restaurar todos los terminales",
-            "f2a8b9c1d3": "Desde tu teléfono",
-            "c7e4a2b8f1": "Tu teléfono tiene el control",
-            "d9f3c6e2a4": "El teclado de escritorio está en pausa. Recupera este terminal para escribir aquí, recupera todos los terminales que controla tu teléfono o contrae para seguir observando.",
-            "a6b1d8f3e2": "La sesión del teléfono terminó. Restaura el tamaño de escritorio para este terminal o para todos los terminales que tu teléfono dejó en tamaño móvil."
+            "c7e4a2b8f1": "Tu teléfono tiene el control"
           },
           "TerminalAgentSessionForkDialog": {
             "17fc841e59": "Copiar contexto",
@@ -6538,7 +6530,6 @@
         },
         "MobilePane": {
           "dd3cd78d04": "Escanear con Orca Móvil",
-          "35100bca5d": "Mientras usas un terminal en tu teléfono, Orca lo reduce para que se ajuste a la pantalla del teléfono. Cuando cierras la app o cambias a otra, esto controla si se queda en tamaño de teléfono (para que las herramientas CLI interactivas no se reacomoden) o vuelve al tamaño del escritorio. Siempre puedes usar Restaurar este terminal o Restaurar todos los terminales en el banner para cambiar el tamaño manualmente.",
           "ee56f1c7e4": "Cuando sales de la aplicación móvil",
           "3939fd062c": "Revocar un dispositivo lo desconecta inmediatamente.",
           "254a6d09e4": "Emparejado",
@@ -8868,7 +8859,13 @@
             "72539aede4": "sistema",
             "51ae2183e1": "escritorio",
             "0534c76311": "Interruptor maestro para notificaciones de escritorio de Orca.",
-            "4a210b2f72": "Habilitar notificaciones"
+            "4a210b2f72": "Habilitar notificaciones",
+            "machines": "Máquinas",
+            "machinesDescription": "Elige qué máquinas pueden mostrar notificaciones en este equipo, como máquinas SSH o servidores vinculados.",
+            "host": "host",
+            "remote": "remoto",
+            "ssh": "ssh",
+            "mute": "silenciar"
           }
         },
         "orchestration": {
@@ -9469,7 +9466,9 @@
           "e5995ce268": "Mantener la computadora activa mientras los agentes están trabajando",
           "95d3031db2": "Mantiene esta computadora y la pantalla activas mientras los agentes están trabajando. El comportamiento al cerrar la tapa sigue la configuración de energía de este dispositivo.",
           "a42f6fbdd8": "Mantiene esta computadora y la pantalla activas mientras los agentes están trabajando. Orca también le pide a este dispositivo que permanezca activo cuando la tapa está cerrada, sujeto a su política de energía.",
-          "modeTitle": "Mantener la computadora activa"
+          "modeTitle": "Mantener la computadora activa",
+          "modeDescriptionMac": "Elige Activado, Agente o Desactivado. El modo Agente evita la suspensión por inactividad mientras los agentes trabajan, para que las tareas largas terminen con la tapa abierta. Cerrar la tapa sigue poniendo este Mac en suspensión.",
+          "lidNoteMac": "Evita la suspensión por inactividad con la tapa abierta; cerrar la tapa sigue poniendo este Mac en suspensión."
         },
         "AgentAwakeSetting": {
           "on": "Activado",
@@ -10512,6 +10511,11 @@
           "usageDescription": "Cursor factura dos cuotas que se restablecen con tu ciclo de facturación, más gasto bajo demanda cuando se agotan.",
           "usageLabel": "Uso",
           "usageTitle": "Uso mensual del plan"
+        },
+        "NotificationHostToggles": {
+          "offCount": "{{count}} desactivadas",
+          "machines": "Máquinas",
+          "machinesDescription": "Elige qué máquinas pueden mostrar notificaciones en este equipo. El interruptor de un servidor vinculado también controla el trabajo al que se accede a través de él."
         }
       },
       "right": {
@@ -11541,7 +11545,8 @@
             "fca915a67a": "Remote items are permanently deleted and cannot be undone. Local items move to the {{value0}}."
           },
           "useFileExplorerHandlers": {
-            "32cd9fd991": "No se puede abrir el destino del enlace simbólico"
+            "32cd9fd991": "No se puede abrir el destino del enlace simbólico",
+            "folderLinksOutsideProject": "Esta carpeta enlaza fuera del proyecto, así que no se puede abrir aquí."
           },
           "useFileExplorerImport": {
             "25919b2050": "Se omitió {{value0}} {{value1}}.",
@@ -11794,7 +11799,6 @@
           },
           "aiVaultSessionLogOpen": {
             "workspaceGone": "Couldn't open log — workspace is no longer available.",
-            "notAuthorized": "Couldn't open log — path not authorized.",
             "alreadyEditable": "Log is already open for editing."
           },
           "github": {
@@ -15188,6 +15192,7 @@
       "dismissDeliveryNotice": "Descartar",
       "messageNotSent": "Mensaje no enviado",
       "deliveryUnconfirmed": "Entrega sin confirmar — revisa el chat antes de reintentar",
+      "messageSending": "Enviando…",
       "subagents": {
         "unnamed": "Subagente"
       },
@@ -15557,6 +15562,22 @@
       "searching": "Buscando…",
       "searchFailed": "La búsqueda no pudo finalizar. Inténtalo de nuevo.",
       "refreshFailed": "No se pudo actualizar la vista previa. Se muestra la versión anterior; abre la vista de código para ver el contenido actual."
+    }
+  },
+  "accounts": {
+    "managedData": {
+      "description": "Añade cuentas ejecutando este comando en una terminal del host de Orca. La selección se aplica a nuevos inicios del agente en ese host; las conexiones SSH directas y WSL alojado en Windows usan sus propias credenciales.",
+      "copied": "Copiado",
+      "add": "Copiar comando para añadir cuenta",
+      "refresh": "Actualizar cuentas",
+      "upgrade": "Si las cuentas no aparecen, actualiza o reinicia el host de Orca.",
+      "system": "Predeterminada del sistema",
+      "active": "Activa",
+      "select": "Seleccionar",
+      "remove": "Eliminar",
+      "removeTitle": "¿Eliminar la cuenta administrada?",
+      "removeDescription": "Detén primero los agentes que usan este perfil. Al eliminarlo se borran sus credenciales y conversaciones guardadas. Tu inicio de sesión del sistema no cambia.",
+      "cancel": "Cancelar"
     }
   }
 }

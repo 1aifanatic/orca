@@ -13,6 +13,7 @@ import { isLinuxUserAgent } from '../terminal-pane/pane-helpers'
 import { MAX_TOKENIZATION_LINE_LENGTH } from '@/lib/monaco-languages/monarch-embed-entry-budget'
 import { buildFileEditorWordWrapOptions } from './file-editor-word-wrap-options'
 import { toEditorModelUri } from './editor-model-uri'
+import { getEditorModelOwnerKey } from './editor-model-owner'
 import { getMonacoAutoHeightForContent, isMonacoAutoHeightCapped } from './monaco-auto-height'
 import { monacoFindOptions } from './monaco-find-options'
 import { useMonacoRevealScheduler } from './use-monaco-reveal-scheduler'
@@ -76,18 +77,13 @@ export default function MonacoEditor({
   const [mountedEditor, setMountedEditor] = useState<editor.IStandaloneCodeEditor | null>(null)
   const [autoHeightContentHeight, setAutoHeightContentHeight] = useState<number | null>(null)
   const languageRef = useRef(language)
-  languageRef.current = language
   const unregisterFileSearchSelectionRef = useRef<(() => void) | null>(null)
   const { setupCopy, toastNode } = useContextualCopySetup()
   // Why: hold the throttle timer in a ref so unmount cleanup can cancel a pending write before snapshotting the final scroll position.
   const scrollThrottleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const propsRef = useRef({ relativePath, language, onSave, onContentChange })
-  // Why: assign during render so the ref is current before any handler reads it (a useEffect would leave a one-render stale window).
-  propsRef.current = { relativePath, language, onSave, onContentChange }
   const readOnlyRef = useRef(readOnly)
-  readOnlyRef.current = readOnly
   const contentSyncModeRef = useRef<MonacoContentSyncMode>('undoable')
-  contentSyncModeRef.current = readOnly && liveTail ? 'read-only-live-tail' : 'undoable'
 
   const settings = useAppStore((s) => s.settings)
   const editorFontZoomLevel = useAppStore((s) => s.editorFontZoomLevel)
@@ -99,7 +95,16 @@ export default function MonacoEditor({
   )
   const editorFontFamily = resolveEditorFontFamily(settings)
   const editorWordWrap = settings?.editorWordWrap
-  const modelUri = useMemo(() => toEditorModelUri(filePath), [filePath])
+  const modelOwnerKey = useAppStore((state) => {
+    const file = state.openFiles?.find((entry) => entry.id === fileId)
+    return file
+      ? getEditorModelOwnerKey(file, state)
+      : JSON.stringify([null, `unresolved:${fileId}`])
+  })
+  const modelUri = useMemo(
+    () => toEditorModelUri(filePath, modelOwnerKey),
+    [filePath, modelOwnerKey]
+  )
   const estimatedAutoHeight = useMemo(() => {
     if (!autoHeight) {
       return null
@@ -115,7 +120,13 @@ export default function MonacoEditor({
   // Why: @monaco-editor/react skips its value→model sync on the first post-remount render, so retained models need an explicit sync or they show stale text.
   // Invariant: the mount path must read `contentRef.current` (guaranteed latest), never `lastSyncedContentRef.current` (may be stale pre-mount).
   const contentRef = useRef(content)
-  contentRef.current = content
+  useLayoutEffect(() => {
+    languageRef.current = language
+    propsRef.current = { relativePath, language, onSave, onContentChange }
+    readOnlyRef.current = readOnly
+    contentSyncModeRef.current = readOnly && liveTail ? 'read-only-live-tail' : 'undoable'
+    contentRef.current = content
+  }, [content, language, liveTail, onContentChange, onSave, readOnly, relativePath])
   // Gutter context menu state
   const [gutterMenuOpen, setGutterMenuOpen] = useState(false)
   const [gutterMenuPoint, setGutterMenuPoint] = useState({ x: 0, y: 0 })
@@ -129,20 +140,21 @@ export default function MonacoEditor({
     content,
     contentRef,
     contentSyncModeRef,
-    filePath,
+    modelKey: modelUri,
     onContentChange
   })
   useEditorModelContentCheckpoint({
     editor: mountedEditor,
     enabled: !readOnly,
     fileId,
+    ownerKey: modelUri,
     publish: contentSync.handleChange,
     onPending: () => useAppStore.getState().markFileDirty(fileId, true),
     shouldIgnore: () =>
-      readOnlyRef.current ||
+      mountedEditor?.getModel()?.uri.toString() !== modelUri ||
       contentSync.isApplyingLargePasteRef.current ||
       shouldIgnoreMonacoContentChange({
-        filePath,
+        modelKey: modelUri,
         isApplyingProgrammaticContent: contentSync.isApplyingProgrammaticContentRef.current
       })
   })
@@ -170,7 +182,7 @@ export default function MonacoEditor({
       unregisterFileSearchSelectionRef.current?.()
       unregisterFileSearchSelectionRef.current = null
     }
-  }, [cancelScheduledReveal, clearTransientRevealHighlight, viewStateKey])
+  }, [cancelScheduledReveal, clearTransientRevealHighlight, modelUri, viewStateKey])
 
   // Update editor options when settings change
   useEffect(() => {
@@ -199,6 +211,7 @@ export default function MonacoEditor({
   const handleMount = useMonacoEditorMount({
     fileId,
     filePath,
+    modelOwnerKey,
     viewStateKey,
     viewStateId,
     worktreeId,
@@ -248,6 +261,7 @@ export default function MonacoEditor({
         onSubmitMarkdownComment={annotations.handleSubmitMarkdownComment}
       />
       <Editor
+        key={modelUri}
         height={renderedEditorHeight === null ? '100%' : `${renderedEditorHeight}px`}
         language={language}
         // Why: defaultValue, not controlled value — Orca owns post-mount content sync; a controlled path would double setValue.

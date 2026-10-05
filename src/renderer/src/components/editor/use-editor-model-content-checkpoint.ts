@@ -10,6 +10,7 @@ export function useEditorModelContentCheckpoint({
   editor: editorInstance,
   enabled,
   fileId,
+  ownerKey,
   publish,
   onPending,
   shouldIgnore
@@ -19,6 +20,7 @@ export function useEditorModelContentCheckpoint({
     onDidChangeModel: editor.ICodeEditor['onDidChangeModel']
   } | null
   enabled: boolean
+  ownerKey?: string
 }): void {
   const committed = useRef({ publish, onPending, shouldIgnore })
   useLayoutEffect(() => {
@@ -48,5 +50,5 @@ export function useEditorModelContentCheckpoint({
       subscription.dispose()
       unregister?.()
     }
-  }, [editorInstance, enabled, fileId])
+  }, [editorInstance, enabled, fileId, ownerKey])
 }

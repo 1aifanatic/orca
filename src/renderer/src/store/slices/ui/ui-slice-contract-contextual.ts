@@ -117,4 +117,6 @@ export type UISliceContextual = {
   dismissUsageEmptyState: () => void
   codexTerminalServerIsolationNoticeSeen: boolean
   markCodexTerminalServerIsolationNoticeSeen: () => void
+  codexSharedSettingsNoticeSeen: boolean
+  markCodexSharedSettingsNoticeSeen: () => void
 }

@@ -21,18 +21,16 @@ export type MonacoContentSyncBridge = {
   handleChange: (value: string | undefined) => void
 }
 
-/** Why the caller owns `contentRef`/`contentSyncModeRef`: both are latest-value refs
- *  assigned during render, which must happen in the component body so the mount
- *  handler and any handler firing before commit already read the current props. */
+/** Mount and reconciliation read the latest committed content and sync mode. */
 export function useMonacoContentSyncBridge(params: {
   editorRef: MutableRefObject<editor.IStandaloneCodeEditor | null>
   content: string
   contentRef: MutableRefObject<string>
   contentSyncModeRef: MutableRefObject<MonacoContentSyncMode>
-  filePath: string
+  modelKey: string
   onContentChange: (content: string) => void
 }): MonacoContentSyncBridge {
-  const { editorRef, content, contentRef, contentSyncModeRef, filePath, onContentChange } = params
+  const { editorRef, content, contentRef, contentSyncModeRef, modelKey, onContentChange } = params
 
   const lastSyncedContentRef = useRef<string>(content)
 
@@ -50,7 +48,7 @@ export function useMonacoContentSyncBridge(params: {
         }
         if (
           shouldIgnoreMonacoContentChange({
-            filePath,
+            modelKey,
             isApplyingProgrammaticContent: isApplyingProgrammaticContentRef.current
           })
         ) {
@@ -60,13 +58,17 @@ export function useMonacoContentSyncBridge(params: {
         onContentChange(value)
       }
     },
-    [filePath, onContentChange]
+    [editorRef, modelKey, onContentChange]
   )
 
   // Why: sync the model on external `content` drift; useLayoutEffect lands the overwrite before paint so no stale text flashes. On-mount handled in handleMount.
   useLayoutEffect(() => {
     const ed = editorRef.current
-    if (!ed || lastSyncedContentRef.current === content) {
+    if (
+      !ed ||
+      ed.getModel()?.uri.toString() !== modelKey ||
+      lastSyncedContentRef.current === content
+    ) {
       return
     }
     const model = ed.getModel()
@@ -80,16 +82,16 @@ export function useMonacoContentSyncBridge(params: {
       }
       flushEditorModelContentCheckpoint(model)
     }
-    beginProgrammaticContentSync(filePath)
+    beginProgrammaticContentSync(modelKey)
     isApplyingProgrammaticContentRef.current = true
     try {
       syncContentUpdate(ed, content, contentSyncModeRef.current)
       lastSyncedContentRef.current = content
     } finally {
       isApplyingProgrammaticContentRef.current = false
-      endProgrammaticContentSync(filePath)
+      endProgrammaticContentSync(modelKey)
     }
-  }, [content, contentSyncModeRef, editorRef, filePath])
+  }, [content, contentSyncModeRef, editorRef, modelKey])
 
   return {
     contentRef,
