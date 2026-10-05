@@ -1,7 +1,11 @@
 import React from 'react'
 
 import { WorktreeCardSurface } from './worktree-card-surface'
-import type { WorktreeCardProps } from './worktree-card-model'
+import {
+  toReadOnlyCardProps,
+  type ResolvedWorktreeCardProps,
+  type WorktreeCardProps
+} from './worktree-card-model'
 import { useWorktreeCardController } from './use-worktree-card-controller'
 
 export { shouldBeginWorktreeRename } from './worktree-card-model'
@@ -44,7 +48,7 @@ const WorktreeCard = React.memo(function WorktreeCard({
   agentRows,
   statusPrDisplay = null
 }: WorktreeCardProps): React.JSX.Element {
-  const card = useWorktreeCardController({
+  const props: ResolvedWorktreeCardProps = {
     worktree,
     repo,
     isActive,
@@ -76,11 +80,12 @@ const WorktreeCard = React.memo(function WorktreeCard({
     lineageChildrenStyle,
     onLineageToggle,
     isLineageDropTarget,
-    affiliateListMode: affiliateListMode || readOnly,
+    affiliateListMode,
     readOnly,
     agentRows,
     statusPrDisplay
-  })
+  }
+  const card = useWorktreeCardController(readOnly ? toReadOnlyCardProps(props) : props)
 
   return <WorktreeCardSurface card={card} />
 })

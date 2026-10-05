@@ -129,6 +129,8 @@ function ActivityThreadHoverCardContent({
     worktree,
     repo: repo ?? undefined,
     statusPrDisplay: null,
+    reviewInBadges: !foundation.newCardStyle,
+    showCacheTimer: true,
     showStatus: true,
     showIssue: true,
     showLinearIssue: true,

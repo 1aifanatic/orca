@@ -55,7 +55,7 @@ export function WorktreeCardHeader({
     worktree,
     repo,
     affiliateListMode,
-    readOnly,
+    interactive,
     renameRowKey,
     compactCards,
     newCardStyle,
@@ -105,7 +105,7 @@ export function WorktreeCardHeader({
         )}
 
         {/* Why: this pill is a reconnect control; a read-only card names its host with the chip. */}
-        {repo?.connectionId && !readOnly && (
+        {repo?.connectionId && interactive && (
           <WorktreeCardSshHostControl
             targetId={repo.connectionId}
             targetLabel={sshTargetLabel || repo.displayName}
@@ -189,7 +189,7 @@ export function WorktreeCardHeader({
         {typeof worktree.firstAgentMessageRenameError === 'string' &&
         worktree.firstAgentMessageRenameError.length > 0 &&
         !titleRenaming &&
-        !readOnly ? (
+        interactive ? (
           // Why: the error can be raw agent CLI output, so the badge opens a dialog rather than a tooltip.
           <Tooltip>
             <TooltipTrigger asChild>

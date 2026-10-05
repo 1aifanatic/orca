@@ -1,6 +1,8 @@
+import { useMemo } from 'react'
+
 import { canShowWorkspaceDeleteQuickAction } from './workspace-delete-quick-action'
 import { useWorktreeCardDetailsHoverControl } from './worktree-card-details-hover-state'
-import type { ResolvedWorktreeCardProps } from './worktree-card-model'
+import { getReadOnlyCardProperties, type ResolvedWorktreeCardProps } from './worktree-card-model'
 import { useWorktreeCardActivationActions } from './use-worktree-card-activation-actions'
 import { useWorktreeCardFoundation } from './use-worktree-card-foundation'
 import { useWorktreeCardLifecycleEffects } from './use-worktree-card-lifecycle-effects'
@@ -8,22 +10,34 @@ import { useWorktreeCardLinkedDetails } from './use-worktree-card-linked-details
 import { useWorktreeCardReviewDetails } from './use-worktree-card-review-details'
 import { useWorktreeCardSecondaryDetails } from './use-worktree-card-secondary-details'
 import { useWorktreeCardWorkspaceActions } from './use-worktree-card-workspace-actions'
+import { useIsSleepingWorktree } from './use-worktree-sleep-state'
 
 export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
-  const { worktree, repo } = props
+  const { worktree, repo, readOnly } = props
   const foundation = useWorktreeCardFoundation({ worktree, repo })
+  // Why: the only read of `readOnly` past toReadOnlyCardProps; views see the outcome, never the flag.
+  // A read-only card loses its own controls and the live state that belongs to now, not the picture.
+  const interactive = !readOnly
+  const cardProps = useMemo(
+    () => (readOnly ? getReadOnlyCardProperties(foundation.cardProps) : foundation.cardProps),
+    [readOnly, foundation.cardProps]
+  )
+  const isSleeping = useIsSleepingWorktree(worktree.id) && !readOnly
+  const deleteState = readOnly ? undefined : foundation.deleteState
+  // Why: the new card shows its review in the status lane, which a read-only card lacks.
+  const reviewInBadges = !foundation.newCardStyle || readOnly
   const review = useWorktreeCardReviewDetails({
     worktree,
     repo,
     settings: foundation.settings,
     projectGroups: foundation.projectGroups,
-    cardProps: foundation.cardProps,
+    cardProps,
     newCardStyle: foundation.newCardStyle
   })
   const linked = useWorktreeCardLinkedDetails({
     worktree,
     newCardStyle: foundation.newCardStyle,
-    deleteState: foundation.deleteState,
+    deleteState,
     branch: review.branch,
     issueEntry: review.issueEntry,
     linearIssueEntry: review.linearIssueEntry,
@@ -31,19 +45,16 @@ export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
     prDisplay: review.prDisplay
   })
 
-  // Why: a read-only card stands in for another moment (e.g. before a restart), so the live status
-  // it would show belongs to now and would mislead there.
-  const showStatus = !props.readOnly && foundation.cardProps.includes('status')
-  const showIssue = foundation.cardProps.includes('issue')
-  const showLinearIssue = foundation.cardProps.includes('linear-issue')
-  const showJiraIssue = foundation.cardProps.includes('jira-issue')
-  const showPR = foundation.cardProps.includes('pr')
-  const showAutomation = foundation.cardProps.includes('automation')
-  const showCli = foundation.cardProps.includes('cli')
-  const showComment = foundation.cardProps.includes('comment')
-  // Why: the ports trigger is a control, and live ports say nothing a read-only picture needs.
-  const showPorts = !props.readOnly && foundation.cardProps.includes('ports')
-  const shouldRefreshHostedReview = foundation.newCardStyle && !props.readOnly ? showStatus : showPR
+  const showStatus = cardProps.includes('status')
+  const showIssue = cardProps.includes('issue')
+  const showLinearIssue = cardProps.includes('linear-issue')
+  const showJiraIssue = cardProps.includes('jira-issue')
+  const showPR = cardProps.includes('pr')
+  const showAutomation = cardProps.includes('automation')
+  const showCli = cardProps.includes('cli')
+  const showComment = cardProps.includes('comment')
+  const showPorts = cardProps.includes('ports')
+  const shouldRefreshHostedReview = reviewInBadges ? showPR : showStatus
   const detailsHoverControl = useWorktreeCardDetailsHoverControl()
   const hoverDetailsOpen = detailsHoverControl.hoverOpen
 
@@ -114,8 +125,9 @@ export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
   const secondary = useWorktreeCardSecondaryDetails({
     worktree,
     repo,
-    readOnly: props.readOnly,
     statusPrDisplay: props.statusPrDisplay,
+    reviewInBadges,
+    showCacheTimer: !readOnly,
     showStatus,
     showIssue,
     showLinearIssue,
@@ -134,7 +146,7 @@ export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
     linkedBitbucketPR: review.linkedBitbucketPR,
     linkedAzureDevOpsPR: review.linkedAzureDevOpsPR,
     linkedGiteaPR: review.linkedGiteaPR,
-    cardProps: foundation.cardProps,
+    cardProps,
     newCardStyle: foundation.newCardStyle,
     compactCards: foundation.compactCards,
     agentActivityDisplayMode: foundation.agentActivityDisplayMode,
@@ -147,6 +159,11 @@ export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
   return {
     ...props,
     ...foundation,
+    cardProps,
+    deleteState,
+    interactive,
+    isSleeping,
+    reviewInBadges,
     ...review,
     ...linked,
     detailsHoverControl,

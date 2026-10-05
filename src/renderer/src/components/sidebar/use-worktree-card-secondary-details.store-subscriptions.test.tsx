@@ -75,6 +75,8 @@ function secondaryDetailsArgs(settings: GlobalSettings) {
     worktree: makeWorktree(),
     repo: undefined,
     statusPrDisplay: null,
+    reviewInBadges: true,
+    showCacheTimer: true,
     showStatus: false,
     showIssue: false,
     showLinearIssue: false,

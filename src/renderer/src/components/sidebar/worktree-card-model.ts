@@ -1,6 +1,7 @@
 import type React from 'react'
 
 import type { Repo } from '../../../../shared/repo-types'
+import type { WorktreeCardProperty } from '../../../../shared/ui-chrome-types'
 import type { WorkspaceStatus, Worktree } from '../../../../shared/worktree/types'
 import type { WorktreeCardPrDisplay } from './worktree-card-pr-display'
 
@@ -52,8 +53,8 @@ export type WorktreeCardProps = {
   onCardDragEnd?: (event: React.DragEvent<HTMLDivElement>) => void
   nativeDragEnabled?: boolean
   affiliateListMode?: boolean
-  /** A static picture of the card for another surface: nothing on it responds, and `agentRows`
-   *  stands in for the live agent list. Implies everything `affiliateListMode` turns off. */
+  /** A static picture of the card for another surface: nothing on it responds, it shows no live
+   *  state, and `agentRows` stands in for the live agent list. See `toReadOnlyCardProps`. */
   readOnly?: boolean
   agentRows?: React.ReactNode
   statusPrDisplay?: WorktreeCardPrDisplay | null
@@ -92,6 +93,53 @@ export type ResolvedWorktreeCardProps = Omit<WorktreeCardProps, DefaultedWorktre
   affiliateListMode: boolean
   readOnly: boolean
   statusPrDisplay: WorktreeCardPrDisplay | null
+}
+
+/**
+ * What a read-only card keeps of its props: only what it pictures. Every handler, selection and
+ * active flag is dropped here, so a caller cannot make one live by passing it.
+ */
+export function toReadOnlyCardProps(props: ResolvedWorktreeCardProps): ResolvedWorktreeCardProps {
+  return {
+    worktree: props.worktree,
+    repo: props.repo,
+    hideRepoBadge: props.hideRepoBadge,
+    hostContextLabel: props.hostContextLabel,
+    inPinnedSection: props.inPinnedSection,
+    contentIndent: props.contentIndent,
+    flushSurface: props.flushSurface,
+    lineageChildren: props.lineageChildren,
+    lineageChildrenStyle: props.lineageChildrenStyle,
+    agentRows: props.agentRows,
+    isActive: false,
+    isActiveSurface: false,
+    activeSurfaceVariant: 'primary',
+    isMultiSelected: false,
+    revealHighlight: false,
+    revealHighlightTone: 'default',
+    nativeDragEnabled: false,
+    lineageChildCount: 0,
+    lineageCollapsed: false,
+    isLineageDropTarget: false,
+    affiliateListMode: true,
+    readOnly: true,
+    statusPrDisplay: null
+  }
+}
+
+// Why: these show the workspace as it is now, which misleads on a picture of another moment; and
+// with no sidebar around it, the host is always worth naming.
+const READ_ONLY_HIDDEN_CARD_PROPERTIES = new Set<WorktreeCardProperty>([
+  'status',
+  'ports',
+  'inline-agents'
+])
+
+export function getReadOnlyCardProperties(
+  cardProps: readonly WorktreeCardProperty[]
+): WorktreeCardProperty[] {
+  const kept = cardProps.filter((property) => !READ_ONLY_HIDDEN_CARD_PROPERTIES.has(property))
+  return kept.includes('host') ? kept : [...kept, 'host']
 }
 
 export const EMPTY_WORKSPACE_PORTS = []

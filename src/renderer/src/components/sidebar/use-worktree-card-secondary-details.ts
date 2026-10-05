@@ -19,8 +19,9 @@ type ReviewDetails = ReturnType<typeof useWorktreeCardReviewDetails>
 export function useWorktreeCardSecondaryDetails({
   worktree,
   repo,
-  readOnly,
   statusPrDisplay,
+  reviewInBadges,
+  showCacheTimer,
   showStatus,
   showIssue,
   showLinearIssue,
@@ -47,7 +48,7 @@ export function useWorktreeCardSecondaryDetails({
   openTaskPage,
   updateWorktreeMeta,
   settings
-}: Pick<WorktreeCardProps, 'worktree' | 'repo' | 'statusPrDisplay' | 'readOnly'> &
+}: Pick<WorktreeCardProps, 'worktree' | 'repo' | 'statusPrDisplay'> &
   Pick<
     Foundation,
     | 'cardProps'
@@ -64,6 +65,8 @@ export function useWorktreeCardSecondaryDetails({
     ReviewDetails,
     'prDisplay' | 'linkedGitLabMR' | 'linkedBitbucketPR' | 'linkedAzureDevOpsPR' | 'linkedGiteaPR'
   > & {
+    reviewInBadges: boolean
+    showCacheTimer: boolean
     showStatus: boolean
     showIssue: boolean
     showLinearIssue: boolean
@@ -89,9 +92,7 @@ export function useWorktreeCardSecondaryDetails({
   const metaAutomationProvenance = showAutomation ? worktree.automationProvenance : null
   const metaCliProvenance = showCli ? worktree.cliProvenance : null
   const metaComment = showComment ? hoverComment : null
-  // Why: live agent rows activate panes; a read-only card shows its caller's `agentRows` instead.
-  const showInlineAgentList =
-    !readOnly && cardProps.includes('inline-agents') && (newCardStyle || !compactCards)
+  const showInlineAgentList = cardProps.includes('inline-agents') && (newCardStyle || !compactCards)
   const compactInlineAgentRows = useWorktreeAgentRows(
     worktree.id,
     showInlineAgentList && agentActivityDisplayMode === 'compact'
@@ -100,7 +101,7 @@ export function useWorktreeCardSecondaryDetails({
     showInlineAgentList &&
     agentActivityDisplayMode === 'compact' &&
     compactInlineAgentRows.length > 0
-  const showAggregateCacheTimer = !compactCards && !compactInlineAgentRowsVisible
+  const showAggregateCacheTimer = showCacheTimer && !compactCards && !compactInlineAgentRowsVisible
   const handleOpenGitHubIssueInOrca = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation()
@@ -230,9 +231,6 @@ export function useWorktreeCardSecondaryDetails({
     },
     [linearIssue, openTaskPage]
   )
-  // Why: the new card shows its review in the status lane; a read-only card has none, so its review
-  // joins the badges as in the legacy card.
-  const reviewInBadges = !newCardStyle || readOnly
   const hasDetails = hasWorktreeCardDetails({
     issue: metaIssue,
     linearIssue: metaLinearIssue,
@@ -263,7 +261,6 @@ export function useWorktreeCardSecondaryDetails({
     metaAutomationProvenance,
     metaCliProvenance,
     metaComment,
-    reviewInBadges,
     showInlineAgentList,
     compactInlineAgentRows,
     handleOpenGitHubIssueInOrca,

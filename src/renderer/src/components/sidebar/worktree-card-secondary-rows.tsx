@@ -22,7 +22,6 @@ export function WorktreeCardSecondaryRows({
     repo,
     settings,
     isActive,
-    readOnly,
     agentRows,
     newCardStyle,
     lineageChildren,
@@ -78,7 +77,7 @@ export function WorktreeCardSecondaryRows({
         </Tooltip>
       ) : null}
 
-      {isActive && !readOnly && worktree.linkedLinearIssue ? (
+      {isActive && worktree.linkedLinearIssue ? (
         <LinearAgentSkillSetupPrompt
           linked
           remote={Boolean(repo?.connectionId || settings?.activeRuntimeEnvironmentId?.trim())}

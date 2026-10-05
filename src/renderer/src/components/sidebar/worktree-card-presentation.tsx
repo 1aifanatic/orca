@@ -20,7 +20,7 @@ export function buildWorktreeCardPresentation(card: WorktreeCardController) {
     hideRepoBadge,
     hostContextLabel,
     affiliateListMode,
-    readOnly,
+    interactive,
     agentRows,
     flushSurface,
     contentIndent,
@@ -80,9 +80,7 @@ export function buildWorktreeCardPresentation(card: WorktreeCardController) {
     showRepoIdentityInTitle && !!repo && !hideRepoBadge && !isFolder && !showPinnedRepoIcon
   const showRepoBadgeInMetaRow =
     !showRepoIdentityInTitle && !!repo && !hideRepoBadge && !showPinnedRepoIcon
-  // Why: a read-only card stands alone on another surface, so the machine is always worth naming.
-  const showHostContextBadge =
-    !compactCards && !!hostContextLabel && (readOnly || cardProps.includes('host'))
+  const showHostContextBadge = !compactCards && !!hostContextLabel && cardProps.includes('host')
   const showDetachedHeadInMetaRow = !compactCards && !isFolder && detachedHeadDisplay !== null
   const showBranch =
     !isFolder &&
@@ -132,9 +130,9 @@ export function buildWorktreeCardPresentation(card: WorktreeCardController) {
       ? trimmedVisibleCardTitle
       : undefined
   const hasHoverIdentity = Boolean(hoverWorkspaceTitle || hoverBranchName)
-  // Why: the details popover carries edit and open actions, so a read-only card never opens it.
+  // Why: the details popover carries edit and open actions, so only an interactive card opens it.
   const hasHoverDetails =
-    !readOnly &&
+    interactive &&
     newCardStyle &&
     (hasWorktreeCardDetails({
       issue: hoverIssue,
@@ -152,7 +150,7 @@ export function buildWorktreeCardPresentation(card: WorktreeCardController) {
     ? hasHoverDetails
       ? (title: React.ReactElement): React.ReactElement => title
       : undefined
-    : !readOnly && compactCards && (showBranchIdentityHover || hasDetails || hasPorts)
+    : interactive && compactCards && (showBranchIdentityHover || hasDetails || hasPorts)
       ? (title: React.ReactElement): React.ReactElement => (
           <WorktreeCardDetailsHover
             issue={metaIssue}
@@ -228,7 +226,7 @@ export function buildWorktreeCardPresentation(card: WorktreeCardController) {
       </div>
     ) : null
   const detailsAndPorts =
-    detailsAndPortsContent && !newCardStyle && !readOnly ? (
+    detailsAndPortsContent && !newCardStyle && interactive ? (
       <WorktreeCardDetailsHover
         issue={metaIssue}
         linearIssue={metaLinearIssue}

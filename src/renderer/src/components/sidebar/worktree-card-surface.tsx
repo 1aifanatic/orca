@@ -4,7 +4,6 @@ import { LoaderCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { AutoRenameFailedDialog } from './AutoRenameFailedDialog'
 import WorktreeContextMenu from './WorktreeContextMenu'
-import { useIsSleepingWorktree } from './use-worktree-sleep-state'
 import { WorktreeCardParentContent } from './worktree-card-parent-content'
 import { buildWorktreeCardPresentation } from './worktree-card-presentation'
 import type { WorktreeCardController } from './use-worktree-card-controller'
@@ -16,7 +15,7 @@ export function WorktreeCardSurface({ card }: { card: WorktreeCardController }):
     selectedWorktrees,
     onAssignWorkspaceStatus,
     affiliateListMode,
-    readOnly,
+    interactive,
     isActiveSurface,
     activeSurfaceVariant,
     isMultiSelected,
@@ -30,6 +29,7 @@ export function WorktreeCardSurface({ card }: { card: WorktreeCardController }):
     newCardStyle,
     titleRenaming,
     isDeleting,
+    isSleeping,
     isRuntimeDisconnected,
     isQueuedForDeletion,
     deleteLabel,
@@ -42,7 +42,6 @@ export function WorktreeCardSurface({ card }: { card: WorktreeCardController }):
     setShowRenameErrorDialog
   } = card
   const { titleOnlyCard, cardStyle } = presentation
-  const isSleeping = useIsSleepingWorktree(worktree.id)
 
   const parentCardContent = <WorktreeCardParentContent card={card} presentation={presentation} />
 
@@ -50,7 +49,7 @@ export function WorktreeCardSurface({ card }: { card: WorktreeCardController }):
     <div
       className={cn(
         'relative flex flex-col pr-1.5 transition-[background-color,border-color,opacity,box-shadow] duration-200 outline-none select-none',
-        !readOnly && 'cursor-pointer',
+        interactive && 'cursor-pointer',
         titleOnlyCard ? 'py-2' : 'pt-1.25 pb-1.5',
         flushSurface ? 'ml-1 w-[calc(100%-0.25rem)]' : 'ml-1',
         'overflow-hidden rounded-lg',
@@ -62,9 +61,9 @@ export function WorktreeCardSurface({ card }: { card: WorktreeCardController }):
             ? 'border border-transparent'
             : isMultiSelected
               ? 'border border-worktree-sidebar-ring/35 bg-worktree-sidebar-accent/70 ring-1 ring-worktree-sidebar-ring/30'
-              : readOnly
-                ? 'border border-transparent'
-                : 'border border-transparent worktree-sidebar-card-hover',
+              : interactive
+                ? 'border border-transparent worktree-sidebar-card-hover'
+                : 'border border-transparent',
         isActiveSurface && isMultiSelected && 'ring-1 ring-worktree-sidebar-ring/35',
         revealHighlight && [
           'scroll-to-current-workspace-reveal-highlight',
@@ -85,7 +84,7 @@ export function WorktreeCardSurface({ card }: { card: WorktreeCardController }):
         isActiveSurface && !isLineageDropTarget ? activeSurfaceVariant : undefined
       }
       data-worktree-lineage-drop-target={isLineageDropTarget || undefined}
-      onClick={readOnly ? undefined : handleClick}
+      onClick={interactive ? handleClick : undefined}
       onDoubleClick={affiliateListMode ? undefined : handleDoubleClick}
       draggable={!affiliateListMode && nativeDragEnabled && !isDeleting && !titleRenaming}
       onDragStart={!affiliateListMode && nativeDragEnabled ? handleDragStart : undefined}
