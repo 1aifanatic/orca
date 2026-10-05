@@ -139,6 +139,20 @@ describe('complete profile state checkpoints', () => {
     expect(existsSync(dataFile)).toBe(false)
   })
 
+  it('captures getter mutations before update installation without finalizing or exporting JSON', async () => {
+    const { store, dataFile, readState } = fixture()
+    mutateThroughGetters(store)
+    store.updateSettings({ theme: 'dark' })
+
+    await store.flushPendingOrThrowAsync({ fullCheckpoint: true })
+
+    expect(readState()).toMatchObject(EXPECTED_CHECKPOINT)
+    expect(existsSync(dataFile)).toBe(false)
+    store.updateSettings({ theme: 'light' })
+    await store.flushPendingOrThrowAsync()
+    expect(readState()).toMatchObject({ settings: { theme: 'light' } })
+  })
+
   it.each(['explicit', 'revisioned'] as const)(
     'includes getter mutations in the %s JSON export',
     (mode) => {

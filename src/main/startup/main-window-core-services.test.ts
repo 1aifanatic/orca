@@ -117,6 +117,7 @@ describe('main window profile-state update preparation', () => {
       })
       expect(store.writeLatestProfileStateJsonExportAsync).not.toHaveBeenCalled()
       expect(store.flushPendingOrThrowAsync).toHaveBeenCalledOnce()
+      expect(store.flushPendingOrThrowAsync).toHaveBeenCalledWith({ fullCheckpoint: true })
       expect(preserveAgentAuthBeforeRestartMock.mock.invocationCallOrder[0]).toBeLessThan(
         store.flushPendingOrThrowAsync.mock.invocationCallOrder[0]
       )
