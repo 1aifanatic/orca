@@ -127,6 +127,7 @@ describe('orcad migration census and client focus', () => {
     const state = sourceState()
     focusLocalOnSourceWorktree(state)
 
+    const partitionKeys = Object.keys(state.workspaceSessionsByHostId ?? {})
     retargetOrcadSourceClientFocus(state, manifest('env-1'))
 
     expect(state.workspaceSession).toMatchObject({
@@ -136,6 +137,9 @@ describe('orcad migration census and client focus', () => {
       activeWorkspaceExecutionHostId: 'runtime:env-1',
       activeTabId: 'tab-1'
     })
+    // Startup drops runtime:<id> sessions whose server is unregistered, so retirement must only
+    // re-aim focus and never create the destination's session itself.
+    expect(Object.keys(state.workspaceSessionsByHostId ?? {})).toEqual(partitionKeys)
   })
 
   it('clears client focus the managed environment cannot resolve', () => {
