@@ -76,7 +76,8 @@ export function createRuntimeEnvironmentStatusOwner(
       if (accepted && active && !isRuntimeEnvironmentManuallyDisconnected(environment.id)) {
         recordRuntimeEnvironmentUsage(userDataPath, environment.id, {
           runtimeId: response._meta.runtimeId,
-          pairedDeviceId: response.result.pairedDeviceId
+          pairedDeviceId: response.result.pairedDeviceId,
+          pairingDeviceToken: pairing.deviceToken
         })
         if (capable) {
           transport.establish()

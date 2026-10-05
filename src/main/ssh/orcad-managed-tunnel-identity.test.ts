@@ -96,3 +96,35 @@ describe('deployedOrcadTunnelChecks', () => {
     await expect(checks.verify(41_000)).resolves.toMatchObject({ verdict: 'foreign' })
   })
 })
+
+describe('verifyManagedOrcadTunnelIdentity', () => {
+  beforeEach(() => {
+    verifyRuntimePairingIdentity.mockReset()
+  })
+
+  it('proves the server by runtime id, not by a saved device id a racing reply may have staled', async () => {
+    const { verifyManagedOrcadTunnelIdentity } = await import('./orcad-managed-tunnel-identity')
+    verifyRuntimePairingIdentity.mockResolvedValue({})
+    const environment = {
+      runtimeId: 'runtime-1',
+      pairedDeviceId: 'device-old',
+      orcadDeployment: { sshTargetId: 't', sshTargetGeneration: 1, localPort: 1, remotePort: 2 },
+      preferredEndpointId: 'ws-1',
+      endpoints: [
+        {
+          id: 'ws-1',
+          kind: 'websocket',
+          label: 'WebSocket',
+          endpoint: 'ws://127.0.0.1:1',
+          deviceToken: 'token-new',
+          publicKeyB64: 'key'
+        }
+      ]
+    }
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the verifier reads only runtimeId, orcadDeployment and the preferred endpoint stubbed here.
+    await expect(verifyManagedOrcadTunnelIdentity(environment as never)).resolves.toEqual({
+      verdict: 'verified'
+    })
+    expect(verifyRuntimePairingIdentity.mock.calls[0]?.[1]).toEqual({ runtimeId: 'runtime-1' })
+  })
+})

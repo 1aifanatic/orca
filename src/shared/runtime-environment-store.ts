@@ -168,14 +168,30 @@ const LAST_USED_PERSIST_INTERVAL_MS = 60_000
 export function markEnvironmentUsed(
   userDataPath: string,
   selector: string,
-  args: { runtimeId?: string | null; pairedDeviceId?: string; now?: number } = {}
+  args: {
+    runtimeId?: string | null
+    /** Recorded only with `pairingDeviceToken`, and only while that token is still the saved one. */
+    pairedDeviceId?: string
+    /** The token the reply was authenticated with; identity from any other pairing is ignored. */
+    pairingDeviceToken?: string
+    now?: number
+  } = {}
 ): void {
   const store = readPersistedEnvironmentStore(userDataPath)
   const environment = resolveEnvironmentFromStore(store, selector)
   const now = args.now ?? Date.now()
-  const runtimeIdChanged = args.runtimeId != null && args.runtimeId !== environment.runtimeId
+  // Why: a reply that raced a re-pair carries the previous device's identity; recording it beside
+  // the new token makes every later identity check fail.
+  const fromSavedPairing =
+    args.pairingDeviceToken === undefined ||
+    preferredDeviceToken(environment) === args.pairingDeviceToken
+  const runtimeIdChanged =
+    fromSavedPairing && args.runtimeId != null && args.runtimeId !== environment.runtimeId
   const pairedDeviceIdChanged =
-    args.pairedDeviceId != null && args.pairedDeviceId !== environment.pairedDeviceId
+    fromSavedPairing &&
+    args.pairingDeviceToken !== undefined &&
+    args.pairedDeviceId != null &&
+    args.pairedDeviceId !== environment.pairedDeviceId
   const lastUsedIsFresh =
     environment.lastUsedAt != null &&
     now >= environment.lastUsedAt &&
@@ -196,14 +212,23 @@ export function markEnvironmentUsed(
     entry.id === environment.id
       ? {
           ...entry,
-          runtimeId: args.runtimeId ?? entry.runtimeId,
-          ...(args.pairedDeviceId ? { pairedDeviceId: args.pairedDeviceId } : {}),
+          runtimeId: (runtimeIdChanged ? args.runtimeId : null) ?? entry.runtimeId,
+          ...(pairedDeviceIdChanged && args.pairedDeviceId
+            ? { pairedDeviceId: args.pairedDeviceId }
+            : {}),
           lastUsedAt: now,
           updatedAt: now
         }
       : entry
   )
   writeEnvironmentStore(userDataPath, { version: 1, environments: next })
+}
+
+function preferredDeviceToken(environment: PersistedRuntimeEnvironment): string | undefined {
+  return (
+    environment.endpoints.find((entry) => entry.id === environment.preferredEndpointId) ??
+    environment.endpoints[0]
+  )?.deviceToken
 }
 
 export function resolveEnvironmentFromStore<T extends PersistedRuntimeEnvironment>(
