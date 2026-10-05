@@ -5,10 +5,14 @@
 import type {
   AgentJournalToolCallEnding,
   AgentJournalToolCallItem,
-  AgentJournalToolCallState
+  AgentJournalToolCallState,
+  AgentJournalTurnLifecycleState
 } from './agent-session-journal-types'
 
 export type AgentJournalToolCallLifecycle = AgentJournalToolCallState | 'interrupted'
+
+/** How the turn or session around a still-running call ended. */
+export type AgentJournalRunningCallEnd = Exclude<AgentJournalTurnLifecycleState, 'running'>
 
 type ToolCallLifecycleFields = {
   state?: AgentJournalToolCallState
@@ -36,7 +40,7 @@ export function interruptedAgentJournalToolCall(
  *  proof written later can still find the call. */
 export function endedRunningAgentJournalToolCall(
   call: AgentJournalToolCallItem,
-  end: 'interrupted' | 'completed' | 'unverifiable'
+  end: AgentJournalRunningCallEnd
 ): AgentJournalToolCallItem {
   if (end === 'interrupted') {
     return interruptedAgentJournalToolCall(call)

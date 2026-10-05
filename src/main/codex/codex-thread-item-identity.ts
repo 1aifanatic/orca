@@ -1,5 +1,5 @@
 import type { AgentJournalItemIdentity } from '../../shared/agent-session-journal-types'
-import type { ProviderTurnMessageOrdinals } from '../native-chat/agent-session-timeline/provider-turn-message-ordinals'
+import type { CodexTurnOrdinals } from './codex-turn-ordinals'
 
 // Codex thread items → durable journal identities.
 //
@@ -14,10 +14,6 @@ import type { ProviderTurnMessageOrdinals } from '../native-chat/agent-session-t
 // to the live stream and to a resumed turn's item list. Any other item type —
 // including ones this build does not model — is skipped identically on both
 // sides, which is what makes the key survive a Codex release that adds one.
-
-/** Codex records the user message first in a turn, so a restored submission is
- *  ordinal 0 of `(threadId, turnId)`. */
-export const CODEX_USER_MESSAGE_ORDINAL = 0
 
 /** Only these carry a durable `(threadId, turnId, ordinal)` identity. */
 const CODEX_MESSAGE_ITEM_TYPES = new Set(['userMessage', 'agentMessage'])
@@ -54,7 +50,7 @@ export function codexItemIdentity(input: {
   threadId: string
   turnId: string | null
   item: CodexThreadItem
-  ordinals: ProviderTurnMessageOrdinals
+  ordinals: CodexTurnOrdinals
 }): AgentJournalItemIdentity {
   const { item, turnId } = input
   if (turnId && isCodexMessageItemType(item.type)) {

@@ -39,9 +39,6 @@ export function upsertJournalItem(
     return
   }
   state.derivedTurnScope.observe(itemId, isRootAgentJournalItem(next), existing?.body, next.body)
-  if (next.providerItemRef !== undefined && existing?.providerItemRef === undefined) {
-    state.providerItemRefs.set(next.providerItemRef, itemId)
-  }
   if (!existing) {
     state.items.set(itemId, next)
     state.itemFences.set(itemId, fence)
@@ -68,9 +65,7 @@ export function upsertJournalItem(
     sequence: existing.sequence,
     ...(existing.sequenceIndex !== undefined ? { sequenceIndex: existing.sequenceIndex } : {}),
     observedAt: existing.observedAt,
-    turnScope: existing.turnScope ?? next.turnScope,
-    // The creating write's, as the scope is: a revision never re-points the row at another item.
-    ...(existing.providerItemRef === undefined ? {} : { providerItemRef: existing.providerItemRef })
+    turnScope: existing.turnScope ?? next.turnScope
   })
   state.tombstones.delete(itemId)
 }
@@ -97,9 +92,6 @@ export function removeJournalItem(
     )
   }
   state.tombstones.set(itemId, revision)
-  if (existing?.providerItemRef !== undefined) {
-    state.providerItemRefs.delete(existing.providerItemRef)
-  }
   state.items.delete(itemId)
   state.itemFences.delete(itemId)
 }

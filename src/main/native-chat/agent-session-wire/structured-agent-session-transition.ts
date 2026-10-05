@@ -3,9 +3,10 @@
 // A producer that keeps state about what it wrote must change that state only for writes the sink
 // took; when an event needs several rows, a refusal of the third after the first two were taken
 // would leave the producer and the journal disagreeing. A transition is admitted whole or not at
-// all. At execution its steps are issued in the same tick, so they sit together in the journal's
-// write queue, and each step resolves against the fold with every earlier write landed — the
-// steps before it included — so what a step writes is decided by the journal, not by memory.
+// all. At execution its steps run as one turn in the journal's write queue, each resolved against
+// the fold with every earlier write landed (the steps before it included), so what a step writes
+// is decided by the journal, not by memory. Admitted whole, executed as a prefix: once a step
+// fails, the steps after it never run, the steps before it stay written, and the sink fails.
 
 import type {
   AgentJournalItemBody,
@@ -13,6 +14,7 @@ import type {
 } from '../../../shared/agent-session-journal-types'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import type { JournalStep } from '../agent-session-journal/journal-step-writer'
 import { estimateStructuredAgentSessionItemBytes } from './structured-agent-session-event-sink-estimate'
 import type {
   StructuredAgentSessionItemAppendOptions,
@@ -21,33 +23,21 @@ import type {
 import type { StructuredAgentSessionSinkQueue } from './structured-agent-session-event-sink-queue'
 import { structuredAgentSessionJournalAppendOptions } from './structured-agent-session-journal-append-options'
 
-/** What a transition step reads: rows by key or provider reference, every row, their turns, and
- *  the sends whose echo holds a provider item's place. */
+/** What a transition step reads: rows by key, every row, and the turns they joined. */
 export type StructuredAgentSessionTransitionJournal = Pick<
   AgentSessionJournal,
-  | 'epoch'
-  | 'submissions'
-  | 'visitItems'
-  | 'itemBody'
-  | 'item'
-  | 'itemIdForProviderItemRef'
-  | 'canonicalItemId'
-  | 'visitItemsWithLinkage'
+  'epoch' | 'visitItems' | 'itemBody' | 'item' | 'visitItemsWithLinkage'
 >
 
 export type StructuredAgentSessionTransitionStep =
   | {
       kind: 'item'
-      /** Bounds what `resolve` may write; a larger write fails the sink, unless `paced`. */
+      /** Bounds what `resolve` may write; a larger write fails the sink. */
       reservedBytes: number
-      /** The size only paces the queue: the row grows by text the fold holds (a resumed message). */
-      paced?: true
-      /** The row and its whole body; null writes nothing. Resolved `options` replace the planned
-       *  ones, for a writer that learns the row's turn or producer only from the fold. */
+      /** The row and its whole body; null writes nothing. */
       resolve: (journal: StructuredAgentSessionTransitionJournal) => {
         identity: AgentJournalItemIdentity
         body: AgentJournalItemBody
-        options?: StructuredAgentSessionItemAppendOptions
       } | null
       options: StructuredAgentSessionItemAppendOptions
     }
@@ -69,8 +59,6 @@ export type StructuredAgentSessionTransition = {
   lifecycle: boolean
   /** Announce the writes once they land, when any step wrote. */
   publish: boolean
-  /** Which steps wrote a row, once every step has landed or one failed (then none counts). */
-  landed?: (wrote: readonly boolean[]) => void
 }
 
 const STEP_OVERFLOW = 'structured agent-session transition step exceeded its reserved size'
@@ -102,55 +90,35 @@ function transitionAppend(
       lifecycle: transition.lifecycle,
       run: async (bound) => {
         const { journal, fence } = bound
-        // Issued in one tick, so no write submitted after this transition lands between its steps.
-        const writes = transition.steps.map((step) =>
-          step.kind === 'item'
-            ? journal
-                .appendResolvedItem(
-                  () => {
+        const wrote = await journal.appendSteps(
+          transition.steps.map((step): JournalStep =>
+            step.kind === 'item'
+              ? {
+                  kind: 'item',
+                  resolve: () => {
                     const resolved = step.resolve(journal)
-                    if (!resolved) {
-                      return null
-                    }
                     if (
-                      !step.paced &&
+                      resolved &&
                       estimateStructuredAgentSessionItemBytes(resolved.identity, resolved.body) >
                         step.reservedBytes
                     ) {
                       throw new Error(STEP_OVERFLOW)
                     }
-                    return {
-                      identity: resolved.identity,
-                      body: resolved.body,
-                      ...(resolved.options
-                        ? {
-                            options: structuredAgentSessionJournalAppendOptions(
-                              fence,
-                              resolved.options
-                            )
-                          }
-                        : {})
-                    }
+                    return resolved
                   },
-                  structuredAgentSessionJournalAppendOptions(fence, step.options)
-                )
-                .then((landed) => landed !== null)
-            : journal
-                .appendResolvedLifecycleBatch({
-                  settlementId: step.settlementId,
-                  resolve: () => step.resolve(journal),
-                  fence
-                })
-                .then((landed) => landed !== null)
+                  options: structuredAgentSessionJournalAppendOptions(fence, step.options)
+                }
+              : {
+                  kind: 'settlement',
+                  batch: {
+                    settlementId: step.settlementId,
+                    fence,
+                    resolve: () => step.resolve(journal)
+                  }
+                }
+          )
         )
-        let wrote: boolean[] = transition.steps.map(() => false)
-        try {
-          wrote = await Promise.all(writes)
-        } finally {
-          // Heard even when a write failed, so a writer's speculation about it always ends.
-          transition.landed?.(wrote)
-        }
-        if (transition.publish && wrote.some(Boolean)) {
+        if (transition.publish && wrote.includes(true)) {
           bound.publish()
         }
       }

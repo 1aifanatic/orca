@@ -1,12 +1,12 @@
 // What a turn's end or the session's end settles, read from the journal when the settlement runs.
 //
-// The same mechanism the dead-generation settlement uses after a restart: every row still waiting
-// on the row that settles it — a running tool call, a pending prompt — is settled from its body as
-// the journal holds it then. Nothing about open work is trusted from memory, so a prompt a client
-// answered a moment earlier stays answered, a row a previous assembler opened is settled too, and
-// a second settlement finds nothing left to do.
+// The same mechanism, and the same terminal bodies, as the dead-generation settlement after a
+// restart: every row still waiting on the row that settles it — a running tool call, a pending
+// prompt — is settled from its body as the journal holds it then. Nothing about open work is
+// trusted from memory, so a prompt a client answered a moment earlier stays answered, and a
+// second settlement finds nothing left to do.
 
-import { endedRunningAgentJournalToolCall } from '../../../shared/agent-journal-tool-call-lifecycle'
+import type { AgentJournalRunningCallEnd } from '../../../shared/agent-journal-tool-call-lifecycle'
 import { parseAgentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
@@ -18,10 +18,10 @@ import {
   agentJournalTurnBody,
   readAgentJournalTurn
 } from '../../../shared/agent-session-turn-record'
-import { cancelledJournalPromptBody } from '../agent-session-journal/journal-prompt-body-bounds'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
+import { lostLiveWorkJournalBody } from '../agent-session-journal/journal-subagent-liveness'
+import { terminalAgentJournalBody } from '../agent-session-journal/journal-terminal-settlement'
 import type { StructuredAgentSessionTransitionJournal } from '../agent-session-wire/structured-agent-session-transition'
-import { lostProviderTimelineBackgroundTasks } from './provider-timeline-background-tasks'
 import {
   agentJournalTurnRowReservedBytes,
   resolveAgentJournalTurnRowWrite
@@ -36,20 +36,6 @@ export type ProviderTimelineTurnEnd =
       durationMs?: number
     }
   | { state: 'unverifiable' }
-
-/** What a row still open when its turn or the session ends becomes; null when it already stands. */
-export function settledProviderTimelineBody(
-  body: AgentJournalItemBody,
-  end: ProviderTimelineTurnEnd
-): AgentJournalItemBody | null {
-  if (body.kind === 'tool-call') {
-    return body.state === 'running' ? endedRunningAgentJournalToolCall(body, end.state) : null
-  }
-  if (body.kind === 'approval' || body.kind === 'question') {
-    return body.resolution.state === 'pending' ? cancelledJournalPromptBody(body) : null
-  }
-  return null
-}
 
 /** The end owns the turn's terminal fields; `unverifiable` carries no end and no verdict. Fields
  *  keep the order every lane writes them in, so the row is the same bytes whoever ends it. */
@@ -79,37 +65,56 @@ export function endedProviderTimelineTurn(
 /** Which open rows a settlement covers: one turn's, or every row when the session ends. */
 export type ProviderTimelineSettlementScope = { turnItemId: string } | 'session'
 
-/** The settled rows of `scope`, then each listed turn's end while the journal holds it running. */
+/** The turns a settlement ends, and how; absent when another writer already ended the turn. */
+export type ProviderTimelineSettlementEnding = {
+  turns: readonly { identity: AgentJournalItemIdentity; itemId: string }[]
+  end: ProviderTimelineTurnEnd
+}
+
+/** The settled rows of `scope`, then each ended turn's row while the journal holds it running. */
 export function providerTimelineSettlement(
   journal: StructuredAgentSessionTransitionJournal,
   scope: ProviderTimelineSettlementScope,
-  turns: readonly { identity: AgentJournalItemIdentity; itemId: string }[],
-  end: ProviderTimelineTurnEnd
+  ending?: ProviderTimelineSettlementEnding
 ): JournalLifecycleMutationInput[] {
   const mutations: JournalLifecycleMutationInput[] = []
+  const end = ending?.end.state ?? settledTurnEnd(journal, scope)
   journal.visitItemsWithLinkage((itemId, _sequence, body, attribution) => {
     const turnScope = attribution.turnScope ?? AGENT_JOURNAL_THREAD_SCOPE
     const covered =
       scope === 'session' ||
       (turnScope.kind === 'turn' && turnScope.turnItemId === scope.turnItemId)
-    // Background tasks outlive turns; only the session's end leaves them past seeing.
+    // Background tasks and subagents outlive turns; only the session's end leaves them past seeing.
     const settled = !covered
       ? null
-      : (settledProviderTimelineBody(body, end) ??
-        (scope === 'session' ? lostProviderTimelineBackgroundTasks(body) : null))
+      : (terminalAgentJournalBody(body, end) ??
+        (scope === 'session' ? lostLiveWorkJournalBody(body) : null))
     const identity = settled ? parseAgentJournalItemKey(itemId) : null
     if (settled && identity) {
       // No linkage: a revision keeps the row's own producer.
       mutations.push({ kind: 'item', identity, body: settled, turnScope })
     }
   })
-  for (const turn of turns) {
-    const ended = endedTurnRow(journal, turn, end)
+  for (const turn of ending?.turns ?? []) {
+    const ended = ending ? endedTurnRow(journal, turn, ending.end) : null
     if (ended) {
       mutations.push({ kind: 'item', ...ended, turnScope: AGENT_JOURNAL_THREAD_SCOPE })
     }
   }
   return mutations
+}
+
+/** A turn another writer settled (a person's Stop) ends its calls as its row says, as the same end
+ *  from the provider would; a row that proves no end leaves them unverified, open to a later proof. */
+function settledTurnEnd(
+  journal: StructuredAgentSessionTransitionJournal,
+  scope: ProviderTimelineSettlementScope
+): AgentJournalRunningCallEnd {
+  const turn =
+    scope === 'session'
+      ? null
+      : readAgentJournalTurn(journal.itemBody(scope.turnItemId) ?? undefined)
+  return turn && turn.state !== 'running' ? turn.state : 'unverifiable'
 }
 
 /** Every turn row the journal holds running, for the session's end. */

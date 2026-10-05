@@ -4,30 +4,39 @@
 // provider traffic into these semantic events and never writes a journal row or mints a journal
 // identity: every key here is the provider's own id (a turn, a tool call, a message, a thread),
 // or a name the adapter keeps stable for something the provider does not name. The assembler
-// resolves those joins to rows, scopes rows to turns, and owns the turn and item rules in
-// `agent-session-journal-types.ts`; the journal decides, at each write, what a replay changes.
+// spells those keys as row ids, scopes rows to turns, and owns the turn and item rules in
+// `agent-session-journal-types.ts`.
 //
 // Rules an adapter can rely on:
+// - One assembler lives exactly as long as one provider child: a new process is a new assembler,
+//   with a new acquisition generation.
 // - Only `turn.open` opens a turn. Items, text and requests never do: one that arrives with no
 //   turn open and names none is written as a thread row. An adapter whose provider starts work on
 //   its own (a background wake, auto-compaction) decides that a turn began and says `turn.open`
 //   before that work's items.
 // - `join.turn` attaches a row to the turn the provider says it belongs to, open or not.
-// - A turn settles once, with only the provider's verdict; the journal refuses a second settlement
-//   and a replayed open, even after a restart.
+// - A turn settles once, with only the provider's verdict. A row the journal already holds is
+//   never written back to an earlier state: a settled turn stays settled, a settled tool keeps its
+//   terminal body, an answered request stays answered.
+// - A turn another writer settled (a person's Stop) ends here as the provider's `turn.end` would
+//   end it: its running work settles, and text still streaming into it is dropped until the
+//   provider's end of that turn or the next `turn.open`.
+// - Saved history the provider replays goes only into an empty journal (an adopted session), as
+//   ordinary events with the provider's own ids, so re-running an interrupted adoption writes the
+//   same rows again. Limit, until the adoption work lifts it: a crash that cut the first run
+//   inside a turn leaves that turn as the restart's sweep settled it (`unverifiable`, its running
+//   tools `failed`), and the re-run writes nothing more into it.
 // - An event the sink refused changed nothing. Re-apply the same event to retry it (after
 //   `backpressure`); `failed` and `closed` are final.
 // - A provider item is (thread, id): the same id on another thread is another item. Text and
 //   full snapshots of one id are one row, and its close settles it for both.
-// - `dropped` is the verdict when the event was applied. The journal has the last word when the
-//   event's writes run: a replay the journal already holds writes nothing even if it was taken.
-// - After `session.ended` every event is dropped until `session.reset`. Reset whenever the
-//   provider's ids may repeat (a new process): its ids then name new rows.
+// - After `session.ended` every event is dropped.
 
 import type { AgentSessionContextUsage } from '../../../shared/agent-session-context-usage'
 import type {
   AgentJournalApprovalItem,
   AgentJournalItemBody,
+  AgentJournalMessageItem,
   AgentJournalProducerLinkage,
   AgentJournalQuestionItem,
   AgentJournalTurnOutcome
@@ -66,17 +75,25 @@ type Joined = { join?: ProviderTimelineJoin }
 
 export type ProviderTimelineEvent =
   /** Orca's send reached the provider. It names the open turn when nothing opened that one, else
-   *  the next. `join.item`: the provider's id for its echo of the send, which takes that message's
-   *  place among its turn's messages and writes no row (the send's own row is the bubble). */
+   *  the next; `join.turn` names the turn it opens. The send's own row is the bubble. */
   | {
       type: 'input.accepted'
       clientMessageId: string
       requestedAt: number
-      join?: ProviderTimelineJoin & { item?: string }
+      join?: ProviderTimelineJoin
+    }
+  /** A user message from the provider's saved history (an adopted session has no Orca send): its
+   *  own row, keyed by `item`, and the message that opened `join.turn`. */
+  | {
+      type: 'input.history'
+      item: string
+      body: AgentJournalMessageItem
+      join: ProviderTimelineJoin & { turn: string }
     }
   /** A turn began. `turn` is the provider's turn id when it has one; the assembler mints one otherwise. */
   | { type: 'turn.open'; turn?: string; at: number }
-  /** The provider ended a turn. Absent `turn` means the open turn. */
+  /** The provider ended a turn. Absent `turn` means the open turn. A turn already over (another
+   *  writer's Stop, a newer turn) takes it too: what it left open settles, its row stays. */
   | {
       type: 'turn.end'
       turn?: string
@@ -92,7 +109,7 @@ export type ProviderTimelineEvent =
    *  started it, which closes as usual: no turn's end settles that row; its own updates do, and the
    *  session's end leaves one still in flight `unverifiable`. */
   | ({ type: 'item.open'; item: string; body: ProviderTimelineItemBody } & Produced & Joined)
-  /** The item's whole current body. Content may be replaced; a settled tool never runs again. */
+  /** The item's whole current body. Content may be replaced; a settled tool keeps its terminal body. */
   | ({ type: 'item.update'; item: string; body: ProviderTimelineItemBody } & Produced & Joined)
   /** The item's whole terminal body; it replaces any text streamed into the same item. */
   | ({ type: 'item.close'; item: string; body: ProviderTimelineItemBody } & Produced & Joined)
@@ -110,7 +127,7 @@ export type ProviderTimelineEvent =
   /** The provider asked the user something and waits on the answer. */
   | ({ type: 'request.open'; request: string; body: ProviderTimelineRequestBody } & Produced &
       Joined)
-  /** The provider stopped waiting for an answer it never got. */
+  /** The provider stopped waiting for an answer it never got; one already settled stays settled. */
   | { type: 'request.withdrawn'; request: string }
   /** What the provider said about its context window: for `join.turn`, else the open turn, else the last. */
   | ({ type: 'context.usage'; usage: AgentSessionContextUsage } & Joined)
@@ -120,6 +137,3 @@ export type ProviderTimelineEvent =
   | ({ type: 'provider.frame'; frameKind: string; payload: unknown } & Joined)
   /** The provider child is gone. The verdict is what the host can prove about its end. */
   | { type: 'session.ended'; verdict: StructuredAgentSessionTurnVerdict }
-  /** A new provider session began; its ids live in `namespace`. Work still open is settled first,
-   *  as lost (`unverifiable`), since nothing ended it. */
-  | { type: 'session.reset'; namespace: string }

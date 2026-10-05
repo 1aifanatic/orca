@@ -4,19 +4,15 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { parseAgentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import { agentJournalTurnBody } from '../../../shared/agent-session-turn-record'
-import { createCodexProviderTimelineIdentityScheme } from '../../codex/codex-provider-timeline-identity'
 import {
-  assistantText,
   backgroundTask,
   backgroundTaskState,
   closeProviderTimelineRigs,
-  messageText,
   openProviderTimelineRig,
   openUnboundProviderTimelineAssembler,
   pendingApproval,
   providerItemId,
   providerTurnItemId,
-  SESSION,
   type ProviderTimelineRig
 } from './provider-timeline-assembler-test-support'
 
@@ -93,43 +89,28 @@ describe('a request key reused in another turn', () => {
     })
   })
 
-  it('is a replay when it names the turn that is over', async () => {
-    const rig = await answeredInAnEarlierTurn()
+  it('opens a new row for a request id the previous process used, after a restart', async () => {
+    const rig = await openProviderTimelineRig()
+    rig.assembler.apply({ type: 'turn.open', turn: 't1', at: 1_000 })
+    rig.assembler.apply({ type: 'request.open', request: '0', body: pendingApproval })
+    await rig.rows()
+    // JSON-RPC ids restart with the provider process: the new child asks under `0` again.
+    const restarted = await rig.restart()
+    restarted.apply({ type: 'turn.open', turn: 't2', at: 3_000 })
     expect(
-      rig.assembler.apply({
-        type: 'request.open',
-        request: 'p1',
-        body: pendingApproval,
-        join: { turn: 't1' }
-      }).dropped
-    ).toBe('request-replayed')
-    expect(await rig.row(second)).toBeUndefined()
-  })
-
-  it('decides at execution: queued before bind, a replay of the old turn writes nothing', async () => {
-    const rig = await answeredInAnEarlierTurn()
-    const { assembler, bind } = openUnboundProviderTimelineAssembler(rig.journal)
-    const join = { turn: 't1' }
-    expect(
-      assembler.apply({ type: 'request.open', request: 'p1', body: pendingApproval, join }).dropped
+      restarted.apply({ type: 'request.open', request: '0', body: pendingApproval }).dropped
     ).toBeUndefined()
-    await bind()
-    expect(await rig.row(second)).toBeUndefined()
-    expect((await rig.row(providerItemId('request', 'p1')))?.body).toMatchObject({
-      resolution: { state: 'resolved' }
+    // The sweep cancelled the old process's prompt; the new one is its own row, still pending.
+    expect((await rig.row(providerItemId('request', '0')))?.body).toMatchObject({
+      resolution: { state: 'cancelled' }
+    })
+    expect(await rig.row(providerItemId('request', '0', { generation: 'gen-2' }))).toMatchObject({
+      body: { resolution: { state: 'pending' } },
+      turnScope: { kind: 'turn', turnItemId: providerTurnItemId('t2') }
     })
   })
 
-  it('decides at execution: queued before bind, a new prompt in the live turn opens', async () => {
-    const rig = await answeredInAnEarlierTurn()
-    const { assembler, bind } = openUnboundProviderTimelineAssembler(rig.journal)
-    const join = { turn: 't2' }
-    assembler.apply({ type: 'request.open', request: 'p1', body: pendingApproval, join })
-    await bind()
-    expect((await rig.row(second))?.body).toMatchObject({ resolution: { state: 'pending' } })
-  })
-
-  it('decides at execution: a turn another writer ended while it was queued takes no prompt', async () => {
+  it('asks nothing in a turn another writer ended while the open was queued', async () => {
     const rig = await answeredInAnEarlierTurn()
     const { assembler, bind } = openUnboundProviderTimelineAssembler(rig.journal)
     const join = { turn: 't2' }
@@ -144,7 +125,9 @@ describe('a request key reused in another turn', () => {
       { fence: 1, turnScope: { kind: 'thread' } }
     )
     await bind()
-    expect(await rig.row(second)).toBeUndefined()
+    expect(
+      await rig.row(providerItemId('request', 'p1', { generation: 'gen-unbound' }))
+    ).toBeUndefined()
   })
 })
 
@@ -203,23 +186,24 @@ describe('a send that names its turn', () => {
 })
 
 describe('a background task', () => {
-  it('outlives its turn after a restart, and settles on its own update', async () => {
+  it('outlives its turn, and settles on its own update', async () => {
     const rig = await openProviderTimelineRig()
     rig.assembler.apply({ type: 'turn.open', turn: 't1', at: 1_000 })
     rig.assembler.apply({ type: 'item.open', item: 'bg', body: backgroundTask('bg', 'working') })
-    await rig.rows()
-    const restarted = rig.restart({ generation: 'gen-2' })
-    restarted.apply({ type: 'turn.end', turn: 't1', at: 2_000, state: 'completed' })
+    rig.assembler.apply({ type: 'turn.end', turn: 't1', at: 2_000, state: 'completed' })
     expect(await backgroundTaskState(rig, 'bg')).toBe('working')
     expect(
-      restarted.apply({ type: 'item.close', item: 'bg', body: backgroundTask('bg', 'done') })
+      rig.assembler.apply({ type: 'item.close', item: 'bg', body: backgroundTask('bg', 'done') })
         .dropped
     ).toBeUndefined()
     expect(await backgroundTaskState(rig, 'bg')).toBe('done')
     // A straggler progress report never re-lights it.
     expect(
-      restarted.apply({ type: 'item.update', item: 'bg', body: backgroundTask('bg', 'working') })
-        .dropped
+      rig.assembler.apply({
+        type: 'item.update',
+        item: 'bg',
+        body: backgroundTask('bg', 'working')
+      }).dropped
     ).toBe('item-settled')
     expect(await backgroundTaskState(rig, 'bg')).toBe('done')
   })
@@ -235,31 +219,5 @@ describe('a background task', () => {
       backgroundTask('bg', 'unverifiable')
     )
     expect(await backgroundTaskState(rig, 'ran')).toBe('done')
-  })
-})
-
-describe('message places after a restart', () => {
-  it('continues past the highest place the journal holds, not the first gap', async () => {
-    const rig = await openProviderTimelineRig({
-      scheme: createCodexProviderTimelineIdentityScheme({
-        sessionId: SESSION,
-        primaryThreadId: () => 'root'
-      }),
-      ownThread: () => 'root'
-    })
-    await rig.journal.appendItem(
-      { provider: 'codex', threadId: 'root', turnId: 't1', ordinal: 2 },
-      assistantText('old'),
-      { fence: 1, turnScope: { kind: 'thread' }, providerItemRef: 'item:old' }
-    )
-    const restarted = rig.restart({ generation: 'gen-2' })
-    restarted.apply({
-      type: 'item.close',
-      item: 'new',
-      body: assistantText('new'),
-      join: { thread: 'root', turn: 't1' }
-    })
-    const placed = (await rig.rows()).find((row) => messageText(row.body) === 'new')
-    expect(placed?.itemId).toBe('codex:root:t1:3')
   })
 })

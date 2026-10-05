@@ -3,11 +3,14 @@ import {
   agentJournalToolCallLifecycle,
   interruptedAgentJournalToolCall
 } from '../../../shared/agent-journal-tool-call-lifecycle'
+import { parseAgentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import type { AgentJournalToolCallItem } from '../../../shared/agent-session-journal-types'
+import { agentJournalTurnBody } from '../../../shared/agent-session-turn-record'
 import {
   closeProviderTimelineRigs,
   openProviderTimelineRig,
   providerItemId,
+  providerTurnItemId,
   runningTool,
   type ProviderTimelineRig
 } from './provider-timeline-assembler-test-support'
@@ -64,14 +67,33 @@ describe('provider timeline: how a call its turn or session ended reads', () => 
     expect(await lifecycle(rig)).toBe('interrupted')
   })
 
-  it('reads interrupted when a restarted host ends the session a previous one opened it in', async () => {
+  it('reads interrupted when a person stops its turn on the journal, with no word to the assembler', async () => {
     const rig = await openTool()
-    const restarted = rig.restart()
-    restarted.apply({
-      type: 'session.ended',
-      verdict: { state: 'interrupted', completedAt: 3_000 }
-    })
-    expect(await lifecycle(rig)).toBe('interrupted')
+    const running = await rig.turn('turn-1')
+    const identity = parseAgentJournalItemKey(providerTurnItemId('turn-1'))
+    if (!running || !identity) {
+      throw new Error('the turn row is written')
+    }
+    // As a person's Stop writes it: the turn interrupted, as their cancellation.
+    await rig.journal.appendItem(
+      identity,
+      agentJournalTurnBody({
+        ...running,
+        state: 'interrupted',
+        outcome: 'cancellation',
+        completedAt: 2_000
+      }),
+      { fence: 1, turnScope: { kind: 'thread' } }
+    )
+    rig.assembler.apply({ type: 'activity', text: 'Thinking' })
+    expect(await toolBody(rig)).toMatchObject({ state: 'failed', endedAs: 'interrupted' })
+  })
+
+  it('leaves the call unverified when a restarted host settles it with no proof the child died', async () => {
+    const rig = await openTool()
+    await rig.restart()
+    expect(await toolBody(rig)).toMatchObject({ state: 'failed', endedAs: 'unverifiable' })
+    expect(await lifecycle(rig)).toBe('failed')
   })
 
   it('keeps the provider cancelling a call, and a later turn end does not restate it', async () => {
@@ -97,12 +119,6 @@ describe('provider timeline: how a call its turn or session ended reads', () => 
   it('still reads failed when the host lost the child, which proves no interruption', async () => {
     const rig = await openTool()
     rig.assembler.apply({ type: 'session.ended', verdict: { state: 'unverifiable' } })
-    expect(await lifecycle(rig)).toBe('failed')
-  })
-
-  it('still reads failed when a new provider session replaces the one it ran in', async () => {
-    const rig = await openTool()
-    rig.assembler.apply({ type: 'session.reset', namespace: 'provider-session-2' })
     expect(await lifecycle(rig)).toBe('failed')
   })
 
