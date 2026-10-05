@@ -98,4 +98,11 @@ test('the latest release reduces frames that carry the async question field as b
   const advanced = reduce(hydrated, { type: 'event', event: BATCH })
   expect(advanced.cursor).toEqual({ epoch: 'e', sequence: 2 })
   expect(advanced.items.map((item) => item.itemId)).toEqual(['item-1'])
+
+  // An over-budget set is published partially with `omittedCount`; the release ignores both.
+  const { asyncQuestions: _field, ...withoutField } = SNAPSHOT
+  const overBudget = { ...SNAPSHOT, asyncQuestions: { ...ASYNC_QUESTIONS, omittedCount: 400 } }
+  expect(reduce(empty, { type: 'event', event: overBudget })).toEqual(
+    reduce(empty, { type: 'event', event: withoutField })
+  )
 }, 180_000)

@@ -14,6 +14,12 @@ import { CodexTurnOrdinals } from '../../codex/codex-turn-ordinals'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { createTrackedJournalOpener } from '../agent-session-journal/journal-host-database-test-support'
 import { digestPayload } from '../agent-session-journal/journal-payload-bounds'
+import {
+  NATIVE_CHAT_ASYNC_QUESTIONS_PUBLICATION_BYTES,
+  nativeChatAsyncQuestionsFieldBytes
+} from '../../../shared/native-chat-async-questions'
+import { serializeRemoteRuntimePayload } from '../../../shared/remote-runtime-memory-limits'
+import { AGENT_SESSION_HISTORY_MAX_PAGE_BYTES } from './agent-session-history-page-bounds'
 import { readStructuredAgentSessionAsyncQuestions } from './structured-agent-session-status-journal-projection'
 import { AgentSessionSubscribers } from './structured-agent-session-subscribers'
 
@@ -303,5 +309,87 @@ describe('structured async questions on subscribe frames', () => {
         asyncQuestions: { state: 'ready', questions: [expect.objectContaining({ title: 'A?' })] }
       })
     ])
+  })
+})
+
+describe('structured async questions against the frame byte budget', () => {
+  /** Rows large enough that the hydration page is cut by bytes, well before its row limit. */
+  async function fillPageBudget(journal: AgentSessionJournal): Promise<number> {
+    const rows = 12
+    for (let index = 0; index < rows; index += 1) {
+      await journal.appendItem(
+        codexIdentity(),
+        {
+          kind: 'message',
+          role: 'assistant',
+          blocks: [{ type: 'text', text: `row ${index} ${'x'.repeat(200 * 1024)}` }]
+        },
+        OPTIONS
+      )
+    }
+    return rows
+  }
+
+  function snapshotOf(journal: AgentSessionJournal) {
+    const events: AgentSessionSubscribeEvent[] = []
+    new AgentSessionSubscribers({
+      readAsyncQuestions: readStructuredAgentSessionAsyncQuestions
+    }).open({
+      id: 's',
+      sessionId: IDENTITY.sessionId,
+      journal,
+      fence: 1,
+      emit: (event) => events.push(event)
+    })
+    const snapshot = events[0]
+    if (snapshot?.type !== 'snapshot') {
+      throw new Error('expected a snapshot frame')
+    }
+    return snapshot
+  }
+
+  it('carries a question older than the byte-budget page on the snapshot', async () => {
+    const journal = await open()
+    await ask(journal, 'Old?')
+    const rows = await fillPageBudget(journal)
+
+    const snapshot = snapshotOf(journal)
+
+    expect(snapshot.page.items.length).toBeLessThan(rows)
+    expect(snapshot.page.hasOlder).toBe(true)
+    expect(JSON.stringify(snapshot.page.items)).not.toContain('Old?')
+    expect(snapshot.asyncQuestions).toMatchObject({
+      state: 'ready',
+      questions: [{ title: 'Old?' }]
+    })
+  })
+
+  it('publishes the oldest questions that fit and keeps a full frame under the page limit', async () => {
+    const journal = await open()
+    // Maximum-size titles: far more than the side field's budget can carry.
+    const asked = 1200
+    for (let index = 0; index < asked; index += 1) {
+      await ask(journal, `${String(index).padStart(4, '0')} ${'q'.repeat(500)}`)
+    }
+    await fillPageBudget(journal)
+
+    const snapshot = snapshotOf(journal)
+    const field = snapshot.asyncQuestions
+    if (field?.state !== 'ready') {
+      throw new Error('expected a published set')
+    }
+
+    expect(field.questions.length).toBeGreaterThan(0)
+    expect(field.omittedCount).toBe(asked - field.questions.length)
+    expect(field.questions[0]?.title.startsWith('0000 ')).toBe(true)
+    expect(nativeChatAsyncQuestionsFieldBytes(field)).toBeLessThanOrEqual(
+      NATIVE_CHAT_ASYNC_QUESTIONS_PUBLICATION_BYTES
+    )
+    // The history page was packed to its budget with the field's share held back, so the
+    // whole frame, field included, stays inside the page limit and the transport accepts it,
+    // for a reader that ignores the field too (its reduction: cross-version-wire suite).
+    expect(snapshot.page.hasOlder).toBe(true)
+    const frameBytes = Buffer.byteLength(serializeRemoteRuntimePayload(snapshot), 'utf8')
+    expect(frameBytes).toBeLessThanOrEqual(AGENT_SESSION_HISTORY_MAX_PAGE_BYTES)
   })
 })
