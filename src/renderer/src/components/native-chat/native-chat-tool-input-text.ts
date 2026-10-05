@@ -1,7 +1,17 @@
 import { unwrapLoginShellCommand } from '../../../../shared/native-chat-tool-preview-prefix'
 import { normalizeToolInput } from '../../../../shared/native-chat-tool-summary'
 
-export function nativeChatToolInputText(input: unknown, key: string): string | null {
+type NativeChatTextInputKey = 'command' | 'cmd' | 'description' | 'url'
+type NativeChatTextInput = Partial<Record<NativeChatTextInputKey, unknown>>
+
+function isNativeChatTextInput(value: unknown): value is NativeChatTextInput {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+export function nativeChatToolInputText(
+  input: unknown,
+  key: NativeChatTextInputKey
+): string | null {
   let value = input
   if (typeof value === 'string') {
     const raw = value
@@ -11,10 +21,10 @@ export function nativeChatToolInputText(input: unknown, key: string): string | n
       return key === 'command' ? raw : null
     }
   }
-  if (value === null || typeof value !== 'object' || !(key in value)) {
+  if (!isNativeChatTextInput(value)) {
     return null
   }
-  const field: unknown = Reflect.get(value, key)
+  const field = value[key]
   if (typeof field === 'string') {
     return field
   }
@@ -36,13 +46,13 @@ export function nativeChatPlainCommandInput(input: unknown): string | null {
   if (typeof normalized === 'string') {
     return normalized
   }
-  if (normalized === null || typeof normalized !== 'object' || Array.isArray(normalized)) {
+  if (!isNativeChatTextInput(normalized)) {
     return null
   }
   const keys = Object.keys(normalized)
   if (keys.length !== 1 || (keys[0] !== 'command' && keys[0] !== 'cmd')) {
     return null
   }
-  const command: unknown = Reflect.get(normalized, keys[0])
+  const command = keys[0] === 'command' ? normalized.command : normalized.cmd
   return typeof command === 'string' ? command : null
 }
