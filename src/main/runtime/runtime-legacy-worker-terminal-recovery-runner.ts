@@ -1,4 +1,6 @@
 import { parseAppSshPtyId } from '../../shared/ssh-pty-id'
+import { LOCAL_EXECUTION_HOST_ID, toSshExecutionHostId } from '../../shared/execution-host'
+import { getPtyExecutionHost } from '../../shared/terminal-execution-host'
 import type { RuntimeLegacyWorkerTerminalRecoveryController } from './runtime-legacy-worker-terminal-recovery-controller'
 import { reconcileLegacyWorkerCandidate } from './runtime-legacy-worker-terminal-recovery-candidate'
 import type {
@@ -25,14 +27,24 @@ export async function runLegacyWorkerTerminalRecovery(
       connectionId: string | null
       entries: {
         candidate: (typeof plan.candidates)[number]
-        workspace: LegacyWorkerRecoveryWorkspace
+        workspace: LegacyWorkerRecoveryWorkspace | null
       }[]
     }
   >()
   for (const candidate of plan.candidates) {
+    const sshPty = parseAppSshPtyId(candidate.ptyId)
+    const ptyHost = getPtyExecutionHost(candidate.ptyId)
+    if (
+      ptyHost === 'foreign' ||
+      (ptyHost !== null && !sshPty) ||
+      (sshPty?.connectionId ?? undefined) !== options.connectionId ||
+      (!sshPty && !ports.canRecoverPersistentLocalPtys())
+    ) {
+      deferredDispatchIds.add(candidate.dispatchId)
+      continue
+    }
     try {
       const workspace = await ports.resolveWorkspace(candidate)
-      const sshPty = parseAppSshPtyId(candidate.ptyId)
       if (workspace.scope.connectionId) {
         if (
           options.connectionId !== workspace.scope.connectionId ||
@@ -54,22 +66,49 @@ export async function runLegacyWorkerTerminalRecovery(
       const provider = providers.get(providerKey) ?? { connectionId, entries: [] }
       provider.entries.push({ candidate, workspace })
       providers.set(providerKey, provider)
-    } catch {
-      deferredDispatchIds.add(candidate.dispatchId)
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'selector_not_found') {
+        const connectionId = sshPty?.connectionId ?? null
+        const providerKey = connectionId === null ? 'local' : `ssh:${connectionId}`
+        const provider = providers.get(providerKey) ?? { connectionId, entries: [] }
+        provider.entries.push({ candidate, workspace: null })
+        providers.set(providerKey, provider)
+      } else {
+        deferredDispatchIds.add(candidate.dispatchId)
+      }
     }
   }
   for (const provider of providers.values()) {
     const resolvedWorktrees = [
       ...new Map(
-        provider.entries.map(({ workspace }) => [workspace.resolved.id, workspace.resolved])
+        provider.entries.flatMap(({ workspace }) =>
+          workspace ? [[workspace.resolved.id, workspace.resolved] as const] : []
+        )
       ).values()
     ]
     const inventory = await ports.refreshInventory(resolvedWorktrees, provider.connectionId)
-    if (!inventory) {
+    const hostId = provider.connectionId
+      ? toSshExecutionHostId(provider.connectionId)
+      : LOCAL_EXECUTION_HOST_ID
+    if (!inventory || !inventory.queriedHostIds.has(hostId)) {
       provider.entries.forEach(({ candidate }) => deferredDispatchIds.add(candidate.dispatchId))
       continue
     }
     for (const { candidate, workspace } of provider.entries) {
+      if (!workspace) {
+        const identity = inventory.terminalIdentityByPtyId.get(candidate.ptyId)
+        if (
+          !inventory.allLivePtyIds.has(candidate.ptyId) ||
+          (identity &&
+            (identity.handle !== candidate.terminalHandle ||
+              identity.incarnationId !== candidate.incarnationId))
+        ) {
+          pendingResolutions.push({ candidate, resolution: 'exited', hostId })
+        } else {
+          deferredDispatchIds.add(candidate.dispatchId)
+        }
+        continue
+      }
       await reconcileLegacyWorkerCandidate({
         controller,
         ports,

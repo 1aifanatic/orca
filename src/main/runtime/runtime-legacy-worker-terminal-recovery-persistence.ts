@@ -38,15 +38,15 @@ export class RuntimeLegacyWorkerTerminalRecoveryPersistence {
     const originals = new Map<ExecutionHostId, WorkspaceSessionState>()
     const staged = new Map<ExecutionHostId, WorkspaceSessionState>()
     const dispatchIds = new Set<string>()
+    let adopted = false
     try {
       return await store.runDurableMutation(() => {
-        for (const { candidate, resolution } of resolutions) {
-          const hostId = this.getHostId(candidate.worktreeId)
+        for (const { candidate, resolution, hostId: observedHostId } of resolutions) {
+          const hostId = observedHostId ?? this.getHostId(candidate.worktreeId)
           const session = hostId ? getWorkspaceSession(hostId) : null
           if (!hostId || !session) {
             continue
           }
-          originals.set(hostId, originals.get(hostId) ?? cloneWorkspaceSessionState(session))
           let next =
             resolution === 'exited'
               ? retireTerminalSurfaceFromPersistence(session, {
@@ -64,8 +64,10 @@ export class RuntimeLegacyWorkerTerminalRecoveryPersistence {
             next = { ...next, sleepingAgentSessionsByPaneKey: sleeping }
           }
           if (next !== session) {
+            originals.set(hostId, originals.get(hostId) ?? cloneWorkspaceSessionState(session))
             setWorkspaceSession(next, hostId)
           }
+          adopted ||= resolution === 'adopted'
           dispatchIds.add(candidate.dispatchId)
         }
         // Rollback needs the final stored state, not a full-session copy after every worker.
@@ -74,7 +76,7 @@ export class RuntimeLegacyWorkerTerminalRecoveryPersistence {
         }
         return {
           value: dispatchIds,
-          persist: dispatchIds.size > 0,
+          persist: originals.size > 0 || adopted,
           rollback: () => {
             for (const [hostId, original] of originals) {
               const stagedSession = staged.get(hostId)
@@ -104,9 +106,6 @@ export class RuntimeLegacyWorkerTerminalRecoveryPersistence {
   }
 
   reconcileMissing(candidate: LegacyWorkerRecoveryCandidate): boolean {
-    if (candidate.dispatchStatus !== 'pending' && candidate.dispatchStatus !== 'dispatched') {
-      return true
-    }
     try {
       this.getDb().reconcileMissingWorkerTerminal(
         candidate.dispatchId,

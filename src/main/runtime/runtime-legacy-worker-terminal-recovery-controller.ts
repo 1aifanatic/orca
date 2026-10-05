@@ -9,15 +9,15 @@ import type {
 
 type RecoveryRetry = {
   attempt: number
+  exhausted: boolean
   connectionId?: string
   materializeRenderer: boolean
   timer: ReturnType<typeof setTimeout> | null
 }
 
-// Why a module-level set: a retry re-arms itself until its deferred worker materializes, so a host
-// that never resolves one keeps a recovery loop running with no handle on it. A controller joins
-// only while it has a timer armed and leaves as soon as it has none, so nothing is retained past
-// the loop it belongs to.
+const MAX_LEGACY_WORKER_RECOVERY_RETRIES = 6
+
+// Retain controllers only while timers need cancellation during test teardown.
 const controllersWithArmedRetries = new Set<RuntimeLegacyWorkerTerminalRecoveryController>()
 
 /** Stop every armed recovery retry. Test-only: a retry loop must not outlive the test that armed it. */
@@ -38,6 +38,9 @@ export class RuntimeLegacyWorkerTerminalRecoveryController {
   reconcile(
     options: LegacyWorkerRecoveryOptions = {}
   ): Promise<LegacyWorkerTerminalRecoveryResult> {
+    if (!options.retry) {
+      this.cancelScope(options.connectionId ? `ssh:${options.connectionId}` : 'local')
+    }
     let resolveResult!: (result: LegacyWorkerTerminalRecoveryResult) => void
     let rejectResult!: (error: unknown) => void
     const result = new Promise<LegacyWorkerTerminalRecoveryResult>((resolve, reject) => {
@@ -61,7 +64,7 @@ export class RuntimeLegacyWorkerTerminalRecoveryController {
       clearTimeout(retry.timer)
     }
     this.retries.delete(scopeKey)
-    if (this.retries.size === 0) {
+    if (![...this.retries.values()].some((entry) => entry.timer !== null)) {
       controllersWithArmedRetries.delete(this)
     }
   }
@@ -91,6 +94,7 @@ export class RuntimeLegacyWorkerTerminalRecoveryController {
     }
     const retry = this.retries.get(scopeKey) ?? {
       attempt: 0,
+      exhausted: false,
       ...(options.connectionId ? { connectionId: options.connectionId } : {}),
       materializeRenderer: options.materializeRenderer === true,
       timer: null
@@ -125,7 +129,15 @@ export class RuntimeLegacyWorkerTerminalRecoveryController {
   }
 
   private armRetry(scopeKey: string, retry: RecoveryRetry): void {
-    if (retry.timer) {
+    if (retry.timer || retry.exhausted) {
+      return
+    }
+    if (retry.attempt >= MAX_LEGACY_WORKER_RECOVERY_RETRIES) {
+      retry.exhausted = true
+      if (![...this.retries.values()].some((entry) => entry.timer !== null)) {
+        controllersWithArmedRetries.delete(this)
+      }
+      console.warn('[orchestration] automatic worker recovery retries exhausted', { scopeKey })
       return
     }
     const delayMs = Math.min(1_000 * 2 ** retry.attempt, 30_000)
@@ -134,6 +146,7 @@ export class RuntimeLegacyWorkerTerminalRecoveryController {
       retry.timer = null
       void this.ports
         .reconcile({
+          retry: true,
           ...(retry.connectionId ? { connectionId: retry.connectionId } : {}),
           materializeRenderer: retry.materializeRenderer
         })

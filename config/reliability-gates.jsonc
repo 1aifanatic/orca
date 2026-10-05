@@ -21630,6 +21630,140 @@
         "Collect CI soak with zero unexplained GC flakes and retain callback-order, overflow-carry and reentrancy assertions."
       ],
       "demotionRule": "Keep experimental; investigate delivery, coalescing, error-path or pending-reference regressions without weakening the retention or fidelity oracle."
+    },
+    {
+      "id": "orchestration.worker-recovery-convergence",
+      "title": "Settled assignments leave recovery and unverifiable workers stop automatic retries",
+      "maturity": "experimental",
+      "protection": "partial",
+      "owner": "orchestration",
+      "layer": "sqlite-runtime-provider-contract",
+      "surfaces": [
+        "worker and assignment settlement",
+        "historical worker repair",
+        "deleted git and folder workspaces",
+        "recovery retry scheduling",
+        "durable session retirement"
+      ],
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "providers": [
+        "local",
+        "daemon",
+        "ssh",
+        "wsl",
+        "remote-runtime"
+      ],
+      "coveredPlatforms": [
+        "macos"
+      ],
+      "coveredProviders": [
+        "local",
+        "daemon",
+        "ssh"
+      ],
+      "coverageNotes": "Temporary SQLite databases and fake-clock/provider contracts cover assignment repair, uncertain starts/stops, missing git/folder workspaces, owning SSH inventories, and rejection of foreign paired-runtime PTYs. Hidden macOS Electron journeys retain real daemon PTYs through restart without duplicate launch or interrupted output. Live SSH/WSL and Linux/Windows journeys remain gaps; no execution commands or wire payloads change.",
+      "motivatingLinks": [
+        "https://stablygroup.slack.com/archives/C0AK2T3JEF4/p1791225819076759",
+        "https://github.com/stablyai/orca/pull/11271",
+        "https://github.com/stablyai/orca/pull/22612"
+      ],
+      "invariant": "Completing an assignment settles its active worker bookkeeping in the same transaction without asserting process exit or releasing a terminal. Historical settled assignments converge once on database open. Missing workspaces require owning-provider evidence before exact-incarnation retirement; loss of contact is unverifiable. Automatic recovery stops after six retries per host until explicit recovery restarts the budget.",
+      "oracle": "Reopen historical completed/failed/circuit-broken PTY, structured and handle-less assignments and require no active recovery rows; preserve genuine report outcomes, pending unknown workers, diagnostics and terminal resources. Inject settlement failure and require complete transaction rollback. Query 100 missing-workspace candidates once per provider, preserve live/unidentified PTYs and wrong-host SSH evidence, and advance fake time ten minutes to require six retries and zero remaining timers without lifecycle settlement.",
+      "commands": [
+        "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/main/runtime/orchestration src/main/runtime/runtime-legacy-worker-terminal-recovery-persistence.test.ts src/main/runtime/runtime-legacy-worker-terminal-recovery-retry.test.ts src/main/runtime/runtime-legacy-worker-missing-workspace-recovery.test.ts src/main/runtime/orca-runtime.test.ts src/main/runtime/rpc/orchestration-runtime-update-settlement.test.ts src/main/runtime/rpc/methods/orchestration/worker/composed-workers.test.ts src/main/runtime/rpc/methods/orchestration/messaging/check.test.ts src/main/runtime/rpc/methods/orchestration/federation/federation-lifecycle-settlement.test.ts src/main/runtime/rpc/methods/orchestration/federation/federation.test.ts src/cli/handlers/orchestration-lifecycle-rejection.test.ts src/cli/handlers/orchestration-migration.test.ts",
+        "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/main/runtime/orchestration/worker-dispatch-settlement.test.ts src/main/runtime/runtime-legacy-worker-terminal-recovery-retry.test.ts src/main/runtime/runtime-legacy-worker-missing-workspace-recovery.test.ts src/main/runtime/runtime-legacy-worker-terminal-recovery-persistence.test.ts",
+        "ORCA_BACKGROUND_LAUNCH=1 pnpm exec playwright test tests/e2e/profile-state-terminal-restart-persistence.spec.ts tests/e2e/orchestration-legacy-worker-restart-recovery.spec.ts --config tests/playwright.config.ts --project electron-headless --workers=1"
+      ],
+      "testFiles": [
+        "src/main/runtime/orchestration/worker-dispatch-settlement.test.ts",
+        "src/main/runtime/runtime-legacy-worker-terminal-recovery-retry.test.ts",
+        "src/main/runtime/runtime-legacy-worker-missing-workspace-recovery.test.ts",
+        "src/main/runtime/runtime-legacy-worker-terminal-recovery-persistence.test.ts",
+        "src/main/runtime/orca-runtime.test.ts",
+        "tests/e2e/orchestration-legacy-worker-restart-recovery.spec.ts"
+      ],
+      "assertionRefs": [
+        {
+          "file": "src/main/runtime/orchestration/worker-dispatch-settlement.test.ts",
+          "assertions": [
+            "repairs historical settled PTY, structured and handle-less assignments on reopen",
+            "preserves genuine report outcomes and pending unknown workers",
+            "rolls back all assignments when worker settlement fails"
+          ]
+        },
+        {
+          "file": "src/main/runtime/runtime-legacy-worker-terminal-recovery-retry.test.ts",
+          "assertions": [
+            "six automatic retries leave unverifiable workers unchanged and permit explicit recovery",
+            "other host timers remain cancellable after one scope exhausts its budget"
+          ]
+        },
+        {
+          "file": "src/main/runtime/runtime-legacy-worker-missing-workspace-recovery.test.ts",
+          "assertions": [
+            "100 deleted git or folder workspace candidates use one owning-provider inventory",
+            "live PTYs without scoped membership or verified incarnation remain deferred",
+            "local inventory never proves SSH worker exit"
+          ]
+        }
+      ],
+      "evidenceRuns": [
+        {
+          "date": "2026-10-05",
+          "runner": "local",
+          "platform": "macos",
+          "command": "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/main/runtime/orchestration src/main/runtime/runtime-legacy-worker-terminal-recovery-persistence.test.ts src/main/runtime/runtime-legacy-worker-terminal-recovery-retry.test.ts src/main/runtime/runtime-legacy-worker-missing-workspace-recovery.test.ts src/main/runtime/orca-runtime.test.ts src/main/runtime/rpc/orchestration-runtime-update-settlement.test.ts src/main/runtime/rpc/methods/orchestration/worker/composed-workers.test.ts src/main/runtime/rpc/methods/orchestration/messaging/check.test.ts src/main/runtime/rpc/methods/orchestration/federation/federation-lifecycle-settlement.test.ts src/main/runtime/rpc/methods/orchestration/federation/federation.test.ts src/cli/handlers/orchestration-lifecycle-rejection.test.ts src/cli/handlers/orchestration-migration.test.ts",
+          "result": "passed",
+          "durationSeconds": 28.6,
+          "summary": "2,572 tests passed across 149 files; seven tests and one file skipped. Includes SQLite lifecycle, runtime recovery, federation and CLI contracts."
+        },
+        {
+          "date": "2026-10-05",
+          "runner": "local",
+          "platform": "macos",
+          "command": "ORCA_BACKGROUND_LAUNCH=1 pnpm exec playwright test tests/e2e/profile-state-terminal-restart-persistence.spec.ts tests/e2e/orchestration-legacy-worker-restart-recovery.spec.ts --config tests/playwright.config.ts --project electron-headless --workers=1",
+          "result": "passed",
+          "durationSeconds": 66,
+          "summary": "Six hidden Electron journeys passed, including legacy/current worker PTY retention and four SQL restart/profile-transfer journeys."
+        },
+        {
+          "date": "2026-10-05",
+          "runner": "local",
+          "platform": "macos",
+          "command": "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/main/runtime/orchestration/worker-dispatch-settlement.test.ts src/main/runtime/runtime-legacy-worker-terminal-recovery-retry.test.ts src/main/runtime/runtime-legacy-worker-missing-workspace-recovery.test.ts src/main/runtime/runtime-legacy-worker-terminal-recovery-persistence.test.ts",
+          "result": "passed",
+          "durationSeconds": 0.696,
+          "summary": "36 focused settlement, bounded retry, missing-workspace and durable host-routing regressions passed. Reverting four production entry points produced 16 failures and 11 passes in the three lifecycle/provider/retry suites."
+        }
+      ],
+      "runtimeBudget": {
+        "p95Seconds": 60,
+        "scope": "Deterministic unit/provider contracts; Electron restart journeys are separate and CI p95 is not established."
+      },
+      "flakeHistory": {
+        "status": "not-started",
+        "evidence": "Local validation; cross-platform soak pending."
+      },
+      "redGreenEvidence": {
+        "status": "partial",
+        "evidence": "Reverting production settlement, startup repair, retry controller and missing-workspace runner produced 16 failing and 11 passing regressions across three suites; candidate regressions and broader runtime suite pass. No soak history yet."
+      },
+      "performanceBudget": {
+        "required": true,
+        "evidence": "One startup SQL repair, six automatic retries per host with a stop condition, one inventory query for 100 deleted-workspace candidates, one durable batch flush, and at most two full rollback snapshots per changed host. Unchanged adopted surfaces avoid snapshots while still forcing durability. Adds no perpetual polling or per-worker process spawn."
+      },
+      "knownGaps": [
+        "Physical Linux/Windows, WSL and live SSH reconnect/deleted-folder journeys are untested locally.",
+        "No latency claim against the original customer profile; deterministic query, timer, flush and snapshot counts establish bounded work."
+      ],
+      "promotionCriteria": [
+        "Collect cross-platform and provider soak evidence with no weakened identity, transaction or bounded-work assertions."
+      ],
+      "demotionRule": "Keep experimental until soak and platform evidence; investigate failures without extending retries or weakening ownership evidence."
     }
   ]
 }
