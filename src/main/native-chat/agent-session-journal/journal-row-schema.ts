@@ -30,7 +30,7 @@ import {
   type AgentJournalProducerLinkage,
   type AgentJournalSubmissionSource,
   type AgentJournalTurnScope,
-  type AgentSessionProviderHandle
+  type AgentSessionJournalProviderHandle
 } from '../../../shared/agent-session-journal-types'
 import {
   readAgentJournalItemBody,
@@ -68,7 +68,7 @@ type JournalRowBase = AgentJournalProducerLinkage & {
 export type JournalEpochRow = JournalRowBase & {
   kind: 'epoch'
   reason: AgentJournalEpochReason
-  providerHandle: AgentSessionProviderHandle
+  providerHandle: AgentSessionJournalProviderHandle
 }
 
 export const AGENT_JOURNAL_EPOCH_REASONS = [
@@ -132,7 +132,7 @@ export type JournalSubmissionRow = JournalRowBase & {
   kind: 'submission'
   clientMessageId: string
   payloadFingerprint: string
-  providerHandle: AgentSessionProviderHandle
+  providerHandle: AgentSessionJournalProviderHandle
   body: AgentJournalMessageItem
   /** Accepted to be handed over by a later `dispatch{pending}` row; absent on rows whose writer
    *  dispatched in the same step. Older readers keep the key and ignore it. */

@@ -4,8 +4,10 @@ import { join } from 'node:path'
 import { expect, test } from 'vitest'
 import type {
   AgentJournalMessageItem,
-  AgentSessionJournalIdentity
+  AgentSessionJournalIdentity,
+  AgentSessionJournalProviderHandle
 } from '../../../src/shared/agent-session-journal-types'
+import { claudeProviderHandle } from '../../../src/shared/agent-session-provider-handle-encoding'
 import { agentSessionFailureFact } from '../../../src/shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../src/shared/agent-session-failure-words'
 import { QUEUED_MESSAGE_PAUSED_KEPT } from '../../../src/shared/agent-session-queued-message-wire'
@@ -32,6 +34,16 @@ const IDENTITY: AgentSessionJournalIdentity = {
   workspaceId: 'ws-1',
   hostId: 'host-1',
   agent: 'claude',
+  providerHandle: claudeProviderHandle('native-1', null)
+}
+
+/** The identity as builds before the neutral provider handle took it. */
+type OlderJournalIdentity = Omit<AgentSessionJournalIdentity, 'providerHandle'> & {
+  providerHandle: AgentSessionJournalProviderHandle
+}
+
+const OLDER_IDENTITY: OlderJournalIdentity = {
+  ...IDENTITY,
   providerHandle: { kind: 'claude', sessionId: 'native-1', leafUuid: null }
 }
 
@@ -65,7 +77,7 @@ type OlderJournal = {
 
 type OlderOpener = {
   open: (options: {
-    identity: AgentSessionJournalIdentity
+    identity: OlderJournalIdentity
     stateDirectory: string
   }) => Promise<OlderJournal>
   closeAll: () => Promise<void>
@@ -145,7 +157,7 @@ test('an older build lists a kept card first and never sends it, even after a pe
     const older = await olderOpener()
     const nextSendable = await olderNextSendable()
     try {
-      const downgraded = await older.open({ identity: IDENTITY, stateDirectory: directory })
+      const downgraded = await older.open({ identity: OLDER_IDENTITY, stateDirectory: directory })
       const cards = () =>
         downgraded.queuedMessages.list().map(({ messageId, state, holdReason }) => ({
           messageId,
@@ -190,7 +202,7 @@ test("an older build reads the send this build's quit left queued, its source in
 
     const older = await olderOpener()
     try {
-      const downgraded = await older.open({ identity: IDENTITY, stateDirectory: directory })
+      const downgraded = await older.open({ identity: OLDER_IDENTITY, stateDirectory: directory })
       expect(downgraded.repair).toEqual({ malformedRows: 0 })
       expect(downgraded.submission('left-queued')).toMatchObject({ dispatchState: 'pending' })
       // Its delivery loop's first step, as that build runs it: rejected, never handed over.

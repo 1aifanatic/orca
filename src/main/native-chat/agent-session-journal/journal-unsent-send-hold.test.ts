@@ -14,6 +14,7 @@ import type {
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { QUEUED_MESSAGE_PAUSED_KEPT } from '../../../shared/agent-session-queued-message-wire'
+import { claudeProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import { structuredAgentSessionPayloadFingerprint } from '../../../shared/structured-agent-session-mutation'
 import { structuredAgentSessionCompactBody } from '../agent-session-wire/structured-agent-session-command-turn'
 import {
@@ -32,7 +33,7 @@ const IDENTITY: AgentSessionJournalIdentity = {
   workspaceId: 'ws-1',
   hostId: 'host-1',
   agent: 'claude',
-  providerHandle: { kind: 'claude', sessionId: 'native-1', leafUuid: null }
+  providerHandle: claudeProviderHandle('native-1', null)
 }
 const HOST_RESTARTED = agentSessionFailureWords(agentSessionFailureFact('hostRestarted'), {
   surface: 'rejection'

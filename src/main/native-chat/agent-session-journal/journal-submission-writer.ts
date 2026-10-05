@@ -44,7 +44,7 @@ export class JournalSubmissionWriter {
   ): Promise<AgentJournalCursor> {
     const { identity, queuedMessages, rowWriter, state } = this.deps
     return rowWriter.append(
-      journalSubmissionRowBuilder(state, identity.providerHandle, input, consume),
+      journalSubmissionRowBuilder(state, identity, input, consume),
       consume && queuedMessageConsumeHook(queuedMessages, input.clientMessageId, consume),
       receipt
     )

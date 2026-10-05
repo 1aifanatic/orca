@@ -3,6 +3,7 @@
 
 import { vi, type Mock } from 'vitest'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import type { StructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
@@ -63,7 +64,7 @@ export function createQueuedRigProvider(
         ...(options.starting ? { providerChildPhase: 'starting' as const } : {}),
         link: {
           linkId: `link-${fence}`,
-          handle: { provider: 'codex' as const, threadId: THREAD },
+          handle: codexProviderHandle(THREAD),
           origin: resumes ? ('resumed' as const) : ('created' as const),
           mintedAtFence: fence,
           observedAt: NOW
