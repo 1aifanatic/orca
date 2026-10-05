@@ -82,7 +82,18 @@ async function moveHost(
       : await deps.relayTerminals(current)
   if (census.verdict !== 'exited') {
     deps.publishRelayStatus(current, { verdict: census.verdict, count: census.count })
-    return { outcome: 'refused', verdict: census.verdict, terminals: census.count }
+    // The stop closed the relay session; reconnect so the host's workspaces aren't left offline.
+    const reconnected = await deps.connect(targetId).then(
+      () => deps.serverStatus(targetId),
+      (error: unknown) => {
+        console.warn('[ssh] Reconnecting after a refused move failed:', error)
+        return undefined
+      }
+    )
+    // The reconnect's own gate may have proven the terminals exited since, and converted.
+    return reconnected?.kind === 'managed'
+      ? { outcome: 'moved', environmentId: reconnected.environmentId }
+      : { outcome: 'refused', verdict: census.verdict, terminals: census.count }
   }
   if (!stopped) {
     // The failed stop left the relay up; a live session would make the reconnect a no-op refresh.
