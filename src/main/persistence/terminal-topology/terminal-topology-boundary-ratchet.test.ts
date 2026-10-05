@@ -9,9 +9,6 @@ import { scanSourceTree } from '../../../shared/source-scan/source-tree-scan'
 
 const MAIN_ROOT = resolve(__dirname, '../..')
 const BOUNDARY_DIR = 'persistence/terminal-topology/'
-// Why: the shared walk exempts `*-test-fixture.ts` but not this name, which the audit reproducer
-// in docs/audits/acknowledged-tab-retirement pins.
-const TEST_SUPPORT = 'runtime/acknowledged-terminal-tab-retirement-fixture.ts'
 
 /**
  * Files (relative to `src/main`) outside the boundary referencing each writer; each routing change
@@ -32,6 +29,8 @@ const ALLOWED_REFERENCES: Record<string, readonly string[]> = {
     'ipc/session.ts',
     // Store-internal: patchWorkspaceSession -> setWorkspaceSession.
     'persistence/loading-store/session-snapshot-operations.ts',
+    // Test support: seeds sessions for the acknowledged-tab retirement audit.
+    'runtime/acknowledged-terminal-tab-retirement-fixture.ts',
     'runtime/client-hosted-browser-page-persistence.ts',
     'runtime/orca-runtime-adopt-terminal-orphans-from-inventory.ts',
     'runtime/orca-runtime-apply-mobile-session-tab-navigation.ts',
@@ -70,8 +69,21 @@ function isDeclaredName(node: ts.Node): boolean {
     (ts.isFunctionDeclaration(parent) ||
       ts.isMethodDeclaration(parent) ||
       ts.isPropertyDeclaration(parent) ||
-      ts.isPropertyAssignment(parent)) &&
+      ts.isPropertyAssignment(parent) ||
+      ts.isGetAccessorDeclaration(parent) ||
+      ts.isSetAccessorDeclaration(parent) ||
+      ts.isVariableDeclaration(parent) ||
+      ts.isParameter(parent) ||
+      ts.isEnumMember(parent)) &&
     parent.name === node
+  )
+}
+
+function isTypeOnlyImportOrExport(node: ts.Node): boolean {
+  return (
+    ((ts.isImportSpecifier(node) || ts.isExportSpecifier(node)) && node.isTypeOnly) ||
+    (ts.isImportClause(node) && node.isTypeOnly) ||
+    (ts.isExportDeclaration(node) && node.isTypeOnly)
   )
 }
 
@@ -94,14 +106,18 @@ function referencingFilesByWriter(): Map<string, Set<string>> {
     // the walk can match appears verbatim in the text.
     if (
       file.relativePath.startsWith(BOUNDARY_DIR) ||
-      file.relativePath === TEST_SUPPORT ||
       !writers.some((writer) => file.source.includes(writer))
     ) {
       continue
     }
     const source = ts.createSourceFile(file.relativePath, file.source, ts.ScriptTarget.Latest, true)
     const visit = (node: ts.Node): void => {
-      if (ts.isTypeNode(node) || ts.isInterfaceDeclaration(node)) {
+      // Why: ExpressionWithTypeArguments is a type node but also holds `extends f(x)` and `x<T>`.
+      const typeOnly =
+        (ts.isTypeNode(node) && !ts.isExpressionWithTypeArguments(node)) ||
+        ts.isInterfaceDeclaration(node) ||
+        isTypeOnlyImportOrExport(node)
+      if (typeOnly) {
         return
       }
       const name = referencedName(node)

@@ -5,10 +5,8 @@ import {
 } from '../../runtime/terminal-surface-close'
 import type { DurableProfileStateMutation } from '../loading-store/store-runtime-state'
 
-/**
- * The commit boundary for terminal layout (tabs, panes, pane-to-PTY bindings). Today it wraps only
- * the explicit close, whose transform still lives in runtime/; the other writers move here later.
- */
+// The commit boundary for terminal layout (tabs, panes, pane-to-PTY bindings). Today it wraps only
+// the close, whose transform still lives in runtime/; the other writers move here later.
 
 /** Bindings are not listed: `persistPtyBinding` already records `persistence.pty-binding`. */
 type TerminalTopologyCommitKind = 'close_leaf' | 'close_tab'
