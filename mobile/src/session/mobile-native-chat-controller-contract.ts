@@ -16,7 +16,7 @@ import type { MobileStructuredQueuedMessageControls } from './use-mobile-structu
 import type { MobileNativeChatPendingMessage } from './use-mobile-native-chat-drafts'
 import type { useMobileNativeChatSession } from './use-mobile-native-chat-session'
 import type { MobileNativeChatSessionOptionPickersProps } from './MobileNativeChatSessionOptionPickers'
-import type { AgentSessionSlashCommand } from '../../../src/shared/agent-session-wire'
+import type { NativeChatStructuredCatalogInputs } from '../../../src/shared/native-chat-composer-catalog'
 
 export type MobileNativeChatController = {
   /** Whether a tab's effective view is chat (per-tab override, else the default). */
@@ -34,8 +34,8 @@ export type MobileNativeChatController = {
   nativeChatSession: ReturnType<typeof useMobileNativeChatSession>
   /** Structured lane: drives the per-turn status row and live tool progress. */
   nativeChatStructured: boolean
-  /** Structured lane: the `/` surface the session reports; undefined until one arrives. */
-  nativeChatSessionCommands: readonly AgentSessionSlashCommand[] | undefined
+  /** The `/` menu inputs: defined on the structured lane before any report, else undefined. */
+  nativeChatSlashCatalog: NativeChatStructuredCatalogInputs | undefined
   nativeChatAgentWorking: boolean
   /** What labels the live turn's one indicator row; null off the structured lane. */
   nativeChatTurnIndicator: NativeChatLiveTurnIndicator | null

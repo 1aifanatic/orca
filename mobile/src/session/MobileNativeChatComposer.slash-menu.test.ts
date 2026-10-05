@@ -3,6 +3,11 @@ import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'rea
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionConversationCommand } from '../../../src/shared/agent-session-conversation-command'
 import type { AgentSessionSlashCommand } from '../../../src/shared/agent-session-wire'
+import { getVerifiedNativeChatCommands } from '../../../src/shared/native-chat-agent-profiles'
+import {
+  nativeChatComposerCatalog,
+  type NativeChatStructuredCatalogInputs
+} from '../../../src/shared/native-chat-composer-catalog'
 import { MobileNativeChatComposer } from './MobileNativeChatComposer'
 import { mobileNativeChatSlashMenu } from './mobile-native-chat-slash-menu'
 
@@ -30,10 +35,15 @@ vi.mock('lucide-react-native', () => ({
 // The session-option pickers reach a drawer that imports untransformable native modules.
 vi.mock('../components/BottomDrawer', () => ({ BottomDrawer: () => null }))
 
-// A pass-through spy, so a test can count how often the rows are rebuilt.
+// Pass-through spies, so a test can count how often the catalog and rows are rebuilt.
 vi.mock('./mobile-native-chat-slash-menu', async (importOriginal) => {
   const actual: { mobileNativeChatSlashMenu: (args: never) => unknown } = await importOriginal()
   return { mobileNativeChatSlashMenu: vi.fn(actual.mobileNativeChatSlashMenu) }
+})
+vi.mock('../../../src/shared/native-chat-composer-catalog', async (importOriginal) => {
+  const actual: { nativeChatComposerCatalog: (...args: never[]) => unknown } =
+    await importOriginal()
+  return { nativeChatComposerCatalog: vi.fn(actual.nativeChatComposerCatalog) }
 })
 
 const REPORT: AgentSessionSlashCommand[] = [
@@ -42,6 +52,14 @@ const REPORT: AgentSessionSlashCommand[] = [
 ]
 
 const CONVERSATION_COMMANDS: AgentSessionConversationCommand[] = ['clear', 'compact']
+
+function catalog(
+  sessionCommands: AgentSessionSlashCommand[] | undefined
+): NativeChatStructuredCatalogInputs {
+  return { sessionCommands, conversationCommands: CONVERSATION_COMMANDS }
+}
+
+const REPORTED = catalog(REPORT)
 
 type ComposerProps = ComponentProps<typeof MobileNativeChatComposer>
 
@@ -66,7 +84,7 @@ describe('MobileNativeChatComposer `/` menu', () => {
       getSendCompletionGeneration: generation,
       getComposerEditGeneration: generation,
       agent: 'claude',
-      structuredCommands: CONVERSATION_COMMANDS,
+      slashCatalog: catalog(undefined),
       ...overrides
     }
   }
@@ -102,7 +120,7 @@ describe('MobileNativeChatComposer `/` menu', () => {
   }
 
   it('lists reported commands and skills under their headings with hint and description', async () => {
-    await open({ sessionCommands: REPORT })
+    await open({ slashCatalog: REPORTED })
     expect(texts()).toEqual([
       'Commands',
       '/review',
@@ -115,29 +133,61 @@ describe('MobileNativeChatComposer `/` menu', () => {
   })
 
   it('inserts the picked skill and command tokens, ready for arguments', async () => {
-    await open({ sessionCommands: REPORT })
+    await open({ slashCatalog: REPORTED })
     await act(async () => row('/triage').props.onPress())
     expect(onChangeText).toHaveBeenLastCalledWith('/triage ')
     await act(async () => row('/review').props.onPress())
     expect(onChangeText).toHaveBeenLastCalledWith('/review ')
   })
 
-  it('shows a heading only for a group with rows', async () => {
-    await open({ sessionCommands: [REPORT[0]!] })
-    expect(texts()).toContain('Commands')
-    expect(texts()).not.toContain('Skills')
+  it('marks the headings for screen readers', async () => {
+    await open({ slashCatalog: REPORTED })
+    const headings = renderer!.root.findAll(
+      (node) => String(node.type) === 'Text' && node.props.accessibilityRole === 'header'
+    )
+    expect(headings.map((node) => node.props.children)).toEqual(['Commands', 'Skills'])
   })
 
-  it('keeps an older host on the host-owned fallback commands', async () => {
-    await open({ sessionCommands: undefined })
-    expect(texts().filter((text) => text === 'Commands' || String(text).startsWith('/'))).toEqual([
-      'Commands',
+  it('drops the headings when no Skills group is showing', async () => {
+    await open({ slashCatalog: catalog([REPORT[0]!]) })
+    expect(texts()).toEqual(['/review', '<pr>', 'Review a pull request'])
+    act(() => renderer?.unmount())
+    await open({ value: '/rev', slashCatalog: REPORTED })
+    expect(texts()).toEqual(['/review', '<pr>', 'Review a pull request'])
+  })
+
+  it('keeps an older host on the host-owned fallback commands, unheaded', async () => {
+    await open({ slashCatalog: catalog(undefined) })
+    expect(texts().filter((text) => String(text).startsWith('/'))).toEqual([
       '/model',
       '/effort',
       '/clear',
       '/compact'
     ])
+    expect(texts()).not.toContain('Commands')
     expect(texts()).not.toContain('Skills')
+  })
+
+  it('serves the terminal lane the curated catalog', async () => {
+    await open({ slashCatalog: undefined })
+    expect(texts().filter((text) => String(text).startsWith('/'))).toEqual(
+      getVerifiedNativeChatCommands('claude').map((command) => `/${command.name}`)
+    )
+    expect(texts()).not.toContain('Commands')
+  })
+
+  it('re-ranks per keystroke without re-selecting the catalog', async () => {
+    await open({ slashCatalog: REPORTED })
+    const selections = vi.mocked(nativeChatComposerCatalog).mock.calls.length
+    await act(async () => {
+      renderer!.update(
+        createElement(MobileNativeChatComposer, props({ value: '/rev', slashCatalog: REPORTED }))
+      )
+    })
+    const input = renderer!.root.find((node) => String(node.type) === 'TextInput')
+    await act(async () => input.props.onSelectionChange({ nativeEvent: { selection: { end: 4 } } }))
+    expect(texts()).toEqual(['/review', '<pr>', 'Review a pull request'])
+    expect(vi.mocked(nativeChatComposerCatalog).mock.calls.length).toBe(selections)
   })
 
   it('keeps file autocomplete on `@`', async () => {
@@ -148,7 +198,7 @@ describe('MobileNativeChatComposer `/` menu', () => {
   })
 
   it('does not rebuild the rows when a streamed frame re-renders the composer', async () => {
-    await open({ sessionCommands: REPORT })
+    await open({ slashCatalog: REPORTED })
     const builds = vi.mocked(mobileNativeChatSlashMenu).mock.calls.length
     const before = sections()
     // A parent re-render with unrelated changes, as a streamed transcript frame causes.
@@ -156,7 +206,7 @@ describe('MobileNativeChatComposer `/` menu', () => {
       renderer!.update(
         createElement(
           MobileNativeChatComposer,
-          props({ sessionCommands: REPORT, placeholder: 'Another frame' })
+          props({ slashCatalog: REPORTED, placeholder: 'Another frame' })
         )
       )
     })
@@ -166,7 +216,7 @@ describe('MobileNativeChatComposer `/` menu', () => {
     const refreshed: AgentSessionSlashCommand[] = [...REPORT, { name: 'init', kind: 'command' }]
     await act(async () => {
       renderer!.update(
-        createElement(MobileNativeChatComposer, props({ sessionCommands: refreshed }))
+        createElement(MobileNativeChatComposer, props({ slashCatalog: catalog(refreshed) }))
       )
     })
     expect(vi.mocked(mobileNativeChatSlashMenu).mock.calls.length).toBe(builds + 1)

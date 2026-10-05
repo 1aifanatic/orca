@@ -11,8 +11,7 @@ import {
 } from 'react-native'
 import { ArrowUp, ImagePlus, Mic, Square, X } from 'lucide-react-native'
 import { colors, radii, spacing } from '../theme/mobile-theme'
-import type { AgentSessionConversationCommand } from '../../../src/shared/agent-session-conversation-command'
-import type { AgentSessionSlashCommand } from '../../../src/shared/agent-session-wire'
+import type { NativeChatStructuredCatalogInputs } from '../../../src/shared/native-chat-composer-catalog'
 import { MobileNativeChatComposerSuggestions } from './MobileNativeChatComposerSuggestions'
 import { useMobileNativeChatComposerAutocomplete } from './use-mobile-native-chat-composer-autocomplete'
 import {
@@ -29,9 +28,8 @@ const NO_ATTACHMENTS: PendingNativeChatImage[] = []
 type Props = {
   /** Lets the owner focus the field, e.g. after Edit moves a queued message into it. */
   inputRef?: React.Ref<TextInput>
-  structuredCommands?: readonly AgentSessionConversationCommand[]
-  /** The `/` surface the structured session reports; undefined keeps the fallback. */
-  sessionCommands?: readonly AgentSessionSlashCommand[]
+  /** Structured lane: the session's `/` menu inputs; undefined on the terminal lane. */
+  slashCatalog?: NativeChatStructuredCatalogInputs
   /** Controlled composer text — owned by the parent so dictation can write to it. */
   value: string
   onChangeText: (text: string) => void
@@ -74,8 +72,7 @@ export function MobileNativeChatComposer({
   getSendCompletionGeneration,
   getComposerEditGeneration,
   agent,
-  structuredCommands,
-  sessionCommands,
+  slashCatalog,
   sessionOptions,
   onAttachImage,
   attachments = NO_ATTACHMENTS,
@@ -128,8 +125,7 @@ export function MobileNativeChatComposer({
     value,
     cursor,
     agent,
-    structuredCommands,
-    sessionCommands,
+    slashCatalog,
     filePaths,
     onNeedFiles,
     onChangeText,

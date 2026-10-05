@@ -10,6 +10,12 @@ import {
 } from './native-chat-slash-commands'
 import { structuredSlashCommands } from './structured-agent-session-composer'
 
+/** A structured session's two `/` inputs; absent on the PTY lane. */
+export type NativeChatStructuredCatalogInputs = {
+  sessionCommands?: readonly AgentSessionSlashCommand[]
+  conversationCommands?: readonly AgentSessionConversationCommand[]
+}
+
 export type NativeChatComposerCatalog = {
   agentCommands: readonly SlashCommandSuggestion[]
   sessionSkills: readonly NativeChatSessionSkill[] | undefined
@@ -25,10 +31,7 @@ export type NativeChatComposerCatalog = {
  */
 export function nativeChatComposerCatalog(
   agent: AgentType,
-  structured?: {
-    sessionCommands?: readonly AgentSessionSlashCommand[]
-    conversationCommands?: readonly AgentSessionConversationCommand[]
-  }
+  structured?: NativeChatStructuredCatalogInputs
 ): NativeChatComposerCatalog {
   if (!structured) {
     return { agentCommands: getVerifiedNativeChatCommands(agent), sessionSkills: undefined }

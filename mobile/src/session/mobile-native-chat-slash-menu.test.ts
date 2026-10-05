@@ -1,20 +1,32 @@
 import { describe, expect, it } from 'vitest'
+import type { AgentSessionConversationCommand } from '../../../src/shared/agent-session-conversation-command'
 import type { AgentSessionSlashCommand } from '../../../src/shared/agent-session-wire'
 import { getVerifiedNativeChatCommands } from '../../../src/shared/native-chat-agent-profiles'
-import { mobileNativeChatSlashMenu, structuredLaneCommands } from './mobile-native-chat-slash-menu'
+import { nativeChatComposerCatalog } from '../../../src/shared/native-chat-composer-catalog'
+import { mobileNativeChatSlashMenu } from './mobile-native-chat-slash-menu'
 
 const names = (items: readonly { name: string }[]): string[] => items.map(({ name }) => name)
 
-function menu(
-  overrides: Partial<Parameters<typeof mobileNativeChatSlashMenu>[0]>
-): ReturnType<typeof mobileNativeChatSlashMenu> {
-  return mobileNativeChatSlashMenu({
-    agent: 'claude',
-    structuredCommands: [],
-    sessionCommands: undefined,
-    query: '',
-    ...overrides
-  })
+function menu({
+  agent = 'claude',
+  lane = 'structured',
+  conversationCommands = [],
+  sessionCommands,
+  query = ''
+}: {
+  agent?: string | null
+  lane?: 'structured' | 'terminal'
+  conversationCommands?: readonly AgentSessionConversationCommand[]
+  sessionCommands?: readonly AgentSessionSlashCommand[]
+  query?: string
+}): ReturnType<typeof mobileNativeChatSlashMenu> {
+  const catalog = agent
+    ? nativeChatComposerCatalog(
+        agent,
+        lane === 'structured' ? { sessionCommands, conversationCommands } : undefined
+      )
+    : null
+  return mobileNativeChatSlashMenu({ agent, catalog, query })
 }
 
 const CLAUDE_REPORT: AgentSessionSlashCommand[] = [
@@ -27,23 +39,24 @@ const CLAUDE_REPORT: AgentSessionSlashCommand[] = [
 
 describe('mobileNativeChatSlashMenu', () => {
   it('serves an older structured host its host-owned commands, by support', () => {
-    const full = menu({ structuredCommands: ['clear', 'compact'] })
+    const full = menu({ conversationCommands: ['clear', 'compact'] })
     expect(names(full.commands)).toEqual(['model', 'effort', 'clear', 'compact'])
     expect(full.skills).toEqual([])
-    expect(full.grouped).toBe(true)
-    expect(names(menu({ structuredCommands: ['clear'] }).commands)).toEqual([
+    expect(full.grouped).toBe(false)
+    expect(names(menu({ conversationCommands: ['clear'] }).commands)).toEqual([
       'model',
       'effort',
       'clear'
     ])
-    expect(names(menu({ structuredCommands: [] }).commands)).toEqual(['model', 'effort'])
+    expect(names(menu({ conversationCommands: [] }).commands)).toEqual(['model', 'effort'])
   })
 
   it('shows the commands and skills a Claude session reports, with their text', () => {
     const result = menu({
-      structuredCommands: ['clear', 'compact'],
+      conversationCommands: ['clear', 'compact'],
       sessionCommands: CLAUDE_REPORT
     })
+    expect(result.grouped).toBe(true)
     expect(names(result.commands)).toEqual(['review', 'init', 'preview-deploy'])
     expect(result.commands[0]).toMatchObject({
       kind: 'command',
@@ -92,20 +105,22 @@ describe('mobileNativeChatSlashMenu', () => {
   })
 
   it('keeps Codex on its fallback, including /goal, with no skills group', () => {
-    const result = menu({ agent: 'codex', structuredCommands: [], sessionCommands: undefined })
+    const result = menu({ agent: 'codex', conversationCommands: [], sessionCommands: undefined })
     expect(names(result.commands)).toContain('goal')
     expect(result.skills).toEqual([])
-    expect(result.grouped).toBe(true)
+    expect(result.grouped).toBe(false)
   })
 
   it('serves the terminal lane its curated catalog and never session skills', () => {
-    const result = menu({
-      agent: 'claude',
-      structuredCommands: undefined,
-      sessionCommands: CLAUDE_REPORT
-    })
+    const result = menu({ lane: 'terminal', sessionCommands: CLAUDE_REPORT })
     expect(names(result.commands)).toEqual(names(getVerifiedNativeChatCommands('claude')))
     expect(result.skills).toEqual([])
+  })
+
+  it('groups only while a Skills group is showing', () => {
+    expect(menu({ sessionCommands: CLAUDE_REPORT }).grouped).toBe(true)
+    expect(menu({ sessionCommands: CLAUDE_REPORT, query: 'rev' }).grouped).toBe(false)
+    expect(menu({ sessionCommands: [CLAUDE_REPORT[0]!] }).grouped).toBe(false)
   })
 
   it('is empty without an agent', () => {
@@ -142,18 +157,10 @@ describe('mobileNativeChatSlashMenu', () => {
   })
 
   it('treats an empty report as authoritative instead of reviving the fallback', () => {
-    expect(menu({ structuredCommands: ['clear', 'compact'], sessionCommands: [] })).toEqual({
-      grouped: true,
+    expect(menu({ conversationCommands: ['clear', 'compact'], sessionCommands: [] })).toEqual({
+      grouped: false,
       commands: [],
       skills: []
     })
-  })
-
-  it('marks the structured lane with a stable command list even before options load', () => {
-    expect(structuredLaneCommands(false, ['clear'])).toBeUndefined()
-    expect(structuredLaneCommands(true, undefined)).toEqual([])
-    expect(structuredLaneCommands(true, undefined)).toBe(structuredLaneCommands(true, undefined))
-    const supported = ['clear' as const]
-    expect(structuredLaneCommands(true, supported)).toBe(supported)
   })
 })

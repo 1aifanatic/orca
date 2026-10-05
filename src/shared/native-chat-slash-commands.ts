@@ -6,6 +6,7 @@
 
 import type { AgentSessionSlashCommand } from './agent-session-wire'
 import type { AgentType } from './agent-status-types'
+import type { NativeChatSessionSkill } from './native-chat-picker-items'
 
 export type SlashCommandSuggestion = {
   /** The command token without its leading slash, e.g. `clear`. */
@@ -152,7 +153,7 @@ export function sessionSlashCommandSuggestions(
 /** The skills the session reported, in its order, with the description it gave. */
 export function sessionReportedSkills(
   reported: readonly AgentSessionSlashCommand[]
-): readonly { name: string; description?: string }[] {
+): readonly NativeChatSessionSkill[] {
   return reported
     .filter((entry) => entry.kind === 'skill')
     .map((entry) => ({

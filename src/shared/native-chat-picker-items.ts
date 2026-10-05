@@ -67,8 +67,7 @@ export function buildNativeChatPickerItems(
     resolvedCommands.map((command, index) => ({
       item: {
         kind: 'command' as const,
-        // Why: the name is the dispatch token and the catalog is curated, so
-        // it is inserted verbatim; only untrusted skill text gets sanitized.
+        // Why: the name, curated or session-reported, is the dispatch token: never altered.
         id: `command:${command.name}`,
         name: command.name,
         token: `/${command.name}`,

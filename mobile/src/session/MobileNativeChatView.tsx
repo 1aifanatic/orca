@@ -34,7 +34,6 @@ import { MobileNativeChatTurnActivity } from './MobileNativeChatTurnStatus'
 import { MobileAgentWorkingIndicator } from './MobileAgentWorkingIndicator'
 import type { PendingNativeChatImage } from './mobile-native-chat-image-attachment'
 import { MobileNativeChatComposer } from './MobileNativeChatComposer'
-import { structuredLaneCommands } from './mobile-native-chat-slash-menu'
 import { MobileNativeChatPromptCard } from './MobileNativeChatPromptCard'
 import { NO_QUEUED_SLOT, type MobileQueuedSlotProps } from './use-mobile-native-chat-queued-slot'
 import type { MobileChatPermission } from './mobile-native-chat-permission'
@@ -61,8 +60,8 @@ type Props = MobileQueuedSlotProps & {
   /** Structured lane: per-turn "Working for N" status plus live tool progress,
    *  replacing the bridge lane's static three-dot working row (desktop parity). */
   structuredActivityUi?: boolean
-  /** Structured lane: the `/` surface the session reports; undefined keeps the fallback. */
-  sessionCommands?: ComponentProps<typeof MobileNativeChatComposer>['sessionCommands']
+  /** Structured lane: the session's `/` menu inputs; undefined on the terminal lane. */
+  slashCatalog?: ComponentProps<typeof MobileNativeChatComposer>['slashCatalog']
   /** What labels the live turn's one indicator row (structured lane only). */
   turnIndicator?: NativeChatLiveTurnIndicator | null
   /** Structured lane: host-recorded turn timing feeding the per-turn status rows. */
@@ -152,7 +151,7 @@ export function MobileNativeChatView({
   agentWorking,
   canStop = agentWorking,
   structuredActivityUi = false,
-  sessionCommands,
+  slashCatalog,
   turnIndicator = null,
   workingStartedAt,
   settledTurns,
@@ -432,11 +431,7 @@ export function MobileNativeChatView({
         </View>
       ) : null}
       <MobileNativeChatComposer
-        structuredCommands={structuredLaneCommands(
-          structuredActivityUi,
-          sessionOptions?.controller.conversationCommands
-        )}
-        sessionCommands={sessionCommands}
+        slashCatalog={slashCatalog}
         value={composerText}
         onChangeText={onComposerTextChange}
         onSend={handleSend}

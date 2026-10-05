@@ -75,7 +75,7 @@ describe('useMobileStructuredAgentSession `/` catalog', () => {
     listener = null
   })
 
-  it('exposes the reported `/` catalog and keeps its reference across unrelated frames', async () => {
+  it('exposes the `/` menu inputs and keeps their reference across unrelated frames', async () => {
     const reported: AgentSessionSlashCommand[] = [
       { name: 'review', kind: 'command', description: 'Review a PR' },
       { name: 'triage', kind: 'skill' }
@@ -98,27 +98,28 @@ describe('useMobileStructuredAgentSession `/` catalog', () => {
       renderer = create(createElement(Harness))
     })
     await vi.waitFor(() => expect(listener).toEqual(expect.any(Function)))
-    expect(hook?.sessionCommands).toBeUndefined()
+    // Defined before any report or options load, so the menu shows the structured fallback.
+    expect(hook?.slashCatalog).toEqual({ sessionCommands: undefined, conversationCommands: [] })
 
     act(() => listener?.({ ...snapshotEvent(), commands: reported }))
-    expect(hook?.sessionCommands).toEqual(reported)
-    const held = hook?.sessionCommands
-    // An unrelated frame omits the field: the same reference keeps the menu memo warm.
+    expect(hook?.slashCatalog.sessionCommands).toEqual(reported)
+    const held = hook?.slashCatalog
+    // An unrelated frame omits the field: the same references keep the menu memo warm.
     act(() => listener?.(batch(1)))
-    expect(hook?.sessionCommands).toBe(held)
+    expect(hook?.slashCatalog).toBe(held)
 
     const refreshed: AgentSessionSlashCommand[] = [...reported, { name: 'init', kind: 'command' }]
     act(() => listener?.(batch(2, refreshed)))
-    expect(hook?.sessionCommands).toEqual(refreshed)
+    expect(hook?.slashCatalog.sessionCommands).toEqual(refreshed)
     act(() => listener?.(batch(3, [])))
-    expect(hook?.sessionCommands).toEqual([])
+    expect(hook?.slashCatalog.sessionCommands).toEqual([])
     act(() => listener?.(batch(4, null)))
-    expect(hook?.sessionCommands).toBeUndefined()
+    expect(hook?.slashCatalog.sessionCommands).toBeUndefined()
 
     act(() => listener?.({ ...snapshotEvent(), commands: reported }))
-    expect(hook?.sessionCommands).toEqual(reported)
+    expect(hook?.slashCatalog.sessionCommands).toEqual(reported)
     // A snapshot or reset without the field replaces the catalog, as an older host would.
     act(() => listener?.(snapshotEvent()))
-    expect(hook?.sessionCommands).toBeUndefined()
+    expect(hook?.slashCatalog.sessionCommands).toBeUndefined()
   })
 })

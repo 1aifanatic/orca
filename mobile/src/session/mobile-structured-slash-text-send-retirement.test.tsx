@@ -1,9 +1,7 @@
-// Composes the real client pieces a `/` menu pick flows through — the shared stream
+// Pins that slash-prefixed text, exactly as a `/` menu pick inserts it, retires its
+// pending bubble against the host's submission row. Composes the real shared stream
 // reducer, the phone's transcript projection, origin capture, the structured send
-// bridge, and pending retirement — with only the RPC/provider boundary faked. It
-// proves the client side of a normally delivered provider command or skill: one host
-// user row, no stranded bubble. Host preservation (no provider replay of the user
-// turn) rests on the unchanged host and its own dispatch regressions.
+// bridge and pending retirement, with only the RPC/provider boundary faked.
 
 import { createElement, useCallback, useMemo, useState } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
@@ -13,10 +11,7 @@ import type {
   AgentJournalRenderItem,
   AgentJournalSubmission
 } from '../../../src/shared/agent-session-journal-types'
-import type {
-  AgentSessionSlashCommand,
-  AgentSessionSubscribeEvent
-} from '../../../src/shared/agent-session-wire'
+import type { AgentSessionSubscribeEvent } from '../../../src/shared/agent-session-wire'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import { projectStructuredAgentSessionMessages } from '../../../src/shared/structured-agent-session-message-projection'
 import {
@@ -30,12 +25,6 @@ import {
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
 import { useMobileNativeChatDrafts } from './use-mobile-native-chat-drafts'
 import { useMobileStructuredNativeChatSendBridge } from './use-mobile-structured-native-chat-send-bridge'
-
-const CATALOG: AgentSessionSlashCommand[] = [
-  { name: 'review', kind: 'command', description: 'Review a pull request' },
-  { name: 'context', kind: 'command', description: 'Show context usage' },
-  { name: 'my-skill', kind: 'skill', description: 'Do the thing' }
-]
 
 type Api = {
   drafts: ReturnType<typeof useMobileNativeChatDrafts>
@@ -105,7 +94,6 @@ function snapshot(): AgentSessionSubscribeEvent {
     type: 'snapshot',
     sessionId: 'session-1',
     fence: 3,
-    commands: CATALOG,
     page: {
       sessionId: 'session-1',
       epoch: 'epoch-1',
@@ -126,7 +114,6 @@ function batch(
   parts: {
     items?: AgentJournalRenderItem[]
     submissions?: AgentJournalSubmission[]
-    commands?: AgentSessionSlashCommand[]
   } = {}
 ): AgentSessionSubscribeEvent {
   sequence += 1
@@ -139,8 +126,7 @@ function batch(
       items: parts.items ?? [],
       removedItemIds: [],
       submissions: parts.submissions ?? []
-    },
-    ...(parts.commands ? { commands: parts.commands } : {})
+    }
   }
 }
 
@@ -199,15 +185,15 @@ function renderedUserTurns(): string[] {
   return [...rows, ...drafts.pending.map((pending) => pending.text)]
 }
 
-async function mountWithCatalog(): Promise<void> {
+async function mountSession(): Promise<void> {
   await act(async () => {
     renderer = create(createElement(Harness))
   })
   act(() => current().deliver(snapshot()))
 }
 
-/** Puts the picked token (plus any typed arguments) in the box and starts the send. */
-async function pickAndSend(
+/** Puts the slash text (a picked token plus any arguments) in the box and starts the send. */
+async function sendSlashText(
   draft: string,
   images?: string[],
   attachments?: readonly StructuredAgentSessionAttachment[]
@@ -245,62 +231,47 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-describe('a provider command or skill picked from the phone `/` menu', () => {
+describe('slash-prefixed text, as a `/` menu pick inserts it', () => {
   const cases = [
-    { name: 'a reported command', draft: '/review ', reply: true },
-    { name: 'a reported skill with arguments', draft: '/my-skill args', reply: true },
+    { name: 'a command token', draft: '/review ', reply: true },
+    { name: 'a skill token with arguments', draft: '/my-skill args', reply: true },
     { name: 'a command whose only journal row is its submission', draft: '/context', reply: false },
     { name: 'a draft with trailing whitespace and a newline', draft: '/review src \n', reply: true }
   ]
   for (const ordering of ['stream before the accepted callback', 'accepted callback first']) {
-    it.each(cases)(`lands as one user row with no bubble: $name (${ordering})`, async (entry) => {
-      await mountWithCatalog()
-      const { sent } = await pickAndSend(entry.draft)
-      const landed = entry.draft.trimEnd()
-      const host = batch({
-        items: [submissionRow('send-1', entry.draft)],
-        submissions: [submission('send-1')]
-      })
-      if (ordering === 'accepted callback first') {
-        await settle(sent, 'accepted')
-        expect(current().drafts.pending.map((pending) => pending.text)).toEqual([landed])
-        act(() => current().deliver(host))
-      } else {
-        act(() => current().deliver(host))
-        await settle(sent, 'accepted')
-      }
-      if (entry.reply) {
-        act(() => current().deliver(batch({ items: [assistantReply('Done.')] })))
-      }
+    it.each(cases)(
+      `retires its pending bubble against the host row: $name (${ordering})`,
+      async (entry) => {
+        await mountSession()
+        const { sent } = await sendSlashText(entry.draft)
+        const landed = entry.draft.trimEnd()
+        const host = batch({
+          items: [submissionRow('send-1', entry.draft)],
+          submissions: [submission('send-1')]
+        })
+        if (ordering === 'accepted callback first') {
+          await settle(sent, 'accepted')
+          expect(current().drafts.pending.map((pending) => pending.text)).toEqual([landed])
+          act(() => current().deliver(host))
+        } else {
+          act(() => current().deliver(host))
+          await settle(sent, 'accepted')
+        }
+        if (entry.reply) {
+          act(() => current().deliver(batch({ items: [assistantReply('Done.')] })))
+        }
 
-      expect(current().drafts.pending).toEqual([])
-      expect(renderedUserTurns()).toEqual([landed])
-      expect(onSendError).not.toHaveBeenCalled()
-    })
+        expect(current().drafts.pending).toEqual([])
+        expect(renderedUserTurns()).toEqual([landed])
+        expect(onSendError).not.toHaveBeenCalled()
+      }
+    )
   }
 
-  it('is unaffected by a catalog change between the pick and the send', async () => {
-    await mountWithCatalog()
-    act(() => current().drafts.setComposerText('/review '))
-    act(() =>
-      current().deliver(batch({ commands: [...CATALOG, { name: 'init', kind: 'command' }] }))
-    )
-    const { sent } = await pickAndSend('/review ')
-    act(() =>
-      current().deliver(
-        batch({ items: [submissionRow('send-1', '/review ')], submissions: [submission('send-1')] })
-      )
-    )
-    await settle(sent, 'accepted')
-
-    expect(current().drafts.pending).toEqual([])
-    expect(renderedUserTurns()).toEqual(['/review'])
-  })
-
-  it('hands a picked skill’s image preview to its host row', async () => {
-    await mountWithCatalog()
+  it('hands a skill token’s image preview to its host row', async () => {
+    await mountSession()
     const attachments = [{ path: '/host/upload/shot.png', previewUri: 'file:///local/shot.png' }]
-    const { sent } = await pickAndSend('/my-skill look', ['file:///local/shot.png'], attachments)
+    const { sent } = await sendSlashText('/my-skill look', ['file:///local/shot.png'], attachments)
     await settle(sent, 'accepted')
     expect(current().drafts.pending.map((pending) => pending.images)).toEqual([
       ['file:///local/shot.png']
@@ -322,9 +293,9 @@ describe('a provider command or skill picked from the phone `/` menu', () => {
     })
   })
 
-  it('shows a queued pick only once the host hands it over', async () => {
-    await mountWithCatalog()
-    const { sent } = await pickAndSend('/review ')
+  it('shows queued slash text only once the host hands it over', async () => {
+    await mountSession()
+    const { sent } = await sendSlashText('/review ')
     await settle(sent, 'queued')
     expect(current().drafts.pending).toEqual([])
 

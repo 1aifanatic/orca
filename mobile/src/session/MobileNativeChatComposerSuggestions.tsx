@@ -10,7 +10,6 @@ import {
 } from 'react-native'
 import { colors, spacing, typography } from '../theme/mobile-theme'
 import type { NativeChatPickerItem } from '../../../src/shared/native-chat-picker-items'
-import type { MobileNativeChatSlashMenu } from './mobile-native-chat-slash-menu'
 
 /** One row of the composer autocomplete: a `/` menu command or skill (desktop's
  *  picker row) or a worktree file path. */
@@ -32,27 +31,6 @@ export function composerSuggestionKey(suggestion: ComposerSuggestion): string {
 /** The text the suggestion inserts at the trigger span. */
 export function composerSuggestionInsertText(suggestion: ComposerSuggestion): string {
   return suggestion.kind === 'picker' ? suggestion.item.token : `@${suggestion.path}`
-}
-
-/** Desktop's grouping: a heading per non-empty group, only for agents with a grammar. */
-export function slashMenuSections(menu: MobileNativeChatSlashMenu): ComposerSuggestionSection[] {
-  const groups = [
-    { key: 'commands', title: 'Commands', items: menu.commands },
-    { key: 'skills', title: 'Skills', items: menu.skills }
-  ]
-  return groups
-    .filter((group) => group.items.length > 0)
-    .map((group) => ({
-      key: group.key,
-      title: menu.grouped ? group.title : null,
-      data: group.items.map((item) => ({ kind: 'picker' as const, item }))
-    }))
-}
-
-export function fileSuggestionSections(paths: readonly string[]): ComposerSuggestionSection[] {
-  return paths.length > 0
-    ? [{ key: 'files', title: null, data: paths.map((path) => ({ kind: 'file', path })) }]
-    : []
 }
 
 function SuggestionRow({
@@ -94,7 +72,11 @@ function renderSectionHeader({
 }: {
   section: SectionListData<ComposerSuggestion, ComposerSuggestionSection>
 }): React.JSX.Element | null {
-  return section.title ? <Text style={styles.sectionHeading}>{section.title}</Text> : null
+  return section.title ? (
+    <Text accessibilityRole="header" style={styles.sectionHeading}>
+      {section.title}
+    </Text>
+  ) : null
 }
 
 // Memoized: streamed transcript frames re-render the composer's parents while
