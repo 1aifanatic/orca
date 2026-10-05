@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
+import { claudeProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import type {
   AgentSessionBackgroundTaskState,
   AgentSessionSubscribeEvent
@@ -45,7 +46,7 @@ function openJournal(name: string): Promise<AgentSessionJournal> {
       workspaceId: 'workspace-1',
       hostId: 'local',
       agent: 'claude',
-      providerHandle: { kind: 'claude', sessionId: 'provider-1', leafUuid: null }
+      providerHandle: claudeProviderHandle('provider-1', null)
     },
     stateDirectory: join(root, name)
   })
