@@ -74,8 +74,9 @@ describe('structuredAgentTurnVerdictReader', () => {
     ['scoped to the turn', () => [user('u1'), cutTurn('t1', 'u1'), exitRow(IN_CUT)]],
     ['about the conversation, right after the cut', () => [user('u1'), cutTurn('t1', 'u1'), exitRow()]],
     [
-      'beside a reopen row for the same death',
-      () => [user('u1'), cutTurn('t1', 'u1'), ownerDeathRow(), exitRow(IN_CUT)]
+      // The exit settle wrote its row but not the turn's end, which the next reopen then wrote.
+      'followed by a reopen row for the same death',
+      () => [user('u1'), cutTurn('t1', 'u1'), exitRow(IN_CUT), ownerDeathRow()]
     ]
   ])("reads a cut the agent's own exit explains as its failure, row %s", (_label, journal) => {
     expect(readings(journal())).toEqual({
