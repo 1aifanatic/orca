@@ -59,13 +59,21 @@ export function useImeEnterGestureOwnership(): {
       isComposing: () => stateRef.current.composing,
       ownsKeyDown: (event: ImeEnterGestureEvent): boolean => {
         const markedEnter =
-          (event.nativeEvent.isComposing || stateRef.current.composing) &&
+          (isImeOwnedKeyboardEvent(event) || stateRef.current.composing) &&
           (isPlainEnter(event) ||
             (event.key === 'Enter' && event.keyCode === 229) ||
             (event.key === 'Process' && event.keyCode === 229))
         if (markedEnter) {
           stateRef.current.pendingEnter = {}
           return true
+        }
+        // Continued typing ends the confirmation even when hidden renderers delay the frame.
+        if (
+          !stateRef.current.composing &&
+          !isImeOwnedKeyboardEvent(event) &&
+          !['Enter', 'Shift', 'Control', 'Alt', 'Meta'].includes(event.key)
+        ) {
+          stateRef.current.pendingEnter = null
         }
         if (
           stateRef.current.pendingEnter &&

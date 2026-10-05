@@ -154,7 +154,7 @@ export function InlineInputRow({
         onKeyDown={(e) => {
           // Why: a CJK confirm Enter arrives twice and only the first is marked, so
           // pair the marked check with the gesture carry; IME-owned Escape is ignored too.
-          if (imeEnter.ownsKeyDown(e) || isImeCompositionKeyDown(e)) {
+          if (imeEnter.ownsKeyDown(e) || imeEnter.isComposing() || isImeCompositionKeyDown(e)) {
             return
           }
           if (e.key === 'Enter') {

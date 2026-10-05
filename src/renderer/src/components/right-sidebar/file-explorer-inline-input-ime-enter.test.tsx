@@ -151,11 +151,32 @@ describe('file explorer inline input with an IME', () => {
     fireEvent.change(input, { target: { value: 'ぎじろく' } })
     fireEvent.keyDown(input, { key: 'Escape', isComposing: true })
     fireEvent.keyDown(input, { key: 'Escape', keyCode: 229 })
+    fireEvent.compositionStart(input)
+    fireEvent.keyDown(input, { key: 'Escape', keyCode: 27 })
     expect(onCancel).not.toHaveBeenCalled()
 
+    fireEvent.compositionEnd(input)
     fireEvent.keyDown(input, { key: 'Escape', keyCode: 27 })
 
     expect(onCancel).toHaveBeenCalledTimes(1)
     expect(onSubmit).not.toHaveBeenCalled()
   })
+
+  it.each(['file', 'folder', 'rename'] as const)(
+    'ignores a keyCode-only confirmation and its unmarked redispatch for %s',
+    async (type) => {
+      const { rerenderWith, onSubmit } = renderNewFileRow()
+      const input = rerenderWith({ ...newFileInput, type, existingName: 'notes.md' })
+      await settleInlineInput()
+      fireEvent.change(input, { target: { value: '議事録' } })
+      fireEvent.keyDown(input, { key: 'Enter', keyCode: 229 })
+      fireEvent.keyUp(input, { key: 'Enter', keyCode: 13 })
+      fireEvent.keyDown(input, { key: 'Enter', keyCode: 13 })
+      expect(onSubmit).not.toHaveBeenCalled()
+      await flushFrame()
+      fireEvent.change(input, { target: { value: '議事録.md' } })
+      fireEvent.keyDown(input, { key: 'Enter', keyCode: 13 })
+      expect(onSubmit).toHaveBeenCalledExactlyOnceWith('議事録.md')
+    }
+  )
 })

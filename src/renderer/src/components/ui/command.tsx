@@ -7,6 +7,7 @@ import { SearchIcon } from 'lucide-react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 
 import { cn } from '@/lib/utils'
+import { useImeTextFieldProps } from '@/lib/ime-text-field'
 
 function Command({ className, ...props }: React.ComponentProps<typeof CommandPrimitive>) {
   return (
@@ -102,6 +103,7 @@ function CommandInput({
   /** Rendered after the field, inside the input frame (e.g. a filter control). */
   trailing?: React.ReactNode
 }) {
+  const imeProps = useImeTextFieldProps<HTMLInputElement>(props)
   return (
     <div
       className={cn(
@@ -119,6 +121,7 @@ function CommandInput({
           className
         )}
         {...props}
+        {...imeProps}
       />
       {trailing}
     </div>
