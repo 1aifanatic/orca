@@ -3898,7 +3898,7 @@
               "plan": "プラン"
             },
             "zcode": {
-              "mcp": "CD46抗原"
+              "mcp": "MCP"
             }
           },
           "SshTargetStatusRow": {
@@ -18879,7 +18879,7 @@
       "identityUnknown": "サインインしているIDは利用できません",
       "signedOut": "ネイティブのAGYアカウントはサインインしていません。",
       "changed": "ネイティブアカウントが変更されました。AGYを起動する前に、保存したアカウントを再度選択してください。",
-      "save": "経常収支",
+      "save": "現在のアカウントを保存",
       "refresh": "アカウントを更新する",
       "usage": "リフレッシュの使用法",
       "working": "アカウントの更新",
@@ -18938,7 +18938,7 @@
       "step1Title": "Codex サーバー共有をオフにする",
       "step1Note": "これにより Codex 設定が変更されるため、Orca の外部にも適用されます。",
       "step2Title": "稼働中の共有サーバーを停止します",
-      "undo": "元に戻すには、コーデックス機能を実行して daemon_auto_start を有効にします。",
+      "undo": "元に戻すには、codex features enable daemon_auto_start を実行します。",
       "step2Warning": "サーバーを共有している開いている Codex セッションをすべて閉じます。",
       "learnMore": "詳しく見る",
       "turnOff": "消す",

@@ -4009,7 +4009,7 @@
               "plan": "Forfait"
             },
             "zcode": {
-              "mcp": "PCM"
+              "mcp": "MCP"
             }
           },
           "SshTargetStatusRow": {
@@ -8871,7 +8871,7 @@
           "c9bc93d343": "zsh",
           "0cbe5ad727": "fish",
           "81694f1584": "terminal/borne",
-          "a909136b3f": "enveloppe",
+          "a909136b3f": "shell",
           "1c29734248": "Shell utilisé pour les nouveaux panneaux de terminal",
           "9589abc009": "Shell par défaut",
           "5a5eac2f44": "Shell introuvable : {{value0}}"
@@ -10849,7 +10849,7 @@
             "bf09070e31": "bash",
             "d26257a80d": "zsh",
             "454df22a5e": "fish",
-            "ddd5efe113": "enveloppe",
+            "ddd5efe113": "shell",
             "3de504994c": "Shell et arguments utilisés pour les nouveaux panneaux de terminal interactifs locaux",
             "1733ccd3e9": "Shell du terminal"
           },
@@ -18938,7 +18938,7 @@
       "step1Title": "Désactiver le partage du serveur Codex",
       "step1Note": "Cela modifie vos paramètres Codex et s'applique donc également en dehors d'Orca.",
       "step2Title": "Arrêtez le serveur partagé en cours d'exécution",
-      "undo": "Pour annuler, exécutez les fonctionnalités du codex, activez daemon_auto_start.",
+      "undo": "Pour annuler, exécutez codex features enable daemon_auto_start.",
       "step2Warning": "Ferme toutes les sessions Codex ouvertes qui partagent le serveur",
       "learnMore": "Apprendre encore plus",
       "turnOff": "Éteindre",
