@@ -71,6 +71,31 @@ export function nativeChatAsyncAnswerProgress(
   return { answers, sendingKeys }
 }
 
+/**
+ * Whether a terminal answer echo still holds its answers, given the user rows the agent recorded
+ * after the send (normalized like `text`, harness machinery left out). Its own row and the rows of
+ * sends queued ahead of it are expected; any other row means the agent consumed input past this
+ * send without recording its text (Codex filed the paste as one question's reply, or dropped it),
+ * so no row will ever release it and its answers go back to the card.
+ */
+export function nativeChatAsyncAnswerEchoHolding(
+  echo: { text: string; queuedAhead?: readonly string[] },
+  rowsAfterSend: readonly string[]
+): boolean {
+  const unclaimed = [...(echo.queuedAhead ?? [])]
+  return rowsAfterSend.every((row) => {
+    if (row === echo.text) {
+      return true
+    }
+    const ahead = unclaimed.indexOf(row)
+    if (ahead === -1) {
+      return false
+    }
+    unclaimed.splice(ahead, 1)
+    return true
+  })
+}
+
 export type NativeChatAsyncQuestionCardState = ScopeState & {
   scopeKey: string
   view: NativeChatAsyncQuestionsView

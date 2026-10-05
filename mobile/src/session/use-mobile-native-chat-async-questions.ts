@@ -18,7 +18,11 @@ import type {
   NativeChatAsyncQuestion,
   NativeChatAsyncQuestionsView
 } from '../../../src/shared/native-chat-async-questions'
-import type { MobileNativeChatPendingMessage } from './mobile-native-chat-pending-echo'
+import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
+import {
+  mobileNativeChatAnswerEchoHolding,
+  type MobileNativeChatPendingMessage
+} from './mobile-native-chat-pending-echo'
 
 export type MobileNativeChatAsyncQuestionsModel = {
   open: NativeChatAsyncQuestion[]
@@ -69,11 +73,13 @@ export function useMobileNativeChatAsyncQuestions(args: {
   answerStructured: (text: string) => Promise<NativeChatAsyncAnswerSendResult>
   /** This conversation's terminal echoes; one carrying answers holds them until its row lands. */
   pending: readonly MobileNativeChatPendingMessage[]
+  /** The transcript the echoes land in, by which an echo that never will is let go. */
+  messages: readonly NativeChatMessage[]
   /** The structured journal's submissions, by which a sent answer's hold is read. */
   submissions: readonly AgentJournalSubmission[]
 }): MobileNativeChatAsyncQuestionsModel {
   const { scopeKey, view, structured, answerTerminal, answerStructured } = args
-  const { pending, submissions } = args
+  const { pending, messages, submissions } = args
   const [state, dispatch] = useReducer(
     reduceNativeChatAsyncQuestionCard,
     createNativeChatAsyncQuestionCardState(scopeKey, view)
@@ -97,14 +103,21 @@ export function useMobileNativeChatAsyncQuestions(args: {
     () =>
       nativeChatAsyncAnswerProgress([
         ...pending.flatMap((echo) =>
-          echo.asyncAnswers ? [{ answers: echo.asyncAnswers, holding: true }] : []
+          echo.asyncAnswers
+            ? [
+                {
+                  answers: echo.asyncAnswers,
+                  holding: mobileNativeChatAnswerEchoHolding(echo, messages)
+                }
+              ]
+            : []
         ),
         ...state.sent.flatMap((sent) => {
           const record = structuredAnswerRecord(sent, submissionsById.get(sent.receipt))
           return record ? [record] : []
         })
       ]),
-    [pending, state.sent, submissionsById]
+    [messages, pending, state.sent, submissionsById]
   )
   const card = nativeChatAsyncQuestionScopeView(state, state.view, progress)
   const edit = useCallback(

@@ -231,6 +231,7 @@ export function NativeChatResolvedView({
     canSend,
     view: session.asyncQuestions,
     pending,
+    messages: session.messages,
     recordOptimistic: onOptimisticSend,
     optimisticOutcome: delivery
   })

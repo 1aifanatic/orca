@@ -7,6 +7,7 @@ import type {
   NativeChatAsyncQuestion,
   NativeChatAsyncQuestionsView
 } from '../../../src/shared/native-chat-async-questions'
+import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import type { MobileNativeChatPendingMessage } from './mobile-native-chat-pending-echo'
 import {
   useMobileNativeChatAsyncQuestions,
@@ -24,6 +25,7 @@ type Props = {
   structured: boolean
   scopeKey: string
   pending?: MobileNativeChatPendingMessage[]
+  messages?: NativeChatMessage[]
   submissions?: AgentJournalSubmission[]
 }
 
@@ -68,6 +70,7 @@ describe('useMobileNativeChatAsyncQuestions', () => {
     model = useMobileNativeChatAsyncQuestions({
       ...props,
       pending: props.pending ?? [],
+      messages: props.messages ?? [],
       submissions: props.submissions ?? [],
       answerTerminal,
       answerStructured
@@ -173,6 +176,52 @@ describe('useMobileNativeChatAsyncQuestions', () => {
     update({ ...props, pending: [] })
     expect(model!.edits.a).toBeUndefined()
     expect(model!.held.size).toBe(0)
+  })
+
+  it('terminal: gives the answer back once the agent records input its echo never will be', () => {
+    const row = (id: string, role: 'user' | 'assistant', text: string): NativeChatMessage => ({
+      id,
+      role,
+      blocks: [{ type: 'text', text }],
+      timestamp: 1,
+      source: 'transcript'
+    })
+    const props = { view: ready(q('a'), q('b')), structured: false, scopeKey: 's' }
+    const answer = echo('Question: a?\nAnswer: one\n\nQuestion: b?\nAnswer: two', {
+      a: 'one',
+      b: 'two'
+    })
+    const sent = { ...answer, baselineTailMessageId: 'a0', queuedAhead: ['first, do this'] }
+    const before = [row('u0', 'user', 'go'), row('a0', 'assistant', 'Asked.')]
+    mount({ ...props, pending: [sent], messages: before })
+    expect([...model!.held]).toEqual(['a', 'b'])
+    // A send queued ahead of it and harness machinery land: still held.
+    update({
+      ...props,
+      pending: [sent],
+      messages: [
+        ...before,
+        row('u1', 'user', 'first, do this'),
+        row('n1', 'user', '<system-reminder>context</system-reminder>')
+      ]
+    })
+    expect([...model!.held]).toEqual(['a', 'b'])
+    // Codex files the paste as a reply to `a` alone: the host drops `a`; `b` comes back.
+    update({
+      view: ready(q('b')),
+      structured: false,
+      scopeKey: 's',
+      pending: [sent],
+      messages: [
+        ...before,
+        row('u1', 'user', 'first, do this'),
+        row('u2', 'user', '<send_user_message_question_reply>{"questionItemId":"a"}'),
+        row('a2', 'assistant', 'Using one.')
+      ]
+    })
+    expect(model!.held.size).toBe(0)
+    expect(model!.edits.b).toEqual({ text: 'two' })
+    expect(model!.canSend).toBe(true)
   })
 
   it('structured: holds the answer while its submission is pending, gives it back if refused', async () => {

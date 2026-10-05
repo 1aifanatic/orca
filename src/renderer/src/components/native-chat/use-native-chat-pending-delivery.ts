@@ -10,6 +10,7 @@ import {
   writePendingSendCache,
   type NativeChatPendingSend
 } from './native-chat-pending'
+import { nativeChatPendingContentKey } from './native-chat-pending-occurrence'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
 
 /** How long a send whose write acknowledgment was lost waits for its row; the phone's hold matches. */
@@ -52,7 +53,12 @@ export function useNativeChatPendingDelivery(args: {
         afterMessageId: boundary?.id ?? null,
         afterMessageTimestamp: boundary?.timestamp ?? null,
         ...(imagePaths ? { imagePaths } : {}),
-        ...(asyncAnswers ? { asyncAnswers } : {})
+        ...(asyncAnswers
+          ? {
+              asyncAnswers,
+              queuedAhead: readPendingSendCache(scope).map(nativeChatPendingContentKey)
+            }
+          : {})
       }
       setPending(appendPendingSendCache(scope, entry))
       return entry.id

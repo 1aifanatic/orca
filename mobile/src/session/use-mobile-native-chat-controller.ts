@@ -235,6 +235,7 @@ export function useMobileNativeChatController(args: {
     answerTerminal: legacyHandleNativeChatQuestionAnswer,
     answerStructured: structuredNativeChatSend.answer,
     pending: chatPending,
+    messages: nativeChatSession.messages,
     submissions: structuredNativeChat.submissions
   })
 

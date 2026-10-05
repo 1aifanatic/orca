@@ -62,6 +62,7 @@ function mount(overrides: { canSend?: boolean } = {}) {
       canSend: overrides.canSend ?? true,
       view,
       pending: [],
+      messages: [],
       recordOptimistic: optimistic.record,
       optimisticOutcome: optimistic
     })
@@ -77,24 +78,33 @@ function row(id: string, role: 'user' | 'assistant', text: string): NativeChatMe
 }
 
 /** The card wired to the pane's real optimistic echoes, as the resolved view wires it. */
-function mountWithEchoes() {
+function mountWithEchoes(initialView: NativeChatAsyncQuestionsView = view) {
   const hook = renderHook(
-    ({ messages }: { messages: NativeChatMessage[] }) => {
+    ({ messages, view }: { messages: NativeChatMessage[]; view: NativeChatAsyncQuestionsView }) => {
       const delivery = useNativeChatPendingDelivery({ paneKey: PANE, agent: 'codex', messages })
-      return useNativeChatTerminalAsyncQuestions({
-        paneKey: PANE,
-        sessionId: 'session-1',
-        agent: 'codex',
-        terminalTabId: 'tab-1',
-        targetPtyId: 'codex-pty',
-        canSend: true,
-        view,
-        pending: delivery.pending,
-        recordOptimistic: delivery.record,
-        optimisticOutcome: delivery
-      })
+      return {
+        delivery,
+        ...useNativeChatTerminalAsyncQuestions({
+          paneKey: PANE,
+          sessionId: 'session-1',
+          agent: 'codex',
+          terminalTabId: 'tab-1',
+          targetPtyId: 'codex-pty',
+          canSend: true,
+          view,
+          pending: delivery.pending,
+          messages,
+          recordOptimistic: delivery.record,
+          optimisticOutcome: delivery
+        })
+      }
     },
-    { initialProps: { messages: [row('u0', 'user', 'go'), row('a0', 'assistant', 'Asked.')] } }
+    {
+      initialProps: {
+        messages: [row('u0', 'user', 'go'), row('a0', 'assistant', 'Asked.')],
+        view: initialView
+      }
+    }
   )
   act(() => hook.result.current.model.edit('q-a', { option: 'core' }))
   return hook
@@ -226,7 +236,8 @@ it('holds the sent answer while its echo waits for the transcript, then leaves i
       row('a0', 'assistant', 'Asked.'),
       row('u1', 'user', ANSWER),
       row('a1', 'assistant', 'Using core.')
-    ]
+    ],
+    view
   })
   expect(hook.result.current.model.held.size).toBe(0)
   expect(hook.result.current.model.edits).toEqual({})
@@ -241,4 +252,62 @@ it('gives the answer back when its echo is marked not sent', async () => {
   expect(hook.result.current.model.edits).toEqual({ 'q-a': { option: 'core' } })
   expect(hook.result.current.model.sending).toBe(false)
   expect(hook.result.current.model.canSend).toBe(true)
+})
+
+const qa = { key: 'q-a', index: 0, title: 'Which name?', options: ['core', 'base'] }
+const qb = { key: 'q-b', index: 1, title: 'Which port?', options: ['80', '8080'] }
+const qc = { key: 'q-c', index: 2, title: 'Which host?', options: ['a', 'b'] }
+
+it('gives an answer back once the agent records input its echo never will be', async () => {
+  const hook = mountWithEchoes({ state: 'ready', questions: [qa, qb] })
+  act(() => hook.result.current.model.edit('q-b', { option: '80' }))
+  act(() => hook.result.current.model.submit())
+  await act(() => vi.advanceTimersByTimeAsync(1000))
+  expect([...hook.result.current.model.held]).toEqual(['q-a', 'q-b'])
+
+  // Codex's question editor was open: the paste is filed as a reply to q-a, so the rollout
+  // records Codex's reply envelope, never the echo's text. The host drops only q-a, then asks q-c.
+  const envelope = `<send_user_message_question_reply>${JSON.stringify({
+    questionItemId: 'q-a',
+    answer: 'Question: Which name?\nAnswer: core\n\nQuestion: Which port?\nAnswer: 80'
+  })}</send_user_message_question_reply>`
+  hook.rerender({
+    messages: [
+      row('u0', 'user', 'go'),
+      row('a0', 'assistant', 'Asked.'),
+      row('u1', 'user', envelope),
+      row('a1', 'assistant', 'Using core. Also: which host?')
+    ],
+    view: { state: 'ready', questions: [qb, qc] }
+  })
+  await act(() => vi.advanceTimersByTimeAsync(10 * 60_000))
+
+  // q-b's answer comes back editable and q-c is answerable: the card sends both.
+  const card = hook.result.current.model
+  expect(card.open.map((question) => question.key)).toEqual(['q-b', 'q-c'])
+  expect(card.held.size).toBe(0)
+  expect(card.sending).toBe(false)
+  expect(card.edits['q-b']).toEqual({ option: '80' })
+  act(() => hook.result.current.model.edit('q-c', { option: 'a' }))
+  expect(hook.result.current.model.canSend).toBe(true)
+})
+
+it('keeps holding while only a send queued ahead of the answer, or harness machinery, lands', async () => {
+  const hook = mountWithEchoes()
+  act(() => {
+    hook.result.current.delivery.record('first, do this')
+  })
+  act(() => hook.result.current.model.submit())
+  await act(() => vi.advanceTimersByTimeAsync(1000))
+  hook.rerender({
+    messages: [
+      row('u0', 'user', 'go'),
+      row('a0', 'assistant', 'Asked.'),
+      row('u1', 'user', 'first, do this'),
+      row('n1', 'user', '<system-reminder>context</system-reminder>'),
+      row('a1', 'assistant', 'Doing it.')
+    ],
+    view
+  })
+  expect([...hook.result.current.model.held]).toEqual(['q-a'])
 })
