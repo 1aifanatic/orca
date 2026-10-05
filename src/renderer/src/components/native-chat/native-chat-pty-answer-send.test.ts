@@ -84,6 +84,25 @@ it('stays accepted when a cancel arrives after Enter fired', async () => {
   await expect(outcome).resolves.toBe('accepted')
 })
 
+it('settles unknown, not rejected, when a cancel lands after Enter went out but before its ack', async () => {
+  let ackEnter: (accepted: boolean) => void = () => {}
+  io.verified.mockImplementation((_settings: unknown, _pty: string, data: string) =>
+    data === NATIVE_CHAT_SUBMIT
+      ? new Promise<boolean>((resolve) => {
+          ackEnter = resolve
+        })
+      : Promise.resolve(true)
+  )
+  const { handle, outcome } = start()
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(io.verified.mock.calls.map((call) => call[2])).toContain(NATIVE_CHAT_SUBMIT)
+  // Stop, an option command's drain or a PTY swap: the Enter bytes already reached the runtime.
+  handle.cancel()
+  ackEnter(true)
+  await vi.advanceTimersByTimeAsync(1000)
+  await expect(outcome).resolves.toBe('unknown')
+})
+
 it('refuses to start while an option command owns the PTY', () => {
   const release = holdNativeChatPtyForOption('codex-pane')
   expect(sendNativeChatMessageWithOutcome(null, 'codex-pane', 'answer')).toBeNull()

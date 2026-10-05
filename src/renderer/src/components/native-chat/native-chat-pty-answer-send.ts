@@ -1,6 +1,7 @@
 // The ordinary PTY message seam for an async-question answer, with the outcome the
-// runtime write observed: refused → rejected, acknowledgement lost → unknown, and any
-// cancel before Enter (Stop, PTY swap, an option command draining the queue) → rejected.
+// runtime write observed: refused → rejected, acknowledgement lost → unknown, any cancel
+// before Enter went out (Stop, PTY swap, an option command draining the queue) → rejected,
+// and one after Enter went out but before its acknowledgement → unknown.
 // Unlike the composer, it never touches the draft, history, or attachments.
 
 import type { getSettingsForAgentTabRuntimeOwner } from '@/lib/agent-paste-draft'
@@ -30,7 +31,12 @@ export function sendNativeChatMessageWithOutcome(
   const submitted = handle.submitted ?? (() => true)
   const settled = handle.settled ?? Promise.resolve()
   const outcome = settled.then(
-    (): NativeChatPtySendOutcome => (submitted() ? (observed ?? 'accepted') : 'rejected'),
+    (): NativeChatPtySendOutcome => {
+      if (submitted()) {
+        return observed ?? 'accepted'
+      }
+      return handle.completingWriteIssued?.() ? 'unknown' : 'rejected'
+    },
     (): NativeChatPtySendOutcome => 'unknown'
   )
   return { handle, outcome }
