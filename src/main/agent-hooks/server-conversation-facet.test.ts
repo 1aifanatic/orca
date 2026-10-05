@@ -572,33 +572,24 @@ describe('facet-only publication', () => {
   it('publishes exactly one row mutation when only the facet changes, none on a repeat', () => {
     const time = clock(1_700_000_000_000)
     const server = store()
-    report(server, 'working', S, { model: 'P' })
-    time.tick()
-    // A model-only report moves the legacy model to Q while the facet keeps P.
-    report(server, 'working', undefined, { model: 'Q' })
-    expect(facet(server)?.model).toBe('P')
+    report(server, 'working', S, { model: 'Q' })
+    // The legacy row already says S/Q while the facet still holds S/P (e.g. restored from disk).
+    seedRow(server, (row) => ({ ...row, conversation: facetSP }))
     const statusBefore = server.getStatusSnapshotForPane(PANE)[0]
     const seen = mutations(server)
     time.tick()
     report(server, 'working', S, { model: 'Q' })
-    expect(facet(server)?.model).toBe('Q')
-    expect(seen.count()).toBe(1)
-    const {
-      receivedAt: _a,
-      evidenceObservedAt: _b,
-      observation: _c,
-      ...statusAfter
-    } = server.getStatusSnapshotForPane(PANE)[0] ?? {}
-    const {
-      receivedAt: _d,
+    expect(facet(server)).toMatchObject({ providerSession: S, model: 'Q' })
+    const strip = ({
+      receivedAt: _r,
       evidenceObservedAt: _e,
-      observation: _f,
-      ...statusPrior
-    } = statusBefore ?? {}
-    expect({ ...statusAfter, providerSession: undefined }).toEqual({
-      ...statusPrior,
-      providerSession: undefined
-    })
+      observation: _o,
+      ...rest
+    }: Record<string, unknown>) => rest
+    expect(strip({ ...server.getStatusSnapshotForPane(PANE)[0] })).toEqual(
+      strip({ ...statusBefore })
+    )
+    expect(seen.count()).toBe(1)
     time.tick()
     report(server, 'working', S, { model: 'Q' })
     expect(seen.count()).toBe(1)

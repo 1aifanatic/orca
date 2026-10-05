@@ -465,6 +465,69 @@ describe('conversation identity through the real session projection', () => {
     }
   })
 
+  describe('renderer (desktop-host) path', () => {
+    const rendererStatus = (providerSession: typeof CODEX_SESSION, updatedAt: number) => ({
+      state: 'done' as const,
+      prompt: '',
+      updatedAt,
+      stateStartedAt: updatedAt,
+      stateHistory: [],
+      paneKey: PANE_KEY,
+      agentType: 'codex',
+      providerSession,
+      model: 'renderer-model'
+    })
+
+    it('keeps the newer renderer path in status and publishes the same address as the field', () => {
+      const row = codexRow({
+        providerSession: { ...CODEX_SESSION, transcriptPath: '/old.jsonl' },
+        model: 'hook-model'
+      })
+      const status = rendererStatus(
+        { ...CODEX_SESSION, transcriptPath: '/new.jsonl' },
+        row.receivedAt + 1
+      )
+      const tab = project({
+        rows: [row],
+        retained: null,
+        tab: { ...TAB, launchAgent: 'codex', agentStatus: status }
+      }).tabs[0]
+      expect(tab).toMatchObject({
+        agentStatus: { providerSession: { transcriptPath: '/new.jsonl' } },
+        conversationIdentity: {
+          providerSession: { transcriptPath: '/new.jsonl' },
+          model: 'renderer-model',
+          source: 'renderer'
+        }
+      })
+      expect(tab).not.toHaveProperty('conversationOfferedWithoutStatus')
+    })
+
+    it('takes the hook row and its model when the hook address is the one status keeps', () => {
+      const row = codexRow({ model: 'hook-model', receivedAt: Date.now() })
+      const status = rendererStatus(CODEX_SESSION, row.receivedAt - 1)
+      const tab = project({
+        rows: [row],
+        retained: null,
+        tab: { ...TAB, launchAgent: 'codex', agentStatus: status }
+      }).tabs[0]
+      expect(tab).toMatchObject({
+        conversationIdentity: { model: 'hook-model', source: 'legacy-row' }
+      })
+    })
+
+    it('prefers a stored facet over either status address', () => {
+      const facet = { agentType: 'codex', providerSession: CODEX_SESSION, capturedAt: 7 }
+      const tab = project({
+        rows: [codexRow()],
+        retained: null,
+        tab: { ...TAB, launchAgent: 'codex', agentStatus: rendererStatus(CODEX_SESSION, 1) },
+        stored: { facet, rowIsRemnant: false }
+      }).tabs[0]
+      expect(tab).toMatchObject({ conversationIdentity: { ...facet, source: 'live' } })
+    })
+  })
+
   describe('owner and compatibility', () => {
     const rowCases: RowCase[] = ['fresh retained', 'aged', 'providerSessionOnly remnant']
     const ownerCases: {

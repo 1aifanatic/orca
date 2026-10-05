@@ -361,6 +361,8 @@ describe('idle Codex pane conversation identity on a headless host', () => {
     evict(pane)
 
     expect(await listTab(pane.runtime, 'mobile')).not.toHaveProperty('agentStatus')
+    // Why absent, not null: the row is gone, and a gone row says nothing about the pane.
+    expect(await listTab(pane.runtime, 'runtime')).not.toHaveProperty('conversationIdentity')
   })
 
   it('projects only the new session once Codex reopens on the reset pane', async () => {
