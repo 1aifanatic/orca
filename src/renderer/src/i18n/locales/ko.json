@@ -16672,7 +16672,6 @@
           "770d458144": "그룹화 기준",
           "795cbf26e2": "필터...",
           "4616ea39fd": "워크스페이스로 이동",
-          "threadListOptionsFiltered": "스레드 목록 옵션, 필터 활성화됨",
           "showSearch": "검색 표시",
           "markThreadRead": "스레드를 읽은 것으로 표시",
           "59b131fbd9": "스레드를 읽지 않은 것으로 표시",
@@ -17519,6 +17518,7 @@
         "providerStartFailed": "{{agent}}이(가) 시작을 마치기 전에 중지되었습니다.",
         "runCommandAgain": "/{{command}}을(를) 다시 실행하세요.",
         "sendToTryAgain": "다시 시도하려면 메시지를 보내세요.",
+        "sendAgainToTryOnceMore": "메시지를 다시 보내 한 번 더 시도하세요.",
         "couldNotStart": "{{agent}}을(를) 시작하지 못했습니다.",
         "couldNotRestart": "{{agent}}을(를) 다시 시작하지 못했습니다.",
         "notSignedIn": "{{agent}}이(가) 선택한 계정으로 로그인되어 있지 않습니다.",
@@ -17572,7 +17572,7 @@
         "providerRateLimited": "{{agent}}이(가) 속도 제한에 걸려 다시 시도하고 있습니다.",
         "providerRetrying": "{{agent}}에 일시적인 문제가 발생하여 다시 시도하고 있습니다.",
         "providerRetryingQuoted": "{{agent}}이(가) 다시 시도하고 있습니다: {{detail}}.",
-        "previousExitUnverifiable": "이전에 실행된 {{agent}}이(가) 아직 실행 중일 수 있습니다. 중지되면 메시지가 전송됩니다."
+        "previousExitUnverifiable": "이전에 실행된 {{agent}}을(를) 중지하지 못했습니다."
       },
       "writeNotice": {
         "notDoneReadHistory": "이 채팅의 기록을 불러오지 못했습니다.",

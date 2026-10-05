@@ -17,6 +17,7 @@ import {
   mutateStructuredAgentSession,
   type StructuredAgentSessionMutationContext
 } from './structured-agent-session-mutation-context'
+import type { AgentJournalItemIdentity } from '../../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
 import {
@@ -61,7 +62,11 @@ export function mutateWithChatStop<TValue>(
   let eventAfterEnd: Promise<void> | undefined
   const named = turnId !== undefined ? { turnId } : {}
   // Its own step wrote the Stop's event first.
-  const stopChild = () => context.stopAgent(sessionId, { recorded: 'user-stop' })
+  const stopChild = (settlesStopNote?: AgentJournalItemIdentity) =>
+    context.stopAgent(sessionId, {
+      recorded: 'user-stop',
+      ...(settlesStopNote ? { settlesStopNote } : {})
+    })
   // The same for every client: once the Stop takes effect its event is written, and the queue's
   // pause follows from it. The cards stay published; no text rides the answer.
   const stop = (ctx: AgentSessionTurnContext): Promise<ChatStopOutcome> =>
@@ -86,6 +91,21 @@ export function mutateWithChatStop<TValue>(
           )
         )
         const child = context.sessions.get(ctx.sessionId)?.child
+        if (child?.close) {
+          // A close an earlier stop began: this Stop joins it, retrying the exit's proof, rather
+          // than asking a child that takes no input to stop again. Its event, issued ahead of that
+          // retry, records only the withdrawal.
+          const effect = hadQueued ? tookEffect() : Promise.resolve()
+          await stopChild().catch((error: unknown) =>
+            context.deps.logger.warn('ending the agent process on Stop failed', {
+              scope: 'stop-child',
+              sessionId,
+              error
+            })
+          )
+          await effect
+          return { ok: true, value: { ...named, cancelled: await withdrew } }
+        }
         if (child?.phase === 'starting') {
           // A start that may never land is the one thing here Stop has to end; the chat stays.
           // The event is issued first and lands behind the withdrawal, in the journal's queue order.
