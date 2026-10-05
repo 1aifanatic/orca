@@ -4,6 +4,7 @@ import { removeWorkspaceSessionOwners } from '../restoring-sessions/session-owne
 import {
   createOrcadMigrationSourceScope,
   orcadMigrationOwnerMatchesScope,
+  orcadMigrationOwnsRepoId,
   orcadMigrationPartitionScope,
   type OrcadMigrationSourceScope
 } from './orcad-source-scope'
@@ -31,7 +32,8 @@ export function removeOrcadMigrationScopeWorkspaceSession(
 ): void {
   const scope = createOrcadMigrationSourceScope({
     source: manifest.source,
-    catalog: manifest.payload
+    catalog: manifest.payload,
+    repos: state.repos
   })
   state.workspaceSession = removeOwnedSessionState(
     state.workspaceSession,
@@ -114,7 +116,7 @@ export function removeOwnedSessionState(
   if (retargetedFocus) {
     Object.assign(retired, retargetedFocus)
   } else {
-    if (retired.activeRepoId && scope.repoIds.has(retired.activeRepoId)) {
+    if (orcadMigrationOwnsRepoId(scope, retired.activeRepoId)) {
       retired.activeRepoId = null
     }
     if (orcadMigrationOwnerMatchesScope(retired.activeWorktreeId, scope)) {
@@ -135,7 +137,9 @@ export function removeOwnedSessionState(
     )
   }
   for (const repoId of scope.repoIds) {
-    delete retired.terminalTopologyRevisionByRepoId?.[repoId]
+    if (!scope.sharedRepoIds.has(repoId)) {
+      delete retired.terminalTopologyRevisionByRepoId?.[repoId]
+    }
   }
   return retired
 }

@@ -97,7 +97,8 @@ function twoHostState(): PersistedState {
 describe('migration scope with host-qualified owners', () => {
   const scope = createOrcadMigrationSourceScope({
     source: { sshTargetId: 'host-a', sshTargetGeneration: null, targetLabel: 'A' },
-    catalog: { repositories: [REPO], projectGroups: [], folderWorkspaces: [] }
+    catalog: { repositories: [REPO], projectGroups: [], folderWorkspaces: [] },
+    repos: [REPO]
   })
 
   it('owns only keys qualified with its own host', () => {

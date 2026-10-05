@@ -25,7 +25,11 @@ export function assertOrcadMigrationClientStateRetired(
     return
   }
   const source = manifest.source
-  const scope = createOrcadMigrationSourceScope({ source, catalog: manifest.payload })
+  const scope = createOrcadMigrationSourceScope({
+    source,
+    catalog: manifest.payload,
+    repos: state.repos
+  })
   for (const [deviceId, selections] of Object.entries(
     clientState.mobileClientTabSelectionsByDeviceId ?? {}
   )) {
@@ -95,7 +99,11 @@ export function retireOrcadMigrationClientState(
     return
   }
   const source = manifest.source
-  const scope = createOrcadMigrationSourceScope({ source, catalog: manifest.payload })
+  const scope = createOrcadMigrationSourceScope({
+    source,
+    catalog: manifest.payload,
+    repos: state.repos
+  })
   if (clientState.mobileClientTabSelectionsByDeviceId) {
     for (const [deviceId, captured] of Object.entries(
       clientState.mobileClientTabSelectionsByDeviceId

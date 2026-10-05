@@ -5,6 +5,7 @@ import type { WorkspaceSessionState } from '../../../shared/workspace-session-st
 import { buildMarkdownFrontmatterIdMap } from '../../orca-profiles/profile-session-owner-transfer'
 import {
   orcadMigrationOwnerMatchesScope,
+  orcadMigrationOwnsRepoId,
   unqualifyOrcadMigrationOwnerKey,
   type OrcadMigrationSourceScope
 } from './orcad-source-scope'
@@ -109,7 +110,7 @@ export function projectDormantSessionFocus(
   // These scalars are UI focus, not execution ownership. They are safe to carry
   // only from the source host partition and only when they point at an entity
   // already proven dormant and included in the projected session.
-  if (source.activeRepoId && scope.repoIds.has(source.activeRepoId)) {
+  if (orcadMigrationOwnsRepoId(scope, source.activeRepoId)) {
     transferred.activeRepoId = source.activeRepoId
   }
   if (source.activeWorktreeId && orcadMigrationOwnerMatchesScope(source.activeWorktreeId, scope)) {

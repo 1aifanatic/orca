@@ -64,7 +64,7 @@ function collectWorkspaceSession(
   catalog: OrcadMigrationCatalogPayload,
   storage?: TerminalScrollbackSnapshotStorage
 ): OrcadMigrationSourceWorkspaceSessionInspection {
-  const sourceScope = createOrcadMigrationSourceScope({ source, catalog })
+  const sourceScope = createOrcadMigrationSourceScope({ source, catalog, repos: state.repos })
   const fragments: WorkspaceSessionState[] = []
   const snapshots: OrcadMigrationTerminalScrollbackSnapshot[] = []
   let blockedCount = 0

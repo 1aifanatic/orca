@@ -6,6 +6,7 @@ import type { WorkspaceSessionState } from '../../../shared/workspace-session-st
 import {
   createOrcadMigrationSourceScope,
   orcadMigrationOwnerMatchesScope,
+  orcadMigrationOwnsRepoId,
   unqualifyOrcadMigrationOwnerKey,
   type OrcadMigrationSourceScope
 } from './orcad-source-scope'
@@ -20,7 +21,8 @@ export function retargetOrcadSourceClientFocus(
 ): void {
   const scope = createOrcadMigrationSourceScope({
     source: manifest.source,
-    catalog: manifest.payload
+    catalog: manifest.payload,
+    repos: state.repos
   })
   const destinationHostId = manifest.destinationEnvironmentId
     ? toRuntimeExecutionHostId(manifest.destinationEnvironmentId)
@@ -68,7 +70,7 @@ function retargetSessionFocus(
   session.activeWorkspaceKey = null
   session.activeWorkspaceExecutionHostId = null
   session.activeTabId = null
-  if (session.activeRepoId && scope.repoIds.has(session.activeRepoId)) {
+  if (orcadMigrationOwnsRepoId(scope, session.activeRepoId)) {
     session.activeRepoId = null
   }
 }
