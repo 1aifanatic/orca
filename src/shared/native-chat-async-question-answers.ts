@@ -30,6 +30,18 @@ export function nativeChatAsyncQuestionAnswer(
   return edit?.option ?? null
 }
 
+/** A question's options with React keys: a label repeated by the model gets its own key. */
+export function nativeChatAsyncQuestionKeyedOptions(
+  options: readonly string[]
+): { key: string; option: string }[] {
+  const seen = new Map<string, number>()
+  return options.map((option) => {
+    const occurrence = seen.get(option) ?? 0
+    seen.set(option, occurrence + 1)
+    return { key: `${occurrence}:${option}`, option }
+  })
+}
+
 /** Questions the card offers: the published ones this device has not dismissed. */
 export function nativeChatAsyncQuestionsOpen(
   questions: readonly NativeChatAsyncQuestion[],

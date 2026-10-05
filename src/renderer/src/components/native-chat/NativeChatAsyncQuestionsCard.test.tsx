@@ -62,9 +62,23 @@ describe('NativeChatAsyncQuestionsCard', () => {
     expect(screen.getByRole('button', { name: 'Red' }).hasAttribute('disabled')).toBe(true)
   })
 
-  it('says how many questions were left out of the published set', () => {
-    render(<NativeChatAsyncQuestionsCard model={model({ omittedCount: 3 })} />)
+  it('says how many questions were left out of the published set, singular for one', () => {
+    const { rerender } = render(<NativeChatAsyncQuestionsCard model={model({ omittedCount: 3 })} />)
     expect(screen.getByText('3 more questions in the transcript')).toBeTruthy()
+    rerender(<NativeChatAsyncQuestionsCard model={model({ omittedCount: 1 })} />)
+    expect(screen.getByText('1 more question in the transcript')).toBeTruthy()
+  })
+
+  it('renders a choice the model repeated once per occurrence, each with its own key', () => {
+    const keyWarning = vi.spyOn(console, 'error').mockImplementation(() => {})
+    render(
+      <NativeChatAsyncQuestionsCard
+        model={model({ open: [{ key: 'a', index: 0, title: 'Pick', options: ['Yes', 'Yes'] }] })}
+      />
+    )
+    expect(screen.getAllByRole('button', { name: 'Yes' })).toHaveLength(2)
+    expect(keyWarning.mock.calls.flat().join(' ')).not.toContain('same key')
+    keyWarning.mockRestore()
   })
 
   it('renders nothing when no question is open', () => {

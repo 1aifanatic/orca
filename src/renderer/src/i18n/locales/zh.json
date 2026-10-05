@@ -17980,7 +17980,9 @@
       },
       "asyncQuestions": {
         "dismiss": "忽略",
-        "more": "记录中还有 {{value0}} 个问题"
+        "more": "记录中还有 {{count}} 个问题",
+        "more_one": "记录中还有 {{count}} 个问题",
+        "more_other": "记录中还有 {{count}} 个问题"
       }
     },
     "tab": {

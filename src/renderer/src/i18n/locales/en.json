@@ -18180,7 +18180,9 @@
       },
       "asyncQuestions": {
         "dismiss": "Dismiss",
-        "more": "{{value0}} more questions in the transcript"
+        "more": "{{count}} more questions in the transcript",
+        "more_one": "{{count}} more question in the transcript",
+        "more_other": "{{count}} more questions in the transcript"
       }
     },
     "tab": {

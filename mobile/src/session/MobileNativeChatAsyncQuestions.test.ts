@@ -97,7 +97,20 @@ describe('MobileNativeChatAsyncQuestions', () => {
     expect(byType(idle.root, 'TextInput')[0]?.props.editable).toBe(false)
   })
 
-  it('says how many questions were left out of the published set', () => {
+  it('renders a choice the model repeated once per occurrence, each with its own key', () => {
+    const keyWarning = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const options = byType(
+      mount(model({ open: [{ key: 'a', index: 0, title: 'Pick', options: ['Yes', 'Yes'] }] })).root,
+      'Pressable'
+    ).filter((node) => node.props.accessibilityState !== undefined)
+    expect(options).toHaveLength(2)
+    expect(keyWarning.mock.calls.flat().join(' ')).not.toContain('same key')
+    keyWarning.mockRestore()
+  })
+
+  it('says how many questions were left out of the published set, singular for one', () => {
+    expect(texts(mount(model({ omittedCount: 1 })))).toContain('1 more question in the transcript')
+    act(() => renderer?.unmount())
     expect(texts(mount(model({ omittedCount: 2 })))).toContain('2 more questions in the transcript')
   })
 

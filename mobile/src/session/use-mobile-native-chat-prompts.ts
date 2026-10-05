@@ -33,15 +33,19 @@ export function useMobileNativeChatPrompts(args: {
   asyncQuestions: NativeChatAsyncQuestionsView
 }): MobileNativeChatPrompts {
   const { enabled, status, messages, transcriptLoading, asyncQuestions } = args
+  const state = status?.state
+  const interactivePrompt = status?.interactivePrompt
+  const toolName = status?.toolName
+  // Keyed on what the resolver reads, so other status updates don't re-run the transcript scan.
   const resolved = useMemo(
     () =>
       resolveTerminalChatDecision({
-        status,
+        status: { state, interactivePrompt, toolName },
         messages,
         transcriptSettled: !transcriptLoading,
         asyncQuestions
       }),
-    [status, messages, transcriptLoading, asyncQuestions]
+    [state, interactivePrompt, toolName, messages, transcriptLoading, asyncQuestions]
   )
   const { decision, heuristicsAllowed } = resolved
   const openCode = resolveNativeChatTranscriptAgent(status?.agentType) === 'opencode'

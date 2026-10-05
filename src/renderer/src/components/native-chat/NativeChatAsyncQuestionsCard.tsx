@@ -2,6 +2,7 @@ import { MessageCircleQuestion, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { translate } from '@/i18n/i18n'
+import { nativeChatAsyncQuestionKeyedOptions } from '../../../../shared/native-chat-async-question-answers'
 import type { NativeChatAsyncQuestionsCardModel } from './use-native-chat-async-questions'
 
 /**
@@ -50,23 +51,25 @@ export function NativeChatAsyncQuestionsCard({
                   </div>
                   {question.options && question.options.length > 0 ? (
                     <div className="flex flex-wrap gap-1.5">
-                      {question.options.map((option) => (
-                        <Button
-                          key={option}
-                          variant={answer?.option === option ? 'secondary' : 'outline'}
-                          size="xs"
-                          disabled={sending}
-                          aria-pressed={answer?.option === option}
-                          onClick={() =>
-                            model.edit(question.key, {
-                              ...answer,
-                              option: answer?.option === option ? undefined : option
-                            })
-                          }
-                        >
-                          {option}
-                        </Button>
-                      ))}
+                      {nativeChatAsyncQuestionKeyedOptions(question.options).map(
+                        ({ key, option }) => (
+                          <Button
+                            key={key}
+                            variant={answer?.option === option ? 'secondary' : 'outline'}
+                            size="xs"
+                            disabled={sending}
+                            aria-pressed={answer?.option === option}
+                            onClick={() =>
+                              model.edit(question.key, {
+                                ...answer,
+                                option: answer?.option === option ? undefined : option
+                              })
+                            }
+                          >
+                            {option}
+                          </Button>
+                        )
+                      )}
                     </div>
                   ) : null}
                   <Input
@@ -95,8 +98,8 @@ export function NativeChatAsyncQuestionsCard({
               <p className="mr-auto text-xs text-muted-foreground">
                 {translate(
                   'components.native-chat.asyncQuestions.more',
-                  '{{value0}} more questions in the transcript',
-                  { value0: omittedCount }
+                  '{{count}} more questions in the transcript',
+                  { count: omittedCount }
                 )}
               </p>
             ) : null}

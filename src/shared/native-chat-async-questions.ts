@@ -187,7 +187,7 @@ export function nativeChatAsyncQuestionsFromFold(
   )
 }
 
-/** Serialized cap for the side field; structured history pages reserve it from their budget. */
+/** Serialized cap for the side field; a structured frame holds back its actual size from history. */
 export const NATIVE_CHAT_ASYNC_QUESTIONS_PUBLICATION_BYTES = 256 * 1024
 
 const encoder = new TextEncoder()

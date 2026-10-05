@@ -17864,7 +17864,9 @@
       },
       "asyncQuestions": {
         "dismiss": "Descartar",
-        "more": "{{value0}} preguntas más en la transcripción"
+        "more": "{{count}} preguntas más en la transcripción",
+        "more_one": "{{count}} pregunta más en la transcripción",
+        "more_other": "{{count}} preguntas más en la transcripción"
       },
       "receipt": {
         "cancelled": "Cancelado",

@@ -1,5 +1,6 @@
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { CircleHelp, X } from 'lucide-react-native'
+import { nativeChatAsyncQuestionKeyedOptions } from '../../../src/shared/native-chat-async-question-answers'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
 import { mobileNativeChatInputStyles } from './mobile-native-chat-input-styles'
 import type { MobileNativeChatAsyncQuestionsModel } from './use-mobile-native-chat-async-questions'
@@ -38,11 +39,11 @@ export function MobileNativeChatAsyncQuestions({
               </View>
               {question.options && question.options.length > 0 ? (
                 <View style={styles.options}>
-                  {question.options.map((option) => {
+                  {nativeChatAsyncQuestionKeyedOptions(question.options).map(({ key, option }) => {
                     const selected = answer?.option === option
                     return (
                       <Pressable
-                        key={option}
+                        key={key}
                         accessibilityState={{ selected }}
                         disabled={sending}
                         style={({ pressed }) => [
@@ -79,7 +80,9 @@ export function MobileNativeChatAsyncQuestions({
       </ScrollView>
       <View style={styles.footer}>
         {omittedCount > 0 ? (
-          <Text style={styles.more}>{`${omittedCount} more questions in the transcript`}</Text>
+          <Text style={styles.more}>
+            {`${omittedCount} more ${omittedCount === 1 ? 'question' : 'questions'} in the transcript`}
+          </Text>
         ) : null}
         <Pressable
           accessibilityLabel="Send answers"

@@ -18015,7 +18015,9 @@
       },
       "asyncQuestions": {
         "dismiss": "닫기",
-        "more": "대화 기록에 질문이 {{value0}}개 더 있습니다"
+        "more": "대화 기록에 질문이 {{count}}개 더 있습니다",
+        "more_one": "대화 기록에 질문이 {{count}}개 더 있습니다",
+        "more_other": "대화 기록에 질문이 {{count}}개 더 있습니다"
       }
     },
     "tab": {

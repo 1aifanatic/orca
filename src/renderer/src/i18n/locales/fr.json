@@ -18079,7 +18079,9 @@
       },
       "asyncQuestions": {
         "dismiss": "Ignorer",
-        "more": "{{value0}} autres questions dans la transcription"
+        "more": "{{count}} autres questions dans la transcription",
+        "more_one": "{{count}} autre question dans la transcription",
+        "more_other": "{{count}} autres questions dans la transcription"
       }
     },
     "tab": {
