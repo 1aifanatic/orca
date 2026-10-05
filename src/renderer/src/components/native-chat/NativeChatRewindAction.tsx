@@ -12,7 +12,7 @@ export function NativeChatRewindAction({
   rewind: NativeChatRewindSurface
 }) {
   const confirm = useConfirmationDialog()
-  const label = translate('components.native-chat.rewind.action', 'Revert to here')
+  const label = translate('components.native-chat.rewind.action', 'Edit from here')
   return (
     <Tooltip>
       <TooltipTrigger asChild>

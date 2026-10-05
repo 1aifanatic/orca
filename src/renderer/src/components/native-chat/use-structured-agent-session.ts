@@ -42,7 +42,7 @@ import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-sess
 import { withNativeChatCutTurnNotices } from '../../../../shared/native-chat-cut-turn-notice'
 import { TUI_AGENT_DISPLAY_NAMES } from '../../../../shared/tui-agent-display-names'
 import { useStructuredAgentSessionRewind } from './use-native-chat-rewind'
-import type { AgentSessionRewindReason } from '../../../../shared/agent-session-rewind'
+import type { NativeChatRewindHost } from './use-native-chat-rewind'
 
 export type { StructuredPromptItem } from './structured-agent-session-message-projection'
 
@@ -62,8 +62,8 @@ export function useStructuredAgentSession(args: {
   composerScopeKey?: string
   /** The chat-wide "queue follow-ups" setting; off keeps mid-turn sends immediate. */
   queueFollowUps?: boolean
-  /** The host's rewind recovery latch, from its status feed. */
-  rewindBlockedReason?: AgentSessionRewindReason | null
+  /** The host's rewind latch and what follows a message returned by a rewind. */
+  rewind?: NativeChatRewindHost
 }) {
   const {
     agent,
@@ -72,7 +72,6 @@ export function useStructuredAgentSession(args: {
     launch,
     providerStarting = false,
     queueFollowUps = true,
-    rewindBlockedReason = null,
     sessionId,
     target,
     transportEnabled = true
@@ -132,11 +131,11 @@ export function useStructuredAgentSession(args: {
     () => ({ capability: queueCapability, enabled: queueEnabled }),
     [queueCapability, queueEnabled]
   )
-  // A rewind the host could not confirm holds the outbox until the host recovers it.
   const outboxController = useStructuredAgentSessionOutbox({
     sessionId,
     target,
-    fence: rewindBlockedReason ? null : transportState.fence,
+    // Never held for an in-doubt rewind: the host recovers it on the next send.
+    fence: transportState.fence,
     submissions: transportState.submissions,
     journalItems: transportState.journalItems,
     composerScopeKey,
@@ -172,10 +171,11 @@ export function useStructuredAgentSession(args: {
   const rewind = useStructuredAgentSessionRewind({
     sessionId,
     composerScopeKey,
-    hostBlockedReason: rewindBlockedReason,
+    ...args.rewind,
     state,
     support: transportEnabled ? rewindSupport : undefined,
-    blocked: conversationBusy || commandPending.current,
+    // The host also refuses a rewind behind its queued cards, paused ones included.
+    blocked: conversationBusy || commandPending.current || queuedMessageIds.length > 0,
     write
   })
   // A host that takes a Stop naming no turn gets Stop from the send until the work settles; every
@@ -239,7 +239,7 @@ export function useStructuredAgentSession(args: {
     messages,
     status: transportEnabled ? state.status : 'ready',
     /** The outbox's own line; a failed read is worded from `readRefusal`, never its text. */
-    error: rewind.error ?? outboxController.error,
+    error: outboxController.error,
     /** The refusal the failed read met, while `status` is `error`. */
     readRefusal: transportEnabled ? state.readRefusal : undefined,
     hasOlder: transportEnabled && state.hasOlder,

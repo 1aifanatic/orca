@@ -95,7 +95,7 @@ describe('rewind target after send acceptance', () => {
       </TooltipProvider>
     )
     const view = render(row())
-    fireEvent.click(screen.getByRole('button', { name: 'Revert to here' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit from here' }))
     expect(confirm).not.toHaveBeenCalled()
 
     const providerItemId = agentJournalItemKey(
@@ -131,7 +131,7 @@ describe('rewind target after send acceptance', () => {
     }
 
     view.rerender(row())
-    fireEvent.click(screen.getByRole('button', { name: 'Revert to here' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit from here' }))
     await waitFor(() =>
       expect(mocks.call).toHaveBeenCalledWith(
         target,
@@ -140,8 +140,6 @@ describe('rewind target after send acceptance', () => {
       )
     )
     expect(confirm).toHaveBeenCalledOnce()
-    expect(confirm).toHaveBeenCalledWith(
-      expect.objectContaining({ description: expect.stringContaining('1 in total') })
-    )
+    expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ title: 'Edit from here?' }))
   })
 })

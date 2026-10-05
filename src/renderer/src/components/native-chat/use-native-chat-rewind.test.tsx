@@ -1,23 +1,49 @@
 // @vitest-environment happy-dom
 import { act, cleanup, renderHook } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const toastError = vi.hoisted(() => vi.fn())
+vi.mock('sonner', () => ({ toast: { error: toastError } }))
+
 import { AGENT_SESSION_REWIND_REASONS } from '../../../../shared/agent-session-rewind'
 import { EMPTY_STRUCTURED_AGENT_SESSION } from '../../../../shared/structured-agent-session-reducer'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
-import { countNativeChatRewindMessages, useNativeChatRewind } from './use-native-chat-rewind'
-import { nativeChatRewindReasonCopy } from './native-chat-rewind-copy'
+import type { NativeChatMessage } from '../../../../shared/native-chat-types'
+import {
+  NATIVE_CHAT_REWIND_RESET_TIMEOUT_MS,
+  nativeChatRowOffersRewind,
+  useNativeChatRewind
+} from './use-native-chat-rewind'
+import {
+  nativeChatRewindPendingCopy,
+  nativeChatRewindReasonCopy,
+  nativeChatRewindReturnedUnknownCopy,
+  nativeChatRewindTimeoutCopy
+} from './native-chat-rewind-copy'
 import {
   parseAgentSessionWriteFailure,
   type AgentSessionWriteFailure
 } from '../../../../shared/agent-session-write-failure'
+import { readNativeChatDraftCache, writeNativeChatDraftCache } from './native-chat-draft-cache'
+
+type Input = Parameters<typeof useNativeChatRewind>[0]
 
 afterEach(cleanup)
+beforeEach(() => {
+  toastError.mockReset()
+  writeNativeChatDraftCache('pane', '')
+})
 const done = { kind: 'done' as const, value: { itemId: 'user', epoch: 'new' } }
 const notDone = (failure: AgentSessionWriteFailure) => ({
   kind: 'not-done' as const,
   notice: '',
   failure
 })
+const unknownRefusal: AgentSessionWriteFailure = {
+  kind: 'refused',
+  code: 'agent_session_operation_unknown',
+  details: { reason: 'rewindUnconfirmed', rewindReason: 'outcome-unknown' }
+}
 const item = (
   itemId: string,
   sequence: number,
@@ -27,11 +53,12 @@ const item = (
   sequence,
   revision: 1,
   observedAt: sequence,
-  body: { kind: 'message', role, blocks: [{ type: 'text', text: itemId }] }
+  body: { kind: 'message', role, blocks: [{ type: 'text', text: `text of ${itemId}` }] }
 })
-function input() {
+function input(): Input & { send: ReturnType<typeof vi.fn> } {
   return {
     sessionId: 'session',
+    composerScopeKey: 'pane',
     state: {
       ...EMPTY_STRUCTURED_AGENT_SESSION,
       epoch: 'old',
@@ -52,36 +79,51 @@ function deferred<T>() {
   })
   return { promise, resolve }
 }
+function render(props: Input) {
+  return renderHook((value: Input) => useNativeChatRewind(value), { initialProps: props })
+}
 
 describe('structured chat rewind', () => {
-  it('confirms the exact suffix count even when earlier history is unloaded', async () => {
+  it('confirms without a count, sends, and returns the message', async () => {
     const props = input()
-    props.state.hasOlder = true
-    expect(countNativeChatRewindMessages(props.state, 'user')).toBe(3)
-    expect(countNativeChatRewindMessages(props.state, 'reply')).toBe(0)
+    const onMessageReturned = vi.fn()
     const confirm = vi.fn().mockResolvedValue(true)
-    const view = renderHook(() => useNativeChatRewind(props))
+    const view = render({ ...props, onMessageReturned })
     await act(() => view.result.current.request('user', confirm))
     expect(confirm).toHaveBeenCalledWith(
       expect.objectContaining({
+        title: 'Edit from here?',
+        confirmLabel: 'Discard and edit',
         confirmVariant: 'destructive',
-        description: expect.stringContaining('3 in total')
+        description: expect.not.stringMatching(/in total/)
       })
     )
     expect(props.send).toHaveBeenCalledWith({ itemId: 'user', expectedEpoch: 'old' })
-    expect(view.result.current.pending).toBe(true)
-    expect(view.result.current.blockedRef.current).toBe(true)
+    expect(readNativeChatDraftCache('pane')).toContain('text of user')
+    expect(onMessageReturned).toHaveBeenCalledOnce()
+    expect(toastError).not.toHaveBeenCalled()
   })
 
-  it('cancels without sending and blocks duplicate clicks while confirming', async () => {
+  it('offers nothing for a row the journal does not hold as a user message', async () => {
+    const props = input()
+    const confirm = vi.fn()
+    const view = render(props)
+    await act(() => view.result.current.request('reply', confirm))
+    await act(() => view.result.current.request('missing', confirm))
+    expect(confirm).not.toHaveBeenCalled()
+  })
+
+  it('blocks nothing while the confirmation is open, and ignores a second click', async () => {
     const props = input(),
       confirmation = deferred<boolean>()
     const confirm = vi.fn(() => confirmation.promise)
-    const view = renderHook(() => useNativeChatRewind(props))
+    const view = render(props)
     let request!: Promise<void>
     act(() => {
       request = view.result.current.request('user', confirm)
     })
+    expect(view.result.current.pending).toBe(false)
+    expect(view.result.current.blockedRef.current).toBe(false)
     await act(() => view.result.current.request('user', confirm))
     expect(confirm).toHaveBeenCalledOnce()
     await act(async () => {
@@ -92,53 +134,50 @@ describe('structured chat rewind', () => {
     expect(view.result.current.pending).toBe(false)
   })
 
-  it('keeps sending blocked after reopening while the host reports an unresolved rewind', async () => {
-    const props: Parameters<typeof useNativeChatRewind>[0] = {
-      ...input(),
-      hostBlockedReason: 'outcome-unknown'
-    }
-    const view = renderHook((value) => useNativeChatRewind(value), { initialProps: props })
-    expect(view.result.current.error).toContain('may have completed')
-    expect(view.result.current.disabledReason).toContain('Sending is blocked')
-    expect(view.result.current.blockedRef.current).toBe(true)
-    expect(view.result.current.pending).toBe(true)
-    const confirm = vi.fn()
-    await act(() => view.result.current.request('user', confirm))
-    expect(confirm).not.toHaveBeenCalled()
-    view.rerender({ ...props, hostBlockedReason: undefined })
-    expect(view.result.current.error).toBeNull()
-    expect(view.result.current.pending).toBe(false)
-    expect(view.result.current.blockedRef.current).toBe(false)
-  })
-
-  it('does not label its in-flight request as an unknown outcome when the host prepares recovery', async () => {
+  it('blocks only while the confirmed request is in flight', async () => {
     const props = input(),
       response = deferred<typeof done>()
     props.send.mockReturnValue(response.promise)
-    const view = renderHook<
-      ReturnType<typeof useNativeChatRewind>,
-      Parameters<typeof useNativeChatRewind>[0]
-    >((value) => useNativeChatRewind(value), { initialProps: props })
+    const view = render(props)
     let request!: Promise<void>
     await act(async () => {
       request = view.result.current.request('user', async () => true)
     })
-    view.rerender({ ...props, hostBlockedReason: 'outcome-unknown' })
     expect(view.result.current.pending).toBe(true)
-    expect(view.result.current.error).toBeNull()
+    expect(view.result.current.blockedRef.current).toBe(true)
+    expect(view.result.current.disabledReason).toBe(nativeChatRewindPendingCopy())
+    // The host's latch covers its own in-flight work; it does not relabel ours.
+    view.rerender({ ...props, hostBlockedReason: 'outcome-unknown' })
+    expect(view.result.current.disabledReason).toBe(nativeChatRewindPendingCopy())
     await act(async () => {
+      view.rerender({ ...props, state: { ...props.state, epoch: 'new', items: [] } })
       response.resolve(done)
       await request
     })
-    expect(view.result.current.error).toBeNull()
-    view.rerender({ ...props, state: { ...props.state, epoch: 'new' } })
     expect(view.result.current.pending).toBe(false)
+    expect(view.result.current.blockedRef.current).toBe(false)
+  })
+
+  it("lets the host's in-doubt latch disable only the action, never sending", async () => {
+    const props: Input = { ...input(), hostBlockedReason: 'outcome-unknown' }
+    const view = render(props)
+    expect(view.result.current.disabledReason).toBe(nativeChatRewindReasonCopy('outcome-unknown'))
+    expect(view.result.current.blockedRef.current).toBe(false)
+    expect(view.result.current.pending).toBe(false)
+    const run = vi.fn()
+    view.result.current.unlessBlocked(run)()
+    expect(run).toHaveBeenCalledOnce()
+    const confirm = vi.fn()
+    await act(() => view.result.current.request('user', confirm))
+    expect(confirm).not.toHaveBeenCalled()
+    view.rerender({ ...props, hostBlockedReason: undefined })
+    expect(view.result.current.disabledReason).toBeNull()
   })
 
   it('does not execute a confirmation after its pane unmounts', async () => {
     const props = input(),
       confirmation = deferred<boolean>()
-    const view = renderHook(() => useNativeChatRewind(props))
+    const view = render(props)
     let request!: Promise<void>
     act(() => {
       request = view.result.current.request('user', () => confirmation.promise)
@@ -151,40 +190,56 @@ describe('structured chat rewind', () => {
     expect(props.send).not.toHaveBeenCalled()
   })
 
-  it.each(['busy', 'unwritable', 'legacy', 'loading-support'] as const)(
+  it.each(['busy', 'unwritable', 'loading'] as const)(
     'disables %s sessions with explanatory copy',
     async (mode) => {
-      const props: Parameters<typeof useNativeChatRewind>[0] = input()
-      if (mode === 'loading-support') {
-        props.support = undefined
-      }
+      const props = input()
       if (mode === 'busy') {
         props.blocked = true
       }
       if (mode === 'unwritable') {
         props.state.fence = null
       }
-      if (mode === 'legacy') {
-        props.support = { supported: false, reason: 'history-not-paginated' }
+      if (mode === 'loading') {
+        props.state.status = 'loading'
       }
       const confirm = vi.fn()
-      const view = renderHook(() => useNativeChatRewind(props))
+      const view = render(props)
+      expect(view.result.current.surface).toBeDefined()
       expect(view.result.current.disabledReason).toBeTruthy()
-      if (mode === 'legacy') {
-        expect(view.result.current.disabledReason).toContain('older Codex conversation')
-      }
       await act(() => view.result.current.request('user', confirm))
       expect(confirm).not.toHaveBeenCalled()
       expect(props.send).not.toHaveBeenCalled()
     }
   )
 
+  it.each([
+    ['unresolved', undefined],
+    ['unsupported', { supported: false, reason: 'unsupported' }],
+    ['legacy', { supported: false, reason: 'history-not-paginated' }]
+  ] as const)('offers no action where support is %s', async (_mode, support) => {
+    const props: Input = { ...input(), support }
+    const confirm = vi.fn()
+    const view = render(props)
+    expect(view.result.current.surface).toBeUndefined()
+    await act(() => view.result.current.request('user', confirm))
+    expect(confirm).not.toHaveBeenCalled()
+  })
+
+  it('still offers the action when the options read answered while the host was in doubt', () => {
+    const view = render({ ...input(), support: { supported: false, reason: 'outcome-unknown' } })
+    expect(view.result.current.surface).toEqual({
+      disabledReason: null,
+      request: view.result.current.request
+    })
+  })
+
   it.each(['epoch', 'messages', 'busy'] as const)(
-    'rechecks %s after confirmation',
+    'rechecks %s after confirmation and says so once',
     async (change) => {
       const props = input(),
         confirmation = deferred<boolean>()
-      const view = renderHook((value) => useNativeChatRewind(value), { initialProps: props })
+      const view = render(props)
       let request!: Promise<void>
       act(() => {
         request = view.result.current.request('user', () => confirmation.promise)
@@ -203,7 +258,8 @@ describe('structured chat rewind', () => {
         await request
       })
       expect(props.send).not.toHaveBeenCalled()
-      expect(view.result.current.error).toBeTruthy()
+      expect(toastError).toHaveBeenCalledOnce()
+      expect(view.result.current.pending).toBe(false)
     }
   )
 
@@ -213,7 +269,7 @@ describe('structured chat rewind', () => {
       const props = input(),
         response = deferred<typeof done>()
       props.send.mockReturnValue(response.promise)
-      const view = renderHook((value) => useNativeChatRewind(value), { initialProps: props })
+      const view = render(props)
       let request!: Promise<void>
       await act(async () => {
         request = view.result.current.request('user', async () => true)
@@ -229,6 +285,7 @@ describe('structured chat rewind', () => {
       })
       if (order === 'after') {
         expect(view.result.current.pending).toBe(true)
+        expect(view.result.current.blockedRef.current).toBe(true)
         reset()
       }
       expect(view.result.current.pending).toBe(false)
@@ -236,63 +293,132 @@ describe('structured chat rewind', () => {
     }
   )
 
-  it.each(AGENT_SESSION_REWIND_REASONS)('explains disabled host support: %s', async (reason) => {
-    const props: Parameters<typeof useNativeChatRewind>[0] = {
-      ...input(),
-      support: { supported: false, reason }
+  it('lets go of a confirmed rewind whose new conversation never arrives, and says so once', async () => {
+    vi.useFakeTimers()
+    try {
+      const props = input()
+      const view = render(props)
+      await act(() => view.result.current.request('user', async () => true))
+      expect(view.result.current.blockedRef.current).toBe(true)
+      await act(() => vi.advanceTimersByTimeAsync(NATIVE_CHAT_REWIND_RESET_TIMEOUT_MS - 1))
+      expect(view.result.current.pending).toBe(true)
+      await act(() => vi.advanceTimersByTimeAsync(1))
+      expect(view.result.current.pending).toBe(false)
+      expect(view.result.current.blockedRef.current).toBe(false)
+      expect(toastError).toHaveBeenCalledExactlyOnceWith(nativeChatRewindTimeoutCopy())
+      await act(() => vi.advanceTimersByTimeAsync(NATIVE_CHAT_REWIND_RESET_TIMEOUT_MS))
+      expect(toastError).toHaveBeenCalledOnce()
+    } finally {
+      vi.useRealTimers()
     }
-    const view = renderHook(() => useNativeChatRewind(props))
-    expect(view.result.current.disabledReason).toBe(nativeChatRewindReasonCopy(reason))
-    expect(view.result.current.disabledReason).not.toBe(nativeChatRewindReasonCopy('future-reason'))
-    const confirm = vi.fn()
-    await act(() => view.result.current.request('user', confirm))
-    expect(confirm).not.toHaveBeenCalled()
-    expect(props.send).not.toHaveBeenCalled()
   })
 
-  it.each([...AGENT_SESSION_REWIND_REASONS, 'future-reason'])(
-    'explains refusal %s',
+  it.each([...AGENT_SESSION_REWIND_REASONS.filter((r) => r !== 'outcome-unknown'), 'future'])(
+    'toasts refusal %s once, unblocks, and keeps the message where it is',
     async (rewindReason) => {
       const props = input()
       props.send.mockResolvedValue(
         notDone(
-          rewindReason === 'outcome-unknown'
-            ? {
-                kind: 'refused',
-                code: 'agent_session_operation_unknown',
-                details: { reason: 'rewindUnconfirmed', rewindReason: 'outcome-unknown' }
-              }
-            : // Parsed as a reply is, so a reason this build does not know is dropped.
-              (parseAgentSessionWriteFailure({
-                kind: 'refused',
-                code: 'agent_session_operation_invalid',
-                details: { reason: 'rewindRefused', rewindReason }
-              }) ?? { kind: 'failed' })
+          // Parsed as a reply is, so a reason this build does not know is dropped.
+          parseAgentSessionWriteFailure({
+            kind: 'refused',
+            code: 'agent_session_operation_invalid',
+            details: { reason: 'rewindRefused', rewindReason }
+          }) ?? { kind: 'failed' }
         )
       )
-      const view = renderHook(() => useNativeChatRewind(props))
+      const onMessageReturned = vi.fn()
+      const view = render({ ...props, onMessageReturned })
       await act(() => view.result.current.request('user', async () => true))
-      expect(view.result.current.error).toBe(nativeChatRewindReasonCopy(rewindReason))
-      if (rewindReason === 'history-limit') {
-        expect(view.result.current.error).toContain('Nothing was changed')
-      }
-      if (rewindReason === 'outcome-unknown') {
-        expect(view.result.current.error).toContain('may have completed')
-        expect(view.result.current.error).toContain('Sending is blocked')
-        expect(view.result.current.error).toContain('until the outcome is resolved')
-        expect(view.result.current.error).not.toContain('failed')
-        expect(view.result.current.pending).toBe(true)
-      }
+      expect(toastError).toHaveBeenCalledExactlyOnceWith(nativeChatRewindReasonCopy(rewindReason))
+      expect(view.result.current.pending).toBe(false)
+      expect(view.result.current.blockedRef.current).toBe(false)
+      expect(readNativeChatDraftCache('pane')).toBe('')
+      expect(onMessageReturned).not.toHaveBeenCalled()
     }
   )
 
-  it('treats a lost transport response as uncertain and never retries', async () => {
+  it.each([
+    ['unconfirmed', { kind: 'unconfirmed' } as const],
+    ['operation-unknown', unknownRefusal]
+  ])(
+    'an unknown outcome (%s) unblocks at once and returns the message',
+    async (_label, failure) => {
+      const props = input()
+      props.send.mockResolvedValue(notDone(failure))
+      const onMessageReturned = vi.fn()
+      const view = render({ ...props, onMessageReturned })
+      await act(() => view.result.current.request('user', async () => true))
+      expect(view.result.current.pending).toBe(false)
+      expect(view.result.current.blockedRef.current).toBe(false)
+      expect(view.result.current.disabledReason).toBeNull()
+      expect(readNativeChatDraftCache('pane')).toContain('text of user')
+      expect(onMessageReturned).toHaveBeenCalledOnce()
+      expect(toastError).toHaveBeenCalledExactlyOnceWith(nativeChatRewindReturnedUnknownCopy())
+      expect(nativeChatRewindReturnedUnknownCopy()).not.toContain('blocked')
+    }
+  )
+
+  it('is not stranded when the host latches and then settles an unknown outcome as refused', async () => {
     const props = input()
     props.send.mockResolvedValue(notDone({ kind: 'unconfirmed' }))
-    const view = renderHook(() => useNativeChatRewind(props))
+    const view = render(props)
     await act(() => view.result.current.request('user', async () => true))
+    view.rerender({ ...props, hostBlockedReason: 'outcome-unknown' })
+    expect(view.result.current.blockedRef.current).toBe(false)
+    view.rerender({ ...props, hostBlockedReason: undefined })
+    expect(view.result.current.blockedRef.current).toBe(false)
+    expect(view.result.current.disabledReason).toBeNull()
+    const confirm = vi.fn().mockResolvedValue(false)
+    await act(() => view.result.current.request('user', confirm))
+    expect(confirm).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the message when an unknown outcome turns out to have rewound', async () => {
+    const props = input()
+    props.send.mockResolvedValue(notDone({ kind: 'unconfirmed' }))
+    const view = render(props)
     await act(() => view.result.current.request('user', async () => true))
-    expect(props.send).toHaveBeenCalledOnce()
-    expect(view.result.current.error).toContain('may have completed')
+    view.rerender({ ...props, state: { ...props.state, epoch: 'new', items: [] } })
+    expect(readNativeChatDraftCache('pane')).toContain('text of user')
+  })
+
+  it('says nothing and returns nothing for a reply the pane stopped waiting on', async () => {
+    const props = input()
+    props.send.mockResolvedValue({ kind: 'dropped' })
+    const view = render(props)
+    await act(() => view.result.current.request('user', async () => true))
+    expect(toastError).not.toHaveBeenCalled()
+    expect(readNativeChatDraftCache('pane')).toBe('')
+    expect(view.result.current.blockedRef.current).toBe(false)
+  })
+})
+
+describe('which rows offer rewind', () => {
+  const message = (fields: Partial<NativeChatMessage> = {}): NativeChatMessage => ({
+    id: 'opener',
+    role: 'user',
+    blocks: [{ type: 'text', text: 'Prompt' }],
+    timestamp: 1,
+    source: 'transcript',
+    ...fields
+  })
+  const opens = { depth: 0, turnKey: 'opener' }
+
+  it('offers a sent prompt that opened its own turn', () => {
+    expect(nativeChatRowOffersRewind(message(), opens, false)).toBe(true)
+  })
+
+  it.each([
+    ['a steer into a running turn', message(), { depth: 0, turnKey: 'earlier-opener' }, false],
+    ['an unsent row', message({ unsent: true }), { depth: 0, turnKey: undefined }, false],
+    ['a row with a delivery notice', message(), opens, true],
+    ['a queued row', message({ queued: true }), opens, false],
+    ['a /compact row', message({ command: { name: 'compact' } }), opens, false],
+    ['a goal', message({ sentAs: 'goal' }), opens, false],
+    ['a subagent prompt', message(), { depth: 1, turnKey: 'opener' }, false],
+    ['an assistant row', message({ role: 'assistant' }), opens, false]
+  ] as const)('never offers %s', (_label, row, slot, notice) => {
+    expect(nativeChatRowOffersRewind(row, slot, notice)).toBe(false)
   })
 })

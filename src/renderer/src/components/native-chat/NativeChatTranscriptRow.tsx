@@ -12,7 +12,7 @@ import type { NativeChatSubagentDisclosure } from './native-chat-subagent-sectio
 import type { NativeChatTaskListPredecessors } from './native-chat-task-list-history'
 import type { NativeChatTranscriptSlot } from './native-chat-transcript-slots'
 import type { NativeChatDiffReveal, NativeChatDiffTarget } from './native-chat-turn-diffs'
-import type { NativeChatRewindSurface } from './use-native-chat-rewind'
+import { nativeChatRowOffersRewind, type NativeChatRewindSurface } from './use-native-chat-rewind'
 
 /** Everything a row needs that is the same for every row. Held as one memoized
  *  object so a row's props change only when that row's own slot does. */
@@ -30,7 +30,7 @@ export type NativeChatTranscriptRowContext = {
   subagentDisclosure: NativeChatSubagentDisclosure
   onScrollMessageToTop: (element: HTMLElement) => void
   onRevealDiff: (target: NativeChatDiffTarget) => void
-  /** Offered on the conversation's own user rows, never inside a subagent's section. */
+  /** Offered on the conversation's own turn-opening prompts (`nativeChatRowOffersRewind`). */
   rewind?: NativeChatRewindSurface
 }
 
@@ -76,6 +76,7 @@ export const NativeChatTranscriptRow = memo(function NativeChatTranscriptRow({
     )
   }
   const { message, turnKey, status, receipt, turnDiff } = slot
+  const deliveryNotice = context.deliveryNotices?.get(message.id)
   const predecessors = context.taskListPredecessors.get(message.id)
   const expanded = turnKey ? context.expandedTurnIds.has(turnKey) : undefined
   const statusRow = status ? (
@@ -109,13 +110,17 @@ export const NativeChatTranscriptRow = memo(function NativeChatTranscriptRow({
           onScrollMessageToTop={context.onScrollMessageToTop}
           onLinkClick={context.onLinkClick}
           allowFileUriLinks={context.allowFileUriLinks}
-          deliveryNotice={context.deliveryNotices?.get(message.id)}
+          deliveryNotice={deliveryNotice}
           folded={slot.folded}
           subagentRoster={slot.subagentRoster}
           subagentDisclosure={context.subagentDisclosure}
           inSubagentSection={slot.depth > 0}
           runtimeContext={context.runtimeContext}
-          rewind={message.role === 'user' && slot.depth === 0 ? context.rewind : undefined}
+          rewind={
+            nativeChatRowOffersRewind(message, slot, deliveryNotice !== undefined)
+              ? context.rewind
+              : undefined
+          }
         />
       )}
       {slot.statusAbove ? null : statusRow}

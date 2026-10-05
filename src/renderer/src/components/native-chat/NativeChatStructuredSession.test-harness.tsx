@@ -231,7 +231,7 @@ export function createStructuredSessionMocks() {
             },
             turnId: mocks.turnId,
             epoch: 'epoch-1',
-            rewind: { disabledReason: null, pending: false, request: async () => {} },
+            rewind: { surface: undefined },
             canStop: mocks.canStop ?? mocks.turnId !== null,
             stop: mocks.stop,
             queuedMessages: {

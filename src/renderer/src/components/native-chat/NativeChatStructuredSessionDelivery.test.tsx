@@ -94,7 +94,7 @@ vi.mock('./use-structured-agent-session', async () => {
         backgroundTasks: mocks.backgroundTasks,
         turnId: null,
         epoch: 'epoch-1',
-        rewind: { disabledReason: null, pending: false, request: vi.fn() },
+        rewind: { surface: undefined },
         cancel: vi.fn(),
         queuedMessages: {
           cards: [],

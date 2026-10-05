@@ -9,7 +9,7 @@ import {
   writeOutbox
 } from './structured-agent-session-outbox-storage'
 
-const mocks = vi.hoisted(() => ({ call: vi.fn(), blocked: true }))
+const mocks = vi.hoisted(() => ({ call: vi.fn() }))
 const state = {
   ...EMPTY_STRUCTURED_AGENT_SESSION,
   epoch: 'epoch-1',
@@ -36,12 +36,11 @@ const args = {
   isVisible: true
 }
 
-describe('rewind recovery outbox suspension', () => {
+describe("the host's in-doubt rewind latch and the outbox", () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.clearAllMocks()
     localStorage.clear()
-    mocks.blocked = true
     mocks.call.mockImplementation((_target, method) =>
       method === 'agentSession.send'
         ? new Promise(() => {})
@@ -50,37 +49,29 @@ describe('rewind recovery outbox suspension', () => {
   })
   afterEach(() => vi.useRealTimers())
 
+  // The host recovers an in-doubt rewind on the next send, so holding sends here would deadlock it.
   it.each(['queued', 'unconfirmed'] as const)(
-    'suspends a restored %s message, probes, and manual retry until the host clears recovery',
+    'keeps delivering a restored %s message and new sends while the latch is set',
     async (entryState) => {
       const entry = enqueueStructuredAgentSessionLaunchPrompt(args.sessionId, 'Pending prompt')!
       writeOutbox(args.sessionId, [{ ...entry, state: entryState }])
       const view = renderHook(() =>
-        useStructuredAgentSession({
-          ...args,
-          rewindBlockedReason: mocks.blocked ? 'outcome-unknown' : null
-        })
+        useStructuredAgentSession({ ...args, rewind: { hostBlockedReason: 'outcome-unknown' } })
       )
       await act(async () => {
-        view.result.current.retry(entry.clientMessageId)
+        if (entryState === 'unconfirmed') {
+          view.result.current.retry(entry.clientMessageId)
+        }
         await vi.advanceTimersByTimeAsync(60_000)
       })
-
-      expect(mocks.call.mock.calls.filter(([, method]) => method === 'agentSession.send')).toEqual(
-        []
-      )
-      expect(readOutbox(args.sessionId)[0]?.state).toBe(entryState)
-      expect(view.result.current.send('New prompt', [])).toBe(false)
-      expect(view.result.current.error).toContain('The rewind may have completed')
-
-      mocks.blocked = false
-      await act(async () => view.rerender())
-      if (entryState === 'unconfirmed') {
-        await act(async () => view.result.current.retry(entry.clientMessageId))
-      }
-      expect(
+      const sends = () =>
         mocks.call.mock.calls.filter(([, method]) => method === 'agentSession.send')
-      ).toHaveLength(1)
+      expect(sends()).toHaveLength(1)
+      expect(view.result.current.send('New prompt', [])).toBe(true)
+      expect(view.result.current.error).toBeNull()
+      expect(readOutbox(args.sessionId).map((queued) => queued.clientMessageId)).toContain(
+        entry.clientMessageId
+      )
       view.unmount()
     }
   )

@@ -103,17 +103,17 @@ describe('MessageRow control visibility', () => {
     expect(time).toHaveFocus()
   })
 
-  it('composes the revert action into the user hover/focus strip', () => {
+  it('composes the edit-from-here action into the user hover/focus strip', () => {
     const request = vi.fn()
     renderMessage('user', 0, { disabledReason: null, request })
     const copy = screen.getByRole('button', { name: 'Copy message' })
     const time = screen.getByRole('time')
-    const revert = screen.getByRole('button', { name: 'Revert to here' })
-    expect(Array.from(copy.parentElement!.children)).toEqual([copy, time, revert])
+    const edit = screen.getByRole('button', { name: 'Edit from here' })
+    expect(Array.from(copy.parentElement!.children)).toEqual([copy, time, edit])
     expect(copy.parentElement).toHaveClass('can-hover:opacity-0', 'group-hover:opacity-100')
-    revert.focus()
-    expect(revert).toHaveFocus()
-    fireEvent.click(revert)
+    edit.focus()
+    expect(edit).toHaveFocus()
+    fireEvent.click(edit)
     expect(request).toHaveBeenCalledWith('message', confirm)
   })
 

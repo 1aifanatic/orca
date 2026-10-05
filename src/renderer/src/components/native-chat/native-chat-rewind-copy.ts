@@ -8,47 +8,47 @@ const reasonCopy = {
   unsupported: () =>
     translate(
       'components.native-chat.rewind.unsupported',
-      'This session does not support rewinding conversation history.'
+      "This chat can't go back to an earlier message."
     ),
   'history-not-paginated': () =>
     translate(
       'components.native-chat.rewind.historyNotPaginated',
-      'This older Codex conversation does not support rewinding. Start a new conversation to use rewind.'
+      "This older Codex chat can't go back to an earlier message. Start a new chat to use Edit from here."
     ),
   busy: () =>
     translate(
       'components.native-chat.rewind.busy',
-      'Wait for the current turn, pending messages, approvals, and background work to finish before rewinding.'
+      'Wait for the current turn, queued messages, approvals, and background work to finish first.'
     ),
   'stale-epoch': () =>
     translate(
       'components.native-chat.rewind.staleEpoch',
-      'The conversation changed. Review the latest messages before rewinding.'
+      'The conversation changed. Review the latest messages and try again.'
     ),
   'invalid-target': () =>
     translate(
       'components.native-chat.rewind.invalidTarget',
-      'This message is no longer a valid rewind point. Review the latest conversation.'
+      "The conversation can't go back to this message. Nothing was changed."
     ),
   'history-limit': () =>
     translate(
       'components.native-chat.rewind.historyLimit',
-      'This conversation is too large to rewind safely. Nothing was changed.'
+      'This conversation is too long to go back in. Nothing was changed.'
     ),
   'provider-refused': () =>
     translate(
       'components.native-chat.rewind.providerRefused',
-      'The agent refused to rewind this conversation.'
+      "The agent couldn't go back to this message."
     ),
   'proof-mismatch': () =>
     translate(
       'components.native-chat.rewind.proofMismatch',
-      'Orca could not verify the conversation boundary. Reload the session before trying again.'
+      "The agent's history didn't match this chat. Check the conversation before continuing."
     ),
   'outcome-unknown': () =>
     translate(
       'components.native-chat.rewind.outcomeUnknown',
-      'The rewind may have completed, but Orca could not confirm it. Sending is blocked until the outcome is resolved.'
+      "Orca couldn't confirm whether the conversation went back to an earlier message. It checks before your next message is sent."
     )
 } satisfies Record<AgentSessionRewindReason, () => string>
 
@@ -58,13 +58,35 @@ export function nativeChatRewindReasonCopy(reason: string | undefined): string {
     ? reasonCopy[known]()
     : translate(
         'components.native-chat.rewind.refused',
-        'Orca could not rewind this conversation. Reload the session to check its current state.'
+        "Orca couldn't go back to this message. Check the conversation before continuing."
       )
 }
 
 export function nativeChatRewindUnavailableCopy(): string {
   return translate(
     'components.native-chat.rewind.unavailable',
-    'Reconnect to a writable chat session before rewinding.'
+    'Wait for the chat to finish connecting.'
+  )
+}
+
+/** The unknown outcome, said where the message has already gone back to the composer. */
+export function nativeChatRewindReturnedUnknownCopy(): string {
+  return translate(
+    'components.native-chat.rewind.outcomeUnknownReturned',
+    "Orca couldn't confirm whether the conversation went back to this message. Your message is back in the composer, and Orca checks the conversation before your next message is sent."
+  )
+}
+
+export function nativeChatRewindTimeoutCopy(): string {
+  return translate(
+    'components.native-chat.rewind.timeout',
+    "Orca couldn't confirm in time that the conversation went back to this message. Check the conversation before continuing."
+  )
+}
+
+export function nativeChatRewindPendingCopy(): string {
+  return translate(
+    'components.native-chat.rewind.pending',
+    'Wait for the conversation to go back to the earlier message.'
   )
 }

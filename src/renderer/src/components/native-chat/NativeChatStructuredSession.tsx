@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { agentSessionPromptQuestions } from '../../../../shared/agent-session-question-answer'
 import { dispatchStructuredAgentSessionComposerCommand } from '../../../../shared/structured-agent-session-composer'
 import { structuredAgentSessionPaneKey } from '../../../../shared/structured-agent-session-projection'
@@ -56,12 +56,16 @@ export function NativeChatStructuredSession(
   )
   // Chat-wide: absent means on; only an explicit off keeps mid-turn sends immediate.
   const queueFollowUps = useAppStore((store) => store.settings?.nativeChatQueueFollowUps !== false)
+  const composerRef = useRef<NativeChatComposerHandle>(null)
+  const focusComposer = useCallback(() => {
+    composerRef.current?.focus()
+  }, [])
   const controller = useStructuredAgentSession({
     ...props,
     composerScopeKey: paneKey,
     queueFollowUps,
     providerStarting: startupPhase === 'starting',
-    rewindBlockedReason,
+    rewind: { hostBlockedReason: rewindBlockedReason, onMessageReturned: focusComposer },
     transportEnabled: provisionalLaunch.transportEnabled,
     ...(provisionalLaunch.launch ? { launch: provisionalLaunch.launch } : {})
   })
@@ -73,18 +77,12 @@ export function NativeChatStructuredSession(
     // phases, that empty list must not become the draft's turn baseline.
     transcriptLoading: controller.status === 'idle' || controller.status === 'loading'
   })
-  const { disabledReason: rewindDisabledReason, request: requestRewind } = controller.rewind
-  const rewind = useMemo(
-    () => ({ disabledReason: rewindDisabledReason, request: requestRewind }),
-    [rewindDisabledReason, requestRewind]
-  )
   const [composerError, setComposerError] = useState<string | null>(null)
   const [optionPickerRequest, setOptionPickerRequest] = useState<{
     id: string
     sequence: number
   } | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
-  const composerRef = useRef<NativeChatComposerHandle>(null)
   const paneCommands = useStructuredNativeChatPaneCommands({
     tabId: props.tabId,
     groupId: props.groupId,
@@ -276,7 +274,7 @@ export function NativeChatStructuredSession(
           <NativeChatMessageList
             // A rewind replaces the conversation; nothing the old transcript held carries over.
             key={controller.epoch ?? undefined}
-            rewind={rewind}
+            rewind={controller.rewind.surface}
             session={session}
             journalItems={controller.journalItems}
             journalSubmissions={controller.submissions}
@@ -308,9 +306,7 @@ export function NativeChatStructuredSession(
           {/* Host-held drafts, never transcript rows. Above the status area, so running shells and agents sit next to the composer. */}
           <NativeChatQueuedMessageList
             controller={controller.queuedMessages}
-            focusComposer={() => {
-              composerRef.current?.focus()
-            }}
+            focusComposer={focusComposer}
           />
           <NativeChatStructuredSessionStatus
             sessionId={props.sessionId}
@@ -393,7 +389,6 @@ export function NativeChatStructuredSession(
               paneKey={paneKey}
               targetPtyId={null}
               agent={props.agent}
-              canSend={!controller.rewind.pending}
               isWorking={controller.canStop}
               onStop={() => void controller.stop()}
               steerQueued={controller.queuedMessages.steerNewest}

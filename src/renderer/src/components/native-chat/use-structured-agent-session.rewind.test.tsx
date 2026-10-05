@@ -6,7 +6,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
   operationId: vi.fn(),
-  toastError: vi.fn()
+  toastError: vi.fn(),
+  outboxSend: vi.fn(),
+  outboxRetry: vi.fn()
 }))
 
 vi.mock('sonner', () => ({ toast: { error: mocks.toastError, message: vi.fn() } }))
@@ -14,6 +16,7 @@ let fence = 3
 let epoch = 'epoch-1'
 let items: AgentJournalRenderItem[] = []
 let submissions: AgentJournalSubmission[] = []
+let queuedMessages: AgentSessionQueuedMessage[] | null = null
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   callStructuredAgentSession: mocks.call,
@@ -32,6 +35,7 @@ vi.mock('./use-structured-agent-session-read', () => ({
       cursor: { epoch, sequence: 2 },
       items,
       submissions,
+      queuedMessages,
       status: 'ready',
       error: null,
       hasOlder: false
@@ -46,8 +50,8 @@ vi.mock('./use-structured-agent-session-outbox', () => ({
   useStructuredAgentSessionOutbox: () => ({
     outbox: [],
     error: null,
-    send: vi.fn(),
-    retry: vi.fn()
+    send: mocks.outboxSend,
+    retry: mocks.outboxRetry
   })
 }))
 
@@ -55,9 +59,14 @@ import type {
   AgentJournalRenderItem,
   AgentJournalSubmission
 } from '../../../../shared/agent-session-journal-types'
+import type { AgentSessionQueuedMessage } from '../../../../shared/agent-session-queued-message-wire'
 import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
 import { useStructuredAgentSession } from './use-structured-agent-session'
 import { readNativeChatDraftCache, writeNativeChatDraftCache } from './native-chat-draft-cache'
+import {
+  nativeChatRewindReasonCopy,
+  nativeChatRewindReturnedUnknownCopy
+} from './native-chat-rewind-copy'
 
 const LOCAL_TARGET = { kind: 'local' } as const
 
@@ -80,6 +89,7 @@ describe('useStructuredAgentSession rewind RPC', () => {
     fence = 3
     epoch = 'epoch-1'
     submissions = []
+    queuedMessages = null
     items = [
       {
         itemId: 'user-1',
@@ -99,7 +109,7 @@ describe('useStructuredAgentSession rewind RPC', () => {
     )
   })
 
-  it('sends the agreed verb and fingerprint to the execution host and blocks the composer until reset', async () => {
+  it('sends the agreed verb and fingerprint to the execution host and holds sends until reset', async () => {
     const target = { kind: 'environment' as const, environmentId: 'ssh-host' }
     const view = renderHook(() =>
       useStructuredAgentSession({ sessionId: 'session-1', target, agent: 'codex', isVisible: true })
@@ -155,7 +165,10 @@ describe('useStructuredAgentSession rewind RPC', () => {
     )
     await waitFor(() => expect(view.result.current.rewind.disabledReason).toBeNull())
     await act(() => view.result.current.rewind.request('user-1', async () => true))
-    expect(view.result.current.error).toContain('could not verify the conversation boundary')
+    expect(mocks.toastError).toHaveBeenCalledExactlyOnceWith(
+      nativeChatRewindReasonCopy('proof-mismatch')
+    )
+    expect(view.result.current.error).toBeNull()
   })
 
   it('explains an older host missing the RPC without claiming an uncertain rewind occurred', async () => {
@@ -181,8 +194,83 @@ describe('useStructuredAgentSession rewind RPC', () => {
     )
     await waitFor(() => expect(view.result.current.rewind.disabledReason).toBeNull())
     await act(() => view.result.current.rewind.request('user-1', async () => true))
-    expect(view.result.current.error).toContain('does not support rewinding')
+    expect(mocks.toastError).toHaveBeenCalledExactlyOnceWith(
+      nativeChatRewindReasonCopy('unsupported')
+    )
     expect(view.result.current.rewind.pending).toBe(false)
+  })
+
+  it('an unknown outcome leaves sending open and returns the message to the composer', async () => {
+    // A remote host without the capability throws before anything is sent: the outcome reads unknown.
+    mocks.call.mockImplementation((_target, method) =>
+      method === 'agentSession.rewind'
+        ? Promise.reject(new Error('Rewinding requires a newer Orca server.'))
+        : Promise.resolve({ ...OPTIONS, rewind: { supported: true } })
+    )
+    const onMessageReturned = vi.fn()
+    const view = renderHook(() =>
+      useStructuredAgentSession({
+        sessionId: 'session-1',
+        target: LOCAL_TARGET,
+        agent: 'codex',
+        isVisible: true,
+        composerScopeKey: 'unknown-scope',
+        rewind: { onMessageReturned }
+      })
+    )
+    await waitFor(() => expect(view.result.current.rewind.disabledReason).toBeNull())
+    await act(() => view.result.current.rewind.request('user-1', async () => true))
+    expect(readNativeChatDraftCache('unknown-scope')).toContain('Prompt')
+    expect(onMessageReturned).toHaveBeenCalledOnce()
+    expect(mocks.toastError).toHaveBeenCalledExactlyOnceWith(nativeChatRewindReturnedUnknownCopy())
+    expect(view.result.current.error).toBeNull()
+    view.result.current.send('Prompt', [])
+    view.result.current.retry('message-1')
+    expect(mocks.outboxSend).toHaveBeenCalledOnce()
+    expect(mocks.outboxRetry).toHaveBeenCalledOnce()
+  })
+
+  it("lets the host's in-doubt latch disable only the action", async () => {
+    mocks.call.mockResolvedValue({ ...OPTIONS, rewind: { supported: true } })
+    const view = renderHook(() =>
+      useStructuredAgentSession({
+        sessionId: 'session-1',
+        target: LOCAL_TARGET,
+        agent: 'codex',
+        isVisible: true,
+        rewind: { hostBlockedReason: 'outcome-unknown' }
+      })
+    )
+    await waitFor(() => expect(view.result.current.rewind.surface).toBeDefined())
+    expect(view.result.current.rewind.surface?.disabledReason).toBe(
+      nativeChatRewindReasonCopy('outcome-unknown')
+    )
+    view.result.current.send('Next prompt', [])
+    expect(mocks.outboxSend).toHaveBeenCalledOnce()
+    expect(view.result.current.error).toBeNull()
+  })
+
+  it("holds the action behind the host's queued cards", async () => {
+    mocks.call.mockResolvedValue({ ...OPTIONS, rewind: { supported: true } })
+    queuedMessages = [
+      {
+        messageId: 'queued-1',
+        position: 0,
+        state: 'waiting',
+        paused: true,
+        body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'Held' }] }
+      }
+    ]
+    const view = renderHook(() =>
+      useStructuredAgentSession({
+        sessionId: 'session-1',
+        target: LOCAL_TARGET,
+        agent: 'codex',
+        isVisible: true
+      })
+    )
+    await waitFor(() => expect(view.result.current.rewind.surface).toBeDefined())
+    expect(view.result.current.rewind.disabledReason).toBe(nativeChatRewindReasonCopy('busy'))
   })
 })
 
@@ -192,6 +280,7 @@ describe('useStructuredAgentSession rewind support and composer return', () => {
     fence = 3
     epoch = 'epoch-1'
     submissions = []
+    queuedMessages = null
     items = [
       {
         itemId: 'user-1',
@@ -204,7 +293,7 @@ describe('useStructuredAgentSession rewind support and composer return', () => {
     mocks.operationId.mockReset().mockReturnValue('rewind-operation')
   })
 
-  it('treats a host whose options name no rewind as unsupported', async () => {
+  it('offers no action on a host whose options name no rewind', async () => {
     mocks.call.mockResolvedValue(OPTIONS)
     const view = renderHook(() =>
       useStructuredAgentSession({
@@ -215,8 +304,11 @@ describe('useStructuredAgentSession rewind support and composer return', () => {
       })
     )
     await waitFor(() =>
-      expect(view.result.current.rewind.disabledReason).toContain('does not support rewinding')
+      expect(view.result.current.rewind.disabledReason).toBe(
+        nativeChatRewindReasonCopy('unsupported')
+      )
     )
+    expect(view.result.current.rewind.surface).toBeUndefined()
   })
 
   it('returns the discarded message to the composer after the existing draft', async () => {

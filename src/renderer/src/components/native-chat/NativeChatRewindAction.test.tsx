@@ -39,7 +39,7 @@ function row(
 describe('user-row rewind affordance', () => {
   it('is keyboard reachable and calls the selected user item from the hover strip', () => {
     const request = row('user')
-    const button = screen.getByRole('button', { name: 'Revert to here' })
+    const button = screen.getByRole('button', { name: 'Edit from here' })
     button.focus()
     expect(button).toHaveFocus()
     expect(button.parentElement).toHaveClass(
@@ -50,27 +50,24 @@ describe('user-row rewind affordance', () => {
     expect(request).toHaveBeenCalledWith('user-1', confirm)
   })
   it('exposes the disabled reason to keyboard users and cannot invoke rewind', async () => {
-    const request = row('user', 'This older Codex conversation does not support rewinding.')
-    const button = screen.getByRole('button', { name: 'Revert to here' })
+    const request = row('user', 'Wait for the current turn to finish first.')
+    const button = screen.getByRole('button', { name: 'Edit from here' })
     expect(button).toHaveAttribute('aria-disabled', 'true')
-    expect(button).toHaveAttribute(
-      'aria-description',
-      'This older Codex conversation does not support rewinding.'
-    )
+    expect(button).toHaveAttribute('aria-description', 'Wait for the current turn to finish first.')
     act(() => button.focus())
     expect(button).toHaveFocus()
     expect(await screen.findByRole('tooltip')).toHaveTextContent(
-      'This older Codex conversation does not support rewinding.'
+      'Wait for the current turn to finish first.'
     )
     fireEvent.click(button)
     expect(request).not.toHaveBeenCalled()
   })
   it.each(['assistant', 'reasoning', 'system'] as const)('omits rewind for %s', (role) => {
     row(role)
-    expect(screen.queryByRole('button', { name: 'Revert to here' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Edit from here' })).toBeNull()
   })
-  it('leaves legacy user rows without rewind', () => {
+  it('renders nothing where the row is offered no rewind', () => {
     row('user', null, false)
-    expect(screen.queryByRole('button', { name: 'Revert to here' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Edit from here' })).toBeNull()
   })
 })

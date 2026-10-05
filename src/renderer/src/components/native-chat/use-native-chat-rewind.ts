@@ -1,4 +1,5 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import type { ConfirmationDialogContextValue } from '@/components/confirmation-dialog-context'
 import { translate } from '@/i18n/i18n'
 import type {
@@ -8,8 +9,12 @@ import type {
 } from '../../../../shared/agent-session-rewind'
 import type { AgentSessionWriteFailure } from '../../../../shared/agent-session-write-failure'
 import type { StructuredAgentSessionState } from '../../../../shared/structured-agent-session-reducer'
+import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import {
+  nativeChatRewindPendingCopy,
   nativeChatRewindReasonCopy,
+  nativeChatRewindReturnedUnknownCopy,
+  nativeChatRewindTimeoutCopy,
   nativeChatRewindUnavailableCopy
 } from './native-chat-rewind-copy'
 import type {
@@ -23,13 +28,19 @@ export type NativeChatRewindSurface = {
   request: (itemId: string, confirm: ConfirmationDialogContextValue) => Promise<void>
 }
 
+/** How long a confirmed rewind waits for its new conversation before letting go. */
+export const NATIVE_CHAT_REWIND_RESET_TIMEOUT_MS = 120_000
+
 type RewindInput = {
   sessionId: string
   /** The composer the discarded message returns to, after whatever is typed there. */
   composerScopeKey?: string
+  /** Called once the discarded message is back in the composer. */
+  onMessageReturned?: () => void
   state: StructuredAgentSessionState
   /** Undefined until the host has answered for the current runtime. */
   support: AgentSessionRewindSupport | undefined
+  /** The host's in-doubt latch: disables the action, never sending. */
   hostBlockedReason?: AgentSessionRewindReason
   blocked: boolean
   send: (fields: {
@@ -57,23 +68,42 @@ function rewindFailureReason(failure: AgentSessionWriteFailure): string | undefi
     : undefined
 }
 
-export function countNativeChatRewindMessages(
-  state: StructuredAgentSessionState,
-  itemId: string
-): number {
-  const index = state.items.findIndex(
+/** Whether the provider can rewind at all. An in-doubt read is still capable: the status feed's
+ *  live latch, not this cached read, says when it resolves. */
+export function nativeChatRewindOffered(support: AgentSessionRewindSupport | undefined): boolean {
+  return support !== undefined && (support.supported || support.reason === 'outcome-unknown')
+}
+
+/** A sent prompt that opened its own turn, outside any subagent's section. Codex rewinds whole
+ *  turns, so a steer would also discard its turn's opener; unsent, queued, command and goal rows
+ *  have no turn to go back to. */
+export function nativeChatRowOffersRewind(
+  message: NativeChatMessage,
+  slot: { depth: number; turnKey: string | undefined },
+  hasDeliveryNotice: boolean
+): boolean {
+  return (
+    message.role === 'user' &&
+    slot.depth === 0 &&
+    slot.turnKey === message.id &&
+    !hasDeliveryNotice &&
+    message.queued !== true &&
+    message.command === undefined &&
+    message.sentAs === undefined
+  )
+}
+
+function isRewindTarget(state: StructuredAgentSessionState, itemId: string): boolean {
+  return state.items.some(
     (item) => item.itemId === itemId && item.body.kind === 'message' && item.body.role === 'user'
   )
-  return index === -1
-    ? 0
-    : state.items.slice(index).filter((item) => item.body.kind === 'message').length
 }
 
 function blockedReason(input: RewindInput): string | null {
   if (input.hostBlockedReason) {
     return nativeChatRewindReasonCopy(input.hostBlockedReason)
   }
-  if (input.support?.supported === false) {
+  if (input.support?.supported === false && !nativeChatRewindOffered(input.support)) {
     return nativeChatRewindReasonCopy(input.support.reason)
   }
   const { state } = input
@@ -81,6 +111,16 @@ function blockedReason(input: RewindInput): string | null {
     return nativeChatRewindUnavailableCopy()
   }
   return input.blocked ? nativeChatRewindReasonCopy('busy') : null
+}
+
+/** Whether the message went back; read from the state the user confirmed against. */
+function returnTargetToComposer(input: RewindInput, itemId: string): boolean {
+  const target = input.state.items.find((item) => item.itemId === itemId)
+  if (!input.composerScopeKey || target?.body.kind !== 'message') {
+    return false
+  }
+  returnMessageToComposer(input.composerScopeKey, `rewound-${itemId}`, target.body.blocks)
+  return true
 }
 
 export function useNativeChatRewind(input: RewindInput) {
@@ -95,132 +135,112 @@ export function useNativeChatRewind(input: RewindInput) {
   useLayoutEffect(() => {
     latest.current = input
   }, [input])
+  // Single-flight from the click on; only `sending` (after Confirm) blocks anything else.
   const inFlight = useRef(false)
-  const [pending, setPending] = useState(false)
-  const [settlement, setSettlement] = useState<{
-    sessionId: string
-    epoch: string
-    nextEpoch?: string
-  } | null>(null)
-  const [failure, setFailure] = useState<{
-    sessionId: string
-    epoch: string | null
-    message: string
-  } | null>(null)
-  const setError = (message: string | null) => {
-    const current = latest.current
-    setFailure(
-      message ? { sessionId: current.sessionId, epoch: current.state.epoch, message } : null
-    )
-  }
+  const [sending, setSending] = useState(false)
+  // A confirmed rewind whose new conversation has not arrived yet.
+  const [awaiting, setAwaiting] = useState<{ sessionId: string; epoch: string } | null>(null)
   const awaitingReset =
-    settlement?.sessionId === input.sessionId && settlement.epoch === input.state.epoch
-  const confirmedResetPending = awaitingReset && Boolean(settlement?.nextEpoch)
-  // The host also holds its recovery latch while our request is still in flight.
-  const error =
-    input.hostBlockedReason && !pending && !confirmedResetPending
-      ? nativeChatRewindReasonCopy(input.hostBlockedReason)
-      : failure?.sessionId === input.sessionId && failure.epoch === input.state.epoch
-        ? failure.message
-        : null
-  const disabledReason =
-    pending || awaitingReset
-      ? awaitingReset && !settlement?.nextEpoch
-        ? nativeChatRewindReasonCopy('outcome-unknown')
-        : translate(
-            'components.native-chat.rewind.pending',
-            'Rewind is in progress. Wait for the conversation to reload.'
-          )
-      : blockedReason(input)
+    awaiting?.sessionId === input.sessionId && awaiting.epoch === input.state.epoch
+  useEffect(() => {
+    if (!awaitingReset) {
+      return
+    }
+    const timer = setTimeout(() => {
+      setAwaiting(null)
+      toast.error(nativeChatRewindTimeoutCopy())
+    }, NATIVE_CHAT_REWIND_RESET_TIMEOUT_MS)
+    return () => clearTimeout(timer)
+  }, [awaitingReset])
+  const pending = sending || awaitingReset
+  const disabledReason = pending ? nativeChatRewindPendingCopy() : blockedReason(input)
   const blockedRef = useRef(false)
   useLayoutEffect(() => {
-    blockedRef.current = pending || awaitingReset || Boolean(input.hostBlockedReason)
-  }, [pending, awaitingReset, input.hostBlockedReason])
+    blockedRef.current = pending
+  }, [pending])
 
   const request = useCallback(async (itemId: string, confirm: ConfirmationDialogContextValue) => {
     const captured = latest.current
-    if (inFlight.current || blockedRef.current || blockedReason(captured)) {
+    if (
+      inFlight.current ||
+      blockedRef.current ||
+      blockedReason(captured) ||
+      !isRewindTarget(captured.state, itemId)
+    ) {
       return
     }
     const expectedEpoch = captured.state.epoch!
-    const count = countNativeChatRewindMessages(captured.state, itemId)
-    if (!count) {
-      return
-    }
     inFlight.current = true
-    blockedRef.current = true
-    setPending(true)
-    setError(null)
     let keepBlocked = false
     try {
       const confirmed = await confirm({
-        title: translate('components.native-chat.rewind.title', 'Revert to here?'),
+        title: translate('components.native-chat.rewind.title', 'Edit from here?'),
         description: translate(
           'components.native-chat.rewind.confirmation',
-          'Discard this message and every later message ({{count}} in total)? This cannot be undone. The message returns to the composer so you can edit and resend it. File changes on disk will be kept.',
-          { count }
+          'Discard this message and everything after it? The message returns to the composer so you can edit and resend it. File changes on disk are kept.'
         ),
-        confirmLabel: translate('components.native-chat.rewind.confirm', 'Discard messages'),
+        confirmLabel: translate('components.native-chat.rewind.confirm', 'Discard and edit'),
         cancelLabel: translate('components.native-chat.rewind.cancel', 'Cancel'),
         confirmVariant: 'destructive',
         cancelVariant: 'ghost'
       })
-      if (!confirmed) {
-        return
-      }
       const current = latest.current
-      if (!active.current || current.sessionId !== captured.sessionId) {
+      if (!confirmed || !active.current || current.sessionId !== captured.sessionId) {
         return
       }
       if (
         current.state.epoch !== expectedEpoch ||
         current.state.cursor?.sequence !== captured.state.cursor?.sequence
       ) {
-        setError(nativeChatRewindReasonCopy('stale-epoch'))
+        toast.error(nativeChatRewindReasonCopy('stale-epoch'))
         return
       }
       const blocked = blockedReason(current)
       if (blocked) {
-        setError(blocked)
+        toast.error(blocked)
         return
       }
+      blockedRef.current = true
+      setSending(true)
       const outcome = await current.send({ itemId, expectedEpoch })
       if (!active.current || latest.current.sessionId !== captured.sessionId) {
         return
       }
-      if (outcome.kind === 'done') {
-        const target = captured.state.items.find((item) => item.itemId === itemId)
-        if (captured.composerScopeKey && target?.body.kind === 'message') {
-          returnMessageToComposer(
-            captured.composerScopeKey,
-            `rewound-${itemId}`,
-            target.body.blocks
-          )
+      const reset = latest.current.state.epoch !== expectedEpoch
+      const giveBack = () => {
+        if (returnTargetToComposer(captured, itemId)) {
+          latest.current.onMessageReturned?.()
         }
-        keepBlocked = latest.current.state.epoch === expectedEpoch
-        setSettlement({
-          sessionId: captured.sessionId,
-          epoch: expectedEpoch,
-          nextEpoch: outcome.value.epoch
-        })
+      }
+      if (outcome.kind === 'done') {
+        giveBack()
+        keepBlocked = !reset
+        setAwaiting(reset ? null : { sessionId: captured.sessionId, epoch: expectedEpoch })
         return
       }
-      if (outcome.kind === 'dropped' || latest.current.state.epoch !== expectedEpoch) {
+      if (outcome.kind === 'dropped') {
         return
       }
       const reason = rewindFailureReason(outcome.failure)
-      setError(nativeChatRewindReasonCopy(reason))
+      // A rewind that may have run must never lose the message; a duplicate draft is harmless.
       if (reason === 'outcome-unknown') {
-        keepBlocked = true
-        setSettlement({ sessionId: captured.sessionId, epoch: expectedEpoch })
+        giveBack()
       }
+      if (reset) {
+        return
+      }
+      toast.error(
+        reason === 'outcome-unknown' && captured.composerScopeKey
+          ? nativeChatRewindReturnedUnknownCopy()
+          : nativeChatRewindReasonCopy(reason)
+      )
     } finally {
       inFlight.current = false
-      blockedRef.current = keepBlocked || Boolean(latest.current.hostBlockedReason)
-      setPending(false)
+      blockedRef.current = keepBlocked
+      setSending(false)
     }
   }, [])
-  /** Runs an action only while no rewind is pending or unresolved. */
+  /** Runs an action only while no confirmed rewind is in flight. */
   const unlessBlocked = useCallback(
     <A extends unknown[]>(run: (...input: A) => void) =>
       (...input: A): void => {
@@ -230,28 +250,42 @@ export function useNativeChatRewind(input: RewindInput) {
       },
     []
   )
-  return {
-    request,
-    unlessBlocked,
-    disabledReason,
-    pending: pending || awaitingReset || Boolean(input.hostBlockedReason),
-    blockedRef,
-    error
-  }
+  const offered = nativeChatRewindOffered(input.support)
+  // Rows re-render only when this changes; none get the action where the provider can never rewind.
+  const surface = useMemo<NativeChatRewindSurface | undefined>(
+    () => (offered ? { disabledReason, request } : undefined),
+    [offered, disabledReason, request]
+  )
+  return { request, unlessBlocked, surface, disabledReason, pending, blockedRef }
+}
+
+/** What the pane hosting a structured session tells its rewind. */
+export type NativeChatRewindHost = {
+  /** The host's in-doubt latch, from its status feed. */
+  hostBlockedReason?: AgentSessionRewindReason | null
+  onMessageReturned?: () => void
 }
 
 /** The rewind a structured session's user rows offer, sent through the session's own writes. */
 export function useStructuredAgentSessionRewind(
-  args: Omit<RewindInput, 'hostBlockedReason' | 'send'> & {
-    hostBlockedReason: AgentSessionRewindReason | null
-    write: StructuredAgentSessionWrite
-  }
+  args: Omit<RewindInput, 'hostBlockedReason' | 'onMessageReturned' | 'send'> &
+    NativeChatRewindHost & { write: StructuredAgentSessionWrite }
 ) {
-  const { blocked, composerScopeKey, hostBlockedReason, sessionId, state, support, write } = args
+  const {
+    blocked,
+    composerScopeKey,
+    hostBlockedReason,
+    onMessageReturned,
+    sessionId,
+    state,
+    support,
+    write
+  } = args
   const input = useMemo<RewindInput>(
     () => ({
       sessionId,
       composerScopeKey,
+      onMessageReturned,
       hostBlockedReason: hostBlockedReason ?? undefined,
       state,
       support,
@@ -259,7 +293,16 @@ export function useStructuredAgentSessionRewind(
       send: (fields) =>
         write<AgentSessionRewindResult>('agentSession.rewind', 'agentSession.rewind', fields)
     }),
-    [blocked, composerScopeKey, hostBlockedReason, sessionId, state, support, write]
+    [
+      blocked,
+      composerScopeKey,
+      hostBlockedReason,
+      onMessageReturned,
+      sessionId,
+      state,
+      support,
+      write
+    ]
   )
   return useNativeChatRewind(input)
 }
