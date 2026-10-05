@@ -19,7 +19,7 @@ import {
   type StructuredAgentSessionAdapter,
   type StructuredAgentSessionSetOptionInput
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
-import { supportsCodexStructuredLocation } from '../codex/codex-structured-location-support'
+import { supportsSupervisedProviderChildLocation } from '../provider-process/supervised-provider-child-location'
 import { withObservedProviderExit } from '../native-chat/agent-session-wire/structured-agent-session-failure-text'
 import { acpAgentName, acquireAcpStructuredSession } from './acp-structured-acquire'
 import {
@@ -43,7 +43,7 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
 
   // The child runs on this runtime's own machine; Windows needs process start-time proof.
   supportsLocation = (location: AgentSessionExecutionLocation): boolean =>
-    supportsCodexStructuredLocation(location, this.deps.isWindowsProcessStartTimeAvailable)
+    supportsSupervisedProviderChildLocation(location, this.deps.isWindowsProcessStartTimeAvailable)
 
   async acquire(input: StructuredAgentSessionAcquireInput): Promise<AgentSessionAcquisition> {
     const sessionId = input.identity.sessionId

@@ -7,6 +7,7 @@
 import { createCodexStructuredLaunchResolver } from '../codex/codex-structured-launch-resolution'
 import { supportsCodexStructuredLocation } from '../codex/codex-structured-location-support'
 import { supportsClaudeStructuredLocation } from '../claude/claude-structured-location-support'
+import { supportsSupervisedProviderChildLocation } from '../provider-process/supervised-provider-child-location'
 import { applyStructuredCodexWorkspaceTrust } from '../agent-workspace-trust-spawn'
 import type { AgentSessionExecutionLocation } from '../../shared/agent-session-record'
 import { CodexStructuredSessionAdapter } from '../codex/codex-structured-session-adapter'
@@ -156,7 +157,7 @@ function createClaudeAdapter(
 function acpRegistration(spec: AcpLaunchSpec): StructuredAgentRuntimeRegistration {
   return {
     definition: acpStructuredAgentDefinition(spec),
-    supportsLocation: (location) => supportsCodexStructuredLocation(location),
+    supportsLocation: (location) => supportsSupervisedProviderChildLocation(location),
     resolveAccountHomePath: async ({ launchEnv }) =>
       resolveStructuredEnvAccountHomePath({
         launchEnv,

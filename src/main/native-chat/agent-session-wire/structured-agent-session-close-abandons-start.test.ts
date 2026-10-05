@@ -17,6 +17,7 @@ import {
   HOST_TEST_SESSION as SESSION
 } from './structured-agent-session-host-test-data'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { claudeAndCodexDeclared } from './structured-agent-session-adapter-router-test-support'
 
 it('a close stops a start the provider never answers instead of queueing behind it', async () => {
   const state = hostTestState()
@@ -30,6 +31,7 @@ it('a close stops a start the provider never answers instead of queueing behind 
   // The provider's child stops, so its unanswered handshake fails the start.
   const abandonStart = vi.fn(async () => failStart?.(new Error('closed while starting')))
   const host = new StructuredAgentSessionHost({
+    agents: claudeAndCodexDeclared(),
     logger: createStructuredAgentSessionLogger(),
     store: state.store,
     adapter: { ...adapter(), abandonStart },

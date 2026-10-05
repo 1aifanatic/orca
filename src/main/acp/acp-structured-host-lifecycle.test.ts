@@ -12,6 +12,7 @@ import {
   messageText
 } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
 import { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
+import { StructuredAgentRegistry } from '../native-chat/agent-session-wire/structured-agent-registry'
 import {
   CALLER,
   envelope,
@@ -34,6 +35,7 @@ import {
   replyChunk,
   waitFor
 } from './acp-structured-adapter.test-support'
+import { acpStructuredAgentDefinition } from './acp-structured-agent-definitions'
 import type { AcpStructuredLaunch } from './acp-structured-launch-resolution'
 import type { AcpStructuredSessionAdapterDeps } from './acp-structured-session-adapter-deps'
 
@@ -91,6 +93,9 @@ async function openHostRig(
     }
   })
   const host = new StructuredAgentSessionHost({
+    agents: new StructuredAgentRegistry([
+      { definition: acpStructuredAgentDefinition(GROK), adapter: rig.adapter }
+    ]),
     logger: state.log.logger,
     store,
     adapter: rig.adapter,

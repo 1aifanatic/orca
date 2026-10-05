@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { getAgentSessionOptionCatalog } from '../../../../shared/agent-session-option-catalog'
-import { NO_AGENT_SESSION_CAPABILITIES } from '../../../../shared/agent-session-capabilities'
+import type { AgentSessionCapabilities } from '../../../../shared/agent-session-capabilities'
 import type { Tab } from '../../../../shared/tab-types'
 import { parseWorkspaceSession } from '../../../../shared/workspace-session-schema'
 
@@ -54,9 +54,18 @@ describe('a host-registered agent on the structured chat surface', () => {
   })
 
   it("attaches images only when the host's record for the agent takes them", () => {
+    const capabilities = (imagePrompts: boolean): AgentSessionCapabilities => ({
+      rewind: false,
+      compact: false,
+      threadGoal: false,
+      contextUsage: false,
+      imagePrompts,
+      steering: 'queue',
+      approvalEnforcement: 'orca'
+    })
     const record = (imagePrompts: boolean) => ({
       agent: 'grok',
-      capabilities: { ...NO_AGENT_SESSION_CAPABILITIES, imagePrompts }
+      capabilities: capabilities(imagePrompts)
     })
     expect(structuredAgentAcceptsImages(record(false), 'grok')).toBe(false)
     expect(structuredAgentAcceptsImages(record(true), 'grok')).toBe(true)
