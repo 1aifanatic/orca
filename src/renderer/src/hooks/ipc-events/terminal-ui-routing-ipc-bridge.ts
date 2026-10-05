@@ -117,6 +117,16 @@ export function registerTerminalUiRoutingIpcBridge(unsubs: (() => void)[]): void
   )
 
   unsubs.push(
+    window.api.ui.onTerminalChatViewRequest(({ requestId, tabId, leafId, viewMode }) => {
+      // Why synchronous: IPC arrival order is the host's admit order, so apply before replying.
+      const chatView = useAppStore.getState().applyTerminalChatPair(tabId, leafId, viewMode)
+      window.api.ui.respondTerminalChatView(
+        chatView ? { requestId, chatView } : { requestId, error: 'tab_not_found' }
+      )
+    })
+  )
+
+  unsubs.push(
     window.api.ui.onFocusTerminal(
       ({
         tabId,

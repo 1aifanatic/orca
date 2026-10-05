@@ -28,6 +28,7 @@ import {
 import { ClientHostedPageReconciliationWindow } from './client-hosted-page-reconciliation-window'
 import { ClientSessionTabSelectionStore } from './client-session-tab-selection'
 import { WorktreeTerminalMutationLock } from './worktree-terminal-mutation-lock'
+import { ChatViewWriteFence } from './chat-view-write-fence'
 import { RemoteRuntimeTerminalCreateIdempotency } from './remote-runtime-terminal-create-idempotency'
 import type { PtyIncarnationId } from '../../shared/pty-incarnation'
 import type { MobileSessionTabsNotifyCoalescer } from './mobile-session-tabs-notify-coalescer'
@@ -117,6 +118,11 @@ export class OrcaRuntimeWithRuntimeId {
     const stamped =
       snapshotVersion === snapshot.snapshotVersion ? snapshot : { ...snapshot, snapshotVersion }
     this.mobileSessionTabsByWorktree.set(worktreeId, stamped)
+    // Why here: every close (host, renderer or retirement) lands as a stored snapshot without the tab.
+    this.chatViewWriteFence.retainParents(
+      worktreeId,
+      new Set(stamped.tabs.map((tab) => (tab.type === 'terminal' ? tab.parentTabId : tab.id)))
+    )
     return stamped
   }
 
@@ -132,6 +138,8 @@ export class OrcaRuntimeWithRuntimeId {
   protected sessionTabsInventoryPublicationEpoch: number | null = null
 
   protected sessionTabsInventoryWaiters = new Set<() => void>()
+
+  protected readonly chatViewWriteFence = new ChatViewWriteFence()
 
   protected readonly clientHostedPageReconciliation = new ClientHostedPageReconciliationWindow(
     Date.now()
