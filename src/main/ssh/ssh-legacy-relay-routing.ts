@@ -8,8 +8,9 @@ import { readRelayDaemonRuntimes } from './ssh-relay-endpoint-runtime'
 const routersByTarget = new Map<string, SshLegacyRelayRouter>()
 
 /**
- * The PTYs this target's earlier-build relays still run. Null when that cannot be known: no census
- * for an enumerable host (Windows never has one), no router, or an older relay that did not answer.
+ * The PTYs this target's earlier-build relays still run. Null when that cannot be known: an
+ * incomplete census, a live Windows pipe (never bridged), no router, or an older relay that did not
+ * answer.
  */
 export async function listPreviousRelayPtyIds(targetId: string): Promise<string[] | null> {
   const census = await previousRelayCensus(targetId)
@@ -18,6 +19,9 @@ export async function listPreviousRelayPtyIds(targetId: string): Promise<string[
   }
   if (census.endpoints.length === 0) {
     return []
+  }
+  if (!census.bridgeable) {
+    return null
   }
   return (await routersByTarget.get(targetId)?.listHeld()) ?? null
 }
@@ -32,7 +36,10 @@ export function createSshLegacyRelayRouter(args: {
   const { targetId } = args
   const router = new SshLegacyRelayRouter({
     targetId,
-    endpoints: async () => (await previousRelayCensus(targetId)).endpoints,
+    endpoints: async () => {
+      const census = await previousRelayCensus(targetId)
+      return census.bridgeable ? census.endpoints : []
+    },
     openRoute: async (sockPath) => {
       const census = await previousRelayCensus(targetId)
       const conn = args.connection()

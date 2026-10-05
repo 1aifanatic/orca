@@ -12,6 +12,10 @@ vi.mock('../ssh/ssh-connection-store', () => mocks.sshConnectionStore)
 vi.mock('./ssh-host-server-connect', () => mocks.hostServerConnect)
 vi.mock('../ssh/ssh-connection-manager', () => mocks.sshConnectionManager)
 vi.mock('../ssh/ssh-relay-deploy', () => mocks.sshRelayDeploy)
+vi.mock(
+  '../ssh/ssh-previous-relay-terminals',
+  () => import('../ssh/ssh-previous-relay-census-test-double')
+)
 vi.mock('../ssh/ssh-relay-reset', () => mocks.sshRelayReset)
 vi.mock('../ssh/ssh-channel-multiplexer', () => mocks.sshChannelMultiplexer)
 vi.mock('../providers/ssh-pty-provider', () => mocks.sshPtyProvider)

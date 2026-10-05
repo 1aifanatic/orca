@@ -181,10 +181,11 @@ export class SshLegacyRelayRoute {
       }
     })
     this.provider.onExit((payload) => {
+      // Why before the serves check: an unserved PTY that exits is no longer held either.
+      this.listed.delete(payload.id)
       if (!this.serves(payload.id)) {
         return
       }
-      this.listed.delete(payload.id)
       sink.exit(payload)
       this.attached.delete(payload.id)
       if (this.attached.size === 0) {

@@ -120,8 +120,20 @@ vi.mock('./ssh-previous-relay-terminals', () => ({
   startPreviousRelayCensus
 }))
 
-const { getSshPtyProvider, getPtyIdsForConnection, clearProviderPtyState, deletePtyOwnership } =
-  await import('../ipc/pty')
+const { attachHeldPtyThroughPreviousRelay } = vi.hoisted(() => ({
+  attachHeldPtyThroughPreviousRelay: vi.fn()
+}))
+vi.mock('../providers/ssh-pty-legacy-relay-delegation', () => ({
+  attachHeldPtyThroughPreviousRelay
+}))
+
+const {
+  getSshPtyProvider,
+  getPtyIdsForConnection,
+  clearProviderPtyState,
+  deletePtyOwnership,
+  setPtyOwnership
+} = await import('../ipc/pty')
 
 describe('SshRelaySession reattach while a previous relay is live', () => {
   beforeEach(() => {
@@ -135,6 +147,7 @@ describe('SshRelaySession reattach while a previous relay is live', () => {
     muxRequestMock.mockResolvedValue([])
     mockDeploySuccess()
     vi.mocked(getPtyIdsForConnection).mockReturnValue([])
+    attachHeldPtyThroughPreviousRelay.mockResolvedValue(null)
   })
 
   async function reconnectWithStalePty(holds: boolean) {
@@ -199,5 +212,26 @@ describe('SshRelaySession reattach while a previous relay is live', () => {
       code: -1,
       ptySourceDisowned: true
     })
+  })
+
+  it('resumes a held PTY on reconnect through the older relay that serves it', async () => {
+    attachHeldPtyThroughPreviousRelay.mockResolvedValue({ replay: 'old screen' })
+    const { mockStore, mockWindow } = await reconnectWithStalePty(true)
+
+    expect(attachHeldPtyThroughPreviousRelay).toHaveBeenCalledWith(
+      expect.anything(),
+      'ssh:target-1@@pty-old',
+      undefined
+    )
+    expect(setPtyOwnership).toHaveBeenCalledWith('ssh:target-1@@pty-old', 'target-1')
+    expect(mockWindow.webContents.send).toHaveBeenCalledWith('pty:replay', {
+      id: 'ssh:target-1@@pty-old',
+      data: 'old screen'
+    })
+    expect(mockStore.markSshRemotePtyLease).not.toHaveBeenCalledWith(
+      'target-1',
+      'pty-old',
+      'expired'
+    )
   })
 })
