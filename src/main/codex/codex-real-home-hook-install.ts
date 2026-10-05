@@ -1,6 +1,7 @@
 import {
   createManagedCommandMatcher,
   readHooksJsonWithRaw,
+  type HooksConfig,
   writeHooksJson,
   writeManagedScript
 } from '../agent-hooks/installer-utils'
@@ -208,7 +209,7 @@ function reconcileRealHomeCodexHookEntriesExclusively(args: {
 }
 
 // Why: an unparseable user file is never clobbered, and Codex rejects unknown root keys.
-function isAddableHooksFile(config: object): boolean {
+function isAddableHooksFile(config: HooksConfig): boolean {
   return Object.keys(config).every((key) => key === 'hooks')
 }
 
