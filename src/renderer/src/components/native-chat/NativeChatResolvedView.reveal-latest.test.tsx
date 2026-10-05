@@ -36,6 +36,7 @@ vi.mock('./use-native-chat-interactive-send', () => ({
     sendAnswer: () => ({ settleAfterMs: 0, waitsForVerifiedDelivery: false }),
     sendRaw: () => {},
     cancelPending: () => {},
+    cancelAsk: () => {},
     cancel: () => {}
   })
 }))

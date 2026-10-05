@@ -115,7 +115,7 @@ export function NativeChatResolvedView({
   const canSend = useNativeChatCanSend(targetPtyId)
   // Reuse the verified composer send path for interactive cards and composer
   // stop (Stop sends ESC, the agent-TUI interrupt key).
-  const { sendAnswer, sendRaw, cancelPending, cancel } = useNativeChatInteractiveSend(
+  const { sendAnswer, sendRaw, cancelPending, cancelAsk, cancel } = useNativeChatInteractiveSend(
     terminalTabId,
     paneKey,
     targetPtyId,
@@ -139,9 +139,10 @@ export function NativeChatResolvedView({
         sendRaw(raw)
       },
       cancelPending,
+      cancelAsk,
       cancel
     }),
-    [cancel, cancelPending, revealLatest, sendAnswer, sendRaw, targetPtyId]
+    [cancel, cancelAsk, cancelPending, revealLatest, sendAnswer, sendRaw, targetPtyId]
   )
   const [workingInterrupted, setWorkingInterrupted] = useState(false)
   const previousWorkingEpochRef = useRef<number | null>(null)
