@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { test, expect } from './helpers/orca-app'
@@ -71,6 +71,7 @@ for (const workspace of ['git', 'folder'] as const) {
         await orcaPage.keyboard.press('ControlOrMeta+S')
         await expect.poll(() => readFileSync(file, 'utf8')).toBe(`${source}Edited after.`)
         const saved = readFileSync(file, 'utf8')
+        writeFileSync(testInfo.outputPath(`${language}-saved-source.md`), saved)
         await testInfo.attach(`${language}-saved-source`, {
           body: saved,
           contentType: 'text/markdown'
@@ -90,7 +91,9 @@ for (const workspace of ['git', 'folder'] as const) {
           monaco.locator('.view-line').filter({ hasText: code.split('\n')[1] })
         ).toHaveCount(1)
         await testInfo.attach(`${language}-reopened-source`, {
-          body: await orcaPage.screenshot(),
+          body: await orcaPage.screenshot({
+            path: testInfo.outputPath(`${language}-reopened-source.png`)
+          }),
           contentType: 'image/png'
         })
         await closeActiveEditorTab(orcaPage, file)
