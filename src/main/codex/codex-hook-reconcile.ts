@@ -135,8 +135,9 @@ export function getCodexRealHomeLaneProblem(): string | null {
   if (!isEnabledNow()) {
     return null
   }
+  // Why only with hashes: without them the managed home could not approve either, so moving gains nothing.
   return (
-    readRealHomeHooksFileProblem() ??
+    (lastAnswer?.hashes ? readRealHomeHooksFileProblem() : null) ??
     (realHomeProblem && !realHomeProblem.fromHooksFile ? realHomeProblem.reason : null)
   )
 }

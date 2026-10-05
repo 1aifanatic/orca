@@ -218,6 +218,23 @@ describe('when ~/.codex cannot take the entry, launches use the managed home', (
     expect(getCodexRealHomeLaneProblem()).toBeNull()
   })
 
+  it('keeps the lane with a broken hooks.json when Codex gives no hashes, or before any reconcile', async () => {
+    mkdirSync(codexHome(), { recursive: true })
+    writeFileSync(hooksPath(), '{ not json')
+    start()
+    expect(isCodexRealHomeLaneUsable()).toBe(true)
+    mocks.deriveCodexHookHashes.mockResolvedValue({
+      codexVersion: 'codex-cli 0.128.0',
+      hashes: null,
+      failure: 'Codex 0.128.0 is too old for Orca status; update Codex',
+      transient: false
+    })
+
+    await reconcileCodexHooks()
+
+    expect(isCodexRealHomeLaneUsable()).toBe(true)
+  })
+
   it('stays on ~/.codex, with a plain reason, when Codex gives no hashes at all', async () => {
     mocks.deriveCodexHookHashes.mockResolvedValue({
       codexVersion: 'codex-cli 0.128.0',
