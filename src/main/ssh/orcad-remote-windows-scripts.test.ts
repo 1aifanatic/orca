@@ -99,6 +99,10 @@ describe('Windows liveness script', () => {
     const live = join(dir, 'live')
     const dead = join(dir, 'dead')
     const unknown = join(dir, 'unknown')
+    const neverLaunched = join(dir, 'never-launched')
+    mkdirSync(unknown)
+    writeFileSync(join(unknown, ORCAD_READINESS_FILENAME), '')
+    mkdirSync(neverLaunched)
     for (const [slot, pid] of [
       [live, process.pid],
       [dead, DEAD_PID]
@@ -114,11 +118,14 @@ describe('Windows liveness script', () => {
         JSON.stringify({ pid, creationTimeMs: 1000 })
       )
     }
-    const { stdout } = await runOp('liveness-many', [live, dead, unknown])
-    expect(stdout.trim()).toBe('__ORCAD_LIVENESS__ LIVE,DEAD,UNKNOWN')
+    const { stdout } = await runOp('liveness-many', [live, dead, unknown, neverLaunched])
+    expect(stdout.trim()).toBe('__ORCAD_LIVENESS__ LIVE,DEAD,UNKNOWN,NEVER_LAUNCHED')
   })
 
   it('is UNKNOWN when nothing proves identity: no record, no time, no addon', async () => {
+    // A slot that never launched has neither a record nor a readiness file.
+    expect(await liveness()).toBe('NEVER_LAUNCHED')
+    writeFileSync(join(dir, ORCAD_READINESS_FILENAME), '')
     expect(await liveness()).toBe('UNKNOWN')
     recordProcess(process.pid, null)
     stageAddon({ [process.pid]: 1000 })

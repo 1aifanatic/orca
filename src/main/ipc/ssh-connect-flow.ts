@@ -200,9 +200,13 @@ async function doConnect(
   // Re-read: a conversion attempt may have fenced the host since the lookup above.
   const relayTarget = getSshTargetRegistryStore()!.getTarget(targetId) ?? target
   if (!allowsDirectSshRelay(relayTarget)) {
-    throw new Error(
-      'This SSH host serves a managed Orca server; it is reached through that server.'
+    // A setup that failed but kept its fence: the relay decision's detail is the real cause.
+    const blocked = new Error(
+      server?.detail ??
+        'This SSH host serves a managed Orca server; it is reached through that server.'
     )
+    publishHostServerDecisionFailure(targetId, blocked)
+    throw blocked
   }
 
   // Why here and not only at entry: this is the publication point, and it is the last statement

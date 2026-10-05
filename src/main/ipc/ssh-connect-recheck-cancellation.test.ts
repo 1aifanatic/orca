@@ -80,4 +80,28 @@ describe('a connect cancelled during the relay-terminal re-check', () => {
     await expect(handlers.get('ssh:connect')!(null, { targetId: 'ssh-1' })).rejects.toBe(failure)
     expect(publishHostServerDecisionFailure).toHaveBeenCalledWith('ssh-1', failure)
   })
+
+  it('publishes the setup failure when a failed setup kept the host fenced', async () => {
+    const target: SshTarget = {
+      id: 'ssh-1',
+      label: 'Server',
+      host: 'example.com',
+      port: 22,
+      username: 'deploy',
+      orcadFence: { environmentId: 'env-1' }
+    }
+    mockSshStore.getTarget.mockReturnValue(target)
+    vi.mocked(decideHostServer).mockResolvedValueOnce({
+      route: 'relay',
+      reason: 'failed',
+      detail: 'The destination could not stage the migration.'
+    })
+    await expect(handlers.get('ssh:connect')!(null, { targetId: 'ssh-1' })).rejects.toThrow(
+      'The destination could not stage the migration.'
+    )
+    expect(publishHostServerDecisionFailure).toHaveBeenCalledWith(
+      'ssh-1',
+      expect.objectContaining({ message: 'The destination could not stage the migration.' })
+    )
+  })
 })
