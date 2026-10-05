@@ -36,10 +36,14 @@ const cutTurn = (id: string, userId: string) =>
     startedAt: 1_000,
     completedAt: 13_000
   })
-const hostRow = (clientMessageId: string, body: AgentJournalItemBody, scope = THREAD) =>
+const hostRow = (
+  clientMessageId: string,
+  body: AgentJournalItemBody,
+  scope: AgentJournalTurnScope = THREAD
+) =>
   item(agentJournalItemKey({ provider: 'orca', clientMessageId }), body, scope)
 /** The row the agent's own exit leaves: its fact, in error red. */
-const exitRow = (scope = THREAD) =>
+const exitRow = (scope: AgentJournalTurnScope = THREAD) =>
   hostRow(
     'provider-exit:s:1:g',
     {
