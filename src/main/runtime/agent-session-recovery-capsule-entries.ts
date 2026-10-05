@@ -111,13 +111,13 @@ function withSessionFences(
   for (const sessionId of sessionIds) {
     dismissedSessions.set(sessionId, Math.max(at, dismissedSessions.get(sessionId) ?? at))
   }
-  return { ...fence, dismissedSessions }
+  return { dismissedAt: fence.dismissedAt, dismissedSessions }
 }
 
 /** A dismiss-all of `state`: every record but those `keep` answers true for goes, and stays gone.
  *  An in-flight action's later complete/rollback becomes a no-op, and a late teardown writer is
- *  fenced: for every session, or with `keep` for each cleared one, so a session kept for a client
- *  that sees it is never fenced by one that does not. */
+ *  fenced: for every session, or with `keep` for each cleared one, so a dismissal never fences a
+ *  chat its client was not shown. */
 export function dismissAll(
   state: RecoveryCapsuleState,
   now: number,
