@@ -110,7 +110,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       dictationState === 'listening' ||
       dictationState === 'stopping'
 
-    const { agentCommands, sessionSkillNames } = useNativeChatComposerCatalog(
+    const { agentCommands, sessionSkills } = useNativeChatComposerCatalog(
       agent,
       structuredTransport
     )
@@ -121,7 +121,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       draft,
       caret,
       agentCommands,
-      sessionSkillNames,
+      sessionSkills,
       textareaRef,
       setDraft,
       setCaret,

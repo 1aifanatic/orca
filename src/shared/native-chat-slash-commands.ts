@@ -149,11 +149,16 @@ export function sessionSlashCommandSuggestions(
     })
 }
 
-/** Names the session reported as skills, in the order it reported them. */
-export function sessionReportedSkillNames(
+/** The skills the session reported, in its order, with the description it gave. */
+export function sessionReportedSkills(
   reported: readonly AgentSessionSlashCommand[]
-): readonly string[] {
-  return reported.filter((entry) => entry.kind === 'skill').map((entry) => entry.name)
+): readonly { name: string; description?: string }[] {
+  return reported
+    .filter((entry) => entry.kind === 'skill')
+    .map((entry) => ({
+      name: entry.name,
+      ...(entry.description ? { description: entry.description } : {})
+    }))
 }
 
 /** Whether the draft is a slash command (leading `/`, ignoring leading space).

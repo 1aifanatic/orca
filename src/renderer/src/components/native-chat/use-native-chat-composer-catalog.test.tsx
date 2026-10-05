@@ -18,10 +18,10 @@ describe('composer catalog authority', () => {
   it('keeps PTY and unsupported structured providers on their original catalogs', () => {
     const pty = renderHook(() => useNativeChatComposerCatalog('claude'))
     expect(pty.result.current.agentCommands).toEqual(getVerifiedNativeChatCommands('claude'))
-    expect(pty.result.current.sessionSkillNames).toBeUndefined()
+    expect(pty.result.current.sessionSkills).toBeUndefined()
     const oldHost = renderHook(() => useNativeChatComposerCatalog('claude', transport()))
     expect(oldHost.result.current.agentCommands).toEqual(structuredSlashCommands())
-    expect(oldHost.result.current.sessionSkillNames).toBeUndefined()
+    expect(oldHost.result.current.sessionSkills).toBeUndefined()
   })
   it('offers supported conversation commands when the host has no reported catalog', () => {
     const { result, rerender } = renderHook(
@@ -76,11 +76,11 @@ describe('composer catalog authority', () => {
         }
       }
     )
-    expect(result.current).toEqual({ agentCommands: [], sessionSkillNames: [] })
+    expect(result.current).toEqual({ agentCommands: [], sessionSkills: [] })
     rerender({ reported: [{ name: 'custom-command', kind: 'command' }] })
     expect(result.current).toEqual({
       agentCommands: [{ name: 'custom-command' }],
-      sessionSkillNames: []
+      sessionSkills: []
     })
   })
 })
@@ -114,7 +114,7 @@ it('Enter completes a known pre-init skill while still dispatching a built-in co
         ],
         '',
         '/',
-        catalog.sessionSkillNames
+        catalog.sessionSkills
       )
       return useNativeChatComposerKeyDown({
         autocomplete: {

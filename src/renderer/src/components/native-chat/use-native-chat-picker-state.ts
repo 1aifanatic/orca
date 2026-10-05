@@ -23,6 +23,7 @@ import {
   type NativeChatPickerItem,
   type NativeChatSendClassification
 } from './native-chat-composer-state'
+import type { NativeChatSessionSkill } from './native-chat-picker-items'
 import { useNativeChatSkills } from './use-native-chat-skills'
 import {
   emitNativeChatPickerItemAccepted,
@@ -48,8 +49,8 @@ export function useNativeChatPickerState(args: {
   draft: string
   caret: number
   agentCommands: readonly SlashCommandSuggestion[]
-  /** Skill names the running session reports; undefined keeps the host disk scan. */
-  sessionSkillNames?: readonly string[]
+  /** Skills the running session reports; undefined keeps the host disk scan. */
+  sessionSkills?: readonly NativeChatSessionSkill[]
   textareaRef: RefObject<NativeChatComposerInput | null>
   setDraft: (value: string) => void
   setCaret: Dispatch<SetStateAction<number>>
@@ -62,7 +63,7 @@ export function useNativeChatPickerState(args: {
     draft,
     caret,
     agentCommands,
-    sessionSkillNames,
+    sessionSkills,
     textareaRef,
     setDraft,
     setCaret,
@@ -86,18 +87,9 @@ export function useNativeChatPickerState(args: {
         profile,
         discovery,
         dismissed?.context === dismissalContext ? dismissed.triggerKey : null,
-        sessionSkillNames
+        sessionSkills
       ),
-    [
-      agentCommands,
-      caret,
-      dismissalContext,
-      dismissed,
-      discovery,
-      draft,
-      profile,
-      sessionSkillNames
-    ]
+    [agentCommands, caret, dismissalContext, dismissed, discovery, draft, profile, sessionSkills]
   )
 
   useEffect(() => {
@@ -167,13 +159,13 @@ export function useNativeChatPickerState(args: {
         profile,
         discovery,
         null,
-        sessionSkillNames
+        sessionSkills
       )
       if (next.mode !== 'slash' || next.triggerKey !== dismissed.triggerKey) {
         setDismissed(null)
       }
     },
-    [agentCommands, dismissalContext, dismissed, discovery, draft, profile, sessionSkillNames]
+    [agentCommands, dismissalContext, dismissed, discovery, draft, profile, sessionSkills]
   )
 
   const classifySend = useCallback(
