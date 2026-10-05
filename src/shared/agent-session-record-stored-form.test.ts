@@ -242,8 +242,8 @@ describe('what this build writes', () => {
     stored.providerHandleChain[0].handle.laterHandleField = 'x'
     stored.providerHandleChain[0].laterLinkField = 'y'
     stored.laterRecordField = 'z'
-    expect(isPersistedAgentSessionRecord(stored)).toBe(true)
-    if (!isPersistedAgentSessionRecord(stored)) {
+    expect(isPersistedAgentSessionRecord(stored, CLAUDE_AND_CODEX_STORED_AGENTS)).toBe(true)
+    if (!isPersistedAgentSessionRecord(stored, CLAUDE_AND_CODEX_STORED_AGENTS)) {
       return
     }
     const written = JSON.parse(
