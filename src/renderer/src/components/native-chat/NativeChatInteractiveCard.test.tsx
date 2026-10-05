@@ -23,7 +23,8 @@ const storeState = {
     'tab-1:leaf-1': {
       interactivePrompt: INITIAL_PROMPT as string | undefined,
       toolName: 'AskUserQuestion' as string | undefined,
-      state: undefined as string | undefined
+      // Live asks are published while the agent waits; the card is gated on it (STA-3144).
+      state: 'waiting' as string | undefined
     }
   }
 }
@@ -150,7 +151,7 @@ describe('NativeChatInteractiveCard answer lifecycle', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     storeState.agentStatusByPaneKey['tab-1:leaf-1'].interactivePrompt = INITIAL_PROMPT
-    storeState.agentStatusByPaneKey['tab-1:leaf-1'].state = undefined
+    storeState.agentStatusByPaneKey['tab-1:leaf-1'].state = 'waiting'
   })
 
   afterEach(() => {
@@ -283,6 +284,7 @@ describe('NativeChatInteractiveCard transcript fallback', () => {
 
   it('prefers live status over the transcript when both carry a prompt', () => {
     storeState.agentStatusByPaneKey['tab-1:leaf-1'].interactivePrompt = INITIAL_PROMPT
+    storeState.agentStatusByPaneKey['tab-1:leaf-1'].state = 'waiting'
     render(cardElement(true, [askCallMessage('Stale transcript question?')]))
 
     expect(screen.getByText('Tabs or spaces?')).toBeInTheDocument()
@@ -332,6 +334,21 @@ describe('NativeChatInteractiveCard transcript fallback', () => {
       [{ id: 'clear-1', command: '/clear', sentAt: 200 }]
     )
     render(cardElement(true, trimmed))
+
+    expect(screen.queryByText('Tabs or spaces?')).not.toBeInTheDocument()
+  })
+})
+
+describe('NativeChatInteractiveCard paused gate', () => {
+  afterEach(() => {
+    cleanup()
+    storeState.agentStatusByPaneKey['tab-1:leaf-1'].state = 'waiting'
+  })
+
+  it('hides a sticky live question once the agent moved on, with no transcript ask', () => {
+    storeState.agentStatusByPaneKey['tab-1:leaf-1'].interactivePrompt = INITIAL_PROMPT
+    storeState.agentStatusByPaneKey['tab-1:leaf-1'].state = 'working'
+    render(cardElement(true, []))
 
     expect(screen.queryByText('Tabs or spaces?')).not.toBeInTheDocument()
   })

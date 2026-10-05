@@ -6,6 +6,7 @@ import {
   type RuntimeClientTarget
 } from '@/runtime/runtime-rpc-client'
 import { isRuntimeCompatBlockError } from '@/runtime/runtime-protocol-compat'
+import { readNativeChatAsyncQuestionsField } from '../../../../shared/native-chat-async-questions'
 import {
   parseRuntimeNativeChatReadSessionResult,
   parseRuntimeNativeChatTurnLifecycle,
@@ -141,9 +142,12 @@ function createRuntimeNativeChatTransport(environmentId: string): NativeChatSess
                   hasMore?: boolean
                   error?: string
                   lifecycle?: unknown
+                  asyncQuestions?: unknown
                   pending?: boolean
                 }
                 const lifecycle = parseRuntimeNativeChatTurnLifecycle(frame?.lifecycle)
+                const asyncQuestions = readNativeChatAsyncQuestionsField(frame?.asyncQuestions)
+                const asyncField = asyncQuestions ? { asyncQuestions } : {}
                 // No transcript behind this window yet — forwarded so the view can
                 // stop spinning, but it is not the settled initial read.
                 const pending = frame?.pending === true
@@ -163,6 +167,7 @@ function createRuntimeNativeChatTransport(environmentId: string): NativeChatSess
                       hasMore: frame.hasMore ?? frame.messages.length >= (limit ?? 300),
                       ...(frame.error ? { error: frame.error } : {}),
                       ...(lifecycle ? { lifecycle } : {}),
+                      ...asyncField,
                       ...(pending ? { pending: true } : {})
                     })
                   } else if (frame.type === 'snapshot') {
@@ -172,6 +177,7 @@ function createRuntimeNativeChatTransport(environmentId: string): NativeChatSess
                       hasMore: frame.hasMore ?? false,
                       ...(frame.error ? { error: frame.error } : {}),
                       ...(lifecycle ? { lifecycle } : {}),
+                      ...asyncField,
                       ...(pending ? { pending: true } : {})
                     })
                   } else {
@@ -181,12 +187,14 @@ function createRuntimeNativeChatTransport(environmentId: string): NativeChatSess
                             type: 'replacement',
                             messages: frame.messages,
                             hasMore: frame.hasMore ?? false,
-                            ...(lifecycle ? { lifecycle } : {})
+                            ...(lifecycle ? { lifecycle } : {}),
+                            ...asyncField
                           }
                         : {
                             type: 'appended',
                             messages: frame.messages,
-                            ...(lifecycle ? { lifecycle } : {})
+                            ...(lifecycle ? { lifecycle } : {}),
+                            ...asyncField
                           }
                     )
                   }

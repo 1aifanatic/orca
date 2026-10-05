@@ -13,6 +13,8 @@ import { useNativeChatCanSend } from './use-native-chat-can-send'
 import { NativeChatInteractiveCard } from './NativeChatInteractiveCard'
 import { useNativeChatInteractivePromptCard } from './use-native-chat-interactive-prompt-card'
 import { NativeChatEmptyState } from './NativeChatEmptyState'
+import { NativeChatAsyncQuestionsCard } from './NativeChatAsyncQuestionsCard'
+import { useNativeChatTerminalAsyncQuestions } from './use-native-chat-terminal-async-questions'
 import { useNativeChatInteractiveSend } from './use-native-chat-interactive-send'
 import { shouldClearNativeChatWorkingSuppression } from './native-chat-working-suppression'
 import { resolveNativeChatTerminalTurn } from './native-chat-terminal-turn'
@@ -220,6 +222,17 @@ export function NativeChatResolvedView({
     messages: sessionAfterCommandBoundaries.messages,
     transcriptSettled: session.readPhase === 'ready'
   })
+  const { model: asyncQuestionsCard, cancelPendingAnswers } = useNativeChatTerminalAsyncQuestions({
+    paneKey,
+    sessionId,
+    agent,
+    terminalTabId,
+    targetPtyId,
+    canSend,
+    view: session.asyncQuestions,
+    recordOptimistic: onOptimisticSend,
+    optimisticOutcome: delivery
+  })
 
   // The streaming preview bubble (if any) sits after the transcript but before
   // the optimistic user echoes — same order mobile uses.
@@ -298,7 +311,8 @@ export function NativeChatResolvedView({
     // the echo cache here so a cancelled prompt cannot stick as a ghost bubble.
     clear()
     interactiveSend.cancel()
-  }, [interactiveSend, clear])
+    cancelPendingAnswers()
+  }, [interactiveSend, clear, cancelPendingAnswers])
   const { onLinkClick, linkActionRequest, closeLinkActions } = useNativeChatLinkActions(
     fileLinkContext,
     rootRef,
@@ -379,6 +393,10 @@ export function NativeChatResolvedView({
         onShowingQuestionChange={setQuestionActive}
         answerInputRef={questionAnswerInputRef}
       />
+      {/* Non-blocking: never inside the blocking card's lifecycle, and the composer stays. */}
+      {promptCard === null && canSend ? (
+        <NativeChatAsyncQuestionsCard model={asyncQuestionsCard} />
+      ) : null}
       {/* canSend reflects the mobile presence-lock: when a mobile client holds
           the pty, the composer shows its guarded state instead of racing the
           mobile driver (R8). */}

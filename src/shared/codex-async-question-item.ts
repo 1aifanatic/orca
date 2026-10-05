@@ -130,7 +130,7 @@ export function codexAsyncQuestionListsEqual(
 export function attachCodexAsyncQuestions(
   blocks: NativeChatBlock[],
   item: unknown,
-  providerItemId: string | undefined
+  providerItemId: string | null | undefined
 ): NativeChatBlock[] {
   const questions = readCodexAsyncQuestions(item)
   const textIndex = blocks.findIndex((block) => block.type === 'text')

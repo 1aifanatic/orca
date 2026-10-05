@@ -126,9 +126,21 @@ describe('parseInteractivePrompt', () => {
     expect(card?.kind).toBe('approval')
   })
 
-  it('returns null when neither parses', () => {
+  it('returns null only when there is no prompt at all', () => {
     expect(parseInteractivePrompt(null)).toBeNull()
-    expect(parseInteractivePrompt('{}')).toBeNull()
+    expect(parseInteractivePrompt('')).toBeNull()
+  })
+
+  it('shows a prompt it cannot place as unsupported, with no options to approve', () => {
+    for (const prompt of ['{}', 'not json', JSON.stringify({ choice: { title: 'Plan?' } })]) {
+      const card = parseInteractivePrompt(prompt)
+      expect(card?.kind).toBe('unsupported')
+      expect(card?.kind === 'unsupported' ? card.approval.options : null).toEqual([])
+    }
+    const card = parseInteractivePrompt(JSON.stringify({ choice: { title: 'Plan?' } }))
+    expect(card).toMatchObject({
+      approval: { title: 'Plan?', description: 'This request needs a newer version of Orca.' }
+    })
   })
 })
 

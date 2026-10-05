@@ -81,7 +81,7 @@ export function deliverToSubscriber(
     const page = result.page
     const advanced = page.window.nextCursor.sequence > subscriber.cursor.sequence
     if (!advanced) {
-      emitCaughtUp(port, subscriber, emitCheckpoint, shared)
+      emitCaughtUp(port, subscriber, emitCheckpoint, shared, journal)
       return
     }
     port.emit(

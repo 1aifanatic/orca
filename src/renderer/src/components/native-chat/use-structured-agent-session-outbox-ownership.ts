@@ -12,6 +12,7 @@ import {
   getStructuredAgentSessionOutbox
 } from './structured-agent-session-outbox-storage'
 import type { useStructuredAgentSessionWithdrawnRestore } from './structured-agent-session-withdrawn-message-restore'
+import { recordDroppedStructuredAsyncAnswers } from './structured-agent-session-async-answer-settlement'
 
 export function useStructuredAgentSessionOutboxOwnership(args: {
   sessionId: string
@@ -41,6 +42,7 @@ export function useStructuredAgentSessionOutboxOwnership(args: {
     }
     // By id: a kept entry comes back marked, as a new object.
     const kept = new Set(next.map((entry) => entry.clientMessageId))
+    recordDroppedStructuredAsyncAnswers(current, next, 'withdrawn')
     restoreWithdrawn.byStop(current.filter((entry) => !kept.has(entry.clientMessageId)))
     commitStructuredAgentSessionOutbox(sessionId, next)
   }, [inFlightIdRef, restoreWithdrawn, sessionId, submissions])
@@ -56,6 +58,7 @@ export function useStructuredAgentSessionOutboxOwnership(args: {
       }
       const current = getStructuredAgentSessionOutbox(sessionId)
       const next = current.filter((entry) => !owned.has(entry.clientMessageId))
+      recordDroppedStructuredAsyncAnswers(current, next, 'queued')
       if (next.length !== current.length) {
         commitStructuredAgentSessionOutbox(sessionId, next)
       }

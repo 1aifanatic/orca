@@ -17907,7 +17907,14 @@
       "structuredSessionHostDeclined": "{{value0}} ouvert dans un terminal",
       "structuredSessionHostDeclinedDescription": "Ce serveur ne peut pas exécuter de discussion {{value0}} dans cet espace de travail.",
       "structuredSessionHostUnreachable": "Impossible de joindre {{value0}}",
-      "structuredSessionHostUnreachableDescription": "Orca n'a pas ouvert de discussion {{value0}}. Vérifiez la connexion au serveur et réessayez."
+      "structuredSessionHostUnreachableDescription": "Orca n'a pas ouvert de discussion {{value0}}. Vérifiez la connexion au serveur et réessayez.",
+      "decision": {
+        "unsupported": "Cette demande nécessite une version plus récente d'Orca."
+      },
+      "asyncQuestions": {
+        "dismiss": "Ignorer",
+        "more": "{{value0}} autres questions dans la transcription"
+      }
     },
     "tab": {
       "bar": {
@@ -18596,7 +18603,7 @@
       "serverVersion": "Orque v{{version}}",
       "rowSwitchLabel": "Sessions de recherche le {{host}}",
       "serverOffline": "Hors ligne",
-      "serverTooOld": "Nécessite une version plus récente d’Orca.",
+      "serverTooOld": "Nécessite une version plus récente d'Orca.",
       "updateServer": "Serveur de mise à jour",
       "serverToggleError": "Impossible de modifier la recherche de session sur {{host}}. Essayer à nouveau.",
       "clearedAndTurnedOff": "Recherche désactivée et données de recherche effacées.",

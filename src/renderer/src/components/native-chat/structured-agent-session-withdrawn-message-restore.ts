@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import { dispatchWasWithdrawn } from '../../../../shared/structured-agent-session-dispatch-rejection'
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
+import { isStructuredAgentSessionAsyncAnswer } from '../../../../shared/structured-agent-session-outbox-origin'
 import { appendNativeChatDraftCache } from './native-chat-draft-cache'
 import { getStructuredAgentSessionOutbox } from './structured-agent-session-outbox-storage'
 import { appendNativeChatAttachmentCache } from './use-native-chat-composer-attachments'
@@ -25,7 +26,8 @@ function restoreWithdrawnMessages(
     getStructuredAgentSessionOutbox(sessionId).map((entry) => entry.clientMessageId)
   )
   for (const entry of withdrawn) {
-    if (!held.has(entry.clientMessageId)) {
+    // A card answer goes back to its card, never into the composer draft.
+    if (!held.has(entry.clientMessageId) || isStructuredAgentSessionAsyncAnswer(entry)) {
       continue
     }
     const blocks = entry.body.blocks

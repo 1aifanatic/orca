@@ -51,6 +51,7 @@ import {
 import { retryStructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox-retry'
 import { useStructuredAgentSessionOutboxFailedHere } from './use-structured-agent-session-outbox-failed-here'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
+import { recordDroppedStructuredAsyncAnswers } from './structured-agent-session-async-answer-settlement'
 
 const NO_QUEUE_DELIVERY: StructuredAgentSessionQueueDelivery = {
   capability: 'unsupported',
@@ -187,6 +188,12 @@ export function useStructuredAgentSessionOutbox(args: {
       // drain, so a later microtask would leave the queue with no trigger to move on.
       inFlightIdRef.current = null
       setError(disposition.error ? agentSessionWriteNoticeText(disposition.error) : null)
+      // A dropped entry with no error was answered accepted or queued: the host has it.
+      recordDroppedStructuredAsyncAnswers(
+        getStructuredAgentSessionOutbox(sessionId),
+        disposition.entries,
+        disposition.error ? 'unknown' : 'accepted'
+      )
       recordFailures(getStructuredAgentSessionOutbox(sessionId), disposition.entries)
       commitStructuredAgentSessionOutbox(sessionId, disposition.entries)
     },
@@ -281,6 +288,21 @@ export function useStructuredAgentSessionOutbox(args: {
     [sessionId]
   )
 
+  /** A card answer: never touches the composer, and a withdrawal returns it to the card. */
+  const sendAsyncAnswer = useCallback(
+    (text: string, answers: Record<string, string>): string | null => {
+      const entry = appendStructuredAgentSessionOutboxMessage(sessionId, text, [], undefined, {
+        kind: 'async-answer',
+        edits: answers
+      })
+      setError(
+        entry ? null : agentSessionWriteNoticeText(STRUCTURED_AGENT_SESSION_OUTBOX_NOT_SAVED)
+      )
+      return entry?.clientMessageId ?? null
+    },
+    [sessionId]
+  )
+
   const { withdrawUnsent } = useStructuredAgentSessionOutboxOwnership({
     sessionId,
     submissions,
@@ -306,6 +328,7 @@ export function useStructuredAgentSessionOutbox(args: {
     error,
     failedHere,
     send,
+    sendAsyncAnswer,
     retry,
     withdrawUnsent
   }
