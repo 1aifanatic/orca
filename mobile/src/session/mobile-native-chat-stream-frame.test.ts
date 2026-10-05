@@ -91,6 +91,25 @@ describe('applyMobileNativeChatStreamFrame', () => {
     })
   })
 
+  it('re-enables loading earlier rows when a live append trims a fully loaded window', () => {
+    const merger = createNativeChatMerger()
+    replaceList(merger, [message('a'), message('b')])
+
+    expect(
+      applyMobileNativeChatStreamFrame({
+        merger,
+        frame: { type: 'appended', messages: [message('c')] },
+        limit: 2,
+        replaceSnapshot: false
+      })
+    ).toEqual({
+      kind: 'messages',
+      messages: [message('b'), message('c')],
+      cursorInvalidated: true,
+      hasMore: true
+    })
+  })
+
   it('refreshes paging metadata when a replay still starts at the retained oldest row', () => {
     const merger = createNativeChatMerger()
     replaceList(merger, [message('a'), message('b')])
@@ -376,14 +395,6 @@ describe('applyMobileNativeChatStreamFrame', () => {
         replaceSnapshot: true
       })
     ).toEqual({ kind: 'error', error: 'Transcript stream ended' })
-    expect(
-      applyMobileNativeChatStreamFrame({
-        merger,
-        frame: { type: 'end', error: 'This chat is too large to show on this device' },
-        limit: 40,
-        replaceSnapshot: true
-      })
-    ).toEqual({ kind: 'error', error: 'This chat is too large to show on this device' })
     expect(
       applyMobileNativeChatStreamFrame({
         merger,

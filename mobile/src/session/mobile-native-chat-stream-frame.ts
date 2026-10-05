@@ -80,7 +80,7 @@ export function applyMobileNativeChatStreamFrame(args: {
   }
   // Why: a feed's token is its own, so an end that reaches here was not asked for; the feed is dead.
   if (frame.type === 'end') {
-    return { kind: 'error', error: frame.error ?? 'Transcript stream ended' }
+    return { kind: 'error', error: 'Transcript stream ended' }
   }
   if (frame.type !== 'snapshot' && frame.type !== 'replacement' && frame.type !== 'appended') {
     return { kind: 'ignored' }
@@ -118,9 +118,9 @@ export function applyMobileNativeChatStreamFrame(args: {
     // Why: once the bounded live window drops its oldest row, the snapshot's
     // byte cursor no longer describes the oldest retained message.
     ...(cursorInvalidated ? { cursorInvalidated: true } : {}),
-    // A trimmed replay creates page-able history even if the prior window had
-    // none; otherwise only a replay sharing our oldest row owns its metadata.
-    ...(frame.type === 'snapshot' && cursorInvalidated
+    // A trim (live append or replay) creates page-able history even if the prior
+    // window had none; otherwise only a replay sharing our oldest row owns its metadata.
+    ...(cursorInvalidated
       ? { hasMore: true }
       : replayStillStartsAtOldest
         ? {

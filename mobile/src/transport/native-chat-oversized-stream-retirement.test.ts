@@ -5,6 +5,11 @@ import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import type { OrcaRuntimeService } from '../../../src/main/runtime/orca-runtime'
 import type { RpcRequest } from '../../../src/main/runtime/rpc/core'
 import { RpcDispatcher } from '../../../src/main/runtime/rpc/dispatcher'
+import {
+  RPC_REPLY_TOO_LARGE_CODE,
+  RPC_REPLY_TOO_LARGE_MESSAGE
+} from '../../../src/main/runtime/rpc/dispatcher-reply-size-guard'
+import { isMobileE2EETextPayloadWithinLimit } from '../../../src/main/runtime/rpc/mobile-e2ee-outbound-admission'
 import { createSubscriptionRegistryDouble } from '../../../src/main/runtime/rpc/subscription-registry-test-double'
 import type { SubscribeNativeChatTranscriptArgs } from '../../../src/main/native-chat/transcript-watch-contract'
 import {
@@ -32,8 +37,6 @@ vi.mock('../../../src/main/native-chat/transcript-watch', () => ({
   }
 }))
 const { NATIVE_CHAT_METHODS } = await import('../../../src/main/runtime/rpc/methods/native-chat')
-const { NATIVE_CHAT_FRAME_TOO_LARGE_ERROR } =
-  await import('../../../src/main/runtime/rpc/methods/native-chat-rpc-envelope-admission')
 
 // Over the phone socket's 4 MiB JSON cap on its own.
 const HUGE = 'x'.repeat(4.5 * 1024 * 1024)
@@ -105,7 +108,11 @@ class HostBoundSession implements RpcClient {
               this.registry.handleResponse(response)
             }
           },
-          { clientKind: 'mobile', connectionId }
+          {
+            clientKind: 'mobile',
+            connectionId,
+            replyFitsTransport: isMobileE2EETextPayloadWithinLimit
+          }
         )
         return true
       }
@@ -167,7 +174,7 @@ async function mountChat(client: RpcClient): Promise<void> {
   await vi.waitFor(() => expect(watchesFor('big')).toHaveLength(1))
 }
 
-describe('an oversized native-chat frame ends only its own stream', () => {
+describe('an oversized native-chat reply fails only its own stream', () => {
   it('retires the stream on the phone, surfaces one failure, keeps other streams and does not replay it', async () => {
     const hostSide = createHost()
     const socket = new HostBoundSession(hostSide, 'direct')
@@ -186,7 +193,7 @@ describe('an oversized native-chat frame ends only its own stream', () => {
     })
 
     expect(chat?.status).toBe('error')
-    expect(chat?.error).toBe(NATIVE_CHAT_FRAME_TOO_LARGE_ERROR)
+    expect(chat?.error).toBe(RPC_REPLY_TOO_LARGE_MESSAGE)
     expect(latestWatch('big').unsubscribe).toHaveBeenCalledTimes(1)
     expect(socket.registry.size()).toBe(1)
 
@@ -198,7 +205,7 @@ describe('an oversized native-chat frame ends only its own stream', () => {
     socket.reconnect()
     await vi.waitFor(() => expect(watchesFor('other')).toHaveLength(2))
     expect(watchesFor('big')).toHaveLength(1)
-    expect(chat?.error).toBe(NATIVE_CHAT_FRAME_TOO_LARGE_ERROR)
+    expect(chat?.error).toBe(RPC_REPLY_TOO_LARGE_MESSAGE)
   })
 
   it('retires a stream whose overflow lands while host setup is still pending', async () => {
@@ -218,7 +225,13 @@ describe('an oversized native-chat frame ends only its own stream', () => {
     setup.resolve()
 
     await vi.waitFor(() => expect(latestWatch('pending').unsubscribe).toHaveBeenCalledTimes(1))
-    expect(frames).toEqual([{ type: 'end', error: NATIVE_CHAT_FRAME_TOO_LARGE_ERROR }])
+    expect(frames).toEqual([
+      {
+        type: 'error',
+        message: RPC_REPLY_TOO_LARGE_MESSAGE,
+        error: { code: RPC_REPLY_TOO_LARGE_CODE, message: RPC_REPLY_TOO_LARGE_MESSAGE }
+      }
+    ])
     expect(socket.registry.size()).toBe(0)
     socket.reconnect()
     await settleHostDispatch()

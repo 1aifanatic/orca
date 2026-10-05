@@ -308,8 +308,8 @@ export class E2EEChannel {
     return this.outbound.enqueueV2(item, this.v2Session, () => this.closeForOutboundBudget('queue'))
   }
 
-  // Why: this close kills the whole remote session. `size` means a producer emitted something
-  // too big and should fall to zero once producers cap themselves; `queue` means a backed-up link.
+  // Why: this close kills the whole remote session. `size` is the last-resort cap (the RPC
+  // dispatcher already fails an oversized reply alone); `queue` means a backed-up link.
   private closeForOutboundBudget(emitter: OutboundBudgetEmitter): void {
     try {
       track('remote_outbound_budget_close', { emitter })
