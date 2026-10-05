@@ -10,9 +10,9 @@
 import {
   NATIVE_CHAT_INTERRUPTED_STATUS_TEXT,
   type NativeChatBlock,
-  type NativeChatMessage,
-  type NativeChatTokenUsage
+  type NativeChatMessage
 } from '../../shared/native-chat-types'
+import type { AgentSessionTokenUsage } from '../../shared/agent-session-context-usage'
 import {
   asRecord,
   extractString,
@@ -170,7 +170,7 @@ function ompServing(
   }
 }
 
-function ompTokenUsage(value: unknown): NativeChatTokenUsage | null {
+function ompTokenUsage(value: unknown): AgentSessionTokenUsage | null {
   const usage = asRecord(value)
   if (!usage) {
     return null

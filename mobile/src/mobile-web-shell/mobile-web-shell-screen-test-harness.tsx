@@ -49,13 +49,26 @@ export type ScreenDependencies = {
   client: FakeRpcClient | null
   /** The IME events the app's own keyboard seam subscribes to, by name. */
   keyboardListeners: Map<string, (event: { endCoordinates: { height: number } }) => void>
+  /** The device-key listeners the screen registered, by name. Empty unless the page claims Back. */
+  backHandlers: Map<string, () => boolean>
+  /** Every option patch the screen wrote onto its own place on the stack, in order. */
+  setScreenOptions: Mock
+  /** Whether the session says the page is holding the device Back key. */
+  backClaimed: boolean
+  /** What `Platform.OS` answers, which picks the keyboard events. */
+  platform: 'ios' | 'android'
+  reportPageBackClaim: Mock
+  /** Whether the mounted host would take a press, which is a page that declared it takes one. */
+  sendBackDelivers: boolean
+  /** One entry per press the screen handed to the host. */
+  backSends: number
 }
 
 export const SCREEN_SNAPSHOT = {
   host: { id: 'host-1', name: 'Host One', endpoint: 'ws://host-1', lastConnected: 3 }
 }
 
-export const DEFAULT_ROUTE_GRANTS: readonly string[] = [
+const DEFAULT_ROUTE_GRANTS: readonly string[] = [
   'navigate',
   'storage',
   'externalLink',
@@ -95,7 +108,14 @@ export function createScreenDependencies(): ScreenDependencies {
     pageReady: false,
     pageFrame: 'pending',
     client: null,
-    keyboardListeners: new Map()
+    keyboardListeners: new Map(),
+    backHandlers: new Map(),
+    setScreenOptions: vi.fn(),
+    backClaimed: false,
+    platform: 'ios',
+    reportPageBackClaim: vi.fn(),
+    sendBackDelivers: true,
+    backSends: 0
   }
 }
 
@@ -127,6 +147,13 @@ export function resetScreenDependencies(dependencies: ScreenDependencies): void 
   dependencies.canGoBack = true
   dependencies.pathname = '/h/host-1'
   dependencies.updateNotice = null
+  dependencies.backHandlers.clear()
+  dependencies.setScreenOptions.mockReset()
+  dependencies.reportPageBackClaim.mockReset()
+  dependencies.backClaimed = false
+  dependencies.platform = 'ios'
+  dependencies.sendBackDelivers = true
+  dependencies.backSends = 0
 }
 
 /** The caller's native screen, as a component so `findAllByType` can name it without a host string. */

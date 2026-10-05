@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import {
   deriveNativeChatContextUsage,
-  formatContextTokenCount,
   isNativeChatCompactionBoundary
 } from './native-chat-context-usage'
-import type { NativeChatMessage, NativeChatTokenUsage } from './native-chat-types'
+import type { AgentSessionTokenUsage } from './agent-session-context-usage'
+import type { NativeChatMessage } from './native-chat-types'
 
-function assistant(id: string, usage?: NativeChatTokenUsage, model = 'gpt-5.5'): NativeChatMessage {
+function assistant(
+  id: string,
+  usage?: AgentSessionTokenUsage,
+  model = 'gpt-5.5'
+): NativeChatMessage {
   return {
     id,
     role: 'assistant',
@@ -19,7 +23,7 @@ function assistant(id: string, usage?: NativeChatTokenUsage, model = 'gpt-5.5'):
   }
 }
 
-function usage(inputTokens: number, cacheRead = 0, cacheWrite = 0): NativeChatTokenUsage {
+function usage(inputTokens: number, cacheRead = 0, cacheWrite = 0): AgentSessionTokenUsage {
   return {
     inputTokens,
     cacheCreationInputTokens: cacheWrite,
@@ -97,16 +101,5 @@ describe('isNativeChatCompactionBoundary', () => {
         blocks: [{ type: 'text', text: 'Context compacted' }]
       })
     ).toBe(false)
-  })
-})
-
-describe('formatContextTokenCount', () => {
-  it('uses the compact notation agent CLIs print', () => {
-    expect(formatContextTokenCount(10)).toBe('10')
-    expect(formatContextTokenCount(18_600)).toBe('18.6k')
-    expect(formatContextTokenCount(272_000)).toBe('272k')
-    expect(formatContextTokenCount(981_400)).toBe('981.4k')
-    expect(formatContextTokenCount(1_000_000)).toBe('1m')
-    expect(formatContextTokenCount(-5)).toBe('0')
   })
 })

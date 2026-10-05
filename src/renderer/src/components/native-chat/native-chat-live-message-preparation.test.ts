@@ -25,7 +25,9 @@ const CONTEXT_ROWS: NativeChatMessage[] = [
 function visibleText(agent: 'openclaude' | 'claude', messages: NativeChatMessage[]): string[] {
   return createNativeChatMessageListProjection()(
     prepareNativeChatLiveMessages(messages, agent)
-  ).flatMap((message) => message.blocks.map((block) => (block.type === 'text' ? block.text : '')))
+  ).conversation.flatMap((message) =>
+    message.blocks.map((block) => (block.type === 'text' ? block.text : ''))
+  )
 }
 
 describe('prepareNativeChatLiveMessages command output', () => {

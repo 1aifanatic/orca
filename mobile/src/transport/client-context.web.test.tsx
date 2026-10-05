@@ -2,10 +2,7 @@ import type { ReactElement } from 'react'
 import { act, create } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BRIDGE_PROTOCOL_VERSION } from '../mobile-web-shell/bridge/bridge-envelope'
-import {
-  BRIDGE_PAGE_CLIENT_ID,
-  BRIDGE_PAGE_CLIENT_IDENTITY_ACCEPT
-} from '../mobile-web-shell/bridge/bridge-page-client-identity'
+import { BRIDGE_PAGE_CLIENT_ID } from '../mobile-web-shell/bridge/bridge-page-client-identity'
 import { createShellPageClient } from '../mobile-web-shell/bridge/page-bootstrap'
 import type { BridgeRpcClient } from '../mobile-web-shell/bridge/bridge-rpc-client'
 import type { RpcClientContextValue } from './rpc-client-context-contract'
@@ -14,7 +11,7 @@ import type { RpcClientContextValue } from './rpc-client-context-contract'
 // this test does not have. Nothing below calls one.
 vi.mock('./host-client-hooks', () => ({
   useDisconnectHostClient: () => () => {},
-  useForceReconnect: () => () => Promise.resolve(),
+  useForceReconnect: () => null,
   useForgetHostClient: () => () => {},
   useHostClient: () => ({ client: null, clientId: null, state: 'disconnected' }),
   usePrimeHosts: () => () => {},
@@ -35,8 +32,7 @@ const INIT = {
     lastInboundAt: 1800,
     generation: 5
   },
-  grants: { rpc: { maxPendingRequests: 64, maxSubscriptions: 32 }, native: [] },
-  accepts: [BRIDGE_PAGE_CLIENT_IDENTITY_ACCEPT]
+  grants: { rpc: { maxPendingRequests: 64, maxSubscriptions: 32 }, native: [] }
 }
 
 /** What the page mounted, and what it holds — the two things the provider decides. */
@@ -172,25 +168,6 @@ describe('the page provider', () => {
     expect(first).toBe(BRIDGE_PAGE_CLIENT_ID)
   })
 
-  it('claims nothing at all when the shell never said it performs the swap', () => {
-    const channel = installChannel()
-    const client = createShellPageClient()
-    if (client === null) {
-      throw new Error('no channel installed')
-    }
-    // An `init` that landed, naming no swap — not a client with no session at all, which would
-    // answer null for a reason that has nothing to do with the capability.
-    channel.deliver({ ...INIT, accepts: [] })
-    act(() => {
-      create(render(client))
-    })
-    expect(readContext().getState('host-a')).toBe('connected')
-
-    // An older shell forwards what the page sent, so a placeholder would reach the host and be
-    // refused as a spoof. Nothing claimed is the honest answer, and it is what shipped before.
-    expect(readContext().getClientId('host-a')).toBe(null)
-  })
-
   it('carries a state change from the shell to the screens watching it', () => {
     const channel = installChannel()
     const client = createReadyClient(channel.deliver)
@@ -268,9 +245,18 @@ describe('the page provider', () => {
     context.disconnectHostClient('host-a')
     context.forgetHostClient('host-a')
     context.refreshHostClient('host-a')
-    await context.forceReconnect('host-a')
 
     expect(close).not.toHaveBeenCalled()
     expect(context.acquire('host-a', {})).toBe(client)
+  })
+
+  it('offers no re-dial at all, so no screen can wire a Retry to one', () => {
+    // Null and not an inert function: every Retry and Reconnect reads it to decide whether it
+    // renders, and an inert one painted controls whose only effect on the page was nothing.
+    const channel = installChannel()
+    act(() => {
+      create(render(createReadyClient(channel.deliver)))
+    })
+    expect(readContext().forceReconnect).toBeNull()
   })
 })

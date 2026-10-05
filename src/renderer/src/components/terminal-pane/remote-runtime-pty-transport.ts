@@ -1,4 +1,5 @@
 import { createAgentSessionKeyboardOptions } from '@/runtime/agent-session-keyboard-capability'
+import { withRemoteReattachInputBuffer } from './remote-reattach-input-buffer'
 /* eslint-disable max-lines -- Why: remote PTY transport keeps lifecycle, JSON fallback, and binary stream wiring together so reconnect/destroy ordering stays testable as one behavior surface. */
 import type { RuntimeRpcResponse } from '../../../../shared/runtime-rpc-envelope'
 import {
@@ -422,10 +423,12 @@ export function createRemoteRuntimePtyTransport(
   ): void => {
     outputProcessor.processData(data, storedCallbacks, undefined, meta)
   }
+  // Why flagged: only pushed snapshots are buffered for this pty during a shutdown.
   const shutdownReplayHandler = (data: string): void => {
     outputProcessor.processData(data, storedCallbacks, {
       replayingBufferedData: true,
-      suppressAttentionEvents: true
+      suppressAttentionEvents: true,
+      carriesNormalBuffer: true
     })
   }
   const shutdownLifecycle = {
@@ -885,7 +888,7 @@ export function createRemoteRuntimePtyTransport(
       return true
     }
     if (lastConnectOptions) {
-      void transport.connect(lastConnectOptions)
+      void connectForRecovery(lastConnectOptions)
       return true
     }
     return false
@@ -2018,7 +2021,8 @@ export function createRemoteRuntimePtyTransport(
               // host dimensions. Absent/zero degrades to the pane's own grid.
               ...(meta?.cols !== undefined && meta.rows !== undefined
                 ? { snapshotCols: meta.cols, snapshotRows: meta.rows }
-                : {})
+                : {}),
+              carriesNormalBuffer: true
             })
           }
         },
@@ -2173,6 +2177,7 @@ export function createRemoteRuntimePtyTransport(
     flushPendingClaimInput(nextStream)
   }
 
+  let connectForRecovery: PtyTransport['connect'] = (options) => transport.connect(options)
   const transport: PtyTransport = {
     async connect(options) {
       cancelTerminalCreateRetryWait()
@@ -2583,6 +2588,8 @@ export function createRemoteRuntimePtyTransport(
       storedCallbacks = {}
     },
 
+    // Why no kind: terminal.send has no launch kind, and its query-reply kind is for mobile
+    // clients, so the host classifies a desktop's bytes itself.
     sendInput(data: string): boolean {
       if (!connected || !handle || recoveryBlocksIo()) {
         return false
@@ -2713,7 +2720,7 @@ export function createRemoteRuntimePtyTransport(
         recovery.currentPhase === 'disconnected'
       ) {
         recovery.begin()
-        void transport.connect(lastConnectOptions)
+        void connectForRecovery(lastConnectOptions)
         return true
       }
       // Why: online/resume fires a parked retry; the button must not be weaker than an event (#12684).
@@ -2783,6 +2790,9 @@ export function createRemoteRuntimePtyTransport(
       return stream.serializeBufferOutcome(opts)
     },
 
+    setConnectForRecovery(connect) {
+      connectForRecovery = connect
+    },
     destroy() {
       destroyed = true
       setAttachmentUnavailable()
@@ -2798,5 +2808,5 @@ export function createRemoteRuntimePtyTransport(
       viewportBatcher.clear()
     }
   }
-  return transport
+  return withRemoteReattachInputBuffer(transport)
 }

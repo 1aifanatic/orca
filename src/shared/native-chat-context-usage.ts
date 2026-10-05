@@ -2,7 +2,8 @@
 // the model read on the last request that reported usage, against the window of
 // the model that served it.
 
-import type { NativeChatMessage, NativeChatTokenUsage } from './native-chat-types'
+import { contextTokensFromUsage } from './agent-session-context-usage'
+import type { NativeChatMessage } from './native-chat-types'
 
 export type NativeChatContextUsage = {
   usedTokens: number
@@ -14,11 +15,6 @@ export type NativeChatContextUsage = {
 
 /** Resolves a model's context window, or null when the host does not know it. */
 export type NativeChatContextWindowLookup = (message: NativeChatMessage) => number | null
-
-/** Everything the model read on the request, which is what fills the window. */
-function contextTokensFromUsage(usage: NativeChatTokenUsage): number {
-  return usage.inputTokens + usage.cacheCreationInputTokens + usage.cacheReadInputTokens
-}
 
 /** True for the transcript row an agent writes when it compacts the conversation. */
 export function isNativeChatCompactionBoundary(message: NativeChatMessage): boolean {
@@ -55,20 +51,4 @@ export function deriveNativeChatContextUsage(
     }
   }
   return null
-}
-
-/** `18.6k`, `1m`, `981.4k` — the compact notation agent CLIs print. */
-export function formatContextTokenCount(tokens: number): string {
-  const safe = Math.max(0, tokens)
-  if (safe >= 1_000_000) {
-    return `${trimZero((safe / 1_000_000).toFixed(1))}m`
-  }
-  if (safe >= 1_000) {
-    return `${trimZero((safe / 1_000).toFixed(1))}k`
-  }
-  return String(Math.round(safe))
-}
-
-function trimZero(value: string): string {
-  return value.endsWith('.0') ? value.slice(0, -2) : value
 }

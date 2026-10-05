@@ -1,4 +1,5 @@
 import { createCodexDispatchEchoes } from './codex-structured-dispatch-echo'
+import { createCodexTurnOpenWaits } from './codex-structured-turn-open-wait'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalItemBody } from '../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
@@ -66,12 +67,12 @@ describe('requested-close durable turn timing', () => {
         fence: 7,
         acquisitionGeneration: 'generation-1',
         threadId: 'thread-1',
-        historyPath: null,
         prompts: new CodexPromptRegistry(),
         options: new Map(),
         reportedOptions: {},
         fastModeTierByModel: new Map(),
         dispatchEchoes: createCodexDispatchEchoes(),
+        turnOpenWaits: createCodexTurnOpenWaits(),
         translator
       }
       const sessions = new Map([['session-1', session]])

@@ -50,7 +50,7 @@ const cases = callerProfileCases()
 
 async function launch(profile: AgentLaunchCallerProfile) {
   const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
-  return launchAgentInNewTab({ ...profile.args })
+  return launchAgentInNewTab({ requestId: 'request-1', ...profile.args })
 }
 
 describe('agent launch caller placement and telemetry', () => {
@@ -73,22 +73,23 @@ describe('agent launch caller placement and telemetry', () => {
     expect(createdTabOptions(store)).toMatchObject({ launchAgent: profile.args.agent })
   })
 
-  it.each(cases)('decides whether %s takes the global selection', async (_id, profile) => {
+  it.each(cases)('shows terminals only in the worktree %s launched into', async (_id, profile) => {
     await launch(profile)
 
-    const takesSelection = profile.args.activate !== false
-    expect(createdTabOptions(store)?.activate).toBe(takesSelection ? undefined : false)
-    expect(store.setActiveTabType.mock.calls.length).toBe(takesSelection ? 1 : 0)
-    if (takesSelection) {
-      expect(store.setActiveTabType).toHaveBeenCalledWith('terminal')
-    }
+    // Why: the store moves the main window only when that worktree is the active one, so a floating
+    // or background launch cannot drop the main window off its editor or chat tab.
+    expect(createdTabOptions(store)).not.toHaveProperty('activate')
+    expect(store.setActiveTabType).toHaveBeenCalledExactlyOnceWith(
+      'terminal',
+      profile.args.worktreeId
+    )
   })
 
   it.each(cases)('persists the tab-bar order after %s launches', async (_id, profile) => {
     await launch(profile)
 
     // Why: without this the stored order falls back to terminals-first and the new tab jumps to
-    // index 0. It runs for every call site, including the one that does not take the selection.
+    // index 0. It runs for every call site, including the floating workspace.
     expect(store.setTabBarOrder).toHaveBeenCalledTimes(1)
     expect(store.setTabBarOrder.mock.calls[0]?.[0]).toBe(profile.args.worktreeId)
     expect(store.setTabBarOrder.mock.calls[0]?.[1]).toContain('tab-1')
@@ -134,24 +135,10 @@ describe('agent launch caller placement and telemetry', () => {
     })
   })
 
-  it('falls back to the tab-bar quick launch source when a caller names none', async () => {
-    const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
-
-    launchAgentInNewTab({ agent: 'codex', worktreeId: 'wt-1' })
-
-    // Why: git-history-explain-commit is the one production call site that names no launch source,
-    // so it is reported as a tab-bar quick launch rather than as its own surface.
-    expect(queuedStartupPayload(store)?.telemetry).toEqual({
-      agent_kind: 'kind:codex',
-      launch_source: 'tab_bar_quick_launch',
-      request_kind: 'new'
-    })
-  })
-
   it('creates the tab before queueing its startup command', async () => {
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-    launchAgentInNewTab({ agent: 'codex', worktreeId: 'wt-1' })
+    launchAgentInNewTab({ requestId: 'request-2', agent: 'codex', worktreeId: 'wt-1' })
 
     // Why: the terminal pane snapshots pending startup in useState on first render, so a startup
     // queued after mount is never seen.
@@ -163,7 +150,12 @@ describe('agent launch caller placement and telemetry', () => {
   it('seeds working status for a Command Code prompt that rides argv', async () => {
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-    launchAgentInNewTab({ agent: 'command-code', worktreeId: 'wt-1', prompt: 'fix the spinner' })
+    launchAgentInNewTab({
+      requestId: 'request-3',
+      agent: 'command-code',
+      worktreeId: 'wt-1',
+      prompt: 'fix the spinner'
+    })
 
     expect(queuedStartupPayload(store)?.initialAgentStatus).toEqual({
       agent: 'command-code',
@@ -174,7 +166,12 @@ describe('agent launch caller placement and telemetry', () => {
   it('leaves initial agent status unset for every other argv prompt launch', async () => {
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-    launchAgentInNewTab({ agent: 'codex', worktreeId: 'wt-1', prompt: 'fix the spinner' })
+    launchAgentInNewTab({
+      requestId: 'request-4',
+      agent: 'codex',
+      worktreeId: 'wt-1',
+      prompt: 'fix the spinner'
+    })
 
     expect(queuedStartupPayload(store)).not.toHaveProperty('initialAgentStatus')
   })

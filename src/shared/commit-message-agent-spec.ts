@@ -129,7 +129,8 @@ export const COMMIT_MESSAGE_AGENT_SPECS: Partial<Record<TuiAgent, CommitMessageA
     BASIC_THINKING_LEVELS,
     OPENAI_THINKING_LEVELS,
     parseCursorModels,
-    parseAntigravityModels
+    parseAntigravityModels,
+    parseLineModels
   })
 }
 
@@ -216,13 +217,6 @@ export function getCommitMessageAgentCapability(
 ): CommitMessageAgentCapability | undefined {
   const spec = getCommitMessageAgentSpec(agentId)
   return spec ? toCommitMessageAgentCapability(spec) : undefined
-}
-
-export function getCommitMessageModelCapability(
-  agentId: TuiAgent,
-  modelId: string
-): CommitMessageModelCapability | undefined {
-  return getCommitMessageAgentCapability(agentId)?.models.find((m) => m.id === modelId)
 }
 
 /** Ordered list of agents that have a non-interactive mode wired up. */

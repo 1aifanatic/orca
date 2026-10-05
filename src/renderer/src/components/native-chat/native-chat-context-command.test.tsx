@@ -120,7 +120,7 @@ describe('answerNativeChatLocalCommand', () => {
     )
     // A switch in the TUI shows up on the next reply, not in the picker.
     expect(answer({ messages: [response(21_672, 10), response(450_000, 20, 'gpt-5.4')] })).toBe(
-      'Context: 450k / 1m tokens (45%), estimated from the last response.'
+      'Context: 450k / 1M tokens (45%), estimated from the last response.'
     )
   })
 
@@ -220,13 +220,13 @@ describe('host-answered /context in the composer', () => {
 
   it('answers a typed /context in the chat with the listing windows, keeping attachments', () => {
     const answerCommandLocally = vi.fn<NativeChatLocalCommandAnswer>(
-      () => 'Context: 450k / 1m tokens (45%)'
+      () => 'Context: 450k / 1M tokens (45%)'
     )
     const args = typedSend('/context', answerCommandLocally)
     expect(answerCommandLocally).toHaveBeenCalledWith('/context', expect.any(Function))
     const windowFor = answerCommandLocally.mock.calls[0]![1]
     expect(windowFor('openai-codex/gpt-5.4')).toBe(1_000_000)
-    expect(args.onSlashCommand).toHaveBeenCalledWith('/context', 'Context: 450k / 1m tokens (45%)')
+    expect(args.onSlashCommand).toHaveBeenCalledWith('/context', 'Context: 450k / 1M tokens (45%)')
     expect(mocks.sendNativeChatMessage).not.toHaveBeenCalled()
     expect(mocks.sendNativeChatMessageWithImageAttachments).not.toHaveBeenCalled()
     expect(args.clearImageAttachments).not.toHaveBeenCalled()
@@ -241,7 +241,7 @@ describe('host-answered /context in the composer', () => {
 
   it('answers a picked /context the same way as a typed one', () => {
     const answerCommandLocally = vi.fn<NativeChatLocalCommandAnswer>(
-      () => 'Context: 450k / 1m tokens (45%)'
+      () => 'Context: 450k / 1M tokens (45%)'
     )
     const args = { ...composerArgs(answerCommandLocally), setActiveSuggestion: vi.fn() }
     const { result } = renderHook(() => useNativeChatPickerCommandDispatch(args))
@@ -253,7 +253,7 @@ describe('host-answered /context in the composer', () => {
       skillCollision: false
     })
     expect(answerCommandLocally.mock.calls[0]![1]('openai-codex/gpt-5.5')).toBe(272_000)
-    expect(args.onSlashCommand).toHaveBeenCalledWith('/context', 'Context: 450k / 1m tokens (45%)')
+    expect(args.onSlashCommand).toHaveBeenCalledWith('/context', 'Context: 450k / 1M tokens (45%)')
     expect(mocks.sendNativeChatMessage).not.toHaveBeenCalled()
     expect(args.clearImageAttachments).not.toHaveBeenCalled()
     expect(args.setHistory).toHaveBeenCalled()

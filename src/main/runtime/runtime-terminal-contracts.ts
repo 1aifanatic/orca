@@ -4,7 +4,10 @@ import type {
   AgentSessionExecutionClaim,
   RuntimeCreateAgentSessionResult
 } from '../../shared/agent-session-host-authority'
-import type { AgentProviderSessionMetadata } from '../../shared/agent-session-resume'
+import type {
+  AgentProviderSessionMetadata,
+  SleepingAgentLaunchConfig
+} from '../../shared/agent-session-resume'
 import type { OrchestrationCompatibilityHostStamp } from '../../shared/orchestration-compatibility-evidence'
 import type { TerminalOscColorQueryReplyColors } from '../../shared/terminal-osc-color-reply'
 import type {
@@ -16,6 +19,7 @@ import type { TuiAgent } from '../../shared/tui-agent'
 import type { WorktreeStartupLaunch } from '../../shared/worktree/launch-types'
 import type { RuntimeTerminalSend } from '../../shared/runtime-terminal-contracts'
 import type { RuntimeTerminalWriteOptions } from './runtime-terminal-writer'
+import type { TerminalInputKind } from '../../shared/terminal-input-kind'
 import type { RuntimePtyController } from './runtime-pty-controller-contract'
 import type { RuntimeAgentRowSnapshot } from './runtime-worktree-agent-rows'
 import type { WorkerTerminalHostScope } from './orchestration/worker-terminal-process-liveness'
@@ -61,6 +65,9 @@ export type TerminalCreateOptions = {
   viewMode?: 'terminal' | 'chat'
   startupCommandDelivery?: WorktreeStartupLaunch['startupCommandDelivery']
   telemetry?: WorktreeStartupLaunch['telemetry']
+  /** The surface that asked for this `startupAgent` launch; the runtime attributes every one it
+   *  builds, as `unknown` when this is absent or unrecognized. Ignored without `startupAgent`. */
+  launchSource?: string
   title?: string
   focus?: boolean
   rendererBacked?: boolean
@@ -69,15 +76,21 @@ export type TerminalCreateOptions = {
   surfaceOwner?: false
   tabId?: string
   leafId?: string
+  /** Refuse, rather than attach, when `tabId`/`leafId` name a pane whose PTY is already live. */
+  requireFreshPane?: boolean
   sessionId?: string
   isNewSession?: boolean
   preAllocatedHandle?: string
   persistHostSessionBinding?: boolean
   agentSessionClaim?: AgentSessionExecutionClaim
   agentSessionCreateOperationId?: string
-  structuredAgentSessionId?: string
   signal?: AbortSignal
   onPtySpawnCommitted?: () => void
+  /** Called before the spawn request leaves this process; a throw before it proves nothing spawned. */
+  onPtySpawnDispatched?: (launch?: {
+    launchConfig?: SleepingAgentLaunchConfig
+    launchAgent?: TuiAgent
+  }) => void
   deferMobileSessionPublish?: boolean
 }
 
@@ -125,6 +138,9 @@ export type RuntimeTerminalAgentStatusEvent = {
    *  reader can rejoin it to the terminal after the pane key moved. */
   terminalHandle?: string
   payload: ParsedAgentStatusPayload
+  /** Set by the process-lifetime producer; see AgentHookServer.ingestTerminalStatus. */
+  origin?: 'process'
+  yieldsToHookSince?: number
 }
 
 export type HookLiveAgentRow = Pick<
@@ -200,9 +216,13 @@ export type RuntimeProviderSnapshotReadOptions = {
 }
 
 /** Agent-prompt writes add the correlation inputs a queued-acceptance receipt needs. */
-export type RuntimeAgentPromptWriteOptions = RuntimeTerminalWriteOptions & {
+export type RuntimeAgentPromptWriteOptions = Omit<RuntimeTerminalWriteOptions, 'inputKind'> & {
+  /** `launch` for the prompt an agent starts with; `driving` for any prompt sent to a running one. */
+  inputKind: Exclude<TerminalInputKind, 'query-reply'>
   /** Raw prompt text for submit scheduling; not written, only used for line-aware delays. */
   promptForSchedule?: string
+  /** See buildAgentPromptPasteBytes. */
+  leadLine?: string
   /** Return an accepted receipt as soon as input lands, instead of waiting for the turn. */
   acceptQueued?: boolean
   observationTimeoutMs?: number
