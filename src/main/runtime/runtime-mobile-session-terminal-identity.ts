@@ -81,6 +81,7 @@ export function projectRuntimeTerminalConversationFields(args: {
   retained: RuntimeAgentRowSnapshot | null
   ownerAgent: AgentType | null
   ownerOptions: CompatibleAgentOwnerOptions
+  foregroundAgent: AgentType | null
   offeredByBuilder: boolean
   publishesAgentStatus: boolean
 }): RuntimeMobileSessionTerminalConversationFields {
@@ -88,7 +89,8 @@ export function projectRuntimeTerminalConversationFields(args: {
     stored: args.stored,
     legacy: args.stored ? null : legacyCandidate(args),
     ownerAgent: args.ownerAgent,
-    ownerOptions: args.ownerOptions
+    ownerOptions: args.ownerOptions,
+    foregroundAgent: args.foregroundAgent
   })
   if (!identity) {
     return {}

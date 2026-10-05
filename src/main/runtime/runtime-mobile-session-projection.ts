@@ -145,8 +145,8 @@ export function projectRuntimeMobileSessionTabs(
         retainedAgentStatus?.payload.agentType ??
         null
     })
-    const ownerAgent =
-      ownerRecord?.agent ?? liveLeafPty?.foregroundAgent ?? pty?.foregroundAgent ?? null
+    const foregroundAgent = liveLeafPty?.foregroundAgent ?? pty?.foregroundAgent ?? null
+    const ownerAgent = ownerRecord?.agent ?? foregroundAgent
     const ownerOptions = { ownerIsLaunch: ownerRecord?.ownerIsLaunch === true }
     const title = normalizeCompatibleAgentTitleForOwner(
       trackerOnlyTitle ?? leafTitle ?? ptyTitle ?? syncedTab?.title ?? tab.title,
@@ -294,6 +294,7 @@ export function projectRuntimeMobileSessionTabs(
         retained: retainedAgentStatus,
         ownerAgent,
         ownerOptions,
+        foregroundAgent,
         offeredByBuilder: projectedAgentStatus.offersConversationWithoutStatus === true,
         publishesAgentStatus: projectedStatusEntry !== undefined
       })

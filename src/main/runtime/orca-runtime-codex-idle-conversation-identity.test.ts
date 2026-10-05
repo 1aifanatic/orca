@@ -87,6 +87,14 @@ class InspectableRuntime extends OrcaRuntimeService {
     this.resetTrackedTerminalStateForProviderGeneration(ptyId)
   }
 
+  /** The launch record an Orca launch into this PTY writes, before its agent reports. */
+  recordLaunch(ptyId: string, agent: 'codex'): void {
+    const pty = this.ptysById.get(ptyId)
+    if (pty) {
+      pty.launchAgent = agent
+    }
+  }
+
   protected override async resolveTerminalWorkspaceLaunchScope(): Promise<TerminalWorkspaceLaunchScope> {
     return {
       id: this.worktreeId,
@@ -105,6 +113,8 @@ type Pane = {
   restartStore: () => Promise<void>
   postHooks: (sessionId: string, events: string[], transcriptPath?: string) => Promise<void>
   observeTitle: (title: string) => void
+  /** Change the process the next foreground read returns. */
+  setForeground: (process: string | null) => void
 }
 
 async function createPane(args: {
@@ -119,6 +129,7 @@ async function createPane(args: {
   worktreeId?: string
 }): Promise<Pane> {
   const agent = args.agent ?? 'codex'
+  let foreground = args.foreground === undefined ? agent : args.foreground
   const userDataPath = await tempDir('orca-codex-idle-store-')
   let store = new AgentHookServer()
   await store.start({ env: 'production', userDataPath })
@@ -145,7 +156,7 @@ async function createPane(args: {
     spawn: vi.fn().mockResolvedValue({ id: PTY_ID }),
     write: () => true,
     kill: () => true,
-    getForegroundProcess: async () => (args.foreground === undefined ? agent : args.foreground)
+    getForegroundProcess: async () => foreground
   })
   await runtime.createTerminal(`id:${runtime.worktreeId}`, {
     tabId: TAB_ID,
@@ -181,6 +192,9 @@ async function createPane(args: {
     },
     observeTitle: (title) => {
       runtime.onPtyData(PTY_ID, `\x1b]0;${title}\x07`, Date.now())
+    },
+    setForeground: (process) => {
+      foreground = process
     }
   }
 }
@@ -708,5 +722,85 @@ describe('a pane whose agent changed by hand', () => {
         expect(JSON.stringify(tab)).not.toContain(SESSION_ID)
       }
     }
+  })
+
+  describe('after a hand-started Claude leaves the pane', () => {
+    async function expectNoConversation(runtime: OrcaRuntimeService): Promise<void> {
+      for (const tab of Object.values(await audiences(runtime))) {
+        expect(tab).toMatchObject({ type: 'terminal' })
+        expect(tab).not.toHaveProperty('conversationIdentity')
+        expect(tab).not.toHaveProperty('conversationOfferedWithoutStatus')
+      }
+    }
+
+    /** Claude, started by hand, reports S and finishes its turn under a neutral title. */
+    async function claudeTurn(): Promise<Pane> {
+      const pane = await createPane({ presence: null, agent: 'claude', launched: false })
+      await pane.postHooks(SESSION_ID, ['UserPromptSubmit', 'Stop'], '/r/claude-S.jsonl')
+      pane.observeTitle(NEUTRAL_TITLE)
+      await pane.runtime.refreshPtyForegroundAgentFromController(PTY_ID)
+      expect(pane.runtime.ptyRecord(PTY_ID)?.foregroundAgent).toBe('claude')
+      advanceClock(60_000)
+      return pane
+    }
+
+    /** The user runs an agent with no hook reports; the host reads it in the foreground. */
+    async function startByHand(pane: Pane, process: string | null): Promise<void> {
+      pane.setForeground(process)
+      pane.observeTitle('Fix it | my-repo')
+      await pane.runtime.refreshPtyForegroundAgentFromController(PTY_ID)
+      expect(pane.runtime.ptyRecord(PTY_ID)?.foregroundAgent).toBe(process)
+    }
+
+    it('keeps offering Claude its own conversation while it stays in the foreground', async () => {
+      const pane = await claudeTurn()
+      const { desktop, phone } = await audiences(pane.runtime)
+      for (const tab of [desktop, phone]) {
+        expect(tab?.conversationIdentity).toMatchObject({
+          agentType: 'claude',
+          providerSession: { id: SESSION_ID }
+        })
+      }
+    })
+
+    it.each([
+      {
+        exit: 'a certified exit to the shell',
+        leave: (store: AgentHookServer) =>
+          store.reconcileEndedProcessForPaneKeys([PANE], { preserveResumeIdentity: true })
+      },
+      { exit: 'a dismissal', leave: (store: AgentHookServer) => store.dropStatusEntry(PANE) }
+    ])('never offers its conversation to aider after $exit', async ({ leave }) => {
+      const pane = await claudeTurn()
+      leave(pane.store())
+      expect(pane.store().getConversationIdentityForPane(PANE)).toMatchObject({
+        facet: { agentType: 'claude' },
+        rowIsRemnant: true
+      })
+      await startByHand(pane, 'aider')
+      await expectNoConversation(pane.runtime)
+      advanceClock(THIRTY_ONE_MINUTES_MS)
+      await expectNoConversation(pane.runtime)
+    })
+
+    it('never offers its conversation to gemini when the exit went unobserved', async () => {
+      const pane = await claudeTurn()
+      await startByHand(pane, 'gemini')
+      expect(pane.store().getConversationIdentityForPane(PANE)).toMatchObject({
+        rowAgent: 'claude',
+        rowIsRemnant: false
+      })
+      await expectNoConversation(pane.runtime)
+      advanceClock(THIRTY_ONE_MINUTES_MS)
+      await expectNoConversation(pane.runtime)
+    })
+
+    it('never offers its conversation to a Codex Orca launched there before Codex reports', async () => {
+      const pane = await claudeTurn()
+      pane.store().dropStatusEntry(PANE)
+      await startByHand(pane, null)
+      pane.runtime.recordLaunch(PTY_ID, 'codex')
+      await expectNoConversation(pane.runtime)
+    })
   })
 })

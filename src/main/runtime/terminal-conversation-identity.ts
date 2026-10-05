@@ -38,40 +38,52 @@ export type LegacyIdentityCandidate = {
   source: 'legacy-row' | 'renderer'
 }
 
+/** Why: Agent Teams runs the real `claude` binary, whose hooks always report `claude`. */
+function currentEvidenceAgent(agent: AgentType | null): AgentType | null {
+  return agent === 'claude-agent-teams' ? 'claude' : agent
+}
+
 /**
  * The pane's published identity, or `undefined` (absent) when the host holds none it can vouch for
- * here. A facet is published only for the agent the pane holds now: the row's current agent, else
- * the launch/foreground owner; another agent's conversation is withheld, never published as empty.
+ * here. A facet is published only for the agent the pane holds now: it must match every piece of
+ * current evidence (a live row's agent, the recognized foreground agent), else the launch/hook
+ * owner; another agent's conversation is withheld, never published as empty.
  */
 export function resolveTerminalConversationIdentity(args: {
   stored: StoredAgentConversationRead | undefined
   legacy: LegacyIdentityCandidate | null
   ownerAgent: AgentType | null
   ownerOptions: CompatibleAgentOwnerOptions
+  foregroundAgent: AgentType | null
 }): TerminalConversationIdentity | undefined {
   const { stored, ownerAgent, ownerOptions } = args
   if (stored) {
     const facet = stored.facet
-    // Why the row first: launch provenance outlives its agent; the row follows a hand-started one.
-    const paneAgent = stored.rowAgent ?? ownerAgent
-    if (
-      !providerSessionMatchesAgent({
+    const matchesFacet = (agent: AgentType | null): boolean =>
+      providerSessionMatchesAgent({
         sessionAgent: facet.agentType,
-        agent: paneAgent,
-        ownerAgent: paneAgent,
+        agent,
+        ownerAgent: agent,
         ownerOptions
       })
-    ) {
+    // Why: a remnant names the agent that left, and launch provenance outlives its agent.
+    const currentAgents = [
+      stored.rowIsRemnant ? null : stored.rowAgent,
+      currentEvidenceAgent(args.foregroundAgent)
+    ].filter((agent): agent is AgentType => agent !== null)
+    const checkedAgents = currentAgents.length > 0 ? currentAgents : [ownerAgent]
+    if (!checkedAgents.every(matchesFacet)) {
       return undefined
     }
+    // Why: name the pane's agent as the status does: the owner when compatible, else the current agent.
+    const namedAgent = [ownerAgent, ...currentAgents].find(
+      (agent) => agent !== null && matchesFacet(agent)
+    )
     return {
       ...facet,
       agentType:
-        resolveCompatibleAgentTypeForOwner(
-          facet.agentType,
-          ownerAgent ?? paneAgent,
-          ownerOptions
-        ) ?? facet.agentType,
+        resolveCompatibleAgentTypeForOwner(facet.agentType, namedAgent, ownerOptions) ??
+        facet.agentType,
       source: stored.rowIsRemnant ? 'retained' : 'live'
     }
   }
