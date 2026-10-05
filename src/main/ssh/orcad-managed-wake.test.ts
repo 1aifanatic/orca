@@ -127,6 +127,48 @@ describe('wakeStoppedManagedOrcad', () => {
     expect(host.fence).toBe(false)
   })
 
+  it('knows a fence its wake took even when the drop came before the owner token landed', async () => {
+    host = stoppedHost()
+    const lost = Object.assign(new Error('connection lost'), { sshChannelCloseConfirmed: false })
+    vi.mocked(execCommand).mockImplementation(async (_conn, command) => {
+      if (command.includes('.orca-wake-owner') && command.includes('printf')) {
+        throw lost
+      }
+      return host.exec(command)
+    })
+    await expect(wakeStoppedManagedOrcad(slot)).rejects.toBe(lost)
+    expect(host.fence).toBe(true)
+    expect(host.wakeOwner).toBeNull()
+
+    vi.mocked(execCommand).mockImplementation(async (_conn, command) => host.exec(command))
+    expect(await wakeStoppedManagedOrcad(slot)).toMatchObject({ outcome: 'started' })
+    expect(launches()).toHaveLength(1)
+    expect(host.fence).toBe(false)
+  })
+
+  it('lets a wake on a dropped connection settle before a reconnected wake reads the fence', async () => {
+    host = stoppedHost()
+    const lost = Object.assign(new Error('connection lost'), { sshChannelCloseConfirmed: false })
+    let drop!: () => void
+    vi.mocked(execCommand).mockImplementation(async (_conn, command) => {
+      if (command.includes('.orca-wake-owner') && command.includes('printf') && !drop) {
+        await new Promise<void>((resolve) => (drop = resolve))
+        throw lost
+      }
+      return host.exec(command)
+    })
+    const dropped = wakeStoppedManagedOrcad(slot)
+    await vi.waitFor(() => expect(drop).toBeDefined())
+
+    // The reconnected wake starts while the first is still holding the fence it just took.
+    const reconnected = wakeStoppedManagedOrcad(slot)
+    drop()
+    await expect(dropped).rejects.toBe(lost)
+    expect(await reconnected).toMatchObject({ outcome: 'started' })
+    expect(launches()).toHaveLength(1)
+    expect(host.fence).toBe(false)
+  })
+
   it('never releases a fence another run took after its own interrupted fence was cleared', async () => {
     host = stoppedHost()
     const lost = Object.assign(new Error('connection lost'), { sshChannelCloseConfirmed: false })
