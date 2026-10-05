@@ -111,6 +111,7 @@ const LIVE_TERMINAL_CODES = new Set([
   'orcad_initial_runtime_live',
   'orcad_update_strands_live_terminals',
   'orcad_update_terminals_running',
+  'orcad_update_ends_in_process_terminals',
   'orcad_rollback_orphans_live_terminals',
   'orcad_rollback_strands_live_terminals',
   'orcad_recovery_orphans_live_terminals',

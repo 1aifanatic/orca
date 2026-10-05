@@ -71,7 +71,8 @@ const WAITING_CODES: ReadonlySet<string> = new Set<
   'orcad_update_terminals_running',
   'orcad_update_terminal_census_unavailable',
   'orcad_update_strands_live_terminals',
-  'orcad_update_daemon_protocol_unverifiable'
+  'orcad_update_daemon_protocol_unverifiable',
+  'orcad_update_ends_in_process_terminals'
 ])
 
 /**

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import { assessOrcadRollback, planOrcadUpdate } from './orcad-update-plan'
+import { collectOrcadTerminalCensus } from '../orcad/orcad-terminal-census'
+import type { DaemonSessionInfo } from '../daemon/types'
 import {
   emptyOrcadActivationRecord,
   type OrcadActivationRecord,
@@ -83,6 +85,37 @@ describe('planOrcadUpdate', () => {
     })
     expect(plan).toMatchObject({ action: 'proceed', preservesLiveDaemon: true })
   })
+
+  it.each([false, true])(
+    "never claims a degraded host's in-process terminals survive (force: %s)",
+    async (force) => {
+      // One daemon session on a reachable protocol plus two terminals inside orcad itself.
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the census reads only createdAt and protocolVersion.
+      const daemonSession = {
+        sessionId: 's',
+        createdAt: 5,
+        protocolVersion: 3
+      } as DaemonSessionInfo
+      const census = await collectOrcadTerminalCensus(
+        1,
+        async () => [daemonSession],
+        async () => 2
+      )
+      expect(census).toMatchObject({ liveSessions: 3, inProcessSessions: 2 })
+      const plan = planOrcadUpdate({
+        candidateDaemonProtocol: PROTOCOL,
+        record: record(),
+        candidateVersion: '0.3.0+cc01',
+        census,
+        force
+      })
+      expect(plan).toMatchObject({
+        action: 'defer',
+        code: 'orcad_update_ends_in_process_terminals'
+      })
+      expect(plan.action === 'defer' && plan.reason).toContain('Any restart ends them')
+    }
+  )
 
   it('replaces the daemon only when nothing is running under it', () => {
     const plan = planOrcadUpdate({

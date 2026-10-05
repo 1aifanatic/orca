@@ -71,6 +71,7 @@ export const SSH_HOST_SERVER_FAILURE_VALUES = [
   'activation_not_listening',
   'activation_pty_self_test_failed',
   'update_daemon_protocol_unverifiable',
+  'update_ends_in_process_terminals',
   'update_strands_live_terminals',
   'update_terminal_census_unavailable',
   'update_terminals_running',

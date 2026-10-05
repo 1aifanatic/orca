@@ -15,14 +15,26 @@ describe('orcad terminal census', () => {
         async () => [session(50), session(100), session(150)],
         async () => 0
       )
-    ).resolves.toEqual({ liveSessions: 3, startedSinceActivation: 2, daemonProtocolVersion: 7 })
+    ).resolves.toEqual({
+      liveSessions: 3,
+      startedSinceActivation: 2,
+      daemonProtocolVersion: 7,
+      inProcessSessions: 0
+    })
   })
 
   it('reports zero, not unknown, for an answered empty daemon', async () => {
-    await expect(collectOrcadTerminalCensus(100, async () => [], async () => 0)).resolves.toEqual({
+    await expect(
+      collectOrcadTerminalCensus(
+        100,
+        async () => [],
+        async () => 0
+      )
+    ).resolves.toEqual({
       liveSessions: 0,
       startedSinceActivation: 0,
-      daemonProtocolVersion: null
+      daemonProtocolVersion: null,
+      inProcessSessions: 0
     })
   })
 
@@ -37,7 +49,11 @@ describe('orcad terminal census', () => {
   })
 
   it('leaves the since-activation count unknown when a session has no creation time', async () => {
-    const census = await collectOrcadTerminalCensus(0, async () => [session(0)], async () => 0)
+    const census = await collectOrcadTerminalCensus(
+      0,
+      async () => [session(0)],
+      async () => 0
+    )
     expect(census).toMatchObject({ liveSessions: 1, startedSinceActivation: null })
   })
 
@@ -53,16 +69,24 @@ describe('orcad terminal census', () => {
     await expect(collectOrcadTerminalCensus(0, list, async () => 0)).resolves.toEqual({
       liveSessions: null,
       startedSinceActivation: null,
-      daemonProtocolVersion: null
+      daemonProtocolVersion: null,
+      inProcessSessions: null
     })
   })
 
   it('counts terminals a degraded daemon left running in orcad itself', async () => {
     // Empty daemon, one in-process agent: a restart would kill it, so the census must not read 0.
-    await expect(collectOrcadTerminalCensus(100, async () => [], async () => 1)).resolves.toEqual({
+    await expect(
+      collectOrcadTerminalCensus(
+        100,
+        async () => [],
+        async () => 1
+      )
+    ).resolves.toEqual({
       liveSessions: 1,
       startedSinceActivation: null,
-      daemonProtocolVersion: null
+      daemonProtocolVersion: null,
+      inProcessSessions: 1
     })
   })
 
