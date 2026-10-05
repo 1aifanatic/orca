@@ -1,57 +1,48 @@
-// What every planner and resolver of one assembler shares, and where a joined row goes.
+// What every decision of one assembler shares, and where a joined row goes.
 
 import type {
   AgentJournalProducerLinkage,
+  AgentJournalTurnScope,
   AgentType
 } from '../../../shared/agent-session-journal-types'
-import type { StructuredAgentSessionTransitionJournal } from '../agent-session-wire/structured-agent-session-transition'
 import type { ProviderTimelineJoin } from './provider-timeline-event'
-import type { ProviderTimelineJoins, ProviderTimelinePlacement } from './provider-timeline-joins'
+import { providerKey, type ProviderTimelineRows } from './provider-timeline-rows'
 import type { ProviderTimelineState } from './provider-timeline-state'
 
 export type ProviderTimelineContext = {
   sessionId: string
   agent: AgentType
-  joins: ProviderTimelineJoins
-  /** The truth decisions run on; resolvers only. */
-  ledger: ProviderTimelineState
+  generation: string
+  rows: ProviderTimelineRows
   /** The session's own provider thread; a join naming another thread is subagent work. */
   ownThread?: () => string | null
-  /** A settlement id no other settlement of this journal shares. */
-  settlementId(what: string): string
 }
 
-/** The ledger, with its open turn taken from the journal before its first decision runs, and
- *  ended when another writer of the journal ended it. */
-export function providerTimelineLedger(
+/** A settlement id no other settlement of this journal shares. */
+export function providerTimelineSettlementId(
   context: ProviderTimelineContext,
-  journal: StructuredAgentSessionTransitionJournal
-): ProviderTimelineState {
-  context.ledger.reconcile(journal)
-  return context.ledger
+  serial: number,
+  what: string
+): string {
+  return `provider-timeline:${context.sessionId}:${context.generation}:${serial}:${what}`
 }
 
-/** The turn a new row joins: the one the provider names (subagent work joins the open turn while
- *  keeping its own turn in its identity), else the open one, else none. */
+/** The turn a new row joins: the one the provider names, else the open one, else none. Subagent
+ *  work on a thread of its own joins the open turn whatever turn it names. */
 export function providerTimelinePlacement(
   context: ProviderTimelineContext,
   state: ProviderTimelineState,
   join: ProviderTimelineJoin | undefined
-): ProviderTimelinePlacement {
+): AgentJournalTurnScope {
   const thread = join?.thread ?? null
   if (join?.turn === undefined) {
-    return { thread, turn: state.open?.address.key ?? null, scope: state.scope }
+    return state.scope
   }
-  const key = { source: 'provider', value: join.turn } as const
   const own = context.ownThread?.() ?? null
-  const subagent = thread !== null && own !== null && thread !== own
-  return {
-    thread,
-    turn: key,
-    scope: subagent
-      ? state.scope
-      : { kind: 'turn', turnItemId: context.joins.turn(key, state.namespace).itemId }
+  if (thread !== null && own !== null && thread !== own) {
+    return state.scope
   }
+  return { kind: 'turn', turnItemId: context.rows.turn(providerKey(join.turn)).itemId }
 }
 
 /** What an entry the assembler holds open costs: its body, its producer, and every provider

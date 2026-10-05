@@ -7,49 +7,32 @@ import {
   openProviderTimelineRig,
   openUnboundProviderTimelineAssembler,
   providerItemId,
-  providerTurnItemId,
-  type ProviderTimelineRig
+  providerTurnItemId
 } from './provider-timeline-assembler-test-support'
 
 afterEach(closeProviderTimelineRigs)
 
-/** A journal that already holds a settled `old` turn and a running `live` one. */
-async function oldAndLiveTurns(): Promise<ProviderTimelineRig> {
-  const rig = await openProviderTimelineRig()
-  rig.assembler.apply({ type: 'turn.open', turn: 'old', at: 1_000 })
-  rig.assembler.apply({ type: 'turn.end', turn: 'old', at: 2_000, state: 'completed' })
-  rig.assembler.apply({ type: 'turn.open', turn: 'live', at: 3_000 })
-  await rig.rows()
-  return rig
-}
-
-async function messages(rig: ProviderTimelineRig): Promise<(string | undefined)[]> {
-  return (await rig.rows())
-    .filter((row) => row.body.kind === 'message')
-    .map((row) => messageText(row.body))
-}
-
-describe('a stream follows the row it resolved to, not the one planning expected', () => {
-  it('stops at the end of the turn its row landed in, though planning expected another', async () => {
-    const rig = await oldAndLiveTurns()
+describe("a stream writes only while its row's turn runs", () => {
+  it('stops at the end of its turn, though its next delta was admitted before the end was written', async () => {
+    const rig = await openProviderTimelineRig()
     const { assembler, bind, drained } = openUnboundProviderTimelineAssembler(rig.journal)
-    // Planned before bind, so planning expects `old` to be open; it is a replay of a settled turn.
-    assembler.apply({ type: 'turn.open', turn: 'old', at: 1_000 })
+    assembler.apply({ type: 'turn.open', turn: 't1', at: 1_000 })
     assembler.apply({ type: 'text.delta', item: { id: 'm' }, channel: 'assistant', text: 'Hel' })
-    await bind()
     assembler.flush()
+    assembler.apply({ type: 'turn.end', turn: 't1', at: 2_000, state: 'completed' })
+    // Admitted before bind: only its write can see that the turn is over.
+    expect(
+      assembler.apply({ type: 'text.delta', item: { id: 'm' }, channel: 'assistant', text: 'lo' })
+        .dropped
+    ).toBeUndefined()
+    assembler.flush()
+    await bind()
     await drained()
+    expect(await rig.turn('t1')).toMatchObject({ state: 'completed' })
     expect((await rig.row(providerItemId('item', 'm')))?.turnScope).toEqual({
       kind: 'turn',
-      turnItemId: providerTurnItemId('live')
+      turnItemId: providerTurnItemId('t1')
     })
-
-    assembler.apply({ type: 'turn.end', turn: 'live', at: 4_000, state: 'completed' })
-    await drained()
-    expect(await rig.turn('live')).toMatchObject({ state: 'completed' })
-    assembler.apply({ type: 'text.delta', item: { id: 'm' }, channel: 'assistant', text: 'lo' })
-    assembler.flush()
-    await drained()
     expect(messageText((await rig.row(providerItemId('item', 'm')))?.body)).toBe('Hel')
   })
 
@@ -97,66 +80,6 @@ describe('a stream follows the row it resolved to, not the one planning expected
       body: { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'Hello.' }] }
     })
     expect(messageText((await rig.row(providerItemId('item', 'm')))?.body)).toBe('Hello.')
-  })
-})
-
-describe('a message boundary is the journal decision', () => {
-  it('keeps an anonymous message whole across a queued open the journal held as a replay', async () => {
-    const rig = await oldAndLiveTurns()
-    const { assembler, bind } = openUnboundProviderTimelineAssembler(rig.journal)
-    assembler.apply({ type: 'turn.open', turn: 'live', at: 3_000 })
-    assembler.apply({
-      type: 'text.delta',
-      item: { stream: 'reply' },
-      channel: 'assistant',
-      text: 'Hel'
-    })
-    assembler.apply({ type: 'turn.open', turn: 'old', at: 1_000 })
-    assembler.apply({
-      type: 'text.delta',
-      item: { stream: 'reply' },
-      channel: 'assistant',
-      text: 'lo'
-    })
-    assembler.apply({ type: 'text.close', item: { stream: 'reply' } })
-    await bind()
-    expect(await messages(rig)).toEqual(['Hello'])
-  })
-
-  it('still splits an anonymous message at a turn the journal really opened', async () => {
-    const rig = await oldAndLiveTurns()
-    const { assembler, bind } = openUnboundProviderTimelineAssembler(rig.journal)
-    assembler.apply({
-      type: 'text.delta',
-      item: { stream: 'reply' },
-      channel: 'assistant',
-      text: 'One'
-    })
-    assembler.apply({ type: 'turn.open', turn: 'next', at: 4_000 })
-    assembler.apply({
-      type: 'text.delta',
-      item: { stream: 'reply' },
-      channel: 'assistant',
-      text: 'Two'
-    })
-    assembler.apply({ type: 'text.close', item: { stream: 'reply' } })
-    await bind()
-    expect(await messages(rig)).toEqual(['One', 'Two'])
-  })
-
-  it('resumes a named message after a queued open the journal held as a replay', async () => {
-    const rig = await oldAndLiveTurns()
-    const { assembler, bind } = openUnboundProviderTimelineAssembler(rig.journal)
-    assembler.apply({ type: 'text.delta', item: { id: 'm' }, channel: 'assistant', text: 'Hel' })
-    assembler.apply({ type: 'turn.open', turn: 'old', at: 1_000 })
-    assembler.apply({ type: 'text.delta', item: { id: 'm' }, channel: 'assistant', text: 'lo' })
-    assembler.apply({ type: 'text.close', item: { id: 'm' } })
-    await bind()
-    expect(await messages(rig)).toEqual(['Hello'])
-    expect((await rig.row(providerItemId('item', 'm')))?.turnScope).toEqual({
-      kind: 'turn',
-      turnItemId: providerTurnItemId('live')
-    })
   })
 })
 

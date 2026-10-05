@@ -3,19 +3,21 @@ import {
   MAX_PROVIDER_DIAGNOSTIC_CHARS,
   type SubmissionRejectionFact
 } from '../../../shared/agent-session-failure'
-import { endedRunningAgentJournalToolCall } from '../../../shared/agent-journal-tool-call-lifecycle'
 import { parseAgentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import { STALE_SESSION_ROW_PREFIX } from '../../../shared/agent-session-stop-row-identity'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
-  type AgentJournalItemBody,
   type AgentJournalRenderItem
 } from '../../../shared/agent-session-journal-types'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import { partitionJournalLifecycleMutations } from '../agent-session-journal/journal-lifecycle-batch-partition'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
-import { cancelledJournalPromptBody } from '../agent-session-journal/journal-prompt-body-bounds'
+import {
+  requiresTerminalSettlement,
+  runningCallEnd,
+  terminalAgentJournalBody
+} from '../agent-session-journal/journal-terminal-settlement'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
   agentSessionFailureWords,
@@ -34,7 +36,6 @@ import {
   runningTurnLifecycleRevisions,
   stopFoundTurnLiveAt,
   turnVerdictFromDeathEvidence,
-  UNVERIFIABLE_TURN_VERDICT,
   type StructuredAgentSessionTurnVerdict
 } from './structured-agent-session-stale-turn-verdict'
 import {
@@ -177,9 +178,12 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
         turnScope: exitedRootTurnScope(items, input.verdict)
       })
     }
+    const bodies = new Map(items.map((item) => [item.itemId, item.body]))
     for (const item of items) {
       const identity = parseAgentJournalItemKey(item.itemId)
-      const body = terminalDeadGenerationBody(item, input.verdict)
+      // Ended as its turn is: a proven death cuts a running call short.
+      const end = runningCallEnd(item.turnScope, (id) => bodies.get(id), input.verdict.state)
+      const body = terminalAgentJournalBody(item.body, end)
       if (identity && body) {
         mutations.push({
           kind: 'item',
@@ -239,7 +243,10 @@ export async function settleStaleStructuredAgentSessionState(input: {
   const mutations = provenUnverifiedToolCallRevisions(items, input.deathEvidence, journal)
   for (const item of items) {
     const identity = parseAgentJournalItemKey(item.itemId)
-    const body = terminalDeadGenerationBody(item, verdictFor(item))
+    // A turn already settled (a person's Stop) ends its calls as it ended; only a turn still running
+    // leaves them to the evidence.
+    const end = runningCallEnd(item.turnScope, (id) => journal.itemBody(id), verdictFor(item).state)
+    const body = terminalAgentJournalBody(item.body, end)
     if (identity && body) {
       mutations.push({
         kind: 'item',
@@ -293,25 +300,8 @@ export async function settleStaleStructuredAgentSessionState(input: {
   return mutations.length
 }
 
-function terminalDeadGenerationBody(
-  item: AgentJournalRenderItem,
-  verdict: StructuredAgentSessionTurnVerdict
-): AgentJournalItemBody | null {
-  if (item.body.kind === 'tool-call' && item.body.state === 'running') {
-    // Ended as its turn is: a proven death cuts it short.
-    return endedRunningAgentJournalToolCall(item.body, verdict.state)
-  }
-  if (item.body.kind === 'approval' || item.body.kind === 'question') {
-    return item.body.resolution.state === 'pending' ? cancelledJournalPromptBody(item.body) : null
-  }
-  return null
-}
-
 function isUnfinishedItem(item: AgentJournalRenderItem): boolean {
-  return (
-    readAgentJournalTurn(item.body)?.state === 'running' ||
-    terminalDeadGenerationBody(item, UNVERIFIABLE_TURN_VERDICT) !== null
-  )
+  return requiresTerminalSettlement(item.body)
 }
 
 /** Work that means the provider was MID-RESPONSE. A pending approval or question is the provider

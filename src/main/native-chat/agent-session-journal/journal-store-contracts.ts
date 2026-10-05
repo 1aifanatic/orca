@@ -62,10 +62,7 @@ export type JournalItemLinkageVisitor = (
   itemId: string,
   sequence: number,
   body: AgentJournalItemBody,
-  attribution: AgentJournalProducerLinkage & {
-    turnScope?: AgentJournalTurnScope
-    providerItemRef?: string
-  }
+  attribution: AgentJournalProducerLinkage & { turnScope?: AgentJournalTurnScope }
 ) => void
 
 export type JournalLifecycleBatchInput = {

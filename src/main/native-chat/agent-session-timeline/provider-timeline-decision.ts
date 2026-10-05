@@ -1,4 +1,10 @@
-// The shape of a decision on one non-text event, and the reads every rule shares.
+// What a non-text event does, in two parts that never share a clock.
+//
+// Admission decides from the state (and the journal's rows by key, when bound) whether the event
+// is dropped, what it holds open, and how it changes the state; it writes and allocates nothing.
+// Each write's resolver decides, when the write runs, what the journal holds then: a resume admits
+// events before the sink binds, and the dead-generation sweep lands between admission and the
+// write, so every journal-dependent choice is made there.
 
 import type {
   AgentJournalItemBody,
@@ -11,94 +17,118 @@ import type { StructuredAgentSessionTransitionJournal } from '../agent-session-w
 import type { ProviderTimelineHold } from './provider-timeline-budget'
 import type { ProviderTimelineContext } from './provider-timeline-context'
 import type { ProviderTimelineEvent } from './provider-timeline-event'
-import type { ProviderTimelineKey } from './provider-timeline-identity'
-import type { ProviderTimelineTurnRef } from './provider-timeline-joins'
 import {
-  providerTimelineSettlement,
-  type ProviderTimelineTurnEnd
-} from './provider-timeline-settlement'
+  decideFrame,
+  decideItem,
+  decideRequest,
+  decideWithdrawal
+} from './provider-timeline-item-decisions'
+import type { ProviderTimelineTurnRef } from './provider-timeline-rows'
 import type { ProviderTimelineState } from './provider-timeline-state'
+import {
+  decideContextUsage,
+  decideHistory,
+  decideInput,
+  decideSessionEnd,
+  decideTurnEnd,
+  decideTurnOpen,
+  decideTurnSettled
+} from './provider-timeline-turn-decisions'
 
-/** Why an event wrote nothing. Each is a grammar rule the adapter broke or a replay it repeated. */
+/** Why an event wrote nothing. Each is a grammar rule the adapter broke or a fact already held. */
 export type ProviderTimelineDropRule =
   | 'session-ended'
   | 'turn-duplicate'
-  | 'turn-replayed'
+  | 'turn-settled'
   | 'turn-unknown'
   | 'no-turn'
   | 'item-settled'
-  | 'item-replayed'
   | 'request-duplicate'
-  | 'request-replayed'
   | 'request-unknown'
   | 'stream-unknown'
   | 'stream-mismatch'
 
-/** A non-text event with the keys planning minted for it, so execution names the same ones. */
+export type ProviderTimelineDecidedEvent =
+  | Exclude<ProviderTimelineEvent, { type: 'text.delta' | 'text.close' | 'activity' }>
+  /** The assembler's own: the journal shows the open turn settled by another writer (a person's
+   *  Stop), so its text stops and its prompts are cancelled; its running tool calls wait for the
+   *  provider's own `turn.end`. */
+  | { type: 'turn.settled'; turn: ProviderTimelineTurnRef }
 
-/** A non-text event with the keys planning minted for it, so execution names the same ones. */
-export type ProviderTimelineDecidedEvent = Exclude<
-  ProviderTimelineEvent,
-  { type: 'text.delta' | 'text.close' | 'activity' }
-> & { minted?: ProviderTimelineKey }
+type Journal = StructuredAgentSessionTransitionJournal
 
 export type ProviderTimelineResolvedWrite = {
   identity: AgentJournalItemIdentity
   body: AgentJournalItemBody
-  options?: StructuredAgentSessionItemAppendOptions
+}
+
+/** One row write: where it goes is fixed at admission, what it says is resolved when it runs. */
+export type ProviderTimelineItemWrite = {
+  reservedBytes: number
+  lifecycle: boolean
+  /** A new row's turn is admission's placement; an existing row keeps its own. */
+  options: StructuredAgentSessionItemAppendOptions
+  resolve: (journal: Journal) => ProviderTimelineResolvedWrite | null
 }
 
 export type ProviderTimelineDecision = {
   dropped?: ProviderTimelineDropRule
-  /** What the event would hold open, for the budget. */
+  /** What the event holds open, for the budget. */
   hold?: ProviderTimelineHold
-  /** The event's change to what is known: the forecast's at admission, the ledger's at execution. */
+  /** The event's change to the state, made when the sink admits it. */
   commit?: (state: ProviderTimelineState) => void
-  /** Execution only: the settlement step's mutations and the item step's write. */
-  settle?: readonly JournalLifecycleMutationInput[]
-  write?: ProviderTimelineResolvedWrite | null
-  /** The item the event closes, whose stream it releases. */
+  /** The settlement the event owes, read from the journal when it runs. */
+  settle?: { what: string; resolve: (journal: Journal) => readonly JournalLifecycleMutationInput[] }
+  writes?: readonly ProviderTimelineItemWrite[]
+  /** The streamed item whose text this event's full snapshot replaces. */
   closes?: string
+  /** The turn this event ends; `current` unless another turn is open, whose text and activity
+   *  an earlier turn's end leaves alone. */
+  ends?: { turnItemId: string; current: boolean }
 }
 
 export type ProviderTimelineDecisionInput = {
   context: ProviderTimelineContext
   state: ProviderTimelineState
-  journal: StructuredAgentSessionTransitionJournal | null
-  /** Execution: place rows and compute writes. Planning never does. */
-  execute: boolean
+  /** The journal at admission; null before the sink binds. */
+  journal: Journal | null
+  /** Serials this event takes, committed with it. */
+  serial: () => number
 }
 
-export const providerKey = (value: string): ProviderTimelineKey => ({ source: 'provider', value })
-
-export function settledTool(body: AgentJournalItemBody | null): boolean {
-  return body?.kind === 'tool-call' && body.state !== 'running'
-}
-
-export function runningTool(body: AgentJournalItemBody): boolean {
-  return body.kind === 'tool-call' && body.state === 'running'
-}
-
-export function pendingPrompt(body: AgentJournalItemBody | null): boolean {
-  return (
-    (body?.kind === 'approval' || body?.kind === 'question') && body.resolution.state === 'pending'
-  )
-}
-
-export function turnOf(scope: { kind: string; turnItemId?: string }): string | null {
-  return scope.kind === 'turn' ? (scope.turnItemId ?? null) : null
-}
-
-/** A turn's journal-derived settlement, at execution. */
-export function settlementOf(
+export function decideProviderTimelineEvent(
   input: ProviderTimelineDecisionInput,
-  turn: ProviderTimelineTurnRef,
-  end: ProviderTimelineTurnEnd
-): readonly JournalLifecycleMutationInput[] | undefined {
-  if (!input.execute || !input.journal) {
-    return undefined
+  event: ProviderTimelineDecidedEvent
+): ProviderTimelineDecision {
+  if (input.state.ended) {
+    return { dropped: 'session-ended' }
   }
-  return providerTimelineSettlement(input.journal, { turnItemId: turn.itemId }, [turn], end)
+  switch (event.type) {
+    case 'input.accepted':
+      return decideInput(input, event)
+    case 'input.history':
+      return decideHistory(input, event)
+    case 'turn.open':
+      return decideTurnOpen(input, event)
+    case 'turn.end':
+      return decideTurnEnd(input, event)
+    case 'turn.settled':
+      return decideTurnSettled(event)
+    case 'item.open':
+    case 'item.update':
+    case 'item.close':
+      return decideItem(input, event)
+    case 'request.open':
+      return decideRequest(input, event)
+    case 'request.withdrawn':
+      return decideWithdrawal(input, event)
+    case 'context.usage':
+      return decideContextUsage(input, event)
+    case 'provider.frame':
+      return decideFrame(input, event)
+    case 'session.ended':
+      return decideSessionEnd(input, event)
+  }
 }
 
 /** A replayed event for a turn the provider itself completed: the journal holds that turn whole.

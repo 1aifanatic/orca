@@ -68,7 +68,7 @@ describe('provider timeline session end', () => {
     expect(turn).not.toHaveProperty('outcome')
   })
 
-  it('drops everything after the session ended until a reset starts a fresh namespace', async () => {
+  it('drops everything after the session ended', async () => {
     const rig = await openProviderTimelineRig()
     rig.assembler.apply({ type: 'turn.open', at: 1_000 })
     const first = rig.assembler.openTurnId
@@ -82,16 +82,9 @@ describe('provider timeline session end', () => {
       rig.assembler.apply({ type: 'item.open', item: 'call-a', body: runningTool('read') }).dropped
     ).toBe('session-ended')
     expect(rig.assembler.openTurnId).toBeNull()
-
-    rig.assembler.apply({ type: 'session.reset', namespace: 'provider-session-2' })
-    rig.assembler.apply({ type: 'turn.open', at: 3_000 })
-    const second = rig.assembler.openTurnId
-    expect(second).not.toBeNull()
-    expect(second).not.toBe(first)
     const turns = (await rig.rows()).filter((row) => row.body.kind === 'turn')
     expect(turns.map((row) => row.body)).toEqual([
-      expect.objectContaining({ turnId: first, state: 'interrupted' }),
-      expect.objectContaining({ turnId: second, state: 'running' })
+      expect.objectContaining({ turnId: first, state: 'interrupted' })
     ])
   })
 })
@@ -149,7 +142,11 @@ describe('provider timeline requests', () => {
     rig.assembler.apply({ type: 'turn.open', turn: 'turn-1', at: 1_000 })
     rig.assembler.apply({ type: 'request.open', request: 'perm-1', body: approval })
     rig.assembler.apply({ type: 'request.withdrawn', request: 'perm-1' })
-    expect(rig.assembler.apply({ type: 'request.withdrawn', request: 'perm-1' }).dropped).toBe(
+    // The journal holds the row it withdrew: a repeat is admitted and finds nothing pending.
+    expect(rig.assembler.apply({ type: 'request.withdrawn', request: 'perm-1' })).toEqual({
+      admission: { accepted: true }
+    })
+    expect(rig.assembler.apply({ type: 'request.withdrawn', request: 'perm-9' }).dropped).toBe(
       'request-unknown'
     )
     expect((await rig.row(providerItemId('request', 'perm-1')))?.body).toMatchObject({

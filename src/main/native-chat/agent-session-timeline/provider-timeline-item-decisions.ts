@@ -1,77 +1,95 @@
-// What item, request and frame events do, decided on the forecast and again on the ledger.
+// What item, request and frame events do: admitted on the state, written against the journal.
 
 import { isDeepStrictEqual } from 'node:util'
-
-import { requiresTerminalSettlement } from '../agent-session-journal/journal-terminal-settlement'
+import {
+  AGENT_JOURNAL_THREAD_SCOPE,
+  type AgentJournalItemBody
+} from '../../../shared/agent-session-journal-types'
 import { cancelledJournalPromptBody } from '../agent-session-journal/journal-prompt-body-bounds'
+import { requiresTerminalSettlement } from '../agent-session-journal/journal-terminal-settlement'
+import { estimateStructuredAgentSessionItemBytes } from '../agent-session-wire/structured-agent-session-event-sink-estimate'
+import type { StructuredAgentSessionTransitionJournal } from '../agent-session-wire/structured-agent-session-transition'
 import { unhandledProviderFrameJournalItem } from '../agent-session-wire/unhandled-provider-frame'
 import { relightsProviderTimelineBackgroundTask } from './provider-timeline-background-tasks'
 import { providerTimelineEntryBytes, providerTimelinePlacement } from './provider-timeline-context'
-import {
-  pendingPrompt,
-  providerKey,
-  replaysCompletedTurn,
-  runningTool,
-  settledTool,
-  turnOf,
-  type ProviderTimelineDecidedEvent,
-  type ProviderTimelineDecision,
-  type ProviderTimelineDecisionInput
+import type {
+  ProviderTimelineDecidedEvent,
+  ProviderTimelineDecision,
+  ProviderTimelineDecisionInput
 } from './provider-timeline-decision'
-import { providerTimelineItemClass, type ProviderTimelineKey } from './provider-timeline-identity'
-import type { ProviderTimelineItemJoin } from './provider-timeline-joins'
+import {
+  providerKey,
+  providerTimelineTurnRowState,
+  turnOf,
+  type ProviderTimelineRowId
+} from './provider-timeline-rows'
+import type { ProviderTimelineRequestBody } from './provider-timeline-event'
+import type { ProviderTimelineOpenItem } from './provider-timeline-state'
+
+type Journal = StructuredAgentSessionTransitionJournal
+type ItemChange = 'open' | 'update' | 'close'
+
+function settledTool(body: AgentJournalItemBody | null): boolean {
+  return body?.kind === 'tool-call' && body.state !== 'running'
+}
+
+function pendingPrompt(body: AgentJournalItemBody | null): body is ProviderTimelineRequestBody {
+  return (
+    (body?.kind === 'approval' || body?.kind === 'question') && body.resolution.state === 'pending'
+  )
+}
+
+/** Whether the row the journal holds refuses this write: a settled tool keeps its first terminal
+ *  body (whoever settled it, the sweep included), a settled background task is never relit, and a
+ *  turn that is over takes no new work that waits on a settlement. Work it still holds open (a
+ *  person's Stop leaves the provider's running tools) takes the provider's updates until settled. */
+function refusesItemWrite(
+  journal: Journal,
+  row: ProviderTimelineRowId,
+  change: ItemChange,
+  body: AgentJournalItemBody,
+  placed: string | null
+): boolean {
+  const held = journal.item(row.itemId)
+  const turn = held ? turnOf(held.turnScope ?? AGENT_JOURNAL_THREAD_SCOPE) : placed
+  if (
+    held &&
+    settledTool(held.body) &&
+    (change === 'close' || !isDeepStrictEqual(held.body, body))
+  ) {
+    return true
+  }
+  if (relightsProviderTimelineBackgroundTask(held?.body ?? null, body)) {
+    return true
+  }
+  return (
+    requiresTerminalSettlement(body) &&
+    !(held && requiresTerminalSettlement(held.body)) &&
+    turn !== null &&
+    providerTimelineTurnRowState(journal, turn) === 'settled'
+  )
+}
 
 export function decideItem(
   input: ProviderTimelineDecisionInput,
   event: Extract<ProviderTimelineDecidedEvent, { type: 'item.open' | 'item.update' | 'item.close' }>
 ): ProviderTimelineDecision {
   const { state, journal, context } = input
-  if (event.replay && replaysCompletedTurn(input, event.join)) {
-    return { dropped: 'turn-replayed' }
-  }
   const change =
     event.type === 'item.open' ? 'open' : event.type === 'item.update' ? 'update' : 'close'
-  const join: ProviderTimelineItemJoin = {
-    family: 'item',
-    key: providerKey(event.item),
-    thread: event.join?.thread ?? null
-  }
-  const ref = context.joins.reference(join, state.namespace)
-  const found = context.joins.find(join, journal, state.namespace)
-  const held = found ? (journal?.itemBody(found.itemId) ?? null) : null
-  // This run closed it: an open reopens the same row, a second close is a repeat.
-  const closed = state.closed.has(ref)
-  if (change === 'open' && !closed && held) {
-    return { dropped: 'item-replayed' }
-  }
-  if (change === 'update' && runningTool(event.body) && (closed || settledTool(held))) {
-    return { dropped: 'item-settled' }
-  }
-  if (change === 'close' && (closed || settledTool(held))) {
-    return { dropped: 'item-settled' }
-  }
-  if (change !== 'open' && relightsProviderTimelineBackgroundTask(held, event.body)) {
+  const row = context.rows.item('item', providerKey(event.item), event.join?.thread ?? null)
+  const key = row.itemId
+  const closed = state.items.get(key)?.closed === true
+  const scope = providerTimelinePlacement(context, state, event.join)
+  const placed = turnOf(scope)
+  if (
+    (closed &&
+      (change === 'close' || (change === 'update' && requiresTerminalSettlement(event.body)))) ||
+    (journal && refusesItemWrite(journal, row, change, event.body, placed))
+  ) {
     return { dropped: 'item-settled' }
   }
   const obligation = change !== 'close' && requiresTerminalSettlement(event.body)
-  // A snapshot of what the row already says, read at the write: planning's journal may lag the queue.
-  if (
-    input.execute &&
-    change === 'update' &&
-    !obligation &&
-    held &&
-    isDeepStrictEqual(held, event.body)
-  ) {
-    return { dropped: 'item-replayed' }
-  }
-  const placement = providerTimelinePlacement(context, state, event.join)
-  const row =
-    found ??
-    (input.execute && journal
-      ? context.joins.place(join, providerTimelineItemClass(event.body), placement, journal)
-      : null)
-  const scope = row?.scope ?? placement.scope
-  const turnItemId = turnOf(scope)
   const bytes = providerTimelineEntryBytes({
     key: event.item,
     join: event.join,
@@ -79,94 +97,81 @@ export function decideItem(
     producer: event.producer
   })
   return {
-    ...(obligation ? { hold: { key: ref, bytes } } : {}),
-    write: row && {
-      identity: row.identity,
-      body: event.body,
-      options: {
-        ...event.producer,
-        turnScope: row.scope,
-        ...(row.ref === undefined ? {} : { providerItemRef: row.ref })
+    ...(obligation ? { hold: { key, bytes } } : {}),
+    writes: [
+      {
+        reservedBytes: estimateStructuredAgentSessionItemBytes(row.identity, event.body),
+        lifecycle: change !== 'update',
+        options: { ...event.producer, turnScope: scope },
+        resolve: (at) =>
+          refusesItemWrite(at, row, change, event.body, placed)
+            ? null
+            : { identity: row.identity, body: event.body }
       }
-    },
-    ...(change === 'close' ? { closes: ref } : {}),
+    ],
+    ...(change === 'close' ? { closes: key } : {}),
     commit: (next) => {
-      if (obligation) {
-        next.obligations.set(ref, { itemId: row?.itemId ?? null, turnItemId, bytes })
-      } else {
-        next.obligations.delete(ref)
-      }
       if (change === 'close') {
-        next.closed.set(ref, turnItemId)
-      } else if (change === 'open') {
-        next.closed.delete(ref)
+        next.close(key, placed)
+      } else if (obligation) {
+        next.items.set(key, { kind: 'item', row, turnItemId: placed, bytes, closed: false })
+      } else if (change === 'open' || next.items.get(key)?.closed !== true) {
+        next.items.delete(key)
       }
     }
   }
 }
 
-export function requestRef(input: ProviderTimelineDecisionInput, key: ProviderTimelineKey): string {
-  return input.context.joins.reference(
-    { family: 'request', key, thread: null },
-    input.state.namespace
-  )
-}
+const requestKey = (request: string) => `request:${request}`
 
 export function decideRequest(
   input: ProviderTimelineDecisionInput,
   event: Extract<ProviderTimelineDecidedEvent, { type: 'request.open' }>
 ): ProviderTimelineDecision {
   const { state, journal, context } = input
-  const key = providerKey(event.request)
-  const ref = requestRef(input, key)
-  const current = context.joins.request(key, journal, state.namespace)
-  const held = current ? (journal?.itemBody(current.itemId) ?? null) : null
-  // Pending in the journal, or opened here and not landed yet: the same request again.
-  if (pendingPrompt(held) || (state.obligations.has(ref) && held === null)) {
+  const key = requestKey(event.request)
+  // Pending here, unless a client's answer already settled it in the journal.
+  if (state.items.has(key) && !(journal && state.settledInJournal(key, journal))) {
     return { dropped: 'request-duplicate' }
   }
-  // The turn this open lands in decides whether it repeats its predecessor: the same key again
-  // in a turn that is over is that turn's replay; in another, live turn it is a new request.
-  const placement = providerTimelinePlacement(context, state, event.join)
-  const target = turnOf(placement.scope)
-  const previous = current ? turnOf(current.scope) : null
-  if (
-    held &&
-    previous !== null &&
-    state.status({ itemId: previous }, journal) === 'settled' &&
-    (target === null ||
-      target === previous ||
-      state.status({ itemId: target }, journal) === 'settled')
-  ) {
-    return { dropped: 'request-replayed' }
-  }
-  const row =
-    input.execute && journal
-      ? context.joins.nextRequest(key, event.body.kind, placement, journal)
-      : null
+  const scope = providerTimelinePlacement(context, state, event.join)
+  const turn = turnOf(scope)
   const bytes = providerTimelineEntryBytes({
     key: event.request,
     join: event.join,
     body: event.body,
     producer: event.producer
   })
+  const opened: ProviderTimelineOpenItem = {
+    kind: 'request',
+    row: null,
+    turnItemId: turn,
+    bytes,
+    closed: false
+  }
   return {
-    hold: { key: ref, bytes },
-    // A row already there is a client's answer or a replay; neither is overwritten.
-    write:
-      row && journal?.itemBody(row.itemId) === null
-        ? {
-            identity: row.identity,
-            body: event.body,
-            options: { ...event.producer, turnScope: row.scope, lifecycle: true }
+    hold: { key, bytes },
+    writes: [
+      {
+        reservedBytes: estimateStructuredAgentSessionItemBytes(
+          context.rows.widestRequest(event.request).identity,
+          event.body
+        ),
+        lifecycle: true,
+        options: { ...event.producer, turnScope: scope, lifecycle: true },
+        resolve: (at) => {
+          // A reused id takes the next incarnation; a row already there is never overwritten.
+          const row = context.rows.nextRequest(event.request, at)
+          opened.row = row
+          // A turn another writer ended while the open was queued asks nothing more.
+          if (turn !== null && providerTimelineTurnRowState(at, turn) === 'settled') {
+            return null
           }
-        : null,
-    commit: (next) =>
-      next.obligations.set(ref, {
-        itemId: row?.itemId ?? null,
-        turnItemId: turnOf(row?.scope ?? placement.scope),
-        bytes
-      })
+          return { identity: row.identity, body: event.body }
+        }
+      }
+    ],
+    commit: (next) => next.items.set(key, opened)
   }
 }
 
@@ -174,34 +179,38 @@ export function decideWithdrawal(
   input: ProviderTimelineDecisionInput,
   event: Extract<ProviderTimelineDecidedEvent, { type: 'request.withdrawn' }>
 ): ProviderTimelineDecision {
-  const { state, journal } = input
-  const key = providerKey(event.request)
-  const ref = requestRef(input, key)
-  // The latest incarnation the journal holds, however long ago this run (or another) opened it.
-  const current = input.context.joins.request(key, journal, state.namespace)
-  const held = current ? (journal?.itemBody(current.itemId) ?? null) : null
-  if (!pendingPrompt(held) && !(state.obligations.has(ref) && held === null)) {
+  const { state, journal, context } = input
+  const key = requestKey(event.request)
+  const entry = state.items.get(key)
+  const opened = entry?.kind === 'request' ? entry : null
+  // One its turn's end already let go is still the journal's newest row under its id.
+  if (!opened && journal && !context.rows.heldRequest(event.request, journal)) {
     return { dropped: 'request-unknown' }
   }
-  // Only while the journal holds it pending: a client's answer that landed first stands.
-  const cancelled = current && held && pendingPrompt(held) ? cancelledJournalPromptBody(held) : null
   return {
-    ...(input.execute
-      ? {
-          settle:
-            current && cancelled
-              ? [
-                  {
-                    kind: 'item' as const,
-                    identity: current.identity,
-                    body: cancelled,
-                    turnScope: current.scope
-                  }
-                ]
-              : []
+    settle: {
+      what: 'request-withdrawn',
+      resolve: (at) => {
+        // The open ran first and named its row. Only while it is pending: a client's answer, or
+        // the settlement of its turn, that landed first stands.
+        const row = opened ? opened.row : context.rows.heldRequest(event.request, at)
+        const held = row ? at.item(row.itemId) : null
+        const cancelled =
+          held && pendingPrompt(held.body) ? cancelledJournalPromptBody(held.body) : null
+        if (!row || !held || !cancelled) {
+          return []
         }
-      : {}),
-    commit: (next) => next.obligations.delete(ref)
+        return [
+          {
+            kind: 'item',
+            identity: row.identity,
+            body: cancelled,
+            turnScope: held.turnScope ?? AGENT_JOURNAL_THREAD_SCOPE
+          }
+        ]
+      }
+    },
+    commit: (next) => next.items.delete(key)
   }
 }
 
@@ -209,16 +218,25 @@ export function decideFrame(
   input: ProviderTimelineDecisionInput,
   event: Extract<ProviderTimelineDecidedEvent, { type: 'provider.frame' }>
 ): ProviderTimelineDecision {
-  const { state, journal, context } = input
+  const { state, context } = input
   const frame = unhandledProviderFrameJournalItem(context.agent, event.frameKind, event.payload)
-  if (!frame || !event.minted || !input.execute || !journal) {
+  if (!frame) {
     return {}
   }
-  const row = context.joins.place(
-    { family: 'frame', key: event.minted, thread: event.join?.thread ?? null },
+  const row = context.rows.item(
     'frame',
-    providerTimelinePlacement(context, state, event.join),
-    journal
+    context.rows.minted('f', input.serial()),
+    event.join?.thread ?? null
   )
-  return { write: { identity: row.identity, body: frame.body, options: { turnScope: row.scope } } }
+  const write = { identity: row.identity, body: frame.body }
+  return {
+    writes: [
+      {
+        reservedBytes: estimateStructuredAgentSessionItemBytes(row.identity, frame.body),
+        lifecycle: false,
+        options: { turnScope: providerTimelinePlacement(context, state, event.join) },
+        resolve: () => write
+      }
+    ]
+  }
 }

@@ -56,8 +56,6 @@ export type JournalReducerState = {
   /** Provider item id → the submission slot that adopted it. Stops an accepted
    *  echo from appending a second copy of the user's own message. */
   aliases: Map<string, string>
-  /** `providerItemRef` → the row that carries it, so a producer finds that row again in O(1). */
-  providerItemRefs: Map<string, string>
   appliedSettlementIds: Set<string>
   /** Scope for rows stored without one; rebuilt by replay, never persisted. */
   derivedTurnScope: JournalDerivedTurnScope
@@ -82,7 +80,6 @@ export function createJournalReducerState(sessionId: string, epoch: string): Jou
     submissions: new Map(),
     receipts: new Map(),
     aliases: new Map(),
-    providerItemRefs: new Map(),
     appliedSettlementIds: new Set(),
     derivedTurnScope: new JournalDerivedTurnScope(),
     latestPersonTurnSequence: 0,
