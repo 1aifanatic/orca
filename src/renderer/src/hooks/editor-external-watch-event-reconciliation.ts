@@ -1,10 +1,7 @@
 import { useAppStore } from '@/store'
 import type { OpenFile } from '@/store/slices/editor'
 import { basename } from '@/lib/path'
-import {
-  canAutoSaveOpenFile,
-  isExternalReloadableEditorTab
-} from '@/components/editor/editor-autosave'
+import { canAutoSaveOpenFile } from '@/components/editor/editor-autosave'
 import { indexEditorExternalWatchBatchPaths } from '@/components/editor/editor-external-watch-path-index'
 import { getRecentSelfWrite } from '@/components/editor/editor-self-write-registry'
 import {
@@ -29,6 +26,9 @@ import {
   scheduleSelfWriteAwareEditorExternalReload,
   type EditorExternalWatchNotification
 } from './editor-external-watch-disk-verification'
+import { collectOverflowEditorExternalReloadTargets } from './editor-external-watch-overflow'
+
+export { collectOverflowEditorExternalReloadTargets } from './editor-external-watch-overflow'
 
 // Why: macOS atomic writes split delete→create across payloads; debounce deletion so a same-path create cancels the tombstone before it paints.
 const EXTERNAL_MUTATION_DEBOUNCE_MS = 75
@@ -254,40 +254,6 @@ export function buildEditorExternalWatchEventHandler(
   }
 
   return { handleFsChanged, dispose }
-}
-
-export function collectOverflowEditorExternalReloadTargets(
-  target: Pick<EditorExternalWatchTarget, 'worktreeId' | 'worktreePath'> &
-    Partial<
-      Pick<
-        EditorExternalWatchTarget,
-        'connectionId' | 'runtimeEnvironmentId' | 'allowLocalWindowsWslAliases'
-      >
-    >
-): EditorExternalWatchNotification[] {
-  const state = useAppStore.getState()
-  const notifications: EditorExternalWatchNotification[] = []
-  for (const file of state.openFiles) {
-    if (
-      file.worktreeId !== target.worktreeId ||
-      getOpenFileRuntimeOwner(file) !== (target.runtimeEnvironmentId ?? null) ||
-      !isExternalReloadableEditorTab(file) ||
-      file.isDirty
-    ) {
-      continue
-    }
-    if (file.externalMutation) {
-      state.setExternalMutation(file.id, null)
-    }
-    notifications.push({
-      worktreeId: target.worktreeId,
-      worktreePath: target.worktreePath,
-      relativePath: file.relativePath,
-      runtimeEnvironmentId: target.runtimeEnvironmentId ?? null,
-      ...getLocalWindowsWslAliasOption(target)
-    })
-  }
-  return notifications
 }
 
 function hasRenameCorrelatedCreate(
