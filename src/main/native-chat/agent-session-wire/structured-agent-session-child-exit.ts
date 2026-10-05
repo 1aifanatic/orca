@@ -4,6 +4,7 @@
 // record, and the record ends in `finally`. `expected` changes only what the chat is told.
 
 import type { SubmissionRejectionFact } from '../../../shared/agent-session-failure'
+import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
 import { PROVIDER_EXIT_ROW_PREFIX } from '../../../shared/agent-session-stop-row-identity'
 import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -142,6 +143,14 @@ export async function endExitedStructuredAgentSessionChildUnderSerialize<
     // Folded before the fallback's end is built, so the end reads it (`turnEndAfterStop`).
     await close?.recorded
     const generation = child.generation ?? 'unknown'
+    // The exit proves this child gone, as the record's death evidence later says: what it left
+    // `unverifiable` is revised now, not at the next open.
+    const exitProof: AgentSessionDeathEvidence = {
+      kind: 'exit-observed',
+      detail: exit.reason,
+      observedAt,
+      ownerFence: child.fence
+    }
     const settled = await settleStructuredAgentSessionDeadGeneration({
       journal: session.journal,
       sessionId,
@@ -161,12 +170,14 @@ export async function endExitedStructuredAgentSessionChildUnderSerialize<
           unfinishedStructuredAgentSessionWorkWasInterrupted(
             unfinishedWork,
             session.journal,
-            observedAt
+            observedAt,
+            exitProof
           )),
       ...(!expected && exit.failure ? { exitFailure: exit.failure } : {}),
       ...(!expected && exitedDuringStartup && child.generation
         ? { exitedDuringStartup: { generation: child.generation } }
-        : {})
+        : {}),
+      exitProof
     })
     if (!settled.ok) {
       logExitFailure(context, sessionId, 'exit-settlement', settled.error)

@@ -3,7 +3,10 @@
 
 import { agentSessionFailureFact, providerDiagnostic } from '../../shared/agent-session-failure'
 import type { StructuredAgentSessionEndedEvent } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
-import { UNVERIFIABLE_TURN_VERDICT } from '../native-chat/agent-session-wire/structured-agent-session-stale-turn-verdict'
+import {
+  UNVERIFIABLE_TURN_VERDICT,
+  type StructuredAgentSessionTurnVerdict
+} from '../native-chat/agent-session-wire/structured-agent-session-stale-turn-verdict'
 import type { AcpLaunchSpec } from './acp-launch-specs'
 import type { AcpSessionEvent, AcpSessionRuntime } from './acp-session-runtime'
 import type { AcpStructuredChild } from './acp-structured-child'
@@ -77,17 +80,21 @@ export function asReattachHistory(params: unknown): unknown {
 /**
  * Nothing more this child says reaches the journal, once: on its exit, or when its connection broke
  * while it may still run. Open requests die, held sends never left Orca, the running send's fate is
- * unknown, and the running turn is one Orca never heard end (`unverifiable` until death evidence
- * revises it).
+ * unknown, and the running turn ends as `verdict` says: `unverifiable` while the child may still
+ * run (the host's settlement of its proven exit revises it), interrupted at a proven exit.
  */
-export function closeAcpSessionJournal(session: AcpStructuredSession, reason: string): void {
+export function closeAcpSessionJournal(
+  session: AcpStructuredSession,
+  reason: string,
+  verdict: StructuredAgentSessionTurnVerdict = UNVERIFIABLE_TURN_VERDICT
+): void {
   if (session.journalClosed !== null) {
     return
   }
   session.journalClosed = reason
   session.prompts.clear()
   session.turns.end(reason)
-  session.lane.apply([{ type: 'session.ended', verdict: UNVERIFIABLE_TURN_VERDICT }])
+  session.lane.apply([{ type: 'session.ended', verdict }])
   session.lane.flush()
   session.lane.dispose()
   session.unbindReadingControl?.()
@@ -114,7 +121,15 @@ export function endAcpStructuredSession(
     : session.journalClosed !== null && !stderr
       ? session.journalClosed
       : `${session.spec.agent} ACP agent exited${stderr ? `: ${stderr}` : ''}`
-  closeAcpSessionJournal(session, reason)
+  // A death of its own ended the running turn at the exit, as the host's exit settlement reads it
+  // (`exitedRootTurnScope`). A close Orca asked for leaves it `unverifiable`; that settlement revises it.
+  closeAcpSessionJournal(
+    session,
+    reason,
+    session.closeRequested
+      ? UNVERIFIABLE_TURN_VERDICT
+      : { state: 'interrupted', completedAt: observedAt }
+  )
   const detail = stderr ? providerDiagnostic(stderr, 'person') : undefined
   onEvent?.({
     type: 'ended',

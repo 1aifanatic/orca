@@ -3,11 +3,15 @@ import {
   MAX_PROVIDER_DIAGNOSTIC_CHARS,
   type SubmissionRejectionFact
 } from '../../../shared/agent-session-failure'
-import { parseAgentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
+import {
+  agentJournalItemKey,
+  parseAgentJournalItemKey
+} from '../../../shared/agent-session-journal-item-key'
 import { STALE_SESSION_ROW_PREFIX } from '../../../shared/agent-session-stop-row-identity'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
+  type AgentJournalItemBody,
   type AgentJournalRenderItem
 } from '../../../shared/agent-session-journal-types'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
@@ -59,6 +63,8 @@ export type DeadGenerationJournal = {
   snapshot: () => Pick<ReturnType<AgentSessionJournal['snapshot']>, 'items'>
   pendingSubmissions?: AgentSessionJournal['pendingSubmissions']
   submissions?: () => DeadGenerationSubmission[]
+  itemFence: AgentSessionJournal['itemFence']
+  stopMarks: AgentSessionJournal['stopMarks']
 }
 
 export type StructuredAgentSessionUnfinishedWork = {
@@ -83,10 +89,15 @@ function hasUnfinishedStructuredAgentSessionWork(journal: DeadGenerationJournal)
 export function unfinishedStructuredAgentSessionWorkWasInterrupted(
   before: StructuredAgentSessionUnfinishedWork,
   journal: DeadGenerationJournal,
-  observedExitAt: number
+  observedExitAt: number,
+  exitProof?: AgentSessionDeathEvidence
 ): boolean {
   const currentSnapshot = journal.snapshot()
   if (hasUnsettledSubmission(journal) || currentSnapshot.items.some(isInProgressItem)) {
+    return true
+  }
+  // A turn the exited child left `unverifiable` (its stream closed first) was running when it went.
+  if (provenUnverifiableTurnRevisions(currentSnapshot.items, exitProof, journal).length > 0) {
     return true
   }
   if (
@@ -129,9 +140,18 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
   /** The provider never finished starting: the start that failed, keyed by the child's
    *  generation. Its row is the one the delivery loop writes for the same start. */
   exitedDuringStartup?: { generation: string | null }
+  /** The exit as proof naming the exited child's fence: what that child's own translator could only
+   *  end `unverifiable` (its stream closed before the exit was proven) is revised in this batch. */
+  exitProof?: AgentSessionDeathEvidence
 }): Promise<StructuredAgentSessionDeadGenerationSettlement> {
   try {
-    const hasUnfinishedWork = hasUnfinishedStructuredAgentSessionWork(input.journal)
+    const hasUnfinishedWork =
+      hasUnfinishedStructuredAgentSessionWork(input.journal) ||
+      provenUnverifiableTurnRevisions(
+        input.journal.snapshot().items,
+        input.exitProof,
+        input.journal
+      ).length > 0
     const showUnexpectedExitOutcome = input.showUnexpectedExitOutcome ?? hasUnfinishedWork
     if (!showUnexpectedExitOutcome && !hasUnfinishedWork) {
       return { ok: true }
@@ -147,6 +167,10 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
       ? input.journal.rejectPendingSubmissions(input.fence, startupFailure)
       : input.journal.markPendingSubmissionsUnknown(input.fence, input.pendingSubmissionReason))
     const items = input.journal.snapshot().items
+    const proven = [
+      ...provenUnverifiedToolCallRevisions(items, input.exitProof, input.journal),
+      ...provenUnverifiableTurnRevisions(items, input.exitProof, input.journal)
+    ]
     const mutations: JournalLifecycleMutationInput[] = []
     if (showUnexpectedExitOutcome && input.exitedDuringStartup && startupFailure) {
       const startKey = input.exitedDuringStartup.generation ?? input.settlementId
@@ -175,7 +199,7 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
           ),
           tone: 'error'
         },
-        turnScope: exitedRootTurnScope(items, input.verdict)
+        turnScope: exitedRootTurnScope(withRevisions(items, proven), input.verdict)
       })
     }
     const bodies = new Map(items.map((item) => [item.itemId, item.body]))
@@ -193,7 +217,7 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
         })
       }
     }
-    mutations.push(...runningTurnLifecycleRevisions(items, input.verdict))
+    mutations.push(...runningTurnLifecycleRevisions(items, input.verdict), ...proven)
     const batchId = `dead-generation:${input.settlementId}`
     for (const chunk of partitionJournalLifecycleMutations(batchId, mutations)) {
       await input.journal.appendLifecycleBatch({
@@ -298,6 +322,18 @@ export async function settleStaleStructuredAgentSessionState(input: {
     })
   }
   return mutations.length
+}
+
+function withRevisions(
+  items: readonly AgentJournalRenderItem[],
+  revisions: readonly JournalLifecycleMutationInput[]
+): AgentJournalRenderItem[] {
+  const bodies = new Map(
+    revisions.flatMap((revision): [string, AgentJournalItemBody][] =>
+      revision.kind === 'item' ? [[agentJournalItemKey(revision.identity), revision.body]] : []
+    )
+  )
+  return items.map((item) => ({ ...item, body: bodies.get(item.itemId) ?? item.body }))
 }
 
 function isUnfinishedItem(item: AgentJournalRenderItem): boolean {
