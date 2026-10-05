@@ -3,13 +3,17 @@ import { useAppStore } from '../../store'
 import { useTerminalPaneStoreActions } from './use-terminal-pane-store-actions'
 import { selectUnifiedTerminalTabFields } from './terminal-unified-tab-lookup'
 import type { NativeChatLeafRoute } from '../native-chat/native-chat-leaf-routing'
+import type { ChatPairAuthority } from '@/store/slices/tabs/terminal-chat-pair-authority'
+import { resolveEffectiveChatPair } from '@/store/slices/tabs/terminal-chat-pair-effective'
 
 /**
- * Every write a pane makes to its tab's chat pair. When the store owns the pair (a local
- * worktree) each one is a single `applyTerminalChatPair`; otherwise the pane keeps its own owner.
+ * Every write a pane makes to its tab's chat pair. When the store owns the pair (a local or a
+ * host-owned worktree) each one is a single `applyTerminalChatPair`; otherwise the pane keeps its
+ * own owner.
  */
 export function useTerminalPaneChatPairActions(args: {
   chatLeafId: string | null
+  chatPairAuthority: ChatPairAuthority
   effectiveChatViewMode: boolean
   isChatViewMode: boolean
   setChatLeafId: (leafId: string | null) => void
@@ -20,6 +24,7 @@ export function useTerminalPaneChatPairActions(args: {
 }) {
   const {
     chatLeafId,
+    chatPairAuthority,
     effectiveChatViewMode,
     isChatViewMode,
     setChatLeafId,
@@ -31,17 +36,28 @@ export function useTerminalPaneChatPairActions(args: {
   const { applyTerminalChatPair, setTabLayout, setTabViewMode, toggleTabViewMode } =
     useTerminalPaneStoreActions()
   const applyNativeChatLeafRoute = useCallback(
-    (route: NativeChatLeafRoute): void => {
+    (route: NativeChatLeafRoute, options?: { confirmedAgentExit?: boolean }): void => {
       const state = useAppStore.getState()
-      const currentMode = selectUnifiedTerminalTabFields(
-        state.unifiedTabsByWorktree,
-        worktreeId,
-        tabId
-      ).isChatViewMode
+      const hostOwned = chatPairAuthority === 'host'
+      const effective = hostOwned ? resolveEffectiveChatPair(state, worktreeId, tabId) : null
+      const currentMode = effective
+        ? effective.viewMode === 'chat'
+        : selectUnifiedTerminalTabFields(state.unifiedTabsByWorktree, worktreeId, tabId)
+            .isChatViewMode
       if (storeOwnsChatPair) {
         // Why compare-and-set: the route was derived from this render's pair; a newer write wins.
-        const currentOwner = state.terminalLayoutsByTabId[tabId]?.chatLeafId ?? null
+        const currentOwner = effective
+          ? (effective.chatLeafId ?? null)
+          : (state.terminalLayoutsByTabId[tabId]?.chatLeafId ?? null)
         if (currentMode !== isChatViewMode || currentOwner !== chatLeafId) {
+          return
+        }
+        if (hostOwned && !options?.confirmedAgentExit) {
+          // Why: the host removes a closed owner itself, and its owner may not be mounted here yet;
+          // this pane only claims an ownerless chat.
+          if (isChatViewMode && chatLeafId === null && route.chatLeafId && !route.exitChat) {
+            applyTerminalChatPair(tabId, route.chatLeafId, 'chat')
+          }
           return
         }
         if (route.exitChat) {
@@ -76,6 +92,7 @@ export function useTerminalPaneChatPairActions(args: {
     [
       applyTerminalChatPair,
       chatLeafId,
+      chatPairAuthority,
       isChatViewMode,
       setChatLeafId,
       setTabLayout,
