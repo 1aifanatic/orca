@@ -12,6 +12,7 @@ import {
   type OrcadMigrationSourceCutover
 } from '../../shared/orcad-migration-source-cutover'
 import type { OrcadDeltaMoveResult } from '../../shared/orcad-managed-runtime'
+import { recordManagedOrcadMigration } from '../../shared/runtime-environment-managed-orcad-store'
 import type { KnownRuntimeEnvironment } from '../../shared/runtime-environments'
 import type { SshTarget } from '../../shared/ssh-types'
 import type { Store } from '../persistence'
@@ -145,6 +146,8 @@ async function commitDelta(
     destination: args.destination,
     now
   }
+  // Before any commit can land, resumed ones included: a rollback must not cross this move.
+  recordManagedOrcadMigration(userDataPath, plan.environmentId, now().toISOString())
   try {
     await args.ensureTunnel()
     const committed = await commitOrcadMigrationDestination(context, cutover.migrationId)

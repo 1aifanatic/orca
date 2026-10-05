@@ -41,6 +41,7 @@ import { pruneManagedOrcadVersions } from './orcad-managed-version-gc'
 import { rollbackOrcad } from './orcad-remote-rollback'
 import { collectManagedTerminalCensus } from './orcad-terminal-census-client'
 import { findIncompleteManagedOrcadMigration } from './orcad-managed-migration-status'
+import { latestOrcadMigrationInto } from './orcad-migration-rollback-mark'
 import { tunneledOrcadPairingCode } from './orcad-tunneled-pairing'
 
 type LifecycleArgs = { selector: string; signal?: AbortSignal }
@@ -257,7 +258,7 @@ function migrationRollbackRefusal(
       reason: 'A migration into this server is still running. Finish it before rolling back.'
     }
   }
-  const migratedAt = environment.orcadMigratedAt
+  const migratedAt = latestOrcadMigrationInto(userDataPath, environment)
   if (migratedAt && (activatedAt === null || Date.parse(activatedAt) < Date.parse(migratedAt))) {
     return {
       outcome: 'refused',

@@ -2,6 +2,8 @@ import { rmSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { listEnvironments } from '../../shared/runtime-environment-store'
 import { recordManagedOrcadMigration } from '../../shared/runtime-environment-managed-orcad-store'
+import { orcadMigrationCutoverFixture } from './orcad-migration-cutover-fixture'
+import { writeOrcadMigrationSourceCutover } from './orcad-migration-cutover-journal'
 import {
   createManagedLifecycleHarness,
   MANAGED_PREVIOUS_VERSION,
@@ -176,6 +178,20 @@ describe('rollbackManagedOrcadEnvironment', () => {
     mocks.rollback.mockResolvedValueOnce({ outcome: 'refused', code: 'x', reason: 'y' })
     await rollbackManagedOrcadEnvironment(harness.userDataPath, { selector: 'Managed' })
     expect(mocks.rollback).toHaveBeenCalledOnce()
+  })
+
+  it('refuses a rollback across a retained delta move that predates the mark', async () => {
+    // A delta finished by an earlier build left no mark; its retained journal still counts.
+    writeOrcadMigrationSourceCutover(harness.userDataPath, {
+      ...orcadMigrationCutoverFixture('delta-1', 'ssh-1', { environmentId: 'environment-1' }),
+      startedAt: '2026-02-01T00:00:00.000Z',
+      phase: 'destination-committed',
+      sourceRetainedAt: '2026-02-01T00:00:00.000Z'
+    })
+    await expect(
+      rollbackManagedOrcadEnvironment(harness.userDataPath, { selector: 'Managed' })
+    ).resolves.toMatchObject({ outcome: 'refused', code: 'orcad_rollback_crosses_migration' })
+    expect(mocks.rollback).not.toHaveBeenCalled()
   })
 
   it('rolls back against the installed bytes of the previous slot', async () => {

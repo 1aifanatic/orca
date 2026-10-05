@@ -177,14 +177,15 @@ export function recordManagedOrcadMigration(
     throw new RuntimeEnvironmentStoreError('invalid_argument', 'This server is not managed.')
   }
   const { binding: _binding, ...state } = entry
-  // The earliest mark wins: a snapshot older than any migration must stay out of reach.
-  const earliest =
-    state.orcadMigratedAt && Date.parse(state.orcadMigratedAt) <= Date.parse(at)
+  // The latest mark wins and never moves back: a snapshot older than any migration, including a
+  // later delta move, must stay out of reach.
+  const latest =
+    state.orcadMigratedAt && Date.parse(state.orcadMigratedAt) >= Date.parse(at)
       ? state.orcadMigratedAt
       : at
   writeRuntimeEnvironmentSidecarEntry(userDataPath, store.environments, persisted, {
     ...state,
-    orcadMigratedAt: earliest
+    orcadMigratedAt: latest
   })
   return resolveEnvironmentFromStore(readEnvironmentStore(userDataPath), environmentId)
 }
