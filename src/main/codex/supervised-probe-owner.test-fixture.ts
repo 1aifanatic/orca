@@ -22,10 +22,10 @@ const grandchild = spawn(
   { stdio: ['ignore', 'pipe', 'ignore'] }
 )
 grandchild.stdout.once('data', () => {
-  fs.writeFileSync(
-    process.env.ORCA_TEST_PID_FILE,
-    JSON.stringify({ provider: process.pid, grandchild: grandchild.pid })
-  )
+  // Renamed into place, so a reader never sees a half-written file.
+  const partial = process.env.ORCA_TEST_PID_FILE + '.partial'
+  fs.writeFileSync(partial, JSON.stringify({ provider: process.pid, grandchild: grandchild.pid }))
+  fs.renameSync(partial, process.env.ORCA_TEST_PID_FILE)
 })
 setInterval(() => {}, 60000)
 ${body}
