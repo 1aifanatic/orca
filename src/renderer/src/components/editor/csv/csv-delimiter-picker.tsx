@@ -39,7 +39,7 @@ export function CsvDelimiterPicker({
   ] as const
 
   return (
-    <div className="ms-auto flex items-center gap-2">
+    <div className="ms-auto flex shrink-0 items-center gap-2">
       <Label htmlFor={id}>
         {translate('auto.components.editor.CsvViewer.delimiter', 'Delimiter')}
       </Label>
@@ -52,10 +52,15 @@ export function CsvDelimiterPicker({
           }
         }}
       >
-        <SelectTrigger id={id} size="sm">
+        <SelectTrigger id={id} size="sm" className="w-44 shrink-0">
           <SelectValue />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent
+          position="popper"
+          side="top"
+          align="end"
+          className="w-(--radix-select-trigger-width)"
+        >
           {choices.map((choice) => (
             <SelectItem key={choice.value} value={choice.value}>
               {choice.label}
