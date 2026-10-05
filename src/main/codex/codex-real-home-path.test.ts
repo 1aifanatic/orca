@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os'
 import { join, sep } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  getCustomCodexHomeOverrideForLaunch,
   hasCustomCodexHomeOverride,
   hasCustomCodexHomeOverrideForLaunch
 } from './codex-real-home-path'
@@ -45,13 +44,10 @@ describe('hasCustomCodexHomeOverride', () => {
     ).toBe(true)
   })
 
-  it('reports an explicit environment CODEX_HOME as the override', () => {
-    const codexHome = join(process.cwd(), 'custom-codex-home')
-
-    expect(getCustomCodexHomeOverrideForLaunch({ CODEX_HOME: codexHome })).toEqual({
-      source: 'environment',
-      context: { codexHome }
-    })
+  it('detects an explicit launch env CODEX_HOME', () => {
+    expect(
+      hasCustomCodexHomeOverrideForLaunch({ CODEX_HOME: join(process.cwd(), 'custom-codex-home') })
+    ).toBe(true)
   })
 
   it.skipIf(process.platform === 'win32')(
@@ -61,22 +57,9 @@ describe('hasCustomCodexHomeOverride', () => {
       temporaryHomes.push(paneHome)
       writeFileSync(join(paneHome, '.zshrc'), 'export CODEX_HOME="$HOME/custom-codex-home"\n')
 
-      // Why cleared: the context records XDG_CONFIG_HOME, so a developer machine
-      // that sets one would otherwise change the recorded shape.
+      // Why cleared: a developer's XDG_CONFIG_HOME would change which startup files are read.
       delete process.env.XDG_CONFIG_HOME
       expect(hasCustomCodexHomeOverrideForLaunch({ HOME: paneHome, SHELL: '/bin/zsh' })).toBe(true)
-      const override = getCustomCodexHomeOverrideForLaunch({
-        HOME: paneHome,
-        SHELL: '/bin/zsh'
-      })
-      expect(override).toEqual({
-        source: 'shell-startup',
-        context: {
-          home: paneHome,
-          shell: '/bin/zsh',
-          codexHome: join(paneHome, 'custom-codex-home')
-        }
-      })
     }
   )
 
@@ -94,12 +77,9 @@ describe('hasCustomCodexHomeOverride', () => {
         join(configHome, 'fish', 'config.fish'),
         'set -gx CODEX_HOME "$HOME/custom-codex-home"\n'
       )
-      // The decoy fish reads only if XDG_CONFIG_HOME is ignored.
+      // Why no CODEX_HOME in the decoy: ignoring XDG_CONFIG_HOME would read it and find none.
       mkdirSync(join(paneHome, '.config', 'fish'), { recursive: true })
-      writeFileSync(
-        join(paneHome, '.config', 'fish', 'config.fish'),
-        'set -gx CODEX_HOME /wrong-default-config-home\n'
-      )
+      writeFileSync(join(paneHome, '.config', 'fish', 'config.fish'), 'set -gx EDITOR vim\n')
       delete process.env.XDG_CONFIG_HOME
 
       const launchEnv = {
@@ -107,17 +87,7 @@ describe('hasCustomCodexHomeOverride', () => {
         SHELL: '/opt/homebrew/bin/fish',
         XDG_CONFIG_HOME: configHome
       }
-      const override = getCustomCodexHomeOverrideForLaunch(launchEnv)
-
-      expect(override).toEqual({
-        source: 'shell-startup',
-        context: {
-          home: paneHome,
-          shell: '/opt/homebrew/bin/fish',
-          configHome,
-          codexHome: join(paneHome, 'custom-codex-home')
-        }
-      })
+      expect(hasCustomCodexHomeOverrideForLaunch(launchEnv)).toBe(true)
     }
   )
 })

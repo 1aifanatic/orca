@@ -13,7 +13,6 @@ import {
 } from '../../../codex/codex-pane-account-registry'
 import { resolveCodexPaneLaunchAccount } from '../../../codex/codex-pane-launch-account'
 import { getSystemCodexHomePath } from '../../../codex/codex-home-paths'
-import { getCustomCodexHomeOverrideForLaunch } from '../../../codex/codex-real-home-path'
 import { isHostCodexHomeForWsl, isWslCodexHomeForHost } from '../../../pty/codex-home-wsl-env'
 import { isWslShellName } from '../../../../shared/local-windows-terminal-runtime'
 import { parseWslPath } from '../../../wsl'
@@ -213,24 +212,16 @@ export function recordCodexPaneAccountForSpawn(args: {
   isReattach: boolean
   pinnedByResume: boolean
   launchCodexHomePath: string | null
-  launchEnv?: NodeJS.ProcessEnv
   target: CodexAccountSelectionTarget
   settings: GlobalSettings | undefined
 }): void {
   if (!args.ptyId || !args.isDaemonHostSpawn || args.isReattach) {
     return
   }
-  const homeOverride = args.pinnedByResume
-    ? null
-    : getCustomCodexHomeOverrideForLaunch(args.launchEnv)
   const record = args.settings
     ? resolveCodexPaneLaunchAccount({
         pinnedByResume: args.pinnedByResume,
         launchCodexHomePath: args.launchCodexHomePath,
-        shellStartupHomeOverride:
-          homeOverride?.source === 'shell-startup' ? homeOverride.context : undefined,
-        environmentHomeOverride:
-          homeOverride?.source === 'environment' ? homeOverride.context : undefined,
         systemCodexHomePath: getSystemCodexHomePath(),
         settings: args.settings,
         target: args.target

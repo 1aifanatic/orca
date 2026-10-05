@@ -1,8 +1,3 @@
-import type {
-  CodexEnvironmentHomeOverride,
-  CodexShellStartupHomeOverride
-} from './codex-real-home-path'
-
 export type CodexPaneHomeRoute = 'real-home' | 'shared-home' | 'account-home' | 'wsl-home'
 
 export type CodexPaneAccountRecord = {
@@ -12,10 +7,6 @@ export type CodexPaneAccountRecord = {
   accountId: string | null
   /** Absent only on records written before route provenance was introduced. */
   homeRoute?: CodexPaneHomeRoute
-  /** The custom CODEX_HOME a shell startup file set at launch. */
-  shellStartupHomeOverride?: CodexShellStartupHomeOverride
-  /** The custom CODEX_HOME the launch environment set. */
-  environmentHomeOverride?: CodexEnvironmentHomeOverride
 }
 
 export type CodexPaneAccountRegistryFile = {

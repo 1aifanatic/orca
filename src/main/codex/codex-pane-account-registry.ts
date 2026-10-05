@@ -8,10 +8,6 @@ import type {
   CodexPaneAccountRegistryFile,
   CodexPaneHomeRoute
 } from './codex-pane-account-registry-types'
-import type {
-  CodexEnvironmentHomeOverride,
-  CodexShellStartupHomeOverride
-} from './codex-real-home-path'
 
 export type {
   CodexPaneAccountRecord,
@@ -133,40 +129,11 @@ function parseRegistry(parsed: unknown): CodexPaneAccountRegistryFile {
       empty.panes[ptyId] = {
         selectionKey: record.selectionKey,
         accountId: record.accountId,
-        ...(homeRoute ? { homeRoute } : {}),
-        ...(isShellStartupHomeOverride(record.shellStartupHomeOverride)
-          ? { shellStartupHomeOverride: record.shellStartupHomeOverride }
-          : {}),
-        ...(isEnvironmentHomeOverride(record.environmentHomeOverride)
-          ? { environmentHomeOverride: record.environmentHomeOverride }
-          : {})
+        ...(homeRoute ? { homeRoute } : {})
       }
     }
   }
   return empty
-}
-
-function isEnvironmentHomeOverride(value: unknown): value is CodexEnvironmentHomeOverride {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return false
-  }
-  const context = value as Partial<CodexEnvironmentHomeOverride>
-  return typeof context.codexHome === 'string' && context.codexHome.length > 0
-}
-
-function isShellStartupHomeOverride(value: unknown): value is CodexShellStartupHomeOverride {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return false
-  }
-  const context = value as Partial<CodexShellStartupHomeOverride>
-  return (
-    typeof context.home === 'string' &&
-    context.home.length > 0 &&
-    (context.shell === undefined || typeof context.shell === 'string') &&
-    (context.configHome === undefined || typeof context.configHome === 'string') &&
-    typeof context.codexHome === 'string' &&
-    context.codexHome.length > 0
-  )
 }
 
 function isPaneAccountRecord(value: unknown): value is CodexPaneAccountRecord {

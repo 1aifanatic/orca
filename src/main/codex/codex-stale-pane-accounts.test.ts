@@ -62,12 +62,7 @@ describe('codex pane account registry', () => {
     recordCodexPaneAccount('pty-1', {
       selectionKey: 'host',
       accountId: 'account-a',
-      homeRoute: 'account-home',
-      shellStartupHomeOverride: {
-        home: '/pane-home',
-        shell: '/bin/zsh',
-        codexHome: '/pane-home/custom-codex-home'
-      }
+      homeRoute: 'account-home'
     })
 
     _internals.resetCache()
@@ -75,12 +70,7 @@ describe('codex pane account registry', () => {
     expect(getCodexPaneAccount('pty-1')).toEqual({
       selectionKey: 'host',
       accountId: 'account-a',
-      homeRoute: 'account-home',
-      shellStartupHomeOverride: {
-        home: '/pane-home',
-        shell: '/bin/zsh',
-        codexHome: '/pane-home/custom-codex-home'
-      }
+      homeRoute: 'account-home'
     })
   })
 

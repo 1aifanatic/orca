@@ -94,8 +94,7 @@ describe('registerPtyHandlers', () => {
       expect(recordCodexPaneAccountMock).toHaveBeenCalledWith('pty-process-home', {
         selectionKey: 'host',
         accountId: null,
-        homeRoute: 'shared-home',
-        environmentHomeOverride: { codexHome: '/process/custom-codex-home' }
+        homeRoute: 'shared-home'
       })
     } finally {
       if (previousCodexHome === undefined) {
