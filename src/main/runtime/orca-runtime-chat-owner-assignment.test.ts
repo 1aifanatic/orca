@@ -157,6 +157,49 @@ describe('F1: a parent-addressed chat on a split gets a host owner (headless)', 
     expect(host.hostPair()).toEqual({ viewMode: 'chat', owner: undefined })
   })
 
+  it('does not let a reattach of the same process bring back an agent the host saw exit', async () => {
+    const host = makeOwnerHost({ leaves: 2, viewMode: 'terminal', agentOn: [A], shellOn: [B] })
+    host.runtime['retirePtyAgentLaunchAuthority']('pty-a')
+    const reattach = (incarnationId: string) =>
+      host.runtime.registerPty('pty-a', TEST_WORKTREE_ID, 'ssh-1', {
+        tabId: 'host-tab',
+        leafId: A,
+        incarnationId,
+        isReattach: true,
+        providerReattachLaunchIdentity: { incarnationId, launchAgent: 'claude' }
+      })
+    const chatWrite = () =>
+      host.runtime.setMobileSessionTabProps(`id:${TEST_WORKTREE_ID}`, {
+        tabId: 'host-tab',
+        viewMode: 'chat'
+      })
+
+    // The relay still reports the spawn-time agent for this process after a reconnect.
+    reattach(`inc-${A}`)
+    expect(host.runtime['ptysById'].get('pty-a')?.launchAgent).toBeNull()
+    expect((await chatWrite()).chatView).toEqual({ viewMode: 'terminal', chatLeafId: null })
+
+    // A new process under the same id is a new launch: its reported agent is admitted.
+    reattach(`inc-${A}-next`)
+    expect((await chatWrite()).chatView).toEqual({ viewMode: 'chat', chatLeafId: A })
+  })
+
+  it('admits the reported agent on the first reattach after a restart', async () => {
+    const host = makeOwnerHost({ leaves: 2, viewMode: 'terminal', shellOn: [B] })
+    host.runtime.registerPty('pty-a', TEST_WORKTREE_ID, 'ssh-1', {
+      tabId: 'host-tab',
+      leafId: A,
+      incarnationId: 'inc-A',
+      isReattach: true,
+      providerReattachLaunchIdentity: { incarnationId: 'inc-A', launchAgent: 'claude' }
+    })
+    const reply = await host.runtime.setMobileSessionTabProps(`id:${TEST_WORKTREE_ID}`, {
+      tabId: 'host-tab',
+      viewMode: 'chat'
+    })
+    expect(reply.chatView).toEqual({ viewMode: 'chat', chatLeafId: A })
+  })
+
   it('gives a sole pane the owner id even without agent evidence', async () => {
     const host = makeOwnerHost({ leaves: 1 })
     const reply = await host.runtime.setMobileSessionTabProps(`id:${TEST_WORKTREE_ID}`, {

@@ -66,9 +66,10 @@ export type RuntimePtyWorktreeRecord = RuntimeTerminalTailState & {
   launchToken: string | null
   launchIncarnationId: PtyIncarnationId | null
   launchAgent: TuiAgent | null
-  /** In memory only: `launchAgent` was admitted at a spawn or reattach, or retired, so null means
-   *  no launched agent. Absent for a PTY known only from inventory, whose null proves nothing. */
-  launchIdentityKnown?: boolean
+  /** In memory only: the incarnation whose `launchAgent` the host settled (admitted at a spawn or
+   *  reattach, or retired), so null there means no launched agent. Absent for a PTY known only from
+   *  inventory, whose null proves nothing. */
+  launchIdentitySettledIncarnationId?: PtyIncarnationId | null
   agentSessionOwners: AgentSessionOwnerBinding[]
   foregroundAgent: TerminalAgent | null
   connected: boolean
@@ -171,4 +172,17 @@ export type HeadlessSeedMetadata = {
   preferProviderIfExisting?: boolean
   kittyKeyboardFlags?: number
   terminalOwner?: 'shell'
+}
+
+/** The PTY's launch agent when the host settled it for the live incarnation; undefined if unknown. */
+export function settledPtyLaunchAgent(
+  pty: Pick<
+    RuntimePtyWorktreeRecord,
+    'incarnationId' | 'launchAgent' | 'launchIdentitySettledIncarnationId'
+  >
+): TuiAgent | null | undefined {
+  return pty.launchIdentitySettledIncarnationId !== undefined &&
+    pty.launchIdentitySettledIncarnationId === pty.incarnationId
+    ? pty.launchAgent
+    : undefined
 }

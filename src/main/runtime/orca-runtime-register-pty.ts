@@ -114,7 +114,7 @@ export class OrcaRuntimeWithRegisterPty extends OrcaRuntimeWithInvalidateAllHand
       pty.launchToken = agentLaunchAuthority.launchToken
       pty.launchIncarnationId = binding.incarnationId
       pty.launchAgent = agentLaunchAuthority.launchAgent
-      pty.launchIdentityKnown = true
+      pty.launchIdentitySettledIncarnationId = binding.incarnationId
     }
     const providerReattachLaunchIdentity = binding?.providerReattachLaunchIdentity
     if (
@@ -123,15 +123,17 @@ export class OrcaRuntimeWithRegisterPty extends OrcaRuntimeWithInvalidateAllHand
       binding.incarnationId === providerReattachLaunchIdentity.incarnationId &&
       pty.incarnationId === providerReattachLaunchIdentity.incarnationId &&
       pty.paneKey === paneKey &&
+      // Why: the spawn-time agent the provider reports must not undo an exit the host already saw.
+      pty.launchIdentitySettledIncarnationId !== providerReattachLaunchIdentity.incarnationId &&
       isTuiAgent(providerReattachLaunchIdentity.launchAgent)
     ) {
       // Why: daemon metadata owns the surviving process; its incarnation fence restores identity without minting renderer launch authority.
       pty.launchAgent = providerReattachLaunchIdentity.launchAgent
-      pty.launchIdentityKnown = true
+      pty.launchIdentitySettledIncarnationId = providerReattachLaunchIdentity.incarnationId
     }
     // Why only a fresh spawn: a reattach whose provider reported no agent may predate the report.
     if (binding?.isReattach === false) {
-      pty.launchIdentityKnown = true
+      pty.launchIdentitySettledIncarnationId = pty.incarnationId
     }
     const pendingIncarnation = this.pendingPtyRegistrationIncarnations.get(ptyId)
     if (
