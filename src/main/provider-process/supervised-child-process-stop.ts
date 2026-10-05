@@ -1,6 +1,6 @@
 import type { ChildProcessHandle } from '../../shared/child-process/process-spec'
-import { stopSupervisedProvider } from './codex-app-server-posix-supervisor'
-import { terminateCodexAppServerProcessTree } from './codex-app-server-process-teardown'
+import { stopSupervisedProvider } from './provider-process-supervisor'
+import { terminateProviderProcessTree } from './provider-process-teardown'
 
 type SupervisedChild = Pick<ChildProcessHandle, 'pid' | 'kill' | 'exitCode' | 'signalCode' | 'once'>
 
@@ -10,8 +10,7 @@ type SupervisedChild = Pick<ChildProcessHandle, 'pid' | 'kill' | 'exitCode' | 's
  */
 export async function stopSupervisedChildProcess(
   child: SupervisedChild,
-  request: () => void = () => child.kill('SIGTERM'),
-  site?: string
+  { site, request = () => child.kill('SIGTERM') }: { site: string; request?: () => void }
 ): Promise<boolean> {
   const exited = (): boolean => child.exitCode !== null || child.signalCode !== null
   if (exited()) {
@@ -27,7 +26,7 @@ export async function stopSupervisedChildProcess(
     },
     exitPromise: new Promise<void>((resolve) => child.once('exit', () => resolve())),
     exited,
-    force: () => terminateCodexAppServerProcessTree(child, site === undefined ? {} : { site }),
+    force: () => terminateProviderProcessTree(child, { site }),
     supervised: true
   })
 }

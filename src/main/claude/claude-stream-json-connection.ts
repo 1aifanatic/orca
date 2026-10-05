@@ -23,7 +23,7 @@ import {
   createClaudeUserMessageQueue
 } from './claude-agent-sdk-user-message-queue'
 import type { ClaudeStructuredSdkOptions } from './claude-structured-launch-resolution'
-import { providerStderrForDisplay } from '../codex/provider-spawn-failure-report'
+import { providerStderrForDisplay } from '../provider-process/provider-spawn-failure-report'
 
 export { ClaudeControlRequestError }
 

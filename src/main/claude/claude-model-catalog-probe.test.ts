@@ -2,7 +2,7 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { PROVIDER_STDIN_END_GRACE_MS } from '../codex/codex-app-server-posix-supervisor'
+import { PROVIDER_STDIN_END_GRACE_MS } from '../provider-process/provider-process-supervisor'
 import { createClaudeModelCatalogProbe } from './claude-model-catalog-probe'
 import { resolveClaudeStructuredInvocation } from './claude-structured-launch-resolution'
 import type { discoverModelsLocal } from '../text-generation/commit-message-model-discovery'

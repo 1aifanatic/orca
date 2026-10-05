@@ -9,7 +9,7 @@ import {
   PROVIDER_SUPERVISOR_MAX_STOP_MS,
   supervisedPosixLaunch,
   type ProviderSupervisorOptions
-} from './codex-app-server-posix-supervisor'
+} from './provider-process-supervisor'
 import { supervisedProviderSpawnFailure } from './provider-spawn-failure-report'
 
 // The provider leads its own group; its grandchild shares that group and ignores SIGTERM.

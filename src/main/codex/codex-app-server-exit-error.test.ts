@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { providerDiagnosticOf } from '../../shared/agent-session-failure'
 import { buildCodexAppServerExitError } from './codex-app-server-exit-error'
-import { PROVIDER_SPAWN_FAILURE_MARKER } from './provider-spawn-failure-report'
+import { PROVIDER_SPAWN_FAILURE_MARKER } from '../provider-process/provider-spawn-failure-report'
 
 describe('buildCodexAppServerExitError', () => {
   it("keeps the stderr tail apart from Orca's wording, as log text", () => {

@@ -1,6 +1,6 @@
 import type { CommitMessagePlan } from '../../shared/commit-message-plan'
-import { supervisedProviderSpawnFailure } from '../codex/provider-spawn-failure-report'
-import { stopSupervisedChildProcess } from '../codex/supervised-child-process-stop'
+import { supervisedProviderSpawnFailure } from '../provider-process/provider-spawn-failure-report'
+import { stopSupervisedChildProcess } from '../provider-process/supervised-child-process-stop'
 import { UnsafeWindowsBatchArgumentsError } from '../win32-utils'
 import { terminateWindowsProcessTree } from '../windows-process-tree-kill'
 import {
@@ -34,7 +34,7 @@ export async function killSourceControlAgentProcess(
     return
   }
   if (child.supervised) {
-    await stopSupervisedChildProcess(child, undefined, SOURCE_CONTROL_KILL_SITE)
+    await stopSupervisedChildProcess(child, { site: SOURCE_CONTROL_KILL_SITE })
     return
   }
   if (process.platform === 'win32') {

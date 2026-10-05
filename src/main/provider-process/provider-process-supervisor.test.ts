@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { CodexAppServerLaunch } from './codex-app-server-connection'
+import type { ProviderProcessLaunch } from './provider-process-launch'
 import {
   createProviderSpawnSpec,
   POSIX_PROVIDER_SUPERVISOR_SCRIPT,
@@ -8,19 +8,20 @@ import {
   PROVIDER_SUPERVISOR_MAX_STOP_MS,
   stopSupervisedProvider,
   supervisedPosixLaunch
-} from './codex-app-server-posix-supervisor'
+} from './provider-process-supervisor'
 
-const launch: CodexAppServerLaunch = {
+const launch: ProviderProcessLaunch = {
   command: '/opt/codex',
   args: ['app-server', '--flag'],
   cwd: '/work/repo',
   env: { CODEX_HOME: '/tmp/codex' }
 }
+const command = { command: launch.command, args: launch.args, cwd: launch.cwd }
 
 describe('structured provider supervision', () => {
   it('wraps POSIX launches in a detached supervisor and preserves the launch spec', () => {
     const childEnv = { PATH: '/bin', CODEX_HOME: '/tmp/codex' }
-    const spec = supervisedPosixLaunch(launch, childEnv)
+    const spec = supervisedPosixLaunch(command, childEnv)
 
     expect(spec.command).toBe(process.execPath)
     expect(spec.args).toEqual([
@@ -69,12 +70,13 @@ describe('structured provider supervision', () => {
     ).toMatchObject({ lifetime: 'one-shot' })
   })
 
-  it('keeps the user Node options out of the supervisor env and in the provider spec', () => {
-    const spec = supervisedPosixLaunch(launch, {
-      PATH: '/bin',
-      NODE_OPTIONS: '--require /missing.js',
-      NODE_REPL_EXTERNAL_MODULE: '/repl.js'
-    })
+  it('keeps the resolved Node options out of the supervisor env and in the provider spec', () => {
+    // The launch's override goes through the one env rule, then only the provider gets it.
+    const spec = createProviderSpawnSpec(
+      { ...command, env: { NODE_OPTIONS: '--require /missing.js' } },
+      { PATH: '/bin', NODE_OPTIONS: '--inherited', NODE_REPL_EXTERNAL_MODULE: '/repl.js' },
+      'linux'
+    )
 
     expect(spec.env).not.toHaveProperty('NODE_OPTIONS')
     expect(spec.env).not.toHaveProperty('NODE_REPL_EXTERNAL_MODULE')
@@ -146,11 +148,18 @@ describe('structured provider supervision', () => {
     expect(force).not.toHaveBeenCalled()
   })
 
+  it('only accepts a resolved env, never a launch whose env it would ignore', () => {
+    // @ts-expect-error env/envToDelete are resolved by createProviderSpawnSpec, not here.
+    const spec = supervisedPosixLaunch(launch, { PATH: '/bin' })
+
+    expect(spec.env).not.toHaveProperty('CODEX_HOME')
+  })
+
   it('refuses a grace longer than recovery waits before SIGKILL', () => {
     const stdinEnd = (stdinEndGraceMs: number) => () =>
-      supervisedPosixLaunch(launch, {}, { stdinEndGraceMs })
+      supervisedPosixLaunch(command, {}, { stdinEndGraceMs })
     const sigterm = (sigtermGraceMs: number) => () =>
-      supervisedPosixLaunch(launch, {}, { sigtermGraceMs })
+      supervisedPosixLaunch(command, {}, { sigtermGraceMs })
 
     expect(stdinEnd(PROVIDER_STDIN_END_GRACE_MS)).not.toThrow()
     expect(stdinEnd(PROVIDER_STDIN_END_GRACE_MS + 1)).toThrow(RangeError)
@@ -162,10 +171,29 @@ describe('structured provider supervision', () => {
     expect(createProviderSpawnSpec(launch, { PATH: '/bin' }, 'win32')).toEqual({
       program: '/opt/codex',
       args: ['app-server', '--flag'],
-      env: { PATH: '/bin' },
+      env: { PATH: '/bin', CODEX_HOME: '/tmp/codex' },
       cwd: '/work/repo',
       detached: false,
       supervised: false
     })
   })
+
+  it.each(['win32', 'darwin', 'linux'] as const)(
+    'applies launch environment overrides and deletions on %s',
+    (platform) => {
+      const baseEnv = { PATH: '/bin', AGENT_HOME: '/inherited', PARENT_AGENT: 'parent' }
+      const overlay = { AGENT_HOME: '/pinned', LAUNCH_ONLY: 'added', PARENT_AGENT: 'overlay' }
+      const spec = createProviderSpawnSpec(
+        { command: 'provider', args: [], env: overlay, envToDelete: ['PARENT_AGENT'] },
+        baseEnv,
+        platform
+      )
+
+      expect(spec.env).toMatchObject({ PATH: '/bin', AGENT_HOME: '/pinned', LAUNCH_ONLY: 'added' })
+      expect(spec.env).not.toHaveProperty('PARENT_AGENT')
+      expect(baseEnv.PARENT_AGENT).toBe('parent')
+      expect(baseEnv.AGENT_HOME).toBe('/inherited')
+      expect(overlay.PARENT_AGENT).toBe('overlay')
+    }
+  )
 })

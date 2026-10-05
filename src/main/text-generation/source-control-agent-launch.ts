@@ -1,7 +1,7 @@
 import { spawnProcess } from '../../shared/child-process/run-process'
 import { withCliRuntimeOnPath } from '../../shared/node-cli-command-resolution'
 import { resolveCliCommand } from '../codex-cli/command'
-import { createProviderSpawnSpec } from '../codex/codex-app-server-posix-supervisor'
+import { createProviderSpawnSpec } from '../provider-process/provider-process-supervisor'
 import { wslAwareSpawn } from '../git/runner'
 import { getSpawnArgsForWindows } from '../win32-utils'
 import type {
