@@ -4,7 +4,10 @@ import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import type * as SystemPowerLifecycle from '../../system-power-lifecycle'
 import { publishSystemResume, publishSystemSuspend } from '../../system-power-lifecycle'
-import { PROFILE_STATE_WRITER_MAX_GRACES } from './profile-state-writer-deadline'
+import {
+  PROFILE_STATE_WRITER_MAX_GRACES,
+  PROFILE_STATE_WRITER_OVERDUE_GRACE_MS
+} from './profile-state-writer-deadline'
 import { ProfileStateWriteWorkerClient } from './profile-state-writer-worker-client'
 
 const power = vi.hoisted(() => ({ subscriptions: 0 }))
@@ -115,6 +118,25 @@ it('accepts an acknowledgment queued behind an overdue timeout with no power eve
   expect(onFailure).not.toHaveBeenCalled()
   expect(vi.getTimerCount()).toBe(0)
 })
+
+it.each([0, 1, PROFILE_STATE_WRITER_OVERDUE_GRACE_MS - 1])(
+  'keeps saving across repeated queued replies when the timeout is %i ms overdue',
+  async (overdueMs) => {
+    const { client, onFailure, awaitQueuedReply, stall, run } = createClient()
+    await client.ready
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    for (let writeNumber = 1; writeNumber <= 4; writeNumber += 1) {
+      const write = client.writeSerializedDomains([]).catch((error: unknown) => error)
+      awaitQueuedReply(writeNumber)
+      stall(overdueMs)
+      run(TIMEOUT_MS)
+      expect(await write).toBe(writeNumber + 1)
+      expect(vi.getTimerCount()).toBe(0)
+      expect(power.subscriptions).toBe(0)
+    }
+    expect(onFailure).not.toHaveBeenCalled()
+  }
+)
 
 it('accepts a reply delivered before its timeout and releases the deadline', async () => {
   const { client, onFailure } = createClient()
@@ -233,6 +255,35 @@ it('bounds repeated stalls so a hung writer cannot wait forever', async () => {
   run(TIMEOUT_MS)
   expect(await write).toMatchObject({ code: 'profile-state-writer-timeout' })
 })
+
+it.each([true, false])(
+  'settles after repeated resumes with a queued reply: %s',
+  async (acknowledgeWrites) => {
+    const { client, onFailure, awaitQueuedReply, run } = createClient({ acknowledgeWrites })
+    await client.ready
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const write = client.writeSerializedDomains([]).catch((error: unknown) => error)
+    if (acknowledgeWrites) {
+      awaitQueuedReply(1)
+    }
+    for (let cycle = 0; cycle <= PROFILE_STATE_WRITER_MAX_GRACES; cycle += 1) {
+      run(TIMEOUT_MS - 1)
+      publishSystemSuspend()
+      publishSystemResume()
+    }
+    run(1)
+    if (acknowledgeWrites) {
+      expect(await write).toBe(2)
+      await expect(client.writeSerializedDomains([])).resolves.toBe(3)
+      expect(onFailure).not.toHaveBeenCalled()
+    } else {
+      expect(await write).toMatchObject({ code: 'profile-state-writer-timeout' })
+      expect(onFailure).toHaveBeenCalledOnce()
+    }
+    expect(vi.getTimerCount()).toBe(0)
+    expect(power.subscriptions).toBe(0)
+  }
+)
 
 it('releases deadlines and power subscriptions after abort and close', async () => {
   const aborted = createClient({ acknowledgeWrites: false })

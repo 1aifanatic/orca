@@ -11,7 +11,7 @@ import {
  * libuv's monotonic clock, so wall-clock changes cannot fake or hide lateness.
  */
 export const PROFILE_STATE_WRITER_OVERDUE_GRACE_MS = 5_000
-/** Bound grace so repeated stalls or a missed resume cannot hide a hung worker forever. */
+/** Stalls, suspended expiries, and resumes share one budget per request. */
 export const PROFILE_STATE_WRITER_MAX_GRACES = 3
 
 export type ProfileStateWriterDeadlineExpiry = {
@@ -29,9 +29,8 @@ export type ProfileStateWriterDeadlineOptions = {
 }
 
 /**
- * Fault only after a full window in which the main loop ran on time while awake.
- * Late or suspended expiries re-arm instead, which lets queued replies drain in
- * either delivery order; resume grants a fresh window without spending grace.
+ * Power events and stalled-loop expiries can grant bounded extra time.
+ * A final expiry lets queued replies drain before faulting.
  */
 export function createProfileStateWriterDeadline(
   timeoutMs: number,
@@ -46,9 +45,12 @@ export function createProfileStateWriterDeadline(
   let armedAt = startedAt
   let graces = 0
   let timer: ReturnType<typeof setTimeout> | undefined
+  let timeoutCheck: ReturnType<typeof setImmediate> | undefined
   let active = true
   const arm = (): void => {
     clearTimeout(timer)
+    clearImmediate(timeoutCheck)
+    timeoutCheck = undefined
     armedAt = now()
     timer = setTimeout(expire, timeoutMs)
   }
@@ -59,32 +61,50 @@ export function createProfileStateWriterDeadline(
     active = false
     clearTimeout(timer)
     timer = undefined
+    clearImmediate(timeoutCheck)
+    timeoutCheck = undefined
     unsubscribe()
   }
-  function expire(): void {
-    timer = undefined
-    if (!active) {
-      return
-    }
+  const describeExpiry = (): ProfileStateWriterDeadlineExpiry => {
     const current = now()
-    const expiry = {
+    return {
       timeoutMs,
       elapsedMs: Math.max(0, current - startedAt),
       overdueMs: Math.max(0, current - armedAt - timeoutMs),
       graces,
       powerState: getSystemPowerState()
     }
-    if (
-      graces < PROFILE_STATE_WRITER_MAX_GRACES &&
-      (expiry.overdueMs >= PROFILE_STATE_WRITER_OVERDUE_GRACE_MS || expiry.powerState !== 'awake')
-    ) {
-      graces += 1
-      arm()
-      onGrace?.({ ...expiry, graces })
+  }
+  const grantGrace = (expiry: ProfileStateWriterDeadlineExpiry): boolean => {
+    if (graces >= PROFILE_STATE_WRITER_MAX_GRACES) {
+      return false
+    }
+    graces += 1
+    arm()
+    onGrace?.({ ...expiry, graces })
+    return true
+  }
+  function expire(): void {
+    timer = undefined
+    if (!active) {
       return
     }
-    clear()
-    onTimeout(expiry)
+    const expiry = describeExpiry()
+    if (
+      (expiry.overdueMs >= PROFILE_STATE_WRITER_OVERDUE_GRACE_MS ||
+        expiry.powerState !== 'awake') &&
+      grantGrace(expiry)
+    ) {
+      return
+    }
+    // Even an on-time timer can run before a reply already queued by the worker.
+    timeoutCheck = setImmediate(() => {
+      timeoutCheck = undefined
+      if (active) {
+        clear()
+        onTimeout(expiry)
+      }
+    })
   }
   // Subscription replays the current state synchronously; only later resumes re-arm.
   let subscribed = false
@@ -92,7 +112,7 @@ export function createProfileStateWriterDeadline(
     onSuspend: () => {},
     onResume: () => {
       if (subscribed && active) {
-        arm()
+        grantGrace(describeExpiry())
       }
     }
   })

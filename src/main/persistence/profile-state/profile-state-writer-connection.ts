@@ -127,6 +127,8 @@ export class ProfileStateWriterConnection {
             { outcome: 'indeterminate' }
           )
         }
+        // Termination is asynchronous; close must retain ownership until exit is confirmed.
+        await this.thread?.exitPromise
       }
       if (this.failure) {
         throw this.failure
