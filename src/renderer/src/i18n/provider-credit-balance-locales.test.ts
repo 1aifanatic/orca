@@ -10,15 +10,15 @@ import ko from './locales/ko.json'
 import zh from './locales/zh.json'
 
 const catalogs = {
-  es: { catalog: es, compactBalanceLabel: 'saldo' },
-  fr: { catalog: fr, compactBalanceLabel: 'solde' },
-  ja: { catalog: ja, compactBalanceLabel: '残高' },
-  ko: { catalog: ko, compactBalanceLabel: '잔액' },
-  zh: { catalog: zh, compactBalanceLabel: '余额' }
+  es: { catalog: es, compactBalanceMessage: 'saldo 12.50' },
+  fr: { catalog: fr, compactBalanceMessage: 'solde 12.50' },
+  ja: { catalog: ja, compactBalanceMessage: '残高 12.50' },
+  ko: { catalog: ko, compactBalanceMessage: '잔액 12.50' },
+  zh: { catalog: zh, compactBalanceMessage: '余额 12.50' }
 }
 const balanceMessages = [
   ['StatusBar.4025a6f62f', 'Unlimited'],
-  ['StatusBar.a95969101f', 'credits'],
+  ['StatusBar.a95969101f', '{{value0}} credits'],
   ['tooltip.fbc80d8be2', 'Zen balance'],
   ['tooltip.c03c61f53f', 'Balance'],
   ['tooltip.f6a27a3c0a', '{{value0}} available'],
@@ -52,7 +52,7 @@ describe('provider credit balance sparse target catalogs', () => {
 
   it.each(Object.entries(catalogs))(
     '%s falls back and interpolates balance copy at runtime',
-    async (locale, { catalog, compactBalanceLabel }) => {
+    async (locale, { catalog, compactBalanceMessage }) => {
       const instance = createInstance()
       await instance.init({
         lng: locale,
@@ -72,9 +72,12 @@ describe('provider credit balance sparse target catalogs', () => {
           value0: 500
         })
       ).toBe('500 credits available')
-      expect(instance.t(balanceKey('StatusBar.4fba7dc1e7'), { defaultValue: 'bal' })).toBe(
-        compactBalanceLabel
-      )
+      expect(
+        instance.t(balanceKey('StatusBar.4fba7dc1e7'), {
+          defaultValue: '{{value0}} bal',
+          value0: '12.50'
+        })
+      ).toBe(compactBalanceMessage)
     }
   )
 
@@ -86,7 +89,7 @@ describe('provider credit balance sparse target catalogs', () => {
       expect(instance.getResource('en', 'translation', balanceKey(suffix))).toBe(value)
     }
     expect(instance.getResource('en', 'translation', balanceKey('StatusBar.4fba7dc1e7'))).toBe(
-      'bal'
+      '{{value0}} bal'
     )
   })
 })

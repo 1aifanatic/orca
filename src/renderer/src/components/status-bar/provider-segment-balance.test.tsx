@@ -1,11 +1,20 @@
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ProviderRateLimits } from '../../../../shared/rate-limit-types'
+
+const compactMessages = vi.hoisted(() => ({ balance: '' }))
+
+afterEach(() => {
+  compactMessages.balance = ''
+})
 
 vi.mock('@/i18n/i18n', () => ({
   i18n: { language: 'en' },
   translate: (_key: string, fallback: string, values?: Record<string, string>) => {
-    let result = fallback
+    let result =
+      _key === 'auto.components.status.bar.StatusBar.4fba7dc1e7' && compactMessages.balance
+        ? compactMessages.balance
+        : fallback
     for (const [key, value] of Object.entries(values ?? {})) {
       result = result.replace(`{{${key}}}`, value)
     }
@@ -118,6 +127,19 @@ function claudeDisabledCredits(): ProviderRateLimits {
 }
 
 describe('ProviderSegment extra-usage balance token', () => {
+  it.each([
+    ['Spanish', 'saldo {{value0}}', 'saldo $12.40'],
+    ['French', 'solde {{value0}}', 'solde $12.40']
+  ])('lets %s put the balance label before its amount', async (_locale, message, expected) => {
+    compactMessages.balance = message
+    const { ProviderSegment } = await import('./StatusBar')
+    const markup = renderToStaticMarkup(
+      <ProviderSegment p={openCodeGo(100)} compact={false} display="used" />
+    )
+    expect(markup).toContain(expected)
+    expect(markup).not.toContain('{{value0}}')
+  })
+
   it('reveals the remaining balance once a plan window is capped', async () => {
     const { ProviderSegment } = await import('./StatusBar')
 

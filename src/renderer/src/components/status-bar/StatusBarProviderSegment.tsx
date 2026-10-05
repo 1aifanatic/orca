@@ -290,11 +290,15 @@ function formatCompactExtraUsage(balance: ProviderRateLimits['extraUsage']): str
   if (balance.unit === 'credits') {
     return balance.unlimited
       ? translate('auto.components.status.bar.StatusBar.4025a6f62f', 'Unlimited')
-      : `${formatCreditCount(balance.balance)} ${translate('auto.components.status.bar.StatusBar.a95969101f', 'credits')}`
+      : translate('auto.components.status.bar.StatusBar.a95969101f', '{{value0}} credits', {
+          value0: formatCreditCount(balance.balance)
+        })
   }
   return balance.balance === null
     ? ''
-    : `${formatCurrencyAmount(balance.balance, balance.currencyCode)} ${translate('auto.components.status.bar.StatusBar.4fba7dc1e7', 'bal')}`
+    : translate('auto.components.status.bar.StatusBar.4fba7dc1e7', '{{value0}} bal', {
+        value0: formatCurrencyAmount(balance.balance, balance.currencyCode)
+      })
 }
 
 export function ProviderSegment({
