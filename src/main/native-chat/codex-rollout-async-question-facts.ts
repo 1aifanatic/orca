@@ -2,22 +2,34 @@ import type { NativeChatAsyncQuestionFact } from '../../shared/native-chat-async
 import { nativeChatTranscriptAsyncQuestionFacts } from '../../shared/native-chat-async-question-facts'
 import { asRecord, parseJsonObject } from '../ai-vault/session-scanner-values'
 import { decodeCodexTranscriptLine } from './transcript-line-decoders-codex'
+import {
+  codexUserRecordReplyText,
+  parseCodexAsyncQuestionReplyIds
+} from './codex-async-question-reply'
 
 // Cheap prefilter: most rollout lines (tool output) cannot carry a fact and skip JSON parsing.
 const FACT_MARKERS = ['user_message', 'UserMessage', '_async', '"async"'] as const
 
 /** Only Codex's own user-message events count as delivered: injected context records
  *  (environment, instructions) are user-role response items but never these events. */
-function isDeliveredUserRecord(record: Record<string, unknown>): boolean {
+function deliveredUserPayload(record: Record<string, unknown>): Record<string, unknown> | null {
   if (record.type !== 'event_msg') {
-    return false
+    return null
   }
   const payload = asRecord(record.payload)
   if (payload?.type === 'user_message') {
-    return true
+    return payload
   }
   const item = payload?.type === 'item_completed' ? asRecord(payload.item) : null
-  return item?.type === 'UserMessage' || item?.type === 'user_message'
+  return item?.type === 'UserMessage' || item?.type === 'user_message' ? payload : null
+}
+
+/** A reply from Codex's question editor answers only the questions it names; any other
+ *  delivered message clears the whole set, as Codex does for a typed prompt. */
+function deliveredUserFacts(payload: Record<string, unknown>): NativeChatAsyncQuestionFact[] {
+  const replyText = codexUserRecordReplyText(payload)
+  const ids = replyText === null ? null : parseCodexAsyncQuestionReplyIds(replyText)
+  return [ids ? { kind: 'answered', ids } : { kind: 'delivered-user-message', author: 'root' }]
 }
 
 /** Async-question facts of one rollout line, in record order. */
@@ -32,8 +44,9 @@ export function codexRolloutAsyncQuestionFacts(
   if (!record) {
     return []
   }
-  if (isDeliveredUserRecord(record)) {
-    return [{ kind: 'delivered-user-message', author: 'root' }]
+  const delivered = deliveredUserPayload(record)
+  if (delivered) {
+    return deliveredUserFacts(delivered)
   }
   const message = decodeCodexTranscriptLine(line, recordId)
   return message ? nativeChatTranscriptAsyncQuestionFacts(message) : []

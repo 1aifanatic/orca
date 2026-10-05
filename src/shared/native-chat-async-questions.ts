@@ -1,7 +1,7 @@
 // Pending Codex async questions, derived by the execution host from canonical history
 // (the rollout file or the journal) and published beside it. The rule: root questions
-// asked after the newest delivered root user message. Nothing is stored; the set is a
-// pure function of history, so there is no latch to strand.
+// asked after the newest delivered root user message, less those a provider reply names.
+// Nothing is stored; the set is a pure function of history, so there is no latch to strand.
 
 import { codexAsyncQuestionListsEqual, type CodexAsyncQuestion } from './codex-async-question-item'
 
@@ -38,12 +38,17 @@ export type NativeChatAsyncQuestionFact =
     }
   | { kind: 'async-call'; callId: string; questions: CodexAsyncQuestion[] }
   | { kind: 'delivered-user-message'; author: 'root' | 'child' }
+  /** A delivered reply naming the questions it answers (question keys or whole item ids). */
+  | { kind: 'answered'; ids: string[] }
   | { kind: 'other' }
 
 type PendingEntry = {
   identity: string
+  /** False for a record-position identity, which no reply can name. */
+  replyAddressable: boolean
   providerItemId?: string
   questions: CodexAsyncQuestion[]
+  answeredIndexes: number[]
 }
 
 export type NativeChatAsyncQuestionFoldState = {
@@ -66,16 +71,42 @@ function legacyIdentity(
   state: NativeChatAsyncQuestionFoldState,
   recordId: string,
   questions: readonly CodexAsyncQuestion[]
-): string {
+): { identity: string; replyAddressable: boolean } {
   const matches = state.unclaimedCalls.filter((call) =>
     codexAsyncQuestionListsEqual(call.questions, questions)
   )
   const [match] = matches
   if (matches.length !== 1 || !match) {
-    return recordId
+    return { identity: recordId, replyAddressable: false }
   }
   claimCall(state, match.callId)
-  return match.callId
+  return { identity: match.callId, replyAddressable: true }
+}
+
+/** Retires what a reply names. A record-position entry can't be named, so any reply retires
+ *  it, as a plain message would. */
+function foldAnswered(state: NativeChatAsyncQuestionFoldState, ids: readonly string[]): boolean {
+  const named = new Set(ids)
+  let changed = false
+  state.entries = state.entries.flatMap((entry) => {
+    if (!entry.replyAddressable || named.has(entry.identity)) {
+      changed = true
+      return []
+    }
+    const answered = entry.questions.flatMap((_question, index) =>
+      !entry.answeredIndexes.includes(index) &&
+      named.has(nativeChatAsyncQuestionKey(entry.identity, index))
+        ? [index]
+        : []
+    )
+    if (answered.length === 0) {
+      return [entry]
+    }
+    changed = true
+    const answeredIndexes = [...entry.answeredIndexes, ...answered]
+    return answeredIndexes.length === entry.questions.length ? [] : [{ ...entry, answeredIndexes }]
+  })
+  return changed
 }
 
 /** Folds one fact into `state` in place (forward order); returns whether the set changed. */
@@ -92,6 +123,9 @@ export function foldNativeChatAsyncQuestionFact(
     state.unclaimedCalls = []
     return changed
   }
+  if (fact.kind === 'answered') {
+    return foldAnswered(state, fact.ids)
+  }
   if (fact.kind === 'async-call') {
     state.unclaimedCalls.push({ callId: fact.callId, questions: fact.questions })
     return false
@@ -100,9 +134,12 @@ export function foldNativeChatAsyncQuestionFact(
     return false
   }
   const entry: PendingEntry = {
-    identity: fact.itemId ?? legacyIdentity(state, fact.recordId, fact.questions),
+    ...(fact.itemId
+      ? { identity: fact.itemId, replyAddressable: true }
+      : legacyIdentity(state, fact.recordId, fact.questions)),
     ...(fact.providerItemId ? { providerItemId: fact.providerItemId } : {}),
-    questions: fact.questions
+    questions: fact.questions,
+    answeredIndexes: []
   }
   if (fact.itemId) {
     claimCall(state, fact.itemId)
@@ -125,13 +162,19 @@ export function nativeChatAsyncQuestionsFromFold(
   state: NativeChatAsyncQuestionFoldState
 ): NativeChatAsyncQuestion[] {
   return state.entries.flatMap((entry) =>
-    entry.questions.map((question, index) => ({
-      key: nativeChatAsyncQuestionKey(entry.identity, index),
-      ...(entry.providerItemId ? { providerItemId: entry.providerItemId } : {}),
-      index,
-      title: question.title,
-      ...(question.options ? { options: question.options } : {})
-    }))
+    entry.questions.flatMap((question, index) =>
+      entry.answeredIndexes.includes(index)
+        ? []
+        : [
+            {
+              key: nativeChatAsyncQuestionKey(entry.identity, index),
+              ...(entry.providerItemId ? { providerItemId: entry.providerItemId } : {}),
+              index,
+              title: question.title,
+              ...(question.options ? { options: question.options } : {})
+            }
+          ]
+    )
   )
 }
 

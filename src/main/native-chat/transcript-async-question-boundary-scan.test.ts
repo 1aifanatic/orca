@@ -306,6 +306,38 @@ describe('host-derived Codex async questions on the terminal transport', () => {
     expect(keys(observed)).toEqual([JSON.stringify(['request_user_input_async', 'call-1', 0])])
   })
 
+  it("retires only the question Codex's own editor answered, scanning past the reply", async () => {
+    const color = [{ title: 'Color?' }]
+    const size = [{ title: 'Size?' }]
+    const editorReply = (callId: string, title: string): string =>
+      `<send_user_message_question_reply>\n${JSON.stringify([
+        {
+          answer: 'blue',
+          question: title,
+          questionItemId: JSON.stringify(['request_user_input_async', callId, 0])
+        }
+      ])}\n</send_user_message_question_reply>`
+    const filePath = await rollout(
+      userEvent() +
+        asyncCall('call-a', color) +
+        itemAsk('call-a', color) +
+        asyncCall('call-b', size) +
+        itemAsk('call-b', size) +
+        userItem('u2', editorReply('call-a', 'Color?')) +
+        assistant(1)
+    )
+    // Backward reconstruction keeps scanning past a reply to the prompt that clears all.
+    const fresh = await watch(filePath)
+    await waitFor(() => fresh.ready() !== undefined)
+    expect(titles(fresh)).toEqual(['Size?'])
+    // Appended: the live fold retires only what the reply names.
+    await appendFile(filePath, asyncCall('call-c', color) + itemAsk('call-c', color))
+    await waitFor(() => titles(fresh).length === 2)
+    await appendFile(filePath, userEvent(editorReply('call-b', 'Size?')))
+    await waitFor(() => titles(fresh).length === 1)
+    expect(titles(fresh)).toEqual(['Color?'])
+  })
+
   it('reads paginated-mode user items as the boundary', async () => {
     const old = [{ title: 'Old?' }]
     const fresh = [{ title: 'New?' }]
