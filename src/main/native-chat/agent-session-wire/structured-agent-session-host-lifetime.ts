@@ -112,7 +112,7 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
     // the kill and never awaited by it; the journal writes rows in order.
     const recorded = (await stopEndsWork(context, sessionId, session, ending))
       ? recordStopEvent(context, sessionId, session, ending)
-      : Promise.resolve()
+      : Promise.resolve(null)
     child.close = {
       cause,
       reason: ('reason' in ending ? ending.reason : undefined) ?? null,
@@ -123,22 +123,27 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
     // The same stop asked again, such as a second close of the chat, closes what came since.
     child.close.requestedAt = session.journal.cursor()
   }
-  if (context.restartWitness) {
-    await snapshotBeforeStructuredAgentSessionStop(
-      {
+  try {
+    if (context.restartWitness) {
+      await snapshotBeforeStructuredAgentSessionStop(
+        {
+          sessionId,
+          eventSink: context.runtimeState.eventSinkFor(sessionId),
+          logger: context.deps.logger
+        },
+        () => context.restartWitness?.beforeStop(sessionId)
+      )
+    }
+    if ((await joinStructuredAgentSessionChildClose(context, sessionId, child)) !== 'exited') {
+      throw new StructuredAgentSessionEvictionError(
+        'stop-provider-child',
         sessionId,
-        eventSink: context.runtimeState.eventSinkFor(sessionId),
-        logger: context.deps.logger
-      },
-      () => context.restartWitness?.beforeStop(sessionId)
-    )
-  }
-  if ((await joinStructuredAgentSessionChildClose(context, sessionId, child)) !== 'exited') {
-    throw new StructuredAgentSessionEvictionError(
-      'stop-provider-child',
-      sessionId,
-      new Error('provider child exit was not proven')
-    )
+        new Error('provider child exit was not proven')
+      )
+    }
+  } finally {
+    // A person's close binds what its child's end cut; done, proven or not, it binds no more.
+    void child.close?.recorded.then((settle) => session.journal.stopMarks.settled(settle))
   }
 }
 

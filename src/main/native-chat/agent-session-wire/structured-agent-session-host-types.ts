@@ -2,12 +2,16 @@ import type { SubmissionRejectionFact } from '../../../shared/agent-session-fail
 import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
 import type { AgentJournalCursor } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
-import type { AgentSessionStatusSummary } from '../../../shared/agent-session-wire'
+import type {
+  AgentSessionStatusSummary,
+  AgentSessionWireRefusal
+} from '../../../shared/agent-session-wire'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { AgentSessionRecoveryCapsule } from '../../runtime/agent-session-recovery-capsule'
 import type { AgentSessionSpawnTokenScan } from '../../runtime/agent-session-spawn-token-process-scan'
 import type { JournalHostDatabase } from '../agent-session-journal/journal-host-database'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import type { JournalStopSettle } from '../agent-session-journal/queued-message-pause'
 import type {
   StructuredAgentSessionAdapter,
   StructuredAgentSessionChildEndCause,
@@ -30,6 +34,8 @@ export type StructuredAgentSessionReveal = {
   workspaceId: string
   agent: 'claude' | 'codex'
   readable: boolean
+  /** Why the journal did not open, as a read would be refused. Host-side only: never published. */
+  openRefusal?: AgentSessionWireRefusal
 }
 
 /** Which provider child: the adapter acquisition and the lease fence it writes at. */
@@ -45,7 +51,9 @@ export type StructuredAgentSessionChildClose = {
   readonly cause: StructuredAgentSessionStopCause
   readonly reason: string | null
   /** The Stop event that stop wrote, folded before the work it ends is settled. */
-  readonly recorded: Promise<void>
+  /** Resolves to the settle a person's close opened, which the stop closes once the child's end is
+   *  done. */
+  readonly recorded: Promise<JournalStopSettle | null>
   /** Where the journal stood when that stop was asked for: the child's end is ordered there, so a
    *  message accepted while the exit was being proven came after it. A repeated ask moves it. */
   requestedAt: AgentJournalCursor
