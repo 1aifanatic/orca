@@ -1,173 +1,65 @@
-name: CI registry and mobile cancellation qualification
+name: pnpm verification cache pilot
+
 on:
+  pull_request:
+    paths: ['.github/workflows/ci-pnpm-verification-pilot.yml']
   workflow_dispatch:
-    inputs:
-      source-ref:
-        description: Exact source SHA used by the qualified checks
-        required: true
-        type: string
-      mobile-mode:
-        description: Run the registry comparison or external mobile cancellation control
-        required: true
-        default: registry
-        type: choice
-        options:
-          - registry
-          - cancel
+
 permissions:
   contents: read
+
+concurrency:
+  group: pnpm-verification-pilot-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  ORCA_BACKGROUND_LAUNCH: '1'
+
 jobs:
-  rpc_registry_comparison:
-    if: inputs.mobile-mode == 'registry'
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 25
-    env:
-      ORCA_BACKGROUND_LAUNCH: '1'
-      SOURCE_REF: ${{ inputs.source-ref }}
-    steps:
-      - name: Checkout frozen qualification archive
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.sha }}
-          path: .ci-registry-pilot-source
-          persist-credentials: false
-          sparse-checkout: config/ci-pressure-pilot
-      - name: Stage isolated registry qualification
-        shell: bash
-        run: |-
-          pilot="$RUNNER_TEMP/ci-rpc-registry-pilot"
-          mkdir -p "$pilot"
-          echo '287597b6f061d3a5563dcfed9886a31859c2d7bf0ea9a44c8894dedb3536a706  .ci-registry-pilot-source/config/ci-pressure-pilot/rpc-registry.tar.gz' | sha256sum --check
-          tar -xzf .ci-registry-pilot-source/config/ci-pressure-pilot/rpc-registry.tar.gz -C "$pilot"
-          printf 'ORCA_RPC_REGISTRY_PILOT_HOME=%s\n' "$pilot" >> "$GITHUB_ENV"
-      - name: Checkout pinned source
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ inputs.source-ref }}
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        with:
-          node-version: '24'
-          native-runtime: node
-          cache-electron-package: 'true'
-      - name: Install Electron package binary for tests
-        run: node config/scripts/install-electron-package-binary.mjs
-      - name: Verify pinned source and record runner toolchain
-        shell: bash
-        run: |-
-          test "$(git rev-parse HEAD)" = "$SOURCE_REF"
-          node -e 'const fs=require("node:fs"),os=require("node:os"),assert=require("node:assert/strict");assert(/^[0-9a-f]{40}$/.test(process.env.SOURCE_REF));fs.writeFileSync(process.env.ORCA_RPC_REGISTRY_PILOT_HOME+"/runner-toolchain.json",JSON.stringify({sourceRef:process.env.SOURCE_REF,workflowSha:process.env.GITHUB_SHA,node:process.version,platform:process.platform,arch:process.arch,cpus:os.cpus().length,memoryBytes:os.totalmem()},null,2))'
-          python3 "$ORCA_RPC_REGISTRY_PILOT_HOME/qualify.py" verify --out "$ORCA_RPC_REGISTRY_PILOT_HOME/receipts/static"
-      - name: Compare complete mixed registry cohort
-        shell: bash
-        run: |-
-          python3 "$ORCA_RPC_REGISTRY_PILOT_HOME/qualify.py" benchmark --out "$ORCA_RPC_REGISTRY_PILOT_HOME/receipts/benchmark"
-      - name: Preserve real handler and unexpected default-registry failures
-        shell: bash
-        run: |-
-          python3 "$ORCA_RPC_REGISTRY_PILOT_HOME/terminal-controls/run-controls.py" --out "$ORCA_RPC_REGISTRY_PILOT_HOME/receipts/terminal-controls"
-          python3 "$ORCA_RPC_REGISTRY_PILOT_HOME/terminal-controls/run-guard-controls.py" --out "$ORCA_RPC_REGISTRY_PILOT_HOME/receipts/guard-controls"
-      - name: Preserve real aggregate catalog registration failures
-        shell: bash
-        run: |-
-          python3 "$ORCA_RPC_REGISTRY_PILOT_HOME/native-controls/qualify.py" controls --out "$ORCA_RPC_REGISTRY_PILOT_HOME/receipts/catalog-controls"
-      - name: Keep complete registry comparison receipts
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: ci-complete-rpc-registry-comparison
-          path: |
-            ${{ env.ORCA_RPC_REGISTRY_PILOT_HOME }}/receipts
-            ${{ env.ORCA_RPC_REGISTRY_PILOT_HOME }}/runner-toolchain.json
-          if-no-files-found: error
-  mobile_typecheck_cancel:
-    runs-on: ubuntu-24.04-arm
+  seed:
+    strategy:
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
-    env:
-      ORCA_BACKGROUND_LAUNCH: "1"
-      SOURCE_REF: ${{ inputs.source-ref }}
-      SCENARIO: cancel
-    defaults:
-      run:
-        shell: bash
-        working-directory: mobile
-    if: inputs.mobile-mode == 'cancel'
     steps:
-      - name: Checkout pilot qualification files
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
-          ref: ${{ github.sha }}
-          path: .ci-mobile-pilot-source
-          persist-credentials: false
-          sparse-checkout: config/ci-pressure-pilot/mobile-typecheck
-      - name: Stage isolated qualification tools
-        working-directory: .
-        run: |-
-          mkdir -p "$RUNNER_TEMP/ci-mobile-typecheck-pilot"
-          cp .ci-mobile-pilot-source/config/ci-pressure-pilot/mobile-typecheck/* "$RUNNER_TEMP/ci-mobile-typecheck-pilot/"
-          printf "ORCA_TYPECHECK_PILOT_HOME=%s\n" "$RUNNER_TEMP/ci-mobile-typecheck-pilot" >> "$GITHUB_ENV"
-      - name: Checkout pinned source
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ inputs.source-ref }}
-          fetch-depth: 2
           persist-credentials: false
       - uses: ./.github/actions/install-node-dependencies
+        id: deps
+      # PR caches are scoped to the PR merge ref; main never restores them.
+      - uses: actions/cache/save@v5
+        if: steps.deps.outputs.verification-cache-hit != 'true'
         with:
-          cache-dependency-path: |
-            pnpm-lock.yaml
-            mobile/pnpm-lock.yaml
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Verify immutable compiler configs and prepare control
-        working-directory: .
-        run: node "$ORCA_TYPECHECK_PILOT_HOME/proof.mjs" init
-      - name: Observe typecheck memory
-        working-directory: .
-        run: node "$ORCA_TYPECHECK_PILOT_HOME/monitor.mjs"
-        id: typecheck_memory
-        background: true
-        continue-on-error: true
-      - name: Start cancellation-only held stage
-        working-directory: .
-        run: node "$ORCA_TYPECHECK_PILOT_HOME/proof.mjs" start control
-      - name: Production types cancellation control
-        id: production_control
-        background: true
-        env:
-          NODE_OPTIONS: --require="${{ env.ORCA_TYPECHECK_PILOT_HOME }}/guard.cjs"
-          ORCA_TYPECHECK_GUARD_RECEIPTS: ${{ env.ORCA_TYPECHECK_PILOT_HOME }}/reports/control
-          ORCA_TYPECHECK_CANCEL_HOLD: "true"
-          ORCA_TYPECHECK_CANCEL_RELEASE_FILE: ${{ env.ORCA_TYPECHECK_PILOT_HOME }}/cancel-tools.release
-        run: node node_modules/typescript/bin/tsc --noEmit
-      - name: Typecheck ratchet held for external cancellation
-        id: ratchet_control
-        env:
-          NODE_OPTIONS: --require="${{ env.ORCA_TYPECHECK_PILOT_HOME }}/guard.cjs"
-          ORCA_TYPECHECK_GUARD_RECEIPTS: ${{ env.ORCA_TYPECHECK_PILOT_HOME }}/reports/control
-          ORCA_TYPECHECK_CANCEL_HOLD: "true"
-          ORCA_TYPECHECK_CANCEL_RELEASE_FILE: ${{ env.ORCA_TYPECHECK_PILOT_HOME }}/cancel-tools.release
-        run: node scripts/check-tests-typecheck-ratchet.mjs
-      - wait: production_control
-      - name: Test would start control
-        run: printf "Both required typechecks passed\n" > "$ORCA_TYPECHECK_PILOT_HOME/reports/control/Test-started.txt"
-      - name: Seal external cancellation and owned-worker settlement
-        working-directory: .
-        run: node "$ORCA_TYPECHECK_PILOT_HOME/proof.mjs" seal control
-        if: always()
-        env:
-          PRODUCTION_OUTCOME: ${{ steps.production_control.outcome }}
-          RATCHET_OUTCOME: ${{ steps.ratchet_control.outcome }}
-          CANCELLED: ${{ job.status == 'cancelled' }}
-      - name: Finish bounded observation and validate receipts
-        working-directory: .
-        run: node "$ORCA_TYPECHECK_PILOT_HOME/proof.mjs" finish
-        if: always()
-      - wait: typecheck_memory
-      - name: Upload qualification evidence
-        if: always()
-        uses: actions/upload-artifact@v7
+          path: ${{ steps.deps.outputs.verification-cache-path }}
+          key: ${{ steps.deps.outputs.verification-cache-key }}
+
+  measure:
+    needs: seed
+    name: measure ${{ matrix.runner }} sample ${{ matrix.sample }} cache ${{ matrix.cache }}
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+        sample: [1, 2, 3]
+        cache: ['false', 'true']
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
         with:
-          name: mobile-typecheck-external-cancel
-          path: ${{ env.ORCA_TYPECHECK_PILOT_HOME }}/
-          if-no-files-found: error
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+        id: deps
+        with:
+          cache-pnpm-verification: ${{ matrix.cache }}
+      - name: Validate treatment and frozen install
+        env:
+          CACHE_ENABLED: ${{ matrix.cache }}
+          CACHE_HIT: ${{ steps.deps.outputs.verification-cache-hit }}
+        run: |
+          if [ "$CACHE_ENABLED" = true ]; then test "$CACHE_HIT" = true; fi
+          git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
+          node -e "require.resolve('vitest'); require.resolve('electron')"
