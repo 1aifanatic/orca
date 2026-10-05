@@ -210,9 +210,9 @@ export async function openCodexAppServerConnection(
       return closing || managed.rootVerdict === 'exited' || terminalError !== null
     },
     get processTreeUnproven() {
+      const tree = managed.lastCloseResult?.tree
       return (
-        managed.lastCloseResult?.root === 'exited' &&
-        managed.lastCloseResult.tree === 'unverifiable'
+        managed.lastCloseResult?.root === 'exited' && (tree === 'unverifiable' || tree === 'live')
       )
     },
     request,

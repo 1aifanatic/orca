@@ -4,8 +4,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { spawnProcess } from '../../shared/child-process/run-process'
 import { spawnManagedProviderProcess } from './managed-provider-process'
 import { ROOT_ONLY_GRACEFUL_EXIT_MS } from './provider-process-close'
+import type { ProviderProcessTeardownVerdict } from './provider-process-teardown'
 
-const teardown = vi.hoisted(() => ({ terminate: vi.fn(async () => true) }))
+const teardown = vi.hoisted(() => ({
+  terminate: vi.fn(async (): Promise<ProviderProcessTeardownVerdict> => 'exited')
+}))
 vi.mock('./provider-process-teardown', () => ({
   terminateProviderProcessTree: teardown.terminate
 }))
@@ -47,16 +50,13 @@ describe('root-only managed provider close', () => {
     expect(teardown.terminate).not.toHaveBeenCalled()
   })
 
-  it.each([
-    [true, 'exited'],
-    [false, 'unverifiable']
-  ] as const)(
-    'writes the fallback teardown outcome (accepted=%s) into the tree verdict',
-    async (accepted, tree) => {
+  it.each(['exited', 'live', 'unverifiable', null] as const)(
+    'writes what the fallback teardown observed (%s) as the tree verdict',
+    async (tree) => {
       vi.useFakeTimers()
       teardown.terminate.mockImplementationOnce(async () => {
         fixture.child.emit('exit', null, 'SIGKILL')
-        return accepted
+        return tree
       })
       const fixture = fakeChild()
       const managed = rootOnly(fixture)

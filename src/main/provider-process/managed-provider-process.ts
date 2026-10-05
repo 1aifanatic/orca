@@ -5,7 +5,10 @@ import {
   PROVIDER_SUPERVISOR_MAX_STOP_MS,
   createProviderSpawnSpec
 } from './provider-process-supervisor'
-import { terminateProviderProcessTree } from './provider-process-teardown'
+import {
+  terminateProviderProcessTree,
+  type ProviderProcessTeardownVerdict
+} from './provider-process-teardown'
 import type { DescendantTreeVerdict } from '../pty-descendant-exit-verification'
 import {
   acceptProviderRootExit,
@@ -50,7 +53,7 @@ export type ManagedProviderProcess = {
   /** The last 8 KiB of stderr, which the managed process drains so the child never blocks on it. */
   stderrTail(): string
   onExit(listener: (exit: ProviderProcessExit) => void): void
-  terminateTree(): Promise<boolean>
+  terminateTree(): Promise<ProviderProcessTeardownVerdict>
   close(tree?: ProviderProcessTree): Promise<ProviderProcessCloseResult>
 }
 
@@ -112,7 +115,7 @@ export function spawnManagedProviderProcess(
   })
   const rootVerdict = (): DescendantTreeVerdict =>
     observed ? 'exited' : child.pid === undefined ? 'unverifiable' : 'live'
-  const terminateTree = (): Promise<boolean> =>
+  const terminateTree = (): Promise<ProviderProcessTeardownVerdict> =>
     terminateProviderProcessTree(child, { site: options.site, platform })
 
   return {

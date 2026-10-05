@@ -2,6 +2,7 @@ import type { SpawnedProcess } from '../../shared/child-process/run-process'
 import type { DescendantTreeVerdict } from '../pty-descendant-exit-verification'
 import { waitForProcessExitUntil } from './provider-process-exit-deadline'
 import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from './provider-process-supervisor'
+import type { ProviderProcessTeardownVerdict } from './provider-process-teardown'
 
 export type ProviderProcessTree = {
   capture(): Promise<void>
@@ -23,7 +24,7 @@ export type ProviderProcessCloseInput = {
   supervised?: boolean
   policy: ProviderProcessClosePolicy
   tree?: ProviderProcessTree
-  terminateTree: () => Promise<boolean>
+  terminateTree: () => Promise<ProviderProcessTeardownVerdict>
 }
 
 export type ProviderProcessCloseResult = {
@@ -74,7 +75,7 @@ export async function closeProviderProcess(
       if (tree) {
         await tree.reap()
       } else {
-        fallbackTree = (await input.terminateTree()) ? 'exited' : 'unverifiable'
+        fallbackTree = await input.terminateTree()
       }
       await waitForProcessExitUntil(input.exitPromise, policy.forcedExitMs)
     }
