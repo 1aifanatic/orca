@@ -8,19 +8,16 @@ import {
   type AcpDialect,
   type AcpRequestPresentation
 } from './acp-dialects/acp-dialect'
+import type { AcpAgentError } from './acp-errors'
 import { AcpHistoryAdoption } from './acp-history-adoption'
 import { acpTurnEnd, AcpPromptTurns } from './acp-prompt-turns'
-import type { AcpSessionEvent } from './acp-session-runtime'
+import { readAcpSessionEvent, type AcpSessionEvent } from './acp-session-events'
 import { translateAcpRequest } from './acp-timeline-requests'
 import { acpSessionUpdate } from './acp-session-update'
 import { AcpToolTimeline } from './acp-tool-timeline'
 import { AcpTurnFailures, acpPromptErrorDetail } from './acp-turn-failures'
 import { AcpTurnMessages } from './acp-turn-messages'
-import {
-  SessionNotificationSchema,
-  type PromptResponse,
-  type SessionNotification
-} from './generated/acp-protocol.generated'
+import type { PromptResponse, SessionNotification } from './generated/acp-protocol.generated'
 
 export { acpTurnEnd } from './acp-prompt-turns'
 
@@ -88,7 +85,9 @@ export class AcpTimelineTranslator {
     return this.finishPrompt(clientMessageId, result.stopReason, at)
   }
 
-  promptFailed(clientMessageId: string, error: unknown, at: number): ProviderTimelineEvent[] {
+  /** The agent's own error answer to the prompt; Orca's errors about it (a timeout, an unreadable
+   *  answer, a closed connection) are no provider words and never reach here. */
+  promptFailed(clientMessageId: string, error: AcpAgentError, at: number): ProviderTimelineEvent[] {
     const detail = acpPromptErrorDetail(this.dialect, error)
     const ended = this.prompts.last
     if (this.prompts.current?.clientMessageId !== clientMessageId) {
@@ -161,9 +160,9 @@ export class AcpTimelineTranslator {
       return []
     }
     const envelope = acpNotificationEnvelopeSchema.safeParse(params)
-    const standard =
-      method === 'session/update' ? SessionNotificationSchema.safeParse(params) : undefined
-    const update = standard?.success ? standard.data.update : undefined
+    const read = method === 'session/update' ? readAcpSessionEvent(params) : null
+    const standard = read?.kind === 'known' ? read.notification : undefined
+    const update = standard?.update
     const markedReplay =
       (envelope.success && envelope.data._meta?.isReplay === true) || extension?.replay === true
     const history = markedReplay || (extension?.replay === undefined && this.load !== undefined)
@@ -215,15 +214,15 @@ export class AcpTimelineTranslator {
       }
       return events
     }
-    if (standard?.success) {
+    if (standard) {
       // History text is keyed by its position so a re-run of the adoption lands on the same rows.
       const messageKey =
         turn && (this.dialect.injectedPromptIdentity || history)
-          ? this.messages.key(turn, standard.data.update)
+          ? this.messages.key(turn, standard.update)
           : undefined
       return [
         ...events,
-        ...acpSessionUpdate(standard.data, turn, at, {
+        ...acpSessionUpdate(standard, turn, at, {
           history,
           tools: this.tools,
           dialect: this.dialect,

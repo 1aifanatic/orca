@@ -7,6 +7,7 @@ import {
   openProviderTimelineRig
 } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
 import type { ProviderTimelineEvent } from '../native-chat/agent-session-timeline/provider-timeline-event'
+import { AcpAgentError } from './acp-errors'
 import { AcpTimelineTranslator, acpTurnEnd } from './acp-timeline-translator'
 
 afterEach(closeProviderTimelineRigs)
@@ -177,9 +178,9 @@ describe('generic ACP translation', () => {
       apply(translator.openPrompt('send-1', 1000).events)
       apply(translator.promptResult('send-1', { stopReason: 'end_turn' }, 1100))
       apply(translator.openPrompt('send-2', 1200).events)
-      apply(translator.promptFailed('send-2', { code: -32603, message: 'Upstream failed' }, 1300))
+      apply(translator.promptFailed('send-2', new AcpAgentError(-32603, 'Upstream failed'), 1300))
       apply(translator.openPrompt('send-3', 1400).events)
-      apply(translator.promptFailed('send-3', { code: -32603 }, 1500))
+      apply(translator.promptFailed('send-3', new AcpAgentError(-32603, ''), 1500))
       const rows = (await rig.rows()).filter((row) => row.body.kind === 'status')
       expect(rows.map((row) => row.body)).toEqual([
         { kind: 'status', tone: 'error', text: 'Upstream failed' },

@@ -4,6 +4,7 @@ import {
   messageText
 } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
 import { openAcpFixtureRig } from './acp-timeline-fixture.test-support'
+import { AcpAgentError } from './acp-errors'
 
 const chunk = (promptId: string, text: string) => ({
   sessionId: 'session-1',
@@ -101,7 +102,7 @@ describe('ACP exact prompt identity', () => {
       f.apply(
         lane.notification('_x.ai/session_notification', done(prompt.promptId, stopReason), 1002)
       )
-      f.apply(lane.promptFailed('c1', new Error('Provider rejected prompt'), 1003))
+      f.apply(lane.promptFailed('c1', new AcpAgentError(-32603, 'Provider rejected prompt'), 1003))
       const next = lane.openPrompt('c2', 1004)
       f.apply(next.events)
       f.apply(lane.notification('session/update', chunk(next.promptId, 'next'), 1005))
@@ -115,7 +116,7 @@ describe('ACP exact prompt identity', () => {
     const f = await openAcpFixtureRig()
     const lane = f.lane()
     lane.openPrompt('c1', 1000)
-    f.apply(lane.promptFailed('c1', { code: -32603, message: 'Rejected' }, 1001))
+    f.apply(lane.promptFailed('c1', new AcpAgentError(-32603, 'Rejected'), 1001))
     expect((await f.rig.turns())[0]).toMatchObject({ state: 'completed', outcome: 'failure' })
     expect(() => lane.openPrompt('c2', 1002)).not.toThrow()
   })

@@ -1,10 +1,9 @@
-import { z } from 'zod'
 import { providerDiagnostic } from '../../shared/agent-session-failure'
 import { BoundedMap } from '../../shared/bounded-map'
 import type { ProviderTimelineEvent } from '../native-chat/agent-session-timeline/provider-timeline-event'
 import type { AcpDialect } from './acp-dialects/acp-dialect'
+import type { AcpAgentError } from './acp-errors'
 
-const promptErrorSchema = z.looseObject({ message: z.string() })
 /** Ends the provider failed, rather than ones it chose (a refusal, a token limit). */
 const FAILED_STOP_REASONS = ['error', 'rate_limit']
 
@@ -13,8 +12,8 @@ function acpStopReasonFailed(stopReason: string): boolean {
 }
 
 /** The provider's words in its error answer to `session/prompt`. */
-export function acpPromptErrorDetail(dialect: AcpDialect, error: unknown): string | undefined {
-  return dialect.promptErrorDetail?.(error) ?? promptErrorSchema.safeParse(error).data?.message
+export function acpPromptErrorDetail(dialect: AcpDialect, error: AcpAgentError): string {
+  return dialect.promptErrorDetail?.(error) ?? error.message
 }
 
 /** One error row per failed turn, in the provider's own words, as a Codex turn-ending error reads:

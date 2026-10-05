@@ -6,6 +6,7 @@ import {
   providerTurnItemId
 } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
 import { openAcpFixtureRig } from './acp-timeline-fixture.test-support'
+import { AcpAgentError } from './acp-errors'
 
 afterEach(closeProviderTimelineRigs)
 
@@ -38,7 +39,7 @@ const promptComplete = (promptId: string, stopReason: string, agentResult: strin
   stopReason,
   agentResult
 })
-const rpcError = { code: -32603, message: 'Internal error', data: { message: REASON } }
+const rpcError = new AcpAgentError(-32603, 'Internal error', { message: REASON })
 
 function statusRows(rows: AgentJournalRenderItem[]) {
   return rows.flatMap((row) => (row.body.kind === 'status' ? [{ row, body: row.body }] : []))
@@ -143,7 +144,7 @@ describe('a failed ACP turn says why', () => {
       f.apply(
         lane.promptFailed(
           'c1',
-          source === 'prompt error answer' ? rpcError : { code: -32603, message: '' },
+          source === 'prompt error answer' ? rpcError : new AcpAgentError(-32603, ''),
           1005
         )
       )
@@ -159,7 +160,7 @@ describe('a failed ACP turn says why', () => {
     f.apply(lane.notification('_x.ai/queue/changed', queued(prompt.promptId), 1001))
     f.apply(lane.notification('_x.ai/session_notification', retryFailed, 1002))
     f.apply(lane.notification('_x.ai/session_notification', ended(prompt.promptId, 'error'), 1003))
-    f.apply(lane.promptFailed('c1', { code: -32603, message: 'Internal error' }, 1004))
+    f.apply(lane.promptFailed('c1', new AcpAgentError(-32603, 'Internal error'), 1004))
     const failures = statusRows(await f.rig.rows())
     expect(failures.map((failure) => failure.body.text)).toEqual([REASON])
   })

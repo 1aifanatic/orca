@@ -3,7 +3,7 @@ import type { ProviderTimelineEvent } from '../native-chat/agent-session-timelin
 import type { AcpDialect, AcpRequestPresentation } from './acp-dialects/acp-dialect'
 import type { AcpToolTimeline } from './acp-tool-timeline'
 import { AcpRpcError } from './acp-errors'
-import { RequestPermissionRequestSchema } from './generated/acp-protocol.generated'
+import { readAcpPermissionRequest } from './acp-permission-requests'
 
 export const pendingAcpResolution = {
   state: 'pending',
@@ -13,11 +13,12 @@ export const pendingAcpResolution = {
 } as const
 
 export function acpPermissionPresentation(params: unknown): AcpRequestPresentation {
-  const parsed = RequestPermissionRequestSchema.safeParse(params)
-  if (!parsed.success) {
+  // The runtime already read this request and reported any field it dropped.
+  const request = readAcpPermissionRequest(params, () => {})
+  if (!request) {
     throw new AcpRpcError(-32602, 'Invalid ACP permission request')
   }
-  const { toolCall, options } = parsed.data
+  const { toolCall, options } = request
   return {
     body: {
       kind: 'approval',
