@@ -307,9 +307,10 @@ describe('editable CSV table', () => {
     const pending = new Promise<string>((resolve) => {
       resolveRead = resolve
     })
+    const read = vi.fn(() => pending)
     Object.defineProperty(window, 'api', {
       configurable: true,
-      value: { ui: { readClipboardText: () => pending } }
+      value: { ui: { readClipboardText: read } }
     })
     render(
       <>
@@ -321,6 +322,7 @@ describe('editable CSV table', () => {
     act(() => {
       window.dispatchEvent(new Event(APP_MENU_PASTE_EVENT, { cancelable: true }))
     })
+    expect(read).toHaveBeenCalledTimes(1)
     act(() => {
       screen.getAllByRole('grid')[1]?.focus()
     })
