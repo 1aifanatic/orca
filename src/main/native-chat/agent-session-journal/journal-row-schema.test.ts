@@ -460,3 +460,26 @@ describe('producer linkage on the persisted row', () => {
     expect(parseJournalRow(JSON.stringify(smuggled)).ok).toBe(false)
   })
 })
+
+describe('async question metadata through the row guard', () => {
+  it('admits an item row whose text block carries async questions and keeps the key', () => {
+    const asyncQuestions = { providerItemId: 'call-1', questions: [{ title: 'Color?' }] }
+    const parsed = parseJournalRow(
+      JSON.stringify({
+        ...BASE,
+        kind: 'item',
+        itemId: 'i-1',
+        revision: 1,
+        body: {
+          kind: 'message',
+          role: 'assistant',
+          blocks: [{ type: 'text', text: 'Color?', asyncQuestions }]
+        }
+      })
+    )
+    expect(parsed).toMatchObject({
+      ok: true,
+      row: { body: { blocks: [{ asyncQuestions }] } }
+    })
+  })
+})

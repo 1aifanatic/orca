@@ -128,3 +128,27 @@ export async function readIncrementalTranscriptMessages(
     }
   }
 }
+
+/** Incremental read that also reports the newest turn lifecycle record it passed. */
+export async function readIncrementalTranscriptWithLifecycle(
+  filePath: string,
+  state: IncrementalTranscriptState,
+  decode: NativeChatLineDecoder,
+  decodeLifecycle: ((line: string, fallbackId: string) => NativeChatTurnLifecycle | null) | null,
+  signal: AbortSignal,
+  onBatch?: (messages: NativeChatMessage[]) => void
+): Promise<{ messages: NativeChatMessage[]; lifecycle?: NativeChatTurnLifecycle }> {
+  let lifecycle: NativeChatTurnLifecycle | undefined
+  const messages = await readIncrementalTranscriptMessages(
+    filePath,
+    state,
+    decode,
+    onBatch,
+    decodeLifecycle ?? undefined,
+    (nextLifecycle) => {
+      lifecycle = nextLifecycle
+    },
+    signal
+  )
+  return lifecycle ? { messages, lifecycle } : { messages }
+}

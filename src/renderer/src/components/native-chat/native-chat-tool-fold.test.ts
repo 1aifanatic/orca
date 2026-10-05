@@ -252,3 +252,43 @@ describe('spawn-group roster rows', () => {
     expect(prose.map((block) => block.type)).toEqual(['text', 'subagent-group'])
   })
 })
+
+describe('Codex async question calls', () => {
+  it('fold away with their acknowledgement while the asking prose stays', () => {
+    const folded = foldToolMessages([
+      msg({ id: 'a', blocks: [{ type: 'text', text: 'Which color?' }] }),
+      msg({
+        id: 'c',
+        blocks: [
+          { type: 'tool-call', name: 'request_user_input_async', input: '{}', callId: 'x' },
+          { type: 'tool-call', name: 'Bash', input: {}, callId: 'b' }
+        ]
+      }),
+      msg({
+        id: 'r',
+        role: 'tool',
+        blocks: [
+          { type: 'tool-result', output: '{"accepted":true}', callId: 'x' },
+          { type: 'tool-result', output: 'ok', callId: 'b' }
+        ]
+      })
+    ])
+    expect(folded).toHaveLength(1)
+    expect(folded[0]?.blocks).toEqual([
+      { type: 'text', text: 'Which color?' },
+      { type: 'tool-call', name: 'Bash', input: {}, callId: 'b' },
+      { type: 'tool-result', output: 'ok', callId: 'b' }
+    ])
+  })
+
+  it('drop a message that held only the async call', () => {
+    expect(
+      foldToolMessages([
+        msg({
+          id: 'c',
+          blocks: [{ type: 'tool-call', name: 'request_user_input_async', input: '{}' }]
+        })
+      ])
+    ).toEqual([])
+  })
+})
