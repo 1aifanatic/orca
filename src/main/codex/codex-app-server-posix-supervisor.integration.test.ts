@@ -432,6 +432,21 @@ describe.runIf(process.platform !== 'win32')('POSIX provider supervisor processe
       expect(alive(grandchild)).toBe(false)
     })
 
+    it('keeps the user Node options from the supervisor and hands them to the provider', async () => {
+      const nodeOptions = `--require ${join(tempDir(), 'missing-preload.js')}`
+      const { supervisor, exit } = launchSupervisor(
+        { lifetime: 'one-shot' },
+        { NODE_OPTIONS: nodeOptions },
+        { command: '/bin/sh', args: ['-c', 'printf %s "$NODE_OPTIONS"'] }
+      )
+      let stdout = ''
+      supervisor.stdout!.on('data', (chunk: Buffer) => (stdout += chunk.toString()))
+      supervisor.stdin!.end()
+
+      await expect(exit).resolves.toEqual({ code: 0, signal: null })
+      expect(stdout).toBe(nodeOptions)
+    })
+
     it('hands the provider a near-cap argv prompt intact', async () => {
       const prompt = 'x'.repeat(110 * 1024)
       const { supervisor, exit } = launchSupervisor(

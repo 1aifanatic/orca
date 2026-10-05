@@ -70,6 +70,20 @@ describe('structured provider supervision', () => {
     ).toMatchObject({ lifetime: 'one-shot' })
   })
 
+  it('keeps the user Node options out of the supervisor env and in the provider spec', () => {
+    const spec = supervisedPosixLaunch(launch, {
+      PATH: '/bin',
+      NODE_OPTIONS: '--require /missing.js',
+      NODE_REPL_EXTERNAL_MODULE: '/repl.js'
+    })
+
+    expect(spec.env).not.toHaveProperty('NODE_OPTIONS')
+    expect(spec.env).not.toHaveProperty('NODE_REPL_EXTERNAL_MODULE')
+    expect(
+      JSON.parse(Buffer.from(spec.env.ORCA_PROVIDER_SUPERVISOR_SPEC!, 'base64').toString()).nodeEnv
+    ).toEqual({ NODE_OPTIONS: '--require /missing.js', NODE_REPL_EXTERNAL_MODULE: '/repl.js' })
+  })
+
   it('keeps every argv and env string of a 120 KiB argv prompt under the Linux 128 KiB cap', () => {
     const prompt = 'x'.repeat(120 * 1024)
     const spec = createProviderSpawnSpec(

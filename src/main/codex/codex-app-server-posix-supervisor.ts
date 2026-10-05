@@ -36,7 +36,7 @@ const ownerGone = () => process.ppid !== spec.ownerPid
 for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(signal, () => stopProviderGroup(signal))
 // Orca can die before this runs; spawning then would start a provider nothing watches.
 if (ownerGone()) process.exit(1)
-const childEnv = { ...process.env }
+const childEnv = { ...process.env, ...spec.nodeEnv }
 delete childEnv.ORCA_PROVIDER_SUPERVISOR_SPEC
 delete childEnv.ELECTRON_RUN_AS_NODE
 // The owner sees only this pid's exit; this marked last stderr line says the provider never started.
@@ -240,6 +240,9 @@ export type ProviderSupervisorOptions = {
   sigtermGraceMs?: number
 }
 
+// The user's Node startup options, as the CLI launchers stash them away from Electron's bootstrap.
+const PROVIDER_ONLY_NODE_ENV_KEYS = ['NODE_OPTIONS', 'NODE_REPL_EXTERNAL_MODULE'] as const
+
 // A longer grace than the max stop allows would let recovery or close SIGKILL mid-stop.
 function assertGraceWithin(name: string, graceMs: number, maxMs: number): void {
   if (!(graceMs >= 0 && graceMs <= maxMs)) {
@@ -261,13 +264,24 @@ export function supervisedPosixLaunch(
   assertGraceWithin('stdin-end', stdinEndGraceMs, PROVIDER_STDIN_END_GRACE_MS)
   assertGraceWithin('SIGTERM', sigtermGraceMs, PROVIDER_SIGTERM_GRACE_MS)
   // Only small fields ride in the env: Linux caps one env string at 128 KiB, and argv prompts near it.
+  // Electron's Node bootstrap honours these too; held in the spec, they reach only the provider.
+  const supervisorEnv = { ...childEnv }
+  const nodeEnv: Record<string, string> = {}
+  for (const key of PROVIDER_ONLY_NODE_ENV_KEYS) {
+    const value = supervisorEnv[key]
+    delete supervisorEnv[key]
+    if (value !== undefined) {
+      nodeEnv[key] = value
+    }
+  }
   const supervisorSpec = Buffer.from(
     JSON.stringify({
       cwd,
       ownerPid,
       lifetime,
       stdinEndGraceMs,
-      sigtermGraceMs
+      sigtermGraceMs,
+      nodeEnv
     })
   ).toString('base64')
   return {
@@ -276,7 +290,7 @@ export function supervisedPosixLaunch(
     // Electron's executable needs Node mode for the inline supervisor. The
     // marker is removed above so providers never inherit Electron semantics.
     env: {
-      ...childEnv,
+      ...supervisorEnv,
       ELECTRON_RUN_AS_NODE: '1',
       ORCA_PROVIDER_SUPERVISOR_SPEC: supervisorSpec
     }
