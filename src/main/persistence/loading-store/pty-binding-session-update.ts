@@ -11,10 +11,12 @@ import type { PersistPtyBindingArgs } from './pty-binding-persistence'
 
 export function applyPtyBinding(
   args: PersistPtyBindingArgs,
-  session: WorkspaceSessionState,
+  input: WorkspaceSessionState,
   bindingWorktreeId: string,
   paneKey: string
-): void {
+): WorkspaceSessionState {
+  // Copy-on-write: the caller's session is the published one, and may be frozen.
+  const session: WorkspaceSessionState = { ...input }
   const reconciledIncarnation =
     args.expectedBinding !== undefined && args.incarnationId !== args.expectedBinding.incarnationId
   let terminalMembershipChanged = false
@@ -53,13 +55,19 @@ export function applyPtyBinding(
   }
   const tabs = session.tabsByWorktree?.[bindingWorktreeId]
   const tab = tabs?.find((t) => t.id === args.tabId)
-  if (tab) {
-    tab.ptyId = tabRowPtyIdAfterLeafBinding(
+  if (tabs && tab) {
+    const ptyId = tabRowPtyIdAfterLeafBinding(
       tab,
       session.terminalLayoutsByTabId?.[args.tabId]?.ptyIdsByLeafId,
       args.leafId,
       args.ptyId
     )
+    session.tabsByWorktree = {
+      ...session.tabsByWorktree,
+      [bindingWorktreeId]: tabs.map((candidate) =>
+        candidate === tab ? { ...candidate, ptyId } : candidate
+      )
+    }
   } else {
     terminalMembershipChanged = true
     hostAdmittedTabCreated = args.hostAdmittedMembership === true
@@ -101,10 +109,11 @@ export function applyPtyBinding(
   if (!isTerminalLeafId(args.leafId)) {
     // Why: keep legacy renderer-local pane ids out of durable leaf-keyed layout state after the UUID migration.
     advanceTopologyFence()
-    return
+    return session
   }
-  const layout = session.terminalLayoutsByTabId?.[args.tabId]
-  if (layout) {
+  const existingLayout = session.terminalLayoutsByTabId?.[args.tabId]
+  if (existingLayout) {
+    const layout = { ...existingLayout }
     if (!layout.root) {
       terminalMembershipChanged = true
       // Why: createTab can persist an empty layout before TerminalPane mounts; the sync binding still needs a durable root.
@@ -129,6 +138,7 @@ export function applyPtyBinding(
       ...layout.ptyIdsByLeafId,
       [args.leafId]: args.ptyId
     }
+    session.terminalLayoutsByTabId = { ...session.terminalLayoutsByTabId, [args.tabId]: layout }
   } else {
     terminalMembershipChanged = true
     // Why: first tab spawn — persist a minimal layout so a SIGKILL before the renderer snapshot can't lose ptyIdsByLeafId.
@@ -143,4 +153,5 @@ export function applyPtyBinding(
     }
   }
   advanceTopologyFence()
+  return session
 }

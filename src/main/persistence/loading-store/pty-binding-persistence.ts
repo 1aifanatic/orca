@@ -16,6 +16,8 @@ import { evaluatePtyBindingFastLane } from './pty-binding-fast-lane'
 import { ptyBindingIsRefused } from './pty-binding-refusals'
 import { startPtyBindingSpan, type PtyBindingOrigin, type PtyBindingSpan } from './pty-binding-span'
 import { applyPtyBinding } from './pty-binding-session-update'
+import type { TerminalPanePlacement } from '../../../shared/terminal-pane-placement'
+import { terminalPanePlacementAgreement } from '../terminal-topology/terminal-pane-placement-agreement'
 
 type PtyBindingPersistenceOperationsRuntime = Pick<
   StoreRuntimeState,
@@ -51,6 +53,8 @@ export type PersistPtyBindingArgs = {
   mayReviveRetiredSurface?: boolean
   /** Span metadata only; see `PtyBindingOrigin`. The write path never reads it. */
   origin?: PtyBindingOrigin
+  /** Where a new leaf goes. Report-only for now: the span records whether it names today's tab. */
+  placement?: TerminalPanePlacement
 }
 
 const ptyBindingPersistenceOperationsContext = Symbol('PtyBindingPersistenceOperations')
@@ -154,6 +158,15 @@ export class PtyBindingPersistenceOperations {
           outcome = 'refused'
           return { value: false, persist: false }
         }
+        span.setPlacement(
+          terminalPanePlacementAgreement(
+            args.placement,
+            session,
+            bindingWorktreeId,
+            args.tabId,
+            args.leafId
+          )
+        )
         const verdict = evaluatePtyBindingFastLane(
           args,
           session,
@@ -189,7 +202,7 @@ function writePtyBinding(
 ): () => void {
   const { runtime, sessions } = owner[ptyBindingPersistenceOperationsContext]
   const sessionBeforeBinding = cloneWorkspaceSessionState(session)
-  const restore = (restoredSession = sessionBeforeBinding): void => {
+  const publish = (restoredSession = sessionBeforeBinding): void => {
     if (resolvedHostId === LOCAL_EXECUTION_HOST_ID) {
       runtime.state.workspaceSession = restoredSession
     } else {
@@ -200,17 +213,12 @@ function writePtyBinding(
     }
   }
   try {
-    if (resolvedHostId !== LOCAL_EXECUTION_HOST_ID) {
-      runtime.state.workspaceSessionsByHostId = {
-        ...runtime.state.workspaceSessionsByHostId,
-        [resolvedHostId]: session
-      }
-    }
-    applyPtyBinding(args, session, bindingWorktreeId, paneKey)
+    const bound = applyPtyBinding(args, session, bindingWorktreeId, paneKey)
+    publish(bound)
     runtime.dirtyProfileStateDomains?.add(
       resolvedHostId === LOCAL_EXECUTION_HOST_ID ? 'workspaceSession' : 'workspaceSessionsByHostId'
     )
-    const boundSession = cloneWorkspaceSessionState(session)
+    const boundSession = cloneWorkspaceSessionState(bound)
     return () => {
       const current = sessions.getWorkspaceSession(resolvedHostId)
       const ownerState = (value: WorkspaceSessionState) => {
@@ -238,11 +246,11 @@ function writePtyBinding(
         args.leafId
       )
       if (rolledBack !== current) {
-        restore(rolledBack)
+        publish(rolledBack)
       }
     }
   } catch (error) {
-    restore()
+    publish()
     throw error
   }
 }

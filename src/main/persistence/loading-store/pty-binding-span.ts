@@ -1,5 +1,6 @@
 import { startSpan } from '../../observability/tracer'
 import type { PtyBindingFastLaneMiss } from './pty-binding-fast-lane'
+import type { TerminalPanePlacementAgreement } from '../terminal-topology/terminal-pane-placement-agreement'
 
 export type PtyBindingSpanOutcome = 'fast_lane' | 'flushed' | 'refused' | 'threw'
 
@@ -44,6 +45,7 @@ function admitFastLaneSpan(nowMs: number): boolean {
 
 export type PtyBindingSpan = {
   setEligibility(verdict: { eligible: boolean; misses: readonly PtyBindingFastLaneMiss[] }): void
+  setPlacement(agreement: TerminalPanePlacementAgreement): void
   finish(outcome: PtyBindingSpanOutcome, error?: unknown): void
 }
 
@@ -77,6 +79,9 @@ export function startPtyBindingSpan(entry: {
     setEligibility(verdict) {
       span.setAttribute('binding.eligible', verdict.eligible)
       span.setAttribute('binding.misses', verdict.misses.join(','))
+    },
+    setPlacement(agreement) {
+      span.setAttribute('binding.placement', agreement)
     },
     finish(outcome, error) {
       span.setAttribute('binding.outcome', outcome)
