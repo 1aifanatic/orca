@@ -222,7 +222,9 @@ async function loseStart(
   agent: 'claude' | 'codex' = 'claude'
 ): Promise<void> {
   mocks.createIntent.mockReturnValueOnce(launchIntent(sessionId, agent))
-  const launch = startStructuredAgentLaunch(WORKTREE_ID, agent)
+  const launch = startStructuredAgentLaunch(WORKTREE_ID, agent, {
+    requestId: `request-${sessionId}`
+  })
   await expect(launch.launchResult).rejects.toThrow('reply lost')
   await flush()
   expect(lifecycle(sessionId)).toBe('visibility-unknown')
@@ -306,7 +308,7 @@ describe('a chat whose start was never confirmed', () => {
     await connect()
     mocks.createIntent.mockReturnValueOnce(launchIntent(CLAUDE_SESSION))
     mocks.launch.mockReturnValueOnce(new Promise(() => {}))
-    startStructuredAgentLaunch(WORKTREE_ID, 'claude')
+    startStructuredAgentLaunch(WORKTREE_ID, 'claude', { requestId: `request-${CLAUDE_SESSION}` })
     await flush()
 
     await reload()

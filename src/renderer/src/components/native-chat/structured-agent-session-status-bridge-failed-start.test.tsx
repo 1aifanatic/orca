@@ -196,10 +196,16 @@ function unread(): number {
   return countActivityUnread(store().getState())
 }
 
+let failedStarts = 0
+
 async function failStart(): Promise<void> {
   mocks.createIntent.mockReturnValueOnce(intent)
   mocks.launch.mockRejectedValueOnce(new StructuredAgentSessionCreateRefusalError('refused'))
-  const launch = startStructuredAgentLaunch(WORKTREE_ID, 'claude')
+  failedStarts += 1
+  // Each failed start stands for its own user action.
+  const launch = startStructuredAgentLaunch(WORKTREE_ID, 'claude', {
+    requestId: `request-${failedStarts}`
+  })
   await expect(launch.launchResult).rejects.toBeInstanceOf(StructuredAgentSessionCreateRefusalError)
   await flush()
 }
