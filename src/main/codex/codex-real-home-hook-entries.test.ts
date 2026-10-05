@@ -74,12 +74,13 @@ function identity(path: string): { raw: string; ino: number; mtimeMs: number } {
   return { raw: readFileSync(path, 'utf-8'), ino: stat.ino, mtimeMs: stat.mtimeMs }
 }
 
-async function reconcile(userDataPath = userData): Promise<string> {
+async function reconcile(userDataPath = userData, convertOlderForms = true): Promise<string> {
   return (
     await reconcileRealHomeCodexHookEntries({
       hashes: computeCodexHookHashesForTests(),
       isEnabled: () => true,
-      userDataPath
+      userDataPath,
+      convertOlderForms
     })
   ).outcome
 }
@@ -135,6 +136,22 @@ describe('reconcileRealHomeCodexHookEntries', () => {
       rmSync(otherInstance, { recursive: true, force: true })
     }
     expect(identity(hooksPath())).toEqual(converted)
+  })
+
+  it("writes nothing beside an older build's entry on a launch, yet re-adds its own elsewhere later", async () => {
+    writeHooks({ hooks: { Stop: [USER_A, orcaGroup(olderBuildCommand())] } })
+    const before = identity(hooksPath())
+
+    expect(await reconcile(userData, false)).toBe('deferred')
+
+    expect(identity(hooksPath())).toEqual(before)
+    expect(existsSync(configPath())).toBe(false)
+    expect(await reconcile(userData, true)).toBe('written')
+    const stop = readHooks().hooks.Stop!
+    writeHooks({ hooks: { ...readHooks().hooks, Stop: [USER_B, ...stop] } })
+    // Why: with no older entry left, a launch re-approves this build's entry after a key shift.
+    expect(await reconcile(userData, false)).toBe('written')
+    expectApproved(readHooks(), [2])
   })
 
   it('never rewrites a newer build form or appends beside it', async () => {

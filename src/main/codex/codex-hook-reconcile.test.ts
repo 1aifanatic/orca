@@ -154,7 +154,11 @@ function snapshot(dir: string): Map<string, { bytes: string; mtimeMs: number }> 
 }
 
 function start(): void {
-  stop = startCodexHookReconcile({ isEnabled: () => enabled, usesRealHome: () => true })
+  stop = startCodexHookReconcile({
+    isEnabled: () => enabled,
+    usesRealHome: () => true,
+    resolveLaunchHome: () => null
+  })
 }
 
 function answerWith(hashes: CodexHookHashes, codexVersion = 'codex-cli 0.150.1'): void {
@@ -354,8 +358,44 @@ describe('reconcileCodexHooks', () => {
     expect([...readHookTrustEntries(tomlPath()).keys()]).toEqual([])
   })
 
+  it("leaves an older build's entry alone on a pane spawn, and converts it when hooks turn on", async () => {
+    const older = {
+      type: 'command',
+      command: `/bin/sh '${join(home, '.orca', 'agent-hooks', 'codex-hook.sh')}'`
+    }
+    writeHooks({
+      Stop: [{ hooks: [{ type: 'command', command: 'user-stop.sh' }] }, { hooks: [older] }]
+    })
+    const before = snapshot(codexHome())
+    enabled = false
+    start()
+    await reconcileCodexHooks()
+    enabled = true
+    mocks.resolveCodexCommand.mockClear()
+
+    scheduleCodexHookReconcile()
+    await vi.waitFor(() => expect(mocks.resolveCodexCommand).toHaveBeenCalled())
+    await reconcileCodexHooks()
+
+    // Why: a running older build may still own that entry; only app start or the setting converts it.
+    expect(snapshot(codexHome())).toEqual(before)
+    expect(mocks.listCodexHooks).not.toHaveBeenCalled()
+
+    await new CodexHookService().reconcileHooks()
+
+    expect(readHooks().Stop!.map((group) => group.hooks[0]!.command)).toEqual([
+      'user-stop.sh',
+      command()
+    ])
+    expect(readHookTrustEntries(tomlPath()).get(orcaKey('Stop', 1))?.enabled).toBe(true)
+  })
+
   it('leaves a home Orca launches do not use alone', async () => {
-    stop = startCodexHookReconcile({ isEnabled: () => true, usesRealHome: () => false })
+    stop = startCodexHookReconcile({
+      isEnabled: () => true,
+      usesRealHome: () => false,
+      resolveLaunchHome: () => null
+    })
 
     await reconcileCodexHooks()
 

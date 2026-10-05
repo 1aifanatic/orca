@@ -7,12 +7,7 @@ import { refreshManagedScriptIfPresent } from '../agent-hooks/managed-hook-scrip
 import { writeManagedScript } from '../agent-hooks/installer-utils'
 import { resolveCodexCommand } from '../codex-cli/command'
 import { getOrcaManagedCodexHomePath } from './codex-home-paths'
-import {
-  getCodexConfigTomlPath,
-  getConfigPath,
-  getManagedCommand,
-  getManagedScriptPath
-} from './codex-hook-definition'
+import { getManagedCommand, getManagedScriptPath } from './codex-hook-definition'
 import { installCodexHooksExclusively } from './codex-hook-local-install'
 import {
   refreshCodexRuntimeUserHooksExclusively,
@@ -21,20 +16,9 @@ import {
 import { cleanupLegacyManagedHookRepresentations } from './codex-hook-legacy-cleanup'
 import { installCodexHooksRemote } from './codex-hook-remote-install'
 import { getManagedScript } from './codex-hook-script'
-import { getCodexHookStatus } from './codex-hook-status'
-import {
-  getCodexHookReconcileVerdict,
-  reconcileCodexHooks,
-  resolveCodexHookAnswerForLaunch
-} from './codex-hook-reconcile'
-import {
-  forgetCodexHookTrust,
-  readMemoizedCodexHookTrust,
-  type CodexHookTrustAnswer
-} from './codex-hook-trust-memo'
-import { getRealHomeConfigTomlPath, getRealHomeHooksJsonPath } from './codex-real-home-hooks-json'
-import { getRealHomeHookKeySourcePath } from './codex-real-home-hook-install'
-import { getCodexExplicitHomeHookSourcePath } from './config-toml-trust'
+import { readCodexHookHomeStatus, readCurrentCodexHookStatus } from './codex-hook-status'
+import { reconcileCodexHooks, resolveCodexHookAnswerForLaunch } from './codex-hook-reconcile'
+import { forgetCodexHookTrust, readMemoizedCodexHookTrust } from './codex-hook-trust-memo'
 import { removeStaleWslRuntimeManagedHookTrustEntries } from './codex-hook-trust-cleanup'
 import { runExclusivelyForRuntimeAndSystemTrustConfig } from './codex-hook-trust-queue'
 import {
@@ -202,43 +186,11 @@ export class CodexHookService {
   }
 
   /**
-   * Status read from a home's files: ~/.codex when no home is named, else that
-   * managed home. Codex's hashes come from the last reconcile, or the memo.
+   * Status read from a home's files: the home the next native pane gets when
+   * none is named (~/.codex outside the app), else that home.
    */
   getStatus(runtimeHomePath?: string): AgentHookInstallStatus {
-    const command = getManagedCommand(getManagedScriptPath())
-    const reconciled = getCodexHookReconcileVerdict()
-    return this.readStatus(
-      runtimeHomePath,
-      reconciled?.answer ?? readMemoizedCodexHookTrust(resolveCodexCommand(), command),
-      reconciled?.verified === 'rejected'
-    )
-  }
-
-  private readStatus(
-    runtimeHomePath: string | undefined,
-    answer: CodexHookTrustAnswer | null,
-    rejected = false
-  ): AgentHookInstallStatus {
-    const command = getManagedCommand(getManagedScriptPath())
-    if (runtimeHomePath === undefined) {
-      return getCodexHookStatus({
-        hooksJsonPath: getRealHomeHooksJsonPath(),
-        tomlPath: getRealHomeConfigTomlPath(),
-        keySourcePath: getRealHomeHookKeySourcePath(),
-        command,
-        answer,
-        rejected
-      })
-    }
-    const hooksJsonPath = getConfigPath(runtimeHomePath)
-    return getCodexHookStatus({
-      hooksJsonPath,
-      tomlPath: getCodexConfigTomlPath(runtimeHomePath),
-      keySourcePath: getCodexExplicitHomeHookSourcePath(hooksJsonPath),
-      command,
-      answer
-    })
+    return readCurrentCodexHookStatus(runtimeHomePath)
   }
 
   /**
@@ -252,7 +204,7 @@ export class CodexHookService {
     } catch (error) {
       console.warn('[codex-hook-service] could not write the Codex hook script:', error)
     }
-    await reconcileCodexHooks()
+    await reconcileCodexHooks({ convertOlderForms: true })
     await cleanupLegacyManagedHookRepresentations()
     return this.getStatus()
   }
@@ -271,7 +223,7 @@ export class CodexHookService {
     }
     return runExclusivelyForRuntimeAndSystemTrustConfig(runtimeHomePath, () =>
       installCodexHooksExclusively(runtimeHomePath, hashes, (homePath) =>
-        this.readStatus(homePath, answer)
+        readCodexHookHomeStatus(homePath, answer)
       )
     )
   }

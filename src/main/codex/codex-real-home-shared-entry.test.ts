@@ -113,7 +113,11 @@ describe('the shared real-home Codex entry', () => {
   it('survives a reconcile on the real-home lane with hooks off', async () => {
     seedSharedEntry()
     const before = snapshotRealCodexHome()
-    const stop = startCodexHookReconcile({ isEnabled: () => false, usesRealHome: () => true })
+    const stop = startCodexHookReconcile({
+      isEnabled: () => false,
+      usesRealHome: () => true,
+      resolveLaunchHome: () => null
+    })
 
     try {
       await reconcileCodexHooks()
@@ -133,7 +137,11 @@ describe('the shared real-home Codex entry', () => {
     expect(resolveStartupManagedHookAction(settings)).toBe('skip')
     expect(shouldInstallStartupManagedAgentHook(settings, 'codex')).toBe(false)
     // First pane: both lanes run with hooks off.
-    const stop = startCodexHookReconcile({ isEnabled: () => false, usesRealHome: () => true })
+    const stop = startCodexHookReconcile({
+      isEnabled: () => false,
+      usesRealHome: () => true,
+      resolveLaunchHome: () => null
+    })
     try {
       await reconcileCodexHooks()
     } finally {

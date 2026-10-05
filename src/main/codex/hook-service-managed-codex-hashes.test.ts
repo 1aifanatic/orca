@@ -31,7 +31,7 @@ vi.mock('../agent-hooks/installer-utils', async (importOriginal) => {
 })
 
 import { CodexHookService } from './hook-service'
-import { _internals as reconcileInternals } from './codex-hook-reconcile'
+import { _internals as reconcileInternals, startCodexHookReconcile } from './codex-hook-reconcile'
 import {
   computeTrustKey,
   getCodexExplicitHomeHookSourcePath,
@@ -173,5 +173,45 @@ describe('managed-home Codex hook approval', () => {
       state: 'not_installed',
       detail: expect.stringContaining('does not report hook approvals')
     })
+  })
+
+  it('reports the home the next native pane gets: the selected account home, else ~/.codex', async () => {
+    useCodexHashes()
+    const accountHome = join(homes.userDataDir, 'codex-accounts', 'one', 'home')
+    mkdirSync(accountHome, { recursive: true })
+    let launchHome: string | null = accountHome
+    const stop = startCodexHookReconcile({
+      isEnabled: () => false,
+      usesRealHome: () => launchHome === null,
+      resolveLaunchHome: () => {
+        if (launchHome === 'unreadable') {
+          throw new Error('indeterminate')
+        }
+        return launchHome
+      }
+    })
+    try {
+      const service = new CodexHookService()
+      expect(service.getStatus()).toMatchObject({
+        state: 'not_installed',
+        configPath: join(accountHome, 'hooks.json')
+      })
+
+      await service.install(accountHome)
+
+      expect(service.getStatus()).toMatchObject({
+        state: 'installed',
+        configPath: join(accountHome, 'hooks.json')
+      })
+      launchHome = null
+      expect(service.getStatus()).toMatchObject({
+        state: 'not_installed',
+        configPath: join(homes.tmpHome, '.codex', 'hooks.json')
+      })
+      launchHome = 'unreadable'
+      expect(service.getStatus().state).toBe('error')
+    } finally {
+      stop()
+    }
   })
 })

@@ -1,12 +1,24 @@
 import type { AgentHookInstallState, AgentHookInstallStatus } from '../../shared/agent-hook-types'
 import { readHooksJson } from '../agent-hooks/installer-utils'
+import { resolveCodexCommand } from '../codex-cli/command'
 import {
   computeTrustKey,
+  getCodexExplicitHomeHookSourcePath,
   readHookTrustEntries,
   type CodexHookTrustState
 } from './config-toml-trust'
-import { CODEX_EVENTS, CODEX_EVENT_LABEL } from './codex-hook-definition'
-import type { CodexHookTrustAnswer } from './codex-hook-trust-memo'
+import {
+  CODEX_EVENTS,
+  CODEX_EVENT_LABEL,
+  getCodexConfigTomlPath,
+  getConfigPath,
+  getManagedCommand,
+  getManagedScriptPath
+} from './codex-hook-definition'
+import { readMemoizedCodexHookTrust, type CodexHookTrustAnswer } from './codex-hook-trust-memo'
+import { getCodexHookReconcileVerdict, resolveCodexHookStatusHome } from './codex-hook-reconcile'
+import { getRealHomeConfigTomlPath, getRealHomeHooksJsonPath } from './codex-real-home-hooks-json'
+import { getRealHomeHookKeySourcePath } from './codex-real-home-hook-install'
 
 /**
  * Codex hook status for one home, read from its files: Orca's entry in each
@@ -100,4 +112,61 @@ export function getCodexHookStatus(args: {
   return parts.length === 0
     ? status('installed', true, null)
     : status('partial', true, parts.join('; '))
+}
+
+/**
+ * Status for `runtimeHomePath`, or for the home the next native pane gets when
+ * none is named (~/.codex outside the app). Codex's hashes come from the last
+ * reconcile, or the memo.
+ */
+export function readCurrentCodexHookStatus(runtimeHomePath?: string): AgentHookInstallStatus {
+  const reconciled = getCodexHookReconcileVerdict()
+  const answer =
+    reconciled?.answer ??
+    readMemoizedCodexHookTrust(resolveCodexCommand(), getManagedCommand(getManagedScriptPath()))
+  if (runtimeHomePath !== undefined) {
+    return readCodexHookHomeStatus(runtimeHomePath, answer)
+  }
+  const home = resolveCodexHookStatusHome()
+  if (home.kind === 'unknown') {
+    return {
+      agent: 'codex',
+      state: 'error',
+      configPath: getRealHomeHooksJsonPath(),
+      managedHooksPresent: false,
+      detail: "The selected Codex account's home is not available yet"
+    }
+  }
+  return readCodexHookHomeStatus(
+    home.kind === 'managed' ? home.path : undefined,
+    answer,
+    reconciled?.verified === 'rejected'
+  )
+}
+
+/** Status for a managed home, or ~/.codex when `runtimeHomePath` is undefined. */
+export function readCodexHookHomeStatus(
+  runtimeHomePath: string | undefined,
+  answer: CodexHookTrustAnswer | null,
+  rejected = false
+): AgentHookInstallStatus {
+  const command = getManagedCommand(getManagedScriptPath())
+  if (runtimeHomePath === undefined) {
+    return getCodexHookStatus({
+      hooksJsonPath: getRealHomeHooksJsonPath(),
+      tomlPath: getRealHomeConfigTomlPath(),
+      keySourcePath: getRealHomeHookKeySourcePath(),
+      command,
+      answer,
+      rejected
+    })
+  }
+  const hooksJsonPath = getConfigPath(runtimeHomePath)
+  return getCodexHookStatus({
+    hooksJsonPath,
+    tomlPath: getCodexConfigTomlPath(runtimeHomePath),
+    keySourcePath: getCodexExplicitHomeHookSourcePath(hooksJsonPath),
+    command,
+    answer
+  })
 }

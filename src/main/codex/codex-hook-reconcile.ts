@@ -45,6 +45,8 @@ type ReconcileConfig = {
   isEnabled: () => boolean
   /** Whether Orca's launches run Codex on ~/.codex (system default, no custom CODEX_HOME). */
   usesRealHome: () => boolean
+  /** The CODEX_HOME the next native pane gets, null for ~/.codex; may throw while it is unknown. */
+  resolveLaunchHome: () => string | null
 }
 
 /** What the last reconcile learned, for status: its answer and, after a write, Codex's own read. */
@@ -57,6 +59,8 @@ export type CodexHookReconcileVerdict = {
 let config: ReconcileConfig | null = null
 let running: Promise<void> | null = null
 let rerun = false
+// Why carried across runs: a start or setting-on call that joins a launch's run still converts.
+let convertRequested = false
 let spawnReconcileScheduled = false
 let lastAnswer: CodexHookTrustAnswer | null = null
 let verified: CodexHookReconcileVerdict['verified'] = null
@@ -68,15 +72,28 @@ let hashResolverForTesting: ((codexPath: string) => Promise<CodexHookTrustAnswer
 export function startCodexHookReconcile(
   options: ReconcileConfig & { pathReady?: Promise<unknown> }
 ): () => void {
-  config = { isEnabled: options.isEnabled, usesRealHome: options.usesRealHome }
-  void reconcileCodexHooks({ after: options.pathReady })
+  config = {
+    isEnabled: options.isEnabled,
+    usesRealHome: options.usesRealHome,
+    resolveLaunchHome: options.resolveLaunchHome
+  }
+  void reconcileCodexHooks({ after: options.pathReady, convertOlderForms: true })
   return () => {
     config = null
   }
 }
 
-/** Never throws; a call while one runs makes that one run again, so no change is missed. */
-export function reconcileCodexHooks(options: { after?: Promise<unknown> } = {}): Promise<void> {
+/**
+ * Never throws; a call while one runs makes that one run again, so no change is
+ * missed. `convertOlderForms` is app start's and the setting turning on's: only
+ * they replace an older build's entry, so a launch never fights a running one.
+ */
+export function reconcileCodexHooks(
+  options: { after?: Promise<unknown>; convertOlderForms?: boolean } = {}
+): Promise<void> {
+  if (options.convertOlderForms) {
+    convertRequested = true
+  }
   if (running) {
     rerun = true
     return running
@@ -107,6 +124,25 @@ export function getCodexHookReconcileVerdict(): CodexHookReconcileVerdict | null
   return lastAnswer ? { answer: lastAnswer, verified } : null
 }
 
+/**
+ * The home status reports on: the CODEX_HOME the next native pane gets in the
+ * app, or ~/.codex in a process that does not know the selection (the CLI's).
+ */
+export function resolveCodexHookStatusHome():
+  | { kind: 'real' }
+  | { kind: 'managed'; path: string }
+  | { kind: 'unknown' } {
+  if (!config) {
+    return { kind: 'real' }
+  }
+  try {
+    const path = config.resolveLaunchHome()
+    return path === null ? { kind: 'real' } : { kind: 'managed', path }
+  } catch {
+    return { kind: 'unknown' }
+  }
+}
+
 function isEnabledNow(): boolean {
   return config?.isEnabled() === true
 }
@@ -114,8 +150,10 @@ function isEnabledNow(): boolean {
 async function runUntilSettled(): Promise<void> {
   for (;;) {
     rerun = false
+    const convertOlderForms = convertRequested
+    convertRequested = false
     try {
-      await reconcileOnce()
+      await reconcileOnce(convertOlderForms)
     } catch (error) {
       console.warn('[codex-hook-reconcile] Codex hook reconcile failed:', error)
     }
@@ -127,7 +165,7 @@ async function runUntilSettled(): Promise<void> {
   }
 }
 
-async function reconcileOnce(): Promise<void> {
+async function reconcileOnce(convertOlderForms: boolean): Promise<void> {
   if (!isEnabledNow() || !config?.usesRealHome()) {
     return
   }
@@ -139,7 +177,8 @@ async function reconcileOnce(): Promise<void> {
   const result = await reconcileRealHomeCodexHookEntries({
     hashes: answer.hashes,
     isEnabled: isEnabledNow,
-    userDataPath: getOrcaUserDataPath()
+    userDataPath: getOrcaUserDataPath(),
+    convertOlderForms
   })
   if (result.outcome !== 'written') {
     return
@@ -297,6 +336,7 @@ export const _internals = {
     config = null
     running = null
     rerun = false
+    convertRequested = false
     spawnReconcileScheduled = false
     lastAnswer = null
     verified = null

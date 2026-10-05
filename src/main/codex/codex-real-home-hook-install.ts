@@ -19,7 +19,10 @@ import { getSystemCodexHomePath } from './codex-home-paths'
 import { mutateRealHomeHooksPreservingUserTrust } from './codex-user-hook-trust-moves'
 import { sweepRealHomeCodexHook } from './codex-real-home-hook-sweep'
 import { runExclusivelyForCodexTrustConfig } from './codex-trust-config-mutation-queue'
-import { planRealHomeCodexHookEntries } from './codex-real-home-hook-entry-plan'
+import {
+  holdsOlderOrcaEntry,
+  planRealHomeCodexHookEntries
+} from './codex-real-home-hook-entry-plan'
 import type { CodexHookHashes } from './codex-hook-trust-derivation'
 import {
   findMissingCodexHookApprovals,
@@ -43,8 +46,15 @@ import {
  * - 'written': this call wrote approvals, entries, or both.
  * - 'unavailable': hooks.json is unreadable or not Codex's shape, or a write failed.
  * - 'disabled': hooks were off when the lane came free; nothing written.
+ * - 'deferred': an older build's entry is there, and only app start or the
+ *   setting turning on converts it; nothing written.
  */
-export type RealHomeCodexHookOutcome = 'unchanged' | 'written' | 'unavailable' | 'disabled'
+export type RealHomeCodexHookOutcome =
+  | 'unchanged'
+  | 'written'
+  | 'unavailable'
+  | 'disabled'
+  | 'deferred'
 
 export type RealHomeCodexHookReconcile = {
   outcome: RealHomeCodexHookOutcome
@@ -73,11 +83,17 @@ export async function reconcileRealHomeCodexHookEntries(args: {
   hashes: CodexHookHashes
   isEnabled: () => boolean
   userDataPath: string
+  /** App start and the setting turning on; a launch never fights a running older build. */
+  convertOlderForms: boolean
 }): Promise<RealHomeCodexHookReconcile> {
   try {
     return await runExclusivelyForCodexTrustConfig(getRealHomeConfigTomlPath(), async () =>
       args.isEnabled()
-        ? reconcileRealHomeCodexHookEntriesExclusively(args.hashes, args.userDataPath)
+        ? reconcileRealHomeCodexHookEntriesExclusively(
+            args.hashes,
+            args.userDataPath,
+            args.convertOlderForms
+          )
         : { outcome: 'disabled', approvals: [] }
     )
   } catch (error) {
@@ -88,7 +104,8 @@ export async function reconcileRealHomeCodexHookEntries(args: {
 
 function reconcileRealHomeCodexHookEntriesExclusively(
   hashes: CodexHookHashes,
-  userDataPath: string
+  userDataPath: string,
+  convertOlderForms: boolean
 ): RealHomeCodexHookReconcile {
   const unavailable: RealHomeCodexHookReconcile = { outcome: 'unavailable', approvals: [] }
   const hooksJsonPath = getRealHomeHooksJsonPath()
@@ -103,15 +120,23 @@ function reconcileRealHomeCodexHookEntriesExclusively(
   }
   const material = getCodexManagedHookInstallMaterial()
   const sourcePath = getRealHomeHookKeySourcePath()
+  // Why only listed events: an entry Codex has no hash for would wait for review.
+  const listedMaterial = {
+    ...material,
+    events: material.events.filter((eventName) => hashes[CODEX_EVENT_LABEL[eventName]])
+  }
+  const isOrcaCommand = createManagedCommandMatcher(getCodexManagedScriptFileName())
+  if (
+    !convertOlderForms &&
+    holdsOlderOrcaEntry({ hooks: config.hooks ?? {}, material: listedMaterial, isOrcaCommand })
+  ) {
+    return { outcome: 'deferred', approvals: [] }
+  }
   const plan = planRealHomeCodexHookEntries({
     hooks: config.hooks ?? {},
     sourcePath,
-    // Why only listed events: an entry Codex has no hash for would wait for review.
-    material: {
-      ...material,
-      events: material.events.filter((eventName) => hashes[CODEX_EVENT_LABEL[eventName]])
-    },
-    isOrcaCommand: createManagedCommandMatcher(getCodexManagedScriptFileName())
+    material: listedMaterial,
+    isOrcaCommand
   })
   const approvals = plan.managedEntries.map((entry) => ({
     ...entry,

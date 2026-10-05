@@ -107,6 +107,30 @@ function movesUserHandler(
   )
 }
 
+/**
+ * Whether an event Orca subscribes to holds an Orca entry older than this
+ * build's frozen one. Such an entry belongs to an older build that may still
+ * be running; only app start and the setting turning on convert it.
+ */
+export function holdsOlderOrcaEntry(args: {
+  hooks: Record<string, HookDefinition[]>
+  material: CodexManagedHookInstallMaterial
+  isOrcaCommand: (command: string | undefined) => boolean
+}): boolean {
+  const command = args.material.command
+  return args.material.events.some((eventName) => {
+    const definitions = Array.isArray(args.hooks[eventName]) ? args.hooks[eventName] : []
+    return (
+      findOrcaHandlers(definitions, args.isOrcaCommand, command).some(
+        (handler) => handler.hook.command !== command && handler.form <= CODEX_HOOK_COMMAND_FORM
+      ) ||
+      definitions.some((definition) =>
+        DIRECT_COMMAND_KEYS.some((key) => args.isOrcaCommand(definition[key]))
+      )
+    )
+  })
+}
+
 export function planRealHomeCodexHookEntries(args: {
   hooks: Record<string, HookDefinition[]>
   sourcePath: string
