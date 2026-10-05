@@ -86,7 +86,8 @@ export function finalizeAgentTabStartingView(
   if (!isNativeChatSupportedAgent(input.agent)) {
     return undefined
   }
-  if (!draftCanShowInChat(input)) {
+  // An empty draft hides nothing, so it pins nothing.
+  if (!draftCanShowInChat(input) && input.launchDraftText?.trim()) {
     return 'terminal'
   }
   const defaultIsChat = input.launcherDefaultView

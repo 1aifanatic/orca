@@ -65,6 +65,17 @@ describe('finalizeAgentTabStartingView', () => {
     }
   })
 
+  it('pins nothing for an empty draft, which hides nothing', () => {
+    expect(
+      finalizeAgentTabStartingView({
+        settings: terminalDefault,
+        agent: 'claude',
+        promptDelivery: 'draft',
+        launchDraftText: '  '
+      })
+    ).toBe(undefined)
+  })
+
   it('records nothing when a default asks for chat that cannot show the launch', () => {
     expect(
       finalizeAgentTabStartingView({ launcherDefaultView: 'chat', settings: null, agent: 'aider' })
