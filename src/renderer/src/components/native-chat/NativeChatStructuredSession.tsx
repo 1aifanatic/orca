@@ -112,7 +112,8 @@ export function NativeChatStructuredSession(
           ? 'loading'
           : controller.status === 'error'
             ? 'error'
-            : 'ready'
+            : 'ready',
+      asyncQuestions: controller.asyncQuestions
     }),
     [controller, historyPhase, props.agent, props.sessionId]
   )

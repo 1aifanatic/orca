@@ -246,6 +246,40 @@ export function nativeChatAsyncQuestionsShown(
   return view.state === 'ready' ? view.questions : []
 }
 
+const NO_CALL_IDS: ReadonlySet<string> = new Set()
+
+function questionIdentity(question: NativeChatAsyncQuestion): string | null {
+  try {
+    const parsed: unknown = JSON.parse(question.key)
+    return Array.isArray(parsed) && typeof parsed[1] === 'string' ? parsed[1] : null
+  } catch {
+    return null
+  }
+}
+
+/** Ids of the calls whose questions the card shows, so only their tool rows fold away. The
+ *  set keeps the oldest questions, so the overflow line can cut short only the newest call
+ *  it shows, whose row stays. */
+export function nativeChatAsyncQuestionCardCallIds(
+  view: NativeChatAsyncQuestionsView
+): ReadonlySet<string> {
+  if (view.state !== 'ready' || view.questions.length === 0) {
+    return NO_CALL_IDS
+  }
+  const callIds = (question: NativeChatAsyncQuestion): string[] =>
+    [questionIdentity(question), question.providerItemId].filter((id): id is string => !!id)
+  const cut = view.omittedCount ? view.questions.at(-1) : undefined
+  const cutIds = new Set(cut ? callIds(cut) : [])
+  const ids = new Set<string>()
+  for (const question of view.questions) {
+    const own = callIds(question)
+    if (!own.some((id) => cutIds.has(id))) {
+      own.forEach((id) => ids.add(id))
+    }
+  }
+  return ids
+}
+
 /** Whether the client knows there is nothing async pending (heuristics may run). */
 export function nativeChatAsyncQuestionsAllowHeuristics(
   view: NativeChatAsyncQuestionsView

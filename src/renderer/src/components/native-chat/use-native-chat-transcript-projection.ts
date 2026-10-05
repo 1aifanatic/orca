@@ -3,6 +3,10 @@ import type {
   AgentJournalRenderItem,
   AgentJournalSubmission
 } from '../../../../shared/agent-session-journal-types'
+import {
+  NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT,
+  nativeChatAsyncQuestionCardCallIds
+} from '../../../../shared/native-chat-async-questions'
 import type { NativeChatSubagentRow } from '../../../../shared/native-chat-transcript-projection'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import { createNativeChatMessageListProjection } from './native-chat-message-list-projection'
@@ -26,13 +30,21 @@ export function useNativeChatTranscriptProjection(
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [session.agent, session.sessionId]
   )
+  const asyncCallsOnCard = useMemo(
+    () =>
+      nativeChatAsyncQuestionCardCallIds(
+        session.asyncQuestions ?? NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT
+      ),
+    [session.asyncQuestions]
+  )
   const projection = useMemo(
     () =>
       projectMessages(
         session.messages,
-        journalItems ? { items: journalItems, submissions: journalSubmissions ?? [] } : null
+        journalItems ? { items: journalItems, submissions: journalSubmissions ?? [] } : null,
+        asyncCallsOnCard
       ),
-    [journalItems, journalSubmissions, projectMessages, session.messages]
+    [asyncCallsOnCard, journalItems, journalSubmissions, projectMessages, session.messages]
   )
   const messages = useMemo(() => {
     const projected = projectNativeChatTaskListFrames(projection.conversation)

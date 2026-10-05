@@ -52,13 +52,19 @@ export type MobileNativeChatPendingItem = {
   baselineTailMessageId?: string | null
 }
 
-export function foldMobileNativeChatMessages(messages: NativeChatMessage[]): NativeChatMessage[] {
+export function foldMobileNativeChatMessages(
+  messages: NativeChatMessage[],
+  asyncCallsOnCard?: ReadonlySet<string>
+): NativeChatMessage[] {
   // The conversation only: a subagent's rows are that subagent's, and mobile shows
   // each spawn as its roster's one line rather than the child's own rows.
   // Normalize first (desktop assembler parity): image marker turns fold into
   // image-ref blocks instead of rendering as raw `[Image: …]` text.
   return stripNoiseMessages(
-    foldToolMessages(normalizeImageTranscriptMessages(messages.filter(isRootAgentJournalItem)))
+    foldToolMessages(
+      normalizeImageTranscriptMessages(messages.filter(isRootAgentJournalItem)),
+      asyncCallsOnCard
+    )
   )
 }
 

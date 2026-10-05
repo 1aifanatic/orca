@@ -79,16 +79,25 @@ function dropUnattributableToolResults(message: NativeChatMessage): NativeChatMe
   return blocks.length > 0 ? { ...message, blocks } : null
 }
 
-/** Codex async question calls are answered by their own card; the call and its ack are not activity. */
-function dropAsyncQuestionCalls(message: NativeChatMessage): NativeChatMessage | null {
-  if (
-    !message.blocks.some((block) => isToolCallBlock(block) && isCodexAsyncQuestionTool(block.name))
-  ) {
+const NO_ASYNC_CALLS: ReadonlySet<string> = new Set()
+
+/** A Codex async question call the card shows is answered there; the call and its ack are not
+ *  activity. A call the card doesn't show (an older host, a child agent) keeps its row. */
+function dropAsyncQuestionCalls(
+  message: NativeChatMessage,
+  callsOnCard: ReadonlySet<string>
+): NativeChatMessage | null {
+  const onCard = (block: NativeChatBlock): block is NativeChatToolCallBlock =>
+    isToolCallBlock(block) &&
+    isCodexAsyncQuestionTool(block.name) &&
+    block.callId !== undefined &&
+    callsOnCard.has(block.callId)
+  if (callsOnCard.size === 0 || !message.blocks.some(onCard)) {
     return message
   }
   const removed = new Set<NativeChatBlock>()
   for (const { call, result } of pairToolBlocks(message.blocks)) {
-    if (call && isCodexAsyncQuestionTool(call.name)) {
+    if (call && onCard(call)) {
       removed.add(call)
       if (result) {
         removed.add(result)
@@ -106,8 +115,12 @@ function recordFoldedPosition(target: NativeChatMessage, folded: NativeChatMessa
   }
 }
 
-/** Fold consecutive tool-only messages into their preceding assistant turn. */
-export function foldToolMessages(messages: readonly NativeChatMessage[]): NativeChatMessage[] {
+/** Fold consecutive tool-only messages into their preceding assistant turn. `asyncCallsOnCard`:
+ *  the async question calls the card shows (`nativeChatAsyncQuestionCardCallIds`). */
+export function foldToolMessages(
+  messages: readonly NativeChatMessage[],
+  asyncCallsOnCard: ReadonlySet<string> = NO_ASYNC_CALLS
+): NativeChatMessage[] {
   const output: NativeChatMessage[] = []
   let mutableAssistantIndex = -1
   let clonedAssistantIndex = -1
@@ -160,7 +173,7 @@ export function foldToolMessages(messages: readonly NativeChatMessage[]): Native
   }
   const attributedOutput: NativeChatMessage[] = []
   for (const message of output) {
-    const withoutAsyncCalls = dropAsyncQuestionCalls(message)
+    const withoutAsyncCalls = dropAsyncQuestionCalls(message, asyncCallsOnCard)
     const attributed = withoutAsyncCalls && dropUnattributableToolResults(withoutAsyncCalls)
     if (attributed) {
       attributedOutput.push(attributed)

@@ -41,12 +41,18 @@ const sameSubagentRow = (a: NativeChatSubagentRow, b: NativeChatSubagentRow): bo
 
 export function createNativeChatMessageListProjection(): (
   messages: NativeChatMessage[],
-  journal?: NativeChatTurnJournal | null
+  journal?: NativeChatTurnJournal | null,
+  asyncCallsOnCard?: ReadonlySet<string>
 ) => NativeChatTranscriptProjection {
   let previous: NativeChatTranscriptProjection = { conversation: [], subagentRows: new Map() }
   let byId = new Map<string, NativeChatMessage>()
-  return (messages, journal) => {
-    const projected = projectNativeChatTranscript(messages, compareMessages, journal)
+  return (messages, journal, asyncCallsOnCard) => {
+    const projected = projectNativeChatTranscript(
+      messages,
+      compareMessages,
+      journal,
+      asyncCallsOnCard
+    )
     // Folding clones historical tool runs even when every contributing block is unchanged.
     const settle = (message: NativeChatMessage): NativeChatMessage => {
       const prior = byId.get(message.id)

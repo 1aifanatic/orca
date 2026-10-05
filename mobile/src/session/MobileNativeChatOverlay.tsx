@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { nativeChatAsyncQuestionCardCallIds } from '../../../src/shared/native-chat-async-questions'
 import { MobileNativeChatAsyncQuestions } from './MobileNativeChatAsyncQuestions'
 import { StyleSheet, View } from 'react-native'
 import { MobileNativeChatView, type MobileNativeChatInputLockReason } from './MobileNativeChatView'
@@ -54,7 +55,14 @@ export function MobileNativeChatOverlay({
   keyboardInset
 }: Props): React.JSX.Element | null {
   const session = controller.nativeChatSession
-  const folded = useMemo(() => foldMobileNativeChatMessages(session.messages), [session.messages])
+  const asyncCallsOnCard = useMemo(
+    () => nativeChatAsyncQuestionCardCallIds(session.asyncQuestions),
+    [session.asyncQuestions]
+  )
+  const folded = useMemo(
+    () => foldMobileNativeChatMessages(session.messages, asyncCallsOnCard),
+    [asyncCallsOnCard, session.messages]
+  )
   const streaming = useMobileNativeChatStreamingBubble(
     folded,
     controller.nativeChatStreamingText,

@@ -254,25 +254,32 @@ describe('spawn-group roster rows', () => {
 })
 
 describe('Codex async question calls', () => {
-  it('fold away with their acknowledgement while the asking prose stays', () => {
-    const folded = foldToolMessages([
-      msg({ id: 'a', blocks: [{ type: 'text', text: 'Which color?' }] }),
-      msg({
-        id: 'c',
-        blocks: [
-          { type: 'tool-call', name: 'request_user_input_async', input: '{}', callId: 'x' },
-          { type: 'tool-call', name: 'Bash', input: {}, callId: 'b' }
-        ]
-      }),
-      msg({
-        id: 'r',
-        role: 'tool',
-        blocks: [
-          { type: 'tool-result', output: '{"accepted":true}', callId: 'x' },
-          { type: 'tool-result', output: 'ok', callId: 'b' }
-        ]
-      })
-    ])
+  const asking = (): NativeChatMessage[] => [
+    msg({ id: 'a', blocks: [{ type: 'text', text: 'Which color?' }] }),
+    msg({
+      id: 'c',
+      blocks: [
+        {
+          type: 'tool-call',
+          name: 'request_user_input_async',
+          input: '{"questions":[{"title":"Which color?","options":["Red","Blue"]}]}',
+          callId: 'x'
+        },
+        { type: 'tool-call', name: 'Bash', input: {}, callId: 'b' }
+      ]
+    }),
+    msg({
+      id: 'r',
+      role: 'tool',
+      blocks: [
+        { type: 'tool-result', output: '{"accepted":true}', callId: 'x' },
+        { type: 'tool-result', output: 'ok', callId: 'b' }
+      ]
+    })
+  ]
+
+  it('fold away with their acknowledgement while the card shows them; the asking prose stays', () => {
+    const folded = foldToolMessages(asking(), new Set(['x']))
     expect(folded).toHaveLength(1)
     expect(folded[0]?.blocks).toEqual([
       { type: 'text', text: 'Which color?' },
@@ -281,14 +288,23 @@ describe('Codex async question calls', () => {
     ])
   })
 
-  it('drop a message that held only the async call', () => {
-    expect(
-      foldToolMessages([
-        msg({
-          id: 'c',
-          blocks: [{ type: 'tool-call', name: 'request_user_input_async', input: '{}' }]
-        })
-      ])
-    ).toEqual([])
+  it('keep their row, options included, when the card does not show them (an older host)', () => {
+    for (const callsOnCard of [undefined, new Set<string>(), new Set(['other'])]) {
+      const folded = foldToolMessages(asking(), callsOnCard)
+      expect(JSON.stringify(folded)).toContain('request_user_input_async')
+      expect(JSON.stringify(folded)).toContain('Blue')
+      expect(JSON.stringify(folded)).toContain('{\\"accepted\\":true}')
+    }
+  })
+
+  it('drop a message that held only the async call the card shows', () => {
+    const only = (): NativeChatMessage[] => [
+      msg({
+        id: 'c',
+        blocks: [{ type: 'tool-call', name: 'request_user_input_async', input: '{}', callId: 'x' }]
+      })
+    ]
+    expect(foldToolMessages(only(), new Set(['x']))).toEqual([])
+    expect(foldToolMessages(only())).toHaveLength(1)
   })
 })

@@ -74,8 +74,11 @@ export type NativeChatTranscriptProjection = {
 
 const NO_SUBAGENT_ROWS: ReadonlyMap<string, readonly NativeChatSubagentRow[]> = new Map()
 
-function projectRows(messages: readonly NativeChatMessage[]): NativeChatMessage[] {
-  return stripNoiseMessages(foldToolMessages(messages))
+function projectRows(
+  messages: readonly NativeChatMessage[],
+  asyncCallsOnCard?: ReadonlySet<string>
+): NativeChatMessage[] {
+  return stripNoiseMessages(foldToolMessages(messages, asyncCallsOnCard))
 }
 
 function sortedCopy(
@@ -96,11 +99,13 @@ export function projectNativeChatTranscriptMessages(
 }
 
 /** `journal`: what places the conversation's rows in their turns
- *  (`nativeChatTurnMembership`), so a subagent's row sits in the turn a parent row there would. */
+ *  (`nativeChatTurnMembership`), so a subagent's row sits in the turn a parent row there would.
+ *  `asyncCallsOnCard`: the conversation's async question calls the card shows. */
 export function projectNativeChatTranscript(
   messages: readonly NativeChatMessage[],
   compare: NativeChatMessageCompare = compareNativeChatTranscriptMessages,
-  journal?: NativeChatTurnJournal | null
+  journal?: NativeChatTurnJournal | null,
+  asyncCallsOnCard?: ReadonlySet<string>
 ): NativeChatTranscriptProjection {
   const sorted = sortedCopy(messages, compare)
   const own: NativeChatMessage[] = []
@@ -118,7 +123,7 @@ export function projectNativeChatTranscript(
       }
     }
   }
-  const conversation = projectRows(own)
+  const conversation = projectRows(own, asyncCallsOnCard)
   if (byAgent.size === 0) {
     return { conversation, subagentRows: NO_SUBAGENT_ROWS }
   }

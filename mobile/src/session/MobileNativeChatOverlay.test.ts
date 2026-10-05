@@ -1,6 +1,7 @@
 import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { NativeChatAsyncQuestionsView } from '../../../src/shared/native-chat-async-questions'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import { MobileNativeChatOverlay } from './MobileNativeChatOverlay'
 import type { MobileNativeChatController } from './use-mobile-native-chat-controller'
@@ -29,6 +30,7 @@ type Tick = {
   streamLive?: boolean
   identity?: string
   blocking?: 'nativeChatAsk' | 'nativeChatPermission' | 'nativeChatQuestion'
+  asyncQuestions?: NativeChatAsyncQuestionsView
 }
 
 const asyncQuestionsModel = { open: [{ key: 'q-a', index: 0, title: 'Which name?' }] }
@@ -37,7 +39,11 @@ function overlayElement(tick: Tick): ReturnType<typeof createElement> {
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the overlay reads only these controller members; the rest of the controller is unreachable from it.
   const controller = {
     showNativeChat: tick.show ?? true,
-    nativeChatSession: { messages: tick.messages ?? [], status: 'ready' },
+    nativeChatSession: {
+      messages: tick.messages ?? [],
+      status: 'ready',
+      asyncQuestions: tick.asyncQuestions ?? { state: 'absent' }
+    },
     nativeChatAgent: 'claude',
     nativeChatAgentWorking: tick.streamLive ?? false,
     nativeChatStreamingText: tick.streamingText,
@@ -233,4 +239,53 @@ describe('MobileNativeChatOverlay async question placement', () => {
       expect(cards.map((card) => card.type)).toEqual(['Queued'])
     }
   )
+})
+
+describe('MobileNativeChatOverlay async question tool rows', () => {
+  let renderer: ReactTestRenderer | null = null
+
+  afterEach(() => {
+    act(() => renderer?.unmount())
+    renderer = null
+  })
+
+  const asking: NativeChatMessage[] = [
+    assistantTurn('a1', 'Which name?'),
+    {
+      id: 'c1',
+      role: 'assistant',
+      blocks: [
+        {
+          type: 'tool-call',
+          name: 'request_user_input_async',
+          input: '{"questions":[{"title":"Which name?","options":["core","base"]}]}',
+          callId: 'call-1'
+        }
+      ],
+      timestamp: 0,
+      source: 'hook'
+    }
+  ]
+
+  async function foldedText(asyncQuestions: NativeChatAsyncQuestionsView): Promise<string> {
+    await act(async () => {
+      renderer = create(overlayElement({ messages: asking, asyncQuestions }))
+    })
+    return JSON.stringify(renderer!.root.find((node) => node.type === 'ChatView').props.folded)
+  }
+
+  it('folds the call away only while the card shows its questions', async () => {
+    const shown = await foldedText({
+      state: 'ready',
+      questions: [
+        { key: '["request_user_input_async","call-1",0]', index: 0, title: 'Which name?' }
+      ]
+    })
+    expect(shown).not.toContain('request_user_input_async')
+    act(() => renderer?.unmount())
+    // An older host publishes no set: the row and its options stay, as before.
+    const absent = await foldedText({ state: 'absent' })
+    expect(absent).toContain('request_user_input_async')
+    expect(absent).toContain('base')
+  })
 })

@@ -10,6 +10,8 @@ import {
   createNativeChatAsyncQuestionFoldState,
   foldNativeChatAsyncQuestionFact,
   formatAsyncQuestionReply,
+  nativeChatAsyncQuestionCardCallIds,
+  nativeChatAsyncQuestionKey,
   nativeChatAsyncQuestionsAllowHeuristics,
   nativeChatAsyncQuestionsFromFold,
   publishNativeChatAsyncQuestions,
@@ -268,6 +270,35 @@ describe('publication and the client view', () => {
         }
       )
     ).toEqual({ state: 'pending' })
+  })
+})
+
+describe('nativeChatAsyncQuestionCardCallIds', () => {
+  const question = (identity: string, index: number, providerItemId?: string) => ({
+    key: nativeChatAsyncQuestionKey(identity, index),
+    index,
+    title: `${identity} ${index}?`,
+    ...(providerItemId ? { providerItemId } : {})
+  })
+
+  it('names each shown call by its identity and provider item id', () => {
+    const ids = nativeChatAsyncQuestionCardCallIds({
+      state: 'ready',
+      questions: [question('call-1', 0), question('journal-item', 0, 'call-2')]
+    })
+    expect([...ids].sort()).toEqual(['call-1', 'call-2', 'journal-item'])
+  })
+
+  it('names none without a ready set, and not the newest call the overflow line may cut short', () => {
+    for (const view of [{ state: 'absent' }, { state: 'pending' }] as const) {
+      expect(nativeChatAsyncQuestionCardCallIds(view).size).toBe(0)
+    }
+    const ids = nativeChatAsyncQuestionCardCallIds({
+      state: 'ready',
+      questions: [question('call-1', 0), question('call-2', 0), question('call-2', 1)],
+      omittedCount: 1
+    })
+    expect([...ids]).toEqual(['call-1'])
   })
 })
 
