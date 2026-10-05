@@ -2,10 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as DraftStore from './native-chat-composer-draft-store'
 import type * as DraftCache from './native-chat-draft-cache'
-import {
-  appendNativeChatDraftText,
-  withNativeChatComposerDraftAddition
-} from './native-chat-composer-draft-addition'
+import { withNativeChatComposerDraftAddition } from './native-chat-composer-draft-addition'
 import {
   createMemoryNativeChatComposerDraftStorage,
   type NativeChatComposerDraftStorage
@@ -64,11 +61,13 @@ afterEach(() => {
 
 describe('native-chat composer draft addition', () => {
   it('adds text to a whitespace-only draft without leading blank lines', () => {
-    expect(appendNativeChatDraftText('  \n\n', 'go')).toBe('go')
-    expect(appendNativeChatDraftText('please\n', 'go')).toBe('please\n\ngo')
+    const add = (text: string): string =>
+      withNativeChatComposerDraftAddition({ text, images: [] }, { text: 'go' }).text
+    expect(add('  \n\n')).toBe('go')
+    expect(add('please\n')).toBe('please\n\ngo')
   })
 
-  it('makes text again only where the draft does not already hold it as its own paragraph', () => {
+  it('adds text only where the draft does not already end with it as its own paragraph', () => {
     const add = (text: string): string =>
       withNativeChatComposerDraftAddition({ text, images: [] }, { text: 'go' }, { once: true }).text
     expect(add('please go')).toBe('please go\n\ngo')

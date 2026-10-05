@@ -33,7 +33,6 @@ export function writeNativeChatDraftCache(
   )
 }
 
-export { appendNativeChatDraftText } from './native-chat-composer-draft-addition'
 
 // Why: a composer mid-IME-composition keeps showing what it had, so it is told what was appended.
 const appendListeners = new Map<string, Set<(text: string, previous: string) => void>>()

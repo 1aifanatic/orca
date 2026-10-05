@@ -1,3 +1,4 @@
+import '../../../unused-default-rpc-methods.test-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -451,6 +452,25 @@ describe('orchestration new-worktree workers', () => {
         expect.objectContaining({ kind: 'dispatch_input', state: 'accepted' })
       ])
     )
+  })
+
+  // Why: a first dispatch the composer signal settles must record setup exactly as one the idle
+  // wait settles; the composer lane once returned nothing and skipped this record.
+  it('settles a fresh worker start on main’s idle wait, not the launch paste’s signal', async () => {
+    mockCreatedWorktree({ startupPolicy: 'wait-for-setup', state: 'running' })
+    const composerSignal = vi.spyOn(runtime, 'waitForFreshWorkerComposer')
+
+    const { result } = await startWorker()
+
+    expect(composerSignal).not.toHaveBeenCalled()
+    expect(runtime.waitForTerminal).toHaveBeenCalledWith(
+      'term_worker',
+      expect.objectContaining({ condition: 'tui-idle', launchReadiness: true })
+    )
+    expect(result).toMatchObject({
+      state: 'ready',
+      setup: { startupPolicy: 'wait-for-setup', state: 'succeeded' }
+    })
   })
 
   it('does not inject task input when the gated setup terminal fails to start', async () => {
