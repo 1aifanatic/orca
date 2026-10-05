@@ -85,11 +85,17 @@ describe('NativeChatSupportedAgents', () => {
   })
 
   it('renders the English fallback when the active locale lacks the label key', async () => {
-    await i18n.changeLanguage('es')
-    expect(i18n.getResource('es', 'translation', SUPPORTED_AGENTS_LABEL_KEY)).toBeUndefined()
+    const locale = 'test'
+    i18n.addResourceBundle(locale, 'translation', {})
+    try {
+      await i18n.changeLanguage(locale)
+      expect(i18n.getResource(locale, 'translation', SUPPORTED_AGENTS_LABEL_KEY)).toBeUndefined()
 
-    const markup = renderToStaticMarkup(<NativeChatSupportedAgents />)
+      const markup = renderToStaticMarkup(<NativeChatSupportedAgents />)
 
-    expect(markup).toContain('Supported agents:')
+      expect(markup).toContain('Supported agents:')
+    } finally {
+      i18n.removeResourceBundle(locale, 'translation')
+    }
   })
 })

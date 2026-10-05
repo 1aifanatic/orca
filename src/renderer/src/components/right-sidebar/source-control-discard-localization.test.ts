@@ -17,7 +17,11 @@ describe('discard descriptions with real locale catalogs', () => {
           path: 'changed.txt',
           status: 'modified'
         }).description
-      ).toBe('This will revert the unstaged changes to this file. This cannot be undone.')
+      ).toBe(
+        i18n.t('sourceControl.discard.unstagedChangesDescription', {
+          defaultValue: 'This will revert the unstaged changes to this file. This cannot be undone.'
+        })
+      )
       expect(
         getDiscardEntryConfirmationCopy({
           area: 'unstaged',
@@ -25,7 +29,10 @@ describe('discard descriptions with real locale catalogs', () => {
           status: 'deleted'
         }).description
       ).toBe(
-        'This will restore the last staged version and discard the deletion. This cannot be undone.'
+        i18n.t('sourceControl.discard.restoreStagedVersionDescription', {
+          defaultValue:
+            'This will restore the last staged version and discard the deletion. This cannot be undone.'
+        })
       )
     }
   )
