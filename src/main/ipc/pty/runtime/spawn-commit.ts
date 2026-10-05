@@ -183,6 +183,7 @@ async function commitReservedRuntimePtySpawn(ctx: RuntimePtySpawnState) {
             leafId: ctx.metadataLeafId,
             ...(args.preAllocatedHandle ? { terminalHandle: args.preAllocatedHandle } : {}),
             ...(ctx.result.incarnationId ? { incarnationId: ctx.result.incarnationId } : {}),
+            isReattach: ctx.result.isReattach === true,
             ...(providerReattachLaunchIdentity ? { providerReattachLaunchIdentity } : {})
           }
         : undefined,

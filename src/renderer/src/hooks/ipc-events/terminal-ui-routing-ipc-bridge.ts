@@ -135,7 +135,7 @@ export function registerTerminalUiRoutingIpcBridge(unsubs: (() => void)[]): void
           tabId,
           leafId,
           viewMode,
-          ownerPickLeafId ? { ownerPickLeafId } : undefined
+          ownerPickLeafId !== undefined ? { ownerPickLeafId } : undefined
         )
         window.api.ui.respondTerminalChatView(
           chatView

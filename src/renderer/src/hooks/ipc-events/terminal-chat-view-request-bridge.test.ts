@@ -124,6 +124,50 @@ describe('renderer side of the desktop chat-view relay', () => {
     })
   })
 
+  it("refuses on its own store when the host found no agent pane, even if the host's snapshot showed an owner (R1A-2)", () => {
+    // The host's published pair can lag this store: it sends its pick (null) and the store decides.
+    const split = useAppStore.getState().createTab(WT, undefined, undefined, {})
+    useAppStore.getState().setTabLayout(split.id, {
+      root: {
+        type: 'split',
+        direction: 'vertical',
+        first: { type: 'leaf', leafId: A },
+        second: { type: 'leaf', leafId: B }
+      },
+      activeLeafId: B,
+      expandedLeafId: null
+    })
+    onRequest!({
+      requestId: 'r-none',
+      worktreeId: WT,
+      tabId: split.id,
+      leafId: null,
+      viewMode: 'chat',
+      ownerPickLeafId: null
+    })
+    const reply = respond.mock.calls.at(-1)?.[0]
+    expect(reply?.requestId).toBe('r-none')
+    expect(reply?.chatView?.viewMode).not.toBe('chat')
+    expect(useAppStore.getState().terminalLayoutsByTabId[split.id]?.chatLeafId).toBeUndefined()
+
+    // A single pane needs no pick: the write applies there as before.
+    const single = useAppStore.getState().createTab(WT, undefined, undefined, {})
+    useAppStore.getState().setTabLayout(single.id, {
+      root: { type: 'leaf', leafId: A },
+      activeLeafId: A,
+      expandedLeafId: null
+    })
+    onRequest!({
+      requestId: 'r-single',
+      worktreeId: WT,
+      tabId: single.id,
+      leafId: null,
+      viewMode: 'chat',
+      ownerPickLeafId: null
+    })
+    expect(respond.mock.calls.at(-1)?.[0]?.chatView?.viewMode).toBe('chat')
+  })
+
   it('reports an unknown tab', () => {
     onRequest!({
       requestId: 'r-2',

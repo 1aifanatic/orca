@@ -18,7 +18,6 @@ import {
   pickSessionTabChatOwner,
   readHeadlessChatPairState,
   readPublishedChatPairState,
-  resolveRelayedChatOwnerPick,
   toSessionTabChatView
 } from './session-tab-chat-pair'
 import type {
@@ -131,27 +130,22 @@ export class OrcaRuntimeWithPersistHeadlessSessionTabProps extends OrcaRuntimeWi
     if (refused) {
       return refused
     }
-    const relayPick = resolveRelayedChatOwnerPick(
-      readPublishedChatPairState(snapshot, target.parentTabId),
-      viewMode,
-      target.leafId,
-      (layout) => this.pickChatOwnerLeafForLayout(layout)
-    )
-    if (!relayPick) {
-      // Why: no pane of this split runs an agent, so none may own chat; nothing changes.
-      this.chatViewWriteFence.confirm(worktreeId, target.parentTabId, write.writerId, write.seq)
-      return {
-        updated: true,
-        chatView: this.readMobileSessionTabChatView(worktreeId, target.parentTabId)
-      }
-    }
+    // Why always send the pick (null = no agent pane): the renderer decides once, on its own store.
+    const ownerPick =
+      viewMode === 'chat' && target.leafId === null
+        ? [
+            this.pickChatOwnerLeafForLayout(
+              readPublishedChatPairState(snapshot, target.parentTabId)?.layout
+            )
+          ]
+        : []
     // Why confirm only on success: a resend after a failed or still-pending relay must apply.
     const chatView = await notifier.setTerminalChatView(
       worktreeId,
       target.parentTabId,
       target.leafId,
       viewMode,
-      ...(relayPick.ownerPickLeafId ? [relayPick.ownerPickLeafId] : [])
+      ...ownerPick
     )
     this.chatViewWriteFence.confirm(worktreeId, target.parentTabId, write.writerId, write.seq)
     return { updated: true, chatView }

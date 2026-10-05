@@ -28,12 +28,17 @@ const UNIFIED_HOST_TAB: Tab = {
   createdAt: 1
 }
 
-/** A headless host tab; `agentOn` leaves get a PTY whose launch record names a supported agent. */
+/**
+ * A headless host tab. `agentOn` leaves get a PTY whose launch record names a supported agent,
+ * `shellOn` a freshly spawned PTY known to run none, `inventoryOn` a PTY known only from inventory.
+ */
 function makeOwnerHost(options: {
   viewMode?: 'terminal' | 'chat'
-  leaves: 1 | 2
+  leaves: 0 | 1 | 2
   activeLeafId?: string
   agentOn?: string[]
+  shellOn?: string[]
+  inventoryOn?: string[]
   chatLeafId?: string
 }) {
   const ptyIds: Record<string, string> = { [A]: 'pty-a', [B]: 'pty-b' }
@@ -41,6 +46,7 @@ function makeOwnerHost(options: {
     ...makeHeadlessTerminalLayout(
       options.leaves === 2 ? { [A]: ptyIds[A], [B]: ptyIds[B] } : { [A]: ptyIds[A] }
     ),
+    ...(options.leaves === 0 ? { root: null, ptyIdsByLeafId: {} } : {}),
     activeLeafId: options.activeLeafId ?? (options.leaves === 2 ? B : A),
     ...(options.chatLeafId ? { chatLeafId: options.chatLeafId } : {})
   }
@@ -65,6 +71,17 @@ function makeOwnerHost(options: {
       incarnationId: `inc-${leafId}`,
       agentLaunchAuthority: { launchToken: `token-${leafId}`, launchAgent: 'claude' }
     })
+  }
+  for (const leafId of options.shellOn ?? []) {
+    runtime.registerPty(ptyIds[leafId]!, TEST_WORKTREE_ID, null, {
+      tabId: 'host-tab',
+      leafId,
+      incarnationId: `inc-${leafId}`,
+      isReattach: false
+    })
+  }
+  for (const leafId of options.inventoryOn ?? []) {
+    runtime['recordPtyWorktree'](ptyIds[leafId]!, TEST_WORKTREE_ID, { connected: true })
   }
   const hostPair = () => ({
     viewMode: getSession().unifiedTabs?.[TEST_WORKTREE_ID]?.[0]?.viewMode,
@@ -130,6 +147,16 @@ describe('F1: a parent-addressed chat on a split gets a host owner (headless)', 
     expect(host.snapshotVersion()).toBe(version)
   })
 
+  it('takes a parent chat on a saved layout with no pane yet, as the relay does (R1A-3)', async () => {
+    const host = makeOwnerHost({ leaves: 0, viewMode: 'terminal' })
+    const reply = await host.runtime.setMobileSessionTabProps(`id:${TEST_WORKTREE_ID}`, {
+      tabId: 'host-tab',
+      viewMode: 'chat'
+    })
+    expect(reply.chatView).toEqual({ viewMode: 'chat', chatLeafId: null })
+    expect(host.hostPair()).toEqual({ viewMode: 'chat', owner: undefined })
+  })
+
   it('gives a sole pane the owner id even without agent evidence', async () => {
     const host = makeOwnerHost({ leaves: 1 })
     const reply = await host.runtime.setMobileSessionTabProps(`id:${TEST_WORKTREE_ID}`, {
@@ -185,7 +212,13 @@ describe('F1: an accepted layout push that grows an ownerless single-pane chat',
 
 describe('F1: hydration repairs an ownerless chat with two or more panes once', () => {
   it('stores the agent pane as owner and writes once', async () => {
-    const host = makeOwnerHost({ leaves: 2, viewMode: 'chat', activeLeafId: B, agentOn: [A] })
+    const host = makeOwnerHost({
+      leaves: 2,
+      viewMode: 'chat',
+      activeLeafId: B,
+      agentOn: [A],
+      shellOn: [B]
+    })
     const writes = host.writeCount()
 
     expect(await host.publishedPairs()).toEqual([
@@ -200,13 +233,57 @@ describe('F1: hydration repairs an ownerless chat with two or more panes once', 
     expect(host.writeCount()).toBe(writes + 1)
   })
 
-  it('turns the tab terminal when no pane may own chat', async () => {
-    const host = makeOwnerHost({ leaves: 2, viewMode: 'chat' })
+  it('turns the tab terminal when every pane is known to run no agent', async () => {
+    const host = makeOwnerHost({ leaves: 2, viewMode: 'chat', shellOn: [A, B] })
     expect(await host.publishedPairs()).toEqual([
       { viewMode: 'terminal', owner: undefined },
       { viewMode: 'terminal', owner: undefined }
     ])
     expect(host.hostPair()).toEqual({ viewMode: 'terminal', owner: undefined })
+  })
+
+  it('leaves the record alone while any pane is unknown, then repairs it (R1-COLD)', async () => {
+    // Cold start: no PTY record, inventory-only records, or a reattach that reported no agent.
+    const reattachNoReport = makeOwnerHost({ leaves: 2, viewMode: 'chat', agentOn: [A] })
+    reattachNoReport.runtime.registerPty('pty-b', TEST_WORKTREE_ID, 'ssh-1', {
+      tabId: 'host-tab',
+      leafId: B,
+      incarnationId: 'inc-b',
+      isReattach: true
+    })
+    for (const host of [
+      makeOwnerHost({ leaves: 2, viewMode: 'chat' }),
+      makeOwnerHost({ leaves: 2, viewMode: 'chat', inventoryOn: [A, B] }),
+      makeOwnerHost({ leaves: 2, viewMode: 'chat', agentOn: [A], inventoryOn: [B] }),
+      reattachNoReport
+    ]) {
+      const writes = host.writeCount()
+      await host.publishedPairs()
+      expect(host.hostPair()).toEqual({ viewMode: 'chat', owner: undefined })
+      expect(host.writeCount()).toBe(writes)
+    }
+
+    const host = makeOwnerHost({ leaves: 2, viewMode: 'chat', activeLeafId: B, inventoryOn: [A] })
+    await host.publishedPairs()
+    host.runtime.registerPty('pty-a', TEST_WORKTREE_ID, null, {
+      tabId: 'host-tab',
+      leafId: A,
+      incarnationId: 'inc-a',
+      isReattach: true,
+      providerReattachLaunchIdentity: { incarnationId: 'inc-a', launchAgent: 'claude' }
+    })
+    host.runtime.registerPty('pty-b', TEST_WORKTREE_ID, null, {
+      tabId: 'host-tab',
+      leafId: B,
+      incarnationId: 'inc-b',
+      isReattach: false
+    })
+    host.runtime['mobileSessionTabsByWorktree'].delete(TEST_WORKTREE_ID)
+    expect(await host.publishedPairs()).toEqual([
+      { viewMode: 'chat', owner: A },
+      { viewMode: 'chat', owner: A }
+    ])
+    expect(host.hostPair()).toEqual({ viewMode: 'chat', owner: A })
   })
 
   it('leaves absent view modes, single panes and stored owners alone', async () => {
@@ -254,18 +331,25 @@ describe('F1: a desktop-owned host relays its owner pick', () => {
     expect(setTerminalChatView).toHaveBeenCalledWith(TEST_WORKTREE_ID, 'host-tab', null, 'chat', A)
   })
 
-  it('relays nothing and answers the current pair when no pane runs an agent', async () => {
-    const { host, setTerminalChatView } = relayHost({ leaves: 2, viewMode: 'terminal' })
+  it('sends an explicit no-pick when no pane runs an agent; the renderer answers (R1A-2)', async () => {
+    const host = makeOwnerHost({ leaves: 2, viewMode: 'terminal' })
+    const setTerminalChatView = vi.fn(async () => ({ viewMode: 'terminal', chatLeafId: null }))
     await host.publishedPairs()
     attachDesktop(host, setTerminalChatView)
 
     const reply = await write(host, 1)
 
-    expect(setTerminalChatView).not.toHaveBeenCalled()
+    expect(setTerminalChatView).toHaveBeenCalledWith(
+      TEST_WORKTREE_ID,
+      'host-tab',
+      null,
+      'chat',
+      null
+    )
     expect(reply.chatView).toEqual({ viewMode: 'terminal', chatLeafId: null })
   })
 
-  it('sends no pick while the published pair already has a valid owner', async () => {
+  it('sends the pick even when the published pair has an owner; the renderer keeps a valid one', async () => {
     const { host, setTerminalChatView } = relayHost({
       leaves: 2,
       viewMode: 'chat',
@@ -277,6 +361,6 @@ describe('F1: a desktop-owned host relays its owner pick', () => {
 
     await write(host, 1)
 
-    expect(setTerminalChatView).toHaveBeenCalledWith(TEST_WORKTREE_ID, 'host-tab', null, 'chat')
+    expect(setTerminalChatView).toHaveBeenCalledWith(TEST_WORKTREE_ID, 'host-tab', null, 'chat', A)
   })
 })

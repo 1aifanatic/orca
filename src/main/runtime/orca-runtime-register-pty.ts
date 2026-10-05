@@ -19,6 +19,8 @@ export class OrcaRuntimeWithRegisterPty extends OrcaRuntimeWithInvalidateAllHand
       /** Handle allocated for the replacement incarnation, when one is known. */
       terminalHandle?: string
       agentLaunchAuthority?: { launchToken: string; launchAgent: TuiAgent }
+      /** False for a fresh spawn, whose launch identity is complete once admitted here. */
+      isReattach?: boolean
       providerReattachLaunchIdentity?: {
         incarnationId: PtyIncarnationId
         launchAgent: TuiAgent
@@ -112,6 +114,7 @@ export class OrcaRuntimeWithRegisterPty extends OrcaRuntimeWithInvalidateAllHand
       pty.launchToken = agentLaunchAuthority.launchToken
       pty.launchIncarnationId = binding.incarnationId
       pty.launchAgent = agentLaunchAuthority.launchAgent
+      pty.launchIdentityKnown = true
     }
     const providerReattachLaunchIdentity = binding?.providerReattachLaunchIdentity
     if (
@@ -124,6 +127,11 @@ export class OrcaRuntimeWithRegisterPty extends OrcaRuntimeWithInvalidateAllHand
     ) {
       // Why: daemon metadata owns the surviving process; its incarnation fence restores identity without minting renderer launch authority.
       pty.launchAgent = providerReattachLaunchIdentity.launchAgent
+      pty.launchIdentityKnown = true
+    }
+    // Why only a fresh spawn: a reattach whose provider reported no agent may predate the report.
+    if (binding?.isReattach === false) {
+      pty.launchIdentityKnown = true
     }
     const pendingIncarnation = this.pendingPtyRegistrationIncarnations.get(ptyId)
     if (

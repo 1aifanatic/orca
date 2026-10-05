@@ -144,7 +144,7 @@ describe('registerPtyHandlers', () => {
           expect.any(String),
           'wt-runtime',
           null,
-          { tabId: 'tab-1', leafId },
+          { tabId: 'tab-1', leafId, isReattach: false },
           false
         )
       })
@@ -195,6 +195,7 @@ describe('registerPtyHandlers', () => {
             tabId: 'tab-runtime-reattach',
             leafId,
             incarnationId,
+            isReattach: true,
             providerReattachLaunchIdentity: { incarnationId, launchAgent: 'codex' }
           },
           false

@@ -28,6 +28,7 @@ import {
 } from './mobile-session-browser-group-projection'
 import { headlessMobileSnapshotContentUnchanged } from './mobile-session-snapshot-equality'
 import { normalizeOwnerlessSplitChats } from './headless-chat-owner-hydration'
+import { pickSessionTabChatOwnerFromKnownEvidence } from './session-tab-chat-pair'
 
 export class OrcaRuntimeWithHydrateHeadlessMobileSessionTabsFromWorkspaceSession extends OrcaRuntimeWithWaitForSessionTabsInventoryPublication {
   protected hydrateHeadlessMobileSessionTabsFromWorkspaceSession(
@@ -249,8 +250,11 @@ export class OrcaRuntimeWithHydrateHeadlessMobileSessionTabsFromWorkspaceSession
     worktreeId: string,
     hydratedSession: WorkspaceSessionState
   ): WorkspaceSessionState | null {
-    const pickOwner = (layout: TerminalLayoutSnapshot): string | null =>
-      this.pickChatOwnerLeafForLayout(layout)
+    const pickOwner = (layout: TerminalLayoutSnapshot): string | null | undefined =>
+      pickSessionTabChatOwnerFromKnownEvidence(layout, (ptyId) => {
+        const pty = this.ptysById.get(ptyId)
+        return pty?.launchIdentityKnown ? pty.launchAgent : undefined
+      })
     // Why the in-hand session first: this runs on every rebuild, so only a repair reads the store.
     if (
       !this.store?.setWorkspaceSession ||

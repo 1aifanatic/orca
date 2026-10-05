@@ -141,6 +141,7 @@ export class OrcaRuntimeWithGetOrchestrationDispatchAuthority extends OrcaRuntim
     pty.launchToken = null
     pty.launchIncarnationId = null
     pty.launchAgent = null
+    pty.launchIdentityKnown = true
     for (const paneKey of paneKeys) {
       this.retireAgentHookCompatibilityAuthorityFn?.(paneKey)
     }

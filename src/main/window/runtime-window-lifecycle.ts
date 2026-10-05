@@ -174,7 +174,7 @@ export function registerRuntimeWindowLifecycle(
         tabId,
         leafId,
         viewMode,
-        ...(ownerPickLeafId ? { ownerPickLeafId } : {})
+        ...(ownerPickLeafId !== undefined ? { ownerPickLeafId } : {})
       }),
     moveSessionTab: (worktreeId: string, move: RuntimeMobileSessionTabMove) =>
       send('ui:moveSessionTab', { worktreeId, ...move }),

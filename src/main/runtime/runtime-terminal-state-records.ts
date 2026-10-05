@@ -66,6 +66,9 @@ export type RuntimePtyWorktreeRecord = RuntimeTerminalTailState & {
   launchToken: string | null
   launchIncarnationId: PtyIncarnationId | null
   launchAgent: TuiAgent | null
+  /** In memory only: `launchAgent` was admitted at a spawn or reattach, or retired, so null means
+   *  no launched agent. Absent for a PTY known only from inventory, whose null proves nothing. */
+  launchIdentityKnown?: boolean
   agentSessionOwners: AgentSessionOwnerBinding[]
   foregroundAgent: TerminalAgent | null
   connected: boolean

@@ -1,4 +1,7 @@
-import { terminalLayoutNodeContainsLeaf } from './native-chat-leaf-ownership'
+import {
+  terminalLayoutNodeContainsLeaf,
+  terminalLayoutNodeLeafIds
+} from './native-chat-leaf-ownership'
 import type { TerminalPaneLayoutNode } from './terminal-tab-types'
 
 export type TerminalTabViewMode = 'terminal' | 'chat'
@@ -20,7 +23,7 @@ export function resolveTerminalTabViewMode(
 /**
  * The absolute pair a `viewMode` write produces. `leafId` is the addressed leaf, or null when
  * the write named the parent tab. Returns null when the addressed leaf is not in the tree, or when
- * a host's `pickOwner` finds no pane that may own a parent-addressed chat.
+ * a host's `pickOwner` finds no pane of a split that may own a parent-addressed chat.
  */
 export function resolveTerminalChatPairWrite(args: {
   current: TerminalChatPair
@@ -55,9 +58,11 @@ export function resolveTerminalChatPairWrite(args: {
     return { viewMode: 'chat' }
   }
   const picked = pickOwner()
-  return picked && terminalLayoutNodeContainsLeaf(root, picked)
-    ? { viewMode: 'chat', chatLeafId: picked }
-    : null
+  if (picked && terminalLayoutNodeContainsLeaf(root, picked)) {
+    return { viewMode: 'chat', chatLeafId: picked }
+  }
+  // Why: only a split can put chat on the wrong pane; a tree with no pane yet takes the write.
+  return terminalLayoutNodeLeafIds(root).length < 2 ? { viewMode: 'chat' } : null
 }
 
 /**

@@ -108,31 +108,18 @@ export function pickSessionTabChatOwner(
 }
 
 /**
- * The owner pick a desktop-owned host relays with a write: set for a parent-addressed chat whose
- * published pair has no valid owner. Null when a split tab has no pane that may own chat.
+ * The repair's owner from complete evidence only: undefined while any pane has no bound PTY whose
+ * launch identity is known (`knownLaunchAgentForPty` returns undefined), since unknown is not "none".
  */
-export function resolveRelayedChatOwnerPick(
-  state: HeadlessChatPairState | null,
-  viewMode: 'terminal' | 'chat',
-  leafId: string | null,
-  pickOwner: (layout: TerminalLayoutSnapshot | undefined) => string | null
-): { ownerPickLeafId?: string } | null {
-  if (viewMode !== 'chat' || leafId !== null || !state) {
-    return {}
-  }
-  const { pair, root } = state
-  if (
-    pair.viewMode === 'chat' &&
-    pair.chatLeafId &&
-    terminalLayoutNodeContainsLeaf(root, pair.chatLeafId)
-  ) {
-    return {}
-  }
-  const picked = pickOwner(state.layout)
-  if (picked) {
-    return { ownerPickLeafId: picked }
-  }
-  return terminalLayoutNodeLeafIds(root).length > 1 ? null : {}
+export function pickSessionTabChatOwnerFromKnownEvidence(
+  layout: TerminalLayoutSnapshot,
+  knownLaunchAgentForPty: (ptyId: string) => string | null | undefined
+): string | null | undefined {
+  const complete = terminalLayoutNodeLeafIds(layout.root).every((leafId) => {
+    const ptyId = layout.ptyIdsByLeafId?.[leafId]
+    return ptyId !== undefined && knownLaunchAgentForPty(ptyId) !== undefined
+  })
+  return complete ? pickSessionTabChatOwner(layout, knownLaunchAgentForPty) : undefined
 }
 
 export function toSessionTabChatView(
