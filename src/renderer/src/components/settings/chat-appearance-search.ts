@@ -3,6 +3,26 @@ import { createLocalizedCatalog } from '@/i18n/localized-catalog'
 import type { SettingsSearchEntry } from './settings-search'
 import { formatPrimaryShortcutLabel } from '@/hooks/useShortcutLabel'
 
+export const getChatContrastSearchEntries = createLocalizedCatalog((): SettingsSearchEntry[] => [
+  {
+    title: translate('settings.appearance.chat.matchTerminalInterface', 'Match terminal interface'),
+    description: translate(
+      'settings.appearance.chat.matchTerminalInterfaceDescription',
+      "Use your terminal interface's font and colors for the whole chat. Stays in sync if you change your terminal theme later."
+    ),
+    targetSectionId: 'chat-match-terminal-interface'
+  },
+  {
+    title: translate('settings.appearance.chat.contrast', 'Contrast'),
+    description: translate(
+      'settings.appearance.chat.contrastDescription',
+      'How bright chat text is against the background. The right end matches the older, brighter look.'
+    ),
+    targetSectionId: 'chat-contrast'
+  }
+])
+
+
 const getChatAppearanceCatalog = createLocalizedCatalog(
   () =>
     ({
@@ -66,7 +86,8 @@ export function getChatAppearanceSearchEntries(): SettingsSearchEntry[] {
     {
       title: translate('auto.components.settings.Settings.2b4474780a', 'Appearance')
     },
-    ...Object.values(getChatAppearanceEntriesByKey())
+    ...Object.values(getChatAppearanceEntriesByKey()),
+    ...getChatContrastSearchEntries()
   ]
 }
 
