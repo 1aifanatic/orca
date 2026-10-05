@@ -412,6 +412,7 @@ it.each([
   await eventually(() => expect(hostSession()?.child).toBeNull())
 
   // The same end reads the same however long its proof took.
+  expect(await turnRows()).toEqual([{ state: 'interrupted', outcome: undefined }])
   expect(await faultRows()).toEqual([FAULT_ROW])
   expect(hostSession()?.lastEndedChild).toMatchObject({
     cause: 'exit',
@@ -419,22 +420,36 @@ it.each([
   })
 })
 
-it("still tells why a turn a fault cut short stopped when the user's Stop comes before the late exit", async () => {
-  const connection = claude.connections[0]!
-  await turnRunning(connection)
-  await faultedUnproven(connection)
-  expect(hostSession()?.child?.close?.reported).toBeDefined()
+async function turnRows() {
+  await host.flushStreamedEvents(SESSION)
+  return (await host.journalSnapshot(SESSION)).items.flatMap((item) =>
+    item.body.kind === 'turn' ? [{ state: item.body.state, outcome: item.body.outcome }] : []
+  )
+}
 
-  // The turn still reads running, so the user presses Stop; its close cannot prove the exit either.
-  await expect(stop()).resolves.toMatchObject({ ok: true })
-  await laneDrained()
-  exits(connection)
-  await eventually(() => expect(hostSession()?.child).toBeNull())
+it.each([
+  ['a Stop', 'user-stop'],
+  ['a chat close', 'user-close']
+] as const)(
+  'still tells why a turn a fault cut short stopped when %s comes before the late exit, as the fault alone would',
+  async (_name, cause) => {
+    const connection = claude.connections[0]!
+    await turnRunning(connection)
+    await faultedUnproven(connection)
+    expect(hostSession()?.child?.close?.reported).toBeDefined()
 
-  expect(await faultRows()).toEqual([FAULT_ROW])
-  // The Stop stays the user's; the fault that came first says why the turn ended.
-  expect(hostSession()?.lastEndedChild).toMatchObject({
-    cause: 'user-stop',
-    failure: { kind: 'hostFault' }
-  })
-})
+    // The turn still reads running, so the user acts; that close cannot prove the exit either.
+    await (cause === 'user-stop'
+      ? expect(stop()).resolves.toMatchObject({ ok: true })
+      : expect(host.close(SESSION, 'user-close')).rejects.toThrow())
+    await laneDrained()
+    exits(connection)
+    await eventually(() => expect(hostSession()?.child).toBeNull())
+
+    // The fault ended the turn, so it reads interrupted, never the user's cancellation, with the
+    // fault's one row; the end stays the user's.
+    expect(await turnRows()).toEqual([{ state: 'interrupted', outcome: undefined }])
+    expect(await faultRows()).toEqual([FAULT_ROW])
+    expect(hostSession()?.lastEndedChild).toMatchObject({ cause, failure: { kind: 'hostFault' } })
+  }
+)

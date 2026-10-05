@@ -252,27 +252,43 @@ it.each([
 
   // The same end reads the same however long its proof took.
   await vi.waitFor(async () => expect(await faultRows()).toEqual([FAULT_ROW]))
+  expect(await turnRows()).toEqual([{ state: 'interrupted', outcome: undefined }])
   expect(hostSession()?.lastEndedChild).toMatchObject({
     cause: 'exit',
     failure: { kind: 'hostFault' }
   })
 })
 
-it('still tells why a turn a forced close cut short stopped when the chat is closed before the late exit', async () => {
-  const connection = codex.connections[0]!
-  const old = closesOnlyOnceExited(connection)
-  await turnRunning(connection)
-  forceCloseOnAnUnrecordableFrame(connection)
-  await vi.waitFor(() => expect(hostSession()?.child?.close?.reported).toBeDefined())
+async function turnRows() {
+  await host.flushStreamedEvents(SESSION)
+  return (await host.journalSnapshot(SESSION)).items.flatMap((item) =>
+    item.body.kind === 'turn' ? [{ state: item.body.state, outcome: item.body.outcome }] : []
+  )
+}
 
-  // The user closes the chat; that close cannot prove the exit either.
-  await expect(host.close(SESSION, 'user-close')).rejects.toThrow()
-  old.exit()
-  await vi.waitFor(() => expect(hostSession()?.child).toBeNull())
+it.each([
+  ['the chat is closed', 'user-close'],
+  ['Orca evicts it', 'evict']
+] as const)(
+  'still tells why a turn a forced close cut short stopped when %s before the late exit, as the fault alone would',
+  async (_name, cause) => {
+    const connection = codex.connections[0]!
+    const old = closesOnlyOnceExited(connection)
+    await turnRunning(connection)
+    forceCloseOnAnUnrecordableFrame(connection)
+    await vi.waitFor(() => expect(hostSession()?.child?.close?.reported).toBeDefined())
+    const journal = hostSession()!.journal
+    const stopEvents = vi.spyOn(journal, 'appendStopEvent')
 
-  await vi.waitFor(async () => expect(await faultRows()).toEqual([FAULT_ROW]))
-  expect(hostSession()?.lastEndedChild).toMatchObject({
-    cause: 'user-close',
-    failure: { kind: 'hostFault' }
-  })
-})
+    // That close cannot prove the exit either.
+    await expect(host.close(SESSION, cause)).rejects.toThrow()
+    old.exit()
+    await vi.waitFor(() => expect(hostSession()?.child).toBeNull())
+
+    await vi.waitFor(async () => expect(await faultRows()).toEqual([FAULT_ROW]))
+    // The fault ended the turn: it reads interrupted, never the user's cancellation.
+    expect(await turnRows()).toEqual([{ state: 'interrupted', outcome: undefined }])
+    expect(stopEvents).not.toHaveBeenCalled()
+    expect(hostSession()?.lastEndedChild).toMatchObject({ cause, failure: { kind: 'hostFault' } })
+  }
+)
