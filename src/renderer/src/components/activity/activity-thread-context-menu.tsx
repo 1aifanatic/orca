@@ -72,12 +72,15 @@ export function ActivityThreadContextMenu({
   onJump: (thread: AgentPaneThread) => void
   onMarkRead: (thread: AgentPaneThread) => void
   onMarkUnread: (thread: AgentPaneThread) => void
-  children: React.ReactElement
+  /** Receives whether the menu is open, so the row can keep its preview out of the way. */
+  children: (menuOpen: boolean) => React.ReactElement
 }): React.JSX.Element {
+  const [menuOpen, setMenuOpen] = React.useState(false)
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-      <ContextMenuContent>
+    <ContextMenu onOpenChange={setMenuOpen}>
+      <ContextMenuTrigger asChild>{children(menuOpen)}</ContextMenuTrigger>
+      {/* Why no focus restore: refocusing the row would reopen its hover preview and pin it open. */}
+      <ContextMenuContent onCloseAutoFocus={(event) => event.preventDefault()}>
         <ContextMenuItem onSelect={() => onOpen(thread)}>
           <PanelRight />
           {translate('auto.components.activity.ActivityThreadContextMenu.open', 'Open')}

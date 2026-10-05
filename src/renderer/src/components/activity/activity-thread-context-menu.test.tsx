@@ -51,7 +51,11 @@ function openMenu(thread: AgentPaneThread, canJump = true, disableMarkUnread = f
       disableMarkUnread={disableMarkUnread}
       {...handlers}
     >
-      <div data-testid="row">row</div>
+      {(menuOpen) => (
+        <div data-testid="row" data-menu-open={menuOpen ? '' : undefined}>
+          row
+        </div>
+      )}
     </ActivityThreadContextMenu>
   )
   fireEvent.contextMenu(screen.getByTestId('row'))
@@ -76,6 +80,14 @@ describe('ActivityThreadContextMenu', () => {
 
     fireEvent.click(menuItem('Open'))
     expect(handlers.onOpen).toHaveBeenCalledWith(thread)
+  })
+
+  it('tells the row while the menu is open so it can keep its preview closed', () => {
+    openMenu(makeThread())
+    expect(screen.getByTestId('row').hasAttribute('data-menu-open')).toBe(true)
+
+    fireEvent.keyDown(menuItem('Open'), { key: 'Escape' })
+    expect(screen.getByTestId('row').hasAttribute('data-menu-open')).toBe(false)
   })
 
   it('offers Go to workspace only for threads with a real workspace', () => {

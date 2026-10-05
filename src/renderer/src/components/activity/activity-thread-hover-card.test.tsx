@@ -27,13 +27,7 @@ vi.mock('@/components/ui/hover-card', () => ({
       {children}
     </div>
   ),
-  HoverCardTrigger: ({
-    children,
-    onContextMenu
-  }: {
-    children: ReactNode
-    onContextMenu?: () => void
-  }) => <div onContextMenu={onContextMenu}>{children}</div>
+  HoverCardTrigger: ({ children }: { children: ReactNode }) => <>{children}</>
 }))
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
@@ -221,25 +215,21 @@ describe('ActivityThreadHoverCard and ActivityThreadRow', () => {
     expect(content).toContain('Performance investigation notes')
   })
 
-  it('closes the preview when the row is right-clicked so it cannot cover the menu', async () => {
-    await act(async () => {
+  it('keeps the preview closed while suppressed by the row menu', async () => {
+    const renderCard = (suppressed: boolean) =>
       root.render(
         <TooltipProvider>
-          <ActivityThreadHoverCard thread={createTestThread()}>
+          <ActivityThreadHoverCard thread={createTestThread()} suppressed={suppressed}>
             <div data-testid="hover-trigger">Hover Target</div>
           </ActivityThreadHoverCard>
         </TooltipProvider>
       )
-    })
-    expect(container.querySelector('[data-testid="hover-card-content"]')).not.toBeNull()
 
-    await act(async () => {
-      container
-        .querySelector('[data-testid="hover-trigger"]')
-        ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }))
-    })
-
+    await act(async () => renderCard(true))
     expect(container.querySelector('[data-testid="hover-card-content"]')).toBeNull()
+
+    await act(async () => renderCard(false))
+    expect(container.querySelector('[data-testid="hover-card-content"]')).not.toBeNull()
   })
 
   it('allows clicking row while preventing inner hover interactions from bubbling', async () => {

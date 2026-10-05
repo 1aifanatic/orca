@@ -66,23 +66,26 @@ export function ActivityThreadVirtualRow({
       onMarkRead={onMarkThreadRead}
       onMarkUnread={onMarkThreadUnread}
     >
-      {/* Why the menu wraps this wrapper, not the row: the row is already the hover-card
-          trigger, and stacking two Radix triggers on one node composes their refs. */}
-      <div className="pb-0.5">
-        <ActivityThreadRow
-          thread={item.thread}
-          selected={item.thread.paneKey === selectedPaneKey}
-          onSelect={onSelectThread}
-          onJump={onJumpToWorkspace}
-          onMarkRead={onMarkThreadRead}
-          onMarkUnread={onMarkThreadUnread}
-          onClear={isClearableActivityThread(item.thread) ? clearActivityThread : undefined}
-          canJump={canJump}
-          compactMode={compactMode}
-          disableMarkUnread={disableMarkUnread}
-          showJumpAction={showJumpAction}
-        />
-      </div>
+      {(menuOpen) => (
+        // Why the menu wraps this wrapper, not the row: the row is already the hover-card
+        // trigger, and stacking two Radix triggers on one node composes their refs.
+        <div className="pb-0.5">
+          <ActivityThreadRow
+            thread={item.thread}
+            selected={item.thread.paneKey === selectedPaneKey}
+            onSelect={onSelectThread}
+            onJump={onJumpToWorkspace}
+            onMarkRead={onMarkThreadRead}
+            onMarkUnread={onMarkThreadUnread}
+            onClear={isClearableActivityThread(item.thread) ? clearActivityThread : undefined}
+            canJump={canJump}
+            compactMode={compactMode}
+            disableMarkUnread={disableMarkUnread}
+            showJumpAction={showJumpAction}
+            previewSuppressed={menuOpen}
+          />
+        </div>
+      )}
     </ActivityThreadContextMenu>
   )
 }
