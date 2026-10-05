@@ -146,7 +146,13 @@ const reapProviderExit = async (code, signal) => {
   finishWithProviderOutcome(code, signal)
 }
 timer = setInterval(() => {
-  if (ownerGone()) stopProviderGroup(null)
+  if (!ownerGone()) return
+  if (spec.lifetime === 'one-shot') return stopProviderGroup(null)
+  // A session whose owner is gone closes as an owner's stdin end does: EOF, its grace, then the stop.
+  clearInterval(timer)
+  process.stdin.unpipe(child.stdin)
+  try { child.stdin.end() } catch {}
+  scheduleOwnerShutdown()
 }, 100)
 timer.unref()
 child.once('error', (error) => {
