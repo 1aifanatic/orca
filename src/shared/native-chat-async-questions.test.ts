@@ -10,7 +10,7 @@ import {
   createNativeChatAsyncQuestionFoldState,
   foldNativeChatAsyncQuestionFact,
   formatAsyncQuestionReply,
-  nativeChatAsyncQuestionCardCallIds,
+  nativeChatAsyncCallsFolded,
   nativeChatAsyncQuestionKey,
   nativeChatAsyncQuestionsAllowHeuristics,
   nativeChatAsyncQuestionsFromFold,
@@ -273,7 +273,7 @@ describe('publication and the client view', () => {
   })
 })
 
-describe('nativeChatAsyncQuestionCardCallIds', () => {
+describe('nativeChatAsyncCallsFolded', () => {
   const question = (identity: string, index: number, providerItemId?: string) => ({
     key: nativeChatAsyncQuestionKey(identity, index),
     index,
@@ -282,23 +282,26 @@ describe('nativeChatAsyncQuestionCardCallIds', () => {
   })
 
   it('names each shown call by its identity and provider item id', () => {
-    const ids = nativeChatAsyncQuestionCardCallIds({
+    const ids = nativeChatAsyncCallsFolded({
       state: 'ready',
       questions: [question('call-1', 0), question('journal-item', 0, 'call-2')]
     })
-    expect([...ids].sort()).toEqual(['call-1', 'call-2', 'journal-item'])
+    expect(ids !== 'all' && [...ids].sort()).toEqual(['call-1', 'call-2', 'journal-item'])
   })
 
-  it('names none without a ready set, and not the newest call the overflow line may cut short', () => {
-    for (const view of [{ state: 'absent' }, { state: 'pending' }] as const) {
-      expect(nativeChatAsyncQuestionCardCallIds(view).size).toBe(0)
-    }
-    const ids = nativeChatAsyncQuestionCardCallIds({
+  it('folds every call while the host is still deriving, and none once it gave up', () => {
+    expect(nativeChatAsyncCallsFolded({ state: 'pending' })).toBe('all')
+    expect(nativeChatAsyncCallsFolded({ state: 'absent' })).toEqual(new Set())
+  })
+
+  it('names none for an empty set, and not the newest call the overflow line may cut short', () => {
+    expect(nativeChatAsyncCallsFolded({ state: 'ready', questions: [] })).toEqual(new Set())
+    const ids = nativeChatAsyncCallsFolded({
       state: 'ready',
       questions: [question('call-1', 0), question('call-2', 0), question('call-2', 1)],
       omittedCount: 1
     })
-    expect([...ids]).toEqual(['call-1'])
+    expect(ids !== 'all' && [...ids]).toEqual(['call-1'])
   })
 })
 

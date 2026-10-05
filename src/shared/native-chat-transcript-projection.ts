@@ -12,6 +12,7 @@ import { compareAgentJournalPositions } from './agent-session-journal-position'
 import { agentJournalItemSubagentId } from './agent-session-journal-producer'
 import { stripNoiseMessages } from './native-chat-noise'
 import { foldToolMessages } from './native-chat-tool-fold'
+import type { NativeChatAsyncCallsFolded } from './native-chat-async-questions'
 import { nativeChatTurnMembership, type NativeChatTurnJournal } from './native-chat-turn-membership'
 
 /** Timestamp, then id. A null timestamp sorts first so a source that cannot supply
@@ -76,9 +77,9 @@ const NO_SUBAGENT_ROWS: ReadonlyMap<string, readonly NativeChatSubagentRow[]> = 
 
 function projectRows(
   messages: readonly NativeChatMessage[],
-  asyncCallsOnCard?: ReadonlySet<string>
+  asyncCallsFolded?: NativeChatAsyncCallsFolded
 ): NativeChatMessage[] {
-  return stripNoiseMessages(foldToolMessages(messages, asyncCallsOnCard))
+  return stripNoiseMessages(foldToolMessages(messages, asyncCallsFolded))
 }
 
 function sortedCopy(
@@ -100,12 +101,12 @@ export function projectNativeChatTranscriptMessages(
 
 /** `journal`: what places the conversation's rows in their turns
  *  (`nativeChatTurnMembership`), so a subagent's row sits in the turn a parent row there would.
- *  `asyncCallsOnCard`: the conversation's async question calls the card shows. */
+ *  `asyncCallsFolded`: the conversation's async question calls the card answers. */
 export function projectNativeChatTranscript(
   messages: readonly NativeChatMessage[],
   compare: NativeChatMessageCompare = compareNativeChatTranscriptMessages,
   journal?: NativeChatTurnJournal | null,
-  asyncCallsOnCard?: ReadonlySet<string>
+  asyncCallsFolded?: NativeChatAsyncCallsFolded
 ): NativeChatTranscriptProjection {
   const sorted = sortedCopy(messages, compare)
   const own: NativeChatMessage[] = []
@@ -123,7 +124,7 @@ export function projectNativeChatTranscript(
       }
     }
   }
-  const conversation = projectRows(own, asyncCallsOnCard)
+  const conversation = projectRows(own, asyncCallsFolded)
   if (byAgent.size === 0) {
     return { conversation, subagentRows: NO_SUBAGENT_ROWS }
   }

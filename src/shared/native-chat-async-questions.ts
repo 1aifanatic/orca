@@ -246,7 +246,11 @@ export function nativeChatAsyncQuestionsShown(
   return view.state === 'ready' ? view.questions : []
 }
 
-const NO_CALL_IDS: ReadonlySet<string> = new Set()
+/** The async question calls whose tool rows fold away: every one while the host is still
+ *  deriving (a card may follow), else the calls the card shows. */
+export type NativeChatAsyncCallsFolded = 'all' | ReadonlySet<string>
+
+export const NATIVE_CHAT_NO_ASYNC_CALLS_FOLDED: NativeChatAsyncCallsFolded = new Set()
 
 function questionIdentity(question: NativeChatAsyncQuestion): string | null {
   try {
@@ -257,14 +261,18 @@ function questionIdentity(question: NativeChatAsyncQuestion): string | null {
   }
 }
 
-/** Ids of the calls whose questions the card shows, so only their tool rows fold away. The
- *  set keeps the oldest questions, so the overflow line can cut short only the newest call
- *  it shows, whose row stays. */
-export function nativeChatAsyncQuestionCardCallIds(
+/** Which async question calls fold away for a client whose card can show. Pending folds them
+ *  all, so a cold open never flashes the raw row before the card. Ready names the calls whose
+ *  questions the card shows; the set keeps the oldest questions, so the overflow line can cut
+ *  short only the newest call it shows, whose row stays. */
+export function nativeChatAsyncCallsFolded(
   view: NativeChatAsyncQuestionsView
-): ReadonlySet<string> {
+): NativeChatAsyncCallsFolded {
+  if (view.state === 'pending') {
+    return 'all'
+  }
   if (view.state !== 'ready' || view.questions.length === 0) {
-    return NO_CALL_IDS
+    return NATIVE_CHAT_NO_ASYNC_CALLS_FOLDED
   }
   const callIds = (question: NativeChatAsyncQuestion): string[] =>
     [questionIdentity(question), question.providerItemId].filter((id): id is string => !!id)

@@ -288,4 +288,8 @@ describe('MobileNativeChatOverlay async question tool rows', () => {
     expect(absent).toContain('request_user_input_async')
     expect(absent).toContain('base')
   })
+
+  it('folds the call away while the host is still deriving, so a cold open never flashes it', async () => {
+    expect(await foldedText({ state: 'pending' })).not.toContain('request_user_input_async')
+  })
 })

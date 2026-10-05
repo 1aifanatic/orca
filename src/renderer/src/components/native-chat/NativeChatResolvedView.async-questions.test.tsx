@@ -42,11 +42,28 @@ const pendingQuestion: NativeChatAsyncQuestionsView = {
   questions: [{ key: 'q-a', index: 0, title: 'Which name?', options: ['core', 'base'] }]
 }
 
+const askingTurn: NativeChatMessage = {
+  id: 'assistant-1',
+  role: 'assistant',
+  blocks: [
+    { type: 'text', text: 'Pick a module name.' },
+    {
+      type: 'tool-call',
+      name: 'request_user_input_async',
+      input: '{"questions":[{"title":"Which name?","options":["core","base"]}]}',
+      callId: 'call-1'
+    }
+  ],
+  timestamp: 2,
+  source: 'transcript'
+}
+
 function transcript(
-  asyncQuestions: NativeChatAsyncQuestionsView | undefined
+  asyncQuestions: NativeChatAsyncQuestionsView | undefined,
+  messages: NativeChatMessage[] = [userTurn]
 ): NativeChatLiveSession {
   return {
-    messages: [userTurn],
+    messages,
     status: 'ready',
     sessionId: 'session-async',
     agent: 'codex',
@@ -148,5 +165,25 @@ describe('NativeChatResolvedView async question card placement', () => {
 
     expect(asyncCard()).toBeNull()
     expect(screen.getByTestId('composer')).toBeInTheDocument()
+  })
+})
+
+describe('NativeChatResolvedView async question tool row', () => {
+  const onCard: NativeChatAsyncQuestionsView = {
+    state: 'ready',
+    questions: [{ key: '["request_user_input_async","call-1",0]', index: 0, title: 'Which name?' }]
+  }
+  const views: [string, NativeChatAsyncQuestionsView][] = [
+    ['the card shows its questions', onCard],
+    ['the host is still deriving the set', { state: 'pending' }]
+  ]
+
+  it.each(views)('folds the call away while %s', (_label, view) => {
+    retained.session = transcript(view, [userTurn, askingTurn])
+
+    renderPane()
+
+    expect(screen.getByText('Pick a module name.')).toBeInTheDocument()
+    expect(screen.queryByText(/Used 1 tool/)).toBeNull()
   })
 })

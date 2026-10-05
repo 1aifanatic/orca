@@ -6,6 +6,7 @@ import {
 import { isRootAgentJournalItem } from '../../../src/shared/agent-session-journal-producer'
 import { stripNoiseMessages } from '../../../src/shared/native-chat-noise'
 import { foldToolMessages } from '../../../src/shared/native-chat-tool-fold'
+import type { NativeChatAsyncCallsFolded } from '../../../src/shared/native-chat-async-questions'
 import { isImageRefBlock, type NativeChatMessage } from '../../../src/shared/native-chat-types'
 import {
   isImageSourceUserTurn,
@@ -54,7 +55,7 @@ export type MobileNativeChatPendingItem = {
 
 export function foldMobileNativeChatMessages(
   messages: NativeChatMessage[],
-  asyncCallsOnCard?: ReadonlySet<string>
+  asyncCallsFolded?: NativeChatAsyncCallsFolded
 ): NativeChatMessage[] {
   // The conversation only: a subagent's rows are that subagent's, and mobile shows
   // each spawn as its roster's one line rather than the child's own rows.
@@ -63,7 +64,7 @@ export function foldMobileNativeChatMessages(
   return stripNoiseMessages(
     foldToolMessages(
       normalizeImageTranscriptMessages(messages.filter(isRootAgentJournalItem)),
-      asyncCallsOnCard
+      asyncCallsFolded
     )
   )
 }

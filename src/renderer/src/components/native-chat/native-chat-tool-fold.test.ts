@@ -1,4 +1,10 @@
 import { describe, it, expect } from 'vitest'
+import {
+  NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT,
+  nativeChatAsyncCallsFolded,
+  reduceNativeChatAsyncQuestionsView,
+  type NativeChatAsyncQuestionsView
+} from '../../../../shared/native-chat-async-questions'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import { stripNoiseMessages } from './native-chat-noise'
 import { foldToolMessages, splitNativeChatBlocks } from './native-chat-tool-fold'
@@ -306,5 +312,57 @@ describe('Codex async question calls', () => {
     ]
     expect(foldToolMessages(only(), new Set(['x']))).toEqual([])
     expect(foldToolMessages(only())).toHaveLength(1)
+  })
+
+  it('all fold away with their acknowledgement while the card may still come, id or not', () => {
+    const folded = foldToolMessages(
+      [
+        ...asking(),
+        msg({
+          id: 'n',
+          blocks: [{ type: 'tool-call', name: 'request_user_input_async', input: '{}' }]
+        })
+      ],
+      'all'
+    )
+    expect(JSON.stringify(folded)).not.toContain('request_user_input_async')
+    expect(JSON.stringify(folded)).not.toContain('accepted')
+    expect(JSON.stringify(folded)).toContain('Bash')
+  })
+
+  describe('on a cold open', () => {
+    const rowShown = (view: NativeChatAsyncQuestionsView): boolean =>
+      JSON.stringify(foldToolMessages(asking(), nativeChatAsyncCallsFolded(view))).includes(
+        'request_user_input_async'
+      )
+    const snapshot = reduceNativeChatAsyncQuestionsView(NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT, {
+      type: 'snapshot',
+      asyncQuestions: { state: 'pending' }
+    })
+
+    it('never shows the row before the card: pending, then ready with the card', () => {
+      expect(snapshot.state).toBe('pending')
+      expect(rowShown(snapshot)).toBe(false)
+      const ready = reduceNativeChatAsyncQuestionsView(snapshot, {
+        type: 'appended',
+        asyncQuestions: {
+          state: 'ready',
+          questions: [
+            { key: '["request_user_input_async","x",0]', index: 0, title: 'Which color?' }
+          ]
+        }
+      })
+      expect(ready.state).toBe('ready')
+      expect(rowShown(ready)).toBe(false)
+    })
+
+    it('shows the row once the host gives up deriving the set', () => {
+      const absent = reduceNativeChatAsyncQuestionsView(snapshot, {
+        type: 'appended',
+        asyncQuestions: { state: 'absent' }
+      })
+      expect(absent.state).toBe('absent')
+      expect(rowShown(absent)).toBe(true)
+    })
   })
 })
