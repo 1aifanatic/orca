@@ -6,6 +6,7 @@
  * host with live terminals keeps its server so a returning client finds it serving.
  */
 import { stat } from 'node:fs/promises'
+import { hasErrorCode } from '../daemon/daemon-process-inspection'
 import type { RuntimeRpcClientActivity } from '../runtime/runtime-rpc/runtime-rpc-shutdown'
 import {
   ORCAD_MANAGED_ACTIVATION_ROOT_ENV,
@@ -92,7 +93,7 @@ export async function activationFenceExists(root: string): Promise<boolean> {
     await stat(root)
     return true
   } catch (error) {
-    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') {
+    if (hasErrorCode(error, 'ENOENT')) {
       return false
     }
     throw error

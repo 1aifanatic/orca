@@ -1,35 +1,17 @@
 import type {
   OrcadMigrationCatalogAbortResult,
   OrcadMigrationCatalogState,
-  OrcadMigrationImportResult,
   OrcadMigrationManifest
 } from '../../shared/orcad-migration-manifest'
 import type { Store } from '../persistence'
 
 type OrcadMigrationCatalogFlushStore = Pick<Store, 'flushPendingOrThrowAsync'>
-type OrcadMigrationCatalogImportStore = OrcadMigrationCatalogFlushStore &
-  Pick<Store, 'importOrcadMigrationCatalog'>
 type OrcadMigrationCatalogStageStore = OrcadMigrationCatalogFlushStore &
   Pick<Store, 'stageOrcadMigrationCatalog'>
 type OrcadMigrationCatalogCommitStore = OrcadMigrationCatalogFlushStore &
   Pick<Store, 'commitStagedOrcadMigrationCatalog'>
 type OrcadMigrationCatalogAbortStore = OrcadMigrationCatalogFlushStore &
   Pick<Store, 'abortStagedOrcadMigrationCatalog'>
-
-export async function importOrcadMigrationCatalogDurably(args: {
-  store: OrcadMigrationCatalogImportStore
-  manifest: OrcadMigrationManifest
-  signal?: AbortSignal
-  onDurableImport: () => void
-}): Promise<OrcadMigrationImportResult> {
-  const result = args.store.importOrcadMigrationCatalog(args.manifest)
-  await args.store.flushPendingOrThrowAsync({
-    signal: args.signal,
-    drainToStableGeneration: false
-  })
-  args.onDurableImport()
-  return result
-}
 
 export async function stageOrcadMigrationCatalogDurably(args: {
   store: OrcadMigrationCatalogStageStore

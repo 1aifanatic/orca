@@ -28,7 +28,6 @@ function manifest(): OrcadMigrationManifest {
 }
 
 const MIGRATION_METHOD_NAMES = [
-  'orcad.migration.importCatalog',
   'orcad.migration.stageCatalog',
   'orcad.migration.commitCatalog',
   'orcad.migration.stageSnapshotChunk',
@@ -49,13 +48,13 @@ function migrationMethod(
 }
 
 function context(
-  importOrcadMigrationCatalog: ReturnType<typeof vi.fn>,
+  stageOrcadMigrationCatalog: ReturnType<typeof vi.fn>,
   overrides: Partial<RpcContext> = {},
   runtimeOverrides: Record<string, unknown> = {}
 ): RpcContext {
   return {
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the migration methods call only the runtime members stubbed here.
-    runtime: { importOrcadMigrationCatalog, ...runtimeOverrides } as unknown as OrcaRuntimeService,
+    runtime: { stageOrcadMigrationCatalog, ...runtimeOverrides } as unknown as OrcaRuntimeService,
     clientKind: 'runtime',
     pairedDeviceId: 'paired-desktop',
     ...overrides
@@ -109,19 +108,6 @@ describe('orcad migration RPC', () => {
     expect(state).toHaveBeenCalledWith(input)
   })
 
-  it('accepts an authenticated runtime client and forwards cancellation', async () => {
-    const input = manifest()
-    const expected = { status: 'imported', receipt: { migrationId: input.migrationId } }
-    const importCatalog = vi.fn().mockResolvedValue(expected)
-    const signal = new AbortController().signal
-    const method = migrationMethod()
-
-    await expect(
-      method.handler(method.params?.parse({ manifest: input }), context(importCatalog, { signal }))
-    ).resolves.toBe(expected)
-    expect(importCatalog).toHaveBeenCalledWith(input, { signal })
-  })
-
   it.each([
     ['mobile client', { clientKind: 'mobile', pairedDeviceId: 'paired-phone' }],
     ['unpaired runtime client', { clientKind: 'runtime', pairedDeviceId: undefined }],
@@ -139,9 +125,7 @@ describe('orcad migration RPC', () => {
               ? 'stageOrcadMigrationSnapshotChunk'
               : name === 'orcad.migration.abortCatalog'
                 ? 'abortStagedOrcadMigrationCatalog'
-                : name === 'orcad.migration.catalogState'
-                  ? 'getOrcadMigrationCatalogState'
-                  : 'importOrcadMigrationCatalog'
+                : 'getOrcadMigrationCatalogState'
 
       await expect(
         method.handler(
@@ -153,15 +137,15 @@ describe('orcad migration RPC', () => {
     }
   })
 
-  it('rejects malformed and tampered manifests before importing', async () => {
-    const importCatalog = vi.fn()
+  it('rejects malformed and tampered manifests before staging', async () => {
+    const stageCatalog = vi.fn()
     const method = migrationMethod()
     const input = manifest()
 
     await expect(
       method.handler(
         method.params?.parse({ manifest: { ...input, manifestSha256: 'invalid' } }),
-        context(importCatalog)
+        context(stageCatalog)
       )
     ).rejects.toThrow('orcad_migration_manifest_digest_invalid')
     await expect(
@@ -169,14 +153,14 @@ describe('orcad migration RPC', () => {
         method.params?.parse({
           manifest: { ...input, source: { ...input.source, targetLabel: 'Tampered' } }
         }),
-        context(importCatalog)
+        context(stageCatalog)
       )
     ).rejects.toThrow('orcad_migration_manifest_digest_mismatch')
-    expect(importCatalog).not.toHaveBeenCalled()
+    expect(stageCatalog).not.toHaveBeenCalled()
   })
 
   it('verifies a newer client signature over fields this host does not know', async () => {
-    const importCatalog = vi.fn()
+    const stageCatalog = vi.fn()
     const method = migrationMethod()
     const { manifestSha256: _, ...known } = manifest()
     const unsigned = {
@@ -189,23 +173,23 @@ describe('orcad migration RPC', () => {
       manifestSha256: computeOrcadMigrationManifestSha256(unsigned)
     }
 
-    await method.handler(method.params?.parse({ manifest: signed }), context(importCatalog))
-    expect(importCatalog).toHaveBeenCalledWith(
+    await method.handler(method.params?.parse({ manifest: signed }), context(stageCatalog))
+    expect(stageCatalog).toHaveBeenCalledWith(
       expect.objectContaining({ manifestSha256: signed.manifestSha256, source: known.source }),
       expect.anything()
     )
     await expect(
       method.handler(
         method.params?.parse({ manifest: { ...signed, futureField: { enabled: false } } }),
-        context(importCatalog)
+        context(stageCatalog)
       )
     ).rejects.toThrow('orcad_migration_manifest_digest_mismatch')
     const { futureField: __, ...stripped } = signed
     await expect(
-      method.handler(method.params?.parse({ manifest: stripped }), context(importCatalog)),
+      method.handler(method.params?.parse({ manifest: stripped }), context(stageCatalog)),
       'a peer that drops a signed field'
     ).rejects.toThrow('orcad_migration_manifest_digest_mismatch')
-    expect(importCatalog).toHaveBeenCalledTimes(1)
+    expect(stageCatalog).toHaveBeenCalledTimes(1)
   })
 })
 

@@ -30,9 +30,8 @@ export function acquireDesktopProfileInstanceLock(
     return { state: 'acquired', lock }
   } catch (error) {
     if (error instanceof OrcadInstanceLockError && error.code === 'orcad_instance_lock_held') {
-      const message = `[single-instance] ${error.message}`
-      writeStartupDiagnosticLine(message, write)
-      return { state: 'held', message }
+      writeStartupDiagnosticLine(`[single-instance] ${error.message}`, write)
+      return { state: 'held', message: error.message }
     }
     // Why not refuse: only a proven live holder may stop a desktop that never took this lock before.
     console.warn('[single-instance] Could not take the shared profile lock:', error)

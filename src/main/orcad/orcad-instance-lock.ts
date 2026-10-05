@@ -72,7 +72,10 @@ export type OrcadInstanceLockHooks = OrcadDataRootPrivacyHooks & {
   processIsAlive?: (pid: number) => boolean
   startedAtMs?: (pid: number) => number | null
   startTimeMatches?: (pid: number, expected: number | null) => boolean
-  /** Who takes the profile. The desktop app takes it too, so the two refuse each other. */
+  /**
+   * Who takes the profile. The desktop app takes it too, so the two refuse each other; it must
+   * hold Electron's single-instance lock first, which is what lets it reclaim a desktop record.
+   */
   role?: 'orcad' | 'desktop'
 }
 
@@ -114,7 +117,7 @@ export function acquireOrcadInstanceLock(
   } catch (error) {
     throw new OrcadInstanceLockError(
       'orcad_data_root_unusable',
-      `Cannot create the orcad data root ${dataRoot}: ${(error as Error).message}`
+      `Cannot create the orcad data root ${dataRoot}: ${error instanceof Error ? error.message : String(error)}`
     )
   }
   // The desktop's profile keeps the permissions it was created with; orcad tightens its own.
@@ -147,7 +150,7 @@ export function acquireOrcadInstanceLock(
       }
       throw new OrcadInstanceLockError(
         'orcad_data_root_unusable',
-        `Cannot write the orcad instance lock ${lockPath}: ${(error as Error).message}`
+        `Cannot write the orcad instance lock ${lockPath}: ${error instanceof Error ? error.message : String(error)}`
       )
     } finally {
       unlinkQuietly(staged)
@@ -188,7 +191,14 @@ export function acquireOrcadInstanceLock(
         'root corrupts it. Give each its own ORCA_USER_DATA.'
     )
   }
-  if (isAlive(existing.pid) && matchesStartTime(existing.pid, existing.startedAtMs)) {
+  // The desktop takes this lock only after Electron's single-instance lock, which already proves
+  // no other desktop runs; a desktop record is then stale even when its PID was reused.
+  const staleDesktopRecord = hooks.role === 'desktop' && existing.role === 'desktop'
+  if (
+    !staleDesktopRecord &&
+    isAlive(existing.pid) &&
+    matchesStartTime(existing.pid, existing.startedAtMs)
+  ) {
     throw new OrcadInstanceLockError(
       'orcad_instance_lock_held',
       `${describeLockHolder(existing)} (pid ${existing.pid}, started ` +

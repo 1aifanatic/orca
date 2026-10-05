@@ -85,6 +85,16 @@ describe('managed stop requests', () => {
     )
   })
 
+  it('accepts a request a newer client wrote with a field this build does not know', () => {
+    const { request } = running()
+    const path = orcadManagedStopRequestPath(request.instance)
+    writeFileSync(
+      path,
+      JSON.stringify({ ...request, futureOption: true, instance: { ...request.instance, x: 1 } })
+    )
+    expect(validateOrcadManagedStopRequest(context(request), path)).toEqual(request)
+  })
+
   it('accepts only a request naming this runtime, version and instance', () => {
     const { request } = running()
     const path = orcadManagedStopRequestPath(request.instance)
@@ -177,7 +187,8 @@ describe('completing a managed stop', () => {
     const verdict = await completeOrcadManagedStop(request, {
       ...options({ attempts: undefined }),
       sleep: async () => void polls++,
-      probeProcess: () => (polls * ORCAD_STOP_COMPLETION_POLL_MS >= exitAfterMs ? 'missing' : 'alive')
+      probeProcess: () =>
+        polls * ORCAD_STOP_COMPLETION_POLL_MS >= exitAfterMs ? 'missing' : 'alive'
     })
     expect(verdict).toBe('exited')
   })

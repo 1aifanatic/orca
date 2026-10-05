@@ -295,6 +295,21 @@ describe('acquireOrcadInstanceLock', () => {
     orcad.release()
   })
 
+  it('lets a desktop reclaim a crashed desktop record whose PID was reused', () => {
+    const root = makeRoot()
+    writeFileSync(
+      join(root, ORCAD_LOCK_FILE_NAME),
+      JSON.stringify(persistedRecord({ role: 'desktop', startedAtMs: null }))
+    )
+    // A null start time cannot disprove the reused PID; Electron's own lock already does.
+    const lock = acquireOrcadInstanceLock(
+      root,
+      hooks({ role: 'desktop', processIsAlive: () => true })
+    )
+    expect(JSON.parse(readFileSync(lock.path, 'utf8')).nonce).toBe(lock.record.nonce)
+    lock.release()
+  })
+
   it.runIf(process.platform !== 'win32')(
     "leaves the desktop profile's permissions as they were",
     () => {

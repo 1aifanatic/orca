@@ -1,6 +1,7 @@
 /**
  * The record that tells a clean idle stop apart from a crash. Written just before an idle
- * stop; the next start reports it once and removes it, so a later crash never inherits it.
+ * stop and discarded if that stop fails; the next start reports it once and removes it, so a
+ * later crash never inherits it.
  */
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -12,6 +13,7 @@ import {
   type OrcadIdleStopRecord
 } from '../../shared/orcad-idle-exit'
 import type { OrcadIdleExitEvidence } from './orcad-idle-exit-monitor'
+import { hasErrorCode } from '../daemon/daemon-process-inspection'
 
 const RECORD_MAX_BYTES = 16 * 1024
 
@@ -46,7 +48,7 @@ export function consumeOrcadIdleStopRecord(userDataPath: string): OrcadIdleStopR
     const raw = readNodeFileSyncWithinLimit(path, RECORD_MAX_BYTES).buffer.toString('utf8')
     record = OrcadIdleStopRecordSchema.parse(JSON.parse(raw))
   } catch (error) {
-    if (isMissing(error)) {
+    if (hasErrorCode(error, 'ENOENT')) {
       return null
     }
     console.error('[orcad] ignoring an unreadable idle-stop record:', error)
@@ -55,6 +57,6 @@ export function consumeOrcadIdleStopRecord(userDataPath: string): OrcadIdleStopR
   return record
 }
 
-function isMissing(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT'
+export function discardOrcadIdleStopRecord(userDataPath: string): void {
+  rmSync(orcadIdleStopRecordPath(userDataPath), { force: true })
 }

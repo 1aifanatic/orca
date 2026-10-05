@@ -24,7 +24,7 @@ describe('the desktop share of the profile instance lock', () => {
     )
     expect(result).toEqual({
       state: 'held',
-      message: '[single-instance] Another orcad (pid 7) ...'
+      message: 'Another orcad (pid 7) ...'
     })
     expect(write).toHaveBeenCalledWith(2, '[single-instance] Another orcad (pid 7) ...\n')
   })

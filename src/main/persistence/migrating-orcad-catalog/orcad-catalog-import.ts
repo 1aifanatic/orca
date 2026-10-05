@@ -4,7 +4,6 @@ import {
   type OrcadMigrationCatalogAbortResult,
   type OrcadMigrationCatalogState,
   type OrcadMigrationImportReceipt,
-  type OrcadMigrationImportResult,
   type OrcadMigrationManifest
 } from '../../../shared/orcad-migration-manifest'
 import type {
@@ -59,25 +58,6 @@ export class OrcadCatalogImportPersistence {
     scheduling: WriteSchedulingOperations
   ) {
     this[orcadCatalogImportContext] = { runtime, repos, scheduling }
-  }
-
-  importOrcadMigrationCatalog(
-    manifest: OrcadMigrationManifest,
-    options: { now?: () => Date } = {}
-  ): OrcadMigrationImportResult {
-    const context = this[orcadCatalogImportContext]
-    const existingReceipt = findOrcadMigrationImportReceipt(context.runtime.state, manifest)
-    if (existingReceipt) {
-      assertCommittedReceipt(existingReceipt, manifest)
-      return { status: 'already-imported', receipt: structuredClone(existingReceipt) }
-    }
-    if ((manifest.payload.dormantState?.terminalScrollbackSnapshots?.length ?? 0) > 0) {
-      throw new Error('orcad_migration_snapshot_stage_required')
-    }
-    const prepared = prepareOrcadMigrationCatalog(manifest, context.runtime.state)
-    const receipt = commitPreparedCatalog(context, manifest, prepared, options.now)
-    scheduleSave(context.scheduling)
-    return { status: 'imported', receipt: structuredClone(receipt) }
   }
 
   stageOrcadMigrationCatalog(

@@ -115,11 +115,6 @@ export type OrcadMigrationImportReceipt = {
   folderWorkspaceIds: string[]
 }
 
-export type OrcadMigrationImportResult = {
-  status: 'imported' | 'already-imported'
-  receipt: OrcadMigrationImportReceipt
-}
-
 export type OrcadMigrationStagedCatalog = {
   version: OrcadMigrationManifestVersion
   manifest: OrcadMigrationManifest

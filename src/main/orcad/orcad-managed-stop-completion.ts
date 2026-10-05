@@ -22,6 +22,7 @@ import { readOrcadProcessStartedAtMs } from './orcad-process-start-time'
 import { hasErrorCode, inspectProcessSignal } from '../daemon/daemon-process-inspection'
 import { persistOrcadCompletedStopReceipt } from './orcad-completed-stop-receipt'
 import { readOrcadManagedStopDecision } from './orcad-managed-stop-decision'
+import { withdrawOrcadManagedStopRequest } from './orcad-managed-stop-cancellation'
 import {
   orcadInstanceLockNames,
   orcadManagedStopRequestPath,
@@ -101,6 +102,11 @@ export async function completeOrcadManagedStop(
   }
   if (!writeDurableSecureJsonFile(requestPath, request)) {
     throw new Error('orcad_managed_stop_request_permissions_unconfirmed')
+  }
+  // A cancel that won between the check above and this write found no file to remove.
+  if (readOrcadManagedStopDecision(request) === 'canceled') {
+    withdrawOrcadManagedStopRequest(request)
+    return 'live'
   }
   for (let attempt = 0; attempt < attempts; attempt++) {
     await (options.sleep ?? (() => delay(ORCAD_STOP_COMPLETION_POLL_MS)))()

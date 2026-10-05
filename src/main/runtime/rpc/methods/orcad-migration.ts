@@ -7,16 +7,6 @@ import { defineMethod, type RpcContext } from '../core'
 
 export const ORCAD_MIGRATION_METHODS = [
   defineMethod({
-    name: 'orcad.migration.importCatalog',
-    params: OrcadMigrationCatalogParams,
-    handler: async (params, context) => {
-      requireMigrationRuntimeClient(context)
-      return context.runtime.importOrcadMigrationCatalog(migrationManifest(params), {
-        signal: context.signal
-      })
-    }
-  }),
-  defineMethod({
     name: 'orcad.migration.stageCatalog',
     params: OrcadMigrationCatalogParams,
     handler: async (params, context) => {

@@ -278,7 +278,11 @@ function initializeMainProcessPreflight(options: MainProcessPreflightOptions): b
   if (!skip && !bypass) {
     const profileLock = acquireDesktopProfileInstanceLock(getCanonicalUserDataPath())
     if (profileLock.state === 'held') {
-      app.exit(SINGLE_INSTANCE_ALREADY_RUNNING_EXIT_CODE)
+      // Unlike a second desktop, nothing else surfaces an orcad hold, so say why Orca will not open.
+      handleMainProcessPreflightFailure(
+        new Error(profileLock.message),
+        SINGLE_INSTANCE_ALREADY_RUNNING_EXIT_CODE
+      )
       return false
     }
   }

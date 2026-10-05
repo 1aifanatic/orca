@@ -7,13 +7,18 @@ import {
   resolveOrcadManagedIdleExit,
   type OrcadManagedIdleExitConfig
 } from './orcad-managed-idle-exit'
-import { consumeOrcadIdleStopRecord, writeOrcadIdleStopRecord } from './orcad-idle-stop-record'
+import {
+  consumeOrcadIdleStopRecord,
+  discardOrcadIdleStopRecord,
+  writeOrcadIdleStopRecord
+} from './orcad-idle-stop-record'
+import type { OrcadShutdownTrigger } from './orcad-lifecycle'
 import type { OrcadIdleStopRecord } from '../../shared/orcad-idle-exit'
 
-let requestIdleShutdown: ((reason: string) => void) | null = null
+let requestIdleShutdown: OrcadShutdownTrigger | null = null
 
 /** main binds its shutdown once signal handling exists; the quiet period outlasts that gap. */
-export function bindOrcadIdleShutdown(request: (reason: string) => void): void {
+export function bindOrcadIdleShutdown(request: OrcadShutdownTrigger): void {
   requestIdleShutdown = request
 }
 
@@ -72,7 +77,8 @@ async function startOrcadManagedIdleExit(
     },
     stop: (evidence) => {
       void stopForIdle(input, evidence, retireOrcadDaemonIfIdle).finally(() =>
-        requestIdleShutdown?.('idle')
+        // A stop that fails or overruns is not clean; the next start must not report it as idle.
+        requestIdleShutdown?.('idle', () => discardOrcadIdleStopRecord(input.userDataPath))
       )
     }
   })

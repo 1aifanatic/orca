@@ -34,6 +34,28 @@ describe('orcad profile-state shutdown', () => {
     }
   })
 
+  it('retracts a clean-stop record only when the stop fails', async () => {
+    vi.spyOn(process, 'on').mockImplementation(() => process)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the stub only records the code; nothing after process.exit runs in these paths.
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const onFailed = vi.fn()
+      installOrcadShutdownSignals(async () => {
+        throw new Error('flush failed')
+      })('idle', onFailed)
+      await vi.waitFor(() => expect(exit).toHaveBeenCalled())
+      expect(onFailed).toHaveBeenCalledOnce()
+
+      const notFailed = vi.fn()
+      installOrcadShutdownSignals(async () => {})('idle', notFailed)
+      await vi.waitFor(() => expect(exit).toHaveBeenLastCalledWith(0))
+      expect(notFailed).not.toHaveBeenCalled()
+    } finally {
+      vi.restoreAllMocks()
+    }
+  })
+
   it('flushes durably before closing the profile store', async () => {
     const events: string[] = []
     const store = {

@@ -24,28 +24,33 @@ function createIdempotentOrcadCleanup(cleanup: () => Promise<void>): () => Promi
 
 export { ORCAD_SHUTDOWN_DEADLINE_MS }
 
+export type OrcadShutdownTrigger = (reason: string, onFailed?: () => void) => void
+
 /**
  * A launcher and its child can both receive the same process-group or service stop signal.
  * Returns the trigger stop-request listeners share, so every source runs one bounded stop.
+ * `onFailed` runs before a failed or overdue stop exits, so a caller can retract a clean record.
  */
 export function installOrcadShutdownSignals(
   stop: () => Promise<void>,
   deadlineMs = ORCAD_SHUTDOWN_DEADLINE_MS
-): (reason: string) => void {
+): OrcadShutdownTrigger {
   let stopping = false
-  const shutdown = (signal: string): void => {
+  const shutdown: OrcadShutdownTrigger = (signal, onFailed) => {
     if (stopping) {
       return
     }
     stopping = true
     setTimeout(() => {
       console.error(`orcad: shutdown after ${signal} exceeded ${deadlineMs}ms — exiting`)
+      onFailed?.()
       process.exit(1)
     }, deadlineMs)
     stop()
       .then(() => process.exit(0))
       .catch((error) => {
         console.error(`orcad: shutdown after ${signal} failed:`, error)
+        onFailed?.()
         process.exit(resolveOrcadExitCode(error))
       })
   }

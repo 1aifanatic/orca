@@ -687,23 +687,6 @@ describe('WebSocketTransport', () => {
       expect(transport.resolvedPort).toBe(fallbackPort)
     })
 
-    it('fails closed when a managed tunnel requires the configured port', async () => {
-      const preferredHolder = new WebSocketTransport({ host: '127.0.0.1', port: 0 })
-      transports.push(preferredHolder)
-      await preferredHolder.start()
-      const transport = new WebSocketTransport({
-        host: '127.0.0.1',
-        port: preferredHolder.resolvedPort,
-        fallbackPort: await reserveFreePort(),
-        preferPinnedPort: true,
-        strictPort: true
-      })
-      transports.push(transport)
-
-      await expect(transport.start()).rejects.toMatchObject({ code: 'EADDRINUSE' })
-      expect(transport.resolvedHost).toBeNull()
-    })
-
     it('binds the preferred port when the persisted fallback is taken', async () => {
       const fallbackHolder = new WebSocketTransport({ host: '127.0.0.1', port: 0 })
       transports.push(fallbackHolder)

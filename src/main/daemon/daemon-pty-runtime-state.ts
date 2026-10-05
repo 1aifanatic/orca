@@ -57,7 +57,6 @@ export type DaemonPtyAdapterOptions = {
   historyPath?: string
   runtimeDir?: string
   packagedAppVersion?: string | null
-  recoveryOnly?: boolean
   respawn?: (reason: DaemonRespawnReason) => Promise<void | (() => void)>
 }
 
@@ -80,7 +79,6 @@ export type DaemonIdleRetirementResult =
 
 export abstract class DaemonPtyRuntimeState {
   readonly protocolVersion: number
-  readonly recoveryOnly: boolean
   protected socketPath: string
   protected tokenPath: string
   protected pidPath: string | null
@@ -201,7 +199,6 @@ export abstract class DaemonPtyRuntimeState {
 
   constructor(opts: DaemonPtyAdapterOptions) {
     this.protocolVersion = opts.protocolVersion ?? PROTOCOL_VERSION
-    this.recoveryOnly = opts.recoveryOnly === true
     this.socketPath = opts.socketPath
     this.tokenPath = opts.tokenPath
     this.pidPath = opts.pidPath ?? null
@@ -221,7 +218,7 @@ export abstract class DaemonPtyRuntimeState {
     })
     this.historyManager = opts.historyPath ? new HistoryManager(opts.historyPath) : null
     this.historyReader = opts.historyPath ? new HistoryReader(opts.historyPath) : null
-    this.respawnFn = this.recoveryOnly ? null : (opts.respawn ?? null)
+    this.respawnFn = opts.respawn ?? null
     this.runtimeDir = opts.runtimeDir ?? opts.profileScope ?? null
     this.packagedAppVersion = opts.packagedAppVersion ?? null
     this.supportsCheckpoints = this.protocolVersion >= 4

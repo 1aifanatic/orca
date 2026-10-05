@@ -128,10 +128,13 @@ export async function startOrcad(options: OrcadOptions = {}): Promise<OrcadHandl
     resolveUserDataPath(),
     (registerCleanup) => startOrcadRuntime(options, registerCleanup),
     () => {
-      runOrcadQuitHandlers()
-      // Last, after every quit handler, so the spans they end still reach the file.
-      closeOrcadObservability()
-      closeOrcadObservability = () => {}
+      try {
+        runOrcadQuitHandlers()
+      } finally {
+        // Last, after every quit handler (even a failing one), so their spans still reach the file.
+        closeOrcadObservability()
+        closeOrcadObservability = () => {}
+      }
     }
   )
   const version = process.env.ORCA_VERSION ?? '0.0.0-orcad'
@@ -198,15 +201,7 @@ async function startOrcadRuntime(
     await createOrcadProfileStateStartup(runtimeUserDataPath)
   const observedPaneIdentities = new AgentStatusObservedPaneIdentities()
   const observedStatusCapture = new AgentStatusObservedPaneIdentityCapture(observedPaneIdentities)
-  // Why a real Store: without one every persistence-backed RPC throws `runtime_unavailable`
-  // and the read paths that use `this.store?.x ?? []` quietly answer "empty" instead —
-  // a server that pairs and lists nothing looks healthy and is not.
-  // Why: orcad IS the runtime authority — loading as 'desktop' would classify its
-  // own runtime-scheduled automations as ambiguous mirrors and orphan them.
   profileStoreForShutdown = profileStore
-  // Why: every SSH connect consults this sidecar. Left unbound it reports nothing trusted,
-  // which is safe but silently discards accept records on every launch.
-
   uninstallObservedStatusIdentity = agentHookServer.subscribeEnrichedStatus((enriched) =>
     observedStatusCapture.observe(enriched)
   )
