@@ -48,14 +48,18 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
   async acquire(input: StructuredAgentSessionAcquireInput): Promise<AgentSessionAcquisition> {
     const sessionId = input.identity.sessionId
     const attempt = this.starts.begin(input.signal)
-    if (!(await this.stop(sessionId))) {
-      throw new AgentSessionAcquisitionExitUnprovenError(
-        new Error(
-          `the previous ${this.deps.spec.agent} child for ${sessionId} could not be stopped`
+    try {
+      if (!(await this.stop(sessionId))) {
+        throw new AgentSessionAcquisitionExitUnprovenError(
+          new Error(
+            `the previous ${this.deps.spec.agent} child for ${sessionId} could not be stopped`
+          )
         )
-      )
+      }
+      return await this.start(input, attempt)
+    } finally {
+      this.starts.end(attempt)
     }
-    return await this.start(input, attempt)
   }
 
   private async start(

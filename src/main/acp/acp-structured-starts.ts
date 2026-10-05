@@ -8,6 +8,8 @@ export type AcpStartAttempt = {
   /** The host's: the start's one canceller. */
   readonly signal: AbortSignal
   child: AcpStructuredChild | null
+  /** What the signal's abort does while the start runs; detached once it ends. */
+  readonly stopChild: () => void
 }
 
 export class AcpStructuredStarts {
@@ -15,10 +17,12 @@ export class AcpStructuredStarts {
 
   /** Registered before anything awaits, so an abort from here on stops this start. */
   begin(signal: AbortSignal | undefined): AcpStartAttempt {
-    const attempt: AcpStartAttempt = { signal: signal ?? new AbortController().signal, child: null }
-    attempt.signal.addEventListener('abort', () => void attempt.child?.close().catch(() => false), {
-      once: true
-    })
+    const attempt: AcpStartAttempt = {
+      signal: signal ?? new AbortController().signal,
+      child: null,
+      stopChild: () => void attempt.child?.close().catch(() => false)
+    }
+    attempt.signal.addEventListener('abort', attempt.stopChild, { once: true })
     return attempt
   }
 
@@ -28,6 +32,12 @@ export class AcpStructuredStarts {
     if (attempt.signal.aborted) {
       void child.close().catch(() => false)
     }
+  }
+
+  /** A child the start handed over is the session's: an abort after this goes through its stop,
+   *  which knows the close was asked for, not this listener, which would read as a crash. */
+  end(attempt: AcpStartAttempt): void {
+    attempt.signal.removeEventListener('abort', attempt.stopChild)
   }
 
   /** A failed start whose child is not proven gone keeps it until its exit is. */

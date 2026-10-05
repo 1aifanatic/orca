@@ -280,6 +280,17 @@ describe('ACP startup that never answers', () => {
     expect(rig.lifecycle).toEqual([])
   })
 
+  it('leaves the child of a start that returned alone when its signal aborts later', async () => {
+    const rig = await openAcpAdapterRig()
+    const start = new AbortController()
+    await rig.acquire({ signal: start.signal })
+    // The host's close, landing while it still commits the attach, stops the child its own way.
+    start.abort(new Error('closed while starting'))
+    await rig.settle()
+    expect(rig.child().closes).toBe(0)
+    expect(rig.lifecycle).toEqual([])
+  })
+
   it('fails the start once the handshake outlasts its bound, and stops the child', async () => {
     const rig = await openAcpAdapterRig({
       script: (agent) => agent.on('session/new', () => {}),
