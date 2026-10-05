@@ -1,8 +1,6 @@
 // @vitest-environment happy-dom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, createElement } from 'react'
-import { createRoot } from 'react-dom/client'
 
 const mocks = vi.hoisted(() => ({ call: vi.fn() }))
 
@@ -21,22 +19,10 @@ vi.mock('@/store', () => ({
 }))
 
 import {
+  getStructuredAgentLaunchStatus,
   hasStructuredAgentLaunchInWorktree,
-  startStructuredAgentLaunch,
-  useStructuredAgentLaunchPendingAgents
+  startStructuredAgentLaunch
 } from './structured-agent-session-launch'
-
-async function pendingAgents(worktreeId: string): Promise<string[]> {
-  let seen: string[] = []
-  function Probe(): null {
-    seen = [...useStructuredAgentLaunchPendingAgents(worktreeId)]
-    return null
-  }
-  const root = createRoot(document.createElement('div'))
-  await act(async () => root.render(createElement(Probe)))
-  act(() => root.unmount())
-  return seen
-}
 
 describe('a launch of a host-registered agent', () => {
   beforeEach(() => {
@@ -51,7 +37,7 @@ describe('a launch of a host-registered agent', () => {
     const worktreeId = 'wt-grok'
     expect(hasStructuredAgentLaunchInWorktree(worktreeId)).toBe(false)
 
-    const launch = startStructuredAgentLaunch(worktreeId, 'grok')
+    const launch = startStructuredAgentLaunch(worktreeId, 'grok', { requestId: 'request-1' })
     await vi.waitFor(() =>
       expect(mocks.call).toHaveBeenCalledWith(
         expect.anything(),
@@ -63,7 +49,7 @@ describe('a launch of a host-registered agent', () => {
     expect(launch.sessionId.startsWith('grok_')).toBe(true)
     expect(hasStructuredAgentLaunchInWorktree(worktreeId)).toBe(true)
     expect(hasStructuredAgentLaunchInWorktree('wt-other')).toBe(false)
-    expect(await pendingAgents(worktreeId)).toEqual(['grok'])
-    expect(await pendingAgents('wt-other')).toEqual([])
+    expect(getStructuredAgentLaunchStatus(worktreeId, 'grok')).toBe('pending')
+    expect(getStructuredAgentLaunchStatus('wt-other', 'grok')).toBe('idle')
   })
 })
