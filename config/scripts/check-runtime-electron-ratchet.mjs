@@ -42,7 +42,7 @@ const ENTRY_POINTS = [
 // Code that must run in orcad whether or not a runtime entry reaches it yet. Whole directories,
 // so a new file is covered by default; src/main/runtime still holds desktop-only code (browser
 // commands, desktop relay), so only its structured-chat files are entries there.
-const STRUCTURED_CHAT_LANES = [
+export const STRUCTURED_CHAT_LANES = [
   { directory: ['src', 'main', 'native-chat'] },
   { directory: ['src', 'main', 'claude'] },
   { directory: ['src', 'main', 'codex'] },
@@ -115,10 +115,7 @@ const externalNativeAddons = {
 }
 
 // Why `plugins`: lets a test add an Electron import to a real file in memory, never on disk.
-export async function collectElectronImporters(
-  entryPoints = defaultEntryPoints(),
-  { plugins = [] } = {}
-) {
+export async function collectElectronImporters(entryPoints, { plugins = [] } = {}) {
   const result = await build({
     entryPoints,
     bundle: true,
@@ -176,14 +173,15 @@ function renderBaseline(files) {
   ].join('\n')
 }
 
-async function main() {
-  const write = process.argv.includes('--write')
-  const current = await collectElectronImporters()
+// Exported so tests run the CLI path itself; `plugins` is the same in-memory hook as above.
+export async function main(argv = process.argv, { plugins = [] } = {}) {
+  const write = argv.includes('--write')
+  const current = await collectElectronImporters(defaultEntryPoints(), { plugins })
 
   if (write) {
     writeFileSync(BASELINE_PATH, `${renderBaseline(current)}\n`)
     console.log(`[runtime-electron-ratchet] wrote ${current.length} entries to ${BASELINE_PATH}`)
-    return
+    return 0
   }
 
   const baseline = readBaseline(readFileSync(BASELINE_PATH, 'utf8'))
@@ -199,8 +197,7 @@ unavailable. That holds for structured-chat code the runtime doesn't load yet, s
 moving the file is not a fix. Put the Electron facility behind a port in src/main/host/ and
 depend on the port, or drop the import that pulls Electron in.`
     )
-    process.exitCode = 1
-    return
+    return 1
   }
 
   if (removed.length > 0) {
@@ -211,11 +208,11 @@ ${removed.map((file) => `  - ${file}`).join('\n')}
 
   node config/scripts/check-runtime-electron-ratchet.mjs --write`
     )
-    process.exitCode = 1
-    return
+    return 1
   }
 
   console.log(`[runtime-electron-ratchet] ok — ${current.length} entries, unchanged.`)
+  return 0
 }
 
 // Why pathToFileURL and not a `file://` template: on Windows process.argv[1] is a
@@ -223,5 +220,5 @@ ${removed.map((file) => `  - ${file}`).join('\n')}
 // template never matches and the gate would exit 0 without checking anything — a
 // lint gate that fails open. Same idiom as check-max-lines-ratchet.mjs:225.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  await main()
+  process.exitCode = await main()
 }

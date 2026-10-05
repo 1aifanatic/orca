@@ -1,8 +1,8 @@
 /**
  * Whether a repo source path is test-only by this repo's naming conventions: specs, test helpers
  * and doubles that sit beside their spec (`*-test-harness.ts`, `*-fixtures.ts`, `*-fake.ts`), and
- * test directories (`__tests__/`, `orca-runtime-tests/`). Shared by the static gates that must
- * skip tests, so one helper name can't be test-only to one gate and production to another.
+ * test directories (`__tests__/`, `orca-runtime-tests/`). Shared by the Electron-import check and
+ * the localization audit, so a helper is test-only to both or to neither.
  */
 
 // Why `(?<!self)`: `*-self-test-*` modules are a shipped runtime probe, not tests.

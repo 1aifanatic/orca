@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -8,7 +8,9 @@ import {
   collectStructuredChatEntryPoints,
   defaultEntryPoints,
   diffAgainstBaseline,
-  readBaseline
+  main,
+  readBaseline,
+  STRUCTURED_CHAT_LANES
 } from './check-runtime-electron-ratchet.mjs'
 
 describe('structured chat coverage', () => {
@@ -80,15 +82,16 @@ describe('structured chat coverage', () => {
     )
   })
 
-  it('fails loudly when a lane that exists today goes missing, so a rename cannot empty it', () => {
-    const withoutCodex = Object.fromEntries(
-      Object.entries(requiredLanes).filter(([file]) => !file.startsWith('src/main/codex/'))
-    )
-    expect(() => collectStructuredChatEntryPoints(fixture(withoutCodex))).toThrow(
-      /src\/main\/codex is missing/
-    )
-    expect(collectStructuredChatEntryPoints(fixture(requiredLanes))).toHaveLength(5)
-  })
+  it.each(Object.keys(requiredLanes).map((file) => path.posix.dirname(file)))(
+    'fails loudly when %s goes missing, so a rename cannot empty it',
+    (lane) => {
+      const without = Object.fromEntries(
+        Object.entries(requiredLanes).filter(([file]) => !file.startsWith(`${lane}/`))
+      )
+      expect(() => collectStructuredChatEntryPoints(fixture(without))).toThrow(`${lane} is missing`)
+      expect(collectStructuredChatEntryPoints(fixture(requiredLanes))).toHaveLength(5)
+    }
+  )
 
   it('finds Electron through a package imported by each unwired future lane', async () => {
     const root = fixture({
@@ -125,8 +128,25 @@ describe('the default entry points', () => {
     }
   })
 
-  // Why a file the runtime doesn't load: this fails if the CLI/CI default stops including the lanes.
-  it('catch Electron in structured-chat code the runtime graph does not reach', async () => {
+  // Retires the temporary flag: the PR that adds acp/ or provider-process/ must make it required.
+  it('lets only directories that have not landed yet be absent', () => {
+    for (const lane of STRUCTURED_CHAT_LANES.filter((candidate) => candidate.mayBeAbsent)) {
+      expect(
+        existsSync(path.join(process.cwd(), ...lane.directory)),
+        lane.directory.join('/')
+      ).toBe(false)
+    }
+  })
+})
+
+// Why `main`: it is what `pnpm lint` and CI run, so these fail if its entry list drops the lanes.
+describe('the command-line check', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  // Why a file the runtime doesn't load: only the structured-chat lanes can catch it.
+  it('fails on Electron in structured-chat code the runtime graph does not reach', async () => {
     const target = path.join(
       process.cwd(),
       'src',
@@ -144,8 +164,15 @@ describe('the default entry points', () => {
         )
       }
     }
-    const current = await collectElectronImporters(undefined, { plugins: [addElectron] })
-    expect(current).toEqual(['src/main/native-chat/transcript-read-cache.ts'])
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(await main([], { plugins: [addElectron] })).toBe(1)
+    expect(error.mock.calls.join('\n')).toContain('+ src/main/native-chat/transcript-read-cache.ts')
+  }, 120_000)
+
+  // Why real: the value of this gate is the transitive edges, which a fixture cannot model.
+  it('passes on the tree as it is, matching the checked-in baseline', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    expect(await main([])).toBe(0)
   }, 120_000)
 })
 
@@ -179,15 +206,6 @@ describe('diffAgainstBaseline', () => {
 })
 
 describe('the checked-in baseline', () => {
-  // Why real: the value of this gate is the transitive edges, which a fixture cannot model.
-  // If this is slow enough to hurt, it is still cheaper than shipping a runtime that
-  // cannot boot on Node.
-  it('matches what the runtime actually reaches today', async () => {
-    const current = await collectElectronImporters()
-    const baseline = readBaseline(readFileSync('config/runtime-electron-baseline.txt', 'utf8'))
-    expect(diffAgainstBaseline(current, baseline)).toEqual({ added: [], removed: [] })
-  }, 120_000)
-
   // Why an exact-empty assertion now: the reachable set reached zero, so "may only
   // shrink" has no room left and any entry at all is a regression. This is strictly
   // stronger than the old under-src/ check, which only stopped a node_modules path from
