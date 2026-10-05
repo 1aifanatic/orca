@@ -18,6 +18,30 @@ export type MobileNativeChatActiveView = {
   setTabChatView: (tabId: string, view: TerminalTabViewMode) => void
 }
 
+/** Whether the active tab shows native chat, and the transcript identity it shows. */
+function resolveActiveNativeChat(args: {
+  activeSessionTab: MobileNativeChatTab | null
+  activeSessionTabId: string | null
+  readable: boolean
+  view: MobileNativeChatActiveView
+}): { showNativeChat: boolean; resolution: MobileNativeChatResolution | null } {
+  const { activeSessionTab, activeSessionTabId, view } = args
+  // Why: on a host that owns the pair, status picks the identity shown, never whether chat shows.
+  if (view.markerSession && activeSessionTab?.type === 'terminal') {
+    const showNativeChat = view.activeLeafView === 'chat'
+    return { showNativeChat, resolution: showNativeChat ? view.retainedIdentity : null }
+  }
+  const tabWantsChat =
+    activeSessionTab?.type === 'agent-session' ||
+    (activeSessionTabId ? view.isTabChatView(activeSessionTabId) : false)
+  const currentIdentity =
+    activeSessionTab && activeSessionTabId
+      ? resolveMobileNativeChat(activeSessionTab, args.readable)
+      : null
+  const showNativeChat = tabWantsChat && currentIdentity != null
+  return { showNativeChat, resolution: showNativeChat ? currentIdentity : null }
+}
+
 export function useMobileNativeChatActiveResolution(args: {
   hostId: string
   worktreeId: string
@@ -50,25 +74,13 @@ export function useMobileNativeChatActiveResolution(args: {
     nativeChatTranscriptIsLocalReadable,
     worktreeId
   } = args
-  const { isTabChatView, setTabChatView, markerSession, activeLeafView, retainedIdentity } =
-    args.view
-  const hostOwnedTerminal = markerSession && activeSessionTab?.type === 'terminal'
-  const tabWantsChat =
-    activeSessionTab?.type === 'agent-session' ||
-    (activeSessionTabId ? isTabChatView(activeSessionTabId) : false)
-  const currentIdentity =
-    activeSessionTab && activeSessionTabId
-      ? resolveMobileNativeChat(activeSessionTab, nativeChatTranscriptIsLocalReadable)
-      : null
-  // Why: on a host that owns the pair, status picks the identity shown, never whether chat shows.
-  const showNativeChat = hostOwnedTerminal
-    ? activeLeafView === 'chat'
-    : tabWantsChat && currentIdentity != null
-  const activeChatResolution = !showNativeChat
-    ? null
-    : hostOwnedTerminal
-      ? retainedIdentity
-      : currentIdentity
+  const { isTabChatView, setTabChatView } = args.view
+  const { showNativeChat, resolution: activeChatResolution } = resolveActiveNativeChat({
+    activeSessionTab,
+    activeSessionTabId,
+    readable: nativeChatTranscriptIsLocalReadable,
+    view: args.view
+  })
   const showNativeChatRef = useRef(showNativeChat)
   const activeChatAgent = activeChatResolution?.agent ?? null
   const activeChatAgentRef = useRef<string | null>(activeChatAgent)

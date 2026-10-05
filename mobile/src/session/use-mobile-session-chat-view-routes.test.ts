@@ -1,4 +1,4 @@
-import { createElement, useRef } from 'react'
+import { createElement, useLayoutEffect, useRef } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { TerminalPaneLayoutNode } from '../../../src/shared/terminal-tab-types'
@@ -52,7 +52,10 @@ const client = {
 
 function Route(props: Screen & { name: string }): null {
   const tabsRef = useRef(props.tabs)
-  tabsRef.current = props.tabs
+  // Why layout: the hook reads this ref only after commit, from effects and taps.
+  useLayoutEffect(() => {
+    tabsRef.current = props.tabs
+  })
   views[props.name] = useMobileSessionChatView({
     hostId: 'h-routes',
     worktreeId: 'w',

@@ -50,7 +50,7 @@ export function mobileChatPairKeyId(key: MobileChatPairKey): string {
 /** The most recently mounted route for the key's worktree: the one on top of the stack. */
 function topBinding(key: MobileChatPairKey): MobileChatPairRouteBinding | undefined {
   const routes = bindings.get(scopeId(key.hostId, key.worktreeId))
-  return routes?.[routes.length - 1]
+  return routes?.at(-1)
 }
 
 /** Reads and sends go through the topmost route that holds rows, so a just-pushed one cannot read "gone". */

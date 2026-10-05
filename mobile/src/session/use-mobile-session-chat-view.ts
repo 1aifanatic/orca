@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useSyncExternalStore,
@@ -99,10 +100,14 @@ export function useMobileSessionChatView(args: {
   const { isTabChatView: legacyIsTabChatView, toggleTabChatView: legacyToggleTabChatView } =
     useMobileSessionViewMode({ hostId, worktreeId })
   const defaultView = useDefaultSessionView()
-  const clientRef = useRef(client)
-  clientRef.current = client
-  const onSwitchUnconfirmedRef = useRef(args.onSwitchUnconfirmed)
-  onSwitchUnconfirmedRef.current = args.onSwitchUnconfirmed
+  // Why: the route binding outlives renders; these read the latest client and callback without re-binding.
+  const sendWrite = useEffectEvent(
+    (write: Omit<Parameters<typeof sendMobileChatPairWrite>[0], 'client'>) =>
+      sendMobileChatPairWrite({ ...write, client })
+  )
+  const reportSwitchUnconfirmed = useEffectEvent(() =>
+    args.onSwitchUnconfirmed(CHAT_VIEW_SWITCH_UNCONFIRMED_MESSAGE)
+  )
   const overlay = useSyncExternalStore(subscribeMobileChatPairOverlay, readMobileChatPairOverlay)
   const scope = `${hostId}\0${worktreeId}`
   const snapshotAcceptedRef = useRef(snapshotAccepted)
@@ -127,15 +132,14 @@ export function useMobileSessionChatView(args: {
       ready: () => snapshotAcceptedRef.current,
       readHostPair,
       send: (parentTabId, request, write) =>
-        sendMobileChatPairWrite({
-          client: clientRef.current,
+        sendWrite({
           worktreeId,
           parentTabId,
           request,
           write,
           hostPair: () => readHostPair(parentTabId)
         }),
-      reportFailure: () => onSwitchUnconfirmedRef.current(CHAT_VIEW_SWITCH_UNCONFIRMED_MESSAGE)
+      reportFailure: () => reportSwitchUnconfirmed()
     }
     return bindMobileChatPairRoute(hostId, worktreeId, binding)
   }, [hostId, scope, sessionTabsRef, worktreeId])
@@ -171,6 +175,8 @@ export function useMobileSessionChatView(args: {
     retentionRef.current = { scope, retention }
   }, [retention, scope])
 
+  // Why not reactive: retention changes with the overlay too, and only a new snapshot settles writes.
+  const processChangedRows = useEffectEvent(() => retention.processChanged)
   const appliedRef = useRef<{ scope: string; marker: boolean | null }>({ scope: '', marker: null })
   useEffect(() => {
     // Why: switches are shared by every screen for the worktree; one with no snapshot yet knows nothing.
@@ -179,21 +185,24 @@ export function useMobileSessionChatView(args: {
     }
     const writes = getMobileChatPairWrites()
     const rows = terminalRows(sessionTabs)
+    const processChanged = processChangedRows()
     const previous = appliedRef.current
     appliedRef.current = { scope, marker: markerSession }
     const markerFlipped =
       previous.scope === scope && previous.marker !== null && previous.marker !== markerSession
     for (const key of mobileChatPairKeysInScope(hostId, worktreeId)) {
       const parentRows = rows.filter((row) => chatViewParentTabId(row) === key.parentTabId)
-      const processChanged = parentRows.some((row) => retention.processChanged.has(row.id))
       // Why: a marker flip changes which logic decides, and a new PTY is a different session.
-      if (markerFlipped || parentRows.length === 0 || processChanged) {
+      if (
+        markerFlipped ||
+        parentRows.length === 0 ||
+        parentRows.some((row) => processChanged.has(row.id))
+      ) {
         writes.drop(key)
         continue
       }
       writes.hostPairChanged(key)
     }
-    // Why not on retention: it changes with the overlay too, and only a new snapshot settles writes.
   }, [hostId, markerSession, scope, sessionTabs, snapshotAccepted, worktreeId])
 
   /** The pair this device shows: its pending click, else the host's, with an ownerless chat placed. */
