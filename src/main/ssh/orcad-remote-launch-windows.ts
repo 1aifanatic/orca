@@ -18,6 +18,7 @@ import {
   WINDOWS_BREAKAWAY_LAUNCH_FLAG,
   WINDOWS_BREAKAWAY_PROCESS_FILE_FLAG,
   WINDOWS_BREAKAWAY_STDERR_FLAG,
+  WINDOWS_BREAKAWAY_STDERR_KEEP_PREVIOUS_FLAG,
   WINDOWS_BREAKAWAY_STDOUT_FLAG
 } from '../../shared/windows-breakaway-launch'
 import { joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
@@ -81,6 +82,8 @@ export function windowsOrcadLaunchCommand(
     joinRemotePath(host, dir, ORCAD_READINESS_FILENAME),
     WINDOWS_BREAKAWAY_STDERR_FLAG,
     joinRemotePath(host, dir, ORCAD_LOG_FILENAME),
+    // POSIX appends orcad.log; keep the last run's (a crash cause) across a restart here too.
+    WINDOWS_BREAKAWAY_STDERR_KEEP_PREVIOUS_FLAG,
     WINDOWS_BREAKAWAY_PROCESS_FILE_FLAG,
     joinRemotePath(host, dir, ORCAD_WINDOWS_PROCESS_FILENAME),
     WINDOWS_BREAKAWAY_ENV_FLAG,

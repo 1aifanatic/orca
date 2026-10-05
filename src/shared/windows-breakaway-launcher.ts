@@ -7,7 +7,7 @@
  * route, is refused to a standard user's network logon, so it is only the relay script's
  * fallback for hosts whose relay predates this addon; orcad has no fallback.
  */
-import { renameSync, writeFileSync } from 'node:fs'
+import { closeSync, openSync, readSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { quoteWindowsArgument } from './child-process/windows-command-line'
 import {
@@ -17,6 +17,7 @@ import {
   WINDOWS_BREAKAWAY_LAUNCH_FLAG,
   WINDOWS_BREAKAWAY_PROCESS_FILE_FLAG,
   WINDOWS_BREAKAWAY_STDERR_FLAG,
+  WINDOWS_BREAKAWAY_STDERR_KEEP_PREVIOUS_FLAG,
   WINDOWS_BREAKAWAY_STDOUT_FLAG,
   type WindowsBreakawayLaunchContract,
   type WindowsBreakawayLaunchReport
@@ -25,6 +26,8 @@ import { RELAY_WINDOWS_PROCESS_TREE_FILENAME } from './relay-artifacts'
 
 /** Both bundles stage the addon under this name beside their entry script. */
 const WINDOWS_PROCESS_TREE_ADDON = `./${RELAY_WINDOWS_PROCESS_TREE_FILENAME}`
+/** The kept previous log is its tail, so a crash loop cannot grow it without bound. */
+export const PREVIOUS_STDERR_LOG_MAX_BYTES = 1024 * 1024
 
 type SpawnOutsideJobResult =
   | { ok: true; pid: number; inJob: boolean }
@@ -48,6 +51,7 @@ export type WindowsBreakawayLaunchRequest = {
   stdoutPath: string
   stderrPath: string
   processFilePath?: string
+  keepPreviousStderr?: boolean
   env: Record<string, string>
   programArgs: string[]
 }
@@ -96,6 +100,9 @@ export function parseWindowsBreakawayLaunchRequest(
     stdoutPath: required(WINDOWS_BREAKAWAY_STDOUT_FLAG),
     stderrPath: required(WINDOWS_BREAKAWAY_STDERR_FLAG),
     ...(processFilePath ? { processFilePath } : {}),
+    ...(own.includes(WINDOWS_BREAKAWAY_STDERR_KEEP_PREVIOUS_FLAG)
+      ? { keepPreviousStderr: true }
+      : {}),
     env,
     programArgs: separator === -1 ? [] : argv.slice(separator + 1)
   }
@@ -141,6 +148,30 @@ function readSpawnOutsideJobResult(value: unknown): SpawnOutsideJobResult {
     reason: typeof record.reason === 'string' ? record.reason : 'unrecognized-result',
     step: typeof record.step === 'string' ? record.step : 'create-process',
     code: typeof record.code === 'number' ? record.code : 0
+  }
+}
+
+/** Moves the last run's log to `<path>.1` (its tail when over the cap); best-effort. */
+export function keepPreviousStderrLog(
+  path: string,
+  maxBytes: number = PREVIOUS_STDERR_LOG_MAX_BYTES
+): void {
+  try {
+    const { size } = statSync(path)
+    if (size <= maxBytes) {
+      renameSync(path, `${path}.1`)
+      return
+    }
+    const tail = Buffer.alloc(maxBytes)
+    const fd = openSync(path, 'r')
+    try {
+      readSync(fd, tail, 0, maxBytes, size - maxBytes)
+    } finally {
+      closeSync(fd)
+    }
+    writeFileSync(`${path}.1`, tail)
+  } catch {
+    // No previous log, or one still held open: the launch must not depend on keeping it.
   }
 }
 
@@ -227,6 +258,9 @@ export function runWindowsBreakawayLaunchIfRequested(
   }
   // CreateProcessW gets no environment block, so the child inherits this process's, edits included.
   Object.assign(process.env, request.env)
+  if (request.keepPreviousStderr) {
+    keepPreviousStderrLog(request.stderrPath)
+  }
   const { report, exitCode } = launchOutsideJob(request, loadWindowsBreakawayLauncher(), {
     execPath: process.execPath,
     script: argv[1] ?? '',
