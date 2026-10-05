@@ -23,13 +23,14 @@ export function useTerminalPaneChatPairSource(tabId: string, chatPairAuthority: 
   )
   // Why: when the store holds the pair, a pane copy could write a stale owner back.
   const storeOwnsChatPair = chatPairAuthority !== 'legacy'
-  const storedChatLeafId = savedLayout.chatLeafId ?? null
-  const chatLeafId = pendingChatPair
+  const hostChatLeafId = pendingChatPair
     ? (pendingChatPair.chatLeafId ?? null)
-    : chatPairAuthority === 'host'
-      ? (storedChatLeafId ?? localChatLeafId)
+    : (savedLayout.chatLeafId ?? null)
+  const chatLeafId =
+    chatPairAuthority === 'host'
+      ? (hostChatLeafId ?? localChatLeafId)
       : storeOwnsChatPair
-        ? storedChatLeafId
+        ? hostChatLeafId
         : localChatLeafId
   return { chatLeafId, pendingChatPair, savedLayout, setChatLeafId, storeOwnsChatPair }
 }

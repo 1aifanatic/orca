@@ -272,6 +272,44 @@ describe('a paired desktop pane on a host-owned pair', () => {
     expect(host.pairWrites()).toEqual([])
   })
 
+  it('shows a tab-level switch to chat on the active leaf at once, then follows the host pick', async () => {
+    hostSays({ viewMode: 'terminal' })
+    const { hook } = renderPane()
+    await settle()
+    const unifiedTabId = useAppStore
+      .getState()
+      .unifiedTabsByWorktree[WT]?.find((tab) => tab.entityId === TERMINAL_TAB_ID)?.id
+    act(() => useAppStore.getState().toggleTabViewMode(unifiedTabId!))
+    await settle()
+    expect(hook.result.current.isChatViewMode).toBe(true)
+    expect(hook.result.current.chatLeafId).toBe(A)
+    expect(host.pairWrites().map((write) => write.params.tabId)).toEqual(['host-tab-1'])
+    host.pairWrites()[0]!.resolve({
+      updated: true,
+      chatView: { viewMode: 'chat', chatLeafId: null }
+    })
+    await settle()
+    // The host desktop's own pane claims its active leaf and publishes it.
+    hostSays({ viewMode: 'chat', owner: B })
+    await settle()
+    expect(useAppStore.getState().pendingChatPairByTabId).toEqual({})
+    expect(hook.result.current.chatLeafId).toBe(B)
+    expect(host.pairWrites()).toHaveLength(1)
+  })
+
+  it('keeps the shown host owner when the host stops carrying the marker', async () => {
+    hostSays({ viewMode: 'chat', owner: B })
+    const { hook } = renderPane()
+    await settle()
+    hostSays({ marker: false, viewMode: 'chat', owner: B })
+    await settle()
+    expect(hook.result.current.chatPairAuthority).toBe('legacy')
+    expect(hook.result.current.chatLeafId).toBe(B)
+    for (const push of host.layoutPushes()) {
+      expect(push.params.chatLeafId ?? B).toBe(B)
+    }
+  })
+
   it('turns a confirmed agent exit on an ownerless host chat into one terminal write', async () => {
     hostSays({ viewMode: 'chat' })
     const { hook, onAgentExitedRef } = renderPane()

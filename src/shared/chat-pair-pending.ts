@@ -68,6 +68,14 @@ export function chatPairsEqual(a: TerminalChatPair, b: TerminalChatPair): boolea
   )
 }
 
+/** True once the host shows `target`; a chat naming no pane is shown by a host chat on any pane. */
+function hostShowsChatPair(host: TerminalChatPair, target: TerminalChatPair): boolean {
+  if (target.viewMode === 'chat' && !target.chatLeafId) {
+    return host.viewMode === 'chat'
+  }
+  return chatPairsEqual(host, target)
+}
+
 export function chatPairFromChatView(view: RuntimeSessionTabChatView): TerminalChatPair {
   return {
     ...(view.viewMode ? { viewMode: view.viewMode } : {}),
@@ -119,7 +127,7 @@ export function createChatPairPendingWrites<Key>(
     // Why adopt: the host normalizes (parent chat keeps its owner; a refused write names the current pair).
     entry.target = chatPairFromChatView(reply.chatView)
     const host = deps.readHostPair(entry.key)
-    if (!host || chatPairsEqual(host, entry.target)) {
+    if (!host || hostShowsChatPair(host, entry.target)) {
       remove(id, entry)
       return
     }
@@ -184,7 +192,7 @@ export function createChatPairPendingWrites<Key>(
         return
       }
       const host = deps.readHostPair(key)
-      if (!host || chatPairsEqual(host, entry.target)) {
+      if (!host || hostShowsChatPair(host, entry.target)) {
         remove(id, entry)
       }
     },

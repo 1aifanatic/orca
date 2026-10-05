@@ -116,6 +116,18 @@ describe('createChatPairPendingWrites', () => {
     expect(rig.machine.pendingPair('tab')).toBeNull()
   })
 
+  it('retires an ownerless chat reply once the host shows chat on any pane', async () => {
+    const rig = createRig()
+    rig.machine.submit('tab', { viewMode: 'chat', leafId: null }, { viewMode: 'chat' })
+    rig.sent[0].resolve({ chatView: { viewMode: 'chat', chatLeafId: null } })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(rig.machine.pendingPair('tab')).toEqual({ viewMode: 'chat' })
+    // The host then picks its own pane for the chat.
+    rig.setHostPair({ viewMode: 'chat', chatLeafId: 'B' })
+    rig.machine.hostPairChanged('tab')
+    expect(rig.machine.pendingPair('tab')).toBeNull()
+  })
+
   it('expires an adopted reply the host never shows', async () => {
     const rig = createRig()
     rig.machine.submit('tab', { viewMode: 'chat', leafId: 'A' }, CHAT_A)

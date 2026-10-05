@@ -48,8 +48,9 @@ export function useTerminalPaneChatPairActions(args: {
         // Why: only user actions write the host's pair. The host removes a closed owner itself and
         // its owner may not be mounted here yet; a chat naming no pane is shown on this pane's
         // routed leaf without a write, since a host that cannot hold an owner refuses every claim.
-        const storedOwner = state.terminalLayoutsByTabId[tabId]?.chatLeafId ?? null
-        setChatLeafId(isChatViewMode && storedOwner === null ? route.chatLeafId : null)
+        // The pane copy mirrors the shown owner so a flip to 'legacy' keeps it.
+        const hostOwner = effective?.chatLeafId ?? null
+        setChatLeafId(isChatViewMode ? (hostOwner ?? route.chatLeafId) : null)
         return
       }
       if (storeOwnsChatPair) {
