@@ -21,6 +21,7 @@ import type { AgentSessionJournal } from '../agent-session-journal/journal-store
 import { emptyAgentSessionBatch } from './agent-session-empty-batch'
 import { readAgentSessionHydrationPage } from './agent-session-history-page'
 import { rememberSessionActivity } from './structured-agent-session-activity-retention'
+import type { NativeChatAsyncQuestionsField } from '../../../shared/native-chat-async-questions'
 
 export type AgentSessionSubscriberEmit = (event: AgentSessionSubscribeEvent) => void
 export type AgentSessionSubscribeInput = {
@@ -40,6 +41,8 @@ export type Subscriber = {
   /** The last draft list actually SENT — never advanced on a page that withheld
    *  it, or the final replacement would be suppressed by the identity dedup. */
   queuePublication?: QueuePublication
+  /** The last async-question set actually SENT. */
+  asyncQuestions?: NativeChatAsyncQuestionsField
 }
 
 export type AgentSessionSubscribersHooks = {
@@ -47,6 +50,7 @@ export type AgentSessionSubscribersHooks = {
   /** Revision-stable per emit: an unchanged list keeps its reference, so token
    *  streams never re-serialize it; any draft-table write changes it. */
   readQueuePublication?: (sessionId: string) => QueuePublication | undefined
+  readAsyncQuestions?: (journal: AgentSessionJournal) => NativeChatAsyncQuestionsField
   /** Fires after publications that can change journal content. */
   onJournalPublished?: (sessionId: string, journal: AgentSessionJournal) => void
   now?: () => number
@@ -92,15 +96,21 @@ export class AgentSessionSubscribers {
       this.deliver(subscriber, input.journal, hostNow, true, input.backgroundTasks)
     } else {
       const page = readAgentSessionHydrationPage(input.journal, input.fence)
-      this.emit(subscriber, {
-        type: 'snapshot',
-        sessionId: input.sessionId,
-        page,
-        fence: input.fence,
-        hostNow,
-        ...(input.backgroundTasks !== undefined ? { backgroundTasks: input.backgroundTasks } : {}),
-        ...this.activityField(input.sessionId)
-      })
+      this.emit(
+        subscriber,
+        {
+          type: 'snapshot',
+          sessionId: input.sessionId,
+          page,
+          fence: input.fence,
+          hostNow,
+          ...(input.backgroundTasks !== undefined
+            ? { backgroundTasks: input.backgroundTasks }
+            : {}),
+          ...this.activityField(input.sessionId)
+        },
+        { journal: input.journal }
+      )
       subscriber.cursor = page.liveCursor ?? page.window.nextCursor
     }
     const { sessionId, id } = subscriber
@@ -173,15 +183,19 @@ export class AgentSessionSubscribers {
     const page = readAgentSessionHydrationPage(journal, fence)
     const hostNow = this.now()
     for (const subscriber of this.subscribers(sessionId)) {
-      this.emit(subscriber, {
-        ...frame,
-        sessionId,
-        page,
-        fence,
-        hostNow,
-        ...(backgroundTasks !== undefined ? { backgroundTasks } : {}),
-        ...this.activityField(sessionId)
-      })
+      this.emit(
+        subscriber,
+        {
+          ...frame,
+          sessionId,
+          page,
+          fence,
+          hostNow,
+          ...(backgroundTasks !== undefined ? { backgroundTasks } : {}),
+          ...this.activityField(sessionId)
+        },
+        { journal }
+      )
       subscriber.cursor = page.liveCursor ?? page.window.nextCursor
       subscriber.fence = fence
     }
@@ -240,7 +254,7 @@ export class AgentSessionSubscribers {
     deliverToSubscriber(
       {
         hooks: this.hooks,
-        emit: (target, event, options) => this.emit(target, event, options),
+        emit: (target, event, options) => this.emit(target, event, { ...options, journal }),
         isActive: (target) => this.isActive(target),
         activity: (sessionId) => this.activityField(sessionId).activity
       },
@@ -258,19 +272,23 @@ export class AgentSessionSubscribers {
   private emit(
     subscriber: Subscriber,
     event: AgentSessionSubscribeEvent,
-    options?: { withholdQueued?: boolean }
+    options?: { withholdQueued?: boolean; journal?: AgentSessionJournal }
   ): void {
     try {
       const built = buildSubscriberFrame(
         this.hooks,
         subscriber,
         event,
-        options?.withholdQueued === true
+        options?.withholdQueued === true,
+        options?.journal
       )
       subscriber.emit(built.frame)
       subscriber.commands = built.commands
       if (built.attachedQueued) {
         subscriber.queuePublication = built.queued
+      }
+      if (built.asyncQuestions) {
+        subscriber.asyncQuestions = built.asyncQuestions
       }
     } catch {
       this.drop(subscriber)

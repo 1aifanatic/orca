@@ -2,6 +2,12 @@
 // row is, and the user's newest send the provider accepted.
 
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import { deriveJournalAsyncQuestions } from '../../../shared/native-chat-async-question-facts'
+import {
+  nativeChatAsyncQuestionsFieldsEqual,
+  publishNativeChatAsyncQuestions,
+  type NativeChatAsyncQuestionsField
+} from '../../../shared/native-chat-async-questions'
 import { projectStructuredAgentSessionStatusState } from '../../../shared/structured-agent-session-projection'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { newestAcceptedSendKey } from './structured-agent-session-status-child-work'
@@ -64,4 +70,57 @@ export class StructuredAgentSessionJournalProjections {
     }
     return projection
   }
+}
+
+const NO_ASYNC_QUESTIONS: NativeChatAsyncQuestionsField = { state: 'ready', questions: [] }
+
+type AsyncQuestionsProjection = {
+  epoch: string
+  sequence: number
+  readOnly: boolean
+  field: NativeChatAsyncQuestionsField
+}
+
+// One derivation per journal commit, shared by every subscriber of the session.
+const asyncQuestionsByJournal = new WeakMap<AgentSessionJournal, AsyncQuestionsProjection>()
+
+function journalHasAsyncQuestions(journal: AgentSessionJournal): boolean {
+  let found = false
+  journal.visitItems((_itemId, _sequence, body) => {
+    found ||=
+      body.kind === 'message' &&
+      body.blocks.some((block) => block.type === 'text' && block.asyncQuestions !== undefined)
+  })
+  return found
+}
+
+/** The pending Codex async questions the whole journal records, as published. Identity is
+ *  stable while the set is unchanged, so subscribers can deduplicate it by reference. */
+export function readStructuredAgentSessionAsyncQuestions(
+  journal: AgentSessionJournal
+): NativeChatAsyncQuestionsField {
+  const cursor = journal.cursor()
+  const readOnly = journal.isReadOnly
+  const cached = asyncQuestionsByJournal.get(journal)
+  if (
+    cached &&
+    cached.epoch === cursor.epoch &&
+    cached.sequence === cursor.sequence &&
+    cached.readOnly === readOnly
+  ) {
+    return cached.field
+  }
+  let field = NO_ASYNC_QUESTIONS
+  // Most journals never asked one; skip the sorted snapshot for them.
+  if (!readOnly && journalHasAsyncQuestions(journal)) {
+    const snapshot = journal.snapshot()
+    field = publishNativeChatAsyncQuestions(
+      deriveJournalAsyncQuestions(snapshot.items, snapshot.submissions)
+    )
+  }
+  if (cached && nativeChatAsyncQuestionsFieldsEqual(cached.field, field)) {
+    field = cached.field
+  }
+  asyncQuestionsByJournal.set(journal, { ...cursor, readOnly, field })
+  return field
 }

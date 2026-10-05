@@ -54,7 +54,7 @@ export function deliverToSubscriber(
   }
   // Caught up, so there are no rows to read: every publish behind a commit's own delivery.
   if (!journal.isReadOnly && sameJournalCursor(subscriber.cursor, journal.cursor())) {
-    emitCaughtUp(port, subscriber, emitCheckpoint, shared)
+    emitCaughtUp(port, subscriber, emitCheckpoint, shared, journal)
     return
   }
   const readPage = createAgentSessionCatchUpReader(journal)
@@ -117,13 +117,24 @@ function emitCaughtUp(
     hostNow: number
     backgroundTasks?: AgentSessionBackgroundTaskState | null
     activity?: AgentSessionTurnActivity | null
-  }
+  },
+  journal: AgentSessionJournal
 ): void {
   const commandsChanged =
     port.hooks.readCommands !== undefined &&
     (port.hooks.readCommands(subscriber.sessionId) ?? null) !== subscriber.commands
   const queuedChanged = subscriberQueuedMessagesChanged(port.hooks, subscriber)
-  if (emitCheckpoint || shared.activity !== undefined || commandsChanged || queuedChanged) {
+  // A resumed cursor that is already caught up still owes the async-question set.
+  const asyncQuestionsChanged =
+    port.hooks.readAsyncQuestions !== undefined &&
+    port.hooks.readAsyncQuestions(journal) !== subscriber.asyncQuestions
+  if (
+    emitCheckpoint ||
+    shared.activity !== undefined ||
+    commandsChanged ||
+    queuedChanged ||
+    asyncQuestionsChanged
+  ) {
     port.emit(subscriber, {
       type: 'batch',
       sessionId: subscriber.sessionId,

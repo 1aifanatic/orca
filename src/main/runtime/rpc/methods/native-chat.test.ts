@@ -4,6 +4,7 @@ import type {
   NativeChatSubagentEntry
 } from '../../../../shared/native-chat-types'
 import type { RpcContext } from '../core'
+import type { NativeChatAsyncQuestionsField } from '../../../../shared/native-chat-async-questions'
 
 // Stub the bounded tail reader so the handler returns a deterministic transcript with
 // one oversized tool-result block; the test then asserts clip behavior per client.
@@ -36,7 +37,8 @@ const watcher = vi.hoisted(() => ({
         state: 'working' | 'completed' | 'interrupted'
         turnId: string
         timestamp: number | null
-      }
+      },
+      asyncQuestions?: NativeChatAsyncQuestionsField
     ) => void
     onReplace?: (
       messages: NativeChatMessage[],
@@ -46,7 +48,8 @@ const watcher = vi.hoisted(() => ({
         state: 'working' | 'completed' | 'interrupted'
         turnId: string
         timestamp: number | null
-      }
+      },
+      asyncQuestions?: NativeChatAsyncQuestionsField
     ) => void
     onAppend: (
       messages: NativeChatMessage[],
@@ -54,7 +57,8 @@ const watcher = vi.hoisted(() => ({
         state: 'working' | 'completed' | 'interrupted'
         turnId: string
         timestamp: number | null
-      }
+      },
+      asyncQuestions?: NativeChatAsyncQuestionsField
     ) => void
     onTranscriptPending?: () => void
   },
@@ -687,6 +691,37 @@ describe('nativeChat.subscribe initial snapshot', () => {
         beforeOffset: 9,
         lifecycle: completed
       }
+    ])
+  })
+
+  it('forwards host-derived async questions on snapshot, replacement and appended frames', async () => {
+    watcher.watching = true
+    watcher.args = null
+    const emitted: unknown[] = []
+    await subscribeHandler()(
+      { agent: 'codex', sessionId: 's' },
+      streamingContext('mobile'),
+      (value) => emitted.push(value)
+    )
+    const pending: NativeChatAsyncQuestionsField = { state: 'pending' }
+    const ready: NativeChatAsyncQuestionsField = {
+      state: 'ready',
+      questions: [{ key: 'k', index: 0, title: 'Color?', options: ['Red'] }]
+    }
+    const callbacks = activeWatcherArgs()
+    callbacks.onInitialSnapshot?.([], false, 0, undefined, undefined, pending)
+    callbacks.onAppend([], undefined, ready)
+    callbacks.onAppend([makeTextMessage('more')])
+    callbacks.onReplace?.([], false, 0, undefined, { state: 'ready', questions: [] })
+
+    expect(emitted).toEqual([
+      expect.objectContaining({ type: 'snapshot', asyncQuestions: pending }),
+      { type: 'appended', messages: [], asyncQuestions: ready },
+      { type: 'appended', messages: [expect.objectContaining({ id: 'a-1' })] },
+      expect.objectContaining({
+        type: 'replacement',
+        asyncQuestions: { state: 'ready', questions: [] }
+      })
     ])
   })
 
