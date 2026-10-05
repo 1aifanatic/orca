@@ -20,6 +20,7 @@ import { fakeOrcadMigrationDestination } from './orcad-migration-destination-fak
 import { keepOrcadServerVersion, runOrcadDeltaMove } from './orcad-migration-delta-move'
 import { planOrcadDeltaMove } from './orcad-migration-delta-plan'
 import { latestOrcadMigrationInto } from './orcad-migration-rollback-mark'
+import { retainOrcadMigrationSource } from './orcad-migration-source-retention'
 import { reconcileManagedOrcadSshTargets, visibleRepos } from './orcad-retained-source'
 import { retireRetainedOrcadSourceChain } from './orcad-retained-source-retirement'
 import { SshConnectionStore } from './ssh-connection-store'
@@ -597,6 +598,70 @@ describe('a draft an older build edited in a retained source', () => {
 
     expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeDefined()
     await expect(retireChain()).resolves.toBe('skipped')
+  })
+
+  // Round 6: a session no move can carry (here, the local and host partitions disagree on a tab
+  // marker) still holds the draft an older build edited, so the edit must still read as changed.
+  it('detects a draft edit in a session a move would refuse', async () => {
+    saveDraft('repo-1::/srv/app', 'draft before migration')
+    await convertKeepingSource()
+
+    saveDraft('repo-1::/srv/app', 'NEW EDIT')
+    store.setWorkspaceSession(
+      {
+        ...store.getWorkspaceSession(HOST_ID),
+        activeTabTypeByWorktree: { 'repo-1::/srv/app': 'editor' }
+      },
+      HOST_ID
+    )
+    store.setWorkspaceSession({
+      ...store.getWorkspaceSession(),
+      activeTabTypeByWorktree: { [`${HOST_ID}|repo-1::/srv/app`]: 'terminal' }
+    })
+    reconcileManagedOrcadSshTargets(userDataPath, store, now)
+
+    expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeDefined()
+    await expect(retireChain()).resolves.toBe('skipped')
+    expect(savedDraft('repo-1::/srv/app')).toBe('NEW EDIT')
+  })
+
+  // Astra 3: a crash after the commit but before retention, then an older build edits the draft.
+  // Resuming retention must compare with the fence's baseline, never hash the edited draft.
+  it.each([
+    ['off', false],
+    ['on', true]
+  ])('keeps a draft edited in the crash window before retention, retirement %s', async (_l, on) => {
+    saveDraft('repo-1::/srv/app', 'draft before migration')
+    // The server commits, but its reply never arrives: the client dies before retention.
+    destination.commit.mockImplementationOnce(async () => {
+      throw new Error('client crashed after the remote commit')
+    })
+    await convertSshTargetToManagedOrcad(userDataPath, {
+      sshTargetId: TARGET.id,
+      name: 'Managed',
+      listRelayPtyIds: Object.assign(async () => [], { previous: async () => [] }),
+      destinationFor: () => destination,
+      releaseDirectSession: async () => {},
+      now,
+      retireSource: () => false
+    }).catch(() => {})
+    const [fenced] = listOrcadMigrationSourceCutovers(userDataPath)
+    // The baseline was written with the fence, before any commit was possible.
+    expect(fenced?.phase).not.toBe('destination-committed')
+    expect(fenced?.sourceStateFingerprint).toBeDefined()
+    const crashed = { ...fenced!, phase: 'destination-committed' as const }
+    writeOrcadMigrationSourceCutover(userDataPath, crashed)
+    saveDraft('repo-1::/srv/app', 'draft after downgrade')
+
+    if (on) {
+      await expect(retireChain()).resolves.toBe('skipped')
+    } else {
+      // The connect's resume: retain the commit whose reply the crash outlived.
+      retainOrcadMigrationSource(userDataPath, crashed.migrationId, now)
+      reconcileManagedOrcadSshTargets(userDataPath, store, now)
+      expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeDefined()
+    }
+    expect(savedDraft('repo-1::/srv/app')).toBe('draft after downgrade')
   })
 
   it('leaves an unchanged retained source hidden and retires it', async () => {

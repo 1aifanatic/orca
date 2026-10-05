@@ -9,7 +9,6 @@ import {
   isOrcadSourceRetirementEnabled,
   retainOrcadMigrationSource
 } from '../ssh/orcad-migration-source-retention'
-import { currentOrcadSourceStateFingerprint } from '../ssh/orcad-retained-source-state'
 import { retireRetainedOrcadSourceChain } from '../ssh/orcad-retained-source-retirement'
 import { hasOrcadTemplate } from '../ssh/orcad-artifact-materializer'
 import { managedServerUpdateDeps } from '../ssh/managed-server-update-deps'
@@ -65,9 +64,7 @@ export function hostServerOnConnectDeps(userDataPath: string): HostServerOnConne
       // A commit whose reply outlived the move: finished, so its rows are kept like any other.
       const head = findOrcadMigrationSourceCutoverForTarget(userDataPath, target.id)
       if (head?.phase === 'destination-committed') {
-        retainOrcadMigrationSource(userDataPath, head.migrationId, undefined, () =>
-          currentOrcadSourceStateFingerprint(store, target, head.destinationEnvironmentId)
-        )
+        retainOrcadMigrationSource(userDataPath, head.migrationId)
       }
     },
     hasTemplate: hasOrcadTemplate,

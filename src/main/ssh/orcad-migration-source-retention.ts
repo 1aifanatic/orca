@@ -24,9 +24,7 @@ export function isOrcadSourceRetirementEnabled(): boolean {
 export function retainOrcadMigrationSource(
   userDataPath: string,
   migrationId: string,
-  now: () => Date = () => new Date(),
-  /** The fenced source's state now, which is what the server committed; kept if already recorded. */
-  sourceStateFingerprint?: () => string
+  now: () => Date = () => new Date()
 ): OrcadMigrationSourceCutover {
   const cutover = listOrcadMigrationSourceCutovers(userDataPath).find(
     (entry) => entry.migrationId === migrationId
@@ -37,12 +35,9 @@ export function retainOrcadMigrationSource(
   if (cutover.sourceRetainedAt) {
     return cutover
   }
-  const stateFingerprint = cutover.sourceStateFingerprint ?? sourceStateFingerprint?.()
-  const retained = {
-    ...cutover,
-    sourceRetainedAt: now().toISOString(),
-    ...(stateFingerprint ? { sourceStateFingerprint: stateFingerprint } : {})
-  }
+  // Why no baseline here: the source may have changed since the commit (a crash, then an older
+  // build); only the fence's pre-commit baseline proves what the server holds.
+  const retained = { ...cutover, sourceRetainedAt: now().toISOString() }
   writeOrcadMigrationSourceCutover(userDataPath, retained)
   return retained
 }
