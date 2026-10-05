@@ -5,13 +5,12 @@ import { OrchestrationError } from '../../../../orchestration/orchestration-erro
 import { formatMessageBanner } from '../../../../orchestration/formatter'
 import { exposeMessages } from './mailbox-message-receipt'
 import { interruptedAcknowledgedCheck } from '../routing'
-import { directMailboxSnapshotRouter } from './direct-mailbox-snapshot'
+import { routeAllMailboxPages } from '../schemas'
 import { resolveRunScope } from '../runs/run-scope'
 import type { CheckParams } from '../schemas'
 import type { z } from 'zod'
 import type { OrchestrationSessionCaller } from '../../../../orchestration/orchestration-caller-identity'
 import { checkRunPendingMail } from './check-run-pending-mail'
-import { queuedChatMailOf, withoutQueuedChatMail } from './check-queued-chat-mail'
 
 type CheckParamsInput = z.infer<typeof CheckParams>
 
@@ -42,8 +41,16 @@ export async function checkRunMailbox(args: {
     revalidateLegacyCoordinator,
     orchestrationCompatibilityEvidence
   } = args
-  const queuedMail = queuedChatMailOf(db, callerSession)
-  const routeDirectSnapshot = directMailboxSnapshotRouter(db, signal)
+  const routeDirectSnapshot = async (
+    runId: string,
+    directHandle: string,
+    routePage: (throughSequence: number) => { routedCount: number; hasMore: boolean }
+  ): Promise<void> => {
+    const throughSequence = db.getLatestUnreadDirectMessageSequenceForRun(runId, directHandle)
+    if (throughSequence !== undefined) {
+      await routeAllMailboxPages(() => routePage(throughSequence), signal)
+    }
+  }
   const run = resolveRunScope(runtime, {
     runId: params.run,
     callerTerminalHandle: handle,
@@ -85,7 +92,7 @@ export async function checkRunMailbox(args: {
   }
   revalidateConsumer()
 
-  const pending = await checkRunPendingMail({ ...args, run, revalidateConsumer, queuedMail })
+  const pending = await checkRunPendingMail({ ...args, run, revalidateConsumer })
   try {
     revalidateConsumer()
   } catch (error) {
@@ -124,33 +131,14 @@ export async function checkRunMailbox(args: {
       ? { formatted: messages.map(formatMessageBanner).join('\n\n') }
       : {})
   })
-  const readPeek = async () =>
-    withoutQueuedChatMail(
-      db.getUnreadRunMailbox(run.id, 100, typeFilter),
-      await queuedMail.peekExclusions()
-    )
+  const readPeek = () => db.getUnreadRunMailbox(run.id, 100, typeFilter)
   const readDelivery = (wakeTypes?: MessageType[]) =>
-    queuedMail.consume(
-      (exclude) =>
-        db.previewMailboxDelivery({
-          runId: run.id,
-          mailboxHandle: address,
-          wakeTypes,
-          excludeMessageIds: exclude
-        }),
-      (exclude) =>
-        db.getOrCreateRunDelivery({
-          runId: run.id,
-          consumerGeneration: generation,
-          wakeTypes,
-          excludeMessageIds: exclude
-        })
-    )
-  let peeked = params.peek ? await readPeek() : []
+    db.getOrCreateRunDelivery({ runId: run.id, consumerGeneration: generation, wakeTypes })
+  let peeked = params.peek ? readPeek() : []
   if (params.peek && peeked.length > 0) {
     return peekResult(peeked)
   }
-  let current = params.peek ? undefined : await readDelivery(params.wait ? typeFilter : undefined)
+  let current = params.peek ? undefined : readDelivery(params.wait ? typeFilter : undefined)
   if (current) {
     return {
       runId: run.id,
@@ -252,10 +240,10 @@ export async function checkRunMailbox(args: {
     }
   }
   if (params.peek) {
-    peeked = await readPeek()
+    peeked = readPeek()
     return { ...peekResult(peeked), timedOut: false, cancelled: false, connectionLost: false }
   }
-  current = await readDelivery(typeFilter)
+  current = readDelivery(typeFilter)
   return {
     runId: run.id,
     deliveryId: current?.delivery.id ?? null,

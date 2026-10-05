@@ -29,7 +29,7 @@ describe('who delivered mail is from', () => {
         }
       ],
       orchestration: {
-        message: 'mail',
+        message: 'mail-notice',
         mailbox: 'run:r1',
         dispatchId: null,
         messages: [

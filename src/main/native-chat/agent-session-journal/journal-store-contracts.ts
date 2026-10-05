@@ -10,7 +10,6 @@ import type {
   AgentJournalTurnScope,
   AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
-import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
 import type { JournalHostDatabase } from './journal-host-database'
 import type { JournalLifecycleMutationInput } from './journal-row-builders'
 import type { JournalRow } from './journal-row-schema'
@@ -88,8 +87,6 @@ export type JournalSubmissionInput = {
   queuedMessageId?: string
   /** Who asked for this turn (`JournalSubmissionRow.origin`). */
   origin?: 'client' | 'host'
-  /** Which agent a host-sent turn is from (`JournalSubmissionRow.source`). */
-  source?: AgentMessageSource
 }
 
 /** A submission append that converts a queued draft, in one transaction. */

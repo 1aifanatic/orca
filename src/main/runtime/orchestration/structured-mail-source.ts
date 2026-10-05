@@ -1,5 +1,5 @@
 /**
- * Who a batch of orchestration mail delivered to a chat is from: every distinct sender, named the
+ * Who the mail a chat is pointed at is from: every distinct sender, named the
  * way orchestration names a party, and each message's own sender and records. The run, dispatch
  * and message ids join back to orchestration's own rows while those exist.
  */
@@ -30,7 +30,7 @@ export function structuredMailSource(input: {
     kind: 'agent',
     senders: [...senders.values()],
     orchestration: {
-      message: 'mail',
+      message: 'mail-notice',
       mailbox: input.mailboxHandle,
       dispatchId: input.dispatchId,
       messages: input.batch.map((message) => ({

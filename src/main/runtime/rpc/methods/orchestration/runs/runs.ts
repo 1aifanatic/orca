@@ -107,8 +107,6 @@ export const ORCHESTRATION_RUN_METHODS = [
       if (priorRun && priorRun.id !== params.id) {
         runtime.cancelMessageWaiters(`run:${priorRun.id}`)
       }
-      // A chat that owned the Run may hold a card of its mail: withdraw it, push to the new owner.
-      runtime.deliverStructuredMailForHandle?.(`run:${params.id}`)
       return { run: exposeRun(run) }
     }
   }),

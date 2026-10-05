@@ -10,7 +10,6 @@ vi.mock('../../native-chat/agent-session-wire/structured-agent-session-registry'
 
 const {
   createStructuredMailboxPointerHost,
-  readStructuredChatMail,
   readStructuredSessionGateFacts,
   structuredPointerCallerKey,
   structuredSessionPointerCallerKey
@@ -36,10 +35,10 @@ function transcript(count: number): AgentJournalRenderItem[] {
   )
 }
 
-const MAIL_SOURCE: AgentMessageSource = {
+const NOTICE_SOURCE: AgentMessageSource = {
   kind: 'agent',
   senders: [],
-  orchestration: { message: 'mail', mailbox: 'dispatch:d1', dispatchId: 'd1', messages: [] }
+  orchestration: { message: 'mail-notice', mailbox: 'dispatch:d1', dispatchId: 'd1', messages: [] }
 }
 
 describe('structured mailbox pointer host', () => {
@@ -51,7 +50,7 @@ describe('structured mailbox pointer host', () => {
     // The defect this pins: a running turn is announced by ONE lifecycle item, and settlement
     // tombstones it rather than rewriting it. A long tool-calling turn pushes that item arbitrarily
     // far from the tail, so any page-sized read reports a busy worker as idle — and `@idle` then
-    // wakes it mid-turn, which Codex coalesces into the running turn and Claude folds into it.
+    // wakes it mid-turn.
     const items = [runningTurn(), ...transcript(500)]
     hostRef.current = { journalSnapshot: () => ({ items, submissions: [] }) }
     expect(await readStructuredSessionGateFacts('s1')).toEqual({
@@ -60,105 +59,39 @@ describe('structured mailbox pointer host', () => {
     })
   })
 
-  it("reads each agent card's state and each agent send's verdict, with the mail each carries", async () => {
-    const mail = (messageIds: string[]) => ({
-      kind: 'agent',
-      senders: [],
-      orchestration: {
-        message: 'mail',
-        mailbox: 'run:r1',
-        dispatchId: null,
-        messages: messageIds.map((messageId) => ({ messageId, runId: 'r1', from: 'term_a' }))
+  it("reads what the session's sends settled as, and whether an agent's card still waits", async () => {
+    const submissions = [{ clientMessageId: 'op1', dispatchState: 'unknown' }]
+    const read = async (rows: { state: string; source: { kind: string } }[]) => {
+      hostRef.current = {
+        journalSnapshot: () => ({ items: [], submissions }),
+        queuedMessageRows: () => rows
       }
-    })
-    const submission = (clientMessageId: string, dispatchState: string) => ({
-      clientMessageId,
-      dispatchState,
-      submittedAt: 1
-    })
-    const sends = [
-      { submission: submission('typed', 'accepted'), source: undefined },
-      { submission: submission('op1', 'unknown'), source: mail(['m1']) },
-      { submission: submission('handoff-a', 'accepted'), source: mail(['m2']) },
-      {
-        submission: submission('task', 'pending'),
-        source: { kind: 'agent', senders: [], orchestration: { message: 'unknown' } }
-      }
-    ]
-    const cards = [
-      { messageId: 'card-a', state: 'dispatched', settledByOp: null, source: mail(['m2']) },
-      {
-        messageId: 'card-b',
-        state: 'withdrawn',
-        settledByOp: 'test-surface\u0000op',
-        source: mail(['m3'])
-      },
-      {
-        messageId: 'card-c',
-        state: 'withdrawn',
-        settledByOp: 'trusted-local:orchestration:mail-card\u0000op',
-        source: mail(['m4'])
-      },
-      { messageId: 'card-d', state: 'returned', settledByOp: null, source: mail(['m5']) },
-      { messageId: 'typed-card', state: 'waiting', settledByOp: null, source: { kind: 'user' } }
-    ]
-    const journal = {
-      queuedMessages: { list: () => cards },
-      submissions: () => sends.map((each) => each.submission),
-      submissionSource: (id: string) =>
-        sends.find((each) => each.submission.clientMessageId === id)?.source
+      return createStructuredMailboxPointerHost().readSessionFacts('s1')
     }
-    hostRef.current = { conversationJournal: async () => journal }
-    const card = (cardId: string, messageIds: string[], state: string) => ({
-      cardId,
-      mailbox: 'run:r1',
-      messageIds,
-      state
+    expect(await read([{ state: 'waiting', source: NOTICE_SOURCE }])).toEqual({
+      submissions,
+      pointerCardWaiting: true
     })
-    expect(await readStructuredChatMail('s1')).toEqual({
-      cards: [
-        card('card-a', ['m2'], 'dispatched'),
-        // Withdrawn by anyone but Orca: the person's Delete, whose mail waits for `check`.
-        card('card-b', ['m3'], 'declined'),
-        card('card-c', ['m4'], 'withdrawn'),
-        card('card-d', ['m5'], 'returned')
-      ],
-      sends: [
-        { mailbox: 'run:r1', messageIds: ['m1'], dispatchState: 'unknown' },
-        { mailbox: 'run:r1', messageIds: ['m2'], dispatchState: 'accepted' }
-      ],
-      submissions: sends.map((each) => each.submission)
-    })
+    // The person's card, or an agent's card already sent or deleted, holds no pointer back.
+    expect(
+      await read([
+        { state: 'waiting', source: { kind: 'user' } },
+        { state: 'dispatched', source: NOTICE_SOURCE },
+        { state: 'withdrawn', source: NOTICE_SOURCE }
+      ])
+    ).toEqual({ submissions, pointerCardWaiting: false })
   })
 
   it('answers null rather than nothing recorded when the session cannot be read', async () => {
-    // Null retains the pointer; an empty answer would read as "never sent" and send again into a
-    // session this runtime cannot see at all.
-    expect(await readStructuredChatMail('s1')).toBeNull()
+    // Null retains the pointer; an empty answer would send into a session this runtime cannot see.
+    expect(await createStructuredMailboxPointerHost().readSessionFacts('s1')).toBeNull()
     hostRef.current = {
-      conversationJournal: async () => {
+      queuedMessageRows: () => [],
+      journalSnapshot: () => {
         throw new Error('agent_session_ownership_unknown')
       }
     }
-    expect(await readStructuredChatMail('s1')).toBeNull()
-  })
-
-  it("withdraws only agents' cards, as Orca, under Orca's own caller key", async () => {
-    const withdraw = vi.fn(async (input: { messageIds: readonly string[]; settledByOp: string }) =>
-      input.messageIds.map((messageId) => ({ messageId }))
-    )
-    const sources: Record<string, { kind: string }> = { c1: MAIL_SOURCE, typed: { kind: 'user' } }
-    hostRef.current = {
-      conversationJournal: async () => ({
-        queuedMessages: { withdraw, get: (id: string) => ({ source: sources[id] }) }
-      })
-    }
-    expect(await createStructuredMailboxPointerHost().withdrawCards('s1', ['c1', 'typed'])).toEqual(
-      ['c1']
-    )
-    expect(withdraw.mock.calls[0]![0].settledByOp).toMatch(/^trusted-local:orchestration:/)
-    hostRef.current = null
-    expect(await createStructuredMailboxPointerHost().withdrawCards('s1', ['c1'])).toEqual([])
+    expect(await createStructuredMailboxPointerHost().readSessionFacts('s1')).toBeNull()
   })
 
   it('reports an unattached host rather than a rejection when nothing can be sent', async () => {
@@ -202,7 +135,7 @@ describe('structured mailbox pointer host', () => {
     expect(send.mock.calls[0]![1]!.retryUnknown).toBeUndefined()
   })
 
-  it('asks a busy chat to queue the turn as a card, with who it is from', async () => {
+  it('asks a busy chat to queue the pointer as a card, with who it is from', async () => {
     const send = vi.fn(
       async (_caller: unknown, _payload: { delivery?: string; source?: unknown }) => ({
         ok: true,
@@ -220,12 +153,12 @@ describe('structured mailbox pointer host', () => {
         operationId: 'op1',
         expectedRuntimeFence: 1,
         body: { kind: 'message', role: 'user', blocks: [] },
-        source: MAIL_SOURCE
+        source: NOTICE_SOURCE
       })
     ).resolves.toEqual({ kind: 'queued' })
     expect(send.mock.calls[0]![1]).toMatchObject({
       delivery: 'queue-if-active',
-      source: MAIL_SOURCE
+      source: NOTICE_SOURCE
     })
   })
 
@@ -278,8 +211,7 @@ describe('structured mailbox pointer host', () => {
   it('separates a not-attached refusal from a real one', async () => {
     for (const [code, expected] of [
       ['agent_session_ownership_unknown', { kind: 'unattached' }],
-      // Refused before anything started: nothing for a retry under the same id to replay.
-      ['agent_session_conflict', { kind: 'refused' }]
+      ['agent_session_conflict', { kind: 'sent', state: 'rejected' }]
     ] as const) {
       hostRef.current = { send: async () => ({ ok: false, refusal: { code, message: 'no' } }) }
       await expect(

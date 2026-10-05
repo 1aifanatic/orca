@@ -189,11 +189,6 @@ export class OrcaRuntimeWithGetPtyRecordForPaneKey extends OrcaRuntimeWithPruneM
     this.orchestrationMailboxNotifications.deliverForHandle(handle, reservedTypes)
   }
 
-  /** Only a chat's lane: a moved mailbox's card leaves the old chat, its mail goes to the new. */
-  deliverStructuredMailForHandle(handle: string): void {
-    this.orchestrationStructuredMailboxPointerDelivery.deliverForHandle(handle)
-  }
-
   /** The structured idle edge: any journal movement is a chance to redrive parked mail. */
   notifyStructuredSessionJournalActivity(sessionId: string): void {
     this.orchestrationStructuredMailboxPointerDelivery.onJournalActivity(sessionId)

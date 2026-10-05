@@ -8,7 +8,6 @@
 // one that wrote nothing.
 
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
-import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import type { AgentSessionOperationOutcome } from '../../../shared/agent-session-operation-ledger'
 import type {
@@ -78,7 +77,6 @@ export function sendPlan(params: {
   retryUnknown?: true
   delivery?: 'queue-if-active'
   userSend?: true
-  source?: AgentMessageSource
   beforeRun?: () => void
 }): MutationPlan<AgentSessionSendResult> {
   // The operation id IS the client message id: one send, one durable row, one
@@ -102,8 +100,7 @@ export function sendPlan(params: {
         origin: params.userSend ? 'client' : 'host',
         clientMessageId,
         payloadFingerprint: sendBodyFingerprint(params.envelope.sessionId, params.body),
-        body: params.body,
-        ...(params.source && !params.userSend ? { source: params.source } : {})
+        body: params.body
       })
     },
     replay: (ctx, outcome) => {

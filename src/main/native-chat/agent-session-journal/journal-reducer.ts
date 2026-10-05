@@ -26,7 +26,6 @@ import { structuredAgentSessionPayloadFingerprint } from '../../../shared/struct
 import { JournalDerivedTurnScope } from './journal-derived-turn-scope'
 import { removeJournalItem, statedOrDerivedTurnScope, upsertJournalItem } from './journal-item-fold'
 import { journalItemRevisionIsStale } from './journal-item-revision'
-import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
 import { isJournalStopOrResumeRow, type JournalRow } from './journal-row-schema'
 import { acceptSubmissionFromProviderItem, applyJournalSubmission } from './journal-submission-fold'
 import { applyJournalDispatchRow } from './journal-dispatch-reducer'
@@ -53,8 +52,6 @@ export type JournalReducerState = {
   /** Revision of a removed item, so a late lower revision cannot resurrect it. */
   tombstones: Map<string, number>
   submissions: Map<string, AgentJournalSubmission>
-  /** Host-only, never published: which agent each agent-sent submission is from. */
-  submissionSources: Map<string, AgentMessageSource>
   receipts: Map<string, AgentJournalAcceptanceReceipt>
   /** Provider item id → the submission slot that adopted it. Stops an accepted
    *  echo from appending a second copy of the user's own message. */
@@ -81,7 +78,6 @@ export function createJournalReducerState(sessionId: string, epoch: string): Jou
     itemFences: new Map(),
     tombstones: new Map(),
     submissions: new Map(),
-    submissionSources: new Map(),
     receipts: new Map(),
     aliases: new Map(),
     appliedSettlementIds: new Set(),

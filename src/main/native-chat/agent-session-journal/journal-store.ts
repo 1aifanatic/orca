@@ -266,9 +266,6 @@ export class AgentSessionJournal {
 
   submission = (clientMessageId: string) => this.state.submissions.get(clientMessageId)
 
-  /** Host-only: which agent an agent-sent submission is from; never published. */
-  submissionSource = (clientMessageId: string) => this.state.submissionSources.get(clientMessageId)
-
   pendingSubmissions = (): AgentJournalSubmission[] =>
     this.submissions().filter((entry) => entry.dispatchState === 'pending')
 
@@ -347,11 +344,8 @@ export class AgentSessionJournal {
     /** The send's ledger answer, committed with this row. */
     receipt?: JournalOperationReceipt
   ): Promise<AgentJournalCursor> {
-    // A hand-off carries its card's sender, so the sent message keeps it after the card is pruned.
-    const source = consume && this.queuedMessages.get(consume.messageId)?.source
-    const sourced = source?.kind === 'agent' ? { ...input, source } : input
     return this.rowWriter.append(
-      journalSubmissionRowBuilder(() => this.state, this.identity.providerHandle, sourced, consume),
+      journalSubmissionRowBuilder(() => this.state, this.identity.providerHandle, input, consume),
       consume && queuedMessageConsumeHook(this.queuedMessages, input.clientMessageId, consume),
       receipt
     )

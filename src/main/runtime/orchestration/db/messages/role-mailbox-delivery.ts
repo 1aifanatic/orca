@@ -24,65 +24,21 @@ export function getDeliveryMessages(this: OrchestrationDb, delivery: DeliveryRow
   )
 }
 
-type MailboxSelection = {
-  runId: string
-  mailboxHandle: string
-  limit?: number
-  wakeTypes?: MessageType[]
-  /** Mail a new batch leaves out: what the caller's own chat queue or sends still carry. */
-  excludeMessageIds?: readonly string[]
-}
-
-/** The mail a new batch takes now; none when no wake type is unread. */
-function selectMailboxBatch(db: OrchestrationDb, params: MailboxSelection): MessageRow[] {
-  const excluded = params.excludeMessageIds ?? []
-  const notExcluded = excluded.length ? ` AND id NOT IN (${excluded.map(() => '?').join(',')})` : ''
+export function getOrCreateMailboxDelivery(
+  this: OrchestrationDb,
+  params: {
+    runId: string
+    mailboxHandle: string
+    consumerGeneration: number
+    consumerSource?: 'dispatch' | 'attachment'
+    limit?: number
+    wakeTypes?: MessageType[]
+  }
+): { delivery: DeliveryRow; messages: MessageRow[]; replayed: boolean } | undefined {
   const limit = Math.min(
     Math.max(params.limit ?? ORCHESTRATION_DELIVERY_BATCH_LIMIT, 1),
     ORCHESTRATION_DELIVERY_BATCH_LIMIT
   )
-  if (params.wakeTypes?.length) {
-    const placeholders = params.wakeTypes.map(() => '?').join(',')
-    const matching = db.db
-      .prepare(
-        `SELECT 1 FROM messages
-         WHERE run_id = ? AND to_handle = ? AND read = 0
-           AND delivery_contract = 'current_delivery'
-           AND type IN (${placeholders})${notExcluded} LIMIT 1`
-      )
-      .get(params.runId, params.mailboxHandle, ...params.wakeTypes, ...excluded)
-    if (!matching) {
-      return []
-    }
-  }
-  return exposeMessageListTimestamps(
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: `SELECT *` from `messages`, whose columns are MessageRow's.
-    db.db
-      .prepare(
-        `SELECT * FROM messages
-         WHERE run_id = ? AND to_handle = ? AND read = 0
-           AND delivery_contract = 'current_delivery'${notExcluded}
-         ORDER BY sequence ASC LIMIT ?`
-      )
-      .all(params.runId, params.mailboxHandle, ...excluded, limit) as MessageRow[]
-  )
-}
-
-/** What `getOrCreateMailboxDelivery` would hand out now, creating nothing: no new mail while a
- *  batch is outstanding. */
-export function previewMailboxDelivery(this: OrchestrationDb, params: MailboxSelection): string[] {
-  return this.hasOutstandingMailboxDelivery(params.mailboxHandle)
-    ? []
-    : selectMailboxBatch(this, params).map((message) => message.id)
-}
-
-export function getOrCreateMailboxDelivery(
-  this: OrchestrationDb,
-  params: MailboxSelection & {
-    consumerGeneration: number
-    consumerSource?: 'dispatch' | 'attachment'
-  }
-): { delivery: DeliveryRow; messages: MessageRow[]; replayed: boolean } | undefined {
   this.db.exec('BEGIN IMMEDIATE')
   try {
     requireMailboxConsumer(this, params)
@@ -100,7 +56,31 @@ export function getOrCreateMailboxDelivery(
       this.db.exec('COMMIT')
       return { delivery: exposeDeliveryTimestamps(existing), messages, replayed: true }
     }
-    const messages = selectMailboxBatch(this, params)
+    if (params.wakeTypes?.length) {
+      const placeholders = params.wakeTypes.map(() => '?').join(',')
+      const matching = this.db
+        .prepare(
+          `SELECT 1 FROM messages
+           WHERE run_id = ? AND to_handle = ? AND read = 0
+             AND delivery_contract = 'current_delivery'
+             AND type IN (${placeholders}) LIMIT 1`
+        )
+        .get(params.runId, params.mailboxHandle, ...params.wakeTypes)
+      if (!matching) {
+        this.db.exec('COMMIT')
+        return undefined
+      }
+    }
+    const messages = exposeMessageListTimestamps(
+      this.db
+        .prepare(
+          `SELECT * FROM messages
+           WHERE run_id = ? AND to_handle = ? AND read = 0
+             AND delivery_contract = 'current_delivery'
+           ORDER BY sequence ASC LIMIT ?`
+        )
+        .all(params.runId, params.mailboxHandle, limit) as MessageRow[]
+    )
     if (messages.length === 0) {
       this.db.exec('COMMIT')
       return undefined
@@ -219,7 +199,6 @@ export type RoleMailboxDeliveryMethods = {
   getDeliveryRaw: typeof getDeliveryRaw
   getDeliveryMessages: typeof getDeliveryMessages
   getOrCreateMailboxDelivery: typeof getOrCreateMailboxDelivery
-  previewMailboxDelivery: typeof previewMailboxDelivery
   acknowledgeMailboxDelivery: typeof acknowledgeMailboxDelivery
   hasOutstandingMailboxDelivery: typeof hasOutstandingMailboxDelivery
   fenceUnacknowledgedMailboxDeliveries: typeof fenceUnacknowledgedMailboxDeliveries
@@ -230,7 +209,6 @@ export function attachRoleMailboxDelivery(ctor: { prototype: object }): void {
     getDeliveryRaw,
     getDeliveryMessages,
     getOrCreateMailboxDelivery,
-    previewMailboxDelivery,
     acknowledgeMailboxDelivery,
     hasOutstandingMailboxDelivery,
     fenceUnacknowledgedMailboxDeliveries

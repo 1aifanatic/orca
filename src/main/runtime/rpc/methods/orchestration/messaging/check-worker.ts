@@ -4,12 +4,10 @@ import { OrchestrationError } from '../../../../orchestration/orchestration-erro
 import { formatMessageBanner } from '../../../../orchestration/formatter'
 import { exposeMessages } from './mailbox-message-receipt'
 import { routeAllMailboxPages } from '../schemas'
-import { directMailboxSnapshotRouter } from './direct-mailbox-snapshot'
 import { asDispatchFence, callerHoldsDispatchPane, dispatchFenced } from './dispatch-mailbox-fence'
 import { interruptedAcknowledgedCheck } from '../routing'
 import { currentDispatchAssigneeRun } from './recipient-routing'
 import type { CheckParams } from '../schemas'
-import { withoutQueuedChatMail, type QueuedChatMail } from './check-queued-chat-mail'
 import type { z } from 'zod'
 
 type CheckParamsInput = z.infer<typeof CheckParams>
@@ -32,7 +30,6 @@ export async function checkWorkerMailbox(args: {
   revalidateConsumer?: () => void
   deferDelivery?: () => boolean
   recordMutationReceipt?: (receipt: unknown) => void
-  queuedMail: QueuedChatMail
 }) {
   const {
     params,
@@ -71,7 +68,16 @@ export async function checkWorkerMailbox(args: {
     activeDispatch
       ? db.getDispatchContextById(workerMailbox.dispatchId)?.consumer_generation
       : db.getRemoteDispatchAttachment(workerMailbox.dispatchId)?.consumer_generation
-  const routeDirectSnapshot = directMailboxSnapshotRouter(db, signal)
+  const routeDirectSnapshot = async (
+    runId: string,
+    directHandle: string,
+    routePage: (throughSequence: number) => { routedCount: number; hasMore: boolean }
+  ): Promise<void> => {
+    const throughSequence = db.getLatestUnreadDirectMessageSequenceForRun(runId, directHandle)
+    if (throughSequence !== undefined) {
+      await routeAllMailboxPages(() => routePage(throughSequence), signal)
+    }
+  }
   const revalidateWorkerMailbox = async (): Promise<void> => {
     if (activeDispatch) {
       const current = db.getActiveDispatchForIdentity(handle, paneKey)
@@ -187,27 +193,19 @@ export async function checkWorkerMailbox(args: {
     )
   }
   const showAll = params.all === true || (params.unread === false && params.peek !== true)
-  const readPeek = async () =>
-    withoutQueuedChatMail(
-      db.getUnreadMessages(address, typeFilter),
-      await args.queuedMail.peekExclusions()
-    )
-  const readDelivery = async (wakeTypes?: MessageType[]) => {
+  const readPeek = () => db.getUnreadMessages(address, typeFilter)
+  const readDelivery = (wakeTypes?: MessageType[]) => {
     if (args.deferDelivery?.()) {
       return undefined
     }
-    const selection = { runId: deliveryRunId, mailboxHandle: address, wakeTypes }
     try {
-      return await args.queuedMail.consume(
-        (exclude) => db.previewMailboxDelivery({ ...selection, excludeMessageIds: exclude }),
-        (exclude) =>
-          db.getOrCreateMailboxDelivery({
-            ...selection,
-            consumerGeneration: workerMailbox.generation,
-            consumerSource: activeDispatch ? 'dispatch' : 'attachment',
-            excludeMessageIds: exclude
-          })
-      )
+      return db.getOrCreateMailboxDelivery({
+        runId: deliveryRunId,
+        mailboxHandle: address,
+        consumerGeneration: workerMailbox.generation,
+        consumerSource: activeDispatch ? 'dispatch' : 'attachment',
+        wakeTypes
+      })
     } catch (error) {
       throw asDispatchFence(error)
     }
@@ -225,7 +223,7 @@ export async function checkWorkerMailbox(args: {
     }
   }
   if (params.peek) {
-    const messages = await readPeek()
+    const messages = readPeek()
     if (messages.length > 0 || !params.wait) {
       return {
         ...mailboxIdentity,
@@ -238,7 +236,7 @@ export async function checkWorkerMailbox(args: {
       }
     }
   } else {
-    const current = await readDelivery(params.wait ? typeFilter : args.wakeTypes)
+    const current = readDelivery(params.wait ? typeFilter : args.wakeTypes)
     if (current || !params.wait) {
       return {
         ...mailboxIdentity,
@@ -281,7 +279,7 @@ export async function checkWorkerMailbox(args: {
     }
   }
   if (params.peek) {
-    const arrived = await readPeek()
+    const arrived = readPeek()
     return {
       ...mailboxIdentity,
       messages: exposeMessages(arrived),
@@ -292,7 +290,7 @@ export async function checkWorkerMailbox(args: {
         : {})
     }
   }
-  const arrived = await readDelivery(typeFilter)
+  const arrived = readDelivery(typeFilter)
   return {
     ...mailboxIdentity,
     deliveryId: arrived?.delivery.id ?? null,

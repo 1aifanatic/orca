@@ -189,7 +189,7 @@ describe('draft rows', () => {
         }
       ],
       orchestration: {
-        message: 'mail',
+        message: 'mail-notice',
         mailbox: 'run:r1',
         dispatchId: 'd1',
         messages: [{ messageId: 'm1', runId: 'r1', from: 'structworker_1' }]

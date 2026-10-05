@@ -2,7 +2,6 @@
 // host's own admission: a fingerprint over other fields than the send carries is refused there.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { structuredAgentMailFacts } from '../../native-chat/agent-session-wire/structured-agent-session-agent-mail'
 import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
 import {
   createQueuedMessageTestRig,
@@ -34,7 +33,7 @@ const MAIL_SOURCE: AgentMessageSource = {
     }
   ],
   orchestration: {
-    message: 'mail',
+    message: 'mail-notice',
     mailbox: 'dispatch:d1',
     dispatchId: 'd1',
     messages: [{ messageId: 'm1', runId: 'r1', from: 'term_peer' }]
@@ -75,9 +74,7 @@ describe('sendAgentTurn through the real host', () => {
     })
     // Stored with the card, read back whole: who it is from survives the round trip.
     expect(
-      structuredAgentMailFacts(await rig.host.conversationJournal(SESSION)).cards.map(
-        ({ state, source }) => ({ state, source })
-      )
+      (await rig.host.queuedMessageRows(SESSION)).map(({ state, source }) => ({ state, source }))
     ).toEqual([{ state: 'waiting', source: MAIL_SOURCE }])
     // Shown in the chat's queue like the person's own card.
     expect(await rig.drafts()).toMatchObject([{ state: 'waiting' }])

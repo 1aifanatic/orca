@@ -1,8 +1,8 @@
 /**
  * What orchestration mail delivery reads of a host-owned structured ("native") agent session.
  *
- * A structured session has no PTY a pointer can be typed into, so each message travels as a
- * session turn instead of as bytes, and a busy session's own queue holds it until the turn ends.
+ * A structured session has no PTY the pointer can be typed into, so the nudge travels as a session
+ * turn instead of as bytes, and a busy session's own queue holds it until the turn ends.
  * Everything here is pure. Orchestration's database stays the source of truth: nothing here
  * consumes mail.
  */
@@ -16,9 +16,8 @@ import {
 /** Every reason retains the pointer; none of them consume mail. */
 export type StructuredPointerRetainReason =
   | 'session-not-attached'
-  /** The lane's own send is still in flight. */
   | 'turn-unsettled'
-  /** A card of the mailbox's waits in the chat's queue. */
+  /** A pointer card waits in the chat's queue. */
   | 'queued'
   | 'dispatch-rejected'
   | 'dispatch-unknown'
@@ -42,8 +41,8 @@ export type StructuredSessionGateFacts = {
 /**
  * Projects the gate facts off a session's live items.
  *
- * Reuses the projection the chat view already reads, so `@idle` and the visible "working" state
- * can never disagree. Both must be answered from the fully reduced timeline: a
+ * Reuses the projection the chat view already reads, so `@idle` and the visible
+ * "working" state can never disagree. Both must be answered from the fully reduced timeline: a
  * settled turn is TOMBSTONED rather than rewritten to `completed`, so on a bounded tail page an
  * idle session and a running turn whose lifecycle item was pushed off the end look identical —
  * and idle-with-history is the normal steady state of a working agent.

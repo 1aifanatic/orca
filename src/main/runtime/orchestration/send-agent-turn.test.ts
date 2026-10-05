@@ -57,7 +57,7 @@ const MAIL_SOURCE: AgentMessageSource = {
   kind: 'agent',
   senders: [],
   orchestration: {
-    message: 'mail',
+    message: 'mail-notice',
     mailbox: 'dispatch:d1',
     dispatchId: 'd1',
     messages: [{ messageId: 'm1', runId: 'r1', from: 'term_peer' }]

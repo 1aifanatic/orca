@@ -71,23 +71,6 @@ describe('OrchestrationDb Run state', () => {
       ])
     })
 
-    it('leaves mail the caller excludes out of a new batch, and out of its wake test', () => {
-      const d = createDb()
-      const run = createBoundRun(d)
-      const [queued, other] = ['queued', 'other'].map((subject) =>
-        d.insertMessage({ from: 'worker', to: `run:${run.id}`, subject, runId: run.id })
-      )
-      const params = {
-        runId: run.id,
-        consumerGeneration: run.consumer_generation,
-        excludeMessageIds: [queued!.id, other!.id]
-      }
-      expect(d.getOrCreateRunDelivery({ ...params, wakeTypes: ['status'] })).toBeUndefined()
-      expect(d.getOrCreateRunDelivery(params)).toBeUndefined()
-      const batch = d.getOrCreateRunDelivery({ ...params, excludeMessageIds: [queued!.id] })
-      expect(batch?.messages.map((message) => message.subject)).toEqual(['other'])
-    })
-
     it('acknowledges the whole batch idempotently without consuming newer mail', () => {
       const d = createDb()
       const run = createBoundRun(d)

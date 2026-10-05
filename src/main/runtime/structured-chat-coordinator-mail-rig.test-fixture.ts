@@ -18,7 +18,7 @@ import { agentSessionProviderHandleChainHead } from '../../shared/agent-session-
 import { OrcaRuntimeService } from './orca-runtime'
 import { OrchestrationDb } from './orchestration/db'
 import { localOrchestrationCliCommand } from './orchestration/cli-command'
-import { formatMessageTurn } from './orchestration/formatter'
+import { formatMessagePointer } from './orchestration/formatter'
 import type { RpcRequest } from './rpc/core'
 import { RpcDispatcher } from './rpc/dispatcher'
 import { ORCHESTRATION_METHODS } from './rpc/methods/orchestration'
@@ -39,16 +39,16 @@ import { createStructuredAgentSessionLogger } from '../native-chat/agent-session
 
 export const COORDINATOR = '4a1f6c2e-8b3d-4e7a-9c15-0d2b6e8f1a37'
 export const PEER_CHAT = '7e3b9d15-2c4a-4f86-a0b1-5c9e2d7f3b64'
-const WORKER_PANE = 'tab_worker:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+export const WORKER_PANE = 'tab_worker:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 export const WORKER_2_PANE = 'tab_worker2:cccccccc-cccc-4ccc-8ccc-cccccccccccc'
 
 export let codex: ReturnType<typeof fakeCodex>
-let root: string
+export let root: string
 export let runtime: OrcaRuntimeService
 export let db: OrchestrationDb
 export let host: StructuredAgentSessionHost
 export let dispatcher: RpcDispatcher
-let requests = 0
+export let requests = 0
 export const observationClock = createCoordinatorMailObservationClock(() => host, COORDINATOR)
 
 export function request(
@@ -90,7 +90,7 @@ export async function openChat(sessionId: string): Promise<FakeConnection> {
   return connectionFor(sessionId)
 }
 
-const threadBySession = new Map<string, string>()
+export const threadBySession = new Map<string, string>()
 
 export function connectionFor(sessionId: string): FakeConnection {
   // A cleared chat's successor starts on its first message; its record then names its thread.
@@ -146,9 +146,7 @@ export function sendUserMessage(sessionId: string, text: string) {
           fields: { body }
         })
       },
-      body,
-      // The `agentSession.send` RPC marks every send it carries as the person's.
-      userSend: true
+      body
     }
   )
 }
@@ -159,46 +157,6 @@ export async function userTexts(sessionId: string): Promise<string[]> {
       ? item.body.blocks.map((block) => (block.type === 'text' ? block.text : ''))
       : []
   )
-}
-
-/** The text of every card the chat lists in its queue, as the person sees it. */
-export async function queuedCardTexts(sessionId: string): Promise<string[]> {
-  const page = await host.history({ sessionId, direction: 'tail' })
-  if (!page.ok) {
-    throw new Error('history refused')
-  }
-  return (page.page.queuedMessages ?? []).flatMap((card) =>
-    card.body.blocks.map((block) => (block.type === 'text' ? block.text : ''))
-  )
-}
-
-/** `/clear` as the chat surface runs it: the conversation continues in a new session. */
-export async function clearChat(sessionId: string): Promise<string> {
-  const command = 'clear' as const
-  const cleared = await host.conversationCommand(
-    { callerKey: 'test-surface' },
-    {
-      command,
-      envelope: {
-        sessionId,
-        clientOperationId: operationId(),
-        expectedRuntimeFence: host.deps.store.getRecord(sessionId)!.lease.runtimeFence,
-        payloadFingerprint: computeAgentSessionPayloadFingerprint({
-          method: 'agentSession.conversationCommand',
-          sessionId,
-          fields: { command }
-        })
-      }
-    }
-  )
-  const successor = cleared.ok ? cleared.value.replacementSessionId : undefined
-  if (!successor) {
-    throw new Error(`clear failed: ${JSON.stringify(cleared)}`)
-  }
-  // The surface swaps the tab over to the session that continues the chat.
-  await host.setSessionTabVisibility(sessionId, false)
-  await host.setSessionTabVisibility(successor, true)
-  return successor
 }
 
 /** A supervised terminal worker under the coordinator's Run, and its worker_done. */
@@ -249,6 +207,42 @@ export async function coordinatorRunAndTask(): Promise<{ runId: string; taskId: 
   return { runId, taskId: idOf(task.task) }
 }
 
+/** `/clear` as the chat surface runs it: the conversation continues in a new session. */
+export async function clearChat(sessionId: string): Promise<string> {
+  const command = 'clear' as const
+  const cleared = await host.conversationCommand(
+    { callerKey: 'test-surface' },
+    {
+      command,
+      envelope: {
+        sessionId,
+        clientOperationId: operationId(),
+        expectedRuntimeFence: host.deps.store.getRecord(sessionId)!.lease.runtimeFence,
+        payloadFingerprint: computeAgentSessionPayloadFingerprint({
+          method: 'agentSession.conversationCommand',
+          sessionId,
+          fields: { command }
+        })
+      }
+    }
+  )
+  const successor = cleared.ok ? cleared.value.replacementSessionId : undefined
+  if (!successor) {
+    throw new Error(`clear failed: ${JSON.stringify(cleared)}`)
+  }
+  // The surface swaps the tab over to the session that continues the chat.
+  await host.setSessionTabVisibility(sessionId, false)
+  await host.setSessionTabVisibility(successor, true)
+  return successor
+}
+
+/** A cleared chat's successor runs once the user writes to it; only then can its agent act. */
+export async function startSuccessor(successor: string): Promise<void> {
+  expect(await sendUserMessage(successor, 'hello')).toMatchObject({ ok: true })
+  await vi.waitFor(() => expect(connectionFor(successor).turns).toHaveLength(1), WAIT)
+  await settleTurn(successor, 0)
+}
+
 beforeEach(async () => {
   resetProviderFaults()
   root = await mkdtemp(join(tmpdir(), 'orca-structured-coordinator-mail-'))
@@ -266,15 +260,14 @@ beforeEach(async () => {
     resolveEnvironment: async () => ({ PATH: '/usr/bin' }),
     openCodexConnection: codex.openConnection,
     readProcessStartTime: async () => 1_700_000_000_000,
-    // The same calls the runtime's own host install makes.
-    onSessionStatusChanged: (summary) => runtime.onStructuredSessionStatusForMail(summary),
-    onAgentCardDeleted: (sessionId) => runtime.notifyStructuredSessionJournalActivity(sessionId)
+    // The same call the runtime's own host install makes on every status change.
+    onSessionStatusChanged: (summary) => runtime.onStructuredSessionStatusForMail(summary)
   })
   dispatcher = new RpcDispatcher({ runtime, methods: ORCHESTRATION_METHODS })
 })
 
 /** The runtime over the shared database; a second call is what an Orca restart leaves behind. */
-function startRuntime(): OrcaRuntimeService {
+export function startRuntime(): OrcaRuntimeService {
   const started = new OrcaRuntimeService()
   started.setOrchestrationDb(db)
   vi.spyOn(started, 'ensureStructuredAgentSessionHost').mockResolvedValue()
@@ -296,25 +289,15 @@ afterEach(async () => {
   }
 })
 
-// Mail is sent on asynchronous edges; the default 1s wait is too tight under a loaded parallel run.
+// Pointers are sent on asynchronous edges; the default 1s wait is too tight under a loaded parallel run.
 export const WAIT = { timeout: 10_000 }
 
-/** A turn carrying a worker's result, as `finishWorker` sends it. */
-export const WORKER_RESULT = /^\[message from term_worker(_2)?\]\nType: worker_done\b/
+export const POINTER =
+  /You have 1 orchestration message\. Run `orca(-dev)? orchestration check --run run_\w+`\./
 
-/** The turn the structured lane sends for these messages, byte for byte; all of the mailbox's when
- *  none are named. */
-export function mailTurn(mailboxHandle: string, ...messageIds: string[]): string {
-  const messages = db.getAllMessages(mailboxHandle, 100).toReversed()
-  return messages
-    .filter((message) => messageIds.length === 0 || messageIds.includes(message.id))
-    .map((message) => formatMessageTurn(message, localOrchestrationCliCommand()))
-    .join('\n\n')
-}
-
-/** What `check` would still return for the mailbox: mail no turn delivered and no check read. */
-export function unreadMail(mailboxHandle: string): string[] {
-  return db.getUnreadMessages(mailboxHandle).map((message) => message.id)
+/** The text the PTY lane types into a local terminal for this mailbox, byte for byte. */
+export function ptyPointer(mailboxHandle: string): string {
+  return formatMessagePointer(1, mailboxHandle, localOrchestrationCliCommand()).trim()
 }
 
 /** The text of a turn the fake provider received. */
@@ -325,8 +308,19 @@ export function turnText(turn: { text: string }): string {
     : ''
 }
 
-/** What an Orca restart leaves behind: a fresh runtime and dispatcher over the same database. */
+/** What an Orca restart leaves behind: a new runtime over the same database and host. */
 export function restartRuntime(): void {
   runtime = startRuntime()
   dispatcher = new RpcDispatcher({ runtime, methods: ORCHESTRATION_METHODS })
+}
+
+/** The text of every card the chat lists in its queue, as the person sees it. */
+export async function queuedCardTexts(sessionId = COORDINATOR): Promise<string[]> {
+  const page = await host.history({ sessionId, direction: 'tail' })
+  if (!page.ok) {
+    throw new Error('history refused')
+  }
+  return (page.page.queuedMessages ?? []).flatMap((card) =>
+    card.body.blocks.map((block) => (block.type === 'text' ? block.text : ''))
+  )
 }

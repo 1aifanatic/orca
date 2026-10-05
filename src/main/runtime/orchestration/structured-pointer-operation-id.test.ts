@@ -21,13 +21,15 @@ function resolveId(
 ): {
   operationId: string
 } {
-  return {
-    operationId: resolveStructuredPointerOperation({
-      ...args,
-      submissions: args.submissions ?? [],
-      sentByThisProcess: args.db.getStructuredPointerOperation(args.mailboxHandle)?.operation_id
-    })
+  const resolved = resolveStructuredPointerOperation({
+    ...args,
+    submissions: args.submissions ?? [],
+    sentByThisProcess: args.db.getStructuredPointerOperation(args.mailboxHandle)?.operation_id
+  })
+  if (resolved.kind !== 'send') {
+    throw new Error(`expected a send, got ${resolved.kind}`)
   }
+  return resolved
 }
 
 function fakeDb() {
@@ -227,6 +229,11 @@ describe('what a pointer attempt does with its operation row', () => {
     expect(decide([])).toBe('reuse')
     // A turn that ran before the row was minted is no news.
     expect(decide([userTurn('accepted', 1_500)])).toBe('reuse')
+  })
+
+  it('stamps a send that ran, and parks one still in flight', () => {
+    expect(decide([sent('accepted')])).toBe('stamp')
+    expect(decide([sent('pending')])).toBe('park')
   })
 
   it.each([

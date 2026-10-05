@@ -136,8 +136,6 @@ export type StructuredAgentSessionHostDeps = {
     summary: AgentSessionStatusSummary,
     options: { replay: boolean }
   ) => void
-  /** A person deleted an agent's card: its sender records that before the row can be pruned. */
-  onAgentCardDeleted?: (sessionId: string) => void
   /** The agent-status store every held session's projection is written to and, on close,
    *  removed from. Both production hosts pass one — the desktop and headless `orcad`; absent,
    *  every reader of that store simply lists no structured session. */
