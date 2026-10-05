@@ -38,6 +38,8 @@ import { useStructuredAgentSessionQueuedMessages } from './use-structured-agent-
 import { outboxOutsideQueuedCards } from './structured-agent-session-queued-cards'
 import { structuredAgentSessionStartFailureFacts } from './structured-agent-session-delivery-notices'
 import { hostStatesTurnScopes } from '../../../../shared/native-chat-turn-membership'
+import { withNativeChatCutTurnNotices } from '../../../../shared/native-chat-cut-turn-notice'
+import { TUI_AGENT_DISPLAY_NAMES } from '../../../../shared/tui-agent-display-names'
 
 export type { StructuredPromptItem } from './structured-agent-session-message-projection'
 
@@ -120,6 +122,7 @@ export function useStructuredAgentSession(args: {
     target,
     fence: transportState.fence,
     submissions: transportState.submissions,
+    journalItems: transportState.journalItems,
     composerScopeKey,
     queueDelivery: { capability: queueCapability, enabled: queueFollowUps },
     queuedMessageIds
@@ -163,10 +166,19 @@ export function useStructuredAgentSession(args: {
       }),
     [isWorking, outbox, queueCapability, queueFollowUps, queuedMessageIds]
   )
+  // What the transcript reads: the journal plus the one notice a cut turn with no row gets.
+  const transcriptItems = useMemo(
+    () =>
+      withNativeChatCutTurnNotices(transportState.journalItems, {
+        agentName: TUI_AGENT_DISPLAY_NAMES[agent === 'codex' ? 'codex' : 'claude']
+      }),
+    [agent, transportState.journalItems]
+  )
   const messages = useStructuredAgentSessionMessages(
-    transportState.journalItems,
+    transcriptItems,
     transcriptOutbox,
-    transportState.submissions
+    transportState.submissions,
+    queuedMessageIds
   )
   const queuedController = useStructuredAgentSessionQueuedMessages({
     enabled: queueCapable && transportState.fence !== null,
@@ -198,7 +210,7 @@ export function useStructuredAgentSession(args: {
             { command }
           )
       }),
-    journalItems: transportState.journalItems,
+    journalItems: transcriptItems,
     subagentRoster: transportState.subagentRoster,
     messages,
     status: transportEnabled ? state.status : 'ready',
@@ -216,6 +228,8 @@ export function useStructuredAgentSession(args: {
     failedHere: outboxController.failedHere,
     /** The journal's rows for sent messages, which carry a rejected message's whole fact. */
     submissions: transportState.submissions,
+    /** The host's queued cards, which hold their own rejected hand-offs. */
+    queuedMessageIds,
     // A message typed during a command queues behind it on the host.
     send: (...input: Parameters<typeof outboxController.send>) =>
       // Legacy: an older host refuses sends while a command runs; removable once those hosts age out.
