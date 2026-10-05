@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
@@ -64,7 +65,7 @@ function adapter(): StructuredAgentSessionAdapter {
           mintedAtFence: input.fence,
           observedAt: HOST_TEST_NOW,
           origin: acquires === 1 ? 'created' : 'resumed',
-          handle: { provider: 'codex', threadId: THREAD }
+          handle: codexProviderHandle(THREAD)
         }
       }
     },
@@ -234,5 +235,27 @@ describe('a rewind in doubt while its agent keeps running', () => {
     })
     expect(store.getRecord(SESSION)?.rewind?.phase).toBe('completed')
     await vi.waitFor(() => expect(dispatch).toHaveBeenCalledOnce())
+  })
+
+  it('leaves /clear its own settled refusal: nothing ran, and it mints a fresh id per attempt', async () => {
+    await rewindInDoubtWithLiveChild()
+    recoverRewind.mockResolvedValue({ ok: false, reason: 'outcome-unknown' })
+    const result = await host.conversationCommand(caller, {
+      command: 'clear',
+      envelope: {
+        sessionId: SESSION,
+        clientOperationId: hostTestOperationId(),
+        expectedRuntimeFence: fence(),
+        payloadFingerprint: computeAgentSessionPayloadFingerprint({
+          method: 'agentSession.conversationCommand',
+          sessionId: SESSION,
+          fields: { command: 'clear' }
+        })
+      }
+    })
+    expect(result).toMatchObject({
+      ok: false,
+      refusal: { code: 'agent_session_operation_invalid' }
+    })
   })
 })

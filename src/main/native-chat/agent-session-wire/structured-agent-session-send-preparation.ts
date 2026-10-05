@@ -176,14 +176,16 @@ async function recoverRewindOnLiveChild(
  *  the send here, before the ledger records it, so a Retry of the same id is decided afresh. A
  *  resend of a recorded id needs only the conversation, its answer's source: it starts nothing,
  *  and an open that fails leaves that answer unknown, never refused. `clearInFlight`: a /clear was
- *  running when this send arrived, which refuses only its first run. */
+ *  running when this send arrived, which refuses only its first run. `refusesInRun`: the caller's
+ *  own run refuses a rewind in doubt with a settled answer and mints a fresh id per attempt (/clear),
+ *  so preparation leaves that refusal to it. */
 export function sendPreparation(
   context: Pick<
     StructuredAgentSessionMutationContext,
     'openConversation' | 'ensureAgent' | 'deps' | 'sessions' | 'publish' | 'now'
   >,
   envelope: AgentSessionMutationEnvelope,
-  arrival: { clearInFlight?: boolean } = {}
+  arrival: { clearInFlight?: boolean; refusesInRun?: boolean } = {}
 ): (ledger: 'admit' | 'replay') => Promise<AgentSessionMutationSessionPreparation> {
   return async (ledger) => {
     if (ledger === 'admit' && arrival.clearInFlight) {
@@ -211,7 +213,7 @@ export function sendPreparation(
     if (running) {
       await recoverRewindOnLiveChild(context, sessionId)
     }
-    return rewindInDoubt(context.deps.store.getRecord(sessionId))
+    return !arrival.refusesInRun && rewindInDoubt(context.deps.store.getRecord(sessionId))
       ? rewindRefusal('outcome-unknown')
       : ensured
   }
