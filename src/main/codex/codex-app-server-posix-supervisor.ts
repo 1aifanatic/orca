@@ -1,4 +1,5 @@
 import type { CodexAppServerLaunch } from './codex-app-server-connection'
+import { waitForProcessExitUntil } from './codex-process-exit-deadline'
 
 /** Time the provider gets to exit on its own after its stdin ends, before SIGTERM. */
 export const PROVIDER_STDIN_END_GRACE_MS = 1_000
@@ -23,6 +24,8 @@ export const PROVIDER_SUPERVISOR_MAX_STOP_MS =
 export const POSIX_PROVIDER_SUPERVISOR_SCRIPT = `
 const { spawn } = require('node:child_process')
 const spec = JSON.parse(Buffer.from(process.env.ORCA_PROVIDER_SUPERVISOR_SPEC, 'base64').toString())
+// The provider's own argv, after this script's '--'.
+const [providerCommand, ...providerArgs] = process.argv.slice(1)
 // A detached supervisor is reparented when its owner exits. The new parent may
 // be PID 1 or a platform subreaper, so any other parent means no live owner.
 const ownerGone = () => process.ppid !== spec.ownerPid
@@ -33,7 +36,7 @@ if (ownerGone()) process.exit(1)
 const childEnv = { ...process.env }
 delete childEnv.ORCA_PROVIDER_SUPERVISOR_SPEC
 delete childEnv.ELECTRON_RUN_AS_NODE
-const child = spawn(spec.command, spec.args, {
+const child = spawn(providerCommand, providerArgs, {
   cwd: spec.cwd,
   env: childEnv,
   stdio: ['pipe', 'pipe', 'pipe'],
@@ -146,9 +149,52 @@ child.once('exit', (code, signal) => {
  */
 export type ProviderSupervisorLifetime = 'session' | 'one-shot'
 
-/** The supervisor could not start its provider: it relays Node's spawn ENOENT and exits 127. */
-export function isSupervisedProviderNotFound(code: number | null, stderr: string): boolean {
-  return code === 127 && /^spawn .+ ENOENT$/.test(stderr.trim())
+/**
+ * The error a direct spawn would have emitted, from a supervisor that could not start its provider
+ * (it relays Node's spawn error line and exits 127); null for any other exit.
+ */
+export function supervisedProviderSpawnError(
+  code: number | null,
+  stderr: string
+): NodeJS.ErrnoException | null {
+  const line = stderr.trim()
+  const errno = code === 127 ? /^spawn .+ (E[A-Z0-9]+)$/.exec(line)?.[1] : undefined
+  return errno ? Object.assign(new Error(line), { code: errno }) : null
+}
+
+export type ProviderStopInput = {
+  /** Asks the child to stop: a SIGTERM, or the stdin end that closes a session. */
+  request: () => void
+  exitPromise: Promise<void>
+  exited: () => boolean
+  /** Runs only if the child outlives its wait. */
+  force: () => Promise<unknown>
+  /** The child is the supervisor; a direct (Windows) child is waited on for `directWaitMs`. */
+  supervised: boolean
+  directWaitMs?: number
+  slackMs?: number
+}
+
+/**
+ * Stops a provider child, forcing it only after its wait. A supervisor gets its full stop time:
+ * forcing it any sooner kills it mid-ladder and orphans the provider group. True when it forced.
+ */
+export async function stopSupervisedProvider(input: ProviderStopInput): Promise<boolean> {
+  input.request()
+  if (input.exited()) {
+    return false
+  }
+  await waitForProcessExitUntil(
+    input.exitPromise,
+    input.supervised
+      ? PROVIDER_SUPERVISOR_MAX_STOP_MS + (input.slackMs ?? 0)
+      : (input.directWaitMs ?? 0)
+  )
+  if (input.exited()) {
+    return false
+  }
+  await input.force()
+  return true
 }
 
 export type ProviderSupervisorOptions = {
@@ -180,10 +226,9 @@ export function supervisedPosixLaunch(
 ): { command: string; args: string[]; env: NodeJS.ProcessEnv } {
   assertGraceWithin('stdin-end', stdinEndGraceMs, PROVIDER_STDIN_END_GRACE_MS)
   assertGraceWithin('SIGTERM', sigtermGraceMs, PROVIDER_SIGTERM_GRACE_MS)
+  // Only small fields ride in the env: Linux caps one env string at 128 KiB, and argv prompts near it.
   const supervisorSpec = Buffer.from(
     JSON.stringify({
-      command: launch.command,
-      args: launch.args,
       cwd,
       ownerPid,
       lifetime,
@@ -193,7 +238,7 @@ export function supervisedPosixLaunch(
   ).toString('base64')
   return {
     command: process.execPath,
-    args: ['-e', POSIX_PROVIDER_SUPERVISOR_SCRIPT],
+    args: ['-e', POSIX_PROVIDER_SUPERVISOR_SCRIPT, '--', launch.command, ...launch.args],
     // Electron's executable needs Node mode for the inline supervisor. The
     // marker is removed above so providers never inherit Electron semantics.
     env: {

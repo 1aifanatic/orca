@@ -58,18 +58,13 @@ describe('spawnSourceControlAgent', () => {
     expect(child.supervised).toBe(true)
     expect(spec).toMatchObject({
       program: process.execPath,
-      args: ['-e', POSIX_PROVIDER_SUPERVISOR_SCRIPT],
+      args: ['-e', POSIX_PROVIDER_SUPERVISOR_SCRIPT, '--', '/opt/agent/claude', '-p', '--verbose'],
       cwd,
       detached: true,
       stdio: ['pipe', 'pipe', 'pipe']
     })
     expect(spec.env).toMatchObject({ PATH: '/usr/bin', AGENT_TOKEN: 'kept' })
-    expect(decodedSupervisorSpec(spec)).toMatchObject({
-      command: '/opt/agent/claude',
-      args: ['-p', '--verbose'],
-      cwd,
-      lifetime: 'one-shot'
-    })
+    expect(decodedSupervisorSpec(spec)).toMatchObject({ cwd, lifetime: 'one-shot' })
   })
 
   it('spawns a Windows agent directly, without a supervisor', () => {
@@ -103,6 +98,22 @@ describe.runIf(process.platform !== 'win32')('supervised agent processes', () =>
     ).resolves.toEqual({
       success: false,
       error: `${missing} not found on PATH. Install ${missing} to use AI commit messages.`
+    })
+  })
+
+  it('reports an agent that cannot be executed as failing to start, as a direct spawn does', async () => {
+    const agent = join(folder, 'not-executable-agent')
+    writeFileSync(agent, '#!/bin/sh\necho never\n', { mode: 0o644 })
+
+    await expect(
+      generateCommitMessageFromContext(
+        { branch: 'main', stagedSummary: 'M README.md', stagedPatch: '+test' },
+        { agentId: 'custom', model: '', customAgentCommand: `"${agent}"` },
+        { kind: 'local', cwd: folder }
+      )
+    ).resolves.toEqual({
+      success: false,
+      error: `${agent} failed to start. Check the agent command in Settings and try again.`
     })
   })
 

@@ -1,10 +1,9 @@
 import type { CommitMessagePlan } from '../../shared/commit-message-plan'
 import {
-  isSupervisedProviderNotFound,
-  PROVIDER_SUPERVISOR_MAX_STOP_MS
+  stopSupervisedProvider,
+  supervisedProviderSpawnError
 } from '../codex/codex-app-server-posix-supervisor'
 import { terminateCodexAppServerProcessTree } from '../codex/codex-app-server-process-teardown'
-import { waitForProcessExitUntil } from '../codex/codex-process-exit-deadline'
 import { UnsafeWindowsBatchArgumentsError } from '../win32-utils'
 import { terminateWindowsProcessTree } from '../windows-process-tree-kill'
 import {
@@ -53,22 +52,24 @@ export async function killSourceControlAgentProcess(
   }
 }
 
-// The supervisor stops the agent's group itself; a SIGKILL any sooner orphans that group.
 async function stopSupervisedAgent(child: SpawnedSourceControlAgentProcess): Promise<void> {
   const exited = (): boolean => child.exitCode !== null || child.signalCode !== null
   if (exited()) {
     return
   }
-  const exit = new Promise<void>((resolve) => child.once('exit', () => resolve()))
-  try {
-    child.kill('SIGTERM')
-  } catch {
-    // The process may exit between the exit check and kill.
-  }
-  await waitForProcessExitUntil(exit, PROVIDER_SUPERVISOR_MAX_STOP_MS)
-  if (!exited()) {
-    await terminateCodexAppServerProcessTree(child)
-  }
+  await stopSupervisedProvider({
+    request: () => {
+      try {
+        child.kill('SIGTERM')
+      } catch {
+        // The process may exit between the exit check and kill.
+      }
+    },
+    exitPromise: new Promise<void>((resolve) => child.once('exit', () => resolve())),
+    exited,
+    force: () => terminateCodexAppServerProcessTree(child),
+    supervised: true
+  })
 }
 
 // Why: Windows caps the CreateProcess command line at 32,767 UTF-16 code units,
@@ -221,13 +222,15 @@ export function runLocalSourceControlPlan(input: {
       }
       stderr += chunk.toString('utf-8')
     }
-    const notFoundError = `${plan.binary} not found on PATH. Install ${plan.label} to use AI commit messages.`
     const onError = (error: Error): void => {
       if (!child.pid) {
         markProcessClosed()
       }
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        finalize({ success: false, error: notFoundError })
+        finalize({
+          success: false,
+          error: `${plan.binary} not found on PATH. Install ${plan.label} to use AI commit messages.`
+        })
         return
       }
       console.error('[commit-message] Local generator failed after spawn:', error)
@@ -249,8 +252,9 @@ export function runLocalSourceControlPlan(input: {
         })
         return
       }
-      if (isSupervisedProviderNotFound(code, stderr)) {
-        finalize({ success: false, error: notFoundError })
+      const spawnError = supervisedProviderSpawnError(code, stderr)
+      if (spawnError) {
+        onError(spawnError)
         return
       }
       finalize(

@@ -1,12 +1,14 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { CodexAppServerLaunch } from './codex-app-server-connection'
 import {
   createProviderSpawnSpec,
-  isSupervisedProviderNotFound,
   POSIX_PROVIDER_SUPERVISOR_SCRIPT,
   PROVIDER_SIGTERM_GRACE_MS,
   PROVIDER_STDIN_END_GRACE_MS,
-  supervisedPosixLaunch
+  PROVIDER_SUPERVISOR_MAX_STOP_MS,
+  stopSupervisedProvider,
+  supervisedPosixLaunch,
+  supervisedProviderSpawnError
 } from './codex-app-server-posix-supervisor'
 
 const launch: CodexAppServerLaunch = {
@@ -22,14 +24,19 @@ describe('structured provider supervision', () => {
     const spec = supervisedPosixLaunch(launch, childEnv)
 
     expect(spec.command).toBe(process.execPath)
-    expect(spec.args).toEqual(['-e', POSIX_PROVIDER_SUPERVISOR_SCRIPT])
+    expect(spec.args).toEqual([
+      '-e',
+      POSIX_PROVIDER_SUPERVISOR_SCRIPT,
+      '--',
+      '/opt/codex',
+      'app-server',
+      '--flag'
+    ])
     expect(spec.env.PATH).toBe('/bin')
     expect(
       JSON.parse(Buffer.from(spec.env.ORCA_PROVIDER_SUPERVISOR_SPEC!, 'base64').toString())
     ).toEqual(
       expect.objectContaining({
-        command: '/opt/codex',
-        args: ['app-server', '--flag'],
         cwd: '/work/repo',
         ownerPid: process.pid,
         lifetime: 'session',
@@ -59,14 +66,89 @@ describe('structured provider supervision', () => {
     expect(spec).toMatchObject({ program: process.execPath, detached: true, supervised: true })
     expect(
       JSON.parse(Buffer.from(spec.env.ORCA_PROVIDER_SUPERVISOR_SPEC!, 'base64').toString())
-    ).toMatchObject({ command: '/opt/codex', args: ['app-server', '--flag'], lifetime: 'one-shot' })
+    ).toMatchObject({ lifetime: 'one-shot' })
   })
 
-  it('reads only the supervisor own missing-binary exit as not found', () => {
-    expect(isSupervisedProviderNotFound(127, 'spawn /opt/my tools/claude ENOENT\n')).toBe(true)
-    expect(isSupervisedProviderNotFound(1, 'spawn claude ENOENT\n')).toBe(false)
-    expect(isSupervisedProviderNotFound(127, 'sh: claude: command not found\n')).toBe(false)
-    expect(isSupervisedProviderNotFound(127, 'warning\nspawn claude ENOENT\n')).toBe(false)
+  it('keeps every argv and env string of a 120 KiB argv prompt under the Linux 128 KiB cap', () => {
+    const prompt = 'x'.repeat(120 * 1024)
+    const spec = createProviderSpawnSpec(
+      { command: '/opt/agent', args: ['--print', prompt] },
+      { PATH: '/bin' },
+      'linux',
+      { lifetime: 'one-shot' }
+    )
+    const strings = [
+      ...spec.args,
+      ...Object.entries(spec.env).map(([key, value]) => `${key}=${value}`)
+    ]
+
+    expect(spec.args.slice(-2)).toEqual(['--print', prompt])
+    for (const value of strings) {
+      expect(Buffer.byteLength(value)).toBeLessThan(128 * 1024)
+    }
+  })
+
+  it.each([
+    ['ENOENT', 127, 'spawn /opt/my tools/claude ENOENT\n'],
+    ['EACCES', 127, 'spawn /opt/claude EACCES\n']
+  ])('reads the supervisor own %s spawn failure as that spawn error', (errno, code, stderr) => {
+    expect(supervisedProviderSpawnError(code, stderr)).toMatchObject({
+      code: errno,
+      message: stderr.trim()
+    })
+  })
+
+  it.each([
+    [1, 'spawn claude ENOENT\n'],
+    [127, 'sh: claude: command not found\n'],
+    [127, 'warning\nspawn claude ENOENT\n'],
+    [127, 'spawn claude ENOENT: no such file\n']
+  ])('reads no spawn failure from exit %s with %j', (code, stderr) => {
+    expect(supervisedProviderSpawnError(code, stderr)).toBeNull()
+  })
+
+  it.each([
+    [true, PROVIDER_SUPERVISOR_MAX_STOP_MS + 500],
+    [false, 1_500]
+  ])('forces a provider (supervised %s) only after %s ms', async (supervised, waitMs) => {
+    vi.useFakeTimers()
+    try {
+      const request = vi.fn()
+      const force = vi.fn(async () => {})
+      const stopped = stopSupervisedProvider({
+        request,
+        exitPromise: new Promise(() => {}),
+        exited: () => false,
+        force,
+        supervised,
+        directWaitMs: 1_500,
+        slackMs: 500
+      })
+      expect(request).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(waitMs - 1)
+      expect(force).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(1)
+      await expect(stopped).resolves.toBe(true)
+      expect(force).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('never forces a provider that exits within its wait', async () => {
+    let exited = false
+    let markExited!: () => void
+    const force = vi.fn(async () => {})
+    const stopped = stopSupervisedProvider({
+      request: () => setTimeout(() => ((exited = true), markExited()), 10),
+      exitPromise: new Promise((resolve) => (markExited = resolve)),
+      exited: () => exited,
+      force,
+      supervised: true
+    })
+
+    await expect(stopped).resolves.toBe(false)
+    expect(force).not.toHaveBeenCalled()
   })
 
   it('refuses a grace longer than recovery waits before SIGKILL', () => {

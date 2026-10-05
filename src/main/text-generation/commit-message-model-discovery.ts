@@ -4,7 +4,7 @@ import type { CommitMessagePlan } from '../../shared/commit-message-plan'
 import { getAgentModelProbeSpec } from '../../shared/agent-model-probe-spec'
 import type { TuiAgent } from '../../shared/tui-agent'
 import { resolveCodexHomeProcessLockKeyForSpawnEnv } from '../codex-cli/codex-home-process-lock'
-import { isSupervisedProviderNotFound } from '../codex/codex-app-server-posix-supervisor'
+import { supervisedProviderSpawnError } from '../codex/codex-app-server-posix-supervisor'
 import { isSshRequestOutcomeUnverifiable } from '../ssh/ssh-channel-multiplexer'
 import { WINDOWS_BATCH_UNSAFE_ARGUMENTS_ERROR } from '../win32-utils'
 import {
@@ -140,7 +140,6 @@ export async function discoverModelsLocal(input: {
       }
       const onStdoutData = (chunk: Buffer): void => onData(chunk, (text) => (stdout += text))
       const onStderrData = (chunk: Buffer): void => onData(chunk, (text) => (stderr += text))
-      const notFoundError = `${spec.modelDiscovery?.binary ?? spec.binary} not found on PATH. Install ${spec.label} to discover models.`
       const onError = (error: Error): void => {
         if (!child.pid) {
           markProcessClosed()
@@ -149,18 +148,21 @@ export async function discoverModelsLocal(input: {
           success: false,
           error:
             (error as NodeJS.ErrnoException).code === 'ENOENT'
-              ? notFoundError
+              ? `${spec.modelDiscovery?.binary ?? spec.binary} not found on PATH. Install ${spec.label} to discover models.`
               : `${spec.label} model discovery failed to start. Check the agent CLI configuration and try again.`
         })
       }
       const onClose = (code: number | null): void => {
         markClosedAfterTermination()
+        const spawnError = outputLimitExceeded ? null : supervisedProviderSpawnError(code, stderr)
+        if (spawnError) {
+          onError(spawnError)
+          return
+        }
         finish(
           outputLimitExceeded
             ? { success: false, error: `${spec.label} returned too much model data.` }
-            : isSupervisedProviderNotFound(code, stderr)
-              ? { success: false, error: notFoundError }
-              : finalizeModelDiscoveryOutput(spec, stdout, stderr, code)
+            : finalizeModelDiscoveryOutput(spec, stdout, stderr, code)
         )
       }
       child.stdout?.on('data', onStdoutData)

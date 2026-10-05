@@ -12,7 +12,6 @@ import {
 import {
   createChildTerminationExpectation,
   createMockDiscoveryChild,
-  type MockDiscoveryChild,
   withPlatform
 } from './commit-message-text-generation-test-harness'
 
@@ -40,8 +39,8 @@ vi.mock('child_process', async (importOriginal) => {
 
 const spawnMock = vi.mocked(spawn)
 
-function enoent(): Error {
-  return Object.assign(new Error('spawn claude ENOENT'), { code: 'ENOENT' })
+function spawnError(errno: string): Error {
+  return Object.assign(new Error(`spawn claude ${errno}`), { code: errno })
 }
 
 const expectChildTerminated = createChildTerminationExpectation(terminateWindowsProcessTreeMock)
@@ -345,26 +344,27 @@ describe('discoverCommitMessageModelsLocal', () => {
     })
   })
 
+  const notFound = 'claude not found on PATH. Install Claude to discover models.'
+  const failedToStart =
+    'Claude model discovery failed to start. Check the agent CLI configuration and try again.'
   it.each([
-    ['a spawn error', (child: MockDiscoveryChild) => child.emit('error', enoent())],
-    [
-      'the supervisor exit for a missing binary',
-      (child: MockDiscoveryChild) => {
-        child.stderr.emit('data', Buffer.from('spawn claude ENOENT\n'))
-        child.emit('close', 127)
-      }
-    ]
-  ])('reports a missing CLI as not found on PATH from %s', async (_, fail) => {
+    ['a spawn error', 'ENOENT', notFound],
+    ['the supervisor exit for a spawn error', 'ENOENT', notFound],
+    ['a spawn error', 'EACCES', failedToStart],
+    ['the supervisor exit for a spawn error', 'EACCES', failedToStart]
+  ])('reports %s %s as a direct spawn does', async (source, errno, error) => {
     const child = createMockDiscoveryChild()
     spawnMock.mockReturnValue(child as never)
 
     const pending = discoverCommitMessageModelsLocal('claude', undefined)
-    fail(child)
+    if (source === 'a spawn error') {
+      child.emit('error', spawnError(errno))
+    } else {
+      child.stderr.emit('data', Buffer.from(`spawn claude ${errno}\n`))
+      child.emit('close', 127)
+    }
 
-    await expect(pending).resolves.toEqual({
-      success: false,
-      error: 'claude not found on PATH. Install Claude to discover models.'
-    })
+    await expect(pending).resolves.toEqual({ success: false, error })
   })
 
   it('settles and detaches model discovery when timeout kill is ignored', async () => {

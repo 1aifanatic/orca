@@ -110,15 +110,9 @@ async function open(
 }
 
 function launchedArgv(spec: ProcessSpec | undefined): string[] {
-  const supervised = spec?.env?.ORCA_PROVIDER_SUPERVISOR_SPEC
-  if (!supervised) {
-    return [spec?.program ?? '', ...(spec?.args ?? [])]
-  }
-  const launch: unknown = JSON.parse(Buffer.from(supervised, 'base64').toString())
-  if (!launch || typeof launch !== 'object' || !('command' in launch) || !('args' in launch)) {
-    return []
-  }
-  return [String(launch.command), ...(Array.isArray(launch.args) ? launch.args.map(String) : [])]
+  const argv = [spec?.program ?? '', ...(spec?.args ?? [])]
+  // A supervised launch carries the provider's argv after the supervisor script's '--'.
+  return spec?.env?.ORCA_PROVIDER_SUPERVISOR_SPEC ? argv.slice(argv.indexOf('--') + 1) : argv
 }
 
 function childEnv(): Record<string, string | undefined> {

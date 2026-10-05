@@ -2,7 +2,7 @@ import { spawnProcess } from '../../shared/child-process/run-process'
 import { RetryableProcessExitProof } from '../../shared/child-process/retryable-process-exit-proof'
 import {
   createProviderSpawnSpec,
-  PROVIDER_SUPERVISOR_MAX_STOP_MS
+  stopSupervisedProvider
 } from './codex-app-server-posix-supervisor'
 import { buildCodexAppServerExitError } from './codex-app-server-exit-error'
 import { initializeCodexAppServerConnection } from './codex-app-server-handshake'
@@ -245,25 +245,26 @@ export async function openCodexAppServerConnection(
     }
     closing = true
     return exitProof.run(async () => {
-      try {
-        child.stdin.end()
-      } catch {
-        // Already destroyed; the reap below still runs.
-      }
-      if (!exited) {
-        // The POSIX supervisor stops its own provider group; forcing it any sooner can orphan it.
-        await waitForProcessExitUntil(
-          exitPromise,
-          process.platform === 'win32' ? GRACEFUL_EXIT_MS : PROVIDER_SUPERVISOR_MAX_STOP_MS
-        )
-        if (!exited) {
+      await stopSupervisedProvider({
+        request: () => {
+          try {
+            child.stdin.end()
+          } catch {
+            // Already destroyed; the reap below still runs.
+          }
+        },
+        exitPromise,
+        exited: () => exited,
+        force: async () => {
           const treeExited = await terminateProcessTree()
           await waitForProcessExitUntil(exitPromise, FORCED_EXIT_MS)
           // The lease follows the root, which is gone: a child left behind is reported by the
           // owner, and blocks nothing.
           processTreeUnproven = !treeExited && exitObserved
-        }
-      }
+        },
+        supervised: spawnSpec.supervised,
+        directWaitMs: GRACEFUL_EXIT_MS
+      })
       dispatcher.failPending(new Error('codex app-server connection closed'))
       return exitObserved
     })

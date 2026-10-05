@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  POSIX_PROVIDER_SUPERVISOR_SCRIPT,
   PROVIDER_SIGTERM_GRACE_MS,
   PROVIDER_STDIN_END_GRACE_MS,
   PROVIDER_SUPERVISOR_MAX_STOP_MS,
@@ -74,7 +73,7 @@ const OWNER = String.raw`
   if (quitsCleanly) process.on('SIGUSR2', () => process.exit(0))
   const spec = JSON.parse(Buffer.from(process.env.ORCA_PROVIDER_SUPERVISOR_SPEC, 'base64').toString())
   spec.ownerPid = process.pid
-  const supervisor = spawn(process.execPath, ['-e', process.env.ORCA_TEST_SUPERVISOR_SCRIPT], {
+  const supervisor = spawn(process.execPath, JSON.parse(process.env.ORCA_TEST_SUPERVISOR_ARGS), {
     env: { ...process.env, ORCA_PROVIDER_SUPERVISOR_SPEC: Buffer.from(JSON.stringify(spec)).toString('base64') },
     stdio: ['pipe', 'pipe', 'ignore'],
     detached: true
@@ -192,7 +191,7 @@ async function launchUnderOwner(
     options
   )
   const owner = spawn(process.execPath, ['-e', OWNER], {
-    env: { ...launch.env, ORCA_TEST_SUPERVISOR_SCRIPT: POSIX_PROVIDER_SUPERVISOR_SCRIPT },
+    env: { ...launch.env, ORCA_TEST_SUPERVISOR_ARGS: JSON.stringify(launch.args) },
     stdio: ['ignore', 'pipe', 'ignore']
   })
   recordedPids.add(owner.pid!)
@@ -431,6 +430,24 @@ describe.runIf(process.platform !== 'win32')('POSIX provider supervisor processe
       expect(Date.now() - signalledAt).toBeLessThan(PROVIDER_SIGTERM_GRACE_MS)
       expect(alive(provider)).toBe(false)
       expect(alive(grandchild)).toBe(false)
+    })
+
+    it('hands the provider a near-cap argv prompt intact', async () => {
+      const prompt = 'x'.repeat(110 * 1024)
+      const { supervisor, exit } = launchSupervisor(
+        { lifetime: 'one-shot' },
+        {},
+        {
+          command: process.execPath,
+          args: ['-e', 'process.stdout.write(String(process.argv[1].length))', prompt]
+        }
+      )
+      let stdout = ''
+      supervisor.stdout!.on('data', (chunk: Buffer) => (stdout += chunk.toString()))
+      supervisor.stdin!.end()
+
+      await expect(exit).resolves.toEqual({ code: 0, signal: null })
+      expect(stdout).toBe(String(prompt.length))
     })
 
     it('relays all of the provider output to a slow owner before exiting', async () => {

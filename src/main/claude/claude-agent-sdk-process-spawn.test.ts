@@ -87,14 +87,18 @@ describe('claude agent SDK process spawn', () => {
       expect(spawn.pid).toBe(4321)
       expect(spec.program).toBe(globalThis.process.execPath)
       expect(spec.args?.[0]).toBe('-e')
+      expect(spec.args?.slice(2)).toEqual([
+        '--',
+        '/usr/local/bin/claude',
+        '--output-format',
+        'stream-json'
+      ])
       expect(spec.detached).toBe(true)
       expect(spec.cwd).toBe('/work/repo')
       const supervisorSpec = JSON.parse(
         Buffer.from(String(spec.env?.ORCA_PROVIDER_SUPERVISOR_SPEC), 'base64').toString()
       )
       expect(supervisorSpec).toMatchObject({
-        command: '/usr/local/bin/claude',
-        args: ['--output-format', 'stream-json'],
         cwd: '/work/repo',
         ownerPid: globalThis.process.pid
       })
