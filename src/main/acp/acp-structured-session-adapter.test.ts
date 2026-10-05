@@ -140,20 +140,6 @@ describe('ACP structured session adapter: turns', () => {
     })
   })
 
-  it('holds a follow-up until the running prompt is answered, then sends it as the next prompt', async () => {
-    const rig = await openAcpAdapterRig()
-    await rig.acquire()
-    await send(rig, 'send-1')
-    const first = await rig.frame('session/prompt')
-    await send(rig, 'send-2')
-    expect(rig.adapter.holdsDispatch(SESSION)).toBe(true)
-    await rig.settle()
-    expect(rig.sent('session/prompt')).toHaveLength(1)
-    rig.child().agent.reply(first, { stopReason: 'end_turn' })
-    const second = await rig.frame('session/prompt', 1)
-    expect(second.params).toMatchObject({ _meta: { promptId: 'prompt:send-2' } })
-  })
-
   it('stops a running turn: open permissions answer cancelled, session/cancel goes out', async () => {
     const rig = await openAcpAdapterRig()
     await rig.acquire()

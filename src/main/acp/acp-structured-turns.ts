@@ -1,8 +1,10 @@
-// The sends of one ACP session. ACP runs one prompt at a time, so a message sent while a turn runs
-// is held here and sent as the next prompt once the running one is answered. Each send is settled
-// exactly once: accepted when the agent's first event for its turn (or its answer) arrives,
-// rejected when the agent refused it or it never left Orca, unknown when the agent died with it or
-// its connection broke before it answered.
+// The sends of one ACP session. ACP runs one prompt at a time, so a message sent while a prompt runs
+// steers: the running prompt is cancelled (the session stays) and the message goes as the next
+// prompt once the agent answers the cancel. A steer waits here until then; one behind it cancels it
+// in turn, so the last one runs, and a Stop withdraws what waits. Each send is settled exactly once:
+// accepted when the agent's first event for its turn (or its answer) arrives, rejected when the
+// agent refused it or it never left Orca, unknown when the agent died with it or its connection
+// broke before it answered.
 
 import {
   agentSessionFailureFact,
@@ -44,7 +46,7 @@ export function acpPromptBlocks(body: AgentJournalMessageItem): ContentBlock[] |
 type Send = { clientMessageId: string; prompt: ContentBlock[]; requestedAt: number }
 
 export type AcpStructuredTurnsDeps = {
-  runtime: Pick<AcpSessionRuntime, 'prompt'>
+  runtime: Pick<AcpSessionRuntime, 'prompt' | 'cancel'>
   lane: AcpStructuredLane
   agentName: string
   now: () => number
@@ -56,7 +58,8 @@ export type AcpStructuredTurnsDeps = {
 
 export class AcpStructuredTurns {
   private active: Send | null = null
-  private readonly queue: Send[] = []
+  /** Steers waiting for the prompt ahead of them to answer its cancel. */
+  private readonly steers: Send[] = []
   private readonly unsettled = new Set<string>()
   private readonly idleWaiters = new Set<() => void>()
   private ended = false
@@ -65,14 +68,6 @@ export class AcpStructuredTurns {
 
   get running(): boolean {
     return this.active !== null
-  }
-
-  /** A send the agent has neither answered nor started: one held here, or one it has not echoed. */
-  holdsDispatch(): boolean {
-    return (
-      this.queue.length > 0 ||
-      (this.active !== null && this.unsettled.has(this.active.clientMessageId))
-    )
   }
 
   /** Resolves once no prompt of Orca's is running. */
@@ -86,7 +81,8 @@ export class AcpStructuredTurns {
   dispatch(send: Send): void {
     this.unsettled.add(send.clientMessageId)
     if (this.active) {
-      this.queue.push(send)
+      this.steers.push(send)
+      this.cancelForSteer()
       return
     }
     this.start(send)
@@ -102,9 +98,9 @@ export class AcpStructuredTurns {
     }
   }
 
-  /** A Stop: held sends never reach the agent. */
-  withdrawQueued(): boolean {
-    const withdrawn = this.queue.splice(0)
+  /** A Stop: held steers never reach the agent. */
+  withdrawSteers(): boolean {
+    const withdrawn = this.steers.splice(0)
     for (const send of withdrawn) {
       this.reject(send.clientMessageId, agentSessionFailureFact('cancelled'))
     }
@@ -114,7 +110,7 @@ export class AcpStructuredTurns {
   /** The child is gone: held sends never left Orca, and the running one's fate is unknown. */
   end(reason: string): void {
     this.ended = true
-    for (const send of this.queue.splice(0)) {
+    for (const send of this.steers.splice(0)) {
       this.reject(send.clientMessageId, agentSessionFailureFact('providerExited'))
     }
     const active = this.active
@@ -132,7 +128,11 @@ export class AcpStructuredTurns {
     lane.apply(opened.events)
     // The agent echoes this id on every event of the turn, so its rows join the turn Orca opened.
     const meta = { promptId: opened.promptId, requestId: opened.promptId }
-    this.deps.runtime.prompt(send.prompt, meta).then(
+    const answered = this.deps.runtime.prompt(send.prompt, meta)
+    if (this.steers.length > 0) {
+      this.cancelForSteer()
+    }
+    answered.then(
       (result) => {
         if (this.active !== send) {
           return
@@ -171,12 +171,18 @@ export class AcpStructuredTurns {
     if (this.active === send) {
       this.active = null
     }
-    const next = this.ended ? undefined : this.queue.shift()
+    const next = this.ended ? undefined : this.steers.shift()
     if (next) {
       this.start(next)
     } else if (!this.active) {
       this.notifyIdle()
     }
+  }
+
+  /** Answers the agent's open requests cancelled and ends the running prompt. One the agent never
+   *  answers closes the connection past the runtime's bound, which ends the session. */
+  private cancelForSteer(): void {
+    void this.deps.runtime.cancel().catch(() => undefined)
   }
 
   private notifyIdle(): void {

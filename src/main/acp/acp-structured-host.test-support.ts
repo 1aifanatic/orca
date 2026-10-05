@@ -1,13 +1,18 @@
 // The ACP adapter behind the real host, with a scripted Grok, the real record store and an
 // on-disk journal.
 
+import { expect } from 'vitest'
+import { z } from 'zod'
 import type { AgentJournalMessageItem } from '../../shared/agent-session-journal-types'
+import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
 import { agentSessionStoredAgents } from '../../shared/agent-session-stored-agent'
 import { openTestJournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database-test-support'
 import { messageText } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
 import { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
 import { StructuredAgentRegistry } from '../native-chat/agent-session-wire/structured-agent-registry'
 import {
+  CALLER,
+  envelope,
   hostTestState,
   replaceHostTestState
 } from '../native-chat/agent-session-wire/structured-agent-session-host-test-harness'
@@ -18,12 +23,14 @@ import {
 } from '../native-chat/agent-session-wire/structured-agent-session-host-test-data'
 import { AgentSessionRecoveryCapsule } from '../runtime/agent-session-recovery-capsule'
 import { openTestAgentSessionRecordStore } from '../runtime/agent-session-record-store-test-harness'
-import type { AcpScriptedAgent } from './acp-scripted-agent.test-support'
+import type { AcpScriptedAgent, FakeFrame } from './acp-scripted-agent.test-support'
 import {
   GROK,
+  GROK_CONFIG_OPTIONS,
   openAcpAdapterRig,
   PROVIDER_SESSION,
-  replyChunk
+  replyChunk,
+  type FakeAcpChild
 } from './acp-structured-adapter.test-support'
 import { acpStructuredAgentDefinition } from './acp-structured-agent-definitions'
 import type { AcpStructuredLaunch } from './acp-structured-launch-resolution'
@@ -68,12 +75,13 @@ export async function openHostRig(
     agents: agentSessionStoredAgents([{ agent: 'grok' }])
   })
   let generation = 0
-  // As the runtime wires it: every exit the adapter observes reaches the host.
+  // As the runtime wires it: every exit and late send settlement the adapter observes reaches the host.
   const hosted: { host: StructuredAgentSessionHost | null } = { host: null }
   const rig = await openAcpAdapterRig({
     ...options,
     deps: {
       onEvent: (event) => void hosted.host?.handleAdapterEvent(event),
+      onDispatchSettledLate: (settlement) => void hosted.host?.settleLateDispatch(settlement),
       now: () => HOST_TEST_NOW,
       readProcessStartTime: async () => 1_700_000_000_000 + ++generation,
       mintGeneration: () => `generation-${generation}`,
@@ -127,4 +135,53 @@ export async function openHostRig(
 /** Grok's capabilities: it loads and resumes sessions. */
 export const RESUMES = {
   agentCapabilities: { loadSession: true, sessionCapabilities: { resume: {} } }
+}
+
+const promptMeta = z.object({ _meta: z.object({ promptId: z.string() }) })
+export const promptIdOf = (frame: FakeFrame): string =>
+  promptMeta.parse(frame.params)._meta.promptId
+
+export function message(text: string): AgentJournalMessageItem {
+  return { kind: 'message', role: 'user', blocks: [{ type: 'text', text }] }
+}
+
+export async function send(host: StructuredAgentSessionHost, text: string): Promise<string> {
+  const body = message(text)
+  const sent = await host.send(CALLER, { envelope: envelope('agentSession.send', { body }), body })
+  if (!sent.ok) {
+    throw new Error('send refused')
+  }
+  return sent.value.clientMessageId
+}
+
+export function stop(host: StructuredAgentSessionHost, turnId?: string) {
+  return turnId === undefined
+    ? host.cancel(CALLER, { envelope: envelope('agentSession.cancel', {}) })
+    : host.cancel(CALLER, { envelope: envelope('agentSession.cancel', { turnId }), turnId })
+}
+
+export const framesOf = (child: FakeAcpChild, method: string) =>
+  child.agent.frames.filter((frame) => frame.method === method)
+
+/** A new Grok chat the host attached; Grok resumes its session on a later start, counting each. */
+export async function openAttachedHostRig(deps: Partial<AcpStructuredSessionAdapterDeps> = {}) {
+  const count = { resumes: 0 }
+  let resumed = false
+  const rig = await openHostRig({
+    initialize: RESUMES,
+    script: (agent) =>
+      agent.on('session/resume', (frame) => {
+        count.resumes += 1
+        agent.reply(frame, { configOptions: GROK_CONFIG_OPTIONS })
+      }),
+    deps: { resolveLaunch: launch(() => resumed), ...deps }
+  })
+  expect(await rig.host.attach(CALLER, attachParams())).toMatchObject({ ok: true })
+  resumed = true
+  const rows = async () => {
+    await rig.host.flushStreamedEvents(SESSION)
+    return (await rig.host.history({ sessionId: SESSION, direction: 'tail' })).page.items
+  }
+  const turns = async () => (await rows()).flatMap((row) => readAgentJournalTurn(row.body) ?? [])
+  return { ...rig, count, rows, turns }
 }

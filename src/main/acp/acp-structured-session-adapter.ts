@@ -159,7 +159,7 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
     if (input.turnId !== undefined && input.turnId !== liveTurnId) {
       return { cancelled: false, refusal: { turnNotRunning: true } }
     }
-    const withdrew = session.turns.withdrawQueued()
+    const withdrew = session.turns.withdrawSteers()
     if (!session.turns.running && session.lane.openTurnId === null) {
       return withdrew
         ? { cancelled: true }
@@ -227,9 +227,6 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
     this.sessions.get(sessionId)?.restoreSkipped ?? []
 
   readCommands = (sessionId: string) => this.sessions.get(sessionId)?.options.readCommands()
-
-  holdsDispatch = (sessionId: string): boolean =>
-    this.sessions.get(sessionId)?.turns.holdsDispatch() ?? false
 
   // ACP has no way to stop one background task the agent started.
   backgroundTaskStops: NonNullable<StructuredAgentSessionAdapter['backgroundTaskStops']> = (

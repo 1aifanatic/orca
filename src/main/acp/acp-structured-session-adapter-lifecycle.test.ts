@@ -28,17 +28,17 @@ async function journalTurns(rig: AcpAdapterRig) {
 const turnIdOf = (promptId: string) => providerTurnId(promptId, PROVIDER_SESSION)
 
 describe('ACP Stop names a turn', () => {
-  it('a Stop naming a turn that has ended stops neither the turn running now nor its follow-up', async () => {
+  it('a Stop naming a turn that has ended stops nothing running now', async () => {
     const rig = await openAcpAdapterRig()
     await rig.acquire()
     await sendHello(rig, 'old')
     const old = await rig.frame('session/prompt')
     rig.child().agent.notify('session/update', replyChunk('prompt:old', 'done'))
     rig.child().agent.reply(old, { stopReason: 'end_turn' })
+    await rig.settle()
     await sendHello(rig, 'new')
     const current = await rig.frame('session/prompt', 1)
     rig.child().agent.notify('session/update', replyChunk('prompt:new', 'working'))
-    await sendHello(rig, 'follow-up')
     await rig.settle()
     rig
       .child()
@@ -57,7 +57,6 @@ describe('ACP Stop names a turn', () => {
     await rig.settle()
     expect(rig.sent('session/cancel')).toHaveLength(0)
     expect(rig.settled.map((settled) => settled.clientMessageId)).toEqual(['old', 'new'])
-    expect(rig.adapter.holdsDispatch(SESSION)).toBe(true)
   })
 
   it('a Stop naming an ended turn during the gap before the next prompt opens stops nothing', async () => {
@@ -67,6 +66,7 @@ describe('ACP Stop names a turn', () => {
     const old = await rig.frame('session/prompt')
     rig.child().agent.notify('session/update', replyChunk('prompt:old', 'done'))
     rig.child().agent.reply(old, { stopReason: 'end_turn' })
+    await rig.settle()
     await sendHello(rig, 'new')
     await rig.frame('session/prompt', 1)
     await rig.settle()
@@ -82,7 +82,7 @@ describe('ACP Stop names a turn', () => {
     expect(rig.sent('session/cancel')).toHaveLength(0)
   })
 
-  it('a Stop naming the turn running now stops it and withdraws what is held behind it', async () => {
+  it('a Stop naming the turn running now stops it and withdraws the steer waiting on its cancel', async () => {
     const rig = await openAcpAdapterRig()
     await rig.acquire()
     await sendHello(rig, 'new')
