@@ -197,6 +197,18 @@ describe('WorktreeCard quick actions', () => {
     expect(markup).not.toContain('border-black/[0.015]')
   })
 
+  it('marks multi-selected workspaces for the shared selected style, except the active one', () => {
+    const selected = renderToStaticMarkup(
+      <WorktreeCard worktree={makeWorktree()} repo={makeRepo()} isActive={false} isMultiSelected />
+    )
+    const activeSelected = renderToStaticMarkup(
+      <WorktreeCard worktree={makeWorktree()} repo={makeRepo()} isActive isMultiSelected />
+    )
+
+    expect(selected).toContain('data-worktree-card-selected="true"')
+    expect(activeSelected).not.toContain('data-worktree-card-selected')
+  })
+
   it('renders folder directory name in the detailed metadata row without a Folder badge', () => {
     const markup = renderToStaticMarkup(
       <WorktreeCard
