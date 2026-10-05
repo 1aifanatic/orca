@@ -72,10 +72,7 @@ export default function MermaidBlock({
         mermaid.initialize(getMermaidConfig(isDark, htmlLabels))
         const { svg } = await mermaid.render(`mermaid-${id}`, content)
         if (!cancelled && containerRef.current) {
-          // Why: mermaid already sanitizes with securityLevel "strict"; this
-          // second pass is defense-in-depth. Use mermaid's own DOMPurify options
-          // (HTML_INTEGRATION_POINTS.foreignobject) so XHTML labels survive —
-          // USE_PROFILES svg/html alone empties foreignObject on Chromium (#12414).
+          // Keep a second sanitization pass that preserves safe HTML labels.
           containerRef.current.innerHTML = sanitizeMermaidSvg(svg)
           setError(null)
         }

@@ -1,11 +1,9 @@
 import type { Config } from 'dompurify'
 import DOMPurify from 'dompurify'
 
-// Why: match mermaid's own post-render DOMPurify options (mermaid.core.mjs).
-// HTML_INTEGRATION_POINTS.foreignobject (lowercase) is required so XHTML label
-// children survive Chromium's namespace checks; without it foreignObject is
-// emptied (#12414 / #659). ADD_TAGS lowercase matches mermaid's DOMPURIFY_TAGS.
+// XHTML integration keeps labels visible; math labels need MathML, while SVG filters stay excluded.
 export const mermaidSvgSanitizeConfig: Config = {
+  USE_PROFILES: { html: true, svg: true, mathMl: true },
   ADD_TAGS: ['foreignobject'],
   ADD_ATTR: ['dominant-baseline'],
   HTML_INTEGRATION_POINTS: { foreignobject: true }
