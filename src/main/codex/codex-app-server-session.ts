@@ -1,5 +1,6 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { waitForProcessExitUntil } from '../provider-process/provider-process-exit-deadline'
+import { resolveProviderChildEnv } from '../provider-process/provider-process-launch'
 import { stderrIndicatesMissingAppServer } from './codex-app-server-capability-signal'
 import { withCliRuntimeOnPath } from '../../shared/node-cli-command-resolution'
 import {
@@ -102,10 +103,7 @@ export async function runCodexAppServerSession<T>(
 ): Promise<T> {
   // Why: a default-home grant must run against the real ~/.codex, so strip an
   // inherited CODEX_HOME (envToDelete) after applying the overlay, not before.
-  const childEnv: NodeJS.ProcessEnv = { ...process.env, ...invocation.env }
-  for (const key of invocation.envToDelete ?? []) {
-    delete childEnv[key]
-  }
+  const childEnv = resolveProviderChildEnv(invocation, process.env)
   const pairedEnv = invocation.cliPath
     ? withCliRuntimeOnPath(invocation.cliPath, childEnv)
     : childEnv

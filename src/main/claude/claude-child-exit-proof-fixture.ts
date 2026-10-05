@@ -9,7 +9,7 @@ import { claudeChildClosePolicy } from './claude-child-exit-proof-ladder'
 const managedChildren = new WeakMap<object, ManagedProviderProcess>()
 
 export function managedChild(
-  child: Pick<SpawnedProcess, 'pid' | 'kill' | 'stdin'> & EventEmitter
+  child: Pick<SpawnedProcess, 'pid' | 'kill' | 'stdin' | 'stderr'> & EventEmitter
 ): ManagedProviderProcess {
   const existing = managedChildren.get(child)
   if (existing) {
@@ -18,7 +18,7 @@ export function managedChild(
   const managed = spawnManagedProviderProcess(
     { command: 'fixture-provider', args: [] },
     {
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Close reads only the fixture's owned pid, events, kill and stdin.
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The managed process reads only the fixture's owned pid, events, kill, stdin and stderr.
       spawnImpl: () => child as ReturnType<typeof spawnProcess>,
       platform: 'win32',
       site: 'claude-proof-fixture',

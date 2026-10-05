@@ -14,11 +14,12 @@ const launch: ProviderProcessLaunch = {
   cwd: '/work/repo',
   env: { CODEX_HOME: '/tmp/codex' }
 }
+const command = { command: launch.command, args: launch.args, cwd: launch.cwd }
 
 describe('structured provider supervision', () => {
   it('wraps POSIX launches in a detached supervisor and preserves the launch spec', () => {
     const childEnv = { PATH: '/bin', CODEX_HOME: '/tmp/codex' }
-    const spec = supervisedPosixLaunch(launch, childEnv)
+    const spec = supervisedPosixLaunch(command, childEnv)
 
     expect(spec.command).toBe(process.execPath)
     expect(spec.args).toEqual(['-e', POSIX_PROVIDER_SUPERVISOR_SCRIPT])
@@ -49,11 +50,18 @@ describe('structured provider supervision', () => {
     expect(POSIX_PROVIDER_SUPERVISOR_SCRIPT).not.toContain('process.ppid === 1')
   })
 
+  it('only accepts a resolved env, never a launch whose env it would ignore', () => {
+    // @ts-expect-error env/envToDelete are resolved by createProviderSpawnSpec, not here.
+    const spec = supervisedPosixLaunch(launch, { PATH: '/bin' })
+
+    expect(spec.env).not.toHaveProperty('CODEX_HOME')
+  })
+
   it('refuses a grace longer than recovery waits before SIGKILL', () => {
     const stdinEnd = (stdinEndGraceMs: number) => () =>
-      supervisedPosixLaunch(launch, {}, { stdinEndGraceMs })
+      supervisedPosixLaunch(command, {}, { stdinEndGraceMs })
     const sigterm = (sigtermGraceMs: number) => () =>
-      supervisedPosixLaunch(launch, {}, { sigtermGraceMs })
+      supervisedPosixLaunch(command, {}, { sigtermGraceMs })
 
     expect(stdinEnd(PROVIDER_STDIN_END_GRACE_MS)).not.toThrow()
     expect(stdinEnd(PROVIDER_STDIN_END_GRACE_MS + 1)).toThrow(RangeError)

@@ -391,7 +391,6 @@ describe('openCodexAppServerConnection', () => {
     child.stderr.write('codex crashed\n')
     await flushStreams()
     child.emit('exit', 1, null)
-    child.emit('exit', 1, null)
     child.emit('close', 1, null)
 
     expect((await inFlight).message).toContain('codex crashed')

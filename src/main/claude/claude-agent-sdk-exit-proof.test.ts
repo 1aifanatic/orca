@@ -119,13 +119,15 @@ function firstStdoutLine(child: ReturnType<typeof spawnProcess>): Promise<string
 function mockChild(
   pid: number | null = 424242
 ): EventEmitter &
-  Pick<SpawnedProcess, 'pid' | 'kill' | 'stdin'> & { kill: ReturnType<typeof vi.fn> } {
-  const child = new EventEmitter()
-  return Object.assign(child, {
+  Pick<SpawnedProcess, 'pid' | 'kill' | 'stdin' | 'stderr'> & { kill: ReturnType<typeof vi.fn> } {
+  const child = Object.assign(new EventEmitter(), {
     pid: pid ?? undefined,
     stdin: new PassThrough(),
+    stderr: new PassThrough(),
     kill: vi.fn(() => true)
-  }) as never
+  })
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The proof reads only pid, events, kill, stdin and stderr from this fixture.
+  return child as never
 }
 
 /** A tree whose verdict is scripted per reap, recording when it was armed. */

@@ -1,4 +1,4 @@
-import type { ProviderProcessLaunch } from './provider-process-launch'
+import { resolveProviderChildEnv, type ProviderProcessLaunch } from './provider-process-launch'
 
 /** Time the provider gets to exit on its own after its stdin ends, before SIGTERM. */
 export const PROVIDER_STDIN_END_GRACE_MS = 1_000
@@ -141,8 +141,14 @@ function assertGraceWithin(name: string, graceMs: number, maxMs: number): void {
   }
 }
 
+// `never` makes an env-bearing launch a type error here: env is resolved before supervision.
+type ProviderSupervisedCommand = Pick<ProviderProcessLaunch, 'command' | 'args' | 'cwd'> & {
+  env?: never
+  envToDelete?: never
+}
+
 export function supervisedPosixLaunch(
-  launch: ProviderProcessLaunch,
+  launch: ProviderSupervisedCommand,
   childEnv: NodeJS.ProcessEnv,
   {
     cwd = launch.cwd ?? process.cwd(),
@@ -189,11 +195,14 @@ export function createProviderSpawnSpec(
   /** The child is the supervisor, whose SIGTERM stops the provider and then itself. */
   supervised: boolean
 } {
-  const childEnv: NodeJS.ProcessEnv = { ...baseEnv, ...launch.env }
-  for (const key of launch.envToDelete ?? []) {
-    delete childEnv[key]
-  }
-  const supervisor = platform === 'win32' ? null : supervisedPosixLaunch(launch, childEnv)
+  const childEnv = resolveProviderChildEnv(launch, baseEnv)
+  const supervisor =
+    platform === 'win32'
+      ? null
+      : supervisedPosixLaunch(
+          { command: launch.command, args: launch.args, cwd: launch.cwd },
+          childEnv
+        )
   return {
     program: supervisor?.command ?? launch.command,
     args: supervisor?.args ?? launch.args,

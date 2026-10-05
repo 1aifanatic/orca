@@ -16,7 +16,7 @@ import {
 } from './claude-agent-sdk-control-requests'
 import { createClaudeChildTreeReaper, proveClaudeChildExit } from './claude-agent-sdk-exit-proof'
 import { withTimeout } from '../../shared/promise-timeout-fallback'
-import type { ProviderProcessVerdict } from '../provider-process/provider-process-close'
+import type { DescendantTreeVerdict } from '../pty-descendant-exit-verification'
 import { createClaudeCodeProcessSpawn } from './claude-agent-sdk-process-spawn'
 import {
   claudeUnwrittenUserMessageError,
@@ -83,8 +83,8 @@ export type ClaudeStreamJsonConnectionHandlers = {
  * is never collapsed into either neighbour.
  */
 export type ClaudeChildExitVerdict = {
-  root: ProviderProcessVerdict
-  tree: ProviderProcessVerdict
+  root: DescendantTreeVerdict
+  tree: DescendantTreeVerdict
   processless?: boolean
 }
 
@@ -202,19 +202,19 @@ export async function openClaudeStreamJsonConnection(
   // The SDK may synchronously spawn the CLI and consume an early stderr chunk
   // before this connection can attach its listener; the bounded tail preserves
   // that observation for the same lazy arm.
-  if (spawner.stderrTail.length > 0) {
+  if (managed.stderrTail().length > 0) {
     armTreeOnOutput()
   }
 
   const handleUnexpectedEnd = (cause?: Error): void => {
     resumeReading()
-    terminalError ??= exitError(spawner.stderrTail, exitStatus, cause)
+    terminalError ??= exitError(managed.stderrTail(), exitStatus, cause)
     inbox.fail(terminalError)
     if (!closing && !faultReported) {
       faultReported = true
       handlers.onFault?.(terminalError)
     }
-    if (managed.rootVerdict === 'exited' && !managed.processless && !exitReported) {
+    if (managed.rootExitObserved && !exitReported) {
       exitReported = true
       handlers.onExit?.(terminalError, { expected: closing })
     }
