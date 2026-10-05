@@ -35,6 +35,8 @@ export async function deliverAndSettleWorkerStartReadiness(args: {
   devMode: boolean | undefined
   requestId: string
   agent: string | null
+  /** The agent this start launched into `terminalHandle`; null when the caller supplied it. */
+  launchedAgent: string | null
   setupReceipt: WorkerSetupReceipt
   launchReceipt: OrchestrationWorkerLaunchReceipt
   mode: WorkerStartModeReceipt
@@ -62,7 +64,8 @@ export async function deliverAndSettleWorkerStartReadiness(args: {
     coordinatorHandle: args.coordinatorHandle,
     devMode: args.devMode,
     requestId: args.requestId,
-    whenUndelivered: undelivered.resolve
+    whenUndelivered: undelivered.resolve,
+    launchedAgent: args.launchedAgent
   })
   effects.push({
     kind: 'dispatch_input',

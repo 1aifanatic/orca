@@ -1,21 +1,21 @@
 // A child whose start failed is ended by a host stop before the next message starts afresh. When that
-// stop cannot prove the child's exit, the stop stays owed: the next message waits on it with the
-// chat's one "still stopping" note, as after any such stop, and is never rejected as Orca's fault.
+// stop cannot prove the child's exit, the child stays closing: the next message's start joins that
+// close and is refused while it is still unproven. That message is rejected at once with why, for
+// the person's Retry, never tried again on its own and never as Orca's fault.
 
 import { describe, expect, it, vi } from 'vitest'
 import { StructuredAgentSessionDeliveryLoop } from './structured-agent-session-delivery-loop'
 import { recordingStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
 
 const SESSION = 's1'
-const OWED = {
-  generation: 'g1',
-  fence: 3,
+const CLOSING = {
   cause: 'host-stop',
-  requestedAt: { epoch: 'e1', sequence: 9 },
-  failedAt: { epoch: 'e1', sequence: 9 }
+  reason: null,
+  recorded: Promise.resolve(null),
+  requestedAt: { epoch: 'e1', sequence: 9 }
 }
 
-function rig(input: { owedBefore: boolean; acceptedSequence: number }) {
+function rig(input: { closingBefore: boolean; acceptedSequence: number }) {
   const resolved: unknown[] = []
   const waitRows: unknown[] = []
   const submissions = [
@@ -29,8 +29,14 @@ function rig(input: { owedBefore: boolean; acceptedSequence: number }) {
   ]
   const journal = {
     submissions: () => submissions,
-    resolveDispatch: async (row: unknown) => {
+    resolveDispatch: async (row: { clientMessageId: string; state: string }) => {
       resolved.push(row)
+      // As the journal folds it: the message is settled.
+      for (const submission of submissions) {
+        if (submission.clientMessageId === row.clientMessageId) {
+          submission.dispatchState = row.state
+        }
+      }
     },
     rejectQueuedSubmissions: async () => {},
     wroteBeforeOpen: () => false,
@@ -42,17 +48,20 @@ function rig(input: { owedBefore: boolean; acceptedSequence: number }) {
     itemBody: () => null,
     activeTurnId: () => null
   }
-  const session: Record<string, unknown> = {
-    journal,
-    child: { generation: 'g1', fence: 3, phase: 'starting', startFailed: true },
-    ...(input.owedBefore ? { owesProviderChildWindDown: OWED } : {})
+  const child: Record<string, unknown> = {
+    generation: 'g1',
+    fence: 3,
+    phase: 'starting',
+    startFailed: true,
+    ...(input.closingBefore ? { close: CLOSING } : {})
   }
+  const session: Record<string, unknown> = { journal, child }
   const endFailedStart = vi.fn(async () => {
-    // As the host stop does when it cannot prove the exit: the stop stays owed, and it throws.
-    session.owesProviderChildWindDown = OWED
+    // As the host stop does when it cannot prove the exit: the child stays closing, and it throws.
+    child.close = CLOSING
     throw new Error('stop could not prove the exit')
   })
-  // The start retries the owed stop first, which still cannot prove the exit.
+  // The start joins that close first, which still cannot prove the exit.
   const ensureProviderChild = vi.fn(async () => ({
     ok: false as const,
     refusal: {
@@ -94,19 +103,30 @@ function rig(input: { owedBefore: boolean; acceptedSequence: number }) {
 
 describe('a failed start whose host stop cannot prove the exit', () => {
   it.each([
-    ['the first time, with nothing owed yet', false, 8, 1],
-    ['a message accepted before the stop failed, with it owed', true, 8, 0],
-    ['a message accepted after the stop failed, with it owed', true, 12, 0]
+    ['the first time, with no close begun yet', false, 8, 1],
+    ['a message accepted before the stop failed, with the child closing', true, 8, 0],
+    ['a message accepted after the stop failed, with the child closing', true, 12, 0]
   ] as const)(
-    '%s: the next message waits on the stop, never rejected',
-    async (_case, owedBefore, acceptedSequence, ends) => {
-      const r = rig({ owedBefore, acceptedSequence })
+    '%s: the next message is rejected at once with why, never tried again on its own',
+    async (_case, closingBefore, acceptedSequence, ends) => {
+      const r = rig({ closingBefore, acceptedSequence })
 
       r.loop.wake(SESSION)
       await r.stopped.promise
 
-      expect(r.resolved).toEqual([])
-      expect(r.waitRows).toHaveLength(1)
+      expect(r.resolved).toEqual([
+        expect.objectContaining({
+          clientMessageId: 'm2',
+          state: 'rejected',
+          rejection: expect.objectContaining({
+            refusal: expect.objectContaining({
+              details: expect.objectContaining({ reason: 'previousExitUnverifiable' })
+            })
+          })
+        })
+      ])
+      expect(r.resolved[0]).not.toHaveProperty('startRetry')
+      expect(r.waitRows).toEqual([])
       expect(r.endFailedStart).toHaveBeenCalledTimes(ends)
       expect(r.log.scopes()).not.toContain('delivery-loop')
     }

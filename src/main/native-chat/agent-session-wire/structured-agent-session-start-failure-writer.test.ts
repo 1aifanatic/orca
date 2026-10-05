@@ -43,6 +43,7 @@ import {
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 
 const CALLER = { callerKey: 'client-1' }
 const EXIT_REASON = 'Claude Code is not signed in. Sign in with the Claude CLI'
@@ -114,7 +115,7 @@ function startHost(): void {
           },
           link: {
             linkId: `link-${fence}`,
-            handle: { provider: 'codex' as const, threadId: THREAD },
+            handle: codexProviderHandle(THREAD),
             origin: generation === 0 ? ('created' as const) : ('resumed' as const),
             mintedAtFence: fence,
             observedAt: NOW
