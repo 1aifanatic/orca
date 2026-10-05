@@ -1,14 +1,11 @@
 import React from 'react'
-import { Bell, CheckCheck, Copy, ExternalLink, PanelRight, X } from 'lucide-react'
+import { Bell, BellOff, Copy, ExternalLink, PanelRight, X } from 'lucide-react'
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuLabel,
   ContextMenuSeparator,
-  ContextMenuSub,
-  ContextMenuSubContent,
-  ContextMenuSubTrigger,
   ContextMenuTrigger
 } from '@/components/ui/context-menu'
 import { translate } from '@/i18n/i18n'
@@ -33,7 +30,7 @@ export function getActivityThreadCopyTargets(
       key: 'title',
       label: translate(
         'auto.components.activity.ActivityThreadContextMenu.copyTitle',
-        'Agent title'
+        'Copy Title'
       ),
       value: activityThreadRowCopy(thread).taskTitle
     }
@@ -46,14 +43,17 @@ export function getActivityThreadCopyTargets(
   if (identity?.kind === 'branch') {
     targets.push({
       key: 'branch',
-      label: translate('auto.components.activity.ActivityThreadContextMenu.copyBranch', 'Branch'),
+      label: translate(
+        'auto.components.activity.ActivityThreadContextMenu.copyBranch',
+        'Copy Branch'
+      ),
       value: identity.branchName
     })
   }
   if (thread.worktree.path) {
     targets.push({
       key: 'path',
-      label: translate('auto.components.activity.ActivityThreadContextMenu.copyPath', 'Path'),
+      label: translate('auto.components.activity.ActivityThreadContextMenu.copyPath', 'Copy Path'),
       value: thread.worktree.path
     })
   }
@@ -160,57 +160,49 @@ function ActivityThreadSingleMenuItems({
   return (
     <>
       <ContextMenuItem onSelect={() => onOpen(thread)}>
-        <PanelRight />
+        <PanelRight className="size-3.5" />
         {translate('auto.components.activity.ActivityThreadContextMenu.open', 'Open')}
-      </ContextMenuItem>
-      <ContextMenuItem disabled={!thread.unread} onSelect={() => onMarkRead(thread)}>
-        <CheckCheck />
-        {translate('auto.components.activity.ActivityThreadContextMenu.markRead', 'Mark as read')}
-      </ContextMenuItem>
-      <ContextMenuItem
-        disabled={thread.unread || !canMarkUnread}
-        onSelect={() => onMarkUnread(thread)}
-      >
-        <Bell />
-        {translate(
-          'auto.components.activity.ActivityThreadContextMenu.markUnread',
-          'Mark as unread'
-        )}
       </ContextMenuItem>
       {canJump ? (
         <ContextMenuItem onSelect={() => onJump(thread)}>
-          <ExternalLink />
+          <ExternalLink className="size-3.5" />
           {translate(
             'auto.components.activity.ActivityThreadContextMenu.goToWorkspace',
-            'Go to workspace'
+            'Go to Workspace'
           )}
         </ContextMenuItem>
       ) : null}
       <ContextMenuSeparator />
-      <ContextMenuSub>
-        <ContextMenuSubTrigger>
-          <Copy />
-          {translate('auto.components.activity.ActivityThreadContextMenu.copy', 'Copy')}
-        </ContextMenuSubTrigger>
-        <ContextMenuSubContent>
-          {getActivityThreadCopyTargets(thread, canJump).map((target) => (
-            <ContextMenuItem
-              key={target.key}
-              onSelect={() => void window.api.ui.writeClipboardText(target.value)}
-            >
-              {target.label}
-            </ContextMenuItem>
-          ))}
-        </ContextMenuSubContent>
-      </ContextMenuSub>
+      {getActivityThreadCopyTargets(thread, canJump).map((target) => (
+        <ContextMenuItem
+          key={target.key}
+          onSelect={() => void window.api.ui.writeClipboardText(target.value)}
+        >
+          <Copy className="size-3.5" />
+          {target.label}
+        </ContextMenuItem>
+      ))}
+      <ContextMenuSeparator />
+      <ContextMenuItem
+        disabled={!thread.unread && !canMarkUnread}
+        onSelect={() => (thread.unread ? onMarkRead(thread) : onMarkUnread(thread))}
+      >
+        {thread.unread ? <BellOff className="size-3.5" /> : <Bell className="size-3.5" />}
+        {thread.unread
+          ? translate('auto.components.activity.ActivityThreadContextMenu.markRead', 'Mark Read')
+          : translate(
+              'auto.components.activity.ActivityThreadContextMenu.markUnread',
+              'Mark Unread'
+            )}
+      </ContextMenuItem>
       {isClearableActivityThread(thread) ? (
         <>
           <ContextMenuSeparator />
           <ContextMenuItem onSelect={() => clearActivityThread(thread)}>
-            <X />
+            <X className="size-3.5" />
             {translate(
               'auto.components.activity.ActivityThreadContextMenu.clear',
-              'Clear from list'
+              'Clear from List'
             )}
           </ContextMenuItem>
         </>
@@ -219,7 +211,7 @@ function ActivityThreadSingleMenuItems({
   )
 }
 
-// Single-agent actions (Open, Go to workspace, Copy) are hidden, as in the workspace menu.
+// Single-agent actions (Open, Go to Workspace, Copy) are hidden, as in the workspace menu.
 function ActivityThreadBulkMenuItems({
   targets,
   canMarkUnread,
@@ -236,47 +228,46 @@ function ActivityThreadBulkMenuItems({
   const clearable = targets.filter(isClearableActivityThread)
   return (
     <>
-      <ContextMenuItem disabled={unread.length === 0} onSelect={() => onMarkManyRead(unread)}>
-        <CheckCheck />
-        {unread.length > 0
-          ? translate(
-              'auto.components.activity.ActivityThreadContextMenu.markManyRead',
-              'Mark {{count}} as read',
-              { count: unread.length }
-            )
-          : translate(
-              'auto.components.activity.ActivityThreadContextMenu.markRead',
-              'Mark as read'
-            )}
-      </ContextMenuItem>
-      <ContextMenuItem disabled={read.length === 0} onSelect={() => onMarkManyUnread(read)}>
-        <Bell />
-        {read.length > 0
-          ? translate(
-              'auto.components.activity.ActivityThreadContextMenu.markManyUnread',
-              'Mark {{count}} as unread',
-              { count: read.length }
-            )
-          : translate(
-              'auto.components.activity.ActivityThreadContextMenu.markUnread',
-              'Mark as unread'
-            )}
-      </ContextMenuItem>
+      {/* Why read wins when mixed: matches the single toggle, which offers Mark Read on any unread agent. */}
+      {unread.length > 0 ? (
+        <ContextMenuItem onSelect={() => onMarkManyRead(unread)}>
+          <BellOff className="size-3.5" />
+          {translate(
+            'auto.components.activity.ActivityThreadContextMenu.markManyRead',
+            'Mark {{count}} Read',
+            { count: unread.length }
+          )}
+        </ContextMenuItem>
+      ) : (
+        <ContextMenuItem disabled={read.length === 0} onSelect={() => onMarkManyUnread(read)}>
+          <Bell className="size-3.5" />
+          {read.length > 0
+            ? translate(
+                'auto.components.activity.ActivityThreadContextMenu.markManyUnread',
+                'Mark {{count}} Unread',
+                { count: read.length }
+              )
+            : translate(
+                'auto.components.activity.ActivityThreadContextMenu.markUnread',
+                'Mark Unread'
+              )}
+        </ContextMenuItem>
+      )}
       <ContextMenuSeparator />
       <ContextMenuItem
         disabled={clearable.length === 0}
         onSelect={() => clearCompletedActivity(clearable)}
       >
-        <X />
+        <X className="size-3.5" />
         {clearable.length > 0
           ? translate(
               'auto.components.activity.ActivityThreadContextMenu.clearMany',
-              'Clear {{count}} from list',
+              'Clear {{count}} from List',
               { count: clearable.length }
             )
           : translate(
               'auto.components.activity.ActivityThreadContextMenu.clear',
-              'Clear from list'
+              'Clear from List'
             )}
       </ContextMenuItem>
     </>
