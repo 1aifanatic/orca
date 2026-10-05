@@ -16,6 +16,7 @@ import {
 import {
   getLaunchedAgentReadinessLane,
   waitForLaunchedAgentComposer,
+  workerStartReadsComposerMarker,
   type LaunchedAgentReadinessLane,
   type LaunchedAgentReadinessRuntime
 } from './launched-agent-composer-readiness'
@@ -121,6 +122,23 @@ describe('which lane a freshly launched worker waits on', () => {
       throw new Error(`${agent} is not a TuiAgent`)
     }
     expect(getLaunchedAgentReadinessLane(agent)).toBe(lane)
+  })
+})
+
+describe('which idle-lane worker starts also answer on their composer marker', () => {
+  // Their only rest signal is their bare name, which a launch holds to quiet output; Grok's logo
+  // animates for ten seconds after its composer glyph. Gemini's title needs corroboration: absent.
+  it('is exactly the bare-name agents whose composer draws a marker', () => {
+    expect(
+      Object.keys(EXPECTED_LANES)
+        .filter(isTuiAgent)
+        .filter(
+          (agent) =>
+            getLaunchedAgentReadinessLane(agent) === 'tui-idle' &&
+            workerStartReadsComposerMarker(agent)
+        )
+        .sort()
+    ).toEqual(['dsh', 'grok', 'mimo-code'])
   })
 })
 
