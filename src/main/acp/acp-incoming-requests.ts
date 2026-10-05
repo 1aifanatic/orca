@@ -1,7 +1,12 @@
 import { AcpRpcError } from './acp-errors'
 import type { AcpJsonRpcMessage, AcpPeerHandlers } from './acp-json-rpc-peer'
 
-type OpenRequest = { method: string; controller: AbortController; abandon: () => void }
+type OpenRequest = {
+  controller: AbortController
+  abandon: () => void
+  closed: boolean
+  cancelled: boolean
+}
 
 export class AcpIncomingRequests {
   private readonly open = new Map<string | number | null, OpenRequest>()
@@ -16,22 +21,21 @@ export class AcpIncomingRequests {
 
   close(error: Error): void {
     for (const request of this.open.values()) {
+      request.closed = true
       request.controller.abort(error)
       request.abandon()
     }
     this.open.clear()
   }
 
-  cancel(exceptMethod?: string): void {
-    for (const [id, request] of this.open) {
-      if (request.method === exceptMethod) {
-        continue
+  // Each handler answers its own request (a permission answers `cancelled`); -32800 only if it
+  // throws. The runtime never answers for a live handler: an answer still being saved must win.
+  cancel(): void {
+    for (const request of this.open.values()) {
+      if (!request.cancelled) {
+        request.cancelled = true
+        request.controller.abort(new AcpRpcError(-32800, 'Request cancelled'))
       }
-      const error = new AcpRpcError(-32800, 'Request cancelled')
-      this.open.delete(id)
-      request.controller.abort(error)
-      request.abandon()
-      void this.sendError(id, error)
     }
   }
 
@@ -41,7 +45,7 @@ export class AcpIncomingRequests {
       return
     }
     if (this.open.size >= this.capacity) {
-      void this.sendError(id, new AcpRpcError(-32603, 'ACP incoming request capacity exceeded'))
+      this.refuse(id, new AcpRpcError(-32603, 'ACP incoming request capacity exceeded'))
       return
     }
     const controller = new AbortController()
@@ -49,17 +53,19 @@ export class AcpIncomingRequests {
     const abandoned = new Promise<never>((_resolve, reject) => {
       abandon = () => reject(controller.signal.reason)
     })
-    this.open.set(id, { method, controller, abandon })
+    const request: OpenRequest = { controller, abandon, closed: false, cancelled: false }
+    this.open.set(id, request)
     const retire = (): void => {
-      if (this.open.get(id)?.controller === controller) {
+      if (this.open.get(id) === request) {
         this.open.delete(id)
       }
     }
     void Promise.race([
       abandoned,
       Promise.resolve().then(() => {
-        if (controller.signal.aborted) {
-          return undefined
+        // A cancelled request still reaches its handler, so a permission can answer `cancelled`.
+        if (request.closed) {
+          throw controller.signal.reason
         }
         if (!this.handler) {
           throw new AcpRpcError(-32601, `Unknown ACP client method: ${method}`)
@@ -68,7 +74,7 @@ export class AcpIncomingRequests {
       })
     ])
       .then(async (result) => {
-        if (controller.signal.aborted) {
+        if (request.closed) {
           return
         }
         // The agent may reuse the id as soon as it reads the response.
@@ -76,21 +82,27 @@ export class AcpIncomingRequests {
         await this.send({ jsonrpc: '2.0', id, result: result ?? null })
       })
       .catch(async (error) => {
-        if (controller.signal.aborted) {
+        if (request.closed) {
           return
         }
         retire()
         await this.sendError(
           id,
-          error instanceof AcpRpcError
-            ? error
-            : new AcpRpcError(-32603, error instanceof Error ? error.message : String(error))
+          request.cancelled
+            ? new AcpRpcError(-32800, 'Request cancelled')
+            : error instanceof AcpRpcError
+              ? error
+              : new AcpRpcError(-32603, error instanceof Error ? error.message : String(error))
         )
       })
       .finally(() => {
         retire()
         controller.abort()
       })
+  }
+
+  refuse(id: string | number | null, error: AcpRpcError): void {
+    void this.sendError(id, error)
   }
 
   private async sendError(id: string | number | null, error: AcpRpcError): Promise<void> {

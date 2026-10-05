@@ -1,7 +1,12 @@
 import { PassThrough, Writable } from 'node:stream'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AcpJsonRpcPeer, type AcpPeerHandlers, type AcpPeerOptions } from './acp-json-rpc-peer'
-import { AcpConnectionClosedError, AcpRequestTimeoutError, AcpRpcError } from './acp-errors'
+import {
+  AcpConnectionClosedError,
+  AcpFrameTooLargeError,
+  AcpRequestTimeoutError,
+  AcpRpcError
+} from './acp-errors'
 import { AcpScriptedAgent, deferred, tick } from './acp-scripted-agent.test-support'
 
 const peers: AcpJsonRpcPeer[] = []
@@ -98,8 +103,43 @@ describe('ACP JSON-RPC peer', () => {
     expect(await peer.request('valid', {})).toBe('ok')
     expect(notified).toEqual(['✓'])
     expect(diagnostics).toContain('Ignored ACP line: invalid-json')
-    expect(diagnostics).toContain('Ignored ACP line: line-too-long')
+    expect(diagnostics).toContain('Ignored ACP line: line-too-long (unknown)')
     expect(diagnostics).toContain('Ignored invalid ACP JSON-RPC envelope')
+  })
+
+  it('settles whoever was owed a message that exceeded the line limit', async () => {
+    const diagnostics: string[] = []
+    const { peer, agent } = fixture(
+      { onDiagnostic: (message) => diagnostics.push(message), onRequest: () => 'unused' },
+      { maxLineBytes: 200 }
+    )
+    const filler = 'x'.repeat(300)
+    const big = peer.request('session/load', {})
+    agent.stdout.write(`{"jsonrpc":"2.0","id":1,"result":{"history":"${filler}"}}\n`)
+    const lost = await big.catch((error: unknown) => error)
+    expect(lost).toBeInstanceOf(AcpFrameTooLargeError)
+    expect(lost).toMatchObject({ method: 'session/load', maxBytes: 200 })
+    const answer = new Promise<unknown>((resolve) => {
+      agent.stdin.on('data', (chunk: string) => resolve(JSON.parse(chunk)))
+    })
+    agent.stdout.write(
+      `{"jsonrpc":"2.0","id":"q","method":"session/request_permission","params":{"diff":"${filler}"}}\n`
+    )
+    expect(await answer).toMatchObject({ id: 'q', error: { code: -32600 } })
+    agent.stdout.write(`{"jsonrpc":"2.0","method":"session/update","params":{"x":"${filler}"}}\n`)
+    agent.stdout.write(`${filler}\n`)
+    await tick()
+    expect(peer.closed).toBe(false)
+    expect(diagnostics).toEqual([
+      'Ignored ACP line: line-too-long (response)',
+      'Ignored ACP line: line-too-long (server-request)',
+      'Ignored ACP line: line-too-long (notification)',
+      'Ignored ACP line: line-too-long (unknown)'
+    ])
+    const stranded = peer.request('session/prompt', {})
+    agent.stdout.write(`{"jsonrpc":"2.0","id":2,"vendor":"${filler}"}\n`)
+    await expect(stranded).rejects.toBeInstanceOf(AcpFrameTooLargeError)
+    expect(peer.closed).toBe(true)
   })
 
   it('rejects malformed matching responses instead of leaving calls pending', async () => {

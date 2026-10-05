@@ -324,26 +324,35 @@ describe('ACP session runtime', () => {
     await expect(malformed.runtime.start(startOptions)).rejects.toMatchObject({ code: -32603 })
   })
 
-  it('rejects invalid permission requests and fails closed on an unavailable selected option', async () => {
+  it('rejects unroutable permission requests and answers an unavailable selection cancelled', async () => {
+    const diagnostics: string[] = []
     const { runtime, agent } = fixture(
       {},
       {
-        onPermission: () => ({ outcome: { outcome: 'selected', optionId: 'not-offered' } })
+        onPermission: () => ({ outcome: { outcome: 'selected', optionId: 'not-offered' } }),
+        onDiagnostic: (message) => diagnostics.push(message)
       }
     )
     agent.on('session/prompt', () => {})
     await runtime.start(startOptions)
-    const prompt = runtime.prompt([...textPrompt])
-    const rejected = expect(prompt).rejects.toBeInstanceOf(AcpConnectionClosedError)
+    void runtime.prompt([...textPrompt]).catch(() => {})
     expect(await agent.request('invalid', 'session/request_permission', {})).toMatchObject({
       error: { code: -32602 }
     })
     expect(
+      await agent.request('no-options', 'session/request_permission', {
+        ...permission,
+        options: [{ name: 'No id', kind: 'allow_once' }]
+      })
+    ).toMatchObject({ error: { code: -32602 } })
+    expect(
       await agent.request('bad-selection', 'session/request_permission', permission)
-    ).toMatchObject({ error: { code: -32603 } })
+    ).toMatchObject({ result: { outcome: { outcome: 'cancelled' } } })
+    expect(diagnostics).toContain(
+      'Answered ACP permission request cancelled: handler selected an unavailable option'
+    )
+    // The session stays usable: a local permission failure is not a protocol failure.
     await expect(runtime.prompt([...textPrompt])).rejects.toThrow('already in progress')
-    runtime.close()
-    await rejected
   })
 
   it('preserves unrecognized updates and isolates event listener failures', async () => {

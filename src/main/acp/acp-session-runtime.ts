@@ -1,63 +1,70 @@
 import type { Readable, Writable } from 'node:stream'
-import { z } from 'zod'
+import type { z } from 'zod'
 import { MAX_TIMER_DELAY_MS } from '../../shared/timer-delay'
-import { AcpAuthRequiredError, AcpRequestTimeoutError, AcpRpcError } from './acp-errors'
+import {
+  AcpAgentError,
+  AcpAuthRequiredError,
+  AcpInvalidResponseError,
+  AcpRpcError
+} from './acp-errors'
 import { AcpJsonRpcPeer, type AcpPeerOptions, type AcpRequestContext } from './acp-json-rpc-peer'
-import { AcpPermissionRequests, type AcpPermissionHandler } from './acp-permission-requests'
+import {
+  answerAcpPermission,
+  readAcpPermissionRequest,
+  type AcpPermissionHandler
+} from './acp-permission-requests'
+import { readAcpSessionEvent, type AcpSessionEvent } from './acp-session-events'
+import { confirmAcpPromptCancel, type ActivePrompt } from './acp-prompt-cancel'
 import {
   setupAcpSession,
   type AcpSessionStarted,
   type AcpSessionStartOptions
 } from './acp-session-setup'
 export type { AcpSessionStarted, AcpSessionStartOptions } from './acp-session-setup'
+export type { AcpSessionEvent } from './acp-session-events'
 import {
   ACP_PROTOCOL_VERSION,
   InitializeResponseSchema,
   AuthenticateResponseSchema,
   PromptResponseSchema,
-  RequestPermissionRequestSchema,
-  SessionNotificationSchema,
   SetSessionModeResponseSchema,
   SetSessionModelResponseSchema,
   SetSessionConfigOptionResponseSchema,
   type InitializeRequest,
   type InitializeResponse,
   type AuthenticateResponse,
+  type CancelNotification,
   type PromptRequest,
   type PromptResponse,
-  type SessionNotification,
   type SetSessionConfigOptionRequest,
   type SetSessionConfigOptionResponse,
+  type SetSessionModeRequest,
   type SetSessionModeResponse,
+  type SetSessionModelRequest,
   type SetSessionModelResponse
 } from './generated/acp-protocol.generated'
 
-const updateEnvelopeSchema = z.looseObject({
-  sessionId: z.string(),
-  update: z.looseObject({ sessionUpdate: z.string() })
-})
-export type AcpSessionEvent =
-  | { kind: 'known'; notification: SessionNotification }
-  | { kind: 'unrecognized'; sessionId: string; raw: z.infer<typeof updateEnvelopeSchema> }
+type Meta = PromptRequest['_meta']
+const withMeta = (meta: Meta): { _meta?: Meta } => (meta ? { _meta: meta } : {})
 
 export type AcpSessionRuntimeOptions = {
   clientInfo?: InitializeRequest['clientInfo']
   peer?: AcpPeerOptions
   cancelTimeoutMs?: number
   onPermission?: AcpPermissionHandler
+  /** Agent requests other than permissions. The handler owns its request: once `context.signal`
+   *  aborts, send the agent's own cancelled reply, finish an answer already in progress, or throw
+   *  (-32800). The runtime never answers for it; a request left unanswered ends at `close()`. */
   onRequest?: (method: string, params: unknown, context: AcpRequestContext) => unknown
+  /** Agent notifications other than `session/update` (protocol extensions), delivered
+   *  synchronously in arrival order with the `subscribe` events. */
+  onExtensionNotification?: (method: string, params: unknown) => void
   onDiagnostic?: (message: string) => void
   onClose?: (error: Error) => void
-}
-type ActivePrompt = {
-  response: Promise<PromptResponse>
-  cancelling: boolean
-  cancelPromise?: Promise<void>
 }
 
 export class AcpSessionRuntime {
   private readonly peer: AcpJsonRpcPeer
-  private readonly permissions = new AcpPermissionRequests()
   private readonly listeners = new Set<(event: AcpSessionEvent) => void>()
   private initialized?: Promise<InitializeResponse>
   private starting?: Promise<AcpSessionStarted>
@@ -148,14 +155,14 @@ export class AcpSessionRuntime {
     return this.starting
   }
 
-  async prompt(prompt: PromptRequest['prompt']): Promise<PromptResponse> {
+  async prompt(prompt: PromptRequest['prompt'], meta?: Meta): Promise<PromptResponse> {
     if (this.activePrompt) {
       throw new Error('ACP prompt already in progress')
     }
-    const sessionId = this.sessionId()
+    const params: PromptRequest = { sessionId: this.sessionId(), prompt, ...withMeta(meta) }
     const active: ActivePrompt = {
       cancelling: false,
-      response: this.call('session/prompt', { sessionId, prompt }, PromptResponseSchema)
+      response: this.call('session/prompt', params, PromptResponseSchema)
     }
     this.activePrompt = active
     active.response = active.response.finally(() => {
@@ -166,70 +173,64 @@ export class AcpSessionRuntime {
     return active.response
   }
 
-  cancel(): Promise<void> {
+  /** Sends `session/cancel` whenever the session runs: the agent may be in a turn it began itself.
+   *  With Orca's prompt running, also waits (bounded) for that prompt to settle. */
+  cancel(options: { meta?: CancelNotification['_meta'] } = {}): Promise<void> {
     if (!this.started) {
       return Promise.reject(new Error('ACP session has not started'))
     }
-    const sessionId = this.started.sessionId
-    this.permissions.cancel(sessionId)
-    this.peer.cancelIncomingRequests('session/request_permission')
+    const params: CancelNotification = {
+      sessionId: this.started.sessionId,
+      ...withMeta(options.meta)
+    }
+    this.peer.cancelIncomingRequests()
     const active = this.activePrompt
     if (!active) {
-      return Promise.resolve()
+      return this.peer.notify('session/cancel', params)
     }
     active.cancelling = true
-    active.cancelPromise ??= this.cancelActive(sessionId, active)
+    active.cancelPromise ??= confirmAcpPromptCancel(active, {
+      send: () => this.peer.notify('session/cancel', params),
+      close: (error) => this.peer.close(error),
+      closed: () => this.peer.closed,
+      timeoutMs: Math.min(this.options.cancelTimeoutMs ?? 10_000, MAX_TIMER_DELAY_MS)
+    })
     return active.cancelPromise
   }
 
-  private async cancelActive(sessionId: string, active: ActivePrompt): Promise<void> {
-    const timeoutMs = Math.min(this.options.cancelTimeoutMs ?? 10_000, MAX_TIMER_DELAY_MS)
-    let timer: ReturnType<typeof setTimeout> | undefined
-    try {
-      await Promise.race([
-        this.peer.notify('session/cancel', { sessionId }).then(() =>
-          active.response.catch((error) => {
-            if (this.peer.closed) {
-              throw error
-            }
-          })
-        ),
-        new Promise<never>((_resolve, reject) => {
-          timer = setTimeout(() => {
-            const error = new AcpRequestTimeoutError('session/cancel')
-            this.peer.close(error)
-            reject(error)
-          }, timeoutMs)
-        })
-      ])
-    } finally {
-      clearTimeout(timer)
+  async setMode(modeId: string, meta?: Meta): Promise<SetSessionModeResponse> {
+    const params: SetSessionModeRequest = { sessionId: this.sessionId(), modeId, ...withMeta(meta) }
+    return this.call('session/set_mode', params, SetSessionModeResponseSchema)
+  }
+  async setModel(modelId: string, meta?: Meta): Promise<SetSessionModelResponse> {
+    const params: SetSessionModelRequest = {
+      sessionId: this.sessionId(),
+      modelId,
+      ...withMeta(meta)
     }
-  }
-
-  async setMode(modeId: string): Promise<SetSessionModeResponse> {
-    return this.call(
-      'session/set_mode',
-      { sessionId: this.sessionId(), modeId },
-      SetSessionModeResponseSchema
-    )
-  }
-  async setModel(modelId: string): Promise<SetSessionModelResponse> {
-    return this.call(
-      'session/set_model',
-      { sessionId: this.sessionId(), modelId },
-      SetSessionModelResponseSchema
-    )
+    return this.call('session/set_model', params, SetSessionModelResponseSchema)
   }
   async setConfigOption(
     configId: SetSessionConfigOptionRequest['configId'],
-    value: SetSessionConfigOptionRequest['value']
+    value: SetSessionConfigOptionRequest['value'],
+    meta?: Meta
   ): Promise<SetSessionConfigOptionResponse> {
     const sessionId = this.sessionId()
     const request =
       typeof value === 'boolean'
-        ? ({ configId, value, sessionId, type: 'boolean' } satisfies SetSessionConfigOptionRequest)
-        : ({ configId, value, sessionId } satisfies SetSessionConfigOptionRequest)
+        ? ({
+            configId,
+            value,
+            sessionId,
+            type: 'boolean',
+            ...withMeta(meta)
+          } satisfies SetSessionConfigOptionRequest)
+        : ({
+            configId,
+            value,
+            sessionId,
+            ...withMeta(meta)
+          } satisfies SetSessionConfigOptionRequest)
     return this.call('session/set_config_option', request, SetSessionConfigOptionResponseSchema)
   }
 
@@ -248,14 +249,18 @@ export class AcpSessionRuntime {
 
   private async call<T>(method: string, params: unknown, schema: z.ZodType<T>): Promise<T> {
     const result = await this.peer.request(method, params, { timeoutMs: null }).catch((error) => {
-      if (error instanceof AcpRpcError && error.code === -32000) {
+      if (error instanceof AcpAgentError && error.code === -32000) {
         throw new AcpAuthRequiredError(error.message, error.data)
       }
       throw error
     })
     const parsed = schema.safeParse(result)
     if (!parsed.success) {
-      throw new AcpRpcError(-32603, `Invalid ACP response: ${method}`)
+      throw new AcpInvalidResponseError(
+        `Invalid ACP response: ${method}`,
+        result,
+        parsed.error.issues
+      )
     }
     return parsed.data
   }
@@ -267,18 +272,16 @@ export class AcpSessionRuntime {
       }
       return this.options.onRequest(method, params, context)
     }
-    const parsed = RequestPermissionRequestSchema.safeParse(params)
-    if (!parsed.success) {
+    const diagnose = (message: string): void => this.diagnose(message)
+    const request = readAcpPermissionRequest(params, diagnose)
+    if (!request) {
       throw new AcpRpcError(-32602, 'Invalid ACP permission request')
     }
-    if (
-      !this.activePrompt ||
-      this.activePrompt.cancelling ||
-      parsed.data.sessionId !== this.started?.sessionId
-    ) {
+    // Whether a turn the agent began itself may ask is the caller's call; the runtime cannot see it.
+    if (this.activePrompt?.cancelling || request.sessionId !== this.started?.sessionId) {
       return { outcome: { outcome: 'cancelled' } }
     }
-    return this.permissions.handle(parsed.data, context, this.options.onPermission)
+    return answerAcpPermission(request, context, this.options.onPermission, diagnose)
   }
 
   private diagnose(message: string): void {
@@ -291,18 +294,19 @@ export class AcpSessionRuntime {
 
   private handleNotification(method: string, params: unknown): void {
     if (method !== 'session/update') {
+      try {
+        this.options.onExtensionNotification?.(method, params)
+      } catch (error) {
+        this.diagnose(`ACP extension listener failed: ${String(error)}`)
+      }
       return
     }
-    const envelope = updateEnvelopeSchema.safeParse(params)
-    if (!envelope.success) {
+    const event = readAcpSessionEvent(params)
+    if (!event) {
       this.diagnose('Ignored invalid ACP session update envelope')
       return
     }
-    const parsed = SessionNotificationSchema.safeParse(params)
-    const event: AcpSessionEvent = parsed.success
-      ? { kind: 'known', notification: parsed.data }
-      : { kind: 'unrecognized', sessionId: envelope.data.sessionId, raw: envelope.data }
-    if (!parsed.success && !this.reportedUpdateAnomaly) {
+    if (event.kind === 'unrecognized' && !this.reportedUpdateAnomaly) {
       this.reportedUpdateAnomaly = true
       this.diagnose('Forwarded unrecognized ACP session update')
     }

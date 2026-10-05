@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AcpJsonRpcPeer } from './acp-json-rpc-peer'
 import { AcpSessionRuntime, type AcpSessionRuntimeOptions } from './acp-session-runtime'
@@ -247,25 +248,72 @@ describe('ACP caller-owned waits', () => {
     await expect(authenticated).resolves.toEqual({})
   })
 
-  it('lets cancel abort vendor decision hooks with request-cancelled instead of a timeout', async () => {
-    const entered = deferred<AbortSignal>()
+  it('lets cancel abort vendor hooks so each sends its own answer, or request-cancelled if it throws', async () => {
     const { agent, runtime } = fixture({
-      onRequest: (_method, _params, context) => {
-        entered.resolve(context.signal)
-        return new Promise(() => {})
-      }
+      onRequest: (method, _params, context) =>
+        new Promise((resolve, reject) => {
+          // '_vendor/silent' ignores the abort: the runtime never answers for it.
+          if (method !== '_vendor/silent') {
+            context.signal.addEventListener('abort', () =>
+              method === '_vendor/plan'
+                ? resolve({ outcome: 'abandoned' })
+                : reject(new Error('stop'))
+            )
+          }
+        })
     })
     agent.on('session/prompt', (frame) =>
       agent.on('session/cancel', () => agent.reply(frame, { stopReason: 'cancelled' }))
     )
     await runtime.start(startOptions)
     const pending = runtime.prompt([...prompt])
-    const response = agent.request('question', '_vendor/question', {})
-    const signal = await entered.promise
+    const question = agent.request('question', '_vendor/question', {})
+    const plan = agent.request('plan', '_vendor/plan', {})
+    void agent.request('silent', '_vendor/silent', {})
+    await tick()
     await runtime.cancel()
-    expect(signal.aborted).toBe(true)
-    expect(await response).toMatchObject({ error: { code: -32800 } })
+    expect(await question).toMatchObject({ error: { code: -32800 } })
+    expect(await plan).toMatchObject({ result: { outcome: 'abandoned' } })
     await pending
+    await tick()
+    expect(agent.frames.filter((frame) => frame.id === 'plan')).toHaveLength(1)
+    expect(agent.frames.some((frame) => frame.id === 'silent')).toBe(false)
+  })
+
+  it('keeps a handler answer that finishes saving after the cancel', async () => {
+    // A real I/O hop, the shape of a journal write the handler commits before replying.
+    const save = (): Promise<void> => readFile(import.meta.filename).then(() => undefined)
+    const userAnswer = deferred<void>()
+    const { agent, runtime } = fixture({
+      onRequest: (method, _params, context) =>
+        new Promise((resolve) => {
+          if (method === '_vendor/plan') {
+            // The user already approved; the save started before the stop and replies after it.
+            void userAnswer.promise.then(save).then(() => resolve({ outcome: 'approved' }))
+          } else {
+            context.signal.addEventListener(
+              'abort',
+              () => void save().then(() => resolve({ outcome: 'abandoned' }))
+            )
+          }
+        })
+    })
+    agent.on('session/prompt', (frame) =>
+      agent.on('session/cancel', () => agent.reply(frame, { stopReason: 'cancelled' }))
+    )
+    await runtime.start(startOptions)
+    const pending = runtime.prompt([...prompt])
+    const plan = agent.request('plan', '_vendor/plan', {})
+    const question = agent.request('question', '_vendor/question', {})
+    await tick()
+    userAnswer.resolve()
+    await runtime.cancel()
+    expect(await plan).toMatchObject({ result: { outcome: 'approved' } })
+    expect(await question).toMatchObject({ result: { outcome: 'abandoned' } })
+    await pending
+    await tick()
+    expect(agent.frames.filter((frame) => frame.id === 'plan')).toHaveLength(1)
+    expect(agent.frames.filter((frame) => frame.id === 'question')).toHaveLength(1)
   })
 
   it('settles requests when the process owner closes on exit even if stdout stays open', async () => {
