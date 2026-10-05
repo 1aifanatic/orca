@@ -24,7 +24,8 @@ import type { RuntimeLeafRecord } from './runtime-terminal-state-records'
 import { resolveEditorAuthority } from './editor-authority'
 import { openHostDiffTab, openHostEditFileTab } from './host-editor-tab-commands'
 import { getHostEditorTabState } from './host-editor-tab-state'
-import { obsoleteWindowDocuments } from '../window/obsolete-window-documents'
+import { getRuntimeDesktopSurface } from './runtime-desktop-surface'
+import { HEADLESS_RUNTIME_WINDOW_ID } from '../../shared/runtime-types'
 
 export class OrcaRuntimeWithFileCommands extends OrcaRuntimeWithPreservedBranchCleanup {
   protected readonly fileCommands = new RuntimeFileCommands({
@@ -119,9 +120,24 @@ export class OrcaRuntimeWithFileCommands extends OrcaRuntimeWithPreservedBranchC
     )
   }
 
-  // Why: a window document alive through a host editor commit holds a stale editor view.
-  recordHostEditorCommit(): void {
-    obsoleteWindowDocuments.markAllObsolete()
+  // Why: a promoted window whose hand-over timed out or failed keeps a live document that may still
+  // persist the session it read; only a closed window or a gone renderer cannot.
+  hasLiveWindowDocument(): boolean {
+    for (const windowId of [this.authoritativeWindowId, this.pendingHeadlessPromotionWindowId]) {
+      if (windowId === null || windowId === HEADLESS_RUNTIME_WINDOW_ID) {
+        continue
+      }
+      const win = getRuntimeDesktopSurface().findWindowById(windowId)
+      if (
+        win &&
+        !win.isDestroyed() &&
+        win.webContents?.isDestroyed?.() !== true &&
+        win.webContents?.isCrashed?.() !== true
+      ) {
+        return true
+      }
+    }
+    return false
   }
 
   // Why: diffs are never persisted, so a window taking editor authority starts without them.

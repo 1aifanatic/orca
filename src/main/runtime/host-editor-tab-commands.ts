@@ -112,7 +112,6 @@ export function openHostDiffTab(
       )
     }
   }
-  runtime.recordHostEditorCommit()
   publishHostEditorTabs(
     runtime,
     args.worktreeId,
@@ -132,7 +131,6 @@ export function closeHostEditorTab(
   const state = getHostEditorTabState(runtime)
   if (findHostDiffTab(runtime, worktreeId, tab.id)) {
     state.removeDiff(worktreeId, tab.id)
-    runtime.recordHostEditorCommit()
     publishHostEditorTabs(runtime, worktreeId)
     return
   }
@@ -210,7 +208,5 @@ export function persistHostEditorLayout(
         activeGroupId: snapshot.activeGroupId
       })
     )
-  } else {
-    runtime.recordHostEditorCommit()
   }
 }

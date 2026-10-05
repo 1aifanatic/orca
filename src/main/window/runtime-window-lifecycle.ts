@@ -14,7 +14,6 @@ import { runWorktreeChangeInvalidators } from '../ipc/worktree-change-invalidato
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { requestMobileMarkdownFromRenderer } from './mobile-markdown-request-relay'
 import { registerRendererDocumentNavigation } from './renderer-document-navigation'
-import { obsoleteWindowDocuments } from './obsolete-window-documents'
 import { createRuntimeRendererNotificationSender } from './runtime-renderer-notification-sender'
 import { requestSessionTabCloseFromRenderer } from './session-tab-close-request-relay'
 import { requestTerminalTabCloseFromRenderer } from './terminal-tab-close-request-relay'
@@ -219,21 +218,15 @@ export function registerRuntimeWindowLifecycle(
       send('runtime:browserRemoteViewersChanged', { browserPageId, hasRemoteViewers }),
     clientHostedBrowserRowsChanged: (event) => send('runtime:clientHostedBrowserRowsChanged', event)
   })
-  const webContentsId = mainWebContents.id
-  obsoleteWindowDocuments.registerWindow(webContentsId, () => mainWebContents.reload())
-  registerRendererDocumentNavigation(
-    mainWebContents,
-    () => {
-      rendererNotifications.onMainFrameReloadStarted()
-      const fence = runtime.markRendererReloading(mainWindow.id)
-      return () => {
-        if (fence && runtime.markRendererReloadCancelled(mainWindow.id, fence)) {
-          rendererNotifications.onMainFrameReloadCancelled()
-        }
+  registerRendererDocumentNavigation(mainWebContents, () => {
+    rendererNotifications.onMainFrameReloadStarted()
+    const fence = runtime.markRendererReloading(mainWindow.id)
+    return () => {
+      if (fence && runtime.markRendererReloadCancelled(mainWindow.id, fence)) {
+        rendererNotifications.onMainFrameReloadCancelled()
       }
-    },
-    () => obsoleteWindowDocuments.onDocumentCommitted(webContentsId)
-  )
+    }
+  })
   mainWebContents.on('did-finish-load', () => {
     rendererNotifications.onMainFrameLoadFinished()
   })
@@ -241,7 +234,6 @@ export function registerRuntimeWindowLifecycle(
     rendererNotifications.onRendererProcessGone()
   })
   mainWindow.on('closed', () => {
-    obsoleteWindowDocuments.unregisterWindow(webContentsId)
     rendererNotifications.close()
     runtime.markGraphUnavailable(mainWindow.id)
     if (activeRuntimeNotifierToken === notifierToken) {

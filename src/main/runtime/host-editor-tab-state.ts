@@ -104,10 +104,8 @@ export class HostEditorTabState {
   }
 }
 
-/** The runtime that owns host editor bookkeeping; every host editor commit is reported to it. */
-export type HostEditorTabStateOwner = {
-  recordHostEditorCommit(): void
-}
+/** The runtime that owns host editor bookkeeping. */
+export type HostEditorTabStateOwner = object
 
 const statesByRuntime = new WeakMap<HostEditorTabStateOwner, HostEditorTabState>()
 

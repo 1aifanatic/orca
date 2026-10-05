@@ -1,6 +1,6 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
 import { OrcaRuntimeWithBuildHeadlessMobileSessionBrowserTabs } from './orca-runtime-build-headless-mobile-session-browser-tabs'
-import { resolveEditorAuthority } from './editor-authority'
+import { assertEditorAuthorityAvailable, resolveEditorAuthority } from './editor-authority'
 import { activateHostEditorTab, releaseHostEditorFocus } from './host-editor-tab-commands'
 import type { PtyControllerInventory } from './runtime-pty-controller-contract'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../shared/constants'
@@ -249,10 +249,14 @@ export class OrcaRuntimeWithPerformMobileSessionPtyRecordsRefresh extends OrcaRu
         this.notifier?.focusEditorTab?.(tab.id, worktreeId)
       }
     } else {
-      if (targetsHost && resolveEditorAuthority(this) === 'host') {
-        activateHostEditorTab(this, worktreeId, tab.id)
-      } else if (targetsHost) {
-        this.notifier?.focusEditorTab?.(tab.id, worktreeId)
+      if (targetsHost) {
+        const editorAuthority = resolveEditorAuthority(this)
+        assertEditorAuthorityAvailable(editorAuthority)
+        if (editorAuthority === 'host') {
+          activateHostEditorTab(this, worktreeId, tab.id)
+        } else {
+          this.notifier?.focusEditorTab?.(tab.id, worktreeId)
+        }
       }
     }
     return this.applyMobileSessionTabNavigation(

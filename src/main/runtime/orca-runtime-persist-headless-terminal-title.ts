@@ -15,7 +15,7 @@ import {
 } from '../../shared/execution-host'
 import { getLocalProjectWorktreeGitOptions } from '../project-runtime-git-options'
 import { resolveWorktreeHostRouting } from './worktree-launch-host-repo'
-import { resolveEditorAuthority } from './editor-authority'
+import { assertEditorAuthorityAvailable, resolveEditorAuthority } from './editor-authority'
 import { readHostMarkdownTab, saveHostMarkdownTab } from './runtime-mobile-markdown-documents'
 
 export class OrcaRuntimeWithPersistHeadlessTerminalTitle extends OrcaRuntimeWithMoveHeadlessMobileSessionTab {
@@ -145,7 +145,9 @@ export class OrcaRuntimeWithPersistHeadlessTerminalTitle extends OrcaRuntimeWith
     worktreeSelector: string,
     tabId: string
   ): Promise<RuntimeMarkdownReadTabResult> {
-    if (resolveEditorAuthority(this) === 'host') {
+    const authority = resolveEditorAuthority(this)
+    assertEditorAuthorityAvailable(authority)
+    if (authority === 'host') {
       return await readHostMarkdownTab(
         this,
         await this.resolveHostMarkdownWorktreeId(worktreeSelector),
@@ -165,7 +167,9 @@ export class OrcaRuntimeWithPersistHeadlessTerminalTitle extends OrcaRuntimeWith
     baseVersion: string,
     content: string
   ): Promise<RuntimeMarkdownSaveTabResult> {
-    if (resolveEditorAuthority(this) === 'host') {
+    const authority = resolveEditorAuthority(this)
+    assertEditorAuthorityAvailable(authority)
+    if (authority === 'host') {
       return await saveHostMarkdownTab(
         this,
         await this.resolveHostMarkdownWorktreeId(worktreeSelector),

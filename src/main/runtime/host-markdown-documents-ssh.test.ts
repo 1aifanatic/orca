@@ -128,7 +128,7 @@ function sshRuntime(
     emitMobileSessionTabsSnapshot: vi.fn(),
     getMobileSessionTabsForWorktree: vi.fn(),
     applyMobileSessionTabNavigation: vi.fn(),
-    recordHostEditorCommit: vi.fn(),
+    hasLiveWindowDocument: () => false,
     requireStore: vi.fn(),
     getWorkspaceSessionHostIdForWorktree: () => hostId,
     resolveRuntimeFileTarget: async () => ({

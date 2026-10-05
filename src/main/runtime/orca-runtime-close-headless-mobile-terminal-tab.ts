@@ -1,6 +1,6 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
 import { OrcaRuntimeWithCloseStructuredAgentSessionTab } from './orca-runtime-close-structured-agent-session-tab'
-import { resolveEditorAuthority } from './editor-authority'
+import { assertEditorAuthorityAvailable, resolveEditorAuthority } from './editor-authority'
 import { listHostEditorMobileTabs } from './host-editor-tab-publication'
 import type {
   RuntimeMobileSessionTabMove,
@@ -175,15 +175,19 @@ export class OrcaRuntimeWithCloseHeadlessMobileTerminalTab extends OrcaRuntimeWi
     return { moved: true }
   }
 
-  // Why: a notifier can outlive its window's authority (failed promotion); the host's own editor tabs then move on the host.
+  // Why: a crashed window's notifier outlives its document; the host's own editor tabs then move on the host.
   protected isHostOwnedEditorTabMove(
     snapshot: RuntimeMobileSessionTabsSnapshot,
     move: RuntimeMobileSessionTabMove
   ): boolean {
     const tab = snapshot.tabs.find((candidate) => candidate.id === move.tabId)
+    if (tab?.type !== 'markdown' && tab?.type !== 'file') {
+      return false
+    }
+    const authority = resolveEditorAuthority(this)
+    assertEditorAuthorityAvailable(authority)
     return (
-      (tab?.type === 'markdown' || tab?.type === 'file') &&
-      resolveEditorAuthority(this) === 'host' &&
+      authority === 'host' &&
       listHostEditorMobileTabs(
         this,
         snapshot.worktree,

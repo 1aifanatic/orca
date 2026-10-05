@@ -308,7 +308,7 @@ export class OrcaRuntimeWithCloseMobileSessionTab extends OrcaRuntimeWithRefuseU
         tab,
         structuredAgentSessionTabCloseCause(options.reason)
       )
-    } else if (editorAuthorityAtStart === 'host') {
+    } else if (editorAuthorityAtStart !== 'window') {
       // Why: no window owns editors, so the host closes the tab in the session it persists.
       closeHostEditorTab(this, worktreeId, tab)
     } else {

@@ -39,8 +39,6 @@ export type HostEditorTabsRuntime = EditorAuthorityHost & {
     navigation: RuntimeNavigationTarget,
     clientNavigationId?: string
   ): RuntimeMobileSessionTabsResult
-  /** Called synchronously after every host editor commit (§ obsolete window documents). */
-  recordHostEditorCommit(): void
 }
 
 export function requireOwnSession(
@@ -61,7 +59,6 @@ export function commitHostEditorSession(
 ): void {
   assertHostEditorAuthority(runtime)
   runtime.setWorkspaceSessionForWorktree(worktreeId, session)
-  runtime.recordHostEditorCommit()
 }
 
 /** Re-derives the worktree's snapshot from the session and publishes it before a reply returns. */

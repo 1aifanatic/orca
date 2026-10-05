@@ -27,6 +27,7 @@ import { resolveAuthorizedPath } from '../ipc/filesystem-auth'
 import { isENOENT } from '../ipc/filesystem-path-containment'
 import { runtimeFileRouteForTarget, type RuntimeFileRoute } from './runtime-file-command-target'
 import { parseWorkspaceKey } from '../../shared/workspace-scope'
+import { assertEditorAuthorityAvailable } from './editor-authority'
 
 export class RuntimeFileCommandsWithConstructor extends RuntimeFileCommandsWithActiveRuntimeTextSearches {
   constructor(private readonly host: RuntimeFileCommandHost) {
@@ -161,6 +162,7 @@ export class RuntimeFileCommandsWithConstructor extends RuntimeFileCommandsWithA
     navigation?: RuntimeNavigationTarget
   ): Promise<RuntimeFileOpenResult> {
     const authority = this.host.captureEditorAuthority?.() ?? 'window'
+    assertEditorAuthorityAvailable(authority)
     const target = await this.host.resolveRuntimeFileTarget(worktreeSelector)
     const { worktree } = target
     if (!isSafeMobileRelativePath(relativePath)) {
@@ -213,6 +215,7 @@ export class RuntimeFileCommandsWithConstructor extends RuntimeFileCommandsWithA
     navigation?: RuntimeNavigationTarget
   ): Promise<RuntimeFileOpenResult> {
     const authority = this.host.captureEditorAuthority?.() ?? 'window'
+    assertEditorAuthorityAvailable(authority)
     const target = await this.host.resolveRuntimeFileTarget(worktreeSelector)
     const { worktree } = target
     if (!isSafeMobileRelativePath(relativePath)) {

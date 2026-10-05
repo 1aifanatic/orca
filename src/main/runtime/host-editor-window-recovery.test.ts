@@ -1,16 +1,12 @@
 /**
- * A failed or timed-out desktop promotion hands editor authority back to the host while the
- * window's document may still be alive. If the host then changes editor tabs, that document's
- * late graph must not re-attach (it would erase or resurrect the host's change); it gets one
- * reload and reads the session fresh. With no host change in between, recovery attaches as before.
+ * The host changes editor tabs only while no live window document could later persist a session
+ * it read earlier. A promoted window whose hand-over timed out or failed is still alive, so editor
+ * actions refuse (retryably) until its late graph attaches; a gone renderer or a closed window
+ * hands editors to the host, and a replacement document is assigned before it reads the session.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  obsoleteWindowDocuments,
-  OBSOLETE_WINDOW_GRAPH_ERROR,
-  refuseObsoleteWindowGraph
-} from '../window/obsolete-window-documents'
-import { EDITOR_AUTHORITY_CHANGED_ERROR } from './editor-authority'
+import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
+import { EDITOR_AUTHORITY_CHANGED_ERROR, EDITOR_WINDOW_STARTING_ERROR } from './editor-authority'
 
 // Fragments stay side-effect ordered: mocks, then lifecycle, then fixtures.
 const {
@@ -24,15 +20,12 @@ const { TEST_WINDOW_ID } = await import('./orca-runtime-test-fixtures.spec')
 const {
   attachEditorWindow,
   createHeadlessEditorHarness,
+  detachEditorWindow,
   mockLiveEditorWindow,
   runtimeFileCommands
 } = await import('./host-editor-tabs-test-harness.spec')
 
-const WEB_CONTENTS_ID = 41
-
-/** The IPC graph handler's order: the obsolete-document refusal runs before syncWindowGraph. */
 function lateWindowGraph(runtime: { syncWindowGraph: (id: number, graph: never) => unknown }) {
-  refuseObsoleteWindowGraph(WEB_CONTENTS_ID)
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a renderer graph is the synced shape plus its generation, which syncWindowGraph accepts.
   return runtime.syncWindowGraph(TEST_WINDOW_ID, {
     tabs: [],
@@ -41,108 +34,169 @@ function lateWindowGraph(runtime: { syncWindowGraph: (id: number, graph: never) 
   } as never)
 }
 
+function sessionWithNotes(worktreeId: string, worktreePath: string): WorkspaceSessionState {
+  return {
+    ...getDefaultWorkspaceSession(),
+    openFilesByWorktree: {
+      [worktreeId]: [
+        {
+          filePath: `${worktreePath}/notes.md`,
+          relativePath: 'notes.md',
+          worktreeId,
+          language: 'markdown'
+        }
+      ]
+    }
+  }
+}
+
+/** A serve host whose desktop promotion fell back to headless while its window stays open. */
 async function recoveredPromotion(
   recovery: 'failed' | 'timeout',
   initialSession?: Parameters<typeof createHeadlessEditorHarness>[0]
 ) {
   const harness = await createHeadlessEditorHarness(initialSession)
-  const { runtime } = harness
+  const { runtime, worktreeId } = harness
+  await harness.writeWorktreeFile('notes.md', 'a')
   runtime.syncWindowGraph(HEADLESS_RUNTIME_WINDOW_ID, { tabs: [], leaves: [] })
-  const reload = vi.fn()
-  obsoleteWindowDocuments.registerWindow(WEB_CONTENTS_ID, reload)
-  obsoleteWindowDocuments.onDocumentCommitted(WEB_CONTENTS_ID)
-  attachEditorWindow(runtime)
+  // Listed while the host owned editors, so the phone holds the tab ids it will act on.
+  const listed = await runtime.listMobileSessionTabs(`id:${worktreeId}`)
+  const editor = attachEditorWindow(runtime)
   if (recovery === 'failed') {
-    runtime.markGraphReloadFailed(TEST_WINDOW_ID, 'renderer-process-gone')
+    runtime.markGraphReloadFailed(TEST_WINDOW_ID, 'renderer-frame-unavailable')
   } else {
     await vi.advanceTimersByTimeAsync(RUNTIME_GRAPH_RELOAD_TIMEOUT_MS)
   }
-  // The window document is still alive, but authority is back on the host.
-  mockLiveEditorWindow()
   expect(runtime.getStatus().authoritativeWindowId).toBe(HEADLESS_RUNTIME_WINDOW_ID)
-  return { ...harness, reload }
+  return { ...harness, editor, listed }
 }
 
-describe.each(['failed', 'timeout'] as const)(
-  'host editor changes after a %s promotion',
-  (recovery) => {
-    afterEach(() => {
-      obsoleteWindowDocuments.resetForTests()
-      electronMocks.BrowserWindow.fromId.mockImplementation(() => null)
-      vi.useRealTimers()
-    })
-
-    it('opens on the host, refuses the stale document graph and reloads it once', async () => {
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-      const { runtime, worktreeId, writeWorktreeFile, getSession, reload } =
-        await recoveredPromotion(recovery)
-      await writeWorktreeFile('notes.md', 'a')
-
-      await runtime.openMobileFile(`id:${worktreeId}`, 'notes.md')
-
-      expect(() => lateWindowGraph(runtime)).toThrow(OBSOLETE_WINDOW_GRAPH_ERROR)
-      expect(() => lateWindowGraph(runtime)).toThrow(OBSOLETE_WINDOW_GRAPH_ERROR)
-      expect(reload).toHaveBeenCalledTimes(1)
-      expect(runtime.getStatus().authoritativeWindowId).toBe(HEADLESS_RUNTIME_WINDOW_ID)
-      expect(getSession().openFilesByWorktree?.[worktreeId]).toHaveLength(1)
-      expect((await runtime.listMobileSessionTabs(`id:${worktreeId}`)).tabs).toEqual([
-        expect.objectContaining({ type: 'markdown', relativePath: 'notes.md' })
-      ])
-    })
-
-    it('a host close is not undone by the stale document', async () => {
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-      const { runtime, worktreeId, getSession } = await recoveredPromotion(
-        recovery,
-        (worktreeId, worktreePath) => ({
-          ...getDefaultWorkspaceSession(),
-          openFilesByWorktree: {
-            [worktreeId]: [
-              {
-                filePath: `${worktreePath}/notes.md`,
-                relativePath: 'notes.md',
-                worktreeId,
-                language: 'markdown'
-              }
-            ]
-          }
-        })
-      )
-      const [tab] = (await runtime.listMobileSessionTabs(`id:${worktreeId}`)).tabs
-
-      await runtime.closeMobileSessionTab(`id:${worktreeId}`, tab!.id)
-
-      expect(() => lateWindowGraph(runtime)).toThrow(OBSOLETE_WINDOW_GRAPH_ERROR)
-      expect(getSession().openFilesByWorktree?.[worktreeId]).toEqual([])
-      expect((await runtime.listMobileSessionTabs(`id:${worktreeId}`)).tabs).toEqual([])
-    })
-
-    it('attaches the late graph as before when the host changed nothing', async () => {
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-      const { runtime, reload } = await recoveredPromotion(recovery)
-
-      lateWindowGraph(runtime)
-
-      expect(reload).not.toHaveBeenCalled()
-      expect(runtime.getStatus()).toMatchObject({ authoritativeWindowId: TEST_WINDOW_ID })
-    })
-
-    it('a reloaded document is assigned before it reads, and its first graph attaches', async () => {
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-      const { runtime, worktreeId, writeWorktreeFile } = await recoveredPromotion(recovery)
-      await writeWorktreeFile('notes.md', 'a')
-      await runtime.openMobileFile(`id:${worktreeId}`, 'notes.md')
-      expect(() => lateWindowGraph(runtime)).toThrow(OBSOLETE_WINDOW_GRAPH_ERROR)
-
-      // The forced reload: navigation start assigns the window, then the new document commits.
-      runtime.markRendererReloading(TEST_WINDOW_ID)
-      obsoleteWindowDocuments.onDocumentCommitted(WEB_CONTENTS_ID)
-
-      expect(() => lateWindowGraph(runtime)).not.toThrow()
-      expect(runtime.getStatus().authoritativeWindowId).toBe(TEST_WINDOW_ID)
-    })
+function mockGoneRenderer(gone: 'crashed' | 'destroyed'): void {
+  const window = {
+    isDestroyed: () => false,
+    webContents: {
+      send: vi.fn(),
+      isDestroyed: () => gone === 'destroyed',
+      isCrashed: () => gone === 'crashed'
+    }
   }
-)
+  electronMocks.BrowserWindow.fromId.mockImplementation((id: number) =>
+    id === TEST_WINDOW_ID ? window : null
+  )
+}
+
+describe.each(['failed', 'timeout'] as const)('editor tabs after a %s promotion', (recovery) => {
+  afterEach(() => {
+    electronMocks.BrowserWindow.fromId.mockImplementation(() => null)
+    vi.useRealTimers()
+  })
+
+  it('refuses every editor action retryably and writes no session', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const { runtime, worktreeId, getSession, listed, editor } = await recoveredPromotion(
+      recovery,
+      sessionWithNotes
+    )
+    const [notes] = listed.tabs
+    expect(notes).toMatchObject({ type: 'markdown', relativePath: 'notes.md' })
+    const before = structuredClone(getSession())
+    const selector = `id:${worktreeId}`
+
+    await expect(runtime.openMobileFile(selector, 'notes.md')).rejects.toThrow(
+      EDITOR_WINDOW_STARTING_ERROR
+    )
+    await expect(runtime.openMobileDiff(selector, 'a.ts', false)).rejects.toThrow(
+      EDITOR_WINDOW_STARTING_ERROR
+    )
+    await expect(runtime.readMobileMarkdownTab(selector, notes!.id)).rejects.toThrow(
+      EDITOR_WINDOW_STARTING_ERROR
+    )
+    await expect(runtime.saveMobileMarkdownTab(selector, notes!.id, 'v', 'b')).rejects.toThrow(
+      EDITOR_WINDOW_STARTING_ERROR
+    )
+    await expect(runtime.closeMobileSessionTab(selector, notes!.id)).rejects.toThrow(
+      EDITOR_WINDOW_STARTING_ERROR
+    )
+    await expect(runtime.activateMobileSessionTab(selector, notes!.id)).rejects.toThrow(
+      EDITOR_WINDOW_STARTING_ERROR
+    )
+    await expect(
+      runtime.moveMobileSessionTab(selector, {
+        kind: 'reorder',
+        tabId: notes!.id,
+        targetGroupId: listed.activeGroupId ?? '',
+        tabOrder: [notes!.id]
+      })
+    ).rejects.toThrow(EDITOR_WINDOW_STARTING_ERROR)
+
+    expect(getSession()).toEqual(before)
+    expect(editor.openFile).not.toHaveBeenCalled()
+    expect(editor.closeSessionTab).not.toHaveBeenCalled()
+  })
+
+  it('the late graph still attaches and then the window owns opens', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const { runtime, worktreeId, getSession, editor } = await recoveredPromotion(recovery)
+
+    lateWindowGraph(runtime)
+
+    expect(runtime.getStatus().authoritativeWindowId).toBe(TEST_WINDOW_ID)
+    await runtime.openMobileFile(`id:${worktreeId}`, 'notes.md')
+    expect(editor.openFile).toHaveBeenCalledTimes(1)
+    expect(getSession().openFilesByWorktree?.[worktreeId] ?? []).toEqual([])
+  })
+
+  it.each(['crashed', 'destroyed'] as const)(
+    'a %s renderer hands editors to the host; its reload is assigned before it reads',
+    async (gone) => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      const { runtime, worktreeId, getSession, editor } = await recoveredPromotion(recovery)
+      mockGoneRenderer(gone)
+
+      await runtime.openMobileFile(`id:${worktreeId}`, 'notes.md')
+      expect(getSession().openFilesByWorktree?.[worktreeId]).toHaveLength(1)
+
+      // The reload's navigation start assigns the window before the new document reads.
+      mockLiveEditorWindow()
+      runtime.markRendererReloading(TEST_WINDOW_ID)
+      expect(runtime.getStatus().authoritativeWindowId).toBe(TEST_WINDOW_ID)
+      await runtime.openMobileFile(`id:${worktreeId}`, 'notes.md')
+      expect(editor.openFile).toHaveBeenCalledTimes(1)
+      expect(getSession().openFilesByWorktree?.[worktreeId]).toEqual([
+        expect.objectContaining({ relativePath: 'notes.md' })
+      ])
+      expect(() => lateWindowGraph(runtime)).not.toThrow()
+    }
+  )
+})
+
+describe('a closed desktop window', () => {
+  afterEach(() => {
+    electronMocks.BrowserWindow.fromId.mockImplementation(() => null)
+  })
+
+  it('hands editors to the host, and a reopened window restores what the host wrote', async () => {
+    const { runtime, worktreeId, writeWorktreeFile, getSession } =
+      await createHeadlessEditorHarness()
+    await writeWorktreeFile('notes.md', 'a')
+    attachEditorWindow(runtime)
+    runtime.syncWindowGraph(TEST_WINDOW_ID, { tabs: [], leaves: [], rendererGeneration: 'g-1' })
+    runtime.markGraphUnavailable(TEST_WINDOW_ID)
+    detachEditorWindow(runtime)
+
+    await runtime.openMobileFile(`id:${worktreeId}`, 'notes.md')
+    expect(getSession().openFilesByWorktree?.[worktreeId]).toHaveLength(1)
+
+    const reopened = attachEditorWindow(runtime)
+    expect(runtime.getStatus().authoritativeWindowId).toBe(TEST_WINDOW_ID)
+    await runtime.openMobileFile(`id:${worktreeId}`, 'notes.md')
+    expect(reopened.openFile).toHaveBeenCalledTimes(1)
+    expect(getSession().openFilesByWorktree?.[worktreeId]).toEqual([
+      expect.objectContaining({ relativePath: 'notes.md' })
+    ])
+    detachEditorWindow(runtime)
+  })
+})
 
 describe('an open that crosses a window attach', () => {
   afterEach(() => {
@@ -187,18 +241,5 @@ describe('an open that crosses a window attach', () => {
     await expect(runtime.openMobileDiff(`id:${worktreeId}`, 'a.ts', false)).rejects.toThrow(
       EDITOR_AUTHORITY_CHANGED_ERROR
     )
-  })
-
-  it('opens on the host again once a failed attach hands authority back', async () => {
-    const { runtime, worktreeId, writeWorktreeFile } = await createHeadlessEditorHarness()
-    runtime.syncWindowGraph(HEADLESS_RUNTIME_WINDOW_ID, { tabs: [], leaves: [] })
-    await writeWorktreeFile('notes.md', 'a')
-    attachEditorWindow(runtime)
-    runtime.markGraphReloadFailed(TEST_WINDOW_ID, 'renderer-process-gone')
-
-    await expect(runtime.openMobileFile(`id:${worktreeId}`, 'notes.md')).resolves.toMatchObject({
-      opened: true
-    })
-    expect((await runtime.listMobileSessionTabs(`id:${worktreeId}`)).tabs).toHaveLength(1)
   })
 })
