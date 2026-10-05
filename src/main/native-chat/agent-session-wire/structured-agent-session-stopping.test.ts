@@ -562,4 +562,33 @@ describe('a Stop whose provider ends its session', () => {
       ]
     ])
   })
+
+  // The kill timed out, then the agent's process exits on its own: the adapter reports the end of
+  // the close Orca began, and nothing else asks to stop.
+  it("says the Stop took once the agent's process exits on its own after the kill timed out", async () => {
+    await runningTurn({ stopEndsSession: true })
+    rig.closeSession.mockRejectedValueOnce(new Error('the kill timed out'))
+    expect(await rig.stop()).toMatchObject({ ok: true })
+    await eventually(() => expect(stopAnswers()).toEqual(['cancelUnconfirmed']))
+
+    await rig.host.handleAdapterEvent({
+      type: 'ended',
+      sessionId: HOST_TEST_SESSION,
+      reason: 'claude session closed',
+      cause: 'requested-close',
+      fence: fence(),
+      acquisitionGeneration: 'generation-1',
+      observedAt: Date.now()
+    })
+
+    await eventually(() =>
+      expect(
+        rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.child ?? null
+      ).toBeNull()
+    )
+    expect({ turn: turnOneState(), notes: stopAnswers() }).toEqual({
+      turn: 'interrupted',
+      notes: ['took']
+    })
+  })
 })
