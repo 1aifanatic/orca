@@ -10,6 +10,8 @@ export const PROVIDER_SIGTERM_GRACE_MS = 3_000
  * recovery on a process stuck in the kernel, such as one blocked on a hung network drive.
  */
 export const PROVIDER_GROUP_REAP_TIMEOUT_MS = 1_500
+/** Longest a supervisor waits, after its provider exits, to relay output still in the pipes. */
+export const PROVIDER_OUTPUT_DRAIN_TIMEOUT_MS = 1_000
 /**
  * Longest a supervisor can take to stop once asked (stdin end, grace, SIGTERM, grace, SIGKILL,
  * reap); a SIGKILL sooner can orphan its group. The graces are also the largest a spec may carry.
@@ -92,8 +94,11 @@ const scheduleOwnerShutdown = () => {
   ownerShutdownTimer = setTimeout(() => stopProviderGroup(null), spec.stdinEndGraceMs)
   ownerShutdownTimer.unref()
 }
-process.stdin.once('end', scheduleOwnerShutdown)
-process.stdin.once('close', scheduleOwnerShutdown)
+// A one-shot's stdin end is the end of its request, not a stop; only its owner's death stops it.
+if (spec.lifetime !== 'one-shot') {
+  process.stdin.once('end', scheduleOwnerShutdown)
+  process.stdin.once('close', scheduleOwnerShutdown)
+}
 process.stdin.pipe(child.stdin)
 child.stdout.pipe(process.stdout)
 child.stderr.pipe(process.stderr)
@@ -101,12 +106,24 @@ child.stderr.pipe(process.stderr)
 for (const stream of [process.stdin, process.stdout, process.stderr, child.stdin, child.stdout, child.stderr]) {
   stream.on('error', () => {})
 }
+// Exit can land before the provider's last output is relayed; a one-shot's answer is that output.
+const drainProviderOutput = () => {
+  const ended = (stream) => stream.readableEnded || stream.destroyed ? null : new Promise((resolve) => {
+    stream.once('end', resolve)
+    stream.once('close', resolve)
+  })
+  const flushed = (stream) => new Promise((resolve) => stream.write('', resolve))
+  const drained = Promise.all([child.stdout, child.stderr].map(ended))
+    .then(() => Promise.all([process.stdout, process.stderr].map(flushed)))
+  return Promise.race([drained, new Promise((resolve) => setTimeout(resolve, ${PROVIDER_OUTPUT_DRAIN_TIMEOUT_MS}))])
+}
 const reapProviderExit = async (code, signal) => {
   if (settling) return
   settling = true
   clearInterval(timer)
   if (ownerShutdownTimer) clearTimeout(ownerShutdownTimer)
   if (!(await reapOwnedProviderGroup())) return process.exit(1)
+  await drainProviderOutput()
   finishWithProviderOutcome(code, signal)
 }
 timer = setInterval(() => {
@@ -123,8 +140,20 @@ child.once('exit', (code, signal) => {
 })
 `
 
+/**
+ * `session`: the owner ending stdin is a close, so the provider is stopped after a grace.
+ * `one-shot`: stdin end only completes the request; the provider runs until it exits or is stopped.
+ */
+export type ProviderSupervisorLifetime = 'session' | 'one-shot'
+
+/** The supervisor could not start its provider: it relays Node's spawn ENOENT and exits 127. */
+export function isSupervisedProviderNotFound(code: number | null, stderr: string): boolean {
+  return code === 127 && /^spawn .+ ENOENT$/.test(stderr.trim())
+}
+
 export type ProviderSupervisorOptions = {
   cwd?: string
+  lifetime?: ProviderSupervisorLifetime
   /** The process the supervisor serves; it must be the supervisor's parent. */
   ownerPid?: number
   stdinEndGraceMs?: number
@@ -144,6 +173,7 @@ export function supervisedPosixLaunch(
   {
     cwd = launch.cwd ?? process.cwd(),
     ownerPid = process.pid,
+    lifetime = 'session',
     stdinEndGraceMs = PROVIDER_STDIN_END_GRACE_MS,
     sigtermGraceMs = PROVIDER_SIGTERM_GRACE_MS
   }: ProviderSupervisorOptions = {}
@@ -156,6 +186,7 @@ export function supervisedPosixLaunch(
       args: launch.args,
       cwd,
       ownerPid,
+      lifetime,
       stdinEndGraceMs,
       sigtermGraceMs
     })
@@ -176,7 +207,8 @@ export function supervisedPosixLaunch(
 export function createProviderSpawnSpec(
   launch: CodexAppServerLaunch,
   childEnv: NodeJS.ProcessEnv,
-  platform: NodeJS.Platform
+  platform: NodeJS.Platform,
+  { lifetime }: Pick<ProviderSupervisorOptions, 'lifetime'> = {}
 ): {
   program: string
   args: string[]
@@ -186,7 +218,8 @@ export function createProviderSpawnSpec(
   /** The child is the supervisor, whose SIGTERM stops the provider and then itself. */
   supervised: boolean
 } {
-  const supervisor = platform === 'win32' ? null : supervisedPosixLaunch(launch, childEnv)
+  const supervisor =
+    platform === 'win32' ? null : supervisedPosixLaunch(launch, childEnv, { lifetime })
   return {
     program: supervisor?.command ?? launch.command,
     args: supervisor?.args ?? launch.args,

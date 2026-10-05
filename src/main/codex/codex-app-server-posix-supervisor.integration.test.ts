@@ -50,12 +50,27 @@ const RECORDS_SIGTERM_PROVIDER = String.raw`
   setInterval(() => {}, 60000)
 `
 
+// Answers a one-shot request only after the session stdin-end grace, then exits with its own code.
+const ONE_SHOT_PROVIDER = String.raw`
+  process.on('SIGTERM', () => {
+    require('node:fs').writeFileSync(process.env.ORCA_TEST_PROVIDER_SIGNAL_FILE, 'SIGTERM')
+  })
+  process.stdin.resume().on('end', () => {
+    setTimeout(() => {
+      process.stdout.write('ok')
+      process.exitCode = 3
+    }, Number(process.env.ORCA_TEST_PROVIDER_ANSWER_DELAY_MS))
+  })
+`
+
 // Stands in for Orca: launches the supervisor as its own child, then can be killed outright. A
 // second child holds the supervisor's stdin open, so only the parent-death watch can notice.
-// A clean-quit owner has no holder and exits normally on SIGUSR2, the way Orca quits.
+// A clean-quit owner has no holder and exits normally on SIGUSR2, the way Orca quits. A one-shot
+// owner ends the supervisor's stdin at once, as Orca does after writing a one-shot's request.
 const OWNER = String.raw`
   const { spawn } = require('node:child_process')
   const quitsCleanly = Boolean(process.env.ORCA_TEST_OWNER_QUITS_CLEANLY)
+  const endsStdin = Boolean(process.env.ORCA_TEST_OWNER_ENDS_STDIN)
   if (quitsCleanly) process.on('SIGUSR2', () => process.exit(0))
   const spec = JSON.parse(Buffer.from(process.env.ORCA_PROVIDER_SUPERVISOR_SPEC, 'base64').toString())
   spec.ownerPid = process.pid
@@ -64,7 +79,8 @@ const OWNER = String.raw`
     stdio: ['pipe', 'pipe', 'ignore'],
     detached: true
   })
-  const holder = quitsCleanly
+  if (endsStdin) supervisor.stdin.end()
+  const holder = quitsCleanly || endsStdin
     ? null
     : spawn(process.execPath, ['-e', 'setInterval(() => {}, 60000)'], {
         stdio: ['ignore', supervisor.stdin, 'ignore']
@@ -351,5 +367,94 @@ describe.runIf(process.platform !== 'win32')('POSIX provider supervisor processe
 
     expect(await waitFor(() => !alive(-pids.provider), 3_000)).toBe(true)
     expect(existsSync(signalFile) && readFileSync(signalFile, 'utf8')).toBe('SIGTERM')
+  })
+
+  describe('one-shot lifetime', () => {
+    it('lets a one-shot answer after its stdin ends and relays its exit code', async () => {
+      const signalFile = join(tempDir(), 'provider-signal')
+      const { supervisor, exit } = launchSupervisor(
+        { lifetime: 'one-shot' },
+        {
+          ORCA_TEST_PROVIDER_SIGNAL_FILE: signalFile,
+          ORCA_TEST_PROVIDER_ANSWER_DELAY_MS: String(PROVIDER_STDIN_END_GRACE_MS * 1.5)
+        },
+        { command: process.execPath, args: ['-e', ONE_SHOT_PROVIDER] }
+      )
+      let stdout = ''
+      supervisor.stdout!.on('data', (chunk: Buffer) => (stdout += chunk.toString()))
+
+      supervisor.stdin!.end('request')
+
+      await expect(exit).resolves.toEqual({ code: 3, signal: null })
+      expect(stdout).toBe('ok')
+      expect(existsSync(signalFile)).toBe(false)
+    })
+
+    it.each([
+      ['dies', 'SIGKILL', {}],
+      ['quits cleanly', 'SIGUSR2', { ORCA_TEST_OWNER_QUITS_CLEANLY: '1' }]
+    ] as const)(
+      'reaps a one-shot that ignores its stdin end when its owner %s',
+      async (_, signal, env) => {
+        const { owner, pids } = await launchUnderOwner(
+          { lifetime: 'one-shot', sigtermGraceMs: 300 },
+          { ORCA_TEST_OWNER_ENDS_STDIN: '1', ...env }
+        )
+        // Past the session grace: a stdin end alone must not have stopped it.
+        await new Promise((resolve) => setTimeout(resolve, PROVIDER_STDIN_END_GRACE_MS + 300))
+        expect(alive(-pids.provider)).toBe(true)
+
+        owner.kill(signal)
+
+        expect(await waitFor(() => !alive(-pids.provider), PROVIDER_SUPERVISOR_MAX_STOP_MS)).toBe(
+          true
+        )
+        expect(await waitFor(() => !alive(pids.supervisor), 3_000)).toBe(true)
+        expect(alive(pids.grandchild)).toBe(false)
+      }
+    )
+
+    it('escalates a SIGTERM-ignoring one-shot to SIGKILL after the grace from the spec', async () => {
+      const graceMs = 200
+      const { supervisor, exit } = launchSupervisor(
+        { lifetime: 'one-shot', sigtermGraceMs: graceMs },
+        { ORCA_TEST_PROVIDER_IGNORES_SIGTERM: '1' }
+      )
+      const { provider, grandchild } = await readPids(supervisor, ['provider', 'grandchild'])
+      supervisor.stdin!.end()
+
+      const signalledAt = Date.now()
+      supervisor.kill('SIGTERM')
+
+      await expect(exit).resolves.toEqual({ code: null, signal: 'SIGTERM' })
+      expect(Date.now() - signalledAt).toBeGreaterThanOrEqual(graceMs)
+      expect(Date.now() - signalledAt).toBeLessThan(PROVIDER_SIGTERM_GRACE_MS)
+      expect(alive(provider)).toBe(false)
+      expect(alive(grandchild)).toBe(false)
+    })
+
+    it('relays all of the provider output to a slow owner before exiting', async () => {
+      const bytes = 4 * 1024 * 1024
+      const { supervisor, exit } = launchSupervisor(
+        { lifetime: 'one-shot' },
+        {},
+        {
+          command: process.execPath,
+          args: ['-e', `process.stdout.write('x'.repeat(${bytes})); process.exitCode = 3`]
+        }
+      )
+      let received = 0
+      supervisor.stdout!.on('data', (chunk: Buffer) => {
+        received += chunk.byteLength
+        supervisor.stdout!.pause()
+        setTimeout(() => supervisor.stdout!.resume(), 5)
+      })
+      const closed = new Promise((resolve) => supervisor.once('close', resolve))
+      supervisor.stdin!.end()
+
+      await expect(exit).resolves.toEqual({ code: 3, signal: null })
+      await closed
+      expect(received).toBe(bytes)
+    })
   })
 })
