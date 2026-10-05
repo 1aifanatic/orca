@@ -18,9 +18,9 @@ export type CodexPaneAccountRecord = {
   accountId: string | null
   /** Absent only on records written before route provenance was introduced. */
   homeRoute?: CodexPaneHomeRoute
-  /** Rechecked when CODEX_HOME came from process-global shell startup. */
+  /** The custom CODEX_HOME a shell startup file set at launch, naming the pane's home. */
   shellStartupHomeOverride?: CodexShellStartupHomeOverride
-  /** Rechecked after restart when CODEX_HOME came from the process environment. */
+  /** The custom CODEX_HOME the launch environment set, naming the pane's home. */
   environmentHomeOverride?: CodexEnvironmentHomeOverride
 }
 

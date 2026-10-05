@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button'
 import { useAppStore } from '../store'
 import { translate } from '@/i18n/i18n'
 import { shouldFocusMobileDriverAction } from './terminal-pane/mobile-driver-overlay-focus'
-import { buildCodexRestartNoticeKey } from './codex-restart-notice-key'
 import { awaitsCodexRestartAnswer } from './codex-restart-notice-state'
 
 function isInsideHiddenTree(element: HTMLElement): boolean {
@@ -52,7 +51,7 @@ export default function CodexRestartChip({
   return (
     <LoudRestartOverlay
       isVisible={isVisible}
-      noticeKey={`${ptyId}:${buildCodexRestartNoticeKey(restartNotice)}`}
+      noticeKey={`${ptyId}:${restartNotice.previousAccountLabel}:${restartNotice.nextAccountLabel}`}
       restartNotice={restartNotice}
       shouldFocus={shouldFocus}
       onDismiss={handleDismiss}
@@ -70,7 +69,7 @@ function LoudRestartOverlay({
   onRestart
 }: {
   isVisible: boolean
-  noticeKey: string | null
+  noticeKey: string
   restartNotice: RestartNotice
   shouldFocus: boolean
   onDismiss: () => void

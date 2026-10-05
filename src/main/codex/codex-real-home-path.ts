@@ -72,13 +72,6 @@ export function getCustomCodexHomeOverrideForLaunch(
   }
 }
 
-export function environmentCodexHomeOverrideContextsEqual(
-  left: CodexEnvironmentHomeOverride,
-  right: CodexEnvironmentHomeOverride
-): boolean {
-  return normalizePathForComparison(left.codexHome) === normalizePathForComparison(right.codexHome)
-}
-
 export function shellStartupCodexHomeOverrideMatches(
   context: CodexShellStartupHomeOverride,
   currentContext: CodexShellStartupHomeOverride = context

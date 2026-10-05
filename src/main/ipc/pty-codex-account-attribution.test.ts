@@ -105,33 +105,6 @@ describe('registerPtyHandlers', () => {
       }
     }
   })
-  it('does not record a pane-local environment CODEX_HOME as a recheckable override', async () => {
-    setLocalPtyProvider({
-      spawn: vi.fn(async () => ({ id: 'pty-pane-env-home' })),
-      write: vi.fn(),
-      resize: vi.fn(),
-      kill: vi.fn(),
-      shutdown: vi.fn(),
-      onData: vi.fn(() => vi.fn()),
-      onExit: vi.fn(() => vi.fn()),
-      listProcesses: vi.fn(async () => []),
-      getForegroundProcess: vi.fn(async () => null)
-    } as never)
-    const getSettings = vi.fn().mockReturnValue({ activeCodexManagedAccountId: null })
-    registerPtyHandlers(mainWindow as never, undefined, () => TEST_CODEX_HOME, getSettings as never)
-
-    await handlers.get('pty:spawn')!(null, {
-      cols: 80,
-      rows: 24,
-      env: { CODEX_HOME: '/pane/custom-codex-home' }
-    })
-
-    expect(recordCodexPaneAccountMock).toHaveBeenCalledWith('pty-pane-env-home', {
-      selectionKey: 'host',
-      accountId: null,
-      homeRoute: 'shared-home'
-    })
-  })
   it('does not resume under another account when the origin auth stays unavailable', async () => {
     vi.useFakeTimers()
     const spawn = vi.fn(async () => ({ id: 'pty-must-not-spawn' }))
