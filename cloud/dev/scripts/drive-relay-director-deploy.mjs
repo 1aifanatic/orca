@@ -68,7 +68,7 @@ export class DriverStop extends Error {}
 export function parseDriverArguments(argv, home = homedir()) {
   const config = {
     dryRun: false,
-    rehomeDisabled: false,
+    leaveRehomePaused: false,
     configure: [],
     logDirectory: join(home, '.orca', 'relay-director-deploy')
   }
@@ -78,8 +78,8 @@ export function parseDriverArguments(argv, home = homedir()) {
   }
   for (let index = 0; index < argv.length; index += 1) {
     const key = argv[index]
-    if (key === '--dry-run' || key === '--rehome-disabled') {
-      config[key === '--dry-run' ? 'dryRun' : 'rehomeDisabled'] = true
+    if (key === '--dry-run' || key === '--leave-rehome-paused') {
+      config[key === '--dry-run' ? 'dryRun' : 'leaveRehomePaused'] = true
       continue
     }
     const value = argv[index + 1]
@@ -96,8 +96,8 @@ export function parseDriverArguments(argv, home = homedir()) {
     else throw new Error(`unsupported argument ${key}`)
   }
   if (!config.commit) throw new Error('missing --commit <40-character main commit to publish>')
-  if (config.pauseRun && config.rehomeDisabled) {
-    throw new Error('--pause-run and --rehome-disabled contradict each other')
+  if (config.pauseRun && config.leaveRehomePaused) {
+    throw new Error('--pause-run and --leave-rehome-paused contradict each other')
   }
   return config
 }
@@ -115,9 +115,11 @@ export function createDriver(config, deps) {
   let rollbackPoint
   let published = config.publishRun ? { runId: config.publishRun } : undefined
   let owned // { generation, runId }: the pause this driver made, the only rehome state it owns
-  // A pause or enable run dispatched but not yet read back: it applies on its own regardless.
-  let changing
-  let unconfirmed // a pause or enable run that finished without printing a usable result
+  // A pause or enable this run cannot vouch for: `changing` while it may still apply on its own,
+  // `unconfirmed` once it finished without a usable result. { kind, name, runId?, url? }
+  let uncertain
+  let login
+  const ownRunIds = new Set()
   let enabled = false
 
   function log(message) {
@@ -179,7 +181,8 @@ export function createDriver(config, deps) {
         )
       )
       for (const run of lines.split('\n').filter(Boolean).map(JSON.parse)) {
-        if (blocksDeploy(run.path)) active.push(`${run.name} ${runUrl(run.id)} (${run.status})`)
+        if (blocksDeploy(run.path) && !ownRunIds.has(run.id))
+          active.push(`${run.name} ${runUrl(run.id)} (${run.status})`)
       }
     }
     return active
@@ -225,6 +228,7 @@ export function createDriver(config, deps) {
     await new Promise((resolveYield) => setImmediate(resolveYield))
     requireQuietLane()
     log(`dispatch ${name}: ${workflow.file} ${JSON.stringify(inputs)}`)
+    if (changesRehome) uncertain = { kind: 'changing', name }
     const output = gh(
       words(`workflow run ${workflow.file} -R ${REPOSITORY} --ref ${WORKFLOW_REF} --json`),
       JSON.stringify(inputs)
@@ -236,6 +240,10 @@ export function createDriver(config, deps) {
       )
     }
     const runId = Number(printed[1])
+    const url = runUrl(runId)
+    ownRunIds.add(runId)
+    if (changesRehome) Object.assign(uncertain, { runId, url })
+    log(`${name}: run ${url}`)
     const dispatched = viewRun(runId)
     if (
       dispatched.workflowName !== workflow.name ||
@@ -246,11 +254,8 @@ export function createDriver(config, deps) {
         `run ${runUrl(runId)} is not a ${workflow.file} dispatch on ${WORKFLOW_REF}`
       )
     }
-    const run = { name, runId, url: runUrl(runId), headSha: dispatched.headSha }
-    log(`${name}: run ${run.url}`)
-    // Cleared by the step only once it has read the run's result.
-    if (changesRehome) changing = run
-    return await waitForRun(run)
+    // `uncertain` is cleared by the step only once it has read the run's result.
+    return await waitForRun({ name, runId, url, headSha: dispatched.headSha })
   }
 
   function requireSuccess(run) {
@@ -503,13 +508,19 @@ export function createDriver(config, deps) {
     log(describeDirector(known.director))
     let claim
     if (config.pauseRun) {
-      // A pause or enable run still running finishes before it can prove anything.
-      if (viewRun(config.pauseRun).status !== 'completed') {
-        await waitForRun({
-          name: 'pause-run',
-          runId: config.pauseRun,
-          url: runUrl(config.pauseRun)
-        })
+      // Only this operator's own rehome-control run can prove a pause belongs to this driver.
+      const claimed = ghJson(
+        words(
+          `api repos/${REPOSITORY}/actions/runs/${config.pauseRun} --jq {path,actor:.triggering_actor.login}`
+        )
+      )
+      if (
+        !claimed.path?.split('@')[0].endsWith(`/${WORKFLOWS.rehome.file}`) ||
+        claimed.actor !== login
+      ) {
+        throw new DriverStop(
+          `${runUrl(config.pauseRun)} is not a ${WORKFLOWS.rehome.file} run by ${login}, so it cannot prove a pause is this driver's`
+        )
       }
       const result = await rehomeResult(config.pauseRun)
       claim = result && pausedGeneration(result)
@@ -519,7 +530,6 @@ export function createDriver(config, deps) {
         )
       }
     }
-    if (!config.dryRun && !config.pauseRun && published && !work()) return undefined
     // A director safety pause moves the generation without a run; the inspect then fails closed.
     const generation = config.rehomeGeneration ?? (await lastKnownRehomeGeneration())
     if (config.dryRun) {
@@ -555,12 +565,16 @@ export function createDriver(config, deps) {
         throw new DriverStop(
           `rehome is generation ${control.generation} ${control.enabled ? 'enabled' : 'paused'}, not the pause ${runUrl(config.pauseRun)} made at ${claim}. Something else changed it, such as a director safety pause; this driver will not touch it`
         )
-    } else if (!control.enabled && !config.rehomeDisabled) {
+    } else if (control.enabled && config.leaveRehomePaused) {
       throw new DriverStop(
-        `rehome is paused at generation ${control.generation}, and this run did not pause it. If an earlier run of this driver did, re-run with the --pause-run its log printed. Otherwise pass --rehome-disabled to deploy and leave it paused`
+        'rehome is enabled; --leave-rehome-paused accepts only a paused switch. Drop it'
+      )
+    } else if (!control.enabled && !config.leaveRehomePaused) {
+      throw new DriverStop(
+        `rehome is paused at generation ${control.generation}, and this run did not pause it. If an earlier run of this driver did, re-run with the --pause-run its log printed. Otherwise pass --leave-rehome-paused to deploy and leave it paused`
       )
     }
-    if (control.hostCooldownMs === undefined && !config.rehomeDisabled) {
+    if (control.hostCooldownMs === undefined && (control.enabled || owned)) {
       throw new DriverStop(
         'the director reports no per-host rehome cooldown, so enable would refuse; not pausing'
       )
@@ -616,14 +630,14 @@ export function createDriver(config, deps) {
           const run = await dispatch(step)
           const result = await rehomeResult(run.runId)
           const generation = result && pausedGeneration(result)
-          changing = undefined
           if (generation !== known.control.generation + 1) {
-            unconfirmed = run
+            uncertain.kind = 'unconfirmed'
             throw new DriverStop(
               `${run.url} (${run.conclusion}) printed no pause at generation ${known.control.generation + 1}`
             )
           }
           owned = { generation, runId: run.runId }
+          uncertain = undefined
           log(
             `REHOME PAUSED at generation ${generation}. To finish from here after any stop: ${rerunCommand()}`
           )
@@ -649,14 +663,13 @@ export function createDriver(config, deps) {
             )
         }
       },
-      {
+      ...config.configure.slice(0, 1).map(() => ({
         name: 'soak',
         description: `wait ${SOAK_MS / 60_000} min, then compare director 5xx`,
         // A wave already configured means an earlier run passed the soak on this image.
-        when: () =>
-          config.configure.length > 0 && pendingWaves().length === config.configure.length,
+        when: () => pendingWaves().length === config.configure.length,
         run: () => soak(deployedAt)
-      },
+      })),
       ...config.configure.map((wave) => ({
         name: `configure:${wave.cells.join(',')}`,
         workflow: WORKFLOWS.admission,
@@ -760,25 +773,28 @@ export function createDriver(config, deps) {
             )
           const run = await dispatch(step)
           const result = await rehomeResult(run.runId)
-          changing = undefined
           if (result) known.control = result.control
+          // A failed run is never an enable, whatever it printed last.
           if (
+            run.conclusion === 'success' &&
             result?.mode === 'enable' &&
             result.control.enabled &&
             result.control.generation === owned.generation + 1
           ) {
             owned = undefined
+            uncertain = undefined
             enabled = true
             log(`REHOME RE-ENABLED at generation ${result.control.generation}`)
             return
           }
           if (result?.mode !== 'recover-enable') {
-            unconfirmed = run
+            uncertain.kind = 'unconfirmed'
             throw new DriverStop(`${run.url} (${run.conclusion}) printed no enable result`)
           }
           // Recovery that disabled rehome itself is this driver's pause too. Recovery that found it
           // already disabled at another generation found someone else's pause, such as a director
           // safety pause: this driver gives up ownership and will never lift it.
+          uncertain = undefined
           const recovered = pausedGeneration(result)
           if (recovered !== undefined) owned = { generation: recovered, runId: run.runId }
           else if (result.control.generation !== owned.generation) owned = undefined
@@ -790,13 +806,13 @@ export function createDriver(config, deps) {
     ]
   }
 
-  function rerunCommand() {
+  function rerunCommand(pauseRun = owned?.runId) {
     return [
       'node dev/scripts/drive-relay-director-deploy.mjs',
       `--commit ${config.commit}`,
       ...(published?.digest ? [`--publish-run ${published.runId}`] : []),
-      ...(owned ? [`--pause-run ${owned.runId}`] : []),
-      ...(config.rehomeDisabled ? ['--rehome-disabled'] : []),
+      ...(pauseRun ? [`--pause-run ${pauseRun}`] : []),
+      ...(config.leaveRehomePaused ? ['--leave-rehome-paused'] : []),
       ...config.configure.map(
         (wave) => `--configure ${wave.cells.join(',')}=${wave.cellImageDigest}`
       )
@@ -805,27 +821,32 @@ export function createDriver(config, deps) {
 
   function stopReport(reason) {
     const lines = [`STOPPED: ${reason}`, '', 'State now:']
-    if (changing) {
+    const workflowPage = `https://github.com/${REPOSITORY}/actions/workflows/${WORKFLOWS.rehome.file}`
+    const where = uncertain?.url ?? `(gh printed no URL; find it at ${workflowPage})`
+    if (uncertain?.name === 'pause') {
       lines.push(
-        `- *** REHOME IS CHANGING: the ${changing.name} run ${changing.url} was dispatched and applies on its own, if it has not already. Wait for it to finish. ***`
+        uncertain.kind === 'changing'
+          ? `- *** REHOME IS CHANGING: the pause run ${where} was dispatched and applies on its own, if it has not already. ***`
+          : `- *** PAUSE UNCONFIRMED: ${where} printed no pause. Rehome MAY BE PAUSED. ***`,
+        '  Inspect rehome before walking away.'
       )
-      if (changing.name === 'pause')
+      if (uncertain.runId) {
         lines.push(
-          `  If it paused rehome, finish with: cd cloud && ${rerunCommand()} --pause-run ${changing.runId}`
+          `  If it paused rehome at generation ${known.control.generation + 1}, finish with: cd cloud && ${rerunCommand(uncertain.runId)}`
         )
-      else
+      }
+    } else if (uncertain?.name === 'enable') {
+      lines.push(
+        uncertain.kind === 'changing'
+          ? `- *** REHOME IS CHANGING: the enable run ${where} applies on its own: it enables rehome, or disables it again if it fails. ***`
+          : `- *** ENABLE UNCONFIRMED: ${where} did not confirm the enable. Rehome may be enabled, or paused. ***`,
+        `  If it enabled rehome, or failed before applying, finish with: cd cloud && ${rerunCommand(owned.runId)}`
+      )
+      if (uncertain.runId) {
         lines.push(
-          '  It enables rehome, or disables it again if it fails. Read its result, then re-run the command below.'
+          `  If its recovery paused rehome again, finish with: cd cloud && ${rerunCommand(uncertain.runId)}`
         )
-    } else if (unconfirmed?.name === 'pause') {
-      lines.push(
-        `- *** PAUSE UNCONFIRMED: ${unconfirmed.url} printed no pause. Rehome MAY BE PAUSED: inspect it before walking away. ***`,
-        `  If it is paused at generation ${known.control.generation + 1}, finish with: cd cloud && ${rerunCommand()} --pause-run ${unconfirmed.runId}`
-      )
-    } else if (unconfirmed?.name === 'enable') {
-      lines.push(
-        `- *** ENABLE UNCONFIRMED: ${unconfirmed.url} printed no result. Rehome may be enabled, or still paused at generation ${owned.generation}: inspect it. The re-run below handles either. ***`
-      )
+      }
     } else if (owned) {
       lines.push(
         `- *** REHOME IS PAUSED by this driver at generation ${owned.generation} (${runUrl(owned.runId)}). It stays paused until the re-run below enables it. ***`
@@ -854,7 +875,7 @@ export function createDriver(config, deps) {
         `  ${ghCommand(WORKFLOWS.director, directorDeployInputs({ imageDigest: rollbackPoint.digest, predecessorDigest: rollbackPoint.digest, rehomeGeneration: owned?.generation ?? '<paused generation>' }))}`
       )
     }
-    if (!config.dryRun && !changing && unconfirmed?.name !== 'pause') {
+    if (!config.dryRun && !uncertain) {
       lines.push(
         '',
         `Re-run to finish from here (it re-reads everything and skips what is done):`,
@@ -878,6 +899,7 @@ export function createDriver(config, deps) {
     )
     log(`${config.dryRun ? 'dry run' : 'start'}: ${rerunCommand()}`)
     try {
+      login = gh(['api', 'user', '--jq', '.login']).trim()
       const generation = await preflight()
       const steps = plan()
       for (const step of [...(config.dryRun ? readSteps(generation) : []), ...steps]) {
@@ -893,11 +915,8 @@ export function createDriver(config, deps) {
       }
       if (steps.some((step) => step.when())) await typed(`DEPLOY ${config.commit.slice(0, 12)}`)
       for (const step of steps) if (step.when()) await step.run(step)
-      const rehome = !known.control
-        ? 'untouched'
-        : enabled || known.control.enabled
-          ? 'enabled'
-          : 'left paused (--rehome-disabled)'
+      const rehome =
+        enabled || known.control.enabled ? 'enabled' : 'left paused (--leave-rehome-paused)'
       log(
         `DONE: ${describeDirector(known.director)}; rehome ${rehome}${rollbackPoint ? `; rollback point ${rollbackPoint.revision} ${rollbackPoint.digest}` : ''}`
       )

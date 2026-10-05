@@ -180,6 +180,12 @@ function simulate(world, run) {
         return
       }
       run.conclusion = 'failure'
+      if (failure === 'applied-silent') {
+        // Applied, then a later step failed and the recovery printed nothing.
+        nextGeneration(world, true)
+        run.log = controlLine('enable', world.control)
+        return
+      }
       // Applied, then the job's own recovery disabled it again; or a director safety pause got
       // there first and recovery found it disabled.
       if (failure === 'applied-then-recovered') nextGeneration(world, false, 2)
@@ -236,6 +242,15 @@ function gh(world, args, input) {
         .map((run) => `${JSON.stringify(run)}\n`)
         .join('')
     )
+  }
+  if (args[0] === 'api' && args[1].includes('/actions/runs/')) {
+    const claimed = world.runs.find(
+      (candidate) => candidate.id === Number(args[1].split('/').at(-1))
+    )
+    return ok({
+      path: relayWorkflowPath(claimed.file.slice(RELAY_WORKFLOW_FILE_PREFIX.length)),
+      actor: claimed.actor ?? 'operator'
+    })
   }
   if (args[0] === 'api') return ok(`${world.main}\n`)
   if (args[0] === 'workflow') {
@@ -343,7 +358,13 @@ function dependencies(world) {
     sleep: async (ms) => {
       world.now += ms
     },
-    print: (line) => world.printed.push(line),
+    print: (line) => {
+      // Every command the driver prints must be one its own parser accepts.
+      for (const [, argv] of line.matchAll(/drive-relay-director-deploy\.mjs ([^*]+?)\s*$/g)) {
+        assert.doesNotThrow(() => parseDriverArguments(argv.split(' ')), line)
+      }
+      world.printed.push(line)
+    },
     prompt: async (question) => {
       world.questions = [...(world.questions ?? []), question]
       const answer = world.answer(question)
@@ -364,17 +385,17 @@ function drive(world, argv, deps = dependencies(world)) {
 
 const start = (world, extra = [], deps) => drive(world, ['--commit', COMMIT, ...extra], deps)
 
-// Runs the exact command the last stop report printed.
-function rerun(world, deps) {
+// Runs the last printed command, or the last one on a line containing `marker`.
+function rerun(world, marker = '') {
   const command = world.printed
-    .filter((line) => line.includes('node dev/scripts/drive-relay-director-deploy.mjs'))
+    .filter((line) => line.includes(marker) && line.includes('drive-relay-director-deploy.mjs '))
     .at(-1)
   const argv = command
     .slice(command.indexOf('.mjs ') + 5)
     .trim()
     .split(' ')
   world.printed.length = 0
-  return drive(world, argv, deps)
+  return drive(world, argv)
 }
 
 const stopped = (promise) =>
@@ -455,14 +476,14 @@ test('a wrong phrase stops before the first mutation', async () => {
   ])
 })
 
-test('F2: rehome found paused is never adopted; --rehome-disabled deploys and leaves it paused', async () => {
+test('F2: rehome found paused is never adopted; --leave-rehome-paused deploys and leaves it paused', async () => {
   const world = fakeWorld({ control: { ...CONTROL, generation: 52, enabled: false } })
   assert.match(
     (await stopped(start(world))).message,
-    /did not pause it.*--pause-run.*--rehome-disabled/s
+    /did not pause it.*--pause-run.*--leave-rehome-paused/s
   )
   assert.equal(dispatched(world, PUBLISH).length, 0)
-  await start(world, ['--rehome-disabled'])
+  await start(world, ['--leave-rehome-paused'])
   assert.equal(
     dispatched(world, REHOME('pause')).length + dispatched(world, REHOME('enable')).length,
     0
@@ -585,7 +606,7 @@ test('F1: an interrupt while the enable is in flight never says rehome is paused
   const text = report(world)
   assert.match(
     text,
-    /REHOME IS CHANGING: the enable run [\s\S]*It enables rehome, or disables it again if it fails/
+    /REHOME IS CHANGING: the enable run .* it enables rehome, or disables it again if it fails/
   )
   assert.doesNotMatch(text.slice(text.indexOf('interrupted')), /REHOME IS PAUSED/)
 })
@@ -676,9 +697,7 @@ test('F3: a director safety pause found by the enable recovery is never adopted 
   assert.match(report(world), /rehome: generation 43 as last read, PAUSED, not by this driver/)
   const stop = report(world).slice(report(world).indexOf('STOPPED'))
   assert.doesNotMatch(stop, /--pause-run/)
-  // The deploy is done, so the printed command has nothing left to do and leaves rehome alone.
-  assert.equal((await rerun(world)).done, true)
-  assert.match(report(world), /rehome untouched/)
+  assert.match((await stopped(rerun(world))).message, /did not pause it/)
   const [pause] = dispatched(world, REHOME('pause'))
   const claim = await stopped(
     drive(world, [
@@ -700,10 +719,10 @@ test('P1: a green enable with an unreadable log is ENABLE UNCONFIRMED, and the p
   await stopped(start(world))
   assert.match(
     report(world),
-    /ENABLE UNCONFIRMED: .* Rehome may be enabled, or still paused at generation 40/
+    /ENABLE UNCONFIRMED: .* did not confirm the enable. Rehome may be enabled, or paused/
   )
   world.unreadableLogs = undefined
-  assert.equal((await rerun(world)).done, true)
+  assert.equal((await rerun(world, 'If it enabled rehome')).done, true)
   assert.equal(dispatched(world, REHOME('enable')).length, 1)
   assert.deepEqual(live(world), [41, true])
 })
@@ -746,19 +765,167 @@ test('F5: a tripped soak is judged again on fresh traffic by the printed command
   assert.deepEqual(live(world), [41, true])
 })
 
-test('P8: running the command again after DONE dispatches and asks nothing', async () => {
+test('P8 and G1: the printed command never reports DONE without reading rehome', async () => {
   const world = fakeWorld()
   await start(world)
   const before = world.dispatches().length
   world.prompts.length = 0
-  const publishRun = dispatched(world, PUBLISH)[0].id
+  const publishRun = String(dispatched(world, PUBLISH)[0].id)
+  assert.equal((await drive(world, ['--commit', COMMIT, '--publish-run', publishRun])).done, true)
+  assert.deepEqual(keys(world).slice(before), [
+    'operate-relay-asia-admission:inspect',
+    'operate-relay-production-rehome:inspect'
+  ])
+  assert.equal(world.prompts.length, 0)
+  assert.match(report(world), /DONE: .* rehome enabled/)
+
+  // G1: the deploy is done but the driver's pause still holds; dropping --pause-run must not hide it.
+  const paused = fakeWorld({ monitorState: { frozenAt: '2026-10-05T05:30:00Z' } })
+  await stopped(start(paused))
+  const run = String(dispatched(paused, PUBLISH)[0].id)
+  assert.match(
+    (await stopped(drive(paused, ['--commit', COMMIT, '--publish-run', run]))).message,
+    /did not pause it/
+  )
+  assert.deepEqual(live(paused), [40, false])
+})
+
+test("G2: --pause-run accepts only this operator's own rehome-control run", async () => {
+  const world = fakeWorld({ control: { ...CONTROL, generation: 40, enabled: false } })
+  // Another operator paused rehome by hand.
+  world.runs.push({
+    id: 900,
+    file: WORKFLOWS.rehome.file,
+    actor: 'someone-else',
+    conclusion: 'success',
+    log: controlLine('pause', world.control)
+  })
+  assert.match(
+    (await stopped(start(world, ['--pause-run', '900']))).message,
+    /is not a .* run by operator/
+  )
+  // A run of another workflow cannot prove a pause either.
+  world.runs.push({
+    id: 901,
+    file: WORKFLOWS.monitor.file,
+    conclusion: 'success',
+    log: controlLine('pause', world.control)
+  })
+  assert.match(
+    (await stopped(start(world, ['--pause-run', '901']))).message,
+    /is not a .* run by operator/
+  )
+  assert.equal(world.dispatches().length, 0)
+  assert.deepEqual(live(world), [40, false])
+})
+
+test('G3: a failed enable run is never reported RE-ENABLED, whatever it printed last', async () => {
+  const world = fakeWorld({ fail: { [REHOME('enable')]: 'applied-silent' } })
+  await stopped(start(world))
+  assert.doesNotMatch(report(world), /RE-ENABLED|DONE/)
+  assert.match(report(world), /ENABLE UNCONFIRMED: .* did not confirm the enable/)
+  // The printed command re-reads live state: rehome is at the pause's generation + 1, enabled.
+  const pauseRun = String(dispatched(world, REHOME('pause'))[0].id)
+  const publishRun = String(dispatched(world, PUBLISH)[0].id)
   assert.equal(
-    (await drive(world, ['--commit', COMMIT, '--publish-run', String(publishRun)])).done,
+    (await drive(world, ['--commit', COMMIT, '--publish-run', publishRun, '--pause-run', pauseRun]))
+      .done,
     true
   )
-  assert.equal(world.dispatches().length, before)
-  assert.equal(world.prompts.length, 0)
-  assert.match(report(world), /DONE: .* rehome untouched/)
+  assert.equal(dispatched(world, REHOME('enable')).length, 1)
+})
+
+test('C1: a pause whose run cannot be viewed, or printed no URL, is reported as REHOME IS CHANGING', async () => {
+  const world = fakeWorld()
+  const deps = dependencies(world)
+  const run = deps.run
+  deps.run = (program, args, input) => {
+    const pause = dispatched(world, REHOME('pause'))[0]
+    if (pause && args[1] === 'view' && args[2] === String(pause.id) && args.includes('--json')) {
+      return { status: 1, stdout: '', stderr: 'HTTP 502' }
+    }
+    return run(program, args, input)
+  }
+  await stopped(start(world, [], deps))
+  const [pause] = dispatched(world, REHOME('pause'))
+  assert.match(report(world), new RegExp(`REHOME IS CHANGING: the pause run .*${pause.id}`))
+  assert.match(report(world), new RegExp(`finish with: cd cloud && .*--pause-run ${pause.id}`))
+  assert.doesNotMatch(report(world), /Re-run to finish/)
+
+  const silent = fakeWorld()
+  const silentDeps = dependencies(silent)
+  const silentRun = silentDeps.run
+  silentDeps.run = (program, args, input) => {
+    const result = silentRun(program, args, input)
+    return args[0] === 'workflow' && JSON.parse(input).mode === 'pause'
+      ? { ...result, stdout: 'Created\n' }
+      : result
+  }
+  await stopped(start(silent, [], silentDeps))
+  assert.match(
+    report(silent),
+    /REHOME IS CHANGING: the pause run \(gh printed no URL; find it at https:/
+  )
+  assert.doesNotMatch(report(silent), /Re-run to finish/)
+})
+
+test('C2: --leave-rehome-paused refuses an enabled switch instead of pausing it', async () => {
+  const world = fakeWorld()
+  assert.match(
+    (await stopped(start(world, ['--leave-rehome-paused']))).message,
+    /accepts only a paused switch/
+  )
+  assert.equal(dispatched(world, REHOME('pause')).length + dispatched(world, PUBLISH).length, 0)
+})
+
+test('G4: an interrupt during the enable prints both commands that can finish', async () => {
+  const world = fakeWorld()
+  const deps = dependencies(world)
+  let driver
+  deps.stream = () => {
+    if (world.dispatches().at(-1)?.inputs.mode === 'enable') driver.interrupt('SIGINT')
+    return 0
+  }
+  driver = createDriver(
+    parseDriverArguments(['--commit', COMMIT, '--log-directory', logDirectory()]),
+    deps
+  )
+  await driver.run()
+  const [pause] = dispatched(world, REHOME('pause'))
+  const [enable] = dispatched(world, REHOME('enable'))
+  assert.match(
+    report(world),
+    new RegExp(
+      `If it enabled rehome, or failed before applying, finish with: cd cloud && .*--pause-run ${pause.id}`
+    )
+  )
+  assert.match(
+    report(world),
+    new RegExp(
+      `If its recovery paused rehome again, finish with: cd cloud && .*--pause-run ${enable.id}`
+    )
+  )
+})
+
+test("G5: the driver's own run, still listed as in progress, does not block its next step", async () => {
+  const world = fakeWorld()
+  const deps = dependencies(world)
+  const run = deps.run
+  deps.run = (program, args, input) => {
+    const result = run(program, args, input)
+    if (args[0] === 'workflow' && JSON.parse(input).mode === 'dry-run') {
+      const monitor = world.runs.at(-1)
+      world.active.push({
+        id: monitor.id,
+        path: relayWorkflowPath('monitor-relay-production.yml'),
+        name: 'Monitor',
+        status: 'in_progress'
+      })
+    }
+    return result
+  }
+  assert.equal((await start(world, [], deps)).done, true)
+  assert.deepEqual(live(world), [41, true])
 })
 
 test('argument parsing and plan helpers fail closed', () => {
@@ -769,7 +936,7 @@ test('argument parsing and plan helpers fail closed', () => {
     /must be a run ID/
   )
   assert.throws(
-    () => parseDriverArguments(['--commit', COMMIT, '--pause-run', '5', '--rehome-disabled']),
+    () => parseDriverArguments(['--commit', COMMIT, '--pause-run', '5', '--leave-rehome-paused']),
     /contradict/
   )
   assert.throws(

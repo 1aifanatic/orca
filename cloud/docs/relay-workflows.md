@@ -603,7 +603,8 @@ It keeps no state between runs. Every decision comes from live state read at the
   at `--rehome-generation`.
 
 Steps already done are skipped: a serving digest that matches is not deployed again, and cells
-already configured are not configured again. If nothing is left to do, it dispatches nothing.
+already configured are not configured again. It always reads rehome, even when nothing is left to
+do, so it never reports success over a pause it cannot explain.
 
 The sequence:
 
@@ -639,12 +640,13 @@ rehome:
 - `pause`;
 - `recover-enable` with `recovered: true`, meaning a failed enable that disabled rehome again itself.
 
-A `recover-enable` with `recovered: false` found rehome already disabled, for example by a director
-safety pause, and is never adopted. A fresh run that finds rehome paused stops. It goes ahead only
+The run must be a rehome-control run by the same GitHub user. A `recover-enable` with
+`recovered: false` found rehome already disabled, for example by a director safety pause, and is
+never adopted. A failed enable run is never counted as an enable, whatever it printed last. A fresh run that finds rehome paused stops. It goes ahead only
 with:
 
 - `--pause-run <run>`, which an earlier run of this driver printed; or
-- `--rehome-disabled`, which deploys and leaves rehome paused.
+- `--leave-rehome-paused`, which deploys and leaves rehome paused. It refuses an enabled switch.
 
 A pause made by anything else is never lifted.
 
