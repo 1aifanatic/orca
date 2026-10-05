@@ -3,13 +3,15 @@
 // notes it carried). Drafts are saved asynchronously, so removing the copy first could lose the
 // text in a crash. A returning entry is never sent again: its id proved no record, so a resend would
 // be a new first send. On load, one still marked re-runs its hand-back, which the draft's suffix
-// rule and image id check make safe to repeat; a refused save keeps it for the next load.
+// rule and image id check make safe to repeat. A refused save keeps it until a later save of that
+// draft lands in this run, or the next load.
 
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import {
   isNativeChatComposerDraftUnsaved,
   nativeChatComposerDraftWritesSettled,
-  structuredAgentSessionDraftScopeKey
+  structuredAgentSessionDraftScopeKey,
+  subscribeToNativeChatComposerDraft
 } from './native-chat-composer-draft-store'
 import {
   commitStructuredAgentSessionOutbox,
@@ -34,6 +36,27 @@ async function structuredAgentSessionDraftSaved(scopeKey: string): Promise<boole
   return !isNativeChatComposerDraftUnsaved(scopeKey)
 }
 
+/** Resolves when the scope's draft next reads as saved after a change: the user's own edit or send,
+ *  or a retried write, landing. */
+function nextDraftSave(scopeKey: string): Promise<void> {
+  return new Promise((resolve) => {
+    const unsubscribe = subscribeToNativeChatComposerDraft(scopeKey, () => {
+      if (!isNativeChatComposerDraftUnsaved(scopeKey)) {
+        unsubscribe()
+        resolve()
+      }
+    })
+  })
+}
+
+/** Waits until storage holds the scope's draft. A refused save is checked again when a later save
+ *  of that draft lands, in this run: by then the user has the text, as typed, edited or sent. */
+async function draftSavedInThisRun(scopeKey: string): Promise<void> {
+  while (!(await structuredAgentSessionDraftSaved(scopeKey))) {
+    await nextDraftSave(scopeKey)
+  }
+}
+
 const handingBack = new Set<string>()
 
 /**
@@ -50,12 +73,8 @@ export function handBackStructuredAgentSessionEntry(
   }
   handingBack.add(key)
   returnStructuredAgentSessionMessage(entry)
-  void structuredAgentSessionDraftSaved(structuredAgentSessionDraftScopeKey(entry.sessionId))
-    .then((saved) => {
-      if (saved) {
-        finishReturning(entry)
-      }
-    })
+  void draftSavedInThisRun(structuredAgentSessionDraftScopeKey(entry.sessionId))
+    .then(() => finishReturning(entry))
     .finally(() => handingBack.delete(key))
 }
 

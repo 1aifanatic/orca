@@ -435,11 +435,13 @@ describe('notes sent to a chat already open', () => {
     expect(isNoteInFlight(KEY_A)).toBe(true)
     expect(mocks.clearDeliveredDiffComments).not.toHaveBeenCalled()
     await nativeChatComposerDraftWritesSettled()
-    await Promise.resolve()
-    await Promise.resolve()
+    await vi.waitFor(() =>
+      expect(mocks.clearDeliveredDiffComments).toHaveBeenCalledExactlyOnceWith(WORKTREE_ID, [
+        NOTE_A
+      ])
+    )
     expect(readOutbox(target.sessionId)).toEqual([])
     expect(isNoteInFlight(KEY_A)).toBe(false)
-    expect(mocks.clearDeliveredDiffComments).toHaveBeenCalledExactlyOnceWith(WORKTREE_ID, [NOTE_A])
     expect(cleared).toEqual([NOTES])
   })
 

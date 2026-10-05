@@ -209,4 +209,44 @@ describe('a message handed back to its draft', () => {
     expect(next.drafts.readNativeChatDraftCache(SCOPE)).toBe('withdrawn message')
     expect(next.outbox.readOutbox(SESSION)).toEqual([])
   })
+
+  // A later save of that draft confirms the user has the text (sent or edited), so the copy goes in
+  // this run: the next start never brings back what the user already sent or changed.
+  it('leaves in this run once a later save of the draft lands: the user sent the returned text', async () => {
+    storage.refuseWrites = true
+    const run = await reload()
+    withdraw(run, message())
+    await settled(run)
+    storage.refuseWrites = false
+    // The user sends it: the composer clears the draft, saved at once.
+    run.store.clearNativeChatComposerDraftIfUnchanged(
+      SCOPE,
+      run.store.readNativeChatComposerDraft(SCOPE)
+    )
+    await vi.waitFor(() => expect(run.outbox.readOutbox(SESSION)).toEqual([]))
+
+    const next = await reload()
+    next.returning.resumeReturningStructuredAgentSessionEntries()
+    await settled(next)
+    expect(next.drafts.readNativeChatDraftCache(SCOPE)).toBe('')
+  })
+
+  it('leaves in this run once a later save lands: the user edited the returned text', async () => {
+    storage.refuseWrites = true
+    const run = await reload()
+    withdraw(run, message())
+    await settled(run)
+    storage.refuseWrites = false
+    run.store.updateNativeChatComposerDraft(
+      SCOPE,
+      { text: 'withdrawn message, edited' },
+      'immediate'
+    )
+    await vi.waitFor(() => expect(run.outbox.readOutbox(SESSION)).toEqual([]))
+
+    const next = await reload()
+    next.returning.resumeReturningStructuredAgentSessionEntries()
+    await settled(next)
+    expect(next.drafts.readNativeChatDraftCache(SCOPE)).toBe('withdrawn message, edited')
+  })
 })
