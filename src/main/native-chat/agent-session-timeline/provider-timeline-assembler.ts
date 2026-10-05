@@ -175,7 +175,18 @@ export function createProviderTimelineAssembler(
         )
         return { admission: ADMITTED }
       }
-      default:
+      case 'input.accepted':
+      case 'input.history':
+      case 'turn.open':
+      case 'turn.end':
+      case 'item.open':
+      case 'item.update':
+      case 'item.close':
+      case 'request.open':
+      case 'request.withdrawn':
+      case 'context.usage':
+      case 'provider.frame':
+      case 'session.ended':
         return applyDecided(event, journal)
     }
   }

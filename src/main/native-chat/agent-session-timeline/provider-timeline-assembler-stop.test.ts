@@ -252,7 +252,7 @@ describe('text after a person stopped its turn never lands outside that turn', (
     ])
   })
 
-  it("keeps dropping an anonymous stream after the provider's unnamed end until the next turn", async () => {
+  it("drops a stopped turn's anonymous stream until the provider's unnamed end, then lands it at thread level", async () => {
     const rig = await openProviderTimelineRig()
     rig.assembler.apply({ type: 'turn.open', turn: 't1', at: 1_000 })
     const delta = { type: 'text.delta', item: { stream: 'a' }, channel: 'assistant' } as const
