@@ -13,6 +13,7 @@ import { allowsDirectSshRelay } from '../ssh/ssh-connection-store'
 import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
 import {
   decideHostServer,
+  refineRelayTerminalDecision,
   publishManagedServerConnect,
   recordRelayDecision
 } from './ssh-host-server-connect'
@@ -261,6 +262,7 @@ async function doConnect(
     if (!ownsSession()) {
       throw createCancelledConnectAttemptError()
     }
+    await refineRelayTerminalDecision(target, server)
 
     // Why: we manually pushed `deploying-relay`, so send `connected` straight to the renderer — routing through onStateChange would trigger reconnect logic.
     clearRelayStateOverride(targetId)

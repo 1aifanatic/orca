@@ -79,3 +79,28 @@ export function recordRelayDecision(
   }
   setSshHostServerStatus(target.id, relayServerStatus(decision, offerMove))
 }
+
+/** After the relay session is up, a terminal the first decision could not ask about may prove live. */
+export async function refineRelayTerminalDecision(
+  target: SshTarget,
+  decision: HostServerOnConnectResult | null
+): Promise<void> {
+  try {
+    const [{ relayTerminalsOnceConnected }, { orcadMigrationRelayPtyLister }] = await Promise.all([
+      import('../ssh/ssh-host-relay-terminals-once-connected'),
+      import('../ssh/orcad-migration-relay-pty-lister')
+    ])
+    const refined = await relayTerminalsOnceConnected({
+      store: getSshTargetRegistryStore()!.getOrcadMigrationSource(),
+      targetId: target.id,
+      decision,
+      listRelayPtyIds: orcadMigrationRelayPtyLister(target.id)
+    })
+    if (refined) {
+      recordRelayDecision(target, refined)
+    }
+  } catch (error) {
+    // The first decision's status stands; it already keeps the host on the relay.
+    console.warn('[ssh] Could not re-check relay terminals after connecting:', error)
+  }
+}
