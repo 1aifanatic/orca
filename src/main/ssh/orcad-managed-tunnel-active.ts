@@ -7,6 +7,7 @@ import {
 } from '../../shared/runtime-environments'
 import type { SshTarget } from '../../shared/ssh-types'
 import type { SshConnection } from './ssh-connection'
+import { adoptSshConnection } from './ssh-connection-attribution'
 import type { PortForwardEntry, SshPortForwardManager } from './ssh-port-forward'
 
 export type ActiveOrcadTunnel = {
@@ -67,6 +68,8 @@ export function recordActiveOrcadTunnel(
   forward: PortForwardEntry,
   tunnel: Omit<ActiveOrcadTunnel, 'forwardId' | 'localPort' | 'remotePort'>
 ): void {
+  // The tunnel now relies on this transport, so a cancelled connect that opened it must keep it.
+  adoptSshConnection(tunnel.connection)
   active.set(environmentId, {
     ...tunnel,
     forwardId: forward.id,

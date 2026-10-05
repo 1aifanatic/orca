@@ -2,6 +2,7 @@ import type { SshConnection } from '../ssh/ssh-connection'
 import type { SshRelaySession } from '../ssh/ssh-relay-session'
 import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
 import { clearSshHostServerStatus } from '../ssh/ssh-host-server-status'
+import { isSshConnectionSolelyOwnedBy } from '../ssh/ssh-connection-attribution'
 import { activeSessions } from './ssh-active-relay-sessions'
 import {
   connectInFlight,
@@ -174,18 +175,17 @@ export async function abandonCancelledConnectAttempt(
 }
 
 /**
- * A cancelled connect whose server decision opened the transport (a census, deploy or
- * conversion) closes it, unless a newer connect is already using it.
+ * A cancelled connect closes the transport its own server decision opened (a census, deploy or
+ * conversion), and only while nothing newer took it over: a completed replacement connect or a
+ * managed tunnel adopts it, and a pending replacement may be about to.
  */
-export async function abandonDecisionTransport(
-  targetId: string,
-  priorConnection: SshConnection | undefined
-): Promise<void> {
+export async function abandonDecisionTransport(targetId: string, owner: symbol): Promise<void> {
   const opened = connectionManager!.getConnection(targetId)
   const newer = connectInFlight.get(targetId)
+  // A pending replacement may be about to reuse it, though it has not adopted it yet.
   if (
     !opened ||
-    opened === priorConnection ||
+    !isSshConnectionSolelyOwnedBy(opened, owner) ||
     (newer && isCurrentConnectAttempt(targetId, newer.authority))
   ) {
     return

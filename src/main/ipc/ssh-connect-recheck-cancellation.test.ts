@@ -24,6 +24,8 @@ vi.mock('../ssh/ssh-port-forward', () => mocks.sshPortForward)
 vi.mock('../ssh/ssh-port-scanner', () => mocks.sshPortScanner)
 
 import type { SshTarget } from '../../shared/ssh-types'
+import type { SshConnection } from '../ssh/ssh-connection'
+import { recordSshConnectionOpened } from '../ssh/ssh-connection-attribution'
 import {
   decideHostServer,
   publishHostServerDecisionFailure,
@@ -122,6 +124,7 @@ describe('a connect cancelled during the relay-terminal re-check', () => {
       await Promise.resolve()
       await handlers.get('ssh:disconnect')!(null, { targetId: 'ssh-1' })
       // The census dials after the teardown, opening a transport no one else holds.
+      recordSshConnectionOpened(asTransport(opened))
       mockConnectionManager.getConnection.mockReturnValue(opened)
       return null
     })
@@ -130,4 +133,44 @@ describe('a connect cancelled during the relay-terminal re-check', () => {
     ).rejects.toThrow('SSH connection attempt was cancelled')
     expect(mockConnectionManager.disconnectConnection).toHaveBeenCalledWith('ssh-1', opened)
   })
+
+  it('leaves a transport a completed replacement connect adopted from the stale decision', async () => {
+    const target: SshTarget = {
+      id: 'ssh-1',
+      label: 'Server',
+      host: 'example.com',
+      port: 22,
+      username: 'deploy'
+    }
+    const opened = { id: 'shared-transport' }
+    mockSshStore.getTarget.mockReturnValue(target)
+    mockConnectionManager.getConnection.mockReturnValue(undefined)
+    mockConnectionManager.disconnect.mockResolvedValue(undefined)
+    mockConnectionManager.connect.mockResolvedValue(opened)
+    mockDeployAndLaunchRelay.mockResolvedValue(createRelayLaunchResult())
+    let resumeStale = (): void => {}
+    let staleDecided = false
+    vi.mocked(decideHostServer).mockImplementationOnce(async () => {
+      await Promise.resolve()
+      staleDecided = true
+      recordSshConnectionOpened(asTransport(opened))
+      mockConnectionManager.getConnection.mockReturnValue(opened)
+      await new Promise<void>((resolve) => (resumeStale = resolve))
+      return null
+    })
+    const stale = Promise.resolve(handlers.get('ssh:connect')!(null, { targetId: 'ssh-1' }))
+    await vi.waitFor(() => expect(staleDecided).toBe(true))
+    await handlers.get('ssh:disconnect')!(null, { targetId: 'ssh-1' })
+    // The replacement reuses the pooled transport and completes, leaving connectInFlight.
+    await handlers.get('ssh:connect')!(null, { targetId: 'ssh-1' })
+    mockConnectionManager.disconnectConnection.mockClear()
+    resumeStale()
+    await expect(stale).rejects.toThrow('SSH connection attempt was cancelled')
+    expect(mockConnectionManager.disconnectConnection).not.toHaveBeenCalledWith('ssh-1', opened)
+  })
 })
+
+function asTransport(value: object): SshConnection {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: attribution keys on identity only.
+  return value as SshConnection
+}

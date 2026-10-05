@@ -10,6 +10,7 @@ import {
   rotateSshProviderAuthority
 } from '../ssh/ssh-provider-authority'
 import { allowsDirectSshRelay } from '../ssh/ssh-connection-store'
+import { adoptSshConnection, runAttributedToSshOwner } from '../ssh/ssh-connection-attribution'
 import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
 import {
   decideHostServer,
@@ -176,25 +177,30 @@ async function doConnect(
     }
   }
 
-  // Why before the decision: its census, deploy or conversion may open the transport, and only a
-  // transport this attempt opened is this attempt's to close when it loses the race.
+  // Why before the decision: a transport the relay connect below reuses was not this attempt's.
   const priorConnection = connectionManager!.getConnection(targetId)
+  // A transport the decision's census, deploy or conversion opens is attributed to this attempt,
+  // so a cancelled attempt closes exactly that one and nothing a newer owner took over.
+  const owner = Symbol(targetId)
   // Why after the teardown above: deploy and conversion refuse while a direct session or transport
   // exists, and the authority rotated synchronously so concurrent connects still join this one.
-  const server = await decideHostServer(target).catch(async (error: unknown) => {
-    if (!isCurrentConnectAttempt(targetId, authority)) {
-      await abandonDecisionTransport(targetId, priorConnection)
-      throw createCancelledConnectAttemptError()
+  const server = await runAttributedToSshOwner(owner, () => decideHostServer(target)).catch(
+    async (error: unknown) => {
+      if (!isCurrentConnectAttempt(targetId, authority)) {
+        await abandonDecisionTransport(targetId, owner)
+        throw createCancelledConnectAttemptError()
+      }
+      publishHostServerDecisionFailure(targetId, error)
+      throw error
     }
-    publishHostServerDecisionFailure(targetId, error)
-    throw error
-  })
+  )
   // A shutdown that began during the decision is the actionable reason, ahead of the rotation.
   assertSshConnectsNotFenced()
   if (!isCurrentConnectAttempt(targetId, authority)) {
-    await abandonDecisionTransport(targetId, priorConnection)
+    await abandonDecisionTransport(targetId, owner)
     throw createCancelledConnectAttemptError()
   }
+  adoptCurrentTransport(targetId, owner)
   if (server?.route === 'managed') {
     return publishManagedServerConnect(
       targetId,
@@ -242,6 +248,7 @@ async function doConnect(
 
   try {
     conn = await connectionManager!.connect(target)
+    adoptSshConnection(conn, owner)
     if (!ownsSession()) {
       throw createCancelledConnectAttemptError()
     }
@@ -320,4 +327,11 @@ async function doConnect(
   })
 
   return getPublicSshState(targetId)!
+}
+
+function adoptCurrentTransport(targetId: string, owner: symbol): void {
+  const current = connectionManager!.getConnection(targetId)
+  if (current) {
+    adoptSshConnection(current, owner)
+  }
 }
