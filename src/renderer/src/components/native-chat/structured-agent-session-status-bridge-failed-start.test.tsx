@@ -344,7 +344,10 @@ describe('a chat whose start failed', () => {
     expect(unread()).toBe(1)
   })
 
-  it('ages like a host-reported failure: a restart does not bring back an old mark', async () => {
+  // A native chat's settled Failed is its state, so it stays until the chat changes, as a host's
+  // does; past the freshness window it yields to live work on the card, and a restart does not
+  // re-date it.
+  it('stays failed like a host-reported failure, past the freshness window and a restart', async () => {
     setClock(FAILED_AT)
     await connect()
     await failStart()
@@ -353,10 +356,11 @@ describe('a chat whose start failed', () => {
     setClock(FAILED_AT + AGENT_STATUS_STALE_AFTER_MS + 1)
     await restart()
     expect(rows()).toEqual([expect.objectContaining({ updatedAt: FAILED_AT })])
-    expect(tabStatus()).not.toBe('failed')
-    expect(selectWorktreeAgentActivitySummary(store().getState(), WORKTREE_ID).hasFailed).toBe(
-      false
-    )
+    expect(tabStatus()).toBe('failed')
+    expect(selectWorktreeAgentActivitySummary(store().getState(), WORKTREE_ID)).toMatchObject({
+      hasFailed: false,
+      hasRetainedFailed: true
+    })
   })
 
   it('dates a retry that fails again by the new failure', async () => {
