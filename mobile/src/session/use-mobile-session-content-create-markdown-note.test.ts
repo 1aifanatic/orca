@@ -206,18 +206,30 @@ describe('Markdown Note on a host that may not open editor tabs', () => {
     expect(ui.setCreateError).not.toHaveBeenCalledWith(expect.stringContaining('renderer'))
   })
 
-  it('surfaces any other open refusal after the create as before', async () => {
-    const host = hostClient({
-      status: [status({})],
-      open: [failure('runtime_error', 'runtime_unavailable')]
-    })
-    const ui = mount(host.client)
+  it.each([
+    [
+      'a retryable refusal',
+      failure('runtime_error', "The computer's Orca window is still starting. Try again.")
+    ],
+    ['a lost connection', new Error('socket closed')]
+  ])(
+    'previews the created note and says once why it is not a tab after %s',
+    async (_name, reply) => {
+      const host = hostClient({ status: [status({})], open: [reply] })
+      const ui = mount(host.client)
 
-    await tapMarkdownNote()
+      await tapMarkdownNote()
 
-    expect(ui.push).not.toHaveBeenCalled()
-    expect(ui.showToast).toHaveBeenCalledWith('runtime_unavailable', 1800)
-  })
+      expect(ui.push).toHaveBeenCalledTimes(1)
+      expect(ui.push).toHaveBeenCalledWith(
+        expect.objectContaining({
+          params: expect.objectContaining({ relativePath: 'untitled.md' })
+        })
+      )
+      expect(ui.showToast).toHaveBeenCalledTimes(1)
+      expect(ui.setCreateError).not.toHaveBeenCalledWith(expect.stringMatching(/\S/))
+    }
+  )
 
   it('asks the host again on every tap: a window reopened on the same connection is used', async () => {
     const host = hostClient({

@@ -38,7 +38,9 @@ describe('isRendererUnavailableRefusal', () => {
       ['timeout', 'Request timed out'],
       ['liveness-timeout', 'renderer_unavailable'],
       ['socket-closed', 'renderer_unavailable'],
-      ['unavailable', 'renderer_unavailable']
+      ['unavailable', 'renderer_unavailable'],
+      // A host whose window is still taking over editor tabs: retryable, never a device fallback.
+      ['runtime_error', "The computer's Orca window is still starting. Try again."]
     ]
     for (const [code, message] of neighbours) {
       expect(isRendererUnavailableRefusal(failure(code, message)), `${code}/${message}`).toBe(false)

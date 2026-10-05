@@ -93,14 +93,7 @@ export function useMobileSessionContentCreateActions(
           throw new Error(message || 'Failed to create markdown note')
         }
 
-        const openResponse = await sourceFileOpenRun.request(
-          client,
-          { worktree, relativePath },
-          { timeoutMs: 15_000 }
-        )
-        // Why: a host whose window state was unknown still refused the tab; show the note it
-        // just created on the device rather than leave a file the user never sees.
-        if (isRendererUnavailableRefusal(openResponse)) {
+        const previewCreatedNote = () =>
           router.push(
             createMobileFilePreviewHref({
               hostId,
@@ -111,9 +104,25 @@ export function useMobileSessionContentCreateActions(
               ...(worktreeName ? { worktreeName } : {})
             })
           )
+        try {
+          const openResponse = await sourceFileOpenRun.request(
+            client,
+            { worktree, relativePath },
+            { timeoutMs: 15_000 }
+          )
+          // Why: a host whose window state was unknown still refused the tab; show the note it
+          // just created on the device rather than leave a file the user never sees.
+          if (isRendererUnavailableRefusal(openResponse)) {
+            previewCreatedNote()
+            return
+          }
+          interpretOrThrowRefusalMessage(() => sourceFileOpenRun.interpret(openResponse), '')
+        } catch (err) {
+          // Why: the note exists now, so show it rather than leave a stray file; the toast is the one notice.
+          previewCreatedNote()
+          showToast(err instanceof Error ? err.message : 'Failed to open markdown note', 1800)
           return
         }
-        interpretOrThrowRefusalMessage(() => sourceFileOpenRun.interpret(openResponse), '')
         scheduleDelayedAction(() => void fetchSessionTabs(), 300)
         return
       }
