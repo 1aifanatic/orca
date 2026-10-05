@@ -1,6 +1,8 @@
 // Why: daemons survive app updates, so wire behavior must be version-gated.
 // v40 stages long startup commands as sourced scripts; older owners stay attachable.
 export const PROTOCOL_VERSION = 40
+// v39 gives plain fish panes Orca's codex function through XDG_DATA_DIRS.
+export const CODEX_FISH_SHELL_FUNCTION_DAEMON_PROTOCOL_VERSION = 39
 // Why: older daemons reject `setColorQueryReplyColors` as an unknown request type.
 export const COLOR_QUERY_REPLY_COLORS_DAEMON_PROTOCOL_VERSION = 38
 export const CODEX_NO_DAEMON_SHELL_LAUNCH_DAEMON_PROTOCOL_VERSION = 37

@@ -105,6 +105,7 @@ export type RuntimeStore = {
     minimaxGroupId?: GlobalSettings['minimaxGroupId']
     minimaxUsageModels?: GlobalSettings['minimaxUsageModels']
     minimaxEndpoint?: GlobalSettings['minimaxEndpoint']
+    zcodePlanSite?: GlobalSettings['zcodePlanSite']
     prBotAuthorOverrides?: GlobalSettings['prBotAuthorOverrides']
     artifactSharingEnabled?: GlobalSettings['artifactSharingEnabled']
     terminalQuickCommands?: GlobalSettings['terminalQuickCommands']

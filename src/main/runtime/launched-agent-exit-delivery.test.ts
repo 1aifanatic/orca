@@ -90,7 +90,7 @@ const HOSTS: [string, HostAnswers, () => string[]][] = [
     },
     bashRunsLaunchLineThatExits
   ],
-  // The QA stub: a `grok` override that exits at once, which takes the composer-marker wait.
+  // The QA stub: a `grok` override that exits at once.
   [
     'Windows Git Bash, grok',
     {

@@ -13,33 +13,23 @@
  * at its prompt turns bracketed paste on too, so the write still needs the agent found in front.
  *
  * Where the desktop pasted blind once its budget ran out, the host falls back to the `tui-idle`
- * evidence ranking (idle titles, known ready screens), which also reports a dialog left up. A few
- * agents show readiness only in their composer, which that ranking cannot read: ZCode paints no
- * title and repaints its banner forever, DSH's idle hook fires only after a turn, and Grok's only
- * title is its bare name. They wait for their marker alone.
+ * evidence ranking (idle titles, known ready screens), which also reports a dialog left up. Agents
+ * whose composer marker a captured boot proves (`composerReadyCaptures`) wait for their marker alone.
  */
 
 import type { TuiAgent } from '../../shared/tui-agent'
 import type { RuntimeTerminalWait } from '../../shared/runtime-terminal-contracts'
 import { resolveDraftPasteReadyTimeoutMs } from '../../shared/draft-paste-ready-timeout'
+import { TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
 import type { OrcaRuntimeService } from './orca-runtime'
 import { showsHoldAnchor } from './agent-state-rules/agent-state-text-anchors'
 import { detectTerminalWaitBlockedReason } from './terminal-wait-detection'
 
-/**
- * Agents whose launch readiness is a composer marker pinned by a captured transcript
- * (`zcode-readiness-transcript.test.ts`, `dsh-readiness-transcript.test.ts`,
- * `draft-paste-ready-scanner-grok-trace-replay.test.ts`). Grok is here because its only other
- * evidence is its bare name, which a shell auto-title also writes, and its screen never quiets.
- */
-const COMPOSER_MARKER_READINESS_AGENTS: ReadonlySet<TuiAgent> = new Set(['zcode', 'dsh', 'grok'])
+export type LaunchedAgentReadinessLane = 'composer-marker' | 'tui-idle'
 
-/**
- * Composer-marker agents that can also render inline, where the marker's alternate-screen anchor
- * never arrives (`grok-inline-startup-pty-trace.ts`). The quiet window after bracketed paste stays
- * armed for them as the floor, as the desktop's own paste and worktree.create's draft paste use it.
- */
-const INLINE_RENDERING_COMPOSER_AGENTS: ReadonlySet<TuiAgent> = new Set(['grok'])
+export function getLaunchedAgentReadinessLane(agent: TuiAgent): LaunchedAgentReadinessLane {
+  return TUI_AGENT_CONFIG[agent].composerReadyCaptures?.length ? 'composer-marker' : 'tui-idle'
+}
 
 export type LaunchedAgentReadinessRuntime = Pick<
   OrcaRuntimeService,
@@ -75,8 +65,8 @@ export function waitForWorkerStartComposer(
   agent: TuiAgent,
   timeoutMs: number
 ): Promise<RuntimeTerminalWait> {
-  if (COMPOSER_MARKER_READINESS_AGENTS.has(agent)) {
-    return waitForComposerMarker(runtime, handle, agent, timeoutMs)
+  if (getLaunchedAgentReadinessLane(agent) === 'composer-marker') {
+    return runtime.waitForFreshWorkerComposer(handle, agent, timeoutMs)
   }
   return runtime.waitForTerminal(handle, {
     condition: 'tui-idle',
@@ -85,15 +75,15 @@ export function waitForWorkerStartComposer(
   })
 }
 
-function waitForComposerMarker(
+export function waitForWorkerAgentReady(
   runtime: LaunchedAgentReadinessRuntime,
   handle: string,
-  agent: TuiAgent,
-  timeoutMs: number
+  args: { agent: TuiAgent | undefined; reusesTerminal: boolean; timeoutMs: number }
 ): Promise<RuntimeTerminalWait> {
-  return runtime.waitForFreshWorkerComposer(handle, agent, timeoutMs, {
-    requireComposerMarker: !INLINE_RENDERING_COMPOSER_AGENTS.has(agent)
-  })
+  // A caller-supplied terminal was not freshly launched, so its composer marker may be long gone.
+  return args.agent && !args.reusesTerminal
+    ? waitForWorkerStartComposer(runtime, handle, args.agent, args.timeoutMs)
+    : runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: args.timeoutMs })
 }
 
 /**
@@ -107,8 +97,8 @@ export async function waitForLaunchedAgentComposer(
   agent: TuiAgent,
   timeoutMs: number
 ): Promise<RuntimeTerminalWait> {
-  if (COMPOSER_MARKER_READINESS_AGENTS.has(agent)) {
-    return waitForComposerMarker(runtime, handle, agent, timeoutMs)
+  if (getLaunchedAgentReadinessLane(agent) === 'composer-marker') {
+    return runtime.waitForFreshWorkerComposer(handle, agent, timeoutMs)
   }
   const startedAt = Date.now()
   try {
