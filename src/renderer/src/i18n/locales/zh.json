@@ -1155,11 +1155,7 @@
         "a4c8e1b2f7": "Codex 仍以 {{value0}} 身份登录",
         "d3e8a1f4b2": "账户已切换",
         "9375620cc3": "重启此会话以使用 {{value0}}。在重启之前，它将继续使用旧账户。",
-        "6133594b12": "保留旧账户",
-        "8f0d5c92a1": "Codex 设置已更改",
-        "3ea91b5c07": "此 Codex 会话使用过时的配置",
-        "e6b7139d2a": "重新启动此会话以加载当前 Codex 配置。",
-        "7b1d20f4c8": "保持当前会话"
+        "6133594b12": "保留旧账户"
       },
       "FirstLaunchBanner": {
         "b9e1b966c7": "关闭通知",
@@ -17592,6 +17588,8 @@
         "historyUnavailable": "Orca 目前无法打开此聊天的历史记录。",
         "savedByNewerOrca": "这些聊天由更新版本的 Orca 保存。",
         "updateOrcaToKeepUsing": "请更新 Orca 以继续使用这些聊天。",
+        "chatSavedByNewerOrca": "此聊天由更新版本的 Orca 保存。",
+        "updateOrcaToOpenChat": "请更新 Orca 以打开它。",
         "unsupported": "运行此聊天的计算机需要更新版本的 Orca。请在该计算机上更新 Orca 后重试。",
         "notAvailable": "此聊天中无法使用此功能。",
         "unreachable": "Orca 无法连接到智能体。",
@@ -17816,6 +17814,7 @@
         "sending": "正在发送…"
       },
       "approval": {
+        "needsNewerOrca": "此请求需要更新版本的 Orca。",
         "title": "允许 {{value0}}？",
         "allow": "允许",
         "deny": "拒绝",

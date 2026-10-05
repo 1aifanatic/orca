@@ -1155,11 +1155,7 @@
         "a4c8e1b2f7": "Codex sigue conectado como {{value0}}",
         "d3e8a1f4b2": "Cuenta cambiada",
         "9375620cc3": "Reinicia esta sesión para usar {{value0}}. Se mantiene en la cuenta anterior hasta que lo hagas.",
-        "6133594b12": "Mantener cuenta anterior",
-        "8f0d5c92a1": "La configuración de Codex cambió",
-        "3ea91b5c07": "Esta sesión de Codex usa una configuración obsoleta",
-        "e6b7139d2a": "Reinicia esta sesión para cargar tu configuración actual de Codex.",
-        "7b1d20f4c8": "Mantener sesión actual"
+        "6133594b12": "Mantener cuenta anterior"
       },
       "FirstLaunchBanner": {
         "b9e1b966c7": "Descartar aviso",
@@ -17592,6 +17588,8 @@
         "historyUnavailable": "Orca no pudo abrir el historial de este chat en este momento.",
         "savedByNewerOrca": "Los chats se guardaron con una versión más reciente de Orca.",
         "updateOrcaToKeepUsing": "Actualice Orca para seguir usándolos.",
+        "chatSavedByNewerOrca": "Este chat se guardó con una versión más reciente de Orca.",
+        "updateOrcaToOpenChat": "Actualice Orca para abrirlo.",
         "unsupported": "Esto requiere una versión más reciente de Orca en el equipo que ejecuta este chat. Actualice Orca allí y vuelva a intentarlo.",
         "notAvailable": "Esto no está disponible en este chat.",
         "unreachable": "Orca no pudo comunicarse con el agente.",
@@ -17816,6 +17814,7 @@
         "sending": "Enviando…"
       },
       "approval": {
+        "needsNewerOrca": "Esta solicitud necesita una versión más reciente de Orca.",
         "title": "¿Permitir {{value0}}?",
         "allow": "Permitir",
         "deny": "Denegar",
