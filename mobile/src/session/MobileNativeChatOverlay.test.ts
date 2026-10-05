@@ -28,7 +28,10 @@ type Tick = {
   streamingText?: string
   streamLive?: boolean
   identity?: string
+  blocking?: 'nativeChatAsk' | 'nativeChatPermission' | 'nativeChatQuestion'
 }
+
+const asyncQuestionsModel = { open: [{ key: 'q-a', index: 0, title: 'Which name?' }] }
 
 function overlayElement(tick: Tick): ReturnType<typeof createElement> {
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the overlay reads only these controller members; the rest of the controller is unreachable from it.
@@ -52,7 +55,9 @@ function overlayElement(tick: Tick): ReturnType<typeof createElement> {
       pause: null,
       resume: vi.fn(),
       sessionKey: 'session-a'
-    }
+    },
+    nativeChatAsyncQuestions: asyncQuestionsModel,
+    ...(tick.blocking ? { [tick.blocking]: { id: 'blocking' } } : {})
   } as unknown as MobileNativeChatController
   return createElement(MobileNativeChatOverlay, {
     controller,
@@ -187,4 +192,45 @@ describe('MobileNativeChatOverlay streaming gate', () => {
 
     expect(streaming()).toBeNull()
   })
+})
+
+describe('MobileNativeChatOverlay async question placement', () => {
+  let renderer: ReactTestRenderer | null = null
+
+  afterEach(() => {
+    act(() => renderer?.unmount())
+    renderer = null
+  })
+
+  /** The prompt-slot cards handed to the chat view, rendered, as their element types in order. */
+  async function slotCards(tick: Tick): Promise<{ type: string; model?: unknown }[]> {
+    await act(async () => {
+      renderer = create(overlayElement(tick))
+    })
+    const view = renderer!.root.find((node) => node.type === 'ChatView')
+    const rendered: { slot?: ReactTestRenderer } = {}
+    await act(async () => {
+      rendered.slot = create(view.props.queuedSlot.cards)
+    })
+    const nodes = rendered.slot!.root.findAll((node) => typeof node.type === 'string')
+    const cards = nodes.map((node) => ({ type: String(node.type), model: node.props.model }))
+    act(() => rendered.slot?.unmount())
+    return cards
+  }
+
+  it('adds the async card to the prompt slot after the queued cards, beside the composer', async () => {
+    const cards = await slotCards({})
+
+    expect(cards.map((card) => card.type)).toEqual(['Queued', 'AsyncQuestions'])
+    expect(cards[1]?.model).toBe(asyncQuestionsModel)
+  })
+
+  it.each(['nativeChatAsk', 'nativeChatPermission', 'nativeChatQuestion'] as const)(
+    'leaves the prompt slot to a blocking %s card',
+    async (blocking) => {
+      const cards = await slotCards({ blocking })
+
+      expect(cards.map((card) => card.type)).toEqual(['Queued'])
+    }
+  )
 })
