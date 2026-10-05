@@ -5,10 +5,13 @@ import type { spawnProcess } from '../../shared/child-process/run-process'
 import type { ProviderProcessTeardownVerdict } from '../provider-process/provider-process-teardown'
 import { openCodexAppServerConnection } from './codex-app-server-connection'
 
-const teardown = vi.hoisted(() => ({
-  verdict: null as ProviderProcessTeardownVerdict,
-  rootExits: (): void => {}
-}))
+const teardown = vi.hoisted(() => {
+  const state: { verdict: ProviderProcessTeardownVerdict; rootExits: () => void } = {
+    verdict: null,
+    rootExits: () => {}
+  }
+  return state
+})
 vi.mock('../provider-process/provider-process-teardown', () => ({
   terminateProviderProcessTree: vi.fn(async () => {
     teardown.rootExits()
