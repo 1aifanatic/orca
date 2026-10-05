@@ -16,7 +16,15 @@ import {
   assertOrcadMigrationSourceDormantStateRetired,
   retireOrcadMigrationSourceDormantState
 } from './orcad-source-dormant-retirement'
-import { retireOrcadSourceReconnectHint } from './orcad-source-workspace-session-retirement'
+import {
+  retireOrcadMigrationSourceWorkspaceSession,
+  retireOrcadSourceReconnectHint
+} from './orcad-source-workspace-session-retirement'
+import {
+  collectOrcadMigrationRetirableSessionRows,
+  isStaleOrcadMigrationSessionReplay,
+  type OrcadMigrationSessionRows
+} from './orcad-source-session-replay'
 import { retargetOrcadSourceClientFocus } from './orcad-source-client-focus-retarget'
 import { deleteUnreferencedOrcadMigrationScrollback } from './orcad-source-scrollback-cleanup'
 
@@ -69,6 +77,32 @@ export class OrcadSourceRetirementPersistence {
       throw new Error('orcad_migration_source_catalog_reappeared')
     }
     assertOrcadMigrationSourceDormantStateRetired(state, manifest)
+  }
+
+  /** The session rows this manifest's retirement would remove now, taken before it runs. */
+  collectOrcadMigrationRetirableSessionRows(
+    manifest: OrcadMigrationManifest
+  ): OrcadMigrationSessionRows {
+    return collectOrcadMigrationRetirableSessionRows(
+      this[orcadSourceRetirementContext].runtime.state,
+      manifest
+    )
+  }
+
+  /** Removes reappeared session rows only if every one replays `retired` exactly; else keeps them. */
+  retireStaleOrcadMigrationSessionReplay(
+    manifest: OrcadMigrationManifest,
+    retired: OrcadMigrationSessionRows
+  ): boolean {
+    const context = this[orcadSourceRetirementContext]
+    const state = context.runtime.state
+    const current = collectOrcadMigrationRetirableSessionRows(state, manifest)
+    if (!isStaleOrcadMigrationSessionReplay(current, retired)) {
+      return false
+    }
+    retireOrcadMigrationSourceWorkspaceSession(state, manifest)
+    scheduleSave(context.scheduling)
+    return true
   }
 
   /**
