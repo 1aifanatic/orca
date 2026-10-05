@@ -478,6 +478,8 @@ describe('a send whose turn Codex answered and never opened', () => {
     await vi.waitFor(async () => expect((await submission(second))?.handedOverAt).toBeDefined())
     expect(await submission(first)).toMatchObject({ dispatchState: 'rejected' })
     expect(JSON.stringify(await submission(first))).toContain('invalid turn settings')
+    // A turn Codex never opened has no record in the journal to name.
+    expect((await submission(first))?.answeredInTurn).toBeNull()
     await vi.waitFor(() => expect(answers).toBe(2))
     expect(openWaits.turnIds).toEqual([])
   })

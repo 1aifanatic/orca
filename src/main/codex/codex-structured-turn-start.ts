@@ -1,5 +1,8 @@
 import { agentSessionFailureFact, providerDiagnosticOf } from '../../shared/agent-session-failure'
-import type { AgentJournalMessageItem } from '../../shared/agent-session-journal-types'
+import type {
+  AgentJournalMessageItem,
+  AgentJournalTurnJoin
+} from '../../shared/agent-session-journal-types'
 import type { NativeChatBlock } from '../../shared/native-chat-types'
 import type { AgentSessionDispatchOutcome } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import {
@@ -14,6 +17,7 @@ import {
   type CodexTurnOpenWaits
 } from './codex-structured-turn-open-wait'
 import {
+  codexAnsweredTurn,
   codexDispatchRejection,
   codexTurnEndRejection
 } from './codex-structured-turn-end-settlement'
@@ -109,7 +113,7 @@ async function steerCodexTurn(
   host: CodexTurnHost,
   expectedTurnId: string,
   input: { clientMessageId: string; body: AgentJournalMessageItem; timeoutMs?: number }
-): Promise<{ turnId: string } | null> {
+): Promise<{ turnId: string; via: 'steer' } | null> {
   try {
     const answer = await host.connection.request(
       'turn/steer',
@@ -121,7 +125,7 @@ async function steerCodexTurn(
       },
       { timeoutMs: input.timeoutMs }
     )
-    return { turnId: readCodexTurnId(answer) ?? expectedTurnId }
+    return { turnId: readCodexTurnId(answer) ?? expectedTurnId, via: 'steer' }
   } catch (error) {
     if (isCodexAppServerRequestError(error) || isCodexAppServerUnsupportedError(error)) {
       return null
@@ -143,7 +147,7 @@ export async function startCodexTurn(
     requestedAt?: number
     timeoutMs?: number
   }
-): Promise<{ turnId: string | null } | false> {
+): Promise<{ turnId: string | null; via: AgentJournalTurnJoin } | false> {
   // Armed before the write: the echo and `turn/started` can both land while the
   // response is in flight, and the start must snapshot this send in its frontier.
   if (!host.dispatchEchoes.arm(input.clientMessageId, input.requestedAt)) {
@@ -173,7 +177,7 @@ export async function startCodexTurn(
     },
     { timeoutMs: input.timeoutMs }
   )
-  return { turnId: readCodexTurnId(answer) }
+  return { turnId: readCodexTurnId(answer), via: 'start' }
 }
 
 /**
@@ -184,10 +188,15 @@ export async function startCodexTurn(
  */
 export async function dispatchCodexTurn(
   session: CodexTurnHost,
-  input: { clientMessageId: string; body: AgentJournalMessageItem; requestedAt?: number },
+  input: {
+    sessionId: string
+    clientMessageId: string
+    body: AgentJournalMessageItem
+    requestedAt?: number
+  },
   timeoutMs: number | undefined
 ): Promise<AgentSessionDispatchOutcome> {
-  let answer: { turnId: string | null } | false
+  let answer: { turnId: string | null; via: AgentJournalTurnJoin } | false
   try {
     answer = await startCodexTurn(session, { ...input, timeoutMs })
   } catch (error) {
@@ -211,8 +220,19 @@ export async function dispatchCodexTurn(
   }
   // An answer read after the turn it names already ended is settled by that end.
   const endedFirst = answer.turnId
-    ? session.dispatchEchoes.bindTurn(input.clientMessageId, session.threadId, answer.turnId)
+    ? session.dispatchEchoes.bindTurn(
+        input.clientMessageId,
+        session.threadId,
+        answer.turnId,
+        answer.via
+      )
     : null
   const rejection = endedFirst ? codexTurnEndRejection(endedFirst) : null
-  return rejection ? { state: 'rejected', ...rejection } : { state: 'admitted' }
+  return rejection && answer.turnId
+    ? {
+        state: 'rejected',
+        ...codexAnsweredTurn(session, input.sessionId, answer.turnId, answer.via),
+        ...rejection
+      }
+    : { state: 'admitted' }
 }

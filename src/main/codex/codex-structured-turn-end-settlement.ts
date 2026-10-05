@@ -18,7 +18,9 @@ import {
   agentSessionFailureWords,
   type AgentJournalDispatchRejection
 } from '../../shared/agent-session-failure-words'
+import type { AgentJournalAnsweredTurnIdentity } from '../../shared/agent-session-journal-types'
 import type { CodexTurnEnd } from './codex-structured-dispatch-echo'
+import { codexTurnLifecycleIdentity } from './codex-structured-journal-translation-turns'
 import type { CodexSession } from './codex-structured-session-state'
 import { readCodexJournalRecord } from './codex-structured-journal-translation-values'
 import {
@@ -43,6 +45,8 @@ export function codexDispatchRejection(
 export type CodexTurnEndSettlement = {
   clientMessageId: string
   state: 'rejected'
+  /** The turn Codex answered the send into, whose end settled it, and how the send joined it. */
+  answeredInTurn?: AgentJournalAnsweredTurnIdentity
 } & AgentJournalDispatchRejection
 
 function errorDetail(params: unknown): ProviderDiagnostic | undefined {
@@ -115,21 +119,47 @@ export function noteCodexTurnOpened(
 /** Settles the sends bound to the turn this admitted notification ended. */
 export function settleCodexSendsInEndedTurn(
   session: Pick<CodexSession, 'threadId' | 'dispatchEchoes'>,
-  method: string,
-  params: unknown,
+  frame: { sessionId: string; method: string; params: unknown },
   settle: (settlement: CodexTurnEndSettlement) => void
 ): void {
-  const turnId = readCodexTurnId(params)
+  const turnId = readCodexTurnId(frame.params)
   const end = turnId
-    ? (readCodexTurnEnd(method, params) ?? unopenedTurnFailure(session, method, params, turnId))
+    ? (readCodexTurnEnd(frame.method, frame.params) ??
+      unopenedTurnFailure(session, frame.method, frame.params, turnId))
     : null
-  if (!turnId || !end || (readCodexThreadId(params) ?? session.threadId) !== session.threadId) {
+  if (
+    !turnId ||
+    !end ||
+    (readCodexThreadId(frame.params) ?? session.threadId) !== session.threadId
+  ) {
     return
   }
   const rejection = codexTurnEndRejection(end)
-  for (const clientMessageId of session.dispatchEchoes.endTurn(session.threadId, turnId, end)) {
+  for (const { clientMessageId, via } of session.dispatchEchoes.endTurn(
+    session.threadId,
+    turnId,
+    end
+  )) {
     if (rejection) {
-      settle({ clientMessageId, state: 'rejected', ...rejection })
+      settle({
+        clientMessageId,
+        state: 'rejected',
+        ...codexAnsweredTurn(session, frame.sessionId, turnId, via),
+        ...rejection
+      })
     }
   }
+}
+
+/** Names the turn a rejected send was answered into only when Codex opened it: one it never
+ *  opened has no record in the journal, so the send was answered into no turn. */
+export function codexAnsweredTurn(
+  session: Pick<CodexSession, 'threadId' | 'dispatchEchoes'>,
+  sessionId: string,
+  turnId: string,
+  via: AgentJournalAnsweredTurnIdentity['via']
+): { answeredInTurn?: AgentJournalAnsweredTurnIdentity } {
+  return session.dispatchEchoes.hasOpened(session.threadId, turnId)
+    ? { answeredInTurn: { turn: codexTurnLifecycleIdentity(sessionId, turnId), via } }
+    : {}
 }
