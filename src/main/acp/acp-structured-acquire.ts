@@ -1,7 +1,9 @@
 // Making a reservation real for an ACP agent: spawn the child, record it before any handshake,
-// initialize with the client's file system and terminals off, then load the session this chat
-// proved or start a new one. The handshake is bounded: an agent that never answers fails the start
-// instead of holding the chat's queue, and a close can stop the child at any point of it.
+// initialize with the client's file system and terminals off, then reattach the session this chat
+// proved (`session/resume` where the agent offers it, else `session/load`) or start a new one. The
+// journal already holds a reattached chat, so whatever the agent sends while it reattaches is not
+// written, except context usage. The handshake is bounded: an agent that never answers fails the
+// start instead of holding the chat's queue, and a close can stop the child at any point of it.
 
 import type { AgentSessionProviderHandleLink } from '../../shared/agent-session-provider-handle'
 import { TUI_AGENT_DISPLAY_NAMES } from '../../shared/tui-agent-display-names'
@@ -39,8 +41,8 @@ import { RequestPermissionResponseSchema } from './generated/acp-protocol.genera
 const ACP_RESOURCE_NOT_FOUND = -32002
 /** Frames an agent may send before its session exists; past this the start is refused. */
 const MAX_EARLY_FRAMES = 2_048
-/** How long the agent has to answer the handshake, load or create its session, and take saved
- *  options back. A load replays the whole conversation, so this is generous. */
+/** How long the agent has to answer the handshake, reattach or create its session, and take saved
+ *  options back. A load-only agent replays the whole conversation, so this is generous. */
 export const ACP_STARTUP_TIMEOUT_MS = 60_000
 
 export class AcpStartupTimeoutError extends Error {
@@ -160,11 +162,13 @@ export async function acquireAcpStructuredSession(input: {
     `${spec.agent} ACP agent`,
     deps.readProcessStartTime
   )
-  const makeLane = (providerSessionId: string): AcpStructuredLane => {
+  /** `attaching`: the lane opens inside the attach window, before any frame queued so far. */
+  const makeLane = (providerSessionId: string, attaching = false): AcpStructuredLane => {
     const lane = new AcpStructuredLane({
       sink,
       sessionId,
       agent: spec.agent,
+      agentName: acpAgentName(spec.agent),
       generation,
       providerSessionId,
       dialect: spec.dialect,
@@ -172,6 +176,9 @@ export async function acquireAcpStructuredSession(input: {
       onFailed: () => input.forceClose(sessionId)
     })
     slot.lane = lane
+    if (attaching) {
+      lane.translator.beginLoad()
+    }
     for (const deliver of early.splice(0)) {
       deliver()
     }
@@ -198,18 +205,17 @@ export async function acquireAcpStructuredSession(input: {
     let liveLane: AcpStructuredLane | null = null
     let supersedesKey: string | undefined
     if (resume) {
-      liveLane = makeLane(resume.sessionId)
-      // What the agent replays before answering the load is reconciled against the journal, which
-      // stays the truth: turns it settled are skipped, and what the agent saved that Orca never
-      // wrote (a reply cut off by a crash) is adopted.
-      liveLane.translator.beginLoad()
+      // Adoption would plug in here: a chat whose journal holds none of the agent's history would
+      // load with the translator adopting the replay. No Grok chat reaches that state today.
+      const attaching = makeLane(resume.sessionId, true)
+      liveLane = attaching
       try {
         started = await runtime.start({
           cwd: launch.cwd,
           mcpServers: [],
-          sessionId: resume.sessionId
+          sessionId: resume.sessionId,
+          resumePreference: 'resume'
         })
-        liveLane.apply(liveLane.translator.finishLoad(now()))
       } catch (error) {
         const notFound = error instanceof AcpRpcError && error.code === ACP_RESOURCE_NOT_FOUND
         if (!notFound || resume.replaceableKey === null) {
@@ -217,6 +223,12 @@ export async function acquireAcpStructuredSession(input: {
         }
         // A session this chat created and the agent never saved: a new one takes its place.
         supersedesKey = resume.replaceableKey
+      } finally {
+        // Also after a failed attach, so the translator takes prompts again.
+        const usage = attaching.translator.finishLoad(now())
+        if (started) {
+          attaching.apply(usage)
+        }
       }
     }
     if (!started || !liveLane) {

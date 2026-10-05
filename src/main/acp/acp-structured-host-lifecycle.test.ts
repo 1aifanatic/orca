@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalMessageItem } from '../../shared/agent-session-journal-types'
 import { agentSessionStoredAgents } from '../../shared/agent-session-stored-agent'
 import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
+import { readAgentSessionFailureFact } from '../../shared/agent-session-failure'
+import { withNativeChatCutTurnNotices } from '../../shared/native-chat-cut-turn-notice'
 import { openTestJournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database-test-support'
 import {
   closeProviderTimelineRigs,
@@ -73,6 +75,7 @@ function launch(resume: () => boolean): () => Promise<AcpStructuredLaunch> {
 async function openHostRig(
   options: {
     script?: (agent: AcpScriptedAgent) => void
+    initialize?: Record<string, unknown>
     deps?: Partial<AcpStructuredSessionAdapterDeps>
   } = {}
 ) {
@@ -83,9 +86,12 @@ async function openHostRig(
     ])
   })
   let generation = 0
+  // As the runtime wires it: every exit the adapter observes reaches the host.
+  const hosted: { host: StructuredAgentSessionHost | null } = { host: null }
   const rig = await openAcpAdapterRig({
     ...options,
     deps: {
+      onEvent: (event) => void hosted.host?.handleAdapterEvent(event),
       now: () => HOST_TEST_NOW,
       readProcessStartTime: async () => 1_700_000_000_000 + ++generation,
       mintGeneration: () => `generation-${generation}`,
@@ -105,6 +111,7 @@ async function openHostRig(
     mintSpawnToken: () => 'spawn-a',
     now: () => HOST_TEST_NOW
   })
+  hosted.host = host
   replaceHostTestState({ store, host })
   const fence = () => store.getRecord(SESSION)?.lease.runtimeFence ?? 1
   const messages = async () =>
@@ -135,59 +142,85 @@ async function openHostRig(
   return { rig, host, store, fence, messages, exchange }
 }
 
-/** On every load, Grok replays the exchange it saved: the user's `hello`, then `reply`. */
-function replays(reply: string, loads: { count: number }) {
+/** Grok's capabilities: it loads and resumes sessions. */
+const RESUMES = { agentCapabilities: { loadSession: true, sessionCapabilities: { resume: {} } } }
+
+/** On every resume, Grok sends what its resume may carry: the saved `reply` marked as replay, and a
+ *  task the dead process left running, ended by the restart. */
+function resumes(reply: string, count: { resumes: number }) {
   return (agent: AcpScriptedAgent) =>
-    agent.on('session/load', (frame) => {
-      loads.count += 1
-      agent.notify('session/update', {
-        sessionId: PROVIDER_SESSION,
-        update: { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'hello' } },
-        _meta: { isReplay: true }
-      })
+    agent.on('session/resume', (frame) => {
+      count.resumes += 1
       agent.notify('session/update', replyChunk('prompt:m1', reply, { isReplay: true }))
+      agent.notify('x.ai/task_completed', {
+        sessionId: PROVIDER_SESSION,
+        update: {
+          sessionUpdate: 'task_completed',
+          task_snapshot: { task_id: 'task-orphan', command: 'sleep 600', signal: 'session_restart' }
+        }
+      })
       agent.reply(frame, { configOptions: GROK_CONFIG_OPTIONS })
     })
 }
 
 describe('resuming a Grok chat through the host', () => {
-  it('writes the user message once when Grok replays an exchange the journal holds', async () => {
-    const loads = { count: 0 }
+  it('resumes a chat the journal holds and writes its exchange once', async () => {
+    const count = { resumes: 0 }
     let resumed = false
     const { host, fence, messages, exchange } = await openHostRig({
-      script: replays('hi', loads),
+      initialize: RESUMES,
+      script: resumes('hi', count),
       deps: { resolveLaunch: launch(() => resumed) }
     })
     expect(await host.attach(CALLER, attachParams())).toMatchObject({ ok: true })
     resumed = true
     await exchange('hi', true)
     expect(await messages()).toEqual(['hello', 'hi'])
+    const before = (await host.history({ sessionId: SESSION, direction: 'tail' })).page.items
     await host.close(SESSION, 'user-close')
     expect(await host.attach(CALLER, attachParams(fence()))).toMatchObject({ ok: true })
     await host.flushStreamedEvents(SESSION)
-    expect(loads.count).toBe(1)
+    expect(count.resumes).toBe(1)
     expect(await messages()).toEqual(['hello', 'hi'])
+    const after = (await host.history({ sessionId: SESSION, direction: 'tail' })).page.items
+    expect(after.filter((row) => row.body.kind === 'background-task')).toEqual([])
+    expect(after.filter((row) => readAgentJournalTurn(row.body))).toHaveLength(
+      before.filter((row) => readAgentJournalTurn(row.body)).length
+    )
     await host.close(SESSION, 'user-close')
   })
 
-  it('recovers the reply Grok saved past what an unfinished turn journaled, and keeps its end', async () => {
+  it('shows a reply a crash cut off with the existing notice, never completed from what Grok saved', async () => {
     let resumed = false
-    const { host, fence, messages, exchange } = await openHostRig({
-      script: replays('complete saved reply', { count: 0 }),
+    const { rig, host, fence, messages, exchange } = await openHostRig({
+      initialize: RESUMES,
+      script: resumes('complete saved reply', { resumes: 0 }),
       deps: { resolveLaunch: launch(() => resumed) }
     })
     expect(await host.attach(CALLER, attachParams())).toMatchObject({ ok: true })
     resumed = true
     await exchange('complete', false)
-    await host.close(SESSION, 'user-close')
+    // Grok dies mid-reply; the host ends its record, which moves the chat's fence.
+    const cutAt = fence()
+    rig.child().exit()
+    await waitFor(() => expect(fence()).toBeGreaterThan(cutAt))
     expect(await host.attach(CALLER, attachParams(fence()))).toMatchObject({ ok: true })
     await host.flushStreamedEvents(SESSION)
-    expect(await messages()).toEqual(['hello', 'complete saved reply'])
+    expect(await messages()).toEqual(['hello', 'complete'])
     const rows = (await host.history({ sessionId: SESSION, direction: 'tail' })).page.items
-    // The replay recovers content; it never says how the turn ended.
     expect(rows.flatMap((row) => readAgentJournalTurn(row.body)?.state ?? [])).not.toContain(
-      'running'
+      'completed'
     )
+    // The transcript explains the cut the way a Claude or Codex chat's does.
+    const transcript = withNativeChatCutTurnNotices(rows, { agentName: 'Grok' })
+    expect(
+      transcript.some(
+        (row) =>
+          row.body.kind === 'status' &&
+          (row.itemId.includes('cut-turn-notice') ||
+            readAgentSessionFailureFact(row.body.failure)?.kind === 'providerExited')
+      )
+    ).toBe(true)
     await host.close(SESSION, 'user-close')
   })
 })

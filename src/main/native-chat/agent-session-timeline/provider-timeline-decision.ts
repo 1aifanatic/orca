@@ -10,7 +10,6 @@ import type {
   AgentJournalItemBody,
   AgentJournalItemIdentity
 } from '../../../shared/agent-session-journal-types'
-import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
 import type { StructuredAgentSessionItemAppendOptions } from '../agent-session-wire/structured-agent-session-event-sink'
 import type { StructuredAgentSessionTransitionJournal } from '../agent-session-wire/structured-agent-session-transition'
@@ -129,19 +128,4 @@ export function decideProviderTimelineEvent(
     case 'session.ended':
       return decideSessionEnd(input, event)
   }
-}
-
-/** A replayed event for a turn the provider itself completed: the journal holds that turn whole.
- *  Completion is final, so planning's possibly older journal never drops what execution would keep. */
-export function replaysCompletedTurn(
-  input: ProviderTimelineDecisionInput,
-  join: { turn?: string } | undefined
-): boolean {
-  if (join?.turn === undefined || !input.journal) {
-    return false
-  }
-  const turn = input.context.joins.turn(providerKey(join.turn), input.state.namespace)
-  return (
-    readAgentJournalTurn(input.journal.itemBody(turn.itemId) ?? undefined)?.state === 'completed'
-  )
 }

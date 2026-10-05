@@ -3,8 +3,6 @@
 // backpressure holds every later one until the sink drains, so nothing is reordered or dropped.
 
 import { parseAgentJournalItemKey } from '../../shared/agent-session-journal-item-key'
-import type { AgentJournalRenderItem } from '../../shared/agent-session-journal-types'
-import type { StructuredAgentSessionTransitionJournal } from '../native-chat/agent-session-wire/structured-agent-session-transition'
 import {
   createProviderTimelineAssembler,
   type ProviderTimelineAssembler
@@ -18,23 +16,12 @@ import { AcpTimelineTranslator } from './acp-timeline-translator'
 /** How long a held event waits for the sink to say it drained before trying again on its own. */
 const BACKPRESSURE_RETRY_MS = 250
 
-/** The committed rows in journal order, which the translator reads to recognise replayed work. */
-function journalRenderItems(
-  journal: StructuredAgentSessionTransitionJournal | null
-): AgentJournalRenderItem[] {
-  if (!journal) {
-    return []
-  }
-  const order: { itemId: string; sequence: number }[] = []
-  journal.visitItems((itemId, sequence) => order.push({ itemId, sequence }))
-  order.sort((left, right) => left.sequence - right.sequence)
-  return order.flatMap(({ itemId }) => journal.item(itemId) ?? [])
-}
-
 export type AcpStructuredLaneDeps = {
   sink: ProviderTimelineSink
   sessionId: string
   agent: string
+  /** The agent's name as a person reads it, for the rows that name it. */
+  agentName: string
   generation: string
   providerSessionId: string
   dialect: AcpDialect
@@ -57,8 +44,8 @@ export class AcpStructuredLane {
   constructor(private readonly deps: AcpStructuredLaneDeps) {
     this.translator = new AcpTimelineTranslator({
       sessionId: deps.providerSessionId,
-      journalItems: () => journalRenderItems(deps.sink.journalItems()),
-      dialect: deps.dialect
+      dialect: deps.dialect,
+      agentName: deps.agentName
     })
     this.requestIdentity = createLegacyProviderTimelineIdentityScheme({
       agent: deps.agent,
