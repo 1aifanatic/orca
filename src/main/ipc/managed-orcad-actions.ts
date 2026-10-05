@@ -14,6 +14,8 @@ export type ManagedOrcadActionOptions = {
   getUserDataPath: () => string
   getActiveEnvironmentId: () => string | null | undefined
   invalidateTransport: (environmentId: string) => Promise<void> | void
+  /** Drops the SSH host's stale managed-server state once its server is unlinked. */
+  clearHostServerStatus: (sshTargetId: string) => void
 }
 
 export function createManagedOrcadActions(
@@ -47,8 +49,8 @@ export function createManagedOrcadActions(
       }
       return result
     },
-    stop: (selector) =>
-      stopManagedOrcadEnvironment(
+    stop: async (selector) => {
+      const result = await stopManagedOrcadEnvironment(
         userDataPath(),
         { selector },
         {
@@ -57,7 +59,12 @@ export function createManagedOrcadActions(
           retireLocalState: (environmentId) =>
             retireRemovedRuntimeEnvironment(environmentId, options.invalidateTransport)
         }
-      ),
+      )
+      if (result.outcome === 'unlinked') {
+        options.clearHostServerStatus(result.sshTargetId)
+      }
+      return result
+    },
     cancelStop: (selector) => cancelManagedOrcadStop(userDataPath(), { selector })
   }
 }
