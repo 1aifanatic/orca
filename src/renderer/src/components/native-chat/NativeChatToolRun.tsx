@@ -28,7 +28,7 @@ import {
   NATIVE_CHAT_TOOL_ACTIVITY_COPY,
   selectActiveToolCall
 } from '../../../../shared/native-chat-tool-activity'
-import { nativeChatToolRunIconName } from '../../../../shared/native-chat-tool-icon'
+import { nativeChatToolRunIconName } from './native-chat-tool-category'
 import { nativeChatToolRunOutcome } from '../../../../shared/native-chat-tool-run-outcome'
 import {
   nativeChatAskRunBlocks,
@@ -290,6 +290,7 @@ export function NativeChatToolRun({
               )}
               className="shrink-0 font-sans text-xs tabular-nums text-chat-foreground-faint transition-colors group-hover/tool-run:text-chat-foreground"
             >
+              <span aria-hidden> · </span>
               {translate(
                 'components.native-chat.tool.failedCount',
                 NATIVE_CHAT_TOOL_ACTIVITY_COPY.failedCount,

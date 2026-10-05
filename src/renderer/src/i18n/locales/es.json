@@ -17746,7 +17746,14 @@
           "fetched": "Obtuvo",
           "added": "Añadió",
           "deleted": "Eliminó",
-          "renamed": "Renombró"
+          "renamed": "Renombró",
+          "subagent": "Subagent",
+          "triedRead": "Tried to read",
+          "triedEdit": "Tried to edit",
+          "triedSearch": "Tried to search",
+          "triedList": "Tried to list",
+          "triedFetch": "Tried to fetch",
+          "triedSearchWeb": "Tried to search the web"
         },
         "runReadOne": "Se leyó 1 archivo",
         "runReadMany": "Se leyeron {{value0}} archivos",

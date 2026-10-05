@@ -17746,7 +17746,14 @@
           "fetched": "获取了",
           "added": "添加了",
           "deleted": "删除了",
-          "renamed": "重命名了"
+          "renamed": "重命名了",
+          "subagent": "Subagent",
+          "triedRead": "Tried to read",
+          "triedEdit": "Tried to edit",
+          "triedSearch": "Tried to search",
+          "triedList": "Tried to list",
+          "triedFetch": "Tried to fetch",
+          "triedSearchWeb": "Tried to search the web"
         },
         "runReadOne": "读取 1 个文件",
         "runReadMany": "读取 {{value0}} 文件",

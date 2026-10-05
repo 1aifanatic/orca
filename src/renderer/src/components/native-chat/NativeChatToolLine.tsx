@@ -50,14 +50,21 @@ export function NativeChatToolLine({
   let detail: string | null = null
   let inputHasDetail = false
   const isCall = isToolCallBlock(block)
+  const label = isCall ? nativeChatToolLineLabel(block, result) : null
 
   if (isCall) {
     name = block.name
     const inputDisplay = createToolInputDisplay(block.input)
     preview = inputDisplay.label
-    inputHasDetail = inputDisplay.hasDetail
+    inputHasDetail =
+      label?.commandDetail !== undefined ? label.commandDetail !== null : inputDisplay.hasDetail
     diff = expanded ? diffFromToolCall(block.name, block.input) : null
-    detail = expanded && !diff ? inputDisplay.formatDetail() : null
+    detail =
+      expanded && !diff
+        ? label?.commandDetail !== undefined
+          ? label.commandDetail
+          : inputDisplay.formatDetail()
+        : null
     if (result) {
       body = { output: result.output, isError: result.isError }
     }
@@ -70,7 +77,6 @@ export function NativeChatToolLine({
     return null
   }
 
-  const label = isCall ? nativeChatToolLineLabel(block, result) : null
   const hasResults = isCall && (block.webSearchResults?.length ?? 0) > 0
   const hasDetail = diff !== null || body !== null || inputHasDetail || hasResults
 

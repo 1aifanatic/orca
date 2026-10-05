@@ -17995,7 +17995,14 @@
           "fetched": "Fetched",
           "added": "Added",
           "deleted": "Deleted",
-          "renamed": "Renamed"
+          "renamed": "Renamed",
+          "subagent": "Subagent",
+          "triedRead": "Tried to read",
+          "triedEdit": "Tried to edit",
+          "triedSearch": "Tried to search",
+          "triedList": "Tried to list",
+          "triedFetch": "Tried to fetch",
+          "triedSearchWeb": "Tried to search the web"
         },
         "runReadOne": "Read 1 file",
         "runReadMany": "Read {{value0}} files",

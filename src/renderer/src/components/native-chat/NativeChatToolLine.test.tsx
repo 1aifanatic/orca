@@ -133,7 +133,9 @@ describe('tool sentence rows', () => {
         initiallyExpanded={false}
       />
     )
-    expect(screen.getByRole('button')).toHaveAccessibleName('Edit /repo/a.ts')
+    expect(screen.getByRole('button')).toHaveAccessibleName(
+      state === 'failed' ? 'Edit Tried to edit /repo/a.ts' : 'Edit /repo/a.ts'
+    )
     expect(screen.queryByText('Edited')).toBeNull()
     expect(screen.queryByText(/^[+-]\d+$/)).toBeNull()
   })
@@ -151,7 +153,7 @@ describe('tool sentence rows', () => {
         initiallyExpanded={false}
       />
     )
-    expect(screen.getByRole('button')).toHaveAccessibleName('Edit /repo/a.ts')
+    expect(screen.getByRole('button')).toHaveAccessibleName('Edit Tried to edit /repo/a.ts')
     expect(screen.queryByText('Edited')).toBeNull()
   })
 
@@ -197,7 +199,7 @@ describe('tool sentence rows', () => {
       />
     )
     const button = screen.getByRole('button')
-    expect(button).toHaveAccessibleName(/Bash.*false.*exit 1.*1s/)
+    expect(button).toHaveAccessibleName(/Bash.*Ran.*false.*exit 1.*1s/)
     expect(screen.getByText('1s').parentElement).toHaveClass('ml-auto', 'tabular-nums', 'font-sans')
     expect(screen.queryByText('command failed')).toBeNull()
     fireEvent.click(button)
@@ -210,6 +212,153 @@ describe('tool sentence rows', () => {
     )
     fireEvent.click(button)
     expect(screen.queryByText('command failed')).toBeNull()
+  })
+
+  it.each([
+    ['Bash', { type: 'tool-result', output: 'failed', isError: true }, undefined],
+    ['exec', { type: 'tool-result', output: 'failed', isError: true }, 1],
+    ['local_shell', undefined, 2],
+    ['Bash', { type: 'tool-result', output: 'ok' }, undefined]
+  ] as const)(
+    'says Ran for %s with execution evidence, including failures',
+    (name, result, exitCode) => {
+      render(
+        <NativeChatToolLine
+          block={{
+            type: 'tool-call',
+            name,
+            input: { command: 'false' },
+            state: 'failed',
+            exitCode
+          }}
+          result={result}
+          initiallyExpanded={false}
+        />
+      )
+      expect(screen.getByText('Ran')).toBeInTheDocument()
+      expect(screen.queryByText('Running')).toBeNull()
+    }
+  )
+
+  it.each([
+    ['Read', { file_path: '/repo/a.ts' }, 'Tried to read'],
+    ['Grep', { pattern: 'TODO' }, 'Tried to search'],
+    ['list', { directory: '/repo' }, 'Tried to list'],
+    ['WebFetch', { url: 'https://example.com' }, 'Tried to fetch'],
+    ['web_search', { query: 'docs' }, 'Tried to search the web']
+  ])('describes a failed %s without claiming success', (name, input, verb) => {
+    render(
+      <NativeChatToolLine
+        block={{ type: 'tool-call', name, input, state: 'completed' }}
+        result={{ type: 'tool-result', output: 'unavailable', isError: true }}
+        initiallyExpanded={false}
+      />
+    )
+    expect(screen.getByText(verb)).toBeInTheDocument()
+  })
+
+  it.each([
+    ['Bash', { command: 'pnpm test' }],
+    ['exec', JSON.stringify({ cmd: 'pnpm test' })],
+    ['local_shell', { command: ['pnpm', 'test'] }],
+    ['Bash', 'pnpm test'],
+    ['exec', { command: '/bin/zsh -lc "pnpm test"' }]
+  ])('omits duplicate input for a complete %s command chip', (name, input) => {
+    const { container } = render(
+      <NativeChatToolLine
+        block={{ type: 'tool-call', name, input, state: 'completed' }}
+        result={{ type: 'tool-result', output: 'all passed' }}
+      />
+    )
+    expect(screen.getByTitle('pnpm test')).toHaveClass('font-mono')
+    expect(container.querySelectorAll('pre')).toHaveLength(1)
+    expect(container.querySelector('pre')).toHaveTextContent('all passed')
+  })
+
+  it('does not offer empty detail for a short command without output', () => {
+    const { container } = render(
+      <NativeChatToolLine
+        block={{ type: 'tool-call', name: 'Bash', input: { command: 'pwd' }, state: 'completed' }}
+      />
+    )
+    expect(screen.getByRole('button')).not.toHaveAttribute('aria-expanded')
+    expect(container.querySelector('pre')).toBeNull()
+  })
+
+  it.each([false, true])(
+    'shows the full abbreviated command as plain text (JSON: %s)',
+    (jsonInput) => {
+      const command = `pnpm test ${'src/renderer/tests/long-path/'.repeat(170)}end.test.ts`
+      const input = jsonInput ? JSON.stringify({ command }) : { command }
+      const { container } = render(
+        <NativeChatToolLine
+          block={{ type: 'tool-call', name: 'exec', input, state: 'completed' }}
+          result={{ type: 'tool-result', output: 'all passed' }}
+          initiallyExpanded={false}
+        />
+      )
+      expect(screen.getByTitle(command)).toHaveTextContent(/…$/)
+      expect(container.querySelector('pre')).toBeNull()
+      fireEvent.click(screen.getByRole('button'))
+      const detail = container.querySelector('pre')
+      expect(detail?.textContent).toBe(command)
+      expect(detail).toHaveClass('font-mono', 'bg-chat-code-surface')
+      expect(container.querySelectorAll('pre')).toHaveLength(2)
+    }
+  )
+
+  it('retains structured input detail for other tools', () => {
+    const input = { file_path: '/repo/a.ts', offset: 10 }
+    const { container } = render(
+      <NativeChatToolLine block={{ type: 'tool-call', name: 'Read', input }} />
+    )
+    expect(container.querySelector('pre')?.textContent).toBe(JSON.stringify(input, null, 2))
+  })
+
+  it.each(['Task', 'Agent'])(
+    'uses the unchanged description for live and settled %s calls',
+    (name) => {
+      const description = `explore settings search entries ${'without rewriting '.repeat(8)}end`
+      const input = {
+        description,
+        prompt: 'longer private instructions',
+        query: 'not the description'
+      }
+      const { rerender } = render(
+        <NativeChatToolLine
+          block={{ type: 'tool-call', name, input, state: 'running' }}
+          initiallyExpanded={false}
+        />
+      )
+      expect(screen.getByText('Subagent')).toBeInTheDocument()
+      expect(screen.getByTitle(description).textContent).toBe(description)
+      rerender(
+        <NativeChatToolLine
+          block={{ type: 'tool-call', name, input: JSON.stringify(input), state: 'completed' }}
+          initiallyExpanded={false}
+        />
+      )
+      expect(screen.getByText('Subagent')).toBeInTheDocument()
+      expect(screen.getByTitle(description).textContent).toBe(description)
+      expect(screen.getByRole('button')).toHaveAccessibleName(new RegExp(name))
+    }
+  )
+
+  it('preserves integration identity for an integration named Agent', () => {
+    render(
+      <NativeChatToolLine
+        block={{
+          type: 'tool-call',
+          name: 'Agent',
+          input: { description: 'inspect' },
+          state: 'completed',
+          mcpIdentity: { server: 'my_server', tool: 'Agent' }
+        }}
+        initiallyExpanded={false}
+      />
+    )
+    expect(screen.getByText('My server')).toBeInTheDocument()
+    expect(screen.queryByText('Subagent')).toBeNull()
   })
 
   it('still renders result-only rows', () => {

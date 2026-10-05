@@ -17781,7 +17781,14 @@
           "fetched": "가져옴",
           "added": "추가",
           "deleted": "삭제",
-          "renamed": "이름 변경"
+          "renamed": "이름 변경",
+          "subagent": "Subagent",
+          "triedRead": "Tried to read",
+          "triedEdit": "Tried to edit",
+          "triedSearch": "Tried to search",
+          "triedList": "Tried to list",
+          "triedFetch": "Tried to fetch",
+          "triedSearchWeb": "Tried to search the web"
         },
         "runReadOne": "파일 1개 읽기",
         "runReadMany": "{{value0}} 파일 읽기",

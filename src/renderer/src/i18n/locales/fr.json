@@ -17845,7 +17845,14 @@
           "fetched": "A récupéré",
           "added": "A ajouté",
           "deleted": "A supprimé",
-          "renamed": "A renommé"
+          "renamed": "A renommé",
+          "subagent": "Subagent",
+          "triedRead": "Tried to read",
+          "triedEdit": "Tried to edit",
+          "triedSearch": "Tried to search",
+          "triedList": "Tried to list",
+          "triedFetch": "Tried to fetch",
+          "triedSearchWeb": "Tried to search the web"
         },
         "runReadOne": "Lire 1 fichier",
         "runReadMany": "Lire les fichiers {{value0}}",

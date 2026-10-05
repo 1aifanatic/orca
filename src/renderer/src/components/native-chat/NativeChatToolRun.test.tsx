@@ -123,7 +123,7 @@ describe('NativeChatToolRun', () => {
 
     const { container } = render(<NativeChatToolRun blocks={blocks} expandSignal />)
 
-    const editRow = screen.getByRole('button', { name: /^Edit \/repo\/a\.ts/ })
+    const editRow = screen.getByRole('button', { name: /^Edit Tried to edit \/repo\/a\.ts/ })
     expect(within(editRow).queryByText('Edited')).toBeNull()
     const body = container.querySelector('pre')
     expect(body).toHaveTextContent('String to replace not found in file.')
@@ -530,7 +530,7 @@ describe('NativeChatToolRun', () => {
     // The defect: nothing was running, so the header inherited a check and
     // asserted success over a failure only expanding the run would reveal.
     expect(container.querySelector('.lucide-check')).toBeNull()
-    expect(runHeader(container)).toHaveTextContent('1 failed')
+    expect(runHeader(container)).toHaveTextContent(' · 1 failed')
     expect(runHeader(container)).toHaveAccessibleName(/Failed tool calls: 1/)
     // Quiet text, not a severity escalation: no destructive tint, no swapped glyph.
     expect(container.querySelector('.lucide-circle-alert')).toBeNull()
