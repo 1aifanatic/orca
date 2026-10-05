@@ -221,11 +221,15 @@ describe('importing a per-chat journal', () => {
     const { epoch, rows } = await historyRows()
     await writeLegacyJournal(epoch, rows)
     const { db } = openTestJournalHostDatabase(root)
+    // Named at the tip the copy publishes, so only the copy's own drop can retire it.
+    const tip = rows.at(-1)!
     db.prepare(
       `INSERT INTO journal_session_state (session_id, lifecycle, active_turn_id, handed_over_sends,
-        queued_sends, live_child_work, summary_json, last_activity_at, rules_version)
-      VALUES (?, 'running', NULL, 3, 0, 0, '{"status":"working","latestPrompt":"stale"}', 1, ?)`
-    ).run(IDENTITY.sessionId, JOURNAL_SESSION_STATUS_RULES)
+        queued_sends, live_child_work, summary_json, last_activity_at, rules_version, epoch, tip_seq,
+        tip_ts)
+      VALUES (?, 'running', NULL, 3, 0, 0, '{"status":"working","latestPrompt":"stale"}', 1, ?, ?, ?,
+        ?)`
+    ).run(IDENTITY.sessionId, JOURNAL_SESSION_STATUS_RULES, epoch, tip.seq, tip.ts)
 
     await importPerSessionJournal({
       database: openTestJournalHostDatabase(root),

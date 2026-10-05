@@ -7,10 +7,11 @@
 // chat's current state. Startup selects the chats a gone process left with work from these rows,
 // and seeds every other chat's status from them.
 //
-// The table arrives with schema version 5, so a build older than that opens the database read-only
-// and never writes a journal row without its status. Each row carries the rules it was derived by:
-// a row derived by other rules reads as missing, so it is derived again exactly as a chat with no
-// row is (a listed chat before the listing answers, any other when it opens).
+// The table needs no schema version: an older build opens the database as before, ignores the table,
+// and can append history without a status. So each row records the history tip it was derived from
+// and the rules it was derived by, and a row whose tip is not the chat's tip now, or whose rules are
+// other, reads as missing: it is derived again exactly as a chat with no row is (a listed chat before
+// the listing answers, any other when it opens).
 
 import type Database from '../../sqlite/sync-database'
 import { isAgentTurnOutcome } from '../../../shared/agent-turn-outcome'
@@ -30,12 +31,19 @@ export const JOURNAL_SESSION_STATUS_RULES = 3
  *  or live child work. Startup settles exactly these chats. */
 const UNSETTLED = `lifecycle <> 'idle' OR handed_over_sends > 0 OR queued_sends > 0 OR live_child_work = 1`
 
-/** Recreated, empty, by every migration up to version 5: any row it held may predate writes an
- *  older build made, and an open writes a missing row back. */
-export function createJournalSessionStatusTable(db: Database.Database): void {
+/** A row whose recorded tip is still the chat's tip: no row was written past it or in its place.
+ *  `st` is the status row; each check is one primary-key lookup on `journal_rows`. */
+const AT_TIP = `EXISTS (SELECT 1 FROM journal_sessions live JOIN journal_rows tip
+    ON tip.session_id = live.session_id AND tip.epoch = live.epoch AND tip.seq = st.tip_seq
+    WHERE live.session_id = st.session_id AND live.epoch = st.epoch AND tip.ts = st.tip_ts)
+  AND NOT EXISTS (SELECT 1 FROM journal_rows later WHERE later.session_id = st.session_id
+    AND later.epoch = st.epoch AND later.seq > st.tip_seq)`
+
+/** Created idempotently at every writable open, with no `user_version` bump, as
+ *  `ensureQueuedMessagesTable` is: an older build stays writable and ignores it. */
+export function ensureJournalSessionStatusTable(db: Database.Database): void {
   db.exec(`
-DROP TABLE IF EXISTS journal_session_state;
-CREATE TABLE journal_session_state (
+CREATE TABLE IF NOT EXISTS journal_session_state (
   session_id        TEXT    PRIMARY KEY,
   lifecycle         TEXT    NOT NULL,
   active_turn_id    TEXT,
@@ -44,9 +52,12 @@ CREATE TABLE journal_session_state (
   live_child_work   INTEGER NOT NULL,
   summary_json      TEXT    NOT NULL,
   last_activity_at  INTEGER NOT NULL,
-  rules_version     INTEGER NOT NULL
+  rules_version     INTEGER NOT NULL,
+  epoch             TEXT    NOT NULL,
+  tip_seq           INTEGER NOT NULL,
+  tip_ts            INTEGER NOT NULL
 );
-CREATE INDEX journal_session_state_unsettled ON journal_session_state (session_id)
+CREATE INDEX IF NOT EXISTS journal_session_state_unsettled ON journal_session_state (session_id)
   WHERE ${UNSETTLED};
 `)
 }
@@ -106,14 +117,19 @@ export function isUnsettledJournalSessionStatus(status: JournalSessionStatus): b
   )
 }
 
+// The tip is read inside the statement, so a row always records the history it was written with.
 const UPSERT_STATUS = `INSERT INTO journal_session_state (session_id, lifecycle, active_turn_id,
-  handed_over_sends, queued_sends, live_child_work, summary_json, last_activity_at, rules_version)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  handed_over_sends, queued_sends, live_child_work, summary_json, last_activity_at, rules_version,
+  epoch, tip_seq, tip_ts)
+SELECT s.session_id, ?, ?, ?, ?, ?, ?, ?, ?, s.epoch, r.seq, r.ts
+FROM journal_sessions s JOIN journal_rows r ON r.session_id = s.session_id AND r.epoch = s.epoch
+WHERE s.session_id = ? ORDER BY r.seq DESC LIMIT 1
 ON CONFLICT(session_id) DO UPDATE SET
   lifecycle = excluded.lifecycle, active_turn_id = excluded.active_turn_id,
   handed_over_sends = excluded.handed_over_sends, queued_sends = excluded.queued_sends,
   live_child_work = excluded.live_child_work, summary_json = excluded.summary_json,
-  last_activity_at = excluded.last_activity_at, rules_version = excluded.rules_version`
+  last_activity_at = excluded.last_activity_at, rules_version = excluded.rules_version,
+  epoch = excluded.epoch, tip_seq = excluded.tip_seq, tip_ts = excluded.tip_ts`
 const STATUS_COLUMNS = `st.lifecycle AS lifecycle, st.active_turn_id AS active_turn_id,
   st.handed_over_sends AS handed_over_sends, st.queued_sends AS queued_sends,
   st.live_child_work AS live_child_work, st.summary_json AS summary_json,
@@ -125,35 +141,43 @@ export function writeJournalSessionStatus(
   sessionId: string,
   status: JournalSessionStatus
 ): void {
-  db.prepare(UPSERT_STATUS).run(
-    sessionId,
-    status.lifecycle,
-    status.activeTurnId,
-    status.handedOverSends,
-    status.queuedSends,
-    status.liveChildWork ? 1 : 0,
-    JSON.stringify(status.summary),
-    status.lastActivityAt,
-    JOURNAL_SESSION_STATUS_RULES
-  )
+  const written = db
+    .prepare(UPSERT_STATUS)
+    .run(
+      status.lifecycle,
+      status.activeTurnId,
+      status.handedOverSends,
+      status.queuedSends,
+      status.liveChildWork ? 1 : 0,
+      JSON.stringify(status.summary),
+      status.lastActivityAt,
+      JOURNAL_SESSION_STATUS_RULES,
+      sessionId
+    )
+  if (written.changes === 0) {
+    throw new Error(`no journal history to store the status of ${sessionId} beside`)
+  }
 }
 
 export function deleteJournalSessionStatus(db: Database.Database, sessionId: string): void {
   db.prepare('DELETE FROM journal_session_state WHERE session_id = ?').run(sessionId)
 }
 
-/** Whether the chat has a status row by these rules: an open writes one for a chat an older build
- *  last wrote, or wrote by other rules. */
+/** Whether the chat has a current row: by these rules, at its tip. An open writes one for a chat an
+ *  older build last wrote, or wrote by other rules. */
 export function hasJournalSessionStatus(db: Database.Database, sessionId: string): boolean {
   return (
     db
-      .prepare('SELECT 1 FROM journal_session_state WHERE session_id = ? AND rules_version = ?')
+      .prepare(
+        `SELECT 1 FROM journal_session_state st WHERE st.session_id = ? AND st.rules_version = ?
+  AND ${AT_TIP}`
+      )
       .get(sessionId, JOURNAL_SESSION_STATUS_RULES) !== undefined
   )
 }
 
-/** A chat's stored status for the startup seed: null when the chat has a journal but no row by
- *  these rules. */
+/** A chat's stored status for the startup seed: null when the chat has a journal but no current
+ *  row. */
 export type StoredJournalSessionStatus = {
   sessionId: string
   status: JournalSessionStatus | null
@@ -174,7 +198,7 @@ export function readJournalSessionStatuses(
       .prepare(
         `SELECT s.session_id AS session_id, ${STATUS_COLUMNS}
 FROM journal_sessions s LEFT JOIN journal_session_state st
-  ON st.session_id = s.session_id AND st.rules_version = ?
+  ON st.session_id = s.session_id AND st.rules_version = ? AND ${AT_TIP}
 WHERE s.session_id IN (${chunk.map(() => '?').join(', ')})`
       )
       .all(JOURNAL_SESSION_STATUS_RULES, ...chunk)
@@ -187,12 +211,13 @@ WHERE s.session_id IN (${chunk.map(() => '?').join(', ')})`
   return results
 }
 
-/** Every chat whose stored status by these rules says a gone process left it work, through the
- *  partial index. */
+/** Every chat whose current row says a gone process left it work, through the partial index. A row
+ *  left behind by a chat that is gone or has moved on is never selected. */
 export function readUnsettledJournalSessionIds(db: Database.Database): string[] {
   return db
     .prepare(
-      `SELECT session_id FROM journal_session_state WHERE rules_version = ? AND (${UNSETTLED})`
+      `SELECT st.session_id AS session_id FROM journal_session_state st
+WHERE st.rules_version = ? AND (${UNSETTLED}) AND ${AT_TIP}`
     )
     .all(JOURNAL_SESSION_STATUS_RULES)
     .flatMap((row) => (typeof row.session_id === 'string' ? [row.session_id] : []))

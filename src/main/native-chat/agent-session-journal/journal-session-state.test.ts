@@ -380,10 +380,10 @@ describe('epoch writes carry the status (T10)', () => {
     expect(loadTestJournal(root, 'settled')?.state.epoch).toBe(epoch)
   })
 
-  it('arrives with schema version 5', async () => {
+  it('leaves the schema at version 4, so an older build stays writable', async () => {
     await write('settled')
-    expect(JOURNAL_DB_SCHEMA_VERSION).toBe(5)
-    expect(journalPragmaNumber(db(), 'user_version')).toBe(5)
+    expect(JOURNAL_DB_SCHEMA_VERSION).toBe(4)
+    expect(journalPragmaNumber(db(), 'user_version')).toBe(4)
   })
 })
 

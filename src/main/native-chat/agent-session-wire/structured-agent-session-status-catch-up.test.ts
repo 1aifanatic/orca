@@ -140,7 +140,7 @@ async function newRig(): Promise<RestTestRig> {
   return rig
 }
 
-/** Every chat's row dropped, as version 5 finds a database an older build wrote. */
+/** Every chat's row dropped, as the first launch with the status table finds a database. */
 function upgradeToEmptyStatusTable(rig: RestTestRig): void {
   openTestJournalHostDatabase(rig.root).db.prepare('DELETE FROM journal_session_state').run()
 }

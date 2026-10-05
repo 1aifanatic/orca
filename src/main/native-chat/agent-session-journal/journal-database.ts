@@ -11,12 +11,11 @@ import {
   createAgentSessionRecordTablesSql,
   createJournalTablesSql,
   JOURNAL_DB_OLDEST_RELEASED_VERSION,
-  JOURNAL_DB_RECORDS_VERSION,
   JOURNAL_DB_SCHEMA_VERSION
 } from './journal-database-schema'
 import { JournalUnreleasedSchemaError } from './journal-open-failure'
 import { ensureQueuedMessagesTable } from './queued-message-schema'
-import { createJournalSessionStatusTable } from './journal-session-state'
+import { ensureJournalSessionStatusTable } from './journal-session-state'
 
 export const JOURNAL_BUSY_TIMEOUT_MS = 5000
 /** Bounds the WAL a checkpoint leaves behind; SQLite truncates it back to this after a reset. */
@@ -55,7 +54,7 @@ export function journalPragmaNumber(db: Database.Database, name: string): number
 export function journalDatabaseMigratesRecords(stored: number): boolean {
   return (
     stored === 0 ||
-    (stored >= JOURNAL_DB_OLDEST_RELEASED_VERSION && stored < JOURNAL_DB_RECORDS_VERSION)
+    (stored >= JOURNAL_DB_OLDEST_RELEASED_VERSION && stored < JOURNAL_DB_SCHEMA_VERSION)
   )
 }
 
@@ -89,7 +88,7 @@ export function journalDatabaseHoldsAgentSessions(dbPath: string): boolean | und
       (table) =>
         tables.has(table) && db.prepare(`SELECT 1 FROM ${table} LIMIT 1`).get() !== undefined
     )
-    if (holds || journalPragmaNumber(db, 'user_version') >= JOURNAL_DB_RECORDS_VERSION) {
+    if (holds || journalPragmaNumber(db, 'user_version') >= JOURNAL_DB_SCHEMA_VERSION) {
       return holds
     }
     return undefined
@@ -129,9 +128,10 @@ export function openJournalDatabase(
     configureJournalPragmas(probe, stored)
     const legacyRecordImportOwed = migrateJournalSchema(probe, stored, legacyRecords)
     // Outside `migrateJournalSchema` on purpose: its early return skips a db
-    // already at the current version, and this table must exist at EVERY
+    // already at the current version, and these tables must exist at EVERY
     // writable open with no `user_version` bump (see `ensureQueuedMessagesTable`).
     ensureQueuedMessagesTable(probe)
+    ensureJournalSessionStatusTable(probe)
     hardenSqliteDatabaseFiles(dbPath)
     transferred = true
     return { db: probe, readOnly: false, legacyRecordImportOwed }
@@ -164,8 +164,6 @@ function configureJournalPragmas(db: Database.Database, stored: number): void {
  * Table creation, the records copy and the `user_version` bump are ONE transaction. Creating the
  * tables first left a shaped database still reporting version 0, which an older build does not
  * latch read-only; and "copied" is `user_version >= 4`, so no other marker can disagree with it.
- * Version 5 adds each chat's status table, recreated empty on every run: while the records copy is
- * owed the database stays at a released version an older build can write, so no row survives one.
  * Returns whether the copy is still owed.
  */
 function migrateJournalSchema(
@@ -180,18 +178,15 @@ function migrateJournalSchema(
     if (stored === 0) {
       db.exec(createJournalTablesSql())
     }
-    createJournalSessionStatusTable(db)
-    if (stored < JOURNAL_DB_RECORDS_VERSION) {
-      db.exec(createAgentSessionRecordTablesSql())
-      if (legacyRecords.owed) {
-        // A fresh file still takes a released version, so an older build opens it as one.
-        if (stored === 0) {
-          db.pragma(`user_version = ${JOURNAL_DB_OLDEST_RELEASED_VERSION}`)
-        }
-        return
+    db.exec(createAgentSessionRecordTablesSql())
+    if (legacyRecords.owed) {
+      // A fresh file still takes a released version, so an older build opens it as one.
+      if (stored === 0) {
+        db.pragma(`user_version = ${JOURNAL_DB_OLDEST_RELEASED_VERSION}`)
       }
-      legacyRecords.write(db)
+      return
     }
+    legacyRecords.write(db)
     db.pragma(`user_version = ${JOURNAL_DB_SCHEMA_VERSION}`)
   })
   return legacyRecords.owed

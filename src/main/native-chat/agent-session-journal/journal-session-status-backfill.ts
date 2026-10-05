@@ -1,10 +1,11 @@
 // Writing the status row a chat already in the host's database is missing, without opening it.
 //
-// Version 5 creates the status table empty, so after an upgrade every chat has no row until
-// something writes it. Rather than open each chat (its lease, settle and conversation), its rows are
-// folded a bounded part per task, as a replay folds them, then the row is derived and written in one
-// short transaction, only while the chat is still where the fold read it. Callers fold chats one at a
-// time and write a slice of their rows in one transaction.
+// After the upgrade that adds the status table, or a launch of an older build that wrote history
+// past a chat's row, a chat has no current row until something writes it. Rather than open each
+// chat (its lease, settle and conversation), its rows are folded a bounded part per task, as a
+// replay folds them, then the row is derived and written in one short transaction, only while the
+// chat is still where the fold read it. Callers fold chats one at a time and write a slice of their
+// rows in one transaction.
 
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type { JournalHostDatabase } from './journal-host-database'
@@ -128,8 +129,8 @@ export async function foldJournalSessionStatus(
   return { sessionId, epoch, tip, load, status }
 }
 
-/** Every folded chat's row in ONE transaction, each only while it still has no row and its rows are
- *  where its fold read them; a chat skipped is left to its open. */
+/** Every folded chat's row in ONE transaction, each only while it still has no current row and its
+ *  rows are where its fold read them; a chat skipped is left to its open. */
 export function writeJournalSessionStatuses(
   database: JournalHostDatabase,
   folded: readonly FoldedJournalSessionStatus[]

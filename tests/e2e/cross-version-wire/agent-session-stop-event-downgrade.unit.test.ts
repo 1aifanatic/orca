@@ -15,20 +15,22 @@ import {
   createTrackedJournalOpener,
   insertTestJournalRowJson,
   liveTestJournalRows,
+  loadTestJournal,
   openTestJournalHostDatabase,
+  readTestJournalSessionStatus,
   SAVED_BY_NEWER_ORCA
 } from '../../../src/main/native-chat/agent-session-journal/journal-host-database-test-support'
 import type { JournalRow } from '../../../src/main/native-chat/agent-session-journal/journal-row-schema'
+import { deriveJournalSessionStatus } from '../../../src/main/native-chat/agent-session-journal/journal-session-state'
 import { importReleaseCheckoutModule, materializeReleaseCheckout } from './release-checkout'
 
 // A release that knows neither the Stop event nor the Resume marker: an unknown row kind would
 // make it delete the journal from that row on, so both ride a tombstone it already reads.
 const BASELINE_REF = 'v1.4.218'
 const JOURNAL = 'src/main/native-chat/agent-session-journal'
-// A release that shares this one's host database at a schema version before 5. Version 5 added each
-// chat's stored status, so this build's database opens read-only there. Once a release at version
-// 5 exists, pin it here and assert the writable round trip again.
-const OLDER_SCHEMA_BASELINE_REF = 'v1.4.219'
+// A main build that shares this one's host database and schema version, so a downgrade to it opens
+// the journal writable. No release tag has that database yet; move to the first one that does.
+const WRITABLE_BASELINE_REF = '3727100cc9dbcea6201f8a3e506676a3c4b53b18'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-downgrade',
@@ -180,7 +182,7 @@ function storedRows(directory: string): string[] {
   }
 }
 
-test("an older schema's build reads this build's journal read-only, writes nothing, and the pause survives the round trip", async () => {
+test("an older build opens this build's journal writable and appends to it; the pause survives the round trip, and the stale status is derived again", async () => {
   const directory = mkdtempSync(join(tmpdir(), 'orca-stop-event-writable-downgrade-'))
   const journals = createTrackedJournalOpener()
   const itemIds = (journal: Pick<OlderJournal, 'snapshot'>) =>
@@ -197,8 +199,9 @@ test("an older schema's build reads this build's journal read-only, writes nothi
     ])
     await journals.closeAll()
     const rowsBefore = storedRows(directory)
+    expect(readTestJournalSessionStatus(directory, IDENTITY.sessionId)).not.toBeNull()
 
-    const checkout = await materializeReleaseCheckout(OLDER_SCHEMA_BASELINE_REF)
+    const checkout = await materializeReleaseCheckout(WRITABLE_BASELINE_REF)
     const support = await importReleaseCheckoutModule(
       checkout,
       `${JOURNAL}/journal-host-database-test-support.ts`
@@ -206,21 +209,28 @@ test("an older schema's build reads this build's journal read-only, writes nothi
     const older = releaseExport<() => OlderOpener>(support, 'createTrackedJournalOpener')()
     try {
       const downgraded = await older.open({ identity: IDENTITY, stateDirectory: directory })
-      expect(downgraded.isReadOnly).toBe(true)
+      expect(downgraded.isReadOnly).toBe(false)
       expect(downgraded.cursor()).toEqual(wrote.cursor)
       expect(itemIds(downgraded)).toEqual(wrote.items)
-      await expect(
-        downgraded.appendItem(item(2), { kind: 'status', text: 'the older build' }, scope)
-      ).rejects.toThrow()
+      await downgraded.appendItem(item(2), { kind: 'status', text: 'the older build' }, scope)
     } finally {
       await older.closeAll()
     }
-    expect(storedRows(directory)).toEqual(rowsBefore)
+    const rowsAfter = storedRows(directory)
+    expect(rowsAfter.slice(0, rowsBefore.length)).toEqual(rowsBefore)
+    expect(rowsAfter).toHaveLength(rowsBefore.length + 1)
+    // The older build kept no status: the row names a tip that is no longer the chat's, so it reads
+    // as missing until this build derives it again.
+    expect(readTestJournalSessionStatus(directory, IDENTITY.sessionId)).toBeNull()
 
-    // Upgraded again: the history is as this build left it, and the person's Stop still pauses.
+    // Upgraded again: the older build's row folds, and the person's Stop still pauses the queue.
     const upgraded = await journals.open({ identity: IDENTITY, stateDirectory: directory })
-    expect(upgraded.cursor()).toEqual(wrote.cursor)
-    expect(itemIds(upgraded)).toEqual(wrote.items)
+    upgraded.sessionStatus.backfill()
+    expect(readTestJournalSessionStatus(directory, IDENTITY.sessionId)).toEqual(
+      deriveJournalSessionStatus(loadTestJournal(directory, IDENTITY.sessionId)!.state)
+    )
+    expect(upgraded.cursor().sequence).toBe(wrote.cursor.sequence + 1)
+    expect(itemIds(upgraded)).toEqual([...wrote.items, 'codex:thread-1:turn-1:2'])
     expect(upgraded.queuedMessages.pauses('host-a').map((pause) => pause.reason)).toEqual([
       'stopped'
     ])
@@ -232,11 +242,11 @@ test("an older schema's build reads this build's journal read-only, writes nothi
 
 // Why a Stop's event cannot have a row kind of its own yet: this build keeps a kind it does not know
 // and refuses the load as a newer Orca's chat, but a build from before that deletes the journal from
-// it when it can write it.
-// So a Stop kind ships its reader first and is written once no supported build lacks that reader, or
-// is written at a bumped `v`. The pinned older build is at the schema before 5, which opens this
-// build's database read-only, so it keeps the row too; a released build at version 5 has this rule.
-test("this build keeps a newer build's row kind and refuses the load; an older schema's build keeps it too", async () => {
+// it. So a Stop kind ships
+// its reader first and is written once no supported build lacks that reader, or is written at a
+// bumped `v`. Move the baseline to the first release with this rule, and the older build keeps the
+// row too.
+test("this build keeps a newer build's row kind and refuses the load; a build before it deletes it", async () => {
   const directory = mkdtempSync(join(tmpdir(), 'orca-newer-kind-downgrade-'))
   const journals = createTrackedJournalOpener()
   const newerKinds = () => storedRows(directory).filter((row) => row.includes('"future-mark"'))
@@ -271,20 +281,18 @@ test("this build keeps a newer build's row kind and refuses the load; an older s
     expect(storedRows(directory)).toEqual(rowsBefore)
     expect(newerKinds()).toEqual([newer])
 
-    const checkout = await materializeReleaseCheckout(OLDER_SCHEMA_BASELINE_REF)
+    const checkout = await materializeReleaseCheckout(WRITABLE_BASELINE_REF)
     const support = await importReleaseCheckoutModule(
       checkout,
       `${JOURNAL}/journal-host-database-test-support.ts`
     )
     const older = releaseExport<() => OlderOpener>(support, 'createTrackedJournalOpener')()
     try {
-      const downgraded = await older.open({ identity: IDENTITY, stateDirectory: directory })
-      expect(downgraded.isReadOnly).toBe(true)
+      await older.open({ identity: IDENTITY, stateDirectory: directory })
     } finally {
       await older.closeAll()
     }
-    expect(newerKinds()).toEqual([newer])
-    expect(storedRows(directory)).toEqual(rowsBefore)
+    expect(newerKinds()).toEqual([])
   } finally {
     await journals.closeAll()
     rmSync(directory, { recursive: true, force: true })
