@@ -61,6 +61,9 @@ describe('ordered-list first-block code admission', () => {
   })
 
   it.each([
+    '- 1. ```js\n     body\n     ```\n',
+    '1. 1. ```js\n      body\n      ```\n',
+    '> - 1. ```js\n>      body\n>      ```\n',
     '- Parent\n  1. ```js\n     body\n     ```\n',
     '> 1. Parent\n>    1. ```js\n>       body\n>       ```\n',
     '1.\t```js\n\tbody\n\t```\n',
@@ -99,6 +102,23 @@ describe('ordered-list first-block code admission', () => {
     } finally {
       create.mockRestore()
     }
+  })
+
+  it('rejects whitespace-heavy false candidates before parsing', () => {
+    const create = vi.spyOn(facade, 'createTiptapMarkedFacade')
+    try {
+      expect(
+        getMarkdownRichModeUnsupportedReason(`${'> '.repeat(500)}${' '.repeat(10_000)}literal`)
+      ).toBeNull()
+      expect(create).not.toHaveBeenCalled()
+    } finally {
+      create.mockRestore()
+    }
+  })
+
+  it('keeps oversized literal-fence candidates Source-only without structural proof', () => {
+    const literal = `\`\`\`\`md\n${'x'.repeat(50_001)}\n${fenceItem('1.')}\`\`\`\`\n`
+    expect(getMarkdownRichModeUnsupportedReason(literal)).toBe('other')
   })
 
   it('keeps oversized candidates Source-only without parsing', () => {

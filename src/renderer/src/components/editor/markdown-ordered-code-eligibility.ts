@@ -1,6 +1,7 @@
 import { createTiptapMarkedFacade } from './tiptap-marked-facade'
 
-const CODE_FIRST_ITEM = /^(?:[ \t]*>[ \t]*)*[ \t]*\d{1,9}[.)][ \t]+(?:`{3,}|~{3,})/m
+const CODE_FIRST_ITEM =
+  /^(?:[ \t]*(?:>|[-+*](?=[ \t])|\d{1,9}[.)](?=[ \t])))*[ \t]*\d{1,9}[.)][ \t]+(?:`{3,}|~{3,})/m
 const FENCE = /^[ ]{0,3}(?:`{3,}|~{3,})/
 const PARSE_LIMIT = 50_000
 
