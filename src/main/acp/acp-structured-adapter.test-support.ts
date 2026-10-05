@@ -236,6 +236,21 @@ export function replyChunk(promptId: string, text: string, meta: Record<string, 
   }
 }
 
+/** A shell command Grok runs inside the turn it runs under `promptId`. */
+export function shellCall(promptId: string, status: 'in_progress' | 'completed') {
+  return {
+    sessionId: PROVIDER_SESSION,
+    update: {
+      sessionUpdate: status === 'in_progress' ? 'tool_call' : 'tool_call_update',
+      toolCallId: 'sleep-1',
+      title: 'sleep 25; echo first-done',
+      kind: 'execute',
+      status
+    },
+    _meta: { promptId }
+  }
+}
+
 export function waitFor<T>(assertion: () => T | Promise<T>): Promise<T> {
   return vi.waitFor(assertion, { timeout: 2_000, interval: 5 })
 }
