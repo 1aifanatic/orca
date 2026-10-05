@@ -10,6 +10,7 @@ import type {
   StructuredAgentSessionAdapter
 } from './structured-agent-session-adapter'
 import { StructuredAgentSessionAdapterRouter } from './structured-agent-session-adapter-router'
+import { StructuredAgentRegistry } from './structured-agent-registry'
 import type { StructuredAgentDefinition } from './structured-agent-definition'
 
 const LOCAL: AgentSessionExecutionLocation = {
@@ -73,11 +74,33 @@ const PILOT: StructuredAgentDefinition = {
   }
 }
 
+/** A double with every method Claude's and Codex's declarations need. */
+function declaringAdapter(
+  overrides: Partial<StructuredAgentSessionAdapter> = {}
+): StructuredAgentSessionAdapter {
+  return fakeAdapter({
+    compact: vi.fn(),
+    changeThreadGoal: vi.fn(),
+    rewind: vi.fn(),
+    recoverRewind: vi.fn(),
+    ...overrides
+  })
+}
+
+function claudeAndCodex(
+  adapters: { claude?: StructuredAgentSessionAdapter; codex?: StructuredAgentSessionAdapter } = {}
+): StructuredAgentRegistry {
+  return new StructuredAgentRegistry([
+    { definition: CLAUDE_STRUCTURED_AGENT, adapter: adapters.claude ?? declaringAdapter() },
+    { definition: CODEX_STRUCTURED_AGENT, adapter: adapters.codex ?? declaringAdapter() }
+  ])
+}
+
 describe('StructuredAgentSessionAdapterRouter registry', () => {
   it('routes a registered agent the router has no code for, and refuses an unregistered one', async () => {
     const pilot = fakeAdapter()
     const router = new StructuredAgentSessionAdapterRouter(
-      [{ definition: PILOT, adapter: pilot }],
+      new StructuredAgentRegistry([{ definition: PILOT, adapter: pilot }]),
       async () => {}
     )
 
@@ -93,54 +116,61 @@ describe('StructuredAgentSessionAdapterRouter registry', () => {
   it('refuses two registrations for one agent', () => {
     expect(
       () =>
-        new StructuredAgentSessionAdapterRouter(
-          [
-            { definition: PILOT, adapter: fakeAdapter() },
-            { definition: PILOT, adapter: fakeAdapter() }
-          ],
-          async () => {}
-        )
+        new StructuredAgentRegistry([
+          { definition: PILOT, adapter: fakeAdapter() },
+          { definition: PILOT, adapter: fakeAdapter() }
+        ])
     ).toThrow('structured agent grok is registered twice')
   })
 
-  it('answers capabilities from the live owner, else from the agent named at rest', async () => {
-    const router = new StructuredAgentSessionAdapterRouter(
-      [
-        { definition: CLAUDE_STRUCTURED_AGENT, adapter: fakeAdapter() },
-        { definition: CODEX_STRUCTURED_AGENT, adapter: fakeAdapter() }
-      ],
-      async () => {}
-    )
+  it.each([
+    ['compact', 'compact'],
+    ['threadGoal', 'changeThreadGoal'],
+    ['rewind', 'rewind'],
+    ['rewind', 'recoverRewind']
+  ] as const)('refuses a declared %s whose adapter has no %s', (capability, method) => {
+    const declared: StructuredAgentDefinition = {
+      ...PILOT,
+      capabilities: { ...PILOT.capabilities, [capability]: true }
+    }
+    const adapter = declaringAdapter({ [method]: undefined })
 
-    expect(router.capabilities('session-1')).toBeUndefined()
-    expect(router.capabilities('session-1', 'codex')).toBe(CODEX_STRUCTURED_AGENT.capabilities)
-    expect(router.capabilities('session-1', 'grok')).toBeUndefined()
-    await router.acquire({ identity: identity('session-1', 'claude'), fence: 1, spawnToken: 's' })
-    // A live session answers for its own agent, whatever a caller names.
-    expect(router.capabilities('session-1', 'codex')).toBe(CLAUDE_STRUCTURED_AGENT.capabilities)
+    expect(() => new StructuredAgentRegistry([{ definition: declared, adapter }])).toThrow(
+      `structured agent grok declares a capability its adapter has no ${method} for`
+    )
+    expect(() => new StructuredAgentRegistry([{ definition: PILOT, adapter }])).not.toThrow()
   })
 
-  it('lets a session narrow a declared rewind but never widen an undeclared one', () => {
-    const narrowing = fakeAdapter({
+  it('answers what each registered agent declares, and nothing for an unregistered one', () => {
+    const agents = claudeAndCodex()
+
+    expect(agents.capabilities('codex')).toBe(CODEX_STRUCTURED_AGENT.capabilities)
+    expect(agents.capabilities('claude')).toBe(CLAUDE_STRUCTURED_AGENT.capabilities)
+    expect(agents.capabilities('grok')).toBeNull()
+    expect(agents.definition('grok')).toBeNull()
+    expect(agents.definitions()).toEqual([CLAUDE_STRUCTURED_AGENT, CODEX_STRUCTURED_AGENT])
+  })
+
+  it('lets a session narrow a declared rewind but never widen an undeclared one', async () => {
+    const narrowing = declaringAdapter({
       rewindSupport: () => ({ supported: false, reason: 'history-not-paginated' })
     })
-    const widening = fakeAdapter({ rewindSupport: () => ({ supported: true }) })
+    const widening = declaringAdapter({ rewindSupport: () => ({ supported: true }) })
     const router = new StructuredAgentSessionAdapterRouter(
-      [
-        { definition: CODEX_STRUCTURED_AGENT, adapter: narrowing },
-        { definition: CLAUDE_STRUCTURED_AGENT, adapter: widening }
-      ],
+      claudeAndCodex({ codex: narrowing, claude: widening }),
       async () => {}
     )
+    const unsupported = { supported: false, reason: 'unsupported' }
 
     expect(router.rewindSupport('session-1', 'codex')).toEqual({
       supported: false,
       reason: 'history-not-paginated'
     })
-    expect(router.rewindSupport('session-1', 'claude')).toEqual({
-      supported: false,
-      reason: 'unsupported'
-    })
+    // Claude declares no rewind; its adapter's answer cannot claim one, at rest or live.
+    expect(router.rewindSupport('session-1', 'claude')).toEqual(unsupported)
+    await router.acquire({ identity: identity('session-1', 'claude'), fence: 1, spawnToken: 's' })
+    expect(router.rewindSupport('session-1')).toEqual(unsupported)
+    expect(router.rewindSupport('session-2', 'grok')).toEqual(unsupported)
   })
 })
 

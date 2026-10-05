@@ -38,6 +38,7 @@ import { useStructuredAgentSessionQueuedMessages } from './use-structured-agent-
 import { outboxOutsideQueuedCards } from './structured-agent-session-queued-cards'
 import { structuredAgentSessionStartFailureFacts } from './structured-agent-session-delivery-notices'
 import { hostStatesTurnScopes } from '../../../../shared/native-chat-turn-membership'
+import { withNativeChatCutTurnNotices } from '../../../../shared/native-chat-cut-turn-notice'
 
 export type { StructuredPromptItem } from './structured-agent-session-message-projection'
 
@@ -164,8 +165,16 @@ export function useStructuredAgentSession(args: {
       }),
     [isWorking, outbox, queueCapability, queueFollowUps, queuedMessageIds]
   )
+  // What the transcript reads: the journal plus the one notice a cut turn with no row gets.
+  const transcriptItems = useMemo(
+    () =>
+      withNativeChatCutTurnNotices(transportState.journalItems, {
+        agentName: structuredAgentLabel(agent)
+      }),
+    [agent, transportState.journalItems]
+  )
   const messages = useStructuredAgentSessionMessages(
-    transportState.journalItems,
+    transcriptItems,
     transcriptOutbox,
     transportState.submissions,
     queuedMessageIds
@@ -200,7 +209,7 @@ export function useStructuredAgentSession(args: {
             { command }
           )
       }),
-    journalItems: transportState.journalItems,
+    journalItems: transcriptItems,
     subagentRoster: transportState.subagentRoster,
     messages,
     status: transportEnabled ? state.status : 'ready',

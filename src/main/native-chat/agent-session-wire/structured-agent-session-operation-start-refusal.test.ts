@@ -6,7 +6,7 @@ import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { StructuredAgentSessionAttachContext } from './structured-agent-session-attach-context'
 import { ensureStructuredAgentSessionAgentForOperation } from './structured-agent-session-agent-start'
 import { recordStructuredAgentSessionOptionIntent } from './structured-agent-session-options-read'
-import { claudeAndCodexDefinition } from './structured-agent-session-adapter-router-test-support'
+import { claudeAndCodexAgents } from './structured-agent-session-adapter-router-test-support'
 import { recordingStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
 
 const SESSION = 'session-1'
@@ -50,7 +50,7 @@ describe('an option picked while the chat is at rest', () => {
             // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the intent reads only the record's provider and options.
             ({ provider: 'codex', options: {} }) as unknown as AgentSessionRecord
         },
-        adapter: { definition: claudeAndCodexDefinition }
+        agents: claudeAndCodexAgents()
       },
       { sessionId: SESSION, persistOptions, publish: () => {} },
       { key: 'notAnOption', value: 'x' }

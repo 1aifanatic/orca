@@ -47,8 +47,6 @@ import type { AgentSessionPromptResponse } from '../../../shared/agent-session-q
 import type { ProviderHistoryWindow } from '../agent-session-journal/journal-submission-reconciler'
 import type { StructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
 import type { AgentSessionCreatePhaseRecorder } from '../../observability/agent-session-instrumentation'
-import type { AgentSessionCapabilities } from '../../../shared/agent-session-capabilities'
-import type { StructuredAgentDefinition } from './structured-agent-definition'
 
 export class AgentSessionAcquisitionRefusal extends Error {
   readonly code = 'agent_session_operation_invalid'
@@ -267,7 +265,8 @@ export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & 
     /** Revalidate after preparation, immediately before writing to the provider. */
     beforeDispatch?: () => Promise<void>
   }): Promise<AgentSessionDispatchOutcome>
-  /** `agent` answers for a session with no child running, from the provider alone. */
+  /** How this session narrows its agent's declared rewind; `agent` answers for one with no child
+   *  running. The router applies the declaration first, so an adapter's answer never widens it. */
   rewindSupport?(sessionId: string, agent?: string): AgentSessionRewindSupport
   recoverRewind?(input: {
     sessionId: string
@@ -321,14 +320,6 @@ export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & 
      *  start a new goal rather than rewrite that one's objective in place. */
     replacesGoal: boolean
   }): Promise<{ ok: true } | { ok: false; rejected: string }>
-  /** What this session's agent declares it can do; `agent` answers one at rest. Answered by the
-   *  router from the agent's registered definition, never by a single adapter. */
-  capabilities?(sessionId: string, agent?: string): AgentSessionCapabilities | undefined
-  /** The definition registered for `agent`, null for an agent this runtime does not drive. Answered
-   *  by the router from its registrations, never by a single adapter. */
-  definition?(agent: string): StructuredAgentDefinition | null
-  /** Every registered definition, in registration order: what the host publishes to clients. */
-  definitions?(): readonly StructuredAgentDefinition[]
   /** Stops exactly the tasks `taskIds` names, which the host resolves from its child records. */
   stopBackgroundTasks?(input: {
     sessionId: string

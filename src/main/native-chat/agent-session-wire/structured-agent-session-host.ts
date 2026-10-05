@@ -217,9 +217,9 @@ export class StructuredAgentSessionHost {
     providerSupport.adapterSupportsCreate(this.deps.adapter, location, agent)
 
   /** What this runtime registered: one agent's definition (null when unregistered), or all of them. */
-  agentDefinition = (agent: string) => this.deps.adapter.definition?.(agent) ?? null
-  agentDefinitions = (): readonly StructuredAgentDefinition[] =>
-    this.deps.adapter.definitions?.() ?? []
+  agentDefinition = (agent: string): StructuredAgentDefinition | null =>
+    this.deps.agents.definition(agent)
+  agentDefinitions = (): readonly StructuredAgentDefinition[] => this.deps.agents.definitions()
 
   private readonly tabs = sessionTabs.createStructuredAgentSessionTabSurface(
     this,

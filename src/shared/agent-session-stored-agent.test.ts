@@ -18,7 +18,7 @@ function grokRecord(transport = 'acp'): AgentSessionRecord {
     provider: 'grok',
     providerHandleChain: record.providerHandleChain.map((link) => ({
       ...link,
-      handle: { transport, agent: 'grok', nativeId: 'grok-session-1', providerData: '{"cwd":"/w"}' }
+      handle: { transport, agent: 'grok', nativeId: 'grok-session-1', resumeCursor: '{"cwd":"/w"}' }
     })),
     accountHome: { variable: 'GROK_HOME', path: '/home/user/.grok' }
   }
