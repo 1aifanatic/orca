@@ -1,6 +1,7 @@
 import type { OrcadManagedStopRequest } from '../../shared/orcad-stop-request'
 import { persistOrcadDaemonRetirementRecord } from './orcad-completed-stop-receipt'
 import type { OrcadDaemonRetirement } from './orcad-daemon-retirement'
+import { stopOrcadAutomationScheduler } from './orcad-automations'
 
 // Lazy like the rest of orcad's daemon graph: the entry module must not load it at import time.
 async function retireLazily(): Promise<OrcadDaemonRetirement> {
@@ -11,8 +12,11 @@ async function retireLazily(): Promise<OrcadDaemonRetirement> {
 /** Runs before orcad stops for a managed request; it can record an outcome but never veto. */
 export async function prepareOrcadManagedStop(
   request: OrcadManagedStopRequest,
-  retire: () => Promise<OrcadDaemonRetirement> = retireLazily
+  retire: () => Promise<OrcadDaemonRetirement> = retireLazily,
+  stopAutomations: () => void = stopOrcadAutomationScheduler
 ): Promise<void> {
+  // First, so no dispatch races the census below or writes a run the stop then discards.
+  stopAutomations()
   if (!request.retireIdleDaemon) {
     return
   }

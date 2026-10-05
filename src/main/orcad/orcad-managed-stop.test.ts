@@ -275,6 +275,21 @@ describe('managed stops that retire the daemon', () => {
     }
   )
 
+  it('stops the automation scheduler before the daemon census, with or without retirement', async () => {
+    const { request } = running()
+    const order: string[] = []
+    const retire = vi.fn(async () => {
+      order.push('retire')
+      return { retirement: 'retired' as const, liveSessions: 0, reason: null }
+    })
+    const stopAutomations = vi.fn(() => void order.push('automations'))
+    await prepareOrcadManagedStop({ ...request, retireIdleDaemon: true }, retire, stopAutomations)
+    expect(order).toEqual(['automations', 'retire'])
+
+    await prepareOrcadManagedStop(request, retire, stopAutomations)
+    expect(stopAutomations).toHaveBeenCalledTimes(2)
+  })
+
   it('records unverifiable when the retirement attempt itself failed', async () => {
     const { request } = running()
     const retireRequest = { ...request, retireIdleDaemon: true as const }
