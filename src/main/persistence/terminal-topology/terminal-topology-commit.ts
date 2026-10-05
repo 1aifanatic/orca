@@ -14,30 +14,24 @@ import type { DurableProfileStateMutation } from '../loading-store/store-runtime
 import { planTerminalLeafMove, rekeyMovedLeafProfileRecords } from './terminal-leaf-move'
 import { assignWorkspaceSessionPartition } from './terminal-topology-membership'
 
-/**
- * The commit boundary for class-(a) terminal topology (design §5.1). Today it wraps the explicit
- * close and the pane move; later stages route the remaining writers here, binding in B1-4.
- * Debt: the close transform still lives in runtime/ until B1-8 moves it behind this module.
- */
+// The commit boundary for terminal layout (tabs, panes, pane-to-PTY bindings). Wraps the close and
+// the pane move; the close transform still lives in runtime/ and other writers move here later.
 
 /** Bindings are not listed: `persistPtyBinding` already records `persistence.pty-binding`. */
 type TerminalTopologyCommitKind = 'close_leaf' | 'close_tab' | 'move_leaf'
 
-/** Closes one pane or a whole tab, unchanged, inside the topology span. */
 export function closeLeafOrTab(
   commit: TerminalSurfaceCloseCommit
 ): () => DurableProfileStateMutation<Error | undefined> {
   return traced(
     commit.target.kind === 'pane' ? 'close_leaf' : 'close_tab',
     terminalSurfaceCloseMutation(commit),
+    // Refusals are fixed reason codes, never ids.
     (refusal) => refusal?.message
   )
 }
 
-/**
- * moveLeaf (design §5.6): moves a leaf and its binding into a new tab in every owner partition,
- * with the pane-keyed records, in one durable mutation.
- */
+/** Moves a leaf, its binding and its pane-keyed records into a new tab in one durable mutation. */
 export function moveLeaf(
   request: TerminalLeafMoveRequest,
   context: TerminalTopologyCommitContext
@@ -62,22 +56,24 @@ function traced<T>(
     const span = startSpan('persistence.terminal-topology', {
       attributes: { kind: 'persistence', 'topology.kind': kind }
     })
+    let result: DurableProfileStateMutation<T>
+    // Why only mutate(): `threw` must mean the write failed, never that tracing did.
     try {
-      const result = mutate()
-      const refusal = refusalOf(result.value)
-      if (refusal !== undefined) {
-        span.setAttribute('topology.outcome', 'refused')
-        span.setAttribute('topology.refusal', refusal)
-      } else {
-        span.setAttribute('topology.outcome', result.persist === false ? 'noop' : 'committed')
-      }
-      span.end()
-      return result
+      result = mutate()
     } catch (error) {
       span.setAttribute('topology.outcome', 'threw')
       span.fail(error instanceof Error ? error : String(error))
       throw error
     }
+    const refusal = refusalOf(result.value)
+    if (refusal !== undefined) {
+      span.setAttribute('topology.outcome', 'refused')
+      span.setAttribute('topology.refusal', refusal)
+    } else {
+      span.setAttribute('topology.outcome', result.persist === false ? 'noop' : 'committed')
+    }
+    span.end()
+    return result
   }
 }
 

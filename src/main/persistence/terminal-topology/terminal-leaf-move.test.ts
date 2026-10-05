@@ -237,7 +237,7 @@ describe('moving an SSH pane held by both partitions', () => {
     ).toBe(true)
   })
 
-  // Plan B1-2: relay reattach into local, move, target reattach in ssh:, next-start relay reattach.
+  // Relay reattach into local, move, target reattach in ssh:, next-start relay reattach.
   it('keeps one holder per partition across a restart, and the next relay reattach binds', async () => {
     const dataFile = newDataFile()
     const store = openStore(dataFile)
