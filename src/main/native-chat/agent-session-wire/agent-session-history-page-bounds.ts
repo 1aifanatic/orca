@@ -7,19 +7,14 @@ import type {
   AgentJournalSubmission
 } from '../../../shared/agent-session-journal-types'
 import { REMOTE_RUNTIME_MAX_OUTBOUND_JSON_BYTES } from '../../../shared/remote-runtime-memory-limits'
-import { NATIVE_CHAT_ASYNC_QUESTIONS_PUBLICATION_BYTES } from '../../../shared/native-chat-async-questions'
 import { agentSessionHostStatusBody } from '../../../shared/agent-session-host-status-rows'
 
 export const AGENT_SESSION_HISTORY_MAX_PAGE_BYTES = REMOTE_RUNTIME_MAX_OUTBOUND_JSON_BYTES / 2
 
 const HISTORY_PAGE_ENVELOPE_RESERVE_BYTES = 64 * 1024
 
-// The async-question side field's budget is reserved before history is packed, so it can
-// never push a frame over the transport limit, for readers that ignore it too.
 export const HISTORY_PAGE_CONTENT_BUDGET_BYTES =
-  AGENT_SESSION_HISTORY_MAX_PAGE_BYTES -
-  HISTORY_PAGE_ENVELOPE_RESERVE_BYTES -
-  NATIVE_CHAT_ASYNC_QUESTIONS_PUBLICATION_BYTES
+  AGENT_SESSION_HISTORY_MAX_PAGE_BYTES - HISTORY_PAGE_ENVELOPE_RESERVE_BYTES
 
 export function historyEntryBytes(
   item: AgentJournalRenderItem,

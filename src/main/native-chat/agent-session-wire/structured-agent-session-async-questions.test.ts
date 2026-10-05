@@ -6,6 +6,7 @@ import {
   AGENT_JOURNAL_THREAD_SCOPE,
   type AgentJournalItemIdentity,
   type AgentJournalMessageItem,
+  type AgentJournalRenderItem,
   type AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-wire'
@@ -21,6 +22,7 @@ import {
 import { serializeRemoteRuntimePayload } from '../../../shared/remote-runtime-memory-limits'
 import { AGENT_SESSION_HISTORY_MAX_PAGE_BYTES } from './agent-session-history-page-bounds'
 import { deriveJournalAsyncQuestions } from '../../../shared/native-chat-async-question-facts'
+import { readAgentSessionHistory } from './agent-session-history-page'
 import { readStructuredAgentSessionAsyncQuestions } from './structured-agent-session-status-journal-projection'
 import { AgentSessionSubscribers } from './structured-agent-session-subscribers'
 
@@ -355,6 +357,41 @@ describe('structured async questions on subscribe frames', () => {
 })
 
 describe('structured async questions against the frame byte budget', () => {
+  it('holds back only the field it carries: a large message still renders on every page', async () => {
+    const journal = await open()
+    const large = 'x'.repeat(1_800_000)
+    await journal.appendItem(
+      codexIdentity(),
+      { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: large }] },
+      OPTIONS
+    )
+    const rendersLarge = (items: readonly AgentJournalRenderItem[]): boolean =>
+      items.some(
+        (item) =>
+          item.body.kind === 'message' &&
+          item.body.blocks.some((block) => block.type === 'text' && block.text === large)
+      )
+    // A history page carries no field, so it keeps the whole budget.
+    const history = readAgentSessionHistory(journal, {
+      sessionId: IDENTITY.sessionId,
+      direction: 'tail'
+    })
+    expect(history.ok && rendersLarge(history.page.items)).toBe(true)
+    // A subscribe snapshot holds back only what its (empty) set takes.
+    const events: AgentSessionSubscribeEvent[] = []
+    new AgentSessionSubscribers({
+      readAsyncQuestions: (_sessionId, journal) => readStructuredAgentSessionAsyncQuestions(journal)
+    }).open({
+      id: 's',
+      sessionId: IDENTITY.sessionId,
+      journal,
+      fence: 1,
+      emit: (event) => events.push(event)
+    })
+    const snapshot = events[0]
+    expect(snapshot?.type === 'snapshot' && rendersLarge(snapshot.page.items)).toBe(true)
+  })
+
   /** Rows large enough that the hydration page is cut by bytes, well before its row limit. */
   async function fillPageBudget(journal: AgentSessionJournal): Promise<number> {
     const rows = 12

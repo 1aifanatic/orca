@@ -9,7 +9,10 @@ import type {
   AgentSessionSubscribeEvent
 } from '../../../shared/agent-session-wire'
 import type { QueuePublication } from './structured-agent-session-queued-publication'
-import type { NativeChatAsyncQuestionsField } from '../../../shared/native-chat-async-questions'
+import {
+  nativeChatAsyncQuestionsFieldBytes,
+  type NativeChatAsyncQuestionsField
+} from '../../../shared/native-chat-async-questions'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 
 export type SubscriberFieldState = {
@@ -38,6 +41,17 @@ export type SubscriberFrame = {
   queued: QueuePublication | undefined
   /** Set when this frame carries the async-question set. */
   asyncQuestions: NativeChatAsyncQuestionsField | undefined
+}
+
+/** Bytes the async-question field takes from a frame's history page: its actual size, since
+ *  only these frames carry it (other pages keep the whole budget). */
+export function asyncQuestionsFrameReserveBytes(
+  hooks: SubscriberFieldHooks,
+  sessionId: string,
+  journal: AgentSessionJournal
+): number {
+  const field = hooks.readAsyncQuestions?.(sessionId, journal)
+  return field ? nativeChatAsyncQuestionsFieldBytes(field) : 0
 }
 
 /** Builds the frame to emit; the caller stores the returned refs only after the

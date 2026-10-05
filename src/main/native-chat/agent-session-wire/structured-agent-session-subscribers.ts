@@ -14,7 +14,10 @@ import type {
   AgentSessionSubscribeEvent,
   AgentSessionTurnActivity
 } from '../../../shared/agent-session-wire'
-import { buildSubscriberFrame } from './agent-session-subscriber-frame-fields'
+import {
+  asyncQuestionsFrameReserveBytes,
+  buildSubscriberFrame
+} from './agent-session-subscriber-frame-fields'
 import type { QueuePublication } from './structured-agent-session-queued-publication'
 import { deliverToSubscriber } from './agent-session-subscriber-catch-up'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -98,7 +101,11 @@ export class AgentSessionSubscribers {
     if (input.cursor) {
       this.deliver(subscriber, input.journal, hostNow, true, input.backgroundTasks)
     } else {
-      const page = readAgentSessionHydrationPage(input.journal, input.fence)
+      const page = readAgentSessionHydrationPage(
+        input.journal,
+        input.fence,
+        asyncQuestionsFrameReserveBytes(this.hooks, input.sessionId, input.journal)
+      )
       this.emit(
         subscriber,
         {
@@ -183,7 +190,11 @@ export class AgentSessionSubscribers {
     backgroundTasks: AgentSessionBackgroundTaskState | null | undefined,
     frame: { type: 'snapshot' } | { type: 'reset'; reset: AgentJournalResetReason }
   ): void {
-    const page = readAgentSessionHydrationPage(journal, fence)
+    const page = readAgentSessionHydrationPage(
+      journal,
+      fence,
+      asyncQuestionsFrameReserveBytes(this.hooks, sessionId, journal)
+    )
     const hostNow = this.now()
     for (const subscriber of this.subscribers(sessionId)) {
       this.emit(

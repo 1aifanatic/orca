@@ -15,6 +15,7 @@ import type { AgentSessionJournal } from '../agent-session-journal/journal-store
 import { emptyAgentSessionBatch } from './agent-session-empty-batch'
 import { createAgentSessionCatchUpReader } from './agent-session-history-page'
 import {
+  asyncQuestionsFrameReserveBytes,
   subscriberQueuedMessagesChanged,
   type SubscriberFieldHooks
 } from './agent-session-subscriber-frame-fields'
@@ -57,7 +58,10 @@ export function deliverToSubscriber(
     emitCaughtUp(port, subscriber, emitCheckpoint, shared, journal)
     return
   }
-  const readPage = createAgentSessionCatchUpReader(journal)
+  const readPage = createAgentSessionCatchUpReader(
+    journal,
+    asyncQuestionsFrameReserveBytes(port.hooks, subscriber.sessionId, journal)
+  )
   while (true) {
     const result = readPage({
       sessionId: subscriber.sessionId,
