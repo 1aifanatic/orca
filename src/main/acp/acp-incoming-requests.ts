@@ -28,13 +28,25 @@ export class AcpIncomingRequests {
     this.open.clear()
   }
 
-  // The handler still answers (a permission answers `cancelled`); -32800 only if it rejects.
+  // Each handler answers on abort (a permission answers `cancelled`); -32800 if it rejects, or if
+  // it is still silent once the abort has run through (the next event-loop turn).
   cancel(): void {
-    for (const request of this.open.values()) {
-      if (!request.cancelled) {
-        request.cancelled = true
-        request.controller.abort(new AcpRpcError(-32800, 'Request cancelled'))
-      }
+    const cancelled = [...this.open].filter(([, request]) => !request.cancelled)
+    for (const [, request] of cancelled) {
+      request.cancelled = true
+      request.controller.abort(new AcpRpcError(-32800, 'Request cancelled'))
+    }
+    if (cancelled.length > 0) {
+      setImmediate(() => {
+        for (const [id, request] of cancelled) {
+          if (this.open.get(id) === request) {
+            this.open.delete(id)
+            request.closed = true
+            request.abandon()
+            void this.sendError(id, new AcpRpcError(-32800, 'Request cancelled'))
+          }
+        }
+      })
     }
   }
 
@@ -62,7 +74,8 @@ export class AcpIncomingRequests {
     void Promise.race([
       abandoned,
       Promise.resolve().then(() => {
-        if (controller.signal.aborted) {
+        // A cancelled request still reaches its handler, so a permission can answer `cancelled`.
+        if (request.closed) {
           throw controller.signal.reason
         }
         if (!this.handler) {

@@ -247,16 +247,19 @@ describe('ACP caller-owned waits', () => {
     await expect(authenticated).resolves.toEqual({})
   })
 
-  it('lets cancel abort vendor hooks so each sends its own answer, or request-cancelled if it rejects', async () => {
+  it('lets cancel abort vendor hooks so each sends its own answer, else request-cancelled', async () => {
     const { agent, runtime } = fixture({
       onRequest: (method, _params, context) =>
-        new Promise((resolve, reject) =>
-          context.signal.addEventListener('abort', () =>
-            method === '_vendor/plan'
-              ? resolve({ outcome: 'abandoned' })
-              : reject(new Error('stop'))
-          )
-        )
+        new Promise((resolve, reject) => {
+          // '_vendor/silent' ignores the abort: the runtime still answers the agent.
+          if (method !== '_vendor/silent') {
+            context.signal.addEventListener('abort', () =>
+              method === '_vendor/plan'
+                ? resolve({ outcome: 'abandoned' })
+                : reject(new Error('stop'))
+            )
+          }
+        })
     })
     agent.on('session/prompt', (frame) =>
       agent.on('session/cancel', () => agent.reply(frame, { stopReason: 'cancelled' }))
@@ -265,11 +268,15 @@ describe('ACP caller-owned waits', () => {
     const pending = runtime.prompt([...prompt])
     const question = agent.request('question', '_vendor/question', {})
     const plan = agent.request('plan', '_vendor/plan', {})
+    const silent = agent.request('silent', '_vendor/silent', {})
     await tick()
     await runtime.cancel()
     expect(await question).toMatchObject({ error: { code: -32800 } })
     expect(await plan).toMatchObject({ result: { outcome: 'abandoned' } })
+    expect(await silent).toMatchObject({ error: { code: -32800 } })
     await pending
+    await tick()
+    expect(agent.frames.filter((frame) => frame.id === 'plan')).toHaveLength(1)
   })
 
   it('settles requests when the process owner closes on exit even if stdout stays open', async () => {

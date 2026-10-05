@@ -24,14 +24,14 @@ const optionRoutingSchema = z.looseObject({ optionId: z.string() })
 
 // Keeps every field the schema does not know or can read; drops (and names) the unreadable ones.
 function readableFields(
-  shape: Record<string, z.ZodType>,
+  knownFields: Record<string, z.ZodType>,
   value: Record<string, unknown>,
   path: string,
   dropped: string[]
 ): Record<string, unknown> {
   const kept: Record<string, unknown> = {}
   for (const [key, field] of Object.entries(value)) {
-    if (!Object.hasOwn(shape, key) || shape[key].safeParse(field).success) {
+    if (!Object.hasOwn(knownFields, key) || knownFields[key].safeParse(field).success) {
       kept[key] = field
     } else {
       dropped.push(`${path}${key}`)
@@ -61,6 +61,9 @@ export function readAcpPermissionRequest(
       dropped.push(`options.${index}`)
       return []
     }
+    if (typeof ids.data.name !== 'string') {
+      dropped.push(`options.${index}.name`)
+    }
     const named = {
       ...ids.data,
       name: typeof ids.data.name === 'string' ? ids.data.name : ids.data.optionId
@@ -83,7 +86,9 @@ export function readAcpPermissionRequest(
   if (!request.success) {
     return null
   }
-  diagnose(`Delivered ACP permission request without unreadable fields: ${dropped.join(', ')}`)
+  if (dropped.length > 0) {
+    diagnose(`Delivered ACP permission request without unreadable fields: ${dropped.join(', ')}`)
+  }
   return request.data
 }
 

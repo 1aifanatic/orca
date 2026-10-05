@@ -52,6 +52,8 @@ export type AcpSessionRuntimeOptions = {
   peer?: AcpPeerOptions
   cancelTimeoutMs?: number
   onPermission?: AcpPermissionHandler
+  /** Agent requests other than permissions. When `context.signal` aborts on cancel, answer with
+   *  the agent's own cancelled reply or throw right away; a handler still silent gets -32800. */
   onRequest?: (method: string, params: unknown, context: AcpRequestContext) => unknown
   /** Agent notifications other than `session/update` (protocol extensions), delivered
    *  synchronously in arrival order with the `subscribe` events. */

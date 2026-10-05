@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AcpSessionRuntime, type AcpSessionRuntimeOptions } from './acp-session-runtime'
 import { AcpScriptedAgent, deferred, tick } from './acp-scripted-agent.test-support'
+import type { AcpPermissionHandler } from './acp-permission-requests'
 import type { RequestPermissionRequest } from './generated/acp-protocol.generated'
 
 const opened: { close: () => void }[] = []
@@ -66,11 +67,11 @@ describe('ACP permission requests', () => {
       options: [{ optionId: 'allow', name: 'allow', kind: 'allow_once' }]
     })
     expect(diagnostics).toEqual([
-      'Delivered ACP permission request without unreadable fields: options.1, toolCall.content'
+      'Delivered ACP permission request without unreadable fields: options.0.name, options.1, toolCall.content'
     ])
   })
 
-  it.each([
+  it.each<[string, AcpPermissionHandler, string]>([
     [
       'the handler throws',
       () => {
@@ -78,12 +79,14 @@ describe('ACP permission requests', () => {
       },
       'handler failed: Error: renderer gone'
     ],
-    ['the handler answers nonsense', () => ({ outcome: 'yes' }), 'invalid handler response']
+    // JSON.parse yields an untyped value, so a deliberately malformed reply needs no assertion.
+    [
+      'the handler answers nonsense',
+      () => JSON.parse('{"outcome":"yes"}'),
+      'invalid handler response'
+    ]
   ])('answers cancelled with a diagnostic when %s', async (_label, onPermission, problem) => {
-    // Reflect.apply returns any, so a deliberately ill-typed answer needs no type assertion.
-    const handler: AcpSessionRuntimeOptions['onPermission'] = (request, context) =>
-      Reflect.apply(onPermission, undefined, [request, context])
-    const { agent, runtime, diagnostics } = fixture({ onPermission: handler })
+    const { agent, runtime, diagnostics } = fixture({ onPermission })
     await runtime.start(startOptions)
     void runtime.prompt([{ type: 'text', text: 'hi' }]).catch(() => {})
     expect(
@@ -94,6 +97,43 @@ describe('ACP permission requests', () => {
       })
     ).toMatchObject({ result: { outcome: { outcome: 'cancelled' } } })
     expect(diagnostics).toEqual([`Answered ACP permission request cancelled: ${problem}`])
+  })
+
+  it('answers cancelled when the cancel lands before the permission handler starts', async () => {
+    const asked = vi.fn((_request: RequestPermissionRequest) => new Promise<never>(() => {}))
+    const { agent, runtime } = fixture({ onPermission: asked })
+    await runtime.start(startOptions)
+    runtime.subscribe(() => void runtime.cancel())
+    const answer = new Promise<unknown>((resolve) => {
+      agent.stdin.on('data', (chunk: string) => {
+        if (chunk.includes('"id":5')) {
+          resolve(JSON.parse(chunk))
+        }
+      })
+    })
+    // One chunk: the permission, then an update whose listener cancels before the handler runs.
+    agent.stdout.write(
+      [
+        {
+          jsonrpc: '2.0',
+          id: 5,
+          method: 'session/request_permission',
+          params: { sessionId: 'session-1', toolCall, options: [allow] }
+        },
+        {
+          jsonrpc: '2.0',
+          method: 'session/update',
+          params: {
+            sessionId: 'session-1',
+            update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'x' } }
+          }
+        }
+      ]
+        .map((frame) => `${JSON.stringify(frame)}\n`)
+        .join('')
+    )
+    expect(await answer).toMatchObject({ id: 5, result: { outcome: { outcome: 'cancelled' } } })
+    expect(asked).not.toHaveBeenCalled()
   })
 
   it('lets a turn the agent began itself ask for permission and cancels it with session/cancel', async () => {
