@@ -5,6 +5,15 @@ import { bootstrapAgentProcessIdentity } from './agent-process-identity-bootstra
 
 // Why three tries (now, 1 s, 5 s): a just-typed launch needs a moment to exec; then stop.
 const AGENT_IDENTITY_DISCOVERY_DELAYS_MS = [0, 1_000, 5_000] as const
+// Why a few: recognized agent activity after a settled round buys one more look, not a poll.
+const AGENT_IDENTITY_EVIDENCE_LOOKS = 3
+
+type AgentIdentityDiscovery = {
+  key: string
+  timer: ReturnType<typeof setTimeout> | null
+  inFlight: boolean
+  evidenceLooks: number
+}
 
 export type AgentExitPtyRecord = {
   incarnationId: string | null
@@ -17,14 +26,12 @@ export type AgentExitPtyRecord = {
  * Learns the exact process of an agent run no hook identified (Codex, hooks off): one fenced,
  * incarnation-matched foreground capture that recognizes the agent, converted to the canonical
  * PID/start identity only when both readings name the same process. At most three captures per
- * run until another change signal; never a periodic table scan.
+ * run (one more round once its exit is proven, and a few single looks on recognized agent
+ * activity); never a periodic table scan.
  */
 export class OrcaRuntimeWithAgentIdentityDiscovery extends OrcaRuntimeWithSerializeAgentPromptSubmission {
   protected readonly agentExitRuns = new AgentExitRunRegistry()
-  private readonly agentIdentityDiscoveryByPtyId = new Map<
-    string,
-    { key: string; timer: ReturnType<typeof setTimeout> | null }
-  >()
+  private readonly agentIdentityDiscoveryByPtyId = new Map<string, AgentIdentityDiscovery>()
   // Why declared: defined later in the runtime chain, which this split class cannot import.
   declare protected getPtyRecordForPaneKey: (paneKey: string) => { ptyId: string } | null
 
@@ -63,7 +70,11 @@ export class OrcaRuntimeWithAgentIdentityDiscovery extends OrcaRuntimeWithSerial
     return record.connectionId === null && record.isWsl !== true && process.platform !== 'win32'
   }
 
-  protected startAgentIdentityDiscovery(ptyId: string): void {
+  /**
+   * One round of looks per run (and once more after its exit is proven); `evidence` (recognized
+   * agent activity) buys a single extra look after a round settled, a few times per run.
+   */
+  protected startAgentIdentityDiscovery(ptyId: string, options: { evidence?: boolean } = {}): void {
     const record = this.readAgentExitPty(ptyId)
     if (
       !record ||
@@ -72,27 +83,54 @@ export class OrcaRuntimeWithAgentIdentityDiscovery extends OrcaRuntimeWithSerial
     ) {
       return
     }
-    const key = `${record.incarnationId ?? ''}|${this.agentExitRuns.current(ptyId)?.runId ?? 0}`
-    if (this.agentIdentityDiscoveryByPtyId.get(ptyId)?.key === key) {
+    const run = this.agentExitRuns.current(ptyId)
+    const key = `${record.incarnationId ?? ''}|${run?.runId ?? 0}|${run?.exitProven ? 'ended' : ''}`
+    const existing = this.agentIdentityDiscoveryByPtyId.get(ptyId)
+    if (existing?.key === key) {
+      if (
+        options.evidence &&
+        !existing.timer &&
+        !existing.inFlight &&
+        existing.evidenceLooks < AGENT_IDENTITY_EVIDENCE_LOOKS
+      ) {
+        existing.evidenceLooks += 1
+        this.runAgentIdentityLook(ptyId, record.incarnationId, existing, null)
+      }
       return
     }
-    const state: { key: string; timer: ReturnType<typeof setTimeout> | null } = { key, timer: null }
-    this.agentIdentityDiscoveryByPtyId.set(ptyId, state)
-    const attempt = (index: number): void => {
-      state.timer = null
-      void this.discoverAgentIdentity(ptyId, record.incarnationId).then((done) => {
-        const delay = AGENT_IDENTITY_DISCOVERY_DELAYS_MS[index + 1]
-        if (
-          !done &&
-          delay !== undefined &&
-          this.agentIdentityDiscoveryByPtyId.get(ptyId) === state
-        ) {
-          state.timer = setTimeout(() => attempt(index + 1), delay)
-          state.timer.unref?.()
-        }
-      })
+    if (existing?.timer) {
+      clearTimeout(existing.timer)
     }
-    attempt(0)
+    const state: AgentIdentityDiscovery = { key, timer: null, inFlight: false, evidenceLooks: 0 }
+    this.agentIdentityDiscoveryByPtyId.set(ptyId, state)
+    this.runAgentIdentityLook(ptyId, record.incarnationId, state, 0)
+  }
+
+  /** One capture; `index` continues the round's retries, null is a single extra look. */
+  private runAgentIdentityLook(
+    ptyId: string,
+    incarnationId: string | null,
+    state: AgentIdentityDiscovery,
+    index: number | null
+  ): void {
+    state.timer = null
+    state.inFlight = true
+    void this.discoverAgentIdentity(ptyId, incarnationId).then((done) => {
+      state.inFlight = false
+      const delay = index === null ? undefined : AGENT_IDENTITY_DISCOVERY_DELAYS_MS[index + 1]
+      if (
+        !done &&
+        index !== null &&
+        delay !== undefined &&
+        this.agentIdentityDiscoveryByPtyId.get(ptyId) === state
+      ) {
+        state.timer = setTimeout(
+          () => this.runAgentIdentityLook(ptyId, incarnationId, state, index + 1),
+          delay
+        )
+        state.timer.unref?.()
+      }
+    })
   }
 
   /** True when discovery is settled (found, or nothing more to learn for this incarnation). */

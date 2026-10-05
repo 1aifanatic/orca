@@ -6,9 +6,9 @@ import {
 } from '../../shared/agent-process-presence'
 import type { AgentPresenceChange } from '../agent-hooks/server/server-row-ownership'
 import {
-  AGENT_PRESENCE_BACKOFF_MS,
   AGENT_PRESENCE_FALLBACK_INTERVAL_MS,
   isFencedShellForeground,
+  nextAgentPresenceAttemptAtMs,
   readRecognizedForegroundAgent,
   type AgentExitRun
 } from './agent-exit-run-registry'
@@ -66,7 +66,8 @@ export class OrcaRuntimeWithAgentExitProof extends OrcaRuntimeWithAgentIdentityD
           identity: presence.process ?? null,
           source: 'hook'
         })
-        if (!presence.process) {
+        // Why only a chat candidate: an identity nothing will probe is not worth a capture.
+        if (!presence.process && this.isAgentExitChatCandidate(ptyId)) {
           this.startAgentIdentityDiscovery(ptyId)
         }
         this.scheduleAgentPresenceTick()
@@ -102,11 +103,17 @@ export class OrcaRuntimeWithAgentExitProof extends OrcaRuntimeWithAgentIdentityD
     }
   }
 
-  /** Recognized agent activity: a chat pane's run without an identity may now be measurable. */
+  /** Recognized agent activity: a chat pane with no live identified run may now be measurable. */
   protected noteNativeChatAgentEvidence(ptyId: string): void {
-    if (!this.agentExitRuns.current(ptyId)?.identity && this.isAgentExitChatCandidate(ptyId)) {
-      this.startAgentIdentityDiscovery(ptyId)
+    if (this.needsAgentIdentity(ptyId) && this.isAgentExitChatCandidate(ptyId)) {
+      this.startAgentIdentityDiscovery(ptyId, { evidence: true })
     }
+  }
+
+  /** No identified run, or only one whose exit is proven: a later agent here is still unknown. */
+  protected needsAgentIdentity(ptyId: string): boolean {
+    const run = this.agentExitRuns.current(ptyId)
+    return !run?.identity || run.exitProven
   }
 
   private nudgeAgentPresenceCheck(ptyId: string): void {
@@ -172,15 +179,19 @@ export class OrcaRuntimeWithAgentExitProof extends OrcaRuntimeWithAgentIdentityD
           return
         }
         if (verdict === 'exited') {
+          // Why: an end that stays unproven is not re-probed before its next allowed end check.
+          run.nextProbeAtMs = Math.max(
+            Date.now() + AGENT_PRESENCE_FALLBACK_INTERVAL_MS,
+            run.nextEndCheckAtMs
+          )
           this.handleAgentRunEnd(run, startedAtMs)
           return
         }
         run.failedProbes = verdict === 'live' ? 0 : run.failedProbes + 1
-        const backoff =
+        run.nextProbeAtMs =
           verdict === 'live'
-            ? AGENT_PRESENCE_FALLBACK_INTERVAL_MS
-            : AGENT_PRESENCE_BACKOFF_MS[run.failedProbes - 1]
-        run.nextProbeAtMs = backoff === undefined ? Number.POSITIVE_INFINITY : Date.now() + backoff
+            ? Date.now() + AGENT_PRESENCE_FALLBACK_INTERVAL_MS
+            : nextAgentPresenceAttemptAtMs(run.failedProbes)
       })
     } finally {
       this.agentPresenceTickRunning = false
@@ -194,14 +205,16 @@ export class OrcaRuntimeWithAgentExitProof extends OrcaRuntimeWithAgentIdentityD
    * instead, and an unreadable host leaves the end unproven.
    */
   protected handleAgentRunEnd(run: AgentExitRun, observedAtMs: number): void {
-    if (run.endHandled || !this.agentExitRuns.isCurrent(run)) {
+    const inspect = this.ptyController?.inspectProcess
+    if (
+      !inspect ||
+      run.endHandled ||
+      !this.agentExitRuns.isCurrent(run) ||
+      Date.now() < run.nextEndCheckAtMs
+    ) {
       return
     }
     run.endHandled = true
-    const inspect = this.ptyController?.inspectProcess
-    if (!inspect) {
-      return
-    }
     void inspect
       .call(
         this.ptyController,
@@ -217,6 +230,8 @@ export class OrcaRuntimeWithAgentExitProof extends OrcaRuntimeWithAgentIdentityD
           return
         }
         if (isFencedShellForeground(inspection, run.incarnationId)) {
+          run.exitProven = true
+          this.recordProvenAgentEnd(run)
           this.onAgentRunExitProven(run, observedAtMs)
           return
         }
@@ -236,7 +251,21 @@ export class OrcaRuntimeWithAgentExitProof extends OrcaRuntimeWithAgentIdentityD
         }
         // Why reopen: unverifiable now is not an exit; a later signal may prove it.
         run.endHandled = false
-        run.failedProbes += 1
+        if (replacement?.pid !== run.identity?.pid) {
+          // Why back off: an unreadable pane must not cost a capture per publish or nudge.
+          run.failedEndChecks += 1
+          run.nextEndCheckAtMs = nextAgentPresenceAttemptAtMs(run.failedEndChecks)
+        }
       })
+  }
+
+  /** One owner of agent presence: a proven end of an owner no hook identified is written there. */
+  private recordProvenAgentEnd(run: AgentExitRun): void {
+    if (!run.agent || !this.recordHostProvenAgentEndFn) {
+      return
+    }
+    for (const paneKey of this.collectAgentStatusPaneKeysForPty(run.ptyId)) {
+      this.recordHostProvenAgentEndFn(paneKey, run.agent)
+    }
   }
 }

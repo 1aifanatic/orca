@@ -112,7 +112,7 @@ export class OrcaRuntimeWithAgentExitChatView extends OrcaRuntimeWithAgentExitPr
     )
     // Why: a newly published chat pane may be the first moment its agent is worth measuring.
     for (const candidate of collectAgentExitChatViewCandidates([[worktreeId, stamped]])) {
-      if (!this.agentExitRuns.current(candidate.ptyId)?.identity) {
+      if (this.needsAgentIdentity(candidate.ptyId)) {
         this.startAgentIdentityDiscovery(candidate.ptyId)
       }
     }

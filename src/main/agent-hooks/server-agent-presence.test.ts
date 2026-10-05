@@ -404,3 +404,45 @@ describe('owner presence signal for the execution host (F2)', () => {
     expect(changes).toEqual(['live'])
   })
 })
+
+describe('a host-proven end of an owner no hook identified (R2-4)', () => {
+  async function codex(server: AgentHookServer, event: string, session: string): Promise<void> {
+    const response = await postHookEvent(
+      server,
+      buildBody({ hook_event_name: event, session_id: session, model: 'gpt-5.4' }),
+      '/hook/codex'
+    )
+    expect(response.status).toBe(204)
+  }
+
+  it.each([
+    ['headless', false],
+    ['after the desktop already dropped the row', true]
+  ])(
+    'ends the Codex owner so the next Codex in the shell is a new owner (%s)',
+    async (_, dropped) => {
+      const server = await createServer()
+      const changes: string[] = []
+      server.subscribeAgentPresenceChanges((change) =>
+        changes.push(`${change.presence?.agent}:${change.presence?.ended ? 'ended' : 'live'}`)
+      )
+      await codex(server, 'SessionStart', 'codex-a')
+      await codex(server, 'Stop', 'codex-a')
+      if (dropped) {
+        server.reconcileEndedProcessForPaneKeys([PANE], { preserveResumeIdentity: true })
+      }
+      server.recordHostProvenAgentEnd(PANE, 'codex')
+      expect(visible(server)).toBe(false)
+      await codex(server, 'SessionStart', 'codex-b')
+      expect(changes).toEqual(['codex:live', 'codex:ended', 'codex:live'])
+    }
+  )
+
+  it("leaves another agent's owner and an identified owner to their own evidence", async () => {
+    const server = await createServer()
+    await hook(server, 'SessionStart')
+    server.recordHostProvenAgentEnd(PANE, 'codex')
+    server.recordHostProvenAgentEnd(PANE, 'claude')
+    expect(state(server)).not.toBeNull()
+  })
+})

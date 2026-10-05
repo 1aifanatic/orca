@@ -29,6 +29,22 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
     return presence?.process !== undefined && !presence.ended
   }
 
+  /**
+   * The execution host proved the pane's `agent` run ended, for an owner no hook identified by
+   * process (Codex, hooks without a PID): end it so the next hook starts a new owner. Any other
+   * owner keeps its own evidence.
+   */
+  recordHostProvenAgentEnd(paneKey: string, agent: string): void {
+    const presence = this.getAgentPresenceForPaneKey(paneKey)
+    if (!presence || presence.ended || presence.process || presence.agent !== agent) {
+      return
+    }
+    this.reconcileEndedProcessForPaneKeys([this.resolvePaneKeyAlias(paneKey)], {
+      preserveResumeIdentity: true,
+      endedPresence: { ...presence, ended: true }
+    })
+  }
+
   checkAgentPresence(paneKey: string): Promise<AgentProcessVerdict | null> {
     const resolved = this.resolvePaneKeyAlias(paneKey)
     const row = this.state.lastStatusByPaneKey.get(resolved)

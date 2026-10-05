@@ -7,6 +7,12 @@ export const AGENT_PRESENCE_FALLBACK_INTERVAL_MS = 15_000
 // Why stop after three: an unreadable host must not become a poll; a change signal re-arms it.
 export const AGENT_PRESENCE_BACKOFF_MS = [30_000, 60_000] as const
 
+/** The next attempt after `failures` unverifiable ones: backed off, then never until a new run. */
+export function nextAgentPresenceAttemptAtMs(failures: number, nowMs = Date.now()): number {
+  const backoff = AGENT_PRESENCE_BACKOFF_MS[failures - 1]
+  return backoff === undefined ? Number.POSITIVE_INFINITY : nowMs + backoff
+}
+
 /**
  * One agent run in one PTY incarnation: the process an exit proof must be about. A new owner, a
  * new recognized process or a relaunch begins a new run before anything asynchronous happens, so
@@ -21,10 +27,15 @@ export type AgentExitRun = {
   source: 'hook' | 'foreground'
   /** Its end was consumed (a retirement started, or a replacement superseded it). */
   endHandled: boolean
+  /** Its end was proven: it no longer blocks finding the next run in this PTY. */
+  exitProven: boolean
   /** When its canonical owner reported its own end; a later look may still need to confirm it. */
   ownerEndedAtMs?: number
   failedProbes: number
   nextProbeAtMs: number
+  /** Unverifiable end checks so far; each backs off the next like a probe, then stops. */
+  failedEndChecks: number
+  nextEndCheckAtMs: number
 }
 
 export class AgentExitRunRegistry {
@@ -49,8 +60,11 @@ export class AgentExitRunRegistry {
       ptyId,
       ...init,
       endHandled: false,
+      exitProven: false,
       failedProbes: 0,
-      nextProbeAtMs: nowMs + AGENT_PRESENCE_FALLBACK_INTERVAL_MS
+      nextProbeAtMs: nowMs + AGENT_PRESENCE_FALLBACK_INTERVAL_MS,
+      failedEndChecks: 0,
+      nextEndCheckAtMs: 0
     }
     this.runs.set(ptyId, run)
     return run
