@@ -1,4 +1,5 @@
 import type { ExecutionHostId } from '../../shared/execution-host'
+import type { EditorAuthorityHost } from './editor-authority'
 
 /** A diff tab a host opened with no window. Diffs are never persisted, so these are live-only. */
 export type HostDiffTabRecord = {
@@ -127,8 +128,8 @@ export class HostEditorTabState {
   }
 }
 
-/** The runtime that owns host editor bookkeeping. */
-export type HostEditorTabStateOwner = object
+/** The runtime that owns host editor bookkeeping (any editor-authority host). */
+export type HostEditorTabStateOwner = Pick<EditorAuthorityHost, 'hasLiveWindowDocument'>
 
 const statesByRuntime = new WeakMap<HostEditorTabStateOwner, HostEditorTabState>()
 
