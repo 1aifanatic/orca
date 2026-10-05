@@ -158,8 +158,9 @@ export function stoppedTurnOpeners(
 
 /** For a rejection written before the host named turns: whether its send was sent before a turn
  *  record and taken back after it. By journal order where the host publishes where it was sent (it
- *  has moved the row to the take-back), else by its row's place and by times, which a resume
- *  rewrites to whole seconds. Kept for good: it draws those older rows exactly as before. */
+ *  has moved the row to the take-back): kept for good, as old chats keep those rows, and it draws
+ *  them exactly as before. Else, on a host that publishes neither field, by its row's place and by
+ *  times, which a resume rewrites to whole seconds; Temporary, until a host version floor. */
 function sentBeforeAndTakenBackAfter(
   record: AgentJournalRenderItem,
   turn: AgentJournalTurnLifecycle,
