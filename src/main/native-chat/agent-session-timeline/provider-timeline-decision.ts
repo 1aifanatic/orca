@@ -26,7 +26,6 @@ import type { ProviderTimelineTurnRef } from './provider-timeline-rows'
 import type { ProviderTimelineState } from './provider-timeline-state'
 import {
   decideContextUsage,
-  decideHistory,
   decideInput,
   decideSessionEnd,
   decideTurnEnd,
@@ -105,8 +104,6 @@ export function decideProviderTimelineEvent(
   switch (event.type) {
     case 'input.accepted':
       return decideInput(input, event)
-    case 'input.history':
-      return decideHistory(input, event)
     case 'turn.open':
       return decideTurnOpen(input, event)
     case 'turn.end':
