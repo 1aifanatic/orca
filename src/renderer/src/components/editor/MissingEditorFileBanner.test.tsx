@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { OpenFile } from '@/store/slices/editor'
 
 vi.mock('@/i18n/i18n', () => ({
@@ -26,6 +26,9 @@ const file = {
 } satisfies OpenFile
 
 describe('MissingEditorFileBanner', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
   it('explains that edits are preserved and offers an explicit restore action', () => {
     const html = renderToStaticMarkup(<MissingEditorFileBanner file={file} />)
 
@@ -37,17 +40,20 @@ describe('MissingEditorFileBanner', () => {
   it('keeps the cleared mutation after a successful restore', async () => {
     let liveFile: OpenFile = file
     const setExternalMutation = vi.fn(
-      (_: string, externalMutation: OpenFile['externalMutation']) => {
+      (_: string, externalMutation: OpenFile['externalMutation'] | null) => {
         if (externalMutation === null) {
           const { externalMutation: _, ...fileWithoutMutation } = liveFile
           liveFile = fileWithoutMutation
           return
         }
-        liveFile = { ...liveFile, externalMutation }
+        liveFile = { ...liveFile, externalMutation: externalMutation ?? undefined }
       }
     )
     getState.mockImplementation(() => ({ openFiles: [liveFile], setExternalMutation }))
-    attemptEditorFileSave.mockResolvedValue(true)
+    attemptEditorFileSave.mockImplementation(async () => {
+      setExternalMutation(file.id, null)
+      return true
+    })
 
     await restoreMissingEditorFile(file)
 
@@ -58,13 +64,13 @@ describe('MissingEditorFileBanner', () => {
   it('restores the missing-file mark when saving fails without a newer update', async () => {
     let liveFile: OpenFile = file
     const setExternalMutation = vi.fn(
-      (_: string, externalMutation: OpenFile['externalMutation']) => {
+      (_: string, externalMutation: OpenFile['externalMutation'] | null) => {
         if (externalMutation === null) {
           const { externalMutation: _, ...fileWithoutMutation } = liveFile
           liveFile = fileWithoutMutation
           return
         }
-        liveFile = { ...liveFile, externalMutation }
+        liveFile = { ...liveFile, externalMutation: externalMutation ?? undefined }
       }
     )
     getState.mockImplementation(() => ({ openFiles: [liveFile], setExternalMutation }))
@@ -72,16 +78,15 @@ describe('MissingEditorFileBanner', () => {
 
     await restoreMissingEditorFile(file)
 
-    expect(setExternalMutation).toHaveBeenNthCalledWith(1, 'file-1', null)
-    expect(setExternalMutation).toHaveBeenNthCalledWith(2, 'file-1', 'deleted')
+    expect(setExternalMutation).not.toHaveBeenCalled()
     expect(liveFile.externalMutation).toBe('deleted')
   })
 
   it('keeps a newer external mutation when restoration fails', async () => {
     let liveFile: OpenFile = file
     const setExternalMutation = vi.fn(
-      (_: string, externalMutation: OpenFile['externalMutation']) => {
-        liveFile = { ...liveFile, externalMutation }
+      (_: string, externalMutation: OpenFile['externalMutation'] | null) => {
+        liveFile = { ...liveFile, externalMutation: externalMutation ?? undefined }
       }
     )
     getState.mockImplementation(() => ({ openFiles: [liveFile], setExternalMutation }))
@@ -92,8 +97,7 @@ describe('MissingEditorFileBanner', () => {
 
     await restoreMissingEditorFile(file)
 
-    expect(setExternalMutation).toHaveBeenCalledTimes(1)
-    expect(setExternalMutation).toHaveBeenCalledWith('file-1', null)
+    expect(setExternalMutation).not.toHaveBeenCalled()
     expect(liveFile.externalMutation).toBe('changed')
   })
 })

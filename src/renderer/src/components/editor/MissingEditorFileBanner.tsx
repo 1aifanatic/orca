@@ -7,12 +7,16 @@ import type { OpenFile } from '@/store/slices/editor'
 import { attemptEditorFileSave } from './editor-file-save-attempt'
 
 export async function restoreMissingEditorFile(file: OpenFile): Promise<void> {
-  const mutation = file.externalMutation
-  if (mutation !== 'deleted' && mutation !== 'renamed') {
+  const state = useAppStore.getState()
+  const target = state.openFiles.find((candidate) => candidate.id === file.id)
+  const mutation = target?.externalMutation
+  if (
+    (mutation !== 'deleted' && mutation !== 'renamed') ||
+    target?.readOnly === true ||
+    target?.csvPreviewOnly === true
+  ) {
     return
   }
-  const state = useAppStore.getState()
-  state.setExternalMutation(file.id, null)
   const saved = await attemptEditorFileSave({ fileId: file.id })
   const liveFile = useAppStore.getState().openFiles.find((candidate) => candidate.id === file.id)
   if (!saved && liveFile?.externalMutation === undefined) {

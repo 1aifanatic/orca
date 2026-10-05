@@ -153,6 +153,7 @@ export function EditorEditFileSurface({
         reloadContent={reloadContent}
       />
     ) : activeFile.isDirty &&
+      activeFile.readOnly !== true &&
       (activeFile.externalMutation === 'deleted' || activeFile.externalMutation === 'renamed') ? (
       <MissingEditorFileBanner file={activeFile} />
     ) : null
