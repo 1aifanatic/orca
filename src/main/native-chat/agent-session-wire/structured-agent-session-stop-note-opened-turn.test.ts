@@ -1,6 +1,7 @@
 // A Stop found with no turn running can wait for one to open and interrupt it. Taken, its note is
 // the turn the provider says it took; refused, the row stays with the conversation, as before.
 
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -21,7 +22,7 @@ const IDENTITY: AgentSessionJournalIdentity = {
   workspaceId: 'workspace-1',
   hostId: 'host-1',
   agent: 'codex',
-  providerHandle: { kind: 'codex', threadId: 'thread-1' }
+  providerHandle: codexProviderHandle('thread-1')
 }
 const TURN = { provider: 'codex' as const, threadId: 'thread-1', turnId: 'turn-1', ordinal: 0 }
 
