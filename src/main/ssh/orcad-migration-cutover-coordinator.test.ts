@@ -99,6 +99,35 @@ describe('migration cutover coordinator', () => {
     expect(h.destination.commits).toBe(1)
   })
 
+  it('never journals a commit the server holds only in memory, until its flush succeeds', async () => {
+    const h = await setup()
+    await stageOrcadMigrationDestination(h.context, h.migrationId)
+    const commit = h.destination.commit.getMockImplementation()!
+    let diskFull = true
+    // The receipt lands in memory, so reads say committed, but the flush keeps failing.
+    h.destination.commit.mockImplementation(async (manifest) => {
+      const state = await commit(manifest)
+      if (diskFull) {
+        throw new Error('disk full')
+      }
+      return state
+    })
+    await expect(commitOrcadMigrationDestination(h.context, h.migrationId)).rejects.toThrow(
+      'disk full'
+    )
+    await expect(commitOrcadMigrationDestination(h.context, h.migrationId)).rejects.toThrow(
+      'disk full'
+    )
+    await expect(abortOrcadMigrationCutover(h.context, h.migrationId)).rejects.toThrow('disk full')
+    expect(h.journal()?.phase).toBe('destination-staged')
+    expect(h.owner()).toBe('env-1')
+
+    diskFull = false
+    await expect(commitOrcadMigrationDestination(h.context, h.migrationId)).resolves.toMatchObject({
+      phase: 'destination-committed'
+    })
+  })
+
   it('keeps the journal at staged when the commit reply and the re-read are both lost', async () => {
     const h = await setup()
     await stageOrcadMigrationDestination(h.context, h.migrationId)
