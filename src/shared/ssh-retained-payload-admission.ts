@@ -125,7 +125,12 @@ function admitSshManagedServerStatus(value: unknown): { managedServer?: SshManag
       value.serving.state === 'unverifiable' &&
       'detail' in value.serving &&
       typeof value.serving.detail === 'string'
-        ? { serving: { state: 'unverifiable' as const, detail: value.serving.detail } }
+        ? {
+            serving: {
+              state: 'unverifiable' as const,
+              detail: clampUtf8TextPrefix(value.serving.detail, SSH_CONNECTION_ERROR_MAX_UTF8_BYTES)
+            }
+          }
         : {}
     return {
       managedServer: { kind: 'managed', environmentId: value.environmentId, ...update, ...serving }

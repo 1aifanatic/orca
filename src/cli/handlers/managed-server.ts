@@ -22,6 +22,11 @@ import { formatManagedServerStatus } from './managed-server-format'
 const UNSUPPORTED_MESSAGE =
   'This Orca runtime cannot manage servers over SSH. Run this on the computer whose Orca desktop app deployed the server, after updating Orca there.'
 
+// Why 20 minutes: the desktop runs the whole action inline, and a Windows runtime promotion (5 min)
+// plus a readiness wait (5 min) on a slow host already outlast the 60 s RPC default.
+export const MANAGED_SERVER_ACTION_TIMEOUT_MS = 20 * 60_000
+const READ_ONLY_METHODS = new Set(['managedServer.status'])
+
 function unsupported(): RuntimeClientError {
   return new RuntimeClientError('incompatible_runtime', UNSUPPORTED_MESSAGE)
 }
@@ -35,11 +40,23 @@ async function callManagedServer<TResult>(
   if (!status.result.capabilities?.includes(MANAGED_SERVER_RUNTIME_CAPABILITY)) {
     throw unsupported()
   }
+  const readOnly = READ_ONLY_METHODS.has(method)
   try {
-    return await client.call<TResult>(method, params)
+    return await client.call<TResult>(
+      method,
+      params,
+      readOnly ? undefined : { timeoutMs: MANAGED_SERVER_ACTION_TIMEOUT_MS }
+    )
   } catch (error) {
     if (error instanceof RuntimeClientError && error.code === 'method_not_found') {
       throw unsupported()
+    }
+    // Why not a failure: the desktop keeps running the action after this client stops waiting.
+    if (!readOnly && error instanceof RuntimeClientError && error.code === 'runtime_timeout') {
+      throw new RuntimeClientError(
+        'managed_server_in_progress',
+        'Stopped waiting, but the desktop may still be running this action. Check `orca environment status` before retrying.'
+      )
     }
     throw error
   }

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MANAGED_SERVER_RUNTIME_CAPABILITY } from '../../shared/protocol-version'
 import { RuntimeClientError } from '../runtime-client'
-import { MANAGED_SERVER_HANDLERS } from './managed-server'
+import { MANAGED_SERVER_ACTION_TIMEOUT_MS, MANAGED_SERVER_HANDLERS } from './managed-server'
 
 function envelope(result: unknown) {
   return { id: 'r', ok: true, result, _meta: { runtimeId: 'runtime-1' } }
@@ -72,7 +72,11 @@ describe('managed server CLI verbs', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
     const confirmed = client(stopped)
     await run('environment stop', confirmed, [['yes', true]])
-    expect(confirmed).toHaveBeenCalledWith('managedServer.stop', { selector: 'build-box' })
+    expect(confirmed).toHaveBeenCalledWith(
+      'managedServer.stop',
+      { selector: 'build-box' },
+      { timeoutMs: MANAGED_SERVER_ACTION_TIMEOUT_MS }
+    )
     expect(log).toHaveBeenCalledWith('Stopped build-box and unlinked it from this machine.')
   })
 
@@ -100,10 +104,11 @@ describe('managed server CLI verbs', () => {
     await expect(run('environment update', call, [])).rejects.toMatchObject({
       code: 'managed_server_deferred'
     })
-    expect(call).toHaveBeenCalledWith('managedServer.update', {
-      selector: 'build-box',
-      force: false
-    })
+    expect(call).toHaveBeenCalledWith(
+      'managedServer.update',
+      { selector: 'build-box', force: false },
+      { timeoutMs: MANAGED_SERVER_ACTION_TIMEOUT_MS }
+    )
 
     vi.spyOn(console, 'log').mockImplementation(() => undefined)
     const forced = client({
@@ -112,10 +117,11 @@ describe('managed server CLI verbs', () => {
       activeVersion: '2.0.0'
     })
     await run('environment update', forced, [['force', true]])
-    expect(forced).toHaveBeenCalledWith('managedServer.update', {
-      selector: 'build-box',
-      force: true
-    })
+    expect(forced).toHaveBeenCalledWith(
+      'managedServer.update',
+      { selector: 'build-box', force: true },
+      { timeoutMs: MANAGED_SERVER_ACTION_TIMEOUT_MS }
+    )
   })
 
   it('fails on an outcome a newer desktop added instead of printing undefined', async () => {
@@ -144,5 +150,55 @@ describe('managed server CLI verbs', () => {
     expect(log.mock.calls[0]?.[0]).toBe(
       'Active version: 1.0.0\nPrevious version: 0.9.0 (rollback available)\nLive terminals: unverifiable'
     )
+  })
+
+  it('gives mutating actions a budget past the desktop’s own deadlines, and status the default', async () => {
+    const stopped = {
+      outcome: 'unlinked',
+      verdict: 'exited',
+      environmentId: 'env-1',
+      sshTargetId: 'ssh-1',
+      stoppedVersion: '1.0.0',
+      retirement: null
+    }
+    vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const stop = client(stopped)
+    await run('environment stop', stop, [['yes', true]])
+    expect(stop).toHaveBeenCalledWith(
+      'managedServer.stop',
+      { selector: 'build-box' },
+      { timeoutMs: MANAGED_SERVER_ACTION_TIMEOUT_MS }
+    )
+    const status = client({
+      activeVersion: '1.0.0',
+      previousVersion: null,
+      rollbackAvailable: false,
+      recovery: null,
+      terminals: { liveSessions: 0 },
+      migration: null,
+      deferredUpdate: null
+    })
+    await run('environment status', status, [])
+    expect(status).toHaveBeenCalledWith(
+      'managedServer.status',
+      { selector: 'build-box' },
+      undefined
+    )
+  })
+
+  it('reports a timed-out action as possibly still running, never as a failure of the action', async () => {
+    const call = vi.fn(async (method: string) => {
+      if (method === 'status.get') {
+        return envelope({ capabilities: [MANAGED_SERVER_RUNTIME_CAPABILITY] })
+      }
+      throw new RuntimeClientError(
+        'runtime_timeout',
+        'Timed out waiting for the Orca runtime to respond.'
+      )
+    })
+    await expect(run('environment update', call, [])).rejects.toMatchObject({
+      code: 'managed_server_in_progress',
+      message: expect.stringContaining('orca environment status')
+    })
   })
 })
