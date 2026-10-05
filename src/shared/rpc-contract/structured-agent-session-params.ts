@@ -303,11 +303,14 @@ export const AgentsParams = z.object({}).strict()
 
 /** `sessionId` scopes the catalog to that session's pinned account; without a
  *  session record the host keys it by the account a new launch would pin.
- *  `worktree` names where a new chat runs, whose own config may replace the default. */
+ *  `worktree` names where a new chat runs, whose own config may replace the default.
+ *  `waitForListing` holds the answer until the listing the host reported in progress lands; send
+ *  it only after that report, because a host that predates it refuses the unknown key. */
 export const ModelCatalogParams = z.strictObject({
   agent: StructuredAgent,
   sessionId: SessionId.optional(),
-  worktree: Identifier('Invalid worktree selector').optional()
+  worktree: Identifier('Invalid worktree selector').optional(),
+  waitForListing: z.boolean().optional()
 })
 
 export const ConversationCommandParams = z

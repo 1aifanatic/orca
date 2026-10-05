@@ -25,6 +25,7 @@ import { selectOpenCodeHookAgent } from '../shared/opencode-launch-command'
 import { relayLogLine } from './relay-diagnostic-log'
 import { restoreOrStripOverlayEnv } from '../shared/agent-overlay-env'
 import { registerManagedHookInstaller } from './managed-hook-installer'
+import { readSessionShellStartupEnvVar } from '../main/pty/shell-startup-env'
 
 export class RelayAgentHookRuntime {
   private readonly hookServer: RelayAgentHookServer
@@ -122,7 +123,12 @@ export class RelayAgentHookRuntime {
           env.ORCA_OPENCODE_SOURCE_CONFIG_DIR = sourceDir
         }
       } else {
-        this.pluginOverlay.installOpenCodePlugin(opencodeAgent, context.env)
+        this.pluginOverlay.installOpenCodePlugin(opencodeAgent, {
+          ...context.env,
+          XDG_CONFIG_HOME:
+            readSessionShellStartupEnvVar('XDG_CONFIG_HOME', context.env, context.shell) ??
+            context.env.XDG_CONFIG_HOME
+        })
       }
     }
     const explicitKind = isPiCompatibleAgentType(context.launchAgent)
@@ -186,17 +192,20 @@ export class RelayAgentHookRuntime {
     }))
     registerManagedHookInstaller(this.dispatcher)
     this.dispatcher.onRequest(AGENT_HOOK_INSTALL_PLUGINS_METHOD, async (params) => {
+      const startupPrompt = params.opencodeStartupPromptSource
       const opencode = params.opencodePluginSource
       const opencode2 = params.opencode2PluginSource
       const pi = params.piExtensionSource
       const omp = params.ompExtensionSource
       const primeAgent = params.primeAgentExtensionSource
+      assertPluginSourceUnderByteCap('opencodeStartupPromptSource', startupPrompt)
       assertPluginSourceUnderByteCap('opencodePluginSource', opencode)
       assertPluginSourceUnderByteCap('opencode2PluginSource', opencode2)
       assertPluginSourceUnderByteCap('piExtensionSource', pi)
       assertPluginSourceUnderByteCap('ompExtensionSource', omp)
       assertPluginSourceUnderByteCap('primeAgentExtensionSource', primeAgent)
       this.pluginOverlay.setSources({
+        opencodeStartupPromptSource: typeof startupPrompt === 'string' ? startupPrompt : undefined,
         opencodePluginSource: typeof opencode === 'string' ? opencode : undefined,
         opencode2PluginSource: typeof opencode2 === 'string' ? opencode2 : undefined,
         piExtensionSource: typeof pi === 'string' ? pi : undefined,
@@ -213,8 +222,12 @@ export class RelayAgentHookRuntime {
           installOpenCodePluginInCanonicalConfig(source, agent, process.env, homedir(), true)
         }
       }
+      const startupPromptInstalled = this.pluginOverlay.installOpenCodeStartupPromptPlugin(
+        process.env
+      )
       return {
         installed: {
+          opencodeStartupPrompt: startupPromptInstalled,
           opencode: this.pluginOverlay.hasOpenCodeSource(),
           opencode2: this.pluginOverlay.hasOpenCode2Source(),
           pi: this.pluginOverlay.hasPiSource('pi'),
