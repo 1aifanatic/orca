@@ -1,8 +1,8 @@
 // What the host knows about a structured agent before any session of it runs.
 //
 // Each agent's own module declares its definition, and runtime composition registers it with the
-// agent's adapter. The router's registrations are the only lookup: shared host code reads a
-// definition through them and never branches on the agent's name.
+// agent's adapter in one StructuredAgentRegistry. That registry is the only lookup: the router and
+// shared host code read a definition through it and never branch on the agent's name.
 
 import type { AgentSessionCapabilities } from '../../../shared/agent-session-capabilities'
 import type { AgentSessionModelOption } from '../../../shared/agent-session-wire'

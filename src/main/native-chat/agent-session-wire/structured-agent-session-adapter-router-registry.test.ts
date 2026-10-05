@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
-import { NO_AGENT_SESSION_CAPABILITIES } from '../../../shared/agent-session-capabilities'
 import type { AgentSessionExecutionLocation } from '../../../shared/agent-session-record'
 import { claudeProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import { CLAUDE_STRUCTURED_AGENT } from '../../claude/claude-structured-agent-definition'
@@ -61,7 +60,11 @@ function fakeAdapter(
 const PILOT: StructuredAgentDefinition = {
   agent: 'grok',
   capabilities: {
-    ...NO_AGENT_SESSION_CAPABILITIES,
+    rewind: false,
+    compact: false,
+    threadGoal: false,
+    contextUsage: false,
+    imagePrompts: false,
     steering: 'queue',
     approvalEnforcement: 'orca'
   },

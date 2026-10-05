@@ -27,14 +27,3 @@ export type AgentSessionCapabilities = {
    */
   approvalEnforcement: 'provider' | 'orca'
 }
-
-/** The answer for an agent no definition covers: nothing beyond a plain chat, claimed by no one. */
-export const NO_AGENT_SESSION_CAPABILITIES: AgentSessionCapabilities = Object.freeze({
-  rewind: false,
-  compact: false,
-  threadGoal: false,
-  contextUsage: false,
-  imagePrompts: false,
-  steering: 'queue',
-  approvalEnforcement: 'orca'
-})
