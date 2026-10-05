@@ -52,6 +52,10 @@ export type WorktreeCardProps = {
   onCardDragEnd?: (event: React.DragEvent<HTMLDivElement>) => void
   nativeDragEnabled?: boolean
   affiliateListMode?: boolean
+  /** A static picture of the card for another surface: nothing on it responds, and `agentRows`
+   *  stands in for the live agent list. Implies everything `affiliateListMode` turns off. */
+  readOnly?: boolean
+  agentRows?: React.ReactNode
   statusPrDisplay?: WorktreeCardPrDisplay | null
 }
 
@@ -69,6 +73,7 @@ type DefaultedWorktreeCardProp =
   | 'lineageCollapsed'
   | 'isLineageDropTarget'
   | 'affiliateListMode'
+  | 'readOnly'
   | 'statusPrDisplay'
 
 export type ResolvedWorktreeCardProps = Omit<WorktreeCardProps, DefaultedWorktreeCardProp> & {
@@ -85,6 +90,7 @@ export type ResolvedWorktreeCardProps = Omit<WorktreeCardProps, DefaultedWorktre
   lineageCollapsed: boolean
   isLineageDropTarget: boolean
   affiliateListMode: boolean
+  readOnly: boolean
   statusPrDisplay: WorktreeCardPrDisplay | null
 }
 

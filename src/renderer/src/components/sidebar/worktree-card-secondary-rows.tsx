@@ -22,6 +22,8 @@ export function WorktreeCardSecondaryRows({
     repo,
     settings,
     isActive,
+    readOnly,
+    agentRows,
     newCardStyle,
     lineageChildren,
     lineageCollapsed,
@@ -76,7 +78,7 @@ export function WorktreeCardSecondaryRows({
         </Tooltip>
       ) : null}
 
-      {isActive && worktree.linkedLinearIssue ? (
+      {isActive && !readOnly && worktree.linkedLinearIssue ? (
         <LinearAgentSkillSetupPrompt
           linked
           remote={Boolean(repo?.connectionId || settings?.activeRuntimeEnvironmentId?.trim())}
@@ -86,12 +88,16 @@ export function WorktreeCardSecondaryRows({
       ) : null}
 
       {/* Why: counterbalance the card stack gap (-mt-1) so agents right after the title read as one header group. */}
-      {showInlineAgentList && (
-        <WorktreeCardAgents
-          worktreeId={worktree.id}
-          agents={agentActivityDisplayMode === 'compact' ? compactInlineAgentRows : undefined}
-          className={hasMetaRow || remoteBranchConflict ? 'mt-0' : '-mt-1'}
-        />
+      {agentRows != null ? (
+        <div className={hasMetaRow || remoteBranchConflict ? 'mt-0' : '-mt-1'}>{agentRows}</div>
+      ) : (
+        showInlineAgentList && (
+          <WorktreeCardAgents
+            worktreeId={worktree.id}
+            agents={agentActivityDisplayMode === 'compact' ? compactInlineAgentRows : undefined}
+            className={hasMetaRow || remoteBranchConflict ? 'mt-0' : '-mt-1'}
+          />
+        )
       )}
 
       {showLineageChildChip && (

@@ -5,6 +5,7 @@ import {
   allResumeSessionIds,
   groupResumeCandidates,
   groupResumeWorkspacesByRepo,
+  nestResumeWorkspaces,
   resolveResumeGroupHeader,
   resumeWorkspaceKind,
   type ResumeCandidate
@@ -127,5 +128,34 @@ describe('naming the group header', () => {
     const header = resolveResumeGroupHeader('folder-workspace:missing', REPOS, GROUPS)
 
     expect(header.kind).toBe('project')
+  })
+})
+
+describe('nesting child workspaces', () => {
+  const group = (workspaceId: string) => ({ workspaceId, candidates: [] })
+  const shape = (nodes: ReturnType<typeof nestResumeWorkspaces>): unknown =>
+    nodes.map((node) => [node.group.workspaceId, shape(node.children)])
+
+  it('puts a child under its nearest listed ancestor, skipping one with nothing to resume', () => {
+    // grandchild -> child (not listed) -> parent
+    const ancestors: Record<string, string[]> = { grandchild: ['child', 'parent'], parent: [] }
+    const nested = nestResumeWorkspaces(
+      [group('grandchild'), group('other'), group('parent')],
+      (id) => ancestors[id] ?? []
+    )
+
+    expect(shape(nested)).toEqual([
+      ['other', []],
+      ['parent', [['grandchild', []]]]
+    ])
+  })
+
+  it('keeps a child whose ancestors are all unlisted at the top, in offer order', () => {
+    const nested = nestResumeWorkspaces([group('a'), group('b')], () => ['elsewhere'])
+
+    expect(shape(nested)).toEqual([
+      ['a', []],
+      ['b', []]
+    ])
   })
 })

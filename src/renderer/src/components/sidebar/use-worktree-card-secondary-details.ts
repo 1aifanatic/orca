@@ -19,6 +19,7 @@ type ReviewDetails = ReturnType<typeof useWorktreeCardReviewDetails>
 export function useWorktreeCardSecondaryDetails({
   worktree,
   repo,
+  readOnly,
   statusPrDisplay,
   showStatus,
   showIssue,
@@ -46,7 +47,7 @@ export function useWorktreeCardSecondaryDetails({
   openTaskPage,
   updateWorktreeMeta,
   settings
-}: Pick<WorktreeCardProps, 'worktree' | 'repo' | 'statusPrDisplay'> &
+}: Pick<WorktreeCardProps, 'worktree' | 'repo' | 'statusPrDisplay' | 'readOnly'> &
   Pick<
     Foundation,
     | 'cardProps'
@@ -88,7 +89,9 @@ export function useWorktreeCardSecondaryDetails({
   const metaAutomationProvenance = showAutomation ? worktree.automationProvenance : null
   const metaCliProvenance = showCli ? worktree.cliProvenance : null
   const metaComment = showComment ? hoverComment : null
-  const showInlineAgentList = cardProps.includes('inline-agents') && (newCardStyle || !compactCards)
+  // Why: live agent rows activate panes; a read-only card shows its caller's `agentRows` instead.
+  const showInlineAgentList =
+    !readOnly && cardProps.includes('inline-agents') && (newCardStyle || !compactCards)
   const compactInlineAgentRows = useWorktreeAgentRows(
     worktree.id,
     showInlineAgentList && agentActivityDisplayMode === 'compact'

@@ -1,19 +1,32 @@
+import { useMemo } from 'react'
 import { Folder, FolderTree, GitBranch } from 'lucide-react'
 import { RepoIconGlyph } from '@/components/repo/repo-icon'
+import WorktreeCard from '@/components/sidebar/WorktreeCard'
 import { WorktreeHostContextBadge } from '@/components/sidebar/WorktreeHostContextBadge'
+import {
+  getLineageChildrenInlineStyle,
+  getLineageNestedRowGeometry
+} from '@/components/sidebar/worktree-list/rows/indentation'
+import {
+  getHostScopedWorktreeLineageInputs,
+  getWorktreeLineageAncestors
+} from '@/components/sidebar/worktree-lineage-projection'
+import { getAllWorktreesFromState, getWorktreeOnHostFromState } from '@/store/selectors'
 import { getHostContextLabel } from '../../../shared/worktree/host-context-labels'
-import { LOCAL_EXECUTION_HOST_ID } from '../../../shared/execution-host'
+import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from '../../../shared/execution-host'
 import type { AgentSessionWorkspaceKind } from '../../../shared/agent-session-record'
 import { useAppStore } from '../store'
 import { ResumeCandidateRow } from './NativeChatResumeOnRestartAgentRow'
 import {
   groupResumeCandidates,
   groupResumeWorkspacesByRepo,
+  nestResumeWorkspaces,
   resolveResumeGroupHeader,
   resumeWorkspaceKind,
   type ResumeCandidate,
   type ResumeFailure,
-  type ResumeWorkspaceGroup
+  type ResumeWorkspaceGroup,
+  type ResumeWorkspaceNode
 } from './native-chat-resume-on-restart-grouping'
 import type { ResumeFailureAction } from './native-chat-resume-failure-guidance'
 
@@ -22,17 +35,15 @@ export type { ResumeCandidate } from './native-chat-resume-on-restart-grouping'
 /**
  * The offered chats in the sidebar's three tiers: repo/project, then workspace, then agent sessions.
  *
- * Reused from the sidebar rather than rebuilt: `RepoIconGlyph` for a repo's own glyph, `FolderTree`
- * from the sidebar's `PROJECT_GROUP_META` for a project group, and `WorktreeHostContextBadge` —
- * extracted from the sidebar card's meta row so both surfaces render one chip. The label inside it
- * comes from `getHostContextLabel`, which is the sidebar's own source for "Local Mac".
+ * Each workspace IS the sidebar's own `WorktreeCard`, rendered read-only, so the user recognizes it
+ * exactly as they know it — title, status, branch, PR and host as their sidebar settings show them —
+ * with the offered chats in place of its live agent rows. Child workspaces nest under a listed
+ * parent the way the sidebar nests them.
  *
- * The sidebar has NO resolver for git-worktree vs folder-workspace glyphs: both kinds render the
- * same card, and the apparent difference is its status lane picking `GitBranch` when the workspace
- * has a branch identity. That single sidebar precedent is what the workspace glyph follows here.
+ * A workspace the store does not know yet (its host still connecting, or since deleted) falls back
+ * to a plain header: glyph, name, host chip. The sidebar has no git-worktree vs folder glyph
+ * resolver; that header follows its status lane, which picks `GitBranch` for a branch identity.
  */
-
-type StoreState = ReturnType<typeof useAppStore.getState>
 
 /** Lets a row that an earlier resume could not carry on show what went wrong and what to do. */
 type FailureProps = {
@@ -40,18 +51,9 @@ type FailureProps = {
   onFailureAction?: (action: ResumeFailureAction, sessionId: string) => void
 }
 
-function resolveWorkspaceWorktree(store: StoreState, workspaceId: string) {
-  return (
-    store.getKnownWorktreeById(workspaceId) ??
-    store.allWorktrees().find((entry) => entry.id === workspaceId)
-  )
-}
-
-/** Selectors return primitives, so repeated runs cannot churn equality. */
-function useWorkspaceName(workspaceId: string): string {
-  return useAppStore(
-    (store) => resolveWorkspaceWorktree(store, workspaceId)?.displayName ?? workspaceId
-  )
+/** The store's row for a workspace on its own host; folder workspaces included. Stable per row. */
+function useWorkspaceWorktree(workspaceId: string, hostId: ExecutionHostId | undefined) {
+  return useAppStore((store) => store.getKnownWorktreeById(workspaceId, hostId))
 }
 
 /**
@@ -61,21 +63,54 @@ function useWorkspaceName(workspaceId: string): string {
  * or array would fail the equality check on every store change and re-render the whole list.
  */
 function useRepoIdByWorkspace(
-  workspaceIds: readonly string[]
+  workspaces: readonly ResumeWorkspaceGroup[]
 ): (workspaceId: string) => string | null {
-  const key = workspaceIds.join('\0')
+  const ids = workspaces.map((group) => group.workspaceId)
+  const hosts = workspaces.map((group) => group.candidates[0]?.executionHostId)
   const joined = useAppStore((store) =>
-    key
-      .split('\0')
-      .map((id) => resolveWorkspaceWorktree(store, id)?.repoId ?? '')
-      .join('\0')
+    ids.map((id, index) => store.getKnownWorktreeById(id, hosts[index])?.repoId ?? '').join('\0')
   )
   const repoIds = joined.split('\0')
   return (workspaceId: string) => {
-    const index = workspaceIds.indexOf(workspaceId)
+    const index = ids.indexOf(workspaceId)
     const repoId = index === -1 ? '' : (repoIds[index] ?? '')
     return repoId === '' ? null : repoId
   }
+}
+
+/** Each workspace's lineage ancestors, nearest first, scoped to its host as the sidebar scopes them. */
+function useLineageAncestors(
+  workspaces: readonly ResumeWorkspaceGroup[]
+): (workspaceId: string) => readonly string[] {
+  const worktreesByRepo = useAppStore((store) => store.worktreesByRepo)
+  const worktreeLineageById = useAppStore((store) => store.worktreeLineageById)
+  const ancestors = useMemo(() => {
+    const state = { worktreesByRepo }
+    const all = getAllWorktreesFromState(state)
+    return new Map(
+      workspaces.map((group) => {
+        const target = getWorktreeOnHostFromState(
+          state,
+          group.workspaceId,
+          group.candidates[0]?.executionHostId
+        )
+        if (!target) {
+          return [group.workspaceId, []]
+        }
+        // Why: the sidebar nests a child only under a parent on the same host, and never archived.
+        const { worktreeMap, lineageById } = getHostScopedWorktreeLineageInputs(
+          all.filter((worktree) => worktree.hostId === target.hostId && !worktree.isArchived),
+          worktreeLineageById,
+          target.hostId
+        )
+        return [
+          group.workspaceId,
+          getWorktreeLineageAncestors(target, lineageById, worktreeMap).map((parent) => parent.id)
+        ]
+      })
+    )
+  }, [workspaces, worktreesByRepo, worktreeLineageById])
+  return (workspaceId) => ancestors.get(workspaceId) ?? []
 }
 
 /** The glyph for the workspace itself. Kind comes from the host's record, never from a name. */
@@ -113,50 +148,100 @@ function RepoHeader({ repoId }: { repoId: string | null }): React.JSX.Element {
   )
 }
 
-function WorkspaceGroup({
-  group,
-  listedAt,
-  busy,
-  selected,
-  onToggle,
-  failureFor,
-  onFailureAction
-}: {
-  group: ResumeWorkspaceGroup
+type RowProps = {
   listedAt: number
   busy: boolean
   selected: ReadonlySet<string>
   onToggle: (sessionId: string, checked: boolean) => void
-} & FailureProps): React.JSX.Element {
-  const name = useWorkspaceName(group.workspaceId)
+} & FailureProps
+
+function WorkspaceCard({
+  node,
+  depth,
+  ...rowProps
+}: { node: ResumeWorkspaceNode; depth: number } & RowProps): React.JSX.Element {
+  const { group } = node
   const first = group.candidates[0]
-  const kind = first ? resumeWorkspaceKind(first) : 'git-worktree'
+  const hostId = first?.executionHostId
+  const worktree = useWorkspaceWorktree(group.workspaceId, hostId)
+  const repo = useAppStore((store) =>
+    worktree ? store.repos.find((entry) => entry.id === worktree.repoId) : undefined
+  )
+  const newCardStyle = useAppStore(
+    (store) => store.settings?.experimentalNewWorktreeCardStyle === true
+  )
+  const name = worktree?.displayName ?? group.workspaceId
   // Shown for every workspace, local included. The sidebar hides it on a single-host install; this
   // list is a one-off prompt with no surrounding context, so the machine is always worth naming.
-  const hostLabel = getHostContextLabel(first?.executionHostId ?? LOCAL_EXECUTION_HOST_ID)
+  const hostLabel = getHostContextLabel(hostId ?? LOCAL_EXECUTION_HOST_ID)
+  const { listedAt, busy, selected, onToggle, failureFor, onFailureAction } = rowProps
+  const rows = (
+    <ul className="flex flex-col">
+      {group.candidates.map((candidate) => (
+        <ResumeCandidateRow
+          key={candidate.sessionId}
+          candidate={candidate}
+          workspaceName={name}
+          listedAt={listedAt}
+          checked={selected.has(candidate.sessionId)}
+          disabled={busy}
+          onCheckedChange={(checked) => onToggle(candidate.sessionId, checked)}
+          failure={failureFor?.(candidate.sessionId)}
+          onFailureAction={onFailureAction}
+        />
+      ))}
+    </ul>
+  )
+  const geometry = getLineageNestedRowGeometry({
+    experimentalNewWorktreeCardStyle: newCardStyle,
+    inheritedCardContentIndent: 0,
+    lineageDepth: depth
+  })
+  const children = node.children.map((child) => (
+    <div
+      key={child.group.workspaceId}
+      style={geometry.surfaceInset > 0 ? { paddingLeft: geometry.surfaceInset } : undefined}
+    >
+      <WorkspaceCard node={child} depth={depth + 1} {...rowProps} />
+    </div>
+  ))
+
+  if (!worktree) {
+    const kind = first ? resumeWorkspaceKind(first) : 'git-worktree'
+    return (
+      <section className="flex flex-col gap-0.5">
+        <div className="flex items-center gap-1.5 px-0.5">
+          <WorkspaceKindGlyph kind={kind} />
+          <span className="min-w-0 truncate text-xs font-medium">{name}</span>
+          <WorktreeHostContextBadge label={hostLabel} />
+        </div>
+        <div className="pl-1">{rows}</div>
+        {children.length > 0 && <div className="flex flex-col gap-1 pl-3">{children}</div>}
+      </section>
+    )
+  }
+
   return (
-    <section className="flex flex-col gap-0.5">
-      <div className="flex items-center gap-1.5 px-0.5">
-        <WorkspaceKindGlyph kind={kind} />
-        <span className="min-w-0 truncate text-xs font-medium">{name}</span>
-        <WorktreeHostContextBadge label={hostLabel} />
-      </div>
-      <ul className="flex flex-col pl-1">
-        {group.candidates.map((candidate) => (
-          <ResumeCandidateRow
-            key={candidate.sessionId}
-            candidate={candidate}
-            workspaceName={name}
-            listedAt={listedAt}
-            checked={selected.has(candidate.sessionId)}
-            disabled={busy}
-            onCheckedChange={(checked) => onToggle(candidate.sessionId, checked)}
-            failure={failureFor?.(candidate.sessionId)}
-            onFailureAction={onFailureAction}
-          />
-        ))}
-      </ul>
-    </section>
+    <WorktreeCard
+      worktree={worktree}
+      repo={repo}
+      isActive={false}
+      isActiveSurface={false}
+      readOnly
+      // The repo header above already names it.
+      hideRepoBadge
+      hostContextLabel={hostLabel}
+      nativeDragEnabled={false}
+      flushSurface
+      contentIndent={geometry.cardContentIndent}
+      agentRows={rows}
+      lineageChildren={children.length > 0 ? children : undefined}
+      lineageChildrenStyle={
+        children.length > 0
+          ? getLineageChildrenInlineStyle(geometry.lineageChildrenInlineOffset)
+          : undefined
+      }
+    />
   )
 }
 
@@ -175,19 +260,21 @@ export function ResumeOnRestartGroups({
   selected: ReadonlySet<string>
   onToggle: (sessionId: string, checked: boolean) => void
 } & FailureProps): React.JSX.Element {
-  const workspaces = groupResumeCandidates(candidates)
-  const repoIdFor = useRepoIdByWorkspace(workspaces.map((group) => group.workspaceId))
+  const workspaces = useMemo(() => groupResumeCandidates(candidates), [candidates])
+  const repoIdFor = useRepoIdByWorkspace(workspaces)
+  const ancestorsOf = useLineageAncestors(workspaces)
   const repoGroups = groupResumeWorkspacesByRepo(workspaces, repoIdFor)
   return (
     <div className="flex flex-col gap-2.5">
       {repoGroups.map((repoGroup) => (
         <section key={repoGroup.repoId ?? 'no-repo'} className="flex flex-col gap-1">
           <RepoHeader repoId={repoGroup.repoId} />
-          <div className="flex flex-col gap-1.5 pl-2">
-            {repoGroup.workspaces.map((workspace) => (
-              <WorkspaceGroup
-                key={workspace.workspaceId}
-                group={workspace}
+          <div className="flex flex-col gap-1">
+            {nestResumeWorkspaces(repoGroup.workspaces, ancestorsOf).map((node) => (
+              <WorkspaceCard
+                key={node.group.workspaceId}
+                node={node}
+                depth={0}
                 listedAt={listedAt}
                 busy={busy}
                 selected={selected}

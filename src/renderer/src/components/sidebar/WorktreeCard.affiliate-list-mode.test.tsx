@@ -324,3 +324,72 @@ describe('WorktreeCard affiliate list mode', () => {
     expect(container.querySelector('[data-worktree-unread-alert=""]')).not.toBeNull()
   })
 })
+
+describe('WorktreeCard read-only mode', () => {
+  let container: HTMLDivElement
+  let root: Root
+
+  beforeEach(() => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    vi.clearAllMocks()
+    worktreeCardProperties = ['status', 'comment', 'inline-agents']
+    settings = null
+    sleepMocks.sleeping = false
+  })
+
+  afterEach(() => {
+    act(() => {
+      root.unmount()
+    })
+    container.remove()
+  })
+
+  function renderReadOnly(): HTMLElement | null {
+    act(() => {
+      root.render(
+        <WorktreeCard
+          worktree={makeWorktree()}
+          repo={makeRepo()}
+          isActive={false}
+          readOnly
+          hostContextLabel="Local Mac"
+          agentRows={<div data-testid="caller-rows" />}
+        />
+      )
+    })
+    return container.querySelector<HTMLElement>('[data-worktree-card-surface="true"]')
+  }
+
+  it('responds to nothing: no activation, rename, edit, drag or context menu', () => {
+    const surface = renderReadOnly()
+
+    act(() => {
+      surface?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      surface?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+    })
+
+    expect(testDoubles.activateWorktreeFromSidebar).not.toHaveBeenCalled()
+    expect(openModal).not.toHaveBeenCalled()
+    expect(surface?.getAttribute('draggable')).toBe('false')
+    expect(surface?.className).not.toContain('cursor-pointer')
+    expect(container.querySelector('[data-testid="context-menu-wrapper"]')).toBeNull()
+    expect(
+      container.querySelector('[data-testid="inline-rename"]')?.getAttribute('data-disabled')
+    ).toBe('true')
+  })
+
+  it("shows the caller's rows in place of the live agent list", () => {
+    renderReadOnly()
+
+    expect(container.querySelector('[data-testid="caller-rows"]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="inline-agents"]')).toBeNull()
+  })
+
+  it('names the host even when the sidebar hides the host chip', () => {
+    renderReadOnly()
+
+    expect(container.textContent).toContain('Local Mac')
+  })
+})

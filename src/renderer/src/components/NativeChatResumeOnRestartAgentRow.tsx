@@ -12,8 +12,9 @@ import { ResumeFailureGuidanceLine, ResumeFailureStatus } from './NativeChatResu
 import { resumeActivityLabel } from './native-chat-resume-activity-label'
 
 /**
- * One offered chat, laid out like the sidebar's compact agent row: provider glyph, the chat's name,
- * then the model and an age on the right.
+ * One offered chat, laid out like the sidebar's compact agent row — provider glyph, then "name -
+ * what it was doing" on one line, then the model and an age on the right — with the checkbox in
+ * the state dot's slot. It sits inside the workspace's own read-only sidebar card.
  *
  * The sidebar's own `CompactAgentRow` cannot be reused — it takes a `DashboardAgentRow`, which
  * requires a live pane, tab and status entry, and every chat here is by definition stopped. The
@@ -26,7 +27,7 @@ import { resumeActivityLabel } from './native-chat-resume-activity-label'
  * a fault, `done` a finish, `working` a spinner. A missing dot beats a dot that says these agents
  * are running.
  *
- * Under the name, what the chat was doing when Orca went away — mid-reply, waiting on the user,
+ * After the name, what the chat was doing when Orca went away — mid-reply, waiting on the user,
  * subagents or monitoring — so rows the sidebar showed as working for different reasons differ.
  *
  * A chat an earlier resume could not carry on is the same row — selectable where a retry can run,
@@ -60,7 +61,8 @@ export function ResumeCandidateRow({
   const model = candidate.model?.trim() ?? ''
   const activity = resumeActivityLabel(candidate.activity)
   const row = (
-    <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded px-1 py-1 hover:bg-accent/50">
+    // Same box and type scale as the sidebar's `CompactAgentRow`.
+    <label className="flex h-6 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-sm px-1 text-[11px] leading-none text-muted-foreground worktree-agent-row-hover">
       {/* Identifies the agent AND its workspace: the accessible name has to distinguish rows that
             would otherwise all read the same. */}
       <Checkbox
@@ -76,29 +78,25 @@ export function ResumeCandidateRow({
       />
       {/* AgentIcon carries no label of its own, so the provider was invisible to assistive tech. */}
       <span role="img" aria-label={agentLabel} className="inline-flex shrink-0">
-        <AgentIcon agent={agentTypeToIconAgent(candidate.agent)} size={14} />
+        <AgentIcon agent={agentTypeToIconAgent(candidate.agent)} size={13} />
       </span>
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-xs font-medium">{title}</span>
-        {activity && (
-          <span
-            className="truncate text-[11px] text-muted-foreground"
-            title={activity.detail || undefined}
-          >
-            {activity.summary}
-          </span>
-        )}
+      <span
+        className="min-w-0 flex-1 truncate"
+        title={activity ? `${title} - ${activity.detail || activity.summary}` : title}
+      >
+        <span className="text-foreground/90">{title}</span>
+        {activity && <span className="text-muted-foreground/80"> - {activity.summary}</span>}
       </span>
       {model && (
         <span
-          className="min-w-0 max-w-24 shrink-0 truncate font-mono text-[10px] text-muted-foreground"
+          className="min-w-0 max-w-24 shrink-0 truncate font-mono text-[10px] text-muted-foreground/70"
           title={model}
         >
           {model}
         </span>
       )}
       {/* `formatShortTimeAgo` takes (timestamp, now) and subtracts internally — NOT a delta. */}
-      <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+      <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/60">
         {formatShortTimeAgo(candidate.recordedAt, listedAt)}
       </span>
     </label>

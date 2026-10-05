@@ -111,6 +111,39 @@ export function groupResumeWorkspacesByRepo(
   return [...groups.values()]
 }
 
+export type ResumeWorkspaceNode = {
+  group: ResumeWorkspaceGroup
+  children: ResumeWorkspaceNode[]
+}
+
+/**
+ * Nests each workspace under its nearest LISTED ancestor, as the sidebar nests child workspaces.
+ *
+ * `ancestorsOf` is nearest-first; an ancestor with nothing to resume is skipped, so its listed
+ * descendants attach to the next listed one up, or stay at the top. Offer order is kept.
+ */
+export function nestResumeWorkspaces(
+  workspaces: readonly ResumeWorkspaceGroup[],
+  ancestorsOf: (workspaceId: string) => readonly string[]
+): ResumeWorkspaceNode[] {
+  const nodes = new Map<string, ResumeWorkspaceNode>(
+    workspaces.map((group) => [group.workspaceId, { group, children: [] }])
+  )
+  const roots: ResumeWorkspaceNode[] = []
+  for (const node of nodes.values()) {
+    const parentId = ancestorsOf(node.group.workspaceId).find(
+      (id) => id !== node.group.workspaceId && nodes.has(id)
+    )
+    const parent = parentId === undefined ? undefined : nodes.get(parentId)
+    if (parent) {
+      parent.children.push(node)
+    } else {
+      roots.push(node)
+    }
+  }
+  return roots
+}
+
 export type ResumeGroupHeader =
   | { kind: 'repo'; name: string; repoIcon: RepoIcon | null }
   | { kind: 'project'; name: string }

@@ -39,7 +39,8 @@ export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
   const showAutomation = foundation.cardProps.includes('automation')
   const showCli = foundation.cardProps.includes('cli')
   const showComment = foundation.cardProps.includes('comment')
-  const showPorts = foundation.cardProps.includes('ports')
+  // Why: the ports trigger is a control, and live ports say nothing a read-only picture needs.
+  const showPorts = !props.readOnly && foundation.cardProps.includes('ports')
   const shouldRefreshHostedReview = foundation.newCardStyle ? showStatus : showPR
   const detailsHoverControl = useWorktreeCardDetailsHoverControl()
   const hoverDetailsOpen = detailsHoverControl.hoverOpen
@@ -111,6 +112,7 @@ export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
   const secondary = useWorktreeCardSecondaryDetails({
     worktree,
     repo,
+    readOnly: props.readOnly,
     statusPrDisplay: props.statusPrDisplay,
     showStatus,
     showIssue,

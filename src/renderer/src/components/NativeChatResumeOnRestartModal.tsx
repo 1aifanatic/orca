@@ -188,7 +188,8 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
     >
       {/* Height is capped, never the data: the list scrolls inside the dialog so the header and
           the primary action stay put however many chats were interrupted. */}
-      <DialogContent className="grid-rows-[auto_minmax(0,1fr)_auto_auto] sm:max-w-xl max-h-[85vh]">
+      {/* Wide enough for a sidebar card's chat row to keep its name, model and age on one line. */}
+      <DialogContent className="grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-3xl max-h-[85vh]">
         <DialogHeader>
           <DialogTitle>
             {/* Plain wrapper owns the icon spacing; DialogTitle owns its own. */}
@@ -219,7 +220,8 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
             'auto.components.NativeChatResumeOnRestartModal.listLabel',
             'Chats that would be resumed'
           )}
-          className="min-h-0 overflow-y-auto scrollbar-sleek rounded-md border bg-muted/35 p-1.5"
+          // The sidebar's own surface, so its cards read here as they do there.
+          className="min-h-0 overflow-y-auto scrollbar-sleek rounded-md border bg-worktree-sidebar p-1.5"
         >
           <ResumeOnRestartGroups
             candidates={rows}
@@ -232,32 +234,31 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
           />
         </div>
 
-        <label className="flex items-start gap-2.5">
-          <Checkbox
-            checked={dontAskAgain}
-            disabled={busy}
-            onCheckedChange={(next) => setDontAskAgain(next === true)}
-            className="mt-0.5"
-          />
-          <span className="min-w-0 space-y-0.5">
-            <span className="block text-sm">
-              {translate(
-                'auto.components.NativeChatResumeOnRestartModal.dontAskAgain',
-                "Don't ask again (resume automatically)"
-              )}
-            </span>
-            {/* Where to undo it; what it does is the body copy's job. */}
-            <span className="block text-xs text-muted-foreground">
-              {translate(
-                'auto.components.NativeChatResumeOnRestartModal.dontAskAgainHint',
-                'You can turn this off in Settings → Experimental → Chat UI.'
-              )}
-            </span>
-          </span>
-        </label>
-
         {/* Two controls: one deletes the offer, one acts on it. Closing snoozes, so it needs none. */}
-        <DialogFooter className="sm:justify-between">
+        <DialogFooter className="sm:items-center">
+          <label className="flex min-w-0 items-start gap-2.5 sm:mr-auto">
+            <Checkbox
+              checked={dontAskAgain}
+              disabled={busy}
+              onCheckedChange={(next) => setDontAskAgain(next === true)}
+              className="mt-0.5"
+            />
+            <span className="min-w-0 space-y-0.5">
+              <span className="block text-sm">
+                {translate(
+                  'auto.components.NativeChatResumeOnRestartModal.dontAskAgain',
+                  "Don't ask again (resume automatically)"
+                )}
+              </span>
+              {/* Where to undo it; what it does is the body copy's job. */}
+              <span className="block text-xs text-muted-foreground">
+                {translate(
+                  'auto.components.NativeChatResumeOnRestartModal.dontAskAgainHint',
+                  'You can turn this off in Settings → Experimental → Chat UI.'
+                )}
+              </span>
+            </span>
+          </label>
           {/* Quiet, explicit cleanup of the durable records. */}
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => void dismissAll()}>
             {translate('auto.components.NativeChatResumeOnRestartModal.dismissAll', 'Dismiss all')}
