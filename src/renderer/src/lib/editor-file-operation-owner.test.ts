@@ -7,6 +7,7 @@ import {
 } from './editor-file-operation-owner'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
 import { makeWorktree, TEST_REPO } from '../store/slices/store-test-helpers'
+import { createGlobalSettingsFixture } from '../../../shared/global-settings-test-fixture'
 
 const worktreeId = 'repo::/remote/repo'
 
@@ -102,7 +103,7 @@ describe('editor file operation owner', () => {
       },
       activeWorktreeId: worktreeId,
       activeWorkspaceExecutionHostId: 'runtime:hub-b',
-      settings: { ...useAppStore.getState().settings, activeRuntimeEnvironmentId: null }
+      settings: createGlobalSettingsFixture({ activeRuntimeEnvironmentId: null })
     })
 
     const provenance = captureEditorFileOperationProvenance(

@@ -4,6 +4,7 @@ import { createEditorStore, createEditorTabsStore } from './editor-slice-test-ha
 import { makeWorktree, TEST_REPO } from './store-test-helpers'
 import type { AppState } from '../types'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
+import { createGlobalSettingsFixture } from '../../../../shared/global-settings-test-fixture'
 
 const { toastErrorMock } = vi.hoisted(() => ({
   toastErrorMock: vi.fn()
@@ -136,7 +137,7 @@ describe('createEditorSlice editor host ownership', () => {
       },
       activeWorktreeId: 'wt-1',
       activeWorkspaceExecutionHostId: 'runtime:hub-b',
-      settings: { ...store.getState().settings, activeRuntimeEnvironmentId: null }
+      settings: createGlobalSettingsFixture({ activeRuntimeEnvironmentId: null })
     })
 
     store.getState().openFile({
