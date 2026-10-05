@@ -48,6 +48,9 @@ export type NativeChatStructuredComposerTransport = {
   runtimeEnvironmentId: string | null
   /** Present while the queue is held: a message sent now first asks whether to clear its cards. */
   queueHold?: NativeChatQueueHold
+  /** Present while the host holds the queue and no turn runs: an empty composer's primary
+   *  action becomes Resume, which releases it. */
+  queueResume?: NativeChatQueueResume
 }
 
 export type NativeChatOptimisticSendOutcome = {
@@ -93,9 +96,6 @@ export type NativeChatComposerProps = {
   /** Cmd/Ctrl+Enter from an empty composer: send the newest queued draft now.
    *  False = nothing queued, and the chord falls through to a plain send. */
   steerQueued?: () => boolean
-  /** Present while the host holds the queue and no turn runs: an empty composer's primary
-   *  action becomes Resume, which releases it. */
-  queueResume?: NativeChatQueueResume | undefined
 }
 
 /** Launch context prefilled into the TUI input as an unsent draft, plus the two

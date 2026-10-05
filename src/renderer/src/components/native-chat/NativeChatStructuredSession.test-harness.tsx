@@ -123,10 +123,11 @@ export function createStructuredSessionMocks() {
     messageListProps: initialMessageListProps,
     composerProps: nullable<{
       launchSeed?: NativeChatLaunchSeed
-      structuredTransport?: Record<string, unknown>
+      structuredTransport?: Record<string, unknown> & {
+        queueResume?: { resume: () => void; resuming: boolean }
+      }
       isWorking?: boolean
       onStop?: () => void
-      queueResume?: { resume: () => void; resuming: boolean }
     }>(),
     approvalCardProps: initialApprovalCardProps,
     questionCardProps: null as NativeChatQuestionCardProps | null,

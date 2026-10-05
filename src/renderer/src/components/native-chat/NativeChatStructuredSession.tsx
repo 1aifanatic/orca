@@ -220,7 +220,8 @@ export function NativeChatStructuredSession(
       sessionId: props.sessionId,
       runtimeEnvironmentId:
         props.target.kind === 'local' ? null : (props.target.environmentId ?? null),
-      queueHold: controller.queuedMessages.queueHold
+      queueHold: controller.queuedMessages.queueHold,
+      queueResume: controller.queuedMessages.queueResume
     }
   }, [
     controller,
@@ -382,7 +383,6 @@ export function NativeChatStructuredSession(
               isWorking={controller.canStop || controller.queueSendsNext}
               onStop={controller.canStop ? () => void controller.stop() : undefined}
               steerQueued={controller.queuedMessages.steerNewest}
-              queueResume={controller.queuedMessages.queueResume}
               structuredTransport={structuredTransport}
               launchSeed={{ ...launchDraftSignal, ownsTabWideLaunchDraft: true }}
             />

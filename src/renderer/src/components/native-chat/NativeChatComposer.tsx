@@ -68,8 +68,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       readTerminalScreen,
       launchSeed,
       structuredTransport,
-      steerQueued,
-      queueResume
+      steerQueued
     },
     ref
   ): React.JSX.Element {
@@ -418,7 +417,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
         onDictationHoldEnd={stopHoldDictation}
         onSend={send}
         onStop={interrupt}
-        queueResume={queueResume}
+        queueResume={structuredTransport?.queueResume}
         queueSendConfirm={queueSendConfirm}
         sessionOptionsSurface={sessionOptionsSurface}
         sessionOptionsSnapshot={sessionOptionsSnapshot}
