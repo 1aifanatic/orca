@@ -229,6 +229,10 @@ export function createTranscriptAsyncQuestionTracker(args: {
       remember()
       if (failed && wantsRetry()) {
         start(failed.endOffset, failed.version)
+        if (complete) {
+          // Answered from the shared fold: this drain already published, so settle now.
+          args.onSettled()
+        }
       }
     },
     wantsRetry,
