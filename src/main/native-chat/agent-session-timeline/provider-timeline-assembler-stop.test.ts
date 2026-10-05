@@ -105,7 +105,7 @@ describe('a turn another writer settled stops its text and prompts; its tools wa
     rig.assembler.apply({ type: 'item.open', item: 'call', body: runningTool('read') })
     await stop(rig, 't1')
     // Its progress, then its completion, both reported between the cancel and the turn's end.
-    const progress = { ...runningTool('read'), output: 'half' }
+    const progress = { ...runningTool('read'), input: { name: 'read', path: 'a.ts' } }
     expect(
       rig.assembler.apply({
         type: 'item.update',
@@ -114,7 +114,9 @@ describe('a turn another writer settled stops its text and prompts; its tools wa
         join: { turn: 't1' }
       })
     ).toEqual({ admission: { accepted: true } })
-    expect((await rig.row(providerItemId('item', 'call')))?.body).toMatchObject({ output: 'half' })
+    expect((await rig.row(providerItemId('item', 'call')))?.body).toMatchObject({
+      input: { path: 'a.ts' }
+    })
     expect(
       rig.assembler.apply({
         type: 'item.close',
