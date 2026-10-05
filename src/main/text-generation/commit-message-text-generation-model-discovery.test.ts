@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import type * as ChildProcess from 'node:child_process'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createSshDisposalError,
   SSH_MUX_REQUEST_TIMEOUT_CODE
@@ -13,6 +13,7 @@ import { PROVIDER_SPAWN_FAILURE_MARKER } from '../codex/codex-app-server-posix-s
 import {
   createChildTerminationExpectation,
   createMockDiscoveryChild,
+  spawnedAgentArgv,
   withPlatform
 } from './commit-message-text-generation-test-harness'
 
@@ -23,15 +24,6 @@ const { terminateWindowsProcessTreeMock } = vi.hoisted(() => ({
 vi.mock('../windows-process-tree-kill', () => ({
   terminateWindowsProcessTree: terminateWindowsProcessTreeMock
 }))
-
-// Generation over a direct agent child, the unsupervised shape Windows and WSL spawn. The POSIX
-// supervised stop composed with timeout, cancel, output limit and the Codex home lock is covered
-// in source-control-local-process.test.ts.
-vi.mock('../codex/codex-app-server-posix-supervisor', async (importOriginal) =>
-  (await import('./commit-message-text-generation-test-harness')).directAgentChildSupervisorModule(
-    importOriginal
-  )
-)
 
 vi.mock('child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof ChildProcess>()
@@ -49,13 +41,26 @@ function spawnError(errno: string): Error {
 
 const expectChildTerminated = createChildTerminationExpectation(terminateWindowsProcessTreeMock)
 
+// These suites drive fake children down the Windows direct-child path, taskkill included. The POSIX
+// supervised stop under timeout, cancel, output limit and the Codex home lock, for generation and
+// discovery, is in source-control-local-process.test.ts.
+const hostPlatform = process.platform
+
+afterEach(() => {
+  Object.defineProperty(process, 'platform', { configurable: true, value: hostPlatform })
+  vi.unstubAllEnvs()
+})
+
 beforeEach(() => {
+  Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+  // Windows resolves a bare agent name on PATH; the host's own installs must not answer it.
+  vi.stubEnv('PATH', '')
   terminateWindowsProcessTreeMock.mockClear()
   terminateWindowsProcessTreeMock.mockResolvedValue(undefined)
   spawnMock.mockClear()
 })
 
-describe('discoverCommitMessageModelsLocal over a direct agent child', () => {
+describe('discoverCommitMessageModelsLocal on the Windows direct-child path', () => {
   it('returns static catalog models without spawning for static agents', async () => {
     const result = await discoverCommitMessageModelsLocal('amp', undefined)
 
@@ -68,6 +73,8 @@ describe('discoverCommitMessageModelsLocal over a direct agent child', () => {
   })
 
   it('discovers dynamic models through the agent CLI', async () => {
+    // The host's own spawn shape: supervised on POSIX, direct on Windows.
+    Object.defineProperty(process, 'platform', { configurable: true, value: hostPlatform })
     const listeners = new Map<string, (value: unknown) => void>()
     const child = {
       pid: 123,
@@ -92,14 +99,13 @@ describe('discoverCommitMessageModelsLocal over a direct agent child', () => {
         { id: 'gpt-5.2', label: 'GPT-5.2' }
       ]
     })
-    expect(spawnMock).toHaveBeenCalledWith(
-      'cursor-agent',
-      ['--list-models'],
-      expect.objectContaining({ windowsHide: true })
-    )
+    expect(spawnedAgentArgv(spawnMock.mock.calls[0]!)).toEqual(['cursor-agent', '--list-models'])
+    expect(spawnMock.mock.calls[0]![2]).toMatchObject({ windowsHide: true })
   })
 
   it('writes the Claude list_models request to stdin and parses the control response', async () => {
+    // The host's own spawn shape: supervised on POSIX, direct on Windows.
+    Object.defineProperty(process, 'platform', { configurable: true, value: hostPlatform })
     const listeners = new Map<string, (value: unknown) => void>()
     const child = {
       pid: 123,
@@ -149,11 +155,19 @@ describe('discoverCommitMessageModelsLocal over a direct agent child', () => {
         { id: 'haiku', label: 'Haiku' }
       ]
     })
-    expect(spawnMock).toHaveBeenCalledWith(
+    expect(spawnedAgentArgv(spawnMock.mock.calls[0]!)).toEqual([
       'claude',
-      ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose'],
-      expect.objectContaining({ windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
-    )
+      '-p',
+      '--input-format',
+      'stream-json',
+      '--output-format',
+      'stream-json',
+      '--verbose'
+    ])
+    expect(spawnMock.mock.calls[0]![2]).toMatchObject({
+      windowsHide: true,
+      stdio: ['pipe', 'pipe', 'pipe']
+    })
     expect(child.stdin.end).toHaveBeenCalledWith(expect.stringContaining('"list_models"'))
   })
 
@@ -188,6 +202,8 @@ describe('discoverCommitMessageModelsLocal over a direct agent child', () => {
   })
 
   it('discovers dynamic models through the configured agent command override', async () => {
+    // The host's own spawn shape: supervised on POSIX, direct on Windows.
+    Object.defineProperty(process, 'platform', { configurable: true, value: hostPlatform })
     const listeners = new Map<string, (value: unknown) => void>()
     const child = {
       pid: 123,
@@ -215,11 +231,11 @@ describe('discoverCommitMessageModelsLocal over a direct agent child', () => {
         expect.objectContaining({ windowsHide: true })
       )
     } else {
-      expect(spawnMock).toHaveBeenCalledWith(
+      expect(spawnedAgentArgv(spawnMock.mock.calls[0]!)).toEqual([
         'npx',
-        ['cursor-agent', '--list-models'],
-        expect.objectContaining({ windowsHide: true })
-      )
+        'cursor-agent',
+        '--list-models'
+      ])
     }
   })
 
@@ -504,7 +520,7 @@ describe('discoverCommitMessageModelsLocal over a direct agent child', () => {
   })
 })
 
-describe('generateCommitMessageFromContext over a direct agent child', () => {
+describe('generateCommitMessageFromContext on the Windows direct-child path', () => {
   it('discovers dynamic models through a remote execution plan', async () => {
     const execute = vi.fn(async (plan, cwd, timeoutMs) => {
       expect(plan).toEqual({

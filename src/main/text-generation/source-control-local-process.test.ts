@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from '../codex/codex-app-server-posix-supervisor'
 import { SOURCE_CONTROL_GENERATION_TIMEOUT_MS } from './source-control-generation-limits'
+import { discoverModelsLocal } from './commit-message-model-discovery'
 import { cancelGenerateCommitMessageLocal } from './commit-message-text-generation'
 import { spawnSourceControlAgent } from './source-control-agent-launch'
 import { killSourceControlAgentProcess } from './source-control-local-process'
@@ -156,6 +157,46 @@ describe('a supervised agent one-shot that runs out of time', () => {
     agents[1]!.stdout.emit('data', Buffer.from('Update README\n'))
     agents[1]!.emit('close', 0)
     await expect(second).resolves.toMatchObject({ success: true, message: 'Update README' })
+    expect(agents[0]!.kill).not.toHaveBeenCalledWith('SIGKILL')
+    expect(terminateTreeMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('a supervised Codex model discovery that runs out of time', () => {
+  it('times out at once but holds the Codex home until the supervisor has stopped', async () => {
+    vi.useFakeTimers()
+    const stopMs = 2_000
+    const agents = [fakeSupervisedAgent(stopMs), fakeSupervisedAgent(stopMs)]
+    const spawnAgent = vi.fn(() => asSpawned(agents[spawnAgent.mock.calls.length - 1]!))
+    const discover = (): ReturnType<typeof discoverModelsLocal> =>
+      discoverModelsLocal({
+        agentId: 'codex',
+        env: { CODEX_HOME: '/codex/discovery-timeout-home' },
+        options: {},
+        backslash: 'escape',
+        spawnAgent
+      })
+
+    const first = discover()
+    await vi.advanceTimersByTimeAsync(SOURCE_CONTROL_GENERATION_TIMEOUT_MS)
+    await expect(first).resolves.toMatchObject({
+      success: false,
+      error: expect.stringMatching(/timed out/)
+    })
+    expect(agents[0]!.kill.mock.calls).toEqual([['SIGTERM']])
+
+    const second = discover()
+    await vi.advanceTimersByTimeAsync(stopMs - 1)
+    expect(spawnAgent).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(spawnAgent).toHaveBeenCalledTimes(2)
+
+    agents[1]!.stdout.emit(
+      'data',
+      Buffer.from(JSON.stringify({ models: [{ slug: 'gpt-5.5', display_name: 'GPT-5.5' }] }))
+    )
+    agents[1]!.emit('close', 0)
+    await expect(second).resolves.toMatchObject({ success: true })
     expect(agents[0]!.kill).not.toHaveBeenCalledWith('SIGKILL')
     expect(terminateTreeMock).not.toHaveBeenCalled()
   })

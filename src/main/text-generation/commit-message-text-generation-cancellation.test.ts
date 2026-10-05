@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import type * as ChildProcess from 'node:child_process'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   cancelGenerateCommitMessageLocal,
   cancelGeneratePullRequestFieldsLocal,
@@ -22,15 +22,6 @@ vi.mock('../windows-process-tree-kill', () => ({
   terminateWindowsProcessTree: terminateWindowsProcessTreeMock
 }))
 
-// Generation over a direct agent child, the unsupervised shape Windows and WSL spawn. The POSIX
-// supervised stop composed with timeout, cancel, output limit and the Codex home lock is covered
-// in source-control-local-process.test.ts.
-vi.mock('../codex/codex-app-server-posix-supervisor', async (importOriginal) =>
-  (await import('./commit-message-text-generation-test-harness')).directAgentChildSupervisorModule(
-    importOriginal
-  )
-)
-
 vi.mock('child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof ChildProcess>()
   return {
@@ -43,13 +34,26 @@ const spawnMock = vi.mocked(spawn)
 
 const expectChildTerminated = createChildTerminationExpectation(terminateWindowsProcessTreeMock)
 
+// These suites drive fake children down the Windows direct-child path, taskkill included. The POSIX
+// supervised stop under timeout, cancel, output limit and the Codex home lock, for generation and
+// discovery, is in source-control-local-process.test.ts.
+const hostPlatform = process.platform
+
+afterEach(() => {
+  Object.defineProperty(process, 'platform', { configurable: true, value: hostPlatform })
+  vi.unstubAllEnvs()
+})
+
 beforeEach(() => {
+  Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+  // Windows resolves a bare agent name on PATH; the host's own installs must not answer it.
+  vi.stubEnv('PATH', '')
   terminateWindowsProcessTreeMock.mockClear()
   terminateWindowsProcessTreeMock.mockResolvedValue(undefined)
   spawnMock.mockClear()
 })
 
-describe('generateCommitMessageFromContext over a direct agent child', () => {
+describe('generateCommitMessageFromContext on the Windows direct-child path', () => {
   it('fails clearly before spawning when a jcode argv prompt exceeds the Windows command line', async () => {
     await withPlatform('win32', async () => {
       const pending = generateCommitMessageFromContext(
