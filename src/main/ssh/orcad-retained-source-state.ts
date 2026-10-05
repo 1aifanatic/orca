@@ -1,7 +1,8 @@
 /**
  * The substantive state a converted host's retained source still holds, fingerprinted so a later
  * start can tell whether an older build changed it: unsaved editor drafts, the user-authored names
- * and settings of its catalog rows, and the workspace names and comments a move carries.
+ * and settings of its catalog rows, the workspace names and comments a move carries, and its
+ * automations (name, prompt, schedule, enabled, target workspace).
  *
  * The fields are listed here rather than hashed from the whole projection, so a field a later
  * build adds, or metadata this build resolves in the background, never reads as a user's change.
@@ -86,7 +87,23 @@ export function currentOrcadSourceStateFingerprint(
       meta.displayName,
       meta.comment
     ]),
-    drafts: drafts(dormantState)
+    drafts: drafts(dormantState),
+    automations: (dormantState.automations ?? []).map((automation) => [
+      automation.id,
+      automation.name,
+      automation.prompt,
+      automation.precheck,
+      automation.agentId,
+      automation.workspaceMode,
+      automation.workspaceId,
+      automation.baseBranch,
+      automation.timezone,
+      automation.rrule,
+      automation.dtstart,
+      automation.enabled,
+      automation.reuseSession,
+      automation.missedRunPolicy
+    ])
   }
   // Sorted: a build that only reorders rows or partitions has changed nothing a user wrote.
   const ordered = Object.fromEntries(

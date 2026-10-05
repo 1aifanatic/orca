@@ -563,6 +563,41 @@ describe('a draft an older build edited in a retained source', () => {
     expect(savedDraft(worktreeId)).toBe('draft after downgrade')
   })
 
+  it('marks the host changed when an older build edits an automation it keeps', async () => {
+    const automation = store.createAutomation({
+      name: 'Nightly',
+      prompt: 'Run checks',
+      agentId: 'claude',
+      projectId: 'repo-1',
+      workspaceMode: 'new_per_run',
+      baseBranch: null,
+      timezone: 'UTC',
+      rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0',
+      dtstart: new Date('2026-10-01T00:00:00Z').getTime(),
+      // Only a paused automation moves: a running scheduler cannot hand over mid-flight.
+      enabled: false
+    })
+    await convertKeepingSource()
+
+    store.updateAutomation(
+      automation.id,
+      { prompt: 'Run checks, then open a PR' },
+      {
+        expectedOwner: {
+          selector: {
+            kind: 'ssh',
+            targetId: TARGET.id,
+            targetGeneration: store.getSshTarget(TARGET.id)!.generation!
+          }
+        }
+      }
+    )
+    reconcileManagedOrcadSshTargets(userDataPath, store, now)
+
+    expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeDefined()
+    await expect(retireChain()).resolves.toBe('skipped')
+  })
+
   it('leaves an unchanged retained source hidden and retires it', async () => {
     saveDraft('repo-1::/srv/app', 'draft before migration')
     await convertKeepingSource()
