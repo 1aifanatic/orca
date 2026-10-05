@@ -23,11 +23,6 @@
 //   or the next `turn.open`. Its running tool calls are still the provider's: a close reported
 //   after the Stop lands as reported, and whatever is still running settles at the provider's
 //   `turn.end` for it (or the next `turn.open`, or `session.ended`).
-// - Saved history the provider replays goes only into an empty journal (an adopted session), as
-//   ordinary events with the provider's own ids, so re-running an interrupted adoption writes the
-//   same rows again. Limit, until the adoption work lifts it: a crash that cut the first run
-//   inside a turn leaves that turn as the restart's sweep settled it (`unverifiable`, its running
-//   tools `failed`), and the re-run writes nothing more into it.
 // - An event the sink refused changed nothing. Re-apply the same event to retry it (after
 //   `backpressure`); `failed` and `closed` are final.
 // - A provider item is (thread, id): the same id on another thread is another item. Text and
@@ -38,7 +33,6 @@ import type { AgentSessionContextUsage } from '../../../shared/agent-session-con
 import type {
   AgentJournalApprovalItem,
   AgentJournalItemBody,
-  AgentJournalMessageItem,
   AgentJournalProducerLinkage,
   AgentJournalQuestionItem,
   AgentJournalTurnOutcome
@@ -83,14 +77,6 @@ export type ProviderTimelineEvent =
       clientMessageId: string
       requestedAt: number
       join?: ProviderTimelineJoin
-    }
-  /** A user message from the provider's saved history (an adopted session has no Orca send): its
-   *  own row, keyed by `item`, and the message that opened `join.turn`. */
-  | {
-      type: 'input.history'
-      item: string
-      body: AgentJournalMessageItem
-      join: ProviderTimelineJoin & { turn: string }
     }
   /** A turn began. `turn` is the provider's turn id when it has one; the assembler mints one otherwise. */
   | { type: 'turn.open'; turn?: string; at: number }
