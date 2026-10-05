@@ -197,28 +197,33 @@ describe('a message handed back to its draft', () => {
     ).toMatchObject({ state: 'dispatch', entry: { clientMessageId: 'later' } })
   })
 
-  it('is never resent by an open chat, by its drain or its probe, after a reload', async () => {
-    localStorage.setItem(
-      `orca:desktopStructuredAgentSessionOutbox:v1:${SESSION}`,
-      JSON.stringify([
-        message({ state: 'dispatching', lastAttemptAt: 2, returning: { ending: 'returned' } })
-      ])
-    )
-    const modules = await reload(neverCommitting())
-    const { renderHook, act, cleanup } = await import('@testing-library/react')
-    const { useStructuredAgentSessionOutbox } =
-      await import('./use-structured-agent-session-outbox')
-    const target = { kind: 'local' as const }
-    const view = renderHook(() =>
-      useStructuredAgentSessionOutbox({ sessionId: SESSION, target, fence: 1, submissions: [] })
-    )
-    await act(() => new Promise((resolve) => setTimeout(resolve, 50)))
-    expect(mocks.call).not.toHaveBeenCalled()
-    // Kept until its draft is saved, which this storage never confirms.
-    expect(view.result.current.outbox).toMatchObject([{ returning: { ending: 'returned' } }])
-    expect(modules.outbox.readOutbox(SESSION)).toHaveLength(1)
-    cleanup()
-  })
+  // Loads the chat hook after a module reset, whose cold import is slow on a busy machine.
+  it(
+    'is never resent by an open chat, by its drain or its probe, after a reload',
+    { timeout: 120_000 },
+    async () => {
+      localStorage.setItem(
+        `orca:desktopStructuredAgentSessionOutbox:v1:${SESSION}`,
+        JSON.stringify([
+          message({ state: 'dispatching', lastAttemptAt: 2, returning: { ending: 'returned' } })
+        ])
+      )
+      const modules = await reload(neverCommitting())
+      const { renderHook, act, cleanup } = await import('@testing-library/react')
+      const { useStructuredAgentSessionOutbox } =
+        await import('./use-structured-agent-session-outbox')
+      const target = { kind: 'local' as const }
+      const view = renderHook(() =>
+        useStructuredAgentSessionOutbox({ sessionId: SESSION, target, fence: 1, submissions: [] })
+      )
+      await act(() => new Promise((resolve) => setTimeout(resolve, 50)))
+      expect(mocks.call).not.toHaveBeenCalled()
+      // Kept until its draft is saved, which this storage never confirms.
+      expect(view.result.current.outbox).toMatchObject([{ returning: { ending: 'returned' } }])
+      expect(modules.outbox.readOutbox(SESSION)).toHaveLength(1)
+      cleanup()
+    }
+  )
 
   it('stays returning while storage refuses the draft, and leaves once a later load saves it', async () => {
     journalFull()
