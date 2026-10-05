@@ -236,7 +236,8 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
 
         {/* Two controls: one deletes the offer, one acts on it. Closing snoozes, so it needs none. */}
         <DialogFooter className="sm:items-center">
-          <label className="flex min-w-0 items-start gap-2.5 sm:mr-auto">
+          {/* Why order-last: the narrow footer stacks bottom-up, so this keeps the option above the actions. */}
+          <label className="order-last flex min-w-0 items-start gap-2.5 sm:order-none sm:mr-auto">
             <Checkbox
               checked={dontAskAgain}
               disabled={busy}
