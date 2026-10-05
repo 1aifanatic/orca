@@ -5,6 +5,7 @@ export type ActivePrompt = {
   response: Promise<PromptResponse>
   cancelling: boolean
   cancelPromise?: Promise<void>
+  steerCancel?: Promise<void>
 }
 
 /** How a cancel reaches the agent: the `session/cancel` write and the connection it rides on. */
@@ -68,19 +69,26 @@ async function confirmAcpPromptCancel(
 
 /** A steer's cancel: asks the agent once to end Orca's running prompt so the steer can follow it,
  *  and resolves when the notification is written. Never bounded and never closes: the prompt's own
- *  reply ends it, and a later Stop still bounds. With no prompt of Orca's there is nothing to end. */
+ *  reply ends it, however long that takes, and a later Stop still bounds. A prompt that fails
+ *  instead leaves a session the steer must not be sent into until the caller rebuilds it. With no
+ *  prompt of Orca's there is nothing to end; a Stop already cancelling it owns that cancel. */
 export function requestAcpSteerCancel(
   active: ActivePrompt | undefined,
   channel: Pick<AcpCancelChannel, 'send' | 'cancelIncomingRequests'>
 ): Promise<void> {
-  if (!active || active.cancelling) {
+  if (!active) {
     return Promise.resolve()
+  }
+  if (active.steerCancel || active.cancelling) {
+    return active.steerCancel ?? Promise.resolve()
   }
   active.cancelling = true
   channel.cancelIncomingRequests()
-  return channel.send().catch((error: unknown) => {
+  active.steerCancel = channel.send().catch((error: unknown) => {
     // Only a cancel that reached the agent counts; a failed write may be asked again.
     active.cancelling = false
+    active.steerCancel = undefined
     throw error
   })
+  return active.steerCancel
 }

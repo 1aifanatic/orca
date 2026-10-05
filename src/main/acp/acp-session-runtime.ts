@@ -178,7 +178,8 @@ export class AcpSessionRuntime {
     return active.response
   }
 
-  /** A Stop's cancel (`cancelAcpPromptForStop`): bounded, and past the bound it closes. */
+  /** A Stop's cancel (`cancelAcpPromptForStop`): bounded, and past the bound it closes. A prompt
+   *  that settles in time leaves the agent running; the Stop's owner ends its process. */
   cancel(options: { meta?: CancelNotification['_meta'] } = {}): Promise<void> {
     const channel = this.cancelChannel(options.meta)
     return channel

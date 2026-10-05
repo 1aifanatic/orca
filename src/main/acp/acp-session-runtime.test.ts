@@ -428,22 +428,38 @@ describe('ACP session runtime', () => {
 
     it("asks once, never times out or closes, and the prompt's own reply ends it", async () => {
       vi.useFakeTimers()
-      const { runtime, agent } = fixture({}, { cancelTimeoutMs: 100 })
+      const signals: AbortSignal[] = []
+      const { runtime, agent } = fixture(
+        {},
+        {
+          cancelTimeoutMs: 100,
+          // Would allow every request it is asked; a steer's cancel keeps late ones from it.
+          onPermission: (_request, context) => {
+            signals.push(context.signal)
+            return new Promise<RequestPermissionResponse>(() => {})
+          }
+        }
+      )
       const promptFrame = deferred<Parameters<AcpScriptedAgent['reply']>[0]>()
       agent.on('session/prompt', (frame) => promptFrame.resolve(frame))
       await runtime.start(startOptions)
       const prompt = runtime.prompt([...textPrompt])
       const frame = await promptFrame.promise
+      const open = agent.request('open', 'session/request_permission', permission)
+      await vi.waitFor(() => expect(signals).toHaveLength(1))
 
-      await runtime.requestSteerCancel()
-      await runtime.requestSteerCancel()
+      const steer = runtime.requestSteerCancel()
+      expect(runtime.requestSteerCancel()).toBe(steer)
+      await steer
       await vi.advanceTimersByTimeAsync(1_000)
 
       expect(cancels(agent)).toHaveLength(1)
-      // The agent's late permission is answered cancelled while its prompt winds down.
+      expect(signals[0]?.aborted).toBe(true)
+      expect(await open).toMatchObject({ result: { outcome: { outcome: 'cancelled' } } })
       expect(await agent.request('late', 'session/request_permission', permission)).toMatchObject({
         result: { outcome: { outcome: 'cancelled' } }
       })
+      expect(signals).toHaveLength(1)
       agent.reply(frame, { stopReason: 'cancelled' })
       expect(await prompt).toEqual({ stopReason: 'cancelled' })
       // The connection is still open, so the steer's own prompt follows.
