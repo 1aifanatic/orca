@@ -16,12 +16,16 @@ const enter = { key: 'Enter', keyCode: 13 }
 
 describe.each([Input, Textarea, ImeInput, ImeTextarea])('IME text field %s', (Field) => {
   it.each([
-    { key: 'Enter', keyCode: 13, isComposing: true },
-    { key: 'Enter', keyCode: 229 },
-    { key: 'Process', keyCode: 229 }
+    { marked: { key: 'Enter', keyCode: 13, isComposing: true }, release: enter },
+    { marked: { key: 'Enter', keyCode: 229 }, release: enter },
+    { marked: { key: 'Process', keyCode: 229 }, release: enter },
+    {
+      marked: { key: 'Process', keyCode: 229 },
+      release: { key: 'Process', keyCode: 229 }
+    }
   ])(
     'keeps a marked confirmation and its redispatch out of field and parent actions: %j',
-    (marked) => {
+    ({ marked, release }) => {
       const action = vi.fn()
       const parentAction = vi.fn()
       const { getByRole } = render(
@@ -31,7 +35,7 @@ describe.each([Input, Textarea, ImeInput, ImeTextarea])('IME text field %s', (Fi
       )
       const field = getByRole('textbox')
       expect(fireEvent.keyDown(field, marked)).toBe(true)
-      fireEvent.keyUp(field, enter)
+      fireEvent.keyUp(field, release)
       expect(fireEvent.keyDown(field, enter)).toBe(false)
       expect(action).not.toHaveBeenCalled()
       expect(parentAction).not.toHaveBeenCalled()

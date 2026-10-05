@@ -108,6 +108,8 @@ fields with keyboard actions use `ImeInput` / `ImeTextarea` from
 `lib/ime-text-field.tsx`; those preserve the DOM element, styles, refs, and
 composition callbacks. They share `useImeEnterGestureOwnership` and keep
 IME-owned keys out of both field actions and bubbling form/menu shortcuts.
+Overlay primitives also reject IME-marked Escape in document capture, where
+field-level propagation guards cannot intercept dismissal.
 Do not add a second tracker at a call site already using a guarded field.
 Native Chat and the File Explorer inline name field retain their existing
 trackers because they also own specialized composition or element lifetimes.
@@ -116,7 +118,8 @@ Required cases:
 
 - `isComposing`, `keyCode: 229` without `isComposing`, and `Process/229` must
   never submit, choose a suggestion, or dismiss the field.
-- The unmarked Enter redispatch stays owned on either side of keyup. A
+- The unmarked Enter redispatch stays owned on either side of keyup, including
+  a `Process/229` release. A
   subsequent ordinary typing/navigation key ends that carry immediately;
   hidden renderers may defer animation frames, and typing a filename suffix
   must not cause the next deliberate Enter to disappear.
@@ -129,7 +132,10 @@ Required cases:
 command selection. File Explorer component tests cover all three operations
 and input replacement. `file-explorer-ime-enter.spec.ts` drives Chromium
 composition in New File, New Folder, and Rename in a folder workspace, then
-checks the complete name in the Explorer and on disk. These are CDP event
+checks the complete name in the Explorer and on disk, with both continued typing
+and a redispatch followed by deliberate Enter. Overlay tests cover IME Escape
+and ordinary dismissal; Markdown tests preserve an unmarked save shortcut while
+composition state lingers. These are CDP event
 contracts, not native OS keyboard evidence.
 
 The audit also covers settings and title fields, issue/review creation and

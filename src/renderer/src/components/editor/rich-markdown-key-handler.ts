@@ -82,6 +82,13 @@ export function createRichMarkdownKeyHandler(
   ctx: KeyHandlerContext
 ): (_view: unknown, event: KeyboardEvent) => boolean {
   return (_view, event) => {
+    if (isImeOwnedKeyboardEvent(event)) {
+      return false
+    }
+    // Save must flush pending text even while the editor's composition state lingers.
+    if (handleRichMarkdownSaveShortcut(ctx, event)) {
+      return true
+    }
     if (isComposingMarkdownInput(event, ctx.editorRef.current)) {
       return false
     }
@@ -105,9 +112,6 @@ export function createRichMarkdownKeyHandler(
     ) {
       event.preventDefault()
       ctx.openSearchRef.current()
-      return true
-    }
-    if (handleRichMarkdownSaveShortcut(ctx, event)) {
       return true
     }
     if (handleRichMarkdownAddReviewNoteShortcut(ctx, event)) {

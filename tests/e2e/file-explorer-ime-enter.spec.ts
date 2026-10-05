@@ -5,8 +5,12 @@ import { test, expect } from './helpers/orca-app'
 
 test.use({ seedTestRepo: false })
 
-for (const operation of ['New File', 'New Folder', 'Rename'] as const) {
-  test(`IME confirmation keeps File Explorer ${operation} open`, async ({
+const cases = (['New File', 'New Folder', 'Rename'] as const).flatMap((operation) =>
+  [false, true].map((redispatch) => ({ operation, redispatch }))
+)
+
+for (const { operation, redispatch } of cases) {
+  test(`IME confirmation keeps File Explorer ${operation} open (${redispatch ? 'redispatch' : 'continued typing'})`, async ({
     orcaPage: page,
     registerPostElectronShutdownCleanup
   }) => {
@@ -41,7 +45,7 @@ for (const operation of ['New File', 'New Folder', 'Rename'] as const) {
     })
     await cdp.send('Input.dispatchKeyEvent', {
       type: 'keyDown',
-      key: 'Enter',
+      key: redispatch ? 'Process' : 'Enter',
       code: 'Enter',
       windowsVirtualKeyCode: 229,
       nativeVirtualKeyCode: 229
@@ -49,17 +53,35 @@ for (const operation of ['New File', 'New Folder', 'Rename'] as const) {
     await cdp.send('Input.insertText', { text: '議事録' })
     await cdp.send('Input.dispatchKeyEvent', {
       type: 'keyUp',
-      key: 'Enter',
+      key: redispatch ? 'Process' : 'Enter',
       code: 'Enter',
-      windowsVirtualKeyCode: 13,
-      nativeVirtualKeyCode: 13
+      windowsVirtualKeyCode: redispatch ? 229 : 13,
+      nativeVirtualKeyCode: redispatch ? 229 : 13
     })
+    if (redispatch) {
+      await cdp.send('Input.dispatchKeyEvent', {
+        type: 'keyDown',
+        key: 'Enter',
+        code: 'Enter',
+        windowsVirtualKeyCode: 13,
+        nativeVirtualKeyCode: 13
+      })
+      await cdp.send('Input.dispatchKeyEvent', {
+        type: 'keyUp',
+        key: 'Enter',
+        code: 'Enter',
+        windowsVirtualKeyCode: 13,
+        nativeVirtualKeyCode: 13
+      })
+    }
     await expect(input).toBeVisible()
     await expect(input).toHaveValue('議事録')
     await expect(explorer.getByRole('button', { name: '議事録', exact: true })).toHaveCount(0)
-    await input.press('End')
-    const suffix = operation === 'New Folder' ? '-完成' : '.md'
-    await input.pressSequentially(suffix)
+    const suffix = redispatch ? '' : operation === 'New Folder' ? '-完成' : '.md'
+    if (suffix) {
+      await input.press('End')
+      await input.pressSequentially(suffix)
+    }
     await input.press('Enter')
     await expect(input).toHaveCount(0)
     await expect(

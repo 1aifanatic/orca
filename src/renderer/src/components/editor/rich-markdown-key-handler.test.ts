@@ -147,6 +147,40 @@ function emptyTopLevelOrderedList(): JSONContent {
 }
 
 describe('rich markdown key handler', () => {
+  it('flushes and saves an unmarked save shortcut while the editor is composing', () => {
+    const editor = createEditor(emptyTopLevelOrderedList())
+    try {
+      Object.defineProperty(editor.view, 'composing', { value: true, configurable: true })
+      const ctx = createContext(editor, false)
+      const event = keyEvent('s', { metaKey: true, code: 'KeyS' })
+
+      expect(createRichMarkdownKeyHandler(ctx)(null, event)).toBe(true)
+      expect(event.preventDefault).toHaveBeenCalledOnce()
+      expect(ctx.flushPendingSerialization).toHaveBeenCalledOnce()
+      expect(ctx.onSaveRef.current).toHaveBeenCalledOnce()
+    } finally {
+      editor.destroy()
+    }
+  })
+
+  it.each([{ isComposing: true }, { keyCode: 229 }])(
+    'does not save when the shortcut event belongs to the IME: %j',
+    (marker) => {
+      const editor = createEditor(emptyTopLevelOrderedList())
+      try {
+        const ctx = createContext(editor, false)
+        const event = keyEvent('s', { metaKey: true, code: 'KeyS', ...marker })
+
+        expect(createRichMarkdownKeyHandler(ctx)(null, event)).toBe(false)
+        expect(event.preventDefault).not.toHaveBeenCalled()
+        expect(ctx.flushPendingSerialization).not.toHaveBeenCalled()
+        expect(ctx.onSaveRef.current).not.toHaveBeenCalled()
+      } finally {
+        editor.destroy()
+      }
+    }
+  )
+
   it('opens the review-note composer on the add-review-note shortcut', () => {
     const editor = createEditor(emptyTopLevelOrderedList())
 

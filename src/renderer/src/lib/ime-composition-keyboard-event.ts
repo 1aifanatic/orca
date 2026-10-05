@@ -91,18 +91,8 @@ export function useImeEnterGestureOwnership(): {
         }
         return false
       },
-      onKeyUp: (event: ImeEnterGestureEvent): void => {
-        // A Process/229 keyup means the IME finished without redispatching, so the
-        // gesture is over immediately.
-        if (event.key === 'Process' && event.keyCode === 229) {
-          stateRef.current.pendingEnter = null
-          return
-        }
-        // Every other keyup expires on the NEXT FRAME, never synchronously. Enter/13
-        // because macOS delivers keyup before the unmarked redispatch; anything else
-        // because IMEs reporting Process/229 on every key (Pinyin candidate selection)
-        // release a non-Enter key, and a Process-only clear left the carry armed and ate
-        // the user's next real Enter.
+      onKeyUp: (): void => {
+        // Any keyup can precede the redispatch, including an IME-owned Process/229 release.
         const pendingEnter = stateRef.current.pendingEnter
         if (pendingEnter) {
           requestAnimationFrame(() => {
