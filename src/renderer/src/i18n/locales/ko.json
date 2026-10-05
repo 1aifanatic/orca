@@ -70,8 +70,7 @@
         "wide": "넓게",
         "full": "전체",
         "pixels": "px",
-        "reset": "초기화",
-        "summary": "{{fontSize}}px · {{width}} 너비"
+        "reset": "초기화"
       }
     },
     "browser": {

@@ -70,8 +70,7 @@
         "wide": "Amplio",
         "full": "Completo",
         "pixels": "px",
-        "reset": "Restablecer",
-        "summary": "{{fontSize}}px · Ancho {{width}}"
+        "reset": "Restablecer"
       }
     },
     "browser": {

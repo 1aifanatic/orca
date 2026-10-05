@@ -233,8 +233,7 @@
         "wide": "Wide",
         "full": "Full",
         "pixels": "px",
-        "reset": "Reset",
-        "summary": "{{fontSize}}px · {{width}} width"
+        "reset": "Reset"
       }
     },
     "browser": {

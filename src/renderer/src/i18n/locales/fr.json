@@ -169,8 +169,7 @@
         "wide": "Large",
         "full": "Pleine",
         "pixels": "px",
-        "reset": "Réinitialiser",
-        "summary": "{{fontSize}}px · Largeur {{width}}"
+        "reset": "Réinitialiser"
       }
     },
     "browser": {

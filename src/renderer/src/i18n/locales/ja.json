@@ -70,8 +70,7 @@
         "wide": "広い",
         "full": "全幅",
         "pixels": "px",
-        "reset": "リセット",
-        "summary": "{{fontSize}}px · 幅: {{width}}"
+        "reset": "リセット"
       }
     },
     "browser": {

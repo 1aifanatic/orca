@@ -70,8 +70,7 @@
         "wide": "宽",
         "full": "全宽",
         "pixels": "px",
-        "reset": "重置",
-        "summary": "{{fontSize}}px · {{width}}宽度"
+        "reset": "重置"
       }
     },
     "browser": {
