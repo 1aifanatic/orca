@@ -254,8 +254,6 @@ export class StructuredAgentSessionHost {
   flushStreamedEvents = (sessionId: string): Promise<void> =>
     this.runtimeState.flushEventSink(sessionId)
 
-  /** Quit: no exit or recovery settled after this starts a child or hands a message over. */
-  stopDelivery = (): void => this.conversationDelivery.dispose()
   // Trigger inlined rather than imported: `AgentSessionResumeTrigger` in shared is the canonical
   // type, and this file has no line budget left for the import.
   /** Quit: no exit or recovery settled after this starts a child or hands a message over. */
