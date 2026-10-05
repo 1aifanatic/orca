@@ -1,5 +1,9 @@
 import { create } from 'zustand'
 import { afterEach, expect, it, vi } from 'vitest'
+import {
+  MIN_COMPATIBLE_RUNTIME_CLIENT_VERSION,
+  RUNTIME_PROTOCOL_VERSION
+} from '../../../../shared/protocol-version'
 import type { RuntimeRpcResponse } from '../../../../shared/runtime-rpc-envelope'
 import type { AppState } from '../types'
 import {
@@ -26,6 +30,11 @@ it('reads the paired web client Jira status from the runtime instead of the fall
     connected: true,
     viewer: { displayName: 'Ada', email: 'ada@example.com', accountId: 'acc-1' }
   }
+  const serverStatus = {
+    runtimeId: 'runtime-1',
+    runtimeProtocolVersion: RUNTIME_PROTOCOL_VERSION,
+    minCompatibleRuntimeClientVersion: MIN_COMPATIBLE_RUNTIME_CLIENT_VERSION
+  }
   const methods: string[] = []
   vi.doMock('@/web/web-runtime-client', () => ({
     WebRuntimeClient: class {
@@ -34,7 +43,7 @@ it('reads the paired web client Jira status from the runtime instead of the fall
         return Promise.resolve({
           id: 'status-1',
           ok: true,
-          result: method === 'jira.status' ? status : null,
+          result: method === 'status.get' ? serverStatus : method === 'jira.status' ? status : null,
           _meta: { runtimeId: 'runtime-1' }
         })
       }
@@ -50,7 +59,7 @@ it('reads the paired web client Jira status from the runtime instead of the fall
 
   await expect(store.getState().checkJiraConnection()).resolves.toBeUndefined()
 
-  expect(methods).toEqual(['jira.status'])
+  expect(methods).toEqual(['status.get', 'jira.status'])
   expect(store.getState().jiraStatus).toEqual(status)
   expect(store.getState().jiraStatusChecked).toBe(true)
   expect(store.getState().jiraStatusContextKey).toBe('local#0')
