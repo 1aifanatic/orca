@@ -83,19 +83,20 @@ export function MobileNativeChatOverlay({
     return null
   }
   // Non-blocking: only in the prompt slot when no blocking card holds it; the composer stays.
+  // One tree either way, so a blocking card coming or going never remounts the queued cards.
   const blockingCard =
     controller.nativeChatAsk ?? controller.nativeChatPermission ?? controller.nativeChatQuestion
-  const promptSlot = blockingCard
-    ? queuedSlot
-    : {
-        ...queuedSlot,
-        cards: (
-          <>
-            {queuedSlot.cards}
-            <MobileNativeChatAsyncQuestions model={controller.nativeChatAsyncQuestions} />
-          </>
-        )
-      }
+  const promptSlot = {
+    ...queuedSlot,
+    cards: (
+      <>
+        {queuedSlot.cards}
+        {blockingCard ? null : (
+          <MobileNativeChatAsyncQuestions model={controller.nativeChatAsyncQuestions} />
+        )}
+      </>
+    )
+  }
   return (
     <View style={styles.overlay}>
       <MobileNativeChatView
