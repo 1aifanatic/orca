@@ -70,3 +70,34 @@ it('a suspended autosave does not flush a pending cell or write the file', async
     queue.dispose()
   }
 })
+
+it('keeps a newer pending cell dirty when an earlier remote save completes', async () => {
+  const { disk, store, file, queue } = setup()
+  let releaseWrite: () => void = () => {
+    throw new Error('write not started')
+  }
+  disk.fs.writeFile.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        releaseWrite = resolve
+      })
+  )
+  let pending = false
+  const unregister = registerPendingEditorFlush(
+    file.id,
+    () => {},
+    () => pending
+  )
+  try {
+    const saving = queue.queueSave(file, 'fallback')
+    await vi.waitFor(() => expect(disk.fs.writeFile).toHaveBeenCalledTimes(1))
+    pending = true
+    releaseWrite()
+    await saving
+    expect(store.getState().openFiles[0]?.isDirty).toBe(true)
+    expect(store.getState().editorDrafts[file.id]).toBe('header\nprevious')
+  } finally {
+    unregister()
+    queue.dispose()
+  }
+})

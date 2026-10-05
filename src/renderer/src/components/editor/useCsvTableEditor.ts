@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { csvGridKeyDown } from './csv-grid-keyboard'
-import type { CsvGridInteraction } from './csv-grid-interaction'
+import type { CsvCellEditSession, CsvGridInteraction } from './csv-grid-interaction'
 import {
   csvSelectionBounds,
   moveCsvSelection,
@@ -14,13 +14,7 @@ import {
   type CsvTextDocument,
   type CsvTableMutation
 } from './csv-text-document'
-import { registerPendingEditorFlush } from './editor-pending-flush'
-
-type CellEdit = NonNullable<CsvGridInteraction['editing']> & {
-  sourceRow: number
-  source: string
-  wasDirty: boolean
-}
+import { useCsvPendingCell } from './useCsvPendingCell'
 
 export function useCsvTableEditor({
   document,
@@ -43,9 +37,9 @@ export function useCsvTableEditor({
 }) {
   const ownerId = useId()
   const [selected, setSelected] = useState<CsvCellSelection | null>(null)
-  const [editing, setEditing] = useState<CellEdit | null>(null)
-  const editingRef = useRef<CellEdit | null>(null)
-  const setCellEditing = (next: CellEdit | null): void => {
+  const [editing, setEditing] = useState<CsvCellEditSession | null>(null)
+  const editingRef = useRef<CsvCellEditSession | null>(null)
+  const setCellEditing = (next: CsvCellEditSession | null): void => {
     editingRef.current = next
     setEditing(next)
   }
@@ -121,41 +115,14 @@ export function useCsvTableEditor({
     }
     return applied
   }
-  const flushRef = useRef({ commit, document, onContentChange })
-  useLayoutEffect(() => {
-    flushRef.current = { commit, document, onContentChange }
+  const setRootRef = useCsvPendingCell({
+    fileId,
+    commit,
+    document,
+    onContentChange,
+    editingRef,
+    onSessionChange: setCellEditing
   })
-  useEffect(() => {
-    if (!fileId) {
-      return
-    }
-    return registerPendingEditorFlush(fileId, () => {
-      if (!flushRef.current.commit()) {
-        throw new Error('Resolve the pending CSV cell edit before saving.')
-      }
-    })
-  }, [fileId])
-  const setRootRef = useCallback((node: HTMLDivElement | null): void => {
-    if (node) {
-      return
-    }
-    const draft = editingRef.current
-    const latest = flushRef.current
-    if (!draft || !latest.document || draft.source !== latest.document.source) {
-      return
-    }
-    latest.onContentChange?.(
-      mutateCsvTextDocument(
-        latest.document,
-        {
-          kind: 'cells',
-          edits: [{ row: draft.sourceRow, column: draft.position.column, value: draft.value }]
-        },
-        true
-      )
-    )
-    editingRef.current = null
-  }, [])
   const select = (row: number, column: number, extend: boolean): boolean => {
     if (!commit()) {
       return false

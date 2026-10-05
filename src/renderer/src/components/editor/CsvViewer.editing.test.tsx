@@ -3,8 +3,9 @@ import { useState } from 'react'
 import { cleanup, fireEvent, render, screen, act } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import CsvViewer from './CsvViewer'
-import { flushPendingEditorChange } from './editor-pending-flush'
+import { flushPendingEditorChange, hasPendingEditorChange } from './editor-pending-flush'
 import { APP_MENU_PASTE_EVENT } from '@/lib/app-menu-paste'
+import { ORCA_EDITOR_FILE_SAVED_EVENT } from './editor-autosave'
 
 vi.mock('@tanstack/react-virtual', () => ({
   useVirtualizer: ({
@@ -154,6 +155,25 @@ describe('editable CSV table', () => {
     expect(screen.getByRole('combobox', { name: 'Delimiter' }).textContent).toBe('Semicolon (;)')
   })
 
+  it('cancels only the new cell after an earlier save completes', () => {
+    setup()
+    fireEvent.keyDown(edit('B', 'saved base'), { key: 'Enter' })
+    const source = screen.getByTestId('source').textContent
+    const input = edit('A', 'new pending cell')
+    expect(hasPendingEditorChange('csv-edit-test')).toBe(true)
+    act(() =>
+      window.dispatchEvent(
+        new CustomEvent(ORCA_EDITOR_FILE_SAVED_EVENT, {
+          detail: { fileId: 'csv-edit-test', content: source }
+        })
+      )
+    )
+    fireEvent.keyDown(input, { key: 'Escape' })
+    expect(hasPendingEditorChange('csv-edit-test')).toBe(false)
+    expect(screen.getByTestId('dirty').textContent).toBe('false')
+    expect(screen.getByTestId('source').textContent).toBe(source)
+  })
+
   it('keeps a rejected over-limit edit visible and recoverable on view detachment', () => {
     const { changes, unmount } = setup()
     const value = 'x'.repeat(1024 * 1024 + 1)
@@ -220,5 +240,34 @@ describe('editable CSV table', () => {
     expect(read).toHaveBeenCalledTimes(1)
     expect(first).not.toHaveBeenCalled()
     expect(second).toHaveBeenCalledWith('header\npasted')
+  })
+
+  it('flushes an edited pane even when another pane of the same file registered later', () => {
+    const first = vi.fn()
+    const second = vi.fn()
+    render(
+      <>
+        <CsvViewer
+          content={'header\nfirst'}
+          filePath="same.csv"
+          fileId="same-file"
+          onContentChange={first}
+        />
+        <CsvViewer
+          content={'header\nfirst'}
+          filePath="same.csv"
+          fileId="same-file"
+          onContentChange={second}
+        />
+      </>
+    )
+    fireEvent.doubleClick(screen.getAllByRole('gridcell', { name: 'first' })[0]!)
+    fireEvent.change(screen.getByRole('textbox', { name: /Edit row/ }), {
+      target: { value: 'pending first pane' }
+    })
+    expect(hasPendingEditorChange('same-file')).toBe(true)
+    act(() => flushPendingEditorChange('same-file'))
+    expect(first).toHaveBeenCalledWith('header\npending first pane')
+    expect(second).not.toHaveBeenCalled()
   })
 })

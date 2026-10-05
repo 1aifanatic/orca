@@ -1,6 +1,14 @@
 import type { ClipboardEvent, KeyboardEvent } from 'react'
 import type { CsvCellPosition, CsvCellSelection } from './csv-cell-selection'
 
+export type CsvCellEditSession = {
+  position: CsvCellPosition
+  value: string
+  sourceRow: number
+  source: string
+  wasDirty: boolean
+}
+
 export type CsvGridInteraction = {
   selection: CsvCellSelection | null
   focusVersion: number
