@@ -20,13 +20,14 @@ export function requiresTerminalSettlement(body: AgentJournalItemBody): boolean 
 
 /** The row that settles an item no one will finish: a running tool call ends as `end` (how its
  *  turn or session ended) says, a pending prompt is cancelled. Null for an item that needs none.
+ *  A null `end` ends no call: another writer settled the turn, and its calls stay the provider's.
  *  Turn rows are each writer's own to end. */
 export function terminalAgentJournalBody(
   body: AgentJournalItemBody,
-  end: AgentJournalRunningCallEnd
+  end: AgentJournalRunningCallEnd | null
 ): AgentJournalItemBody | null {
   if (body.kind === 'tool-call') {
-    return body.state === 'running' ? endedRunningAgentJournalToolCall(body, end) : null
+    return body.state === 'running' && end ? endedRunningAgentJournalToolCall(body, end) : null
   }
   if (body.kind === 'approval' || body.kind === 'question') {
     return body.resolution.state === 'pending' ? cancelledJournalPromptBody(body) : null

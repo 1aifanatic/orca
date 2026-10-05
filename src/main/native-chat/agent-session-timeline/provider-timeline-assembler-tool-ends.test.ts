@@ -39,6 +39,25 @@ async function openTool(): Promise<ProviderTimelineRig> {
   return rig
 }
 
+/** As a person's Stop writes it, straight to the journal: the turn interrupted, as their cancellation. */
+async function personStops(rig: ProviderTimelineRig): Promise<void> {
+  const running = await rig.turn('turn-1')
+  const identity = parseAgentJournalItemKey(providerTurnItemId('turn-1'))
+  if (!running || !identity) {
+    throw new Error('the turn row is written')
+  }
+  await rig.journal.appendItem(
+    identity,
+    agentJournalTurnBody({
+      ...running,
+      state: 'interrupted',
+      outcome: 'cancellation',
+      completedAt: 2_000
+    }),
+    { fence: 1, turnScope: { kind: 'thread' } }
+  )
+}
+
 describe('provider timeline: how a call its turn or session ended reads', () => {
   it('reads interrupted when a stop interrupts its turn, keeping failed for older builds', async () => {
     const rig = await openTool()
@@ -67,26 +86,33 @@ describe('provider timeline: how a call its turn or session ended reads', () => 
     expect(await lifecycle(rig)).toBe('interrupted')
   })
 
-  it('reads interrupted when a person stops its turn on the journal, with no word to the assembler', async () => {
-    const rig = await openTool()
-    const running = await rig.turn('turn-1')
-    const identity = parseAgentJournalItemKey(providerTurnItemId('turn-1'))
-    if (!running || !identity) {
-      throw new Error('the turn row is written')
+  it.each(['interrupted', 'completed'] as const)(
+    "reads interrupted when a person stopped its turn, whatever the provider's later end (%s) says",
+    async (providerEnd) => {
+      const rig = await openTool()
+      await personStops(rig)
+      // The Stop leaves the call the provider's to finish.
+      rig.assembler.apply({ type: 'activity', text: 'Thinking' })
+      expect(await toolBody(rig)).toMatchObject({ state: 'running' })
+      rig.assembler.apply({ type: 'turn.end', turn: 'turn-1', at: 2_100, state: providerEnd })
+      expect(await toolBody(rig)).toMatchObject({ state: 'failed', endedAs: 'interrupted' })
+      expect(await rig.turn('turn-1')).toMatchObject({ state: 'interrupted', completedAt: 2_000 })
     }
-    // As a person's Stop writes it: the turn interrupted, as their cancellation.
-    await rig.journal.appendItem(
-      identity,
-      agentJournalTurnBody({
-        ...running,
-        state: 'interrupted',
-        outcome: 'cancellation',
-        completedAt: 2_000
-      }),
-      { fence: 1, turnScope: { kind: 'thread' } }
-    )
-    rig.assembler.apply({ type: 'activity', text: 'Thinking' })
-    expect(await toolBody(rig)).toMatchObject({ state: 'failed', endedAs: 'interrupted' })
+  )
+
+  it('keeps a call the provider completed after a person stopped its turn completed', async () => {
+    const rig = await openTool()
+    rig.assembler.apply({ type: 'item.open', item: 'call-b', body: runningTool('read') })
+    await personStops(rig)
+    rig.assembler.apply({
+      type: 'item.close',
+      item: 'call-a',
+      body: { ...runningTool('shell'), state: 'completed' },
+      join: { turn: 'turn-1' }
+    })
+    rig.assembler.apply({ type: 'turn.end', turn: 'turn-1', at: 2_100, state: 'interrupted' })
+    expect(await lifecycle(rig, 'call-a')).toBe('completed')
+    expect(await lifecycle(rig, 'call-b')).toBe('interrupted')
   })
 
   it('leaves the call unverified when a restarted host settles it with no proof the child died', async () => {

@@ -12,7 +12,8 @@ import {
   AGENT_JOURNAL_THREAD_SCOPE,
   type AgentJournalItemBody,
   type AgentJournalItemIdentity,
-  type AgentJournalTurnLifecycle
+  type AgentJournalTurnLifecycle,
+  type AgentJournalTurnScope
 } from '../../../shared/agent-session-journal-types'
 import {
   agentJournalTurnBody,
@@ -62,11 +63,11 @@ export function endedProviderTimelineTurn(
   }
 }
 
-/** Which open rows a settlement covers: one turn's, or every row when the session ends. A turn
- *  another writer settled covers only its prompts: its tool calls are the provider's to finish. */
-export type ProviderTimelineSettlementScope = { turnItemId: string; promptsOnly?: true } | 'session'
+/** Which open rows a settlement covers: one turn's, or every row when the session ends. */
+export type ProviderTimelineSettlementScope = { turnItemId: string } | 'session'
 
-/** The turns a settlement ends, and how; absent when another writer already ended the turn. */
+/** The turns a settlement ends, and how; absent when another writer already ended the turn, which
+ *  settles only its prompts: its tool calls are the provider's to finish. */
 export type ProviderTimelineSettlementEnding = {
   turns: readonly { identity: AgentJournalItemIdentity; itemId: string }[]
   end: ProviderTimelineTurnEnd
@@ -79,14 +80,15 @@ export function providerTimelineSettlement(
   ending?: ProviderTimelineSettlementEnding
 ): JournalLifecycleMutationInput[] {
   const mutations: JournalLifecycleMutationInput[] = []
-  const end = ending?.end.state ?? settledTurnEnd(journal, scope)
   journal.visitItemsWithLinkage((itemId, _sequence, body, attribution) => {
     const turnScope = attribution.turnScope ?? AGENT_JOURNAL_THREAD_SCOPE
     const covered =
       scope === 'session' ||
-      (turnScope.kind === 'turn' &&
-        turnScope.turnItemId === scope.turnItemId &&
-        !(scope.promptsOnly && body.kind === 'tool-call'))
+      (turnScope.kind === 'turn' && turnScope.turnItemId === scope.turnItemId)
+    const end =
+      covered && ending && body.kind === 'tool-call' && body.state === 'running'
+        ? runningCallEnd(journal, turnScope, ending.end)
+        : null
     // Background tasks and subagents outlive turns; only the session's end leaves them past seeing.
     const settled = !covered
       ? null
@@ -107,17 +109,19 @@ export function providerTimelineSettlement(
   return mutations
 }
 
-/** A turn another writer settled (a person's Stop) ends its calls as its row says, as the same end
- *  from the provider would; a row that proves no end leaves them unverified, open to a later proof. */
-function settledTurnEnd(
+/** A call still running when its turn ends ends as that turn's row ends. A row another writer
+ *  settled first (a person's Stop) stands, so its calls take that row's state, not the provider's
+ *  later report; a row this settlement ends, and work outside any turn, take this settlement's end. */
+function runningCallEnd(
   journal: StructuredAgentSessionTransitionJournal,
-  scope: ProviderTimelineSettlementScope
+  turnScope: AgentJournalTurnScope,
+  end: ProviderTimelineTurnEnd
 ): AgentJournalRunningCallEnd {
-  const turn =
-    scope === 'session'
-      ? null
-      : readAgentJournalTurn(journal.itemBody(scope.turnItemId) ?? undefined)
-  return turn && turn.state !== 'running' ? turn.state : 'unverifiable'
+  const row =
+    turnScope.kind === 'turn'
+      ? readAgentJournalTurn(journal.itemBody(turnScope.turnItemId) ?? undefined)
+      : null
+  return row && row.state !== 'running' ? row.state : end.state
 }
 
 /** Every turn row the journal holds running, for the session's end. */
