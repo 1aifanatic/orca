@@ -211,13 +211,11 @@ export class AgentSessionRecoveryCapsule {
   ): Promise<number> {
     return withFileTransactionLock(this.filePath, async () => {
       const named = sessionIds === 'all' ? null : new Set(sessionIds)
-      const chosen = (marker: AgentSessionResumeMarker) =>
-        (named?.has(marker.sessionId) ?? true) && !keep(marker)
       const state = await this.readState()
       const { entries, failed } = normalizeState(state, now)
       const dismissed = new Set(
         [...entries, ...failed]
-          .filter((record) => chosen(record.marker))
+          .filter(({ marker }) => (named?.has(marker.sessionId) ?? true) && !keep(marker))
           .map((record) => record.marker.sessionId)
       )
       if (dismissed.size > 0) {

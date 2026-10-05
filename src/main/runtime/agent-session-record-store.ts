@@ -94,10 +94,12 @@ export class AgentSessionRecordStore {
     agents: AgentSessionStoredAgents
   }): AgentSessionRecordStore {
     const loaded = loadAgentSessionStoreRows(args.journalDatabase.db, args.hostId, args.agents)
-    return new AgentSessionRecordStore(
-      new AgentSessionStoreTransactions(args.journalDatabase, loaded, args.agents),
-      args.hostId
+    const transactions = new AgentSessionStoreTransactions(
+      args.journalDatabase,
+      loaded,
+      args.agents
     )
+    return new AgentSessionRecordStore(transactions, args.hostId)
   }
 
   private get state(): AgentSessionStoreState {
