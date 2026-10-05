@@ -5,6 +5,7 @@ import type { AgentJournalRenderItem } from '../../../../shared/agent-session-jo
 import type { QueuedMessageCard } from './structured-agent-session-queued-cards'
 import type { AgentSessionBackgroundTask } from '../../../../shared/agent-session-wire'
 import type { AgentSessionWriteRefusal } from '../../../../shared/agent-session-write-failure'
+import type { AgentSessionUnavailable } from '../../../../shared/agent-session-availability'
 import type { AgentSessionRefusalReference } from '../../../../shared/agent-session-wire-refusals'
 import type { NativeChatApprovalCardProps } from './NativeChatApprovalCard'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
@@ -113,6 +114,7 @@ export function createStructuredSessionMocks() {
     fileLinkClick: vi.fn<(...args: never[]) => unknown>(),
     launchLifecycle: nullable<StructuredAgentSessionLaunchLifecycle>(),
     launchFailure: nullable<AgentSessionWriteRefusal>(),
+    unavailable: nullable<AgentSessionUnavailable>(),
     launchResumes: false,
     retryLaunch: vi.fn<(worktreeId: string, sessionId: string) => unknown>(),
     controllerProps: nullable<{ transportEnabled?: boolean }>(),
@@ -187,6 +189,7 @@ export function createStructuredSessionMocks() {
           })
           return {
             journalItems: mocks.journalItems,
+            unavailable: mocks.unavailable,
             messages:
               mocks.messages ??
               (mocks.mode === 'outbox'
@@ -340,6 +343,7 @@ export function createStructuredSessionMocks() {
     mocks.call.mockReset()
     mocks.launchLifecycle = null
     mocks.launchFailure = null
+    mocks.unavailable = null
     mocks.launchResumes = false
     mocks.retryLaunch.mockReset()
     mocks.controllerProps = null

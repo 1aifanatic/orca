@@ -6,11 +6,13 @@ import { agentSessionRefusalCauseParts } from '../../../../shared/agent-session-
 import type { AgentSessionWriteRefusal } from '../../../../shared/agent-session-write-failure'
 import { joinSentences } from '../../../../shared/sentence-joining'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
+import { isNativeChatAvailabilityFailure } from './native-chat-start-failure-presentation'
 
 export function NativeChatLaunchRetry({
   lifecycle,
   failure = null,
   agentLabel,
+  hasUnsentMessage = false,
   onRetry
 }: {
   lifecycle: StructuredAgentSessionLaunchLifecycle | null
@@ -18,9 +20,25 @@ export function NativeChatLaunchRetry({
   agentLabel?: string
   /** The host's refusal behind the failed start; its message is never shown. */
   failure?: AgentSessionWriteRefusal | null
+  hasUnsentMessage?: boolean
   onRetry: () => void
 }): React.JSX.Element | null {
   if (lifecycle !== 'failed' && lifecycle !== 'visibility-unknown') {
+    return null
+  }
+  const parts =
+    lifecycle === 'failed' && failure
+      ? agentSessionRefusalCauseParts(failure, agentLabel ? { agentName: agentLabel } : {})
+      : []
+  if (
+    !hasUnsentMessage &&
+    parts.some(
+      (part) =>
+        typeof part !== 'string' &&
+        'failure' in part &&
+        isNativeChatAvailabilityFailure(part.failure)
+    )
+  ) {
     return null
   }
   const message =
@@ -33,12 +51,7 @@ export function NativeChatLaunchRetry({
           'auto.components.native.chat.NativeChatLaunchRetry.unknown',
           'Chat connection could not be confirmed.'
         )
-  const cause =
-    lifecycle === 'failed' && failure
-      ? agentSessionWriteNoticeText(
-          agentSessionRefusalCauseParts(failure, agentLabel ? { agentName: agentLabel } : {})
-        )
-      : ''
+  const cause = agentSessionWriteNoticeText(parts)
   return (
     <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-3 px-4 py-1 text-xs text-destructive">
       <span className="min-w-0 break-words">

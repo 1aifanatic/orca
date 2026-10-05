@@ -48,6 +48,7 @@ import { structuredAgentSessionRejectedShownInPlace } from '../../../../shared/s
 import { translate } from '@/i18n/i18n'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
+import { isNativeChatAvailabilityFailure } from './native-chat-start-failure-presentation'
 
 /** One shared value, so a rebuilt map re-renders no row still sending. */
 const STRUCTURED_AGENT_SESSION_DELIVERY_SENDING: NativeChatDeliveryNotice = { sending: true }
@@ -62,7 +63,7 @@ export function structuredAgentSessionStartFailureFacts(
   for (const item of items) {
     if (item.body.kind === 'status' && isStructuredAgentSessionStartFailureRow(item.itemId)) {
       const fact = readAgentSessionFailureFact(item.body.failure)
-      if (fact) {
+      if (fact && !isNativeChatAvailabilityFailure(fact)) {
         facts.push(fact)
       }
     }
