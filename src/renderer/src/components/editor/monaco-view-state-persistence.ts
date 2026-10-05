@@ -1,6 +1,11 @@
 import type { MutableRefObject } from 'react'
-import type { editor } from 'monaco-editor'
-import { editorSelectionCache, scrollTopCache, setWithLRU } from '@/lib/scroll-cache'
+import type { editor, ISelection } from 'monaco-editor'
+import {
+  editorSelectionCache,
+  editorViewStateCache,
+  scrollTopCache,
+  setWithLRU
+} from '@/lib/scroll-cache'
 
 type MonacoViewStateTrackingParams = {
   editorInstance: editor.IStandaloneCodeEditor
@@ -43,17 +48,19 @@ export function installMonacoViewStateTracking(params: MonacoViewStateTrackingPa
 export function restoreMonacoViewState(
   editorInstance: Pick<
     editor.IStandaloneCodeEditor,
-    'setSelections' | 'setScrollTop' | 'focus' | 'onDidDispose'
-  > & {
-    getLayoutInfo(): Pick<editor.EditorLayoutInfo, 'contentWidth' | 'height'>
-    onDidLayoutChange(listener: () => void): { dispose(): void }
-    onDidChangeModel(listener: () => void): { dispose(): void }
-  },
+    | 'setSelections'
+    | 'setScrollTop'
+    | 'focus'
+    | 'onDidDispose'
+    | 'onDidChangeModel'
+    | 'restoreViewState'
+  >,
   viewStateKey: string
 ): void {
   const savedSelections = editorSelectionCache.get(viewStateKey)
   const savedScrollTop = scrollTopCache.get(viewStateKey)
-  if (savedScrollTop !== undefined || savedSelections) {
+  const savedViewState = editorViewStateCache.get(viewStateKey)
+  if (savedViewState || savedScrollTop !== undefined || savedSelections) {
     let restoreFrame: number | null = null
     let active = true
     const cancelRestore = (): void => {
@@ -67,36 +74,28 @@ export function restoreMonacoViewState(
       }
       subscriptions.forEach((subscription) => subscription.dispose())
     }
-    const restore = (): void => {
+    const subscriptions = [
+      editorInstance.onDidDispose(cancelRestore),
+      editorInstance.onDidChangeModel(cancelRestore)
+    ]
+    restoreFrame = requestAnimationFrame(() => {
       restoreFrame = null
       if (!active) {
         return
       }
-      const layout = editorInstance.getLayoutInfo()
-      // Initial narrow layout wraps every character; its pixel scroll changes again on resize.
-      if (layout.contentWidth <= 0 || layout.height <= 0) {
-        return
-      }
       cancelRestore()
-      if (savedSelections) {
-        editorInstance.setSelections(savedSelections)
-      }
-      if (savedScrollTop !== undefined) {
-        editorInstance.setScrollTop(savedScrollTop)
+      if (savedViewState) {
+        editorInstance.restoreViewState(savedViewState)
+      } else {
+        if (savedSelections) {
+          editorInstance.setSelections(savedSelections)
+        }
+        if (savedScrollTop !== undefined) {
+          editorInstance.setScrollTop(savedScrollTop)
+        }
       }
       editorInstance.focus()
-    }
-    const scheduleRestore = (): void => {
-      if (active && restoreFrame === null) {
-        restoreFrame = requestAnimationFrame(restore)
-      }
-    }
-    const subscriptions = [
-      editorInstance.onDidDispose(cancelRestore),
-      editorInstance.onDidChangeModel(cancelRestore),
-      editorInstance.onDidLayoutChange(scheduleRestore)
-    ]
-    scheduleRestore()
+    })
   } else {
     editorInstance.focus()
   }
@@ -104,11 +103,20 @@ export function restoreMonacoViewState(
 
 // Why: takes the ref, not the instance — the caller runs this from an effect cleanup, where reading `.current` inline trips the ref-in-cleanup lint.
 export function snapshotMonacoViewState(
-  editorRef: MutableRefObject<editor.IStandaloneCodeEditor | null>,
+  editorRef: MutableRefObject<
+    | (Pick<editor.IStandaloneCodeEditor, 'getScrollTop' | 'saveViewState'> & {
+        getSelections(): readonly ISelection[] | null
+      })
+    | null
+  >,
   viewStateKey: string
 ): void {
   const ed = editorRef.current
   if (ed) {
+    const viewState = ed.saveViewState()
+    if (viewState) {
+      setWithLRU(editorViewStateCache, viewStateKey, viewState)
+    }
     setWithLRU(scrollTopCache, viewStateKey, ed.getScrollTop())
     const selections = ed.getSelections()
     if (selections) {

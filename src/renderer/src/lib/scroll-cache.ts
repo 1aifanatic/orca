@@ -42,6 +42,9 @@ export const richMarkdownSelectionCache = new Map<string, { from: number; to: nu
 // re-renders on every cursor or selection change.
 export const editorSelectionCache = new Map<string, readonly ISelection[]>()
 
+// Monaco's viewport anchor survives width changes while a tab remounts.
+export const editorViewStateCache = new Map<string, editor.ICodeEditorViewState>()
+
 // Why: PDFs store a pdf.js location in PDF user space, not a scrollTop — page
 // layout is rebuilt at a scale that depends on container width, so a pixel
 // offset restores to the wrong place at a different zoom or pane width.
