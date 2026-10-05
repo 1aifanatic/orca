@@ -44,6 +44,8 @@ function admitFastLaneSpan(nowMs: number): boolean {
 
 export type PtyBindingSpan = {
   setEligibility(verdict: { eligible: boolean; misses: readonly PtyBindingFastLaneMiss[] }): void
+  /** A binding that breaks a layout invariant; written anyway until B2 refuses it. */
+  setOwnerConflict(reason: string): void
   finish(outcome: PtyBindingSpanOutcome, error?: unknown): void
 }
 
@@ -77,6 +79,9 @@ export function startPtyBindingSpan(entry: {
     setEligibility(verdict) {
       span.setAttribute('binding.eligible', verdict.eligible)
       span.setAttribute('binding.misses', verdict.misses.join(','))
+    },
+    setOwnerConflict(reason) {
+      span.setAttribute('binding.owner_conflict', reason)
     },
     finish(outcome, error) {
       span.setAttribute('binding.outcome', outcome)

@@ -16,6 +16,7 @@ import { evaluatePtyBindingFastLane } from './pty-binding-fast-lane'
 import { ptyBindingIsRefused } from './pty-binding-refusals'
 import { startPtyBindingSpan, type PtyBindingOrigin, type PtyBindingSpan } from './pty-binding-span'
 import { applyPtyBinding } from './pty-binding-session-update'
+import { findTerminalBindingConflict } from '../terminal-topology/terminal-owner-invariants'
 
 type PtyBindingPersistenceOperationsRuntime = Pick<
   StoreRuntimeState,
@@ -149,8 +150,16 @@ export class PtyBindingPersistenceOperations {
         const session = sessions.getWorkspaceSession(resolvedHostId)
         const partitions = sessions
           .getWorkspaceSessionHostIds()
-          .map((hostId) => sessions.getWorkspaceSession(hostId))
-        if (ptyBindingIsRefused(args, session, bindingWorktreeId, paneKey, partitions)) {
+          .map((hostId) => ({ hostId, session: sessions.getWorkspaceSession(hostId) }))
+        if (
+          ptyBindingIsRefused(
+            args,
+            session,
+            bindingWorktreeId,
+            paneKey,
+            partitions.map((partition) => partition.session)
+          )
+        ) {
           outcome = 'refused'
           return { value: false, persist: false }
         }
@@ -164,6 +173,11 @@ export class PtyBindingPersistenceOperations {
         if (verdict.eligible) {
           outcome = 'fast_lane'
           return { value: true, persist: false }
+        }
+        // Report-only until B2 refuses (D16); after the fast lane so a no-op rebind skips the scan.
+        const conflict = findTerminalBindingConflict(args, partitions)
+        if (conflict) {
+          span.setOwnerConflict(conflict.reason)
         }
         return {
           value: true,
