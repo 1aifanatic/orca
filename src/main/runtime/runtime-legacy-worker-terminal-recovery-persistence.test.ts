@@ -147,22 +147,16 @@ describe('legacy worker recovery persistence snapshot budget', () => {
     const originals = new Map(
       hosts.map((host) => [host, structuredClone(fixture.getWorkspaceSession(host))])
     )
-    let rejectWrite = (_error: Error) => {}
-    const pendingWrite = new Promise<void>((_resolve, reject) => {
-      rejectWrite = reject
-    })
-    let writeStarted = () => {}
-    const started = new Promise<void>((resolve) => {
-      writeStarted = resolve
-    })
+    const pendingWrite = Promise.withResolvers<void>()
+    const writeStarted = Promise.withResolvers<void>()
     fixture.flushPendingOrThrowAsync.mockImplementationOnce(() => {
-      writeStarted()
-      return pendingWrite
+      writeStarted.resolve()
+      return pendingWrite.promise
     })
     vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     const result = fixture.persistence.persist(fixture.resolutions)
-    await started
+    await writeStarted.promise
     for (const host of hosts) {
       const current = fixture.getWorkspaceSession(host)
       expect(current.sleepingAgentSessionsByPaneKey).toEqual({})
@@ -170,7 +164,7 @@ describe('legacy worker recovery persistence snapshot budget', () => {
       current.activeWorktreeId = `new-selection-${host}`
       current.tabsByWorktree[`new-folder-${host}`] = []
     }
-    rejectWrite(new Error('Disk write failed'))
+    pendingWrite.reject(new Error('Disk write failed'))
 
     expect(await result).toEqual(new Set())
     for (const host of hosts) {
