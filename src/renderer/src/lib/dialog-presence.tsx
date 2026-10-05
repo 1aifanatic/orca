@@ -1,9 +1,13 @@
 import {
   createContext,
+  Suspense,
   useCallback,
   useContext,
+  useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
+  useState,
   useSyncExternalStore
 } from 'react'
 
@@ -86,6 +90,76 @@ export function useAutomaticPromptScope(): AutomaticPromptScopeValue | null {
   return useContext(AutomaticPromptScopeContext)
 }
 
+/**
+ * The content ref for a dialog inside an automatic prompt: when the dialog over it closes, focus
+ * returns to where it was in the prompt. Radix hands it back to the element that opened the closing
+ * dialog, which for one nothing opened (an SSH prompt) leaves it on the page body. Outside a prompt
+ * the forwarded ref passes through untouched.
+ */
+export function usePromptContentRef<T extends HTMLElement>(
+  forwardedRef: React.Ref<T> | undefined
+): React.Ref<T> | undefined {
+  const scope = useAutomaticPromptScope()
+  const steppedAside = scope?.steppedAside === true
+  const [node, setNode] = useState<T | null>(null)
+  const lastFocusedRef = useRef<HTMLElement | null>(null)
+  const wasSteppedAsideRef = useRef(false)
+
+  useEffect(() => {
+    if (!node) {
+      return
+    }
+    const remember = (target: EventTarget | null): void => {
+      if (target instanceof HTMLElement && node.contains(target)) {
+        lastFocusedRef.current = target
+      }
+    }
+    // Radix's open autofocus runs before this effect, so start from where it put focus.
+    remember(document.activeElement)
+    const track = (event: FocusEvent): void => remember(event.target)
+    node.addEventListener('focusin', track)
+    return () => node.removeEventListener('focusin', track)
+  }, [node])
+
+  useEffect(() => {
+    if (steppedAside) {
+      wasSteppedAsideRef.current = true
+      return
+    }
+    if (!wasSteppedAsideRef.current || !node) {
+      return
+    }
+    wasSteppedAsideRef.current = false
+    // After the closing dialog's own focus restore, which Radix runs on the next task.
+    const timer = setTimeout(() => {
+      const active = document.activeElement
+      if (active !== null && active !== document.body) {
+        return
+      }
+      const last = lastFocusedRef.current
+      ;(last && node.contains(last) ? last : node).focus()
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [node, steppedAside])
+
+  const promptRef = useCallback(
+    (element: T | null) => {
+      setRef(forwardedRef, element)
+      setNode(element)
+    },
+    [forwardedRef]
+  )
+  return scope !== null ? promptRef : forwardedRef
+}
+
+function setRef<T>(ref: React.Ref<T> | undefined, value: T | null): void {
+  if (typeof ref === 'function') {
+    ref(value)
+  } else if (ref) {
+    ref.current = value
+  }
+}
+
 /** Rendered inside the primitive's content, which mounts only while the dialog is open. */
 export function DialogPresenceMarker(): null {
   const ownedByAutomaticPrompt = useAutomaticPromptScope() !== null
@@ -103,4 +177,17 @@ export function DialogPresenceMarker(): null {
     }
   }, [ownedByAutomaticPrompt])
   return null
+}
+
+/**
+ * Wraps dialogs the user opens whose code loads on first use: while loading they already count as
+ * on screen, so an automatic prompt never shows in that gap only to step aside a moment later. A
+ * dialog that fails to load renders its error boundary's fallback instead, which counts as nothing.
+ */
+export function DialogLoadingSuspense({
+  children
+}: {
+  children: React.ReactNode
+}): React.JSX.Element {
+  return <Suspense fallback={<DialogPresenceMarker />}>{children}</Suspense>
 }

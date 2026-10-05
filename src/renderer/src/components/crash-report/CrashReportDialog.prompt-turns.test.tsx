@@ -206,3 +206,42 @@ it('Help > Report Crash over the launch report: closing it does not bring the sa
   expect(crashMounted()).toBe(false)
   expect(useAppStore.getState().automaticPromptRequests).toEqual([])
 })
+
+it('Help > Report Crash over the report on screen keeps the same dialog and its notes', async () => {
+  crashReports.getLatestReport.mockResolvedValue(pendingCrash)
+  await mountBoth()
+  typeNotes('it crashed when I opened the diff')
+  await act(async () => openCrashReportFromMenu())
+  await flush()
+  expect(crashOnScreen()).toBe(true)
+  expect(notes()).toBe('it crashed when I opened the diff')
+})
+
+it('a send in flight when Help > Report Crash opens is sent once and closes the dialog', async () => {
+  crashReports.getLatestReport.mockResolvedValue(pendingCrash)
+  await mountBoth()
+  await act(async () => button('Send Report').click())
+  await act(async () => openCrashReportFromMenu())
+  await flush()
+  await act(async () => {
+    resolveSubmit({ ok: true, report: { ...pendingCrash, status: 'submitted' } })
+  })
+  await flush()
+  expect(crashMounted()).toBe(false)
+  expect(crashReports.submit).toHaveBeenCalledTimes(1)
+})
+
+it('focus goes back into the crash report when the SSH prompt over it closes', async () => {
+  await mountBoth()
+  typeNotes('notes')
+  const area = document.querySelector('textarea')
+  act(() => area?.focus())
+  expect(document.activeElement).toBe(area)
+  raiseSsh()
+  await flush()
+  expect(area?.contains(document.activeElement)).toBe(false)
+
+  await act(async () => useAppStore.getState().removeSshCredentialRequest('r1'))
+  await flush()
+  expect(document.activeElement).toBe(area)
+})

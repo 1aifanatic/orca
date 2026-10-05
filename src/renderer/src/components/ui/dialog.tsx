@@ -8,7 +8,11 @@ import { cn } from '@/lib/utils'
 import { handleImeOverlayEscape } from '@/lib/ime-overlay-escape'
 import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
-import { DialogPresenceMarker, useAutomaticPromptScope } from '@/lib/dialog-presence'
+import {
+  DialogPresenceMarker,
+  useAutomaticPromptScope,
+  usePromptContentRef
+} from '@/lib/dialog-presence'
 
 function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
@@ -52,6 +56,7 @@ function DialogContent({
   children,
   overlayClassName,
   showCloseButton = true,
+  ref,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   overlayClassName?: string
@@ -60,10 +65,12 @@ function DialogContent({
   // Why: an automatic prompt under another dialog stays mounted but unseen; Radix's layer and focus
   // stacks already treat the newer dialog as the top one.
   const steppedAside = useAutomaticPromptScope()?.steppedAside === true ? true : undefined
+  const contentRef = usePromptContentRef(ref)
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay className={overlayClassName} />
       <DialogPrimitive.Content
+        ref={contentRef}
         data-slot="dialog-content"
         data-stepped-aside={steppedAside}
         // Why: bg-background in dark mode is the same color as the canvas, and

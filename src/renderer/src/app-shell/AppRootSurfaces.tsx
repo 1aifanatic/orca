@@ -19,6 +19,7 @@ import { useAppStore } from '../store'
 import type { UpdateStatus } from '../../../shared/update-status-types'
 import { useLazyModalMounts } from './use-lazy-modal-mounts'
 import { FailedFeatureTip } from '../components/feature-tips/use-app-open-feature-tip'
+import { DialogLoadingSuspense } from '@/lib/dialog-presence'
 import {
   selectAppRootSurfacePetEnabled,
   selectAppRootSurfaceTelemetryOptedIn,
@@ -204,7 +205,7 @@ export function AppRootSurfaces(props: {
           <NewWorkspaceComposerModal />
         </ModalBoundary>
       ) : null}
-      <Suspense fallback={null}>
+      <DialogLoadingSuspense>
         {shouldMountAddRepoDialog ? (
           <ModalBoundary boundaryId="modal.add-repo" resetKey={activeModal === 'add-repo'}>
             <AddRepoDialog />
@@ -226,9 +227,9 @@ export function AppRootSurfaces(props: {
             <ProjectAddedDialog />
           </ModalBoundary>
         ) : null}
-      </Suspense>
+      </DialogLoadingSuspense>
       {/* Why: root overlays can render Radix <Tooltip>s; keep inside the shared provider so lazy surfaces mount from any entry point. */}
-      <Suspense fallback={null}>
+      <DialogLoadingSuspense>
         {mountedLazyModalIds.has('workspace-cleanup') ? (
           <ModalBoundary
             boundaryId="modal.workspace-cleanup"
@@ -237,8 +238,8 @@ export function AppRootSurfaces(props: {
             <WorkspaceCleanupDialog />
           </ModalBoundary>
         ) : null}
-      </Suspense>
-      <Suspense fallback={null}>
+      </DialogLoadingSuspense>
+      <DialogLoadingSuspense>
         {mountedLazyModalIds.has('quick-open') ? (
           <ModalBoundary boundaryId="modal.quick-open" resetKey={activeModal === 'quick-open'}>
             <QuickOpen />
@@ -262,6 +263,9 @@ export function AppRootSurfaces(props: {
             <FeatureWallModal />
           </ModalBoundary>
         ) : null}
+      </DialogLoadingSuspense>
+      {/* Its own boundary: the tip loading must not count as a dialog it waits behind. */}
+      <Suspense fallback={null}>
         {mountedLazyModalIds.has('feature-tips') ? (
           <ModalBoundary
             boundaryId="modal.feature-tips"
@@ -321,7 +325,7 @@ export function AppRootSurfaces(props: {
       <OverlayBoundary boundaryId="overlay.zoom" resetKey={activeView}>
         <ZoomOverlay />
       </OverlayBoundary>
-      <Suspense fallback={null}>
+      <DialogLoadingSuspense>
         {activeModal === 'delete-worktree' ? (
           <ModalBoundary boundaryId="modal.delete-worktree" resetKey>
             <DeleteWorktreeDialog />
@@ -332,13 +336,13 @@ export function AppRootSurfaces(props: {
             <PreservedBranchBatchReviewModal />
           </ModalBoundary>
         ) : null}
-      </Suspense>
+      </DialogLoadingSuspense>
       {hasSshCredentialRequest ? (
-        <Suspense fallback={null}>
+        <DialogLoadingSuspense>
           <ModalBoundary boundaryId="modal.ssh-passphrase" resetKey={activeModal}>
             <SshPassphraseDialog />
           </ModalBoundary>
-        </Suspense>
+        </DialogLoadingSuspense>
       ) : null}
       <ModalBoundary boundaryId="modal.markdown-template-picker" resetKey={activeModal}>
         <MarkdownTemplatePicker />

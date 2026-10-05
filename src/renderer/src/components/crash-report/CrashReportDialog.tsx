@@ -53,6 +53,11 @@ export function CrashReportDialog(): React.JSX.Element | null {
     automatic?.report.id
   )
   usePromptBlockingDialog('crash-report', userOpen)
+  // Help > Report Crash over a report already on screen takes that same dialog over.
+  const onScreenReportRef = useRef<CrashReportRecord | null>(null)
+  useEffect(() => {
+    onScreenReportRef.current = automaticVisible ? (automatic?.report ?? null) : null
+  }, [automatic, automaticVisible])
 
   const raiseCrashReport = useCallback(
     (report: CrashReportRecord, origin: AutomaticCrashReport['origin']) => {
@@ -80,11 +85,7 @@ export function CrashReportDialog(): React.JSX.Element | null {
     try {
       const nextReport = await window.api.crashReports.getLatestReport()
       if (mountedRef.current) {
-        setUserReport(nextReport)
-        // The user is looking at it now, so it must not open again by itself afterwards.
-        if (nextReport) {
-          setQueue((current) => current.filter((entry) => entry.report.id !== nextReport.id))
-        }
+        setUserReport((current) => nextReport ?? current)
       }
     } catch (error) {
       console.error('Failed to load crash report:', error)
@@ -110,11 +111,22 @@ export function CrashReportDialog(): React.JSX.Element | null {
       .catch((error) => console.error('Failed to load crash report:', error))
   }, [mountedRef, raiseCrashReport])
 
-  const changeAutomaticReport = useCallback((report: CrashReportRecord | null) => {
-    if (report) {
-      setQueue((current) =>
-        current.map((entry) => (entry.report.id === report.id ? { ...entry, report } : entry))
-      )
+  // By id, not by who opened it: a send started before Help took the dialog over lands either way.
+  const changeReport = useCallback((report: CrashReportRecord | null) => {
+    if (!report) {
+      return
+    }
+    setUserReport((current) => (current?.id === report.id ? report : current))
+    setQueue((current) =>
+      current.map((entry) => (entry.report.id === report.id ? { ...entry, report } : entry))
+    )
+  }, [])
+
+  // Closing a report's dialog is done with that report, however it opened: one report, one dialog.
+  const closeReport = useCallback((reportId: string | undefined) => {
+    setUserOpen(false)
+    if (reportId !== undefined) {
+      setQueue((current) => current.filter((entry) => entry.report.id !== reportId))
     }
   }, [])
 
@@ -133,17 +145,17 @@ export function CrashReportDialog(): React.JSX.Element | null {
       .dismiss({ reportId: report.id })
       .then(() => {
         if (mountedRef.current) {
-          changeAutomaticReport({ ...report, status: 'dismissed' as const })
+          changeReport({ ...report, status: 'dismissed' as const })
         }
       })
       .catch((error) => {
         console.error('Failed to dismiss crash report after startup prompt:', error)
       })
-  }, [automatic, changeAutomaticReport, markAutomaticShown, mountedRef])
+  }, [automatic, changeReport, markAutomaticShown, mountedRef])
 
   useEffect(() => {
     return window.api.ui.onOpenCrashReport(() => {
-      setUserReport(null)
+      setUserReport(onScreenReportRef.current)
       setUserOpen(true)
       void loadUserCrashReport()
     })
@@ -175,6 +187,7 @@ export function CrashReportDialog(): React.JSX.Element | null {
   if (!open) {
     return null
   }
+  const report = userOpen ? userReport : (automatic?.report ?? null)
 
   return (
     // Raised by itself, its own dialog never counts as another one and it steps aside under one;
@@ -182,22 +195,18 @@ export function CrashReportDialog(): React.JSX.Element | null {
     <AutomaticPromptDialogScope automatic={!userOpen}>
       <Suspense fallback={null}>
         <CrashReportDialogSurface
-          // A new report is a new dialog, so its notes and viewer state start fresh.
-          key={userOpen ? 'user' : automatic?.report.id}
+          // One dialog per report: a new report starts fresh notes and viewer state, while Help over
+          // the report on screen keeps them.
+          key={report?.id ?? 'user'}
           open={open}
-          report={userOpen ? userReport : (automatic?.report ?? null)}
-          loading={userOpen && loading}
+          report={report}
+          loading={userOpen && loading && report === null}
           onOpenChange={(nextOpen) => {
-            if (nextOpen) {
-              return
-            }
-            if (userOpen) {
-              setUserOpen(false)
-            } else {
-              setQueue((current) => current.slice(1))
+            if (!nextOpen) {
+              closeReport(report?.id)
             }
           }}
-          onReportChange={userOpen ? setUserReport : changeAutomaticReport}
+          onReportChange={changeReport}
           onShown={userOpen ? undefined : onAutomaticShown}
         />
       </Suspense>

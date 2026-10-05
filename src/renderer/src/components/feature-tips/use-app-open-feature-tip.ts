@@ -24,7 +24,12 @@ function closeOwnTip(): void {
 export function useAppOpenFeatureTip(): (tipId: FeatureTipId) => void {
   const [pendingTipId, setPendingTipId] = useState<FeatureTipId | null>(null)
   const openedTipIdRef = useRef<FeatureTipId | null>(null)
-  const [tipTurn] = useAutomaticPromptTurn('feature-tip', pendingTipId !== null)
+  // The tip opens in the modal slot, so it can render only while the slot is free or already its own;
+  // asking for a turn while a user's modal holds it (even one still loading) would replace that modal.
+  const slotAvailable = useAppStore(
+    (s) => s.activeModal === 'none' || s.modalData[AUTOMATIC_PROMPT_MODAL_KEY] === 'feature-tip'
+  )
+  const [tipTurn] = useAutomaticPromptTurn('feature-tip', pendingTipId !== null && slotAvailable)
   const openModal = useAppStore((s) => s.openModal)
 
   useEffect(() => {
@@ -39,8 +44,8 @@ export function useAppOpenFeatureTip(): (tipId: FeatureTipId) => void {
       [AUTOMATIC_PROMPT_MODAL_KEY]: 'feature-tip',
       [MODAL_DISMISSED_KEY]: () => {
         const { activeModal, featureTipsSeenIds } = useAppStore.getState()
-        // Replaced by a modal the user opened before it was ever on screen: it keeps its turn and
-        // opens again afterwards. Closed, or already seen, it is done.
+        // Replaced by a modal the user opened before it was ever on screen: it gives up its turn
+        // while that modal holds the slot and asks again afterwards. Closed, or already seen, it is done.
         if (activeModal !== 'none' && !featureTipsSeenIds.includes(tipId)) {
           openedTipIdRef.current = null
           return

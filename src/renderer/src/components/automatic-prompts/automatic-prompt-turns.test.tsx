@@ -466,7 +466,7 @@ it('marks a feature tip seen only once its dialog is on screen', async () => {
   expect(useAppStore.getState().automaticPromptRequests).toEqual([])
 })
 
-it('a tip replaced by the user before it was ever on screen keeps its turn and opens later', async () => {
+it('a tip replaced by the user before it was ever on screen waits for the slot and opens later', async () => {
   seedOneFeatureTip()
   // Only the owner: the tip's dialog never renders here, as when its lazy chunk is slow.
   await mount(
@@ -479,7 +479,8 @@ it('a tip replaced by the user before it was ever on screen keeps its turn and o
 
   await act(async () => useAppStore.getState().openModal('add-repo'))
   expect(useAppStore.getState().featureTipsSeenIds).not.toContain('cmd-j-palette')
-  expect(useAppStore.getState().automaticPromptRequests.map((r) => r.id)).toEqual(['feature-tip'])
+  // It cannot render while the user's modal holds the slot, so it holds no turn meanwhile.
+  expect(useAppStore.getState().automaticPromptRequests).toEqual([])
 
   await act(async () => useAppStore.getState().closeModal())
   await flush()
