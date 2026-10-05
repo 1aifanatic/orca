@@ -48,6 +48,14 @@ describe('image sources on the editor surface', () => {
     expect(editor.querySelector('img')!.getAttribute('src')).toBe('docs/a.png')
   })
 
+  it('restores authored sources when a replacement map omits an old image', () => {
+    const { scope, editor } = surface('![Shot](docs/a.png)')
+    setImageSources(scope, { 'docs/a.png': 'data:image/png;base64,QUJD' })
+    setImageSources(scope, {})
+    expect(editor.querySelector('img')!.getAttribute('src')).toBe('docs/a.png')
+    expect(currentMarkdown(scope)).toBe('![Shot](docs/a.png)')
+  })
+
   it('serves an image the user inserted afterwards from its own src', () => {
     const { scope, editor } = surface('text')
     const inserted = document.createElement('img')

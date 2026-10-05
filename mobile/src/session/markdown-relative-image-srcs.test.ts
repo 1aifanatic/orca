@@ -26,6 +26,10 @@ describe('collectMarkdownImageSrcs', () => {
     expect(collectMarkdownImageSrcs(content)).toEqual(['docs/a.png', 'img/b.png'])
   })
 
+  it('uses the same decoded source as the editor image attributes', () => {
+    expect(collectMarkdownImageSrcs('![Shot](a&amp;b.png)')).toEqual(['a&b.png'])
+  })
+
   it('reads no image across a line break the editor would not render either', () => {
     expect(collectMarkdownImageSrcs('![broken\nalt](a.png)')).toEqual([])
   })
@@ -53,6 +57,21 @@ describe('resolveMarkdownRelativeImagePath', () => {
 
   it('rejects a src that climbs out of the worktree', () => {
     expect(resolveMarkdownRelativeImagePath('../../escape.png', 'docs/intro.md')).toBeNull()
+  })
+
+  it('leaves decoded separators for the execution host path guard', () => {
+    expect(resolveMarkdownRelativeImagePath('images%2Fscreenshot.png', 'docs/intro.md')).toBe(
+      'docs/images/screenshot.png'
+    )
+    expect(resolveMarkdownRelativeImagePath('..%2F..%2Foutside.png', 'docs/intro.md')).toBe(
+      'docs/../../outside.png'
+    )
+    expect(resolveMarkdownRelativeImagePath('..%5C..%5Coutside.png', 'docs/intro.md')).toBe(
+      'docs/..\\..\\outside.png'
+    )
+    expect(
+      resolveMarkdownRelativeImagePath('%2e%2e/%2e%2e/outside.png', 'docs/intro.md')
+    ).toBeNull()
   })
 
   it('decodes escapes and drops a query or fragment before resolving', () => {

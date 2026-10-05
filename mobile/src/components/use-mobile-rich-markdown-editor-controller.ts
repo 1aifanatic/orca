@@ -66,8 +66,7 @@ export function useMobileRichMarkdownEditorController({
     }
   }, [editable, transport])
 
-  // Why: sources arrive after the doc renders (each image is a separate read), so this is a
-  // replace-whole-map push rather than a content change; the document re-applies on its own renders.
+  // Image replies update display URLs without replacing the edited content.
   useEffect(() => {
     if (readyRef.current) {
       transport.setImageSources(imageSources ?? {})
