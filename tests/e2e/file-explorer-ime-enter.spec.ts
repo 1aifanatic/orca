@@ -51,6 +51,29 @@ for (const { operation, redispatch } of cases) {
       nativeVirtualKeyCode: 229
     })
     await cdp.send('Input.insertText', { text: '議事録' })
+    if (redispatch) {
+      await input.evaluate((element) => {
+        const redispatchAfterRelease = (event: KeyboardEvent): void => {
+          if (event.target !== element || event.key !== 'Process' || event.keyCode !== 229) {
+            return
+          }
+          document.removeEventListener('keyup', redispatchAfterRelease)
+          const confirmation = new KeyboardEvent('keydown', {
+            bubbles: true,
+            cancelable: true,
+            key: 'Enter',
+            code: 'Enter',
+            keyCode: 13
+          })
+          element.setAttribute(
+            'data-ime-redispatch-cancelled',
+            String(!element.dispatchEvent(confirmation))
+          )
+        }
+        // Run after React's keyup handler, before a frame can separate two CDP messages.
+        document.addEventListener('keyup', redispatchAfterRelease)
+      })
+    }
     await cdp.send('Input.dispatchKeyEvent', {
       type: 'keyUp',
       key: redispatch ? 'Process' : 'Enter',
@@ -59,13 +82,7 @@ for (const { operation, redispatch } of cases) {
       nativeVirtualKeyCode: redispatch ? 229 : 13
     })
     if (redispatch) {
-      await cdp.send('Input.dispatchKeyEvent', {
-        type: 'keyDown',
-        key: 'Enter',
-        code: 'Enter',
-        windowsVirtualKeyCode: 13,
-        nativeVirtualKeyCode: 13
-      })
+      await expect(input).toHaveAttribute('data-ime-redispatch-cancelled', 'true')
       await cdp.send('Input.dispatchKeyEvent', {
         type: 'keyUp',
         key: 'Enter',
