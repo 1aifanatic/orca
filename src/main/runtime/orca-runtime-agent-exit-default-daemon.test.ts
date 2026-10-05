@@ -147,6 +147,8 @@ async function startDefaultDaemonHost(tab: {
     rows: 30,
     cwd: home,
     shellOverride: '/bin/sh',
+    // Why no login shell: a login profile (macOS path_helper) can put a real agent CLI on PATH.
+    terminalShellArgs: [],
     sessionId: `f2r-${tab.launchAgent ?? 'claude'}-${process.pid}`,
     env: {
       HOME: home,
@@ -231,6 +233,18 @@ async function startDefaultDaemonHost(tab: {
   cleanups.push(unsubscribe)
   debugOutput = output
   await runtime.listMobileSessionTabs(`id:${WT}`)
+  // Guard: this shell must not be able to reach a real agent CLI by name, whatever is typed.
+  // Why printf with %s: the markers then never appear in the shell's echo of the command line.
+  adapter.write(
+    spawned.id,
+    "printf 'P%s=%s\\n' ATH \"$PATH\"; command -v claude || printf 'NO_%s\\n' CLAUDE; command -v codex || printf 'NO_%s\\n' CODEX\r"
+  )
+  await waitUntil(() => output.join('').includes('NO_CODEX'), 10_000, 'the PATH guard')
+  const guard = output.join('')
+  const shellPath = /PATH=([^\r\n]*)/.exec(guard)?.[1] ?? ''
+  expect(shellPath.startsWith('/usr/bin:/bin')).toBe(true)
+  expect(shellPath).not.toMatch(/\.local\/bin|homebrew|\/usr\/local\/bin|\.npm|\.bun/)
+  expect(guard).toContain('NO_CLAUDE')
   const handle = (): string => runtime['handleByPtyId'].get(spawned.id)!
   return {
     dir,
