@@ -9,18 +9,24 @@ import { PANE, buildBody } from './server.test-fixtures'
 vi.mock('../telemetry/client', () => ({ track: vi.fn() }))
 vi.mock('../telemetry/cohort-classifier', () => ({ getCohortAtEmit: () => ({}) }))
 
+class IsolatedHookServer extends AgentHookServer {
+  isolateBinder(dbPath: string) {
+    this._setOpenCodeBinderDepsForTests({
+      dbPath: () => dbPath,
+      listPanes: () => [],
+      sweep: async () => []
+    })
+  }
+}
+
 describe('inherited hooks cannot replace an active pane owner metadata', () => {
-  let server: AgentHookServer
+  let server: IsolatedHookServer
   let dir: string
 
   beforeEach(async () => {
     dir = mkdtempSync(join(tmpdir(), 'orca-inherited-hook-'))
-    server = new AgentHookServer()
-    server._setOpenCodeBinderDepsForTests({
-      dbPath: () => join(dir, 'no-database'),
-      listPanes: () => [],
-      sweep: async () => []
-    })
+    server = new IsolatedHookServer()
+    server.isolateBinder(join(dir, 'no-database'))
     await server.start({ env: 'production', userDataPath: dir })
   })
 
