@@ -107,7 +107,9 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
     return
   }
   const cause = 'recorded' in ending ? ending.recorded : ending.cause
-  if (!child.close) {
+  // An end the adapter reported unproven began no one's stop: the first stop asked since decides.
+  const reported = child.close?.cause === 'host-stop' ? child.close.reported : undefined
+  if (!child.close || (reported && cause !== 'host-stop')) {
     // Judged before the kill: a stop that ends nothing writes nothing. Its event is issued before
     // the kill and never awaited by it; the journal writes rows in order.
     const recorded = (await stopEndsWork(context, sessionId, session, ending))
@@ -117,7 +119,8 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
       cause,
       reason: ('reason' in ending ? ending.reason : undefined) ?? null,
       recorded,
-      requestedAt: session.journal.cursor()
+      requestedAt: session.journal.cursor(),
+      ...(reported ? { reported } : {})
     }
   } else if (child.close.cause === cause) {
     // The same stop asked again, such as a second close of the chat, closes what came since.

@@ -52,6 +52,7 @@ import { createStructuredAgentEnvironmentResolvers } from './structured-agent-sh
 import type { ClaudeStructuredAuthPolicy } from '../claude-accounts/claude-structured-auth-policy'
 import { createStructuredClaudeRuntimeAdapter } from './structured-claude-runtime-adapter'
 import { createStructuredAgentSessionLifecycleDelivery } from './structured-agent-session-lifecycle-delivery'
+import { structuredCodexLifecycleEvent } from './structured-codex-lifecycle-event'
 import { createStructuredAgentSessionDispatchFollowUps } from './structured-agent-session-dispatch-followups'
 import { agentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import {
@@ -272,9 +273,9 @@ async function installOnJournal(
     onPrimaryThreadStoppedRunning: releaseUnansweredDispatches,
     logger: deps.logger,
     onEvent: (event) => {
-      // Every exit, expected or not: the host ends that child's record.
-      if (event.type === 'ended' && 'cause' in event) {
-        lifecycle.deliver(event)
+      const lifecycleEvent = structuredCodexLifecycleEvent(event)
+      if (lifecycleEvent) {
+        lifecycle.deliver(lifecycleEvent)
       }
     }
   })
