@@ -56,7 +56,10 @@ const {
   isParityClean
 } = await importParityModules()
 
+// `pnpm run <script> -- --base x` forwards the `--`, which would turn every option positional.
+const rawArgs = process.argv.slice(2)
 const { values, positionals } = parseArgs({
+  args: rawArgs[0] === '--' ? rawArgs.slice(1) : rawArgs,
   allowPositionals: true,
   options: {
     base: { type: 'string' },
