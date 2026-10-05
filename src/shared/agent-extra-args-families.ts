@@ -1,22 +1,36 @@
-import { hasFlag } from './agent-cli-flag-detection'
 import { removeAgentArgOption } from './agent-session-option-agent-args'
-import { getAgentSessionOptionCatalog } from './agent-session-option-catalog'
+import { getAgentSessionOptionLaunchCatalog } from './agent-session-option-launch'
 import type { CatalogOption, CatalogOptionApply } from './agent-session-option-catalog-types'
 import type { TuiAgent } from './tui-agent'
 import { TUI_AGENT_CONFIG } from './tui-agent-config'
 
-/** A detector run on the extras paired with a remover run on the defaults. */
 export type ExtraArgsFamily = {
   label: string
-  detect: (tokens: readonly string[]) => boolean
-  /** Absent when Orca can't remove it from the defaults, such as a permission-bypass flag. */
-  remove?: (tokens: readonly string[]) => string[]
+  remove: (tokens: readonly string[]) => string[]
 }
 
 const DEFAULT_SINGLETON_OPTIONS: readonly (readonly string[])[] = [['--model']]
 
+export function removeAgentExtraArgsFlag(
+  agent: TuiAgent,
+  tokens: readonly string[],
+  flags: readonly string[]
+): string[] {
+  const abbreviated = TUI_AGENT_CONFIG[agent].abbreviatesLongFlags
+    ? tokens.flatMap((token) => {
+        const name = token.split('=')[0]
+        return name.startsWith('--') &&
+          name.length > 3 &&
+          flags.some((flag) => flag.startsWith('--') && flag.startsWith(name))
+          ? [name]
+          : []
+      })
+    : []
+  return removeAgentArgOption(agent, tokens, [...flags, ...abbreviated])
+}
+
 function catalogOptions(agent: TuiAgent): CatalogOption[] {
-  const catalog = getAgentSessionOptionCatalog(agent)
+  const catalog = getAgentSessionOptionLaunchCatalog(agent)
   if (!catalog) {
     return []
   }
@@ -25,7 +39,7 @@ function catalogOptions(agent: TuiAgent): CatalogOption[] {
     ...catalog.models.flatMap((model) => model.options),
     ...(catalog.unknownModelOptions ?? [])
   ]) {
-    if (!byId.has(option.id) && option.apply.agentArgsOverride) {
+    if (!byId.has(option.id) && option.apply.removeAgentArgs) {
       byId.set(option.id, option)
     }
   }
@@ -34,32 +48,27 @@ function catalogOptions(agent: TuiAgent): CatalogOption[] {
 
 /** The flag as the user would type it: `--model`, or `-c model_reasoning_effort=…` for Codex. */
 function flagLabel(apply: CatalogOptionApply, fallback: string): string {
-  const placeholder = '\u0000'
-  const spelled = apply.launchArgs?.(placeholder).join(' ')
-  return spelled ? spelled.replace(` ${placeholder}`, '').replace(placeholder, '…') : fallback
+  return apply.launchArgs?.('…').join(' ').replace(/ …$/, '') || fallback
 }
 
-/** Families whose detectors are the catalog's, so `-c model_reasoning_effort=` is found without
- *  treating every Codex `-c` as a replacement. */
-export function getCatalogFamilies(agent: TuiAgent): ExtraArgsFamily[] {
-  const catalog = getAgentSessionOptionCatalog(agent)
+// Catalog removers recognize aliases and config keys without a second detector.
+function getCatalogFamilies(agent: TuiAgent): ExtraArgsFamily[] {
+  const catalog = getAgentSessionOptionLaunchCatalog(agent)
   const model = catalog?.modelApply
   return [
-    ...(model?.agentArgsOverride
+    ...(model?.removeAgentArgs
       ? [
           {
             label: flagLabel(model, 'model'),
-            detect: model.agentArgsOverride,
             remove: model.removeAgentArgs
           }
         ]
       : []),
     ...catalogOptions(agent).flatMap((option) =>
-      option.apply.agentArgsOverride
+      option.apply.removeAgentArgs
         ? [
             {
               label: flagLabel(option.apply, option.label),
-              detect: option.apply.agentArgsOverride,
               remove: option.apply.removeAgentArgs
             }
           ]
@@ -73,22 +82,30 @@ export function getExtraArgsFamilies(
   bypassFlags: readonly string[]
 ): ExtraArgsFamily[] {
   const singletons = TUI_AGENT_CONFIG[agent].singletonOptions ?? DEFAULT_SINGLETON_OPTIONS
+  const catalogFamilies = getCatalogFamilies(agent)
   return [
-    ...getCatalogFamilies(agent),
-    ...singletons.map((aliases) => ({
+    ...catalogFamilies,
+    ...(getAgentSessionOptionLaunchCatalog(agent)?.modelApply.removeAgentArgs
+      ? []
+      : singletons
+    ).map((aliases) => ({
       label: aliases[0],
-      detect: (tokens: readonly string[]) => hasFlag(tokens, aliases),
-      remove: (tokens: readonly string[]) => removeAgentArgOption(tokens, aliases)
+      remove: (tokens: readonly string[]) => removeAgentExtraArgsFlag(agent, tokens, aliases)
     })),
     ...bypassFlags.map((flag) => ({
       label: flag,
-      detect: (tokens: readonly string[]) => hasFlag(tokens, [flag])
+      remove: (tokens: readonly string[]) => removeAgentExtraArgsFlag(agent, tokens, [flag])
     }))
   ]
 }
 
-/** Detectors only look for flags, so after the shortest matching prefix a second match is a
- *  second copy rather than a value that looks like one. `typed` holds the families that occur. */
+export function extraArgsFamilyIsPresent(
+  family: ExtraArgsFamily,
+  tokens: readonly string[]
+): boolean {
+  return family.remove(tokens).length < tokens.length
+}
+
 export function findRepeatedFamily(
   typed: readonly ExtraArgsFamily[],
   tokens: readonly string[]
@@ -99,28 +116,23 @@ export function findRepeatedFamily(
     let high = tokens.length
     while (low < high) {
       const middle = Math.floor((low + high) / 2)
-      if (family.detect(tokens.slice(0, middle))) {
+      if (extraArgsFamilyIsPresent(family, tokens.slice(0, middle))) {
         high = middle
       } else {
         low = middle + 1
       }
     }
-    if (family.detect(tokens.slice(low))) {
+    // A prefix can end at the flag before its value; keep that value with the first occurrence.
+    if (
+      low < tokens.length &&
+      !tokens[low].startsWith('-') &&
+      family.remove(tokens.slice(0, low + 1)).length === family.remove(tokens.slice(0, low)).length
+    ) {
+      low += 1
+    }
+    if (extraArgsFamilyIsPresent(family, tokens.slice(low))) {
       return family
     }
   }
   return null
-}
-
-/** `catalog_only` when the extras hold nothing but the agent's catalog options. */
-export function classifyExtraArgs(
-  agent: TuiAgent,
-  tokens: readonly string[]
-): 'catalog_only' | 'other' {
-  const families = getCatalogFamilies(agent)
-  let rest: readonly string[] = tokens
-  for (const family of families) {
-    rest = family.remove?.(rest) ?? rest
-  }
-  return families.length > 0 && rest.length === 0 ? 'catalog_only' : 'other'
 }

@@ -23,19 +23,18 @@ const VALUE_FLAGS = new Set([
 ])
 const SWITCH_FLAGS = new Set(['--no-extensions', '--no-skills', '--no-prompt-templates'])
 
-/** Why the wrapper leaves `command` bare: `null` when it can wrap it, `''` when the command itself
- *  isn't a plain OMP invocation, else the first argument the wrapper doesn't accept. */
+/** Returns the unsupported token or command; `null` means the fresh-session wrapper can apply. */
 export function findFreshOmpLaunchBlocker(
   command: string,
   shell: AgentStartupShell
 ): string | null {
   const parsed = tokenizeStartupCommand(command, shell)
   if (!parsed.ok || parsed.spans.some((span) => span.divergesFromShell)) {
-    return ''
+    return command
   }
   const executable = parsed.tokens[0]?.split(/[\\/]/).at(-1)?.toLowerCase()
   if (!['omp', 'omp.exe', 'omp.cmd', 'omp.bat', 'omp.sh', 'omp.js'].includes(executable ?? '')) {
-    return ''
+    return parsed.tokens[0] ?? command
   }
   let index = parsed.tokens[1] === 'launch' ? 2 : 1
   for (; index < parsed.tokens.length; index++) {

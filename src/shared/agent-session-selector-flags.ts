@@ -1,9 +1,10 @@
-import { isResumableTuiAgent, type ResumableTuiAgent } from './agent-session-resume'
+import type { ResumableTuiAgent } from './agent-session-resume'
 import type { TuiAgent } from './tui-agent'
 
 /** Flags that choose, continue, fork, or import a session, seeded from each CLI's `--help`.
  *  Why: resume appends Orca's own selector (`getAgentResumeArgv`), so a typed one would compete. */
-export const AGENT_SESSION_SELECTOR_FLAGS: Record<ResumableTuiAgent, readonly string[]> = {
+export const AGENT_SESSION_SELECTOR_FLAGS: Record<ResumableTuiAgent, readonly string[]> &
+  Partial<Record<TuiAgent, readonly string[]>> = {
   claude: [
     '--resume',
     '-r',
@@ -19,6 +20,8 @@ export const AGENT_SESSION_SELECTOR_FLAGS: Record<ResumableTuiAgent, readonly st
   // Codex selects sessions through its `resume` and `fork` subcommands instead.
   codex: [],
   qoder: ['--resume'],
+  'qoder-cn': ['--resume'],
+  'qwen-code': ['--resume', '-r'],
   gemini: ['--resume', '-r', '--session-file', '--session-id'],
   antigravity: ['--conversation', '--continue', '-c'],
   opencode: ['--session', '-s', '--continue', '-c'],
@@ -31,10 +34,13 @@ export const AGENT_SESSION_SELECTOR_FLAGS: Record<ResumableTuiAgent, readonly st
   omp: ['--resume', '-r', '--continue', '-c', '--from-claude', '--from-codex'],
   'prime-agent': ['--resume'],
   copilot: ['--resume'],
+  cursor: ['--resume'],
+  hermes: ['--resume', '-r', '--continue', '-c'],
   kimi: ['--session'],
   muse: [],
   zcode: ['--resume'],
-  dsh: ['--resume', '--continue']
+  dsh: ['--resume', '--continue'],
+  jcode: ['--resume']
 }
 
 /** Session subcommands a CLI still dispatches after flags: `codex --search resume --last`. */
@@ -44,5 +50,5 @@ export const AGENT_SESSION_SUBCOMMANDS: Partial<Record<TuiAgent, readonly string
 }
 
 export function getAgentSessionSelectorFlags(agent: TuiAgent): readonly string[] {
-  return isResumableTuiAgent(agent) ? AGENT_SESSION_SELECTOR_FLAGS[agent] : []
+  return AGENT_SESSION_SELECTOR_FLAGS[agent] ?? []
 }

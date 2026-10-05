@@ -11,14 +11,15 @@ import type {
   RuntimeEnsureAgentSessionRequest
 } from '../agent-session-host-authority'
 import { isTuiAgent } from '../tui-agent-config'
+import { MAX_AGENT_ARGS_BYTES } from '../agent-launch-limits'
+
+export { MAX_AGENT_ARGS_BYTES } from '../agent-launch-limits'
 
 export const MAX_WORKTREE_SELECTOR_LENGTH = 32_768
 
 export const MAX_TRANSCRIPT_PATH_BYTES = 16 * 1024
 
 export const MAX_PROMPT_BYTES = 256 * 1024
-
-export const MAX_AGENT_ARGS_BYTES = 16 * 1024
 
 export const MAX_LAUNCH_PREFERENCE_LENGTH = 512
 

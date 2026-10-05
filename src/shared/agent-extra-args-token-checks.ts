@@ -1,4 +1,5 @@
-import { hasFlag } from './agent-cli-flag-detection'
+import { agentArgTerminatorIndex } from './agent-session-option-agent-args'
+import { removeAgentExtraArgsFlag } from './agent-extra-args-families'
 import { extraAgentArgsError, type ExtraAgentArgsError } from './agent-extra-args-errors'
 import {
   AGENT_SESSION_SUBCOMMANDS,
@@ -46,7 +47,7 @@ export function getAgentBypassFlags(agent: TuiAgent, shell: AgentStartupShell): 
   )
 }
 
-/** Step 0: a bare prompt right after the extras would be read as a flag's value. */
+// Without a terminator, an incomplete flag could consume the positional prompt.
 export function checkPromptPlacement(
   agent: TuiAgent,
   promptOnCommandLine: boolean
@@ -57,34 +58,26 @@ export function checkPromptPlacement(
     : null
 }
 
-export function checkExtraTokenShape(tokens: readonly string[]): ExtraAgentArgsError | null {
-  if (tokens.includes('--')) {
+export function checkExtraTokenShape(
+  agent: TuiAgent,
+  tokens: readonly string[]
+): ExtraAgentArgsError | null {
+  if (agentArgTerminatorIndex(agent, tokens) < tokens.length) {
     return extraAgentArgsError('extras-terminator', 'extras')
   }
-  // Why: CLIs still dispatch a subcommand after the base flags, so `resume --last` or `exec`
-  // would change the launch and every replay of the recorded arguments.
+  // A leading subcommand would change the launch and every replay of its arguments.
   if (!tokens[0]?.startsWith('-')) {
     return extraAgentArgsError('extras-leading-bare-word', 'extras')
   }
   return null
 }
 
-/** Like `hasFlag`, plus the shortened long flags argparse CLIs accept (`--que` for `--query`). */
-function hasOwnedFlag(agent: TuiAgent, tokens: readonly string[], flags: readonly string[]) {
-  if (hasFlag(tokens, flags)) {
-    return true
-  }
-  if (!TUI_AGENT_CONFIG[agent].abbreviatesLongFlags) {
-    return false
-  }
-  return tokens.some((token) => {
-    const name = token.split('=')[0]
-    return (
-      name.startsWith('--') &&
-      name.length > 3 &&
-      flags.some((flag) => flag.startsWith('--') && flag.startsWith(name))
-    )
-  })
+export function hasAgentExtraArgsFlag(
+  agent: TuiAgent,
+  tokens: readonly string[],
+  flags: readonly string[]
+): boolean {
+  return removeAgentExtraArgsFlag(agent, tokens, flags).length < tokens.length
 }
 
 /** Session selectors, session subcommands, Orca's prompt flags, and Hermes's `--cli`. */
@@ -95,13 +88,13 @@ export function checkOrcaOwnedFlags(
 ): ExtraAgentArgsError | null {
   const subcommands = AGENT_SESSION_SUBCOMMANDS[agent] ?? []
   if (
-    hasFlag(tokens, getAgentSessionSelectorFlags(agent)) ||
+    hasAgentExtraArgsFlag(agent, tokens, getAgentSessionSelectorFlags(agent)) ||
     tokens.some((token) => subcommands.includes(token))
   ) {
     return extraAgentArgsError('session-selector', 'extras')
   }
   const promptGroup = getAgentPromptFlagGroups(agent).find((group) =>
-    hasOwnedFlag(agent, tokens, group.flags)
+    hasAgentExtraArgsFlag(agent, tokens, group.flags)
   )
   if (promptGroup) {
     return extraAgentArgsError('prompt-flag', 'extras', { flag: promptGroup.flag })
@@ -110,7 +103,7 @@ export function checkOrcaOwnedFlags(
   // Why: a bare-prompt CLI refuses its own prompt flags next to a positional prompt.
   const competing =
     config.promptInjectionMode === 'argv' && promptOnCommandLine
-      ? config.competingPromptFlags?.find((flag) => hasFlag(tokens, [flag]))
+      ? config.competingPromptFlags?.find((flag) => hasAgentExtraArgsFlag(agent, tokens, [flag]))
       : undefined
   if (competing) {
     return extraAgentArgsError('competing-prompt', 'extras', { flag: competing })
@@ -118,7 +111,7 @@ export function checkOrcaOwnedFlags(
   if (
     config.promptInjectionMode === 'hermes-query' &&
     promptOnCommandLine &&
-    hasOwnedFlag(agent, tokens, ['--cli'])
+    hasAgentExtraArgsFlag(agent, tokens, ['--cli'])
   ) {
     return extraAgentArgsError('hermes-cli', 'extras')
   }

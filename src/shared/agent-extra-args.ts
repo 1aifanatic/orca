@@ -1,6 +1,6 @@
-import { hasFlag } from './agent-cli-flag-detection'
+import { agentArgTerminatorIndex } from './agent-session-option-agent-args'
 import {
-  classifyExtraArgs,
+  extraArgsFamilyIsPresent,
   findRepeatedFamily,
   getExtraArgsFamilies,
   type ExtraArgsFamily
@@ -11,13 +11,15 @@ import {
   checkOrcaOwnedFlags,
   checkPromptPlacement,
   checkWindowsTokens,
-  getAgentBypassFlags
+  getAgentBypassFlags,
+  hasAgentExtraArgsFlag
 } from './agent-extra-args-token-checks'
 import { resolveAgentSessionOptionLaunch } from './agent-session-option-launch'
 import type { AgentStartupPlanInputs } from './agent-startup-plan-inputs'
 import { findFreshOmpLaunchBlocker } from './omp-fresh-launch'
-import { MAX_AGENT_ARGS_BYTES } from './rpc-contract/agent-session-params'
+import { MAX_AGENT_ARGS_BYTES } from './agent-launch-limits'
 import { TUI_AGENT_DISPLAY_NAMES } from './tui-agent-display-names'
+import type { TuiAgent } from './tui-agent'
 import { resolveAgentLaunchCommand } from './tui-agent-launch-command'
 import {
   resolveStartupShell,
@@ -25,10 +27,8 @@ import {
   type AgentStartupShell
 } from './tui-agent-startup-shell'
 
-export type ExtraAgentArgsKind = 'catalog_only' | 'other'
-
 export type AppliedExtraAgentArgs =
-  | { ok: true; inputs: AgentStartupPlanInputs; extraKind: ExtraAgentArgsKind | null }
+  | { ok: true; inputs: AgentStartupPlanInputs }
   | { ok: false; error: ExtraAgentArgsError }
 
 type Tokenized = { tokens: string[]; spans: { start: number; end: number }[] }
@@ -45,14 +45,13 @@ function refuse(error: ExtraAgentArgsError): AppliedExtraAgentArgs {
   return { ok: false, error }
 }
 
-/** Step 3: the override is typed as written, so a flag it already sets can't be replaced. */
+// Command overrides run verbatim, so a typed flag cannot replace one there.
 function checkOverride(
   inputs: AgentStartupPlanInputs,
   shell: AgentStartupShell,
   conflicting: readonly ExtraArgsFamily[]
 ): ExtraAgentArgsError | null {
   const override = inputs.cmdOverrides[inputs.agent]
-  // Why: overrides are typed as written, so an untokenizable one only matters to this check.
   if (!override || conflicting.length === 0) {
     return null
   }
@@ -61,7 +60,7 @@ function checkOverride(
   if (!tokens) {
     return extraAgentArgsError('override-unclosed-quote', 'override', { agent })
   }
-  const family = conflicting.find((candidate) => candidate.detect(tokens.tokens))
+  const family = conflicting.find((candidate) => extraArgsFamilyIsPresent(candidate, tokens.tokens))
   return family
     ? extraAgentArgsError('override-sets-option', 'override', { agent, option: family.label })
     : null
@@ -69,11 +68,13 @@ function checkOverride(
 
 /** Rebuilds from source text because re-quoted tokens don't round-trip through the tokenizer. */
 function rebuild(
+  agent: TuiAgent,
   base: string,
   baseTokens: Tokenized,
   kept: readonly string[],
-  extras: string
-): { text: string; expected: (extraTokens: readonly string[]) => string[] } | null {
+  extras: string,
+  extraTokens: readonly string[]
+): { text: string; tokens: string[] } | null {
   const keptIndexes: number[] = []
   let cursor = 0
   for (const token of kept) {
@@ -86,14 +87,14 @@ function rebuild(
     keptIndexes.push(cursor)
     cursor += 1
   }
-  const terminator = baseTokens.tokens.indexOf('--')
-  const before = keptIndexes.filter((index) => terminator === -1 || index < terminator)
-  const after = keptIndexes.filter((index) => terminator !== -1 && index >= terminator)
+  const terminator = agentArgTerminatorIndex(agent, baseTokens.tokens)
+  const before = keptIndexes.filter((index) => index < terminator)
+  const after = keptIndexes.filter((index) => index >= terminator)
   const text = (indexes: number[]) =>
     indexes.map((index) => base.slice(baseTokens.spans[index].start, baseTokens.spans[index].end))
   return {
     text: [...text(before), extras, ...text(after)].join(' '),
-    expected: (extraTokens) => [
+    tokens: [
       ...before.map((index) => baseTokens.tokens[index]),
       ...extraTokens,
       ...after.map((index) => baseTokens.tokens[index])
@@ -101,7 +102,7 @@ function rebuild(
   }
 }
 
-/** Adds one launch's typed arguments to resolved inputs; see docs/design/per-launch-agent-args. */
+/** Adds one launch's typed arguments to resolved inputs. */
 export function applyExtraAgentArgs(
   inputs: AgentStartupPlanInputs,
   extraArgs: string,
@@ -109,7 +110,7 @@ export function applyExtraAgentArgs(
 ): AppliedExtraAgentArgs {
   const extras = extraArgs.trim()
   if (!extras) {
-    return { ok: true, inputs, extraKind: null }
+    return { ok: true, inputs }
   }
   // Why: extras alone over the cap can't fit the merged string; refuse before scanning them.
   if (new TextEncoder().encode(extras).byteLength > MAX_AGENT_ARGS_BYTES) {
@@ -125,7 +126,7 @@ export function applyExtraAgentArgs(
   if (!extraTokens) {
     return refuse(extraAgentArgsError('extras-unclosed-quote', 'extras'))
   }
-  const shapeError = checkExtraTokenShape(extraTokens.tokens)
+  const shapeError = checkExtraTokenShape(agent, extraTokens.tokens)
   if (shapeError) {
     return refuse(shapeError)
   }
@@ -140,14 +141,15 @@ export function applyExtraAgentArgs(
   }
   const tokenError =
     checkOrcaOwnedFlags(agent, extraTokens.tokens, launch.promptOnCommandLine) ??
-    checkWindowsTokens(extraTokens.tokens, shell, 'extras') ??
-    checkWindowsTokens(baseTokens.tokens, shell, 'defaults')
+    checkWindowsTokens(extraTokens.tokens, shell, 'extras')
   if (tokenError) {
     return refuse(tokenError)
   }
   const bypassFlags = getAgentBypassFlags(agent, shell)
   const bypassInBoth = bypassFlags.find(
-    (flag) => hasFlag(extraTokens.tokens, [flag]) && hasFlag(baseTokens.tokens, [flag])
+    (flag) =>
+      hasAgentExtraArgsFlag(agent, extraTokens.tokens, [flag]) &&
+      hasAgentExtraArgsFlag(agent, baseTokens.tokens, [flag])
   )
   if (bypassInBoth) {
     // Why: removing it gives the permissions toggle a second owner; passing it repeats it.
@@ -159,7 +161,7 @@ export function applyExtraAgentArgs(
     )
   }
   const typed = getExtraArgsFamilies(agent, bypassFlags).filter((family) =>
-    family.detect(extraTokens.tokens)
+    extraArgsFamilyIsPresent(family, extraTokens.tokens)
   )
   const repeated = findRepeatedFamily(typed, extraTokens.tokens)
   if (repeated) {
@@ -171,28 +173,21 @@ export function applyExtraAgentArgs(
   }
   let kept: readonly string[] = baseTokens.tokens
   for (const family of typed) {
-    if (family.remove) {
-      kept = family.remove(kept)
-    }
+    kept = family.remove(kept)
   }
-  // Why: a typed flag the defaults still set after every remover ran would reach the agent twice.
-  const unremovable = typed.find((family) => family.detect(kept))
-  if (unremovable) {
-    return refuse(
-      extraAgentArgsError('defaults-set-flag', 'extras', {
-        agent: TUI_AGENT_DISPLAY_NAMES[agent],
-        flag: unremovable.label
-      })
-    )
+  const defaultsError = checkWindowsTokens(kept, shell, 'defaults')
+  if (defaultsError) {
+    return refuse(defaultsError)
   }
-  const rebuilt = rebuild(base, baseTokens, kept, extras)
+  const rebuilt = rebuild(agent, base, baseTokens, kept, extras, extraTokens.tokens)
   const merged = rebuilt?.text.trim() ?? ''
   const verified = tokenize(merged, shell)
   // Why: the launch trims before tokenizing; a join can turn a trailing escape into a new token.
   if (
     !rebuilt ||
     !verified ||
-    JSON.stringify(verified.tokens) !== JSON.stringify(rebuilt.expected(extraTokens.tokens))
+    verified.tokens.length !== rebuilt.tokens.length ||
+    verified.tokens.some((token, index) => token !== rebuilt.tokens[index])
   ) {
     return refuse(extraAgentArgsError('rebuild-failed', 'extras'))
   }
@@ -214,11 +209,10 @@ export function applyExtraAgentArgs(
   if (ompError) {
     return refuse(ompError)
   }
-  return { ok: true, inputs: mergedInputs, extraKind: classifyExtraArgs(agent, extraTokens.tokens) }
+  return { ok: true, inputs: mergedInputs }
 }
 
-/** Step 8: the fresh-session wrapper falls back to a bare command, which may resume OMP's last
- *  session, for any argument outside its list. */
+// An unsupported argument disables OMP's fresh-session wrapper and may resume the last session.
 function checkOmpFreshSession(
   before: AgentStartupPlanInputs,
   after: AgentStartupPlanInputs,
@@ -236,5 +230,5 @@ function checkOmpFreshSession(
   const blocker = findFreshOmpLaunchBlocker(afterCommand, shell)
   return blocker === null
     ? null
-    : extraAgentArgsError('omp-fresh-session', 'extras', { token: blocker || afterCommand })
+    : extraAgentArgsError('omp-fresh-session', 'extras', { token: blocker })
 }

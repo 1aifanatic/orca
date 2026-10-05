@@ -49,7 +49,7 @@ function refusal(base: AgentStartupPlanInputs, extras: string, promptOnCommandLi
 describe('applyExtraAgentArgs', () => {
   it('returns the inputs unchanged without extras', () => {
     const base = inputs('claude', '--dangerously-skip-permissions')
-    expect(merge(base, '   ')).toEqual({ ok: true, inputs: base, extraKind: null })
+    expect(merge(base, '   ')).toEqual({ ok: true, inputs: base })
   })
 
   it('adds extras after the defaults', () => {
@@ -220,7 +220,15 @@ describe('applyExtraAgentArgs', () => {
       ['claude', '--session-id x'],
       ['claude', '--from-pr 1'],
       ['claude', '--teleport'],
-      ['claude', '--agent -review'],
+      ['qoder-cn', '--resume abc'],
+      ['qwen-code', '--resume abc'],
+      ['cursor', '--resume abc'],
+      ['jcode', '--resume abc'],
+      ['hermes', '--resume abc'],
+      ['hermes', '--res abc'],
+      ['hermes', '-rabc'],
+      ['hermes', '--continue'],
+      ['hermes', '-c'],
       ['opencode', '-s abc'],
       ['grok', '-s 11111111-1111-4111-8111-111111111111'],
       ['grok', '-s=abc'],
@@ -238,6 +246,7 @@ describe('applyExtraAgentArgs', () => {
     it("doesn't take Codex's -c config flag or a joined dash value as a selector", () => {
       expect(merged(inputs('codex', null), '-c x=1')).toBe('-c x=1')
       expect(merged(inputs('claude', null), '--agent=-review')).toBe('--agent=-review')
+      expect(merged(inputs('claude', null), '--agent -review')).toBe('--agent -review')
     })
 
     it.each([
@@ -328,11 +337,10 @@ describe('applyExtraAgentArgs', () => {
       expect(merged(inputs('claude', '--add-dir a'), '--add-dir b')).toBe('--add-dir a --add-dir b')
     })
 
-    it('refuses a flag the defaults set when Orca has no remover for it', () => {
-      expect(refusal(inputs('grok', '--reasoning-effort low'), '--effort high')).toMatchObject({
-        code: 'defaults-set-flag',
-        message: expect.stringContaining('--reasoning-effort')
-      })
+    it('replaces the Grok effort through either spelling', () => {
+      expect(merged(inputs('grok', '--reasoning-effort low'), '--effort high')).toBe(
+        '--effort high'
+      )
     })
 
     it('refuses oversized extras quickly', () => {
@@ -419,17 +427,5 @@ describe('applyExtraAgentArgs', () => {
       const result = merge(inputs('claude', null, { sessionOptions }), '--effort low')
       expect(result.ok && result.inputs.sessionOptions).toEqual(sessionOptions)
     })
-  })
-
-  it.each([
-    ['claude', '--model opus --effort max', 'catalog_only'],
-    ['claude', '--model opus --verbose', 'other'],
-    ['codex', '-m o3 -c model_reasoning_effort=high', 'catalog_only'],
-    ['codex', '-c x=1', 'other'],
-    ['claude', '--model opus stray', 'other'],
-    ['aider', '--model x', 'other']
-  ] as const)('classifies %s extras %s as %s', (agent, extras, kind) => {
-    const result = merge(inputs(agent, null), extras)
-    expect(result.ok && result.extraKind).toBe(kind)
   })
 })
