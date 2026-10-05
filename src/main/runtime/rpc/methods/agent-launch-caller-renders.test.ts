@@ -2,7 +2,8 @@
  * `agent.launch` makes a chat only for a caller that can show it. `agent.launch.v2` vouches for
  * Claude and Codex chats; any other agent's chat needs the client to read it, by the rule tabs and
  * restart offers use, else it gets a terminal. The host's own callers (CLI, orchestration over the
- * runtime socket) carry no capability list and are unaffected.
+ * runtime socket) carry no capability list and are unaffected. With the structured-chat setting
+ * off, every agent, Grok included, opens as a terminal.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -11,7 +12,13 @@ import {
   STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
 } from '../../../../shared/protocol-version'
 import type { RpcContext } from '../core'
-import { CAPABLE_CLIENT, methodNamed, rpcContext, runtimeStub } from './agent-launch.test-fixture'
+import {
+  CAPABLE_CLIENT,
+  methodNamed,
+  rpcContext,
+  runtimeStub,
+  STRUCTURED_PREFERENCE
+} from './agent-launch.test-fixture'
 
 const createStructuredSession = vi.fn(async (_args: Record<string, unknown>) => ({
   ok: true as const,
@@ -26,8 +33,12 @@ vi.mock('./structured-agent-session-create', () => ({
 const { AGENT_LAUNCH_METHODS } = await import('./agent-launch')
 const AGENT_LAUNCH = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launch')
 
-async function launchInto(agent: string, context: Partial<RpcContext>) {
-  const runtime = runtimeStub()
+async function launchInto(
+  agent: string,
+  context: Partial<RpcContext>,
+  settings?: Record<string, unknown>
+) {
+  const runtime = runtimeStub(settings ? { settings } : {})
   const parsed = AGENT_LAUNCH.params.safeParse({
     agent,
     target: { kind: 'existing', worktree: 'id:wt-7' }
@@ -75,5 +86,18 @@ describe('a launch the caller cannot show as a chat', () => {
   it("opens Grok as a chat for the host's own callers, which carry no capability list", async () => {
     const { result } = await launchInto('grok', {})
     expect(result.outcome).toMatchObject({ kind: 'structured', sessionId: 'sess-1' })
+  })
+})
+
+describe('Grok with the structured-chat setting off', () => {
+  it('opens as a terminal for every caller, as Claude and Codex do', async () => {
+    const off = { ...STRUCTURED_PREFERENCE, experimentalStructuredNativeChat: false }
+    for (const agent of ['grok', 'claude']) {
+      const { result, runtime } = await launchInto(agent, {}, off)
+      expect(result.outcome).toMatchObject({ kind: 'terminal' })
+      expect(result.receipt).toMatchObject({ mode: 'terminal', reason: 'user_default' })
+      expect(runtime.createTerminal).toHaveBeenCalledTimes(1)
+    }
+    expect(createStructuredSession).not.toHaveBeenCalled()
   })
 })

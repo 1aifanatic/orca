@@ -7123,7 +7123,7 @@
             "shellEnvCopy": "Codex 和 Claude 聊天启动时会带上登录 shell 导出的所有变量，与终端一致。关闭后可选择传递哪些变量。",
             "shellEnvToggleLabel": "切换使用 shell 环境",
             "structuredTitle": "使用更新的结构化本机聊天",
-            "structuredCopy": "将新的 Codex 和 Claude 代理作为结构化聊天打开。关闭时会在终端支持的聊天中打开。已有的聊天保持不变。",
+            "structuredCopy": "在支持的情况下，将新的代理作为结构化聊天打开。关闭时会在终端支持的聊天中打开。已有的聊天保持不变。",
             "structuredScope": "在本机和运行支持该功能版本的已配对 Orca 服务器上运行；较旧的服务器保留终端聊天。WSL 和 SSH 主机继续使用终端聊天，Windows 会回退到它，除非 Orca 可以读取进程启动时间。",
             "structuredToggleLabel": "切换更新的结构化本机聊天",
             "resumeTitle": "重启后自动恢复工作聊天",
