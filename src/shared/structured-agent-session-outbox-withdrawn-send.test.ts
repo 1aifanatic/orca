@@ -7,9 +7,9 @@ import { agentSessionFailureWords } from './agent-session-failure-words'
 import type { AgentJournalSubmission } from './agent-session-journal-types'
 import {
   createStructuredAgentSessionOutboxEntry,
-  reconcileStructuredAgentSessionOutbox,
   type StructuredAgentSessionOutboxEntry
 } from './structured-agent-session-outbox'
+import { reconcileStructuredAgentSessionOutbox } from './structured-agent-session-outbox-reconcile'
 import { admitStructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox-admission'
 
 function entry(
@@ -52,7 +52,7 @@ describe('the send a Stop ended before its turn opened', () => {
       ...agentSessionFailureWords(agentSessionFailureFact('cancelled'), { surface: 'rejection' })
     })
 
-    const reconciled = reconcileStructuredAgentSessionOutbox(OUTBOX, [withdrawn])
+    const reconciled = reconcileStructuredAgentSessionOutbox(OUTBOX, [withdrawn], [])
 
     expect(reconciled.map((each) => each.clientMessageId)).toEqual(['next'])
     expect(admitStructuredAgentSessionOutboxEntry(reconciled)).toMatchObject({
@@ -68,7 +68,7 @@ describe('the send a Stop ended before its turn opened', () => {
       reason: 'provider_closed_before_acknowledgement'
     })
 
-    const reconciled = reconcileStructuredAgentSessionOutbox(OUTBOX, [inDoubt])
+    const reconciled = reconcileStructuredAgentSessionOutbox(OUTBOX, [inDoubt], [])
 
     expect(admitStructuredAgentSessionOutboxEntry(reconciled)).toMatchObject({
       state: 'blocked',
