@@ -194,7 +194,7 @@ describe('terminateProviderProcessTree', () => {
     expect(target.kill).toHaveBeenLastCalledWith('SIGKILL')
   })
 
-  it('reports an ESRCH dedicated group as exited and a spawnless child as unverifiable', async () => {
+  it('claims no observation from an ESRCH dedicated group and reports a spawnless child as unverifiable', async () => {
     await expect(
       terminateProviderProcessTree(child(), {
         site: 'provider-test-teardown',
@@ -204,7 +204,7 @@ describe('terminateProviderProcessTree', () => {
           throw Object.assign(new Error('gone'), { code: 'ESRCH' })
         }
       })
-    ).resolves.toBe('exited')
+    ).resolves.toBeNull()
     const spawnless = { pid: undefined, kill: vi.fn<ChildProcess['kill']>(() => true) }
     await expect(
       terminateProviderProcessTree(spawnless, { site: 'provider-test-teardown', platform: 'linux' })

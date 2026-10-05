@@ -34,9 +34,9 @@ function terminateDedicatedPosixGroup(
   try {
     signalGroup(rootPid, 'SIGKILL')
   } catch (error) {
-    // ESRCH is the kernel reporting no process left in the group: positive evidence of absence.
+    // ESRCH says only that the group is empty; a descendant that left it, or a root that never led it, may live.
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Node process.kill errors expose an optional errno code; only that field is read.
-    return (error as NodeJS.ErrnoException).code === 'ESRCH' ? 'exited' : 'unverifiable'
+    return (error as NodeJS.ErrnoException).code === 'ESRCH' ? null : 'unverifiable'
   }
   // Outside the try: that catch is the ESRCH contract, not a breadcrumb handler.
   recordSelfInitiatedTreeKill({
@@ -57,7 +57,8 @@ async function terminatePosixTree(
   const capture = deps.captureDescendants ?? captureDescendantSnapshot
   const snapshot = await capture(rootPid).catch(() => null)
   if (!snapshot) {
-    // No readable table, so no descendant was seen either way.
+    // No observation rather than the reaper's `unverifiable`: Codex's diagnostic treated this as accepted.
+    // The reaper-move follow-up maps it to `unverifiable` and takes that Codex change deliberately.
     child.kill('SIGKILL')
     return null
   }
