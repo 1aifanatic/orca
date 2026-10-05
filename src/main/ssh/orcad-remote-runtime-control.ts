@@ -18,6 +18,7 @@ import {
   parseOrcadReadinessWaitOutput
 } from './orcad-remote-readiness-wait'
 import type { SshConnection } from './ssh-connection'
+import { errorMessage } from '../../shared/error-message'
 import { execCommand, isUnconfirmedSshCommandTermination } from './ssh-relay-deploy-helpers'
 import { isWindowsRemoteHost, type RemoteHostPlatform } from './ssh-remote-platform'
 
@@ -88,23 +89,39 @@ export async function launchOrcadAndAwaitReadiness(
   const deadline = Date.now() + (target.readinessTimeoutMs ?? ORCAD_STARTUP_READINESS_TIMEOUT_MS)
   const sleep = target.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)))
   let last = parseOrcadReadinessOutput('')
+  let lastWaitError: unknown
   while (Date.now() < deadline) {
     target.signal?.throwIfAborted()
     const waitSeconds = Math.min(
       ORCAD_READINESS_WAIT_MAX_SECONDS,
       Math.ceil((deadline - Date.now()) / 1000)
     )
-    last = parseOrcadReadinessWaitOutput(
-      target.host,
-      await execOrcadRemote(
+    let output: string
+    try {
+      output = await execOrcadRemote(
         target,
         orcadReadinessWaitCommand(target.host, spec.remoteInstallDir, waitSeconds)
       )
-    )
+    } catch (error) {
+      if (isUnconfirmedSshCommandTermination(error)) {
+        throw error
+      }
+      // Why retry: a failed read (a refused channel, a timed-out wait) says nothing about the
+      // launched process. Failing the launch here makes the caller stop a healthy candidate.
+      lastWaitError = error
+      console.warn(`[orcad] readiness wait failed; retrying: ${errorMessage(error)}`)
+      await sleep(READINESS_RETRY_PAUSE_MS)
+      continue
+    }
+    lastWaitError = undefined
+    last = parseOrcadReadinessWaitOutput(target.host, output)
     if (last.state !== 'pending') {
       return last
     }
     await sleep(READINESS_RETRY_PAUSE_MS)
+  }
+  if (lastWaitError !== undefined) {
+    throw lastWaitError
   }
   return last
 }

@@ -6,6 +6,7 @@
  * Every activation runs under the host's activation fence and journal
  * (`orcad-activation-lock.ts`), so an interrupted one is recoverable to exactly one slot.
  */
+import { logOrcadActivationOutcome } from './orcad-activation-outcome-log'
 import { join } from 'node:path'
 import type { SshConnection } from './ssh-connection'
 import { ORCAD_INSTALL_MODEL } from './remote-install-model'
@@ -103,9 +104,14 @@ export async function deployOrcad(input: OrcadDeployOptions): Promise<OrcadDeplo
 
   await installOrcadBundle(options, fullVersion, remoteDir)
 
-  return withOrcadActivationLock(
-    options,
-    (lock) => activateInstalledOrcad(options, fullVersion, remoteDir, lock),
-    held
+  return logOrcadActivationOutcome(
+    `update to ${fullVersion}`,
+    () =>
+      withOrcadActivationLock(
+        options,
+        (lock) => activateInstalledOrcad(options, fullVersion, remoteDir, lock),
+        held
+      ),
+    ['installed-and-activated', 'already-active']
   )
 }
