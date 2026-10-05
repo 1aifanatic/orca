@@ -1,3 +1,4 @@
+import type * as TerminalBarrier from './orcad-rollback-terminal-barrier'
 /**
  * The deploy and rollback drivers end to end against a Windows host whose every host op is answered by a
  * fake: no POSIX command, no `-EncodedCommand` and no PowerShell hop on the orcad path.
@@ -20,6 +21,19 @@ vi.mock('./ssh-relay-install-transfers', () => ({
 vi.mock('./orcad-remote-record-file', async (importOriginal) => ({
   ...(await importOriginal<typeof RecordFile>()),
   writeAtomicOrcadRemoteRecord: vi.fn().mockResolvedValue(undefined)
+}))
+// The managed stop's Windows commands are covered by orcad-remote-windows-decommission.test.ts.
+vi.mock('./orcad-rollback-terminal-barrier', async (importOriginal) => ({
+  ...(await importOriginal<typeof TerminalBarrier>()),
+  readOrcadRollbackBarrierTarget: async (_options: unknown, version: string) => ({
+    state: 'ready',
+    context: {
+      version,
+      runtimeId: 'r1',
+      instance: { pid: 4242, startedAtMs: 1, nonce: 'n', lockPath: 'C:/l' }
+    }
+  }),
+  stopIncumbentBehindTerminalBarrier: async () => ({ state: 'retired' })
 }))
 vi.mock('./orcad-remote-node-runtime', () => ({
   ensureRemoteOrcadNodeRuntime: vi.fn().mockResolvedValue(undefined)
@@ -186,7 +200,7 @@ describe('deployOrcad on a Windows host', () => {
     expect(JSON.parse(record?.[2] ?? '{}')).toMatchObject({ active: VERSION })
   })
 
-  it('rolls back by stop request, directory snapshot and node.exe launch', async () => {
+  it('rolls back by managed stop, directory snapshot and node.exe launch', async () => {
     const log: string[] = []
     const record = {
       ...emptyOrcadActivationRecord(),
@@ -210,14 +224,12 @@ describe('deployOrcad on a Windows host', () => {
     })
     expect(result).toMatchObject({ outcome: 'rolled-back', target: TARGET })
     const ops = log.map((command) => /\.js ([a-z-]+)/u.exec(command)?.[1] ?? command)
-    // Stop before any state is touched; the target starts only after its state is back.
-    expect(ops.indexOf('stop')).toBeLessThan(ops.indexOf('snapshot-restore'))
+    // The target starts only after its state is back.
     expect(ops).toEqual([
       'record-read',
       'snapshot-probe',
       'state-newest-mtime',
       'build-hash',
-      'stop',
       'snapshot-capture',
       'snapshot-restore',
       'slot-runtime',

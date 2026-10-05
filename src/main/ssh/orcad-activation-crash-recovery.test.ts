@@ -143,6 +143,26 @@ describe.each(scenarios)('%s interrupted at every mutation', (_name, scenario, r
   )
 })
 
+describe('the rollback terminal barrier', () => {
+  it.each(['live', 'unverifiable'] as const)(
+    'restores nothing and restarts the newer build when the stop finds %s work after the census',
+    async (retirement) => {
+      host = FakeOrcadHost.activatedNew()
+      host.retirement = retirement
+      const before = host.data
+      await expect(rollback()).resolves.toMatchObject({
+        outcome: 'refused',
+        code: 'orcad_rollback_terminals_at_stop'
+      })
+      expect(host.data).toBe(before)
+      expect(host.activeVersion()).toBe(NEW)
+      expect(host.alive.has(NEW)).toBe(true)
+      expect(host.journal).toBeNull()
+      expect(host.fence).toBe(false)
+    }
+  )
+})
+
 describe('recovery refusals keep the fence', () => {
   async function interruptedAfterCandidateLaunch(): Promise<void> {
     host = FakeOrcadHost.deployedOld()
