@@ -313,6 +313,30 @@ describe('session.tabs.setTabProps writer fence on a desktop-owned host', () => 
     expect(setTerminalChatView).not.toHaveBeenCalled()
   })
 
+  it('relays a resend of the same sequence again while the first relay is still pending', async () => {
+    const host = makeChatPairHost()
+    await host.publishedPairs()
+    const firstRelay = makeDeferred()
+    const setTerminalChatView = vi
+      .fn()
+      .mockReturnValueOnce(firstRelay.promise.then(() => ({ viewMode: 'chat', chatLeafId: A })))
+      .mockResolvedValueOnce({ viewMode: 'chat', chatLeafId: A })
+    Reflect.set(host.runtime, 'getAvailableAuthoritativeWindow', () => ({}))
+    Reflect.set(host.runtime, 'notifier', { setTerminalChatView })
+
+    const first = host.write(SURFACE_A, 'chat', { writerId: 'W', seq: 1 })
+    const resend = await host.write(SURFACE_A, 'chat', { writerId: 'W', seq: 1 })
+    firstRelay.resolve()
+    await first
+
+    expect(setTerminalChatView).toHaveBeenCalledTimes(2)
+    expect(resend.chatView).toEqual({ viewMode: 'chat', chatLeafId: A })
+    expect((await host.write(SURFACE_A, 'chat', { writerId: 'W', seq: 1 })).superseded).toBe(
+      undefined
+    )
+    expect(setTerminalChatView).toHaveBeenCalledTimes(2)
+  })
+
   it('applies a resend of the same sequence after its relay failed', async () => {
     const host = makeChatPairHost()
     await host.publishedPairs()
@@ -424,6 +448,14 @@ describe('closing the chat-owning pane on a headless host', () => {
     async (normalizeOnWrite) => {
       const host = makeChatPairHost({ viewMode: 'chat', chatLeafId: A, normalizeOnWrite })
       await host.publishedPairs()
+      const frames: string[] = []
+      host.runtime.onMobileSessionTabsChanged((frame) => {
+        for (const tab of frame.tabs) {
+          if (tab.type === 'terminal') {
+            frames.push(`${tab.viewMode}:${tab.parentLayout?.chatLeafId ?? 'none'}`)
+          }
+        }
+      }, 'observer')
 
       await host.runtime.updateMobileSessionPaneLayout(`id:${TEST_WORKTREE_ID}`, {
         tabId: 'host-tab',
@@ -434,6 +466,9 @@ describe('closing the chat-owning pane on a headless host', () => {
 
       expect(host.hostPair()).toEqual({ row: 'terminal', unified: 'terminal', owner: undefined })
       expect((await host.publishedPairs()).every((pair) => pair.viewMode === 'terminal')).toBe(true)
+      // No frame in between may show chat without its owning pane.
+      expect(frames.length).toBeGreaterThan(0)
+      expect(frames.filter((frame) => frame.startsWith('chat'))).toEqual([])
     }
   )
 })

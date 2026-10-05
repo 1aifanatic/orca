@@ -1,6 +1,6 @@
 export type ChatViewWriteAdmission = 'apply' | 'duplicate' | 'superseded'
 
-/** `confirmed: false` lets a resend of a failed relay apply instead of reading as a duplicate. */
+/** `confirmed` once the write landed; until then a same-seq resend applies again (absolute, idempotent). */
 type LastSeqByWriter = Map<string, { seq: number; confirmed: boolean }>
 
 /**
@@ -37,15 +37,15 @@ export class ChatViewWriteFence {
       lastSeqByWriter = new Map()
       parents.set(parentTabId, lastSeqByWriter)
     }
-    lastSeqByWriter.set(writerId, { seq, confirmed: true })
+    lastSeqByWriter.set(writerId, { seq, confirmed: false })
     return 'apply'
   }
 
-  /** The write admitted at `seq` failed before it was known to apply. */
-  markUnconfirmed(worktreeId: string, parentTabId: string, writerId: string, seq: number): void {
+  /** The write admitted at `seq` landed; a later resend of it is a duplicate. */
+  confirm(worktreeId: string, parentTabId: string, writerId: string, seq: number): void {
     const last = this.byWorktree.get(worktreeId)?.get(parentTabId)?.get(writerId)
     if (last?.seq === seq) {
-      last.confirmed = false
+      last.confirmed = true
     }
   }
 

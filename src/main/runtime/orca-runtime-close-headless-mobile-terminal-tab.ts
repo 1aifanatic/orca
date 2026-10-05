@@ -234,21 +234,23 @@ export class OrcaRuntimeWithCloseHeadlessMobileTerminalTab extends OrcaRuntimeWi
     }
     const acceptedLayout = this.persistHeadlessTerminalPaneLayout(worktreeId, resolvedArgs)
     if (acceptedLayout) {
+      // Why prior owner: persistence normalization strips an owner outside the tree before read-back.
+      const ownerRetired =
+        priorOwner !== null &&
+        ![priorOwner, acceptedLayout.chatLeafId].some(
+          (leafId) => leafId && terminalLayoutNodeContainsLeaf(acceptedLayout.root, leafId)
+        )
+      if (ownerRetired) {
+        // Why before the layout frame: no publication may show chat without its owning pane.
+        this.applyHeadlessChatPairWrite(worktreeId, hostTabId, null, 'terminal', {})
+      }
       this.applyHeadlessTerminalPaneLayoutToSnapshot(worktreeId, {
         tabId: hostTabId,
         root: acceptedLayout.root,
         expandedLeafId: acceptedLayout.expandedLeafId,
-        chatLeafId: acceptedLayout.chatLeafId ?? null,
+        chatLeafId: ownerRetired ? null : (acceptedLayout.chatLeafId ?? null),
         ...(acceptedLayout.titlesByLeafId ? { titlesByLeafId: acceptedLayout.titlesByLeafId } : {})
       })
-      // Why prior owner: persistence normalization strips an owner outside the tree before read-back.
-      const ownerSurvives = [priorOwner, acceptedLayout.chatLeafId].some(
-        (leafId) => leafId && terminalLayoutNodeContainsLeaf(acceptedLayout.root, leafId)
-      )
-      if (priorOwner && !ownerSurvives) {
-        // Why: the accepted tree dropped the owning pane; leave chat as a close does.
-        this.applyHeadlessChatPairWrite(worktreeId, hostTabId, null, 'terminal', {})
-      }
     }
     return { updated: true }
   }
@@ -299,19 +301,15 @@ export class OrcaRuntimeWithCloseHeadlessMobileTerminalTab extends OrcaRuntimeWi
         return refused
       }
       const { writerId, seq } = args.chatViewWrite
-      try {
-        const chatView = await notifier.setTerminalChatView(
-          worktreeId,
-          target.parentTabId,
-          target.leafId,
-          args.viewMode
-        )
-        return { updated: true, chatView }
-      } catch (error) {
-        // Why: the client resends the same seq after a failed relay; that resend must apply.
-        this.chatViewWriteFence.markUnconfirmed(worktreeId, target.parentTabId, writerId, seq)
-        throw error
-      }
+      // Why confirm only on success: a resend after a failed or still-pending relay must apply.
+      const chatView = await notifier.setTerminalChatView(
+        worktreeId,
+        target.parentTabId,
+        target.leafId,
+        args.viewMode
+      )
+      this.chatViewWriteFence.confirm(worktreeId, target.parentTabId, writerId, seq)
+      return { updated: true, chatView }
     }
     if (args.chatViewWrite) {
       const refused = this.admitChatViewWrite(worktreeId, target.parentTabId, args.chatViewWrite)
@@ -323,6 +321,10 @@ export class OrcaRuntimeWithCloseHeadlessMobileTerminalTab extends OrcaRuntimeWi
       ...(args.color !== undefined ? { color: args.color } : {}),
       ...(args.isPinned !== undefined ? { isPinned: args.isPinned } : {})
     })
+    if (args.chatViewWrite) {
+      const { writerId, seq } = args.chatViewWrite
+      this.chatViewWriteFence.confirm(worktreeId, target.parentTabId, writerId, seq)
+    }
     return {
       updated: true,
       chatView: this.readMobileSessionTabChatView(worktreeId, target.parentTabId)

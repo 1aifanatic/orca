@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { ChatViewWriteFence } from './chat-view-write-fence'
 
 describe('ChatViewWriteFence', () => {
-  it('applies newer sequences, answers a resend as a duplicate, refuses older ones', () => {
+  it('applies newer sequences, answers a resend of a landed write as a duplicate, refuses older ones', () => {
     const fence = new ChatViewWriteFence()
     expect(fence.admit('wt', 'tab', 'W', 2)).toBe('apply')
+    fence.confirm('wt', 'tab', 'W', 2)
     expect(fence.admit('wt', 'tab', 'W', 2)).toBe('duplicate')
     expect(fence.admit('wt', 'tab', 'W', 1)).toBe('superseded')
     expect(fence.admit('wt', 'tab', 'W', 3)).toBe('apply')
@@ -34,14 +35,14 @@ describe('ChatViewWriteFence', () => {
     expect(fence.admit('wt-other', 'tab', 'W', 1)).toBe('superseded')
   })
 
-  it('lets a resend apply after its relay failed, unless the writer moved on', () => {
+  it('lets a resend apply until its write landed, and never confirms a replaced sequence', () => {
     const fence = new ChatViewWriteFence()
     fence.admit('wt', 'tab', 'W', 2)
-    fence.markUnconfirmed('wt', 'tab', 'W', 2)
     expect(fence.admit('wt', 'tab', 'W', 2)).toBe('apply')
+    fence.confirm('wt', 'tab', 'W', 2)
     expect(fence.admit('wt', 'tab', 'W', 2)).toBe('duplicate')
     fence.admit('wt', 'tab', 'W', 3)
-    fence.markUnconfirmed('wt', 'tab', 'W', 2)
-    expect(fence.admit('wt', 'tab', 'W', 3)).toBe('duplicate')
+    fence.confirm('wt', 'tab', 'W', 2)
+    expect(fence.admit('wt', 'tab', 'W', 3)).toBe('apply')
   })
 })
