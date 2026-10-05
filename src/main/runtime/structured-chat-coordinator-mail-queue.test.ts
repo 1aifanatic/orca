@@ -1,10 +1,10 @@
 import './rpc/unused-default-rpc-methods.test-fixture'
 // A busy structured chat holds the orchestration pointer as a card in its own queue, sent when the
-// turn ends, as it holds a message the person sends then. End to end on the coordinator-mail rig.
+// turn ends, as it holds a message the person sends then; the queue does nothing else with it. End
+// to end on the coordinator-mail rig.
 
 import { describe, expect, it, vi } from 'vitest'
-import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
-import { operationId, type FakeConnection } from './structured-chat-coordinator-fake-codex-fixture'
+import type { FakeConnection } from './structured-chat-coordinator-fake-codex-fixture'
 import { idOf } from './rpc/orchestration-session-caller-test-fixture'
 import {
   COORDINATOR,
@@ -53,18 +53,15 @@ async function idleEdgesSettled(): Promise<void> {
   }
 }
 
-/** The chat surface's own mutation envelope for `method`. */
-function surfaceEnvelope(method: string, fields: Record<string, unknown>) {
-  return {
-    sessionId: COORDINATOR,
-    clientOperationId: operationId(),
-    expectedRuntimeFence: host.deps.store.getRecord(COORDINATOR)!.lease.runtimeFence,
-    payloadFingerprint: computeAgentSessionPayloadFingerprint({
-      method,
-      sessionId: COORDINATOR,
-      fields
-    })
-  }
+/** The chat's queue as its journal stores it. */
+function queuedRows() {
+  return host.collaboratorsForTests().sessions.get(COORDINATOR)?.journal.queuedMessages.list() ?? []
+}
+
+/** The person's agent reads its mail as `check` hands it out, and acknowledges it. */
+async function readMail(): Promise<void> {
+  const checked = await call('orchestration.check', {}, { sessionId: COORDINATOR })
+  await call('orchestration.check', { ack: checked.deliveryId }, { sessionId: COORDINATOR })
 }
 
 /** A second task, for a second worker result. */
@@ -85,7 +82,7 @@ describe("a busy chat's orchestration pointer waits in its queue", () => {
       WAIT
     )
     expect(chat.turns).toHaveLength(1)
-    const [card] = await host.queuedMessageRows(COORDINATOR)
+    const [card] = queuedRows()
     const [mail] = db.getAllMessages(`run:${runId}`)
     expect(card?.source).toEqual({
       kind: 'agent',
@@ -109,7 +106,7 @@ describe("a busy chat's orchestration pointer waits in its queue", () => {
     expect(chat.turns).toHaveLength(2)
   })
 
-  it('queues no second pointer while one waits, and points new mail again once it is sent', async () => {
+  it('sends no second pointer while the first is unread, and a new one once the agent has read it', async () => {
     const chat = await openChat(COORDINATOR)
     const { runId, taskId } = await coordinatorRunAndTask()
     const second = await secondTask()
@@ -123,14 +120,15 @@ describe("a busy chat's orchestration pointer waits in its queue", () => {
     await endTurn()
     await vi.waitFor(() => expect(chat.turns).toHaveLength(2), WAIT)
     await settleTurn(COORDINATOR, 1)
-    // Mail that came while the card waited, and mail after it was sent: pointed again, as a
-    // terminal agent is pointed again for new unread mail.
-    await vi.waitFor(() => expect(chat.turns).toHaveLength(3), WAIT)
-    expect(turnText(chat.turns[2]!)).toMatch(/^You have 1 orchestration message\./)
-    await settleTurn(COORDINATOR, 2)
+    await idleEdgesSettled()
+    expect(chat.turns).toHaveLength(2)
+
+    // `check` returned both results; mail after that is pointed again.
+    await readMail()
     db.insertMessage({ from: 'term_worker_2', to: `run:${runId}`, subject: 'later', runId })
     runtime.deliverPendingMessagesForHandle(`run:${runId}`)
-    await vi.waitFor(() => expect(chat.turns).toHaveLength(4), WAIT)
+    await vi.waitFor(() => expect(chat.turns).toHaveLength(3), WAIT)
+    expect(turnText(chat.turns[2]!)).toBe(ptyPointer(`run:${runId}`))
   })
 
   it("leaves the chat's own `check` as it is: the mail stays readable, and the card stays", async () => {
@@ -147,39 +145,4 @@ describe("a busy chat's orchestration pointer waits in its queue", () => {
     expect(await queuedCardTexts()).toEqual([ptyPointer(`run:${runId}`)])
     await endTurn()
   })
-
-  it('points mail that came while a card waited once the person deletes that card, with the chat idle', async () => {
-    const chat = await openChat(COORDINATOR)
-    const { runId, taskId } = await coordinatorRunAndTask()
-    const second = await secondTask()
-    await runningUserTurn(chat)
-    await finishWorker(taskId)
-    await vi.waitFor(async () => expect(await queuedCardTexts()).toHaveLength(1), WAIT)
-    // Stop holds the card; the chat is idle.
-    const stop = { turnId: 'turn-1' }
-    const stopped = await host.cancel(
-      { callerKey: 'test-surface' },
-      { envelope: surfaceEnvelope('agentSession.cancel', stop), ...stop }
-    )
-    expect(stopped).toMatchObject({ ok: true })
-    chat.handlers.onNotification?.('turn/completed', {
-      turn: { id: 'turn-1', status: 'interrupted' }
-    })
-    await host.flushStreamedEvents(COORDINATOR)
-    await finishWorker(second, { handle: 'term_worker_2', paneKey: WORKER_2_PANE })
-    // Past the arrival repoint, which finds the card still waiting.
-    await new Promise((resolve) => setTimeout(resolve, 2_500))
-    expect(chat.turns).toHaveLength(1)
-
-    const [card] = await host.queuedMessageRows(COORDINATOR)
-    const remove = { messageId: card!.messageId }
-    const deleted = await host.queuedMessageDelete(
-      { callerKey: 'test-surface' },
-      { envelope: surfaceEnvelope('agentSession.queuedMessageDelete', remove), ...remove }
-    )
-    expect(deleted).toMatchObject({ ok: true, value: { deleted: true } })
-    // No status change follows a delete; the card leaving the queue is what points the chat.
-    await vi.waitFor(() => expect(chat.turns).toHaveLength(2), { timeout: 2_000 })
-    expect(turnText(chat.turns[1]!)).toBe(ptyPointer(`run:${runId}`))
-  }, 15_000)
 })

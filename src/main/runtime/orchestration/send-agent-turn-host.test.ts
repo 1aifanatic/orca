@@ -74,7 +74,11 @@ describe('sendAgentTurn through the real host', () => {
     })
     // Stored with the card, read back whole: who it is from survives the round trip.
     expect(
-      (await rig.host.queuedMessageRows(SESSION)).map(({ state, source }) => ({ state, source }))
+      rig.host
+        .collaboratorsForTests()
+        .sessions.get(SESSION)
+        ?.journal.queuedMessages.list()
+        .map(({ state, source }) => ({ state, source }))
     ).toEqual([{ state: 'waiting', source: MAIL_SOURCE }])
     // Shown in the chat's queue like the person's own card.
     expect(await rig.drafts()).toMatchObject([{ state: 'waiting' }])

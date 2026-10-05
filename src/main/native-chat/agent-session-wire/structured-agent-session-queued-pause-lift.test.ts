@@ -18,7 +18,6 @@ import {
   type QueuedMessageTestRig
 } from './structured-agent-session-queued-message-rig.test-fixture'
 import { sameQueuePause } from './structured-agent-session-queued-publication'
-import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 import {
   structuredAgentSessionHostInstance,
@@ -42,30 +41,12 @@ async function expectPaused(...draftIds: string[]): Promise<void> {
   expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
 }
 
-/** `source`: queued by Orca with another agent's message, not typed by the person. */
-async function queuedDraft(text: string, source?: AgentMessageSource): Promise<string> {
-  const queued = await rig.send(text, 'queue-if-active', source ? { internal: true, source } : {})
-    .result
+async function queuedDraft(text: string): Promise<string> {
+  const queued = await rig.send(text, 'queue-if-active').result
   if (!queued.ok || !('queued' in queued.value)) {
     throw new Error('expected a queued receipt')
   }
   return queued.value.queued.messageId
-}
-
-/** What Orca queues for an agent's mail: the pointer a terminal agent is typed. */
-const POINTER = 'You have 1 orchestration message. Run `orca orchestration check --run r1`.'
-
-const AGENT_MAIL: AgentMessageSource = {
-  kind: 'agent',
-  senders: [
-    { party: { address: 'term_worker', terminalHandle: 'term_worker', orcaSessionId: null } }
-  ],
-  orchestration: {
-    message: 'mail-notice',
-    mailbox: 'run:r1',
-    dispatchId: null,
-    messages: [{ messageId: 'm1', runId: 'r1', from: 'term_worker' }]
-  }
 }
 
 /** A draft behind a Stop, with the stopped turn settled so the session is idle. */
@@ -91,14 +72,6 @@ async function handedOverUserSend(text: string): Promise<string> {
 }
 
 describe("a Stop's queue pause", () => {
-  it("holds an agent's card queued before it, as it holds the person's", async () => {
-    const working = await rig.workingSend()
-    const agentCard = await queuedDraft(POINTER, AGENT_MAIL)
-    await rig.stop()
-    await rig.settleAccepted(working, 'stopped')
-    await expectPaused(agentCard)
-  })
-
   it('outlives a user send the provider accepts and then refuses; a later send that starts lifts it', async () => {
     const draftId = await stoppedDraft()
     const refused = await handedOverUserSend('the start fails')
@@ -369,53 +342,7 @@ describe('a pause only over cards Resume could send', () => {
   })
 })
 
-describe("an agent's card carried by /clear", () => {
-  it("keeps who it is from, and waits under the cleared pause like the person's", async () => {
-    const working = await rig.workingSend()
-    const agentCard = await queuedDraft(POINTER, AGENT_MAIL)
-    await rig.stop()
-    await rig.settleAccepted(working, 'a')
-    const fields = { command: 'clear' as const }
-    const cleared = await rig.host.conversationCommand(QUEUED_RIG_CALLER, {
-      envelope: rig.envelope(fields, 'agentSession.conversationCommand', hostTestOperationId()),
-      ...fields
-    })
-    const replacement = cleared.ok ? cleared.value.replacementSessionId : undefined
-    if (!replacement) {
-      throw new Error('expected a replacement session')
-    }
-    const rows = await rig.host.queuedMessageRows(replacement)
-    expect(rows.map((row) => [row.messageId, row.state, row.source])).toEqual([
-      [agentCard, 'waiting', AGENT_MAIL]
-    ])
-    expect(await rig.queuePause(replacement)).toEqual({ reason: 'cleared' })
-  })
-})
-
 describe("a restart's pause", () => {
-  it("does not hold an agent's card: it sends when the turn ends, with no one there to Resume", async () => {
-    const working = await rig.workingSend()
-    const agentCard = await queuedDraft(POINTER, AGENT_MAIL)
-    await rig.restartHostProcess()
-    await rig.settleAccepted(working, 'a')
-    await eventually(async () => expect(await rig.handoff(agentCard)).toBeDefined())
-    expect(await rig.queuePause()).toBeNull()
-  })
-
-  it("holds the person's card, and an agent's card queued behind it waits behind it", async () => {
-    const working = await rig.workingSend()
-    const personCard = await queuedDraft('typed by the person')
-    const agentCard = await queuedDraft(POINTER, AGENT_MAIL)
-    await rig.restartHostProcess()
-    await rig.settleAccepted(working, 'a')
-    await new Promise((resolve) => setTimeout(resolve, 250))
-    expect(await rig.handoff(personCard)).toBeUndefined()
-    expect(await rig.handoff(agentCard)).toBeUndefined()
-    expect(await rig.queuePause()).toEqual({ reason: 'restarted' })
-    expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
-    await eventually(async () => expect(await rig.handoff(personCard)).toBeDefined())
-  })
-
   it("once a person's turn ends it, stays ended when the conversation reopens", async () => {
     const working = await rig.workingSend()
     const first = await queuedDraft('first')

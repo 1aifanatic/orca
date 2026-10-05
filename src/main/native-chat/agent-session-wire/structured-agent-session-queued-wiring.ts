@@ -16,27 +16,6 @@ import {
   sendQueuedStructuredAgentMessage
 } from './structured-agent-session-queued-mutations'
 import { deferredStructuredAgentSessionLogger } from './structured-agent-session-logger'
-import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
-
-/** The agents' cards each journal last held waiting, read again only when its queue changed. */
-const waitingAgentCards = new WeakMap<AgentSessionJournal, { revision: number; ids: Set<string> }>()
-
-/** Whether an agent's card stopped waiting (sent, returned, deleted or carried) since last read. */
-function agentCardSettled(journal: AgentSessionJournal): boolean {
-  const revision = journal.queuedMessages.revision()
-  const seen = waitingAgentCards.get(journal)
-  if (seen?.revision === revision) {
-    return false
-  }
-  const ids = new Set(
-    journal.queuedMessages
-      .list()
-      .filter((row) => row.state === 'waiting' && row.source.kind === 'agent')
-      .map((row) => row.messageId)
-  )
-  waitingAgentCards.set(journal, { revision, ids })
-  return [...(seen?.ids ?? [])].some((id) => !ids.has(id))
-}
 
 /** `sessions` are the live conversations (their `touch` is the idle sweep's activity renewal,
  *  which the drain's schedule rides); everything else comes from the host's mutation context,
@@ -67,9 +46,6 @@ export function wireStructuredAgentSessionQueuedMessages(
       const journal = sessions.get(sessionId)?.journal
       if (journal) {
         void adoptEndedRestartPause(sessionId, journal, context().deps.logger)
-      }
-      if (journal && agentCardSettled(journal)) {
-        context().deps.onAgentCardSettled?.(sessionId)
       }
       drain.schedule(sessionId)
     },

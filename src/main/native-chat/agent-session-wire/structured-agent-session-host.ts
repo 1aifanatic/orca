@@ -7,7 +7,6 @@ import { StructuredConversationCommandController } from './structured-conversati
 // it, and the idle sweep is the one thing that puts it to rest.
 
 import type { AgentJournalSnapshot } from '../../../shared/agent-session-journal-types'
-import type { QueuedMessageRow } from '../agent-session-journal/queued-message-table'
 import type { AgentSessionExecutionLocation } from '../../../shared/agent-session-record'
 import type * as SessionWire from '../../../shared/agent-session-wire'
 import type { AgentSessionAttachParams } from './structured-agent-session-attach'
@@ -320,11 +319,6 @@ export class StructuredAgentSessionHost {
    *  revised or tombstoned in place, so an item's ABSENCE from a bounded page proves nothing. */
   journalSnapshot = async (sessionId: string): Promise<AgentJournalSnapshot> =>
     (await this.lifetime.conversation(sessionId)).journal.snapshot()
-
-  /** Every draft the conversation holds, settled ones included: how a host-side sender learns
-   *  whether its own card still waits. Host-only; clients read the published list. */
-  queuedMessageRows = async (sessionId: string): Promise<readonly QueuedMessageRow[]> =>
-    (await this.lifetime.conversation(sessionId)).journal.queuedMessages.list()
 
   subscribe = (input: AgentSessionSubscribeInput): Promise<() => void> =>
     this.backgroundTasks.subscribe(input)

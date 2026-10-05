@@ -59,34 +59,18 @@ describe('structured mailbox pointer host', () => {
     })
   })
 
-  it("reads what the session's sends settled as, and whether an agent's card still waits", async () => {
+  it("reads what the session's sends settled as", async () => {
     const submissions = [{ clientMessageId: 'op1', dispatchState: 'unknown' }]
-    const read = async (rows: { state: string; source: { kind: string } }[]) => {
-      hostRef.current = {
-        journalSnapshot: () => ({ items: [], submissions }),
-        queuedMessageRows: () => rows
-      }
-      return createStructuredMailboxPointerHost().readSessionFacts('s1')
-    }
-    expect(await read([{ state: 'waiting', source: NOTICE_SOURCE }])).toEqual({
-      submissions,
-      pointerCardWaiting: true
+    hostRef.current = { journalSnapshot: () => ({ items: [], submissions }) }
+    expect(await createStructuredMailboxPointerHost().readSessionFacts('s1')).toEqual({
+      submissions
     })
-    // The person's card, or an agent's card already sent or deleted, holds no pointer back.
-    expect(
-      await read([
-        { state: 'waiting', source: { kind: 'user' } },
-        { state: 'dispatched', source: NOTICE_SOURCE },
-        { state: 'withdrawn', source: NOTICE_SOURCE }
-      ])
-    ).toEqual({ submissions, pointerCardWaiting: false })
   })
 
   it('answers null rather than nothing recorded when the session cannot be read', async () => {
     // Null retains the pointer; an empty answer would send into a session this runtime cannot see.
     expect(await createStructuredMailboxPointerHost().readSessionFacts('s1')).toBeNull()
     hostRef.current = {
-      queuedMessageRows: () => [],
       journalSnapshot: () => {
         throw new Error('agent_session_ownership_unknown')
       }

@@ -123,8 +123,6 @@ export type StructuredAgentSessionRuntimeDeps = {
   /** Every structured-session status projection, for host-side reactions such as the first-work
    *  workspace rename that CLI agents get from their hooks. */
   onSessionStatusChanged?: StructuredAgentSessionHostDeps['onSessionStatusChanged']
-  /** See `StructuredAgentSessionHostDeps.onAgentCardSettled`. */
-  onAgentCardSettled?: StructuredAgentSessionHostDeps['onAgentCardSettled']
   /** The agent-status store; see `StructuredAgentSessionHostDeps.statusSink`. */
   statusSink?: StructuredAgentSessionHostDeps['statusSink']
   /** See `StructuredAgentSessionHostDeps.hasOpenDispatch`. */
@@ -322,7 +320,6 @@ async function installOnJournal(
       : {}),
     logger: deps.logger,
     ...(deps.onSessionStatusChanged ? { onSessionStatusChanged: deps.onSessionStatusChanged } : {}),
-    ...(deps.onAgentCardSettled ? { onAgentCardSettled: deps.onAgentCardSettled } : {}),
     ...(deps.statusSink ? { statusSink: deps.statusSink } : {}),
     ...(deps.hasOpenDispatch ? { hasOpenDispatch: deps.hasOpenDispatch } : {}),
     ...(await modelCatalogHostDeps({ store, deps, envResolvers }))

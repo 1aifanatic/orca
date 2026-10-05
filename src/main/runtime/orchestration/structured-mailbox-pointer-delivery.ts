@@ -4,8 +4,8 @@
  * The PTY lane types the nudge into a live pane and reads the idle edge off the terminal title.
  * Neither exists here, so this is a sibling of `OrchestrationMailboxPointerDelivery` rather than a
  * branch inside it: batch selection and the pointer text are literally shared, and everything
- * below it is different — the nudge is a session turn sent as a person's message is (a busy chat
- * holds it as a card its queue sends when the turn ends), and the idle edge is the journal.
+ * below it is different — the nudge goes through the chat's own send, as a person's message does,
+ * and the retry edge is the journal.
  *
  * Coordinators are in scope here, unlike the PTY lane's reasoning: a PTY coordinator blocks in
  * `check --wait`, where a waiter preempts pointer delivery, but a structured coordinator is a chat
@@ -50,15 +50,13 @@ type ParkedPointerDelivery = {
 
 export type StructuredPointerSendOutcome =
   | { kind: 'sent'; state: StructuredDispatchState }
-  /** The chat was busy: the pointer waits as a card its queue sends when the turn ends. */
+  /** The chat's queue took it, as it takes a person's message. */
   | { kind: 'queued' }
   | { kind: 'unattached' }
 
 export type StructuredPointerSessionFacts = {
   /** Every send the session recorded, oldest first: what the lane's own sends settled as. */
   submissions: readonly StructuredPointerSubmission[]
-  /** A pointer card of this lane's still waits in the chat's queue. */
-  pointerCardWaiting: boolean
 }
 
 export type StructuredMailboxPointerHost = {
@@ -177,6 +175,12 @@ export class OrchestrationStructuredMailboxPointerDelivery<
     if (db.hasOutstandingMailboxDelivery?.(mailboxHandle)) {
       return
     }
+    // One pointer at a time, read off the mailbox alone: until the agent reads what it was pointed
+    // at, it has a pointer to act on, and its `check` returns everything unread.
+    if (db.hasPointedUnreadMessages(mailboxHandle)) {
+      this.retain(mailboxHandle, target.sessionId, 'pointer-unread', reservedTypes)
+      return
+    }
     const unread = selectOrchestrationPointerBatch({
       db,
       mailboxHandle,
@@ -206,11 +210,6 @@ export class OrchestrationStructuredMailboxPointerDelivery<
     const session = await this.deps.host.readSessionFacts(sessionId)
     if (!session) {
       this.retain(mailboxHandle, sessionId, 'session-not-attached', reservedTypes)
-      return
-    }
-    if (session.pointerCardWaiting) {
-      // One pointer card at a time; mail arriving meanwhile is pointed at once that card is sent.
-      this.retain(mailboxHandle, sessionId, 'queued', reservedTypes)
       return
     }
     const fence = this.deps.host.currentFence(sessionId)

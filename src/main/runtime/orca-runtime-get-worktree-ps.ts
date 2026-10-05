@@ -177,7 +177,6 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
           firstWorkRenameDeps(this.requireStore(), this)
         )
       },
-      onAgentCardSettled: (sessionId) => this.notifyStructuredSessionJournalActivity(sessionId),
       ...(this.structuredAgentStatusSinkFn ? { statusSink: this.structuredAgentStatusSinkFn } : {}),
       // Read per sweep tick from the orchestration database: a worker whose dispatch is open keeps
       // its agent running. No database answers no.

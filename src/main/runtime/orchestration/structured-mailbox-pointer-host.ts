@@ -12,6 +12,7 @@ import type {
   StructuredMailboxPointerHost,
   StructuredPointerSessionFacts
 } from './structured-mailbox-pointer-delivery'
+import type { AgentJournalSnapshot } from '../../../shared/agent-session-journal-types'
 import {
   structuredSessionGateFacts,
   type StructuredSessionGateFacts
@@ -45,31 +46,26 @@ export function structuredSessionPointerCallerKey(sessionId: string): string {
 export async function readStructuredSessionGateFacts(
   sessionId: string
 ): Promise<StructuredSessionGateFacts | null> {
-  const snapshot = await readSession(sessionId, (host) => host.journalSnapshot(sessionId))
+  const snapshot = await readSessionJournal(sessionId)
   return snapshot ? structuredSessionGateFacts(snapshot.items) : null
 }
 
-/** What each recorded send settled as, and whether an agent's card still waits in the queue. */
-function readPointerSessionFacts(sessionId: string): Promise<StructuredPointerSessionFacts | null> {
-  return readSession(sessionId, async (host) => ({
-    submissions: (await host.journalSnapshot(sessionId)).submissions,
-    pointerCardWaiting: (await host.queuedMessageRows(sessionId)).some(
-      ({ state, source }) => state === 'waiting' && source.kind === 'agent'
-    )
-  }))
+/** What each recorded send settled as. */
+async function readPointerSessionFacts(
+  sessionId: string
+): Promise<StructuredPointerSessionFacts | null> {
+  const snapshot = await readSessionJournal(sessionId)
+  return snapshot ? { submissions: snapshot.submissions } : null
 }
 
-async function readSession<T>(
-  sessionId: string,
-  read: (host: NonNullable<ReturnType<typeof getStructuredAgentSessionHost>>) => Promise<T>
-): Promise<T | null> {
+async function readSessionJournal(sessionId: string): Promise<AgentJournalSnapshot | null> {
   const host = getStructuredAgentSessionHost()
   if (!host) {
     return null
   }
   try {
     // Opens a conversation the idle sweep closed; that starts no agent.
-    return await read(host)
+    return await host.journalSnapshot(sessionId)
   } catch (error) {
     // Not attached is a retain reason, not a failure; anything else is still unreadable.
     if ((error as Error)?.message !== AGENT_SESSION_NOT_ATTACHED.code) {

@@ -17,8 +17,8 @@ import {
 export type StructuredPointerRetainReason =
   | 'session-not-attached'
   | 'turn-unsettled'
-  /** A pointer card waits in the chat's queue. */
-  | 'queued'
+  /** The mailbox holds mail it was pointed at and has not read. */
+  | 'pointer-unread'
   | 'dispatch-rejected'
   | 'dispatch-unknown'
 

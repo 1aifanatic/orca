@@ -36,10 +36,13 @@ function harness(options: {
   const mailbox = options.mailbox ?? 'dispatch:d1'
   const dispatchId = options.dispatchId === undefined ? 'd1' : options.dispatchId
   let attached = options.attached ?? true
-  // The session's recorded sends, as its journal reports them, and its queue's pointer card.
+  // The session's recorded sends, as its journal reports them.
   let submissions: StructuredPointerSubmission[] = []
-  let pointerCardWaiting = false
-  const markAsDelivered = vi.fn()
+  // Mail the mailbox was pointed at and has not read yet.
+  let pointedUnread = false
+  const markAsDelivered = vi.fn(() => {
+    pointedUnread = true
+  })
   const send: StructuredMailboxPointerHost['send'] = vi.fn(async () =>
     options.queued
       ? { kind: 'queued' as const }
@@ -56,6 +59,7 @@ function harness(options: {
       { id: 'm1', type: 'status', sequence: 3, from_handle: 'term_coord', run_id: 'run_1' }
     ],
     markAsDelivered,
+    hasPointedUnreadMessages: () => pointedUnread,
     getStructuredPointerOperation: (key: string) => stored.get(key),
     putStructuredPointerOperation: (row: StructuredPointerOperationRow) =>
       stored.set(row.mailbox_handle, row),
@@ -68,7 +72,7 @@ function harness(options: {
       mailboxHandle === mailbox ? { sessionId: IDENTITY.sessionId, dispatchId } : null,
     getCliCommand: () => 'orca-dev',
     host: {
-      readSessionFacts: async () => (attached ? { submissions, pointerCardWaiting } : null),
+      readSessionFacts: async () => (attached ? { submissions } : null),
       currentFence: () => 4,
       send
     }
@@ -81,8 +85,9 @@ function harness(options: {
     setAttached: (next: boolean) => {
       attached = next
     },
-    setPointerCardWaiting: (next: boolean) => {
-      pointerCardWaiting = next
+    /** The agent ran `check`: what it was pointed at is read. */
+    readPointedMail: () => {
+      pointedUnread = false
     },
     setSubmissions: (next: StructuredPointerSubmission[]) => {
       submissions = next
@@ -178,16 +183,18 @@ describe('structured mailbox pointer delivery', () => {
     expect(stored.has('dispatch:d1')).toBe(false)
   })
 
-  it('sends no second pointer while one waits in the queue, and points new mail once it is sent', async () => {
-    const { delivery, send, setPointerCardWaiting } = harness({})
-    setPointerCardWaiting(true)
+  it('sends no second pointer while pointed mail is unread, and points new mail once it is read', async () => {
+    const { delivery, send, readPointedMail } = harness({})
     delivery.deliverForHandle('dispatch:d1')
     await flush()
-    expect(send).not.toHaveBeenCalled()
-    setPointerCardWaiting(false)
-    delivery.onJournalActivity('session-1')
+    expect(send).toHaveBeenCalledTimes(1)
+    delivery.deliverForHandle('dispatch:d1')
     await flush()
     expect(send).toHaveBeenCalledTimes(1)
+    readPointedMail()
+    delivery.deliverForHandle('dispatch:d1')
+    await flush()
+    expect(send).toHaveBeenCalledTimes(2)
   })
 
   it('nudges the worker while its coordinator holds an unacked Run delivery', async () => {
@@ -378,10 +385,10 @@ describe('structured mailbox pointer delivery', () => {
 })
 
 describe('forgetting one settled worker', () => {
-  /** Two workers, each with a pointer card waiting, so each parked on its OWN session's edge. */
+  /** Two workers, each with pointed mail unread, so each parked on its OWN session's edge. */
   function twoWorkerHarness() {
     let resolves = true
-    let pointerCardWaiting = true
+    let pointedUnread = true
     const sessionByMailbox: Record<string, string> = {
       'dispatch:d1': 'session-1',
       'dispatch:d2': 'session-2'
@@ -397,6 +404,7 @@ describe('forgetting one settled worker', () => {
         { id: 'm1', type: 'status', sequence: 3, from_handle: 'term_coord', run_id: 'run_1' }
       ],
       markAsDelivered: vi.fn(),
+      hasPointedUnreadMessages: () => pointedUnread,
       getStructuredPointerOperation: () => undefined,
       putStructuredPointerOperation: () => {},
       deleteStructuredPointerOperation: () => {}
@@ -412,7 +420,7 @@ describe('forgetting one settled worker', () => {
       },
       getCliCommand: () => 'orca',
       host: {
-        readSessionFacts: async () => ({ submissions: [], pointerCardWaiting }),
+        readSessionFacts: async () => ({ submissions: [] }),
         currentFence: () => 4,
         send
       }
@@ -420,8 +428,8 @@ describe('forgetting one settled worker', () => {
     return {
       delivery,
       send: vi.mocked(send),
-      goIdle: () => {
-        pointerCardWaiting = false
+      readPointedMail: () => {
+        pointedUnread = false
       },
       stopResolving: () => {
         resolves = false
@@ -436,7 +444,7 @@ describe('forgetting one settled worker', () => {
     // The bug: `forgetSession` re-resolved every parked mailbox and pruned the ones that answered
     // null. A momentarily null DB reference or a session mid-teardown made that EVERY worker, so
     // the sibling's mail stayed durable but lost the edge that would have woken it.
-    const { delivery, send, goIdle, stopResolving, resumeResolving } = twoWorkerHarness()
+    const { delivery, send, readPointedMail, stopResolving, resumeResolving } = twoWorkerHarness()
     delivery.deliverForHandle('dispatch:d1')
     delivery.deliverForHandle('dispatch:d2')
     await flush()
@@ -446,7 +454,7 @@ describe('forgetting one settled worker', () => {
     delivery.forgetSession('session-1')
     resumeResolving()
 
-    goIdle()
+    readPointedMail()
     delivery.onJournalActivity('session-2')
     await flush()
     expect(send).toHaveBeenCalledTimes(1)
@@ -454,7 +462,7 @@ describe('forgetting one settled worker', () => {
   })
 
   it('still drops what the settled worker itself had parked', async () => {
-    const { delivery, send, goIdle, stopResolving } = twoWorkerHarness()
+    const { delivery, send, readPointedMail, stopResolving } = twoWorkerHarness()
     delivery.deliverForHandle('dispatch:d1')
     await flush()
     expect(send).not.toHaveBeenCalled()
@@ -464,7 +472,7 @@ describe('forgetting one settled worker', () => {
     stopResolving()
     delivery.forgetSession('session-1')
 
-    goIdle()
+    readPointedMail()
     delivery.onJournalActivity('session-1')
     await flush()
     expect(send).not.toHaveBeenCalled()
