@@ -39,11 +39,28 @@ export class OrcaRuntimeWithCloseMobileSessionTab extends OrcaRuntimeWithRefuseU
     } = {}
   ): Promise<MobileSessionTabCloseOutcome> {
     const editorAuthorityAtStart = resolveEditorAuthority(this)
-    const graphEpoch = options.clientNavigationId ? this.captureReadyGraphEpoch() : null
+    // Why: a closed window leaves the graph unavailable for good; a host editor close never touches it.
+    const hostEditorCloseWithoutGraph =
+      options.clientNavigationId !== undefined &&
+      options.expectedPtyCloseAuthority === undefined &&
+      editorAuthorityAtStart === 'host' &&
+      this.graphStatus !== 'ready'
+    const graphEpoch =
+      options.clientNavigationId && !hostEditorCloseWithoutGraph
+        ? this.captureReadyGraphEpoch()
+        : null
     const explicitWorktreeId = this.getValidatedExplicitWorktreeIdSelector(worktreeSelector)
     const worktreeId =
       explicitWorktreeId ?? (await this.resolveWorktreeSelector(worktreeSelector)).id
     this.hydrateHeadlessMobileSessionTabsFromWorkspaceSession(worktreeId)
+    if (hostEditorCloseWithoutGraph) {
+      const addressed = this.mobileSessionTabsByWorktree
+        .get(worktreeId)
+        ?.tabs.find((candidate) => candidate.id === tabId)
+      if (addressed?.type !== 'markdown' && addressed?.type !== 'file') {
+        throw new Error('runtime_unavailable')
+      }
+    }
     const observedPtyIds = await this.refreshMobileSessionPtyRecords()
     if (graphEpoch !== null) {
       this.assertStableReadyGraph(graphEpoch)

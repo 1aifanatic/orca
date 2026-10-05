@@ -198,6 +198,62 @@ describe('a closed desktop window', () => {
   })
 })
 
+describe('a paired phone closing host editor tabs after the window closed', () => {
+  afterEach(() => {
+    electronMocks.BrowserWindow.fromId.mockImplementation(() => null)
+  })
+
+  // The graph stays unavailable once the last window closes, on a desktop and on a promoted serve host.
+  async function closedWindowHost(mode: 'desktop' | 'serve-promoted') {
+    const harness = await createHeadlessEditorHarness()
+    const { runtime } = harness
+    await harness.writeWorktreeFile('notes.md', 'a')
+    if (mode === 'serve-promoted') {
+      runtime.syncWindowGraph(HEADLESS_RUNTIME_WINDOW_ID, { tabs: [], leaves: [] })
+      attachEditorWindow(runtime)
+      lateWindowGraph(runtime)
+    } else {
+      attachEditorWindow(runtime)
+      runtime.syncWindowGraph(TEST_WINDOW_ID, { tabs: [], leaves: [], rendererGeneration: 'g-1' })
+    }
+    runtime.markGraphUnavailable(TEST_WINDOW_ID)
+    detachEditorWindow(runtime)
+    expect(runtime.getStatus().graphStatus).toBe('unavailable')
+    return harness
+  }
+
+  it.each(['desktop', 'serve-promoted'] as const)(
+    'closes edit and diff tabs on a %s host',
+    async (mode) => {
+      const { runtime, worktreeId, getSession } = await closedWindowHost(mode)
+      const selector = `id:${worktreeId}`
+      await runtime.openMobileFile(selector, 'notes.md')
+      await runtime.openMobileDiff(selector, 'a.ts', false)
+      const tabs = (await runtime.listMobileSessionTabs(selector)).tabs
+      const notes = tabs.find((tab) => tab.type === 'markdown')
+      const diff = tabs.find((tab) => tab.type === 'file')
+
+      await expect(
+        runtime.closeMobileSessionTab(selector, notes!.id, { clientNavigationId: 'phone-1' })
+      ).resolves.toMatchObject({ closed: true })
+      await expect(
+        runtime.closeMobileSessionTab(selector, diff!.id, { clientNavigationId: 'phone-1' })
+      ).resolves.toMatchObject({ closed: true })
+
+      expect(getSession().openFilesByWorktree?.[worktreeId]).toEqual([])
+      expect((await runtime.listMobileSessionTabs(selector)).tabs).toEqual([])
+    }
+  )
+
+  it('still refuses a terminal close that needs the graph', async () => {
+    const { runtime, worktreeId } = await closedWindowHost('desktop')
+
+    await expect(
+      runtime.closeMobileSessionTab(`id:${worktreeId}`, 'term-1', { clientNavigationId: 'phone-1' })
+    ).rejects.toThrow('runtime_unavailable')
+  })
+})
+
 describe('an open that crosses a window attach', () => {
   afterEach(() => {
     electronMocks.BrowserWindow.fromId.mockImplementation(() => null)
