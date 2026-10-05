@@ -14,8 +14,6 @@ export function acpSessionUpdate(
   turn: string | undefined,
   at: number,
   context: {
-    /** Adopted history: background-task starts in it prove no current liveness. */
-    history: boolean
     tools: AcpToolTimeline
     dialect: AcpDialect
     backgroundTasks: AcpBackgroundTaskTimeline
@@ -43,7 +41,7 @@ export function acpSessionUpdate(
           ]
         : [{ type: 'provider.frame', frameKind: update.sessionUpdate, payload: update, ...join }]
     case 'user_message_chunk':
-      // A live echo of the send is the send's own row; adopted history comes as `input.history`.
+      // A live echo of the send is the send's own row.
       return []
     case 'tool_call':
     case 'tool_call_update': {
@@ -54,7 +52,7 @@ export function acpSessionUpdate(
         tool && 'body' in tool && tool.body?.kind === 'tool-call'
           ? (dialect.toolBackgroundTasks?.(update, tool.body) ?? [])
           : []
-      return [...events, ...backgroundTasks.translate(tasks, join.join, context.history)]
+      return [...events, ...backgroundTasks.translate(tasks, join.join)]
     }
     case 'plan':
       return [

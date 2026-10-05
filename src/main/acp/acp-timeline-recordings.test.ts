@@ -2,8 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { contextTokensFromUsage } from '../../shared/agent-session-context-usage'
 import {
   closeProviderTimelineRigs,
-  messageText,
-  providerItemId
+  messageText
 } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
 import { openAcpFixtureRig, readAcpFixture } from './acp-timeline-fixture.test-support'
 
@@ -73,12 +72,12 @@ describe('recorded ACP traffic through the journal', () => {
     expect(rows.some((row) => messageText(row.body)?.includes('ok'))).toBe(true)
   })
 
-  it('drops load history a journal already holds, except its context usage', async () => {
+  it('drops load history, except its context usage', async () => {
     const fixture = await openAcpFixtureRig()
     const frames = await readAcpFixture('s4-resume')
     await fixture.feed(frames.filter((frame) => frame.process === 'A'))
     const before = await fixture.rig.rows()
-    await fixture.restart({ adopt: false })
+    await fixture.restart()
     const loading = frames.filter((frame) => frame.process === 'B')
     const nextPrompt = loading.findIndex((frame) => frame.message.method === 'session/prompt')
     await fixture.feed(loading.slice(0, nextPrompt))
@@ -105,60 +104,6 @@ describe('recorded ACP traffic through the journal', () => {
     ).toBe(5000)
     await fixture.feed(loading.slice(nextPrompt))
     expect(await fixture.rig.turns()).toHaveLength(2)
-  })
-
-  it('adopts coalesced load replay into an empty journal, including user and completed tools', async () => {
-    const fixture = await openAcpFixtureRig({ adopt: true })
-    const frames = (await readAcpFixture('s4-resume')).filter((frame) => frame.process === 'B')
-    const nextPrompt = frames.findIndex((frame) => frame.message.method === 'session/prompt')
-    await fixture.feed(frames.slice(0, nextPrompt))
-    fixture.finishLoad()
-    const rows = await fixture.rig.rows()
-    expect(rows.flatMap((row) => (row.body.kind === 'tool-call' ? [row.body] : []))).toHaveLength(2)
-    expect(
-      rows.filter((row) => row.body.kind === 'message' && row.body.role === 'user')
-    ).toHaveLength(1)
-    expect(rows.some((row) => messageText(row.body)?.includes('Read notes.txt'))).toBe(true)
-    expect((await fixture.rig.turns())[0]).toMatchObject({ state: 'completed', outcome: 'success' })
-    expect(rows.every((row) => row.body.kind === 'turn' || row.turnScope?.kind === 'turn')).toBe(
-      true
-    )
-    await fixture.feed(frames.slice(nextPrompt))
-    expect(await fixture.rig.turns()).toHaveLength(2)
-  })
-
-  it('adopts history as rows with the provider ids, and a re-run of the adoption adds no copy', async () => {
-    const fixture = await openAcpFixtureRig({ adopt: true })
-    const frames = (await readAcpFixture('s4-resume')).filter((frame) => frame.process === 'B')
-    const load = frames.slice(
-      0,
-      frames.findIndex((frame) => frame.message.method === 'session/prompt')
-    )
-    await fixture.feed(load)
-    fixture.finishLoad()
-    const adopted = await fixture.rig.rows()
-    const user = adopted.find((row) => row.body.kind === 'message' && row.body.role === 'user')
-    expect(user?.itemId).toBe(
-      providerItemId('item', `history-user:${JSON.stringify(['prompt:A:3', null])}`, {
-        thread: 'session-1'
-      })
-    )
-    expect(await fixture.rig.turn('prompt:A:3')).toMatchObject({
-      userItemId: user?.itemId,
-      state: 'completed'
-    })
-    expect(
-      adopted.flatMap((row) => (row.body.kind === 'tool-call' ? [row.itemId] : [])).sort()
-    ).toEqual(
-      ['tool:call-1', 'tool:call-2']
-        .map((key) => providerItemId('item', key, { thread: 'session-1' }))
-        .sort()
-    )
-
-    await fixture.restart({ adopt: true })
-    await fixture.feed(load)
-    fixture.finishLoad()
-    expect(await fixture.rig.rows()).toEqual(adopted)
   })
 
   it('answers questions and plan approval with the recorded exact reply shapes', async () => {

@@ -31,7 +31,7 @@ export class AcpContextTimeline {
     ]
   }
 
-  /** History that is not adopted is dropped except what it says about the context window. */
+  /** Replayed history is dropped except what it says about the context window. */
   history(
     update: SessionUpdate | undefined,
     usage: AgentSessionContextUsage | undefined,

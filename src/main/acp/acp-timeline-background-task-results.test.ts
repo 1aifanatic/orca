@@ -5,26 +5,25 @@ import { openAcpFixtureRig } from './acp-timeline-fixture.test-support'
 
 afterEach(closeProviderTimelineRigs)
 
-describe('background task results in adopted history', () => {
+describe('background task results', () => {
   it.each([
-    ['running', undefined, 'unverifiable'],
+    ['running', undefined, 'working'],
     ['completed', 0, 'done'],
     ['completed', undefined, 'done'],
     ['failed', 1, 'blocked'],
     ['stopped', undefined, 'idle'],
-    ['unknown', undefined, 'unverifiable']
+    ['unknown', undefined, 'working']
   ] as const)(
-    'settles replay from a TaskOutput result with status %s and exit code %s',
+    'settles a task from a TaskOutput result with status %s and exit code %s',
     async (status, exitCode, state) => {
-      const fixture = await openAcpFixtureRig({ adopt: true })
+      const fixture = await openAcpFixtureRig()
       const lane = fixture.lane()
-      lane.beginLoad()
       for (const [index, rawOutput] of [
-        { type: 'BackgroundTaskStarted', task_id: 'historic-task', command: 'npm test' },
+        { type: 'BackgroundTaskStarted', task_id: 'task-1', command: 'npm test' },
         {
           type: 'TaskOutput',
           Result: {
-            task_id: 'historic-task',
+            task_id: 'task-1',
             command: 'npm test',
             status,
             exit_code: exitCode,
@@ -37,7 +36,7 @@ describe('background task results in adopted history', () => {
             'session/update',
             {
               sessionId: 'session-1',
-              _meta: { isReplay: true, promptId: 'historic-turn' },
+              _meta: { promptId: 'task-turn' },
               update: {
                 sessionUpdate: 'tool_call_update',
                 toolCallId: `tool-${index}`,
@@ -49,7 +48,6 @@ describe('background task results in adopted history', () => {
           )
         )
       }
-      fixture.finishLoad()
       const tasks = (await fixture.rig.rows()).flatMap((row) =>
         row.body.kind === 'message' ? row.body.blocks.filter(isBackgroundTaskBlock) : []
       )

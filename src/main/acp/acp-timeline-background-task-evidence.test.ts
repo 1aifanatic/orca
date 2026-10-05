@@ -196,9 +196,9 @@ describe('background task outcome evidence', () => {
   )
 
   it.each(['launch', 'notification'] as const)(
-    'SF3 treats replayed %s evidence as unverifiable and accepts a later completion',
+    'SF3 drops replayed %s evidence during load and accepts a later completion',
     async (source) => {
-      const fixture = await openAcpFixtureRig({ adopt: true })
+      const fixture = await openAcpFixtureRig()
       fixture.lane().beginLoad()
       if (source === 'launch') {
         tool(
@@ -217,52 +217,13 @@ describe('background task outcome evidence', () => {
           true
         )
       } else {
-        taskNotice(fixture, taskId, true)
+        // Unmarked: a task notice during a load is history too.
+        taskNotice(fixture, taskId)
       }
       fixture.finishLoad()
-      expect((await taskRows(fixture))[0]?.block.state).toBe('unverifiable')
+      expect(await taskRows(fixture)).toEqual([])
       taskNotice(fixture, taskId, false, true)
       expect((await taskRows(fixture))[0]?.block.state).toBe('done')
-    }
-  )
-
-  it.each(['notification', 'kill'] as const)(
-    'SF3 preserves the explicit %s outcome included in adopted history',
-    async (completion) => {
-      const fixture = await openAcpFixtureRig({ adopt: true })
-      fixture.lane().beginLoad()
-      tool(
-        fixture,
-        {
-          toolCallId: 'historic-tool',
-          status: 'completed',
-          rawOutput: {
-            type: 'BackgroundTaskStarted',
-            task_id: taskId,
-            task_type: 'bash',
-            command: 'sleep 99'
-          }
-        },
-        true
-      )
-      if (completion === 'notification') {
-        taskNotice(fixture, taskId, true, true)
-      } else {
-        tool(
-          fixture,
-          {
-            toolCallId: 'historic-kill',
-            name: 'kill_command_or_subagent',
-            status: 'completed',
-            rawInput: { task_id: taskId }
-          },
-          true
-        )
-      }
-      fixture.finishLoad()
-      expect((await taskRows(fixture))[0]?.block.state).toBe(
-        completion === 'notification' ? 'done' : 'idle'
-      )
     }
   )
 })

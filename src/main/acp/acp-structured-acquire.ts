@@ -232,7 +232,7 @@ export async function acquireAcpStructuredSession(input: {
           sessionId: resume.sessionId
         })
         slot.reattaching = false
-        attaching.apply(attaching.translator.finishLoad(now()))
+        attaching.translator.finishLoad()
       } catch (error) {
         const notFound = error instanceof AcpRpcError && error.code === ACP_RESOURCE_NOT_FOUND
         if (!notFound || resume.replaceableKey === null) {

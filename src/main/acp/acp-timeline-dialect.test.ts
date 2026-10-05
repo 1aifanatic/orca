@@ -206,7 +206,7 @@ describe('ACP dialect request and turn boundaries', () => {
         stop_reason: 'end_turn'
       }
     })
-    apply(translator.finishLoad(1300))
+    translator.finishLoad()
     expect(
       (await rig.rows()).flatMap((row) =>
         row.body.kind === 'message' ? [messageText(row.body)] : []

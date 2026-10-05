@@ -25,8 +25,7 @@ export class AcpBackgroundTaskTimeline {
 
   translate(
     updates: AcpBackgroundTaskUpdate[],
-    join: ProviderTimelineJoin,
-    history = false
+    join: ProviderTimelineJoin
   ): ProviderTimelineEvent[] {
     return updates.map((update) => {
       const { fallbackLabel, fallbackKind, ...fields } = update
@@ -37,11 +36,7 @@ export class AcpBackgroundTaskTimeline {
         ...fields,
         kind: update.kind ?? previous?.kind ?? fallbackKind ?? 'unknown',
         label: update.label ?? previous?.label ?? fallbackLabel ?? update.taskId,
-        // A historical launch proves no current liveness; explicit outcomes still settle it.
-        state:
-          history && ['working', 'monitoring', 'waiting'].includes(update.state)
-            ? 'unverifiable'
-            : update.state
+        state: update.state
       }
       for (const key of ['label', 'summary', 'error', 'outputFile'] as const) {
         const text = block[key]

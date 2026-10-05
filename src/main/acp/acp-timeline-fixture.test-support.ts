@@ -65,18 +65,12 @@ function fixtureAnswer(
   }
 }
 
-/** Captured frames go through translation, assembly and the real serialized journal. `adopt` is
- *  the creator's decision that `session/load` history goes into an empty journal. */
-export async function openAcpFixtureRig(options: { adopt?: boolean } = {}) {
+/** Captured frames go through translation, assembly and the real serialized journal. */
+export async function openAcpFixtureRig() {
   const rig = await openProviderTimelineRig()
   let providerSessionId = 'session-1'
-  let adopt = options.adopt ?? false
   const translator = () =>
-    new AcpTimelineTranslator({
-      sessionId: providerSessionId,
-      dialect: GROK_ACP_DIALECT,
-      adopt
-    })
+    new AcpTimelineTranslator({ sessionId: providerSessionId, dialect: GROK_ACP_DIALECT })
   let lane = translator()
   const requests = new Map<
     string | number,
@@ -165,11 +159,10 @@ export async function openAcpFixtureRig(options: { adopt?: boolean } = {}) {
     feed,
     lane: () => lane,
     /** A new provider child: the sweep, a new generation's assembler and a new translator. */
-    restart: async (next: { adopt?: boolean } = {}) => {
+    restart: async () => {
       await rig.restart()
-      adopt = next.adopt ?? false
       lane = translator()
     },
-    finishLoad: () => apply(lane.finishLoad(2000))
+    finishLoad: () => lane.finishLoad()
   }
 }
