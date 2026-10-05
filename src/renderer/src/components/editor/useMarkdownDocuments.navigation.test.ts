@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, createElement } from 'react'
+import { act, createElement, StrictMode, Suspense, use } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -47,9 +47,24 @@ let container: HTMLDivElement
 let controller: ReturnType<typeof useMarkdownDocuments>
 const save = vi.fn(async () => true)
 
-function Harness({ file, viewMode }: { file: OpenFile; viewMode: MarkdownViewMode }): null {
-  controller = useMarkdownDocuments(file, true, viewMode, save)
+function PreviewHydration({ pending }: { pending?: Promise<void> }): null {
+  if (pending) {
+    use(pending)
+  }
   return null
+}
+
+function Harness({
+  file,
+  viewMode,
+  pending
+}: {
+  file: OpenFile
+  viewMode: MarkdownViewMode
+  pending?: Promise<void>
+}): React.JSX.Element {
+  controller = useMarkdownDocuments(file, true, viewMode, save)
+  return createElement(PreviewHydration, { pending })
 }
 
 function sourceFile(mode: OpenFile['mode'], runtimeEnvironmentId: string | null = null): OpenFile {
@@ -65,9 +80,19 @@ function sourceFile(mode: OpenFile['mode'], runtimeEnvironmentId: string | null 
   }
 }
 
-async function render(file: OpenFile, viewMode: MarkdownViewMode): Promise<void> {
+async function render(
+  file: OpenFile,
+  viewMode: MarkdownViewMode,
+  pending?: Promise<void>
+): Promise<void> {
   await act(async () => {
-    root.render(createElement(Harness, { file, viewMode }))
+    root.render(
+      createElement(
+        Suspense,
+        { fallback: null },
+        createElement(Harness, { file, viewMode, pending })
+      )
+    )
   })
 }
 
@@ -90,6 +115,73 @@ afterEach(() => {
 })
 
 describe('Markdown document navigation', () => {
+  it('loads the current index after Strict Mode replays mount effects', async () => {
+    await act(async () => {
+      root.render(
+        createElement(
+          StrictMode,
+          null,
+          createElement(Harness, {
+            file: sourceFile('edit'),
+            viewMode: 'source'
+          })
+        )
+      )
+    })
+
+    expect(controller.markdownDocuments).toEqual([target])
+  })
+
+  it('does not start a document scan when a save finishes after permanent unmount', async () => {
+    await render(sourceFile('edit'), 'source')
+    let releaseSave: (saved: boolean) => void = () => {
+      throw new Error('Missing save request')
+    }
+    save.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          releaseSave = resolve
+        })
+    )
+    const pendingSave = controller.mdSave('updated content')
+    act(() => root.unmount())
+    releaseSave(true)
+
+    expect(await pendingSave).toBe(true)
+    expect(runtime.list).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a current scan response while its preview suspends', async () => {
+    await render(sourceFile('edit'), 'source')
+    const refreshed = { ...target, name: 'refreshed' }
+    let releaseList: () => void = () => {
+      throw new Error('Missing document scan')
+    }
+    runtime.list.mockImplementationOnce(
+      () =>
+        new Promise<typeof controller.markdownDocuments>((resolve) => {
+          releaseList = () => resolve([refreshed])
+        })
+    )
+    const pendingSave = controller.mdSave('updated content')
+    let reveal: () => void = () => {
+      throw new Error('Missing preview hydration')
+    }
+    const hydration = new Promise<void>((resolve) => {
+      reveal = resolve
+    })
+    await render(sourceFile('edit'), 'source', hydration)
+    await act(async () => {
+      releaseList()
+      expect(await pendingSave).toBe(true)
+    })
+    await act(async () => {
+      reveal()
+    })
+
+    expect(controller.markdownDocuments).toEqual([refreshed])
+  })
+
   it.each([false, true])(
     'keeps the current workspace index when an earlier save finishes (current scan pending: %s)',
     async (scanPending) => {

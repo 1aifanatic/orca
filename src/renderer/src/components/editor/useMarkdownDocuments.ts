@@ -84,10 +84,14 @@ export function useMarkdownDocuments(
   const currentRequestKeyRef = useRef<string | null>(documentRequestKey)
   useLayoutEffect(() => {
     currentRequestKeyRef.current = documentRequestKey
-    return () => {
-      currentRequestKeyRef.current = null
-    }
   }, [documentRequestKey])
+  // Suspense hides layout effects while a current scan is still valid.
+  useEffect(
+    () => () => {
+      currentRequestKeyRef.current = null
+    },
+    []
+  )
 
   const refreshMarkdownDocuments = useCallback(
     async (requireFresh = false): Promise<void> => {
