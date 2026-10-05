@@ -51,8 +51,6 @@ export type StructuredAgentSessionPublishOptions = Pick<
 /** An item write states which turn its row belongs to; the write that creates the row decides. */
 export type StructuredAgentSessionItemAppendOptions = StructuredAgentSessionAppendOptions & {
   turnScope: AgentJournalTurnScope
-  /** The provider's reference for the item, on the write that creates its row. */
-  providerItemRef?: string
 }
 
 export type StructuredAgentSessionLifecycleJournal = Pick<

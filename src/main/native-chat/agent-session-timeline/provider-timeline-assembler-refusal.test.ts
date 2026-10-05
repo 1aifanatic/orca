@@ -18,7 +18,7 @@ describe('a refused event changes nothing and its retry lands it once', () => {
   it('settles the tool a refused turn end owed when the end is re-applied', async () => {
     const rig = await openProviderTimelineRig()
     let refusing = false
-    const assembler = rig.restart({ sink: refusingSink(rig.sink, () => refusing) })
+    const assembler = rig.assemble({ sink: refusingSink(rig.sink, () => refusing) })
     assembler.apply({ type: 'turn.open', turn: 't1', at: 1_000 })
     assembler.apply({ type: 'item.open', item: 'tool', body: runningTool('read') })
     refusing = true
@@ -30,13 +30,15 @@ describe('a refused event changes nothing and its retry lands it once', () => {
     expect(assembler.apply(end)).toEqual({ admission: { accepted: true } })
     expect((await rig.row(providerItemId('item', 'tool')))?.body).toMatchObject({ state: 'failed' })
     expect(await rig.turn('t1')).toMatchObject({ state: 'completed', completedAt: 2_000 })
-    expect(assembler.apply(end).dropped).toBe('turn-unknown')
+    // A repeated end is admitted and writes nothing: the row keeps its first end.
+    expect(assembler.apply(end)).toEqual({ admission: { accepted: true } })
+    expect(await rig.turn('t1')).toMatchObject({ state: 'completed', completedAt: 2_000 })
   })
 
   it('keeps observed text when the close that would write it is refused', async () => {
     const rig = await openProviderTimelineRig()
     let refusing = false
-    const assembler = rig.restart({
+    const assembler = rig.assemble({
       sink: refusingSink(rig.sink, () => refusing),
       schedule: () => () => {}
     })
@@ -59,7 +61,7 @@ describe('a refused event changes nothing and its retry lands it once', () => {
     const runs: (() => void)[] = []
     const rig = await openProviderTimelineRig()
     let refusal: 'backpressure' | 'failed' | null = null
-    const assembler = rig.restart({
+    const assembler = rig.assemble({
       sink: {
         ...rig.sink,
         tryAppendTransition: (transition) =>
@@ -90,7 +92,7 @@ describe('a refused event changes nothing and its retry lands it once', () => {
   it('does not latch a refused session end, so its retry still settles the session', async () => {
     const rig = await openProviderTimelineRig()
     let refusing = false
-    const assembler = rig.restart({ sink: refusingSink(rig.sink, () => refusing) })
+    const assembler = rig.assemble({ sink: refusingSink(rig.sink, () => refusing) })
     assembler.apply({ type: 'turn.open', turn: 't1', at: 1_000 })
     assembler.apply({ type: 'request.open', request: 'p1', body: pendingApproval })
     refusing = true
@@ -115,7 +117,7 @@ describe('a refused event changes nothing and its retry lands it once', () => {
   it('leaves the open turn in place when a superseding open is refused', async () => {
     const rig = await openProviderTimelineRig()
     let refusing = false
-    const assembler = rig.restart({ sink: refusingSink(rig.sink, () => refusing) })
+    const assembler = rig.assemble({ sink: refusingSink(rig.sink, () => refusing) })
     assembler.apply({ type: 'turn.open', turn: 't1', at: 1_000 })
     const first = assembler.openTurnId
     refusing = true
@@ -127,21 +129,6 @@ describe('a refused event changes nothing and its retry lands it once', () => {
     assembler.apply({ type: 'turn.open', turn: 't2', at: 2_000 })
     expect(await rig.turn('t1')).toMatchObject({ state: 'interrupted', outcome: 'superseded' })
     expect(await rig.turn('t2')).toMatchObject({ state: 'running' })
-  })
-
-  it('keeps the old session open when the reset that would settle it is refused', async () => {
-    const rig = await openProviderTimelineRig()
-    let refusing = false
-    const assembler = rig.restart({ sink: refusingSink(rig.sink, () => refusing) })
-    assembler.apply({ type: 'turn.open', turn: 't1', at: 1_000 })
-    refusing = true
-    const reset = { type: 'session.reset', namespace: 'provider-session-2' } as const
-    expect(assembler.apply(reset).admission).toEqual(BACKPRESSURE)
-    expect(assembler.openTurnId).not.toBeNull()
-    refusing = false
-    assembler.apply(reset)
-    expect(assembler.openTurnId).toBeNull()
-    expect(await rig.turn('t1')).toMatchObject({ state: 'unverifiable' })
   })
 })
 

@@ -49,8 +49,7 @@ export function journalItemRowBuilder(
       ts: options.observedAt ?? ts,
       recovered: options.recovered,
       linkage: options,
-      turnScope: options.turnScope,
-      ...(options.providerItemRef === undefined ? {} : { providerItemRef: options.providerItemRef })
+      turnScope: options.turnScope
     })
 }
 
@@ -250,7 +249,6 @@ export function buildJournalItemRow(input: {
   recovered?: true
   linkage?: AgentJournalProducerLinkage
   turnScope: AgentJournalTurnScope
-  providerItemRef?: string
 }): JournalItemRow {
   const itemId = agentJournalItemKey(input.identity)
   const resolved = input.state.aliases.get(itemId) ?? itemId
@@ -270,7 +268,6 @@ export function buildJournalItemRow(input: {
     ...journalRowBase(input.state.epoch, input.seq, input.fence, input.ts, [body]),
     ...(input.recovered ? { recovered: input.recovered } : {}),
     turnScope: input.turnScope,
-    ...(input.providerItemRef === undefined ? {} : { providerItemRef: input.providerItemRef }),
     ...agentJournalLinkageFields(input.linkage)
   }
 }

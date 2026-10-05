@@ -35,7 +35,6 @@ export function journalRenderItem(
     ...(row.recovered ? { recoveredAt: row.ts } : {}),
     ...(row.recovered ? { recovered: row.recovered } : {}),
     turnScope,
-    ...(row.providerItemRef === undefined ? {} : { providerItemRef: row.providerItemRef }),
     ...agentJournalLinkageFields(producer)
   }
 }

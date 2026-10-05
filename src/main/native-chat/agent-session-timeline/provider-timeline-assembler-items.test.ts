@@ -101,6 +101,46 @@ describe('provider timeline items', () => {
     })
   })
 
+  it('keeps a settled tool terminal body against a later update carrying another', async () => {
+    const rig = await openProviderTimelineRig()
+    rig.assembler.apply({ type: 'turn.open', turn: 'turn-1', at: 1_000 })
+    rig.assembler.apply({ type: 'item.open', item: 'call-a', body: runningTool('read') })
+    rig.assembler.apply({
+      type: 'item.close',
+      item: 'call-a',
+      body: { ...runningTool('read'), state: 'failed' }
+    })
+    const update = rig.assembler.apply({
+      type: 'item.update',
+      item: 'call-a',
+      body: { ...runningTool('read'), state: 'completed' }
+    })
+    expect(update.dropped).toBe('item-settled')
+    expect((await rig.row(providerItemId('item', 'call-a')))?.body).toMatchObject({
+      state: 'failed'
+    })
+  })
+
+  it("keeps the sweep's verdict on a tool against the next child's update", async () => {
+    const rig = await openProviderTimelineRig()
+    rig.assembler.apply({ type: 'turn.open', turn: 'turn-1', at: 1_000 })
+    rig.assembler.apply({ type: 'item.open', item: 'call-a', body: runningTool('read') })
+    const next = await rig.restart()
+    expect((await rig.row(providerItemId('item', 'call-a')))?.body).toMatchObject({
+      state: 'failed'
+    })
+    const update = next.apply({
+      type: 'item.update',
+      item: 'call-a',
+      body: { ...runningTool('read'), state: 'completed' },
+      join: { turn: 'turn-1' }
+    })
+    expect(update.dropped).toBe('item-settled')
+    expect((await rig.row(providerItemId('item', 'call-a')))?.body).toMatchObject({
+      state: 'failed'
+    })
+  })
+
   it('reopens a settled item under the same row', async () => {
     const rig = await openProviderTimelineRig()
     rig.assembler.apply({ type: 'turn.open', turn: 'turn-1', at: 1_000 })
@@ -207,6 +247,16 @@ describe('provider timeline text streams', () => {
     expect(messageText(reply?.body)).toBe('abc')
     // Three deltas cost the writes one delta does.
     expect(reply?.revision).toBe(single?.revision)
+  })
+
+  it('writes every delta of a window once it elapses', async () => {
+    const rig = await openProviderTimelineRig()
+    rig.assembler.apply({ type: 'turn.open', turn: 'turn-1', at: 1_000 })
+    const delta = { type: 'text.delta', item: { stream: 'reply' }, channel: 'assistant' } as const
+    rig.assembler.apply({ ...delta, text: 'Hel' })
+    rig.assembler.apply({ ...delta, text: 'lo' })
+    const messages = (await rig.rows()).filter((row) => row.body.kind === 'message')
+    expect(messages.map((row) => messageText(row.body))).toEqual(['Hello'])
   })
 
   it('settles with the provider final text, and keys a named message by its id', async () => {

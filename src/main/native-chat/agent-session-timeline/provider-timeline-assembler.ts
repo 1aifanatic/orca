@@ -4,56 +4,47 @@
 // Division of lifecycle work:
 // - The adapter translates its dialect, decides when a turn opens, and re-applies an event the sink
 //   refused (the lane runner holds it and pauses reading under backpressure).
-// - The assembler plans each event as ONE sink transition. Which row each write lands on, whether
-//   a replay writes at all, and every change to what the assembler knows (its ledger) are decided
-//   in the transition's resolvers, at the event's turn in the journal's write queue, against the
-//   journal as it stands then. So there is one clock: a refused event changed nothing, a write the
-//   journal rejects changes nothing, and a restart or an evicted cache finds the same rows again.
-// - Planning reads a forecast — the ledger plus what admitted events still in the queue will
-//   change — only to answer `apply` at once: dropped or not, over budget or not, the open turn.
-// - The journal keeps what it owns: a person's Stop, a dead generation after a restart, and the
-//   answer compare-and-set.
+// - The assembler admits each event as ONE sink transition. What it knows (`ProviderTimelineState`)
+//   changes only when the sink admits the event, in admission order, which is the order its own
+//   rows are written in. Each write decides, when it runs, from what the journal holds then: a
+//   resume admits events before the sink binds, and the dead-generation sweep lands in between.
+// - The journal keeps what other writers own: a person's Stop, a client's answer, the sweep. The
+//   assembler reads those by key and never copies them.
+// - One assembler lives exactly as long as one provider child, so nothing it knows ever has to be
+//   recovered: a new child is a new assembler, in a new acquisition generation.
 
 import type { AgentType } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionDeltaCoalescerDeps } from '../agent-session-wire/agent-session-delta-coalescer'
 import type { StructuredAgentSessionSinkAdmission } from '../agent-session-wire/structured-agent-session-event-sink'
-import type { StructuredAgentSessionTransitionJournal } from '../agent-session-wire/structured-agent-session-transition'
-import type {
-  ProviderTimelineApplyHost,
-  ProviderTimelineApplyResult,
-  ProviderTimelineInFlight
-} from './provider-timeline-apply-host'
 import {
   PROVIDER_TIMELINE_OVER_BUDGET,
   providerTimelineBudgetAdmits,
   type ProviderTimelineHold
 } from './provider-timeline-budget'
-import { providerTimelineLedger, type ProviderTimelineContext } from './provider-timeline-context'
+import type { ProviderTimelineContext } from './provider-timeline-context'
 import {
   decideProviderTimelineEvent,
-  type ProviderTimelineDecidedEvent,
-  type ProviderTimelineDecision
-} from './provider-timeline-decisions'
+  type ProviderTimelineDecidedEvent
+} from './provider-timeline-decision'
 import type { ProviderTimelineEvent } from './provider-timeline-event'
-import {
-  createLegacyProviderTimelineIdentityScheme,
-  type ProviderTimelineIdentityScheme
-} from './provider-timeline-identity'
-import { ProviderTimelineJoins } from './provider-timeline-joins'
+import { createLegacyProviderTimelineIdentityScheme } from './provider-timeline-identity'
 import { ProviderTimelinePlan, type ProviderTimelineSink } from './provider-timeline-plan'
+import { ProviderTimelineRows, providerTimelineTurnRowState } from './provider-timeline-rows'
 import { ProviderTimelineState } from './provider-timeline-state'
 import {
   applyProviderTimelineTextClose,
-  applyProviderTimelineTextDelta
+  applyProviderTimelineTextDelta,
+  type ProviderTimelineApplyResult,
+  type ProviderTimelineTextHost
 } from './provider-timeline-text-events'
 import { ProviderTimelineTextStreams } from './provider-timeline-text-streams'
 import {
   planProviderTimelineBarrier,
-  planProviderTimelineSlots
+  planProviderTimelineWrites
 } from './provider-timeline-transition-layout'
 
-export type { ProviderTimelineApplyResult } from './provider-timeline-apply-host'
-export type { ProviderTimelineDropRule } from './provider-timeline-decisions'
+export type { ProviderTimelineDropRule } from './provider-timeline-decision'
+export type { ProviderTimelineApplyResult } from './provider-timeline-text-events'
 
 export type ProviderTimelineAssembler = {
   apply(event: ProviderTimelineEvent): ProviderTimelineApplyResult
@@ -61,6 +52,7 @@ export type ProviderTimelineAssembler = {
   readonly openTurnId: string | null
   /** Writes the text the coalescing window holds. */
   flush(): void
+  /** Drops the text the window holds: apply `session.ended` first, which writes it. */
   dispose(): void
 }
 
@@ -68,15 +60,12 @@ export type ProviderTimelineAssemblerDeps = {
   sink: ProviderTimelineSink
   sessionId: string
   agent: AgentType
-  /** The acquisition: minted keys are unique per generation. */
+  /** The acquisition: minted keys and request ids are unique per generation. */
   generation: string
-  /** The provider session whose ids the adapter forwards; the same one again after a restart that
-   *  re-attaches it, so its replays are recognised. */
+  /** The provider session whose ids the adapter forwards. */
   namespace: string
   /** The session's own provider thread, for providers that run subagents on threads of their own. */
   ownThread?: () => string | null
-  /** Defaults to the shared `legacy` identity arm. */
-  scheme?: ProviderTimelineIdentityScheme
   coalesceMs?: number
   schedule?: AgentSessionDeltaCoalescerDeps['schedule']
 }
@@ -86,174 +75,114 @@ const ADMITTED: StructuredAgentSessionSinkAdmission = { accepted: true }
 export function createProviderTimelineAssembler(
   deps: ProviderTimelineAssemblerDeps
 ): ProviderTimelineAssembler {
-  const scheme =
-    deps.scheme ??
-    createLegacyProviderTimelineIdentityScheme({ agent: deps.agent, sessionId: deps.sessionId })
-  let settlements = 0
   const context: ProviderTimelineContext = {
     sessionId: deps.sessionId,
     agent: deps.agent,
-    joins: new ProviderTimelineJoins({
-      scheme,
+    generation: deps.generation,
+    rows: new ProviderTimelineRows({
+      scheme: createLegacyProviderTimelineIdentityScheme({
+        agent: deps.agent,
+        sessionId: deps.sessionId
+      }),
       generation: deps.generation,
       namespace: deps.namespace
     }),
-    ledger: new ProviderTimelineState(deps.namespace),
-    ...(deps.ownThread ? { ownThread: deps.ownThread } : {}),
-    settlementId: (what) => {
-      settlements += 1
-      return `provider-timeline:${deps.sessionId}:${deps.generation}:${settlements}:${what}`
-    }
+    ...(deps.ownThread ? { ownThread: deps.ownThread } : {})
   }
+  const state = new ProviderTimelineState()
   const streams = new ProviderTimelineTextStreams({
     sink: deps.sink,
     context,
-    generation: deps.generation,
     ...(deps.coalesceMs === undefined ? {} : { coalesceMs: deps.coalesceMs }),
     ...(deps.schedule ? { schedule: deps.schedule } : {})
   })
-  let forecast = context.ledger.clone()
-  const inFlight: ProviderTimelineInFlight[] = []
 
-  /** The forecast again: the ledger, plus what admitted events not yet run will change. */
-  const resync = () => {
-    forecast = context.ledger.clone()
-    for (const entry of inFlight) {
-      if (!entry.executed) {
-        entry.commit?.(forecast)
-      }
-    }
-  }
-
-  const submit = (
-    plan: ProviderTimelinePlan,
-    entry: ProviderTimelineInFlight
-  ): StructuredAgentSessionSinkAdmission => {
-    if (!plan.writes) {
-      return plan.submit(deps.sink)
-    }
-    inFlight.push(entry)
-    const settle = () => {
-      const at = inFlight.indexOf(entry)
-      if (at !== -1) {
-        inFlight.splice(at, 1)
-        resync()
-      }
-    }
-    const admission = plan.submit(deps.sink, settle)
-    if (!admission.accepted) {
-      inFlight.splice(inFlight.indexOf(entry), 1)
-      return admission
-    }
-    entry.commit?.(forecast)
-    return admission
-  }
-
-  const admits = (hold: ProviderTimelineHold): boolean =>
-    providerTimelineBudgetAdmits({
-      hold,
-      forecast,
-      ledger: context.ledger,
-      streams: streams.open,
-      journal: deps.sink.journalItems()
-    })
-
-  const host: ProviderTimelineApplyHost = {
-    context,
+  const textHost = (journal: ProviderTimelineTextHost['journal']): ProviderTimelineTextHost => ({
+    sink: deps.sink,
+    state,
     streams,
-    forecast: () => forecast,
-    journal: () => deps.sink.journalItems(),
-    admits,
-    submit
-  }
+    journal,
+    admits: (hold) => admits(hold, journal)
+  })
 
-  const applyDecided = (event: ProviderTimelineDecidedEvent): ProviderTimelineApplyResult => {
-    const journal = deps.sink.journalItems()
+  const admits = (hold: ProviderTimelineHold, journal: ProviderTimelineTextHost['journal']) =>
+    providerTimelineBudgetAdmits({ hold, state, streams, journal })
+
+  const applyDecided = (
+    event: ProviderTimelineDecidedEvent,
+    journal: ProviderTimelineTextHost['journal']
+  ): ProviderTimelineApplyResult => {
+    const serials = state.serials()
     const decision = decideProviderTimelineEvent(
-      { context, state: forecast, journal, execute: false },
+      { context, state, journal, serial: serials.next },
       event
     )
     if (decision.dropped) {
       return { admission: ADMITTED, dropped: decision.dropped }
     }
-    if (decision.hold && !admits(decision.hold)) {
+    if (decision.hold && !admits(decision.hold, journal)) {
       return { admission: PROVIDER_TIMELINE_OVER_BUDGET }
     }
     const plan = new ProviderTimelinePlan()
-    const entry: ProviderTimelineInFlight = { executed: false, commit: decision.commit }
-    let executed: ProviderTimelineDecision | null = null
-    // A message boundary is the event's only when its own decision, at execution, wrote.
-    const landed = () => executed !== null && !executed.dropped && executed.write !== null
-    planProviderTimelineBarrier(host, plan, event, decision, landed)
-    // The event's decision on the ledger, taken once, by its first slot to run.
-    const decide = (at: StructuredAgentSessionTransitionJournal) => {
-      if (!executed) {
-        const ledger = providerTimelineLedger(context, at)
-        executed = decideProviderTimelineEvent(
-          { context, state: ledger, journal: at, execute: true },
-          event
-        )
-        entry.executed = true
-        executed.commit?.(ledger)
-      }
-      return executed.dropped ? null : executed
-    }
-    planProviderTimelineSlots(host, plan, event, decide)
+    planProviderTimelineBarrier({ streams, state, context }, plan, event, decision)
+    planProviderTimelineWrites(context, plan, decision, serials.next)
+    plan.onAdmitted(() => {
+      decision.commit?.(state)
+      serials.commit()
+    })
     if (
       event.type === 'turn.open' ||
       event.type === 'turn.end' ||
-      event.type === 'session.ended' ||
-      event.type === 'session.reset'
+      event.type === 'turn.settled' ||
+      event.type === 'session.ended'
     ) {
       plan.onAdmitted(() => deps.sink.setActivity?.(null))
     }
-    return { admission: submit(plan, entry) }
+    return { admission: plan.submit(deps.sink) }
+  }
+
+  /** The open turn another writer settled (a person's Stop) ends here first, as one transition;
+   *  refused, the event that found it is refused with it and its retry finds it again. */
+  const endSettledTurn = (
+    journal: NonNullable<ProviderTimelineTextHost['journal']>
+  ): ProviderTimelineApplyResult | null => {
+    const open = state.open
+    if (state.ended || !open || providerTimelineTurnRowState(journal, open.itemId) !== 'settled') {
+      return null
+    }
+    return applyDecided({ type: 'turn.settled', turn: open }, journal)
   }
 
   const apply = (event: ProviderTimelineEvent): ProviderTimelineApplyResult => {
     const journal = deps.sink.journalItems()
-    if (journal) {
-      forecast.reconcile(journal)
+    const settled = journal ? endSettledTurn(journal) : null
+    if (settled && !settled.admission.accepted) {
+      return settled
     }
     switch (event.type) {
       case 'text.delta':
-        return applyProviderTimelineTextDelta(host, event)
+        return applyProviderTimelineTextDelta(textHost(journal), event)
       case 'text.close':
-        return applyProviderTimelineTextClose(host, event)
+        return applyProviderTimelineTextClose(textHost(journal), event)
       case 'activity': {
-        const open = forecast.open
-        if (forecast.ended || !open) {
-          return { admission: ADMITTED, dropped: forecast.ended ? 'session-ended' : 'no-turn' }
+        const open = state.open
+        if (state.ended || !open) {
+          return { admission: ADMITTED, dropped: state.ended ? 'session-ended' : 'no-turn' }
         }
         deps.sink.setActivity?.(
           event.text === null ? null : { turnId: open.turnId, text: event.text }
         )
         return { admission: ADMITTED }
       }
-      case 'turn.open':
-        return applyDecided(
-          event.turn === undefined ? { ...event, minted: context.joins.mint('t') } : event
-        )
-      case 'provider.frame':
-        return applyDecided({ ...event, minted: context.joins.mint('f') })
-      case 'input.accepted':
-      case 'turn.end':
-      case 'item.open':
-      case 'item.update':
-      case 'item.close':
-      case 'request.open':
-      case 'request.withdrawn':
-      case 'context.usage':
-      case 'session.ended':
-      case 'session.reset':
-        return applyDecided(event)
+      default:
+        return applyDecided(event, journal)
     }
   }
 
   return {
     apply,
     get openTurnId() {
-      return forecast.open?.turnId ?? null
+      return state.open?.turnId ?? null
     },
     flush: () => streams.flush(),
     dispose: () => streams.dispose()

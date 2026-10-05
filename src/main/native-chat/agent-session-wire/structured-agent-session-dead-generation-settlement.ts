@@ -4,16 +4,16 @@ import {
   type SubmissionRejectionFact
 } from '../../../shared/agent-session-failure'
 import { parseAgentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
+import { STALE_SESSION_ROW_PREFIX } from '../../../shared/agent-session-stop-row-identity'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
-  type AgentJournalItemBody,
   type AgentJournalRenderItem
 } from '../../../shared/agent-session-journal-types'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import { partitionJournalLifecycleMutations } from '../agent-session-journal/journal-lifecycle-batch-partition'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
-import { cancelledJournalPromptBody } from '../agent-session-journal/journal-prompt-body-bounds'
+import { terminalAgentJournalBody } from '../agent-session-journal/journal-terminal-settlement'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
   agentSessionFailureWords,
@@ -175,7 +175,7 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
     }
     for (const item of items) {
       const identity = parseAgentJournalItemKey(item.itemId)
-      const body = terminalDeadGenerationBody(item)
+      const body = terminalAgentJournalBody(item.body)
       if (identity && body) {
         mutations.push({
           kind: 'item',
@@ -229,11 +229,11 @@ export async function settleStaleStructuredAgentSessionState(input: {
     )
   // Per attempt: a retry re-partitions only what is left, and a reused chunk id would skip it.
   const generation = input.acquisitionGeneration ?? `seq-${journal.cursor().sequence}`
-  const settlementId = `stale-session:${input.sessionId}:${input.fence}:${generation}`
+  const settlementId = `${STALE_SESSION_ROW_PREFIX}${input.sessionId}:${input.fence}:${generation}`
   const mutations: JournalLifecycleMutationInput[] = []
   for (const item of items) {
     const identity = parseAgentJournalItemKey(item.itemId)
-    const body = terminalDeadGenerationBody(item)
+    const body = terminalAgentJournalBody(item.body)
     if (identity && body) {
       mutations.push({
         kind: 'item',
@@ -261,7 +261,7 @@ export async function settleStaleStructuredAgentSessionState(input: {
       // Named by the death it explains, so a retry after a partly written settle adds no second row.
       identity: {
         provider: 'orca',
-        clientMessageId: `stale-session:${input.sessionId}:death-${evidence.ownerFence ?? 'unowned'}-${evidence.observedAt}`
+        clientMessageId: `${STALE_SESSION_ROW_PREFIX}${input.sessionId}:death-${evidence.ownerFence ?? 'unowned'}-${evidence.observedAt}`
       },
       // The death evidence is Orca's log text, never a sentence for a person: the row says only
       // that the provider stopped.
@@ -287,20 +287,10 @@ export async function settleStaleStructuredAgentSessionState(input: {
   return mutations.length
 }
 
-function terminalDeadGenerationBody(item: AgentJournalRenderItem): AgentJournalItemBody | null {
-  if (item.body.kind === 'tool-call' && item.body.state === 'running') {
-    return { ...item.body, state: 'failed' }
-  }
-  if (item.body.kind === 'approval' || item.body.kind === 'question') {
-    return item.body.resolution.state === 'pending' ? cancelledJournalPromptBody(item.body) : null
-  }
-  return null
-}
-
 function isUnfinishedItem(item: AgentJournalRenderItem): boolean {
   return (
     readAgentJournalTurn(item.body)?.state === 'running' ||
-    terminalDeadGenerationBody(item) !== null
+    terminalAgentJournalBody(item.body) !== null
   )
 }
 
