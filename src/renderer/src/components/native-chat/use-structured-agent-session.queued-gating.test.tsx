@@ -182,15 +182,24 @@ describe('against a capable host', () => {
   })
 
   // While a Stop runs, the composer says what a send made now does: queued after the stop, or sent.
-  it('words the send after a Stop as this send will go, not by the capability alone', () => {
+  describe('the words for a send after a Stop', () => {
     const afterStop = (queueFollowUps?: boolean) => {
       const { result } = render(queueFollowUps)
       return nativeChatStructuredStopControls(result.current, true).composer.afterStop
     }
-    expect(afterStop()).toBe('queue')
-    expect(afterStop(false)).toBe('send')
-    items = [RUNNING_TURN, newerApproval()]
-    expect(afterStop()).toBe('send')
+
+    it('say it queues while the setting is on', () => {
+      expect(afterStop()).toBe('queue')
+    })
+
+    it('say it is sent while the setting is off, though the host queues', () => {
+      expect(afterStop(false)).toBe('send')
+    })
+
+    it('say it is sent while every pending prompt is one this build cannot answer', () => {
+      items = [RUNNING_TURN, newerApproval()]
+      expect(afterStop()).toBe('send')
+    })
   })
 
   // The host's queue would hold a send behind a prompt nothing here can settle.
