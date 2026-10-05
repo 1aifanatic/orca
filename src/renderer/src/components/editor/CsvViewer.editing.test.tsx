@@ -300,6 +300,38 @@ describe('editable CSV table', () => {
     expect(second).toHaveBeenCalledWith('header\npasted')
   })
 
+  it('cancels delayed app-menu paste when focus moves to another file pane', async () => {
+    const first = vi.fn()
+    const second = vi.fn()
+    let resolveRead: (value: string) => void = () => {}
+    const pending = new Promise<string>((resolve) => {
+      resolveRead = resolve
+    })
+    Object.defineProperty(window, 'api', {
+      configurable: true,
+      value: { ui: { readClipboardText: () => pending } }
+    })
+    render(
+      <>
+        <CsvViewer content={'header\nfirst'} filePath="first.csv" onContentChange={first} />
+        <CsvViewer content={'header\nsecond'} filePath="second.csv" onContentChange={second} />
+      </>
+    )
+    fireEvent.pointerDown(screen.getByRole('gridcell', { name: 'first' }), { button: 0 })
+    act(() => {
+      window.dispatchEvent(new Event(APP_MENU_PASTE_EVENT, { cancelable: true }))
+    })
+    act(() => {
+      screen.getAllByRole('grid')[1]?.focus()
+    })
+    await act(async () => {
+      resolveRead('stale paste')
+      await pending
+    })
+    expect(first).not.toHaveBeenCalled()
+    expect(second).not.toHaveBeenCalled()
+  })
+
   it('flushes an edited pane even when another pane of the same file registered later', () => {
     const first = vi.fn()
     const second = vi.fn()

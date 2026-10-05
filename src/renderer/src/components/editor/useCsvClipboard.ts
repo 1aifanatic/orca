@@ -53,14 +53,16 @@ export function useCsvClipboard({
       fail(reason)
     }
   }
-  const paste = async (): Promise<void> => {
+  const ownsFocus = (): boolean =>
+    globalThis.document.activeElement?.getAttribute('data-csv-owner') === ownerId
+  const paste = async (requireOwnerFocus = false): Promise<void> => {
     if (!document || !selection) {
       return
     }
     const initialRevision = revision.current
     try {
       const text = await window.api.ui.readClipboardText()
-      if (!mounted.current) {
+      if (!mounted.current || (requireOwnerFocus && !ownsFocus())) {
         return
       }
       if (initialRevision !== revision.current) {
@@ -110,13 +112,9 @@ export function useCsvClipboard({
   }
   useEffect(() => {
     const handle = (event: Event): void => {
-      if (
-        document &&
-        selection &&
-        globalThis.document.activeElement?.getAttribute('data-csv-owner') === ownerId
-      ) {
+      if (document && selection && ownsFocus()) {
         event.preventDefault()
-        void paste()
+        void paste(true)
       }
     }
     window.addEventListener(APP_MENU_PASTE_EVENT, handle)
