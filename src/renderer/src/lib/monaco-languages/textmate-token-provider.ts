@@ -10,6 +10,7 @@ export type TextMateGrammarLoader = (scopeName: string) => Promise<IRawGrammar |
 export type TextMateTokensProviderOptions = {
   scopeName: string
   loadGrammar: TextMateGrammarLoader
+  mapTokenScopes?: (scopes: readonly string[]) => string
   loadOniguruma?: () => Promise<IOnigLib>
 }
 
@@ -47,7 +48,8 @@ class TextMateTokenizerState implements Monaco.languages.IState {
 
 function createTokensProvider(
   grammar: IGrammar,
-  fallbackScopeName: string
+  fallbackScopeName: string,
+  mapTokenScopes?: (scopes: readonly string[]) => string
 ): TextMateTokensProvider {
   return {
     getInitialState() {
@@ -64,7 +66,7 @@ function createTokensProvider(
           startIndex: token.startIndex,
           // Why: Monaco themes match a single token scope; TextMate returns a
           // scope stack, and the final entry is the most specific reusable one.
-          scopes: token.scopes.at(-1) ?? fallbackScopeName
+          scopes: mapTokenScopes?.(token.scopes) ?? token.scopes.at(-1) ?? fallbackScopeName
         }))
       }
     }
@@ -94,5 +96,5 @@ export async function createTextMateTokensProvider(
     throw new Error(`No TextMate grammar registered for scope ${options.scopeName}`)
   }
 
-  return createTokensProvider(grammar, options.scopeName)
+  return createTokensProvider(grammar, options.scopeName, options.mapTokenScopes)
 }
