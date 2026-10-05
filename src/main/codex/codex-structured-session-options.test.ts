@@ -30,7 +30,6 @@ function optionSession(request: CodexAppServerConnection['request']): CodexSessi
     fence: 1,
     acquisitionGeneration: 'generation-1',
     threadId: 'thread-1',
-    historyPath: null,
     prompts: new CodexAcquisitionWindow().prompts,
     options: new Map(),
     reportedOptions: { model: 'gpt-live', effort: 'high' },
@@ -136,7 +135,6 @@ describe('structured Codex session options', () => {
     expect(
       reportedCodexThreadOptions({
         threadId: 'thread-1',
-        historyPath: null,
         model: 'gpt-live',
         effort: 'high'
       })
