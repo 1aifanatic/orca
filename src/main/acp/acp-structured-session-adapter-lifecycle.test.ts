@@ -182,6 +182,20 @@ describe('ACP connection loss', () => {
     await expect(sendHello(rig, 'after')).rejects.toThrow(/no live grok child/)
   })
 
+  it("ends a crash whose stdout closed before its exit with Grok's last words", async () => {
+    const rig = await openAcpAdapterRig()
+    await rig.acquire()
+    rig.child().stderr = 'panic: out of memory'
+    rig.child().stdout.end()
+    await waitFor(() => expect(rig.lifecycle).toHaveLength(1))
+    expect(rig.lifecycle[0]).toMatchObject({
+      type: 'ended',
+      cause: 'unexpected-exit',
+      reason: 'grok ACP agent exited: panic: out of memory',
+      failure: { kind: 'providerExited', detail: { text: 'panic: out of memory' } }
+    })
+  })
+
   it('leaves a running turn unverifiable, never completed, when the stream breaks mid-turn', async () => {
     const rig = await openAcpAdapterRig()
     await rig.acquire()

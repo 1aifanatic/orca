@@ -23,7 +23,7 @@ export function acpStructuredAgentDefinition(spec: AcpLaunchSpec): StructuredAge
       compact: false,
       threadGoal: false,
       contextUsage: true,
-      // Declared off until the agent's own initialize says otherwise; dispatch re-checks it.
+      // Off: Orca sends text prompts only until ACP image prompts have a path.
       imagePrompts: false,
       steering: 'queue',
       // Orca answers every permission request the agent sends; the agent decides when it asks.

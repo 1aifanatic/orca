@@ -39,7 +39,7 @@ import { RequestPermissionResponseSchema } from './generated/acp-protocol.genera
 
 /** ACP's "resource not found": the agent holds no session under the id this chat proved. */
 const ACP_RESOURCE_NOT_FOUND = -32002
-/** Frames an agent may send before its session exists; past this the start is refused. */
+/** Frames an agent may send before its session exists; past this they are dropped. */
 const MAX_EARLY_FRAMES = 2_048
 /** How long the agent has to answer the handshake, reattach or create its session, and take saved
  *  options back. A load-only agent replays the whole conversation, so this is generous. */
@@ -153,7 +153,8 @@ export async function acquireAcpStructuredSession(input: {
     whenLane(() => slot.lane && routeAcpSessionEvent({ lane: slot.lane, options }, event, now()))
   )
   child.onExit(() => {
-    // The exit first, so the connection's close it causes is not read as one that broke.
+    // A crash usually ends stdout first, so the connection's loss may already have closed the
+    // journal; the session's end still reads the agent's last words at this proven exit.
     input.onExit(session)
     runtime.close(new Error(child.stderrTail() || `${spec.command} exited`))
   })

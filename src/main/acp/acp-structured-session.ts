@@ -86,10 +86,13 @@ export function endAcpStructuredSession(
   session.ended = true
   session.exitObservedAt = observedAt
   const stderr = session.child.stderrTail()
+  // Read at the proven exit: a crash usually ends the agent's stdout before its exit is observed,
+  // so the connection's close comes first, but the agent's own last words are what explain it.
   const reason = session.closeRequested
     ? `${session.spec.agent} ACP agent closed by Orca`
-    : (session.journalClosed ??
-      `${session.spec.agent} ACP agent exited${stderr ? `: ${stderr}` : ''}`)
+    : session.journalClosed !== null && !stderr
+      ? session.journalClosed
+      : `${session.spec.agent} ACP agent exited${stderr ? `: ${stderr}` : ''}`
   closeAcpSessionJournal(session, reason)
   const detail = stderr ? providerDiagnostic(stderr, 'person') : undefined
   onEvent?.({
