@@ -197,31 +197,37 @@ describe('conversationCommandBlocked for a command sent at rest (C6, B3)', () =>
 
 describe('conversationCommandBlocked on unsettled messages', () => {
   // One send per shape the Working indicator and admission could read differently.
-  const SHAPES = {
-    queued: { dispatchState: 'pending', handoverRecorded: true, fence: 1 },
-    handedOver: { dispatchState: 'pending', handoverRecorded: true, handedOverAt: 5, fence: 1 },
+  const SHAPES: Record<string, Partial<AgentJournalSubmission>> = {
+    queued: { dispatchState: 'pending', handoverRecorded: true },
+    handedOver: { dispatchState: 'pending', handoverRecorded: true, handedOverAt: 5 },
     handedOverByEarlierChild: {
       dispatchState: 'pending',
       handoverRecorded: true,
       handedOverAt: 5,
       fence: 0
     },
-    liveUnknown: { dispatchState: 'unknown', fence: 1 },
-    recoveredUnknown: { dispatchState: 'unknown', fence: 1, recovered: true },
-    restartedUnknown: {
-      dispatchState: 'unknown',
-      fence: 1,
-      reason: 'host_restarted_before_acknowledgement'
-    },
-    accepted: { dispatchState: 'accepted', fence: 1 },
-    rejected: { dispatchState: 'rejected', fence: 1 }
+    liveUnknown: { dispatchState: 'unknown' },
+    recoveredUnknown: { dispatchState: 'unknown', recovered: true },
+    restartedUnknown: { dispatchState: 'unknown', reason: 'host_restarted_before_acknowledgement' },
+    accepted: { dispatchState: 'accepted' },
+    rejected: { dispatchState: 'rejected' }
   }
 
-  function admissionOver(shape: keyof typeof SHAPES, admission?: 'at-rest' | 'handover') {
+  function admissionOver(shape: string, admission?: 'at-rest' | 'handover') {
     const ctx = contextWith(undefined)
-    const submission = { clientMessageId: shape, ...SHAPES[shape] }
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the admission reads only the dispatch fields.
-    const submissions = [submission] as unknown as AgentJournalSubmission[]
+    const submissions: AgentJournalSubmission[] = [
+      {
+        clientMessageId: shape,
+        fence: 1,
+        payloadFingerprint: 'fingerprint',
+        dispatchState: 'pending',
+        providerItemId: null,
+        reason: null,
+        submittedAt: 1,
+        resolvedAt: null,
+        ...SHAPES[shape]
+      }
+    ]
     ctx.journal.submissions = () => submissions
     const refusal = conversationCommandBlocked(ctx, RECORD, [], admission)
     return {
@@ -230,7 +236,7 @@ describe('conversationCommandBlocked on unsettled messages', () => {
     }
   }
 
-  it.each(Object.keys(SHAPES) as (keyof typeof SHAPES)[])(
+  it.each(Object.keys(SHAPES))(
     'refuses on %s exactly when the chat shows the agent working',
     (shape) => {
       const { blocked, working } = admissionOver(shape)
