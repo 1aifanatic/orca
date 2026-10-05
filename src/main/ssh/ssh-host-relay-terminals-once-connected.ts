@@ -8,6 +8,7 @@ import type { Store } from '../persistence'
 import type { HostServerOnConnectResult } from './ssh-host-server-on-connect'
 import {
   assessOrcadMigrationTerminals,
+  retireProvenExitedLeases,
   type ListRelayPtyIds
 } from './orcad-migration-terminal-gate'
 
@@ -15,7 +16,7 @@ type RelayDecision = Extract<HostServerOnConnectResult, { route: 'relay' }>
 
 /** The live decision the connected relay proves, or null when the first decision stands. */
 export async function relayTerminalsOnceConnected(args: {
-  store: Pick<Store, 'getSshRemotePtyLeases'>
+  store: Pick<Store, 'getSshRemotePtyLeases' | 'markSshRemotePtyLease'>
   targetId: string
   decision: HostServerOnConnectResult | null
   listRelayPtyIds: ListRelayPtyIds | null
@@ -28,8 +29,11 @@ export async function relayTerminalsOnceConnected(args: {
     return null
   }
   const proof = await assessOrcadMigrationTerminals(args.store, args.targetId, args.listRelayPtyIds)
-  // Exited is left for the next connect to act on; this connect already runs the relay.
-  return proof.verdict === 'live'
-    ? { route: 'relay', reason: 'relay_terminals_live', terminals: proof.ptyIds.length }
-    : null
+  if (proof.verdict === 'live') {
+    return { route: 'relay', reason: 'relay_terminals_live', terminals: proof.ptyIds.length }
+  }
+  // This connect already runs the relay; retiring proven leases lets the next one convert, where
+  // leaving them would read unverifiable on every connect, since nothing can ask before a session.
+  retireProvenExitedLeases(args.store, args.targetId, proof)
+  return null
 }
