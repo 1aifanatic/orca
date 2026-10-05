@@ -4,9 +4,7 @@ import { dispatchDictationControl } from '../dictation/dictation-control-events'
 import { useAppStore } from '../../store'
 
 /** The composer's dictation: whether it can dictate, whether it is, and the press actions. */
-export function useNativeChatDictationActions(
-  textareaRef: RefObject<NativeChatComposerInput | null>
-): {
+export function useNativeChatDictation(textareaRef: RefObject<NativeChatComposerInput | null>): {
   dictationDisabled: boolean
   isDictating: boolean
   isDictationHoldMode: boolean
