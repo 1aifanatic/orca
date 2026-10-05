@@ -431,7 +431,7 @@ export type AgentJournalSubmission = {
   /** On `rejected`: the turn a Codex send was answered into, when that turn ended without taking
    *  it. null: the host recorded that it was answered into no turn, as every other rejection is
    *  (Claude, a queued message taken back before handover, restart recovery). Absent: written
-   *  before this field existed, or not rejected. */
+   *  before this field existed, or not rejected. A stored value this build cannot read is null. */
   answeredInTurn?: AgentJournalAnsweredTurn | null
   /** Set when crash reconciliation resolved the dispatch, not the provider. A live
    *  `unknown` is a send still outstanding; a recovered one outlived its writer. */
