@@ -49,7 +49,8 @@ export class AgentModelCatalogUnavailableError extends Error {
   }
 }
 
-type CatalogFailure = { detail: string; failedAt: number; unavailable?: AgentSessionUnavailable }
+type CatalogFailure = { detail: string; failedAt: number }
+type CatalogAvailability = { unavailable: AgentSessionUnavailable; observedAt: number }
 
 /** A live session's handle into the store, pinned at spawn to the account home
  *  THAT child launched under — an account switched afterwards must never
@@ -92,6 +93,7 @@ function listingKey(entry: AgentModelCatalogEntry): string {
 export class AgentModelCatalogStore {
   private readonly entries = new Map<string, AgentModelCatalogEntry>()
   private readonly failures = new Map<string, CatalogFailure>()
+  private readonly availability = new Map<string, CatalogAvailability>()
   private readonly probeTimes = new Map<string, number>()
   private readonly refreshes = new Map<string, Promise<AgentModelCatalogEntry | null>>()
   private persistence: AgentModelCatalogPersistence | null = null
@@ -159,6 +161,9 @@ export class AgentModelCatalogStore {
     agent: 'claude' | 'codex',
     success: AgentModelCatalogSuccess
   ): AgentModelCatalogEntry | null {
+    if (success.origin === 'probe') {
+      this.availability.delete(fingerprint)
+    }
     if (success.models.length === 0) {
       // An empty list identifies no model; it is doubt, not a catalog.
       return null
@@ -184,42 +189,48 @@ export class AgentModelCatalogStore {
     return entry
   }
 
-  recordFailure(fingerprint: string, detail: string, unavailable?: AgentSessionUnavailable): void {
+  recordFailure(
+    fingerprint: string,
+    detail: string,
+    unavailable?: AgentSessionUnavailable,
+    origin: AgentModelCatalogSuccess['origin'] = 'probe'
+  ): void {
     this.failures.delete(fingerprint)
     this.failures.set(fingerprint, {
       detail,
-      failedAt: this.now(),
-      ...(unavailable ? { unavailable } : {})
+      failedAt: this.now()
     })
+    if (origin === 'probe') {
+      this.availability.delete(fingerprint)
+      if (unavailable) {
+        this.availability.set(fingerprint, { unavailable, observedAt: this.now() })
+      }
+      this.probeTimes.delete(fingerprint)
+      this.probeTimes.set(fingerprint, this.now())
+    }
     this.evictTransientOverCap()
   }
 
   unavailable(fingerprint: string): AgentSessionUnavailableObservation | undefined {
-    if (!this.hasActiveFailure(fingerprint)) {
+    const observation = this.availability.get(fingerprint)
+    if (!observation) {
       return undefined
     }
-    const failure = this.failures.get(fingerprint)
-    return failure?.unavailable
-      ? {
-          ...failure.unavailable,
-          expiresInMs: Math.max(
-            0,
-            AGENT_SESSION_AVAILABILITY_TTL_MS - (this.now() - failure.failedAt)
-          )
-        }
-      : undefined
+    const expiresInMs = AGENT_SESSION_AVAILABILITY_TTL_MS - (this.now() - observation.observedAt)
+    if (expiresInMs <= 0) {
+      this.availability.delete(fingerprint)
+      return undefined
+    }
+    return { ...observation.unavailable, expiresInMs }
   }
 
   shouldProbeAvailability(fingerprint: string): boolean {
     const checkedAt = this.probeTimes.get(fingerprint)
-    return (
-      !this.hasActiveFailure(fingerprint) &&
-      (checkedAt === undefined || this.now() - checkedAt >= AGENT_SESSION_AVAILABILITY_TTL_MS)
-    )
+    return checkedAt === undefined || this.now() - checkedAt >= AGENT_SESSION_AVAILABILITY_TTL_MS
   }
 
   private evictTransientOverCap(): void {
-    for (const entries of [this.failures, this.probeTimes]) {
+    for (const entries of [this.failures, this.availability, this.probeTimes]) {
       while (entries.size > AGENT_MODEL_CATALOG_MAX_ENTRIES) {
         const oldest = entries.keys().next().value
         if (oldest === undefined) {
@@ -235,9 +246,12 @@ export class AgentModelCatalogStore {
   refresh(
     fingerprint: string,
     agent: 'claude' | 'codex',
-    listModels: () => Promise<AgentModelCatalogSuccess>
+    listModels: () => Promise<AgentModelCatalogSuccess>,
+    origin: AgentModelCatalogSuccess['origin'] = 'probe'
   ): Promise<AgentModelCatalogEntry | null> {
-    const inFlight = this.refreshes.get(fingerprint)
+    // A live model/list cannot answer the account check a probe performs.
+    const refreshKey = `${origin}\u0000${fingerprint}`
+    const inFlight = this.refreshes.get(refreshKey)
     if (inFlight) {
       return inFlight
     }
@@ -249,31 +263,38 @@ export class AgentModelCatalogStore {
     }
     const run = listing.then(
       (success) => {
-        this.refreshes.delete(fingerprint)
-        this.probeTimes.delete(fingerprint)
-        this.probeTimes.set(fingerprint, this.now())
+        this.refreshes.delete(refreshKey)
+        if (origin === 'probe') {
+          this.probeTimes.delete(fingerprint)
+          this.probeTimes.set(fingerprint, this.now())
+          this.evictTransientOverCap()
+        }
         this.failures.delete(fingerprint)
-        this.evictTransientOverCap()
         return this.recordSuccess(fingerprint, agent, success)
       },
       (error: unknown) => {
-        this.refreshes.delete(fingerprint)
+        this.refreshes.delete(refreshKey)
         this.recordFailure(
           fingerprint,
           error instanceof Error ? error.message : String(error),
-          error instanceof AgentModelCatalogUnavailableError ? error.unavailable : undefined
+          error instanceof AgentModelCatalogUnavailableError ? error.unavailable : undefined,
+          origin
         )
         return null
       }
     )
-    this.refreshes.set(fingerprint, run)
+    this.refreshes.set(refreshKey, run)
     return run
   }
 
   /** True when a read should kick a background refresh: nothing known or the
    *  entry aged out, and no failure is still inside its TTL. */
   shouldRefresh(fingerprint: string): boolean {
-    if (this.refreshes.has(fingerprint) || this.hasActiveFailure(fingerprint)) {
+    if (
+      this.refreshes.has(`probe\u0000${fingerprint}`) ||
+      this.refreshes.has(`live-session\u0000${fingerprint}`) ||
+      this.hasActiveFailure(fingerprint)
+    ) {
       return false
     }
     const entry = this.entries.get(fingerprint)

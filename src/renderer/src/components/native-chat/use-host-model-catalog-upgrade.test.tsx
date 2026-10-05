@@ -38,7 +38,12 @@ const HOST_CATALOG = {
 // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: no test here sends a pick over a fence, so mutate is never called.
 const mutate = vi.fn(async () => null) as unknown as StructuredAgentSessionMutate
 
-type Props = { hidden?: boolean; attached?: boolean; sessionId?: string }
+type Props = {
+  hidden?: boolean
+  attached?: boolean
+  sessionId?: string
+  agent?: 'claude' | 'codex'
+}
 
 // A chat's waiting read outlives its mounts, so each test gets its own chat.
 let sessionId = ''
@@ -48,7 +53,7 @@ function renderOptions(initial: Props = {}) {
   return renderHook(
     (props: Props) =>
       useStructuredAgentSessionOptions({
-        agent: 'codex',
+        agent: props.agent ?? 'codex',
         sessionId: props.sessionId ?? sessionId,
         target: PAIRED_TARGET,
         transportEnabled: props.attached === true,
@@ -371,6 +376,25 @@ describe('Send availability follows the current catalog', () => {
     origin: 'unknown',
     unavailable: { reason: 'notSignedIn', account: 'system', expiresInMs: 30000 }
   }
+  it.each(['claude', 'codex'] as const)(
+    'gates a live %s session on account evidence and enables it after sign-in',
+    async (agent) => {
+      const catalog = { ...HOST_CATALOG, origin: 'live-session' }
+      answerCatalog([
+        () => Promise.resolve({ ...catalog, unavailable: blocked.unavailable }),
+        () => Promise.resolve(catalog)
+      ])
+      const { result } = renderOptions({ agent, attached: true })
+      await flush()
+      expect(result.current.unavailable).toMatchObject({ reason: 'notSignedIn' })
+      expect(modelChoices(result.current.optionSnapshot)).toContain('gpt-hosted')
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30000)
+      })
+      expect(result.current.unavailable).toBeNull()
+      expect(catalogReads()).toHaveLength(2)
+    }
+  )
   it('releases a blocker at expiry before a hanging refresh answers', async () => {
     answerCatalog([() => Promise.resolve(blocked), () => new Promise(() => {})])
     const { result } = renderOptions()

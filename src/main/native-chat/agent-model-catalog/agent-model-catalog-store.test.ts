@@ -244,7 +244,7 @@ describe('transient availability storage', () => {
     })
     expect(store.unavailable('a')).toBeUndefined()
     store.recordFailure('a', 'missing', { reason: 'cliMissing' })
-    await store.refresh('a', 'codex', async () => success('gpt-a'))
+    await store.refresh('a', 'codex', async () => ({ ...success('gpt-a'), origin: 'probe' }))
     expect(store.unavailable('a')).toBeUndefined()
   })
   it('a synchronous probe fault never rejects the catalog read', async () => {

@@ -83,6 +83,19 @@ function seedEntry(store: AgentModelCatalogStore, ...ids: string[]): void {
 }
 
 describe('Codex session options through the host catalog store', () => {
+  it('keeps signed-out probe evidence when a live picker first lists successfully', async () => {
+    const store = new AgentModelCatalogStore({ now: () => 1000 })
+    store.recordFailure(FINGERPRINT, 'auth', { reason: 'notSignedIn', account: 'system' })
+    const request = vi.fn(async () => listAnswer('gpt-live'))
+    const result = await readLiveCodexSessionOptions(storeSession(request, store), undefined)
+    expect(result.models.map((model) => model.id)).toEqual(['gpt-live'])
+    expect(store.unavailable(FINGERPRINT)).toEqual({
+      reason: 'notSignedIn',
+      account: 'system',
+      expiresInMs: 30000
+    })
+  })
+
   it('lists once at the first read and serves every later read from the store', async () => {
     const store = new AgentModelCatalogStore()
     const request = vi.fn(async () => listAnswer('gpt-live', 'gpt-next'))
