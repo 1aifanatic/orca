@@ -29,6 +29,8 @@ export type StructuredMobileSendAttachment = StructuredAgentSessionAttachment & 
 export type StructuredMobileSendOptions = {
   /** False: deliver into the running turn (an async question answer), never as a queued draft. */
   queue?: boolean
+  /** Told the journal submission an accepted send became. */
+  onAccepted?: (clientMessageId: string) => void
 }
 
 export function useMobileStructuredSendWithOutcome(args: {
@@ -127,7 +129,8 @@ export function useMobileStructuredSendWithOutcome(args: {
           ? { delivery: 'queue-if-active' as const }
           : {}),
         deadline,
-        onError: onSendError
+        onError: onSendError,
+        ...(options?.onAccepted ? { onAccepted: options.onAccepted } : {})
       })
     },
     [

@@ -50,7 +50,7 @@ export function useNativeChatAsyncQuestions(args: {
   scopeKey: string
   view: NativeChatAsyncQuestionsView
   send: NativeChatAsyncAnswerSend
-  /** Answers the transport itself still holds (structured: its persisted outbox). */
+  /** Answers the transport itself still holds (its outbox, or a terminal echo still waiting). */
   progress?: NativeChatAsyncAnswerProgress
 }): NativeChatAsyncQuestionsCardModel {
   const { scopeKey, view, send, progress = NO_PROGRESS } = args

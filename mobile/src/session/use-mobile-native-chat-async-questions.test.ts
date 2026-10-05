@@ -1,11 +1,13 @@
 import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { AgentJournalSubmission } from '../../../src/shared/agent-session-journal-types'
+import type { NativeChatAsyncAnswerSendResult } from '../../../src/shared/native-chat-async-question-card-state'
 import type {
   NativeChatAsyncQuestion,
   NativeChatAsyncQuestionsView
 } from '../../../src/shared/native-chat-async-questions'
-import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
+import type { MobileNativeChatPendingMessage } from './mobile-native-chat-pending-echo'
 import {
   useMobileNativeChatAsyncQuestions,
   type MobileNativeChatAsyncQuestionsModel
@@ -17,13 +19,45 @@ const ready = (...questions: NativeChatAsyncQuestion[]): NativeChatAsyncQuestion
   questions
 })
 
-type Props = { view: NativeChatAsyncQuestionsView; structured: boolean; scopeKey: string }
+type Props = {
+  view: NativeChatAsyncQuestionsView
+  structured: boolean
+  scopeKey: string
+  pending?: MobileNativeChatPendingMessage[]
+  submissions?: AgentJournalSubmission[]
+}
+
+const echo = (
+  text: string,
+  asyncAnswers: Record<string, string>
+): MobileNativeChatPendingMessage => ({
+  id: 'pending-1',
+  text,
+  expectedOccurrence: 1,
+  baselineTailMessageId: null,
+  baselineResolved: true,
+  asyncAnswers
+})
+
+const submission = (
+  clientMessageId: string,
+  dispatchState: AgentJournalSubmission['dispatchState']
+): AgentJournalSubmission => ({
+  clientMessageId,
+  fence: 1,
+  payloadFingerprint: 'f',
+  dispatchState,
+  providerItemId: null,
+  reason: null,
+  submittedAt: 1,
+  resolvedAt: null
+})
 
 describe('useMobileNativeChatAsyncQuestions', () => {
   let renderer: ReactTestRenderer | null = null
   let model: MobileNativeChatAsyncQuestionsModel | null = null
-  let resolveSend: (outcome: MobileNativeChatSendOutcome) => void = () => {}
-  const pending = (): Promise<MobileNativeChatSendOutcome> =>
+  let resolveSend: (outcome: NativeChatAsyncAnswerSendResult) => void = () => {}
+  const pending = (): Promise<NativeChatAsyncAnswerSendResult> =>
     new Promise((resolve) => {
       resolveSend = resolve
     })
@@ -31,7 +65,13 @@ describe('useMobileNativeChatAsyncQuestions', () => {
   const answerStructured = vi.fn(pending)
 
   function Harness(props: Props): null {
-    model = useMobileNativeChatAsyncQuestions({ ...props, answerTerminal, answerStructured })
+    model = useMobileNativeChatAsyncQuestions({
+      ...props,
+      pending: props.pending ?? [],
+      submissions: props.submissions ?? [],
+      answerTerminal,
+      answerStructured
+    })
     return null
   }
   const mount = (props: Props): void => {
@@ -42,7 +82,7 @@ describe('useMobileNativeChatAsyncQuestions', () => {
   const update = (props: Props): void => {
     act(() => renderer?.update(createElement(Harness, props)))
   }
-  const settle = async (outcome: MobileNativeChatSendOutcome): Promise<void> => {
+  const settle = async (outcome: NativeChatAsyncAnswerSendResult): Promise<void> => {
     await act(async () => {
       resolveSend(outcome)
       await Promise.resolve()
@@ -68,7 +108,7 @@ describe('useMobileNativeChatAsyncQuestions', () => {
     expect(model!.edits.a).toEqual({ text: 'one' })
     act(() => model!.dismiss('b'))
     act(() => model!.submit())
-    expect(answerTerminal).toHaveBeenCalledWith('Question: a?\nAnswer: one')
+    expect(answerTerminal).toHaveBeenCalledWith('Question: a?\nAnswer: one', { a: 'one' })
     expect(model!.canSend).toBe(false)
     update({ view: ready(q('a'), q('b'), q('c')), structured: false, scopeKey: 's' })
     expect(model!.sending).toBe(true)
@@ -116,6 +156,53 @@ describe('useMobileNativeChatAsyncQuestions', () => {
     update({ view: ready(q('a')), structured: false, scopeKey: 's' })
     expect(model!.edits.a).toEqual({ text: 'one' })
     update({ view: ready(), structured: false, scopeKey: 's' })
+    expect(model!.edits.a).toBeUndefined()
+  })
+
+  it('terminal: holds the sent answer while its echo waits for the transcript', async () => {
+    const props = { view: ready(q('a')), structured: false, scopeKey: 's' }
+    mount(props)
+    act(() => model!.edit('a', { text: 'one' }))
+    act(() => model!.submit())
+    await settle('accepted')
+    // The accepted send's echo carries the answers until its row lands.
+    update({ ...props, pending: [echo('Question: a?\nAnswer: one', { a: 'one' })] })
+    expect(model!.edits.a).toEqual({ text: 'one' })
+    expect(model!.sending).toBe(true)
+    expect(model!.canSend).toBe(false)
+    update({ ...props, pending: [] })
+    expect(model!.edits.a).toBeUndefined()
+    expect(model!.sending).toBe(false)
+  })
+
+  it('structured: holds the answer while its submission is pending, gives it back if refused', async () => {
+    const props = { view: ready(q('a')), structured: true, scopeKey: 's' }
+    mount(props)
+    act(() => model!.edit('a', { option: 'x' }))
+    act(() => model!.submit())
+    await settle({ outcome: 'accepted', receipt: 'm1' })
+    update({ ...props, submissions: [submission('m1', 'pending')] })
+    expect(model!.edits.a).toEqual({ text: 'x' })
+    expect(model!.sending).toBe(true)
+    expect(model!.canSend).toBe(false)
+    // A Stop before the agent drained the steered answer: the host refuses it.
+    update({ ...props, submissions: [submission('m1', 'rejected')] })
+    expect(model!.edits.a).toEqual({ text: 'x' })
+    expect(model!.sending).toBe(false)
+    expect(model!.canSend).toBe(true)
+  })
+
+  it('structured: an accepted submission lets go of the answer for good', async () => {
+    const props = { view: ready(q('a')), structured: true, scopeKey: 's' }
+    mount(props)
+    act(() => model!.edit('a', { text: 'one' }))
+    act(() => model!.submit())
+    await settle({ outcome: 'accepted', receipt: 'm1' })
+    update({ ...props, submissions: [submission('m1', 'accepted')] })
+    expect(model!.edits.a).toBeUndefined()
+    expect(model!.sending).toBe(false)
+    // Forgotten once accepted: a later reading of the same id can't bring it back.
+    update({ ...props, submissions: [submission('m1', 'rejected')] })
     expect(model!.edits.a).toBeUndefined()
   })
 })

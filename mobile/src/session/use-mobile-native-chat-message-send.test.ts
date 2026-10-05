@@ -503,7 +503,21 @@ describe('useMobileNativeChatMessageSend', () => {
     expect(acceptSend).toHaveBeenCalledWith(
       expect.anything(),
       'Question: Color?\nAnswer: Red',
+      undefined,
       undefined
+    )
+  })
+
+  it('carries an async question card’s answers on the answer’s echo', async () => {
+    mount(() => null, 'codex')
+    await act(async () => {
+      await api!.answerQuestion('Question: Color?\nAnswer: Red', { color: 'Red' })
+    })
+    expect(acceptSend).toHaveBeenCalledWith(
+      expect.anything(),
+      'Question: Color?\nAnswer: Red',
+      undefined,
+      { color: 'Red' }
     )
   })
 

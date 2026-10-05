@@ -233,7 +233,9 @@ export function useMobileNativeChatController(args: {
     view: nativeChatSession.asyncQuestions,
     structured: activeChatStructured,
     answerTerminal: legacyHandleNativeChatQuestionAnswer,
-    answerStructured: structuredNativeChatSend.answer
+    answerStructured: structuredNativeChatSend.answer,
+    pending: chatPending,
+    submissions: structuredNativeChat.submissions
   })
 
   const { nativeChatSessionOptions, recordCommand: recordNativeChatSessionOptionCommand } =

@@ -33,6 +33,8 @@ export type NativeChatPendingSend = {
   text: string
   /** Image paths that were sent through the TUI image attachment paste path. */
   imagePaths?: string[]
+  /** An async question card's answers, by question key: the card holds them while this waits. */
+  asyncAnswers?: Readonly<Record<string, string>>
   /** Epoch ms when the send was issued, so the queued bubble sorts to the end. */
   sentAt: number
   /** Last authoritative transcript message visible when this send was issued.

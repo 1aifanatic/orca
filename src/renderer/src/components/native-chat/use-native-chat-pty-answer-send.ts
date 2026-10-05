@@ -8,6 +8,13 @@ import type { NativeChatOptimisticSendOutcome } from './native-chat-composer-typ
 import { sendNativeChatMessageWithOutcome } from './native-chat-pty-answer-send'
 import type { NativeChatSendLifecycle } from './use-native-chat-send-lifecycle'
 
+/** Records an optimistic echo, as a composer send does; returns its pending id. */
+export type NativeChatAsyncAnswerEcho = (
+  text: string,
+  imagePaths?: string[],
+  asyncAnswers?: Readonly<Record<string, string>>
+) => string | undefined
+
 /** The terminal pane's answer seam: the same optimistic echo, per-PTY queue and pending-send
  *  tracking as a composer chat send, settled with what the write observed. */
 export function useNativeChatPtyAnswerSend(args: {
@@ -15,14 +22,17 @@ export function useNativeChatPtyAnswerSend(args: {
   terminalTabId: string
   targetPtyId: string | null
   canSend: boolean
-  recordOptimistic: (text: string) => string | undefined
+  recordOptimistic: NativeChatAsyncAnswerEcho
   optimisticOutcome: NativeChatOptimisticSendOutcome
   trackPendingSend: NativeChatSendLifecycle['trackPendingSend']
-}): (text: string) => Promise<NativeChatAsyncAnswerOutcome> {
+}): (text: string, answers: Record<string, string>) => Promise<NativeChatAsyncAnswerOutcome> {
   const { agent, terminalTabId, targetPtyId, canSend } = args
   const { recordOptimistic, optimisticOutcome, trackPendingSend } = args
   return useCallback(
-    async (text: string): Promise<NativeChatAsyncAnswerOutcome> => {
+    async (
+      text: string,
+      answers: Record<string, string>
+    ): Promise<NativeChatAsyncAnswerOutcome> => {
       if (!targetPtyId || !canSend) {
         return 'rejected'
       }
@@ -32,7 +42,8 @@ export function useNativeChatPtyAnswerSend(args: {
         return 'rejected'
       }
       const { handle, outcome } = started
-      const pendingId = recordOptimistic(text)
+      // The echo carries the answers, so the card holds them until it lands or fails.
+      const pendingId = recordOptimistic(text, undefined, answers)
       trackPendingSend(handle, pendingId)
       emitNativeChatMessageSent({
         agent,

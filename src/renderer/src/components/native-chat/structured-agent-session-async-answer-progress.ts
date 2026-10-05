@@ -4,7 +4,10 @@
 // entry leaves, and the card waits only for the host's set to drop the question. A remount or a
 // relaunch reads the same entries, so Send can't be re-enabled for an answer still on its way.
 
-import type { NativeChatAsyncAnswerProgress } from '../../../../shared/native-chat-async-question-card-state'
+import {
+  nativeChatAsyncAnswerProgress,
+  type NativeChatAsyncAnswerProgress
+} from '../../../../shared/native-chat-async-question-card-state'
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import { structuredAgentSessionEntryHeldForRetry } from '../../../../shared/structured-agent-session-outbox-admission'
 
@@ -20,25 +23,14 @@ function onItsWay(entry: StructuredAgentSessionOutboxEntry): boolean {
   )
 }
 
-/** Oldest first, so the newest answer to a question decides it. */
 export function structuredAsyncAnswerProgress(
   outbox: readonly StructuredAgentSessionOutboxEntry[]
 ): NativeChatAsyncAnswerProgress {
-  const answers: Record<string, string> = {}
-  const sendingKeys = new Set<string>()
-  for (const entry of outbox) {
-    if (entry.origin?.kind !== 'async-answer') {
-      continue
-    }
-    const sending = onItsWay(entry)
-    for (const [key, answer] of Object.entries(entry.origin.edits)) {
-      answers[key] = answer
-      if (sending) {
-        sendingKeys.add(key)
-      } else {
-        sendingKeys.delete(key)
-      }
-    }
-  }
-  return { answers, sendingKeys }
+  return nativeChatAsyncAnswerProgress(
+    outbox.flatMap((entry) =>
+      entry.origin?.kind === 'async-answer'
+        ? [{ answers: entry.origin.edits, holding: onItsWay(entry) }]
+        : []
+    )
+  )
 }

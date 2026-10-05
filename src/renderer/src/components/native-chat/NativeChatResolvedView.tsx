@@ -175,9 +175,9 @@ export function NativeChatResolvedView({
     clearNativeChatLaunchPrompt(terminalTabId)
   }, [clearNativeChatLaunchPrompt, paneLaunchPrompt, session.messages, terminalTabId])
   const onOptimisticSend = useCallback(
-    (text: string, imagePaths?: string[]) => {
+    (text: string, imagePaths?: string[], asyncAnswers?: Readonly<Record<string, string>>) => {
       setWorkingInterrupted(false)
-      return record(text, imagePaths)
+      return record(text, imagePaths, asyncAnswers)
     },
     [record]
   )
@@ -230,6 +230,7 @@ export function NativeChatResolvedView({
     targetPtyId,
     canSend,
     view: session.asyncQuestions,
+    pending,
     recordOptimistic: onOptimisticSend,
     optimisticOutcome: delivery
   })

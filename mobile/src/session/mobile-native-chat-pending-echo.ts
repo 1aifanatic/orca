@@ -6,6 +6,8 @@ export type MobileNativeChatPendingMessage = {
   expectedOccurrence: number
   /** Local preview URIs carried by the send for its optimistic echo. */
   images?: string[]
+  /** An async question card's answers, by question key: the card holds them while this waits. */
+  asyncAnswers?: Readonly<Record<string, string>>
   baselineTailMessageId: string | null
   /** Whether the transcript this baseline was captured from was already this
    *  session's own history. A send issued mid-hydration is captured unresolved
@@ -46,7 +48,8 @@ export function appendMobileNativeChatPending(
   id: string,
   origin: MobileNativeChatSendOrigin,
   text: string,
-  images?: string[]
+  images?: string[],
+  asyncAnswers?: Readonly<Record<string, string>>
 ): PendingByKey {
   const current = previous[key] ?? []
   // Count outstanding repeats with the same normalized key.
@@ -73,7 +76,8 @@ export function appendMobileNativeChatPending(
             : origin.baselineOccurrences + earlierOutstanding + 1,
         baselineTailMessageId: origin.baselineTailMessageId,
         baselineResolved: origin.baselineResolved,
-        ...(images?.length ? { images } : {})
+        ...(images?.length ? { images } : {}),
+        ...(asyncAnswers ? { asyncAnswers } : {})
       }
     ]
   }

@@ -175,16 +175,38 @@ describe('structured async answer through the real command gate', () => {
     expect(sentParams()[1]).toHaveProperty('delivery', 'queue-if-active')
   })
 
+  it('names the submission of an answer Codex still holds, so the card reads its state from it', async () => {
+    sendRequest.mockImplementation(async (method: string) =>
+      method === 'agentSession.send'
+        ? ok({
+            ok: true,
+            replayed: false,
+            fence: 3,
+            cursor: { epoch: 'epoch-1', sequence: 1 },
+            value: structuredSendResultFixture('pending')
+          })
+        : ok({})
+    )
+    await mountSession()
+    let outcome: unknown
+    await act(async () => {
+      outcome = await bridge!.answer(
+        formatAsyncQuestionReply([{ title: 'Color?', answer: 'Blue' }])
+      )
+    })
+    expect(outcome).toEqual({ outcome: 'accepted', receipt: 'msg-1' })
+  })
+
   it('delivers a /model-titled answer as an ordinary message: no command, options untouched', async () => {
     await mountSession()
     const text = formatAsyncQuestionReply([{ title: '/model', answer: 'gpt-5' }])
 
-    let outcome: string | undefined
+    let outcome: unknown
     await act(async () => {
       outcome = await bridge!.answer(text)
     })
 
-    expect(outcome).toBe('accepted')
+    expect(outcome).toEqual({ outcome: 'accepted', receipt: 'msg-1' })
     expect(mutations()).toEqual(['agentSession.send'])
     const sent = sendRequest.mock.calls.find(([method]) => method === 'agentSession.send')
     expect(JSON.stringify(sent?.[1])).toContain(JSON.stringify('Question: /model\nAnswer: gpt-5'))

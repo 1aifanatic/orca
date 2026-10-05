@@ -2,6 +2,7 @@ import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionHandleProvider } from '../../../src/shared/agent-session-provider-handle'
+import type { NativeChatAsyncAnswerSendResult } from '../../../src/shared/native-chat-async-question-card-state'
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
 import type { MobileNativeChatSendOrigin } from './use-mobile-native-chat-drafts'
 import { useMobileStructuredNativeChatSendBridge } from './use-mobile-structured-native-chat-send-bridge'
@@ -19,7 +20,7 @@ const ORIGIN: MobileNativeChatSendOrigin = {
 describe('useMobileStructuredNativeChatSendBridge', () => {
   let renderer: ReactTestRenderer | null = null
   let sendWithOutcome: (text: string) => Promise<MobileNativeChatSendOutcome>
-  let answer: (text: string) => Promise<MobileNativeChatSendOutcome>
+  let answer: (text: string) => Promise<NativeChatAsyncAnswerSendResult>
   const acceptSend = vi.fn()
   const captureSendOrigin = vi.fn(() => ORIGIN)
   const clearDraftForSend = vi.fn()
@@ -115,7 +116,7 @@ describe('useMobileStructuredNativeChatSendBridge', () => {
         undefined,
         undefined,
         undefined,
-        { queue: false }
+        { queue: false, onAccepted: expect.any(Function) }
       )
       expect(clearDraftForSend).not.toHaveBeenCalled()
       expect(restoreRejectedDraft).not.toHaveBeenCalled()

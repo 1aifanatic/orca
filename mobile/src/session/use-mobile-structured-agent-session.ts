@@ -20,6 +20,7 @@ import { projectUnsupportedStructuredPrompt } from './mobile-native-chat-unsuppo
 import { resolveStructuredSessionDecision } from '../../../src/shared/native-chat-pending-decision'
 import { NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT } from '../../../src/shared/native-chat-async-questions'
 import type { RpcClient } from '../transport/rpc-client'
+import type { AgentJournalSubmission } from '../../../src/shared/agent-session-journal-types'
 import type { MobileChatPermission } from './mobile-native-chat-permission'
 import type { MobileChatQuestion } from './mobile-native-chat-question'
 import type { MobileNativeChatSession } from './use-mobile-native-chat-session'
@@ -49,6 +50,8 @@ type StructuredMobileSession = ReturnType<typeof useMobileStructuredAgentOptions
   ReturnType<typeof useMobileStructuredAgentTurnTiming> & {
     session: MobileNativeChatSession
     isWorking: boolean
+    /** The journal's submissions: an async question answer's hold is read from its own. */
+    submissions: readonly AgentJournalSubmission[]
     turnId: string | null
     /** What labels the live turn's one indicator row. */
     turnIndicator: NativeChatLiveTurnIndicator
@@ -254,6 +257,7 @@ export function useMobileStructuredAgentSession(args: {
       asyncQuestions: state.asyncQuestions ?? NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT
     },
     isWorking: isStructuredAgentSessionMainAgentWorking(turnId, state.submissions, state.fence),
+    submissions: state.submissions,
     turnId,
     turnIndicator,
     ...turnTiming,
