@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ORCA_EDITOR_SAVE_AND_CLOSE_EVENT } from './editor-autosave'
+import { ORCA_EDITOR_SAVE_AND_CLOSE_EVENT, requestEditorFileSave } from './editor-autosave'
 import { attachEditorAutosaveController } from './editor-autosave-controller'
 import { createEditorStore, stubEditorWindow } from './editor-autosave-controller-test-fixture'
 import { registerPendingEditorFlush } from './editor-pending-flush'
@@ -145,6 +145,48 @@ describe('editor save and close', () => {
       ])
       expect(store.getState().editorDrafts[fileId]).toBe('before close')
     } finally {
+      cleanup()
+    }
+  })
+
+  it('keeps a dirty file open when serialization has no saveable draft', async () => {
+    const { store, writeFile, cleanup } = createSaveAndCloseFixture()
+    store.getState().clearEditorDraft(fileId)
+    try {
+      requestSaveAndClose()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(writeFile).not.toHaveBeenCalled()
+      expect(store.getState().openFiles).toEqual([
+        expect.objectContaining({ id: fileId, isDirty: true })
+      ])
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('lets a queued explicit save finish without closing its newer draft', async () => {
+    const { store, writeFile, cleanup } = createSaveAndCloseFixture()
+    const pendingWrite = Promise.withResolvers<void>()
+    writeFile.mockReturnValueOnce(pendingWrite.promise)
+    try {
+      requestSaveAndClose()
+      await vi.advanceTimersByTimeAsync(0)
+      store.getState().setEditorDraft(fileId, 'queued newer edit')
+      store.getState().markFileDirty(fileId, true)
+      const nextSave = requestEditorFileSave({ fileId })
+      pendingWrite.resolve()
+      await nextSave
+      await vi.advanceTimersByTimeAsync(0)
+      expect(writeFile).toHaveBeenCalledTimes(2)
+      expect(writeFile).toHaveBeenLastCalledWith(
+        expect.objectContaining({ content: 'queued newer edit' })
+      )
+      expect(store.getState().openFiles).toEqual([
+        expect.objectContaining({ id: fileId, isDirty: false })
+      ])
+      expect(store.getState().editorDrafts[fileId]).toBeUndefined()
+    } finally {
+      pendingWrite.resolve()
       cleanup()
     }
   })
