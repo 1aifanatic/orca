@@ -347,5 +347,62 @@ setInterval(() => {}, 60000)
         rmSync(folder, { recursive: true, force: true })
       }
     })
+
+    it('stops a Codex discovery through its supervisor once its output passes the limit, holding the home', async () => {
+      const folder = mkdtempSync(join(tmpdir(), 'orca-supervised-discovery-limit-'))
+      const pids: number[] = []
+      try {
+        const home = join(folder, 'codex-home')
+        const pidFile = join(folder, 'flood-pid')
+        const floods = join(folder, 'floods.cjs')
+        // Floods stdout past the limit, then takes a moment to stop on SIGTERM.
+        writeFileSync(
+          floods,
+          `require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid))
+process.on('SIGTERM', () => setTimeout(() => process.exit(0), 300))
+process.stdout.write('x'.repeat(5 * 1024 * 1024))
+setInterval(() => {}, 60000)
+`
+        )
+        const lists = join(folder, 'lists.cjs')
+        writeFileSync(
+          lists,
+          "console.log(JSON.stringify({ models: [{ slug: 'gpt-5.5', display_name: 'GPT-5.5' }] }))\n"
+        )
+        const floodAliveAtSecondSpawn: boolean[] = []
+        const spawnAgent = vi.fn((input: Parameters<typeof spawnSourceControlAgent>[0]) => {
+          if (pids.length > 0) {
+            floodAliveAtSecondSpawn.push(isAlive(pids[0]!))
+          }
+          return spawnSourceControlAgent(input)
+        })
+        const discover = (script: string): ReturnType<typeof discoverModelsLocal> =>
+          discoverModelsLocal({
+            agentId: 'codex',
+            env: process.env,
+            agentCommandOverride: `CODEX_HOME="${home}" "${process.execPath}" "${script}"`,
+            options: { cwd: folder },
+            backslash: 'escape',
+            spawnAgent
+          })
+
+        await expect(discover(floods)).resolves.toEqual({
+          success: false,
+          error: 'Codex returned too much model data.'
+        })
+        pids.push(Number(readFileSync(pidFile, 'utf8')))
+
+        await expect(discover(lists)).resolves.toMatchObject({ success: true })
+        expect(floodAliveAtSecondSpawn).toEqual([false])
+        expect(terminateTreeMock).not.toHaveBeenCalled()
+      } finally {
+        for (const pid of pids) {
+          if (isAlive(pid)) {
+            process.kill(pid, 'SIGKILL')
+          }
+        }
+        rmSync(folder, { recursive: true, force: true })
+      }
+    })
   }
 )

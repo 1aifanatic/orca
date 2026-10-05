@@ -42,8 +42,8 @@ function spawnError(errno: string): Error {
 const expectChildTerminated = createChildTerminationExpectation(terminateWindowsProcessTreeMock)
 
 // These suites drive fake children down the Windows direct-child path, taskkill included. The POSIX
-// supervised stop under timeout, cancel, output limit and the Codex home lock, for generation and
-// discovery, is in source-control-local-process.test.ts.
+// supervised stop with the Codex home lock (generation: timeout, cancel, output limit; discovery:
+// timeout, output limit) is in source-control-local-process.test.ts.
 const hostPlatform = process.platform
 
 afterEach(() => {
