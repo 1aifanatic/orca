@@ -1,5 +1,5 @@
-// Which restored draft images are known to be gone. A paste in Orca's paste folder asks main to
-// re-grant its preview, which main does only for files really inside that folder; any other image
+// Which restored draft images are known to be gone. A paste in Orca's paste folder asks main
+// whether it is still kept, which holds only for a file really inside that folder; any other image
 // goes through the existing existence check (the workspace's read rules locally, the host over SSH).
 
 import { useEffect, useSyncExternalStore } from 'react'

@@ -18,7 +18,7 @@ export function isNativeChatPastedImagePath(path: string): boolean {
 }
 
 /** True for a local paste Orca keeps in its paste folder, judged from the path alone; main checks
- *  the real file before granting it. */
+ *  the real file before a restore keeps it. */
 export function isNativeChatKeptPastePath(path: string): boolean {
   const parts = path.split(/[\\/]/).filter(Boolean)
   return parts.at(-2) === NATIVE_CHAT_PASTE_FOLDER && isNativeChatPastedImagePath(path)

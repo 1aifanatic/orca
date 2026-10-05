@@ -1,11 +1,10 @@
 // Local native-chat pastes live in an Orca-owned folder, so a restored draft can show and send them:
-// a restore re-grants preview reads only for files that really are inside it, and old files expire.
+// a restore keeps only files that really are inside it, and old files expire.
 
 import { lstat, readdir, realpath, stat, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { getAppEnvironment } from '../../shared/app-environment'
 import { NATIVE_CHAT_PASTE_FOLDER } from '../../shared/native-chat-paste-folder'
-import { authorizeExternalPath } from '../ipc/filesystem-auth'
 
 // Why 30 days: no age bounds what can still name a paste (a queued send is retried with a new id
 // after the host's 24 h id window), so this is a judgment. A draft or outbox entry kept longer meets
@@ -49,8 +48,9 @@ export function isInsideNativeChatPasteFolder(
 }
 
 /**
- * For each restored local paste: re-grants its preview read only when its real path is a file
- * inside the real paste folder (symlinks and junctions resolved). Never throws.
+ * For each restored local paste: kept only when its real path is a file inside the real paste
+ * folder (symlinks and junctions resolved) and the stored spelling names that same file. Anything
+ * else comes back as a placeholder. Never throws.
  */
 export async function restoreNativeChatPastes(paths: unknown): Promise<RestoredNativeChatPaste[]> {
   if (!Array.isArray(paths)) {
@@ -87,7 +87,7 @@ async function restoreNativeChatPaste(
   if (folders === null || restored === '' || !path.isAbsolute(restored)) {
     return refused
   }
-  // Why both: the text a grant would cover and the file it really names must each be inside.
+  // Why both: the text the draft stores and the file it really names must each be inside.
   const named = path.resolve(restored)
   if (
     !isInsideNativeChatPasteFolder(folders.named, named) &&
@@ -100,17 +100,13 @@ async function restoreNativeChatPaste(
     if (!isInsideNativeChatPasteFolder(folders.real, real) || !(await stat(real)).isFile()) {
       return refused
     }
-    authorizeExternalPath(real)
-    // The stored spelling the preview reads by, only when it names that same file: a grant also
-    // covers the spelling's own real path, which a link inside the folder could point elsewhere.
+    // Why: the preview and the send read by the stored spelling, which a link inside the folder
+    // could point at another file than the real path checked above.
     const sameFile = await realpath(named).then(
       (namedReal) => namedReal === real,
       () => false
     )
-    if (sameFile) {
-      authorizeExternalPath(named)
-    }
-    return { path: restored, kept: true, exists: true }
+    return sameFile ? { path: restored, kept: true, exists: true } : refused
   } catch {
     // Missing or unreadable: not kept, and nothing about an outside path is reported.
     return refused

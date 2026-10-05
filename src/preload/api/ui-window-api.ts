@@ -18,7 +18,7 @@ export type UiWindowApi = {
   clipboardHasImage: () => Promise<boolean | null>
   /** Paths of files a file manager copied; empty when there are none or the host cannot list them. */
   readClipboardFilePaths: () => Promise<string[]>
-  /** Re-grants preview reads for restored draft pastes that really are in Orca's paste folder. */
+  /** Which restored draft pastes are still kept: files really in Orca's paste folder. */
   restoreNativeChatPastes: (
     paths: string[]
   ) => Promise<{ path: string; kept: boolean; exists: boolean }[]>
