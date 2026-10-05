@@ -111,16 +111,13 @@ export class SshConnectionManager {
     return states
   }
 
-  async disconnectAll(shouldDisconnect: (targetId: string) => boolean = () => true): Promise<void> {
+  async disconnectAll(): Promise<void> {
     await Promise.allSettled(
       Array.from(this.connections).map(async ([targetId, connection]) => {
-        if (!shouldDisconnect(targetId)) {
-          return
-        }
         try {
           await connection.disconnect()
         } finally {
-          // A later registration or an excluded target is not this drain's to remove.
+          // A later registration is not this drain's to remove.
           if (this.connections.get(targetId) === connection) {
             this.connections.delete(targetId)
           }

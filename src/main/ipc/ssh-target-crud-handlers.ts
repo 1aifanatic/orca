@@ -9,6 +9,8 @@ import {
   listUserSshConfigHostSummaries,
   resolveUserSshConfigHost
 } from '../ssh/ssh-config-host-picker'
+import { getManagedOrcadFenceEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
+import { closeOrcadManagedTunnel } from '../ssh/orcad-managed-tunnel'
 import { rotateSshProviderAuthority } from '../ssh/ssh-provider-authority'
 import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
 import { isManagedOrcadSshTarget, isRuntimeOwnedSshTarget } from '../ssh/ssh-connection-store'
@@ -74,8 +76,18 @@ function omitRendererSshTargetGeneration<
 
 function assertNotRuntimeOwned(targetId: string, action: string): void {
   const target = getSshTargetRegistryStore()!.getTarget(targetId)
-  if (target && (isRuntimeOwnedSshTarget(target) || isManagedOrcadSshTarget(target))) {
+  if (target && isRuntimeOwnedSshTarget(target)) {
     throw new Error(`Managed runtime SSH targets cannot be ${action} from SSH settings.`)
+  }
+}
+
+/** Removing a managed host would strand its server; Stop removes both and proves the exit. */
+function assertNotManagedServerHost(targetId: string): void {
+  const target = getSshTargetRegistryStore()!.getTarget(targetId)
+  if (target && isManagedOrcadSshTarget(target)) {
+    throw new Error(
+      'This host runs a managed Orca server. Use Stop… under Settings › Managed servers to stop the server and remove it first.'
+    )
   }
 }
 
@@ -101,15 +113,23 @@ export function registerSshTargetCrudHandlers(): void {
     'ssh:updateTarget',
     (_event, args: { id: string; updates: SshTargetUpdateInput }) => {
       assertNotRuntimeOwned(args.id, 'edited')
-      return getSshTargetRegistryStore()!.updateTarget(
+      // The fence and generation are stripped, so a managed host keeps its server binding.
+      const updated = getSshTargetRegistryStore()!.updateTarget(
         args.id,
         omitRendererSshTargetGeneration(args.updates)
       )
+      const environmentId = getManagedOrcadFenceEnvironmentId(updated ?? undefined)
+      if (environmentId) {
+        // Why: the open tunnel still dials the old address; the next use redials with the new one.
+        void closeOrcadManagedTunnel(environmentId).catch(() => undefined)
+      }
+      return updated
     }
   )
 
   ipcMain.handle('ssh:removeTarget', async (_event, args: { id: string }) => {
     assertNotRuntimeOwned(args.id, 'removed')
+    assertNotManagedServerHost(args.id)
     await removeRegisteredSshTarget(args.id)
   })
 

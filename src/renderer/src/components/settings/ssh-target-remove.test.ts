@@ -29,6 +29,14 @@ describe('removeSshTargetWithBestEffortCleanup', () => {
     expect(api.removeTarget).toHaveBeenCalledWith({ id: 'ssh-1' })
   })
 
+  it("never ends a managed server host's terminals before main refuses the removal", async () => {
+    const api = createApi({ removeTarget: vi.fn().mockRejectedValue(new Error('Stop it first')) })
+    await expect(
+      removeSshTargetWithBestEffortCleanup(api, 'ssh-1', { orcadFence: { environmentId: 'env-1' } })
+    ).rejects.toThrow('Stop it first')
+    expect(api.terminateSessions).not.toHaveBeenCalled()
+  })
+
   it('reconnects and retries termination when the relay is detached', async () => {
     const terminateSessions = vi
       .fn()
