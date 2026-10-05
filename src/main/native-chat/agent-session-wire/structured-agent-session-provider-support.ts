@@ -59,3 +59,16 @@ export function agentDrivesSession(
     )
   )
 }
+
+/** Whether this host can start `record`'s agent: the adapter runs its location and this build
+ *  drives it. The restart offer, a retry, the pre-send check and the start itself all ask this, so
+ *  none offers what the start refuses; reading the chat asks only `adapterSupportsRecord`. */
+export function hostCanStartRecord(
+  deps: {
+    adapter: StructuredAgentSessionAdapter
+    agents: Pick<StructuredAgentRegistry, 'definition'>
+  },
+  record: AgentSessionRecord
+): boolean {
+  return adapterSupportsRecord(deps.adapter, record) && agentDrivesSession(deps.agents, record)
+}

@@ -31,7 +31,7 @@ import {
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import {
   adapterSupportsCreateIfDeclared,
-  agentDrivesSession
+  hostCanStartRecord
 } from './structured-agent-session-provider-support'
 import type { StructuredAgentRegistry } from './structured-agent-registry'
 import type { StructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
@@ -106,8 +106,9 @@ export async function performAttach(
   // Every start of every agent passes here, so this is where a record this build cannot drive (its
   // transport or account variable is not its agent's) is refused; reading it never is.
   const supported = (record: AgentSessionRecord | null) =>
-    adapterSupportsCreateIfDeclared(input.adapter, params.location, params.agent) &&
-    (record === null || agentDrivesSession(input.agents, record))
+    record === null
+      ? adapterSupportsCreateIfDeclared(input.adapter, params.location, params.agent)
+      : hostCanStartRecord(input, record)
   // Ensure/recovery bypass create-intent, so recheck before reserving or spawning.
   if (!supported(store.getRecord(sessionId))) {
     return unsupported()
