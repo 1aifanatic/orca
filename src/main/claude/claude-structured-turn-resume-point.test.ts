@@ -115,12 +115,12 @@ describe('Claude durable resume point at turn end', () => {
     const { adapter, store, turn } = await liveOwner()
     try {
       await turn('u1', 'a1')
-      expect(store.record.providerHandleChain.at(-1)?.handle).toMatchObject({ providerData: 'a1' })
+      expect(store.record.providerHandleChain.at(-1)?.handle).toMatchObject({ resumeCursor: 'a1' })
       await turn('u2', 'a2')
       expect(store.record.providerHandleChain).toHaveLength(2)
       expect(store.record.providerHandleChain.at(-1)).toMatchObject({
         linkId: 'published-link',
-        handle: { providerData: 'a2' }
+        handle: { resumeCursor: 'a2' }
       })
     } finally {
       await adapter.closeAll()
@@ -135,7 +135,7 @@ describe('Claude durable resume point at turn end', () => {
     frame({ type: 'user', uuid: 'u3' })
     await tick()
     const head = store.record.providerHandleChain.at(-1)!.handle
-    expect(head).toMatchObject({ providerData: 'a2' })
+    expect(head).toMatchObject({ resumeCursor: 'a2' })
 
     const resolve = createClaudeStructuredLaunchResolver({
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the resolver reads only getRecord from its store.

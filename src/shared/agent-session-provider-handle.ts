@@ -3,7 +3,7 @@
  *
  * A handle names one provider conversation without saying what the provider means by it. Shared
  * code reads only its transport, its agent, and the provider's own conversation id; anything else
- * the provider needs to resume is `providerData`, which only that provider's adapter reads. How a
+ * the provider needs to resume is `resumeCursor`, which only that provider's adapter reads. How a
  * handle is stored and sent lives in agent-session-provider-handle-encoding.ts.
  *
  * Resumes extend the chain, forks start a new identity root, and the chain records which is which
@@ -44,13 +44,20 @@ export function isAgentSessionHandleProvider(value: unknown): value is AgentSess
 export type AgentSessionProviderTransport = 'claude-sdk' | 'codex-app-server' | (string & {})
 
 export type AgentSessionProviderHandle = {
+  /**
+   * The id space `nativeId` was minted in, which can differ from the agent's current transport. A
+   * mismatch with the running build makes the chat not resumable there, never the record unreadable.
+   */
   transport: AgentSessionProviderTransport
   /** Orca agent whose binary resumes the conversation; one transport serves many agents. */
   agent: AgentType
   /** The provider's own conversation id: Claude's session id, Codex's thread id. */
   nativeId: string
-  /** Resume state only the provider's adapter reads, such as Claude's branch leaf. */
-  providerData?: string
+  /**
+   * Adapter-owned resume position (Claude: transcript leaf). Shared code never parses it; it is never
+   * identity, except inside Claude's legacy handle key.
+   */
+  resumeCursor?: string
 }
 
 /** Which provider a handle belongs to. Records and leases compare this, never the handle's data. */
@@ -82,7 +89,7 @@ export const MAX_AGENT_SESSION_PROVIDER_HANDLE_LINKS = 256
 
 const LINK_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
 
-/** Every field, provider data included: a resume that only moved the adapter's state is still news. */
+/** Every field, resume cursor included: a resume that only moved the adapter's state is still news. */
 export function agentSessionProviderHandlesEqual(
   left: AgentSessionProviderHandle,
   right: AgentSessionProviderHandle
@@ -91,7 +98,7 @@ export function agentSessionProviderHandlesEqual(
     left.transport === right.transport &&
     left.agent === right.agent &&
     left.nativeId === right.nativeId &&
-    left.providerData === right.providerData
+    left.resumeCursor === right.resumeCursor
   )
 }
 
