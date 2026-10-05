@@ -2,8 +2,9 @@
  * One activation or rollback per host, and the fence an interrupted one leaves behind.
  *
  * The lock lives in the transaction root, so releasing it also removes the journal. A run
- * that cannot prove the host is back to one serving slot retains both; only recovery, after
- * the install lock's stale window, may take a retained fence over.
+ * that cannot prove the host is back to one serving slot retains both and marks the lock
+ * ownerless; only recovery may take a retained fence over, and it waits out the install lock's
+ * stale window only for a fence whose holder may still be working.
  */
 import {
   execOrcadRemote,
@@ -16,7 +17,10 @@ import {
   RELAY_INSTALL_LOCK_NAME,
   RemoteInstallLockBusyError
 } from './ssh-relay-install-lock'
-import { probeInstallLockExistsCommand } from './ssh-relay-install-lock-commands'
+import {
+  orphanInstallLockCommand,
+  probeInstallLockExistsCommand
+} from './ssh-relay-install-lock-commands'
 import { RELAY_REMOTE_DIR } from './relay-protocol'
 import { removeRemoteFileCommand, removeRemoteTreeCommand } from './ssh-remote-commands'
 import { orcadRemoteBaseDir, orcadWindowsHostOpCommand } from './orcad-remote-windows-node'
@@ -102,14 +106,15 @@ export async function withOrcadActivationLock<T>(
         retainOnError = false
       }
     })
-    if (!retain) {
-      await releaseActivationFence(options, lockRoot)
-    }
+    await (retain ? orphanRetainedFence(options) : releaseActivationFence(options, lockRoot))
     return result
   } catch (error) {
-    // A remote mutation whose teardown is unconfirmed may still be running: keep its fence.
-    if (!retainOnError && !isUnconfirmedSshCommandTermination(error)) {
-      await releaseActivationFence(options, lockRoot).catch((releaseError: unknown) => {
+    // A remote mutation whose teardown is unconfirmed may still be running: keep its fence fresh.
+    if (!isUnconfirmedSshCommandTermination(error)) {
+      await (retainOnError
+        ? orphanRetainedFence(options)
+        : releaseActivationFence(options, lockRoot)
+      ).catch((releaseError: unknown) => {
         console.warn(
           `[orcad] Failed to release activation lock after an error: ${releaseError instanceof Error ? releaseError.message : String(releaseError)}`
         )
@@ -132,12 +137,40 @@ export async function withStaleOrcadActivationRecoveryLock<T>(
     waitTimeoutMs: 0
   })
   let retain = false
-  // Any throw keeps the fence: recovery failed to prove one serving slot.
-  const result = await run({ retain: () => (retain = true) })
-  if (!retain) {
-    await releaseActivationFence(options, lockRoot)
+  let result: T
+  try {
+    result = await run({ retain: () => (retain = true) })
+  } catch (error) {
+    // Any throw keeps the fence: recovery failed to prove one serving slot.
+    if (!isUnconfirmedSshCommandTermination(error)) {
+      await orphanRetainedFence(options).catch(() => undefined)
+    }
+    throw error
   }
+  await (retain ? orphanRetainedFence(options) : releaseActivationFence(options, lockRoot))
   return result
+}
+
+/**
+ * A fence this run keeps after it is done: nothing of ours still works under it, so the next
+ * recovery may take it over at once. Left fresh, every failed recovery would restart the stale
+ * window it waits out, and the host could never be recovered.
+ */
+async function orphanRetainedFence(options: OrcadActivationLockOptions): Promise<void> {
+  const lockDir = joinRemotePath(
+    options.host,
+    orcadActivationTransactionRoot(options.host, options.remoteHome),
+    RELAY_INSTALL_LOCK_NAME
+  )
+  try {
+    await execOrcadRemote(
+      withoutAbortSignal(options),
+      orphanInstallLockCommand(options.host, lockDir)
+    )
+  } catch (error) {
+    // Best effort: the fence still holds; recovery then waits out the stale window as before.
+    console.warn(`[orcad] Could not mark a retained activation fence as ownerless: ${String(error)}`)
+  }
 }
 
 /** Whether any lock is held; a lost probe throws rather than reading as open. */
