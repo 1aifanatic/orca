@@ -9,7 +9,8 @@ const mocks = vi.hoisted(() => {
     state,
     addTarget: vi.fn(),
     updateTarget: vi.fn(),
-    closeTunnel: vi.fn(async () => {})
+    closeTunnel: vi.fn(async () => {}),
+    disconnect: vi.fn(async () => {})
   }
 })
 
@@ -24,7 +25,10 @@ vi.mock('../ssh/ssh-target-registry', () => ({
 }))
 vi.mock('./ssh-session-teardown', () => ({ removeRegisteredSshTarget: mocks.remove }))
 vi.mock('../ssh/orcad-managed-tunnel', () => ({ closeOrcadManagedTunnel: mocks.closeTunnel }))
-vi.mock('./ssh-ipc-context', () => ({ getCurrentMainWindow: () => null }))
+vi.mock('./ssh-ipc-context', () => ({
+  getCurrentMainWindow: () => null,
+  connectionManager: { disconnect: mocks.disconnect }
+}))
 
 const { registerSshTargetCrudHandlers } = await import('./ssh-target-crud-handlers')
 
@@ -45,14 +49,22 @@ describe('SSH target CRUD against managed orcad targets', () => {
     registerSshTargetCrudHandlers()
   })
 
-  it("edits a managed host's connection, keeping its fence and redialing its tunnel", () => {
+  it("edits a managed host's connection, keeping its fence and redialing tunnel and transport", async () => {
     mocks.updateTarget.mockReturnValue({ ...mocks.state.target, host: 'elsewhere' })
     handler('ssh:updateTarget')(null, {
       id: 'ssh-1',
       updates: { host: 'elsewhere', orcadFence: undefined, generation: 9 }
     })
     expect(mocks.updateTarget).toHaveBeenCalledWith('ssh-1', { host: 'elsewhere' })
+    await vi.waitFor(() => expect(mocks.disconnect).toHaveBeenCalledWith('ssh-1'))
     expect(mocks.closeTunnel).toHaveBeenCalledWith('environment-1')
+  })
+
+  it('keeps the SSH transport when only a label changes', async () => {
+    mocks.updateTarget.mockReturnValue({ ...mocks.state.target, label: 'renamed' })
+    handler('ssh:updateTarget')(null, { id: 'ssh-1', updates: { label: 'renamed' } })
+    await vi.waitFor(() => expect(mocks.closeTunnel).toHaveBeenCalledWith('environment-1'))
+    expect(mocks.disconnect).not.toHaveBeenCalled()
   })
 
   it('refuses to remove a managed host, pointing at Stop instead', async () => {

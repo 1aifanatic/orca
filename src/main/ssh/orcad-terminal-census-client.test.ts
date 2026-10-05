@@ -6,11 +6,12 @@ import {
 } from '../../shared/runtime-environments'
 import { emptyOrcadActivationRecord, type OrcadActivationRecord } from './orcad-activation-record'
 
-const mocks = vi.hoisted(() => ({ send: vi.fn(), ensure: vi.fn() }))
+const mocks = vi.hoisted(() => ({ send: vi.fn(), ensure: vi.fn(), verify: vi.fn() }))
 vi.mock('../../shared/remote-runtime-client', () => ({
   sendRemoteRuntimeRequestWithStatusPreflight: mocks.send
 }))
 vi.mock('./orcad-managed-tunnel', () => ({ ensureOrcadManagedTunnel: mocks.ensure }))
+vi.mock('./orcad-managed-serving-verify', () => ({ verifyOrcadManagedServing: mocks.verify }))
 
 const { collectManagedTerminalCensus } = await import('./orcad-terminal-census-client')
 const collect = (record: OrcadActivationRecord) =>
@@ -46,6 +47,7 @@ describe('managed orcad terminal census client', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     mocks.ensure.mockResolvedValue(undefined)
+    mocks.verify.mockResolvedValue({ state: 'serving' })
   })
 
   it('reads an idle census without contacting a host that has nothing active', async () => {
@@ -55,6 +57,21 @@ describe('managed orcad terminal census client', () => {
       daemonProtocolVersion: null
     })
     expect(mocks.send).not.toHaveBeenCalled()
+  })
+
+  it('starts a server that idled out behind a live forward before asking it', async () => {
+    const order: string[] = []
+    mocks.verify.mockImplementation(async () => {
+      order.push('wake')
+      return { state: 'started', boundPort: null }
+    })
+    mocks.send.mockImplementation(async (_pairing, _method, _params, _timeout, validate) => {
+      order.push('census')
+      validate({ ok: true, result: { capabilities: [ORCAD_TERMINAL_CENSUS_RUNTIME_CAPABILITY] } })
+      return { ok: true, result: census }
+    })
+    await expect(collect(active)).resolves.toEqual(census)
+    expect(order).toEqual(['wake', 'census'])
   })
 
   it('asks an advertising host with the activation time', async () => {

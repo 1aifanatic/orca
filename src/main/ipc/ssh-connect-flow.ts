@@ -13,6 +13,7 @@ import { allowsDirectSshRelay } from '../ssh/ssh-connection-store'
 import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
 import {
   decideHostServer,
+  publishHostServerDecisionFailure,
   refineRelayTerminalDecision,
   publishManagedServerConnect,
   recordRelayDecision
@@ -173,7 +174,13 @@ async function doConnect(
 
   // Why after the teardown above: deploy and conversion refuse while a direct session or transport
   // exists, and the authority rotated synchronously so concurrent connects still join this one.
-  const server = await decideHostServer(target)
+  const server = await decideHostServer(target).catch((error: unknown) => {
+    if (!isCurrentConnectAttempt(targetId, authority)) {
+      throw createCancelledConnectAttemptError()
+    }
+    publishHostServerDecisionFailure(targetId, error)
+    throw error
+  })
   // A shutdown that began during the decision is the actionable reason, ahead of the rotation.
   assertSshConnectsNotFenced()
   if (!isCurrentConnectAttempt(targetId, authority)) {

@@ -24,7 +24,11 @@ vi.mock('../ssh/ssh-port-forward', () => mocks.sshPortForward)
 vi.mock('../ssh/ssh-port-scanner', () => mocks.sshPortScanner)
 
 import type { SshTarget } from '../../shared/ssh-types'
-import { refineRelayTerminalDecision } from './ssh-host-server-connect'
+import {
+  decideHostServer,
+  publishHostServerDecisionFailure,
+  refineRelayTerminalDecision
+} from './ssh-host-server-connect'
 import { createSshIpcHarness } from './ssh-ipc-test-harness'
 
 const { mockSshStore, mockConnectionManager, mockDeployAndLaunchRelay } = mocks
@@ -60,5 +64,20 @@ describe('a connect cancelled during the relay-terminal re-check', () => {
 
     await expect(connect).rejects.toThrow('SSH connection attempt was cancelled')
     expect(mockConnectionManager.disconnectConnection).toHaveBeenCalledWith('ssh-1', conn)
+  })
+
+  it('publishes the error when a managed host fails to set up, rather than staying connecting', async () => {
+    const target: SshTarget = {
+      id: 'ssh-1',
+      label: 'Server',
+      host: 'example.com',
+      port: 22,
+      username: 'deploy'
+    }
+    const failure = new Error('listen EADDRINUSE 127.0.0.1:46768')
+    mockSshStore.getTarget.mockReturnValue(target)
+    vi.mocked(decideHostServer).mockRejectedValueOnce(failure)
+    await expect(handlers.get('ssh:connect')!(null, { targetId: 'ssh-1' })).rejects.toBe(failure)
+    expect(publishHostServerDecisionFailure).toHaveBeenCalledWith('ssh-1', failure)
   })
 })
