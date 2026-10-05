@@ -239,15 +239,19 @@ export function resolveWorktreeStatus(args: {
   if (args.hasInterrupted) {
     return 'interrupted'
   }
-  if (args.hasLiveDone || args.hasRetainedDone) {
+  if (args.hasLiveDone) {
     return 'done'
   }
-  // Why: an old end that never expires must not hide another agent's fresh finish.
+  // Why: a kept end yields to another agent's fresh finish, but not to a departed agent's done,
+  // which never expires either: the card would flip to Done on a timer with no change in the chat.
   if (args.hasRetainedUnconfirmed) {
     return 'unconfirmed'
   }
   if (args.hasRetainedInterrupted) {
     return 'interrupted'
+  }
+  if (args.hasRetainedDone) {
+    return 'done'
   }
   return heuristic
 }

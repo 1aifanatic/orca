@@ -417,25 +417,38 @@ describe('selectWorktreeAgentActivitySummary', () => {
         updatedAt: at,
         stateStartedAt: at
       })
-      const card = (...rows: AgentStatusEntry[]) => {
+      const card = (
+        rows: AgentStatusEntry[],
+        retainedAgentsByPaneKey: AgentActivityInput['retainedAgentsByPaneKey'] = {}
+      ) => {
         vi.spyOn(Date, 'now').mockReturnValue(at)
         const summary = selectWorktreeAgentActivitySummary(
           {
-            tabsByWorktree: { [worktreeId]: [liveTab] },
+            tabsByWorktree: { [worktreeId]: [liveTab, retainedTab] },
             agentStatusEpoch: epoch++,
             agentStatusByPaneKey: Object.fromEntries(rows.map((row) => [row.paneKey, row])),
             migrationUnsupportedByPtyId: {},
             runtimeAgentOrchestrationByPaneKey: {},
-            retainedAgentsByPaneKey: {}
+            retainedAgentsByPaneKey
           },
           worktreeId
         )
         return resolveWorktreeStatus({ tabs: [], browserTabs: [], ptyIdsByTabId: {}, ...summary })
       }
 
-      expect(card(fresh('working'), old('failure'))).toBe('working')
-      expect(card(fresh('done'), old('cancellation'))).toBe('done')
-      expect(card(old('interruption'))).toBe('interrupted')
+      expect(card([fresh('working'), old('failure')])).toBe('working')
+      expect(card([fresh('done'), old('cancellation')])).toBe('done')
+      expect(card([old('interruption')])).toBe('interrupted')
+      // A departed agent's done never expires either, so it does not take over once the chat's mark
+      // passes the freshness window: nothing in the chat changed.
+      const departedDone = {
+        'tab-2:0': {
+          ...retainedFailure['tab-2:0'],
+          entry: makeAgentStatusEntry({ paneKey: 'tab-2:0', state: 'done' })
+        }
+      }
+      expect(card([old('interruption')], departedDone)).toBe('interrupted')
+      expect(card([old('cancellation')], departedDone)).toBe('interrupted')
     })
 
     it('reads a retained cut-short agent as interrupted, not done', () => {
