@@ -293,7 +293,7 @@ async function installOnJournal(
     ...(deps.onSessionStatusChanged ? { onSessionStatusChanged: deps.onSessionStatusChanged } : {}),
     ...(deps.statusSink ? { statusSink: deps.statusSink } : {}),
     ...(deps.hasOpenDispatch ? { hasOpenDispatch: deps.hasOpenDispatch } : {}),
-    ...(await modelCatalogHostDeps({ store, deps, envResolvers }))
+    ...(await modelCatalogHostDeps({ store, agents, deps, envResolvers }))
   })
   setStructuredAgentSessionHost(host)
   return {
