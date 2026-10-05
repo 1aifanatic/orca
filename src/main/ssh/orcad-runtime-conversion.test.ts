@@ -109,7 +109,11 @@ const everyRelayEmpty = (): ListRelayPtyIds =>
   Object.assign(async () => [], { previous: async () => [] })
 const convert = (
   listRelayPtyIds: ListRelayPtyIds | null = everyRelayEmpty(),
-  censusHost?: OrcadManagedConversionArgs['censusHost']
+  // The account-wide census found no relay with work unless a test says otherwise.
+  censusHost: OrcadManagedConversionArgs['censusHost'] = async () => ({
+    verdict: 'exited',
+    count: 0
+  })
 ) =>
   convertSshTargetToManagedOrcad(userDataPath, {
     sshTargetId: TARGET.id,

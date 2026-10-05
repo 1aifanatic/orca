@@ -108,15 +108,21 @@ export async function refineRelayTerminalDecision(
   isCurrent: () => boolean
 ): Promise<void> {
   try {
-    const [{ relayTerminalsOnceConnected }, { orcadMigrationRelayPtyLister }] = await Promise.all([
+    const [
+      { relayTerminalsOnceConnected },
+      { orcadMigrationRelayPtyLister },
+      { censusHostRelayTerminalsFor }
+    ] = await Promise.all([
       import('../ssh/ssh-host-relay-terminals-once-connected'),
-      import('../ssh/orcad-migration-relay-pty-lister')
+      import('../ssh/orcad-migration-relay-pty-lister'),
+      import('../ssh/ssh-host-relay-census-for-target')
     ])
     const refined = await relayTerminalsOnceConnected({
       store: getSshTargetRegistryStore()!.getOrcadMigrationSource(),
       targetId: target.id,
       decision,
       listRelayPtyIds: orcadMigrationRelayPtyLister(target.id),
+      censusHost: censusHostRelayTerminalsFor(target),
       isCurrent
     })
     if (refined && isCurrent()) {

@@ -29,6 +29,9 @@ function relay(current: string[] | null, previous: string[] | null = []): ListRe
   return list
 }
 
+// The account-wide census found no relay with work, on this desktop's target or any other.
+const hostIdle = async () => ({ verdict: 'exited' as const, count: 0 })
+
 const unverifiable: HostServerOnConnectResult = {
   route: 'relay',
   reason: 'relay_terminals_unverifiable',
@@ -49,6 +52,7 @@ describe('re-checking relay terminals once the relay session is up', () => {
         targetId: 'ssh-1',
         decision: unverifiable,
         listRelayPtyIds: relay(['pty-1']),
+        censusHost: hostIdle,
         isCurrent: () => true
       })
     ).resolves.toEqual({ route: 'relay', reason: 'relay_terminals_live', terminals: 1 })
@@ -61,6 +65,7 @@ describe('re-checking relay terminals once the relay session is up', () => {
         targetId: 'ssh-1',
         decision: unverifiable,
         listRelayPtyIds: relay([]),
+        censusHost: hostIdle,
         isCurrent: () => false
       })
     ).resolves.toBeNull()
@@ -77,6 +82,7 @@ describe('re-checking relay terminals once the relay session is up', () => {
         targetId: 'ssh-1',
         decision: unverifiable,
         listRelayPtyIds: list,
+        censusHost: hostIdle,
         isCurrent: () => true
       })
     ).resolves.toBeNull()
@@ -110,6 +116,7 @@ describe('re-checking relay terminals once the relay session is up', () => {
         decision: unverifiable,
         // The current relay disowns it, but the older relay that minted it still runs it.
         listRelayPtyIds: relay([], ['pty2:92577856:1']),
+        censusHost: hostIdle,
         isCurrent: () => true
       })
     ).resolves.toEqual({ route: 'relay', reason: 'relay_terminals_live', terminals: 1 })
@@ -126,6 +133,7 @@ describe('re-checking relay terminals once the relay session is up', () => {
         decision: sixUnverifiable,
         // The old relay is gone (only its .credential is left), so it lists nothing.
         listRelayPtyIds: relay(['pty2:8ea088dc:2', 'pty2:8ea088dc:3'], []),
+        censusHost: hostIdle,
         isCurrent: () => true
       })
     ).resolves.toEqual({ route: 'relay', reason: 'relay_terminals_live', terminals: 2 })
@@ -140,6 +148,7 @@ describe('re-checking relay terminals once the relay session is up', () => {
         targetId: 'ssh-1',
         decision: sixUnverifiable,
         listRelayPtyIds: relay([], []),
+        censusHost: hostIdle,
         isCurrent: () => true
       })
     ).resolves.toBeNull()
@@ -171,6 +180,7 @@ describe('re-checking relay terminals once the relay session is up', () => {
         targetId: 'ssh-1',
         decision,
         listRelayPtyIds: relay(['pty-1']),
+        censusHost: hostIdle,
         isCurrent: () => true
       })
     ).resolves.toBeNull()
@@ -189,6 +199,7 @@ describe('re-checking relay terminals once the relay session is up', () => {
           targetId: 'ssh-1',
           decision,
           listRelayPtyIds: relay(['pty2:8ea088dc:4']),
+          censusHost: hostIdle,
           isCurrent: () => true
         })
       ).resolves.toEqual({ route: 'relay', reason: 'relay_terminals_live', terminals: 1 })
@@ -203,6 +214,7 @@ describe('re-checking relay terminals once the relay session is up', () => {
         targetId: 'ssh-1',
         decision: { route: 'relay', reason: 'relay_terminals_live', terminals: 1 },
         listRelayPtyIds: relay(['pty-1', 'pty-cli']),
+        censusHost: hostIdle,
         isCurrent: () => true
       })
     ).resolves.toEqual({ route: 'relay', reason: 'relay_terminals_live', terminals: 2 })
@@ -215,8 +227,25 @@ describe('re-checking relay terminals once the relay session is up', () => {
         targetId: 'ssh-1',
         decision: unverifiable,
         listRelayPtyIds: null,
+        censusHost: hostIdle,
         isCurrent: () => true
       })
     ).resolves.toBeNull()
+  })
+
+  // Astra pass 4 §2: another desktop's live shell keeps this target's leases unretired.
+  it('reports live and retires nothing while another desktop runs a shell on the account', async () => {
+    const upgraded = store([{ ptyId: 'pty-1', state: 'expired' }])
+    await expect(
+      relayTerminalsOnceConnected({
+        store: upgraded,
+        targetId: 'ssh-1',
+        decision: unverifiable,
+        listRelayPtyIds: relay([], []),
+        censusHost: async () => ({ verdict: 'live', count: 1 }),
+        isCurrent: () => true
+      })
+    ).resolves.toEqual({ route: 'relay', reason: 'relay_terminals_live', terminals: 1 })
+    expect(upgraded.markSshRemotePtyLease).not.toHaveBeenCalled()
   })
 })

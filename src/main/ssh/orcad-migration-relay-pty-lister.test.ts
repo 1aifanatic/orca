@@ -38,7 +38,8 @@ describe('the terminal gate asking a relay what it still runs', () => {
       Date.now,
       async () => []
     )
-    expect(await assessOrcadMigrationTerminals(noLeases, TARGET, idle)).toEqual({
+    const hostIdle = async () => ({ verdict: 'exited' as const, count: 0 })
+    expect(await assessOrcadMigrationTerminals(noLeases, TARGET, idle, hostIdle)).toEqual({
       verdict: 'exited',
       provenPtyIds: []
     })

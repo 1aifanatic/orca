@@ -13,8 +13,10 @@ export type OrcadMigrationTerminalVerdict =
       verdict: 'live' | 'unverifiable'
       ptyIds: string[]
       reason: string
-      /** No relay session to ask: only a census of the host's own relay endpoints can decide. */
+      /** No host-wide census was taken, and only one can prove the host idle. */
       needsHostCensus?: true
+      /** Terminals the host-wide census counted, which it reports without ids. */
+      hostTerminals?: number
     }
 
 /**
@@ -28,16 +30,20 @@ export type ListRelayPtyIds = (() => Promise<string[] | null>) & {
 /** A census of the host's relay endpoints, taken when no relay session could be asked. */
 export type HostRelayTerminalProof = { verdict: 'exited' | 'live' | 'unverifiable'; count: number }
 
-/** Asked only when no relay session can answer; a census that throws proves nothing. */
+/**
+ * Every relay endpoint on the account, whichever desktop's target launched it. The only evidence
+ * that can prove the host idle; a census that throws proves nothing.
+ */
 export type CensusHostRelayTerminals = () => Promise<HostRelayTerminalProof>
 
 type LeaseStore = Pick<Store, 'getSshRemotePtyLeases'>
 
 /**
  * Taken before the fence, while the relay can still be asked. Read-only, so previews may ask.
- * `exited` needs a complete inventory: every relay answered, or, with no session, a host census
- * proved its endpoints idle. An inventory that is missing or failed is `unverifiable` even when this
- * desktop leases nothing, since another desktop's or a CLI shell runs with no lease here.
+ * This target's relays can prove `live`, but their lists name only this target's instances, so
+ * `exited` also needs a complete host-wide census: another desktop's relay on the same account runs
+ * under a different target id. An inventory that is missing or failed is `unverifiable` even when
+ * this desktop leases nothing.
  */
 export async function assessOrcadMigrationTerminals(
   store: LeaseStore,
@@ -80,7 +86,7 @@ export async function assessOrcadMigrationTerminals(
   if (previousPtyIds === null) {
     return refuse('unverifiable', unresolved, 'Orca could not confirm its terminals here exited')
   }
-  return { verdict: 'exited', provenPtyIds: leases.map((lease) => lease.ptyId) }
+  return await hostWideVerdict(leases, censusHost)
 }
 
 async function withoutRelaySession(
@@ -95,6 +101,13 @@ async function withoutRelaySession(
   if (unresolved.length > 0) {
     return refuse('unverifiable', unresolved, 'no SSH relay could confirm these terminals exited')
   }
+  return await hostWideVerdict(leases, censusHost)
+}
+
+async function hostWideVerdict(
+  leases: SshRemotePtyLease[],
+  censusHost: CensusHostRelayTerminals | null | undefined
+): Promise<OrcadMigrationTerminalVerdict> {
   const hostProof: HostRelayTerminalProof | null = censusHost
     ? await censusHost().catch(() => ({ verdict: 'unverifiable', count: 0 }) as const)
     : null
@@ -105,13 +118,14 @@ async function withoutRelaySession(
     return {
       verdict: hostProof.verdict,
       ptyIds: [],
-      reason: "the host's relays still run or may run terminals"
+      reason: "the host's relays still run or may run terminals",
+      hostTerminals: hostProof.count
     }
   }
   return {
     verdict: 'unverifiable',
     ptyIds: [],
-    reason: 'no SSH relay could be asked what runs on this host',
+    reason: "no census of every relay on this host's account was taken",
     needsHostCensus: true
   }
 }
