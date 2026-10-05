@@ -1128,11 +1128,7 @@
         "a4c8e1b2f7": "Codex はまだ {{value0}} としてサインインしています",
         "d3e8a1f4b2": "アカウントを切り替えました",
         "9375620cc3": "このセッションを再起動して {{value0}} を使用してください。それまでは前のアカウントのままです。",
-        "6133594b12": "以前のアカウントを保持",
-        "8f0d5c92a1": "Codex の設定が変更されました",
-        "3ea91b5c07": "この Codex セッションは古い構成を使用しています",
-        "e6b7139d2a": "このセッションを再起動して、現在の Codex 構成をロードします。",
-        "7b1d20f4c8": "現在のセッションを維持する"
+        "6133594b12": "以前のアカウントを保持"
       },
       "FirstLaunchBanner": {
         "b9e1b966c7": "通知を閉じる",
@@ -3710,6 +3706,7 @@
             "grokUsageAria": "Grok の使用状況詳細を開く",
             "grokUsageMenu": "Grok の使用状況",
             "floatingTerminalNewActivity": "{{label}}、新規アクティビティ",
+            "4fba7dc1e7": "残高 {{value0}}",
             "codexSignInSuccess": "Codex にサインインしました",
             "codexSignInError": "Codex のサインインに失敗しました。もう一度お試しください。",
             "cursorUsageMenu": "Cursor の使用状況",
@@ -17599,6 +17596,8 @@
         "historyUnavailable": "Orca は現在このチャットの履歴を開けませんでした。",
         "savedByNewerOrca": "チャットは新しいバージョンの Orca で保存されました。",
         "updateOrcaToKeepUsing": "引き続き使用するには、Orca を更新してください。",
+        "chatSavedByNewerOrca": "このチャットは新しいバージョンの Orca で保存されました。",
+        "updateOrcaToOpenChat": "開くには Orca を更新してください。",
         "unsupported": "このチャットを実行しているコンピューターに新しいバージョンの Orca が必要です。そのコンピューターで Orca を更新してから、もう一度お試しください。",
         "notAvailable": "このチャットでは利用できません。",
         "unreachable": "Orca は Agent に接続できませんでした。",
@@ -17823,6 +17822,7 @@
         "sending": "送信中…"
       },
       "approval": {
+        "needsNewerOrca": "このリクエストには新しいバージョンの Orca が必要です。",
         "title": "{{value0}} を許可しますか?",
         "allow": "許可する",
         "deny": "拒否",
