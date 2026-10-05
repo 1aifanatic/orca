@@ -117,10 +117,15 @@ describe('mobileNativeChatSlashMenu', () => {
     expect(result.skills).toEqual([])
   })
 
-  it('groups only while a Skills group is showing', () => {
+  it('groups by whether the session reports skills, whatever the query', () => {
     expect(menu({ sessionCommands: CLAUDE_REPORT }).grouped).toBe(true)
-    expect(menu({ sessionCommands: CLAUDE_REPORT, query: 'rev' }).grouped).toBe(false)
-    expect(menu({ sessionCommands: [CLAUDE_REPORT[0]!] }).grouped).toBe(false)
+    const commandsOnly = menu({ sessionCommands: CLAUDE_REPORT, query: 'rev' })
+    expect(commandsOnly.grouped).toBe(true)
+    expect(commandsOnly.skills).toEqual([])
+    const withoutSkills = CLAUDE_REPORT.filter(({ kind }) => kind === 'command')
+    for (const query of ['', 'rev', 'zzz']) {
+      expect(menu({ sessionCommands: withoutSkills, query }).grouped).toBe(false)
+    }
   })
 
   it('is empty without an agent', () => {

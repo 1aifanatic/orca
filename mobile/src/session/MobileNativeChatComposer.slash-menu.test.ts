@@ -148,12 +148,14 @@ describe('MobileNativeChatComposer `/` menu', () => {
     expect(headings.map((node) => node.props.children)).toEqual(['Commands', 'Skills'])
   })
 
-  it('drops the headings when no Skills group is showing', async () => {
+  it('drops the headings when the session reports no skills', async () => {
     await open({ slashCatalog: catalog([REPORT[0]!]) })
     expect(texts()).toEqual(['/review', '<pr>', 'Review a pull request'])
-    act(() => renderer?.unmount())
+  })
+
+  it('keeps the Commands heading while the query filters out every skill', async () => {
     await open({ value: '/rev', slashCatalog: REPORTED })
-    expect(texts()).toEqual(['/review', '<pr>', 'Review a pull request'])
+    expect(texts()).toEqual(['Commands', '/review', '<pr>', 'Review a pull request'])
   })
 
   it('keeps an older host on the host-owned fallback commands, unheaded', async () => {
@@ -186,7 +188,7 @@ describe('MobileNativeChatComposer `/` menu', () => {
     })
     const input = renderer!.root.find((node) => String(node.type) === 'TextInput')
     await act(async () => input.props.onSelectionChange({ nativeEvent: { selection: { end: 4 } } }))
-    expect(texts()).toEqual(['/review', '<pr>', 'Review a pull request'])
+    expect(texts()).toEqual(['Commands', '/review', '<pr>', 'Review a pull request'])
     expect(vi.mocked(nativeChatComposerCatalog).mock.calls.length).toBe(selections)
   })
 

@@ -6,7 +6,7 @@ import {
 } from '../../../src/shared/native-chat-picker-items'
 
 export type MobileNativeChatSlashMenu = {
-  /** Whether the rows carry Commands / Skills headings (a Skills group is showing). */
+  /** Whether non-empty groups carry Commands / Skills headings (the session reports skills). */
   grouped: boolean
   commands: NativeChatPickerItem[]
   skills: NativeChatPickerItem[]
@@ -37,11 +37,10 @@ export function mobileNativeChatSlashMenu(args: {
     profile?.skillPrefix ?? '/',
     profile ? catalog.sessionSkills : []
   )
-  const skills = items.filter((item) => item.kind === 'skill')
   return {
-    // Why: a lone "Commands" heading over the only group says nothing.
-    grouped: profile !== null && skills.length > 0,
+    // Why: decided per catalog, not per query, so headings don't flicker as you type.
+    grouped: profile !== null && (catalog.sessionSkills?.length ?? 0) > 0,
     commands: items.filter((item) => item.kind === 'command'),
-    skills
+    skills: items.filter((item) => item.kind === 'skill')
   }
 }
