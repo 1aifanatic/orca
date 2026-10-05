@@ -33,6 +33,7 @@ async function sanitizeInChromium(svg: string): Promise<string> {
   const browser = await chromium.launch({ headless: true })
   try {
     const page = await browser.newPage()
+    await page.route('https://orca-mermaid.invalid/**', (route) => route.abort())
     await page.setContent('<!doctype html><html><body></body></html>')
     await page.addScriptTag({ content: purifySrc })
     return await page.evaluate(
@@ -87,6 +88,19 @@ describe.skipIf(!chromiumAvailable)('sanitizeMermaidSvg (Chromium)', () => {
     const out = await sanitizeInChromium(svg)
     expect(out).toContain('<b>Safe</b>')
     expect(out).not.toMatch(/<(?:iframe|object|embed)\b|srcdoc|javascript:/i)
+  }, 30_000)
+
+  it('removes interactive form controls while preserving formatting and images', async () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg"><image href="https://orca-mermaid.invalid/svg-image.png" width="20" height="20" /><foreignObject width="300" height="120"><div xmlns="http://www.w3.org/1999/xhtml"><form action="https://orca-mermaid.invalid/submit"><input name="probe" value="marker" /><button type="submit">Submit label</button><select><optgroup label="Choices"><option>Choice</option></optgroup></select><textarea>Entry</textarea><datalist><option>Suggested</option></datalist><fieldset><legend>Group</legend><label>Label</label></fieldset><output>Result</output></form><b>Safe</b><img src="https://orca-mermaid.invalid/image.png" alt="Image label" /><math xmlns="http://www.w3.org/1998/Math/MathML"><mi>x</mi></math></div></foreignObject></svg>`
+    const out = await sanitizeInChromium(svg)
+    expect(out).not.toMatch(
+      /<(?:form|input|button|select|option|optgroup|textarea|datalist|fieldset|legend|label|output)\b/i
+    )
+    expect(out).toContain('<b>Safe</b>')
+    expect(out).toContain('<image')
+    expect(out).toContain('<img')
+    expect(out).toContain('Image label')
+    expect(out).toContain('<math')
   }, 30_000)
 
   it('removes encoded script URLs and event attributes', async () => {
