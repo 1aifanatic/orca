@@ -173,9 +173,7 @@ export function useMobileStructuredAgentSession(args: {
     () =>
       projectStructuredAgentSessionMessages(transcriptItems, [], state.submissions, {
         rejectedInPlace: false,
-        showsFailedStartsSentElsewhere: hostSupport?.retryMessage === true,
-        // The phone does not mark a message as unsent yet, so these stay hidden rather than look sent.
-        showsUndeliveredSentElsewhere: false
+        showsFailedStartsSentElsewhere: hostSupport?.retryMessage === true
       }),
     [transcriptItems, state.submissions, hostSupport?.retryMessage]
   )

@@ -3,10 +3,7 @@
 // on the desktop as any rejection drawn in place, on the phone by this rule alone.
 
 import { describe, expect, it, vi } from 'vitest'
-import {
-  agentSessionFailureSentence,
-  agentSessionFailureWords
-} from '../../../../shared/agent-session-failure-words'
+import { agentSessionFailureWords } from '../../../../shared/agent-session-failure-words'
 import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
 import type {
   AgentJournalMessageItem,
@@ -215,17 +212,9 @@ describe('a message sent from elsewhere whose start failed for good', () => {
     }
   })
 
-  // Only an older host's rows: a current one never keeps a failed start's hand-over. Its Retry can't
-  // queue a message an agent already took; drawn with its own words and no Retry.
-  it("is drawn with no Retry once an agent already took it, in an older host's rows", () => {
+  it('is never drawn for one an agent already took', () => {
     const handedOver = { ...rejected({ kind: 'providerStartFailed' }), handedOverAt: 5 }
-    expect(projectStructuredAgentSessionMessages([TEXT], [], [handedOver], DESKTOP)).toEqual([
-      expect.objectContaining({ id: KEY, unsent: true })
-    ])
-    // Not one the host can queue again, so no Retry even where it queues others.
-    expect(notices([handedOver], vi.fn()).get(KEY)).toEqual({
-      text: 'Codex stopped before it finished starting. Send your message to try again.'
-    })
+    expect(projectStructuredAgentSessionMessages([TEXT], [], [handedOver], PHONE)).toEqual([])
   })
 })
 
@@ -269,131 +258,5 @@ describe('a message whose start failed for good, queued again by its Retry', () 
     expect(projectStructuredAgentSessionMessages([TEXT], [entry!], [requeued], DESKTOP)).toEqual([
       expect.objectContaining({ id: KEY, queued: true })
     ])
-  })
-})
-
-// Rejected after it was handed over, or shown by the agent's history never to have reached it. No
-// outbox entry shows it — this client let go once the host recorded it in doubt, or another device
-// sent it — so the journal does, with its own words and no Retry.
-describe('a message rejected after it was handed over', () => {
-  const undelivered = (): AgentJournalSubmission => ({
-    ...rejected({ kind: 'notDelivered' }),
-    handedOverAt: 5,
-    recovered: true
-  })
-
-  function noticeOf(submissions: AgentJournalSubmission[]) {
-    return structuredAgentSessionDeliveryNotices(
-      [],
-      'Claude',
-      vi.fn(),
-      submissions,
-      [],
-      new Set(),
-      [],
-      new Set(),
-      [],
-      true
-    ).get(KEY)
-  }
-
-  it('shows as unsent with no Retry, on any desktop host', () => {
-    const submissions = [undelivered()]
-    for (const options of [
-      DESKTOP,
-      { rejectedInPlace: false, showsUndeliveredSentElsewhere: true }
-    ]) {
-      expect(projectStructuredAgentSessionMessages([TEXT], [], submissions, options)).toEqual([
-        expect.objectContaining({ id: KEY, unsent: true })
-      ])
-    }
-    // The host cannot queue a message it handed over again, so the person sends it anew.
-    expect(noticeOf(submissions)).toEqual({
-      text: 'This message was not delivered. Send it again to continue.'
-    })
-  })
-
-  // The phone does not mark a message as unsent yet: drawn there, it would look delivered.
-  it('stays hidden on a surface that cannot mark it unsent', () => {
-    expect(
-      projectStructuredAgentSessionMessages([TEXT], [], [undelivered()], {
-        rejectedInPlace: false,
-        showsUndeliveredSentElsewhere: false
-      })
-    ).toEqual([])
-  })
-
-  // A doubt the host settled later, after this client let its entry go: the agent refused it, or a
-  // Stop withdrew it.
-  it('says why when the agent refused it after its doubt, and stays hidden when withdrawn', () => {
-    const dispatching = {
-      ...createStructuredAgentSessionOutboxEntry({
-        clientMessageId: ID,
-        sessionId: 'session-1',
-        text: 'Continue where you left off',
-        attachments: [],
-        queuedAt: 4
-      }),
-      state: 'dispatching' as const
-    }
-    const inDoubt: AgentJournalSubmission = {
-      ...undelivered(),
-      dispatchState: 'unknown',
-      reason: 'provider_write_outcome_unknown: EPIPE',
-      rejection: undefined
-    }
-    expect(reconcileStructuredAgentSessionOutbox([dispatching], [inDoubt], [TEXT])).toEqual([])
-
-    const refused = { ...undelivered(), ...rejected({ kind: 'providerRejected' }), handedOverAt: 5 }
-    expect(projectStructuredAgentSessionMessages([TEXT], [], [refused], DESKTOP)).toEqual([
-      expect.objectContaining({ id: KEY, unsent: true })
-    ])
-    expect(noticeOf([refused])?.text).toBe(
-      agentSessionFailureSentence({ kind: 'providerRejected' }, 'rejection', {
-        agentName: 'Claude',
-        retryControl: false
-      })
-    )
-    expect(noticeOf([refused])?.onRetry).toBeUndefined()
-
-    const withdrawn = { ...undelivered(), ...rejected({ kind: 'cancelled' }), handedOverAt: 5 }
-    expect(projectStructuredAgentSessionMessages([TEXT], [], [withdrawn], DESKTOP)).toEqual([])
-    expect(noticeOf([withdrawn])).toBeUndefined()
-  })
-  it('is drawn once by the entry of the client that still holds it', () => {
-    const own = reconcileStructuredAgentSessionOutbox(
-      [
-        {
-          ...createStructuredAgentSessionOutboxEntry({
-            clientMessageId: ID,
-            sessionId: 'session-1',
-            text: 'Continue where you left off',
-            attachments: [],
-            queuedAt: 4
-          }),
-          state: 'dispatching'
-        }
-      ],
-      [undelivered()],
-      []
-    )
-    expect(
-      projectStructuredAgentSessionMessages([TEXT], own, [undelivered()], DESKTOP).map(
-        ({ id }) => id
-      )
-    ).toEqual([KEY])
-  })
-
-  it('stays hidden once the same words went through since', () => {
-    const copy: AgentJournalSubmission = {
-      ...undelivered(),
-      clientMessageId: 'copy',
-      dispatchState: 'accepted',
-      submittedAt: 9,
-      resolvedAt: 9
-    }
-    expect(
-      projectStructuredAgentSessionMessages([TEXT], [], [undelivered(), copy], DESKTOP)
-    ).toEqual([])
   })
 })
