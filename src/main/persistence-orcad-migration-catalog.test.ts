@@ -42,6 +42,16 @@ vi.mock('electron', () => ({
 vi.mock('./telemetry/client', () => ({ track: trackMock }))
 vi.mock('./telemetry/cohort-classifier', () => ({ getCohortAtEmit: getCohortAtEmitMock }))
 
+/** Stage then commit: the only path a destination publishes a catalog through. */
+function commitCatalog(
+  store: ReturnType<typeof createStore>,
+  input: ReturnType<typeof manifest>,
+  options?: { now?: () => Date }
+) {
+  store.stageOrcadMigrationCatalog(input, options)
+  return store.commitStagedOrcadMigrationCatalog(input, options)
+}
+
 describe('orcad migration catalog persistence', () => {
   beforeEach(() => {
     testState.dir = mkdtempSync(join(tmpdir(), 'orca-migration-catalog-'))
@@ -51,19 +61,19 @@ describe('orcad migration catalog persistence', () => {
     rmSync(testState.dir, { recursive: true, force: true })
   })
 
-  it('imports the catalog durably, strips source ownership, and replays idempotently', async () => {
+  it('commits the catalog durably, strips source ownership, and replays idempotently', async () => {
     const store = createStore()
     const input = manifest()
 
-    const first = store.importOrcadMigrationCatalog(input, {
+    const first = commitCatalog(store, input, {
       now: () => new Date('2026-08-30T12:05:00.000Z')
     })
     await store.flushPendingOrThrowAsync()
     const restored = createStore()
-    const replay = restored.importOrcadMigrationCatalog(input)
+    const replay = commitCatalog(restored, input)
 
     expect(first).toMatchObject({
-      status: 'imported',
+      state: 'committed',
       receipt: {
         migrationId: 'migration-1',
         importedAt: '2026-08-30T12:05:00.000Z',
@@ -72,7 +82,7 @@ describe('orcad migration catalog persistence', () => {
         folderWorkspaceIds: ['folder-1']
       }
     })
-    expect(replay.status).toBe('already-imported')
+    expect(replay).toEqual(first)
     expect(restored.getRepos()).toEqual([
       expect.not.objectContaining({
         connectionId: expect.anything(),
@@ -108,7 +118,7 @@ describe('orcad migration catalog persistence', () => {
       payload: { ...base.payload, dormantState: incomingDormant }
     })
 
-    store.importOrcadMigrationCatalog(input)
+    commitCatalog(store, input)
 
     expect(store.getWorkspaceSession()).toMatchObject({
       activeRepoId: REPOSITORY.id,
@@ -298,7 +308,7 @@ describe('orcad migration catalog persistence', () => {
     const store = createStore()
     const base = manifest()
     const first = manifest({ payload: { ...base.payload, dormantState: dormantState() } })
-    store.importOrcadMigrationCatalog(first)
+    commitCatalog(store, first)
     const changedDormant = dormantState()
     const changedAutomation = changedDormant.automations?.[0]
     if (!changedAutomation) {
@@ -322,7 +332,7 @@ describe('orcad migration catalog persistence', () => {
     const store = createStore()
     const base = manifest()
     const first = manifest({ payload: { ...base.payload, dormantState: dormantState() } })
-    store.importOrcadMigrationCatalog(first)
+    commitCatalog(store, first)
     store.createAutomationRun(DORMANT_AUTOMATION, 10, 'manual')
     const nextDormant = dormantState()
     delete nextDormant.automationRuns
@@ -413,9 +423,6 @@ describe('orcad migration catalog persistence', () => {
     expect(() => restored.stageOrcadMigrationCatalog(second)).toThrow(
       'orcad_migration_staged_claim_conflict:'
     )
-    expect(() => restored.importOrcadMigrationCatalog(second)).toThrow(
-      'orcad_migration_staged_claim_conflict:'
-    )
     expect(restored.getOrcadMigrationCatalogState(first)).toMatchObject({ state: 'staged' })
     expect(restored.getOrcadMigrationCatalogState(second)).toMatchObject({ state: 'absent' })
     expect(restored.getRepos()).toEqual([])
@@ -426,18 +433,6 @@ describe('orcad migration catalog persistence', () => {
     expect(afterAbort.commitStagedOrcadMigrationCatalog(second)).toMatchObject({
       state: 'committed'
     })
-  })
-
-  it('refuses direct import with a changed manifest under an existing staged identity', () => {
-    const store = createStore()
-    const first = manifest()
-    store.stageOrcadMigrationCatalog(first)
-    const changed = manifest({ payload: { ...first.payload, repositories: [] } })
-    expect(() => store.importOrcadMigrationCatalog(changed)).toThrow(
-      'orcad_migration_id_reused_with_different_manifest'
-    )
-    expect(store.getOrcadMigrationCatalogState(first)).toMatchObject({ state: 'staged' })
-    expect(store.getRepos()).toEqual([])
   })
 
   it('refuses committing overlapping stages loaded from an older writer', async () => {
@@ -470,7 +465,7 @@ describe('orcad migration catalog persistence', () => {
     const store = createStore()
     const base = manifest()
     const input = manifest({ payload: { ...base.payload, dormantState: dormantState() } })
-    store.importOrcadMigrationCatalog(input)
+    commitCatalog(store, input)
     await store.flushPendingOrThrowAsync()
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the raw data file is untyped JSON this test edits to simulate an older writer.
     const persisted = readDataFile() as Record<string, unknown>
@@ -478,9 +473,9 @@ describe('orcad migration catalog persistence', () => {
     writeDataFile(persisted)
 
     const restored = createStore()
-    const replay = restored.importOrcadMigrationCatalog(input)
+    const replay = commitCatalog(restored, input)
 
-    expect(replay.status).toBe('imported')
+    expect(replay.state).toBe('committed')
     expect(restored.getRepos()).toHaveLength(1)
     expect(restored.getProjectGroups()).toHaveLength(1)
     expect(restored.getFolderWorkspaces()).toHaveLength(1)
@@ -491,10 +486,9 @@ describe('orcad migration catalog persistence', () => {
   it('still reads a commit as committed after the live server changed what it imported', () => {
     const store = createStore()
     const input = manifest()
-    store.importOrcadMigrationCatalog(input)
+    commitCatalog(store, input)
     store.removeProject(REPOSITORY.id)
 
-    expect(store.importOrcadMigrationCatalog(input).status).toBe('already-imported')
     expect(store.getOrcadMigrationCatalogState(input).state).toBe('committed')
     expect(store.getRepos()).toEqual([])
   })
@@ -502,7 +496,7 @@ describe('orcad migration catalog persistence', () => {
   it('rejects an id reuse with a different manifest without duplicating state', () => {
     const store = createStore()
     const input = manifest()
-    store.importOrcadMigrationCatalog(input)
+    commitCatalog(store, input)
     const changed = manifest({
       payload: {
         ...input.payload,
@@ -510,7 +504,7 @@ describe('orcad migration catalog persistence', () => {
       }
     })
 
-    expect(() => store.importOrcadMigrationCatalog(changed)).toThrow(
+    expect(() => commitCatalog(store, changed)).toThrow(
       'orcad_migration_id_reused_with_different_manifest'
     )
     expect(store.getRepos()).toHaveLength(1)
@@ -520,7 +514,7 @@ describe('orcad migration catalog persistence', () => {
     const store = createStore()
     store.addRepo(makeRepo({ id: 'existing', path: REPOSITORY.path }))
 
-    expect(() => store.importOrcadMigrationCatalog(manifest())).toThrow(
+    expect(() => commitCatalog(store, manifest())).toThrow(
       `orcad_migration_repository_path_conflict:${REPOSITORY.path}`
     )
     expect(store.getRepos().map((repo) => repo.id)).toEqual(['existing'])
@@ -532,7 +526,7 @@ describe('orcad migration catalog persistence', () => {
     const store = createStore()
     store.addRepo(makeRepo({ id: REPOSITORY.id, path: '/srv/different' }))
 
-    expect(() => store.importOrcadMigrationCatalog(manifest())).toThrow(
+    expect(() => commitCatalog(store, manifest())).toThrow(
       `orcad_migration_repository_id_conflict:${REPOSITORY.id}`
     )
     expect(store.getRepos().map((repo) => repo.path)).toEqual(['/srv/different'])
@@ -547,7 +541,7 @@ describe('orcad migration catalog persistence', () => {
       payload: { ...input.payload, projectGroups: [] }
     })
 
-    expect(() => store.importOrcadMigrationCatalog(invalid)).toThrow(
+    expect(() => commitCatalog(store, invalid)).toThrow(
       'orcad_migration_repository_project_group_missing:repo-1'
     )
     expect(store.getRepos()).toEqual([])

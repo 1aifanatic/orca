@@ -39,12 +39,7 @@ export function getDaemonSpawner(): DaemonSpawner | null {
  * from that state would be advertising recovery for terminals that cannot be recovered.
  */
 export function daemonOwnsFreshPersistentPtys(): boolean {
-  if (!adapter || adapter instanceof DegradedDaemonPtyProvider) {
-    return false
-  }
-  return adapter instanceof DaemonPtyRouter
-    ? !adapter.getAllAdapters().some((entry) => entry.recoveryOnly)
-    : !adapter.recoveryOnly
+  return adapter !== null && !(adapter instanceof DegradedDaemonPtyProvider)
 }
 
 /** Endpoint coordinates of the daemon this process installed, for out-of-band health probes. */

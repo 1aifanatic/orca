@@ -42,8 +42,6 @@ export type WebSocketTransportOptions = {
   fallbackPort?: number
   // Why: serve --port clients dial the pinned port; prefer it first so a stale fallback can't steal the pin (issue #8535). Default keeps fallback-first (STA-1511).
   preferPinnedPort?: boolean
-  // Why: managed SSH tunnels dial one configured remote port and cannot follow a fallback.
-  strictPort?: boolean
 }
 
 export class WebSocketTransport implements RpcTransport {
@@ -56,7 +54,6 @@ export class WebSocketTransport implements RpcTransport {
   private readonly staticRoot: string | undefined
   private readonly fallbackPort: number | undefined
   private readonly preferPinnedPort: boolean
-  private readonly strictPort: boolean
   private httpServer: HttpsServer | HttpServer | null = null
   private wss: WebSocketServer | null = null
   private messageHandler: WebSocketMessageHandler | null = null
@@ -76,8 +73,7 @@ export class WebSocketTransport implements RpcTransport {
     preAuthTimeoutMs,
     staticRoot,
     fallbackPort,
-    preferPinnedPort,
-    strictPort
+    preferPinnedPort
   }: WebSocketTransportOptions) {
     this.host = host
     this.port = port
@@ -92,7 +88,6 @@ export class WebSocketTransport implements RpcTransport {
     this.staticRoot = staticRoot
     this.fallbackPort = fallbackPort
     this.preferPinnedPort = preferPinnedPort === true
-    this.strictPort = strictPort === true
   }
 
   onMessage(handler: WebSocketMessageHandler): void {
@@ -139,11 +134,6 @@ export class WebSocketTransport implements RpcTransport {
     if (this.wss) {
       return
     }
-    if (this.strictPort) {
-      await this.tryListen(this.port)
-      return
-    }
-
     // Why: bind a persisted fallback first so devices paired to it aren't stranded (STA-1511); serve --port flips to pinned-first (issue #8535); on failure each candidate falls through to OS-assigned port 0.
     const persistedFallbackPort =
       this.fallbackPort !== undefined && this.fallbackPort !== 0 && this.fallbackPort !== this.port

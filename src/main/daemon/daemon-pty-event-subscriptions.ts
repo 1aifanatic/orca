@@ -143,7 +143,7 @@ export abstract class DaemonPtyEventSubscriptions extends DaemonPtySessionInvent
       return {
         state: 'busy',
         liveSessions,
-        ...(!this.recoveryOnly ? { admissionReopened: true as const } : {})
+        admissionReopened: true
       }
     } catch {
       // The daemon may have accepted before contact was lost; keep admission and respawn fenced.

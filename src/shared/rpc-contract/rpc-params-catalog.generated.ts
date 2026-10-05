@@ -1015,7 +1015,6 @@ export const RPC_PARAMS_BY_METHOD = {
   'orcad.migration.abortCatalog': OrcadMigrationCatalogParams,
   'orcad.migration.catalogState': OrcadMigrationCatalogParams,
   'orcad.migration.commitCatalog': OrcadMigrationCatalogParams,
-  'orcad.migration.importCatalog': OrcadMigrationCatalogParams,
   'orcad.migration.stageCatalog': OrcadMigrationCatalogParams,
   'orcad.migration.stageSnapshotChunk': OrcadMigrationSnapshotChunkRequestSchema,
   'orcad.terminalCensus': OrcadTerminalCensusParamsSchema,

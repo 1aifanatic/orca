@@ -51,12 +51,9 @@ export class DaemonRouterRetirement {
       this.admissionClosed = this.retirementAttempted
       return { state: 'unverifiable' }
     }
+    // Each adapter's inventory lists live sessions only.
     const liveSessions = inventories.reduce(
-      (count, inventory) =>
-        count +
-        (inventory.status === 'fulfilled'
-          ? inventory.value.filter((session) => session.isAlive).length
-          : 0),
+      (count, inventory) => count + (inventory.status === 'fulfilled' ? inventory.value.length : 0),
       0
     )
     if (liveSessions > 0) {
@@ -64,9 +61,7 @@ export class DaemonRouterRetirement {
       return {
         state: 'busy',
         liveSessions,
-        ...(!this.retirementAttempted && !adapters.some((adapter) => adapter.recoveryOnly)
-          ? { admissionReopened: true as const }
-          : {})
+        ...(!this.retirementAttempted ? { admissionReopened: true as const } : {})
       }
     }
     this.retirementAttempted = true

@@ -46,7 +46,6 @@ import {
 import { setSpawnObserver } from '../../shared/child-process/spawn-observer'
 import { settledDiffCache } from '../git/source-control/git-read-cache-invalidation'
 import { reserveServeStdoutForReadiness } from '../server/serve-stdout-boundary'
-import { acquireDesktopProfileInstanceLock } from './desktop-profile-instance-lock'
 import { createServeDesktopActivationGate } from './serve-desktop-activation'
 import {
   shouldBypassSingleInstanceLock,
@@ -106,7 +105,10 @@ import { initializeBrowserProcessUserAgent } from '../browser/browser-process-us
 import { initializeBrowserIdentityModeStore } from '../browser/browser-identity-mode-store'
 import { acquireProfileStateRuntimeAdmission } from '../persistence/profile-state/profile-state-access'
 import { getActiveProfileStateLocation } from '../persistence/profile-state/profile-state-active-location'
-import { handleMainProcessPreflightFailure } from './main-process-preflight-failure'
+import {
+  acquireDesktopProfileLockOrExplain,
+  handleMainProcessPreflightFailure
+} from './main-process-preflight-failure'
 import { ensureWindowsAppDataPath } from './windows-app-data-path'
 
 export type MainProcessPreflightOptions = {
@@ -275,12 +277,8 @@ function initializeMainProcessPreflight(options: MainProcessPreflightOptions): b
     return false
   }
   // Why after Electron's lock: that one fences other desktops; this one fences orcad `orca serve`.
-  if (!skip && !bypass) {
-    const profileLock = acquireDesktopProfileInstanceLock(getCanonicalUserDataPath())
-    if (profileLock.state === 'held') {
-      app.exit(SINGLE_INSTANCE_ALREADY_RUNNING_EXIT_CODE)
-      return false
-    }
+  if (!skip && !bypass && !acquireDesktopProfileLockOrExplain(getCanonicalUserDataPath())) {
+    return false
   }
   state.profileStateAdmission = acquireProfileStateRuntimeAdmission(getCanonicalUserDataPath())
   // Renderer and worker defaults must be fixed before any session exists.

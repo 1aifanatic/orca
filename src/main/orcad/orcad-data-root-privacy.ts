@@ -59,7 +59,7 @@ export function assertOrcadDataRootIsPrivate(
   } catch (error) {
     throw new OrcadInstanceLockError(
       'orcad_data_root_unusable',
-      `Cannot stat the orcad data root ${dataRoot}: ${(error as Error).message}`
+      `Cannot stat the orcad data root ${dataRoot}: ${error instanceof Error ? error.message : String(error)}`
     )
   }
   const uid = process.getuid?.()
@@ -84,7 +84,7 @@ export function assertOrcadDataRootIsPrivate(
   } catch (error) {
     throw new OrcadInstanceLockError(
       'orcad_data_root_unusable',
-      `Cannot stat the orcad data root ${dataRoot}: ${(error as Error).message}`
+      `Cannot stat the orcad data root ${dataRoot}: ${error instanceof Error ? error.message : String(error)}`
     )
   }
   if ((mode & 0o077) !== 0) {

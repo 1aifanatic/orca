@@ -51,7 +51,6 @@ export type RuntimeStore = {
   runDurableMutation?: Store['runDurableMutation']
   flushOrThrow?: Store['flushOrThrow']
   flushPendingOrThrowAsync?: Store['flushPendingOrThrowAsync']
-  importOrcadMigrationCatalog?: Store['importOrcadMigrationCatalog']
   stageOrcadMigrationCatalog?: Store['stageOrcadMigrationCatalog']
   commitStagedOrcadMigrationCatalog?: Store['commitStagedOrcadMigrationCatalog']
   stageOrcadMigrationSnapshotChunk?: Store['stageOrcadMigrationSnapshotChunk']

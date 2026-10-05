@@ -16,13 +16,13 @@ export function cancelOrcadManagedStop(
 ): OrcadManagedStopCancellation['outcome'] {
   const outcome = claimOrcadManagedStopDecision(request, 'canceled')
   if (outcome === 'canceled') {
-    removePendingRequest(request)
+    withdrawOrcadManagedStopRequest(request)
   }
   return outcome
 }
 
 /** Removes the request file only while it still carries this transaction. */
-function removePendingRequest(request: OrcadManagedStopRequest): void {
+export function withdrawOrcadManagedStopRequest(request: OrcadManagedStopRequest): void {
   const path = orcadManagedStopRequestPath(request.instance)
   try {
     if (readOrcadManagedStopRequest(path).transactionId === request.transactionId) {

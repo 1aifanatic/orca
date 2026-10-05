@@ -13,7 +13,6 @@ import {
 import type { OrcadDaemonRetirementVerdict } from '../../shared/orcad-stop-request'
 import { ORCAD_DAEMON_RETIREMENT_TIMEOUT_MS } from './orcad-stop-deadlines'
 
-
 export type OrcadDaemonRetirement = {
   retirement: OrcadDaemonRetirementVerdict
   liveSessions: number | null
@@ -23,8 +22,8 @@ export type OrcadDaemonRetirement = {
 /** Live sessions across every daemon generation, or `null` when any could not answer. */
 export async function countLiveOrcadDaemonSessions(): Promise<number | null> {
   try {
-    const sessions = await listLiveDaemonSessions()
-    return sessions ? sessions.filter((session) => session.isAlive).length : null
+    // The inventory lists live sessions only.
+    return (await listLiveDaemonSessions())?.length ?? null
   } catch {
     return null
   }

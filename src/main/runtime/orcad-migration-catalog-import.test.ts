@@ -2,44 +2,15 @@ import { describe, expect, it, vi } from 'vitest'
 import type {
   OrcadMigrationCatalogAbortResult,
   OrcadMigrationCatalogState,
-  OrcadMigrationImportResult,
   OrcadMigrationManifest
 } from '../../shared/orcad-migration-manifest'
 import {
   abortStagedOrcadMigrationCatalogDurably,
   commitStagedOrcadMigrationCatalogDurably,
-  importOrcadMigrationCatalogDurably,
   stageOrcadMigrationCatalogDurably
 } from './orcad-migration-catalog-import'
 
 describe('durable orcad migration catalog import', () => {
-  it('acknowledges only after a durable flush and safely retries a failed acknowledgement', async () => {
-    const diskError = new Error('disk full')
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the durable wrappers only pass these values through to the stubbed store.
-    const imported = { status: 'imported' } as OrcadMigrationImportResult
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the durable wrappers only pass these values through to the stubbed store.
-    const replayed = { status: 'already-imported' } as OrcadMigrationImportResult
-    const importCatalog = vi.fn().mockReturnValueOnce(imported).mockReturnValueOnce(replayed)
-    const flush = vi.fn().mockRejectedValueOnce(diskError).mockResolvedValueOnce(undefined)
-    const onDurableImport = vi.fn()
-    const args = {
-      store: {
-        importOrcadMigrationCatalog: importCatalog,
-        flushPendingOrThrowAsync: flush
-      },
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the durable wrappers only pass these values through to the stubbed store.
-      manifest: {} as OrcadMigrationManifest,
-      onDurableImport
-    }
-
-    await expect(importOrcadMigrationCatalogDurably(args)).rejects.toBe(diskError)
-    expect(onDurableImport).not.toHaveBeenCalled()
-    await expect(importOrcadMigrationCatalogDurably(args)).resolves.toBe(replayed)
-    expect(onDurableImport).toHaveBeenCalledOnce()
-    expect(importCatalog).toHaveBeenCalledTimes(2)
-    expect(flush).toHaveBeenCalledTimes(2)
-  })
-
   it('does not acknowledge staging until its dormant manifest is durable', async () => {
     const diskError = new Error('disk full')
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the durable wrappers only pass these values through to the stubbed store.

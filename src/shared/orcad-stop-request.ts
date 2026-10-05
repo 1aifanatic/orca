@@ -19,14 +19,16 @@ export const ORCAD_COMPLETE_MANAGED_STOP_FLAG = '--complete-managed-stop'
 export const ORCAD_MANAGED_STOP_REQUEST_FILE_FLAG = '--request-file'
 
 /** One orcad process: its PID, start time, and the instance lock record it published. */
-export const OrcadManagedStopInstanceSchema = z.strictObject({
+export const OrcadManagedStopInstanceSchema = z.object({
   pid: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   startedAtMs: z.number().finite().nonnegative().nullable(),
   nonce: z.string().min(1).max(255),
   lockPath: z.string().min(1).max(4096)
 })
 
-export const OrcadManagedStopRequestSchema = z.strictObject({
+// Not strict: the slot's own (possibly older) build parses what a newer client wrote, so an
+// unknown optional field is dropped rather than refusing the stop.
+export const OrcadManagedStopRequestSchema = z.object({
   schemaVersion: z.literal(1),
   transactionId: z.uuid(),
   version: z.string().min(1).max(255),
@@ -54,10 +56,7 @@ export const OrcadManagedStopVerdictSchema = z.enum(STOP_VERDICTS)
 export const OrcadDaemonRetirementVerdictSchema = z.enum(RETIREMENT_VERDICTS)
 
 // Read by clients older than the slot that printed them: unknown fields and arms degrade.
-const stopReplyRequestFields = {
-  ...OrcadManagedStopRequestSchema.shape,
-  instance: z.object(OrcadManagedStopInstanceSchema.shape)
-}
+const stopReplyRequestFields = OrcadManagedStopRequestSchema.shape
 
 export const OrcadManagedStopCompletionSchema = z.object({
   ...stopReplyRequestFields,
