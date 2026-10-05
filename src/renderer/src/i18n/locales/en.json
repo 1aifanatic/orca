@@ -13497,7 +13497,8 @@
             "fca915a67a": "Remote items are permanently deleted and cannot be undone. Local items move to the {{value0}}."
           },
           "useFileExplorerHandlers": {
-            "32cd9fd991": "Cannot open symlink target"
+            "32cd9fd991": "Cannot open symlink target",
+            "folderLinksOutsideProject": "This folder links outside the project, so it can't be opened here."
           },
           "useFileExplorerImport": {
             "25919b2050": "Skipped {{value0}} {{value1}}.",
@@ -13765,7 +13766,6 @@
           },
           "aiVaultSessionLogOpen": {
             "workspaceGone": "Couldn't open log — workspace is no longer available.",
-            "notAuthorized": "Couldn't open log — path not authorized.",
             "alreadyEditable": "Log is already open for editing."
           },
           "github": {
@@ -15670,7 +15670,9 @@
           }
         },
         "richMarkdownLargeTextPaste": {
-          "tooLarge": "Paste is too large."
+          "tooLarge": "Paste is too large.",
+          "stopped": "Large paste stopped before it finished.",
+          "cancelled": "Large paste cancelled because its original target changed."
         },
         "ExternalFileChangeBanner": {
           "7c41e90d12": "This file changed on disk while you have unsaved edits. Saving will overwrite the newer disk content.",
@@ -15771,6 +15773,10 @@
           "a0af0198aa": "Large diffs are not rendered by default.",
           "c3d9f4a712": "This diff's size isn't known yet, so it loads on request.",
           "f7fa7a40d0": "Load diff"
+        },
+        "richMarkdownImageInsertionFeedback": {
+          "importedFileKept": "Image insertion canceled because the destination changed. The imported file was kept.",
+          "destinationChanged": "Image insertion canceled because the destination changed. Try again."
         }
       },
       "diff": {
@@ -18354,6 +18360,16 @@
         "workspaceReadyToast": "Workspace {{name}} is ready",
         "goToWorktree": "Go to worktree",
         "goToWorkspace": "Go to workspace"
+      },
+      "delete": {
+        "changes": {
+          "permanentLoss": "Any uncommitted or untracked changes in Git workspaces will be permanently deleted.",
+          "clean": "No uncommitted or untracked changes",
+          "unavailable": "Changes could not be checked",
+          "checking": "Checking for changes…",
+          "checkingDetails": "Checking…",
+          "unavailableDetails": "Details unavailable"
+        }
       }
     },
     "agentSessionContinuation": {
