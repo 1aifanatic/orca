@@ -1,3 +1,4 @@
+import { setImmediate as waitForPoll } from 'node:timers/promises'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   publishSystemResume,
@@ -47,12 +48,14 @@ function harness() {
 }
 
 describe('profile state writer deadline', () => {
-  it('times out a request the running loop could have answered', () => {
+  it('times out a request after allowing queued replies to drain', async () => {
     const { onTimeout, onGrace, unsubscribe, run } = harness()
     run(TIMEOUT_MS - 1)
     expect(onTimeout).not.toHaveBeenCalled()
     run(1)
     expect(onGrace).not.toHaveBeenCalled()
+    expect(onTimeout).not.toHaveBeenCalled()
+    await waitForPoll()
     expect(onTimeout).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ overdueMs: 0, graces: 0, powerState: 'awake' })
     )
@@ -60,7 +63,7 @@ describe('profile state writer deadline', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('grants a fresh window when the callback arrives after a stalled loop', () => {
+  it('grants a fresh window when the callback arrives after a stalled loop', async () => {
     const { onTimeout, onGrace, run, stall } = harness()
     stall(3 * 60 * 60_000)
     run(TIMEOUT_MS)
@@ -71,20 +74,22 @@ describe('profile state writer deadline', () => {
     run(TIMEOUT_MS - 1)
     expect(onTimeout).not.toHaveBeenCalled()
     run(1)
+    await waitForPoll()
     expect(onTimeout).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ overdueMs: 0, graces: 1 })
     )
   })
 
-  it('treats ordinary scheduling jitter as on time', () => {
+  it('does not grant a full extra window for ordinary scheduling jitter', async () => {
     const { onTimeout, onGrace, run, stall } = harness()
     stall(PROFILE_STATE_WRITER_OVERDUE_GRACE_MS - 1)
     run(TIMEOUT_MS)
     expect(onGrace).not.toHaveBeenCalled()
+    await waitForPoll()
     expect(onTimeout).toHaveBeenCalledOnce()
   })
 
-  it('bounds grace across repeated stalls so a hung worker still times out', () => {
+  it('bounds grace across repeated stalls so a hung worker still times out', async () => {
     const { onTimeout, onGrace, run, stall } = harness()
     for (let episode = 0; episode < PROFILE_STATE_WRITER_MAX_GRACES; episode += 1) {
       stall(60 * 60_000)
@@ -94,13 +99,14 @@ describe('profile state writer deadline', () => {
     stall(60 * 60_000)
     run(TIMEOUT_MS)
     expect(onGrace).toHaveBeenCalledTimes(PROFILE_STATE_WRITER_MAX_GRACES)
+    await waitForPoll()
     expect(onTimeout).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ graces: PROFILE_STATE_WRITER_MAX_GRACES })
     )
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('gives a fresh window on resume without spending grace', () => {
+  it('spends one grace to give a fresh window on resume', async () => {
     const { onTimeout, onGrace, run, power } = harness()
     run(TIMEOUT_MS - 1_000)
     power().onSuspend()
@@ -108,11 +114,12 @@ describe('profile state writer deadline', () => {
     run(TIMEOUT_MS - 1)
     expect(onTimeout).not.toHaveBeenCalled()
     run(1)
-    expect(onGrace).not.toHaveBeenCalled()
+    await waitForPoll()
+    expect(onGrace).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ graces: 1 }))
     expect(onTimeout).toHaveBeenCalledOnce()
   })
 
-  it('stays bounded when a suspend is never followed by resume', () => {
+  it('stays bounded when a suspend is never followed by resume', async () => {
     const { onTimeout, onGrace, run } = harness()
     // Dark wake: the loop runs on time, but the system still reports suspended.
     publishSystemSuspend()
@@ -122,9 +129,76 @@ describe('profile state writer deadline', () => {
     expect(onGrace).toHaveBeenCalledTimes(PROFILE_STATE_WRITER_MAX_GRACES)
     expect(onTimeout).not.toHaveBeenCalled()
     run(TIMEOUT_MS)
+    await waitForPoll()
     expect(onTimeout).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ powerState: 'suspended' })
     )
+  })
+
+  it.each([false, true])(
+    'bounds repeated resumes with paired suspend events: %s',
+    async (paired) => {
+      const { deadline, onTimeout, run, power } = harness()
+      try {
+        for (let cycle = 0; cycle <= PROFILE_STATE_WRITER_MAX_GRACES; cycle += 1) {
+          run(TIMEOUT_MS - 1)
+          if (paired) {
+            power().onSuspend()
+          }
+          power().onResume()
+        }
+        run(1)
+        await waitForPoll()
+        expect(onTimeout).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ graces: PROFILE_STATE_WRITER_MAX_GRACES })
+        )
+        expect(vi.getTimerCount()).toBe(0)
+      } finally {
+        deadline.clear()
+      }
+    }
+  )
+
+  it('shares the grace limit between overdue timers and resume events', async () => {
+    const { deadline, onTimeout, onGrace, run, stall, power } = harness()
+    try {
+      for (let cycle = 1; cycle < PROFILE_STATE_WRITER_MAX_GRACES; cycle += 1) {
+        stall(PROFILE_STATE_WRITER_OVERDUE_GRACE_MS)
+        run(TIMEOUT_MS)
+      }
+      power().onResume()
+      run(TIMEOUT_MS)
+      // An exhausted resume must not cancel the final queued timeout check.
+      power().onResume()
+      await waitForPoll()
+      expect(onGrace).toHaveBeenCalledTimes(PROFILE_STATE_WRITER_MAX_GRACES)
+      expect(onTimeout).toHaveBeenCalledOnce()
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      deadline.clear()
+    }
+  })
+
+  it('cancels an expired timeout check when a reply clears the deadline', async () => {
+    const { deadline, onTimeout, unsubscribe, run } = harness()
+    run(TIMEOUT_MS)
+    deadline.clear()
+    await waitForPoll()
+    expect(onTimeout).not.toHaveBeenCalled()
+    expect(unsubscribe).toHaveBeenCalledOnce()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('cancels an expired timeout check when resume re-arms the deadline', async () => {
+    const { onTimeout, run, power } = harness()
+    run(TIMEOUT_MS)
+    power().onResume()
+    await waitForPoll()
+    expect(onTimeout).not.toHaveBeenCalled()
+    run(TIMEOUT_MS)
+    await waitForPoll()
+    expect(onTimeout).toHaveBeenCalledOnce()
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it('releases its timer and subscription when cleared, and ignores later power events', () => {
