@@ -17,6 +17,13 @@ export type StructuredAgentSessionQueueDelivery = {
   enabled: boolean
 }
 
+/** Whether a send made now asks to be queued: a host known to queue, with queueing enabled. */
+export function structuredAgentSessionNewSendsQueue(
+  host: StructuredAgentSessionQueueDelivery
+): boolean {
+  return host.capability === 'supported' && host.enabled
+}
+
 /** Whether this entry's next request asks to be queued. An attempted id asks exactly what it sent,
  *  except of a host known not to queue, which rejects the field before its operation ledger, so
  *  nothing there was recorded with it. A first attempt asks only of a host known to queue, with
@@ -29,8 +36,7 @@ export function structuredAgentSessionEntryAsksToQueue(
     return entry.sentDelivery === 'queue-if-active' && host.capability !== 'unsupported'
   }
   return (
-    host.capability === 'supported' &&
-    host.enabled &&
+    structuredAgentSessionNewSendsQueue(host) &&
     entry.source !== 'launch' &&
     entry.body.blocks.every((block) => block.type === 'text')
   )
