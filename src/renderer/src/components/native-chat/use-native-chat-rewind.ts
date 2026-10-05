@@ -240,15 +240,22 @@ export function useNativeChatRewind(input: RewindInput) {
       setSending(false)
     }
   }, [])
+  /** Whether a send may go now; one refused during a confirmed rewind says why. */
+  const admitsSend = useCallback((): boolean => {
+    if (blockedRef.current) {
+      toast.message(nativeChatRewindPendingCopy())
+    }
+    return !blockedRef.current
+  }, [])
   /** Runs an action only while no confirmed rewind is in flight. */
   const unlessBlocked = useCallback(
     <A extends unknown[]>(run: (...input: A) => void) =>
       (...input: A): void => {
-        if (!blockedRef.current) {
+        if (admitsSend()) {
           run(...input)
         }
       },
-    []
+    [admitsSend]
   )
   const offered = nativeChatRewindOffered(input.support)
   // Rows re-render only when this changes; none get the action where the provider can never rewind.
@@ -256,7 +263,7 @@ export function useNativeChatRewind(input: RewindInput) {
     () => (offered ? { disabledReason, request } : undefined),
     [offered, disabledReason, request]
   )
-  return { request, unlessBlocked, surface, disabledReason, pending, blockedRef }
+  return { request, admitsSend, unlessBlocked, surface, disabledReason, pending, blockedRef }
 }
 
 /** What the pane hosting a structured session tells its rewind. */

@@ -7,11 +7,12 @@ const mocks = vi.hoisted(() => ({
   call: vi.fn(),
   operationId: vi.fn(),
   toastError: vi.fn(),
+  toastMessage: vi.fn(),
   outboxSend: vi.fn(),
   outboxRetry: vi.fn()
 }))
 
-vi.mock('sonner', () => ({ toast: { error: mocks.toastError, message: vi.fn() } }))
+vi.mock('sonner', () => ({ toast: { error: mocks.toastError, message: mocks.toastMessage } }))
 let fence = 3
 let epoch = 'epoch-1'
 let items: AgentJournalRenderItem[] = []
@@ -133,6 +134,9 @@ describe('useStructuredAgentSession rewind RPC', () => {
       expectedEpoch: 'epoch-1'
     })
     expect(view.result.current.send('stale composer text', [])).toBe(false)
+    expect(mocks.toastMessage).toHaveBeenCalledWith(
+      'Wait for the conversation to go back to the earlier message.'
+    )
     epoch = 'epoch-2'
     items = []
     view.rerender()

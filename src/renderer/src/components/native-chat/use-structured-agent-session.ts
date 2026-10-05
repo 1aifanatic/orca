@@ -258,7 +258,7 @@ export function useStructuredAgentSession(args: {
     send: (...input: Parameters<typeof outboxController.send>) =>
       // Legacy: an older host refuses sends while a command runs; removable once those hosts age out.
       (!commandPending.current || hostStatesTurnScopes(transportState.journalItems)) &&
-      !rewind.blockedRef.current &&
+      rewind.admitsSend() &&
       outboxController.send(...input),
     retry: rewind.unlessBlocked(outboxController.retry),
     isWorking: transportState.isWorking,
