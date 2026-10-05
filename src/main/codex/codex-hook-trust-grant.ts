@@ -45,8 +45,9 @@ import {
 export { CODEX_TRUST_GRANT_TRANSIENT_RETRY_INTERVAL_MS } from './codex-trust-grant-cooldown'
 
 // Why: a cold `codex app-server` on a loaded Mac took over 10 s; a background
-// grant blocks no launch, so it can wait for one. The session's own kill timer
-// bounds the whole grant: everything before it is synchronous on native.
+// grant blocks no launch, so it can wait for one. The session deadline bounds the whole grant,
+// plus up to PROVIDER_SUPERVISOR_MAX_STOP_MS for a POSIX supervisor to stop the server;
+// everything before it is synchronous on native.
 export const CODEX_BACKGROUND_TRUST_GRANT_TIMEOUT_MS = 30_000
 
 /** Ops escape hatch (not a setting): forces the fallback lane for every trust grant. */
