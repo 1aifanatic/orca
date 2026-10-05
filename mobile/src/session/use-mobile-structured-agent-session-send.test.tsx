@@ -176,10 +176,11 @@ describe('mobile structured send retries', () => {
     })
 
     expect(onSendError).not.toHaveBeenCalled()
-    const [first, replay, resent, ...rest] = sentIds()
-    expect(replay).toBe(first)
-    expect(resent).not.toBe(first)
-    expect(rest).toEqual([])
+    // The lost first send, its replay, and exactly one resend under a new id.
+    const ids = sentIds()
+    expect(ids).toHaveLength(3)
+    expect(ids[1]).toBe(ids[0])
+    expect(ids[2]).not.toBe(ids[0])
   })
 
   it('reads a first answer a Stop took back as sent, saying nothing, and spends its id', async () => {
@@ -198,8 +199,9 @@ describe('mobile structured send retries', () => {
     })
 
     expect(onSendError).not.toHaveBeenCalled()
-    const [first, later] = sentIds()
-    expect(later).not.toBe(first)
+    const ids = sentIds()
+    expect(ids).toHaveLength(2)
+    expect(ids[1]).not.toBe(ids[0])
   })
 
   it('releases an ack-lost id after the journal accepts it for a later identical intent', async () => {
