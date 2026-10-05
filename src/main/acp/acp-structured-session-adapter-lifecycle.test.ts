@@ -59,7 +59,7 @@ describe('ACP Stop names a turn', () => {
     expect(rig.settled.map((settled) => settled.clientMessageId)).toEqual(['old', 'new'])
   })
 
-  it('a Stop naming an ended turn during the gap before the next prompt opens stops nothing', async () => {
+  it('a Stop naming an ended turn during the gap before the next prompt opens stops that prompt', async () => {
     const rig = await openAcpAdapterRig()
     await rig.acquire()
     await sendHello(rig, 'old')
@@ -70,7 +70,7 @@ describe('ACP Stop names a turn', () => {
     await sendHello(rig, 'new')
     await rig.frame('session/prompt', 1)
     await rig.settle()
-    // The journal shows no turn running: Grok has not echoed the new prompt yet.
+    // The journal shows no turn running: Grok has not echoed the new prompt yet, as with Claude.
     await expect(
       rig.adapter.cancelTurn({
         sessionId: SESSION,
@@ -78,8 +78,8 @@ describe('ACP Stop names a turn', () => {
         turnId: turnIdOf('prompt:old'),
         resolveLiveTurnId: () => null
       })
-    ).resolves.toEqual({ cancelled: false, refusal: { turnNotRunning: true } })
-    expect(rig.sent('session/cancel')).toHaveLength(0)
+    ).resolves.toEqual({ cancelled: true })
+    expect(rig.sent('session/cancel')).toHaveLength(1)
   })
 
   it('a Stop naming the turn running now stops it and withdraws the steer waiting on its cancel', async () => {

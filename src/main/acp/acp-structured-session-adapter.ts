@@ -147,10 +147,11 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
 
   cancelTurn: StructuredAgentSessionAdapter['cancelTurn'] = async (input) => {
     const session = this.live(input.sessionId)
-    // The Stop ends the child unless it is declined here, so a Stop naming a turn that has since
-    // ended must stop nothing newer: not the turn running now, nor the follow-ups behind it.
+    // The Stop ends the child unless it is declined here. Claude's rule: a Stop naming an ended turn
+    // while another one is live stops nothing; in the gap before a follow-up's turn opens, which no
+    // client can name, it stops what is in flight.
     const liveTurnId = input.resolveLiveTurnId?.() ?? session.lane.openTurnId
-    if (input.turnId !== undefined && input.turnId !== liveTurnId) {
+    if (input.turnId !== undefined && liveTurnId !== null && input.turnId !== liveTurnId) {
       return { cancelled: false, refusal: { turnNotRunning: true } }
     }
     const withdrew = session.turns.withdrawSteers()
