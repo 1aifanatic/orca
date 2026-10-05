@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
+import { nativeChatAsyncAnswerProgress } from './native-chat-async-answer-progress'
 import {
   createNativeChatAsyncQuestionCardState,
-  nativeChatAsyncAnswerProgress,
   nativeChatAsyncQuestionScopeView,
   reduceNativeChatAsyncQuestionCard,
   submitNativeChatAsyncQuestionScope,

@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { nativeChatAsyncAnswerProgress } from '../../../../shared/native-chat-async-question-card-state'
+import { nativeChatAsyncAnswerProgress } from '../../../../shared/native-chat-async-answer-progress'
 import { NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT } from '../../../../shared/native-chat-async-questions'
 import type { NativeChatAsyncQuestionsView } from '../../../../shared/native-chat-async-questions'
 import type { AgentType, NativeChatMessage } from '../../../../shared/native-chat-types'

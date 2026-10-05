@@ -5,12 +5,14 @@ import type {
   NativeChatAsyncQuestionEdits
 } from '../../../src/shared/native-chat-async-question-answers'
 import {
-  createNativeChatAsyncQuestionCardState,
   nativeChatAsyncAnswerProgress,
+  type NativeChatAsyncAnswerRecord
+} from '../../../src/shared/native-chat-async-answer-progress'
+import {
+  createNativeChatAsyncQuestionCardState,
   nativeChatAsyncQuestionScopeView,
   reduceNativeChatAsyncQuestionCard,
   submitNativeChatAsyncQuestionScope,
-  type NativeChatAsyncAnswerRecord,
   type NativeChatAsyncAnswerSendResult,
   type NativeChatAsyncAnswerSent
 } from '../../../src/shared/native-chat-async-question-card-state'

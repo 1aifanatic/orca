@@ -3,7 +3,7 @@
 // user turn lands in the transcript. Kept separate from the view so the prune
 // rule (match on normalized user-message content) is unit-testable without React.
 
-import { nativeChatAsyncAnswerEchoHolding } from '../../../../shared/native-chat-async-question-card-state'
+import { nativeChatAsyncAnswerEchoHolding } from '../../../../shared/native-chat-async-answer-progress'
 import { isNoiseMessage } from '../../../../shared/native-chat-noise'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import { setBoundedScopeCacheEntry } from './native-chat-composer-scope-cache'

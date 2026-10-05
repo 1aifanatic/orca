@@ -4,10 +4,10 @@ import type {
   NativeChatAsyncQuestionEdit,
   NativeChatAsyncQuestionEdits
 } from '../../../../shared/native-chat-async-question-answers'
+import type { NativeChatAsyncAnswerProgress } from '../../../../shared/native-chat-async-answer-progress'
 import {
   nativeChatAsyncQuestionScopeView,
-  submitNativeChatAsyncQuestionScope,
-  type NativeChatAsyncAnswerProgress
+  submitNativeChatAsyncQuestionScope
 } from '../../../../shared/native-chat-async-question-card-state'
 import type {
   NativeChatAsyncQuestion,

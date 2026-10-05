@@ -7,7 +7,7 @@
 import {
   nativeChatAsyncAnswerProgress,
   type NativeChatAsyncAnswerProgress
-} from '../../../../shared/native-chat-async-question-card-state'
+} from '../../../../shared/native-chat-async-answer-progress'
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import { structuredAgentSessionEntryHeldForRetry } from '../../../../shared/structured-agent-session-outbox-admission'
 

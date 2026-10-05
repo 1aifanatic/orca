@@ -1,4 +1,4 @@
-import { nativeChatAsyncAnswerEchoHolding } from '../../../src/shared/native-chat-async-question-card-state'
+import { nativeChatAsyncAnswerEchoHolding } from '../../../src/shared/native-chat-async-answer-progress'
 import { isNoiseMessage } from '../../../src/shared/native-chat-noise'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import { normalizeReconcileText, normalizedUserText } from './mobile-native-chat-draft-reconcile'
