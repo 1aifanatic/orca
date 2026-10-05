@@ -1,65 +1,100 @@
-name: pnpm verification cache pilot
-
+name: Qoder import guard timing
 on:
-  pull_request:
-    paths: ['.github/workflows/ci-pnpm-verification-pilot.yml']
   workflow_dispatch:
-
 permissions:
   contents: read
-
-concurrency:
-  group: pnpm-verification-pilot-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-env:
-  ORCA_BACKGROUND_LAUNCH: '1'
-
 jobs:
-  seed:
-    strategy:
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+  paired:
+    name: Qoder import guard paired node24 ARM4
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout benchmark support
+        uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-      # PR caches are scoped to the PR merge ref; main never restores them.
-      - uses: actions/cache/save@v5
-        if: steps.deps.outputs.verification-cache-hit != 'true'
-        with:
-          path: ${{ steps.deps.outputs.verification-cache-path }}
-          key: ${{ steps.deps.outputs.verification-cache-key }}
-
-  measure:
-    needs: seed
-    name: measure ${{ matrix.runner }} sample ${{ matrix.sample }} cache ${{ matrix.cache }}
-    strategy:
-      fail-fast: false
-      max-parallel: 4
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-        sample: [1, 2, 3]
-        cache: ['false', 'true']
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-        with:
-          cache-pnpm-verification: ${{ matrix.cache }}
-      - name: Validate treatment and frozen install
-        env:
-          CACHE_ENABLED: ${{ matrix.cache }}
-          CACHE_HIT: ${{ steps.deps.outputs.verification-cache-hit }}
+      - name: Extract frozen inputs and record bootstrap outside checkout
         run: |
-          if [ "$CACHE_ENABLED" = true ]; then test "$CACHE_HIT" = true; fi
-          git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
-          node -e "require.resolve('vitest'); require.resolve('electron')"
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, subprocess, tarfile
+          bundle = pathlib.Path(os.environ['RUNNER_TEMP'], 'qoder-import-bundle')
+          output = pathlib.Path(os.environ['RUNNER_TEMP'], 'qoder-import-results')
+          bundle.mkdir(exist_ok=False)
+          output.mkdir(exist_ok=False)
+          archive = pathlib.Path('config/ci-capacity-benchmark/qoder-imports.tar.gz')
+          receipt = {'runId': os.environ['GITHUB_RUN_ID'], 'runAttempt': os.environ['GITHUB_RUN_ATTEMPT'],
+                     'bootstrapSha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+                     'bootstrapTree': subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], text=True).strip(),
+                     'eventSha': os.environ['GITHUB_SHA'], 'workflowRef': os.environ['GITHUB_WORKFLOW_REF'],
+                     'archiveSha256': hashlib.sha256(archive.read_bytes()).hexdigest()}
+          (output / 'bootstrap.json').write_text(json.dumps(receipt, indent=2) + '\n')
+          with tarfile.open(archive, 'r:gz') as stream:
+              members = stream.getmembers()
+              assert len(members) <= 32
+              assert len({member.name for member in members}) == len(members)
+              assert sum(member.size for member in members) <= 8 * 1024 * 1024
+              for member in members:
+                  assert member.isfile() and pathlib.PurePosixPath(member.name).name == member.name
+                  payload = stream.extractfile(member).read()
+                  (bundle / member.name).write_bytes(payload)
+          (output / 'manifest.json').write_bytes((bundle / 'manifest.json').read_bytes())
+          evidence_bundle = output / 'portable-inputs'
+          evidence_bundle.mkdir()
+          for source in bundle.iterdir():
+              (evidence_bundle / source.name).write_bytes(source.read_bytes())
+          PY
+      - name: Checkout fixed source
+        uses: actions/checkout@v6
+        with:
+          ref: 1bec53ceb23b5f296a38ffa0e085778d32fc7849
+          persist-credentials: false
+      - name: Record source and dependency setup start
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess, time
+          output = pathlib.Path(os.environ['RUNNER_TEMP'], 'qoder-import-results')
+          source = {'sourceSha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+                    'sourceTree': subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], text=True).strip(),
+                    'sourceStatus': subprocess.check_output(['git', 'status', '--porcelain'], text=True),
+                    'runId': os.environ['GITHUB_RUN_ID'], 'runAttempt': os.environ['GITHUB_RUN_ATTEMPT']}
+          (output / 'checkout.json').write_text(json.dumps(source, indent=2) + '\n')
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write('QODER_PAIR_SETUP_STARTED_AT=' + str(time.monotonic()) + '\n')
+          PY
+      - uses: ./.github/actions/install-node-dependencies
+        id: deps
+        with:
+          native-runtime: node
+          node-version: '24.21.0'
+          cache-electron-package: 'true'
+      - name: Install Electron package binary for tests
+        run: node config/scripts/install-electron-package-binary.mjs
+      - name: Record shared setup outside samples
+        env:
+          QODER_PAIR_DEPENDENCY_OUTPUTS: ${{ toJSON(steps.deps.outputs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, platform, subprocess, time
+          output = pathlib.Path(os.environ['RUNNER_TEMP'], 'qoder-import-results')
+          receipt = {'runId': os.environ['GITHUB_RUN_ID'], 'runAttempt': os.environ['GITHUB_RUN_ATTEMPT'],
+                     'sourceSha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+                     'sourceTree': subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], text=True).strip(),
+                     'dependencySetupSeconds': time.monotonic() - float(os.environ['QODER_PAIR_SETUP_STARTED_AT']),
+                     'node': subprocess.check_output(['node', '--version'], text=True).strip(),
+                     'pnpm': subprocess.check_output(['pnpm', '--version'], text=True).strip(),
+                     'platformSystem': platform.system(), 'platformMachine': platform.machine(),
+                     'dependencyOutputs': json.loads(os.environ['QODER_PAIR_DEPENDENCY_OUTPUTS'])}
+          (output / 'shared-setup.json').write_text(json.dumps(receipt, indent=2) + '\n')
+          PY
+      - name: Run three alternating complete five-file pairs
+        env:
+          ORCA_BACKGROUND_LAUNCH: '1'
+        run: python3 "$RUNNER_TEMP/qoder-import-bundle/run-paired-qoder.py" --out "$RUNNER_TEMP/qoder-import-results" --execute
+      - name: Upload all bootstrap, source, case and timing evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: qoder-imports-paired-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qoder-import-results
+          retention-days: 14
+          if-no-files-found: error
