@@ -2,6 +2,7 @@ import { findOptionOccurrence } from './command-option-occurrence'
 import type { AgentType } from './agent-status-types'
 
 // Required values consume dash-leading text; boolean and optional-valued options are excluded.
+// Codex (clap) and OpenCode (yargs) never take a dash-leading value, so they have no entry.
 const VALUE_OPTIONS: Partial<Record<AgentType, readonly string[]>> = {
   claude: [
     '--add-dir',
