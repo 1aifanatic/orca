@@ -46,6 +46,8 @@ export type AgentExitRun = {
   lastEndCheckAtMs: number
   /** Timed follow-up end checks spent for a gone process (see AGENT_END_FOLLOW_UP_DELAYS_MS). */
   endFollowUps: number
+  /** A change signal arrived while an end check was in flight: re-check once after it settles. */
+  endRecheckPending: boolean
 }
 
 export class AgentExitRunRegistry {
@@ -77,7 +79,8 @@ export class AgentExitRunRegistry {
       failedEndChecks: 0,
       nextEndCheckAtMs: 0,
       lastEndCheckAtMs: Number.NEGATIVE_INFINITY,
-      endFollowUps: 0
+      endFollowUps: 0,
+      endRecheckPending: false
     }
     this.runs.set(ptyId, run)
     return run

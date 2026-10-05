@@ -117,22 +117,28 @@ export class OrcaRuntimeWithAgentIdentityDiscovery extends OrcaRuntimeWithSerial
   ): void {
     state.timer = null
     state.inFlight = true
-    void this.discoverAgentIdentity(ptyId, incarnationId).then((done) => {
-      state.inFlight = false
-      const delay = index === null ? undefined : AGENT_IDENTITY_DISCOVERY_DELAYS_MS[index + 1]
-      if (
-        !done &&
-        index !== null &&
-        delay !== undefined &&
-        this.agentIdentityDiscoveryByPtyId.get(ptyId) === state
-      ) {
-        state.timer = setTimeout(
-          () => this.runAgentIdentityLook(ptyId, incarnationId, state, index + 1),
-          delay
-        )
-        state.timer.unref?.()
-      }
-    })
+    void this.discoverAgentIdentity(ptyId, incarnationId)
+      // Why: a throw must neither strand the round nor reject unhandled (orcad has no handler).
+      .catch((error: unknown) => {
+        console.warn('[native-chat] agent identity look failed', error)
+        return false
+      })
+      .then((done) => {
+        state.inFlight = false
+        const delay = index === null ? undefined : AGENT_IDENTITY_DISCOVERY_DELAYS_MS[index + 1]
+        if (
+          !done &&
+          index !== null &&
+          delay !== undefined &&
+          this.agentIdentityDiscoveryByPtyId.get(ptyId) === state
+        ) {
+          state.timer = setTimeout(
+            () => this.runAgentIdentityLook(ptyId, incarnationId, state, index + 1),
+            delay
+          )
+          state.timer.unref?.()
+        }
+      })
   }
 
   /** True when discovery is settled (found, or nothing more to learn for this incarnation). */

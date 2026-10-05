@@ -265,7 +265,7 @@ export class OrcaRuntimeWithCloseHeadlessMobileTerminalTab extends OrcaRuntimeWi
       isPinned?: boolean
       viewMode?: 'terminal' | 'chat'
       chatViewWrite?: RuntimeSessionTabChatViewWrite
-      agentExit?: { presentationToken: string }
+      agentExit?: { presentationToken?: string }
     }
   ): Promise<RuntimeSessionTabPropsResult> {
     const explicitWorktreeId = this.getValidatedExplicitWorktreeIdSelector(worktreeSelector)
@@ -288,9 +288,10 @@ export class OrcaRuntimeWithCloseHeadlessMobileTerminalTab extends OrcaRuntimeWi
     }
     const target = resolveSessionTabChatPairTarget(snapshot, args.tabId, hostTabId)
     if (args.agentExit && target.leafId) {
+      const { presentationToken } = args.agentExit
       return this.retireObservedAgentExitChat(worktreeId, target.parentTabId, {
         leafId: target.leafId,
-        presentationToken: args.agentExit.presentationToken
+        ...(presentationToken ? { presentationToken } : {})
       })
     }
     if (authoritativeWindow) {

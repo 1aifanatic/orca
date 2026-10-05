@@ -287,13 +287,16 @@ describe('a paired desktop pane on a host-owned pair', () => {
     ])
   })
 
-  it('writes nothing when it held no host token at the time of the exit', async () => {
+  it('still asks the host to retire this pane when it held no token (RD5-1)', async () => {
     hostSays({ viewMode: 'chat', owner: A, exitMarker: true })
     const { onAgentExitedRef } = renderPane()
     await settle()
     act(() => onAgentExitedRef.current(A, { ptyId: null, observedAtMs: 1 }))
     await settle()
-    expect(host.pairWrites()).toEqual([])
+    // Why no token: the host then retires only while this leaf owns chat, never retargeting.
+    expect(host.pairWrites().map((write) => write.params)).toEqual([
+      expect.objectContaining({ tabId: `${PARENT}::${A}`, viewMode: 'terminal', agentExit: {} })
+    ])
   })
 
   it('does not exit chat for a host owner that is not mounted here yet', async () => {

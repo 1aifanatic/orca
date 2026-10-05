@@ -35,7 +35,8 @@ export function retirePaneChatForObservedAgentExit(args: {
   }
   const environmentId = getRuntimeEnvironmentIdForWorktree(state, args.worktreeId)
   if (!environmentId) {
-    return true
+    // Why: never swallow an exit; the caller's route still turns this pane terminal.
+    return false
   }
   void import('@/runtime/web-runtime-chat-pair-write')
     .then(({ resolveWebRuntimeHostTabId, retireWebRuntimeAgentExitChat }) => {
@@ -43,14 +44,12 @@ export function retirePaneChatForObservedAgentExit(args: {
         worktreeId: args.worktreeId,
         terminalTabId: args.tabId
       })
-      // Why: without the token held when the exit was seen, the host could not order it.
+      // Why: no token held (e.g. none published yet) still asks the host; it then retires only
+      // while this leaf owns chat, never moving chat or overriding another pane.
       const presentationToken = readHostPresentationTokenAt(
         { worktreeId: args.worktreeId, hostTabId, leafId: args.leafId },
         observedAtMs
       )
-      if (!presentationToken) {
-        return undefined
-      }
       return retireWebRuntimeAgentExitChat({
         worktreeId: args.worktreeId,
         terminalTabId: args.tabId,

@@ -57,13 +57,14 @@ export async function setWebRuntimeChatPair(args: {
 
 /**
  * A pane's observed agent exit on a paired host that owns exits: asks the host to turn that
- * pane's chat terminal only while its presentation still carries `presentationToken`.
+ * pane's chat terminal only while its presentation still carries `presentationToken`, or, with
+ * no token held, only while that pane still owns chat.
  */
 export async function retireWebRuntimeAgentExitChat(args: {
   worktreeId: string
   terminalTabId: string
   leafId: string
-  presentationToken: string
+  presentationToken: string | null
 }): Promise<RuntimeSessionTabPropsResult> {
   const state = useAppStore.getState()
   const environmentId = getRuntimeEnvironmentIdForWorktree(state, args.worktreeId) ?? null
@@ -77,7 +78,7 @@ export async function retireWebRuntimeAgentExitChat(args: {
       worktree: toRuntimeWorktreeSelector(args.worktreeId),
       tabId: `${parentTabId}${HOST_TERMINAL_SURFACE_SEPARATOR}${args.leafId}`,
       viewMode: 'terminal',
-      agentExit: { presentationToken: args.presentationToken }
+      agentExit: args.presentationToken ? { presentationToken: args.presentationToken } : {}
     },
     timeoutMs: 15_000
   })

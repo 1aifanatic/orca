@@ -25,6 +25,7 @@ export class OrcaRuntimeWithAgentExitProof extends OrcaRuntimeWithAgentIdentityD
   private readonly agentPresenceNudged = new Set<string>()
   private agentPresenceTickTimer: ReturnType<typeof setTimeout> | null = null
   private agentPresenceTickRunning = false
+  /** One pending timed end check per PTY: a slow follow-up or a deferred signal re-check. */
   private readonly agentEndFollowUpTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
   /** Targeted presence of known agents on this host (the execution host for local PTYs). */
@@ -221,6 +222,11 @@ export class OrcaRuntimeWithAgentExitProof extends OrcaRuntimeWithAgentIdentityD
       checkStartedAtMs >= run.nextEndCheckAtMs ||
       (options.changeSignal === true &&
         checkStartedAtMs >= run.lastEndCheckAtMs + AGENT_PRESENCE_FALLBACK_INTERVAL_MS)
+    if (run.endHandled && options.changeSignal && this.agentExitRuns.isCurrent(run)) {
+      // Why: the in-flight check may predate this signal (e.g. the agent was still in front).
+      run.endRecheckPending = true
+      return
+    }
     if (!inspect || run.endHandled || !this.agentExitRuns.isCurrent(run) || !allowed) {
       return
     }
@@ -249,7 +255,12 @@ export class OrcaRuntimeWithAgentExitProof extends OrcaRuntimeWithAgentIdentityD
         }
         const replacement = readRecognizedForegroundAgent(inspection, run.incarnationId)
         if (replacement && replacement.pid !== run.identity?.pid) {
-          const identity = await this.bootstrapAgentIdentity(replacement)
+          const record = this.readAgentExitPty(run.ptyId)
+          // Why local only: a remote PID means nothing in this host's process table.
+          const identity =
+            record && this.canProbeAgentProcessLocally(record)
+              ? await this.bootstrapAgentIdentity(replacement)
+              : null
           if (this.agentExitRuns.isCurrent(run)) {
             this.clearAgentEndFollowUp(run.ptyId)
             this.agentExitRuns.begin(run.ptyId, {
@@ -270,7 +281,35 @@ export class OrcaRuntimeWithAgentExitProof extends OrcaRuntimeWithAgentIdentityD
           run.nextEndCheckAtMs = nextAgentPresenceAttemptAtMs(run.failedEndChecks)
           this.scheduleAgentEndFollowUp(run, observedAtMs)
         }
+        if (run.endRecheckPending) {
+          this.scheduleAgentEndRecheck(run, observedAtMs)
+        }
       })
+      .catch((error: unknown) => {
+        // Why: a throw must neither strand the run nor reject unhandled (orcad has no handler).
+        console.warn('[native-chat] agent exit check failed', error)
+        if (this.agentExitRuns.isCurrent(run) && !run.exitProven) {
+          run.endHandled = false
+        }
+      })
+  }
+
+  /** The signal that arrived mid-check gets one more check, no sooner than the rate limit allows. */
+  private scheduleAgentEndRecheck(run: AgentExitRun, observedAtMs: number): void {
+    run.endRecheckPending = false
+    this.clearAgentEndFollowUp(run.ptyId)
+    const delay = Math.max(
+      0,
+      run.lastEndCheckAtMs + AGENT_PRESENCE_FALLBACK_INTERVAL_MS - Date.now()
+    )
+    const timer = setTimeout(() => {
+      this.agentEndFollowUpTimers.delete(run.ptyId)
+      if (this.agentExitRuns.isCurrent(run) && this.isAgentExitChatCandidate(run.ptyId)) {
+        this.handleAgentRunEnd(run, observedAtMs, { changeSignal: true })
+      }
+    }, delay)
+    timer.unref?.()
+    this.agentEndFollowUpTimers.set(run.ptyId, timer)
   }
 
   /**
