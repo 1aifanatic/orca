@@ -156,7 +156,8 @@ it('still offers a damaged chat, and files its failure when acting on it', async
 it.each([
   ['after the dialog listed the offers', true, undefined],
   ['on a host that has not listed them yet', false, undefined],
-  ['for a client shown every agent', false, () => true]
+  // A remote client that cannot show every agent dismisses through its audience.
+  ['for a client shown only Codex', false, (agent: string) => agent === 'codex']
 ])(
   "dismisses every listed offer and leaves a newer Orca's hidden one as it was, %s",
   async (_when, listFirst, audience) => {
