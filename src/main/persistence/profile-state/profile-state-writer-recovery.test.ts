@@ -81,20 +81,20 @@ describe('profile state writer recovery', () => {
     )
   })
 
-  it('ignores the old worker reply delivered after its on-time timeout and adopts the commit', async () => {
-    const { authority, onFailure, readMeta, awaitQueuedReplies, log } = await createRecoveryFixture(
-      [],
-      { timeoutMs: 30_000 }
-    )
+  it('accepts a queued reply without replacing its healthy worker after the deadline', async () => {
+    const { authority, onFailure, readMeta, awaitQueuedReplies, log, instances } =
+      await createRecoveryFixture([], { timeoutMs: 30_000 })
     const before = readMeta().revision
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const write = authority.writeSerializedDomains(marker('late'))
-    // The reply is queued; the timeout fires first and on time, so no grace applies.
+    // The timer expires first, but the final check must let the queued reply drain.
     awaitQueuedReplies(2)
     vi.advanceTimersByTime(30_000)
     await expect(write).resolves.toBeUndefined()
     expect(readMeta().revision).toBe(before + 1)
     expect(log()).toEqual(['0:write-domains'])
+    expect(instances()).toBe(1)
+    expect(recoveryBreadcrumbs()).toEqual([])
     vi.useRealTimers()
     await authority.writeSerializedDomains(marker('next'))
     expect(readMeta().revision).toBe(before + 2)
@@ -135,12 +135,22 @@ describe('profile state writer recovery', () => {
   })
 
   it('shares one replacement between the interrupted caller and the eager failure handler', async () => {
-    const { authority, instances, readMeta } = await createRecoveryFixture([{ hangWrite: 1 }])
+    const startGate = new SharedArrayBuffer(4)
+    const { authority, instances, readMeta } = await createRecoveryFixture([
+      { hangWrite: 1 },
+      { startGate }
+    ])
     const before = readMeta().revision
     const write = authority.writeSerializedDomains(marker('shared'))
     // Waiters during recovery are admitted rather than refused.
-    await vi.waitFor(() => expect(instances()).toBe(2), { timeout: 5_000 })
-    expect(() => authority.assertWritable()).not.toThrow()
+    try {
+      await vi.waitFor(() => expect(instances()).toBe(2), { timeout: 5_000 })
+      expect(() => authority.assertWritable()).not.toThrow()
+    } finally {
+      const gate = new Int32Array(startGate)
+      Atomics.store(gate, 0, 1)
+      Atomics.notify(gate, 0)
+    }
     await write
     await authority.assertCurrentRevision()
     expect(instances()).toBe(2)
