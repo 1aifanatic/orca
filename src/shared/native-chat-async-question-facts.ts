@@ -113,8 +113,9 @@ export function journalAsyncQuestionFacts(
   submissions: readonly AgentJournalSubmission[]
 ): NativeChatAsyncQuestionFact[] {
   const submissionFor = journalSubmissionLookup(submissions)
-  return items
-    .toSorted(compareAgentJournalItems)
+  // Not `toSorted`: mobile's Hermes lacks it, and src/shared must stay loadable there.
+  return Array.from(items)
+    .sort(compareAgentJournalItems)
     .flatMap((item) => journalItemFacts(item, submissionFor))
 }
 
