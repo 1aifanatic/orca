@@ -32,19 +32,3 @@ export function agentSessionStoredAgents(
   }
   return byAgent
 }
-
-/** Admits only a variable a registered agent declares: a record's variable becomes a child's environment. */
-export function isDeclaredAccountHomeVariable(
-  agents: AgentSessionStoredAgents,
-  value: unknown
-): value is string {
-  if (typeof value !== 'string') {
-    return false
-  }
-  for (const agent of agents.values()) {
-    if (agent.accountHomeVariable === value) {
-      return true
-    }
-  }
-  return false
-}

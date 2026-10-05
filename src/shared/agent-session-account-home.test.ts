@@ -3,10 +3,7 @@ import { agentSessionAccountHome } from './agent-session-account-home'
 import { isPersistedAgentSessionRecord } from './agent-session-record'
 import { agentSessionRecordFixture } from './agent-session-record.test-fixture'
 import { encodeAgentSessionRecord } from './agent-session-record-stored-form'
-import {
-  agentSessionStoredAgents,
-  isDeclaredAccountHomeVariable
-} from './agent-session-stored-agent'
+import { agentSessionStoredAgents } from './agent-session-stored-agent'
 import { CLAUDE_AND_CODEX_STORED_AGENTS } from './agent-session-stored-agent.test-fixture'
 
 describe('agent session account home', () => {
@@ -22,30 +19,20 @@ describe('agent session account home', () => {
     ).toBe('{"variable":"CODEX_HOME","path":"/home/dev/.codex"}')
   })
 
-  it('admits only a variable a registered agent declares', () => {
-    expect(isDeclaredAccountHomeVariable(CLAUDE_AND_CODEX_STORED_AGENTS, 'CLAUDE_CONFIG_DIR')).toBe(
-      true
-    )
-    expect(isDeclaredAccountHomeVariable(CLAUDE_AND_CODEX_STORED_AGENTS, 'CODEX_HOME')).toBe(true)
-    expect(isDeclaredAccountHomeVariable(CLAUDE_AND_CODEX_STORED_AGENTS, 'PATH')).toBe(false)
-    expect(isDeclaredAccountHomeVariable(CLAUDE_AND_CODEX_STORED_AGENTS, undefined)).toBe(false)
-    const withGrok = agentSessionStoredAgents([
-      ...CLAUDE_AND_CODEX_STORED_AGENTS.values(),
-      { agent: 'grok', handleTransport: 'acp', accountHomeVariable: 'GROK_HOME' }
-    ])
-    expect(isDeclaredAccountHomeVariable(withGrok, 'GROK_HOME')).toBe(true)
-    expect(isDeclaredAccountHomeVariable(CLAUDE_AND_CODEX_STORED_AGENTS, 'GROK_HOME')).toBe(false)
-  })
-
-  it('refuses a stored record whose account home names an undeclared variable', () => {
+  // Whether the variable is the record's own agent's is decided when its agent would start, since
+  // it becomes the child's environment (structured-agent-session-drivability.test.ts).
+  it('reads any well-formed variable, and sets aside one that is not a variable name', () => {
     const record = encodeAgentSessionRecord(agentSessionRecordFixture())
-    expect(isPersistedAgentSessionRecord(record, CLAUDE_AND_CODEX_STORED_AGENTS)).toBe(true)
-    expect(
+    const withVariable = (variable: string) =>
       isPersistedAgentSessionRecord(
-        { ...record, accountHome: { variable: 'LD_PRELOAD', path: '/tmp/x' } },
+        { ...record, accountHome: { variable, path: '/tmp/x' } },
         CLAUDE_AND_CODEX_STORED_AGENTS
       )
-    ).toBe(false)
+    expect(withVariable('CODEX_HOME')).toBe(true)
+    expect(withVariable('GROK_HOME')).toBe(true)
+    for (const malformed of ['', 'A B', '1HOME', 'HOME=x', 'X'.repeat(129)]) {
+      expect(withVariable(malformed)).toBe(false)
+    }
   })
 
   it('refuses registering one agent twice', () => {
