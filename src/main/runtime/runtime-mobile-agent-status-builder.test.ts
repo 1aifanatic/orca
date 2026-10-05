@@ -281,13 +281,14 @@ describe('idle neutral-title conversation identity (STA-7370)', () => {
       ...retainedFrom(row),
       payload: { ...retainedFrom(row).payload, toolName: 'shell' }
     }
-    const result = build({ rows: [row], retained })
+    const pty = ptyRecord()
+    const result = build({ rows: [row], retained, pty })
     expect(readMobileConversationIdentityCarrier(result)).toBeNull()
     expect(result).toEqual({
       agentStatus: {
         state: 'done',
         prompt: '',
-        updatedAt: ptyRecord().lastOscTitleEpochMs ?? 0,
+        updatedAt: pty.lastOscTitleEpochMs ?? 0,
         stateStartedAt: expect.any(Number),
         paneKey: PANE_KEY,
         stateHistory: [],
