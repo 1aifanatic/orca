@@ -233,7 +233,8 @@ export function useTerminalPaneCloseActions(controller: TerminalPaneBindingContr
       if (!isTerminalTabStripDropTarget(target)) {
         return false
       }
-      const fallbackPtyId = paneTransportsRef.current.get(sourcePaneId)?.getPtyId() ?? null
+      const sourceTransport = paneTransportsRef.current.get(sourcePaneId)
+      const fallbackPtyId = sourceTransport?.getPtyId() ?? null
       const sourcePaneCwd = paneCwdRef.current.get(sourcePaneId)
       const commitMove = window.api?.pty?.moveLeafToNewTab
       void detachTerminalPaneToTab({
@@ -244,6 +245,7 @@ export function useTerminalPaneCloseActions(controller: TerminalPaneBindingContr
         persistLayoutSnapshot,
         sourcePaneId,
         ...(sourcePaneCwd ? { sourcePaneCwd } : {}),
+        sourceConnectPending: sourceTransport?.isConnectPending?.() ?? false,
         sourceTabId: tabId,
         targetGroupId: target.groupId,
         targetIndex: target.insertionIndex,
