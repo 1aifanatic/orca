@@ -180,6 +180,22 @@ type ParityScenario = {
   restart?: { expectedPaneCount: number }
 }
 
+/** Quit through the shared helper and report how the process ended; a forced kill skips the final save. */
+async function quitAndReadExit(
+  session: ReturnType<typeof createRestartSession>,
+  app: ElectronApplication
+): Promise<{ code: number | null; signal: string | null }> {
+  const proc = app.process()
+  const exited = new Promise<{ code: number | null; signal: string | null }>((resolve) => {
+    if (proc.exitCode !== null || proc.signalCode !== null) {
+      resolve({ code: proc.exitCode, signal: proc.signalCode })
+    }
+    proc.once('exit', (code, signal) => resolve({ code, signal }))
+  })
+  await session.close(app)
+  return exited
+}
+
 /** Launch on a fresh profile, run the journey, capture the settled renderer, quit and read the save. */
 async function runScenario(testInfo: TestInfo, scenario: ParityScenario): Promise<void> {
   const repoPath = seededRepoPathOrSkip()
@@ -202,10 +218,10 @@ async function runScenario(testInfo: TestInfo, scenario: ParityScenario): Promis
     await scenario.journey(journey)
     await waitForHostTerminals(journey)
     const renderer = await readSettledRendererLayout(first.page)
-    await session.close(app)
+    const exit = await quitAndReadExit(session, app)
     app = null
     const persisted = readPersistedSessions(session.userDataDir)
-    checkpoints.push({ label: 'after-quit', renderer, persisted })
+    checkpoints.push({ label: 'after-quit', renderer, persisted, exit })
 
     if (scenario.restart) {
       const second = await session.launch()
@@ -213,10 +229,15 @@ async function runScenario(testInfo: TestInfo, scenario: ParityScenario): Promis
       await bootstrapRestoredLaunch(second.page, setup.worktreeId)
       await waitForBoundPanes(second.page, scenario.restart.expectedPaneCount)
       const restored = await readSettledRendererLayout(second.page)
-      await session.close(app)
+      const restartExit = await quitAndReadExit(session, app)
       app = null
       const restoredSave = readPersistedSessions(session.userDataDir)
-      checkpoints.push({ label: 'after-restart', renderer: restored, persisted: restoredSave })
+      checkpoints.push({
+        label: 'after-restart',
+        renderer: restored,
+        persisted: restoredSave,
+        exit: restartExit
+      })
     }
     writeCapture(testInfo, {
       scenario: scenario.id,

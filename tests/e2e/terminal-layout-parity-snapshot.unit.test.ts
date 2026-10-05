@@ -102,6 +102,17 @@ describe('terminal layout parity', () => {
     expect(elsewhere.undeclared).toHaveLength(2)
   })
 
+  it('reports a path main does not reproduce without failing on it', () => {
+    const report = compareParityCaptures(
+      one(capture(ids.a)),
+      one(capture(ids.b, 0.6)),
+      [],
+      [{ scenario: 'split', paths: ['[0].renderer', '[0].persisted'], evidence: 'test' }]
+    )
+    expect(isParityClean(report)).toBe(true)
+    expect(report.unstableOnMain).toHaveLength(2)
+  })
+
   it('fails a declared fix that changed nothing', () => {
     const report = compareParityCaptures(one(capture(ids.a)), one(capture(ids.b)), [
       { scenario: 'split', bugId: 'STA-0000', paths: ['[0]'], reason: 'test' }

@@ -11,7 +11,10 @@ import {
   compareParityCaptures,
   isParityClean
 } from '../../tests/e2e/terminal-layout-parity-snapshot.ts'
-import { TERMINAL_LAYOUT_PARITY_DECLARED_DIFFERENCES } from '../../tests/e2e/terminal-layout-parity-declared-differences.ts'
+import {
+  TERMINAL_LAYOUT_PARITY_DECLARED_DIFFERENCES,
+  TERMINAL_LAYOUT_PARITY_UNSTABLE_ON_MAIN
+} from '../../tests/e2e/terminal-layout-parity-declared-differences.ts'
 
 const repoRoot = resolve(import.meta.dirname, '../..')
 const BUILD_STAMP = join('out', '.terminal-layout-parity-build')
@@ -148,7 +151,8 @@ function main() {
   const report = compareParityCaptures(
     baseCaptures,
     loadCaptures(headRun.outDir),
-    TERMINAL_LAYOUT_PARITY_DECLARED_DIFFERENCES
+    TERMINAL_LAYOUT_PARITY_DECLARED_DIFFERENCES,
+    TERMINAL_LAYOUT_PARITY_UNSTABLE_ON_MAIN
   )
   writeFileSync(join(outRoot, 'report.json'), `${JSON.stringify(report, null, 2)}\n`)
   console.log(`[layout-parity] base ${baseSha} vs head ${headSha ?? 'working tree'}`)
@@ -156,6 +160,9 @@ function main() {
     console.log(
       `[layout-parity] declared (${difference.bugId}) ${difference.scenario}${difference.path}`
     )
+  }
+  for (const difference of report.unstableOnMain) {
+    console.log(`[layout-parity] unstable on main ${difference.scenario}${difference.path}`)
   }
   for (const difference of report.undeclared) {
     console.log(

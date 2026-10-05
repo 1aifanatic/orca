@@ -5,7 +5,13 @@
 
 export const TERMINAL_LAYOUT_PARITY_OUT_ENV = 'ORCA_TERMINAL_LAYOUT_PARITY_OUT'
 
-export type RawParityCheckpoint = { label: string; renderer: unknown; persisted: unknown }
+export type RawParityCheckpoint = {
+  label: string
+  renderer: unknown
+  persisted: unknown
+  /** How the app exited before `persisted` was read; a forced kill skips the final save. */
+  exit?: { code: number | null; signal: string | null }
+}
 
 export type RawParityCapture = {
   scenario: string
@@ -22,11 +28,15 @@ export type DeclaredParityDifference = {
   reason: string
 }
 
+/** A path main itself does not reproduce run to run; compared differences there are reported, not failed. */
+export type UnstableOnMainPath = { scenario: string; paths: string[]; evidence: string }
+
 export type ParityDifference = { scenario: string; path: string; base: unknown; head: unknown }
 
 export type ParityReport = {
   undeclared: ParityDifference[]
   declared: (ParityDifference & { bugId: string })[]
+  unstableOnMain: ParityDifference[]
   /** Declarations whose fix produced no difference: the claimed fix was not observed. */
   unusedDeclarations: DeclaredParityDifference[]
 }
@@ -158,6 +168,7 @@ export function normalizeParityCapture(capture: RawParityCapture): Json {
   }
   return capture.checkpoints.map((checkpoint) => ({
     label: checkpoint.label,
+    exit: checkpoint.exit ?? null,
     renderer: normalizeValue(checkpoint.renderer, 'renderer', '', labeler, pathLabels),
     persisted: normalizeValue(checkpoint.persisted, 'persisted', '', labeler, pathLabels)
   }))
@@ -194,9 +205,17 @@ function matchesPath(path: string, prefix: string): boolean {
 export function compareParityCaptures(
   base: Map<string, RawParityCapture>,
   head: Map<string, RawParityCapture>,
-  declarations: readonly DeclaredParityDifference[]
+  declarations: readonly DeclaredParityDifference[],
+  unstableOnMain: readonly UnstableOnMainPath[] = []
 ): ParityReport {
-  const report: ParityReport = { undeclared: [], declared: [], unusedDeclarations: [] }
+  const report: ParityReport = {
+    undeclared: [],
+    declared: [],
+    unstableOnMain: [],
+    unusedDeclarations: []
+  }
+  const covers = (entry: { scenario: string; paths: string[] }, scenario: string, path: string) =>
+    entry.scenario === scenario && entry.paths.some((prefix) => matchesPath(path, prefix))
   const used = new Set<DeclaredParityDifference>()
   for (const scenario of [...new Set([...base.keys(), ...head.keys()])].sort()) {
     const baseCapture = base.get(scenario)
@@ -215,13 +234,12 @@ export function compareParityCaptures(
         base: baseValue === undefined ? '<missing>' : baseValue,
         head: headValue === undefined ? '<missing>' : headValue
       }
-      const declaration = declarations.find(
-        (entry) =>
-          entry.scenario === scenario && entry.paths.some((prefix) => matchesPath(path, prefix))
-      )
+      const declaration = declarations.find((entry) => covers(entry, scenario, path))
       if (declaration) {
         used.add(declaration)
         report.declared.push({ ...difference, bugId: declaration.bugId })
+      } else if (unstableOnMain.some((entry) => covers(entry, scenario, path))) {
+        report.unstableOnMain.push(difference)
       } else {
         report.undeclared.push(difference)
       }
