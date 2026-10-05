@@ -71,7 +71,14 @@ for (const kind of ['git', 'folder'] as const) {
     )
     const editor = orcaPage.locator('.tiptap.ProseMirror')
     await expect(editor.locator('h2')).toHaveText('Section Two')
-    await editor.focus()
+    await expect(editor).toBeFocused()
+    // Mount focus queues another frame before the caret is ready for typing.
+    await orcaPage.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        )
+    )
     await editor.locator('h2').evaluate((heading) => {
       const text = heading.firstChild
       if (!(text instanceof Text)) {
@@ -85,7 +92,7 @@ for (const kind of ['git', 'folder'] as const) {
       selection?.addRange(range)
       document.dispatchEvent(new Event('selectionchange'))
     })
-    await editor.press('Enter')
+    await orcaPage.keyboard.press('Enter')
     await orcaPage.screenshot({
       path: testInfo.outputPath(`heading-enter-${kind}.png`),
       animations: 'disabled'
@@ -95,18 +102,34 @@ for (const kind of ['git', 'folder'] as const) {
     await expect(editor.locator('p').filter({ hasText: /^Two$/ })).toHaveCount(1)
     await expect(editor.locator('p').filter({ hasText: /^Tail\.$/ })).toHaveCount(1)
     const isMac = await orcaPage.evaluate(() => navigator.userAgent.includes('Mac'))
-    await editor.press(`${isMac ? 'Meta' : 'Control'}+z`)
+    await orcaPage.keyboard.press(`${isMac ? 'Meta' : 'Control'}+z`)
     await expect(editor.locator('h2')).toHaveText('Section Two')
     await expect(editor.locator('p').filter({ hasText: /^Two$/ })).toHaveCount(0)
-    await editor.press(`${isMac ? 'Meta' : 'Control'}+Shift+z`)
+    await orcaPage.keyboard.press(`${isMac ? 'Meta' : 'Control'}+Shift+z`)
     await expect(editor.locator('h2')).toHaveText('Section')
     await expect(editor.locator('p').filter({ hasText: /^Two$/ })).toHaveCount(1)
-    await editor.press('Backspace')
+    await expect(editor).toBeFocused()
+    await expect
+      .poll(() =>
+        editor.evaluate((root) => {
+          const selection = document.getSelection()
+          const text = selection?.anchorNode
+          return (
+            selection?.isCollapsed === true &&
+            selection.anchorOffset === 0 &&
+            text instanceof Text &&
+            text.parentElement?.closest('p')?.textContent === 'Two' &&
+            root.contains(text)
+          )
+        })
+      )
+      .toBe(true)
+    await orcaPage.keyboard.press('Backspace')
     await expect(editor.locator('h2')).toHaveText('Section Two')
-    await editor.press('Enter')
+    await orcaPage.keyboard.press('Enter')
     await expect(editor.locator('h2')).toHaveText('Section')
     await expect(editor.locator('p').filter({ hasText: /^Two$/ })).toHaveCount(1)
-    await editor.press(`${isMac ? 'Meta' : 'Control'}+s`)
+    await orcaPage.keyboard.press(`${isMac ? 'Meta' : 'Control'}+s`)
     await expect.poll(() => readFileSync(filePath, 'utf8')).toBe('## Section \n\nTwo\n\nTail.\n')
     expect(readFileSync(filePath, 'utf8')).not.toContain('## Two')
     await testInfo.attach('saved-heading.md', {
