@@ -1,15 +1,10 @@
-import type { ExecutionHostId } from '../../../shared/execution-host'
 import type { PersistedState } from '../../../shared/persisted-state-types'
 import type { SshRemotePtyLease } from '../../../shared/ssh-types'
-import { isTerminalLeafId } from '../../../shared/stable-pane-id'
-import type {
-  TerminalLeafMoveRequest,
-  TerminalLeafMoveResult
+import {
+  terminalLeafMovePaneKeys,
+  type TerminalLeafMoveRequest,
+  type TerminalLeafMoveResult
 } from '../../../shared/terminal-leaf-move'
-import type {
-  TerminalPaneLayoutNode,
-  TerminalPaneSplitDirection
-} from '../../../shared/terminal-tab-types'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
 import { retireLeavesFromTerminalLayout } from '../../runtime/mobile-session-terminal-retirement'
 import { createMinimalPersistedTerminalTab } from '../restoring-sessions/session-owner-fields'
@@ -23,32 +18,16 @@ import {
   type TerminalSessionPartition
 } from './terminal-topology-membership'
 
-/** Where a moved leaf sat in one partition, so an undo can put it back exactly (review-2 SF2). */
-export type TerminalLeafMoveOrigin = {
-  hostId: ExecutionHostId
-  /** The split the leaf left; null when it was the source's only pane. */
-  split: {
-    direction: TerminalPaneSplitDirection
-    ratio?: number
-    leafFirst: boolean
-    siblingLeafIds: string[]
-  } | null
-  /** Source values before the move and the ones the move left, so an undo restores only its own. */
-  tabPtyId: { before: string | null; after: string | null }
-  remoteSessionId: { before: string | undefined; after: string | undefined }
-}
-
 export type PlannedTerminalLeafMove = {
   result: TerminalLeafMoveResult
-  /** Every partition the plan rewrote; empty unless it changed something. */
+  /** Every partition the plan rewrote; empty when nothing changes. */
   sessions: TerminalSessionPartition[]
-  origins: TerminalLeafMoveOrigin[]
 }
 
 export function moveRecordKey<T>(
   record: Record<string, T> | undefined,
   fromKey: string,
-  toKey: string,
+  toKey: string | null,
   remap: (value: T) => T = (value) => value
 ): Record<string, T> | undefined {
   if (!record || !Object.hasOwn(record, fromKey)) {
@@ -57,49 +36,41 @@ export function moveRecordKey<T>(
   const next = { ...record }
   const value = next[fromKey]
   delete next[fromKey]
-  if (value !== undefined) {
+  if (toKey !== null && value !== undefined) {
     next[toKey] = remap(value)
   }
   return next
 }
 
-function hasTabId(session: WorkspaceSessionState, tabId: string): boolean {
-  return (
-    Object.values(session.tabsByWorktree ?? {}).some((tabs) =>
-      tabs.some((tab) => tab.id === tabId)
-    ) || Object.hasOwn(session.terminalLayoutsByTabId ?? {}, tabId)
+function liveTabIds(session: WorkspaceSessionState): Set<string> {
+  return new Set(
+    Object.values(session.tabsByWorktree ?? {}).flatMap((tabs) => tabs.map((tab) => tab.id))
   )
 }
 
-function findLeafSplit(
-  node: TerminalPaneLayoutNode | null,
+function hasTabId(session: WorkspaceSessionState, tabId: string): boolean {
+  return (
+    liveTabIds(session).has(tabId) || Object.hasOwn(session.terminalLayoutsByTabId ?? {}, tabId)
+  )
+}
+
+function holdsInTab(
+  session: WorkspaceSessionState,
+  worktreeId: string,
+  tabId: string,
   leafId: string
-): TerminalLeafMoveOrigin['split'] {
-  if (!node || node.type === 'leaf') {
-    return null
-  }
-  const sides = [
-    [node.first, node.second, true],
-    [node.second, node.first, false]
-  ] as const
-  for (const [child, sibling, leafFirst] of sides) {
-    if (child.type === 'leaf' && child.leafId === leafId) {
-      return {
-        direction: node.direction,
-        ...(node.ratio !== undefined ? { ratio: node.ratio } : {}),
-        leafFirst,
-        siblingLeafIds: collectLayoutLeafIdsInOrder(sibling)
-      }
-    }
-  }
-  return findLeafSplit(node.first, leafId) ?? findLeafSplit(node.second, leafId)
+) {
+  return (
+    Boolean(session.tabsByWorktree?.[worktreeId]?.some((tab) => tab.id === tabId)) &&
+    layoutContainsLeafId(session.terminalLayoutsByTabId?.[tabId]?.root ?? null, leafId)
+  )
 }
 
 function moveLeafInPartition(
-  { hostId, session }: TerminalSessionPartition,
+  session: WorkspaceSessionState,
   request: TerminalLeafMoveRequest,
   ptyId: string | null
-): { session: WorkspaceSessionState; origin: TerminalLeafMoveOrigin } | null {
+): WorkspaceSessionState | null {
   const { worktreeId, sourceTabId, targetTabId, leafId } = request
   const sourceLayout = session.terminalLayoutsByTabId?.[sourceTabId]
   const tabs = session.tabsByWorktree?.[worktreeId] ?? []
@@ -107,17 +78,11 @@ function moveLeafInPartition(
   if (!sourceLayout || !sourceTab) {
     return null
   }
-  const fromPaneKey = `${sourceTabId}:${leafId}`
-  const toPaneKey = `${targetTabId}:${leafId}`
+  const { from: fromPaneKey, to: toPaneKey } = terminalLeafMovePaneKeys(request)
   const boundHere = sourceLayout.ptyIdsByLeafId?.[leafId]
-  // A stale copy's incarnation belongs to the PTY it no longer names.
-  const incarnations = { ...session.terminalPtyIncarnationsByPaneKey }
-  if (boundHere && boundHere !== ptyId) {
-    delete incarnations[fromPaneKey]
-  }
   const remainingLayout = retireLeavesFromTerminalLayout(sourceLayout, new Set([leafId]))
   const remainingPtyIds = Object.values(remainingLayout?.ptyIdsByLeafId ?? {})
-  const { pendingActivationSpawn, ...minimalTab } = createMinimalPersistedTerminalTab({
+  const { pendingActivationSpawn, ...row } = createMinimalPersistedTerminalTab({
     worktreeId,
     tabId: targetTabId,
     ptyId: ptyId ?? '',
@@ -125,16 +90,16 @@ function moveLeafInPartition(
     ...(sourceTab.startupCwd ? { startupCwd: sourceTab.startupCwd } : {})
   })
   const targetTab = {
-    ...minimalTab,
+    ...row,
     ptyId,
     // A moved live pane reattaches; only an unbound one still spawns on activation.
     ...(ptyId ? {} : { pendingActivationSpawn }),
     ...(sourceTab.shellOverride ? { shellOverride: sourceTab.shellOverride } : {})
   }
-  const sourceTabPtyIdMoves = sourceTab.ptyId === ptyId
-  const sourceTabPtyId = sourceTabPtyIdMoves ? (remainingPtyIds[0] ?? null) : sourceTab.ptyId
   const nextTabs = tabs.map((tab) =>
-    tab.id === sourceTabId && sourceTabPtyIdMoves ? { ...tab, ptyId: sourceTabPtyId } : tab
+    tab.id === sourceTabId && tab.ptyId === ptyId
+      ? { ...tab, ptyId: remainingPtyIds[0] ?? null }
+      : tab
   )
   const movedTitle = sourceLayout.titlesByLeafId?.[leafId]
   const terminalLayoutsByTabId = {
@@ -155,8 +120,7 @@ function moveLeafInPartition(
     delete terminalLayoutsByTabId[sourceTabId]
   }
   const remoteSessionIdsByTabId = { ...session.remoteSessionIdsByTabId }
-  const sourceRemoteSessionId = remoteSessionIdsByTabId[sourceTabId]
-  if (ptyId && sourceRemoteSessionId === ptyId) {
+  if (ptyId && remoteSessionIdsByTabId[sourceTabId] === ptyId) {
     remoteSessionIdsByTabId[targetTabId] = ptyId
     if (remainingPtyIds[0]) {
       remoteSessionIdsByTabId[sourceTabId] = remainingPtyIds[0]
@@ -164,16 +128,17 @@ function moveLeafInPartition(
       delete remoteSessionIdsByTabId[sourceTabId]
     }
   }
-  const moved = advanceTerminalTopologyRevision(
+  return advanceTerminalTopologyRevision(
     {
       ...session,
       tabsByWorktree: { ...session.tabsByWorktree, [worktreeId]: [...nextTabs, targetTab] },
       terminalLayoutsByTabId,
       ...(session.remoteSessionIdsByTabId ? { remoteSessionIdsByTabId } : {}),
+      // A stale copy's incarnation belongs to the PTY it no longer names.
       terminalPtyIncarnationsByPaneKey: moveRecordKey(
-        session.terminalPtyIncarnationsByPaneKey ? incarnations : undefined,
+        session.terminalPtyIncarnationsByPaneKey,
         fromPaneKey,
-        toPaneKey
+        boundHere && boundHere !== ptyId ? null : toPaneKey
       ),
       sleepingAgentSessionsByPaneKey: moveRecordKey(
         session.sleepingAgentSessionsByPaneKey,
@@ -184,18 +149,30 @@ function moveLeafInPartition(
     },
     worktreeId
   )
-  return {
-    session: moved,
-    origin: {
-      hostId,
-      split: findLeafSplit(sourceLayout.root, leafId),
-      tabPtyId: { before: sourceTab.ptyId ?? null, after: sourceTabPtyId ?? null },
-      remoteSessionId: {
-        before: sourceRemoteSessionId,
-        after: remoteSessionIdsByTabId[sourceTabId]
-      }
-    }
+}
+
+/** A move main already committed, asked again because its answer was lost. */
+function findCommittedMove(
+  owners: readonly TerminalSessionPartition[],
+  request: TerminalLeafMoveRequest
+): TerminalLeafMoveResult | null {
+  const { worktreeId, sourceTabId, targetTabId, leafId } = request
+  const targets = owners.filter(({ session }) => liveTabIds(session).has(targetTabId))
+  const committed =
+    targets.length > 0 &&
+    targets.every(({ session }) => {
+      const leaves = collectLayoutLeafIdsInOrder(
+        session.terminalLayoutsByTabId?.[targetTabId]?.root ?? null
+      )
+      return leaves.length === 1 && leaves[0] === leafId
+    }) &&
+    !owners.some(({ session }) => holdsInTab(session, worktreeId, sourceTabId, leafId))
+  if (!committed) {
+    return null
   }
+  const ptyId =
+    targets[0].session.terminalLayoutsByTabId?.[targetTabId]?.ptyIdsByLeafId?.[leafId] ?? null
+  return { status: 'moved', ptyId }
 }
 
 /**
@@ -204,81 +181,69 @@ function moveLeafInPartition(
  * follows it here instead of being rebuilt later by a renderer save that main's membership rebase
  * would discard. Every owner partition holding the pane moves together: a relay reattach writes an
  * SSH pane into `local` as well as `ssh:`, and a copy left behind refuses the moved pane's bind.
+ * Repeating a committed move answers `moved` again and writes nothing.
  */
 export function planTerminalLeafMove(
   partitions: readonly TerminalSessionPartition[],
   request: TerminalLeafMoveRequest
 ): PlannedTerminalLeafMove {
-  const { worktreeId, sourceTabId, targetTabId, leafId } = request
+  const { worktreeId, sourceTabId, leafId } = request
   const refuse = (
     reason: Extract<TerminalLeafMoveResult, { status: 'refused' }>['reason']
-  ): PlannedTerminalLeafMove => ({
-    result: { status: 'refused', reason },
-    sessions: [],
-    origins: []
-  })
-  if (!isTerminalLeafId(leafId) || sourceTabId === targetTabId) {
-    return refuse('invalid_request')
+  ): PlannedTerminalLeafMove => ({ result: { status: 'refused', reason }, sessions: [] })
+  const owners = partitions.filter(({ hostId }) => isTerminalOwnerPartition(hostId))
+  const repeated = findCommittedMove(owners, request)
+  if (repeated) {
+    return { result: repeated, sessions: [] }
   }
-  if (partitions.some(({ session }) => hasTabId(session, targetTabId))) {
+  if (partitions.some(({ session }) => hasTabId(session, request.targetTabId))) {
     return refuse('target_tab_exists')
   }
-  const owners = partitions.filter(({ hostId }) => isTerminalOwnerPartition(hostId))
+  // A layout left behind by a removed tab row owns nothing.
   const leafElsewhere = owners.some(({ session }) => {
-    // A layout left behind by a removed tab row owns nothing (review-2 N1).
-    const liveTabIds = new Set(
-      Object.values(session.tabsByWorktree ?? {}).flatMap((tabs) => tabs.map((tab) => tab.id))
-    )
+    const tabIds = liveTabIds(session)
     return Object.entries(session.terminalLayoutsByTabId ?? {}).some(
       ([tabId, layout]) =>
         tabId !== sourceTabId &&
-        liveTabIds.has(tabId) &&
+        tabIds.has(tabId) &&
         layoutContainsLeafId(layout?.root ?? null, leafId)
     )
   })
   if (leafElsewhere) {
     return refuse('leaf_in_other_tab')
   }
-  const holders = owners.filter(
-    ({ session }) =>
-      session.tabsByWorktree?.[worktreeId]?.some((tab) => tab.id === sourceTabId) &&
-      layoutContainsLeafId(session.terminalLayoutsByTabId?.[sourceTabId]?.root ?? null, leafId)
+  const holders = owners.filter(({ session }) =>
+    holdsInTab(session, worktreeId, sourceTabId, leafId)
   )
   // Main never saw this leaf, so no binding of it can be duplicated here.
   if (holders.length === 0) {
-    return { result: { status: 'not_held' }, sessions: [], origins: [] }
+    return { result: { status: 'not_held' }, sessions: [] }
   }
   const boundPtyIds = new Set(
     holders.flatMap(
       ({ session }) => session.terminalLayoutsByTabId?.[sourceTabId]?.ptyIdsByLeafId?.[leafId] ?? []
     )
   )
-  // Copies disagree after an SSH respawn bound one partition before the other caught up; the
-  // renderer's live PTY id names the current one, and the stale copy is overwritten.
-  const liveMatchesOne = Boolean(request.ptyId && boundPtyIds.has(request.ptyId))
-  if (
-    (boundPtyIds.size > 1 && !liveMatchesOne) ||
-    (request.ptyId && boundPtyIds.size === 1 && !liveMatchesOne)
-  ) {
+  // The renderer's live PTY id wins: after an SSH respawn one copy can still name the old PTY.
+  const ptyId = request.ptyId ?? (boundPtyIds.size === 1 ? [...boundPtyIds][0] : null)
+  if (boundPtyIds.size > 0 && !(ptyId && boundPtyIds.has(ptyId))) {
     return refuse('pty_mismatch')
   }
-  const ptyId =
-    boundPtyIds.size > 1 ? request.ptyId : ([...boundPtyIds][0] ?? request.ptyId ?? null)
-  const moves = holders.flatMap((holder) => moveLeafInPartition(holder, request, ptyId) ?? [])
   return {
     result: { status: 'moved', ptyId },
-    sessions: moves.map(({ origin, session }) => ({ hostId: origin.hostId, session })),
-    origins: moves.map(({ origin }) => origin)
+    sessions: holders.flatMap(({ hostId, session }) => {
+      const moved = moveLeafInPartition(session, request, ptyId)
+      return moved ? [{ hostId, session: moved }] : []
+    })
   }
 }
 
 /** Pane-keyed UI marks and SSH lease leaf addresses that must follow a moved leaf. */
 export function rekeyMovedLeafProfileRecords(
   state: Pick<PersistedState, 'ui' | 'sshRemotePtyLeases'>,
-  move: { sourceTabId: string; targetTabId: string; leafId: string }
+  move: TerminalLeafMoveRequest
 ): { ui?: PersistedState['ui']; sshRemotePtyLeases?: SshRemotePtyLease[] } {
-  const fromPaneKey = `${move.sourceTabId}:${move.leafId}`
-  const toPaneKey = `${move.targetTabId}:${move.leafId}`
+  const { from: fromPaneKey, to: toPaneKey } = terminalLeafMovePaneKeys(move)
   const ui = state.ui
   const nextUi = ui
     ? {

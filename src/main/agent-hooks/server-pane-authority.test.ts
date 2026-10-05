@@ -165,32 +165,4 @@ describe('AgentHookServer pane authority', () => {
       ])
     )
   })
-
-  // Review S6: a committed pane move the renderer could not apply is put back by a reverse move.
-  it('routes the live pane to its source again after a move is put back', () => {
-    const server = new AgentHookServer()
-    const leaf = '55555555-5555-4555-8555-555555555555'
-    const from = makePaneKey('tab-source', leaf)
-    const to = makePaneKey('tab-target', leaf)
-    server.ingestTerminalStatus({
-      paneKey: from,
-      tabId: 'tab-source',
-      worktreeId: 'wt-1',
-      payload: { state: 'working', prompt: 'before move' }
-    })
-
-    server.transferPaneAuthority(from, to, 'pty-1', Date.now(), { authorityVerified: true })
-    server.transferPaneAuthority(to, from, 'pty-1', Date.now(), { authorityVerified: true })
-    server.ingestTerminalStatus({
-      paneKey: from,
-      tabId: 'tab-source',
-      worktreeId: 'wt-1',
-      payload: { state: 'working', prompt: 'after undo' }
-    })
-
-    expect(server.isPaneAuthorityTransferredTo(from, to)).toBe(false)
-    expect(server.getStatusSnapshot()).toEqual([
-      expect.objectContaining({ paneKey: from, tabId: 'tab-source', prompt: 'after undo' })
-    ])
-  })
 })

@@ -12,9 +12,6 @@ import {
 import type { DurableProfileStateMutation } from '../loading-store/store-runtime-state'
 import { publishWorkspaceSessionPartition } from '../loading-store/workspace-session-partition-publication'
 import { planTerminalLeafMove, rekeyMovedLeafProfileRecords } from './terminal-leaf-move'
-import type { TerminalLeafMoveOriginLedger } from './terminal-leaf-move-origin-ledger'
-import { planTerminalLeafMoveUndo } from './terminal-leaf-move-undo'
-import type { TerminalSessionPartition } from './terminal-topology-membership'
 import {
   startTerminalTopologyWriteSpan,
   type TerminalTopologyCommitKind
@@ -67,24 +64,23 @@ export type TerminalLeafMoveCommitContext = {
     PersistedState,
     'workspaceSession' | 'workspaceSessionsByHostId' | 'ui' | 'sshRemotePtyLeases'
   >
-  partitions: () => TerminalSessionPartition[]
+  hostIds: () => ExecutionHostId[]
   getSession: (hostId: ExecutionHostId) => WorkspaceSessionState
   markDirty: (
     domain: 'workspaceSession' | 'workspaceSessionsByHostId' | 'ui' | 'sshRemotePtyLeases'
   ) => void
-  origins: TerminalLeafMoveOriginLedger
 }
 
 /**
  * moveLeaf (design §5.6): moves a leaf and its binding into a new tab in every owner partition,
- * with the pane-keyed records, in one durable mutation; `undo` puts a committed move back.
+ * with the pane-keyed records, in one durable mutation.
  */
 export function moveLeaf(
   request: TerminalLeafMoveRequest,
   context: TerminalLeafMoveCommitContext
 ): () => DurableProfileStateMutation<TerminalLeafMoveResult> {
   return topologyCommitMutation(
-    request.undo ? 'undo_move_leaf' : 'move_leaf',
+    'move_leaf',
     () => commitLeafMove(request, context),
     (result) => (result.status === 'refused' ? result.reason : undefined)
   )
@@ -95,9 +91,10 @@ function commitLeafMove(
   context: TerminalLeafMoveCommitContext
 ): DurableProfileStateMutation<TerminalLeafMoveResult> {
   const { state } = context
-  const planned = request.undo
-    ? planTerminalLeafMoveUndo(context.partitions(), request, context.origins.take(request))
-    : planTerminalLeafMove(context.partitions(), request)
+  const planned = planTerminalLeafMove(
+    context.hostIds().map((hostId) => ({ hostId, session: context.getSession(hostId) })),
+    request
+  )
   if (planned.sessions.length === 0) {
     return { value: planned.result, persist: false }
   }
@@ -116,19 +113,7 @@ function commitLeafMove(
       }
     }
   })
-  if (!request.undo) {
-    context.origins.remember(request, planned.origins)
-  }
-  // A retired undo's source tab is closed; its pane-keyed marks would be orphans there.
-  const rekeyed =
-    planned.result.status === 'retired'
-      ? {}
-      : rekeyMovedLeafProfileRecords(
-          state,
-          request.undo
-            ? { ...request, sourceTabId: request.targetTabId, targetTabId: request.sourceTabId }
-            : request
-        )
+  const rekeyed = rekeyMovedLeafProfileRecords(state, request)
   if (rekeyed.ui) {
     state.ui = rekeyed.ui
     context.markDirty('ui')

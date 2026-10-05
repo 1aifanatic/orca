@@ -1,7 +1,7 @@
 import { startSpan } from '../../observability/tracer'
 
 /** Bindings are not listed: `persistPtyBinding` already records `persistence.pty-binding`. */
-export type TerminalTopologyCommitKind = 'close_leaf' | 'close_tab' | 'move_leaf' | 'undo_move_leaf'
+export type TerminalTopologyCommitKind = 'close_leaf' | 'close_tab' | 'move_leaf'
 
 type TerminalTopologyCommitOutcome = 'committed' | 'noop' | 'refused' | 'threw'
 

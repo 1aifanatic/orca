@@ -234,12 +234,12 @@ export function useTerminalPaneCloseActions(controller: TerminalPaneBindingContr
         return false
       }
       const sourceTransport = paneTransportsRef.current.get(sourcePaneId)
-      const fallbackPtyId = sourceTransport?.getPtyId() ?? null
+      const livePtyId = sourceTransport?.getPtyId() ?? null
       const sourcePaneCwd = paneCwdRef.current.get(sourcePaneId)
       const commitMove = window.api?.pty?.moveLeafToNewTab
       void detachTerminalPaneToTab({
         ...(commitMove ? { commitMove } : {}),
-        fallbackPtyId,
+        livePtyId,
         getStore: useAppStore.getState,
         manager: managerRef.current,
         persistLayoutSnapshot,

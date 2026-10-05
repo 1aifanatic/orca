@@ -381,7 +381,7 @@ describe('detachTerminalPaneToTab', () => {
     }
 
     await detachTerminalPaneToTab({
-      fallbackPtyId: 'remote:env-2@@terminal-9',
+      livePtyId: 'remote:env-2@@terminal-9',
       getStore: () => store,
       manager,
       persistLayoutSnapshot: vi.fn(),
@@ -509,7 +509,7 @@ describe('detachTerminalPaneToTab', () => {
     )
   })
 
-  // Review-2 N3: a second drop of the same pane while main commits the first is not a failure.
+  // A second drop of the same pane while main commits the first is not a failure.
   it('ignores a repeat drop of a pane whose move is still committing', async () => {
     const store = createStore()
     const manager = {
@@ -575,38 +575,6 @@ describe('detachTerminalPaneToTab', () => {
     warn.mockRestore()
   })
 
-  it('asks main to put a committed move back when the pane cannot leave its tab', async () => {
-    const store = createStore()
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const commitMove = vi.fn(async (request: TerminalLeafMoveRequest) => ({
-      status: 'moved' as const,
-      ptyId: request.ptyId
-    }))
-
-    const result = await detachTerminalPaneToTab({
-      commitMove,
-      getStore: () => store,
-      manager: {
-        getPanes: vi.fn(() => [{ id: 1 }, { id: 2 }]),
-        getLeafId: vi.fn(() => LEAF_2),
-        detachPaneForExternalMove: vi.fn(() => false)
-      },
-      persistLayoutSnapshot: vi.fn(),
-      sourcePaneId: 2,
-      sourceTabId: SOURCE_TAB_ID,
-      targetGroupId: TARGET_GROUP_ID,
-      worktreeId: WORKTREE_ID
-    })
-
-    expect(result).toBeNull()
-    expect(store.createTab).not.toHaveBeenCalled()
-    expect(commitMove).toHaveBeenCalledTimes(2)
-    const [first, undo] = commitMove.mock.calls.map(([request]) => request)
-    expect(undo).toEqual({ ...first, undo: true })
-    expect(toastErrorMock).toHaveBeenCalledOnce()
-    warn.mockRestore()
-  })
-
   it('commits and binds the live transport PTY id over a stale snapshot id', async () => {
     const store = createStore()
     const commitMove = vi.fn(async (request: TerminalLeafMoveRequest) => ({
@@ -616,7 +584,7 @@ describe('detachTerminalPaneToTab', () => {
 
     const result = await detachTerminalPaneToTab({
       commitMove,
-      fallbackPtyId: 'remote:env-1@@terminal-2',
+      livePtyId: 'remote:env-1@@terminal-2',
       getStore: () => store,
       manager: {
         getPanes: vi.fn(() => [{ id: 1 }, { id: 2 }]),

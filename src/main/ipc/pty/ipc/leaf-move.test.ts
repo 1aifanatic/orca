@@ -55,33 +55,19 @@ describe('pty:moveLeafToNewTab', () => {
     })
   })
 
-  it('routes status and worker resources back to the source pane when a move is put back', async () => {
+  it('does not transfer agent status again when a repeated move answers moved', async () => {
+    vi.spyOn(agentHookServer, 'isPaneAuthorityTransferredTo').mockReturnValue(true)
     const transfer = vi.spyOn(agentHookServer, 'transferPaneAuthority').mockImplementation(() => {})
-    const { store, runtime, rekeyWorkerTerminalResourcePaneKey } = deps({
-      status: 'moved',
-      ptyId: 'pty-agent'
-    })
+    const { store, runtime } = deps({ status: 'moved', ptyId: 'pty-agent' })
 
-    await moveTerminalLeafToNewTab({ store, runtime }, { ...request, undo: true })
+    await moveTerminalLeafToNewTab({ store, runtime }, request)
 
-    expect(transfer).toHaveBeenCalledWith(
-      `tab-target:${LEAF}`,
-      `tab-source:${LEAF}`,
-      'pty-agent',
-      expect.any(Number),
-      { authorityVerified: true }
-    )
-    expect(rekeyWorkerTerminalResourcePaneKey).toHaveBeenCalledWith({
-      fromPaneKey: `tab-target:${LEAF}`,
-      toPaneKey: `tab-source:${LEAF}`
-    })
+    expect(transfer).not.toHaveBeenCalled()
   })
 
   it.each<TerminalLeafMoveResult>([
     { status: 'not_held' },
-    { status: 'refused', reason: 'pty_mismatch' },
-    // The source tab closed, so the moved pane is gone with it; nothing to route back.
-    { status: 'retired' }
+    { status: 'refused', reason: 'pty_mismatch' }
   ])('leaves every pane key alone when the move did not commit (%o)', async (result) => {
     const transfer = vi.spyOn(agentHookServer, 'transferPaneAuthority').mockImplementation(() => {})
     const { store, runtime, rekeyWorkerTerminalResourcePaneKey } = deps(result)

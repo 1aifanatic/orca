@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { tmpdir } from 'node:os'
 import { toSshExecutionHostId } from '../../../shared/execution-host'
-import { makeRepo } from '../../persistence-test-harness'
-import { collectLayoutLeafIdsInOrder } from '../restoring-sessions/terminal-layout-normalization'
+import { _resetTracerForTests, setActiveSink } from '../../observability/tracer'
+import { makeRepo, makeTerminalTab } from '../../persistence-test-harness'
+import { planTerminalLeafMove } from './terminal-leaf-move'
 import {
   closeMoveTestStores,
   FROM,
@@ -124,79 +125,98 @@ describe('moving a pane to a new tab', () => {
     ).resolves.toEqual({ status: 'refused', reason: 'pty_mismatch' })
     await expect(
       store.moveTerminalLeafToNewTab({ ...moveRequest, targetTabId: SOURCE, ptyId: 'pty-agent' })
-    ).resolves.toEqual({ status: 'refused', reason: 'invalid_request' })
+    ).resolves.toEqual({ status: 'refused', reason: 'target_tab_exists' })
     expect(tabsHoldingLeaf(store.getWorkspaceSession(), MOVED)).toEqual([SOURCE])
   })
-})
 
-// Review S6: the renderer could not apply a move main committed, so it asks main to put it back.
-describe('putting back a committed move', () => {
-  it('returns the leaf, binding and pane-keyed records to the source tab in every partition', async () => {
-    const store = openStore(newDataFile())
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const hostId = toSshExecutionHostId('ssh-1')
-    await seedSplitSource(store, hostId)
-    const relay = { worktreeId: WT, leafId: MOVED, ptyId: 'pty-agent', incarnationId: 'inc-1' }
-    await store.persistPtyBinding({ ...relay, tabId: SOURCE, origin: 'relay_reattach' })
-    store.upsertSshRemotePtyLease({
-      targetId: 'ssh-1',
-      ptyId: 'pty-agent',
-      worktreeId: WT,
-      tabId: SOURCE,
-      leafId: MOVED,
-      state: 'attached'
-    })
-    store.updateUI({ acknowledgedAgentsByPaneKey: { [FROM]: 10 } })
-    const request = { ...moveRequest, ptyId: 'pty-agent' }
-    await store.moveTerminalLeafToNewTab(request)
-
-    await expect(store.moveTerminalLeafToNewTab({ ...request, undo: true })).resolves.toEqual({
-      status: 'moved',
-      ptyId: 'pty-agent'
-    })
-
-    for (const session of [store.getWorkspaceSession(hostId), store.getWorkspaceSession()]) {
-      expect(tabsHoldingLeaf(session, MOVED)).toEqual([SOURCE])
-      expect(ownersOf(session, 'pty-agent')).toEqual([FROM])
-      expect(session.tabsByWorktree[WT]?.map((tab) => tab.id)).not.toContain(TARGET)
-      expect(session.terminalPtyIncarnationsByPaneKey?.[FROM]).toBe('inc-1')
-    }
-    expect(store.getUI().acknowledgedAgentsByPaneKey).toEqual({ [FROM]: 10 })
-    expect(store.getSshRemotePtyLeases('ssh-1')).toEqual([
-      expect.objectContaining({ ptyId: 'pty-agent', tabId: SOURCE, leafId: MOVED })
-    ])
-    expect(
-      await store.persistPtyBinding({ ...relay, tabId: SOURCE, origin: 'reattach' }, hostId)
-    ).toBe(true)
-  })
-
-  it('leaves a target tab alone once it holds more than the moved leaf', async () => {
+  // The renderer retries a move whose answer was lost; the write may already have landed.
+  it('answers a repeat of a committed move with moved and writes nothing', async () => {
     const store = openStore(newDataFile())
     await seedSplitSource(store)
     const request = { ...moveRequest, ptyId: 'pty-agent' }
     await store.moveTerminalLeafToNewTab(request)
-    await store.persistPtyBinding({
-      worktreeId: WT,
-      tabId: TARGET,
-      leafId: '33333333-3333-4333-8333-333333333333',
-      ptyId: 'pty-third',
-      incarnationId: 'inc-3'
-    })
-    expect(
-      collectLayoutLeafIdsInOrder(store.getWorkspaceSession().terminalLayoutsByTabId[TARGET]!.root)
-    ).toHaveLength(2)
+    const committed = store.getWorkspaceSession()
 
-    // Review-2 N2: reported, not a silent not_held.
-    await expect(store.moveTerminalLeafToNewTab({ ...request, undo: true })).resolves.toEqual({
-      status: 'refused',
-      reason: 'target_changed'
+    await expect(store.moveTerminalLeafToNewTab(request)).resolves.toEqual({
+      status: 'moved',
+      ptyId: 'pty-agent'
     })
-    expect(tabsHoldingLeaf(store.getWorkspaceSession(), MOVED)).toEqual([TARGET])
+    expect(store.getWorkspaceSession()).toBe(committed)
+  })
+
+  it('moves a leaf that a stray layout of a removed tab still names', () => {
+    const planned = planTerminalLeafMove(
+      [
+        {
+          hostId: 'local',
+          session: {
+            activeRepoId: 'repo-1',
+            activeWorktreeId: WT,
+            activeTabId: SOURCE,
+            tabsByWorktree: { [WT]: [makeTerminalTab({ id: SOURCE, worktreeId: WT })] },
+            terminalLayoutsByTabId: {
+              [SOURCE]: {
+                root: {
+                  type: 'split',
+                  direction: 'vertical',
+                  first: { type: 'leaf', leafId: LEFT },
+                  second: { type: 'leaf', leafId: MOVED }
+                },
+                activeLeafId: LEFT,
+                expandedLeafId: null
+              },
+              'tab-removed': {
+                root: { type: 'leaf', leafId: MOVED },
+                activeLeafId: MOVED,
+                expandedLeafId: null
+              }
+            }
+          }
+        }
+      ],
+      { ...moveRequest, ptyId: 'pty-agent' }
+    )
+    expect(planned.result).toEqual({ status: 'moved', ptyId: 'pty-agent' })
+  })
+
+  it('records a persistence.terminal-topology span without pane keys or PTY ids', async () => {
+    const records: { name: string; attributes: Record<string, unknown> }[] = []
+    setActiveSink({
+      push: (record) => {
+        records.push(JSON.parse(JSON.stringify(record)))
+      },
+      flush: () => {},
+      close: () => {}
+    })
+    try {
+      const store = openStore(newDataFile())
+      await seedSplitSource(store)
+      records.length = 0
+      const request = { ...moveRequest, ptyId: 'pty-agent' }
+      await store.moveTerminalLeafToNewTab(request)
+      await store.moveTerminalLeafToNewTab(request)
+      await store.moveTerminalLeafToNewTab({ ...request, targetTabId: 'tab-other' })
+
+      const spans = records.filter((record) => record.name === 'persistence.terminal-topology')
+      expect(spans.map((span) => span.attributes)).toEqual([
+        { kind: 'persistence', 'topology.kind': 'move_leaf', 'topology.outcome': 'committed' },
+        { kind: 'persistence', 'topology.kind': 'move_leaf', 'topology.outcome': 'noop' },
+        {
+          kind: 'persistence',
+          'topology.kind': 'move_leaf',
+          'topology.outcome': 'refused',
+          'topology.refusal': 'leaf_in_other_tab'
+        }
+      ])
+      expect(JSON.stringify(spans)).not.toMatch(/pty-|tab-source|tab-target|2222/)
+    } finally {
+      _resetTracerForTests()
+    }
   })
 })
 
-// Review B1: after a restart the relay reattach writes the SSH pane into `local` as well as
-// `ssh:`; a move that left either copy behind refused the moved pane and the next relay reattach.
+// After a restart the relay reattach writes the SSH pane into `local` as well as `ssh:`; a move
+// that left either copy behind refused the moved pane and the next relay reattach.
 describe('moving an SSH pane held by both partitions', () => {
   it('moves every copy, so the target reattach and the next relay reattach both bind', async () => {
     const store = openStore(newDataFile())
@@ -259,6 +279,32 @@ describe('moving an SSH pane held by both partitions', () => {
       expect(tabsHoldingLeaf(session, MOVED)).toEqual([TARGET])
       expect(ownersOf(session, 'pty-agent')).toEqual([TO])
     }
+  })
+
+  it('follows the live PTY when an SSH respawn bound one partition before the other', async () => {
+    const store = openStore(newDataFile())
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const hostId = toSshExecutionHostId('ssh-1')
+    await seedSplitSource(store, hostId)
+    const relay = { worktreeId: WT, tabId: SOURCE, leafId: MOVED, incarnationId: 'inc-1' }
+    await store.persistPtyBinding({ ...relay, ptyId: 'pty-agent', origin: 'relay_reattach' })
+    await store.persistPtyBinding(
+      { ...relay, ptyId: 'pty-respawn', incarnationId: 'inc-2' },
+      hostId
+    )
+
+    await expect(
+      store.moveTerminalLeafToNewTab({ ...moveRequest, ptyId: 'pty-respawn' })
+    ).resolves.toEqual({ status: 'moved', ptyId: 'pty-respawn' })
+
+    for (const session of [store.getWorkspaceSession(), store.getWorkspaceSession(hostId)]) {
+      expect(tabsHoldingLeaf(session, MOVED)).toEqual([TARGET])
+      expect(session.terminalLayoutsByTabId[TARGET]?.ptyIdsByLeafId).toEqual({
+        [MOVED]: 'pty-respawn'
+      })
+    }
+    expect(store.getWorkspaceSession(hostId).terminalPtyIncarnationsByPaneKey?.[TO]).toBe('inc-2')
+    expect(store.getWorkspaceSession().terminalPtyIncarnationsByPaneKey?.[TO]).toBeUndefined()
   })
 
   it('refuses a move while another tab already holds the leaf', async () => {

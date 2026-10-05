@@ -66,7 +66,7 @@ describe('createIpcPtyTransport', () => {
     transport.disconnect()
   })
 
-  // B1-2 review-1 SF1: a drag waits out a spawn whose result would bind the leaf to its old tab.
+  // A pane drag waits out a spawn whose result would bind the leaf to its old tab.
   it('reports a connect as pending only until its PTY id arrives', async () => {
     const { createIpcPtyTransport } = await import('./pty-transport')
     let resolveSpawn!: (value: { id: string }) => void
