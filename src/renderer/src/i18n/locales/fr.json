@@ -1231,11 +1231,7 @@
         "9263e75f49": "Codex utilise le compte précédent",
         "d3e8a1f4b2": "Compte changé",
         "9375620cc3": "Redémarrez cette session pour utiliser {{value0}}. Elle reste sur le compte précédent tant que vous ne l'avez pas fait.",
-        "6133594b12": "Conserver l'ancien compte",
-        "8f0d5c92a1": "Configuration Codex modifiée",
-        "3ea91b5c07": "Cette session Codex utilise une configuration obsolète",
-        "e6b7139d2a": "Redémarrez cette session pour charger votre configuration Codex actuelle.",
-        "7b1d20f4c8": "Conserver la session actuelle"
+        "6133594b12": "Conserver l'ancien compte"
       },
       "FirstLaunchBanner": {
         "b9e1b966c7": "Masquer l'avis",
@@ -3805,6 +3801,7 @@
             "grokUsageAria": "Ouvrir les détails d'utilisation Grok",
             "grokUsageMenu": "Utilisation Grok",
             "floatingTerminalNewActivity": "{{label}}, nouvelle activité",
+            "4fba7dc1e7": "solde {{value0}}",
             "codexSignInSuccess": "Connecté à Codex",
             "codexSignInError": "Échec de la connexion à Codex. Veuillez réessayer.",
             "cursorUsageMenu": "Utilisation Cursor",
@@ -17663,6 +17660,8 @@
         "historyUnavailable": "Orca n'a pas pu ouvrir l'historique de ce chat pour le moment.",
         "savedByNewerOrca": "Les chats ont été enregistrés par une version plus récente d'Orca.",
         "updateOrcaToKeepUsing": "Mettez à jour Orca pour continuer à les utiliser.",
+        "chatSavedByNewerOrca": "Ce chat a été enregistré par une version plus récente d'Orca.",
+        "updateOrcaToOpenChat": "Mettez à jour Orca pour l'ouvrir.",
         "unsupported": "Cela nécessite une version plus récente d'Orca sur l'ordinateur qui exécute ce chat. Mettez Orca à jour sur cet ordinateur, puis réessayez.",
         "notAvailable": "Ceci n'est pas disponible dans ce chat.",
         "unreachable": "Orca n'a pas pu joindre l'agent.",
@@ -17887,6 +17886,7 @@
         "sending": "Envoi…"
       },
       "approval": {
+        "needsNewerOrca": "Cette demande nécessite une version plus récente d'Orca.",
         "title": "Autoriser {{value0}} ?",
         "allow": "Autoriser",
         "deny": "Refuser",
