@@ -30,6 +30,9 @@ describe('reasoning disclosure', () => {
       'false'
     )
     expect(screen.queryByTestId('markdown')).not.toBeInTheDocument()
+    // The same category glyph slot a tool row leads with, hidden from the accessible name.
+    const glyph = screen.getByRole('button').querySelector('svg.lucide-brain')
+    expect(glyph).toHaveAttribute('aria-hidden', 'true')
   })
 
   it('expands through a native button and keeps disclosure state through revisions', () => {

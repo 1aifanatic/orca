@@ -1,8 +1,7 @@
-import { ChevronRight } from 'lucide-react'
+import { Brain, ChevronRight } from 'lucide-react'
 import CommentMarkdown, {
   type CommentMarkdownLinkClickHandler
 } from '@/components/sidebar/CommentMarkdown'
-import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { translate } from '@/i18n/i18n'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
@@ -12,6 +11,7 @@ import {
   type NativeChatReasoningHeadline
 } from '../../../../shared/native-chat-reasoning-row'
 import { NativeChatCodeBlock } from './NativeChatCodeBlock'
+import { NativeChatGlyphSlot } from './NativeChatToolIcon'
 
 function translatedHeadline(headline: NativeChatReasoningHeadline): string {
   if (headline.kind === 'thoughtFor') {
@@ -48,14 +48,21 @@ export function NativeChatReasoningRow({
     <div className="min-w-0 text-sm text-muted-foreground">
       <Collapsible>
         <CollapsibleTrigger asChild>
-          <Button variant="ghost" size="xs" className="group w-full min-w-0 justify-start">
+          {/* Laid out like a tool run's header, so its glyph sits in the same column. */}
+          <button
+            type="button"
+            className="group/reasoning flex min-h-6 w-full min-w-0 items-center gap-1.5 rounded-md py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+          >
             {headline === label ? null : <span className="sr-only">{label}: </span>}
-            <span className="min-w-0 truncate">{headline}</span>
+            <NativeChatGlyphSlot glyph={Brain} />
+            <span className="min-w-0 truncate leading-relaxed transition-colors group-hover/reasoning:text-foreground/80">
+              {headline}
+            </span>
             <ChevronRight
               aria-hidden
-              className="ml-auto size-3.5 shrink-0 transition-transform group-data-[state=open]:rotate-90 motion-reduce:transition-none"
+              className="size-3.5 shrink-0 opacity-0 transition-all group-hover/reasoning:opacity-100 group-data-[state=open]/reasoning:rotate-90 group-data-[state=open]/reasoning:opacity-100 motion-reduce:transition-none"
             />
-          </Button>
+          </button>
         </CollapsibleTrigger>
         <CollapsibleContent>
           <div className="mt-1 pl-4 italic">

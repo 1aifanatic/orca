@@ -36,7 +36,7 @@ const NATIVE_CHAT_TOOL_GLYPHS: Record<NativeChatToolIconName, LucideIcon> = {
 
 /** The fixed 16px slot with a 14px glyph, which keeps every row left-aligned
  *  including rows whose category this vocabulary doesn't model. */
-function NativeChatGlyphSlot({
+export function NativeChatGlyphSlot({
   glyph: Glyph,
   className
 }: {
