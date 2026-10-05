@@ -28,7 +28,7 @@ function isHorizontalDominant(event: WheelEvent): boolean {
 
 function horizontalWheelDelta(event: WheelEvent, pageWidth: number): number {
   if (!event.shiftKey) {
-    return toWheelPixels(event.deltaX, event.deltaMode, pageWidth)
+    return isHorizontalDominant(event) ? toWheelPixels(event.deltaX, event.deltaMode, pageWidth) : 0
   }
   const raw = isHorizontalDominant(event) ? event.deltaX : event.deltaY
   return toWheelPixels(raw, event.deltaMode, pageWidth)
@@ -51,17 +51,18 @@ function installPaneHorizontalWheelScroll(editor: HorizontalScrollEditor): () =>
       maxLeft,
       Math.max(0, currentLeft + horizontalWheelDelta(event, container.clientWidth))
     )
-    // Why: at an edge the pane can't move; let the outer combined-diff scroller handle the event.
+    // At an edge, leave the gesture available to the outer diff list.
     if (nextLeft === currentLeft) {
       return
     }
 
-    // Why: combined diffs set handleMouseWheel:false; don't consume vertical-dominant diagonals.
-    if (event.shiftKey || isHorizontalDominant(event)) {
-      event.preventDefault()
-      event.stopPropagation()
-    }
+    // Monaco rounds scroll positions, so consume only an actual move.
     editor.setScrollLeft(nextLeft)
+    if (editor.getScrollLeft() === currentLeft) {
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
   }
 
   container.addEventListener('wheel', handleWheel, { capture: true, passive: false })

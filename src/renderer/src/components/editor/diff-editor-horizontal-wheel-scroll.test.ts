@@ -18,7 +18,7 @@ function createPaneFixture(initialScrollLeft = 10, scrollWidth = 1000): PaneFixt
   const input = document.createElement('div')
   let scrollLeft = initialScrollLeft
   const setScrollLeft = vi.fn((value: number) => {
-    scrollLeft = value
+    scrollLeft = Math.trunc(value)
   })
   Object.defineProperty(container, 'clientWidth', { value: 200 })
   container.appendChild(input)
@@ -206,7 +206,7 @@ describe('installDiffEditorHorizontalWheelScroll', () => {
     dispose()
   })
 
-  it('applies the horizontal part of diagonal input without trapping vertical scroll', () => {
+  it('leaves vertical-dominant diagonal input for the outer list', () => {
     const original = createPaneFixture()
     const modified = createPaneFixture()
     const onDownstreamWheel = vi.fn()
@@ -219,7 +219,7 @@ describe('installDiffEditorHorizontalWheelScroll', () => {
     const event = dispatchWheel(original.input, { deltaX: 8, deltaY: 24 })
 
     expect(event.defaultPrevented).toBe(false)
-    expect(original.setScrollLeft).toHaveBeenCalledWith(18)
+    expect(original.setScrollLeft).not.toHaveBeenCalled()
     expect(onDownstreamWheel).toHaveBeenCalledTimes(1)
     dispose()
   })
@@ -262,9 +262,9 @@ describe('installDiffEditorHorizontalWheelScroll', () => {
 
   it.each([
     {
-      label: 'equal-magnitude axes without shift apply X and let Y bubble',
+      label: 'equal-magnitude axes without shift leave horizontal position unchanged',
       init: { deltaX: 10, deltaY: -10 },
-      expected: 20,
+      expected: undefined,
       consumed: false
     },
     {
@@ -298,7 +298,11 @@ describe('installDiffEditorHorizontalWheelScroll', () => {
     const event = dispatchWheel(original.input, init)
 
     expect(event.defaultPrevented).toBe(consumed)
-    expect(original.setScrollLeft).toHaveBeenCalledWith(expected)
+    if (expected === undefined) {
+      expect(original.setScrollLeft).not.toHaveBeenCalled()
+    } else {
+      expect(original.setScrollLeft).toHaveBeenCalledWith(expected)
+    }
     expect(onDownstreamWheel).toHaveBeenCalledTimes(consumed ? 0 : 1)
     dispose()
   })
@@ -338,6 +342,24 @@ describe('installDiffEditorHorizontalWheelScroll', () => {
 
     expect(event.defaultPrevented).toBe(true)
     expect(original.setScrollLeft).toHaveBeenCalledWith(800)
+    dispose()
+  })
+
+  it('leaves subpixel input unconsumed when Monaco rounds away the movement', () => {
+    const original = createPaneFixture()
+    const modified = createPaneFixture()
+    const onDownstreamWheel = vi.fn()
+    original.input.addEventListener('wheel', onDownstreamWheel)
+    const dispose = installDiffEditorHorizontalWheelScroll({
+      getOriginalEditor: () => original,
+      getModifiedEditor: () => modified
+    })
+
+    const event = dispatchWheel(original.input, { deltaX: 0.25 })
+
+    expect(original.getScrollLeft()).toBe(10)
+    expect(event.defaultPrevented).toBe(false)
+    expect(onDownstreamWheel).toHaveBeenCalledTimes(1)
     dispose()
   })
 
