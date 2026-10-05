@@ -14,6 +14,7 @@ import {
   stageRemoteOrcadMigrationSnapshotChunk
 } from './orcad-migration-catalog-client'
 import { orcadMigrationRelayPtyLister } from './orcad-migration-relay-pty-lister'
+import { censusHostRelayTerminalsFor } from './ssh-host-relay-census-for-target'
 import type { OrcadManagedConversionArgs } from './orcad-runtime-conversion'
 
 /** The T6-9 client against this server, pinned to the runtime it paired with. */
@@ -33,10 +34,14 @@ export function orcadMigrationDestinationFor(
 
 export function conversionCollaborators(
   sshTargetId: string
-): Pick<OrcadManagedConversionArgs, 'destinationFor' | 'listRelayPtyIds' | 'releaseDirectSession'> {
+): Pick<
+  OrcadManagedConversionArgs,
+  'destinationFor' | 'listRelayPtyIds' | 'censusHost' | 'releaseDirectSession'
+> {
   return {
     destinationFor: orcadMigrationDestinationFor,
     listRelayPtyIds: orcadMigrationRelayPtyLister(sshTargetId),
+    censusHost: (target) => censusHostRelayTerminalsFor(target)(),
     releaseDirectSession: disconnectRegisteredSshTarget
   }
 }

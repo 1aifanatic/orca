@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { SshRemotePtyLease } from '../../shared/ssh-types'
 import type { HostRelayEndpointCensus } from './ssh-host-relay-endpoint-census'
+import type { ListRelayPtyIds } from './orcad-migration-terminal-gate'
 import { relayTerminalsOnConnect } from './ssh-host-relay-terminals-on-connect'
 
 function store(leases: Pick<SshRemotePtyLease, 'ptyId' | 'state'>[] = []) {
@@ -10,7 +11,7 @@ function store(leases: Pick<SshRemotePtyLease, 'ptyId' | 'state'>[] = []) {
 
 const decide = (
   census: HostRelayEndpointCensus | Error,
-  options: { leases?: Parameters<typeof store>[0]; lister?: () => Promise<string[]> } = {}
+  options: { leases?: Parameters<typeof store>[0]; lister?: ListRelayPtyIds } = {}
 ) => {
   const censusHost = vi.fn(async () => {
     if (census instanceof Error) {
@@ -32,9 +33,7 @@ const decide = (
 describe('the connect-time relay terminal verdict', () => {
   it.each([
     ['no relay endpoints at all', { verdict: 'none', count: 0 }],
-    ['endpoints with no live work', { verdict: 'idle', count: 0 }],
-    // Windows pipes cannot be listed: today's lease-only decision stands.
-    ['a host whose endpoints cannot be listed', { verdict: 'unenumerable', count: 0 }]
+    ['endpoints with no live work', { verdict: 'idle', count: 0 }]
   ] as const)('converts with %s', async (_label, census) => {
     await expect(decide(census).verdict).resolves.toEqual({ verdict: 'exited', count: 0 })
   })
@@ -48,6 +47,7 @@ describe('the connect-time relay terminal verdict', () => {
 
   it.each([
     ['incomplete', { verdict: 'unverifiable', count: 1 } as const],
+    ['could not list the endpoints', { verdict: 'unenumerable', count: 0 } as const],
     ['failed', new Error('connect refused')]
   ])('refuses as unverifiable when the census %s', async (_label, census) => {
     await expect(decide(census).verdict).resolves.toMatchObject({ verdict: 'unverifiable' })
@@ -65,9 +65,19 @@ describe('the connect-time relay terminal verdict', () => {
   it('trusts a connected relay session that answered, without asking the host', async () => {
     const { censusHost, verdict } = decide(
       { verdict: 'live', count: 1 },
-      { lister: async () => [] }
+      { lister: Object.assign(async () => [], { previous: async () => [] }) }
     )
     await expect(verdict).resolves.toEqual({ verdict: 'exited', count: 0 })
+    expect(censusHost).not.toHaveBeenCalled()
+  })
+
+  // A session whose relays could not answer proves nothing, and no lease here changes that.
+  it.each([
+    ['this relay', Object.assign(async () => null, { previous: async () => [] })],
+    ['an earlier relay', Object.assign(async () => [], { previous: async () => null })]
+  ])('is unverifiable with no leases when %s could not answer', async (_label, lister) => {
+    const { censusHost, verdict } = decide({ verdict: 'none', count: 0 }, { lister })
+    await expect(verdict).resolves.toMatchObject({ verdict: 'unverifiable' })
     expect(censusHost).not.toHaveBeenCalled()
   })
 })

@@ -112,7 +112,7 @@ async function convertedThenChangedOnOlderBuild(): Promise<void> {
     convertSshTargetToManagedOrcad(userDataPath, {
       sshTargetId: TARGET.id,
       name: 'Managed',
-      listRelayPtyIds: async () => [],
+      listRelayPtyIds: Object.assign(async () => [], { previous: async () => [] }),
       destinationFor: () => destination,
       releaseDirectSession: async () => {},
       now,
@@ -513,7 +513,7 @@ async function convertKeepingSource(): Promise<void> {
     convertSshTargetToManagedOrcad(userDataPath, {
       sshTargetId: TARGET.id,
       name: 'Managed',
-      listRelayPtyIds: async () => [],
+      listRelayPtyIds: Object.assign(async () => [], { previous: async () => [] }),
       destinationFor: () => destination,
       releaseDirectSession: async () => {},
       now,

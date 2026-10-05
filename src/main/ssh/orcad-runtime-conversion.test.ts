@@ -13,6 +13,8 @@ import type { SshTarget } from '../../shared/ssh-types'
 import { closeTestStores, createSqliteTestStore } from '../persistence-test-harness'
 import { Store } from '../persistence/loading-store/store'
 import { listOrcadMigrationSourceCutovers } from './orcad-migration-cutover-journal'
+import type { ListRelayPtyIds } from './orcad-migration-terminal-gate'
+import type { OrcadManagedConversionArgs } from './orcad-runtime-conversion'
 import { fakeOrcadMigrationDestination } from './orcad-migration-destination-fake'
 import { reconcileManagedOrcadSshTargets, visibleRepos } from './orcad-retained-source'
 import { SshConnectionStore } from './ssh-connection-store'
@@ -102,11 +104,18 @@ afterEach(async () => {
 
 const releaseDirectSession = vi.fn(async () => {})
 let retireSource = true
-const convert = (listRelayPtyIds: (() => Promise<string[] | null>) | null = async () => []) =>
+// Every relay, this build's and earlier ones, answers that nothing runs.
+const everyRelayEmpty = (): ListRelayPtyIds =>
+  Object.assign(async () => [], { previous: async () => [] })
+const convert = (
+  listRelayPtyIds: ListRelayPtyIds | null = everyRelayEmpty(),
+  censusHost?: OrcadManagedConversionArgs['censusHost']
+) =>
   convertSshTargetToManagedOrcad(userDataPath, {
     sshTargetId: TARGET.id,
     name: 'Managed',
     listRelayPtyIds,
+    censusHost,
     destinationFor: () => destination,
     releaseDirectSession,
     now: () => new Date('2026-10-02T00:00:00.000Z'),
@@ -165,6 +174,22 @@ describe('converting an SSH host into a managed server', () => {
     expect(releaseDirectSession).not.toHaveBeenCalled()
     expect(store.getSshTarget(TARGET.id)?.orcadFence).toBeUndefined()
     expect(listOrcadMigrationSourceCutovers(userDataPath)).toEqual([])
+  })
+
+  // No relay session and no lease: only a host census may prove nothing runs, never the silence.
+  it('converts with no relay session only on a host census that proves its relays idle', async () => {
+    await expect(convert(null)).resolves.toMatchObject({
+      outcome: 'refused',
+      verdict: 'unverifiable'
+    })
+    await expect(convert(null, async () => ({ verdict: 'live', count: 1 }))).resolves.toMatchObject(
+      { outcome: 'refused', verdict: 'live' }
+    )
+    expect(store.getSshTarget(TARGET.id)?.orcadFence).toBeUndefined()
+
+    await expect(
+      convert(null, async () => ({ verdict: 'exited', count: 0 }))
+    ).resolves.toMatchObject({ outcome: 'converted' })
   })
 
   it('keeps the fence across a deferred deploy and resumes the same migration', async () => {

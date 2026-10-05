@@ -30,8 +30,10 @@ import {
   fenceOrcadMigrationSource,
   resolveOrcadMigrationFence
 } from './orcad-migration-source-fence'
+import type { SshTarget } from '../../shared/ssh-types'
 import {
   assessOrcadMigrationTerminals,
+  type CensusHostRelayTerminals,
   retireProvenExitedLeases,
   type ListRelayPtyIds
 } from './orcad-migration-terminal-gate'
@@ -48,6 +50,8 @@ export type OrcadManagedConversionArgs = {
   name: string
   /** The relay's process list, asked while the host is still connected directly. */
   listRelayPtyIds: ListRelayPtyIds | null
+  /** With no relay session to ask, the census of the host's relay endpoints that must prove exit. */
+  censusHost?: ((target: SshTarget) => ReturnType<CensusHostRelayTerminals>) | null
   /** The destination's T6-9 catalog client, reached through the server's tunnel. */
   destinationFor: (environment: KnownRuntimeEnvironment) => OrcadMigrationDestinationCatalog
   /** Releases the direct SSH session after the terminal check, before the fence. */
@@ -176,7 +180,13 @@ async function fenceOrResume(
   }
   const store = targetStore.getOrcadMigrationSource()
   // Asked while the relay still answers; the fence re-checks leases once it holds.
-  const terminalProof = await assessOrcadMigrationTerminals(store, target.id, args.listRelayPtyIds)
+  const censusHost = args.censusHost
+  const terminalProof = await assessOrcadMigrationTerminals(
+    store,
+    target.id,
+    args.listRelayPtyIds,
+    censusHost ? () => censusHost(target) : null
+  )
   if (terminalProof.verdict !== 'exited') {
     return refuse(terminalProof.verdict, 'orcad_migration_terminals', terminalProof.reason)
   }

@@ -24,7 +24,7 @@ describe('the terminal gate asking a relay what it still runs', () => {
     })
   })
 
-  it('lets the gate prove exit only when the relay answers with nothing running', async () => {
+  it('lets the gate prove exit only when every relay answers with nothing running', async () => {
     const running = orcadMigrationRelayPtyLister(TARGET, {
       listProcesses: async () => [{ id: toAppSshPtyId(TARGET, 'pty-7'), cwd: '', title: 'pwsh' }]
     })
@@ -32,10 +32,25 @@ describe('the terminal gate asking a relay what it still runs', () => {
       verdict: 'live',
       ptyIds: ['pty-7']
     })
-    const idle = orcadMigrationRelayPtyLister(TARGET, { listProcesses: async () => [] })
+    const idle = orcadMigrationRelayPtyLister(
+      TARGET,
+      { listProcesses: async () => [] },
+      Date.now,
+      async () => []
+    )
     expect(await assessOrcadMigrationTerminals(noLeases, TARGET, idle)).toEqual({
       verdict: 'exited',
       provenPtyIds: []
+    })
+    // Earlier relays that cannot be asked leave it unverifiable, even with nothing leased here.
+    const unasked = orcadMigrationRelayPtyLister(
+      TARGET,
+      { listProcesses: async () => [] },
+      Date.now,
+      async () => null
+    )
+    expect(await assessOrcadMigrationTerminals(noLeases, TARGET, unasked)).toMatchObject({
+      verdict: 'unverifiable'
     })
   })
 

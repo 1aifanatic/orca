@@ -38,6 +38,7 @@ import { retainOrcadMigrationSource } from './orcad-migration-source-retention'
 import {
   assessOrcadMigrationTerminals,
   retireProvenExitedLeases,
+  type CensusHostRelayTerminals,
   type ListRelayPtyIds
 } from './orcad-migration-terminal-gate'
 import { currentOrcadSourceFingerprint } from './orcad-retained-source'
@@ -54,6 +55,8 @@ export type OrcadDeltaMoveArgs = {
   environment: KnownRuntimeEnvironment
   destination: OrcadMigrationDestinationCatalog
   listRelayPtyIds: ListRelayPtyIds | null
+  /** With no relay session to ask, the census of the host's relay endpoints that must prove exit. */
+  censusHost?: CensusHostRelayTerminals | null
   /** Releases the relay session after the terminal check, as a conversion does. */
   releaseDirectSession: (sshTargetId: string) => Promise<void>
   ensureTunnel: () => Promise<void>
@@ -75,7 +78,12 @@ export async function runOrcadDeltaMove(args: OrcadDeltaMoveArgs): Promise<Orcad
       blockers: plan.blockers
     }
   }
-  const terminals = await assessOrcadMigrationTerminals(store, target.id, args.listRelayPtyIds)
+  const terminals = await assessOrcadMigrationTerminals(
+    store,
+    target.id,
+    args.listRelayPtyIds,
+    args.censusHost
+  )
   if (terminals.verdict !== 'exited') {
     return refuse('orcad_migration_terminals', terminals.reason)
   }

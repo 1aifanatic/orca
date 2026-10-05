@@ -12,6 +12,8 @@ import { deployOnce } from './ssh-hostile-host-test-harness'
 import { retrySshOwnerRecoveryWhileBlocked } from './ssh-owner-recovery-retry'
 import { openSshPtyConsumerSession } from './ssh-pty-consumer-session'
 import { assessOrcadMigrationTerminals } from './orcad-migration-terminal-gate'
+import { listPreviousRelayPtyIds } from './ssh-legacy-relay-routing'
+import { clearPreviousRelayCensus, startPreviousRelayCensus } from './ssh-previous-relay-terminals'
 
 function relayPtyIds(rows: unknown): string[] {
   return Array.isArray(rows)
@@ -38,7 +40,11 @@ export async function proveWindowsRelayTerminalGate(
         }),
       { isCurrent: () => true, onClosed: () => () => {} }
     )
-    const lister = async () => relayPtyIds(await mux.request('pty.listProcesses'))
+    // Earlier relays answer through this deploy's real Windows census, as a connect asks them.
+    await startPreviousRelayCensus(conn, targetId, deployed)
+    const lister = Object.assign(async () => relayPtyIds(await mux.request('pty.listProcesses')), {
+      previous: () => listPreviousRelayPtyIds(targetId)
+    })
     const noLeases = { getSshRemotePtyLeases: () => [] }
     const spawned: unknown = await mux.request('pty.spawn', { cols: 80, rows: 24 })
     const id = relayPtyIds([spawned])[0] ?? ''
@@ -54,6 +60,7 @@ export async function proveWindowsRelayTerminalGate(
     expect(exited).toEqual({ verdict: 'exited', provenPtyIds: [] })
     return { relayTerminal: id, gateLive: live.verdict, gateExited: exited.verdict }
   } finally {
+    clearPreviousRelayCensus(targetId)
     mux.dispose()
   }
 }

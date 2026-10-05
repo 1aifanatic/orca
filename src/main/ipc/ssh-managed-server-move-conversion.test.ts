@@ -162,7 +162,8 @@ function moveDeps() {
       return { terminated: leases.length, unverifiable: 0 }
     }),
     relayTerminals: async (target: SshTarget) => {
-      const proof = await assessOrcadMigrationTerminals(store, target.id, null)
+      // No relay session: the host's census, which found no relay endpoint, decides with the leases.
+      const proof = await assessOrcadMigrationTerminals(store, target.id, null, hostIdle)
       return proof.verdict === 'exited'
         ? { verdict: 'exited' as const, count: 0 }
         : { verdict: proof.verdict, count: proof.ptyIds.length }
@@ -173,6 +174,7 @@ function moveDeps() {
         sshTargetId: targetId,
         name: TARGET.label,
         listRelayPtyIds: null,
+        censusHost: hostIdle,
         destinationFor: () => destination,
         releaseDirectSession: async () => {},
         retireSource: () => false
@@ -187,6 +189,10 @@ function moveDeps() {
     releaseRelay: vi.fn(async () => {}),
     publishRelayStatus: vi.fn()
   }
+}
+
+async function hostIdle() {
+  return { verdict: 'exited' as const, count: 0 }
 }
 
 function stagedSession() {

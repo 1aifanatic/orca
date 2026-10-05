@@ -18,6 +18,7 @@ import { detectRemoteHostPlatform } from './ssh-remote-platform-detection'
 import { isWindowsRemoteHost, normalizeRemoteHome, validateRemoteHome } from './ssh-remote-platform'
 import {
   assessOrcadMigrationTerminals,
+  type HostRelayTerminalProof,
   type ListRelayPtyIds
 } from './orcad-migration-terminal-gate'
 
@@ -28,22 +29,30 @@ export async function relayTerminalsOnConnect(args: {
   listRelayPtyIds: ListRelayPtyIds | null
   censusHost: () => Promise<HostRelayEndpointCensus>
 }): Promise<HostServerTerminalVerdict> {
-  const proof = await assessOrcadMigrationTerminals(args.store, args.targetId, args.listRelayPtyIds)
-  if (proof.verdict !== 'exited') {
-    return { verdict: proof.verdict, count: proof.ptyIds.length }
-  }
-  if (args.listRelayPtyIds) {
+  let hostCount = 0
+  const proof = await assessOrcadMigrationTerminals(
+    args.store,
+    args.targetId,
+    args.listRelayPtyIds,
+    async () => {
+      const hostProof = hostTerminalProofFromCensus(await args.censusHost())
+      hostCount = hostProof.count
+      return hostProof
+    }
+  )
+  return proof.verdict === 'exited'
+    ? { verdict: 'exited', count: 0 }
+    : { verdict: proof.verdict, count: proof.ptyIds.length || hostCount }
+}
+
+/** Only a listing that found no endpoint, or only idle ones, proves exit; `unenumerable` does not. */
+export function hostTerminalProofFromCensus(
+  census: HostRelayEndpointCensus
+): HostRelayTerminalProof {
+  if (census.verdict === 'none' || census.verdict === 'idle') {
     return { verdict: 'exited', count: 0 }
   }
-  let census: HostRelayEndpointCensus
-  try {
-    census = await args.censusHost()
-  } catch {
-    return { verdict: 'unverifiable', count: 0 }
-  }
-  return census.verdict === 'live' || census.verdict === 'unverifiable'
-    ? { verdict: census.verdict, count: census.count }
-    : { verdict: 'exited', count: 0 }
+  return { verdict: census.verdict === 'live' ? 'live' : 'unverifiable', count: census.count }
 }
 
 /** The census over the connect's bootstrap connection, before any relay session exists. */

@@ -24,6 +24,7 @@ import {
   relayTerminalsOnConnect
 } from '../ssh/ssh-host-relay-terminals-on-connect'
 import { requireManagedOrcadInfrastructure } from '../ssh/orcad-managed-runtime-context'
+import { censusHostRelayTerminalsFor } from '../ssh/ssh-host-relay-census-for-target'
 import { setSshHostServerStatus } from '../ssh/ssh-host-server-status'
 import { trackSshHostServerEvent } from '../ssh/ssh-host-server-telemetry'
 import { knownSshHostPlatform } from '../ssh/ssh-host-platform-memo'
@@ -104,11 +105,14 @@ export function hostServerOnConnectDeps(userDataPath: string): HostServerOnConne
         name: target.orcadProvisioning?.name ?? target.label,
         sshTargetId: target.id
       }),
-    convert: (target) =>
+    convert: (target, hostProof) =>
       convertSshTargetToManagedOrcad(userDataPath, {
         sshTargetId: target.id,
         name: target.label,
         listRelayPtyIds: orcadMigrationRelayPtyLister(target.id),
+        // The connect's own census already answered; a conversion before any session reuses it.
+        censusHost: (host) =>
+          hostProof ? Promise.resolve(hostProof) : censusHostRelayTerminalsFor(host)(),
         destinationFor: orcadMigrationDestinationFor,
         // Why guarded: this runs before the connect registers a session, and an unconditional
         // disconnect would cancel the very connect attempt that asked for the conversion.

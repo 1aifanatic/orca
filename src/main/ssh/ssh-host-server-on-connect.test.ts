@@ -276,7 +276,8 @@ describe('which server an SSH host runs on connect', () => {
       route: 'managed',
       environmentId: 'env-1'
     })
-    expect(d.convert).toHaveBeenCalledWith(target)
+    // No census ran, so the conversion must prove the host's terminals itself.
+    expect(d.convert).toHaveBeenCalledWith(target, null)
     expect(d.relayTerminals).not.toHaveBeenCalled()
     expect(d.retireRetainedSource).not.toHaveBeenCalled()
   })
