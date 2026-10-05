@@ -171,6 +171,11 @@ export type JournalDispatchRow = JournalRowBase & {
   /** On `rejected`: `AgentJournalSubmission.rejectionCause`. Older readers keep the key and ignore
    *  it. */
   rejectionCause?: AgentJournalRejectionCause
+  /** On `rejected`: the turn a Codex send was answered into, and how it joined it, when that
+   *  turn's end settled the send; null on every other rejection. Absent on other rows and on rows
+   *  written before it. `via` stays a string: a newer build may write another. Older readers keep
+   *  the key and ignore it; one this build cannot read is read as null, never dropping the row. */
+  answeredInTurn?: { turnItemId: string; via: string } | null
 }
 
 /** What a failed start's row records; the attempt count and the time are the reducer's. */
