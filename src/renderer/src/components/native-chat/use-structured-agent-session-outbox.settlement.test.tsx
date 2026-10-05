@@ -98,9 +98,11 @@ function transportError(code: string, message: string): RuntimeRpcCallError {
   return new RuntimeRpcCallError({ id: 'rpc-1', ok: false, error: { code, message } })
 }
 
+type MountProps = { submissions: AgentJournalSubmission[]; rows?: AgentJournalRenderItem[] }
+
 function mount(submissions: AgentJournalSubmission[] = []) {
-  return renderHook(
-    (props: { submissions: AgentJournalSubmission[]; rows?: AgentJournalRenderItem[] }) =>
+  return renderHook<ReturnType<typeof useStructuredAgentSessionOutbox>, MountProps>(
+    (props) =>
       useStructuredAgentSessionOutbox({
         sessionId: 'session-1',
         target: TARGET,

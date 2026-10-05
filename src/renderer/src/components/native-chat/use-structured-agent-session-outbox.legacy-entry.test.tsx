@@ -153,20 +153,24 @@ describe('a message an older build saved behind its Retry', () => {
 describe('a message an older build kept as the host rejected it', () => {
   beforeEach(() => {
     localStorage.clear()
-    writeOutbox('session-1', [
-      {
-        ...createStructuredAgentSessionOutboxEntry({
-          clientMessageId: ID,
-          sessionId: 'session-1',
-          text: 'rejected by the host',
-          attachments: [],
-          queuedAt: 1
-        }),
-        lastAttemptAt: 5,
-        state: 'rejected',
-        lastFailure: { kind: 'rejected', reason: 'Orca restarted before this message was sent.' }
-      }
-    ])
+    // Saved as that build wrote it: a state this build no longer has, so not through its types.
+    localStorage.setItem(
+      'orca:desktopStructuredAgentSessionOutbox:v1:session-1',
+      JSON.stringify([
+        {
+          ...createStructuredAgentSessionOutboxEntry({
+            clientMessageId: ID,
+            sessionId: 'session-1',
+            text: 'rejected by the host',
+            attachments: [],
+            queuedAt: 1
+          }),
+          lastAttemptAt: 5,
+          state: 'rejected',
+          lastFailure: { kind: 'rejected', reason: 'Orca restarted before this message was sent.' }
+        }
+      ])
+    )
   })
 
   it("leaves for the host's row, even one not loaded, without a resend or a hand-back", async () => {

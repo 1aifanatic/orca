@@ -91,8 +91,7 @@ function keptRows(): { id: string; unsent?: true }[] {
       sessionId: 'session-1',
       agent: 'claude',
       target: { kind: 'local' },
-      isVisible: true,
-      composerScopeKey: 'scope-1'
+      isVisible: true
     })
   )
   const rows = result.current.messages
