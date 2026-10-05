@@ -100,19 +100,20 @@ function journalMessagesAfter(
 ): AsyncQuestionJournalItem[] {
   const messages: AsyncQuestionJournalItem[] = []
   journal.visitItemsWithLinkage((itemId, sequence, body, item) => {
-    if (body.kind !== 'message') {
+    if (
+      body.kind !== 'message' ||
+      (after &&
+        compareAgentJournalItems({ sequence, sequenceIndex: item.sequenceIndex }, after) <= 0)
+    ) {
       return
     }
-    const message: AsyncQuestionJournalItem = {
+    messages.push({
       itemId,
       sequence,
       body,
       ...(item.sequenceIndex === undefined ? {} : { sequenceIndex: item.sequenceIndex }),
       ...(item.agentId === undefined ? {} : { agentId: item.agentId })
-    }
-    if (!after || compareAgentJournalItems(message, after) > 0) {
-      messages.push(message)
-    }
+    })
   })
   return messages.sort(compareAgentJournalItems)
 }

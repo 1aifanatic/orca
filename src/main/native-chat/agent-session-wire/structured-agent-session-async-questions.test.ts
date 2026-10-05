@@ -25,6 +25,7 @@ import { deriveJournalAsyncQuestions } from '../../../shared/native-chat-async-q
 import { readAgentSessionHistory } from './agent-session-history-page'
 import { readStructuredAgentSessionAsyncQuestions } from './structured-agent-session-status-journal-projection'
 import { AgentSessionSubscribers } from './structured-agent-session-subscribers'
+import { asyncQuestionsFrameReserveBytes } from './agent-session-subscriber-frame-fields'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-async',
@@ -502,5 +503,23 @@ describe('structured async questions against the frame byte budget', () => {
     expect(snapshot.page.hasOlder).toBe(true)
     const frameBytes = Buffer.byteLength(serializeRemoteRuntimePayload(snapshot), 'utf8')
     expect(frameBytes).toBeLessThanOrEqual(AGENT_SESSION_HISTORY_MAX_PAGE_BYTES)
+  })
+
+  it('measures a published set once while its identity holds, not on every delivery', async () => {
+    const journal = await open()
+    const field = {
+      state: 'ready' as const,
+      questions: [{ key: 'q', index: 0, title: 'Color?' }]
+    }
+    const hooks = { readAsyncQuestions: () => field }
+    const first = asyncQuestionsFrameReserveBytes(hooks, IDENTITY.sessionId, journal)
+    expect(first).toBe(nativeChatAsyncQuestionsFieldBytes(field))
+    const stringify = vi.spyOn(JSON, 'stringify')
+    try {
+      expect(asyncQuestionsFrameReserveBytes(hooks, IDENTITY.sessionId, journal)).toBe(first)
+      expect(stringify).not.toHaveBeenCalled()
+    } finally {
+      stringify.mockRestore()
+    }
   })
 })

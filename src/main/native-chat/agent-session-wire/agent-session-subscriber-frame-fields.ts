@@ -43,6 +43,9 @@ export type SubscriberFrame = {
   asyncQuestions: NativeChatAsyncQuestionsField | undefined
 }
 
+// The published field is identity-stable while the set is unchanged, so its size is measured once.
+const fieldBytes = new WeakMap<NativeChatAsyncQuestionsField, number>()
+
 /** Bytes the async-question field takes from a frame's history page: its actual size, since
  *  only these frames carry it (other pages keep the whole budget). */
 export function asyncQuestionsFrameReserveBytes(
@@ -51,7 +54,15 @@ export function asyncQuestionsFrameReserveBytes(
   journal: AgentSessionJournal
 ): number {
   const field = hooks.readAsyncQuestions?.(sessionId, journal)
-  return field ? nativeChatAsyncQuestionsFieldBytes(field) : 0
+  if (!field) {
+    return 0
+  }
+  let bytes = fieldBytes.get(field)
+  if (bytes === undefined) {
+    bytes = nativeChatAsyncQuestionsFieldBytes(field)
+    fieldBytes.set(field, bytes)
+  }
+  return bytes
 }
 
 /** Builds the frame to emit; the caller stores the returned refs only after the
