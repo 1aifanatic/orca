@@ -329,25 +329,34 @@ describe('ACP startup that never answers', () => {
     expect(rig.lifecycle).toEqual([])
   })
 
-  it('fails the start once the handshake outlasts its bound, and stops the child', async () => {
-    const rig = await openAcpAdapterRig({
-      script: (agent) => agent.on('session/new', () => {}),
-      deps: { startupTimeoutMs: 20 }
-    })
-    const failure = await rig.acquire().catch((error: unknown) => error)
-    expect(failure).toMatchObject({
-      name: 'AgentSessionAcquisitionRefusal',
-      reason: 'hostStopped',
-      message: 'Grok did not finish starting within 0 seconds'
-    })
-    expect(rig.child().closes).toBe(1)
-    await expect(rig.adapter.closeSession(SESSION)).resolves.toBe(true)
+  it('lets a handshake Grok never answers run on until the start is aborted', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const rig = await openAcpAdapterRig({
+        script: (agent) => agent.on('session/new', () => {})
+      })
+      const start = new AbortController()
+      const failed = rig.acquire({ signal: start.signal }).catch((error: unknown) => error)
+      let settled = false
+      void failed.then(() => {
+        settled = true
+      })
+      await rig.settle()
+      vi.advanceTimersByTime(30 * 60_000)
+      await rig.settle()
+      expect(settled).toBe(false)
+      expect(rig.child().closes).toBe(0)
+      start.abort()
+      expect(await failed).toBeInstanceOf(Error)
+      expect(rig.child().closes).toBeGreaterThan(0)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('keeps the child of a failed start until its exit is proven, and starts no other meanwhile', async () => {
     const rig = await openAcpAdapterRig({
-      script: (agent) => agent.on('initialize', () => {}),
-      deps: { startupTimeoutMs: 15 }
+      script: (agent) => agent.on('initialize', () => {})
     })
     const start = new AbortController()
     const failed = rig.acquire({ signal: start.signal }).catch((error: unknown) => error)

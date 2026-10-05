@@ -2,8 +2,8 @@
 // initialize with the client's file system and terminals off, then reattach the session this chat
 // proved with `session/load` (`session/resume` only for an agent that cannot load) or start a new
 // one. The journal already holds a reattached chat, so whatever the agent sends while it reattaches
-// is not written, except context usage. The handshake is bounded: an agent that never answers fails
-// the start instead of holding the chat's queue, and the acquire's abort signal stops it at any point.
+// is not written, except context usage. The handshake has no time bound: the acquire's abort signal
+// (Close, Stop, quit) stops it at any point.
 
 import type { AgentSessionProviderHandleLink } from '../../shared/agent-session-provider-handle'
 import { TUI_AGENT_DISPLAY_NAMES } from '../../shared/tui-agent-display-names'
@@ -45,17 +45,6 @@ import { RequestPermissionResponseSchema } from './generated/acp-protocol.genera
 const ACP_RESOURCE_NOT_FOUND = -32002
 /** Frames an agent may send before its session exists; past this they are dropped. */
 const MAX_EARLY_FRAMES = 2_048
-/** How long the agent has to answer the handshake, reattach or create its session, and take saved
- *  options back. A load-only agent replays the whole conversation, so this is generous. */
-export const ACP_STARTUP_TIMEOUT_MS = 60_000
-
-export class AcpStartupTimeoutError extends Error {
-  constructor(agentName: string, timeoutMs: number) {
-    super(`${agentName} did not finish starting within ${Math.round(timeoutMs / 1_000)} seconds`)
-    this.name = 'AcpStartupTimeoutError'
-  }
-}
-
 export function acpAgentName(agent: string): string {
   return isTuiAgent(agent) ? TUI_AGENT_DISPLAY_NAMES[agent] : agent
 }
@@ -164,6 +153,14 @@ export async function acquireAcpStructuredSession(input: {
       input.onConnectionLost(session, error)
     }
   })
+  // An abort fails whatever the agent left unanswered at once, as a kill does, whether or not the
+  // child's exit is proven yet.
+  const abandon = () =>
+    runtime.close(new Error(`${acpAgentName(spec.agent)} was closed while starting`))
+  acquire.signal?.addEventListener('abort', abandon, { once: true })
+  if (acquire.signal?.aborted) {
+    abandon()
+  }
   runtime.subscribe((event: AcpSessionEvent) =>
     whenLane(
       () =>
@@ -213,12 +210,6 @@ export async function acquireAcpStructuredSession(input: {
   }
   await identity.onSpawned(child.pid)
   const agentName = acpAgentName(spec.agent)
-  const startupTimeoutMs = deps.startupTimeoutMs ?? ACP_STARTUP_TIMEOUT_MS
-  // Closing the connection fails whichever request the agent left unanswered.
-  const startupDeadline = setTimeout(
-    () => runtime.close(new AcpStartupTimeoutError(agentName, startupTimeoutMs)),
-    startupTimeoutMs
-  )
   try {
     await runtime.initialize()
     const resume = launch.resume
@@ -317,11 +308,8 @@ export async function acquireAcpStructuredSession(input: {
         'notSignedIn'
       )
     }
-    if (error instanceof AcpStartupTimeoutError) {
-      throw new AgentSessionAcquisitionRefusal(error.message, 'hostStopped')
-    }
     throw error
   } finally {
-    clearTimeout(startupDeadline)
+    acquire.signal?.removeEventListener('abort', abandon)
   }
 }

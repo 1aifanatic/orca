@@ -52,9 +52,7 @@ export const AGENT_SESSION_REFUSAL_REASONS = {
     /** A Claude account is added in WSL and no Windows one is selected, which a chat can't run under. */
     'managedAccountUnsupported',
     /** The agent started, then Orca could not open the chat's conversation for it. */
-    'attachFailed',
-    /** The agent never finished starting, so Orca stopped it. */
-    'hostStopped'
+    'attachFailed'
   ],
   agent_session_ownership_unknown: [
     'sessionNotAttached',

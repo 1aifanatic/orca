@@ -39,8 +39,6 @@ export type AcpStructuredSessionAdapterDeps = {
   cancelTimeoutMs?: number
   /** Bounds a Stop's wait for the agent to end its turn; past it the child is closed. */
   stopGraceMs?: number
-  /** Bounds the handshake and session load or creation; past it the start fails. */
-  startupTimeoutMs?: number
   /** Bounds a pick's wait for the agent's answer; past it the pick fails. */
   optionWriteTimeoutMs?: number
   isWindowsProcessStartTimeAvailable?: () => boolean

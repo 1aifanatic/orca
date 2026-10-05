@@ -64,12 +64,11 @@ function duringOwnerProbe(host: StructuredAgentSessionHost, during: () => void):
 describe('a Grok start the host aborts', () => {
   it('quits promptly while Grok never answers its handshake, and stops the child', async () => {
     const { rig, host } = await openHostRig({
-      script: (agent) => agent.on('initialize', () => {}),
-      deps: { startupTimeoutMs: 60_000 }
+      script: (agent) => agent.on('initialize', () => {})
     })
     const attaching = host.attach(CALLER, attachParams())
     await rig.frame('initialize')
-    // Well inside the start's own bound: the quit is what ends it.
+    // The start has no bound of its own: the quit is what ends it.
     expect(await within(host.flushAllStreamedEvents({ trigger: 'quit' }), 2_000)).not.toBe(STALLED)
     expect((await attaching).ok).toBe(false)
     expect(rig.child().exited).toBe(true)
@@ -99,8 +98,7 @@ describe('a Grok start the host aborts', () => {
 
   it('never launches Grok for a chat closed while its attach was still reconciling', async () => {
     const { rig, host } = await openHostRig({
-      script: (agent) => agent.on('initialize', () => {}),
-      deps: { startupTimeoutMs: 60_000 }
+      script: (agent) => agent.on('initialize', () => {})
     })
     let closing: Promise<void> | undefined
     duringOwnerProbe(host, () => {
@@ -179,7 +177,7 @@ async function openClosedResumableChat(options: { hangsHandshake?: number } = {}
         agent.reply(frame, { configOptions: GROK_CONFIG_OPTIONS })
       )
     },
-    deps: { resolveLaunch: launch(() => resumed), startupTimeoutMs: 60_000 }
+    deps: { resolveLaunch: launch(() => resumed) }
   })
   expect(await rig.host.attach(CALLER, attachParams())).toMatchObject({ ok: true })
   resumed = true

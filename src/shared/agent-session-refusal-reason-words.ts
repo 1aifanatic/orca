@@ -93,8 +93,7 @@ const REASON_WORDS = {
     managedAccountEnvOverride: { fact: 'managedAccountEnvOverride', action: 'actFirst' },
     accountSwitchInProgress: { fact: 'accountSwitchInProgress', action: 'wait' },
     managedAccountUnsupported: { fact: 'managedAccountUnsupported', action: 'actFirst' },
-    attachFailed: codeWords('retry'),
-    hostStopped: { fact: 'hostStopped', action: 'retry' }
+    attachFailed: codeWords('retry')
   },
   agent_session_ownership_unknown: {
     sessionNotAttached: codeWords('retry'),

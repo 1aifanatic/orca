@@ -116,23 +116,6 @@ describe('NativeChatStructuredSession launch lifecycle', () => {
     expect(screen.queryByText(/agent_session_/)).toBeNull()
   })
 
-  it('says the agent never finished starting when Orca stopped a start that never answered', () => {
-    mocks.launchLifecycle = 'failed'
-    mocks.launchFailure = {
-      kind: 'refused',
-      code: 'agent_session_operation_invalid',
-      details: { reason: 'hostStopped' }
-    }
-    render(sessionView())
-
-    expect(
-      screen.getByText(
-        'Chat could not be started. Codex never finished starting, so Orca stopped it.'
-      )
-    ).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
-  })
-
   it("keeps a step the Retry doesn't take, and drops one it does", () => {
     mocks.launchLifecycle = 'failed'
     mocks.launchFailure = {

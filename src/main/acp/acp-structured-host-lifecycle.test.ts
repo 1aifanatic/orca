@@ -171,8 +171,7 @@ describe('a Grok crash whose exit is not proven yet', () => {
 describe('closing or stopping a Grok chat while it starts', () => {
   it('keeps a failed start whose child is not proven gone, so a later close asks it again', async () => {
     const { rig, host } = await openHostRig({
-      script: (agent) => agent.on('initialize', () => {}),
-      deps: { startupTimeoutMs: 30 }
+      script: (agent) => agent.on('initialize', () => {})
     })
     const attaching = host.attach(CALLER, attachParams()).catch((error: unknown) => error)
     await rig.frame('initialize')
@@ -192,32 +191,14 @@ describe('closing or stopping a Grok chat while it starts', () => {
     expect(await rig.adapter.closeSession(SESSION)).toBe(true)
   })
 
-  it('refuses a new chat whose start never answered with why, worded like a host-stopped start', async () => {
-    const { rig, host } = await openHostRig({
-      script: (agent) => agent.on('initialize', () => {}),
-      deps: { startupTimeoutMs: 30 }
-    })
-    const attached = await host.attach(CALLER, attachParams())
-    expect(attached).toMatchObject({
-      ok: false,
-      refusal: {
-        code: 'agent_session_operation_invalid',
-        details: { reason: 'hostStopped' },
-        message: expect.stringContaining('Grok never finished starting, so Orca stopped it.')
-      }
-    })
-    expect(rig.child().exited).toBe(true)
-  })
-
   it('lets a Stop reach a child Grok never finished initializing', async () => {
     const { rig, host } = await openHostRig({
-      script: (agent) => agent.on('initialize', () => {}),
-      deps: { startupTimeoutMs: 60_000 }
+      script: (agent) => agent.on('initialize', () => {})
     })
     const attaching = host.attach(CALLER, attachParams())
     await rig.frame('initialize')
     const stopping = host.cancel(CALLER, { envelope: envelope('agentSession.cancel', {}) })
-    // Long before the startup bound, and with no close behind it.
+    // With no close behind it.
     await waitFor(() => expect(rig.child().exited).toBe(true))
     expect((await attaching).ok).toBe(false)
     expect(await stopping).toMatchObject({ ok: true })
@@ -232,8 +213,7 @@ describe('closing or stopping a Grok chat while it starts', () => {
         if (spawns > 1) {
           agent.on('initialize', () => {})
         }
-      },
-      deps: { startupTimeoutMs: 60_000 }
+      }
     })
     expect(await host.attach(CALLER, attachParams())).toMatchObject({ ok: true })
     // The chat closes; the next send has to start Grok again, and that start never answers.
@@ -261,8 +241,7 @@ describe('closing or stopping a Grok chat while it starts', () => {
 
   it('leaves a start alone for a Stop that names a turn of a child already gone', async () => {
     const { rig, host } = await openHostRig({
-      script: (agent) => agent.on('initialize', () => {}),
-      deps: { startupTimeoutMs: 60_000 }
+      script: (agent) => agent.on('initialize', () => {})
     })
     const attaching = host.attach(CALLER, attachParams())
     await rig.frame('initialize')
