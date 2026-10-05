@@ -16,6 +16,7 @@ import {
   settleStaleStructuredAgentSessionState,
   settleStructuredAgentSessionDeadGeneration
 } from './structured-agent-session-dead-generation-settlement'
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 
 const SESSION = 'session-late-proof'
 const THREAD = 'thread-1'
@@ -48,7 +49,7 @@ beforeEach(async () => {
       workspaceId: 'workspace-1',
       hostId: 'local',
       agent: 'codex',
-      providerHandle: { kind: 'codex', threadId: THREAD }
+      providerHandle: codexProviderHandle(THREAD)
     },
     stateDirectory: root,
     now: () => 100
