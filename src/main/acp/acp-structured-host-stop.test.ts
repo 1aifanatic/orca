@@ -85,12 +85,25 @@ describe('a Grok chat Stop', () => {
     await send(host, 'hello')
     const prompt = await rig.frame('session/prompt')
     first.agent.notify('session/update', replyChunk(promptIdOf(prompt), 'partial'))
-    first.agent.on('session/cancel', () => first.agent.reply(prompt, { stopReason: 'cancelled' }))
+    // Grok takes a moment to wind the turn down; the host waits for it before ending the process.
+    const answered: { cancel: boolean; atClose: boolean | null } = { cancel: false, atClose: null }
+    first.agent.on('session/cancel', () =>
+      setTimeout(() => {
+        answered.cancel = true
+        first.agent.reply(prompt, { stopReason: 'cancelled' })
+      }, 50)
+    )
+    const close = first.close.bind(first)
+    first.close = async () => {
+      answered.atClose ??= answered.cancel
+      return close()
+    }
     await rig.settle()
     await host.flushStreamedEvents(SESSION)
     expect(await stop(host)).toMatchObject({ ok: true, value: { cancelled: true } })
     await waitFor(() => expect(first.exited).toBe(true))
     expect(methods(first, 'session/cancel')).toHaveLength(1)
+    expect(answered.atClose).toBe(true)
     expect((await turns()).at(-1)).toMatchObject({ state: 'interrupted' })
 
     await send(host, 'again')
