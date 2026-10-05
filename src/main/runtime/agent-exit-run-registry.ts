@@ -7,6 +7,9 @@ export const AGENT_PRESENCE_FALLBACK_INTERVAL_MS = 15_000
 // Why stop after three: an unreadable host must not become a poll; a change signal (a nudge)
 // still buys one look, at most once per fallback interval.
 export const AGENT_PRESENCE_BACKOFF_MS = [30_000, 60_000] as const
+// Why a few slow looks: a gone process whose end could not be read must not stay chat forever
+// over an idle shell, yet an unreadable pane must not become a poll.
+export const AGENT_END_FOLLOW_UP_DELAYS_MS = [120_000, 300_000, 600_000] as const
 
 /** The next attempt after `failures` unverifiable ones: backed off, then never until a new run. */
 export function nextAgentPresenceAttemptAtMs(failures: number, nowMs = Date.now()): number {
@@ -41,6 +44,8 @@ export type AgentExitRun = {
   nextEndCheckAtMs: number
   /** Last end check; a change signal may re-arm one no sooner than the fallback interval after it. */
   lastEndCheckAtMs: number
+  /** Timed follow-up end checks spent for a gone process (see AGENT_END_FOLLOW_UP_DELAYS_MS). */
+  endFollowUps: number
 }
 
 export class AgentExitRunRegistry {
@@ -71,7 +76,8 @@ export class AgentExitRunRegistry {
       nextProbeAtMs: nowMs + AGENT_PRESENCE_FALLBACK_INTERVAL_MS,
       failedEndChecks: 0,
       nextEndCheckAtMs: 0,
-      lastEndCheckAtMs: Number.NEGATIVE_INFINITY
+      lastEndCheckAtMs: Number.NEGATIVE_INFINITY,
+      endFollowUps: 0
     }
     this.runs.set(ptyId, run)
     return run

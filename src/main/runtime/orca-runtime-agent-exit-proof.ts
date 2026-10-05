@@ -6,6 +6,7 @@ import {
 } from '../../shared/agent-process-presence'
 import type { AgentPresenceChange } from '../agent-hooks/server/server-row-ownership'
 import {
+  AGENT_END_FOLLOW_UP_DELAYS_MS,
   AGENT_PRESENCE_FALLBACK_INTERVAL_MS,
   isFencedShellForeground,
   nextAgentPresenceAttemptAtMs,
@@ -24,6 +25,7 @@ export class OrcaRuntimeWithAgentExitProof extends OrcaRuntimeWithAgentIdentityD
   private readonly agentPresenceNudged = new Set<string>()
   private agentPresenceTickTimer: ReturnType<typeof setTimeout> | null = null
   private agentPresenceTickRunning = false
+  private readonly agentEndFollowUpTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
   /** Targeted presence of known agents on this host (the execution host for local PTYs). */
   protected probeAgentProcessIdentities(
@@ -43,6 +45,7 @@ export class OrcaRuntimeWithAgentExitProof extends OrcaRuntimeWithAgentIdentityD
   protected forgetAgentExitRun(ptyId: string): void {
     super.forgetAgentExitRun(ptyId)
     this.agentPresenceNudged.delete(ptyId)
+    this.clearAgentEndFollowUp(ptyId)
   }
 
   /** A pane's canonical owner changed: a new owner begins a run; its own end proves this one. */
@@ -238,6 +241,7 @@ export class OrcaRuntimeWithAgentExitProof extends OrcaRuntimeWithAgentIdentityD
           return
         }
         if (isFencedShellForeground(inspection, run.incarnationId)) {
+          this.clearAgentEndFollowUp(run.ptyId)
           run.exitProven = true
           this.recordProvenAgentEnd(run, checkStartedAtMs)
           this.onAgentRunExitProven(run, observedAtMs)
@@ -247,6 +251,7 @@ export class OrcaRuntimeWithAgentExitProof extends OrcaRuntimeWithAgentIdentityD
         if (replacement && replacement.pid !== run.identity?.pid) {
           const identity = await this.bootstrapAgentIdentity(replacement)
           if (this.agentExitRuns.isCurrent(run)) {
+            this.clearAgentEndFollowUp(run.ptyId)
             this.agentExitRuns.begin(run.ptyId, {
               incarnationId: run.incarnationId,
               agent: replacement.agent,
@@ -263,8 +268,40 @@ export class OrcaRuntimeWithAgentExitProof extends OrcaRuntimeWithAgentIdentityD
           // Why back off: an unreadable pane must not cost a capture per publish or nudge.
           run.failedEndChecks += 1
           run.nextEndCheckAtMs = nextAgentPresenceAttemptAtMs(run.failedEndChecks)
+          this.scheduleAgentEndFollowUp(run, observedAtMs)
         }
       })
+  }
+
+  /**
+   * After a failed end check of a run whose process the probe found gone: one slow, timed look
+   * (2, 5, 10 min after each failure, three in all), since an idle shell sends no change signal.
+   * Dies with the run, the PTY or the pane's chat candidacy.
+   */
+  private scheduleAgentEndFollowUp(run: AgentExitRun, observedAtMs: number): void {
+    const delay = AGENT_END_FOLLOW_UP_DELAYS_MS[run.endFollowUps]
+    if (!run.processGone || delay === undefined) {
+      return
+    }
+    this.clearAgentEndFollowUp(run.ptyId)
+    const timer = setTimeout(() => {
+      this.agentEndFollowUpTimers.delete(run.ptyId)
+      if (!this.isProbeEligible(run)) {
+        return
+      }
+      run.endFollowUps += 1
+      this.handleAgentRunEnd(run, observedAtMs, { changeSignal: true })
+    }, delay)
+    timer.unref?.()
+    this.agentEndFollowUpTimers.set(run.ptyId, timer)
+  }
+
+  private clearAgentEndFollowUp(ptyId: string): void {
+    const timer = this.agentEndFollowUpTimers.get(ptyId)
+    if (timer) {
+      clearTimeout(timer)
+      this.agentEndFollowUpTimers.delete(ptyId)
+    }
   }
 
   /**

@@ -208,6 +208,55 @@ describe('an end that stays unverifiable backs off; change signals re-arm it, ra
     }
   )
 
+  it('retires an idle shell with slow timed follow-ups once the checks ran out, then refuses chat (R4Z-1)', async () => {
+    vi.useFakeTimers()
+    const host = makeAgentExitHost({ viewMode: 'chat', leaves: 1 })
+    host.foreground.set(PTY[A]!, { name: 'codex', pid: 1001, startTime: 'a' })
+    host.alive.add(1001)
+    await host.published()
+    host.owner(A, { agent: 'codex' })
+    await vi.advanceTimersByTimeAsync(10)
+    host.alive.delete(1001)
+    host.inspectProcess.mockImplementation(async (ptyId: string) => unverifiable(ptyId))
+    // The prompt's command-finished signal is spent while the machine is loaded.
+    host.runtime['confirmPtyAgentExit'](PTY[A]!)
+    host.runtime['nudgeAgentExitCheck'](PTY[A]!)
+    for (let index = 0; index < 36; index += 1) {
+      host.runtime.touchMobileSessionTabsForWorktree(WT)
+      await vi.advanceTimersByTimeAsync(5_000)
+    }
+    expect(host.runtime['agentExitRuns'].current(PTY[A]!)?.failedEndChecks).toBe(3)
+    // Load gone, shell idle in front: no terminal activity and no publishes from here on.
+    host.inspectProcess.mockImplementation(async (ptyId: string) =>
+      fencedCapture(ptyId, `inc-${ptyId}`, null)
+    )
+    await vi.advanceTimersByTimeAsync(20 * 60_000)
+    expect(host.hostPair().viewMode).toBe('terminal')
+    expect(host.runtime['agentEndFollowUpTimers'].size).toBe(0)
+    vi.useRealTimers()
+    await expect(host.chatSend(A, 'after-exit')).resolves.toMatchObject({
+      accepted: false,
+      bytesWritten: 0
+    })
+  })
+
+  it('spends at most three timed follow-ups on a pane that stays unreadable, then no timer', async () => {
+    vi.useFakeTimers()
+    const host = makeAgentExitHost({ viewMode: 'chat', leaves: 1 })
+    host.inspectProcess.mockImplementation(async (ptyId: string) => unverifiable(ptyId))
+    await host.published()
+    host.owner(A, { agent: 'claude', process: CLAUDE })
+    await vi.advanceTimersByTimeAsync(20_000)
+    host.inspectProcess.mockClear()
+    await vi.advanceTimersByTimeAsync(2 * 60 * 60_000)
+    const run = host.runtime['agentExitRuns'].current(PTY[A]!)
+    expect(run?.endFollowUps).toBe(3)
+    // Three discovery looks once the process is gone, plus the three follow-ups.
+    expect(host.inspectProcess.mock.calls.length).toBeLessThanOrEqual(3 + 3)
+    expect(host.runtime['agentEndFollowUpTimers'].size).toBe(0)
+    expect(host.hostPair().viewMode).toBe('chat')
+  })
+
   it('finds a later Codex in the shell while the first exit is still unproven', async () => {
     vi.useFakeTimers()
     const host = makeAgentExitHost({ viewMode: 'chat', leaves: 1 })
