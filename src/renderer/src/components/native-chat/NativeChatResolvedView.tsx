@@ -15,6 +15,10 @@ import { useNativeChatInteractivePromptCard } from './use-native-chat-interactiv
 import { NativeChatEmptyState } from './NativeChatEmptyState'
 import { NativeChatAsyncQuestionsCard } from './NativeChatAsyncQuestionsCard'
 import { useNativeChatTerminalAsyncQuestions } from './use-native-chat-terminal-async-questions'
+import {
+  NATIVE_CHAT_NO_ASYNC_CALLS_FOLDED,
+  nativeChatAsyncCallsFolded
+} from '../../../../shared/native-chat-async-questions'
 import { useNativeChatInteractiveSend } from './use-native-chat-interactive-send'
 import { shouldClearNativeChatWorkingSuppression } from './native-chat-working-suppression'
 import { resolveNativeChatTerminalTurn } from './native-chat-terminal-turn'
@@ -235,6 +239,15 @@ export function NativeChatResolvedView({
     recordOptimistic: onOptimisticSend,
     optimisticOutcome: delivery
   })
+  // The phone holding the terminal hides the card for as long as it holds it, so the rows stay.
+  const asyncCardAvailable = canSend
+  const asyncCallsFolded = useMemo(
+    () =>
+      asyncCardAvailable && session.asyncQuestions
+        ? nativeChatAsyncCallsFolded(session.asyncQuestions)
+        : NATIVE_CHAT_NO_ASYNC_CALLS_FOLDED,
+    [asyncCardAvailable, session.asyncQuestions]
+  )
 
   // The streaming preview bubble (if any) sits after the transcript but before
   // the optimistic user echoes — same order mobile uses.
@@ -382,6 +395,7 @@ export function NativeChatResolvedView({
             onLinkClick={onLinkClick}
             allowFileUriLinks={fileLinkContext !== null}
             deliveryNotices={deliveryNotices}
+            asyncCallsFolded={asyncCallsFolded}
           />
         )}
       </div>
@@ -396,7 +410,7 @@ export function NativeChatResolvedView({
         answerInputRef={questionAnswerInputRef}
       />
       {/* Non-blocking: never inside the blocking card's lifecycle, and the composer stays. */}
-      {promptCard === null && canSend ? (
+      {promptCard === null && asyncCardAvailable ? (
         <NativeChatAsyncQuestionsCard model={asyncQuestionsCard} />
       ) : null}
       {/* canSend reflects the mobile presence-lock: when a mobile client holds

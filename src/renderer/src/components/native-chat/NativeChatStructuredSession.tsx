@@ -9,6 +9,7 @@ import { resolveStructuredSessionDecision } from '../../../../shared/native-chat
 import { structuredApprovalCard } from './structured-native-chat-decision'
 import { unsupportedChatApproval } from './native-chat-interactive-prompt'
 import { useStructuredNativeChatAsyncQuestions } from './use-structured-native-chat-async-questions'
+import { nativeChatAsyncCallsFolded } from '../../../../shared/native-chat-async-questions'
 import { NativeChatComposer, type NativeChatComposerHandle } from './NativeChatComposer'
 import { NativeChatEmptyState } from './NativeChatEmptyState'
 import { NativeChatLoadingCue } from './NativeChatLoadingCue'
@@ -112,8 +113,7 @@ export function NativeChatStructuredSession(
           ? 'loading'
           : controller.status === 'error'
             ? 'error'
-            : 'ready',
-      asyncQuestions: controller.asyncQuestions
+            : 'ready'
     }),
     [controller, historyPhase, props.agent, props.sessionId]
   )
@@ -151,6 +151,10 @@ export function NativeChatStructuredSession(
         ? unsupportedChatApproval(decision.text)
         : null
   const asyncQuestionsCard = useStructuredNativeChatAsyncQuestions(paneKey, controller)
+  const asyncCallsFolded = useMemo(
+    () => nativeChatAsyncCallsFolded(controller.asyncQuestions),
+    [controller.asyncQuestions]
+  )
   const cancelPrompt = () => {
     if (controller.turnId && prompt) {
       void controller.cancel(controller.turnId, {
@@ -268,6 +272,7 @@ export function NativeChatStructuredSession(
             allowFileUriLinks={onLinkClick !== undefined}
             runtimeContext={imageRuntimeContext}
             deliveryNotices={deliveryNotices}
+            asyncCallsFolded={asyncCallsFolded}
           />
         )}
       </div>

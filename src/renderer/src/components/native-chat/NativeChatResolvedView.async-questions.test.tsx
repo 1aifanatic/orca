@@ -186,4 +186,14 @@ describe('NativeChatResolvedView async question tool row', () => {
     expect(screen.getByText('Pick a module name.')).toBeInTheDocument()
     expect(screen.queryByText(/Used 1 tool/)).toBeNull()
   })
+
+  it.each(views)('keeps the row while a phone holds the terminal and %s', (_label, view) => {
+    retained.session = transcript(view, [userTurn, askingTurn])
+    setDriverForPty(ptyId, { kind: 'mobile', clientId: 'phone-1' })
+
+    renderPane()
+
+    expect(asyncCard()).toBeNull()
+    expect(screen.getByText(/Used 1 tool/)).toBeInTheDocument()
+  })
 })

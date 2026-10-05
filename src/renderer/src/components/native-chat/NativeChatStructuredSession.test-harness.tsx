@@ -2,7 +2,10 @@ import { act } from '@testing-library/react'
 import { forwardRef, useImperativeHandle, useRef } from 'react'
 import { vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
-import { NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT } from '../../../../shared/native-chat-async-questions'
+import {
+  NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT,
+  type NativeChatAsyncCallsFolded
+} from '../../../../shared/native-chat-async-questions'
 import type { QueuedMessageCard } from './structured-agent-session-queued-cards'
 import type { AgentSessionBackgroundTask } from '../../../../shared/agent-session-wire'
 import type { AgentSessionWriteRefusal } from '../../../../shared/agent-session-write-failure'
@@ -98,6 +101,7 @@ type StructuredSessionMessageListProps = {
   runtimeContext?: unknown
   session?: { hasMore: boolean; loadingEarlier: boolean; loadEarlier: () => Promise<void> }
   deliveryNotices?: ReadonlyMap<string, NativeChatDeliveryNotice>
+  asyncCallsFolded?: NativeChatAsyncCallsFolded
 }
 
 const initialMessageListProps: StructuredSessionMessageListProps | null = null
@@ -158,7 +162,8 @@ export function createStructuredSessionMocks() {
     queuedSteer: vi.fn<(messageId: string) => Promise<void>>(async () => {}),
     queuedRemove: vi.fn<(messageId: string) => Promise<void>>(async () => {}),
     queuedEdit: vi.fn<(messageId: string) => Promise<void>>(async () => {}),
-    queuedSteerNewest: vi.fn<() => boolean>(() => false)
+    queuedSteerNewest: vi.fn<() => boolean>(() => false),
+    asyncQuestions: NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT
   }
 
   const moduleFactories = {
@@ -222,7 +227,7 @@ export function createStructuredSessionMocks() {
             send: outbox.send,
             retry: outbox.retry,
             sendAsyncAnswer: outbox.sendAsyncAnswer,
-            asyncQuestions: NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT,
+            asyncQuestions: mocks.asyncQuestions,
             isWorking: mocks.isWorking,
             backgroundTasks: {
               show: mocks.showBackgroundTasks || mocks.monitoringBackgroundTasks,
@@ -351,6 +356,7 @@ export function createStructuredSessionMocks() {
     mocks.readRefusal = undefined
     mocks.messages = null
     mocks.messageListProps = null
+    mocks.asyncQuestions = NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT
     mocks.composerProps = null
     mocks.approvalCardProps = null
     mocks.questionCardProps = null
