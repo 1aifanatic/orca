@@ -24,8 +24,7 @@ import { estimateStructuredAgentSessionItemBytes } from '../agent-session-wire/s
 import type {
   StructuredAgentSessionEventSink,
   StructuredAgentSessionRevisionJournal,
-  StructuredAgentSessionRevisionOptions,
-  StructuredAgentSessionSinkAdmission
+  StructuredAgentSessionRevisionOptions
 } from '../agent-session-wire/structured-agent-session-event-sink'
 
 /** The row a write revises: a known one, or the newest turn in the journal. */
@@ -203,7 +202,7 @@ export function writeAgentJournalTurnRow(
   target: AgentJournalTurnRowTarget,
   write: AgentJournalTurnRowWrite,
   { publish, options: delivery = {} }: AgentJournalTurnRowDelivery
-): StructuredAgentSessionSinkAdmission {
+): void {
   // A turn record belongs to no turn.
   const options = { ...delivery, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
   const revise = publish ? sink.tryReviseResolvedItemAndPublish : sink.tryReviseResolvedItem
@@ -214,10 +213,10 @@ export function writeAgentJournalTurnRow(
         sink.publish()
       }
     }
-    return { accepted: true }
+    return
   }
   const reservedBytes = agentJournalTurnRowReservedBytes(target, write)
-  return revise.call(
+  revise.call(
     sink,
     reservedBytes,
     (journal) => resolveAgentJournalTurnRowWrite(journal, target, write, reservedBytes),

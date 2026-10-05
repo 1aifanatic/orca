@@ -16,7 +16,6 @@ export function structuredAgentSessionJournalAppendOptions(
     fence,
     ...(options.observedAt === undefined ? {} : { observedAt: options.observedAt }),
     turnScope: options.turnScope,
-    ...(options.providerItemRef === undefined ? {} : { providerItemRef: options.providerItemRef }),
     ...agentJournalLinkageFields(options)
   }
 }

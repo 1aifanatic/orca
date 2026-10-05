@@ -20,7 +20,6 @@ import {
   type AgentJournalItemBody,
   type AgentJournalMessageItem,
   type AgentJournalProducerLinkage,
-  type AgentJournalProviderItemRef,
   type AgentJournalTurnScope,
   type AgentSessionProviderHandle
 } from '../../../shared/agent-session-journal-types'
@@ -52,9 +51,6 @@ type JournalRowBase = AgentJournalProducerLinkage & {
    *  for the reason linkage does. Absent on rows from hosts that predate it: the reducer
    *  derives one for them on read. */
   turnScope?: AgentJournalTurnScope
-  /** On an item row: the provider's reference for the item it creates. Rides the base for the
-   *  reason linkage does. */
-  providerItemRef?: AgentJournalProviderItemRef
 }
 
 /** First row of every epoch: binds the epoch to a provider handle and records why it opened. */
@@ -253,13 +249,7 @@ export function parseJournalRow(line: string): JournalRowParse {
  *  survives is a real one: the reader scopes on PRESENCE, so `''` or a
  *  non-string left in place would hide the row from its own author for good. */
 function dropUnusableProducerLinkage(record: Record<string, unknown>): void {
-  for (const field of [
-    'agentId',
-    'parentAgentId',
-    'providerParentRef',
-    'producerKind',
-    'providerItemRef'
-  ]) {
+  for (const field of ['agentId', 'parentAgentId', 'providerParentRef', 'producerKind']) {
     const value = record[field]
     if (value !== undefined && (typeof value !== 'string' || value.length === 0)) {
       delete record[field]

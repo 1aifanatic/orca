@@ -6,6 +6,8 @@
 // all. At execution its steps are issued in the same tick, so they sit together in the journal's
 // write queue, and each step resolves against the fold with every earlier write landed — the
 // steps before it included — so what a step writes is decided by the journal, not by memory.
+// Admitted whole is not executed whole: a step that fails leaves the steps before it written, and
+// fails the sink, so nothing more is admitted after it.
 
 import type {
   AgentJournalItemBody,
@@ -21,18 +23,10 @@ import type {
 import type { StructuredAgentSessionSinkQueue } from './structured-agent-session-event-sink-queue'
 import { structuredAgentSessionJournalAppendOptions } from './structured-agent-session-journal-append-options'
 
-/** What a transition step reads: rows by key or provider reference, every row, their turns, and
- *  the sends whose echo holds a provider item's place. */
+/** What a transition step reads: rows by key, every row, and the turns they joined. */
 export type StructuredAgentSessionTransitionJournal = Pick<
   AgentSessionJournal,
-  | 'epoch'
-  | 'submissions'
-  | 'visitItems'
-  | 'itemBody'
-  | 'item'
-  | 'itemIdForProviderItemRef'
-  | 'canonicalItemId'
-  | 'visitItemsWithLinkage'
+  'epoch' | 'visitItems' | 'itemBody' | 'item' | 'visitItemsWithLinkage'
 >
 
 export type StructuredAgentSessionTransitionStep =
@@ -69,8 +63,6 @@ export type StructuredAgentSessionTransition = {
   lifecycle: boolean
   /** Announce the writes once they land, when any step wrote. */
   publish: boolean
-  /** Which steps wrote a row, once every step has landed or one failed (then none counts). */
-  landed?: (wrote: readonly boolean[]) => void
 }
 
 const STEP_OVERFLOW = 'structured agent-session transition step exceeded its reserved size'
@@ -143,13 +135,7 @@ function transitionAppend(
                 })
                 .then((landed) => landed !== null)
         )
-        let wrote: boolean[] = transition.steps.map(() => false)
-        try {
-          wrote = await Promise.all(writes)
-        } finally {
-          // Heard even when a write failed, so a writer's speculation about it always ends.
-          transition.landed?.(wrote)
-        }
+        const wrote = await Promise.all(writes)
         if (transition.publish && wrote.some(Boolean)) {
           bound.publish()
         }

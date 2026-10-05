@@ -230,8 +230,6 @@ export class AgentSessionJournal {
 
   /** One reduced item with its attribution, for a writer that needs the turn a row joined. */
   item = (itemId: string): AgentJournalRenderItem | null => this.state.items.get(itemId) ?? null
-  /** The row that carries this `providerItemRef`, if any. */
-  itemIdForProviderItemRef = (ref: string) => this.state.providerItemRefs.get(ref) ?? null
 
   /** Visits reduced items with the producer that wrote each, for a producer re-deriving what an
    *  earlier run of this session left. */
