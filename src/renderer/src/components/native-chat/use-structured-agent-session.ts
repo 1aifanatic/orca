@@ -40,7 +40,6 @@ import { structuredAgentSessionStartFailureFacts } from './structured-agent-sess
 import { hostStatesTurnScopes } from '../../../../shared/native-chat-turn-membership'
 import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
 import { withNativeChatCutTurnNotices } from '../../../../shared/native-chat-cut-turn-notice'
-import { TUI_AGENT_DISPLAY_NAMES } from '../../../../shared/tui-agent-display-names'
 
 export type { StructuredPromptItem } from './structured-agent-session-message-projection'
 
@@ -172,11 +171,8 @@ export function useStructuredAgentSession(args: {
   )
   // What the transcript reads: the journal plus the one notice a cut turn with no row gets.
   const transcriptItems = useMemo(
-    () =>
-      withNativeChatCutTurnNotices(transportState.journalItems, {
-        agentName: TUI_AGENT_DISPLAY_NAMES[agent === 'codex' ? 'codex' : 'claude']
-      }),
-    [agent, transportState.journalItems]
+    () => withNativeChatCutTurnNotices(transportState.journalItems),
+    [transportState.journalItems]
   )
   const messages = useStructuredAgentSessionMessages(
     transcriptItems,

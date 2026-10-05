@@ -224,17 +224,23 @@ describe('a turn a crash cut short mid-tool', () => {
     await host.restoreReadableSessions()
 
     const { items } = await host.journalSnapshot(SESSION)
-    // As a reader's transcript shows it: the stored row is the explanation, so none is derived.
-    const statusRows = withNativeChatCutTurnNotices(items, { agentName: 'Claude' }).flatMap(
-      (item) => (item.body.kind === 'status' ? [item.body] : [])
+    // As a reader's transcript shows it: the stored row is the explanation, so none is derived. Orca
+    // went away, not the agent, so the row blames no one and is muted, not an error.
+    const statusRows = withNativeChatCutTurnNotices(items).flatMap((item) =>
+      item.body.kind === 'status' ? [item.body] : []
     )
     expect(statusRows).toEqual([
-      expect.objectContaining({
-        text: 'Claude stopped while this response was in progress. You can continue in this conversation.',
-        failure: expect.objectContaining({ kind: 'providerExited' }),
-        tone: 'error'
-      })
+      {
+        kind: 'status',
+        text: 'This response was interrupted. You can continue in this conversation.',
+        presentation: 'response-interrupted',
+        tone: 'notice'
+      }
     ])
+    // The host writes it so, for a reader older than this rule too.
+    expect(items.flatMap((item) => (item.body.kind === 'status' ? [item.body] : []))).toEqual(
+      statusRows
+    )
     const [timing] = selectStructuredAgentTurnTimings(items).values()
     expect(
       describeNativeChatTurnStatus({

@@ -186,11 +186,7 @@ export async function statusNotes(host: StructuredAgentSessionHost) {
 
 /** The notes a reader's transcript shows, the cut turn's derived notice included. */
 export async function readerNotes(host: StructuredAgentSessionHost) {
-  return notesOf(
-    withNativeChatCutTurnNotices((await host.journalSnapshot(SESSION)).items, {
-      agentName: 'Codex'
-    })
-  )
+  return notesOf(withNativeChatCutTurnNotices((await host.journalSnapshot(SESSION)).items))
 }
 
 function notesOf(items: readonly AgentJournalRenderItem[]) {
@@ -199,10 +195,10 @@ function notesOf(items: readonly AgentJournalRenderItem[]) {
   )
 }
 
-/** The one row the quit's cut turn reads with when nothing else explains it. */
+/** The one row the quit's cut turn reads with when nothing else explains it: muted, blaming no one. */
 export const QUIT_CUT_NOTICE = {
-  text: 'Codex stopped while this response was in progress. You can continue in this conversation.',
-  tone: 'error'
+  text: 'This response was interrupted. You can continue in this conversation.',
+  tone: 'notice'
 }
 
 /** A continuation the host refuses because the user's own message was accepted first: another

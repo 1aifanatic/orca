@@ -5,6 +5,7 @@ import {
 } from '../../../shared/agent-session-failure'
 import { parseAgentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import { STALE_SESSION_ROW_PREFIX } from '../../../shared/agent-session-stop-row-identity'
+import { agentSessionResponseInterruptedBody } from '../../../shared/agent-session-host-status-rows'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
@@ -216,8 +217,6 @@ export async function settleStaleStructuredAgentSessionState(input: {
   fence: number
   acquisitionGeneration: string | null
   deathEvidence: AgentSessionDeathEvidence | null
-  /** Who the exit row names. */
-  failureTextContext?: AgentSessionFailureWordsContext
 }): Promise<number> {
   const { journal } = input
   const items = journal.snapshot().items
@@ -264,16 +263,9 @@ export async function settleStaleStructuredAgentSessionState(input: {
         provider: 'orca',
         clientMessageId: `${STALE_SESSION_ROW_PREFIX}${input.sessionId}:death-${evidence.ownerFence ?? 'unowned'}-${evidence.observedAt}`
       },
-      // The death evidence is Orca's log text, never a sentence for a person: the row says only
-      // that the provider stopped.
-      body: {
-        kind: 'status',
-        ...agentSessionFailureWords(agentSessionFailureFact('providerExited'), {
-          ...input.failureTextContext,
-          surface: 'row'
-        }),
-        tone: 'error'
-      },
+      // The death evidence is Orca's log text, never a sentence for a person. The owner that went
+      // away was Orca, not the agent, so the row says only that the response was interrupted.
+      body: agentSessionResponseInterruptedBody(),
       turnScope: runningRootTurnScope(items)
     })
   }

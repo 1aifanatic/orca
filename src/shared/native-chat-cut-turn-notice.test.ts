@@ -21,7 +21,9 @@ import {
 import { structuredAgentSessionStartFailureRowIdentity } from './structured-agent-session-start-failure-row-key'
 
 const THREAD: AgentJournalTurnScope = { kind: 'thread' }
-const NOTICE =
+const NOTICE = 'This response was interrupted. You can continue in this conversation.'
+/** What an older host wrote for an owner found dead, and what the exit row still says. */
+const AGENT_STOPPED =
   'Codex stopped while this response was in progress. You can continue in this conversation.'
 let sequence = 0
 
@@ -107,7 +109,7 @@ const restartNote = (text: string, tone?: 'error' | 'warning') =>
   )
 
 function notices(items: readonly AgentJournalRenderItem[]) {
-  return withNativeChatCutTurnNotices(items, { agentName: 'Codex' }).flatMap((entry, index) =>
+  return withNativeChatCutTurnNotices(items).flatMap((entry, index) =>
     entry.itemId.includes('cut-turn-notice')
       ? [
           {
@@ -121,7 +123,7 @@ function notices(items: readonly AgentJournalRenderItem[]) {
 }
 
 describe('withNativeChatCutTurnNotices', () => {
-  it('gives a cut turn no row explains one notice in the exit row words, after its last row', () => {
+  it('gives a cut turn no row explains one muted notice that blames no one, after its last row', () => {
     const items = [
       user('u1'),
       turn('t1', 'u1', CUT),
@@ -130,11 +132,17 @@ describe('withNativeChatCutTurnNotices', () => {
       turn('t2', 'u2', { state: 'completed', outcome: 'success' })
     ]
 
-    const derived = withNativeChatCutTurnNotices(items, { agentName: 'Codex' })
+    const derived = withNativeChatCutTurnNotices(items)
 
     expect(notices(items)).toEqual([{ index: 3, text: NOTICE, scope: inTurn('t1') }])
     const notice = derived[3]!
-    expect(notice.body).toMatchObject({ tone: 'error', failure: { kind: 'providerExited' } })
+    // Muted, not an error: the turn was interrupted, and nothing here says who interrupted it.
+    expect(notice.body).toEqual({
+      kind: 'status',
+      text: NOTICE,
+      presentation: 'response-interrupted',
+      tone: 'notice'
+    })
     // Placed by journal position too, so any reader that sorts keeps it under the turn.
     expect(notice.sequence).toBe(items[2]!.sequence)
     expect(notice.sequenceIndex).toBeGreaterThan(0)
@@ -152,8 +160,32 @@ describe('withNativeChatCutTurnNotices', () => {
         reply('a1', inTurn('t1')),
         exitRow(id, scope)
       ]
-      expect(withNativeChatCutTurnNotices(items), id).toBe(items)
+      expect(notices(items), id).toEqual([])
     }
+  })
+
+  // The owner that went away was Orca, so an older host's red "the agent stopped" blamed the agent.
+  it("words an owner's proven death as the notice does, and leaves the agent's own exit row as written", () => {
+    const owner = exitRow('stale-session:s:death-3-2000', inTurn('t1'))
+    const exit = exitRow('provider-exit:s:3:gen', inTurn('t2'))
+    const items = [
+      user('u1'),
+      turn('t1', 'u1', CUT),
+      owner,
+      user('u2'),
+      turn('t2', 'u2', CUT),
+      exit
+    ]
+
+    const derived = withNativeChatCutTurnNotices(items)
+
+    expect(derived).toHaveLength(items.length)
+    expect(derived[2]).toEqual({
+      ...owner,
+      body: { kind: 'status', text: NOTICE, presentation: 'response-interrupted', tone: 'notice' }
+    })
+    expect(derived[5]).toBe(exit)
+    expect(withNativeChatCutTurnNotices(items)[2]).toBe(derived[2])
   })
 
   // A host from before failure facts wrote the same rows with only their words.
@@ -162,9 +194,9 @@ describe('withNativeChatCutTurnNotices', () => {
       const items = [
         user('u1'),
         turn('t1', 'u1', CUT),
-        hostRow(id, { kind: 'status', text: NOTICE, tone: 'error' }, inTurn('t1'))
+        hostRow(id, { kind: 'status', text: AGENT_STOPPED, tone: 'error' }, inTurn('t1'))
       ]
-      expect(withNativeChatCutTurnNotices(items), id).toBe(items)
+      expect(notices(items), id).toEqual([])
     }
   })
 
@@ -319,7 +351,7 @@ describe('withNativeChatCutTurnNotices', () => {
       user('u2'),
       exitRow('stale-session:s:death-3-2000', THREAD)
     ]
-    expect(withNativeChatCutTurnNotices(items)).toBe(items)
+    expect(notices(items)).toEqual([])
   })
 
   it("does not take a failed start's row as the explanation of an earlier cut", () => {
@@ -338,7 +370,7 @@ describe('withNativeChatCutTurnNotices', () => {
 
   it('places the notice in its turn, for desktop and phone alike', () => {
     const items = [user('u1'), turn('t1', 'u1', CUT), reply('a1', inTurn('t1')), user('u2')]
-    const derived = withNativeChatCutTurnNotices(items, { agentName: 'Codex' })
+    const derived = withNativeChatCutTurnNotices(items)
     const messages = projectStructuredAgentSessionMessages(derived, [], [], {
       rejectedInPlace: true
     })
@@ -346,7 +378,12 @@ describe('withNativeChatCutTurnNotices', () => {
 
     const notice = messages.findIndex((message) => message.id.includes('cut-turn-notice'))
     expect(messages[notice]?.blocks).toEqual([
-      expect.objectContaining({ type: 'text', text: NOTICE, tone: 'error' })
+      expect.objectContaining({
+        type: 'text',
+        text: NOTICE,
+        presentation: 'response-interrupted',
+        tone: 'notice'
+      })
     ])
     expect(turnKeys[notice]).toBe('u1')
   })
@@ -370,12 +407,12 @@ describe('withNativeChatCutTurnNotices', () => {
         payloadFingerprint: 'fp-u2',
         dispatchState: 'rejected',
         providerItemId: null,
-        reason: NOTICE,
+        reason: AGENT_STOPPED,
         submittedAt: 50,
         resolvedAt: 60
       }
     ]
-    const derived = withNativeChatCutTurnNotices(items, { agentName: 'Codex' })
+    const derived = withNativeChatCutTurnNotices(items)
     const messages = projectStructuredAgentSessionMessages(derived, [], submissions, {
       rejectedInPlace: true
     })
@@ -394,7 +431,7 @@ describe('withNativeChatCutTurnNotices', () => {
       user('u2', null)
     ]
 
-    const derived = withNativeChatCutTurnNotices(items, { agentName: 'Codex' })
+    const derived = withNativeChatCutTurnNotices(items)
 
     expect(notices(items)).toEqual([{ index: 3, text: NOTICE, scope: undefined }])
     expect(hostStatesTurnScopes(derived)).toBe(false)

@@ -23,6 +23,11 @@ const HOST_STATUS_WORDS: Record<AgentSessionHostStatusPresentation, () => string
     translate(
       'components.native-chat.notices.historyItemTooLarge',
       HOST_STATUS_COPY['history-item-too-large']
+    ),
+  'response-interrupted': () =>
+    translate(
+      'components.native-chat.notices.responseInterrupted',
+      HOST_STATUS_COPY['response-interrupted']
     )
 }
 

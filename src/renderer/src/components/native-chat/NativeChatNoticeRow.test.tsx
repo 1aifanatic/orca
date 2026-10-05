@@ -94,11 +94,29 @@ describe('notice rows', () => {
   // The host's text is only for a client that can't word the row itself.
   it.each([
     ['history-repaired', "Part of this chat's history couldn't be loaded."],
-    ['history-item-too-large', 'This part of the chat was too large to show.']
+    ['history-item-too-large', 'This part of the chat was too large to show.'],
+    [
+      'response-interrupted',
+      'This response was interrupted. You can continue in this conversation.'
+    ]
   ])('words a %s row itself, as a muted status line', (presentation, words) => {
     renderStatus({ kind: 'status', text: 'Words an older host wrote', presentation })
     expect(screen.getByText(words)).toHaveClass('text-muted-foreground', 'text-sm')
     expect(screen.queryByText('Words an older host wrote')).toBeNull()
+  })
+  // An interruption is not an error: its notice tone, for a client that can't name the row, stays muted.
+  it('draws an interrupted response muted, never in the error colour', () => {
+    renderStatus({
+      kind: 'status',
+      text: 'Words an older host wrote',
+      presentation: 'response-interrupted',
+      tone: 'notice'
+    })
+    const line = screen.getByText(
+      'This response was interrupted. You can continue in this conversation.'
+    )
+    expect(line).toHaveClass('text-muted-foreground')
+    expect(line.closest('.text-destructive')).toBeNull()
   })
   it('renders future presentation and tone values as untinted text', () => {
     renderStatus({

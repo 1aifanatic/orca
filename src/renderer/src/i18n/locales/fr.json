@@ -17933,7 +17933,8 @@
         "details": "Détails",
         "plan": "Plan",
         "historyRepaired": "Une partie de l'historique de ce chat n'a pas pu être chargée.",
-        "historyItemTooLarge": "Cette partie du chat était trop volumineuse pour être affichée."
+        "historyItemTooLarge": "Cette partie du chat était trop volumineuse pour être affichée.",
+        "responseInterrupted": "Cette réponse a été interrompue. Vous pouvez continuer dans cette conversation."
       },
       "providerFrame": {
         "byteLength": "{{value0}} octets"

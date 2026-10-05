@@ -3,12 +3,10 @@
 // is the durable fact, so a journal written before this rule, a quit that died mid-settle and any
 // future stop cause all read the same. A row the host already wrote about the stop stays the
 // explanation, so nothing is said twice. Shared by desktop and mobile, whose transcripts must agree.
+// The journal names no cause a reader can see, so the words fit every cause and blame no one.
 
-import { agentSessionFailureFact, readAgentSessionFailureFact } from './agent-session-failure'
-import {
-  agentSessionFailureWords,
-  type AgentSessionFailureWordsContext
-} from './agent-session-failure-words'
+import { readAgentSessionFailureFact } from './agent-session-failure'
+import { agentSessionResponseInterruptedBody } from './agent-session-host-status-rows'
 import { agentJournalItemKey, parseAgentJournalItemKey } from './agent-session-journal-item-key'
 import { isRootAgentJournalItem } from './agent-session-journal-producer'
 import type { AgentJournalRenderItem } from './agent-session-journal-types'
@@ -23,8 +21,6 @@ import { isStructuredAgentSessionStartFailureRow } from './structured-agent-sess
 import { hostStatesTurnScopes } from './native-chat-turn-membership'
 
 const CUT_TURN_NOTICE_ROW = 'cut-turn-notice:'
-
-type CutTurnNoticeContext = Pick<AgentSessionFailureWordsContext, 'agentName'>
 
 function rootTurnVerdict(
   item: AgentJournalRenderItem
@@ -139,26 +135,16 @@ function lastRowOfTurn(
 
 const noticeCache = new WeakMap<
   AgentJournalRenderItem,
-  {
-    after: AgentJournalRenderItem
-    statesScopes: boolean
-    agentName: string | undefined
-    notice: AgentJournalRenderItem
-  }
+  { after: AgentJournalRenderItem; statesScopes: boolean; notice: AgentJournalRenderItem }
 >()
 
 function cutTurnNotice(
   turnItem: AgentJournalRenderItem,
   after: AgentJournalRenderItem,
-  statesScopes: boolean,
-  context: CutTurnNoticeContext
+  statesScopes: boolean
 ): AgentJournalRenderItem {
   const cached = noticeCache.get(turnItem)
-  if (
-    cached?.after === after &&
-    cached.statesScopes === statesScopes &&
-    cached.agentName === context.agentName
-  ) {
+  if (cached?.after === after && cached.statesScopes === statesScopes) {
     return cached.notice
   }
   const notice: AgentJournalRenderItem = {
@@ -167,14 +153,7 @@ function cutTurnNotice(
       clientMessageId: `${CUT_TURN_NOTICE_ROW}${turnItem.itemId}`
     }),
     revision: 0,
-    body: {
-      kind: 'status',
-      ...agentSessionFailureWords(agentSessionFailureFact('providerExited'), {
-        ...context,
-        surface: 'row'
-      }),
-      tone: 'error'
-    },
+    body: agentSessionResponseInterruptedBody(),
     // Just after the turn's last row and before anything the journal wrote next.
     sequence: after.sequence,
     sequenceIndex: (after.sequenceIndex ?? 0) + 0.5,
@@ -182,31 +161,52 @@ function cutTurnNotice(
     // A scope on a journal that states none would change how every other row is placed.
     ...(statesScopes ? { turnScope: { kind: 'turn' as const, turnItemId: turnItem.itemId } } : {})
   }
-  noticeCache.set(turnItem, { after, statesScopes, agentName: context.agentName, notice })
+  noticeCache.set(turnItem, { after, statesScopes, notice })
   return notice
+}
+
+const ownerDeathRowCache = new WeakMap<AgentJournalRenderItem, AgentJournalRenderItem>()
+
+/** A reopen's row about an owner found dead, in the notice's words: that owner was Orca, so an older
+ *  host's "the agent stopped" blamed the agent, and in error red. */
+function ownerDeathRowAsInterruption(item: AgentJournalRenderItem): AgentJournalRenderItem {
+  if (stopExplanation(item) !== 'owner-death') {
+    return item
+  }
+  const cached = ownerDeathRowCache.get(item)
+  if (cached) {
+    return cached
+  }
+  const reworded = { ...item, body: agentSessionResponseInterruptedBody() }
+  ownerDeathRowCache.set(item, reworded)
+  return reworded
 }
 
 /**
  * The journal as the transcript reads it: each root turn cut short with nobody asking, and no row
- * saying so, gets one notice in the words of the provider-exit row, right after the turn's last row.
- * Returns `items` itself when no turn needs one.
+ * saying so, gets one muted notice right after the turn's last row, and a reopen's row about an
+ * owner found dead says the same. Returns `items` itself when neither applies.
  */
 export function withNativeChatCutTurnNotices(
-  items: readonly AgentJournalRenderItem[],
-  context: CutTurnNoticeContext = {}
+  items: readonly AgentJournalRenderItem[]
 ): readonly AgentJournalRenderItem[] {
   const explained = explainedCutTurns(items)
   const statesScopes = hostStatesTurnScopes(items)
   const noticesAfter = new Map<number, AgentJournalRenderItem[]>()
+  let rewords = false
   items.forEach((item, index) => {
     if (isCutRootTurn(item) && !explained.has(item.itemId)) {
       const last = lastRowOfTurn(items, index, statesScopes)
-      const notice = cutTurnNotice(item, items[last]!, statesScopes, context)
+      const notice = cutTurnNotice(item, items[last]!, statesScopes)
       noticesAfter.set(last, [...(noticesAfter.get(last) ?? []), notice])
     }
+    rewords ||= ownerDeathRowAsInterruption(item) !== item
   })
-  if (noticesAfter.size === 0) {
+  if (noticesAfter.size === 0 && !rewords) {
     return items
   }
-  return items.flatMap((item, index) => [item, ...(noticesAfter.get(index) ?? [])])
+  return items.flatMap((item, index) => [
+    ownerDeathRowAsInterruption(item),
+    ...(noticesAfter.get(index) ?? [])
+  ])
 }

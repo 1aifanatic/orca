@@ -113,8 +113,10 @@ function settled(turnId?: string) {
     mark: verdict
       ? agentVerdictDisplayMark({ state: 'done', mainAgent: { state: 'done', outcome: verdict } })
       : null,
-    errorRows: items.flatMap((item) =>
-      item.body.kind === 'status' && item.body.tone === 'error' ? [item.body.text] : []
+    stopRows: items.flatMap((item) =>
+      item.body.kind === 'status' && (item.body.tone === 'error' || item.body.tone === 'notice')
+        ? [item.body.text]
+        : []
     )
   }
 }
@@ -130,12 +132,12 @@ describe('a restart between a Stop and its turn end', () => {
 
     await restartAndSettle()
 
-    const { turn, label, mark, errorRows } = settled()
+    const { turn, label, mark, stopRows } = settled()
     expect(turn).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
     expect(label).toMatch(/^Interrupted after /)
     expect(mark).toBe('interrupted')
     // A live Stop writes no row saying the provider stopped; nor does its relaunch.
-    expect(errorRows).toEqual([])
+    expect(stopRows).toEqual([])
   })
 
   // A Stop naming its turn, as the phone sends one: its event names the turn, which is what a
@@ -170,12 +172,12 @@ describe('a restart between a Stop and its turn end', () => {
 
     await restartAndSettle()
 
-    const { turn, label, mark, errorRows } = settled()
+    const { turn, label, mark, stopRows } = settled()
     expect(turn).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
     expect(label).toMatch(/^Interrupted after /)
     expect(mark).toBe('interrupted')
     // A live Stop writes no row saying the provider stopped; nor does its relaunch.
-    expect(errorRows).toEqual([])
+    expect(stopRows).toEqual([])
   })
 
   // Interrupted, as a Stop is; the notice row is the one explanation, which a Stop never gets.
@@ -184,13 +186,13 @@ describe('a restart between a Stop and its turn end', () => {
 
     await restartAndSettle()
 
-    const { turn, label, mark, errorRows } = settled()
+    const { turn, label, mark, stopRows } = settled()
     expect(turn).toMatchObject({ state: 'interrupted' })
     expect(turn).not.toHaveProperty('outcome')
     expect(label).toMatch(/^Interrupted after /)
     expect(mark).toBe('interrupted')
-    expect(errorRows).toEqual([
-      expect.stringContaining('stopped while this response was in progress')
+    expect(stopRows).toEqual([
+      'This response was interrupted. You can continue in this conversation.'
     ])
   })
 
@@ -250,12 +252,12 @@ describe('a restart between a Stop and its turn end', () => {
     // Its exit is proven after the Stop, so only the turn the Stop named decides.
     await restartAndSettle('exit-observed')
 
-    const { turn, mark, errorRows } = settled(NEXT_TURN)
+    const { turn, mark, stopRows } = settled(NEXT_TURN)
     expect(turn).toMatchObject({ state: 'interrupted' })
     expect(turn).not.toHaveProperty('outcome')
     expect(mark).toBe('interrupted')
-    expect(errorRows).toEqual([
-      expect.stringContaining('stopped while this response was in progress')
+    expect(stopRows).toEqual([
+      'This response was interrupted. You can continue in this conversation.'
     ])
   })
 
