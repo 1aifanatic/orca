@@ -104,7 +104,9 @@ export function registerRuntimeEnvironmentConnectivityHandlers({
         throw new Error('Choose another Active Server in Advanced before removing this server.')
       }
       const removed = removeEnvironment(getUserDataPath(), args.selector)
-      void retireRemovedRuntimeEnvironment(removed.id, invalidateTransport)
+      void retireRemovedRuntimeEnvironment(removed.id, invalidateTransport, (hostId) =>
+        store.removeWorkspaceSessionHost(hostId)
+      )
       closeLegacySelectorTransport(args.selector, removed.id)
       return { removed: redactRuntimeEnvironment(removed) }
     }

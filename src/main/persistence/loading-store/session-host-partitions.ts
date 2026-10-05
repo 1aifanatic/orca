@@ -80,6 +80,21 @@ export class SessionHostPartitionOperations {
     return [...hostIds]
   }
 
+  /** Drops a removed host's whole session partition; local's session is never dropped. */
+  removeWorkspaceSessionHost(hostId: ExecutionHostId): void {
+    const runtime = this[sessionHostPartitionOperationsContext].runtime
+    const partitions = runtime.state.workspaceSessionsByHostId
+    if (hostId === LOCAL_EXECUTION_HOST_ID || partitions?.[hostId] === undefined) {
+      return
+    }
+    const { [hostId]: _removed, ...remaining } = partitions
+    runtime.state.workspaceSessionsByHostId = remaining
+    invalidateLocalWorktreeMetadataPruneInputs()
+    scheduleSave(this[sessionHostPartitionOperationsContext].scheduling, [
+      'workspaceSessionsByHostId'
+    ])
+  }
+
   readTerminalScrollbackSnapshot(ref: string): string | null {
     return readTerminalScrollbackSnapshotSync(
       ref,

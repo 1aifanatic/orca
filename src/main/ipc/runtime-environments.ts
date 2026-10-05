@@ -84,7 +84,8 @@ export function registerRuntimeEnvironmentHandlers(store: Store): void {
     getUserDataPath,
     getActiveEnvironmentId: () => store.getSettings().activeRuntimeEnvironmentId,
     invalidateTransport: invalidateRuntimeEnvironmentTransport,
-    clearHostServerStatus: clearPublishedManagedServer
+    clearHostServerStatus: clearPublishedManagedServer,
+    forgetHostSession: (hostId) => store.removeWorkspaceSessionHost(hostId)
   })
   registerRuntimeEnvironmentSubscriptions(getUserDataPath)
 }

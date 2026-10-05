@@ -8,6 +8,7 @@ import {
   updateManagedOrcadEnvironment
 } from '../ssh/orcad-runtime-lifecycle'
 import type { ManagedServerActions } from '../runtime/managed-server-actions-registry'
+import type { ExecutionHostId } from '../../shared/execution-host'
 import { retireRemovedRuntimeEnvironment } from './runtime-environment-removal-cleanup'
 
 export type ManagedOrcadActionOptions = {
@@ -16,6 +17,8 @@ export type ManagedOrcadActionOptions = {
   invalidateTransport: (environmentId: string) => Promise<void> | void
   /** Drops the SSH host's stale managed-server state once its server is unlinked. */
   clearHostServerStatus: (sshTargetId: string) => void
+  /** Drops the unlinked server's workspace session partition. */
+  forgetHostSession: (hostId: ExecutionHostId) => void
 }
 
 export function createManagedOrcadActions(
@@ -57,7 +60,11 @@ export function createManagedOrcadActions(
           isActiveEnvironment: (environmentId) =>
             options.getActiveEnvironmentId() === environmentId,
           retireLocalState: (environmentId) =>
-            retireRemovedRuntimeEnvironment(environmentId, options.invalidateTransport)
+            retireRemovedRuntimeEnvironment(
+              environmentId,
+              options.invalidateTransport,
+              options.forgetHostSession
+            )
         }
       )
       if (result.outcome === 'unlinked') {
