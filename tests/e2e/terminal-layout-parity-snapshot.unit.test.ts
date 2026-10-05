@@ -78,6 +78,14 @@ describe('terminal layout parity', () => {
     ])
   })
 
+  it('treats an absent map and an empty one as equal', () => {
+    const withEmpty = capture(ids.b)
+    withEmpty.checkpoints[0]!.persisted = { local: { tombstones: {} } }
+    const withoutMap = capture(ids.a)
+    withoutMap.checkpoints[0]!.persisted = { local: {} }
+    expect(compareParityCaptures(one(withoutMap), one(withEmpty), []).undeclared).toEqual([])
+  })
+
   it('detects a scenario that only one side captured', () => {
     const report = compareParityCaptures(one(capture(ids.a)), new Map(), [])
     expect(report.undeclared).toMatchObject([{ scenario: 'split', head: '<missing>' }])

@@ -12,7 +12,8 @@ import { test, expect } from './helpers/orca-app'
 import { createRestartSession } from './helpers/orca-restart'
 import { readPersistedProfileState } from './helpers/persisted-profile-state'
 import {
-  closeActiveTerminalPane,
+  countVisibleTerminalPanes,
+  focusActiveTerminalInput,
   moveTerminalPaneByLeafId,
   readTerminalPaneDomLeafOrder,
   splitActiveTerminalPane,
@@ -289,6 +290,28 @@ async function addFolderWorkspace(page: Page): Promise<ScenarioSetup> {
   return { worktreeId: worktreeId!, pathLabels: { [folderPath]: '<folder>' }, cleanup }
 }
 
+/**
+ * The user's close-pane chord, so the close reaches main through the real commit path; driving
+ * PaneManager.closePane directly leaves main to learn of it from the PTY exit, which races quit.
+ */
+async function closeActivePaneFromKeyboard(page: Page, paneCount: number): Promise<void> {
+  await focusActiveTerminalInput(page)
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+w' : 'Control+w')
+  // A fresh shell can still read as busy, which asks before stopping it.
+  const confirm = page.getByRole('button', { name: 'Stop and Close' })
+  await expect
+    .poll(
+      async () => {
+        if (await confirm.isVisible().catch(() => false)) {
+          await confirm.click()
+        }
+        return countVisibleTerminalPanes(page)
+      },
+      { timeout: 10_000, intervals: [50] }
+    )
+    .toBe(paneCount - 1)
+}
+
 async function splitTwice(page: Page): Promise<void> {
   await splitActiveTerminalPane(page, 'vertical')
   await waitForBoundPanes(page, 2)
@@ -318,7 +341,7 @@ const SCENARIOS: ParityScenario[] = [
     id: 'close-pane',
     journey: async ({ page }) => {
       await splitTwice(page)
-      await closeActiveTerminalPane(page)
+      await closeActivePaneFromKeyboard(page, 3)
       await waitForBoundPanes(page, 2)
     }
   },

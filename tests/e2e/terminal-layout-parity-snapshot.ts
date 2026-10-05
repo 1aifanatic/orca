@@ -174,13 +174,25 @@ export function normalizeParityCapture(capture: RawParityCapture): Json {
   }))
 }
 
+// An absent map and an empty one mean the same; which one a save writes depends on its writer.
+function isEmpty(value: Json | undefined): boolean {
+  return (
+    value === undefined ||
+    (Array.isArray(value) ? value.length === 0 : isRecord(value) && Object.keys(value).length === 0)
+  )
+}
+
+function isEmptyPair(base: Json | undefined, head: Json | undefined): boolean {
+  return isEmpty(base) && isEmpty(head)
+}
+
 function diffJson(
   base: Json | undefined,
   head: Json | undefined,
   path: string,
   out: [string, Json | undefined, Json | undefined][]
 ): void {
-  if (JSON.stringify(base) === JSON.stringify(head)) {
+  if (JSON.stringify(base) === JSON.stringify(head) || isEmptyPair(base, head)) {
     return
   }
   if (Array.isArray(base) && Array.isArray(head)) {
