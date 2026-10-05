@@ -247,12 +247,26 @@ describe('OrcaRuntimeService', () => {
     runtime.replaceHeadlessTerminalFromRendererSnapshotForRecovery(
       'pty-1',
       { data: 'desktop history\r\nprompt $ ', cols: 200, rows: 50 },
-      [{ data: 'after recovery\r\n', seq: 1 }]
+      [{ data: `\r\nafter recovery ${'W'.repeat(60)}\r\n`, seq: 1 }]
     )
 
     const snapshot = await runtime.serializeMainTerminalBuffer('pty-1', { scrollbackRows: 100 })
     expect(snapshot).toMatchObject({ cols: 47, rows: 40, source: 'headless' })
     expect(snapshot?.data).toContain('desktop history')
-    expect(snapshot?.data).toContain('after recovery')
+    const internals = runtime as unknown as {
+      headlessTerminals: Map<
+        string,
+        {
+          unrepaintedReflowGrid?: { cols: number; rows: number }
+          emulator: { getBufferTailLines: (limit: number) => string[] }
+        }
+      >
+    }
+    const state = internals.headlessTerminals.get('pty-1')
+    expect(state?.unrepaintedReflowGrid).toEqual({ cols: 47, rows: 40 })
+    const lines = state?.emulator.getBufferTailLines(100) ?? []
+    const wrapped = lines.indexOf(`after recovery ${'W'.repeat(32)}`)
+    expect(wrapped).toBeGreaterThanOrEqual(0)
+    expect(lines[wrapped + 1]).toBe('W'.repeat(28))
   })
 })
