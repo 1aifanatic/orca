@@ -95,7 +95,7 @@ describe("the chat pane while a person's Stop ends the turn", () => {
 
   it('says a message is queued to run after the stop only where the host queues sends', async () => {
     mocks.turnId = 'turn-1'
-    mocks.queueCapable = true
+    mocks.sendsQueue = true
     renderPane()
     await waitFor(() => expect(hostStatus.emit).not.toBeNull())
 

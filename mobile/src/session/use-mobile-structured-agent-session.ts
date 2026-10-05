@@ -37,6 +37,7 @@ import {
 import { useMobileStructuredAgentMutate } from './use-mobile-structured-agent-mutation'
 import { agentStopDisplayStatus } from '../../../src/shared/agent-stop-display-status'
 import {
+  mobileStructuredSendQueues,
   useMobileStructuredSendWithOutcome,
   type StructuredMobileSendAttachment
 } from './use-mobile-structured-send-with-outcome'
@@ -209,9 +210,15 @@ export function useMobileStructuredAgentSession(args: {
       activityText,
       stopping,
       stopRequestInFlight,
-      ...(stopping ? { afterStop: queueCapable ? ('queue' as const) : ('send' as const) } : {})
+      ...(stopping
+        ? {
+            afterStop: mobileStructuredSendQueues(queueCapable, state.items)
+              ? ('queue' as const)
+              : ('send' as const)
+          }
+        : {})
     }),
-    [thinking, activityText, stopping, stopRequestInFlight, queueCapable]
+    [thinking, activityText, stopping, stopRequestInFlight, queueCapable, state.items]
   )
   const status = state.status === 'idle' ? 'idle' : state.status
   const approvalPrompt = useMemo(

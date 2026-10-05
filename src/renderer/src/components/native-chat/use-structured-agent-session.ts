@@ -40,6 +40,7 @@ import { outboxOutsideQueuedCards } from './structured-agent-session-queued-card
 import { structuredAgentSessionStartFailureFacts } from './structured-agent-session-delivery-notices'
 import { hostStatesTurnScopes } from '../../../../shared/native-chat-turn-membership'
 import { agentStopDisplayStatus } from '../../../../shared/agent-stop-display-status'
+import { structuredAgentSessionNewSendsQueue } from '../../../../shared/structured-agent-session-outbox-delivery'
 import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
 import { withNativeChatCutTurnNotices } from '../../../../shared/native-chat-cut-turn-notice'
 import { TUI_AGENT_DISPLAY_NAMES } from '../../../../shared/tui-agent-display-names'
@@ -276,8 +277,9 @@ export function useStructuredAgentSession(args: {
         : Promise.resolve(null)
     },
     queuedMessages: queuedController,
-    /** The host holds a send made while the agent works as a queued card. */
-    queueCapable,
+    /** A send made now while the agent works is held as a queued card: the host queues, and this
+     *  send asks it to (the setting is on and no pending prompt blocks the queue). */
+    sendsQueue: structuredAgentSessionNewSendsQueue(queueDelivery),
     cancel: async (turnId: string, prompt?: StructuredPromptCancelTarget) => {
       // Capability negotiation must complete before mutate fingerprints the payload:
       // older hosts reject the strict prompt field.
