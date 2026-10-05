@@ -12,6 +12,7 @@ import { waitForSessionReady } from './helpers/store'
 type NoteProofResult = {
   creatingMarkdown: boolean
   error: string
+  hostReads: { ok: boolean; runtimeId?: string }[]
   calls: {
     method: string
     params: unknown
@@ -95,19 +96,20 @@ test('creates paired Markdown notes through the native client and web bridge', a
     )
     expect(result.error).toBe('')
     expect(result.creatingMarkdown).toBe(false)
-    const creates = result.calls.filter((call) => call.method === 'files.createFile')
-    expect(creates).toHaveLength(attempts)
-    expect(creates.at(-1)).toMatchObject({
-      ok: true,
-      params: { expectedExecutionHostId: 'local', relativePath: filename },
-      options: { timeoutMs: 15_000 }
-    })
-    const admitted = result.calls.filter((call) => call.ok)
+    const admitted = [...result.hostReads, ...result.calls].filter((call) => call.ok)
+    expect(result.hostReads.every((call) => call.ok)).toBe(true)
     expect(
       admitted.every((call) => typeof call.runtimeId === 'string' && call.runtimeId.length > 0)
     ).toBe(true)
     expect(new Set(admitted.map((call) => call.runtimeId)).size).toBe(1)
     if (transport === 'web-bridge') {
+      const creates = result.calls.filter((call) => call.method === 'files.createFile')
+      expect(creates).toHaveLength(attempts)
+      expect(creates.at(-1)).toMatchObject({
+        ok: true,
+        params: { expectedExecutionHostId: 'local', relativePath: filename },
+        options: { timeoutMs: 15_000 }
+      })
       expect(result.bridgedMethods).toContain('files.createFile')
       expect(result.bridgedMethods).toContain('files.open')
     }

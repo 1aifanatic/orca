@@ -1,33 +1,13 @@
 import { DirectRpcClient } from '../transport/direct-rpc-client'
 import { decodePairingUrl } from '../transport/pairing'
-import type { RpcResponse } from '../transport/types'
-import type { SendRequestOptions } from '../transport/rpc-client'
+import {
+  fileOwnershipRuntimeStatusRead,
+  fileOwnershipWorktreeRead
+} from '../files/mobile-file-ownership-operations'
 import { createBridgePortPair } from '../mobile-web-shell/bridge/bridge-port-pair-test-harness'
 import { useMobileSessionContentCreateActions } from '../session/use-mobile-session-content-create-actions'
 import { mountFixture } from './rpc-recording/recorder-fixture-shape'
 import { screenMount } from './rpc-recording/mounted-screen-tree'
-
-type ObservedRequest = {
-  method: string
-  params: unknown
-  options: SendRequestOptions | undefined
-  ok: boolean
-  runtimeId: string | undefined
-}
-
-class NoteProofDirectClient extends DirectRpcClient {
-  readonly calls: ObservedRequest[] = []
-
-  override async sendRequest(
-    method: string,
-    params?: unknown,
-    options?: SendRequestOptions
-  ): Promise<RpcResponse> {
-    const reply = await super.sendRequest(method, params, options)
-    this.calls.push({ method, params, options, ok: reply.ok, runtimeId: reply._meta?.runtimeId })
-    return reply
-  }
-}
 
 export async function createPairedMarkdownNote(
   pairingUrl: string,
@@ -38,17 +18,14 @@ export async function createPairedMarkdownNote(
   if (!offer) {
     throw new Error('The isolated host returned an unreadable pairing offer')
   }
-  const direct = new NoteProofDirectClient(
-    offer.endpoint,
-    offer.deviceToken,
-    offer.publicKeyB64,
-    {}
-  )
+  const direct = new DirectRpcClient(offer.endpoint, offer.deviceToken, offer.publicKeyB64, {})
   let bridge: ReturnType<typeof createBridgePortPair> | undefined
   let screen: ReturnType<typeof screenMount> | undefined
   const timers: ReturnType<typeof setTimeout>[] = []
   try {
-    await direct.sendRequest('status.get', undefined, { timeoutMs: 15_000 })
+    const statusReply = await fileOwnershipRuntimeStatusRead.request(direct, undefined, {
+      timeoutMs: 15_000
+    })
     if (transport === 'web-bridge') {
       bridge = createBridgePortPair({ rpc: direct, clientIdentity: offer.pairedDeviceId ?? null })
       await bridge.flush()
@@ -85,10 +62,39 @@ export async function createPairedMarkdownNote(
       throw new Error(screen.crash() ?? 'The note-creation hook did not mount')
     }
     await actions.handleCreateMarkdownNote()
+    const worktreeReply = await fileOwnershipWorktreeRead.request(
+      bridge?.client ?? direct,
+      { worktree: `id:${worktreeId}` },
+      { timeoutMs: 15_000 }
+    )
+    const replies = bridge?.readToPage() ?? []
     return {
       creatingMarkdown,
       error,
-      calls: direct.calls,
+      hostReads: [statusReply, worktreeReply].map((reply) => ({
+        ok: reply.ok,
+        runtimeId: reply._meta?.runtimeId
+      })),
+      calls: (bridge?.readToShell() ?? []).flatMap((frame) => {
+        if (frame.type !== 'request') {
+          return []
+        }
+        const reply = replies.find(
+          (candidate) => candidate.type === 'reply' && candidate.id === frame.id
+        )
+        if (!reply || reply.type !== 'reply' || !('payload' in reply)) {
+          return []
+        }
+        return [
+          {
+            method: frame.method,
+            params: frame.params,
+            options: frame.options,
+            ok: reply.payload.ok,
+            runtimeId: reply.payload._meta?.runtimeId
+          }
+        ]
+      }),
       bridgedMethods: bridge
         ?.readToShell()
         .flatMap((frame) => (frame.type === 'request' ? [frame.method] : []))
