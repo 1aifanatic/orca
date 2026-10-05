@@ -15,9 +15,9 @@ vi.mock('@/store', () => ({
   useAppStore: {
     getState: vi.fn(() => ({
       settings: null,
-      openFiles: [],
       folderWorkspaces: [],
-      worktreesByRepo: {}
+      worktreesByRepo: {},
+      openFiles: []
     }))
   }
 }))
