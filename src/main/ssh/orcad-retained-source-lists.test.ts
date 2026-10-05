@@ -19,7 +19,7 @@ vi.mock('./ssh-provider-authority', () => ({ isCurrentSshProviderAuthority: () =
 const provider = {}
 vi.mock('../providers/ssh-git-dispatch', () => ({ getSshGitProvider: () => provider }))
 
-const { isHiddenRetainedSourceSessionPartition, visibleProjectGroups } =
+const { isFrozenOrcadSourceSessionPartition, visibleProjectGroups } =
   await import('./orcad-retained-source')
 const { listReposForExecutionHost } = await import('../ipc/repos/host-repo-catalog-snapshot')
 
@@ -86,7 +86,7 @@ describe('lists while a converted host keeps its source rows', () => {
     ])
   })
 
-  it('shows them while the migration has not committed, and only then freezes the session', () => {
+  it('shows them until the migration commits, while freezing the session from the fence on', () => {
     const userDataPath = mkdtempSync(join(tmpdir(), 'orcad-retained-lists-'))
     try {
       const cutover = orcadMigrationCutoverFixture('m-1', FENCED.id)
@@ -94,17 +94,14 @@ describe('lists while a converted host keeps its source rows', () => {
       const store = catalog([FENCED])
       const lookup = { getSshTarget: () => FENCED }
       expect(visibleProjectGroups(store, () => userDataPath)).toHaveLength(2)
-      expect(
-        isHiddenRetainedSourceSessionPartition(lookup, 'ssh:ssh-box', () => userDataPath)
-      ).toBe(false)
+      expect(isFrozenOrcadSourceSessionPartition(lookup, 'ssh:ssh-box')).toBe(true)
       writeOrcadMigrationSourceCutover(userDataPath, { ...cutover, phase: 'destination-committed' })
       expect(visibleProjectGroups(store, () => userDataPath)).toHaveLength(1)
+      expect(isFrozenOrcadSourceSessionPartition(lookup, 'local')).toBe(false)
+      const changed = { ...FENCED, orcadFence: { environmentId: 'env-1', sourceChangedAt: 'x' } }
       expect(
-        isHiddenRetainedSourceSessionPartition(lookup, 'ssh:ssh-box', () => userDataPath)
-      ).toBe(true)
-      expect(isHiddenRetainedSourceSessionPartition(lookup, 'local', () => userDataPath)).toBe(
-        false
-      )
+        isFrozenOrcadSourceSessionPartition({ getSshTarget: () => changed }, 'ssh:ssh-box')
+      ).toBe(false)
     } finally {
       rmSync(userDataPath, { recursive: true, force: true })
     }

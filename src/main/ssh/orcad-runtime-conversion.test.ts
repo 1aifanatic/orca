@@ -210,6 +210,26 @@ describe('converting an SSH host into a managed server', () => {
   })
 })
 
+describe('the source frozen during a conversion', () => {
+  it('commits despite the UI moving focus to the host mid-conversion', async () => {
+    const stage = destination.stage.getMockImplementation()!
+    destination.stage.mockImplementationOnce(async (manifest) => {
+      store.updateUI({ lastActiveRepoId: 'repo-1' })
+      return stage(manifest)
+    })
+    await expect(convert()).resolves.toMatchObject({ outcome: 'converted' })
+  })
+
+  it('still refuses a catalog change mid-conversion', async () => {
+    const stage = destination.stage.getMockImplementation()!
+    destination.stage.mockImplementationOnce(async (manifest) => {
+      store.updateRepo('repo-1', { displayName: 'Renamed' })
+      return stage(manifest)
+    })
+    await expect(convert()).rejects.toThrow('orcad_migration_source_changed')
+  })
+})
+
 describe('backing out a conversion whose server is registered but never committed', () => {
   const abandon = () =>
     abandonOrcadConversion({

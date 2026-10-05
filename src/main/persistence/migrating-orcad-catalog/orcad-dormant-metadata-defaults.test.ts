@@ -2,10 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { getDefaultPersistedState } from '../../../shared/constants'
 import type { OrcadMigrationManifest } from '../../../shared/orcad-migration-manifest'
 import { fillDefaultWorktreeMetaFields } from '../../../shared/worktree/meta-persisted-defaults'
-import {
-  assertCommittedOrcadMigrationDormantState,
-  prepareOrcadMigrationDormantState
-} from './orcad-dormant-state-records'
+import { prepareOrcadMigrationDormantState } from './orcad-dormant-state-records'
 
 const KEY = 'repo::/srv/worktree'
 
@@ -54,7 +51,6 @@ describe('migration metadata default equivalence', () => {
     const { state, manifest } = fixture()
     const before = structuredClone({ state, manifest })
     expect(prepareOrcadMigrationDormantState(manifest, state).newWorktreeMeta).toEqual([])
-    expect(() => assertCommittedOrcadMigrationDormantState(manifest, state)).not.toThrow()
     expect({ state, manifest }).toEqual(before)
   })
 
@@ -63,9 +59,6 @@ describe('migration metadata default equivalence', () => {
     state.worktreeMeta[KEY][field] = true
     expect(() => prepareOrcadMigrationDormantState(manifest, state)).toThrow(
       `orcad_migration_dormant_id_conflict:worktree_meta:${KEY}`
-    )
-    expect(() => assertCommittedOrcadMigrationDormantState(manifest, state)).toThrow(
-      `orcad_migration_dormant_id_conflict:receipt_dormant_mismatch:worktree_meta:${KEY}`
     )
   })
 })

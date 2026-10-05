@@ -20,6 +20,7 @@ import { resolveOrcadMigrationFence } from './orcad-migration-source-fence'
 export type OrcadMigrationRetirementStore = Pick<
   Store,
   | 'assertOrcadMigrationSourceRetired'
+  | 'deleteRetiredOrcadMigrationScrollback'
   | 'flushPendingOrThrowAsync'
   | 'getSshRemotePtyLeases'
   | 'getSshTarget'
@@ -79,6 +80,8 @@ export async function retireOrcadMigrationSource(
     }
     writeOrcadMigrationSourceCutover(context.userDataPath, retired)
   }
+  // After source-retired is durable; a crash before it repeats on the next retirement pass.
+  context.store.deleteRetiredOrcadMigrationScrollback(retired.manifest)
   if (context.environment && environmentMatchesManagedOrcadCutover(context.environment, retired)) {
     removeOrcadMigrationSourceCutover(context.userDataPath, retired.migrationId)
     return null

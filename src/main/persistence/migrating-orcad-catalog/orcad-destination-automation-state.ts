@@ -40,15 +40,6 @@ export function applyPreparedOrcadMigrationAutomationState(
   }
 }
 
-export function assertCommittedOrcadMigrationAutomationState(
-  automations: readonly Automation[] | undefined,
-  runs: readonly AutomationRun[] | undefined,
-  state: PersistedState
-): void {
-  assertRowsExist(automations ?? [], state.automations, 'automation')
-  assertRowsExist(runs ?? [], state.automationRuns, 'automation_run')
-}
-
 function selectNewRows<T extends { id: string }>(incoming: T[], existing: T[], label: string): T[] {
   const existingById = new Map(existing.map((entry) => [entry.id, entry]))
   return incoming.filter((entry) => {
@@ -59,21 +50,6 @@ function selectNewRows<T extends { id: string }>(incoming: T[], existing: T[], l
     assertSameValue(current, entry, `${label}:${entry.id}`)
     return false
   })
-}
-
-function assertRowsExist<T extends { id: string }>(
-  incoming: readonly T[],
-  existing: readonly T[],
-  label: string
-): void {
-  const existingById = new Map(existing.map((entry) => [entry.id, entry]))
-  for (const entry of incoming) {
-    const current = existingById.get(entry.id)
-    if (!current) {
-      throw new Error(`orcad_migration_receipt_dormant_mismatch:${label}:${entry.id}`)
-    }
-    assertSameValue(current, entry, `receipt_dormant_mismatch:${label}:${entry.id}`)
-  }
 }
 
 function assertRunOwnersExist(

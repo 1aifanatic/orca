@@ -78,19 +78,6 @@ export function applyPreparedOrcadMigrationWorkspaceSession(
   }
 }
 
-export function assertCommittedOrcadMigrationWorkspaceSession(
-  incoming: WorkspaceSessionState | undefined,
-  state: PersistedState
-): void {
-  if (
-    incoming &&
-    serializeOrcadMigrationValue(mergeWorkspaceSessions(state.workspaceSession, incoming)) !==
-      serializeOrcadMigrationValue(state.workspaceSession)
-  ) {
-    throw new Error('orcad_migration_receipt_dormant_mismatch:workspace_session')
-  }
-}
-
 function assertNoSessionRecordConflicts(
   existing: WorkspaceSessionState,
   incoming: WorkspaceSessionState

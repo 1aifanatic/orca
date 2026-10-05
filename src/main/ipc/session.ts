@@ -2,16 +2,16 @@ import { ipcMain } from 'electron'
 import type { Store } from '../persistence'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { parseTerminalSurfaceCloseTarget } from '../../shared/terminal-surface-close-target'
-import { isHiddenRetainedSourceSessionPartition } from '../ssh/orcad-retained-source'
+import { isFrozenOrcadSourceSessionPartition } from '../ssh/orcad-retained-source'
 import type {
   WorkspaceSessionPatch,
   WorkspaceSessionState
 } from '../../shared/workspace-session-state-types'
 
 export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeService): void {
-  // Why: renderer saves would rewrite a converted host's source partition without its hidden rows.
+  // Why: renderer saves would change a fenced host's frozen source partition.
   const isFenced = (hostId?: string | null): boolean =>
-    isHiddenRetainedSourceSessionPartition(store, hostId)
+    isFrozenOrcadSourceSessionPartition(store, hostId)
 
   // Why: hostId is an optional second arg so an older renderer that invokes
   // these channels without it keeps reading/writing the 'local' partition

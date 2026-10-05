@@ -48,6 +48,17 @@ describe('migration cutover journal sidecar', () => {
     expect(listOrcadMigrationSourceCutovers(userDataPath)).toEqual([cutover()])
   })
 
+  it('serves repeat reads from cache yet sees a file rewritten behind its back', () => {
+    writeOrcadMigrationSourceCutover(userDataPath, cutover())
+    const first = listOrcadMigrationSourceCutovers(userDataPath)
+    expect(listOrcadMigrationSourceCutovers(userDataPath)[0]).toBe(first[0])
+    writeFileSync(
+      journalPath('migration-1'),
+      JSON.stringify({ ...cutover(), phase: 'destination-staged' })
+    )
+    expect(listOrcadMigrationSourceCutovers(userDataPath)[0]?.phase).toBe('destination-staged')
+  })
+
   it('fails closed on a file whose name disagrees with its migration', () => {
     mkdirSync(orcadMigrationCutoverJournalDirectory(userDataPath), { recursive: true })
     writeFileSync(journalPath('other'), JSON.stringify(cutover()))

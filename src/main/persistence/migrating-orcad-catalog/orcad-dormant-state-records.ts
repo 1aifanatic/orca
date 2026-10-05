@@ -16,19 +16,16 @@ import {
 import { recordRetirementNamespaceRegistry } from '../../worktree-retirement-namespace'
 import {
   applyPreparedOrcadMigrationWorkspaceSession,
-  assertCommittedOrcadMigrationWorkspaceSession,
   prepareOrcadMigrationWorkspaceSession,
   type PreparedOrcadMigrationWorkspaceSession
 } from './orcad-destination-workspace-session'
 import {
   applyPreparedOrcadMigrationAutomationState,
-  assertCommittedOrcadMigrationAutomationState,
   prepareOrcadMigrationAutomationState,
   type PreparedOrcadMigrationAutomationState
 } from './orcad-destination-automation-state'
 import {
   applyPreparedOrcadMigrationClientState,
-  assertCommittedOrcadMigrationClientState,
   prepareOrcadMigrationClientState,
   type PreparedOrcadMigrationClientState
 } from './orcad-destination-client-state'
@@ -169,65 +166,6 @@ export function applyPreparedOrcadMigrationDormantState(
   applyPreparedOrcadMigrationClientState(prepared.clientState, state)
 }
 
-export function assertCommittedOrcadMigrationDormantState(
-  manifest: OrcadMigrationManifest,
-  state: PersistedState
-): void {
-  const payload = manifest.payload.dormantState
-  if (!payload) {
-    return
-  }
-  assertOrcadDestinationCanonicalMetadata(state, payload.worktreeMeta)
-  assertKeyedRows(
-    payload.worktreeMeta.map((entry) => ({ key: entry.worktreeId, value: entry.meta })),
-    state.worktreeMeta,
-    'worktree_meta',
-    omitDefaultWorktreeMetaFields
-  )
-  assertKeyedRows(
-    payload.worktreeLineage.map((entry) => ({ key: entry.worktreeId, value: entry.lineage })),
-    state.worktreeLineageById,
-    'worktree_lineage'
-  )
-  assertKeyedRows(
-    payload.workspaceLineage.map((entry) => ({
-      key: entry.childWorkspaceKey,
-      value: entry.lineage
-    })),
-    state.workspaceLineageByChildKey,
-    'workspace_lineage'
-  )
-  const presetByKey = new Map(
-    Object.values(state.sparsePresetsByRepo)
-      .flat()
-      .map((preset) => [sparsePresetKey(preset), preset])
-  )
-  for (const preset of payload.sparsePresets) {
-    const current = presetByKey.get(sparsePresetKey(preset))
-    if (!current) {
-      throw new Error(`orcad_migration_receipt_dormant_mismatch:sparse_preset:${preset.id}`)
-    }
-    assertSameValue(current, preset, `receipt_dormant_mismatch:sparse_preset:${preset.id}`)
-  }
-  for (const entry of payload.retiredWorktreeNames) {
-    assertRegistryContains(
-      state.retiredWorktreeNamesByRepo?.[entry.repoId],
-      entry.registry,
-      `retired_names:${entry.repoId}`
-    )
-  }
-  for (const entry of payload.retiredWorktreeNamespaces) {
-    assertRegistryContains(
-      state.retiredWorktreeNamesByNamespace?.[entry.namespaceKey],
-      entry.registry,
-      `retirement_namespace:${entry.namespaceKey}`
-    )
-  }
-  assertCommittedOrcadMigrationWorkspaceSession(payload.workspaceSession, state)
-  assertCommittedOrcadMigrationAutomationState(payload.automations, payload.automationRuns, state)
-  assertCommittedOrcadMigrationClientState(payload.clientState, state)
-}
-
 function selectNewKeyedRows<T>(
   incoming: KeyedRow<T>[],
   existing: Record<string, T>,
@@ -242,39 +180,6 @@ function selectNewKeyedRows<T>(
     assertSameValue(canonicalize(current), canonicalize(entry.value), `${label}:${entry.key}`)
     return false
   })
-}
-
-function assertKeyedRows<T>(
-  incoming: KeyedRow<T>[],
-  existing: Record<string, T>,
-  label: string,
-  canonicalize: (value: T) => T = (value) => value
-): void {
-  for (const entry of incoming) {
-    const current = existing[entry.key]
-    if (current === undefined) {
-      throw new Error(`orcad_migration_receipt_dormant_mismatch:${label}:${entry.key}`)
-    }
-    assertSameValue(
-      canonicalize(current),
-      canonicalize(entry.value),
-      `receipt_dormant_mismatch:${label}:${entry.key}`
-    )
-  }
-}
-
-function assertRegistryContains(
-  current: RetiredNameRegistry | undefined,
-  incoming: RetiredNameRegistry,
-  label: string
-): void {
-  if (
-    !current ||
-    serializeOrcadMigrationValue(mergeRetiredNameRegistries(current, incoming)) !==
-      serializeOrcadMigrationValue(current)
-  ) {
-    throw new Error(`orcad_migration_receipt_dormant_mismatch:${label}`)
-  }
 }
 
 function assertSameValue(left: unknown, right: unknown, label: string): void {
