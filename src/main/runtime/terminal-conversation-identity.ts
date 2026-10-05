@@ -39,32 +39,39 @@ export type LegacyIdentityCandidate = {
 }
 
 /**
- * The pane's published identity: object, `null` only for a facet the host holds and rejects, and
- * `undefined` (absent) when the host knows nothing, because rows also vanish on connection loss.
+ * The pane's published identity, or `undefined` (absent) when the host holds none it can vouch for
+ * here. A facet is published only for the agent the pane holds now: the row's current agent, else
+ * the launch/foreground owner; another agent's conversation is withheld, never published as empty.
  */
 export function resolveTerminalConversationIdentity(args: {
   stored: StoredAgentConversationRead | undefined
   legacy: LegacyIdentityCandidate | null
   ownerAgent: AgentType | null
   ownerOptions: CompatibleAgentOwnerOptions
-}): TerminalConversationIdentity | null | undefined {
+}): TerminalConversationIdentity | undefined {
   const { stored, ownerAgent, ownerOptions } = args
   if (stored) {
     const facet = stored.facet
+    // Why the row first: launch provenance outlives its agent; the row follows a hand-started one.
+    const paneAgent = stored.rowAgent ?? ownerAgent
     if (
-      !facet ||
       !providerSessionMatchesAgent({
         sessionAgent: facet.agentType,
-        agent: ownerAgent ?? facet.agentType,
-        ownerAgent,
+        agent: paneAgent,
+        ownerAgent: paneAgent,
         ownerOptions
       })
     ) {
-      return null
+      return undefined
     }
     return {
       ...facet,
-      agentType: ownerAgent ?? facet.agentType,
+      agentType:
+        resolveCompatibleAgentTypeForOwner(
+          facet.agentType,
+          ownerAgent ?? paneAgent,
+          ownerOptions
+        ) ?? facet.agentType,
       source: stored.rowIsRemnant ? 'retained' : 'live'
     }
   }

@@ -435,7 +435,7 @@ describe('conversation identity through the real session projection', () => {
     for (const rowIsRemnant of [false, true]) {
       const tab = project({
         ...rowCase('aged'),
-        stored: { facet, rowIsRemnant }
+        stored: { facet, rowAgent: 'codex', rowIsRemnant }
       }).tabs[0]
       expect(tab).toMatchObject({
         conversationIdentity: { ...facet, source: rowIsRemnant ? 'retained' : 'live' },
@@ -444,25 +444,37 @@ describe('conversation identity through the real session projection', () => {
     }
   })
 
-  it('publishes null, and no offer, for a facet the host holds but cannot use', () => {
+  it("publishes neither member for a facet of another agent than the pane's", () => {
     const codexFacet = {
       agentType: 'codex',
       providerSession: CODEX_SESSION,
       capturedAt: 1234
     }
-    for (const stored of [
-      { facet: null, rowIsRemnant: false },
-      { facet: codexFacet, rowIsRemnant: false }
+    for (const { launchAgent, rowAgent } of [
+      { launchAgent: 'claude' as const, rowAgent: null },
+      { launchAgent: 'claude' as const, rowAgent: 'claude' },
+      { launchAgent: null, rowAgent: 'amp' }
     ]) {
       const tab = project({
         ...rowCase('aged'),
-        pty: ptyRecord({ launchAgent: 'claude' }),
-        tab: { ...TAB, launchAgent: 'claude' },
-        stored
+        pty: ptyRecord({ launchAgent }),
+        tab: { ...TAB, ...(launchAgent ? { launchAgent } : {}) },
+        stored: { facet: codexFacet, rowAgent, rowIsRemnant: false }
       }).tabs[0]
-      expect(tab).toHaveProperty('conversationIdentity', null)
+      expect(tab).not.toHaveProperty('conversationIdentity')
       expect(tab).not.toHaveProperty('conversationOfferedWithoutStatus')
     }
+  })
+
+  it('publishes the facet of the agent the row names, over a launch record for another agent', () => {
+    const codexFacet = { agentType: 'codex', providerSession: CODEX_SESSION, capturedAt: 1234 }
+    const tab = project({
+      ...rowCase('aged'),
+      pty: ptyRecord({ launchAgent: 'claude' }),
+      tab: { ...TAB, launchAgent: 'claude' },
+      stored: { facet: codexFacet, rowAgent: 'codex', rowIsRemnant: false }
+    }).tabs[0]
+    expect(tab).toMatchObject({ conversationIdentity: { ...codexFacet, source: 'live' } })
   })
 
   describe('renderer (desktop-host) path', () => {
@@ -522,7 +534,7 @@ describe('conversation identity through the real session projection', () => {
         rows: [codexRow()],
         retained: null,
         tab: { ...TAB, launchAgent: 'codex', agentStatus: rendererStatus(CODEX_SESSION, 1) },
-        stored: { facet, rowIsRemnant: false }
+        stored: { facet, rowAgent: 'codex', rowIsRemnant: false }
       }).tabs[0]
       expect(tab).toMatchObject({ conversationIdentity: { ...facet, source: 'live' } })
     })

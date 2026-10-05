@@ -125,9 +125,11 @@ describe('nextConversationFacet', () => {
     })
   })
 
-  it('keeps an explicit null facet until a kept report replaces it', () => {
-    expect(nextConversationFacet(null, row(S), admitted(undefined), null, 99)).toBeNull()
-    expect(nextConversationFacet(null, row(S), admitted(S), S, 99)).toEqual({
+  it('leaves an addressless row without a facet until a kept report sets one', () => {
+    expect(
+      nextConversationFacet(undefined, row(undefined), admitted(undefined), null, 99)
+    ).toBeUndefined()
+    expect(nextConversationFacet(undefined, row(undefined), admitted(S), S, 99)).toEqual({
       agentType: 'codex',
       providerSession: S,
       capturedAt: 99

@@ -152,9 +152,8 @@ export function sanitizeHydratedEntry(
       ? record.compactTrigger
       : undefined
   const turnStartedAt = record.turnStartedAt
-  // Why null, not undefined, when present but bad: a missing key seeds from top-level fields, a broken one must not.
-  const conversation =
-    'conversation' in record ? readConversationIdentityFields(record.conversation) : undefined
+  // Why a malformed facet reads as absent: hydration then seeds it from the row's own address.
+  const conversation = readConversationIdentityFields(record.conversation) ?? undefined
   return {
     paneKey,
     agentPresence: readAgentProcessPresence(record.agentPresence),
@@ -181,7 +180,7 @@ export function sanitizeHydratedEntry(
     ...(typeof turnStartedAt === 'number' && Number.isFinite(turnStartedAt) && turnStartedAt > 0
       ? { turnStartedAt }
       : {}),
-    ...(conversation !== undefined ? { conversation } : {})
+    ...(conversation ? { conversation } : {})
   }
 }
 

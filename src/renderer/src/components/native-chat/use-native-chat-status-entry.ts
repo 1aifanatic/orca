@@ -17,7 +17,7 @@ export function useNativeChatStatusEntry(
   )
   const paneKey = preferredPaneKey ?? entry?.paneKey ?? `${terminalTabId}:`
   const leafId = parsePaneKey(paneKey)?.leafId
-  // Why the mirrored entry itself: it is rebuilt only when the host's leaf identity changes.
+  // Why the mirrored entry itself: no allocation per store update; it changes with the worktree's tabs.
   const conversation = useAppStore((state) =>
     findHostLeafConversation(state.tabsByWorktree, terminalTabId, leafId)
   )

@@ -33,9 +33,9 @@ function status(overrides: Partial<AgentStatusEntry> = {}): AgentStatusEntry {
 }
 
 describe('readTerminalConversationIdentity', () => {
-  it('reads absent and malformed as undefined, null as an explicit clear', () => {
+  it('reads absent, null and malformed all as undefined', () => {
     expect(readTerminalConversationIdentity(undefined)).toBeUndefined()
-    expect(readTerminalConversationIdentity(null)).toBeNull()
+    expect(readTerminalConversationIdentity(null)).toBeUndefined()
     expect(readTerminalConversationIdentity({ agentType: 'codex' })).toBeUndefined()
     expect(readTerminalConversationIdentity({ ...field, capturedAt: 'x' })).toBeUndefined()
     expect(readTerminalConversationIdentity({ ...field, source: 3 })).toBeUndefined()
@@ -63,8 +63,8 @@ describe('terminalConversationIdentityEqual', () => {
     ).toBe(false)
     expect(terminalConversationIdentityEqual(field, { ...field, capturedAt: 101 })).toBe(false)
     expect(terminalConversationIdentityEqual(field, { ...field, source: 'retained' })).toBe(false)
-    expect(terminalConversationIdentityEqual(null, undefined)).toBe(false)
-    expect(terminalConversationIdentityEqual(null, null)).toBe(true)
+    expect(terminalConversationIdentityEqual(field, undefined)).toBe(false)
+    expect(terminalConversationIdentityEqual(undefined, undefined)).toBe(true)
   })
 })
 
@@ -181,7 +181,7 @@ describe('selectTerminalConversation', () => {
     ).toMatchObject({ authority: 'address', model: null, modelSource: null, fieldReportKey: null })
   })
 
-  it('clears on an explicit null with no fallback to a status address', () => {
+  it('reads a null field as absent: the genuine status address still answers', () => {
     expect(
       selectTerminalConversation({
         conversationIdentity: null,
@@ -189,16 +189,16 @@ describe('selectTerminalConversation', () => {
         agent: 'codex'
       })
     ).toEqual({
-      authority: 'clear',
-      address: null,
-      model: null,
+      authority: 'none',
+      address: { agentType: 'codex', providerSession: T },
+      model: 'Q',
       modelSwitchCommand: null,
-      modelSource: null,
+      modelSource: 'status',
       fieldReportKey: null
     })
   })
 
-  it('still seeds the model from a matching model-only report under a clear', () => {
+  it('reads a null field beside a model-only report as absent, seeding that model', () => {
     expect(
       selectTerminalConversation({
         conversationIdentity: null,
@@ -206,7 +206,7 @@ describe('selectTerminalConversation', () => {
         agent: 'codex'
       })
     ).toMatchObject({
-      authority: 'clear',
+      authority: 'none',
       address: null,
       model: 'Q',
       modelSwitchCommand: 'orca-model',

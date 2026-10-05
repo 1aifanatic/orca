@@ -63,7 +63,6 @@ export function useMobileNativeChatActiveResolution(args: {
     : null
   const activeConversationModelReport = activeConversation
     ? {
-        cleared: activeConversation.authority === 'clear',
         conversationKey: conversationAddressKey(activeConversation.address),
         modelSource: activeConversation.modelSource,
         fieldReportKey: activeConversation.fieldReportKey

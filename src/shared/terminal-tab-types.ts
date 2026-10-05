@@ -118,7 +118,7 @@ export type TerminalTab = {
 }
 
 export type HostLeafConversation = {
-  identity: TerminalConversationIdentity | null
+  identity: TerminalConversationIdentity
   /** The host offered the identity on this statusless leaf as agent evidence and address. */
   offeredWithoutStatus: boolean
 }

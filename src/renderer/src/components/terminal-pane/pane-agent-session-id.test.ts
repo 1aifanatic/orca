@@ -166,15 +166,13 @@ describe('resolvePaneAgentSessionId', () => {
       expect(resolvePaneAgentSessionId(onlySibling, PANE_KEY)).toBeNull()
     })
 
-    it('copies nothing on an explicit clear, never an older sleeping record', () => {
+    it("keeps the sleeping-record read when the host withholds this leaf's field", () => {
       expect(
         resolvePaneAgentSessionId(
-          state(undefined, sleeping('R'), false, {
-            [LEAF]: { identity: null, offeredWithoutStatus: false }
-          }),
+          state(undefined, sleeping('R'), false, { [SIBLING_LEAF]: offered('T') }),
           PANE_KEY
         )
-      ).toBeNull()
+      ).toBe('R')
     })
 
     it("keeps today's sleeping-record read for an old host that sent no field", () => {

@@ -23,7 +23,7 @@ type MobileTerminalTabAgentIdentity = {
   title: string
   agentStatus?: { agentType?: AgentStatusEntry['agentType'] | null } | null
   launchAgent?: TuiAgent | null
-  conversationIdentity?: TerminalConversationIdentity | null
+  conversationIdentity?: TerminalConversationIdentity
   conversationOfferedWithoutStatus?: true
 }
 

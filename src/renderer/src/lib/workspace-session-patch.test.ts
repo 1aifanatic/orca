@@ -540,7 +540,15 @@ describe('buildWorkspaceSessionPatch', () => {
       sortOrder: 0,
       createdAt: 0,
       hostConversationByLeafId: {
-        leaf: { identity: null, offeredWithoutStatus: false }
+        leaf: {
+          identity: {
+            agentType: 'codex',
+            providerSession: { key: 'session_id', id: 'S' },
+            capturedAt: 1,
+            source: 'live'
+          },
+          offeredWithoutStatus: false
+        }
       }
     }
     const full = buildSanitizedTabsByWorktree({ 'wt-1': [mirroredTab] })

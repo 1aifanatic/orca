@@ -38,8 +38,7 @@ export function resolvePaneAgentSessionId(
     live,
     live?.agentType ?? offeredHostLeafAgent(conversation, live)
   )
-  if (selection.authority !== 'none') {
-    // Why no sleeping fallback on a clear: the host says this pane has no conversation now.
+  if (selection.authority === 'address') {
     return selection.address?.providerSession.id ?? null
   }
   if (live && live.restoredUnconfirmed !== true) {

@@ -1,6 +1,6 @@
-// A terminal tab's conversation field and offer reach every audience; only a phone without the
-// identity capability also gets them folded into agentStatus. Every tab-bearing egress is driven
-// through the real dispatcher and JSON.
+// A terminal tab's conversation field and offer reach every audience but a phone without the
+// identity capability, which gets them folded into agentStatus instead. Every tab-bearing egress
+// is driven through the real dispatcher and JSON.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
 import { TERMINAL_CONVERSATION_IDENTITY_CLIENT_CAPABILITY } from '../../../../shared/protocol-version'
@@ -149,10 +149,10 @@ function resultOf(reply: RpcResponse | undefined): unknown {
   return reply?.ok ? reply.result : undefined
 }
 
-/** The terminal tab exactly as the audience should receive it. */
+/** The terminal tab exactly as the audience should receive it; an old phone reads only the fold. */
 function expectedTab(audience: Audience): unknown {
   return JSON.parse(
-    JSON.stringify(audience === 'mobile' ? { ...offeredTab, agentStatus: fold } : offeredTab)
+    JSON.stringify(audience === 'mobile' ? { ...statuslessTab, agentStatus: fold } : offeredTab)
   )
 }
 
@@ -293,7 +293,11 @@ describe('conversation identity egress', () => {
 
       expect(replies).toHaveLength(2)
       expect(resultOf(replies[1])).toMatchObject({
-        tabs: [{ conversationIdentity: { capturedAt: 5678 } }]
+        tabs: [
+          audience === 'mobile'
+            ? { agentStatus: { updatedAt: 5678 } }
+            : { conversationIdentity: { capturedAt: 5678 } }
+        ]
       })
     }
   )

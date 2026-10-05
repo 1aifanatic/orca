@@ -36,13 +36,13 @@ export function seedConversationFromLegacyRow(
  * and model returns the same object, so relayed transcript polls and replays move nothing.
  */
 export function nextConversationFacet(
-  previous: StoredAgentConversation | null | undefined,
+  previous: StoredAgentConversation | undefined,
   previousRow: EnrichedAgentHookEventPayload | undefined,
   admitted: AgentHookEventPayload,
   reported: AgentProviderSessionMetadata | null,
   at: number
-): StoredAgentConversation | null | undefined {
-  const current = previous === undefined ? seedConversationFromLegacyRow(previousRow) : previous
+): StoredAgentConversation | undefined {
+  const current = previous ?? seedConversationFromLegacyRow(previousRow)
   const admittedAgent = usableAgentType(admitted.payload.agentType)
   if (
     !reported ||

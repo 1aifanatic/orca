@@ -184,15 +184,14 @@ describe('NativeChatSessionGate', () => {
       expect(shown()).toBe('codex:S')
     })
 
-    it('shows no address and keeps no memory on an explicit clear', () => {
-      const view = render(gate(genuine, undefined))
-      view.rerender(
-        gate(entry({ paneKey, agentType: 'codex' }), {
-          identity: null,
-          offeredWithoutStatus: false
-        })
+    it('keeps the same-agent memory when the host withholds the field (absent, never a clear)', () => {
+      const addressless = entry({ paneKey, agentType: 'codex' })
+      const view = render(
+        gate(addressless, { identity: identity('T'), offeredWithoutStatus: false })
       )
-      expect(shown()).toBe('codex:no-session')
+      expect(shown()).toBe('codex:T')
+      view.rerender(gate(addressless, undefined))
+      expect(shown()).toBe('codex:T')
     })
   })
 })

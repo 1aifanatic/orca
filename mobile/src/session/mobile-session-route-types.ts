@@ -24,7 +24,7 @@ export type MobileSessionTab =
       terminal: string | null
       agentStatus?: AgentStatusEntry | null
       /** The host's conversation for this pane, independent of status (absent from older hosts). */
-      conversationIdentity?: TerminalConversationIdentity | null
+      conversationIdentity?: TerminalConversationIdentity
       /** True-only: the host offers that conversation on this statusless tab. */
       conversationOfferedWithoutStatus?: true
       /** Agent Orca launched in this terminal, if any. This makes chat eligible

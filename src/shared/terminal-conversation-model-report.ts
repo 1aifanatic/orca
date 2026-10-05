@@ -11,7 +11,6 @@ export type ConversationModelReportBaseline = {
 }
 
 export type ConversationModelReport = {
-  cleared: boolean
   conversationKey: string | null
   /** The reported model after the picker matched it to its catalog. */
   model: string | null
@@ -35,12 +34,7 @@ export function decideConversationModelReport(
   report: ConversationModelReport
 ): { apply: boolean; baseline: ConversationModelReportBaseline } {
   let baseline = previous ?? EMPTY_CONVERSATION_MODEL_REPORT_BASELINE
-  if (report.cleared) {
-    baseline = EMPTY_CONVERSATION_MODEL_REPORT_BASELINE
-  } else if (
-    report.conversationKey !== null &&
-    report.conversationKey !== baseline.conversationKey
-  ) {
+  if (report.conversationKey !== null && report.conversationKey !== baseline.conversationKey) {
     // Why adopt without reset from unknown: a report that later gains its address is the same conversation.
     baseline =
       baseline.conversationKey === null

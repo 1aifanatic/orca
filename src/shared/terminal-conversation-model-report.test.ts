@@ -8,12 +8,11 @@ import {
 const K = 'conversation-S'
 
 function field(model: string, key: string): ConversationModelReport {
-  return { cleared: false, conversationKey: K, model, modelSource: 'field', fieldReportKey: key }
+  return { conversationKey: K, model, modelSource: 'field', fieldReportKey: key }
 }
 
 function status(model: string, observedFieldKey: string | null = null): ConversationModelReport {
   return {
-    cleared: false,
     conversationKey: K,
     model,
     modelSource: 'status',
@@ -22,7 +21,6 @@ function status(model: string, observedFieldKey: string | null = null): Conversa
 }
 
 const noEvidence: ConversationModelReport = {
-  cleared: false,
   conversationKey: null,
   model: null,
   modelSource: null,
@@ -84,11 +82,14 @@ describe('decideConversationModelReport', () => {
     ])
   })
 
-  it('resets on a new conversation and on an explicit clear', () => {
+  it('resets on a new conversation, never on a frame without evidence', () => {
     const otherConversation = { ...field('P', 'P@100'), conversationKey: 'conversation-T' }
-    const cleared = { ...noEvidence, cleared: true }
     expect(run([field('P', 'P@100'), otherConversation])).toEqual([true, true])
-    expect(run([field('P', 'P@100'), cleared, field('P', 'P@100')])).toEqual([true, false, true])
+    expect(run([field('P', 'P@100'), noEvidence, field('P', 'P@100')])).toEqual([
+      true,
+      false,
+      false
+    ])
   })
 
   it('adopts a conversation that first reported with no address without resetting', () => {

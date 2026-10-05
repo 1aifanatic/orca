@@ -344,17 +344,16 @@ describe('projectSessionTabAgentStatus legacy phone conversation fold', () => {
   }
 
   it.each([undefined, [AGENT_SESSION_BOUNDARY_RUNTIME_CAPABILITY]])(
-    'folds an offered identity into a capability-less phone status (capabilities %j)',
+    'folds an offered identity into a capability-less phone status, without the members it never reads (capabilities %j)',
     (capabilities) => {
       const projected = projectSessionTabAgentStatus(
         statuslessSnapshot(offered),
         'mobile',
         capabilities
       )
-      expect(projected.tabs[0]).toEqual({
-        ...statuslessSnapshot(offered).tabs[0],
-        agentStatus: fold
-      })
+      expect(projected.tabs[0]).toEqual({ ...statuslessSnapshot().tabs[0], agentStatus: fold })
+      expect(projected.tabs[0]).not.toHaveProperty('conversationIdentity')
+      expect(projected.tabs[0]).not.toHaveProperty('conversationOfferedWithoutStatus')
     }
   )
 
@@ -371,7 +370,7 @@ describe('projectSessionTabAgentStatus legacy phone conversation fold', () => {
   it.each([
     ['no offer', { conversationIdentity: offered.conversationIdentity }],
     [
-      'an explicit null identity',
+      'a null identity (read as absent)',
       { conversationIdentity: null, conversationOfferedWithoutStatus: true }
     ],
     [
@@ -416,5 +415,23 @@ describe('projectSessionTabAgentStatus legacy phone conversation fold', () => {
     expect(
       outputs.map((output) => output.tabs[0]?.type === 'terminal' && output.tabs[0].agentStatus)
     ).toEqual([undefined, fold, fold, undefined])
+    expect(outputs.map((output) => 'conversationIdentity' in (output.tabs[0] ?? {}))).toEqual([
+      true,
+      false,
+      false,
+      true
+    ])
+    expect(projectSessionTabAgentStatus(shared, 'mobile', undefined).tabs[0]).not.toBe(
+      shared.tabs[0]
+    )
+  })
+
+  it('survives a JSON round trip: the folded frame names the address only in its status', () => {
+    const wire = JSON.parse(
+      JSON.stringify(projectSessionTabAgentStatus(statuslessSnapshot(offered), 'mobile', undefined))
+    )
+    expect(wire.tabs[0]).toEqual(
+      JSON.parse(JSON.stringify({ ...statuslessSnapshot().tabs[0], agentStatus: fold }))
+    )
   })
 })

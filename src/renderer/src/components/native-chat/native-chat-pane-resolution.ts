@@ -43,7 +43,7 @@ export type NativeChatPaneResolution = {
   transcriptPath: string | null
   ptyId: string | null
   paneKey: string
-  /** Whether the address came from the host's field (`address`/`clear`) or the legacy status read. */
+  /** Whether the address came from the host's field (`address`) or the legacy status read. */
   authority: TerminalConversationSelection['authority']
 }
 

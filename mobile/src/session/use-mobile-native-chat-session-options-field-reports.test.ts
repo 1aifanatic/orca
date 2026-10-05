@@ -39,7 +39,7 @@ function field(
   }
 }
 
-type Frame = { status?: string; field?: TerminalConversationIdentity | null }
+type Frame = { status?: string; field?: TerminalConversationIdentity }
 
 /** What the phone's controller hands the picker for one frame of the active tab. */
 function argsFor(
@@ -72,7 +72,6 @@ function argsFor(
     reportedModel: selection.model,
     modelSwitchCommand: selection.modelSwitchCommand ?? undefined,
     modelReport: {
-      cleared: selection.authority === 'clear',
       conversationKey: conversationAddressKey(selection.address),
       modelSource: selection.modelSource,
       fieldReportKey: selection.fieldReportKey
@@ -151,12 +150,12 @@ describe('phone picker model from the conversation field', () => {
     expect(selected()).toBe('other/P2')
   })
 
-  it('reseeds from the field after an explicit clear', async () => {
+  it('keeps a pick when the field goes absent and the same report returns', async () => {
     deliver({ field: field('old/P') })
     await pick('user/R')
-    deliver({ field: null })
+    deliver({})
     deliver({ field: field('old/P') })
-    expect(selected()).toBe('old/P')
+    expect(selected()).toBe('user/R')
   })
 
   it('keeps a pick when a status goes away and comes back over an unchanged field', async () => {

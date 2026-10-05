@@ -37,7 +37,7 @@ export type MobileNativeChatTab = {
   launchAgent?: string | null
   agentStatus?: AgentStatusEntry | null
   /** The host's conversation for this terminal pane; see `selectMobileTerminalConversation`. */
-  conversationIdentity?: TerminalConversationIdentity | null
+  conversationIdentity?: TerminalConversationIdentity
   conversationOfferedWithoutStatus?: true
   /** Host-provided launch context still parked as an unsent TUI-input draft. */
   launchDraft?: string

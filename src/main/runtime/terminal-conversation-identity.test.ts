@@ -20,7 +20,7 @@ describe('resolveTerminalConversationIdentity', () => {
     for (const rowIsRemnant of [false, true]) {
       expect(
         resolveTerminalConversationIdentity({
-          stored: { facet, rowIsRemnant },
+          stored: { facet, rowAgent: 'codex', rowIsRemnant },
           legacy,
           ownerAgent: 'codex',
           ownerOptions: launchOwner
@@ -30,33 +30,63 @@ describe('resolveTerminalConversationIdentity', () => {
   })
 
   it('names a compatible launch owner as the agent', () => {
-    expect(
-      resolveTerminalConversationIdentity({
-        stored: { facet: { ...facet, agentType: 'pi' }, rowIsRemnant: false },
-        legacy: null,
-        ownerAgent: 'omp',
-        ownerOptions: launchOwner
-      })
-    ).toMatchObject({ agentType: 'omp', providerSession: S })
+    for (const rowAgent of ['pi', 'omp', null]) {
+      expect(
+        resolveTerminalConversationIdentity({
+          stored: { facet: { ...facet, agentType: 'pi' }, rowAgent, rowIsRemnant: false },
+          legacy: null,
+          ownerAgent: 'omp',
+          ownerOptions: launchOwner
+        })
+      ).toMatchObject({ agentType: 'omp', providerSession: S })
+    }
   })
 
-  it('publishes null for an explicit or incompatible facet, never the legacy row', () => {
+  it("publishes a hand-started agent's facet in a pane launched as another agent", () => {
     expect(
       resolveTerminalConversationIdentity({
-        stored: { facet: null, rowIsRemnant: false },
-        legacy,
-        ownerAgent: 'codex',
-        ownerOptions: launchOwner
-      })
-    ).toBeNull()
-    expect(
-      resolveTerminalConversationIdentity({
-        stored: { facet, rowIsRemnant: false },
+        stored: { facet, rowAgent: 'codex', rowIsRemnant: false },
         legacy,
         ownerAgent: 'claude',
         ownerOptions: launchOwner
       })
-    ).toBeNull()
+    ).toEqual({ ...facet, source: 'live' })
+  })
+
+  it("withholds (absent, never null) a facet of another agent than the row's, whatever the owner", () => {
+    for (const ownerAgent of [null, 'claude']) {
+      expect(
+        resolveTerminalConversationIdentity({
+          stored: {
+            facet: { ...facet, agentType: 'claude' },
+            rowAgent: 'amp',
+            rowIsRemnant: false
+          },
+          legacy,
+          ownerAgent,
+          ownerOptions: { ownerIsLaunch: ownerAgent !== null }
+        })
+      ).toBeUndefined()
+    }
+  })
+
+  it('checks a facet against the owner when the row names no agent, never falling back to legacy', () => {
+    expect(
+      resolveTerminalConversationIdentity({
+        stored: { facet, rowAgent: null, rowIsRemnant: false },
+        legacy,
+        ownerAgent: 'claude',
+        ownerOptions: launchOwner
+      })
+    ).toBeUndefined()
+    expect(
+      resolveTerminalConversationIdentity({
+        stored: { facet, rowAgent: null, rowIsRemnant: false },
+        legacy,
+        ownerAgent: null,
+        ownerOptions: { ownerIsLaunch: false }
+      })
+    ).toEqual({ ...facet, source: 'live' })
   })
 
   it('falls back to the legacy row only when the store holds no facet', () => {
@@ -76,7 +106,7 @@ describe('resolveTerminalConversationIdentity', () => {
     })
   })
 
-  it('publishes nothing (absent, not null) when there is no usable evidence', () => {
+  it('publishes nothing when there is no usable evidence', () => {
     for (const args of [
       { legacy: null, ownerAgent: 'codex' },
       { legacy: { ...legacy, sessionAgent: null }, ownerAgent: null },

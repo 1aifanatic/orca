@@ -22,7 +22,7 @@ export type MobileTerminalSessionTab = {
   status?: 'pending-handle' | 'ready'
   terminal: string | null
   agentStatus?: AgentStatusEntry | null
-  conversationIdentity?: TerminalConversationIdentity | null
+  conversationIdentity?: TerminalConversationIdentity
   conversationOfferedWithoutStatus?: true
   /** Host-provided launch context still parked as an unsent TUI-input draft. */
   launchDraft?: string

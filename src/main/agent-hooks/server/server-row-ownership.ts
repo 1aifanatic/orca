@@ -93,10 +93,15 @@ export abstract class AgentHookServerRowOwnership extends AgentHookServerListene
       (joinedPaneKey ? this.state.lastStatusByPaneKey.get(joinedPaneKey) : undefined)) as
       | EnrichedAgentHookEventPayload
       | undefined
-    if (row?.conversation === undefined) {
+    if (!row?.conversation) {
       return undefined
     }
-    return { facet: row.conversation, rowIsRemnant: row.providerSessionOnly === true }
+    const rowAgent = row.payload.agentType
+    return {
+      facet: row.conversation,
+      rowAgent: rowAgent && rowAgent !== 'unknown' ? rowAgent : null,
+      rowIsRemnant: row.providerSessionOnly === true
+    }
   }
 
   protected sameTerminalOwner(

@@ -107,7 +107,6 @@ export function useMobileNativeChatSessionOptions(args: {
   // Seed the current model from live agent status; hook reports are authority
   // over locally dispatched guesses (desktop 'reported' source parity).
   const {
-    cleared = false,
     conversationKey = null,
     fieldReportKey = null,
     modelSource = reportedModel ? 'status' : null
@@ -126,7 +125,7 @@ export function useMobileNativeChatSessionOptions(args: {
     // status stream reconnects, and a session-start report cannot have observed a
     // `/model` sent after it. Re-applying it would revert the user's pick. Only a
     // report that CHANGES is evidence; the value itself still wins when it does.
-    const report = { cleared, conversationKey, model: matched || null, modelSource, fieldReportKey }
+    const report = { conversationKey, model: matched || null, modelSource, fieldReportKey }
     if (!takeReportedModel(scopeKey, report) || !matched) {
       return
     }
@@ -134,17 +133,7 @@ export function useMobileNativeChatSessionOptions(args: {
     if (applyNativeChatReportedSessionOptions(record, { model: matched })) {
       bump()
     }
-  }, [
-    agent,
-    bump,
-    catalog,
-    cleared,
-    conversationKey,
-    fieldReportKey,
-    modelSource,
-    reportedModel,
-    scopeKey
-  ])
+  }, [agent, bump, catalog, conversationKey, fieldReportKey, modelSource, reportedModel, scopeKey])
 
   const snapshot = useMemo(() => {
     if (!catalog || !scopeKey || !agent) {

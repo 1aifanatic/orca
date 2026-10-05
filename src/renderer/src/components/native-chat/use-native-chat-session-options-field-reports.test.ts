@@ -67,8 +67,8 @@ function field(
 
 type Frame = {
   status?: string
-  /** `null` is the host's explicit clear; omitted is an old host (no field). */
-  field?: TerminalConversationIdentity | null
+  /** Omitted: an old host, or a host that publishes no conversation for the pane. */
+  field?: TerminalConversationIdentity
 }
 
 async function mountPicker() {
@@ -162,13 +162,13 @@ describe('picker model from the conversation field', () => {
     expect(picker.selected()).toBe('other/P2')
   })
 
-  it('reseeds from the field after an explicit clear', async () => {
+  it('keeps a pick when the field goes absent and the same report returns', async () => {
     const picker = await mountPicker()
     await picker.deliver({ field: field('old/P') })
     await picker.pick('user/R')
-    await picker.deliver({ field: null })
+    await picker.deliver({})
     await picker.deliver({ field: field('old/P') })
-    expect(picker.selected()).toBe('old/P')
+    expect(picker.selected()).toBe('user/R')
   })
 
   it('keeps a pick when a status goes away and comes back over an unchanged field', async () => {

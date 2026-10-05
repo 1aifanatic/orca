@@ -44,8 +44,7 @@ export function foldConversationIdentityForLegacyPhones<TPayload extends Session
     if (tab.type !== 'terminal' || !conversationIsOfferedWithoutStatus(tab)) {
       return tab
     }
-    const identity = 'conversationIdentity' in tab ? tab.conversationIdentity : undefined
-    const offered = readTerminalConversationIdentity(identity)
+    const offered = readTerminalConversationIdentity(tab.conversationIdentity)
     if (!offered) {
       return tab
     }
@@ -70,7 +69,13 @@ export function foldConversationIdentityForLegacyPhones<TPayload extends Session
         : {}),
       ...(payload.worktree ? { worktreeId: payload.worktree } : {})
     }
-    return { ...tab, agentStatus }
+    // Why drop the members: shipped phones never read them; the fold carries the address.
+    const {
+      conversationIdentity: _conversationIdentity,
+      conversationOfferedWithoutStatus: _offered,
+      ...folded
+    } = tab
+    return { ...folded, agentStatus }
   })
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only terminal tabs gained a status; every other member of the payload is unchanged.
   return changed ? ({ ...payload, tabs } as TPayload) : payload

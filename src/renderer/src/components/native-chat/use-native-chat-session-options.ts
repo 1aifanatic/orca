@@ -106,7 +106,6 @@ export function useNativeChatSessionOptions(args: {
         canSwitchOmpModel: selection.modelSwitchCommand === 'orca-model',
         modelSource: selection.modelSource,
         fieldReportKey: selection.fieldReportKey,
-        cleared: selection.authority === 'clear',
         conversationKey: conversationAddressKey(selection.address)
       }
     })
@@ -234,7 +233,6 @@ export function useNativeChatSessionOptions(args: {
     }
     const record = (model: string | null): boolean => {
       const decision = decideConversationModelReport(reportBaselineRef.current, {
-        cleared: reported.cleared,
         conversationKey: reported.conversationKey,
         model,
         modelSource: reported.modelSource,
@@ -267,7 +265,6 @@ export function useNativeChatSessionOptions(args: {
     agent,
     discoveryContext,
     reportedModel,
-    reported.cleared,
     reported.conversationKey,
     reported.fieldReportKey,
     reported.modelSource,

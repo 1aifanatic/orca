@@ -90,11 +90,8 @@ export function projectRuntimeTerminalConversationFields(args: {
     ownerAgent: args.ownerAgent,
     ownerOptions: args.ownerOptions
   })
-  if (identity === undefined) {
+  if (!identity) {
     return {}
-  }
-  if (identity === null) {
-    return { conversationIdentity: null }
   }
   return {
     conversationIdentity: identity,

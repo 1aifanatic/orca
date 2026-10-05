@@ -175,9 +175,9 @@ describe('mobile terminal records', () => {
         [{ ...offered, conversationIdentity: { ...identity, capturedAt: 2 } }]
       )
     ).toBe(false)
-    expect(mobileSessionTabsEqual([offered], [{ ...offered, conversationIdentity: null }])).toBe(
-      false
-    )
+    expect(
+      mobileSessionTabsEqual([offered], [{ ...offered, conversationIdentity: undefined }])
+    ).toBe(false)
     expect(
       mobileSessionTabsEqual([offered], [{ ...offered, conversationIdentity: { ...identity } }])
     ).toBe(true)

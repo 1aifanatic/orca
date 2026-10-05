@@ -79,7 +79,7 @@ function osc(server: AgentHookServer, state: AgentStatusState, agentType = 'clau
   })
 }
 
-function facet(server: AgentHookServer): StoredAgentConversation | null | undefined {
+function facet(server: AgentHookServer): StoredAgentConversation | undefined {
   return server.getConversationIdentityForPane(PANE)?.facet
 }
 
@@ -271,16 +271,17 @@ describe('carried-forward writes never report', () => {
     expect(facet(server)).toBe(seeded)
   })
 
-  it('an OSC copy never resurrects an explicit null facet', () => {
+  it('an OSC copy on a facet-less row seeds only from that row, never a newer address', () => {
     const time = clock(1_700_000_000_000)
     const server = store()
     report(server, 'working', S)
-    seedRow(server, (row) => ({ ...row, conversation: null }))
+    seedRow(server, ({ conversation: _conversation, ...row }) => ({ ...row, receivedAt: 7 }))
     time.tick()
     osc(server, 'done')
     expect(legacySession(server)).toEqual(S)
     expect(server.getConversationIdentityForPane(PANE)).toEqual({
-      facet: null,
+      facet: { agentType: 'claude', providerSession: S, capturedAt: 7 },
+      rowAgent: 'claude',
       rowIsRemnant: false
     })
   })
@@ -616,7 +617,11 @@ describe('eviction', () => {
     report(server, 'working', S, { model: 'P' })
     const kept = facet(server)
     server.reconcileEndedProcessForPaneKeys([PANE], { preserveResumeIdentity: true })
-    expect(server.getConversationIdentityForPane(PANE)).toEqual({ facet: kept, rowIsRemnant: true })
+    expect(server.getConversationIdentityForPane(PANE)).toEqual({
+      facet: kept,
+      rowAgent: 'claude',
+      rowIsRemnant: true
+    })
   })
 
   it('loses the facet when the row is dismissed inside the done -> working window (T7)', () => {
@@ -640,6 +645,7 @@ describe('eviction', () => {
     time.tick()
     osc(server, 'working', 'claude')
     expect(facet(server)).toBe(codexFacet)
+    expect(server.getConversationIdentityForPane(PANE)?.rowAgent).toBe('claude')
     time.tick()
     report(server, 'working', C, {}, 'claude')
     expect(facet(server)).toMatchObject({ agentType: 'claude', providerSession: C })
@@ -666,7 +672,7 @@ describe('legacy outputs never carry the facet', () => {
 })
 
 describe('persistence', () => {
-  it('round-trips the facet, keeps an explicit null, rejects malformed and seeds legacy rows', async () => {
+  it('round-trips the facet, reads a null or malformed one as absent and seeds every such row', async () => {
     const userDataPath = mkdtempSync(join(tmpdir(), 'orca-conversation-facet-'))
     cleanups.push(() => rmSync(userDataPath, { recursive: true, force: true }))
     const first = new AgentHookServer()
@@ -713,23 +719,31 @@ describe('persistence', () => {
     )
     expect(again.status).toBe(204)
     expect(restored.getConversationIdentityForPane(PANE)?.facet).toBe(repainted)
-    expect(
-      (await hydrate({ ...entry, conversation: null })).getConversationIdentityForPane(PANE)
-    ).toEqual({ facet: null, rowIsRemnant: false })
-    expect(
-      (
-        await hydrate({ ...entry, conversation: { agentType: 'claude' } })
-      ).getConversationIdentityForPane(PANE)
-    ).toEqual({ facet: null, rowIsRemnant: false })
-    const { conversation: _conversation, ...legacy } = entry
-    expect((await hydrate(legacy)).getConversationIdentityForPane(PANE)).toEqual({
+    const seededFromRow = {
       facet: {
         agentType: 'claude',
         providerSession: entry.providerSession,
         capturedAt: entry.receivedAt
       },
+      rowAgent: 'claude',
       rowIsRemnant: false
-    })
+    }
+    const { conversation: _conversation, ...legacy } = entry
+    // Why: a facet this version rejects (corrupt, or written by a newer version) is no clear.
+    for (const conversation of [
+      null,
+      { agentType: 'claude' },
+      { ...entry.conversation, modelSwitchCommand: 'orca-model-v2' }
+    ]) {
+      const hydrated = await hydrate({ ...entry, conversation })
+      expect(hydrated.getConversationIdentityForPane(PANE)).toEqual(seededFromRow)
+      hydrated.flushStatusPersistSync()
+      expect(JSON.parse(readFileSync(filePath, 'utf8')).entries[PANE].conversation).toEqual(
+        seededFromRow.facet
+      )
+      hydrated.stop()
+    }
+    expect((await hydrate(legacy)).getConversationIdentityForPane(PANE)).toEqual(seededFromRow)
     const aged = { ...entry, receivedAt: 1, stateStartedAt: 1 }
     expect((await hydrate(aged)).getConversationIdentityForPane(PANE)).toBeUndefined()
   })

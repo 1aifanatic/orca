@@ -66,13 +66,10 @@ export function readConversationIdentityFields(raw: unknown): ConversationIdenti
 
 const sourceSchema = z.object({ source: z.string() })
 
-/** Absent and malformed both read as `undefined` (a malformed field is discarded for its tab only); `null` is an explicit clear. */
+/** Absent and malformed both read as `undefined`; a malformed field is discarded for its tab only. */
 export function readTerminalConversationIdentity(
   raw: unknown
-): TerminalConversationIdentity | null | undefined {
-  if (raw === null) {
-    return null
-  }
+): TerminalConversationIdentity | undefined {
   const fields = readConversationIdentityFields(raw)
   const provenance = sourceSchema.safeParse(raw)
   // Why: an unknown provenance value is kept as is; readers only compare it.
@@ -95,8 +92,8 @@ export function conversationProviderSessionsEqual(
 }
 
 export function terminalConversationIdentityEqual(
-  left: TerminalConversationIdentity | null | undefined,
-  right: TerminalConversationIdentity | null | undefined
+  left: TerminalConversationIdentity | undefined,
+  right: TerminalConversationIdentity | undefined
 ): boolean {
   if (!left || !right) {
     return left === right
@@ -150,7 +147,7 @@ export function conversationIsOfferedWithoutStatus(tab: TerminalConversationTabF
   return (
     !tab.agentStatus &&
     tab.conversationOfferedWithoutStatus === true &&
-    readTerminalConversationIdentity(tab.conversationIdentity) != null
+    readTerminalConversationIdentity(tab.conversationIdentity) !== undefined
   )
 }
 
@@ -168,7 +165,7 @@ type ConversationStatusFields = Pick<
 
 export type TerminalConversationSelection = {
   /** Effective address authority, not wire presence: `none` reads exactly as an old host. */
-  authority: 'address' | 'clear' | 'none'
+  authority: 'address' | 'none'
   address: TerminalConversationAddress | null
   model: string | null
   modelSwitchCommand: 'orca-model' | null
@@ -197,15 +194,6 @@ export function selectTerminalConversation(args: {
   const status = args.agentStatus ?? null
   const identity = readTerminalConversationIdentity(args.conversationIdentity)
   const statusMatchesAgent = !!status && (status.agentType ?? args.agent) === args.agent
-  if (identity === null) {
-    return {
-      authority: 'clear',
-      address: null,
-      // Why: a matching-agent model-only report (no address) still names the running model.
-      ...statusModelSelection(statusMatchesAgent && !status?.providerSession ? status : null),
-      fieldReportKey: null
-    }
-  }
   const usable =
     identity !== undefined &&
     !!args.agent &&

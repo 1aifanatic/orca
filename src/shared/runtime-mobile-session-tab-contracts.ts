@@ -113,8 +113,8 @@ export type RuntimeMobileSessionSnapshotTab =
 
 /** Host-published only: the renderer snapshot input cannot carry these, so the projection is their sole producer. */
 export type RuntimeMobileSessionTerminalConversationFields = {
-  /** Absent: unknown (old host, no store row). `null`: the host holds a cleared or rejected identity. */
-  conversationIdentity?: TerminalConversationIdentity | null
+  /** Absent when the host holds no conversation it publishes for this pane (or is an old host). */
+  conversationIdentity?: TerminalConversationIdentity
   /** True-only: the tab has no status and the host offers its identity as agent evidence and address. */
   conversationOfferedWithoutStatus?: true
 }

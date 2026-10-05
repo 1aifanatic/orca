@@ -10,8 +10,10 @@ import { installHookStatusSessionTabsRepublish } from '../agent-hooks/hook-statu
 import { AgentHookServer } from '../agent-hooks/server'
 import { buildBody, PANE, postHookEvent } from '../agent-hooks/server.test-fixtures'
 import { readNativeChatTranscriptTail } from '../native-chat/transcript-tail-reader'
+import { normalizeAgentProviderSession } from '../../shared/agent-session-resume'
 import { TERMINAL_CONVERSATION_IDENTITY_CLIENT_CAPABILITY } from '../../shared/protocol-version'
 import { HEADLESS_RUNTIME_WINDOW_ID } from '../../shared/runtime-types'
+import { selectTerminalConversation } from '../../shared/terminal-conversation-identity'
 import { OrcaRuntimeService } from './orca-runtime'
 import { RpcDispatcher } from './rpc/dispatcher'
 import { SESSION_TAB_METHODS } from './rpc/methods/session-tabs'
@@ -110,6 +112,10 @@ async function createPane(args: {
   agent?: 'codex' | 'claude'
   /** False for an agent the user started by hand: no launch record. */
   launched?: boolean
+  /** The agent Orca launched the pane as, when the user then runs `agent` by hand. */
+  launchedAs?: 'codex' | 'claude'
+  /** The recognized foreground process; null when the read is unavailable. */
+  foreground?: string | null
   worktreeId?: string
 }): Promise<Pane> {
   const agent = args.agent ?? 'codex'
@@ -139,12 +145,12 @@ async function createPane(args: {
     spawn: vi.fn().mockResolvedValue({ id: PTY_ID }),
     write: () => true,
     kill: () => true,
-    getForegroundProcess: async () => agent
+    getForegroundProcess: async () => (args.foreground === undefined ? agent : args.foreground)
   })
   await runtime.createTerminal(`id:${runtime.worktreeId}`, {
     tabId: TAB_ID,
     leafId: LEAF_ID,
-    ...(args.launched === false ? {} : { launchAgent: agent }),
+    ...(args.launched === false ? {} : { launchAgent: args.launchedAs ?? agent }),
     title: 'Terminal'
   })
   return {
@@ -500,9 +506,11 @@ describe('the published conversation field on a headless host', () => {
       expect(capable).not.toHaveProperty('agentStatus')
       const oldPhone = firstTerminalTab((await dispatchFrames(pane.runtime, method, 'mobile'))[0])
       expect(oldPhone).toMatchObject({
-        ...expected,
         agentStatus: { state: 'done', sessionBoundary: true, providerSession: { id: SESSION_ID } }
       })
+      // Why: a shipped phone reads only the fold; the members would double its frame for nothing.
+      expect(oldPhone).not.toHaveProperty('conversationIdentity')
+      expect(oldPhone).not.toHaveProperty('conversationOfferedWithoutStatus')
     }
     for (const method of ['session.tabs.listAll', 'session.tabs.subscribeAll']) {
       const runtimeTab = aggregateTerminalTab(
@@ -604,5 +612,101 @@ describe('the published conversation field on a headless host', () => {
     expect(frames.length - settled).toBe(0)
     controller.abort()
     await streaming.catch(() => undefined)
+  })
+})
+
+describe('a pane whose agent changed by hand', () => {
+  const capable = [TERMINAL_CONVERSATION_IDENTITY_CLIENT_CAPABILITY]
+
+  /** The status members the shared conversation reader takes, read off a wire tab. */
+  function readAgentStatus(tab: Record<string, unknown> | undefined) {
+    const status = tab?.agentStatus
+    if (!status || typeof status !== 'object') {
+      return null
+    }
+    const providerSession =
+      'providerSession' in status ? normalizeAgentProviderSession(status.providerSession) : null
+    return {
+      ...('agentType' in status && typeof status.agentType === 'string'
+        ? { agentType: status.agentType }
+        : {}),
+      ...(providerSession ? { providerSession } : {})
+    }
+  }
+
+  async function audiences(runtime: OrcaRuntimeService) {
+    const tabOf = async (kind: 'mobile' | 'runtime', caps?: readonly string[]) =>
+      firstTerminalTab((await dispatchFrames(runtime, 'session.tabs.list', kind, caps))[0])
+    return {
+      desktop: await tabOf('runtime'),
+      phone: await tabOf('mobile', capable),
+      oldPhone: await tabOf('mobile')
+    }
+  }
+
+  it('gives every client the Codex conversation in a pane Orca launched as Claude', async () => {
+    const pane = await createPane({ presence: null, agent: 'codex', launchedAs: 'claude' })
+    const transcriptPath = await writeCodexRollout()
+    await pane.postHooks(SESSION_ID, ['SessionStart', 'UserPromptSubmit'], transcriptPath)
+    pane.observeTitle(`⠋ ${NEUTRAL_TITLE}`)
+    const providerSession = { key: 'session_id', id: SESSION_ID, transcriptPath }
+    const { desktop, phone, oldPhone } = await audiences(pane.runtime)
+    for (const tab of [desktop, phone, oldPhone]) {
+      expect(tab).toMatchObject({
+        launchAgent: 'claude',
+        agentStatus: { state: 'working', agentType: 'codex', providerSession }
+      })
+    }
+    for (const tab of [desktop, phone]) {
+      expect(tab?.conversationIdentity).toMatchObject({ agentType: 'codex', providerSession })
+      const selection = selectTerminalConversation({
+        conversationIdentity: tab?.conversationIdentity,
+        conversationOfferedWithoutStatus: tab?.conversationOfferedWithoutStatus,
+        agentStatus: readAgentStatus(tab),
+        agent: 'codex'
+      })
+      expect(selection).toMatchObject({ authority: 'address', address: { providerSession } })
+    }
+
+    await pane.postHooks(SESSION_ID, ['Stop'], transcriptPath)
+    pane.observeTitle(NEUTRAL_TITLE)
+    expect((await listTab(pane.runtime, 'runtime'))?.conversationIdentity).toMatchObject({
+      agentType: 'codex',
+      providerSession
+    })
+  })
+
+  it("never offers the previous agent's conversation once a session-less agent replaced it", async () => {
+    const pane = await createPane({
+      presence: null,
+      agent: 'claude',
+      launched: false,
+      foreground: null
+    })
+    await pane.postHooks(SESSION_ID, ['UserPromptSubmit', 'Stop'], '/r/claude-S.jsonl')
+    advanceClock(60_000)
+    // The user quit Claude and started Amp by hand; Amp's hooks carry no session id.
+    for (const event of ['agent.start', 'agent.end']) {
+      const body = buildBody({ hook_event_name: event, prompt: 'Fix it' })
+      expect((await postHookEvent(pane.store(), body, '/hook/amp')).status).toBe(204)
+    }
+    pane.observeTitle(NEUTRAL_TITLE)
+    expect(pane.store().getStatusSnapshotForPane(PANE)[0]).toMatchObject({ agentType: 'amp' })
+    expect(pane.store().getConversationIdentityForPane(PANE)).toMatchObject({
+      facet: { agentType: 'claude', providerSession: { id: SESSION_ID } },
+      rowAgent: 'amp'
+    })
+
+    for (const aged of [false, true]) {
+      if (aged) {
+        advanceClock(THIRTY_ONE_MINUTES_MS)
+      }
+      for (const tab of Object.values(await audiences(pane.runtime))) {
+        expect(tab).toMatchObject({ type: 'terminal' })
+        expect(tab).not.toHaveProperty('conversationIdentity')
+        expect(tab).not.toHaveProperty('conversationOfferedWithoutStatus')
+        expect(JSON.stringify(tab)).not.toContain(SESSION_ID)
+      }
+    }
   })
 })

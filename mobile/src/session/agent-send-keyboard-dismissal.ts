@@ -17,7 +17,7 @@ export type AgentSendKeyboardDismissalTab = {
     readonly state?: AgentStatusEntry['state']
   } | null
   readonly launchAgent?: TuiAgent | null
-  readonly conversationIdentity?: TerminalConversationIdentity | null
+  readonly conversationIdentity?: TerminalConversationIdentity
   readonly conversationOfferedWithoutStatus?: true
 }
 

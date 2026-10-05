@@ -166,6 +166,7 @@ type Seed = {
 
 const FACET: StoredAgentConversationRead = {
   facet: { agentType: 'codex', providerSession: SESSION, capturedAt: NOW - 5_000 },
+  rowAgent: 'codex',
   rowIsRemnant: false
 }
 
