@@ -73,6 +73,26 @@ describe('closing a workspace whose relay terminal was reattached from an earlie
     expect(runtime.getPtyLivenessVerdict(REATTACHED_PTY_ID)).toEqual({ status: 'exited' })
   })
 
+  it('accepts the host exit even when the stop confirmation carries no incarnation', async () => {
+    const runtime = makeReattachedRelayRuntime()
+    reattach(runtime)
+    runtime.setPtyController({
+      write: () => true,
+      kill: vi.fn(() => false),
+      stopAndWait: vi.fn(async (ptyId: string) => {
+        // Field shape: the reattached relay exit arrives with code 1 and no incarnation.
+        runtime.onPtyExit(ptyId, 1, undefined, { hostExitConfirmed: true })
+        return true
+      }),
+      getForegroundProcess: async () => null
+    })
+
+    await expect(runtime.closeTerminalsForWorktree(`id:${TEST_WORKTREE_ID}`)).resolves.toEqual(
+      expect.not.objectContaining({ ptyStopVerdict: expect.anything() })
+    )
+    expect(runtime.getPtyLivenessVerdict(REATTACHED_PTY_ID)).toEqual({ status: 'exited' })
+  })
+
   it('keeps the exit when the reattach registration lands after the stop', async () => {
     const runtime = makeReattachedRelayRuntime()
     reattach(runtime)
