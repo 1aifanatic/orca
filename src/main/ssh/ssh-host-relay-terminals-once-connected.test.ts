@@ -171,7 +171,8 @@ describe('re-checking relay terminals once the relay session is up', () => {
           store: cliOnly,
           targetId: 'ssh-1',
           decision,
-          listRelayPtyIds: relay(['pty2:8ea088dc:4'])
+          listRelayPtyIds: relay(['pty2:8ea088dc:4']),
+          isCurrent: () => true
         })
       ).resolves.toEqual({ route: 'relay', reason: 'relay_terminals_live', terminals: 1 })
     }
@@ -184,7 +185,8 @@ describe('re-checking relay terminals once the relay session is up', () => {
         store: attached,
         targetId: 'ssh-1',
         decision: { route: 'relay', reason: 'relay_terminals_live', terminals: 1 },
-        listRelayPtyIds: relay(['pty-1', 'pty-cli'])
+        listRelayPtyIds: relay(['pty-1', 'pty-cli']),
+        isCurrent: () => true
       })
     ).resolves.toEqual({ route: 'relay', reason: 'relay_terminals_live', terminals: 2 })
   })

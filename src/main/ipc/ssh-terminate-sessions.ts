@@ -6,6 +6,7 @@ import { SSH_TERMINATE_RECONNECT_REQUIRED } from '../../shared/constants'
 import { isSshPtyNotFoundError, SshPtyHeldByPreviousRelayError } from '../providers/ssh-pty-errors'
 import { toAppSshPtyId, toRelaySshPtyId } from '../providers/ssh-pty-id'
 import { isReattachHeldByPreviousRelay } from '../ssh/ssh-previous-relay-terminals'
+import { listPreviousRelayPtyIds } from '../ssh/ssh-legacy-relay-routing'
 import {
   clearProviderPtyState,
   deletePtyOwnership,
@@ -56,9 +57,10 @@ export async function terminateSshTargetSessions(
       // prove the route is dead for good, and those stay unowned.
       trackPtyId(lease.ptyId, sshRemotePtyLeaseAllowsReattach(lease))
     }
-    // A shell the relay runs without any lease here (a CLI-created terminal) is still this host's.
-    for (const process of await listRelayProcesses(provider)) {
-      trackPtyId(process.id, false)
+    // A shell a relay runs without any lease here (a CLI-created terminal, or one a respawn
+    // superseded on its tab) is still this host's; shutdown stops an earlier relay's held one there.
+    for (const ptyId of await listRelayPtyIdsToStop(targetId, provider)) {
+      trackPtyId(ptyId, false)
     }
     const ptyIds = Array.from(ptyIdsByRelayId, ([relayPtyId, appPtyId]) => ({
       relayPtyId,
@@ -118,12 +120,19 @@ export async function terminateSshTargetSessions(
 }
 
 /** An unanswered listing adds nothing here; the move's census after the stop still asks the host. */
-async function listRelayProcesses(
+async function listRelayPtyIdsToStop(
+  targetId: string,
   provider: ReturnType<typeof getSshPtyProvider>
-): Promise<{ id: string }[]> {
-  try {
-    return provider ? await provider.listProcesses() : []
-  } catch {
+): Promise<string[]> {
+  if (!provider) {
     return []
   }
+  const [current, previous] = await Promise.all([
+    provider.listProcesses().then(
+      (rows) => rows.map((row) => row.id),
+      () => []
+    ),
+    listPreviousRelayPtyIds(targetId).catch(() => null)
+  ])
+  return [...current, ...(previous ?? [])]
 }
