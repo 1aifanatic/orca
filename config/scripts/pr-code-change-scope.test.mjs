@@ -156,10 +156,19 @@ describe('per-job path classification', () => {
       package: true,
       package_windows: true
     })
-    expectClassification(['src/main/codex/codex-index-heal-binary-contract.test.ts'], {
-      codex_index_heal_contract: true
-    })
-    for (const file of ['src/main/agent-trust-presets.ts', 'src/main/codex/config-toml-trust.ts']) {
+    for (const file of [
+      'src/main/codex/codex-index-heal-binary-contract.test.ts',
+      'src/main/codex/codex-hook-file-entry-binary-contract.test.ts'
+    ]) {
+      expectClassification([file], { codex_index_heal_contract: true })
+    }
+    for (const file of [
+      'src/main/agent-trust-presets.ts',
+      'src/main/codex/config-toml-trust.ts',
+      'src/main/codex/codex-hook-trust-derivation.ts',
+      'src/main/codex/codex-real-home-hook-install.ts',
+      'src/main/codex/codex-hook-definition.ts'
+    ]) {
       expectClassification([file], {
         codex_index_heal_contract: true,
         package: true,
