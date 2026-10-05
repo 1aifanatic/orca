@@ -145,9 +145,9 @@ it.each([
   }
 )
 
-// Title step, child minus parent = list margin + wrapper inset + 7px (ml-1, border, padding). The
-// sidebar's legacy cards add their 22px status lane and outdent the list 18px: -18 + 14 + 7 + 22 =
-// 25px. A status-free card keeps 25px with an ml-1 list: 4 + 14 + 7.
+// Title step, child minus parent = list margin + wrapper inset + 7px (ml-1, border, padding) + the
+// child's status lane. Sidebar legacy cards: -18 + 14 + 7 + 18 = 21px (35px at depth 2). A
+// read-only card has no lane and no outdent: 0 + 14 + 7 = 21px.
 it('steps a legacy child in as far as the sidebar does, with no status lane', () => {
   render(false)
 
@@ -155,8 +155,7 @@ it('steps a legacy child in as far as the sidebar does, with no status lane', ()
   const wrapper = childCard.parentElement
   expect(container.querySelector('[data-worktree-card-status-slot]')).toBeNull()
   expect(wrapper?.style.paddingLeft).toBe('14px')
-  expect(wrapper?.parentElement?.className).toContain('ml-1')
-  expect(wrapper?.parentElement?.className).not.toContain('-ml-')
+  expect(wrapper?.parentElement?.className.split(' ').toSorted()).toEqual(['mt-1.5', 'space-y-1'])
 })
 
 it('keeps the new card style geometry', () => {

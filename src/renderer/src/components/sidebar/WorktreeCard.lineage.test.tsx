@@ -140,32 +140,31 @@ describe('WorktreeCard lineage indicators', () => {
     expect(markup).not.toContain('Parent workspace')
   })
 
-  // Why: the legacy outdent is sized against the 22px status lane; without one it undercut the
-  // child's step (3px instead of 25px). The new card style nests in the surface and never had it.
+  // Why: legacy cards outdent their child list over the status lane; a read-only card has no lane
+  // to outdent over. The new card style nests in the surface and never had it.
   const OUTDENT = '-ml-[1.125rem] mt-1.5 w-[calc(100%+1.125rem)] space-y-1'
-  const NO_LANE = 'ml-1 mt-1.5 w-[calc(100%-0.25rem)] space-y-1'
   const STYLES = {
     legacy: {},
     compact: { compactWorktreeCards: true },
     new: { experimentalNewWorktreeCardStyle: true }
   }
   it.each([
-    ['legacy', 'on', OUTDENT],
-    ['legacy', 'off', NO_LANE],
-    ['compact', 'on', OUTDENT],
-    ['compact', 'off', NO_LANE],
-    ['new', 'on', 'mt-1.5 space-y-1'],
-    ['new', 'off', 'mt-1.5 space-y-1']
+    ['legacy', false, OUTDENT],
+    ['compact', false, OUTDENT],
+    ['new', false, 'mt-1.5 space-y-1'],
+    ['legacy', true, 'mt-1.5 space-y-1']
   ] as const)(
-    '%s card, status %s: lineage children list classes',
-    (style, status, expectedClasses) => {
+    '%s card, read-only %s: lineage children list classes',
+    (style, readOnly, expectedClasses) => {
       settings = STYLES[style]
-      worktreeCardProperties = status === 'on' ? ['status'] : []
+      // Why: status is a fixed card property, so every live card has the lane.
+      worktreeCardProperties = ['status']
       const markup = renderToStaticMarkup(
         <WorktreeCard
           worktree={makeWorktree()}
           repo={makeRepo()}
           isActive={false}
+          readOnly={readOnly}
           lineageChildren={<span data-testid="child">child</span>}
         />
       )
