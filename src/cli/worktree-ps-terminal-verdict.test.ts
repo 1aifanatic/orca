@@ -6,7 +6,7 @@ import {
 
 describe('worktree ps terminal verdict', () => {
   it('prints counts for a reachable host', () => {
-    const row = { liveTerminalCount: 2, hasAttachedPty: true }
+    const row = { liveTerminalCount: 2, hasAttachedPty: true, unverifiableTerminalCount: 0 }
     expect(formatWorktreePsTerminalFields(row)).toBe('live:2  pty:yes')
     expect(projectWorktreePsTerminalVerdict(row)).toEqual({ ...row, terminalVerdict: 'live' })
   })
@@ -38,6 +38,7 @@ describe('worktree ps terminal verdict', () => {
 
   it('reports unverifiable for an idle row from a host that predates the count', () => {
     const row = { liveTerminalCount: 0, hasAttachedPty: false }
+    expect(formatWorktreePsTerminalFields(row)).toBe('live:unverifiable  pty:unverifiable')
     expect(projectWorktreePsTerminalVerdict(row)).toEqual({
       ...row,
       terminalVerdict: 'unverifiable'

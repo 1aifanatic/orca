@@ -15,7 +15,12 @@ import {
   refreshManagedOrcadPairing,
   removeManagedOrcadEnvironment
 } from './runtime-environment-managed-orcad-store'
-import { getRuntimeEnvironmentSidecarPath } from './runtime-environment-sidecar'
+import {
+  getRuntimeEnvironmentSidecarPath,
+  readCurrentRuntimeEnvironmentSidecarEntry,
+  writeRuntimeEnvironmentSidecarEntry
+} from './runtime-environment-sidecar'
+import { readPersistedEnvironmentStore } from './runtime-environment-store-file'
 import { getRuntimeSshAccess } from './runtime-environments'
 import { shippedBuildRewrite } from './runtime-environment-shipped-store.test-fixture'
 
@@ -130,6 +135,26 @@ describe('managed orcad environment store', () => {
     expect(() =>
       refreshManagedOrcadPairing(userDataPath, 'environment-1', pairingCode('ws://127.0.0.1:1'))
     ).toThrow('does not point at its SSH tunnel')
+  })
+
+  it('keeps the deployment link when a re-pair stops between its sidecar and store writes', () => {
+    add()
+    const store = readPersistedEnvironmentStore(userDataPath)
+    const existing = store.environments[0]!
+    const entry = readCurrentRuntimeEnvironmentSidecarEntry(userDataPath, existing)!
+    const { binding: _binding, ...state } = entry
+    // The first write of a refresh, then a store that landed on the new pairing revision.
+    writeRuntimeEnvironmentSidecarEntry(userDataPath, store.environments, existing, state, {
+      ...existing,
+      pairingRevision: 500
+    })
+    expect(listEnvironments(userDataPath)[0]?.orcadDeployment, 'store not yet written').toEqual(
+      deployment
+    )
+    shippedBuildRewrite(userDataPath, (environments) => {
+      environments[0]!.pairingRevision = 500
+    })
+    expect(listEnvironments(userDataPath)[0]?.orcadDeployment, 'store written').toEqual(deployment)
   })
 
   it('keeps the earliest migration mark, across a downgrade rewrite and a re-pair', () => {
