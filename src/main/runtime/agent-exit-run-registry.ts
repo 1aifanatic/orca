@@ -4,7 +4,8 @@ import { recognizeAgentProcess } from '../../shared/agent-process-recognition'
 
 // Why 15 s: a silent exit nothing reported is still found while the user reads.
 export const AGENT_PRESENCE_FALLBACK_INTERVAL_MS = 15_000
-// Why stop after three: an unreadable host must not become a poll; a change signal re-arms it.
+// Why stop after three: an unreadable host must not become a poll; a change signal (a nudge)
+// still buys one look, at most once per fallback interval.
 export const AGENT_PRESENCE_BACKOFF_MS = [30_000, 60_000] as const
 
 /** The next attempt after `failures` unverifiable ones: backed off, then never until a new run. */
@@ -29,6 +30,8 @@ export type AgentExitRun = {
   endHandled: boolean
   /** Its end was proven: it no longer blocks finding the next run in this PTY. */
   exitProven: boolean
+  /** The targeted probe found its process gone; a later agent here is unknown even if unproven. */
+  processGone: boolean
   /** When its canonical owner reported its own end; a later look may still need to confirm it. */
   ownerEndedAtMs?: number
   failedProbes: number
@@ -36,6 +39,8 @@ export type AgentExitRun = {
   /** Unverifiable end checks so far; each backs off the next like a probe, then stops. */
   failedEndChecks: number
   nextEndCheckAtMs: number
+  /** Last end check; a change signal may re-arm one no sooner than the fallback interval after it. */
+  lastEndCheckAtMs: number
 }
 
 export class AgentExitRunRegistry {
@@ -61,10 +66,12 @@ export class AgentExitRunRegistry {
       ...init,
       endHandled: false,
       exitProven: false,
+      processGone: false,
       failedProbes: 0,
       nextProbeAtMs: nowMs + AGENT_PRESENCE_FALLBACK_INTERVAL_MS,
       failedEndChecks: 0,
-      nextEndCheckAtMs: 0
+      nextEndCheckAtMs: 0,
+      lastEndCheckAtMs: Number.NEGATIVE_INFINITY
     }
     this.runs.set(ptyId, run)
     return run

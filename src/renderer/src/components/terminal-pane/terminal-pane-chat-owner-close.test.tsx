@@ -282,8 +282,10 @@ describe("a confirmed agent exit on this desktop's own tab (F2)", () => {
       await act(async () => {})
       // The exit is seen at 2 s, then terminal -> chat(A) commits before the fact is delivered.
       vi.setSystemTime(3_000)
-      act(() => useAppStore.getState().applyTerminalChatPair(tabId, null, 'terminal'))
-      act(() => useAppStore.getState().applyTerminalChatPair(tabId, A, 'chat'))
+      act(() =>
+        useAppStore.getState().applyTerminalChatPair(tabId, null, 'terminal', { intent: true })
+      )
+      act(() => useAppStore.getState().applyTerminalChatPair(tabId, A, 'chat', { intent: true }))
       await act(async () => {})
       act(() => onAgentExitedRef.current(A, { ptyId: null, observedAtMs: 2_000 }))
       await act(async () => {})
@@ -386,7 +388,7 @@ describe("a same-value switch on this desktop's tab (R2-3)", () => {
         .find((tab) => tab.type === 'terminal' && tab.parentTabId === tabId && tab.leafId === A)
     const before = tokenOfA()
     expect(before?.type === 'terminal' && before.presentationToken).toBeTruthy()
-    useAppStore.getState().applyTerminalChatPair(tabId, A, 'chat')
+    useAppStore.getState().applyTerminalChatPair(tabId, A, 'chat', { intent: true })
     const after = tokenOfA()
     expect(after?.type === 'terminal' ? after.presentationToken : null).not.toBe(
       before?.type === 'terminal' ? before.presentationToken : null

@@ -87,7 +87,7 @@ export class OrcaRuntimeWithStateFields extends OrcaRuntimeWithLinearCommands {
       ) => Promise<'live' | 'unverifiable' | 'exited' | null>
       reconcileAgentStatusForEndedProcess?: (paneKeys: Iterable<string>) => void
       /** The execution host proved this pane's `agent` run ended (an owner no hook identified). */
-      recordHostProvenAgentEnd?: (paneKey: string, agent: string) => void
+      recordHostProvenAgentEnd?: (paneKey: string, agent: string, checkStartedAtMs: number) => void
       canRecoverPersistentLocalPtys?: () => boolean
       // Why: the device registry lives on the RPC server, which is constructed with this runtime;
       // a closure defers the lookup past that ordering instead of inverting ownership.

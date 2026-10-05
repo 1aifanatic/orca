@@ -71,8 +71,9 @@ export class OrcaRuntimeWithAgentIdentityDiscovery extends OrcaRuntimeWithSerial
   }
 
   /**
-   * One round of looks per run (and once more after its exit is proven); `evidence` (recognized
-   * agent activity) buys a single extra look after a round settled, a few times per run.
+   * One round of looks per run, and one more each once its process is gone and once its exit is
+   * proven; `evidence` (recognized agent activity) buys a single extra look after a round settled,
+   * a few times per round.
    */
   protected startAgentIdentityDiscovery(ptyId: string, options: { evidence?: boolean } = {}): void {
     const record = this.readAgentExitPty(ptyId)
@@ -84,7 +85,8 @@ export class OrcaRuntimeWithAgentIdentityDiscovery extends OrcaRuntimeWithSerial
       return
     }
     const run = this.agentExitRuns.current(ptyId)
-    const key = `${record.incarnationId ?? ''}|${run?.runId ?? 0}|${run?.exitProven ? 'ended' : ''}`
+    const phase = run?.exitProven ? 'ended' : run?.processGone ? 'gone' : ''
+    const key = `${record.incarnationId ?? ''}|${run?.runId ?? 0}|${phase}`
     const existing = this.agentIdentityDiscoveryByPtyId.get(ptyId)
     if (existing?.key === key) {
       if (

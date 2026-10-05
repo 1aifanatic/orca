@@ -85,10 +85,12 @@ export function createTabsLabelActions(
           options
         )
       }
-      // Why every accepted write: a client's switch, even to the shown value, orders after older exits.
-      noteTerminalPresentationIntent(terminalTabId)
-      // Why: a same-value switch changes no state, yet its new token must reach paired clients.
-      scheduleRuntimeGraphSync()
+      if (options?.intent) {
+        // Why even to the shown value: a user's or client's switch orders after older exits.
+        noteTerminalPresentationIntent(terminalTabId)
+        // Why: a same-value switch changes no state, yet its new token must reach paired clients.
+        scheduleRuntimeGraphSync()
+      }
       const toggle: { committed: { from: 'terminal' | 'chat'; to: 'terminal' | 'chat' } | null } = {
         committed: null
       }
@@ -132,7 +134,7 @@ export function createTabsLabelActions(
     setTabViewMode: (tabId, mode) => {
       const owned = findStoreOwnedTerminalTab(get(), tabId)
       if (owned) {
-        get().applyTerminalChatPair(owned.tab.entityId, null, mode)
+        get().applyTerminalChatPair(owned.tab.entityId, null, mode, { intent: true })
         return
       }
       set((state) => {
@@ -160,7 +162,10 @@ export function createTabsLabelActions(
             ? resolveEffectiveChatPair(get(), owned.worktreeId, owned.tab.entityId).viewMode
             : owned.tab.viewMode
         const nextMode = currentMode === 'chat' ? 'terminal' : 'chat'
-        get().applyTerminalChatPair(owned.tab.entityId, null, nextMode, { userToggle: true })
+        get().applyTerminalChatPair(owned.tab.entityId, null, nextMode, {
+          userToggle: true,
+          intent: true
+        })
         return
       }
       let toggled: {

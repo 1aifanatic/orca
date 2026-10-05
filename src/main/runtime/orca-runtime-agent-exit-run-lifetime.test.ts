@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { A, PTY, WT, flush, makeAgentExitHost } from './agent-exit-host.test-fixture'
+import { A, PTY, WT, fencedCapture, flush, makeAgentExitHost } from './agent-exit-host.test-fixture'
 import type { TerminalProcessInspection } from '../../shared/terminal-process-inspection'
 
 const CLAUDE = { pid: 4242, platform: 'darwin' as const, startTime: 'utc:claude-start' }
@@ -24,6 +24,30 @@ function unverifiable(ptyId: string): TerminalProcessInspection {
   }
 }
 
+function npmInFront(ptyId: string): TerminalProcessInspection {
+  return {
+    foregroundProcess: 'npm',
+    hasChildProcesses: true,
+    foregroundProcessEvidence: {
+      authorityGeneration: 'gen-1',
+      observationEpoch: 1,
+      capturedAgeMs: 0,
+      ptyId,
+      ptyIncarnationId: `inc-${ptyId}`,
+      verdict: 'live',
+      processName: 'npm',
+      fence: {
+        platform: 'posix',
+        shellPid: 100,
+        shellStartTime: 'shell-start',
+        tty: 'ttys001',
+        foregroundPgid: 5005,
+        process: { pid: 5005, startTime: 'npm-start' }
+      }
+    }
+  }
+}
+
 describe('a later agent run in the same shell (R2-4)', () => {
   it('finds and proves a second Codex the hooks never announced, and records each end', async () => {
     const host = makeAgentExitHost({ viewMode: 'chat', leaves: 1 })
@@ -36,7 +60,11 @@ describe('a later agent run in the same shell (R2-4)', () => {
     host.foreground.set(PTY[A]!, null)
     host.runtime['confirmPtyAgentExit'](PTY[A]!)
     await vi.waitFor(() => expect(host.hostPair().viewMode).toBe('terminal'))
-    expect(host.recordProvenEnd).toHaveBeenCalledWith(expect.stringContaining(A), 'codex')
+    expect(host.recordProvenEnd).toHaveBeenCalledWith(
+      expect.stringContaining(A),
+      'codex',
+      expect.any(Number)
+    )
 
     // Codex B starts in the same shell (Codex hooks carry no PID, so no new owner signal).
     host.foreground.set(PTY[A]!, { name: 'codex', pid: 2002, startTime: 'b' })
@@ -98,8 +126,8 @@ describe('identity discovery is bounded and scoped (R2-8, R2-11)', () => {
   })
 })
 
-describe('an end that stays unverifiable backs off and stops (R2-6, R2-7)', () => {
-  it('costs at most three captures however many publishes and nudges follow', async () => {
+describe('an end that stays unverifiable backs off; change signals re-arm it, rate-limited (R2-6, R2-7, R3Y-1)', () => {
+  it('costs at most three captures however many publishes follow', async () => {
     vi.useFakeTimers()
     const host = makeAgentExitHost({ viewMode: 'chat', leaves: 1 })
     host.inspectProcess.mockImplementation(async (ptyId: string) => unverifiable(ptyId))
@@ -109,25 +137,106 @@ describe('an end that stays unverifiable backs off and stops (R2-6, R2-7)', () =
     host.inspectProcess.mockClear()
     for (let index = 0; index < 200; index += 1) {
       host.runtime.touchMobileSessionTabsForWorktree(WT)
-      host.runtime['confirmPtyAgentExit'](PTY[A]!)
       await vi.advanceTimersByTimeAsync(1_000)
     }
-    expect(host.inspectProcess.mock.calls.length).toBeLessThanOrEqual(3)
+    // Three end checks, plus one look-round for a next agent once the process is gone.
+    expect(host.inspectProcess.mock.calls.length).toBeLessThanOrEqual(3 + 3)
+    expect(host.runtime['agentExitRuns'].current(PTY[A]!)?.failedEndChecks).toBe(3)
     expect(host.hostPair().viewMode).toBe('chat')
   })
 
-  it('asks an SSH relay at most three times for an end it cannot verify', async () => {
+  it('under tmux, a stream of finished commands and title exits costs one look per 15 s at most', async () => {
+    vi.useFakeTimers()
+    const host = makeAgentExitHost({ viewMode: 'chat', leaves: 1 })
+    host.inspectProcess.mockImplementation(async (ptyId: string) => unverifiable(ptyId))
+    await host.published()
+    host.owner(A, { agent: 'claude', process: CLAUDE })
+    await vi.advanceTimersByTimeAsync(20_000)
+    host.inspectProcess.mockClear()
+    for (let index = 0; index < 300; index += 1) {
+      host.runtime['nudgeAgentExitCheck'](PTY[A]!)
+      host.runtime['confirmPtyAgentExit'](PTY[A]!)
+      host.runtime.touchMobileSessionTabsForWorktree(WT)
+      await vi.advanceTimersByTimeAsync(1_000)
+    }
+    expect(host.inspectProcess.mock.calls.length).toBeLessThanOrEqual(3 + 3 + 300 / 15)
+    expect(host.hostPair().viewMode).toBe('chat')
+  })
+
+  it('asks an SSH relay again only on a change signal, at most once per 15 s', async () => {
     vi.useFakeTimers()
     const host = makeAgentExitHost({ viewMode: 'chat', leaves: 1, connectionId: 'ssh-win' })
     await host.published()
     host.owner(A, { agent: 'claude', process: CLAUDE })
     host.inspectProcess.mockImplementation(async (ptyId: string) => unverifiable(ptyId))
     host.owner(A, { agent: 'claude', process: CLAUDE, ended: true })
-    for (let index = 0; index < 200; index += 1) {
+    for (let index = 0; index < 300; index += 1) {
       host.runtime['nudgeAgentExitCheck'](PTY[A]!)
       await vi.advanceTimersByTimeAsync(1_000)
     }
-    expect(host.inspectProcess.mock.calls.length).toBeLessThanOrEqual(3)
+    expect(host.inspectProcess.mock.calls.length).toBeLessThanOrEqual(1 + 300 / 15)
+  })
+
+  it.each([
+    ['the capture was unreadable (loaded machine)', unverifiable],
+    ['a long non-agent command was in front', npmInFront]
+  ])(
+    'retires once the shell is back and a command finishes, after the checks ran out (%s)',
+    async (_label, failing) => {
+      vi.useFakeTimers()
+      const host = makeAgentExitHost({ viewMode: 'chat', leaves: 1 })
+      host.foreground.set(PTY[A]!, { name: 'codex', pid: 1001, startTime: 'a' })
+      host.alive.add(1001)
+      await host.published()
+      host.owner(A, { agent: 'codex' })
+      await vi.advanceTimersByTimeAsync(10)
+      host.alive.delete(1001)
+      host.inspectProcess.mockImplementation(async (ptyId: string) => failing(ptyId))
+      host.runtime['confirmPtyAgentExit'](PTY[A]!)
+      for (let index = 0; index < 36; index += 1) {
+        host.runtime.touchMobileSessionTabsForWorktree(WT)
+        await vi.advanceTimersByTimeAsync(5_000)
+      }
+      expect(host.runtime['agentExitRuns'].current(PTY[A]!)?.failedEndChecks).toBe(3)
+      // The shell is back in front; OSC 133;D reports the finished command.
+      host.inspectProcess.mockImplementation(async (ptyId: string) =>
+        fencedCapture(ptyId, `inc-${ptyId}`, null)
+      )
+      host.runtime['nudgeAgentExitCheck'](PTY[A]!)
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(host.hostPair().viewMode).toBe('terminal')
+    }
+  )
+
+  it('finds a later Codex in the shell while the first exit is still unproven', async () => {
+    vi.useFakeTimers()
+    const host = makeAgentExitHost({ viewMode: 'chat', leaves: 1 })
+    host.foreground.set(PTY[A]!, { name: 'codex', pid: 1001, startTime: 'a' })
+    host.alive.add(1001)
+    await host.published()
+    host.owner(A, { agent: 'codex' })
+    await vi.advanceTimersByTimeAsync(10)
+    host.alive.delete(1001)
+    host.inspectProcess.mockImplementation(async (ptyId: string) => unverifiable(ptyId))
+    host.runtime['confirmPtyAgentExit'](PTY[A]!)
+    for (let index = 0; index < 36; index += 1) {
+      host.runtime.touchMobileSessionTabsForWorktree(WT)
+      await vi.advanceTimersByTimeAsync(5_000)
+    }
+    // Load gone; Codex B starts in the same shell (its hooks reuse the never-ended owner).
+    host.inspectProcess.mockImplementation(async (ptyId: string) =>
+      fencedCapture(ptyId, `inc-${ptyId}`, host.foreground.get(ptyId) ?? null)
+    )
+    host.foreground.set(PTY[A]!, { name: 'codex', pid: 2002, startTime: 'b' })
+    host.alive.add(2002)
+    host.runtime['noteNativeChatAgentEvidence'](PTY[A]!)
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(host.runtime['agentExitRuns'].current(PTY[A]!)?.identity?.pid).toBe(2002)
+    host.alive.delete(2002)
+    host.foreground.set(PTY[A]!, null)
+    host.runtime['confirmPtyAgentExit'](PTY[A]!)
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(host.hostPair().viewMode).toBe('terminal')
   })
 
   it('still confirms promptly when the ended agent was merely still in front', async () => {

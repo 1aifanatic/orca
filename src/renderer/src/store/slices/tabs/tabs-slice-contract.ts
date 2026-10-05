@@ -125,6 +125,9 @@ export type TabsSlice = {
       /** A host relay's owner for a parent-addressed chat, used only when the tab has none;
        *  null: no pane of a split may own chat. */
       ownerPickLeafId?: string | null
+      /** A user's or client's switch: orders after older agent exits, even to the shown value.
+       *  Automatic route claims and normalizations omit it. */
+      intent?: boolean
     }
   ) => RuntimeSessionTabChatView | null
   /**

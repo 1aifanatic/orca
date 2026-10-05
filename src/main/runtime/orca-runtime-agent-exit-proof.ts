@@ -97,7 +97,7 @@ export class OrcaRuntimeWithAgentExitProof extends OrcaRuntimeWithAgentIdentityD
     }
     if (run.ownerEndedAtMs !== undefined) {
       // Why: the owner already said it ended; the hook can precede the process leaving the pane.
-      this.handleAgentRunEnd(run, run.ownerEndedAtMs)
+      this.handleAgentRunEnd(run, run.ownerEndedAtMs, { changeSignal: true })
     } else {
       this.nudgeAgentPresenceCheck(ptyId)
     }
@@ -110,10 +110,10 @@ export class OrcaRuntimeWithAgentExitProof extends OrcaRuntimeWithAgentIdentityD
     }
   }
 
-  /** No identified run, or only one whose exit is proven: a later agent here is still unknown. */
+  /** No identified run, or only one whose process is gone: a later agent here is still unknown. */
   protected needsAgentIdentity(ptyId: string): boolean {
     const run = this.agentExitRuns.current(ptyId)
-    return !run?.identity || run.exitProven
+    return !run?.identity || run.exitProven || run.processGone
   }
 
   private nudgeAgentPresenceCheck(ptyId: string): void {
@@ -169,6 +169,7 @@ export class OrcaRuntimeWithAgentExitProof extends OrcaRuntimeWithAgentIdentityD
             this.isProbeEligible(run) &&
             (this.agentPresenceNudged.has(run.ptyId) || run.nextProbeAtMs <= startedAtMs)
         )
+      const nudged = new Set(this.agentPresenceNudged)
       this.agentPresenceNudged.clear()
       const identities = due.flatMap((run) => (run.identity ? [run.identity] : []))
       const verdicts =
@@ -179,12 +180,13 @@ export class OrcaRuntimeWithAgentExitProof extends OrcaRuntimeWithAgentIdentityD
           return
         }
         if (verdict === 'exited') {
+          run.processGone = true
           // Why: an end that stays unproven is not re-probed before its next allowed end check.
           run.nextProbeAtMs = Math.max(
             Date.now() + AGENT_PRESENCE_FALLBACK_INTERVAL_MS,
             run.nextEndCheckAtMs
           )
-          this.handleAgentRunEnd(run, startedAtMs)
+          this.handleAgentRunEnd(run, startedAtMs, { changeSignal: nudged.has(run.ptyId) })
           return
         }
         run.failedProbes = verdict === 'live' ? 0 : run.failedProbes + 1
@@ -202,19 +204,25 @@ export class OrcaRuntimeWithAgentExitProof extends OrcaRuntimeWithAgentIdentityD
   /**
    * An end observed for `run`. Before acting, one fenced read of the owning host makes sure the
    * pane has not already moved on to a replacement agent (same name included): that run is adopted
-   * instead, and an unreadable host leaves the end unproven.
+   * instead, and an unreadable host leaves the end unproven. A `changeSignal` (title exit, finished
+   * command) re-arms a backed-off check, at most once per fallback interval.
    */
-  protected handleAgentRunEnd(run: AgentExitRun, observedAtMs: number): void {
+  protected handleAgentRunEnd(
+    run: AgentExitRun,
+    observedAtMs: number,
+    options: { changeSignal?: boolean } = {}
+  ): void {
     const inspect = this.ptyController?.inspectProcess
-    if (
-      !inspect ||
-      run.endHandled ||
-      !this.agentExitRuns.isCurrent(run) ||
-      Date.now() < run.nextEndCheckAtMs
-    ) {
+    const checkStartedAtMs = Date.now()
+    const allowed =
+      checkStartedAtMs >= run.nextEndCheckAtMs ||
+      (options.changeSignal === true &&
+        checkStartedAtMs >= run.lastEndCheckAtMs + AGENT_PRESENCE_FALLBACK_INTERVAL_MS)
+    if (!inspect || run.endHandled || !this.agentExitRuns.isCurrent(run) || !allowed) {
       return
     }
     run.endHandled = true
+    run.lastEndCheckAtMs = checkStartedAtMs
     void inspect
       .call(
         this.ptyController,
@@ -231,7 +239,7 @@ export class OrcaRuntimeWithAgentExitProof extends OrcaRuntimeWithAgentIdentityD
         }
         if (isFencedShellForeground(inspection, run.incarnationId)) {
           run.exitProven = true
-          this.recordProvenAgentEnd(run)
+          this.recordProvenAgentEnd(run, checkStartedAtMs)
           this.onAgentRunExitProven(run, observedAtMs)
           return
         }
@@ -259,13 +267,16 @@ export class OrcaRuntimeWithAgentExitProof extends OrcaRuntimeWithAgentIdentityD
       })
   }
 
-  /** One owner of agent presence: a proven end of an owner no hook identified is written there. */
-  private recordProvenAgentEnd(run: AgentExitRun): void {
+  /**
+   * One owner of agent presence: a proven end of an owner no hook identified is written there,
+   * unless a hook reached it after the proving check began (a newer run may own it now).
+   */
+  private recordProvenAgentEnd(run: AgentExitRun, checkStartedAtMs: number): void {
     if (!run.agent || !this.recordHostProvenAgentEndFn) {
       return
     }
     for (const paneKey of this.collectAgentStatusPaneKeysForPty(run.ptyId)) {
-      this.recordHostProvenAgentEndFn(paneKey, run.agent)
+      this.recordHostProvenAgentEndFn(paneKey, run.agent, checkStartedAtMs)
     }
   }
 }

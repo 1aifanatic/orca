@@ -106,7 +106,7 @@ export function makeAgentExitHost(options: {
   const { runtimeStore, getSession } = makeRuntimeStoreWithWorkspaceSession(session)
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The shared fixture implements RuntimeStore; its annotation erases the Vitest mock call signatures.
   const store = runtimeStore as RuntimeStore
-  const recordProvenEnd = vi.fn((_paneKey: string, _agent: string) => {})
+  const recordProvenEnd = vi.fn((_paneKey: string, _agent: string, _checkStartedAtMs: number) => {})
   const runtime = new OrcaRuntimeService(store, undefined, {
     checkHookAgentPresence: async () => null,
     recordHostProvenAgentEnd: recordProvenEnd

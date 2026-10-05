@@ -146,12 +146,10 @@ export function registerTerminalUiRoutingIpcBridge(unsubs: (() => void)[]): void
           return
         }
         // Why synchronous: IPC arrival order is the host's admit order, so apply before replying.
-        const chatView = state.applyTerminalChatPair(
-          tabId,
-          leafId,
-          viewMode,
-          ownerPickLeafId !== undefined ? { ownerPickLeafId } : undefined
-        )
+        const chatView = state.applyTerminalChatPair(tabId, leafId, viewMode, {
+          intent: true,
+          ...(ownerPickLeafId !== undefined ? { ownerPickLeafId } : {})
+        })
         window.api.ui.respondTerminalChatView(
           chatView
             ? { requestId, chatView }

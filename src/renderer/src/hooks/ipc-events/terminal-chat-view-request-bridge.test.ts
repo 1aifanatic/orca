@@ -254,8 +254,8 @@ describe('renderer side of the desktop chat-view relay', () => {
       useAppStore.getState().applyTerminalChatPair(tab.id, A, 'chat')
       // The exit is seen at 2 s; the user goes terminal and back to chat(A) before it lands.
       vi.setSystemTime(3_000)
-      useAppStore.getState().applyTerminalChatPair(tab.id, null, 'terminal')
-      useAppStore.getState().applyTerminalChatPair(tab.id, A, 'chat')
+      useAppStore.getState().applyTerminalChatPair(tab.id, null, 'terminal', { intent: true })
+      useAppStore.getState().applyTerminalChatPair(tab.id, A, 'chat', { intent: true })
       exit(tab.id, 'r-late', 2_000)
       expect(respond).toHaveBeenCalledWith({
         requestId: 'r-late',
@@ -285,6 +285,47 @@ describe('renderer side of the desktop chat-view relay', () => {
       expect(row?.launchAgent).toBeUndefined()
       expect(respond.mock.calls.at(-1)?.[0]?.chatView?.viewMode).toBeNull()
       expect(respond.mock.calls.at(-1)?.[0]?.agentExitDisposition).toBe('applied')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("is not superseded by the pane's automatic owner claim on mount, only by a user switch (X3-1)", () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: 1_000 })
+    try {
+      const claimed = useAppStore.getState().createTab(WT, undefined, undefined, {})
+      useAppStore.getState().setTabLayout(claimed.id, split({ [A]: 'pty-x31-a', [B]: 'pty-x31-b' }))
+      useAppStore.getState().applyTerminalChatPair(claimed.id, null, 'chat', { intent: true })
+      // Exit seen at 2 s; the worktree is opened at 3 s and the mounting pane claims the owner.
+      vi.setSystemTime(3_000)
+      useAppStore.getState().applyTerminalChatPair(claimed.id, A, 'chat')
+      const retire = (tabId: string, requestId: string): void =>
+        onRequest!({
+          requestId,
+          worktreeId: WT,
+          tabId,
+          leafId: A,
+          viewMode: 'terminal',
+          agentExit: { ptyId: 'pty-x31-a', observedAtMs: 2_000 }
+        })
+      retire(claimed.id, 'r-claim')
+      expect(respond.mock.calls.at(-1)?.[0]?.agentExitDisposition).toBe('applied')
+
+      vi.setSystemTime(4_000)
+      const toggled = useAppStore.getState().createTab(WT, undefined, undefined, {})
+      useAppStore.getState().setTabLayout(toggled.id, split({ [A]: 'pty-x31-a', [B]: 'pty-x31-b' }))
+      useAppStore.getState().applyTerminalChatPair(toggled.id, A, 'chat', { intent: true })
+      vi.setSystemTime(5_000)
+      useAppStore.getState().applyTerminalChatPair(toggled.id, A, 'chat', { intent: true })
+      onRequest!({
+        requestId: 'r-toggle',
+        worktreeId: WT,
+        tabId: toggled.id,
+        leafId: A,
+        viewMode: 'terminal',
+        agentExit: { ptyId: 'pty-x31-a', observedAtMs: 4_500 }
+      })
+      expect(respond.mock.calls.at(-1)?.[0]?.agentExitDisposition).toBe('superseded')
     } finally {
       vi.useRealTimers()
     }

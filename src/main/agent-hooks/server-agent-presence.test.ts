@@ -431,7 +431,7 @@ describe('a host-proven end of an owner no hook identified (R2-4)', () => {
       if (dropped) {
         server.reconcileEndedProcessForPaneKeys([PANE], { preserveResumeIdentity: true })
       }
-      server.recordHostProvenAgentEnd(PANE, 'codex')
+      server.recordHostProvenAgentEnd(PANE, 'codex', Date.now() + 1)
       expect(visible(server)).toBe(false)
       await codex(server, 'SessionStart', 'codex-b')
       expect(changes).toEqual(['codex:live', 'codex:ended', 'codex:live'])
@@ -441,8 +441,18 @@ describe('a host-proven end of an owner no hook identified (R2-4)', () => {
   it("leaves another agent's owner and an identified owner to their own evidence", async () => {
     const server = await createServer()
     await hook(server, 'SessionStart')
-    server.recordHostProvenAgentEnd(PANE, 'codex')
-    server.recordHostProvenAgentEnd(PANE, 'claude')
+    server.recordHostProvenAgentEnd(PANE, 'codex', Date.now() + 1)
+    server.recordHostProvenAgentEnd(PANE, 'claude', Date.now() + 1)
     expect(state(server)).not.toBeNull()
+  })
+
+  it('never ends a newer Codex whose hook arrived while the end was being checked (R3Y-2)', async () => {
+    const server = await createServer()
+    await codex(server, 'SessionStart', 'codex-a')
+    await codex(server, 'Stop', 'codex-a')
+    const checkStartedAtMs = Date.now()
+    await codex(server, 'SessionStart', 'codex-b')
+    server.recordHostProvenAgentEnd(PANE, 'codex', checkStartedAtMs)
+    expect(visible(server)).toBe(true)
   })
 })

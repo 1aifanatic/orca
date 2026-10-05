@@ -98,7 +98,9 @@ export class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeWithTermin
     | ((paneKeys: Iterable<string>) => void)
     | null
 
-  protected readonly recordHostProvenAgentEndFn: ((paneKey: string, agent: string) => void) | null
+  protected readonly recordHostProvenAgentEndFn:
+    | ((paneKey: string, agent: string, checkStartedAtMs: number) => void)
+    | null
 
   protected readonly canRecoverPersistentLocalPtysFn: () => boolean
 
