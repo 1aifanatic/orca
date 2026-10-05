@@ -1,8 +1,6 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
 import { randomUUID } from 'node:crypto'
-import { preserveTerminalRetirementProofs } from './mobile-session-terminal-retirement-proof'
-import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
-import { replaceConversationInSnapshot } from './structured-conversation-tab-replacement'
+import { stampStoredMobileSessionSnapshot } from './mobile-session-snapshot-stamp'
 import type { TuiAgent } from '../../shared/tui-agent'
 import { isTuiAgent } from '../../shared/tui-agent-config'
 import type { RuntimeStore } from './runtime-store-contract'
@@ -107,22 +105,10 @@ export class OrcaRuntimeWithRuntimeId {
     worktreeId: string,
     snapshot: RuntimeMobileSessionTabsSnapshot
   ): RuntimeMobileSessionTabsSnapshot {
-    for (const replacement of getStructuredAgentSessionHost()?.conversationReplacements?.() ?? []) {
-      snapshot = replaceConversationInSnapshot(snapshot, replacement)
-    }
     const existing = this.mobileSessionTabsByWorktree.get(worktreeId)
-    snapshot = preserveTerminalRetirementProofs(snapshot, existing)
-    const snapshotVersion = existing
-      ? Math.max(snapshot.snapshotVersion, existing.snapshotVersion + 1)
-      : snapshot.snapshotVersion
-    const stamped =
-      snapshotVersion === snapshot.snapshotVersion ? snapshot : { ...snapshot, snapshotVersion }
+    const stamped = stampStoredMobileSessionSnapshot(snapshot, existing)
     this.mobileSessionTabsByWorktree.set(worktreeId, stamped)
-    // Why here: every close (host, renderer or retirement) lands as a stored snapshot without the tab.
-    this.chatViewWriteFence.retainParents(
-      worktreeId,
-      new Set(stamped.tabs.map((tab) => (tab.type === 'terminal' ? tab.parentTabId : tab.id)))
-    )
+    this.chatViewWriteFence.retainSnapshotParents(worktreeId, stamped)
     return stamped
   }
 
