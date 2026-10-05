@@ -3,6 +3,15 @@
   "permission": {
     "*": {
       "*": "allow"
-    }
+    },
+    "read": {
+      "*.env": "ask",
+      "*.env.*": "ask",
+      "*.env.example": "allow"
+    },
+    "external_directory": {
+      "*": "ask"
+    },
+    "doom_loop": "ask"
   }
 }
