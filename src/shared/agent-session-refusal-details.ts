@@ -46,9 +46,9 @@ export const AGENT_SESSION_REFUSAL_REASONS = {
     'providerStartFailed',
     'notSignedIn',
     'historyTooLarge',
-    /** The launch's own Anthropic sign-in variables would override the managed Claude account. */
     'customCommandInvalid',
     'customCommandConflict',
+    /** The launch's own Anthropic sign-in variables would override the managed Claude account. */
     'managedAccountEnvOverride',
     'accountSwitchInProgress',
     /** A Claude account is added in WSL and no Windows one is selected, which a chat can't run under. */
@@ -69,8 +69,8 @@ export const AGENT_SESSION_REFUSAL_REASONS = {
     'notResumable',
     'noProviderChild',
     'conversationHeldElsewhere',
-    /** A Stop could not prove its child gone, and a retry could not either: that child takes no
-     *  input and none starts beside it. Sent with `ownerVerdict: 'unverifiable'`. */
+    /** The close a stop began could not prove its child gone: that child takes no input and none
+     *  starts beside it. Sent with `ownerVerdict: 'unverifiable'`. */
     'previousExitUnverifiable'
   ],
   agent_session_conflict: [

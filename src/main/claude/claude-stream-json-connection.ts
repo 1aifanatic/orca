@@ -7,26 +7,30 @@ import {
   markClaudeStructuredChildExited,
   markClaudeStructuredChildSpawned
 } from '../claude-accounts/live-pty-gate'
-import { buildClaudeChildProcessEnv } from './claude-child-process-environment'
-import { withoutInheritedClaudeConfigDir } from './claude-config-dir-pin'
 import {
   ClaudeControlRequestError,
   createClaudeControlSurface,
   type ClaudeControlSurface
 } from './claude-agent-sdk-control-requests'
 import { createClaudeChildTreeReaper, proveClaudeChildExit } from './claude-agent-sdk-exit-proof'
+import { withTimeout } from '../../shared/promise-timeout-fallback'
 import type { DescendantTreeVerdict } from '../pty-descendant-exit-verification'
 import { createClaudeCodeProcessSpawn } from './claude-agent-sdk-process-spawn'
 import {
   claudeUnwrittenUserMessageError,
   createClaudeUserMessageQueue
 } from './claude-agent-sdk-user-message-queue'
-import type {
-  ClaudeStructuredInvocation,
-  ClaudeStructuredSdkOptions
-} from './claude-structured-launch-resolution'
+import {
+  claudeAgentSdkQueryOptions,
+  type ClaudeStreamJsonLaunch
+} from './claude-agent-sdk-query-options'
 
 export { ClaudeControlRequestError }
+export type { ClaudeStreamJsonLaunch }
+
+/** How long a proven close waits for messages already written before the exit; whatever still
+ *  holds the output open past it is no reason to keep the close unresolved. */
+export const CLAUDE_READER_DRAIN_AFTER_EXIT_MS = 2_000
 
 /**
  * The SDK is loaded at the structured-Claude boundary rather than by this module's
@@ -36,6 +40,7 @@ export { ClaudeControlRequestError }
  * path never opted into, and a missing SDK would fail runtime startup. Memoized,
  * so a session pays the import once per process rather than once per connection.
  */
+
 let claudeAgentSdk: Promise<typeof ClaudeAgentSdk> | null = null
 
 function loadClaudeAgentSdk(): Promise<typeof ClaudeAgentSdk> {
@@ -45,15 +50,6 @@ function loadClaudeAgentSdk(): Promise<typeof ClaudeAgentSdk> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
-}
-
-export type ClaudeStreamJsonLaunch = {
-  /** Orca's resolved user CLI; the SDK falls back to a bundled binary that is not installed. */
-  pathToClaudeCodeExecutable: string
-  invocation?: ClaudeStructuredInvocation
-  options: ClaudeStructuredSdkOptions
-  cwd: string
-  env?: Record<string, string>
 }
 
 export type ClaudeStreamJsonConnectionHandlers = {
@@ -69,7 +65,9 @@ export type ClaudeStreamJsonConnectionHandlers = {
   onUserDialog?: OnUserDialog
   /** A transport/process fault that is not itself first-hand root exit proof. */
   onFault?: (error: Error) => void
-  onExit?: (error: Error) => void
+  /** The root process exited, reported once. `expected`: a close had begun, so it is that close's
+   *  end, even one that ran out of its own escalation first and came back unproven. */
+  onExit?: (error: Error, exit?: { expected: boolean }) => void
 }
 
 /**
@@ -131,22 +129,7 @@ export async function openClaudeStreamJsonConnection(
   const inbox = createClaudeUserMessageQueue()
   const session = (queryImpl ?? query)({
     prompt: inbox.messages,
-    options: {
-      ...launch.options,
-      cwd: launch.cwd,
-      // Why env is never omitted: the SDK inherits process.env when it is, which is
-      // exactly the ambient ANTHROPIC_* auth leak this lane already shipped once.
-      // Orca's own CLAUDE_CONFIG_DIR is dropped for the same reason the launch drops the
-      // shell's: the record's pin in `launch.env` must be the only home the child sees.
-      env: buildClaudeChildProcessEnv(launch.env, {
-        inheritedEnv: withoutInheritedClaudeConfigDir(process.env),
-        scrubConfiguredChildSessionStamps: true
-      }),
-      pathToClaudeCodeExecutable: launch.pathToClaudeCodeExecutable,
-      spawnClaudeCodeProcess: spawner.spawn,
-      ...(handlers.canUseTool ? { canUseTool: handlers.canUseTool } : {}),
-      ...(handlers.onUserDialog ? { onUserDialog: handlers.onUserDialog } : {})
-    }
+    options: claudeAgentSdkQueryOptions(launch, spawner.spawn, handlers)
   })
   const child = spawner.child
   if (!child) {
@@ -230,9 +213,9 @@ export async function openClaudeStreamJsonConnection(
       faultReported = true
       handlers.onFault?.(terminalError)
     }
-    if (!closing && exited && !exitReported) {
+    if (exited && !exitReported) {
       exitReported = true
-      handlers.onExit?.(terminalError)
+      handlers.onExit?.(terminalError, { expected: closing })
     }
   }
 
@@ -338,7 +321,16 @@ export async function openClaudeStreamJsonConnection(
         closePromise = null
         return false
       }
-      await readerDone
+      const drained = await withTimeout(
+        readerDone.then(() => true),
+        CLAUDE_READER_DRAIN_AFTER_EXIT_MS,
+        false
+      )
+      if (!drained) {
+        console.warn('[claude-stream-json] output still open after the proven exit:', {
+          pid: spawner.pid
+        })
+      }
       return true
     })()
     return closePromise
