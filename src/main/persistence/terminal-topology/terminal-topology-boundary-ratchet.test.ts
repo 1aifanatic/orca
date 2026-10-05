@@ -62,6 +62,16 @@ const ALLOWED_REFERENCES: Record<string, readonly string[]> = {
   ]
 }
 
+/** `({ name: w } = x)` destructures; any other object literal defines its keys. */
+function isAssignmentPattern(node: ts.Node): boolean {
+  const parent = node.parent
+  return (
+    ts.isBinaryExpression(parent) &&
+    parent.left === node &&
+    parent.operatorToken.kind === ts.SyntaxKind.EqualsToken
+  )
+}
+
 /** The name a node declares, which defines a writer rather than using it. */
 function isDeclaredName(node: ts.Node): boolean {
   const parent = node.parent
@@ -69,7 +79,7 @@ function isDeclaredName(node: ts.Node): boolean {
     (ts.isFunctionDeclaration(parent) ||
       ts.isMethodDeclaration(parent) ||
       ts.isPropertyDeclaration(parent) ||
-      ts.isPropertyAssignment(parent) ||
+      (ts.isPropertyAssignment(parent) && !isAssignmentPattern(parent.parent)) ||
       ts.isGetAccessorDeclaration(parent) ||
       ts.isSetAccessorDeclaration(parent) ||
       ts.isVariableDeclaration(parent) ||
@@ -87,13 +97,22 @@ function isTypeOnlyImportOrExport(node: ts.Node): boolean {
   )
 }
 
-/** A use is any value-position identifier, member name or `x['name']` key; types are skipped. */
+/** A string literal names a member as `x['name']`, `['name']` or a quoted destructure key. */
+function isQuotedKey(node: ts.Node): node is ts.StringLiteralLike {
+  const parent = node.parent
+  return (
+    ts.isStringLiteralLike(node) &&
+    (ts.isElementAccessExpression(parent) ||
+      ts.isComputedPropertyName(parent) ||
+      ts.isBindingElement(parent) ||
+      ts.isPropertyAssignment(parent))
+  )
+}
+
+/** A use is any value-position name or quoted key that doesn't declare it; types are skipped. */
 function referencedName(node: ts.Node): string | undefined {
-  if (ts.isIdentifier(node)) {
+  if (ts.isIdentifier(node) || isQuotedKey(node)) {
     return isDeclaredName(node) ? undefined : node.text
-  }
-  if (ts.isStringLiteralLike(node) && ts.isElementAccessExpression(node.parent)) {
-    return node.text
   }
   return undefined
 }
