@@ -38,6 +38,7 @@ import {
 } from './codex-structured-fast-mode'
 import {
   assertCodexConnectionOpen,
+  CODEX_RECEIPT_TIMED_METHODS,
   codexSessionLifecycle,
   mintCodexAcquisitionGeneration,
   type CodexAcquisitionRegistry,
@@ -48,15 +49,6 @@ import {
 import type { CodexStructuredSessionTeardown } from './codex-structured-session-teardown'
 import type { CodexStructuredNotificationRetry } from './codex-structured-notification-retry'
 import type { deliverCodexServerRequest } from './codex-structured-provider-events'
-
-// Turn and item boundaries are timed by when the host received them, never by when a buffered or
-// retried delivery got round to them.
-const RECEIPT_TIMED_METHODS: ReadonlySet<string> = new Set([
-  'turn/started',
-  'turn/completed',
-  'item/started',
-  'item/completed'
-])
 
 export async function acquireCodexStructuredSession(input: {
   input: StructuredAgentSessionAcquireInput
@@ -151,7 +143,7 @@ export async function acquireCodexStructuredSession(input: {
       {
         onNotification: (method, params) => {
           // Stamped at receipt, ahead of any pre-publication buffering or retry.
-          const observedAt = RECEIPT_TIMED_METHODS.has(method)
+          const observedAt = CODEX_RECEIPT_TIMED_METHODS.has(method)
             ? (deps.now?.() ?? Date.now())
             : undefined
           const dispatchSequenceAtReceipt =
