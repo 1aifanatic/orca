@@ -18,7 +18,9 @@ export function closeLeafOrTab(
 ): () => DurableProfileStateMutation<Error | undefined> {
   return traced(
     commit.target.kind === 'pane' ? 'close_leaf' : 'close_tab',
-    terminalSurfaceCloseMutation(commit)
+    terminalSurfaceCloseMutation(commit),
+    // Refusals are fixed reason codes, never ids.
+    (refusal) => refusal?.message
   )
 }
 
@@ -28,27 +30,30 @@ export function closeLeafOrTab(
  */
 function traced<T>(
   kind: TerminalTopologyCommitKind,
-  mutate: () => DurableProfileStateMutation<T>
+  mutate: () => DurableProfileStateMutation<T>,
+  refusalOf: (value: T) => string | undefined
 ): () => DurableProfileStateMutation<T> {
   return () => {
     const span = startSpan('persistence.terminal-topology', {
       attributes: { kind: 'persistence', 'topology.kind': kind }
     })
+    let result: DurableProfileStateMutation<T>
+    // Why only mutate(): `threw` must mean the write failed, never that tracing did.
     try {
-      const result = mutate()
-      if (result.value instanceof Error) {
-        span.setAttribute('topology.outcome', 'refused')
-        // Refusals are fixed reason codes, never ids.
-        span.setAttribute('topology.refusal', result.value.message)
-      } else {
-        span.setAttribute('topology.outcome', result.persist === false ? 'noop' : 'committed')
-      }
-      span.end()
-      return result
+      result = mutate()
     } catch (error) {
       span.setAttribute('topology.outcome', 'threw')
       span.fail(error instanceof Error ? error : String(error))
       throw error
     }
+    const refusal = refusalOf(result.value)
+    if (refusal !== undefined) {
+      span.setAttribute('topology.outcome', 'refused')
+      span.setAttribute('topology.refusal', refusal)
+    } else {
+      span.setAttribute('topology.outcome', result.persist === false ? 'noop' : 'committed')
+    }
+    span.end()
+    return result
   }
 }
