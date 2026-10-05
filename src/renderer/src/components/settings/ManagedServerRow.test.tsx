@@ -37,7 +37,10 @@ const status: OrcadManagedRuntimeStatus = {
   }
 }
 
-async function render(rowStatus: OrcadManagedRuntimeStatus = status) {
+async function render(
+  rowStatus: OrcadManagedRuntimeStatus = status,
+  getStatus: () => Promise<OrcadManagedRuntimeStatus> = async () => rowStatus
+) {
   const stop = vi.fn(async () => ({ outcome: 'unlinked' }))
   const recover = vi.fn(async (args: { acceptChangedState?: boolean }) =>
     args.acceptChangedState
@@ -46,7 +49,7 @@ async function render(rowStatus: OrcadManagedRuntimeStatus = status) {
   )
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the row calls only getStatus, stop and recover here.
   const api = {
-    getStatus: vi.fn(async () => rowStatus),
+    getStatus: vi.fn(getStatus),
     stop,
     recover
   } as unknown as ManagedOrcadPreloadApi
@@ -96,5 +99,20 @@ describe('managed server row', () => {
     expect(recover).toHaveBeenLastCalledWith({ selector: 'env-1', acceptChangedState: false })
     await act(async () => button(container, 'Restore snapshot and restart')?.click())
     expect(recover).toHaveBeenLastCalledWith({ selector: 'env-1', acceptChangedState: true })
+  })
+
+  it('never calls a status it could not read "Not running"', async () => {
+    const pending = await render(status, () => new Promise(() => {}))
+    expect(pending.container.textContent).toContain('Checking…')
+    expect(pending.container.textContent).not.toContain('Not running')
+
+    const unreachable = await render(status, async () => {
+      throw new Error('host unreachable')
+    })
+    expect(unreachable.container.textContent).toContain('Status unknown')
+    expect(unreachable.container.textContent).not.toContain('Not running')
+
+    const stopped = await render({ ...status, activeVersion: null })
+    expect(stopped.container.textContent).toContain('Not running')
   })
 })

@@ -40,6 +40,22 @@ function outcomeMessage(result: Parameters<typeof managedServerOutcomeLabel>[0])
     : null
 }
 
+// Why: a status that never loaded is unknown, not exited; only a loaded status may say "Not running".
+function versionLabel(
+  status: OrcadManagedRuntimeStatus | null,
+  statusError: string | null
+): string {
+  if (status) {
+    return (
+      status.activeVersion ??
+      translate('auto.components.settings.managedServers.row.notRunning', 'Not running')
+    )
+  }
+  return statusError
+    ? translate('auto.components.settings.managedServers.row.statusUnknown', 'Status unknown')
+    : translate('auto.components.settings.managedServers.row.checking', 'Checking…')
+}
+
 export function ManagedServerRow({
   api,
   environment,
@@ -123,8 +139,7 @@ export function ManagedServerRow({
       <div className="flex min-w-0 items-center gap-2">
         <div className="truncate text-sm font-medium">{environment.name}</div>
         <span className="shrink-0 text-[11px] text-muted-foreground">
-          {status?.activeVersion ??
-            translate('auto.components.settings.managedServers.row.notRunning', 'Not running')}
+          {versionLabel(status, statusError)}
         </span>
         <Button
           type="button"
