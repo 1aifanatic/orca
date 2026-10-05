@@ -22,6 +22,8 @@ import { createHiddenPane, DESKTOP, PHONE } from './mobile-fit-hidden-pane-fixtu
 const PTY_A = 'daemon-pty-a'
 const PTY_B = 'daemon-pty-b'
 const ROTATED = { cols: 90, rows: 30 }
+// The host's desktop grid on release, distinct from what the fixture's fit() measures.
+const RELEASED = { cols: 180, rows: 48 }
 
 let panes: ManagedPane[] = []
 let pendingFrames: FrameRequestCallback[] = []
@@ -95,13 +97,13 @@ describe('hidden desktop pane across mobile-fit transitions', () => {
 
     // A fresh PTY in a hidden pane spawns at the xterm grid, so the parked grid is its size.
     act(() => bindPane(pane, PTY_B))
-    act(() => setFitOverride(PTY_A, 'desktop-fit', DESKTOP.cols, DESKTOP.rows))
+    act(() => setFitOverride(PTY_A, 'desktop-fit', RELEASED.cols, RELEASED.rows))
     expect(grid(terminal)).toEqual(PHONE)
 
     act(() => setFitOverride(PTY_B, 'mobile-fit', ROTATED.cols, ROTATED.rows))
     expect(grid(terminal)).toEqual(ROTATED)
-    act(() => setFitOverride(PTY_B, 'desktop-fit', DESKTOP.cols, DESKTOP.rows))
-    expect(grid(terminal)).toEqual(DESKTOP)
+    act(() => setFitOverride(PTY_B, 'desktop-fit', RELEASED.cols, RELEASED.rows))
+    expect(grid(terminal)).toEqual(RELEASED)
     terminal.dispose()
   })
 
@@ -124,8 +126,8 @@ describe('hidden desktop pane across mobile-fit transitions', () => {
     act(() => setFitOverride(PTY_A, 'mobile-fit', PHONE.cols, PHONE.rows))
     act(() => setFitOverride(PTY_A, 'mobile-fit', ROTATED.cols, ROTATED.rows))
     expect(grid(terminal)).toEqual(ROTATED)
-    act(() => setFitOverride(PTY_A, 'desktop-fit', DESKTOP.cols, DESKTOP.rows))
-    expect(grid(terminal)).toEqual(DESKTOP)
+    act(() => setFitOverride(PTY_A, 'desktop-fit', RELEASED.cols, RELEASED.rows))
+    expect(grid(terminal)).toEqual(RELEASED)
     terminal.dispose()
   })
 
@@ -135,8 +137,8 @@ describe('hidden desktop pane across mobile-fit transitions', () => {
     render(<Ticks />)
     act(() => setFitOverride(PTY_A, 'mobile-fit', PHONE.cols, PHONE.rows))
     expect([grid(left.terminal), grid(right.terminal)]).toEqual([PHONE, PHONE])
-    act(() => setFitOverride(PTY_A, 'desktop-fit', DESKTOP.cols, DESKTOP.rows))
-    expect([grid(left.terminal), grid(right.terminal)]).toEqual([DESKTOP, DESKTOP])
+    act(() => setFitOverride(PTY_A, 'desktop-fit', RELEASED.cols, RELEASED.rows))
+    expect([grid(left.terminal), grid(right.terminal)]).toEqual([RELEASED, RELEASED])
     left.terminal.dispose()
     right.terminal.dispose()
   })
@@ -148,8 +150,8 @@ describe('hidden desktop pane across mobile-fit transitions', () => {
     expect(grid(terminal)).toEqual(PHONE)
 
     setVisible(false)
-    act(() => setFitOverride(PTY_A, 'desktop-fit', DESKTOP.cols, DESKTOP.rows))
-    expect(grid(terminal)).toEqual(DESKTOP)
+    act(() => setFitOverride(PTY_A, 'desktop-fit', RELEASED.cols, RELEASED.rows))
+    expect(grid(terminal)).toEqual(RELEASED)
     terminal.dispose()
   })
 
@@ -158,8 +160,8 @@ describe('hidden desktop pane across mobile-fit transitions', () => {
     render(<Ticks />)
     act(() => setFitOverride(PTY_A, 'remote-desktop-fit', ROTATED.cols, ROTATED.rows))
     expect(grid(terminal)).toEqual(ROTATED)
-    act(() => setFitOverride(PTY_A, 'desktop-fit', DESKTOP.cols, DESKTOP.rows))
-    expect(grid(terminal)).toEqual(DESKTOP)
+    act(() => setFitOverride(PTY_A, 'desktop-fit', RELEASED.cols, RELEASED.rows))
+    expect(grid(terminal)).toEqual(RELEASED)
     terminal.dispose()
   })
 
@@ -192,8 +194,8 @@ describe('hidden desktop pane across mobile-fit transitions', () => {
       bindPane(pane, PTY_B)
     })
     expect(grid(terminal)).toEqual(PHONE)
-    act(() => setFitOverride(PTY_B, 'desktop-fit', DESKTOP.cols, DESKTOP.rows))
-    expect(grid(terminal)).toEqual(DESKTOP)
+    act(() => setFitOverride(PTY_B, 'desktop-fit', RELEASED.cols, RELEASED.rows))
+    expect(grid(terminal)).toEqual(RELEASED)
     terminal.dispose()
   })
 
@@ -218,12 +220,12 @@ describe('hidden desktop pane across mobile-fit transitions', () => {
     act(() => setFitOverride(PTY_A, 'mobile-fit', PHONE.cols, PHONE.rows))
 
     beginTerminalScrollIntentBufferRebuild(terminal)
-    act(() => setFitOverride(PTY_A, 'desktop-fit', DESKTOP.cols, DESKTOP.rows))
+    act(() => setFitOverride(PTY_A, 'desktop-fit', RELEASED.cols, RELEASED.rows))
     expect(grid(terminal)).toEqual(PHONE)
     endTerminalScrollIntentBufferRebuild(terminal)
     await Promise.resolve()
 
-    expect(grid(terminal)).toEqual(DESKTOP)
+    expect(grid(terminal)).toEqual(RELEASED)
     terminal.dispose()
   })
 
@@ -233,7 +235,7 @@ describe('hidden desktop pane across mobile-fit transitions', () => {
     act(() => setFitOverride(PTY_A, 'mobile-fit', PHONE.cols, PHONE.rows))
 
     beginTerminalScrollIntentBufferRebuild(terminal)
-    act(() => setFitOverride(PTY_A, 'desktop-fit', DESKTOP.cols, DESKTOP.rows))
+    act(() => setFitOverride(PTY_A, 'desktop-fit', RELEASED.cols, RELEASED.rows))
     act(() => bindPane(pane, PTY_B))
     endTerminalScrollIntentBufferRebuild(terminal)
     await Promise.resolve()
@@ -248,7 +250,7 @@ describe('hidden desktop pane across mobile-fit transitions', () => {
     act(() => setFitOverride(PTY_A, 'mobile-fit', PHONE.cols, PHONE.rows))
 
     beginTerminalScrollIntentBufferRebuild(terminal)
-    act(() => setFitOverride(PTY_A, 'desktop-fit', DESKTOP.cols, DESKTOP.rows))
+    act(() => setFitOverride(PTY_A, 'desktop-fit', RELEASED.cols, RELEASED.rows))
     panes = panes.filter((candidate) => candidate !== pane)
     transports.delete(pane.id)
     endTerminalScrollIntentBufferRebuild(terminal)
@@ -262,7 +264,7 @@ describe('hidden desktop pane across mobile-fit transitions', () => {
     const { terminal } = mountPane(PTY_A)
     terminal.resize(160, 45)
     render(<Ticks />)
-    act(() => setFitOverride(PTY_A, 'desktop-fit', DESKTOP.cols, DESKTOP.rows))
+    act(() => setFitOverride(PTY_A, 'desktop-fit', RELEASED.cols, RELEASED.rows))
     expect(grid(terminal)).toEqual({ cols: 160, rows: 45 })
     terminal.dispose()
   })
@@ -289,6 +291,31 @@ describe('hidden desktop pane across mobile-fit transitions', () => {
     endTerminalScrollIntentBufferRebuild(terminal)
     await Promise.resolve()
 
+    expect(grid(terminal)).toEqual(PHONE)
+    terminal.dispose()
+  })
+
+  it('un-parks a hidden pane re-parked at a new phone grid inside the rebuild that deferred the release', async () => {
+    const { terminal } = mountPane(PTY_A)
+    render(<Ticks />)
+    act(() => setFitOverride(PTY_A, 'mobile-fit', PHONE.cols, PHONE.rows))
+
+    beginTerminalScrollIntentBufferRebuild(terminal)
+    act(() => setFitOverride(PTY_A, 'mobile-fit', ROTATED.cols, ROTATED.rows))
+    act(() => setFitOverride(PTY_A, 'desktop-fit', RELEASED.cols, RELEASED.rows))
+    endTerminalScrollIntentBufferRebuild(terminal)
+    await Promise.resolve()
+
+    expect(grid(terminal)).toEqual(RELEASED)
+    terminal.dispose()
+  })
+
+  it('keeps a hidden pane at its parked grid on a release that carries no desktop grid', () => {
+    const { terminal } = mountPane(PTY_A)
+    render(<Ticks />)
+    act(() => setFitOverride(PTY_A, 'mobile-fit', PHONE.cols, PHONE.rows))
+    // A take-back that never converged, or a PTY exit, releases with 0x0.
+    act(() => setFitOverride(PTY_A, 'desktop-fit', 0, 0))
     expect(grid(terminal)).toEqual(PHONE)
     terminal.dispose()
   })

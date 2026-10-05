@@ -4,6 +4,7 @@ import { getFitOverrideForPty, onOverrideChange } from '@/lib/pane-manager/mobil
 import type { ManagedPane, PaneManager } from '@/lib/pane-manager/pane-manager'
 import { safeFit } from '@/lib/pane-manager/pane-tree-ops'
 import { canMeasurePaneForFit } from '@/lib/pane-manager/pane-fit'
+import { deferTerminalGeometryMutationDuringRebuild } from '@/lib/pane-manager/terminal-scroll-intent-rebuild'
 import { applyDesktopFitFallbackAfterReplay } from './desktop-fit-fallback'
 import { getOverrideAffectedPanes, getPanesNeedingOverrideFit } from './override-affected-panes'
 import type { PtyTransport } from './pty-transport'
@@ -93,15 +94,37 @@ export function useMobileOverlayTicks({ managerRef, paneTransportsRef }: MobileO
           }
         }
         // Why: a deferred fallback can outlive this pane binding or this release; never apply old server dims to a replacement PTY or a re-parked pane.
+        const shouldApplyRelease = (pane: ManagedPane): boolean =>
+          getFitOverrideForPty(event.ptyId) === null && getAffectedPanes().includes(pane)
         const releaseFallback = (pane: ManagedPane) => ({
           ...event,
-          shouldApply: () =>
-            getFitOverrideForPty(event.ptyId) === null && getAffectedPanes().includes(pane)
+          shouldApply: () => shouldApplyRelease(pane)
         })
         // Why: a hidden pane parked at the phone grid cannot refit, so follow the PTY back to desktop before hidden bytes parse.
-        for (const pane of getAffectedPanes()) {
-          if (!canMeasurePaneForFit(pane)) {
-            applyDesktopFitFallbackAfterReplay(pane, releaseFallback(pane))
+        if (event.priorCols !== null && event.cols > 0 && event.rows > 0) {
+          for (const pane of getAffectedPanes()) {
+            if (canMeasurePaneForFit(pane)) {
+              continue
+            }
+            // Why not the prior-grid check: a re-park inside a deferring rebuild moves the pane off the prior grid.
+            const unpark = (): void => {
+              if (!shouldApplyRelease(pane)) {
+                return
+              }
+              safeFit(pane)
+              if (!canMeasurePaneForFit(pane)) {
+                pane.terminal.resize(event.cols, event.rows)
+              }
+            }
+            if (
+              !deferTerminalGeometryMutationDuringRebuild(
+                pane.terminal,
+                'desktop-fit-fallback',
+                unpark
+              )
+            ) {
+              unpark()
+            }
           }
         }
         scheduleFitFrame(fitAffectedPanes)
