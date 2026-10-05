@@ -67,10 +67,11 @@ export async function assessOrcadMigrationTerminals(
 }
 
 /**
- * A move acting on an exited proof marks the detached leases it covers terminated, so the checks
- * after it (the fenced re-check, preflight's lease blocker) stop reading them as running.
+ * Whoever acts on an exited proof (a move, or a connect whose relay session answered) marks the
+ * detached and expired leases it covers terminated, so later checks stop reading them as running
+ * or unverifiable and the next connect can convert.
  */
-export function retireProvenDetachedLeases(
+export function retireProvenExitedLeases(
   store: Pick<Store, 'getSshRemotePtyLeases' | 'markSshRemotePtyLease'>,
   targetId: string,
   proof: OrcadMigrationTerminalVerdict
@@ -80,7 +81,7 @@ export function retireProvenDetachedLeases(
   }
   const proven = new Set(proof.provenPtyIds)
   for (const lease of store.getSshRemotePtyLeases(targetId)) {
-    if (lease.state === 'detached' && proven.has(lease.ptyId)) {
+    if ((lease.state === 'detached' || lease.state === 'expired') && proven.has(lease.ptyId)) {
       store.markSshRemotePtyLease(targetId, lease.ptyId, 'terminated')
     }
   }
