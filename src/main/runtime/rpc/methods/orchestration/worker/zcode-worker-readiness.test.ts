@@ -1,15 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { RuntimeTerminalWait } from '../../../../../../shared/runtime-types'
+import type { RuntimeTerminalWait } from '../../../../../../shared/runtime-terminal-contracts'
 import { createOrchestrationWorkerReleaseHarness } from './worker-release.test-support'
 
 describe('composer-marker first dispatch readiness', () => {
   const h = createOrchestrationWorkerReleaseHarness()
   afterEach(() => h.cleanup())
 
-  // DSH's idle hook fires only after a turn, and Grok's only other signal is its bare name, which a
-  // shell auto-title also writes; like ZCode, their captured composer is their readiness.
-  it.each(['zcode', 'dsh', 'grok'] as const)(
-    'waits for %s’s new composer before delivering exactly one dispatch',
+  it.each(['zcode', 'opencode', 'opencode2'] as const)(
+    '%s waits for the new composer before dispatch',
     async (agent) => {
       h.setup()
       const gate = h.deferred<RuntimeTerminalWait>()
@@ -19,8 +17,7 @@ describe('composer-marker first dispatch readiness', () => {
         expect(h.runtime.waitForFreshWorkerComposer).toHaveBeenCalledWith(
           'term_worker',
           agent,
-          60_000,
-          expect.anything()
+          60_000
         )
       )
       expect(h.runtime.waitForTerminal).not.toHaveBeenCalled()

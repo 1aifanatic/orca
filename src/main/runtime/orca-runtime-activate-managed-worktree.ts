@@ -5,7 +5,7 @@ import { navigationTargetsClients, navigationTargetsHost } from '../../shared/ru
 import { getRepoExecutionHostId } from '../../shared/execution-host'
 import type { Repo } from '../../shared/repo-types'
 import type { TuiAgent } from '../../shared/tui-agent'
-import type { RuntimeTerminalWait } from '../../shared/runtime-types'
+import type { RuntimeTerminalWait } from '../../shared/runtime-terminal-contracts'
 import type { WorktreeStartupLaunch } from '../../shared/worktree/launch-types'
 import type {
   WorktreeStartupDraftPaste,
