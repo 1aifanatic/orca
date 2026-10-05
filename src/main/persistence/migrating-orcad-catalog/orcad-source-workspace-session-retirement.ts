@@ -9,7 +9,10 @@ import {
   type OrcadMigrationSourceScope
 } from './orcad-source-scope'
 import { LOCAL_EXECUTION_HOST_ID } from '../../../shared/execution-host'
-import { collectSessionOwnerKeys } from './orcad-source-workspace-session-fragments'
+import {
+  collectSessionOwnerKeys,
+  sessionPartitions
+} from './orcad-source-workspace-session-fragments'
 import type { OrcadMigrationManifest } from '../../../shared/orcad-migration-manifest'
 import type { PersistedState } from '../../../shared/persisted-state-types'
 import { collectOrcadMigrationSourceWorkspaceSession } from './orcad-source-workspace-session'
@@ -77,8 +80,28 @@ export function assertOrcadMigrationSourceWorkspaceSessionRetired(
     manifest.payload
   )
   if (current.payload || current.blockedCount > 0) {
-    throw new Error('orcad_migration_source_workspace_session_reappeared')
+    throw new Error(
+      `orcad_migration_source_workspace_session_reappeared:${reappearedOwners(state, manifest)};blocked=${current.blockedCount}`
+    )
   }
+}
+
+/** Which partition holds which owner key, so a failure names its writer's footprint. */
+function reappearedOwners(state: PersistedState, manifest: OrcadMigrationManifest): string {
+  const scope = createOrcadMigrationSourceScope({
+    source: manifest.source,
+    catalog: manifest.payload,
+    repos: state.repos
+  })
+  return sessionPartitions(state, LOCAL_EXECUTION_HOST_ID)
+    .flatMap(([hostId, session]) =>
+      [...collectSessionOwnerKeys(session)]
+        .filter((ownerKey) =>
+          orcadMigrationOwnerMatchesScope(ownerKey, orcadMigrationPartitionScope(scope, hostId))
+        )
+        .map((ownerKey) => `${hostId}|${ownerKey}`)
+    )
+    .join(',')
 }
 
 export function removeOwnedSessionState(
