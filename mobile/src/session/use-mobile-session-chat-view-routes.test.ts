@@ -44,9 +44,10 @@ const row = (overrides: Partial<TerminalRow> = {}): TerminalRow => ({
 const settles: ((response: RpcResponse) => void)[] = []
 const toasts: string[] = []
 const views: Record<string, MobileSessionChatView> = {}
-// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the chat view reaches the client only through sendRequest.
+// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the chat view reaches the client only through sendRequest and its connection state.
 const client = {
-  sendRequest: vi.fn(() => new Promise<RpcResponse>((settle) => settles.push(settle)))
+  sendRequest: vi.fn(() => new Promise<RpcResponse>((settle) => settles.push(settle))),
+  getState: () => 'connected'
 } as unknown as RpcClient
 
 function Route(props: Screen & { name: string }): null {

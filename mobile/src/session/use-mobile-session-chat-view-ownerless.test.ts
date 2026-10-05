@@ -65,9 +65,10 @@ describe('an ownerless host chat on the phone', () => {
   let chatView: MobileSessionChatView | null = null
   const toasts: string[] = []
   const fails: ((error: unknown) => void)[] = []
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the chat view reaches the client only through sendRequest.
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the chat view reaches the client only through sendRequest and its connection state.
   const client = {
-    sendRequest: vi.fn(() => new Promise((_settle, fail) => fails.push(fail)))
+    sendRequest: vi.fn(() => new Promise((_settle, fail) => fails.push(fail))),
+    getState: () => 'connected'
   } as unknown as RpcClient
 
   beforeEach(() => resetDefaultSessionViewStoreForTests())

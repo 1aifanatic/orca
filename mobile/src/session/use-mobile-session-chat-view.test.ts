@@ -10,7 +10,7 @@ import {
 } from '../storage/session-view-preferences'
 import type { RpcClient } from '../transport/rpc-client'
 import { markRpcDeliveryUnknown } from '../transport/rpc-delivery-ambiguity'
-import type { RpcResponse } from '../transport/types'
+import type { ConnectionState, RpcResponse } from '../transport/types'
 import { getMobileChatPairWrites } from './mobile-session-chat-pair-writes'
 import type { MobileSessionTab } from './mobile-session-route-types'
 import { getMobileNativeChatToggleActions } from './mobile-native-chat-toggle-action'
@@ -79,8 +79,14 @@ function claudeStatus(sessionId: string | null = 'session-1'): AgentStatusEntry 
   } as unknown as AgentStatusEntry
 }
 
-function fakeClient(): { client: RpcClient; calls: Call[] } {
+function fakeClient(): {
+  client: RpcClient
+  calls: Call[]
+  setState: (next: ConnectionState) => void
+} {
   const calls: Call[] = []
+  let state: ConnectionState = 'connected'
+  const listeners = new Set<(next: ConnectionState) => void>()
   const sendRequest = vi.fn(
     (method: string, params: unknown, options: unknown) =>
       new Promise<RpcResponse>((settle, fail) => {
@@ -88,8 +94,22 @@ function fakeClient(): { client: RpcClient; calls: Call[] } {
         calls.push({ method, params: params as Call['params'], options, settle, fail })
       })
   )
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the chat view reaches the client only through sendRequest.
-  return { client: { sendRequest } as unknown as RpcClient, calls }
+  const client = {
+    sendRequest,
+    getState: () => state,
+    onStateChange: (listener: (next: ConnectionState) => void) => {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    }
+  }
+  const setState = (next: ConnectionState): void => {
+    state = next
+    for (const listener of listeners) {
+      listener(next)
+    }
+  }
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the chat view reaches the client only through sendRequest and its connection state.
+  return { client: client as unknown as RpcClient, calls, setState }
 }
 
 function applied(
@@ -106,6 +126,16 @@ function applied(
 
 function refused(code: string): RpcResponse {
   return { id: 'reply', ok: false, error: { code, message: code }, _meta: { runtimeId: 'r' } }
+}
+
+/** How a host that has no passthrough for `token` replies: the generic code, the token as the message. */
+function refusedAsRuntimeError(token: string): RpcResponse {
+  return {
+    id: 'reply',
+    ok: false,
+    error: { code: 'runtime_error', message: token },
+    _meta: { runtimeId: 'r' }
+  }
 }
 
 async function flush(): Promise<void> {
@@ -303,11 +333,12 @@ describe('useMobileSessionChatView', () => {
     expect(current().showNativeChat).toBe(true)
   })
 
-  it('treats the host relay timeout as delivery-unknown and gives up after one resend', async () => {
+  it('treats the host relay timeout as delivery-unknown and gives up after one resend (RB-F1)', async () => {
     const { client, calls } = fakeClient()
     await render([terminalRow()], true, client)
     await toggle()
-    calls[0]!.settle(refused('chat_view_relay_timeout'))
+    // The reply a real host sends: the relay token is not a passthrough code.
+    calls[0]!.settle(refusedAsRuntimeError('chat_view_relay_timeout'))
     await flush()
     expect(calls).toHaveLength(2)
     expect(calls[1]!.params.chatViewWrite).toEqual(calls[0]!.params.chatViewWrite)
@@ -315,6 +346,52 @@ describe('useMobileSessionChatView', () => {
     await flush()
     expect(calls).toHaveLength(2)
     expect(toasts).toEqual([CHAT_VIEW_SWITCH_UNCONFIRMED_MESSAGE])
+    expect(current().showNativeChat).toBe(false)
+  })
+
+  it('waits for the replacement transport before the resend after a drop, within the budget (RC-F1)', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const { client, calls, setState } = fakeClient()
+    await render([terminalRow()], true, client)
+    await toggle()
+    setState('disconnected')
+    calls[0]!.fail(markRpcDeliveryUnknown(new Error('relay socket closed')))
+    await flush()
+    expect(calls).toHaveLength(1)
+    setState('connected')
+    await flush()
+    expect(calls).toHaveLength(2)
+    expect(calls[1]!.params.chatViewWrite).toEqual(calls[0]!.params.chatViewWrite)
+    calls[1]!.settle(applied({ viewMode: 'chat', chatLeafId: 'A' }))
+    await flush()
+    expect(toasts).toEqual([])
+
+    // With no replacement inside the budget the switch ends once, with one toast.
+    await toggle()
+    setState('reconnecting')
+    calls[2]!.fail(markRpcDeliveryUnknown(new Error('relay socket closed')))
+    await flush()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000)
+    })
+    expect(calls).toHaveLength(3)
+    expect(toasts).toEqual([CHAT_VIEW_SWITCH_UNCONFIRMED_MESSAGE])
+    expect(getMobileChatPairWrites().pendingKeys()).toEqual([])
+  })
+
+  it('defers a reply naming a view mode this build does not know to the snapshot, with no toast (RC-F3)', async () => {
+    const { client, calls } = fakeClient()
+    await render([terminalRow({ agentStatus: claudeStatus() })], true, client)
+    await toggle()
+    calls[0]!.settle({
+      id: 'reply',
+      ok: true,
+      result: { updated: true, chatView: { viewMode: 'split-view', chatLeafId: 'A' } },
+      _meta: { runtimeId: 'r' }
+    })
+    await flush()
+    expect(toasts).toEqual([])
+    expect(getMobileChatPairWrites().pendingKeys()).toEqual([])
     expect(current().showNativeChat).toBe(false)
   })
 

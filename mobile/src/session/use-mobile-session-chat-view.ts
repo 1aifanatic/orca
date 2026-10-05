@@ -7,8 +7,6 @@ import {
   type MutableRefObject
 } from 'react'
 import { useFocusEffect } from 'expo-router'
-import { TERMINAL_CHAT_VIEW_RELAY_TIMEOUT_ERROR } from '../../../src/shared/terminal-chat-view-request'
-import { HOST_TERMINAL_SURFACE_SEPARATOR } from '../../../src/shared/terminal-surface-id'
 import type {
   TerminalChatPair,
   TerminalTabViewMode
@@ -18,7 +16,6 @@ import {
   useDefaultSessionView
 } from '../storage/default-session-view-store'
 import type { RpcClient } from '../transport/rpc-client'
-import { markRpcDeliveryUnknown } from '../transport/rpc-delivery-ambiguity'
 import {
   bindMobileChatPairRoute,
   getMobileChatPairWrites,
@@ -28,6 +25,7 @@ import {
   subscribeMobileChatPairOverlay,
   type MobileChatPairRouteBinding
 } from './mobile-session-chat-pair-writes'
+import { sendMobileChatPairWrite } from './mobile-session-chat-pair-send'
 import {
   chatPairTargetForView,
   chatViewLeafId,
@@ -45,7 +43,6 @@ import {
   type ChatViewRetention
 } from './mobile-session-chat-view-retention'
 import type { MobileSessionTab } from './mobile-session-route-types'
-import { sessionTabChatViewWrite } from './mobile-session-write-operations'
 import {
   resolveMobileNativeChat,
   type MobileNativeChatResolution
@@ -53,8 +50,6 @@ import {
 import { useMobileSessionViewMode } from './use-mobile-session-view-mode'
 
 export const CHAT_VIEW_SWITCH_UNCONFIRMED_MESSAGE = "Couldn't confirm the view switch"
-
-const CHAT_VIEW_WRITE_TIMEOUT_MS = 15_000
 
 type TerminalRow = Extract<MobileSessionTab, { type: 'terminal' }>
 
@@ -122,37 +117,24 @@ export function useMobileSessionChatView(args: {
   )
 
   useEffect(() => {
-    const readRows = (parentTabId: string): TerminalRow[] =>
-      terminalRows(sessionTabsRef.current).filter((row) => chatViewParentTabId(row) === parentTabId)
+    const readHostPair = (parentTabId: string): TerminalChatPair | null => {
+      const row = terminalRows(sessionTabsRef.current).find(
+        (candidate) => chatViewParentTabId(candidate) === parentTabId
+      )
+      return row ? hostChatPairForRow(row) : null
+    }
     const binding: MobileChatPairRouteBinding = {
       ready: () => snapshotAcceptedRef.current,
-      readHostPair: (parentTabId) => {
-        const row = readRows(parentTabId)[0]
-        return row ? hostChatPairForRow(row) : null
-      },
-      send: async (parentTabId, request, write) => {
-        const currentClient = clientRef.current
-        if (!currentClient) {
-          throw new Error('Not connected')
-        }
-        const response = await sessionTabChatViewWrite.request(
-          currentClient,
-          {
-            worktree: `id:${worktreeId}`,
-            tabId: request.leafId
-              ? `${parentTabId}${HOST_TERMINAL_SURFACE_SEPARATOR}${request.leafId}`
-              : parentTabId,
-            viewMode: request.viewMode,
-            chatViewWrite: write
-          },
-          { timeoutMs: CHAT_VIEW_WRITE_TIMEOUT_MS }
-        )
-        // Why: the host's relay to its desktop timed out, so the write may still land; resend once.
-        if (!response.ok && response.error.code === TERMINAL_CHAT_VIEW_RELAY_TIMEOUT_ERROR) {
-          throw markRpcDeliveryUnknown(new Error(response.error.message))
-        }
-        return sessionTabChatViewWrite.interpret(response)
-      },
+      readHostPair,
+      send: (parentTabId, request, write) =>
+        sendMobileChatPairWrite({
+          client: clientRef.current,
+          worktreeId,
+          parentTabId,
+          request,
+          write,
+          hostPair: () => readHostPair(parentTabId)
+        }),
       reportFailure: () => onSwitchUnconfirmedRef.current(CHAT_VIEW_SWITCH_UNCONFIRMED_MESSAGE)
     }
     return bindMobileChatPairRoute(hostId, worktreeId, binding)
