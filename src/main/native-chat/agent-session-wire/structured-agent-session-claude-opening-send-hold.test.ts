@@ -34,6 +34,7 @@ import {
 } from './structured-agent-session-host-test-data'
 import { recordingStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
 import { DISPATCH_DOUBT_PROVIDER_IDLE } from '../agent-session-journal/journal-dispatch-doubt-reasons'
+import { claudeUnwrittenUserMessageError } from '../../claude/claude-agent-sdk-user-message-queue'
 
 const CALLER = { callerKey: 'client-1' }
 const CAPABILITIES = ['interrupt_receipt_v1', 'interrupt_cancel_queued_v1', 'msg_lifecycle_v1']
@@ -48,7 +49,10 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-claude-opening-send-'))
   resetHostTestOperationIds()
   const log = recordingStructuredAgentSessionLogger()
-  claude = fakeClaude({ replayUuid: null })
+  claude = fakeClaude({
+    replayUuid: null,
+    routes: { interrupt: () => ({ still_queued: [], cancelled: [] }) }
+  })
   const lifecycle: Promise<void>[] = []
   adapter = new ClaudeStructuredSessionAdapter({
     resolveLaunch: async () => ({
@@ -58,8 +62,9 @@ beforeEach(async () => {
       claudeConfigDir: join(root, 'claude-home'),
       providerSessionId: PROVIDER_SESSION_ID,
       resumeLeafUuid: null,
-      resumesTranscript: false,
-      continuesChain: false
+      // A child started after a Stop's close resumes the conversation that close ended.
+      resumesTranscript: (store.getRecord(SESSION)?.providerHandleChain.length ?? 0) > 0,
+      continuesChain: (store.getRecord(SESSION)?.providerHandleChain.length ?? 0) > 0
     }),
     onEvent: (event) => {
       const mapped = structuredClaudeLifecycleEvent(event)
@@ -280,4 +285,110 @@ it('releases the follow-up when the CLI goes idle on a started send it never ech
     reason: DISPATCH_DOUBT_PROVIDER_IDLE
   })
   expect(submissions.find((entry) => entry.clientMessageId === steer)?.handedOverAt).toBeDefined()
+})
+
+/** As the real connection: once a close begins it refuses every write; the first `failures`
+ *  closes come back unproven. */
+function closeUnprovenFor(connection: FakeConnection, failures: number): void {
+  const close = connection.close
+  let left = failures
+  connection.close = async () => {
+    if (left === 0) {
+      return close()
+    }
+    left -= 1
+    connection.closeCount += 1
+    connection.closed = true
+    return false
+  }
+  const write = connection.send
+  connection.send = (message, beforeDispatch) =>
+    connection.closed
+      ? Promise.reject(
+          claudeUnwrittenUserMessageError(new Error('claude stream-json connection is closed'))
+        )
+      : write(message, beforeDispatch)
+}
+
+/** A turn the CLI opened and is writing, whose Stop's close comes back unproven once. */
+async function stoppedWithUnprovenClose(): Promise<FakeConnection> {
+  const connection = claude.connections[0]!
+  const working = await send('Write a long reply.')
+  await eventually(() => expect(written(connection, 'Write a long reply.')).toBeDefined())
+  frame(connection, {
+    type: 'system',
+    subtype: 'init',
+    uuid: 'init-1',
+    model: 'claude-sonnet-5',
+    capabilities: CAPABILITIES
+  })
+  frame(connection, { ...written(connection, 'Write a long reply.')! })
+  frame(connection, {
+    type: 'assistant',
+    uuid: 'stopped-turn-leaf',
+    parent_tool_use_id: null,
+    message: { id: 'msg-1', role: 'assistant', content: [{ type: 'text', text: 'Working on' }] }
+  })
+  await eventually(async () =>
+    expect(
+      (await snapshot()).submissions.find((entry) => entry.clientMessageId === working)
+        ?.dispatchState
+    ).toBe('accepted')
+  )
+  closeUnprovenFor(connection, 1)
+  const stopped = await host.cancel(CALLER, {
+    envelope: {
+      sessionId: SESSION,
+      clientOperationId: hostTestOperationId(),
+      expectedRuntimeFence: store.getRecord(SESSION)!.lease.runtimeFence,
+      payloadFingerprint: computeAgentSessionPayloadFingerprint({
+        method: 'agentSession.cancel',
+        sessionId: SESSION,
+        fields: {}
+      })
+    }
+  })
+  expect(stopped).toMatchObject({ ok: true })
+  frame(connection, {
+    type: 'result',
+    subtype: 'error_during_execution',
+    is_error: true,
+    terminal_reason: 'aborted_streaming',
+    uuid: 'interrupted-result'
+  })
+  await eventually(() => expect(connection.closeCount).toBe(1))
+  return connection
+}
+
+// The first message joins the close the Stop could not prove and goes to the resumed child; one
+// sent before that child echoes it waits for the echo, as any follow-up waits for its turn.
+it('sends a message that joins an unproven Stop close to the resumed child, and holds the next until its echo', async () => {
+  const connection = await stoppedWithUnprovenClose()
+
+  await send('Carry on.')
+  const resumed = await eventually(() => {
+    const started = claude.connections.at(-1)!
+    expect(started).not.toBe(connection)
+    expect(written(started, 'Carry on.')).toBeDefined()
+    return started
+  })
+  const later = await send('And this.')
+  await eventually(() =>
+    expect(host.collaboratorsForTests().conversationDelivery.loop.isRunning(SESSION)).toBe(false)
+  )
+  expect(written(connection, 'Carry on.')).toBeUndefined()
+  expect(written(resumed, 'And this.')).toBeUndefined()
+  expect(
+    (await snapshot()).submissions.find((entry) => entry.clientMessageId === later)?.handedOverAt
+  ).toBeUndefined()
+
+  frame(resumed, {
+    type: 'system',
+    subtype: 'init',
+    uuid: 'init-resumed',
+    model: 'claude-sonnet-5',
+    capabilities: CAPABILITIES
+  })
+  frame(resumed, { ...written(resumed, 'Carry on.')!, isReplay: true, parent_tool_use_id: null })
+  await eventually(() => expect(written(resumed, 'And this.')).toBeDefined())
 })
