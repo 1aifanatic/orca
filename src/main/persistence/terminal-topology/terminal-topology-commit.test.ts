@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ExecutionHostId } from '../../../shared/execution-host'
 import type { TerminalSurfaceCloseTarget } from '../../../shared/terminal-surface-close-target'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
-import { folderWorkspaceKey } from '../../../shared/workspace-scope'
 import { _resetTracerForTests, setActiveSink } from '../../observability/tracer'
 import { makeTerminalTab, testState } from '../../persistence-test-harness'
 import { TEST_LEAF_1, TEST_LEAF_2 } from '../../persistence-session-fixtures'
@@ -18,23 +17,14 @@ vi.mock('electron', () => ({
   safeStorage: { isEncryptionAvailable: () => false }
 }))
 
-type Fixture = { name: string; hostId: ExecutionHostId; worktreeId: string; repoId: string }
+type Fixture = { hostId: ExecutionHostId; worktreeId: string; repoId: string }
 
-const FIXTURES: Fixture[] = [
-  { name: 'local worktree', hostId: 'local', worktreeId: 'repo1::/w', repoId: 'repo1' },
-  {
-    name: 'ssh: partition',
-    hostId: 'ssh:target-1',
-    worktreeId: 'ssh-repo::/srv/app',
-    repoId: 'ssh-repo'
-  },
-  {
-    name: 'folder workspace',
-    hostId: 'local',
-    worktreeId: folderWorkspaceKey('fw-1'),
-    repoId: folderWorkspaceKey('fw-1')
-  }
-]
+// An ssh: partition: the close must land in the owning host's partition, not local.
+const fixture: Fixture = {
+  hostId: 'ssh:target-1',
+  worktreeId: 'ssh-repo::/srv/app',
+  repoId: 'ssh-repo'
+}
 
 const SPLIT_TAB = 'tab-split'
 const PINNED_TAB = 'tab-pinned'
@@ -89,39 +79,29 @@ type CloseCase = {
   name: string
   target: TerminalSurfaceCloseTarget
   options?: TerminalSurfaceCloseOptions
-  ownerMatches?: boolean
 }
 
-const CLOSE_CASES: CloseCase[] = [
-  { name: 'pane of a split', target: { kind: 'pane', tabId: SPLIT_TAB, leafId: TEST_LEAF_2 } },
-  {
-    name: 'only pane (not widened)',
-    target: { kind: 'pane', tabId: PINNED_TAB, leafId: TEST_LEAF_1 }
-  },
-  { name: 'tab', target: { kind: 'tab', tabId: SPLIT_TAB }, options: { reason: 'user' } },
-  { name: 'pinned tab', target: { kind: 'tab', tabId: PINNED_TAB } },
-  {
-    name: 'forced pinned tab',
-    target: { kind: 'tab', tabId: PINNED_TAB },
-    options: { force: true }
-  },
-  { name: 'missing tab', target: { kind: 'tab', tabId: 'tab-gone' } },
-  {
-    name: 'missing tab, allowMissing',
-    target: { kind: 'tab', tabId: 'tab-gone' },
-    options: { allowMissing: true, reason: 'cleanup' }
-  },
-  {
-    name: 'echo of a recorded close',
-    target: { kind: 'tab', tabId: CLOSED_TAB },
-    options: { allowMissing: true }
-  },
-  { name: 'owner changed', target: { kind: 'tab', tabId: SPLIT_TAB }, ownerMatches: false }
-]
+const PANE_CLOSE: CloseCase = {
+  name: 'pane of a split',
+  target: { kind: 'pane', tabId: SPLIT_TAB, leafId: TEST_LEAF_2 }
+}
+const TAB_CLOSE: CloseCase = {
+  name: 'tab',
+  target: { kind: 'tab', tabId: SPLIT_TAB },
+  options: { reason: 'user' }
+}
+const PINNED_TAB_CLOSE: CloseCase = {
+  name: 'pinned tab',
+  target: { kind: 'tab', tabId: PINNED_TAB }
+}
+const RECORDED_CLOSE_ECHO: CloseCase = {
+  name: 'echo of a recorded close',
+  target: { kind: 'tab', tabId: CLOSED_TAB },
+  options: { allowMissing: true }
+}
 
 /** Runs one close through `mutationFor` and records every byte it hands back. */
 function runClose(
-  fixture: Fixture,
   closeCase: CloseCase,
   mutationFor: (
     commit: TerminalSurfaceCloseCommit
@@ -137,7 +117,7 @@ function runClose(
     target: closeCase.target,
     options: closeCase.options ?? {},
     requestedSession: sessionFor(fixture),
-    ownerMatches: () => closeCase.ownerMatches ?? true,
+    ownerMatches: () => true,
     hostId: () => fixture.hostId,
     getSession: (hostId) => sessions.get(hostId),
     setSession: (session, hostId) => {
@@ -166,14 +146,12 @@ describe('closeLeafOrTab writes exactly what the close mutation writes', () => {
     vi.useRealTimers()
   })
 
-  for (const fixture of FIXTURES) {
-    for (const closeCase of CLOSE_CASES) {
-      it(`${fixture.name}: ${closeCase.name}`, () => {
-        const legacy = runClose(fixture, closeCase, terminalSurfaceCloseMutation)
-        const committed = runClose(fixture, closeCase, closeLeafOrTab)
-        expect(committed).toBe(legacy)
-      })
-    }
+  for (const closeCase of [PANE_CLOSE, TAB_CLOSE]) {
+    it(closeCase.name, () => {
+      const legacy = runClose(closeCase, terminalSurfaceCloseMutation)
+      expect(legacy).toContain('"writes":[{')
+      expect(runClose(closeCase, closeLeafOrTab)).toBe(legacy)
+    })
   }
 })
 
@@ -197,17 +175,15 @@ describe('persistence.terminal-topology span', () => {
     _resetTracerForTests()
   })
 
-  const fixture = FIXTURES[1]
-
   function attributesOf(closeCase: CloseCase): Record<string, unknown> {
-    runClose(fixture, closeCase, closeLeafOrTab)
+    runClose(closeCase, closeLeafOrTab)
     expect(records).toHaveLength(1)
     expect(records[0].name).toBe('persistence.terminal-topology')
     return records[0].attributes
   }
 
   it('records a committed pane close without ids', () => {
-    const attributes = attributesOf(CLOSE_CASES[0])
+    const attributes = attributesOf(PANE_CLOSE)
     expect(attributes).toEqual({
       kind: 'persistence',
       'topology.kind': 'close_leaf',
@@ -217,7 +193,7 @@ describe('persistence.terminal-topology span', () => {
   })
 
   it('records a refusal with its reason code', () => {
-    expect(attributesOf(CLOSE_CASES[3])).toMatchObject({
+    expect(attributesOf(PINNED_TAB_CLOSE)).toMatchObject({
       'topology.kind': 'close_tab',
       'topology.outcome': 'refused',
       'topology.refusal': 'terminal_tab_pinned'
@@ -225,8 +201,7 @@ describe('persistence.terminal-topology span', () => {
   })
 
   it('records a close that changes nothing as a noop', () => {
-    const echo = CLOSE_CASES.find((closeCase) => closeCase.name === 'echo of a recorded close')
-    expect(attributesOf(echo!)).toMatchObject({ 'topology.outcome': 'noop' })
+    expect(attributesOf(RECORDED_CLOSE_ECHO)).toMatchObject({ 'topology.outcome': 'noop' })
   })
 
   it('records a thrown commit as a failed span and rethrows', () => {

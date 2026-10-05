@@ -2,14 +2,12 @@
  * Ratchet: the primary enforcement of the terminal topology commit boundary. Only
  * `persistence/terminal-topology/**` and the callers listed here may call the binding writer or
  * a session sink. A new caller fails; so does a listed caller that stopped calling, so each
- * routing PR deletes its own rows. Checks that a call exists, not what it writes; the runtime
- * write guard is the tripwire for that.
+ * routing PR deletes its own rows. Checks that a call exists, not what it writes.
  */
 import { existsSync, globSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import ts from 'typescript-api'
 import { describe, expect, it } from 'vitest'
-import { UNROUTED_TOPOLOGY_WRITERS } from './terminal-topology-unrouted-writers'
 
 const repoRoot = resolve(__dirname, '../../../..')
 const BOUNDARY_DIR = 'src/main/persistence/terminal-topology/'
@@ -51,11 +49,10 @@ const ALLOWED_CALLERS: Record<string, readonly string[]> = {
     'src/main/runtime/orca-runtime-persist-headless-terminal-title.ts',
     'src/main/runtime/orca-runtime-pty-foreground-process-reads.ts'
   ],
-  // The three sinks and the helper they publish through.
+  // The local and host sinks, and the helper all three sinks publish through.
   setLocalWorkspaceSession: [SESSION_SNAPSHOT_OPERATIONS],
   setHostWorkspaceSession: [SESSION_SNAPSHOT_OPERATIONS],
-  publishSession: [SESSION_SNAPSHOT_OPERATIONS],
-  commitWorkspaceSessionPartition: [
+  publishWorkspaceSessionPartition: [
     `${LOADING_STORE}session-host-partitions.ts`,
     SESSION_SNAPSHOT_OPERATIONS,
     `${LOADING_STORE}workspace-session-snapshot-publication.ts`
@@ -105,8 +102,8 @@ describe('terminal topology boundary ratchet', () => {
     })
   }
 
-  it('every unrouted-writer allowlist entry names an existing file', () => {
-    for (const file of Object.keys(UNROUTED_TOPOLOGY_WRITERS)) {
+  it('every listed caller names an existing file', () => {
+    for (const file of new Set(Object.values(ALLOWED_CALLERS).flat())) {
       expect(existsSync(join(repoRoot, file)), file).toBe(true)
     }
   })

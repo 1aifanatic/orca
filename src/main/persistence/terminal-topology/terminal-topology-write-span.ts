@@ -3,14 +3,11 @@ import { startSpan } from '../../observability/tracer'
 /** Bindings are not listed: `persistPtyBinding` already records `persistence.pty-binding`. */
 export type TerminalTopologyCommitKind = 'close_leaf' | 'close_tab'
 
-export type TerminalTopologyCommitOutcome = 'committed' | 'noop' | 'refused' | 'threw'
+type TerminalTopologyCommitOutcome = 'committed' | 'noop' | 'refused' | 'threw'
 
-export type TerminalTopologyWriteSpan = {
-  finish(entry: {
-    outcome: Exclude<TerminalTopologyCommitOutcome, 'threw'>
-    refusal?: string
-  }): void
-  fail(error: unknown): void
+type TerminalTopologyWriteSpan = {
+  /** `detail` is the refusal reason code for `refused` and the error for `threw`. */
+  finish(outcome: TerminalTopologyCommitOutcome, detail?: unknown): void
 }
 
 /**
@@ -24,16 +21,16 @@ export function startTerminalTopologyWriteSpan(
     attributes: { kind: 'persistence', 'topology.kind': kind }
   })
   return {
-    finish({ outcome, refusal }) {
+    finish(outcome, detail) {
       span.setAttribute('topology.outcome', outcome)
-      if (refusal) {
-        span.setAttribute('topology.refusal', refusal)
+      if (outcome === 'threw') {
+        span.fail(detail instanceof Error ? detail : String(detail))
+        return
+      }
+      if (outcome === 'refused') {
+        span.setAttribute('topology.refusal', String(detail))
       }
       span.end()
-    },
-    fail(error) {
-      span.setAttribute('topology.outcome', 'threw')
-      span.fail(error instanceof Error ? error : String(error))
     }
   }
 }
