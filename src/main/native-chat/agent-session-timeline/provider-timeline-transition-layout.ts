@@ -18,7 +18,9 @@ import type { ProviderTimelineTextStreams } from './provider-timeline-text-strea
 const SETTLEMENT_RESERVED_BYTES = 64 * 1024
 
 /** Text owed ahead of the event lands first; a row-writing event also ends the messages it
- *  separates: anonymous ones of its producer, every stream of a turn it ends, all on a session end. */
+ *  separates: anonymous ones of its producer, every stream of a turn it ends, all on a session end.
+ *  A turn another writer settled stops its streams until that turn's boundary: its own end, or
+ *  the next turn's open. */
 export function planProviderTimelineBarrier(
   input: {
     streams: ProviderTimelineTextStreams
@@ -40,11 +42,20 @@ export function planProviderTimelineBarrier(
     streams.planRelease(plan, () => true)
     return
   }
-  if (event.type === 'turn.end' || event.type === 'turn.open') {
+  if (event.type === 'turn.end' || event.type === 'turn.open' || event.type === 'turn.settled') {
     const ending =
-      event.type === 'turn.end' && event.turn !== undefined
-        ? context.rows.turn(providerKey(event.turn)).itemId
-        : state.open?.itemId
+      event.type === 'turn.settled'
+        ? event.turn.itemId
+        : event.type === 'turn.end' && event.turn !== undefined
+          ? context.rows.turn(providerKey(event.turn)).itemId
+          : state.open?.itemId
+    if (event.type === 'turn.settled') {
+      streams.planStop(plan, event.turn.itemId)
+    } else if (event.type === 'turn.open') {
+      streams.planBoundary(plan, null)
+    } else if (ending !== undefined) {
+      streams.planBoundary(plan, ending)
+    }
     streams.planRelease(
       plan,
       (stream) =>

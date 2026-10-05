@@ -30,7 +30,9 @@ describe('a refused event changes nothing and its retry lands it once', () => {
     expect(assembler.apply(end)).toEqual({ admission: { accepted: true } })
     expect((await rig.row(providerItemId('item', 'tool')))?.body).toMatchObject({ state: 'failed' })
     expect(await rig.turn('t1')).toMatchObject({ state: 'completed', completedAt: 2_000 })
-    expect(assembler.apply(end).dropped).toBe('turn-unknown')
+    // A repeated end is admitted and writes nothing: the row keeps its first end.
+    expect(assembler.apply(end)).toEqual({ admission: { accepted: true } })
+    expect(await rig.turn('t1')).toMatchObject({ state: 'completed', completedAt: 2_000 })
   })
 
   it('keeps observed text when the close that would write it is refused', async () => {

@@ -108,6 +108,37 @@ describe('an adopted session', () => {
     })
     expect(messageText((await rig.row(providerItemId('item', 'a1')))?.body)).toBe('Looking')
   })
+
+  // Temporary limit, for the adoption work to lift: the sweep settled the cut turn as the dead
+  // child's work, so the re-run cannot finish it.
+  it('leaves the turn a crash cut as the sweep settled it when the adoption re-runs', async () => {
+    const rig = await openProviderTimelineRig()
+    const reply: ProviderTimelineEvent[] = [
+      {
+        type: 'text.delta',
+        item: { id: 'a2' },
+        channel: 'assistant',
+        text: 'Done',
+        join: { turn: 'p1' }
+      },
+      { type: 'text.close', item: { id: 'a2' }, join: { turn: 'p1' } }
+    ]
+    const full = [...history.slice(0, -1), ...reply, ...history.slice(-1)]
+    full.slice(0, 5).forEach((event) => rig.assembler.apply(event))
+    await rig.restart()
+    const { assembler, bind } = openUnboundProviderTimelineAssembler(rig.journal, {
+      generation: 'gen-3'
+    })
+    full.forEach((event) => assembler.apply(event))
+    assembler.flush()
+    await bind()
+
+    expect((await rig.turn('p1'))?.state).toBe('unverifiable')
+    expect((await rig.row(providerItemId('item', 'call-1')))?.body).toMatchObject({
+      state: 'failed'
+    })
+    expect(await rig.row(providerItemId('item', 'a2'))).toBeUndefined()
+  })
 })
 
 describe('a resumed session', () => {

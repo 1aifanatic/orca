@@ -18,9 +18,9 @@ import {
   readAgentJournalTurn
 } from '../../../shared/agent-session-turn-record'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
+import { lostLiveWorkJournalBody } from '../agent-session-journal/journal-subagent-liveness'
 import { terminalAgentJournalBody } from '../agent-session-journal/journal-terminal-settlement'
 import type { StructuredAgentSessionTransitionJournal } from '../agent-session-wire/structured-agent-session-transition'
-import { lostProviderTimelineBackgroundTasks } from './provider-timeline-background-tasks'
 import {
   agentJournalTurnRowReservedBytes,
   resolveAgentJournalTurnRowWrite
@@ -64,12 +64,17 @@ export function endedProviderTimelineTurn(
 /** Which open rows a settlement covers: one turn's, or every row when the session ends. */
 export type ProviderTimelineSettlementScope = { turnItemId: string } | 'session'
 
-/** The settled rows of `scope`, then each listed turn's end while the journal holds it running. */
+/** The turns a settlement ends, and how; absent when another writer already ended the turn. */
+export type ProviderTimelineSettlementEnding = {
+  turns: readonly { identity: AgentJournalItemIdentity; itemId: string }[]
+  end: ProviderTimelineTurnEnd
+}
+
+/** The settled rows of `scope`, then each ended turn's row while the journal holds it running. */
 export function providerTimelineSettlement(
   journal: StructuredAgentSessionTransitionJournal,
   scope: ProviderTimelineSettlementScope,
-  turns: readonly { identity: AgentJournalItemIdentity; itemId: string }[],
-  end: ProviderTimelineTurnEnd
+  ending?: ProviderTimelineSettlementEnding
 ): JournalLifecycleMutationInput[] {
   const mutations: JournalLifecycleMutationInput[] = []
   journal.visitItemsWithLinkage((itemId, _sequence, body, attribution) => {
@@ -77,19 +82,19 @@ export function providerTimelineSettlement(
     const covered =
       scope === 'session' ||
       (turnScope.kind === 'turn' && turnScope.turnItemId === scope.turnItemId)
-    // Background tasks outlive turns; only the session's end leaves them past seeing.
+    // Background tasks and subagents outlive turns; only the session's end leaves them past seeing.
     const settled = !covered
       ? null
       : (terminalAgentJournalBody(body) ??
-        (scope === 'session' ? lostProviderTimelineBackgroundTasks(body) : null))
+        (scope === 'session' ? lostLiveWorkJournalBody(body) : null))
     const identity = settled ? parseAgentJournalItemKey(itemId) : null
     if (settled && identity) {
       // No linkage: a revision keeps the row's own producer.
       mutations.push({ kind: 'item', identity, body: settled, turnScope })
     }
   })
-  for (const turn of turns) {
-    const ended = endedTurnRow(journal, turn, end)
+  for (const turn of ending?.turns ?? []) {
+    const ended = ending ? endedTurnRow(journal, turn, ending.end) : null
     if (ended) {
       mutations.push({ kind: 'item', ...ended, turnScope: AGENT_JOURNAL_THREAD_SCOPE })
     }

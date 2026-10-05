@@ -16,11 +16,16 @@
 //   before that work's items.
 // - `join.turn` attaches a row to the turn the provider says it belongs to, open or not.
 // - A turn settles once, with only the provider's verdict. A row the journal already holds is
-//   never written back to an earlier state: a settled turn stays settled, a settled tool never
-//   runs again, an answered request stays answered.
+//   never written back to an earlier state: a settled turn stays settled, a settled tool keeps its
+//   terminal body, an answered request stays answered.
+// - A turn another writer settled (a person's Stop) ends here as the provider's `turn.end` would
+//   end it: its running work settles, and text still streaming into it is dropped until the
+//   provider's end of that turn or the next `turn.open`.
 // - Saved history the provider replays goes only into an empty journal (an adopted session), as
 //   ordinary events with the provider's own ids, so re-running an interrupted adoption writes the
-//   same rows again.
+//   same rows again. Limit, until the adoption work lifts it: a crash that cut the first run
+//   inside a turn leaves that turn as the restart's sweep settled it (`unverifiable`, its running
+//   tools `failed`), and the re-run writes nothing more into it.
 // - An event the sink refused changed nothing. Re-apply the same event to retry it (after
 //   `backpressure`); `failed` and `closed` are final.
 // - A provider item is (thread, id): the same id on another thread is another item. Text and
@@ -87,7 +92,8 @@ export type ProviderTimelineEvent =
     }
   /** A turn began. `turn` is the provider's turn id when it has one; the assembler mints one otherwise. */
   | { type: 'turn.open'; turn?: string; at: number }
-  /** The provider ended a turn. Absent `turn` means the open turn. */
+  /** The provider ended a turn. Absent `turn` means the open turn. A turn already over (another
+   *  writer's Stop, a newer turn) takes it too: what it left open settles, its row stays. */
   | {
       type: 'turn.end'
       turn?: string
@@ -103,7 +109,7 @@ export type ProviderTimelineEvent =
    *  started it, which closes as usual: no turn's end settles that row; its own updates do, and the
    *  session's end leaves one still in flight `unverifiable`. */
   | ({ type: 'item.open'; item: string; body: ProviderTimelineItemBody } & Produced & Joined)
-  /** The item's whole current body. Content may be replaced; a settled tool never runs again. */
+  /** The item's whole current body. Content may be replaced; a settled tool keeps its terminal body. */
   | ({ type: 'item.update'; item: string; body: ProviderTimelineItemBody } & Produced & Joined)
   /** The item's whole terminal body; it replaces any text streamed into the same item. */
   | ({ type: 'item.close'; item: string; body: ProviderTimelineItemBody } & Produced & Joined)
@@ -121,7 +127,7 @@ export type ProviderTimelineEvent =
   /** The provider asked the user something and waits on the answer. */
   | ({ type: 'request.open'; request: string; body: ProviderTimelineRequestBody } & Produced &
       Joined)
-  /** The provider stopped waiting for an answer it never got. */
+  /** The provider stopped waiting for an answer it never got; one already settled stays settled. */
   | { type: 'request.withdrawn'; request: string }
   /** What the provider said about its context window: for `join.turn`, else the open turn, else the last. */
   | ({ type: 'context.usage'; usage: AgentSessionContextUsage } & Joined)

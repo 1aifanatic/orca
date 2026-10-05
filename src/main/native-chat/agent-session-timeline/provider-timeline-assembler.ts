@@ -29,7 +29,7 @@ import {
 import type { ProviderTimelineEvent } from './provider-timeline-event'
 import { createLegacyProviderTimelineIdentityScheme } from './provider-timeline-identity'
 import { ProviderTimelinePlan, type ProviderTimelineSink } from './provider-timeline-plan'
-import { ProviderTimelineRows } from './provider-timeline-rows'
+import { ProviderTimelineRows, providerTimelineTurnRowState } from './provider-timeline-rows'
 import { ProviderTimelineState } from './provider-timeline-state'
 import {
   applyProviderTimelineTextClose,
@@ -52,6 +52,7 @@ export type ProviderTimelineAssembler = {
   readonly openTurnId: string | null
   /** Writes the text the coalescing window holds. */
   flush(): void
+  /** Drops the text the window holds: apply `session.ended` first, which writes it. */
   dispose(): void
 }
 
@@ -105,7 +106,7 @@ export function createProviderTimelineAssembler(
   })
 
   const admits = (hold: ProviderTimelineHold, journal: ProviderTimelineTextHost['journal']) =>
-    providerTimelineBudgetAdmits({ hold, state, streams: streams.open, journal })
+    providerTimelineBudgetAdmits({ hold, state, streams, journal })
 
   const applyDecided = (
     event: ProviderTimelineDecidedEvent,
@@ -129,16 +130,34 @@ export function createProviderTimelineAssembler(
       decision.commit?.(state)
       serials.commit()
     })
-    if (event.type === 'turn.open' || event.type === 'turn.end' || event.type === 'session.ended') {
+    if (
+      event.type === 'turn.open' ||
+      event.type === 'turn.end' ||
+      event.type === 'turn.settled' ||
+      event.type === 'session.ended'
+    ) {
       plan.onAdmitted(() => deps.sink.setActivity?.(null))
     }
     return { admission: plan.submit(deps.sink) }
   }
 
+  /** The open turn another writer settled (a person's Stop) ends here first, as one transition;
+   *  refused, the event that found it is refused with it and its retry finds it again. */
+  const endSettledTurn = (
+    journal: NonNullable<ProviderTimelineTextHost['journal']>
+  ): ProviderTimelineApplyResult | null => {
+    const open = state.open
+    if (state.ended || !open || providerTimelineTurnRowState(journal, open.itemId) !== 'settled') {
+      return null
+    }
+    return applyDecided({ type: 'turn.settled', turn: open }, journal)
+  }
+
   const apply = (event: ProviderTimelineEvent): ProviderTimelineApplyResult => {
     const journal = deps.sink.journalItems()
-    if (journal) {
-      state.reconcile(journal)
+    const settled = journal ? endSettledTurn(journal) : null
+    if (settled && !settled.admission.accepted) {
+      return settled
     }
     switch (event.type) {
       case 'text.delta':

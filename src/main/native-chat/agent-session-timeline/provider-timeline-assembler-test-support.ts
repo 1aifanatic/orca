@@ -186,12 +186,14 @@ export function openUnboundProviderTimelineAssembler(
 
 export type ProviderTimelineRig = {
   journal: AgentSessionJournal
+  /** The current child's assembler; `restart` replaces it. */
   assembler: ProviderTimelineAssembler
   sink: ProviderTimelineSink
   /** The same journal's event sink, for a lane that writes it directly. */
   eventSink: StructuredAgentSessionEventSink
-  /** What a restarted host does: the dead-generation sweep settles what the old child left, then
-   *  a new child gets a new assembler in a new generation. */
+  /** What a restarted host does: the old child's assembler is gone, the dead-generation sweep
+   *  settles what it left, then a new child gets a new assembler in a new generation, which
+   *  becomes `assembler`. */
   restart(overrides?: Partial<ProviderTimelineAssemblerDeps>): Promise<ProviderTimelineAssembler>
   /** Another assembler of the same generation on the same journal, for a test that needs its own
    *  sink; the rig's own assembler must then stay unused. */
@@ -241,6 +243,15 @@ export async function openProviderTimelineRig(
   if (!sink) {
     throw new Error('the deferred sink offers transitions')
   }
+  // The coalescing window elapses before every read, so all text streamed so far is written,
+  // unless a test overrides `schedule` to drive the window itself.
+  const windows = new Set<() => void>()
+  const elapse = () => {
+    // Only the windows open now: a flush the sink refused schedules another for the next read.
+    const due = Array.from(windows)
+    windows.clear()
+    due.forEach((run) => run())
+  }
   const build = (more: Partial<ProviderTimelineAssemblerDeps> = {}) =>
     createProviderTimelineAssembler({
       sink,
@@ -248,15 +259,15 @@ export async function openProviderTimelineRig(
       agent: AGENT,
       generation: GENERATION,
       namespace: NAMESPACE,
-      // Every delta writes at once unless a test drives the window itself.
       schedule: (run) => {
-        run()
-        return () => {}
+        windows.add(run)
+        return () => windows.delete(run)
       },
       ...overrides,
       ...more
     })
   const rows = async () => {
+    elapse()
     await deferred.drained()
     return journal.snapshot().items
   }
@@ -266,25 +277,26 @@ export async function openProviderTimelineRig(
       return turn ? [turn] : []
     })
   let generations = 1
-  const restart = async (more: Partial<ProviderTimelineAssemblerDeps> = {}) => {
-    generations += 1
-    const generation = more.generation ?? `gen-${generations}`
-    await deferred.drained()
-    await settleStaleStructuredAgentSessionState({
-      journal,
-      sessionId: SESSION,
-      fence: 1,
-      acquisitionGeneration: generation,
-      deathEvidence: null
-    })
-    return build({ ...more, generation })
-  }
-  return {
+  const rig: ProviderTimelineRig = {
     journal,
     assembler: build(),
     sink,
     eventSink: deferred.sink,
-    restart,
+    restart: async (more = {}) => {
+      generations += 1
+      const generation = more.generation ?? `gen-${generations}`
+      await rows()
+      rig.assembler.dispose()
+      await settleStaleStructuredAgentSessionState({
+        journal,
+        sessionId: SESSION,
+        fence: 1,
+        acquisitionGeneration: generation,
+        deathEvidence: null
+      })
+      rig.assembler = build({ ...more, generation })
+      return rig.assembler
+    },
     assemble: build,
     rows,
     row: async (itemId) => (await rows()).find((item) => item.itemId === itemId),
@@ -297,4 +309,5 @@ export async function openProviderTimelineRig(
       )
     }
   }
+  return rig
 }

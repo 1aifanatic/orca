@@ -141,7 +141,11 @@ describe('provider timeline requests', () => {
     rig.assembler.apply({ type: 'turn.open', turn: 'turn-1', at: 1_000 })
     rig.assembler.apply({ type: 'request.open', request: 'perm-1', body: approval })
     rig.assembler.apply({ type: 'request.withdrawn', request: 'perm-1' })
-    expect(rig.assembler.apply({ type: 'request.withdrawn', request: 'perm-1' }).dropped).toBe(
+    // The journal holds the row it withdrew: a repeat is admitted and finds nothing pending.
+    expect(rig.assembler.apply({ type: 'request.withdrawn', request: 'perm-1' })).toEqual({
+      admission: { accepted: true }
+    })
+    expect(rig.assembler.apply({ type: 'request.withdrawn', request: 'perm-9' }).dropped).toBe(
       'request-unknown'
     )
     expect((await rig.row(providerItemId('request', 'perm-1')))?.body).toMatchObject({

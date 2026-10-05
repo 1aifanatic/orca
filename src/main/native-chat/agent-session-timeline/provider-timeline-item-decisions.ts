@@ -1,5 +1,6 @@
 // What item, request and frame events do: admitted on the state, written against the journal.
 
+import { isDeepStrictEqual } from 'node:util'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
   type AgentJournalItemBody
@@ -38,9 +39,9 @@ function pendingPrompt(body: AgentJournalItemBody | null): body is ProviderTimel
   )
 }
 
-/** Whether the row the journal holds refuses this write: a settled tool never runs again and keeps
- *  its first terminal body, a settled background task is never relit, and a turn that is over
- *  takes no work that waits on a settlement it already ran. */
+/** Whether the row the journal holds refuses this write: a settled tool keeps its first terminal
+ *  body (whoever settled it, the sweep included), a settled background task is never relit, and a
+ *  turn that is over takes no work that waits on a settlement it already ran. */
 function refusesItemWrite(
   journal: Journal,
   row: ProviderTimelineRowId,
@@ -50,7 +51,11 @@ function refusesItemWrite(
 ): boolean {
   const held = journal.item(row.itemId)
   const turn = held ? turnOf(held.turnScope ?? AGENT_JOURNAL_THREAD_SCOPE) : placed
-  if (settledTool(held?.body ?? null) && (change === 'close' || requiresTerminalSettlement(body))) {
+  if (
+    held &&
+    settledTool(held.body) &&
+    (change === 'close' || !isDeepStrictEqual(held.body, body))
+  ) {
     return true
   }
   if (relightsProviderTimelineBackgroundTask(held?.body ?? null, body)) {
@@ -172,27 +177,31 @@ export function decideWithdrawal(
   input: ProviderTimelineDecisionInput,
   event: Extract<ProviderTimelineDecidedEvent, { type: 'request.withdrawn' }>
 ): ProviderTimelineDecision {
+  const { state, journal, context } = input
   const key = requestKey(event.request)
-  const opened = input.state.items.get(key)
-  if (opened?.kind !== 'request') {
+  const entry = state.items.get(key)
+  const opened = entry?.kind === 'request' ? entry : null
+  // One its turn's end already let go is still the journal's newest row under its id.
+  if (!opened && journal && !context.rows.heldRequest(event.request, journal)) {
     return { dropped: 'request-unknown' }
   }
   return {
     settle: {
       what: 'request-withdrawn',
-      resolve: (journal) => {
-        // The open ran first and named its row. Only while it is pending: a client's answer that
-        // landed first stands.
-        const held = opened.row ? journal.item(opened.row.itemId) : null
+      resolve: (at) => {
+        // The open ran first and named its row. Only while it is pending: a client's answer, or
+        // the settlement of its turn, that landed first stands.
+        const row = opened ? opened.row : context.rows.heldRequest(event.request, at)
+        const held = row ? at.item(row.itemId) : null
         const cancelled =
           held && pendingPrompt(held.body) ? cancelledJournalPromptBody(held.body) : null
-        if (!opened.row || !held || !cancelled) {
+        if (!row || !held || !cancelled) {
           return []
         }
         return [
           {
             kind: 'item',
-            identity: opened.row.identity,
+            identity: row.identity,
             body: cancelled,
             turnScope: held.turnScope ?? AGENT_JOURNAL_THREAD_SCOPE
           }

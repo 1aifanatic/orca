@@ -90,12 +90,21 @@ export class ProviderTimelineRows {
 
   /** The first incarnation under `key` the journal holds no row for: never one already written. */
   nextRequest(key: string, journal: Journal): ProviderTimelineRowId {
-    for (let incarnation = 1; ; incarnation += 1) {
-      const row = this.request(key, incarnation)
-      if (journal.itemBody(row.itemId) === null) {
-        return row
-      }
+    return this.request(key, this.heldIncarnations(key, journal) + 1)
+  }
+
+  /** The newest incarnation under `key` the journal holds, if any. */
+  heldRequest(key: string, journal: Journal): ProviderTimelineRowId | null {
+    const held = this.heldIncarnations(key, journal)
+    return held === 0 ? null : this.request(key, held)
+  }
+
+  private heldIncarnations(key: string, journal: Journal): number {
+    let held = 0
+    while (journal.itemBody(this.request(key, held + 1).itemId) !== null) {
+      held += 1
     }
+    return held
   }
 
   private request(key: string, incarnation: number): ProviderTimelineRowId {

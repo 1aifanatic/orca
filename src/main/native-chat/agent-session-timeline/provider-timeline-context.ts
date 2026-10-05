@@ -27,8 +27,8 @@ export function providerTimelineSettlementId(
   return `provider-timeline:${context.sessionId}:${context.generation}:${serial}:${what}`
 }
 
-/** The turn a new row joins: the one the provider names (subagent work joins the open turn while
- *  keeping its own turn in its identity), else the open one, else none. */
+/** The turn a new row joins: the one the provider names, else the open one, else none. Subagent
+ *  work on a thread of its own joins the open turn whatever turn it names. */
 export function providerTimelinePlacement(
   context: ProviderTimelineContext,
   state: ProviderTimelineState,

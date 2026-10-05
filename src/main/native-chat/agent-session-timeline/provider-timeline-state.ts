@@ -12,11 +12,7 @@ import {
 } from '../../../shared/agent-session-journal-types'
 import { requiresTerminalSettlement } from '../agent-session-journal/journal-terminal-settlement'
 import type { StructuredAgentSessionTransitionJournal } from '../agent-session-wire/structured-agent-session-transition'
-import {
-  providerTimelineTurnRowState,
-  type ProviderTimelineRowId,
-  type ProviderTimelineTurnRef
-} from './provider-timeline-rows'
+import type { ProviderTimelineRowId, ProviderTimelineTurnRef } from './provider-timeline-rows'
 
 /** Closed items remembered so a repeat close is dropped; past this the journal decides alone. */
 const MAX_CLOSED_ITEMS = 512
@@ -78,13 +74,6 @@ export class ProviderTimelineState {
     }
   }
 
-  /** Ends the open turn when another writer of the journal settled its row. */
-  reconcile(journal: StructuredAgentSessionTransitionJournal): void {
-    if (this.open && providerTimelineTurnRowState(journal, this.open.itemId) === 'settled') {
-      this.endTurn(this.open)
-    }
-  }
-
   /** Whether the journal shows the work under `key` settled by any writer (a client's answer).
    *  Work whose write is still queued stays open. */
   settledInJournal(key: string, journal: StructuredAgentSessionTransitionJournal): boolean {
@@ -135,8 +124,8 @@ export class ProviderTimelineState {
   endTurn(turn: ProviderTimelineTurnRef): void {
     if (this.open?.itemId === turn.itemId) {
       this.open = null
+      this.latest = turn
     }
-    this.latest = turn
     for (const [key, entry] of this.items) {
       if (entry.turnItemId === turn.itemId) {
         this.items.delete(key)

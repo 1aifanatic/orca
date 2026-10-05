@@ -31,7 +31,8 @@ import {
 } from './provider-timeline-rows'
 import {
   providerTimelineSettlement,
-  runningProviderTimelineTurns
+  runningProviderTimelineTurns,
+  type ProviderTimelineSettlementEnding
 } from './provider-timeline-settlement'
 import type {
   ProviderTimelineOpenTurn,
@@ -80,11 +81,14 @@ export function decideTurnOpen(
           settle: {
             what: 'turn-superseded',
             resolve: (journal) =>
-              providerTimelineSettlement(journal, { turnItemId: open.itemId }, [open], {
-                state: 'interrupted',
-                completedAt: event.at,
-                outcome: 'superseded'
-              })
+              providerTimelineSettlement(
+                journal,
+                { turnItemId: open.itemId },
+                {
+                  turns: [open],
+                  end: { state: 'interrupted', completedAt: event.at, outcome: 'superseded' }
+                }
+              )
           }
         }
       : {}),
@@ -114,26 +118,50 @@ export function decideTurnEnd(
   input: ProviderTimelineDecisionInput,
   event: Extract<ProviderTimelineDecidedEvent, { type: 'turn.end' }>
 ): ProviderTimelineDecision {
-  const { state } = input
+  const { state, journal } = input
   const turn =
     event.turn === undefined ? state.open : input.context.rows.turn(providerKey(event.turn))
   if (!turn) {
     return { dropped: 'no-turn' }
   }
-  // Only the open turn ends here; any other is already over (superseded, or ended by its writer).
-  if (state.open?.itemId !== turn.itemId) {
+  // A turn this run opened, or one the journal holds (open, superseded, or ended by another
+  // writer): its end settles whatever is left, and a settled row is not written again.
+  const known =
+    state.open?.itemId === turn.itemId ||
+    state.latest?.itemId === turn.itemId ||
+    !journal ||
+    providerTimelineTurnRowState(journal, turn.itemId) !== 'absent'
+  if (!known) {
     return { dropped: 'turn-unknown' }
   }
+  return endedTurn(turn, {
+    turns: [turn],
+    end: {
+      state: event.state,
+      completedAt: event.at,
+      ...(event.outcome !== undefined ? { outcome: event.outcome } : {}),
+      ...(event.durationMs !== undefined ? { durationMs: event.durationMs } : {})
+    }
+  })
+}
+
+/** The open turn another writer settled: its work ends as the provider's end would end it, and
+ *  its row stays as that writer left it. */
+export function decideTurnSettled(
+  event: Extract<ProviderTimelineDecidedEvent, { type: 'turn.settled' }>
+): ProviderTimelineDecision {
+  return endedTurn(event.turn)
+}
+
+/** The one end of a turn: the journal-derived settlement of its open work, then the state. */
+function endedTurn(
+  turn: ProviderTimelineTurnRef,
+  ending?: ProviderTimelineSettlementEnding
+): ProviderTimelineDecision {
   return {
     settle: {
-      what: 'turn-end',
-      resolve: (journal) =>
-        providerTimelineSettlement(journal, { turnItemId: turn.itemId }, [turn], {
-          state: event.state,
-          completedAt: event.at,
-          ...(event.outcome !== undefined ? { outcome: event.outcome } : {}),
-          ...(event.durationMs !== undefined ? { durationMs: event.durationMs } : {})
-        })
+      what: ending ? 'turn-end' : 'turn-settled',
+      resolve: (journal) => providerTimelineSettlement(journal, { turnItemId: turn.itemId }, ending)
     },
     commit: (next) => next.endTurn(turn)
   }
@@ -253,12 +281,10 @@ export function decideSessionEnd(
     settle: {
       what: 'session-end',
       resolve: (journal) =>
-        providerTimelineSettlement(
-          journal,
-          'session',
-          runningProviderTimelineTurns(journal),
-          event.verdict
-        )
+        providerTimelineSettlement(journal, 'session', {
+          turns: runningProviderTimelineTurns(journal),
+          end: event.verdict
+        })
     },
     commit: (next) => next.endSession()
   }

@@ -22,6 +22,7 @@ import {
   decideRequest,
   decideWithdrawal
 } from './provider-timeline-item-decisions'
+import type { ProviderTimelineTurnRef } from './provider-timeline-rows'
 import type { ProviderTimelineState } from './provider-timeline-state'
 import {
   decideContextUsage,
@@ -29,7 +30,8 @@ import {
   decideInput,
   decideSessionEnd,
   decideTurnEnd,
-  decideTurnOpen
+  decideTurnOpen,
+  decideTurnSettled
 } from './provider-timeline-turn-decisions'
 
 /** Why an event wrote nothing. Each is a grammar rule the adapter broke or a fact already held. */
@@ -45,10 +47,11 @@ export type ProviderTimelineDropRule =
   | 'stream-unknown'
   | 'stream-mismatch'
 
-export type ProviderTimelineDecidedEvent = Exclude<
-  ProviderTimelineEvent,
-  { type: 'text.delta' | 'text.close' | 'activity' }
->
+export type ProviderTimelineDecidedEvent =
+  | Exclude<ProviderTimelineEvent, { type: 'text.delta' | 'text.close' | 'activity' }>
+  /** The assembler's own: the journal shows the open turn settled by another writer (a person's
+   *  Stop), so it ends here exactly as the provider's `turn.end` would end it. */
+  | { type: 'turn.settled'; turn: ProviderTimelineTurnRef }
 
 type Journal = StructuredAgentSessionTransitionJournal
 
@@ -104,6 +107,8 @@ export function decideProviderTimelineEvent(
       return decideTurnOpen(input, event)
     case 'turn.end':
       return decideTurnEnd(input, event)
+    case 'turn.settled':
+      return decideTurnSettled(event)
     case 'item.open':
     case 'item.update':
     case 'item.close':

@@ -51,6 +51,9 @@ export function applyProviderTimelineTextDelta(
     stream = undefined
   }
   if (!stream) {
+    if (streams.stoppedFor(key, event.join)) {
+      return { admission: ADMITTED, dropped: 'turn-settled' }
+    }
     if ('id' in event.item && settledNamedItem(host, key)) {
       return { admission: ADMITTED, dropped: 'item-settled' }
     }
@@ -94,9 +97,13 @@ export function applyProviderTimelineTextClose(
   if (state.ended) {
     return { admission: ADMITTED, dropped: 'session-ended' }
   }
-  const stream = streams.get(streams.key(event.item, event.join))
+  const key = streams.key(event.item, event.join)
+  const stream = streams.get(key)
   if (!stream) {
-    return { admission: ADMITTED, dropped: 'stream-unknown' }
+    return {
+      admission: ADMITTED,
+      dropped: streams.stoppedFor(key, event.join) ? 'turn-settled' : 'stream-unknown'
+    }
   }
   const plan = new ProviderTimelinePlan()
   streams.planFlush(plan, stream)
