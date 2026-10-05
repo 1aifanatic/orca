@@ -6,14 +6,12 @@
 // trusted from memory, so a prompt a client answered a moment earlier stays answered, and a
 // second settlement finds nothing left to do.
 
-import type { AgentJournalRunningCallEnd } from '../../../shared/agent-journal-tool-call-lifecycle'
 import { parseAgentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
   type AgentJournalItemBody,
   type AgentJournalItemIdentity,
-  type AgentJournalTurnLifecycle,
-  type AgentJournalTurnScope
+  type AgentJournalTurnLifecycle
 } from '../../../shared/agent-session-journal-types'
 import {
   agentJournalTurnBody,
@@ -21,7 +19,10 @@ import {
 } from '../../../shared/agent-session-turn-record'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
 import { lostLiveWorkJournalBody } from '../agent-session-journal/journal-subagent-liveness'
-import { terminalAgentJournalBody } from '../agent-session-journal/journal-terminal-settlement'
+import {
+  runningCallEnd,
+  terminalAgentJournalBody
+} from '../agent-session-journal/journal-terminal-settlement'
 import type { StructuredAgentSessionTransitionJournal } from '../agent-session-wire/structured-agent-session-transition'
 import {
   agentJournalTurnRowReservedBytes,
@@ -87,7 +88,7 @@ export function providerTimelineSettlement(
       (turnScope.kind === 'turn' && turnScope.turnItemId === scope.turnItemId)
     const end =
       covered && ending && body.kind === 'tool-call' && body.state === 'running'
-        ? runningCallEnd(journal, turnScope, ending.end)
+        ? runningCallEnd(turnScope, (turnItemId) => journal.itemBody(turnItemId), ending.end.state)
         : null
     // Background tasks and subagents outlive turns; only the session's end leaves them past seeing.
     const settled = !covered
@@ -107,21 +108,6 @@ export function providerTimelineSettlement(
     }
   }
   return mutations
-}
-
-/** A call still running when its turn ends ends as that turn's row ends. A row another writer
- *  settled first (a person's Stop) stands, so its calls take that row's state, not the provider's
- *  later report; a row this settlement ends, and work outside any turn, take this settlement's end. */
-function runningCallEnd(
-  journal: StructuredAgentSessionTransitionJournal,
-  turnScope: AgentJournalTurnScope,
-  end: ProviderTimelineTurnEnd
-): AgentJournalRunningCallEnd {
-  const row =
-    turnScope.kind === 'turn'
-      ? readAgentJournalTurn(journal.itemBody(turnScope.turnItemId) ?? undefined)
-      : null
-  return row && row.state !== 'running' ? row.state : end.state
 }
 
 /** Every turn row the journal holds running, for the session's end. */

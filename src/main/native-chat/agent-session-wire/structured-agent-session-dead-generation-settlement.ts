@@ -15,6 +15,7 @@ import { partitionJournalLifecycleMutations } from '../agent-session-journal/jou
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
 import {
   requiresTerminalSettlement,
+  runningCallEnd,
   terminalAgentJournalBody
 } from '../agent-session-journal/journal-terminal-settlement'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -177,10 +178,18 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
         turnScope: exitedRootTurnScope(items, input.verdict)
       })
     }
+    const bodies = new Map(items.map((item) => [item.itemId, item.body]))
     for (const item of items) {
       const identity = parseAgentJournalItemKey(item.itemId)
       // Ended as its turn is: a proven death cuts a running call short.
-      const body = terminalAgentJournalBody(item.body, input.verdict.state)
+      const body = terminalAgentJournalBody(
+        item.body,
+        runningCallEnd(
+          item.turnScope ?? AGENT_JOURNAL_THREAD_SCOPE,
+          (turnItemId) => bodies.get(turnItemId),
+          input.verdict.state
+        )
+      )
       if (identity && body) {
         mutations.push({
           kind: 'item',
@@ -240,7 +249,16 @@ export async function settleStaleStructuredAgentSessionState(input: {
   const mutations = provenUnverifiedToolCallRevisions(items, input.deathEvidence, journal)
   for (const item of items) {
     const identity = parseAgentJournalItemKey(item.itemId)
-    const body = terminalAgentJournalBody(item.body, verdictFor(item).state)
+    // A turn already settled (a person's Stop) ends its calls as it ended; only a turn still running
+    // leaves them to the evidence.
+    const body = terminalAgentJournalBody(
+      item.body,
+      runningCallEnd(
+        item.turnScope ?? AGENT_JOURNAL_THREAD_SCOPE,
+        (turnItemId) => journal.itemBody(turnItemId),
+        verdictFor(item).state
+      )
+    )
     if (identity && body) {
       mutations.push({
         kind: 'item',

@@ -122,6 +122,53 @@ describe('provider timeline: how a call its turn or session ended reads', () => 
     expect(await lifecycle(rig)).toBe('failed')
   })
 
+  it.each([
+    [
+      'the session ends unverified',
+      async (rig: ProviderTimelineRig) => {
+        rig.assembler.apply({ type: 'session.ended', verdict: { state: 'unverifiable' } })
+      }
+    ],
+    [
+      'a restarted host settles it with no proof the child died',
+      async (rig: ProviderTimelineRig) => {
+        await rig.restart()
+      }
+    ]
+  ])(
+    'reads interrupted, as its turn does, when a person stopped its turn and %s',
+    async (_, settle) => {
+      const rig = await openTool()
+      await personStops(rig)
+      rig.assembler.apply({ type: 'activity', text: 'Thinking' })
+      expect(await toolBody(rig)).toMatchObject({ state: 'running' })
+      await settle(rig)
+      expect(await toolBody(rig)).toMatchObject({ state: 'failed', endedAs: 'interrupted' })
+      expect(await rig.turn('turn-1')).toMatchObject({
+        state: 'interrupted',
+        outcome: 'cancellation',
+        completedAt: 2_000
+      })
+    }
+  )
+
+  it('keeps a call that failed before a person stopped its turn failed across a restart', async () => {
+    const rig = await openTool()
+    rig.assembler.apply({ type: 'item.open', item: 'call-b', body: runningTool('read') })
+    rig.assembler.apply({
+      type: 'item.close',
+      item: 'call-a',
+      body: { ...runningTool('shell'), state: 'failed' },
+      join: { turn: 'turn-1' }
+    })
+    await personStops(rig)
+    await rig.restart()
+    const failed = await toolBody(rig, 'call-a')
+    expect(failed).toMatchObject({ state: 'failed' })
+    expect(failed).not.toHaveProperty('endedAs')
+    expect(await lifecycle(rig, 'call-b')).toBe('interrupted')
+  })
+
   it('keeps the provider cancelling a call, and a later turn end does not restate it', async () => {
     const rig = await openTool()
     rig.assembler.apply({
