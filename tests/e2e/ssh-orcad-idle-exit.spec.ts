@@ -109,7 +109,9 @@ test('a managed orcad stops after idling and starts again on the next connect', 
     app = second.app
     await waitForSessionReady(second.page)
     const connected = await reconnect(second.page, remote.targetId)
+    // A start inherited from the launch-time connect this reconnect dropped would report `serving`.
     expect(JSON.parse(connected)).toMatchObject({ kind: 'managed' })
+    expect(JSON.parse(connected)).not.toHaveProperty('serving')
     expect(runningOrcadPids(target)).toHaveLength(1)
     // The restarted server read the record, so a later crash cannot be mistaken for an idle stop.
     expect(readIdleStopRecord(target)).toBeNull()

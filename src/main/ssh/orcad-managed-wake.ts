@@ -73,11 +73,14 @@ export async function wakeStoppedManagedOrcad(
       onStarting()
       try {
         const readiness = await ensureOrcadSlotServing(options, identity)
-        interruptedWakes.delete(host)
+        if (interruptedWakes.get(host) === token) {
+          interruptedWakes.delete(host)
+        }
         return { outcome: 'started', readiness }
       } catch (error) {
-        // A lost connection keeps the fence on the host; anything else releases it.
-        if (!isUnconfirmedSshCommandTermination(error)) {
+        // A lost connection keeps the fence on the host; anything else releases it. A later wake
+        // on a new connection may already have replaced the token, which stays its own.
+        if (!isUnconfirmedSshCommandTermination(error) && interruptedWakes.get(host) === token) {
           interruptedWakes.delete(host)
         }
         throw error
