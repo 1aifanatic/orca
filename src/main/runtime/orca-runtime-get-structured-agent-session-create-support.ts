@@ -220,10 +220,10 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
       location,
       provider: input.agent,
       agent: input.agent,
-      accountHome: {
-        variable: input.agent === 'claude' ? 'CLAUDE_CONFIG_DIR' : 'CODEX_HOME',
-        path: adoption ? adoption.accountHomePath : selectedAccountHomePath
-      },
+      accountHome: agentSessionAccountHome(
+        input.agent,
+        adoption ? adoption.accountHomePath : selectedAccountHomePath
+      ),
       ...(options ? { options } : {}),
       ...(input.resumeFrom && adoption
         ? {

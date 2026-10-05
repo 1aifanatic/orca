@@ -39,7 +39,6 @@ import { outboxOutsideQueuedCards } from './structured-agent-session-queued-card
 import { structuredAgentSessionStartFailureFacts } from './structured-agent-session-delivery-notices'
 import { hostStatesTurnScopes } from '../../../../shared/native-chat-turn-membership'
 import { withNativeChatCutTurnNotices } from '../../../../shared/native-chat-cut-turn-notice'
-import { TUI_AGENT_DISPLAY_NAMES } from '../../../../shared/tui-agent-display-names'
 
 export type { StructuredPromptItem } from './structured-agent-session-message-projection'
 
@@ -170,7 +169,7 @@ export function useStructuredAgentSession(args: {
   const transcriptItems = useMemo(
     () =>
       withNativeChatCutTurnNotices(transportState.journalItems, {
-        agentName: TUI_AGENT_DISPLAY_NAMES[agent === 'codex' ? 'codex' : 'claude']
+        agentName: structuredAgentLabel(agent)
       }),
     [agent, transportState.journalItems]
   )

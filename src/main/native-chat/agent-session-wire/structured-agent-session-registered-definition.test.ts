@@ -1,6 +1,6 @@
-// The router's registrations are the only source of an agent's definition: routing, declared
-// capabilities and the option rules a chat at rest reads all follow what composition registered,
-// and a definition this build ships but did not register decides nothing.
+// The registry is the only source of an agent's definition: routing, declared capabilities and the
+// option rules a chat at rest reads all follow what composition registered, and a definition this
+// build ships but did not register decides nothing.
 
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
@@ -11,6 +11,7 @@ import { CODEX_STRUCTURED_AGENT } from '../../codex/codex-structured-agent-defin
 import type { StructuredAgentDefinition } from './structured-agent-definition'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { StructuredAgentSessionAdapterRouter } from './structured-agent-session-adapter-router'
+import { StructuredAgentRegistry } from './structured-agent-registry'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
 import {
   readStructuredAgentSessionOptions,
@@ -50,25 +51,23 @@ function fakeAdapter(): StructuredAgentSessionAdapter {
     dispatch: vi.fn(),
     cancelTurn: vi.fn(),
     answerPrompt: vi.fn(),
-    setOption: vi.fn()
+    setOption: vi.fn(),
+    compact: vi.fn(),
+    changeThreadGoal: vi.fn()
   }
 }
 
-function pick(
-  adapter: StructuredAgentSessionAdapter,
-  record: AgentSessionRecord | null,
-  key: string
-) {
+function pick(agents: StructuredAgentRegistry, record: AgentSessionRecord | null, key: string) {
   const persistOptions = vi.fn(async () => {})
   const result = recordStructuredAgentSessionOptionIntent(
-    { store: { getRecord: () => record }, adapter },
+    { store: { getRecord: () => record }, agents },
     { sessionId: RECORD.sessionId, persistOptions, publish: vi.fn() },
     { key, value: 'enabled' }
   )
   return { result, persistOptions }
 }
 
-function readAtRest(adapter: StructuredAgentSessionAdapter) {
+function readAtRest(agents: StructuredAgentRegistry) {
   const resting = {
     child: null,
     params: { provider: RECORD.provider },
@@ -76,7 +75,11 @@ function readAtRest(adapter: StructuredAgentSessionAdapter) {
   }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the resting read touches only these members.
   const context = {
-    deps: { adapter, store: { getRecord: () => RECORD } },
+    deps: {
+      adapter: new StructuredAgentSessionAdapterRouter(agents, async () => {}),
+      agents,
+      store: { getRecord: () => RECORD }
+    },
     serialize: (_sessionId: string, task: () => Promise<unknown>) => task(),
     openConversation: async () => resting,
     conversation: async () => resting
@@ -87,10 +90,8 @@ function readAtRest(adapter: StructuredAgentSessionAdapter) {
 describe('a registered definition', () => {
   it('routes, declares capabilities and rules options at rest for its agent', async () => {
     const adapter = fakeAdapter()
-    const router = new StructuredAgentSessionAdapterRouter(
-      [{ definition: NON_DEFAULT, adapter }],
-      async () => {}
-    )
+    const agents = new StructuredAgentRegistry([{ definition: NON_DEFAULT, adapter }])
+    const router = new StructuredAgentSessionAdapterRouter(agents, async () => {})
 
     await router.acquire({
       identity: {
@@ -104,19 +105,19 @@ describe('a registered definition', () => {
       spawnToken: 'spawn-1'
     })
     expect(adapter.acquire).toHaveBeenCalledOnce()
-    expect(router.capabilities(RECORD.sessionId, RECORD.provider)).toBe(NON_DEFAULT.capabilities)
+    expect(agents.capabilities(RECORD.provider)).toBe(NON_DEFAULT.capabilities)
 
-    const accepted = pick(router, RECORD, 'pilotOption')
+    const accepted = pick(agents, RECORD, 'pilotOption')
     await expect(accepted.result).resolves.toMatchObject({ ok: true })
     expect(accepted.persistOptions).toHaveBeenCalledWith({
       model: 'pilot-model',
       pilotOption: 'enabled'
     })
     // Claude's own module accepts `model`; the registration says otherwise and wins.
-    const refused = pick(router, RECORD, 'model')
+    const refused = pick(agents, RECORD, 'model')
     await expect(refused.result).resolves.toMatchObject({ ok: false })
 
-    const options = await readAtRest(router)
+    const options = await readAtRest(agents)
     expect(options.models.map((model) => model.id)).toEqual(['pilot-model'])
     // No pick for effort: the registered rules read the model's default.
     expect(options.current).toEqual({ model: 'pilot-model', effort: 'low' })
@@ -124,31 +125,32 @@ describe('a registered definition', () => {
   })
 
   it('leaves an agent this runtime did not register with no rules, whatever the build ships', async () => {
-    const router = new StructuredAgentSessionAdapterRouter(
-      [{ definition: CODEX_STRUCTURED_AGENT, adapter: fakeAdapter() }],
-      async () => {}
-    )
+    const agents = new StructuredAgentRegistry([
+      {
+        definition: CODEX_STRUCTURED_AGENT,
+        adapter: { ...fakeAdapter(), rewind: vi.fn(), recoverRewind: vi.fn() }
+      }
+    ])
 
-    expect(router.definition(RECORD.provider)).toBeNull()
-    expect(router.capabilities(RECORD.sessionId, RECORD.provider)).toBeUndefined()
-    const refused = pick(router, RECORD, 'model')
+    expect(agents.definition(RECORD.provider)).toBeNull()
+    expect(agents.capabilities(RECORD.provider)).toBeNull()
+    const refused = pick(agents, RECORD, 'model')
     await expect(refused.result).resolves.toMatchObject({
       ok: false,
       refusal: { code: 'agent_session_operation_invalid', details: { reason: 'optionRejected' } }
     })
     expect(refused.persistOptions).not.toHaveBeenCalled()
-    const options = await readAtRest(router)
+    const options = await readAtRest(agents)
     expect(options.models).toEqual([])
     expect(options.current).toEqual({ model: 'pilot-model' })
     expect(options.conversationCommands).toEqual(['clear'])
   })
 
   it('refuses a pick for a session with no record, as before', async () => {
-    const router = new StructuredAgentSessionAdapterRouter(
-      [{ definition: CLAUDE_STRUCTURED_AGENT, adapter: fakeAdapter() }],
-      async () => {}
-    )
-    const missing = pick(router, null, 'model')
+    const agents = new StructuredAgentRegistry([
+      { definition: CLAUDE_STRUCTURED_AGENT, adapter: fakeAdapter() }
+    ])
+    const missing = pick(agents, null, 'model')
     await expect(missing.result).resolves.toMatchObject({
       ok: false,
       refusal: { code: 'agent_session_operation_invalid' }

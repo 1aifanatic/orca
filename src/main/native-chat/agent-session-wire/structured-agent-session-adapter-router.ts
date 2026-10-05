@@ -6,44 +6,30 @@ import type {
   AgentSessionExecutionLocation
 } from '../../../shared/agent-session-record'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
-import type { StructuredAgentDefinition } from './structured-agent-definition'
-import type { AgentSessionCapabilities } from '../../../shared/agent-session-capabilities'
-
-/** One structured agent this runtime drives: its definition, and the adapter that runs it. */
-export type StructuredAgentRegistration = {
-  definition: StructuredAgentDefinition
-  adapter: StructuredAgentSessionAdapter
-}
+import type {
+  StructuredAgentRegistration,
+  StructuredAgentRegistry
+} from './structured-agent-registry'
 
 type SessionRoute = {
   registration: StructuredAgentRegistration
   state: 'live' | 'stopped'
 }
 
-/** Routes each session to the adapter registered for its agent. Adding an agent is one more
+/** Routes each session to the adapter its agent is registered with. Adding an agent is one more
  *  registration; nothing here names one. */
 export class StructuredAgentSessionAdapterRouter implements StructuredAgentSessionAdapter {
   private readonly routes = new Map<string, SessionRoute>()
-  private readonly registrations: ReadonlyMap<string, StructuredAgentRegistration>
   private allAdaptersClosed = false
   private closePromise: Promise<void> | null = null
 
   constructor(
-    registrations: readonly StructuredAgentRegistration[],
+    private readonly agents: StructuredAgentRegistry,
     private readonly closeAdapters: () => Promise<void>
-  ) {
-    const byAgent = new Map<string, StructuredAgentRegistration>()
-    for (const registration of registrations) {
-      if (byAgent.has(registration.definition.agent)) {
-        throw new Error(`structured agent ${registration.definition.agent} is registered twice`)
-      }
-      byAgent.set(registration.definition.agent, registration)
-    }
-    this.registrations = byAgent
-  }
+  ) {}
 
   supportsCreate = (location: AgentSessionExecutionLocation, agent: string): boolean => {
-    const adapter = this.registrations.get(agent)?.adapter
+    const adapter = this.agents.registration(agent)?.adapter
     return adapter ? (adapter.supportsLocation?.(location) ?? false) : false
   }
 
@@ -85,13 +71,13 @@ export class StructuredAgentSessionAdapterRouter implements StructuredAgentSessi
   dispatch: StructuredAgentSessionAdapter['dispatch'] = (input) =>
     this.owner(input.sessionId).dispatch(input)
 
-  /** The declared capability, narrowed by the adapter's answer for this session. */
+  /** The owning adapter's narrowing for this session; the host combines it with the declaration. */
   rewindSupport: NonNullable<StructuredAgentSessionAdapter['rewindSupport']> = (
     sessionId,
     agent
   ) => {
     const owner = this.capabilityOwner(sessionId, agent)
-    if (!owner?.definition.capabilities.rewind) {
+    if (!owner) {
       return { supported: false, reason: 'unsupported' }
     }
     return owner.adapter.rewindSupport?.(sessionId) ?? { supported: true }
@@ -124,12 +110,6 @@ export class StructuredAgentSessionAdapterRouter implements StructuredAgentSessi
     return change(input)
   }
 
-  capabilities = (sessionId: string, agent?: string): AgentSessionCapabilities | undefined =>
-    this.capabilityOwner(sessionId, agent)?.definition.capabilities
-
-  definition = (agent: string): StructuredAgentDefinition | null =>
-    this.registrations.get(agent)?.definition ?? null
-
   stopBackgroundTasks: NonNullable<StructuredAgentSessionAdapter['stopBackgroundTasks']> = (
     input
   ) => {
@@ -160,7 +140,8 @@ export class StructuredAgentSessionAdapterRouter implements StructuredAgentSessi
     this.liveOwnerOrNull(sessionId)?.readCommands?.(sessionId)
 
   atRestCommands: StructuredAgentSessionAtRestCommands = {
-    read: (record) => this.registrations.get(record.provider)?.adapter.atRestCommands?.read(record),
+    read: (record) =>
+      this.agents.registration(record.provider)?.adapter.atRestCommands?.read(record),
     onChange: (listener) => {
       const stops = this.adapters().flatMap((adapter) =>
         adapter.atRestCommands ? [adapter.atRestCommands.onChange(listener)] : []
@@ -280,7 +261,7 @@ export class StructuredAgentSessionAdapterRouter implements StructuredAgentSessi
     if (route?.state === 'live') {
       return route.registration
     }
-    return agent ? (this.registrations.get(agent) ?? null) : null
+    return agent ? this.agents.registration(agent) : null
   }
 
   private liveOwnerOrNull(sessionId: string): StructuredAgentSessionAdapter | null {
@@ -289,7 +270,7 @@ export class StructuredAgentSessionAdapterRouter implements StructuredAgentSessi
   }
 
   private requireAgent(identity: AgentSessionJournalIdentity): StructuredAgentRegistration {
-    const registration = this.registrations.get(identity.agent)
+    const registration = this.agents.registration(identity.agent)
     if (!registration) {
       throw new Error(`structured sessions do not support ${identity.agent}`)
     }
@@ -297,6 +278,6 @@ export class StructuredAgentSessionAdapterRouter implements StructuredAgentSessi
   }
 
   private adapters(): StructuredAgentSessionAdapter[] {
-    return [...this.registrations.values()].map((registration) => registration.adapter)
+    return this.agents.registrations().map((registration) => registration.adapter)
   }
 }

@@ -21,6 +21,7 @@ import type { StructuredAgentSessionCaller } from './structured-agent-session-ho
 import { admitAndRunAgentSessionMutation } from './structured-agent-session-mutation-admission'
 import { conversationCommandBlocked } from './structured-conversation-command-admission'
 import { rewindRefusal } from './structured-rewind-refusal'
+import { structuredAgentRewindSupport } from './structured-agent-registry'
 import { persistRewindRecord, recoverStructuredRewind } from './structured-rewind-recovery'
 import { mergeRetainedHostLifecycleRows } from './structured-rewind-retained-host-rows'
 
@@ -36,6 +37,7 @@ export async function rewindStructuredAgentSession(
     const result = await admitAndRunAgentSessionMutation<AgentSessionRewindResult>({
       store,
       adapter: context.deps.adapter,
+      agents: context.deps.agents,
       logger: context.deps.logger,
       callerKey: caller.callerKey,
       envelope: params.envelope,
@@ -64,9 +66,14 @@ export async function rewindStructuredAgentSession(
         run: async (ctx) => {
           await attachContext.runtimeState.flushEventSink(sessionId)
           const record = store.getRecord(sessionId)!
-          const support = ctx.adapter.rewindSupport?.(sessionId)
-          if (!support?.supported) {
-            return rewindRefusal(support?.reason ?? 'unsupported')
+          const support = structuredAgentRewindSupport(
+            ctx.agents,
+            ctx.adapter,
+            sessionId,
+            ctx.agent
+          )
+          if (!support.supported) {
+            return rewindRefusal(support.reason)
           }
           if (
             record.rewind?.phase === 'prepared' ||
