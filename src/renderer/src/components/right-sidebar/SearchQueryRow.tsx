@@ -37,12 +37,12 @@ export function SearchQueryRow({
     <div
       className="flex h-7 items-center gap-1 rounded-sm border border-border bg-input/50 px-1.5 focus-within:border-ring"
       data-ignore-file-explorer-keys="true"
-      data-keyboard-surface="text-field"
     >
       <SearchIcon className="size-3.5 shrink-0 text-muted-foreground" />
       <input
         ref={inputRef}
         type="text"
+        data-keyboard-surface="search-field"
         className="min-w-0 flex-1 bg-transparent py-1 text-xs text-foreground outline-none placeholder:text-muted-foreground/50"
         aria-label={translate(
           'auto.components.right.sidebar.SearchQueryRow.queryLabel',

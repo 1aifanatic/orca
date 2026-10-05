@@ -1,15 +1,9 @@
-// Text-entry focus context: which chords a declared text surface hands to the app.
 import { describe, expect, it } from 'vitest'
 import {
-  isChordReservedForTextEntry,
+  isChordReservedForSearchField,
   keybindingMatchesAction,
-  type KeybindingInput,
-  type TextEntryClaim
+  type KeybindingInput
 } from './keybindings'
-
-const SINGLE_LINE: TextEntryClaim = { verticalCaret: false, richTextFormatting: false }
-const MULTILINE: TextEntryClaim = { verticalCaret: true, richTextFormatting: false }
-const RICH_TEXT: TextEntryClaim = { verticalCaret: true, richTextFormatting: true }
 
 function chord(key: string, code: string, extra: Partial<KeybindingInput> = {}): KeybindingInput {
   return { key, code, meta: false, control: false, alt: false, shift: false, ...extra }
@@ -21,7 +15,7 @@ const modShiftBackspace = (mac: boolean): KeybindingInput =>
   chord('Backspace', 'Backspace', { shift: true, meta: mac, control: !mac })
 const modB = (mac: boolean): KeybindingInput => chord('b', 'KeyB', { meta: mac, control: !mac })
 
-describe('text-entry keybinding context', () => {
+describe('search field keybinding context', () => {
   const platformCases: readonly (readonly [NodeJS.Platform, boolean])[] = [
     ['darwin', true],
     ['linux', false],
@@ -29,66 +23,42 @@ describe('text-entry keybinding context', () => {
   ]
 
   it.each(platformCases)(
-    'lets a single-line field hand Mod+Shift+ArrowUp to worktree navigation on %s',
+    'lets a search field hand Mod+Shift+ArrowUp to worktree navigation on %s',
     (platform, mac) => {
       const input = modShiftArrowUp(mac)
 
       expect(keybindingMatchesAction('worktree.navigateUp', input, platform)).toBe(true)
       expect(
         keybindingMatchesAction('worktree.navigateUp', input, platform, undefined, {
-          context: 'text-entry',
-          textEntryClaim: SINGLE_LINE
+          context: 'search-field'
         })
       ).toBe(true)
-      expect(
-        keybindingMatchesAction('worktree.navigateUp', input, platform, undefined, {
-          context: 'text-entry',
-          textEntryClaim: MULTILINE
-        })
-      ).toBe(false)
     }
   )
-
-  it('assumes the strictest claim when the caller names no surface', () => {
-    expect(
-      keybindingMatchesAction('worktree.navigateUp', modShiftArrowUp(true), 'darwin', undefined, {
-        context: 'text-entry'
-      })
-    ).toBe(false)
-  })
 
   it('keeps deletion chords with the text surface', () => {
     expect(
       keybindingMatchesAction('workspace.delete', modShiftBackspace(true), 'darwin', undefined, {
-        context: 'text-entry',
-        textEntryClaim: SINGLE_LINE
+        context: 'search-field'
       })
     ).toBe(false)
   })
 
-  it('keeps Mod+B with a rich-text editor but not with a plain field', () => {
+  it('lets Mod+B toggle the sidebar in a search field', () => {
     expect(
       keybindingMatchesAction('sidebar.left.toggle', modB(true), 'darwin', undefined, {
-        context: 'text-entry',
-        textEntryClaim: RICH_TEXT
-      })
-    ).toBe(false)
-    expect(
-      keybindingMatchesAction('sidebar.left.toggle', modB(true), 'darwin', undefined, {
-        context: 'text-entry',
-        textEntryClaim: SINGLE_LINE
+        context: 'search-field'
       })
     ).toBe(true)
   })
 
-  it('never hands a non-global scope to a text surface', () => {
+  it('never hands a non-global scope to a search field', () => {
     const modW = chord('w', 'KeyW', { meta: true })
 
     expect(keybindingMatchesAction('tab.close', modW, 'darwin')).toBe(true)
     expect(
       keybindingMatchesAction('tab.close', modW, 'darwin', undefined, {
-        context: 'text-entry',
-        textEntryClaim: SINGLE_LINE
+        context: 'search-field'
       })
     ).toBe(false)
   })
@@ -99,8 +69,7 @@ describe('text-entry keybinding context', () => {
     expect(keybindingMatchesAction('sidebar.left.toggle', input, platform, bindings)).toBe(true)
     expect(
       keybindingMatchesAction('sidebar.left.toggle', input, platform, bindings, {
-        context: 'text-entry',
-        textEntryClaim: SINGLE_LINE
+        context: 'search-field'
       })
     ).toBe(false)
   })
@@ -121,51 +90,34 @@ describe('text-entry keybinding context', () => {
   })
 })
 
-describe('isChordReservedForTextEntry', () => {
+describe('isChordReservedForSearchField', () => {
   it.each(['ArrowLeft', 'ArrowRight', 'Home', 'End', 'Backspace', 'Delete'])(
     'reserves %s for every text surface',
     (key) => {
-      expect(isChordReservedForTextEntry(chord(key, key), SINGLE_LINE, 'darwin')).toBe(true)
+      expect(isChordReservedForSearchField(chord(key, key), 'darwin')).toBe(true)
     }
   )
 
   it.each(['a', 'c', 'v', 'x', 'z', 'y'])('reserves the Mod+%s text command', (key) => {
     expect(
-      isChordReservedForTextEntry(
-        chord(key, `Key${key.toUpperCase()}`, { meta: true }),
-        SINGLE_LINE,
-        'darwin'
-      )
+      isChordReservedForSearchField(chord(key, `Key${key.toUpperCase()}`, { meta: true }), 'darwin')
     ).toBe(true)
   })
 
-  it('reserves redo but not a Shift-modified formatting chord', () => {
+  it('reserves redo with Shift', () => {
     expect(
-      isChordReservedForTextEntry(
-        chord('z', 'KeyZ', { meta: true, shift: true }),
-        SINGLE_LINE,
-        'darwin'
-      )
+      isChordReservedForSearchField(chord('z', 'KeyZ', { meta: true, shift: true }), 'darwin')
     ).toBe(true)
-    expect(
-      isChordReservedForTextEntry(
-        chord('b', 'KeyB', { meta: true, shift: true }),
-        RICH_TEXT,
-        'darwin'
-      )
-    ).toBe(false)
   })
 
   it('reads the primary modifier per platform', () => {
     const ctrlC = chord('c', 'KeyC', { control: true })
 
     // Ctrl is the primary modifier off macOS, so Ctrl+C is the surface's copy chord there.
-    expect(isChordReservedForTextEntry(ctrlC, SINGLE_LINE, 'linux')).toBe(true)
+    expect(isChordReservedForSearchField(ctrlC, 'linux')).toBe(true)
     // On macOS copy is Cmd+C, and AppKit binds no ^c, so Ctrl+C is not a text gesture.
-    expect(isChordReservedForTextEntry(ctrlC, SINGLE_LINE, 'darwin')).toBe(false)
-    expect(
-      isChordReservedForTextEntry(chord('c', 'KeyC', { meta: true }), SINGLE_LINE, 'darwin')
-    ).toBe(true)
+    expect(isChordReservedForSearchField(ctrlC, 'darwin')).toBe(false)
+    expect(isChordReservedForSearchField(chord('c', 'KeyC', { meta: true }), 'darwin')).toBe(true)
   })
 
   // AppKit's StandardKeyBinding.dict binds these in every macOS text view, so they are
@@ -175,43 +127,40 @@ describe('isChordReservedForTextEntry', () => {
     (letter) => {
       const ctrlLetter = chord(letter, `Key${letter.toUpperCase()}`, { control: true })
 
-      expect(isChordReservedForTextEntry(ctrlLetter, SINGLE_LINE, 'darwin')).toBe(true)
+      expect(isChordReservedForSearchField(ctrlLetter, 'darwin')).toBe(true)
     }
   )
 
   it('reserves the Shift variant that extends the selection', () => {
     const ctrlShiftE = chord('E', 'KeyE', { control: true, shift: true })
 
-    expect(isChordReservedForTextEntry(ctrlShiftE, SINGLE_LINE, 'darwin')).toBe(true)
+    expect(isChordReservedForSearchField(ctrlShiftE, 'darwin')).toBe(true)
   })
 
-  it.each(['n', 'p', 'v'])(
-    'reserves macOS Ctrl+%s only where the caret moves vertically',
-    (letter) => {
-      const ctrlLetter = chord(letter, `Key${letter.toUpperCase()}`, { control: true })
-
-      expect(isChordReservedForTextEntry(ctrlLetter, MULTILINE, 'darwin')).toBe(true)
-      expect(isChordReservedForTextEntry(ctrlLetter, SINGLE_LINE, 'darwin')).toBe(false)
-    }
-  )
+  it.each(['n', 'p', 'v'])('keeps macOS Ctrl+%s available in a single-line field', (letter) => {
+    expect(
+      isChordReservedForSearchField(
+        chord(letter, `Key${letter.toUpperCase()}`, { control: true }),
+        'darwin'
+      )
+    ).toBe(false)
+  })
 
   it('leaves macOS Ctrl+L to the app: it recenters the view, not the caret', () => {
-    expect(
-      isChordReservedForTextEntry(chord('l', 'KeyL', { control: true }), RICH_TEXT, 'darwin')
-    ).toBe(false)
+    expect(isChordReservedForSearchField(chord('l', 'KeyL', { control: true }), 'darwin')).toBe(
+      false
+    )
   })
 
   it('keeps the macOS Ctrl rules off Windows and Linux, where Ctrl is the primary modifier', () => {
     const ctrlE = chord('e', 'KeyE', { control: true })
 
     // Mod+E is Orca's dictation chord there; only macOS binds Ctrl+E to text editing.
-    expect(isChordReservedForTextEntry(ctrlE, SINGLE_LINE, 'linux')).toBe(false)
-    expect(isChordReservedForTextEntry(ctrlE, SINGLE_LINE, 'win32')).toBe(false)
-    expect(isChordReservedForTextEntry(ctrlE, SINGLE_LINE, 'darwin')).toBe(true)
+    expect(isChordReservedForSearchField(ctrlE, 'linux')).toBe(false)
+    expect(isChordReservedForSearchField(ctrlE, 'win32')).toBe(false)
+    expect(isChordReservedForSearchField(ctrlE, 'darwin')).toBe(true)
     // Ctrl+A stays reserved off macOS through the primary-modifier rule, not this one.
-    expect(
-      isChordReservedForTextEntry(chord('a', 'KeyA', { control: true }), SINGLE_LINE, 'linux')
-    ).toBe(true)
+    expect(isChordReservedForSearchField(chord('a', 'KeyA', { control: true }), 'linux')).toBe(true)
   })
 
   // AppKit's only Option+Ctrl text chords: ~^b / ~^f move by word.
@@ -227,15 +176,15 @@ describe('isChordReservedForTextEntry', () => {
       shift: true
     })
 
-    expect(isChordReservedForTextEntry(wordMove, SINGLE_LINE, 'darwin')).toBe(true)
-    expect(isChordReservedForTextEntry(extendSelection, SINGLE_LINE, 'darwin')).toBe(true)
+    expect(isChordReservedForSearchField(wordMove, 'darwin')).toBe(true)
+    expect(isChordReservedForSearchField(extendSelection, 'darwin')).toBe(true)
   })
 
   it('keeps Option out of the rest of the macOS Ctrl family', () => {
     // AppKit binds no ~^a, so the chord stays available to the app.
     const ctrlOptionA = chord('\u00e5', 'KeyA', { control: true, alt: true })
 
-    expect(isChordReservedForTextEntry(ctrlOptionA, RICH_TEXT, 'darwin')).toBe(false)
+    expect(isChordReservedForSearchField(ctrlOptionA, 'darwin')).toBe(false)
   })
 
   it('resolves a non-Latin layout through the physical code', () => {
@@ -243,7 +192,7 @@ describe('isChordReservedForTextEntry', () => {
     // the surface's, and the matcher resolves the binding the same way.
     const cyrillicCtrlC = chord('\u0441', 'KeyC', { control: true })
 
-    expect(isChordReservedForTextEntry(cyrillicCtrlC, SINGLE_LINE, 'linux')).toBe(true)
+    expect(isChordReservedForSearchField(cyrillicCtrlC, 'linux')).toBe(true)
   })
 
   it('reserves the legacy Insert clipboard chords off macOS only', () => {
@@ -252,20 +201,20 @@ describe('isChordReservedForTextEntry', () => {
     const bareInsert = chord('Insert', 'Insert')
 
     for (const platform of ['linux', 'win32'] as const) {
-      expect(isChordReservedForTextEntry(ctrlInsert, SINGLE_LINE, platform)).toBe(true)
-      expect(isChordReservedForTextEntry(shiftInsert, SINGLE_LINE, platform)).toBe(true)
+      expect(isChordReservedForSearchField(ctrlInsert, platform)).toBe(true)
+      expect(isChordReservedForSearchField(shiftInsert, platform)).toBe(true)
       // Nothing binds Insert alone in a text field, so it stays available to the app.
-      expect(isChordReservedForTextEntry(bareInsert, SINGLE_LINE, platform)).toBe(false)
+      expect(isChordReservedForSearchField(bareInsert, platform)).toBe(false)
     }
     // macOS binds no Insert key at all.
-    expect(isChordReservedForTextEntry(shiftInsert, RICH_TEXT, 'darwin')).toBe(false)
+    expect(isChordReservedForSearchField(shiftInsert, 'darwin')).toBe(false)
   })
 
   it('leaves an Insert chord nobody binds to the app', () => {
     for (const extra of [{ shift: true }, { alt: true }, { meta: true }]) {
       const overloaded = chord('Insert', 'Insert', { control: true, ...extra })
 
-      expect(isChordReservedForTextEntry(overloaded, SINGLE_LINE, 'win32')).toBe(false)
+      expect(isChordReservedForSearchField(overloaded, 'win32')).toBe(false)
     }
   })
 
@@ -273,15 +222,11 @@ describe('isChordReservedForTextEntry', () => {
     // AppKit's ~<backspace> and ~<delete> are word deletes; they need no letter rule
     // because Backspace and Delete are reserved under any modifier.
     for (const named of ['Backspace', 'Delete']) {
-      expect(
-        isChordReservedForTextEntry(chord(named, named, { alt: true }), SINGLE_LINE, 'darwin')
-      ).toBe(true)
+      expect(isChordReservedForSearchField(chord(named, named, { alt: true }), 'darwin')).toBe(true)
     }
   })
 
   it('ignores a synthetic input that carries no key', () => {
-    expect(isChordReservedForTextEntry({ doubleTapModifier: 'Cmd' }, RICH_TEXT, 'darwin')).toBe(
-      false
-    )
+    expect(isChordReservedForSearchField({ doubleTapModifier: 'Cmd' }, 'darwin')).toBe(false)
   })
 })

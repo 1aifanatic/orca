@@ -111,10 +111,10 @@ afterEach(() => {
   focusHost.remove()
 })
 
-describe('worktree cycling while a text surface holds focus', () => {
-  it('cycles from a one-line field that declares it owns no vertical caret', () => {
+describe('worktree cycling while a search field holds focus', () => {
+  it('cycles from a declared search input', () => {
     const input = mountFocusTarget(
-      '<div data-keyboard-surface="text-field"><input type="text" /></div>',
+      '<input type="text" data-keyboard-surface="search-field" />',
       'input'
     )
 
@@ -134,9 +134,9 @@ describe('worktree cycling while a text surface holds focus', () => {
     expect(activateAndRevealWorktree).not.toHaveBeenCalled()
   })
 
-  it('leaves a multiline control suppressed even inside a declared region', () => {
+  it('leaves a multiline control suppressed even with a search declaration', () => {
     const textarea = mountFocusTarget(
-      '<div data-keyboard-surface="text-field"><textarea></textarea></div>',
+      '<div data-keyboard-surface="search-field"><textarea data-keyboard-surface="search-field"></textarea></div>',
       'textarea'
     )
 

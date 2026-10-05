@@ -19,7 +19,7 @@ export function SearchFilters({
   excludeInputRef
 }: SearchFiltersProps): React.JSX.Element {
   return (
-    <div className="flex flex-col gap-1" data-keyboard-surface="text-field">
+    <div className="flex flex-col gap-1">
       <label className="flex flex-col gap-0.5">
         <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
           {translate('auto.components.right.sidebar.SearchFilters.a69ee1bd0e', 'Files To Include')}
@@ -27,6 +27,7 @@ export function SearchFilters({
         <input
           ref={includeInputRef}
           type="text"
+          data-keyboard-surface="search-field"
           className="bg-input/50 border border-border rounded-sm px-2 py-1 text-xs outline-none focus:border-ring text-foreground placeholder:text-muted-foreground/50"
           placeholder={translate(
             'auto.components.right.sidebar.SearchFilters.8a77efcbd1',
@@ -44,6 +45,7 @@ export function SearchFilters({
         <input
           ref={excludeInputRef}
           type="text"
+          data-keyboard-surface="search-field"
           className="bg-input/50 border border-border rounded-sm px-2 py-1 text-xs outline-none focus:border-ring text-foreground placeholder:text-muted-foreground/50"
           placeholder={translate(
             'auto.components.right.sidebar.SearchFilters.01e4671ccf',

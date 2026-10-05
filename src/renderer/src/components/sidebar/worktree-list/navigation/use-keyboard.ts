@@ -11,11 +11,7 @@ import {
   keybindingMatchesAction,
   type KeybindingMatchOptions
 } from '../../../../../../shared/keybindings'
-import {
-  keybindingContextForSurface,
-  resolveKeyboardShortcutSurface,
-  textEntryClaimForSurface
-} from '@/lib/keyboard-shortcut-surface'
+import { resolveKeyboardShortcutSurface } from '@/lib/keyboard-shortcut-surface'
 import type { HostSectionRow } from '../../host-section-rows'
 import type { PinnedWorktreeDisplayPolicy } from '../grouping/row-types'
 import type { RenderRow } from '../listing/render-row'
@@ -106,12 +102,11 @@ export function useWorktreeListKeyboardNavigation(args: {
         return
       }
       const surface = resolveKeyboardShortcutSurface(e.target)
-      if (surface.kind === 'blocked') {
+      if (surface === 'blocked') {
         return
       }
       const options: KeybindingMatchOptions = {
-        context: keybindingContextForSurface(surface),
-        textEntryClaim: textEntryClaimForSurface(surface)
+        context: surface
       }
 
       const platform = getShortcutPlatform()

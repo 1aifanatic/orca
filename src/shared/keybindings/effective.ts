@@ -6,7 +6,7 @@ import type {
   KeybindingOverrides,
   TerminalShortcutPolicy
 } from './types'
-import { isChordReservedForTextEntry, STRICTEST_TEXT_ENTRY_CLAIM } from './text-entry-reservation'
+import { isChordReservedForSearchField } from './search-field-key-reservation'
 import { DEFINITIONS_BY_ID, getKeybindingPlatform, isDigitIndexActionId } from './definitions'
 import {
   normalizeKeybindingWithOptions,
@@ -98,31 +98,17 @@ export function isKeybindingPotentialTerminalConflict(definition: KeybindingDefi
   return !isKeybindingAllowedInTerminal(definition)
 }
 
-// Tab shortcuts already have a separate listener; only global actions pass here.
-function keybindingIsActiveInTextEntry(
-  definition: KeybindingDefinition,
-  options: KeybindingMatchOptions,
-  input: KeybindingInput | undefined,
-  platform: NodeJS.Platform | undefined
-): boolean {
-  if (definition.scope !== 'global' || !input || !platform) {
-    return false
-  }
-  return !isChordReservedForTextEntry(
-    input,
-    options.textEntryClaim ?? STRICTEST_TEXT_ENTRY_CLAIM,
-    platform
-  )
-}
-
 export function keybindingIsActiveInContext(
   definition: KeybindingDefinition,
   options: KeybindingMatchOptions = {},
   input?: KeybindingInput,
   platform?: NodeJS.Platform
 ): boolean {
-  if (options.context === 'text-entry') {
-    return keybindingIsActiveInTextEntry(definition, options, input, platform)
+  if (options.context === 'search-field') {
+    return (
+      definition.scope === 'global' &&
+      Boolean(input && platform && !isChordReservedForSearchField(input, platform))
+    )
   }
   if (options.context !== 'terminal') {
     return true

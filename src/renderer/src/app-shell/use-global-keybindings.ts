@@ -30,11 +30,7 @@ import {
   toModifierDoubleTapEvent
 } from '../../../shared/modifier-double-tap-detector'
 import { shortcutPlatform } from './app-window-chrome'
-import {
-  keybindingContextForSurface,
-  resolveKeyboardShortcutSurface,
-  textEntryClaimForSurface
-} from '@/lib/keyboard-shortcut-surface'
+import { resolveKeyboardShortcutSurface } from '@/lib/keyboard-shortcut-surface'
 import {
   createAppCommandHandlers,
   useAppShortcutActions,
@@ -119,16 +115,14 @@ export function useGlobalKeybindings(args: {
         return
       }
       const surface = resolveKeyboardShortcutSurface(input.target)
-      const context = keybindingContextForSurface(surface)
-      const textEntryClaim = textEntryClaimForSurface(surface)
+      const context = surface === 'blocked' ? 'app' : surface
 
       // Note: some shortcuts are also intercepted in createMainWindow.ts before-input-event (for browser-guest focus); the renderer keeps handlers for local focus.
 
       const matchShortcut = (actionId: KeybindingActionId): boolean =>
         keybindingMatchesAction(actionId, input, shortcutPlatform, keybindings, {
           context,
-          terminalShortcutPolicy,
-          textEntryClaim
+          terminalShortcutPolicy
         })
       const notifyTerminalCapture = (actionId: KeybindingActionId): void => {
         if (context !== 'terminal' || (terminalShortcutPolicy ?? 'orca-first') !== 'orca-first') {
@@ -194,7 +188,7 @@ export function useGlobalKeybindings(args: {
       }
 
       // Undeclared editors retain shortcut ownership (docs/markdown-cmd-b-bold-design.md).
-      if (surface.kind === 'blocked') {
+      if (surface === 'blocked') {
         return
       }
 
@@ -207,8 +201,7 @@ export function useGlobalKeybindings(args: {
       if (isFloatingWorkspacePanelFocused()) {
         const floatingMatchOptions: KeybindingMatchOptions = {
           context,
-          terminalShortcutPolicy,
-          textEntryClaim
+          terminalShortcutPolicy
         }
         if (
           matchFloatingWorkspacePanelChord(

@@ -10,21 +10,15 @@ export type KeybindingScope =
   | 'composer'
   | 'settings'
 
-export type KeybindingContext = 'app' | 'terminal' | 'browser' | 'text-entry'
+export type KeybindingContext = 'app' | 'terminal' | 'browser' | 'search-field'
 
 export type KeybindingPlatform = 'darwin' | 'linux' | 'win32'
 
 export type TerminalShortcutPolicy = 'orca-first' | 'terminal-first'
 
-export type TextEntryClaim = {
-  verticalCaret: boolean
-  richTextFormatting: boolean
-}
-
 export type KeybindingMatchOptions = {
   context?: KeybindingContext
   terminalShortcutPolicy?: TerminalShortcutPolicy
-  textEntryClaim?: TextEntryClaim
 }
 
 export type AgentTabActionId = `tab.newAgent.${TuiAgent}`
