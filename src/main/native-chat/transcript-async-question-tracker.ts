@@ -1,9 +1,10 @@
 // Per-subscription host derivation of pending Codex async questions for one watched
-// rollout. Reconstruction runs backward from the snapshot's consumed-byte boundary;
-// lines appended past that boundary meanwhile are buffered and folded after it, in
-// file order, so a live subscriber and a fresh one derive the same set from the same
-// file. Until reconstruction finishes the published state is `pending`, never partial.
-// The fold lives only in memory and is rebuilt from the file on subscribe and replace.
+// rollout. Reconstruction runs backward from the snapshot's consumed-byte boundary, or
+// only over the bytes written since a cached fold of the same file; lines appended past
+// that boundary meanwhile are buffered and folded after it, in file order, so a live
+// subscriber and a fresh one derive the same set from the same file. Until reconstruction
+// finishes the published state is `pending`, never partial; after a failed read it is
+// `absent` (as with an old host) until a retry the watcher drives succeeds.
 
 import {
   createNativeChatAsyncQuestionFoldState,
@@ -20,14 +21,24 @@ import {
   codexOversizedRolloutRecordFacts,
   codexRolloutAsyncQuestionFacts
 } from './codex-rollout-async-question-facts'
-import type { OversizedTranscriptRecordObserver } from './transcript-incremental-reader'
+import { boundaryFingerprint, type TranscriptFileVersion } from './transcript-file-version'
+import {
+  recallTranscriptAsyncQuestionFold,
+  rememberTranscriptAsyncQuestionFold,
+  type RecalledTranscriptAsyncQuestionFold,
+  type TranscriptAsyncQuestionFoldMark
+} from './transcript-async-question-fold-cache'
+import type {
+  IncrementalTranscriptState,
+  OversizedTranscriptRecordObserver
+} from './transcript-incremental-reader'
 import type { SubscribeNativeChatTranscriptArgs } from './transcript-watch-contract'
 import type { NativeChatLineDecoder } from './transcript-tail-reader'
 import { scanCodexAsyncQuestionFactsBefore } from './transcript-async-question-boundary-scan'
 
 export type TranscriptAsyncQuestionTracker = {
   /** Reconstruct the set before `endOffset`; lines observed afterwards start at it. */
-  begin: (endOffset: number) => void
+  begin: (endOffset: number, version: TranscriptFileVersion) => void
   /** Restart as a forward read from the start of the file (complete by construction). */
   beginFromStart: () => void
   /** Feed one line read at or past the boundary, in file order. */
@@ -39,8 +50,10 @@ export type TranscriptAsyncQuestionTracker = {
   /** The field if it changed since the last call to this or `markPublished`, else undefined. */
   takeChanged: () => NativeChatAsyncQuestionsField | undefined
   markPublished: (field: NativeChatAsyncQuestionsField) => void
-  /** Retry a reconstruction a failed read left unfinished. */
-  retryIfFailed: () => void
+  /** A drain consumed every line before `mark.offset`: share the fold, retry a failed read. */
+  afterDrain: (mark: TranscriptAsyncQuestionFoldMark | null) => void
+  /** Whether a failed reconstruction is due a retry (the watcher then drains). */
+  wantsRetry: () => boolean
   dispose: () => void
 }
 
@@ -49,105 +62,152 @@ const RETRY_MAX_MS = 30_000
 
 export function createTranscriptAsyncQuestionTracker(args: {
   filePath: string
-  /** Called when a reconstruction finishes outside a drain. */
+  /** Called when a reconstruction settles outside a drain. */
   onSettled: () => void
   scan?: typeof scanCodexAsyncQuestionFactsBefore
+  fingerprint?: typeof boundaryFingerprint
 }): TranscriptAsyncQuestionTracker {
+  const { filePath } = args
   const scan = args.scan ?? scanCodexAsyncQuestionFactsBefore
+  const fingerprint = args.fingerprint ?? boundaryFingerprint
   let fold: NativeChatAsyncQuestionFoldState = createNativeChatAsyncQuestionFoldState()
-  let reconstructing = false
+  // Not complete: facts observed past the boundary wait in `buffered`.
+  let complete = true
+  let running = false
+  let failed: { endOffset: number; version: TranscriptFileVersion } | null = null
   let buffered: NativeChatAsyncQuestionFact[] = []
   let generation = 0
-  let failedBoundary: number | null = null
   let disposed = false
   let controller = new AbortController()
   let published: NativeChatAsyncQuestionsField | undefined
-  let retryTimer: ReturnType<typeof setTimeout> | null = null
   let consecutiveFailures = 0
+  let retryNotBefore = 0
+  // The last drain's mark while no line has been observed since (the fold ends exactly there).
+  let drainMark: TranscriptAsyncQuestionFoldMark | null = null
 
-  function clearRetryTimer(): void {
-    if (retryTimer) {
-      clearTimeout(retryTimer)
-      retryTimer = null
+  function currentField(): NativeChatAsyncQuestionsField {
+    if (failed) {
+      return { state: 'absent' }
+    }
+    return complete
+      ? publishNativeChatAsyncQuestions(nativeChatAsyncQuestionsFromFold(fold))
+      : { state: 'pending' }
+  }
+
+  function remember(): void {
+    if (complete && drainMark) {
+      rememberTranscriptAsyncQuestionFold(filePath, drainMark, fold)
     }
   }
 
-  function currentField(): NativeChatAsyncQuestionsField {
-    return reconstructing
-      ? { state: 'pending' }
-      : publishNativeChatAsyncQuestions(nativeChatAsyncQuestionsFromFold(fold))
-  }
-
   function reset(): void {
-    clearRetryTimer()
     generation += 1
     controller.abort()
     controller = new AbortController()
     fold = createNativeChatAsyncQuestionFoldState()
     buffered = []
-    failedBoundary = null
+    failed = null
+    consecutiveFailures = 0
+    drainMark = null
+    running = false
   }
 
-  function begin(endOffset: number): void {
-    reset()
-    reconstructing = true
+  /** The cached fold, if the bytes it covers are still the file's. */
+  async function verifiedBase(
+    cached: RecalledTranscriptAsyncQuestionFold | null,
+    signal: AbortSignal
+  ): Promise<RecalledTranscriptAsyncQuestionFold | null> {
+    return cached && (await fingerprint(filePath, cached.offset, signal)) === cached.boundary
+      ? cached
+      : null
+  }
+
+  async function reconstruct(
+    endOffset: number,
+    cached: RecalledTranscriptAsyncQuestionFold | null,
+    signal: AbortSignal
+  ): Promise<NativeChatAsyncQuestionFoldState> {
+    const base = await verifiedBase(cached, signal)
+    const scanned = await scan(filePath, endOffset, signal, base?.offset ?? 0)
+    const next =
+      base && !scanned.reachedBoundary ? base.fold : createNativeChatAsyncQuestionFoldState()
+    for (const fact of scanned.facts) {
+      foldNativeChatAsyncQuestionFact(next, fact)
+    }
+    return next
+  }
+
+  function start(endOffset: number, version: TranscriptFileVersion): void {
+    const cached = recallTranscriptAsyncQuestionFold(filePath, version, endOffset)
+    if (cached?.exact) {
+      fold = cached.fold
+      for (const fact of buffered) {
+        foldNativeChatAsyncQuestionFact(fold, fact)
+      }
+      buffered = []
+      complete = true
+      failed = null
+      return
+    }
+    complete = false
+    running = true
     const runGeneration = generation
-    const { signal } = controller
-    void scan(args.filePath, endOffset, signal).then(
-      (facts) => {
+    void reconstruct(endOffset, cached, controller.signal).then(
+      (next) => {
         if (disposed || runGeneration !== generation) {
           return
         }
-        for (const fact of [...facts, ...buffered]) {
+        fold = next
+        for (const fact of buffered) {
           foldNativeChatAsyncQuestionFact(fold, fact)
         }
         buffered = []
-        reconstructing = false
+        complete = true
+        running = false
+        failed = null
         consecutiveFailures = 0
+        remember()
         args.onSettled()
       },
       (error: unknown) => {
         if (disposed || runGeneration !== generation) {
           return
         }
-        // Stay pending (never partial). A drain retries at once; an idle file has no drain,
-        // so a backed-off retry of its own runs until success, a reset, or unsubscribe.
-        failedBoundary = endOffset
+        // Never partial: `absent` until a retry succeeds; buffered lines still apply after it.
+        running = false
+        failed = { endOffset, version }
         consecutiveFailures += 1
-        console.warn('[native-chat] async-question reconstruction failed; retrying', error)
-        retryTimer = setTimeout(
-          retryIfFailed,
-          Math.min(RETRY_BASE_MS * 2 ** (consecutiveFailures - 1), RETRY_MAX_MS)
-        )
+        retryNotBefore =
+          Date.now() + Math.min(RETRY_BASE_MS * 2 ** (consecutiveFailures - 1), RETRY_MAX_MS)
+        console.warn('[native-chat] async-question reconstruction failed', error)
+        args.onSettled()
       }
     )
   }
 
-  function retryIfFailed(): void {
-    if (failedBoundary === null || disposed) {
-      return
-    }
-    // Lines buffered past the boundary still apply after the retried scan.
-    const pending = buffered
-    begin(failedBoundary)
-    buffered = pending
+  function wantsRetry(): boolean {
+    return failed !== null && !running && !disposed && Date.now() >= retryNotBefore
   }
 
   function observe(facts: readonly NativeChatAsyncQuestionFact[]): void {
+    drainMark = null
     for (const fact of facts) {
-      if (reconstructing) {
-        buffered.push(fact)
-      } else {
+      if (complete) {
         foldNativeChatAsyncQuestionFact(fold, fact)
+      } else {
+        buffered.push(fact)
       }
     }
   }
 
   return {
-    begin,
+    begin: (endOffset, version) => {
+      reset()
+      start(endOffset, version)
+    },
     beginFromStart: () => {
       reset()
-      reconstructing = false
+      complete = true
     },
     observeLine: (line, recordId) => observe(codexRolloutAsyncQuestionFacts(line, recordId)),
     observeOversizedRecord: (head) =>
@@ -164,19 +224,42 @@ export function createTranscriptAsyncQuestionTracker(args: {
     markPublished: (field) => {
       published = field
     },
-    retryIfFailed,
+    afterDrain: (mark) => {
+      drainMark = mark
+      remember()
+      if (failed && wantsRetry()) {
+        start(failed.endOffset, failed.version)
+      }
+    },
+    wantsRetry,
     dispose: () => {
       disposed = true
-      clearRetryTimer()
       controller.abort()
     }
   }
 }
 
+/** The fold mark of a drain that ended on a line boundary, else null (a line is mid-read). */
+export function transcriptAsyncQuestionDrainMark(
+  state: IncrementalTranscriptState,
+  boundary: string,
+  version: TranscriptFileVersion
+): TranscriptAsyncQuestionFoldMark | null {
+  return state.pendingStart === state.offset && !state.droppingOversizedRecord
+    ? { version, offset: state.offset, boundary }
+    : null
+}
+
 export type WatchedTranscriptAsyncQuestions = Pick<
   TranscriptAsyncQuestionTracker,
-  'begin' | 'beginFromStart' | 'retryIfFailed' | 'takeChanged' | 'dispose'
+  'begin' | 'beginFromStart' | 'wantsRetry' | 'takeChanged' | 'dispose'
 > & {
+  /** After a successful drain: the watcher's read state, its boundary and the file version. */
+  afterDrain: (
+    state: IncrementalTranscriptState,
+    boundary: string,
+    version: TranscriptFileVersion
+  ) => void
   /** Decoder for reads past the boundary: feeds each line to the fold, then decodes it. */
   readDecode: NativeChatLineDecoder
   observeOversizedRecord: OversizedTranscriptRecordObserver
@@ -206,7 +289,9 @@ export function createWatchedTranscriptAsyncQuestions(
   return {
     begin: tracker.begin,
     beginFromStart: tracker.beginFromStart,
-    retryIfFailed: tracker.retryIfFailed,
+    wantsRetry: tracker.wantsRetry,
+    afterDrain: (state, boundary, version) =>
+      tracker.afterDrain(transcriptAsyncQuestionDrainMark(state, boundary, version)),
     takeChanged: tracker.takeChanged,
     dispose: tracker.dispose,
     observeOversizedRecord: tracker.observeOversizedRecord,

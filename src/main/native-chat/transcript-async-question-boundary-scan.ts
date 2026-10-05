@@ -1,6 +1,7 @@
 // Backward scan of a Codex rollout from a byte boundary to the newest delivered user
-// message (or the start of the file). It keeps only async-question facts, never
-// messages, so memory is O(pending questions) however much output follows them.
+// message (or a floor offset, by default the start of the file). It keeps only
+// async-question facts, never messages, so memory is O(pending questions) however much
+// output follows them.
 
 import type { NativeChatAsyncQuestionFact } from '../../shared/native-chat-async-questions'
 import {
@@ -19,14 +20,23 @@ export class TranscriptBoundaryScanShrankError extends Error {
   }
 }
 
-/** Facts after the newest delivered user message before `endOffset`, in file order. */
+export type CodexAsyncQuestionScan = {
+  /** Facts after the boundary (or the floor), in file order. */
+  facts: NativeChatAsyncQuestionFact[]
+  /** Whether a delivered user message was found, so nothing before it matters. */
+  reachedBoundary: boolean
+}
+
+/** Facts after the newest delivered user message in [`floorOffset`, `endOffset`). Both offsets
+ *  are line starts/ends. */
 export async function scanCodexAsyncQuestionFactsBefore(
   filePath: string,
   endOffset: number,
-  signal?: AbortSignal
-): Promise<NativeChatAsyncQuestionFact[]> {
-  if (endOffset <= 0) {
-    return []
+  signal?: AbortSignal,
+  floorOffset = 0
+): Promise<CodexAsyncQuestionScan> {
+  if (endOffset <= floorOffset) {
+    return { facts: [], reachedBoundary: false }
   }
   const newestFirst: NativeChatAsyncQuestionFact[][] = []
   const handle = await wslGatedOpen(filePath, 'exact', signal)
@@ -91,9 +101,9 @@ export async function scanCodexAsyncQuestionFactsBefore(
     // `endOffset` is a line end, so the byte before it is that line's newline.
     let cursor = endOffset - 1
     let reachedBoundary = false
-    while (cursor > 0 && !reachedBoundary) {
+    while (cursor > floorOffset && !reachedBoundary) {
       signal?.throwIfAborted()
-      const start = Math.max(0, cursor - TAIL_CHUNK_BYTES)
+      const start = Math.max(floorOffset, cursor - TAIL_CHUNK_BYTES)
       const buffer = Buffer.allocUnsafe(cursor - start)
       const { bytesRead } = await wslGatedRead(
         handle,
@@ -126,11 +136,11 @@ export async function scanCodexAsyncQuestionFactsBefore(
       }
       cursor = start
     }
-    if (!reachedBoundary && cursor === 0) {
-      handleLine(0)
+    if (!reachedBoundary && cursor === floorOffset) {
+      reachedBoundary = handleLine(floorOffset)
     }
+    return { facts: newestFirst.toReversed().flat(), reachedBoundary }
   } finally {
     await closeTranscriptHandle(handle, filePath)
   }
-  return newestFirst.toReversed().flat()
 }

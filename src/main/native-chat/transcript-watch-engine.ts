@@ -121,7 +121,7 @@ export async function installTranscriptWatcher(
     if (closed) {
       return
     }
-    asyncQuestions?.retryIfFailed()
+    asyncQuestions?.afterDrain(state, watchedBoundary, watchedVersion)
     if (!nativeWatcher.needsRebind() || nativeWatcher.bind()) {
       rotationRetryCount = 0
       return
@@ -169,7 +169,7 @@ export async function installTranscriptWatcher(
     if (replacementSnapshot && onReplace) {
       state.offset = replacementSnapshot.consumedTo
       state.pendingStart = state.offset
-      asyncQuestions?.begin(replacementSnapshot.consumedTo)
+      asyncQuestions?.begin(replacementSnapshot.consumedTo, current)
       onReplace(
         replacementSnapshot.messages,
         replacementSnapshot.hasMore,
@@ -194,7 +194,7 @@ export async function installTranscriptWatcher(
       if (initialSnapshot) {
         state.offset = initialSnapshot.consumedTo
         state.pendingStart = state.offset
-        asyncQuestions?.begin(initialSnapshot.consumedTo)
+        asyncQuestions?.begin(initialSnapshot.consumedTo, current)
         onInitialSnapshot(
           initialSnapshot.messages,
           initialSnapshot.hasMore,
@@ -276,9 +276,12 @@ export async function installTranscriptWatcher(
       if (closed) {
         return
       }
-      const versionChanged =
-        watchedVersion === null || transcriptFileVersionChanged(current, watchedVersion)
-      if (versionChanged || current.size !== state.offset || nativeWatcher.needsRebind()) {
+      // A failed async-question read retries through a drain, behind its running check.
+      const drainDue =
+        watchedVersion === null ||
+        transcriptFileVersionChanged(current, watchedVersion) ||
+        asyncQuestions?.wantsRetry() === true
+      if (drainDue || current.size !== state.offset || nativeWatcher.needsRebind()) {
         await drain(true)
       }
     } catch {

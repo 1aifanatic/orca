@@ -15,13 +15,15 @@ export type NativeChatAsyncQuestion = {
   options?: string[]
 }
 
-/** Published side field. `pending`: the host is still reconstructing (not "none"). */
+/** Published side field. `pending`: the host is still reconstructing (not "none").
+ *  `absent`: the host can't derive the set right now; clients act as with an old host. */
 export type NativeChatAsyncQuestionsField =
   | { state: 'pending' }
+  | { state: 'absent' }
   | { state: 'ready'; questions: NativeChatAsyncQuestion[]; omittedCount?: number }
 
-/** Client view: `absent` is an old host that publishes nothing. */
-export type NativeChatAsyncQuestionsView = NativeChatAsyncQuestionsField | { state: 'absent' }
+/** Client view: `absent` is also an old host that publishes nothing. */
+export type NativeChatAsyncQuestionsView = NativeChatAsyncQuestionsField
 
 export const NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT: NativeChatAsyncQuestionsView = { state: 'absent' }
 
@@ -59,6 +61,13 @@ export type NativeChatAsyncQuestionFoldState = {
 
 export function createNativeChatAsyncQuestionFoldState(): NativeChatAsyncQuestionFoldState {
   return { entries: [], unclaimedCalls: [] }
+}
+
+/** An independent copy: the fold replaces entries and calls, never mutates one in place. */
+export function cloneNativeChatAsyncQuestionFoldState(
+  state: NativeChatAsyncQuestionFoldState
+): NativeChatAsyncQuestionFoldState {
+  return { entries: [...state.entries], unclaimedCalls: [...state.unclaimedCalls] }
 }
 
 function claimCall(state: NativeChatAsyncQuestionFoldState, callId: string): void {
@@ -258,8 +267,8 @@ export function readNativeChatAsyncQuestionsField(
   if (!value || typeof value !== 'object' || Array.isArray(value) || !('state' in value)) {
     return undefined
   }
-  if (value.state === 'pending') {
-    return { state: 'pending' }
+  if (value.state === 'pending' || value.state === 'absent') {
+    return { state: value.state }
   }
   if (value.state !== 'ready' || !('questions' in value) || !Array.isArray(value.questions)) {
     return undefined

@@ -190,6 +190,23 @@ describe('host-derived Codex async questions on the terminal transport', () => {
     expect(titles(fresh)).toEqual(['Ship it?'])
   }, 60_000)
 
+  it('lets a reconnect to an unchanged file carry ready on its snapshot, with no pending blink', async () => {
+    const ask = [{ title: 'Ship it?' }]
+    let content = userEvent() + asyncCall('call-a', ask) + itemAsk('call-a', ask)
+    for (let index = 0; index < 60; index += 1) {
+      content += assistant(index)
+    }
+    const filePath = await rollout(content)
+    const first = await watch(filePath)
+    await waitFor(() => first.ready()?.questions.length === 1)
+    // The live subscription's drains share its fold once the read is settled.
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    const reconnected = await watch(filePath)
+    await waitFor(() => reconnected.frames.length > 0)
+    expect(reconnected.frames[0]).toMatchObject({ kind: 'snapshot', field: { state: 'ready' } })
+    expect(titles(reconnected)).toEqual(['Ship it?'])
+  })
+
   it('retires the set on a delivered user message and publishes [] on appended', async () => {
     const ask = [{ title: 'Name?' }]
     const filePath = await rollout(userEvent() + asyncCall('c', ask) + itemAsk('c', ask))
