@@ -119,11 +119,12 @@ function firstStdoutLine(child: ReturnType<typeof spawnProcess>): Promise<string
 function mockChild(
   pid: number | null = 424242
 ): EventEmitter &
-  Pick<SpawnedProcess, 'pid' | 'kill' | 'stdin'> & { kill: ReturnType<typeof vi.fn> } {
+  Pick<SpawnedProcess, 'pid' | 'kill' | 'stdin' | 'stderr'> & { kill: ReturnType<typeof vi.fn> } {
   const child = new EventEmitter()
   return Object.assign(child, {
     pid: pid ?? undefined,
     stdin: new PassThrough(),
+    stderr: new PassThrough(),
     kill: vi.fn(() => true)
   }) as never
 }

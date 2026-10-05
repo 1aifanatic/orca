@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { spawnProcess } from '../../shared/child-process/run-process'
 import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from './provider-process-supervisor'
 import { spawnManagedProviderProcess } from './managed-provider-process'
-import type { ProviderProcessTree, ProviderProcessVerdict } from './provider-process-close'
+import type { DescendantTreeVerdict } from '../pty-descendant-exit-verification'
+import type { ProviderProcessTree } from './provider-process-close'
 
 const mocks = vi.hoisted(() => ({
   capture: vi.fn(async () => null),
@@ -46,7 +47,7 @@ function launch(fixture: ReturnType<typeof fakeChild>, platform: NodeJS.Platform
   )
 }
 
-function fakeTree(initial: ProviderProcessVerdict = 'unverifiable') {
+function fakeTree(initial: DescendantTreeVerdict = 'unverifiable') {
   let verdict = initial
   const tree: ProviderProcessTree = {
     capture: vi.fn(async () => {}),
@@ -58,7 +59,7 @@ function fakeTree(initial: ProviderProcessVerdict = 'unverifiable') {
   }
   return {
     tree,
-    setVerdict: (next: ProviderProcessVerdict) => {
+    setVerdict: (next: DescendantTreeVerdict) => {
       verdict = next
     }
   }
@@ -240,11 +241,7 @@ describe('managed provider process', () => {
     const close = managed.close()
     await vi.advanceTimersByTimeAsync(150)
     await expect(close).resolves.toMatchObject({ root: 'exited' })
-    expect(managed.lastCloseResult).toEqual({
-      root: 'exited',
-      tree: 'unverifiable',
-      teardownAccepted: false
-    })
+    expect(managed.lastCloseResult).toEqual({ root: 'exited', tree: 'unverifiable' })
   })
 
   it('keeps the cleanup diagnostic tied to the close that finished before a late root exit', async () => {
@@ -257,11 +254,7 @@ describe('managed provider process', () => {
     await expect(close).resolves.toMatchObject({ root: 'live' })
     fixture.child.emit('exit', null, 'SIGKILL')
     await expect(managed.close()).resolves.toMatchObject({ root: 'exited' })
-    expect(managed.lastCloseResult).toEqual({
-      root: 'live',
-      tree: 'unverifiable',
-      teardownAccepted: false
-    })
+    expect(managed.lastCloseResult).toEqual({ root: 'live', tree: 'unverifiable' })
   })
 
   it('lets a supervised caller signal immediately and waits its configured grace before forcing', async () => {

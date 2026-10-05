@@ -22,11 +22,12 @@ import { settleClaudeTurnEndWaiters } from './claude-request-end-wait'
 import type { StructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
 
 /** The root's own exit was seen first-hand. The lease follows the root, so a descendant
- *  left unverified or seen alive does not hold it. */
+ *  left unverified or seen alive does not hold it. A failed spawn had no process to exit. */
 export function claudeRootExitObserved(
   connection: ClaudeStreamJsonConnection | null | undefined
 ): boolean {
-  return connection?.exitVerdict.root === 'exited'
+  const verdict = connection?.exitVerdict
+  return verdict?.root === 'exited' && verdict.processless !== true
 }
 
 export function claudeAcquisitionCleanupError(

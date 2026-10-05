@@ -1,13 +1,13 @@
 import type { SpawnedProcess } from '../../shared/child-process/run-process'
+import type { DescendantTreeVerdict } from '../pty-descendant-exit-verification'
 import { waitForProcessExitUntil } from './provider-process-exit-deadline'
-
-export type ProviderProcessVerdict = 'live' | 'unverifiable' | 'exited'
+import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from './provider-process-supervisor'
 
 export type ProviderProcessTree = {
   capture(): Promise<void>
   refresh?: () => Promise<void>
-  reap(): Promise<ProviderProcessVerdict>
-  readonly treeVerdict: ProviderProcessVerdict
+  reap(): Promise<DescendantTreeVerdict>
+  readonly treeVerdict: DescendantTreeVerdict
 }
 
 export type ProviderProcessClosePolicy = {
@@ -19,7 +19,7 @@ export type ProviderProcessClosePolicy = {
 export type ProviderProcessCloseInput = {
   child: Pick<SpawnedProcess, 'pid' | 'kill' | 'stdin'>
   exitPromise: Promise<void>
-  rootVerdict: () => ProviderProcessVerdict
+  rootVerdict: () => DescendantTreeVerdict
   supervised?: boolean
   policy: ProviderProcessClosePolicy
   tree?: ProviderProcessTree
@@ -27,10 +27,25 @@ export type ProviderProcessCloseInput = {
 }
 
 export type ProviderProcessCloseResult = {
-  root: ProviderProcessVerdict
-  tree: ProviderProcessVerdict
-  /** Acceptance of the fallback teardown is separate from observed process exit. */
-  teardownAccepted?: boolean
+  root: DescendantTreeVerdict
+  /** Null when this close made no observation of the descendants. */
+  tree: DescendantTreeVerdict | null
+}
+
+export const ROOT_ONLY_GRACEFUL_EXIT_MS = 1_500
+const ROOT_ONLY_FORCED_EXIT_MS = 1_000
+
+/** Default for providers without a descendant reaper: end stdin, wait, then the fallback teardown. */
+export function rootOnlyProviderClosePolicy(supervised: boolean): ProviderProcessClosePolicy {
+  return {
+    gracefulExitMs: supervised ? PROVIDER_SUPERVISOR_MAX_STOP_MS : ROOT_ONLY_GRACEFUL_EXIT_MS,
+    forcedExitMs: ROOT_ONLY_FORCED_EXIT_MS
+  }
+}
+
+/** A root-only close is done once the root is gone; an unproven tree is reported, not retried. */
+export function acceptProviderRootExit(result: ProviderProcessCloseResult): boolean {
+  return result.root === 'exited'
 }
 
 /** The supervisor owns the POSIX signal ladder; its wrapper must outlive that ladder. */
@@ -50,7 +65,7 @@ export async function closeProviderProcess(
     child.kill('SIGTERM')
   }
   let reaped = false
-  let teardownAccepted: boolean | undefined
+  let fallbackTree: DescendantTreeVerdict | null = null
   if (input.rootVerdict() !== 'exited') {
     await waitForProcessExitUntil(input.exitPromise, policy.gracefulExitMs)
     if (input.rootVerdict() !== 'exited') {
@@ -59,7 +74,7 @@ export async function closeProviderProcess(
       if (tree) {
         await tree.reap()
       } else {
-        teardownAccepted = await input.terminateTree()
+        fallbackTree = (await input.terminateTree()) ? 'exited' : 'unverifiable'
       }
       await waitForProcessExitUntil(input.exitPromise, policy.forcedExitMs)
     }
@@ -67,9 +82,5 @@ export async function closeProviderProcess(
   if (!reaped && input.rootVerdict() === 'exited' && tree && tree.treeVerdict !== 'exited') {
     await tree.reap()
   }
-  return {
-    root: input.rootVerdict(),
-    tree: tree?.treeVerdict ?? 'unverifiable',
-    ...(teardownAccepted === undefined ? {} : { teardownAccepted })
-  }
+  return { root: input.rootVerdict(), tree: tree ? tree.treeVerdict : fallbackTree }
 }

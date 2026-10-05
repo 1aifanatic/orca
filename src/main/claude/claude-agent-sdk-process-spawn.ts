@@ -9,8 +9,6 @@ import { claudeChildClosePolicy } from './claude-child-exit-proof-ladder'
 /** Derived rather than imported: only src/shared/child-process may name node:child_process. */
 type ClaudeCodeChild = ReturnType<typeof spawnProcess>
 
-const STDERR_TAIL_MAX_BYTES = 8192
-
 export type ClaudeCodeProcessSpawn = {
   /** Pass as the SDK's `spawnClaudeCodeProcess`; the SDK never learns the pid because it never owns it. */
   spawn: (options: ClaudeAgentSdkSpawnOptions) => ClaudeCodeChild
@@ -24,7 +22,6 @@ export type ClaudeCodeProcessSpawn = {
   readonly pid: number | undefined
   /** The spawn spec's verdict, so the close ladder never re-decides it. False until the SDK spawns. */
   readonly supervised: boolean
-  readonly stderrTail: string
 }
 
 function definedEnv(env: Record<string, string | undefined>): Record<string, string> {
@@ -52,7 +49,6 @@ export function createClaudeCodeProcessSpawn(
   platform: NodeJS.Platform = process.platform
 ): ClaudeCodeProcessSpawn {
   let managed: ManagedProviderProcess | null = null
-  let stderrTail = ''
   return {
     spawn: (options) => {
       // SDK abort would kill the child outside Orca's ladder, losing observed exit proof.
@@ -71,13 +67,8 @@ export function createClaudeCodeProcessSpawn(
           acceptClose: (result) => result.root === 'exited' && result.tree === 'exited'
         }
       )
-      const spawned = managed.child
-      // The SDK drains stderr only for its own local spawn, so a custom spawner must:
-      // otherwise the child blocks on a full pipe and exit errors lose their tail.
-      spawned.stderr.setEncoding('utf8').on('data', (chunk: string) => {
-        stderrTail = (stderrTail + chunk).slice(-STDERR_TAIL_MAX_BYTES)
-      })
-      return spawned
+      // The SDK drains stderr only for its own local spawn; the managed process drains it here.
+      return managed.child
     },
     get child() {
       return managed?.child ?? null
@@ -90,9 +81,6 @@ export function createClaudeCodeProcessSpawn(
     },
     get supervised() {
       return managed?.supervised ?? false
-    },
-    get stderrTail() {
-      return stderrTail
     }
   }
 }

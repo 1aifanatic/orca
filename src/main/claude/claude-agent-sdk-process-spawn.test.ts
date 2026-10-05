@@ -165,8 +165,8 @@ describe('claude agent SDK process spawn', () => {
     process.child.stderr.write('claude: not signed in')
     await new Promise((resolve) => setImmediate(resolve))
 
-    expect(spawn.stderrTail).toMatch(/claude: not signed in$/)
-    expect(spawn.stderrTail.length).toBe(8192)
+    expect(spawn.managed?.stderrTail()).toMatch(/claude: not signed in$/)
+    expect(spawn.managed?.stderrTail().length).toBe(8192)
   })
 
   it('hands a Windows .cmd shim to Orca\u2019s argument encoder', () => {
