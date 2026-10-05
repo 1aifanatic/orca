@@ -57,6 +57,8 @@ type Entry<Key> = {
   seq: number
   request: ChatPairWriteRequest
   target: TerminalChatPair
+  /** The host pair when the write was sent; it may predate this client's earlier unconfirmed write. */
+  hostAtSubmit: TerminalChatPair | null
   retried: boolean
   deadline: unknown
 }
@@ -68,12 +70,22 @@ export function chatPairsEqual(a: TerminalChatPair, b: TerminalChatPair): boolea
   )
 }
 
-/** True once the host shows `target`; a chat naming no pane is shown by a host chat on any pane. */
-function hostShowsChatPair(host: TerminalChatPair, target: TerminalChatPair): boolean {
-  if (target.viewMode === 'chat' && !target.chatLeafId) {
-    return host.viewMode === 'chat'
+/**
+ * True once the host shows `entry.target`. A chat naming no pane is shown by a host chat on any
+ * pane, but only once the host pair has changed since the write: the pair seen at send time can
+ * still predate this client's earlier write.
+ */
+function hostShowsTarget<Key>(host: TerminalChatPair, entry: Entry<Key>): boolean {
+  const { target, hostAtSubmit } = entry
+  if (chatPairsEqual(host, target)) {
+    return true
   }
-  return chatPairsEqual(host, target)
+  return (
+    target.viewMode === 'chat' &&
+    !target.chatLeafId &&
+    host.viewMode === 'chat' &&
+    (hostAtSubmit === null || !chatPairsEqual(host, hostAtSubmit))
+  )
 }
 
 export function chatPairFromChatView(view: RuntimeSessionTabChatView): TerminalChatPair {
@@ -127,7 +139,7 @@ export function createChatPairPendingWrites<Key>(
     // Why adopt: the host normalizes (parent chat keeps its owner; a refused write names the current pair).
     entry.target = chatPairFromChatView(reply.chatView)
     const host = deps.readHostPair(entry.key)
-    if (!host || hostShowsChatPair(host, entry.target)) {
+    if (!host || hostShowsTarget(host, entry)) {
       remove(id, entry)
       return
     }
@@ -176,6 +188,7 @@ export function createChatPairPendingWrites<Key>(
         seq: lastSeq,
         request,
         target,
+        hostAtSubmit: deps.readHostPair(key),
         retried: false,
         deadline: null
       }
@@ -192,7 +205,7 @@ export function createChatPairPendingWrites<Key>(
         return
       }
       const host = deps.readHostPair(key)
-      if (!host || hostShowsChatPair(host, entry.target)) {
+      if (!host || hostShowsTarget(host, entry)) {
         remove(id, entry)
       }
     },

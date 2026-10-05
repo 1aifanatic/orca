@@ -128,6 +128,23 @@ describe('createChatPairPendingWrites', () => {
     expect(rig.machine.pendingPair('tab')).toBeNull()
   })
 
+  it('does not count a host chat from before an earlier unconfirmed write as shown', async () => {
+    const rig = createRig()
+    rig.setHostPair(CHAT_A)
+    rig.machine.submit('tab', { viewMode: 'terminal', leafId: null }, TERMINAL)
+    rig.machine.submit('tab', { viewMode: 'chat', leafId: null }, { viewMode: 'chat' })
+    rig.sent[1].resolve({ chatView: { viewMode: 'chat', chatLeafId: null } })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(rig.machine.pendingPair('tab')).toEqual({ viewMode: 'chat' })
+    // The first write's snapshot arrives late.
+    rig.setHostPair(TERMINAL)
+    rig.machine.hostPairChanged('tab')
+    expect(rig.machine.pendingPair('tab')).toEqual({ viewMode: 'chat' })
+    rig.setHostPair({ viewMode: 'chat', chatLeafId: 'B' })
+    rig.machine.hostPairChanged('tab')
+    expect(rig.machine.pendingPair('tab')).toBeNull()
+  })
+
   it('expires an adopted reply the host never shows', async () => {
     const rig = createRig()
     rig.machine.submit('tab', { viewMode: 'chat', leafId: 'A' }, CHAT_A)
