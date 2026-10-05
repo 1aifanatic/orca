@@ -104,7 +104,8 @@ describe('ACP Stop names a turn', () => {
         resolveLiveTurnId: () => live
       })
     ).resolves.toEqual({ cancelled: true })
-    expect(rig.sent('session/cancel')).toHaveLength(1)
+    // The steer's cancel, then the Stop's own bounded one.
+    expect(rig.sent('session/cancel')).toHaveLength(2)
     expect(rig.settled).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ clientMessageId: 'follow-up', state: 'rejected' })
