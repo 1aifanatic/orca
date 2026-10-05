@@ -59,11 +59,12 @@ export function startAgentExitRetirementOperation(args: {
       return
     }
     retriesUsed += 1
-    timer = setTimer(() => {
+    const handle = setTimer(() => {
       timer = null
       run()
     }, delay)
-    ;(timer as { unref?: () => void }).unref?.()
+    handle.unref?.()
+    timer = handle
   }
 
   const run = (): void => {

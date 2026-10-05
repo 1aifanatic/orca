@@ -76,7 +76,7 @@ export class OrcaRuntimeWithAgentIdentityDiscovery extends OrcaRuntimeWithSerial
     if (this.agentIdentityDiscoveryByPtyId.get(ptyId)?.key === key) {
       return
     }
-    const state = { key, timer: null as ReturnType<typeof setTimeout> | null }
+    const state: { key: string; timer: ReturnType<typeof setTimeout> | null } = { key, timer: null }
     this.agentIdentityDiscoveryByPtyId.set(ptyId, state)
     const attempt = (index: number): void => {
       state.timer = null
