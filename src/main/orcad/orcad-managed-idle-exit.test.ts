@@ -24,6 +24,7 @@ function idlePorts(): OrcadManagedIdleExitPorts {
     hasDaemon: () => true,
     agentStates: () => [{ state: 'done' }],
     hasStagedMigration: () => false,
+    automationsBusy: () => false,
     activationFenceExists: async () => false
   }
 }
@@ -73,6 +74,7 @@ describe('createOrcadIdleProbes', () => {
       terminals: 'idle',
       agents: 'idle',
       migration: 'idle',
+      automations: 'idle',
       activation: 'idle'
     })
   })
@@ -96,6 +98,7 @@ describe('createOrcadIdleProbes', () => {
     ['a live daemon session', { countDaemonSessions: async () => 2 }, 'terminals'],
     ['a working agent', { agentStates: () => [{ state: 'working' }] }, 'agents'],
     ['a staged migration', { hasStagedMigration: () => true }, 'migration'],
+    ['an enabled or running automation', { automationsBusy: () => true }, 'automations'],
     ['a held activation fence', { activationFenceExists: async () => true }, 'activation']
   ])('reads %s as busy', async (_label, override, probe) => {
     expect((await verdicts({ ...idlePorts(), ...override }))[probe]).toBe('busy')

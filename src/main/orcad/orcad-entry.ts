@@ -27,6 +27,7 @@ import { installOrcadStopRequestListeners } from './orcad-stop-request-listener'
 import { prepareOrcadManagedStop } from './orcad-managed-stop-admission'
 import type { OrcadManagedStopContext } from '../../shared/orcad-stop-request'
 import { beginOrcadIdleExit, bindOrcadIdleShutdown } from './orcad-managed-idle-exit-host'
+import { orcadAutomationsKeepHostBusy, startOrcadAutomations } from './orcad-automations'
 import {
   changedAiVaultSearchSettings,
   type AiVaultSearchSettings
@@ -346,6 +347,7 @@ async function startOrcadRuntime(
   // Stops first: no RPC may write while the rest of the runtime is torn down.
   registerCleanup(() => rpc.stop())
   await rpc.start()
+  startOrcadAutomations(runtime, profileStore, registerCleanup)
   const pushService = DesktopPushService.create({
     runtime,
     runtimeRpc: rpc,
@@ -378,6 +380,7 @@ async function startOrcadRuntime(
     rpc,
     agentStates: () => agentHookServer.getStatusSnapshot(),
     hasStagedMigration: () => profileStore.hasStagedOrcadMigrationCatalog(),
+    automationsBusy: () => orcadAutomationsKeepHostBusy(profileStore),
     registerCleanup
   })
   return { readiness }

@@ -26,6 +26,7 @@ type OrcadIdleExitRuntimePorts = {
   rpc: { readClientActivity(): RuntimeRpcClientActivity }
   agentStates: () => readonly { state: string }[]
   hasStagedMigration: () => boolean
+  automationsBusy: () => boolean
   /** Shutdown stops the monitor first, so a signal stop is never recorded as an idle one. */
   registerCleanup: (cleanup: () => void) => void
 }
@@ -73,6 +74,7 @@ async function startOrcadManagedIdleExit(
       hasDaemon: () => getDaemonEndpointFacts() !== null,
       agentStates: input.agentStates,
       hasStagedMigration: input.hasStagedMigration,
+      automationsBusy: input.automationsBusy,
       activationFenceExists
     },
     stop: (evidence) => {
