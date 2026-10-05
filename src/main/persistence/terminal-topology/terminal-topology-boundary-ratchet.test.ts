@@ -84,21 +84,9 @@ function isTypeOnlyImportOrExport(node: ts.Node): boolean {
   )
 }
 
-/** A string literal in a member-name position: `x['n']`, `['n']`, `{ 'n': v }`, `{ 'n': w } = x`. */
-function isQuotedName(node: ts.Node): node is ts.StringLiteralLike {
-  const parent = node.parent
-  return (
-    ts.isStringLiteralLike(node) &&
-    ((ts.isElementAccessExpression(parent) && parent.argumentExpression === node) ||
-      ts.isComputedPropertyName(parent) ||
-      (ts.isPropertyAssignment(parent) && parent.name === node) ||
-      (ts.isBindingElement(parent) && parent.propertyName === node))
-  )
-}
-
-/** Any value-position mention of a name except the writer's own definition; types are skipped. */
+/** Any name or string literal except the writer's own definition; types are skipped. */
 function referencedName(node: ts.Node): string | undefined {
-  if (ts.isIdentifier(node) || isQuotedName(node)) {
+  if (ts.isIdentifier(node) || ts.isStringLiteralLike(node)) {
     return isDefinitionName(node) ? undefined : node.text
   }
   return undefined
