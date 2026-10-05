@@ -5,9 +5,10 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { buildBody, postHookEvent } from '../agent-hooks/server.test-fixtures'
+import { installHookStatusSessionTabsRepublish } from '../agent-hooks/hook-status-session-tabs-republish'
+import { AgentHookServer } from '../agent-hooks/server'
+import { buildBody, PANE, postHookEvent } from '../agent-hooks/server.test-fixtures'
 import { readNativeChatTranscriptTail } from '../native-chat/transcript-tail-reader'
-import { makeAgentStatusStoreWiring } from './agent-status-store-wiring.test-fixture'
 import { OrcaRuntimeService } from './orca-runtime'
 import { RpcDispatcher } from './rpc/dispatcher'
 import { SESSION_TAB_METHODS } from './rpc/methods/session-tabs'
@@ -25,29 +26,42 @@ vi.mock('electron', () => ({
 const WORKTREE_ID = 'wt-1'
 const TAB_ID = 'tab-1'
 const LEAF_ID = '11111111-1111-4111-8111-111111111111'
-const PTY_ID = 'pty-codex'
+const PTY_ID = 'pty-agent'
 const SESSION_ID = 'ac1f6b90-2f77-4f0e-9c5e-1d2f6a4b8c31'
+const NEXT_SESSION_ID = '5d0c9e3a-7b1f-4c2a-9e8d-3f6b2a1c4d5e'
 const NEUTRAL_TITLE = 'Say hi | my-repo'
+const THIRTY_ONE_MINUTES_MS = 31 * 60_000
+const QUESTION = JSON.stringify({
+  questions: [
+    {
+      question: 'Apply the patch?',
+      header: 'Patch',
+      multiSelect: false,
+      options: [{ label: 'Yes' }, { label: 'No' }]
+    }
+  ]
+})
 
 let cleanups: (() => Promise<void> | void)[] = []
 
 afterEach(async () => {
+  vi.restoreAllMocks()
   for (const cleanup of cleanups.toReversed()) {
     await cleanup()
   }
   cleanups = []
 })
 
-async function writeCodexRollout(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), 'orca-codex-idle-identity-'))
+async function tempDir(prefix: string): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), prefix))
   cleanups.push(() => rm(root, { recursive: true, force: true }))
-  const filePath = join(root, 'rollout.jsonl')
+  return root
+}
+
+async function writeCodexRollout(sessionId = SESSION_ID): Promise<string> {
+  const filePath = join(await tempDir('orca-codex-idle-identity-'), 'rollout.jsonl')
   const records = [
-    {
-      timestamp: '2026-10-04T10:00:00.000Z',
-      type: 'session_meta',
-      payload: { id: SESSION_ID }
-    },
+    { timestamp: '2026-10-04T10:00:00.000Z', type: 'session_meta', payload: { id: sessionId } },
     { type: 'event_msg', payload: { type: 'user_message', message: 'Say hi' } },
     { type: 'event_msg', payload: { type: 'agent_message', message: 'Hi there' } }
   ]
@@ -62,6 +76,10 @@ class InspectableRuntime extends OrcaRuntimeService {
     return this.ptysById.get(ptyId)
   }
 
+  resetProviderGeneration(ptyId: string): void {
+    this.resetTrackedTerminalStateForProviderGeneration(ptyId)
+  }
+
   protected override async resolveTerminalWorkspaceLaunchScope(): Promise<TerminalWorkspaceLaunchScope> {
     return {
       id: WORKTREE_ID,
@@ -73,53 +91,87 @@ class InspectableRuntime extends OrcaRuntimeService {
   }
 }
 
-async function createIdleCodexPane(args: {
-  presence: Presence
-  title: string
-  launchAgent?: 'codex' | 'claude'
-}): Promise<{
+type Pane = {
   runtime: InspectableRuntime
-  wiring: ReturnType<typeof makeAgentStatusStoreWiring>
-  transcriptPath: string
-}> {
-  const wiring = makeAgentStatusStoreWiring()
-  await wiring.statusStore.start({ env: 'production' })
-  cleanups.push(() => wiring.statusStore.stop())
+  store: () => AgentHookServer
+  /** Stop the store and start a fresh one on the same disk state, as a host restart does. */
+  restartStore: () => Promise<void>
+  postHooks: (sessionId: string, events: string[], transcriptPath?: string) => Promise<void>
+  observeTitle: (title: string) => void
+}
+
+async function createPane(args: { presence: Presence; agent?: 'codex' | 'claude' }): Promise<Pane> {
+  const agent = args.agent ?? 'codex'
+  const userDataPath = await tempDir('orca-codex-idle-store-')
+  let store = new AgentHookServer()
+  await store.start({ env: 'production', userDataPath })
+  cleanups.push(() => store.stop())
   const runtime = new InspectableRuntime(null, undefined, {
-    ...wiring.deps,
+    onTerminalAgentStatus: (event) => store.ingestTerminalStatus(event),
+    getAgentStatusSnapshot: () =>
+      store.getStatusSnapshot().filter((entry) => entry.providerSessionOnly !== true),
+    getAgentProviderSessionSnapshot: () => store.getStatusSnapshot(),
+    getAgentProviderSessionRowsForPane: (paneKey) => store.getStatusSnapshotForPane(paneKey),
+    reconcileAgentStatusForEndedProcess: (paneKeys) =>
+      store.reconcileEndedProcessForPaneKeys(paneKeys),
     // Why: real hosts with no live-process verdict take the legacy completed-hook recovery.
     ...(args.presence ? { checkHookAgentPresence: async () => args.presence } : {})
   })
-  cleanups.push(wiring.attach(runtime))
+  let detachRepublish = installHookStatusSessionTabsRepublish(store, () => runtime)
+  cleanups.push(() => detachRepublish())
   runtime.setPtyController({
     spawn: vi.fn().mockResolvedValue({ id: PTY_ID }),
     write: () => true,
     kill: () => true,
-    getForegroundProcess: async () => 'codex'
+    getForegroundProcess: async () => agent
   })
   await runtime.createTerminal(`id:${WORKTREE_ID}`, {
     tabId: TAB_ID,
     leafId: LEAF_ID,
-    launchAgent: args.launchAgent ?? 'codex',
+    launchAgent: agent,
     title: 'Terminal'
   })
-  const transcriptPath = await writeCodexRollout()
-  for (const event of ['SessionStart', 'UserPromptSubmit', 'Stop']) {
-    const response = await postHookEvent(
-      wiring.statusStore,
-      buildBody({
-        hook_event_name: event,
-        session_id: SESSION_ID,
-        transcript_path: transcriptPath,
-        ...(event === 'UserPromptSubmit' ? { prompt: 'Say hi' } : {})
-      }),
-      '/hook/codex'
-    )
-    expect(response.status).toBe(204)
+  return {
+    runtime,
+    store: () => store,
+    restartStore: async () => {
+      store.flushStatusPersistSync()
+      detachRepublish()
+      store.stop()
+      store = new AgentHookServer()
+      await store.start({ env: 'production', userDataPath })
+      detachRepublish = installHookStatusSessionTabsRepublish(store, () => runtime)
+    },
+    postHooks: async (sessionId, events, transcriptPath) => {
+      for (const event of events) {
+        const response = await postHookEvent(
+          store,
+          buildBody({
+            hook_event_name: event,
+            session_id: sessionId,
+            ...(transcriptPath ? { transcript_path: transcriptPath } : {}),
+            ...(event === 'UserPromptSubmit' ? { prompt: 'Say hi' } : {})
+          }),
+          `/hook/${agent}`
+        )
+        expect(response.status).toBe(204)
+      }
+    },
+    observeTitle: (title) => {
+      runtime.onPtyData(PTY_ID, `\x1b]0;${title}\x07`, Date.now())
+    }
   }
-  runtime.onPtyData(PTY_ID, `\x1b]0;⠋ ${args.title}\x07`, 1)
-  runtime.onPtyData(PTY_ID, `\x1b]0;${args.title}\x07`, 2)
-  return { runtime, wiring, transcriptPath }
+}
+
+/** A finished Codex turn: hooks, then the spinner settling onto the neutral thread title. */
+async function finishCodexTurn(pane: Pane, sessionId: string): Promise<string> {
+  const transcriptPath = await writeCodexRollout(sessionId)
+  await pane.postHooks(sessionId, ['SessionStart', 'UserPromptSubmit', 'Stop'], transcriptPath)
+  pane.observeTitle(`⠋ ${NEUTRAL_TITLE}`)
+  pane.observeTitle(NEUTRAL_TITLE)
+  // Precondition: the real completed-hook recovery restored Codex idle under the neutral title.
+  await vi.waitFor(() => expect(pane.runtime.ptyRecord(PTY_ID)?.lastAgentStatus).toBe('idle'))
+  return transcriptPath
 }
 
 function makeRequest(method: string, params?: unknown): RpcRequest {
@@ -149,20 +201,30 @@ function firstTerminalTab(frame: RpcResponse | undefined): Record<string, unknow
   return result.tabs.find((tab) => tab?.type === 'terminal')
 }
 
+async function listTab(
+  runtime: OrcaRuntimeService,
+  clientKind: 'mobile' | 'runtime'
+): Promise<Record<string, unknown> | undefined> {
+  const tab = firstTerminalTab((await dispatchFrames(runtime, 'session.tabs.list', clientKind))[0])
+  expect(tab).toMatchObject({ type: 'terminal' })
+  return tab
+}
+
+function advanceClock(byMs: number): void {
+  const now = Date.now()
+  vi.spyOn(Date, 'now').mockReturnValue(now + byMs)
+}
+
 describe('idle Codex pane conversation identity on a headless host', () => {
   it.each<Presence>(['unverifiable', null])(
     'gives a cold phone the session under the neutral idle title (presence %s)',
     async (presence) => {
-      const { runtime, wiring, transcriptPath } = await createIdleCodexPane({
-        presence,
-        title: NEUTRAL_TITLE
-      })
-      // Preconditions: real recovery restored Codex idle on a connected pane with a fresh done row.
-      await vi.waitFor(() => expect(runtime.ptyRecord(PTY_ID)?.lastAgentStatus).toBe('idle'))
-      const pty = runtime.ptyRecord(PTY_ID)
+      const pane = await createPane({ presence })
+      const transcriptPath = await finishCodexTurn(pane, SESSION_ID)
+      const pty = pane.runtime.ptyRecord(PTY_ID)
       expect(pty?.connected).toBe(true)
       expect(pty?.lastOscTitle).toBe(NEUTRAL_TITLE)
-      const row = wiring.statusStore.getStatusSnapshot()[0]
+      const row = pane.store().getStatusSnapshot()[0]
       expect(row).toMatchObject({
         state: 'done',
         providerSession: { id: SESSION_ID, transcriptPath }
@@ -170,10 +232,8 @@ describe('idle Codex pane conversation identity on a headless host', () => {
       expect(row?.restoredUnconfirmed).not.toBe(true)
       expect(row?.providerSessionOnly).not.toBe(true)
 
-      const mobileList = firstTerminalTab(
-        (await dispatchFrames(runtime, 'session.tabs.list', 'mobile'))[0]
-      )
-      expect(mobileList).toMatchObject({ type: 'terminal', launchAgent: 'codex' })
+      const mobileList = await listTab(pane.runtime, 'mobile')
+      expect(mobileList).toMatchObject({ launchAgent: 'codex' })
       expect(mobileList?.agentStatus).toMatchObject({
         state: 'done',
         sessionBoundary: true,
@@ -182,15 +242,11 @@ describe('idle Codex pane conversation identity on a headless host', () => {
         providerSession: { id: SESSION_ID, transcriptPath }
       })
       const mobileSubscribe = firstTerminalTab(
-        (await dispatchFrames(runtime, 'session.tabs.subscribe', 'mobile'))[0]
+        (await dispatchFrames(pane.runtime, 'session.tabs.subscribe', 'mobile'))[0]
       )
       expect(mobileSubscribe?.agentStatus).toEqual(mobileList?.agentStatus)
 
-      const runtimeList = firstTerminalTab(
-        (await dispatchFrames(runtime, 'session.tabs.list', 'runtime'))[0]
-      )
-      expect(runtimeList).toBeDefined()
-      expect(runtimeList).not.toHaveProperty('agentStatus')
+      expect(await listTab(pane.runtime, 'runtime')).not.toHaveProperty('agentStatus')
     }
   )
 
@@ -208,5 +264,146 @@ describe('idle Codex pane conversation identity on a headless host', () => {
         { role: 'assistant', blocks: [{ type: 'text', text: 'Hi there' }] }
       ]
     })
+  })
+
+  it('keeps only the addressable identity of an aged remnant across a store restart', async () => {
+    const pane = await createPane({ presence: 'unverifiable' })
+    const transcriptPath = await finishCodexTurn(pane, SESSION_ID)
+    pane.store().dropStatusEntry(PANE)
+    expect(pane.store().getStatusSnapshot()).toEqual([
+      expect.objectContaining({ providerSessionOnly: true })
+    ])
+    await pane.restartStore()
+    expect(pane.store().getStatusSnapshot()).toEqual([
+      expect.objectContaining({ providerSessionOnly: true, providerSession: expect.anything() })
+    ])
+    advanceClock(THIRTY_ONE_MINUTES_MS)
+
+    const status = (await listTab(pane.runtime, 'mobile'))?.agentStatus
+    expect(status).toMatchObject({
+      state: 'done',
+      sessionBoundary: true,
+      agentType: 'codex',
+      providerSession: { id: SESSION_ID, transcriptPath }
+    })
+    for (const field of ['toolName', 'interactivePrompt', 'interrupted', 'turnCompletedAt']) {
+      expect(status).not.toHaveProperty(field)
+    }
+    expect(await listTab(pane.runtime, 'runtime')).not.toHaveProperty('agentStatus')
+  })
+
+  it.each([
+    ['a provider generation reset', (pane: Pane) => pane.runtime.resetProviderGeneration(PTY_ID)],
+    ['a pane retirement', (pane: Pane) => pane.store().retirePaneAuthority(PANE)]
+  ])('drops the old identity at once after %s', async (_name, evict) => {
+    const pane = await createPane({ presence: 'unverifiable' })
+    await finishCodexTurn(pane, SESSION_ID)
+    expect((await listTab(pane.runtime, 'mobile'))?.agentStatus).toMatchObject({
+      providerSession: { id: SESSION_ID }
+    })
+
+    evict(pane)
+
+    expect(await listTab(pane.runtime, 'mobile')).not.toHaveProperty('agentStatus')
+  })
+
+  it('projects only the new session once Codex reopens on the reset pane', async () => {
+    const pane = await createPane({ presence: 'unverifiable' })
+    await finishCodexTurn(pane, SESSION_ID)
+    pane.runtime.resetProviderGeneration(PTY_ID)
+
+    const nextTranscriptPath = await finishCodexTurn(pane, NEXT_SESSION_ID)
+
+    expect((await listTab(pane.runtime, 'mobile'))?.agentStatus).toMatchObject({
+      sessionBoundary: true,
+      providerSession: { id: NEXT_SESSION_ID, transcriptPath: nextTranscriptPath }
+    })
+  })
+
+  it('drops the identity when the pane process exits', async () => {
+    const pane = await createPane({ presence: 'unverifiable' })
+    await finishCodexTurn(pane, SESSION_ID)
+
+    pane.runtime.onPtyExit(PTY_ID, 0)
+
+    const frame = (await dispatchFrames(pane.runtime, 'session.tabs.list', 'mobile'))[0]
+    expect(frame?.ok).toBe(true)
+    expect(JSON.stringify(frame)).not.toContain(SESSION_ID)
+  })
+
+  describe('questions', () => {
+    async function askUnderNeutralTitle(pane: Pane): Promise<void> {
+      const payload = {
+        state: 'waiting',
+        prompt: 'Apply?',
+        agentType: 'codex',
+        interactivePrompt: QUESTION
+      }
+      pane.runtime.onPtyData(PTY_ID, `\x1b]9999;${JSON.stringify(payload)}\x07`, Date.now())
+      pane.observeTitle(NEUTRAL_TITLE)
+    }
+
+    it('keeps a current question as live status rather than the identity carrier', async () => {
+      const pane = await createPane({ presence: 'unverifiable' })
+      await finishCodexTurn(pane, SESSION_ID)
+      await askUnderNeutralTitle(pane)
+
+      const status = (await listTab(pane.runtime, 'mobile'))?.agentStatus
+      expect(status).toMatchObject({ state: 'waiting', interactivePrompt: QUESTION })
+      expect(status).not.toHaveProperty('sessionBoundary')
+    })
+
+    it('does not revive an expired question', async () => {
+      const pane = await createPane({ presence: 'unverifiable' })
+      await finishCodexTurn(pane, SESSION_ID)
+      await askUnderNeutralTitle(pane)
+      advanceClock(THIRTY_ONE_MINUTES_MS)
+
+      // The OSC question row carries no provider session (an existing store rule), so only
+      // the absence of the question is asserted here.
+      const tab = await listTab(pane.runtime, 'mobile')
+      expect(tab).not.toHaveProperty('agentStatus.interactivePrompt')
+      expect(tab).not.toHaveProperty('agentStatus.state', 'waiting')
+    })
+
+    it('does not revive a question restored from disk', async () => {
+      const pane = await createPane({ presence: 'unverifiable' })
+      await finishCodexTurn(pane, SESSION_ID)
+      await askUnderNeutralTitle(pane)
+      await pane.restartStore()
+      expect(pane.store().getStatusSnapshot()[0]?.restoredUnconfirmed).toBe(true)
+
+      const tab = await listTab(pane.runtime, 'mobile')
+      expect(tab).not.toHaveProperty('agentStatus.interactivePrompt')
+      expect(tab).not.toHaveProperty('agentStatus.state', 'waiting')
+    })
+
+    it('does not keep a question a later Stop replaced', async () => {
+      const pane = await createPane({ presence: 'unverifiable' })
+      await finishCodexTurn(pane, SESSION_ID)
+      await askUnderNeutralTitle(pane)
+      await pane.postHooks(SESSION_ID, ['Stop'])
+
+      const status = (await listTab(pane.runtime, 'mobile'))?.agentStatus
+      expect(status).not.toHaveProperty('interactivePrompt')
+      expect(status).toMatchObject({ state: 'done', providerSession: { id: SESSION_ID } })
+    })
+  })
+
+  it('leaves a Claude pane idle under its glyph title on its existing status path', async () => {
+    const pane = await createPane({ presence: 'unverifiable', agent: 'claude' })
+    await pane.postHooks(SESSION_ID, ['SessionStart', 'UserPromptSubmit', 'Stop'])
+    pane.observeTitle('⠂ Claude Code')
+    pane.observeTitle('✳ Claude Code')
+
+    for (const clientKind of ['mobile', 'runtime'] as const) {
+      const status = (await listTab(pane.runtime, clientKind))?.agentStatus
+      expect(status).toMatchObject({
+        state: 'done',
+        agentType: 'claude',
+        providerSession: { id: SESSION_ID }
+      })
+      expect(status).not.toHaveProperty('sessionBoundary')
+    }
   })
 })

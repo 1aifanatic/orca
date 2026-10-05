@@ -6,6 +6,10 @@ import { resolvePaneAgentOwnerRecord } from '../../shared/pane-agent-owner'
 import type { AgentStatusEntry, AgentStatusIpcPayload } from '../../shared/agent-status-types'
 import type { RuntimeMobileSessionTerminalTab } from '../../shared/runtime-types'
 import {
+  buildMobileConversationIdentityCarrier,
+  withMobileConversationIdentityCarrier
+} from './mobile-conversation-identity-carrier'
+import {
   renewRuntimeMobileAgentStatusFromPtyTitle,
   resolveRuntimeHookLiveAgentRow,
   selectRuntimeHookAgentRowForPane
@@ -15,7 +19,8 @@ import type { RuntimeAgentRowSnapshot } from './runtime-worktree-agent-rows'
 import {
   classifyAgentTitle,
   getLatestAgentCandidateTitle,
-  getLatestPtyTitle
+  getLatestPtyTitle,
+  terminalTitleBlocksExplicitAgentStatus
 } from './runtime-worktree-status-projection'
 
 type RuntimeMobileAgentStatusHost = {
@@ -65,8 +70,20 @@ export function buildRuntimeMobileAgentStatus(
       : null
   const ptyTitleClassification = classifyAgentTitle(ptyTitle)
   const nonAgentTitle = ptyTitle !== null && ptyTitleClassification !== 'agent'
+  // Why: a retained OMP hook stays stable while wrapper foreground reads can report Pi.
+  const ownerRecord = resolvePaneAgentOwnerRecord({
+    launchAgent: tab.launchAgent ?? pty?.launchAgent ?? null,
+    hookAgent: retained?.payload.agentType ?? hookRow.agentType
+  })
+  const ownerAgent = ownerRecord?.agent ?? pty?.foregroundAgent ?? null
+  const ownerOptions = { ownerIsLaunch: ownerRecord?.ownerIsLaunch === true }
+  const terminalTitle = normalizeCompatibleAgentTitleForOwner(
+    trackerOnlyTitle ?? (pty ? getLatestPtyTitle(pty) : null) ?? tab.title,
+    ownerAgent,
+    ownerOptions
+  )
   if (nonAgentTitle) {
-    // Why: non-agent title = shell reclaimed the pane; suppress to clear stuck spinners (#1437), though a live hook signal survives.
+    // Why: a non-agent title shows no live state (#1437) unless a live hook signal survives; a neutral one still relays the pane's conversation identity as a session boundary.
     const hasLiveHookSignal =
       retained?.payload.interactivePrompt != null ||
       retained?.payload.toolName != null ||
@@ -80,21 +97,34 @@ export function buildRuntimeMobileAgentStatus(
       // this branch publishes `done`. It only keeps the transcript addressable.
       (!pty?.lastAgentStatus && (hookRow.agentType != null || hookRow.providerSession != null))
     if (!hasLiveHookSignal) {
-      return {}
+      const carrier = terminalTitleBlocksExplicitAgentStatus(ptyTitle)
+        ? null
+        : buildMobileConversationIdentityCarrier({
+            candidate:
+              hookRow.providerSession && hookRow.providerSessionReceivedAt !== null
+                ? {
+                    providerSession: hookRow.providerSession,
+                    sessionAgent: hookRow.providerSessionAgentType,
+                    observedAt: hookRow.providerSessionReceivedAt
+                  }
+                : retained?.providerSession
+                  ? {
+                      providerSession: retained.providerSession,
+                      sessionAgent: retained.payload.agentType ?? null,
+                      observedAt: retained.updatedAt
+                    }
+                  : null,
+            ownerAgent,
+            ownerOptions,
+            paneKey,
+            tabId: tab.parentTabId,
+            terminalTitle,
+            terminalHandle,
+            worktreeId: pty?.worktreeId ?? retained?.worktreeId ?? null
+          })
+      return carrier ? withMobileConversationIdentityCarrier({}, carrier) : {}
     }
   }
-  // Why: a retained OMP hook stays stable while wrapper foreground reads can report Pi.
-  const ownerRecord = resolvePaneAgentOwnerRecord({
-    launchAgent: tab.launchAgent ?? pty?.launchAgent ?? null,
-    hookAgent: retained?.payload.agentType ?? hookRow.agentType
-  })
-  const ownerAgent = ownerRecord?.agent ?? pty?.foregroundAgent ?? null
-  const ownerOptions = { ownerIsLaunch: ownerRecord?.ownerIsLaunch === true }
-  const terminalTitle = normalizeCompatibleAgentTitleForOwner(
-    trackerOnlyTitle ?? (pty ? getLatestPtyTitle(pty) : null) ?? tab.title,
-    ownerAgent,
-    ownerOptions
-  )
   // Why: OSC 9999 hook payload carries real state/prompt/agent; without preferring it, hook-only transitions never surfaced (#7970).
   const liveRow = retained ?? resolveRuntimeHookLiveAgentRow(hookRow.live, pty, nonAgentTitle)
   if (liveRow) {
