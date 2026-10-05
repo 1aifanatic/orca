@@ -9,7 +9,6 @@ import {
   type RefObject
 } from 'react'
 import { translate } from '@/i18n/i18n'
-import { basename } from '@/lib/path'
 import {
   nativeChatComposerTargetIsRemote,
   type NativeChatResolvedTarget
@@ -294,7 +293,7 @@ export function readNativeChatAttachmentCache(
   return readNativeChatComposerDraft(scopeKey).images.map((image) => ({ ...image }))
 }
 
-/** Adds settled images after the ones the draft holds now. Saved at once: when Stop gives images
+/** Adds settled images after the ones the draft holds now, durably at once: when Stop gives images
  *  back, the copy they came from goes right after this. Only an image the user attaches
  *  (`fromUser`) takes the place of a placeholder with its file name, as a re-pick does. */
 export function appendNativeChatAttachmentCache(
@@ -305,21 +304,14 @@ export function appendNativeChatAttachmentCache(
   if (appended.length === 0) {
     return
   }
-  appendToNativeChatComposerDraft(scopeKey, (draft) => {
-    const images = [...draft.images]
-    for (const { id, path, connectionId } of appended) {
-      // Preview URLs can retain the full clipboard Blob, so only the path is kept.
-      const image = { id, path, ...(connectionId ? { connectionId } : {}) }
-      const placeholder = options?.fromUser
-        ? images.findIndex((held) => held.unavailableName === basename(path))
-        : -1
-      if (placeholder === -1) {
-        images.push(image)
-      } else {
-        images[placeholder] = image
-      }
-    }
-    return { images }
+  // Preview URLs can retain the full clipboard Blob, so only the path is kept.
+  appendToNativeChatComposerDraft(scopeKey, {
+    images: appended.map(({ id, path, connectionId }) => ({
+      id,
+      path,
+      ...(connectionId ? { connectionId } : {})
+    })),
+    ...(options?.fromUser ? { fromUser: true } : {})
   })
 }
 

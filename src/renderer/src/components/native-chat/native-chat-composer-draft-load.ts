@@ -14,10 +14,7 @@ import {
   flushNativeChatComposerDrafts,
   installNativeChatComposerDraftBroadcast
 } from './native-chat-composer-draft-persistence'
-import {
-  pruneNativeChatComposerDraftJournal,
-  readNativeChatComposerDraftJournal
-} from './native-chat-composer-draft-journal'
+import { replayNativeChatComposerDraftJournal } from './native-chat-composer-draft-journal'
 import {
   nativeChatComposerDraftStorage,
   parseStoredNativeChatComposerDraft,
@@ -56,13 +53,7 @@ function applyLoaded(loaded: ReadonlyMap<string, unknown>, readAtSequence: numbe
   for (const [scopeKey, value] of loaded) {
     drafts.set(scopeKey, parseStoredNativeChatComposerDraft(value))
   }
-  for (const [scopeKey, change] of readNativeChatComposerDraftJournal()) {
-    const stored = drafts.get(scopeKey)
-    if (stored && stored.savedAt >= change.at) {
-      pruneNativeChatComposerDraftJournal(scopeKey, change.at)
-      continue
-    }
-    drafts.set(scopeKey, change.draft)
+  for (const scopeKey of replayNativeChatComposerDraftJournal(drafts)) {
     dirtyScopes.add(scopeKey)
   }
   for (const [scopeKey, appends] of load.appendsBeforeLoad) {

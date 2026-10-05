@@ -151,6 +151,7 @@ function appendBeforeLoad(scopeKey: string, append: DraftAppend): void {
   const entry: AppendBeforeLoad = { sequence: load.appendSequence, append, committed: false }
   load.appendsBeforeLoad.set(scopeKey, [...(load.appendsBeforeLoad.get(scopeKey) ?? []), entry])
   const owner = records.get(scopeKey)?.owner
+  const appendedAt = records.get(scopeKey)?.savedAt ?? 0
   const empty: StoredNativeChatComposerDraft = { text: '', images: [], savedAt: 0 }
   const written = nativeChatComposerDraftStorage()
     .update(scopeKey, (stored) => {
@@ -163,6 +164,7 @@ function appendBeforeLoad(scopeKey: string, append: DraftAppend): void {
     .then(
       () => {
         entry.committed = true
+        pruneNativeChatComposerDraftJournal(scopeKey, appendedAt)
         channel?.postMessage({ scopeKey })
       },
       (error: unknown) => {

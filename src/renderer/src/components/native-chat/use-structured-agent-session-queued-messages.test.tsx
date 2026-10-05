@@ -17,6 +17,10 @@ import {
   readNativeChatDraftCache
 } from './native-chat-draft-cache'
 import { useStructuredAgentSessionQueuedMessages } from './use-structured-agent-session-queued-messages'
+import {
+  createMemoryNativeChatComposerDraftStorage,
+  setNativeChatComposerDraftStorageForTests
+} from './native-chat-composer-draft-storage'
 import type { StructuredAgentSessionMutate } from './use-structured-agent-session-mutate'
 
 type MutateCall = [string, string, Record<string, unknown>]
@@ -148,6 +152,25 @@ describe('queued message actions', () => {
     await act(() => harness.result.current.edit('draft-1'))
     expect(readNativeChatDraftCache(SCOPE)).toBe('text of draft-1')
     expect(toast.error).toHaveBeenCalledWith('Already sent — your text is still in the composer.')
+  })
+
+  it('Edit keeps the card while its text is neither journaled nor saved', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const storage = createMemoryNativeChatComposerDraftStorage()
+    storage.refuseWrites = true
+    setNativeChatComposerDraftStorageForTests(storage)
+    const setItem = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new DOMException('full', 'QuotaExceededError')
+    })
+    try {
+      const harness = createHarness()
+      await act(() => harness.result.current.edit('draft-1'))
+      expect(readNativeChatDraftCache(SCOPE)).toBe('text of draft-1')
+      expect(harness.mutate).not.toHaveBeenCalled()
+    } finally {
+      setItem.mockRestore()
+      warn.mockRestore()
+    }
   })
 
   it('Edit with no composer to hold the text deletes nothing', async () => {

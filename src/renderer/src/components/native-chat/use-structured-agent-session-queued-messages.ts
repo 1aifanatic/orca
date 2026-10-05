@@ -17,6 +17,10 @@ import type {
 } from '../../../../shared/agent-session-wire'
 import { appendNativeChatDraftCache } from './native-chat-draft-cache'
 import {
+  isNativeChatComposerDraftUnsaved,
+  nativeChatComposerDraftWritesSettled
+} from './native-chat-composer-draft-store'
+import {
   newestSteerableQueuedMessageCard,
   projectQueuedMessageCards,
   type QueuedMessageCard
@@ -127,7 +131,13 @@ export function useStructuredAgentSessionQueuedMessages(args: {
         if (!card || !composerScopeKey) {
           return
         }
-        appendNativeChatDraftCache(composerScopeKey, card.text)
+        if (!appendNativeChatDraftCache(composerScopeKey, card.text)) {
+          // Not journaled: the card goes only once the draft is saved, never before.
+          await nativeChatComposerDraftWritesSettled()
+          if (isNativeChatComposerDraftUnsaved(composerScopeKey)) {
+            return
+          }
+        }
         const result = await mutate<AgentSessionQueuedMessageDeleteResult>(
           'agentSession.queuedMessageDelete',
           'agentSession.queuedMessageDelete',

@@ -117,6 +117,71 @@ describe('native-chat composer draft store', () => {
     expect(localStorage.length).toBe(0)
   })
 
+  it('keeps text given back through a crash before storage commits it, once', async () => {
+    storage.drafts.set('agent-session:s1', { text: 'typed earlier', images: [], savedAt: 1 })
+    const crashing = { ...storage, write: () => new Promise<void>(() => {}) }
+    const crashed = await reload({ using: crashing })
+    // Stop gives a message back; its outbox entry is deleted right after, then Orca crashes.
+    expect(crashed.drafts.appendNativeChatDraftCache('agent-session:s1', 'returned by Stop')).toBe(
+      true
+    )
+    crashed.store.clearNativeChatComposerDraftsForTests()
+
+    const next = await reload()
+    expect(next.drafts.readNativeChatDraftCache('agent-session:s1')).toBe(
+      'typed earlier\n\nreturned by Stop'
+    )
+    await next.store.nativeChatComposerDraftWritesSettled()
+    expect(storedDraft('agent-session:s1')?.text).toBe('typed earlier\n\nreturned by Stop')
+    expect(localStorage.getItem('orca:nativeChatComposerDraftJournal:v1')).toBeNull()
+  })
+
+  it('does not give text back twice when storage committed it but the window died first', async () => {
+    storage.drafts.set('agent-session:s1', { text: 'typed earlier', images: [], savedAt: 1 })
+    const landsUnconfirmed = {
+      ...storage,
+      write: (scopeKey: string, draft: Parameters<typeof storage.write>[1]) => {
+        storage.drafts.set(scopeKey, draft)
+        return new Promise<void>(() => {})
+      }
+    }
+    const crashed = await reload({ using: landsUnconfirmed })
+    crashed.drafts.appendNativeChatDraftCache('agent-session:s1', 'returned by Stop')
+    crashed.attachments.appendNativeChatAttachmentCache('agent-session:s1', [IMAGES[0]])
+    crashed.store.clearNativeChatComposerDraftsForTests()
+
+    const next = await reload()
+    expect(next.drafts.readNativeChatDraftCache('agent-session:s1')).toBe(
+      'typed earlier\n\nreturned by Stop'
+    )
+    expect(next.attachments.readNativeChatAttachmentCache('agent-session:s1')).toEqual([IMAGES[0]])
+  })
+
+  it('keeps text given back before the load lands through a crash, without losing the saved draft', async () => {
+    storage.drafts.set('agent-session:s1', { text: 'typed earlier', images: [], savedAt: 1 })
+    let land: () => void = () => {}
+    const crashing = {
+      ...storage,
+      loadAll: () => {
+        const snapshot = new Map(storage.drafts)
+        return new Promise<ReadonlyMap<string, unknown>>((resolve) => {
+          land = () => resolve(snapshot)
+        })
+      },
+      update: () => new Promise<void>(() => {})
+    }
+    const crashed = await reload({ using: crashing, hydrate: false })
+    await crashed.store.waitForNativeChatComposerDrafts(1)
+    crashed.drafts.appendNativeChatDraftCache('agent-session:s1', 'returned by Stop')
+    crashed.store.clearNativeChatComposerDraftsForTests()
+    land()
+
+    const next = await reload()
+    expect(next.drafts.readNativeChatDraftCache('agent-session:s1')).toBe(
+      'typed earlier\n\nreturned by Stop'
+    )
+  })
+
   it('saves text and images given back to the composer at once, before their other copy goes', async () => {
     vi.useFakeTimers()
     // No timer advanced: a crash right after either restore still keeps it.
@@ -544,19 +609,14 @@ describe('native-chat composer draft store', () => {
     expect(localStorage.getItem('orca:nativeChatComposerDraftJournal:v1')).toBeNull()
   })
 
-  it('keeps a refused draft in the journal for the next run, and the journal under its cap', async () => {
+  it('keeps a refused draft in the journal for the next run', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     storage.refuseWrites = true
     modules.drafts.writeNativeChatDraftCache('agent-session:s1', 'typed while storage refuses')
-    for (let index = 0; index < 10; index += 1) {
-      modules.drafts.appendNativeChatDraftCache(`agent-session:big-${index}`, 'x'.repeat(200_000))
-    }
     modules.store.flushNativeChatComposerDrafts()
     await modules.store.nativeChatComposerDraftWritesSettled()
     window.dispatchEvent(new Event('pagehide'))
     await modules.store.nativeChatComposerDraftWritesSettled()
-    const journal = localStorage.getItem('orca:nativeChatComposerDraftJournal:v1') ?? ''
-    expect(journal.length).toBeLessThanOrEqual(256_000)
     modules.store.clearNativeChatComposerDraftsForTests()
 
     storage.refuseWrites = false
@@ -564,6 +624,29 @@ describe('native-chat composer draft store', () => {
     expect(next.drafts.readNativeChatDraftCache('agent-session:s1')).toBe(
       'typed while storage refuses'
     )
+    warn.mockRestore()
+  })
+
+  it('keeps the journal under its cap while storage refuses', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    storage.refuseWrites = true
+    const durable: boolean[] = []
+    for (let index = 0; index < 10; index += 1) {
+      durable.push(
+        modules.store.appendToNativeChatComposerDraft(`agent-session:big-${index}`, {
+          text: 'x'.repeat(200_000)
+        })
+      )
+      modules.drafts.writeNativeChatDraftCache(`tab-${index}:pane`, 'y'.repeat(60_000))
+    }
+    modules.store.flushNativeChatComposerDrafts()
+    await modules.store.nativeChatComposerDraftWritesSettled()
+    window.dispatchEvent(new Event('pagehide'))
+
+    const journal = localStorage.getItem('orca:nativeChatComposerDraftJournal:v1') ?? ''
+    expect(journal.length).toBeLessThanOrEqual(800_000)
+    // What no longer fits is reported, so its source is kept until storage confirms it.
+    expect(durable).toContain(false)
     warn.mockRestore()
   })
 
