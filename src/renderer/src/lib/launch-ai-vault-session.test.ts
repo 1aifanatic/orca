@@ -22,6 +22,9 @@ const mockState = {
   browserTabsByWorktree: {} as Record<string, { id: string }[]>,
   tabBarOrderByWorktree: {} as Record<string, string[]>
 }
+type ChatSettings = { experimentalNativeChat: boolean; openAgentTabsInChatByDefault: boolean }
+const deviceSettings: { settings: ChatSettings | null } = { settings: null }
+Object.defineProperty(mockState, 'settings', { get: () => deviceSettings.settings })
 
 vi.mock('@/store', () => ({
   useAppStore: {
@@ -46,6 +49,8 @@ vi.mock('@/lib/worktree-runtime-owner', () => ({
   getRuntimeEnvironmentIdForWorktree: runtimeMocks.getRuntimeEnvironmentIdForWorktree
 }))
 
+vi.mock('@/lib/connection-context', () => ({ getConnectionIdFromState: () => null }))
+
 vi.mock('@/runtime/web-runtime-session', () => ({
   createWebRuntimeSessionTerminal: runtimeMocks.createWebRuntimeSessionTerminal,
   isWebRuntimeSessionActive: runtimeMocks.isWebRuntimeSessionActive
@@ -63,6 +68,7 @@ describe('launchAiVaultSessionInNewTab', () => {
     mockState.openFiles = []
     mockState.browserTabsByWorktree = {}
     mockState.tabBarOrderByWorktree = {}
+    deviceSettings.settings = null
     mockCreateTab.mockImplementation((worktreeId: string) => {
       const tab = { id: `tab-${(mockState.tabsByWorktree[worktreeId] ?? []).length + 1}` }
       mockState.tabsByWorktree[worktreeId] = [...(mockState.tabsByWorktree[worktreeId] ?? []), tab]
@@ -79,7 +85,11 @@ describe('launchAiVaultSessionInNewTab', () => {
       command: 'claude --resume session-1'
     })
 
-    expect(mockCreateTab).toHaveBeenCalledWith('wt-1', 'group-1')
+    // Why agent and view at insertion: the first record already says what it runs and shows.
+    expect(mockCreateTab).toHaveBeenCalledWith('wt-1', 'group-1', undefined, {
+      launchAgent: 'claude',
+      viewMode: 'terminal'
+    })
     expect(mockQueueTabStartupCommand).toHaveBeenCalledWith('tab-1', {
       command: 'claude --resume session-1',
       telemetry: {
@@ -111,6 +121,8 @@ describe('launchAiVaultSessionInNewTab', () => {
     })
 
     expect(mockCreateTab).toHaveBeenCalledWith('wt-1', undefined, undefined, {
+      launchAgent: 'claude',
+      viewMode: 'terminal',
       startupCwd: 'C:\\Users\\alice\\repo'
     })
     expect(mockQueueTabStartupCommand).toHaveBeenCalledWith('tab-1', {
@@ -142,7 +154,10 @@ describe('launchAiVaultSessionInNewTab', () => {
     })
 
     expect(mockCreateEmptySplitGroup).toHaveBeenCalledWith('wt-1', 'group-1', 'right')
-    expect(mockCreateTab).toHaveBeenCalledWith('wt-1', 'group-new')
+    expect(mockCreateTab).toHaveBeenCalledWith('wt-1', 'group-new', undefined, {
+      launchAgent: 'codex',
+      viewMode: 'terminal'
+    })
   })
 
   it('creates runtime-hosted resume terminals through the paired host', async () => {
@@ -181,6 +196,7 @@ describe('launchAiVaultSessionInNewTab', () => {
       },
       providerSession: { key: 'session_id', id: 'session-1' },
       agentArgs: '',
+      viewMode: 'terminal',
       activate: true
     })
     expect(mockCreateTab).not.toHaveBeenCalled()
@@ -190,5 +206,21 @@ describe('launchAiVaultSessionInNewTab', () => {
       await expect(result.runtimeLaunch).resolves.toEqual({ status: 'created' })
     }
     expect(mockSetActiveTabType).toHaveBeenCalledExactlyOnceWith('terminal', 'wt-1')
+  })
+
+  it("opens a resume in this device's chat default, locally and through a paired host", () => {
+    deviceSettings.settings = { experimentalNativeChat: true, openAgentTabsInChatByDefault: true }
+    launchAiVaultSessionInNewTab({ agent: 'claude', worktreeId: 'wt-1', command: 'claude' })
+    expect(mockCreateTab).toHaveBeenCalledWith('wt-1', undefined, undefined, {
+      launchAgent: 'claude',
+      viewMode: 'chat'
+    })
+
+    runtimeMocks.getRuntimeEnvironmentIdForWorktree.mockReturnValue('env-1')
+    runtimeMocks.isWebRuntimeSessionActive.mockReturnValue(true)
+    launchAiVaultSessionInNewTab({ agent: 'claude', worktreeId: 'wt-1', command: 'claude' })
+    expect(runtimeMocks.createWebRuntimeSessionTerminal).toHaveBeenCalledWith(
+      expect.objectContaining({ launchAgent: 'claude', viewMode: 'chat' })
+    )
   })
 })

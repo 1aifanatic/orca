@@ -62,6 +62,7 @@ export type TerminalCreateOptions = {
   launchPreferences?: AgentLaunchPreferences
   terminalKittyKeyboardProtocol?: boolean
   terminalColorQueryReplies?: TerminalOscColorQueryReplyColors
+  /** The launcher's starting view; the host finalizes it (`withFinalAgentTabStartingView`). */
   viewMode?: 'terminal' | 'chat'
   startupCommandDelivery?: WorktreeStartupLaunch['startupCommandDelivery']
   telemetry?: WorktreeStartupLaunch['telemetry']

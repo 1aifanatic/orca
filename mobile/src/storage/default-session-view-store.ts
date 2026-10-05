@@ -5,21 +5,25 @@ import {
   saveDefaultSessionView,
   type MobileSessionView
 } from './session-view-preferences'
+import {
+  readDefaultSessionViewState,
+  writeDefaultSessionViewState,
+  type DefaultSessionViewState
+} from './default-session-view-state'
 
-/** The per-device default view; `settled` is false only until the first read answers. */
-export type DefaultSessionViewState = { value: MobileSessionView; settled: boolean }
+export type { DefaultSessionViewState }
 
-// One owner per JS context, so Settings and every mounted session read the same value.
-let state: DefaultSessionViewState = { value: DEFAULT_SESSION_VIEW, settled: false }
+const INITIAL_STATE: DefaultSessionViewState = { value: DEFAULT_SESSION_VIEW, settled: false }
 let mutationRevision = 0
 let loadStarted = false
 const listeners = new Set<() => void>()
 
 function publish(next: DefaultSessionViewState): void {
+  const state = readState()
   if (next.value === state.value && next.settled === state.settled) {
     return
   }
-  state = next
+  writeDefaultSessionViewState(next)
   for (const listener of listeners) {
     listener()
   }
@@ -32,8 +36,9 @@ function subscribe(listener: () => void): () => void {
   }
 }
 
+// One owner per JS context, so Settings and every mounted session read the same value.
 function readState(): DefaultSessionViewState {
-  return state
+  return readDefaultSessionViewState() ?? INITIAL_STATE
 }
 
 /** Re-reads storage; a change written by the other JS context of a hybrid page lands here. */
@@ -73,7 +78,7 @@ export function useDefaultSessionView(): DefaultSessionViewState {
 }
 
 export function resetDefaultSessionViewStoreForTests(): void {
-  state = { value: DEFAULT_SESSION_VIEW, settled: false }
+  writeDefaultSessionViewState(null)
   mutationRevision = 0
   loadStarted = false
   listeners.clear()

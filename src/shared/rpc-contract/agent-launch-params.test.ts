@@ -18,6 +18,13 @@ describe('agent.launch params', () => {
     expect(AgentLaunch.parse(BASE)).not.toHaveProperty('agentArgs')
   })
 
+  it("carries the launcher's starting view and degrades an unknown one to the host default", () => {
+    expect(AgentLaunch.parse({ ...BASE, viewMode: 'chat' }).viewMode).toBe('chat')
+    expect(AgentLaunch.parse({ ...BASE, viewMode: 'terminal' }).viewMode).toBe('terminal')
+    expect(AgentLaunch.parse(BASE)).not.toHaveProperty('viewMode')
+    expect(AgentLaunch.parse({ ...BASE, viewMode: 'split' }).viewMode).toBeUndefined()
+  })
+
   it('accepts a cwd and rejects an empty one', () => {
     expect(AgentLaunch.parse({ ...BASE, cwd: '/repo/packages/api' }).cwd).toBe('/repo/packages/api')
     expect(AgentLaunch.safeParse({ ...BASE, cwd: '' }).success).toBe(false)

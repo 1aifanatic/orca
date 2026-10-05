@@ -66,6 +66,23 @@ describe('fields the launch fingerprint covers', () => {
   })
 })
 
+describe('the launcher starting view', () => {
+  it('separates two launches that asked for different starting views', () => {
+    expect(computeAgentLaunchFingerprint({ ...BASE, viewMode: 'chat' })).not.toBe(
+      computeAgentLaunchFingerprint({ ...BASE, viewMode: 'terminal' })
+    )
+  })
+
+  it('keeps the digest of a launch that sent no view, so an older replay stays valid', () => {
+    expect(computeAgentLaunchFingerprint({ ...BASE, viewMode: undefined })).toBe(
+      computeAgentLaunchFingerprint(BASE)
+    )
+    expect(computeAgentLaunchFingerprint({ ...BASE, viewMode: 'chat' })).not.toBe(
+      computeAgentLaunchFingerprint(BASE)
+    )
+  })
+})
+
 describe('fields the launch fingerprint deliberately ignores', () => {
   it('does not separate two launches that differ only in launchSource', () => {
     // Telemetry. Two buttons producing the same launch are one operation, and a retry that got

@@ -10,6 +10,7 @@ import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner
 import { toWebTerminalSurfaceTabId } from '@/runtime/web-terminal-surface-id'
 import type { WorktreeCreationRequest } from '@/lib/pending-worktree-creation'
 import type { TuiAgent } from '../../../shared/tui-agent'
+import { AGENT_TAB_LAUNCH_PRESENTATION_RUNTIME_CAPABILITY } from '../../../shared/protocol-version'
 
 type AppStoreSnapshot = ReturnType<typeof useAppStore.getState>
 
@@ -45,6 +46,20 @@ function resolveLaunchAgentTabId(
   return stamped ?? args.primaryTabId ?? args.startupTerminalTabId ?? null
 }
 
+/** A host that stamps the startup view at creation needs no post-create patch from this client. */
+function hostStampsLaunchView(state: AppStoreSnapshot, worktreeId: string): boolean {
+  const environmentId = getRuntimeEnvironmentIdForWorktree(state, worktreeId)
+  if (!environmentId) {
+    return true
+  }
+  return (
+    state.runtimeStatusByEnvironmentId
+      ?.get(environmentId)
+      ?.status?.capabilities?.includes(AGENT_TAB_LAUNCH_PRESENTATION_RUNTIME_CAPABILITY) === true
+  )
+}
+
+/** Temporary: only for a paired host that predates launch-presentation stamping. */
 function applyBackendSpawnedDraftViewMode(args: {
   state: AppStoreSnapshot
   request: SeedRequest
@@ -54,7 +69,7 @@ function applyBackendSpawnedDraftViewMode(args: {
   backendSpawned: boolean
 }): void {
   const { state, request, agent, tabId, worktreeId, backendSpawned } = args
-  if (!backendSpawned || !request.launchDraftPrompt) {
+  if (!backendSpawned || !request.launchDraftPrompt || hostStampsLaunchView(state, worktreeId)) {
     return
   }
   const desiredViewMode =

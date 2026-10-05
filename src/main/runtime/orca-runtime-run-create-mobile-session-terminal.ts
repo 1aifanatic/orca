@@ -14,6 +14,7 @@ import {
 } from './orca-runtime-core'
 import { rendererPublicationThrottle } from '../window/renderer-publication-throttle'
 import { deterministicAgentSessionUuid } from './runtime-agent-launch-resolution'
+import { withFinalAgentTabStartingView } from './agent-tab-starting-view'
 
 export class OrcaRuntimeWithRunCreateMobileSessionTerminal extends OrcaRuntimeWithCreateMobileSessionTerminal {
   protected async runCreateMobileSessionTerminal(
@@ -63,6 +64,15 @@ export class OrcaRuntimeWithRunCreateMobileSessionTerminal extends OrcaRuntimeWi
       }
     }
     const startupCommand = await this.resolveMobileSessionTerminalCommand(workspace, opts)
+    // Why: this lane bypasses createTerminal's option resolver, so it finalizes here, once, for every branch.
+    const viewMode = withFinalAgentTabStartingView(
+      {
+        ...(startupCommand.launchAgent ? { launchAgent: startupCommand.launchAgent } : {}),
+        ...(opts.viewMode ? { viewMode: opts.viewMode } : {})
+      },
+      workspace,
+      this.store?.getSettings?.() ?? null
+    ).viewMode
     this.assertStableReadyGraph(graphEpoch)
     if (opts.signal?.aborted) {
       throw new Error('client_disconnected')
@@ -83,7 +93,7 @@ export class OrcaRuntimeWithRunCreateMobileSessionTerminal extends OrcaRuntimeWi
             leafId: deterministicAgentSessionUuid(`mobile-qoder-leaf\0${seed}`)
           },
           createMutation: { clientIdentity, id: opts.clientMutationId },
-          viewMode: opts.viewMode,
+          viewMode,
           targetGroupId: opts.targetGroupId,
           supportsSplitGroupPlacement: opts.supportsSplitGroupPlacement,
           signal: opts.signal
@@ -103,7 +113,7 @@ export class OrcaRuntimeWithRunCreateMobileSessionTerminal extends OrcaRuntimeWi
           envToDelete: startupCommand.envToDelete,
           startupCommandDelivery: startupCommand.startupCommandDelivery,
           launchAgent: startupCommand.launchAgent,
-          viewMode: opts.viewMode,
+          viewMode,
           targetGroupId: opts.targetGroupId,
           supportsSplitGroupPlacement: opts.supportsSplitGroupPlacement,
           launchConfig: startupCommand.launchConfig,
@@ -162,7 +172,7 @@ export class OrcaRuntimeWithRunCreateMobileSessionTerminal extends OrcaRuntimeWi
           ...(startupCommand.envToDelete ? { envToDelete: startupCommand.envToDelete } : {}),
           ...(startupCommand.launchConfig ? { launchConfig: startupCommand.launchConfig } : {}),
           ...(startupCommand.launchAgent ? { launchAgent: startupCommand.launchAgent } : {}),
-          ...(opts.viewMode ? { viewMode: opts.viewMode } : {}),
+          ...(viewMode ? { viewMode } : {}),
           startupCommandDelivery: startupCommand.startupCommandDelivery,
           source: 'runtime-session',
           activate: opts.activate
@@ -184,7 +194,7 @@ export class OrcaRuntimeWithRunCreateMobileSessionTerminal extends OrcaRuntimeWi
         paired: pairedCreate,
         selectIfNoActiveTab: true,
         ...(startupCommand.command ? { startupCommand: startupCommand.command } : {}),
-        ...(opts.viewMode ? { viewMode: opts.viewMode } : {})
+        ...(viewMode ? { viewMode } : {})
       })
       try {
         // Why: the PTY spawn and the tabCreate reply race on independent IPC
@@ -229,7 +239,7 @@ export class OrcaRuntimeWithRunCreateMobileSessionTerminal extends OrcaRuntimeWi
             startupCommandDelivery: startupCommand.startupCommandDelivery,
             identity: { tabId: pendingSurface.tab.parentTabId, leafId: pendingSurface.tab.leafId },
             launchAgent: startupCommand.launchAgent,
-            viewMode: opts.viewMode,
+            viewMode,
             targetGroupId: opts.targetGroupId,
             supportsSplitGroupPlacement: opts.supportsSplitGroupPlacement,
             launchConfig: startupCommand.launchConfig,
