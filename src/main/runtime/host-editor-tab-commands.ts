@@ -92,7 +92,7 @@ export function openHostDiffTab(
   const state = getHostEditorTabState(runtime)
   const diffSource = args.staged ? 'staged' : 'unstaged'
   const snapshot = runtime.mobileSessionTabsByWorktree.get(args.worktreeId)
-  const record = state.addDiff({
+  const added = state.addDiff({
     tabId: randomUUID(),
     fileId: buildDiffEditorFileId(args.worktreeId, diffSource, args.relativePath, undefined),
     worktreeId: args.worktreeId,
@@ -101,17 +101,13 @@ export function openHostDiffTab(
     diffSource,
     language: detectLanguage(args.relativePath),
     executionHostId: args.executionHostId,
-    groupId: snapshot?.activeGroupId ?? null
+    groupId: snapshot?.activeGroupId ?? null,
+    returnFocusTabId: null
   })
-  if (hostShouldFocus(args.navigation)) {
-    const session = runtime.getOwnWorkspaceSessionForWorktree(args.worktreeId)
-    if (session) {
-      runtime.setWorkspaceSessionForWorktree(
-        args.worktreeId,
-        activateHostEditTab(session, args.worktreeId, record)
-      )
-    }
-  }
+  // Why: a diff is transient, so its focus lives only in the snapshot; the session keeps the last durable focus.
+  const record = hostShouldFocus(args.navigation)
+    ? state.focusDiff(args.worktreeId, added.tabId, snapshot?.activeTabId ?? null)
+    : added
   publishHostEditorTabs(
     runtime,
     args.worktreeId,
@@ -129,9 +125,15 @@ export function closeHostEditorTab(
 ): void {
   assertHostEditorAuthority(runtime)
   const state = getHostEditorTabState(runtime)
-  if (findHostDiffTab(runtime, worktreeId, tab.id)) {
+  const diff = findHostDiffTab(runtime, worktreeId, tab.id)
+  if (diff) {
+    const wasActive = runtime.mobileSessionTabsByWorktree.get(worktreeId)?.activeTabId === tab.id
     state.removeDiff(worktreeId, tab.id)
-    publishHostEditorTabs(runtime, worktreeId)
+    publishHostEditorTabs(
+      runtime,
+      worktreeId,
+      wasActive ? (diff.returnFocusTabId ?? undefined) : undefined
+    )
     return
   }
   const session = requireOwnSession(runtime, worktreeId)
@@ -156,8 +158,15 @@ export function activateHostEditorTab(
   tabId: string
 ): void {
   const diff = findHostDiffTab(runtime, worktreeId, tabId)
+  if (diff) {
+    assertHostEditorAuthority(runtime)
+    const previous = runtime.mobileSessionTabsByWorktree.get(worktreeId)?.activeTabId ?? null
+    getHostEditorTabState(runtime).focusDiff(worktreeId, diff.tabId, previous)
+    publishHostEditorTabs(runtime, worktreeId, diff.tabId)
+    return
+  }
   const session = requireOwnSession(runtime, worktreeId)
-  const record = diff ?? listHostEditTabs(session, worktreeId).find((tab) => tab.tabId === tabId)
+  const record = listHostEditTabs(session, worktreeId).find((tab) => tab.tabId === tabId)
   if (!record) {
     return
   }
@@ -196,7 +205,8 @@ export function persistHostEditorLayout(
       groupIdByTabId.set(tabId, group.id)
     }
   }
-  getHostEditorTabState(runtime).setDiffGroups(worktreeId, groupIdByTabId)
+  const state = getHostEditorTabState(runtime)
+  state.setDiffGroups(worktreeId, groupIdByTabId)
   const session = runtime.getOwnWorkspaceSessionForWorktree(worktreeId)
   if (session) {
     commitHostEditorSession(
@@ -205,7 +215,8 @@ export function persistHostEditorLayout(
       persistHostTabGroupLayout(session, worktreeId, {
         groups: snapshot.tabGroups ?? [],
         groupLayout: snapshot.tabGroupLayout,
-        activeGroupId: snapshot.activeGroupId
+        activeGroupId: snapshot.activeGroupId,
+        transientTabIds: new Set(state.listDiffs(worktreeId).map((diff) => diff.tabId))
       })
     )
   }

@@ -278,4 +278,50 @@ describe('host editor session model', () => {
     ])
     expect(next.activeGroupIdByWorktree?.[WT]).toBe('g-2')
   })
+
+  it('never writes the legacy terminal group into a unified session', () => {
+    const session = base({
+      unifiedTabs: { [WT]: [] },
+      tabGroups: { [WT]: [{ id: 'g-1', worktreeId: WT, activeTabId: null, tabOrder: [] }] }
+    })
+
+    const next = persistHostTabGroupLayout(session, WT, {
+      groups: [{ id: `headless-terminals:${WT}`, activeTabId: 'term-1', tabOrder: ['term-1'] }],
+      groupLayout: undefined,
+      activeGroupId: `headless-terminals:${WT}`
+    })
+
+    expect(next).toBe(session)
+  })
+
+  it('leaves transient tabs out of a persisted layout and refocuses the group', () => {
+    const session = base({
+      unifiedTabs: { [WT]: [] },
+      tabGroups: {
+        [WT]: [{ id: 'g-1', worktreeId: WT, activeTabId: 'term-1', tabOrder: ['term-1'] }]
+      }
+    })
+
+    const next = persistHostTabGroupLayout(session, WT, {
+      groups: [
+        {
+          id: 'g-1',
+          activeTabId: 'diff-1',
+          tabOrder: ['diff-1', 'term-1'],
+          recentTabIds: ['term-1', 'diff-1']
+        }
+      ],
+      groupLayout: undefined,
+      activeGroupId: 'g-1',
+      transientTabIds: new Set(['diff-1'])
+    })
+
+    expect(next.tabGroups?.[WT]).toEqual([
+      expect.objectContaining({
+        tabOrder: ['term-1'],
+        activeTabId: 'term-1',
+        recentTabIds: ['term-1']
+      })
+    ])
+  })
 })

@@ -14,6 +14,8 @@ import type {
 export type HostEditTabRecord = {
   /** Unified wrapper id; a legacy-format session has none, so the window's derived one. */
   tabId: string
+  /** The persisted wrapper's own id, which group tab orders hold; null in a legacy-format session. */
+  wrapperId: string | null
   /** The id the window's restored editor file gets. */
   fileId: string
   /** The id persisted wrappers carry for this row (`Tab.entityId`). */
@@ -43,6 +45,7 @@ export function listHostEditTabs(
     // Why: legacy hydration names each wrapper by path, then migrates it only when the path was the row's legacy id.
     return assignments.map(({ file, legacyId, id }) => ({
       tabId: legacyId === file.filePath ? id : file.filePath,
+      wrapperId: null,
       fileId: id,
       wrapperEntityId: legacyId,
       groupId: null,
@@ -60,6 +63,7 @@ export function listHostEditTabs(
       .map((wrapper) => ({
         // Why: window hydration migrates a wrapper named by its legacy file id to the restored id.
         tabId: wrapper.id === legacyId ? id : wrapper.id,
+        wrapperId: wrapper.id,
         fileId: id,
         wrapperEntityId: legacyId,
         groupId: wrapper.groupId,

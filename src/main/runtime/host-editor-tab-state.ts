@@ -11,6 +11,8 @@ export type HostDiffTabRecord = {
   language: string
   executionHostId: ExecutionHostId
   groupId: string | null
+  /** What the snapshot showed when the host last focused this diff; closing it returns there. */
+  returnFocusTabId: string | null
 }
 
 /** Per-runtime, process-local editor bookkeeping; nothing here is persisted. */
@@ -56,6 +58,27 @@ export class HostEditorTabState {
       this.diffsByWorktree.set(worktreeId, remaining)
     }
     return true
+  }
+
+  focusDiff(
+    worktreeId: string,
+    tabId: string,
+    previousActiveTabId: string | null
+  ): HostDiffTabRecord {
+    const diffs = this.diffsByWorktree.get(worktreeId) ?? []
+    const diff = diffs.find((candidate) => candidate.tabId === tabId)
+    if (!diff) {
+      throw new Error('tab_not_found')
+    }
+    if (!previousActiveTabId || previousActiveTabId === tabId) {
+      return diff
+    }
+    const focused = { ...diff, returnFocusTabId: previousActiveTabId }
+    this.diffsByWorktree.set(
+      worktreeId,
+      diffs.map((candidate) => (candidate === diff ? focused : candidate))
+    )
+    return focused
   }
 
   setDiffGroups(worktreeId: string, groupIdByTabId: ReadonlyMap<string, string>): void {

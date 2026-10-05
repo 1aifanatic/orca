@@ -7,6 +7,7 @@ import {
   pickTargetGroup,
   type HostEditTabRecord
 } from './host-editor-session-model'
+import { getHeadlessMobileSessionGroupId } from './mobile-session-layout-projection'
 import {
   pruneTabGroupLayoutAfterRetirement,
   repairMobileSessionTabGroupsAfterRetirement
@@ -133,7 +134,8 @@ function refocusAfterEditorClose(
 
 /**
  * Persists a host-side group layout (after a move, split or reorder) together with each wrapper's
- * group and order, so a window restoring the session places tabs where phones saw them.
+ * group and order, so a window restoring the session places tabs where phones saw them. Transient
+ * tabs (host diffs) are left out: the session holds only what a window would persist.
  */
 export function persistHostTabGroupLayout(
   session: WorkspaceSessionState,
@@ -142,14 +144,31 @@ export function persistHostTabGroupLayout(
     groups: readonly RuntimeMobileSessionTabGroup[]
     groupLayout: TabGroupLayoutNode | null | undefined
     activeGroupId: string | null
+    transientTabIds?: ReadonlySet<string>
   }
 ): WorkspaceSessionState {
+  // Why: the synthetic terminal group exists only in legacy projections; a window would restore it as a split.
+  if (
+    isUnifiedWorkspaceSession(session) &&
+    layout.groups.some((group) => group.id === getHeadlessMobileSessionGroupId(worktreeId))
+  ) {
+    return session
+  }
+  // Why: a window migrates a wrapper named by its legacy file id, so the snapshot id can differ from the persisted one.
+  const persistedIdByTabId = new Map(
+    listHostEditTabs(session, worktreeId).flatMap((record) =>
+      record.wrapperId && record.wrapperId !== record.tabId
+        ? [[record.tabId, record.wrapperId] as const]
+        : []
+    )
+  )
+  const toPersistedId = (tabId: string): string => persistedIdByTabId.get(tabId) ?? tabId
   const groups: TabGroup[] = layout.groups.map((group) => ({
     id: group.id,
     worktreeId,
-    activeTabId: group.activeTabId,
-    tabOrder: [...group.tabOrder],
-    ...(group.recentTabIds ? { recentTabIds: [...group.recentTabIds] } : {})
+    activeTabId: group.activeTabId ? toPersistedId(group.activeTabId) : null,
+    tabOrder: group.tabOrder.map(toPersistedId),
+    ...(group.recentTabIds ? { recentTabIds: group.recentTabIds.map(toPersistedId) } : {})
   }))
   const placementByTabId = new Map<string, { groupId: string; sortOrder: number }>()
   for (const group of groups) {
@@ -166,7 +185,7 @@ export function persistHostTabGroupLayout(
   })
   const groupLayout =
     layout.groupLayout ?? (groups[0] ? { type: 'leaf' as const, groupId: groups[0].id } : null)
-  return {
+  const next: WorkspaceSessionState = {
     ...session,
     tabGroups: { ...session.tabGroups, [worktreeId]: groups },
     ...(groupLayout
@@ -184,4 +203,5 @@ export function persistHostTabGroupLayout(
         }
       : {})
   }
+  return retireTopLevelIdsFromPersistedGroups(next, worktreeId, layout.transientTabIds ?? new Set())
 }
