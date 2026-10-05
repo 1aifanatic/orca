@@ -20,6 +20,7 @@ export class TerminalTopologyPublisher {
   private readonly published = new Map<string, PublishedSlice>()
   private lastSeq = 0
   private dirty = false
+  private subscribed = false
   private failures = 0
 
   constructor(private readonly readOwners: () => Map<string, WorkspaceSessionOwner>) {}
@@ -28,18 +29,25 @@ export class TerminalTopologyPublisher {
     return this.failures
   }
 
-  /** The current topology becomes the baseline unsent; a reader pulls it instead. */
+  /** Dormant until a reader subscribes, so writes cost nothing while no one listens. */
   setSink(sink: TerminalTopologySink | null): void {
     this.sink = sink
     this.dirty = false
+    this.subscribed = false
     this.published.clear()
-    if (sink) {
-      this.guard(() => this.reconcile(false))
+  }
+
+  /** The current topology becomes the baseline unsent; the subscriber pulls it instead. */
+  subscribe(): void {
+    if (!this.sink || this.subscribed) {
+      return
     }
+    this.subscribed = true
+    this.guard(() => this.reconcile(false))
   }
 
   markDirty(): void {
-    if (!this.sink || this.dirty) {
+    if (!this.subscribed || this.dirty) {
       return
     }
     this.dirty = true
@@ -68,6 +76,7 @@ export class TerminalTopologyPublisher {
         publishSeq: this.lastSeq
       }))
     }
+    this.subscribe()
     this.flush()
     return [...this.published.values()].map(sequenced)
   }

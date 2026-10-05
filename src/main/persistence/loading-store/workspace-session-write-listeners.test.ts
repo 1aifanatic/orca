@@ -28,7 +28,7 @@ const binding = {
   incarnationId: 'observed-incarnation'
 }
 
-type Mode = 'none' | 'publisher' | 'throwing'
+type Mode = 'none' | 'dormant' | 'publisher' | 'throwing'
 
 function ownersOf(store: Store): Map<string, WorkspaceSessionOwner> {
   const owners = new Map<string, WorkspaceSessionOwner>()
@@ -81,13 +81,16 @@ async function runScenario(mode: Mode) {
   const publisher = new TerminalTopologyPublisher(() => ownersOf(store))
   if (mode !== 'none') {
     publisher.setSink(
-      mode === 'publisher'
+      mode !== 'throwing'
         ? (slice) => pushes.push(slice)
         : () => {
             throw new Error('sink failed')
           }
     )
     store.onWorkspaceSessionWritten(() => publisher.markDirty())
+  }
+  if (mode === 'publisher' || mode === 'throwing') {
+    publisher.subscribe()
   }
   if (mode === 'throwing') {
     store.onWorkspaceSessionWritten(() => {
@@ -145,10 +148,13 @@ function withStableFixtureIds(value: unknown): unknown {
 describe('workspace session write observers are inert', () => {
   it('leave saved state and write order identical, even when they throw', async () => {
     const baseline = await runScenario('none')
+    const dormant = await runScenario('dormant')
     const observed = await runScenario('publisher')
     const throwing = await runScenario('throwing')
 
     expect(JSON.stringify(baseline.saved)).toContain('split-pty')
+    expect(dormant.saved).toEqual(baseline.saved)
+    expect(dormant.pushes).toEqual([])
     expect(observed.saved).toEqual(baseline.saved)
     expect(throwing.saved).toEqual(baseline.saved)
     expect(throwing.failures).toBeGreaterThan(0)

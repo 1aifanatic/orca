@@ -49,6 +49,7 @@ function harness(initial: WorkspaceSessionState) {
   const pushes: TerminalTopologySlice[] = []
   const publisher = new TerminalTopologyPublisher(readOwners)
   publisher.setSink((slice) => pushes.push(slice))
+  publisher.subscribe()
   return {
     publisher,
     pushes,
@@ -158,6 +159,7 @@ describe('TerminalTopologyPublisher', () => {
       seqs.push(h.publisher.settle(WT))
     }
     h.publisher.setSink(() => {})
+    h.publisher.subscribe()
     seqs.push(h.publisher.settle(WT))
 
     expect(seqs).toEqual([...seqs].sort((a, b) => a - b))
@@ -170,6 +172,7 @@ describe('TerminalTopologyPublisher', () => {
     h.publisher.setSink(() => {
       throw new Error('frame gone')
     })
+    h.publisher.subscribe()
     h.replace(sessionWith([WT, WT_B]))
     h.publisher.markDirty()
     await Promise.resolve()
@@ -181,6 +184,24 @@ describe('TerminalTopologyPublisher', () => {
     expect(() => h.publisher.settle(WT)).not.toThrow()
     expect(h.publisher.failureCount).toBe(2)
     expect(warn).toHaveBeenCalledTimes(1)
+  })
+
+  it('stays dormant with a window but no subscriber, until the first pull', async () => {
+    const readOwners = vi.fn(() => new Map<string, WorkspaceSessionOwner>())
+    const pushes: TerminalTopologySlice[] = []
+    const publisher = new TerminalTopologyPublisher(readOwners)
+    publisher.setSink((slice) => pushes.push(slice))
+
+    publisher.markDirty()
+    await Promise.resolve()
+    expect(publisher.settle(WT)).toBe(0)
+    expect(readOwners).not.toHaveBeenCalled()
+
+    publisher.readSlices()
+    publisher.markDirty()
+    await Promise.resolve()
+    expect(readOwners).toHaveBeenCalledTimes(2)
+    expect(pushes).toEqual([])
   })
 
   it('does no projection work while no window consumes it', () => {
