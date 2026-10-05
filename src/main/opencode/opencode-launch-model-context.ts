@@ -10,13 +10,13 @@ import { withTimeout } from '../../shared/promise-timeout-fallback'
 import { createOutputSink } from '../../shared/child-process/bounded-output-sink'
 import { readFetchResponseJsonWithinLimit } from '../../shared/fetch-response-body'
 import { cancelUnreadResponseBody } from '../lib/unread-response-body'
-import {
-  createProviderSpawnSpec,
-  stopSupervisedProvider
-} from '../codex/codex-app-server-posix-supervisor'
-import { terminateCodexAppServerProcessTree } from '../codex/codex-app-server-process-teardown'
+import type { ChildProcessHandle } from '../../shared/child-process/process-spec'
+import { createProviderSpawnSpec } from '../codex/codex-app-server-posix-supervisor'
+import { stopSupervisedChildProcess } from '../codex/supervised-child-process-stop'
 
 const OPENCODE_PREFLIGHT_KILL_SITE = 'opencode-launch-model-preflight'
+// A supervisor's pipes are its own, so they close as it exits.
+const SUPERVISOR_PIPE_CLOSE_MS = 1_000
 
 const model = z.object({ id: z.string(), providerID: z.string() })
 const availableModel = model.extend({ enabled: z.boolean() })
@@ -208,28 +208,7 @@ export async function probeOpenCodeLaunchModelContext(options: {
     context = null
   } finally {
     if (spawnSpec.supervised) {
-      let forcedStop = false
-      await stopSupervisedProvider({
-        request: () => {
-          try {
-            child.kill('SIGTERM')
-          } catch {
-            // The supervisor may exit between the close check and kill.
-          }
-        },
-        exitPromise: closed.then(() => undefined),
-        exited: () => childClosed,
-        force: async () => {
-          // A reaped root's PID can be reused; only a live supervisor's tree is ours to force.
-          forcedStop =
-            !rootExited &&
-            (await terminateCodexAppServerProcessTree(child, {
-              site: OPENCODE_PREFLIGHT_KILL_SITE
-            }))
-        },
-        supervised: true
-      })
-      stopped = childClosed || forcedStop
+      stopped = await stopSupervisedPreflight(child, closed)
     } else {
       if (!childClosed && !rootExited) {
         await signalProcessTree(child, 'SIGTERM')
@@ -242,4 +221,26 @@ export async function probeOpenCodeLaunchModelContext(options: {
     }
   }
   return stopped ? context : null
+}
+
+/**
+ * True only when the server's group is proven gone: the supervisor ended on its stop signal or
+ * relayed the server's own exit. Exit 1 can be a reap that failed, and a forced teardown proves
+ * nothing about a group the supervisor left behind.
+ */
+async function stopSupervisedPreflight(
+  child: ChildProcessHandle,
+  closed: Promise<boolean>
+): Promise<boolean> {
+  if (!child.pid) {
+    // Never started, so there is nothing to stop.
+    return true
+  }
+  if (await stopSupervisedChildProcess(child, undefined, OPENCODE_PREFLIGHT_KILL_SITE)) {
+    return false
+  }
+  if (child.signalCode === null && child.exitCode === 1) {
+    return false
+  }
+  return withTimeout(closed, SUPERVISOR_PIPE_CLOSE_MS, false)
 }

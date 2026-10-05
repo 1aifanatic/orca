@@ -29,6 +29,7 @@ class ProbeChild extends ChildProcess {
   override stderr = new PassThrough()
   override pid = 123456
   override exitCode: number | null = null
+  override signalCode: NodeJS.Signals | null = null
   // A handle-less ChildProcess's own kill can signal this test's process group.
   override kill = vi.fn((_signal?: NodeJS.Signals | number): boolean => true)
   override stdio: [PassThrough, PassThrough, PassThrough, undefined, undefined] = [
@@ -58,6 +59,13 @@ function close() {
   child.exitCode = 0
   child.emit('exit', 0, null)
   child.emit('close', 0, null)
+}
+/** How a supervisor ends: its stop signal re-raised once the group is gone, or an exit code. */
+function supervisorExits(code: number | null, signal: NodeJS.Signals | null) {
+  child.exitCode = code
+  child.signalCode = signal
+  child.emit('exit', code, signal)
+  child.emit('close', code, signal)
 }
 const options = { executable: '/private/opencode', cwd: directory, env: {} }
 
@@ -106,7 +114,7 @@ describe('OpenCode model probe termination evidence', () => {
     vi.mocked(forceTerminateProcessTree).mockResolvedValue(false)
     child.kill.mockImplementation((signal) => {
       if (signal === 'SIGTERM') {
-        close()
+        supervisorExits(null, 'SIGTERM')
       }
       return true
     })
@@ -164,10 +172,14 @@ describe('OpenCode model probe termination evidence', () => {
     expect(terminateCodexAppServerProcessTree).not.toHaveBeenCalled()
   })
 
-  it('forces a POSIX supervisor tree only after its full stop time', async () => {
+  it('forces a POSIX supervisor tree only after its full stop time, and trusts no forced stop', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     child.kill.mockReturnValue(true)
-    vi.mocked(terminateCodexAppServerProcessTree).mockResolvedValue(true)
+    // The teardown reports true even when it found no descendants to prove gone.
+    vi.mocked(terminateCodexAppServerProcessTree).mockImplementation(async () => {
+      supervisorExits(null, 'SIGKILL')
+      return true
+    })
 
     const probe = probeOpenCodeLaunchModelContext(options)
     await untilStopRequested()
@@ -175,10 +187,29 @@ describe('OpenCode model probe termination evidence', () => {
     expect(terminateCodexAppServerProcessTree).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(1)
 
-    expect(await probe).toMatchObject({ primaryAgent: 'build' })
+    expect(await probe).toBeNull()
     expect(terminateCodexAppServerProcessTree).toHaveBeenCalledWith(child, {
       site: 'opencode-launch-model-preflight'
     })
+  })
+
+  it('trusts no POSIX stop whose supervisor exited 1, which a failed group reap also exits', async () => {
+    child.kill.mockImplementation(() => {
+      supervisorExits(1, null)
+      return true
+    })
+
+    expect(await probeOpenCodeLaunchModelContext(options)).toBeNull()
+    expect(terminateCodexAppServerProcessTree).not.toHaveBeenCalled()
+  })
+
+  it('accepts a POSIX supervisor that relayed the server exiting on its own', async () => {
+    child.kill.mockImplementation(() => {
+      supervisorExits(0, null)
+      return true
+    })
+
+    expect(await probeOpenCodeLaunchModelContext(options)).toMatchObject({ primaryAgent: 'build' })
   })
 
   it('never forces a POSIX supervisor whose root exited without closing its pipes', async () => {
