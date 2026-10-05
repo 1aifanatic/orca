@@ -1,3 +1,5 @@
+import type { RuntimeMobileSessionTabsSnapshot } from '../../shared/runtime-types'
+
 export type ChatViewWriteAdmission = 'apply' | 'duplicate' | 'superseded'
 
 /** `confirmed` once the write landed; until then a same-seq resend applies again (absolute, idempotent). */
@@ -63,6 +65,14 @@ export class ChatViewWriteFence {
     if (parents.size === 0) {
       this.byWorktree.delete(worktreeId)
     }
+  }
+
+  /** Each close (host, renderer, retirement) stores a snapshot without the tab, so prune there. */
+  retainSnapshotParents(worktreeId: string, snapshot: RuntimeMobileSessionTabsSnapshot): void {
+    this.retainParents(
+      worktreeId,
+      new Set(snapshot.tabs.map((tab) => (tab.type === 'terminal' ? tab.parentTabId : tab.id)))
+    )
   }
 
   forgetWorktree(worktreeId: string): void {
