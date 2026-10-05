@@ -149,7 +149,7 @@ function abortAcquireForStop(
   ) {
     return
   }
-  context.abortAcquire(envelope.sessionId, 'stopped while starting')
+  context.acquireAborts.abort(envelope.sessionId, 'stopped while starting')
 }
 
 export function respondToStructuredAgentSessionPrompt(
@@ -191,7 +191,7 @@ export async function setStructuredAgentSessionOption(
           return recordStructuredAgentSessionOptionIntent(context.deps, ctx, params)
         }
         // Held where a start is, so a close, a Stop admitted now or quit ends the wait from outside.
-        const wait = context.beginProviderWait(params.envelope.sessionId)
+        const wait = context.acquireAborts.begin(params.envelope.sessionId)
         try {
           return await performSetOption(ctx, params, wait.signal)
         } finally {
