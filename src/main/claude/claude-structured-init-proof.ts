@@ -72,7 +72,7 @@ export function claudeInitializationAuthError(
 ): AgentSessionAcquisitionRefusal | null {
   const account =
     isRecord(initialization) && isRecord(initialization.account) ? initialization.account : {}
-  // An ANTHROPIC_API_KEY (env or settings) reports tokenSource "none" beside its apiKeySource.
+  // An API key (ANTHROPIC_API_KEY or a Console /login key) reports tokenSource "none".
   const apiKeySource = readClaudeFrameString(account, 'apiKeySource')
   return readClaudeFrameString(account, 'tokenSource') === 'none' &&
     (apiKeySource === null || apiKeySource === 'none')

@@ -207,9 +207,10 @@ describe('Claude structured session publishes before the CLI answers initialize'
     })
   })
 
-  // Accounts as Claude 2.1.280 reports them at initialize, with no subscription login.
+  // Accounts as Claude 2.1.280 reports them at initialize; the /login key row is from its source.
   it.each([
     ['an ANTHROPIC_API_KEY', { tokenSource: 'none', apiKeySource: 'ANTHROPIC_API_KEY' }],
+    ['a Console /login key', { tokenSource: 'none', apiKeySource: '/login managed key' }],
     ['an apiKeyHelper', { tokenSource: 'apiKeyHelper', apiKeySource: 'apiKeyHelper' }],
     ['an ANTHROPIC_AUTH_TOKEN', { tokenSource: 'ANTHROPIC_AUTH_TOKEN' }],
     ['a third-party provider', { apiProvider: 'bedrock' }]
