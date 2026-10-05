@@ -43,19 +43,18 @@ function resolver(record: AgentSessionRecord, fullAccess = false) {
 }
 
 describe('ACP launch resolution', () => {
-  it('pins the record account home, never self-updates, and searches the agent install dir', async () => {
+  it('pins the record account home and searches the agent install dir', async () => {
     const { resolve, searched } = resolver(grokRecord())
     const launch = await resolve({ identity })
     expect(launch).toMatchObject({
       command: '/resolved/grok',
-      args: ['--no-auto-update', 'agent', '--no-leader', 'stdio'],
+      args: ['agent', 'stdio'],
       cwd: '/repo/worktree',
       fullAccess: false,
       resume: null
     })
     expect(launch.env).toMatchObject({
       GROK_HOME: '/home/user/.grok-work',
-      GROK_DISABLE_AUTOUPDATER: '1',
       GROK_EXTRA: '1'
     })
     expect(searched[0]).toContain('/home/user/.grok-work/bin')

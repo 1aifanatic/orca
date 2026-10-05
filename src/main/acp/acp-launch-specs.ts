@@ -32,16 +32,9 @@ export type AcpLaunchSpec = {
 const GROK_LAUNCH_SPEC: AcpLaunchSpec = {
   agent: 'grok',
   command: 'grok',
-  // Orca owns this child's lifetime: no self-update mid-chat and no shared leader process it
-  // cannot stop. `--always-approve` only for full access, as the user's setting chooses.
-  args: ({ fullAccess }) => [
-    '--no-auto-update',
-    'agent',
-    '--no-leader',
-    ...(fullAccess ? ['--always-approve'] : []),
-    'stdio'
-  ],
-  env: { GROK_DISABLE_AUTOUPDATER: '1' },
+  // `--always-approve` only for full access, as the user's setting chooses.
+  args: ({ fullAccess }) => ['agent', ...(fullAccess ? ['--always-approve'] : []), 'stdio'],
+  env: {},
   dialect: GROK_ACP_DIALECT,
   loginCommand: ['grok', 'login'],
   accountHomeVariable: 'GROK_HOME',
