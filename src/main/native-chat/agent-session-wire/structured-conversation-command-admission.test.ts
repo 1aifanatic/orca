@@ -196,8 +196,8 @@ describe('conversationCommandBlocked for a command sent at rest (C6, B3)', () =>
 })
 
 describe('conversationCommandBlocked on unsettled messages', () => {
-  // One send per shape the Working indicator and admission could read differently.
-  const SHAPES: Record<string, Partial<AgentJournalSubmission>> = {
+  // One send per state the Working indicator and admission could read differently.
+  const SENDS: Record<string, Partial<AgentJournalSubmission>> = {
     queued: { dispatchState: 'pending', handoverRecorded: true },
     handedOver: { dispatchState: 'pending', handoverRecorded: true, handedOverAt: 5 },
     handedOverByEarlierChild: {
@@ -213,11 +213,11 @@ describe('conversationCommandBlocked on unsettled messages', () => {
     rejected: { dispatchState: 'rejected' }
   }
 
-  function admissionOver(shape: string, admission?: 'at-rest' | 'handover') {
+  function admissionOver(send: string, admission?: 'at-rest' | 'handover') {
     const ctx = contextWith(undefined)
     const submissions: AgentJournalSubmission[] = [
       {
-        clientMessageId: shape,
+        clientMessageId: send,
         fence: 1,
         payloadFingerprint: 'fingerprint',
         dispatchState: 'pending',
@@ -225,7 +225,7 @@ describe('conversationCommandBlocked on unsettled messages', () => {
         reason: null,
         submittedAt: 1,
         resolvedAt: null,
-        ...SHAPES[shape]
+        ...SENDS[send]
       }
     ]
     ctx.journal.submissions = () => submissions
@@ -236,12 +236,12 @@ describe('conversationCommandBlocked on unsettled messages', () => {
     }
   }
 
-  it.each(Object.keys(SHAPES))(
+  it.each(Object.keys(SENDS))(
     'refuses on %s exactly when the chat shows the agent working',
-    (shape) => {
-      const { blocked, working } = admissionOver(shape)
+    (send) => {
+      const { blocked, working } = admissionOver(send)
       expect(blocked).toBe(working ? 'messagesUnsettled' : null)
-      expect(admissionOver(shape, 'at-rest').blocked).toBe(blocked)
+      expect(admissionOver(send, 'at-rest').blocked).toBe(blocked)
     }
   )
 
