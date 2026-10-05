@@ -12,10 +12,10 @@ import {
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { createJournalOpenReadRefusals } from '../agent-session-journal/journal-open-failure'
 import type { StructuredAgentSessionConversations } from './structured-agent-session-conversations'
+import { releaseLeaseOfEndedStructuredAgentSessionChild } from './structured-agent-session-child-close'
 import {
   abandonQueuedStructuredAgentSessionMessages,
   closeStructuredAgentSessionConversationUnderSerialize,
-  finishOwedStructuredAgentSessionWindDownUnderSerialize,
   stopStructuredAgentSessionAgentUnderSerialize,
   type StructuredAgentSessionCloseCause,
   type StructuredAgentSessionLifetimeContext,
@@ -58,11 +58,13 @@ export function createStructuredAgentSessionConversationLifetime(host: {
     })
   const stopAgent = (sessionId: string, ending: StructuredAgentSessionStopEnding) =>
     stopStructuredAgentSessionAgentUnderSerialize(host.context(), sessionId, ending)
-  const finishOwedWindDown = (sessionId: string) =>
-    finishOwedStructuredAgentSessionWindDownUnderSerialize(host.context(), sessionId)
 
-  const closeConversation = (sessionId: string): Promise<boolean> =>
-    closeStructuredAgentSessionConversationUnderSerialize(
+  const closeConversation = async (sessionId: string): Promise<boolean> => {
+    // The handle carries the proof that releases a lease its child's wind-down could not.
+    if (await releaseLeaseOfEndedStructuredAgentSessionChild(host.context(), sessionId)) {
+      return false
+    }
+    return closeStructuredAgentSessionConversationUnderSerialize(
       {
         sessions,
         // A legacy store cannot say, so the row stays; restart is the boundary that forgets.
@@ -70,6 +72,7 @@ export function createStructuredAgentSessionConversationLifetime(host: {
       },
       sessionId
     )
+  }
 
   const idleSweep = new StructuredAgentSessionIdleSweep({
     sessions,
@@ -85,7 +88,6 @@ export function createStructuredAgentSessionConversationLifetime(host: {
     providerHoldsDispatch: (sessionId) => deps().adapter.holdsDispatch?.(sessionId) === true,
     // The host puts an idle agent to rest: a turn it cuts short is news, not the user's Stop.
     stopAgent: (sessionId) => stopAgent(sessionId, { cause: 'evict', resting: true }),
-    finishOwedWindDown,
     // A host stop: the delivery loop waiting on this child writes the one error row and rejects
     // what is queued with it, both worded from the hostStopped fact.
     stopStartingAgent: (sessionId) =>
