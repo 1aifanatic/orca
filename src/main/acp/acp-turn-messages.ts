@@ -3,7 +3,7 @@ import type { SessionUpdate } from './generated/acp-protocol.generated'
 
 type MessagePosition = { ordinal: number; channel?: string }
 
-/** Stable turn-relative message positions also identify coalesced load snapshots. */
+/** Stable turn-relative message positions. */
 export class AcpTurnMessages {
   private readonly turns = new BoundedMap<string, MessagePosition>({ maxEntries: 128 })
 

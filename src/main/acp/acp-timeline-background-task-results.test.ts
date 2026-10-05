@@ -5,60 +5,7 @@ import { openAcpFixtureRig } from './acp-timeline-fixture.test-support'
 
 afterEach(closeProviderTimelineRigs)
 
-describe('background task results in adopted history', () => {
-  it.each([
-    ['running', undefined, 'unverifiable'],
-    ['completed', 0, 'done'],
-    ['completed', undefined, 'done'],
-    ['failed', 1, 'blocked'],
-    ['stopped', undefined, 'idle'],
-    ['unknown', undefined, 'unverifiable']
-  ] as const)(
-    'settles replay from a TaskOutput result with status %s and exit code %s',
-    async (status, exitCode, state) => {
-      const fixture = await openAcpFixtureRig({ adopt: true })
-      const lane = fixture.lane()
-      lane.beginLoad()
-      for (const [index, rawOutput] of [
-        { type: 'BackgroundTaskStarted', task_id: 'historic-task', command: 'npm test' },
-        {
-          type: 'TaskOutput',
-          Result: {
-            task_id: 'historic-task',
-            command: 'npm test',
-            status,
-            exit_code: exitCode,
-            output: 'PASS a.test.js\nPASS b.test.js\n'
-          }
-        }
-      ].entries()) {
-        fixture.apply(
-          lane.notification(
-            'session/update',
-            {
-              sessionId: 'session-1',
-              _meta: { isReplay: true, promptId: 'historic-turn' },
-              update: {
-                sessionUpdate: 'tool_call_update',
-                toolCallId: `tool-${index}`,
-                status: 'completed',
-                rawOutput
-              }
-            },
-            1000 + index
-          )
-        )
-      }
-      fixture.finishLoad()
-      const tasks = (await fixture.rig.rows()).flatMap((row) =>
-        row.body.kind === 'message' ? row.body.blocks.filter(isBackgroundTaskBlock) : []
-      )
-      expect(tasks).toHaveLength(1)
-      expect(tasks[0]).toMatchObject({ state, label: 'npm test' })
-      expect(tasks[0]?.summary ?? '').not.toContain('PASS')
-    }
-  )
-
+describe('background task results', () => {
   it('uses each structured kill result rather than inferring a stop for unsuccessful targets', async () => {
     const fixture = await openAcpFixtureRig()
     const lane = fixture.lane()
