@@ -211,10 +211,6 @@ async function cancelAndNote(
   // Read while the child is live: a provider whose Stop is a session boundary loses it next.
   const endsSession =
     input.endSession !== undefined && ctx.adapter.stopEndsSession?.(ctx.sessionId) === true
-  // Keyed by the turn it stopped, so another Stop of that turn rewrites this row, never adds one.
-  const noteIdentity = structuredAgentSessionStopNoteIdentity(
-    stoppedTurnId ?? input.clientOperationId
-  )
   const stoppedAt = Date.now()
   // Read before the cancel: the sends a child end may take back.
   const sentBeforeStop = ctx.journal.submissions().filter(sendStopCanTakeBack)
@@ -278,6 +274,11 @@ async function cancelAndNote(
       ...agentSessionFailureWords(agentSessionFailureFact('cancelUnconfirmed'), { surface: 'row' })
     }
   }
+  // Keyed by the turn it stopped, as the provider names it, so another Stop of that turn rewrites
+  // this row, never adds one.
+  const noteIdentity = structuredAgentSessionStopNoteIdentity(
+    stoppedTurn ?? stoppedTurnId ?? input.clientOperationId
+  )
   // A Stop naming a turn that has since ended keeps the session only when the provider declined
   // it: an interrupt, answered or not, can stop a follow-up whose turn has not opened.
   if (endsSession && (!namesTurnNotLive || taken !== false)) {
@@ -346,6 +347,12 @@ async function cancelAndNote(
   if (input.scope || note === null) {
     return { ok: true, value }
   }
-  await ctx.journal.appendItem(noteIdentity, note, { fence: ctx.fence, turnScope })
+  // The turn the provider says the interrupt took, even one that opened while the cancel waited for
+  // it: the note is that turn's, never a conversation row read before the wait.
+  const noteScope =
+    (stoppedTurn !== undefined
+      ? structuredAgentSessionNamedTurnScope(ctx.journal, stoppedTurn)
+      : null) ?? turnScope
+  await ctx.journal.appendItem(noteIdentity, note, { fence: ctx.fence, turnScope: noteScope })
   return { ok: true, value }
 }
