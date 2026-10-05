@@ -41,7 +41,7 @@ export function recordUnprovenStructuredAgentSessionEndUnderSerialize(
     child.close = {
       cause: 'host-stop',
       reason: report.reason,
-      recorded: Promise.resolve(),
+      recorded: Promise.resolve(null),
       requestedAt: session.journal.cursor(),
       reported: {
         reason: report.reason,
