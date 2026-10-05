@@ -10,7 +10,8 @@ function fixture() {
     subscribe: vi.fn(async () => ({ unsubscribe })),
     forgetRoot: vi.fn(),
     dispose: vi.fn(),
-    disposeAndWait: vi.fn(async () => {})
+    disposeAndWait: vi.fn(async () => {}),
+    reopen: vi.fn()
   }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: shutdown paths never reach the dispatcher.
   const registry = new RelayFilesystemWatchRegistry({} as RelayDispatcher, pool)

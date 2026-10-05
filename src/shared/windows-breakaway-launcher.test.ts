@@ -280,23 +280,26 @@ describe('orcad Windows breakaway launcher', () => {
     ])
   })
 
-  it('fails the launch when the process record cannot be written', () => {
+  it('fails the launch and stops the process when its record cannot be written', () => {
     const request = parseWindowsBreakawayLaunchRequest(ORCAD_WINDOWS_BREAKAWAY_CONTRACT, orcadArgv)
     if (!request) {
       throw new Error('expected a launch request')
     }
+    const terminated: number[] = []
     const outcome = launchOutsideJob(
       request,
       launcherFor(() => ({ ok: true, pid: 4242, inJob: false })),
       orcadRuntime,
       () => {
         throw Object.assign(new Error('EACCES'), { errno: -4048 })
-      }
+      },
+      (pid) => terminated.push(pid)
     )
     expect(outcome).toEqual({
       report: { method: 'failed', reason: 'process-file', code: -4048 },
       exitCode: RELAY_WINDOWS_BREAKAWAY_EXIT_CODES.failed
     })
+    expect(terminated).toEqual([4242])
   })
 
   it('reports under its own marker, which the relay parser does not read', () => {

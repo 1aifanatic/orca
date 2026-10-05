@@ -106,8 +106,7 @@ async function serveWithSelectedRuntime(
       selection,
       args,
       getDefaultUserDataPath(),
-      stripElectronRunAsNode(process.env),
-      spawnProcess
+      stripElectronRunAsNode(process.env)
     )
   }
   if (selection.reason) {

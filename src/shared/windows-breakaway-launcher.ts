@@ -155,7 +155,8 @@ export function launchOutsideJob(
   request: WindowsBreakawayLaunchRequest,
   launcher: WindowsBreakawayLauncher | string,
   runtime: { execPath: string; script: string; cwd: string },
-  writeFile: (path: string, contents: string) => void = writeProcessFile
+  writeFile: (path: string, contents: string) => void = writeProcessFile,
+  terminate: (pid: number) => void = (pid) => process.kill(pid)
 ): { report: WindowsBreakawayLaunchReport; exitCode: number } {
   if (typeof launcher === 'string') {
     return {
@@ -188,7 +189,12 @@ export function launchOutsideJob(
     try {
       writeFile(request.processFilePath, JSON.stringify({ pid: result.pid, creationTimeMs }))
     } catch (error) {
-      // Unrecorded, the process could never be proven stopped; the caller must not adopt it.
+      // Unrecorded, the process could never be proven stopped, so stop it now rather than orphan it.
+      try {
+        terminate(result.pid)
+      } catch {
+        // Already gone; nothing else can reach it.
+      }
       const errno =
         error && typeof error === 'object' && 'errno' in error && typeof error.errno === 'number'
           ? error.errno

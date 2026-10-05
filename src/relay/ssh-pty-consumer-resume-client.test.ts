@@ -61,8 +61,7 @@ describe('pty.resumeClient through RelayDispatcher', () => {
     dispatcher.feed(frame(1, 'pty.resumeClient', { resume }))
     await flushRequests()
     expect(response(writes[0]).error.message).toContain('pty_consumer_resume_owner_missing')
-    expect(adapter.activeSessionOwner(1)).toBeNull()
-    expect(() => adapter.assertOwnerPublicationSettled()).not.toThrow()
+    expect(adapter.deliveryMode(1)).toBe('unadmitted')
     dispatcher.feed(frame(2, 'pty.openClient', { resume }))
     await flushRequests()
     expect(response(writes[1]).result).toMatchObject({
@@ -71,7 +70,7 @@ describe('pty.resumeClient through RelayDispatcher', () => {
       ownerGeneration: 1,
       resumed: false
     })
-    expect(adapter.activeSessionOwner(1)).not.toBeNull()
+    expect(adapter.deliveryMode(1)).toBe('legacy-owner')
   })
 
   it.each([true, false])(
@@ -81,8 +80,7 @@ describe('pty.resumeClient through RelayDispatcher', () => {
       dispatcher.feed(frame(1, 'pty.openClient'))
       await flushRequests()
       const grant = response(writes[0]).result
-      const incumbent = adapter.activeSessionOwner(1)
-      expect(incumbent).not.toBeNull()
+      expect(adapter.deliveryMode(1)).toBe('legacy-owner')
       const resumedWrites: Buffer[] = []
       const settlements: ((result: { ok: true } | { ok: false; error: Error }) => void)[] = []
       const successor = dispatcher.attachClient(
@@ -108,21 +106,17 @@ describe('pty.resumeClient through RelayDispatcher', () => {
         ownerGeneration: 2,
         ownerLease: grant.ownerLease
       })
-      expect(adapter.activeSessionOwner(1)).toEqual(incumbent)
-      expect(adapter.activeSessionOwner(successor)).toBeNull()
+      expect(adapter.deliveryMode(1)).toBe('legacy-owner')
+      expect(adapter.deliveryMode(successor)).toBe('unadmitted')
       expect(release).not.toHaveBeenCalled()
-      expect(() => adapter.assertOwnerPublicationSettled()).toThrow(
-        'pty_consumer_owner_publication_pending'
-      )
       settlements[0](ok ? { ok: true } : { ok: false, error: new Error('response failed') })
-      expect(() => adapter.assertOwnerPublicationSettled()).not.toThrow()
       if (ok) {
-        expect(adapter.activeSessionOwner(1)).toBeNull()
-        expect(adapter.activeSessionOwner(successor)).not.toBeNull()
+        expect(adapter.deliveryMode(1)).toBe('unadmitted')
+        expect(adapter.deliveryMode(successor)).toBe('legacy-owner')
         expect(release).toHaveBeenCalledTimes(1)
       } else {
-        expect(adapter.activeSessionOwner(1)).toEqual(incumbent)
-        expect(adapter.activeSessionOwner(successor)).toBeNull()
+        expect(adapter.deliveryMode(1)).toBe('legacy-owner')
+        expect(adapter.deliveryMode(successor)).toBe('unadmitted')
         expect(release).not.toHaveBeenCalled()
       }
       release.mockRestore()

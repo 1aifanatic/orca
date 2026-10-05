@@ -21,6 +21,7 @@ import {
   STREAM_ACK_STALL_RECHECK_MS,
   type GitResponseStreamMarker
 } from './protocol'
+import { settlesWithin } from './settles-within'
 
 type GitResponseStreamEntry = {
   ownerClientId: number
@@ -41,11 +42,16 @@ function encodeChunks(payload: Buffer, chunkBytes = GIT_RESPONSE_CHUNK_SIZE): st
   return chunks
 }
 
+// Why: a pump parked on a stalled but connected client's bulk lane is not woken by abort.
+const PUMP_DRAIN_DEADLINE_MS = 10_000
+
 export class GitResponseStreamRegistry {
   private streams = new Map<number, GitResponseStreamEntry>()
   private nextId = 1
   private disposed = false
   private readonly pendingPumps = new Set<Promise<void>>()
+
+  constructor(private readonly pumpDrainDeadlineMs = PUMP_DRAIN_DEADLINE_MS) {}
 
   private register(ownerClientId: number): number {
     if (this.disposed) {
@@ -252,7 +258,9 @@ export class GitResponseStreamRegistry {
 
   async disposeAllAndWait(): Promise<void> {
     this.disposeAll()
-    await Promise.all(this.pendingPumps)
+    if (!(await settlesWithin(Promise.all(this.pendingPumps), this.pumpDrainDeadlineMs))) {
+      throw new Error('relay_response_stream_operations_unsettled')
+    }
   }
 
   reopen(): void {

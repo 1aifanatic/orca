@@ -1,5 +1,6 @@
+import { boundedList, isRecord, nonEmptyString } from './orcad-migration-manifest-fields'
+
 export const MAX_ORCAD_MIGRATION_DORMANT_ROWS = 16_384
-import { isRecord } from './orcad-migration-manifest-fields'
 export const MAX_ORCAD_MIGRATION_DORMANT_NAMESPACES = 256
 
 export function boundedArray<T>(
@@ -8,13 +9,7 @@ export function boundedArray<T>(
   label: string,
   maximum = MAX_ORCAD_MIGRATION_DORMANT_ROWS
 ): T[] {
-  if (!Array.isArray(value)) {
-    throw new Error(`orcad_migration_dormant_${label}_invalid`)
-  }
-  if (value.length > maximum) {
-    throw new Error(`orcad_migration_dormant_${label}_too_many`)
-  }
-  return value.map(parse)
+  return boundedList(value, maximum, parse, `orcad_migration_dormant_${label}`)
 }
 
 export function stringArray(value: unknown, maximum = MAX_ORCAD_MIGRATION_DORMANT_ROWS): string[] {
@@ -46,12 +41,7 @@ export function requiredRecord(value: unknown, error: string): Record<string, un
   return value
 }
 
-export function requiredString(value: unknown, error: string): string {
-  if (typeof value !== 'string' || !value) {
-    throw new Error(error)
-  }
-  return value
-}
+export const requiredString = nonEmptyString
 
 export function requiredStringOrEmpty(value: unknown, error: string): string {
   if (typeof value !== 'string') {

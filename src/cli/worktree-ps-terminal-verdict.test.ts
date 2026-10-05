@@ -30,9 +30,17 @@ describe('worktree ps terminal verdict', () => {
     expect(projectWorktreePsTerminalVerdict(row)).toEqual({ ...row, terminalVerdict: 'live' })
   })
 
-  it('prints zero and no for a host that confirmed every exit', () => {
-    const row = { liveTerminalCount: 0, hasAttachedPty: false }
+  it('reports none, not exited, for a row with no terminals', () => {
+    const row = { liveTerminalCount: 0, hasAttachedPty: false, unverifiableTerminalCount: 0 }
     expect(formatWorktreePsTerminalFields(row)).toBe('live:0  pty:no')
-    expect(projectWorktreePsTerminalVerdict(row)).toEqual({ ...row, terminalVerdict: 'exited' })
+    expect(projectWorktreePsTerminalVerdict(row)).toEqual({ ...row, terminalVerdict: 'none' })
+  })
+
+  it('reports unverifiable for an idle row from a host that predates the count', () => {
+    const row = { liveTerminalCount: 0, hasAttachedPty: false }
+    expect(projectWorktreePsTerminalVerdict(row)).toEqual({
+      ...row,
+      terminalVerdict: 'unverifiable'
+    })
   })
 })

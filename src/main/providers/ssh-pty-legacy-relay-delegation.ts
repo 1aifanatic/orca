@@ -145,16 +145,18 @@ export function installSshPtyLegacyRelayDelegation(
     (routed(id) ?? own).providesAgentSessionOwnerListings(id)
   // Why not routed: revive replays onto this relay and would respawn a PTY the older one still runs.
   provider.serialize = (ids) => own.serialize(ids.filter((id) => routed(id) === undefined))
-  // Why merged: a served PTY missing from the target's listing would read as gone to inventory.
+  // Why merged, and rejecting when an older relay cannot answer: a served PTY missing from the
+  // listing reads as exited to inventory, and a relay we could not ask proves nothing.
   provider.listProcesses = async (options) => {
     const [current, ...previous] = await Promise.all([
       own.listProcesses(options),
-      ...routing.servedProviders().map((legacy) =>
-        legacy.listProcesses(options).then(
-          (rows) => rows.filter((row) => routed(row.id) === legacy),
-          () => []
+      ...routing
+        .servedProviders()
+        .map((legacy) =>
+          legacy
+            .listProcesses(options)
+            .then((rows) => rows.filter((row) => routed(row.id) === legacy))
         )
-      )
     ])
     return [...current, ...previous.flat()]
   }

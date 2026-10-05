@@ -46,7 +46,6 @@ function input(overrides: Partial<ServeRuntimeSelectionInput> = {}): ServeRuntim
     platform: 'linux',
     userDataPath: root,
     templateDirs: [join(root, 'missing-template'), template],
-    usesMacUpdateHandoff: false,
     hostTarget: () => TARGET,
     materializeSlot: vi.fn(async () => slotFixture()),
     materializeRuntime: vi.fn(async () => cachedNode),
@@ -95,7 +94,6 @@ describe('orca serve runtime selection', () => {
       { env: { [SERVE_RUNTIME_ENV]: 'bun' } },
       'ORCA_SERVE_RUNTIME=bun is neither orcad nor electron'
     ],
-    ['packaged macOS', { usesMacUpdateHandoff: true }, 'so paired clients can still update it'],
     ['an unsupported host', { hostTarget: () => 'linux-riscv64-glibc' }, 'no orcad build exists'],
     ['an install without the template', { templateDirs: [] }, 'carries no orcad template'],
     [

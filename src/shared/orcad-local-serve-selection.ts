@@ -9,8 +9,7 @@ export const SERVE_RUNTIME_ELECTRON = 'electron'
 export const ORCAD_LOCAL_SERVE_SELECTION_ENTRY = 'orcad/orcad-local-serve-selection-entry'
 export const ORCAD_LOCAL_SERVE_SELECTION_FLAGS = {
   userData: '--user-data',
-  appRoot: '--app-root',
-  macUpdateHandoff: '--mac-update-handoff'
+  appRoot: '--app-root'
 } as const
 const RESULT_MARKER = 'ORCA_SERVE_RUNTIME'
 

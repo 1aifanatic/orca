@@ -22,9 +22,6 @@ import { formatManagedServerStatus } from './managed-server-format'
 const UNSUPPORTED_MESSAGE =
   'This Orca runtime cannot manage servers over SSH. Run this on the computer whose Orca desktop app deployed the server, after updating Orca there.'
 
-// Outcomes that changed nothing, or left work unfinished; they fail the command with the result.
-const UNSETTLED_OUTCOMES = new Set(['refused', 'deferred', 'failed', 'pending'])
-
 function unsupported(): RuntimeClientError {
   return new RuntimeClientError('incompatible_runtime', UNSUPPORTED_MESSAGE)
 }
@@ -54,21 +51,32 @@ function selectorOf(context: HandlerContext): { selector: string } {
 
 type Outcome = { outcome: string; code?: string; reason?: string }
 
-/** Prints a settled result; throws an unsettled one so scripts see a non-zero exit. */
-function report<TResult extends Outcome>(
+/**
+ * Prints a result whose outcome is in `settled`; throws any other so scripts see a non-zero exit.
+ * Why an allow-list: an outcome a newer desktop adds must fail loudly, not print `undefined`.
+ */
+function report<TResult extends Outcome, TSettled extends TResult['outcome']>(
   response: RuntimeRpcSuccess<TResult>,
   json: boolean,
-  done: (result: TResult) => string
+  settled: readonly TSettled[],
+  done: (result: Extract<TResult, { outcome: TSettled }>) => string
 ): void {
   const result = response.result
-  if (UNSETTLED_OUTCOMES.has(result.outcome)) {
+  if (!isSettled(result, settled)) {
     throw new RuntimeClientError(
       `managed_server_${result.outcome}`,
       result.reason ?? `The managed Orca server action was ${result.outcome}.`,
       result
     )
   }
-  printResult(response, json, done)
+  printResult({ ...response, result }, json, done)
+}
+
+function isSettled<TResult extends Outcome, TSettled extends TResult['outcome']>(
+  result: TResult,
+  settled: readonly TSettled[]
+): result is Extract<TResult, { outcome: TSettled }> {
+  return settled.some((outcome) => outcome === result.outcome)
 }
 
 export const MANAGED_SERVER_HANDLERS: Record<string, CommandHandler> = {
@@ -87,12 +95,10 @@ export const MANAGED_SERVER_HANDLERS: Record<string, CommandHandler> = {
       'managedServer.update',
       params
     )
-    report(response, context.json, (result) =>
-      result.outcome === 'deferred'
-        ? result.reason
-        : result.outcome === 'already-current'
-          ? `Already on ${result.activeVersion}.`
-          : `Updated ${result.environment.name} to ${result.activeVersion}.`
+    report(response, context.json, ['created', 'updated', 'already-current'], (result) =>
+      result.outcome === 'already-current'
+        ? `Already on ${result.activeVersion}.`
+        : `Updated ${result.environment.name} to ${result.activeVersion}.`
     )
   },
   'environment rollback': async (context) => {
@@ -101,10 +107,11 @@ export const MANAGED_SERVER_HANDLERS: Record<string, CommandHandler> = {
       'managedServer.rollback',
       selectorOf(context)
     )
-    report(response, context.json, (result) =>
-      result.outcome === 'rolled-back'
-        ? `Rolled ${result.environment.name} back to ${result.activeVersion}.`
-        : result.reason
+    report(
+      response,
+      context.json,
+      ['rolled-back'],
+      (result) => `Rolled ${result.environment.name} back to ${result.activeVersion}.`
     )
   },
   'environment recover': async (context) => {
@@ -113,7 +120,7 @@ export const MANAGED_SERVER_HANDLERS: Record<string, CommandHandler> = {
       'managedServer.recover',
       selectorOf(context)
     )
-    report(response, context.json, (result) =>
+    report(response, context.json, ['recovered', 'none'], (result) =>
       result.outcome === 'recovered'
         ? `Recovered ${result.environment.name} (${result.resolution}); active version ${result.activeVersion ?? 'none'}.`
         : 'Nothing to recover.'
@@ -132,10 +139,11 @@ export const MANAGED_SERVER_HANDLERS: Record<string, CommandHandler> = {
       'managedServer.stop',
       params
     )
-    report(response, context.json, (result) =>
-      result.outcome === 'unlinked'
-        ? `Stopped ${params.selector} and unlinked it from this machine.`
-        : result.reason
+    report(
+      response,
+      context.json,
+      ['unlinked'],
+      () => `Stopped ${params.selector} and unlinked it from this machine.`
     )
   },
   'environment cancel-stop': async (context) => {
@@ -144,7 +152,7 @@ export const MANAGED_SERVER_HANDLERS: Record<string, CommandHandler> = {
       'managedServer.cancelStop',
       selectorOf(context)
     )
-    report(response, context.json, (result) => {
+    report(response, context.json, ['canceled', 'already-stopped', 'none'], (result) => {
       switch (result.outcome) {
         case 'canceled':
           return `Stop withdrawn; the server keeps serving ${result.activeVersion}.`
@@ -152,8 +160,6 @@ export const MANAGED_SERVER_HANDLERS: Record<string, CommandHandler> = {
           return 'orcad had already exited. Run `orca environment stop --yes` to unlink it.'
         case 'none':
           return 'No stop is pending.'
-        case 'refused':
-          return result.reason
       }
     })
   }

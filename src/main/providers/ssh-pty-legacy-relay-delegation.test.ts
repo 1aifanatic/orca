@@ -127,7 +127,9 @@ describe('SshPtyProvider delegation to an earlier build relay', () => {
   it('answers owner listings from the serving relay and never serializes its PTYs here', async () => {
     const { provider, legacy, currentMux, served } = setup()
     served.add(HELD)
-    const legacyListings = vi.spyOn(legacy, 'providesAgentSessionOwnerListings').mockReturnValue(true)
+    const legacyListings = vi
+      .spyOn(legacy, 'providesAgentSessionOwnerListings')
+      .mockReturnValue(true)
     currentMux.request.mockResolvedValueOnce('[]')
 
     expect(provider.providesAgentSessionOwnerListings(HELD)).toBe(true)
@@ -141,6 +143,15 @@ describe('SshPtyProvider delegation to an earlier build relay', () => {
     expect(() => provider.setLegacyRelayRouting(routing)).toThrow(
       'ssh_pty_legacy_relay_routing_already_installed'
     )
+  })
+
+  it('fails the listing when an older relay cannot answer, so its PTYs read unverifiable', async () => {
+    const { provider, currentMux, legacyMux, served } = setup()
+    served.add(HELD)
+    currentMux.request.mockResolvedValueOnce([{ id: 'pty2:new:1', cwd: '/', title: 'sh' }])
+    legacyMux.request.mockRejectedValueOnce(new Error('relay timed out'))
+
+    await expect(provider.listProcesses()).rejects.toThrow('relay timed out')
   })
 
   it('closes its routes with the provider', () => {

@@ -101,3 +101,12 @@ it('does not retry a deferred shutdown while a socket client is attached', async
   expect(f.ptyHandler.startGraceTimer).not.toHaveBeenCalled()
   expect(f.exit).not.toHaveBeenCalled()
 })
+
+it('keeps every PTY when owned-process cleanup defers the shutdown', async () => {
+  const f = fixture({ clients: 1 })
+  f.disposeOwnedProcesses.mockRejectedValueOnce(new Error('agent child still closing'))
+  f.lifecycle.shutdown()
+  await vi.waitFor(() => expect(f.reopenOwnedProcesses).toHaveBeenCalledOnce())
+  expect(f.ptyHandler.dispose).not.toHaveBeenCalled()
+  expect(f.exit).not.toHaveBeenCalled()
+})

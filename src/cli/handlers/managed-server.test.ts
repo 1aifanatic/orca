@@ -118,6 +118,14 @@ describe('managed server CLI verbs', () => {
     })
   })
 
+  it('fails on an outcome a newer desktop added instead of printing undefined', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    await expect(
+      run('environment cancel-stop', client({ outcome: 'future-outcome' }), [])
+    ).rejects.toMatchObject({ code: 'managed_server_future-outcome' })
+    expect(log).not.toHaveBeenCalled()
+  })
+
   it('prints a readable status', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
     await run(

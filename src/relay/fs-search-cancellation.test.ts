@@ -182,6 +182,8 @@ describe.each(['ripgrep', 'git grep'])('relay dispatcher cancels %s', (backend) 
       const handler = new FsHandler(dispatcher, new RelayContext(), {
         dispose: vi.fn(),
         forgetRoot: vi.fn(),
+        disposeAndWait: vi.fn(async () => {}),
+        reopen: vi.fn(),
         subscribe: vi.fn()
       })
       try {

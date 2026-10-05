@@ -1,18 +1,28 @@
 // Field checks shared by the manifest and receipt parsers; each throws a labeled error.
 
+/** The one bounded-array check; `errorPrefix` names the manifest or dormant error family. */
+export function boundedList<T>(
+  value: unknown,
+  maximum: number,
+  parse: (entry: unknown) => T,
+  errorPrefix: string
+): T[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`${errorPrefix}_invalid`)
+  }
+  if (value.length > maximum) {
+    throw new Error(`${errorPrefix}_too_many`)
+  }
+  return value.map(parse)
+}
+
 export function boundedArray<T>(
   value: unknown,
   maximum: number,
   parse: (entry: unknown) => T,
   label: string
 ): T[] {
-  if (!Array.isArray(value)) {
-    throw new Error(`orcad_migration_manifest_${label}_invalid`)
-  }
-  if (value.length > maximum) {
-    throw new Error(`orcad_migration_manifest_${label}_too_many`)
-  }
-  return value.map(parse)
+  return boundedList(value, maximum, parse, `orcad_migration_manifest_${label}`)
 }
 
 export function assertUniqueIds(values: { id: string }[], label: string): void {
@@ -35,11 +45,15 @@ export function boundedStringArray(value: unknown, maximum: number, label: strin
   return [...value]
 }
 
-export function requiredString(value: unknown, label: string): string {
+export function nonEmptyString(value: unknown, error: string): string {
   if (typeof value !== 'string' || value.length === 0) {
-    throw new Error(`${label}_invalid`)
+    throw new Error(error)
   }
   return value
+}
+
+export function requiredString(value: unknown, label: string): string {
+  return nonEmptyString(value, `${label}_invalid`)
 }
 
 export function requiredFiniteNumber(value: unknown, label: string): number {

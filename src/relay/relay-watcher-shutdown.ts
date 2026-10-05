@@ -10,12 +10,7 @@ export async function disposeRelayWatchesAndWait(
   pool: RelayWatcherProcessPool
 ): Promise<void> {
   const close = closeWatches()
-  const children = Promise.resolve().then(() => {
-    if (!pool.disposeAndWait) {
-      throw new Error('relay_watcher_pool_awaited_disposal_unavailable')
-    }
-    return pool.disposeAndWait()
-  })
+  const children = Promise.resolve().then(() => pool.disposeAndWait())
   const results = await Promise.allSettled([close, children])
   const failures = results.filter((result) => result.status === 'rejected')
   if (failures.length > 0) {
