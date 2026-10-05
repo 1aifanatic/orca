@@ -95,7 +95,6 @@ describe('provider-exit settlement', () => {
       journal: {
         cursor: () => ({ epoch: 'epoch-1', sequence: 0 }),
         itemBody: () => null,
-        itemFence: () => undefined,
         snapshot: () => ({
           items: [lifecycleItem('turn-1', 1, { state: 'running', startedAt: 1_000 })]
         }),
