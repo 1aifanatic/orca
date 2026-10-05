@@ -46,44 +46,29 @@ export class JournalRowWriter {
     hook?: JournalRowTransactionHook,
     receipt?: JournalOperationReceipt
   ): Promise<JournalRow> {
-    return this.deps.serialize(() => this.write(build, hook, receipt))
-  }
-
-  /** Rows chosen at this write's turn in the queue and written back to back, so no other write
-   *  lands between them; each commits alone and is built after the one before it is adopted, so a
-   *  later row may revise an earlier one. `enqueueRows` is the all-or-nothing form. */
-  enqueueEach(
-    resolve: () => readonly ((seq: number, ts: number) => JournalRow)[]
-  ): Promise<JournalRow[]> {
-    return this.deps.serialize(() => resolve().map((build) => this.write(build)))
-  }
-
-  private write(
-    build: (seq: number, ts: number) => JournalRow,
-    hook?: JournalRowTransactionHook,
-    receipt?: JournalOperationReceipt
-  ): JournalRow {
-    assertJournalWritable(this.deps.readOnly(), this.deps.sessionId)
-    const row = build(this.deps.nextSequence(), this.deps.now())
-    assertJournalFence(row.fence, this.deps.highestFence())
-    try {
-      // One INSERT: the chat's epoch pointer moves only when the epoch does.
-      this.deps.database().transaction((db) => {
-        insertJournalRow(db, this.deps.sessionId, row)
-        hook?.(db, row)
-        receipt?.write(db)
-        this.runBookkeeping(db, row)
-      })
-    } catch (error) {
-      this.deps.rolledBack?.()
-      throw error
-    }
-    // COMMIT landed, so the row is durable: adopt it before anything that can
-    // fail. Rejecting here instead would leave the next append reusing a
-    // sequence the table already holds. The ledger first: it cannot throw, the fold can.
-    receipt?.committed()
-    this.deps.commit(row)
-    return row
+    return this.deps.serialize(() => {
+      assertJournalWritable(this.deps.readOnly(), this.deps.sessionId)
+      const row = build(this.deps.nextSequence(), this.deps.now())
+      assertJournalFence(row.fence, this.deps.highestFence())
+      try {
+        // One INSERT: the chat's epoch pointer moves only when the epoch does.
+        this.deps.database().transaction((db) => {
+          insertJournalRow(db, this.deps.sessionId, row)
+          hook?.(db, row)
+          receipt?.write(db)
+          this.runBookkeeping(db, row)
+        })
+      } catch (error) {
+        this.deps.rolledBack?.()
+        throw error
+      }
+      // COMMIT landed, so the row is durable: adopt it before anything that can
+      // fail. Rejecting here instead would leave the next append reusing a
+      // sequence the table already holds. The ledger first: it cannot throw, the fold can.
+      receipt?.committed()
+      this.deps.commit(row)
+      return row
+    })
   }
 
   /** Several rows in ONE transaction, in order, planned once the lane is this append's: none is

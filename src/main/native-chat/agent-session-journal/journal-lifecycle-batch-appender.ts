@@ -1,13 +1,16 @@
+import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import type { AgentJournalCursor } from '../../../shared/agent-session-journal-types'
 import type { JournalReducerState } from './journal-reducer'
 import { partitionJournalLifecycleMutations } from './journal-lifecycle-batch-partition'
-import { journalLifecycleBatchRowBuilder } from './journal-row-builders'
+import {
+  journalLifecycleBatchRowBuilder,
+  type JournalLifecycleMutationInput
+} from './journal-row-builders'
 import type {
   JournalLifecycleBatchInput,
   JournalResolvedLifecycleBatchInput
 } from './journal-store-contracts'
 import type { JournalRow } from './journal-row-schema'
-import type { JournalRowWriter } from './journal-row-writer'
 import { journalQueuedRejectionRowBuilders } from './journal-pending-submission-recovery'
 
 const SETTLEMENT_ALREADY_APPLIED = new Error('journal_settlement_already_applied')
@@ -18,8 +21,9 @@ export class JournalLifecycleBatchAppender {
       state: () => JournalReducerState
       cursor: () => AgentJournalCursor
       enqueue: (build: (seq: number, ts: number) => JournalRow) => Promise<JournalRow>
-      enqueueEach: JournalRowWriter['enqueueEach']
-      enqueueRows: JournalRowWriter['enqueueRows']
+      enqueueRows: (
+        plan: () => readonly ((seq: number, ts: number) => JournalRow)[]
+      ) => Promise<JournalRow[]>
     }
   ) {}
 
@@ -75,11 +79,15 @@ export class JournalLifecycleBatchAppender {
   }
 
   /** Chooses the mutations at its turn in the queue; one too large for a row becomes consecutive
-   *  rows that nothing else lands between, in the order resolved. */
+   *  rows, committed in one transaction, in the order resolved. */
   appendResolved(input: JournalResolvedLifecycleBatchInput): Promise<AgentJournalCursor | null> {
     return this.deps
-      .enqueueEach(() =>
-        partitionJournalLifecycleMutations(input.settlementId, input.resolve())
+      .enqueueRows(() => {
+        const mutations = input.resolve()
+        // Every chunk is built before any commits, so a second chunk naming the same item would
+        // reuse the first chunk's revision.
+        this.assertDistinctItems(mutations)
+        return partitionJournalLifecycleMutations(input.settlementId, mutations)
           .filter((chunk) => !this.wasApplied(chunk.settlementId))
           .map((chunk) =>
             journalLifecycleBatchRowBuilder(
@@ -89,11 +97,24 @@ export class JournalLifecycleBatchAppender {
               input
             )
           )
-      )
+      })
       .then((rows) => {
         const last = rows.at(-1)
         return last ? { epoch: last.epoch, sequence: last.seq } : null
       })
+  }
+
+  private assertDistinctItems(mutations: readonly JournalLifecycleMutationInput[]): void {
+    const { aliases } = this.deps.state()
+    const seen = new Set<string>()
+    for (const mutation of mutations) {
+      const itemId = agentJournalItemKey(mutation.identity)
+      const resolved = aliases.get(itemId) ?? itemId
+      if (seen.has(resolved)) {
+        throw new Error('journal_resolved_lifecycle_batch_names_item_twice')
+      }
+      seen.add(resolved)
+    }
   }
 
   private wasApplied(settlementId: string): boolean {
