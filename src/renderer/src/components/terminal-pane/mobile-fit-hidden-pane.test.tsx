@@ -7,7 +7,6 @@ import { hydrateOverrides, setFitOverride } from '@/lib/pane-manager/mobile-fit-
 import type { ManagedPane, PaneManager } from '@/lib/pane-manager/pane-manager'
 import { safeFit } from '@/lib/pane-manager/pane-tree-ops'
 import { fitRevealedPane } from '@/lib/pane-manager/pane-reveal-fit'
-import { resumePendingFitScrollRestoreAfterFit } from '@/lib/pane-manager/pane-scroll'
 import { markTerminalPinnedViewport } from '@/lib/pane-manager/terminal-scroll-intent'
 import { bindRegisterPaneSerializer } from './pty-connection/pane-serializer-register'
 import type { ConnectPanePtySession } from './pty-connection/connect-pane-pty-session'
@@ -190,30 +189,6 @@ describe('mobile-fit override on a hidden desktop pane', () => {
     expect({ cols: reply?.cols, rows: reply?.rows }).toEqual(PHONE)
     terminal.dispose()
   })
-  it('leaves a pending scroll restore for the reveal fit while parked hidden', async () => {
-    const { pane, terminal, setVisible } = createHiddenPane(true)
-    pane.container.dataset.ptyId = PTY_ID
-    terminal.resize(160, DESKTOP.rows)
-    const rows = Array.from({ length: 300 }, (_, i) => `L${String(i).padStart(3, '0')}`)
-    await new Promise<void>((resolve) => terminal.write(rows.join('\r\n'), resolve))
-    terminal.scrollToLine(100)
-    markTerminalPinnedViewport(terminal)
-    // An xterm without its element cannot scroll yet, so the desktop fit parks its restore.
-    safeFit(pane)
-    expect(terminal.cols).toBe(DESKTOP.cols)
-
-    vi.spyOn(terminal, 'element', 'get').mockReturnValue(pane.container)
-    setVisible(false)
-    setFitOverride(PTY_ID, 'mobile-fit', PHONE.cols, PHONE.rows)
-    safeFit(pane)
-    expect(terminal.cols).toBe(PHONE.cols)
-
-    expect(resumePendingFitScrollRestoreAfterFit(terminal)).toBe(true)
-    const top = terminal.buffer.active.getLine(terminal.buffer.active.viewportY)
-    expect(top?.translateToString(true)).toBe('L100')
-    terminal.dispose()
-  })
-
   it('keeps a pinned viewport on its content across a hidden phone reflow', async () => {
     const { pane, terminal } = createHiddenPane()
     pane.container.dataset.ptyId = PTY_ID

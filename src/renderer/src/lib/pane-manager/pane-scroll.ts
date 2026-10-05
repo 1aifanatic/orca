@@ -6,8 +6,7 @@ import {
 } from './terminal-reflow-scroll-anchor'
 import { forceTerminalViewportScrollbarSync } from './terminal-viewport-scrollbar-sync'
 
-export { getTerminalOutputEpoch, recordTerminalOutput } from './terminal-output-epoch'
-
+const terminalOutputEpochs = new WeakMap<Terminal, number>()
 const deferredScrollRestores = new WeakMap<
   TerminalScrollIntentTarget,
   {
@@ -30,6 +29,14 @@ const pendingFitScrollRestores = new WeakMap<
 const FIT_SCROLL_RESTORE_MAX_FRAMES = 2
 
 type ScrollRestoreResult = 'restored' | 'retry' | 'skipped'
+
+export function recordTerminalOutput(terminal: Terminal): void {
+  terminalOutputEpochs.set(terminal, getTerminalOutputEpoch(terminal) + 1)
+}
+
+export function getTerminalOutputEpoch(terminal: Terminal): number {
+  return terminalOutputEpochs.get(terminal) ?? 0
+}
 
 export function cancelDeferredScrollRestore(terminal: TerminalScrollIntentTarget): void {
   cancelPendingFitScrollRestore(terminal)
@@ -174,10 +181,6 @@ export function restoreScrollStateAfterFit(
   }
   pendingFitScrollRestores.set(terminal, pending)
   pending.rafId = requestAnimationFrame(retry)
-}
-
-export function hasPendingFitScrollRestore(terminal: Terminal): boolean {
-  return pendingFitScrollRestores.has(terminal)
 }
 
 export function resumePendingFitScrollRestoreAfterFit(terminal: Terminal): boolean {

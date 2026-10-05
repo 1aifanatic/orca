@@ -13,7 +13,6 @@ import {
 } from './terminal-scroll-intent'
 import {
   captureScrollState,
-  hasPendingFitScrollRestore,
   releaseScrollStateMarker,
   restoreScrollStateAfterFit,
   resumePendingFitScrollRestoreAfterFit
@@ -116,13 +115,11 @@ function performSafeFit(pane: ManagedPane): boolean {
     // Why: a mobile-owned PTY must stay at its phone grid on passive desktop panes.
     if (override) {
       if (pane.terminal.cols !== override.cols || pane.terminal.rows !== override.rows) {
-        // Why: a fresh capture would supersede the pending restore the reveal fit must resume.
-        const pendingOwnsViewport = !measurable && hasPendingFitScrollRestore(pane.terminal)
-        if (canPreserveScrollIntentForFit(pane) && !pendingOwnsViewport) {
+        if (canPreserveScrollIntentForFit(pane)) {
           captureScrollForFit()
         }
         pane.terminal.resize(override.cols, override.rows)
-      } else if (measurable) {
+      } else {
         resumePendingFitScrollRestoreAfterFit(pane.terminal)
       }
       // Hidden: parked, but not a completed fit that proves layout to its listeners.
@@ -146,8 +143,7 @@ function performSafeFit(pane: ManagedPane): boolean {
   } finally {
     if (shouldRestoreScroll) {
       try {
-        // Why: a hidden parked resize leaves the pending restore for the reveal fit.
-        if (measurable && resumePendingFitScrollRestoreAfterFit(pane.terminal)) {
+        if (resumePendingFitScrollRestoreAfterFit(pane.terminal)) {
           // Resume consumed the pending restore; the fallbacks below must not also run.
         } else if (pinnedScrollState) {
           const state: ScrollState = pinnedScrollState
