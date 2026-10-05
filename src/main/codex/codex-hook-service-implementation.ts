@@ -8,7 +8,10 @@ import { writeManagedScript } from '../agent-hooks/installer-utils'
 import { resolveCodexCommand } from '../codex-cli/command'
 import { getOrcaManagedCodexHomePath } from './codex-home-paths'
 import { getManagedCommand, getManagedScriptPath } from './codex-hook-definition'
-import { installCodexHooksExclusively } from './codex-hook-local-install'
+import {
+  installCodexHooksExclusively,
+  readApprovedManagedOrcaHashes
+} from './codex-hook-local-install'
 import {
   refreshCodexRuntimeUserHooksExclusively,
   removeCodexHooksExclusively
@@ -17,7 +20,11 @@ import { cleanupLegacyManagedHookRepresentations } from './codex-hook-legacy-cle
 import { installCodexHooksRemote } from './codex-hook-remote-install'
 import { getManagedScript } from './codex-hook-script'
 import { readCodexHookHomeStatus, readCurrentCodexHookStatus } from './codex-hook-status'
-import { reconcileCodexHooks, resolveCodexHookAnswerForLaunch } from './codex-hook-reconcile'
+import {
+  CODEX_HOOK_LAUNCH_WAIT_MS,
+  reconcileCodexHooks,
+  resolveCodexHookAnswerForLaunch
+} from './codex-hook-reconcile'
 import { forgetCodexHookTrust, readMemoizedCodexHookTrust } from './codex-hook-trust-memo'
 import { removeStaleWslRuntimeManagedHookTrustEntries } from './codex-hook-trust-cleanup'
 import { runExclusivelyForRuntimeAndSystemTrustConfig } from './codex-hook-trust-queue'
@@ -160,14 +167,16 @@ export class CodexHookService {
   async prepareRuntimeHomeForLaunch(
     runtimeHomePath: string | null | undefined,
     target: CodexWslRuntimeHookTarget | undefined,
-    hooksEnabled: boolean
+    hooksEnabled: boolean,
+    /** How long a Codex launch may wait for Codex's answer; others go ahead with what is known. */
+    answerWaitMs = 0
   ): Promise<AgentHookInstallStatus> {
     if (hooksEnabled) {
       // Why: a managed account's launch home is its self-contained CODEX_HOME,
       // so hooks/trust must install there rather than the shared mirror.
       return (
         (await this.installForRuntimeHomeSerialized(runtimeHomePath, target)) ??
-        (await this.installForLaunchPrep(runtimeHomePath ?? undefined))
+        (await this.installForLaunchPrep(runtimeHomePath ?? undefined, answerWaitMs))
       )
     }
     return (
@@ -213,10 +222,13 @@ export class CodexHookService {
   // account launching against its own self-contained CODEX_HOME passes that
   // per-account home so hooks.json/config.toml/trust land where codex reads.
   async install(
-    runtimeHomePath: string = getOrcaManagedCodexHomePath()
+    runtimeHomePath: string = getOrcaManagedCodexHomePath(),
+    answerWaitMs = CODEX_HOOK_LAUNCH_WAIT_MS
   ): Promise<AgentHookInstallStatus> {
-    const answer = await resolveCodexHookAnswerForLaunch()
-    const hashes = answer?.hashes
+    const answer = await resolveCodexHookAnswerForLaunch(answerWaitMs)
+    // Why fall back to the home's own approvals: an answer still on its way must not strip an entry that works.
+    const hashes =
+      answer?.hashes ?? (answer ? null : readApprovedManagedOrcaHashes(runtimeHomePath))
     if (!hashes) {
       // Why: without Codex's hash an entry would wait for review; the home keeps only the user's hooks.
       return this.refreshRuntimeUserHooks(runtimeHomePath)
@@ -241,10 +253,13 @@ export class CodexHookService {
    * into a time-based cache — the hooks setting, ~/.codex approvals and the
    * managed script can all change between spawns, and only a fresh run sees them.
    */
-  installForLaunchPrep(runtimeHomePath?: string): Promise<AgentHookInstallStatus> {
+  installForLaunchPrep(
+    runtimeHomePath?: string,
+    answerWaitMs = 0
+  ): Promise<AgentHookInstallStatus> {
     const homePath = runtimeHomePath ?? getOrcaManagedCodexHomePath()
     return dedupeInFlightRun(this.launchPrepInFlight, launchPrepKey('install', homePath), () =>
-      this.install(homePath)
+      this.install(homePath, answerWaitMs)
     )
   }
 
@@ -289,7 +304,7 @@ export class CodexHookService {
     const codexPath = resolveCodexCommand()
     const command = getManagedCommand(getManagedScriptPath())
     const hashes = readMemoizedCodexHookTrust(codexPath, command)?.hashes ?? null
-    // Why: turning hooks back on asks this Codex again, even after it refused Orca's approval.
+    // Why the version's hashes too: turning hooks back on re-asks Codex, even after a refusal.
     forgetCodexHookTrust(codexPath)
     return removeCodexHooksExclusively(hashes, () => this.getStatus())
   }

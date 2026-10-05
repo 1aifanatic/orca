@@ -95,7 +95,7 @@ async function sweepLegacySystemManagedHooks(): Promise<void> {
     // Remove only retired Orca hook entries and preserve other managers' metadata.
     const hooksWritePath = resolveHooksJsonWritePath(legacyConfigPath)
     mutateRealHomeHooksPreservingUserTrust({
-      sourcePath: legacyConfigPath,
+      sourcePaths: [legacyConfigPath],
       tomlPath: getSystemCodexConfigTomlPath(),
       beforeHooks: config.hooks,
       afterHooks: nextHooks,

@@ -68,7 +68,7 @@ describe('deriveCodexHookHashes', () => {
     expect(mocks.runProcess).not.toHaveBeenCalled()
   })
 
-  it('says so, and is not retried soon, when this Codex has no hooks/list', async () => {
+  it('tells the user to update Codex, and is not retried soon, when it has no hooks/list', async () => {
     mocks.runCodexAppServerSession.mockRejectedValue(
       new CodexAppServerUnsupportedError('method not found: hooks/list')
     )
@@ -78,7 +78,7 @@ describe('deriveCodexHookHashes', () => {
     expect(derived).toEqual({
       codexVersion: 'codex-cli 0.128.0',
       hashes: null,
-      failure: 'codex-cli 0.128.0 does not report hook approvals; update Codex for Orca status',
+      failure: 'Codex 0.128.0 is too old for Orca status; update Codex',
       transient: false
     })
   })

@@ -25,6 +25,7 @@ import { createAccountRuntimeTargetSettingsSync } from '../rate-limits/account-r
 import { normalizeCodexRuntimeSelection } from '../codex-accounts/runtime-selection'
 import { normalizeClaudeRuntimeSelection } from '../claude-accounts/runtime-selection'
 import { agentHookServer } from '../agent-hooks/server'
+import { isCodexRealHomeLaneUsable } from '../codex/codex-hook-reconcile'
 import { resolveHostCodexSessionSourceHome } from '../codex/codex-session-source-home'
 import { browserManager } from '../browser/browser-manager'
 import { mainProcessState as state } from './main-process-state'
@@ -43,6 +44,9 @@ export function initializeMainProcessAccountServices(): void {
   state.rateLimits = new RateLimitService()
   state.codexRuntimeHome = new CodexRuntimeHomeService(store)
   void startCodexStateDbBackfillRecoveryInBackground(getOrcaManagedCodexHomePath())
+  // Why: when ~/.codex cannot take Orca's approved entry, every consumer (PTY env, rate
+  // limits, commit messages) uses the managed home, where status still works.
+  state.codexRuntimeHome.setRealHomeLaneGate(() => isCodexRealHomeLaneUsable())
   state.codexSessionMigration = createCodexSessionMigrationScheduler({
     isEligible: () =>
       state.codexRuntimeHome?.isHostSystemDefaultSessionMigrationEligible() === true,

@@ -1,49 +1,38 @@
-import { tmpdir } from 'node:os'
 import { resolveCodexCommand } from '../codex-cli/command'
-import { dedupeInFlightRun } from '../in-flight-run-dedupe'
 import { getManagedCommand, getManagedScriptPath } from './codex-hook-definition'
-import { getOrcaUserDataPath, getSystemCodexHomePath } from './codex-home-paths'
-import {
-  deriveCodexHookHashes,
-  listCodexHooks,
-  probeCodexVersion
-} from './codex-hook-trust-derivation'
+import { getOrcaUserDataPath } from './codex-home-paths'
+import { describeCodexVersion } from './codex-hook-trust-derivation'
 import {
   fingerprintCodex,
-  memoizeCodexHookTrust,
-  MISSING_CODEX_FINGERPRINT,
-  readMemoizedCodexHookTrust,
-  readMemoizedVersionHashes,
+  memoizeCodexHookRealHomeRefusal,
+  readCodexHookRealHomeRefusal,
+  _internals as memoInternals,
   type CodexHookTrustAnswer
 } from './codex-hook-trust-memo'
+import { _internals as lookupInternals, lookupCodexHookHashes } from './codex-hook-hash-lookup'
+import { verifyRealHomeCodexHook } from './codex-hook-real-home-verify'
 import {
   reconcileRealHomeCodexHookEntries,
   removeRealHomeCodexHookForOptOut
 } from './codex-real-home-hook-install'
-import {
-  computeTrustKey,
-  normalizeHookTrustKeyForLookup,
-  type CodexTrustEntry
-} from './config-toml-trust'
 
 /**
  * Keeps Orca's Codex hook entry in ~/.codex true to the setting and to the
  * codex binary in use. One never-throwing function, called at app start, on
- * the setting turning on, on each native pane spawn, and on Orca-side launch
- * prep and resume. Each call reads the setting then. A call that finds the
- * entry, its approval and the binary unchanged reads two files and spawns
- * nothing; a new Codex binary costs one `codex --version`, and one throwaway
- * `hooks/list` only when that version is new.
+ * the setting turning on, on each native pane spawn, and on Orca-launched
+ * Codex launches and resumes. Each call reads the setting then. After this
+ * process has probed a binary once, a call that finds the entry, its approval
+ * and the binary unchanged reads two files and spawns nothing; a new Codex
+ * binary costs one `codex --version`, and one throwaway `hooks/list` only
+ * when that version is new.
  */
 
-// Why retried soon: a timeout at a loaded boot must not cost status until a restart.
-const TRANSIENT_FAILURE_RETRY_MS = 60_000
-// Why bounded: a launch waits only for an answer already on its way, never a cold derivation.
+// Why bounded: a Codex launch waits only briefly, never for a cold derivation.
 export const CODEX_HOOK_LAUNCH_WAIT_MS = 3_000
 
 type ReconcileConfig = {
   isEnabled: () => boolean
-  /** Whether Orca's launches run Codex on ~/.codex (system default, no custom CODEX_HOME). */
+  /** Whether the user's selection runs Codex on ~/.codex (system default, no custom CODEX_HOME). */
   usesRealHome: () => boolean
   /** The CODEX_HOME the next native pane gets, null for ~/.codex; may throw while it is unknown. */
   resolveLaunchHome: () => string | null
@@ -59,13 +48,14 @@ export type CodexHookReconcileVerdict = {
 let config: ReconcileConfig | null = null
 let running: Promise<void> | null = null
 let rerun = false
-// Why carried across runs: a start or setting-on call that joins a launch's run still converts.
-let convertRequested = false
+// Why counted: a start or setting-on request is served only by a run that reached the conversion.
+let convertRequests = 0
+let convertServed = 0
 let spawnReconcileScheduled = false
 let lastAnswer: CodexHookTrustAnswer | null = null
 let verified: CodexHookReconcileVerdict['verified'] = null
-const derivations = new Map<string, Promise<CodexHookTrustAnswer>>()
-const transientFailures = new Map<string, { retryAt: number; answer: CodexHookTrustAnswer }>()
+// Why derived each run: the lane closes only while the last reconcile could not approve ~/.codex.
+let realHomeProblem: string | null = null
 let hashResolverForTesting: ((codexPath: string) => Promise<CodexHookTrustAnswer>) | null = null
 
 /** App start, main process only: the settings readers, and the first reconcile once PATH is hydrated. */
@@ -92,7 +82,7 @@ export function reconcileCodexHooks(
   options: { after?: Promise<unknown>; convertOlderForms?: boolean } = {}
 ): Promise<void> {
   if (options.convertOlderForms) {
-    convertRequested = true
+    convertRequests += 1
   }
   if (running) {
     rerun = true
@@ -110,18 +100,35 @@ export function scheduleCodexHookReconcile(): void {
     spawnReconcileScheduled = true
     setImmediate(() => {
       spawnReconcileScheduled = false
-      void reconcileCodexHooks()
+      // Why not join a running one: it reads the files after this spawn anyway, and a rerun would repeat it.
+      if (!running) {
+        void reconcileCodexHooks()
+      }
     })
   }
 }
 
-/** A reconcile, waited for at most `timeoutMs`: a launch goes ahead rather than wait longer. */
+/** A reconcile, waited for at most `timeoutMs`: a Codex launch goes ahead rather than wait longer. */
 export async function reconcileCodexHooksWithin(timeoutMs: number): Promise<void> {
   await settleWithin(reconcileCodexHooks(), timeoutMs)
 }
 
 export function getCodexHookReconcileVerdict(): CodexHookReconcileVerdict | null {
   return lastAnswer ? { answer: lastAnswer, verified } : null
+}
+
+/**
+ * Routing gate: false while the last reconcile could not approve Orca's entry
+ * in ~/.codex, so launches use the managed home, where status still works. A
+ * Codex with no hashes keeps the lane: the managed home could not approve either.
+ */
+export function isCodexRealHomeLaneUsable(): boolean {
+  return realHomeProblem === null
+}
+
+/** Why ~/.codex is not used for launches right now; null when it is. */
+export function getCodexRealHomeLaneProblem(): string | null {
+  return realHomeProblem
 }
 
 /**
@@ -150,10 +157,11 @@ function isEnabledNow(): boolean {
 async function runUntilSettled(): Promise<void> {
   for (;;) {
     rerun = false
-    const convertOlderForms = convertRequested
-    convertRequested = false
+    const requested = convertRequests
     try {
-      await reconcileOnce(convertOlderForms)
+      if (await reconcileOnce(requested > convertServed)) {
+        convertServed = requested
+      }
     } catch (error) {
       console.warn('[codex-hook-reconcile] Codex hook reconcile failed:', error)
     }
@@ -165,33 +173,55 @@ async function runUntilSettled(): Promise<void> {
   }
 }
 
-async function reconcileOnce(convertOlderForms: boolean): Promise<void> {
-  if (!isEnabledNow() || !config?.usesRealHome()) {
-    return
+/** One pass; true when an asked-for conversion of an older build's entry actually ran. */
+async function reconcileOnce(convertOlderForms: boolean): Promise<boolean> {
+  if (!isEnabledNow() || !config) {
+    realHomeProblem = null
+    return false
   }
+  const full = config.usesRealHome()
   const codexPath = resolveCodexCommand()
+  // Why also with a managed account selected: it warms the answer its launches approve with.
   const answer = await resolveCodexHookHashes(codexPath)
   if (!answer.hashes) {
-    return
+    realHomeProblem = null
+    return false
   }
-  const result = await reconcileRealHomeCodexHookEntries({
-    hashes: answer.hashes,
-    isEnabled: isEnabledNow,
-    userDataPath: getOrcaUserDataPath(),
-    convertOlderForms
-  })
-  if (result.outcome !== 'written') {
-    return
+  const fingerprint = fingerprintCodex(codexPath)
+  const refusal = readCodexHookRealHomeRefusal(codexPath, fingerprint, answer.codexVersion)
+  if (refusal) {
+    // Why skip ~/.codex: writing and withdrawing there again changes nothing until this binary changes.
+    realHomeProblem = full ? refusal : null
+    return false
   }
-  verified = await verifyRealHomeCodexHook(codexPath, result.approvals)
-  if (verified === 'rejected') {
-    // Why: an entry Codex does not accept is a review screen; this binary gets no entry until it changes.
-    memoizeCodexHookTrust(codexPath, fingerprintCodex(codexPath), getHookCommand(), {
-      codexVersion: answer.codexVersion,
-      hashes: null,
-      failure: `Codex ${answer.codexVersion} did not accept Orca's approval of its status hook`
+  for (let attempt = 0; ; attempt += 1) {
+    const result = await reconcileRealHomeCodexHookEntries({
+      hashes: answer.hashes,
+      isEnabled: isEnabledNow,
+      userDataPath: getOrcaUserDataPath(),
+      convertOlderForms,
+      mode: full ? 'full' : 'approve-existing'
     })
-    await removeRealHomeCodexHookForOptOut(answer.hashes)
+    if (full) {
+      realHomeProblem = result.outcome === 'unavailable' ? (result.reason ?? 'unavailable') : null
+    }
+    if (result.outcome !== 'written') {
+      return result.converted
+    }
+    const verification = await verifyRealHomeCodexHook(codexPath, result)
+    if (verification === 'lost' && attempt === 0) {
+      // Why once more: a concurrent writer dropped the approval Orca just wrote.
+      continue
+    }
+    verified = verification === 'lost' ? 'unverified' : verification
+    if (verification === 'rejected') {
+      // Why: an entry Codex does not accept is a review screen; ~/.codex gets none from this binary until it changes.
+      const reason = `${describeCodexVersion(answer.codexVersion)} did not accept Orca's approval in ~/.codex`
+      memoizeCodexHookRealHomeRefusal(codexPath, fingerprint, answer.codexVersion, reason)
+      await removeRealHomeCodexHookForOptOut(answer.hashes)
+      realHomeProblem = full ? reason : null
+    }
+    return result.converted
   }
 }
 
@@ -200,13 +230,17 @@ function getHookCommand(): string {
 }
 
 /**
- * Codex's hashes for Orca's entry from `codexPath`: memoized per binary and
- * per version, asked of Codex otherwise. Never throws; one question per binary at a time.
+ * Codex's hashes for Orca's entry from `codexPath`: from this process's memo,
+ * else asked of Codex (its version first, then a throwaway `hooks/list` for a
+ * new version). Never throws; one question per binary at a time.
  */
 export async function resolveCodexHookHashes(
   codexPath: string = resolveCodexCommand()
 ): Promise<CodexHookTrustAnswer> {
-  const answer = await (hashResolverForTesting ?? lookupCodexHookHashes)(codexPath)
+  const answer = await (
+    hashResolverForTesting ??
+    ((path: string) => lookupCodexHookHashes(path, getHookCommand(), config !== null))
+  )(codexPath)
   if (lastAnswer?.codexVersion !== answer.codexVersion) {
     verified = null
   }
@@ -214,109 +248,14 @@ export async function resolveCodexHookHashes(
   return answer
 }
 
-function lookupCodexHookHashes(codexPath: string): Promise<CodexHookTrustAnswer> {
-  const command = getHookCommand()
-  const fingerprint = fingerprintCodex(codexPath)
-  if (fingerprint === MISSING_CODEX_FINGERPRINT) {
-    return Promise.resolve({
-      codexVersion: null,
-      hashes: null,
-      failure: `${codexPath} was not found`
-    })
-  }
-  const memoized = readMemoizedCodexHookTrust(codexPath, command, fingerprint)
-  if (memoized) {
-    return Promise.resolve(memoized)
-  }
-  if (!config) {
-    // Why: only the app asks Codex; the CLI's process reads what the app learned.
-    return Promise.resolve({
-      codexVersion: null,
-      hashes: null,
-      failure: 'Orca has not asked this Codex for its hook approval yet'
-    })
-  }
-  const transient = transientFailures.get(fingerprint)
-  if (transient && transient.retryAt > Date.now()) {
-    return Promise.resolve(transient.answer)
-  }
-  return dedupeInFlightRun(derivations, fingerprint, () =>
-    askCodexForHookHashes(codexPath, command, fingerprint)
-  )
-}
-
-/** Codex's answer for a launch into a managed home; null when it is not known within the wait. */
-export function resolveCodexHookAnswerForLaunch(): Promise<CodexHookTrustAnswer | null> {
-  return settleWithin(resolveCodexHookHashes(), CODEX_HOOK_LAUNCH_WAIT_MS)
-}
-
-async function askCodexForHookHashes(
-  codexPath: string,
-  command: string,
-  fingerprint: string
-): Promise<CodexHookTrustAnswer> {
-  try {
-    const probe = await probeCodexVersion(codexPath, 30_000)
-    const answer: CodexHookTrustAnswer & { transient?: boolean } = probe.version
-      ? (readMemoizedVersionHashes(probe.version, command) ??
-        (await deriveCodexHookHashes(codexPath, command, probe.version)))
-      : {
-          codexVersion: null,
-          hashes: null,
-          failure: `${codexPath} did not report its version`,
-          transient: probe.timedOut
-        }
-    if (answer.transient) {
-      transientFailures.set(fingerprint, {
-        retryAt: Date.now() + TRANSIENT_FAILURE_RETRY_MS,
-        answer
-      })
-    } else {
-      transientFailures.delete(fingerprint)
-      memoizeCodexHookTrust(codexPath, fingerprint, command, answer)
-    }
-    return answer
-  } catch (error) {
-    const answer: CodexHookTrustAnswer = {
-      codexVersion: null,
-      hashes: null,
-      failure: error instanceof Error ? error.message : String(error)
-    }
-    transientFailures.set(fingerprint, { retryAt: Date.now() + TRANSIENT_FAILURE_RETRY_MS, answer })
-    return answer
-  }
-}
-
 /**
- * One read-only `hooks/list` against ~/.codex after a write. 'rejected' only
- * on Codex listing Orca's own entry at an approved key as not trusted; an
- * entry a concurrent edit moved or removed proves nothing either way.
+ * The answer for a launch into a managed home, waiting at most `waitMs` for one
+ * not known yet; null when none came in time.
  */
-async function verifyRealHomeCodexHook(
-  codexPath: string,
-  approvals: readonly CodexTrustEntry[]
-): Promise<'trusted' | 'rejected' | 'unverified'> {
-  try {
-    // Why the same home spelling as panes: an explicit CODEX_HOME keys entries by its real path.
-    const explicitHome = process.env.CODEX_HOME?.trim() ? getSystemCodexHomePath() : null
-    const listings = await listCodexHooks(codexPath, explicitHome, tmpdir())
-    const byKey = new Map(
-      listings.map((listing) => [normalizeHookTrustKeyForLookup(listing.key), listing])
-    )
-    const listed = approvals.map((entry) => {
-      const listing = byKey.get(normalizeHookTrustKeyForLookup(computeTrustKey(entry)))
-      return listing?.command === entry.command ? listing : null
-    })
-    if (listed.some((listing) => listing && listing.trustStatus !== 'trusted')) {
-      return 'rejected'
-    }
-    return listed.every((listing) => listing?.enabled !== false && listing !== null)
-      ? 'trusted'
-      : 'unverified'
-  } catch (error) {
-    console.warn('[codex-hook-reconcile] could not verify Orca entries with Codex:', error)
-    return 'unverified'
-  }
+export function resolveCodexHookAnswerForLaunch(
+  waitMs: number
+): Promise<CodexHookTrustAnswer | null> {
+  return settleWithin(resolveCodexHookHashes(), waitMs)
 }
 
 async function settleWithin<T>(work: Promise<T>, timeoutMs: number): Promise<T | null> {
@@ -336,12 +275,14 @@ export const _internals = {
     config = null
     running = null
     rerun = false
-    convertRequested = false
+    convertRequests = 0
+    convertServed = 0
     spawnReconcileScheduled = false
     lastAnswer = null
     verified = null
-    derivations.clear()
-    transientFailures.clear()
+    realHomeProblem = null
+    lookupInternals.resetForTesting()
+    memoInternals.resetForTesting()
   },
   /** Stands in for asking a real Codex; null restores the real lookup. */
   setHashResolverForTesting(

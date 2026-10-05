@@ -186,7 +186,9 @@ export async function prepareRuntimePtySpawn(
     ctx.env = { ...ctx.env, ORCA_TERMINAL_HANDLE: args.preAllocatedHandle }
   }
   const selectLaunchCodexHome = async (): Promise<string | null> =>
-    (await ctx.deps.getSelectedCodexHomePath?.(ctx.codexSelectionTarget, ctx.env)) ?? null
+    (await ctx.deps.getSelectedCodexHomePath?.(ctx.codexSelectionTarget, ctx.env, {
+      launchesCodex: args.launchAgent === 'codex'
+    })) ?? null
   ctx.selectedCodexHomePath =
     !ctx.preAdoptedStablePane && !args.connectionId
       ? getCompatibleSelectedCodexHomePath(
@@ -220,7 +222,8 @@ export async function prepareRuntimePtySpawn(
         getCompatibleSelectedCodexHomePath(
           ctx.codexSelectionTarget,
           (await ctx.deps.getSelectedCodexHomePath?.(ctx.codexSelectionTarget, ctx.env, {
-            unavailableManagedHomePath
+            unavailableManagedHomePath,
+            launchesCodex: true
           })) ?? null
         )
     })

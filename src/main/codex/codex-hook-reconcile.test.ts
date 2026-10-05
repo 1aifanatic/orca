@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type * as InstallerUtils from '../agent-hooks/installer-utils'
 import type * as CodexCommand from '../codex-cli/command'
+import type * as TrustDerivation from './codex-hook-trust-derivation'
 import type { CodexHookListing } from './codex-app-server-client'
 import type { CodexHookHashes } from './codex-hook-trust-derivation'
 
@@ -38,7 +39,8 @@ vi.mock('../codex-cli/command', async (importOriginal) => ({
   ...(await importOriginal<typeof CodexCommand>()),
   resolveCodexCommand: mocks.resolveCodexCommand
 }))
-vi.mock('./codex-hook-trust-derivation', () => ({
+vi.mock('./codex-hook-trust-derivation', async (importOriginal) => ({
+  ...(await importOriginal<typeof TrustDerivation>()),
   probeCodexVersion: mocks.probeCodexVersion,
   deriveCodexHookHashes: mocks.deriveCodexHookHashes,
   listCodexHooks: mocks.listCodexHooks
@@ -56,6 +58,7 @@ vi.mock('../agent-hooks/installer-utils', async (importOriginal) => {
 
 import {
   _internals,
+  isCodexRealHomeLaneUsable,
   reconcileCodexHooks,
   scheduleCodexHookReconcile,
   startCodexHookReconcile
@@ -63,6 +66,7 @@ import {
 import { CodexHookService } from './codex-hook-service-implementation'
 import { computeCodexHookHashesForTests } from './hook-service-test-harness'
 import {
+  buildCodexManagedHook,
   CODEX_EVENTS,
   CODEX_EVENT_LABEL,
   getCodexManagedHookInstallMaterial
@@ -75,7 +79,7 @@ import {
   upsertHookTrustEntries,
   type CodexTrustEntry
 } from './config-toml-trust'
-import { readMemoizedCodexHookTrust } from './codex-hook-trust-memo'
+import { fingerprintCodex, readCodexHookRealHomeRefusal } from './codex-hook-trust-memo'
 import { CODEX_HOOK_EVENT_LABEL } from './codex-hook-identity'
 
 let home: string
@@ -358,19 +362,19 @@ describe('reconcileCodexHooks', () => {
     expect([...readHookTrustEntries(tomlPath()).keys()]).toEqual([])
   })
 
-  it("leaves an older build's entry alone on a pane spawn, and converts it when hooks turn on", async () => {
+  it("leaves an older build's events alone on a pane spawn, and converts them when hooks turn on", async () => {
     const older = {
       type: 'command',
       command: `/bin/sh '${join(home, '.orca', 'agent-hooks', 'codex-hook.sh')}'`
     }
-    writeHooks({
-      Stop: [{ hooks: [{ type: 'command', command: 'user-stop.sh' }] }, { hooks: [older] }]
-    })
-    const before = snapshot(codexHome())
-    enabled = false
+    const olderStop = [
+      { hooks: [{ type: 'command', command: 'user-stop.sh' }] },
+      { hooks: [older] }
+    ]
     start()
     await reconcileCodexHooks()
-    enabled = true
+    // Why after start's own conversion: an older build re-adds its entry while this one runs.
+    writeHooks({ ...readHooks(), Stop: olderStop })
     mocks.resolveCodexCommand.mockClear()
 
     scheduleCodexHookReconcile()
@@ -378,8 +382,10 @@ describe('reconcileCodexHooks', () => {
     await reconcileCodexHooks()
 
     // Why: a running older build may still own that entry; only app start or the setting converts it.
-    expect(snapshot(codexHome())).toEqual(before)
-    expect(mocks.listCodexHooks).not.toHaveBeenCalled()
+    expect(readHooks().Stop).toEqual(olderStop)
+    expect(readHookTrustEntries(tomlPath()).get(orcaKey('Stop', 1))).toBeUndefined()
+    // Why still written elsewhere: this build re-adds and approves its own entry in every other event.
+    expect(readHookTrustEntries(tomlPath()).get(orcaKey('SessionStart', 0))?.enabled).toBe(true)
 
     await new CodexHookService().reconcileHooks()
 
@@ -390,17 +396,46 @@ describe('reconcileCodexHooks', () => {
     expect(readHookTrustEntries(tomlPath()).get(orcaKey('Stop', 1))?.enabled).toBe(true)
   })
 
-  it('leaves a home Orca launches do not use alone', async () => {
+  it('keeps a conversion asked for while hooks were off until one actually runs', async () => {
+    const older = {
+      type: 'command',
+      command: `/bin/sh '${join(home, '.orca', 'agent-hooks', 'codex-hook.sh')}'`
+    }
+    writeHooks({ Stop: [{ hooks: [older] }] })
+    enabled = false
+    start()
+    await reconcileCodexHooks({ convertOlderForms: true })
+    enabled = true
+
+    await reconcileCodexHooks()
+
+    expect(readHooks().Stop).toEqual([{ hooks: [buildCodexManagedHook(command(), 'Stop')] }])
+  })
+
+  it('adds nothing to ~/.codex while launches use a managed home, yet re-approves an entry there', async () => {
+    let realHome = false
     stop = startCodexHookReconcile({
       isEnabled: () => true,
-      usesRealHome: () => false,
+      usesRealHome: () => realHome,
       resolveLaunchHome: () => null
     })
 
     await reconcileCodexHooks()
-
     expect(existsSync(codexHome())).toBe(false)
-    expect(mocks.probeCodexVersion).not.toHaveBeenCalled()
+
+    realHome = true
+    await reconcileCodexHooks()
+    realHome = false
+    const hooks = readHooks()
+    delete hooks.SessionStart
+    hooks.Stop!.unshift({ hooks: [{ type: 'command', command: 'user-stop.sh' }] })
+    writeHooks(hooks)
+
+    await reconcileCodexHooks()
+
+    // Why: a Codex run outside Orca still reads ~/.codex, so a shifted entry stays approved.
+    expect(readHookTrustEntries(tomlPath()).get(orcaKey('Stop', 1))?.enabled).toBe(true)
+    expect(readHooks().SessionStart).toBeUndefined()
   })
 
   it('gives an entry only to the events this Codex lists', async () => {
@@ -428,14 +463,18 @@ describe('reconcileCodexHooks', () => {
         'UserPromptSubmit'
       ].sort()
     )
-    expect(readHookTrustEntries(tomlPath()).size).toBe(6)
+    expect(
+      new Set(
+        [...readHookTrustEntries(tomlPath()).keys()].map((key) => parseTrustKey(key)?.eventLabel)
+      )
+    ).toEqual(new Set(Object.keys(listed)))
   })
 
   it('writes nothing for a Codex without hooks/list, and says so in status', async () => {
     mocks.deriveCodexHookHashes.mockResolvedValue({
       codexVersion: 'codex-cli 0.128.0',
       hashes: null,
-      failure: 'codex-cli 0.128.0 does not report hook approvals; update Codex for Orca status',
+      failure: 'Codex 0.128.0 is too old for Orca status; update Codex',
       transient: false
     })
     start()
@@ -447,13 +486,17 @@ describe('reconcileCodexHooks', () => {
     expect(mocks.deriveCodexHookHashes).toHaveBeenCalledTimes(1)
     expect(new CodexHookService().getStatus()).toMatchObject({
       state: 'not_installed',
-      detail: expect.stringContaining('does not report hook approvals')
+      detail: expect.stringContaining('update Codex')
     })
   })
 
-  it('withdraws an entry Codex does not accept, and stops writing it for that binary', async () => {
+  it('withdraws an entry Codex hashes differently, and stops writing ~/.codex for that binary', async () => {
     mocks.listCodexHooks.mockImplementation(async () =>
-      listLikeCodex().map((listing) => ({ ...listing, trustStatus: 'untrusted' }))
+      listLikeCodex().map((listing) => ({
+        ...listing,
+        trustStatus: 'modified',
+        currentHash: 'sha256:codex-hashes-it-otherwise'
+      }))
     )
     start()
 
@@ -461,15 +504,44 @@ describe('reconcileCodexHooks', () => {
 
     expect(readHooks().Stop).toBeUndefined()
     expect(readHookTrustEntries(tomlPath()).size).toBe(0)
-    expect(readMemoizedCodexHookTrust(mocks.codexPath, command())?.failure).toContain(
-      "did not accept Orca's approval"
-    )
-    expect(new CodexHookService().getStatus().state).not.toBe('installed')
+    expect(
+      readCodexHookRealHomeRefusal(
+        mocks.codexPath,
+        fingerprintCodex(mocks.codexPath),
+        'codex-cli 0.150.1'
+      )
+    ).toContain("did not accept Orca's approval")
+    expect(isCodexRealHomeLaneUsable()).toBe(false)
 
     vi.clearAllMocks()
     await reconcileCodexHooks()
     expect(readHooks().Stop).toBeUndefined()
     expect(mocks.deriveCodexHookHashes).not.toHaveBeenCalled()
+    expect(mocks.listCodexHooks).not.toHaveBeenCalled()
+  })
+
+  it('writes again, once, when another writer dropped the approval it just wrote', async () => {
+    mocks.listCodexHooks.mockImplementationOnce(async () => {
+      // Why: another writer saves its own copy of config.toml, without Orca's approvals.
+      const listings = listLikeCodex()
+      writeFileSync(tomlPath(), 'model = "user-model"\n')
+      return listings.map((listing) => ({ ...listing, trustStatus: 'untrusted' }))
+    })
+    start()
+
+    await reconcileCodexHooks()
+
+    // Why: the listing hashed the entry as approved, so the approval was lost, not refused.
+    expect(mocks.listCodexHooks).toHaveBeenCalledTimes(2)
+    expect(readHooks().Stop).toHaveLength(1)
+    expect(
+      readCodexHookRealHomeRefusal(
+        mocks.codexPath,
+        fingerprintCodex(mocks.codexPath),
+        'codex-cli 0.150.1'
+      )
+    ).toBeNull()
+    expect(isCodexRealHomeLaneUsable()).toBe(true)
   })
 
   it.each([

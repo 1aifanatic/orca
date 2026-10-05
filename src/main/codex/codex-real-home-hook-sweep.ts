@@ -10,6 +10,7 @@ import { resolveHooksJsonWritePath } from '../agent-hooks/hook-config-write-path
 import {
   assertHooksJsonGeneration,
   getRealHomeConfigTomlPath,
+  getRealHomeHookKeySourcePaths,
   getRealHomeHooksJsonPath
 } from './codex-real-home-hooks-json'
 import { getCodexManagedScriptFileName } from './codex-hook-identity'
@@ -58,8 +59,9 @@ export async function sweepRealHomeCodexHook(
   }
   if (removedAny) {
     const hooksWritePath = resolveHooksJsonWritePath(hooksJsonPath)
+    const sourcePaths = getRealHomeHookKeySourcePaths()
     mutateRealHomeHooksPreservingUserTrust({
-      sourcePath: hooksJsonPath,
+      sourcePaths,
       tomlPath: getRealHomeConfigTomlPath(),
       beforeHooks: config.hooks,
       afterHooks: nextHooks,
@@ -73,15 +75,17 @@ export async function sweepRealHomeCodexHook(
     // Verify ownership by the expected hash or grant ledger: stale/mixed hook
     // groups must never make Orca delete a user's trust record at the same key.
     try {
-      removeCodexManagedHookTrustEntries({
-        tomlPath: getRealHomeConfigTomlPath(),
-        runtimeHomePath: getSystemCodexHomePath(),
-        sourcePath: hooksJsonPath,
-        command: material.command,
-        managedEventLabels: new Set(Object.values(material.eventLabel)),
-        timeoutSec: MANAGED_HOOK_TIMEOUT_SECONDS,
-        codexHashes
-      })
+      for (const sourcePath of sourcePaths) {
+        removeCodexManagedHookTrustEntries({
+          tomlPath: getRealHomeConfigTomlPath(),
+          runtimeHomePath: getSystemCodexHomePath(),
+          sourcePath,
+          command: material.command,
+          managedEventLabels: new Set(Object.values(material.eventLabel)),
+          timeoutSec: MANAGED_HOOK_TIMEOUT_SECONDS,
+          codexHashes
+        })
+      }
     } catch (error) {
       console.warn('[codex-real-home-hooks] failed to drop Orca trust entries:', error)
     }

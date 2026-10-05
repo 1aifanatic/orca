@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
+import { parse as parseToml } from 'smol-toml'
 import {
   codexTrustSourcePathsEqual,
   computeCodexTrustedHash,
@@ -13,7 +14,9 @@ import {
 import { writeTomlConfigAtomically } from './config-toml-atomic-write'
 import {
   moveHookTrustContent,
+  readHookTrustBlockTexts,
   removeHookTrustContent,
+  restoreHookTrustBlockContent,
   upsertHookTrustContent
 } from './config-toml-hook-trust-edit'
 import { CodexHookTrustEntryMap, readHookTrustContent } from './config-toml-hook-trust-read'
@@ -112,6 +115,75 @@ export function upsertHookTrustEntries(
   const updated = upsertHookTrustEntriesInContent(existing, entries)
   if (updated !== existing) {
     writeConfigAtomically(configPath, updated)
+  }
+}
+
+/** Thrown instead of writing a config.toml that Codex could no longer load. */
+export class CodexConfigTomlRefusedError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'CodexConfigTomlRefusedError'
+  }
+}
+
+export function isCodexConfigTomlRefusedError(
+  error: unknown
+): error is CodexConfigTomlRefusedError {
+  return error instanceof Error && error.name === 'CodexConfigTomlRefusedError'
+}
+
+/**
+ * Upserts hook approvals only when Codex can still load the result. A user's
+ * inline `hooks.state = {...}` or dotted `hooks.state."k".trusted_hash` key
+ * cannot take an appended `[hooks.state."k"]` table; Codex would refuse the
+ * whole file. Throws CodexConfigTomlRefusedError instead of writing then.
+ */
+export function upsertHookTrustEntriesIfLoadable(
+  configPath: string,
+  entries: readonly CodexTrustEntry[]
+): void {
+  const existing = readTomlForMutation(configPath)
+  const updated = upsertHookTrustEntriesInContent(existing, entries)
+  if (updated === existing) {
+    return
+  }
+  if (!isLoadableToml(updated)) {
+    throw new CodexConfigTomlRefusedError(
+      `${configPath} defines hook approvals in a form Orca cannot add to without breaking it`
+    )
+  }
+  writeConfigAtomically(configPath, updated)
+}
+
+/** Each key's trust tables as written, to restore verbatim later; see restoreHookTrustBlocks. */
+export function readHookTrustBlocks(
+  configPath: string,
+  keys: readonly string[]
+): Map<string, string[]> {
+  const content = existsSync(configPath) ? readTomlFile(configPath) : ''
+  return new Map(keys.map((key) => [key, readHookTrustBlockTexts(content, key)]))
+}
+
+export function restoreHookTrustBlocks(
+  configPath: string,
+  restores: readonly { key: string; blocks: readonly string[] }[]
+): void {
+  if (restores.length === 0 || !existsSync(configPath)) {
+    return
+  }
+  const existing = readTomlFile(configPath)
+  const updated = restoreHookTrustBlockContent(existing, restores)
+  if (updated !== existing) {
+    writeConfigAtomically(configPath, updated)
+  }
+}
+
+function isLoadableToml(content: string): boolean {
+  try {
+    parseToml(content)
+    return true
+  } catch {
+    return false
   }
 }
 

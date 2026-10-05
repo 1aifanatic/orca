@@ -138,14 +138,33 @@ describe('reconcileRealHomeCodexHookEntries', () => {
     expect(identity(hooksPath())).toEqual(converted)
   })
 
-  it("writes nothing beside an older build's entry on a launch, yet re-adds its own elsewhere later", async () => {
-    writeHooks({ hooks: { Stop: [USER_A, orcaGroup(olderBuildCommand())] } })
+  it("writes zero bytes beside an older build's entries on a launch", async () => {
+    const { events } = getCodexManagedHookInstallMaterial()
+    writeHooks({
+      hooks: Object.fromEntries(
+        events.map((event) => [
+          event,
+          [{ hooks: [buildCodexManagedHook(olderBuildCommand(), event)] }]
+        ])
+      )
+    })
     const before = identity(hooksPath())
 
-    expect(await reconcile(userData, false)).toBe('deferred')
+    expect(await reconcile(userData, false)).toBe('unchanged')
 
     expect(identity(hooksPath())).toEqual(before)
     expect(existsSync(configPath())).toBe(false)
+  })
+
+  it("leaves only the older build's events on a launch, and re-approves its own after a shift", async () => {
+    writeHooks({ hooks: { Stop: [USER_A, orcaGroup(olderBuildCommand())] } })
+
+    expect(await reconcile(userData, false)).toBe('written')
+
+    expect(readHooks().hooks.Stop).toEqual([USER_A, orcaGroup(olderBuildCommand())])
+    expect(readHooks().hooks.SessionStart).toEqual([
+      { hooks: [buildCodexManagedHook(frozen(), 'SessionStart')] }
+    ])
     expect(await reconcile(userData, true)).toBe('written')
     const stop = readHooks().hooks.Stop!
     writeHooks({ hooks: { ...readHooks().hooks, Stop: [USER_B, ...stop] } })

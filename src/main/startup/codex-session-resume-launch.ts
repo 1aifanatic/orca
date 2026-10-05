@@ -89,7 +89,7 @@ export async function prepareCodexSessionResumeForLaunch(args: {
             await reconcileCodexHooksWithin(CODEX_HOOK_LAUNCH_WAIT_MS)
           }
         } else if (hooksEnabled) {
-          await codexHookService.installForLaunchPrep(resumeHome)
+          await codexHookService.installForLaunchPrep(resumeHome, CODEX_HOOK_LAUNCH_WAIT_MS)
         } else {
           await codexHookService.refreshRuntimeUserHooksForLaunchPrep(resumeHome)
         }

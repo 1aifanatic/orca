@@ -54,13 +54,13 @@ export async function deriveCodexHookHashes(
     const listings = await listScratchHomeHooks(codexPath, hookCommand)
     const hashes = readCodexHookHashes(listings, hookCommand)
     if (!hashes) {
-      return failed(`${codexVersion} lists none of Orca's hook entries`)
+      return failed(`${describeCodexVersion(codexVersion)} did not recognize Orca's status hook`)
     }
     return { codexVersion, hashes, failure: null, transient: false }
   } catch (error) {
     if (isCodexAppServerUnsupportedError(error)) {
       return failed(
-        `${codexVersion ?? codexPath} does not report hook approvals; update Codex for Orca status`
+        `${codexVersion ? describeCodexVersion(codexVersion) : codexPath} is too old for Orca status; update Codex`
       )
     }
     console.warn('[codex-hook-trust] could not derive Codex hook hashes:', error)
@@ -88,7 +88,7 @@ export function buildScratchHooksJson(hookCommand: string): string {
   return `${JSON.stringify({ hooks }, null, 2)}\n`
 }
 
-/** `hooks/list` for `codexHome`, or the default home when it is null; Codex writes nothing for a list. */
+/** `hooks/list` for `codexHome`, or the default home when it is null; it changes no hook or config file. */
 export async function listCodexHooks(
   codexPath: string,
   codexHome: string | null,
@@ -139,16 +139,27 @@ export function readCodexHookHashes(
   return Object.keys(hashes).length > 0 ? hashes : null
 }
 
+/** "Codex 0.150.1" for `codex --version`'s "codex-cli 0.150.1"; other output as it is. */
+export function describeCodexVersion(codexVersion: string): string {
+  return codexVersion.replace(/^codex-cli\s+/, 'Codex ')
+}
+
 export async function probeCodexVersion(
   codexCommand: string,
   timeoutMs = VERSION_TIMEOUT_MS
 ): Promise<{ version: string | null; timedOut: boolean }> {
-  const result = await runProcess({
-    program: codexCommand,
-    args: ['--version'],
-    env: withCliRuntimeOnPath(codexCommand, { ...process.env }),
-    timeoutMs
-  })
-  const version = result.code === 0 ? result.stdout.trim() : ''
-  return { version: version || null, timedOut: result.timedOut === true }
+  // Why a throwaway home: even `--version` leaves a tmp/arg0 folder in its CODEX_HOME.
+  const scratchHome = await mkdtemp(join(tmpdir(), 'orca-codex-version-'))
+  try {
+    const result = await runProcess({
+      program: codexCommand,
+      args: ['--version'],
+      env: withCliRuntimeOnPath(codexCommand, { ...process.env, CODEX_HOME: scratchHome }),
+      timeoutMs
+    })
+    const version = result.code === 0 ? result.stdout.trim() : ''
+    return { version: version || null, timedOut: result.timedOut === true }
+  } finally {
+    await rm(scratchHome, { recursive: true, force: true, maxRetries: 3 }).catch(() => {})
+  }
 }

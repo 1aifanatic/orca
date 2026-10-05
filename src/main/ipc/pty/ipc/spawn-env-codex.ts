@@ -55,7 +55,9 @@ export async function assemblePtyIpcSpawnCodexEnv(ctx: PtyIpcSpawnState): Promis
   // pre-strip env — only the daemon branch below re-derives this from baseEnv.
   ctx.env = ctx.baseEnv
   const selectLaunchCodexHome = async (): Promise<string | null> =>
-    (await ctx.deps.getSelectedCodexHomePath?.(ctx.codexSelectionTarget, ctx.baseEnv)) ?? null
+    (await ctx.deps.getSelectedCodexHomePath?.(ctx.codexSelectionTarget, ctx.baseEnv, {
+      launchesCodex: args.launchAgent === 'codex'
+    })) ?? null
   ctx.selectedCodexHomePath =
     !ctx.preAdoptedStablePane && !args.connectionId
       ? getCompatibleSelectedCodexHomePath(
@@ -85,7 +87,8 @@ export async function assemblePtyIpcSpawnCodexEnv(ctx: PtyIpcSpawnState): Promis
         getCompatibleSelectedCodexHomePath(
           ctx.codexSelectionTarget,
           (await ctx.deps.getSelectedCodexHomePath?.(ctx.codexSelectionTarget, ctx.baseEnv, {
-            unavailableManagedHomePath
+            unavailableManagedHomePath,
+            launchesCodex: true
           })) ?? null
         )
     })

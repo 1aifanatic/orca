@@ -16,19 +16,28 @@ import {
   getManagedScriptPath
 } from './codex-hook-definition'
 import { readMemoizedCodexHookTrust, type CodexHookTrustAnswer } from './codex-hook-trust-memo'
-import { getCodexHookReconcileVerdict, resolveCodexHookStatusHome } from './codex-hook-reconcile'
-import { getRealHomeConfigTomlPath, getRealHomeHooksJsonPath } from './codex-real-home-hooks-json'
-import { getRealHomeHookKeySourcePath } from './codex-real-home-hook-install'
+import {
+  getCodexHookReconcileVerdict,
+  getCodexRealHomeLaneProblem,
+  resolveCodexHookStatusHome
+} from './codex-hook-reconcile'
+import {
+  getRealHomeConfigTomlPath,
+  getRealHomeHookKeySourcePaths,
+  getRealHomeHooksJsonPath
+} from './codex-real-home-hooks-json'
+import { describeCodexVersion } from './codex-hook-trust-derivation'
 
 /**
  * Codex hook status for one home, read from its files: Orca's entry in each
- * event Codex lists, and that entry's approval holding Codex's own hash.
+ * event Codex lists, and that entry's approval holding Codex's own hash under
+ * any spelling Codex may key the file by.
  */
 export function getCodexHookStatus(args: {
   hooksJsonPath: string
   tomlPath: string
-  /** The path Codex keys this home's entries by. */
-  keySourcePath: string
+  /** The paths Codex may key this home's entries by. */
+  keySourcePaths: readonly string[]
   command: string
   answer: CodexHookTrustAnswer | null
   rejected?: boolean
@@ -43,12 +52,26 @@ export function getCodexHookStatus(args: {
   if (!config) {
     return status('error', false, 'Could not parse Codex hooks.json')
   }
+  const slots = new Map(
+    CODEX_EVENTS.flatMap((eventName) => {
+      const definitions = Array.isArray(config.hooks?.[eventName]) ? config.hooks![eventName]! : []
+      const slot = definitions.flatMap((definition, groupIndex) =>
+        (definition.hooks ?? []).flatMap((hook, handlerIndex) =>
+          hook.command === args.command ? [{ groupIndex, handlerIndex }] : []
+        )
+      )[0]
+      return slot ? [[eventName, slot] as const] : []
+    })
+  )
   if (!answer?.hashes) {
-    return status(
-      'not_installed',
-      false,
-      answer?.failure ?? 'Orca has not asked Codex for its hook approval yet'
-    )
+    // Why read the file first: an entry approved earlier still works while Codex is re-asked.
+    return slots.size > 0
+      ? status(
+          'partial',
+          true,
+          `Orca's hook entry is installed; its approval is not verified yet${answer ? ` (${answer.failure})` : ''}`
+        )
+      : status('not_installed', false, answer?.failure ?? 'Orca has not asked Codex yet')
   }
   // Why: an unreadable config.toml is distinct from an absent one (an empty map).
   let trustStates: ReadonlyMap<string, CodexHookTrustState>
@@ -61,37 +84,31 @@ export function getCodexHookStatus(args: {
   }
   const missing: string[] = []
   const unapproved: string[] = []
-  let present = 0
   for (const eventName of CODEX_EVENTS) {
     const label = CODEX_EVENT_LABEL[eventName]
     const hash = answer.hashes[label]
+    const slot = slots.get(eventName)
     if (!hash) {
       continue
     }
-    const definitions = Array.isArray(config.hooks?.[eventName]) ? config.hooks![eventName]! : []
-    const slot = definitions.flatMap((definition, groupIndex) =>
-      (definition.hooks ?? []).flatMap((hook, handlerIndex) =>
-        hook.command === args.command ? [{ groupIndex, handlerIndex }] : []
-      )
-    )[0]
     if (!slot) {
       missing.push(eventName)
       continue
     }
-    present += 1
-    const state = trustStates.get(
-      computeTrustKey({
-        sourcePath: args.keySourcePath,
-        eventLabel: label,
-        command: args.command,
-        ...slot
-      })
-    )
-    if (state?.trustedHash !== hash || state.enabled === false) {
+    const approved = args.keySourcePaths.some((sourcePath) => {
+      const state = trustStates.get(
+        computeTrustKey({ sourcePath, eventLabel: label, command: args.command, ...slot })
+      )
+      return state?.trustedHash === hash && state.enabled !== false
+    })
+    if (!approved) {
       unapproved.push(eventName)
     }
   }
-  if (present === 0) {
+  if (
+    missing.length ===
+    CODEX_EVENTS.filter((event) => answer.hashes[CODEX_EVENT_LABEL[event]]).length
+  ) {
     return status(
       'not_installed',
       false,
@@ -99,7 +116,11 @@ export function getCodexHookStatus(args: {
     )
   }
   if (args.rejected) {
-    return status('error', true, `Codex ${answer.codexVersion} did not accept Orca's hook approval`)
+    return status(
+      'error',
+      true,
+      `${describeCodexVersion(answer.codexVersion)} did not accept Orca's hook approval`
+    )
   }
   const parts = [
     missing.length > 0 ? `Managed hook missing for events: ${missing.join(', ')}` : null,
@@ -137,11 +158,21 @@ export function readCurrentCodexHookStatus(runtimeHomePath?: string): AgentHookI
       detail: "The selected Codex account's home is not available yet"
     }
   }
-  return readCodexHookHomeStatus(
+  const status = readCodexHookHomeStatus(
     home.kind === 'managed' ? home.path : undefined,
     answer,
     reconciled?.verified === 'rejected'
   )
+  const laneProblem = home.kind === 'managed' ? getCodexRealHomeLaneProblem() : null
+  // Why say it: panes moved to Orca's own Codex home because ~/.codex could not take the hook.
+  return laneProblem
+    ? {
+        ...status,
+        detail: [`${laneProblem}; Orca's panes use Orca's own Codex home`, status.detail]
+          .filter(Boolean)
+          .join('; ')
+      }
+    : status
 }
 
 /** Status for a managed home, or ~/.codex when `runtimeHomePath` is undefined. */
@@ -155,7 +186,7 @@ export function readCodexHookHomeStatus(
     return getCodexHookStatus({
       hooksJsonPath: getRealHomeHooksJsonPath(),
       tomlPath: getRealHomeConfigTomlPath(),
-      keySourcePath: getRealHomeHookKeySourcePath(),
+      keySourcePaths: getRealHomeHookKeySourcePaths(),
       command,
       answer,
       rejected
@@ -165,7 +196,7 @@ export function readCodexHookHomeStatus(
   return getCodexHookStatus({
     hooksJsonPath,
     tomlPath: getCodexConfigTomlPath(runtimeHomePath),
-    keySourcePath: getCodexExplicitHomeHookSourcePath(hooksJsonPath),
+    keySourcePaths: [getCodexExplicitHomeHookSourcePath(hooksJsonPath)],
     command,
     answer
   })

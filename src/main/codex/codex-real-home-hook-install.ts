@@ -9,6 +9,7 @@ import {
   assertHooksJsonGeneration,
   backupRealHomeHooksJsonOnce,
   getRealHomeConfigTomlPath,
+  getRealHomeHookKeySourcePaths,
   getRealHomeHooksJsonPath
 } from './codex-real-home-hooks-json'
 import { getCodexManagedScriptFileName } from './codex-hook-identity'
@@ -20,19 +21,20 @@ import { mutateRealHomeHooksPreservingUserTrust } from './codex-user-hook-trust-
 import { sweepRealHomeCodexHook } from './codex-real-home-hook-sweep'
 import { runExclusivelyForCodexTrustConfig } from './codex-trust-config-mutation-queue'
 import {
-  holdsOlderOrcaEntry,
+  findEventsHoldingOlderOrcaEntries,
+  listFrozenOrcaEntries,
   planRealHomeCodexHookEntries
 } from './codex-real-home-hook-entry-plan'
 import type { CodexHookHashes } from './codex-hook-trust-derivation'
 import {
   findMissingCodexHookApprovals,
+  readsEntryAtApprovedSlot,
   writeCodexHookApprovalsBeforeEntries
 } from './codex-hook-approval-first-write'
 import {
   codexHookSourcePathsEqual,
   computeTrustKey,
-  getCodexExplicitHomeHookSourcePath,
-  normalizeCodexHookSourcePath,
+  isCodexConfigTomlRefusedError,
   normalizeHookTrustKeyForLookup,
   parseTrustKey,
   readHookTrustEntries,
@@ -44,33 +46,25 @@ import {
 /**
  * - 'unchanged': Orca's entries and their approvals were already as wanted; nothing written.
  * - 'written': this call wrote approvals, entries, or both.
- * - 'unavailable': hooks.json is unreadable or not Codex's shape, or a write failed.
+ * - 'unavailable': ~/.codex cannot take Orca's approved entry (`reason` says why).
  * - 'disabled': hooks were off when the lane came free; nothing written.
- * - 'deferred': an older build's entry is there, and only app start or the
- *   setting turning on converts it; nothing written.
  */
-export type RealHomeCodexHookOutcome =
-  | 'unchanged'
-  | 'written'
-  | 'unavailable'
-  | 'disabled'
-  | 'deferred'
+export type RealHomeCodexHookOutcome = 'unchanged' | 'written' | 'unavailable' | 'disabled'
+
+/**
+ * - 'full': launches use ~/.codex: add, convert (when asked) and approve Orca's entry.
+ * - 'approve-existing': launches use a managed home; keep an entry already in
+ *   ~/.codex approved for Codex runs outside Orca, and add nothing.
+ */
+export type RealHomeCodexHookMode = 'full' | 'approve-existing'
 
 export type RealHomeCodexHookReconcile = {
   outcome: RealHomeCodexHookOutcome
   /** Orca's entries with the approval each needs, keyed as Codex keys them. */
   approvals: CodexTrustEntry[]
-}
-
-/**
- * The key Codex gives an entry in ~/.codex/hooks.json: an explicit CODEX_HOME
- * is resolved to its real path, the default home is kept as spelled.
- */
-export function getRealHomeHookKeySourcePath(): string {
-  const hooksJsonPath = getRealHomeHooksJsonPath()
-  return process.env.CODEX_HOME?.trim()
-    ? getCodexExplicitHomeHookSourcePath(hooksJsonPath)
-    : normalizeCodexHookSourcePath(hooksJsonPath)
+  reason?: string
+  /** Whether an older build's entries were up for conversion, so a pending request is served. */
+  converted: boolean
 }
 
 /**
@@ -85,29 +79,27 @@ export async function reconcileRealHomeCodexHookEntries(args: {
   userDataPath: string
   /** App start and the setting turning on; a launch never fights a running older build. */
   convertOlderForms: boolean
+  mode?: RealHomeCodexHookMode
 }): Promise<RealHomeCodexHookReconcile> {
   try {
     return await runExclusivelyForCodexTrustConfig(getRealHomeConfigTomlPath(), async () =>
       args.isEnabled()
-        ? reconcileRealHomeCodexHookEntriesExclusively(
-            args.hashes,
-            args.userDataPath,
-            args.convertOlderForms
-          )
-        : { outcome: 'disabled', approvals: [] }
+        ? reconcileRealHomeCodexHookEntriesExclusively({ mode: 'full', ...args })
+        : { outcome: 'disabled', approvals: [], converted: false }
     )
   } catch (error) {
     console.warn('[codex-real-home-hooks] could not reconcile Orca entries in ~/.codex:', error)
-    return { outcome: 'unavailable', approvals: [] }
+    return { outcome: 'unavailable', approvals: [], reason: describeError(error), converted: false }
   }
 }
 
-function reconcileRealHomeCodexHookEntriesExclusively(
-  hashes: CodexHookHashes,
-  userDataPath: string,
+function reconcileRealHomeCodexHookEntriesExclusively(args: {
+  hashes: CodexHookHashes
+  userDataPath: string
   convertOlderForms: boolean
-): RealHomeCodexHookReconcile {
-  const unavailable: RealHomeCodexHookReconcile = { outcome: 'unavailable', approvals: [] }
+  mode: RealHomeCodexHookMode
+}): RealHomeCodexHookReconcile {
+  const { hashes, mode } = args
   const hooksJsonPath = getRealHomeHooksJsonPath()
   const tomlPath = getRealHomeConfigTomlPath()
   const hooksWritePath = resolveHooksJsonWritePath(hooksJsonPath)
@@ -116,68 +108,103 @@ function reconcileRealHomeCodexHookEntriesExclusively(
   const { raw: previousRaw, config } = readHooksJsonWithRaw(hooksJsonPath)
   // Why: an unparseable user file is never clobbered, and Codex rejects unknown root keys.
   if (!config || Object.keys(config).some((key) => key !== 'hooks')) {
-    return unavailable
+    return {
+      outcome: 'unavailable',
+      approvals: [],
+      reason: `${hooksJsonPath} is not a hooks file Orca can add to`,
+      converted: false
+    }
   }
+  const hooks = config.hooks ?? {}
   const material = getCodexManagedHookInstallMaterial()
-  const sourcePath = getRealHomeHookKeySourcePath()
-  // Why only listed events: an entry Codex has no hash for would wait for review.
-  const listedMaterial = {
-    ...material,
-    events: material.events.filter((eventName) => hashes[CODEX_EVENT_LABEL[eventName]])
-  }
+  const [sourcePath, ...otherSpellings] = getRealHomeHookKeySourcePaths()
   const isOrcaCommand = createManagedCommandMatcher(getCodexManagedScriptFileName())
-  if (
-    !convertOlderForms &&
-    holdsOlderOrcaEntry({ hooks: config.hooks ?? {}, material: listedMaterial, isOrcaCommand })
-  ) {
-    return { outcome: 'deferred', approvals: [] }
+  // Why only listed events: an entry Codex has no hash for would wait for review.
+  const listed = material.events.filter((eventName) => hashes[CODEX_EVENT_LABEL[eventName]])
+  const olderEvents =
+    mode === 'full' && args.convertOlderForms
+      ? []
+      : findEventsHoldingOlderOrcaEntries({
+          hooks,
+          material: { ...material, events: listed },
+          isOrcaCommand
+        })
+  const eventMaterial = {
+    ...material,
+    events: listed.filter((eventName) => !olderEvents.includes(eventName))
   }
-  const plan = planRealHomeCodexHookEntries({
-    hooks: config.hooks ?? {},
-    sourcePath,
-    material: listedMaterial,
-    isOrcaCommand
-  })
-  const approvals = plan.managedEntries.map((entry) => ({
-    ...entry,
-    trustedHash: hashes[entry.eventLabel],
-    // Why: Orca's setting is the only off switch for its hook (a /hooks toggle-off is overridden).
-    enabled: true
-  }))
+  const plan =
+    mode === 'full'
+      ? planRealHomeCodexHookEntries({ hooks, sourcePath, material: eventMaterial, isOrcaCommand })
+      : {
+          hooks,
+          changed: false,
+          managedEntries: listFrozenOrcaEntries({ hooks, sourcePath, material: eventMaterial })
+        }
+  const approvals = [sourcePath, ...otherSpellings].flatMap((keySource) =>
+    plan.managedEntries.map((entry) => ({
+      ...entry,
+      sourcePath: keySource,
+      trustedHash: hashes[entry.eventLabel],
+      // Why: Orca's setting is the only off switch for its hook (a /hooks toggle-off is overridden).
+      enabled: true
+    }))
+  )
+  const converted = mode === 'full' && args.convertOlderForms
   const trustStates = readHookTrustEntries(tomlPath)
   const missing = findMissingCodexHookApprovals(approvals, trustStates)
-  const stale = findStaleOrcaApprovals(trustStates, approvals, sourcePath, hashes)
+  const stale = findStaleOrcaApprovals(
+    trustStates,
+    approvals,
+    [sourcePath, ...otherSpellings],
+    hashes
+  )
   if (!plan.changed && missing.length === 0 && stale.length === 0) {
-    return { outcome: 'unchanged', approvals }
+    return { outcome: 'unchanged', approvals, converted }
   }
 
   writeManagedScript(material.scriptPath, material.script)
   try {
-    writeCodexHookApprovalsBeforeEntries(tomlPath, missing, () => {
-      if (!plan.changed) {
-        return
-      }
-      backupRealHomeHooksJsonOnce(userDataPath, previousRaw)
-      mutateRealHomeHooksPreservingUserTrust({
-        sourcePath,
-        tomlPath,
-        beforeHooks: config.hooks ?? {},
-        afterHooks: plan.hooks,
-        writeHooks: () => {
-          assertHooksJsonGeneration(hooksJsonPath, hooksWritePath, previousRaw)
-          // Why: unknown fields inside the file belong to the user; preserve them verbatim.
-          writeHooksJson(hooksWritePath, { ...config, hooks: plan.hooks }, { preserveMode: true })
+    writeCodexHookApprovalsBeforeEntries(
+      tomlPath,
+      missing,
+      () => {
+        if (!plan.changed) {
+          return
         }
-      })
-    })
+        backupRealHomeHooksJsonOnce(args.userDataPath, previousRaw)
+        mutateRealHomeHooksPreservingUserTrust({
+          sourcePaths: [sourcePath, ...otherSpellings],
+          tomlPath,
+          beforeHooks: hooks,
+          afterHooks: plan.hooks,
+          writeHooks: () => {
+            assertHooksJsonGeneration(hooksJsonPath, hooksWritePath, previousRaw)
+            // Why: unknown fields inside the file belong to the user; preserve them verbatim.
+            writeHooksJson(hooksWritePath, { ...config, hooks: plan.hooks }, { preserveMode: true })
+          }
+        })
+      },
+      readsEntryAtApprovedSlot(hooksJsonPath)
+    )
   } catch (error) {
     console.warn('[codex-real-home-hooks] could not write Orca entries:', error)
-    return unavailable
+    return { outcome: 'unavailable', approvals: [], reason: describeError(error), converted: false }
   }
-  if (stale.length > 0) {
+  try {
     removeHookTrustEntries(tomlPath, stale)
+  } catch (error) {
+    // Why still written: the entry and its approval are in place; a leftover approval matches no hook.
+    console.warn('[codex-real-home-hooks] could not drop stale Orca approvals:', error)
   }
-  return { outcome: 'written', approvals }
+  return { outcome: 'written', approvals, converted }
+}
+
+function describeError(error: unknown): string {
+  if (isCodexConfigTomlRefusedError(error)) {
+    return `${getRealHomeConfigTomlPath()} keeps hook approvals inline, so Orca cannot add its own there`
+  }
+  return error instanceof Error ? error.message : String(error)
 }
 
 /**
@@ -187,7 +214,7 @@ function reconcileRealHomeCodexHookEntriesExclusively(
 function findStaleOrcaApprovals(
   trustStates: ReadonlyMap<string, CodexHookTrustState>,
   approvals: readonly CodexTrustEntry[],
-  sourcePath: string,
+  sourcePaths: readonly string[],
   hashes: CodexHookHashes
 ): string[] {
   const wanted = new Set(
@@ -197,7 +224,7 @@ function findStaleOrcaApprovals(
     const parts = parseTrustKey(key)
     return parts &&
       !wanted.has(normalizeHookTrustKeyForLookup(key)) &&
-      codexHookSourcePathsEqual(parts.sourcePath, sourcePath) &&
+      sourcePaths.some((sourcePath) => codexHookSourcePathsEqual(parts.sourcePath, sourcePath)) &&
       state.trustedHash !== undefined &&
       state.trustedHash === hashes[parts.eventLabel]
       ? [key]

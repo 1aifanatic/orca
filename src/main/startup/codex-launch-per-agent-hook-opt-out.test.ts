@@ -128,7 +128,9 @@ describe('Codex launch prep honours the per-agent hook opt-out', () => {
       mocks.settings = settings
       mocks.isHostSystemDefaultRealHomeSelected.mockReturnValue(true)
 
-      await expect(prepareCodexRuntimeHomeForLaunch()).resolves.toBeNull()
+      await expect(
+        prepareCodexRuntimeHomeForLaunch(undefined, undefined, { launchesCodex: true })
+      ).resolves.toBeNull()
 
       expect(mocks.reconcileCodexHooksWithin).toHaveBeenCalledTimes(codexHooksOn ? 1 : 0)
       expect(mocks.prepareRuntimeHomeForLaunch).not.toHaveBeenCalled()
@@ -141,13 +143,16 @@ describe('Codex launch prep honours the per-agent hook opt-out', () => {
       mocks.settings = settings
       mocks.prepareForCodexLaunchAsync.mockResolvedValue(ACCOUNT_HOME)
 
-      await expect(prepareCodexRuntimeHomeForLaunch()).resolves.toBe(ACCOUNT_HOME)
+      await expect(
+        prepareCodexRuntimeHomeForLaunch(undefined, undefined, { launchesCodex: true })
+      ).resolves.toBe(ACCOUNT_HOME)
 
       expect(mocks.reconcileCodexHooksWithin).not.toHaveBeenCalled()
       expect(mocks.prepareRuntimeHomeForLaunch).toHaveBeenCalledWith(
         ACCOUNT_HOME,
         undefined,
-        codexHooksOn
+        codexHooksOn,
+        3_000
       )
     }
   )
@@ -174,7 +179,7 @@ describe('Codex launch prep honours the per-agent hook opt-out', () => {
 
       expect(mocks.reconcileCodexHooksWithin).not.toHaveBeenCalled()
       if (codexHooksOn) {
-        expect(mocks.installForLaunchPrep).toHaveBeenCalledWith(ACCOUNT_HOME)
+        expect(mocks.installForLaunchPrep).toHaveBeenCalledWith(ACCOUNT_HOME, 3_000)
         expect(mocks.refreshRuntimeUserHooksForLaunchPrep).not.toHaveBeenCalled()
       } else {
         expect(mocks.installForLaunchPrep).not.toHaveBeenCalled()
@@ -182,4 +187,15 @@ describe('Codex launch prep honours the per-agent hook opt-out', () => {
       }
     }
   )
+
+  it('never makes a plain terminal or a structured launch wait on the hook reconcile', async () => {
+    mocks.settings = { agentStatusHooksEnabled: true, disabledTuiAgents: [] }
+    mocks.isHostSystemDefaultRealHomeSelected.mockReturnValue(true)
+    await expect(prepareCodexRuntimeHomeForLaunch()).resolves.toBeNull()
+    mocks.prepareForCodexLaunchAsync.mockResolvedValue(ACCOUNT_HOME)
+    await prepareCodexRuntimeHomeForLaunch(undefined, undefined, { launchesCodex: false })
+
+    expect(mocks.reconcileCodexHooksWithin).not.toHaveBeenCalled()
+    expect(mocks.prepareRuntimeHomeForLaunch).toHaveBeenCalledWith(ACCOUNT_HOME, undefined, true, 0)
+  })
 })

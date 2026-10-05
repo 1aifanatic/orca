@@ -21,10 +21,11 @@ export async function prepareCodexRuntimeHomeForLaunch(
   const runtimeHomePath = await runtimeHome.prepareForCodexLaunchAsync(target, launchEnv, {
     unavailableManagedHomePath: launchContext?.unavailableManagedHomePath
   })
+  const launchesCodex = launchContext?.launchesCodex === true
   if (runtimeHomePath === null && target?.runtime !== 'wsl') {
-    // Why: Codex runs on the user's real ~/.codex, whose entry the reconcile
-    // keeps; it writes only on a change, and a launch waits only briefly for it.
-    if (isAgentStatusHooksEnabledForAgent(state.store?.getSettings(), 'codex')) {
+    // Why only a Codex launch waits: the pane spawn already schedules the reconcile, which
+    // writes only on a change; plain terminals and structured launches never wait on it.
+    if (launchesCodex && isAgentStatusHooksEnabledForAgent(state.store?.getSettings(), 'codex')) {
       await reconcileCodexHooksWithin(CODEX_HOOK_LAUNCH_WAIT_MS)
     }
     return null
@@ -39,7 +40,8 @@ export async function prepareCodexRuntimeHomeForLaunch(
     const status = await codexHookService.prepareRuntimeHomeForLaunch(
       runtimeHomePath,
       hookTarget,
-      hooksEnabled
+      hooksEnabled,
+      launchesCodex ? CODEX_HOOK_LAUNCH_WAIT_MS : 0
     )
     if (status.state === 'error') {
       console.warn(

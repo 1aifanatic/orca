@@ -32,7 +32,7 @@ export function readCodexTrustGrantLedgerHomeForReconciliation(
   }
 }
 
-export function getCodexLedgerTrustedHash(
+function getCodexLedgerTrustedHash(
   ledgerHome: CodexTrustGrantLedgerHome | null,
   key: string,
   expectedEntry: CodexTrustEntry

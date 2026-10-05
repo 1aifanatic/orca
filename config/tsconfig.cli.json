@@ -138,6 +138,8 @@
     "../src/main/codex/codex-hook-local-install.ts",
     "../src/main/codex/codex-hook-approval-first-write.ts",
     "../src/main/codex/codex-hook-reconcile.ts",
+    "../src/main/codex/codex-hook-hash-lookup.ts",
+    "../src/main/codex/codex-hook-real-home-verify.ts",
     "../src/main/codex/codex-hook-trust-derivation.ts",
     "../src/main/codex/codex-hook-trust-memo.ts",
     "../src/main/codex/codex-hook-local-maintenance.ts",

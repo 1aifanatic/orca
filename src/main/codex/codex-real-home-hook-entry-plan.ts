@@ -108,17 +108,17 @@ function movesUserHandler(
 }
 
 /**
- * Whether an event Orca subscribes to holds an Orca entry older than this
+ * The events Orca subscribes to that hold an Orca entry older than this
  * build's frozen one. Such an entry belongs to an older build that may still
  * be running; only app start and the setting turning on convert it.
  */
-export function holdsOlderOrcaEntry(args: {
+export function findEventsHoldingOlderOrcaEntries(args: {
   hooks: Record<string, HookDefinition[]>
   material: CodexManagedHookInstallMaterial
   isOrcaCommand: (command: string | undefined) => boolean
-}): boolean {
+}): string[] {
   const command = args.material.command
-  return args.material.events.some((eventName) => {
+  return args.material.events.filter((eventName) => {
     const definitions = Array.isArray(args.hooks[eventName]) ? args.hooks[eventName] : []
     return (
       findOrcaHandlers(definitions, args.isOrcaCommand, command).some(
@@ -129,6 +129,33 @@ export function holdsOlderOrcaEntry(args: {
       )
     )
   })
+}
+
+/** This build's frozen entries already in `hooks`, every copy, keyed by `sourcePath`. */
+export function listFrozenOrcaEntries(args: {
+  hooks: Record<string, HookDefinition[]>
+  sourcePath: string
+  material: CodexManagedHookInstallMaterial
+}): CodexTrustEntry[] {
+  return args.material.events.flatMap((eventName) =>
+    (Array.isArray(args.hooks[eventName]) ? args.hooks[eventName] : []).flatMap(
+      (definition, groupIndex) =>
+        (definition.hooks ?? []).flatMap((hook, handlerIndex) => {
+          const entry =
+            hook.command === args.material.command
+              ? createCodexHookTrustEntry(
+                  args.sourcePath,
+                  eventName,
+                  groupIndex,
+                  handlerIndex,
+                  definition,
+                  hook
+                )
+              : null
+          return entry ? [entry] : []
+        })
+    )
+  )
 }
 
 export function planRealHomeCodexHookEntries(args: {
@@ -142,29 +169,7 @@ export function planRealHomeCodexHookEntries(args: {
   // Why: events this build does not subscribe to keep their Orca entries; a
   // newer build may subscribe to them.
   const hooks: Record<string, HookDefinition[]> = { ...args.hooks }
-  const managedEntries: CodexTrustEntry[] = []
   let changed = false
-  // Why every copy: a duplicate kept in place must not be listed for review.
-  const trustFrozenEntries = (eventName: string): void => {
-    hooks[eventName]!.forEach((definition, groupIndex) =>
-      definition.hooks?.forEach((hook, handlerIndex) => {
-        const entry =
-          hook.command === command
-            ? createCodexHookTrustEntry(
-                sourcePath,
-                eventName,
-                groupIndex,
-                handlerIndex,
-                definition,
-                hook
-              )
-            : null
-        if (entry) {
-          managedEntries.push(entry)
-        }
-      })
-    )
-  }
 
   for (const eventName of material.events) {
     const current = Array.isArray(hooks[eventName]) ? hooks[eventName] : []
@@ -215,10 +220,8 @@ export function planRealHomeCodexHookEntries(args: {
       hooks[eventName] = definitions
       changed = true
     }
-    if (hooks[eventName]) {
-      trustFrozenEntries(eventName)
-    }
   }
 
-  return { hooks, changed, managedEntries }
+  // Why every copy: a duplicate kept in place must not be listed for review.
+  return { hooks, changed, managedEntries: listFrozenOrcaEntries({ hooks, sourcePath, material }) }
 }

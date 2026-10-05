@@ -8,8 +8,12 @@ import {
 } from '../agent-hooks/installer-utils'
 import { syncSystemConfigIntoManagedCodexHome } from './codex-config-mirror'
 import {
+  computeTrustKey,
   getCodexExplicitHomeHookSourcePath,
+  readHookTrustEntries,
   upsertHookTrustEntries,
+  type CodexEventLabel,
+  type CodexHookTrustState,
   type CodexTrustEntry
 } from './config-toml-trust'
 import {
@@ -26,7 +30,10 @@ import { getCodexManagedScriptFileName } from './codex-hook-identity'
 import { cleanupLegacyManagedHookRepresentations } from './codex-hook-legacy-cleanup'
 import { getManagedScript } from './codex-hook-script'
 import type { CodexHookHashes } from './codex-hook-trust-derivation'
-import { writeCodexHookApprovalsBeforeEntries } from './codex-hook-approval-first-write'
+import {
+  readsEntryAtApprovedSlot,
+  writeCodexHookApprovalsBeforeEntries
+} from './codex-hook-approval-first-write'
 import { removeStaleRuntimeHookTrustEntries } from './codex-hook-trust-cleanup'
 import {
   promoteCodexRuntimeHookApprovalsToSystem,
@@ -151,8 +158,11 @@ export async function installCodexHooksExclusively(
       runtimeHomePath,
       systemHomePath: getSystemCodexHomePath()
     })
-    writeCodexHookApprovalsBeforeEntries(tomlPath, managedTrustEntries, () =>
-      writeCodexHooksJson(configPath, nextHooks)
+    writeCodexHookApprovalsBeforeEntries(
+      tomlPath,
+      managedTrustEntries,
+      () => writeCodexHooksJson(configPath, nextHooks),
+      readsEntryAtApprovedSlot(configPath)
     )
   } catch (error) {
     return trustWriteError(configPath, false, error)
@@ -184,4 +194,41 @@ function trustWriteError(
     managedHooksPresent,
     detail: `Codex hooks could not be written: ${error instanceof Error ? error.message : String(error)}`
   }
+}
+
+/**
+ * The hashes this managed home already approves Orca's entry with, for a launch
+ * that cannot wait for Codex's answer: keeping them keeps a working entry.
+ */
+export function readApprovedManagedOrcaHashes(runtimeHomePath: string): CodexHookHashes | null {
+  const configPath = getConfigPath(runtimeHomePath)
+  const hooks = readHooksJson(configPath)?.hooks
+  const command = getManagedCommand(getManagedScriptPath())
+  let trust: ReadonlyMap<string, CodexHookTrustState>
+  try {
+    trust = readHookTrustEntries(getCodexConfigTomlPath(runtimeHomePath))
+  } catch {
+    return null
+  }
+  const hashes: Partial<Record<CodexEventLabel, string>> = {}
+  for (const eventName of CODEX_EVENTS) {
+    const hook = hooks?.[eventName]?.[0]?.hooks?.[0]
+    const label = CODEX_EVENT_LABEL[eventName]
+    const state =
+      hook?.command === command
+        ? trust.get(
+            computeTrustKey({
+              sourcePath: getCodexExplicitHomeHookSourcePath(configPath),
+              eventLabel: label,
+              groupIndex: 0,
+              handlerIndex: 0,
+              command
+            })
+          )
+        : undefined
+    if (state?.trustedHash) {
+      hashes[label] = state.trustedHash
+    }
+  }
+  return Object.keys(hashes).length > 0 ? hashes : null
 }

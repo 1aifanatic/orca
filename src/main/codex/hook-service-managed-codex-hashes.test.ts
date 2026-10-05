@@ -214,4 +214,30 @@ describe('managed-home Codex hook approval', () => {
       stop()
     }
   })
+
+  it("keeps a managed home's approved entry when Codex's answer comes after the launch's wait", async () => {
+    useCodexHashes()
+    const service = new CodexHookService()
+    expect((await service.install()).state).toBe('installed')
+    const before = readFileSync(join(managedHome(), 'hooks.json'), 'utf-8')
+    // Why: a Codex update makes the answer for the new binary slower than the launch may wait.
+    reconcileInternals.resetForTesting()
+    reconcileInternals.setHashResolverForTesting(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(
+            () =>
+              resolve({ codexVersion: 'codex-cli 0.160.0', hashes: CODEX_HASHES, failure: null }),
+            200
+          )
+        })
+    )
+
+    await service.install(undefined, 10)
+
+    expect(readFileSync(join(managedHome(), 'hooks.json'), 'utf-8')).toBe(before)
+    expect(
+      readHookTrustEntries(join(managedHome(), 'config.toml')).get(managedKey('stop', 0))
+    ).toEqual({ trustedHash: 'sha256:codex-stop', enabled: true })
+  })
 })
