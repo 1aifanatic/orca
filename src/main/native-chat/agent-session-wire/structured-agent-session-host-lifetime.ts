@@ -95,7 +95,8 @@ export async function abandonQueuedStructuredAgentSessionMessages(
  * and the close keeps running: a later proof, or the next asker's attempt, ends the record.
  * `ending` is how the child's end is told: a user's Stop, the host stopping it for a cause (with
  * its text), or an eviction the conversation's close follows. The first stop's ending decides; a
- * fault's unproven end is no one's stop, so the first stop after it takes its cause, writing no event.
+ * fault's unproven end is no one's stop, so the first stop after it takes over that close with its
+ * own cause, keeping the fault's details and writing no event.
  */
 export async function stopStructuredAgentSessionAgentUnderSerialize(
   context: StructuredAgentSessionLifetimeContext,
