@@ -30,6 +30,12 @@ export function agentSessionResponseInterruptedBody(): AgentJournalPlainStatusIt
   return { ...agentSessionHostStatusBody('response-interrupted'), tone: 'notice' }
 }
 
+/** The same row as a host stores it: red, because a client older than the presentation folds every
+ *  row but an error one under a collapsed turn. A client that knows the presentation mutes it. */
+export function agentSessionResponseInterruptedStoredBody(): AgentJournalPlainStatusItem {
+  return { ...agentSessionHostStatusBody('response-interrupted'), tone: 'error' }
+}
+
 /** A row that says a turn was cut short: muted, never folded with the turn's work, and never a
  *  failure report, whatever tone an older reader needs it to carry. */
 export function isAgentSessionInterruptionPresentation(presentation: string | undefined): boolean {

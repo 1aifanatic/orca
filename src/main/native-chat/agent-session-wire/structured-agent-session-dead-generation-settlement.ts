@@ -5,7 +5,7 @@ import {
 } from '../../../shared/agent-session-failure'
 import { parseAgentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import { STALE_SESSION_ROW_PREFIX } from '../../../shared/agent-session-stop-row-identity'
-import { agentSessionResponseInterruptedBody } from '../../../shared/agent-session-host-status-rows'
+import { agentSessionResponseInterruptedStoredBody } from '../../../shared/agent-session-host-status-rows'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
@@ -266,8 +266,9 @@ export async function settleStaleStructuredAgentSessionState(input: {
       // The death evidence is Orca's log text, never a sentence for a person, and it proves only that
       // the agent's process is gone, not who ended it: a quit's close and an agent exit whose own
       // settle failed both read `exit-observed`. So the row blames no one. Written, not left to the
-      // reader's derived notice, because a client older than that notice sees only this row.
-      body: agentSessionResponseInterruptedBody(),
+      // reader's derived notice, because a client older than that notice sees only this row, and
+      // stored red so a client older than its presentation does not fold it away.
+      body: agentSessionResponseInterruptedStoredBody(),
       turnScope: runningRootTurnScope(items)
     })
   }

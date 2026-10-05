@@ -10,6 +10,7 @@ import type {
   AgentJournalTurnScope
 } from './agent-session-journal-types'
 import { structuredAgentTurnVerdictReader } from './native-chat-cut-turn-explanation'
+import { agentSessionResponseInterruptedStoredBody } from './agent-session-host-status-rows'
 import { withNativeChatCutTurnNotices } from './native-chat-cut-turn-notice'
 import { hostStatesTurnScopes, nativeChatTurnMembership } from './native-chat-turn-membership'
 import { projectStructuredAgentSessionMessages } from './structured-agent-session-message-projection'
@@ -266,6 +267,27 @@ describe('withNativeChatCutTurnNotices', () => {
       })
       expect(structuredAgentTurnVerdictReader(items)(items[1]!), id).toBe('interruption')
     }
+  })
+
+  // This host stores its reopen row red, for clients that fold every other row; this client mutes it.
+  it('mutes the reopen row this host stores red, keeping its presentation', () => {
+    const items = [
+      user('u1'),
+      turn('t1', 'u1', CUT),
+      hostRow(
+        'stale-session:s:death-3-2000',
+        agentSessionResponseInterruptedStoredBody(),
+        inTurn('t1')
+      )
+    ]
+
+    expect(notices(items)).toEqual([])
+    expect(withNativeChatCutTurnNotices(items)[2]!.body).toEqual({
+      kind: 'status',
+      text: NOTICE,
+      presentation: 'response-interrupted',
+      tone: 'notice'
+    })
   })
 
   // A host from before failure facts wrote the same rows with only their words.

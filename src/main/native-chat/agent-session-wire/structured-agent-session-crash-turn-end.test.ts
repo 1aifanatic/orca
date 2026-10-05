@@ -19,6 +19,10 @@ import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import { describeNativeChatTurnStatus } from '../../../shared/native-chat-turn-status'
 import {
+  nativeChatTurnFold,
+  type NativeChatTurnFoldRow
+} from '../../../shared/native-chat-turn-fold'
+import {
   completedStructuredAgentTurnSeconds,
   selectStructuredAgentTurnTimings
 } from '../../../shared/structured-agent-session-turn-timing'
@@ -195,6 +199,28 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
+/** Whether a client from before this rule hides `row` under the settled turn it explains: that
+ *  client's fold, which keeps only the turn's answer (its last prose or error row) and a compaction
+ *  report outside the fold. */
+function foldedByAnOlderClient(row: { tone?: string; presentation?: string }): boolean {
+  const base = { turnKey: 'turn-1', rendersProse: true, outlivesTurn: false }
+  const rows: NativeChatTurnFoldRow[] = [
+    { ...base, role: 'user', reportsFailure: false, explainsTurn: false },
+    { ...base, role: 'assistant', reportsFailure: false, explainsTurn: false },
+    {
+      ...base,
+      role: 'system',
+      reportsFailure: row.tone === 'error',
+      explainsTurn: row.presentation === 'compaction'
+    }
+  ]
+  return nativeChatTurnFold({
+    rows,
+    settledTurnKeys: new Set(['turn-1']),
+    expandedTurnKeys: new Set()
+  }).foldedRows.has(2)
+}
+
 describe('a turn a crash cut short mid-tool', () => {
   it('ends at the last renewal, not at the tool call the provider last reported', async () => {
     openHost({ probeOwner: async () => ({ outcome: 'pid-absent' }) })
@@ -237,10 +263,11 @@ describe('a turn a crash cut short mid-tool', () => {
         tone: 'notice'
       }
     ])
-    // The host writes it so, for a reader older than this rule too.
-    expect(items.flatMap((item) => (item.body.kind === 'status' ? [item.body] : []))).toEqual(
-      statusRows
-    )
+    // The host stores it red with the same words: a client older than the presentation folds every
+    // row but an error one under a collapsed turn, and must still show it.
+    const stored = items.flatMap((item) => (item.body.kind === 'status' ? [item.body] : []))
+    expect(stored).toEqual([{ ...statusRows[0], tone: 'error' }])
+    expect(foldedByAnOlderClient(stored[0]!)).toBe(false)
     const [timing] = selectStructuredAgentTurnTimings(items).values()
     expect(
       describeNativeChatTurnStatus({

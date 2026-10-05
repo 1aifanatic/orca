@@ -4,7 +4,7 @@ import '@testing-library/jest-dom/vitest'
 
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { agentSessionResponseInterruptedBody } from '../../../../shared/agent-session-host-status-rows'
+import { agentSessionResponseInterruptedStoredBody } from '../../../../shared/agent-session-host-status-rows'
 import { agentJournalItemKey } from '../../../../shared/agent-session-journal-item-key'
 import type {
   AgentJournalItemBody,
@@ -120,8 +120,8 @@ describe('a collapsed turn that was cut short', () => {
     ['derived for a quit, on a host that states scopes', () => cutTurn(true)],
     ['derived for a quit, on a host that states none', () => cutTurn(false)],
     [
-      "the host's reopen row",
-      () => [...cutTurn(true), reopenRow(agentSessionResponseInterruptedBody())]
+      "the host's reopen row, stored red for older clients",
+      () => [...cutTurn(true), reopenRow(agentSessionResponseInterruptedStoredBody())]
     ],
     [
       "an older host's red reopen row, re-presented",
