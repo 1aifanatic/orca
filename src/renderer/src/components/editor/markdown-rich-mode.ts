@@ -4,6 +4,10 @@ import { getRichMarkdownRoundTripOutput } from './markdown-round-trip'
 import { extractFrontMatter } from './markdown-frontmatter'
 import { canRenderMarkdownAtSize } from './markdown-rich-size-limit'
 import { translate } from '@/i18n/i18n'
+import {
+  getRichMarkdownFenceRanges,
+  hasMarkdownContainerFenceCandidate
+} from './markdown-container-code-ranges'
 
 export type MarkdownRichModeUnsupportedReason =
   | 'html-or-jsx'
@@ -105,6 +109,9 @@ export function getMarkdownRichModeUnsupportedReason(
   const fm = extractFrontMatter(content)
   const body = fm ? fm.body : content
 
+  if (hasMarkdownContainerFenceCandidate(body) && !getRichMarkdownFenceRanges(body)) {
+    return 'other'
+  }
   const contentWithoutCode = stripMarkdownCode(body)
 
   // Why: run cheap regex checks first. If no unsupported syntax is detected,

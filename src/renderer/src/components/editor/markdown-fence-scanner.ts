@@ -115,12 +115,19 @@ export function forEachMarkdownLine(
 }
 
 /** Offsets of every fenced code block, including its delimiter lines. */
-export function getMarkdownFenceRanges(content: string): MarkdownFenceRanges {
+export function getMarkdownFenceRanges(
+  content: string,
+  excluded: MarkdownFenceRanges = []
+): MarkdownFenceRanges {
   const ranges: [number, number][] = []
   const tracker = createMarkdownFenceTracker()
   let openStart = -1
+  const isExcluded = createMarkdownFenceRangeCursor(excluded)
 
   forEachMarkdownLine(content, (lineStart, lineEnd, nextLineStart) => {
+    if (isExcluded(lineStart)) {
+      return
+    }
     const wasInside = tracker.insideFence
     const isFenceLine = tracker.consumeRange(content, lineStart, lineEnd)
     if (!wasInside && isFenceLine) {
