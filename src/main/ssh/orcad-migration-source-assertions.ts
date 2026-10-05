@@ -51,6 +51,8 @@ function frozenSourceDigest(manifest: OrcadMigrationManifest): string {
     version: _version,
     workspaceSession: _session,
     clientState: _client,
+    // Retained for the transfer, so a tab closed mid-move still sends its journaled bytes.
+    terminalScrollbackSnapshots: _snapshots,
     ...dormant
   } = payload.dormantState ?? {}
   // Export omits an empty dormant payload, so UI state alone can make one appear.

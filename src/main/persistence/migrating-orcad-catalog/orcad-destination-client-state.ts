@@ -38,10 +38,8 @@ export function applyPreparedOrcadMigrationClientState(
   state: PersistedState
 ): void {
   if (Object.keys(prepared.mobileSelections).length > 0) {
-    state.mobileClientTabSelectionsByDeviceId = {
-      ...state.mobileClientTabSelectionsByDeviceId,
-      ...prepared.mobileSelections
-    }
+    // Per workspace: a device's selections outside this import stay as they are.
+    state.mobileClientTabSelectionsByDeviceId = { ...state.mobileClientTabSelectionsByDeviceId }
     for (const [deviceId, selections] of Object.entries(prepared.mobileSelections)) {
       state.mobileClientTabSelectionsByDeviceId[deviceId] = {
         ...state.mobileClientTabSelectionsByDeviceId[deviceId],

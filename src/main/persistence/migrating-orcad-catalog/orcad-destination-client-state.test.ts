@@ -71,6 +71,20 @@ describe('destination client-state migration', () => {
     })
   })
 
+  it("keeps a device's selections for workspaces outside the import", () => {
+    const destination = state()
+    const kept = { activeTabId: 'kept', activeGroupId: null, activeTabIdByGroupId: {} }
+    destination.mobileClientTabSelectionsByDeviceId = { phone: { 'old::/workspace': kept } }
+    applyPreparedOrcadMigrationClientState(
+      prepareOrcadMigrationClientState(incoming, destination),
+      destination
+    )
+    expect(destination.mobileClientTabSelectionsByDeviceId?.phone).toEqual({
+      'old::/workspace': kept,
+      ...incoming.mobileClientTabSelectionsByDeviceId?.phone
+    })
+  })
+
   it('rejects a conflicting destination selection before publication', () => {
     const destination = state()
     destination.mobileClientTabSelectionsByDeviceId = {

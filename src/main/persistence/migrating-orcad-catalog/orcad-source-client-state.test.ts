@@ -279,4 +279,30 @@ describe('source client-state migration', () => {
       }
     ])
   })
+
+  it("ignores another host's agent acknowledgements and blocks only the source's own", () => {
+    const current = state()
+    current.workspaceSession = session({
+      tabsByWorktree: { '/local/repo::/local/repo': [terminalTab('local-tab', '/local/repo')] }
+    })
+    current.workspaceSessionsByHostId = {
+      'ssh:target-2': session({ tabsByWorktree: { 'other::/x': [terminalTab('other-tab', 'x')] } }),
+      'ssh:target-1': session({
+        tabsByWorktree: { 'unmoved::/y': [terminalTab('source-tab', 'unmoved::/y')] }
+      })
+    }
+    current.ui.acknowledgedAgentsByPaneKey = {
+      'local-tab:leaf': 1,
+      'other-tab:leaf': 2,
+      'source-tab:leaf': 3
+    }
+    const result = collectOrcadMigrationSourceClientState(
+      current,
+      source,
+      catalog,
+      'environment-1',
+      undefined
+    )
+    expect(result.blockedCounts['ui-routing']).toBe(1)
+  })
 })
