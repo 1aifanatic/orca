@@ -42,6 +42,7 @@ export type StructuredClaudeRuntimeAdapterDeps = {
   onDispatchSettledLate?: ClaudeStructuredSessionAdapterDeps['onDispatchSettledLate']
   onSessionIdle?: ClaudeStructuredSessionAdapterDeps['onSessionIdle']
   onChildWorkEvidence?: ClaudeStructuredSessionAdapterDeps['onChildWorkEvidence']
+  logger?: ClaudeStructuredSessionAdapterDeps['logger']
 }
 
 /** The adapter events the host's lifecycle handler consumes, in the host's vocabulary. */
@@ -51,9 +52,10 @@ export function structuredClaudeLifecycleEvent(
   if (event.type === 'started') {
     return event
   }
+  // Every exit of a child with an identity, expected or not: the host ends that child's record.
   if (
     event.type === 'ended' &&
-    event.cause === 'unexpected-exit' &&
+    event.cause !== undefined &&
     event.fence !== undefined &&
     event.acquisitionGeneration
   ) {
@@ -136,6 +138,7 @@ export function createStructuredClaudeRuntimeAdapter(
     ...(deps.onDispatchSettledLate ? { onDispatchSettledLate: deps.onDispatchSettledLate } : {}),
     ...(deps.onSessionIdle ? { onSessionIdle: deps.onSessionIdle } : {}),
     ...(deps.onChildWorkEvidence ? { onChildWorkEvidence: deps.onChildWorkEvidence } : {}),
+    ...(deps.logger ? { logger: deps.logger } : {}),
     ...openClaudeConnectionOf(deps),
     ...(deps.readProcessStartTime ? { readProcessStartTime: deps.readProcessStartTime } : {}),
     ...(deps.modelCatalog ? { modelCatalog: deps.modelCatalog } : {})
@@ -158,12 +161,12 @@ export function openClaudeConnectionOf(
         launch,
         {
           ...handlers,
-          onExit: (error) => {
+          onExit: (error, exit) => {
             support.observeExit(
               { command: launch.pathToClaudeCodeExecutable, cwd: launch.cwd },
               error
             )
-            handlers.onExit?.(error)
+            handlers.onExit?.(error, exit)
           }
         },
         ...rest

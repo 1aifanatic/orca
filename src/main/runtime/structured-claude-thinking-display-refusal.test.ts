@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CLAUDE_STRUCTURED_BASE_OPTIONS } from '../claude/claude-structured-launch-resolution'
+import { fakeClaude } from '../claude/claude-structured-session-test-support'
 import { createClaudeThinkingDisplaySupport } from '../claude/claude-thinking-display-support'
 import { openClaudeConnectionOf } from './structured-claude-runtime-adapter'
 
@@ -64,6 +65,29 @@ describe('a Claude CLI that refuses the thinking-display flag', () => {
     expect(flag).toEqual({ 'thinking-display': 'summarized' })
     await vi.waitFor(async () => expect(await support.argsFor(launch)).toEqual({}))
     expect(probe).toHaveBeenCalledTimes(1)
+  })
+
+  it('hands the session whether its close was the one Orca began', async () => {
+    const claude = fakeClaude()
+    const support = createClaudeThinkingDisplaySupport({
+      probe: async () => '2.1.280',
+      keyOf: async () => null,
+      budgetMs: 1_000,
+      now: () => performance.now()
+    })
+    const { openConnection } = openClaudeConnectionOf({
+      claudeThinkingDisplay: support,
+      openClaudeConnection: claude.openConnection
+    })
+    const onExit = vi.fn()
+    await openConnection!(
+      { pathToClaudeCodeExecutable: FAKE_CLI, options: {}, cwd: '/w' },
+      { onExit }
+    )
+    const exited = new Error('closed')
+    claude.connections[0]!.handlers.onExit?.(exited, { expected: true })
+    // Without it, a Stop's own exit would read as the child exiting on its own.
+    expect(onExit).toHaveBeenCalledWith(exited, { expected: true })
   })
 
   it('records nothing when the start failed for another reason', async () => {
