@@ -5,8 +5,23 @@ import type { TerminalPanePlacement } from '../../../shared/terminal-pane-placem
 import { FOLDER_WORKSPACE_INSTANCE_SEPARATOR } from '../../../shared/worktree/id'
 import { firstLayoutLeafId } from '../restoring-sessions/terminal-layout-normalization'
 import { fixture } from './profile-state-delayed-authority-fixture'
+import type * as AgreementModule from '../terminal-topology/terminal-pane-placement-agreement'
 import type { PersistPtyBindingArgs } from './pty-binding-persistence'
 
+const agreementCheck = vi.hoisted(() => ({ throws: false }))
+vi.mock('../terminal-topology/terminal-pane-placement-agreement', async (importOriginal) => {
+  const actual = await importOriginal<typeof AgreementModule>()
+  return {
+    terminalPanePlacementAgreement: (
+      ...args: Parameters<typeof actual.terminalPanePlacementAgreement>
+    ) => {
+      if (agreementCheck.throws) {
+        throw new Error('malformed session')
+      }
+      return actual.terminalPanePlacementAgreement(...args)
+    }
+  }
+})
 vi.mock('../../telemetry/client', () => ({ track: vi.fn() }))
 vi.mock('../../telemetry/cohort-classifier', () => ({
   getCohortAtEmit: () => ({ nth_repo_added: 2 })
@@ -171,6 +186,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  agreementCheck.throws = false
   vi.useRealTimers()
   _resetTracerForTests()
 })
@@ -239,6 +255,15 @@ describe('placement on the binding write is inert', () => {
       }
     })
   }
+
+  it('a throwing agreement check leaves the result and state as without placement', async () => {
+    const scenario = SCENARIOS[0]
+    const baseline = await bindAndSave(scenario, undefined)
+    agreementCheck.throws = true
+    const placed = await bindAndSave(scenario, () => NEW_TAB)
+    expect(placementAttributes).toEqual(['check_threw'])
+    expect(placed).toEqual(baseline)
+  })
 
   it('a tombstoned pane is still refused with placement', async () => {
     vi.setSystemTime(NOW)

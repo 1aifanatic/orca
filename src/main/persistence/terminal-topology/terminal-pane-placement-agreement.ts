@@ -11,6 +11,7 @@ export type TerminalPanePlacementAgreement =
   | 'tab_missing'
   | 'parent_missing'
   | 'root_occupied'
+  | 'check_threw'
 
 /**
  * Whether placement names the tab today's binding write picks, read before that write. Report-only

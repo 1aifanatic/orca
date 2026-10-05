@@ -158,15 +158,20 @@ export class PtyBindingPersistenceOperations {
           outcome = 'refused'
           return { value: false, persist: false }
         }
-        span.setPlacement(
-          terminalPanePlacementAgreement(
-            args.placement,
-            session,
-            bindingWorktreeId,
-            args.tabId,
-            args.leafId
+        // Report-only: a malformed session must not fail the binding it is reporting on.
+        try {
+          span.setPlacement(
+            terminalPanePlacementAgreement(
+              args.placement,
+              session,
+              bindingWorktreeId,
+              args.tabId,
+              args.leafId
+            )
           )
-        )
+        } catch {
+          span.setPlacement('check_threw')
+        }
         const verdict = evaluatePtyBindingFastLane(
           args,
           session,
