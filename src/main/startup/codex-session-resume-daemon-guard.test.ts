@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -12,22 +12,22 @@ const mocks = vi.hoisted(() => ({
   hooksEnabled: false,
   systemHomePath: '',
   sharedHomePath: '',
-  prepareRuntimeHomeForLaunch: vi.fn(),
-  removeRealHomeCodexHookEntries: vi.fn(async () => 'removed' as const),
+  installForLaunchPrep: vi.fn(),
+  refreshRuntimeUserHooksForLaunchPrep: vi.fn(),
+  ensureRealHomeCodexHookState: vi.fn(async () => {}),
   prepareCodexSessionResume: vi.fn(),
-  prepareLegacySharedCodexSessionResume: vi.fn(),
-  syncCodexHookFlagsWithin: vi.fn(async () => {})
+  prepareLegacySharedCodexSessionResume: vi.fn()
 }))
 
 vi.mock('electron', () => ({ app: { getPath: vi.fn(() => '/tmp/orca-user-data') } }))
 vi.mock('../codex/hook-service', () => ({
   codexHookService: {
-    prepareRuntimeHomeForLaunch: mocks.prepareRuntimeHomeForLaunch
+    installForLaunchPrep: mocks.installForLaunchPrep,
+    refreshRuntimeUserHooksForLaunchPrep: mocks.refreshRuntimeUserHooksForLaunchPrep
   }
 }))
-// Why: the only module that writes ~/.codex; a resume must never reach it.
 vi.mock('../codex/codex-real-home-hook-install', () => ({
-  removeRealHomeCodexHookEntries: mocks.removeRealHomeCodexHookEntries
+  ensureRealHomeCodexHookState: mocks.ensureRealHomeCodexHookState
 }))
 vi.mock('../agent-hooks/managed-agent-hook-controls', () => ({
   isAgentStatusHooksEnabledForAgent: () => mocks.hooksEnabled
@@ -36,9 +36,6 @@ vi.mock('../codex/codex-home-paths', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   getSystemCodexHomePath: () => mocks.systemHomePath,
   getOrcaManagedCodexHomePath: () => mocks.sharedHomePath
-}))
-vi.mock('../codex/codex-hook-flag-sync', () => ({
-  syncCodexHookFlagsWithin: mocks.syncCodexHookFlagsWithin
 }))
 vi.mock('../codex/codex-session-resume-preparation', () => ({
   prepareCodexSessionResume: mocks.prepareCodexSessionResume
@@ -108,21 +105,18 @@ describe('Codex session resume daemon socket guard', () => {
     expect(codexDaemonSocketPathExceedsLimit(accountHome)).toBe(true)
     writeFileSync(join(accountHome, 'config.toml'), 'model = "gpt-5"\n', 'utf-8')
     mocks.hooksEnabled = true
-    mocks.prepareRuntimeHomeForLaunch.mockRejectedValue(
-      new Error('Could not parse Codex hooks.json')
-    )
+    mocks.installForLaunchPrep.mockRejectedValue(new Error('Could not parse Codex hooks.json'))
 
     const preparation = await resume()
 
     expect(preparation).toMatchObject({ outcome: 'resume', codexHomePath: accountHome })
-    expect(mocks.prepareRuntimeHomeForLaunch).toHaveBeenCalledWith(accountHome, undefined, true)
     const config = readFileSync(join(accountHome, 'config.toml'), 'utf-8')
     expect(config).toContain('model = "gpt-5"')
     expect(config).toContain(`daemon_auto_start = false ${CODEX_DAEMON_OVERRIDE_MARKER}`)
   })
 
   it('guards the resumed account home when hooks are off and the refresh returns early', async () => {
-    mocks.prepareRuntimeHomeForLaunch.mockResolvedValue({
+    mocks.refreshRuntimeUserHooksForLaunchPrep.mockResolvedValue({
       agent: 'codex',
       state: 'error',
       detail: 'Could not read system Codex hooks.json'
@@ -130,7 +124,7 @@ describe('Codex session resume daemon socket guard', () => {
 
     await resume()
 
-    expect(mocks.prepareRuntimeHomeForLaunch).toHaveBeenCalledWith(accountHome, undefined, false)
+    expect(mocks.refreshRuntimeUserHooksForLaunchPrep).toHaveBeenCalledWith(accountHome)
     expect(readFileSync(join(accountHome, 'config.toml'), 'utf-8')).toContain(
       `daemon_auto_start = false ${CODEX_DAEMON_OVERRIDE_MARKER}`
     )
@@ -143,40 +137,7 @@ describe('Codex session resume daemon socket guard', () => {
     const preparation = await resume()
 
     expect(preparation).toMatchObject({ codexHomePath: mocks.systemHomePath })
-    expect(mocks.prepareRuntimeHomeForLaunch).not.toHaveBeenCalled()
-    expect(mocks.removeRealHomeCodexHookEntries).not.toHaveBeenCalled()
-    expect(readdirSync(mocks.systemHomePath)).toEqual([])
-  })
-
-  // Why: at a cold restore the resume can beat the start's derivation of the flag it needs.
-  it('syncs the flags, waiting at most 3 s, before resuming while hooks are on', async () => {
-    mocks.hooksEnabled = true
-    mocks.prepareRuntimeHomeForLaunch.mockResolvedValue({ agent: 'codex', state: 'installed' })
-    let settle!: () => void
-    mocks.syncCodexHookFlagsWithin.mockImplementation(
-      () =>
-        new Promise<void>((resolve) => {
-          settle = resolve
-        })
-    )
-    let resumed = false
-    const pending = resume().then(() => {
-      resumed = true
-    })
-    await new Promise((resolve) => setTimeout(resolve, 20))
-    expect(resumed).toBe(false)
-
-    settle()
-    await pending
-
-    expect(mocks.syncCodexHookFlagsWithin).toHaveBeenCalledWith(3_000)
-  })
-
-  it('does not wait for a flag while Codex hooks are off', async () => {
-    mocks.prepareRuntimeHomeForLaunch.mockResolvedValue({ agent: 'codex', state: 'installed' })
-
-    await resume()
-
-    expect(mocks.syncCodexHookFlagsWithin).not.toHaveBeenCalled()
+    expect(mocks.ensureRealHomeCodexHookState).toHaveBeenCalledTimes(1)
+    expect(existsSync(join(mocks.systemHomePath, 'config.toml'))).toBe(false)
   })
 })

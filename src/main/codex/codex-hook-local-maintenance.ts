@@ -10,7 +10,7 @@ import { upsertHookTrustEntries } from './config-toml-trust'
 import { getCodexConfigTomlPath, getConfigPath, writeCodexHooksJson } from './codex-hook-definition'
 import { getCodexManagedScriptFileName } from './codex-hook-identity'
 import { cleanupLegacyManagedHookRepresentations } from './codex-hook-legacy-cleanup'
-import { removeRealHomeCodexHookEntries } from './codex-real-home-hook-install'
+import { removeRealHomeCodexHookForOptOut } from './codex-real-home-hook-install'
 import {
   removeRuntimeManagedHookTrustEntries,
   removeStaleRuntimeHookTrustEntries
@@ -30,11 +30,13 @@ export async function refreshCodexRuntimeUserHooksExclusively(
   getStatus: (runtimeHomePath: string) => AgentHookInstallStatus
 ): Promise<AgentHookInstallStatus> {
   const configPath = getConfigPath(runtimeHomePath)
-  // Why first: capture in-Orca approvals before this refresh rewrites the
-  // runtime files they are keyed against.
+  // Why: same as install() — capture in-Orca approvals before this refresh
+  // rewrites the runtime files they are keyed against.
   promoteCodexRuntimeHookApprovalsToSystem(runtimeHomePath)
   const config = readHooksJson(configPath)
   if (!config) {
+    // Why: disabled launch prep once called remove(); preserve that legacy cleanup even when runtime hooks.json is malformed.
+    await cleanupLegacyManagedHookRepresentations()
     return {
       agent: 'codex',
       state: 'error',
@@ -65,8 +67,8 @@ export async function refreshCodexRuntimeUserHooksExclusively(
       runtimeHomePath,
       systemHomePath: getSystemCodexHomePath()
     })
-    // Why: a native managed home mirrors only the user's hooks, since Orca's
-    // travels as a session flag, so it keeps user trust but no Orca trust.
+    // Why: this path is used when Orca status hooks are disabled. The
+    // runtime CODEX_HOME should keep user hooks, but not Orca-managed trust.
     // Write current mirrored user trust first so stale cleanup compares
     // against current hashes while deleting old managed hook keys.
     upsertHookTrustEntries(tomlPath, trustEntries)
@@ -82,6 +84,8 @@ export async function refreshCodexRuntimeUserHooksExclusively(
     }
   }
   snapshotCodexRuntimeHookTrustProvenance(runtimeHomePath)
+
+  await cleanupLegacyManagedHookRepresentations()
   return getStatus(runtimeHomePath)
 }
 
@@ -93,8 +97,8 @@ export async function removeCodexHooksExclusively(
   const config = readHooksJson(configPath)
   if (!config) {
     // Why: a malformed hooks.json shouldn't strand old hooks in ~/.codex or the legacy profile after disabling.
+    await removeRealHomeCodexHookForOptOut()
     await cleanupLegacyManagedHookRepresentations()
-    await removeRealHomeCodexHookEntries()
     return {
       agent: 'codex',
       state: 'error',
@@ -105,7 +109,7 @@ export async function removeCodexHooksExclusively(
   }
 
   const nextHooks = { ...config.hooks }
-  // Why: the retired-form sweep's broad matcher, so entries from older builds go even if scriptPath moved.
+  // Why: same broad matcher as install() so stale entries from older builds get cleaned even if scriptPath moved.
   const isManagedCommand = createManagedCommandMatcher(getCodexManagedScriptFileName())
   for (const [eventName, definitions] of Object.entries(nextHooks)) {
     if (!Array.isArray(definitions)) {
@@ -127,11 +131,10 @@ export async function removeCodexHooksExclusively(
   // Why: drop trust entries so config.toml doesn't accumulate dead [hooks.state] blocks across install/remove cycles.
   removeRuntimeManagedHookTrustEntries(configPath)
 
-  // Why here too: app start strips these only while hooks are on, and an older
-  // build may have added its entry since.
-  // Why the retired-form sweep first: it finds their trust through the entries the removal strips.
+  // Why here and nowhere automatic: the real-home entry is shared by every Orca
+  // on this HOME, so only the user's explicit opt-out may strip it.
+  await removeRealHomeCodexHookForOptOut()
   await cleanupLegacyManagedHookRepresentations()
-  await removeRealHomeCodexHookEntries()
 
   return getStatus()
 }

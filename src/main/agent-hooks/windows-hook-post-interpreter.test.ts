@@ -16,6 +16,10 @@ const { homedirMock } = vi.hoisted(() => ({
   homedirMock: vi.fn<() => string>()
 }))
 
+vi.mock('../codex/codex-hook-trust-grant', () => ({
+  grantManagedCodexHookTrust: async () => ({ lane: 'fallback', reason: 'unsupported' })
+}))
+
 vi.mock('electron', () => ({
   app: {
     getPath: () => '/tmp/orca-user-data'
@@ -46,7 +50,7 @@ import { openClaudeHookService } from '../openclaude/hook-service'
 const BATCH_SCRIPT_INSTALLERS = [
   { agent: 'claude', install: () => new ClaudeHookService().install() },
   { agent: 'openclaude', install: () => openClaudeHookService.install() },
-  { agent: 'codex', install: () => new CodexHookService().installSessionFlags() },
+  { agent: 'codex', install: () => new CodexHookService().install() },
   { agent: 'command-code', install: () => new CommandCodeHookService().install() },
   { agent: 'cursor', install: () => new CursorHookService().install() },
   { agent: 'devin', install: () => new DevinHookService().install() },
@@ -55,8 +59,9 @@ const BATCH_SCRIPT_INSTALLERS = [
   { agent: 'grok', install: () => new GrokHookService().install() }
 ] as const
 
-// Why: the Codex installer is async, so the override has to stay pinned across
-// the await instead of being restored by a synchronous `finally` while it runs.
+// Why: the Codex installer awaits an app-server trust-grant session, so the
+// override has to stay pinned across the await instead of being restored by a
+// synchronous `finally` while the install is still running.
 async function withPlatform<T>(platform: NodeJS.Platform, run: () => T | Promise<T>): Promise<T> {
   const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform')
   Object.defineProperty(process, 'platform', { configurable: true, value: platform })
@@ -67,11 +72,6 @@ async function withPlatform<T>(platform: NodeJS.Platform, run: () => T | Promise
       Object.defineProperty(process, 'platform', originalPlatform)
     }
   }
-}
-
-// Why codex may read not installed: its status is the flag table's, which the flag sync fills, not the installer.
-function installedStates(agent: string): string[] {
-  return agent === 'codex' ? ['installed', 'not_installed'] : ['installed']
 }
 
 describe('Windows managed hook post interpreter', () => {
@@ -102,9 +102,7 @@ describe('Windows managed hook post interpreter', () => {
   it('posts through curl.exe from every managed batch script, spawning no interpreter', async () => {
     const scripts = await withPlatform('win32', async () => {
       for (const entry of BATCH_SCRIPT_INSTALLERS) {
-        expect(installedStates(entry.agent), `${entry.agent} install status`).toContain(
-          (await entry.install()).state
-        )
+        expect((await entry.install()).state, `${entry.agent} install status`).toBe('installed')
       }
       const hooksDir = join(home, '.orca', 'agent-hooks')
       return readdirSync(hooksDir)

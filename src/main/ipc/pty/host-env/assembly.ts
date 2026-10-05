@@ -14,7 +14,6 @@ import { getManagedWslCliDir, getWslCliCommandName } from '../../../cli/wsl-mana
 import { stripLegacyTerminalShimEnv } from '../../../pty/legacy-terminal-shim-dir'
 import { mergePersistedWindowsPath } from '../../../pty/windows-environment-path'
 import { resolveCodexShellLaunchPreflightCommand } from '../../../pty/codex-shell-launch-preflight'
-import { applyCodexHookSessionFlagEnv } from './codex-hook-flag-env'
 import { buildConfiguredProxyEnv } from '../../../../shared/network-proxy'
 import { isTuiAgentEnabled } from '../../../../shared/tui-agent-selection'
 import type { BuildPtyHostEnvOptions } from './types'
@@ -255,8 +254,6 @@ export function buildPtyHostEnv(
   } else {
     delete baseEnv.ORCA_CODEX_LAUNCH_PREFLIGHT
   }
-
-  applyCodexHookSessionFlagEnv(baseEnv, opts)
 
   // Why: an inherited copy (e.g. Orca launched from a WSL pane) names another launch's CLI.
   delete baseEnv.ORCA_WSL_CLI_DIR

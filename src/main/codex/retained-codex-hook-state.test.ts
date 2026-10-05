@@ -13,30 +13,33 @@ function status(state: 'installed' | 'not_installed' | 'error'): AgentHookInstal
 }
 
 describe('retained Codex hook state', () => {
-  it("refreshes each retained home's user-hook mirror, which carries no Orca entry", async () => {
+  it('repairs Orca hooks before a retained shell can launch Codex', async () => {
+    const install = vi.fn(() => status('installed'))
     const refreshRuntimeUserHooks = vi.fn(() => status('not_installed'))
 
     await reconcileRetainedCodexHookHomes({
-      hookService: { refreshRuntimeUserHooks },
+      hookService: { install, refreshRuntimeUserHooks },
+      hooksEnabled: true,
       runtimeHomePaths: ['/orca/shared-home', '/orca/account-home']
     })
 
-    expect(refreshRuntimeUserHooks).toHaveBeenCalledTimes(2)
-    expect(refreshRuntimeUserHooks).toHaveBeenNthCalledWith(1, '/orca/shared-home')
-    expect(refreshRuntimeUserHooks).toHaveBeenNthCalledWith(2, '/orca/account-home')
+    expect(install).toHaveBeenCalledTimes(2)
+    expect(install).toHaveBeenNthCalledWith(1, '/orca/shared-home')
+    expect(install).toHaveBeenNthCalledWith(2, '/orca/account-home')
+    expect(refreshRuntimeUserHooks).not.toHaveBeenCalled()
   })
 
-  it('keeps going past a home whose refresh fails', async () => {
-    const refreshRuntimeUserHooks = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('EACCES'))
-      .mockResolvedValueOnce(status('not_installed'))
+  it('removes only Orca hooks from retained homes when hooks are disabled', async () => {
+    const install = vi.fn(() => status('installed'))
+    const refreshRuntimeUserHooks = vi.fn(() => status('not_installed'))
 
     await reconcileRetainedCodexHookHomes({
-      hookService: { refreshRuntimeUserHooks },
-      runtimeHomePaths: ['/orca/broken-home', '/orca/account-home']
+      hookService: { install, refreshRuntimeUserHooks },
+      hooksEnabled: false,
+      runtimeHomePaths: ['/orca/shared-home']
     })
 
-    expect(refreshRuntimeUserHooks).toHaveBeenLastCalledWith('/orca/account-home')
+    expect(refreshRuntimeUserHooks).toHaveBeenCalledWith('/orca/shared-home')
+    expect(install).not.toHaveBeenCalled()
   })
 })

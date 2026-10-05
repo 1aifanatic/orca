@@ -6,17 +6,23 @@ import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { AgentHookInstallStatus } from '../../shared/agent-hook-types'
 
-const { getPathMock, homedirMock, refreshExclusivelyMock } = vi.hoisted(() => ({
-  getPathMock: vi.fn<(name: string) => string>(),
-  homedirMock: vi.fn<() => string>(),
-  refreshExclusivelyMock: vi.fn<(runtimeHomePath: string) => Promise<AgentHookInstallStatus>>()
-}))
+const { getPathMock, homedirMock, installExclusivelyMock, refreshExclusivelyMock } = vi.hoisted(
+  () => ({
+    getPathMock: vi.fn<(name: string) => string>(),
+    homedirMock: vi.fn<() => string>(),
+    installExclusivelyMock: vi.fn<(runtimeHomePath: string) => Promise<AgentHookInstallStatus>>(),
+    refreshExclusivelyMock: vi.fn<(runtimeHomePath: string) => Promise<AgentHookInstallStatus>>()
+  })
+)
 
 vi.mock('electron', () => ({ app: { getPath: getPathMock } }))
 vi.mock('os', async (importOriginal) => {
   const actual = await importOriginal<typeof Os>()
   return { ...actual, homedir: homedirMock }
 })
+vi.mock('./codex-hook-local-install', () => ({
+  installCodexHooksExclusively: installExclusivelyMock
+}))
 vi.mock('./codex-hook-local-maintenance', () => ({
   refreshCodexRuntimeUserHooksExclusively: refreshExclusivelyMock,
   removeCodexHooksExclusively: vi.fn()
@@ -28,10 +34,10 @@ let tmpHome: string
 let userDataDir: string
 let previousUserDataPath: string | undefined
 
-/** Stands in for the hooks.json + config.toml rewrite and system-config promotion. */
-const REFRESH_MS = 60
+/** Stands in for a real `codex app-server` grant session, measured at ~380ms locally. */
+const INSTALL_MS = 60
 
-function refreshedStatus(configPath: string): AgentHookInstallStatus {
+function installedStatus(configPath: string): AgentHookInstallStatus {
   return {
     agent: 'codex',
     state: 'installed',
@@ -53,9 +59,13 @@ beforeEach(() => {
     }
     throw new Error(`unexpected app.getPath(${name})`)
   })
+  installExclusivelyMock.mockImplementation(async (runtimeHomePath: string) => {
+    await delay(INSTALL_MS)
+    return installedStatus(join(runtimeHomePath, 'hooks.json'))
+  })
   refreshExclusivelyMock.mockImplementation(async (runtimeHomePath: string) => {
-    await delay(REFRESH_MS)
-    return refreshedStatus(join(runtimeHomePath, 'hooks.json'))
+    await delay(INSTALL_MS)
+    return installedStatus(join(runtimeHomePath, 'hooks.json'))
   })
 })
 
@@ -70,69 +80,75 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-describe('launch-prep Codex user-hook refresh sharing', () => {
-  it('collapses a burst of concurrent launches into one refresh', async () => {
+describe('launch-prep Codex hook install sharing', () => {
+  it('collapses a burst of concurrent launches into one install', async () => {
     const service = new CodexHookService()
     const home = join(userDataDir, 'managed')
 
     const statuses = await Promise.all(
-      Array.from({ length: 7 }, () => service.refreshRuntimeUserHooksForLaunchPrep(home))
+      Array.from({ length: 7 }, () => service.installForLaunchPrep(home))
     )
 
     expect(statuses.every((status) => status.state === 'installed')).toBe(true)
-    expect(refreshExclusivelyMock).toHaveBeenCalledTimes(1)
+    expect(installExclusivelyMock).toHaveBeenCalledTimes(1)
   })
 
-  it('refreshes again for a launch that starts after the shared run settled', async () => {
+  it('re-installs for a launch that starts after the shared run settled', async () => {
     const service = new CodexHookService()
     const home = join(userDataDir, 'managed')
 
-    await Promise.all(
-      Array.from({ length: 3 }, () => service.refreshRuntimeUserHooksForLaunchPrep(home))
-    )
-    await service.refreshRuntimeUserHooksForLaunchPrep(home)
+    await Promise.all(Array.from({ length: 3 }, () => service.installForLaunchPrep(home)))
+    await service.installForLaunchPrep(home)
 
-    expect(refreshExclusivelyMock).toHaveBeenCalledTimes(2)
+    expect(installExclusivelyMock).toHaveBeenCalledTimes(2)
   })
 
-  it('refreshes again after a failed shared run instead of caching the failure', async () => {
+  it('re-installs after a failed shared run instead of caching the failure', async () => {
     const service = new CodexHookService()
     const home = join(userDataDir, 'managed')
-    refreshExclusivelyMock.mockRejectedValueOnce(new Error('hooks.json unreadable'))
+    installExclusivelyMock.mockRejectedValueOnce(new Error('hooks.json unreadable'))
 
-    await expect(service.refreshRuntimeUserHooksForLaunchPrep(home)).rejects.toThrow(
-      'hooks.json unreadable'
-    )
-    await expect(service.refreshRuntimeUserHooksForLaunchPrep(home)).resolves.toMatchObject({
+    await expect(service.installForLaunchPrep(home)).rejects.toThrow('hooks.json unreadable')
+    await expect(service.installForLaunchPrep(home)).resolves.toMatchObject({
       state: 'installed'
     })
-    expect(refreshExclusivelyMock).toHaveBeenCalledTimes(2)
+    expect(installExclusivelyMock).toHaveBeenCalledTimes(2)
   })
 
   it('never shares a run across different runtime homes', async () => {
     const service = new CodexHookService()
 
     await Promise.all([
-      service.refreshRuntimeUserHooksForLaunchPrep(join(userDataDir, 'managed')),
-      service.refreshRuntimeUserHooksForLaunchPrep(join(userDataDir, 'per-account'))
+      service.installForLaunchPrep(join(userDataDir, 'managed')),
+      service.installForLaunchPrep(join(userDataDir, 'per-account'))
     ])
 
-    expect(refreshExclusivelyMock).toHaveBeenCalledTimes(2)
-    expect(refreshExclusivelyMock.mock.calls.map(([home]) => home)).toEqual([
+    expect(installExclusivelyMock).toHaveBeenCalledTimes(2)
+    expect(installExclusivelyMock.mock.calls.map(([home]) => home)).toEqual([
       join(userDataDir, 'managed'),
       join(userDataDir, 'per-account')
     ])
   })
 
-  it('leaves the direct refresh path unshared for retained-home reconciliation', async () => {
+  it('never shares the install lane with the hooks-disabled refresh lane', async () => {
     const service = new CodexHookService()
     const home = join(userDataDir, 'managed')
 
     await Promise.all([
-      service.refreshRuntimeUserHooks(home),
-      service.refreshRuntimeUserHooks(home)
+      service.installForLaunchPrep(home),
+      service.refreshRuntimeUserHooksForLaunchPrep(home)
     ])
 
-    expect(refreshExclusivelyMock).toHaveBeenCalledTimes(2)
+    expect(installExclusivelyMock).toHaveBeenCalledTimes(1)
+    expect(refreshExclusivelyMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves the direct install path unshared for settings-driven reinstalls', async () => {
+    const service = new CodexHookService()
+    const home = join(userDataDir, 'managed')
+
+    await Promise.all([service.install(home), service.install(home)])
+
+    expect(installExclusivelyMock).toHaveBeenCalledTimes(2)
   })
 })
