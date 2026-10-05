@@ -17,7 +17,8 @@ export function useMobileStructuredNativeChatSendBridge(args: {
     text: string,
     images?: string[],
     deadline?: number,
-    attachments?: readonly StructuredNativeChatAttachment[]
+    attachments?: readonly StructuredNativeChatAttachment[],
+    options?: { queue?: boolean }
   ) => Promise<MobileNativeChatSendOutcome>
   captureSendOrigin: (text: string) => MobileNativeChatSendOrigin | null
   clearDraftForSend: (origin: MobileNativeChatSendOrigin, text: string) => void
@@ -123,7 +124,8 @@ export function useMobileStructuredNativeChatSendBridge(args: {
         onSendError('Answer not sent (disconnected)')
         return 'rejected'
       }
-      const outcome = await sendStructured(text)
+      // Into the running turn, as the agent's own app delivers an answer, never held to its end.
+      const outcome = await sendStructured(text, undefined, undefined, undefined, { queue: false })
       if (outcome === 'accepted') {
         acceptSend(origin, text.trimEnd())
       } else if (outcome === 'unknown') {

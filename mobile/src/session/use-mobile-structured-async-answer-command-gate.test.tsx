@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionSubscribeEvent } from '../../../src/shared/agent-session-wire'
 import { formatAsyncQuestionReply } from '../../../src/shared/native-chat-async-questions'
 import type { RpcClient } from '../transport/rpc-client'
+import type { StructuredAgentSessionHostSupport } from './mobile-structured-agent-session-host-support'
 import { resetMobileStructuredSendOperationJournalForTests } from './mobile-structured-send-operation-journal'
 import { structuredSendResultFixture } from './structured-agent-send-result.test-fixture'
 import type { MobileNativeChatSendOrigin } from './use-mobile-native-chat-drafts'
@@ -65,6 +66,7 @@ describe('structured async answer through the real command gate', () => {
   let renderer: ReactTestRenderer | null = null
   let bridge: ReturnType<typeof useMobileStructuredNativeChatSendBridge> | null = null
   let listener: ((value: unknown) => void) | null = null
+  let hostSupport: StructuredAgentSessionHostSupport | null = null
   const drafts = {
     acceptSend: vi.fn(),
     captureSendOrigin: vi.fn(() => ORIGIN),
@@ -88,7 +90,7 @@ describe('structured async answer through the real command gate', () => {
       sourceIdentity: 'host-a\0workspace-a',
       enabled: true,
       connected: true,
-      hostSupport: null,
+      hostSupport,
       agent: 'codex',
       onSendError
     })
@@ -146,6 +148,31 @@ describe('structured async answer through the real command gate', () => {
     renderer = null
     bridge = null
     listener = null
+    hostSupport = null
+  })
+
+  it('sends an answer into the running turn even when the host queues mid-turn messages', async () => {
+    hostSupport = {
+      promptCancel: true,
+      questionAnswers: true,
+      queuedMessages: true,
+      quietRepeatedStop: true
+    }
+    await mountSession()
+    const sentParams = (): unknown[] =>
+      sendRequest.mock.calls.filter(([method]) => method === 'agentSession.send').map(([, p]) => p)
+
+    await act(async () => {
+      await bridge!.answer(formatAsyncQuestionReply([{ title: 'Color?', answer: 'Blue' }]))
+    })
+    expect(sentParams()).toHaveLength(1)
+    expect(sentParams()[0]).not.toHaveProperty('delivery')
+
+    // Control: an ordinary composer message on the same host still asks to queue.
+    await act(async () => {
+      await bridge!.sendWithOutcome('hello')
+    })
+    expect(sentParams()[1]).toHaveProperty('delivery', 'queue-if-active')
   })
 
   it('delivers a /model-titled answer as an ordinary message: no command, options untouched', async () => {

@@ -37,7 +37,8 @@ import {
 import { useMobileStructuredAgentMutate } from './use-mobile-structured-agent-mutation'
 import {
   useMobileStructuredSendWithOutcome,
-  type StructuredMobileSendAttachment
+  type StructuredMobileSendAttachment,
+  type StructuredMobileSendOptions
 } from './use-mobile-structured-send-with-outcome'
 import {
   useMobileStructuredQueuedMessageControls,
@@ -55,7 +56,8 @@ type StructuredMobileSession = ReturnType<typeof useMobileStructuredAgentOptions
       text: string,
       images?: string[],
       deadline?: number,
-      attachments?: readonly StructuredMobileSendAttachment[]
+      attachments?: readonly StructuredMobileSendAttachment[],
+      options?: StructuredMobileSendOptions
     ) => Promise<MobileNativeChatSendOutcome>
     cancel: () => void
     permission: MobileChatPermission | null

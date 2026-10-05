@@ -110,7 +110,13 @@ describe('useMobileStructuredNativeChatSendBridge', () => {
 
       await expect(answer('Question: /model\nAnswer: gpt-5')).resolves.toBe(outcome)
 
-      expect(sendStructured).toHaveBeenCalledWith('Question: /model\nAnswer: gpt-5')
+      expect(sendStructured).toHaveBeenCalledWith(
+        'Question: /model\nAnswer: gpt-5',
+        undefined,
+        undefined,
+        undefined,
+        { queue: false }
+      )
       expect(clearDraftForSend).not.toHaveBeenCalled()
       expect(restoreRejectedDraft).not.toHaveBeenCalled()
       expect(acceptSend).toHaveBeenCalledTimes(outcome === 'accepted' ? 1 : 0)
