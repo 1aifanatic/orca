@@ -108,12 +108,11 @@ export function withSleepingPaneView(
   state: AppState,
   record: SleepingAgentSessionRecord
 ): SleepingAgentSessionRecord {
+  const tabId = record.tabId
   const tabExists =
-    record.tabId !== undefined &&
-    state.tabsByWorktree[record.worktreeId]?.some((tab) => tab.id === record.tabId) === true
-  const viewMode = tabExists
-    ? sleepingPaneViewMode(state, record.tabId!, record.paneKey)
-    : undefined
+    tabId !== undefined &&
+    state.tabsByWorktree[record.worktreeId]?.some((tab) => tab.id === tabId) === true
+  const viewMode = tabExists ? sleepingPaneViewMode(state, tabId, record.paneKey) : undefined
   if (viewMode === record.viewMode) {
     return record
   }

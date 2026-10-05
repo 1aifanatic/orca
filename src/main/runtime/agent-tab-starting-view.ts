@@ -150,7 +150,7 @@ export function withWorktreeStartupView(
   const draftText =
     args.startupDraftPaste?.content ?? (draftStartup ? args.startupDraft : undefined)
   const viewMode =
-    draftText !== undefined && !canMirrorLaunchDraftToNativeChat(draftText)
+    draftText?.trim() && !canMirrorLaunchDraftToNativeChat(draftText)
       ? 'terminal'
       : (startup.viewMode ?? args.startupViewMode)
   const launcherDefaultView = startup.launcherDefaultView ?? args.launcherDefaultView
