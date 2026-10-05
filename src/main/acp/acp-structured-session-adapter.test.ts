@@ -114,6 +114,22 @@ it('reports an agent that exits while starting with its own last words', async (
   expect(rig.lifecycle).toEqual([])
 })
 
+it('reads those last words when the agent ends its stdout before its exit is seen', async () => {
+  const rig = await openAcpAdapterRig({
+    script: (agent) =>
+      agent.on('session/new', () => {
+        const child = rig.child()
+        child.stderr = 'grok: config.toml is invalid'
+        // On POSIX a dying process's stdout ends first; its exit is observed a moment later.
+        child.agent.stdout.end()
+        setTimeout(() => child.exit(), 5)
+      })
+  })
+  const failure = await rig.acquire().catch((error: unknown) => error)
+  expect(failure).toBeInstanceOf(AgentSessionAcquisitionExitProvenError)
+  expect(failure).toMatchObject({ message: 'grok: config.toml is invalid' })
+})
+
 describe('ACP structured session adapter: turns', () => {
   it('sends a prompt under an injected id and settles it on the agent first event', async () => {
     const rig = await openAcpAdapterRig()

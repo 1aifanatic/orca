@@ -28,6 +28,8 @@ import {
   type AcpStructuredSession
 } from './acp-structured-session'
 import { AcpStructuredStarts, type AcpStartAttempt } from './acp-structured-starts'
+import { waitForAcpChildExit } from './acp-structured-child'
+import { AcpConnectionClosedError } from './acp-errors'
 import { acpPromptBlocks } from './acp-structured-turns'
 import {
   ACP_OPTION_WRITE_TIMEOUT_MS,
@@ -94,6 +96,11 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
       return acquisition
     } catch (error) {
       const { child } = attempt
+      if (child && error instanceof AcpConnectionClosedError) {
+        // A dying agent's stdout ends before its exit is seen: wait (bounded) for that exit, so
+        // the failure carries its last words, as a running session's end does.
+        await waitForAcpChildExit(child, this.deps.stopGraceMs ?? ACP_STOP_GRACE_MS, attempt.signal)
+      }
       // Checked before the close below, which would make any exit look like one Orca asked for.
       const exitedOnItsOwn = child?.exited === true && !attempt.signal.aborted
       if (child && !(await child.close().catch(() => false))) {

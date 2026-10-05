@@ -63,3 +63,24 @@ export function spawnAcpStructuredChild(
     }
   }
 }
+
+/** Resolves once `child` exits, `signal` aborts, or `ms` pass, whichever is first. */
+export function waitForAcpChildExit(
+  child: AcpStructuredChild,
+  ms: number,
+  signal: AbortSignal
+): Promise<void> {
+  if (child.exited || signal.aborted) {
+    return Promise.resolve()
+  }
+  return new Promise((resolve) => {
+    const done = (): void => {
+      clearTimeout(timer)
+      signal.removeEventListener('abort', done)
+      resolve()
+    }
+    const timer = setTimeout(done, ms)
+    signal.addEventListener('abort', done, { once: true })
+    child.onExit(done)
+  })
+}
