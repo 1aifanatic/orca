@@ -42,6 +42,7 @@ export type OrcadUpdateDeferCode =
   | 'orcad_update_terminal_census_unavailable'
   | 'orcad_update_strands_live_terminals'
   | 'orcad_update_daemon_protocol_unverifiable'
+  | 'orcad_update_ends_in_process_terminals'
 
 /**
  * Decide whether to restart orcad onto `candidateVersion`.
@@ -109,6 +110,20 @@ export function planOrcadUpdate(input: {
           'daemon will be preserved across the restart, and the outgoing version directory ' +
           'stays pinned against GC.'
       ]
+    }
+  }
+  const inProcess = input.census.inProcessSessions ?? 0
+  // Why force cannot override: these run inside orcad, so no daemon carries them across.
+  if (inProcess > 0) {
+    return {
+      action: 'defer',
+      code: 'orcad_update_ends_in_process_terminals',
+      reason:
+        `${inProcess} terminal${inProcess === 1 ? ' runs' : 's run'} inside the orcad process ` +
+        'itself because its terminal daemon is degraded. Any restart ends ' +
+        `${inProcess === 1 ? 'it' : 'them'}, and forcing the update cannot keep ` +
+        `${inProcess === 1 ? 'it' : 'them'} alive. Close ${inProcess === 1 ? 'it' : 'them'}, ` +
+        'then update.'
     }
   }
   if (liveSessions > 0 && !input.force) {

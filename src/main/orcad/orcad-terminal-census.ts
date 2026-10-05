@@ -9,7 +9,8 @@ import type { OrcadTerminalCensus } from '../../shared/orcad-terminal-census'
 const UNVERIFIABLE: OrcadTerminalCensus = {
   liveSessions: null,
   startedSinceActivation: null,
-  daemonProtocolVersion: null
+  daemonProtocolVersion: null,
+  inProcessSessions: null
 }
 
 export async function collectOrcadTerminalCensus(
@@ -36,11 +37,13 @@ export async function collectOrcadTerminalCensus(
   return {
     liveSessions: sessions.length + inProcess,
     // In-process terminals carry no creation time to compare against activation.
-    startedSinceActivation: timestampsKnown && inProcess === 0
-      ? sessions.filter((session) => session.createdAt >= activatedAt).length
-      : null,
+    startedSinceActivation:
+      timestampsKnown && inProcess === 0
+        ? sessions.filter((session) => session.createdAt >= activatedAt).length
+        : null,
     // Why one protocol only: sessions split across daemon generations have no single owner to
     // check an incoming build against, so that reads as unverifiable.
-    daemonProtocolVersion: protocols.size === 1 && protocol !== undefined ? protocol : null
+    daemonProtocolVersion: protocols.size === 1 && protocol !== undefined ? protocol : null,
+    inProcessSessions: inProcess
   }
 }
