@@ -14,10 +14,8 @@ const SECRET_AT_REST_PROTECTIONS = { sealed: true, plaintext: true } as const sa
   Record<SecretAtRestProtection, true>
 >
 
-// Every status key must be listed, so a newly added field cannot be dropped silently.
-type ParsedJiraConnectionStatus = {
-  [K in keyof Required<JiraConnectionStatus>]: JiraConnectionStatus[K]
-}
+// Every key of the status, site and viewer must be listed, so a newly added field cannot be dropped silently.
+type EveryKey<T> = { [K in keyof Required<T>]: T[K] }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -39,12 +37,13 @@ function parseJiraViewer(value: unknown): JiraViewer | null {
   ) {
     return null
   }
-  return {
+  const viewer: EveryKey<JiraViewer> = {
     accountId: value.accountId,
     displayName: value.displayName,
     email: typeof value.email === 'string' || value.email === null ? value.email : null,
-    ...(typeof value.avatarUrl === 'string' ? { avatarUrl: value.avatarUrl } : {})
+    avatarUrl: typeof value.avatarUrl === 'string' ? value.avatarUrl : undefined
   }
+  return viewer
 }
 
 function parseJiraSite(value: unknown): JiraSite | null {
@@ -57,14 +56,15 @@ function parseJiraSite(value: unknown): JiraSite | null {
   ) {
     return null
   }
-  return {
+  const site: EveryKey<JiraSite> = {
     id: value.id,
     siteUrl: value.siteUrl,
     email: typeof value.email === 'string' ? value.email : '',
     displayName: value.displayName,
     accountId: value.accountId,
-    ...(isJiraAuthType(value.authType) ? { authType: value.authType } : {})
+    authType: isJiraAuthType(value.authType) ? value.authType : undefined
   }
+  return site
 }
 
 function parseJiraSites(value: unknown): JiraSite[] | undefined {
@@ -85,7 +85,7 @@ export function parseJiraConnectionStatus(value: unknown): JiraConnectionStatus 
   if (!isRecord(value) || typeof value.connected !== 'boolean') {
     return { connected: false, viewer: null }
   }
-  const status: ParsedJiraConnectionStatus = {
+  const status: EveryKey<JiraConnectionStatus> = {
     connected: value.connected,
     viewer: parseJiraViewer(value.viewer),
     sites: parseJiraSites(value.sites),
