@@ -183,12 +183,12 @@ describe('activation fence', () => {
       throw new Error('fence held')
     })
 
-  it('answers a held fence at once instead of waiting for it, running nothing', async () => {
+  it('answers a fence still held after a short wait, running nothing', async () => {
     vi.clearAllMocks()
     vi.mocked(acquireInstallLock).mockRejectedValueOnce(new RemoteInstallLockBusyError('/l', 0))
     const run = vi.fn(async () => 'ran')
     await expect(withOrcadActivationLock(target, run, () => 'held')).resolves.toBe('held')
-    expect(vi.mocked(acquireInstallLock).mock.calls[0]?.[3]).toMatchObject({ waitTimeoutMs: 0 })
+    expect(vi.mocked(acquireInstallLock).mock.calls[0]?.[3]).toMatchObject({ waitTimeoutMs: 5_000 })
     expect(run).not.toHaveBeenCalled()
     expect(removals()).toEqual([])
   })

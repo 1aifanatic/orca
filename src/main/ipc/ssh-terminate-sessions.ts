@@ -103,7 +103,11 @@ export async function terminateSshTargetSessions(
       // Why: a failed relay shutdown can leave the remote process alive in the grace window; keep the lease/session so the user can retry.
       throw new Error(`Failed to terminate SSH host sessions: ${shutdownFailures.join('; ')}`)
     }
-    await teardownSshTargetTransport(targetId, (session) => session.disposeAndPersist())
+    // Disposal marks every remaining lease terminated; an unverifiable PTY keeps its lease detached,
+    // since only the leases this run proved terminated were marked so above.
+    await teardownSshTargetTransport(targetId, (session) =>
+      outcome.unverifiable > 0 ? session.detachAndPersist() : session.disposeAndPersist()
+    )
   })
   return outcome
 }

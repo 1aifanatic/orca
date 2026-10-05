@@ -28,7 +28,7 @@ import {
 
 const ORCAD_ACTIVATION_MAX_READINESS_TIMEOUT_MS = 5 * 60_000
 
-type OrcadActivationLockOptions = OrcadRemoteExecTarget & { remoteHome: string }
+export type OrcadActivationLockOptions = OrcadRemoteExecTarget & { remoteHome: string }
 
 export type OrcadActivationLockControl = {
   /** Keep the fence if the run throws: a journal now describes host state. */
@@ -64,20 +64,14 @@ export function resolveOrcadActivationReadinessTimeout(
   return timeout
 }
 
-export const ORCAD_ACTIVATION_FENCE_HELD_CODE = 'orcad_activation_recovery_required'
+// Long enough for a brief hold (a wake, a retried lock command), short beside a lifecycle queue.
+const ORCAD_ACTIVATION_FENCE_WAIT_MS = 5_000
 
-export function orcadActivationFenceHeldReason(attempt: string): string {
-  return (
-    `Another run holds this host's activation fence, or an interrupted one needs Recover, so ` +
-    `the ${attempt} did not start.`
-  )
-}
-
-/** A held fence answers `held()` at once: a retained one never clears by waiting. */
+/** A fence still held after a short wait answers `held()`: a retained one never clears by waiting. */
 export async function withOrcadActivationLock<T>(
   options: OrcadActivationLockOptions,
   run: (control: OrcadActivationLockControl) => Promise<T>,
-  held: () => T
+  held: () => T | Promise<T>
 ): Promise<T> {
   const lockRoot = orcadActivationTransactionRoot(options.host, options.remoteHome)
   try {
@@ -86,11 +80,11 @@ export async function withOrcadActivationLock<T>(
       relayGcClaim: false,
       // A retained fence means state ownership is unresolved. Age cannot make it safe.
       allowStaleTakeover: false,
-      waitTimeoutMs: 0
+      waitTimeoutMs: ORCAD_ACTIVATION_FENCE_WAIT_MS
     })
   } catch (error) {
     if (error instanceof RemoteInstallLockBusyError) {
-      return held()
+      return await held()
     }
     throw error
   }
@@ -162,6 +156,14 @@ export async function orcadActivationFenceExists(
     throw new Error('The activation fence probe returned no verifiable answer.')
   }
   return answer === 'LOCKED'
+}
+
+/** Drops a fence this client knows it left behind; never a fence another run may own. */
+export function releaseOrcadActivationFence(options: OrcadActivationLockOptions): Promise<void> {
+  return releaseActivationFence(
+    options,
+    orcadActivationTransactionRoot(options.host, options.remoteHome)
+  )
 }
 
 function releaseActivationFence(

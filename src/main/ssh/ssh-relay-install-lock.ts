@@ -104,6 +104,9 @@ export async function acquireInstallLock(
       : Promise.resolve(false)
 
   const start = Date.now()
+  // Busy means a holder answered; a lock command that only ever failed reports its own error.
+  let sawHolder = false
+  let lastCommandError: unknown
   let lastStaleCheckAt = Number.NEGATIVE_INFINITY
   let lastWaitLogAt = Number.NEGATIVE_INFINITY
   while (true) {
@@ -120,7 +123,9 @@ export async function acquireInstallLock(
       const result = await execHostCommand(conn, host, tryCreateInstallLockCommand(host, lockDir), {
         signal: options?.signal
       })
-      if (result.trim().endsWith('OK')) {
+      if (!result.trim().endsWith('OK')) {
+        sawHolder = true
+      } else {
         // Why: GC may claim the sibling path between our first probe and lock
         // creation. Recheck while holding the in-tree lock; one side backs off.
         const claimedAfterAcquire = await isClaimed().catch((err) => {
@@ -132,6 +137,7 @@ export async function acquireInstallLock(
         if (!claimedAfterAcquire && !options?.signal?.aborted) {
           return
         }
+        sawHolder = true
         await execHostCommand(conn, host, removeRemoteTreeCommand(host, lockDir)).catch((err) => {
           if (isUnconfirmedSshCommandTermination(err)) {
             throw err
@@ -144,8 +150,8 @@ export async function acquireInstallLock(
         throw err
       }
       options?.signal?.throwIfAborted()
-      // A failed mkdir is lock contention; keep the connection-specific error
-      // out of the user path until the bounded wait expires.
+      // Retried until the bounded wait expires: one refused channel is not a verdict.
+      lastCommandError = err
     }
     if (
       options?.allowStaleTakeover !== false &&
@@ -191,6 +197,9 @@ export async function acquireInstallLock(
       console.info(`[ssh-relay] Waiting for install lock at ${lockDir}`)
     }
     if (Date.now() - start >= waitTimeoutMs) {
+      if (!sawHolder && lastCommandError !== undefined) {
+        throw lastCommandError
+      }
       throw new RemoteInstallLockBusyError(lockDir, waitTimeoutMs)
     }
     await waitForInstallLockPoll(options?.signal)
