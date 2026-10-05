@@ -98,7 +98,8 @@ export function createEditorSaveQueue(store: AppStoreApi): EditorSaveQueue {
           return
         }
 
-        const contentToSave = state.editorDrafts[file.id] ?? fallbackContent
+        flushPendingEditorChange(file.id)
+        const contentToSave = store.getState().editorDrafts[file.id] ?? fallbackContent
         const worktree = liveFile.worktreeId
           ? findWorktreeById(state.worktreesByRepo ?? {}, liveFile.worktreeId)
           : null
