@@ -4,6 +4,9 @@ type Child = Parameters<typeof terminateRelaySubprocessTree>[0]
 
 // Why 10s: the same physical-exit deadline the relay's watcher children get after a kill.
 export const RELAY_AGENT_CLOSE_DEADLINE_MS = 10_000
+// Why: output still buffered when the child exits drains well inside this; anything later comes
+// from a background process that inherited the pipes, which the exec does not own.
+export const RELAY_AGENT_EXIT_PIPE_DRAIN_MS = 1_000
 
 /** Request timeout/cancellation is not evidence that its host child has closed. */
 export class RelayAgentProcessLifetime {
@@ -13,7 +16,10 @@ export class RelayAgentProcessLifetime {
   private readonly signalled = new WeakSet<Child>()
   private disposal: Promise<void> | null = null
 
-  constructor(private readonly closeDeadlineMs = RELAY_AGENT_CLOSE_DEADLINE_MS) {}
+  constructor(
+    private readonly closeDeadlineMs = RELAY_AGENT_CLOSE_DEADLINE_MS,
+    private readonly exitPipeDrainMs = RELAY_AGENT_EXIT_PIPE_DRAIN_MS
+  ) {}
 
   assertAdmission(): void {
     if (this.fenced) {
@@ -32,7 +38,19 @@ export class RelayAgentProcessLifetime {
     // A late error after request timeout must not remove physical-close tracking or crash the host.
     const onError = () => {}
     child.on('error', onError)
+    // Exit is the physical-exit proof; a descendant holding the pipes must not keep 'close' away,
+    // so after a bounded drain the relay lets go of them, which emits 'close' for every listener.
+    let drain: ReturnType<typeof setTimeout> | undefined
+    child.once('exit', () => {
+      drain = setTimeout(() => {
+        for (const stream of [child.stdin, child.stdout, child.stderr]) {
+          stream?.destroy()
+        }
+      }, this.exitPipeDrainMs)
+      drain.unref?.()
+    })
     child.once('close', () => {
+      clearTimeout(drain)
       child.off('error', onError)
       this.children.delete(child)
       resolveClosed()
