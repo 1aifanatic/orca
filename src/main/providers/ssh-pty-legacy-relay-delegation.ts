@@ -11,6 +11,7 @@ import { toAppSshPtyId } from './ssh-pty-id'
 import type { SshPtyProvider } from './ssh-pty-provider'
 import type { SshPtyAttachResult } from './ssh-pty-session-reattach'
 import type { PtySpawnOptions, PtySpawnResult } from './types'
+import { writeRefused } from '../../shared/pty-write-settlement'
 
 export type SshPtyLegacyRelayRouting = {
   /** The served route for a held PTY, or null when no older relay holds it. */
@@ -21,6 +22,20 @@ export type SshPtyLegacyRelayRouting = {
 }
 
 const routingByProvider = new WeakMap<SshPtyProvider, SshPtyLegacyRelayRouting>()
+/**
+ * App PTY ids an older relay may run but no route serves. The current relay drops input for an id it
+ * never minted without a word, so writes to these are refused instead of reported as delivered.
+ */
+const heldByProvider = new WeakMap<SshPtyProvider, Set<string>>()
+
+function recordHeld(provider: SshPtyProvider, appPtyId: string, held: boolean): void {
+  const ids = heldByProvider.get(provider)
+  if (held) {
+    ids?.add(appPtyId)
+  } else {
+    ids?.delete(appPtyId)
+  }
+}
 
 /**
  * The reconnect path's counterpart to the delegated spawn: a reattach the current relay disowned is
@@ -32,6 +47,7 @@ export async function attachHeldPtyThroughPreviousRelay(
   expected?: { paneKey?: string; tabId?: string }
 ): Promise<SshPtyAttachResult | null> {
   const served = await routingByProvider.get(provider)?.attach(appPtyId)
+  recordHeld(provider, appPtyId, !served)
   if (!served) {
     return null
   }
@@ -39,6 +55,7 @@ export async function attachHeldPtyThroughPreviousRelay(
     return await served.provider.attachForReconnect(appPtyId, expected)
   } catch (error) {
     served.release()
+    recordHeld(provider, appPtyId, true)
     throw error
   }
 }
@@ -52,6 +69,8 @@ export function installSshPtyLegacyRelayDelegation(
     throw new Error('ssh_pty_legacy_relay_routing_already_installed')
   }
   routingByProvider.set(provider, routing)
+  const held = new Set<string>()
+  heldByProvider.set(provider, held)
   const own = {
     dispose: provider.dispose.bind(provider),
     spawn: provider.spawn.bind(provider),
@@ -101,6 +120,7 @@ export function installSshPtyLegacyRelayDelegation(
         throw error
       }
       const served = await routing.attach(opts.sessionId)
+      recordHeld(provider, opts.sessionId, !served)
       if (!served) {
         throw error
       }
@@ -108,6 +128,7 @@ export function installSshPtyLegacyRelayDelegation(
         return await served.provider.spawn(opts)
       } catch (legacyError) {
         served.release()
+        recordHeld(provider, opts.sessionId, true)
         throw legacyError
       }
     }
@@ -119,9 +140,20 @@ export function installSshPtyLegacyRelayDelegation(
   provider.shutdown = (id, opts) => routed(id)?.shutdown(id, opts) ?? own.shutdown(id, opts)
   provider.pauseProducer = (id) => (routed(id) ?? own).pauseProducer(id)
   provider.resumeProducer = (id) => (routed(id) ?? own).resumeProducer(id)
-  provider.write = (id, data) => routed(id)?.write(id, data) ?? own.write(id, data)
+  const isHeldUnserved = (id: string): boolean => {
+    try {
+      return held.has(toAppSshPtyId(provider.getConnectionId(), id))
+    } catch {
+      return false
+    }
+  }
+  provider.write = (id, data) =>
+    routed(id)?.write(id, data) ?? (isHeldUnserved(id) ? false : own.write(id, data))
   provider.writeWithSettlement = (id, data) =>
-    routed(id)?.writeWithSettlement(id, data) ?? own.writeWithSettlement(id, data)
+    routed(id)?.writeWithSettlement(id, data) ??
+    (isHeldUnserved(id)
+      ? Promise.resolve(writeRefused('endpoint_awaiting_recovery'))
+      : own.writeWithSettlement(id, data))
   provider.resize = (id, cols, rows) => (routed(id) ?? own).resize(id, cols, rows)
   provider.sendSignal = (id, signal) =>
     routed(id)?.sendSignal(id, signal) ?? own.sendSignal(id, signal)
