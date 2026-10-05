@@ -1,5 +1,8 @@
 import { translate } from '@/i18n/i18n'
-import type { AgentSessionRewindReason } from '../../../../shared/agent-session-rewind'
+import {
+  AGENT_SESSION_REWIND_REASONS,
+  type AgentSessionRewindReason
+} from '../../../../shared/agent-session-rewind'
 
 const reasonCopy = {
   unsupported: () =>
@@ -50,8 +53,9 @@ const reasonCopy = {
 } satisfies Record<AgentSessionRewindReason, () => string>
 
 export function nativeChatRewindReasonCopy(reason: string | undefined): string {
-  return reason && Object.hasOwn(reasonCopy, reason)
-    ? reasonCopy[reason as keyof typeof reasonCopy]()
+  const known = AGENT_SESSION_REWIND_REASONS.find((value) => value === reason)
+  return known
+    ? reasonCopy[known]()
     : translate(
         'components.native-chat.rewind.refused',
         'Orca could not rewind this conversation. Reload the session to check its current state.'

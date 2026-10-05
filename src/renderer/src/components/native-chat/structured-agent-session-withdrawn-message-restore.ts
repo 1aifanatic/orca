@@ -1,8 +1,10 @@
 import { useMemo } from 'react'
-import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalMessageItem,
+  AgentJournalSubmission
+} from '../../../../shared/agent-session-journal-types'
 import { dispatchWasWithdrawn } from '../../../../shared/structured-agent-session-dispatch-rejection'
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
-import type { AgentJournalMessageItem } from '../../../../shared/agent-session-journal-types'
 import { appendNativeChatDraftCache } from './native-chat-draft-cache'
 import { getStructuredAgentSessionOutbox } from './structured-agent-session-outbox-storage'
 import { appendNativeChatAttachmentCache } from './use-native-chat-composer-attachments'

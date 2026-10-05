@@ -18,14 +18,17 @@ const notDone = (failure: AgentSessionWriteFailure) => ({
   notice: '',
   failure
 })
-const item = (itemId: string, sequence: number, role = 'user'): AgentJournalRenderItem =>
-  ({
-    itemId,
-    sequence,
-    revision: 1,
-    observedAt: sequence,
-    body: { kind: 'message', role, blocks: [{ type: 'text', text: itemId }] }
-  }) as AgentJournalRenderItem
+const item = (
+  itemId: string,
+  sequence: number,
+  role: 'user' | 'assistant' = 'user'
+): AgentJournalRenderItem => ({
+  itemId,
+  sequence,
+  revision: 1,
+  observedAt: sequence,
+  body: { kind: 'message', role, blocks: [{ type: 'text', text: itemId }] }
+})
 function input() {
   return {
     sessionId: 'session',
