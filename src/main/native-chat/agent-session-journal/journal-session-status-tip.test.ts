@@ -23,6 +23,7 @@ import {
 import { CORPUS_FENCE, JOURNAL_SESSION_STATE_CORPUS } from './journal-session-state-test-corpus'
 import { codexItem, item, runningTool } from './journal-session-state-test-writes'
 import type { AgentSessionJournal } from './journal-store'
+import type { SqliteRow } from '../../sqlite/sqlite-statement'
 
 const journals = createTrackedJournalOpener()
 let root: string
@@ -64,18 +65,18 @@ function freshDerivation(sessionId: string) {
 }
 
 /** The stored row as SQLite holds it, every column. */
-function rawRow(sessionId: string): Record<string, unknown> {
-  const row: unknown = db()
+function rawRow(sessionId: string): SqliteRow {
+  const row = db()
     .prepare('SELECT * FROM journal_session_state WHERE session_id = ?')
     .get(sessionId)
-  if (typeof row !== 'object' || row === null) {
+  if (!row) {
     throw new Error(`no status row for ${sessionId}`)
   }
-  return Object.fromEntries(Object.entries(row))
+  return row
 }
 
 /** Puts a row back exactly as it was: what is left when a build that keeps no status writes on. */
-function putBack(row: Record<string, unknown>): void {
+function putBack(row: SqliteRow): void {
   const columns = Object.keys(row)
   db()
     .prepare(
