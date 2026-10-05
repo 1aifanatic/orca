@@ -6,11 +6,7 @@ describe('parseJiraConnectionStatus', () => {
     ['undefined', undefined],
     ['null', null],
     ['an array', []],
-    ['a non-boolean connected', { connected: 'yes', viewer: null }],
-    ['a non-object viewer', { connected: true, viewer: 'me' }],
-    ['a malformed viewer', { connected: true, viewer: {}, sites: [] }],
-    ['non-array sites', { connected: true, viewer: null, sites: {} }],
-    ['a malformed site', { connected: true, viewer: null, sites: [null] }]
+    ['a non-boolean connected', { connected: 'yes', viewer: null }]
   ])('reads %s as disconnected', (_label, value) => {
     expect(parseJiraConnectionStatus(value)).toEqual({ connected: false, viewer: null })
   })
@@ -30,6 +26,73 @@ describe('parseJiraConnectionStatus', () => {
     expect(parseJiraConnectionStatus({ connected: false })).toEqual({
       connected: false,
       viewer: null
+    })
+  })
+
+  it('keeps a connected status while dropping malformed nested values', () => {
+    expect(
+      parseJiraConnectionStatus({
+        connected: true,
+        viewer: {},
+        sites: [
+          {
+            id: 'site-1',
+            siteUrl: 'https://example.atlassian.net',
+            email: null,
+            displayName: 'Example',
+            accountId: 'account-1'
+          },
+          null
+        ],
+        activeSiteId: 1,
+        selectedSiteId: 'site-1',
+        credentialError: { message: 'nope' },
+        credentialProtection: 'future-value'
+      })
+    ).toEqual({
+      connected: true,
+      viewer: null,
+      sites: [
+        {
+          id: 'site-1',
+          siteUrl: 'https://example.atlassian.net',
+          email: '',
+          displayName: 'Example',
+          accountId: 'account-1'
+        }
+      ],
+      selectedSiteId: 'site-1'
+    })
+  })
+
+  it('keeps a site with an unknown auth type connected', () => {
+    expect(
+      parseJiraConnectionStatus({
+        connected: true,
+        viewer: null,
+        sites: [
+          {
+            id: 'site-1',
+            siteUrl: 'https://example.atlassian.net',
+            email: 'a@example.com',
+            displayName: 'Example',
+            accountId: 'account-1',
+            authType: 'datacenter'
+          }
+        ]
+      })
+    ).toEqual({
+      connected: true,
+      viewer: null,
+      sites: [
+        {
+          id: 'site-1',
+          siteUrl: 'https://example.atlassian.net',
+          email: 'a@example.com',
+          displayName: 'Example',
+          accountId: 'account-1'
+        }
+      ]
     })
   })
 })

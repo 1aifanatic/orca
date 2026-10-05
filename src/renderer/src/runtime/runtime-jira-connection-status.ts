@@ -4,26 +4,42 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function isJiraViewer(value: unknown): value is JiraViewer {
-  return (
-    isRecord(value) &&
-    typeof value.accountId === 'string' &&
-    typeof value.displayName === 'string' &&
-    (typeof value.email === 'string' || value.email === null) &&
-    (value.avatarUrl === undefined || typeof value.avatarUrl === 'string')
-  )
+function parseJiraViewer(value: unknown): JiraViewer | null {
+  if (
+    !isRecord(value) ||
+    typeof value.accountId !== 'string' ||
+    typeof value.displayName !== 'string'
+  ) {
+    return null
+  }
+  return {
+    accountId: value.accountId,
+    displayName: value.displayName,
+    email: typeof value.email === 'string' || value.email === null ? value.email : null,
+    ...(typeof value.avatarUrl === 'string' ? { avatarUrl: value.avatarUrl } : {})
+  }
 }
 
-function isJiraSite(value: unknown): value is JiraSite {
-  return (
-    isRecord(value) &&
-    typeof value.id === 'string' &&
-    typeof value.siteUrl === 'string' &&
-    typeof value.email === 'string' &&
-    typeof value.displayName === 'string' &&
-    typeof value.accountId === 'string' &&
-    (value.authType === undefined || value.authType === 'cloud' || value.authType === 'server')
-  )
+function parseJiraSite(value: unknown): JiraSite | null {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' ||
+    typeof value.siteUrl !== 'string' ||
+    typeof value.displayName !== 'string' ||
+    typeof value.accountId !== 'string'
+  ) {
+    return null
+  }
+  return {
+    id: value.id,
+    siteUrl: value.siteUrl,
+    email: typeof value.email === 'string' ? value.email : '',
+    displayName: value.displayName,
+    accountId: value.accountId,
+    ...(value.authType === 'cloud' || value.authType === 'server'
+      ? { authType: value.authType }
+      : {})
+  }
 }
 
 function isOptionalSiteId(value: unknown): value is string | null | undefined {
@@ -37,31 +53,34 @@ function isOptionalCredentialProtection(
 }
 
 // Why: the paired web client has no Jira preload, so its fallback proxy resolves
-// undefined; any reply the store's status comparisons can't read is disconnected.
+// undefined; status fields are normalized before store readers can dereference them.
 export function parseJiraConnectionStatus(value: unknown): JiraConnectionStatus {
-  const viewer = isRecord(value) ? value.viewer : undefined
-  const sites = isRecord(value) ? value.sites : undefined
-  if (
-    !isRecord(value) ||
-    typeof value.connected !== 'boolean' ||
-    !(viewer === undefined || viewer === null || isJiraViewer(viewer)) ||
-    !(sites === undefined || (Array.isArray(sites) && sites.every(isJiraSite))) ||
-    !isOptionalSiteId(value.activeSiteId) ||
-    !isOptionalSiteId(value.selectedSiteId) ||
-    !(value.credentialError === undefined || typeof value.credentialError === 'string') ||
-    !isOptionalCredentialProtection(value.credentialProtection)
-  ) {
+  if (!isRecord(value) || typeof value.connected !== 'boolean') {
     return { connected: false, viewer: null }
   }
+  const viewer = parseJiraViewer(value.viewer)
+  const sites = Array.isArray(value.sites)
+    ? value.sites.flatMap((site) => {
+        const parsed = parseJiraSite(site)
+        return parsed ? [parsed] : []
+      })
+    : undefined
   return {
     connected: value.connected,
-    viewer: viewer ?? null,
+    viewer,
     ...(sites === undefined ? {} : { sites }),
-    ...(value.activeSiteId === undefined ? {} : { activeSiteId: value.activeSiteId }),
-    ...(value.selectedSiteId === undefined ? {} : { selectedSiteId: value.selectedSiteId }),
-    ...(value.credentialError === undefined ? {} : { credentialError: value.credentialError }),
-    ...(value.credentialProtection === undefined
-      ? {}
-      : { credentialProtection: value.credentialProtection })
+    ...(isOptionalSiteId(value.activeSiteId) && value.activeSiteId !== undefined
+      ? { activeSiteId: value.activeSiteId }
+      : {}),
+    ...(isOptionalSiteId(value.selectedSiteId) && value.selectedSiteId !== undefined
+      ? { selectedSiteId: value.selectedSiteId }
+      : {}),
+    ...(typeof value.credentialError === 'string'
+      ? { credentialError: value.credentialError }
+      : {}),
+    ...(isOptionalCredentialProtection(value.credentialProtection) &&
+    value.credentialProtection !== undefined
+      ? { credentialProtection: value.credentialProtection }
+      : {})
   }
 }
