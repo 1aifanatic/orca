@@ -32,7 +32,6 @@ import { createStructuredAgentSessionOutboxEntry } from '../../shared/structured
 import { reconcileStructuredAgentSessionOutbox } from '../../shared/structured-agent-session-outbox-reconcile'
 import { admitStructuredAgentSessionOutboxEntry } from '../../shared/structured-agent-session-outbox-admission'
 import { readWholeAgentSessionFailureFact } from '../../shared/agent-session-failure'
-import { agentSessionFailureSentence } from '../../shared/agent-session-failure-words'
 import {
   HOST_TEST_SESSION as SESSION,
   HOST_TEST_THREAD as THREAD,
@@ -180,19 +179,10 @@ async function blockedAndTheChatMovesOn(clientMessageId: string) {
   return journal.submissions.find((entry) => entry.clientMessageId === clientMessageId)
 }
 
-/** What a desktop shows for the message, read from the journal row it draws in place. */
-function sentenceFor(journal: AgentJournalSnapshot, clientMessageId: string): string | undefined {
-  const shown = structuredAgentSessionRejectedShownInPlace(journal.submissions, [], new Set())
-  const row = journal.submissions.find(
-    (entry) =>
-      entry.clientMessageId === clientMessageId &&
-      shown.has(agentJournalSubmissionKey(entry.clientMessageId))
-  )
-  const fact = readWholeAgentSessionFailureFact(row?.rejection)
-  return (
-    fact &&
-    agentSessionFailureSentence(fact, 'rejection', { agentName: 'Codex', retryControl: false })
-  )
+/** The hook's reason as the host keeps it on the rejection: a diagnostic no client shows. */
+function reasonKept(journal: AgentJournalSnapshot, clientMessageId: string): string | undefined {
+  const row = journal.submissions.find((entry) => entry.clientMessageId === clientMessageId)
+  return readWholeAgentSessionFailureFact(row?.rejection)?.detail?.text
 }
 
 beforeEach(async () => {
@@ -280,11 +270,9 @@ describe('a Codex send a Codex hook blocked', () => {
       kind: 'hookBlocked',
       detail: { text: 'No secrets in prompts.', audience: 'person' }
     })
-    // The sentence the host writes beside the fact, which an older client shows as it is.
-    expect(row?.reason).toBe('A Codex hook blocked this message: No secrets in prompts.')
-    expect(sentenceFor(await snapshot(), followUp)).toBe(
-      'A Codex hook blocked this message: No secrets in prompts.'
-    )
+    // The sentence the host writes beside the fact, which only an older client shows: the hook's
+    // reason is never in it.
+    expect(row?.reason).toBe('The provider did not accept this message.')
   })
 
   it('settles a blocked send that opened its turn the same way', async () => {
@@ -295,12 +283,10 @@ describe('a Codex send a Codex hook blocked', () => {
     turns.end('completed')
 
     await blockedAndTheChatMovesOn(opening)
-    expect(sentenceFor(await snapshot(), opening)).toBe(
-      'A Codex hook blocked this message: No secrets in prompts.'
-    )
+    expect(reasonKept(await snapshot(), opening)).toBe('No secrets in prompts.')
   })
 
-  it('says only that a hook blocked it when the hook gave no reason', async () => {
+  it('keeps no reason when the hook gave none', async () => {
     await runningTurn()
     const followUp = await steered('and check the tests')
     hookBlocked('turn-1', 'stopped', [])
@@ -308,7 +294,6 @@ describe('a Codex send a Codex hook blocked', () => {
 
     const row = await blockedAndTheChatMovesOn(followUp)
     expect(row?.rejection).toEqual({ kind: 'hookBlocked' })
-    expect(sentenceFor(await snapshot(), followUp)).toBe('A Codex hook blocked this message.')
   })
 
   it('keeps a long or marked-up reason plain and bounded, never splitting a character', async () => {
@@ -330,14 +315,10 @@ describe('a Codex send a Codex hook blocked', () => {
       '[\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u202a-\\u202e]'
     )
     expect(controlOrBidi.test(text)).toBe(false)
-    // Cut short with an ellipsis, it takes no stop after it.
-    expect(sentenceFor(await snapshot(), followUp)).toBe(
-      `A Codex hook blocked this message: ${text}`
-    )
   })
 
   // Codex's own example: the hook's message to the person, then why it stopped the prompt.
-  it("shows the hook's message to the person ahead of its stop reason", async () => {
+  it("keeps the hook's message to the person ahead of its stop reason", async () => {
     await runningTurn()
     const followUp = await steered('start the go-workflow')
     hookBlocked('turn-1', 'stopped', [
@@ -347,8 +328,8 @@ describe('a Codex send a Codex hook blocked', () => {
     turns.end('completed')
 
     await blockedAndTheChatMovesOn(followUp)
-    expect(sentenceFor(await snapshot(), followUp)).toBe(
-      'A Codex hook blocked this message: go-workflow must start from PlanMode. prompt blocked.'
+    expect(reasonKept(await snapshot(), followUp)).toBe(
+      'go-workflow must start from PlanMode. prompt blocked'
     )
   })
 
@@ -362,9 +343,7 @@ describe('a Codex send a Codex hook blocked', () => {
     turns.end('completed')
 
     await blockedAndTheChatMovesOn(followUp)
-    expect(sentenceFor(await snapshot(), followUp)).toBe(
-      'A Codex hook blocked this message: Heads up. No secrets in prompts.'
-    )
+    expect(reasonKept(await snapshot(), followUp)).toBe('Heads up. No secrets in prompts')
   })
 
   // Codex stops for the first block reason a turn's hooks gave, in their configured order.
@@ -377,10 +356,7 @@ describe('a Codex send a Codex hook blocked', () => {
     turns.end('completed')
 
     await blockedAndTheChatMovesOn(followUp)
-    // A reason that already ends its sentence takes no second stop.
-    expect(sentenceFor(await snapshot(), followUp)).toBe(
-      'A Codex hook blocked this message: Never paste keys!'
-    )
+    expect(reasonKept(await snapshot(), followUp)).toBe('Never paste keys!')
   })
 
   it('leaves a send a completed turn never echoed pending when no hook blocked it', async () => {
@@ -440,7 +416,7 @@ describe('a Codex send a Codex hook blocked', () => {
   })
 
   // The desktop reads the host's rows as it does for any message the agent never got.
-  it("is drawn from its row with the hook's words and no Retry, on every desktop", async () => {
+  it('is drawn as a sent message, never as not sent, on every desktop and the phone', async () => {
     await runningTurn()
     const followUp = await steered('and paste the API key')
     hookBlocked('turn-1', 'blocked', [{ kind: 'feedback', text: 'No secrets in prompts.' }])
@@ -473,8 +449,8 @@ describe('a Codex send a Codex hook blocked', () => {
       entry: next
     })
 
-    // So every desktop draws it from its row as unsent, exactly once: the sender before its outbox
-    // lets the copy go, after, and another desktop alike.
+    // So every desktop draws it from its row as a sent message, exactly once: the sender before its
+    // outbox lets the copy go, after, and another desktop alike.
     const unreconciled = [
       {
         ...queued(followUp, 'and paste the API key'),
@@ -490,14 +466,15 @@ describe('a Codex send a Codex hook blocked', () => {
         journal.submissions,
         { rejectedInPlace: true }
       )
-      expect(rows.filter(({ id }) => id === key)).toEqual([
-        expect.objectContaining({ id: key, unsent: true })
-      ])
+      const drawn = rows.filter(({ id }) => id === key)
+      expect(drawn).toHaveLength(1)
+      expect(drawn[0]).not.toHaveProperty('unsent')
     }
-    expect(sentenceFor(journal, followUp)).toBe(
-      'A Codex hook blocked this message: No secrets in prompts.'
-    )
-    // The phone, which can't mark a message unsent yet, draws it as sent, as before the block.
+    // Not one the chat draws in place as not sent, so it carries no notice and no Retry.
+    expect(
+      structuredAgentSessionRejectedShownInPlace(journal.submissions, [], new Set()).has(key)
+    ).toBe(false)
+    // The phone draws it the same way.
     const onPhone = projectStructuredAgentSessionMessages(journal.items, [], journal.submissions, {
       rejectedInPlace: false
     }).filter(({ id }) => id === key)

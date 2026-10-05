@@ -5,8 +5,8 @@ import { isRetryingStructuredAgentSessionStart } from './structured-agent-sessio
 import { collapseProviderRetryRuns } from './native-chat-provider-retry-runs'
 import type { NativeChatMessage } from './native-chat-types'
 import {
-  dispatchWasBlockedByHook,
-  dispatchWasWithdrawn
+  dispatchWasWithdrawn,
+  rejectionDrawnAsSent
 } from './structured-agent-session-dispatch-rejection'
 import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
 import { structuredAgentSessionEntryHeldForRetry } from './structured-agent-session-outbox-admission'
@@ -40,7 +40,8 @@ export function structuredAgentSessionCommandItemIds(
  * The rejected submissions the host's history shows in place as not sent, by item id; `submissions`
  * in submission order, as the client keeps them. A withdrawn one went back to its sender, one the
  * queue holds (a draft's hand-off, or a card under its id) is drawn as its card, and a command such
- * as `/compact` has its rejection reported as its own reply.
+ * as `/compact` has its rejection reported as its own reply. One the person's own hook refused is
+ * drawn as sent instead (`rejectionDrawnAsSent`).
  */
 export function structuredAgentSessionRejectedShownInPlace(
   submissions: readonly AgentJournalSubmission[],
@@ -68,6 +69,7 @@ export function structuredAgentSessionRejectedShownInPlace(
     if (
       submission.dispatchState !== 'rejected' ||
       dispatchWasWithdrawn(submission) ||
+      rejectionDrawnAsSent(submission) ||
       submission.queuedMessageId !== undefined ||
       cards.has(submission.clientMessageId) ||
       commandItemIds.has(agentJournalSubmissionKey(submission.clientMessageId)) ||
@@ -116,17 +118,11 @@ export function projectStructuredAgentSessionMessages(
         )
       : []
   )
-  // A client that can't mark one unsent still draws a message a hook blocked, as sent, as it drew
-  // it before the block was known: no composer holds it back, so hidden it would vanish.
+  // Drawn as sent on every client, where the journal placed it (`rejectionDrawnAsSent`).
   const shownAsSent = new Set(
-    options.rejectedInPlace
-      ? []
-      : submissions
-          .filter(
-            (submission) =>
-              dispatchWasBlockedByHook(submission) && submission.queuedMessageId === undefined
-          )
-          .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
+    submissions
+      .filter(rejectionDrawnAsSent)
+      .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
   )
   const visibleItems: AgentJournalRenderItem[] = []
   const unsentItems: AgentJournalRenderItem[] = []

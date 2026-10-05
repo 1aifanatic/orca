@@ -2747,8 +2747,6 @@
       },
       "failureWords": {
         "accountSwitchInProgress": "A Claude account switch is in progress.",
-        "agentHookBlocked": "A {{agent}} hook blocked this message.",
-        "agentHookBlockedQuoted": "A {{agent}} hook blocked this message: {{detail}}.",
         "tryAgainAfterSwitch": "Try again after it finishes.",
         "answerUnconfirmed": "Your answer was recorded but the agent did not confirm it.",
         "attachmentAtMost": "{{agent}} accepts at most {{limit}} images in one message, so this message was not sent.",
@@ -2778,8 +2776,6 @@
         "couldNotStart": "{{agent}} couldn't start.",
         "emptyMessage": "This message is empty, so it was not sent.",
         "historyTooLarge": "This conversation's history is too large to restore here.",
-        "hookBlocked": "A hook blocked this message.",
-        "hookBlockedQuoted": "A hook blocked this message: {{detail}}.",
         "hostFault": "Orca ran into a problem, so this didn't go through.",
         "hostFaultTryAgain": "Orca ran into a problem, so this didn't go through. Try again.",
         "hostRestarted": "Orca restarted before this message was sent.",

@@ -35,8 +35,7 @@ function queuedMessageBodyText(body: AgentSessionQueuedMessage['body']): string 
 }
 
 function returnedCaption(
-  draft: Pick<AgentSessionQueuedMessage, 'returnedReason' | 'returnedRejection'>,
-  agentName: string | undefined
+  draft: Pick<AgentSessionQueuedMessage, 'returnedReason' | 'returnedRejection'>
 ): string {
   const reason = draft.returnedReason ?? null
   const rejection = draft.returnedRejection
@@ -48,7 +47,7 @@ function returnedCaption(
   return agentSessionWriteNoticeEnglish(
     structuredAgentSessionAttemptFailureParts(
       { kind: 'rejected', reason },
-      { retryControl: true, ...(agentName ? { agentName } : {}) },
+      { retryControl: true },
       readWholeAgentSessionFailureFact(rejection)
     )
   )
@@ -98,12 +97,7 @@ export function mobileQueuePauseLabel(pause: Pick<AgentSessionQueuePause, 'reaso
 export function mobileQueuedMessageCards(
   queuedMessages: readonly AgentSessionQueuedMessage[] | null,
   submissions: readonly Pick<AgentJournalSubmission, 'queuedMessageId' | 'dispatchState'>[],
-  facts: {
-    pendingPrompt: boolean
-    queuePaused?: boolean
-    /** The chat's agent, named in a returned card's words. */
-    agentName?: string
-  }
+  facts: { pendingPrompt: boolean; queuePaused?: boolean }
 ): MobileQueuedMessageCard[] {
   if (!queuedMessages || queuedMessages.length === 0) {
     return []
@@ -124,7 +118,7 @@ export function mobileQueuedMessageCards(
     const paused = draft.paused === true
     const caption =
       draft.state === 'returned'
-        ? returnedCaption(draft, facts.agentName)
+        ? returnedCaption(draft)
         : paused
           ? pausedCaption(draft.pausedReason)
           : behindReturned

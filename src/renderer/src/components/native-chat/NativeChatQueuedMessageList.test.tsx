@@ -11,11 +11,7 @@ const mocks = vi.hoisted(() => ({
   updateSettings: vi.fn()
 }))
 
-vi.mock('@/i18n/i18n', () => ({
-  // English with its values filled in, as the catalog fallback reads.
-  translate: (_key: string, fallback: string, values: Record<string, string> = {}) =>
-    fallback.replace(/\{\{(\w+)\}\}/g, (_match, name: string) => values[name] ?? '')
-}))
+vi.mock('@/i18n/i18n', () => ({ translate: (_key: string, fallback: string) => fallback }))
 vi.mock('../../store', () => {
   const state = { updateSettings: mocks.updateSettings }
   const useAppStore = (selector: (value: typeof state) => unknown): unknown => selector(state)
@@ -24,17 +20,16 @@ vi.mock('../../store', () => {
 })
 
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { agentSessionFailureFact } from '../../../../shared/agent-session-failure'
 import type { QueuedMessageCard } from './structured-agent-session-queued-cards'
 import { NativeChatQueuedMessageList } from './NativeChatQueuedMessageList'
 import { queuedMessageCardSendNow } from './NativeChatQueuedMessageCard'
 import type { StructuredAgentSessionQueuedMessagesController } from './use-structured-agent-session-queued-messages'
 
-function renderList(owner: StructuredAgentSessionQueuedMessagesController, agentName?: string) {
+function renderList(owner: StructuredAgentSessionQueuedMessagesController) {
   // The app root mounts the provider; tests supply the same context.
   return render(
     <TooltipProvider delayDuration={0}>
-      <NativeChatQueuedMessageList controller={owner} {...(agentName ? { agentName } : {})} />
+      <NativeChatQueuedMessageList controller={owner} />
     </TooltipProvider>
   )
 }
@@ -206,31 +201,6 @@ describe('NativeChatQueuedMessageList', () => {
     const row = screen.getByRole('listitem')
     expect(row.textContent).toContain('This message was not delivered.')
     expect(row.textContent).not.toContain('Send it again')
-  })
-
-  // As the chat's own row for a direct send names it, so it is never read as one of Orca's hooks.
-  it("names the chat's agent on a card a Codex hook blocked", () => {
-    const blocked = (agentName?: string) => {
-      cleanup()
-      renderList(
-        controller([
-          card({
-            messageId: 'blocked',
-            state: 'returned',
-            hold: 'returned',
-            returnedReason: 'A Codex hook blocked this message: No secrets.',
-            // As the wire carries it: a fact this build reads whole.
-            returnedRejection: agentSessionFailureFact('hookBlocked', {
-              detail: { text: 'No secrets.', audience: 'person' }
-            })
-          })
-        ]),
-        agentName
-      )
-      return screen.getByRole('listitem').textContent
-    }
-    expect(blocked('Codex')).toContain('A Codex hook blocked this message: No secrets.')
-    expect(blocked()).toContain('A hook blocked this message: No secrets.')
   })
 
   it("a Stop's withdrawal is read from the fact, whatever sentence the reason carries", () => {

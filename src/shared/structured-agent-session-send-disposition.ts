@@ -179,7 +179,7 @@ function rejectionFactParts(
 /** Kinds whose words need what the message's copy drops: the provider's detail, or the refusal. */
 const WORDED_FROM_WHOLE_FACT: ReadonlySet<AgentSessionFailureFact['kind']> = new Set<
   AgentSessionFailureFact['kind']
->(['providerRejected', 'hookBlocked', 'startFailed', 'restartFailed'])
+>(['providerRejected', 'startFailed', 'restartFailed'])
 
 /** What the Retry row says about why its message did not go through. */
 export function structuredAgentSessionAttemptFailureParts(

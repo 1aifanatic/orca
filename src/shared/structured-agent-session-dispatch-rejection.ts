@@ -255,12 +255,18 @@ export function dispatchWasWithdrawn(
   )
 }
 
-/** An agent's hook blocked it: the same words are blocked again, so nothing offers to send it. */
-export function dispatchWasBlockedByHook(
-  submission: Pick<AgentJournalSubmission, 'dispatchState' | 'reason' | 'rejection'>
+/** Rejected, yet every client draws it as a sent message: the person's own hook refused it once the
+ *  agent had it, which is no failure to show, and its reason stays unshown. A queued card's
+ *  message is the card's to show. */
+export function rejectionDrawnAsSent(
+  submission: Pick<
+    AgentJournalSubmission,
+    'dispatchState' | 'reason' | 'rejection' | 'queuedMessageId'
+  >
 ): boolean {
   return (
     submission.dispatchState === 'rejected' &&
+    submission.queuedMessageId === undefined &&
     classifyDispatchRejection(submission).kind === 'hookBlocked'
   )
 }

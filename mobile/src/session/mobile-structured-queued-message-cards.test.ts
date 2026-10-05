@@ -225,22 +225,6 @@ describe('mobileQueuedMessageCards', () => {
     expect(card?.caption).toBe('Orca restarted before this message was sent.')
   })
 
-  // As the chat's own row names it, so it is never read as one of Orca's hooks.
-  it("names the chat's agent on a card a Codex hook blocked", () => {
-    const blocked = returnedAs(
-      agentSessionFailureFact('hookBlocked', {
-        detail: { text: 'No secrets.', audience: 'person' }
-      })
-    )
-    const caption = (agentName?: string) =>
-      mobileQueuedMessageCards([draft({ messageId: 'a', ...blocked })], [], {
-        pendingPrompt: false,
-        ...(agentName ? { agentName } : {})
-      })[0]?.caption
-    expect(caption('Codex')).toBe('A Codex hook blocked this message: No secrets.')
-    expect(caption()).toBe('A hook blocked this message: No secrets.')
-  })
-
   it("keeps a provider's log-only detail off the card", () => {
     const refused = agentSessionFailureFact('providerRejected', {
       detail: { text: 'stack trace for the log', audience: 'log' }

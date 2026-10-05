@@ -13,17 +13,19 @@ import {
   type AgentSessionAttachmentProblemReason,
   type AgentSessionFailureFact,
   type AgentSessionFailureKind,
+  type ProviderDiagnostic,
   type SubmissionRejectionFact,
   type SubmissionRejectionKind
 } from './agent-session-failure'
 import type { AgentSessionConversationCommand } from './agent-session-conversation-command'
 import {
   sayAgentSessionFailureEnglish,
+  type AgentSessionFailureCopyId,
+  type AgentSessionFailureCopyValues,
   type AgentSessionFailureSay
 } from './agent-session-failure-copy'
 import type { AgentSessionWireRefusalCode } from './agent-session-wire-refusals'
 import { joinSentences } from './sentence-joining'
-import { quotingPersonDetail } from './agent-session-failure-detail-quote'
 import {
   DISPATCH_REJECTED_CANCELLED,
   DISPATCH_REJECTED_CODEX_QUEUE_FULL,
@@ -91,6 +93,8 @@ export const START_REFUSAL_RESUMABLE: Record<AgentSessionWireRefusalCode, boolea
   agent_session_owner_restart_failed: true
 }
 
+/** Person-facing provider text is quoted, but bounded so the sentence stays one. */
+const MAX_QUOTED_DETAIL_CHARS = 512
 const BYTES_PER_MB = 1024 * 1024
 
 type Sentence = (
@@ -102,6 +106,23 @@ type Sentence = (
 
 function agent(say: AgentSessionFailureSay, { agentName }: AgentSessionFailureWordsContext) {
   return { agent: agentName ?? say('theAgent') }
+}
+
+function quotingPersonDetail(
+  say: AgentSessionFailureSay,
+  lead: AgentSessionFailureCopyId,
+  quotedLead: AgentSessionFailureCopyId,
+  detail: ProviderDiagnostic | undefined,
+  values: AgentSessionFailureCopyValues = {}
+): string {
+  const quoted =
+    detail?.audience === 'person'
+      ? detail.text
+          .slice(0, MAX_QUOTED_DETAIL_CHARS)
+          .trim()
+          .replace(/[.\s]+$/, '')
+      : ''
+  return quoted ? say(quotedLead, { ...values, detail: quoted }) : say(lead, values)
 }
 
 /** The provider's account of what failed goes on the line under the sentence, as it wrote it. */
@@ -211,14 +232,9 @@ const FAILURE_SENTENCES = {
   restartFailed: couldNot('couldNotRestart'),
   providerRejected: (_context, fact, _surface, say) =>
     quotingPersonDetail(say, 'providerRejected', 'providerRejectedQuoted', fact.detail),
-  // The hook's own reason, as the agent reported it; named for its agent, so it is never read as
-  // one of Orca's own hooks, where the words know the agent.
-  hookBlocked: ({ agentName }, fact, _surface, say) =>
-    agentName
-      ? quotingPersonDetail(say, 'agentHookBlocked', 'agentHookBlockedQuoted', fact.detail, {
-          agent: agentName
-        })
-      : quotingPersonDetail(say, 'hookBlocked', 'hookBlockedQuoted', fact.detail),
+  // The person's own hook refused it: drawn as sent, so only an older client shows this, as the
+  // agent's refusal. The hook's reason stays on the fact, unshown.
+  hookBlocked: (_context, _fact, _surface, say) => say('providerRejected'),
   attachmentInvalid: (context, fact, _surface, say) =>
     fact.attachment
       ? ATTACHMENT_SENTENCES[fact.attachment.reason](say, context, fact.attachment)
