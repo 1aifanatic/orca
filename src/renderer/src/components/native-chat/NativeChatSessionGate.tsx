@@ -25,6 +25,8 @@ export function NativeChatSessionGate({
       return previousResolution
     }
     if (
+      // Why only without field authority: the host's field is the address (or an explicit clear).
+      currentResolution.authority === 'none' &&
       previousResolution?.agent === currentResolution.agent &&
       previousResolution.sessionId &&
       !currentResolution.sessionId
