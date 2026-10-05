@@ -221,7 +221,7 @@ describe('revealing a diff from a turn rollup', () => {
     // The rollup rides the turn's last row, which is pinned; the diff it points
     // at is near the top and long gone from the window.
     scrollTranscript(container, 4000)
-    expect(screen.queryByText('Edited file')).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Edited .*a\.ts(?:\s|$)/ })).toBeNull()
     const mountedBefore = windowState(container).indexes.length
 
     fireEvent.click(screen.getByRole('button', { name: /1 changed file/ }))

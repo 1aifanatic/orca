@@ -3,6 +3,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { NativeChatToolLine } from './NativeChatToolLine'
+import { NativeChatToolRun } from './NativeChatToolRun'
 import type { NativeChatToolCallBlock } from '../../../../shared/native-chat-types'
 
 afterEach(cleanup)
@@ -20,16 +21,25 @@ describe('tool sentence rows', () => {
     ['web_search', { query: 'react docs' }, 'Searched the web', 'react docs'],
     ['WebFetch', { url: 'https://example.com/docs' }, 'Fetched', 'example.com/docs'],
     ['CreateWidget', { description: 'a widget' }, 'CreateWidget', 'a widget'],
-    ['list', { directory: '/repo' }, 'list', '/repo']
+    ['list', { directory: '/repo' }, 'Listed', '/repo'],
+    ['exec', { command: 'git diff' }, 'Ran', 'git diff'],
+    ['local_shell', { command: 'pwd' }, 'Ran', 'pwd']
   ])('describes %s with a verb and target', (name, input, verb, target) => {
     const { container } = render(
-      <NativeChatToolLine block={{ type: 'tool-call', name, input }} initiallyExpanded={false} />
+      <NativeChatToolLine
+        block={{ type: 'tool-call', name, input, state: 'completed' }}
+        initiallyExpanded={false}
+      />
     )
     expect(screen.getByText(verb, { selector: 'span:not(.sr-only)' })).toBeInTheDocument()
-    expect(screen.getByText(target, { selector: 'span' })).toHaveClass('text-chat-foreground')
+    expect(screen.getByText(target, { selector: 'span:not(.sr-only)' })).toHaveClass(
+      'text-chat-foreground'
+    )
     expect(screen.getByRole('button')).toHaveAccessibleName(new RegExp(name))
     expect(container.querySelector('.font-semibold')).toBeNull()
-    expect(container.querySelector('.font-mono') !== null).toBe(name === 'Bash')
+    expect(container.querySelector('.font-mono') !== null).toBe(
+      ['Bash', 'exec', 'local_shell'].includes(name)
+    )
   })
 
   it('retains full paths in titles and accessible targets', () => {
@@ -40,6 +50,7 @@ describe('tool sentence rows', () => {
       />
     )
     expect(screen.getByTitle('/repo/src/main.ts')).toHaveTextContent('main.ts')
+    expect(screen.getByTitle('/repo/src/main.ts')).toHaveAttribute('aria-hidden', 'true')
     expect(screen.getByRole('button')).toHaveAccessibleName(/Read.*\/repo\/src\/main.ts/)
   })
 
@@ -50,6 +61,7 @@ describe('tool sentence rows', () => {
           type: 'tool-call',
           name: 'shell',
           input: { command: 'inspect' },
+          state: 'completed',
           mcpIdentity: { server: 'my_server', tool: 'shell' }
         }}
         initiallyExpanded={false}
@@ -68,7 +80,8 @@ describe('tool sentence rows', () => {
       input: { file_path: 'main.ts', old_string: 'same\nold\n', new_string: 'same\nnew\nextra\n' },
       state: 'completed'
     }
-    render(<NativeChatToolLine block={block} initiallyExpanded={false} />)
+    render(<NativeChatToolRun blocks={[block]} expandSignal={false} expandOverride />)
+    expect(screen.getByRole('button', { name: /^Edited main\.ts/ })).toBeInTheDocument()
     expect(screen.getByText('+2')).toBeInTheDocument()
     expect(screen.getByText('-1')).toBeInTheDocument()
   })
@@ -87,6 +100,87 @@ describe('tool sentence rows', () => {
     )
     expect(screen.queryByText(/^[+-]\d+$/)).toBeNull()
   })
+
+  it.each([
+    ['Bash', { command: 'pnpm test' }, 'Running'],
+    ['exec', { command: 'git diff' }, 'Running'],
+    ['local_shell', { command: 'pwd' }, 'Running'],
+    ['Read', { file_path: '/repo/a.ts' }, 'Reading'],
+    ['Write', { file_path: '/repo/a.ts', content: 'new' }, 'Editing'],
+    ['Grep', { pattern: 'TODO' }, 'Searching'],
+    ['list', { directory: '/repo' }, 'Listing'],
+    ['web_search', { query: 'docs' }, 'Searching the web'],
+    ['WebFetch', { url: 'https://example.com/docs' }, 'Fetching']
+  ])('uses present tense for a running %s', (name, input, verb) => {
+    render(
+      <NativeChatToolLine
+        block={{ type: 'tool-call', name, input, state: 'running' }}
+        initiallyExpanded={false}
+      />
+    )
+    expect(screen.getByText(verb)).toBeInTheDocument()
+  })
+
+  it.each(['failed', undefined] as const)('never claims an edit landed with state %s', (state) => {
+    render(
+      <NativeChatToolLine
+        block={{
+          type: 'tool-call',
+          name: 'Edit',
+          input: { file_path: '/repo/a.ts', old_string: 'missing', new_string: 'new' },
+          state
+        }}
+        initiallyExpanded={false}
+      />
+    )
+    expect(screen.getByRole('button')).toHaveAccessibleName('Edit /repo/a.ts')
+    expect(screen.queryByText('Edited')).toBeNull()
+    expect(screen.queryByText(/^[+-]\d+$/)).toBeNull()
+  })
+
+  it('does not treat an error result as a completed edit', () => {
+    render(
+      <NativeChatToolLine
+        block={{
+          type: 'tool-call',
+          name: 'Edit',
+          input: { file_path: '/repo/a.ts' },
+          state: 'completed'
+        }}
+        result={{ type: 'tool-result', output: 'String to replace not found', isError: true }}
+        initiallyExpanded={false}
+      />
+    )
+    expect(screen.getByRole('button')).toHaveAccessibleName('Edit /repo/a.ts')
+    expect(screen.queryByText('Edited')).toBeNull()
+  })
+
+  it('uses a successful legacy result as completion evidence', () => {
+    render(
+      <NativeChatToolLine
+        block={{ type: 'tool-call', name: 'Bash', input: { command: 'pwd' } }}
+        result={{ type: 'tool-result', output: '/repo' }}
+        initiallyExpanded={false}
+      />
+    )
+    expect(screen.getByText('Ran')).toBeInTheDocument()
+  })
+
+  it.each([false, true])(
+    'keeps a long Unicode fetch target unchanged (JSON input: %s)',
+    (jsonInput) => {
+      const url = `https://example.com/日本語/${'segment/'.repeat(25)}end`
+      const input = jsonInput ? JSON.stringify({ url }) : { url }
+      render(
+        <NativeChatToolLine
+          block={{ type: 'tool-call', name: 'WebFetch', input, state: 'completed' }}
+          initiallyExpanded={false}
+        />
+      )
+      expect(screen.getByTitle(url)).toHaveTextContent(url.slice('https://'.length))
+      expect(screen.getByTitle(url)).not.toHaveTextContent('%E2%80%A6')
+    }
+  )
 
   it('keeps metadata and errors while toggling output behind the sentence', () => {
     render(

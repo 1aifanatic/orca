@@ -96,7 +96,7 @@ describe('revealing a diff from a turn rollup', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Your messages' }))
     fireEvent.click(screen.getByRole('button', { name: 'Second prompt' }))
     expect(scrollTo).toHaveBeenCalledTimes(1)
-    expect(screen.queryByText('Edited file')).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Edited .*a\.ts(?:\s|$)/ })).toBeNull()
 
     scrollTranscript(container, 0)
     scrollTo.mockClear()

@@ -16,8 +16,6 @@ import {
 import { NativeChatToolIcon } from './NativeChatToolIcon'
 import { NativeChatDiffView } from './NativeChatDiffView'
 import { nativeChatToolLineLabel } from './native-chat-tool-line-label'
-import { editFilesFromToolPair } from '../../../../shared/native-chat-edit-normalize'
-import { DiffLineCounts } from '../right-sidebar/source-control/listing/diff-line-counts'
 import { diffFromText, diffFromToolCall, type DiffLine } from './native-chat-diff'
 import { useNativeChatDisclosure } from './native-chat-disclosure-store'
 import { createToolInputDisplay, truncateToolDetail } from './native-chat-tool-summary'
@@ -72,21 +70,7 @@ export function NativeChatToolLine({
     return null
   }
 
-  const label = isCall ? nativeChatToolLineLabel(block) : null
-  const editFiles =
-    isCall && label?.verb && !label.command
-      ? editFilesFromToolPair({ name: block.name, input: block.input, state: block.state, result })
-      : null
-  const counts =
-    editFiles && !editFiles.some((file) => file.truncated)
-      ? editFiles.reduce(
-          (total, file) => ({
-            added: total.added + file.added,
-            removed: total.removed + file.removed
-          }),
-          { added: 0, removed: 0 }
-        )
-      : null
+  const label = isCall ? nativeChatToolLineLabel(block, result) : null
   const hasResults = isCall && (block.webSearchResults?.length ?? 0) > 0
   const hasDetail = diff !== null || body !== null || inputHasDetail || hasResults
 
@@ -106,7 +90,7 @@ export function NativeChatToolLine({
           <NativeChatToolIcon
             mcpIdentity={block.mcpIdentity}
             rowWord={name}
-            className="text-chat-foreground-faint [&_svg]:size-[15px]"
+            className="text-chat-foreground-faint"
           />
         ) : (
           /* A result's word is translated copy, not a tool name, so there is no
@@ -116,7 +100,7 @@ export function NativeChatToolLine({
         {label?.verb && label.verb !== name ? <span className="sr-only">{name} </span> : null}
         <span
           className={cn(
-            'text-chat-foreground-faint',
+            'text-chat-foreground-faint transition-colors group-hover/tool-line:text-chat-foreground',
             label?.verb ? 'shrink-0' : 'min-w-0 truncate'
           )}
         >
@@ -126,21 +110,17 @@ export function NativeChatToolLine({
         {(label?.target ?? preview) ? (
           <span
             className={cn(
-              'min-w-0 truncate text-chat-foreground',
+              'min-w-0 truncate text-chat-foreground transition-colors group-hover/tool-line:text-chat-foreground-strong',
               label?.command &&
                 'rounded-md border border-chat-inline-code-border bg-chat-inline-code-surface px-1.5 font-mono text-xs'
             )}
             title={label?.title ?? preview}
-            aria-label={label?.title ?? preview}
+            aria-hidden={label?.filePath ? true : undefined}
           >
             {label?.target ?? preview}
           </span>
         ) : null}
-        {counts ? (
-          <span className="shrink-0 [&>span]:text-xs">
-            <DiffLineCounts added={counts.added} removed={counts.removed} />
-          </span>
-        ) : null}
+        {label?.filePath ? <span className="sr-only">{label.filePath}</span> : null}
         {isCall ? <NativeChatCommandMetadata block={block} /> : null}
         {hasDetail ? (
           // Hover reveal is keyed to this row's own named group: a bare `group`

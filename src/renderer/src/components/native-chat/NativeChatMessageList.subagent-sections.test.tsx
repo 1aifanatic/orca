@@ -209,7 +209,7 @@ describe("a subagent's rows in the transcript", () => {
   it("still counts the subagent's edit in the turn, and reveals it inside its section", () => {
     vi.spyOn(HTMLElement.prototype, 'scrollTo').mockImplementation(() => {})
     renderList()
-    expect(screen.queryByText('Edited file')).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Edited .*a\.ts(?:\s|$)/ })).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: /1 changed file/ }))
     fireEvent.click(screen.getByRole('button', { name: /src\/a.ts/ }))

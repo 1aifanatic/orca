@@ -2,7 +2,7 @@
 
 import '@testing-library/jest-dom/vitest'
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
 import type { NativeChatBlock } from '../../../../shared/native-chat-types'
@@ -123,7 +123,8 @@ describe('NativeChatToolRun', () => {
 
     const { container } = render(<NativeChatToolRun blocks={blocks} expandSignal />)
 
-    expect(screen.queryByText('Edited file')).toBeNull()
+    const editRow = screen.getByRole('button', { name: /^Edit \/repo\/a\.ts/ })
+    expect(within(editRow).queryByText('Edited')).toBeNull()
     const body = container.querySelector('pre')
     expect(body).toHaveTextContent('String to replace not found in file.')
     expect(body).toHaveClass('text-destructive')
@@ -140,7 +141,9 @@ describe('NativeChatToolRun', () => {
 
     const { container } = render(<NativeChatToolRun blocks={blocks} expandSignal />)
 
-    expect(screen.queryByText('Edited file')).toBeNull()
+    const commandRow = screen.getByRole('button', { name: /^exec Ran git diff/ })
+    expect(within(commandRow).queryByText('Edited')).toBeNull()
+    expect(within(commandRow).getByText('git diff')).toHaveClass('font-mono')
     expect(container).toHaveTextContent('git diff')
   })
 

@@ -195,7 +195,7 @@ describe('turn history presentation', () => {
   it('reveals and scrolls to a folded diff card from a collapsed completed turn', () => {
     vi.spyOn(HTMLElement.prototype, 'scrollTo').mockImplementation(scrollTo)
     render(view([user, prose, diff()]))
-    expect(screen.queryByText('Edited file')).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Edited .*a\.ts(?:\s|$)/ })).toBeNull()
     const header = screen.getByRole('button', { name: /1 changed file/ })
     expect(header).toHaveAttribute('aria-expanded', 'false')
     fireEvent.click(header)
@@ -205,7 +205,7 @@ describe('turn history presentation', () => {
     expect(screen.getByText('before')).toBeInTheDocument()
     expect(scrollTo).toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: /Edited 1 file/ }))
-    expect(screen.queryByText('Edited file')).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Edited .*a\.ts(?:\s|$)/ })).toBeNull()
     fireEvent.click(header)
     expect(header).toHaveAttribute('aria-expanded', 'false')
     fireEvent.click(header)

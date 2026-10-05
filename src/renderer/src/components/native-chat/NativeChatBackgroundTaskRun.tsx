@@ -8,7 +8,6 @@ import {
 } from '../../../../shared/native-chat-background-task-row'
 import type { NativeChatBackgroundTaskBlock } from '../../../../shared/native-chat-types'
 import {
-  backgroundTaskKindLabel,
   backgroundTaskStateReason,
   backgroundTaskStateWord,
   formatBackgroundTaskTokens,
@@ -37,7 +36,6 @@ export function NativeChatBackgroundTaskRun({
   const settled = isSettledBackgroundTaskState(state)
   // Same name resolution the strip above the composer uses, so one task does
   // not read as two different things on the two surfaces.
-  const kindLabel = backgroundTaskKindLabel(kind)
   const label = resolveBackgroundTaskName({ id: block.taskId, kind, description: block.label })
   // Every attention state states its reason on the row, the same word the strip
   // uses; `unverifiable` has none beyond its state word, which must never be dropped.
@@ -61,9 +59,6 @@ export function NativeChatBackgroundTaskRun({
       <div className="flex min-h-6 min-w-0 items-center gap-1.5">
         <Icon aria-hidden="true" className="size-3.5 shrink-0 text-chat-foreground-faint" />
         <AgentStateDot state={state} size="sm" title={null} />
-        {label !== kindLabel ? (
-          <span className="shrink-0 text-chat-foreground-faint">{kindLabel}</span>
-        ) : null}
         <span className="min-w-0 truncate text-chat-foreground" title={label}>
           {label}
         </span>

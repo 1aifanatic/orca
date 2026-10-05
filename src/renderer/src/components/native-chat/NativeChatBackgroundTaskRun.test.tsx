@@ -36,7 +36,7 @@ describe('NativeChatBackgroundTaskRun', () => {
         })}
       />
     )
-    expect(screen.getByText('Background command')).toBeInTheDocument()
+    expect(screen.queryByText('Background command')).toBeNull()
     expect(screen.getByText('Wait for the verification verdict')).toBeInTheDocument()
     // The outcome is a state word plus its reason — the same vocabulary the
     // strip above the composer uses — not a red row of prose.

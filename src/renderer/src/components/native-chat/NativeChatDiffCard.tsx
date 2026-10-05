@@ -25,7 +25,7 @@ function verbLabel(file: NativeChatEditFile): string {
 }
 
 function VerbIcon({ kind }: { kind: NativeChatEditFile['changeKind'] }): React.JSX.Element {
-  const className = 'size-[15px] shrink-0 text-chat-foreground-faint'
+  const className = 'size-3.5 shrink-0 text-chat-foreground-faint'
   if (kind === 'added') {
     return <FilePlus2 className={className} />
   }
@@ -153,8 +153,8 @@ export function NativeChatDiffCard({
           type="button"
           onClick={() => hasBody && setExpanded(!expanded)}
           className={cn(
-            'group/diff-card flex min-h-[26px] min-w-0 flex-1 items-center gap-2 text-left font-sans text-[13px]',
-            hasBody ? 'cursor-pointer' : 'cursor-default'
+            'flex min-h-[26px] min-w-0 flex-1 items-center gap-2 text-left font-sans text-[13px]',
+            hasBody ? 'cursor-pointer hover:bg-accent/30' : 'cursor-default'
           )}
           aria-expanded={hasBody ? expanded : undefined}
         >
@@ -167,23 +167,23 @@ export function NativeChatDiffCard({
               <span
                 className="min-w-0 truncate text-chat-foreground-faint line-through"
                 title={file.oldPath}
-                aria-label={file.oldPath}
+                aria-hidden="true"
               >
                 {baseName(file.oldPath)}
               </span>
+              <span className="sr-only">{file.oldPath}</span>
               <span className="shrink-0 text-chat-foreground-faint">→</span>
             </>
           ) : null}
           <span
             className="min-w-0 truncate text-chat-foreground"
             title={file.path}
-            aria-label={file.path}
+            aria-hidden="true"
           >
             {baseName(file.path)}
           </span>
-          <span className="shrink-0 [&>span]:text-xs">
-            <DiffLineCounts added={file.added} removed={file.removed} />
-          </span>
+          <span className="sr-only">{file.path}</span>
+          <DiffLineCounts added={file.added} removed={file.removed} size="sm" />
           {file.truncated ? (
             <span className="shrink-0 text-xs text-chat-foreground-faint">
               {translate('components.native-chat.tool.diffTruncated', 'Diff truncated')}
