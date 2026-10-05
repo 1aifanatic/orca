@@ -254,6 +254,37 @@ describe('carried-forward writes never report', () => {
     }
   )
 
+  it('an OSC copy of an address the facet does not hold never replaces the facet', () => {
+    const time = clock(1_700_000_000_000)
+    const server = store()
+    report(server, 'working', S, { model: 'P' })
+    const otherFacet: StoredAgentConversation = {
+      agentType: 'claude',
+      providerSession: T,
+      capturedAt: 5
+    }
+    seedRow(server, (row) => ({ ...row, conversation: otherFacet }))
+    const seeded = facet(server)
+    time.tick()
+    osc(server, 'done')
+    expect(legacySession(server)).toEqual(S)
+    expect(facet(server)).toBe(seeded)
+  })
+
+  it('an OSC copy never resurrects an explicit null facet', () => {
+    const time = clock(1_700_000_000_000)
+    const server = store()
+    report(server, 'working', S)
+    seedRow(server, (row) => ({ ...row, conversation: null }))
+    time.tick()
+    osc(server, 'done')
+    expect(legacySession(server)).toEqual(S)
+    expect(server.getConversationIdentityForPane(PANE)).toEqual({
+      facet: null,
+      rowIsRemnant: false
+    })
+  })
+
   it('an interrupt inference on a row with S moves nothing', () => {
     const time = clock(1_700_000_000_000)
     const server = store()
