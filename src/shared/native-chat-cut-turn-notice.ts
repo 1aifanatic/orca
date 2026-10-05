@@ -99,8 +99,10 @@ function ownerDeathRowAsInterruption(item: AgentJournalRenderItem): AgentJournal
   if (cached) {
     return cached
   }
-  // Only the words change: a field a newer host stored beside them (why Orca stopped) is kept.
-  const reworded = { ...item, body: { ...item.body, ...agentSessionResponseInterruptedBody() } }
+  // Only the words change, and the failure fact the old words were built from goes with them: a
+  // field a newer host stored beside them (why Orca stopped) is kept.
+  const { failure: _failure, ...stored } = item.body
+  const reworded = { ...item, body: { ...stored, ...agentSessionResponseInterruptedBody() } }
   ownerDeathRowCache.set(item, reworded)
   return reworded
 }

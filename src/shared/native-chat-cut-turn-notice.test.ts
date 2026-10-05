@@ -183,7 +183,7 @@ describe('withNativeChatCutTurnNotices', () => {
     expect(derived).toHaveLength(items.length)
     expect(derived[2]).toEqual({
       ...owner,
-      body: { ...owner.body, text: NOTICE, presentation: 'response-interrupted', tone: 'notice' }
+      body: { kind: 'status', text: NOTICE, presentation: 'response-interrupted', tone: 'notice' }
     })
     expect(derived[5]).toBe(exit)
     expect(withNativeChatCutTurnNotices(items)[2]).toBe(derived[2])
@@ -226,10 +226,11 @@ describe('withNativeChatCutTurnNotices', () => {
 
     expect(notices(redItems)).toEqual([])
     expect(withNativeChatCutTurnNotices(redItems)[2]!.body).toEqual({
-      ...stored,
+      kind: 'status',
       text: NOTICE,
       presentation: 'response-interrupted',
-      tone: 'notice'
+      tone: 'notice',
+      orcaStop: { cause: 'update' }
     })
     // A quit is not the agent's fault, though the row carries the exit fact.
     expect(structuredAgentTurnVerdictReader(redItems)(redItems[1]!)).toBe('interruption')
