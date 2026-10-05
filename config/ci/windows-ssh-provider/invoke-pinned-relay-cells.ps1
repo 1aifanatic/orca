@@ -82,6 +82,8 @@ function Invoke-AppCell($Account,[string]$Descriptor,[string]$Log,[string]$Spec,
     # Functions return uncaptured output, so only the exit code may reach the caller.
     return $global:LASTEXITCODE
   } finally {
+    # Screenshots, traces and error context: Playwright clears test-results on the next cell's run.
+    if(Test-Path -LiteralPath 'test-results'){Copy-Item -LiteralPath 'test-results' -Destination ($Log -replace '\.log$','.test-results') -Recurse -Force}
     Remove-Item Env:ORCA_E2E_ORCAD_CONVERT_HOST,Env:ORCA_E2E_ORCAD_CONVERT_TEMPLATE,Env:SKIP_BUILD -ErrorAction SilentlyContinue
     Rename-Item -LiteralPath 'out\orcad-template.convert-hidden' -NewName 'orcad-template'
   }
