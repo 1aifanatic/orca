@@ -256,3 +256,63 @@ describe('a session holding the headless terminal group from an earlier split', 
     expect(clientGroups?.find((group) => group.tabOrder.includes(notes.id))?.id).toBe(other!.id)
   })
 })
+
+describe('a chat replaced by /clear while the window is closed', () => {
+  async function replacedChatHarness() {
+    const harness = await createHeadlessEditorHarness(splitSession('agent-session'))
+    await harness.writeWorktreeFile('notes.md', 'a')
+    await harness.runtime.openMobileFile(`id:${harness.worktreeId}`, 'notes.md')
+    return harness
+  }
+
+  it('places the replacement chat in its wrapper group when its snapshot is rebuilt', async () => {
+    const { runtime, worktreeId } = await replacedChatHarness()
+    // No prior S1 tab, so the replacement is projected fresh, as on a cold start.
+    runtime.replaceStructuredAgentSessionTab({
+      sourceSessionId: 'S1',
+      sessionId: 'S2',
+      workspaceId: worktreeId,
+      agent: 'claude'
+    })
+
+    const listed = await runtime.listMobileSessionTabs(`id:${worktreeId}`)
+    expect(listed.tabGroups?.find((group) => group.id === 'g-2')?.tabOrder).toEqual([
+      'agent-session:S2'
+    ])
+  })
+
+  it('persists a remote move of the replacement chat into the other group', async () => {
+    const { runtime, worktreeId, getSession } = await replacedChatHarness()
+    const selector = `id:${worktreeId}`
+    runtime.projectStructuredAgentSessionTab({
+      workspaceId: worktreeId,
+      sessionId: 'S1',
+      agent: 'claude',
+      activate: false
+    })
+    runtime.replaceStructuredAgentSessionTab({
+      sourceSessionId: 'S1',
+      sessionId: 'S2',
+      workspaceId: worktreeId,
+      agent: 'claude'
+    })
+
+    await runtime.moveMobileSessionTab(selector, {
+      kind: 'move-to-group',
+      tabId: 'agent-session:S2',
+      targetGroupId: 'g-1'
+    })
+
+    const client = await runtime.listMobileSessionTabs(selector)
+    const notes = client.tabs.find((tab) => tab.type === 'markdown')!
+    expect(client.tabGroups?.map((group) => [group.id, group.tabOrder])).toEqual([
+      ['g-1', ['term-1', notes.id, 'agent-session:S2']]
+    ])
+    const session = getSession()
+    expect(session.tabGroups?.[worktreeId]?.map((group) => [group.id, group.tabOrder])).toEqual([
+      ['g-1', ['term-1', expect.any(String), 'structured-agent-session-S1']]
+    ])
+    expect(session.tabGroupLayouts?.[worktreeId]).toEqual({ type: 'leaf', groupId: 'g-1' })
+    expectConsistentGroups(session, worktreeId)
+  })
+})

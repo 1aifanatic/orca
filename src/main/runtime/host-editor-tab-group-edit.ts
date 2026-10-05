@@ -39,12 +39,22 @@ function findWrapper(
             wrapper.entityId === tab.browserWorkspaceId)
       )
     case 'agent-session':
-      // Why: a reopened chat's wrapper id is not derivable from its session, so match the entity too.
-      return wrappers.find(
-        (wrapper) =>
-          wrapper.contentType === 'agent-session' &&
-          (wrapper.entityId === tab.sessionId ||
-            wrapper.id === structuredAgentSessionTabId(tab.sessionId))
+      // Why: a reopened chat's wrapper id is not derivable from its session, and a /clear-replaced
+      // chat's wrapper still names the session it replaced until a window rewrites it.
+      return (
+        wrappers.find(
+          (wrapper) =>
+            wrapper.contentType === 'agent-session' &&
+            (wrapper.entityId === tab.sessionId ||
+              wrapper.id === structuredAgentSessionTabId(tab.sessionId))
+        ) ??
+        (tab.replacesSessionId
+          ? wrappers.find(
+              (wrapper) =>
+                wrapper.contentType === 'agent-session' &&
+                wrapper.entityId === tab.replacesSessionId
+            )
+          : undefined)
       )
     case 'markdown':
     case 'file':
