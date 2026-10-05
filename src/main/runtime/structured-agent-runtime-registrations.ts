@@ -194,7 +194,7 @@ export function structuredAgentRuntimeRegistration(
   )
 }
 
-/** What the record store admits: exactly the registered agents' declared storage. */
+/** What the record store admits: the ids of exactly the agents registered here. */
 export const STRUCTURED_AGENT_STORAGE: AgentSessionStoredAgents = agentSessionStoredAgents(
   STRUCTURED_AGENT_RUNTIME_REGISTRATIONS.map((registration) => registration.definition)
 )
