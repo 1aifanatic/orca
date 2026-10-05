@@ -1,3 +1,4 @@
+import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
 import { detectLanguage } from '../../shared/language-detect'
 import { hashMarkdownContent } from '../../shared/mobile-markdown-document'
 import {
@@ -39,10 +40,6 @@ function isEditorSnapshotTab(
   return tab.type === 'markdown' || tab.type === 'file'
 }
 
-export function sameFilePath(a: string, b: string): boolean {
-  return a.replace(/\\/g, '/') === b.replace(/\\/g, '/')
-}
-
 /** Whether a phone may reach a row's file: on this workspace's host, under its root. */
 export function isHostEditRowInsideWorkspace(
   file: PersistedOpenFile,
@@ -53,7 +50,10 @@ export function isHostEditRowInsideWorkspace(
   }
   return (
     workspaceRoot === null ||
-    sameFilePath(joinWorktreeRelativePath(workspaceRoot, file.relativePath), file.filePath)
+    // Why the shared key: the window decides "inside" case-insensitively on Windows roots.
+    normalizeRuntimePathForComparison(
+      joinWorktreeRelativePath(workspaceRoot, file.relativePath)
+    ) === normalizeRuntimePathForComparison(file.filePath)
   )
 }
 

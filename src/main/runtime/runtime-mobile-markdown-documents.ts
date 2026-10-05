@@ -1,4 +1,5 @@
 import { getSshTargetIdForExecutionHost, type ExecutionHostId } from '../../shared/execution-host'
+import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
 import {
   hashMarkdownContent,
   isMarkdownContentByteLengthOverLimit,
@@ -24,7 +25,7 @@ import {
   readSshMarkdownDocument,
   type MarkdownDocumentRead
 } from './host-markdown-document-reader'
-import { isHostEditRowInsideWorkspace, sameFilePath } from './host-editor-tab-projection'
+import { isHostEditRowInsideWorkspace } from './host-editor-tab-projection'
 import {
   requireRuntimeFileProvider,
   type ResolvedRuntimeFileTarget
@@ -202,7 +203,10 @@ function assertSaveStillOwned(
 ): HostEditTabRecord {
   assertHostEditorAuthority(runtime)
   const record = findHostMarkdownRecord(runtime, worktreeId, tabId)
-  if (record.file.filePath !== filePath && !sameFilePath(record.file.filePath, filePath)) {
+  if (
+    normalizeRuntimePathForComparison(record.file.filePath) !==
+    normalizeRuntimePathForComparison(filePath)
+  ) {
     throw new Error('tab_not_found')
   }
   if (hasHostDraft(record) || record.file.readOnly === true) {
