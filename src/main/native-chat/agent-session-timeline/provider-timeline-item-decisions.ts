@@ -41,7 +41,8 @@ function pendingPrompt(body: AgentJournalItemBody | null): body is ProviderTimel
 
 /** Whether the row the journal holds refuses this write: a settled tool keeps its first terminal
  *  body (whoever settled it, the sweep included), a settled background task is never relit, and a
- *  turn that is over takes no work that waits on a settlement it already ran. */
+ *  turn that is over takes no new work that waits on a settlement. Work it still holds open (a
+ *  person's Stop leaves the provider's running tools) takes the provider's updates until settled. */
 function refusesItemWrite(
   journal: Journal,
   row: ProviderTimelineRowId,
@@ -63,6 +64,7 @@ function refusesItemWrite(
   }
   return (
     requiresTerminalSettlement(body) &&
+    !(held && requiresTerminalSettlement(held.body)) &&
     turn !== null &&
     providerTimelineTurnRowState(journal, turn) === 'settled'
   )

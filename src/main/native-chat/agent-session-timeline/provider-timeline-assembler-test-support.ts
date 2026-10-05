@@ -191,9 +191,9 @@ export type ProviderTimelineRig = {
   sink: ProviderTimelineSink
   /** The same journal's event sink, for a lane that writes it directly. */
   eventSink: StructuredAgentSessionEventSink
-  /** What a restarted host does: the old child's assembler is gone, the dead-generation sweep
-   *  settles what it left, then a new child gets a new assembler in a new generation, which
-   *  becomes `assembler`. */
+  /** What a restarted host does: the old child's assembler is gone (text still in its window is
+   *  lost, as `dispose` drops it), the dead-generation sweep settles what it left, then a new
+   *  child gets a new assembler in a new generation, which becomes `assembler`. */
   restart(overrides?: Partial<ProviderTimelineAssemblerDeps>): Promise<ProviderTimelineAssembler>
   /** Another assembler of the same generation on the same journal, for a test that needs its own
    *  sink; the rig's own assembler must then stay unused. */
@@ -285,7 +285,8 @@ export async function openProviderTimelineRig(
     restart: async (more = {}) => {
       generations += 1
       const generation = more.generation ?? `gen-${generations}`
-      await rows()
+      // The dead child's window never elapses: as in production, dispose drops its text.
+      await deferred.drained()
       rig.assembler.dispose()
       await settleStaleStructuredAgentSessionState({
         journal,

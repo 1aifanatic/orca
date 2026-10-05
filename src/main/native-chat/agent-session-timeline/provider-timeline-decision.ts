@@ -50,7 +50,8 @@ export type ProviderTimelineDropRule =
 export type ProviderTimelineDecidedEvent =
   | Exclude<ProviderTimelineEvent, { type: 'text.delta' | 'text.close' | 'activity' }>
   /** The assembler's own: the journal shows the open turn settled by another writer (a person's
-   *  Stop), so it ends here exactly as the provider's `turn.end` would end it. */
+   *  Stop), so its text stops and its prompts are cancelled; its running tool calls wait for the
+   *  provider's own `turn.end`. */
   | { type: 'turn.settled'; turn: ProviderTimelineTurnRef }
 
 type Journal = StructuredAgentSessionTransitionJournal
@@ -80,6 +81,9 @@ export type ProviderTimelineDecision = {
   writes?: readonly ProviderTimelineItemWrite[]
   /** The streamed item whose text this event's full snapshot replaces. */
   closes?: string
+  /** The turn this event ends; `current` unless another turn is open, whose text and activity
+   *  an earlier turn's end leaves alone. */
+  ends?: { turnItemId: string; current: boolean }
 }
 
 export type ProviderTimelineDecisionInput = {

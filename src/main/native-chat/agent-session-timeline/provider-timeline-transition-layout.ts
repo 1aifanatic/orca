@@ -10,7 +10,7 @@ import type {
   ProviderTimelineDecision
 } from './provider-timeline-decision'
 import type { ProviderTimelinePlan } from './provider-timeline-plan'
-import { providerKey, turnOf } from './provider-timeline-rows'
+import { turnOf } from './provider-timeline-rows'
 import type { ProviderTimelineState } from './provider-timeline-state'
 import type { ProviderTimelineTextStreams } from './provider-timeline-text-streams'
 
@@ -19,19 +19,19 @@ const SETTLEMENT_RESERVED_BYTES = 64 * 1024
 
 /** Text owed ahead of the event lands first; a row-writing event also ends the messages it
  *  separates: anonymous ones of its producer, every stream of a turn it ends, all on a session end.
- *  A turn another writer settled stops its streams until that turn's boundary: its own end, or
- *  the next turn's open. */
+ *  An earlier turn's end, while another turn is open, ends only that earlier turn's streams. A turn
+ *  another writer settled stops its streams until that turn's boundary: the provider's end of it,
+ *  or the next turn's open. */
 export function planProviderTimelineBarrier(
   input: {
     streams: ProviderTimelineTextStreams
     state: ProviderTimelineState
-    context: ProviderTimelineContext
   },
   plan: ProviderTimelinePlan,
   event: ProviderTimelineDecidedEvent,
   decision: ProviderTimelineDecision
 ): void {
-  const { streams, state, context } = input
+  const { streams, state } = input
   // A full snapshot of a streamed message replaces what streamed, so that text is not flushed.
   const replaced = decision.closes ? streams.get(decision.closes) : undefined
   streams.planFlush(plan, replaced)
@@ -44,11 +44,8 @@ export function planProviderTimelineBarrier(
   }
   if (event.type === 'turn.end' || event.type === 'turn.open' || event.type === 'turn.settled') {
     const ending =
-      event.type === 'turn.settled'
-        ? event.turn.itemId
-        : event.type === 'turn.end' && event.turn !== undefined
-          ? context.rows.turn(providerKey(event.turn)).itemId
-          : state.open?.itemId
+      decision.ends?.turnItemId ?? (event.type === 'turn.open' ? state.open?.itemId : undefined)
+    const current = event.type === 'turn.open' || decision.ends?.current === true
     if (event.type === 'turn.settled') {
       streams.planStop(plan, event.turn.itemId)
     } else if (event.type === 'turn.open') {
@@ -59,7 +56,7 @@ export function planProviderTimelineBarrier(
     streams.planRelease(
       plan,
       (stream) =>
-        (!stream.named && stream.producer?.agentId === undefined) ||
+        (current && !stream.named && stream.producer?.agentId === undefined) ||
         (ending !== undefined && turnOf(stream.scope) === ending)
     )
     return

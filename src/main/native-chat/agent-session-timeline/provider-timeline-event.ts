@@ -18,9 +18,11 @@
 // - A turn settles once, with only the provider's verdict. A row the journal already holds is
 //   never written back to an earlier state: a settled turn stays settled, a settled tool keeps its
 //   terminal body, an answered request stays answered.
-// - A turn another writer settled (a person's Stop) ends here as the provider's `turn.end` would
-//   end it: its running work settles, and text still streaming into it is dropped until the
-//   provider's end of that turn or the next `turn.open`.
+// - A turn another writer settled (a person's Stop) is over here: its pending requests are
+//   cancelled, and text still streaming into it is dropped until the provider's end of that turn
+//   or the next `turn.open`. Its running tool calls are still the provider's: a close reported
+//   after the Stop lands as reported, and whatever is still running settles at the provider's
+//   `turn.end` for it (or the next `turn.open`, or `session.ended`).
 // - Saved history the provider replays goes only into an empty journal (an adopted session), as
 //   ordinary events with the provider's own ids, so re-running an interrupted adoption writes the
 //   same rows again. Limit, until the adoption work lifts it: a crash that cut the first run
@@ -92,8 +94,10 @@ export type ProviderTimelineEvent =
     }
   /** A turn began. `turn` is the provider's turn id when it has one; the assembler mints one otherwise. */
   | { type: 'turn.open'; turn?: string; at: number }
-  /** The provider ended a turn. Absent `turn` means the open turn. A turn already over (another
-   *  writer's Stop, a newer turn) takes it too: what it left open settles, its row stays. */
+  /** The provider ended a turn. Absent `turn` means the open turn, else the one a person stopped
+   *  that the provider had not ended yet. A turn already over (another writer's Stop, a newer
+   *  turn) takes it too: what it left open settles, its row stays, and the open turn's text and
+   *  activity are untouched. */
   | {
       type: 'turn.end'
       turn?: string
