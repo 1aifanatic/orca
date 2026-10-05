@@ -206,6 +206,7 @@ describe('editorTabDocumentFolderAccess', () => {
 // a proof; a branded user-named path type is the follow-up that would make it one.
 const USER_NAMED_ACCESS_IMPORTERS = [
   'components/browser-pane/describe-page/browser-artifact-upload.ts',
+  'components/editor/useUntitledFileRename.ts',
   'components/native-chat/use-native-chat-external-attachments.ts',
   'components/sidebar/useSidebarProjectDrop.ts',
   'hooks/composer-state/attachment-drop-state.ts',
