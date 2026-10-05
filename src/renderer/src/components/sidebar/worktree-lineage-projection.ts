@@ -173,3 +173,22 @@ export function getWorktreeLineageAncestors(
   }
   return ancestors
 }
+
+/**
+ * A worktree's ancestors on one execution host, nearest first, as the sidebar nests it: archived
+ * rows never render, and a row with no host id (older metadata) still counts as that host's.
+ */
+export function getWorktreeLineageAncestorsOnHost(
+  worktreeId: string,
+  worktrees: readonly Worktree[],
+  lineageById: Readonly<Record<string, WorktreeLineage>>,
+  executionHostId: ExecutionHostId | undefined
+): Worktree[] {
+  const scoped = getHostScopedWorktreeLineageInputs(
+    worktrees.filter((worktree) => !worktree.isArchived),
+    lineageById,
+    executionHostId
+  )
+  const target = scoped.worktreeMap.get(worktreeId)
+  return target ? getWorktreeLineageAncestors(target, scoped.lineageById, scoped.worktreeMap) : []
+}

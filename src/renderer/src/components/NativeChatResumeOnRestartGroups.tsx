@@ -7,11 +7,8 @@ import {
   getLineageChildrenInlineStyle,
   getLineageNestedRowGeometry
 } from '@/components/sidebar/worktree-list/rows/indentation'
-import {
-  getHostScopedWorktreeLineageInputs,
-  getWorktreeLineageAncestors
-} from '@/components/sidebar/worktree-lineage-projection'
-import { getAllWorktreesFromState, getWorktreeOnHostFromState } from '@/store/selectors'
+import { getWorktreeLineageAncestorsOnHost } from '@/components/sidebar/worktree-lineage-projection'
+import { getAllWorktreesFromState } from '@/store/selectors'
 import { getHostContextLabel } from '../../../shared/worktree/host-context-labels'
 import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from '../../../shared/execution-host'
 import type { AgentSessionWorkspaceKind } from '../../../shared/agent-session-record'
@@ -78,36 +75,24 @@ function useRepoIdByWorkspace(
   }
 }
 
-/** Each workspace's lineage ancestors, nearest first, scoped to its host as the sidebar scopes them. */
+/** Each workspace's lineage ancestors, nearest first, on its own host as the sidebar nests them. */
 function useLineageAncestors(
   workspaces: readonly ResumeWorkspaceGroup[]
 ): (workspaceId: string) => readonly string[] {
   const worktreesByRepo = useAppStore((store) => store.worktreesByRepo)
   const worktreeLineageById = useAppStore((store) => store.worktreeLineageById)
   const ancestors = useMemo(() => {
-    const state = { worktreesByRepo }
-    const all = getAllWorktreesFromState(state)
+    const all = getAllWorktreesFromState({ worktreesByRepo })
     return new Map(
-      workspaces.map((group) => {
-        const target = getWorktreeOnHostFromState(
-          state,
+      workspaces.map((group) => [
+        group.workspaceId,
+        getWorktreeLineageAncestorsOnHost(
           group.workspaceId,
-          group.candidates[0]?.executionHostId
-        )
-        if (!target) {
-          return [group.workspaceId, []]
-        }
-        // Why: the sidebar nests a child only under a parent on the same host, and never archived.
-        const { worktreeMap, lineageById } = getHostScopedWorktreeLineageInputs(
-          all.filter((worktree) => worktree.hostId === target.hostId && !worktree.isArchived),
+          all,
           worktreeLineageById,
-          target.hostId
-        )
-        return [
-          group.workspaceId,
-          getWorktreeLineageAncestors(target, lineageById, worktreeMap).map((parent) => parent.id)
-        ]
-      })
+          group.candidates[0]?.executionHostId
+        ).map((parent) => parent.id)
+      ])
     )
   }, [workspaces, worktreesByRepo, worktreeLineageById])
   return (workspaceId) => ancestors.get(workspaceId) ?? []
@@ -192,15 +177,19 @@ function WorkspaceCard({
       ))}
     </ul>
   )
-  const geometry = getLineageNestedRowGeometry({
-    experimentalNewWorktreeCardStyle: newCardStyle,
-    inheritedCardContentIndent: 0,
-    lineageDepth: depth
-  })
+  const geometryAt = (lineageDepth: number) =>
+    getLineageNestedRowGeometry({
+      experimentalNewWorktreeCardStyle: newCardStyle,
+      inheritedCardContentIndent: 0,
+      lineageDepth
+    })
+  const geometry = geometryAt(depth)
+  // Why: as in the sidebar, a child inside a card's lineage list is inset for its own depth.
+  const childInset = worktree ? geometryAt(depth + 1).surfaceInset : 0
   const children = node.children.map((child) => (
     <div
       key={child.group.workspaceId}
-      style={geometry.surfaceInset > 0 ? { paddingLeft: geometry.surfaceInset } : undefined}
+      style={childInset > 0 ? { paddingLeft: childInset } : undefined}
     >
       <WorkspaceCard node={child} depth={depth + 1} {...rowProps} />
     </div>
