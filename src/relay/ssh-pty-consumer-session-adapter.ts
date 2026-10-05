@@ -1,6 +1,5 @@
 import {
   PTY_CONSUMER_SESSION_PROTOCOL_VERSION,
-  PTY_CONSUMER_RESUME_CLIENT_METHOD,
   PtyConsumerSession,
   type PtyConsumerSessionAdmission,
   type PtyConsumerSessionGrant
@@ -59,9 +58,6 @@ export class SshPtyConsumerSessionAdapter {
     )
     dispatcher.onRequest(SSH_PTY_OPEN_CLIENT_METHOD, (params, context) =>
       this.openClient(params, context)
-    )
-    dispatcher.onRequest(PTY_CONSUMER_RESUME_CLIENT_METHOD, (params, context) =>
-      this.openClient(params, context, true)
     )
     dispatcher.onClientDetached((clientId, cause) => {
       const connectionKey = String(clientId)
@@ -220,8 +216,7 @@ export class SshPtyConsumerSessionAdapter {
 
   private async openClient(
     rawParams: Record<string, unknown>,
-    context: RequestContext,
-    resumeOnly = false
+    context: RequestContext
   ): Promise<PtyConsumerSessionGrant> {
     const params = parseOpenClientParams(rawParams)
     if (params.protocolVersion !== PTY_CONSUMER_SESSION_PROTOCOL_VERSION) {
@@ -230,15 +225,12 @@ export class SshPtyConsumerSessionAdapter {
       )
     }
     const identity = requireIdentity(context)
-    const authenticate = {
+    const admission = this.session.admit(params, {
       connectionId: String(context.clientId),
       principal: identity.principal,
       authenticated: identity.authenticated,
       allowSessionOwner: identity.allowSessionOwner
-    }
-    const admission = resumeOnly
-      ? this.session.admitResumed(params, authenticate)
-      : this.session.admit(params, authenticate)
+    })
     if (!context.onResponseSettled) {
       admission.rollbackPublication()
       throw new Error('SSH PTY consumer response publication fence is unavailable')
