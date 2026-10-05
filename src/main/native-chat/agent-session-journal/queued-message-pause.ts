@@ -10,7 +10,10 @@
 //     and the next turn (the carry-on or the person's own message) runs first.
 // Any accepted turn lifts them, whoever sent it: a person, Orca's own messages, or the queue.
 
-import type { AgentJournalCursor } from '../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalCursor,
+  AgentJournalSubmission
+} from '../../../shared/agent-session-journal-types'
 import type { JournalStopEvent, JournalTombstoneRow } from './journal-row-schema'
 
 export type QueuePauseReason = 'stopped' | 'cleared' | 'restarted'
@@ -200,4 +203,24 @@ export function resumableQueuePause(
     }
   }
   return null
+}
+
+/** A turn sent after `pause` began that the agent has not answered yet: its acceptance lifts the
+ *  pause, whoever sent it, so the pause is not shown meanwhile; a refusal shows it again. A send
+ *  made before a Stop lifts nothing, so it never counts. */
+export function queuePauseLiftOnItsWay(
+  pause: DerivedQueuePause,
+  submissions: Iterable<Pick<AgentJournalSubmission, 'dispatchState' | 'acceptedSequence'>>
+): boolean {
+  const anchor = pause.since?.sequence ?? 0
+  for (const submission of submissions) {
+    if (
+      submission.dispatchState === 'pending' &&
+      submission.acceptedSequence !== undefined &&
+      submission.acceptedSequence > anchor
+    ) {
+      return true
+    }
+  }
+  return false
 }

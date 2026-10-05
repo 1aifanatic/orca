@@ -71,8 +71,6 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   hasPendingPrompt: boolean
   /** A turn is running, whoever started it, or the queue is about to send its next card. */
   isWorking: boolean
-  /** The person's own message is on its way to start the turn that lifts the pause. */
-  ownSendOnItsWay?: boolean
   composerScopeKey: string | undefined
   mutate: StructuredAgentSessionMutate
 }): StructuredAgentSessionQueuedMessagesController {
@@ -207,11 +205,7 @@ export function useStructuredAgentSessionQueuedMessages(args: {
       setResuming(false)
     }
   }, [mutate])
-  const ownSendOnItsWay = args.ownSendOnItsWay === true
-  const pause = useMemo(
-    () => (ownSendOnItsWay ? null : queuedMessagesQueuePause(cards, queuePause)),
-    [cards, ownSendOnItsWay, queuePause]
-  )
+  const pause = useMemo(() => queuedMessagesQueuePause(cards, queuePause), [cards, queuePause])
   // Resume and the "Send message?" choice only where the queue could send now: no turn runs (the
   // queue's coming send counts, as the host names it) and no prompt waits, which holds the queue
   // too; the composer shows beside a prompt only when this build cannot answer it.

@@ -6,19 +6,13 @@
 // Where the host would refuse the send, it names no next card, so the chat reads idle.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type {
-  AgentJournalRenderItem,
-  AgentJournalSubmission
-} from '../../../shared/agent-session-journal-types'
+import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import type {
   AgentSessionQueuedMessage,
   AgentSessionQueuePause
 } from '../../../shared/agent-session-wire'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
-import type { StructuredAgentSessionOutboxEntry } from '../../../shared/structured-agent-session-outbox'
-import { reconcileStructuredAgentSessionOutboxWithQueue } from '../../../shared/structured-agent-session-draft-hand-off'
 import {
-  ownDirectSendOnItsWay,
   projectQueuedMessageCards,
   queuedMessageCardSteers,
   queuedMessagesQueuePause
@@ -118,35 +112,16 @@ type ClientView = {
   nextQueuedMessageId: string | null
 }
 
-/** This client's composer sends, settled against the journal as the outbox settles them. */
-type ComposerOutbox = { entries: StructuredAgentSessionOutboxEntry[] }
-
-/** A composer message on its way, as the outbox holds it once the request went out. */
-function composerSend(
-  outbox: ComposerOutbox,
-  text: string
-): ReturnType<QueuedMessageTestRig['send']> {
-  const sent = rig.send(text, 'queue-if-active')
-  outbox.entries.push({
-    clientMessageId: sent.id,
-    sessionId: HOST_TEST_SESSION,
-    body: hostTestMessage(text),
-    previewUris: [],
-    state: 'dispatching',
-    queuedAt: 1,
-    lastAttemptAt: 1,
-    retryAfterUnknownSubmittedAt: null,
-    sentDelivery: 'queue-if-active'
-  })
-  return sent
+/** A composer message: sent with the composer's queue delivery. */
+function composerSend(text: string): ReturnType<QueuedMessageTestRig['send']> {
+  return rig.send(text, 'queue-if-active')
 }
 
 /** Folds every published update as the chat does, one at a time, into what it shows. */
-async function watchClient(outbox: ComposerOutbox = { entries: [] }): Promise<ClientView[]> {
+async function watchClient(): Promise<ClientView[]> {
   const views: ClientView[] = []
   const submissions = new Map<string, AgentJournalSubmission>()
   const turns = new Map<string, string>()
-  const items = new Map<string, AgentJournalRenderItem>()
   let queued: AgentSessionQueuedMessage[] = []
   let queuePause: AgentSessionQueuePause | null = null
   let nextQueuedMessageId: string | null = null
@@ -162,7 +137,6 @@ async function watchClient(outbox: ComposerOutbox = { entries: [] }): Promise<Cl
         submissions.set(submission.clientMessageId, submission)
       }
       for (const item of rows.items) {
-        items.set(item.itemId, item)
         if (item.body.kind === 'turn') {
           turns.set(item.itemId, item.body.state)
         }
@@ -181,13 +155,8 @@ async function watchClient(outbox: ComposerOutbox = { entries: [] }): Promise<Cl
         hasPendingPrompt: false,
         queuePaused: queuePause !== null
       })
-      outbox.entries = [
-        ...reconcileStructuredAgentSessionOutboxWithQueue(outbox.entries, all, [...items.values()])
-      ]
       // As use-structured-agent-session-queued-messages.ts derives them.
-      const header =
-        !ownDirectSendOnItsWay(outbox.entries, all) &&
-        queuedMessagesQueuePause(cards, queuePause) !== null
+      const header = queuedMessagesQueuePause(cards, queuePause) !== null
       const queueHeld = header && !working
       views.push({
         working,
@@ -331,10 +300,9 @@ describe('after a restart, nothing sends by itself', () => {
 
   it("the person's own message goes straight to the agent first, then A, then B", async () => {
     const { first, second } = await restartedIdleWithCards()
-    const outbox: ComposerOutbox = { entries: [] }
-    const views = await watchClient(outbox)
+    const views = await watchClient()
     // Sent with the composer's queue delivery: nothing ahead may send, so it is not queued.
-    const message = composerSend(outbox, 'a new instruction')
+    const message = composerSend('a new instruction')
     expect(await message.result).toMatchObject({
       ok: true,
       value: { submission: expect.anything() }
@@ -386,7 +354,7 @@ describe('after a restart, nothing sends by itself', () => {
     expect(views.filter((view) => view.header || view.dialog)).toEqual([])
   })
 
-  it('a card written after the restart, before any turn, never sends by itself, even once the older cards are gone', async () => {
+  it('a card written after the restart waits while any card from before it waits; then it is an ordinary queue', async () => {
     const { first, second } = await restartedIdleWithCards()
     // Your message goes straight to the agent; while it waits, the next one queues.
     const message = rig.send('a new instruction')
@@ -395,16 +363,15 @@ describe('after a restart, nothing sends by itself', () => {
       expect((await rig.submission(message.id))?.handedOverAt).toBeDefined()
     )
     const typed = await queuedDraft('typed while it waits')
-    expect(await rig.deleteQueued(first)).toMatchObject({ ok: true, value: { deleted: true } })
-    expect(await rig.deleteQueued(second)).toMatchObject({ ok: true, value: { deleted: true } })
-    // The agent refuses it: no turn started, so the card written meanwhile still waits.
+    // The agent refuses it: no turn started, so every card waits, the new one included.
     await rig.settleRejected(message.id, 'turn/start refused')
-    await expectNothingSent(typed)
+    await expectNothingSent(first, second, typed)
     expect(derivedPauses()).toEqual(['restarted'])
     expect(await published()).toEqual({ queuePause: null, nextQueuedMessageId: null })
-    const next = rig.send('asked again')
-    await next.result
-    await rig.settleAccepted(next.id, 'next')
+    expect(await rig.deleteQueued(first)).toMatchObject({ ok: true, value: { deleted: true } })
+    await expectNothingSent(second, typed)
+    // With nothing from before the restart left, the card sends like any queued card.
+    expect(await rig.deleteQueued(second)).toMatchObject({ ok: true, value: { deleted: true } })
     await eventually(async () => expect(await rig.handoff(typed)).toBeDefined())
   })
 
@@ -465,29 +432,30 @@ describe('after a restart, nothing sends by itself', () => {
 
 describe("a message sent over a held queue (the confirmation's Send message)", () => {
   /** Two cards a Stop holds, the stopped turn over: the paused row and Resume show. */
-  async function heldIdleQueue(outbox: ComposerOutbox) {
+  async function heldIdleQueue() {
     const working = await rig.workingSend()
     const first = await queuedDraft('first')
     const second = await queuedDraft('second')
     await rig.stop()
     await rig.settleAccepted(working, 'stopped')
-    const views = await watchClient(outbox)
+    const views = await watchClient()
     expect(views.at(-1)).toMatchObject({ header: true, button: 'resume', dialog: true, cards: 2 })
     return { first, second, views }
   }
 
   it('goes out at once: the paused row goes as it is sent and never comes back, and the held cards follow it in order', async () => {
-    const outbox: ComposerOutbox = { entries: [] }
-    const { first, second, views } = await heldIdleQueue(outbox)
+    const { first, second, views } = await heldIdleQueue()
     // Sent with the composer's queue delivery: no card ahead may send, so nothing queues it.
-    const message = composerSend(outbox, 'a new instruction')
+    const message = composerSend('a new instruction')
     const sentAt = views.length
     expect(await message.result).toMatchObject({
       ok: true,
       value: { submission: expect.anything() }
     })
-    // The cards stay held until the agent accepts the message's turn.
-    expect((await published()).queuePause).toEqual({ reason: 'stopped' })
+    // The cards stay held until the agent accepts the message's turn, but the host no longer says
+    // paused: that turn is on its way to lift it.
+    expect(await published()).toEqual({ queuePause: null, nextQueuedMessageId: null })
+    expect(await rig.handoff(first)).toBeUndefined()
     await eventually(async () =>
       expect((await rig.submission(message.id))?.handedOverAt).toBeDefined()
     )
@@ -505,10 +473,31 @@ describe("a message sent over a held queue (the confirmation's Send message)", (
     expect(views.flatMap((view) => view.steers)).not.toContain(false)
   })
 
+  it('Steer on a held card: the paused row goes from the press until its turn is accepted, then the rest follow', async () => {
+    const { first, second, views } = await heldIdleQueue()
+    const pressedAt = views.length
+    expect(await rig.sendNow(second)).toMatchObject({ ok: true })
+    await eventually(async () => expect((await rig.handoff(second))?.handedOverAt).toBeDefined())
+    expect((await published()).queuePause).toBeNull()
+    await rig.settleAccepted(await rig.handoffId(second), 'second')
+    await eventually(async () => expect(await rig.handoff(first)).toBeDefined())
+    expect(views.slice(pressedAt).filter((view) => view.header || view.dialog)).toEqual([])
+  })
+
+  it('a Steer the agent refuses lifts nothing: the paused row comes back over the card before it', async () => {
+    const { first, second, views } = await heldIdleQueue()
+    expect(await rig.sendNow(second)).toMatchObject({ ok: true })
+    await eventually(async () => expect((await rig.handoff(second))?.handedOverAt).toBeDefined())
+    await eventually(() => expect(views.at(-1)?.header).toBe(false))
+    await rig.settleRejected(await rig.handoffId(second), 'turn/start refused')
+    await eventually(() => expect(views.at(-1)?.header).toBe(true))
+    expect((await published()).queuePause).toEqual({ reason: 'stopped' })
+    expect(await rig.handoff(first)).toBeUndefined()
+  })
+
   it('a send the agent refuses lifts nothing: the paused row comes back over the held cards', async () => {
-    const outbox: ComposerOutbox = { entries: [] }
-    const { first, views } = await heldIdleQueue(outbox)
-    const message = composerSend(outbox, 'refused')
+    const { first, views } = await heldIdleQueue()
+    const message = composerSend('refused')
     await message.result
     await eventually(async () =>
       expect((await rig.submission(message.id))?.handedOverAt).toBeDefined()

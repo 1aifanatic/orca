@@ -9,7 +9,10 @@ import {
   type AgentSessionQueuePause
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
-import { resumableQueuePause } from '../agent-session-journal/queued-message-pause'
+import {
+  queuePauseLiftOnItsWay,
+  resumableQueuePause
+} from '../agent-session-journal/queued-message-pause'
 import { structuredQueuePauses } from './structured-agent-session-queued-pause'
 import { nextStructuredQueuedMessage } from './structured-agent-session-queued-messages'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
@@ -110,7 +113,11 @@ export function readQueuePublication(
   // chat's next turn lifts every pause, and the cards read as plain waiting cards until then.
   const pauses = structuredQueuePauses(journal)
   const restarted = pauses.some((pause) => pause.reason === 'restarted')
-  const pause = restarted ? null : resumableQueuePause(pauses, journal.queuedMessages.list())
+  const resumable = restarted ? null : resumableQueuePause(pauses, journal.queuedMessages.list())
+  // The submissions are read only while a pause would show, never while the queue runs freely.
+  const pause =
+    resumable && !queuePauseLiftOnItsWay(resumable, journal.submissions()) ? resumable : null
+  // `restarted` is already excluded above; the test narrows the type.
   const queuePause = pause && pause.reason !== 'restarted' ? { reason: pause.reason } : null
   const nextQueuedMessageId = nextStructuredQueuedMessage({ journal, ...gate() })?.messageId ?? null
   const previous = publications.get(journal)

@@ -33,7 +33,6 @@ function renderController(
     queuePause?: AgentSessionQueuePause | null
     enabled?: boolean
     isWorking?: boolean
-    ownSendOnItsWay?: boolean
     answer?: (messageId: string) => DeleteAnswer
   } = {}
 ) {
@@ -49,8 +48,7 @@ function renderController(
       queuePause: options.queuePause === undefined ? STOPPED : options.queuePause,
       submissions: [],
       hasPendingPrompt: false,
-      isWorking: options.isWorking === true || options.ownSendOnItsWay === true,
-      ownSendOnItsWay: options.ownSendOnItsWay === true,
+      isWorking: options.isWorking === true,
       composerScopeKey: undefined,
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the controller only awaits mutate; the stub answers Delete's shape.
       mutate: mutate as unknown as StructuredAgentSessionMutate
@@ -92,16 +90,6 @@ describe('the held queue a new message asks about', () => {
     expect(result.current.queueHold).toBeUndefined()
     // Enter queues behind the held cards as usual; once nothing runs it asks again.
     expect(renderController(held).result.current.queueHold?.count).toBe(1)
-  })
-
-  it("goes, with the paused row, while the person's own message is on its way to lift the pause", () => {
-    const held = [card('held', 1)]
-    const { result } = renderController(held, { ownSendOnItsWay: true })
-    expect(result.current.pause).toBeNull()
-    expect(result.current.queueHold).toBeUndefined()
-    expect(result.current.queueResume).toBeUndefined()
-    // The held card is unchanged: only the row says nothing while the turn is on its way.
-    expect(result.current.cards.map((entry) => entry.hold)).toEqual(['queue-paused'])
   })
 
   it('Clear queue deletes every card shown, and answers true once all are gone', async () => {

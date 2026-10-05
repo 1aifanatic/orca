@@ -84,7 +84,8 @@ describe("a Stop's queue pause", () => {
   it('outlives a user send the provider accepts and then refuses; a later send that starts lifts it', async () => {
     const draftId = await stoppedDraft()
     const refused = await handedOverUserSend('the start fails')
-    expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
+    // On its way to lift the pause, so not shown; the refusal brings it back.
+    expect(await rig.queuePause()).toBeNull()
     await rig.settleRejected(refused, 'turn/start refused')
     await expectPaused(draftId)
     const started = await handedOverUserSend('this one starts')
@@ -144,8 +145,12 @@ describe("a Stop's queue pause", () => {
       value: { submission: { queuedMessageId: sentId } }
     })
     await handedOver(sentId)
-    // Only the card the user asked for went: the queue is still paused.
-    await expectPaused(heldId)
+    // Only the card the user asked for went: the queue is still paused, though not shown while
+    // that turn is on its way.
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    expect(await rig.handoff(heldId)).toBeUndefined()
+    expect(derivedPauses()).toEqual(['stopped'])
+    expect(await rig.queuePause()).toBeNull()
     expect(await rig.drafts()).toEqual([{ messageId: heldId, state: 'waiting' }])
     // A turn sent after the Stop has now started, which ends the pause.
     await rig.settleAccepted(await rig.handoffId(sentId), 'sent-now')

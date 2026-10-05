@@ -14,6 +14,7 @@ import {
   eventually,
   type QueuedMessageTestRig
 } from './structured-agent-session-queued-message-rig.test-fixture'
+import { structuredQueuePauses } from './structured-agent-session-queued-pause'
 
 let rig: QueuedMessageTestRig
 
@@ -392,7 +393,7 @@ describe("a person's Stop pause and the Stop events after it", () => {
       { kind: 'turn', turnId: 'turn-mail', state: 'running', startedAt: 1 },
       { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
-    expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
+    expect(structuredQueuePauses(journal()).map((pause) => pause.reason)).toEqual(['stopped'])
     const atClose = stopEventsAtClose()
 
     await rig.host.close(HOST_TEST_SESSION, 'evict')

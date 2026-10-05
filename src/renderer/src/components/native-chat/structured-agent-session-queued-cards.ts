@@ -103,25 +103,6 @@ export function queuedMessagesQueuePause(
   return cards.some((card) => card.hold === 'queue-paused') ? queuePause : null
 }
 
-/** The person's own message from this composer has reached the host as a direct send and waits
- *  for the agent to accept it. Its turn will lift the queue's pause, so the header row does not
- *  say paused meanwhile; a refusal settles the entry and the row comes back. The queue's send of a
- *  card goes under a fresh id, so it never counts. */
-export function ownDirectSendOnItsWay(
-  outbox: readonly StructuredAgentSessionOutboxEntry[],
-  submissions: readonly AgentJournalSubmission[]
-): boolean {
-  if (outbox.length === 0) {
-    return false
-  }
-  const pending = new Set(
-    submissions
-      .filter((submission) => submission.dispatchState === 'pending')
-      .map((submission) => submission.clientMessageId)
-  )
-  return outbox.some((entry) => entry.state !== 'rejected' && pending.has(entry.clientMessageId))
-}
-
 /** Steer names the mid-turn jump, also while the whole queue is paused; a card held on its own or
  *  returned is not waiting on the turn, so its action is plainly Send. */
 export function queuedMessageCardSteers(card: QueuedMessageCard): boolean {

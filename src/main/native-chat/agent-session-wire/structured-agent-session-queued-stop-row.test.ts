@@ -139,7 +139,8 @@ describe("Stop's event", () => {
     await expectHeld('stopped', first)
     // Orchestration mail sent after the second Stop: once accepted, the queue carries on.
     const mail = await mailTurn()
-    await expectHeld('stopped', first)
+    // Not shown while the mail awaits the agent, and nothing sends yet.
+    await expectHeld(null, first)
     await rig.settleAccepted(mail, 'mail')
     await eventually(async () => expect(await rig.handoff(first)).toBeDefined())
   })

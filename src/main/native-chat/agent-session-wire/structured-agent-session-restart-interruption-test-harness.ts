@@ -40,6 +40,10 @@ import {
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { recordingProductionStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
+import { rotateStructuredAgentSessionHostInstanceForTests } from './structured-agent-session-queued-pause'
+
+/** What `interruptedRestart('queued-cards')` queues behind the running turn, in order. */
+export const QUEUED_BEFORE_QUIT = ['card A', 'card B'] as const
 
 /** Starts the agent explicitly — the attach a client's ensure makes — for a test that needs a
  *  running child before its next step. Nothing else starts one ahead of a send. */
@@ -55,7 +59,8 @@ export async function startAgent(state: {
 }
 
 export async function interruptedRestart(
-  work: 'turn' | 'submission' | 'send-after-reply' | 'children' = 'turn',
+  /** 'queued-cards': a running turn with `QUEUED_BEFORE_QUIT` queued behind it. */
+  work: 'turn' | 'submission' | 'send-after-reply' | 'children' | 'queued-cards' = 'turn',
   historyBoundaryConsistent = true,
   /** What the restarted host proves about the recorded owner; gone unless a test says otherwise. */
   probeOwner: NonNullable<StructuredAgentSessionHostDeps['probeOwner']> = async () => ({
@@ -125,7 +130,22 @@ export async function interruptedRestart(
     )
   }
   await previous.host.flushStreamedEvents(SESSION)
+  if (work === 'queued-cards') {
+    for (const text of QUEUED_BEFORE_QUIT) {
+      const body = hostTestMessage(text)
+      const fields = { body, delivery: 'queue-if-active' as const }
+      const queued = await previous.host.send(CALLER, {
+        envelope: envelope('agentSession.send', fields),
+        ...fields
+      })
+      expect(queued).toMatchObject({ ok: true, value: { queued: expect.anything() } })
+    }
+  }
   await previous.host.flushAllStreamedEvents()
+  if (work === 'queued-cards') {
+    // The relaunch is a new process: the cards it finds were written by the one that quit.
+    rotateStructuredAgentSessionHostInstanceForTests()
+  }
   const store = await openTestAgentSessionRecordStore(previous.root)
   const closeSession = vi.fn(async () => true)
   // The relaunch comes after the quit that recorded the offer.

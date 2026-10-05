@@ -9,7 +9,6 @@ import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/struc
 import {
   newestSteerableQueuedMessageCard,
   outboxOutsideQueuedCards,
-  ownDirectSendOnItsWay,
   projectQueuedMessageCards,
   queuedMessageCardSteers,
   queuedMessagesQueuePause
@@ -190,32 +189,6 @@ describe('queued message cards', () => {
     const unpaused = project([draft('waiting', 1)], false)
     expect(unpaused.map((card) => card.hold)).toEqual(['turn'])
     expect(queuedMessagesQueuePause(unpaused, null)).toBeNull()
-  })
-
-  it("only the person's own direct send, recorded and not yet accepted, is on its way to lift a pause", () => {
-    const entry = (
-      clientMessageId: string,
-      state: StructuredAgentSessionOutboxEntry['state'] = 'dispatching'
-    ): StructuredAgentSessionOutboxEntry => ({
-      clientMessageId,
-      sessionId: 'session-1',
-      body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: clientMessageId }] },
-      previewUris: [],
-      state,
-      queuedAt: 1,
-      lastAttemptAt: 1,
-      retryAfterUnknownSubmittedAt: null
-    })
-    expect(ownDirectSendOnItsWay([entry('mine')], [submission('mine')])).toBe(true)
-    // Not yet recorded: it may still become a card.
-    expect(ownDirectSendOnItsWay([entry('mine')], [])).toBe(false)
-    // Orca's own send never enters this outbox.
-    expect(ownDirectSendOnItsWay([], [submission('orca')])).toBe(false)
-    // The queue's send of a card goes under a fresh id, even for a card this composer queued.
-    expect(ownDirectSendOnItsWay([entry('card')], [handOff('card')])).toBe(false)
-    expect(ownDirectSendOnItsWay([entry('mine', 'rejected')], [submission('mine')])).toBe(false)
-    expect(ownDirectSendOnItsWay([entry('mine')], [submission('mine', 'rejected')])).toBe(false)
-    expect(ownDirectSendOnItsWay([entry('mine')], [submission('mine', 'unknown')])).toBe(false)
   })
 
   it('steers the newest card', () => {

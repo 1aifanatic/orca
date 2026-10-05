@@ -29,7 +29,6 @@ import type { QueuedMessageRow } from '../agent-session-journal/queued-message-t
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
 import {
   structuredAgentSessionHostInstance,
-  structuredQueuedCardHostInstance,
   structuredQueuePauses
 } from './structured-agent-session-queued-pause'
 import { nextSendableQueuedCard } from '../agent-session-journal/queued-message-pause'
@@ -253,7 +252,7 @@ export async function maybeQueueStructuredAgentSessionSend(
       messageId: clientMessageId,
       body: params.body,
       fingerprint: queuedMessageFingerprint(ctx.sessionId, params.body),
-      hostInstance: structuredQueuedCardHostInstance(ctx.journal)
+      hostInstance: structuredAgentSessionHostInstance()
     },
     ctx.operationReceipt
   )
@@ -284,11 +283,18 @@ export type QueuedMessageDrainDeps = {
  */
 export class StructuredAgentSessionQueuedMessageDrain {
   private readonly scheduled = new Set<string>()
+  private disposed = false
 
   constructor(private readonly deps: QueuedMessageDrainDeps) {}
 
+  /** Host teardown: nothing is handed off from here on. A card sent while the host quits is
+   *  refused at close, and its row would read as the chat having moved on past its restart offer. */
+  dispose(): void {
+    this.disposed = true
+  }
+
   schedule(sessionId: string): void {
-    const journal = this.deps.sessions.get(sessionId)?.journal
+    const journal = this.disposed ? undefined : this.deps.sessions.get(sessionId)?.journal
     if (!journal) {
       return
     }
@@ -331,7 +337,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
   }
 
   private async step(sessionId: string): Promise<void> {
-    const session = this.deps.sessions.get(sessionId)
+    const session = this.disposed ? undefined : this.deps.sessions.get(sessionId)
     if (!session) {
       return
     }

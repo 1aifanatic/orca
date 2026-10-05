@@ -447,11 +447,12 @@ describe('Stop and Delete', () => {
     await new Promise((resolve) => setTimeout(resolve, 250))
     expect(await rig.handoff(draftId)).toBeUndefined()
     expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
-    // The host accepting the send is not yet a turn: the pause lifts when the
-    // provider accepts it, and the draft drains after that turn.
+    // The host accepting the send is not yet a turn: the pause lifts when the provider accepts
+    // it, and the draft drains after that turn. Meanwhile no pause is shown: it is on its way.
     const next = send('user starts a new turn')
     await next.result
-    expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
+    expect(await rig.queuePause()).toBeNull()
+    expect(await rig.handoff(draftId)).toBeUndefined()
     await settleAccepted(next.id, 'b')
     expect(await rig.queuePause()).toBeNull()
     await eventually(async () => expect(await rig.handoff(draftId)).toBeDefined())
@@ -470,7 +471,8 @@ describe('Stop and Delete', () => {
     const mail = send('coordinator mail')
     expect(await mail.result).toMatchObject({ ok: true, value: { submission: expect.anything() } })
     await new Promise((resolve) => setTimeout(resolve, 250))
-    expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
+    // Not shown while the mail awaits the agent, and nothing sends yet.
+    expect(await rig.queuePause()).toBeNull()
     expect(await rig.handoff(draftId)).toBeUndefined()
     await settleAccepted(mail.id, 'b')
     expect(await rig.queuePause()).toBeNull()

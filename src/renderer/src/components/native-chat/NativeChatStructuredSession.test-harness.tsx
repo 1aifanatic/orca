@@ -239,7 +239,6 @@ export function createStructuredSessionMocks() {
             stop: mocks.stop,
             queuedMessages: {
               cards: mocks.queuedCards,
-              turnRunning: mocks.turnId !== null,
               steer: mocks.queuedSteer,
               remove: mocks.queuedRemove,
               edit: mocks.queuedEdit,

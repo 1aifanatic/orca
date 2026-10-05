@@ -35,10 +35,7 @@ import { useStructuredAgentSessionThreadGoal } from './use-structured-agent-sess
 import { useStructuredAgentSessionContextUsage } from './use-structured-agent-session-context-usage'
 import { useStructuredAgentSessionRailOutline } from './use-structured-agent-session-rail-outline'
 import { useStructuredAgentSessionQueuedMessages } from './use-structured-agent-session-queued-messages'
-import {
-  outboxOutsideQueuedCards,
-  ownDirectSendOnItsWay
-} from './structured-agent-session-queued-cards'
+import { outboxOutsideQueuedCards } from './structured-agent-session-queued-cards'
 import { structuredAgentSessionStartFailureFacts } from './structured-agent-session-delivery-notices'
 import { hostStatesTurnScopes } from '../../../../shared/native-chat-turn-membership'
 import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
@@ -195,7 +192,6 @@ export function useStructuredAgentSession(args: {
     submissions: transportState.submissions,
     hasPendingPrompt: prompts.length > 0,
     isWorking,
-    ownSendOnItsWay: ownDirectSendOnItsWay(outbox, transportState.submissions),
     composerScopeKey,
     mutate
   })
