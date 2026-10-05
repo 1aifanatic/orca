@@ -20,6 +20,7 @@ import {
 import { toast } from 'sonner'
 import { isDetachedHeadWorkspace } from '@/components/sidebar/visible-worktrees'
 import { revealRepoInProjectFilter } from '@/components/sidebar/project-filter-reveal'
+import { isSidebarOnWorkspaceList } from '@/store/slices/ui/sidebar-body-reveal'
 import type { ExecutionHostId } from '../../../shared/execution-host'
 import { findFolderWorkspaceOwner } from './folder-workspace-runtime-owner'
 import type { WorktreeStartupPayload } from '@/lib/worktree-startup-payload'
@@ -287,7 +288,8 @@ export function activateAndRevealWorktree(
   }
 
   // 5. Lift the sidebar filters hiding the target — reveal needs the card rendered, else it silently no-ops.
-  if (opts?.clearSidebarFilters !== false) {
+  // Not in the activity view: the reveal is skipped there, so lifting would only discard filters.
+  if (opts?.clearSidebarFilters !== false && isSidebarOnWorkspaceList(state)) {
     revealRepoInProjectFilter(state, wt.repoId)
     if (
       state.hideAutomationGeneratedWorkspaces &&

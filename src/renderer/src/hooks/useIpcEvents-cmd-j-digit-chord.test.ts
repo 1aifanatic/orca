@@ -57,6 +57,18 @@ describe('useIpcEvents digit-chord routing while Cmd+J is open', () => {
     })
   })
 
+  it('switches to the workspace list whose row the digit addressed', async () => {
+    const storeState = createPaletteState(null)
+    const harness = await loadIpcEventsHarness(storeState, {
+      visibleWorktreeIds: ['wt-a', 'wt-b', 'wt-c']
+    })
+    harness.useIpcEvents()
+
+    harness.jumpToWorktreeIndex(1)
+
+    expect(storeState.showSidebarWorkspaceList).toHaveBeenCalledOnce()
+  })
+
   it('routes duplicate ids at different positions to their rendered hosts', async () => {
     const harness = await loadIpcEventsHarness(createPaletteState(null), {
       visibleWorktreeTargets: [

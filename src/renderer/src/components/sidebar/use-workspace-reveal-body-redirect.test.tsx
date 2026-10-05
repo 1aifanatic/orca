@@ -8,11 +8,14 @@ import { useWorkspaceRevealBodyRedirect } from './use-workspace-reveal-body-redi
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-const mocks = vi.hoisted(() => ({ setSidebarBody: vi.fn() }))
+const mocks = vi.hoisted(() => ({ showSidebarWorkspaceList: vi.fn() }))
 
 vi.mock('@/store', () => ({
-  useAppStore: (selector: (state: { setSidebarBody: typeof mocks.setSidebarBody }) => unknown) =>
-    selector({ setSidebarBody: mocks.setSidebarBody })
+  useAppStore: (
+    selector: (state: {
+      showSidebarWorkspaceList: typeof mocks.showSidebarWorkspaceList
+    }) => unknown
+  ) => selector({ showSidebarWorkspaceList: mocks.showSidebarWorkspaceList })
 }))
 
 function Host({ agentsBodyShowing }: { agentsBodyShowing: boolean }): null {
@@ -24,7 +27,7 @@ let container: HTMLDivElement
 let root: Root
 
 beforeEach(() => {
-  mocks.setSidebarBody.mockClear()
+  mocks.showSidebarWorkspaceList.mockClear()
   container = document.createElement('div')
   document.body.append(container)
   root = createRoot(container)
@@ -52,7 +55,7 @@ describe('useWorkspaceRevealBodyRedirect', () => {
         })
       )
     })
-    expect(mocks.setSidebarBody).toHaveBeenCalledWith('workspaces')
+    expect(mocks.showSidebarWorkspaceList).toHaveBeenCalledOnce()
     expect(seen).toEqual([])
 
     // The worktree list mounts (and registers its listener) when the body flips.
@@ -72,6 +75,6 @@ describe('useWorkspaceRevealBodyRedirect', () => {
     act(() => {
       window.dispatchEvent(new CustomEvent(SCROLL_TO_CURRENT_WORKSPACE_REVEAL_REQUEST_EVENT))
     })
-    expect(mocks.setSidebarBody).not.toHaveBeenCalled()
+    expect(mocks.showSidebarWorkspaceList).not.toHaveBeenCalled()
   })
 })

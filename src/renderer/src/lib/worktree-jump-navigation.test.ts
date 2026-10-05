@@ -30,7 +30,7 @@ describe('worktree jump navigation', () => {
     mocks.worktreePassesSidebarFilters.mockReturnValue(false)
     mocks.getState.mockReturnValue({
       sidebarBody: 'agents',
-      setSidebarBody: vi.fn(),
+      showSidebarWorkspaceList: vi.fn(),
       worktreesByRepo: { repo: [] },
       showSleepingWorkspaces: true,
       filterRepoIds: ['other-repo'],
@@ -67,7 +67,11 @@ describe('worktree jump navigation', () => {
 
     expect(jumpToWorktreeFromSidebar('repo::/target')).toBe(true)
 
-    expect(state.setSidebarBody).toHaveBeenCalledWith('workspaces')
+    expect(state.showSidebarWorkspaceList).toHaveBeenCalledOnce()
+    // Switched first, so activation's own reveal is not skipped by the activity view.
+    expect(state.showSidebarWorkspaceList.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.activateAndRevealWorkspace.mock.invocationCallOrder[0]
+    )
     expect(mocks.activateAndRevealWorkspace).toHaveBeenCalledWith('repo::/target', {
       navigationIntent: 'user-open',
       revealInSidebar: false,
@@ -145,14 +149,12 @@ describe('worktree jump navigation', () => {
     })
     // Folder workspaces never get the filter-hidden treatment.
     expect(mocks.worktreePassesSidebarFilters).not.toHaveBeenCalled()
-    expect(state.setSidebarBody).toHaveBeenCalledWith('workspaces')
+    expect(state.showSidebarWorkspaceList).toHaveBeenCalledOnce()
   })
 
   it('propagates a blocked folder-workspace activation as failure', () => {
-    const state = mocks.getState()
     mocks.activateAndRevealWorkspace.mockReturnValue(false)
 
     expect(jumpToWorktreeFromSidebar('folder:folder-1')).toBe(false)
-    expect(state.setSidebarBody).not.toHaveBeenCalled()
   })
 })

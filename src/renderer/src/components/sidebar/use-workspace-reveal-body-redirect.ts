@@ -9,7 +9,7 @@ import { SCROLL_TO_CURRENT_WORKSPACE_REVEAL_REQUEST_EVENT } from '@/lib/scroll-t
  */
 export function useWorkspaceRevealBodyRedirect(agentsBodyShowing: boolean): void {
   const pendingDetailRef = useRef<{ detail: unknown } | null>(null)
-  const setSidebarBody = useAppStore((s) => s.setSidebarBody)
+  const showSidebarWorkspaceList = useAppStore((s) => s.showSidebarWorkspaceList)
 
   useEffect(() => {
     if (!agentsBodyShowing) {
@@ -17,13 +17,13 @@ export function useWorkspaceRevealBodyRedirect(agentsBodyShowing: boolean): void
     }
     const onRequest = (event: Event): void => {
       pendingDetailRef.current = { detail: event instanceof CustomEvent ? event.detail : undefined }
-      setSidebarBody('workspaces')
+      showSidebarWorkspaceList()
     }
     window.addEventListener(SCROLL_TO_CURRENT_WORKSPACE_REVEAL_REQUEST_EVENT, onRequest)
     return () => {
       window.removeEventListener(SCROLL_TO_CURRENT_WORKSPACE_REVEAL_REQUEST_EVENT, onRequest)
     }
-  }, [agentsBodyShowing, setSidebarBody])
+  }, [agentsBodyShowing, showSidebarWorkspaceList])
 
   useEffect(() => {
     if (agentsBodyShowing) {

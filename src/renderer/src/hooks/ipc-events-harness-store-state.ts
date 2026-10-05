@@ -27,6 +27,7 @@ export function createHarnessStoreState(
     setActiveTabType: vi.fn(),
     setActiveTab: vi.fn(),
     revealWorktreeInSidebar: vi.fn(),
+    showSidebarWorkspaceList: vi.fn(),
     setTabCustomTitle: vi.fn(),
     queueTabStartupCommand: vi.fn(),
     registerAgentLaunchConfig: vi.fn(),

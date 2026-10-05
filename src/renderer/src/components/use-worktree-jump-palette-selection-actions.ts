@@ -207,6 +207,8 @@ export function useWorktreeJumpPaletteSelectionActions({
   const handleSelectProjectTarget = useCallback(
     (result: CmdJProjectSearchResult) => {
       skipRestoreFocusRef.current = true
+      // Why switch: picking a project row explicitly asks to see it in the workspace list.
+      useAppStore.getState().showSidebarWorkspaceList()
       revealSidebarRow(result.rowKey, { behavior: 'smooth', highlight: true })
       recordFeatureInteraction('cmd-j')
       closeModal()

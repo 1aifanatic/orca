@@ -93,6 +93,8 @@ export function registerWorkspaceShortcutIpcBridge(unsubs: (() => void)[]): void
       const visibleTargets = getVisibleWorktreeShortcutTargets()
       const target = visibleTargets[index]
       if (target) {
+        // Why switch: the digit addresses a workspace-list row, so show the list it acted on.
+        store.showSidebarWorkspaceList()
         activateAndRevealWorkspace(target.id, {
           navigationIntent: 'user-open',
           ...(target.executionHostId ? { executionHostId: target.executionHostId } : {})

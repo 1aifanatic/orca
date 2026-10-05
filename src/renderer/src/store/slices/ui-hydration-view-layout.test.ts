@@ -50,18 +50,38 @@ beforeEach(() => {
 })
 
 describe('sidebar reveal actions', () => {
-  it('switch the sidebar body back to Spaces so the worktree list can consume the reveal', () => {
+  it('skip reveals while the activity view is showing instead of switching bodies', () => {
     const store = createUIStore()
     store.getState().setSidebarBody('agents')
 
     store.getState().revealWorktreeInSidebar('wt-1', { highlight: true })
+    store.getState().revealSidebarRow('repo:r1')
+
+    expect(store.getState().sidebarBody).toBe('agents')
+    expect(store.getState().pendingRevealWorktree).toBeNull()
+    expect(store.getState().pendingRevealSidebarRow).toBeNull()
+  })
+
+  it('reveal after an explicit switch to the workspace list', () => {
+    const store = createUIStore()
+    store.getState().setSidebarBody('agents')
+
+    store.getState().showSidebarWorkspaceList()
+    store.getState().revealWorktreeInSidebar('wt-1', { highlight: true })
+    store.getState().revealSidebarRow('repo:r1')
+
     expect(store.getState().sidebarBody).toBe('workspaces')
     expect(store.getState().pendingRevealWorktree?.worktreeId).toBe('wt-1')
-
-    store.getState().setSidebarBody('agents')
-    store.getState().revealSidebarRow('repo:r1')
-    expect(store.getState().sidebarBody).toBe('workspaces')
     expect(store.getState().pendingRevealSidebarRow?.rowKey).toBe('repo:r1')
+  })
+
+  it('treats an explicit switch while already on the workspace list as a no-op write', () => {
+    const store = createUIStore()
+    const before = store.getState()
+
+    store.getState().showSidebarWorkspaceList()
+
+    expect(store.getState()).toBe(before)
   })
 })
 

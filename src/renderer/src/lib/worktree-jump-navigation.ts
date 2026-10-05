@@ -58,6 +58,9 @@ export function jumpToWorktreeFromSidebar(
     parseWorkspaceKey(worktreeId)?.type !== 'folder' &&
     wasHiddenBySidebarFilters(worktreeId, options?.executionHostId)
 
+  // "Go to workspace" explicitly asks for the list; switch before activation so its reveal isn't skipped.
+  state.showSidebarWorkspaceList?.()
+
   // Why the workspace dispatcher: it owns the folder-vs-worktree split and the folder path-status gate.
   const activated = activateAndRevealWorkspace(worktreeId, {
     navigationIntent: 'user-open',
@@ -67,9 +70,6 @@ export function jumpToWorktreeFromSidebar(
   if (activated === false) {
     return false
   }
-
-  // The worktree list is the Spaces/Projects sidebar body; jump actions should always expose it.
-  state.setSidebarBody?.('workspaces')
 
   const hiddenAfterActivation =
     hiddenBeforeActivation && wasHiddenBySidebarFilters(worktreeId, options?.executionHostId)
