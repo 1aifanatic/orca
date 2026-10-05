@@ -541,26 +541,50 @@ window (20 minutes at the default).
 - A non-default window must be named at the end of the confirmation, for example
   `ROLL_RELAY_SAME_CAP <target-digest> <cells> drain-pace-window-ms=60000`. A confirmation that
   names no window confirms `300000`, so a form left at another value fails closed.
-- A canary's authority records its window. A batch may use that window or a slower one, never a
-  faster one. Stepping back to `300000` mid-ladder therefore needs no new canary.
+- A canary's authority records its window and its pace verdict (below). A batch may use that
+  window or a slower one, never a faster one. A batch below `300000` also needs the canary's pace
+  verdict to be PASS. Stepping back to `300000` mid-ladder needs no new canary.
 - A cell on an image without paced drains ignores the window and drains at once. The job records
-  what the cell accepted.
+  what the cell accepted, and a canary that did not drain at its own window seals `UNVERIFIED`.
 
-**What judges a paced drain.** The shadow health gate (report only, after each cell) reads the
-director's own drain-return counters (`drainReturnDeferralsDelta`, `drainReturnAssignmentsDelta`
-and `drainReturnRetryAfterSecondsMax` in `orca_relay_runtime_metrics`). It takes the deferrals out
-of the director 503 count, in the window and in both baselines. A deferral is a scheduled 503 that
-carries its own Retry-After, and a faster window multiplies them without anything going wrong.
-Its checks are:
+**What judges a paced drain.** The shadow health gate (report only, after each cell) judges three
+checks the pace can move. Together they are the report's `paceVerdict`, which the canary seals:
+
+- **Director 503s** come from Cloud Run's own request counter (`run.googleapis.com/request_count`,
+  code 503), aligned per minute by Cloud Monitoring. A log read of them stops at its entry limit
+  in exactly the minutes that matter: it read only 20k of 10-01 c29's ~31k.
+- **Scheduled 503s are taken out**, using the director's `orca_relay_runtime_metrics` counters:
+  - drain-return deferrals;
+  - sticky and placement answers to a host's own early retry (`host-rate-limited`,
+    `host-in-flight`).
+
+  Each tells one host when to come back. What is left is lanes, capacity, or the database
+  refusing work. On 10-02 the early-retry answers were about three quarters of all 503s, and
+  they doubled with placement volume whether or not a drain was running.
+- **The background** is the median minute of the 10 same-day minutes before the drain. A busy
+  morning raises it with the window, and one incident minute inside it does not.
 
 | check | rule |
 |---|---|
-| `director503` | Unchanged thresholds, now on non-drain 503s; `allPeakPerMinute` and `drainDeferralsTotal` keep the raw numbers |
-| `nonDrain503Budget` | Warn if any 5-minute bucket exceeds max(1.5x background, background + 30). Would-block if two consecutive minutes exceed max(2x, +6) of the per-minute background. Background is the busier of the 24 h and 48 h baselines' mean |
-| `drainDeferrals` | Warn if the largest Retry-After exceeds 30 s; would-block above 60 s. Reports deferrals and re-placements per minute |
+| `director503` | Peak non-drain minute: warn above max(3x the pre-drain peak, 100), would-block above max(10x, 200) |
+| `nonDrain503Budget` | Two consecutive minutes above max(1.5x background, background + 20) warn; above max(2x, background + 40) would-block. A single minute is a transient and never counts |
+| `drainDeferrals` | Warn if the largest Retry-After exceeds 30 s; would-block above 60 s. Reports deferrals and re-placements |
 
-The report's `drain` block records the window, the window the cell applied, the host count, and
-the seconds from isolation to restart-safe.
+Replayed read-only against past rolls:
+- The 10-01 c29 brownout is `would-block` on both 503 checks: 9 minutes in a row over a 41.5/min
+  line.
+- All nine 10-02 cells and 10-01 c25 have a pace verdict of PASS. Their largest single minutes
+  were 87 and 39, and they never had two consecutive minutes over the warn line.
+
+The other checks (`cellServing`, `cellPool`, `cloudSqlFatal`, `fleetPool:*`) stay in the overall
+verdict as context. They read the new boot and fleet-wide pools, so a clean roll at any pace can
+still WARN on them, and every 10-02 roll did on `cloudSqlFatal`.
+
+The report records:
+- `background`: the pre-drain minutes;
+- `nonDrain503Budget.perMinute`: the per-minute series;
+- `drain`: the window, the window the cell applied, the host count, and the seconds from
+  isolation to restart-safe.
 
 Two other 503 rules exist, and neither needs this split. The pre-drain sample's 500/min rule reads
 the 10 minutes *before* a drain, and a previous cell's drain has ended by then. The incident
@@ -568,22 +592,28 @@ monitor already excludes 503s from its director 5xx rule.
 
 **Procedure.** One rung at a time, on routine US same-cap rolls:
 
-1. Before the first rung, rehearse on staging and run a fresh canary. This input is evidence code,
-   so merging it invalidates any sealed monitor or canary authority.
-2. Roll a canary at the next rung. Use `60000` after a clean `300000` roll, and `30000` after a
-   clean `60000` roll.
-3. Step down only after a clean roll at the current window:
-   - the job succeeded;
-   - the shadow verdict is PASS, or WARN only from unverified reads;
+1. Before the first rung, run a fresh canary. This input is evidence code, so merging it
+   invalidates any sealed monitor or canary authority. Staging has no paced-drain path today: its
+   capacity proof drains unpaced. A rung's first use is therefore one production canary.
+2. Roll a `canary-apply` at the next rung. Use `60000` after a clean `300000` roll. Use `30000`
+   only after a clean `60000` roll, and only once the director reports the drain-return lane's
+   service time (`drainReturnServiceMs`, #25645). At 30 s the lane holds only if that time stays
+   under about 190 ms.
+3. A rung is clean when:
+   - the canary job succeeded;
+   - its `paceVerdict` is PASS;
    - time to empty is within window + hosts / 50 s + 10 s. Take `settledAfterSeconds` minus the
      restart-safe quiet; this is an upper bound, since it includes the isolate.
+
+   The batch check enforces the PASS. A canary that sealed anything else authorizes only
+   `300000` batches.
 4. Record each rung, and keep the shadow gate JSON artifact with the row:
 
    | Field | Source |
    |---|---|
    | Cell, hosts, window | The report's `drain` block |
    | Measured drain rate | `drainDeferrals.replacementsPeakPerMinute`, and hosts / time to empty |
-   | Non-drain 503s | `nonDrain503Budget.bucketMax` against `warnAbove` |
+   | Non-drain 503s | `nonDrain503Budget.perMinute` against `background.medianPerMinute` |
    | Lane deferrals | `drainDeferrals.deferralsTotal` and `retryAfterSecondsMax` |
    | Roll time | The cell job's duration |
 

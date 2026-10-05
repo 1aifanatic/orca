@@ -12,24 +12,27 @@ import { appendFile, writeFile } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 import {
-  BASELINE_OFFSET_HOURS,
+  BACKGROUND_MINUTES,
   ENTRY_LIMIT,
+  PACE_CHECKS,
   FLEET_POOL_CELL_IDS,
   SHADOW_GATE_THRESHOLDS,
   combineVerdict,
   countByMinute,
   drainReturnByMinute,
   formatTimestamp,
+  backgroundOf,
   judgeCellServing,
   judgeCloudSqlFatal,
   judgeDirector503,
   judgeDrainDeferrals,
   judgeNonDrain503Budget,
   judgePool,
+  minuteKey,
+  minutesOf,
   parseTimestamp,
   renderStepSummary,
   resolveWindow,
-  shiftWindow,
   splitWindow,
   withoutDrainDeferrals
 } from './relay-same-cap-shadow-gate-verdict.mjs'
@@ -97,9 +100,28 @@ function timestampBounds({ startedAt, endedAt }) {
 }
 
 /**
- * One bounded `gcloud logging read`. A read that cannot complete is reported as failed rather than
+ * Runs one bounded read with retries. A read that cannot complete is reported as failed rather than
  * thrown: a missing oracle must surface as an unverified check, not as a crashed gate.
  */
+async function retryingRead(reader, read) {
+  let lastError
+  for (let attempt = 1; attempt <= READ_ATTEMPTS; attempt += 1) {
+    // Every remaining read short-circuits once the budget is gone, so the gate always reaches a
+    // verdict instead of being killed part-way through with nothing written.
+    const remainingMs = reader.deadlineAt - reader.now()
+    if (remainingMs <= 0) return { failed: true, error: 'shadow gate read deadline exceeded' }
+    try {
+      return { ...(await read(Math.min(reader.readTimeoutMs, remainingMs))), failed: false }
+    } catch (error) {
+      lastError = error
+      if (attempt < READ_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, reader.retryDelayMs))
+      }
+    }
+  }
+  return { failed: true, error: String(lastError?.message ?? lastError) }
+}
+
 async function readLogEntries(reader, { filter, projection, limit = ENTRY_LIMIT }) {
   const args = [
     'logging', 'read', filter,
@@ -108,26 +130,11 @@ async function readLogEntries(reader, { filter, projection, limit = ENTRY_LIMIT 
     '--limit', String(limit),
     '--order', 'desc'
   ]
-  let lastError
-  for (let attempt = 1; attempt <= READ_ATTEMPTS; attempt += 1) {
-    // Every remaining read short-circuits once the budget is gone, so the gate always reaches a
-    // verdict instead of being killed part-way through with nothing written.
-    const remainingMs = reader.deadlineAt - reader.now()
-    if (remainingMs <= 0) {
-      return { entries: [], failed: true, error: 'shadow gate read deadline exceeded' }
-    }
-    try {
-      const timeoutMs = Math.min(reader.readTimeoutMs, remainingMs)
-      const { stdout } = await reader.runGcloud(args, { timeoutMs })
-      return { entries: JSON.parse(stdout || '[]'), failed: false }
-    } catch (error) {
-      lastError = error
-      if (attempt < READ_ATTEMPTS) {
-        await new Promise((resolve) => setTimeout(resolve, reader.retryDelayMs))
-      }
-    }
-  }
-  return { entries: [], failed: true, error: String(lastError?.message ?? lastError) }
+  const read = await retryingRead(reader, async (timeoutMs) => {
+    const { stdout } = await reader.runGcloud(args, { timeoutMs })
+    return { entries: JSON.parse(stdout || '[]') }
+  })
+  return { entries: [], ...read }
 }
 
 async function readTimestampsOverWindow(reader, { filter, window }) {
@@ -145,10 +152,42 @@ async function readTimestampsOverWindow(reader, { filter, window }) {
   return countByMinute(reads)
 }
 
-function directorFilter({ directorService }) {
-  return `resource.type="cloud_run_revision"`
-    + ` AND resource.labels.service_name="${directorService}"`
-    + ` AND httpRequest.status=503`
+// Cloud Run's own request counter, aligned per minute server-side: a brownout's tens of thousands
+// of 503s are counted, where a log read of them stops at its entry limit (10-01 c29).
+async function readDirector503PerMinute(reader, { config, span }) {
+  const url = new URL(`https://monitoring.googleapis.com/v3/projects/${config.projectId}/timeSeries`)
+  url.searchParams.set('filter', [
+    'metric.type="run.googleapis.com/request_count"',
+    'resource.type="cloud_run_revision"',
+    `resource.label."service_name"="${config.directorService}"`,
+    'metric.label."response_code"="503"'
+  ].join(' AND '))
+  url.searchParams.set('interval.startTime', span.startedAt.toISOString())
+  url.searchParams.set('interval.endTime', span.endedAt.toISOString())
+  url.searchParams.set('aggregation.alignmentPeriod', '60s')
+  url.searchParams.set('aggregation.perSeriesAligner', 'ALIGN_DELTA')
+  url.searchParams.set('aggregation.crossSeriesReducer', 'REDUCE_SUM')
+  url.searchParams.set('pageSize', '1000')
+  const read = await retryingRead(reader, async (timeoutMs) => {
+    const { stdout } = await reader.runGcloud(['auth', 'print-access-token'], { timeoutMs })
+    const response = await reader.fetch(url, {
+      headers: { authorization: `Bearer ${stdout.trim()}` },
+      signal: AbortSignal.timeout(timeoutMs)
+    })
+    if (!response.ok) throw new Error(`Cloud Monitoring returned ${response.status}`)
+    const body = await response.json()
+    if (body.nextPageToken) throw new Error('Cloud Monitoring pagination is incomplete')
+    return { timeSeries: body.timeSeries ?? [] }
+  })
+  const perMinute = {}
+  for (const series of read.timeSeries ?? []) {
+    for (const point of series.points ?? []) {
+      // A delta point covers the minute that ends at its end time; a minute with no point had none.
+      const minute = minuteKey(Date.parse(point.interval.endTime) - 60_000)
+      perMinute[minute] = (perMinute[minute] ?? 0) + Number(point.value.int64Value ?? 0)
+    }
+  }
+  return { perMinute, failed: read.failed }
 }
 
 // Cells log through the COS container agent, so the text lives in jsonPayload.message; a
@@ -156,6 +195,8 @@ function directorFilter({ directorService }) {
 const CELL_LOG_SCOPE = 'resource.type="gce_instance" AND logName:"cos_containers"'
 
 const DIRECTOR_DRAIN_FIELDS = [
+  'stickyRejectionsByReasonDelta',
+  'placementRejectionsByReasonDelta',
   'drainReturnDeferralsDelta',
   'drainReturnAssignmentsDelta',
   'drainReturnRetryAfterSecondsMax'
@@ -183,28 +224,39 @@ async function readDirectorDrainReturn(reader, { config, window }) {
       samples: read.entries.map((entry) => ({ timestamp: entry.timestamp, ...entry.jsonPayload }))
     })
   }
-  return drainReturnByMinute(reads, DIRECTOR_METRICS_LIMIT)
+  return reads
 }
 
-// Every 503 against its baselines, with drain-return deferrals taken out of both sides: a
-// baseline that held another roll's drain would otherwise loosen the gate.
+// Non-drain 503s in the roll window against the same day's minutes just before the drain, with
+// drain-return deferrals taken out of both.
 async function readDirector503(reader, { config, window }) {
-  const filter = directorFilter(config)
-  const read = async (span) => {
-    const counts = await readTimestampsOverWindow(reader, { filter, window: span })
-    const drain = await readDirectorDrainReturn(reader, { config, window: span })
-    return { nonDrain: withoutDrainDeferrals(counts, drain), drain }
+  const minute = 60_000
+  const span = {
+    startedAt: new Date(
+      Math.floor(window.startedAt.getTime() / minute) * minute - BACKGROUND_MINUTES * minute
+    ),
+    endedAt: new Date(Math.ceil(window.endedAt.getTime() / minute) * minute)
   }
-  const { nonDrain: observed, drain } = await read(window)
-  const baselines = []
-  for (const hours of BASELINE_OFFSET_HOURS) {
-    const { nonDrain } = await read(shiftWindow(window, hours))
-    baselines.push({ label: `${hours}h-earlier`, ...nonDrain })
-  }
+  const counts = await readDirector503PerMinute(reader, { config, span })
+  const reads = await readDirectorDrainReturn(reader, { config, window: span })
+  const deferrals = drainReturnByMinute(reads, DIRECTOR_METRICS_LIMIT)
+  const windowMinutes = minutesOf(window)
+  const backgroundMinutes = minutesOf({ startedAt: span.startedAt, endedAt: window.startedAt })
+    .filter((key) => !windowMinutes.includes(key))
+  const observed = withoutDrainDeferrals(counts, deferrals, windowMinutes)
+  const background = backgroundOf(withoutDrainDeferrals(counts, deferrals, backgroundMinutes))
+  // Only the roll window's own samples describe this drain.
+  const drain = drainReturnByMinute(reads.map((read) => ({
+    ...read,
+    samples: read.samples.filter((sample) => Date.parse(sample.timestamp) > window.startedAt.getTime())
+  })), DIRECTOR_METRICS_LIMIT)
   return {
-    director503: judgeDirector503({ observed, baselines }),
-    nonDrain503Budget: judgeNonDrain503Budget({ observed, baselines, window }),
-    drainDeferrals: judgeDrainDeferrals(drain)
+    background,
+    checks: {
+      director503: judgeDirector503({ observed, background }),
+      nonDrain503Budget: judgeNonDrain503Budget({ observed, background }),
+      drainDeferrals: judgeDrainDeferrals(drain)
+    }
   }
 }
 
@@ -298,7 +350,8 @@ export async function evaluateShadowGate(config, {
   retryDelayMs = READ_RETRY_DELAY_MS,
   readTimeoutMs = READ_TIMEOUT_MS,
   overallDeadlineMs = OVERALL_DEADLINE_MS,
-  now = Date.now
+  now = Date.now,
+  fetch = globalThis.fetch
 }) {
   const reader = {
     runGcloud,
@@ -306,7 +359,8 @@ export async function evaluateShadowGate(config, {
     readTimeoutMs,
     now,
     deadlineAt: now() + overallDeadlineMs,
-    projectId: config.projectId
+    projectId: config.projectId,
+    fetch
   }
   const window = resolveWindow(config)
   // Everything this roll's instance logged, from the moment the apply could first restart it.
@@ -327,7 +381,7 @@ export async function evaluateShadowGate(config, {
   const cloudSql = await readCloudSqlFatal(reader, { window })
   const cellMetrics = await readRuntimeMetrics(reader, { cellId: config.cellId, window })
   const checks = {
-    ...director,
+    ...director.checks,
     cellServing: cell.serving,
     cellPool: judgePool({ label: config.cellId, ...cellMetrics }),
     cloudSqlFatal: cloudSql
@@ -362,7 +416,11 @@ export async function evaluateShadowGate(config, {
         ? Math.round((Date.parse(config.drainSettledAt) - Date.parse(config.drainStartedAt)) / 1000)
         : null
     },
+    // The pre-drain minutes the 503 checks were judged against.
+    background: director.background,
     verdict: combineVerdict(checks),
+    // What a canary seals and a faster batch requires: only the checks the pace can move.
+    paceVerdict: combineVerdict(Object.fromEntries(PACE_CHECKS.map((name) => [name, checks[name]]))),
     checks
   }
 }

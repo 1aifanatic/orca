@@ -14,8 +14,10 @@ export const SUB_WINDOW_MINUTES = 10
 
 export const ENTRY_LIMIT = 20000
 
-// Clock-hour-aligned comparisons: the same wall-clock minutes one and two days earlier.
-export const BASELINE_OFFSET_HOURS = [24, 48]
+// The 503 background is the same day's minutes just before the drain, not the same minutes a day
+// or two earlier: a busy morning doubled 10-02's rate against both, and a baseline that held an
+// incident blinded the comparison for four cells of that wave.
+export const BACKGROUND_MINUTES = 10
 
 // The asia-east2 cells share a 16-connection pool at 176 ms RTT, which is where pool pressure
 // shows up first for the whole fleet. A cell joins only once it serves: zero samples read as
@@ -30,21 +32,21 @@ export const FLEET_POOL_CELL_IDS = [
 
 export const SHADOW_GATE_THRESHOLDS = {
   // A US ramp legitimately lifts director 503s far above a quiet baseline (61-71/min against a
-  // 20-60/min baseline was healthy), so this is a multiple of the busier baseline with an
+  // 20-60/min baseline was healthy), so this is a multiple of the pre-drain peak with an
   // absolute floor underneath it, never a fixed rate.
   director503: { blockMultiple: 10, blockFloor: 200, warnMultiple: 3, warnFloor: 100 },
   // One sample at 71 waiters is a burst that drains; three in a row is a pool that does not.
   pool: { waitersMax: 50, waitersConsecutiveSamples: 3, sqlFailuresDelta: 200 },
-  // Pace-ladder rung budget (cloud/docs/relay-workflows.md), on non-drain 503s only: each 5-min
-  // bucket within max(1.5x, +30) of the busier baseline, and two straight minutes past
-  // max(2x, +6) of its per-minute rate is the abort.
+  // Pace-ladder rung budget (cloud/docs/relay-workflows.md), on non-drain 503s against the
+  // pre-drain median. One minute over is a transient and never counts; two in a row past
+  // max(1.5x, +20) warns and past max(2x, +40) is the abort. On ten clean rolls (10-01, 10-02) no
+  // two consecutive minutes passed +20, while single minutes reached 87.
   nonDrain503Budget: {
-    bucketMinutes: 5,
     warnMultiple: 1.5,
-    warnMargin: 30,
+    warnMarginPerMinute: 20,
     blockMultiple: 2,
-    blockMarginPerMinute: 6,
-    blockConsecutiveMinutes: 2
+    blockMarginPerMinute: 40,
+    consecutiveMinutes: 2
   },
   // A drain-return deferral tells the host when to come back; past a minute the drain is no
   // longer paced by the window but queued behind the director's lane.
@@ -65,7 +67,6 @@ export const SHADOW_GATE_THRESHOLDS = {
 }
 
 const MINUTE_MS = 60_000
-const HOUR_MS = 3_600_000
 
 export function parseTimestamp(value, label) {
   const parsed = typeof value === 'string' ? Date.parse(value) : Number.NaN
@@ -106,13 +107,6 @@ export function splitWindow({ startedAt, endedAt }, minutes = SUB_WINDOW_MINUTES
     })
   }
   return windows
-}
-
-export function shiftWindow({ startedAt, endedAt }, hours) {
-  return {
-    startedAt: new Date(startedAt.getTime() - hours * HOUR_MS),
-    endedAt: new Date(endedAt.getTime() - hours * HOUR_MS)
-  }
 }
 
 /**
@@ -156,11 +150,11 @@ export function longestRunAtOrAbove(values, threshold) {
 // Director runtime metrics land every 30 s per instance and count the interval before the sample.
 export const DIRECTOR_METRICS_INTERVAL_MS = 30_000
 
-function minuteKey(at) {
+export function minuteKey(at) {
   return new Date(at).toISOString().slice(0, 16)
 }
 
-function minutesOf({ startedAt, endedAt }) {
+export function minutesOf({ startedAt, endedAt }) {
   const minutes = []
   const first = Math.floor(startedAt.getTime() / MINUTE_MS) * MINUTE_MS
   for (let cursor = first; cursor < endedAt.getTime(); cursor += MINUTE_MS) {
@@ -169,112 +163,139 @@ function minutesOf({ startedAt, endedAt }) {
   return minutes
 }
 
+// A host re-dialling inside its own retry interval, or while its last dial is still in flight. The
+// drain-return lane already answers these with the per-host interval rather than a place in line;
+// on 10-02 they were ~3/4 of background 503s and doubled with placement volume, drain or not.
+const OWN_RETRY_REASONS = ['host-rate-limited', 'host-in-flight']
+
+function ownRetries(sample) {
+  return ['stickyRejectionsByReasonDelta', 'placementRejectionsByReasonDelta'].reduce(
+    (sum, field) => sum + OWN_RETRY_REASONS.reduce(
+      (count, reason) => count + (sample[field]?.[reason] ?? 0),
+      0
+    ),
+    0
+  )
+}
+
 /**
- * Drain-return deferrals and re-placements per clock minute, from director runtime-metrics
- * samples. A sample is charged to the minute holding the midpoint of the interval it counts, so a
- * minute boundary can still move up to half a sample's count into its neighbour.
+ * The director's scheduled 503s per clock minute, from its runtime-metrics samples: drain-return
+ * deferrals and answers to a host's own early retry, plus the re-placements. Each sample's count is
+ * split across the minutes its 30 s interval spans, in proportion, so a burst cannot land whole in
+ * a neighbouring minute and cancel that minute's real 503s.
  */
 export function drainReturnByMinute(reads, limit) {
   const deferrals = new Map()
+  const retries = new Map()
   const assignments = new Map()
   let retryAfterSecondsMax = 0
   let truncated = false
+  const charge = (map, endedAt, count) => {
+    let cursor = endedAt - DIRECTOR_METRICS_INTERVAL_MS
+    while (cursor < endedAt) {
+      const next = Math.min(endedAt, (Math.floor(cursor / MINUTE_MS) + 1) * MINUTE_MS)
+      const minute = minuteKey(cursor)
+      map.set(minute, (map.get(minute) ?? 0) + count * (next - cursor) / DIRECTOR_METRICS_INTERVAL_MS)
+      cursor = next
+    }
+  }
   for (const read of reads) {
     if (read.failed || read.samples.length >= limit) truncated = true
     for (const sample of read.samples) {
-      const minute = minuteKey(Date.parse(sample.timestamp) - DIRECTOR_METRICS_INTERVAL_MS / 2)
-      deferrals.set(minute, (deferrals.get(minute) ?? 0) + (sample.drainReturnDeferralsDelta ?? 0))
-      assignments.set(
-        minute,
-        (assignments.get(minute) ?? 0) + (sample.drainReturnAssignmentsDelta ?? 0)
-      )
+      const endedAt = Date.parse(sample.timestamp)
+      charge(deferrals, endedAt, sample.drainReturnDeferralsDelta ?? 0)
+      charge(retries, endedAt, ownRetries(sample))
+      charge(assignments, endedAt, sample.drainReturnAssignmentsDelta ?? 0)
       retryAfterSecondsMax = Math.max(
         retryAfterSecondsMax,
         sample.drainReturnRetryAfterSecondsMax ?? 0
       )
     }
   }
-  const sum = (map) => [...map.values()].reduce((total, count) => total + count, 0)
+  const sum = (map) => Math.round([...map.values()].reduce((total, count) => total + count, 0))
   return {
     deferralsPerMinute: Object.fromEntries(deferrals),
+    ownRetriesPerMinute: Object.fromEntries(retries),
     deferralsTotal: sum(deferrals),
-    deferralsPeakPerMinute: Math.max(0, ...deferrals.values()),
+    deferralsPeakPerMinute: Math.round(Math.max(0, ...deferrals.values())),
     assignmentsTotal: sum(assignments),
-    assignmentsPeakPerMinute: Math.max(0, ...assignments.values()),
+    assignmentsPeakPerMinute: Math.round(Math.max(0, ...assignments.values())),
     retryAfterSecondsMax,
     truncated
   }
 }
 
 /**
- * Director 503s with the drain-return deferrals taken out. A deferral is a scheduled answer that
- * carries its own Retry-After, so a faster drain multiplies them without anything being wrong.
+ * Director 503s per minute over the given minutes, with the scheduled ones taken out. A deferral or
+ * an early-retry answer tells one host when to come back, so a faster drain multiplies them without
+ * anything being wrong; what is left is lanes, capacity, and the database refusing work.
  */
-export function withoutDrainDeferrals(counts, drain) {
-  const perMinute = {}
-  let total = 0
-  let peak = 0
-  let peakMinute = null
-  for (const [minute, count] of Object.entries(counts.perMinute)) {
-    const remaining = Math.max(0, count - (drain.deferralsPerMinute[minute] ?? 0))
-    perMinute[minute] = remaining
-    total += remaining
-    if (remaining > peak) {
-      peak = remaining
-      peakMinute = minute
-    }
-  }
+export function withoutDrainDeferrals({ perMinute, failed }, drain, minutes) {
+  const series = minutes.map((minute) => Math.max(
+    0,
+    Math.round(
+      (perMinute[minute] ?? 0) -
+      (drain.deferralsPerMinute[minute] ?? 0) -
+      (drain.ownRetriesPerMinute?.[minute] ?? 0)
+    )
+  ))
+  const peak = Math.max(0, ...series)
   return {
-    perMinute,
-    total,
+    minutes,
+    series,
+    total: series.reduce((sum, count) => sum + count, 0),
     peak,
-    peakMinute,
-    truncated: counts.truncated || drain.truncated,
-    allPeak: counts.peak,
-    drainDeferralsTotal: drain.deferralsTotal
+    peakMinute: peak > 0 ? minutes[series.indexOf(peak)] : null,
+    allPeak: Math.max(0, ...minutes.map((minute) => perMinute[minute] ?? 0)),
+    drainDeferralsTotal: Math.round(
+      minutes.reduce((sum, minute) => sum + (drain.deferralsPerMinute[minute] ?? 0), 0)
+    ),
+    ownRetriesTotal: Math.round(
+      minutes.reduce((sum, minute) => sum + (drain.ownRetriesPerMinute?.[minute] ?? 0), 0)
+    ),
+    unverified: Boolean(failed) || drain.truncated
   }
 }
 
-export function judgeNonDrain503Budget({ observed, baselines, window }) {
-  const {
-    bucketMinutes,
-    warnMultiple,
-    warnMargin,
-    blockMultiple,
-    blockMarginPerMinute,
-    blockConsecutiveMinutes
-  } = SHADOW_GATE_THRESHOLDS.nonDrain503Budget
-  const minutes = minutesOf(window)
-  // The busier baseline's mean rate over the same wall-clock span.
-  const backgroundPerMinute = Math.max(
-    0,
-    ...baselines.map((baseline) => baseline.total / Math.max(1, minutes.length))
-  )
-  const background = backgroundPerMinute * bucketMinutes
-  const series = minutes.map((minute) => observed.perMinute[minute] ?? 0)
-  const buckets = []
-  for (let index = 0; index < series.length; index += bucketMinutes) {
-    buckets.push(series.slice(index, index + bucketMinutes).reduce((sum, count) => sum + count, 0))
+// The middle minute of the same-day minutes before the drain: a busy morning raises it with the
+// window, and one incident minute inside it does not.
+export function backgroundOf(nonDrain) {
+  const sorted = [...nonDrain.series].sort((left, right) => left - right)
+  const middle = Math.floor(sorted.length / 2)
+  const median = sorted.length === 0
+    ? 0
+    : sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2
+  return {
+    startedAt: nonDrain.minutes[0] ?? null,
+    minutes: nonDrain.minutes.length,
+    medianPerMinute: median,
+    peakPerMinute: nonDrain.peak,
+    perMinute: nonDrain.series,
+    unverified: nonDrain.unverified || nonDrain.minutes.length === 0
   }
-  const blockPerMinute = Math.max(
-    backgroundPerMinute * blockMultiple,
-    backgroundPerMinute + blockMarginPerMinute
-  )
+}
+
+export function judgeNonDrain503Budget({ observed, background }) {
+  const { warnMultiple, warnMarginPerMinute, blockMultiple, blockMarginPerMinute, consecutiveMinutes } =
+    SHADOW_GATE_THRESHOLDS.nonDrain503Budget
+  const perMinute = background.medianPerMinute
+  const warnAbove = Math.max(perMinute * warnMultiple, perMinute + warnMarginPerMinute)
+  const blockAbove = Math.max(perMinute * blockMultiple, perMinute + blockMarginPerMinute)
   const detail = {
-    backgroundPerBucket: Math.round(background * 10) / 10,
-    bucketMinutes,
-    bucketMax: Math.max(0, ...buckets),
-    warnAbove: Math.round(Math.max(background * warnMultiple, background + warnMargin) * 10) / 10,
-    blockPerMinuteAbove: Math.round(blockPerMinute * 10) / 10,
-    consecutiveMinutesOverBlock: longestRunAtOrAbove(series, blockPerMinute)
+    backgroundPerMinute: perMinute,
+    peakPerMinute: observed.peak,
+    warnAbove,
+    blockAbove,
+    consecutiveMinutesOverWarn: longestRunAtOrAbove(observed.series, warnAbove),
+    consecutiveMinutesOverBlock: longestRunAtOrAbove(observed.series, blockAbove),
+    // The record a ladder rung keeps: non-drain 503s per minute from the drain start.
+    perMinute: observed.series
   }
-  if (observed.truncated || baselines.some((baseline) => baseline.truncated)) {
-    return { status: 'unverified', ...detail }
-  }
-  if (detail.consecutiveMinutesOverBlock >= blockConsecutiveMinutes) {
+  if (observed.unverified || background.unverified) return { status: 'unverified', ...detail }
+  if (detail.consecutiveMinutesOverBlock >= consecutiveMinutes) {
     return { status: 'would-block', ...detail }
   }
-  if (detail.bucketMax > detail.warnAbove) return { status: 'warn', ...detail }
+  if (detail.consecutiveMinutesOverWarn >= consecutiveMinutes) return { status: 'warn', ...detail }
   return { status: 'pass', ...detail }
 }
 
@@ -301,29 +322,20 @@ export function judgeDrainDeferrals(drain) {
   return { status: 'pass', ...detail }
 }
 
-export function judgeDirector503({ observed, baselines }) {
+export function judgeDirector503({ observed, background }) {
   const { blockMultiple, blockFloor, warnMultiple, warnFloor } = SHADOW_GATE_THRESHOLDS.director503
-  const baselinePeak = Math.max(0, ...baselines.map((baseline) => baseline.peak))
-  const baselineTruncated = baselines.some((baseline) => baseline.truncated)
   const detail = {
     peakPerMinute: observed.peak,
     peakMinute: observed.peakMinute,
     total: observed.total,
-    ...(observed.drainDeferralsTotal === undefined ? {} : {
-      allPeakPerMinute: observed.allPeak,
-      drainDeferralsTotal: observed.drainDeferralsTotal
-    }),
-    baselinePeakPerMinute: baselinePeak,
-    baselines: baselines.map(({ label, peak, total, truncated }) => ({
-      label,
-      peakPerMinute: peak,
-      total,
-      truncated
-    })),
-    blockAbove: Math.max(baselinePeak * blockMultiple, blockFloor),
-    warnAbove: Math.max(baselinePeak * warnMultiple, warnFloor)
+    allPeakPerMinute: observed.allPeak,
+    drainDeferralsTotal: observed.drainDeferralsTotal,
+    ownRetriesTotal: observed.ownRetriesTotal,
+    backgroundPeakPerMinute: background.peakPerMinute,
+    blockAbove: Math.max(background.peakPerMinute * blockMultiple, blockFloor),
+    warnAbove: Math.max(background.peakPerMinute * warnMultiple, warnFloor)
   }
-  if (observed.truncated || baselineTruncated) return { status: 'unverified', ...detail }
+  if (observed.unverified || background.unverified) return { status: 'unverified', ...detail }
   if (observed.peak > detail.blockAbove) return { status: 'would-block', ...detail }
   if (observed.peak > detail.warnAbove) return { status: 'warn', ...detail }
   return { status: 'pass', ...detail }
@@ -393,6 +405,10 @@ export function judgeCloudSqlFatal({ count, truncated = false, failed = false })
   return { status: 'pass', ...detail }
 }
 
+// The checks a drain pace can move. The rest (Cloud SQL, the Asia pools, the new boot) read the
+// fleet or the image, so a clean roll at any pace can still WARN on them.
+export const PACE_CHECKS = ['director503', 'nonDrain503Budget', 'drainDeferrals']
+
 export function combineVerdict(checks) {
   const statuses = Object.values(checks).map((check) => check.status)
   if (statuses.includes('would-block')) return VERDICTS.WOULD_BLOCK
@@ -409,7 +425,7 @@ export function renderStepSummary(report) {
     return `| ${name} | ${check.status} | ${numbers} |`
   })
   return [
-    `## Shadow health gate (report only): ${report.verdict}`,
+    `## Shadow health gate (report only): ${report.verdict} (pace checks: ${report.paceVerdict})`,
     '',
     `Cell \`${report.cellId}\`, window ${report.window.startedAt} to ${report.window.endedAt}`,
     `(start taken from: ${report.window.startedFrom}).`,

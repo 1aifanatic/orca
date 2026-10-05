@@ -695,12 +695,22 @@ test('binds a non-default pace into the confirmation, in both directions', () =>
   })).cells, ['production-gce-c8'])
 })
 
+function shadowReport(pace, paceVerdict = 'PASS', overrides = {}) {
+  return {
+    cellId: 'production-gce-c7',
+    paceVerdict,
+    drain: { paceWindowMs: Number(pace), appliedPaceWindowMs: Number(pace) },
+    ...overrides
+  }
+}
+
 test('a canary authorizes batches at its own pace or slower, never faster', () => {
-  const seal = (pace) => canaryAuthority({
+  const seal = (pace, report = shadowReport(pace)) => canaryAuthority({
     cellIds: 'production-gce-c7',
     targetDigest,
     rollbackDigest,
     drainPaceWindowMs: pace,
+    shadowReport: report,
     confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} production-gce-c7` +
       (pace === '300000' ? '' : ` drain-pace-window-ms=${pace}`),
     commitSha: 'c'.repeat(40),
@@ -728,6 +738,76 @@ test('a canary authorizes batches at its own pace or slower, never faster', () =
   const { drainPaceWindowMs: _dropped, ...unpaced } = seal('300000')
   assert.throws(() => verify({ ...unpaced, v: 1 }, '300000'), /does not match/)
   assert.throws(() => verify({ ...seal('300000'), drainPaceWindowMs: 0 }, '300000'), /does not match/)
+  assert.throws(() => verify({ ...seal('300000'), paceVerdict: 'pass' }, '300000'), /does not match/)
+})
+
+// A canary whose own drain looked bad still succeeds as a job, so the seal must carry what its pace
+// checks said, and a faster batch must refuse anything but PASS.
+test('only a canary whose pace checks passed authorizes a faster batch', () => {
+  const seal = (report) => canaryAuthority({
+    cellIds: 'production-gce-c7',
+    targetDigest,
+    rollbackDigest,
+    drainPaceWindowMs: '60000',
+    shadowReport: report,
+    confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} production-gce-c7 drain-pace-window-ms=60000`,
+    commitSha: 'c'.repeat(40),
+    runId: '42',
+    selectorGeneration: '11',
+    rehomeGeneration: '4'
+  })
+  const verify = (authority, pace) => verifyCanaryAuthority(authority, {
+    commitSha: 'c'.repeat(40),
+    runId: '42',
+    cellIds: usGeneral,
+    targetDigest,
+    rollbackDigest,
+    drainPaceWindowMs: pace,
+    selectorGeneration: '13',
+    rehomeGeneration: '4'
+  })
+  assert.equal(seal(shadowReport('60000')).paceVerdict, 'PASS')
+  for (const [report, sealed] of [
+    [shadowReport('60000', 'WARN'), 'WARN'],
+    [shadowReport('60000', 'WOULD_BLOCK'), 'WOULD_BLOCK'],
+    [null, 'UNVERIFIED'],
+    // Another cell's report, another pace's, or a cell that fell back to an unpaced drain.
+    [shadowReport('60000', 'PASS', { cellId: 'production-gce-c8' }), 'UNVERIFIED'],
+    [shadowReport('300000'), 'UNVERIFIED'],
+    [shadowReport('60000', 'PASS', { drain: { paceWindowMs: 60000, appliedPaceWindowMs: 0 } }), 'UNVERIFIED'],
+    [shadowReport('60000', 'MAYBE'), 'UNVERIFIED']
+  ]) {
+    const authority = seal(report)
+    assert.equal(authority.paceVerdict, sealed)
+    assert.throws(() => verify(authority, '60000'), new RegExp(`pace checks were ${sealed}`))
+    // Falling back to the default never needs a passing canary.
+    assert.equal(verify(authority, '300000').cellId, 'production-gce-c7')
+  }
+})
+
+test('create-canary seals the verdict from the canary cell\'s shadow report file', async () => {
+  const temporary = await mkdtemp(join(tmpdir(), 'relay-same-cap-seal-'))
+  const printed = []
+  const write = process.stdout.write.bind(process.stdout)
+  try {
+    const path = join(temporary, 'report.json')
+    await writeFile(path, JSON.stringify(shadowReport('60000')))
+    process.stdout.write = (chunk) => printed.push(String(chunk))
+    for (const report of [path, join(temporary, 'missing.json')]) {
+      main([
+        'create-canary', '--cell-id', 'production-gce-c7',
+        '--target-digest', targetDigest, '--rollback-digest', rollbackDigest,
+        '--confirmation', `ROLL_RELAY_SAME_CAP ${targetDigest} production-gce-c7 drain-pace-window-ms=60000`,
+        '--drain-pace-window-ms', '60000', '--shadow-report', report,
+        '--commit-sha', 'c'.repeat(40), '--run-id', '42',
+        '--selector-generation', '11', '--rehome-generation', '4'
+      ])
+    }
+  } finally {
+    process.stdout.write = write
+    await rm(temporary, { recursive: true, force: true })
+  }
+  assert.deepEqual(printed.map((line) => JSON.parse(line).paceVerdict), ['PASS', 'UNVERIFIED'])
 })
 
 // The dispatch choice list, the validator's closed set, and the job's transition wait have to
@@ -740,6 +820,13 @@ test('the workflows offer exactly the closed set and scale the drain wait with i
     JSON.parse(/options: (\[[^\]]+\])/.exec(input)[1].replaceAll("'", '"')).map(Number),
     SAME_CAP_DRAIN_PACE_WINDOWS_MS
   )
+  const seal = dispatch.slice(dispatch.indexOf('\n  seal_canary:'))
+  assert.match(
+    seal,
+    /name: relay-same-cap-shadow-gate-\$\{\{ inputs\.cell-ids \}\}-\$\{\{ github\.run_id \}\}\.json\n/
+  )
+  assert.ok(seal.indexOf('download-artifact') < seal.indexOf('create-canary'))
+  assert.match(seal, /--shadow-report "\$\{RUNNER_TEMP\}\/relay-same-cap-shadow-gate\/relay-same-cap-shadow-gate-\$\{\{ inputs\.cell-ids \}\}-\$\{GITHUB_RUN_ID\}\.json"/)
   for (const command of ['validate', 'verify-canary', 'create-canary']) {
     const at = dispatch.indexOf(`relay-production-same-cap-wave.mjs ${command}`)
     assert.notEqual(at, -1, command)

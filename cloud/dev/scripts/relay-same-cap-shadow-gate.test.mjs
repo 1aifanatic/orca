@@ -9,8 +9,10 @@ import {
 import {
   ENTRY_LIMIT,
   FLEET_POOL_CELL_IDS,
+  PACE_CHECKS,
   SHADOW_GATE_THRESHOLDS,
   SUB_WINDOW_MINUTES,
+  backgroundOf,
   combineVerdict,
   countByMinute,
   drainReturnByMinute,
@@ -24,7 +26,6 @@ import {
   longestRunAtOrAbove,
   renderStepSummary,
   resolveWindow,
-  shiftWindow,
   splitWindow,
   withoutDrainDeferrals
 } from './relay-same-cap-shadow-gate-verdict.mjs'
@@ -112,8 +113,6 @@ test('reads are split into sub-windows no longer than the truncation bound', () 
     assert.ok(minutes > 0 && minutes <= SUB_WINDOW_MINUTES, `${minutes} minutes`)
   }
   assert.equal(formatTimestamp(windows.at(-1).endedAt), '2026-09-20T20:47:00Z')
-  const baseline = shiftWindow(windows[0], 24)
-  assert.equal(formatTimestamp(baseline.startedAt), '2026-09-19T20:00:00Z')
 })
 
 test('a sub-window that came back at the entry limit is truncated, never a count', () => {
@@ -138,32 +137,19 @@ test('a sub-window that came back at the entry limit is truncated, never a count
   )
 })
 
-test('director 503s are judged against the busier baseline, not a fixed rate', () => {
-  const baselines = [
-    { label: '24h-earlier', peak: 48, total: 80, truncated: false },
-    { label: '48h-earlier', peak: 69, total: 100, truncated: false }
-  ]
-  // The 2026-09-19 c28 wave: 4722/min against 48 and 69/min baselines.
+test('director 503s are judged against the pre-drain peak, not a fixed rate', () => {
+  const background = { peakPerMinute: 69, medianPerMinute: 30, unverified: false }
+  const observed = (peak, unverified = false) => ({ peak, total: peak, unverified })
+  // The 2026-09-19 c28 wave: 4722/min against a 69/min pre-drain peak.
+  assert.equal(judgeDirector503({ observed: observed(4722), background }).status, 'would-block')
+  // The false positive a literal rule produced: a US ramp at 71/min over a 20-60/min background.
   assert.equal(judgeDirector503({
-    observed: { peak: 4722, peakMinute: '2026-09-19T15:34', total: 5000, truncated: false },
-    baselines
-  }).status, 'would-block')
-  // The false positive a literal rule produced: a US ramp at 71/min over a 20-60/min baseline.
-  assert.equal(judgeDirector503({
-    observed: { peak: 71, peakMinute: '2026-09-18T01:10', total: 300, truncated: false },
-    baselines: [
-      { label: '24h-earlier', peak: 60, total: 400, truncated: false },
-      { label: '48h-earlier', peak: 20, total: 90, truncated: false }
-    ]
+    observed: observed(71), background: { ...background, peakPerMinute: 60 }
   }).status, 'pass')
-  // A truncated read cannot settle to pass, however calm its visible counts are.
+  // A failed read on either side cannot settle to pass, however calm its visible counts are.
+  assert.equal(judgeDirector503({ observed: observed(3, true), background }).status, 'unverified')
   assert.equal(judgeDirector503({
-    observed: { peak: 3, total: 3, truncated: true },
-    baselines
-  }).status, 'unverified')
-  assert.equal(judgeDirector503({
-    observed: { peak: 3, total: 3, truncated: false },
-    baselines: [baselines[0], { ...baselines[1], truncated: true }]
+    observed: observed(3), background: { ...background, unverified: true }
   }).status, 'unverified')
 })
 
@@ -304,10 +290,30 @@ function productionLikeEntries() {
  */
 function gcloudSeam(entries = productionLikeEntries()) {
   const calls = []
+  const monitoringCalls = []
   return {
     calls,
+    monitoringCalls,
     retryDelayMs: 0,
+    // Cloud Monitoring's request counter, aligned per minute: one point per minute that had any,
+    // stamped at the end of the minute it counts, inside the requested interval only.
+    fetch: async (url, init) => {
+      const query = new URL(url).searchParams
+      monitoringCalls.push({ query, init })
+      const startedAt = Date.parse(query.get('interval.startTime'))
+      const endedAt = Date.parse(query.get('interval.endTime'))
+      const points = entries
+        .filter((entry) => entry.minute503 !== undefined)
+        .map((entry) => ({ endedAt: Date.parse(`${entry.minute503}:00Z`) + 60_000, count: entry.count }))
+        .filter((point) => point.endedAt > startedAt && point.endedAt <= endedAt)
+        .map((point) => ({
+          interval: { endTime: new Date(point.endedAt).toISOString() },
+          value: { int64Value: String(point.count) }
+        }))
+      return { ok: true, json: async () => ({ timeSeries: points.length ? [{ points }] : [] }) }
+    },
     runGcloud: async (args, options) => {
+      if (args[0] === 'auth') return { stdout: 'token\n' }
       const filter = args[2]
       const limit = Number(args[args.indexOf('--limit') + 1])
       calls.push({ filter, limit, options })
@@ -315,6 +321,7 @@ function gcloudSeam(entries = productionLikeEntries()) {
       const endedAt = Date.parse(/timestamp<"([^"]+)"/.exec(filter)[1])
       const instanceId = /resource\.labels\.instance_id="([^"]+)"/.exec(filter)?.[1]
       const matched = entries.filter((entry) => {
+        if (entry.minute503 !== undefined) return false
         const at = Date.parse(entry.timestamp)
         if (at < startedAt || at >= endedAt) return false
         if (instanceId && entry.instanceId !== instanceId) return false
@@ -602,86 +609,85 @@ function directorSamples({ from, count, payload }) {
 }
 
 function director503s(minute, count) {
-  return minuteOfTimestamps(minute, count).map((timestamp) => ({
-    matches: ['httpRequest.status=503'],
-    timestamp
-  }))
+  return [{ minute503: minute, count }]
 }
 
-test('drain-return deferrals come out of the 503 count, minute by minute', () => {
+test('scheduled 503s come out of the count, split across the minutes they cover', () => {
   const drain = drainReturnByMinute([{
     failed: false,
     samples: [
-      // Counts 20:00:30-20:01:00, so it belongs to 20:00, not to the minute it was written in.
+      // Counts 20:00:30-20:01:00, so all of it belongs to 20:00.
       { timestamp: '2026-10-05T20:01:00Z', drainReturnDeferralsDelta: 40, drainReturnAssignmentsDelta: 70 },
-      { timestamp: '2026-10-05T20:01:20Z', drainReturnDeferralsDelta: 15, drainReturnAssignmentsDelta: 80, drainReturnRetryAfterSecondsMax: 12 },
-      { timestamp: '2026-10-05T20:01:50Z', drainReturnAssignmentsDelta: 60 }
+      // Counts 20:00:50-20:01:20: a third in 20:00, two thirds in 20:01.
+      {
+        timestamp: '2026-10-05T20:01:20Z',
+        drainReturnDeferralsDelta: 30,
+        drainReturnAssignmentsDelta: 90,
+        drainReturnRetryAfterSecondsMax: 12,
+        placementRejectionsByReasonDelta: { 'host-rate-limited': 6, 'wait-timeout': 50 },
+        stickyRejectionsByReasonDelta: { 'host-in-flight': 3, 'queue-full': 9 }
+      }
     ]
   }], 1000)
-  assert.deepEqual(drain.deferralsPerMinute, { '2026-10-05T20:00': 40, '2026-10-05T20:01': 15 })
-  assert.equal(drain.assignmentsPeakPerMinute, 140)
+  assert.deepEqual(drain.deferralsPerMinute, { '2026-10-05T20:00': 50, '2026-10-05T20:01': 20 })
+  // A host's own early retry is scheduled; a lane that timed out or was full is not.
+  assert.deepEqual(drain.ownRetriesPerMinute, { '2026-10-05T20:00': 3, '2026-10-05T20:01': 6 })
+  assert.equal(drain.assignmentsPeakPerMinute, 100)
   assert.equal(drain.retryAfterSecondsMax, 12)
+  const minutes = ['2026-10-05T20:00', '2026-10-05T20:01', '2026-10-05T20:02']
   const split = withoutDrainDeferrals({
-    perMinute: { '2026-10-05T20:00': 70, '2026-10-05T20:01': 10, '2026-10-05T20:02': 25 },
-    total: 105,
-    peak: 70,
-    truncated: false
-  }, drain)
-  // A minute cannot go negative when a boundary moved deferrals into it.
-  assert.deepEqual(split.perMinute, {
-    '2026-10-05T20:00': 30, '2026-10-05T20:01': 0, '2026-10-05T20:02': 25
-  })
-  assert.equal(split.peak, 30)
-  assert.equal(split.allPeak, 70)
-  assert.equal(split.drainDeferralsTotal, 55)
-  // A metrics read that failed or hit its limit leaves the subtraction, and the count, unverified.
+    perMinute: { '2026-10-05T20:00': 90, '2026-10-05T20:01': 20, '2026-10-05T20:02': 25 }
+  }, drain, minutes)
+  // A minute cannot go negative when more was scheduled than was counted.
+  assert.deepEqual(split.series, [37, 0, 25])
+  assert.equal(split.peak, 37)
+  assert.equal(split.peakMinute, '2026-10-05T20:00')
+  assert.equal(split.allPeak, 90)
+  assert.equal(split.drainDeferralsTotal, 70)
+  assert.equal(split.ownRetriesTotal, 9)
+  assert.equal(split.unverified, false)
+  // A failed count, or a metrics read that failed or hit its limit, leaves the answer unverified.
   assert.equal(drainReturnByMinute([{ failed: true, samples: [] }], 1000).truncated, true)
+  assert.equal(withoutDrainDeferrals({ perMinute: {}, failed: true }, drain, minutes).unverified, true)
   assert.equal(withoutDrainDeferrals(
-    { perMinute: {}, total: 0, peak: 0, truncated: false },
-    { deferralsPerMinute: {}, deferralsTotal: 0, truncated: true }
-  ).truncated, true)
+    { perMinute: {} },
+    { deferralsPerMinute: {}, truncated: true },
+    minutes
+  ).unverified, true)
 })
 
-test('the rung budget is a margin over the busier non-drain baseline, per five minutes', () => {
-  const window = resolveWindow({
-    drainStartedAt: '2026-10-05T20:00:00Z',
-    verifyEndedAt: '2026-10-05T20:10:00Z'
+test('the background is the median pre-drain minute, so one incident minute cannot move it', () => {
+  const background = backgroundOf({
+    minutes: Array.from({ length: 10 }, (_, index) => `2026-10-05T19:5${index}`),
+    series: [2, 0, 1, 3, 900, 1, 0, 2, 4, 1],
+    peak: 900,
+    unverified: false
   })
-  const perMinute = (counts) => Object.fromEntries(
-    counts.map((count, index) => [`2026-10-05T20:0${index}`, count])
-  )
-  // 300 and 200 non-drain 503s over ten baseline minutes: 30/min, so 150 per bucket.
-  const baselines = [
-    { label: '24h-earlier', total: 300, truncated: false },
-    { label: '48h-earlier', total: 200, truncated: false }
-  ]
-  const judge = (counts) => judgeNonDrain503Budget({
-    observed: { perMinute: perMinute(counts), truncated: false },
-    baselines,
-    window
+  assert.equal(background.medianPerMinute, 1.5)
+  assert.equal(background.peakPerMinute, 900)
+  assert.equal(backgroundOf({ minutes: [], series: [], peak: 0, unverified: false }).unverified, true)
+})
+
+test('the rung budget needs two straight minutes over its line, never one', () => {
+  const judge = (series, medianPerMinute = 1.5, unverified = false) => judgeNonDrain503Budget({
+    observed: { series, peak: Math.max(...series), unverified },
+    background: { medianPerMinute, unverified: false }
   })
-  const calm = judge([30, 30, 30, 30, 30, 30, 30, 30, 30, 30])
+  const calm = judge([0, 3, 87, 1, 0, 39, 0, 22, 12])
+  // 10-02 c16 and c21: single minutes at 87 and 39 are transients.
   assert.equal(calm.status, 'pass')
-  assert.equal(calm.backgroundPerBucket, 150)
-  assert.equal(calm.warnAbove, 225)
-  assert.equal(calm.blockPerMinuteAbove, 60)
-  // One busy minute inside the bucket budget is a pass; a bucket past 225 is a warning.
-  assert.equal(judge([30, 30, 59, 30, 30, 30, 30, 30, 30, 30]).status, 'pass')
-  assert.equal(judge([30, 30, 61, 30, 80, 30, 30, 30, 30, 30]).status, 'warn')
-  // Two straight minutes past 2x is the abort, wherever they fall.
-  assert.equal(judge([30, 30, 30, 30, 61, 61, 30, 30, 30, 30]).status, 'would-block')
-  // A quiet night still gets the absolute margins rather than a multiple of almost nothing.
-  const quiet = judgeNonDrain503Budget({
-    observed: { perMinute: perMinute([5, 5, 5, 5, 5, 0, 0, 0, 0, 0]), truncated: false },
-    baselines: [{ label: '24h-earlier', total: 10, truncated: false }],
-    window
-  })
-  assert.equal(quiet.status, 'pass')
-  assert.equal(quiet.warnAbove, 35)
-  assert.equal(quiet.blockPerMinuteAbove, 7)
-  assert.equal(judgeNonDrain503Budget({
-    observed: { perMinute: {}, truncated: true }, baselines, window
-  }).status, 'unverified')
+  assert.equal(calm.warnAbove, 21.5)
+  assert.equal(calm.blockAbove, 41.5)
+  assert.equal(judge([0, 25, 23, 0]).status, 'warn')
+  // 10-01 c29: thousands a minute for nine minutes.
+  assert.equal(judge([288, 2619, 4226, 5357, 6256, 6662]).status, 'would-block')
+  assert.equal(judge([0, 42, 42, 0]).status, 'would-block')
+  // A busy background lifts both lines by its multiple, not just the margin.
+  const busy = judge([100, 100], 60)
+  assert.equal(busy.warnAbove, 90)
+  assert.equal(busy.blockAbove, 120)
+  assert.equal(busy.status, 'warn')
+  assert.equal(judge([0], 1.5, true).status, 'unverified')
 })
 
 test('a drain is judged on how long it tells hosts to wait, not on how many it defers', () => {
@@ -700,11 +706,14 @@ test('a drain is judged on how long it tells hosts to wait, not on how many it d
   assert.equal(judgeDrainDeferrals(drain(2)).replacementsPeakPerMinute, 260)
 })
 
-// A 30 s rung on a 530-host cell: hundreds of scheduled deferrals in two minutes, over a baseline
-// whose own 503s were all ordinary. Counting the deferrals as failures would block every fast drain.
+// A 30 s rung on a 530-host cell: hundreds of scheduled deferrals in two minutes, over a pre-drain
+// background whose own 503s were ordinary. Counting the deferrals as failures would block every
+// fast drain.
 test('a fast drain\'s deferrals do not read as a brownout', async () => {
   const entries = [
     ...productionLikeEntries(),
+    ...director503s('2026-09-20T19:52', 20),
+    ...director503s('2026-09-20T19:55', 25),
     ...director503s('2026-09-20T20:00', 400),
     ...director503s('2026-09-20T20:01', 330),
     ...director503s('2026-09-20T20:05', 30),
@@ -716,14 +725,22 @@ test('a fast drain\'s deferrals do not read as a brownout', async () => {
         drainReturnAssignmentsDelta: 130,
         drainReturnRetryAfterSecondsMax: 14
       }
-    }),
-    ...director503s('2026-09-19T20:05', 40),
-    ...director503s('2026-09-18T20:05', 30)
+    })
   ]
+  const seam = gcloudSeam(entries)
   const report = await evaluateShadowGate(
     parseShadowGateArguments(ARGV.with(19, '30000').with(21, '30000')),
-    gcloudSeam(entries)
+    seam
   )
+  // One count of every minute from ten before the drain to the end of the window, whole minutes.
+  assert.equal(seam.monitoringCalls.length, 1)
+  assert.equal(seam.monitoringCalls[0].query.get('interval.startTime'), '2026-09-20T19:50:00.000Z')
+  assert.equal(seam.monitoringCalls[0].query.get('interval.endTime'), '2026-09-20T20:30:00.000Z')
+  assert.match(seam.monitoringCalls[0].query.get('filter'), /run\.googleapis\.com\/request_count/)
+  assert.match(seam.monitoringCalls[0].query.get('filter'), /"response_code"="503"/)
+  assert.equal(seam.monitoringCalls[0].init.headers.authorization, 'Bearer token')
+  assert.equal(report.background.minutes, 10)
+  assert.equal(report.background.peakPerMinute, 25)
   assert.equal(report.checks.director503.allPeakPerMinute, 400)
   assert.equal(report.checks.director503.drainDeferralsTotal, 760)
   assert.equal(report.checks.director503.peakPerMinute, 30)
@@ -732,13 +749,26 @@ test('a fast drain\'s deferrals do not read as a brownout', async () => {
   assert.equal(report.checks.drainDeferrals.status, 'pass')
   assert.equal(report.checks.drainDeferrals.replacementsTotal, 520)
   assert.equal(report.drain.paceWindowMs, 30_000)
+  assert.equal(report.paceVerdict, 'PASS')
   assert.equal(report.verdict, 'PASS')
   // The same 503s with no deferrals behind them are exactly what the gate exists to catch.
   const brownout = await evaluateShadowGate(
     parseShadowGateArguments(ARGV),
-    gcloudSeam(entries.filter((entry) => !entry.matches.includes('resource.type="cloud_run_revision"')))
+    gcloudSeam(entries.filter((entry) => !entry.matches?.includes('resource.type="cloud_run_revision"')))
   )
-  assert.equal(brownout.checks.director503.status, 'warn')
+  assert.equal(brownout.checks.director503.status, 'would-block')
   assert.equal(brownout.checks.nonDrain503Budget.status, 'would-block')
-  assert.equal(brownout.verdict, 'WOULD_BLOCK')
+  assert.equal(brownout.paceVerdict, 'WOULD_BLOCK')
+})
+
+// The pace verdict is what a canary seals, so fleet noise the pace cannot cause must not reach it.
+test('the pace verdict reads only the checks a drain pace can move', async () => {
+  const report = await evaluateShadowGate(parseShadowGateArguments(ARGV), gcloudSeam([
+    ...productionLikeEntries(),
+    { matches: ['FATAL'], timestamp: '2026-09-20T20:10:00Z' }
+  ]))
+  assert.equal(report.checks.cloudSqlFatal.status, 'warn')
+  assert.equal(report.verdict, 'WARN')
+  assert.equal(report.paceVerdict, 'PASS')
+  assert.deepEqual(PACE_CHECKS, ['director503', 'nonDrain503Budget', 'drainDeferrals'])
 })

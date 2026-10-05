@@ -132,6 +132,20 @@ export function validateSameCapWave(input) {
   return { cells: selected, targetDigest, rollbackDigest, drainPaceWindowMs: paceWindowMs }
 }
 
+const CANARY_PACE_VERDICTS = ['PASS', 'WARN', 'WOULD_BLOCK', 'UNVERIFIED']
+
+// The canary cell's own pace checks, trusted only from a report on this cell that drained at this
+// pace; a cell whose image fell back to an unpaced drain proved nothing about the pace.
+export function canaryPaceVerdict(report, cellId, paceWindowMs) {
+  if (
+    report?.cellId !== cellId ||
+    report.drain?.paceWindowMs !== paceWindowMs ||
+    report.drain?.appliedPaceWindowMs !== paceWindowMs ||
+    !CANARY_PACE_VERDICTS.includes(report.paceVerdict)
+  ) return 'UNVERIFIED'
+  return report.paceVerdict
+}
+
 export function canaryAuthority(input) {
   const wave = validateSameCapWave({ ...input, mode: 'canary-apply', canaryRunId: '' })
   if (!/^[0-9a-f]{40}$/.test(input.commitSha ?? '')) throw new Error('commit SHA is invalid')
@@ -152,6 +166,7 @@ export function canaryAuthority(input) {
     targetDigest: wave.targetDigest,
     rollbackDigest: wave.rollbackDigest,
     drainPaceWindowMs: wave.drainPaceWindowMs,
+    paceVerdict: canaryPaceVerdict(input.shadowReport, wave.cells[0], wave.drainPaceWindowMs),
     selectorGeneration: selectorGeneration + selectorWaveDelta(wave.cells[0]),
     rehomeGeneration
   }
@@ -175,13 +190,25 @@ export function verifyCanaryAuthority(authority, expected, repositoryRoot) {
     selectorGeneration < authority.selectorGeneration ||
     authority.rehomeGeneration !== Number(expected.rehomeGeneration) ||
     !SAME_CAP_CELLS.includes(authority.cellId) ||
-    !SAME_CAP_DRAIN_PACE_WINDOWS_MS.includes(authority.drainPaceWindowMs)
+    !SAME_CAP_DRAIN_PACE_WINDOWS_MS.includes(authority.drainPaceWindowMs) ||
+    !CANARY_PACE_VERDICTS.includes(authority.paceVerdict)
   ) throw new Error('canary authority does not match this batch')
   // A canary proves its own pace and every slower one; a faster batch needs its own canary, and
   // falling back to a slower pace mid-ladder never does.
   if (batchPaceWindowMs < authority.drainPaceWindowMs) {
     throw new Error(
       `canary authority drained over ${authority.drainPaceWindowMs} ms, ` +
+      `so it cannot authorize a batch draining over ${batchPaceWindowMs} ms`
+    )
+  }
+  // A batch rolls up to ten cells back to back, so a faster one needs a canary whose own drain
+  // passed; the default is what every wave ran before, and stays available to any canary.
+  if (
+    batchPaceWindowMs !== DEFAULT_SAME_CAP_DRAIN_PACE_WINDOW_MS &&
+    authority.paceVerdict !== 'PASS'
+  ) {
+    throw new Error(
+      `canary authority pace checks were ${authority.paceVerdict}, ` +
       `so it cannot authorize a batch draining over ${batchPaceWindowMs} ms`
     )
   }
@@ -201,6 +228,16 @@ export function verifyCanaryAuthority(authority, expected, repositoryRoot) {
     repositoryRoot
   })
   return authority
+}
+
+// A missing or unreadable report seals UNVERIFIED rather than failing the seal: the default pace
+// never needed one.
+function readShadowReport(path) {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'))
+  } catch {
+    return null
+  }
 }
 
 function values(argv) {
@@ -238,6 +275,7 @@ export function main(argv = process.argv.slice(2)) {
       rollbackDigest: input['rollback-digest'],
       confirmation: input.confirmation,
       drainPaceWindowMs: input['drain-pace-window-ms'],
+      shadowReport: readShadowReport(input['shadow-report']),
       commitSha: input['commit-sha'],
       runId: input['run-id'],
       selectorGeneration: input['selector-generation'],
