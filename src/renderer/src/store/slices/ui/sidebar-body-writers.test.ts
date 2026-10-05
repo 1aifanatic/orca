@@ -41,10 +41,15 @@ function collectSourceFiles(dir: string, out: string[] = []): string[] {
 }
 
 function filesMatching(pattern: RegExp): string[] {
-  return collectSourceFiles(RENDERER_ROOT)
-    .filter((file) => pattern.test(readFileSync(file, 'utf8')))
-    .map((file) => path.relative(RENDERER_ROOT, file).split(path.sep).join('/'))
-    .sort()
+  return (
+    collectSourceFiles(RENDERER_ROOT)
+      .map((file) => ({ file, source: readFileSync(file, 'utf8') }))
+      // Test harnesses stub the actions without being callers.
+      .filter(({ source }) => pattern.test(source) && !source.includes("from 'vitest'"))
+      .map(({ file }) => file)
+      .map((file) => path.relative(RENDERER_ROOT, file).split(path.sep).join('/'))
+      .sort()
+  )
 }
 
 describe('sidebarBody writers', () => {
