@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { TerminalChatViewRequest } from '../../../../shared/terminal-chat-view-request'
+import {
+  TERMINAL_CHAT_VIEW_TAB_NOT_FOUND_ERROR,
+  type TerminalChatViewRequest
+} from '../../../../shared/terminal-chat-view-request'
 import { useAppStore } from '../../store'
 import type * as AuthorityModule from '../../store/slices/tabs/terminal-chat-pair-authority'
 import { registerTerminalUiRoutingIpcBridge } from './terminal-ui-routing-ipc-bridge'
@@ -85,7 +88,10 @@ describe('renderer side of the desktop chat-view relay', () => {
       leafId: null,
       viewMode: 'chat'
     })
-    expect(respond).toHaveBeenCalledWith({ requestId: 'r-2', error: 'tab_not_found' })
+    expect(respond).toHaveBeenCalledWith({
+      requestId: 'r-2',
+      error: TERMINAL_CHAT_VIEW_TAB_NOT_FOUND_ERROR
+    })
   })
 
   it('refuses a worktree another host owns without touching the mirrored tab', () => {
@@ -94,7 +100,10 @@ describe('renderer side of the desktop chat-view relay', () => {
 
     onRequest!({ requestId: 'r-3', worktreeId: WT, tabId: tab.id, leafId: null, viewMode: 'chat' })
 
-    expect(respond).toHaveBeenCalledWith({ requestId: 'r-3', error: 'tab_not_found' })
+    expect(respond).toHaveBeenCalledWith({
+      requestId: 'r-3',
+      error: TERMINAL_CHAT_VIEW_TAB_NOT_FOUND_ERROR
+    })
     expect(
       useAppStore.getState().unifiedTabsByWorktree[WT]?.find((t) => t.entityId === tab.id)?.viewMode
     ).not.toBe('chat')
