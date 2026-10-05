@@ -17,27 +17,13 @@ export const IMAGE_REPOSITORY = 'us-central1-docker.pkg.dev/onorca-cloud/orca-cl
 // Any reviewed registration wave is accepted by admission inspect; the launch wave never changes.
 const ADMISSION_INSPECT_CELLS = 'production-gce-c27,production-gce-c28,production-gce-c29'
 
+const workflow = (name, title) => ({ file: relayWorkflowFile(name), name: title })
 export const WORKFLOWS = {
-  publish: {
-    file: relayWorkflowFile('publish-relay-production.yml'),
-    name: 'Publish Relay Production Image'
-  },
-  director: {
-    file: relayWorkflowFile('deploy-relay-production-director.yml'),
-    name: 'Deploy Relay Production Director'
-  },
-  rehome: {
-    file: relayWorkflowFile('operate-relay-production-rehome.yml'),
-    name: 'Operate Relay Production Rehome'
-  },
-  admission: {
-    file: relayWorkflowFile('operate-relay-asia-admission.yml'),
-    name: 'Operate Relay Asia Admission'
-  },
-  monitor: {
-    file: relayWorkflowFile('monitor-relay-production.yml'),
-    name: 'Monitor Relay Production'
-  }
+  publish: workflow('publish-relay-production.yml', 'Publish Relay Production Image'),
+  director: workflow('deploy-relay-production-director.yml', 'Deploy Relay Production Director'),
+  rehome: workflow('operate-relay-production-rehome.yml', 'Operate Relay Production Rehome'),
+  admission: workflow('operate-relay-asia-admission.yml', 'Operate Relay Asia Admission'),
+  monitor: workflow('monitor-relay-production.yml', 'Monitor Relay Production')
 }
 
 // Read-only or unrelated to the production rollout lane, so they never block a deploy.
@@ -68,7 +54,9 @@ function requireGeneration(value, label) {
 }
 
 export function blocksDeploy(path) {
+  // A `@ref` suffix never appears on run paths today; stripping it keeps the check fail-closed.
   const file = String(path ?? '')
+    .split('@')[0]
     .split('/')
     .at(-1)
   return (
@@ -99,10 +87,6 @@ export function parseSelector(value, label) {
   return selector
 }
 
-export function sameSelector(left, right) {
-  return JSON.stringify(left) === JSON.stringify(right)
-}
-
 function selectorInputs(selector) {
   return {
     'expected-selector-generation': String(selector.generation),
@@ -130,15 +114,9 @@ export function parseControl(value, label) {
   if (control.hostCooldownMs !== undefined && !Number.isSafeInteger(control.hostCooldownMs)) {
     throw new Error(`${label} host cooldown is invalid`)
   }
-  return {
-    generation: control.generation,
-    enabled: control.enabled,
-    notBefore: control.notBefore,
-    ratePerMinute: control.ratePerMinute,
-    preferenceMaxAgeMs: control.preferenceMaxAgeMs,
-    hostCooldownMs: control.hostCooldownMs,
-    drainGraceMs: control.drainGraceMs
-  }
+  return Object.fromEntries(
+    [...integers, 'enabled', 'hostCooldownMs'].map((key) => [key, control[key]])
+  )
 }
 
 const INTEGER_INPUT = /^(0|[1-9][0-9]*)$/
@@ -317,28 +295,36 @@ export function logConfirmsPublishedDigest(log, commit, digest) {
     .some((line) => line.includes(`sha-${commit}: digest: ${digest} size:`))
 }
 
-/** The last `relay_regional_rehome_control` JSON line printed in `mode`, one of `mode`, or any (null). */
-export function rehomeControlFromLog(log, mode) {
+/** The last `relay_regional_rehome_control` JSON line a rehome run printed, of any mode. */
+export function rehomeResultFromLog(log) {
   let found
   for (const line of String(log).split('\n')) {
     const start = line.indexOf('{"event":"relay_regional_rehome_control"')
     if (start < 0) continue
     try {
-      const parsed = JSON.parse(line.slice(start).trim())
-      if (mode === null || [mode].flat().includes(parsed.mode)) found = parsed
+      found = JSON.parse(line.slice(start).trim())
     } catch {
       // A truncated or echoed line is not the result.
     }
   }
-  if (!found)
-    throw new Error(`the rehome run printed no ${mode ?? 'regional rehome'} control result`)
+  if (!found) throw new Error('the rehome run printed no control result')
   return {
     mode: found.mode,
-    control: parseControl(found.control, `rehome ${found.mode} control`),
-    ...(found.selector
-      ? { selector: parseSelector(found.selector, `rehome ${mode} selector`) }
-      : {})
+    recovered: found.recovered,
+    control: parseControl(found.control, `rehome ${found.mode} control`)
   }
+}
+
+/**
+ * The generation a run paused rehome at, or undefined. Only two lines prove a run paused it: a
+ * `pause`, and a failed enable's `recover-enable` that itself disabled rehome (`recovered: true`).
+ * `recovered: false` means rehome was already disabled, possibly by a director safety pause.
+ */
+export function pausedGeneration(result) {
+  const paused =
+    !result.control.enabled &&
+    (result.mode === 'pause' || (result.mode === 'recover-enable' && result.recovered === true))
+  return paused ? result.control.generation : undefined
 }
 
 export function admissionInspectResult(result) {

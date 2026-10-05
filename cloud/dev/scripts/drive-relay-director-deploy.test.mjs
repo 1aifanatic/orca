@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { test } from 'node:test'
 import {
   MONITOR_MAX_AGE_AT_ENABLE_MS,
@@ -15,7 +15,8 @@ import {
   WORKFLOWS,
   blocksDeploy,
   parseConfigureWave,
-  rehomeControlFromLog,
+  pausedGeneration,
+  rehomeResultFromLog,
   validateDispatchInputs
 } from './relay-director-deploy-plan.mjs'
 import { RELAY_WORKFLOW_FILE_PREFIX, relayWorkflowPath } from './relay-repository.mjs'
@@ -41,19 +42,14 @@ const CONTROL = {
   drainGraceMs: 3_600_000
 }
 
-function controlLine(mode, control, selector) {
-  const result = {
-    event: 'relay_regional_rehome_control',
-    mode,
-    ...(selector ? { selector } : {}),
-    control
-  }
+function controlLine(mode, control, extra = {}) {
+  const result = { event: 'relay_regional_rehome_control', mode, ...extra, control }
   return `operate / control\tUNKNOWN STEP\t2026-10-05T04:51:27Z ${JSON.stringify(result)}`
 }
 
 function monitorFiles(run, now, overrides = {}) {
   const incidentId = `relay-${run.id}-dry-run`
-  const completedAt = new Date(now).toISOString()
+  const at = (offset) => new Date(now - offset).toISOString()
   const state = JSON.stringify({
     schemaVersion: 4,
     incidentId,
@@ -67,10 +63,10 @@ function monitorFiles(run, now, overrides = {}) {
     sampleCount: 16,
     frozenAt: null,
     failures: [],
-    startedAt: new Date(now - 16 * 60_000).toISOString(),
-    windowStartedAt: new Date(now - 15 * 60_000).toISOString(),
-    lastSampleAt: completedAt,
-    completedAt,
+    startedAt: at(16 * 60_000),
+    windowStartedAt: at(15 * 60_000),
+    lastSampleAt: at(0),
+    completedAt: at(0),
     ...overrides
   })
   const manifest = {
@@ -82,7 +78,10 @@ function monitorFiles(run, now, overrides = {}) {
     mode: 'dry-run',
     files: { [`${incidentId}.state.json`]: createHash('sha256').update(state).digest('hex') }
   }
-  return { [`${incidentId}.state.json`]: state, 'evidence-manifest.json': JSON.stringify(manifest) }
+  return {
+    [`${incidentId}.state.json`]: state,
+    'evidence-manifest.json': JSON.stringify(manifest)
+  }
 }
 
 // A model of GitHub Actions and Cloud Run: each dispatch does what the real workflow would do to
@@ -96,8 +95,9 @@ function fakeWorld(overrides = {}) {
     active: [],
     printUrl: true,
     revision: 700,
-    serving: { revision: 'orca-cloud-relay-00700-qor', digest: OLD },
+    serving: { revision: 'orca-cloud-relay-00700-qor', digest: OLD, createdAt: START - 86_400_000 },
     rollback: { revision: 'orca-cloud-relay-00699-das', digest: OLD },
+    cells: ['production-gce-c1'],
     registry: {},
     selector: { generation: 345, attemptId: 'x', membership: MEMBERSHIP },
     control: CONTROL,
@@ -107,7 +107,7 @@ function fakeWorld(overrides = {}) {
     monitorState: {},
     director5xx: () => 10,
     prompts: [],
-    answer: (question) => question.match(/^Type (.+) to continue/)[1],
+    answer: (question) => question.match(/^Type (\S+(?: [0-9a-f]{12})?) to continue/)[1],
     printed: [],
     ...overrides
   }
@@ -125,7 +125,15 @@ function fakeWorld(overrides = {}) {
 function promote(world, digest) {
   world.revision += 5
   world.rollback = { revision: `orca-cloud-relay-00${world.revision - 1}-rbk`, digest }
-  world.serving = { revision: `orca-cloud-relay-00${world.revision}-new`, digest }
+  world.serving = {
+    revision: `orca-cloud-relay-00${world.revision}-new`,
+    digest,
+    createdAt: world.now
+  }
+}
+
+const nextGeneration = (world, enabled, step = 1) => {
+  world.control = { ...world.control, generation: world.control.generation + step, enabled }
 }
 
 function simulate(world, run) {
@@ -147,6 +155,7 @@ function simulate(world, run) {
   } else if (run.file === WORKFLOWS.admission.file) {
     assert.equal(inputs.confirmation, 'CONFIGURE_ASIA_DIRECTOR')
     promote(world, inputs['director-image-digest'])
+    world.cells = [...world.cells, ...inputs['cell-ids'].split(',')]
   } else if (run.file === WORKFLOWS.rehome.file) {
     const identities =
       inputs['director-image-digest'] === world.serving.digest &&
@@ -155,33 +164,34 @@ function simulate(world, run) {
       Number(inputs['expected-control-generation']) === world.control.generation &&
       Number(inputs['expected-selector-generation']) === world.selector.generation
     if (inputs.mode === 'pause' && matches && world.control.enabled) {
+      assert.equal(inputs.confirmation, 'PAUSE_REGIONAL_REHOMING')
       // The real job applies the pause before anything else can fail.
-      world.control = { ...world.control, generation: world.control.generation + 1, enabled: false }
+      nextGeneration(world, false)
       run.log = controlLine('pause', world.control)
-      return
-    }
-    if (inputs.mode === 'enable' && (!matches || !identities || failure)) {
-      run.conclusion = 'failure'
-      run.log = controlLine('recover-enable', world.control)
-      return
-    }
-    if (!matches || (inputs.mode === 'inspect' && !identities)) {
-      run.conclusion = 'failure'
-      return
-    }
-    if (inputs.mode === 'enable') {
+    } else if (inputs.mode === 'enable') {
       assert.equal(inputs.confirmation, 'ENABLE_REGIONAL_REHOMING')
       assert.equal(
         world.runs.find((other) => other.id === Number(inputs['monitor-run-id']))?.file,
         WORKFLOWS.monitor.file
       )
-      world.control = { ...world.control, generation: world.control.generation + 1, enabled: true }
+      if (matches && identities && !failure) {
+        nextGeneration(world, true)
+        run.log = controlLine('enable', world.control)
+        return
+      }
+      run.conclusion = 'failure'
+      // Applied, then the job's own recovery disabled it again; or a director safety pause got
+      // there first and recovery found it disabled.
+      if (failure === 'applied-then-recovered') nextGeneration(world, false, 2)
+      if (failure === 'safety-pause') nextGeneration(world, false, 3)
+      run.log = controlLine('recover-enable', world.control, {
+        recovered: failure === 'applied-then-recovered'
+      })
+    } else if (!matches || (inputs.mode === 'inspect' && !identities)) {
+      run.conclusion = 'failure'
+    } else {
+      run.log = controlLine(inputs.mode, world.control)
     }
-    run.log = controlLine(
-      inputs.mode,
-      world.control,
-      inputs.mode === 'inspect' ? world.selector : undefined
-    )
   } else if (run.file === WORKFLOWS.publish.file) {
     world.registry[`${IMAGE_REPOSITORY}:sha-${run.headSha}`] = world.publishedDigest
     run.log = `publish\tBuild\tsha-${run.headSha}: digest: ${world.pushLogDigest ?? world.publishedDigest} size: 3241`
@@ -219,7 +229,7 @@ function gh(world, args, input) {
   })
   if (args[0] === 'api' && args[1] === 'user') return ok('operator\n')
   if (args[0] === 'api' && args.includes('--paginate')) {
-    const status = args.find((arg) => arg.startsWith('status=')).slice('status='.length)
+    const status = flag(args, '-f').slice('status='.length)
     return ok(
       world.active
         .filter((run) => run.status === status)
@@ -238,7 +248,6 @@ function gh(world, args, input) {
       inputs,
       key: `${workflow.file}:${inputs.mode ?? 'deploy'}`,
       dispatched: true,
-      createdAt: new Date(world.now).toISOString(),
       headSha: world.main,
       artifacts: {},
       log: ''
@@ -254,11 +263,11 @@ function gh(world, args, input) {
     const runs = world.runs
       .filter((candidate) => candidate.file === flag(args, '--workflow'))
       .reverse()
-    return ok(
-      runs.map((candidate) => ({ databaseId: candidate.id, createdAt: candidate.createdAt }))
-    )
+    return ok(runs.map((candidate) => ({ databaseId: candidate.id })))
   }
-  if (args[1] === 'view' && args.includes('--log')) return ok(run.log)
+  if (args[1] === 'view' && args.includes('--log')) {
+    return world.unreadableLogs?.(run) ? { status: 1, stdout: '', stderr: 'HTTP 502' } : ok(run.log)
+  }
   if (args[1] === 'view') {
     return ok({
       status: 'completed',
@@ -300,7 +309,18 @@ function gcloud(world, args) {
     const revision = [world.serving, world.rollback].find(
       (candidate) => candidate.revision === args[3]
     )
-    return ok({ spec: { containers: [{ image: `${IMAGE_REPOSITORY}@${revision.digest}` }] } })
+    const cells = JSON.stringify(world.cells.map((id) => ({ id })))
+    return ok({
+      metadata: { creationTimestamp: new Date(revision.createdAt ?? START).toISOString() },
+      spec: {
+        containers: [
+          {
+            image: `${IMAGE_REPOSITORY}@${revision.digest}`,
+            env: [{ name: 'ORCA_RELAY_CELLS_JSON', value: cells }]
+          }
+        ]
+      }
+    })
   }
   if (args[0] === 'artifacts') return ok(`${world.registry[args[4]] ?? ''}\n`)
   if (args[0] === 'logging') {
@@ -325,26 +345,37 @@ function dependencies(world) {
     },
     print: (line) => world.printed.push(line),
     prompt: async (question) => {
-      world.prompts.push(question.match(/^Type (.+) to continue/)[1])
       world.questions = [...(world.questions ?? []), question]
-      return world.answer(question)
+      const answer = world.answer(question)
+      world.prompts.push(question.match(/^Type (\S+(?: [0-9a-f]{12})?) to continue/)[1])
+      return answer
     }
   }
 }
 
-function start(world, extra = [], deps = dependencies(world)) {
-  const argv = [
-    '--commit',
-    COMMIT,
-    '--state-directory',
-    mkdtempSync(join(tmpdir(), 'relay-deploy-test-')),
-    ...extra
-  ]
-  return createDriver(parseDriverArguments(argv), deps).run()
+const logDirectory = () => mkdtempSync(join(tmpdir(), 'relay-deploy-test-'))
+
+function drive(world, argv, deps = dependencies(world)) {
+  return createDriver(
+    parseDriverArguments([...argv, '--log-directory', logDirectory()]),
+    deps
+  ).run()
 }
 
-const resume = (world, statePath, deps = dependencies(world)) =>
-  createDriver(parseDriverArguments(['--resume', statePath]), deps).run()
+const start = (world, extra = [], deps) => drive(world, ['--commit', COMMIT, ...extra], deps)
+
+// Runs the exact command the last stop report printed.
+function rerun(world, deps) {
+  const command = world.printed
+    .filter((line) => line.includes('node dev/scripts/drive-relay-director-deploy.mjs'))
+    .at(-1)
+  const argv = command
+    .slice(command.indexOf('.mjs ') + 5)
+    .trim()
+    .split(' ')
+  world.printed.length = 0
+  return drive(world, argv, deps)
+}
 
 const stopped = (promise) =>
   promise.then(
@@ -361,18 +392,19 @@ function keys(world) {
 const dispatched = (world, key) => world.dispatches().filter((run) => run.key === key)
 const REHOME = (mode) => `${WORKFLOWS.rehome.file}:${mode}`
 const DEPLOY = `${WORKFLOWS.director.file}:deploy`
+const PUBLISH = `${WORKFLOWS.publish.file}:publish`
 const MONITOR = `${WORKFLOWS.monitor.file}:dry-run`
 const report = (world) => world.printed.join('\n')
+const live = (world) => [world.control.generation, world.control.enabled]
 
-test('runs the audited sequence with typed phrases and enables on the digests now serving', async () => {
+test('publishes before pausing, types every phrase, and enables on the digests now serving', async () => {
   const world = fakeWorld()
-  const result = await start(world)
-  assert.equal(result.done, true)
+  assert.equal((await start(world)).done, true)
   assert.deepEqual(keys(world), [
     'operate-relay-asia-admission:inspect',
     'operate-relay-production-rehome:inspect',
-    'operate-relay-production-rehome:pause',
     'publish-relay-production:publish',
+    'operate-relay-production-rehome:pause',
     'deploy-relay-production-director:deploy',
     'operate-relay-production-rehome:inspect',
     'monitor-relay-production:dry-run',
@@ -399,11 +431,6 @@ test('runs the audited sequence with typed phrases and enables on the digests no
     ],
     [NEW, OLD, '40']
   )
-  const [pause] = dispatched(world, REHOME('pause'))
-  assert.deepEqual(
-    [pause.inputs['expected-control-generation'], pause.inputs.confirmation],
-    ['39', 'PAUSE_REGIONAL_REHOMING']
-  )
   const [enable] = dispatched(world, REHOME('enable'))
   const [monitor] = dispatched(world, MONITOR)
   assert.deepEqual(
@@ -416,8 +443,7 @@ test('runs the audited sequence with typed phrases and enables on the digests no
     [NEW, NEW, '40', String(monitor.id)]
   )
   assert.equal(monitor.inputs['expected-general-cells'], 'production-gce-c27,production-gce-c7')
-  assert.deepEqual([world.control.generation, world.control.enabled], [41, true])
-  assert.match(readFileSync(join(dirname(result.statePath), 'driver.log'), 'utf8'), /DONE: serving/)
+  assert.deepEqual(live(world), [41, true])
 })
 
 test('a wrong phrase stops before the first mutation', async () => {
@@ -429,20 +455,61 @@ test('a wrong phrase stops before the first mutation', async () => {
   ])
 })
 
-test('rehome found disabled is neither paused nor enabled', async () => {
+test('F2: rehome found paused is never adopted; --rehome-disabled deploys and leaves it paused', async () => {
   const world = fakeWorld({ control: { ...CONTROL, generation: 52, enabled: false } })
-  await start(world)
+  assert.match(
+    (await stopped(start(world))).message,
+    /did not pause it.*--pause-run.*--rehome-disabled/s
+  )
+  assert.equal(dispatched(world, PUBLISH).length, 0)
+  await start(world, ['--rehome-disabled'])
   assert.equal(
     dispatched(world, REHOME('pause')).length + dispatched(world, REHOME('enable')).length,
     0
   )
   assert.equal(dispatched(world, DEPLOY)[0].inputs['expected-rehome-generation'], '52')
-  assert.match(report(world), /WARNING rehome was disabled when this deploy started/)
+  assert.deepEqual(live(world), [52, false])
 })
 
-test('dry run dispatches nothing, prints every step, and leaves nothing to resume', async () => {
+test('F2: main moving is caught before any rehome change, and after the pause it changes nothing', async () => {
+  const moved = fakeWorld({ main: 'b'.repeat(40) })
+  assert.match((await stopped(start(moved))).message, /not the reviewed/)
+  assert.equal(moved.dispatches().length, 0)
+
   const world = fakeWorld()
-  await start(world, ['--dry-run', '--configure', `production-gce-c34=${CELL}`])
+  const deps = dependencies(world)
+  const run = deps.run
+  deps.run = (program, args, input) => {
+    const result = run(program, args, input)
+    if (args[0] === 'workflow' && JSON.parse(input).mode === 'pause') world.main = 'b'.repeat(40)
+    return result
+  }
+  assert.equal((await start(world, [], deps)).done, true)
+  assert.deepEqual(live(world), [41, true])
+})
+
+test('a publish whose log disagrees with the registry stops before rehome is touched', async () => {
+  const world = fakeWorld({ pushLogDigest: CELL })
+  assert.match((await stopped(start(world))).message, /tag moved/)
+  assert.equal(dispatched(world, REHOME('pause')).length, 0)
+  assert.match(report(world), /rehome: generation 39 as last read, enabled/)
+})
+
+test('dry run dispatches nothing and prints every step', async () => {
+  const world = fakeWorld()
+  const directory = logDirectory()
+  await createDriver(
+    parseDriverArguments([
+      '--commit',
+      COMMIT,
+      '--dry-run',
+      '--configure',
+      `production-gce-c34=${CELL}`,
+      '--log-directory',
+      directory
+    ]),
+    dependencies(world)
+  ).run()
   assert.equal(world.dispatches().length, 0)
   assert.equal(world.prompts.length, 0)
   const plan = world.printed.filter((line) => line.includes(' plan '))
@@ -451,18 +518,14 @@ test('dry run dispatches nothing, prints every step, and leaves nothing to resum
   assert.ok(
     plan.some((line) => line.includes('"confirmation":"<operator types CONFIGURE_ASIA_DIRECTOR>"'))
   )
-  assert.ok(plan.some((line) => line.includes('plan soak: wait 5 min')))
-  const logLine = world.printed[0].match(/ dry run: commit/)
-  assert.ok(logLine)
-  const directory = mkdtempSync(join(tmpdir(), 'relay-deploy-test-'))
-  await start(world, ['--dry-run', '--state-directory', directory])
-  const [run] = (await import('node:fs')).readdirSync(directory)
-  assert.equal(existsSync(join(directory, run, 'state.json')), false)
-  await assert.rejects(resume(world, join(directory, run, 'state.json')), /ENOENT/)
+  assert.deepEqual(
+    readdirSync(directory).map((name) => name.endsWith('-dry-run.log')),
+    [true]
+  )
 })
 
-test('an in-flight relay workflow on any page stops the preflight', async () => {
-  const world = fakeWorld({
+test('an in-flight relay workflow stops the preflight; no printed run URL stops the dispatch', async () => {
+  const busy = fakeWorld({
     active: [
       {
         id: 9,
@@ -472,145 +535,97 @@ test('an in-flight relay workflow on any page stops the preflight', async () => 
       }
     ]
   })
-  assert.match((await stopped(start(world))).message, /in flight/)
-  assert.equal(world.dispatches().length, 0)
+  assert.match((await stopped(start(busy))).message, /in flight/)
+  assert.equal(busy.dispatches().length, 0)
+  const silent = fakeWorld({ printUrl: false })
+  assert.match((await stopped(start(silent))).message, /printed no run URL/)
 })
 
-test('a main that moved past the reviewed commit stops the preflight', async () => {
-  const world = fakeWorld({ main: 'b'.repeat(40) })
-  assert.match((await stopped(start(world))).message, /not the reviewed/)
-})
-
-test('without a printed run URL the driver stops; resume adopts the one stable new run', async () => {
-  const world = fakeWorld({ printUrl: false })
-  const error = await stopped(start(world))
-  assert.match(error.message, /printed no run URL/)
-  world.printUrl = true
-  assert.equal((await resume(world, error.statePath)).done, true)
-  assert.equal(dispatched(world, `${WORKFLOWS.admission.file}:inspect`).length, 2)
-})
-
-test('an interrupted dispatch that created no run is dispatched again, not confused with an earlier run', async () => {
+test('F1: an interrupt while the pause is in flight says rehome is changing, and the printed command finishes', async () => {
   const world = fakeWorld()
   const deps = dependencies(world)
-  const run = deps.run
-  let refused = false
-  deps.run = (program, args, input) => {
-    if (!refused && args[0] === 'workflow' && JSON.parse(input).mode === 'pause') {
-      refused = true
-      return { status: 1, stdout: '', stderr: 'HTTP 502' }
+  let driver
+  deps.stream = () => {
+    if (world.dispatches().at(-1)?.inputs.mode === 'pause' && !world.interrupted) {
+      world.interrupted = true
+      driver.interrupt('SIGINT')
+      throw new Error('killed')
     }
-    return run(program, args, input)
+    return 0
   }
-  const error = await stopped(start(world, [], deps))
-  assert.equal(JSON.parse(readFileSync(error.statePath, 'utf8')).steps.pause.status, 'dispatching')
-  await resume(world, error.statePath, deps)
+  driver = createDriver(
+    parseDriverArguments(['--commit', COMMIT, '--log-directory', logDirectory()]),
+    deps
+  )
+  await driver.run().catch(() => {})
+  assert.match(
+    report(world),
+    /STOPPED: interrupted by SIGINT[\s\S]*REHOME IS CHANGING: the pause run .* applies on its own/
+  )
+  assert.match(report(world), /finish with: cd cloud && .* --publish-run \d+ --pause-run \d+/)
+  assert.equal(await rerun(world).then((result) => result.done), true)
   assert.equal(dispatched(world, REHOME('pause')).length, 1)
-  assert.equal(world.control.enabled, true)
+  assert.equal(dispatched(world, PUBLISH).length, 1)
+  assert.deepEqual(live(world), [41, true])
 })
 
-test('a publish whose log disagrees with the registry stops before deploy', async () => {
-  const world = fakeWorld({ pushLogDigest: CELL })
-  assert.match((await stopped(start(world))).message, /tag moved/)
-  assert.equal(dispatched(world, DEPLOY).length, 0)
+test('F1: an interrupt while the enable is in flight never says rehome is paused', async () => {
+  const world = fakeWorld()
+  const deps = dependencies(world)
+  let driver
+  deps.stream = () => {
+    if (world.dispatches().at(-1)?.inputs.mode === 'enable') driver.interrupt('SIGTERM')
+    return 0
+  }
+  driver = createDriver(
+    parseDriverArguments(['--commit', COMMIT, '--log-directory', logDirectory()]),
+    deps
+  )
+  await driver.run()
+  const text = report(world)
+  assert.match(
+    text,
+    /REHOME IS CHANGING: the enable run [\s\S]*It enables rehome, or disables it again if it fails/
+  )
+  assert.doesNotMatch(text.slice(text.indexOf('interrupted')), /REHOME IS PAUSED/)
 })
 
-test('a pause that applied and then failed is reported as PAUSED, and resume finishes', async () => {
-  const world = fakeWorld({ fail: { [REHOME('pause')]: 'after-apply' } })
-  const error = await stopped(start(world))
-  assert.match(report(world), /REHOME IS PAUSED by this driver at generation 40/)
-  assert.match(report(world), /--resume /)
-  await resume(world, error.statePath)
-  assert.equal(dispatched(world, REHOME('pause')).length, 1)
-  assert.deepEqual([world.control.generation, world.control.enabled], [41, true])
-})
-
-test('a pause run that reports nothing is UNCONFIRMED, and a pause it did not make is never lifted', async () => {
+test('a pause run that printed nothing is PAUSE UNCONFIRMED, and a later safety pause is never lifted', async () => {
   const world = fakeWorld({ fail: { [REHOME('pause')]: 'before-apply' } })
-  const error = await stopped(start(world))
-  assert.match(report(world), /REHOME STATE UNCONFIRMED.*MAY BE PAUSED/)
-  // A director safety pause lands while the operator reads the report.
-  world.control = { ...world.control, generation: 40, enabled: false }
-  assert.match((await stopped(resume(world, error.statePath))).message, /pass --rehome-generation/)
-  const adopt = parseDriverArguments(['--resume', error.statePath, '--rehome-generation', '40'])
-  const refusal = await stopped(createDriver(adopt, dependencies(world)).run())
-  assert.match(refusal.message, /which this driver did not pause/)
+  await stopped(start(world))
+  assert.match(report(world), /PAUSE UNCONFIRMED: .* printed no pause. Rehome MAY BE PAUSED/)
+  // A director safety pause lands; the operator follows the report's command.
+  nextGeneration(world, false)
+  assert.match((await stopped(rerun(world))).message, /printed no pause of its own/)
   assert.equal(dispatched(world, REHOME('enable')).length, 0)
 })
 
-test('its own pause adopted after a crash mid-dispatch is recognised, and resume finishes', async () => {
-  const world = fakeWorld()
-  const deps = dependencies(world)
-  const run = deps.run
-  let crashed = false
-  deps.run = (program, args, input) => {
-    const result = run(program, args, input)
-    if (!crashed && args[0] === 'workflow' && JSON.parse(input).mode === 'pause') {
-      crashed = true
-      return { status: 1, stdout: '', stderr: 'killed after GitHub accepted the dispatch' }
-    }
-    return result
-  }
-  const error = await stopped(start(world, [], deps))
-  assert.equal((await resume(world, error.statePath, deps)).done, true)
-  assert.equal(dispatched(world, REHOME('pause')).length, 1)
-  assert.deepEqual([world.control.generation, world.control.enabled], [41, true])
-})
-
-test("a foreign rehome run adopted after a crash is never taken for this driver's pause", async () => {
-  const world = fakeWorld()
-  const deps = dependencies(world)
-  const run = deps.run
-  let crashed = false
-  deps.run = (program, args, input) => {
-    if (!crashed && args[0] === 'workflow' && JSON.parse(input).mode === 'pause') {
-      crashed = true
-      // The operator pauses by hand and inspects while the driver is down.
-      world.control = { ...world.control, generation: 40, enabled: false }
-      world.runs.push({
-        id: world.nextRunId++,
-        file: WORKFLOWS.rehome.file,
-        name: WORKFLOWS.rehome.name,
-        createdAt: new Date(world.now).toISOString(),
-        headSha: COMMIT,
-        conclusion: 'success',
-        log: controlLine('inspect', world.control, world.selector)
-      })
-      return { status: 1, stdout: '', stderr: 'killed' }
-    }
-    return run(program, args, input)
-  }
-  const error = await stopped(start(world, [], deps))
-  const refusal = await stopped(resume(world, error.statePath, deps))
-  assert.match(refusal.message, /which this driver did not pause/)
-  assert.equal(JSON.parse(readFileSync(error.statePath, 'utf8')).pausedByDriver, undefined)
-  assert.equal(dispatched(world, REHOME('enable')).length, 0)
-})
-
-test('a failed deploy reports the pause and resume finishes without pausing or publishing again', async () => {
+test('a failed deploy leaves its pause owned, and the printed command finishes without pausing or publishing again', async () => {
   const world = fakeWorld({ fail: { [DEPLOY]: 'before-apply' } })
-  const error = await stopped(start(world))
-  assert.match(report(world), /REHOME IS PAUSED/)
+  await stopped(start(world))
+  assert.match(report(world), /REHOME IS PAUSED by this driver at generation 40/)
   assert.match(report(world), /rollback point: orca-cloud-relay-00700-qor/)
-  assert.match(report(world), /director now: serving orca-cloud-relay-00700-qor/)
-  await resume(world, error.statePath)
+  await rerun(world)
   assert.equal(dispatched(world, REHOME('pause')).length, 1)
-  assert.equal(dispatched(world, `${WORKFLOWS.publish.file}:publish`).length, 1)
+  assert.equal(dispatched(world, PUBLISH).length, 1)
   assert.equal(dispatched(world, DEPLOY).length, 2)
-  assert.equal(world.control.enabled, true)
+  assert.deepEqual(live(world), [41, true])
 })
 
-test('a frozen monitor stops with its recorded failures; resume runs a fresh one', async () => {
+test('a frozen monitor stops with its failures; the re-run runs a fresh one', async () => {
   const failures = [
     { source: 'auth', code: 'threshold_equal', signal: 'health', observed: 0, threshold: 1 }
   ]
   const world = fakeWorld({ monitorState: { frozenAt: '2026-10-05T05:30:00Z', failures } })
-  const error = await stopped(start(world))
-  assert.match(error.message, /incomplete or stale[\s\S]*auth threshold_equal health 0 1/)
+  assert.match(
+    (await stopped(start(world))).message,
+    /incomplete or stale[\s\S]*auth threshold_equal health 0 1/
+  )
   world.monitorState = {}
-  await resume(world, error.statePath)
+  await rerun(world)
   assert.equal(dispatched(world, MONITOR).length, 2)
-  assert.equal(world.control.enabled, true)
+  assert.equal(dispatched(world, DEPLOY).length, 1)
+  assert.deepEqual(live(world), [41, true])
 })
 
 test('stale monitor evidence is not spent on an enable', async () => {
@@ -619,7 +634,6 @@ test('stale monitor evidence is not spent on an enable', async () => {
   const prompt = deps.prompt
   deps.prompt = async (question) => {
     const answer = await prompt(question)
-    // The operator arms the enable, then the monitor result arrives late.
     if (answer === 'ENABLE_REGIONAL_REHOMING') {
       const completed = world.now + 16 * 60_000 - MONITOR_MAX_AGE_AT_ENABLE_MS - 1000
       const at = (offset) => new Date(completed - offset).toISOString()
@@ -636,19 +650,67 @@ test('stale monitor evidence is not spent on an enable', async () => {
   assert.equal(dispatched(world, REHOME('enable')).length, 0)
 })
 
-test('the ops-log 05:41Z case: a failed enable recovers closed and resume enables on fresh evidence', async () => {
-  const world = fakeWorld({ fail: { [REHOME('enable')]: 'after-apply' } })
-  const error = await stopped(start(world))
+test('the ops-log 05:41Z case: an enable that failed before applying is finished by the printed command', async () => {
+  const world = fakeWorld({ fail: { [REHOME('enable')]: 'not-applied' } })
+  await stopped(start(world))
   assert.match(report(world), /REHOME IS PAUSED by this driver at generation 40/)
-  await resume(world, error.statePath)
-  assert.equal(dispatched(world, MONITOR).length, 2)
-  assert.equal(dispatched(world, REHOME('enable')).length, 2)
-  assert.deepEqual([world.control.generation, world.control.enabled], [41, true])
+  await rerun(world)
+  assert.deepEqual(live(world), [41, true])
 })
 
-test('configure waits out a soak, gates on director 5xx, and takes a typed phrase', async () => {
+test('an enable whose own recovery paused rehome again hands ownership to that run', async () => {
+  const world = fakeWorld({ fail: { [REHOME('enable')]: 'applied-then-recovered' } })
+  await stopped(start(world))
+  const [enable] = dispatched(world, REHOME('enable'))
+  assert.match(
+    report(world),
+    new RegExp(`REHOME IS PAUSED by this driver at generation 42 \\(.*${enable.id}\\)`)
+  )
+  await rerun(world)
+  assert.deepEqual(live(world), [43, true])
+})
+
+test('F3: a director safety pause found by the enable recovery is never adopted or lifted', async () => {
+  const world = fakeWorld({ fail: { [REHOME('enable')]: 'safety-pause' } })
+  await stopped(start(world))
+  assert.match(report(world), /rehome: generation 43 as last read, PAUSED, not by this driver/)
+  const stop = report(world).slice(report(world).indexOf('STOPPED'))
+  assert.doesNotMatch(stop, /--pause-run/)
+  // The deploy is done, so the printed command has nothing left to do and leaves rehome alone.
+  assert.equal((await rerun(world)).done, true)
+  assert.match(report(world), /rehome untouched/)
+  const [pause] = dispatched(world, REHOME('pause'))
+  const claim = await stopped(
+    drive(world, [
+      '--commit',
+      COMMIT,
+      '--publish-run',
+      String(dispatched(world, PUBLISH)[0].id),
+      '--pause-run',
+      String(pause.id)
+    ])
+  )
+  assert.match(claim.message, /not the pause .* made at 40/)
+  assert.equal(dispatched(world, REHOME('enable')).length, 1)
+  assert.deepEqual(live(world), [43, false])
+})
+
+test('P1: a green enable with an unreadable log is ENABLE UNCONFIRMED, and the printed command settles it', async () => {
+  const world = fakeWorld({ unreadableLogs: (run) => run.inputs?.mode === 'enable' })
+  await stopped(start(world))
+  assert.match(
+    report(world),
+    /ENABLE UNCONFIRMED: .* Rehome may be enabled, or still paused at generation 40/
+  )
+  world.unreadableLogs = undefined
+  assert.equal((await rerun(world)).done, true)
+  assert.equal(dispatched(world, REHOME('enable')).length, 1)
+  assert.deepEqual(live(world), [41, true])
+})
+
+test('configure waits out a soak anchored at the traffic switch, then takes a typed phrase', async () => {
   const world = fakeWorld()
-  world.statePath = (await start(world, ['--configure', `production-gce-c34=${CELL}`])).statePath
+  await start(world, ['--configure', `production-gce-c34=${CELL}`])
   const [configure] = dispatched(world, `${WORKFLOWS.admission.file}:configure`)
   assert.deepEqual(
     [
@@ -660,82 +722,55 @@ test('configure waits out a soak, gates on director 5xx, and takes a typed phras
     ['production-gce-c34', CELL, NEW, '345']
   )
   assert.ok(world.prompts.includes('CONFIGURE_ASIA_DIRECTOR'))
-  assert.match(report(world), /soak: director 5xx 10 in 5 min after the deploy, 10 before it/)
-  // The window opens a minute before the deploy run completed, when traffic moved, and is read
-  // only after a minute of log ingestion lag.
   const [before, after] = world.reads
   assert.equal(after.to - after.from, 5 * 60_000)
-  const deploy = JSON.parse(readFileSync(world.statePath, 'utf8')).steps.deploy
-  assert.equal(after.from, Date.parse(deploy.completedAt) - 60_000)
+  // The deploy ran 4 minutes; traffic moved a minute before it completed.
+  assert.equal(after.from, START + 3 * 60_000)
+  assert.equal(before.to, START)
   assert.ok(after.readAt >= after.to + 60_000)
-  assert.ok(before.to <= after.from)
+})
 
-  const spiking = fakeWorld({ director5xx: (from) => (from >= START ? 200 : 10) })
+test('F5: a tripped soak is judged again on fresh traffic by the printed command', async () => {
+  const world = fakeWorld({ director5xx: (from) => (from >= START ? 200 : 10) })
   assert.match(
-    (await stopped(start(spiking, ['--configure', `production-gce-c34=${CELL}`]))).message,
+    (await stopped(start(world, ['--configure', `production-gce-c34=${CELL}`]))).message,
     /5xx rose from 10 to 200/
   )
-  assert.equal(dispatched(spiking, `${WORKFLOWS.admission.file}:configure`).length, 0)
+  assert.match(report(world), /REHOME IS PAUSED by this driver at generation 40/)
+  world.director5xx = () => 10
+  world.now += 30 * 60_000
+  const rerunAt = world.now
+  await rerun(world)
+  assert.equal(dispatched(world, `${WORKFLOWS.admission.file}:configure`).length, 1)
+  assert.ok(world.reads.at(-1).from >= rerunAt)
+  assert.deepEqual(live(world), [41, true])
 })
 
-test('resume adopts a monitor that was in flight when the driver stopped', async () => {
-  const world = fakeWorld({ fail: { [MONITOR]: 'before-apply' } })
-  const error = await stopped(start(world))
-  const state = JSON.parse(readFileSync(error.statePath, 'utf8'))
-  const monitorRun = {
-    ...dispatched(world, MONITOR)[0],
-    id: world.nextRunId++,
-    key: 'adopted',
-    artifacts: {}
-  }
-  simulate(world, monitorRun)
-  world.runs.push(monitorRun)
-  state.steps.monitor = {
-    status: 'dispatched',
-    workflow: WORKFLOWS.monitor.file,
-    runId: monitorRun.id,
-    attempt: 1,
-    headSha: COMMIT,
-    url: 'u'
-  }
-  writeFileSync(error.statePath, JSON.stringify(state))
-  await resume(world, error.statePath)
-  assert.equal(dispatched(world, MONITOR).length, 1)
-  assert.equal(
-    dispatched(world, REHOME('enable'))[0].inputs['monitor-run-id'],
-    String(monitorRun.id)
-  )
-})
-
-test('an interrupt prints the state and the resume command', async () => {
+test('P8: running the command again after DONE dispatches and asks nothing', async () => {
   const world = fakeWorld()
-  const deps = dependencies(world)
-  const config = parseDriverArguments([
-    '--commit',
-    COMMIT,
-    '--state-directory',
-    mkdtempSync(join(tmpdir(), 'relay-deploy-test-'))
-  ])
-  let driver
-  deps.stream = () => {
-    if (world.dispatches().at(-1)?.key === MONITOR) driver.interrupt('SIGINT')
-    return 0
-  }
-  driver = createDriver(config, deps)
-  await driver.run()
-  const text = report(world)
-  assert.match(
-    text,
-    /STOPPED: interrupted by SIGINT[\s\S]*REHOME IS PAUSED by this driver at generation 40[\s\S]*--resume /
+  await start(world)
+  const before = world.dispatches().length
+  world.prompts.length = 0
+  const publishRun = dispatched(world, PUBLISH)[0].id
+  assert.equal(
+    (await drive(world, ['--commit', COMMIT, '--publish-run', String(publishRun)])).done,
+    true
   )
+  assert.equal(world.dispatches().length, before)
+  assert.equal(world.prompts.length, 0)
+  assert.match(report(world), /DONE: .* rehome untouched/)
 })
 
 test('argument parsing and plan helpers fail closed', () => {
   assert.throws(() => parseDriverArguments([]), /missing --commit/)
   assert.throws(() => parseDriverArguments(['--commit', 'abc']), /full commit SHA/)
   assert.throws(
-    () => parseDriverArguments(['--resume', 'state.json', '--dry-run']),
-    /takes its commit/
+    () => parseDriverArguments(['--commit', COMMIT, '--pause-run', 'x']),
+    /must be a run ID/
+  )
+  assert.throws(
+    () => parseDriverArguments(['--commit', COMMIT, '--pause-run', '5', '--rehome-disabled']),
+    /contradict/
   )
   assert.throws(
     () => parseDriverArguments(['--commit', COMMIT, '--configure', 'production-gce-c34']),
@@ -753,12 +788,23 @@ test('argument parsing and plan helpers fail closed', () => {
     () => validateDispatchInputs({ 'image-digest': 'sha256:abc' }),
     /not a sha256 digest/
   )
-  assert.throws(
-    () => validateDispatchInputs({ 'expected-control-generation': '4x' }),
-    /not an integer/
-  )
   assert.ok(blocksDeploy(relayWorkflowPath('push-deploy.yml')))
+  assert.ok(blocksDeploy(`${relayWorkflowPath('push-deploy.yml')}@refs/heads/main`))
   assert.ok(!blocksDeploy(relayWorkflowPath('monitor-relay-clock-skew.yml')))
-  assert.equal(rehomeControlFromLog(controlLine('pause', CONTROL), 'pause').control.generation, 39)
-  assert.throws(() => rehomeControlFromLog('nothing', 'pause'), /printed no pause control/)
+  const disabled = { ...CONTROL, enabled: false }
+  assert.equal(pausedGeneration(rehomeResultFromLog(controlLine('pause', disabled))), 39)
+  assert.equal(
+    pausedGeneration(
+      rehomeResultFromLog(controlLine('recover-enable', disabled, { recovered: true }))
+    ),
+    39
+  )
+  assert.equal(
+    pausedGeneration(
+      rehomeResultFromLog(controlLine('recover-enable', disabled, { recovered: false }))
+    ),
+    undefined
+  )
+  assert.equal(pausedGeneration(rehomeResultFromLog(controlLine('inspect', disabled))), undefined)
+  assert.throws(() => rehomeResultFromLog('nothing'), /printed no control/)
 })
