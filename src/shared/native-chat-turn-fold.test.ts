@@ -12,7 +12,7 @@ function row(overrides: Partial<NativeChatTurnFoldRow> = {}): NativeChatTurnFold
     rendersProse: true,
     outlivesTurn: false,
     reportsFailure: false,
-    reportsCompaction: false,
+    explainsTurn: false,
     ...overrides
   }
 }
@@ -198,9 +198,9 @@ describe('nativeChatTurnFold', () => {
     const rows = [
       row({ role: 'user' }),
       row(),
-      row({ role: 'system', reportsCompaction: true }),
+      row({ role: 'system', explainsTurn: true }),
       row(),
-      row({ role: 'system', reportsCompaction: true })
+      row({ role: 'system', explainsTurn: true })
     ]
     const { foldedRows } = nativeChatTurnFold({
       rows,

@@ -128,8 +128,10 @@ export function buildNativeChatTranscriptSlots(
       (block) => isSubagentGroupBlock(block) || isBackgroundTaskBlock(block)
     ),
     reportsFailure: message.blocks.some((block) => block.type === 'text' && block.tone === 'error'),
-    reportsCompaction: message.blocks.some(
-      (block) => block.type === 'text' && block.presentation === 'compaction'
+    explainsTurn: message.blocks.some(
+      (block) =>
+        block.type === 'text' &&
+        (block.presentation === 'compaction' || block.presentation === 'response-interrupted')
     )
   }))
   // Liveness is the turn's, not any one call's: the run at the frontier stays
