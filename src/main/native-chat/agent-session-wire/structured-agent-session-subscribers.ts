@@ -4,10 +4,7 @@
 // ago gets a reset while a caught-up one gets a batch from the same publish.
 // Nothing raw reaches a subscriber — every event carries reducer output.
 
-import type {
-  AgentJournalCursor,
-  AgentJournalResetReason
-} from '../../../shared/agent-session-journal-types'
+import type { AgentJournalCursor } from '../../../shared/agent-session-journal-types'
 import type {
   AgentSessionSlashCommand,
   AgentSessionSubscribeEvent,
@@ -107,7 +104,8 @@ export class AgentSessionSubscribers {
       })
       subscriber.cursor = page.liveCursor ?? page.window.nextCursor
     }
-    return () => this.close(input.sessionId, input.id)
+    const { sessionId, id } = subscriber
+    return () => this.close(sessionId, id)
   }
 
   close(sessionId: string, id: string): void {
@@ -145,32 +143,13 @@ export class AgentSessionSubscribers {
     }
   }
 
-  /** Force every subscriber back to a bounded tail page — recovery, epoch
-   *  rollover, an unreadable schema. */
-  reset(
-    sessionId: string,
-    journal: AgentSessionJournal,
-    reason: AgentJournalResetReason,
-    fence: number
-  ): void {
-    this.replay(sessionId, journal, fence, { type: 'reset', reset: reason })
-  }
-
+  /** Every subscriber back to a bounded tail page. */
   snapshot(sessionId: string, journal: AgentSessionJournal, fence: number): void {
-    this.replay(sessionId, journal, fence, { type: 'snapshot' })
-  }
-
-  private replay(
-    sessionId: string,
-    journal: AgentSessionJournal,
-    fence: number,
-    frame: { type: 'snapshot' } | { type: 'reset'; reset: AgentJournalResetReason }
-  ): void {
     const page = readAgentSessionHydrationPage(journal, fence)
     const hostNow = this.now()
     for (const subscriber of this.subscribers(sessionId)) {
       this.emit(subscriber, {
-        ...frame,
+        type: 'snapshot',
         sessionId,
         page,
         fence,

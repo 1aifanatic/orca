@@ -119,7 +119,7 @@ describe('the background-task roster on subscriber frames', () => {
     expect(rosterOf(events[0])).toEqual(MONITORING)
   })
 
-  it('carries the current roster on snapshot and reset frames, so a running task stays shown', async () => {
+  it('carries the current roster on snapshot frames, so a running task stays shown', async () => {
     const journal = await openJournal('replay')
     const subscribers = new AgentSessionSubscribers({ readBackgroundTasks: () => MONITORING })
     const events: AgentSessionSubscribeEvent[] = []
@@ -132,12 +132,10 @@ describe('the background-task roster on subscriber frames', () => {
     })
 
     subscribers.snapshot(SESSION, journal, 2)
-    subscribers.reset(SESSION, journal, 'epoch_changed', 2)
 
     expect(events.map((event) => [event.type, rosterOf(event)])).toEqual([
       ['snapshot', MONITORING],
-      ['snapshot', MONITORING],
-      ['reset', MONITORING]
+      ['snapshot', MONITORING]
     ])
   })
 

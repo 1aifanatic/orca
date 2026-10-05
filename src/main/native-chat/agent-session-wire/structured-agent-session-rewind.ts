@@ -43,7 +43,6 @@ export async function rewindStructuredAgentSession(
       prepareSession: openWithAgent(context, params.envelope),
       journal: () => context.sessions.get(sessionId)?.journal,
       publish: (journal) => context.publish(sessionId, journal),
-      flushStreamedEvents: context.flushStreamedEvents,
       now: context.now,
       plan: {
         method: 'agentSession.rewind',
@@ -77,9 +76,6 @@ export async function rewindStructuredAgentSession(
           }
           if (conversationCommandBlocked(ctx, record, context.readChildWork(sessionId))) {
             return rewindRefusal('busy')
-          }
-          if (ctx.journal.isReadOnly) {
-            return rewindRefusal('unsupported')
           }
           const snapshot = ctx.journal.snapshot()
           const providerKeys = new Map(

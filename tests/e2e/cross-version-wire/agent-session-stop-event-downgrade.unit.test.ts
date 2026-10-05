@@ -4,14 +4,19 @@ import { join } from 'node:path'
 import { expect, test } from 'vitest'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
+  AGENT_SESSION_JOURNAL_SCHEMA_VERSION,
   type AgentJournalItemIdentity,
   type AgentSessionJournalIdentity
 } from '../../../src/shared/agent-session-journal-types'
 import Database from '../../../src/main/sqlite/sync-database'
 import { journalDatabasePath } from '../../../src/main/native-chat/agent-session-journal/journal-host-database'
 import {
+  closeTestJournalHostDatabase,
   createTrackedJournalOpener,
-  liveTestJournalRows
+  insertTestJournalRowJson,
+  liveTestJournalRows,
+  openTestJournalHostDatabase,
+  SAVED_BY_NEWER_ORCA
 } from '../../../src/main/native-chat/agent-session-journal/journal-host-database-test-support'
 import type { JournalRow } from '../../../src/main/native-chat/agent-session-journal/journal-row-schema'
 import { importReleaseCheckoutModule, materializeReleaseCheckout } from './release-checkout'
@@ -54,6 +59,7 @@ type OldReplay = {
   truncateFrom?: number
 }
 
+// Both downgrade probes load real old builds, including cold extraction and transforms.
 test("an older build keeps every row around a Stop's event and a Resume, and folds the rows after them", async () => {
   const directory = mkdtempSync(join(tmpdir(), 'orca-stop-event-downgrade-'))
   const journals = createTrackedJournalOpener()
@@ -69,6 +75,7 @@ test("an older build keeps every row around a Stop's event and a Resume, and fol
     await append(0, 'before the Stop')
     const beforeMarks = journal.cursor()
     await journal.appendStopEvent({ reason: 'user-stop', turnId: 'turn-1', caller: 'client-1' }, 1)
+    await journal.appendStopEvent({ reason: 'user-close', turnId: 'turn-1' }, 1)
     await journal.appendQueueResume(1)
     const afterMarks = journal.cursor()
     await append(1, 'after the Stop')
@@ -146,7 +153,7 @@ test("an older build keeps every row around a Stop's event and a Resume, and fol
     await journals.closeAll()
     rmSync(directory, { recursive: true, force: true })
   }
-})
+}, 120_000)
 
 type OlderJournal = {
   isReadOnly: boolean
@@ -211,12 +218,70 @@ test("an older build opens this build's journal writable and appends to it; the 
 
     // Upgraded again: the older build's row folds, and the person's Stop still pauses the queue.
     const upgraded = await journals.open({ identity: IDENTITY, stateDirectory: directory })
-    expect(upgraded.isReadOnly).toBe(false)
     expect(upgraded.cursor().sequence).toBe(wrote.cursor.sequence + 1)
     expect(itemIds(upgraded)).toEqual([...wrote.items, 'codex:thread-1:turn-1:2'])
     expect(upgraded.queuedMessages.pauses('host-a').map((pause) => pause.reason)).toEqual([
       'stopped'
     ])
+  } finally {
+    await journals.closeAll()
+    rmSync(directory, { recursive: true, force: true })
+  }
+}, 120_000)
+
+// Why a Stop's event cannot have a row kind of its own yet: this build keeps a kind it does not know
+// and refuses the load as a newer Orca's chat, but a build from before that deletes the journal from
+// it. So a Stop kind ships
+// its reader first and is written once no supported build lacks that reader, or is written at a
+// bumped `v`. Move the baseline to the first release with this rule, and the older build keeps the
+// row too.
+test("this build keeps a newer build's row kind and refuses the load; a build before it deletes it", async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'orca-newer-kind-downgrade-'))
+  const journals = createTrackedJournalOpener()
+  const newerKinds = () => storedRows(directory).filter((row) => row.includes('"future-mark"'))
+  try {
+    const scope = { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    const journal = await journals.open({ identity: IDENTITY, stateDirectory: directory })
+    await journal.appendItem(item(0), { kind: 'status', text: 'before' }, scope)
+    const at = journal.cursor().sequence + 1
+    const newer = JSON.stringify({
+      v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION,
+      kind: 'future-mark',
+      epoch: journal.epoch,
+      seq: at,
+      fence: 1,
+      ts: 2_000,
+      payload: { said: 'by a newer build' }
+    })
+    await journals.closeAll()
+    insertTestJournalRowJson(
+      openTestJournalHostDatabase(directory).db,
+      IDENTITY.sessionId,
+      at,
+      newer
+    )
+    closeTestJournalHostDatabase(directory)
+    const rowsBefore = storedRows(directory)
+
+    await expect(
+      journals.open({ identity: IDENTITY, stateDirectory: directory })
+    ).rejects.toMatchObject(SAVED_BY_NEWER_ORCA)
+    await journals.closeAll()
+    expect(storedRows(directory)).toEqual(rowsBefore)
+    expect(newerKinds()).toEqual([newer])
+
+    const checkout = await materializeReleaseCheckout(WRITABLE_BASELINE_REF)
+    const support = await importReleaseCheckoutModule(
+      checkout,
+      `${JOURNAL}/journal-host-database-test-support.ts`
+    )
+    const older = releaseExport<() => OlderOpener>(support, 'createTrackedJournalOpener')()
+    try {
+      await older.open({ identity: IDENTITY, stateDirectory: directory })
+    } finally {
+      await older.closeAll()
+    }
+    expect(newerKinds()).toEqual([])
   } finally {
     await journals.closeAll()
     rmSync(directory, { recursive: true, force: true })

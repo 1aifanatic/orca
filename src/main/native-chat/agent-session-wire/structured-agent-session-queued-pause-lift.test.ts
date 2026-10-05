@@ -4,8 +4,10 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import {
   HOST_TEST_SESSION,
+  HOST_TEST_THREAD as THREAD,
   hostTestMessage,
   hostTestOperationId
 } from './structured-agent-session-host-test-data'
@@ -92,8 +94,9 @@ describe("a Stop's queue pause", () => {
   it('survives a restart, and a send made after the Stop still ends it when its turn starts there', async () => {
     const draftId = await stoppedDraft()
     const inFlight = await handedOverUserSend('sent before the restart')
-    // Derived from the journal, not remembered: a restart forgets nothing it needs.
-    await rig.restartHostProcess()
+    // Derived from the journal, not remembered: a restart forgets nothing it needs. The process
+    // dies with no close, as a quit writes no Stop event to end the pause either.
+    rig.crashRestartHostProcess()
     expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
     await rig.settleAccepted(inFlight, 'after-restart')
     // The Stop's pause is over; the restart's own lasts until a turn asked for since it.
@@ -447,20 +450,25 @@ describe('Resume', () => {
 })
 
 describe('a failed Stop', () => {
-  it('records nothing when it fails before taking effect, so the queue sends as if no Stop was pressed', async () => {
-    const working = await rig.workingSend()
+  // Withdrawing is bookkeeping: its failure is reported, and the Stop still interrupts and pauses.
+  it('still takes effect when its withdrawal fails, and pauses the queue', async () => {
+    await rig.workingSend()
     const draftId = await queuedDraft('queued before the stop')
     const reject = vi
       .spyOn(AgentSessionJournal.prototype, 'rejectQueuedSubmissions')
       .mockRejectedValueOnce(new Error('disk full'))
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     try {
-      await expect(rig.stop()).rejects.toThrow('disk full')
+      expect(await rig.stop()).toMatchObject({ ok: true })
+      expect(warned).toHaveBeenCalledWith(
+        "[agent-session] stop-queued-bookkeeping: Stop's withdrawal failed",
+        expect.objectContaining({ step: 'withdrawal', error: new Error('disk full') })
+      )
     } finally {
       reject.mockRestore()
+      warned.mockRestore()
     }
-    expect(await rig.queuePause()).toBeNull()
-    await rig.settleAccepted(working, 'working')
-    await eventually(async () => expect(await rig.handoff(draftId)).toBeDefined())
+    await expectPaused(draftId)
   })
 
   it('keeps its pause when it fails after the interrupt reached the agent', async () => {
@@ -481,6 +489,52 @@ describe('a failed Stop', () => {
     } finally {
       failing.mockRestore()
     }
+    await expectPaused(draftId)
+  })
+
+  // The drain shares the Stop's lane, so a failed Stop must hold it until its pause lands.
+  it('keeps its pause when it fails while its writes wait behind owed work', async () => {
+    const turn = { provider: 'codex' as const, threadId: THREAD, turnId: 'turn-w', ordinal: 900 }
+    const turnRow = (state: 'running' | 'completed') => {
+      rig
+        .providerEvents()
+        .appendItem(
+          turn,
+          { kind: 'turn', turnId: 'turn-w', state, startedAt: 1 },
+          { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+        )
+    }
+    const working = await rig.workingSend()
+    turnRow('running')
+    await rig.settleAccepted(working, 'w')
+    const draftId = await queuedDraft('paused by stop')
+    // The interrupt ends the turn, so the drain runs as soon as the lane frees.
+    vi.mocked(rig.host.deps.adapter.cancelTurn).mockImplementationOnce(async () => {
+      turnRow('completed')
+      return { cancelled: true }
+    })
+    const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.journal
+    if (!journal) {
+      throw new Error('no open journal')
+    }
+    const append = journal.appendItem.bind(journal)
+    vi.spyOn(journal, 'appendItem').mockImplementation((identity, body, options) =>
+      body.kind === 'status'
+        ? Promise.reject(new Error('disk full'))
+        : append(identity, body, options)
+    )
+    // Owed from the Stop's first write, after the open paid any import: its writes wait behind it.
+    const owed = Promise.withResolvers<void>()
+    const withdraw = journal.rejectQueuedSubmissions.bind(journal)
+    vi.spyOn(journal, 'rejectQueuedSubmissions').mockImplementation((...args) => {
+      journal['queue'].owe(() => owed.promise)
+      return withdraw(...args)
+    })
+    const stopping = rig.stop()
+    await eventually(() => expect(rig.host.deps.adapter.cancelTurn).toHaveBeenCalledOnce())
+    owed.resolve()
+    await expect(stopping).rejects.toThrow('disk full')
+    expect(journal.activeTurnId()).toBeNull()
     await expectPaused(draftId)
   })
 })
