@@ -1,6 +1,10 @@
 import { translate } from '@/i18n/i18n'
 import { nativeChatToolCategory } from './native-chat-tool-category'
-import { nativeChatFullCommand, nativeChatToolInputText } from './native-chat-tool-input-text'
+import {
+  nativeChatFullCommand,
+  nativeChatPlainCommandInput,
+  nativeChatToolInputText
+} from './native-chat-tool-input-text'
 import {
   createToolInputDisplay,
   summarizeToolInput
@@ -40,7 +44,12 @@ export function nativeChatToolLineLabel(
     const fullCommand = nativeChatFullCommand(call.input)
     target = fullCommand === null ? target : summarizeToolInput(fullCommand)
     title = fullCommand ?? target
-    commandDetail = fullCommand === null ? undefined : fullCommand === target ? null : fullCommand
+    if (fullCommand !== null) {
+      const plainCommand = nativeChatPlainCommandInput(call.input)
+      if (plainCommand === fullCommand) {
+        commandDetail = fullCommand === target ? null : fullCommand
+      }
+    }
     if (running) {
       verb = translate('components.native-chat.tool.row.running', 'Running')
     } else if (completed || result !== undefined || call.exitCode !== undefined) {

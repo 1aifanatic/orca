@@ -260,9 +260,7 @@ describe('tool sentence rows', () => {
   it.each([
     ['Bash', { command: 'pnpm test' }],
     ['exec', JSON.stringify({ cmd: 'pnpm test' })],
-    ['local_shell', { command: ['pnpm', 'test'] }],
-    ['Bash', 'pnpm test'],
-    ['exec', { command: '/bin/zsh -lc "pnpm test"' }]
+    ['Bash', 'pnpm test']
   ])('omits duplicate input for a complete %s command chip', (name, input) => {
     const { container } = render(
       <NativeChatToolLine
@@ -274,6 +272,26 @@ describe('tool sentence rows', () => {
     expect(container.querySelectorAll('pre')).toHaveLength(1)
     expect(container.querySelector('pre')).toHaveTextContent('all passed')
   })
+
+  it.each([
+    [{ command: 'pnpm test', description: 'Run the suite' }, '"description": "Run the suite"'],
+    [{ command: ['printf', '%s', 'a b'] }, '"command": [\n    "printf",\n    "%s",\n    "a b"'],
+    [{ command: '/bin/zsh -lc "pnpm test"' }, '/bin/zsh -lc \\"pnpm test\\"']
+  ])(
+    'keeps the original command input accessible when the chip omits structure',
+    (input, detail) => {
+      const { container } = render(
+        <NativeChatToolLine
+          block={{ type: 'tool-call', name: 'Bash', input, state: 'completed' }}
+          initiallyExpanded={false}
+        />
+      )
+      expect(screen.getByRole('button')).toHaveAttribute('aria-expanded', 'false')
+      expect(container.querySelector('pre')).toBeNull()
+      fireEvent.click(screen.getByRole('button'))
+      expect(container.querySelector('pre')?.textContent).toContain(detail)
+    }
+  )
 
   it('does not offer empty detail for a short command without output', () => {
     const { container } = render(
