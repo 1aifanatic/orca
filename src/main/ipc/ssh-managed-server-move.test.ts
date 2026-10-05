@@ -10,6 +10,11 @@ vi.mock('./ssh-host-server-connect', () => ({ publishRelayTerminalsStatus: vi.fn
 
 const { moveSshHostToManagedServer } = await import('./ssh-managed-server-move')
 
+const stillRelay: SshManagedServerStatus = {
+  kind: 'relay',
+  reason: 'relay_terminals_live',
+  terminals: 1
+}
 const target: SshTarget = { id: 'ssh-1', label: 'Box', host: 'box', port: 22, username: 'me' }
 
 function deps(
@@ -62,13 +67,14 @@ describe('moving an SSH host to its managed server on request', () => {
   })
 
   it('refuses without converting when the stop could not reach every terminal', async () => {
-    const move = deps({ unverifiable: 1 })
+    const move = deps({ unverifiable: 1, afterConnect: stillRelay })
     await expect(moveSshHostToManagedServer('ssh-1', move)).resolves.toEqual({
       outcome: 'refused',
       verdict: 'unverifiable',
       terminals: 1
     })
-    expect(move.calls).toEqual(['terminate'])
+    // The stop closed the relay session, so the refusal reconnects the host on its relay.
+    expect(move.calls).toEqual(['terminate', 'connect'])
     expect(move.report).toHaveBeenCalledWith('ssh-1', 'refused_unverifiable')
     expect(move.publishRelayStatus).toHaveBeenCalledWith(target, {
       verdict: 'unverifiable',
@@ -77,20 +83,23 @@ describe('moving an SSH host to its managed server on request', () => {
   })
 
   it('refuses without converting when the census is unverifiable or still live', async () => {
-    const unverifiable = deps({ census: { verdict: 'unverifiable', count: 3 } })
+    const unverifiable = deps({
+      census: { verdict: 'unverifiable', count: 3 },
+      afterConnect: stillRelay
+    })
     await expect(moveSshHostToManagedServer('ssh-1', unverifiable)).resolves.toEqual({
       outcome: 'refused',
       verdict: 'unverifiable',
       terminals: 3
     })
-    expect(unverifiable.connect).not.toHaveBeenCalled()
+    expect(unverifiable.calls).toEqual(['terminate', 'census', 'connect'])
 
-    const live = deps({ census: { verdict: 'live', count: 1 } })
+    const live = deps({ census: { verdict: 'live', count: 1 }, afterConnect: stillRelay })
     await expect(moveSshHostToManagedServer('ssh-1', live)).resolves.toMatchObject({
       outcome: 'refused',
       verdict: 'live'
     })
-    expect(live.connect).not.toHaveBeenCalled()
+    expect(live.connect).toHaveBeenCalledTimes(1)
     expect(live.report).toHaveBeenCalledWith('ssh-1', 'refused_live')
   })
 
@@ -124,14 +133,14 @@ describe('moving an SSH host to its managed server on request', () => {
   })
 
   it('refuses a failed stop the census cannot clear and refreshes the stale status', async () => {
-    const move = deps({ census: { verdict: 'live', count: 1 } })
+    const move = deps({ census: { verdict: 'live', count: 1 }, afterConnect: stillRelay })
     move.terminate.mockRejectedValueOnce(new Error('Failed to terminate SSH host sessions'))
     await expect(moveSshHostToManagedServer('ssh-1', move)).resolves.toEqual({
       outcome: 'refused',
       verdict: 'live',
       terminals: 1
     })
-    expect(move.connect).not.toHaveBeenCalled()
+    expect(move.calls).toEqual(['census', 'connect'])
     expect(move.publishRelayStatus).toHaveBeenCalledWith(target, { verdict: 'live', count: 1 })
   })
 
@@ -143,5 +152,23 @@ describe('moving an SSH host to its managed server on request', () => {
     })
     expect(move.releaseRelay).not.toHaveBeenCalled()
     expect(move.report).toHaveBeenCalledWith('ssh-1', 'moved')
+  })
+
+  it("reports the move when the refusal's reconnect found the terminals exited and converted", async () => {
+    const move = deps({ census: { verdict: 'live', count: 1 } })
+    await expect(moveSshHostToManagedServer('ssh-1', move)).resolves.toEqual({
+      outcome: 'moved',
+      environmentId: 'env-1'
+    })
+  })
+
+  it('still reports the refusal when the reconnect itself fails', async () => {
+    const move = deps({ census: { verdict: 'live', count: 2 } })
+    move.connect.mockRejectedValueOnce(new Error('auth failed'))
+    await expect(moveSshHostToManagedServer('ssh-1', move)).resolves.toEqual({
+      outcome: 'refused',
+      verdict: 'live',
+      terminals: 2
+    })
   })
 })

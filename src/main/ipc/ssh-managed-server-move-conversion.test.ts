@@ -246,7 +246,9 @@ describe('moving a host whose live relay terminals kept it on the relay', () => 
       verdict: 'unverifiable',
       terminals: 1
     })
-    expect(deps.connect).not.toHaveBeenCalled()
+    // Reconnected on the relay, whose own gate refuses the conversion the same way.
+    expect(deps.connect).toHaveBeenCalledWith(TARGET.id)
+    expect(destination.stage).not.toHaveBeenCalled()
     expect(deps.publishRelayStatus).toHaveBeenCalledWith(
       expect.objectContaining({ id: TARGET.id }),
       {
