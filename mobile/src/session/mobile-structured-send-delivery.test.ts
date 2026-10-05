@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentJournalDispatchState } from '../../../src/shared/agent-session-journal-types'
 import type { AgentSessionSendResult } from '../../../src/shared/agent-session-wire'
+import { DISPATCH_REJECTED_CANCELLED } from '../../../src/shared/structured-agent-session-dispatch-rejection'
 import { mobileStructuredSendDelivery } from './mobile-structured-send-delivery'
 import type { StructuredAgentSessionMutationCallResult } from './mobile-structured-agent-session-rpc'
 import { structuredSendResultFixture } from './structured-agent-send-result.test-fixture'
@@ -123,6 +124,30 @@ describe('mobileStructuredSendDelivery', () => {
       operationIdSpent: true,
       error: "Orca couldn't reach the agent. Your message was not sent. Send it again."
     })
+  })
+
+  it('reports a send a Stop took back as sent: the chat draws it, so nothing returns to the draft', () => {
+    for (const retained of [false, true]) {
+      for (const reason of [
+        DISPATCH_REJECTED_CANCELLED,
+        'This message was withdrawn before the agent started it.'
+      ]) {
+        const withdrawn = accepted('rejected', reason)
+        // The older marker alone, and the sentence with its typed fact.
+        if (
+          reason !== DISPATCH_REJECTED_CANCELLED &&
+          withdrawn.status === 'accepted' &&
+          'submission' in withdrawn.value
+        ) {
+          withdrawn.value.submission.rejection = { kind: 'cancelled' }
+        }
+        expect(mobileStructuredSendDelivery(withdrawn, retained)).toEqual({
+          outcome: 'accepted',
+          operationIdSpent: true,
+          error: null
+        })
+      }
+    }
   })
 
   it('shows a provider content rejection verbatim', () => {

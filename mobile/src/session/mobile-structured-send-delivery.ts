@@ -30,6 +30,7 @@ import type { AgentSessionSendResult } from '../../../src/shared/agent-session-w
 import { agentSessionRefusalOperationState } from '../../../src/shared/agent-session-refusal-retry'
 import { agentSessionWriteNoticeEnglish } from '../../../src/shared/agent-session-refusal-notice'
 import { structuredAgentSessionRejectionNotice } from '../../../src/shared/structured-agent-session-send-disposition'
+import { dispatchWasWithdrawn } from '../../../src/shared/structured-agent-session-dispatch-rejection'
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
 import type { StructuredAgentSessionMutationCallResult } from './mobile-structured-agent-session-rpc'
 
@@ -95,6 +96,11 @@ export function mobileStructuredSendDelivery(
   }
   if (!submission || submission.dispatchState === 'unknown') {
     return { outcome: 'unknown', operationIdSpent: false, error: null }
+  }
+  if (submission.dispatchState === 'rejected' && dispatchWasWithdrawn(submission)) {
+    // The host recorded it, then a Stop took it back: the chat draws it with its stop row, so it is
+    // not handed back to the composer, which would show it twice.
+    return { outcome: 'accepted', operationIdSpent: true, error: null }
   }
   if (submission.dispatchState === 'rejected') {
     return {

@@ -2,6 +2,7 @@ import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalDispatchState } from '../../../src/shared/agent-session-journal-types'
+import { DISPATCH_REJECTED_CANCELLED } from '../../../src/shared/structured-agent-session-dispatch-rejection'
 import type { AgentSessionSubscribeEvent } from '../../../src/shared/agent-session-wire'
 import type { RpcClient } from '../transport/rpc-client'
 import { markRpcDeliveryUnknown } from '../transport/rpc-delivery-ambiguity'
@@ -21,13 +22,13 @@ function ok(result: unknown) {
   return { ok: true, result, _meta: { runtimeId: 'runtime-1' } }
 }
 
-function sendResult(dispatchState: AgentJournalDispatchState) {
+function sendResult(dispatchState: AgentJournalDispatchState, reason: string | null = null) {
   return ok({
     ok: true,
     replayed: false,
     fence: 3,
     cursor: { epoch: 'epoch-1', sequence: 1 },
-    value: structuredSendResultFixture(dispatchState)
+    value: structuredSendResultFixture(dispatchState, reason)
   })
 }
 
@@ -149,6 +150,34 @@ describe('mobile structured send retries', () => {
     expect(calls()).toHaveLength(3)
     expect(new Set(sentIds()).size).toBe(1)
     expect(calls().every(([, params]) => !('retryUnknown' in (params as object)))).toBe(true)
+  })
+
+  it('reads a replay a Stop took back as sent, saying nothing, and spends its id', async () => {
+    let attempts = 0
+    sendRequest.mockImplementation(async (method) => {
+      if (method !== 'agentSession.send') {
+        return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
+      }
+      attempts += 1
+      if (attempts === 1) {
+        throw markRpcDeliveryUnknown(new Error('Connection closed'))
+      }
+      // Recorded, then withdrawn by a Stop before the agent started it.
+      return sendResult('rejected', DISPATCH_REJECTED_CANCELLED)
+    })
+    await mountSession()
+
+    await act(async () => {
+      expect(await hook!.sendWithOutcome('stopped one')).toBe('unknown')
+      // The chat draws it, stopped: nothing goes back to the draft and no "not sent" shows.
+      expect(await hook!.sendWithOutcome('stopped one')).toBe('accepted')
+      expect(await hook!.sendWithOutcome('stopped one')).toBe('accepted')
+    })
+
+    expect(onSendError).not.toHaveBeenCalled()
+    const [first, replay, later] = sentIds()
+    expect(replay).toBe(first)
+    expect(later).not.toBe(first)
   })
 
   it('releases an ack-lost id after the journal accepts it for a later identical intent', async () => {
