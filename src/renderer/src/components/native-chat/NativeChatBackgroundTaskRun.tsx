@@ -8,6 +8,7 @@ import {
 } from '../../../../shared/native-chat-background-task-row'
 import type { NativeChatBackgroundTaskBlock } from '../../../../shared/native-chat-types'
 import {
+  backgroundTaskKindLabel,
   backgroundTaskStateReason,
   backgroundTaskStateWord,
   formatBackgroundTaskTokens,
@@ -36,6 +37,7 @@ export function NativeChatBackgroundTaskRun({
   const settled = isSettledBackgroundTaskState(state)
   // Same name resolution the strip above the composer uses, so one task does
   // not read as two different things on the two surfaces.
+  const kindLabel = backgroundTaskKindLabel(kind)
   const label = resolveBackgroundTaskName({ id: block.taskId, kind, description: block.label })
   // Every attention state states its reason on the row, the same word the strip
   // uses; `unverifiable` has none beyond its state word, which must never be dropped.
@@ -55,12 +57,17 @@ export function NativeChatBackgroundTaskRun({
     duration
   ].filter((part): part is string => part !== null)
   return (
-    <div className="min-w-0 py-0.5 text-sm leading-relaxed text-muted-foreground">
+    <div className="min-w-0 py-0.5 font-sans text-[13px] leading-relaxed text-chat-foreground-faint">
       <div className="flex min-h-6 min-w-0 items-center gap-1.5">
-        <Icon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+        <Icon aria-hidden="true" className="size-3.5 shrink-0 text-chat-foreground-faint" />
         <AgentStateDot state={state} size="sm" title={null} />
-        <span className={cn('min-w-0 truncate', !settled && 'text-foreground/85')}>{label}</span>
-        <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+        {label !== kindLabel ? (
+          <span className="shrink-0 text-chat-foreground-faint">{kindLabel}</span>
+        ) : null}
+        <span className="min-w-0 truncate text-chat-foreground" title={label}>
+          {label}
+        </span>
+        <span className="ml-auto shrink-0 font-sans text-xs tabular-nums text-chat-foreground-faint">
           {backgroundTaskStateWord(state)}
           {reason === null ? null : ` · ${reason}`}
           {meta.length > 0 ? ` · ${meta.join(' · ')}` : null}
@@ -72,7 +79,7 @@ export function NativeChatBackgroundTaskRun({
         </p>
       )}
       {block.outputFile ? (
-        <p className="mt-0.5 truncate pl-7 font-mono text-[11px] text-muted-foreground/80">
+        <p className="mt-0.5 truncate pl-7 font-mono text-xs text-chat-foreground-faint">
           {translate('components.native-chat.backgroundTasks.outputFile', 'Output: {{value0}}', {
             value0: block.outputFile
           })}

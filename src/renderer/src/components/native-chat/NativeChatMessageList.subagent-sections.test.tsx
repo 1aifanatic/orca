@@ -214,7 +214,7 @@ describe("a subagent's rows in the transcript", () => {
     fireEvent.click(screen.getByRole('button', { name: /1 changed file/ }))
     fireEvent.click(screen.getByRole('button', { name: /src\/a.ts/ }))
 
-    expect(screen.getByText('Edited file')).toBeInTheDocument()
+    expect(screen.getByText('Edited')).toBeInTheDocument()
     expect(screen.getByText('The PR is CLEAN.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /explore the lane/, expanded: true })).toBeVisible()
   })
@@ -292,7 +292,7 @@ describe("a subagent's rows in the transcript", () => {
     fireEvent.click(screen.getByRole('button', { name: /1 changed file/ }))
     fireEvent.click(screen.getByRole('button', { name: /src\/a.ts/ }))
 
-    expect(screen.getByText('Edited file')).toBeInTheDocument()
+    expect(screen.getByText('Edited')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Ran 1 subagent/, expanded: true })).toBeVisible()
   })
 

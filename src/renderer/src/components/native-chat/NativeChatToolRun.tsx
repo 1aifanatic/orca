@@ -18,6 +18,7 @@ import type { NativeChatDiffReveal } from './native-chat-turn-diffs'
 import { buildEditCards, NO_EDIT_CARDS } from './native-chat-edit-cards'
 import { countToolCalls } from './native-chat-tool-summary'
 import { nativeChatToolRunSentence } from './native-chat-tool-run-label'
+import { nativeChatToolLineLabel } from './native-chat-tool-line-label'
 import {
   NO_NATIVE_CHAT_TOOL_PAIRING,
   pairNativeChatToolResults
@@ -256,7 +257,10 @@ export function NativeChatToolRun({
           data-native-chat-tool-run-state={live ? 'live' : 'settled'}
         >
           {settledHeaderIcon ? (
-            <NativeChatToolRunIcon iconName={settledHeaderIcon} className="text-muted-foreground" />
+            <NativeChatToolRunIcon
+              iconName={settledHeaderIcon}
+              className="text-chat-foreground-faint"
+            />
           ) : null}
           {/* The run in words, in the transcript's own type. Present tense while
               live, past once settled; the text changes in place and nothing
@@ -266,8 +270,8 @@ export function NativeChatToolRun({
             className={cn(
               'truncate text-sm leading-relaxed transition-colors',
               live
-                ? 'max-w-[72%] shrink-0 animate-pulse text-foreground/85 motion-reduce:animate-none'
-                : 'min-w-0 text-muted-foreground group-hover/tool-run:text-foreground/80'
+                ? 'max-w-[72%] shrink-0 animate-pulse text-chat-foreground motion-reduce:animate-none'
+                : 'min-w-0 text-chat-foreground-faint group-hover/tool-run:text-chat-foreground'
             )}
           >
             {runSentence ?? fallbackLabel}
@@ -284,7 +288,7 @@ export function NativeChatToolRun({
                 NATIVE_CHAT_TOOL_ACTIVITY_COPY.failedCallsLabel,
                 { value0: failedCallCount }
               )}
-              className="shrink-0 font-mono text-[11px] text-muted-foreground transition-colors group-hover/tool-run:text-foreground/80"
+              className="shrink-0 font-sans text-xs tabular-nums text-chat-foreground-faint transition-colors group-hover/tool-run:text-chat-foreground"
             >
               {translate(
                 'components.native-chat.tool.failedCount',
@@ -297,10 +301,17 @@ export function NativeChatToolRun({
               and never while live: between two calls nothing is running, and a
               mark that appeared then would flash on every call. */}
           {!live && runSucceeded ? (
-            <Check aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+            <Check aria-hidden className="size-3 shrink-0 text-chat-foreground-faint" />
           ) : null}
           {latestCallLabel ? (
-            <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
+            <span
+              className={cn(
+                'min-w-0 truncate font-sans text-xs text-chat-foreground-faint',
+                latestCall &&
+                  nativeChatToolLineLabel(latestCall).command &&
+                  'rounded-md border border-chat-inline-code-border bg-chat-inline-code-surface px-1.5 font-mono text-chat-foreground'
+              )}
+            >
               {latestCallLabel}
             </span>
           ) : null}
@@ -308,7 +319,7 @@ export function NativeChatToolRun({
               why the group is named — and points down when open. */}
           <ChevronRight
             className={cn(
-              'size-3.5 shrink-0 text-muted-foreground transition-all',
+              'size-3.5 shrink-0 text-chat-foreground-faint transition-all',
               open ? 'rotate-90 opacity-100' : 'opacity-0 group-hover/tool-run:opacity-100'
             )}
           />
@@ -318,7 +329,7 @@ export function NativeChatToolRun({
         // Members are indented under the header because nothing else marks the
         // run's extent — flush rows are indistinguishable from the blocks after
         // them, so the batch has no visible end.
-        <div className="mt-1 pl-4">
+        <div className="ml-[7px] mt-0.5 border-l border-chat-code-border pl-[13px]">
           {(() => {
             const seen = new Map<string, number>()
             return headerBlocks.map((block, blockIndex) => {

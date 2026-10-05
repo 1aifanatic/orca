@@ -181,7 +181,7 @@ describe('inline tool annotations', () => {
       />
     )
     expect(screen.queryByRole('link')).toBeNull()
-    fireEvent.click(screen.getByText('web_search', { selector: 'code' }).closest('button')!)
+    fireEvent.click(screen.getByText('Searched the web').closest('button')!)
     const link = screen.getByRole('link', { name: /Reference docs/ })
     expect(link.getAttribute('href')).toBe('https://example.com/docs')
     expect(link.closest('button')).toBeNull()
@@ -196,7 +196,7 @@ it.each(['tools/read', 'browser.open', 'package.lock', 'linear/list_issues'])(
   'keeps an ordinary tool name %s intact',
   (name) => {
     render(<NativeChatToolRun blocks={[{ type: 'tool-call', name, input: null }]} expandSignal />)
-    expect(screen.getByText(name, { selector: 'code' })).toBeTruthy()
+    expect(screen.getByText(name)).toBeTruthy()
     expect(document.querySelector('.lucide-plug')).toBeNull()
   }
 )

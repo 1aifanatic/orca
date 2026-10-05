@@ -228,7 +228,7 @@ describe('revealing a diff from a turn rollup', () => {
     scrollTo.mockClear()
     fireEvent.click(screen.getByRole('button', { name: /src\/a.ts/ }))
 
-    expect(screen.getByText('Edited file')).toBeInTheDocument()
+    expect(screen.getByText('Edited')).toBeInTheDocument()
     expect(screen.getByText('after')).toBeInTheDocument()
     expect(scrollTo).toHaveBeenCalled()
     // Pinned, not paged to: the window is still a window.

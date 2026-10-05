@@ -200,7 +200,7 @@ describe('turn history presentation', () => {
     expect(header).toHaveAttribute('aria-expanded', 'false')
     fireEvent.click(header)
     fireEvent.click(screen.getByRole('button', { name: /src\/a.ts/ }))
-    expect(screen.getByText('Edited file')).toBeInTheDocument()
+    expect(screen.getByText('Edited')).toBeInTheDocument()
     expect(screen.getByText('after')).toBeInTheDocument()
     expect(screen.getByText('before')).toBeInTheDocument()
     expect(scrollTo).toHaveBeenCalled()

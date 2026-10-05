@@ -45,7 +45,7 @@ describe('NativeChatToolRun', () => {
 
     render(<NativeChatToolRun blocks={blocks} expandSignal />)
 
-    expect(screen.getByTitle('src/index.ts')).toHaveTextContent('src/index.ts')
+    expect(screen.getByTitle('src/index.ts')).toHaveTextContent('index.ts')
     expect(screen.queryByTitle('{"file_path":"src/index.ts","offset":10}')).toBeNull()
   })
 
@@ -73,7 +73,7 @@ describe('NativeChatToolRun', () => {
 
     expect(screen.getByText('after')).toBeInTheDocument()
     expect(screen.getByText('before')).toBeInTheDocument()
-    expect(screen.getByText('Edited file')).toBeInTheDocument()
+    expect(screen.getByText('Edited')).toBeInTheDocument()
     expect(container.querySelector('pre')).toBeNull()
   })
 
@@ -204,7 +204,7 @@ describe('NativeChatToolRun', () => {
 
     expect(screen.getByTitle('gone.ts')).toBeInTheDocument()
     // The header states the change; there is no body behind a disclosure.
-    expect(screen.getByText('Deleted file').closest('button')).not.toHaveAttribute('aria-expanded')
+    expect(screen.getByText('Deleted').closest('button')).not.toHaveAttribute('aria-expanded')
   })
 
   it('says a diff was clipped even while the card is collapsed', () => {
@@ -325,7 +325,7 @@ describe('NativeChatToolRun', () => {
     it('indents opened members so the run has a visible end', () => {
       const { container } = render(<NativeChatToolRun blocks={batch} expandSignal />)
 
-      const members = runHeader(container).parentElement?.querySelector('.pl-4')
+      const members = runHeader(container).parentElement?.querySelector('.border-l')
       expect(members).toBeInTheDocument()
       expect(members?.querySelectorAll('button').length).toBe(batch.length)
     })
@@ -664,7 +664,7 @@ describe('NativeChatToolRun', () => {
     const glyph = container.querySelector('.lucide-eye')
     expect(glyph).toBeInTheDocument()
     expect(glyph).toHaveAttribute('aria-hidden')
-    expect(screen.getByText('read', { selector: 'code' })).toBeInTheDocument()
+    expect(screen.getByText('Read')).toBeInTheDocument()
   })
 
   it('holds one glyph for a category across running, completed, and failed', () => {
@@ -932,7 +932,7 @@ describe('NativeChatToolRun', () => {
         <NativeChatToolRun blocks={run} expandSignal={false} expandOverride />
       )
 
-      const chevrons = [...container.querySelectorAll('.pl-4 button svg.lucide-chevron-right')]
+      const chevrons = [...container.querySelectorAll('.border-l button svg.lucide-chevron-right')]
       expect(chevrons.length).toBeGreaterThan(1)
       chevrons.forEach((chevron) => {
         expect(chevron.getAttribute('class')).toContain('group-hover/tool-line:opacity-100')

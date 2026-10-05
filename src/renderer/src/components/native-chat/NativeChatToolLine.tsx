@@ -15,14 +15,14 @@ import {
 } from './NativeChatToolAnnotations'
 import { NativeChatToolIcon } from './NativeChatToolIcon'
 import { NativeChatDiffView } from './NativeChatDiffView'
+import { nativeChatToolLineLabel } from './native-chat-tool-line-label'
+import { editFilesFromToolPair } from '../../../../shared/native-chat-edit-normalize'
+import { DiffLineCounts } from '../right-sidebar/source-control/listing/diff-line-counts'
 import { diffFromText, diffFromToolCall, type DiffLine } from './native-chat-diff'
 import { useNativeChatDisclosure } from './native-chat-disclosure-store'
 import { createToolInputDisplay, truncateToolDetail } from './native-chat-tool-summary'
 
-/** A single inline tool line — `▸ ToolName  preview` — that expands in place to
- *  show the call's diff/input or the result's body. Tool calls read as flat
- *  lines in the conversation rather than boxed blocks (mobile parity). Lines only
- *  mount while the parent run is open and are individually collapsible. */
+/** A tool sentence with input and output behind its own remembered disclosure. */
 export function NativeChatToolLine({
   block,
   result,
@@ -72,6 +72,21 @@ export function NativeChatToolLine({
     return null
   }
 
+  const label = isCall ? nativeChatToolLineLabel(block) : null
+  const editFiles =
+    isCall && label?.verb && !label.command
+      ? editFilesFromToolPair({ name: block.name, input: block.input, state: block.state, result })
+      : null
+  const counts =
+    editFiles && !editFiles.some((file) => file.truncated)
+      ? editFiles.reduce(
+          (total, file) => ({
+            added: total.added + file.added,
+            removed: total.removed + file.removed
+          }),
+          { added: 0, removed: 0 }
+        )
+      : null
   const hasResults = isCall && (block.webSearchResults?.length ?? 0) > 0
   const hasDetail = diff !== null || body !== null || inputHasDetail || hasResults
 
@@ -81,7 +96,7 @@ export function NativeChatToolLine({
         type="button"
         onClick={() => hasDetail && setExpanded(!expanded)}
         className={cn(
-          'group/tool-line flex w-full items-center gap-1.5 py-0.5 text-left',
+          'group/tool-line flex min-h-[26px] w-full items-center gap-2 text-left font-sans text-[13px]',
           hasDetail ? 'cursor-pointer' : 'cursor-default'
         )}
         aria-expanded={hasDetail ? expanded : undefined}
@@ -91,22 +106,39 @@ export function NativeChatToolLine({
           <NativeChatToolIcon
             mcpIdentity={block.mcpIdentity}
             rowWord={name}
-            className="text-muted-foreground"
+            className="text-chat-foreground-faint [&_svg]:size-[15px]"
           />
         ) : (
           /* A result's word is translated copy, not a tool name, so there is no
              category to read from it. The empty slot keeps rows aligned. */
           <span aria-hidden className="size-4 shrink-0" />
         )}
-        <code className="min-w-0 truncate font-mono text-xs font-semibold text-foreground/90 transition-colors group-hover/tool-line:text-foreground">
-          {isCall ? <NativeChatToolName name={name} mcpIdentity={block.mcpIdentity} /> : name}
-        </code>
-        {preview ? (
+        {label?.verb && label.verb !== name ? <span className="sr-only">{name} </span> : null}
+        <span
+          className={cn(
+            'text-chat-foreground-faint',
+            label?.verb ? 'shrink-0' : 'min-w-0 truncate'
+          )}
+        >
+          {label?.verb ??
+            (isCall ? <NativeChatToolName name={name} mcpIdentity={block.mcpIdentity} /> : name)}
+        </span>
+        {(label?.target ?? preview) ? (
           <span
-            className="min-w-0 truncate font-mono text-[11px] text-muted-foreground transition-colors group-hover/tool-line:text-foreground/70"
-            title={preview}
+            className={cn(
+              'min-w-0 truncate text-chat-foreground',
+              label?.command &&
+                'rounded-md border border-chat-inline-code-border bg-chat-inline-code-surface px-1.5 font-mono text-xs'
+            )}
+            title={label?.title ?? preview}
+            aria-label={label?.title ?? preview}
           >
-            {preview}
+            {label?.target ?? preview}
+          </span>
+        ) : null}
+        {counts ? (
+          <span className="shrink-0 [&>span]:text-xs">
+            <DiffLineCounts added={counts.added} removed={counts.removed} />
           </span>
         ) : null}
         {isCall ? <NativeChatCommandMetadata block={block} /> : null}
@@ -115,28 +147,28 @@ export function NativeChatToolLine({
           // also answers to the message row's, lighting every chevron at once.
           <ChevronRight
             className={cn(
-              'size-3.5 shrink-0 text-muted-foreground transition-all',
+              'size-3.5 shrink-0 text-chat-foreground-faint transition-all',
               expanded ? 'rotate-90 opacity-100' : 'opacity-0 group-hover/tool-line:opacity-100'
             )}
           />
         ) : null}
       </button>
       {hasDetail && expanded ? (
-        <div className="space-y-1.5 py-1">
+        <div className="ml-6 space-y-1.5 py-1">
           {isCall && hasResults ? (
             <NativeChatSearchResults results={block.webSearchResults} onLinkClick={onLinkClick} />
           ) : null}
           {diff ? <NativeChatDiffView lines={diff} /> : null}
           {!diff && detail ? (
-            <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-accent p-2 font-mono text-[11px] text-foreground/80 scrollbar-sleek">
+            <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-chat-code-border bg-chat-code-surface p-2 font-mono text-xs text-chat-foreground scrollbar-sleek">
               {detail}
             </pre>
           ) : null}
           {body ? (
             <pre
               className={cn(
-                'max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-accent p-2 font-mono text-[11px] scrollbar-sleek',
-                body.isError ? 'text-destructive' : 'text-foreground/80'
+                'max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-chat-code-border bg-chat-code-surface p-2 font-mono text-xs scrollbar-sleek',
+                body.isError ? 'text-destructive' : 'text-chat-foreground'
               )}
             >
               {truncateToolDetail(body.output)}
