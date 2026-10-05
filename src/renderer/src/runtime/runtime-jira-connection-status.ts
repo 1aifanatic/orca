@@ -1,7 +1,34 @@
-import type { JiraConnectionStatus, JiraSite, JiraViewer } from '../../../shared/jira-types'
+import type {
+  JiraAuthType,
+  JiraConnectionStatus,
+  JiraSite,
+  JiraViewer
+} from '../../../shared/jira-types'
+import type { SecretAtRestProtection } from '../../../shared/secret-at-rest-protection'
+
+// Coverage records: tsc fails when the shared union gains or loses an arm.
+const JIRA_AUTH_TYPES = { cloud: true, server: true } as const satisfies Readonly<
+  Record<JiraAuthType, true>
+>
+const SECRET_AT_REST_PROTECTIONS = { sealed: true, plaintext: true } as const satisfies Readonly<
+  Record<SecretAtRestProtection, true>
+>
+
+// Every status key must be listed, so a newly added field cannot be dropped silently.
+type ParsedJiraConnectionStatus = {
+  [K in keyof Required<JiraConnectionStatus>]: JiraConnectionStatus[K]
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isJiraAuthType(value: unknown): value is JiraAuthType {
+  return typeof value === 'string' && Object.hasOwn(JIRA_AUTH_TYPES, value)
+}
+
+function isSecretAtRestProtection(value: unknown): value is SecretAtRestProtection {
+  return typeof value === 'string' && Object.hasOwn(SECRET_AT_REST_PROTECTIONS, value)
 }
 
 function parseJiraViewer(value: unknown): JiraViewer | null {
@@ -36,51 +63,39 @@ function parseJiraSite(value: unknown): JiraSite | null {
     email: typeof value.email === 'string' ? value.email : '',
     displayName: value.displayName,
     accountId: value.accountId,
-    ...(value.authType === 'cloud' || value.authType === 'server'
-      ? { authType: value.authType }
-      : {})
+    ...(isJiraAuthType(value.authType) ? { authType: value.authType } : {})
   }
 }
 
-function isOptionalSiteId(value: unknown): value is string | null | undefined {
-  return value === undefined || value === null || typeof value === 'string'
-}
-
-function isOptionalCredentialProtection(
-  value: unknown
-): value is 'sealed' | 'plaintext' | null | undefined {
-  return value === undefined || value === null || value === 'sealed' || value === 'plaintext'
-}
-
-// Why: the paired web client has no Jira preload, so its fallback proxy resolves
-// undefined; status fields are normalized before store readers can dereference them.
-export function parseJiraConnectionStatus(value: unknown): JiraConnectionStatus {
-  if (!isRecord(value) || typeof value.connected !== 'boolean') {
-    return { connected: false, viewer: null }
-  }
-  const viewer = parseJiraViewer(value.viewer)
-  const sites = Array.isArray(value.sites)
-    ? value.sites.flatMap((site) => {
+function parseJiraSites(value: unknown): JiraSite[] | undefined {
+  return Array.isArray(value)
+    ? value.flatMap((site) => {
         const parsed = parseJiraSite(site)
         return parsed ? [parsed] : []
       })
     : undefined
-  return {
-    connected: value.connected,
-    viewer,
-    ...(sites === undefined ? {} : { sites }),
-    ...(isOptionalSiteId(value.activeSiteId) && value.activeSiteId !== undefined
-      ? { activeSiteId: value.activeSiteId }
-      : {}),
-    ...(isOptionalSiteId(value.selectedSiteId) && value.selectedSiteId !== undefined
-      ? { selectedSiteId: value.selectedSiteId }
-      : {}),
-    ...(typeof value.credentialError === 'string'
-      ? { credentialError: value.credentialError }
-      : {}),
-    ...(isOptionalCredentialProtection(value.credentialProtection) &&
-    value.credentialProtection !== undefined
-      ? { credentialProtection: value.credentialProtection }
-      : {})
+}
+
+function parseOptionalSiteId(value: unknown): string | null | undefined {
+  return value === null || typeof value === 'string' ? value : undefined
+}
+
+// Why: a missing reply (the paired web client's fallback) or a malformed nested field from another host version must not crash readers or hide a real connection.
+export function parseJiraConnectionStatus(value: unknown): JiraConnectionStatus {
+  if (!isRecord(value) || typeof value.connected !== 'boolean') {
+    return { connected: false, viewer: null }
   }
+  const status: ParsedJiraConnectionStatus = {
+    connected: value.connected,
+    viewer: parseJiraViewer(value.viewer),
+    sites: parseJiraSites(value.sites),
+    activeSiteId: parseOptionalSiteId(value.activeSiteId),
+    selectedSiteId: parseOptionalSiteId(value.selectedSiteId),
+    credentialError: typeof value.credentialError === 'string' ? value.credentialError : undefined,
+    credentialProtection:
+      value.credentialProtection === null || isSecretAtRestProtection(value.credentialProtection)
+        ? value.credentialProtection
+        : undefined
+  }
+  return status
 }
