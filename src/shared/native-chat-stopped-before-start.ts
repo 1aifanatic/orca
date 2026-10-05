@@ -11,6 +11,7 @@ import type {
   AgentJournalRenderItem,
   AgentJournalSubmission
 } from './agent-session-journal-types'
+import { inSendOrder } from './native-chat-send-order'
 import { stoppedTurnOpeners, structuredAgentTurnAnchors } from './native-chat-turn-membership'
 import type { NativeChatBlock, NativeChatMessage } from './native-chat-types'
 
@@ -192,7 +193,7 @@ function latestRowsSentBefore(
   submissions: readonly AgentJournalSubmission[],
   itemsById: ReadonlyMap<string, AgentJournalRenderItem>
 ): ReadonlyMap<string, AgentJournalRenderItem> {
-  const inSendOrder = submissions
+  const byAcceptTime = submissions
     .map((submission, order) => ({ submission, order }))
     .sort(
       (left, right) =>
@@ -200,7 +201,7 @@ function latestRowsSentBefore(
     )
   const before = new Map<string, AgentJournalRenderItem>()
   let latest: AgentJournalRenderItem | undefined
-  for (const { submission } of inSendOrder) {
+  for (const { submission } of byAcceptTime) {
     const key = agentJournalSubmissionKey(submission.clientMessageId)
     if (latest) {
       before.set(key, latest)
@@ -231,17 +232,11 @@ export function keepStoppedSendsInSendOrder(
       indexById.set(message.id, index)
     }
   })
-  const taken = [...stopped].flatMap(([itemId, submission], order) => {
+  const taken = [...stopped].flatMap(([itemId, submission]) => {
     const index = indexById.get(itemId)
-    return index === undefined ? [] : [{ index, submission, order }]
+    return index === undefined ? [] : [{ index, submission }]
   })
-  const byJournal = taken.every((entry) => entry.submission.submittedSequence !== undefined)
-  const sent = taken.sort(
-    (left, right) =>
-      (byJournal
-        ? left.submission.submittedSequence! - right.submission.submittedSequence!
-        : left.submission.submittedAt - right.submission.submittedAt) || left.order - right.order
-  )
+  const sent = inSendOrder(taken, ({ submission }) => submission)
   let floor: AgentJournalPosition | undefined
   let moved = false
   for (const { index } of sent) {

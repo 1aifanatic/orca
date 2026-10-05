@@ -27,6 +27,7 @@ import {
 import type { NativeChatRole } from './native-chat-types'
 import { isStructuredAgentSessionCommandTurn } from './structured-agent-session-command-entry'
 import { dispatchWasWithdrawn } from './structured-agent-session-dispatch-rejection'
+import { inSendOrder } from './native-chat-send-order'
 import { liveStructuredAgentSessionTurnScope } from './structured-agent-session-live-turn'
 
 /** Whether the host writing this journal states each row's turn. Only a host that runs `/compact`
@@ -83,17 +84,14 @@ export function structuredAgentTurnAnchors(
   const itemsById =
     takenBack.length > 0 ? new Map(items.map((item) => [item.itemId, item])) : undefined
   const openedBy = stoppedTurnOpeners(takenBack)
-  const unstated = takenBack
-    .filter((submission) => submission.answeredInTurn === undefined)
-    .flatMap((submission) => {
-      const sent = itemsById?.get(agentJournalSubmissionKey(submission.clientMessageId))
-      return sent ? [{ sent, submission }] : []
-    })
-  const byJournal = unstated.every(({ submission }) => submission.submittedSequence !== undefined)
-  unstated.sort(({ submission: left }, { submission: right }) =>
-    byJournal
-      ? left.submittedSequence! - right.submittedSequence!
-      : left.submittedAt - right.submittedAt
+  const unstated = inSendOrder(
+    takenBack
+      .filter((submission) => submission.answeredInTurn === undefined)
+      .flatMap((submission) => {
+        const sent = itemsById?.get(agentJournalSubmissionKey(submission.clientMessageId))
+        return sent ? [{ sent, submission }] : []
+      }),
+    ({ submission }) => submission
   )
   const claimed = new Set<string>()
   const anchors = new Map<string, string>()
@@ -158,11 +156,10 @@ export function stoppedTurnOpeners(
   return openers
 }
 
-/** Whether a send was sent before a turn record and taken back after it: by journal order where
- *  the host publishes where it was sent (a rejection written before the host named turns, whose row
- *  it moves to the take-back), else by its row's place and by times, which a resume rewrites to
- *  whole seconds. Temporary, and long-lived: kept until no supported chat holds a rejection written
- *  before #25073, which old chats do indefinitely. */
+/** For a rejection written before the host named turns: whether its send was sent before a turn
+ *  record and taken back after it. By journal order where the host publishes where it was sent (it
+ *  has moved the row to the take-back), else by its row's place and by times, which a resume
+ *  rewrites to whole seconds. Kept for good: it draws those older rows exactly as before. */
 function sentBeforeAndTakenBackAfter(
   record: AgentJournalRenderItem,
   turn: AgentJournalTurnLifecycle,
