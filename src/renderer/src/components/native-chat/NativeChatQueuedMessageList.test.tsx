@@ -135,6 +135,18 @@ describe('NativeChatQueuedMessageList', () => {
     expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(2)
   })
 
+  it("a paused command card's ways out are Delete and the queue's Resume", () => {
+    const owner = controller(
+      [card({ messageId: 'compact-1', text: '/compact', command: true, hold: 'queue-paused' })],
+      { reason: 'stopped' }
+    )
+    renderList(owner)
+    fireEvent.click(screen.getByRole('button', { name: 'Resume' }))
+    expect(owner.resume).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    expect(owner.remove).toHaveBeenCalledWith('compact-1')
+  })
+
   it.each(['Delete', 'Steer'])(
     '%s hands focus to the composer once the focused card is gone',
     async (name) => {

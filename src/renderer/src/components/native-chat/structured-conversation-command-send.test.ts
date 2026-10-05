@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { i18n } from '@/i18n/i18n'
 import type { AgentSessionConversationCommandResult } from '../../../../shared/agent-session-conversation-command'
 import type { AgentSessionFailureFact } from '../../../../shared/agent-session-failure'
@@ -7,7 +7,7 @@ import { TUI_AGENT_DISPLAY_NAMES } from '../../../../shared/tui-agent-display-na
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
 import {
   sendStructuredConversationCommand,
-  structuredConversationCommandBlocked
+  structuredConversationCommandHold
 } from './structured-conversation-command-send'
 
 const START_FAILED: AgentSessionFailureFact = { kind: 'startFailed' }
@@ -62,7 +62,8 @@ async function sent(
     command: result.command,
     agentName: structuredAgentLabel(provider),
     pending: { current: false },
-    blocked: false,
+    hold: null,
+    untilAheadHandedOver: async () => true,
     startFailures: () => [],
     send: async () => ({ kind: 'done', value: result })
   })
@@ -157,7 +158,8 @@ describe('the line under the composer after a conversation command failed', () =
         command: 'compact',
         agentName: 'Claude',
         pending: { current: false },
-        blocked: false,
+        hold: null,
+        untilAheadHandedOver: async () => true,
         startFailures: () => [START_FAILED],
         send: async () => ({ kind: 'done', value: result })
       })
@@ -203,23 +205,96 @@ describe('a /compact the host holds in line', () => {
   it('is held here only by a message the host does not have yet, or background work', () => {
     const inLine = { ...idle, waitsInLine: true }
     expect(
-      structuredConversationCommandBlocked({
+      structuredConversationCommandHold({
         ...inLine,
         turnActive: true,
         promptPending: true,
         outboxHeld: true
       })
-    ).toBe(false)
-    expect(structuredConversationCommandBlocked({ ...inLine, outboxUnsent: true })).toBe(true)
-    expect(structuredConversationCommandBlocked({ ...inLine, backgroundTasksRunning: true })).toBe(
-      true
+    ).toBeNull()
+    expect(structuredConversationCommandHold({ ...inLine, outboxUnsent: true })).toBe('ahead')
+    expect(structuredConversationCommandHold({ ...inLine, backgroundTasksRunning: true })).toBe(
+      'background'
     )
   })
 
   it('against a host that cannot hold it, and for /clear, keeps every check', () => {
-    expect(structuredConversationCommandBlocked(idle)).toBe(false)
-    for (const busy of ['turnActive', 'promptPending', 'outboxHeld'] as const) {
-      expect(structuredConversationCommandBlocked({ ...idle, [busy]: true })).toBe(true)
+    expect(structuredConversationCommandHold(idle)).toBeNull()
+    expect(structuredConversationCommandHold({ ...idle, turnActive: true })).toBe('working')
+    expect(structuredConversationCommandHold({ ...idle, outboxHeld: true })).toBe('working')
+    expect(structuredConversationCommandHold({ ...idle, promptPending: true })).toBe('prompt')
+  })
+})
+
+describe('a command held here', () => {
+  function held(
+    command: 'clear' | 'compact',
+    hold: Parameters<typeof sendStructuredConversationCommand>[0]['hold'],
+    untilAheadHandedOver: () => Promise<boolean> = async () => true
+  ) {
+    const send = vi.fn(async () => ({
+      kind: 'done' as const,
+      value: { command, state: 'completed' as const }
+    }))
+    return {
+      send,
+      result: sendStructuredConversationCommand({
+        command,
+        agentName: structuredAgentLabel('claude'),
+        pending: { current: false },
+        hold,
+        untilAheadHandedOver,
+        startFailures: () => [],
+        send
+      })
     }
+  }
+
+  it('behind a message on its way waits for it with no line, then goes out', async () => {
+    let handOver: (mounted: boolean) => void = () => {}
+    const { send, result } = held(
+      'compact',
+      'ahead',
+      () => new Promise<boolean>((resolve) => (handOver = resolve))
+    )
+    await Promise.resolve()
+    expect(send).not.toHaveBeenCalled()
+    handOver(true)
+    expect(await result).toEqual({ accepted: true, error: null })
+    expect(send).toHaveBeenCalledOnce()
+  })
+
+  it('sends nothing and says nothing when the pane goes away while it waits', async () => {
+    const { send, result } = held('compact', 'ahead', async () => false)
+    expect(await result).toEqual({ accepted: false, error: null })
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('a second press while one is on its way says nothing', async () => {
+    const pending = { current: true }
+    const send = vi.fn()
+    expect(
+      await sendStructuredConversationCommand({
+        command: 'compact',
+        agentName: structuredAgentLabel('claude'),
+        pending,
+        hold: null,
+        untilAheadHandedOver: async () => true,
+        startFailures: () => [],
+        send
+      })
+    ).toEqual({ accepted: false, error: null })
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('a /clear while the agent works says so in plain words, once', async () => {
+    expect(await held('clear', 'working').result).toEqual({
+      accepted: false,
+      error: "The agent is still working. Run /clear when it's done."
+    })
+    expect(await held('clear', 'prompt').result).toEqual({
+      accepted: false,
+      error: "Answer the agent's question or approval, then run /clear."
+    })
   })
 })

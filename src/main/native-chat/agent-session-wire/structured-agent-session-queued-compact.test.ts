@@ -186,6 +186,29 @@ describe('a /compact that waits in line', () => {
     expect(await rig.drafts()).toEqual([])
   })
 
+  it('Delete takes it back: it never runs', async () => {
+    const working = await rig.workingSend()
+    const compactId = await queuedCompact()
+    expect(await rig.deleteQueued(compactId)).toMatchObject({ ok: true, value: { deleted: true } })
+    await rig.settleAccepted(working, 'a')
+    await settleMs()
+    expect(rig.compact).not.toHaveBeenCalled()
+    expect(await rig.drafts()).toEqual([])
+  })
+
+  it('Stop pauses it with the queue, and Resume runs it', async () => {
+    const working = await rig.workingSend()
+    const compactId = await queuedCompact()
+    await rig.stop()
+    await rig.settleAccepted(working, 'a')
+    await settleMs()
+    expect(rig.compact).not.toHaveBeenCalled()
+    expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
+    expect(await rig.drafts()).toEqual([{ messageId: compactId, state: 'waiting' }])
+    expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
+    await eventually(() => expect(rig.compact).toHaveBeenCalledOnce())
+  })
+
   it('a /clear drops a waiting command card instead of carrying it to the new chat', async () => {
     const working = await rig.workingSend()
     await queuedCompact()

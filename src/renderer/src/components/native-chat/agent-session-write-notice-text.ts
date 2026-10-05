@@ -104,6 +104,12 @@ const SENTENCES: Record<AgentSessionWriteNoticeSentence, () => string> = {
     translate('components.native-chat.writeNotice.messagesUnsettled', COPY.messagesUnsettled),
   settleEarlierMessage: () =>
     translate('components.native-chat.writeNotice.settleEarlierMessage', COPY.settleEarlierMessage),
+  agentStillWorking: () =>
+    translate('components.native-chat.writeNotice.agentStillWorking', COPY.agentStillWorking),
+  runClearWhenDone: () =>
+    translate('components.native-chat.writeNotice.runClearWhenDone', COPY.runClearWhenDone),
+  clearAfterAnswer: () =>
+    translate('components.native-chat.writeNotice.clearAfterAnswer', COPY.clearAfterAnswer),
   optionRejected: () =>
     translate('components.native-chat.writeNotice.optionRejected', COPY.optionRejected),
   goalsUnsupported: () =>

@@ -7,9 +7,23 @@ import {
   isStructuredAgentSessionComposerCommand,
   type StructuredAgentSessionComposerOptions
 } from '../../../src/shared/structured-agent-session-composer'
+import { agentSessionWriteNoticeEnglish } from '../../../src/shared/agent-session-refusal-notice'
 import type { RpcClient } from '../transport/rpc-client'
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
 import { requestStructuredAgentSessionMutation } from './mobile-structured-agent-session-rpc'
+
+/** A /clear says what the person sees and can do, in the words the desktop uses. */
+function busyCommandText(
+  command: AgentSessionConversationCommand,
+  busy: 'working' | 'prompt'
+): string {
+  if (command !== 'clear') {
+    return 'Wait for pending work to finish before using this command.'
+  }
+  return agentSessionWriteNoticeEnglish(
+    busy === 'prompt' ? ['clearAfterAnswer'] : ['agentStillWorking', 'runClearWhenDone']
+  )
+}
 
 export async function dispatchMobileStructuredCommand(input: {
   text: string
@@ -19,7 +33,8 @@ export async function dispatchMobileStructuredCommand(input: {
   fence: number
   pending: { current: boolean }
   controller: StructuredAgentSessionComposerOptions
-  canRun: () => boolean
+  /** What the agent still has in flight that refuses a command now; null when nothing does. */
+  busy: () => 'working' | 'prompt' | null
   /** The host holds this command as a card behind work in flight, so nothing here holds it. */
   waitsInLine: (command: AgentSessionConversationCommand) => boolean
   onError: (message: string) => void
@@ -40,11 +55,9 @@ export async function dispatchMobileStructuredCommand(input: {
     ...input.controller,
     runConversationCommand: async (command) => {
       const waitsInLine = input.waitsInLine(command)
-      if (!waitsInLine && !input.canRun()) {
-        return {
-          accepted: false,
-          error: 'Wait for pending work to finish before using this command.'
-        }
+      const busy = waitsInLine ? null : input.busy()
+      if (busy) {
+        return { accepted: false, error: busyCommandText(command, busy) }
       }
       input.pending.current = true
       try {

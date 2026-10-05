@@ -46,7 +46,16 @@ const NOT_DONE: Record<AgentSessionWriteKind, AgentSessionWriteNoticeSentence> =
   answer: 'notDoneAnswer',
   option: 'notDoneOption',
   command: 'notDoneCommand',
+  clear: 'notDoneCommand',
   goal: 'notDoneGoal'
+}
+
+/** A /clear refused because the agent is working: one plain sentence for every reason that is,
+ *  saying only what the person sees and can do. */
+const CLEAR_WHILE_WORKING: Partial<Record<string, AgentSessionWriteNoticeSentence[]>> = {
+  turnActive: ['agentStillWorking', 'runClearWhenDone'],
+  messagesUnsettled: ['agentStillWorking', 'runClearWhenDone'],
+  promptPending: ['clearAfterAnswer']
 }
 
 /** That the write did not happen, for one that a second attempt can carry out. Only the phone says
@@ -79,6 +88,13 @@ function reasonParts(
   write: AgentSessionWriteKind,
   context: AgentSessionFailureWordsContext
 ): AgentSessionWriteNoticePart[] | undefined {
+  const clearWhileWorking =
+    write === 'clear' && failure.code === 'agent_session_operation_invalid'
+      ? CLEAR_WHILE_WORKING[failure.details?.reason ?? '']
+      : undefined
+  if (clearWhileWorking) {
+    return clearWhileWorking
+  }
   const words = agentSessionRefusalReasonWords(failure)
   if (!words || 'words' in words) {
     return undefined

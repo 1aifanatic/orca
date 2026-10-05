@@ -32,7 +32,7 @@ function setup() {
       setOption: vi.fn(async () => true),
       conversationCommands: ['clear', 'compact']
     },
-    canRun: () => true,
+    busy: () => null,
     waitsInLine: () => false,
     onError: vi.fn(),
     timeoutMs: 15000
@@ -103,7 +103,7 @@ describe('mobile structured conversation commands', () => {
         input.text = '/compact instructions'
       }
       if (reason === 'pending work') {
-        input.canRun = () => false
+        input.busy = () => 'working'
       }
       expect(await dispatchMobileStructuredCommand(input)).toBe('rejected')
       expect(sendRequest).not.toHaveBeenCalled()
@@ -133,7 +133,7 @@ describe('mobile structured conversation commands', () => {
         }
       }
     })
-    input.canRun = () => false
+    input.busy = () => 'working'
     input.waitsInLine = (command) => command === 'compact'
     expect(await dispatchMobileStructuredCommand(input)).toBe('accepted')
     const fields = requestFields(sendRequest.mock.calls[0])
@@ -142,6 +142,20 @@ describe('mobile structured conversation commands', () => {
     // A /clear never waits: the busy check still answers it.
     expect(await dispatchMobileStructuredCommand({ ...input, text: '/clear' })).toBe('rejected')
     expect(sendRequest).toHaveBeenCalledOnce()
+  })
+  it('a /clear while the agent works says so in plain words', async () => {
+    const { input, sendRequest } = setup()
+    input.busy = () => 'working'
+    expect(await dispatchMobileStructuredCommand({ ...input, text: '/clear' })).toBe('rejected')
+    expect(input.onError).toHaveBeenLastCalledWith(
+      "The agent is still working. Run /clear when it's done."
+    )
+    input.busy = () => 'prompt'
+    expect(await dispatchMobileStructuredCommand({ ...input, text: '/clear' })).toBe('rejected')
+    expect(input.onError).toHaveBeenLastCalledWith(
+      "Answer the agent's question or approval, then run /clear."
+    )
+    expect(sendRequest).not.toHaveBeenCalled()
   })
   it('keeps ordinary messages on the existing send path', async () => {
     const { input, sendRequest } = setup()

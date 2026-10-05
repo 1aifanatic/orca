@@ -97,11 +97,14 @@ export function useMobileStructuredSendWithOutcome(args: {
           agent: agent === 'claude' ? 'claude' : 'codex',
           ...controller
         },
-        canRun: () =>
-          !activeStructuredAgentSessionTurnId(stateRef.current.items) &&
-          !stateRef.current.items.some(
+        busy: () =>
+          stateRef.current.items.some(
             (item) => pendingStructuredApproval(item) || pendingStructuredQuestion(item)
-          ),
+          )
+            ? 'prompt'
+            : activeStructuredAgentSessionTurnId(stateRef.current.items)
+              ? 'working'
+              : null,
         // A card waiting on a prompt nothing here can answer would hold it forever.
         waitsInLine: (command) =>
           command === 'compact' &&

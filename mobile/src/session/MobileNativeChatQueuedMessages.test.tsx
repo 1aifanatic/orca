@@ -170,6 +170,27 @@ describe('MobileNativeChatQueuedMessages', () => {
     ).toHaveLength(2)
   })
 
+  it("a paused command card's ways out are Delete and the queue's Resume", async () => {
+    const onResume = vi.fn(async () => true)
+    const onDelete = vi.fn(async () => true)
+    const mounted = await mount({
+      cards: [card({ messageId: 'compact', text: '/compact', command: true })],
+      pause: { reason: 'stopped' },
+      onResume,
+      onDelete
+    })
+    await act(async () => {
+      mounted.root
+        .findByProps({ accessibilityLabel: 'Resume sending the queued messages' })
+        .props.onPress()
+    })
+    expect(onResume).toHaveBeenCalledOnce()
+    await act(async () => {
+      mounted.root.findByProps({ accessibilityLabel: 'Delete this queued message' }).props.onPress()
+    })
+    expect(onDelete).toHaveBeenCalledWith('compact')
+  })
+
   it('deletes a card from its trash button', async () => {
     const onDelete = vi.fn(async () => true)
     const mounted = await mount({ cards: [card({ messageId: 'w' })], onDelete })

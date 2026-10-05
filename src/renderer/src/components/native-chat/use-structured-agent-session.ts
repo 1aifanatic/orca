@@ -1,11 +1,7 @@
 import { useMemo, useRef } from 'react'
-import * as structuredConversationCommands from './structured-conversation-command-send'
 import type { AgentSessionPromptResult } from '../../../../shared/agent-session-wire'
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
-import type {
-  AgentSessionConversationCommand,
-  AgentSessionConversationCommandResult
-} from '../../../../shared/agent-session-conversation-command'
+import type { AgentSessionConversationCommandResult } from '../../../../shared/agent-session-conversation-command'
 import type { AgentType } from '../../../../shared/agent-status-types'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
@@ -36,6 +32,7 @@ import { useStructuredAgentSessionThreadGoal } from './use-structured-agent-sess
 import { useStructuredAgentSessionContextUsage } from './use-structured-agent-session-context-usage'
 import { useStructuredAgentSessionRailOutline } from './use-structured-agent-session-rail-outline'
 import { useStructuredAgentSessionQueuedMessages } from './use-structured-agent-session-queued-messages'
+import { useStructuredConversationCommandRun } from './use-structured-conversation-command-run'
 import { outboxOutsideQueuedCards } from './structured-agent-session-queued-cards'
 import { structuredAgentSessionStartFailureFacts } from './structured-agent-session-delivery-notices'
 import { hostStatesTurnScopes } from '../../../../shared/native-chat-turn-membership'
@@ -163,6 +160,24 @@ export function useStructuredAgentSession(args: {
   })
 
   const { outbox } = outboxController
+  const runConversationCommand = useStructuredConversationCommandRun({
+    agentName: structuredAgentLabel(agent === 'codex' ? 'codex' : 'claude'),
+    pending: commandPending,
+    commandsWait,
+    turnActive: transportState.turnId !== null,
+    promptPending: prompts.length > 0,
+    promptsUnanswerableHere,
+    backgroundTasksRunning: transportState.backgroundTasks.isMonitoring,
+    outbox,
+    submissions: transportState.submissions,
+    startFailures: () => structuredAgentSessionStartFailureFacts(stateRef.current.items),
+    write: (fields) =>
+      write<AgentSessionConversationCommandResult>(
+        'agentSession.conversationCommand',
+        'agentSession.conversationCommand',
+        fields
+      )
+  })
   // A host that takes a Stop naming no turn gets Stop from the send until the work settles; every
   // Stop before a turn opens needs that form. An older host can stop only a turn it has opened.
   const stopsConversation =
@@ -203,33 +218,7 @@ export function useStructuredAgentSession(args: {
   })
   return {
     conversationCommands,
-    runConversationCommand: (command: AgentSessionConversationCommand) =>
-      structuredConversationCommands.sendStructuredConversationCommand({
-        command,
-        agentName: structuredAgentLabel(agent === 'codex' ? 'codex' : 'claude'),
-        pending: commandPending,
-        blocked: structuredConversationCommands.structuredConversationCommandBlocked({
-          waitsInLine:
-            command === 'compact' && commandsWait && !(prompts.length && promptsUnanswerableHere),
-          turnActive: transportState.turnId !== null,
-          promptPending: prompts.length > 0,
-          backgroundTasksRunning: transportState.backgroundTasks.isMonitoring,
-          outboxHeld: outbox.length > 0,
-          outboxUnsent: hasUnsentStructuredAgentSessionOutboxEntry(
-            outbox,
-            transportState.submissions
-          )
-        }),
-        startFailures: () => structuredAgentSessionStartFailureFacts(stateRef.current.items),
-        send: (command) =>
-          write<AgentSessionConversationCommandResult>(
-            'agentSession.conversationCommand',
-            'agentSession.conversationCommand',
-            command === 'compact' && commandsWait
-              ? { command, delivery: 'queue-if-active' }
-              : { command }
-          )
-      }),
+    runConversationCommand,
     journalItems: transcriptItems,
     subagentRoster: transportState.subagentRoster,
     messages,

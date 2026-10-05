@@ -368,7 +368,12 @@ describe('a /compact against a host that holds commands in line', () => {
     )
   })
 
-  it('still holds it back behind a message this window has not handed to the host', async () => {
+  it('behind a message this window has not handed to the host, waits quietly, then goes out', async () => {
+    answerCommands({
+      command: 'compact',
+      state: 'completed',
+      queued: { messageId: 'operation-1', position: 1, state: 'waiting' }
+    })
     outboxEntries = [
       createStructuredAgentSessionOutboxEntry({
         clientMessageId: 'unsent',
@@ -378,12 +383,41 @@ describe('a /compact against a host that holds commands in line', () => {
         queuedAt: 1
       })
     ]
-    const { result } = render()
-    let outcome: { accepted: boolean } | undefined
-    await act(async () => {
-      outcome = await result.current.runConversationCommand('compact')
+    const { result, rerender } = render()
+    let outcome: Promise<unknown> | undefined
+    act(() => {
+      outcome = result.current.runConversationCommand('compact')
     })
-    expect(outcome?.accepted).toBe(false)
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(commandCalls()).toHaveLength(0)
+    // The message leaves the outbox (the host has it, or it was given back): the command follows.
+    outboxEntries = []
+    rerender()
+    await act(async () => {
+      expect(await outcome).toEqual({ accepted: true, error: null })
+    })
+    expect(commandCalls()).toHaveLength(1)
+  })
+
+  it('a wait the pane outlives sends nothing', async () => {
+    outboxEntries = [
+      createStructuredAgentSessionOutboxEntry({
+        clientMessageId: 'unsent',
+        sessionId: 'session-1',
+        text: 'on its way',
+        attachments: [],
+        queuedAt: 1
+      })
+    ]
+    const { result, unmount } = render()
+    let outcome: Promise<unknown> | undefined
+    act(() => {
+      outcome = result.current.runConversationCommand('compact')
+    })
+    unmount()
+    expect(await outcome).toEqual({ accepted: false, error: null })
     expect(commandCalls()).toHaveLength(0)
   })
 
@@ -434,6 +468,35 @@ describe('a /compact against a host that queues messages but not commands', () =
     const { result } = render()
     await act(async () => {
       await result.current.runConversationCommand('compact')
+    })
+    expect(commandCalls()).toHaveLength(0)
+    items = []
+    answerCommands({ command: 'compact', state: 'completed' })
+    const idle = render()
+    await act(async () => {
+      await idle.result.current.runConversationCommand('compact')
+    })
+    expect(ConversationCommandParams.parse(commandCalls()[0])).not.toHaveProperty('delivery')
+  })
+})
+
+describe('a /compact against a host that holds commands but has its queue dark', () => {
+  beforeEach(() => {
+    setLocalRuntimeCapabilitiesForTests([
+      AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY,
+      AGENT_SESSION_QUEUED_COMMANDS_RUNTIME_CAPABILITY
+    ])
+  })
+
+  it("is exactly today's: held back mid-turn, and idle goes out without `delivery`", async () => {
+    const { result } = render()
+    let outcome: { accepted: boolean; error: string | null } | undefined
+    await act(async () => {
+      outcome = await result.current.runConversationCommand('compact')
+    })
+    expect(outcome).toEqual({
+      accepted: false,
+      error: 'Wait for pending work and messages to finish before using this command.'
     })
     expect(commandCalls()).toHaveLength(0)
     items = []
