@@ -12,6 +12,7 @@ $ErrorActionPreference='Stop'
 if($env:GITHUB_ACTIONS -ne 'true' -or $env:ORCA_ISOLATED_SSH_CI -ne '1'){throw 'Disposable CI only'}
 $shells=@{'pinned-cmd'='cmd';'pinned-powershell'='powershell';'legacy-opt-out'='cmd';'orcad-cmd'='cmd';'orcad-powershell'='powershell';'orcad-convert'='cmd'}
 if($Context.accounts.Count -lt $Cells.Count){throw 'Each cell needs its own private account'}
+if($Cells -contains 'orcad-convert' -and $Cells[-1] -ne 'orcad-convert'){throw 'orcad-convert must be the last cell: it switches native modules to Electron'}
 if(-not $Context.forbiddenToolLog){throw 'Run the provisioning with -HiddenTools so toolchain calls are logged'}
 $openSshKey='HKLM:\SOFTWARE\OpenSSH'
 $windowsPowerShell=Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
@@ -64,7 +65,9 @@ function Invoke-ConvertCell($Account,[string]$Descriptor,[string]$Log) {
   Rename-Item -LiteralPath 'out\orcad-template' -NewName 'orcad-template.convert-hidden'
   try {
     & node config/scripts/ensure-native-runtime.mjs --runtime=electron 2>&1 | Tee-Object -FilePath $Log | Out-Host
+    if($global:LASTEXITCODE -ne 0){Write-Host 'Switching native modules to Electron failed';return $global:LASTEXITCODE}
     & pnpm exec electron-vite build --mode e2e 2>&1 | Tee-Object -FilePath $Log -Append | Out-Host
+    if($global:LASTEXITCODE -ne 0){Write-Host 'The e2e app build failed';return $global:LASTEXITCODE}
     $env:ORCA_E2E_ORCAD_CONVERT_HOST=$Descriptor;$env:ORCA_E2E_ORCAD_CONVERT_TEMPLATE=$template;$env:SKIP_BUILD='1'
     & pnpm exec playwright test --config tests/playwright.config.ts tests/e2e/ssh-orcad-auto-convert.spec.ts --project=electron-headless --workers=1 2>&1 | Tee-Object -FilePath $Log -Append | Out-Host
     # Functions return uncaptured output, so only the exit code may reach the caller.

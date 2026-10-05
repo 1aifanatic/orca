@@ -43,6 +43,10 @@ describe('SSH Windows-host workflow', () => {
     expect(paths.indexOf('src/main/ssh/ssh-relay-windows-host-lane.test.ts')).toBeGreaterThan(
       paths.indexOf('!src/**/*.test.ts')
     )
+    // A later glob would re-include unit tests the Windows lane never runs.
+    for (const glob of paths.slice(paths.indexOf('!src/**/*.test.ts') + 1)) {
+      expect(glob.startsWith('src/') ? glob.endsWith('.test.ts') : true, glob).toBe(true)
+    }
     expect(job.if).toContain('github.event.pull_request.draft != true')
   })
 
@@ -193,6 +197,9 @@ describe('SSH Windows-host workflow', () => {
       `$forwarding=if($cells[-1] -eq '${WINDOWS_CONVERT_CELL_ID}'){1}else{0}`
     )
     expect(runStep.run).toContain('-ForwardingAccounts $forwarding')
+    expect(runStep.run).toContain(
+      `$cells=@($cells | Where-Object {$_ -ne '${WINDOWS_CONVERT_CELL_ID}'})+@($cells | Where-Object {$_ -eq '${WINDOWS_CONVERT_CELL_ID}'})`
+    )
     const provisioner = readFileSync(
       join(projectDir, 'config/ci/windows-ssh-provider/preview-ssh/prove-preview-openssh.ps1'),
       'utf8'

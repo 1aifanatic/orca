@@ -102,4 +102,18 @@ describe('the one-time move offer toast', () => {
     await vi.waitFor(() => expect(mocks.toast.error).toHaveBeenCalled())
     expect(mocks.toast.error.mock.calls[0][0]).toContain('couldn’t confirm that 1 terminal on')
   })
+
+  it('never states an unknown count as zero', async () => {
+    applySshManagedServerTransition('ssh-1', undefined, offer)
+    moveToManagedServer.mockResolvedValueOnce({
+      outcome: 'refused',
+      verdict: 'unverifiable',
+      terminals: 0
+    })
+    lastToastOptions().action.onClick()
+    await vi.waitFor(() => expect(mocks.toast.error).toHaveBeenCalled())
+    expect(mocks.toast.error.mock.calls[0][0]).toBe(
+      'Not moved: Orca couldn’t confirm that the terminals on Box stopped.'
+    )
+  })
 })

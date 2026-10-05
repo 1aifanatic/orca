@@ -32,10 +32,10 @@ on:
       - 'config/scripts/windows-process-tree-gyp-rebuild.mjs'
       - 'src/shared/relay-windows-breakaway-launch.ts'
       - 'src/shared/windows-breakaway-launch*.ts'
+      - 'src/main/ipc/ssh-host-server-*.ts'
       - '!src/**/*.test.ts'
       - 'src/main/ssh/ssh-relay-windows-host-lane.test.ts'
       - 'src/main/ssh/orcad-windows-host-lane.test.ts'
-      - 'src/main/ipc/ssh-host-server-*'
       - 'tests/e2e/ssh-orcad-auto-convert.spec.ts'
       - 'tests/e2e/helpers/orcad-convert-host.ts'
       - 'tests/e2e/helpers/orcad-convert-flow.ts'
@@ -157,6 +157,8 @@ jobs:
           if(-not $cells.Count){$cells=@('pinned-cmd','pinned-powershell','legacy-opt-out','orcad-cmd','orcad-powershell')}
           # One Windows host runs the app-level conversion; it is last because it switches native modules.
           if(-not $env:CELLS -and '${{ matrix.arch }}' -eq 'x64' -and '${{ matrix.server }}' -eq 'inbox'){$cells+='orcad-convert'}
+          # A dispatched list may name it anywhere; it still runs last.
+          $cells=@($cells | Where-Object {$_ -ne 'orcad-convert'})+@($cells | Where-Object {$_ -eq 'orcad-convert'})
           # The managed server is reached through an SSH local forward, so only the convert cell's account may open one.
           $forwarding=if($cells[-1] -eq 'orcad-convert'){1}else{0}
           $archive=''

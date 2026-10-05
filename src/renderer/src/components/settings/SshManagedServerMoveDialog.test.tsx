@@ -108,4 +108,19 @@ describe('SshManagedServerMoveDialog', () => {
     await act(async () => button(container, 'Move').click())
     expect(container.textContent).toContain('Could not move Box: relay offline')
   })
+
+  it('a dialog remounted mid-move keeps Move disabled and never starts a second move', async () => {
+    let finish: (value: unknown) => void = () => {}
+    moveToManagedServer.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)))
+    const first = render()
+    act(() => button(first, 'Move').click())
+    act(() => roots.shift()?.unmount())
+
+    const second = render()
+    expect(button(second, 'Move').disabled).toBe(true)
+    act(() => button(second, 'Move').click())
+    expect(moveToManagedServer).toHaveBeenCalledTimes(1)
+    await act(async () => finish({ outcome: 'refused', verdict: 'live', terminals: 2 }))
+    expect(second.textContent).toContain('Not moved: 2 terminals on Box are still running.')
+  })
 })
