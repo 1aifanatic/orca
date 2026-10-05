@@ -4,6 +4,7 @@ import { setCachedWorktrees } from '../cache/worktree-cache'
 import type { RpcClient } from '../transport/rpc-client'
 import type { ConnectionState } from '../transport/types'
 import { RpcIncompatibleReplyError } from '../transport/rpc-incompatible-reply-error'
+import { showPinnedWorktreesInGroupsRead } from '../transport/settings-read-operations'
 import { useWorktreeResync } from '../transport/use-worktree-resync'
 import { startHostWorktreeRefresh } from '../worktree/host-worktree-refresh'
 import { areWorktreeListsEqual } from '../worktree/worktree-list-snapshot'
@@ -23,7 +24,6 @@ export function useHostWorktreeCatalog(args: {
   hostId: string | undefined
   state: HostScreenState
   syncViewSettingsFromDesktop: () => Promise<void>
-  syncShowPinnedInGroups: () => Promise<void>
 }) {
   const {
     client,
@@ -32,8 +32,7 @@ export function useHostWorktreeCatalog(args: {
     fetchRepoMetadata,
     hostId,
     state,
-    syncViewSettingsFromDesktop,
-    syncShowPinnedInGroups
+    syncViewSettingsFromDesktop
   } = args
   const {
     clientRef,
@@ -44,6 +43,7 @@ export function useHostWorktreeCatalog(args: {
     setLastKnownWorktrees,
     setOptimisticActiveWorktreeIdentity,
     setPinnedIds,
+    setShowPinnedInGroups,
     setSleptIds,
     setWorktrees,
     setWorktreesLoaded,
@@ -147,12 +147,27 @@ export function useHostWorktreeCatalog(args: {
     }, [])
   )
 
+  const syncShowPinnedInGroups = useCallback(async (requestClient: RpcClient) => {
+    try {
+      const reply = await showPinnedWorktreesInGroupsRead.request(requestClient)
+      if (clientRef.current !== requestClient) {
+        return
+      }
+      const read = showPinnedWorktreesInGroupsRead.interpret(reply)
+      if (read.accepted) {
+        setShowPinnedInGroups(read.value)
+      }
+    } catch {
+      // Best-effort: keep the current placement until the next focus/connect.
+    }
+  }, [])
+
   const startWorktreeRefresh = useCallback(() => {
     if (!client || connState !== 'connected') {
       return
     }
     void syncViewSettingsFromDesktop()
-    void syncShowPinnedInGroups()
+    void syncShowPinnedInGroups(client)
     return startHostWorktreeRefresh({ client, fetchWorktrees, fetchRepoMetadata })
   }, [
     client,
