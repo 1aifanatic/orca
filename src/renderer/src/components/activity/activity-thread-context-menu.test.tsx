@@ -208,7 +208,7 @@ describe('ActivityThreadContextMenu', () => {
     expect(screen.getByText('Agent')).toBeTruthy()
 
     expect(screen.queryByRole('menuitem', { name: /Unread/ })).toBeNull()
-    fireEvent.click(menuItem('Mark 1 Read'))
+    fireEvent.click(menuItem('Mark 1 Agent Read'))
     expect(handlers.onMarkManyRead).toHaveBeenCalledWith([unreadA])
   })
 
@@ -217,7 +217,7 @@ describe('ActivityThreadContextMenu', () => {
     const readB = makeThread({ paneKey: 'b', unread: false })
     openBulkMenu([openRow, readB], (thread) => thread.paneKey !== 'open')
 
-    fireEvent.click(menuItem('Mark 1 Unread'))
+    fireEvent.click(menuItem('Mark 1 Agent Unread'))
     expect(handlers.onMarkManyUnread).toHaveBeenCalledWith([readB])
   })
 
@@ -227,7 +227,7 @@ describe('ActivityThreadContextMenu', () => {
     const doneB = makeDoneThread('b')
     openBulkMenu([doneA, working, doneB])
 
-    fireEvent.click(menuItem('Clear 2 from List'))
+    fireEvent.click(menuItem('Clear 2 Agents from List'))
     expect(mocks.clearCompletedActivity).toHaveBeenCalledWith([doneA, doneB])
     expect(mocks.clearActivityThread).not.toHaveBeenCalled()
   })

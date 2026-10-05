@@ -234,7 +234,7 @@ function ActivityThreadBulkMenuItems({
           <BellOff className="size-3.5" />
           {translate(
             'auto.components.activity.ActivityThreadContextMenu.markManyRead',
-            'Mark {{count}} Read',
+            'Mark {{count}} Agents Read',
             { count: unread.length }
           )}
         </ContextMenuItem>
@@ -244,7 +244,7 @@ function ActivityThreadBulkMenuItems({
           {read.length > 0
             ? translate(
                 'auto.components.activity.ActivityThreadContextMenu.markManyUnread',
-                'Mark {{count}} Unread',
+                'Mark {{count}} Agents Unread',
                 { count: read.length }
               )
             : translate(
@@ -262,7 +262,7 @@ function ActivityThreadBulkMenuItems({
         {clearable.length > 0
           ? translate(
               'auto.components.activity.ActivityThreadContextMenu.clearMany',
-              'Clear {{count}} from List',
+              'Clear {{count}} Agents from List',
               { count: clearable.length }
             )
           : translate(
