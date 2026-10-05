@@ -76,6 +76,13 @@ export function recordActiveOrcadTunnel(
 }
 
 /** A run a close(), ownership change or transport change overtook: it must not read as success. */
+export class OrcadTunnelSupersededError extends Error {
+  constructor() {
+    super('Orca SSH tunnel setup was superseded.')
+    this.name = 'OrcadTunnelSupersededError'
+  }
+}
+
 export function supersededTunnelError(): Error {
-  return new Error('Orca SSH tunnel setup was superseded.')
+  return new OrcadTunnelSupersededError()
 }

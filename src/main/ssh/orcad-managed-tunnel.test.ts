@@ -332,6 +332,19 @@ describe.each(['orcadDeployment', 'sshAccess'] as const)(
       expect(state.addForward).toHaveBeenCalledOnce()
     })
 
+    it('lets a caller that joined a run a transport change overtook build its own', async () => {
+      const state = setup()
+      state.addForward.mockImplementationOnce(async () => {
+        state.setTransportGeneration(9)
+        return { id: 'stale-forward', localPort: 46_768, remotePort: 6_768 }
+      })
+      const first = state.manager.ensure(environment())
+      const joined = state.manager.ensure(environment())
+      await expect(first).rejects.toThrow('superseded')
+      await expect(joined).resolves.toBeUndefined()
+      expect(state.addForward).toHaveBeenCalledTimes(2)
+    })
+
     it('re-reads the saved environment after connection rather than trusting its initial snapshot', async () => {
       const state = setup()
       const original = environment()

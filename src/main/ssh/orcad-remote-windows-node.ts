@@ -17,13 +17,14 @@ import {
 import { pinnedNodeRuntimeAsset, type NodeRuntimeTarget } from '../../shared/node-runtime-pin'
 import { randomUUID } from 'node:crypto'
 import type { SshConnection } from './ssh-connection'
-import { execCommand } from './ssh-relay-deploy-helpers'
+import { execCommand, isUnconfirmedSshCommandTermination } from './ssh-relay-deploy-helpers'
 import { RELAY_REMOTE_DIR } from './relay-protocol'
 import { joinRemotePath, remoteDirname, type RemoteHostPlatform } from './ssh-remote-platform'
 import { powerShellLiteral } from './ssh-remote-powershell'
 import {
   ORCAD_WINDOWS_HOST_SCRIPT,
   ORCAD_WINDOWS_HOST_SCRIPT_FILENAME,
+  ORCAD_WINDOWS_HOST_SCRIPT_PRESENT,
   type OrcadWindowsHostOp
 } from './orcad-windows-host-script'
 
@@ -116,12 +117,6 @@ export function orcadWindowsHostOpCommand(
   ])
 }
 
-// Renames the partial (argv[2]) over the script (argv[1]); identical bytes may already be there.
-const STAGE_HOST_SCRIPT_JS =
-  "const fs=require('fs');const [d,p]=process.argv.slice(1);" +
-  'if(p){try{fs.renameSync(p,d)}catch{}fs.rmSync(p,{force:true})}' +
-  "process.stdout.write(fs.existsSync(d)?'PRESENT':'MISSING')"
-
 // Content-addressed paths this connection already saw on the host.
 const stagedHostScripts = new WeakMap<SshConnection, Set<string>>()
 
@@ -140,27 +135,36 @@ export async function installOrcadWindowsHostScript(
   if (staged.has(scriptPath)) {
     return
   }
-  // Through the pinned node.exe, which is staged first: one line both cmd.exe and PowerShell run.
-  const place = async (partial?: string): Promise<boolean> => {
+  // Both checks run a host-script op on the pinned node.exe, staged first: no inline code.
+  const runOp = async (
+    script: string,
+    op: OrcadWindowsHostOp,
+    args: string[]
+  ): Promise<boolean> => {
     const command = orcadWindowsNodeCommandLine(orcadWindowsPinnedNodePath(target.host, baseDir), [
-      '-e',
-      STAGE_HOST_SCRIPT_JS,
-      scriptPath,
-      ...(partial ? [partial] : [])
+      script,
+      op,
+      ...args
     ])
     const answer = await execCommand(target.conn, command, {
       wrapCommand: false,
       signal: target.signal
+    }).catch((error: unknown) => {
+      if (isUnconfirmedSshCommandTermination(error)) {
+        throw error
+      }
+      // A missing script makes node.exe exit nonzero, which reads as "not present".
+      return ''
     })
-    return answer.trim().split(/\r?\n/u).at(-1) === 'PRESENT'
+    return answer.trim().split(/\r?\n/u).at(-1) === ORCAD_WINDOWS_HOST_SCRIPT_PRESENT
   }
-  if (!(await place())) {
+  if (!(await runOp(scriptPath, 'script-present', []))) {
     const partial = `${scriptPath}.${randomUUID()}.partial`
     await target.conn.writeFile(partial, ORCAD_WINDOWS_HOST_SCRIPT, {
       hostPlatform: target.host,
       signal: target.signal
     })
-    if (!(await place(partial))) {
+    if (!(await runOp(partial, 'script-install', [scriptPath]))) {
       throw new Error(`Could not stage the orcad host script at ${scriptPath}.`)
     }
   }

@@ -58,10 +58,13 @@ export type OrcadWindowsHostOp =
   | 'slot-runtime'
   | 'remove-file'
   | 'remove-tree'
+  | 'script-present'
+  | 'script-install'
   | 'stdio-bridge'
   | OrcadWindowsHostStateOp
 
 const text = JSON.stringify
+export const ORCAD_WINDOWS_HOST_SCRIPT_PRESENT = 'ORCAD_HOST_SCRIPT_PRESENT'
 
 export const ORCAD_WINDOWS_HOST_SCRIPT = `'use strict'
 const fs = require('fs')
@@ -218,6 +221,19 @@ const ops = {
       answer('')
     }
     publish()
+  },
+
+  // Loading at all proves this content-addressed file is whole.
+  'script-present'() {
+    answer(${text(ORCAD_WINDOWS_HOST_SCRIPT_PRESENT)})
+  },
+
+  // Run from its own partial upload: moves itself over the script path. A concurrent writer
+  // may already have put identical bytes there, so only a missing result is a failure.
+  'script-install'(target) {
+    try { fs.renameSync(__filename, target) } catch {}
+    fs.rmSync(__filename, { force: true })
+    answer(fs.existsSync(target) ? ${text(ORCAD_WINDOWS_HOST_SCRIPT_PRESENT)} : '')
   },
 
   'remove-file'(file) {

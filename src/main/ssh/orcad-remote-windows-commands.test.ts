@@ -255,24 +255,24 @@ describe('Windows build hash and host script', () => {
     )
   })
 
-  it('stages a missing host script through a partial file and a rename, once per connection', async () => {
+  it('stages a missing host script through a partial file that installs itself, once per connection', async () => {
     const { conn, writes } = windowsConn()
-    mockExec.mockResolvedValueOnce('MISSING\r\n').mockResolvedValueOnce('PRESENT\r\n')
+    mockExec
+      .mockRejectedValueOnce(new Error('Cannot find module'))
+      .mockResolvedValueOnce('ORCAD_HOST_SCRIPT_PRESENT\r\n')
     await installOrcadWindowsHostScript({ conn, host }, base)
     await installOrcadWindowsHostScript({ conn, host }, base)
     expect(writes).toHaveLength(1)
     const [partial, contents] = writes[0] ?? []
     expect(contents).toBe(ORCAD_WINDOWS_HOST_SCRIPT)
-    expect(partial).toMatch(new RegExp(`^${SCRIPT.replaceAll('.', '\\.')}\\..+\\.partial$`))
-    expect(String(mockExec.mock.calls[1]?.[1])).toMatch(
-      /^\S+node\.exe -e "[^"]+" \S+ \S+\.partial$/u
-    )
+    expect(String(mockExec.mock.calls[0]?.[1])).toBe(`${NODE} ${SCRIPT} script-present`)
+    expect(String(mockExec.mock.calls[1]?.[1])).toBe(`${NODE} ${partial} script-install ${SCRIPT}`)
     expect(mockExec).toHaveBeenCalledTimes(2)
   })
 
   it('never rewrites a host script that is already present', async () => {
     const { conn, writes } = windowsConn()
-    mockExec.mockResolvedValueOnce('PRESENT\r\n')
+    mockExec.mockResolvedValueOnce('ORCAD_HOST_SCRIPT_PRESENT\r\n')
     await installOrcadWindowsHostScript({ conn, host }, base)
     expect(writes).toEqual([])
   })

@@ -276,6 +276,25 @@ describe('Windows record scripts', () => {
   })
 })
 
+describe('Windows host script staging', () => {
+  it('answers present from a whole script, and installs itself from its partial upload', async () => {
+    expect((await runOp('script-present', [], false)).stdout.trim()).toBe(
+      'ORCAD_HOST_SCRIPT_PRESENT'
+    )
+    const partial = join(dir, 'staged.partial')
+    const target = join(dir, 'installed.js')
+    writeFileSync(partial, ORCAD_WINDOWS_HOST_SCRIPT)
+    const installed = await runProcess({
+      program: process.execPath,
+      args: [partial, 'script-install', target],
+      timeoutMs: 15_000
+    })
+    expect(installed.stdout.trim()).toBe('ORCAD_HOST_SCRIPT_PRESENT')
+    expect(existsSync(partial)).toBe(false)
+    expect(readFileSync(target, 'utf8')).toBe(ORCAD_WINDOWS_HOST_SCRIPT)
+  })
+})
+
 describe('Windows slot runtime and file removal', () => {
   const slot = () => join(dir, 'orcad-0.2.0+bb01')
   const sha = 'a'.repeat(64)
