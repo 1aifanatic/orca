@@ -43,7 +43,7 @@ export function projectOrcadMigrationSessionScrollback(
   const snapshots: OrcadMigrationTerminalScrollbackSnapshot[] = []
   let blockedCount = 0
   let totalBytes = 0
-  for (const [tabId, layout] of Object.entries(projected.terminalLayoutsByTabId)) {
+  for (const [tabId, layout] of Object.entries(projected.terminalLayoutsByTabId ?? {})) {
     const sourceLayout = session.terminalLayoutsByTabId[tabId]
     const refs: Record<string, string> = {}
     const leafIds = new Set([
@@ -125,7 +125,7 @@ function findSnapshotBytes(
   storage?: TerminalScrollbackSnapshotStorage
 ): Buffer | null {
   for (const session of sessionPartitions(state)) {
-    const layout = session.terminalLayoutsByTabId[descriptor.tabId]
+    const layout = session.terminalLayoutsByTabId?.[descriptor.tabId]
     if (!layout) {
       continue
     }

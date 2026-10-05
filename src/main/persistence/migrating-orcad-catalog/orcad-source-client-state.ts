@@ -220,7 +220,7 @@ function collectEligibleSessionIdentity(
 ): EligibleSessionIdentity {
   const tabIds = new Set<string>()
   const groupIds = new Set<string>()
-  for (const [ownerKey, tabs] of Object.entries(session.tabsByWorktree)) {
+  for (const [ownerKey, tabs] of Object.entries(session.tabsByWorktree ?? {})) {
     if (!orcadMigrationOwnerMatchesScope(ownerKey, scope)) {
       continue
     }

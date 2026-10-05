@@ -47,7 +47,7 @@ function catalogClaims(manifest: OrcadMigrationManifest): Set<string> {
     dormant.automations?.forEach((automation) => claims.add(`automation:${automation.id}`))
     dormant.automationRuns?.forEach((run) => claims.add(`automation-run:${run.id}`))
     if (dormant.workspaceSession) {
-      for (const tabId of Object.keys(dormant.workspaceSession.terminalLayoutsByTabId)) {
+      for (const tabId of Object.keys(dormant.workspaceSession.terminalLayoutsByTabId ?? {})) {
         claims.add(`session:terminal-layout:${tabId}`)
       }
       for (const entity of collectOrcadMigrationSessionEntityOwners(

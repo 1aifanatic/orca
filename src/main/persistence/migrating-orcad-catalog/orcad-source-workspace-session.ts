@@ -42,7 +42,22 @@ export type OrcadMigrationSourceWorkspaceSessionInspection = {
   blockedCount: number
 }
 
+/** Fails closed: a session shape no collector expects blocks the move instead of failing connect. */
 export function collectOrcadMigrationSourceWorkspaceSession(
+  state: PersistedState,
+  source: OrcadMigrationManifestSource,
+  catalog: OrcadMigrationCatalogPayload,
+  storage?: TerminalScrollbackSnapshotStorage
+): OrcadMigrationSourceWorkspaceSessionInspection {
+  try {
+    return collectWorkspaceSession(state, source, catalog, storage)
+  } catch (error) {
+    console.warn('[migration] Unreadable workspace session blocks the move:', error)
+    return { payload: undefined, snapshots: [], blockedCount: 1 }
+  }
+}
+
+function collectWorkspaceSession(
   state: PersistedState,
   source: OrcadMigrationManifestSource,
   catalog: OrcadMigrationCatalogPayload,
