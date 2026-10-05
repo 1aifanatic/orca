@@ -86,8 +86,7 @@ export default function MermaidBlock({
           // Mermaid leaves an error element in the DOM on failure — clean it up.
           const errorEl = document.getElementById(`d${`mermaid-${id}`}`)
           errorEl?.remove()
-          // Why: the SVG host stays mounted (hidden) during error; clear it so
-          // the previous diagram cannot linger in the DOM.
+          // Clear the retained host so the previous diagram cannot linger during an error.
           if (containerRef.current) {
             containerRef.current.innerHTML = ''
           }
@@ -105,7 +104,7 @@ export default function MermaidBlock({
 
   return (
     <div className="mermaid-block">
-      {error ? (
+      {error !== null ? (
         <>
           <div className="mermaid-error">
             {translate('auto.components.editor.MermaidBlock.dcc132e691', 'Diagram error:')} {error}
@@ -115,8 +114,7 @@ export default function MermaidBlock({
           </pre>
         </>
       ) : null}
-      {/* Why: keep the SVG host mounted during error so a later successful
-          parse can write the diagram and clear the stale error (#18370). */}
+      {/* Keep the SVG host mounted so a corrected diagram can replace the error. */}
       <div ref={containerRef} hidden={error !== null} />
     </div>
   )
