@@ -7,7 +7,10 @@ import type { ProcessSpec } from '../../shared/child-process/process-spec'
 import type * as ProviderSupervisor from '../codex/codex-app-server-posix-supervisor'
 import { createProviderSpawnSpec } from '../codex/codex-app-server-posix-supervisor'
 import { createClaudeCodeProcessSpawn } from './claude-agent-sdk-process-spawn'
-import { proveClaudeChildExitWithReaper } from './claude-child-exit-proof-ladder'
+import {
+  CLAUDE_CODE_CLOSE_REQUEST,
+  proveClaudeChildExitWithReaper
+} from './claude-child-exit-proof-ladder'
 
 vi.mock('../codex/codex-app-server-posix-supervisor', async (importOriginal) => {
   const actual = await importOriginal<typeof ProviderSupervisor>()
@@ -98,8 +101,16 @@ describe('claude agent SDK process spawn', () => {
       const supervisorSpec = JSON.parse(
         Buffer.from(String(spec.env?.ORCA_PROVIDER_SUPERVISOR_SPEC), 'base64').toString()
       )
+      // Passed explicitly from the constant the exit-proof ladder closes with, never left to the
+      // spec default, so the two cannot drift.
+      expect(vi.mocked(createProviderSpawnSpec)).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.anything(),
+        platform,
+        { closeRequest: CLAUDE_CODE_CLOSE_REQUEST }
+      )
       expect(supervisorSpec).toMatchObject({
-        closeRequest: 'stdin-end-and-sigterm',
+        closeRequest: CLAUDE_CODE_CLOSE_REQUEST,
         cwd: '/work/repo',
         ownerPid: globalThis.process.pid
       })
