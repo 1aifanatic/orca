@@ -733,6 +733,17 @@ body:has(> [data-slot='dialog-overlay'], > [data-slot='sheet-overlay']) {
   mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 1.5rem), transparent);
 }
 
+/* Why: tabs only draw a right border, so a tab docked at the end has no seam against the tab it covers. */
+.terminal-tab-strip[data-active-tab-docked='end'] > [data-active-tab-dock]::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 1px;
+  background: var(--border);
+  z-index: 30;
+}
+
 /* Tab activity affordance (amber wash) is rendered as a React DOM child in
    SortableTab.tsx rather than via ::after here, so the drop-indicator
    ::before/::after pseudo-elements stay free for drag-and-drop feedback. See
@@ -1283,6 +1294,14 @@ html.native-shell .app-layout {
 
 .dark .worktree-sidebar-card-hover:hover {
   background: color-mix(in srgb, var(--sidebar-accent) 40%, transparent);
+}
+
+/* Why: one multi-selected look for every list on the card surface (workspaces and
+   agents); after the hover rules so it wins, and never on the active/open row. */
+[data-worktree-card-surface][data-worktree-card-selected]:not([data-worktree-card-active]) {
+  border-color: color-mix(in oklab, var(--worktree-sidebar-ring) 35%, transparent);
+  background-color: color-mix(in oklab, var(--worktree-sidebar-accent) 70%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--worktree-sidebar-ring) 30%, transparent);
 }
 
 /* Why: the brighter border carries the selected state; a translucent wash keeps

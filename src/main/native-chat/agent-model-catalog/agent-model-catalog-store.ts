@@ -217,6 +217,27 @@ export class AgentModelCatalogStore {
     return run
   }
 
+  /** For a reader with no Codex of its own: the first listing running for the account that
+   *  succeeds, or null once all of them fail. Null at once when none is running. */
+  pendingListing(fingerprint: string): Promise<AgentModelCatalogEntry | null> | null {
+    const runs = [...(this.refreshes.get(fingerprint)?.values() ?? [])]
+    if (runs.length === 0) {
+      return null
+    }
+    return new Promise((resolve) => {
+      let unsettled = runs.length
+      for (const run of runs) {
+        void run.then((entry) => {
+          if (entry) {
+            resolve(entry)
+          } else if (--unsettled === 0) {
+            resolve(null)
+          }
+        })
+      }
+    })
+  }
+
   /** True when a read should kick a background refresh: nothing known or the
    *  entry aged out, and no failure is still inside its TTL. */
   shouldRefresh(fingerprint: string): boolean {

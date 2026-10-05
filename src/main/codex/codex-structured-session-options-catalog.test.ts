@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createCodexDispatchEchoes } from './codex-structured-dispatch-echo'
+import { createCodexTurnOpenWaits } from './codex-structured-turn-open-wait'
 import type { CodexAppServerConnection } from './codex-app-server-connection'
 import { CodexAcquisitionWindow } from './codex-structured-acquisition-window'
 import {
@@ -14,6 +15,8 @@ import {
   AgentModelCatalogStore,
   type AgentModelCatalogProbe
 } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
+import { createAgentModelCatalogService } from '../native-chat/agent-model-catalog/agent-model-catalog-service'
+import { agentModelCatalogFingerprint } from '../native-chat/agent-model-catalog/agent-model-catalog-fingerprint'
 
 const FINGERPRINT = 'fp-session-account'
 
@@ -53,16 +56,15 @@ function storeSession(
     },
     backgroundTasks: new CodexBackgroundTaskTracker('thread-1'),
     ended: false,
-    requestedClose: false,
     fence: 1,
     acquisitionGeneration: 'generation-1',
     threadId: 'thread-1',
-    historyPath: null,
     prompts: new CodexAcquisitionWindow().prompts,
     options: new Map(),
     reportedOptions: { model: 'gpt-live', effort: 'high' },
     fastModeTierByModel: new Map(),
     dispatchEchoes: createCodexDispatchEchoes(),
+    turnOpenWaits: createCodexTurnOpenWaits(),
     translator: null,
     catalogAccess: { store, fingerprint: FINGERPRINT, accountHomePath: '/homes/a' }
   }
@@ -114,6 +116,36 @@ describe('Codex session options through the host catalog store', () => {
     const result = await readLiveCodexSessionOptions(session, undefined)
     expect(result.models.map((model) => model.id)).toEqual(['gpt-live'])
     expect(modelListCalls(request)).toBe(1)
+  })
+
+  it('restores a new chat while the probe its opening picker read kicked hangs', async () => {
+    const store = new AgentModelCatalogStore()
+    const fingerprint = agentModelCatalogFingerprint({
+      agent: 'codex',
+      accountHomeVariable: 'CODEX_HOME',
+      accountHomePath: '/homes/a',
+      wslDistro: null
+    })
+    const hungProbe = vi.fn<AgentModelCatalogProbe>(() => new Promise<never>(() => {}))
+    const service = createAgentModelCatalogService({
+      store,
+      getRecord: () => undefined,
+      resolveAccountHome: async () => ({ variable: 'CODEX_HOME', path: '/homes/a' }),
+      probes: { codex: hungProbe }
+    })
+    expect(await service.read({ agent: 'codex' })).toEqual({
+      origin: 'unknown',
+      listingInProgress: true
+    })
+    expect(hungProbe).toHaveBeenCalledTimes(1)
+    const request = vi.fn(async () => listAnswer('gpt-live'))
+    const session = storeSession(request, store)
+    session.catalogAccess = { store, fingerprint, accountHomePath: '/homes/a' }
+    const result = await readLiveCodexSessionOptions(session, undefined)
+    expect(result.models.map((model) => model.id)).toEqual(['gpt-live'])
+    // The picker's waiting read now answers from the chat's listing.
+    const picker = await service.read({ agent: 'codex', waitForListing: true })
+    expect(picker.origin === 'unknown' ? null : picker.models[0]!.id).toBe('gpt-live')
   })
 
   it("restores a new chat from its own connection while another chat's listing hangs", async () => {

@@ -14,7 +14,8 @@ import {
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-wire'
-import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import {
   HOST_TEST_NOW as NOW,
@@ -25,6 +26,9 @@ import {
   hostTestOperationId,
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
+import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 
 const CALLER = { callerKey: 'client-1' }
 const EXIT_REASON = 'Claude Code is not signed in. Sign in with the Claude CLI'
@@ -116,15 +120,16 @@ beforeEach(async () => {
   awaitStarted = vi.fn(
     () => new Promise<SubmissionRejectionFact | undefined>((resolve) => (settleStart = resolve))
   )
-  store = await AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
+  store = await openTestAgentSessionRecordStore(root)
   host = new StructuredAgentSessionHost({
+    logger: createStructuredAgentSessionLogger(),
     store,
     adapter: {
       acquire: vi.fn(async ({ fence, spawnToken }) => ({
         process: { hostId: 'local', pid: 4242, processStartTimeMs: 1_700_000_000_000, spawnToken },
         link: {
           linkId: `link-${fence}`,
-          handle: { provider: 'codex' as const, threadId: THREAD },
+          handle: codexProviderHandle(THREAD),
           origin: generation === 0 ? ('created' as const) : ('resumed' as const),
           mintedAtFence: fence,
           observedAt: NOW
@@ -140,7 +145,7 @@ beforeEach(async () => {
       answerPrompt: vi.fn(async () => undefined),
       setOption: vi.fn(async () => undefined)
     },
-    journalRoot: root,
+    journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
     mintSpawnToken: () => `spawn-${generation + 1}`,
     now: () => NOW

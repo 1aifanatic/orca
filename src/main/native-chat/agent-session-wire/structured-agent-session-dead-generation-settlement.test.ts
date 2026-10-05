@@ -1,3 +1,4 @@
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -15,6 +16,8 @@ import {
   settleStructuredAgentSessionDeadGeneration,
   unfinishedStructuredAgentSessionWorkWasInterrupted
 } from './structured-agent-session-dead-generation-settlement'
+import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 
 const UNEXPECTED_PROVIDER_EXIT_OUTCOME =
   'The agent stopped while this response was in progress. You can continue in this conversation.'
@@ -32,9 +35,9 @@ beforeEach(async () => {
       workspaceId: 'workspace-1',
       hostId: 'local',
       agent: 'codex',
-      providerHandle: { kind: 'codex', threadId: THREAD }
+      providerHandle: codexProviderHandle(THREAD)
     },
-    journalDir: root,
+    database: openTestJournalHostDatabase(root),
     now: () => 1_000
   })
 })
@@ -54,7 +57,7 @@ async function seedUnfinishedWork(): Promise<void> {
   await journal.appendItem(
     { provider: 'codex', threadId: THREAD, turnId: 'turn-1', ordinal: 1 },
     { kind: 'tool-call', name: 'shell', input: { command: 'pnpm test' }, state: 'running' },
-    { fence: 7 }
+    { fence: 7, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
   )
   await journal.appendItem(
     { provider: 'codex', threadId: THREAD, turnId: 'turn-1', ordinal: 2 },
@@ -65,7 +68,7 @@ async function seedUnfinishedWork(): Promise<void> {
       options: [{ id: 'yes', label: 'Allow' }],
       resolution: { state: 'pending', selectedOptionId: null, resolvedBy: null, resolvedAt: null }
     },
-    { fence: 7 }
+    { fence: 7, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
   )
   await journal.appendItem(
     { provider: 'codex', threadId: THREAD, turnId: 'turn-1', ordinal: 3 },
@@ -75,12 +78,12 @@ async function seedUnfinishedWork(): Promise<void> {
       options: [{ id: 'web', label: 'Web' }],
       resolution: { state: 'pending', selectedOptionId: null, resolvedBy: null, resolvedAt: null }
     },
-    { fence: 7 }
+    { fence: 7, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
   )
   await journal.appendItem(
     { provider: 'codex', threadId: THREAD, turnId: 'turn-1', ordinal: 4 },
     { kind: 'turn', turnId: 'turn-1', state: 'running', startedAt: 900 },
-    { fence: 7 }
+    { fence: 7, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
   )
 }
 
@@ -98,7 +101,7 @@ describe('dead structured-session generation settlement', () => {
         verdict: { state: 'unverifiable' },
         showUnexpectedExitOutcome: false
       })
-    ).resolves.toBe(true)
+    ).resolves.toEqual({ ok: true })
 
     const snapshot = journal.snapshot()
     expect(snapshot.submissions).toEqual([
@@ -133,9 +136,9 @@ describe('dead structured-session generation settlement', () => {
       showUnexpectedExitOutcome: true
     }
 
-    await expect(settleStructuredAgentSessionDeadGeneration(input)).resolves.toBe(true)
+    await expect(settleStructuredAgentSessionDeadGeneration(input)).resolves.toEqual({ ok: true })
     const settledCursor = journal.cursor()
-    await expect(settleStructuredAgentSessionDeadGeneration(input)).resolves.toBe(true)
+    await expect(settleStructuredAgentSessionDeadGeneration(input)).resolves.toEqual({ ok: true })
 
     expect(journal.cursor()).toEqual(settledCursor)
     expect(
@@ -164,7 +167,7 @@ describe('dead structured-session generation settlement', () => {
           detail: providerDiagnostic('stack frame '.repeat(4_000), 'log')
         })
       })
-    ).resolves.toBe(true)
+    ).resolves.toEqual({ ok: true })
 
     const statuses = journal
       .snapshot()
@@ -198,7 +201,8 @@ describe('dead structured-session generation settlement', () => {
       {
         kind: 'status',
         text: "Orca ran into a problem, so this didn't go through. Try again.",
-        failure: { kind: 'hostFault' }
+        failure: { kind: 'hostFault' },
+        tone: 'error'
       }
     ])
   })
@@ -255,7 +259,7 @@ describe('dead structured-session generation settlement', () => {
         verdict: { state: 'interrupted', completedAt: 1_000 },
         showUnexpectedExitOutcome: false
       })
-    ).resolves.toBe(true)
+    ).resolves.toEqual({ ok: true })
   })
 
   it('settles a live unknown submission even when no unfinished item remains', async () => {
@@ -282,7 +286,7 @@ describe('dead structured-session generation settlement', () => {
         verdict: { state: 'interrupted', completedAt: 1_000 },
         showUnexpectedExitOutcome: false
       })
-    ).resolves.toBe(true)
+    ).resolves.toEqual({ ok: true })
 
     expect(journal.submissions()).toEqual([
       expect.objectContaining({
@@ -349,7 +353,7 @@ describe('dead structured-session generation settlement', () => {
     await journal.appendItem(
       childCall,
       { kind: 'tool-call', name: 'shell', input: { command: 'ls' }, state: 'running' },
-      { fence: 7, ...child }
+      { fence: 7, ...child, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
     await journal.appendItem(
       childAsk,
@@ -360,7 +364,7 @@ describe('dead structured-session generation settlement', () => {
         options: [{ id: 'yes', label: 'Allow' }],
         resolution: { state: 'pending', selectedOptionId: null, resolvedBy: null, resolvedAt: null }
       },
-      { fence: 7, ...child }
+      { fence: 7, ...child, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
 
     await settleStructuredAgentSessionDeadGeneration({
@@ -400,9 +404,9 @@ describe('dead structured-session generation settlement', () => {
         workspaceId: 'workspace-1',
         hostId: 'local',
         agent: 'codex',
-        providerHandle: { kind: 'codex', threadId: THREAD }
+        providerHandle: codexProviderHandle(THREAD)
       },
-      journalDir: root,
+      database: openTestJournalHostDatabase(root),
       now: () => 1_000
     })
     expect(settledProducers()).toEqual(settled)
@@ -420,12 +424,12 @@ describe('whether a dead generation interrupted anything', () => {
         options: [{ id: 'yes', label: 'Allow' }],
         resolution: { state: 'pending', selectedOptionId: null, resolvedBy: null, resolvedAt: null }
       },
-      { fence: 7 }
+      { fence: 7, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
     await journal.appendItem(
       { provider: 'codex', threadId: THREAD, turnId: 'turn-1', ordinal: 2 },
       { kind: 'turn', turnId: 'turn-1', state: 'completed', startedAt: 900, completedAt: 950 },
-      { fence: 7 }
+      { fence: 7, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
   }
 
@@ -460,7 +464,7 @@ describe('whether a dead generation interrupted anything', () => {
           1_000
         )
       })
-    ).resolves.toBe(true)
+    ).resolves.toEqual({ ok: true })
 
     const snapshot = journal.snapshot()
     expect(snapshot.items.some((item) => item.body.kind === 'status')).toBe(false)

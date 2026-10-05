@@ -116,6 +116,34 @@ describe('agent model catalog store', () => {
     expect(store.get('fp-1')!.models[0]!.id).toBe('gpt-live')
   })
 
+  it('answers a pending read with the first listing that succeeds, or null once all fail', async () => {
+    const store = new AgentModelCatalogStore()
+    expect(store.pendingListing('fp-1')).toBeNull()
+    let failFirst!: (error: Error) => void
+    let settleSecond!: (success: AgentModelCatalogSuccess) => void
+    void store.refresh(
+      'fp-1',
+      'codex',
+      liveLister(store),
+      () => new Promise<AgentModelCatalogSuccess>((_resolve, reject) => (failFirst = reject))
+    )
+    void store.refresh(
+      'fp-1',
+      'codex',
+      liveLister(store),
+      () => new Promise<AgentModelCatalogSuccess>((resolve) => (settleSecond = resolve))
+    )
+    const pending = store.pendingListing('fp-1')
+    failFirst(new Error('stuck'))
+    settleSecond(success('gpt-second'))
+    expect((await pending)!.models[0]!.id).toBe('gpt-second')
+
+    void store.refresh('fp-2', 'codex', liveLister(store), async () => {
+      throw new Error('no provider')
+    })
+    expect(await store.pendingListing('fp-2')).toBeNull()
+  })
+
   it('holds back a probe until every lister settles, then lets the account refresh again', async () => {
     let at = 1_000
     const store = new AgentModelCatalogStore({ now: () => at })

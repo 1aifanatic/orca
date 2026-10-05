@@ -14,7 +14,7 @@ import {
   type StructuredAgentSessionState
 } from '../../shared/structured-agent-session-reducer'
 import type { AgentSessionJournal } from '../native-chat/agent-session-journal/journal-store'
-import { createTrackedJournalOpener } from '../native-chat/agent-session-journal/journal-store-test-open'
+import { createTrackedJournalOpener } from '../native-chat/agent-session-journal/journal-host-database-test-support'
 import { readAgentSessionHistory } from '../native-chat/agent-session-wire/agent-session-history-page'
 import type { StructuredAgentSessionAdapter } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import { createDeferredStructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
@@ -27,6 +27,8 @@ import {
   userFrame
 } from './claude-context-usage-test-support'
 import { createClaudeJournalTranslator } from './claude-structured-journal-translation'
+import { testEventSinkLogging } from '../native-chat/agent-session-wire/structured-agent-session-logger-test-support'
+import { claudeProviderHandle } from '../../shared/agent-session-provider-handle-encoding'
 
 const SESSION = 'orca-session'
 const journals = createTrackedJournalOpener()
@@ -48,15 +50,15 @@ async function openJournal(): Promise<AgentSessionJournal> {
       workspaceId: 'workspace-1',
       hostId: 'local',
       agent: 'claude',
-      providerHandle: { kind: 'claude', sessionId: 'claude-session', leafUuid: null }
+      providerHandle: claudeProviderHandle('claude-session', null)
     },
     now: () => 9_000,
-    journalDir: join(root, SESSION)
+    stateDirectory: join(root, SESSION)
   })
 }
 
 function translate(journal: AgentSessionJournal) {
-  const deferred = createDeferredStructuredAgentSessionEventSink()
+  const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
   const translator = createClaudeJournalTranslator({ sink: deferred.sink, coalesceMs: 0 })
   deferred.bind({ journal, fence: 1, publish: () => {} })
   const settle = async (): Promise<void> => {

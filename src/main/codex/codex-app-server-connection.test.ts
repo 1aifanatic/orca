@@ -11,7 +11,7 @@ import {
   type CodexAppServerConnection,
   type CodexAppServerConnectionHandlers
 } from './codex-app-server-connection'
-import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from './codex-app-server-posix-supervisor'
+import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from '../provider-process/provider-process-supervisor'
 import { isCodexAppServerUnsupportedError } from './codex-app-server-session'
 
 // close() waits out the supervisor's own stop before forcing the tree.
@@ -21,6 +21,7 @@ const originalCodexHome = process.env.CODEX_HOME
 
 afterEach(() => {
   vi.useRealTimers()
+  vi.restoreAllMocks()
   if (originalCodexHome === undefined) {
     delete process.env.CODEX_HOME
   } else {
@@ -340,11 +341,40 @@ describe('openCodexAppServerConnection', () => {
     )
 
     child.stdout.write(`${JSON.stringify({ id: 'late-string-id', result: { value: 1 } })}\n`)
-    child.stdout.write(`${JSON.stringify({ id: 999, result: { value: 2 } })}\n`)
+    child.stdout.write(`${JSON.stringify({ id: null, error: { message: 'parse error' } })}\n`)
     await vi.waitFor(() => expect(frames).toHaveLength(2))
 
-    expect(frames.map((frame) => frame.kind)).toEqual(['frame:unclassified', 'response:unmatched'])
+    expect(frames.map((frame) => frame.kind)).toEqual(['frame:unclassified', 'frame:unclassified'])
     await connection.close()
+  })
+
+  it('logs a reply to a timed-out request instead of surfacing it as a frame', async () => {
+    vi.useFakeTimers()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { child, spawnImpl, written } = stubChild()
+    answerInitialize(child)
+    const frames: string[] = []
+    const connection = await openCodexAppServerConnection(
+      { command: 'codex', args: ['app-server'] },
+      { onUnhandledFrame: (kind) => frames.push(kind) },
+      spawnImpl
+    )
+
+    const slow = rejection(connection.request('turn/interrupt', undefined, { timeoutMs: 50 }))
+    await vi.advanceTimersByTimeAsync(60)
+    expect((await slow).name).toBe('CodexAppServerTimeoutError')
+    const id = Number(written.find((frame) => frame.method === 'turn/interrupt')?.id)
+    child.stdout.write(`${JSON.stringify({ id, result: {} })}\n`)
+    child.stdout.write(`${JSON.stringify({ id: 999, error: { message: 'no such request' } })}\n`)
+    await vi.waitFor(() => expect(warn).toHaveBeenCalledTimes(2))
+
+    expect(frames).toEqual([])
+    expect(warn.mock.calls.map((call) => call[0])).toEqual([
+      `[codex-app-server] late reply to turn/interrupt after timeout (id ${id})`,
+      '[codex-app-server] reply with no waiting request (id 999)'
+    ])
+    expect(warn.mock.calls[1][1]).toBe('no such request')
+    await vi.advanceTimersByTimeAsync(0)
   })
 
   it('fails in-flight requests and reports an unexpected exit once', async () => {
@@ -445,6 +475,7 @@ describe('openCodexAppServerConnection', () => {
   })
 
   it('reports unproven close when forced termination did not produce an exit event', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const { child, spawnImpl } = stubChild({ exitOnStdinEnd: false })
     answerInitialize(child)
     const connection = await openCodexAppServerConnection(
@@ -453,7 +484,22 @@ describe('openCodexAppServerConnection', () => {
       spawnImpl
     )
 
-    await expect(connection.close()).resolves.toBe(false)
+    const forcedKill = new Promise<void>((resolve) => {
+      child.kill.mockImplementation((signal) => {
+        if (signal === 'SIGKILL') {
+          resolve()
+        }
+      })
+    })
+    const closing = connection.close()
+    await flushStreams()
+    await vi.advanceTimersByTimeAsync(GRACEFUL_EXIT_MS)
+    await forcedKill
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(1_000)
+
+    await expect(closing).resolves.toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
   }, 10_000)
 
   it('shares one eventual exit proof across concurrent close callers', async () => {
@@ -494,6 +540,33 @@ describe('openCodexAppServerConnection', () => {
     child.emit('exit', 0, null)
 
     await expect(connection.close()).resolves.toBe(true)
+  })
+
+  // A root that outlived one kill is killed again by the next ask, which then proves it gone.
+  it('kills the root again on a close after an unproven attempt', async () => {
+    vi.useFakeTimers()
+    const { child, spawnImpl } = stubChild({ exitOnStdinEnd: false })
+    answerInitialize(child)
+    const connection = await openCodexAppServerConnection(
+      { command: 'codex', args: ['app-server'] },
+      {},
+      spawnImpl
+    )
+
+    const first = connection.close()
+    await vi.advanceTimersByTimeAsync(GRACEFUL_EXIT_MS + 3_500)
+    await expect(first).resolves.toBe(false)
+    child.kill.mockImplementation((signal) => {
+      if (signal === 'SIGKILL') {
+        setTimeout(() => child.emit('exit', null, 'SIGKILL'), 10)
+      }
+      return true
+    })
+
+    const second = connection.close()
+    await vi.advanceTimersByTimeAsync(GRACEFUL_EXIT_MS + 3_500)
+    await expect(second).resolves.toBe(true)
+    expect(child.kill.mock.calls.filter(([signal]) => signal === 'SIGKILL')).toHaveLength(2)
   })
 
   it.each([1_090_188, 2_900_090])(
@@ -782,25 +855,38 @@ describe('openCodexAppServerConnection', () => {
     await connection.close()
   })
 
-  it('keeps a graceful close quiet when stdin breaks during the reap', async () => {
+  it('reports a graceful close as expected when stdin breaks during the reap', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const { child, spawnImpl } = stubChild({ exitOnStdinEnd: false })
     answerInitialize(child)
-    const exits: string[] = []
+    const exits: (boolean | undefined)[] = []
     const connection = await openCodexAppServerConnection(
       { command: 'codex', args: ['app-server'] },
-      { onExit: (error) => exits.push(error.message) },
+      { onExit: (_error, exit) => exits.push(exit?.expected) },
       spawnImpl
     )
     child.stdin.on('finish', () => child.stdin.emit('error', new Error('write EPIPE')))
-    child.kill.mockImplementation(() => {
-      child.emit('exit', null, 'SIGKILL')
-      return true
+    const forcedKill = new Promise<void>((resolve) => {
+      child.kill.mockImplementation((signal) => {
+        child.emit('exit', null, 'SIGKILL')
+        if (signal === 'SIGKILL') {
+          resolve()
+        }
+        return true
+      })
     })
 
     const inFlight = rejection(connection.request('turn/start'))
-    await connection.close()
+    const closing = connection.close()
+    await flushStreams()
+    await vi.advanceTimersByTimeAsync(GRACEFUL_EXIT_MS)
+    await forcedKill
+    await vi.advanceTimersByTimeAsync(0)
+    await expect(closing).resolves.toBe(true)
 
     expect((await inFlight).message).toContain('EPIPE')
-    expect(exits).toHaveLength(0)
+    // The root's exit is the close's own end, never an unexpected death.
+    expect(exits).toEqual([true])
+    expect(vi.getTimerCount()).toBe(0)
   })
 })
