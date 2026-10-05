@@ -56,7 +56,10 @@ export function ActivityThreadHoverCard({
       openDelay={openDelay}
       closeDelay={closeDelay}
     >
-      <HoverCardTrigger asChild>{children}</HoverCardTrigger>
+      {/* Why: the row's right-click menu opens under the cursor; the preview would cover it. */}
+      <HoverCardTrigger asChild onContextMenu={detailsHoverControl.closeHover}>
+        {children}
+      </HoverCardTrigger>
       {detailsHoverControl.hoverOpen ? (
         <ActivityThreadHoverCardContent
           thread={thread}
