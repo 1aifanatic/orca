@@ -35,6 +35,14 @@ async function chooseDelimiter(label: string): Promise<void> {
 }
 
 describe('CSV delimiter selection', () => {
+  it('previews a dense file below the paged byte threshold', () => {
+    const header = Array.from({ length: 100 }, (_, i) => `column-${i}`).join(',')
+    const content = `${header}\n${`${Array.from({ length: 100 }, () => '1').join(',')}\n`.repeat(4000)}`
+    expect(new TextEncoder().encode(content).length).toBeLessThan(1024 * 1024)
+    render(<CsvViewer content={content} filePath="dense.csv" />)
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByRole('table').getAttribute('aria-rowcount')).toBe('4001')
+  })
   it('lets the reader resolve ambiguous headerless decimal data', async () => {
     render(<CsvViewer content={'1,50;coffee\n2,75;tea'} filePath="prices.csv" />)
     expect(screen.getByRole('combobox', { name: 'Delimiter' }).textContent).toBe('Auto (Comma)')

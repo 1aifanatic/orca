@@ -32,6 +32,24 @@ vi.mock('@tanstack/react-virtual', async (importOriginal) => {
 })
 afterEach(cleanup)
 
+it('returns to existing rows when a refresh shrinks the file below its selected row window', async () => {
+  const grid = (rowCount: number) => (
+    <CsvGrid
+      header={['id']}
+      rowCount={rowCount}
+      columnCount={1}
+      sampleRows={[]}
+      getRow={(index) => [`r${index}`]}
+    />
+  )
+  const { rerender } = render(grid(1_500_100))
+  fireEvent.click(screen.getByRole('button', { name: 'Next rows' }))
+  await waitFor(() => expect(screen.getByRole('cell', { name: 'r500000' })).toBeTruthy())
+  rerender(grid(3))
+  await waitFor(() => expect(screen.getByRole('cell', { name: 'r0' })).toBeTruthy())
+  expect(screen.getAllByRole('row')).toHaveLength(4)
+})
+
 it('virtualizes both axes with the real TanStack implementation', async () => {
   const onVisibleRows = vi.fn()
   render(
@@ -85,6 +103,29 @@ it('resizes with the keyboard and aligns body columns, then resets', async () =>
     fireEvent.keyDown(handle, { key: 'ArrowLeft', shiftKey: true })
   }
   expect(handle.getAttribute('aria-valuenow')).toBe('48')
+})
+
+it('retains user widths when refreshed data changes the size estimates', async () => {
+  const grid = (header: string[]) => (
+    <CsvGrid
+      header={header}
+      rowCount={2}
+      columnCount={2}
+      sampleRows={[]}
+      getRow={() => ['a', 'b']}
+    />
+  )
+  const { rerender } = render(grid(['name', 'value']))
+  const handle = screen.getByRole('separator', { name: 'Resize column 1' })
+  fireEvent.keyDown(handle, { key: 'ArrowRight', shiftKey: true })
+  rerender(grid(['a much longer header changes the width estimate', 'value']))
+  await waitFor(() => expect(handle.getAttribute('aria-valuenow')).toBe('120'))
+  const template = screen.getAllByRole('row')[0]?.style.gridTemplateColumns
+  expect(
+    screen.getAllByRole('row').every((row) => row.style.gridTemplateColumns === template)
+  ).toBe(true)
+  fireEvent.keyDown(handle, { key: 'Home' })
+  await waitFor(() => expect(handle.getAttribute('aria-valuenow')).toBe('320'))
 })
 
 it('makes rows beyond the browser layout limit reachable', async () => {

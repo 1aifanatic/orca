@@ -1,4 +1,4 @@
-import { CsvByteIndex, CSV_MAX_COLUMNS, CSV_RECORD_BYTES } from './csv-byte-index'
+import { CsvByteIndex, CSV_MAX_COLUMNS, CSV_RECORD_BYTES, CSV_PAGE_CELLS } from './csv-byte-index'
 import { parseCsv } from './csv-parse'
 import type {
   CsvWorkerRequest,
@@ -33,7 +33,7 @@ self.onmessage = (event: MessageEvent<CsvWorkerRequest>): void => {
       value = {
         kind: 'rows',
         rows: parseCsv(source, delimiter, {
-          maxCells: 16 * 1024,
+          maxCells: CSV_PAGE_CELLS,
           maxColumns: CSV_MAX_COLUMNS,
           maxRecordLength: CSV_RECORD_BYTES,
           stripBom: command.stripBom

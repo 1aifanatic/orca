@@ -27,7 +27,11 @@ export function CsvGrid({
   onOpenUrl?: (url: string, event: React.MouseEvent<HTMLAnchorElement>) => void
 }): React.JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null)
-  const [windowStart, setWindowStart] = useState(0)
+  const [requestedWindowStart, setWindowStart] = useState(0)
+  const windowStart = Math.min(
+    requestedWindowStart,
+    Math.floor(Math.max(0, rowCount - 1) / SCROLL_WINDOW_ROWS) * SCROLL_WINDOW_ROWS
+  )
   const [widthOverrides, setWidthOverrides] = useState<Record<number, number>>({})
   const rowNumberWidth = Math.max(48, String(rowCount).length * 8 + 16)
   const widths = useMemo(() => {

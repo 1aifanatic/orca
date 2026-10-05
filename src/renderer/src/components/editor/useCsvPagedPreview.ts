@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CsvFilePreview } from './editor-csv-file-content'
 import { CsvPagedPreview } from './csv-paged-preview'
-import { csvPageForRow, type CsvIndex } from './csv-byte-index'
+import type { CsvIndex } from './csv-byte-index'
 
 type PreviewState = {
   index: CsvIndex | null
@@ -34,12 +34,10 @@ export function useCsvPagedPreview(file: CsvFilePreview, delimiter: string) {
       }
       preview.close()
       requestRows.current = () => {}
-      if (!canceled) {
-        setState((previous) => ({
-          ...previous,
-          error: error instanceof Error ? error.message : String(error)
-        }))
-      }
+      setState((previous) => ({
+        ...previous,
+        error: error instanceof Error ? error.message : String(error)
+      }))
     }
     setState(initialState())
     void (async () => {
@@ -69,26 +67,13 @@ export function useCsvPagedPreview(file: CsvFilePreview, delimiter: string) {
           while (wanted && !canceled) {
             const range = wanted
             wanted = null
-            const firstPageIndex = csvPageForRow(index.pages, range.first + 1)
-            const lastPageIndex = csvPageForRow(index.pages, range.last + 1)
-            const rows = new Map<number, string[]>()
-            for (let pageIndex = firstPageIndex; pageIndex <= lastPageIndex; pageIndex += 1) {
-              if (canceled || wanted) {
-                break
-              }
-              const pageRange = index.pages[pageIndex]
-              if (!pageRange) {
-                continue
-              }
-              const page = await preview.page(pageIndex, pageRange)
-              page.forEach((row, offset) => {
-                const bodyIndex = pageRange.firstRow + offset - 1
-                if (bodyIndex >= range.first && bodyIndex <= range.last) {
-                  rows.set(bodyIndex, row)
-                }
-              })
-            }
-            if (!canceled && !wanted) {
+            const rows = await preview.rows(
+              index,
+              range.first,
+              range.last,
+              () => canceled || wanted !== null
+            )
+            if (rows && !canceled && !wanted) {
               setState((previous) => ({ ...previous, rows }))
             }
           }

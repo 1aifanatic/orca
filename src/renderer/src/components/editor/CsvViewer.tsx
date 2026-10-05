@@ -5,6 +5,7 @@ import { CsvGrid } from './CsvGrid'
 import { translate } from '@/i18n/i18n'
 import { CSV_MAX_COLUMNS, CSV_RECORD_BYTES } from './csv-byte-index'
 import { openCsvHttpLink } from './csv-link-routing'
+import { CSV_PAGED_PREVIEW_BYTES } from './editor-csv-file-content'
 
 export default function CsvViewer({
   content,
@@ -27,7 +28,7 @@ export default function CsvViewer({
     try {
       return {
         parsed: parseCsv(content, delimiter, {
-          maxCells: 250_000,
+          maxCells: CSV_PAGED_PREVIEW_BYTES + 1,
           maxColumns: CSV_MAX_COLUMNS,
           maxRecordLength: CSV_RECORD_BYTES
         }),

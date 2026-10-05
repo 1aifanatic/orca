@@ -2,7 +2,7 @@ export const CSV_RECORD_BYTES = 1024 * 1024
 export const CSV_MAX_COLUMNS = 4096
 const PAGE_ROWS = 256
 const PAGE_BYTES = 64 * 1024
-const PAGE_CELLS = 16 * 1024
+export const CSV_PAGE_CELLS = 16 * 1024
 const MAX_PAGES = 100_000
 
 export type CsvPageRange = { start: number; end: number; firstRow: number; rowCount: number }
@@ -82,7 +82,7 @@ export class CsvByteIndex {
     if (end - this.rowStart > CSV_RECORD_BYTES) {
       throw new Error('CSV record exceeds the 1 MB preview limit.')
     }
-    if (end - this.pageStart > PAGE_BYTES || this.pageCells + this.columns > PAGE_CELLS) {
+    if (end - this.pageStart > PAGE_BYTES || this.pageCells + this.columns > CSV_PAGE_CELLS) {
       this.checkpoint(this.rowStart)
     }
     this.rowCount += 1
@@ -91,7 +91,7 @@ export class CsvByteIndex {
     if (
       this.rowCount - this.pageFirstRow >= PAGE_ROWS ||
       end - this.pageStart >= PAGE_BYTES ||
-      this.pageCells >= PAGE_CELLS
+      this.pageCells >= CSV_PAGE_CELLS
     ) {
       this.checkpoint(end)
     }
