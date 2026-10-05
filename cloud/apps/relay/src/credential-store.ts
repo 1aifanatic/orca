@@ -25,8 +25,7 @@ const INACTIVE_AUTHORIZATION_RETENTION_MS = 24 * 60 * 60 * 1000
 // and a different basis is refused as a tuple mismatch; a basis lives for one phone connection. A
 // week matches the pairing support window above.
 export const CONFIRM_RESULT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
-// Nothing in the relay reads audit events back; they exist for support and incident questions.
-// 90 days is a conservative default pending an explicit retention decision.
+// Nothing in the relay reads audit events back; 90 days covers support and incident questions.
 export const AUDIT_EVENT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000
 // Bounded so one cycle cannot hold row locks or grow WAL without limit; the backlog drains over
 // however many cycles it takes.
