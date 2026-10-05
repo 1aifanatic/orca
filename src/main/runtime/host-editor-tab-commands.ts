@@ -12,7 +12,11 @@ import {
   navigationTargetsHost,
   type RuntimeNavigationTarget
 } from '../../shared/runtime-navigation'
-import { assertHostEditorAuthority, resolveEditorAuthority } from './editor-authority'
+import {
+  assertHostEditorAuthority,
+  resolveEditorAuthority,
+  type EditorAuthority
+} from './editor-authority'
 import { closeHostEditFile, persistHostTabGroupLayout } from './host-editor-session-layout'
 import {
   activateHostEditTab,
@@ -162,6 +166,45 @@ export function closeHostEditorTab(
   }
   commitHostEditorSession(runtime, worktreeId, closeHostEditFile(session, worktreeId, record))
   publishHostEditorTabs(runtime, worktreeId)
+}
+
+/**
+ * The terminal-graph check for a paired client's close. A closed window leaves the graph
+ * unavailable for good and closing a host-owned editor tab never touches it, so that close skips
+ * the check; any other tab still needs a ready graph that stays stable across the close.
+ */
+export function beginCloseGraphCheck(
+  runtime: {
+    graphStatus: string
+    captureReadyGraphEpoch(): number
+    assertStableReadyGraph(epoch: number): void
+  },
+  authority: EditorAuthority,
+  options: { clientNavigationId?: string; expectedPtyCloseAuthority?: unknown }
+): {
+  assertTarget(snapshot: RuntimeMobileSessionTabsSnapshot | undefined, tabId: string): void
+  assertStable(): void
+} {
+  if (!options.clientNavigationId) {
+    return { assertTarget: () => {}, assertStable: () => {} }
+  }
+  if (
+    options.expectedPtyCloseAuthority === undefined &&
+    authority === 'host' &&
+    runtime.graphStatus !== 'ready'
+  ) {
+    return {
+      assertTarget: (snapshot, tabId) => {
+        const addressed = snapshot?.tabs.find((candidate) => candidate.id === tabId)
+        if (addressed?.type !== 'markdown' && addressed?.type !== 'file') {
+          throw new Error('runtime_unavailable')
+        }
+      },
+      assertStable: () => {}
+    }
+  }
+  const epoch = runtime.captureReadyGraphEpoch()
+  return { assertTarget: () => {}, assertStable: () => runtime.assertStableReadyGraph(epoch) }
 }
 
 export function activateHostEditorTab(

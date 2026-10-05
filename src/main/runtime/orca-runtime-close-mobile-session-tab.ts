@@ -22,7 +22,7 @@ import { SESSION_TAB_NOT_FOUND_ERROR } from '../../shared/session-tab-close'
 import { rendererPublicationThrottle } from '../window/renderer-publication-throttle'
 import { structuredAgentSessionTabCloseCause } from './structured-agent-session-tab-close-cause'
 import { resolveEditorAuthority } from './editor-authority'
-import { closeHostEditorTab } from './host-editor-tab-commands'
+import { beginCloseGraphCheck, closeHostEditorTab } from './host-editor-tab-commands'
 
 export class OrcaRuntimeWithCloseMobileSessionTab extends OrcaRuntimeWithRefuseUnattributedMobileSessionTabClose {
   async closeMobileSessionTab(
@@ -39,32 +39,14 @@ export class OrcaRuntimeWithCloseMobileSessionTab extends OrcaRuntimeWithRefuseU
     } = {}
   ): Promise<MobileSessionTabCloseOutcome> {
     const editorAuthorityAtStart = resolveEditorAuthority(this)
-    // Why: a closed window leaves the graph unavailable for good; a host editor close never touches it.
-    const hostEditorCloseWithoutGraph =
-      options.clientNavigationId !== undefined &&
-      options.expectedPtyCloseAuthority === undefined &&
-      editorAuthorityAtStart === 'host' &&
-      this.graphStatus !== 'ready'
-    const graphEpoch =
-      options.clientNavigationId && !hostEditorCloseWithoutGraph
-        ? this.captureReadyGraphEpoch()
-        : null
+    const graphCheck = beginCloseGraphCheck(this, editorAuthorityAtStart, options)
     const explicitWorktreeId = this.getValidatedExplicitWorktreeIdSelector(worktreeSelector)
     const worktreeId =
       explicitWorktreeId ?? (await this.resolveWorktreeSelector(worktreeSelector)).id
     this.hydrateHeadlessMobileSessionTabsFromWorkspaceSession(worktreeId)
-    if (hostEditorCloseWithoutGraph) {
-      const addressed = this.mobileSessionTabsByWorktree
-        .get(worktreeId)
-        ?.tabs.find((candidate) => candidate.id === tabId)
-      if (addressed?.type !== 'markdown' && addressed?.type !== 'file') {
-        throw new Error('runtime_unavailable')
-      }
-    }
+    graphCheck.assertTarget(this.mobileSessionTabsByWorktree.get(worktreeId), tabId)
     const observedPtyIds = await this.refreshMobileSessionPtyRecords()
-    if (graphEpoch !== null) {
-      this.assertStableReadyGraph(graphEpoch)
-    }
+    graphCheck.assertStable()
     this.restoreLivePairedRendererSessionOwnedMobileTerminals(worktreeId)
     const snapshot = this.mobileSessionTabsByWorktree.get(worktreeId)
     if (options.reason !== undefined && options.reason !== 'user' && observedPtyIds === null) {
