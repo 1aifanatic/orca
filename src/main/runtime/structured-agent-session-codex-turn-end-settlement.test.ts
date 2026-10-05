@@ -325,8 +325,10 @@ describe('a Codex send its turn ended without taking it', () => {
       structuredAgentTurnAnchors(snapshot.items, snapshot.submissions).get(turnRecord!.itemId)
     ).toBe(agentJournalSubmissionKey(sent))
     expect(
-      projectStructuredAgentSessionMessages(snapshot.items, [], snapshot.submissions).map(
-        (message) => message.blocks.map((block) => ('text' in block ? block.text : block.type))
+      projectStructuredAgentSessionMessages(snapshot.items, [], snapshot.submissions, {
+        rejectedInPlace: true
+      }).map((message) =>
+        message.blocks.map((block) => ('text' in block ? block.text : block.type))
       )
     ).not.toContainEqual([NATIVE_CHAT_STOPPED_BEFORE_START_TEXT])
 
@@ -718,7 +720,9 @@ describe("a Stop pressed while Codex's turn/start is in flight", () => {
     const snapshot = await host.journalSnapshot(SESSION)
     expect(turnRow(snapshot.items)).toMatchObject({ state: 'completed' })
     // Every client draws the send where it was sent, then the one row saying it never started.
-    const drawn = projectStructuredAgentSessionMessages(snapshot.items, [], snapshot.submissions)
+    const drawn = projectStructuredAgentSessionMessages(snapshot.items, [], snapshot.submissions, {
+      rejectedInPlace: true
+    })
     expect(drawn.slice(-2).map((message) => [message.role, message.blocks])).toEqual([
       ['user', [{ type: 'text', text: 'look around' }]],
       ['system', [expect.objectContaining({ text: NATIVE_CHAT_STOPPED_BEFORE_START_TEXT })]]

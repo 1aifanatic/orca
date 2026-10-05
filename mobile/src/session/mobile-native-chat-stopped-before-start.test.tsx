@@ -32,6 +32,7 @@ vi.mock('react-native', async () => {
       timing: () => ({ start: vi.fn(), stop: vi.fn() })
     },
     Image: 'Image',
+    Platform: { OS: 'ios' },
     Pressable: 'Pressable',
     Text,
     View: ({ children, ...props }: { children?: React.ReactNode }) =>
@@ -50,6 +51,16 @@ vi.mock('lucide-react-native', () => ({
   ChevronRight: 'ChevronRight'
 }))
 vi.mock('../components/MobileMarkdown', () => ({ MobileMarkdown: () => null }))
+vi.mock('../components/MobileSelectableText', async () => {
+  const React = await import('react')
+  return {
+    MobileSelectableText: ({ children }: { children?: React.ReactNode }) =>
+      React.createElement('Text', null, children)
+  }
+})
+vi.mock('./MobileNativeChatMessageActionsSheet', () => ({
+  MobileNativeChatMessageActionsSheet: () => null
+}))
 
 import { MobileMarkdown } from '../components/MobileMarkdown'
 import { MobileNativeChatMessage } from './MobileNativeChatMessage'
@@ -139,7 +150,9 @@ describe('a send a Stop took back before the agent started it, on the phone', ()
   })
 
   it('stays where it was sent, with the stop row after it and no turn status of its own', () => {
-    const messages = projectStructuredAgentSessionMessages(items, [], submissions)
+    const messages = projectStructuredAgentSessionMessages(items, [], submissions, {
+      rejectedInPlace: false
+    })
     expect(messages.map((message) => message.id)).toEqual([
       agentJournalSubmissionKey('warm-up'),
       't1-answer',

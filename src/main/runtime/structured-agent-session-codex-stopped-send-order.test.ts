@@ -106,7 +106,7 @@ async function drawn(): Promise<string[]> {
   const { items, submissions } = await host.journalSnapshot(SESSION)
   const journal = { items, submissions }
   const { conversation } = projectNativeChatTranscript(
-    projectStructuredAgentSessionMessages(items, [], submissions),
+    projectStructuredAgentSessionMessages(items, [], submissions, { rejectedInPlace: true }),
     undefined,
     journal
   )

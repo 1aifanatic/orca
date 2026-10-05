@@ -136,14 +136,18 @@ describe('conversation outline parity with the loaded rail', () => {
       user(13, [{ type: 'text', text: 'never ran' }], agentJournalSubmissionKey('client-stopped'))
     ]
     const outline = projectAgentSessionConversationOutline(journal, [REJECTED, stopped])
-    const loaded = loadedRailItems(journal, [REJECTED, stopped])
+    // The rejected message is the desktop's own in-place row, as above.
+    const rejectedId = agentJournalSubmissionKey(REJECTED.clientMessageId)
+    const loaded = loadedRailItems(journal, [REJECTED, stopped]).filter(
+      (item) => item.id !== rejectedId
+    )
 
     expect(outline.map((entry) => entry.itemId)).toEqual(loaded.map((item) => item.id))
     expect(outline.map((entry) => entry.itemId)).not.toContain(
       agentJournalSubmissionKey('client-stopped')
     )
     expect(
-      projectStructuredAgentSessionMessages(journal, [], [REJECTED, stopped]).map(
+      projectStructuredAgentSessionMessages(journal, [], [REJECTED, stopped], NO_CARDS).map(
         (message) => message.id
       )
     ).toContain(agentJournalSubmissionKey('client-stopped'))

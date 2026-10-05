@@ -11,6 +11,7 @@ import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { describe, expect, it } from 'vitest'
 import type { AgentSessionSubscribeEvent } from '../../../src/shared/agent-session-wire'
+import { withNativeChatCutTurnNotices } from '../../../src/shared/native-chat-cut-turn-notice'
 import { nativeChatRowsInDrawOrder } from '../../../src/shared/native-chat-turn-grouping'
 import {
   nativeChatMessagesWaitingBehindLiveTurn,
@@ -25,6 +26,7 @@ import {
   type StructuredAgentSessionState
 } from '../../../src/shared/structured-agent-session-reducer'
 import { selectStructuredAgentTurnBars } from '../../../src/shared/structured-agent-session-turn-timing'
+import { TUI_AGENT_DISPLAY_NAMES } from '../../../src/shared/tui-agent-display-names'
 import {
   buildMobileNativeChatTransientData,
   foldMobileNativeChatMessages
@@ -52,9 +54,23 @@ function apply(
   )
 }
 
+/** The rows the phone's transcript reads, as its session hook builds them: the journal plus the
+ *  notice a cut turn gets, projected with no other rejected send drawn in place. */
+function phoneTranscript(state: StructuredAgentSessionState) {
+  const items = withNativeChatCutTurnNotices(state.items, {
+    agentName: TUI_AGENT_DISPLAY_NAMES.codex
+  })
+  return {
+    items,
+    messages: projectStructuredAgentSessionMessages(items, [], state.submissions, {
+      rejectedInPlace: false
+    })
+  }
+}
+
 /** What the phone's list draws: each row in draw order, its content, its turn and that turn's bar. */
 function drawn(state: StructuredAgentSessionState): Drawn {
-  const messages = projectStructuredAgentSessionMessages(state.items, [], state.submissions)
+  const { items, messages } = phoneTranscript(state)
   const folded = foldMobileNativeChatMessages(messages)
   const { data } = buildMobileNativeChatTransientData({
     messages,
@@ -62,12 +78,12 @@ function drawn(state: StructuredAgentSessionState): Drawn {
     streaming: null,
     pending: []
   })
-  const membership = nativeChatTurnMembership(data, state)
+  const membership = nativeChatTurnMembership(data, { items, submissions: state.submissions })
   const rows = nativeChatRowsInDrawOrder(data, membership.drawOrder)
   const turnKeys = nativeChatRowsInDrawOrder(membership.turnKeys, membership.drawOrder)
-  const waiting = nativeChatMessagesWaitingBehindLiveTurn(rows, state.items)
+  const waiting = nativeChatMessagesWaitingBehindLiveTurn(rows, items)
   const turnId = activeStructuredAgentSessionTurnId(state.items)
-  const { settledTurns } = selectStructuredAgentTurnBars(state.items, state.submissions, turnId)
+  const { settledTurns } = selectStructuredAgentTurnBars(items, state.submissions, turnId)
   const working = isStructuredAgentSessionMainAgentWorking(turnId, state.submissions, state.fence)
   return {
     header: `working ${working} live ${membership.liveTurnKey ?? '-'}`,
@@ -83,7 +99,7 @@ function drawn(state: StructuredAgentSessionState): Drawn {
 
 /** The ids the phone's list shows: its rows through the list's own turn disclosure. */
 function listed(state: StructuredAgentSessionState): string[] {
-  const messages = projectStructuredAgentSessionMessages(state.items, [], state.submissions)
+  const { items, messages } = phoneTranscript(state)
   const folded = foldMobileNativeChatMessages(messages)
   const { data } = buildMobileNativeChatTransientData({
     messages,
@@ -92,7 +108,7 @@ function listed(state: StructuredAgentSessionState): string[] {
     pending: []
   })
   const turnId = activeStructuredAgentSessionTurnId(state.items)
-  const { settledTurns } = selectStructuredAgentTurnBars(state.items, state.submissions, turnId)
+  const { settledTurns } = selectStructuredAgentTurnBars(items, state.submissions, turnId)
   let ids: string[] = []
   function List(): null {
     const turns = useMobileNativeChatTurnDisclosure({
@@ -100,7 +116,7 @@ function listed(state: StructuredAgentSessionState): string[] {
       enabled: true,
       isWorking: isStructuredAgentSessionMainAgentWorking(turnId, state.submissions, state.fence),
       settledTurns,
-      turnJournal: state,
+      turnJournal: { items, submissions: state.submissions },
       scopeKey: 'host\0workspace\0tab'
     })
     ids = turns.listMessages.map((row) => row.id)
