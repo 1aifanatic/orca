@@ -2,6 +2,7 @@
 // is derived again. This pins what the derivation writes for every corpus chat, so a change to it
 // (or to the shared projection it reads) fails here until the rules version is bumped with it.
 
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import { createHash } from 'node:crypto'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -44,7 +45,7 @@ it('derives the same row for every corpus chat as the recorded rules version', a
         workspaceId: 'ws-1',
         hostId: 'local',
         agent: 'codex',
-        providerHandle: { kind: 'codex', threadId: `thread-${name}` }
+        providerHandle: codexProviderHandle(`thread-${name}`)
       },
       stateDirectory: root,
       now: () => (clock += 1),

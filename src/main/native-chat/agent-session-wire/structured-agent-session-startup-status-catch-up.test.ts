@@ -2,6 +2,7 @@
 // all, a launch that derives rows yields only when a task has run long enough, quit stops it with
 // nothing more written, for the next launch to redo, and lease recovery starts before it.
 
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -85,7 +86,7 @@ async function chats(sessionIds: readonly string[], { rowless }: { rowless: bool
         workspaceId: 'ws-1',
         hostId: 'local',
         agent: 'codex',
-        providerHandle: { kind: 'codex', threadId: `thread-${sessionId}` }
+        providerHandle: codexProviderHandle(`thread-${sessionId}`)
       },
       stateDirectory: root,
       mintEpoch: () => `epoch-${sessionId}`,

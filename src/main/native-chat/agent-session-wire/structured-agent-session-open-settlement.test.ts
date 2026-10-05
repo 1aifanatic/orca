@@ -3,6 +3,7 @@
 // and once the plan commits the status reads settled, so nothing is selected twice. Death evidence
 // changes only which verdict a running turn gets, never whether the chat is selected.
 
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -55,7 +56,7 @@ function open(sessionId: string): Promise<AgentSessionJournal> {
     workspaceId: 'ws-1',
     hostId: 'local',
     agent: 'codex',
-    providerHandle: { kind: 'codex', threadId: `thread-${sessionId}` }
+    providerHandle: codexProviderHandle(`thread-${sessionId}`)
   }
   return journals.open({
     identity,

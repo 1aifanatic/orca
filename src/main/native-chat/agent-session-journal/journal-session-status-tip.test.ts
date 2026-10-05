@@ -2,6 +2,7 @@
 // status, or deletes a chat, and the table carries no schema version to stop it: a row whose tip is
 // not the chat's tip now reads as missing, is derived again, and is never selected to settle.
 
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -46,7 +47,7 @@ function open(sessionId: string): Promise<AgentSessionJournal> {
       workspaceId: 'ws-1',
       hostId: 'local',
       agent: 'codex',
-      providerHandle: { kind: 'codex', threadId: `thread-${sessionId}` }
+      providerHandle: codexProviderHandle(`thread-${sessionId}`)
     },
     stateDirectory: root,
     now: () => (clock += 1),

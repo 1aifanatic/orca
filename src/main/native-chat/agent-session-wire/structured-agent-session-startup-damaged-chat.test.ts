@@ -40,11 +40,13 @@ async function startup(rig: RestTestRig): Promise<void> {
 
 /** Each warning startup logged about the chat. */
 function warningsFor(warn: ReturnType<typeof vi.spyOn>): unknown[] {
-  return warn.mock.calls.filter(([, fields]) => {
-    const sessionId: unknown =
-      typeof fields === 'object' && fields !== null ? Reflect.get(fields, 'sessionId') : undefined
-    return sessionId === SESSION
-  })
+  return warn.mock.calls.filter(
+    ([, fields]) =>
+      typeof fields === 'object' &&
+      fields !== null &&
+      'sessionId' in fields &&
+      fields.sessionId === SESSION
+  )
 }
 
 it.each([true, false])(

@@ -2,6 +2,7 @@
 // transaction, the status written once from the fold holding every row; a failed COMMIT leaves no
 // answer, no status write and no fold change.
 
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -30,7 +31,7 @@ const IDENTITY: AgentSessionJournalIdentity = {
   workspaceId: 'ws-1',
   hostId: 'local',
   agent: 'codex',
-  providerHandle: { kind: 'codex', threadId: 'thread-append' }
+  providerHandle: codexProviderHandle('thread-append')
 }
 
 const journals = createTrackedJournalOpener()

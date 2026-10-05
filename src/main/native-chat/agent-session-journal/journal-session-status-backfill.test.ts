@@ -1,6 +1,7 @@
 // A missing status row written from the chat's rows alone, with no open: the row an open would
 // write, folded a bounded part per task, and nothing written when the chat moved or quit stops it.
 
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -43,7 +44,7 @@ function identity(sessionId: string): AgentSessionJournalIdentity {
     workspaceId: 'ws-1',
     hostId: 'local',
     agent: 'codex',
-    providerHandle: { kind: 'codex', threadId: `thread-${sessionId}` }
+    providerHandle: codexProviderHandle(`thread-${sessionId}`)
   }
 }
 

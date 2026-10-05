@@ -25,13 +25,14 @@ import {
   appendOpenSettlement,
   planOpenSettlement
 } from '../agent-session-wire/structured-agent-session-open-settlement'
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-1',
   workspaceId: 'ws-1',
   hostId: 'host-1',
   agent: 'codex',
-  providerHandle: { kind: 'codex', threadId: 'thread-1' }
+  providerHandle: codexProviderHandle('thread-1')
 }
 
 const GROUP_ID = 'thread-1:turn-1'

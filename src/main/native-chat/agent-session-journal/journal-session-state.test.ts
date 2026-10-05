@@ -1,6 +1,7 @@
 // Each chat's stored status: written in the same transaction as every journal write, equal to what a
 // fresh replay derives, for every chat state; a failed write leaves the fold equal to the disk.
 
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -60,7 +61,7 @@ function identity(sessionId: string): AgentSessionJournalIdentity {
     workspaceId: 'ws-1',
     hostId: 'local',
     agent: 'codex',
-    providerHandle: { kind: 'codex', threadId: `thread-${sessionId}` }
+    providerHandle: codexProviderHandle(`thread-${sessionId}`)
   }
 }
 

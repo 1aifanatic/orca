@@ -2,6 +2,7 @@
 // real, and after each the in-memory fold equals a fresh replay of the disk, container by container
 // with key order, scalars and turn scope, and the stored status equals a fresh derivation.
 
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -48,7 +49,7 @@ function identity(sessionId: string): AgentSessionJournalIdentity {
     workspaceId: 'ws-1',
     hostId: 'local',
     agent: 'codex',
-    providerHandle: { kind: 'codex', threadId: `thread-${sessionId}` }
+    providerHandle: codexProviderHandle(`thread-${sessionId}`)
   }
 }
 
