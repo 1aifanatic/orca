@@ -78,7 +78,11 @@ export type HostServerOnConnectDeps = {
   isEmptyHost: (target: SshTarget) => boolean
   relayTerminals: (target: SshTarget) => Promise<HostServerTerminalVerdict>
   deploy: (target: SshTarget) => Promise<OrcadManagedDeployResult>
-  convert: (target: SshTarget) => Promise<OrcadManagedConversionResult>
+  /** `hostProof`: the connect's own terminal verdict, for a conversion asked before any session. */
+  convert: (
+    target: SshTarget,
+    hostProof: HostServerTerminalVerdict | null
+  ) => Promise<OrcadManagedConversionResult>
   /** A registered server whose conversion has not committed and been kept or retired yet. */
   hasUnfinishedConversion: (target: SshTarget) => boolean
   /** Releases a conversion fence once its server provably holds nothing, so the relay serves. */
@@ -202,7 +206,7 @@ async function convertHost(
     trace.conversionStartedAt = Date.now()
     reportHostServerEvent(deps.report, target, { kind: 'conversion', phase: 'started' })
     deps.progress(target, 'converting')
-    const converted = await deps.convert(target)
+    const converted = await deps.convert(target, terminals)
     if (converted.outcome === 'refused') {
       trace.refusal = converted.code
     }

@@ -1,25 +1,28 @@
 /**
  * The connect-time relay census on a Windows host, before any relay session exists.
  *
- * Windows relay endpoints are named pipes with no inode to list, but each version directory's pipe
- * for this target is derived from that directory and the target's socket name. So every version
- * directory, the current one included, has its pipes probed the way the previous-relay census
- * probes older ones, and a pipe that may be live is asked through its own bridge for
- * `pty.listProcesses`. A pipe
- * that may be live but cannot be asked is unverifiable: a shell no lease here knows must never let
- * the host convert under it.
+ * Every relay pipe on the machine is listed, whichever desktop's target launched it, and each one
+ * this account's version directories account for is asked through its own bridge, with its own
+ * credential, for `pty.listProcesses`. A pipe no directory here accounts for is set aside only when
+ * the host proves it another Windows account's; otherwise it is unverifiable, as is a listing that
+ * failed or a live pipe that cannot be asked: a shell no lease here knows must never let the host
+ * convert under it.
  */
 import type { SshConnection } from './ssh-connection'
 import { RELAY_REMOTE_DIR } from './relay-protocol'
-import { parseRelayVersionDirLiveness } from './relay-version-dir-liveness'
-import { RELAY_INSTALL_MODEL, remoteInstallVersionDirRegex } from './remote-install-model'
+import { RELAY_INSTALL_MODEL } from './remote-install-model'
 import type { HostRelayEndpointCensus } from './ssh-host-relay-endpoint-census'
+import {
+  windowsPipesNotRunHere,
+  parseWindowsRelayInventory,
+  windowsPipeAccessCommand,
+  windowsRelayInventoryCommand
+} from './ssh-host-relay-windows-inventory'
 import { countRelayPtysOverBridge } from './ssh-relay-endpoint-pty-count'
-import { windowsRelayPipePathsForSocketName } from './ssh-relay-endpoints'
 import { execCommand } from './ssh-relay-deploy-helpers'
 import { relaySocketNameForInstanceId } from './ssh-relay-instance-id'
 import { windowsRelayConnectCommand } from './ssh-relay-windows-launch-command'
-import { listRemoteInstallBaseDirsCommand, relayLivenessProbeCommand } from './ssh-remote-commands'
+import { listRemoteInstallBaseDirsCommand } from './ssh-remote-commands'
 import { joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
 import { isNodeRuntimeTarget } from '../../shared/node-runtime-pin'
 import { orcadNodeRuntimeExecutable } from '../../shared/orcad-artifacts'
@@ -27,7 +30,7 @@ import { nodeRuntimeStoreDir, remoteNodeRuntimePresentCommand } from './orcad-re
 import { REMOTE_NODE_RUNTIME_READY } from './orcad-remote-node-runtime-report'
 import { resolveRemoteNodePath } from './ssh-remote-node-resolution'
 
-const MAX_CENSUS_VERSION_DIRS = 32
+const MAX_CENSUS_PIPES = 32
 
 export async function censusWindowsHostRelays(
   conn: SshConnection,
@@ -40,41 +43,69 @@ export async function censusWindowsHostRelays(
     signal?: AbortSignal
   }
 ): Promise<HostRelayEndpointCensus> {
-  const { host, signal } = args
-  const baseDir = joinRemotePath(host, args.remoteHome, RELAY_REMOTE_DIR)
+  const { host, remoteHome, signal } = args
+  const run = (command: string): Promise<string> =>
+    execCommand(conn, command, { wrapCommand: false, signal })
   let listing: string
   try {
-    listing = await execCommand(
-      conn,
-      listRemoteInstallBaseDirsCommand(host, baseDir, RELAY_INSTALL_MODEL),
-      { wrapCommand: false, signal }
+    listing = await run(
+      listRemoteInstallBaseDirsCommand(
+        host,
+        joinRemotePath(host, remoteHome, RELAY_REMOTE_DIR),
+        RELAY_INSTALL_MODEL
+      )
     )
   } catch {
     return { verdict: 'unverifiable', count: 0 }
   }
-  const versionDir = remoteInstallVersionDirRegex(RELAY_INSTALL_MODEL)
-  const dirs = listing
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((name) => versionDir.test(name))
-    .map((name) => joinRemotePath(host, baseDir, name))
-  if (dirs.length === 0) {
+  if (!listing.split('\n').some((line) => line.trim().startsWith('relay-'))) {
     return { verdict: 'none', count: 0 }
   }
-  const nodePath =
-    dirs.length > MAX_CENSUS_VERSION_DIRS ? null : await args.nodePath().catch(() => null)
+  const nodePath = await args.nodePath().catch(() => null)
   if (!nodePath) {
-    return { verdict: 'unverifiable', count: dirs.length }
+    return { verdict: 'unverifiable', count: 0 }
   }
-  const sockName = relaySocketNameForInstanceId(args.targetId)
+  const inventory = await run(windowsRelayInventoryCommand(host, nodePath, remoteHome)).then(
+    (output) =>
+      parseWindowsRelayInventory(
+        host,
+        remoteHome,
+        [relaySocketNameForInstanceId(args.targetId)],
+        output
+      ),
+    () => null
+  )
+  if (!inventory) {
+    return { verdict: 'unverifiable', count: 0 }
+  }
+  if (inventory.pipes.length > MAX_CENSUS_PIPES) {
+    return { verdict: 'unverifiable', count: inventory.pipes.length }
+  }
+  const unowned = inventory.pipes.filter((pipe) => !inventory.owners.has(pipe.toLowerCase()))
+  const foreign =
+    unowned.length === 0
+      ? new Set<string>()
+      : await run(windowsPipeAccessCommand(host, nodePath, remoteHome, unowned)).then(
+          windowsPipesNotRunHere,
+          () => new Set<string>()
+        )
   let live = 0
-  let unverifiable = 0
-  for (const dir of dirs) {
-    const outcome = await censusVersionDir(conn, host, nodePath, dir, sockName, signal)
-    if (outcome === 'live') {
-      live += 1
-    } else if (outcome === 'unverifiable') {
+  let unverifiable = unowned.filter((pipe) => !foreign.has(pipe.toLowerCase())).length
+  for (const pipe of inventory.pipes) {
+    const owner = inventory.owners.get(pipe.toLowerCase())
+    if (!owner) {
+      continue
+    }
+    const ptys = await countRelayPtysOverBridge(
+      conn,
+      windowsRelayConnectCommand(host, nodePath, owner.dir, pipe, owner.credentialFile),
+      signal,
+      { wrapCommand: false }
+    )
+    if (ptys === null) {
       unverifiable += 1
+    } else if (ptys > 0) {
+      live += 1
     }
   }
   if (live > 0) {
@@ -83,49 +114,6 @@ export async function censusWindowsHostRelays(
   return unverifiable > 0
     ? { verdict: 'unverifiable', count: unverifiable }
     : { verdict: 'idle', count: 0 }
-}
-
-/**
- * Each of the directory's two pipe names is probed on its own, and one that may be live is asked
- * through its bridge. A live pipe that cannot be asked is unknown, never absent, so the directory
- * is unverifiable even when its other pipe answered with no PTYs.
- */
-async function censusVersionDir(
-  conn: SshConnection,
-  host: RemoteHostPlatform,
-  nodePath: string,
-  dir: string,
-  sockName: string,
-  signal: AbortSignal | undefined
-): Promise<'idle' | 'live' | 'unverifiable'> {
-  let unverifiable = false
-  for (const pipe of windowsRelayPipePathsForSocketName(host, dir, sockName)) {
-    const verdict = await execCommand(
-      conn,
-      relayLivenessProbeCommand(host, dir, { nodePath, pipePaths: [pipe] }),
-      { wrapCommand: false, signal }
-    ).then(parseRelayVersionDirLiveness, () => 'unverifiable' as const)
-    if (verdict === 'exited') {
-      continue
-    }
-    const ptys = await countRelayPtysOverBridge(
-      conn,
-      windowsRelayConnectCommand(
-        host,
-        nodePath,
-        dir,
-        pipe,
-        joinRemotePath(host, dir, `${sockName}.credential`)
-      ),
-      signal,
-      { wrapCommand: false }
-    )
-    if (ptys !== null && ptys > 0) {
-      return 'live'
-    }
-    unverifiable ||= ptys === null
-  }
-  return unverifiable ? 'unverifiable' : 'idle'
 }
 
 /**

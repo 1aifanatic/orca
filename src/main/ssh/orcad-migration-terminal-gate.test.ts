@@ -24,9 +24,43 @@ describe('migration terminal gate', () => {
       assessOrcadMigrationTerminals(
         store([{ ptyId: 'a', state: 'terminated' }]),
         'ssh-1',
-        async () => []
+        relay([], [])
       )
     ).resolves.toEqual({ verdict: 'exited', provenPtyIds: ['a'] })
+  })
+
+  // Finding 3: with nothing leased here, a missing inventory must not read as nothing running.
+  it.each([
+    ['this relay did not answer', relay(null, [])],
+    ['the earlier relays could not be asked', relay([], null)],
+    ['a Windows earlier relay could not be bridged', relay([], null)]
+  ])('is unverifiable with no leases when %s', async (_label, list) => {
+    await expect(assessOrcadMigrationTerminals(store([]), 'ssh-1', list)).resolves.toMatchObject({
+      verdict: 'unverifiable'
+    })
+  })
+
+  it('needs a host census, not silence, when no relay session can be asked', async () => {
+    await expect(assessOrcadMigrationTerminals(store([]), 'ssh-1', null)).resolves.toMatchObject({
+      verdict: 'unverifiable',
+      needsHostCensus: true
+    })
+    await expect(
+      assessOrcadMigrationTerminals(store([]), 'ssh-1', null, async () => ({
+        verdict: 'exited',
+        count: 0
+      }))
+    ).resolves.toEqual({ verdict: 'exited', provenPtyIds: [] })
+    for (const verdict of ['live', 'unverifiable'] as const) {
+      await expect(
+        assessOrcadMigrationTerminals(store([]), 'ssh-1', null, async () => ({ verdict, count: 1 }))
+      ).resolves.toMatchObject({ verdict })
+    }
+    await expect(
+      assessOrcadMigrationTerminals(store([]), 'ssh-1', null, async () => {
+        throw new Error('connect refused')
+      })
+    ).resolves.toMatchObject({ verdict: 'unverifiable' })
   })
 
   it('blocks an attached lease as live', async () => {
