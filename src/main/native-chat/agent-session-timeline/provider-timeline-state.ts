@@ -28,10 +28,10 @@ export type ProviderTimelineOpenTurn = ProviderTimelineTurnRef & {
   running: AgentJournalTurnLifecycle
 }
 
-/** A user message waiting for the turn it opens: Orca's send, or the provider's saved one. */
+/** Orca's send, waiting for the turn it opens. */
 export type ProviderTimelinePendingInput = {
   userItemId: string
-  requestedAt?: number
+  requestedAt: number
   /** The turn row the provider said it opens; absent: the next turn to open. */
   turnItemId?: string
 }
