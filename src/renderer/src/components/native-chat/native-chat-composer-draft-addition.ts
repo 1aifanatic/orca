@@ -15,14 +15,22 @@ export type NativeChatComposerDraftAddition = {
   readonly fromUser?: boolean
 }
 
+/** A whitespace-only draft counts as empty, so the text never lands after blank lines. */
 export function appendNativeChatDraftText(draft: string, text: string): string {
-  return draft === '' ? text : `${draft.trimEnd()}\n\n${text}`
+  return draft.trim() === '' ? text : `${draft.trimEnd()}\n\n${text}`
+}
+
+/** Whether the draft already ends with `text` as its own paragraph. */
+export function nativeChatDraftEndsWith(draft: string, text: string): boolean {
+  const held = draft.trimEnd()
+  return held === text || held.endsWith(`\n\n${text}`)
 }
 
 /**
  * The draft's text and images with the addition made. `once` makes it again only where it is not
- * already there (text the draft already ends with, an image id it holds): a replay after a crash
- * meets a draft that may already have been saved with it.
+ * already there (text the draft already ends with as its own paragraph, an image id it holds): a
+ * replay after a crash meets a draft that may already have been saved with it. Only a whole
+ * paragraph counts, so "go" given back onto "please go" still comes back.
  */
 export function withNativeChatComposerDraftAddition(
   draft: NativeChatComposerDraft,
@@ -31,7 +39,7 @@ export function withNativeChatComposerDraftAddition(
 ): Pick<NativeChatComposerDraft, 'text' | 'images'> {
   const added = addition.text ?? ''
   const text =
-    added === '' || (options.once && draft.text.endsWith(added))
+    added === '' || (options.once && nativeChatDraftEndsWith(draft.text, added))
       ? draft.text
       : appendNativeChatDraftText(draft.text, added)
   const images = [...draft.images]

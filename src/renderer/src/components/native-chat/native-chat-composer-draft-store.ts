@@ -176,17 +176,19 @@ export function updateNativeChatComposerDraft(
 
 function withAddition<T extends NativeChatComposerDraft>(
   draft: T,
-  addition: NativeChatComposerDraftAddition
+  addition: NativeChatComposerDraftAddition,
+  options: { once?: boolean } = {}
 ): T {
-  const next = withNativeChatComposerDraftAddition(draft, addition)
+  const next = withNativeChatComposerDraftAddition(draft, addition, options)
   return { ...draft, ...next, ...(next.text === draft.text ? {} : { document: undefined }) }
 }
 
 /**
  * Adds to the scope's draft as it is now: text or images given back, or attached. Before the
  * startup load lands, the same addition is made again to the loaded draft, so nothing saved
- * earlier is replaced by it. True once the addition is durable: storage commits later, so it is
- * also journaled at once, and the copy it came from may then be deleted.
+ * earlier is replaced by it, unless that draft already holds it (a hand-back repeated after a
+ * crash before its copy was deleted). True once the addition is durable: storage commits later,
+ * so it is also journaled at once, and the copy it came from may then be deleted.
  */
 export function appendToNativeChatComposerDraft(
   scopeKey: string,
@@ -199,7 +201,7 @@ export function appendToNativeChatComposerDraft(
     scopeKey,
     { text, images, ...(text === current.text ? {} : { document: undefined }) },
     'immediate',
-    (loaded) => withAddition(loaded, addition)
+    (loaded) => withAddition(loaded, addition, { once: true })
   )
   const after = records.get(scopeKey)
   if (!after || after === before) {
