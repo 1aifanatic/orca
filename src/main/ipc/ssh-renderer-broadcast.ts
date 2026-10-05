@@ -15,7 +15,7 @@ import {
 import { isRuntimeOwnedSshTarget } from '../ssh/ssh-connection-store'
 import { getSshProviderAuthority } from '../ssh/ssh-provider-authority'
 import { getSshPlainSshMode } from '../ssh/ssh-plain-ssh-mode'
-import { getSshHostServerStatus } from '../ssh/ssh-host-server-status'
+import { clearSshHostServerStatus, getSshHostServerStatus } from '../ssh/ssh-host-server-status'
 import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
 import { activeSessions } from './ssh-active-relay-sessions'
 import {
@@ -83,6 +83,24 @@ export function clearRelayStateOverride(targetId: string): void {
 export function connectionSupportsFolderDownload(targetId: string): boolean {
   // Why: connections without an explicit transport are ssh2-shaped; only a confirmed system-SSH transport lacks the SFTP-only capability.
   return connectionManager?.getConnection(targetId)?.usesSystemSshTransport?.() !== true
+}
+
+/**
+ * Forgets a host's managed-server decision once its server is unlinked, and republishes the
+ * connection without it. The republish is also what drops the host's cached worktree scans, so
+ * listings stop naming the removed server without waiting for a reconnect.
+ */
+export function clearPublishedManagedServer(targetId: string): void {
+  clearSshHostServerStatus(targetId)
+  const override = relayStateOverrides.get(targetId)
+  if (override?.managedServer) {
+    const { managedServer: _removed, ...rest } = override
+    relayStateOverrides.set(targetId, rest)
+  }
+  const state = relayStateOverrides.get(targetId) ?? connectionManager?.getState(targetId)
+  if (state) {
+    broadcastSshState(getCurrentMainWindow, targetId, state)
+  }
 }
 
 export function getPublicSshState(targetId: string): SshConnectionState | undefined {
