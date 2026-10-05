@@ -1,5 +1,6 @@
 // A send the host withdrew (a Stop took it back before it ran) leaves the outbox with no notice, so
-// the next queued send goes out. One the host left in doubt holds the queue until its Retry.
+// the next queued send goes out. One the host recorded in doubt leaves it too: its row draws it, and
+// the host never sends it again.
 
 import { describe, expect, it } from 'vitest'
 import { agentSessionFailureFact } from './agent-session-failure'
@@ -61,7 +62,7 @@ describe('the send a Stop ended before its turn opened', () => {
     })
   })
 
-  it('holds the queue when left in doubt', () => {
+  it('leaves the outbox when recorded in doubt, and the next send goes out', () => {
     const inDoubt = submission({
       dispatchState: 'unknown',
       recovered: true,
@@ -70,9 +71,10 @@ describe('the send a Stop ended before its turn opened', () => {
 
     const reconciled = reconcileStructuredAgentSessionOutbox(OUTBOX, [inDoubt], [])
 
+    expect(reconciled.map((each) => each.clientMessageId)).toEqual(['next'])
     expect(admitStructuredAgentSessionOutboxEntry(reconciled)).toMatchObject({
-      state: 'blocked',
-      entry: { clientMessageId: 'stopped' }
+      state: 'dispatch',
+      entry: { clientMessageId: 'next' }
     })
   })
 })
