@@ -181,7 +181,7 @@ function isPaneAccountRecord(value: unknown): value is CodexPaneAccountRecord {
   )
 }
 
-// Why: older builds wrote 'custom-home' for a shared-home pane they could not re-derive.
+// Why: older builds wrote 'custom-home' for a shared-home pane with a pane-local CODEX_HOME.
 function readPaneHomeRoute(value: unknown): CodexPaneHomeRoute | undefined {
   if (value === 'custom-home') {
     return 'shared-home'
