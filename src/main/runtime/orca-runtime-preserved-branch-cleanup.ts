@@ -79,6 +79,11 @@ export class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeWithTermin
     | ((paneKey: string) => AgentStatusIpcPayload[])
     | null
 
+  /** Agent status rows this host holds for a pane, from hooks, OSC and titles alike. */
+  getAgentStatusRowsForPane(paneKey: string): AgentStatusIpcPayload[] {
+    return this.getAgentProviderSessionRowsForPaneFn?.(paneKey) ?? []
+  }
+
   protected readonly attestAgentHookCompatibilityAuthorityFn:
     | ((candidate: {
         paneKey: string
