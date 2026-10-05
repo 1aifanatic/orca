@@ -10,13 +10,11 @@ import {
   agentJournalTurnBody,
   readAgentJournalTurn
 } from '../../../shared/agent-session-turn-record'
-import { estimateStructuredAgentSessionItemBytes } from '../agent-session-wire/structured-agent-session-event-sink-estimate'
 import type { StructuredAgentSessionTransitionJournal } from '../agent-session-wire/structured-agent-session-transition'
 import {
   agentJournalTurnRowReservedBytes,
   resolveAgentJournalTurnRowWrite
 } from './agent-journal-turn-row-revision'
-import { providerTimelinePlacement } from './provider-timeline-context'
 import type {
   ProviderTimelineDecidedEvent,
   ProviderTimelineDecision,
@@ -70,7 +68,7 @@ export function decideTurnOpen(
     state: 'running',
     userItemId: pending?.userItemId ?? turn.itemId,
     startedAt: event.at,
-    ...(pending?.requestedAt === undefined ? {} : { requestedAt: pending.requestedAt })
+    ...(pending ? { requestedAt: pending.requestedAt } : {})
   }
   const write: ProviderTimelineResolvedWrite = {
     identity: turn.identity,
@@ -184,30 +182,6 @@ export function decideInput(
     },
     event.join?.turn
   )
-}
-
-/** A saved user message of an adopted session: its own row, only where none is, and the opener of
- *  the turn it names. */
-export function decideHistory(
-  input: ProviderTimelineDecisionInput,
-  event: Extract<ProviderTimelineDecidedEvent, { type: 'input.history' }>
-): ProviderTimelineDecision {
-  const { context, state } = input
-  const row = context.rows.item('item', providerKey(event.item), event.join.thread ?? null)
-  const write: ProviderTimelineResolvedWrite = { identity: row.identity, body: event.body }
-  const opener = decideOpener(input, { userItemId: row.itemId }, event.join.turn)
-  return {
-    ...opener,
-    writes: [
-      {
-        reservedBytes: estimateStructuredAgentSessionItemBytes(row.identity, event.body),
-        lifecycle: false,
-        options: { turnScope: providerTimelinePlacement(context, state, event.join) },
-        resolve: (at) => (at.itemBody(row.itemId) === null ? write : null)
-      },
-      ...(opener.writes ?? [])
-    ]
-  }
 }
 
 /** A user message names the turn it opened: the one it names once that one opens, else the open
