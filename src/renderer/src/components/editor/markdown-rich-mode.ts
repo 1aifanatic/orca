@@ -3,6 +3,7 @@ import { normalizeDetailsOpeningTag } from './details-markdown-html'
 import { getRichMarkdownRoundTripOutput } from './markdown-round-trip'
 import { extractFrontMatter } from './markdown-frontmatter'
 import { canRenderMarkdownAtSize } from './markdown-rich-size-limit'
+import { hasUnsafeOrderedCodeFirstItem } from './markdown-ordered-code-eligibility'
 import { translate } from '@/i18n/i18n'
 
 export type MarkdownRichModeUnsupportedReason =
@@ -98,6 +99,10 @@ export function getMarkdownRichModeUnsupportedReason(
   // to pass the unsupported-content checks.
   const fm = extractFrontMatter(content)
   const body = fm ? fm.body : content
+
+  if (hasUnsafeOrderedCodeFirstItem(body)) {
+    return 'other'
+  }
 
   const contentWithoutCode = stripMarkdownCode(body)
 
