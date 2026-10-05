@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { expect, vi } from 'vitest'
+import type * as ProviderSupervisor from '../codex/codex-app-server-posix-supervisor'
 
 export type MockDiscoveryChild = EventEmitter & {
   pid: number
@@ -45,5 +46,20 @@ export function createChildTerminationExpectation(
     // having killed nothing while the caller releases the managed-home lock. It
     // runs after the walk there, so it can be a tick behind the caller.
     await vi.waitFor(() => expect(child.kill).toHaveBeenCalledWith('SIGKILL'))
+  }
+}
+
+/**
+ * The supervisor module with agents spawned directly, as on Windows, for suites that drive fake
+ * children; the supervised launch and stop have their own tests.
+ */
+export async function directSpawnProviderSupervisor(
+  importOriginal: <T>() => Promise<T>
+): Promise<typeof ProviderSupervisor> {
+  const actual = await importOriginal<typeof ProviderSupervisor>()
+  return {
+    ...actual,
+    createProviderSpawnSpec: (launch, env, _platform, options) =>
+      actual.createProviderSpawnSpec(launch, env, 'win32', options)
   }
 }

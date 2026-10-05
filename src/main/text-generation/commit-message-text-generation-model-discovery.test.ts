@@ -12,6 +12,7 @@ import {
 import {
   createChildTerminationExpectation,
   createMockDiscoveryChild,
+  type MockDiscoveryChild,
   withPlatform
 } from './commit-message-text-generation-test-harness'
 
@@ -23,6 +24,12 @@ vi.mock('../windows-process-tree-kill', () => ({
   terminateWindowsProcessTree: terminateWindowsProcessTreeMock
 }))
 
+vi.mock('../codex/codex-app-server-posix-supervisor', async (importOriginal) =>
+  (await import('./commit-message-text-generation-test-harness')).directSpawnProviderSupervisor(
+    importOriginal
+  )
+)
+
 vi.mock('child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof ChildProcess>()
   return {
@@ -32,6 +39,10 @@ vi.mock('child_process', async (importOriginal) => {
 })
 
 const spawnMock = vi.mocked(spawn)
+
+function enoent(): Error {
+  return Object.assign(new Error('spawn claude ENOENT'), { code: 'ENOENT' })
+}
 
 const expectChildTerminated = createChildTerminationExpectation(terminateWindowsProcessTreeMock)
 
@@ -331,6 +342,28 @@ describe('discoverCommitMessageModelsLocal', () => {
       success: true,
       defaultModelId: 'default',
       models: [{ id: 'github-copilot/gpt-5.4-mini' }, { id: 'openai-codex/gpt-5.5' }]
+    })
+  })
+
+  it.each([
+    ['a spawn error', (child: MockDiscoveryChild) => child.emit('error', enoent())],
+    [
+      'the supervisor exit for a missing binary',
+      (child: MockDiscoveryChild) => {
+        child.stderr.emit('data', Buffer.from('spawn claude ENOENT\n'))
+        child.emit('close', 127)
+      }
+    ]
+  ])('reports a missing CLI as not found on PATH from %s', async (_, fail) => {
+    const child = createMockDiscoveryChild()
+    spawnMock.mockReturnValue(child as never)
+
+    const pending = discoverCommitMessageModelsLocal('claude', undefined)
+    fail(child)
+
+    await expect(pending).resolves.toEqual({
+      success: false,
+      error: 'claude not found on PATH. Install Claude to discover models.'
     })
   })
 

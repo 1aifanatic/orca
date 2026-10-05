@@ -15,6 +15,12 @@ vi.mock('../windows-process-tree-kill', () => ({
   terminateWindowsProcessTree: terminateWindowsProcessTreeMock
 }))
 
+vi.mock('../codex/codex-app-server-posix-supervisor', async (importOriginal) =>
+  (await import('./commit-message-text-generation-test-harness')).directSpawnProviderSupervisor(
+    importOriginal
+  )
+)
+
 vi.mock('child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof ChildProcess>()
   return {
