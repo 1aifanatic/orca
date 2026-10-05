@@ -17,9 +17,13 @@ import type { AgentSessionMessageSource } from '../../../shared/agent-session-me
 
 export type QueuePauseReason = 'stopped' | 'cleared' | 'restarted'
 
+/** What a person's Stop that named no turn binds, held in memory and never read from a row, so a
+ *  reopen binds nothing: while it settles, every turn that ends; once settled, the turn it stopped. */
+export type JournalStopSettle = { settling: boolean; turnId?: string }
+
 /** The latest Stop event, whatever its reason, and the latest Resume row, folded by the reducer. */
 export type JournalQueuePauseMarks = {
-  latestStop: { sequence: number; event: JournalStopEvent } | null
+  latestStop: { sequence: number; event: JournalStopEvent; settle?: JournalStopSettle } | null
   /** 0 when none. */
   resumedSequence: number
 }

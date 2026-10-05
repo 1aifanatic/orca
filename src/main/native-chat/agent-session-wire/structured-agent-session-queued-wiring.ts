@@ -65,7 +65,7 @@ export function wireStructuredAgentSessionQueuedMessages(
     onJournalActivity: (sessionId: string) => {
       sessions.touch(sessionId)
       const journal = sessions.get(sessionId)?.journal
-      if (journal && !journal.isReadOnly) {
+      if (journal) {
         void adoptEndedRestartPause(sessionId, journal, context().deps.logger)
       }
       if (journal && agentCardSettled(journal)) {
