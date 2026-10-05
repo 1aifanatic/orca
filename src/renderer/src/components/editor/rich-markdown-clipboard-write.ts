@@ -14,7 +14,8 @@ export function writeRichMarkdownSliceToClipboard(
   clipboardData: DataTransfer,
   view: EditorView,
   slice: Slice,
-  visibleText: string
+  visibleText: string,
+  range: { from: number; to: number }
 ): boolean {
   const status = inspectRichMarkdownSourceOwningSlice(slice)
   if (status.containsSourceOwningNode && !status.canPreserve) {
@@ -22,7 +23,7 @@ export function writeRichMarkdownSliceToClipboard(
     return false
   }
   const serialized = serializeRichMarkdownSliceForClipboard(view, slice)
-  const plainText = resolveRichMarkdownCutPlainText(view, slice, visibleText)
+  const plainText = resolveRichMarkdownCutPlainText(view, visibleText, range)
   clipboardData.setData('text/html', serialized.html)
   clipboardData.setData('text/plain', plainText)
   // Why: if the clipboard rejected the write we must not delete, and we must

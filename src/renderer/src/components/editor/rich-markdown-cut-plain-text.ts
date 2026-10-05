@@ -1,21 +1,14 @@
-import type { Slice } from '@tiptap/pm/model'
 import type { EditorView } from '@tiptap/pm/view'
 
-/**
- * Resolves the plain-text clipboard flavor for the hand-rolled cut paths,
- * which bypass ProseMirror's clipboard serialization. Routing through the
- * view's own `clipboardTextSerializer` keeps cut and copy on one format.
- * Falls back to visible text when no serializer is reachable.
- */
 export function resolveRichMarkdownCutPlainText(
   view: EditorView,
-  slice: Slice,
-  visibleText: string
+  visibleText: string,
+  range: { from: number; to: number }
 ): string {
-  // Why: lightweight unit-test views expose no plugin props.
-  if (typeof view.someProp !== 'function') {
-    return visibleText
-  }
-  const serialized = view.someProp('clipboardTextSerializer', (serialize) => serialize(slice, view))
+  // Match native copy's parent context without changing the cut's HTML slice.
+  const textSlice = view.state.doc.slice(range.from, range.to, true)
+  const serialized = view.someProp('clipboardTextSerializer', (serialize) =>
+    serialize(textSlice, view)
+  )
   return typeof serialized === 'string' ? serialized : visibleText
 }
