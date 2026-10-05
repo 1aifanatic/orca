@@ -266,7 +266,7 @@ export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & 
     beforeDispatch?: () => Promise<void>
   }): Promise<AgentSessionDispatchOutcome>
   /** How this session narrows its agent's declared rewind; `agent` answers for one with no child
-   *  running. The host reads the declaration first: this never widens it. */
+   *  running. The router applies the declaration first, so an adapter's answer never widens it. */
   rewindSupport?(sessionId: string, agent?: string): AgentSessionRewindSupport
   recoverRewind?(input: {
     sessionId: string

@@ -5,7 +5,6 @@
 // declared capability always has the adapter method behind it.
 
 import type { AgentSessionCapabilities } from '../../../shared/agent-session-capabilities'
-import type { AgentSessionRewindSupport } from '../../../shared/agent-session-rewind'
 import type { StructuredAgentDefinition } from './structured-agent-definition'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 
@@ -70,17 +69,4 @@ export class StructuredAgentRegistry {
   capabilities(agent: string): AgentSessionCapabilities | null {
     return this.definition(agent)?.capabilities ?? null
   }
-}
-
-/** Whether this session can rewind now: its agent's declaration, narrowed by the adapter. */
-export function structuredAgentRewindSupport(
-  agents: StructuredAgentRegistry,
-  adapter: Pick<StructuredAgentSessionAdapter, 'rewindSupport'>,
-  sessionId: string,
-  agent: string
-): AgentSessionRewindSupport {
-  if (!agents.capabilities(agent)?.rewind) {
-    return { supported: false, reason: 'unsupported' }
-  }
-  return adapter.rewindSupport?.(sessionId, agent) ?? { supported: true }
 }

@@ -71,13 +71,13 @@ export class StructuredAgentSessionAdapterRouter implements StructuredAgentSessi
   dispatch: StructuredAgentSessionAdapter['dispatch'] = (input) =>
     this.owner(input.sessionId).dispatch(input)
 
-  /** The owning adapter's narrowing for this session; the host combines it with the declaration. */
+  /** The owner's declared rewind, narrowed by its adapter for this session; never widened. */
   rewindSupport: NonNullable<StructuredAgentSessionAdapter['rewindSupport']> = (
     sessionId,
     agent
   ) => {
     const owner = this.capabilityOwner(sessionId, agent)
-    if (!owner) {
+    if (!owner?.definition.capabilities.rewind) {
       return { supported: false, reason: 'unsupported' }
     }
     return owner.adapter.rewindSupport?.(sessionId) ?? { supported: true }

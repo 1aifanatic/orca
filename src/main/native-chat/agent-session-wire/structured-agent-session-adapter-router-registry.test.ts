@@ -10,7 +10,7 @@ import type {
   StructuredAgentSessionAdapter
 } from './structured-agent-session-adapter'
 import { StructuredAgentSessionAdapterRouter } from './structured-agent-session-adapter-router'
-import { StructuredAgentRegistry, structuredAgentRewindSupport } from './structured-agent-registry'
+import { StructuredAgentRegistry } from './structured-agent-registry'
 import type { StructuredAgentDefinition } from './structured-agent-definition'
 
 const LOCAL: AgentSessionExecutionLocation = {
@@ -149,22 +149,26 @@ describe('StructuredAgentSessionAdapterRouter registry', () => {
     expect(agents.definitions()).toEqual([CLAUDE_STRUCTURED_AGENT, CODEX_STRUCTURED_AGENT])
   })
 
-  it('lets a session narrow a declared rewind but never widen an undeclared one', () => {
+  it('lets a session narrow a declared rewind but never widen an undeclared one', async () => {
     const narrowing = declaringAdapter({
       rewindSupport: () => ({ supported: false, reason: 'history-not-paginated' })
     })
     const widening = declaringAdapter({ rewindSupport: () => ({ supported: true }) })
-    const agents = claudeAndCodex({ codex: narrowing, claude: widening })
-    const router = new StructuredAgentSessionAdapterRouter(agents, async () => {})
+    const router = new StructuredAgentSessionAdapterRouter(
+      claudeAndCodex({ codex: narrowing, claude: widening }),
+      async () => {}
+    )
+    const unsupported = { supported: false, reason: 'unsupported' }
 
-    expect(structuredAgentRewindSupport(agents, router, 'session-1', 'codex')).toEqual({
+    expect(router.rewindSupport('session-1', 'codex')).toEqual({
       supported: false,
       reason: 'history-not-paginated'
     })
-    expect(structuredAgentRewindSupport(agents, router, 'session-1', 'claude')).toEqual({
-      supported: false,
-      reason: 'unsupported'
-    })
+    // Claude declares no rewind; its adapter's answer cannot claim one, at rest or live.
+    expect(router.rewindSupport('session-1', 'claude')).toEqual(unsupported)
+    await router.acquire({ identity: identity('session-1', 'claude'), fence: 1, spawnToken: 's' })
+    expect(router.rewindSupport('session-1')).toEqual(unsupported)
+    expect(router.rewindSupport('session-2', 'grok')).toEqual(unsupported)
   })
 })
 

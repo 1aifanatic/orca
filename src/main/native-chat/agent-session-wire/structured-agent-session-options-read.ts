@@ -15,10 +15,7 @@ import { decodeStructuredAgentSessionOptionValue } from '../../../shared/structu
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { journalOpenReadRefusal } from '../agent-session-journal/journal-open-failure'
 import type { StructuredAgentDefinition } from './structured-agent-definition'
-import {
-  structuredAgentRewindSupport,
-  type StructuredAgentRegistry
-} from './structured-agent-registry'
+import type { StructuredAgentRegistry } from './structured-agent-registry'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 import { structuredAgentSessionOptionModels } from './structured-agent-session-option-models'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
@@ -138,7 +135,10 @@ export async function readStructuredAgentSessionOptions(
     rewind:
       phase === 'prepared' || phase === 'provider-succeeded'
         ? { supported: false, reason: 'outcome-unknown' }
-        : structuredAgentRewindSupport(agents, adapter, sessionId, agent),
+        : (adapter.rewindSupport?.(sessionId, agent) ?? {
+            supported: false,
+            reason: 'unsupported'
+          }),
     conversationCommands: capabilities?.compact ? ['clear', 'compact'] : ['clear'],
     ...(capabilities?.threadGoal ? { threadGoal: { current: session.journal.threadGoal() } } : {}),
     ...(capabilities?.contextUsage
