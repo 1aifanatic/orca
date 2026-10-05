@@ -80,6 +80,7 @@ import { registerSshTargetCrudHandlers } from './ssh-target-crud-handlers'
 import { targetLifecycleInFlight } from './ssh-target-lifecycle-queue'
 import { disposeOrcadManagedTunnels } from '../ssh/orcad-managed-tunnel'
 import { reconcileManagedOrcadSshTargets } from '../ssh/orcad-retained-source'
+import { installOrcadMigrationScrollbackRetention } from '../ssh/orcad-migration-scrollback-retention-wiring'
 import { getAppEnvironment } from '../../shared/app-environment'
 
 const SSH_IPC_CHANNELS = [
@@ -190,6 +191,7 @@ export function registerSshHandlers(
   setSshTargetRegistryStore(new SshConnectionStore(store))
   setPersistedStore(store)
   reconcileManagedOrcadSshTargets(getAppEnvironment().getPath('userData'), store)
+  installOrcadMigrationScrollbackRetention(getAppEnvironment().getPath('userData'), store)
   registerAdvertisedUrlRefresh(getCurrentMainWindow)
   installManagedOrcadStartStatus()
 

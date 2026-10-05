@@ -136,12 +136,30 @@ describe('exporting a relay-hosted SSH target from the profile store', () => {
     const manifest = createOrcadMigrationManifest(store, TARGET)
     const ref = manifest.payload.dormantState?.terminalScrollbackSnapshots?.[0]?.ref ?? ''
     expect(ref).toBe(stored)
-    store.retainOrcadMigrationScrollback(manifest)
+    store.syncOrcadMigrationScrollbackRetention([manifest])
     store.setWorkspaceSession(getDefaultWorkspaceSession(), hostId)
 
     const chunk = store.readOrcadMigrationSourceSnapshotChunk(manifest, ref, 0)
     expect(Buffer.from(chunk.bytesBase64, 'base64').toString('utf8')).toBe('dormant output\r\n')
-    store.releaseOrcadMigrationScrollback(manifest.migrationId)
+    store.syncOrcadMigrationScrollbackRetention([])
+    expect(readTerminalScrollbackStoredBytesSync(ref, storage)).toBeNull()
+  })
+
+  it('serves an inline dormant buffer after its tab closes, across retries, until released', () => {
+    const store = sourceStore()
+    const hostId = toSshExecutionHostId(TARGET.id)
+    const storage = { snapshotRoot: getProfileTerminalScrollbackSnapshotRoot(dataFiles.at(-1)!) }
+    const manifest = createOrcadMigrationManifest(store, TARGET)
+    const ref = manifest.payload.dormantState?.terminalScrollbackSnapshots?.[0]?.ref ?? ''
+    store.syncOrcadMigrationScrollbackRetention([manifest])
+    store.setWorkspaceSession(getDefaultWorkspaceSession(), hostId)
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      store.syncOrcadMigrationScrollbackRetention([manifest])
+      const chunk = store.readOrcadMigrationSourceSnapshotChunk(manifest, ref, 0)
+      expect(Buffer.from(chunk.bytesBase64, 'base64').toString('utf8')).toBe('dormant output\r\n')
+    }
+    store.syncOrcadMigrationScrollbackRetention([])
     expect(readTerminalScrollbackStoredBytesSync(ref, storage)).toBeNull()
   })
 

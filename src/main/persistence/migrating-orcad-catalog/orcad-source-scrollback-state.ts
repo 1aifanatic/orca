@@ -121,7 +121,7 @@ export function readOrcadMigrationSourceScrollbackChunk(args: {
   }
 }
 
-function findSnapshotBytes(
+export function findSnapshotBytes(
   state: PersistedState,
   descriptor: OrcadMigrationTerminalScrollbackSnapshot,
   storage?: TerminalScrollbackSnapshotStorage,

@@ -46,9 +46,7 @@ type ChunkReader = (
 
 function source(read: ChunkReader) {
   return {
-    readOrcadMigrationSourceSnapshotChunk: read,
-    retainOrcadMigrationScrollback: vi.fn(),
-    releaseOrcadMigrationScrollback: vi.fn()
+    readOrcadMigrationSourceSnapshotChunk: read
   }
 }
 
@@ -82,9 +80,6 @@ describe('orcad migration snapshot coordinator', () => {
     })
 
     expect(sourceRead).toHaveBeenCalledWith(MANIFEST, SNAPSHOT.ref, initialOffset)
-    // The bytes stay retained exactly for the transfer's duration.
-    expect(store.retainOrcadMigrationScrollback).toHaveBeenCalledWith(MANIFEST)
-    expect(store.releaseOrcadMigrationScrollback).toHaveBeenCalledWith(MANIFEST.migrationId)
     expect(snapshotRequest).toHaveBeenCalledWith(
       expect.objectContaining({ offset: initialOffset, ref: SNAPSHOT.ref })
     )
@@ -108,8 +103,6 @@ describe('orcad migration snapshot coordinator', () => {
       })
     ).rejects.toThrow('orcad_migration_snapshot_transfer_unsupported')
     expect(sourceRead).not.toHaveBeenCalled()
-    // A failed transfer still releases what it retained.
-    expect(store.releaseOrcadMigrationScrollback).toHaveBeenCalledOnce()
   })
 
   it('refuses a snapshot whose source length changed since export', async () => {

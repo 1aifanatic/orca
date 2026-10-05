@@ -26,7 +26,7 @@ import {
   createOrcadMigrationDeltaView,
   type OrcadMigrationDeltaView
 } from './orcad-source-delta-view'
-import { deleteUnreferencedOrcadMigrationScrollback } from './orcad-source-scrollback-cleanup'
+import { syncOrcadMigrationScrollbackRetention } from './orcad-source-scrollback-retention'
 
 type OrcadSourceExportRuntime = Pick<
   StoreRuntimeState,
@@ -74,25 +74,9 @@ export class OrcadSourceExportPersistence {
     )
   }
 
-  /** Keeps the snapshot files this manifest names until released, even if their tabs close. */
-  retainOrcadMigrationScrollback(manifest: OrcadMigrationManifest): void {
-    const refs = (manifest.payload.dormantState?.terminalScrollbackSnapshots ?? []).map(
-      (snapshot) => snapshot.ref
-    )
-    this[orcadSourceExportContext].retainedScrollbackRefsByMigrationId.set(
-      manifest.migrationId,
-      new Set(refs)
-    )
-  }
-
-  /** A ref only this retention kept alive (its tab closed meanwhile) is deleted, never leaked. */
-  releaseOrcadMigrationScrollback(migrationId: string): void {
-    const runtime = this[orcadSourceExportContext]
-    const refs = runtime.retainedScrollbackRefsByMigrationId.get(migrationId)
-    runtime.retainedScrollbackRefsByMigrationId.delete(migrationId)
-    if (refs) {
-      deleteUnreferencedOrcadMigrationScrollback(runtime, refs)
-    }
+  /** Holds the snapshots unfinished migrations name; see syncOrcadMigrationScrollbackRetention. */
+  syncOrcadMigrationScrollbackRetention(pending: readonly OrcadMigrationManifest[]): void {
+    syncOrcadMigrationScrollbackRetention(this[orcadSourceExportContext], pending)
   }
 
   /**
