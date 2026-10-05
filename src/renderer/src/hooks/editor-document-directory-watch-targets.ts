@@ -6,11 +6,11 @@ import {
   relativePathInsideRoot
 } from '../../../shared/cross-platform-path'
 import { isWslUncPath } from '../../../shared/wsl-paths'
+import type { EditorExternalWatchTarget } from './editor-external-watch-targets'
 import {
   getEditorExternalWatchTargetKey,
-  getOpenFileRuntimeOwner,
-  type EditorExternalWatchTarget
-} from './editor-external-watch-targets'
+  getOpenFileRuntimeOwner
+} from './editor-external-watch-target-identity'
 
 export function appendLocalDocumentDirectoryWatchTargets(
   openFiles: OpenFile[],

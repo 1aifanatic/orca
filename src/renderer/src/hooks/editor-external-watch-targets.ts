@@ -1,5 +1,4 @@
 import type { AppState } from '@/store'
-import type { OpenFile } from '@/store/slices/editor'
 import { findWorktreeById } from '@/store/slices/worktree-helpers'
 import { findRepoForHost } from '@/store/slices/repo-host-identity'
 import { getFolderWorkspaceConnectionId } from '@/lib/folder-workspace-connection'
@@ -11,6 +10,15 @@ import { isGitRepoKind } from '../../../shared/repo-kind'
 import { parseWorkspaceKey } from '../../../shared/workspace-scope'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
 import { appendLocalDocumentDirectoryWatchTargets } from './editor-document-directory-watch-targets'
+import {
+  getEditorExternalWatchTargetKey,
+  getOpenFileRuntimeOwner
+} from './editor-external-watch-target-identity'
+
+export {
+  getEditorExternalWatchTargetKey,
+  getOpenFileRuntimeOwner
+} from './editor-external-watch-target-identity'
 
 export type EditorExternalWatchTarget = {
   worktreeId: string
@@ -55,17 +63,6 @@ let cachedSshConnectionStates: AppState['sshConnectionStates'] | null = null
 let cachedFolderWorkspaces: AppState['folderWorkspaces'] | null = null
 let cachedProjectGroups: AppState['projectGroups'] | null = null
 let cachedWatchedTargetsSnapshot: WatchedTargetsSnapshot = { targets: [], targetsKey: '' }
-
-export function getEditorExternalWatchTargetKey(target: EditorExternalWatchTarget): string {
-  // Why: include connectionId so a local placeholder watch is replaced by the real SSH watch once an SSH worktree's provider metadata hydrates.
-  return `${target.worktreeId}::${target.worktreePath}::${target.connectionId ?? 'local'}::${target.runtimeEnvironmentId ?? 'client'}::${target.allowLocalWindowsWslAliases === true ? 'wsl-aliases' : 'literal'}${target.shallow ? '::shallow' : ''}`
-}
-
-export function getOpenFileRuntimeOwner(
-  file: Pick<OpenFile, 'runtimeEnvironmentId'>
-): string | null {
-  return file.runtimeEnvironmentId?.trim() || null
-}
 
 export function getLocalWindowsWslAliasOption(
   target: Pick<EditorExternalWatchTarget, 'allowLocalWindowsWslAliases'>
