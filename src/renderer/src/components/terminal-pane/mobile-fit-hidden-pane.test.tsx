@@ -6,6 +6,9 @@ import { SerializeAddon } from '@xterm/addon-serialize'
 import { hydrateOverrides, setFitOverride } from '@/lib/pane-manager/mobile-fit-overrides'
 import type { ManagedPane, PaneManager } from '@/lib/pane-manager/pane-manager'
 import { safeFit } from '@/lib/pane-manager/pane-tree-ops'
+import { fitRevealedPane } from '@/lib/pane-manager/pane-reveal-fit'
+import { resumePendingFitScrollRestoreAfterFit } from '@/lib/pane-manager/pane-scroll'
+import { markTerminalPinnedViewport } from '@/lib/pane-manager/terminal-scroll-intent'
 import { bindRegisterPaneSerializer } from './pty-connection/pane-serializer-register'
 import type { ConnectPanePtySession } from './pty-connection/connect-pane-pty-session'
 import type { PtyTransport } from './pty-transport'
@@ -31,13 +34,17 @@ function flushFrames(): void {
 }
 
 /** A desktop pane with a real xterm and serializer; hidden means a `display: none` worktree. */
-function createHiddenPane(visible = false): { pane: ManagedPane; terminal: Terminal } {
+function createHiddenPane(visible = false): {
+  pane: ManagedPane
+  terminal: Terminal
+  setVisible: (next: boolean) => void
+} {
+  let shown = visible
   const worktree = document.createElement('div')
-  worktree.style.display = visible ? 'block' : 'none'
+  worktree.style.display = shown ? 'block' : 'none'
   const container = document.createElement('div')
-  if (visible) {
-    container.getBoundingClientRect = () => DOMRect.fromRect({ width: 1600, height: 900 })
-  }
+  container.getBoundingClientRect = () =>
+    DOMRect.fromRect(shown ? { width: 1600, height: 900 } : { width: 0, height: 0 })
   worktree.appendChild(container)
   document.body.appendChild(worktree)
   const terminal = new Terminal({ ...DESKTOP, allowProposedApi: true })
@@ -50,11 +57,18 @@ function createHiddenPane(visible = false): { pane: ManagedPane; terminal: Termi
     xtermContainer: container,
     serializeAddon,
     // The browser measures nothing inside a display:none subtree.
-    fitAddon: { fit: vi.fn(), proposeDimensions: () => (visible ? DESKTOP : undefined) },
+    fitAddon: {
+      fit: vi.fn(() => terminal.resize(DESKTOP.cols, DESKTOP.rows)),
+      proposeDimensions: () => (shown ? DESKTOP : undefined)
+    },
     pendingSplitScrollState: null
   }
+  const setVisible = (next: boolean): void => {
+    shown = next
+    worktree.style.display = next ? 'block' : 'none'
+  }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: pane-fit and the serializer read only the fields built above.
-  return { pane: pane as unknown as ManagedPane, terminal }
+  return { pane: pane as unknown as ManagedPane, terminal, setVisible }
 }
 
 function registerSerializer(pane: ManagedPane): void {
@@ -174,6 +188,79 @@ describe('mobile-fit override on a hidden desktop pane', () => {
 
     const reply = await serializeForHost()
     expect({ cols: reply?.cols, rows: reply?.rows }).toEqual(PHONE)
+    terminal.dispose()
+  })
+  it('leaves a pending scroll restore for the reveal fit while parked hidden', async () => {
+    const { pane, terminal, setVisible } = createHiddenPane(true)
+    pane.container.dataset.ptyId = PTY_ID
+    terminal.resize(160, DESKTOP.rows)
+    const rows = Array.from({ length: 300 }, (_, i) => `L${String(i).padStart(3, '0')}`)
+    await new Promise<void>((resolve) => terminal.write(rows.join('\r\n'), resolve))
+    terminal.scrollToLine(100)
+    markTerminalPinnedViewport(terminal)
+    // An xterm without its element cannot scroll yet, so the desktop fit parks its restore.
+    safeFit(pane)
+    expect(terminal.cols).toBe(DESKTOP.cols)
+
+    vi.spyOn(terminal, 'element', 'get').mockReturnValue(pane.container)
+    setVisible(false)
+    setFitOverride(PTY_ID, 'mobile-fit', PHONE.cols, PHONE.rows)
+    safeFit(pane)
+    expect(terminal.cols).toBe(PHONE.cols)
+
+    expect(resumePendingFitScrollRestoreAfterFit(terminal)).toBe(true)
+    const top = terminal.buffer.active.getLine(terminal.buffer.active.viewportY)
+    expect(top?.translateToString(true)).toBe('L100')
+    terminal.dispose()
+  })
+
+  it('keeps a pinned viewport on its content across a hidden phone reflow', async () => {
+    const { pane, terminal } = createHiddenPane()
+    pane.container.dataset.ptyId = PTY_ID
+    vi.spyOn(terminal, 'element', 'get').mockReturnValue(pane.container)
+    const rows = Array.from(
+      { length: 300 },
+      (_, i) => `L${String(i).padStart(3, '0')}${'x'.repeat(95)}`
+    )
+    await new Promise<void>((resolve) => terminal.write(rows.join('\r\n'), resolve))
+    terminal.scrollToLine(100)
+    markTerminalPinnedViewport(terminal)
+
+    setFitOverride(PTY_ID, 'mobile-fit', PHONE.cols, PHONE.rows)
+    safeFit(pane)
+
+    expect(terminal.cols).toBe(PHONE.cols)
+    const top = terminal.buffer.active.getLine(terminal.buffer.active.viewportY)
+    expect(top?.translateToString(true).slice(0, 4)).toBe('L100')
+    terminal.dispose()
+  })
+
+  it('refits to the desktop grid on reveal after the override is released while hidden', async () => {
+    const { pane, terminal, setVisible } = createHiddenPane(true)
+    pane.container.dataset.ptyId = PTY_ID
+    registerSerializer(pane)
+    render(<Ticks pane={pane} />)
+    // Visible first, so the reveal sees unchanged pixels and must notice the grid instead.
+    terminal.resize(160, DESKTOP.rows)
+    safeFit(pane)
+    expect(terminal.cols).toBe(DESKTOP.cols)
+
+    setVisible(false)
+    act(() => setFitOverride(PTY_ID, 'mobile-fit', PHONE.cols, PHONE.rows))
+    act(() => flushFrames())
+    expect({ cols: terminal.cols, rows: terminal.rows }).toEqual(PHONE)
+    act(() => setFitOverride(PTY_ID, 'desktop-fit', DESKTOP.cols, DESKTOP.rows))
+    act(() => flushFrames())
+    expect({ cols: terminal.cols, rows: terminal.rows }).toEqual(PHONE)
+
+    setVisible(true)
+    fitRevealedPane(pane)
+    for (let frame = 0; frame < 5; frame++) {
+      act(() => flushFrames())
+    }
+    expect({ cols: terminal.cols, rows: terminal.rows }).toEqual(DESKTOP)
+    const reply = await serializeForHost()
+    expect({ cols: reply?.cols, rows: reply?.rows }).toEqual(DESKTOP)
     terminal.dispose()
   })
 })
