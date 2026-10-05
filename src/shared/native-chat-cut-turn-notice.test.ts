@@ -9,6 +9,7 @@ import type {
   AgentJournalTurnOutcome,
   AgentJournalTurnScope
 } from './agent-session-journal-types'
+import { structuredAgentTurnVerdictReader } from './native-chat-cut-turn-explanation'
 import { withNativeChatCutTurnNotices } from './native-chat-cut-turn-notice'
 import { hostStatesTurnScopes, nativeChatTurnMembership } from './native-chat-turn-membership'
 import { projectStructuredAgentSessionMessages } from './structured-agent-session-message-projection'
@@ -182,7 +183,7 @@ describe('withNativeChatCutTurnNotices', () => {
     expect(derived).toHaveLength(items.length)
     expect(derived[2]).toEqual({
       ...owner,
-      body: { kind: 'status', text: NOTICE, presentation: 'response-interrupted', tone: 'notice' }
+      body: { ...owner.body, text: NOTICE, presentation: 'response-interrupted', tone: 'notice' }
     })
     expect(derived[5]).toBe(exit)
     expect(withNativeChatCutTurnNotices(items)[2]).toBe(derived[2])
@@ -213,6 +214,38 @@ describe('withNativeChatCutTurnNotices', () => {
       const items = [user('u1'), turn('t1', 'u1', CUT), row]
       expect(withNativeChatCutTurnNotices(items)).toBe(items)
     }
+  })
+
+  // A quit's row in the same family (`stale-session:…:shutdown-…`) explains the cut as a reopen's does.
+  // In the older red words it is re-worded, keeping what the host stored beside them (why Orca
+  // stopped, for a client that names it); with its own presentation it is kept as written.
+  it("takes a quit's row as the cut's explanation and keeps what the host stored on it", () => {
+    const stored = { ...exitWords(), orcaStop: { cause: 'update' } }
+    const red = hostRow('stale-session:s:shutdown-3-gen', stored, inTurn('t1'))
+    const redItems = [user('u1'), turn('t1', 'u1', CUT), red]
+
+    expect(notices(redItems)).toEqual([])
+    expect(withNativeChatCutTurnNotices(redItems)[2]!.body).toEqual({
+      ...stored,
+      text: NOTICE,
+      presentation: 'response-interrupted',
+      tone: 'notice'
+    })
+    // A quit is not the agent's fault, though the row carries the exit fact.
+    expect(structuredAgentTurnVerdictReader(redItems)(redItems[1]!)).toBe('interruption')
+
+    const worded = hostRow(
+      'stale-session:s:shutdown-3-gen',
+      {
+        kind: 'status',
+        text: 'Orca quit while this response was in progress.',
+        presentation: 'orca-stop-cut',
+        tone: 'notice'
+      },
+      inTurn('t1')
+    )
+    const wordedItems = [user('u1'), turn('t1', 'u1', CUT), worded]
+    expect(withNativeChatCutTurnNotices(wordedItems)).toBe(wordedItems)
   })
 
   // A host from before failure facts wrote the same rows with only their words.

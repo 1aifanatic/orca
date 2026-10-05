@@ -81,10 +81,10 @@ function cutTurnNotice(
 
 const ownerDeathRowCache = new WeakMap<AgentJournalRenderItem, AgentJournalRenderItem>()
 
-/** An older host's reopen row about an agent process found gone, in the notice's words: it said
- *  "the agent stopped", in error red, though the evidence only proves the process is gone, not who
- *  ended it. Only that legacy shape: a row that names its presentation, and an early build's row
- *  that quotes the exit's detail untoned, are kept as written. */
+/** A host's row about an agent process gone from under a turn (a reopen's, or a quit's), in the
+ *  notice's words when it is in the older red form: "the agent stopped", in error red, though the
+ *  evidence only proves the process is gone, not who ended it. A row that names its presentation,
+ *  and an early build's row that quotes the exit's detail untoned, are kept as written. */
 function ownerDeathRowAsInterruption(item: AgentJournalRenderItem): AgentJournalRenderItem {
   if (
     cutTurnStopExplanation(item) !== 'owner-death' ||
@@ -99,7 +99,8 @@ function ownerDeathRowAsInterruption(item: AgentJournalRenderItem): AgentJournal
   if (cached) {
     return cached
   }
-  const reworded = { ...item, body: agentSessionResponseInterruptedBody() }
+  // Only the words change: a field a newer host stored beside them (why Orca stopped) is kept.
+  const reworded = { ...item, body: { ...item.body, ...agentSessionResponseInterruptedBody() } }
   ownerDeathRowCache.set(item, reworded)
   return reworded
 }
