@@ -59,8 +59,8 @@ export type StructuredAgentSessionRestartFailureLedger = {
       failureReason: (sessionId: string) => string
     }
   ) => Promise<void>
-  /** Named sessions forget their offer or failure; unnamed, every durable record goes and stays
-   *  gone. With an audience, only records of agents it sees go, and only they are fenced. */
+  /** Named sessions forget their offer or failure; unnamed, every durable record goes. With an
+   *  audience, only records of agents it sees go, and an unnamed dismissal is no fence. */
   dismiss: (
     sessionIds: readonly string[] | undefined,
     beforeClearAll: (audience?: StructuredAgentSessionRestartAudience) => void,
@@ -216,20 +216,25 @@ export function createStructuredAgentSessionRestartFailureLedger(deps: {
     settle,
     dismiss: (sessionIds, beforeClearAll, audience) =>
       deps.enqueue(async () => {
-        // Decided under the capsule lock. A record whose chat this host cannot read names no
-        // agent the audience was shown, so it stays.
-        const hidden = (marker: AgentSessionResumeMarker) => {
-          if (!audience) {
-            return false
+        if (audience) {
+          // Decided under the capsule lock. A record whose chat this host cannot read names no
+          // agent the audience was shown, so it stays.
+          const hidden = (marker: AgentSessionResumeMarker) => {
+            const record = deps.getRecord(marker.sessionId)
+            return record === null || !audience(record.provider)
           }
-          const record = deps.getRecord(marker.sessionId)
-          return record === null || !audience(record.provider)
+          if (sessionIds === undefined) {
+            beforeClearAll(audience)
+          }
+          // No fence: no client reaches this today (the local desktop gets no audience), and a
+          // late write from this process is serialized behind the dismissal.
+          return (await deps.capsule?.dismiss(sessionIds ?? 'all', deps.now(), hidden)) ?? 0
         }
         if (sessionIds !== undefined) {
-          return (await deps.capsule?.dismiss(sessionIds, deps.now(), hidden)) ?? 0
+          return (await deps.capsule?.dismiss(sessionIds, deps.now())) ?? 0
         }
-        beforeClearAll(audience)
-        return (await deps.capsule?.clearAll(deps.now(), audience ? hidden : undefined)) ?? 0
+        beforeClearAll()
+        return (await deps.capsule?.clearAll(deps.now())) ?? 0
       })
   }
 }

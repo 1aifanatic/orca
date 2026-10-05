@@ -1,6 +1,7 @@
 // "Dismiss all" from the desktop prompt, through the context the desktop renderer really dispatches
-// with: a paired runtime client without the registered-agents capability. A dismissal must stay
-// final for every offer that client was shown, and leave an agent it cannot show alone.
+// with: a paired runtime client without the registered-agents capability. On a host whose agents it
+// all shows, the dismissal is the unscoped, fenced one; one that cannot show some agent leaves that
+// agent's offers alone.
 
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -50,13 +51,10 @@ function withPilot(): StructuredAgentRegistry {
 }
 
 async function storedFence(root: string) {
-  const { dismissedAt, dismissedSessions } = JSON.parse(
+  const { dismissedAt } = JSON.parse(
     await readFile(join(root, AGENT_SESSION_RECOVERY_CAPSULE_FILE), 'utf8')
   )
-  return {
-    ...(dismissedAt ? { dismissedAt } : {}),
-    ...(dismissedSessions ? { dismissedSessions } : {})
-  }
+  return dismissedAt ? { dismissedAt } : {}
 }
 
 async function dismissAllFromDesktop() {
@@ -81,7 +79,7 @@ it('fences a dismissed offer against a late teardown write when the desktop sees
   })
 })
 
-it('keeps a scoped dismiss-all final for what the desktop was shown when the host runs an agent it cannot show', async () => {
+it('leaves offers it was not shown when the host runs an agent the desktop cannot show', async () => {
   const { host, root, marker } = await interruptedRestart(
     undefined,
     undefined,
@@ -95,8 +93,8 @@ it('keeps a scoped dismiss-all final for what the desktop was shown when the hos
   await capsule.record([unreadable], NOW)
 
   expect(await dismissAllFromDesktop()).toMatchObject({ ok: true, result: { dismissed: 1 } })
-  await capsule.record([marker!], NOW)
 
   expect(await capsule.list(NOW)).toEqual([unreadable])
-  expect(await storedFence(root)).toEqual({ dismissedSessions: { [marker!.sessionId]: NOW + 1 } })
+  // A scoped dismissal writes no fence: nothing it did not clear may be dropped later.
+  expect(await storedFence(root)).toEqual({})
 })

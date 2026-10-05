@@ -516,59 +516,6 @@ describe('durable restart offers', () => {
     expect(await capsule.list(NOW + 2)).toEqual([newer])
   })
 
-  it('fences each session a scoped dismiss-all clears, and leaves what it keeps unfenced', async () => {
-    const hidden = marker({ sessionId: 'hidden' })
-    await capsule.record([marker(), hidden], NOW)
-    await capsule.beginResume([SESSION], 'operation-a', NOW)
-
-    expect(await capsule.clearAll(NOW + 1, (kept) => kept.sessionId === 'hidden')).toBe(0)
-    expect(await capsule.list(NOW + 1)).toEqual([hidden])
-    await capsule.rollbackResume('operation-a', NOW + 1)
-    // The stale teardown write of the cleared chat stays out; the kept chat still takes a newer one.
-    const newerHidden = marker({ sessionId: 'hidden', recordedAt: NOW + 1, teardownId: 'later' })
-    await capsule.record([marker(), newerHidden], NOW + 1)
-    expect(await capsule.list(NOW + 1)).toEqual([newerHidden])
-
-    const newer = marker({ recordedAt: NOW + 2, teardownId: 'teardown-new' })
-    await capsule.record([newer], NOW + 2)
-    expect(await capsule.list(NOW + 2)).toContainEqual(newer)
-    await capsule.record([marker()], NOW + 2)
-    expect(await capsule.list(NOW + 2)).toContainEqual(newer)
-  })
-
-  it('drops session fences a dismiss-all fence covers, and keeps the newest of the rest', async () => {
-    await capsule.record([marker()], NOW)
-    await capsule.clearAll(NOW, () => false)
-    expect(JSON.parse(await readFile(filePath, 'utf8'))).toMatchObject({
-      dismissedSessions: { [SESSION]: NOW }
-    })
-
-    await capsule.clearAll(NOW + 1)
-    expect(JSON.parse(await readFile(filePath, 'utf8'))).not.toHaveProperty('dismissedSessions')
-
-    const many = Array.from({ length: 600 }, (_, index) =>
-      marker({ sessionId: `session-${index}`, recordedAt: NOW + 2 + index })
-    )
-    await capsule.record(many, NOW + 2)
-    for (const [index, each] of many.entries()) {
-      await capsule.clearAll(NOW + 2 + index, (kept) => kept.sessionId !== each.sessionId)
-    }
-    const fences = JSON.parse(await readFile(filePath, 'utf8')).dismissedSessions
-    expect(Object.keys(fences)).toHaveLength(512)
-    expect(fences).toHaveProperty('session-599')
-    expect(fences).not.toHaveProperty('session-0')
-  })
-
-  it('lets a scoped dismiss-all replace an unreadable file with an empty fence', async () => {
-    await writeFile(filePath, '{')
-
-    expect(await capsule.clearAll(NOW, () => true)).toBe(0)
-    expect(JSON.parse(await readFile(filePath, 'utf8'))).toMatchObject({
-      entries: [],
-      dismissedAt: NOW
-    })
-  })
-
   it('keeps a legacy v1 file readable until a mutating operation migrates it', async () => {
     const legacy = JSON.stringify({ version: 1, markers: [marker()] })
     await writeFile(filePath, legacy)

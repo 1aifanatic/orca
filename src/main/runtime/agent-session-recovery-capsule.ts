@@ -11,14 +11,10 @@ import {
 } from '../durable-file-write'
 import { withFileTransactionLock } from '../file-transaction-lock'
 import {
-  dismissAll,
-  isFencedOut,
   MAX_FAILURE_FIELD_LENGTH,
   normalizeState,
   parseState,
   shouldReplaceMarker,
-  storedCapsule,
-  type RecoveryCapsuleFence,
   type AgentSessionResumeFailureInput,
   type AgentSessionResumeFailureRecord,
   type RecoveryCapsuleState,
@@ -68,8 +64,9 @@ export class AgentSessionRecoveryCapsule {
       const { entries, failed } = normalizeState(state, now)
       const bySession = new Map(entries.map((entry) => [entry.marker.sessionId, entry]))
       const failedBySession = new Map(failed.map((failure) => [failure.marker.sessionId, failure]))
+      const dismissedAt = state.dismissedAt
       for (const marker of markers) {
-        if (isFencedOut(state, marker)) {
+        if (dismissedAt !== undefined && marker.recordedAt <= dismissedAt) {
           continue
         }
         const existing = bySession.get(marker.sessionId)
@@ -95,7 +92,7 @@ export class AgentSessionRecoveryCapsule {
       }
       // Keep the fence after a newer interruption. It still admits genuinely newer markers,
       // while an older delayed writer remains unable to resurrect a dismissed chat later.
-      await this.publish({ entries: [...bySession.values()], failed }, now, state)
+      await this.publish({ entries: [...bySession.values()], failed }, now, dismissedAt)
     })
   }
 
@@ -128,7 +125,7 @@ export class AgentSessionRecoveryCapsule {
           next.push(reserve(failure.marker))
         }
       }
-      await this.publish({ entries: next, failed }, now, state)
+      await this.publish({ entries: next, failed }, now, state.dismissedAt)
       return selected
     })
   }
@@ -153,7 +150,7 @@ export class AgentSessionRecoveryCapsule {
           failed: failed.filter((failure) => !completed.has(failure.marker.sessionId))
         },
         now,
-        state
+        state.dismissedAt
       )
     })
   }
@@ -197,7 +194,7 @@ export class AgentSessionRecoveryCapsule {
           ]
         },
         now,
-        state
+        state.dismissedAt
       )
     })
   }
@@ -228,7 +225,7 @@ export class AgentSessionRecoveryCapsule {
             failed: failed.filter((failure) => !dismissed.has(failure.marker.sessionId))
           },
           now,
-          state
+          state.dismissedAt
         )
       }
       return dismissed.size
@@ -263,7 +260,7 @@ export class AgentSessionRecoveryCapsule {
           )
       )
       if (keptEntries.length !== entries.length || keptFailures.length !== failed.length) {
-        await this.publish({ entries: keptEntries, failed: keptFailures }, now, state)
+        await this.publish({ entries: keptEntries, failed: keptFailures }, now, state.dismissedAt)
       }
     })
   }
@@ -278,23 +275,27 @@ export class AgentSessionRecoveryCapsule {
           : entry
       )
       // Normalizing on publish keeps a rolled-back retry a failure rather than a pending offer.
-      await this.publish({ entries: next, failed }, now, state)
+      await this.publish({ entries: next, failed }, now, state.dismissedAt)
     })
   }
 
-  /** The explicit request to forget every record, or all but `keep`'s; see `dismissAll`. */
-  clearAll(now: number, keep?: (marker: AgentSessionResumeMarker) => boolean): Promise<number> {
+  clearAll(now: number): Promise<number> {
     return withFileTransactionLock(this.filePath, async () => {
-      let dismissal: ReturnType<typeof dismissAll>
+      let entries: RecoveryEntry[]
       try {
-        dismissal = dismissAll(await this.readState(), now, keep)
+        entries = normalizeState(await this.readState(), now).entries
       } catch {
-        // Unreadable bytes hold no offer anyone sees; the dismissal must still land, fenced.
-        await this.publish({ entries: [], failed: [] }, now, { dismissedAt: now })
+        // Dismiss is an explicit request to forget this advisory file. Replace unreadable bytes
+        // with an empty, fenced capsule so a late teardown writer cannot resurrect the offer.
+        await this.publish({ entries: [], failed: [] }, now, now)
         return 0
       }
-      await this.publish(dismissal.records, now, dismissal.fence)
-      return dismissal.pendingCleared
+      const pending = entries.filter((entry) => entry.state === 'pending')
+      // Dismiss is the explicit user request to forget every recovery record. An in-flight
+      // action may still finish, but its later complete/rollback becomes a no-op and cannot
+      // resurrect a row the user dismissed.
+      await this.publish({ entries: [], failed: [] }, now, now)
+      return pending.length
     })
   }
 
@@ -320,10 +321,16 @@ export class AgentSessionRecoveryCapsule {
   private async publish(
     records: StoredRecords,
     now: number,
-    fence: RecoveryCapsuleFence
+    dismissedAt: number | undefined
   ): Promise<void> {
+    const { entries, failed } = normalizeState(records, now)
     const { serialized } = stringifyJsonWithinByteLimit(
-      storedCapsule(normalizeState(records, now), fence),
+      {
+        version: 2,
+        entries,
+        ...(dismissedAt === undefined ? {} : { dismissedAt }),
+        ...(failed.length === 0 ? {} : { failed })
+      },
       MAX_CAPSULE_BYTES
     )
     await removeStaleDurableWriteTempFiles(this.filePath, {
