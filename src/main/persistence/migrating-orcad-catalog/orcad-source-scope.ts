@@ -1,10 +1,11 @@
-import { toSshExecutionHostId } from '../../../shared/execution-host'
+import { LOCAL_EXECUTION_HOST_ID, toSshExecutionHostId } from '../../../shared/execution-host'
 import type {
   OrcadMigrationCatalogPayload,
   OrcadMigrationManifestSource
 } from '../../../shared/orcad-migration-manifest'
 import { parseWorkspaceKey } from '../../../shared/workspace-scope'
 import {
+  getExecutionHostIdFromWorktreeHostIdentity,
   getWorktreeIdFromHostIdentity,
   isWorktreeHostIdentity
 } from '../../../shared/worktree/host-qualified-identity'
@@ -16,6 +17,16 @@ export type OrcadMigrationSourceScope = {
   hostId: ReturnType<typeof toSshExecutionHostId>
   repoIds: ReadonlySet<string>
   folderWorkspaceKeys: ReadonlySet<string>
+  /** The session partition being read: an unqualified key there belongs to that partition's host. */
+  partitionHostId?: string
+}
+
+/** The scope as seen from one session partition. */
+export function orcadMigrationPartitionScope(
+  scope: OrcadMigrationSourceScope,
+  partitionHostId: string
+): OrcadMigrationSourceScope {
+  return { ...scope, partitionHostId }
 }
 
 export function createOrcadMigrationSourceScope(args: {
@@ -40,7 +51,17 @@ export function orcadMigrationOwnerMatchesScope(
   if (!value) {
     return false
   }
-  const rawValue = isWorktreeHostIdentity(value) ? getWorktreeIdFromHostIdentity(value) : value
+  // Why: a repo id may repeat across hosts; only the qualifier, or the partition, says whose it is.
+  const qualified = isWorktreeHostIdentity(value)
+  const ownerHost = qualified
+    ? getExecutionHostIdFromWorktreeHostIdentity(value)
+    : scope.partitionHostId === LOCAL_EXECUTION_HOST_ID
+      ? undefined
+      : scope.partitionHostId
+  if (ownerHost !== undefined && ownerHost !== scope.hostId) {
+    return false
+  }
+  const rawValue = qualified ? getWorktreeIdFromHostIdentity(value) : value
   if (scope.folderWorkspaceKeys.has(rawValue)) {
     return true
   }

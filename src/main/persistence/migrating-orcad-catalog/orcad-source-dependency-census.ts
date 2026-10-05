@@ -14,6 +14,7 @@ import { collectOrcadMigrationSourceDormantState } from './orcad-source-dormant-
 import {
   createOrcadMigrationSourceScope,
   orcadMigrationOwnerMatchesScope,
+  orcadMigrationPartitionScope,
   type OrcadMigrationSourceScope
 } from './orcad-source-scope'
 
@@ -34,7 +35,11 @@ export function collectOrcadMigrationUntransferredDependencyCensus(
   })
   const sessions = inspectOrcadMigrationSourceSessions(state, {
     hostId: scope.hostId,
-    ownerMatches: (ownerKey) => orcadMigrationOwnerMatchesScope(ownerKey, scope)
+    ownerMatches: (ownerKey, partitionHostId) =>
+      orcadMigrationOwnerMatchesScope(
+        ownerKey,
+        orcadMigrationPartitionScope(scope, partitionHostId)
+      )
   })
   const dormant = collectOrcadMigrationSourceDormantState(
     state,
