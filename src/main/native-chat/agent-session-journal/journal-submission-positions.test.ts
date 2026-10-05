@@ -94,7 +94,7 @@ async function sendWithdrawnByItsTurnEnd() {
     clientMessageId: 'send-1',
     state: 'rejected',
     ...agentSessionFailureWords(agentSessionFailureFact('cancelled'), { surface: 'rejection' }),
-    answeredInTurn: TURN,
+    answeredInTurn: { turn: TURN, via: 'start' },
     fence: 1
   })
   return journal
@@ -107,23 +107,25 @@ describe('the turn a rejected submission was answered into', () => {
 
     expect(journal.submission('send-1')).toMatchObject({
       dispatchState: 'rejected',
-      answeredInTurnItemId: turnItemId
+      answeredInTurn: { turnItemId, via: 'start' }
     })
     expect(readAgentSessionHydrationPage(journal).submissions).toEqual([
-      expect.objectContaining({ answeredInTurnItemId: turnItemId })
+      expect.objectContaining({ answeredInTurn: { turnItemId, via: 'start' } })
     ])
     await journals.closeAll()
     const replayed = await journals.open({ identity: IDENTITY, stateDirectory: root! })
-    expect(replayed.submission('send-1')).toMatchObject({ answeredInTurnItemId: turnItemId })
+    expect(replayed.submission('send-1')).toMatchObject({
+      answeredInTurn: { turnItemId, via: 'start' }
+    })
   })
 
   it('is absent on a take-back that names no turn, as on rows from older hosts', async () => {
     const { journal } = await sendHandedOverThenWithdrawn()
 
     expect(journal.submission('send-1')).toMatchObject({ dispatchState: 'rejected' })
-    expect(journal.submission('send-1')).not.toHaveProperty('answeredInTurnItemId')
+    expect(journal.submission('send-1')).not.toHaveProperty('answeredInTurn')
     expect(readAgentSessionHydrationPage(journal).submissions[0]).not.toHaveProperty(
-      'answeredInTurnItemId'
+      'answeredInTurn'
     )
   })
 })

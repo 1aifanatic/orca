@@ -40,7 +40,7 @@ function withoutPosition(page: AgentSessionHistoryPage): AgentSessionHistoryPage
   return {
     ...page,
     submissions: page.submissions.map(
-      ({ submittedSequence: _submitted, answeredInTurnItemId: _turn, ...rest }) => rest
+      ({ submittedSequence: _submitted, answeredInTurn: _turn, ...rest }) => rest
     )
   }
 }
@@ -78,10 +78,13 @@ test('a released client folds and draws a page whose submissions carry their jou
       state: 'rejected',
       ...agentSessionFailureWords(agentSessionFailureFact('cancelled'), { surface: 'rejection' }),
       answeredInTurn: {
-        provider: 'legacy',
-        agent: 'codex',
-        sessionId: IDENTITY.sessionId,
-        recordId: 'turn-lifecycle:turn-1'
+        turn: {
+          provider: 'legacy',
+          agent: 'codex',
+          sessionId: IDENTITY.sessionId,
+          recordId: 'turn-lifecycle:turn-1'
+        },
+        via: 'start'
       },
       fence: 1
     })
@@ -93,7 +96,9 @@ test('a released client folds and draws a page whose submissions carry their jou
       })
     )
     expect(page.submissions.find((entry) => entry.clientMessageId === 'turn-ended')).toEqual(
-      expect.objectContaining({ answeredInTurnItemId: expect.any(String) })
+      expect.objectContaining({
+        answeredInTurn: { turnItemId: expect.any(String), via: 'start' }
+      })
     )
 
     const checkout = await materializeReleaseCheckout(BASELINE_REF)
@@ -117,7 +122,7 @@ test('a released client folds and draws a page whose submissions carry their jou
       const state = reduce(empty, { type: 'history-page', page: from })
       return {
         submissions: state.submissions.map(
-          ({ submittedSequence: _s, answeredInTurnItemId: _t, ...rest }) => rest
+          ({ submittedSequence: _s, answeredInTurn: _t, ...rest }) => rest
         ),
         messages: project(state.items, [], state.submissions)
       }

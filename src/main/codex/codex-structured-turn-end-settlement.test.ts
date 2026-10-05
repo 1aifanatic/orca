@@ -317,7 +317,10 @@ describe('the turn a withdrawn Codex send names', () => {
     expect(rig.turnRecords.length).toBeGreaterThan(0)
     expect(new Set(rig.turnRecords.map(agentJournalItemKey)).size).toBe(1)
     expect(rig.settlements).toEqual([
-      expect.objectContaining({ clientMessageId: 'client-1', answeredInTurn: rig.turnRecords[0] })
+      expect.objectContaining({
+        clientMessageId: 'client-1',
+        answeredInTurn: { turn: rig.turnRecords[0], via: 'start' }
+      })
     ])
   })
 
@@ -329,8 +332,14 @@ describe('the turn a withdrawn Codex send names', () => {
     rig.turns.end('interrupted')
 
     expect(rig.settlements.map((settlement) => [settlement.clientMessageId, settlement])).toEqual([
-      ['client-1', expect.objectContaining({ answeredInTurn: rig.turnRecords[0] })],
-      ['client-2', expect.objectContaining({ answeredInTurn: rig.turnRecords[0] })]
+      [
+        'client-1',
+        expect.objectContaining({ answeredInTurn: { turn: rig.turnRecords[0], via: 'start' } })
+      ],
+      [
+        'client-2',
+        expect.objectContaining({ answeredInTurn: { turn: rig.turnRecords[0], via: 'steer' } })
+      ]
     ])
   })
 
@@ -345,7 +354,7 @@ describe('the turn a withdrawn Codex send names', () => {
 
     await expect(sending).resolves.toMatchObject({
       state: 'rejected',
-      answeredInTurn: rig.turnRecords[0]
+      answeredInTurn: { turn: rig.turnRecords[0], via: 'start' }
     })
   })
 
@@ -369,9 +378,11 @@ describe('a send bound to a turn', () => {
   it('dies with the settlement its turn end makes', () => {
     const echoes = createCodexDispatchEchoes()
     echoes.arm('client-1')
-    echoes.bindTurn('client-1', 'thread-1', 'turn-1')
+    echoes.bindTurn('client-1', 'thread-1', 'turn-1', 'start')
 
-    expect(echoes.endTurn('thread-1', 'turn-1', { status: 'interrupted' })).toEqual(['client-1'])
+    expect(echoes.endTurn('thread-1', 'turn-1', { status: 'interrupted' })).toEqual([
+      { clientMessageId: 'client-1', via: 'start' }
+    ])
     expect(echoes.size).toBe(0)
     expect(echoes.settle('client-1')).toBe(false)
   })
@@ -379,20 +390,20 @@ describe('a send bound to a turn', () => {
   it('dies with its child, which forgets recorded turn ends too', () => {
     const echoes = createCodexDispatchEchoes()
     echoes.arm('client-1')
-    echoes.bindTurn('client-1', 'thread-1', 'turn-1')
+    echoes.bindTurn('client-1', 'thread-1', 'turn-1', 'start')
     echoes.endTurn('thread-2', 'turn-2', { status: 'interrupted' })
 
     echoes.clear()
 
     expect(echoes.size).toBe(0)
     echoes.arm('client-2')
-    expect(echoes.bindTurn('client-2', 'thread-2', 'turn-2')).toBeNull()
+    expect(echoes.bindTurn('client-2', 'thread-2', 'turn-2', 'start')).toBeNull()
   })
 
   it('is matched by thread as well as turn id', () => {
     const echoes = createCodexDispatchEchoes()
     echoes.arm('client-1')
-    echoes.bindTurn('client-1', 'thread-1', 'turn-1')
+    echoes.bindTurn('client-1', 'thread-1', 'turn-1', 'start')
 
     expect(echoes.endTurn('thread-2', 'turn-1', { status: 'interrupted' })).toEqual([])
     expect(echoes.size).toBe(1)

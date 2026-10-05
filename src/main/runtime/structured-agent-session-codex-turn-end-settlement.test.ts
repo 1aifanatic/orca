@@ -317,12 +317,12 @@ describe('the turn a withdrawn Codex send was answered into', () => {
         item.body.kind === 'turn' ? [item.itemId] : []
       ),
       named: snapshot.submissions.find((entry) => entry.clientMessageId === clientMessageId)
-        ?.answeredInTurnItemId,
-      onPage: onPage?.answeredInTurnItemId
+        ?.answeredInTurn,
+      onPage: onPage?.answeredInTurn
     }
   }
 
-  it("is that turn's record, for the send that opened it and for one steered into it", async () => {
+  it("is that turn's record, started by the send that opened it and steered by a later one", async () => {
     const opening = await send('look around')
     await vi.waitFor(() => expect(answers).toBe(1))
     turns.start()
@@ -336,13 +336,13 @@ describe('the turn a withdrawn Codex send was answered into', () => {
 
     const { turnRecords } = await answeredInto(opening)
     expect(turnRecords).toHaveLength(1)
-    expect(await answeredInto(opening)).toMatchObject({
-      named: turnRecords[0],
-      onPage: turnRecords[0]
-    })
-    expect(await answeredInto(steered)).toMatchObject({
-      named: turnRecords[0],
-      onPage: turnRecords[0]
+    const started = { turnItemId: turnRecords[0], via: 'start' }
+    const steeredIn = { turnItemId: turnRecords[0], via: 'steer' }
+    expect(await answeredInto(opening)).toEqual({ turnRecords, named: started, onPage: started })
+    expect(await answeredInto(steered)).toEqual({
+      turnRecords,
+      named: steeredIn,
+      onPage: steeredIn
     })
   })
 
@@ -373,7 +373,7 @@ describe('the turn a withdrawn Codex send was answered into', () => {
     )
     const { turnRecords, named } = await answeredInto(sent)
     expect(turnRecords).toHaveLength(1)
-    expect(named).toBe(turnRecords[0])
+    expect(named).toEqual({ turnItemId: turnRecords[0], via: 'start' })
   })
 })
 

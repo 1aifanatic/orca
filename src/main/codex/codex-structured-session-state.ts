@@ -1,4 +1,5 @@
 import type {
+  AgentJournalAnsweredTurnIdentity,
   AgentJournalItemIdentity,
   AgentSessionJournalIdentity
 } from '../../shared/agent-session-journal-types'
@@ -86,7 +87,7 @@ export type CodexStructuredSessionAdapterDeps = {
       | { providerIdentity: AgentJournalItemIdentity }
       | ({
           state: 'rejected'
-          answeredInTurn: AgentJournalItemIdentity
+          answeredInTurn: AgentJournalAnsweredTurnIdentity
         } & AgentJournalDispatchRejection)
     )
   ) => void
