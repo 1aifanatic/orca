@@ -13,6 +13,12 @@ buffers cannot be discarded from this dialog.
 
 ## Capture and durability
 
+- Text editors observe model changes without reading the entire document on each
+  keystroke. Split panes share one model subscription and one full-text read at a
+  checkpoint. Text is published after 150 ms of quiet input or within 500 ms of
+  continuous input; saves, close, owner changes, and model disposal flush it first.
+  Plain editors and single-file diffs mark their tab dirty immediately. Checkpoints
+  reconcile the exact dirty state, including undo, against the loaded baseline.
 - Plain-text and editable unstaged-diff buffers are checkpointed after 250 ms of
   inactivity, with a 500 ms deadline during continuous input. Rich-text and notebook
   serialization also has a 500 ms deadline. Storage latency can extend these times;
@@ -34,8 +40,10 @@ buffers cannot be discarded from this dialog.
   metadata and content stores and strict transaction durability. Quota or disk
   failures leave previous checkpoints intact and present a retry action.
 
-The subscriber schedules work from draft-map identity changes without scanning all
-tabs on every keystroke. Checkpoints inspect buffers, reuse captured metadata,
+Lightweight input notifications start journal and compatibility-session deadlines
+directly; publishing the later text snapshot does not restart those deadlines.
+The recovery subscriber also observes draft-map identity changes. Checkpoints
+inspect buffers, reuse captured metadata,
 write only changed records, coalesce edits behind an in-flight write, and batch at
 most 64 records and 4 MiB of estimated UTF-16 message text per transaction. A draft
 larger than that text budget travels alone without truncation. Legacy imports use
@@ -54,6 +62,12 @@ their content store. Both persistence subscribers reuse a timer until its deadli
 instead of allocating and cancelling one for each keystroke.
 Active copies retire after a matching successful save; closed copies remain
 available for explicit recovery or discard.
+
+Autosave follows input notifications even while the draft string has not changed.
+It flushes pending text before writing and after the disk write completes, before
+clearing the dirty flag. Older React snapshots cannot replace newer model input.
+Model subscriptions and callbacks follow committed file and execution-host ownership,
+including retained models and virtualized combined-view sections.
 
 ## Ownership and restore
 
@@ -94,7 +108,9 @@ have separate storage; switching either does not transfer the journal automatica
 
 Regression coverage exercises real transaction rollback, revision races, exact empty
 and large Unicode text, worker termination after a commit, legacy import, future
-versions, continuous typing, and edits during saves. Hidden-renderer integration
+versions, continuous typing, and edits during saves. Coverage also checks shared
+checkpoints, deferred autosave, undo during a save, model swaps, stale React
+snapshots, and interrupted owner renders. Hidden-renderer integration
 tests exercise the recovery dialog, complete exports, combined-view editing,
 browser storage, and a hard-killed app followed by an external disk change.
 
