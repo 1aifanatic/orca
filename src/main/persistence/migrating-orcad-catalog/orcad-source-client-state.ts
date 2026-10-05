@@ -14,6 +14,7 @@ import type {
 } from '../../../shared/persisted-state-types'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
 import { orcadMigrationPaneBelongsToTabs } from './orcad-source-session-dependencies'
+import { sessionPartitions } from './orcad-source-workspace-session-fragments'
 import { collectCloseIntents } from './orcad-source-client-browser-intents'
 import {
   createOrcadMigrationSourceScope,
@@ -197,8 +198,13 @@ function collectUiRouting(
       : { kind: 'host', hostKey: 'host:desktop:self' }
   }
   const eligible = session ? collectEligibleSessionIdentity(session, scope) : null
+  const sourceTabIds = collectSourceOwnedTabIds(state, scope)
   const acknowledgements = Object.entries(ui.acknowledgedAgentsByPaneKey ?? {}).filter(
     ([paneKey]) => {
+      // Another host's acknowledgement is not this source's state to move or block on.
+      if (!orcadMigrationPaneBelongsToTabs(paneKey, sourceTabIds)) {
+        return false
+      }
       const allowed = eligible ? orcadMigrationPaneBelongsToTabs(paneKey, eligible.tabIds) : false
       if (!allowed) {
         blockedCounts['ui-routing'] += 1
@@ -210,6 +216,22 @@ function collectUiRouting(
     result.acknowledgedAgentsByPaneKey = Object.fromEntries(acknowledgements)
   }
   return Object.keys(result).length > 0 ? result : undefined
+}
+
+/** Every tab the source owns: its own partition's, and those keyed to its projects anywhere. */
+function collectSourceOwnedTabIds(
+  state: PersistedState,
+  scope: ReturnType<typeof createOrcadMigrationSourceScope>
+): Set<string> {
+  const tabIds = new Set<string>()
+  for (const [hostId, session] of sessionPartitions(state, 'local')) {
+    for (const [ownerKey, tabs] of Object.entries(session.tabsByWorktree ?? {})) {
+      if (hostId === scope.hostId || orcadMigrationOwnerMatchesScope(ownerKey, scope)) {
+        tabs.forEach((tab) => tabIds.add(tab.id))
+      }
+    }
+  }
+  return tabIds
 }
 
 type EligibleSessionIdentity = { tabIds: ReadonlySet<string>; groupIds: ReadonlySet<string> }

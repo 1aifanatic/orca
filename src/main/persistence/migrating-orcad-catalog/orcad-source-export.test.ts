@@ -9,6 +9,11 @@ import type { WorkspaceSessionState } from '../../../shared/workspace-session-st
 import { closeTestStores, createSqliteTestStore } from '../../persistence-test-harness'
 import { Store } from '../loading-store/store'
 import { createOrcadMigrationManifest } from '../../ssh/orcad-migration-manifest-export'
+import {
+  getProfileTerminalScrollbackSnapshotRoot,
+  readTerminalScrollbackStoredBytesSync,
+  writeTerminalScrollbackSnapshotSync
+} from '../../terminal-scrollback-snapshots'
 
 const TARGET: SshTarget = {
   id: 'ssh-prod',
@@ -22,6 +27,7 @@ const REPO_ID = 'repo-1'
 const WORKTREE_ID = `${REPO_ID}::/srv/app`
 
 const directories: string[] = []
+const dataFiles: string[] = []
 afterEach(async () => {
   await closeTestStores()
   for (const directory of directories.splice(0)) {
@@ -60,7 +66,8 @@ function dormantSession(buffer: string): WorkspaceSessionState {
 function sourceStore(): Store {
   const directory = mkdtempSync(join(tmpdir(), 'orcad-source-export-'))
   directories.push(directory)
-  const store = createSqliteTestStore(Store, { dataFile: join(directory, 'orca-data.json') })
+  dataFiles.push(join(directory, 'orca-data.json'))
+  const store = createSqliteTestStore(Store, { dataFile: dataFiles.at(-1)! })
   store.addSshTarget(TARGET)
   store.addRepo({
     id: REPO_ID,
@@ -107,6 +114,35 @@ describe('exporting a relay-hosted SSH target from the profile store', () => {
     expect(() => store.readOrcadMigrationSourceSnapshotChunk(manifest, ref, 0)).toThrow(
       'orcad_migration_source_snapshot_changed'
     )
+  })
+
+  it('finishes a retained transfer after the tab closes, then deletes the orphaned file', () => {
+    const store = sourceStore()
+    const hostId = toSshExecutionHostId(TARGET.id)
+    const storage = { snapshotRoot: getProfileTerminalScrollbackSnapshotRoot(dataFiles.at(-1)!) }
+    const stored = writeTerminalScrollbackSnapshotSync({
+      tabId: 'tab-1',
+      leafId: 'leaf-1',
+      buffer: 'dormant output\r\n',
+      storage
+    })!
+    const session = dormantSession('')
+    session.terminalLayoutsByTabId['tab-1'] = {
+      ...session.terminalLayoutsByTabId['tab-1']!,
+      buffersByLeafId: {},
+      scrollbackRefsByLeafId: { 'leaf-1': stored }
+    }
+    store.setWorkspaceSession(session, hostId)
+    const manifest = createOrcadMigrationManifest(store, TARGET)
+    const ref = manifest.payload.dormantState?.terminalScrollbackSnapshots?.[0]?.ref ?? ''
+    expect(ref).toBe(stored)
+    store.retainOrcadMigrationScrollback(manifest)
+    store.setWorkspaceSession(getDefaultWorkspaceSession(), hostId)
+
+    const chunk = store.readOrcadMigrationSourceSnapshotChunk(manifest, ref, 0)
+    expect(Buffer.from(chunk.bytesBase64, 'base64').toString('utf8')).toBe('dormant output\r\n')
+    store.releaseOrcadMigrationScrollback(manifest.migrationId)
+    expect(readTerminalScrollbackStoredBytesSync(ref, storage)).toBeNull()
   })
 
   it('refuses a chunk for a manifest whose digest does not match its contents', () => {

@@ -18,12 +18,7 @@ import {
 } from './orcad-source-dormant-retirement'
 import { retireOrcadSourceReconnectHint } from './orcad-source-workspace-session-retirement'
 import { retargetOrcadSourceClientFocus } from './orcad-source-client-focus-retarget'
-import { sessionPartitions } from './orcad-source-workspace-session-fragments'
-import { LOCAL_EXECUTION_HOST_ID } from '../../../shared/execution-host'
-import {
-  collectTerminalScrollbackSnapshotRefs,
-  deleteTerminalScrollbackSnapshotSync
-} from '../../terminal-scrollback-snapshots'
+import { deleteUnreferencedOrcadMigrationScrollback } from './orcad-source-scrollback-cleanup'
 
 const orcadSourceRetirementContext = Symbol('OrcadSourceRetirementPersistence')
 type OrcadSourceRetirementRuntime = Pick<
@@ -81,19 +76,12 @@ export class OrcadSourceRetirementPersistence {
    * the source rows still name them. A ref any session or pending export still names is kept.
    */
   deleteRetiredOrcadMigrationScrollback(manifest: OrcadMigrationManifest): void {
-    const { state, terminalScrollbackSnapshotStorage, retainedScrollbackRefsByMigrationId } =
-      this[orcadSourceRetirementContext].runtime
-    const live = new Set([
-      ...sessionPartitions(state, LOCAL_EXECUTION_HOST_ID).flatMap(([, session]) => [
-        ...collectTerminalScrollbackSnapshotRefs(session)
-      ]),
-      ...[...retainedScrollbackRefsByMigrationId.values()].flatMap((refs) => [...refs])
-    ])
-    for (const snapshot of manifest.payload.dormantState?.terminalScrollbackSnapshots ?? []) {
-      if (!live.has(snapshot.ref)) {
-        deleteTerminalScrollbackSnapshotSync(snapshot.ref, terminalScrollbackSnapshotStorage)
-      }
-    }
+    deleteUnreferencedOrcadMigrationScrollback(
+      this[orcadSourceRetirementContext].runtime,
+      (manifest.payload.dormantState?.terminalScrollbackSnapshots ?? []).map(
+        (snapshot) => snapshot.ref
+      )
+    )
   }
 }
 

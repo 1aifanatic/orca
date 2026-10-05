@@ -26,6 +26,7 @@ import {
   createOrcadMigrationDeltaView,
   type OrcadMigrationDeltaView
 } from './orcad-source-delta-view'
+import { deleteUnreferencedOrcadMigrationScrollback } from './orcad-source-scrollback-cleanup'
 
 type OrcadSourceExportRuntime = Pick<
   StoreRuntimeState,
@@ -84,8 +85,14 @@ export class OrcadSourceExportPersistence {
     )
   }
 
+  /** A ref only this retention kept alive (its tab closed meanwhile) is deleted, never leaked. */
   releaseOrcadMigrationScrollback(migrationId: string): void {
-    this[orcadSourceExportContext].retainedScrollbackRefsByMigrationId.delete(migrationId)
+    const runtime = this[orcadSourceExportContext]
+    const refs = runtime.retainedScrollbackRefsByMigrationId.get(migrationId)
+    runtime.retainedScrollbackRefsByMigrationId.delete(migrationId)
+    if (refs) {
+      deleteUnreferencedOrcadMigrationScrollback(runtime, refs)
+    }
   }
 
   /**
@@ -107,6 +114,9 @@ export class OrcadSourceExportPersistence {
     return readOrcadMigrationSourceScrollbackChunk({
       state: runtime.state,
       descriptor,
+      retained: [...runtime.retainedScrollbackRefsByMigrationId.values()].some((refs) =>
+        refs.has(ref)
+      ),
       offset,
       length: ORCAD_MIGRATION_SCROLLBACK_CHUNK_BYTES,
       storage: runtime.terminalScrollbackSnapshotStorage

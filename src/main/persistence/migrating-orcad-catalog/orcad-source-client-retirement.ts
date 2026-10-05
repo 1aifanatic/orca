@@ -139,20 +139,25 @@ function retireCloseIntents(
     throw new Error('orcad_migration_source_close_intent_destination_invalid')
   }
   for (const intent of captured) {
+    const expected = serializeOrcadMigrationValue({
+      browserPageId: intent.browserPageId,
+      worktreeId: intent.worktreeId,
+      closedAt: intent.closedAt
+    })
+    const samePage = (entry: ClientHostedBrowserCloseIntent): boolean =>
+      entry.browserPageId === intent.browserPageId && entry.worktreeId === intent.worktreeId
     const sourceEntries = next[intent.sourceEnvironmentId] ?? []
-    const sourceIndex = sourceEntries.findIndex(
-      (entry) =>
-        entry.browserPageId === intent.browserPageId && entry.worktreeId === intent.worktreeId
-    )
-    if (
-      sourceIndex === -1 ||
-      serializeOrcadMigrationValue(sourceEntries[sourceIndex]) !==
-        serializeOrcadMigrationValue({
-          browserPageId: intent.browserPageId,
-          worktreeId: intent.worktreeId,
-          closedAt: intent.closedAt
-        })
-    ) {
+    const sourceIndex = sourceEntries.findIndex(samePage)
+    const destinationEntries = next[destinationEnvironmentId] ?? []
+    const existing = destinationEntries.find(samePage)
+    if (sourceIndex === -1) {
+      // A retry after the moving write flushed: the identical intent already sits at the destination.
+      if (existing && serializeOrcadMigrationValue(existing) === expected) {
+        continue
+      }
+      throw new Error('orcad_migration_source_close_intent_changed')
+    }
+    if (serializeOrcadMigrationValue(sourceEntries[sourceIndex]) !== expected) {
       throw new Error('orcad_migration_source_close_intent_changed')
     }
     sourceEntries.splice(sourceIndex, 1)
@@ -161,20 +166,8 @@ function retireCloseIntents(
     } else {
       next[intent.sourceEnvironmentId] = sourceEntries
     }
-    const destinationEntries = next[destinationEnvironmentId] ?? []
-    const existing = destinationEntries.find(
-      (entry) =>
-        entry.browserPageId === intent.browserPageId && entry.worktreeId === intent.worktreeId
-    )
     if (existing) {
-      if (
-        serializeOrcadMigrationValue(existing) !==
-        serializeOrcadMigrationValue({
-          browserPageId: intent.browserPageId,
-          worktreeId: intent.worktreeId,
-          closedAt: intent.closedAt
-        })
-      ) {
+      if (serializeOrcadMigrationValue(existing) !== expected) {
         throw new Error('orcad_migration_close_intent_destination_conflict')
       }
       continue
