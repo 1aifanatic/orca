@@ -131,7 +131,7 @@ export function useMobileOverlayTicks({ managerRef, paneTransportsRef }: MobileO
         // Why: direct-resize fallback if safeFit no-op'd, only while xterm is still at the prior mobile-fit dims; else event.cols/rows is a stale baseline that clobbers the fit.
         scheduleFallbackTimer(() => {
           for (const pane of getAffectedPanes()) {
-            // Why: skip 0×0 hidden panes; forcing desktop dims with no DOM geometry leaves a mismatched grid (fallback is only for the visible pane that failed to refit).
+            // Why: this timer covers a visible pane that failed to refit; hidden panes were un-parked synchronously above.
             const rect = pane.container.getBoundingClientRect()
             if (rect.width === 0 || rect.height === 0) {
               continue
