@@ -307,7 +307,7 @@ it('a modal the user opens hides the resume offer, which comes back after', asyn
   await mount(<NativeChatResumeOnRestartModal />)
   expect(resumeOnScreen()).toBe(true)
 
-  await act(async () => useAppStore.getState().openModal('settings'))
+  await act(async () => useAppStore.getState().openModal('add-repo'))
   expect(resumeOnScreen()).toBe(false)
   await act(async () => useAppStore.getState().closeModal())
   expect(resumeOnScreen()).toBe(true)
@@ -395,7 +395,7 @@ it('a tip replaced by the user before it was ever on screen keeps its turn and o
   await mount(<FeatureTipHarness />)
   expect(useAppStore.getState().activeModal).toBe('feature-tips')
 
-  await act(async () => useAppStore.getState().openModal('settings'))
+  await act(async () => useAppStore.getState().openModal('add-repo'))
   expect(useAppStore.getState().featureTipsSeenIds).not.toContain('cmd-j-palette')
   expect(useAppStore.getState().automaticPromptRequests.map((r) => r.id)).toEqual(['feature-tip'])
 
@@ -529,7 +529,7 @@ it('the tip owner going away closes its own tip, never a modal the user opened i
       <FeatureTipHarness />
     </Toggle>
   )
-  await act(async () => useAppStore.getState().openModal('settings'))
+  await act(async () => useAppStore.getState().openModal('add-repo'))
   await act(async () => window.dispatchEvent(new Event('test-unmount')))
-  expect(useAppStore.getState().activeModal).toBe('settings')
+  expect(useAppStore.getState().activeModal).toBe('add-repo')
 })

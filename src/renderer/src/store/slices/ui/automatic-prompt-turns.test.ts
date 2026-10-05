@@ -80,7 +80,7 @@ describe('automatic prompt turns', () => {
     store.getState().requestAutomaticPrompt('native-chat-resume')
     expect(show(store)).toBe('native-chat-resume')
 
-    store.getState().openModal('settings')
+    store.getState().openModal('add-repo')
     expect(visible(store)).toBeNull()
     // The prompt keeps its turn while hidden, so another waiting prompt cannot take it.
     store.getState().requestAutomaticPrompt('crash-report')
@@ -194,7 +194,7 @@ describe('automatic prompt turns', () => {
       const store = createUIStore()
       expect(selectTourBlockedByPrompts(store.getState(), false)).toBe(false)
       store.getState().requestAutomaticPrompt('native-chat-resume')
-      store.getState().openModal('settings')
+      store.getState().openModal('add-repo')
       // Hidden behind the user's modal, the resume offer still goes before an automatic tour.
       expect(selectTourBlockedByPrompts(store.getState(), false)).toBe(true)
       // A tour the user asked for yields only to what is on screen.
