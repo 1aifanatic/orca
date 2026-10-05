@@ -10,6 +10,7 @@ import {
   AgentSessionAcquisitionRootExitObservedError
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import { ACP_CHILD_ENV_TO_DELETE } from './acp-launch-specs'
+import { AGENT_HOOK_RUNTIME_ENV_KEYS } from '../ipc/pty/host-env/spawn-env-keys'
 import {
   GROK,
   openAcpAdapterRig,
@@ -68,7 +69,7 @@ describe('ACP structured session adapter: acquire', () => {
     const launch = rig.child().launch
     expect(launch.envToDelete).toEqual(expect.arrayContaining([...ACP_CHILD_ENV_TO_DELETE]))
     expect(launch.envToDelete).toEqual(
-      expect.arrayContaining(['ORCA_PANE_KEY', 'ORCA_AGENT_HOOK_PORT', 'ORCA_AGENT_HOOK_TOKEN'])
+      expect.arrayContaining(['ORCA_PANE_KEY', 'ORCA_AGENT_PANE', ...AGENT_HOOK_RUNTIME_ENV_KEYS])
     )
     expect(launch.env).toMatchObject({
       ORCA_AGENT_SESSION_ID: SESSION,

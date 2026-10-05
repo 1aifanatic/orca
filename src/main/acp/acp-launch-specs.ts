@@ -2,6 +2,11 @@
 // speaks protocol extensions). Nothing outside `acp-dialects/` branches on an agent's name.
 
 import { join } from 'node:path'
+import {
+  ORCA_SCRUB_SAFE_LAUNCH_ENV,
+  ORCA_SCRUB_SAFE_PANE_ENV
+} from '../../shared/agent-hook-scrub-safe-env'
+import { AGENT_HOOK_RUNTIME_ENV_KEYS } from '../ipc/pty/host-env/spawn-env-keys'
 import type { AcpDialect } from './acp-dialects/acp-dialect'
 import { GROK_ACP_DIALECT } from './acp-dialects/grok-dialect'
 
@@ -59,11 +64,7 @@ export const ACP_CHILD_ENV_TO_DELETE: readonly string[] = [
   'ORCA_TAB_ID',
   'ORCA_WORKTREE_ID',
   'ORCA_AGENT_LAUNCH_TOKEN',
-  'ORCA_AGENT_PANE',
-  'ORCA_AGENT_LAUNCH',
-  'ORCA_AGENT_HOOK_PORT',
-  'ORCA_AGENT_HOOK_TOKEN',
-  'ORCA_AGENT_HOOK_ENDPOINT',
-  'ORCA_AGENT_HOOK_ENV',
-  'ORCA_AGENT_HOOK_VERSION'
+  ORCA_SCRUB_SAFE_PANE_ENV,
+  ORCA_SCRUB_SAFE_LAUNCH_ENV,
+  ...AGENT_HOOK_RUNTIME_ENV_KEYS
 ]
