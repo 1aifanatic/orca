@@ -595,8 +595,8 @@ test('@orcad-cli-relay-kept an open relay terminal keeps a Windows host on the r
     })
 
     // The CLI closes the relay terminals; with none left, the next connect converts.
-    // Why not orcaCliResult: a relay that doesn't confirm the exit answers terminal_stop_unverifiable;
-    // the sessions and leases polled below are the proof either way.
+    // The close must confirm the relay PTY's exit (#25304); its timing tells a lagging record apart.
+    const closeStartedAt = Date.now()
     const closed = await runCompiledOrcaCli(session.userDataDir, [
       'terminal',
       'close',
@@ -605,14 +605,8 @@ test('@orcad-cli-relay-kept an open relay terminal keeps a Windows host on the r
       '--all',
       '--json'
     ])
-    testInfo.annotations.push({
-      type: 'relay-terminal-close',
-      description: closed.stdout.slice(0, 2_000)
-    })
-    expect(
-      closed.json?.ok || closed.json?.error?.code === 'terminal_stop_unverifiable',
-      closed.stdout
-    ).toBe(true)
+    console.log(`[cli-matrix] relay close took ${Date.now() - closeStartedAt}ms: ${closed.stdout}`)
+    expect(closed.json?.ok, closed.stdout).toBe(true)
     await expect
       .poll(
         async () =>

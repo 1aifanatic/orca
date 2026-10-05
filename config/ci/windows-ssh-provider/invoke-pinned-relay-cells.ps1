@@ -15,8 +15,8 @@ $shells=@{'pinned-cmd'='cmd';'pinned-powershell'='powershell';'legacy-opt-out'='
 $appCells=@{'orcad-convert'=@('tests/e2e/ssh-orcad-auto-convert.spec.ts','');'orcad-cli-managed'=@('tests/e2e/ssh-orcad-windows-cli-matrix.spec.ts','@orcad-cli-managed');'orcad-cli-convert'=@('tests/e2e/ssh-orcad-windows-cli-matrix.spec.ts','@orcad-cli-convert');'orcad-cli-relay-kept'=@('tests/e2e/ssh-orcad-windows-cli-matrix.spec.ts','@orcad-cli-relay-kept')}
 $electronBuilt=$false
 if($Context.accounts.Count -lt $Cells.Count){throw 'Each cell needs its own private account'}
-$firstApp=[array]::FindIndex([string[]]$Cells,[Predicate[string]]{param($id) $appCells.ContainsKey($id)})
-if($firstApp -ge 0 -and @($Cells[$firstApp..($Cells.Count-1)] | Where-Object {-not $appCells.ContainsKey($_)}).Count){throw 'App cells must run last: they switch native modules to Electron'}
+$seenApp=$false
+foreach($id in $Cells){if($appCells.ContainsKey($id)){$seenApp=$true}elseif($seenApp){throw 'App cells must run last: they switch native modules to Electron'}}
 if(-not $Context.forbiddenToolLog){throw 'Run the provisioning with -HiddenTools so toolchain calls are logged'}
 $openSshKey='HKLM:\SOFTWARE\OpenSSH'
 $windowsPowerShell=Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
