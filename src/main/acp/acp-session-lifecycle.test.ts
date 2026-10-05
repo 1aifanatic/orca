@@ -247,24 +247,28 @@ describe('ACP caller-owned waits', () => {
     await expect(authenticated).resolves.toEqual({})
   })
 
-  it('lets cancel abort vendor decision hooks with request-cancelled instead of a timeout', async () => {
-    const entered = deferred<AbortSignal>()
+  it('lets cancel abort vendor hooks so each sends its own answer, or request-cancelled if it rejects', async () => {
     const { agent, runtime } = fixture({
-      onRequest: (_method, _params, context) => {
-        entered.resolve(context.signal)
-        return new Promise(() => {})
-      }
+      onRequest: (method, _params, context) =>
+        new Promise((resolve, reject) =>
+          context.signal.addEventListener('abort', () =>
+            method === '_vendor/plan'
+              ? resolve({ outcome: 'abandoned' })
+              : reject(new Error('stop'))
+          )
+        )
     })
     agent.on('session/prompt', (frame) =>
       agent.on('session/cancel', () => agent.reply(frame, { stopReason: 'cancelled' }))
     )
     await runtime.start(startOptions)
     const pending = runtime.prompt([...prompt])
-    const response = agent.request('question', '_vendor/question', {})
-    const signal = await entered.promise
+    const question = agent.request('question', '_vendor/question', {})
+    const plan = agent.request('plan', '_vendor/plan', {})
+    await tick()
     await runtime.cancel()
-    expect(signal.aborted).toBe(true)
-    expect(await response).toMatchObject({ error: { code: -32800 } })
+    expect(await question).toMatchObject({ error: { code: -32800 } })
+    expect(await plan).toMatchObject({ result: { outcome: 'abandoned' } })
     await pending
   })
 
