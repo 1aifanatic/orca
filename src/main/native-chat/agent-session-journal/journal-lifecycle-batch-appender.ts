@@ -78,30 +78,20 @@ export class JournalLifecycleBatchAppender {
       })
   }
 
-  /** Chooses the mutations at its turn in the queue; one too large for a row becomes consecutive
-   *  rows, committed in one transaction, in the order resolved. */
-  appendResolved(input: JournalResolvedLifecycleBatchInput): Promise<AgentJournalCursor | null> {
-    return this.deps
-      .enqueueRows(() => {
-        const mutations = input.resolve()
-        // Every chunk is built before any commits, so a second chunk naming the same item would
-        // reuse the first chunk's revision.
-        this.assertDistinctItems(mutations)
-        return partitionJournalLifecycleMutations(input.settlementId, mutations)
-          .filter((chunk) => !this.wasApplied(chunk.settlementId))
-          .map((chunk) =>
-            journalLifecycleBatchRowBuilder(
-              this.deps.state,
-              chunk.settlementId,
-              chunk.mutations,
-              input
-            )
-          )
-      })
-      .then((rows) => {
-        const last = rows.at(-1)
-        return last ? { epoch: last.epoch, sequence: last.seq } : null
-      })
+  /** The rows a resolved settlement writes, planned at its own turn in the queue: its mutations,
+   *  chosen then, in as many consecutive rows as they need, minus any already applied. */
+  planResolved(
+    input: JournalResolvedLifecycleBatchInput
+  ): ((seq: number, ts: number) => JournalRow)[] {
+    const mutations = input.resolve()
+    // Every chunk is built before any commits, so a second chunk naming the same item would
+    // reuse the first chunk's revision.
+    this.assertDistinctItems(mutations)
+    return partitionJournalLifecycleMutations(input.settlementId, mutations)
+      .filter((chunk) => !this.wasApplied(chunk.settlementId))
+      .map((chunk) =>
+        journalLifecycleBatchRowBuilder(this.deps.state, chunk.settlementId, chunk.mutations, input)
+      )
   }
 
   private assertDistinctItems(mutations: readonly JournalLifecycleMutationInput[]): void {

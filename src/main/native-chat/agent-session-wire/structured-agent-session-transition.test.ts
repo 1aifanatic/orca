@@ -13,6 +13,7 @@ import {
   openTestJournalHostDatabase
 } from '../agent-session-journal/journal-host-database-test-support'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
+import { openJournalOwingImport } from '../agent-session-journal/journal-owed-import-test-support'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { createAgentSessionDeltaCoalescer } from './agent-session-delta-coalescer'
 import {
@@ -84,6 +85,36 @@ async function rig(watermarks: Partial<StructuredAgentSessionSinkWatermarks> = {
   })
   const bind = () => deferred.bind({ journal, fence: 1, publish: () => publishes.push(1) })
   return { root, journal, deferred, sink: deferred.sink, publishes, bind }
+}
+
+/** A bound sink over a chat whose copy into the host's database is still owed, so every write,
+ *  the transition's included, waits in the journal's queue until the first one pays it. */
+async function owedRig() {
+  const root = await mkdtemp(join(tmpdir(), 'orca-transition-owed-'))
+  roots.push(root)
+  const { journal } = await openJournalOwingImport({
+    stateDirectory: root,
+    identity: {
+      sessionId: SESSION,
+      workspaceId: 'workspace-1',
+      hostId: 'local',
+      agent: 'grok',
+      providerHandle: { kind: 'opaque', agent: 'grok', value: 'provider-session-1' }
+    },
+    now: () => 1_000
+  })
+  const failures: unknown[] = []
+  const deferred = createDeferredStructuredAgentSessionEventSink({
+    ...testEventSinkLogging(SESSION),
+    onFailed: (error) => failures.push(error)
+  })
+  deferred.bind({ journal, fence: 1, publish: () => undefined })
+  const ownKeys = () =>
+    journal
+      .snapshot()
+      .items.map((item) => item.itemId)
+      .filter((itemId) => itemId.includes(SESSION))
+  return { journal, deferred, sink: deferred.sink, failures, ownKeys, close: () => journal.close() }
 }
 
 describe('structured agent-session transitions', () => {
@@ -354,6 +385,92 @@ BEGIN SELECT RAISE(ABORT, 'second chunk refused'); END`)
     expect(journal.snapshot().items).toEqual([])
     expect(publishes).toEqual([])
   })
+
+  it('lands a write a step issues while it runs after the whole transition', async () => {
+    const { journal, deferred, sink, bind } = await rig()
+    bind()
+    sink.tryAppendTransition?.({
+      lifecycle: false,
+      publish: false,
+      steps: [
+        itemStep(() => {
+          // Another writer, reached from inside the step: it waits for the transition's turn to end.
+          sink.tryAppendItem?.(identity('nested'), tool('nested', 'running'), {
+            turnScope: AGENT_JOURNAL_THREAD_SCOPE
+          })
+          return { identity: identity('first'), body: tool('first', 'running') }
+        }),
+        itemStep(() => ({ identity: identity('second'), body: tool('second', 'running') }))
+      ]
+    })
+    await deferred.drained()
+
+    expect(journal.snapshot().items.map((item) => item.itemId)).toEqual(
+      ['first', 'second', 'nested'].map((recordId) => agentJournalItemKey(identity(recordId)))
+    )
+  })
+
+  it('runs its steps back to back after an owed import, ahead of a write issued after it', async () => {
+    const { journal, deferred, sink, ownKeys, close } = await owedRig()
+    try {
+      sink.tryAppendTransition?.({
+        lifecycle: false,
+        publish: false,
+        steps: [
+          itemStep(() => ({ identity: identity('first'), body: tool('read', 'running') })),
+          itemStep((view) =>
+            view.itemBody(agentJournalItemKey(identity('first')))
+              ? { identity: identity('second'), body: tool('read', 'running') }
+              : null
+          )
+        ]
+      })
+      sink.tryAppendItem?.(identity('later'), tool('later', 'running'), {
+        turnScope: AGENT_JOURNAL_THREAD_SCOPE
+      })
+      expect(journal.importPending).toBe(true)
+      await expect(deferred.drained()).resolves.toEqual({ ok: true })
+
+      expect(journal.importPending).toBe(false)
+      expect(ownKeys()).toEqual(
+        ['first', 'second', 'later'].map((recordId) => agentJournalItemKey(identity(recordId)))
+      )
+    } finally {
+      await close()
+    }
+  })
+
+  it('stops at a failed middle step after an owed import; a write accepted before the failure still lands', async () => {
+    const { deferred, sink, failures, ownKeys, close } = await owedRig()
+    try {
+      const third = vi.fn(() => ({ identity: identity('third'), body: tool('read', 'running') }))
+      sink.tryAppendTransition?.({
+        lifecycle: false,
+        publish: false,
+        steps: [
+          itemStep(() => ({ identity: identity('first'), body: tool('read', 'running') })),
+          itemStep(
+            () => ({ identity: identity('second'), body: tool('x'.repeat(10_000), 'running') }),
+            64
+          ),
+          itemStep(third)
+        ]
+      })
+      // Accepted before the failure is known: the sink's existing rule lets it land.
+      sink.tryAppendItem?.(identity('later'), tool('later', 'running'), {
+        turnScope: AGENT_JOURNAL_THREAD_SCOPE
+      })
+      await expect(deferred.drained()).resolves.toMatchObject({ ok: false })
+
+      expect(ownKeys()).toEqual(
+        ['first', 'later'].map((recordId) => agentJournalItemKey(identity(recordId)))
+      )
+      expect(third).not.toHaveBeenCalled()
+      expect(failures).toHaveLength(1)
+    } finally {
+      await close()
+    }
+  })
 })
 
 describe('resolved lifecycle batches', () => {
@@ -363,11 +480,16 @@ describe('resolved lifecycle batches', () => {
     const twice = identity('twice')
 
     await expect(
-      journal.appendResolvedLifecycleBatch({
-        settlementId: 'twice',
-        fence: 1,
-        resolve: () => [failedTool(identity('once')), failedTool(twice), failedTool(twice)]
-      })
+      journal.appendSteps([
+        {
+          kind: 'settlement',
+          batch: {
+            settlementId: 'twice',
+            fence: 1,
+            resolve: () => [failedTool(identity('once')), failedTool(twice), failedTool(twice)]
+          }
+        }
+      ])
     ).rejects.toThrow('journal_resolved_lifecycle_batch_names_item_twice')
     expect(journal.cursor().sequence).toBe(before)
   })

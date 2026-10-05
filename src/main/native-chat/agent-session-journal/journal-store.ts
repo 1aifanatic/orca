@@ -71,6 +71,7 @@ import { createJournalStoreCollaborators } from './journal-store-collaborators'
 import { journalStoreLoadedFields } from './journal-store-open'
 import type { JournalItemAppender } from './journal-item-appender'
 import type { JournalLifecycleBatchAppender } from './journal-lifecycle-batch-appender'
+import type { JournalStepWriter } from './journal-step-writer'
 import type { JournalStopMarks } from './journal-stop-marks'
 
 export { AgentSessionJournalError } from './journal-write-guards'
@@ -92,6 +93,7 @@ export class AgentSessionJournal {
   private readonly epochController: JournalEpochController
   private readonly itemAppender: JournalItemAppender
   private readonly lifecycleBatchAppender: JournalLifecycleBatchAppender
+  private readonly stepWriter: JournalStepWriter
   private readonly restore: () => Promise<void>
   /** Draft rows queued while the agent works; never reducer input or owed work. */
   readonly queuedMessages: JournalQueuedMessages
@@ -143,6 +145,7 @@ export class AgentSessionJournal {
     this.epochController = collaborators.epochController
     this.itemAppender = collaborators.itemAppender
     this.lifecycleBatchAppender = collaborators.lifecycleBatchAppender
+    this.stepWriter = collaborators.stepWriter
     this.queuedMessages = collaborators.queuedMessages
     this.stopMarks = collaborators.stopMarks
     this.restore = collaborators.restore
@@ -206,11 +209,6 @@ export class AgentSessionJournal {
 
   get importPending(): boolean {
     return this.queue.owing
-  }
-
-  /** Write bodies that returned so far; see `JournalWriteQueue.completedWrites`. */
-  get completedWrites(): number {
-    return this.queue.completedWrites
   }
 
   cursor = (): AgentJournalCursor => ({
@@ -336,10 +334,8 @@ export class AgentSessionJournal {
     return this.lifecycleBatchAppender.append(input)
   }
 
-  /** A lifecycle batch whose mutations are chosen from the fold at its own turn in the queue;
-   *  null when none are. */
-  appendResolvedLifecycleBatch: JournalLifecycleBatchAppender['appendResolved'] = (input) =>
-    this.lifecycleBatchAppender.appendResolved(input)
+  /** Several writes as one turn in the queue; see `JournalStepWriter`. */
+  appendSteps: JournalStepWriter['append'] = (steps) => this.stepWriter.append(steps)
 
   /**
    * Write-ahead submission row. It is durable before the caller dispatches
