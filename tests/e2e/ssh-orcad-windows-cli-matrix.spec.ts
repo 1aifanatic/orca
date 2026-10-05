@@ -184,6 +184,31 @@ async function sendLine(
   ])
 }
 
+/** The terminal is still listed after an orcad restart, kept its output and still takes input. */
+async function expectTerminalSurvives(
+  userData: string,
+  environmentId: string,
+  handle: string,
+  label: string
+): Promise<void> {
+  const listed = await orcaCliResult<RuntimeTerminalListResult>(userData, [
+    'terminal',
+    'list',
+    '--environment',
+    environmentId
+  ])
+  console.log(
+    `[cli-matrix] terminals after ${label}: ${JSON.stringify(listed.terminals.map((terminal) => ({ handle: terminal.handle, connected: terminal.connected, exitCause: terminal.exitCause })))}`
+  )
+  expect(
+    listed.terminals.map((terminal) => terminal.handle),
+    label
+  ).toContain(handle)
+  const marker = `ORCA_CLI_SURVIVED_${Date.now()}`
+  await sendLine(userData, environmentId, handle, `echo ${marker}`)
+  await waitForEchoedLine(userData, environmentId, handle, marker)
+}
+
 /** The client's verdict on the managed server, after asking it once through the main process. */
 async function hostVerdict(page: Page, environmentId: string): Promise<string> {
   const snapshot = await page.evaluate(async (id) => {
@@ -408,28 +433,31 @@ test('@orcad-cli-managed an empty Windows host deploys, serves CLI terminals thr
       })
       await expect.poll(sample, { timeout: 4 * 60_000 }).toBe('live')
     }
-    testInfo.annotations.push({
-      type: 'restart-verdicts',
-      description: `${recoveredBy}: ${verdicts.join(' -> ')}`
-    })
+    const relaunched = await listHostOrcadProcesses(descriptor.home)
+    console.log(
+      `[cli-matrix] orcad restart ${recoveredBy}: ${verdicts.join(' -> ')}; killed ${killed.map((entry) => entry.pid).join(',')}, now ${relaunched.map((entry) => entry.pid).join(',')}`
+    )
     expect(verdicts.filter((verdict) => !/^(live|unverifiable:)/u.test(verdict))).toEqual([])
-    expect(await listHostOrcadProcesses(descriptor.home)).not.toHaveLength(0)
-    const afterRestart = await orcaCliResult<RuntimeTerminalListResult>(userData, [
-      'terminal',
-      'list',
-      '--environment',
-      redeployed
-    ])
-    testInfo.annotations.push({
-      type: 'terminal-after-restart',
-      description: JSON.stringify(
-        afterRestart.terminals.map((terminal) => ({
-          handle: terminal.handle,
-          connected: terminal.connected,
-          exitCause: terminal.exitCause
-        }))
-      )
-    })
+    expect(relaunched).not.toHaveLength(0)
+    expect(relaunched.some((entry) => killed.some((victim) => victim.pid === entry.pid))).toBe(
+      false
+    )
+    // The terminal daemon outlives orcad, so the relaunched server adopts its terminal.
+    await expectTerminalSurvives(userData, redeployed, restartHandle, 'automatic restart')
+
+    // Killed again, then disconnect/connect: the connect itself starts orcad and stays managed.
+    const killedAgain = await killHostOrcad(descriptor.home)
+    expect(killedAgain, 'an orcad process to restart').not.toHaveLength(0)
+    const reconnected = await reconnect(page, targetId)
+    console.log(`[cli-matrix] connect after second kill: ${reconnected}`)
+    expect(reconnected).toContain('"managed"')
+    expect(await waitForManaged(page, targetId)).toBe(redeployed)
+    await expect.poll(() => hostVerdict(page, redeployed), { timeout: 4 * 60_000 }).toBe('live')
+    const afterConnect = await listHostOrcadProcesses(descriptor.home)
+    expect(
+      afterConnect.some((entry) => killedAgain.some((victim) => victim.pid === entry.pid))
+    ).toBe(false)
+    await expectTerminalSurvives(userData, redeployed, restartHandle, 'reconnect restart')
   } finally {
     if (app) {
       await session.close(app)
