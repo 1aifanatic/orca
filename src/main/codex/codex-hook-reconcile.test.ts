@@ -17,15 +17,18 @@ import type * as CodexCommand from '../codex-cli/command'
 import type { CodexHookListing } from './codex-app-server-client'
 import type { CodexHookHashes } from './codex-hook-trust-derivation'
 
-const mocks = vi.hoisted(() => ({
-  homedir: vi.fn<() => string>(),
-  codexPath: '',
-  resolveCodexCommand: vi.fn<() => string>(),
-  probeCodexVersion: vi.fn(),
-  deriveCodexHookHashes: vi.fn(),
-  listCodexHooks: vi.fn(),
-  beforeHooksJsonWrite: null as (() => void) | null
-}))
+const mocks = vi.hoisted(() => {
+  const spies: { beforeHooksJsonWrite: (() => void) | null } = { beforeHooksJsonWrite: null }
+  return {
+    spies,
+    homedir: vi.fn<() => string>(),
+    codexPath: '',
+    resolveCodexCommand: vi.fn<() => string>(),
+    probeCodexVersion: vi.fn(),
+    deriveCodexHookHashes: vi.fn(),
+    listCodexHooks: vi.fn()
+  }
+})
 
 vi.mock('node:os', async (importOriginal) => ({
   ...(await importOriginal<typeof NodeOs>()),
@@ -45,7 +48,7 @@ vi.mock('../agent-hooks/installer-utils', async (importOriginal) => {
   return {
     ...actual,
     writeHooksJson: (...args: Parameters<typeof actual.writeHooksJson>) => {
-      mocks.beforeHooksJsonWrite?.()
+      mocks.spies.beforeHooksJsonWrite?.()
       return actual.writeHooksJson(...args)
     }
   }
@@ -70,10 +73,10 @@ import {
   parseTrustKey,
   readHookTrustEntries,
   upsertHookTrustEntries,
-  type CodexEventLabel,
   type CodexTrustEntry
 } from './config-toml-trust'
 import { readMemoizedCodexHookTrust } from './codex-hook-trust-memo'
+import { CODEX_HOOK_EVENT_LABEL } from './codex-hook-identity'
 
 let home: string
 let userData: string
@@ -96,10 +99,10 @@ function writeHooks(hooks: Hooks): void {
   writeFileSync(hooksPath(), `${JSON.stringify({ hooks }, null, 2)}\n`)
 }
 
-function orcaKey(eventName: string, groupIndex: number): string {
+function orcaKey(eventName: (typeof CODEX_EVENTS)[number], groupIndex: number): string {
   return computeTrustKey({
     sourcePath: hooksPath(),
-    eventLabel: CODEX_EVENT_LABEL[eventName as (typeof CODEX_EVENTS)[number]],
+    eventLabel: CODEX_EVENT_LABEL[eventName],
     groupIndex,
     handlerIndex: 0,
     command: command()
@@ -109,12 +112,16 @@ function orcaKey(eventName: string, groupIndex: number): string {
 /** Codex's own read of ~/.codex: each hook is trusted when its stored hash is the one Codex computes. */
 function listLikeCodex(): CodexHookListing[] {
   const trust = readHookTrustEntries(tomlPath())
-  return Object.entries(readHooks()).flatMap(([eventName, groups]) =>
-    groups.flatMap((group, groupIndex) =>
+  return Object.entries(readHooks()).flatMap(([eventName, groups]) => {
+    const eventLabel = CODEX_HOOK_EVENT_LABEL[eventName]
+    if (!eventLabel) {
+      return []
+    }
+    return groups.flatMap((group, groupIndex) =>
       group.hooks.map((hook, handlerIndex) => {
         const entry: CodexTrustEntry = {
           sourcePath: hooksPath(),
-          eventLabel: CODEX_EVENT_LABEL[eventName as (typeof CODEX_EVENTS)[number]],
+          eventLabel,
           groupIndex,
           handlerIndex,
           command: hook.command,
@@ -132,7 +139,7 @@ function listLikeCodex(): CodexHookListing[] {
         }
       })
     )
-  )
+  })
 }
 
 function snapshot(dir: string): Map<string, { bytes: string; mtimeMs: number }> {
@@ -169,7 +176,7 @@ beforeEach(() => {
   mocks.codexPath = join(userData, 'codex')
   writeFileSync(mocks.codexPath, 'codex 0.150.1')
   mocks.resolveCodexCommand.mockImplementation(() => mocks.codexPath)
-  mocks.beforeHooksJsonWrite = null
+  mocks.spies.beforeHooksJsonWrite = null
   mocks.listCodexHooks.mockImplementation(async () => listLikeCodex())
   answerWith(computeCodexHookHashesForTests())
   enabled = true
@@ -206,7 +213,7 @@ describe('reconcileCodexHooks', () => {
   it('writes the approval before the entry', async () => {
     start()
     const approvedAtEntryWrite: (string | undefined)[] = []
-    mocks.beforeHooksJsonWrite = () => {
+    mocks.spies.beforeHooksJsonWrite = () => {
       approvedAtEntryWrite.push(
         readHookTrustEntries(tomlPath()).get(orcaKey('Stop', 0))?.trustedHash
       )
@@ -221,7 +228,7 @@ describe('reconcileCodexHooks', () => {
     writeHooks({ Stop: [{ hooks: [{ type: 'command', command: 'user-stop.sh' }] }] })
     writeFileSync(tomlPath(), 'model = "user-model"\n')
     const before = snapshot(codexHome())
-    mocks.beforeHooksJsonWrite = () => {
+    mocks.spies.beforeHooksJsonWrite = () => {
       throw new Error('disk full')
     }
     start()
@@ -293,11 +300,11 @@ describe('reconcileCodexHooks', () => {
     answerWith(newHashes, 'codex-cli 0.160.0')
     mocks.listCodexHooks.mockImplementation(async () =>
       listLikeCodex().map((listing) => {
-        const label = parseTrustKey(listing.key)?.eventLabel as CodexEventLabel
+        const label = parseTrustKey(listing.key)?.eventLabel
         const state = readHookTrustEntries(tomlPath()).get(listing.key)
         return {
           ...listing,
-          trustStatus: state?.trustedHash === newHashes[label] ? 'trusted' : 'modified'
+          trustStatus: label && state?.trustedHash === newHashes[label] ? 'trusted' : 'modified'
         }
       })
     )

@@ -2,6 +2,7 @@ import { readFileSync, realpathSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
 import { writeFileAtomically } from '../codex-accounts/fs-utils'
+import { isPlainObject } from '../agent-hooks/hooks-json-read'
 import { getOrcaUserDataPath } from './codex-home-paths'
 import type { CodexHookHashes } from './codex-hook-trust-derivation'
 import { CODEX_MANAGED_EVENT_LABELS } from './codex-hook-definition'
@@ -54,13 +55,8 @@ export function fingerprintCodex(codexPath: string): string {
 function readMemo(): MemoFile {
   try {
     const parsed: unknown = JSON.parse(readFileSync(getCodexHookTrustMemoPath(), 'utf-8'))
-    if (parsed && typeof parsed === 'object') {
-      const binaries = Reflect.get(parsed, 'binaries')
-      const versions = Reflect.get(parsed, 'versions')
-      return {
-        binaries: binaries && typeof binaries === 'object' ? { ...binaries } : {},
-        versions: versions && typeof versions === 'object' ? { ...versions } : {}
-      }
+    if (isPlainObject(parsed)) {
+      return { binaries: readBinaries(parsed.binaries), versions: readVersions(parsed.versions) }
     }
   } catch {
     // Why: absent or unreadable reads as empty; the next reconcile re-derives.
@@ -68,13 +64,48 @@ function readMemo(): MemoFile {
   return { binaries: {}, versions: {} }
 }
 
+function readBinaries(value: unknown): Record<string, BinaryRecord> {
+  return isPlainObject(value)
+    ? Object.fromEntries(
+        Object.entries(value).flatMap(([key, record]) =>
+          isPlainObject(record) && typeof record.fingerprint === 'string'
+            ? [
+                [
+                  key,
+                  {
+                    fingerprint: record.fingerprint,
+                    codexVersion:
+                      typeof record.codexVersion === 'string' ? record.codexVersion : null,
+                    failure: typeof record.failure === 'string' ? record.failure : null
+                  }
+                ]
+              ]
+            : []
+        )
+      )
+    : {}
+}
+
+function readVersions(value: unknown): Record<string, VersionRecord> {
+  return isPlainObject(value)
+    ? Object.fromEntries(
+        Object.entries(value).flatMap(([key, record]) => {
+          const hashes = isPlainObject(record) ? readHashes(record.hashes) : null
+          return isPlainObject(record) && typeof record.command === 'string' && hashes
+            ? [[key, { command: record.command, hashes }]]
+            : []
+        })
+      )
+    : {}
+}
+
 function readHashes(value: unknown): CodexHookHashes | null {
-  if (!value || typeof value !== 'object') {
+  if (!isPlainObject(value)) {
     return null
   }
   const hashes: Partial<Record<CodexEventLabel, string>> = {}
   for (const label of CODEX_MANAGED_EVENT_LABELS) {
-    const hash = Reflect.get(value, label)
+    const hash = value[label]
     if (typeof hash === 'string' && hash.startsWith('sha256:')) {
       hashes[label] = hash
     }
@@ -94,13 +125,13 @@ export function readMemoizedCodexHookTrust(
 ): CodexHookTrustAnswer | null {
   const memo = readMemo()
   const binary = memo.binaries[binaryKey(codexPath)]
-  if (!binary || typeof binary !== 'object' || binary.fingerprint !== fingerprint) {
+  if (!binary || binary.fingerprint !== fingerprint) {
     return null
   }
-  if (typeof binary.failure === 'string') {
+  if (binary.failure !== null) {
     return { codexVersion: binary.codexVersion, hashes: null, failure: binary.failure }
   }
-  return typeof binary.codexVersion === 'string'
+  return binary.codexVersion !== null
     ? readMemoizedVersionHashes(binary.codexVersion, command, memo)
     : null
 }
@@ -111,8 +142,7 @@ export function readMemoizedVersionHashes(
   memo: MemoFile = readMemo()
 ): CodexHookTrustAnswer | null {
   const record = memo.versions[codexVersion]
-  const hashes = record?.command === command ? readHashes(record.hashes) : null
-  return hashes ? { codexVersion, hashes, failure: null } : null
+  return record?.command === command ? { codexVersion, hashes: record.hashes, failure: null } : null
 }
 
 /** Records a binary's answer, and its version's hashes when it has some. Never throws. */

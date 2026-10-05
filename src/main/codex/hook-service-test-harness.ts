@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createManagedCommandMatcher } from '../agent-hooks/installer-utils'
 import {
+  computeTrustedHash,
   getCodexExplicitHomeHookSourcePath,
   normalizeCodexHookSourcePath
 } from './config-toml-trust'
@@ -16,7 +17,6 @@ import {
   getManagedCommand,
   getManagedScriptPath
 } from './codex-hook-definition'
-import { computeTrustedHash } from './config-toml-trust'
 import type { CodexHookHashes } from './codex-hook-trust-derivation'
 import type { CodexHookTrustAnswer } from './codex-hook-trust-memo'
 

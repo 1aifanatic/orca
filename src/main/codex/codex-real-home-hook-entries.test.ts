@@ -49,8 +49,8 @@ let userData: string
 const hooksPath = (): string => join(home, '.codex', 'hooks.json')
 const configPath = (): string => join(home, '.codex', 'config.toml')
 const frozen = (): string => getCodexManagedHookInstallMaterial().command
-const orcaGroup = (command: string, event = 'Stop'): HookDefinition => ({
-  hooks: [buildCodexManagedHook(command, event as 'Stop')]
+const orcaGroup = (command: string): HookDefinition => ({
+  hooks: [buildCodexManagedHook(command, 'Stop')]
 })
 
 function olderBuildCommand(): string {

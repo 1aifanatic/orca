@@ -5,11 +5,14 @@ import { join } from 'node:path'
 import type * as InstallerUtils from '../agent-hooks/installer-utils'
 import { isCodexManagedCommand, setupCodexHookHomes } from './hook-service-test-harness'
 
-const { getPathMock, homedirMock, hooks } = vi.hoisted(() => ({
-  getPathMock: vi.fn<(name: string) => string>(),
-  homedirMock: vi.fn<() => string>(),
-  hooks: { beforeHooksJsonWrite: null as (() => void) | null }
-}))
+const { getPathMock, homedirMock, hooks } = vi.hoisted(() => {
+  const hooks: { beforeHooksJsonWrite: (() => void) | null } = { beforeHooksJsonWrite: null }
+  return {
+    getPathMock: vi.fn<(name: string) => string>(),
+    homedirMock: vi.fn<() => string>(),
+    hooks
+  }
+})
 
 vi.mock('electron', () => ({ app: { getPath: getPathMock } }))
 vi.mock('os', async (importOriginal) => ({
@@ -33,7 +36,8 @@ import {
   computeTrustKey,
   getCodexExplicitHomeHookSourcePath,
   readHookTrustEntries,
-  upsertHookTrustEntries
+  upsertHookTrustEntries,
+  type CodexEventLabel
 } from './config-toml-trust'
 import { getManagedCommand, getManagedScriptPath } from './codex-hook-definition'
 
@@ -55,10 +59,10 @@ function managedHome(): string {
   return join(homes.userDataDir, 'codex-runtime-home', 'home')
 }
 
-function managedKey(eventLabel: string, groupIndex: number): string {
+function managedKey(eventLabel: CodexEventLabel, groupIndex: number): string {
   return computeTrustKey({
     sourcePath: getCodexExplicitHomeHookSourcePath(join(managedHome(), 'hooks.json')),
-    eventLabel: eventLabel as 'stop',
+    eventLabel,
     groupIndex,
     handlerIndex: 0,
     command: getManagedCommand(getManagedScriptPath())
