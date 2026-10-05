@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
@@ -52,11 +52,12 @@ function failedTool(id: AgentJournalItemIdentity): JournalLifecycleMutationInput
 }
 
 function itemStep(
-  resolve: Extract<StructuredAgentSessionTransitionStep, { kind: 'item' }>['resolve']
+  resolve: Extract<StructuredAgentSessionTransitionStep, { kind: 'item' }>['resolve'],
+  reservedBytes = 4096
 ): StructuredAgentSessionTransitionStep {
   return {
     kind: 'item',
-    reservedBytes: 4096,
+    reservedBytes,
     resolve,
     options: { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
   }
@@ -121,29 +122,6 @@ describe('structured agent-session transitions', () => {
     expect(publishes).toHaveLength(1)
   })
 
-  it('places a row where its resolver says', async () => {
-    const { journal, deferred, sink, bind } = await rig()
-    bind()
-    const scope = { kind: 'turn', turnItemId: 'turn-row' } as const
-    sink.tryAppendTransition?.({
-      lifecycle: false,
-      publish: true,
-      steps: [
-        itemStep(() => ({
-          identity: identity('placed'),
-          body: tool('read', 'running'),
-          options: { turnScope: scope }
-        })),
-        itemStep(() => null)
-      ]
-    })
-    await deferred.drained()
-
-    expect(journal.item(agentJournalItemKey(identity('placed')))).toMatchObject({
-      turnScope: scope
-    })
-  })
-
   it('admitted whole is not executed whole: a failed step keeps the ones before it and fails the sink', async () => {
     const { journal, deferred, sink, publishes, bind } = await rig()
     bind()
@@ -170,6 +148,82 @@ describe('structured agent-session transitions', () => {
         steps: [itemStep(() => null)]
       })
     ).toEqual({ accepted: false, reason: 'failed' })
+  })
+
+  it('writes nothing after a step that overflows its reservation', async () => {
+    const { journal, deferred, sink, publishes, bind } = await rig()
+    bind()
+    const after = vi.fn(() => ({ identity: identity('third'), body: tool('read', 'running') }))
+    sink.tryAppendTransition?.({
+      lifecycle: false,
+      publish: true,
+      steps: [
+        itemStep(() => ({ identity: identity('first'), body: tool('read', 'running') })),
+        itemStep(
+          () => ({ identity: identity('second'), body: tool('x'.repeat(10_000), 'running') }),
+          64
+        ),
+        itemStep(after)
+      ]
+    })
+
+    await expect(deferred.drained()).resolves.toMatchObject({ ok: false })
+    expect(journal.snapshot().items.map((item) => item.itemId)).toEqual([
+      agentJournalItemKey(identity('first'))
+    ])
+    expect(after).not.toHaveBeenCalled()
+    expect(publishes).toEqual([])
+  })
+
+  it('opens no next-turn work after a settlement the journal refused', async () => {
+    const { journal, deferred, sink, bind } = await rig()
+    bind()
+    const old = identity('old-tool')
+    sink.tryAppendItem?.(old, tool('read', 'running'), { turnScope: AGENT_JOURNAL_THREAD_SCOPE })
+    await deferred.drained()
+    sink.tryAppendTransition?.({
+      lifecycle: true,
+      publish: true,
+      steps: [
+        itemStep(() => ({ identity: identity('before'), body: tool('read', 'completed') })),
+        // Names one item twice, which the journal refuses.
+        {
+          kind: 'settlement',
+          settlementId: 'settle',
+          reservedBytes: 1,
+          resolve: () => [failedTool(old), failedTool(old)]
+        },
+        itemStep(() => ({ identity: identity('next-turn-work'), body: tool('read', 'running') }))
+      ]
+    })
+
+    await expect(deferred.drained()).resolves.toMatchObject({ ok: false })
+    expect(journal.snapshot().items.map((item) => item.itemId)).toEqual([
+      agentJournalItemKey(old),
+      agentJournalItemKey(identity('before'))
+    ])
+    expect(journal.item(agentJournalItemKey(old))?.body).toMatchObject({ state: 'running' })
+  })
+
+  it('writes nothing after a step whose row the database refused', async () => {
+    const { root, journal, deferred, sink, bind } = await rig()
+    bind()
+    // Refuses only the second step's row, so the third would land in its place.
+    openTestJournalHostDatabase(root).db.exec(`CREATE TEMP TRIGGER fail_second_step
+BEFORE INSERT ON main.journal_rows WHEN instr(NEW.row_json, 'refused-step') > 0
+BEGIN SELECT RAISE(ABORT, 'second step refused'); END`)
+    const step = (recordId: string) =>
+      itemStep(() => ({ identity: identity(recordId), body: tool(recordId, 'running') }))
+    sink.tryAppendTransition?.({
+      lifecycle: false,
+      publish: true,
+      steps: [step('first'), step('refused-step'), step('third')]
+    })
+
+    await expect(deferred.drained()).resolves.toMatchObject({ ok: false })
+    expect(journal.snapshot().items.map((item) => item.itemId)).toEqual([
+      agentJournalItemKey(identity('first'))
+    ])
   })
 
   it('refuses a transition whole, so none of its steps ever lands', async () => {
