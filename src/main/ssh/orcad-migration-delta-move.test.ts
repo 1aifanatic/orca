@@ -12,7 +12,10 @@ import type { WorkspaceSessionState } from '../../shared/workspace-session-state
 import { folderWorkspaceKey } from '../../shared/workspace-scope'
 import { closeTestStores, createSqliteTestStore } from '../persistence-test-harness'
 import { Store } from '../persistence/loading-store/store'
-import { listOrcadMigrationSourceCutovers } from './orcad-migration-cutover-journal'
+import {
+  listOrcadMigrationSourceCutovers,
+  writeOrcadMigrationSourceCutover
+} from './orcad-migration-cutover-journal'
 import { fakeOrcadMigrationDestination } from './orcad-migration-destination-fake'
 import { keepOrcadServerVersion, runOrcadDeltaMove } from './orcad-migration-delta-move'
 import { planOrcadDeltaMove } from './orcad-migration-delta-plan'
@@ -474,5 +477,148 @@ describe('moving what an older build added to a converted host', () => {
       retireRetainedOrcadSourceChain(userDataPath, store, target(), lifecycle)
     ).resolves.toBe('retired')
     expect(store.getRepos()).toEqual([])
+  })
+})
+
+const HOST_ID = `ssh:${TARGET.id}` as const
+
+/** An unsaved editor draft in the host's session partition, as either build would save it. */
+function saveDraft(worktreeId: string, content: string): void {
+  store.setWorkspaceSession(
+    {
+      ...store.getWorkspaceSession(HOST_ID),
+      openFilesByWorktree: {
+        [worktreeId]: [
+          {
+            filePath: '/srv/notes.md',
+            relativePath: 'notes.md',
+            worktreeId,
+            language: 'markdown',
+            dirtyDraftContent: content
+          }
+        ]
+      }
+    },
+    HOST_ID
+  )
+}
+
+function savedDraft(worktreeId: string): string | undefined {
+  return store.getWorkspaceSession(HOST_ID).openFilesByWorktree?.[worktreeId]?.[0]
+    ?.dirtyDraftContent
+}
+
+async function convertKeepingSource(): Promise<void> {
+  await expect(
+    convertSshTargetToManagedOrcad(userDataPath, {
+      sshTargetId: TARGET.id,
+      name: 'Managed',
+      listRelayPtyIds: async () => [],
+      destinationFor: () => destination,
+      releaseDirectSession: async () => {},
+      now,
+      retireSource: () => false
+    })
+  ).resolves.toMatchObject({ outcome: 'converted' })
+}
+
+const retireChain = () =>
+  retireRetainedOrcadSourceChain(userDataPath, store, store.getSshTarget(TARGET.id)!, (_id, run) =>
+    run()
+  )
+
+describe('a draft an older build edited in a retained source', () => {
+  it.each([
+    ['a repository worktree', () => 'repo-1::/srv/app'],
+    [
+      'a folder workspace on a folder-only host',
+      () => {
+        store.removeProject('repo-1')
+        const group = store.createProjectGroup({
+          name: 'folders',
+          parentPath: '/srv/folders',
+          connectionId: TARGET.id,
+          createdFrom: 'manual'
+        })
+        const folder = store.createFolderWorkspace({
+          projectGroupId: group.id,
+          folderPath: '/srv/folders/notes',
+          connectionId: TARGET.id
+        })
+        return folderWorkspaceKey(folder.id)
+      }
+    ]
+  ])('in %s marks the host changed and is never retired', async (_label, workspace) => {
+    const worktreeId = workspace()
+    saveDraft(worktreeId, 'draft before migration')
+    await convertKeepingSource()
+    expect(listOrcadMigrationSourceCutovers(userDataPath)[0]?.sourceStateFingerprint).toBeDefined()
+
+    // The older build edits only the draft: no project is added, removed or renamed.
+    saveDraft(worktreeId, 'draft after downgrade')
+    reconcileManagedOrcadSshTargets(userDataPath, store, now)
+
+    expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeDefined()
+    await expect(retireChain()).resolves.toBe('skipped')
+    expect(savedDraft(worktreeId)).toBe('draft after downgrade')
+  })
+
+  it('marks the host changed when an older build edits an automation it keeps', async () => {
+    const automation = store.createAutomation({
+      name: 'Nightly',
+      prompt: 'Run checks',
+      agentId: 'claude',
+      projectId: 'repo-1',
+      workspaceMode: 'new_per_run',
+      baseBranch: null,
+      timezone: 'UTC',
+      rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0',
+      dtstart: new Date('2026-10-01T00:00:00Z').getTime(),
+      // Only a paused automation moves: a running scheduler cannot hand over mid-flight.
+      enabled: false
+    })
+    await convertKeepingSource()
+
+    store.updateAutomation(
+      automation.id,
+      { prompt: 'Run checks, then open a PR' },
+      {
+        expectedOwner: {
+          selector: {
+            kind: 'ssh',
+            targetId: TARGET.id,
+            targetGeneration: store.getSshTarget(TARGET.id)!.generation!
+          }
+        }
+      }
+    )
+    reconcileManagedOrcadSshTargets(userDataPath, store, now)
+
+    expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeDefined()
+    await expect(retireChain()).resolves.toBe('skipped')
+  })
+
+  it('leaves an unchanged retained source hidden and retires it', async () => {
+    saveDraft('repo-1::/srv/app', 'draft before migration')
+    await convertKeepingSource()
+    reconcileManagedOrcadSshTargets(userDataPath, store, now)
+
+    expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeUndefined()
+    await expect(retireChain()).resolves.toBe('retired')
+  })
+
+  it('never auto-retires a legacy journal that has no state baseline', async () => {
+    saveDraft('repo-1::/srv/app', 'draft before migration')
+    await convertKeepingSource()
+    const [journal] = listOrcadMigrationSourceCutovers(userDataPath)
+    const { sourceStateFingerprint: _dropped, ...legacy } = journal!
+    writeOrcadMigrationSourceCutover(userDataPath, legacy)
+    saveDraft('repo-1::/srv/app', 'draft after downgrade')
+
+    reconcileManagedOrcadSshTargets(userDataPath, store, now)
+    // Unverified, not changed: it stays hidden as before, and its state is kept.
+    expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeUndefined()
+    await expect(retireChain()).resolves.toBe('skipped')
+    expect(savedDraft('repo-1::/srv/app')).toBe('draft after downgrade')
   })
 })

@@ -24,7 +24,9 @@ export function isOrcadSourceRetirementEnabled(): boolean {
 export function retainOrcadMigrationSource(
   userDataPath: string,
   migrationId: string,
-  now: () => Date = () => new Date()
+  now: () => Date = () => new Date(),
+  /** The fenced source's state now, which is what the server committed; kept if already recorded. */
+  sourceStateFingerprint?: () => string
 ): OrcadMigrationSourceCutover {
   const cutover = listOrcadMigrationSourceCutovers(userDataPath).find(
     (entry) => entry.migrationId === migrationId
@@ -35,7 +37,12 @@ export function retainOrcadMigrationSource(
   if (cutover.sourceRetainedAt) {
     return cutover
   }
-  const retained = { ...cutover, sourceRetainedAt: now().toISOString() }
+  const stateFingerprint = cutover.sourceStateFingerprint ?? sourceStateFingerprint?.()
+  const retained = {
+    ...cutover,
+    sourceRetainedAt: now().toISOString(),
+    ...(stateFingerprint ? { sourceStateFingerprint: stateFingerprint } : {})
+  }
   writeOrcadMigrationSourceCutover(userDataPath, retained)
   return retained
 }

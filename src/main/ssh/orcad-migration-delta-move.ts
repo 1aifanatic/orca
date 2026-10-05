@@ -41,6 +41,7 @@ import {
   type ListRelayPtyIds
 } from './orcad-migration-terminal-gate'
 import { currentOrcadSourceFingerprint } from './orcad-retained-source'
+import { currentOrcadSourceStateFingerprint } from './orcad-retained-source-state'
 import type { SshTargetOrcadClaims } from './ssh-target-orcad-claims'
 import { orcadMigrationRefusalReason } from './orcad-migration-refusal-reason'
 import { errorMessage } from '../../shared/error-message'
@@ -114,6 +115,11 @@ function journalDelta(
     supersedesMigrationId: plan.head.migrationId,
     // The whole source as it is now: what the retained rows must keep matching afterwards.
     sourceBaselineFingerprint: currentOrcadSourceFingerprint(args.store, args.target),
+    sourceStateFingerprint: currentOrcadSourceStateFingerprint(
+      args.store,
+      args.target,
+      plan.environmentId
+    ),
     manifest: plan.manifest
   }
   writeOrcadMigrationSourceCutover(args.userDataPath, cutover)
@@ -206,7 +212,13 @@ export async function keepOrcadServerVersion(args: {
   }
   writeOrcadMigrationSourceCutover(args.userDataPath, {
     ...head,
-    sourceBaselineFingerprint: currentOrcadSourceFingerprint(args.store, args.target)
+    sourceBaselineFingerprint: currentOrcadSourceFingerprint(args.store, args.target),
+    // Keeping the server's version is the explicit reconcile: the source as it is now is the baseline.
+    sourceStateFingerprint: currentOrcadSourceStateFingerprint(
+      args.store,
+      args.target,
+      environmentId
+    )
   })
   args.store.updateSshTarget(args.target.id, { orcadFence: { environmentId } })
   await args.claims.flush()
