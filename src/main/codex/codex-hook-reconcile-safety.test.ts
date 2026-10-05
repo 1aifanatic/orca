@@ -7,6 +7,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync
 } from 'node:fs'
@@ -496,3 +497,95 @@ describe('which home the post-write check reads', () => {
     )
   })
 })
+
+describe('review round 2', () => {
+  it("keeps the approval of its own entry in an event that also holds an older build's", async () => {
+    start()
+    await reconcileCodexHooks()
+    const hooks = JSON.parse(readFileSync(hooksPath(), 'utf-8'))
+    hooks.hooks.Stop.push({
+      hooks: [
+        {
+          type: 'command',
+          command: `/bin/sh '${join(home, '.orca', 'agent-hooks', 'codex-hook.sh')}'`
+        }
+      ]
+    })
+    writeFileSync(hooksPath(), `${JSON.stringify(hooks, null, 2)}\n`)
+
+    await reconcileCodexHooks()
+
+    expect(readHookTrustEntries(tomlPath()).get(computeTrustKey(stopEntry()))?.trustedHash).toBe(
+      computeCodexHookHashesForTests().stop
+    )
+  })
+
+  it('keeps a refusal across an app restart: no ~/.codex write and no list', async () => {
+    mocks.listCodexHooks.mockImplementation(async () =>
+      listLikeCodex().map((listing) => ({ ...listing, trustStatus: 'modified', currentHash: 'x' }))
+    )
+    start()
+    await reconcileCodexHooks()
+    const before = snapshotCodexHome()
+    stop?.()
+    _internals.resetForTesting()
+    memoInternals.resetForTesting()
+    mocks.listCodexHooks.mockClear()
+    start()
+
+    await reconcileCodexHooks()
+
+    expect(snapshotCodexHome()).toEqual(before)
+    expect(mocks.listCodexHooks).not.toHaveBeenCalled()
+    expect(isCodexRealHomeLaneUsable()).toBe(false)
+  })
+
+  it('follows the hooks file for the routing gate, whatever the selection, without a run', async () => {
+    let realHome = true
+    stop = startCodexHookReconcile({
+      isEnabled: () => true,
+      usesRealHome: () => realHome,
+      resolveLaunchHome: () => null
+    })
+    mkdirSync(codexHome(), { recursive: true })
+    writeFileSync(hooksPath(), '{ not json')
+    await reconcileCodexHooks()
+    expect(isCodexRealHomeLaneUsable()).toBe(false)
+
+    writeFileSync(hooksPath(), '{ "hooks": {} }\n')
+    expect(isCodexRealHomeLaneUsable()).toBe(true)
+
+    realHome = false
+    writeFileSync(tomlPath(), 'model = "m"\n[hooks]\nstate = {}\n')
+    writeFileSync(
+      hooksPath(),
+      `${JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: command(), timeout: 10 }] }] } })}\n`
+    )
+    await reconcileCodexHooks()
+    // Why: a managed selection's run still learns ~/.codex cannot take an approval.
+    expect(isCodexRealHomeLaneUsable()).toBe(false)
+  })
+
+  it('checks a write again once the session index is rebuilt, then stops checking', async () => {
+    mocks.spies.backfill = 'pending'
+    start()
+    await reconcileCodexHooks()
+    expect(mocks.listCodexHooks).not.toHaveBeenCalled()
+
+    mocks.spies.backfill = 'not-pending'
+    await reconcileCodexHooks()
+    expect(mocks.listCodexHooks).toHaveBeenCalledTimes(1)
+
+    await reconcileCodexHooks()
+    expect(mocks.listCodexHooks).toHaveBeenCalledTimes(1)
+  })
+})
+
+function snapshotCodexHome(): Map<string, { bytes: string; mtimeMs: number }> {
+  return new Map(
+    ['hooks.json', 'config.toml'].map((name) => {
+      const path = join(codexHome(), name)
+      return [name, { bytes: readFileSync(path, 'utf-8'), mtimeMs: statSync(path).mtimeMs }]
+    })
+  )
+}

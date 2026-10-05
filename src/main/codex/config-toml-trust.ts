@@ -263,7 +263,7 @@ export function removeHookTrustEntries(configPath: string, keys: readonly string
   const existing = readTomlFile(configPath)
   const updated = removeHookTrustEntriesFromContent(existing, keys)
   if (updated !== existing) {
-    writeConfigAtomically(configPath, updated)
+    writeLoadableHookTrustConfig(configPath, existing, updated)
   }
 }
 

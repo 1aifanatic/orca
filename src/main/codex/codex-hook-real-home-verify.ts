@@ -9,7 +9,8 @@ import {
   type CodexTrustEntry
 } from './config-toml-trust'
 
-export type CodexHookVerification = 'trusted' | 'rejected' | 'lost' | 'unverified'
+/** 'pending': Codex is rebuilding its session index, so the check waits for a later reconcile. */
+export type CodexHookVerification = 'trusted' | 'rejected' | 'lost' | 'unverified' | 'pending'
 
 /**
  * One read-only `hooks/list` against ~/.codex after a write. 'rejected' only
@@ -24,7 +25,7 @@ export async function verifyRealHomeCodexHook(
   const systemHome = getSystemCodexHomePath()
   if (readCodexStateDbBackfillPendingState(systemHome) !== 'not-pending') {
     // Why: an app-server start can refresh Codex's abandoned backfill lease and strand every pane.
-    return 'unverified'
+    return 'pending'
   }
   try {
     // Why explicit on Windows: Codex finds its default home from the Profile folder, not

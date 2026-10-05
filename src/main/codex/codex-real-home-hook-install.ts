@@ -63,6 +63,8 @@ export type RealHomeCodexHookReconcile = {
   /** Orca's entries with the approval each needs, keyed as Codex keys them. */
   approvals: CodexTrustEntry[]
   reason?: string
+  /** The reason is the hooks file itself, which the routing gate re-reads on its own. */
+  fromHooksFile?: boolean
   /** Whether an older build's entries were up for conversion, so a pending request is served. */
   converted: boolean
 }
@@ -106,12 +108,12 @@ function reconcileRealHomeCodexHookEntriesExclusively(args: {
   // Why: the pre-write guard compares against these bytes; a separate later
   // read would let a concurrent save land between parse and write.
   const { raw: previousRaw, config } = readHooksJsonWithRaw(hooksJsonPath)
-  // Why: an unparseable user file is never clobbered, and Codex rejects unknown root keys.
-  if (!config || Object.keys(config).some((key) => key !== 'hooks')) {
+  if (!config || !isAddableHooksFile(config)) {
     return {
       outcome: 'unavailable',
       approvals: [],
-      reason: `${hooksJsonPath} is not a hooks file Orca can add to`,
+      reason: describeHooksFileProblem(hooksJsonPath),
+      fromHooksFile: true,
       converted: false
     }
   }
@@ -157,7 +159,12 @@ function reconcileRealHomeCodexHookEntriesExclusively(args: {
     trustStates,
     approvals,
     [sourcePath, ...otherSpellings],
-    hashes
+    hashes,
+    new Set(
+      listed
+        .filter((eventName) => olderEvents.includes(eventName))
+        .map((eventName) => CODEX_EVENT_LABEL[eventName])
+    )
   )
   if (!plan.changed && missing.length === 0 && stale.length === 0) {
     return { outcome: 'unchanged', approvals, converted }
@@ -200,6 +207,22 @@ function reconcileRealHomeCodexHookEntriesExclusively(args: {
   return { outcome: 'written', approvals, converted }
 }
 
+// Why: an unparseable user file is never clobbered, and Codex rejects unknown root keys.
+function isAddableHooksFile(config: object): boolean {
+  return Object.keys(config).every((key) => key === 'hooks')
+}
+
+function describeHooksFileProblem(hooksJsonPath: string): string {
+  return `${hooksJsonPath} is not a hooks file Orca can add to`
+}
+
+/** Why ~/.codex/hooks.json cannot take Orca's entry right now, read from the file; null when it can. */
+export function readRealHomeHooksFileProblem(): string | null {
+  const hooksJsonPath = getRealHomeHooksJsonPath()
+  const { config } = readHooksJsonWithRaw(hooksJsonPath)
+  return config && isAddableHooksFile(config) ? null : describeHooksFileProblem(hooksJsonPath)
+}
+
 function describeError(error: unknown): string {
   if (isCodexConfigTomlRefusedError(error)) {
     return `${getRealHomeConfigTomlPath()} keeps hook approvals inline, so Orca cannot add its own there`
@@ -210,12 +233,14 @@ function describeError(error: unknown): string {
 /**
  * Approvals Orca wrote for a slot its entry has left, such as after a user
  * inserted a hook ahead of it. Owned only while they still hold Orca's hash.
+ * Never in a deferred event: this run did not plan it, so its entries keep theirs.
  */
 function findStaleOrcaApprovals(
   trustStates: ReadonlyMap<string, CodexHookTrustState>,
   approvals: readonly CodexTrustEntry[],
   sourcePaths: readonly string[],
-  hashes: CodexHookHashes
+  hashes: CodexHookHashes,
+  deferredLabels: ReadonlySet<string>
 ): string[] {
   const wanted = new Set(
     approvals.map((entry) => normalizeHookTrustKeyForLookup(computeTrustKey(entry)))
@@ -223,6 +248,7 @@ function findStaleOrcaApprovals(
   return [...trustStates].flatMap(([key, state]) => {
     const parts = parseTrustKey(key)
     return parts &&
+      !deferredLabels.has(parts.eventLabel) &&
       !wanted.has(normalizeHookTrustKeyForLookup(key)) &&
       sourcePaths.some((sourcePath) => codexHookSourcePathsEqual(parts.sourcePath, sourcePath)) &&
       state.trustedHash !== undefined &&

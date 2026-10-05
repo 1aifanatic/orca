@@ -226,9 +226,12 @@ export class CodexHookService {
     answerWaitMs = CODEX_HOOK_LAUNCH_WAIT_MS
   ): Promise<AgentHookInstallStatus> {
     const answer = await resolveCodexHookAnswerForLaunch(answerWaitMs)
-    // Why fall back to the home's own approvals: an answer still on its way must not strip an entry that works.
+    // Why fall back to the home's own approvals: an answer still on its way, or a timeout, must not strip an entry that works.
     const hashes =
-      answer?.hashes ?? (answer ? null : readApprovedManagedOrcaHashes(runtimeHomePath))
+      answer?.hashes ??
+      (answer?.hashes === null && !answer.transient
+        ? null
+        : readApprovedManagedOrcaHashes(runtimeHomePath))
     if (!hashes) {
       // Why: without Codex's hash an entry would wait for review; the home keeps only the user's hooks.
       return this.refreshRuntimeUserHooks(runtimeHomePath)

@@ -34,7 +34,8 @@ type MemoFile = {
 
 export type CodexHookTrustAnswer =
   | { codexVersion: string; hashes: CodexHookHashes; failure: null }
-  | { codexVersion: string | null; hashes: null; failure: string }
+  /** `transient`: the failure may pass on its own (a timeout), so it says nothing about the binary. */
+  | { codexVersion: string | null; hashes: null; failure: string; transient?: boolean }
 
 // Why a cap: one record per Codex version or path ever seen would otherwise accumulate.
 const MAX_RECORDS = 8
@@ -239,12 +240,17 @@ export function memoizeCodexHookTrust(
   processAnswers.set(binaryKey(codexPath), { fingerprint, command, answer })
   try {
     const memo = readMemo()
+    const previous = memo.binaries[binaryKey(codexPath)]
     const binaries = withoutKey(memo.binaries, binaryKey(codexPath))
     binaries[binaryKey(codexPath)] = {
       fingerprint,
       codexVersion: answer.codexVersion,
       failure: answer.failure,
-      refusal: null
+      // Why kept: the same bytes at the same version would refuse again; only a change re-asks.
+      refusal:
+        previous?.fingerprint === fingerprint && previous.codexVersion === answer.codexVersion
+          ? previous.refusal
+          : null
     }
     let versions = memo.versions
     if (answer.hashes) {

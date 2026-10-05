@@ -274,4 +274,26 @@ describe('managed-home Codex hook approval', () => {
 
     expect(() => parseToml(readFileSync(join(managedHome(), 'config.toml'), 'utf-8'))).not.toThrow()
   })
+
+  it("keeps a managed home's approved entry when Codex's answer timed out", async () => {
+    useCodexHashes()
+    const service = new CodexHookService()
+    expect((await service.install()).state).toBe('installed')
+    const before = readFileSync(join(managedHome(), 'hooks.json'), 'utf-8')
+    reconcileInternals.resetForTesting()
+    reconcileInternals.setHashResolverForTesting(async () => ({
+      codexVersion: null,
+      hashes: null,
+      failure: 'Codex app-server timed out',
+      transient: true
+    }))
+
+    await service.install(undefined, 3_000)
+
+    expect(readFileSync(join(managedHome(), 'hooks.json'), 'utf-8')).toBe(before)
+    expect(
+      readHookTrustEntries(join(managedHome(), 'config.toml')).get(managedKey('stop', 0))
+        ?.trustedHash
+    ).toBe('sha256:codex-stop')
+  })
 })

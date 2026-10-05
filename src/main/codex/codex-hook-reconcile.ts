@@ -12,6 +12,7 @@ import {
 import { _internals as lookupInternals, lookupCodexHookHashes } from './codex-hook-hash-lookup'
 import { verifyRealHomeCodexHook } from './codex-hook-real-home-verify'
 import {
+  readRealHomeHooksFileProblem,
   reconcileRealHomeCodexHookEntries,
   removeRealHomeCodexHookForOptOut
 } from './codex-real-home-hook-install'
@@ -55,7 +56,10 @@ let spawnReconcileScheduled = false
 let lastAnswer: CodexHookTrustAnswer | null = null
 let verified: CodexHookReconcileVerdict['verified'] = null
 // Why derived each run: the lane closes only while the last reconcile could not approve ~/.codex.
-let realHomeProblem: string | null = null
+// A hooks-file problem is re-read when the gate is asked, so routing never lags a fix or a break.
+let realHomeProblem: { reason: string; fromHooksFile: boolean } | null = null
+// Why: a write whose check waited for Codex's session index is checked again once it is done.
+let verifyOwed = false
 let hashResolverForTesting: ((codexPath: string) => Promise<CodexHookTrustAnswer>) | null = null
 
 /** App start, main process only: the settings readers, and the first reconcile once PATH is hydrated. */
@@ -123,12 +127,18 @@ export function getCodexHookReconcileVerdict(): CodexHookReconcileVerdict | null
  * Codex with no hashes keeps the lane: the managed home could not approve either.
  */
 export function isCodexRealHomeLaneUsable(): boolean {
-  return realHomeProblem === null
+  return getCodexRealHomeLaneProblem() === null
 }
 
 /** Why ~/.codex is not used for launches right now; null when it is. */
 export function getCodexRealHomeLaneProblem(): string | null {
-  return realHomeProblem
+  if (!isEnabledNow()) {
+    return null
+  }
+  return (
+    readRealHomeHooksFileProblem() ??
+    (realHomeProblem && !realHomeProblem.fromHooksFile ? realHomeProblem.reason : null)
+  )
 }
 
 /**
@@ -177,6 +187,7 @@ async function runUntilSettled(): Promise<void> {
 async function reconcileOnce(convertOlderForms: boolean): Promise<boolean> {
   if (!isEnabledNow() || !config) {
     realHomeProblem = null
+    verifyOwed = false
     return false
   }
   const full = config.usesRealHome()
@@ -191,7 +202,7 @@ async function reconcileOnce(convertOlderForms: boolean): Promise<boolean> {
   const refusal = readCodexHookRealHomeRefusal(codexPath, fingerprint, answer.codexVersion)
   if (refusal) {
     // Why skip ~/.codex: writing and withdrawing there again changes nothing until this binary changes.
-    realHomeProblem = full ? refusal : null
+    realHomeProblem = { reason: refusal, fromHooksFile: false }
     return false
   }
   for (let attempt = 0; ; attempt += 1) {
@@ -202,24 +213,29 @@ async function reconcileOnce(convertOlderForms: boolean): Promise<boolean> {
       convertOlderForms,
       mode: full ? 'full' : 'approve-existing'
     })
-    if (full) {
-      realHomeProblem = result.outcome === 'unavailable' ? (result.reason ?? 'unavailable') : null
-    }
-    if (result.outcome !== 'written') {
+    // Why both modes: a managed selection's runs keep the gate true for a switch back.
+    realHomeProblem =
+      result.outcome === 'unavailable'
+        ? { reason: result.reason ?? 'unavailable', fromHooksFile: result.fromHooksFile === true }
+        : null
+    const recheck = result.outcome === 'unchanged' && verifyOwed
+    if (result.outcome !== 'written' && !recheck) {
       return result.converted
     }
     const verification = await verifyRealHomeCodexHook(codexPath, result)
+    // Why owed, not polled: the next reconcile checks again; any finished check drops it.
+    verifyOwed = verification === 'pending'
     if (verification === 'lost' && attempt === 0) {
       // Why once more: a concurrent writer dropped the approval Orca just wrote.
       continue
     }
-    verified = verification === 'lost' ? 'unverified' : verification
+    verified = verification === 'lost' || verification === 'pending' ? 'unverified' : verification
     if (verification === 'rejected') {
       // Why: an entry Codex does not accept is a review screen; ~/.codex gets none from this binary until it changes.
       const reason = `${describeCodexVersion(answer.codexVersion)} did not accept Orca's approval in ~/.codex`
       memoizeCodexHookRealHomeRefusal(codexPath, fingerprint, answer.codexVersion, reason)
       await removeRealHomeCodexHookForOptOut(answer.hashes)
-      realHomeProblem = full ? reason : null
+      realHomeProblem = { reason, fromHooksFile: false }
     }
     return result.converted
   }
@@ -281,6 +297,7 @@ export const _internals = {
     lastAnswer = null
     verified = null
     realHomeProblem = null
+    verifyOwed = false
     lookupInternals.resetForTesting()
     memoInternals.resetForTesting()
   },

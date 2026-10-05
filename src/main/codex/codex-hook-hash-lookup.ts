@@ -106,10 +106,15 @@ function rememberTransient(
   answer: CodexHookTrustAnswer,
   transient: boolean
 ): CodexHookTrustAnswer {
-  if (transient) {
-    transientFailures.set(fingerprint, { retryAt: Date.now() + TRANSIENT_FAILURE_RETRY_MS, answer })
+  if (!transient) {
+    return answer
   }
-  return answer
+  const remembered = answer.hashes ? answer : { ...answer, transient: true }
+  transientFailures.set(fingerprint, {
+    retryAt: Date.now() + TRANSIENT_FAILURE_RETRY_MS,
+    answer: remembered
+  })
+  return remembered
 }
 
 export const _internals = {
