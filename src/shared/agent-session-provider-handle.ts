@@ -9,10 +9,17 @@
  * Resumes extend the chain, forks start a new identity root, and the chain records which is which
  * so a fork is never presented as a resume. A creation the provider never saved can be superseded
  * by a new creation, which takes its place instead of standing beside it: the unsaved handle was
- * never a conversation to continue.
+ * never a conversation to continue. A saved conversation the provider could not restore is instead
+ * replaced: a new creation follows it and names it, so the chain still says what the agent forgot
+ * and when.
  */
 
 import type { AgentType } from './agent-status-types'
+import {
+  agentSessionProviderHandleReplacementsEqual,
+  isAgentSessionProviderHandleReplacement,
+  type AgentSessionProviderHandleReplacement
+} from './agent-session-provider-handle-replacement'
 import {
   agentSessionProviderHandleKey,
   agentSessionProviderHandleRoot,
@@ -24,6 +31,7 @@ import {
   type PersistedAgentSessionProviderHandle
 } from './agent-session-provider-handle-encoding'
 
+export type { AgentSessionProviderHandleReplacement } from './agent-session-provider-handle-replacement'
 export {
   agentSessionProviderHandleKey,
   agentSessionProviderHandleRoot,
@@ -80,6 +88,8 @@ export type AgentSessionProviderHandleLink = {
   forkedFromKey?: string
   /** Key of the unsaved creation this creation replaced. Only set when `origin` is `created`. */
   supersedesKey?: string
+  /** The saved conversation this creation took over from. Only set when `origin` is `created`. */
+  replaces?: AgentSessionProviderHandleReplacement
 }
 
 export type AgentSessionProviderHandleChain = readonly AgentSessionProviderHandleLink[]
@@ -142,7 +152,10 @@ export function isAgentSessionProviderHandleLink(
       ? isAgentSessionProviderHandleKeyFor(handle, link.forkedFromKey)
       : link.forkedFromKey === undefined) &&
     (link.supersedesKey === undefined ||
-      (link.origin === 'created' && isAgentSessionProviderHandleKeyFor(handle, link.supersedesKey)))
+      (link.origin === 'created' &&
+        isAgentSessionProviderHandleKeyFor(handle, link.supersedesKey))) &&
+    (link.replaces === undefined ||
+      (link.origin === 'created' && isAgentSessionProviderHandleReplacement(handle, link.replaces)))
   )
 }
 
@@ -184,7 +197,8 @@ export function appendAgentSessionProviderHandleLink(
   }
   const head = agentSessionProviderHandleChainHead(chain)
   if (!head) {
-    if (link.origin !== 'created' && link.origin !== 'adopted') {
+    // A replacement names the conversation before it, so it can never open a chain.
+    if ((link.origin !== 'created' && link.origin !== 'adopted') || link.replaces !== undefined) {
       throw new Error('agent_session_provider_handle_invalid')
     }
     return [link]
@@ -195,14 +209,30 @@ export function appendAgentSessionProviderHandleLink(
   if (link.mintedAtFence < head.mintedAtFence) {
     throw new Error('agent_session_provider_handle_stale_fence')
   }
-  if (link.origin === 'created' && link.supersedesKey !== undefined) {
-    return supersedeUnsavedCreation(head, link)
-  }
-  if (link.origin === 'created' || link.origin === 'adopted') {
-    throw new Error('agent_session_provider_handle_invalid')
-  }
   const sameRoot =
     agentSessionProviderHandleRoot(link.handle) === agentSessionProviderHandleRoot(head.handle)
+  if (link.origin === 'created') {
+    // A replacement's `supersedesKey` names a creation already gone from the chain; only one that
+    // names the head is a supersession now.
+    if (
+      link.supersedesKey !== undefined &&
+      (link.replaces === undefined ||
+        link.supersedesKey === agentSessionProviderHandleKey(head.handle))
+    ) {
+      return supersedeUnsavedCreation(chain, head, link)
+    }
+    if (
+      link.replaces === undefined ||
+      link.replaces.key !== agentSessionProviderHandleKey(head.handle) ||
+      sameRoot
+    ) {
+      throw new Error('agent_session_provider_handle_invalid')
+    }
+    return appendNewLink(chain, link)
+  }
+  if (link.origin === 'adopted') {
+    throw new Error('agent_session_provider_handle_invalid')
+  }
   if (link.origin === 'resumed' && !sameRoot) {
     // Why: a resume that lands on another identity root forked; recording it as a resume would
     // make Orca claim continuity the provider never gave.
@@ -224,6 +254,13 @@ export function appendAgentSessionProviderHandleLink(
     // Why: re-proving the same handle at the same fence is a retry, not a new identity.
     return [...chain]
   }
+  return appendNewLink(chain, link)
+}
+
+function appendNewLink(
+  chain: AgentSessionProviderHandleChain,
+  link: AgentSessionProviderHandleLink
+): AgentSessionProviderHandleLink[] {
   if (findAgentSessionProviderHandleLink(chain, link.linkId)) {
     // Why: the lease names its exact proof by link id; reuse would make that reference ambiguous.
     throw new Error('agent_session_provider_handle_invalid')
@@ -237,63 +274,113 @@ export function appendAgentSessionProviderHandleLink(
 }
 
 /**
- * Replace the chain's only link, a creation the provider proved it never saved, with the creation
- * that took its place. Every other head names a conversation the provider held (a resume or fork
- * proved it, an adoption imported it), so only a `created` head can be superseded, and only by a
- * new identity root that names it.
+ * Replace the head, a creation the provider proved it never saved, with the creation that took its
+ * place. Every other head names a conversation the provider held (a resume or fork proved it, an
+ * adoption imported it), so only a `created` head can be superseded, and only by a new identity
+ * root that names it. A superseded replacement passes on what it replaced: the conversation that
+ * was lost is still lost.
  */
 function supersedeUnsavedCreation(
+  chain: AgentSessionProviderHandleChain,
   head: AgentSessionProviderHandleLink,
   link: AgentSessionProviderHandleLink
 ): AgentSessionProviderHandleLink[] {
+  const earlier = chain.slice(0, -1)
   if (
     head.origin !== 'created' ||
     link.supersedesKey !== agentSessionProviderHandleKey(head.handle) ||
     agentSessionProviderHandleRoot(link.handle) === agentSessionProviderHandleRoot(head.handle) ||
+    (link.replaces !== undefined &&
+      !agentSessionProviderHandleReplacementsEqual(link.replaces, head.replaces)) ||
     link.linkId === head.linkId
   ) {
     throw new Error('agent_session_provider_handle_invalid')
   }
+  const next = head.replaces ? { ...link, replaces: head.replaces } : link
   // Why: in place, so a chat reopened unused across many restarts never grows toward the cap.
-  return [link]
+  return earlier.length === 0 ? [next] : appendAgentSessionProviderHandleLink(earlier, next)
 }
 
 // ─── Stored form ────────────────────────────────────────────────────────────
+//
+// Builds before replacements existed refuse a creation anywhere but first in a chain, and only a
+// row they can read survives a downgrade. So the row stores the chain from its latest replacement
+// on, and that replacement carries every earlier link inside `replaces.chain`, which they keep as
+// an unknown field. They resume the right conversation; only the earlier links are out of sight.
 
 /** A link as a record row stores it: only the handle has a stored form of its own. */
 export type PersistedAgentSessionProviderHandleLink = Omit<
   AgentSessionProviderHandleLink,
-  'handle'
+  'handle' | 'replaces'
 > & {
   handle: PersistedAgentSessionProviderHandle
+  replaces?: AgentSessionProviderHandleReplacement & {
+    /** The stored chain this replacement followed; the in-memory chain holds it in line. */
+    chain: PersistedAgentSessionProviderHandleLink[]
+  }
 }
 
 export function encodePersistedAgentSessionProviderHandleChain(
   chain: AgentSessionProviderHandleChain
 ): PersistedAgentSessionProviderHandleLink[] {
-  return chain.map((link) => ({
-    ...link,
-    handle: encodePersistedAgentSessionProviderHandle(link.handle)
-  }))
+  let start = chain.length - 1
+  while (start > 0 && chain[start]?.replaces === undefined) {
+    start -= 1
+  }
+  const stored = chain.slice(Math.max(start, 0)).map(encodePersistedLink)
+  const replaces = chain[start]?.replaces
+  if (start > 0 && replaces && stored[0]) {
+    const earlier = encodePersistedAgentSessionProviderHandleChain(chain.slice(0, start))
+    stored[0] = { ...stored[0], replaces: { ...replaces, chain: earlier } }
+  }
+  return stored
+}
+
+function encodePersistedLink(
+  link: AgentSessionProviderHandleLink
+): PersistedAgentSessionProviderHandleLink {
+  const { replaces: _inLine, ...stored } = link
+  return { ...stored, handle: encodePersistedAgentSessionProviderHandle(link.handle) }
 }
 
 /** The in-memory chain a stored one names, or null when any link or the chain itself is invalid. */
 export function decodePersistedAgentSessionProviderHandleChain(
   value: unknown
 ): AgentSessionProviderHandleLink[] | null {
-  if (!Array.isArray(value) || value.length > MAX_AGENT_SESSION_PROVIDER_HANDLE_LINKS) {
-    return null
-  }
   const decoded: unknown[] = []
-  for (const link of value) {
-    const handle =
-      typeof link === 'object' && link !== null && 'handle' in link
-        ? decodePersistedAgentSessionProviderHandle(link.handle)
-        : null
-    if (!handle) {
-      return null
-    }
-    decoded.push({ ...link, handle })
+  return decodePersistedLinks(value, decoded, 0) && isAgentSessionProviderHandleChain(decoded)
+    ? decoded
+    : null
+}
+
+function decodePersistedLinks(value: unknown, decoded: unknown[], depth: number): boolean {
+  if (!Array.isArray(value) || depth > MAX_AGENT_SESSION_PROVIDER_HANDLE_LINKS) {
+    return false
   }
-  return isAgentSessionProviderHandleChain(decoded) ? decoded : null
+  for (const [index, link] of value.entries()) {
+    if (typeof link !== 'object' || link === null || !('handle' in link)) {
+      return false
+    }
+    const handle = decodePersistedAgentSessionProviderHandle(link.handle)
+    const replaces: unknown = 'replaces' in link ? link.replaces : undefined
+    const nested =
+      typeof replaces === 'object' && replaces !== null && 'chain' in replaces ? replaces : null
+    // Only a row's first link carries earlier ones; a link inside it never does.
+    if (
+      !handle ||
+      (nested && (index > 0 || !decodePersistedLinks(nested.chain, decoded, depth + 1)))
+    ) {
+      return false
+    }
+    if (decoded.length >= MAX_AGENT_SESSION_PROVIDER_HANDLE_LINKS) {
+      return false
+    }
+    if (nested) {
+      const { chain: _chain, ...replacement } = nested
+      decoded.push({ ...link, handle, replaces: replacement })
+    } else {
+      decoded.push({ ...link, handle })
+    }
+  }
+  return true
 }

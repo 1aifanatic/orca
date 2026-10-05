@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { isAgentSessionHandleProvider } from './agent-session-provider-handle'
+import {
+  decodePersistedAgentSessionProviderHandleChain,
+  isAgentSessionHandleProvider,
+  MAX_AGENT_SESSION_PROVIDER_HANDLE_LINKS,
+  type AgentSessionProviderHandleLink
+} from './agent-session-provider-handle'
 import {
   agentSessionJournalProviderHandle,
   agentSessionProviderHandleFromWire,
@@ -11,7 +16,7 @@ import {
   decodePersistedAgentSessionProviderHandle,
   encodePersistedAgentSessionProviderHandle
 } from './agent-session-provider-handle-encoding'
-import { isPersistedAgentSessionRecord } from './agent-session-record'
+import { isPersistedAgentSessionRecord, type AgentSessionRecord } from './agent-session-record'
 import {
   decodePersistedAgentSessionRecord,
   encodeAgentSessionRecord
@@ -314,5 +319,101 @@ describe('the wire and journal forms', () => {
         providerHandle: { transport: 'acp', agent: 'grok', nativeId: 's' }
       })
     ).toEqual({ kind: 'opaque', agent: 'grok', value: 's' })
+  })
+})
+
+describe('a chat whose saved conversation could not be restored', () => {
+  const lostKey = (threadId: string) => agentSessionProviderHandleKey(codexProviderHandle(threadId))
+  const link = (
+    linkId: string,
+    threadId: string,
+    fence: number,
+    extra: Partial<AgentSessionProviderHandleLink> = {}
+  ): AgentSessionProviderHandleLink => ({
+    linkId,
+    handle: codexProviderHandle(threadId),
+    origin: 'created',
+    mintedAtFence: fence,
+    observedAt: fence * 1_000,
+    ...extra
+  })
+  // Opened, reopened, lost and replaced twice, and the second replacement reopened.
+  const chain: AgentSessionProviderHandleLink[] = [
+    link('l1', 'thread-1', 1),
+    link('l2', 'thread-1', 2, { origin: 'resumed' }),
+    link('l3', 'thread-2', 3, {
+      replaces: { key: lostKey('thread-1'), reason: 'restore-failed', replacedAt: 3_000 }
+    }),
+    link('l4', 'thread-3', 4, {
+      replaces: { key: lostKey('thread-2'), reason: 'restore-failed', replacedAt: 4_000 }
+    }),
+    link('l5', 'thread-3', 7, { origin: 'resumed' })
+  ]
+  const record: AgentSessionRecord = {
+    ...agentSessionRecordFixture(agentSessionLeaseFixture({ provenHandleLinkId: 'l5' })),
+    provider: 'codex',
+    accountHome: { variable: 'CODEX_HOME', path: '/home/user/.codex' },
+    providerHandleChain: chain
+  }
+
+  it('stores the chain from the latest replacement on, with each earlier one inside it', () => {
+    const stored = JSON.parse(JSON.stringify(encodeAgentSessionRecord(record)))
+    const ids = (links: { linkId: string }[]) => links.map(({ linkId }) => linkId)
+    expect(ids(stored.providerHandleChain)).toEqual(['l4', 'l5'])
+    const second = stored.providerHandleChain[0].replaces
+    expect(second).toMatchObject({ key: lostKey('thread-2'), reason: 'restore-failed' })
+    expect(ids(second.chain)).toEqual(['l3'])
+    expect(ids(second.chain[0].replaces.chain)).toEqual(['l1', 'l2'])
+    expect(stored.providerHandleChain[1].replaces).toBeUndefined()
+    // Every stored handle keeps the typed form older builds read.
+    expect(second.chain[0].replaces.chain[0].handle).toEqual({
+      provider: 'codex',
+      threadId: 'thread-1'
+    })
+
+    expect(isPersistedAgentSessionRecord(stored)).toBe(true)
+    if (!isPersistedAgentSessionRecord(stored)) {
+      return
+    }
+    expect(decodePersistedAgentSessionRecord(stored).record).toEqual(record)
+  })
+
+  it('keeps a row with no replacement exactly as before', () => {
+    const plain = { ...record, providerHandleChain: chain.slice(0, 2) }
+    plain.lease = { ...plain.lease, provenHandleLinkId: 'l2', runtimeFence: 2 }
+    expect(encodeAgentSessionRecord(plain).providerHandleChain).toEqual(
+      chain.slice(0, 2).map((entry) => ({
+        ...entry,
+        handle: encodePersistedAgentSessionProviderHandle(entry.handle)
+      }))
+    )
+  })
+
+  it('refuses a row whose earlier links are anywhere but its first link, or missing', () => {
+    const stored = JSON.parse(JSON.stringify(encodeAgentSessionRecord(record)))
+    const misplaced = structuredClone(stored)
+    misplaced.providerHandleChain[1].replaces = misplaced.providerHandleChain[0].replaces
+    delete misplaced.providerHandleChain[0].replaces
+    expect(isPersistedAgentSessionRecord(misplaced)).toBe(false)
+
+    const orphaned = structuredClone(stored)
+    delete orphaned.providerHandleChain[0].replaces.chain
+    expect(isPersistedAgentSessionRecord(orphaned)).toBe(false)
+
+    // The cap counts every link, the earlier ones inside the row included.
+    const resumes = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        ...stored.providerHandleChain[1],
+        linkId: `r${index}`,
+        mintedAtFence: 8 + index
+      }))
+    const room = MAX_AGENT_SESSION_PROVIDER_HANDLE_LINKS - chain.length
+    const full = [...stored.providerHandleChain, ...resumes(room)]
+    expect(decodePersistedAgentSessionProviderHandleChain(full)).toHaveLength(
+      MAX_AGENT_SESSION_PROVIDER_HANDLE_LINKS
+    )
+    const overCap = [...stored.providerHandleChain, ...resumes(room + 1)]
+    expect(overCap.length).toBeLessThan(MAX_AGENT_SESSION_PROVIDER_HANDLE_LINKS)
+    expect(decodePersistedAgentSessionProviderHandleChain(overCap)).toBeNull()
   })
 })
