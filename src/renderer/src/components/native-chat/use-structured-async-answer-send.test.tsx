@@ -192,6 +192,26 @@ describe('structured async answers', () => {
     await waitFor(() => expect(settled()).toBe('accepted'))
   })
 
+  it('ends as unknown when an owner change puts the answer back in the queue', async () => {
+    hangSends()
+    const { result, rerender } = render({ submissions: [], fence: 1 })
+    const settled = answer(result)
+    await waitFor(() => expect(result.current.outbox.outbox[0]?.state).toBe('dispatching'))
+    rerender({ submissions: [], fence: 2 })
+    await waitFor(() => expect(settled()).toBe('unknown'))
+  })
+
+  it('ends as rejected when the dispatch is refused', async () => {
+    mocks.call.mockImplementation(async (_target, method) =>
+      method === 'agentSession.send'
+        ? { ok: false, error: { code: 'invalid_params', message: 'refused' } }
+        : null
+    )
+    const { result } = render({ submissions: [], fence: 1 })
+    const settled = answer(result)
+    await waitFor(() => expect(settled()).toBe('rejected'))
+  })
+
   it('ends as unknown when the pane goes away mid-flight', async () => {
     hangSends()
     const { result, unmount } = render({ submissions: [], fence: null })

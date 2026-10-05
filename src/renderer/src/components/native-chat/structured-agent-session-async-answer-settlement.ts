@@ -1,7 +1,8 @@
 // How a structured async-question answer's outbox entry ended, by its clientMessageId. The
 // journal and the outbox answer most dispositions; the moves that drop an entry with no row
 // to read (a send answered accepted or queued, a Stop's withdrawal, the host queue taking it)
-// record their outcome here first, so no disposition leaves the card's Send disabled.
+// or put it back in the queue (an owner change) record their outcome here first, so no
+// disposition leaves the card's Send disabled.
 
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import { isQueuedAgentJournalSubmission } from '../../../../shared/agent-session-queued-submission'
@@ -25,7 +26,31 @@ export function recordDroppedStructuredAsyncAnswers(
       recorded.set(entry.clientMessageId, outcome)
     }
   }
-  // Bounded: an answer whose card is gone never reads its record.
+  boundRecorded()
+}
+
+/** Records async answers an owner change sent back to the queue: whether the first send
+ *  landed is unknown, so the card stops waiting even if the resend never goes out. */
+export function recordInterruptedStructuredAsyncAnswers(
+  before: readonly StructuredAgentSessionOutboxEntry[],
+  after: readonly StructuredAgentSessionOutboxEntry[]
+): void {
+  const prior = new Map(before.map((entry) => [entry.clientMessageId, entry]))
+  for (const entry of after) {
+    const was = prior.get(entry.clientMessageId)
+    if (
+      isStructuredAgentSessionAsyncAnswer(entry) &&
+      was?.state === 'dispatching' &&
+      entry.state === 'queued'
+    ) {
+      recorded.set(entry.clientMessageId, 'unknown')
+    }
+  }
+  boundRecorded()
+}
+
+// Bounded: an answer whose card is gone never reads its record.
+function boundRecorded(): void {
   for (const id of recorded.keys()) {
     if (recorded.size <= MAX_RECORDED) {
       break
@@ -77,7 +102,11 @@ export function structuredAsyncAnswerOutcome(
     if (entry.state === 'rejected' || (entry.state === 'queued' && entry.lastFailure)) {
       return 'rejected'
     }
-    return entry.state === 'unconfirmed' ? 'unknown' : null
+    if (entry.state === 'unconfirmed') {
+      return 'unknown'
+    }
+    // An owner change's requeue, even if the entry has already gone out again.
+    return recorded.get(clientMessageId) ?? null
   }
   return recorded.get(clientMessageId) ?? null
 }

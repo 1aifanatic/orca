@@ -1,14 +1,13 @@
 import { useCallback, useReducer } from 'react'
-import {
-  buildNativeChatAsyncQuestionReply,
-  type NativeChatAsyncAnswerOutcome,
-  type NativeChatAsyncQuestionEdit,
-  type NativeChatAsyncQuestionEdits
+import type {
+  NativeChatAsyncQuestionEdit,
+  NativeChatAsyncQuestionEdits
 } from '../../../src/shared/native-chat-async-question-answers'
 import {
   createNativeChatAsyncQuestionCardState,
   nativeChatAsyncQuestionCardView,
-  reduceNativeChatAsyncQuestionCard
+  reduceNativeChatAsyncQuestionCard,
+  submitNativeChatAsyncQuestionCard
 } from '../../../src/shared/native-chat-async-question-card-state'
 import type {
   NativeChatAsyncQuestion,
@@ -55,18 +54,10 @@ export function useMobileNativeChatAsyncQuestions(args: {
     []
   )
   const dismiss = useCallback((key: string) => dispatch({ type: 'dismiss', key }), [])
-  const submit = (): void => {
-    const reply = canSend ? buildNativeChatAsyncQuestionReply(open, state.edits) : null
-    if (!reply) {
-      return
-    }
-    dispatch({ type: 'sending' })
-    const answeredKeys = Object.keys(reply.answers)
-    const settle = (outcome: NativeChatAsyncAnswerOutcome): void =>
-      dispatch({ type: 'settled', scopeKey, outcome, answeredKeys })
-    const answer = structured ? answerStructured : answerTerminal
-    void answer(reply.text).then(settle, () => settle('unknown'))
-  }
+  const submit = (): void =>
+    submitNativeChatAsyncQuestionCard(state, dispatch, (text) =>
+      structured ? answerStructured(text) : answerTerminal(text)
+    )
   return {
     open,
     omittedCount,

@@ -1,14 +1,14 @@
 import { useCallback, useReducer } from 'react'
-import {
-  buildNativeChatAsyncQuestionReply,
-  type NativeChatAsyncAnswerOutcome,
-  type NativeChatAsyncQuestionEdit,
-  type NativeChatAsyncQuestionEdits
+import type {
+  NativeChatAsyncAnswerOutcome,
+  NativeChatAsyncQuestionEdit,
+  NativeChatAsyncQuestionEdits
 } from '../../../../shared/native-chat-async-question-answers'
 import {
   createNativeChatAsyncQuestionCardState,
   nativeChatAsyncQuestionCardView,
-  reduceNativeChatAsyncQuestionCard
+  reduceNativeChatAsyncQuestionCard,
+  submitNativeChatAsyncQuestionCard
 } from '../../../../shared/native-chat-async-question-card-state'
 import type {
   NativeChatAsyncQuestion,
@@ -60,17 +60,7 @@ export function useNativeChatAsyncQuestions(args: {
     []
   )
   const dismiss = useCallback((key: string) => dispatch({ type: 'dismiss', key }), [])
-  const submit = (): void => {
-    const reply = canSend ? buildNativeChatAsyncQuestionReply(open, state.edits) : null
-    if (!reply) {
-      return
-    }
-    dispatch({ type: 'sending' })
-    const answeredKeys = Object.keys(reply.answers)
-    const settle = (outcome: NativeChatAsyncAnswerOutcome): void =>
-      dispatch({ type: 'settled', scopeKey, outcome, answeredKeys })
-    void send(reply.text, reply.answers).then(settle, () => settle('unknown'))
-  }
+  const submit = (): void => submitNativeChatAsyncQuestionCard(state, dispatch, send)
 
   return {
     open,
