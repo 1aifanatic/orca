@@ -33,6 +33,7 @@ vi.mock('react-native', async () => {
 vi.mock('expo-clipboard', () => ({ setStringAsync: vi.fn() }))
 vi.mock('lucide-react-native', () => ({
   ArrowUp: 'ArrowUp',
+  Brain: 'Brain',
   ChevronDown: 'ChevronDown',
   Copy: 'Copy',
   SquareChevronRight: 'SquareChevronRight',
@@ -350,6 +351,11 @@ describe('MobileNativeChatMessage', () => {
       expect(toggleOf(tree).props.accessibilityLabel).toBe('Reasoning: Thought for 3s')
       expect(toggleOf(tree).props.hitSlop).toBe(6)
       expect(markdownIn(tree)).toHaveLength(0)
+    })
+
+    it('leads its headline with the brain, as desktop does', () => {
+      const [first] = toggleOf(render(reasoning())).children
+      expect(typeof first === 'string' ? first : first?.type).toBe('Brain')
     })
 
     it('mounts its text once opened', () => {

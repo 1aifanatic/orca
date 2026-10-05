@@ -35,12 +35,14 @@ export const styles = StyleSheet.create({
     lineHeight: TEXT_SIZE + 6
   },
   reasoning: {
-    opacity: 0.7
+    opacity: 0.7,
+    // Starts under the headline, past the 15 pt brain and its gap.
+    paddingLeft: 15 + spacing.sm
   },
   reasoningToggle: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: spacing.sm,
     // With the toggle's 6 pt hitSlop above and below, a 44 pt touch target.
     minHeight: 32
   },

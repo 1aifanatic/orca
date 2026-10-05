@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import { NativeChatReasoningRow } from './NativeChatReasoningRow'
 import { MessageRow } from './NativeChatMessageRow'
+import { NativeChatToolRunIcon } from './NativeChatToolIcon'
 
 vi.mock('@/components/sidebar/CommentMarkdown', () => ({
   default: ({ content }: { content: string }) => <div data-testid="markdown">{content}</div>
@@ -33,6 +34,43 @@ describe('reasoning disclosure', () => {
     // The same category glyph slot a tool row leads with, hidden from the accessible name.
     const glyph = screen.getByRole('button').querySelector('svg.lucide-brain')
     expect(glyph).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('leads with the shared vocabulary brain, drawn exactly as a tool row draws a glyph', () => {
+    const { container } = render(<NativeChatToolRunIcon iconName="brain" />)
+    const shared = container.innerHTML
+    cleanup()
+    render(
+      <NativeChatReasoningRow
+        message={{ role: 'reasoning', timestamp: STARTED, state: 'completed' }}
+        markdown="Inspecting"
+      />
+    )
+    expect(
+      screen.getByRole('button').querySelector('svg.lucide-brain')?.parentElement?.outerHTML
+    ).toBe(shared)
+  })
+
+  it('hides its chevron only where hover can reveal it, and shows it on keyboard focus and once open', () => {
+    render(
+      <NativeChatReasoningRow
+        message={{ role: 'reasoning', timestamp: STARTED, state: 'completed' }}
+        markdown="Inspecting"
+      />
+    )
+    // An SVG's `className` is an `SVGAnimatedString`, so read the attribute.
+    const chevron = screen.getByRole('button').querySelector('svg.lucide-chevron-right')
+    const classes = (chevron?.getAttribute('class') ?? '').split(' ')
+    // Touch has no hover, so an ungated `opacity-0` would hide it there for good.
+    expect(classes).not.toContain('opacity-0')
+    expect(classes).toEqual(
+      expect.arrayContaining([
+        'can-hover:opacity-0',
+        'group-hover/reasoning:opacity-100',
+        'group-focus-visible/reasoning:opacity-100',
+        'group-data-[state=open]/reasoning:opacity-100'
+      ])
+    )
   })
 
   it('expands through a native button and keeps disclosure state through revisions', () => {

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Pressable, Text, View } from 'react-native'
-import { ChevronRight } from 'lucide-react-native'
+import { Brain, ChevronRight } from 'lucide-react-native'
 import {
   nativeChatReasoningHeadline,
   nativeChatReasoningHeadlineText
@@ -37,6 +37,7 @@ export function MobileNativeChatReasoningRow({
         // Desktop's screen-reader prefix: the headline alone does not say what was thought.
         accessibilityLabel={headline === label ? label : `${label}: ${headline}`}
       >
+        <Brain size={15} color={colors.textMuted} strokeWidth={2} />
         <Text style={styles.reasoningHeadline} numberOfLines={1}>
           {headline}
         </Text>

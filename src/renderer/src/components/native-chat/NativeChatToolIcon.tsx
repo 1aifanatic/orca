@@ -1,5 +1,6 @@
 import {
   Bot,
+  Brain,
   Eye,
   Folder,
   Globe,
@@ -31,12 +32,13 @@ const NATIVE_CHAT_TOOL_GLYPHS: Record<NativeChatToolIconName, LucideIcon> = {
   bot: Bot,
   'list-checks': ListChecks,
   wrench: Wrench,
-  'message-square-more': MessageSquareMore
+  'message-square-more': MessageSquareMore,
+  brain: Brain
 }
 
 /** The fixed 16px slot with a 14px glyph, which keeps every row left-aligned
  *  including rows whose category this vocabulary doesn't model. */
-export function NativeChatGlyphSlot({
+function NativeChatGlyphSlot({
   glyph: Glyph,
   className
 }: {

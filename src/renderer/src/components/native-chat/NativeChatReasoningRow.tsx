@@ -1,4 +1,4 @@
-import { Brain, ChevronRight } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import CommentMarkdown, {
   type CommentMarkdownLinkClickHandler
 } from '@/components/sidebar/CommentMarkdown'
@@ -11,7 +11,7 @@ import {
   type NativeChatReasoningHeadline
 } from '../../../../shared/native-chat-reasoning-row'
 import { NativeChatCodeBlock } from './NativeChatCodeBlock'
-import { NativeChatGlyphSlot } from './NativeChatToolIcon'
+import { NativeChatToolRunIcon } from './NativeChatToolIcon'
 
 function translatedHeadline(headline: NativeChatReasoningHeadline): string {
   if (headline.kind === 'thoughtFor') {
@@ -54,18 +54,18 @@ export function NativeChatReasoningRow({
             className="group/reasoning flex min-h-6 w-full min-w-0 items-center gap-1.5 rounded-md py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
           >
             {headline === label ? null : <span className="sr-only">{label}: </span>}
-            <NativeChatGlyphSlot glyph={Brain} />
+            <NativeChatToolRunIcon iconName="brain" />
             <span className="min-w-0 truncate leading-relaxed transition-colors group-hover/reasoning:text-foreground/80">
               {headline}
             </span>
             <ChevronRight
               aria-hidden
-              className="size-3.5 shrink-0 opacity-0 transition-all group-hover/reasoning:opacity-100 group-data-[state=open]/reasoning:rotate-90 group-data-[state=open]/reasoning:opacity-100 motion-reduce:transition-none"
+              className="size-3.5 shrink-0 transition-all can-hover:opacity-0 group-hover/reasoning:opacity-100 group-focus-visible/reasoning:opacity-100 group-data-[state=open]/reasoning:rotate-90 group-data-[state=open]/reasoning:opacity-100 motion-reduce:transition-none"
             />
           </button>
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <div className="mt-1 pl-4 italic">
+          <div className="mt-1 pl-5.5 italic">
             <CommentMarkdown
               content={markdown}
               variant="document"
