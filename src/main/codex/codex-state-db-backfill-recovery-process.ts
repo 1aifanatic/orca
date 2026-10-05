@@ -8,6 +8,8 @@ import { createProviderSpawnSpec } from './codex-app-server-posix-supervisor'
 import type { CodexAppServerSpawn } from './codex-app-server-process-tree-kill'
 import { stopSupervisedChildProcess } from './supervised-child-process-stop'
 
+const BACKFILL_RECOVERY_KILL_SITE = 'codex-state-db-backfill-recovery'
+
 export type CodexBackfillRecoveryProcess = { child: ChildProcessHandle; supervised: boolean }
 
 /** Starts the read-only app-server whose presence lets Codex finish its own backfill. */
@@ -57,7 +59,7 @@ export async function stopCodexBackfillRecoveryProcess(
 ): Promise<void> {
   if (supervised) {
     // A session supervisor turns stdin end into its group stop, as a Codex connection close does.
-    await stopSupervisedChildProcess(child, () => child.stdin?.end())
+    await stopSupervisedChildProcess(child, () => child.stdin?.end(), BACKFILL_RECOVERY_KILL_SITE)
     return
   }
   await terminateCodexProbeChild(child)

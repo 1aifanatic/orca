@@ -176,7 +176,9 @@ describe('OpenCode model probe termination evidence', () => {
     await vi.advanceTimersByTimeAsync(1)
 
     expect(await probe).toMatchObject({ primaryAgent: 'build' })
-    expect(terminateCodexAppServerProcessTree).toHaveBeenCalledWith(child)
+    expect(terminateCodexAppServerProcessTree).toHaveBeenCalledWith(child, {
+      site: 'opencode-launch-model-preflight'
+    })
   })
 
   it('never forces a POSIX supervisor whose root exited without closing its pipes', async () => {

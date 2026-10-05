@@ -67,7 +67,9 @@ describe('stopCodexBackfillRecoveryProcess for a supervised app-server', () => {
     await vi.advanceTimersByTimeAsync(1)
     await stopped
 
-    expect(terminateCodexAppServerProcessTree).toHaveBeenCalledWith(child)
+    expect(terminateCodexAppServerProcessTree).toHaveBeenCalledWith(child, {
+      site: 'codex-state-db-backfill-recovery'
+    })
     // Its own SIGKILL would kill the supervisor mid-ladder and orphan the app-server's group.
     expect(child.kill).not.toHaveBeenCalledWith('SIGKILL')
   })

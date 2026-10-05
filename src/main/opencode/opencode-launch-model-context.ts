@@ -16,6 +16,8 @@ import {
 } from '../codex/codex-app-server-posix-supervisor'
 import { terminateCodexAppServerProcessTree } from '../codex/codex-app-server-process-teardown'
 
+const OPENCODE_PREFLIGHT_KILL_SITE = 'opencode-launch-model-preflight'
+
 const model = z.object({ id: z.string(), providerID: z.string() })
 const availableModel = model.extend({ enabled: z.boolean() })
 const agent = z.object({
@@ -219,7 +221,11 @@ export async function probeOpenCodeLaunchModelContext(options: {
         exited: () => childClosed,
         force: async () => {
           // A reaped root's PID can be reused; only a live supervisor's tree is ours to force.
-          forcedStop = !rootExited && (await terminateCodexAppServerProcessTree(child))
+          forcedStop =
+            !rootExited &&
+            (await terminateCodexAppServerProcessTree(child, {
+              site: OPENCODE_PREFLIGHT_KILL_SITE
+            }))
         },
         supervised: true
       })
