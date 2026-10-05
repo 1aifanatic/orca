@@ -46,12 +46,12 @@ export function terminalAgentJournalBody(
  *  settler's own verdict; a row still running, and work outside any turn, take the settler's `end`.
  *  Every settler that ends running calls asks this, so a call never disagrees with its turn. */
 export function runningCallEnd(
-  turnScope: AgentJournalTurnScope,
+  turnScope: AgentJournalTurnScope | undefined,
   itemBody: (itemId: string) => AgentJournalItemBody | null | undefined,
   end: AgentJournalRunningCallEnd
 ): AgentJournalRunningCallEnd {
   const row =
-    turnScope.kind === 'turn'
+    turnScope?.kind === 'turn'
       ? readAgentJournalTurn(itemBody(turnScope.turnItemId) ?? undefined)
       : null
   return row && row.state !== 'running' ? row.state : end

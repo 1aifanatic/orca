@@ -182,14 +182,8 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
     for (const item of items) {
       const identity = parseAgentJournalItemKey(item.itemId)
       // Ended as its turn is: a proven death cuts a running call short.
-      const body = terminalAgentJournalBody(
-        item.body,
-        runningCallEnd(
-          item.turnScope ?? AGENT_JOURNAL_THREAD_SCOPE,
-          (turnItemId) => bodies.get(turnItemId),
-          input.verdict.state
-        )
-      )
+      const end = runningCallEnd(item.turnScope, (id) => bodies.get(id), input.verdict.state)
+      const body = terminalAgentJournalBody(item.body, end)
       if (identity && body) {
         mutations.push({
           kind: 'item',
@@ -251,14 +245,8 @@ export async function settleStaleStructuredAgentSessionState(input: {
     const identity = parseAgentJournalItemKey(item.itemId)
     // A turn already settled (a person's Stop) ends its calls as it ended; only a turn still running
     // leaves them to the evidence.
-    const body = terminalAgentJournalBody(
-      item.body,
-      runningCallEnd(
-        item.turnScope ?? AGENT_JOURNAL_THREAD_SCOPE,
-        (turnItemId) => journal.itemBody(turnItemId),
-        verdictFor(item).state
-      )
-    )
+    const end = runningCallEnd(item.turnScope, (id) => journal.itemBody(id), verdictFor(item).state)
+    const body = terminalAgentJournalBody(item.body, end)
     if (identity && body) {
       mutations.push({
         kind: 'item',
