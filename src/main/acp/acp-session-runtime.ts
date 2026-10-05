@@ -52,8 +52,9 @@ export type AcpSessionRuntimeOptions = {
   peer?: AcpPeerOptions
   cancelTimeoutMs?: number
   onPermission?: AcpPermissionHandler
-  /** Agent requests other than permissions. When `context.signal` aborts on cancel, answer with
-   *  the agent's own cancelled reply or throw right away; a handler still silent gets -32800. */
+  /** Agent requests other than permissions. The handler owns its request: once `context.signal`
+   *  aborts, send the agent's own cancelled reply, finish an answer already in progress, or throw
+   *  (-32800). The runtime never answers for it; a request left unanswered ends at `close()`. */
   onRequest?: (method: string, params: unknown, context: AcpRequestContext) => unknown
   /** Agent notifications other than `session/update` (protocol extensions), delivered
    *  synchronously in arrival order with the `subscribe` events. */

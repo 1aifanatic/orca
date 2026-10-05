@@ -33,8 +33,8 @@ const envelopeSchema = z.looseObject({
 export type AcpJsonRpcMessage = z.infer<typeof envelopeSchema>
 export type AcpRequestContext = { id: string | number | null; signal: AbortSignal }
 export type AcpPeerHandlers = {
-  // Void means handled; unsupported methods must throw AcpRpcError(-32601). On a cancel abort,
-  // answer (e.g. the protocol's own cancelled reply) or throw at once: silence is answered -32800.
+  // Void means handled; unsupported methods must throw AcpRpcError(-32601). The handler owns its
+  // request: once the signal aborts it still answers, or throws (-32800); unanswered ends at close().
   onRequest?: (method: string, params: unknown, context: AcpRequestContext) => unknown
   onNotification?: (method: string, params: unknown) => void
   onDiagnostic?: (message: string) => void

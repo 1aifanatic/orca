@@ -28,25 +28,14 @@ export class AcpIncomingRequests {
     this.open.clear()
   }
 
-  // Each handler answers on abort (a permission answers `cancelled`); -32800 if it rejects, or if
-  // it is still silent once the abort has run through (the next event-loop turn).
+  // Each handler answers its own request (a permission answers `cancelled`); -32800 only if it
+  // throws. The runtime never answers for a live handler: an answer still being saved must win.
   cancel(): void {
-    const cancelled = [...this.open].filter(([, request]) => !request.cancelled)
-    for (const [, request] of cancelled) {
-      request.cancelled = true
-      request.controller.abort(new AcpRpcError(-32800, 'Request cancelled'))
-    }
-    if (cancelled.length > 0) {
-      setImmediate(() => {
-        for (const [id, request] of cancelled) {
-          if (this.open.get(id) === request) {
-            this.open.delete(id)
-            request.closed = true
-            request.abandon()
-            void this.sendError(id, new AcpRpcError(-32800, 'Request cancelled'))
-          }
-        }
-      })
+    for (const request of this.open.values()) {
+      if (!request.cancelled) {
+        request.cancelled = true
+        request.controller.abort(new AcpRpcError(-32800, 'Request cancelled'))
+      }
     }
   }
 
