@@ -73,7 +73,7 @@ describe('raw markdown <br> line breaks in the rich editor', () => {
       expect(rendered.textContent).not.toContain('<br')
 
       editor.commands.setContent(rendered.innerHTML)
-      const output = (editor as Editor & { getMarkdown(): string }).getMarkdown()
+      const output = editor.getMarkdown()
       expect(output.match(/<br\s*\/?>/g)).toEqual(['<br/>', '<br/>', '<br>'])
       // The break must not silently collapse into a space on serialization.
       expect(output).not.toContain('`normal` `defect`')
@@ -90,9 +90,7 @@ describe('raw markdown <br> line breaks in the rich editor', () => {
 
       editor.commands.setContent(rendered.innerHTML)
 
-      expect((editor as Editor & { getMarkdown(): string }).getMarkdown()).toContain(
-        'Before<BR />after'
-      )
+      expect(editor.getMarkdown()).toContain('Before<BR />after')
     } finally {
       editor.destroy()
     }
@@ -108,7 +106,7 @@ describe('raw markdown <br> line breaks in the rich editor', () => {
       breakNode!.setAttribute('data-raw-markdown-html-value', '<script>alert(1)</script>')
 
       editor.commands.setContent(rendered.innerHTML)
-      const output = (editor as Editor & { getMarkdown(): string }).getMarkdown()
+      const output = editor.getMarkdown()
       expect(output).toContain('Before<br>after')
       expect(output).not.toContain('<script>')
     } finally {

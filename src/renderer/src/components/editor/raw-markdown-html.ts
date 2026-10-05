@@ -1,6 +1,7 @@
 import { createMarkdownTokenizerStart } from './markdown-tokenizer-start'
 import { Node } from '@tiptap/core'
 import {
+  isHtmlLineBreak,
   rawMarkdownSourceParseRules,
   renderRawMarkdownSourceHtml
 } from './raw-markdown-html-source-dom'
@@ -152,7 +153,7 @@ export function encodeRawMarkdownHtmlForRichEditor(
       }
 
       const blockHtml = matchBlockHtml(normalizedContent, index)
-      if (blockHtml) {
+      if (blockHtml && !(isHtmlLineBreak(blockHtml) && /^ {0,3}</.test(blockHtml))) {
         result += transport.create('block-html', blockHtml)
         index += blockHtml.length
         continue
