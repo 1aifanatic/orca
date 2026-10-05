@@ -1,4 +1,5 @@
 import { waitForProcessExitUntil } from './codex-process-exit-deadline'
+import { PROVIDER_SPAWN_FAILURE_MARKER } from './provider-spawn-failure-report'
 
 /** Time the provider gets to exit on its own after its stdin ends, before SIGTERM. */
 export const PROVIDER_STDIN_END_GRACE_MS = 1_000
@@ -32,15 +33,27 @@ const ownerGone = () => process.ppid !== spec.ownerPid
 for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(signal, () => stopProviderGroup(signal))
 // Orca can die before this runs; spawning then would start a provider nothing watches.
 if (ownerGone()) process.exit(1)
-const childEnv = { ...process.env }
+const childEnv = { ...process.env, ...spec.nodeEnv }
 delete childEnv.ORCA_PROVIDER_SUPERVISOR_SPEC
 delete childEnv.ELECTRON_RUN_AS_NODE
-const child = spawn(providerCommand, providerArgs, {
-  cwd: spec.cwd,
-  env: childEnv,
-  stdio: ['pipe', 'pipe', 'pipe'],
-  detached: true
-})
+// The owner sees only this pid's exit; this marked last stderr line says the provider never started.
+const exitWithSpawnFailure = (error, thrown) => {
+  const report = { thrown, code: (error && error.code) || 'UNKNOWN', message: String(error && error.message) }
+  try { require('node:fs').writeSync(2, ${JSON.stringify(PROVIDER_SPAWN_FAILURE_MARKER)} + JSON.stringify(report) + '\\n') } catch {}
+  process.exit(127)
+}
+let child
+try {
+  child = spawn(providerCommand, providerArgs, {
+    cwd: spec.cwd,
+    env: childEnv,
+    stdio: ['pipe', 'pipe', 'pipe'],
+    detached: true
+  })
+} catch (error) {
+  // Node throws most spawn failures (ENOEXEC, ENOTDIR, ...) rather than emitting them.
+  exitWithSpawnFailure(error, true)
+}
 let timer
 let ownerShutdownTimer
 let settling = false
@@ -101,12 +114,15 @@ if (spec.lifetime !== 'one-shot') {
   process.stdin.once('end', scheduleOwnerShutdown)
   process.stdin.once('close', scheduleOwnerShutdown)
 }
-process.stdin.pipe(child.stdin)
-child.stdout.pipe(process.stdout)
-child.stderr.pipe(process.stderr)
-// A dead owner's stdout pipe raises EPIPE; unhandled, it would end this pid before the group.
-for (const stream of [process.stdin, process.stdout, process.stderr, child.stdin, child.stdout, child.stderr]) {
-  stream.on('error', () => {})
+// A spawn that failed outright (EMFILE, ENFILE) has no pid and no pipes; its 'error' reports it.
+if (child.pid) {
+  process.stdin.pipe(child.stdin)
+  child.stdout.pipe(process.stdout)
+  child.stderr.pipe(process.stderr)
+  // A dead owner's stdout pipe raises EPIPE; unhandled, it would end this pid before the group.
+  for (const stream of [process.stdin, process.stdout, process.stderr, child.stdin, child.stdout, child.stderr]) {
+    stream.on('error', () => {})
+  }
 }
 // Exit can land before the provider's last output is relayed; a one-shot's answer is that output.
 const drainProviderOutput = () => {
@@ -134,8 +150,7 @@ timer = setInterval(() => {
 timer.unref()
 child.once('error', (error) => {
   clearInterval(timer)
-  // The owner sees only this pid's exit; stderr is where a missing provider binary can say so.
-  process.stderr.write(String(error && error.message) + '\\n', () => process.exit(127))
+  exitWithSpawnFailure(error, false)
 })
 child.once('exit', (code, signal) => {
   void reapProviderExit(code, signal)
@@ -147,19 +162,6 @@ child.once('exit', (code, signal) => {
  * `one-shot`: stdin end only completes the request; the provider runs until it exits or is stopped.
  */
 export type ProviderSupervisorLifetime = 'session' | 'one-shot'
-
-/**
- * The error a direct spawn would have emitted, from a supervisor that could not start its provider
- * (it relays Node's spawn error line and exits 127); null for any other exit.
- */
-export function supervisedProviderSpawnError(
-  code: number | null,
-  stderr: string
-): NodeJS.ErrnoException | null {
-  const line = stderr.trim()
-  const errno = code === 127 ? /^spawn .+ (E[A-Z0-9]+)$/.exec(line)?.[1] : undefined
-  return errno ? Object.assign(new Error(line), { code: errno }) : null
-}
 
 export type ProviderStopInput = {
   /** Asks the child to stop: a SIGTERM, or the stdin end that closes a session. */
@@ -212,6 +214,9 @@ export type ProviderSupervisorOptions = {
   sigtermGraceMs?: number
 }
 
+// The user's Node startup options, as the CLI launchers stash them away from Electron's bootstrap.
+const PROVIDER_ONLY_NODE_ENV_KEYS = ['NODE_OPTIONS', 'NODE_REPL_EXTERNAL_MODULE'] as const
+
 // A longer grace than the max stop allows would let recovery or close SIGKILL mid-stop.
 function assertGraceWithin(name: string, graceMs: number, maxMs: number): void {
   if (!(graceMs >= 0 && graceMs <= maxMs)) {
@@ -233,13 +238,24 @@ export function supervisedPosixLaunch(
   assertGraceWithin('stdin-end', stdinEndGraceMs, PROVIDER_STDIN_END_GRACE_MS)
   assertGraceWithin('SIGTERM', sigtermGraceMs, PROVIDER_SIGTERM_GRACE_MS)
   // Only small fields ride in the env: Linux caps one env string at 128 KiB, and argv prompts near it.
+  // Electron's Node bootstrap honours these too; held in the spec, they reach only the provider.
+  const supervisorEnv = { ...childEnv }
+  const nodeEnv: Record<string, string> = {}
+  for (const key of PROVIDER_ONLY_NODE_ENV_KEYS) {
+    const value = supervisorEnv[key]
+    delete supervisorEnv[key]
+    if (value !== undefined) {
+      nodeEnv[key] = value
+    }
+  }
   const supervisorSpec = Buffer.from(
     JSON.stringify({
       cwd,
       ownerPid,
       lifetime,
       stdinEndGraceMs,
-      sigtermGraceMs
+      sigtermGraceMs,
+      nodeEnv
     })
   ).toString('base64')
   return {
@@ -248,7 +264,7 @@ export function supervisedPosixLaunch(
     // Electron's executable needs Node mode for the inline supervisor. The
     // marker is removed above so providers never inherit Electron semantics.
     env: {
-      ...childEnv,
+      ...supervisorEnv,
       ELECTRON_RUN_AS_NODE: '1',
       ORCA_PROVIDER_SUPERVISOR_SPEC: supervisorSpec
     }

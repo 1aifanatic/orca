@@ -1,5 +1,5 @@
 import type { CommitMessagePlan } from '../../shared/commit-message-plan'
-import { supervisedProviderSpawnError } from '../codex/codex-app-server-posix-supervisor'
+import { supervisedProviderSpawnFailure } from '../codex/provider-spawn-failure-report'
 import { stopSupervisedChildProcess } from '../codex/supervised-child-process-stop'
 import { UnsafeWindowsBatchArgumentsError } from '../win32-utils'
 import { terminateWindowsProcessTree } from '../windows-process-tree-kill'
@@ -24,6 +24,8 @@ import type {
   TextGenerationOperation
 } from './source-control-text-generation-types'
 
+const SOURCE_CONTROL_KILL_SITE = 'source-control-text-generation'
+
 export async function killSourceControlAgentProcess(
   child: SpawnedSourceControlAgentProcess
 ): Promise<void> {
@@ -32,7 +34,7 @@ export async function killSourceControlAgentProcess(
     return
   }
   if (child.supervised) {
-    await stopSupervisedChildProcess(child)
+    await stopSupervisedChildProcess(child, undefined, SOURCE_CONTROL_KILL_SITE)
     return
   }
   if (process.platform === 'win32') {
@@ -40,7 +42,7 @@ export async function killSourceControlAgentProcess(
     // pid-addressed walk; the handle-addressed root kill below cannot reach the
     // recycled pid it refused, and callers release the managed-home lock on this
     // promise, so it must not resolve having killed nothing.
-    await terminateWindowsProcessTree(pid, { site: 'source-control-text-generation' })
+    await terminateWindowsProcessTree(pid, { site: SOURCE_CONTROL_KILL_SITE })
   }
   try {
     child.kill('SIGKILL')
@@ -99,6 +101,7 @@ export function runLocalSourceControlPlan(input: {
   const processClosed = new Promise<void>((resolve) => {
     markProcessClosed = resolve
   })
+  const couldNotStart = `${plan.label} could not be started. Check the agent command in Settings and try again.`
   const result = new Promise<InternalTextGenerationResult>((resolve) => {
     let child: SpawnedSourceControlAgentProcess
     try {
@@ -127,10 +130,7 @@ export function runLocalSourceControlPlan(input: {
         return
       }
       console.error('[commit-message] Failed to spawn local generator:', error)
-      resolve({
-        success: false,
-        error: `${plan.label} could not be started. Check the agent command in Settings and try again.`
-      })
+      resolve({ success: false, error: couldNotStart })
       return
     }
 
@@ -229,9 +229,15 @@ export function runLocalSourceControlPlan(input: {
         })
         return
       }
-      const spawnError = supervisedProviderSpawnError(code, stderr)
-      if (spawnError) {
-        onError(spawnError)
+      // A supervised spawn failure reads as the same failure a direct spawn reports.
+      const spawnFailure = supervisedProviderSpawnFailure(code, stderr)
+      if (spawnFailure?.thrown) {
+        console.error('[commit-message] Failed to spawn local generator:', spawnFailure.error)
+        finalize({ success: false, error: couldNotStart })
+        return
+      }
+      if (spawnFailure) {
+        onError(spawnFailure.error)
         return
       }
       finalize(

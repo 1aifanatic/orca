@@ -673,7 +673,10 @@ describe('Claude stream-json connection', () => {
 
       const reported = await until(() => exit, 'the supervised spawn failure')
       // The supervisor spawned, so this is its exit; only its stderr can say why.
-      expect(reported.message).toMatch(/\(code 127\).*ENOENT/s)
+      // Reads as the direct spawn's own error, never the supervisor's internal report.
+      expect(reported.message).toBe(
+        `claude stream-json exited (code 127): spawn ${missingCli} ENOENT`
+      )
       // A first-hand root exit, which releases the lease like a processless start did.
       expect(connection.exitVerdict.root).toBe('exited')
     }

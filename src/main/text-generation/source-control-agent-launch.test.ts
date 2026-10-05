@@ -117,6 +117,46 @@ describe.runIf(process.platform !== 'win32')('supervised agent processes', () =>
     })
   })
 
+  it.each([
+    ['an executable that is not a program', 'garbage', (path: string) => path],
+    ['a path through a file', 'file', (path: string) => join(path, 'agent')]
+  ])('reports %s as not startable, as a direct spawn does', async (_, name, commandFor) => {
+    const file = join(folder, name)
+    writeFileSync(file, Buffer.from([0, 1, 2, 3]), { mode: 0o755 })
+    const command = commandFor(file)
+
+    await expect(
+      generateCommitMessageFromContext(
+        { branch: 'main', stagedSummary: 'M README.md', stagedPatch: '+test' },
+        { agentId: 'custom', model: '', customAgentCommand: `"${command}"` },
+        { kind: 'local', cwd: folder }
+      )
+    ).resolves.toEqual({
+      success: false,
+      error: `${command} could not be started. Check the agent command in Settings and try again.`
+    })
+  })
+
+  // Electron prints startup warnings (a bad NODE_EXTRA_CA_CERTS); Node's debug log stands in here.
+  it('reads a missing binary as not found past the runtime own stderr output', async () => {
+    const missing = join(folder, 'missing-behind-warning')
+
+    await expect(
+      generateCommitMessageFromContext(
+        { branch: 'main', stagedSummary: 'M README.md', stagedPatch: '+test' },
+        { agentId: 'custom', model: '', customAgentCommand: `"${missing}"` },
+        {
+          kind: 'local',
+          cwd: folder,
+          env: { ...process.env, NODE_DEBUG: 'child_process' }
+        }
+      )
+    ).resolves.toEqual({
+      success: false,
+      error: `${missing} not found on PATH. Install ${missing} to use AI commit messages.`
+    })
+  })
+
   it('passes the stdin end through so the agent can answer its request', async () => {
     const agent = join(folder, 'echo-agent.cjs')
     writeFileSync(

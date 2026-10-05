@@ -7,8 +7,7 @@ import {
   PROVIDER_STDIN_END_GRACE_MS,
   PROVIDER_SUPERVISOR_MAX_STOP_MS,
   stopSupervisedProvider,
-  supervisedPosixLaunch,
-  supervisedProviderSpawnError
+  supervisedPosixLaunch
 } from './codex-app-server-posix-supervisor'
 
 const launch: CodexAppServerLaunch = {
@@ -69,6 +68,20 @@ describe('structured provider supervision', () => {
     ).toMatchObject({ lifetime: 'one-shot' })
   })
 
+  it('keeps the user Node options out of the supervisor env and in the provider spec', () => {
+    const spec = supervisedPosixLaunch(launch, {
+      PATH: '/bin',
+      NODE_OPTIONS: '--require /missing.js',
+      NODE_REPL_EXTERNAL_MODULE: '/repl.js'
+    })
+
+    expect(spec.env).not.toHaveProperty('NODE_OPTIONS')
+    expect(spec.env).not.toHaveProperty('NODE_REPL_EXTERNAL_MODULE')
+    expect(
+      JSON.parse(Buffer.from(spec.env.ORCA_PROVIDER_SUPERVISOR_SPEC!, 'base64').toString()).nodeEnv
+    ).toEqual({ NODE_OPTIONS: '--require /missing.js', NODE_REPL_EXTERNAL_MODULE: '/repl.js' })
+  })
+
   it('keeps every argv and env string of a 120 KiB argv prompt under the Linux 128 KiB cap', () => {
     const prompt = 'x'.repeat(120 * 1024)
     const spec = createProviderSpawnSpec(
@@ -86,25 +99,6 @@ describe('structured provider supervision', () => {
     for (const value of strings) {
       expect(Buffer.byteLength(value)).toBeLessThan(128 * 1024)
     }
-  })
-
-  it.each([
-    ['ENOENT', 127, 'spawn /opt/my tools/claude ENOENT\n'],
-    ['EACCES', 127, 'spawn /opt/claude EACCES\n']
-  ])('reads the supervisor own %s spawn failure as that spawn error', (errno, code, stderr) => {
-    expect(supervisedProviderSpawnError(code, stderr)).toMatchObject({
-      code: errno,
-      message: stderr.trim()
-    })
-  })
-
-  it.each([
-    [1, 'spawn claude ENOENT\n'],
-    [127, 'sh: claude: command not found\n'],
-    [127, 'warning\nspawn claude ENOENT\n'],
-    [127, 'spawn claude ENOENT: no such file\n']
-  ])('reads no spawn failure from exit %s with %j', (code, stderr) => {
-    expect(supervisedProviderSpawnError(code, stderr)).toBeNull()
   })
 
   it.each([

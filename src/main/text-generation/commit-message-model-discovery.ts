@@ -4,7 +4,7 @@ import type { CommitMessagePlan } from '../../shared/commit-message-plan'
 import { getAgentModelProbeSpec } from '../../shared/agent-model-probe-spec'
 import type { TuiAgent } from '../../shared/tui-agent'
 import { resolveCodexHomeProcessLockKeyForSpawnEnv } from '../codex-cli/codex-home-process-lock'
-import { supervisedProviderSpawnError } from '../codex/codex-app-server-posix-supervisor'
+import { supervisedProviderSpawnFailure } from '../codex/provider-spawn-failure-report'
 import { isSshRequestOutcomeUnverifiable } from '../ssh/ssh-channel-multiplexer'
 import { WINDOWS_BATCH_UNSAFE_ARGUMENTS_ERROR } from '../win32-utils'
 import {
@@ -58,6 +58,7 @@ export async function discoverModelsLocal(input: {
     input.options.wslDistro ? 'linux' : process.platform
   )
 
+  const couldNotStart = `${spec.label} model discovery could not be started. Check the agent CLI configuration and try again.`
   const startDiscovery = (): LocalProcessExecution<DiscoverCommitMessageModelsResult> => {
     let markProcessClosed!: () => void
     const processClosed = new Promise<void>((resolve) => {
@@ -83,10 +84,7 @@ export async function discoverModelsLocal(input: {
       } catch (error) {
         markProcessClosed()
         console.error('[commit-message] Failed to spawn model discovery:', error)
-        resolve({
-          success: false,
-          error: `${spec.label} model discovery could not be started. Check the agent CLI configuration and try again.`
-        })
+        resolve({ success: false, error: couldNotStart })
         return
       }
 
@@ -154,9 +152,17 @@ export async function discoverModelsLocal(input: {
       }
       const onClose = (code: number | null): void => {
         markClosedAfterTermination()
-        const spawnError = outputLimitExceeded ? null : supervisedProviderSpawnError(code, stderr)
-        if (spawnError) {
-          onError(spawnError)
+        // A supervised spawn failure reads as the same failure a direct spawn reports.
+        const spawnFailure = outputLimitExceeded
+          ? null
+          : supervisedProviderSpawnFailure(code, stderr)
+        if (spawnFailure?.thrown) {
+          console.error('[commit-message] Failed to spawn model discovery:', spawnFailure.error)
+          finish({ success: false, error: couldNotStart })
+          return
+        }
+        if (spawnFailure) {
+          onError(spawnFailure.error)
           return
         }
         finish(

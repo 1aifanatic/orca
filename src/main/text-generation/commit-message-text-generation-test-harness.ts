@@ -1,6 +1,5 @@
 import { EventEmitter } from 'node:events'
 import { expect, vi } from 'vitest'
-import type * as ProviderSupervisor from '../codex/codex-app-server-posix-supervisor'
 
 export type MockDiscoveryChild = EventEmitter & {
   pid: number
@@ -31,7 +30,8 @@ export function withPlatform<T>(platform: NodeJS.Platform, fn: () => T): T {
 }
 
 // Binds the caller's hoisted tree-kill mock so test bodies keep calling
-// expectChildTerminated(child) with no extra argument.
+// expectChildTerminated(child) with no extra argument. Asserts the Windows direct-child kill; a
+// supervised POSIX child is stopped with SIGTERM instead (source-control-local-process.test.ts).
 export function createChildTerminationExpectation(
   terminateWindowsProcessTreeMock: ReturnType<typeof vi.fn>
 ): (child: { pid: number; kill: ReturnType<typeof vi.fn> }) => Promise<void> {
@@ -49,17 +49,10 @@ export function createChildTerminationExpectation(
   }
 }
 
-/**
- * The supervisor module with agents spawned directly, as on Windows, for suites that drive fake
- * children; the supervised launch and stop have their own tests.
- */
-export async function directSpawnProviderSupervisor(
-  importOriginal: <T>() => Promise<T>
-): Promise<typeof ProviderSupervisor> {
-  const actual = await importOriginal<typeof ProviderSupervisor>()
-  return {
-    ...actual,
-    createProviderSpawnSpec: (launch, env, _platform, options) =>
-      actual.createProviderSpawnSpec(launch, env, 'win32', options)
-  }
+/** The argv a spawn started as the agent: past the supervisor script's '--' when supervised. */
+export function spawnedAgentArgv([file, args]: readonly unknown[]): unknown[] {
+  const argv: unknown[] = Array.isArray(args) ? args : []
+  return file === process.execPath && argv[0] === '-e'
+    ? argv.slice(argv.indexOf('--') + 1)
+    : [file, ...argv]
 }

@@ -6,11 +6,12 @@ type SupervisedChild = Pick<ChildProcessHandle, 'pid' | 'kill' | 'exitCode' | 's
 
 /**
  * Stops a provider supervisor child: `request` asks it to stop (SIGTERM unless given), and its
- * tree is forced only after the supervisor's full stop time. True when it had to force.
+ * tree is forced, filed under `site`, only after the supervisor's full stop time. True when forced.
  */
 export async function stopSupervisedChildProcess(
   child: SupervisedChild,
-  request: () => void = () => child.kill('SIGTERM')
+  request: () => void = () => child.kill('SIGTERM'),
+  site?: string
 ): Promise<boolean> {
   const exited = (): boolean => child.exitCode !== null || child.signalCode !== null
   if (exited()) {
@@ -26,7 +27,7 @@ export async function stopSupervisedChildProcess(
     },
     exitPromise: new Promise<void>((resolve) => child.once('exit', () => resolve())),
     exited,
-    force: () => terminateCodexAppServerProcessTree(child),
+    force: () => terminateCodexAppServerProcessTree(child, site === undefined ? {} : { site }),
     supervised: true
   })
 }

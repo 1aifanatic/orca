@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from '../codex/codex-app-server-posix-supervisor'
+import { SOURCE_CONTROL_GENERATION_TIMEOUT_MS } from './source-control-generation-limits'
+import { discoverModelsLocal } from './commit-message-model-discovery'
 import { cancelGenerateCommitMessageLocal } from './commit-message-text-generation'
 import { spawnSourceControlAgent } from './source-control-agent-launch'
 import { killSourceControlAgentProcess } from './source-control-local-process'
@@ -43,8 +45,32 @@ function fakeSupervisor(exitsOn: NodeJS.Signals | null): FakeSupervisor {
   return child
 }
 
+// Behaves as the supervisor does: a SIGTERM ends it, after the time its provider takes to stop.
+function fakeSupervisedAgent(stopMs: number): FakeSupervisor & {
+  stdout: EventEmitter
+  stderr: EventEmitter
+  stdin: { on: () => void; end: () => void }
+} {
+  const child = Object.assign(fakeSupervisor(null), {
+    stdout: new EventEmitter(),
+    stderr: new EventEmitter(),
+    stdin: { on: vi.fn(), end: vi.fn() }
+  })
+  child.kill.mockImplementation((signal?: NodeJS.Signals) => {
+    if (signal === 'SIGTERM') {
+      setTimeout(() => {
+        child.signalCode = 'SIGTERM'
+        child.emit('exit', null, 'SIGTERM')
+        child.emit('close', null, 'SIGTERM')
+      }, stopMs)
+    }
+    return true
+  })
+  return child
+}
+
 function asSpawned(child: FakeSupervisor): SpawnedSourceControlAgentProcess {
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the stop reads only pid, exit state, kill and the exit event, which the fake implements.
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the stop and the generation read only pid, exit state, kill, the stdio streams and the child events, which the fakes implement.
   return child as unknown as SpawnedSourceControlAgentProcess
 }
 
@@ -83,7 +109,9 @@ describe('killSourceControlAgentProcess for a supervised agent', () => {
 
     await vi.advanceTimersByTimeAsync(1)
     await stopped
-    expect(terminateTreeMock).toHaveBeenCalledWith(child)
+    expect(terminateTreeMock).toHaveBeenCalledWith(child, {
+      site: 'source-control-text-generation'
+    })
     expect(child.kill).not.toHaveBeenCalledWith('SIGKILL')
   })
 
@@ -94,6 +122,82 @@ describe('killSourceControlAgentProcess for a supervised agent', () => {
     await killSourceControlAgentProcess(asSpawned(child))
 
     expect(child.kill).not.toHaveBeenCalled()
+    expect(terminateTreeMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('a supervised agent one-shot that runs out of time', () => {
+  it('times out at once but holds the Codex home until the supervisor has stopped', async () => {
+    vi.useFakeTimers()
+    const stopMs = 2_000
+    const agents = [fakeSupervisedAgent(stopMs), fakeSupervisedAgent(stopMs)]
+    const spawnAgent = vi.fn(() => asSpawned(agents[spawnAgent.mock.calls.length - 1]!))
+    const request = (cwd: string): ReturnType<typeof generateCommitMessage> =>
+      generateCommitMessage({
+        context: { branch: 'main', stagedSummary: 'M README.md', stagedPatch: '+test' },
+        params: { agentId: 'codex', model: 'gpt-5.5' },
+        target: { kind: 'local', cwd, env: { CODEX_HOME: '/codex/timeout-home' } },
+        spawnAgent
+      })
+
+    const first = request('/repo/first')
+    await vi.advanceTimersByTimeAsync(SOURCE_CONTROL_GENERATION_TIMEOUT_MS)
+    await expect(first).resolves.toMatchObject({
+      success: false,
+      error: expect.stringMatching(/timed out/)
+    })
+    expect(agents[0]!.kill.mock.calls).toEqual([['SIGTERM']])
+
+    const second = request('/repo/second')
+    await vi.advanceTimersByTimeAsync(stopMs - 1)
+    expect(spawnAgent).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(spawnAgent).toHaveBeenCalledTimes(2)
+
+    agents[1]!.stdout.emit('data', Buffer.from('Update README\n'))
+    agents[1]!.emit('close', 0)
+    await expect(second).resolves.toMatchObject({ success: true, message: 'Update README' })
+    expect(agents[0]!.kill).not.toHaveBeenCalledWith('SIGKILL')
+    expect(terminateTreeMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('a supervised Codex model discovery that runs out of time', () => {
+  it('times out at once but holds the Codex home until the supervisor has stopped', async () => {
+    vi.useFakeTimers()
+    const stopMs = 2_000
+    const agents = [fakeSupervisedAgent(stopMs), fakeSupervisedAgent(stopMs)]
+    const spawnAgent = vi.fn(() => asSpawned(agents[spawnAgent.mock.calls.length - 1]!))
+    const discover = (): ReturnType<typeof discoverModelsLocal> =>
+      discoverModelsLocal({
+        agentId: 'codex',
+        env: { CODEX_HOME: '/codex/discovery-timeout-home' },
+        options: {},
+        backslash: 'escape',
+        spawnAgent
+      })
+
+    const first = discover()
+    await vi.advanceTimersByTimeAsync(SOURCE_CONTROL_GENERATION_TIMEOUT_MS)
+    await expect(first).resolves.toMatchObject({
+      success: false,
+      error: expect.stringMatching(/timed out/)
+    })
+    expect(agents[0]!.kill.mock.calls).toEqual([['SIGTERM']])
+
+    const second = discover()
+    await vi.advanceTimersByTimeAsync(stopMs - 1)
+    expect(spawnAgent).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(spawnAgent).toHaveBeenCalledTimes(2)
+
+    agents[1]!.stdout.emit(
+      'data',
+      Buffer.from(JSON.stringify({ models: [{ slug: 'gpt-5.5', display_name: 'GPT-5.5' }] }))
+    )
+    agents[1]!.emit('close', 0)
+    await expect(second).resolves.toMatchObject({ success: true })
+    expect(agents[0]!.kill).not.toHaveBeenCalledWith('SIGKILL')
     expect(terminateTreeMock).not.toHaveBeenCalled()
   })
 })
@@ -189,6 +293,50 @@ setInterval(() => {}, 60000)
         })
         expect(firstAliveAtSecondSpawn).toEqual([false])
         expect(readFileSync(stoppedFile, 'utf8')).toBe('stopped')
+        expect(terminateTreeMock).not.toHaveBeenCalled()
+      } finally {
+        for (const pid of pids) {
+          if (isAlive(pid)) {
+            process.kill(pid, 'SIGKILL')
+          }
+        }
+        rmSync(folder, { recursive: true, force: true })
+      }
+    })
+
+    it('stops an agent through its supervisor once its output passes the limit', async () => {
+      const folder = mkdtempSync(join(tmpdir(), 'orca-supervised-output-limit-'))
+      const pids: number[] = []
+      try {
+        const pidFile = join(folder, 'agent-pid')
+        const agent = join(folder, 'floods.cjs')
+        // Floods stdout past the limit, then waits on its never-answered request.
+        writeFileSync(
+          agent,
+          `require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid))
+process.stdin.resume()
+process.stdout.write('x'.repeat(5 * 1024 * 1024))
+setInterval(() => {}, 60000)
+`
+        )
+
+        await expect(
+          generateCommitMessage({
+            context: { branch: 'main', stagedSummary: 'M README.md', stagedPatch: '+test' },
+            params: {
+              agentId: 'custom',
+              model: '',
+              customAgentCommand: `"${process.execPath}" "${agent}"`
+            },
+            target: { kind: 'local', cwd: folder, env: process.env },
+            spawnAgent: spawnSourceControlAgent
+          })
+        ).resolves.toMatchObject({
+          success: false,
+          error: expect.stringMatching(/too much output/)
+        })
+        pids.push(Number(readFileSync(pidFile, 'utf8')))
+        expect(isAlive(pids[0]!)).toBe(false)
         expect(terminateTreeMock).not.toHaveBeenCalled()
       } finally {
         for (const pid of pids) {

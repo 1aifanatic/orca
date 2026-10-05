@@ -4,8 +4,7 @@ import { stderrIndicatesMissingAppServer } from './codex-app-server-capability-s
 import { withCliRuntimeOnPath } from '../../shared/node-cli-command-resolution'
 import {
   createProviderSpawnSpec,
-  stopSupervisedProvider,
-  supervisedProviderSpawnError
+  stopSupervisedProvider
 } from './codex-app-server-posix-supervisor'
 import { terminateCodexAppServerProcessTree } from './codex-app-server-process-teardown'
 import {
@@ -14,6 +13,10 @@ import {
   type CodexAppServerSpawn
 } from './codex-app-server-process-tree-kill'
 import { createCodexAppServerRecordReader } from './codex-app-server-record-reader'
+import {
+  providerStderrForDisplay,
+  supervisedProviderSpawnFailure
+} from './provider-spawn-failure-report'
 
 // Why: `codex app-server` is Orca's sanctioned RPC surface into Codex-owned
 // state (hook trust hashes, the sqlite thread index). This module owns the
@@ -82,6 +85,8 @@ export type CodexAppServerRpc = {
 
 const JSON_RPC_METHOD_NOT_FOUND = -32601
 const STDERR_TAIL_MAX_BYTES = 8192
+const STDERR_DETAIL_MAX_CHARS = 400
+const CODEX_APP_SERVER_KILL_SITE = 'codex-app-server-session'
 
 /** Codex answering "no such method" is the only response that proves the RPC
  *  surface is absent rather than temporarily failing. */
@@ -282,21 +287,26 @@ export async function runCodexAppServerSession<T>(
     return response.result
   }
 
+  // The supervisor's spawn-failure report reads as Node's own spawn error line.
+  function stderrDetail(): string {
+    return providerStderrForDisplay(stderrTail).trim().slice(0, STDERR_DETAIL_MAX_CHARS)
+  }
+
   function buildEarlyExitError(): Error {
-    // A supervisor reports a missing binary as exit 127; callers classify the spawn error.
-    const providerSpawnError = spawnSpec.supervised
-      ? supervisedProviderSpawnError(exitCode, stderrTail)
+    // A supervisor reports a provider it could not start as exit 127; callers classify that error.
+    const spawnFailure = spawnSpec.supervised
+      ? supervisedProviderSpawnFailure(exitCode, stderrTail)
       : null
-    if (providerSpawnError) {
-      return providerSpawnError
+    if (spawnFailure) {
+      return spawnFailure.error
     }
     if (stderrIndicatesMissingAppServer(stderrTail)) {
       return new CodexAppServerUnsupportedError(
-        `codex CLI does not support the app-server subcommand: ${stderrTail.trim().slice(0, 400)}`
+        `codex CLI does not support the app-server subcommand: ${stderrDetail()}`
       )
     }
     return new Error(
-      `codex app-server exited before completing the session${stderrTail ? `: ${stderrTail.trim().slice(0, 400)}` : ''}`
+      `codex app-server exited before completing the session${stderrTail ? `: ${stderrDetail()}` : ''}`
     )
   }
 
@@ -319,7 +329,7 @@ export async function runCodexAppServerSession<T>(
       stderrIndicatesMissingAppServer(stderrTail)
     ) {
       throw new CodexAppServerUnsupportedError(
-        `codex CLI does not support the app-server subcommand: ${stderrTail.trim().slice(0, 400)}`
+        `codex CLI does not support the app-server subcommand: ${stderrDetail()}`
       )
     }
     throw error
@@ -340,7 +350,7 @@ export async function runCodexAppServerSession<T>(
       exited: () => exited,
       force: async () => {
         if (spawnSpec.supervised) {
-          await terminateCodexAppServerProcessTree(child)
+          await terminateCodexAppServerProcessTree(child, { site: CODEX_APP_SERVER_KILL_SITE })
         } else {
           killCodexAppServerProcessTree(child)
         }

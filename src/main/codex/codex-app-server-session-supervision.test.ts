@@ -1,10 +1,13 @@
+import { EventEmitter } from 'node:events'
 import { existsSync, readFileSync } from 'node:fs'
+import { PassThrough } from 'node:stream'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from './codex-app-server-posix-supervisor'
 import type { CodexAppServerSpawn } from './codex-app-server-process-tree-kill'
 import { CodexAppServerTimeoutError, runCodexAppServerSession } from './codex-app-server-session'
 import { classifyCodexTrustGrantError } from './codex-trust-grant-telemetry'
+import { PROVIDER_SPAWN_FAILURE_MARKER } from './provider-spawn-failure-report'
 import {
   alive,
   createSupervisedProbeRig,
@@ -84,6 +87,35 @@ describe('short-lived Codex app-server session spawn', () => {
       lifetime: 'session',
       ownerPid: process.pid
     })
+  })
+
+  it('never shows the supervisor spawn-failure marker in an early-exit error', async () => {
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'darwin' })
+    const report = { thrown: false, code: 'ENOENT', message: 'spawn /bin/codex ENOENT' }
+    const child = Object.assign(new EventEmitter(), {
+      pid: 4242,
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      kill: () => true
+    })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the session reads only pid, stdio, kill and the exit/close/error events, which the fake implements.
+    const spawnImpl: CodexAppServerSpawn = () => child as never
+    // A report on an exit other than 127 is no spawn failure, but its text still reaches the user.
+    child.stderr.once('end', () => {
+      child.emit('exit', 1, null)
+      child.emit('close', 1, null)
+    })
+    child.stderr.end(`${PROVIDER_SPAWN_FAILURE_MARKER}${JSON.stringify(report)}\n`)
+
+    const error = await runCodexAppServerSession(
+      { command: '/bin/codex', cliPath: null, args: ['app-server'], timeoutMs: 5_000 },
+      async () => null,
+      spawnImpl
+    ).catch((caught: unknown) => caught)
+
+    expect(String(error)).toContain('spawn /bin/codex ENOENT')
+    expect(String(error)).not.toContain(PROVIDER_SPAWN_FAILURE_MARKER)
   })
 
   it('spawns a Windows session directly, as before', async () => {

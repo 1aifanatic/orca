@@ -97,7 +97,9 @@ describe('runCodexAppServerSession stop', () => {
     expect(terminateCodexAppServerProcessTree).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(1)
 
-    expect(terminateCodexAppServerProcessTree).toHaveBeenCalledWith(child)
+    expect(terminateCodexAppServerProcessTree).toHaveBeenCalledWith(child, {
+      site: 'codex-app-server-session'
+    })
     await vi.advanceTimersByTimeAsync(1_000)
     expect(await outcome).toBeInstanceOf(CodexAppServerTimeoutError)
     // Its own group SIGKILL would kill the supervisor mid-ladder and orphan the server's group.
