@@ -77,8 +77,9 @@ export function createStructuredAgentSessionConversationLifetime(host: {
   }
 
   /** A start that failed with its child not proven gone leaves no child here, only the record's
-   *  owner, so the close asks the adapter again; it stops only a child it still holds. Its answer
-   *  proves nothing for the record: the lease probe does, and the close never waits on it. */
+   *  owner, so the close asks the adapter again; it stops only a child it still holds, for every
+   *  agent. Its answer proves nothing for the record: the lease probe does. The close awaits it,
+   *  bounded by the adapter's own kill ladder, and a failure is logged, never gating the close. */
   const releaseUnprovenOwner = async (sessionId: string): Promise<void> => {
     const lease = deps().store.getRecord(sessionId)?.lease
     if (sessions.get(sessionId)?.child || !lease?.ownerProcess || lease.deathEvidence !== null) {
