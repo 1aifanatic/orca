@@ -51,10 +51,6 @@ import {
 import { retryStructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox-retry'
 import { useStructuredAgentSessionOutboxFailedHere } from './use-structured-agent-session-outbox-failed-here'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
-import {
-  recordDroppedStructuredAsyncAnswers,
-  recordInterruptedStructuredAsyncAnswers
-} from './structured-agent-session-async-answer-settlement'
 
 const NO_QUEUE_DELIVERY: StructuredAgentSessionQueueDelivery = {
   capability: 'unsupported',
@@ -142,7 +138,6 @@ export function useStructuredAgentSessionOutbox(args: {
       next.some((entry, index) => entry !== current[index]) ||
       next.length !== current.length
     ) {
-      recordInterruptedStructuredAsyncAnswers(current, next)
       commitStructuredAgentSessionOutbox(sessionId, next)
     }
   }, [owner.fenceRef, owner.ownerChange, sessionId, target])
@@ -192,12 +187,6 @@ export function useStructuredAgentSessionOutbox(args: {
       // drain, so a later microtask would leave the queue with no trigger to move on.
       inFlightIdRef.current = null
       setError(disposition.error ? agentSessionWriteNoticeText(disposition.error) : null)
-      // A dropped entry with no error was answered accepted or queued: the host has it.
-      recordDroppedStructuredAsyncAnswers(
-        getStructuredAgentSessionOutbox(sessionId),
-        disposition.entries,
-        disposition.error ? 'unknown' : 'accepted'
-      )
       recordFailures(getStructuredAgentSessionOutbox(sessionId), disposition.entries)
       commitStructuredAgentSessionOutbox(sessionId, disposition.entries)
     },

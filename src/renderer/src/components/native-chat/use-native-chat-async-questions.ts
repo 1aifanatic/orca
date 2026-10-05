@@ -1,19 +1,24 @@
-import { useCallback, useReducer } from 'react'
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react'
 import type {
   NativeChatAsyncAnswerOutcome,
   NativeChatAsyncQuestionEdit,
   NativeChatAsyncQuestionEdits
 } from '../../../../shared/native-chat-async-question-answers'
 import {
-  createNativeChatAsyncQuestionCardState,
-  nativeChatAsyncQuestionCardView,
-  reduceNativeChatAsyncQuestionCard,
-  submitNativeChatAsyncQuestionCard
+  nativeChatAsyncQuestionScopeView,
+  submitNativeChatAsyncQuestionScope,
+  type NativeChatAsyncAnswerProgress
 } from '../../../../shared/native-chat-async-question-card-state'
 import type {
   NativeChatAsyncQuestion,
   NativeChatAsyncQuestionsView
 } from '../../../../shared/native-chat-async-questions'
+import {
+  dispatchNativeChatAsyncQuestionCard,
+  pruneNativeChatAsyncQuestionCardScope,
+  readNativeChatAsyncQuestionCardScope,
+  subscribeNativeChatAsyncQuestionCardScope
+} from './native-chat-async-question-card-store'
 
 /** Delivers one formatted answer through the pane's ordinary message seam, settled honestly. */
 export type NativeChatAsyncAnswerSend = (
@@ -32,42 +37,62 @@ export type NativeChatAsyncQuestionsCardModel = {
   submit: () => void
 }
 
+const NO_PROGRESS: NativeChatAsyncAnswerProgress = { answers: {}, sendingKeys: new Set() }
+
 /**
- * Per-pane state for the async question card, keyed by question so a question added
- * while another is edited, dismissed or sent changes nothing for it. The card stays
- * until the host's set drops a question; Send is only disabled while one is in flight.
+ * The async question card for one conversation, keyed by question so a question added
+ * while another is edited, dismissed or sent changes nothing for it. Its state lives in the
+ * card store, so it survives the pane's terminal↔chat toggle. The card stays until the
+ * host's set drops a question; Send is only disabled while an answer is on its way.
  */
 export function useNativeChatAsyncQuestions(args: {
   /** Pane + session: edits never carry over to another conversation. */
   scopeKey: string
   view: NativeChatAsyncQuestionsView
   send: NativeChatAsyncAnswerSend
+  /** Answers the transport itself still holds (structured: its persisted outbox). */
+  progress?: NativeChatAsyncAnswerProgress
 }): NativeChatAsyncQuestionsCardModel {
-  const { scopeKey, view, send } = args
-  const [state, dispatch] = useReducer(
-    reduceNativeChatAsyncQuestionCard,
-    createNativeChatAsyncQuestionCardState(scopeKey, view)
+  const { scopeKey, view, send, progress = NO_PROGRESS } = args
+  const scope = useSyncExternalStore(
+    useCallback(
+      (listener: () => void) => subscribeNativeChatAsyncQuestionCardScope(scopeKey, listener),
+      [scopeKey]
+    ),
+    () => readNativeChatAsyncQuestionCardScope(scopeKey)
   )
-  // Render-time adjustment (react.dev): a new scope starts clean; a new authoritative set
-  // retires the state of questions it no longer lists.
-  if (state.scopeKey !== scopeKey || state.view !== view) {
-    dispatch({ type: 'observe', scopeKey, view })
-  }
-  const { open, omittedCount, canSend } = nativeChatAsyncQuestionCardView(state)
+  // Only an authoritative set retires a question's state.
+  useEffect(() => pruneNativeChatAsyncQuestionCardScope(scopeKey, view), [scopeKey, view])
+  const returned = scope.returned
+  const card = useMemo(() => {
+    const held = Object.keys(returned).length
+      ? { ...progress, answers: { ...progress.answers, ...returned } }
+      : progress
+    return nativeChatAsyncQuestionScopeView(scope, view, held)
+  }, [progress, returned, scope, view])
 
   const edit = useCallback(
-    (key: string, next: NativeChatAsyncQuestionEdit) => dispatch({ type: 'edit', key, edit: next }),
-    []
+    (key: string, next: NativeChatAsyncQuestionEdit) =>
+      dispatchNativeChatAsyncQuestionCard(scopeKey, { type: 'edit', key, edit: next }),
+    [scopeKey]
   )
-  const dismiss = useCallback((key: string) => dispatch({ type: 'dismiss', key }), [])
-  const submit = (): void => submitNativeChatAsyncQuestionCard(state, dispatch, send)
+  const dismiss = useCallback(
+    (key: string) => dispatchNativeChatAsyncQuestionCard(scopeKey, { type: 'dismiss', key }),
+    [scopeKey]
+  )
+  const submit = (): void =>
+    submitNativeChatAsyncQuestionScope(
+      { scopeKey, ...card },
+      (action) => dispatchNativeChatAsyncQuestionCard(scopeKey, action),
+      send
+    )
 
   return {
-    open,
-    omittedCount,
-    edits: state.edits,
-    sending: state.sending,
-    canSend,
+    open: card.open,
+    omittedCount: card.omittedCount,
+    edits: card.edits,
+    sending: card.sending,
+    canSend: card.canSend,
     edit,
     dismiss,
     submit

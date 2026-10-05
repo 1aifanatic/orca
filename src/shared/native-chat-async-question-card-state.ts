@@ -20,10 +20,19 @@ import {
 } from './native-chat-async-questions'
 
 /** One conversation's card state, kept while the user is in another conversation. */
-type ScopeState = {
+export type NativeChatAsyncQuestionCardScope = {
   edits: NativeChatAsyncQuestionEdits
   dismissed: Readonly<Record<string, true>>
   sending: boolean
+}
+type ScopeState = NativeChatAsyncQuestionCardScope
+
+/** Answers a transport already holds durably, by question key: still on their way
+ *  (`sendingKeys`) or back after a delivery that didn't happen. Re-derived each render from
+ *  that transport's own records, so the card neither stores nor latches them. */
+export type NativeChatAsyncAnswerProgress = {
+  answers: Readonly<Record<string, string>>
+  sendingKeys: ReadonlySet<string>
 }
 
 export type NativeChatAsyncQuestionCardState = ScopeState & {
@@ -33,8 +42,8 @@ export type NativeChatAsyncQuestionCardState = ScopeState & {
   parked: Readonly<Record<string, ScopeState>>
 }
 
-export type NativeChatAsyncQuestionCardAction =
-  | { type: 'observe'; scopeKey: string; view: NativeChatAsyncQuestionsView }
+/** What changes one conversation's card. */
+export type NativeChatAsyncQuestionScopeAction =
   | { type: 'edit'; key: string; edit: NativeChatAsyncQuestionEdit }
   | { type: 'dismiss'; key: string }
   | { type: 'sending' }
@@ -42,12 +51,21 @@ export type NativeChatAsyncQuestionCardAction =
       type: 'settled'
       scopeKey: string
       outcome: NativeChatAsyncAnswerOutcome
-      /** The edits the send carried, restored if it was taken back before dispatch. */
+      /** The edits the send carried, given back unless it was delivered. */
       sent: Readonly<Record<string, NativeChatAsyncQuestionEdit>>
     }
 
+export type NativeChatAsyncQuestionCardAction =
+  | { type: 'observe'; scopeKey: string; view: NativeChatAsyncQuestionsView }
+  | NativeChatAsyncQuestionScopeAction
+
 const MAX_PARKED_SCOPES = 16
-const EMPTY_SCOPE: ScopeState = { edits: {}, dismissed: {}, sending: false }
+export const EMPTY_NATIVE_CHAT_ASYNC_QUESTION_CARD_SCOPE: ScopeState = {
+  edits: {},
+  dismissed: {},
+  sending: false
+}
+const EMPTY_SCOPE = EMPTY_NATIVE_CHAT_ASYNC_QUESTION_CARD_SCOPE
 
 export function createNativeChatAsyncQuestionCardState(
   scopeKey: string,
@@ -89,17 +107,30 @@ function settle(
   scope: ScopeState,
   action: Extract<NativeChatAsyncQuestionCardAction, { type: 'settled' }>
 ): ScopeState {
-  if (action.outcome === 'withdrawn') {
-    return { ...scope, sending: false, edits: { ...action.sent, ...scope.edits } }
-  }
   if (!nativeChatAsyncAnswerDelivered(action.outcome)) {
-    return { ...scope, sending: false }
+    return { ...scope, sending: false, edits: { ...action.sent, ...scope.edits } }
   }
   const edits = { ...scope.edits }
   for (const key of Object.keys(action.sent)) {
     delete edits[key]
   }
   return { ...scope, sending: false, edits }
+}
+
+export function reduceNativeChatAsyncQuestionScope(
+  scope: ScopeState,
+  action: NativeChatAsyncQuestionScopeAction
+): ScopeState {
+  switch (action.type) {
+    case 'edit':
+      return { ...scope, edits: { ...scope.edits, [action.key]: action.edit } }
+    case 'dismiss':
+      return { ...scope, dismissed: { ...scope.dismissed, [action.key]: true } }
+    case 'sending':
+      return { ...scope, sending: true }
+    case 'settled':
+      return settle(scope, action)
+  }
 }
 
 export function reduceNativeChatAsyncQuestionCard(
@@ -127,11 +158,9 @@ export function reduceNativeChatAsyncQuestionCard(
         : { ...state, view: action.view, ...observe(state, action.view) }
     }
     case 'edit':
-      return { ...state, edits: { ...state.edits, [action.key]: action.edit } }
     case 'dismiss':
-      return { ...state, dismissed: { ...state.dismissed, [action.key]: true } }
     case 'sending':
-      return { ...state, sending: true }
+      return { ...state, ...reduceNativeChatAsyncQuestionScope(scopeOf(state), action) }
     case 'settled': {
       if (action.scopeKey === state.scopeKey) {
         return { ...state, ...settle(scopeOf(state), action) }
@@ -147,38 +176,69 @@ export function reduceNativeChatAsyncQuestionCard(
 export type NativeChatAsyncQuestionCardView = {
   open: NativeChatAsyncQuestion[]
   omittedCount: number
+  /** What each question shows: the user's edit, else an answer the transport still holds. */
+  edits: NativeChatAsyncQuestionEdits
+  sending: boolean
   canSend: boolean
+}
+
+export function nativeChatAsyncQuestionScopeView(
+  scope: ScopeState,
+  view: NativeChatAsyncQuestionsView,
+  progress?: NativeChatAsyncAnswerProgress
+): NativeChatAsyncQuestionCardView {
+  const open = nativeChatAsyncQuestionsOpen(
+    nativeChatAsyncQuestionsShown(view),
+    new Set(Object.keys(scope.dismissed))
+  )
+  const edits = progress
+    ? { ...nativeChatAsyncQuestionEditsFromAnswers(open, progress.answers), ...scope.edits }
+    : scope.edits
+  const sending =
+    scope.sending || open.some((question) => progress?.sendingKeys.has(question.key) === true)
+  return {
+    open,
+    omittedCount: view.state === 'ready' ? (view.omittedCount ?? 0) : 0,
+    edits,
+    sending,
+    canSend: !sending && nativeChatAsyncQuestionsSendable(open, edits)
+  }
 }
 
 export function nativeChatAsyncQuestionCardView(
   state: NativeChatAsyncQuestionCardState
 ): NativeChatAsyncQuestionCardView {
-  const open = nativeChatAsyncQuestionsOpen(
-    nativeChatAsyncQuestionsShown(state.view),
-    new Set(Object.keys(state.dismissed))
-  )
-  return {
-    open,
-    omittedCount: state.view.state === 'ready' ? (state.view.omittedCount ?? 0) : 0,
-    canSend: !state.sending && nativeChatAsyncQuestionsSendable(open, state.edits)
-  }
+  return nativeChatAsyncQuestionScopeView(scopeOf(state), state.view)
 }
 
 /** Sends the card's answers through `send` and settles the card on its honest outcome. */
+export function submitNativeChatAsyncQuestionScope(
+  card: Pick<NativeChatAsyncQuestionCardView, 'open' | 'edits' | 'canSend'> & {
+    scopeKey: string
+  },
+  dispatch: (action: NativeChatAsyncQuestionScopeAction) => void,
+  send: (text: string, answers: Record<string, string>) => Promise<NativeChatAsyncAnswerOutcome>
+): void {
+  const reply = card.canSend ? buildNativeChatAsyncQuestionReply(card.open, card.edits) : null
+  if (!reply) {
+    return
+  }
+  dispatch({ type: 'sending' })
+  const sent = nativeChatAsyncQuestionEditsFromAnswers(card.open, reply.answers)
+  const { scopeKey } = card
+  const settled = (outcome: NativeChatAsyncAnswerOutcome): void =>
+    dispatch({ type: 'settled', scopeKey, outcome, sent })
+  void send(reply.text, reply.answers).then(settled, () => settled('unknown'))
+}
+
 export function submitNativeChatAsyncQuestionCard(
   state: NativeChatAsyncQuestionCardState,
   dispatch: (action: NativeChatAsyncQuestionCardAction) => void,
   send: (text: string, answers: Record<string, string>) => Promise<NativeChatAsyncAnswerOutcome>
 ): void {
-  const { open, canSend } = nativeChatAsyncQuestionCardView(state)
-  const reply = canSend ? buildNativeChatAsyncQuestionReply(open, state.edits) : null
-  if (!reply) {
-    return
-  }
-  dispatch({ type: 'sending' })
-  const sent = nativeChatAsyncQuestionEditsFromAnswers(open, reply.answers)
-  const { scopeKey } = state
-  const settled = (outcome: NativeChatAsyncAnswerOutcome): void =>
-    dispatch({ type: 'settled', scopeKey, outcome, sent })
-  void send(reply.text, reply.answers).then(settled, () => settled('unknown'))
+  submitNativeChatAsyncQuestionScope(
+    { scopeKey: state.scopeKey, ...nativeChatAsyncQuestionCardView(state) },
+    dispatch,
+    send
+  )
 }

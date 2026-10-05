@@ -149,11 +149,7 @@ export function NativeChatStructuredSession(
       : decision?.kind === 'unsupported'
         ? unsupportedChatApproval(decision.text)
         : null
-  const asyncQuestionsCard = useStructuredNativeChatAsyncQuestions(
-    paneKey,
-    props.sessionId,
-    controller
-  )
+  const asyncQuestionsCard = useStructuredNativeChatAsyncQuestions(paneKey, controller)
   const cancelPrompt = () => {
     if (controller.turnId && prompt) {
       void controller.cancel(controller.turnId, {

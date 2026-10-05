@@ -6,12 +6,16 @@ import type {
   NativeChatAsyncQuestion,
   NativeChatAsyncQuestionsView
 } from '../../../../shared/native-chat-async-questions'
+import { clearNativeChatAsyncQuestionCardStoreForTests } from './native-chat-async-question-card-store'
 import {
   useNativeChatAsyncQuestions,
   type NativeChatAsyncAnswerSend
 } from './use-native-chat-async-questions'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  clearNativeChatAsyncQuestionCardStoreForTests()
+})
 
 const q = (key: string, title = `${key}?`, options?: string[]): NativeChatAsyncQuestion => ({
   key,
@@ -146,5 +150,27 @@ describe('useNativeChatAsyncQuestions', () => {
     act(() => result.current.edit('k0', { text: 'x' }))
     rerender({ view: ready(...many), scopeKey: 'pane:other' })
     expect(result.current.edits.k0).toBeUndefined()
+  })
+
+  it('keeps edits, dismissals and an in-flight send across a terminal/chat toggle', async () => {
+    const { send, settle } = deferredSend()
+    const view = ready(q('a'), q('b'), q('c'))
+    const first = render(view, send)
+    act(() => first.result.current.edit('a', { text: 'one' }))
+    act(() => first.result.current.dismiss('b'))
+    act(() => first.result.current.edit('c', { text: 'two' }))
+    act(() => first.result.current.submit())
+    // The card unmounts with the chat view; the send settles while it is away.
+    first.unmount()
+    const second = render(view, send)
+    expect(second.result.current.sending).toBe(true)
+    expect(second.result.current.open.map((question) => question.key)).toEqual(['a', 'c'])
+    await settle('rejected')
+    expect(second.result.current.sending).toBe(false)
+    expect(second.result.current.edits).toEqual({ a: { text: 'one' }, c: { text: 'two' } })
+    second.unmount()
+    const third = render(view, send)
+    expect(third.result.current.open.map((question) => question.key)).toEqual(['a', 'c'])
+    expect(third.result.current.canSend).toBe(true)
   })
 })

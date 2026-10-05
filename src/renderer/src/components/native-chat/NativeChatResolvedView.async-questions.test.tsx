@@ -7,6 +7,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import type { NativeChatAsyncQuestionsView } from '../../../../shared/native-chat-async-questions'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import type { NativeChatLiveSession } from './use-native-chat-live-session'
+import { clearNativeChatAsyncQuestionCardStoreForTests } from './native-chat-async-question-card-store'
 
 // The transcript source and the composer are stubbed; the wire under test is where the
 // resolved view places the async card relative to the blocking card and the composer.
@@ -90,6 +91,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  clearNativeChatAsyncQuestionCardStoreForTests()
   cleanup()
   restoreViewport()
   useAppStore.setState({ agentStatusByPaneKey: {}, nativeChatLaunchPromptByTabId: {} })

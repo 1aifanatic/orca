@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { NativeChatAsyncQuestionsView } from '../../../../shared/native-chat-async-questions'
 import type * as RuntimeTerminalInspectionModule from '@/runtime/runtime-terminal-inspection'
 import type * as NativeChatRuntimeSendModule from './native-chat-runtime-send'
+import { clearNativeChatAsyncQuestionCardStoreForTests } from './native-chat-async-question-card-store'
 
 // Only the runtime write is stubbed; the PTY queue, outcome mapping and send lifecycle are real.
 const io = vi.hoisted(() => ({ write: vi.fn(), verified: vi.fn() }))
@@ -75,6 +76,7 @@ beforeEach(() => {
   writeNativeChatDraftCache(PANE, 'my unsent draft')
 })
 afterEach(() => {
+  clearNativeChatAsyncQuestionCardStoreForTests()
   cleanup()
   resetNativeChatPtySendQueuesForTests()
   writeNativeChatDraftCache(PANE, '')
