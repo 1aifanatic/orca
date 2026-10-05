@@ -20,6 +20,7 @@ import {
   isReattachHeldByPreviousRelay,
   startPreviousRelayCensus
 } from './ssh-previous-relay-terminals'
+import { attachHeldPtyThroughPreviousRelay } from '../providers/ssh-pty-legacy-relay-delegation'
 import { createSshLegacyRelayRouter } from './ssh-legacy-relay-routing'
 import { SshChannelMultiplexer } from './ssh-channel-multiplexer'
 import { SshPtyProvider } from '../providers/ssh-pty-provider'
@@ -1059,7 +1060,10 @@ export class SshRelaySession {
   ): Promise<Awaited<ReturnType<typeof deployAndLaunchRelay>> | null> {
     try {
       const deployed = await deployAndLaunchRelay(conn, undefined, graceTimeSeconds, this.targetId)
-      this.previousRelayCensus = startPreviousRelayCensus(conn, this.targetId, deployed)
+      // Why gated: a superseded or disposed attempt would replace the current attempt's census.
+      if (isAttemptCurrent() && !this.isDisposed()) {
+        this.previousRelayCensus = startPreviousRelayCensus(conn, this.targetId, deployed)
+      }
       return deployed
     } catch (err) {
       // Why system SSH is excluded: it has no ssh2 shell or SFTP channel to degrade onto.
@@ -2822,9 +2826,23 @@ export class SshRelaySession {
         return
       }
       if (await isReattachHeldByPreviousRelay(this.targetId, error)) {
-        console.warn(
-          `[ssh-relay-session] Keeping PTY ${ptyId} for ${this.targetId}: an older Orca relay on this host may still run it`
-        )
+        const routed = await this.reattachThroughPreviousRelay({
+          ptyProvider,
+          ptyId,
+          appPtyId,
+          expected: expectedIdentityByPtyId.get(ptyId),
+          lease: activeLeaseByPtyId.get(ptyId),
+          attachedLeaseIds,
+          shouldContinue
+        })
+        if (!routed) {
+          // Same as an exhausted reattach: the PTY is unverifiable, kept, and left for recovery.
+          pendingReattach.restoreRequired = 'reattachAttemptsExhausted'
+          this.wakeRecovery(pendingReattach)
+          console.warn(
+            `[ssh-relay-session] Keeping PTY ${ptyId} for ${this.targetId}: an older Orca relay on this host may still run it`
+          )
+        }
         return
       }
       if (!shouldContinue()) {
@@ -3030,6 +3048,51 @@ export class SshRelaySession {
     restorePtyIncarnation(appPtyId, incarnationId)
     this.runtime?.onPtySpawned(appPtyId, incarnationId, { awaitsRegistration: false })
     return 'restored'
+  }
+
+  /** True when an older relay now serves the PTY, or the attempt stopped being current. */
+  private async reattachThroughPreviousRelay(args: {
+    ptyProvider: SshPtyProvider
+    ptyId: string
+    appPtyId: string
+    expected: ExpectedPtyIdentity | undefined
+    lease: SshPtyLease | undefined
+    attachedLeaseIds: Set<string>
+    shouldContinue: () => boolean
+  }): Promise<boolean> {
+    const { appPtyId, shouldContinue } = args
+    let result: SshPtyAttachResult | null
+    try {
+      result = await attachHeldPtyThroughPreviousRelay(args.ptyProvider, appPtyId, args.expected)
+    } catch (error) {
+      console.warn(
+        `[ssh-relay-session] Previous relay reattach failed for ${args.ptyId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      )
+      return false
+    }
+    if (!result || !shouldContinue()) {
+      return result !== null
+    }
+    if (result.incarnationId) {
+      const restored = await this.restoreReattachedPtyRuntime(
+        appPtyId,
+        result.incarnationId,
+        args.lease,
+        shouldContinue
+      )
+      if (restored !== 'restored') {
+        clearProviderPtyState(appPtyId)
+        deletePtyOwnership(appPtyId)
+        return true
+      }
+    } else {
+      setPtyOwnership(appPtyId, this.targetId)
+    }
+    args.attachedLeaseIds.add(args.ptyId)
+    this.forwardReattachReplay(appPtyId, result.replay ?? '')
+    return true
   }
 
   private async attachPtyWithRetry(

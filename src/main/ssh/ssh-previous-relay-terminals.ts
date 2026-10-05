@@ -20,6 +20,7 @@ import {
 import { relaySocketNameForInstanceId } from './ssh-relay-instance-id'
 import { supersededRelayEndpointListCommand } from './ssh-relay-superseded-endpoints'
 import { isWindowsRemoteHost, type RemoteHostPlatform } from './ssh-remote-platform'
+import { censusWindowsPreviousRelays } from './ssh-previous-relay-windows-census'
 
 export type PreviousRelayCensusInput = {
   hostPlatform?: RemoteHostPlatform
@@ -31,21 +32,23 @@ export type PreviousRelayCensusInput = {
 
 const MAX_CENSUS_ENDPOINTS = 32
 /**
- * `complete` only when every older endpoint on an enumerable host was censused. `unverifiable` when
- * such a host could not be fully censused: a failed run, missing inputs, or too many endpoints.
+ * `complete` only when every older endpoint was censused. `unverifiable` otherwise: an unknown host
+ * platform, a failed run, missing inputs, or too many endpoints. `bridgeable` endpoints are POSIX
+ * sockets an older relay's own bridge can reach; Windows pipes are held, never routed.
  */
 type PreviousRelayCensus = {
   endpoints: string[]
   nodePath?: string
   complete: boolean
   unverifiable: boolean
+  bridgeable: boolean
 }
 const censusByTarget = new Map<string, Promise<PreviousRelayCensus>>()
-const NO_CENSUS: PreviousRelayCensus = { endpoints: [], complete: false, unverifiable: false }
-
-/** Windows pipes are not enumerable (see the superseded sweep), so those hosts keep today's path. */
-function isEnumerableRelayHost(input: PreviousRelayCensusInput): boolean {
-  return Boolean(input.hostPlatform && !isWindowsRemoteHost(input.hostPlatform))
+const NO_CENSUS: PreviousRelayCensus = {
+  endpoints: [],
+  complete: false,
+  unverifiable: false,
+  bridgeable: false
 }
 
 /** An older relay that holds nothing, or is gone, cannot be running this target's terminals. */
@@ -53,27 +56,23 @@ export function mayHoldTerminals(incumbent: RelayEndpointIncumbent): boolean {
   return incumbent.verdict !== 'exited' && !isReapableRelayHusk(incumbent)
 }
 
-/** The older endpoints for this target that may still run its terminals. */
-export async function censusPreviousRelays(
-  conn: SshConnection,
-  targetId: string,
-  input: PreviousRelayCensusInput
-): Promise<string[]> {
-  return (await runPreviousRelayCensus(conn, targetId, input))?.endpoints ?? []
-}
-
-/** Null when the host is enumerable but an input the census needs is missing. */
+/** Null when an input the census needs, including the host platform, is missing. */
 async function runPreviousRelayCensus(
   conn: SshConnection,
   targetId: string,
   input: PreviousRelayCensusInput
 ): Promise<{ endpoints: string[]; truncated: boolean } | null> {
   const { hostPlatform, remoteHome, remoteRelayDir, nodePath, sockPath } = input
-  if (!hostPlatform || !isEnumerableRelayHost(input)) {
-    return { endpoints: [], truncated: false }
-  }
-  if (!remoteHome || !remoteRelayDir || !nodePath) {
+  if (!hostPlatform || !remoteHome || !remoteRelayDir || !nodePath) {
     return null
+  }
+  if (isWindowsRemoteHost(hostPlatform)) {
+    return await censusWindowsPreviousRelays(
+      conn,
+      targetId,
+      { host: hostPlatform, remoteHome, remoteRelayDir, nodePath },
+      MAX_CENSUS_ENDPOINTS
+    )
   }
   const listing = await execCommand(
     conn,
@@ -109,13 +108,13 @@ export function startPreviousRelayCensus(
 ): Promise<PreviousRelayCensus> {
   const census = runPreviousRelayCensus(conn, targetId, input).then(
     (ran): PreviousRelayCensus => {
-      const enumerable = isEnumerableRelayHost(input)
-      const unverifiable = enumerable && (!ran || ran.truncated)
+      const unverifiable = !ran || ran.truncated
       return {
         endpoints: ran?.endpoints ?? [],
         nodePath: input.nodePath,
-        complete: enumerable && !unverifiable,
-        unverifiable
+        complete: !unverifiable,
+        unverifiable,
+        bridgeable: Boolean(input.hostPlatform && !isWindowsRemoteHost(input.hostPlatform))
       }
     },
     (error: unknown): PreviousRelayCensus => {
@@ -125,7 +124,7 @@ export function startPreviousRelayCensus(
           error instanceof Error ? error.message : String(error)
         }`
       )
-      return { endpoints: [], complete: false, unverifiable: true }
+      return { endpoints: [], complete: false, unverifiable: true, bridgeable: false }
     }
   )
   censusByTarget.set(targetId, census)

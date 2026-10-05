@@ -7,7 +7,9 @@
  * served there, every later operation on its id goes to the same relay.
  */
 import { SshPtyHeldByPreviousRelayError } from './ssh-pty-errors'
+import { toAppSshPtyId } from './ssh-pty-id'
 import type { SshPtyProvider } from './ssh-pty-provider'
+import type { SshPtyAttachResult } from './ssh-pty-session-reattach'
 import type { PtySpawnOptions, PtySpawnResult } from './types'
 
 export type SshPtyLegacyRelayRouting = {
@@ -18,17 +20,38 @@ export type SshPtyLegacyRelayRouting = {
   dispose: () => void
 }
 
-const delegatedProviders = new WeakSet<SshPtyProvider>()
+const routingByProvider = new WeakMap<SshPtyProvider, SshPtyLegacyRelayRouting>()
+
+/**
+ * The reconnect path's counterpart to the delegated spawn: a reattach the current relay disowned is
+ * retried through the older relay that holds it. Null when no older relay serves the PTY.
+ */
+export async function attachHeldPtyThroughPreviousRelay(
+  provider: SshPtyProvider,
+  appPtyId: string,
+  expected?: { paneKey?: string; tabId?: string }
+): Promise<SshPtyAttachResult | null> {
+  const served = await routingByProvider.get(provider)?.attach(appPtyId)
+  if (!served) {
+    return null
+  }
+  try {
+    return await served.provider.attachForReconnect(appPtyId, expected)
+  } catch (error) {
+    served.release()
+    throw error
+  }
+}
 
 export function installSshPtyLegacyRelayDelegation(
   provider: SshPtyProvider,
   routing: SshPtyLegacyRelayRouting
 ): void {
   // Why: a second install would wrap the wrappers and route through two routing tables.
-  if (delegatedProviders.has(provider)) {
+  if (routingByProvider.has(provider)) {
     throw new Error('ssh_pty_legacy_relay_routing_already_installed')
   }
-  delegatedProviders.add(provider)
+  routingByProvider.set(provider, routing)
   const own = {
     dispose: provider.dispose.bind(provider),
     spawn: provider.spawn.bind(provider),
@@ -56,7 +79,14 @@ export function installSshPtyLegacyRelayDelegation(
     serialize: provider.serialize,
     providesAgentSessionOwnerListings: provider.providesAgentSessionOwnerListings.bind(provider)
   }
-  const routed = (id: string): SshPtyProvider | undefined => routing.providerFor(id)
+  // Why normalized: the reconnect path names a PTY in relay form, panes in app form.
+  const routed = (id: string): SshPtyProvider | undefined => {
+    try {
+      return routing.providerFor(toAppSshPtyId(provider.getConnectionId(), id))
+    } catch {
+      return undefined
+    }
+  }
 
   provider.dispose = () => {
     routing.dispose()

@@ -11,7 +11,7 @@ vi.mock('./ssh-previous-relay-terminals', () => ({ previousRelayCensus }))
 vi.mock('./ssh-relay-endpoint-runtime', () => ({ readRelayDaemonRuntimes }))
 vi.mock('./ssh-legacy-relay-route', () => ({ SshLegacyRelayRoute: { open } }))
 
-import { createSshLegacyRelayRouter } from './ssh-legacy-relay-routing'
+import { createSshLegacyRelayRouter, listPreviousRelayPtyIds } from './ssh-legacy-relay-routing'
 
 const OLD_SOCK = '/home/dev/.orca-remote/relay-1.4.0/relay-abc.sock'
 const CURRENT_NODE = '/home/dev/.orca-remote/node-runtimes/v24/bin/node'
@@ -33,7 +33,8 @@ describe('the legacy relay route runtime', () => {
       endpoints: [OLD_SOCK],
       nodePath: CURRENT_NODE,
       complete: true,
-      unverifiable: false
+      unverifiable: false,
+      bridgeable: true
     })
     readRelayDaemonRuntimes.mockReset()
     open.mockReset().mockResolvedValue(null)
@@ -56,5 +57,19 @@ describe('the legacy relay route runtime', () => {
     await router().listHeld()
 
     expect(open).toHaveBeenCalledWith(expect.objectContaining({ nodePath: CURRENT_NODE }))
+  })
+
+  it('holds a live Windows pipe without trying to bridge it', async () => {
+    previousRelayCensus.mockResolvedValue({
+      endpoints: ['C:\\Users\\dev\\.orca-remote\\relay-0.1.0+aaa'],
+      nodePath: CURRENT_NODE,
+      complete: true,
+      unverifiable: false,
+      bridgeable: false
+    })
+
+    await expect(router().listHeld()).resolves.toEqual([])
+    await expect(listPreviousRelayPtyIds('target-1')).resolves.toBeNull()
+    expect(open).not.toHaveBeenCalled()
   })
 })

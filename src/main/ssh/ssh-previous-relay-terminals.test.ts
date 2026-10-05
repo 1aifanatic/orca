@@ -3,19 +3,22 @@ import type { SshConnection } from './ssh-connection'
 import type { RelayEndpointIncumbent } from './ssh-relay-endpoint-incumbent'
 import { getRemoteHostPlatform } from './ssh-remote-platform'
 
-const { execCommand, probeRelayEndpointIncumbent } = vi.hoisted(() => ({
-  execCommand: vi.fn(),
-  probeRelayEndpointIncumbent: vi.fn()
-}))
+const { execCommand, probeRelayEndpointIncumbent, probeRelayVersionDirLiveness } = vi.hoisted(
+  () => ({
+    execCommand: vi.fn(),
+    probeRelayEndpointIncumbent: vi.fn(),
+    probeRelayVersionDirLiveness: vi.fn()
+  })
+)
 
 vi.mock('./ssh-relay-deploy-helpers', () => ({ execCommand }))
+vi.mock('./remote-install-gc', () => ({ probeRelayVersionDirLiveness }))
 vi.mock('./ssh-relay-endpoint-incumbent', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   probeRelayEndpointIncumbent
 }))
 
 import {
-  censusPreviousRelays,
   clearPreviousRelayCensus,
   isReattachHeldByPreviousRelay,
   mayHoldTerminals,
@@ -52,6 +55,7 @@ describe('previous relay terminals', () => {
   beforeEach(() => {
     execCommand.mockReset()
     probeRelayEndpointIncumbent.mockReset()
+    probeRelayVersionDirLiveness.mockReset()
     clearPreviousRelayCensus('target-1')
   })
 
@@ -73,7 +77,11 @@ describe('previous relay terminals', () => {
     execCommand.mockResolvedValue(`${OLD_SOCK}\n`)
     probeRelayEndpointIncumbent.mockResolvedValue(incumbent({}))
 
-    await expect(censusPreviousRelays(conn, 'target-1', deployed)).resolves.toEqual([OLD_SOCK])
+    await expect(startPreviousRelayCensus(conn, 'target-1', deployed)).resolves.toMatchObject({
+      endpoints: [OLD_SOCK],
+      complete: true,
+      bridgeable: true
+    })
 
     const listing = execCommand.mock.calls[0][1]
     expect(listing).toContain("current='/home/dev/.orca-remote/relay-0.1.0+new'")
@@ -87,18 +95,42 @@ describe('previous relay terminals', () => {
 
   it('finds nothing to hold on a host with no older relay', async () => {
     execCommand.mockResolvedValue('')
-    await expect(censusPreviousRelays(conn, 'target-1', deployed)).resolves.toEqual([])
+    await expect(startPreviousRelayCensus(conn, 'target-1', deployed)).resolves.toMatchObject({
+      endpoints: [],
+      complete: true
+    })
     expect(probeRelayEndpointIncumbent).not.toHaveBeenCalled()
   })
 
-  it('leaves Windows hosts on the existing path', async () => {
-    await expect(
-      censusPreviousRelays(conn, 'target-1', {
-        ...deployed,
-        hostPlatform: getRemoteHostPlatform('win32-x64')
-      })
-    ).resolves.toEqual([])
-    expect(execCommand).not.toHaveBeenCalled()
+  it("probes each older version directory's Windows pipe for this target", async () => {
+    const windows = {
+      ...deployed,
+      hostPlatform: getRemoteHostPlatform('win32-x64'),
+      remoteHome: 'C:\\Users\\dev',
+      remoteRelayDir: 'C:\\Users\\dev\\.orca-remote\\relay-0.1.0+ccc',
+      nodePath: 'C:\\node\\node.exe'
+    }
+    execCommand.mockResolvedValue('relay-0.1.0+aaa\nrelay-0.1.0+bbb\nrelay-0.1.0+ccc\n')
+    probeRelayVersionDirLiveness.mockImplementation(async (_conn, dir: string) =>
+      dir.endsWith('relay-0.1.0+aaa') ? 'live' : 'exited'
+    )
+
+    const census = await startPreviousRelayCensus(conn, 'target-1', windows)
+
+    expect(census).toMatchObject({
+      endpoints: [expect.stringMatching(/relay-0\.1\.0\+aaa$/)],
+      complete: true,
+      unverifiable: false,
+      bridgeable: false
+    })
+    expect(probeRelayVersionDirLiveness).toHaveBeenCalledTimes(2)
+    expect(probeRelayVersionDirLiveness).toHaveBeenCalledWith(
+      conn,
+      expect.stringMatching(/relay-0\.1\.0\+aaa$/),
+      windows.hostPlatform,
+      expect.objectContaining({ windowsNodePath: windows.nodePath })
+    )
+    await expect(isReattachHeldByPreviousRelay('target-1', notFound)).resolves.toBe(true)
   })
 
   it('holds a not-found reattach while an older relay may run it', async () => {
@@ -121,9 +153,11 @@ describe('previous relay terminals', () => {
     ).resolves.toBe(false)
   })
 
-  it('keeps the existing path when no census started, and on Windows hosts', async () => {
+  it('keeps the existing path when no census started, or no older Windows relay is live', async () => {
     await expect(isReattachHeldByPreviousRelay('target-1', notFound)).resolves.toBe(false)
 
+    execCommand.mockResolvedValue('relay-0.1.0+bbb\n')
+    probeRelayVersionDirLiveness.mockResolvedValue('exited')
     startPreviousRelayCensus(conn, 'target-1', {
       ...deployed,
       hostPlatform: getRemoteHostPlatform('win32-x64')
@@ -134,6 +168,7 @@ describe('previous relay terminals', () => {
   it.each([
     ['could not run', () => execCommand.mockRejectedValue(new Error('channel closed')), deployed],
     ['had no node to probe with', () => {}, { ...deployed, nodePath: undefined }],
+    ['did not know the host platform', () => {}, { ...deployed, hostPlatform: undefined }],
     [
       'listed more endpoints than it probes',
       () => {
@@ -166,7 +201,8 @@ describe('previous relay terminals', () => {
       endpoints: [],
       nodePath: deployed.nodePath,
       complete: true,
-      unverifiable: false
+      unverifiable: false,
+      bridgeable: true
     })
   })
 
