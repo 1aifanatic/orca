@@ -26,6 +26,8 @@ export type StructuredAgentLaunchPersistedRecord = {
   resumeFrom?: StructuredAgentSessionResumeSource
   /** A paired server's reported seed, which this machine cannot re-derive after a reload. */
   seedOptions?: Readonly<Record<string, string>>
+  /** When a failed launch failed; records written by older builds lack it. */
+  failedAt?: number
 }
 
 /** What survives a reload of an unpublished launch. */
@@ -88,6 +90,7 @@ function validRecord(value: unknown): value is Omit<
   } = value
   const resumeFrom = 'resumeFrom' in value ? value.resumeFrom : undefined
   const executionHostId = 'executionHostId' in value ? value.executionHostId : undefined
+  const failedAt = 'failedAt' in value ? value.failedAt : undefined
   return (
     (executionHostId === undefined ||
       (typeof executionHostId === 'string' && parseExecutionHostId(executionHostId) !== null)) &&
@@ -98,6 +101,7 @@ function validRecord(value: unknown): value is Omit<
     typeof clientOperationId === 'string' &&
     typeof payloadFingerprint === 'string' &&
     (expectedRuntimeFence === null || typeof expectedRuntimeFence === 'number') &&
+    (failedAt === undefined || Number.isFinite(failedAt)) &&
     (resumeFrom === undefined ||
       (typeof resumeFrom === 'object' &&
         resumeFrom !== null &&
