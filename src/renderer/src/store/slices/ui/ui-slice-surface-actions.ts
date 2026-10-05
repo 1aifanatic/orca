@@ -8,7 +8,6 @@ import {
   type CustomPet
 } from '../../../../../shared/pet-types'
 import { clampPetSize } from './ui-slice-hydration-sanitizers'
-import { isSidebarOnWorkspaceList } from './sidebar-body-reveal'
 
 export function createUiSurfaceActions(set: UISliceSet, _get: UISliceGet): Partial<UISlice> {
   return {
@@ -153,8 +152,9 @@ export function createUiSurfaceActions(set: UISliceSet, _get: UISliceGet): Parti
     // reveal that switched bodies would kick the user out on every incidental activation.
     revealWorktreeInSidebar: (worktreeId, options) =>
       set((state) =>
-        isSidebarOnWorkspaceList(state)
-          ? {
+        state.sidebarBody === 'agents'
+          ? state
+          : {
               pendingRevealWorktree: {
                 worktreeId,
                 ...(options?.executionHostId ? { executionHostId: options.executionHostId } : {}),
@@ -163,19 +163,18 @@ export function createUiSurfaceActions(set: UISliceSet, _get: UISliceGet): Parti
                 ...(options?.beginRename ? { beginRename: true } : {})
               }
             }
-          : state
       ),
     revealSidebarRow: (rowKey, options) =>
       set((state) =>
-        isSidebarOnWorkspaceList(state)
-          ? {
+        state.sidebarBody === 'agents'
+          ? state
+          : {
               pendingRevealSidebarRow: {
                 rowKey,
                 behavior: options?.behavior ?? 'smooth',
                 ...(options?.highlight === false ? {} : { highlight: true })
               }
             }
-          : state
       ),
     clearPendingRevealWorktreeId: () => set({ pendingRevealWorktree: null }),
     clearPendingRevealSidebarRow: () => set({ pendingRevealSidebarRow: null }),

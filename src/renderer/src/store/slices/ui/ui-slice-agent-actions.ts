@@ -77,7 +77,7 @@ export function createUiAgentActions(
         (previousMode?.id !== args.id || previousMode.worktreeId !== args.worktreeId)
       ) {
         // Why switch: the send targets render on workspace cards, not activity rows.
-        get().showSidebarWorkspaceList()
+        get().setSidebarBody('workspaces')
         get().revealWorktreeInSidebar(args.worktreeId, { behavior: 'auto', highlight: true })
       }
     },

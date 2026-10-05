@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Worktree } from '../../../shared/worktree/types'
 import { useAppStore } from '@/store'
-import { activateAndRevealWorktree } from './worktree-activation'
+import { activateAndRevealWorkspace, activateAndRevealWorktree } from './worktree-activation'
 
 const initialAppStoreState = useAppStore.getState()
 
@@ -101,5 +101,50 @@ describe('activateAndRevealWorktree automation filters', () => {
     expect(state.filterRepoIds).toEqual(['other-repo'])
     expect(state.sidebarBody).toBe('agents')
     expect(state.pendingRevealWorktree).toBeNull()
+  })
+
+  it('leaves the activity view to lift filters and reveal when the caller asks for the list', () => {
+    const worktree = makeAutomationWorktree()
+    seedAutomationWorktreeState(worktree, { sidebarBody: 'agents' })
+
+    activateAndRevealWorktree(worktree.id, { showWorkspaceList: true })
+
+    const state = useAppStore.getState()
+    expect(state.sidebarBody).toBe('workspaces')
+    expect(state.hideAutomationGeneratedWorkspaces).toBe(false)
+    expect(state.pendingRevealWorktree?.worktreeId).toBe(worktree.id)
+  })
+
+  it('stays in the activity view when a blocked folder activation fails', () => {
+    const getFreshFolderWorkspacePathStatus = vi.fn(() => ({
+      path: '/gone',
+      exists: false,
+      reason: 'missing' as const
+    }))
+    useAppStore.setState({
+      sidebarBody: 'agents',
+      folderWorkspaces: [
+        {
+          id: 'folder-1',
+          projectGroupId: 'group-1',
+          name: 'gone',
+          folderPath: '/gone',
+          linkedTask: null,
+          comment: '',
+          isArchived: false,
+          isUnread: false,
+          isPinned: false,
+          sortOrder: 0,
+          lastActivityAt: 0,
+          createdAt: 0,
+          updatedAt: 0
+        }
+      ],
+      getFreshFolderWorkspacePathStatus
+    })
+
+    expect(activateAndRevealWorkspace('folder:folder-1', { showWorkspaceList: true })).toBe(false)
+    expect(getFreshFolderWorkspacePathStatus).toHaveBeenCalled()
+    expect(useAppStore.getState().sidebarBody).toBe('agents')
   })
 })

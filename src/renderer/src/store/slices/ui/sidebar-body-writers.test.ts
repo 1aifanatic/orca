@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest'
 
 /**
  * Leaving the activity view is a user decision: the bell toggles the body, and only explicit
- * "show me this in the workspace list" requests call showSidebarWorkspaceList. Reveals and
- * activations must never write sidebarBody, or every incidental activation kicks the user out.
+ * "show me this in the workspace list" requests switch it (activation only via showWorkspaceList).
+ * Reveals must never write sidebarBody, or every incidental activation kicks the user out.
  */
 const RENDERER_ROOT = path.resolve(import.meta.dirname, '../../..')
 
@@ -14,13 +14,13 @@ const SLICE_DEFINITION_FILES = [
   'store/slices/ui/ui-slice-preference-actions.ts'
 ]
 
-const BODY_TOGGLE_FILES = ['components/sidebar/SidebarHeader.tsx']
-
-const EXPLICIT_WORKSPACE_LIST_REQUEST_FILES = [
+const BODY_WRITER_FILES = [
+  // The bell toggle.
+  'components/sidebar/SidebarHeader.tsx',
+  // Explicit workspace-list requests.
   'components/sidebar/use-workspace-reveal-body-redirect.ts',
   'components/use-worktree-jump-palette-selection-actions.ts',
-  'hooks/ipc-events/workspace-shortcut-ipc-bridge.ts',
-  'lib/worktree-jump-navigation.ts',
+  'lib/worktree-activation.ts',
   'store/slices/ui/ui-slice-agent-actions.ts'
 ]
 
@@ -57,15 +57,9 @@ describe('sidebarBody writers', () => {
     expect(filesMatching(/\bsidebarBody\s*:/)).toEqual(SLICE_DEFINITION_FILES)
   })
 
-  it('only the bell toggle calls setSidebarBody', () => {
+  it('only the bell toggle and explicit workspace-list requests call setSidebarBody', () => {
     expect(filesMatching(/\bsetSidebarBody\b/)).toEqual(
-      [...SLICE_DEFINITION_FILES, ...BODY_TOGGLE_FILES].sort()
-    )
-  })
-
-  it('only explicit workspace-list requests call showSidebarWorkspaceList', () => {
-    expect(filesMatching(/\bshowSidebarWorkspaceList\b/)).toEqual(
-      [...SLICE_DEFINITION_FILES, ...EXPLICIT_WORKSPACE_LIST_REQUEST_FILES].sort()
+      [...SLICE_DEFINITION_FILES, ...BODY_WRITER_FILES].sort()
     )
   })
 })

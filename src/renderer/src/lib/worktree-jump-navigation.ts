@@ -51,19 +51,15 @@ export function jumpToWorktreeFromSidebar(
   worktreeId: string,
   options?: { executionHostId?: ExecutionHostId }
 ): boolean {
-  const state = useAppStore.getState()
-
   // Folder workspaces aren't in the worktree filter pipeline; only git worktrees can be filter-hidden.
   const hiddenBeforeActivation =
     parseWorkspaceKey(worktreeId)?.type !== 'folder' &&
     wasHiddenBySidebarFilters(worktreeId, options?.executionHostId)
 
-  // "Go to workspace" explicitly asks for the list; switch before activation so its reveal isn't skipped.
-  state.showSidebarWorkspaceList?.()
-
   // Why the workspace dispatcher: it owns the folder-vs-worktree split and the folder path-status gate.
   const activated = activateAndRevealWorkspace(worktreeId, {
     navigationIntent: 'user-open',
+    showWorkspaceList: true,
     ...(hiddenBeforeActivation ? { revealInSidebar: false, clearSidebarFilters: false } : {}),
     ...(options?.executionHostId ? { executionHostId: options.executionHostId } : {})
   })

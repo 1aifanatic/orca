@@ -66,22 +66,13 @@ describe('sidebar reveal actions', () => {
     const store = createUIStore()
     store.getState().setSidebarBody('agents')
 
-    store.getState().showSidebarWorkspaceList()
+    store.getState().setSidebarBody('workspaces')
     store.getState().revealWorktreeInSidebar('wt-1', { highlight: true })
     store.getState().revealSidebarRow('repo:r1')
 
     expect(store.getState().sidebarBody).toBe('workspaces')
     expect(store.getState().pendingRevealWorktree?.worktreeId).toBe('wt-1')
     expect(store.getState().pendingRevealSidebarRow?.rowKey).toBe('repo:r1')
-  })
-
-  it('treats an explicit switch while already on the workspace list as a no-op write', () => {
-    const store = createUIStore()
-    const before = store.getState()
-
-    store.getState().showSidebarWorkspaceList()
-
-    expect(store.getState()).toBe(before)
   })
 })
 
