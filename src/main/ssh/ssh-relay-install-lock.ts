@@ -15,8 +15,9 @@ import {
   type RemoteHostPlatform
 } from './ssh-remote-platform'
 import { removeRemoteTreeCommand } from './ssh-remote-commands'
+import { RELAY_INSTALL_LOCK_NAME } from '../../shared/relay-install-lock-name'
 
-export const RELAY_INSTALL_LOCK_NAME = '.install-lock'
+export { RELAY_INSTALL_LOCK_NAME }
 
 const INSTALL_LOCK_POLL_MS = 1_000
 // Why: a fresh lock can cross the stale threshold during our bounded wait.

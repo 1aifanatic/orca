@@ -7,7 +7,7 @@ import {
   orcadIdleStopRecordPath,
   writeOrcadIdleStopRecord
 } from './orcad-idle-stop-record'
-import { requestRecordedIdleShutdown } from './orcad-managed-idle-exit-host'
+import { createIdleStopRecordOwnership } from './orcad-managed-idle-exit-host'
 
 let root: string
 
@@ -59,17 +59,26 @@ describe('orcad idle-stop record', () => {
   it('drops the record when a signal stop already owned the shutdown', () => {
     const evidence = { quietSince: 1, stoppedAt: 2, timeoutMs: 3 }
     writeOrcadIdleStopRecord(root, evidence, '1.0.0')
-    requestRecordedIdleShutdown(root, () => false)
+    createIdleStopRecordOwnership(root).requestShutdown(() => false)
     expect(existsSync(orcadIdleStopRecordPath(root))).toBe(false)
 
     writeOrcadIdleStopRecord(root, evidence, '1.0.0')
+    const owned = createIdleStopRecordOwnership(root)
     let onFailed: (() => void) | undefined
-    requestRecordedIdleShutdown(root, (_reason, failed) => {
+    owned.requestShutdown((_reason, failed) => {
       onFailed = failed
       return true
     })
+    owned.onShutdown()
     expect(existsSync(orcadIdleStopRecordPath(root))).toBe(true)
     onFailed?.()
+    expect(existsSync(orcadIdleStopRecordPath(root))).toBe(false)
+  })
+
+  it('drops the record when a signal stop finishes before the idle stop asks to shut down', () => {
+    writeOrcadIdleStopRecord(root, { quietSince: 1, stoppedAt: 2, timeoutMs: 3 }, '1.0.0')
+    // The signal's stop runs every cleanup, then exits before the idle request ever runs.
+    createIdleStopRecordOwnership(root).onShutdown()
     expect(existsSync(orcadIdleStopRecordPath(root))).toBe(false)
   })
 })

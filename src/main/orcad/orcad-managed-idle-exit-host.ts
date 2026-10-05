@@ -64,6 +64,7 @@ async function startOrcadManagedIdleExit(
   const { getDaemonEndpointFacts } = await import('../daemon/daemon-init')
   const { countLiveOrcadDaemonSessions, retireOrcadDaemonIfIdle } =
     await import('./orcad-daemon-retirement')
+  const idleRecord = createIdleStopRecordOwnership(input.userDataPath)
   const dispose = installOrcadManagedIdleExit({
     config: input.config,
     ports: {
@@ -77,24 +78,41 @@ async function startOrcadManagedIdleExit(
     },
     stop: (evidence) => {
       void stopForIdle(input, evidence, retireOrcadDaemonIfIdle).finally(() =>
-        requestRecordedIdleShutdown(input.userDataPath, requestIdleShutdown)
+        idleRecord.requestShutdown(requestIdleShutdown)
       )
     }
   })
-  input.registerCleanup(dispose)
+  input.registerCleanup(() => {
+    dispose()
+    idleRecord.onShutdown()
+  })
 }
 
 /**
  * A stop that fails or overruns is not clean, and one another source (a signal, a stop request)
- * took over is not idle; the next start must report neither as an idle stop.
+ * took over is not idle; the next start must report neither as an idle stop. `onShutdown` runs
+ * in every stop's cleanup, so a takeover that finishes before the idle request is handled too.
  */
-export function requestRecordedIdleShutdown(
-  userDataPath: string,
-  request: OrcadShutdownTrigger | null
-): void {
+export function createIdleStopRecordOwnership(userDataPath: string): {
+  requestShutdown(request: OrcadShutdownTrigger | null): void
+  onShutdown(): void
+} {
+  let idleOwnsStop = false
   const discard = (): void => discardOrcadIdleStopRecord(userDataPath)
-  if (!request?.('idle', discard)) {
-    discard()
+  return {
+    requestShutdown: (request) => {
+      // Set first: the stop this starts may run its cleanup before the trigger returns.
+      idleOwnsStop = true
+      if (request?.('idle', discard) !== true) {
+        idleOwnsStop = false
+        discard()
+      }
+    },
+    onShutdown: () => {
+      if (!idleOwnsStop) {
+        discard()
+      }
+    }
   }
 }
 

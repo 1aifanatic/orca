@@ -6,6 +6,8 @@
  * host with live terminals keeps its server so a returning client finds it serving.
  */
 import { stat } from 'node:fs/promises'
+import { join } from 'node:path'
+import { RELAY_INSTALL_LOCK_NAME } from '../../shared/relay-install-lock-name'
 import { hasErrorCode } from '../daemon/daemon-process-inspection'
 import type { RuntimeRpcClientActivity } from '../runtime/runtime-rpc/runtime-rpc-shutdown'
 import {
@@ -88,9 +90,10 @@ export function createOrcadIdleProbes(
   ]
 }
 
+/** The client holds the fence only while the lock exists; a bare root is an interrupted acquire. */
 export async function activationFenceExists(root: string): Promise<boolean> {
   try {
-    await stat(root)
+    await stat(join(root, RELAY_INSTALL_LOCK_NAME))
     return true
   } catch (error) {
     if (hasErrorCode(error, 'ENOENT')) {
