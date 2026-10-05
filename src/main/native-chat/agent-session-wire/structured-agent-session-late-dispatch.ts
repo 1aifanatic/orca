@@ -12,7 +12,10 @@ export async function settleStructuredAgentSessionLateDispatch(
     clientMessageId: string
   } & (
     | { providerIdentity: AgentJournalItemIdentity }
-    | ({ state: 'rejected' } & AgentJournalDispatchRejection)
+    | ({
+        state: 'rejected'
+        answeredInTurn?: AgentJournalItemIdentity
+      } & AgentJournalDispatchRejection)
     | { state: 'unknown'; reason: string }
   )
 ): Promise<void> {
@@ -43,6 +46,7 @@ export async function settleStructuredAgentSessionLateDispatch(
             state: 'rejected',
             reason: input.reason,
             rejection: input.rejection,
+            ...(input.answeredInTurn ? { answeredInTurn: input.answeredInTurn } : {}),
             fence
           }
   )

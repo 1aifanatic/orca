@@ -415,6 +415,10 @@ export type AgentJournalSubmission = {
    *  never stored. Needed because a rejected send's own row moves to its rejection, which erases
    *  where it was sent. Absent from hosts that predate it. */
   submittedSequence?: number
+  /** On `rejected`: the item id of the turn record a Codex send was answered into, when that turn
+   *  ended without taking it. Absent on every other send: accepted ones (the echo places them),
+   *  Claude, queued take-backs, restart recovery, and rows from hosts that predate it. */
+  answeredInTurnItemId?: string
   /** Set when crash reconciliation resolved the dispatch, not the provider. A live
    *  `unknown` is a send still outstanding; a recovered one outlived its writer. */
   recovered?: true

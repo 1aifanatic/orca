@@ -40,7 +40,10 @@ export type ResolveDispatchInput = {
     | { state: 'pending'; turnScope: AgentJournalTurnScope }
     /** `reason` is what released clients print, `rejection` what newer ones read: both from
      *  `agentSessionFailureWords`, never written by hand. */
-    | ({ state: 'rejected' } & AgentJournalDispatchRejection)
+    | ({
+        state: 'rejected'
+        answeredInTurn?: AgentJournalItemIdentity
+      } & AgentJournalDispatchRejection)
     | { state: 'unknown'; reason?: string | null }
   )
 

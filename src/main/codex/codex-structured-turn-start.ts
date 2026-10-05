@@ -8,6 +8,7 @@ import {
 } from './codex-app-server-connection'
 import { isCodexAppServerUnsupportedError } from './codex-app-server-session'
 import type { CodexDispatchEchoes } from './codex-structured-dispatch-echo'
+import { codexTurnLifecycleIdentity } from './codex-structured-journal-translation-turns'
 import { readCodexTurnId } from './codex-structured-thread-facts'
 import {
   codexRunningOrOpeningTurn,
@@ -184,7 +185,12 @@ export async function startCodexTurn(
  */
 export async function dispatchCodexTurn(
   session: CodexTurnHost,
-  input: { clientMessageId: string; body: AgentJournalMessageItem; requestedAt?: number },
+  input: {
+    sessionId: string
+    clientMessageId: string
+    body: AgentJournalMessageItem
+    requestedAt?: number
+  },
   timeoutMs: number | undefined
 ): Promise<AgentSessionDispatchOutcome> {
   let answer: { turnId: string | null } | false
@@ -214,5 +220,11 @@ export async function dispatchCodexTurn(
     ? session.dispatchEchoes.bindTurn(input.clientMessageId, session.threadId, answer.turnId)
     : null
   const rejection = endedFirst ? codexTurnEndRejection(endedFirst) : null
-  return rejection ? { state: 'rejected', ...rejection } : { state: 'admitted' }
+  return rejection && answer.turnId
+    ? {
+        state: 'rejected',
+        answeredInTurn: codexTurnLifecycleIdentity(input.sessionId, answer.turnId),
+        ...rejection
+      }
+    : { state: 'admitted' }
 }
