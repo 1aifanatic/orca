@@ -19,12 +19,12 @@ import {
   type StructuredAgentSessionLeaseStore
 } from './structured-agent-session-lease-release'
 import type { StructuredAgentSessionSinkBarrier } from './structured-agent-session-event-sink'
+import { settleStructuredAgentSessionDeadGeneration } from './structured-agent-session-dead-generation-settlement'
 import {
   captureUnfinishedStructuredAgentSessionWork,
-  settleStructuredAgentSessionDeadGeneration,
   type DeadGenerationJournal,
   unfinishedStructuredAgentSessionWorkWasInterrupted
-} from './structured-agent-session-dead-generation-settlement'
+} from './structured-agent-session-unfinished-work'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { evictStructuredAgentSession } from './structured-agent-session-eviction'
 import type { StructuredAgentSessionHostRuntimeState } from './structured-agent-session-host-runtime-state'

@@ -14,11 +14,9 @@ import {
   type AgentJournalItemBody,
   type AgentJournalRenderItem
 } from '../../../shared/agent-session-journal-types'
-import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import { partitionJournalLifecycleMutations } from '../agent-session-journal/journal-lifecycle-batch-partition'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
 import {
-  requiresTerminalSettlement,
   runningCallEnd,
   terminalAgentJournalBody
 } from '../agent-session-journal/journal-terminal-settlement'
@@ -46,79 +44,15 @@ import {
   exitedRootTurnScope,
   runningRootTurnScope
 } from './structured-agent-session-exit-turn-scope'
+import {
+  hasUnfinishedStructuredAgentSessionWork,
+  isInProgressStructuredAgentSessionItem,
+  type DeadGenerationJournal
+} from './structured-agent-session-unfinished-work'
 
 /** Bounds the exit reason the lease keeps as log evidence; a provider diagnostic is held to the
  *  same cap. */
 export const MAX_UNEXPECTED_EXIT_REASON_CHARS = MAX_PROVIDER_DIAGNOSTIC_CHARS
-
-type DeadGenerationSubmission = Pick<
-  ReturnType<AgentSessionJournal['submissions']>[number],
-  'clientMessageId' | 'dispatchState' | 'recovered' | 'handoverRecorded' | 'handedOverAt'
->
-
-export type DeadGenerationJournal = {
-  appendLifecycleBatch: AgentSessionJournal['appendLifecycleBatch']
-  markPendingSubmissionsUnknown: AgentSessionJournal['markPendingSubmissionsUnknown']
-  rejectPendingSubmissions: AgentSessionJournal['rejectPendingSubmissions']
-  snapshot: () => Pick<ReturnType<AgentSessionJournal['snapshot']>, 'items'>
-  pendingSubmissions?: AgentSessionJournal['pendingSubmissions']
-  submissions?: () => DeadGenerationSubmission[]
-  itemFence: AgentSessionJournal['itemFence']
-  stopMarks: AgentSessionJournal['stopMarks']
-}
-
-export type StructuredAgentSessionUnfinishedWork = {
-  items: AgentJournalRenderItem[]
-  hadUnsettledSubmissions: boolean
-}
-
-export function captureUnfinishedStructuredAgentSessionWork(
-  journal: DeadGenerationJournal
-): StructuredAgentSessionUnfinishedWork {
-  return {
-    items: journal.snapshot().items.filter(isUnfinishedItem),
-    hadUnsettledSubmissions: hasUnsettledSubmission(journal)
-  }
-}
-
-function hasUnfinishedStructuredAgentSessionWork(journal: DeadGenerationJournal): boolean {
-  const work = captureUnfinishedStructuredAgentSessionWork(journal)
-  return work.hadUnsettledSubmissions || work.items.length > 0
-}
-
-export function unfinishedStructuredAgentSessionWorkWasInterrupted(
-  before: StructuredAgentSessionUnfinishedWork,
-  journal: DeadGenerationJournal,
-  observedExitAt: number,
-  exitProof?: AgentSessionDeathEvidence
-): boolean {
-  const currentSnapshot = journal.snapshot()
-  if (hasUnsettledSubmission(journal) || currentSnapshot.items.some(isInProgressItem)) {
-    return true
-  }
-  // A turn the exited child left `unverifiable` (its stream closed first) was running when it went.
-  if (provenUnverifiableTurnRevisions(currentSnapshot.items, exitProof, journal).length > 0) {
-    return true
-  }
-  if (
-    currentSnapshot.items.some((item) => {
-      const turn = readAgentJournalTurn(item.body)
-      return turn?.state === 'interrupted' && turn.completedAt === observedExitAt
-    })
-  ) {
-    return true
-  }
-  const inProgressBefore = before.items.filter(isInProgressItem)
-  if (inProgressBefore.length === 0) {
-    return false
-  }
-  const currentItems = new Map(currentSnapshot.items.map((item) => [item.itemId, item]))
-  const runningTurns = inProgressBefore.filter(
-    (item) => readAgentJournalTurn(item.body)?.state === 'running'
-  )
-  const outcomeItems = runningTurns.length > 0 ? runningTurns : inProgressBefore
-  return outcomeItems.some((item) => !isCleanlySettled(currentItems.get(item.itemId)))
-}
 
 /** Whether the settlement was written, and what stopped it when it was not. */
 export type StructuredAgentSessionDeadGenerationSettlement =
@@ -145,13 +79,10 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
   exitProof?: AgentSessionDeathEvidence
 }): Promise<StructuredAgentSessionDeadGenerationSettlement> {
   try {
-    const hasUnfinishedWork =
-      hasUnfinishedStructuredAgentSessionWork(input.journal) ||
-      provenUnverifiableTurnRevisions(
-        input.journal.snapshot().items,
-        input.exitProof,
-        input.journal
-      ).length > 0
+    const hasUnfinishedWork = hasUnfinishedStructuredAgentSessionWork(
+      input.journal,
+      input.exitProof
+    )
     const showUnexpectedExitOutcome = input.showUnexpectedExitOutcome ?? hasUnfinishedWork
     if (!showUnexpectedExitOutcome && !hasUnfinishedWork) {
       return { ok: true }
@@ -290,7 +221,10 @@ export async function settleStaleStructuredAgentSessionState(input: {
   if (
     evidence &&
     (proven.length > 0 ||
-      items.some((item) => isInProgressItem(item) && verdictFor(item).state === 'interrupted')) &&
+      items.some(
+        (item) =>
+          isInProgressStructuredAgentSessionItem(item) && verdictFor(item).state === 'interrupted'
+      )) &&
     !endedByPersonsStop(journal, turnEnds)
   ) {
     mutations.unshift({
@@ -334,45 +268,4 @@ function withRevisions(
     )
   )
   return items.map((item) => ({ ...item, body: bodies.get(item.itemId) ?? item.body }))
-}
-
-function isUnfinishedItem(item: AgentJournalRenderItem): boolean {
-  return requiresTerminalSettlement(item.body)
-}
-
-/** Work that means the provider was MID-RESPONSE. A pending approval or question is the provider
- *  waiting on the user, so dying while one sits there interrupted nothing — it still needs
- *  cancelling, but it must not claim a response was in progress. */
-function isInProgressItem(item: AgentJournalRenderItem): boolean {
-  return (
-    readAgentJournalTurn(item.body)?.state === 'running' ||
-    (item.body.kind === 'tool-call' && item.body.state === 'running')
-  )
-}
-
-function isCleanlySettled(item: AgentJournalRenderItem | undefined): boolean {
-  const turn = readAgentJournalTurn(item?.body)
-  if (turn) {
-    return turn.state === 'completed'
-  }
-  if (item?.body.kind === 'tool-call') {
-    return item.body.state === 'completed'
-  }
-  if (item?.body.kind === 'approval' || item?.body.kind === 'question') {
-    return item.body.resolution.state === 'resolved'
-  }
-  return false
-}
-
-function hasUnsettledSubmission(journal: DeadGenerationJournal): boolean {
-  const submissions = journal.submissions?.()
-  return submissions
-    ? submissions.some(
-        (submission) =>
-          // A queued message is not work in progress: nothing has it yet.
-          (submission.dispatchState === 'pending' &&
-            !(submission.handoverRecorded && submission.handedOverAt === undefined)) ||
-          (submission.dispatchState === 'unknown' && submission.recovered !== true)
-      )
-    : (journal.pendingSubmissions?.().length ?? 0) > 0
 }
