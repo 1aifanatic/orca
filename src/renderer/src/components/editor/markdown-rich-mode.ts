@@ -85,6 +85,12 @@ export function getMarkdownRichModeUnsupportedMessage(content: string): string |
 export function resolveMarkdownRichModeUnsupportedMessage(
   reason: MarkdownRichModeUnsupportedReason | null
 ): string | null {
+  if (reason === 'other') {
+    return translate(
+      'auto.components.editor.markdown.rich.mode.unsupported',
+      'Editable only in code mode because this file contains unsupported Markdown syntax.'
+    )
+  }
   if (reason === null) {
     return null
   }
