@@ -1,6 +1,6 @@
 // A write counts as saved only once IndexedDB has committed it (the transaction's `complete`), not
 // when its `put` is queued: a crash in between would otherwise lose a draft reported as saved.
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createIndexedDbNativeChatComposerDraftStorage } from './native-chat-composer-draft-indexeddb'
 
 type FakeTransaction = {
@@ -108,5 +108,57 @@ describe('the IndexedDB draft storage', () => {
     transactions[0]!.onabort?.()
 
     await expect(write).rejects.toThrow('QuotaExceededError')
+  })
+
+  describe('through the draft store', () => {
+    const loaded: { clearNativeChatComposerDraftsForTests: () => void }[] = []
+    afterEach(() => {
+      for (const store of loaded.splice(0)) {
+        store.clearNativeChatComposerDraftsForTests()
+      }
+    })
+
+    async function storeOn(factory: IDBFactory) {
+      vi.resetModules()
+      const storageModule = await import('./native-chat-composer-draft-storage')
+      storageModule.setNativeChatComposerDraftStorageForTests(
+        createIndexedDbNativeChatComposerDraftStorage(factory)
+      )
+      const store = await import('./native-chat-composer-draft-store')
+      loaded.push(store)
+      return { store, drafts: await import('./native-chat-draft-cache') }
+    }
+
+    it('reports a scope’s write settled true only at its transaction’s complete', async () => {
+      const { factory, transactions } = fakeDatabase()
+      const { store, drafts } = await storeOn(factory)
+      // The stand-in has no reads, so the startup load fails and stays pending a retry: this is an
+      // append before the load landed, which reads and writes the stored draft in one transaction.
+      void store.hydrateNativeChatComposerDrafts()
+      drafts.appendNativeChatDraftCache('agent-session:s1', 'returned by Stop')
+      const settled = store.nativeChatComposerDraftWriteSettled('agent-session:s1')
+
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(await settledYet(settled.then(() => {}))).toBe(false)
+      const write = transactions.at(-1)!
+      write.oncomplete?.()
+      await expect(settled).resolves.toBe(true)
+    })
+
+    it('reports false when the scope’s transaction aborts', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const { factory, transactions } = fakeDatabase()
+      const { store, drafts } = await storeOn(factory)
+      void store.hydrateNativeChatComposerDrafts()
+      drafts.appendNativeChatDraftCache('agent-session:s1', 'returned by Stop')
+      const settled = store.nativeChatComposerDraftWriteSettled('agent-session:s1')
+
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      const write = transactions.at(-1)!
+      write.error = new Error('QuotaExceededError')
+      write.onabort?.()
+      await expect(settled).resolves.toBe(false)
+      warn.mockRestore()
+    })
   })
 })
