@@ -1,7 +1,7 @@
 import type { CommitMessagePlan } from '../../shared/commit-message-plan'
 import {
   stopSupervisedProvider,
-  supervisedProviderSpawnError
+  supervisedProviderSpawnFailure
 } from '../codex/codex-app-server-posix-supervisor'
 import { terminateCodexAppServerProcessTree } from '../codex/codex-app-server-process-teardown'
 import { UnsafeWindowsBatchArgumentsError } from '../win32-utils'
@@ -122,6 +122,7 @@ export function runLocalSourceControlPlan(input: {
   const processClosed = new Promise<void>((resolve) => {
     markProcessClosed = resolve
   })
+  const couldNotStart = `${plan.label} could not be started. Check the agent command in Settings and try again.`
   const result = new Promise<InternalTextGenerationResult>((resolve) => {
     let child: SpawnedSourceControlAgentProcess
     try {
@@ -150,10 +151,7 @@ export function runLocalSourceControlPlan(input: {
         return
       }
       console.error('[commit-message] Failed to spawn local generator:', error)
-      resolve({
-        success: false,
-        error: `${plan.label} could not be started. Check the agent command in Settings and try again.`
-      })
+      resolve({ success: false, error: couldNotStart })
       return
     }
 
@@ -252,9 +250,15 @@ export function runLocalSourceControlPlan(input: {
         })
         return
       }
-      const spawnError = supervisedProviderSpawnError(code, stderr)
-      if (spawnError) {
-        onError(spawnError)
+      // A supervised spawn failure reads as the same failure a direct spawn reports.
+      const spawnFailure = supervisedProviderSpawnFailure(code, stderr)
+      if (spawnFailure?.thrown) {
+        console.error('[commit-message] Failed to spawn local generator:', spawnFailure.error)
+        finalize({ success: false, error: couldNotStart })
+        return
+      }
+      if (spawnFailure) {
+        onError(spawnFailure.error)
         return
       }
       finalize(

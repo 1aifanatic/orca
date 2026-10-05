@@ -9,6 +9,7 @@ import {
   discoverCommitMessageModelsLocal,
   discoverCommitMessageModelsRemote
 } from './commit-message-text-generation'
+import { PROVIDER_SPAWN_FAILURE_MARKER } from '../codex/codex-app-server-posix-supervisor'
 import {
   createChildTerminationExpectation,
   createMockDiscoveryChild,
@@ -347,22 +348,44 @@ describe('discoverCommitMessageModelsLocal', () => {
   const notFound = 'claude not found on PATH. Install Claude to discover models.'
   const failedToStart =
     'Claude model discovery failed to start. Check the agent CLI configuration and try again.'
+  const couldNotStart =
+    'Claude model discovery could not be started. Check the agent CLI configuration and try again.'
   it.each([
-    ['a spawn error', 'ENOENT', notFound],
-    ['the supervisor exit for a spawn error', 'ENOENT', notFound],
-    ['a spawn error', 'EACCES', failedToStart],
-    ['the supervisor exit for a spawn error', 'EACCES', failedToStart]
-  ])('reports %s %s as a direct spawn does', async (source, errno, error) => {
+    ['ENOENT', false, notFound],
+    ['EACCES', false, failedToStart],
+    ['ENOTDIR', true, couldNotStart]
+  ])(
+    'reports a supervisor %s spawn failure as a direct spawn does',
+    async (errno, thrown, error) => {
+      const child = createMockDiscoveryChild()
+      spawnMock.mockReturnValue(child as never)
+
+      const pending = discoverCommitMessageModelsLocal('claude', undefined)
+      child.stderr.emit(
+        'data',
+        Buffer.from(
+          `Warning: an Electron startup notice\n${PROVIDER_SPAWN_FAILURE_MARKER}${JSON.stringify({
+            thrown,
+            code: errno,
+            message: `spawn claude ${errno}`
+          })}\n`
+        )
+      )
+      child.emit('close', 127)
+
+      await expect(pending).resolves.toEqual({ success: false, error })
+    }
+  )
+
+  it.each([
+    ['ENOENT', notFound],
+    ['EACCES', failedToStart]
+  ])('reports an emitted %s spawn error as before', async (errno, error) => {
     const child = createMockDiscoveryChild()
     spawnMock.mockReturnValue(child as never)
 
     const pending = discoverCommitMessageModelsLocal('claude', undefined)
-    if (source === 'a spawn error') {
-      child.emit('error', spawnError(errno))
-    } else {
-      child.stderr.emit('data', Buffer.from(`spawn claude ${errno}\n`))
-      child.emit('close', 127)
-    }
+    child.emit('error', spawnError(errno))
 
     await expect(pending).resolves.toEqual({ success: false, error })
   })

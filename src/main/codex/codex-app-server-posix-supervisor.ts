@@ -20,6 +20,9 @@ export const PROVIDER_OUTPUT_DRAIN_TIMEOUT_MS = 1_000
 export const PROVIDER_SUPERVISOR_MAX_STOP_MS =
   PROVIDER_STDIN_END_GRACE_MS + PROVIDER_SIGTERM_GRACE_MS + PROVIDER_GROUP_REAP_TIMEOUT_MS
 
+/** Starts the one stderr line that reports a provider the supervisor could not start. */
+export const PROVIDER_SPAWN_FAILURE_MARKER = '[orca-provider-supervisor] spawn failed: '
+
 /** Inline supervisor source kept dependency-free for the spawned Node child. */
 export const POSIX_PROVIDER_SUPERVISOR_SCRIPT = `
 const { spawn } = require('node:child_process')
@@ -36,12 +39,24 @@ if (ownerGone()) process.exit(1)
 const childEnv = { ...process.env }
 delete childEnv.ORCA_PROVIDER_SUPERVISOR_SPEC
 delete childEnv.ELECTRON_RUN_AS_NODE
-const child = spawn(providerCommand, providerArgs, {
-  cwd: spec.cwd,
-  env: childEnv,
-  stdio: ['pipe', 'pipe', 'pipe'],
-  detached: true
-})
+// The owner sees only this pid's exit; this marked last stderr line says the provider never started.
+const exitWithSpawnFailure = (error, thrown) => {
+  const report = { thrown, code: (error && error.code) || 'UNKNOWN', message: String(error && error.message) }
+  try { require('node:fs').writeSync(2, ${JSON.stringify(PROVIDER_SPAWN_FAILURE_MARKER)} + JSON.stringify(report) + '\\n') } catch {}
+  process.exit(127)
+}
+let child
+try {
+  child = spawn(providerCommand, providerArgs, {
+    cwd: spec.cwd,
+    env: childEnv,
+    stdio: ['pipe', 'pipe', 'pipe'],
+    detached: true
+  })
+} catch (error) {
+  // Node throws most spawn failures (ENOEXEC, ENOTDIR, ...) rather than emitting them.
+  exitWithSpawnFailure(error, true)
+}
 let timer
 let ownerShutdownTimer
 let settling = false
@@ -135,8 +150,7 @@ timer = setInterval(() => {
 timer.unref()
 child.once('error', (error) => {
   clearInterval(timer)
-  // The owner sees only this pid's exit; stderr is where a missing provider binary can say so.
-  process.stderr.write(String(error && error.message) + '\\n', () => process.exit(127))
+  exitWithSpawnFailure(error, false)
 })
 child.once('exit', (code, signal) => {
   void reapProviderExit(code, signal)
@@ -149,17 +163,37 @@ child.once('exit', (code, signal) => {
  */
 export type ProviderSupervisorLifetime = 'session' | 'one-shot'
 
-/**
- * The error a direct spawn would have emitted, from a supervisor that could not start its provider
- * (it relays Node's spawn error line and exits 127); null for any other exit.
- */
-export function supervisedProviderSpawnError(
+/** A provider the supervisor could not start: `thrown` when a direct spawn would have thrown. */
+export type SupervisedProviderSpawnFailure = { thrown: boolean; error: NodeJS.ErrnoException }
+
+/** The failure a supervisor reported on its last stderr line before exiting 127; null otherwise. */
+export function supervisedProviderSpawnFailure(
   code: number | null,
   stderr: string
-): NodeJS.ErrnoException | null {
-  const line = stderr.trim()
-  const errno = code === 127 ? /^spawn .+ (E[A-Z0-9]+)$/.exec(line)?.[1] : undefined
-  return errno ? Object.assign(new Error(line), { code: errno }) : null
+): SupervisedProviderSpawnFailure | null {
+  const line = stderr.trimEnd().split('\n').at(-1) ?? ''
+  if (code !== 127 || !line.startsWith(PROVIDER_SPAWN_FAILURE_MARKER)) {
+    return null
+  }
+  let report: unknown
+  try {
+    report = JSON.parse(line.slice(PROVIDER_SPAWN_FAILURE_MARKER.length))
+  } catch {
+    return null
+  }
+  if (
+    !report ||
+    typeof report !== 'object' ||
+    !('thrown' in report && typeof report.thrown === 'boolean') ||
+    !('code' in report && typeof report.code === 'string') ||
+    !('message' in report && typeof report.message === 'string')
+  ) {
+    return null
+  }
+  return {
+    thrown: report.thrown,
+    error: Object.assign(new Error(report.message), { code: report.code })
+  }
 }
 
 export type ProviderStopInput = {

@@ -7,8 +7,9 @@ import {
   PROVIDER_STDIN_END_GRACE_MS,
   PROVIDER_SUPERVISOR_MAX_STOP_MS,
   stopSupervisedProvider,
+  PROVIDER_SPAWN_FAILURE_MARKER,
   supervisedPosixLaunch,
-  supervisedProviderSpawnError
+  supervisedProviderSpawnFailure
 } from './codex-app-server-posix-supervisor'
 
 const launch: CodexAppServerLaunch = {
@@ -88,23 +89,32 @@ describe('structured provider supervision', () => {
     }
   })
 
+  const report = (thrown: boolean, code: string, message: string): string =>
+    `${PROVIDER_SPAWN_FAILURE_MARKER}${JSON.stringify({ thrown, code, message })}\n`
+
   it.each([
-    ['ENOENT', 127, 'spawn /opt/my tools/claude ENOENT\n'],
-    ['EACCES', 127, 'spawn /opt/claude EACCES\n']
-  ])('reads the supervisor own %s spawn failure as that spawn error', (errno, code, stderr) => {
-    expect(supervisedProviderSpawnError(code, stderr)).toMatchObject({
-      code: errno,
-      message: stderr.trim()
-    })
+    ['an emitted ENOENT', report(false, 'ENOENT', 'spawn /opt/my tools/claude ENOENT'), false],
+    ['a thrown ENOTDIR', report(true, 'ENOTDIR', 'spawn ENOTDIR'), true],
+    [
+      'a report after a runtime warning',
+      `Warning: Ignoring extra certs from \`/missing.pem\`, load failed\n${report(false, 'EACCES', 'spawn /opt/claude EACCES')}`,
+      false
+    ]
+  ])('reads %s from the supervisor last stderr line', (_, stderr, thrown) => {
+    const failure = supervisedProviderSpawnFailure(127, stderr)
+
+    expect(failure?.thrown).toBe(thrown)
+    expect(failure?.error.code).toMatch(/^E[A-Z]+$/)
+    expect(failure?.error.message).toMatch(/^spawn /)
   })
 
   it.each([
-    [1, 'spawn claude ENOENT\n'],
-    [127, 'sh: claude: command not found\n'],
-    [127, 'warning\nspawn claude ENOENT\n'],
-    [127, 'spawn claude ENOENT: no such file\n']
-  ])('reads no spawn failure from exit %s with %j', (code, stderr) => {
-    expect(supervisedProviderSpawnError(code, stderr)).toBeNull()
+    ['another exit code', 1, report(false, 'ENOENT', 'spawn claude ENOENT')],
+    ['a provider line after the report', 127, `${report(true, 'ENOEXEC', 'spawn ENOEXEC')}more\n`],
+    ['an unmarked spawn line', 127, 'spawn claude ENOENT\n'],
+    ['a malformed report', 127, `${PROVIDER_SPAWN_FAILURE_MARKER}{"thrown":true}\n`]
+  ])('reads no spawn failure from %s', (_, code, stderr) => {
+    expect(supervisedProviderSpawnFailure(code, stderr)).toBeNull()
   })
 
   it.each([
