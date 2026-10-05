@@ -4,6 +4,7 @@
 // record, and the record ends in `finally`. `expected` changes only what the chat is told.
 
 import type { SubmissionRejectionFact } from '../../../shared/agent-session-failure'
+import { PROVIDER_EXIT_ROW_PREFIX } from '../../../shared/agent-session-stop-row-identity'
 import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionEndedEvent } from './structured-agent-session-adapter'
@@ -150,7 +151,7 @@ export async function endExitedStructuredAgentSessionChildUnderSerialize<
       journal: session.journal,
       sessionId,
       fence: child.fence,
-      settlementId: `${expected ? 'expected-close' : 'provider-exit'}:${sessionId}:${child.fence}:${generation}`,
+      settlementId: `${expected ? 'expected-close:' : PROVIDER_EXIT_ROW_PREFIX}${sessionId}:${child.fence}:${generation}`,
       pendingSubmissionReason: expected
         ? 'provider_closed_before_acknowledgement'
         : 'provider_exited_before_acknowledgement',

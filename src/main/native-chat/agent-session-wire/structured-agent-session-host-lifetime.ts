@@ -118,7 +118,7 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
     const recorded =
       !reported && (await stopEndsWork(context, sessionId, session, ending))
         ? recordStopEvent(context, sessionId, session, ending)
-        : Promise.resolve()
+        : Promise.resolve(null)
     child.close = {
       cause,
       reason: ('reason' in ending ? ending.reason : undefined) ?? null,
@@ -127,25 +127,35 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
       ...(reported ? { reported } : {})
     }
   } else if (child.close.cause === cause) {
-    // The same stop asked again, such as a second close of the chat, closes what came since.
+    // The same stop asked again, such as a second close of the chat, closes what came since, and
+    // binds again what its child's end cuts.
     child.close.requestedAt = session.journal.cursor()
+    child.close.recorded = child.close.recorded.then((settle) =>
+      settle ? session.journal.stopMarks.beginSettle() : null
+    )
   }
-  if (context.restartWitness) {
-    await snapshotBeforeStructuredAgentSessionStop(
-      {
+  const { close } = child
+  try {
+    if (context.restartWitness) {
+      await snapshotBeforeStructuredAgentSessionStop(
+        {
+          sessionId,
+          eventSink: context.runtimeState.eventSinkFor(sessionId),
+          logger: context.deps.logger
+        },
+        () => context.restartWitness?.beforeStop(sessionId)
+      )
+    }
+    if ((await joinStructuredAgentSessionChildClose(context, sessionId, child)) !== 'exited') {
+      throw new StructuredAgentSessionEvictionError(
+        'stop-provider-child',
         sessionId,
-        eventSink: context.runtimeState.eventSinkFor(sessionId),
-        logger: context.deps.logger
-      },
-      () => context.restartWitness?.beforeStop(sessionId)
-    )
-  }
-  if ((await joinStructuredAgentSessionChildClose(context, sessionId, child)) !== 'exited') {
-    throw new StructuredAgentSessionEvictionError(
-      'stop-provider-child',
-      sessionId,
-      new Error('provider child exit was not proven')
-    )
+        new Error('provider child exit was not proven')
+      )
+    }
+  } finally {
+    // A person's close binds what its child's end cut; done, proven or not, it binds no more.
+    void close?.recorded.then((settle) => session.journal.stopMarks.settled(settle))
   }
 }
 

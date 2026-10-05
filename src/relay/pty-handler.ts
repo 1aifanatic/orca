@@ -1,9 +1,17 @@
 import type { TmuxManagedPty } from '../shared/tmux-agent-hook-owner'
 /* oxlint-disable max-lines */
 import { resolveSynchronizedOutputSafeSplit } from '../shared/terminal-synchronized-output-scan'
+import { restoreManagedDataAccountEnvironment } from '../shared/managed-data-account-environment'
 import { createTerminalTitleTracker } from '../shared/terminal-output-side-effects'
 import { getDecorativeTitleGateKey } from '../shared/agent-decorative-title-signature'
 import { FreebuffStatusProjection } from './freebuff-status-projection'
+import { probeOpenCodeLaunchCapabilities } from '../main/opencode/opencode-launch-capabilities'
+import type { OpenCodeCliCapabilities } from '../shared/opencode-cli-version'
+import {
+  applyOpenCodePluginSelection,
+  restoreOpenCodeCapabilities
+} from './opencode-plugin-selection'
+import { resolveCommandPathForRelay } from './preflight-handler'
 import { applyRelayAgentWorkspaceTrust } from './agent-workspace-trust-spawn'
 import type { IPty } from 'node-pty'
 import { killWithDescendantSweep } from '../main/pty-descendant-termination'
@@ -26,6 +34,13 @@ import { getRelayShellLaunchConfig, isRelayWslShell } from './pty-shell-launch'
 import { RetiredPaneSurfaceRegistry } from './retired-pane-surfaces'
 import { applyScrubSafeAgentEnvAliases } from '../shared/agent-hook-scrub-safe-env'
 import { addWslEnvKeys } from '../shared/wsl-env'
+import {
+  OPENCODE_STARTUP_PROMPT_SHA256_ENV,
+  OPENCODE_STARTUP_PROMPT_NONCE_ENV,
+  OPENCODE_STARTUP_PROMPT_ENDPOINT_ENV,
+  OPENCODE_STARTUP_PROMPT_BODY_ENV,
+  OPENCODE_STARTUP_PROMPT_SHELL_ENV
+} from '../shared/opencode-startup-prompt'
 import {
   ORCA_IMAGE_PROTOCOL_ENV,
   ORCA_IMAGE_PROTOCOL_VALUE
@@ -217,6 +232,7 @@ function parseSourceRecoveryRequest(value: unknown): PtySourceRecoveryRequest | 
 }
 
 type ManagedPty = {
+  openCodeCapabilities?: OpenCodeCliCapabilities
   freebuffStatus?: FreebuffStatusProjection
   id: string
   incarnationId: string
@@ -277,6 +293,7 @@ type ManagedPty = {
 }
 
 type RelayAgentSessionCreateResult = {
+  openCodeCapabilities?: OpenCodeCliCapabilities
   id: string
   incarnationId: string
   replay?: string
@@ -448,6 +465,7 @@ type PtyProcessSummary = {
 }
 
 type SerializedPtyEntry = {
+  openCodeCapabilities?: OpenCodeCliCapabilities
   id: string
   pid: number
   cols: number
@@ -857,9 +875,13 @@ export class PtyHandler {
     },
     envToDelete: readonly string[] = []
   ): Promise<Record<string, string>> {
-    const baseEnv = mergeGitConfigEnvProtocol(
+    const inheritedEnv = stripInheritedBuildModeEnv(process.env)
+    restoreManagedDataAccountEnvironment(inheritedEnv)
+    const explicitEnv = { ...rendererEnv }
+    restoreManagedDataAccountEnvironment(explicitEnv, false)
+    const mergedEnv = mergeGitConfigEnvProtocol(
       {
-        ...stripInheritedBuildModeEnv(process.env),
+        ...inheritedEnv,
         TERM: 'xterm-256color',
         COLORTERM: 'truecolor',
         TERM_PROGRAM: 'Orca',
@@ -867,8 +889,13 @@ export class PtyHandler {
           rendererEnv?.ORCA_APP_VERSION || process.env.ORCA_APP_VERSION || '0.0.0-dev',
         FORCE_HYPERLINK: '1'
       },
-      rendererEnv
-    ) as Record<string, string>
+      explicitEnv
+    )
+    const baseEnv: Record<string, string> = Object.fromEntries(
+      Object.entries(mergedEnv).filter(
+        (entry): entry is [string, string] => typeof entry[1] === 'string'
+      )
+    )
     const augmented: Record<string, string> = {}
     for (const augmenter of this.envAugmenters) {
       try {
@@ -879,7 +906,11 @@ export class PtyHandler {
         )
       }
     }
-    const result = mergeGitConfigEnvProtocol(baseEnv, augmented) as Record<string, string>
+    const result: Record<string, string> = Object.fromEntries(
+      Object.entries(mergeGitConfigEnvProtocol(baseEnv, augmented)).filter(
+        (entry): entry is [string, string] => typeof entry[1] === 'string'
+      )
+    )
     result[ORCA_IMAGE_PROTOCOL_ENV] = ORCA_IMAGE_PROTOCOL_VALUE
     // Why: an older client may not ask a newly upgraded relay to delete inherited shim state.
     stripLegacyTerminalShimEnv(result, process.platform)
@@ -1940,6 +1971,9 @@ export class PtyHandler {
         id: managed.id,
         incarnationId: managed.incarnationId,
         agentSessionEnsure: result,
+        ...(result.disposition === 'created' && managed.openCodeCapabilities
+          ? { openCodeCapabilities: managed.openCodeCapabilities }
+          : {}),
         ...(sourceActivation ? { sourceActivation } : {}),
         ...(adoptedReplay ? { replay: adoptedReplay } : {}),
         ...(managed.shellReadyArmed !== undefined
@@ -1968,6 +2002,7 @@ export class PtyHandler {
     incarnationId: string
     sourceActivation?: PtySourceReceivingActivation
     shellReadyArmed?: boolean
+    openCodeCapabilities?: OpenCodeCliCapabilities
   }> {
     const pty = await this.loadPty()
     if (!pty) {
@@ -2013,6 +2048,32 @@ export class PtyHandler {
       env,
       { id, paneKey, shell, command, launchAgent },
       envToDelete
+    )
+    delete spawnEnv.ORCA_OPENCODE_PLUGIN_API
+    // Relay input streams lack driving-input provenance, so native intent is unavailable.
+    for (const key of [
+      OPENCODE_STARTUP_PROMPT_SHA256_ENV,
+      OPENCODE_STARTUP_PROMPT_NONCE_ENV,
+      OPENCODE_STARTUP_PROMPT_ENDPOINT_ENV,
+      OPENCODE_STARTUP_PROMPT_BODY_ENV,
+      OPENCODE_STARTUP_PROMPT_SHELL_ENV
+    ]) {
+      delete spawnEnv[key]
+    }
+    const openCodeCapabilities = await probeOpenCodeLaunchCapabilities({
+      command,
+      agent: launchAgent,
+      env: spawnEnv,
+      cwd,
+      hostIdentity: `relay:${process.platform}`,
+      resolveExecutable: (executable) => resolveCommandPathForRelay(executable, { env: spawnEnv }),
+      ...(isRelayWslShell(shell) ? { wsl: { distro: terminalWindowsWslDistro ?? undefined } } : {})
+    })
+    applyOpenCodePluginSelection(
+      spawnEnv,
+      envToDelete,
+      openCodeCapabilities,
+      isRelayWslShell(shell)
     )
     await applyRelayAgentWorkspaceTrust(params.agentWorkspaceTrust, launchAgent, spawnEnv, {
       wslShell: isRelayWslShell(shell)
@@ -2115,6 +2176,7 @@ export class PtyHandler {
     const ownerClientInstanceId =
       context === undefined ? null : (this.consumerIdentityResolver?.(context.clientId) ?? null)
     const managed: ManagedPty = {
+      ...(openCodeCapabilities ? { openCodeCapabilities } : {}),
       ...(launchAgent === 'freebuff'
         ? { freebuffStatus: new FreebuffStatusProjection(cols, rows) }
         : {}),
@@ -2194,7 +2256,8 @@ export class PtyHandler {
       id,
       incarnationId: managed.incarnationId,
       ...(sourceActivation ? { sourceActivation } : {}),
-      shellReadyArmed: rendererShellReadySupported
+      shellReadyArmed: rendererShellReadySupported,
+      ...(openCodeCapabilities ? { openCodeCapabilities } : {})
     }
   }
 
@@ -3041,12 +3104,14 @@ export class PtyHandler {
               }
             )
           : undefined
+      const hostAgeMs = Math.max(0, Date.now() - managed.createdAt)
+      const agentSessionOwners = this.agentSessionOwners.listForPty(id)
       results.push({
         id,
         incarnationId: managed.incarnationId,
         cwd: managed.initialCwd,
         title,
-        hostAgeMs: Math.max(0, Date.now() - managed.createdAt),
+        hostAgeMs,
         paneBound: Boolean(managed.paneKey ?? managed.attachIdentity?.paneKey),
         ...(managed.ownerClientInstanceId
           ? { ownerClientInstanceId: managed.ownerClientInstanceId }
@@ -3054,9 +3119,7 @@ export class PtyHandler {
         ...(managed.worktreeId ? { worktreeId: managed.worktreeId } : {}),
         ...(managed.terminalHandle ? { terminalHandle: managed.terminalHandle } : {}),
         ...(foregroundProcessEvidence ? { foregroundProcessEvidence } : {}),
-        ...(this.agentSessionOwners.listForPty(id).length
-          ? { agentSessionOwners: this.agentSessionOwners.listForPty(id) }
-          : {})
+        ...(agentSessionOwners.length ? { agentSessionOwners } : {})
       })
     }
     return results
@@ -3083,6 +3146,9 @@ export class PtyHandler {
         worktreeId: managed.worktreeId,
         ...(managed.explicitTerm !== undefined ? { explicitTerm: managed.explicitTerm } : {}),
         envToDelete: managed.envToDelete,
+        ...(managed.openCodeCapabilities
+          ? { openCodeCapabilities: managed.openCodeCapabilities }
+          : {}),
         gitCredentialPromptGuarded: managed.gitCredentialPromptGuarded,
         ...(managed.historyIsolationEnabled ? { historyIsolationEnabled: true } : {}),
         // Why serialized: revive re-spawns the shell, and without these a WSL
@@ -3177,6 +3243,8 @@ export class PtyHandler {
       { id: entry.id, paneKey: entry.paneKey, shell },
       envToDelete
     )
+    const openCodeCapabilities = restoreOpenCodeCapabilities(entry.openCodeCapabilities)
+    applyOpenCodePluginSelection(spawnEnv, envToDelete, openCodeCapabilities, wslShell)
     if (
       historyIsolationEnabled &&
       entry.worktreeId &&
@@ -3254,6 +3322,7 @@ export class PtyHandler {
       ...(explicitTerm !== undefined ? { explicitTerm } : {}),
       envToDelete,
       gitCredentialPromptGuarded,
+      ...(openCodeCapabilities ? { openCodeCapabilities } : {}),
       ...(historyIsolationEnabled ? { historyIsolationEnabled: true } : {}),
       shellPath: shell,
       // Why re-stored: a revived pane can be serialized again, and losing the
