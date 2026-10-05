@@ -6,15 +6,13 @@ import {
 import type { DurableProfileStateMutation } from '../loading-store/store-runtime-state'
 
 /**
- * The commit boundary for class-(a) terminal topology (design §5.1). Today it wraps the explicit
- * close; later stages route the remaining writers here, binding in B1-4. Debt: the close transform
- * still lives in runtime/ until B1-8 moves it behind this module.
+ * The commit boundary for terminal layout (tabs, panes, pane-to-PTY bindings). Today it wraps only
+ * the explicit close, whose transform still lives in runtime/; the other writers move here later.
  */
 
 /** Bindings are not listed: `persistPtyBinding` already records `persistence.pty-binding`. */
 type TerminalTopologyCommitKind = 'close_leaf' | 'close_tab'
 
-/** Closes one pane or a whole tab, unchanged, inside the topology span. */
 export function closeLeafOrTab(
   commit: TerminalSurfaceCloseCommit
 ): () => DurableProfileStateMutation<Error | undefined> {

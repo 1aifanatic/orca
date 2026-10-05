@@ -16,9 +16,8 @@ const BOUNDARY_DIR = 'persistence/terminal-topology/'
 // in docs/audits/acknowledged-tab-retirement pins.
 const TEST_SUPPORT = 'runtime/acknowledged-terminal-tab-retirement-fixture.ts'
 
-/** Callers outside the boundary as of B1-1, by callee. */
+/** Callers outside the boundary, by callee; each routing change deletes its own rows. */
 const ALLOWED_CALLERS: Record<string, readonly string[]> = {
-  // Binding moves behind the boundary in B1-4 (spawns) and B1-6/B1-8 (relay, stable owner).
   persistPtyBinding: [
     'ipc/pty/ipc/spawn-commit-persist.ts',
     'ipc/pty/pane/stable-owner.ts',
@@ -28,6 +27,7 @@ const ALLOWED_CALLERS: Record<string, readonly string[]> = {
   setWorkspaceSession: [
     'ipc/pty/pane/stable-owner.ts',
     'ipc/session.ts',
+    // Store-internal: patchWorkspaceSession -> setWorkspaceSession.
     'persistence/loading-store/session-snapshot-operations.ts',
     'runtime/client-hosted-browser-page-persistence.ts',
     'runtime/orca-runtime-attach-window.ts',
@@ -37,6 +37,8 @@ const ALLOWED_CALLERS: Record<string, readonly string[]> = {
     'runtime/runtime-legacy-worker-terminal-recovery-persistence.ts',
     'runtime/runtime-workspace-session-controller.ts'
   ],
+  // The runtime's session controller, reachable from every OrcaRuntime mixin.
+  setForWorktree: ['runtime/orca-runtime-get-runtime-id.ts'],
   patchWorkspaceSession: ['ipc/session.ts'],
   stageWorkspaceSessionBeforeUnload: ['ipc/renderer-shutdown-checkpoint.ts'],
   setWorkspaceSessionForWorktree: [
