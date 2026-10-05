@@ -56,6 +56,7 @@ export class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal extends Orca
       createMutation?: { clientIdentity: string; id: string }
       launchAgent?: TuiAgent
       viewMode?: 'terminal' | 'chat'
+      launcherDefaultView?: 'terminal' | 'chat'
       targetGroupId?: string
       supportsSplitGroupPlacement?: boolean
       launchConfig?: SleepingAgentLaunchConfig
@@ -111,6 +112,7 @@ export class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal extends Orca
         ...(opts.launchConfig ? { launchConfig: opts.launchConfig } : {}),
         ...(opts.launchAgent ? { launchAgent: opts.launchAgent } : {}),
         ...(opts.viewMode ? { viewMode: opts.viewMode } : {}),
+        ...(opts.launcherDefaultView ? { launcherDefaultView: opts.launcherDefaultView } : {}),
         startupCommandDelivery: opts.startupCommandDelivery,
         ...(opts.identity
           ? {

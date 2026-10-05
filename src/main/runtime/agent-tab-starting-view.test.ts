@@ -11,11 +11,38 @@ describe('withFinalAgentTabStartingView', () => {
         { connectionId: 'ssh-1' },
         CHAT_DEFAULT
       ).viewMode
-    ).toBe('terminal')
+    ).toBe(undefined)
     expect(
       withFinalAgentTabStartingView({ launchAgent: 'grok' }, { connectionId: null }, CHAT_DEFAULT)
         .viewMode
     ).toBe('chat')
+  })
+
+  it("never stamps a launching device's terminal default, even over a chat host", () => {
+    const final = withFinalAgentTabStartingView(
+      { launchAgent: 'claude', launcherDefaultView: 'terminal' as const },
+      { connectionId: null },
+      CHAT_DEFAULT
+    )
+    expect(final.viewMode).toBe(undefined)
+    // A second pass (a headless lane re-deciding) keeps the input, so it decides the same.
+    expect(
+      withFinalAgentTabStartingView(final, { connectionId: null }, CHAT_DEFAULT).viewMode
+    ).toBe(undefined)
+  })
+
+  it('keeps a decided terminal pin', () => {
+    expect(
+      withFinalAgentTabStartingView(
+        {
+          launchAgent: 'claude',
+          viewMode: 'terminal' as const,
+          launcherDefaultView: 'chat' as const
+        },
+        { connectionId: null },
+        CHAT_DEFAULT
+      ).viewMode
+    ).toBe('terminal')
   })
 
   it("leaves a plain shell's options untouched", () => {
@@ -50,6 +77,13 @@ describe('withWorktreeStartupView (STA-6412 host-built startups)', () => {
         null,
         agentStartup
       )?.viewMode
+    ).toBe('terminal')
+  })
+
+  it("carries the launching device's default for createTerminal to apply", () => {
+    expect(
+      withWorktreeStartupView({ launcherDefaultView: 'terminal' }, agentStartup, null)
+        ?.launcherDefaultView
     ).toBe('terminal')
   })
 

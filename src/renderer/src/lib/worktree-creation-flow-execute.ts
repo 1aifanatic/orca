@@ -17,7 +17,10 @@ import { isAgentSessionHandleProvider } from '../../../shared/agent-session-prov
 import type { CreateWorktreeResult } from '../../../shared/worktree/create-types'
 import type { WorktreeCreationRequest } from '@/lib/pending-worktree-creation'
 import { createBrowserUuid } from '@/lib/browser-uuid'
-import { backendAgentStartup, backendAgentViewMode } from '@/lib/worktree-agent-startup-view-mode'
+import {
+  backendAgentStartup,
+  hostBuiltDraftCreateOptions
+} from '@/lib/worktree-agent-startup-view-mode'
 import { buildWorktreeCreationStartupOpt } from '@/lib/worktree-creation-flow-startup'
 import {
   launchStructuredWorktreeSession,
@@ -109,14 +112,8 @@ export async function executeWorktreeCreation(
             ? { linkedTaskSourceContext: preparedRequest.linkedTaskSourceContext }
             : {}),
           // Why: the remote host must own task-draft startup so its initial terminal is the agent, not an idle fallback shell.
-          ...(!structuredLaunch &&
-          !backendStartup &&
-          preparedRequest.agent &&
-          preparedRequest.launchDraftPrompt
-            ? {
-                startupDraft: preparedRequest.launchDraftPrompt,
-                startupViewMode: backendAgentViewMode(preparedRequest)
-              }
+          ...(!structuredLaunch && !backendStartup
+            ? hostBuiltDraftCreateOptions(preparedRequest)
             : {}),
           ...(provisionedRoot ? { provisionedRoot } : {}),
           ...(preparedRequest.parentWorktreeId

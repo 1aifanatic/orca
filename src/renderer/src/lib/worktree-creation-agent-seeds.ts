@@ -7,10 +7,10 @@ import { getConnectionIdFromState } from '@/lib/connection-context'
 import { isNativeChatTranscriptLocalReadable } from '@/lib/native-chat-transcript-readability'
 import { nativeChatRequiresLocalTranscript } from '@/lib/native-chat-supported-agent'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
+import { hostStampsLaunchView } from '@/lib/agent-launch-host-view-request'
 import { toWebTerminalSurfaceTabId } from '@/runtime/web-terminal-surface-id'
 import type { WorktreeCreationRequest } from '@/lib/pending-worktree-creation'
 import type { TuiAgent } from '../../../shared/tui-agent'
-import { AGENT_TAB_LAUNCH_PRESENTATION_RUNTIME_CAPABILITY } from '../../../shared/protocol-version'
 
 type AppStoreSnapshot = ReturnType<typeof useAppStore.getState>
 
@@ -44,19 +44,6 @@ function resolveLaunchAgentTabId(
   // Why: when the renderer owns startup, `ensureAgentStartupInTerminal` queues it
   // on primaryTabId, so that tab is the agent's tab by construction.
   return stamped ?? args.primaryTabId ?? args.startupTerminalTabId ?? null
-}
-
-/** A host that stamps the startup view at creation needs no post-create patch from this client. */
-function hostStampsLaunchView(state: AppStoreSnapshot, worktreeId: string): boolean {
-  const environmentId = getRuntimeEnvironmentIdForWorktree(state, worktreeId)
-  if (!environmentId) {
-    return true
-  }
-  return (
-    state.runtimeStatusByEnvironmentId
-      ?.get(environmentId)
-      ?.status?.capabilities?.includes(AGENT_TAB_LAUNCH_PRESENTATION_RUNTIME_CAPABILITY) === true
-  )
 }
 
 /** Temporary: only for a paired host that predates launch-presentation stamping. */

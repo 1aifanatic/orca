@@ -23,13 +23,13 @@ function setRepoConnection(connectionId: string | null): void {
   })
 }
 
-function viewModeFor(agent: TuiAgent): string | undefined {
+function startupFor(agent: TuiAgent, launchDraftPrompt?: string) {
   return backendAgentStartup({
     repoId: 'repo-1',
     agent,
     startup: { command: agent },
-    launchDraftPrompt: DRAFT
-  })?.viewMode
+    ...(launchDraftPrompt ? { launchDraftPrompt } : {})
+  })
 }
 
 beforeEach(() => {
@@ -47,38 +47,32 @@ afterEach(() => {
 })
 
 describe('backendAgentStartup', () => {
-  // Why: omp discloses no hook transcript path, so it joins Grok in requiring a
-  // locally readable sessions root. This call site must SUPPLY that flag for omp
-  // too — gating on Grok alone left it undefined and parked every omp draft in
-  // the terminal view, local workspace or not.
-  it('opens a local omp draft in chat', () => {
+  it("sends this device's chat default for the host to gate on its own route", () => {
+    // The host owns transcript readability, so a Model-A SSH omp draft is not pinned here.
+    for (const connectionId of [null, 'ssh-target-1', 'runtime-ssh-env-1']) {
+      setRepoConnection(connectionId)
+      const startup = startupFor('omp', DRAFT)
+      expect(startup?.launcherDefaultView).toBe('chat')
+      expect(startup).not.toHaveProperty('viewMode')
+    }
+  })
+
+  it('pins terminal for a draft chat cannot mirror, whatever the default', () => {
     setRepoConnection(null)
-    expect(viewModeFor('omp')).toBe('chat')
-  })
-
-  it('keeps a Model-A SSH omp draft in the terminal view', () => {
-    setRepoConnection('ssh-target-1')
-    expect(viewModeFor('omp')).toBe('terminal')
-  })
-
-  it('opens a runtime-owned SSH omp draft in chat, which reads the transcript locally', () => {
-    setRepoConnection('runtime-ssh-env-1')
-    expect(viewModeFor('omp')).toBe('chat')
+    expect(startupFor('claude', 'note\u2028issue')).toMatchObject({
+      viewMode: 'terminal',
+      launcherDefaultView: 'chat'
+    })
   })
 })
 
 describe('backendAgentStartup for a launch with no draft (STA-6412)', () => {
-  it("stamps this device's chat default on a prompt-less agent startup", () => {
+  it("sends this device's chat default on a prompt-less agent startup", () => {
     setRepoConnection(null)
-    const startup = backendAgentStartup({
-      repoId: 'repo-1',
-      agent: 'claude',
-      startup: { command: 'claude' }
-    })
-    expect(startup?.viewMode).toBe('chat')
+    expect(startupFor('claude')?.launcherDefaultView).toBe('chat')
   })
 
-  it('stamps explicit terminal when this device does not default to chat', () => {
+  it("sends this device's terminal default, never a decided terminal", () => {
     setRepoConnection(null)
     useAppStore.setState({
       settings: {
@@ -87,11 +81,8 @@ describe('backendAgentStartup for a launch with no draft (STA-6412)', () => {
         openAgentTabsInChatByDefault: false
       }
     })
-    const startup = backendAgentStartup({
-      repoId: 'repo-1',
-      agent: 'claude',
-      startup: { command: 'claude' }
-    })
-    expect(startup?.viewMode).toBe('terminal')
+    const startup = startupFor('claude')
+    expect(startup?.launcherDefaultView).toBe('terminal')
+    expect(startup).not.toHaveProperty('viewMode')
   })
 })

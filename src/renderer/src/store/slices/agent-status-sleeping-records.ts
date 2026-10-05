@@ -74,7 +74,11 @@ export function sleepingRecordFromEntry(args: {
     return null
   }
   const tab = args.tab ?? findTabForAgentEntry(args.state, args.worktreeId, args.entry)
-  const viewMode = tab ? sleepingPaneViewMode(args.state, tab.id, args.entry.paneKey) : undefined
+  // Why not on live checkpoints: they are rebuilt only on status events, so a view switch would go stale.
+  const viewMode =
+    tab && args.origin !== 'live'
+      ? sleepingPaneViewMode(args.state, tab.id, args.entry.paneKey)
+      : undefined
   return {
     paneKey: args.entry.paneKey,
     ...(tab ? { tabId: tab.id } : {}),
@@ -97,6 +101,29 @@ export function sleepingRecordFromEntry(args: {
     ...agentVerdictFields(args.entry),
     ...(args.origin ? { origin: args.origin } : {})
   }
+}
+
+/** A record made durable from a checkpoint takes its view from the tab now; a gone tab keeps none. */
+export function withSleepingPaneView(
+  state: AppState,
+  record: SleepingAgentSessionRecord
+): SleepingAgentSessionRecord {
+  const tabExists =
+    record.tabId !== undefined &&
+    state.tabsByWorktree[record.worktreeId]?.some((tab) => tab.id === record.tabId) === true
+  const viewMode = tabExists
+    ? sleepingPaneViewMode(state, record.tabId!, record.paneKey)
+    : undefined
+  if (viewMode === record.viewMode) {
+    return record
+  }
+  const next = { ...record }
+  if (viewMode) {
+    next.viewMode = viewMode
+  } else {
+    delete next.viewMode
+  }
+  return next
 }
 
 export type CollectSleepingAgentSessionRecordsOptions = {

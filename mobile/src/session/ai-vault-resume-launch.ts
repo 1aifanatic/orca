@@ -1,5 +1,5 @@
 import type { AiVaultSession } from '../../../src/shared/ai-vault-types'
-import { phoneLaunchViewMode } from '../tasks/agent-launch-request'
+import { phoneLauncherDefaultView } from '../tasks/agent-launch-request'
 import {
   buildAiVaultResumeCommand,
   buildAiVaultResumeShellCommand,
@@ -177,7 +177,9 @@ export async function resumeAiVaultSessionInTerminal(
     launch.hostCapabilities?.includes(QODER_OWNED_TERMINAL_CREATE_CAPABILITY) === true
   // Each request is awaited outside its catch so a transport drop propagates as the original error
   // object; only a refusal is rewritten into this step's own copy.
-  const viewMode = launch.launchAgent ? phoneLaunchViewMode(launch.hostCapabilities) : undefined
+  const launcherDefaultView = launch.launchAgent
+    ? phoneLauncherDefaultView(launch.hostCapabilities)
+    : undefined
   const created = await reviewTerminalCreateRun.request(
     client,
     {
@@ -187,7 +189,7 @@ export async function resumeAiVaultSessionInTerminal(
       ...(launch.envToDelete ? { envToDelete: launch.envToDelete } : {}),
       ...(launch.launchConfig ? { launchConfig: launch.launchConfig } : {}),
       ...(launch.launchAgent ? { launchAgent: launch.launchAgent } : {}),
-      ...(viewMode ? { viewMode } : {}),
+      ...(launcherDefaultView ? { launcherDefaultView } : {}),
       ...(launch.clientMutationId ? { clientMutationId: launch.clientMutationId } : {}),
       activate: false,
       select: true,

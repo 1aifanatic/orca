@@ -8,39 +8,74 @@ const chatDefault = { experimentalNativeChat: true, openAgentTabsInChatByDefault
 const terminalDefault = { experimentalNativeChat: true, openAgentTabsInChatByDefault: false }
 
 describe('finalizeAgentTabStartingView', () => {
-  it("applies the deciding host's default when the launcher sent no choice", () => {
+  it("applies the deciding host's default when no device decided: chat, else nothing", () => {
     expect(finalizeAgentTabStartingView({ settings: chatDefault, agent: 'claude' })).toBe('chat')
-    // Explicit terminal, never absent: absent means an old unswitched tab to every reader.
+    // A terminal default records nothing, so every viewer keeps its own default (Q-A1).
     expect(finalizeAgentTabStartingView({ settings: terminalDefault, agent: 'claude' })).toBe(
-      'terminal'
+      undefined
     )
-    expect(finalizeAgentTabStartingView({ settings: null, agent: 'claude' })).toBe('terminal')
+    expect(finalizeAgentTabStartingView({ settings: null, agent: 'claude' })).toBe(undefined)
   })
 
-  it("lets the launching device's explicit choice win over the host's default", () => {
+  it("applies the launching device's default instead of the host's", () => {
     expect(
-      finalizeAgentTabStartingView({ request: 'terminal', settings: chatDefault, agent: 'claude' })
-    ).toBe('terminal')
+      finalizeAgentTabStartingView({
+        launcherDefaultView: 'terminal',
+        settings: chatDefault,
+        agent: 'claude'
+      })
+    ).toBe(undefined)
     expect(
-      finalizeAgentTabStartingView({ request: 'chat', settings: terminalDefault, agent: 'claude' })
+      finalizeAgentTabStartingView({
+        launcherDefaultView: 'chat',
+        settings: terminalDefault,
+        agent: 'claude'
+      })
     ).toBe('chat')
     // The host's own experimental opt-out is a fallback input, not a veto of the launcher.
-    expect(finalizeAgentTabStartingView({ request: 'chat', settings: null, agent: 'claude' })).toBe(
-      'chat'
-    )
+    expect(
+      finalizeAgentTabStartingView({ launcherDefaultView: 'chat', settings: null, agent: 'claude' })
+    ).toBe('chat')
   })
 
-  it('starts terminal when chat cannot show the launch, whoever asked for chat', () => {
-    expect(finalizeAgentTabStartingView({ request: 'chat', settings: null, agent: 'aider' })).toBe(
-      'terminal'
-    )
+  it('keeps a decided view over every default', () => {
+    expect(
+      finalizeAgentTabStartingView({ viewMode: 'terminal', settings: chatDefault, agent: 'claude' })
+    ).toBe('terminal')
+    expect(
+      finalizeAgentTabStartingView({
+        viewMode: 'chat',
+        launcherDefaultView: 'terminal',
+        settings: terminalDefault,
+        agent: 'claude'
+      })
+    ).toBe('chat')
+  })
+
+  it('pins terminal for a draft chat cannot mirror, whatever the default', () => {
+    for (const settings of [chatDefault, terminalDefault]) {
+      expect(
+        finalizeAgentTabStartingView({
+          settings,
+          agent: 'claude',
+          promptDelivery: 'draft',
+          launchDraftText: 'a\u2028b'
+        })
+      ).toBe('terminal')
+    }
+  })
+
+  it('records nothing when a default asks for chat that cannot show the launch', () => {
+    expect(
+      finalizeAgentTabStartingView({ launcherDefaultView: 'chat', settings: null, agent: 'aider' })
+    ).toBe(undefined)
     expect(
       finalizeAgentTabStartingView({
         settings: chatDefault,
         agent: 'grok',
         nativeChatTranscriptIsLocalReadable: false
       })
-    ).toBe('terminal')
+    ).toBe(undefined)
     expect(
       finalizeAgentTabStartingView({
         settings: chatDefault,
@@ -48,27 +83,32 @@ describe('finalizeAgentTabStartingView', () => {
         nativeChatTranscriptIsLocalReadable: true
       })
     ).toBe('chat')
-    expect(
-      finalizeAgentTabStartingView({
-        request: 'chat',
-        settings: chatDefault,
-        agent: 'claude',
-        promptDelivery: 'draft',
-        launchDraftText: 'a\u2028b'
-      })
-    ).toBe('terminal')
+    // A decided chat that cannot show starts in terminal.
+    expect(finalizeAgentTabStartingView({ viewMode: 'chat', settings: null, agent: 'aider' })).toBe(
+      'terminal'
+    )
   })
 
   it('gives a plain shell no starting view', () => {
-    expect(finalizeAgentTabStartingView({ request: 'chat', settings: chatDefault })).toBe(undefined)
+    expect(finalizeAgentTabStartingView({ viewMode: 'chat', settings: chatDefault })).toBe(
+      undefined
+    )
   })
 
-  it('is idempotent, so a second host pass never changes a final value', () => {
-    for (const request of ['chat', 'terminal'] as const) {
-      const once = finalizeAgentTabStartingView({ request, settings: chatDefault, agent: 'codex' })
-      expect(
-        finalizeAgentTabStartingView({ request: once, settings: terminalDefault, agent: 'codex' })
-      ).toBe(once)
+  it('is idempotent, so a second host pass with the same inputs never changes the result', () => {
+    const cases = [
+      { settings: chatDefault, agent: 'codex' },
+      { launcherDefaultView: 'terminal' as const, settings: chatDefault, agent: 'codex' },
+      {
+        settings: terminalDefault,
+        agent: 'codex',
+        promptDelivery: 'draft' as const,
+        launchDraftText: 'a\u2028b'
+      }
+    ]
+    for (const input of cases) {
+      const once = finalizeAgentTabStartingView(input)
+      expect(finalizeAgentTabStartingView({ ...input, viewMode: once })).toBe(once)
     }
   })
 })

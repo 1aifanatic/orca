@@ -12,25 +12,30 @@ import { readHeadlessChatPairState } from './session-tab-chat-pair'
 type StartingViewLaunch = {
   launchAgent?: TuiAgent
   viewMode?: TerminalTabViewMode
+  launcherDefaultView?: TerminalTabViewMode
 }
 
 /**
- * The host's finalization of a new agent tab's starting view: the launcher's `viewMode` when it
- * sent one, else this host's settings, gated by what chat can show on this workspace's route.
- * A launch with no recognized agent keeps whatever the caller sent.
+ * The host's finalization of a new agent tab's starting view: a decided `viewMode`, else the
+ * launching device's default, else this host's, gated by what chat can show on this workspace's
+ * route. A launch with no recognized agent keeps whatever the caller sent.
  */
 export function withFinalAgentTabStartingView<T extends StartingViewLaunch>(
   launch: T,
   workspace: { connectionId: string | null },
   settings: { experimentalNativeChat?: boolean; openAgentTabsInChatByDefault?: boolean } | null
 ): T & Pick<StartingViewLaunch, 'viewMode'> {
+  if (!launch.launchAgent) {
+    return launch
+  }
   const viewMode = finalizeAgentTabStartingView({
-    request: launch.viewMode,
+    viewMode: launch.viewMode,
+    launcherDefaultView: launch.launcherDefaultView,
     settings,
     agent: launch.launchAgent,
     nativeChatTranscriptIsLocalReadable: isNativeChatTranscriptLocalReadable(workspace.connectionId)
   })
-  return !viewMode || viewMode === launch.viewMode ? launch : { ...launch, viewMode }
+  return viewMode === launch.viewMode ? launch : { ...launch, viewMode }
 }
 
 /** What a launch's tab committed, and whether this launch's admission created that record. */
@@ -124,13 +129,14 @@ export function hasPersistedTerminalTabRow(
 }
 
 /**
- * A worktree's startup launch carrying the launcher's starting view to `createTerminal`, which
- * finalizes it. An unsent draft chat cannot mirror pins terminal, the same gate as the composer.
+ * A worktree's startup launch carrying the launcher's view inputs to `createTerminal`, which
+ * finalizes them. An unsent draft chat cannot mirror pins terminal, the same gate as the composer.
  */
 export function withWorktreeStartupView(
   args: {
     startup?: WorktreeStartupLaunch
     startupViewMode?: TerminalTabViewMode
+    launcherDefaultView?: TerminalTabViewMode
     startupDraft?: string
     startupDraftPaste?: { content: string }
   },
@@ -147,5 +153,12 @@ export function withWorktreeStartupView(
     draftText !== undefined && !canMirrorLaunchDraftToNativeChat(draftText)
       ? 'terminal'
       : (startup.viewMode ?? args.startupViewMode)
-  return viewMode && viewMode !== startup.viewMode ? { ...startup, viewMode } : startup
+  const launcherDefaultView = startup.launcherDefaultView ?? args.launcherDefaultView
+  return viewMode === startup.viewMode && launcherDefaultView === startup.launcherDefaultView
+    ? startup
+    : {
+        ...startup,
+        ...(viewMode ? { viewMode } : {}),
+        ...(launcherDefaultView ? { launcherDefaultView } : {})
+      }
 }

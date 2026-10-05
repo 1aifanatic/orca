@@ -100,7 +100,7 @@ describe('decideInitialAgentTabViewMode', () => {
         },
         { agent: 'grok', nativeChatTranscriptIsLocalReadable: false }
       )
-    ).toEqual({ viewMode: 'terminal' })
+    ).toEqual({})
   })
 
   it('opens a mirrorable draft launch in chat', () => {
@@ -146,8 +146,8 @@ describe('decideInitialAgentTabViewMode', () => {
     ).toBeUndefined()
   })
 
-  // Why explicit terminal: an absent view means an old unswitched tab to every reader.
-  it('returns chat or explicit terminal for an agent tab, and nothing for a plain shell', () => {
+  // Why nothing for a terminal default: a tab nobody switched opens in each viewer's own default.
+  it('returns chat, a terminal pin for an unmirrorable draft, or nothing', () => {
     expect(
       initialAgentTabViewModeProps(
         {
@@ -164,6 +164,12 @@ describe('decideInitialAgentTabViewMode', () => {
           openAgentTabsInChatByDefault: true
         },
         { agent: 'claude' }
+      )
+    ).toEqual({})
+    expect(
+      initialAgentTabViewModeProps(
+        { experimentalNativeChat: false, openAgentTabsInChatByDefault: false },
+        { agent: 'claude', promptDelivery: 'draft', launchDraftText: 'one\u2028two' }
       )
     ).toEqual({ viewMode: 'terminal' })
     expect(

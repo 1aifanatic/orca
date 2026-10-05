@@ -24,7 +24,10 @@ export function decideInitialAgentTabViewMode(args: {
   return finalizeAgentTabStartingView({ ...args, settings: args }) === 'chat' ? 'chat' : undefined
 }
 
-/** The starting view this device stamps on an agent tab it launches: chat or terminal, never absent. */
+/**
+ * The starting view this device stamps on an agent tab it mints: chat, a terminal pin for a draft
+ * chat cannot mirror, or nothing (a tab nobody switched).
+ */
 export function initialAgentTabViewModeProps(
   settings:
     | Pick<GlobalSettings, 'experimentalNativeChat' | 'openAgentTabsInChatByDefault'>

@@ -35,8 +35,8 @@ export type AgentLaunchSurfaceFactory = {
     launchSource?: string
     /** The caller-minted pane to create; refused with `AgentLaunchPaneAlreadyLiveError` if live. */
     paneKey?: string
-    /** The launcher's starting view; the host finalizes it. */
-    viewMode?: 'terminal' | 'chat'
+    /** The launching device's Chat UI default; the host finalizes the starting view. */
+    launcherDefaultView?: 'terminal' | 'chat'
   }): Promise<{
     handle: string
     /** The pane this create minted; a factory whose runtime reports none omits it, never invents. */
@@ -105,7 +105,7 @@ export type AgentLaunchWorkspaceFactory = {
     cwd?: string
     launchSource?: string
     paneKey?: string
-    viewMode?: 'terminal' | 'chat'
+    launcherDefaultView?: 'terminal' | 'chat'
     /** The launch's session options, read as the startup terminal's model/effort/mode preferences. */
     options?: Readonly<Record<string, unknown>>
   }): Promise<{

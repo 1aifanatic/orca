@@ -18,7 +18,7 @@ import { agentLaunchReplayRun } from '../tasks/mobile-workspace-create-operation
 import {
   agentLaunchExistingParams,
   isAgentLaunchReplayUnsupportedRefusal,
-  phoneLaunchViewMode,
+  phoneLauncherDefaultView,
   readAgentLaunchSupport
 } from '../tasks/agent-launch-request'
 import { sendReplayingAmbiguousDelivery } from '../tasks/replay-on-ambiguous-delivery'
@@ -100,14 +100,14 @@ export async function launchAgentInExistingWorkspace(args: {
   if (!supportsMobileExistingAgentLaunch(args.hostCapabilities)) {
     return { kind: 'unsupported' }
   }
-  const viewMode = phoneLaunchViewMode(args.hostCapabilities)
+  const launcherDefaultView = phoneLauncherDefaultView(args.hostCapabilities)
   const params = agentLaunchExistingParams({
     agent: args.agent,
     worktreeId: args.worktreeId,
     operationId: (args.mintOperationId ?? structuredSessionOperationId)(),
     ...(args.prompt ? { prompt: args.prompt } : {}),
     ...(args.launchSource ? { launchSource: args.launchSource } : {}),
-    ...(viewMode ? { viewMode } : {}),
+    ...(launcherDefaultView ? { launcherDefaultView } : {}),
     ...(args.reservation
       ? {
           paneKey: makePaneKey(args.reservation.pane.tabId, args.reservation.pane.leafId),

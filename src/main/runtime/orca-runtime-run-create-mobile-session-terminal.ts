@@ -32,6 +32,7 @@ export class OrcaRuntimeWithRunCreateMobileSessionTerminal extends OrcaRuntimeWi
       launchConfig?: SleepingAgentLaunchConfig
       launchAgent?: TuiAgent
       viewMode?: 'terminal' | 'chat'
+      launcherDefaultView?: 'terminal' | 'chat'
       activate?: boolean
       clientNavigationId?: string
       clientMutationId?: string
@@ -64,11 +65,13 @@ export class OrcaRuntimeWithRunCreateMobileSessionTerminal extends OrcaRuntimeWi
       }
     }
     const startupCommand = await this.resolveMobileSessionTerminalCommand(workspace, opts)
-    // Why: this lane bypasses createTerminal's option resolver, so it finalizes here, once, for every branch.
+    // Why: the window lane mints its tab in the renderer, so the view is decided here; headless
+    // lanes re-decide in createTerminal from the same inputs, which yields the same view.
     const viewMode = withFinalAgentTabStartingView(
       {
         ...(startupCommand.launchAgent ? { launchAgent: startupCommand.launchAgent } : {}),
-        ...(opts.viewMode ? { viewMode: opts.viewMode } : {})
+        ...(opts.viewMode ? { viewMode: opts.viewMode } : {}),
+        ...(opts.launcherDefaultView ? { launcherDefaultView: opts.launcherDefaultView } : {})
       },
       workspace,
       this.store?.getSettings?.() ?? null
@@ -94,6 +97,7 @@ export class OrcaRuntimeWithRunCreateMobileSessionTerminal extends OrcaRuntimeWi
           },
           createMutation: { clientIdentity, id: opts.clientMutationId },
           viewMode,
+          launcherDefaultView: opts.launcherDefaultView,
           targetGroupId: opts.targetGroupId,
           supportsSplitGroupPlacement: opts.supportsSplitGroupPlacement,
           signal: opts.signal
@@ -114,6 +118,7 @@ export class OrcaRuntimeWithRunCreateMobileSessionTerminal extends OrcaRuntimeWi
           startupCommandDelivery: startupCommand.startupCommandDelivery,
           launchAgent: startupCommand.launchAgent,
           viewMode,
+          launcherDefaultView: opts.launcherDefaultView,
           targetGroupId: opts.targetGroupId,
           supportsSplitGroupPlacement: opts.supportsSplitGroupPlacement,
           launchConfig: startupCommand.launchConfig,
@@ -240,6 +245,7 @@ export class OrcaRuntimeWithRunCreateMobileSessionTerminal extends OrcaRuntimeWi
             identity: { tabId: pendingSurface.tab.parentTabId, leafId: pendingSurface.tab.leafId },
             launchAgent: startupCommand.launchAgent,
             viewMode,
+            launcherDefaultView: opts.launcherDefaultView,
             targetGroupId: opts.targetGroupId,
             supportsSplitGroupPlacement: opts.supportsSplitGroupPlacement,
             launchConfig: startupCommand.launchConfig,

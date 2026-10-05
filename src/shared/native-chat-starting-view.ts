@@ -28,8 +28,10 @@ export function canMirrorLaunchDraftToNativeChat(text: string): boolean {
 }
 
 export type AgentTabStartingViewInput = {
-  /** The launching device's choice. Absent means the deciding host's own default applies. */
-  request?: TerminalTabViewMode
+  /** A decided view: the launcher's genuine choice, a recorded one (Agent Sleep), or a pin. */
+  viewMode?: TerminalTabViewMode
+  /** The launching device's Chat UI default; absent means the deciding host's own applies. */
+  launcherDefaultView?: TerminalTabViewMode
   /** The deciding host's (or the local device's) Chat UI settings. */
   settings:
     | { experimentalNativeChat?: boolean; openAgentTabsInChatByDefault?: boolean }
@@ -43,7 +45,14 @@ export type AgentTabStartingViewInput = {
   nativeChatTranscriptIsLocalReadable?: boolean
 }
 
-/** Whether chat can show this launch at all; a choice of chat it fails starts in terminal. */
+function draftCanShowInChat(input: AgentTabStartingViewInput): boolean {
+  return (
+    input.promptDelivery !== 'draft' ||
+    canMirrorLaunchDraftToNativeChat(input.launchDraftText ?? '')
+  )
+}
+
+/** Whether chat can show this launch at all. */
 function chatCanShowLaunch(input: AgentTabStartingViewInput): boolean {
   if (!isNativeChatSupportedAgent(input.agent)) {
     return false
@@ -54,17 +63,16 @@ function chatCanShowLaunch(input: AgentTabStartingViewInput): boolean {
   ) {
     return false
   }
-  return (
-    input.promptDelivery !== 'draft' ||
-    canMirrorLaunchDraftToNativeChat(input.launchDraftText ?? '')
-  )
+  return draftCanShowInChat(input)
 }
 
 /**
- * The view a new agent tab starts in, decided once at creation: the launcher's choice, else the
- * deciding host's default, gated by what chat can show. Explicit 'terminal' is returned for every
- * recognized agent launch, because an absent view means "an old unswitched tab" to every reader.
- * Idempotent: finalizing an already-final value returns it unchanged.
+ * The view a new agent tab records at creation, decided once. A decided `viewMode` is kept (chat
+ * only where chat can show it). Otherwise the launching device's default, else the host's, applies
+ * like any default: chat when chat can show the launch, and nothing when it is terminal, so every
+ * viewer keeps its own default for a tab nobody switched. The one exception pins terminal: a draft
+ * chat cannot mirror, because a viewer whose default is chat would hide that draft.
+ * Idempotent: re-finalizing a result with the same inputs returns it unchanged.
  */
 export function finalizeAgentTabStartingView(
   input: AgentTabStartingViewInput
@@ -72,8 +80,17 @@ export function finalizeAgentTabStartingView(
   if (!input.agent) {
     return undefined
   }
-  const wantsChat = input.request
-    ? input.request === 'chat'
+  if (input.viewMode) {
+    return input.viewMode === 'chat' && chatCanShowLaunch(input) ? 'chat' : 'terminal'
+  }
+  if (!isNativeChatSupportedAgent(input.agent)) {
+    return undefined
+  }
+  if (!draftCanShowInChat(input)) {
+    return 'terminal'
+  }
+  const defaultIsChat = input.launcherDefaultView
+    ? input.launcherDefaultView === 'chat'
     : agentTabsDefaultToNativeChat(input.settings)
-  return wantsChat && chatCanShowLaunch(input) ? 'chat' : 'terminal'
+  return defaultIsChat && chatCanShowLaunch(input) ? 'chat' : undefined
 }

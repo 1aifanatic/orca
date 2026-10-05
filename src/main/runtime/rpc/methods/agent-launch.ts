@@ -107,7 +107,7 @@ async function agentLaunchIntent(
     ...(params.launchSource ? { launchSource: params.launchSource } : {}),
     ...(params.paneKey ? { paneKey: params.paneKey } : {}),
     ...(params.sessionId ? { sessionId: params.sessionId } : {}),
-    ...(params.viewMode ? { viewMode: params.viewMode } : {})
+    ...(params.launcherDefaultView ? { launcherDefaultView: params.launcherDefaultView } : {})
   }
 }
 

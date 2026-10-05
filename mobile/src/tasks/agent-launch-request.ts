@@ -37,16 +37,16 @@ import type { WorkspaceCreateParams } from './workspace-create-params'
 export type AgentLaunchSupport = {
   /** The host deduplicates operationId durably and refuses unknown or expired outcomes. */
   replay: boolean
-  /** The host stamps a launcher's starting view; absent on a host that would ignore it. */
+  /** The host applies a launcher's default view; absent on a host that would ignore it. */
   launchPresentation?: true
 }
 
 /**
- * The starting view this phone asks a host to stamp: its loaded default, sent only to a host that
- * honours it. Nothing while the default has not loaded, so the host's own default applies and a
- * preference read never blocks a launch. Read once per launch so a replay resends the same value.
+ * This phone's Chat UI default, sent only to a host that applies it like its own default. Nothing
+ * while it has not loaded, so the host's default applies and a preference read never blocks a
+ * launch. Read once per launch so a replay resends the same value.
  */
-export function phoneLaunchViewMode(
+export function phoneLauncherDefaultView(
   capabilities: readonly string[] | null | undefined
 ): TerminalTabViewMode | undefined {
   return capabilities?.includes(AGENT_TAB_LAUNCH_PRESENTATION_RUNTIME_CAPABILITY)
@@ -86,13 +86,13 @@ export function agentLaunchCreateParams(
   agent: TuiAgent,
   create: WorkspaceCreateParams,
   operationId?: string | null,
-  viewMode?: TerminalTabViewMode
+  launcherDefaultView?: TerminalTabViewMode
 ): RpcSendParams<'agent.launch'> {
   return {
     agent,
     ...(operationId ? { operationId } : {}),
     target: { kind: 'create-worktree', create: withoutReservedAgentCreateFields(create) },
-    ...(viewMode ? { viewMode } : {})
+    ...(launcherDefaultView ? { launcherDefaultView } : {})
   }
 }
 
@@ -109,7 +109,7 @@ export function agentLaunchExistingParams(args: {
   launchSource?: string
   paneKey?: string
   sessionId?: string
-  viewMode?: TerminalTabViewMode
+  launcherDefaultView?: TerminalTabViewMode
 }): RpcSendParams<'agent.launchReplay'> {
   return {
     agent: args.agent,
@@ -119,7 +119,7 @@ export function agentLaunchExistingParams(args: {
     ...(args.launchSource ? { launchSource: args.launchSource } : {}),
     ...(args.paneKey ? { paneKey: args.paneKey } : {}),
     ...(args.sessionId ? { sessionId: args.sessionId } : {}),
-    ...(args.viewMode ? { viewMode: args.viewMode } : {})
+    ...(args.launcherDefaultView ? { launcherDefaultView: args.launcherDefaultView } : {})
   }
 }
 

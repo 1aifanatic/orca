@@ -54,7 +54,7 @@ function resumedSleepingViewMode(
   }
   const state = useAppStore.getState()
   return finalizeAgentTabStartingView({
-    request: record.viewMode,
+    viewMode: record.viewMode,
     settings: state.settings,
     agent: record.agent,
     nativeChatTranscriptIsLocalReadable: isNativeChatTranscriptLocalReadable(

@@ -155,7 +155,7 @@ describe('host agent launch routes stamp the starting view at creation', () => {
     })
   })
 
-  it("stamps the launcher's explicit terminal over a chat host default", async () => {
+  it('stamps a decided terminal (a pin) over a chat host default', async () => {
     const { runtime, spawn, getSession, published } = harness({ settings: CHAT_DEFAULT })
 
     const created = await runtime.createTerminal(`id:${WT}`, {
@@ -171,12 +171,28 @@ describe('host agent launch routes stamp the starting view at creation', () => {
     expect(published(created.tabId!)?.viewMode).toBe('terminal')
   })
 
-  it('stamps explicit terminal when the host default is terminal', async () => {
-    const { runtime, spawn } = harness({ settings: TERMINAL_DEFAULT })
+  it('records nothing when the host default is terminal, so viewers keep their own default', async () => {
+    const { runtime, spawn, published } = harness({ settings: TERMINAL_DEFAULT })
 
-    await runtime.createTerminal(`id:${WT}`, { startupAgent: 'codex', presentation: 'background' })
+    const created = await runtime.createTerminal(`id:${WT}`, {
+      startupAgent: 'codex',
+      presentation: 'background'
+    })
 
-    expect(spawn.mock.calls[0]?.[0]).toMatchObject({ startingViewMode: 'terminal' })
+    expect(spawn.mock.calls[0]?.[0]).not.toHaveProperty('startingViewMode')
+    expect(published(created.tabId!)?.viewMode).toBeUndefined()
+  })
+
+  it("applies the launching device's terminal default over a chat host: nothing recorded", async () => {
+    const { runtime, spawn } = harness({ settings: CHAT_DEFAULT })
+
+    await runtime.createTerminal(`id:${WT}`, {
+      startupAgent: 'claude',
+      launcherDefaultView: 'terminal',
+      presentation: 'background'
+    })
+
+    expect(spawn.mock.calls[0]?.[0]).not.toHaveProperty('startingViewMode')
   })
 
   it('orchestration worker-start (STA-9293): reveals the committed chat with fresh-launch proof', async () => {
@@ -211,18 +227,37 @@ describe('host agent launch routes stamp the starting view at creation', () => {
     expect(row?.viewMode).toBe('chat')
   })
 
-  it("session.tabs.createTerminal keeps a phone's explicit terminal over a chat host default", async () => {
-    const { runtime, getSession } = harness({ settings: CHAT_DEFAULT })
+  it("session.tabs.createTerminal applies a phone's terminal default over a chat host on both passes", async () => {
+    const { runtime, spawn, getSession } = harness({ settings: CHAT_DEFAULT })
 
     const result = await runtime.createMobileSessionTerminal(`id:${WT}`, {
       agent: 'claude',
-      viewMode: 'terminal'
+      launcherDefaultView: 'terminal'
     })
 
-    expect(result.tab.viewMode).toBe('terminal')
+    // The headless lane decides again inside createTerminal; it must see the phone's default.
+    expect(spawn.mock.calls[0]?.[0]).not.toHaveProperty('startingViewMode')
+    expect(result.tab.viewMode).toBeUndefined()
     expect(
       getSession().tabsByWorktree[WT]?.find((tab) => tab.id === result.tab.parentTabId)?.viewMode
-    ).toBe('terminal')
+    ).toBeUndefined()
+  })
+
+  it("session.tabs.createTerminal stamps a phone's chat default over a terminal host", async () => {
+    const { runtime, getSession } = harness({ settings: TERMINAL_DEFAULT })
+
+    const result = await runtime.createMobileSessionTerminal(`id:${WT}`, {
+      agent: 'claude',
+      launcherDefaultView: 'chat'
+    })
+
+    expect(result.tab).toMatchObject({
+      viewMode: 'chat',
+      parentLayout: { chatLeafId: result.tab.leafId }
+    })
+    expect(
+      getSession().tabsByWorktree[WT]?.find((tab) => tab.id === result.tab.parentTabId)?.viewMode
+    ).toBe('chat')
   })
 })
 

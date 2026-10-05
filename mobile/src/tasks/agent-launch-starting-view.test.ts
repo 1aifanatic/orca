@@ -8,10 +8,11 @@ import { writeDefaultSessionViewState } from '../storage/default-session-view-st
 import {
   agentLaunchCreateParams,
   agentLaunchExistingParams,
-  phoneLaunchViewMode,
+  phoneLauncherDefaultView,
   readAgentLaunchSupport
 } from './agent-launch-request'
 import { createWorktreeWithNameRetry } from './worktree-create-retry'
+import { buildTaskWorkspaceCreateParams } from './workspace-create-params'
 
 const CAPABLE = [AGENT_LAUNCH_RUNTIME_CAPABILITY, AGENT_TAB_LAUNCH_PRESENTATION_RUNTIME_CAPABILITY]
 
@@ -22,20 +23,20 @@ afterEach(() => {
 describe("the phone's launch starting view", () => {
   it("sends the phone's loaded default to a host that stamps it", () => {
     writeDefaultSessionViewState({ value: 'chat', settled: true })
-    expect(phoneLaunchViewMode(CAPABLE)).toBe('chat')
+    expect(phoneLauncherDefaultView(CAPABLE)).toBe('chat')
     writeDefaultSessionViewState({ value: 'terminal', settled: true })
-    expect(phoneLaunchViewMode(CAPABLE)).toBe('terminal')
+    expect(phoneLauncherDefaultView(CAPABLE)).toBe('terminal')
   })
 
   it('sends nothing while the default store has not loaded, so the host default applies', () => {
-    expect(phoneLaunchViewMode(CAPABLE)).toBeUndefined()
+    expect(phoneLauncherDefaultView(CAPABLE)).toBeUndefined()
     writeDefaultSessionViewState({ value: 'terminal', settled: false })
-    expect(phoneLaunchViewMode(CAPABLE)).toBeUndefined()
+    expect(phoneLauncherDefaultView(CAPABLE)).toBeUndefined()
   })
 
   it('sends nothing to a host without launch-presentation stamping', () => {
     writeDefaultSessionViewState({ value: 'chat', settled: true })
-    expect(phoneLaunchViewMode([AGENT_LAUNCH_RUNTIME_CAPABILITY])).toBeUndefined()
+    expect(phoneLauncherDefaultView([AGENT_LAUNCH_RUNTIME_CAPABILITY])).toBeUndefined()
   })
 
   it('reads the capability into the launch support', () => {
@@ -46,18 +47,18 @@ describe("the phone's launch starting view", () => {
   it('puts the view on both launch builders only when given one', () => {
     expect(
       agentLaunchCreateParams('claude', { repo: 'id:r', name: 'n' }, null, 'chat')
-    ).toMatchObject({ viewMode: 'chat' })
+    ).toMatchObject({ launcherDefaultView: 'chat' })
     expect(agentLaunchCreateParams('claude', { repo: 'id:r', name: 'n' })).not.toHaveProperty(
-      'viewMode'
+      'launcherDefaultView'
     )
     expect(
       agentLaunchExistingParams({
         agent: 'claude',
         worktreeId: 'wt',
         operationId: 'op',
-        viewMode: 'terminal'
+        launcherDefaultView: 'terminal'
       })
-    ).toMatchObject({ viewMode: 'terminal' })
+    ).toMatchObject({ launcherDefaultView: 'terminal' })
   })
 })
 
@@ -96,6 +97,26 @@ describe('a phone workspace create with an agent', () => {
     })
 
     expect(result).toMatchObject({ worktreeId: 'wt-1' })
-    expect(sent.map((params) => params.viewMode)).toEqual(['chat', 'chat'])
+    expect(sent.map((params) => params.launcherDefaultView)).toEqual(['chat', 'chat'])
+  })
+})
+
+describe('a phone workspace create from an issue or the Tasks screen', () => {
+  it("sends the phone's loaded default with the agent startup, and nothing for a blank create", () => {
+    writeDefaultSessionViewState({ value: 'chat', settled: true })
+    const base = {
+      item: {
+        provider: 'github' as const,
+        source: { type: 'issue' as const, repoId: 'r', number: 7, title: 'Bug', url: 'https://x/7' }
+      },
+      targetRepoId: 'r',
+      setupDecision: 'skip' as const
+    }
+    expect(buildTaskWorkspaceCreateParams({ ...base, agent: 'claude' })).toMatchObject({
+      launcherDefaultView: 'chat'
+    })
+    expect(buildTaskWorkspaceCreateParams({ ...base, agent: 'blank' })).not.toHaveProperty(
+      'launcherDefaultView'
+    )
   })
 })

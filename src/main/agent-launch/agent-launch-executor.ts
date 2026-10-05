@@ -301,7 +301,7 @@ function terminalLaunchInputs(intent: AgentLaunchIntent) {
     ...(intent.cwd ? { cwd: intent.cwd } : {}),
     ...(intent.launchSource ? { launchSource: intent.launchSource } : {}),
     ...(intent.paneKey ? { paneKey: intent.paneKey } : {}),
-    ...(intent.viewMode ? { viewMode: intent.viewMode } : {})
+    ...(intent.launcherDefaultView ? { launcherDefaultView: intent.launcherDefaultView } : {})
   }
 }
 
