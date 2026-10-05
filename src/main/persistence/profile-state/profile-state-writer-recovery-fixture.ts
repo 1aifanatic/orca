@@ -22,6 +22,8 @@ export type WriterFaultStep = {
   failStart?: boolean
   /** Delay initialization so a test can act while a replacement is starting. */
   startDelayMs?: number
+  /** Hold initialization until the test releases the shared gate. */
+  startGate?: SharedArrayBuffer
 }
 
 let bundleRoot: string
@@ -99,6 +101,7 @@ function faultWrapper(root: string): string {
       if (message.id === exitId) setImmediate(() => process.exit(1))
     }
     const start = () => require(${JSON.stringify(entryPath)})
+    if (step.startGate) Atomics.wait(new Int32Array(step.startGate), 0, 0)
     if (step.startDelayMs) setTimeout(start, step.startDelayMs)
     else start()
     `
