@@ -36,11 +36,6 @@ export function applyJournalDispatchRow(
   }
   submission.resolvedAt = row.state === 'pending' ? null : row.ts
   if (row.state === 'pending') {
-    delete submission.resolvedSequence
-  } else {
-    submission.resolvedSequence = row.seq
-  }
-  if (row.state === 'pending') {
     submission.handedOverAt = row.ts
     placeHandedOverMessage(state, submission, row)
   } else if (row.state === 'rejected') {

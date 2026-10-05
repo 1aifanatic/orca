@@ -26,65 +26,65 @@ export function isStoppedBeforeStartBlock(block: NativeChatBlock): boolean {
   )
 }
 
-/** Where the sends a Stop took back are drawn, worked out once per projection. */
-export type StoppedSendPlacement = {
-  /** Whether it stays in a turn: one opened for it, or one it was steered into. That turn's
-   *  interrupted end is its stop. */
-  staysInTurn(itemId: string): boolean
-  /** Where it is drawn when that is not its own row. */
-  movedTo(itemId: string): AgentJournalPosition | undefined
-}
+/** Where a send a Stop took back is drawn. `opensTurn`: a turn opened for it, whose interrupted
+ *  end is its stop; `position`: where it is drawn, when that is not its own row. */
+export type StoppedSendPlace = { opensTurn: boolean; position?: AgentJournalPosition }
 
 /**
- * A send a Stop took back (`stopped`, by item id) is drawn at the journal row that took it back
- * (`resolvedSequence`), past the end of every turn whose opener the journal wrote before that row.
+ * A send a Stop took back (`stopped`, by item id) is drawn at its own row, past the end of every
+ * turn whose opener the journal wrote before it: a host that publishes `submittedSequence` puts
+ * that row where the send was taken back. One that opened a turn is drawn as that turn's opener.
  * Journal order only, never a clock.
- * Temporary, until a host version floor: a host that predates `resolvedSequence` keeps the earlier
- * rule, from the later of its own row and just after `latestRowsSentBefore`.
+ * Temporary: a host that predates `submittedSequence` leaves the row where it was sent, so the send
+ * is also drawn below the latest row sent before it (`latestRowsSentBefore`); dropped once no
+ * supported remote host lacks the field.
  */
 export function placeStoppedSends(
   items: readonly AgentJournalRenderItem[],
   submissions: readonly AgentJournalSubmission[],
   stopped: ReadonlyMap<string, AgentJournalSubmission>
-): StoppedSendPlacement {
+): (itemId: string) => StoppedSendPlace {
   const anchors = structuredAgentTurnAnchors(items, submissions)
-  const anchored = new Set(anchors.values())
+  const turnOpenedBy = new Map([...anchors].map(([turnItemId, anchorId]) => [anchorId, turnItemId]))
   const itemsById = new Map(items.map((item) => [item.itemId, item]))
   const pastTurnsOpenedBefore = turnEndsByOpener(items, anchors, itemsById)
   const sentBefore = [...stopped.values()].some(
-    (submission) => submission.resolvedSequence === undefined
+    (submission) => submission.submittedSequence === undefined
   )
     ? latestRowsSentBefore(submissions, itemsById)
     : undefined
-  return {
-    staysInTurn: (itemId) =>
-      anchored.has(itemId) || itemsById.get(itemId)?.turnScope?.kind === 'turn',
-    movedTo: (itemId) => {
-      const item = itemsById.get(itemId)
-      if (!item) {
-        return undefined
-      }
-      const own = agentJournalItemPosition(item)
-      const resolvedSequence = stopped.get(itemId)?.resolvedSequence
-      const sentBeforeRow = sentBefore?.get(itemId)
-      const floor = sentBeforeRow ? agentJournalItemPosition(sentBeforeRow) : undefined
-      // Just after the floor row, so a turn that row opened counts as waited on.
-      const from =
-        resolvedSequence !== undefined
-          ? { sequence: resolvedSequence, index: 0 }
-          : floor && compareAgentJournalPositions(floor, own) > 0
-            ? { sequence: floor.sequence, index: floor.index + 0.5 }
-            : own
-      const position = pastTurnsOpenedBefore(from)
-      return compareAgentJournalPositions(position, own) !== 0 ? position : undefined
+  return (itemId) => {
+    const item = itemsById.get(itemId)
+    if (!item) {
+      return { opensTurn: false }
     }
+    const own = agentJournalItemPosition(item)
+    const record = itemsById.get(turnOpenedBy.get(itemId) ?? '')
+    if (record) {
+      // Drawn where its turn opened, as an opener is.
+      const opened = agentJournalItemPosition(record)
+      return compareAgentJournalPositions(own, opened) > 0
+        ? { opensTurn: true, position: { sequence: opened.sequence, index: opened.index - 0.5 } }
+        : { opensTurn: true }
+    }
+    const floorRow = sentBefore?.get(itemId)
+    const floor = floorRow ? agentJournalItemPosition(floorRow) : undefined
+    // Just after the floor row, so a turn that row opened counts as waited on.
+    const from =
+      floor && compareAgentJournalPositions(floor, own) > 0
+        ? { sequence: floor.sequence, index: floor.index + 0.5 }
+        : own
+    const position = pastTurnsOpenedBefore(from)
+    return compareAgentJournalPositions(position, own) !== 0
+      ? { opensTurn: false, position }
+      : { opensTurn: false }
   }
 }
 
 /**
  * For a point in the journal, just after the furthest row of every turn whose opener comes before
  * it, or the point itself when none reaches past it. One pass over the items, then a binary search
- * per point. A send placed here is never a turn's opener (`staysInTurn`), so no turn is its own.
+ * per point. A send placed here opened no turn, so no turn is its own.
  */
 function turnEndsByOpener(
   items: readonly AgentJournalRenderItem[],
@@ -141,7 +141,7 @@ function turnEndsByOpener(
 
 /** For each submission, the latest loaded row of the ones sent before it, in `submittedAt` order
  *  with ties kept in list order as the client reducer keeps them. Temporary: read only for a host
- *  that predates `resolvedSequence`. */
+ *  that predates `submittedSequence`. */
 function latestRowsSentBefore(
   submissions: readonly AgentJournalSubmission[],
   itemsById: ReadonlyMap<string, AgentJournalRenderItem>

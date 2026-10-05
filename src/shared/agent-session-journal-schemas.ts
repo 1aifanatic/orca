@@ -319,7 +319,6 @@ export const AgentJournalSubmissionSchema = z.object({
   submittedAt: z.number(),
   resolvedAt: z.number().nullable(),
   submittedSequence: z.number().int().optional(),
-  resolvedSequence: z.number().int().optional(),
   recovered: z.literal(true).optional(),
   handoverRecorded: z.literal(true).optional(),
   handedOverAt: z.number().optional(),

@@ -71,31 +71,36 @@ export function structuredAgentTurnAnchors(
       .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
   )
   // A send a Stop took back after its turn opened but before the provider echoed it: the record
-  // still names the provider's key, and the send is no longer in flight. It opened the turn whose
-  // record the journal wrote before the row that took it back.
-  const stoppedBeforeEcho = new Map(
-    submissions.flatMap((submission) =>
+  // still names the provider's key. It opened the first such record the journal wrote after it was
+  // sent and before it was taken back, in send order.
+  const takenBack = submissions.filter(
+    (submission) =>
       !submission.providerItemId &&
       submission.queuedMessageId === undefined &&
       submission.resolvedAt !== null &&
       dispatchWasWithdrawn(submission)
-        ? [[agentJournalSubmissionKey(submission.clientMessageId), submission] as const]
-        : []
-    )
   )
+  const itemsById =
+    takenBack.length > 0 ? new Map(items.map((item) => [item.itemId, item])) : undefined
+  const stoppedBeforeEcho = takenBack
+    .flatMap((submission) => {
+      const sent = itemsById?.get(agentJournalSubmissionKey(submission.clientMessageId))
+      return sent ? [{ sent, submission }] : []
+    })
+    .sort(
+      (left, right) =>
+        (left.submission.submittedSequence ?? left.submission.submittedAt) -
+        (right.submission.submittedSequence ?? right.submission.submittedAt)
+    )
+  const claimed = new Set<string>()
   const anchors = new Map<string, string>()
   let precedingUserItemId: string | null = null
   let inFlightSinceLastTurn: string | null = null
-  let stoppedSinceLastTurn: { itemId: string; submission: AgentJournalSubmission } | null = null
   for (const item of items) {
     if (userItemIds.has(item.itemId)) {
       precedingUserItemId = item.itemId
       if (inFlightSinceLastTurn === null && inFlight.has(item.itemId)) {
         inFlightSinceLastTurn = item.itemId
-      }
-      const stopped = stoppedBeforeEcho.get(item.itemId)
-      if (stoppedSinceLastTurn === null && stopped !== undefined) {
-        stoppedSinceLastTurn = { itemId: item.itemId, submission: stopped }
       }
       continue
     }
@@ -103,45 +108,48 @@ export function structuredAgentTurnAnchors(
     if (!turn || !isRootAgentJournalItem(item)) {
       continue
     }
-    const stoppedOpener =
-      stoppedSinceLastTurn !== null &&
-      openedBeforeTakenBack(item, turn, stoppedSinceLastTurn.submission)
-        ? stoppedSinceLastTurn.itemId
-        : null
-    anchors.set(
+    let anchor = anchorOf(
       item.itemId,
-      anchorOf(
-        item.itemId,
-        turn,
-        userItemIds,
-        aliases,
-        precedingUserItemId,
-        inFlightSinceLastTurn ?? stoppedOpener
-      )
+      turn,
+      userItemIds,
+      aliases,
+      precedingUserItemId,
+      inFlightSinceLastTurn
     )
+    if (anchor === item.itemId && turn.userItemId !== undefined) {
+      const opener = stoppedBeforeEcho.find(
+        ({ sent, submission }) =>
+          !claimed.has(sent.itemId) && sentBeforeAndTakenBackAfter(item, turn, submission, sent)
+      )
+      if (opener) {
+        claimed.add(opener.sent.itemId)
+        anchor = opener.sent.itemId
+      }
+    }
+    anchors.set(item.itemId, anchor)
     inFlightSinceLastTurn = null
-    stoppedSinceLastTurn = null
   }
   return anchors
 }
 
-/** Whether a turn record came before the row that took a send back: by journal order where the
- *  host publishes that row's place. Temporary: a host that predates `resolvedSequence` is read by
- *  times, which a resume rewrites to whole seconds; dropped once every supported remote host
- *  publishes it. */
-function openedBeforeTakenBack(
+/** Whether a send was sent before a turn record and taken back after it, by journal order: a host
+ *  that publishes `submittedSequence` also moves a rejected send's row to the row that rejected it.
+ *  Temporary: an older host is read by its row's place and by times, which a resume rewrites to
+ *  whole seconds; dropped once no supported remote host lacks `submittedSequence`. */
+function sentBeforeAndTakenBackAfter(
   record: AgentJournalRenderItem,
   turn: AgentJournalTurnLifecycle,
-  submission: Pick<AgentJournalSubmission, 'resolvedSequence' | 'resolvedAt'>
+  submission: AgentJournalSubmission,
+  sent: AgentJournalRenderItem
 ): boolean {
-  if (submission.resolvedSequence !== undefined) {
-    return record.sequence < submission.resolvedSequence
+  if (submission.submittedSequence !== undefined) {
+    return submission.submittedSequence < record.sequence && record.sequence < sent.sequence
   }
-  return (
-    turn.startedAt !== undefined &&
-    submission.resolvedAt !== null &&
-    turn.startedAt <= submission.resolvedAt
-  )
+  if (turn.startedAt === undefined || submission.resolvedAt === null) {
+    return false
+  }
+  const sentBefore = sent.sequence < record.sequence || submission.submittedAt <= turn.startedAt
+  return sentBefore && turn.startedAt <= submission.resolvedAt
 }
 
 function anchorOf(

@@ -145,13 +145,13 @@ export function projectStructuredAgentSessionMessages(
       held.push({ ...message, queued: true })
     } else if (!placement || !stoppedBeforeStart.has(message.id)) {
       delivered.push(message)
-    } else if (placement.staysInTurn(message.id)) {
-      // A turn opened for it, or it joined one (a steer): that turn's interrupted end is its stop.
-      delivered.push({ ...message, stoppedBeforeStart: true })
     } else {
-      const position = placement.movedTo(message.id)
+      const { opensTurn, position } = placement(message.id)
       moved ||= position !== undefined
-      shownStopped.add(message.id)
+      // A turn opened for it: that turn's interrupted end is its stop, so it gets no row of its own.
+      if (!opensTurn) {
+        shownStopped.add(message.id)
+      }
       delivered.push({
         ...message,
         stoppedBeforeStart: true,
