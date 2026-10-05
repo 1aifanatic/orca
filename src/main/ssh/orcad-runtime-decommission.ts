@@ -78,7 +78,8 @@ async function stopRemote(
   userDataPath: string,
   environment: KnownRuntimeEnvironment,
   deployment: OrcadDeploymentLink,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  retried = false
 ): Promise<Stopped | Refusal> {
   const context = await resolveLinkedOrcadContext(environment, deployment, signal)
   const slot = managedOrcadSlot(context, deployment.remotePort, signal)
@@ -94,6 +95,16 @@ async function stopRemote(
     }
     if (recovered.outcome === 'pending') {
       return refuse('unverifiable', recovered.code, recovered.reason)
+    }
+    // Another run settled the journal first; start over from what it left, never assume live.
+    if (recovered.outcome === 'none') {
+      return retried
+        ? refuse(
+            'unverifiable',
+            'orcad_stop_journal_changed',
+            'Another run on this server changed its stop while this one waited. Refresh and retry.'
+          )
+        : stopRemote(userDataPath, environment, deployment, signal, true)
     }
     return refuse(
       'live',

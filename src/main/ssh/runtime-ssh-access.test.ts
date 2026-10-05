@@ -14,6 +14,7 @@ import type { SshTarget } from '../../shared/ssh-types'
 const mocks = vi.hoisted(() => ({
   infrastructure: vi.fn(),
   connect: vi.fn(),
+  disconnect: vi.fn(async () => undefined),
   start: vi.fn(),
   close: vi.fn(),
   ensure: vi.fn(),
@@ -96,7 +97,7 @@ describe('independent runtime SSH access coordinator', () => {
       events.push('flush')
     })
     mocks.infrastructure.mockReturnValue({
-      connectionManager: { connect: mocks.connect },
+      connectionManager: { connect: mocks.connect, disconnect: mocks.disconnect },
       claims: {
         listTargets: () => [target],
         preflight: mocks.preflight,
@@ -177,6 +178,25 @@ describe('independent runtime SSH access coordinator', () => {
     expect(JSON.stringify(result)).not.toContain('secret')
     expect(current().pendingSshAccessOperation).toBeUndefined()
     expect(mocks.preflight).toHaveBeenCalledWith('target')
+  })
+
+  it('cancels a pending connect and starts no tunnel when the link is aborted', async () => {
+    const controller = new AbortController()
+    mocks.connect.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, fail) => {
+          mocks.disconnect.mockImplementationOnce(async () => {
+            fail(new Error('cancelled'))
+            return undefined
+          })
+        })
+    )
+    const link = linkRuntimeSshAccess(userDataPath, request(), { signal: controller.signal })
+    await vi.waitFor(() => expect(mocks.connect).toHaveBeenCalled())
+    controller.abort()
+    await expect(link).rejects.toThrow('cancelled')
+    expect(mocks.disconnect).toHaveBeenCalledWith('target')
+    expect(mocks.start).not.toHaveBeenCalled()
   })
 
   it('handles lost link responses without connecting or verifying again', async () => {

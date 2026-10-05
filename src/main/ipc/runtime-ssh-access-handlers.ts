@@ -9,11 +9,20 @@ export function registerRuntimeSshAccessHandlers(options: {
   getUserDataPath: () => string
   invalidateTransport: (environmentId: string) => void | Promise<void>
 }): void {
-  ipcMain.handle('runtimeEnvironments:linkSshAccess', async (_event, input: unknown) => {
+  ipcMain.handle('runtimeEnvironments:linkSshAccess', async (event, input: unknown) => {
     const args = RuntimeSshAccessLinkRequestSchema.parse(input)
-    return linkRuntimeSshAccess(options.getUserDataPath(), args, {
-      invalidateTransport: options.invalidateTransport
-    })
+    // Why: a link to an unreachable host holds two lifecycle queues; a closed window cancels it.
+    const controller = new AbortController()
+    const cancel = (): void => controller.abort()
+    event.sender.once('destroyed', cancel)
+    try {
+      return await linkRuntimeSshAccess(options.getUserDataPath(), args, {
+        signal: controller.signal,
+        invalidateTransport: options.invalidateTransport
+      })
+    } finally {
+      event.sender.removeListener('destroyed', cancel)
+    }
   })
   ipcMain.handle('runtimeEnvironments:unlinkSshAccess', async (_event, input: unknown) => {
     const args = RuntimeSshAccessUnlinkRequestSchema.parse(input)

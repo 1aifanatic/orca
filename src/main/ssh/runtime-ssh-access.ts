@@ -162,7 +162,14 @@ export function linkRuntimeSshAccess(
       try {
         options.signal?.throwIfAborted()
         const claimed = requireFence(claims, environmentId, fence)
-        const connection = await connectionManager.connect(claimed)
+        // A cancel drops the pending connect, which frees both lifecycle queues behind it.
+        const cancelConnect = (): void =>
+          void connectionManager.disconnect(claimed.id).catch(() => {})
+        options.signal?.addEventListener('abort', cancelConnect, { once: true })
+        const connection = await connectionManager
+          .connect(claimed)
+          .finally(() => options.signal?.removeEventListener('abort', cancelConnect))
+        options.signal?.throwIfAborted()
         requireFence(claims, environmentId, fence)
         tunnelStarted = true
         const localPort = await startOrcadManagedTunnel(

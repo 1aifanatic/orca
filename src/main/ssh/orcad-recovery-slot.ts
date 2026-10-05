@@ -141,8 +141,8 @@ export async function quiesceInterruptedOrcadSlot(
   const stopped =
     remoteDir === null ? 'already-exited' : await stopOrcadSlot(options, remoteDir, false)
   let exited = stopped === 'stopped' || stopped === 'already-exited'
-  if (stopped === 'unknown' && remoteDir !== null) {
-    // The readiness PID never matched, e.g. the slot died before readiness; liveness decides.
+  if ((stopped === 'unknown' || stopped === 'unconfirmed') && remoteDir !== null) {
+    // No verified answer, e.g. the slot died before readiness; liveness decides.
     exited = (await slotLiveness(options, remoteDir)) === 'DEAD'
   }
   if (otherSlot) {

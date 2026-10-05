@@ -62,6 +62,14 @@ describe('SshConnectionManager', () => {
     await rejected
   })
 
+  it('tears a failed startup down quietly, so its error is not replaced by a disconnect', async () => {
+    mockState.connectResults.push(Promise.reject(new Error('auth failed')))
+    const manager = new SshConnectionManager({ onStateChange: vi.fn() })
+    await expect(manager.connect(target)).rejects.toThrow('auth failed')
+    expect(mockState.instances.at(-1)?.disconnect).toHaveBeenCalledWith({ quiet: true })
+    expect(manager.getConnection(target.id)).toBeUndefined()
+  })
+
   it('removes the registration when bulk teardown fails', async () => {
     const manager = new SshConnectionManager({ onStateChange: vi.fn() })
     await manager.connect(target)

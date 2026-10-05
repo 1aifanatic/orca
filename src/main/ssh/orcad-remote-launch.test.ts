@@ -127,7 +127,8 @@ describe('stopping a running orcad', () => {
     ['STILL_RUNNING', 'still-running', false],
     ['SIGNAL_FAILED', 'signal-failed', false],
     ['UNKNOWN', 'unknown', false],
-    ['', 'unknown', false]
+    ['SIGNALED\nUNKNOWN', 'unconfirmed', false],
+    ['', 'unconfirmed', false]
   ])('parses %s and frees the host = %s', (output, expected, frees) => {
     expect(parseOrcadStopOutcome(output)).toBe(expected)
     expect(orcadStopFreedTheHost(parseOrcadStopOutcome(output))).toBe(frees)

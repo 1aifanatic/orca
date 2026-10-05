@@ -37,10 +37,7 @@ import {
   withOrcadActivationIncumbentStopped,
   withOrcadActivationSnapshot
 } from './orcad-activation-transaction-transitions'
-import {
-  readOrcadActivationTransaction,
-  writeOrcadActivationTransaction
-} from './orcad-activation-transaction-store'
+import { writeOrcadActivationTransaction } from './orcad-activation-transaction-store'
 import {
   execOrcadRemoteOr,
   launchOrcadAndAwaitReadiness,
@@ -80,14 +77,6 @@ export async function activateInstalledOrcad(
     code,
     reason
   })
-  if (await readOrcadActivationTransaction(options)) {
-    // Holding the lock proves its writer is gone, but undoing its work needs a fresh census.
-    lock.retain()
-    return notActivated(
-      'orcad_activation_recovery_required',
-      'An earlier activation on this host was interrupted. Recover it before deploying again.'
-    )
-  }
   const record = await readOrcadActivationRecord(options)
   const plan = planOrcadUpdate({
     record,

@@ -134,6 +134,9 @@ describe('Windows stop script', () => {
   const requestFile = () => join(dir, ORCAD_STOP_REQUEST_FILENAME)
   const stop = async (justLaunched: boolean, waitSeconds = 5) =>
     (await runOp('stop', [dir, String(waitSeconds), justLaunched ? '1' : '0'])).stdout
+      .trim()
+      .split(/\r?\n/u)
+      .at(-1)
 
   /** Stands in for orcad's stop-request listener: exits once the request file appears. */
   function fakeOrcad(): number {

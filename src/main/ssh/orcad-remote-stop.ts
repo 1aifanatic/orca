@@ -14,11 +14,12 @@ import {
   writeOrcadActivationRecord
 } from './orcad-activation-record-store'
 import { sameOrcadActivationRecord } from './orcad-activation-transaction'
+import { writeOrcadActivationTransaction } from './orcad-activation-transaction-store'
 import {
-  readOrcadActivationTransaction,
-  writeOrcadActivationTransaction
-} from './orcad-activation-transaction-store'
-import { withOrcadActivationLock } from './orcad-activation-lock'
+  ORCAD_ACTIVATION_FENCE_HELD_CODE,
+  orcadActivationFenceHeldReason,
+  withOrcadActivationLock
+} from './orcad-activation-lock'
 import {
   createOrcadDecommissionTransaction,
   withOrcadDecommissionProcessExited,
@@ -68,74 +69,75 @@ export async function decommissionRemoteOrcad(
   options: OrcadDecommissionOptions
 ): Promise<OrcadDecommissionResult> {
   const now = options.now ?? ((): Date => new Date())
-  return withOrcadActivationLock(options, async (lock) => {
-    if (await readOrcadActivationTransaction(options)) {
-      lock.retain()
-      return refuse(
-        'unverifiable',
-        'orcad_activation_recovery_required',
-        'An earlier activation on this host was interrupted. Recover it before decommissioning.'
-      )
-    }
-    const record = await readOrcadActivationRecord(options)
-    if (!sameOrcadActivationRecord(record, options.record)) {
-      return refuse(
-        'unverifiable',
-        'orcad_decommission_record_changed',
-        'The host activation record changed since it was reviewed. Refresh and try again.'
-      )
-    }
-    const activeVersion = record.active
-    if (!activeVersion) {
-      return refuse(
-        'unverifiable',
-        'orcad_decommission_nothing_active',
-        'No orcad version is active on this host, so there is nothing to decommission.'
-      )
-    }
-    const census = censusRefusal(options.census)
-    if (census) {
-      return census
-    }
-    const target = await readRemoteOrcadManagedStopTarget(options, activeVersion)
-    if (target.state === 'refused') {
-      return refuse(target.verdict, target.code, target.reason)
-    }
+  return withOrcadActivationLock(
+    options,
+    async (lock) => {
+      const record = await readOrcadActivationRecord(options)
+      if (!sameOrcadActivationRecord(record, options.record)) {
+        return refuse(
+          'unverifiable',
+          'orcad_decommission_record_changed',
+          'The host activation record changed since it was reviewed. Refresh and try again.'
+        )
+      }
+      const activeVersion = record.active
+      if (!activeVersion) {
+        return refuse(
+          'unverifiable',
+          'orcad_decommission_nothing_active',
+          'No orcad version is active on this host, so there is nothing to decommission.'
+        )
+      }
+      const census = censusRefusal(options.census)
+      if (census) {
+        return census
+      }
+      const target = await readRemoteOrcadManagedStopTarget(options, activeVersion)
+      if (target.state === 'refused') {
+        return refuse(target.verdict, target.code, target.reason)
+      }
 
-    let transaction = createOrcadDecommissionTransaction({
-      transactionId: randomUUID(),
-      recordBefore: { ...record, active: activeVersion },
-      now: now()
-    })
-    await writeOrcadActivationTransaction(options, transaction)
-    lock.retainOnError()
-    const request = {
-      schemaVersion: 1 as const,
-      transactionId: transaction.transactionId,
-      ...target.context,
-      // Best effort: an idle daemon goes with orcad, a busy one keeps its terminals.
-      retireIdleDaemon: true as const
-    }
-    // Durable before it can reach the host, so recovery can settle exactly this request.
-    transaction = withOrcadDecommissionStopDispatched(transaction, request, now())
-    await writeOrcadActivationTransaction(options, transaction)
+      let transaction = createOrcadDecommissionTransaction({
+        transactionId: randomUUID(),
+        recordBefore: { ...record, active: activeVersion },
+        now: now()
+      })
+      await writeOrcadActivationTransaction(options, transaction)
+      lock.retainOnError()
+      const request = {
+        schemaVersion: 1 as const,
+        transactionId: transaction.transactionId,
+        ...target.context,
+        // Best effort: an idle daemon goes with orcad, a busy one keeps its terminals.
+        retireIdleDaemon: true as const
+      }
+      // Durable before it can reach the host, so recovery can settle exactly this request.
+      transaction = withOrcadDecommissionStopDispatched(transaction, request, now())
+      await writeOrcadActivationTransaction(options, transaction)
 
-    const settlement = await settleOrcadDecommissionStop(options, request)
-    if (settlement.state === 'withdrawn') {
-      // orcad never acted on it and keeps serving; the record never changed.
-      return refuse(settlement.verdict, 'orcad_decommission_stop_withdrawn', settlement.reason)
-    }
-    if (settlement.state === 'unsettled') {
-      lock.retain()
-      return refuse(settlement.verdict, 'orcad_decommission_stop_unsettled', settlement.reason)
-    }
-    transaction = withOrcadDecommissionProcessExited(transaction, now())
-    await writeOrcadActivationTransaction(options, transaction)
-    await writeOrcadActivationRecord(options, transaction.recordAfter)
-    return {
-      outcome: 'decommissioned',
-      version: activeVersion,
-      retirement: settlement.retirement
-    }
-  })
+      const settlement = await settleOrcadDecommissionStop(options, request)
+      if (settlement.state === 'withdrawn') {
+        // orcad never acted on it and keeps serving; the record never changed.
+        return refuse(settlement.verdict, 'orcad_decommission_stop_withdrawn', settlement.reason)
+      }
+      if (settlement.state === 'unsettled') {
+        lock.retain()
+        return refuse(settlement.verdict, 'orcad_decommission_stop_unsettled', settlement.reason)
+      }
+      transaction = withOrcadDecommissionProcessExited(transaction, now())
+      await writeOrcadActivationTransaction(options, transaction)
+      await writeOrcadActivationRecord(options, transaction.recordAfter)
+      return {
+        outcome: 'decommissioned',
+        version: activeVersion,
+        retirement: settlement.retirement
+      }
+    },
+    () =>
+      refuse(
+        'unverifiable',
+        ORCAD_ACTIVATION_FENCE_HELD_CODE,
+        orcadActivationFenceHeldReason('stop')
+      )
+  )
 }

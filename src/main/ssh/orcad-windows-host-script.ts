@@ -141,6 +141,7 @@ const ops = {
     if (first === 'dead') return answer('ALREADY_EXITED')
     if (first !== 'alive') return answer('UNKNOWN')
     try { fs.writeFileSync(path.join(dir, ${text(ORCAD_STOP_REQUEST_FILENAME)}), '', { mode: 0o600 }) } catch { return answer('SIGNAL_FAILED') }
+    process.stdout.write('SIGNALED\\n')
     const end = Date.now() + Number(waitArg) * 1000
     const tick = () => {
       const state = orcadState(dir, record)

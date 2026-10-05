@@ -23,6 +23,9 @@ import { readOrcadBundleTarget } from './orcad-deployment-target'
 import { resolveOrcadRuntimeTarget } from './orcad-runtime-target'
 import { materializeNodeRuntimeArchive } from './pinned-runtime-materializer'
 import {
+  ORCAD_ACTIVATION_FENCE_HELD_CODE,
+  orcadActivationFenceExists,
+  orcadActivationFenceHeldReason,
   resolveOrcadActivationReadinessTimeout,
   withOrcadActivationLock
 } from './orcad-activation-lock'
@@ -87,12 +90,24 @@ export async function deployOrcad(input: OrcadDeployOptions): Promise<OrcadDeplo
   }
   const fullVersion = readLocalFullVersion(options.localOrcadDir)
   const remoteDir = computeRemoteInstallDir(ORCAD_INSTALL_MODEL, options.remoteHome, fullVersion)
-  // Fail fast before upload; the activation re-reads it under the fence.
+  const held = (): OrcadDeployResult => ({
+    outcome: 'installed-not-activated',
+    fullVersion,
+    code: ORCAD_ACTIVATION_FENCE_HELD_CODE,
+    reason: orcadActivationFenceHeldReason('update')
+  })
+  // Fail fast before upload; the activation re-reads both under the fence.
   await readOrcadActivationRecord(options)
+  // An unanswered probe only skips this shortcut: the fence acquisition itself still decides.
+  if (await orcadActivationFenceExists(options).catch(() => false)) {
+    return held()
+  }
 
   await installOrcadBundle(options, fullVersion, remoteDir)
 
-  return withOrcadActivationLock(options, (lock) =>
-    activateInstalledOrcad(options, fullVersion, remoteDir, lock)
+  return withOrcadActivationLock(
+    options,
+    (lock) => activateInstalledOrcad(options, fullVersion, remoteDir, lock),
+    held
   )
 }

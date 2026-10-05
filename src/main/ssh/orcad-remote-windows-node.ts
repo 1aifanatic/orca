@@ -15,7 +15,9 @@ import {
   ORCAD_RUNTIMES_DIRNAME
 } from '../../shared/orcad-artifacts'
 import { pinnedNodeRuntimeAsset, type NodeRuntimeTarget } from '../../shared/node-runtime-pin'
+import { randomUUID } from 'node:crypto'
 import type { SshConnection } from './ssh-connection'
+import { execCommand } from './ssh-relay-deploy-helpers'
 import { RELAY_REMOTE_DIR } from './relay-protocol'
 import { joinRemotePath, remoteDirname, type RemoteHostPlatform } from './ssh-remote-platform'
 import { powerShellLiteral } from './ssh-remote-powershell'
@@ -114,19 +116,45 @@ export function orcadWindowsHostOpCommand(
   ])
 }
 
+// Content-addressed paths this connection already saw on the host.
+const stagedHostScripts = new WeakMap<SshConnection, Set<string>>()
+
 /**
- * Stages the host script. One file write per lifecycle operation, before any host op: the
- * caller that resolves a Windows orcad context owns calling it.
+ * Stages the host script before any host op. The name is content-addressed, so it is written
+ * only when missing, and through a partial file and a rename: a concurrent node.exe never reads
+ * a truncated script.
  */
 export async function installOrcadWindowsHostScript(
   target: { conn: SshConnection; host: RemoteHostPlatform; signal?: AbortSignal },
   baseDir: string
 ): Promise<void> {
-  await target.conn.writeFile(
-    orcadWindowsHostScriptPath(target.host, baseDir),
-    ORCAD_WINDOWS_HOST_SCRIPT,
-    { hostPlatform: target.host, signal: target.signal }
-  )
+  const scriptPath = orcadWindowsHostScriptPath(target.host, baseDir)
+  const staged = stagedHostScripts.get(target.conn) ?? new Set<string>()
+  stagedHostScripts.set(target.conn, staged)
+  if (staged.has(scriptPath)) {
+    return
+  }
+  const script = powerShellLiteral(scriptPath)
+  const exec = (command: string): Promise<string> =>
+    execCommand(target.conn, command, { wrapCommand: false, signal: target.signal })
+  const presence = `if (Test-Path -LiteralPath ${script} -PathType Leaf) { 'PRESENT' } else { 'MISSING' }`
+  if ((await exec(presence)).trim() !== 'PRESENT') {
+    const partialPath = `${scriptPath}.${randomUUID()}.partial`
+    const partial = powerShellLiteral(partialPath)
+    await target.conn.writeFile(partialPath, ORCAD_WINDOWS_HOST_SCRIPT, {
+      hostPlatform: target.host,
+      signal: target.signal
+    })
+    // A writer that won the race already placed identical bytes; only the partial is dropped.
+    const placed = await exec(
+      `Move-Item -LiteralPath ${partial} -Destination ${script} -ErrorAction SilentlyContinue; ` +
+        `Remove-Item -LiteralPath ${partial} -Force -ErrorAction SilentlyContinue; ${presence}`
+    )
+    if (placed.trim() !== 'PRESENT') {
+      throw new Error(`Could not stage the orcad host script at ${scriptPath}.`)
+    }
+  }
+  staged.add(scriptPath)
 }
 
 /** The decoded payload after `marker`, or null when the host printed no such line. */

@@ -214,7 +214,6 @@ describe('deployOrcad on a Windows host', () => {
     expect(ops.indexOf('stop')).toBeLessThan(ops.indexOf('snapshot-restore'))
     expect(ops).toEqual([
       'record-read',
-      'record-read',
       'snapshot-probe',
       'state-newest-mtime',
       'build-hash',

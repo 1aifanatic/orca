@@ -56,6 +56,8 @@ export async function recoverOrcadIncumbent(
     launchedVersion: string | null
     incumbent: OrcadSlotIdentity | null
     restoreState: OrcadSnapshotVerdict | null
+    /** The state the launched slot started from, when that is not `restoreState` (a rollback). */
+    launchedFromState?: OrcadSnapshotVerdict | null
     /** This run itself proved both slots exited, so no fresh liveness probe is needed. */
     slotsProvenExited?: boolean
   }
@@ -67,12 +69,13 @@ export async function recoverOrcadIncumbent(
   // With no incumbent there is no older reader to protect; the record names nothing to serve.
   if (quiescence === 'exited' && input.restoreState && input.incumbent) {
     const decision = input.launchedVersion
-      ? await decideChangedStateRestore(options, input.restoreState)
+      ? await decideChangedStateRestore(options, input.launchedFromState ?? input.restoreState)
       : 'restore'
     if (decision !== 'restore' && decision !== 'unchanged') {
       return decision
     }
-    if (decision === 'restore') {
+    // A launched slot that left its starting state untouched still sits on a root to replace.
+    if (decision === 'restore' || input.launchedFromState) {
       await restoreState(options, input.restoreState)
     }
   }

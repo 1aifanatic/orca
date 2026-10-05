@@ -12,7 +12,7 @@ vi.mock('./ssh-relay-install-lock', async (importOriginal) => ({
 }))
 
 import { execCommand } from './ssh-relay-deploy-helpers'
-import { acquireInstallLock } from './ssh-relay-install-lock'
+import { acquireInstallLock, RemoteInstallLockBusyError } from './ssh-relay-install-lock'
 import {
   parseOrcadActivationTransaction,
   planOrcadTransactionRecovery,
@@ -149,7 +149,11 @@ describe('planOrcadTransactionRecovery', () => {
         withOrcadRollbackPhase(rescued, 'rollback-state-restored', T),
         before
       )
-    ).toMatchObject({ launchedVersion: OLD })
+    ).toMatchObject({
+      launchedVersion: OLD,
+      // The target started from the restored snapshot; whether it changed that decides.
+      launchedFromState: { state: 'captured', dirName: before.snapshot?.dirName }
+    })
   })
 
   it('refuses when the record matches neither side', () => {
@@ -174,9 +178,24 @@ describe('activation fence', () => {
       .mock.calls.map(([, command]) => command)
       .filter((command) => command.includes('rm -'))
 
+  const locked = <T>(run: Parameters<typeof withOrcadActivationLock<T>>[1]): Promise<T> =>
+    withOrcadActivationLock(target, run, () => {
+      throw new Error('fence held')
+    })
+
+  it('answers a held fence at once instead of waiting for it, running nothing', async () => {
+    vi.clearAllMocks()
+    vi.mocked(acquireInstallLock).mockRejectedValueOnce(new RemoteInstallLockBusyError('/l', 0))
+    const run = vi.fn(async () => 'ran')
+    await expect(withOrcadActivationLock(target, run, () => 'held')).resolves.toBe('held')
+    expect(vi.mocked(acquireInstallLock).mock.calls[0]?.[3]).toMatchObject({ waitTimeoutMs: 0 })
+    expect(run).not.toHaveBeenCalled()
+    expect(removals()).toEqual([])
+  })
+
   it('never takes over a held fence by age, and removes the journal before the lock', async () => {
     vi.clearAllMocks()
-    await withOrcadActivationLock(target, async () => undefined)
+    await locked(async () => undefined)
     expect(vi.mocked(acquireInstallLock).mock.calls[0]?.[3]).toMatchObject({
       allowStaleTakeover: false,
       relayGcClaim: false
@@ -190,21 +209,21 @@ describe('activation fence', () => {
   it('keeps the fence after an unconfirmed termination, a retained error, or retain()', async () => {
     vi.clearAllMocks()
     const lost = Object.assign(new Error('lost'), { sshChannelCloseConfirmed: false })
-    await expect(withOrcadActivationLock(target, () => Promise.reject(lost))).rejects.toBe(lost)
+    await expect(locked(() => Promise.reject(lost))).rejects.toBe(lost)
     await expect(
-      withOrcadActivationLock(target, async (lock) => {
+      locked(async (lock) => {
         lock.retainOnError()
         throw new Error('mid-transaction')
       })
     ).rejects.toThrow('mid-transaction')
-    await withOrcadActivationLock(target, async (lock) => lock.retain())
+    await locked(async (lock) => lock.retain())
     expect(removals()).toEqual([])
   })
 
   it('releases after a recovered failure even though the run throws', async () => {
     vi.clearAllMocks()
     await expect(
-      withOrcadActivationLock(target, async (lock) => {
+      locked(async (lock) => {
         lock.retainOnError()
         lock.recovered()
         throw new Error('snapshot failed; incumbent restarted')

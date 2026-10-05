@@ -74,3 +74,8 @@ export function recordActiveOrcadTunnel(
     remotePort: forward.remotePort
   })
 }
+
+/** A run a close(), ownership change or transport change overtook: it must not read as success. */
+export function supersededTunnelError(): Error {
+  return new Error('Orca SSH tunnel setup was superseded.')
+}

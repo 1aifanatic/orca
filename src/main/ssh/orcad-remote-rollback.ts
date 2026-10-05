@@ -20,9 +20,10 @@ import type { OrcadActivationVerdict } from './orcad-activation-gate'
 import type { OrcadDaemonProtocolFacts } from './orcad-daemon-protocol-crossing'
 import { readOrcadActivationRecord } from './orcad-activation-record-store'
 import { sameOrcadActivationRecord } from './orcad-activation-transaction'
-import { readOrcadActivationTransaction } from './orcad-activation-transaction-store'
 import type { RemoteHostPlatform } from './ssh-remote-platform'
 import {
+  ORCAD_ACTIVATION_FENCE_HELD_CODE,
+  orcadActivationFenceHeldReason,
   resolveOrcadActivationReadinessTimeout,
   withOrcadActivationLock
 } from './orcad-activation-lock'
@@ -62,25 +63,24 @@ export async function rollbackOrcad(input: OrcadRollbackOptions): Promise<OrcadR
       ORCAD_STARTUP_READINESS_TIMEOUT_MS
     )
   }
-  return withOrcadActivationLock(options, async (lock) => {
-    if (await readOrcadActivationTransaction(options)) {
-      lock.retain()
-      return {
-        outcome: 'refused',
-        code: 'orcad_activation_recovery_required',
-        reason:
-          'An earlier activation on this host was interrupted. Recover it before rolling back.'
+  return withOrcadActivationLock(
+    options,
+    async (lock) => {
+      if (!sameOrcadActivationRecord(await readOrcadActivationRecord(options), options.record)) {
+        return {
+          outcome: 'refused',
+          code: 'orcad_rollback_record_changed',
+          reason:
+            'The host activation record changed while this rollback was waiting. Refresh the ' +
+            'host state and review the new rollback target before trying again.'
+        }
       }
-    }
-    if (!sameOrcadActivationRecord(await readOrcadActivationRecord(options), options.record)) {
-      return {
-        outcome: 'refused',
-        code: 'orcad_rollback_record_changed',
-        reason:
-          'The host activation record changed while this rollback was waiting. Refresh the ' +
-          'host state and review the new rollback target before trying again.'
-      }
-    }
-    return rollbackOrcadLocked(options, lock)
-  })
+      return rollbackOrcadLocked(options, lock)
+    },
+    () => ({
+      outcome: 'refused',
+      code: ORCAD_ACTIVATION_FENCE_HELD_CODE,
+      reason: orcadActivationFenceHeldReason('rollback')
+    })
+  )
 }

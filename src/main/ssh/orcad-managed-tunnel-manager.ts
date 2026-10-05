@@ -23,6 +23,7 @@ import {
   dropActiveOrcadTunnel,
   managedTunnelAccess,
   recordActiveOrcadTunnel,
+  supersededTunnelError,
   type ActiveOrcadTunnel
 } from './orcad-managed-tunnel-active'
 import { checkManagedTunnelServing, type OrcadTunnelServing } from './orcad-managed-tunnel-serving'
@@ -48,6 +49,8 @@ export type OrcadManagedTunnelDependencies = {
 export class OrcadManagedTunnelManager {
   private readonly active = new Map<string, ActiveOrcadTunnel>()
   private readonly inFlight = new Map<string, Promise<void>>()
+  /** The ownership generation an in-flight ensure started under; resume runs record none. */
+  private readonly inFlightOwnership = new Map<string, number>()
   private readonly ownershipGenerations = new Map<string, number>()
   private readonly forwards: SshPortForwardManager
   private readonly resumeRecovery: OrcadManagedTunnelResumeRecovery
@@ -90,15 +93,20 @@ export class OrcadManagedTunnelManager {
       return Promise.resolve()
     }
     const pending = this.inFlight.get(environment.id)
-    if (pending) {
+    const ownership = this.ownershipGenerations.get(environment.id) ?? 0
+    const pendingOwnership = this.inFlightOwnership.get(environment.id)
+    // A close() after that run began supersedes it: build a fresh one rather than share its end.
+    if (pending && (pendingOwnership === undefined || pendingOwnership === ownership)) {
       return pending
     }
     const operation = this.ensureManagedTunnel(environment, resolveCurrent).finally(() => {
       if (this.inFlight.get(environment.id) === operation) {
         this.inFlight.delete(environment.id)
+        this.inFlightOwnership.delete(environment.id)
       }
     })
     this.inFlight.set(environment.id, operation)
+    this.inFlightOwnership.set(environment.id, ownership)
     return operation
   }
 
@@ -114,14 +122,14 @@ export class OrcadManagedTunnelManager {
     }
     const managerGeneration = this.managerGeneration
     const ownershipGeneration = (this.ownershipGenerations.get(environmentId) ?? 0) + 1
-    const transportGeneration = connection.getTransportGeneration()
+    const transportGeneration = connection.getConnectGeneration()
     const stillCurrent = (): boolean =>
       this.managerGeneration === managerGeneration &&
       this.ownershipGenerations.get(environmentId) === ownershipGeneration &&
-      connection.getTransportGeneration() === transportGeneration
+      connection.getConnectGeneration() === transportGeneration
     await this.close(environmentId)
     if (!stillCurrent()) {
-      throw new Error('Orca SSH tunnel setup was superseded.')
+      throw supersededTunnelError()
     }
     const forward = await forwardToVerifiedOrcad({
       targetId: target.id,
@@ -135,7 +143,7 @@ export class OrcadManagedTunnelManager {
       stillCurrent
     })
     if (!forward) {
-      throw new Error('Orca SSH tunnel setup was superseded.')
+      throw supersededTunnelError()
     }
     recordActiveOrcadTunnel(this.active, environmentId, forward, {
       connection,
@@ -164,6 +172,7 @@ export class OrcadManagedTunnelManager {
     this.managerGeneration += 1
     this.active.clear()
     this.inFlight.clear()
+    this.inFlightOwnership.clear()
     this.ownershipGenerations.clear()
     this.resumeRecovery.dispose()
     this.forwards.dispose()
@@ -236,9 +245,9 @@ export class OrcadManagedTunnelManager {
     }
     const connection = await connectionManager.connect(target)
     if (!stillOwned()) {
-      return
+      throw supersededTunnelError()
     }
-    const transportGeneration = connection.getTransportGeneration()
+    const transportGeneration = connection.getConnectGeneration()
     const active = this.active.get(environment.id)
     if (
       active?.connection === connection &&
@@ -259,7 +268,7 @@ export class OrcadManagedTunnelManager {
       await dropActiveOrcadTunnel(this.active, this.forwards, environment.id, active)
     }
     if (!stillOwned()) {
-      return
+      throw supersededTunnelError()
     }
     const forward = await forwardToVerifiedOrcad({
       targetId: target.id,
@@ -268,11 +277,10 @@ export class OrcadManagedTunnelManager {
       localPort: deployment.localPort,
       label: `Managed Orca server: ${environment.name}`,
       ...checks,
-      stillCurrent: () =>
-        stillOwned() && connection.getTransportGeneration() === transportGeneration
+      stillCurrent: () => stillOwned() && connection.getConnectGeneration() === transportGeneration
     })
     if (!forward) {
-      return
+      throw supersededTunnelError()
     }
     recordActiveOrcadTunnel(this.active, environment.id, forward, {
       connection,

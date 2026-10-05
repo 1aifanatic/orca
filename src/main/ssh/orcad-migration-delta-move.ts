@@ -43,6 +43,7 @@ import {
 import { currentOrcadSourceFingerprint } from './orcad-retained-source'
 import type { SshTargetOrcadClaims } from './ssh-target-orcad-claims'
 import { orcadMigrationRefusalReason } from './orcad-migration-refusal-reason'
+import { errorMessage } from '../../shared/error-message'
 
 export type OrcadDeltaMoveArgs = {
   userDataPath: string
@@ -216,8 +217,4 @@ function refuse(
   reason: string
 ): Extract<OrcadDeltaMoveResult, { outcome: 'refused' }> {
   return { outcome: 'refused', code, reason }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }

@@ -255,11 +255,24 @@ describe('Windows build hash and host script', () => {
     )
   })
 
-  it('stages the host script by file write, content-addressed beside the slots', async () => {
+  it('stages a missing host script through a partial file and a rename, once per connection', async () => {
     const { conn, writes } = windowsConn()
+    mockExec.mockResolvedValueOnce('MISSING\r\n').mockResolvedValueOnce('PRESENT\r\n')
     await installOrcadWindowsHostScript({ conn, host }, base)
-    expect(writes).toEqual([[SCRIPT, ORCAD_WINDOWS_HOST_SCRIPT]])
-    expect(mockExec).not.toHaveBeenCalled()
+    await installOrcadWindowsHostScript({ conn, host }, base)
+    expect(writes).toHaveLength(1)
+    const [partial, contents] = writes[0] ?? []
+    expect(contents).toBe(ORCAD_WINDOWS_HOST_SCRIPT)
+    expect(partial).toMatch(new RegExp(`^${SCRIPT.replaceAll('.', '\\.')}\\..+\\.partial$`))
+    expect(String(mockExec.mock.calls[1]?.[1])).toContain(`Move-Item -LiteralPath '${partial}'`)
+    expect(mockExec).toHaveBeenCalledTimes(2)
+  })
+
+  it('never rewrites a host script that is already present', async () => {
+    const { conn, writes } = windowsConn()
+    mockExec.mockResolvedValueOnce('PRESENT\r\n')
+    await installOrcadWindowsHostScript({ conn, host }, base)
+    expect(writes).toEqual([])
   })
 })
 

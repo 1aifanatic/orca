@@ -82,6 +82,7 @@ export type OrcadTransactionRecoveryPlan =
       launchedVersion: string | null
       activeVersion: string | null
       restoreState: OrcadSnapshotVerdict | null
+      launchedFromState?: OrcadSnapshotVerdict | null
     }
   | OrcadDecommissionRecoveryPlan
   | { action: 'refuse'; code: string; reason: string }
@@ -214,8 +215,17 @@ export function planOrcadTransactionRecovery(
     launchedVersion: replaced ? transaction.targetVersion : null,
     activeVersion: transaction.incumbentVersion,
     // A crash mid-restore leaves the phase at rescue-captured with the root half replaced.
-    restoreState: rescued ? transaction.rescue : null
+    restoreState: rescued ? transaction.rescue : null,
+    launchedFromState: replaced ? rollbackStartingState(transaction) : null
   }
+}
+
+/** The pre-activation snapshot a rollback restored before launching its target. */
+export function rollbackStartingState(
+  transaction: Pick<OrcadRollbackTransaction, 'recordBefore'>
+): OrcadSnapshotVerdict | null {
+  const snapshot = transaction.recordBefore.snapshot
+  return snapshot ? { dirName: snapshot.dirName, state: 'captured' } : null
 }
 
 export function sameOrcadActivationRecord(

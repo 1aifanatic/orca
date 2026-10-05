@@ -24,7 +24,10 @@ import {
   orcadActivationTransactionRoot,
   type OrcadActivationLockControl
 } from './orcad-activation-lock'
-import type { OrcadRollbackTransaction } from './orcad-activation-transaction'
+import {
+  rollbackStartingState,
+  type OrcadRollbackTransaction
+} from './orcad-activation-transaction'
 import {
   createOrcadRollbackTransaction,
   withOrcadRollbackPhase,
@@ -225,7 +228,8 @@ export async function rollbackOrcadLocked(
       launchedVersion: safety.target,
       transactionStartedAt: transaction.startedAt,
       incumbent,
-      restoreState: rescueVerdict(transaction)
+      restoreState: rescueVerdict(transaction),
+      launchedFromState: rollbackStartingState(transaction)
     })
     return {
       outcome: 'failed',

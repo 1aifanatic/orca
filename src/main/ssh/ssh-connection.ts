@@ -216,10 +216,6 @@ export class SshConnection {
   getConnectGeneration(): number {
     return this.connectGeneration
   }
-  /** Alias of the connect generation. */
-  getTransportGeneration(): number {
-    return this.connectGeneration
-  }
   getClient(): SshClient | null {
     return this.client
   }
@@ -1593,7 +1589,8 @@ export class SshConnection {
     }
   }
 
-  async disconnect(): Promise<void> {
+  /** `quiet` tears down without publishing 'disconnected', keeping a failed startup's error. */
+  async disconnect(options?: { quiet?: boolean }): Promise<void> {
     this.disposed = true
     this.connectGeneration += 1
     if (this.reconnectTimer) {
@@ -1621,7 +1618,9 @@ export class SshConnection {
     this.systemSshGssapiOnlyForSession = false
     this.useSystemSshTransport = false
     this.reconnectLadder.reset()
-    this.setState('disconnected')
+    if (!options?.quiet) {
+      this.setState('disconnected')
+    }
   }
 
   private setState(status: SshConnectionStatus, error?: string): void {

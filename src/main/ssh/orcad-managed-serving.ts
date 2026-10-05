@@ -62,7 +62,7 @@ export function ensureManagedOrcadServing(
   now: () => number = Date.now
 ): Promise<OrcadManagedServing> {
   const id = input.environment.id
-  const generation = input.connection.getTransportGeneration()
+  const generation = input.connection.getConnectGeneration()
   const cached = recent.get(id)
   if (
     cached &&

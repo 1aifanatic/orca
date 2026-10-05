@@ -40,53 +40,18 @@ export async function uploadSshDirectory(
   remoteDir: string,
   options?: SshRemoteFileOptions & { signal?: AbortSignal }
 ): Promise<void> {
-  // Why: relay-deploy timeout and connection teardown are independent owners; either must stop a transfer that could outlive its lock.
-  const linkedSignal = createLinkedSshFileTransferSignal(
-    [host.systemOperationSignal(), options?.signal].filter(
-      (signal): signal is AbortSignal => signal !== undefined
-    )
-  )
-  try {
-    if (!host.usesSystemSshTransport()) {
-      const sftp = await host.sftp(linkedSignal.signal)
-      const swallowLateSftpError = (): void => {}
-      let sftpEndRequested = false
-      const endSftp = (): void => {
-        if (!sftpEndRequested) {
-          sftpEndRequested = true
-          sftp.end()
-        }
-      }
-      sftp.on('error', swallowLateSftpError)
-      sftp.once('close', () => sftp.removeListener('error', swallowLateSftpError))
-      try {
-        // Why: resolve on the same session that transfers — a later session is not authoritative for this one's namespace.
-        const transfer = (async (): Promise<void> => {
-          const targetDir = await resolveSftpTransferPathIfMapped(sftp, remoteDir, options)
-          linkedSignal.signal.throwIfAborted()
-          const { uploadDirectory } = await import('./ssh-relay-deploy-helpers')
-          await uploadDirectory(sftp, localDir, targetDir, localDir, {
-            signal: linkedSignal.signal
-          })
-        })()
-        await raceSftpFileTransferWithAbort(transfer, linkedSignal.signal, (onClose) => {
-          sftp.once('close', onClose)
-          endSftp()
-          return () => sftp.removeListener('close', onClose)
-        })
-      } finally {
-        endSftp()
-      }
-      return
-    }
-    await uploadDirectoryViaSystemSsh(host.target, localDir, remoteDir, {
-      signal: linkedSignal.signal,
-      hostPlatform: options?.hostPlatform,
-      ...host.systemSshBuildArgsOptions()
-    })
-  } finally {
-    linkedSignal.dispose()
-  }
+  await withLinkedSftpTransfer(host, remoteDir, options, {
+    sftp: async (sftp, targetDir, signal) => {
+      const { uploadDirectory } = await import('./ssh-relay-deploy-helpers')
+      await uploadDirectory(sftp, localDir, targetDir, localDir, { signal })
+    },
+    system: (signal) =>
+      uploadDirectoryViaSystemSsh(host.target, localDir, remoteDir, {
+        signal,
+        hostPlatform: options?.hostPlatform,
+        ...host.systemSshBuildArgsOptions()
+      })
+  })
 }
 
 export async function downloadSshFile(
@@ -146,48 +111,69 @@ export async function writeSshFile(
   contents: string,
   options?: SshRemoteFileOptions & { signal?: AbortSignal }
 ): Promise<void> {
-  // Keep package/version writes under the same dual cancellation contract as uploads.
+  await withLinkedSftpTransfer(host, remotePath, options, {
+    sftp: async (sftp, targetPath) => {
+      const { writeStringViaSftp } = await import('./sftp-upload')
+      await writeStringViaSftp(sftp, targetPath, contents)
+    },
+    system: (signal) =>
+      writeFileViaSystemSsh(host.target, remotePath, contents, {
+        signal,
+        hostPlatform: options?.hostPlatform,
+        ...host.systemSshBuildArgsOptions()
+      })
+  })
+}
+
+/**
+ * One transfer under both cancellation owners (the caller and connection teardown): on ssh2,
+ * through one SFTP session that also resolves the mapped path, ended on abort or completion.
+ */
+async function withLinkedSftpTransfer(
+  host: SshFileTransferHost,
+  remotePath: string,
+  options: (SshRemoteFileOptions & { signal?: AbortSignal }) | undefined,
+  transfer: {
+    sftp: (sftp: SFTPWrapper, targetPath: string, signal: AbortSignal) => Promise<void>
+    system: (signal: AbortSignal) => Promise<void>
+  }
+): Promise<void> {
   const linkedSignal = createLinkedSshFileTransferSignal(
     [host.systemOperationSignal(), options?.signal].filter(
       (signal): signal is AbortSignal => signal !== undefined
     )
   )
   try {
-    if (!host.usesSystemSshTransport()) {
-      const sftp = await host.sftp(linkedSignal.signal)
-      const swallowLateSftpError = (): void => {}
-      let sftpEndRequested = false
-      const endSftp = (): void => {
-        if (!sftpEndRequested) {
-          sftpEndRequested = true
-          sftp.end()
-        }
-      }
-      sftp.on('error', swallowLateSftpError)
-      sftp.once('close', () => sftp.removeListener('error', swallowLateSftpError))
-      try {
-        // Why: resolve on the same session that writes — a later session is not authoritative for this one's namespace.
-        const write = (async (): Promise<void> => {
-          const targetPath = await resolveSftpTransferPathIfMapped(sftp, remotePath, options)
-          linkedSignal.signal.throwIfAborted()
-          const { writeStringViaSftp } = await import('./sftp-upload')
-          await writeStringViaSftp(sftp, targetPath, contents)
-        })()
-        await raceSftpFileTransferWithAbort(write, linkedSignal.signal, (onClose) => {
-          sftp.once('close', onClose)
-          endSftp()
-          return () => sftp.removeListener('close', onClose)
-        })
-      } finally {
-        endSftp()
-      }
+    if (host.usesSystemSshTransport()) {
+      await transfer.system(linkedSignal.signal)
       return
     }
-    await writeFileViaSystemSsh(host.target, remotePath, contents, {
-      signal: linkedSignal.signal,
-      hostPlatform: options?.hostPlatform,
-      ...host.systemSshBuildArgsOptions()
-    })
+    const sftp = await host.sftp(linkedSignal.signal)
+    const swallowLateSftpError = (): void => {}
+    let sftpEndRequested = false
+    const endSftp = (): void => {
+      if (!sftpEndRequested) {
+        sftpEndRequested = true
+        sftp.end()
+      }
+    }
+    sftp.on('error', swallowLateSftpError)
+    sftp.once('close', () => sftp.removeListener('error', swallowLateSftpError))
+    try {
+      // Why: resolve on the same session that transfers — a later one is not authoritative for its namespace.
+      const run = (async (): Promise<void> => {
+        const targetPath = await resolveSftpTransferPathIfMapped(sftp, remotePath, options)
+        linkedSignal.signal.throwIfAborted()
+        await transfer.sftp(sftp, targetPath, linkedSignal.signal)
+      })()
+      await raceSftpFileTransferWithAbort(run, linkedSignal.signal, (onClose) => {
+        sftp.once('close', onClose)
+        endSftp()
+        return () => sftp.removeListener('close', onClose)
+      })
+    } finally {
+      endSftp()
+    }
   } finally {
     linkedSignal.dispose()
   }

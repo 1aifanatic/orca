@@ -209,6 +209,18 @@ describe('checking a bridge before the tunnel relies on it', () => {
     await expect(check).rejects.toThrow(/exit 9009: node.exe is not recognized/u)
   })
 
+  it('reads a script cut short with no sentinel as unverifiable, not a permanent refusal', async () => {
+    const channel = scriptedChannel()
+    const check = checkOrcadStdioBridge(
+      connectionRunning(() => channel),
+      posixBridge(1)
+    )
+    await new Promise((resolve) => setImmediate(resolve))
+    channel.emit('exit', 1)
+    channel.emit('close')
+    await expect(check).resolves.toBe('unverifiable')
+  })
+
   it('reads an exec channel sshd would not open as unverifiable', async () => {
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the check calls only exec.
     const conn = {
