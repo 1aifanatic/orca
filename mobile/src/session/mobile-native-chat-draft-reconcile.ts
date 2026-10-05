@@ -279,10 +279,7 @@ export function findLandedUnconfirmedSends(
   // (`[Image: source: …]` or no text) keys under '' so an empty-text send can
   // claim it.
   const messageIndexById = new Map<string, number>()
-  const userMessagesByText = new Map<
-    string,
-    Array<{ id: string; index: number; unsent: boolean }>
-  >()
+  const userMessagesByText = new Map<string, { id: string; index: number; unsent: boolean }[]>()
   for (const [index, message] of messages.entries()) {
     messageIndexById.set(message.id, index)
     if (message.role !== 'user') {
@@ -305,14 +302,14 @@ export function findLandedUnconfirmedSends(
     if (tailIndex === undefined) {
       continue
     }
-    const baselineUnsent = entry.baselineUnsentMessageIds ?? []
+    const baselineUnsent = new Set(entry.baselineUnsentMessageIds)
     const echo = userMessagesByText
       .get(entry.normalizedText)
       ?.find(
         (message) =>
           message.index > tailIndex &&
           !claimedMessageIds.has(message.id) &&
-          !(message.unsent && baselineUnsent.includes(message.id))
+          !(message.unsent && baselineUnsent.has(message.id))
       )
     if (echo) {
       claimedMessageIds.add(echo.id)
