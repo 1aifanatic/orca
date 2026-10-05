@@ -35,6 +35,20 @@ const PROVIDER = String.raw`
   setInterval(() => {}, 60000)
 `
 
+// Dies on SIGTERM at once; its grandchild, like an MCP server or a tool's child, needs 300 ms to clean up.
+const CLEANS_UP_AFTER_SIGTERM_PROVIDER = String.raw`
+  const { spawn } = require('node:child_process')
+  const grandchild = spawn(
+    process.execPath,
+    ['-e', "process.on('SIGTERM', () => setTimeout(() => { require('node:fs').writeFileSync(process.env.ORCA_TEST_CLEANUP_FILE, 'done'); process.exit(0) }, 300)); process.stdout.write('armed'); setInterval(() => {}, 60000)"],
+    { stdio: ['ignore', 'pipe', 'ignore'] }
+  )
+  grandchild.stdout.once('data', () =>
+    process.stdout.write(JSON.stringify({ provider: process.pid, grandchild: grandchild.pid }) + '\n')
+  )
+  setInterval(() => {}, 60000)
+`
+
 // Exits the moment its stdin ends, as Codex does on a normal close.
 const EXITS_ON_STDIN_END_PROVIDER = String.raw`
   process.stdin.on('end', () => process.exit(0)).resume()
@@ -261,8 +275,8 @@ describe.runIf(process.platform !== 'win32')('POSIX provider supervisor processe
     expect(alive(grandchild)).toBe(false)
   })
 
-  it('kills the rest of the group at once when the provider exits on a stop', async () => {
-    const { supervisor, exit } = launchSupervisor({})
+  it('kills the rest of a one-shot group at once when the provider exits on a stop', async () => {
+    const { supervisor, exit } = launchSupervisor({ lifetime: 'one-shot' })
     const { provider, grandchild } = await readPids(supervisor, ['provider', 'grandchild'])
 
     const signalledAt = Date.now()
@@ -273,6 +287,21 @@ describe.runIf(process.platform !== 'win32')('POSIX provider supervisor processe
     expect(Date.now() - signalledAt).toBeLessThan(PROVIDER_SIGTERM_GRACE_MS / 3)
     expect(alive(provider)).toBe(false)
     expect(alive(grandchild)).toBe(false)
+  })
+
+  it('lets a session provider group finish its SIGTERM cleanup after the provider exits', async () => {
+    const cleanupFile = join(tempDir(), 'grandchild-cleaned-up')
+    const { supervisor, exit } = launchSupervisor(
+      {},
+      { ORCA_TEST_CLEANUP_FILE: cleanupFile },
+      { command: process.execPath, args: ['-e', CLEANS_UP_AFTER_SIGTERM_PROVIDER] }
+    )
+    await readPids(supervisor, ['provider', 'grandchild'])
+
+    supervisor.kill('SIGTERM')
+
+    await expect(exit).resolves.toEqual({ code: null, signal: 'SIGTERM' })
+    expect(existsSync(cleanupFile)).toBe(true)
   })
 
   it('escalates a SIGTERM-ignoring provider to SIGKILL after the grace from the spec', async () => {
@@ -337,8 +366,8 @@ describe.runIf(process.platform !== 'win32')('POSIX provider supervisor processe
     owner.kill('SIGKILL')
 
     expect(await waitFor(() => !alive(-pids.provider), 3_000)).toBe(true)
-    // Closed with SIGTERM at once; its SIGTERM-ignoring grandchild dies with the provider.
-    expect(Date.now() - killedAt).toBeLessThan(PROVIDER_STDIN_END_GRACE_MS)
+    // The grandchild ignores SIGTERM, so the group lasts until the grace ends in SIGKILL.
+    expect(Date.now() - killedAt).toBeGreaterThanOrEqual(graceMs)
     expect(await waitFor(() => !alive(pids.supervisor), 3_000)).toBe(true)
     expect(alive(pids.grandchild)).toBe(false)
   })

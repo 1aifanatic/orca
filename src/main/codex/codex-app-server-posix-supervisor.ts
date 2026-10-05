@@ -98,8 +98,8 @@ const stopProviderGroup = (receivedSignal) => {
   clearInterval(timer)
   if (ownerShutdownTimer) clearTimeout(ownerShutdownTimer)
   try { process.kill(-child.pid, 'SIGTERM') } catch {}
-  // Once the provider itself has exited, the rest of its group dies at once, as on its own exit.
-  void waitForProviderGroupExit(spec.sigtermGraceMs, true)
+  // A one-shot's helpers die with it once it has exited; a session's keep the grace to clean up.
+  void waitForProviderGroupExit(spec.sigtermGraceMs, spec.lifetime === 'one-shot')
     .then((exited) => exited || reapOwnedProviderGroup())
     .then((reaped) => {
       if (!reaped) return process.exit(1)
