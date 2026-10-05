@@ -1,8 +1,16 @@
 import { useAppStore } from '@/store'
+import type { StructuredAgentSessionOutboxEntry } from '../../../shared/structured-agent-session-outbox'
 import { subscribeToStructuredAgentSessionEntryEndings } from '@/components/native-chat/structured-agent-session-entry-endings'
+import {
+  isNativeChatComposerDraftUnsaved,
+  nativeChatComposerDraftWritesSettled,
+  structuredAgentSessionDraftScopeKey,
+  subscribeToNativeChatComposerDraft
+} from '@/components/native-chat/native-chat-composer-draft-store'
 import {
   browserAnnotationSendKey,
   diffCommentSendKey,
+  holdNotesForSend,
   noteSendKeyOwner
 } from './notes-send-in-flight'
 
@@ -100,35 +108,71 @@ function clearWhenLoaded(): void {
   }
 }
 
+/** Resolves once the draft a returned message went back to is saved: storage writes are async, and
+ *  until then a crash could lose the text, so its notes must still be there. A draft storage keeps
+ *  refusing holds them until a later save lands. */
+async function returnedDraftSaved(sessionId: string): Promise<void> {
+  const scopeKey = structuredAgentSessionDraftScopeKey(sessionId)
+  await nativeChatComposerDraftWritesSettled()
+  while (isNativeChatComposerDraftUnsaved(scopeKey)) {
+    await new Promise<void>((resolve) => {
+      const unsubscribe = subscribeToNativeChatComposerDraft(scopeKey, () => {
+        unsubscribe()
+        resolve()
+      })
+    })
+    await nativeChatComposerDraftWritesSettled()
+  }
+}
+
 /** Clears the notes a chat message carried once it is used: the host has it, or its text went
- *  back to the composer. By whichever send, resend or Stop ended it, reload included. */
+ *  back to the composer and that draft is saved. By whichever send, resend or Stop ended it,
+ *  reload included. */
 export function installNotesSentByChat(): () => void {
+  let installed = true
   const unsubscribeEndings = subscribeToStructuredAgentSessionEntryEndings((entry, ending) => {
     if (ending === 'discarded') {
       return
     }
-    for (const key of entry.carriedNoteKeys ?? []) {
-      const parsed = noteSendKeyOwner(key)
-      if (parsed) {
-        const ownerId = ownerKey(parsed.kind, parsed.owner)
-        const pending = pendingByOwner.get(ownerId) ?? {
-          ...parsed,
-          keys: new Set<string>(),
-          seen: NOT_SEEN
+    const keys = entry.carriedNoteKeys ?? []
+    if (ending === 'returned' && keys.length > 0) {
+      // Held off the shelf meanwhile: the message that carried them has already left the outbox.
+      const saved = returnedDraftSaved(entry.sessionId)
+      holdNotesForSend(keys, saved)
+      void saved.then(() => {
+        if (installed) {
+          markNotesUsed(entry)
         }
-        pendingByOwner.set(ownerId, pending)
-        pending.keys.add(key)
-        pending.seen = NOT_SEEN
-      }
+      })
+      return
     }
-    // An ending can fire inside a store update (a removed workspace's chats settle there), and a
-    // clear written into it could be overwritten by that update's own result.
-    queueMicrotask(clearWhenLoaded)
+    markNotesUsed(entry)
   })
   return () => {
+    installed = false
     unsubscribeEndings()
     unsubscribeStore?.()
     unsubscribeStore = null
     pendingByOwner.clear()
   }
+}
+
+function markNotesUsed(entry: Pick<StructuredAgentSessionOutboxEntry, 'carriedNoteKeys'>): void {
+  for (const key of entry.carriedNoteKeys ?? []) {
+    const parsed = noteSendKeyOwner(key)
+    if (parsed) {
+      const ownerId = ownerKey(parsed.kind, parsed.owner)
+      const pending = pendingByOwner.get(ownerId) ?? {
+        ...parsed,
+        keys: new Set<string>(),
+        seen: NOT_SEEN
+      }
+      pendingByOwner.set(ownerId, pending)
+      pending.keys.add(key)
+      pending.seen = NOT_SEEN
+    }
+  }
+  // An ending can fire inside a store update (a removed workspace's chats settle there), and a
+  // clear written into it could be overwritten by that update's own result.
+  queueMicrotask(clearWhenLoaded)
 }
