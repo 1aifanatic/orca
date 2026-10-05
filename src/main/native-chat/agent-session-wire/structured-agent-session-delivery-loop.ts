@@ -116,11 +116,10 @@ export class StructuredAgentSessionDeliveryLoop {
           return
         }
         if (!prepared.ok) {
-          if (this.disposed) {
-            // Quit aborts the start, so its refusal is no failure of the message: quit settles
-            // what is queued as a close does.
-            this.stop(sessionId)
-            return
+          if (prepared.aborted) {
+            // A close, Stop or quit stopped this start on purpose, and settled what it was for; a
+            // message accepted since gets its own start, and quit's next step stops the loop.
+            continue
           }
           await this.deps.serialize(sessionId, () =>
             this.fail(sessionId, this.refusedStart(sessionId, prepared))

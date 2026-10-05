@@ -47,6 +47,8 @@ export type StructuredAgentSessionAttachOptions = {
   onAcquisitionFailed?: AttachFlowInput['onAcquisitionFailed']
   /** The queued message a start is for; see `StructuredAgentSessionProviderChild.startedFor`. */
   startedFor?: string
+  /** A close, an admitted Stop or quit aborted this attach: its refusal is that abort's. */
+  onAborted?: () => void
 }
 
 /**
@@ -107,6 +109,9 @@ async function runAttach(
     return await runAttachUnderAbort(context, callerKey, params, options, acquire.signal)
   } finally {
     acquire.end()
+    if (acquire.signal.aborted) {
+      options.onAborted?.()
+    }
   }
 }
 

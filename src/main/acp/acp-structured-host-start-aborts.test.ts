@@ -6,8 +6,15 @@ import { closeProviderTimelineRigs } from '../native-chat/agent-session-timeline
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
 import { CALLER } from '../native-chat/agent-session-wire/structured-agent-session-host-test-harness'
 import { HOST_TEST_SESSION as SESSION } from '../native-chat/agent-session-wire/structured-agent-session-host-test-data'
-import { waitFor } from './acp-structured-adapter.test-support'
-import { attachParams, openHostRig, send, stop } from './acp-structured-host.test-support'
+import { GROK_CONFIG_OPTIONS, waitFor } from './acp-structured-adapter.test-support'
+import {
+  attachParams,
+  launch,
+  openHostRig,
+  RESUMES,
+  send,
+  stop
+} from './acp-structured-host.test-support'
 
 afterEach(async () => {
   await closeProviderTimelineRigs()
@@ -125,4 +132,78 @@ describe('a Grok start the host aborts', () => {
       { dispatchState: 'rejected', rejection: { kind: 'cancelled' } }
     ])
   })
+
+  it('starts Grok afresh for a message sent right after a Stop reached a reconciling start', async () => {
+    const { rig, host } = await openClosedResumableChat()
+    let stopping: ReturnType<typeof stop> | undefined
+    let second: Promise<string> | undefined
+    duringOwnerProbe(host, () => {
+      stopping = stop(host)
+      // Accepted while the aborted start is still unwinding.
+      second = send(host, 'second')
+    })
+    await send(host, 'hello')
+    await waitFor(() => expect(second).toBeDefined())
+    expect(await stopping).toMatchObject({ ok: true, value: { cancelled: true } })
+    const secondId = await second!
+    await expectDeliveredAfterStop(host, secondId)
+    expect(rig.spawned.filter((step) => step === 'spawn')).toHaveLength(2)
+  })
+
+  it('starts Grok afresh for a message sent right after a Stop ended a hung handshake', async () => {
+    const { rig, host, children } = await openClosedResumableChat({ hangsHandshake: 2 })
+    const first = send(host, 'hello')
+    // The restart's own child, not the first one's.
+    await waitFor(() => expect(children()).toBe(2))
+    await rig.frame('initialize')
+    const stopping = stop(host)
+    const second = send(host, 'second')
+    expect(await stopping).toMatchObject({ ok: true, value: { cancelled: true } })
+    await first
+    await expectDeliveredAfterStop(host, await second)
+    expect(children()).toBe(3)
+  })
 })
+
+/** A Grok chat the user closed; each later start resumes it. `hangsHandshake`: that child never
+ *  answers `initialize`. */
+async function openClosedResumableChat(options: { hangsHandshake?: number } = {}) {
+  let children = 0
+  let resumed = false
+  const rig = await openHostRig({
+    initialize: RESUMES,
+    script: (agent) => {
+      if (++children === options.hangsHandshake) {
+        agent.on('initialize', () => {})
+      }
+      agent.on('session/resume', (frame) =>
+        agent.reply(frame, { configOptions: GROK_CONFIG_OPTIONS })
+      )
+    },
+    deps: { resolveLaunch: launch(() => resumed), startupTimeoutMs: 60_000 }
+  })
+  expect(await rig.host.attach(CALLER, attachParams())).toMatchObject({ ok: true })
+  resumed = true
+  await rig.host.close(SESSION, 'user-close')
+  return { ...rig, children: () => children }
+}
+
+/** The stopped message reads cancelled; the one sent after it reached Grok, with no failure row. */
+async function expectDeliveredAfterStop(
+  host: StructuredAgentSessionHost,
+  secondId: string
+): Promise<void> {
+  const journal = host.collaboratorsForTests().sessions.get(SESSION)!.journal
+  await waitFor(() =>
+    expect(
+      journal.submissions().find((entry) => entry.clientMessageId === secondId)?.handedOverAt
+    ).toBeDefined()
+  )
+  expect(journal.submissions().map((entry) => entry.rejection?.kind ?? null)).toEqual([
+    'cancelled',
+    null
+  ])
+  await host.flushStreamedEvents(SESSION)
+  const rows = (await host.history({ sessionId: SESSION, direction: 'tail' })).page.items
+  expect(rows.filter((row) => row.body.kind === 'status')).toEqual([])
+}
