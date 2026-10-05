@@ -157,7 +157,6 @@ vi.mock('./WorktreeContextMenu', () => ({
   default: ({ children }: { children: ReactNode }) => (
     <div data-testid="context-menu-wrapper">{children}</div>
   ),
-  CLOSE_ALL_CONTEXT_MENUS_EVENT: 'orca:test-close-context-menus',
   WORKTREE_CONTEXT_MENU_SCOPE_ATTR: 'data-orca-context-menu-scope',
   WORKTREE_NATIVE_CONTEXT_MENU_ATTR: 'data-worktree-native-context-menu'
 }))
@@ -304,6 +303,7 @@ describe('WorktreeCard read-only contract', () => {
         expect(liveState()).toEqual([])
         expect(container.querySelector('[data-testid="context-menu-wrapper"]')).toBeNull()
         expect(surface.getAttribute('data-worktree-card-active')).toBeNull()
+        expect(surface.getAttribute('data-worktree-card-selected')).toBeNull()
         expect(activateWorktreeFromSidebar).not.toHaveBeenCalled()
         for (const callback of Object.values(callbacks)) {
           expect(callback).not.toHaveBeenCalled()
