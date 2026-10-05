@@ -1,3 +1,4 @@
+import type { ChildProcessHandle } from '../../shared/child-process/process-spec'
 import { waitForProcessExitUntil } from './codex-process-exit-deadline'
 import { PROVIDER_SPAWN_FAILURE_MARKER } from './provider-spawn-failure-report'
 
@@ -57,6 +58,7 @@ try {
 let timer
 let ownerShutdownTimer
 let settling = false
+let providerExited = false
 const providerGroupExists = () => {
   if (!child.pid) return false
   try {
@@ -66,10 +68,10 @@ const providerGroupExists = () => {
     return Boolean(error && error.code !== 'ESRCH')
   }
 }
-const waitForProviderGroupExit = async (timeoutMs) => {
+const waitForProviderGroupExit = async (timeoutMs, untilProviderExits = false) => {
   const deadline = Date.now() + timeoutMs
   while (providerGroupExists()) {
-    if (Date.now() >= deadline) return false
+    if (Date.now() >= deadline || (untilProviderExits && providerExited)) return false
     await new Promise((resolve) => setTimeout(resolve, 25))
   }
   return true
@@ -95,7 +97,8 @@ const stopProviderGroup = (receivedSignal) => {
   clearInterval(timer)
   if (ownerShutdownTimer) clearTimeout(ownerShutdownTimer)
   try { process.kill(-child.pid, 'SIGTERM') } catch {}
-  void waitForProviderGroupExit(spec.sigtermGraceMs)
+  // Once the provider itself has exited, the rest of its group dies at once, as on its own exit.
+  void waitForProviderGroupExit(spec.sigtermGraceMs, true)
     .then((exited) => exited || reapOwnedProviderGroup())
     .then((reaped) => {
       if (!reaped) return process.exit(1)
@@ -144,8 +147,15 @@ const reapProviderExit = async (code, signal) => {
   await drainProviderOutput()
   finishWithProviderOutcome(code, signal)
 }
+// An owner that is gone gets the close its owner would have asked for, made here on its behalf.
 timer = setInterval(() => {
-  if (ownerGone()) stopProviderGroup(null)
+  if (!ownerGone()) return
+  clearInterval(timer)
+  process.stdin.unpipe(child.stdin)
+  try { child.stdin.end() } catch {}
+  // A one-shot's stdin end was its request, so only a stop is left to ask for.
+  if (spec.lifetime === 'one-shot' || spec.closeRequest !== 'stdin-end') return stopProviderGroup(null)
+  scheduleOwnerShutdown()
 }, 100)
 timer.unref()
 child.once('error', (error) => {
@@ -153,6 +163,7 @@ child.once('error', (error) => {
   exitWithSpawnFailure(error, false)
 })
 child.once('exit', (code, signal) => {
+  providerExited = true
   void reapProviderExit(code, signal)
 })
 `
@@ -205,9 +216,37 @@ export type ProviderLaunch = {
   cwd?: string
 }
 
+/**
+ * How a provider's owner closes it: by ending its stdin, after which a session gets its grace (a
+ * drain), or by ending stdin and sending SIGTERM at once. A gone owner gets the same request.
+ */
+export type ProviderCloseRequest = 'stdin-end' | 'stdin-end-and-sigterm'
+
+/**
+ * Makes a provider's close request. Only a supervisor turns SIGTERM into its ladder; a direct
+ * (Windows) child gets the stdin end alone, since a SIGTERM there is TerminateProcess.
+ */
+export function requestProviderClose(input: {
+  child: Pick<ChildProcessHandle, 'stdin' | 'kill'>
+  closeRequest: ProviderCloseRequest
+  supervised: boolean
+  exited: () => boolean
+}): void {
+  try {
+    input.child.stdin?.end()
+  } catch {
+    // Already destroyed; the caller's wait and force still run.
+  }
+  if (input.closeRequest === 'stdin-end-and-sigterm' && input.supervised && !input.exited()) {
+    input.child.kill('SIGTERM')
+  }
+}
+
 export type ProviderSupervisorOptions = {
   cwd?: string
   lifetime?: ProviderSupervisorLifetime
+  /** Defaults to the immediate stop; a provider that drains on its stdin end opts into 'stdin-end'. */
+  closeRequest?: ProviderCloseRequest
   /** The process the supervisor serves; it must be the supervisor's parent. */
   ownerPid?: number
   stdinEndGraceMs?: number
@@ -231,6 +270,7 @@ export function supervisedPosixLaunch(
     cwd = launch.cwd ?? process.cwd(),
     ownerPid = process.pid,
     lifetime = 'session',
+    closeRequest = 'stdin-end-and-sigterm',
     stdinEndGraceMs = PROVIDER_STDIN_END_GRACE_MS,
     sigtermGraceMs = PROVIDER_SIGTERM_GRACE_MS
   }: ProviderSupervisorOptions = {}
@@ -253,6 +293,7 @@ export function supervisedPosixLaunch(
       cwd,
       ownerPid,
       lifetime,
+      closeRequest,
       stdinEndGraceMs,
       sigtermGraceMs,
       nodeEnv
@@ -275,7 +316,7 @@ export function createProviderSpawnSpec(
   launch: ProviderLaunch,
   childEnv: NodeJS.ProcessEnv,
   platform: NodeJS.Platform,
-  { lifetime }: Pick<ProviderSupervisorOptions, 'lifetime'> = {}
+  { lifetime, closeRequest }: Pick<ProviderSupervisorOptions, 'lifetime' | 'closeRequest'> = {}
 ): {
   program: string
   args: string[]
@@ -286,7 +327,9 @@ export function createProviderSpawnSpec(
   supervised: boolean
 } {
   const supervisor =
-    platform === 'win32' ? null : supervisedPosixLaunch(launch, childEnv, { lifetime })
+    platform === 'win32'
+      ? null
+      : supervisedPosixLaunch(launch, childEnv, { lifetime, closeRequest })
   return {
     program: supervisor?.command ?? launch.command,
     args: supervisor?.args ?? launch.args,

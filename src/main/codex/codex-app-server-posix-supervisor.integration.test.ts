@@ -41,6 +41,20 @@ const EXITS_ON_STDIN_END_PROVIDER = String.raw`
   process.stdout.write(JSON.stringify({ provider: process.pid }) + '\n')
 `
 
+// Flushes for a moment once its stdin ends, then exits; records a SIGTERM if one arrives first.
+const FLUSHES_ON_STDIN_END_PROVIDER = String.raw`
+  const { writeFileSync } = require('node:fs')
+  process.on('SIGTERM', () => {
+    writeFileSync(process.env.ORCA_TEST_PROVIDER_SIGNAL_FILE, 'SIGTERM')
+    process.exit(143)
+  })
+  process.stdin.on('end', () => setTimeout(() => {
+    writeFileSync(process.env.ORCA_TEST_PROVIDER_FLUSH_FILE, 'flushed')
+    process.exit(0)
+  }, 200)).resume()
+  process.stdout.write(JSON.stringify({ provider: process.pid }) + '\n')
+`
+
 // Ignores stdin end and SIGTERM, recording when SIGTERM arrived, so only SIGKILL ends it.
 const RECORDS_SIGTERM_PROVIDER = String.raw`
   process.on('SIGTERM', () => {
@@ -198,10 +212,14 @@ function launchSupervisor(
 
 async function launchUnderOwner(
   options: ProviderSupervisorOptions,
-  env: Record<string, string> = {}
+  env: Record<string, string> = {},
+  provider: { script: string; pids: readonly string[] } = {
+    script: PROVIDER,
+    pids: ['provider', 'grandchild']
+  }
 ): Promise<{ owner: ChildProcess; pids: Record<string, number> }> {
   const launch = supervisedPosixLaunch(
-    { command: process.execPath, args: ['-e', PROVIDER] },
+    { command: process.execPath, args: ['-e', provider.script] },
     { ...process.env, ...env },
     options
   )
@@ -210,7 +228,7 @@ async function launchUnderOwner(
     stdio: ['ignore', 'pipe', 'ignore']
   })
   recordedPids.add(owner.pid!)
-  const pids = await readPids(owner, ['supervisor', 'provider', 'grandchild'])
+  const pids = await readPids(owner, ['supervisor', ...provider.pids])
   return { owner, pids }
 }
 
@@ -239,6 +257,20 @@ describe.runIf(process.platform !== 'win32')('POSIX provider supervisor processe
 
     await expect(exit).resolves.toEqual({ code: null, signal: 'SIGTERM' })
     expect(groupAliveAtExit).toBe(false)
+    expect(alive(provider)).toBe(false)
+    expect(alive(grandchild)).toBe(false)
+  })
+
+  it('kills the rest of the group at once when the provider exits on a stop', async () => {
+    const { supervisor, exit } = launchSupervisor({})
+    const { provider, grandchild } = await readPids(supervisor, ['provider', 'grandchild'])
+
+    const signalledAt = Date.now()
+    supervisor.kill('SIGTERM')
+
+    await expect(exit).resolves.toEqual({ code: null, signal: 'SIGTERM' })
+    // The grandchild ignores SIGTERM; waiting out the 3 s grace for it would be the old cost.
+    expect(Date.now() - signalledAt).toBeLessThan(PROVIDER_SIGTERM_GRACE_MS / 3)
     expect(alive(provider)).toBe(false)
     expect(alive(grandchild)).toBe(false)
   })
@@ -305,8 +337,8 @@ describe.runIf(process.platform !== 'win32')('POSIX provider supervisor processe
     owner.kill('SIGKILL')
 
     expect(await waitFor(() => !alive(-pids.provider), 3_000)).toBe(true)
-    // The grandchild ignores SIGTERM, so the group lasts until the grace ends in SIGKILL.
-    expect(Date.now() - killedAt).toBeGreaterThanOrEqual(graceMs)
+    // Closed with SIGTERM at once; its SIGTERM-ignoring grandchild dies with the provider.
+    expect(Date.now() - killedAt).toBeLessThan(PROVIDER_STDIN_END_GRACE_MS)
     expect(await waitFor(() => !alive(pids.supervisor), 3_000)).toBe(true)
     expect(alive(pids.grandchild)).toBe(false)
   })
@@ -381,6 +413,65 @@ describe.runIf(process.platform !== 'win32')('POSIX provider supervisor processe
 
     expect(await waitFor(() => !alive(-pids.provider), 3_000)).toBe(true)
     expect(existsSync(signalFile) && readFileSync(signalFile, 'utf8')).toBe('SIGTERM')
+  })
+
+  it('stops a session closed with SIGTERM at once when its owner dies', async () => {
+    const signalFile = join(tempDir(), 'provider-sigterm-at')
+    const { owner, pids } = await launchUnderOwner(
+      { sigtermGraceMs: 200 },
+      { ORCA_TEST_PROVIDER_SIGNAL_FILE: signalFile },
+      { script: RECORDS_SIGTERM_PROVIDER, pids: ['provider'] }
+    )
+
+    const killedAt = Date.now()
+    owner.kill('SIGKILL')
+
+    // Non-empty, not just present: a read between create and write would pass any bound.
+    const signalledAt = (): number =>
+      existsSync(signalFile) ? Number(readFileSync(signalFile, 'utf8')) : 0
+    expect(await waitFor(() => signalledAt() > 0, 3_000)).toBe(true)
+    // No unwatched stdin-end grace: the owner-death watch's 100 ms poll is the whole delay.
+    expect(signalledAt() - killedAt).toBeGreaterThanOrEqual(0)
+    expect(signalledAt() - killedAt).toBeLessThan(PROVIDER_STDIN_END_GRACE_MS / 2)
+    expect(await waitFor(() => !alive(-pids.provider), 3_000)).toBe(true)
+  })
+
+  it('gives a session closed by its stdin end that EOF and grace when its owner dies', async () => {
+    const dir = tempDir()
+    const signalFile = join(dir, 'provider-signal')
+    const flushFile = join(dir, 'provider-flushed')
+    const { owner, pids } = await launchUnderOwner(
+      { closeRequest: 'stdin-end' },
+      { ORCA_TEST_PROVIDER_SIGNAL_FILE: signalFile, ORCA_TEST_PROVIDER_FLUSH_FILE: flushFile },
+      { script: FLUSHES_ON_STDIN_END_PROVIDER, pids: ['provider'] }
+    )
+
+    owner.kill('SIGKILL')
+
+    expect(await waitFor(() => !alive(pids.provider), PROVIDER_STDIN_END_GRACE_MS)).toBe(true)
+    expect(await waitFor(() => !alive(pids.supervisor), 3_000)).toBe(true)
+    expect(existsSync(flushFile)).toBe(true)
+    expect(existsSync(signalFile)).toBe(false)
+  })
+
+  it('stops a stdin-end session that ignores its EOF once the grace after owner death ends', async () => {
+    const signalFile = join(tempDir(), 'provider-sigterm-at')
+    const stdinEndGraceMs = 400
+    const { owner, pids } = await launchUnderOwner(
+      { closeRequest: 'stdin-end', stdinEndGraceMs, sigtermGraceMs: 200 },
+      { ORCA_TEST_PROVIDER_SIGNAL_FILE: signalFile },
+      { script: RECORDS_SIGTERM_PROVIDER, pids: ['provider'] }
+    )
+
+    const killedAt = Date.now()
+    owner.kill('SIGKILL')
+
+    expect(await waitFor(() => !alive(-pids.provider), 3_000)).toBe(true)
+    // Timers may fire a tick early against another process's clock.
+    expect(Number(readFileSync(signalFile, 'utf8')) - killedAt).toBeGreaterThanOrEqual(
+      stdinEndGraceMs - 20
+    )
+    expect(await waitFor(() => !alive(pids.supervisor), 3_000)).toBe(true)
   })
 
   describe('one-shot lifetime', () => {

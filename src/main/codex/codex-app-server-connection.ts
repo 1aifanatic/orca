@@ -2,7 +2,9 @@ import { spawnProcess } from '../../shared/child-process/run-process'
 import { RetryableProcessExitProof } from '../../shared/child-process/retryable-process-exit-proof'
 import {
   createProviderSpawnSpec,
-  stopSupervisedProvider
+  requestProviderClose,
+  stopSupervisedProvider,
+  type ProviderCloseRequest
 } from './codex-app-server-posix-supervisor'
 import { buildCodexAppServerExitError } from './codex-app-server-exit-error'
 import { initializeCodexAppServerConnection } from './codex-app-server-handshake'
@@ -47,6 +49,8 @@ export type CodexAppServerLaunch = {
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
 export const GRACEFUL_EXIT_MS = 1_500
+// Codex finishes its writes (auth.json, the state database) and exits on its stdin end.
+const CODEX_APP_SERVER_CLOSE_REQUEST: ProviderCloseRequest = 'stdin-end'
 const FORCED_EXIT_MS = 1_000
 const STDERR_TAIL_MAX_BYTES = 8192
 
@@ -64,7 +68,9 @@ export async function openCodexAppServerConnection(
   for (const key of launch.envToDelete ?? []) {
     delete childEnv[key]
   }
-  const spawnSpec = createProviderSpawnSpec(launch, childEnv, process.platform)
+  const spawnSpec = createProviderSpawnSpec(launch, childEnv, process.platform, {
+    closeRequest: CODEX_APP_SERVER_CLOSE_REQUEST
+  })
   const child = spawnImpl(spawnSpec)
 
   function terminateProcessTree(): Promise<boolean> {
@@ -246,13 +252,13 @@ export async function openCodexAppServerConnection(
     closing = true
     return exitProof.run(async () => {
       await stopSupervisedProvider({
-        request: () => {
-          try {
-            child.stdin.end()
-          } catch {
-            // Already destroyed; the reap below still runs.
-          }
-        },
+        request: () =>
+          requestProviderClose({
+            child,
+            closeRequest: CODEX_APP_SERVER_CLOSE_REQUEST,
+            supervised: spawnSpec.supervised,
+            exited: () => exited
+          }),
         exitPromise,
         exited: () => exited,
         force: async () => {

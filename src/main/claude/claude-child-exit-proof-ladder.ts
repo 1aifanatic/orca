@@ -2,7 +2,9 @@ import type { SpawnedProcess } from '../../shared/child-process/run-process'
 import { waitForProcessExitUntil } from '../codex/codex-process-exit-deadline'
 import {
   PROVIDER_SUPERVISOR_MAX_STOP_MS,
-  stopSupervisedProvider
+  requestProviderClose,
+  stopSupervisedProvider,
+  type ProviderCloseRequest
 } from '../codex/codex-app-server-posix-supervisor'
 import type { ClaudeChildTreeReaper } from './claude-agent-sdk-exit-proof'
 
@@ -12,6 +14,8 @@ const SUPERVISED_EXIT_SLACK_MS = 500
 export const SUPERVISED_GRACEFUL_EXIT_MS =
   PROVIDER_SUPERVISOR_MAX_STOP_MS + SUPERVISED_EXIT_SLACK_MS
 const FORCED_EXIT_MS = 1_000
+// Stdin end alone lets Claude finish its turn, tools and edits included; a close is a stop.
+export const CLAUDE_CODE_CLOSE_REQUEST: ProviderCloseRequest = 'stdin-end-and-sigterm'
 
 export type ClaudeChildExitProofInput = {
   child: Pick<SpawnedProcess, 'pid' | 'kill' | 'stdin'>
@@ -30,18 +34,13 @@ export async function proveClaudeChildExitWithReaper(
   // Arm before the stop: only a live root can identify its descendants.
   await tree.capture()
   const reaped = await stopSupervisedProvider({
-    request: () => {
-      try {
-        input.child.stdin?.end()
-      } catch {
-        // The reap below still owns the process.
-      }
-      // Stdin end alone lets Claude finish its turn, tools and edits included; a close is a stop.
-      // Windows has no supervisor, and a direct SIGTERM there is TerminateProcess.
-      if (input.supervised && !input.exited()) {
-        input.child.kill('SIGTERM')
-      }
-    },
+    request: () =>
+      requestProviderClose({
+        child: input.child,
+        closeRequest: CLAUDE_CODE_CLOSE_REQUEST,
+        supervised: input.supervised === true,
+        exited: input.exited
+      }),
     exitPromise: input.exitPromise,
     exited: input.exited,
     force: async () => {
