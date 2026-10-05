@@ -11,7 +11,7 @@ import type {
   AgentJournalRenderItem,
   AgentJournalSubmission
 } from './agent-session-journal-types'
-import { structuredAgentTurnAnchors } from './native-chat-turn-membership'
+import { stoppedTurnOpeners, structuredAgentTurnAnchors } from './native-chat-turn-membership'
 import type { NativeChatBlock, NativeChatMessage } from './native-chat-types'
 
 /** The row after a send a Stop took back before the agent started it; a client words it by this. */
@@ -33,11 +33,12 @@ export type StoppedSendPlace = { opensTurn: boolean; position?: AgentJournalPosi
 /**
  * A send a Stop took back (`stopped`, by item id) is drawn at its own row, past the end of every
  * turn whose opener the journal wrote before it: a host that publishes `submittedSequence` puts
- * that row where the send was taken back. One that opened a turn is drawn as that turn's opener.
- * Journal order only, never a clock.
- * Temporary: a host that predates `submittedSequence` leaves the row where it was sent, so the send
- * is also drawn below the latest row sent before it (`latestRowsSentBefore`); dropped once no
- * supported remote host lacks the field.
+ * that row where the send was taken back. One that opened a turn is drawn as that turn's opener;
+ * when that turn's record is not loaded, before the turn's first loaded row. Journal order only,
+ * never a clock.
+ * Temporary: a host that predates `submittedSequence` may leave the row where it was sent, so the
+ * send is also drawn below the latest row sent before it (`latestRowsSentBefore`); harmless on one
+ * that moves the row. Dropped once no supported remote host lacks the field.
  */
 export function placeStoppedSends(
   items: readonly AgentJournalRenderItem[],
@@ -48,6 +49,7 @@ export function placeStoppedSends(
   const turnOpenedBy = new Map([...anchors].map(([turnItemId, anchorId]) => [anchorId, turnItemId]))
   const itemsById = new Map(items.map((item) => [item.itemId, item]))
   const pastTurnsOpenedBefore = turnEndsByOpener(items, anchors, itemsById)
+  const unloadedTurnOpened = unloadedTurnsOpened(items, itemsById, stopped)
   const sentBefore = [...stopped.values()].some(
     (submission) => submission.submittedSequence === undefined
   )
@@ -60,11 +62,11 @@ export function placeStoppedSends(
     }
     const own = agentJournalItemPosition(item)
     const record = itemsById.get(turnOpenedBy.get(itemId) ?? '')
-    if (record) {
+    const opened = record ? openerPosition(item, record) : unloadedTurnOpened.get(itemId)
+    if (opened) {
       // Drawn where its turn opened, as an opener is.
-      const opened = agentJournalItemPosition(record)
-      return compareAgentJournalPositions(own, opened) > 0
-        ? { opensTurn: true, position: { sequence: opened.sequence, index: opened.index - 0.5 } }
+      return compareAgentJournalPositions(own, opened) !== 0
+        ? { opensTurn: true, position: opened }
         : { opensTurn: true }
     }
     const floorRow = sentBefore?.get(itemId)
@@ -79,6 +81,49 @@ export function placeStoppedSends(
       ? { opensTurn: false, position }
       : { opensTurn: false }
   }
+}
+
+/** Where a turn's opener is drawn: its own row, or just before the record when its row comes after
+ *  it, as the row of a send taken back after its turn opened does. */
+function openerPosition(
+  opener: AgentJournalRenderItem,
+  record: AgentJournalRenderItem
+): AgentJournalPosition {
+  const own = agentJournalItemPosition(opener)
+  const opened = agentJournalItemPosition(record)
+  return compareAgentJournalPositions(own, opened) > 0
+    ? { sequence: opened.sequence, index: opened.index - 0.5 }
+    : own
+}
+
+/** For each taken-back send that opened a turn whose record is not loaded (a page that starts inside
+ *  that turn), just before the turn's first loaded row; none when a loaded user row is in it. */
+function unloadedTurnsOpened(
+  items: readonly AgentJournalRenderItem[],
+  itemsById: ReadonlyMap<string, AgentJournalRenderItem>,
+  stopped: ReadonlyMap<string, AgentJournalSubmission>
+): ReadonlyMap<string, AgentJournalPosition> {
+  const openers = new Map(
+    [...stoppedTurnOpeners([...stopped.values()])].filter(
+      ([turnItemId]) => !itemsById.has(turnItemId)
+    )
+  )
+  const first = new Map<string, AgentJournalPosition | null>()
+  for (const item of items) {
+    const turnItemId = item.turnScope?.kind === 'turn' ? item.turnScope.turnItemId : undefined
+    if (turnItemId === undefined || !openers.has(turnItemId) || first.has(turnItemId)) {
+      continue
+    }
+    const userRow = item.body.kind === 'message' && item.body.role === 'user'
+    const position = agentJournalItemPosition(item)
+    first.set(turnItemId, userRow ? null : { ...position, index: position.index - 0.5 })
+  }
+  return new Map(
+    [...openers].flatMap(([turnItemId, itemId]) => {
+      const position = first.get(turnItemId)
+      return position ? [[itemId, position] as const] : []
+    })
+  )
 }
 
 /**
@@ -109,8 +154,9 @@ function turnEndsByOpener(
   }
   const turns = [...anchors].flatMap(([turnItemId, anchorId]) => {
     const opener = itemsById.get(anchorId)
+    const record = itemsById.get(turnItemId)
     const last = lastOfTurn.get(turnItemId)
-    return opener && last ? [{ opener: agentJournalItemPosition(opener), last }] : []
+    return opener && record && last ? [{ opener: openerPosition(opener, record), last }] : []
   })
   turns.sort((left, right) => compareAgentJournalPositions(left.opener, right.opener))
   // The furthest row of the turns opened up to each one.

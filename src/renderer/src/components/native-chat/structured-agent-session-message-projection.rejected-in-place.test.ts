@@ -127,6 +127,12 @@ function rows(messages: ReturnType<typeof projectStructuredAgentSessionMessages>
 const SEED = submission('seed', 'seed', 1)
 // The one row drawn after a send a Stop took back before the agent started it.
 const STOPPED_ROW = `stopped-before-start:${agentJournalSubmissionKey('stopped')}`
+
+/** The stopped send's own row comes right after it. */
+function expectStopRowRightAfterStopped(messages: readonly { id: string }[]): void {
+  const ids = messages.map((message) => message.id)
+  expect(ids.indexOf(STOPPED_ROW)).toBe(ids.indexOf(agentJournalSubmissionKey('stopped')) + 1)
+}
 const SEED_ROWS = [userItem('seed', 1, 'seed'), answer(2)]
 
 describe('a message the host accepted and then rejected, on the desktop', () => {
@@ -273,7 +279,7 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
       { id: agentJournalSubmissionKey('stopped'), text: 'again', unsent: false },
       { id: agentJournalSubmissionKey('failed'), text: 'again', unsent: true }
     ])
-    expect(messages.map((message) => message.id)).toContain(STOPPED_ROW)
+    expectStopRowRightAfterStopped(messages)
   })
 
   // Its own reply reports the rejection, in the composer, as a command's.
@@ -313,7 +319,7 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
       { id: agentJournalSubmissionKey('seed'), text: 'seed', unsent: false },
       { id: agentJournalSubmissionKey('stopped'), text: 'never mind', unsent: false }
     ])
-    expect(messages.map((message) => message.id)).toContain(STOPPED_ROW)
+    expectStopRowRightAfterStopped(messages)
     expect(
       structuredAgentSessionDeliveryNotices([], 'Claude', () => {}, submissions, [], new Set()).size
     ).toBe(0)
@@ -471,6 +477,6 @@ describe('the phone', () => {
       { id: agentJournalSubmissionKey('seed'), text: 'seed', unsent: false },
       { id: agentJournalSubmissionKey('stopped'), text: 'never mind', unsent: false }
     ])
-    expect(messages.map((message) => message.id)).toContain(STOPPED_ROW)
+    expectStopRowRightAfterStopped(messages)
   })
 })

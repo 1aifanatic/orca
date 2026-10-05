@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import type {
+  AgentJournalAnsweredTurn,
   AgentJournalItemBody,
   AgentJournalRenderItem,
   AgentJournalSubmission,
@@ -94,12 +95,14 @@ const HOSTS = [
 ] as const
 
 /** A host that publishes `submittedSequence` also moves a taken-back send's row to the row that
- *  took it back (`at`), in no turn; an older host leaves the row where it was sent. */
+ *  took it back (`at`), in no turn, and names the turn it was answered into, if any; an older host
+ *  leaves the row where it was sent. */
 function takenBackOn(
   published: boolean,
   items: AgentJournalRenderItem[],
   id: string,
-  at: number
+  at: number,
+  answeredInTurn?: AgentJournalAnsweredTurn
 ): { items: AgentJournalRenderItem[]; sent: Partial<AgentJournalSubmission> } {
   const key = agentJournalSubmissionKey(id)
   const row = items.find((item) => item.itemId === key)!
@@ -113,7 +116,10 @@ function takenBackOn(
   )
   return {
     items: moved.sort((left, right) => left.sequence - right.sequence),
-    sent: { submittedSequence: row.sequence }
+    sent: {
+      submittedSequence: row.sequence,
+      ...(answeredInTurn !== undefined ? { answeredInTurn } : {})
+    }
   }
 }
 
@@ -197,8 +203,8 @@ describe('a send a Stop took back before the agent started it', () => {
     expect(rows(items, [stopped('opened', { resolvedAt: 10 })])).toEqual([user('opened')])
   })
 
-  // A steer joined the running turn, but the host takes a rejected send out of its turn, so no
-  // published fact says which turn it joined: it is drawn after that turn, with its own row.
+  // A steer joined the running turn, and the host takes a rejected send out of its turn. It names
+  // the turn the steer joined, but it is drawn after that turn, with its own row, as before.
   it.each(HOSTS)(
     'draws a steer it took back after the turn it joined, with its own row, on %s',
     (_host, published) => {
@@ -226,7 +232,10 @@ describe('a send a Stop took back before the agent started it', () => {
           { kind: 'turn', turnItemId: 't1' }
         )
       ]
-      const { items, sent: steer } = takenBackOn(published, steered, 'steer', sequence + 1)
+      const { items, sent: steer } = takenBackOn(published, steered, 'steer', sequence + 1, {
+        turnItemId: 't1',
+        via: 'steer'
+      })
 
       expect(rows(items, [submission('first'), stopped('steer', steer)])).toEqual([
         user('first'),
@@ -237,8 +246,8 @@ describe('a send a Stop took back before the agent started it', () => {
     }
   )
 
-  // The host moved the send's row past its turn's record to the row that took it back; journal
-  // order decides, not start times, and it is still that turn's opener.
+  // The host moved the send's row past its turn's record to the row that took it back, and names
+  // the turn it was answered into: it is still that turn's opener.
   it('stays in the turn it opened when its row moved past that turn to the take-back', () => {
     const opened = [
       sent('opened', 'look around'),
@@ -255,7 +264,10 @@ describe('a send a Stop took back before the agent started it', () => {
         { kind: 'turn', turnItemId: 'turn-1' }
       )
     ]
-    const { items, sent: position } = takenBackOn(true, opened, 'opened', sequence + 1)
+    const { items, sent: position } = takenBackOn(true, opened, 'opened', sequence + 1, {
+      turnItemId: 'turn-1',
+      via: 'start'
+    })
 
     expect(rows(items, [stopped('opened', position)])).toEqual([
       user('opened'),

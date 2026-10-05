@@ -45,8 +45,8 @@ export type NativeChatTurnJournal = {
  * entry, directly or through a submission's adopted provider item; a record that names no entry
  * falls back to the nearest user entry before it, which only older hosts write. A key nothing
  * resolves yet is the send still in flight ahead of the record — Codex reports a turn open before
- * it echoes the send — or one a Stop took back before that echo; with none, the turn anchors on
- * its own record.
+ * it echoes the send — or one a Stop took back before that echo, which the host names as answered
+ * into the turn; with none, the turn anchors on its own record.
  */
 export function structuredAgentTurnAnchors(
   items: readonly AgentJournalRenderItem[],
@@ -71,8 +71,7 @@ export function structuredAgentTurnAnchors(
       .map((submission) => agentJournalSubmissionKey(submission.clientMessageId))
   )
   // A send a Stop took back after its turn opened but before the provider echoed it: the record
-  // still names the provider's key. It opened the first such record the journal wrote after it was
-  // sent and before it was taken back, in send order.
+  // still names the provider's key, and the host names the turn the send was answered into.
   const takenBack = submissions.filter(
     (submission) =>
       !submission.providerItemId &&
@@ -82,16 +81,14 @@ export function structuredAgentTurnAnchors(
   )
   const itemsById =
     takenBack.length > 0 ? new Map(items.map((item) => [item.itemId, item])) : undefined
-  const stoppedBeforeEcho = takenBack
+  const openedBy = stoppedTurnOpeners(takenBack)
+  const unnamed = takenBack
+    .filter((submission) => submission.submittedSequence === undefined)
     .flatMap((submission) => {
       const sent = itemsById?.get(agentJournalSubmissionKey(submission.clientMessageId))
       return sent ? [{ sent, submission }] : []
     })
-    .sort(
-      (left, right) =>
-        (left.submission.submittedSequence ?? left.submission.submittedAt) -
-        (right.submission.submittedSequence ?? right.submission.submittedAt)
-    )
+    .sort((left, right) => left.submission.submittedAt - right.submission.submittedAt)
   const claimed = new Set<string>()
   const anchors = new Map<string, string>()
   let precedingUserItemId: string | null = null
@@ -116,14 +113,23 @@ export function structuredAgentTurnAnchors(
       precedingUserItemId,
       inFlightSinceLastTurn
     )
-    if (anchor === item.itemId && turn.userItemId !== undefined) {
-      const opener = stoppedBeforeEcho.find(
-        ({ sent, submission }) =>
-          !claimed.has(sent.itemId) && sentBeforeAndTakenBackAfter(item, turn, submission, sent)
-      )
-      if (opener) {
-        claimed.add(opener.sent.itemId)
-        anchor = opener.sent.itemId
+    const key = turn.userItemId
+    const unresolved =
+      key !== undefined && !userItemIds.has(key) && !userItemIds.has(aliases.get(key) ?? '')
+    // A record naming itself is a turn the provider resumed on its own: no send opened it.
+    if (unresolved && key !== item.itemId) {
+      const named = openedBy.get(item.itemId)
+      if (named !== undefined && itemsById?.has(named)) {
+        anchor = named
+      } else if (anchor === item.itemId) {
+        const opener = unnamed.find(
+          ({ sent, submission }) =>
+            !claimed.has(sent.itemId) && sentBeforeAndTakenBackAfter(item, turn, submission, sent)
+        )
+        if (opener) {
+          claimed.add(opener.sent.itemId)
+          anchor = opener.sent.itemId
+        }
       }
     }
     anchors.set(item.itemId, anchor)
@@ -132,19 +138,30 @@ export function structuredAgentTurnAnchors(
   return anchors
 }
 
-/** Whether a send was sent before a turn record and taken back after it, by journal order: a host
- *  that publishes `submittedSequence` also moves a rejected send's row to the row that rejected it.
- *  Temporary: an older host is read by its row's place and by times, which a resume rewrites to
- *  whole seconds; dropped once no supported remote host lacks `submittedSequence`. */
+/** For each turn a taken-back send started (`answeredInTurn.via` is `start`), that send's item id.
+ *  One steered into a turn opened none, nor one joined in a way this build does not know. */
+export function stoppedTurnOpeners(
+  takenBack: readonly AgentJournalSubmission[]
+): ReadonlyMap<string, string> {
+  const openers = new Map<string, string>()
+  for (const { answeredInTurn, clientMessageId } of takenBack) {
+    if (answeredInTurn?.via === 'start' && !openers.has(answeredInTurn.turnItemId)) {
+      openers.set(answeredInTurn.turnItemId, agentJournalSubmissionKey(clientMessageId))
+    }
+  }
+  return openers
+}
+
+/** Whether a send was sent before a turn record and taken back after it, by its row's place and by
+ *  times. Temporary: the journal-order fallback for a host that names no turn, which also lacks
+ *  `submittedSequence` and leaves rows where they were sent or only moves them (#24710); a resume
+ *  rewrites its times to whole seconds. Dropped once no supported remote host lacks the field. */
 function sentBeforeAndTakenBackAfter(
   record: AgentJournalRenderItem,
   turn: AgentJournalTurnLifecycle,
   submission: AgentJournalSubmission,
   sent: AgentJournalRenderItem
 ): boolean {
-  if (submission.submittedSequence !== undefined) {
-    return submission.submittedSequence < record.sequence && record.sequence < sent.sequence
-  }
   if (turn.startedAt === undefined || submission.resolvedAt === null) {
     return false
   }
