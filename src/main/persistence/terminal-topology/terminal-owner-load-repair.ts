@@ -188,7 +188,7 @@ function repairPartition(
 
 /**
  * Removes saved breaches of the two invariants, in `local` and each `ssh:` partition. Deterministic
- * and idempotent. Not run on load until the binding write refuses breaches (B2). No local-vs-`ssh:`
+ * and idempotent. Not called on load yet: the binding write only reports breaches. No local-vs-`ssh:`
  * rule: the relay reattach writes SSH panes into `local` every session.
  */
 export function repairDuplicateTerminalOwners(

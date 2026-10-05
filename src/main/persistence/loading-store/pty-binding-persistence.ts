@@ -174,10 +174,15 @@ export class PtyBindingPersistenceOperations {
           outcome = 'fast_lane'
           return { value: true, persist: false }
         }
-        // Report-only until B2 refuses (D16); after the fast lane so a no-op rebind skips the scan.
-        const conflict = findTerminalBindingConflict(args, partitions)
-        if (conflict) {
-          span.setOwnerConflict(conflict.reason)
+        // Report-only: the binding is written even when it breaks an invariant, or the check throws.
+        // After the fast lane, so a no-op rebind skips the scan.
+        try {
+          const conflict = findTerminalBindingConflict(args, partitions)
+          if (conflict) {
+            span.setOwnerConflict(conflict.reason)
+          }
+        } catch {
+          span.setOwnerConflict('check_threw')
         }
         return {
           value: true,

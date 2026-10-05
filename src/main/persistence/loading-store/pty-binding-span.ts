@@ -44,7 +44,7 @@ function admitFastLaneSpan(nowMs: number): boolean {
 
 export type PtyBindingSpan = {
   setEligibility(verdict: { eligible: boolean; misses: readonly PtyBindingFastLaneMiss[] }): void
-  /** A binding that breaks a layout invariant; written anyway until B2 refuses it. */
+  /** A binding that breaks a layout invariant (report-only: it is still written). */
   setOwnerConflict(reason: string): void
   finish(outcome: PtyBindingSpanOutcome, error?: unknown): void
 }

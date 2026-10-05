@@ -20,7 +20,7 @@ vi.mock('../../ssh/ssh-config-parser', () => ({
 }))
 
 // Off = the binding write as it was before the report-only check.
-const check = vi.hoisted(() => ({ enabled: true, calls: 0 }))
+const check = vi.hoisted(() => ({ enabled: true, throws: false, calls: 0 }))
 vi.mock('./terminal-owner-invariants', async (importOriginal) => {
   const actual = await importOriginal<typeof OwnerInvariants>()
   return {
@@ -29,6 +29,9 @@ vi.mock('./terminal-owner-invariants', async (importOriginal) => {
       ...args: Parameters<typeof actual.findTerminalBindingConflict>
     ) => {
       check.calls += 1
+      if (check.throws) {
+        throw new Error('malformed session')
+      }
       return check.enabled ? actual.findTerminalBindingConflict(...args) : null
     }
   }
@@ -168,11 +171,12 @@ async function runBindings(enabled: boolean) {
   }
 }
 
-describe('report-only terminal owner check (D16)', () => {
+describe('report-only terminal owner check', () => {
   const records: { attributes: Record<string, unknown> }[] = []
   afterEach(() => {
     records.length = 0
     check.calls = 0
+    check.throws = false
     _resetTracerForTests()
     vi.restoreAllMocks()
   })
@@ -223,5 +227,27 @@ describe('report-only terminal owner check (D16)', () => {
     } finally {
       await close()
     }
+  })
+
+  it('writes the binding unchanged when the check throws', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
+    setActiveSink({
+      push: (record) => {
+        const span: (typeof records)[number] = JSON.parse(JSON.stringify(record))
+        records.push(span)
+      },
+      flush: () => {},
+      close: () => {}
+    })
+    check.throws = true
+    const throwing = await runBindings(true)
+    expect(records.map((record) => record.attributes['binding.owner_conflict'])).toContain(
+      'check_threw'
+    )
+    check.throws = false
+    const withoutCheck = await runBindings(false)
+    expect(throwing.results).toEqual(withoutCheck.results)
+    expect(throwing.writes).toEqual(withoutCheck.writes)
+    expect(throwing.saved).toEqual(withoutCheck.saved)
   })
 })
