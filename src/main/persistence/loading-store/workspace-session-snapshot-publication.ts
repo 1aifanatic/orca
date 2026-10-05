@@ -27,7 +27,6 @@ import {
   type SessionSnapshotOperations
 } from './session-snapshot-operations'
 import { scheduleSave } from './write-scheduling'
-import { publishWorkspaceSessionPartition } from './workspace-session-partition-publication'
 
 export function setLocalWorkspaceSession(
   owner: SessionSnapshotOperations,
@@ -108,7 +107,7 @@ export function setLocalWorkspaceSession(
       context.runtime.terminalScrollbackSnapshotStorage
     )
   }
-  publishWorkspaceSessionPartition(context.runtime.state, LOCAL_EXECUTION_HOST_ID, session)
+  context.runtime.state.workspaceSession = session
   if (deferSnapshotFiles) {
     enqueueTerminalScrollbackSnapshotWork(owner, prior, session)
   }
