@@ -143,7 +143,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: 0.5
+    letterSpacing: 0.6
   },
   suggestion: {
     paddingHorizontal: spacing.md,
