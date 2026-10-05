@@ -70,7 +70,8 @@ describe('stopCodexBackfillRecoveryProcess for a supervised app-server', () => {
     expect(terminateCodexAppServerProcessTree).toHaveBeenCalledWith(child, {
       site: 'codex-state-db-backfill-recovery'
     })
-    // Its own SIGKILL would kill the supervisor mid-ladder and orphan the app-server's group.
-    expect(child.kill).not.toHaveBeenCalledWith('SIGKILL')
+    // The stop signals nothing itself: the stdin end asks, and only the teardown forces.
+    expect(child.stdin.end).toHaveBeenCalledOnce()
+    expect(child.kill).not.toHaveBeenCalled()
   })
 })

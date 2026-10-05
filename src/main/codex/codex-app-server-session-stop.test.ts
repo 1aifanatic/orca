@@ -102,8 +102,8 @@ describe('runCodexAppServerSession stop', () => {
     })
     await vi.advanceTimersByTimeAsync(1_000)
     expect(await outcome).toBeInstanceOf(CodexAppServerTimeoutError)
-    // Its own group SIGKILL would kill the supervisor mid-ladder and orphan the server's group.
-    expect(child.kill).not.toHaveBeenCalledWith('SIGKILL')
+    // The session's only own signal is the deadline SIGTERM; only the teardown forces.
+    expect(child.kill.mock.calls).toEqual([['SIGTERM']])
     expect(killCodexAppServerProcessTree).not.toHaveBeenCalled()
   })
 
