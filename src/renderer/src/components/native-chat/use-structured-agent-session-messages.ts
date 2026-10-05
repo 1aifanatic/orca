@@ -10,16 +10,10 @@ export function useStructuredAgentSessionMessages(
   items: readonly AgentJournalRenderItem[],
   outbox: readonly StructuredAgentSessionOutboxEntry[],
   submissions: readonly AgentJournalSubmission[],
-  showsFailedStartsSentElsewhere: boolean
+  queuedMessageIds: readonly string[]
 ) {
   return useMemo(
-    () =>
-      projectStructuredAgentSessionMessages(
-        items,
-        outbox,
-        submissions,
-        showsFailedStartsSentElsewhere
-      ),
-    [items, outbox, submissions, showsFailedStartsSentElsewhere]
+    () => projectStructuredAgentSessionMessages(items, outbox, submissions, queuedMessageIds),
+    [items, outbox, submissions, queuedMessageIds]
   )
 }

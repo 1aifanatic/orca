@@ -134,7 +134,7 @@ describe('a Retry press', () => {
 
 describe('a Retry before the host has answered', () => {
   function Chat({ submissions }: { submissions: AgentJournalSubmission[] }) {
-    const { retry, retryWaitsForHost } = useStructuredAgentSessionRetryInPlace({
+    const { retry, retriesInPlace, retryWaitsForHost } = useStructuredAgentSessionRetryInPlace({
       target: { kind: 'local' },
       mutate,
       submissions,
@@ -148,6 +148,10 @@ describe('a Retry before the host has answered', () => {
       submissions,
       [],
       new Set(),
+      [],
+      new Set(),
+      [],
+      retriesInPlace,
       retryWaitsForHost
     )
     return (

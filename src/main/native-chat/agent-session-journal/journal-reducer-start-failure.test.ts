@@ -195,10 +195,11 @@ describe('a failed start recorded on its message', () => {
       expect(order([accepted, failed('providerStartFailed', 2)])).toEqual([message])
     })
 
-    it('keeps its place for a rejection that is not a failed start', () => {
+    // Not a failed start's rule alone: every rejected message joins the chat where it was rejected.
+    it('is placed at its rejection for a rejection that is not a failed start too', () => {
       expect(order([accepted, later, failed('cancelled', 4)])).toEqual([
-        message,
-        'codex:later-answer'
+        'codex:later-answer',
+        message
       ])
     })
   })

@@ -13,20 +13,23 @@
 
 import { randomUUID } from 'node:crypto'
 import { isDefinitiveAgentSessionCreateRefusal } from '../../../../shared/agent-session-definitive-refusal'
-import type { AgentJournalMessageItem } from '../../../../shared/agent-session-journal-types'
-import { ORCHESTRATION_READINESS_TIMEOUT_MS } from '../../../../shared/orchestration-timing-budgets'
+import type {
+  AgentJournalMessageItem,
+  AgentJournalSubmission
+} from '../../../../shared/agent-session-journal-types'
 import { STRUCTURED_AGENT_SESSION_START_RETRY_DELAYS_MS } from '../../../../shared/structured-agent-session-start-retry'
 import { STRUCTURED_AGENT_SESSION_START_WAIT_MS } from '../../../native-chat/agent-session-wire/structured-agent-session-send-settlement'
-import { agentSessionSendSubmission } from '../../../../shared/agent-session-wire'
 import type { StructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-host'
 import { getStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-registry'
 import type { OrcaRuntimeService } from '../../orca-runtime'
 import { OrchestrationError } from '../../orchestration/orchestration-error'
-import {
-  mintAgentSessionOperationId,
-  structuredPointerPayloadFingerprint
-} from '../../orchestration/structured-pointer-operation-id'
+import { mintAgentSessionOperationId } from '../../orchestration/structured-pointer-operation-id'
 import { structuredPointerCallerKey } from '../../orchestration/structured-mailbox-pointer-host'
+import {
+  sendAgentTurn,
+  structuredAgentTurnVerdict,
+  type StructuredAgentTurnHost
+} from '../../orchestration/send-agent-turn'
 import { retireSettledStructuredWorkerTab } from '../../structured-agent-session-tab-retirement'
 import {
   mintStructuredWorkerHandle,
@@ -208,10 +211,7 @@ function reasonClause(reason: string | null | undefined): string {
 }
 
 /** What a preamble send reads of the host. */
-type StructuredWorkerPreambleHost = Pick<
-  StructuredAgentSessionHost,
-  'send' | 'waitForSendSettlement'
-> & {
+type StructuredWorkerPreambleHost = StructuredAgentTurnHost & {
   deps: { store: { getRecord: (sessionId: string) => { lease: { runtimeFence: number } } | null } }
 }
 
@@ -251,50 +251,53 @@ export async function sendStructuredWorkerPreamble(args: {
   if (fence === undefined) {
     throw new Error('The structured worker session has no durable record to dispatch into.')
   }
-  const result = await args.host.send(
-    { callerKey: structuredPointerCallerKey(args.dispatchId) },
-    {
-      envelope: {
-        sessionId: args.sessionId,
-        clientOperationId: mintAgentSessionOperationId(Date.now()),
-        expectedRuntimeFence: fence,
-        payloadFingerprint: structuredPointerPayloadFingerprint(args.sessionId, body)
-      },
-      body
+  const outcome = await sendAgentTurn({
+    kind: 'structured-session',
+    host: args.host,
+    sessionId: args.sessionId,
+    callerKey: structuredPointerCallerKey(args.dispatchId),
+    turn: {
+      body,
+      delivery: 'now',
+      operationId: mintAgentSessionOperationId(Date.now()),
+      expectedRuntimeFence: fence
     }
-  )
-  if (!result.ok) {
-    throw new Error(`The dispatch preamble was refused: ${result.refusal.message}`)
+  })
+  switch (outcome.kind) {
+    case 'refused':
+      throw new Error(`The dispatch preamble was refused: ${outcome.refusal.message}`)
+    case 'queued':
+      // Never for a `now` send; a held draft proves nothing about the worker taking it.
+      return preambleDispatchState(undefined)
+    case 'sent':
+      if (outcome.submission?.dispatchState === 'pending' && args.whenUndelivered) {
+        watchHeldPreamble(args, outcome.submission.clientMessageId, args.whenUndelivered)
+      }
+      return preambleDispatchState(outcome.submission)
   }
-  // Accepted is not delivered: the worker's agent may still be starting.
-  const answered = agentSessionSendSubmission(result.value)
-  const submission =
-    answered?.dispatchState === 'pending'
-      ? (agentSessionSendSubmission(
-          (
-            await args.host
-              .waitForSendSettlement(args.sessionId, result.value.clientMessageId, {
-                budgetMs: ORCHESTRATION_READINESS_TIMEOUT_MS
-              })
-              .catch(() => undefined)
-          )?.value
-        ) ?? answered)
-      : answered
-  if (submission?.dispatchState === 'pending' && args.whenUndelivered) {
-    const { whenUndelivered } = args
-    void args.host
-      .waitForSendSettlement(args.sessionId, result.value.clientMessageId, {
-        until: 'verdict',
-        budgetMs: PREAMBLE_VERDICT_WAIT_MS
-      })
-      .then((settled) => {
-        const verdict = agentSessionSendSubmission(settled?.value)
-        if (verdict?.dispatchState === 'rejected') {
-          whenUndelivered(preambleUndeliveredReason(verdict))
-        }
-      })
-      .catch(() => undefined)
-  }
+}
+
+/** Reports a held preamble the host later rejects for good, its start's tries spent. */
+function watchHeldPreamble(
+  args: { host: StructuredWorkerPreambleHost; sessionId: string },
+  clientMessageId: string,
+  whenUndelivered: (reason: string) => void
+): void {
+  void structuredAgentTurnVerdict(
+    args.host,
+    args.sessionId,
+    clientMessageId,
+    PREAMBLE_VERDICT_WAIT_MS
+  ).then((verdict) => {
+    if (verdict?.dispatchState === 'rejected') {
+      whenUndelivered(preambleUndeliveredReason(verdict))
+    }
+  })
+}
+
+function preambleDispatchState(
+  submission: AgentJournalSubmission | undefined
+): 'accepted' | 'pending' {
   if (submission?.dispatchState === 'accepted' || submission?.dispatchState === 'pending') {
     return submission.dispatchState
   }

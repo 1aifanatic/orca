@@ -4,6 +4,7 @@ import {
   type SubmissionRejectionFact
 } from '../../../shared/agent-session-failure'
 import { parseAgentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
+import { STALE_SESSION_ROW_PREFIX } from '../../../shared/agent-session-stop-row-identity'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
   type AgentJournalItemBody,
@@ -207,7 +208,7 @@ export async function settleStaleStructuredAgentSessionState(input: {
     )
   // Per attempt: a retry re-partitions only what is left, and a reused chunk id would skip it.
   const generation = input.acquisitionGeneration ?? `seq-${journal.cursor().sequence}`
-  const settlementId = `stale-session:${input.sessionId}:${input.fence}:${generation}`
+  const settlementId = `${STALE_SESSION_ROW_PREFIX}${input.sessionId}:${input.fence}:${generation}`
   const mutations: JournalLifecycleMutationInput[] = []
   for (const item of items) {
     const identity = parseAgentJournalItemKey(item.itemId)
@@ -239,7 +240,7 @@ export async function settleStaleStructuredAgentSessionState(input: {
       // Named by the death it explains, so a retry after a partly written settle adds no second row.
       identity: {
         provider: 'orca',
-        clientMessageId: `stale-session:${input.sessionId}:death-${evidence.ownerFence ?? 'unowned'}-${evidence.observedAt}`
+        clientMessageId: `${STALE_SESSION_ROW_PREFIX}${input.sessionId}:death-${evidence.ownerFence ?? 'unowned'}-${evidence.observedAt}`
       },
       // The death evidence is Orca's log text, never a sentence for a person: the row says only
       // that the provider stopped.
