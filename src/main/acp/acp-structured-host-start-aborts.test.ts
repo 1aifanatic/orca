@@ -145,8 +145,7 @@ describe('a Grok start the host aborts', () => {
     await send(host, 'hello')
     await waitFor(() => expect(second).toBeDefined())
     expect(await stopping).toMatchObject({ ok: true, value: { cancelled: true } })
-    const secondId = await second!
-    await expectDeliveredAfterStop(host, secondId)
+    await expectDeliveredAfterStop({ rig, host }, await second!)
     expect(rig.spawned.filter((step) => step === 'spawn')).toHaveLength(2)
   })
 
@@ -160,7 +159,7 @@ describe('a Grok start the host aborts', () => {
     const second = send(host, 'second')
     expect(await stopping).toMatchObject({ ok: true, value: { cancelled: true } })
     await first
-    await expectDeliveredAfterStop(host, await second)
+    await expectDeliveredAfterStop({ rig, host }, await second)
     expect(children()).toBe(3)
   })
 })
@@ -190,14 +189,17 @@ async function openClosedResumableChat(options: { hangsHandshake?: number } = {}
 
 /** The stopped message reads cancelled; the one sent after it reached Grok, with no failure row. */
 async function expectDeliveredAfterStop(
-  host: StructuredAgentSessionHost,
+  { rig, host }: Pick<Awaited<ReturnType<typeof openHostRig>>, 'rig' | 'host'>,
   secondId: string
 ): Promise<void> {
+  const prompt = await rig.frame('session/prompt')
+  expect(JSON.stringify(prompt.params)).toContain('second')
+  rig.child().agent.reply(prompt, { stopReason: 'end_turn' })
   const journal = host.collaboratorsForTests().sessions.get(SESSION)!.journal
   await waitFor(() =>
     expect(
-      journal.submissions().find((entry) => entry.clientMessageId === secondId)?.handedOverAt
-    ).toBeDefined()
+      journal.submissions().find((entry) => entry.clientMessageId === secondId)?.dispatchState
+    ).toBe('accepted')
   )
   expect(journal.submissions().map((entry) => entry.rejection?.kind ?? null)).toEqual([
     'cancelled',
