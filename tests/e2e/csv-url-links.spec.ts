@@ -49,11 +49,16 @@ test('dense CSVs below 1 MiB remain visible and shrinking a later row window rec
   await expect(orcaPage.getByRole('cell', { name: 'third', exact: true })).toBeVisible()
   await expect(orcaPage.getByRole('button', { name: 'Next rows' })).toHaveCount(0)
   await orcaPage.screenshot({ path: testInfo.outputPath('dense-after-shrink.png') })
-  expect(
-    await electronApp.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows().some((window) => window.isVisible())
-    )
-  ).toBe(false)
+  if (
+    process.env.ORCA_E2E_FORCE_HEADFUL !== '1' &&
+    testInfo.project.metadata.orcaHeadful !== true
+  ) {
+    expect(
+      await electronApp.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows().some((window) => window.isVisible())
+      )
+    ).toBe(false)
+  }
 })
 
 test('CSV links navigate from small and paged previews without replacing the renderer', async ({
@@ -128,9 +133,14 @@ test('CSV links navigate from small and paged previews without replacing the ren
     ).toBe(url)
     expect(orcaPage.url()).toBe(rendererUrl)
   }
-  expect(
-    await electronApp.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows().some((window) => window.isVisible())
-    )
-  ).toBe(false)
+  if (
+    process.env.ORCA_E2E_FORCE_HEADFUL !== '1' &&
+    testInfo.project.metadata.orcaHeadful !== true
+  ) {
+    expect(
+      await electronApp.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows().some((window) => window.isVisible())
+      )
+    ).toBe(false)
+  }
 })

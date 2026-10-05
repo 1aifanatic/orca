@@ -136,10 +136,15 @@ test('CSV preview bounds memory and DOM size, resizes columns and reaches the fi
   ).toBeVisible()
   expect(await table.getByRole('columnheader').count()).toBeLessThan(30)
   await orcaPage.screenshot({ path: testInfo.outputPath('wide-final-column.png') })
-  const windowsVisible = await electronApp.evaluate(({ BrowserWindow }) =>
-    BrowserWindow.getAllWindows().some((window) => window.isVisible())
-  )
-  expect(windowsVisible).toBe(false)
+  if (
+    process.env.ORCA_E2E_FORCE_HEADFUL !== '1' &&
+    testInfo.project.metadata.orcaHeadful !== true
+  ) {
+    const windowsVisible = await electronApp.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows().some((window) => window.isVisible())
+    )
+    expect(windowsVisible).toBe(false)
+  }
   const observations = {
     bytes: sizeBefore,
     rows: totalRows,
@@ -156,7 +161,7 @@ test('paged previews accept a maximum-size record with a BOM and CRLF', async ({
   orcaPage,
   seededRepoPath,
   electronApp
-}) => {
+}, testInfo) => {
   const name = 'record-boundary.csv'
   const filePath = path.join(seededRepoPath, name)
   const recordBytes = 1024 * 1024
@@ -187,9 +192,14 @@ test('paged previews accept a maximum-size record with a BOM and CRLF', async ({
       .nth(1)
       .evaluate((element) => element.textContent?.length)
   ).toBe(recordBytes)
-  expect(
-    await electronApp.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows().some((window) => window.isVisible())
-    )
-  ).toBe(false)
+  if (
+    process.env.ORCA_E2E_FORCE_HEADFUL !== '1' &&
+    testInfo.project.metadata.orcaHeadful !== true
+  ) {
+    expect(
+      await electronApp.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows().some((window) => window.isVisible())
+      )
+    ).toBe(false)
+  }
 })
