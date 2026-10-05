@@ -268,6 +268,8 @@ describe('a turn a crash cut short mid-tool', () => {
     const stored = items.flatMap((item) => (item.body.kind === 'status' ? [item.body] : []))
     expect(stored).toEqual([{ ...statusRows[0], tone: 'error' }])
     expect(foldedByAnOlderClient(stored[0]!)).toBe(false)
+    // Stored muted, as this rule first wrote it, that client hid it.
+    expect(foldedByAnOlderClient({ ...stored[0]!, tone: 'notice' })).toBe(true)
     const [timing] = selectStructuredAgentTurnTimings(items).values()
     expect(
       describeNativeChatTurnStatus({
