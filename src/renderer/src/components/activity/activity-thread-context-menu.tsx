@@ -4,6 +4,7 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuLabel,
   ContextMenuSeparator,
   ContextMenuSub,
   ContextMenuSubContent,
@@ -80,7 +81,10 @@ export function ActivityThreadContextMenu({
     <ContextMenu onOpenChange={setMenuOpen}>
       <ContextMenuTrigger asChild>{children(menuOpen)}</ContextMenuTrigger>
       {/* Why no focus restore: refocusing the row would reopen its hover preview and pin it open. */}
-      <ContextMenuContent onCloseAutoFocus={(event) => event.preventDefault()}>
+      <ContextMenuContent className="w-52" onCloseAutoFocus={(event) => event.preventDefault()}>
+        <ContextMenuLabel>
+          {translate('auto.components.activity.ActivityThreadContextMenu.agentSection', 'Agent')}
+        </ContextMenuLabel>
         <ContextMenuItem onSelect={() => onOpen(thread)}>
           <PanelRight />
           {translate('auto.components.activity.ActivityThreadContextMenu.open', 'Open')}

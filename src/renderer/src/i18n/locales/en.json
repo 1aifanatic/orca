@@ -16870,7 +16870,8 @@
           "markUnread": "Mark as unread",
           "goToWorkspace": "Go to workspace",
           "copy": "Copy",
-          "clear": "Clear from list"
+          "clear": "Clear from list",
+          "agentSection": "Agent"
         }
       },
       "confirmation": {
