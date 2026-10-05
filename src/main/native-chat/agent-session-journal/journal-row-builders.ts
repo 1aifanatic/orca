@@ -110,12 +110,15 @@ export function journalDispatchRowBuilder(
     providerItemId,
     reason: boundedDispatchReason(input),
     ...(input.state === 'rejected' ? { rejection: input.rejection } : {}),
-    ...(input.state === 'rejected' && input.answeredInTurn
+    // Every rejection states its turn, null for none, so a reader tells it from an older row.
+    ...(input.state === 'rejected'
       ? {
-          answeredInTurn: {
-            turnItemId: agentJournalItemKey(input.answeredInTurn.turn),
-            via: input.answeredInTurn.via
-          }
+          answeredInTurn: input.answeredInTurn
+            ? {
+                turnItemId: agentJournalItemKey(input.answeredInTurn.turn),
+                via: input.answeredInTurn.via
+              }
+            : null
         }
       : {}),
     ...journalRowBase(state().epoch, seq, input.fence, ts),
