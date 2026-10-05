@@ -615,7 +615,8 @@ The sequence:
 6. A rehome `inspect` bound to the serving and rollback digests now read from `gcloud`. A wrong
    digest fails here, read-only, before 15 minutes of monitor evidence is spent on it.
 7. The operator types `ENABLE_REGIONAL_REHOMING`. The prompt says this arms an automatic enable,
-   sent about 17 minutes later and only if the monitor is green, and the monitor dry-run starts
+   sent about 17 minutes later and only if the monitor is green and its evidence is at most 150 s
+   old, and the monitor dry-run starts
    at once. Its artifact passes the same `relay-monitor-evidence.mjs verify-authority` check the
    enable job runs.
 8. `enable` with the verified digests, within 150 s of the monitor completing (the job allows 5

@@ -347,7 +347,7 @@ export function createDriver(config, deps) {
     if (typedPhrases.has(phrase)) return phrase
     const meaning =
       phrase === 'ENABLE_REGIONAL_REHOMING'
-        ? ' (this arms an automatic enable, sent about 17 min from now and only if the monitor is green)'
+        ? ' (this arms an automatic enable, sent about 17 min from now and only if the monitor is green and its evidence is at most 150 s old)'
         : ''
     const answer = (await deps.prompt(`Type ${phrase} to continue${meaning}: `)).trim()
     if (answer !== phrase)

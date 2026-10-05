@@ -386,7 +386,7 @@ test('runs the audited sequence with typed phrases and enables on the digests no
   assert.ok(
     world.questions.some((question) =>
       question.includes(
-        'arms an automatic enable, sent about 17 min from now and only if the monitor is green'
+        'arms an automatic enable, sent about 17 min from now and only if the monitor is green and its evidence is at most 150 s old'
       )
     )
   )
