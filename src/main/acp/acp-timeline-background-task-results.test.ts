@@ -6,6 +6,57 @@ import { openAcpFixtureRig } from './acp-timeline-fixture.test-support'
 afterEach(closeProviderTimelineRigs)
 
 describe('background task results', () => {
+  it.each([
+    ['running', undefined, 'working'],
+    ['completed', 0, 'done'],
+    ['completed', undefined, 'done'],
+    ['failed', 1, 'blocked'],
+    ['stopped', undefined, 'idle'],
+    ['unknown', undefined, 'working']
+  ] as const)(
+    'settles a task from a TaskOutput result with status %s and exit code %s',
+    async (status, exitCode, state) => {
+      const fixture = await openAcpFixtureRig()
+      const lane = fixture.lane()
+      for (const [index, rawOutput] of [
+        { type: 'BackgroundTaskStarted', task_id: 'task-1', command: 'npm test' },
+        {
+          type: 'TaskOutput',
+          Result: {
+            task_id: 'task-1',
+            command: 'npm test',
+            status,
+            exit_code: exitCode,
+            output: 'PASS a.test.js\nPASS b.test.js\n'
+          }
+        }
+      ].entries()) {
+        fixture.apply(
+          lane.notification(
+            'session/update',
+            {
+              sessionId: 'session-1',
+              _meta: { promptId: 'task-turn' },
+              update: {
+                sessionUpdate: 'tool_call_update',
+                toolCallId: `tool-${index}`,
+                status: 'completed',
+                rawOutput
+              }
+            },
+            1000 + index
+          )
+        )
+      }
+      const tasks = (await fixture.rig.rows()).flatMap((row) =>
+        row.body.kind === 'message' ? row.body.blocks.filter(isBackgroundTaskBlock) : []
+      )
+      expect(tasks).toHaveLength(1)
+      expect(tasks[0]).toMatchObject({ state, label: 'npm test' })
+      expect(tasks[0]?.summary ?? '').not.toContain('PASS')
+    }
+  )
+
   it('uses each structured kill result rather than inferring a stop for unsuccessful targets', async () => {
     const fixture = await openAcpFixtureRig()
     const lane = fixture.lane()

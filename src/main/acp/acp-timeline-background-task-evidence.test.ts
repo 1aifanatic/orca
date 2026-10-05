@@ -217,7 +217,8 @@ describe('background task outcome evidence', () => {
           true
         )
       } else {
-        taskNotice(fixture, taskId, true)
+        // Unmarked: a task notice during a load is history too.
+        taskNotice(fixture, taskId)
       }
       fixture.finishLoad()
       expect(await taskRows(fixture)).toEqual([])
