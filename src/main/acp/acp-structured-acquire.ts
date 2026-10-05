@@ -120,6 +120,10 @@ export async function acquireAcpStructuredSession(input: {
     clientInfo: { name: 'orca', version: '1' },
     cancelTimeoutMs: deps.cancelTimeoutMs ?? ACP_CANCEL_TIMEOUT_MS,
     onPermission: (request, context) => {
+      if (!session?.turns.running) {
+        // No prompt of Orca's runs (a turn the agent began itself): nobody is there to ask.
+        return { outcome: { outcome: 'cancelled' } }
+      }
       if (launch.fullAccess) {
         // Full access: Orca answers yes for the person, as the agent's own bypass flag would.
         const allow = request.options.find((option) => option.kind === 'allow_once')
