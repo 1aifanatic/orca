@@ -9,11 +9,16 @@ import {
 } from '../../shared/child-process/process-tree-termination'
 import { probeOpenCodeLaunchModelContext } from './opencode-launch-model-context'
 import { readFetchResponseJsonWithinLimit } from '../../shared/fetch-response-body'
+import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from '../codex/codex-app-server-posix-supervisor'
+import { terminateCodexAppServerProcessTree } from '../codex/codex-app-server-process-teardown'
 
 vi.mock('../../shared/child-process/run-process', () => ({ spawnProcess: vi.fn() }))
 vi.mock('../../shared/child-process/process-tree-termination', () => ({
   signalProcessTree: vi.fn(),
   forceTerminateProcessTree: vi.fn()
+}))
+vi.mock('../codex/codex-app-server-process-teardown', () => ({
+  terminateCodexAppServerProcessTree: vi.fn()
 }))
 
 vi.mock('../../shared/fetch-response-body', () => ({ readFetchResponseJsonWithinLimit: vi.fn() }))
@@ -24,6 +29,8 @@ class ProbeChild extends ChildProcess {
   override stderr = new PassThrough()
   override pid = 123456
   override exitCode: number | null = null
+  // A handle-less ChildProcess's own kill can signal this test's process group.
+  override kill = vi.fn((_signal?: NodeJS.Signals | number): boolean => true)
   override stdio: [PassThrough, PassThrough, PassThrough, undefined, undefined] = [
     this.stdin,
     this.stdout,
@@ -54,9 +61,24 @@ function close() {
 }
 const options = { executable: '/private/opencode', cwd: directory, env: {} }
 
+function decodedSupervisorSpec(env: unknown): unknown {
+  const encoded =
+    typeof env === 'object' && env !== null && 'ORCA_PROVIDER_SUPERVISOR_SPEC' in env
+      ? String(env.ORCA_PROVIDER_SUPERVISOR_SPEC)
+      : ''
+  return JSON.parse(Buffer.from(encoded, 'base64').toString() || 'null')
+}
+
+async function untilStopRequested(): Promise<void> {
+  while (child.kill.mock.calls.length === 0) {
+    await new Promise((resolve) => setImmediate(resolve))
+  }
+}
+
 describe('OpenCode model probe termination evidence', () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    Object.defineProperty(process, 'platform', { value: 'darwin' })
     vi.mocked(readFetchResponseJsonWithinLimit).mockImplementation((response) => response.json())
     child = new ProbeChild()
     closeDuringFetch = false
@@ -82,9 +104,16 @@ describe('OpenCode model probe termination evidence', () => {
       return true
     })
     vi.mocked(forceTerminateProcessTree).mockResolvedValue(false)
+    child.kill.mockImplementation((signal) => {
+      if (signal === 'SIGTERM') {
+        close()
+      }
+      return true
+    })
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     if (platform) {
       Object.defineProperty(process, 'platform', platform)
     }
@@ -100,7 +129,7 @@ describe('OpenCode model probe termination evidence', () => {
     )
     expect(await probeOpenCodeLaunchModelContext(options)).toBeNull()
     expect(cancel).toHaveBeenCalledTimes(4)
-    expect(signalProcessTree).toHaveBeenCalledOnce()
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM')
   })
 
   it('accepts an already-closed Windows probe without signaling its former pid', async () => {
@@ -112,14 +141,62 @@ describe('OpenCode model probe termination evidence', () => {
     expect(forceTerminateProcessTree).not.toHaveBeenCalled()
   })
 
-  it('does not force a POSIX group after the graceful close', async () => {
-    Object.defineProperty(process, 'platform', { value: 'darwin' })
+  it('runs a POSIX probe under a one-shot supervisor and stops it through that supervisor', async () => {
     expect(await probeOpenCodeLaunchModelContext(options)).toMatchObject({ primaryAgent: 'build' })
-    expect(signalProcessTree).toHaveBeenCalledOnce()
+
+    const [spec] = vi.mocked(spawnProcess).mock.calls[0]
+    expect(spec).toMatchObject({ program: process.execPath, cwd: directory, detached: true })
+    const args = spec.args ?? []
+    expect(args.slice(args.indexOf('--') + 1)).toEqual([
+      '/private/opencode',
+      'serve',
+      '--hostname',
+      '127.0.0.1',
+      '--port',
+      '0'
+    ])
+    // Its stdin ends at once, so a session lifetime would stop the server a second later.
+    expect(decodedSupervisorSpec(spec.env)).toMatchObject({ lifetime: 'one-shot', cwd: directory })
+    expect(child.kill.mock.calls).toEqual([['SIGTERM']])
+    // Signalling the supervisor's own group, or SIGKILLing it, would orphan the server's group.
+    expect(signalProcessTree).not.toHaveBeenCalled()
     expect(forceTerminateProcessTree).not.toHaveBeenCalled()
+    expect(terminateCodexAppServerProcessTree).not.toHaveBeenCalled()
   })
 
-  it('keeps a root exit with inherited pipes unverified and avoids its former pid', async () => {
+  it('forces a POSIX supervisor tree only after its full stop time', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    child.kill.mockReturnValue(true)
+    vi.mocked(terminateCodexAppServerProcessTree).mockResolvedValue(true)
+
+    const probe = probeOpenCodeLaunchModelContext(options)
+    await untilStopRequested()
+    await vi.advanceTimersByTimeAsync(PROVIDER_SUPERVISOR_MAX_STOP_MS - 1)
+    expect(terminateCodexAppServerProcessTree).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+
+    expect(await probe).toMatchObject({ primaryAgent: 'build' })
+    expect(terminateCodexAppServerProcessTree).toHaveBeenCalledWith(child)
+  })
+
+  it('never forces a POSIX supervisor whose root exited without closing its pipes', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    child.kill.mockImplementation(() => {
+      child.exitCode = 0
+      child.emit('exit', 0, null)
+      return true
+    })
+
+    const probe = probeOpenCodeLaunchModelContext(options)
+    await untilStopRequested()
+    await vi.advanceTimersByTimeAsync(PROVIDER_SUPERVISOR_MAX_STOP_MS)
+
+    expect(await probe).toBeNull()
+    expect(terminateCodexAppServerProcessTree).not.toHaveBeenCalled()
+  })
+
+  it('keeps a Windows root exit with inherited pipes unverified and avoids its former pid', async () => {
+    Object.defineProperty(process, 'platform', { value: 'win32' })
     vi.mocked(signalProcessTree).mockImplementation(async () => {
       child.exitCode = 0
       child.emit('exit', 0, null)
@@ -129,7 +206,8 @@ describe('OpenCode model probe termination evidence', () => {
     expect(forceTerminateProcessTree).not.toHaveBeenCalled()
   })
 
-  it('requires verified termination when a still-live probe does not close', async () => {
+  it('requires verified termination when a still-live Windows probe does not close', async () => {
+    Object.defineProperty(process, 'platform', { value: 'win32' })
     vi.mocked(signalProcessTree).mockResolvedValue(true)
     expect(await probeOpenCodeLaunchModelContext(options)).toBeNull()
     expect(forceTerminateProcessTree).toHaveBeenCalledOnce()

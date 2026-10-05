@@ -10,6 +10,11 @@ import { withTimeout } from '../../shared/promise-timeout-fallback'
 import { createOutputSink } from '../../shared/child-process/bounded-output-sink'
 import { readFetchResponseJsonWithinLimit } from '../../shared/fetch-response-body'
 import { cancelUnreadResponseBody } from '../lib/unread-response-body'
+import {
+  createProviderSpawnSpec,
+  stopSupervisedProvider
+} from '../codex/codex-app-server-posix-supervisor'
+import { terminateCodexAppServerProcessTree } from '../codex/codex-app-server-process-teardown'
 
 const model = z.object({ id: z.string(), providerID: z.string() })
 const availableModel = model.extend({ enabled: z.boolean() })
@@ -94,15 +99,22 @@ export async function probeOpenCodeLaunchModelContext(options: {
   expectedPrimaryModel?: string
 }): Promise<OpenCodeLaunchModelContext | null> {
   const password = randomBytes(32).toString('base64url')
-  const child = spawnProcess({
-    program: options.executable,
-    args: ['serve', '--hostname', '127.0.0.1', '--port', '0'],
-    cwd: options.cwd,
-    env: {
-      ...options.env,
-      OPENCODE_SERVER_USERNAME: 'opencode',
-      OPENCODE_SERVER_PASSWORD: password
+  const spawnSpec = createProviderSpawnSpec(
+    {
+      command: options.executable,
+      args: ['serve', '--hostname', '127.0.0.1', '--port', '0'],
+      cwd: options.cwd
     },
+    { ...options.env, OPENCODE_SERVER_USERNAME: 'opencode', OPENCODE_SERVER_PASSWORD: password },
+    process.platform,
+    // `opencode serve` never exits on stdin end, so on POSIX only its supervisor stops it with Orca.
+    { lifetime: 'one-shot' }
+  )
+  const child = spawnProcess({
+    program: spawnSpec.program,
+    args: spawnSpec.args,
+    cwd: options.cwd,
+    env: spawnSpec.env,
     detached: true
   })
   const output = createOutputSink(4096)
@@ -193,13 +205,34 @@ export async function probeOpenCodeLaunchModelContext(options: {
   } catch {
     context = null
   } finally {
-    if (!childClosed && !rootExited) {
-      await signalProcessTree(child, 'SIGTERM')
-    }
-    stopped = childClosed || (await withTimeout(closed, 1_500, false))
-    // A reaped root's PID can be reused while descendants still hold its pipes.
-    if (!stopped && !rootExited) {
-      stopped = await forceTerminateProcessTree(child)
+    if (spawnSpec.supervised) {
+      let forcedStop = false
+      await stopSupervisedProvider({
+        request: () => {
+          try {
+            child.kill('SIGTERM')
+          } catch {
+            // The supervisor may exit between the close check and kill.
+          }
+        },
+        exitPromise: closed.then(() => undefined),
+        exited: () => childClosed,
+        force: async () => {
+          // A reaped root's PID can be reused; only a live supervisor's tree is ours to force.
+          forcedStop = !rootExited && (await terminateCodexAppServerProcessTree(child))
+        },
+        supervised: true
+      })
+      stopped = childClosed || forcedStop
+    } else {
+      if (!childClosed && !rootExited) {
+        await signalProcessTree(child, 'SIGTERM')
+      }
+      stopped = childClosed || (await withTimeout(closed, 1_500, false))
+      // A reaped root's PID can be reused while descendants still hold its pipes.
+      if (!stopped && !rootExited) {
+        stopped = await forceTerminateProcessTree(child)
+      }
     }
   }
   return stopped ? context : null
