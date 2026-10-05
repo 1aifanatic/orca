@@ -71,17 +71,16 @@ function expectOneTurnScopedCutShortRow(settled: Awaited<ReturnType<typeof settl
 }
 
 describe('a Grok crash with its exit seen first', () => {
-  it('ends the turn at the exit, never unverifiable, and the provider-exit row reports on it', async () => {
+  it('ends the turn at the exit itself; the provider-exit batch only reports on it', async () => {
     const rig = await midReply()
     rig.child.exit()
     const settled = await settledCrash(rig)
     expectOneTurnScopedCutShortRow(settled)
-    const states = rig.batches.flatMap((batch) =>
-      batch.mutations.flatMap((mutation) =>
-        mutation.kind === 'item' ? (readAgentJournalTurn(mutation.body)?.state ?? []) : []
-      )
-    )
-    expect(states).not.toContain('unverifiable')
+    // The child's own end landed first, interrupted at the exit and never `unverifiable`: the host
+    // has no turn or call of it left to revise.
+    expect(
+      settled.batch.mutations.map((mutation) => mutation.kind === 'item' && mutation.body.kind)
+    ).toEqual(['status'])
     await rig.host.close(SESSION, 'user-close')
   })
 })
