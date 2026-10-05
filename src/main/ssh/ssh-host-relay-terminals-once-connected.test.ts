@@ -100,6 +100,23 @@ describe('re-checking relay terminals once the relay session is up', () => {
     terminals: 6
   }
 
+  it('never retires an expired lease an older relay still lists', async () => {
+    const held = store([{ ptyId: 'pty2:92577856:1', state: 'expired' }])
+
+    await expect(
+      relayTerminalsOnceConnected({
+        store: held,
+        targetId: 'ssh-1',
+        decision: unverifiable,
+        // The current relay disowns it, but the older relay that minted it still runs it.
+        listRelayPtyIds: relay([], ['pty2:92577856:1']),
+        isCurrent: () => true
+      })
+    ).resolves.toEqual({ route: 'relay', reason: 'relay_terminals_live', terminals: 1 })
+    expect(held.markSshRemotePtyLease).not.toHaveBeenCalled()
+    expect(held.getSshRemotePtyLeases()[0]?.state).toBe('expired')
+  })
+
   it('reports the upgraded host live while the current relay runs its shells', async () => {
     const upgraded = upgradedProfile()
     await expect(
