@@ -13,7 +13,11 @@ import {
 import { randomUUID } from 'node:crypto'
 import type { TabGroupLayoutNode } from '../../shared/tab-types'
 import { resolveEditorAuthority } from './editor-authority'
-import { hostEditsPersistedTabGroups, persistHostEditorLayout } from './host-editor-tab-commands'
+import {
+  hostEditsPersistedTabGroups,
+  hostRefusesSplitOfTransientTab,
+  persistHostEditorLayout
+} from './host-editor-tab-move-persistence'
 
 export class OrcaRuntimeWithMoveHeadlessMobileSessionTab extends OrcaRuntimeWithPersistHeadlessSessionTabProps {
   protected moveHeadlessMobileSessionTab(
@@ -95,6 +99,9 @@ export class OrcaRuntimeWithMoveHeadlessMobileSessionTab extends OrcaRuntimeWith
     const hostTabId = this.resolveMobileSessionHostTabId(snapshot, move.tabId)
     if (!hostTabId) {
       throw new Error('tab_not_found')
+    }
+    if (hostRefusesSplitOfTransientTab(this, worktreeId, snapshot, hostTabId)) {
+      return { moved: true }
     }
     const split = buildHeadlessTabGroupSplit({
       groups: snapshot.tabGroups ?? [],

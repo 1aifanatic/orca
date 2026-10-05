@@ -12,24 +12,12 @@ import {
   navigationTargetsHost,
   type RuntimeNavigationTarget
 } from '../../shared/runtime-navigation'
-import {
-  assertHostEditorAuthority,
-  resolveEditorAuthority,
-  type EditorAuthority
-} from './editor-authority'
-import { closeHostEditFile, persistHostTabGroupLayout } from './host-editor-session-layout'
-import {
-  activateHostEditTab,
-  isUnifiedWorkspaceSession,
-  listHostEditTabs,
-  openHostEditTab
-} from './host-editor-session-model'
-import { editPersistedTabGroups } from './host-editor-tab-group-edit'
-import { translateHostSnapshotTabIds } from './host-editor-tab-group-placement'
+import { assertHostEditorAuthority, type EditorAuthority } from './editor-authority'
+import { closeHostEditFile } from './host-editor-session-layout'
+import { activateHostEditTab, listHostEditTabs, openHostEditTab } from './host-editor-session-model'
 import {
   commitHostEditorSession,
   findHostDiffTab,
-  listHostEditorMobileTabs,
   publishHostEditorTabs,
   requireOwnSession,
   type HostEditorTabsRuntime
@@ -246,71 +234,4 @@ export function releaseHostEditorFocus(
     ...session,
     activeTabTypeByWorktree: { ...session.activeTabTypeByWorktree, [worktreeId]: visibleType }
   })
-}
-
-function hasEditorTabs(snapshot: RuntimeMobileSessionTabsSnapshot): boolean {
-  return snapshot.tabs.some((tab) => tab.type === 'markdown' || tab.type === 'file')
-}
-
-/**
- * Whether a headless move in this worktree edits the unified session's persisted groups, in which
- * case the snapshot's groups (only what the host can show) must not be written as the whole model.
- */
-export function hostEditsPersistedTabGroups(
-  runtime: HostEditorTabsRuntime,
-  worktreeId: string,
-  snapshot: RuntimeMobileSessionTabsSnapshot
-): boolean {
-  if (resolveEditorAuthority(runtime) !== 'host' || !hasEditorTabs(snapshot)) {
-    return false
-  }
-  const session = runtime.getOwnWorkspaceSessionForWorktree(worktreeId)
-  return Boolean(
-    session &&
-    isUnifiedWorkspaceSession(session) &&
-    (session.tabGroups?.[worktreeId]?.length ?? 0) > 0
-  )
-}
-
-/** After a headless move/split/reorder, persists groups plus editor placement in one write. */
-export function persistHostEditorLayout(
-  runtime: HostEditorTabsRuntime,
-  worktreeId: string,
-  snapshot: RuntimeMobileSessionTabsSnapshot
-): void {
-  if (!hasEditorTabs(snapshot)) {
-    return
-  }
-  const groupIdByTabId = new Map<string, string>()
-  for (const group of snapshot.tabGroups ?? []) {
-    for (const tabId of group.tabOrder) {
-      groupIdByTabId.set(tabId, group.id)
-    }
-  }
-  const state = getHostEditorTabState(runtime)
-  state.setDiffGroups(worktreeId, groupIdByTabId)
-  const session = runtime.getOwnWorkspaceSessionForWorktree(worktreeId)
-  if (!session) {
-    return
-  }
-  const next = isUnifiedWorkspaceSession(session)
-    ? editPersistedTabGroups(
-        session,
-        worktreeId,
-        snapshot,
-        translateHostSnapshotTabIds(
-          snapshot.tabs,
-          listHostEditorMobileTabs(runtime, worktreeId, session),
-          session.unifiedTabs?.[worktreeId] ?? []
-        )
-      )
-    : persistHostTabGroupLayout(session, worktreeId, {
-        groups: snapshot.tabGroups ?? [],
-        groupLayout: snapshot.tabGroupLayout,
-        activeGroupId: snapshot.activeGroupId,
-        transientTabIds: new Set(state.listDiffs(worktreeId).map((diff) => diff.tabId))
-      })
-  if (next) {
-    commitHostEditorSession(runtime, worktreeId, next)
-  }
 }

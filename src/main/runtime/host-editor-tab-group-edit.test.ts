@@ -13,6 +13,7 @@ await import('./orca-runtime-test-lifecycle.spec')
 const { TEST_REPO_ID, makeHeadlessTerminalLayout } =
   await import('./orca-runtime-test-fixtures.spec')
 const { createHeadlessEditorHarness } = await import('./host-editor-tabs-test-harness.spec')
+const { getHostEditorTabState } = await import('./host-editor-tab-state')
 
 const LEAF_1 = '11111111-1111-4111-8111-111111111111'
 const LEAF_2 = '22222222-2222-4222-8222-222222222222'
@@ -314,5 +315,37 @@ describe('a chat replaced by /clear while the window is closed', () => {
     ])
     expect(session.tabGroupLayouts?.[worktreeId]).toEqual({ type: 'leaf', groupId: 'g-1' })
     expectConsistentGroups(session, worktreeId)
+  })
+})
+
+describe('a remote split of a diff the session cannot persist', () => {
+  it('refuses the split instead of showing a group the next list drops', async () => {
+    const { runtime, worktreeId, writeWorktreeFile, getSession } =
+      await createHeadlessEditorHarness(splitSession('browser'))
+    const selector = `id:${worktreeId}`
+    await writeWorktreeFile('notes.md', 'a')
+    await writeWorktreeFile('src/a.ts', 'a')
+    await runtime.openMobileFile(selector, 'notes.md')
+    await runtime.openMobileDiff(selector, 'src/a.ts', false)
+    const before = await runtime.listMobileSessionTabs(selector)
+    const sessionBefore = getSession()
+    const diff = before.tabs.find((tab) => tab.type === 'file')!
+
+    await expect(
+      runtime.moveMobileSessionTab(selector, {
+        kind: 'split',
+        tabId: diff.id,
+        targetGroupId: 'g-1',
+        splitDirection: 'right'
+      })
+    ).resolves.toEqual({ moved: true })
+
+    const after = await runtime.listMobileSessionTabs(selector)
+    expect(after.tabGroups).toEqual(before.tabGroups)
+    expect(after.tabGroupLayout).toEqual(before.tabGroupLayout)
+    expect(getSession()).toEqual(sessionBefore)
+    expect(getHostEditorTabState(runtime).listDiffs(worktreeId)).toEqual([
+      expect.objectContaining({ tabId: diff.id, groupId: 'g-1' })
+    ])
   })
 })
