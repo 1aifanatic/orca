@@ -144,7 +144,11 @@ export function closeHostEditorTab(
     throw new Error('tab_not_found')
   }
   // Why: the host cannot arbitrate a desktop draft (even an empty one); closing would destroy it.
-  if (record.file.dirtyDraftContent !== undefined || tab.isDirty) {
+  // A read-only row's draft is ignored everywhere else, so it must not pin the tab open either.
+  if (
+    (record.file.readOnly !== true && record.file.dirtyDraftContent !== undefined) ||
+    tab.isDirty
+  ) {
     publishHostEditorTabs(runtime, worktreeId)
     throw new Error(HOST_EDITOR_DRAFT_CLOSE_REFUSAL)
   }

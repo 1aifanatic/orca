@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { SESSION_TABS_HOST_EDITOR_TABS_RUNTIME_CAPABILITY } from '../../shared/protocol-version'
 
 // Fragments stay side-effect ordered: mocks, then lifecycle, then fixtures.
-await import('./orca-runtime-test-mocks.spec')
+const { getDefaultWorkspaceSession } = await import('./orca-runtime-test-mocks.spec')
 await import('./orca-runtime-test-lifecycle.spec')
 const { TEST_WINDOW_ID } = await import('./orca-runtime-test-fixtures.spec')
 const { attachEditorWindow, createHeadlessEditorHarness, detachEditorWindow } =
@@ -173,5 +173,56 @@ describe('host-owned editor tabs with no desktop window', () => {
       SESSION_TABS_HOST_EDITOR_TABS_RUNTIME_CAPABILITY
     )
     detachEditorWindow(runtime)
+  })
+
+  it('an explicit open keeps a preview tab so a window restore cannot replace it', async () => {
+    const { runtime, worktreeId, writeWorktreeFile, getSession } =
+      await createHeadlessEditorHarness((worktreeId, worktreePath) => ({
+        ...getDefaultWorkspaceSession(),
+        openFilesByWorktree: {
+          [worktreeId]: [
+            {
+              filePath: `${worktreePath}/notes.md`,
+              relativePath: 'notes.md',
+              worktreeId,
+              language: 'markdown',
+              isPreview: true
+            }
+          ]
+        }
+      }))
+    await writeWorktreeFile('notes.md', 'a')
+
+    await runtime.openMobileFile(`id:${worktreeId}`, 'notes.md')
+
+    expect(getSession().openFilesByWorktree?.[worktreeId]).toEqual([
+      expect.not.objectContaining({ isPreview: true })
+    ])
+  })
+
+  it('closes a read-only tab whose stale draft no surface shows', async () => {
+    const { runtime, worktreeId, getSession } = await createHeadlessEditorHarness(
+      (worktreeId, worktreePath) => ({
+        ...getDefaultWorkspaceSession(),
+        openFilesByWorktree: {
+          [worktreeId]: [
+            {
+              filePath: `${worktreePath}/build.log`,
+              relativePath: 'build.log',
+              worktreeId,
+              language: 'plaintext',
+              readOnly: true,
+              dirtyDraftContent: 'stale'
+            }
+          ]
+        }
+      })
+    )
+    const [tab] = (await runtime.listMobileSessionTabs(`id:${worktreeId}`)).tabs
+    expect(tab).toMatchObject({ isDirty: false })
+
+    await runtime.closeMobileSessionTab(`id:${worktreeId}`, tab!.id)
+
+    expect(getSession().openFilesByWorktree?.[worktreeId]).toEqual([])
   })
 })

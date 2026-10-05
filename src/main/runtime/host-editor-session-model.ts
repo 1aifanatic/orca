@@ -124,8 +124,9 @@ export function openHostEditTab(
   if (existing.length > 0) {
     const targetGroupId = pickTargetGroup(session, worktreeId)?.id
     const record = existing.find((candidate) => candidate.groupId === targetGroupId) ?? existing[0]!
+    const kept = keepHostEditTab(session, worktreeId, record)
     return {
-      session: args.activate ? activateHostEditTab(session, worktreeId, record) : session,
+      session: args.activate ? activateHostEditTab(kept, worktreeId, record) : kept,
       record,
       created: false
     }
@@ -170,6 +171,44 @@ export function openHostEditTab(
   }
 }
 
+/** An explicit open keeps a preview tab, as a window's open does, so a restore cannot replace it. */
+function keepHostEditTab(
+  session: WorkspaceSessionState,
+  worktreeId: string,
+  record: HostEditTabRecord
+): WorkspaceSessionState {
+  const wrappers = session.unifiedTabs?.[worktreeId]
+  const previewWrapper = wrappers?.some(
+    (tab) => tab.isPreview && tab.contentType === 'editor' && tab.id === record.wrapperId
+  )
+  if (!record.file.isPreview && !previewWrapper) {
+    return session
+  }
+  return {
+    ...session,
+    openFilesByWorktree: {
+      ...session.openFilesByWorktree,
+      [worktreeId]: (session.openFilesByWorktree?.[worktreeId] ?? []).map((row) => {
+        if (row !== record.file) {
+          return row
+        }
+        const { isPreview: _isPreview, ...kept } = row
+        return kept
+      })
+    },
+    ...(wrappers && previewWrapper
+      ? {
+          unifiedTabs: {
+            ...session.unifiedTabs,
+            [worktreeId]: wrappers.map((tab) =>
+              tab.id === record.wrapperId ? { ...tab, isPreview: false } : tab
+            )
+          }
+        }
+      : {})
+  }
+}
+
 function addUnifiedEditorWrapper(
   session: WorkspaceSessionState,
   worktreeId: string,
@@ -190,8 +229,13 @@ function addUnifiedEditorWrapper(
     groups = [group]
     layouts = { ...layouts, [worktreeId]: { type: 'leaf', groupId: group.id } }
   }
+  // Why: the window appends an unpinned, unanchored tab to the deduped order and renumbers every
+  // sibling, so a gap left by an earlier close cannot hand two wrappers one sortOrder.
+  const wrapperId = args.newId()
+  const tabOrder = [...new Set(group.tabOrder.filter((id) => id !== wrapperId)), wrapperId]
+  const sortOrderById = new Map(tabOrder.map((id, index) => [id, index]))
   const wrapper: Tab = {
-    id: args.newId(),
+    id: wrapperId,
     entityId,
     groupId: group.id,
     worktreeId,
@@ -200,19 +244,21 @@ function addUnifiedEditorWrapper(
     label: args.relativePath,
     customLabel: null,
     color: null,
-    sortOrder: group.tabOrder.length,
+    sortOrder: tabOrder.length - 1,
     createdAt: args.now
   }
   const targetGroupId = group.id
+  const renumbered = tabs.map((tab) => {
+    const sortOrder = sortOrderById.get(tab.id)
+    return sortOrder === undefined || sortOrder === tab.sortOrder ? tab : { ...tab, sortOrder }
+  })
   return {
     ...session,
-    unifiedTabs: { ...session.unifiedTabs, [worktreeId]: [...tabs, wrapper] },
+    unifiedTabs: { ...session.unifiedTabs, [worktreeId]: [...renumbered, wrapper] },
     tabGroups: {
       ...session.tabGroups,
       [worktreeId]: groups.map((candidate) =>
-        candidate.id === targetGroupId
-          ? { ...candidate, tabOrder: [...candidate.tabOrder, wrapper.id] }
-          : candidate
+        candidate.id === targetGroupId ? { ...candidate, tabOrder } : candidate
       )
     },
     ...(layouts ? { tabGroupLayouts: layouts } : {})

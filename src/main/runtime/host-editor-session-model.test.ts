@@ -279,6 +279,39 @@ describe('host editor session model', () => {
     expect(next.activeGroupIdByWorktree?.[WT]).toBe('g-2')
   })
 
+  it('renumbers siblings like a window when an earlier close left a sortOrder gap', () => {
+    const wrapper = (id: string, sortOrder: number, isPinned = false) => ({
+      id,
+      entityId: id,
+      groupId: 'g-1',
+      worktreeId: WT,
+      contentType: 'terminal' as const,
+      label: '',
+      customLabel: null,
+      color: null,
+      sortOrder,
+      createdAt: 1,
+      ...(isPinned ? { isPinned } : {})
+    })
+    const session = base({
+      // A pinned tab first, then a gap: sortOrder 2 already exists at tabOrder index 1.
+      unifiedTabs: { [WT]: [wrapper('pinned', 0, true), wrapper('term-2', 2)] },
+      tabGroups: {
+        [WT]: [{ id: 'g-1', worktreeId: WT, activeTabId: 'term-2', tabOrder: ['pinned', 'term-2'] }]
+      },
+      activeGroupIdByWorktree: { [WT]: 'g-1' }
+    })
+
+    const { session: next } = openHostEditTab(session, { ...openArgs, newId: ids() })
+
+    expect(next.tabGroups?.[WT]?.[0]?.tabOrder).toEqual(['pinned', 'term-2', 'uuid-1'])
+    expect(next.unifiedTabs?.[WT]?.map((tab) => [tab.id, tab.sortOrder])).toEqual([
+      ['pinned', 0],
+      ['term-2', 1],
+      ['uuid-1', 2]
+    ])
+  })
+
   it('never writes the legacy terminal group into a unified session', () => {
     const session = base({
       unifiedTabs: { [WT]: [] },
