@@ -125,6 +125,8 @@ function rows(messages: ReturnType<typeof projectStructuredAgentSessionMessages>
 }
 
 const SEED = submission('seed', 'seed', 1)
+// The one row drawn after a send a Stop took back before the agent started it.
+const STOPPED_ROW = `stopped-before-start:${agentJournalSubmissionKey('stopped')}`
 const SEED_ROWS = [userItem('seed', 1, 'seed'), answer(2)]
 
 describe('a message the host accepted and then rejected, on the desktop', () => {
@@ -264,11 +266,14 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
       withdrawn('stopped', 'again', 5)
     ]
 
-    expect(rows(projectStructuredAgentSessionMessages(items, [], submissions, NO_CARDS))).toEqual([
+    const messages = projectStructuredAgentSessionMessages(items, [], submissions, NO_CARDS)
+    expect(rows(messages)).toEqual([
       { id: agentJournalSubmissionKey('seed'), text: 'seed', unsent: false },
       { id: agentJournalSubmissionKey('first'), text: 'again', unsent: false },
+      { id: agentJournalSubmissionKey('stopped'), text: 'again', unsent: false },
       { id: agentJournalSubmissionKey('failed'), text: 'again', unsent: true }
     ])
+    expect(messages.map((message) => message.id)).toContain(STOPPED_ROW)
   })
 
   // Its own reply reports the rejection, in the composer, as a command's.
@@ -299,13 +304,16 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
     ).toBe(0)
   })
 
-  it('keeps a message a Stop withdrew hidden: it went back to its sender', () => {
+  it('draws a message a Stop withdrew, with its stop row, and no delivery notice', () => {
     const items = [...SEED_ROWS, userItem('stopped', 3, 'never mind')]
     const submissions = [SEED, withdrawn('stopped', 'never mind', 3)]
 
-    expect(rows(projectStructuredAgentSessionMessages(items, [], submissions, NO_CARDS))).toEqual([
-      { id: agentJournalSubmissionKey('seed'), text: 'seed', unsent: false }
+    const messages = projectStructuredAgentSessionMessages(items, [], submissions, NO_CARDS)
+    expect(rows(messages)).toEqual([
+      { id: agentJournalSubmissionKey('seed'), text: 'seed', unsent: false },
+      { id: agentJournalSubmissionKey('stopped'), text: 'never mind', unsent: false }
     ])
+    expect(messages.map((message) => message.id)).toContain(STOPPED_ROW)
     expect(
       structuredAgentSessionDeliveryNotices([], 'Claude', () => {}, submissions, [], new Set()).size
     ).toBe(0)
@@ -446,7 +454,7 @@ describe('a rejected message the queue holds', () => {
 })
 
 describe('the phone', () => {
-  it('still hides every accepted-then-rejected message: it gives the text back to its composer', () => {
+  it('still hides a message the host failed to deliver, but draws one a Stop withdrew', () => {
     const items = [
       ...SEED_ROWS,
       userItem('lost', 3, 'fix the parser'),
@@ -458,8 +466,11 @@ describe('the phone', () => {
       withdrawn('stopped', 'never mind', 4)
     ]
 
-    expect(rows(projectShared(items, [], submissions, { rejectedInPlace: false }))).toEqual([
-      { id: agentJournalSubmissionKey('seed'), text: 'seed', unsent: false }
+    const messages = projectShared(items, [], submissions, { rejectedInPlace: false })
+    expect(rows(messages)).toEqual([
+      { id: agentJournalSubmissionKey('seed'), text: 'seed', unsent: false },
+      { id: agentJournalSubmissionKey('stopped'), text: 'never mind', unsent: false }
     ])
+    expect(messages.map((message) => message.id)).toContain(STOPPED_ROW)
   })
 })
