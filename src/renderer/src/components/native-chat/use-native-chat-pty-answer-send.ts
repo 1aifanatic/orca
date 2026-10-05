@@ -27,7 +27,11 @@ export function useNativeChatPtyAnswerSend(args: {
         return 'rejected'
       }
       const settings = getSettingsForAgentTabRuntimeOwner(terminalTabId)
-      const { handle, outcome } = sendNativeChatMessageWithOutcome(settings, targetPtyId, text)
+      const started = sendNativeChatMessageWithOutcome(settings, targetPtyId, text)
+      if (!started) {
+        return 'rejected'
+      }
+      const { handle, outcome } = started
       const pendingId = recordOptimistic(text)
       trackPendingSend(handle, pendingId)
       emitNativeChatMessageSent({

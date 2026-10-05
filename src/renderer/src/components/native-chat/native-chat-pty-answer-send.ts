@@ -1,8 +1,10 @@
 // The ordinary PTY message seam for an async-question answer, with the outcome the
-// runtime write observed: refused → rejected, acknowledgement lost → unknown.
+// runtime write observed: refused → rejected, acknowledgement lost → unknown, and any
+// cancel before Enter (Stop, PTY swap, an option command draining the queue) → rejected.
 // Unlike the composer, it never touches the draft, history, or attachments.
 
 import type { getSettingsForAgentTabRuntimeOwner } from '@/lib/agent-paste-draft'
+import { nativeChatPtyHeldForOption } from './native-chat-pty-send-queue'
 import { sendNativeChatMessage, type NativeChatSendHandle } from './native-chat-runtime-send'
 
 export type NativeChatPtySendOutcome = 'accepted' | 'rejected' | 'unknown'
@@ -11,10 +13,13 @@ export function sendNativeChatMessageWithOutcome(
   settings: ReturnType<typeof getSettingsForAgentTabRuntimeOwner>,
   ptyId: string,
   text: string
-): { handle: NativeChatSendHandle; outcome: Promise<NativeChatPtySendOutcome> } {
+): { handle: NativeChatSendHandle; outcome: Promise<NativeChatPtySendOutcome> } | null {
+  // Like the composer: a message typed into a model picker would answer the picker.
+  if (nativeChatPtyHeldForOption(ptyId)) {
+    return null
+  }
   let observed: NativeChatPtySendOutcome | null = null
-  let cancelledBeforeSubmit = false
-  const inner = sendNativeChatMessage(settings, ptyId, text, {
+  const handle = sendNativeChatMessage(settings, ptyId, text, {
     onWriteRejected: () => {
       observed ??= 'rejected'
     },
@@ -22,19 +27,10 @@ export function sendNativeChatMessageWithOutcome(
       observed ??= 'unknown'
     }
   })
-  const finished =
-    'finished' in inner && typeof inner.finished === 'function' ? inner.finished : () => true
-  const handle: NativeChatSendHandle = {
-    ...inner,
-    // A cancel before Enter clears the line, so nothing was sent.
-    cancel: () => {
-      cancelledBeforeSubmit ||= !finished()
-      inner.cancel()
-    }
-  }
-  const settled = inner.settled ?? Promise.resolve()
+  const submitted = handle.submitted ?? (() => true)
+  const settled = handle.settled ?? Promise.resolve()
   const outcome = settled.then(
-    (): NativeChatPtySendOutcome => (cancelledBeforeSubmit ? 'rejected' : (observed ?? 'accepted')),
+    (): NativeChatPtySendOutcome => (submitted() ? (observed ?? 'accepted') : 'rejected'),
     (): NativeChatPtySendOutcome => 'unknown'
   )
   return { handle, outcome }
