@@ -8,6 +8,7 @@ import {
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import {
   AGENT_JOURNAL_REJECTION_CAUSES,
+  type AgentJournalAnsweredTurn,
   type AgentJournalSubmission
 } from '../../../shared/agent-session-journal-types'
 import {
@@ -46,6 +47,7 @@ function requeueRejectedSubmission(
   submission.resolvedAt = null
   delete submission.rejection
   delete submission.rejectionCause
+  delete submission.answeredInTurn
   delete submission.startRetry
   delete submission.recovered
 }
@@ -72,6 +74,11 @@ export function applyJournalDispatchRow(
     submission.rejection = rejection
   } else {
     delete submission.rejection
+  }
+  if (row.state === 'rejected' && row.answeredInTurn !== undefined) {
+    submission.answeredInTurn = readAnsweredTurn(row.answeredInTurn)
+  } else {
+    delete submission.answeredInTurn
   }
   const rejectionCause = AGENT_JOURNAL_REJECTION_CAUSES.find(
     (cause) => row.state === 'rejected' && cause === row.rejectionCause
@@ -122,6 +129,19 @@ export function applyJournalDispatchRow(
     cursor: { epoch: row.epoch, sequence: row.seq },
     acceptedAt: row.ts
   })
+}
+
+/** A stored answered turn. One malformed, or naming a way of joining this build does not know, is
+ *  read as no turn: it was written knowing the field, so it is not an older row. */
+function readAnsweredTurn(value: unknown): AgentJournalAnsweredTurn | null {
+  if (typeof value !== 'object' || value === null) {
+    return null
+  }
+  const turnItemId = 'turnItemId' in value ? value.turnItemId : undefined
+  const via = 'via' in value ? value.via : undefined
+  return typeof turnItemId === 'string' && turnItemId && (via === 'start' || via === 'steer')
+    ? { turnItemId, via }
+    : null
 }
 
 /** A stored rejection fact, read where it can be placed; a kind it cannot place is kept as

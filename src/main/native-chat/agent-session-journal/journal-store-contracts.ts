@@ -1,5 +1,6 @@
 import type { AgentJournalDispatchRejection } from '../../../shared/agent-session-failure-words'
 import type {
+  AgentJournalAnsweredTurnIdentity,
   AgentJournalCursor,
   AgentJournalItemBody,
   AgentJournalItemIdentity,
@@ -48,6 +49,7 @@ export type ResolveDispatchInput = {
     | ({
         state: 'rejected'
         rejectionCause?: AgentJournalRejectionCause
+        answeredInTurn?: AgentJournalAnsweredTurnIdentity
       } & AgentJournalDispatchRejection)
     | { state: 'unknown'; reason?: string | null }
   )

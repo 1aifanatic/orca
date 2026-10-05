@@ -16,17 +16,15 @@ import {
 } from '../../../shared/agent-session-journal-producer'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import type { JournalReducerState } from './journal-reducer'
-import type {
-  JournalDispatchRow,
-  JournalItemRow,
-  JournalLifecycleBatchRow,
-  JournalLifecycleMutation,
-  JournalSubmissionRow,
-  JournalTombstoneRow
-} from './journal-row-schema'
 import {
   MAX_JOURNAL_LIFECYCLE_BATCH_BYTES,
-  MAX_JOURNAL_LIFECYCLE_BATCH_MUTATIONS
+  MAX_JOURNAL_LIFECYCLE_BATCH_MUTATIONS,
+  type JournalDispatchRow,
+  type JournalItemRow,
+  type JournalLifecycleBatchRow,
+  type JournalLifecycleMutation,
+  type JournalSubmissionRow,
+  type JournalTombstoneRow
 } from './journal-row-schema'
 import { boundInlineText, DEFAULT_JOURNAL_PAYLOAD_LIMITS } from './journal-payload-bounds'
 import { assertSubmissionIdUnused } from './journal-write-guards'
@@ -111,9 +109,18 @@ export function journalDispatchRowBuilder(
     state: input.state,
     providerItemId,
     reason: boundedDispatchReason(input),
-    ...(input.state === 'rejected' ? { rejection: input.rejection } : {}),
-    ...(input.state === 'rejected' && input.rejectionCause
-      ? { rejectionCause: input.rejectionCause }
+    // Every rejection states its turn, null for none, so a reader tells it from an older row.
+    ...(input.state === 'rejected'
+      ? {
+          rejection: input.rejection,
+          ...(input.rejectionCause ? { rejectionCause: input.rejectionCause } : {}),
+          answeredInTurn: input.answeredInTurn
+            ? {
+                turnItemId: agentJournalItemKey(input.answeredInTurn.turn),
+                via: input.answeredInTurn.via
+              }
+            : null
+        }
       : {}),
     ...journalRowBase(state().epoch, seq, input.fence, ts),
     ...(input.recovered ? { recovered: input.recovered } : {}),
