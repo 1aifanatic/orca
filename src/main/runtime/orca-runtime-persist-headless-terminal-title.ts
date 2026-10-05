@@ -15,6 +15,8 @@ import {
 } from '../../shared/execution-host'
 import { getLocalProjectWorktreeGitOptions } from '../project-runtime-git-options'
 import { resolveWorktreeHostRouting } from './worktree-launch-host-repo'
+import { resolveEditorAuthority } from './editor-authority'
+import { readHostMarkdownTab, saveHostMarkdownTab } from './runtime-mobile-markdown-documents'
 
 export class OrcaRuntimeWithPersistHeadlessTerminalTitle extends OrcaRuntimeWithMoveHeadlessMobileSessionTab {
   // Persist a manual terminal rename so a headless rebuild keeps the title
@@ -143,6 +145,13 @@ export class OrcaRuntimeWithPersistHeadlessTerminalTitle extends OrcaRuntimeWith
     worktreeSelector: string,
     tabId: string
   ): Promise<RuntimeMarkdownReadTabResult> {
+    if (resolveEditorAuthority(this) === 'host') {
+      return await readHostMarkdownTab(
+        this,
+        await this.resolveHostMarkdownWorktreeId(worktreeSelector),
+        tabId
+      )
+    }
     const worktreeId = await this.resolveMobileMarkdownWorktreeId(worktreeSelector, tabId)
     if (!this.notifier?.readMobileMarkdownTab) {
       throw new Error('renderer_unavailable')
@@ -156,11 +165,28 @@ export class OrcaRuntimeWithPersistHeadlessTerminalTitle extends OrcaRuntimeWith
     baseVersion: string,
     content: string
   ): Promise<RuntimeMarkdownSaveTabResult> {
+    if (resolveEditorAuthority(this) === 'host') {
+      return await saveHostMarkdownTab(
+        this,
+        await this.resolveHostMarkdownWorktreeId(worktreeSelector),
+        tabId,
+        baseVersion,
+        content
+      )
+    }
     const worktreeId = await this.resolveMobileMarkdownWorktreeId(worktreeSelector, tabId)
     if (!this.notifier?.saveMobileMarkdownTab) {
       throw new Error('renderer_unavailable')
     }
     return await this.notifier.saveMobileMarkdownTab(worktreeId, tabId, baseVersion, content)
+  }
+
+  // Why: with no window the host's session rows are the documents, so no snapshot lookup gates them.
+  protected async resolveHostMarkdownWorktreeId(worktreeSelector: string): Promise<string> {
+    return (
+      this.getValidatedExplicitWorktreeIdSelector(worktreeSelector) ??
+      (await this.resolveWorktreeSelector(worktreeSelector)).id
+    )
   }
 
   // Why: `getRepo(id)` is host-blind and never read `worktree.hostId`, which outranks every repo
