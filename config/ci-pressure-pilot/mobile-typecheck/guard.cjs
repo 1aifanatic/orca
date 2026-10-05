@@ -17,11 +17,13 @@ const nativeAttempts = []
 const write = fs.writeFileSync
 const rename = fs.renameSync
 const target = process.env.ORCA_TYPECHECK_GUARD_RECEIPTS
+const toolPath = (process.argv[1] ?? '').replaceAll('\\', '/')
+const preToolHeld = process.env.ORCA_TYPECHECK_CANCEL_HOLD === 'true' && /\/typescript\/(?:bin\/tsc|lib\/tsc\.js)$/.test(toolPath)
 const save = (phase, code) => {
   if (!target) return
   const destination = path.join(target, `${process.pid}.json`)
   const temporary = destination + '.tmp'
-  write(temporary, JSON.stringify({ phase, pid: process.pid, ppid: process.ppid, argv: process.argv, code, nativeAttempts, mutations, stdoutSha256: stdoutHash.copy().digest('hex'), stderrSha256: stderrHash.copy().digest('hex') }))
+  write(temporary, JSON.stringify({ phase, pid: process.pid, ppid: process.ppid, argv: process.argv, code, preToolHeld, nativeAttempts, mutations, stdoutSha256: stdoutHash.copy().digest('hex'), stderrSha256: stderrHash.copy().digest('hex') }))
   rename(temporary, destination)
 }
 const record = (name, args) => mutations.push({ name, path: typeof args[0] === 'string' ? args[0] : null })
@@ -55,3 +57,13 @@ process.dlopen = function (_module, filename) {
 syncBuiltinESMExports()
 save('boot')
 process.once('exit', code => save('exit', code))
+if (preToolHeld) {
+  const release = process.env.ORCA_TYPECHECK_CANCEL_RELEASE_FILE
+  if (!release) throw new Error('Cancellation hold requires an owned release file')
+  const sleeper = new Int32Array(new SharedArrayBuffer(4))
+  const deadline = Date.now() + 5 * 60_000
+  while (!fs.existsSync(release)) {
+    if (Date.now() > deadline) throw new Error('Bounded pre-tool cancellation hold expired')
+    Atomics.wait(sleeper, 0, 0, 100)
+  }
+}

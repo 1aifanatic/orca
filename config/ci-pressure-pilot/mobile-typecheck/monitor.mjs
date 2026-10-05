@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, writeFileSync, renameSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, writeFileSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 const root = process.env.GITHUB_WORKSPACE
@@ -44,6 +44,38 @@ while (!existsSync(join(home, 'monitor.done'))) {
           roots.add(pid)
           changed = true
         }
+      }
+    }
+    if (
+      process.env.SCENARIO === 'cancel' &&
+      label === 'control' &&
+      !existsSync(join(home, 'cancel-hold-ready.json'))
+    ) {
+      const workers = readdirSync(directory)
+        .filter((name) => /^\d+\.json$/.test(name))
+        .map((name) => JSON.parse(readFileSync(join(directory, name), 'utf8')))
+      const held = workers.filter((worker) => worker.preToolHeld && worker.phase === 'boot')
+      const alive = new Set(rows.map(([pid]) => pid))
+      if (
+        workers.length === 3 &&
+        held.length === 2 &&
+        workers.every((worker) => alive.has(worker.pid))
+      ) {
+        const receipt = {
+          sourceSha: process.env.SOURCE_REF.toLowerCase(),
+          readyUnixMs: Date.now(),
+          heldCompilerPids: held.map((worker) => worker.pid),
+          observedAliveWorkerPids: workers.map((worker) => worker.pid),
+          workers,
+          scope:
+            'Cancellation-only pre-tool hold: real installed compiler entrypoint processes are booted and alive; checking has not begun. Excluded from healthy timing.'
+        }
+        const destination = join(home, 'cancel-hold-ready.json')
+        writeFileSync(`${destination}.tmp`, JSON.stringify(receipt, null, 2))
+        renameSync(`${destination}.tmp`, destination)
+        console.log(
+          'CANCELLATION_HOLD_READY: real production/test compiler processes and ratchet parent are alive'
+        )
       }
     }
     const rss = rows.reduce((sum, [pid, , value]) => sum + (roots.has(pid) ? value : 0), 0)

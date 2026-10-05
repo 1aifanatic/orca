@@ -16,6 +16,46 @@ const guardRows = (directory) =>
   readdirSync(directory)
     .filter((name) => /^\d+\.json$/.test(name))
     .map((name) => read(join(directory, name)))
+const { runProcessSync } = await import(
+  pathToFileURL(join(root, 'config/scripts/script-child-process.mjs'))
+)
+const processIds = () => {
+  const result = runProcessSync({
+    program: '/bin/ps',
+    args: ['-axo', 'pid='],
+    timeoutMs: 2_000,
+    maxOutputBytes: 2 * 1024 * 1024
+  })
+  assert.equal(result.code, 0, 'Real execution-host process census must succeed')
+  assert(!result.timedOut && !result.outputTruncated)
+  return new Set(result.stdout.trim().split(/\s+/).filter(Boolean).map(Number))
+}
+async function settleOwnedWorkers(workers) {
+  const pids = workers.map((worker) => worker.pid)
+  assert(pids.length >= 3 && pids.every(Number.isInteger))
+  const startedUnixMs = Date.now()
+  let observations = 0
+  let remaining = pids
+  while (Date.now() - startedUnixMs <= 15_000) {
+    const live = processIds()
+    observations++
+    remaining = pids.filter((pid) => live.has(pid))
+    if (!remaining.length) {
+      return {
+        ownedWorkerPids: pids,
+        startedUnixMs,
+        settledUnixMs: Date.now(),
+        observations,
+        remainingPids: [],
+        verdict: 'exited',
+        scope:
+          'Actual execution-host ps inventory after native waits; absent worker PIDs only, no inference from partial boot receipts'
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200))
+  }
+  throw new Error(`Owned tool workers did not settle: ${remaining.join(', ')}`)
+}
 function validateHealthy(row) {
   assert.equal(row.productionOutcome, 'success')
   assert.equal(row.ratchetOutcome, 'success')
@@ -32,9 +72,6 @@ if (command === 'init') {
   mkdirSync(reports, { recursive: true })
   const expectedSha = (process.env.SOURCE_REF ?? '').toLowerCase()
   assert(/^[0-9a-f]{40}$/.test(expectedSha), 'Pin an exact source SHA')
-  const { runProcessSync } = await import(
-    pathToFileURL(join(root, 'config/scripts/script-child-process.mjs'))
-  )
   const actual = runProcessSync({
     program: 'git',
     args: ['rev-parse', 'HEAD'],
@@ -122,6 +159,9 @@ if (command === 'init') {
   const memory = existsSync(join(directory, 'memory.json'))
     ? read(join(directory, 'memory.json'))
     : null
+  const workers = guardRows(directory)
+  const ownedWorkerSettlement =
+    process.env.SCENARIO === 'cancel' ? await settleOwnedWorkers(workers) : null
   const row = {
     ...start,
     finishedUnixMs,
@@ -130,7 +170,8 @@ if (command === 'init') {
     ratchetOutcome: process.env.RATCHET_OUTCOME,
     cancelled: process.env.CANCELLED === 'true',
     testStarted: existsSync(join(directory, 'Test-started.txt')),
-    workers: guardRows(directory),
+    workers,
+    ownedWorkerSettlement,
     memory,
     timingScope:
       'Complete typecheck stage wall bracket including observer, native background/wait and step-boundary overhead; excludes dependency installation and later Test suite.'
@@ -153,7 +194,16 @@ if (command === 'init') {
     assert.equal(row.ratchetOutcome, 'failure')
     assert(!row.testStarted)
   } else if (process.env.SCENARIO === 'cancel') {
-    assert(row.workers.length >= 2, 'Cancel after actual typecheck tools begin')
+    assert.equal(row.workers.length, 3, 'Cancel after all actual compiler/ratchet process boots')
+    assert(row.ownedWorkerSettlement?.remainingPids.length === 0)
+    const ready = read(join(home, 'cancel-hold-ready.json'))
+    assert.equal(ready.heldCompilerPids.length, 2)
+    assert.deepEqual(
+      [...ready.observedAliveWorkerPids].sort((a, b) => a - b),
+      row.workers.map((worker) => worker.pid).sort((a, b) => a - b)
+    )
+    assert.equal(ready.sourceSha, process.env.SOURCE_REF.toLowerCase())
+    assert(ready.readyUnixMs >= start.startedUnixMs && ready.readyUnixMs <= finishedUnixMs)
     assert(row.cancelled && !row.testStarted, 'External workflow cancellation must block Test')
   } else {
     validateHealthy(row)
