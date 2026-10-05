@@ -1,4 +1,4 @@
-import { fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
 import { afterEach } from 'vitest'
 import {
   armTopologyWriteGuardForTests,
@@ -15,7 +15,8 @@ import { UNROUTED_TOPOLOGY_WRITERS } from '../../src/main/persistence/terminal-t
 armTopologyWriteGuardForTests({
   allowedWriters: new Set(Object.keys(UNROUTED_TOPOLOGY_WRITERS)),
   freeze: false,
-  repoRoot: fileURLToPath(new URL('../..', import.meta.url))
+  // Why not new URL(): under happy-dom the global URL is not Node's, and fileURLToPath rejects it.
+  repoRoot: resolve(import.meta.dirname, '../..')
 })
 
 afterEach(() => {

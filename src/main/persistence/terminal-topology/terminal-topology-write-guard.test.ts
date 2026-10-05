@@ -1,7 +1,6 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
 import { retirePersistedStablePaneOwner } from '../../ipc/pty/pane/stable-owner'
@@ -21,7 +20,7 @@ vi.mock('electron', () => ({
   safeStorage: { isEncryptionAvailable: () => false }
 }))
 
-const REPO_ROOT = fileURLToPath(new URL('../../../..', import.meta.url))
+const REPO_ROOT = resolve(__dirname, '../../../..')
 const WORKTREE = 'repo1::/w'
 const TAB = 'tab-1'
 const STABLE_OWNER = 'src/main/ipc/pty/pane/stable-owner.ts'
