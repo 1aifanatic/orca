@@ -93,11 +93,11 @@ function referencingFilesByWriter(): Map<string, Set<string>> {
   const writers = Object.keys(ALLOWED_REFERENCES)
   const references = new Map(writers.map((writer) => [writer, new Set<string>()]))
   for (const file of scanSourceTree(MAIN_ROOT)) {
-    // Why prefilter: parsing every main-process file would dominate the test's budget. Every name
-    // the walk can match appears verbatim in the text.
+    // Why prefilter: parsing every main-process file would dominate the test's budget. A matched
+    // name appears verbatim in the text unless spelled with a `\u` escape.
     if (
       file.relativePath.startsWith(BOUNDARY_DIR) ||
-      !writers.some((writer) => file.source.includes(writer))
+      (!file.source.includes('\\u') && !writers.some((writer) => file.source.includes(writer)))
     ) {
       continue
     }
