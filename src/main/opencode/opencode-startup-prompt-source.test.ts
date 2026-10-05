@@ -110,7 +110,7 @@ describe('installed-version native prompt intent plugin', () => {
         expect(insert).not.toHaveBeenCalled()
         hydrate()
         await vi.advanceTimersByTimeAsync(1000)
-        expect(claim).toHaveBeenCalledTimes(1)
+        await vi.waitFor(() => expect(claim).toHaveBeenCalledTimes(1))
         expect(insert).toHaveBeenCalledExactlyOnceWith(prompt)
         expect(f.dispatch).toHaveBeenCalledExactlyOnceWith('prompt.submit')
         expect(f.memory.settled).toBe(true)
