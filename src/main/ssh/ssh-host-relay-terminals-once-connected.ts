@@ -23,9 +23,12 @@ export async function relayTerminalsOnceConnected(args: {
   /** False once the connect was cancelled: it must neither report nor retire anything. */
   isCurrent: () => boolean
 }): Promise<RelayDecision | null> {
+  // A live decision is re-counted too: before a session only leases could be counted, and the
+  // relay's own listing also holds shells this desktop never leased.
   if (
     args.decision?.route !== 'relay' ||
-    args.decision.reason !== 'relay_terminals_unverifiable' ||
+    (args.decision.reason !== 'relay_terminals_unverifiable' &&
+      args.decision.reason !== 'relay_terminals_live') ||
     !args.listRelayPtyIds
   ) {
     return null

@@ -302,6 +302,33 @@ describe('SSH IPC handlers', () => {
     )
   })
 
+  it('ssh:terminateSessions stops a shell the relay runs without any lease here', async () => {
+    mockSshStore.getTarget.mockReturnValue({
+      id: 'ssh-1',
+      label: 'Server',
+      host: 'example.com',
+      port: 22,
+      username: 'deploy'
+    })
+    mockConnectionManager.connect.mockResolvedValue({})
+    mockStore.getSshRemotePtyLeases.mockReturnValue([])
+    vi.mocked(getSshPtyProvider).mockReturnValue(mockPtyProvider as never)
+    vi.mocked(getPtyIdsForConnection).mockReturnValue([])
+    // A CLI-created terminal: the relay lists it, but no lease or local pane knows it.
+    mockPtyProvider.listProcesses.mockResolvedValue([{ id: 'ssh:ssh-1@@pty-cli' }])
+    mockPtyProvider.shutdown.mockResolvedValue(undefined)
+
+    await handlers.get('ssh:connect')!(null, { targetId: 'ssh-1' })
+    await expect(
+      handlers.get('ssh:terminateSessions')!(null, { targetId: 'ssh-1' })
+    ).resolves.toMatchObject({ terminated: 1, unverifiable: 0 })
+
+    expect(mockPtyProvider.shutdown).toHaveBeenCalledWith('ssh:ssh-1@@pty-cli', {
+      immediate: true,
+      keepHistory: false
+    })
+  })
+
   it('ssh:terminateSessions tombstones an expired lease the relay reports gone', async () => {
     const target: SshTarget = {
       id: 'ssh-1',

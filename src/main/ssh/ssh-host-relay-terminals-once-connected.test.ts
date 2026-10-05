@@ -142,8 +142,8 @@ describe('re-checking relay terminals once the relay session is up', () => {
 
   it.each([
     [
-      'a decision that was not unverifiable',
-      { route: 'relay', reason: 'relay_terminals_live', terminals: 1 }
+      'a decision about something other than terminals',
+      { route: 'relay', reason: 'orcad_unavailable', detail: 'artifacts_unavailable' }
     ],
     ['a managed decision', { route: 'managed', environmentId: 'env-1' }],
     ['no decision', null]
@@ -157,6 +157,36 @@ describe('re-checking relay terminals once the relay session is up', () => {
         isCurrent: () => true
       })
     ).resolves.toBeNull()
+  })
+
+  it('counts a shell the relay runs that no lease here knows', async () => {
+    // A CLI-created terminal: only an old lease remains, already proven ended.
+    const cliOnly = store([{ ptyId: 'pty2:8ea088dc:1', state: 'terminated' }])
+    for (const decision of [
+      unverifiable,
+      { route: 'relay', reason: 'relay_terminals_live', terminals: 0 } as const
+    ]) {
+      await expect(
+        relayTerminalsOnceConnected({
+          store: cliOnly,
+          targetId: 'ssh-1',
+          decision,
+          listRelayPtyIds: relay(['pty2:8ea088dc:4'])
+        })
+      ).resolves.toEqual({ route: 'relay', reason: 'relay_terminals_live', terminals: 1 })
+    }
+  })
+
+  it('re-counts a live decision with the relay\u2019s own listing', async () => {
+    const attached = store([{ ptyId: 'pty-1', state: 'attached' }])
+    await expect(
+      relayTerminalsOnceConnected({
+        store: attached,
+        targetId: 'ssh-1',
+        decision: { route: 'relay', reason: 'relay_terminals_live', terminals: 1 },
+        listRelayPtyIds: relay(['pty-1', 'pty-cli'])
+      })
+    ).resolves.toEqual({ route: 'relay', reason: 'relay_terminals_live', terminals: 2 })
   })
 
   it('does nothing without a relay session to ask', async () => {

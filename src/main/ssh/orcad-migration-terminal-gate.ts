@@ -29,15 +29,16 @@ export async function assessOrcadMigrationTerminals(
 ): Promise<OrcadMigrationTerminalVerdict> {
   const leases = store.getSshRemotePtyLeases(targetId)
   const attached = leases.filter((lease) => lease.state === 'attached')
-  if (attached.length > 0) {
-    return refuse('live', attached, 'terminals on this host are still running')
-  }
+  // The relay's listing is the authority on what runs, leased or not (a CLI-created shell has no lease).
   const relayPtyIds = await ask(listRelayPtyIds)
-  if (relayPtyIds && relayPtyIds.length > 0) {
+  if (attached.length > 0 || (relayPtyIds && relayPtyIds.length > 0)) {
     return {
       verdict: 'live',
-      ptyIds: [...relayPtyIds],
-      reason: 'the SSH relay still runs terminals on this host'
+      ptyIds: [...new Set([...attached.map((lease) => lease.ptyId), ...(relayPtyIds ?? [])])],
+      reason:
+        attached.length > 0
+          ? 'terminals on this host are still running'
+          : 'the SSH relay still runs terminals on this host'
     }
   }
   // A detached or expired lease may run on this relay or one an earlier build left; both answer.

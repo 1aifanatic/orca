@@ -39,6 +39,16 @@ describe('migration terminal gate', () => {
     ).resolves.toMatchObject({ verdict: 'live', ptyIds: ['a'] })
   })
 
+  it('counts every shell the relay lists alongside the attached leases', async () => {
+    await expect(
+      assessOrcadMigrationTerminals(
+        store([{ ptyId: 'a', state: 'attached' }]),
+        'ssh-1',
+        async () => ['a', 'cli-shell']
+      )
+    ).resolves.toMatchObject({ verdict: 'live', ptyIds: ['a', 'cli-shell'] })
+  })
+
   it('proves a detached terminal exited once this relay and earlier relays both answer without it', async () => {
     const leases = store([{ ptyId: 'a', state: 'detached' }])
     const proof = await assessOrcadMigrationTerminals(leases, 'ssh-1', relay([], []))

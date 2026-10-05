@@ -56,6 +56,10 @@ export async function terminateSshTargetSessions(
       // prove the route is dead for good, and those stay unowned.
       trackPtyId(lease.ptyId, sshRemotePtyLeaseAllowsReattach(lease))
     }
+    // A shell the relay runs without any lease here (a CLI-created terminal) is still this host's.
+    for (const process of await listRelayProcesses(provider)) {
+      trackPtyId(process.id, false)
+    }
     const ptyIds = Array.from(ptyIdsByRelayId, ([relayPtyId, appPtyId]) => ({
       relayPtyId,
       appPtyId
@@ -111,4 +115,15 @@ export async function terminateSshTargetSessions(
     )
   })
   return outcome
+}
+
+/** An unanswered listing adds nothing here; the move's census after the stop still asks the host. */
+async function listRelayProcesses(
+  provider: ReturnType<typeof getSshPtyProvider>
+): Promise<{ id: string }[]> {
+  try {
+    return provider ? await provider.listProcesses() : []
+  } catch {
+    return []
+  }
 }
