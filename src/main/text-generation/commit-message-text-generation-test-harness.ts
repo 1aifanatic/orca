@@ -31,7 +31,8 @@ export function withPlatform<T>(platform: NodeJS.Platform, fn: () => T): T {
 }
 
 // Binds the caller's hoisted tree-kill mock so test bodies keep calling
-// expectChildTerminated(child) with no extra argument.
+// expectChildTerminated(child) with no extra argument. Asserts the direct-child kill: a
+// supervised child is stopped with SIGTERM instead (source-control-local-process.test.ts).
 export function createChildTerminationExpectation(
   terminateWindowsProcessTreeMock: ReturnType<typeof vi.fn>
 ): (child: { pid: number; kill: ReturnType<typeof vi.fn> }) => Promise<void> {
@@ -50,10 +51,10 @@ export function createChildTerminationExpectation(
 }
 
 /**
- * The supervisor module with agents spawned directly, as on Windows, for suites that drive fake
- * children; the supervised launch and stop have their own tests.
+ * The supervisor module with every agent spawned as a direct child, the unsupervised shape Windows
+ * and WSL use, for suites that drive fake children through generation.
  */
-export async function directSpawnProviderSupervisor(
+export async function directAgentChildSupervisorModule(
   importOriginal: <T>() => Promise<T>
 ): Promise<typeof ProviderSupervisor> {
   const actual = await importOriginal<typeof ProviderSupervisor>()

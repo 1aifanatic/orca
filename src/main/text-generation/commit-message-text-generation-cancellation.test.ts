@@ -22,8 +22,11 @@ vi.mock('../windows-process-tree-kill', () => ({
   terminateWindowsProcessTree: terminateWindowsProcessTreeMock
 }))
 
+// Generation over a direct agent child, the unsupervised shape Windows and WSL spawn. The POSIX
+// supervised stop composed with timeout, cancel, output limit and the Codex home lock is covered
+// in source-control-local-process.test.ts.
 vi.mock('../codex/codex-app-server-posix-supervisor', async (importOriginal) =>
-  (await import('./commit-message-text-generation-test-harness')).directSpawnProviderSupervisor(
+  (await import('./commit-message-text-generation-test-harness')).directAgentChildSupervisorModule(
     importOriginal
   )
 )
@@ -46,7 +49,7 @@ beforeEach(() => {
   spawnMock.mockClear()
 })
 
-describe('generateCommitMessageFromContext', () => {
+describe('generateCommitMessageFromContext over a direct agent child', () => {
   it('fails clearly before spawning when a jcode argv prompt exceeds the Windows command line', async () => {
     await withPlatform('win32', async () => {
       const pending = generateCommitMessageFromContext(
