@@ -101,6 +101,22 @@ async function runAttach(
   params: AgentSessionAttachParams,
   options: StructuredAgentSessionAttachOptions
 ): Promise<AgentSessionMutationResult<AgentSessionAttachResult>> {
+  // Begun first, so a close or Stop during any phase below still stops the start.
+  const acquire = context.runtimeState.acquireAborts.begin(params.envelope.sessionId)
+  try {
+    return await runAttachUnderAbort(context, callerKey, params, options, acquire.signal)
+  } finally {
+    acquire.end()
+  }
+}
+
+async function runAttachUnderAbort(
+  context: StructuredAgentSessionAttachContext,
+  callerKey: string,
+  params: AgentSessionAttachParams,
+  options: StructuredAgentSessionAttachOptions,
+  acquireSignal: AbortSignal
+): Promise<AgentSessionMutationResult<AgentSessionAttachResult>> {
   const sessionId = params.envelope.sessionId
   const recordPhase = options.recordPhase
   // Readers of a conversation already open are re-baselined when this attach moves its fence.
@@ -131,7 +147,6 @@ async function runAttach(
     candidate: null,
     committed: false
   }
-  const acquire = context.runtimeState.acquireAborts.begin(sessionId)
   try {
     const attached = await performAttach({
       store: context.deps.store,
@@ -158,7 +173,7 @@ async function runAttach(
       params,
       now: () => context.now(),
       recordPhase,
-      acquireSignal: acquire.signal,
+      acquireSignal,
       ...(options.onAcquisitionFailed ? { onAcquisitionFailed: options.onAcquisitionFailed } : {}),
       openConversation: async (record) => {
         const conversation = await context.openConversation(record.sessionId, {
@@ -229,7 +244,6 @@ async function runAttach(
     }
     return stampFailedCreateOwnerVerdict(context.deps.store, callerKey, params.envelope, attached)
   } finally {
-    acquire.end()
     if (!attempt.committed) {
       attemptSink.close()
     }

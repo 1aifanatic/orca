@@ -29,6 +29,8 @@ export async function acquireOwner(
   try {
     try {
       await input.onAcquiring?.()
+      // A close or Stop that landed while the attach was still reconciling launches nothing.
+      input.acquireSignal?.throwIfAborted()
     } catch (error) {
       throw new AgentSessionPreSpawnError(error)
     }
