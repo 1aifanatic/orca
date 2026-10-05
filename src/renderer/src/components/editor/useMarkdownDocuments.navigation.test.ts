@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
 import { act, createElement } from 'react'
-import { createRoot, type Root } from 'react-dom/client'
+import { createRoot } from 'react-dom/client'
+import type { Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MarkdownViewMode, OpenFile } from '@/store/slices/editor'
 import { useMarkdownDocuments } from './useMarkdownDocuments'
+import type * as MarkdownDocumentListRequest from './markdown-document-list-request'
 
 const runtime = vi.hoisted(() => ({
   stat: vi.fn(),
@@ -31,9 +33,12 @@ vi.mock('@/store', () => ({
 vi.mock('@/lib/connection-context', () => ({ getConnectionId: () => runtimeConnectionId }))
 vi.mock('@/runtime/runtime-file-client', () => ({ statRuntimePath: runtime.stat }))
 vi.mock('@/runtime/runtime-rpc-client', () => ({
-  settingsForRuntimeOwner: (_settings: unknown, owner: string | null | undefined) => ({ owner })
+  settingsForRuntimeOwner: (_settings: unknown, owner: string | null | undefined) => ({
+    activeRuntimeEnvironmentId: owner
+  })
 }))
-vi.mock('./markdown-document-list-request', () => ({
+vi.mock('./markdown-document-list-request', async (importOriginal) => ({
+  ...(await importOriginal<typeof MarkdownDocumentListRequest>()),
   requestSharedMarkdownDocumentList: runtime.list
 }))
 
@@ -70,6 +75,7 @@ beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   vi.clearAllMocks()
   runtimeConnectionId = null
+  state.worktreesByRepo = { repo: [{ id: 'wt', path: '/repo' }] }
   runtime.stat.mockResolvedValue({ isDirectory: false })
   runtime.list.mockResolvedValue([target])
   container = document.createElement('div')
@@ -84,6 +90,111 @@ afterEach(() => {
 })
 
 describe('Markdown document navigation', () => {
+  it.each([false, true])(
+    'keeps the current workspace index when an earlier save finishes (current scan pending: %s)',
+    async (scanPending) => {
+      const secondTarget = { ...target, filePath: '/second/target.md' }
+      state.worktreesByRepo = {
+        repo: [
+          { id: 'wt', path: '/repo' },
+          { id: 'second', path: '/second' }
+        ]
+      }
+      await render(sourceFile('edit'), 'source')
+      let releaseSave: (saved: boolean) => void = () => {
+        throw new Error('Missing save request')
+      }
+      save.mockImplementationOnce(
+        () =>
+          new Promise<boolean>((resolve) => {
+            releaseSave = resolve
+          })
+      )
+      const oldSave = controller.mdSave('old content')
+      let releaseList = (): void => {}
+      runtime.list.mockImplementationOnce(() =>
+        scanPending
+          ? new Promise<typeof controller.markdownDocuments>((resolve) => {
+              releaseList = () => resolve([secondTarget])
+            })
+          : Promise.resolve([secondTarget])
+      )
+      await render({ ...sourceFile('edit'), id: 'second-source', worktreeId: 'second' }, 'source')
+      await act(async () => {
+        releaseSave(true)
+        expect(await oldSave).toBe(true)
+        releaseList()
+      })
+
+      expect(controller.markdownDocuments).toEqual([secondTarget])
+      expect(runtime.list).toHaveBeenCalledTimes(2)
+    }
+  )
+
+  it('does not reuse a document index from another runtime owner while loading', async () => {
+    await render(sourceFile('edit', 'first-host'), 'source')
+    expect(controller.markdownDocuments).toEqual([target])
+    runtime.list.mockImplementationOnce(() => new Promise(() => {}))
+
+    await render(sourceFile('edit', 'second-host'), 'source')
+
+    expect(controller.markdownDocuments).toEqual([])
+    controller.onOpenDocLink('target')
+    expect(runtime.stat).not.toHaveBeenCalled()
+  })
+
+  it('does not reuse a document index from another SSH connection while loading', async () => {
+    runtimeConnectionId = 'first-connection'
+    await render(sourceFile('edit', 'ssh-host'), 'source')
+    runtime.list.mockImplementationOnce(() => new Promise(() => {}))
+    runtimeConnectionId = 'second-connection'
+
+    await render(sourceFile('edit', 'ssh-host'), 'source')
+
+    expect(controller.markdownDocuments).toEqual([])
+  })
+
+  it('discards the prior workspace index instead of retaining it for a later visit', async () => {
+    state.worktreesByRepo = {
+      repo: [...state.worktreesByRepo.repo, { id: 'second', path: '/second' }]
+    }
+    await render(sourceFile('edit'), 'source')
+    await render({ ...sourceFile('edit'), id: 'second-source', worktreeId: 'second' }, 'source')
+    runtime.list.mockImplementationOnce(() => new Promise(() => {}))
+
+    await render(sourceFile('edit'), 'source')
+
+    expect(controller.markdownDocuments).toEqual([])
+  })
+
+  it('releases document snapshots from previously visited workspaces', async () => {
+    const collect = globalThis.gc
+    if (!collect) {
+      throw new Error('The retention check requires the configured exposed GC')
+    }
+    state.worktreesByRepo = {
+      repo: Array.from({ length: 40 }, (_, index) => ({
+        id: `wt-${index}`,
+        path: `/repo-${index}`
+      }))
+    }
+    const snapshots: WeakRef<ReturnType<typeof useMarkdownDocuments>['markdownDocuments']>[] = []
+    for (let index = 0; index < 40; index += 1) {
+      runtime.list.mockResolvedValueOnce([{ ...target, filePath: `/repo-${index}/target.md` }])
+      await render(
+        { ...sourceFile('edit'), id: `source-${index}`, worktreeId: `wt-${index}` },
+        'source'
+      )
+      snapshots.push(new WeakRef(controller.markdownDocuments))
+      runtime.list.mockClear()
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    collect()
+
+    expect(snapshots.filter((snapshot) => snapshot.deref()).length).toBeLessThanOrEqual(2)
+    expect(controller.markdownDocuments).toEqual([{ ...target, filePath: '/repo-39/target.md' }])
+  })
+
   it.each([
     ['markdown-preview', 'source'],
     ['edit', 'preview'],
@@ -170,7 +281,7 @@ describe('Markdown document navigation', () => {
 
     expect(runtime.stat).toHaveBeenCalledWith(
       {
-        settings: { owner: 'runtime-owner' },
+        settings: { activeRuntimeEnvironmentId: 'runtime-owner' },
         worktreeId: 'wt',
         worktreePath: '/repo',
         connectionId: 'ssh-owner'
