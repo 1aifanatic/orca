@@ -6,29 +6,34 @@ import { useAppStore } from '@/store'
 import type { OpenFile } from '@/store/slices/editor'
 import { attemptEditorFileSave } from './editor-file-save-attempt'
 
+export async function restoreMissingEditorFile(file: OpenFile): Promise<void> {
+  const mutation = file.externalMutation
+  if (mutation !== 'deleted' && mutation !== 'renamed') {
+    return
+  }
+  const state = useAppStore.getState()
+  state.setExternalMutation(file.id, null)
+  const saved = await attemptEditorFileSave({ fileId: file.id })
+  const liveFile = useAppStore.getState().openFiles.find((candidate) => candidate.id === file.id)
+  if (!saved && liveFile?.externalMutation === undefined) {
+    useAppStore.getState().setExternalMutation(file.id, mutation)
+  }
+}
+
 export function MissingEditorFileBanner({ file }: { file: OpenFile }): React.JSX.Element {
   const [isRestoring, setIsRestoring] = useState(false)
-  const mutation = file.externalMutation
 
   const handleRestore = async (): Promise<void> => {
-    if (mutation !== 'deleted' && mutation !== 'renamed') {
-      return
-    }
     setIsRestoring(true)
-    const state = useAppStore.getState()
-    state.setExternalMutation(file.id, null)
-    const saved = await attemptEditorFileSave({ fileId: file.id })
-    if (!saved && state.openFiles.some((candidate) => candidate.id === file.id)) {
-      state.setExternalMutation(file.id, mutation)
-    }
+    await restoreMissingEditorFile(file)
     setIsRestoring(false)
   }
 
   return (
-    <div role="alert" className="border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-xs">
+    <div role="alert" className="border-b border-destructive/20 bg-destructive/5 px-4 py-2 text-xs">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <TriangleAlert className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <TriangleAlert className="size-3.5 shrink-0 text-destructive" />
           <span className="min-w-0 font-medium text-foreground">
             {translate(
               'auto.components.editor.MissingEditorFileBanner.78159b1fa5',
