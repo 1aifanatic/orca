@@ -164,6 +164,7 @@ describe('launchAgentInNewTab Windows shell quoting', () => {
     const prompt = 'x'.repeat(25_000)
 
     launchAgentInNewTab({
+      requestId: 'request-1',
       agent: 'claude',
       worktreeId: 'wt-1',
       prompt,
@@ -187,6 +188,7 @@ describe('launchAgentInNewTab Windows shell quoting', () => {
     const prompt = `Fix the failing checks.\n${'Then push. '.repeat(900)}Done.`
 
     launchAgentInNewTab({
+      requestId: 'prompt-carry-190',
       agent: 'codex',
       worktreeId: 'wt-1',
       prompt,
@@ -206,6 +208,7 @@ describe('launchAgentInNewTab Windows shell quoting', () => {
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
     launchAgentInNewTab({
+      requestId: 'request-2',
       agent: 'claude',
       worktreeId: 'wt-1',
       prompt: "review Bob's change",
@@ -226,6 +229,7 @@ describe('launchAgentInNewTab Windows shell quoting', () => {
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
     launchAgentInNewTab({
+      requestId: 'request-3',
       agent: 'claude',
       worktreeId: 'wt-1',
       launchPlatform: 'win32'
@@ -244,6 +248,7 @@ describe('launchAgentInNewTab Windows shell quoting', () => {
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
     launchAgentInNewTab({
+      requestId: 'request-4',
       agent: 'claude',
       worktreeId: 'wt-1',
       launchPlatform: 'win32'
@@ -262,6 +267,7 @@ describe('launchAgentInNewTab Windows shell quoting', () => {
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
     launchAgentInNewTab({
+      requestId: 'request-5',
       agent: 'codex',
       worktreeId: 'wt-1',
       prompt: 'fix the spinner',
@@ -283,6 +289,7 @@ describe('launchAgentInNewTab Windows shell quoting', () => {
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
     launchAgentInNewTab({
+      requestId: 'request-6',
       agent: 'claude',
       worktreeId: 'wt-1',
       prompt: "review Bob's change",
@@ -303,10 +310,7 @@ describe('launchAgentInNewTab Windows shell quoting', () => {
     store.repos = [{ id: 'repo-1', connectionId: 'ssh-1', path: 'C:\\remote\\repo' }]
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-    launchAgentInNewTab({
-      agent: 'claude',
-      worktreeId: 'wt-1'
-    })
+    launchAgentInNewTab({ requestId: 'request-7', agent: 'claude', worktreeId: 'wt-1' })
 
     expect(mockQueueTabStartupCommand).toHaveBeenCalledWith(
       'tab-1',
@@ -339,6 +343,7 @@ describe('launchAgentInNewTab Windows shell quoting', () => {
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
     launchAgentInNewTab({
+      requestId: 'request-8',
       agent: 'claude',
       worktreeId: 'wt-1',
       prompt: "review Bob's change",
@@ -378,7 +383,7 @@ describe('launchAgentInNewTab Windows shell quoting', () => {
     }
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-    launchAgentInNewTab({ agent: 'codex', worktreeId: 'wt-1' })
+    launchAgentInNewTab({ requestId: 'request-9', agent: 'codex', worktreeId: 'wt-1' })
 
     const queued = mockQueueTabStartupCommand.mock.calls.at(-1)?.[1] as { command: string }
     expect(queued.command).toContain(`'don'"'"'t'`)

@@ -53,7 +53,7 @@ const cases = callerProfileCases()
 
 async function launch(profile: AgentLaunchCallerProfile) {
   const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
-  return launchAgentInNewTab({ ...profile.args })
+  return launchAgentInNewTab({ requestId: 'request-1', ...profile.args })
 }
 
 describe('agent launch caller placement and telemetry', () => {
@@ -141,7 +141,7 @@ describe('agent launch caller placement and telemetry', () => {
   it('creates the tab before queueing its startup command', async () => {
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-    launchAgentInNewTab({ agent: 'codex', worktreeId: 'wt-1' })
+    launchAgentInNewTab({ requestId: 'request-2', agent: 'codex', worktreeId: 'wt-1' })
 
     // Why: the terminal pane snapshots pending startup in useState on first render, so a startup
     // queued after mount is never seen.
@@ -153,7 +153,12 @@ describe('agent launch caller placement and telemetry', () => {
   it('seeds working status for a Command Code prompt that rides argv', async () => {
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-    launchAgentInNewTab({ agent: 'command-code', worktreeId: 'wt-1', prompt: 'fix the spinner' })
+    launchAgentInNewTab({
+      requestId: 'request-3',
+      agent: 'command-code',
+      worktreeId: 'wt-1',
+      prompt: 'fix the spinner'
+    })
 
     expect(queuedStartupPayload(store)?.initialAgentStatus).toEqual({
       agent: 'command-code',
@@ -164,7 +169,12 @@ describe('agent launch caller placement and telemetry', () => {
   it('leaves initial agent status unset for every other argv prompt launch', async () => {
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-    launchAgentInNewTab({ agent: 'codex', worktreeId: 'wt-1', prompt: 'fix the spinner' })
+    launchAgentInNewTab({
+      requestId: 'request-4',
+      agent: 'codex',
+      worktreeId: 'wt-1',
+      prompt: 'fix the spinner'
+    })
 
     expect(queuedStartupPayload(store)).not.toHaveProperty('initialAgentStatus')
   })

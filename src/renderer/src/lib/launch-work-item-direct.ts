@@ -1,11 +1,5 @@
-import { showAgentLaunchPromptNotDeliveredNotice } from '@/lib/agent-launch-prompt-not-delivered-notice'
 import { toast } from 'sonner'
 import { useAppStore } from '@/store'
-import {
-  deliverLaunchPromptToAgentTab,
-  seedNativeChatLaunchDraftForAgentTab,
-  seedNativeChatLaunchPromptForAgentTab
-} from '@/lib/agent-launch-prompt-delivery'
 import { planAgentCliArgsSuffix } from '@/lib/tui-agent-startup'
 import { activateAndRevealWorktree } from '@/lib/worktree-activation'
 import { CLIENT_PLATFORM, getWorkspaceIntentName, getWorkspaceSeedName } from '@/lib/new-workspace'
@@ -25,7 +19,7 @@ import { resolveGitHubWorkItemIdentity } from '@/lib/github-work-item-identity'
 import type { buildDirectWorkItemAgentStartupPlan } from '@/lib/launch-work-item-direct-agent'
 import {
   buildDirectWorkItemStartupOpts,
-  notifyDirectWorkItemAgentStartTimeout
+  deliverDirectWorkItemPrompt
 } from '@/lib/launch-work-item-direct-agent'
 import { getDirectWorkItemDraftContent } from '@/lib/launch-work-item-direct-draft'
 import {
@@ -42,6 +36,7 @@ import {
   planAgentSessionLaunch,
   type AgentSessionLaunchPlan
 } from '@/lib/agent-session-launch-plan'
+import { newAgentLaunchRequestId } from '@/lib/agent-launch-request-id'
 
 /**
  * "Use" flow: create the workspace, activate it, launch the default agent,
@@ -217,7 +212,8 @@ export async function launchWorkItemDirect(args: LaunchWorkItemDirectArgs): Prom
       promptDelivery,
       launchPlatform: args.launchPlatform,
       repoProjectRuntime,
-      planLaunch: planAgentSessionLaunch
+      planLaunch: planAgentSessionLaunch,
+      requestId: newAgentLaunchRequestId()
     })
     if (launchPreparation.unavailable) {
       activateAndRevealWorktree(worktreeId, {
@@ -257,7 +253,12 @@ export async function launchWorkItemDirect(args: LaunchWorkItemDirectArgs): Prom
     const structuredResult = beginDirectWorkItemStructuredLaunch({
       plan,
       primaryTabId: null,
-      beforeOpen: revealWorkspace
+      beforeOpen: revealWorkspace,
+      declinedTerminal: {
+        ...(agentArgs !== undefined ? { agentArgs } : {}),
+        ...(args.launchPlatform ? { launchPlatform: args.launchPlatform } : {}),
+        ...(launchSource ? { launchSource } : {})
+      }
     })
     if (!structuredResult.structuredLaunch) {
       revealWorkspace()
@@ -290,48 +291,15 @@ export async function launchWorkItemDirect(args: LaunchWorkItemDirectArgs): Prom
     return false
   }
 
-  if (primaryTabId && effectiveAgent && promptDelivery === 'draft') {
-    // Why: the draft rides in on argv or the startup payload, so no paste runs
-    // below; mirror it into chat the way the new-tab launcher does.
-    seedNativeChatLaunchDraftForAgentTab({
+  if (primaryTabId) {
+    deliverDirectWorkItemPrompt({
       tabId: primaryTabId,
       agent: effectiveAgent,
-      text: draftContent
-    })
-  }
-  if (
-    primaryTabId &&
-    effectiveAgent &&
-    promptDelivery === 'submit-after-ready' &&
-    promptOnLaunchCommand &&
-    // Why: the transcript then shows the pointer sentence, which would never prune this copy.
-    !promptInLaunchFile
-  ) {
-    // Why: the launch line submits it, so no paste seeds the chat's copy of the prompt.
-    seedNativeChatLaunchPromptForAgentTab({
-      tabId: primaryTabId,
-      agent: effectiveAgent,
-      text: draftContent
-    })
-  }
-  if (
-    primaryTabId &&
-    startupPlan &&
-    !promptOnLaunchCommand &&
-    !(promptDelivery === 'draft' && startupPlan.draftPrompt)
-  ) {
-    const submit = promptDelivery === 'submit-after-ready'
-    const agent = startupPlan.agent
-    void deliverLaunchPromptToAgentTab({
-      tabId: primaryTabId,
-      agent,
+      startupPlan,
+      promptDelivery,
       content: draftContent,
-      submit,
-      forcePaste: submit,
-      onTimeout: () =>
-        submit
-          ? showAgentLaunchPromptNotDeliveredNotice({ agent, prompt: draftContent })
-          : notifyDirectWorkItemAgentStartTimeout(agent, submit)
+      promptOnLaunchCommand,
+      promptInLaunchFile
     })
   }
   return true

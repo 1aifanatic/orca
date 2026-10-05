@@ -1,4 +1,10 @@
 import { toast } from 'sonner'
+import { showAgentLaunchPromptNotDeliveredNotice } from '@/lib/agent-launch-prompt-not-delivered-notice'
+import {
+  deliverLaunchPromptToAgentTab,
+  seedNativeChatLaunchDraftForAgentTab,
+  seedNativeChatLaunchPromptForAgentTab
+} from '@/lib/agent-launch-prompt-delivery'
 import { track, tuiAgentToAgentKind } from '@/lib/telemetry'
 import {
   buildAgentDraftLaunchPlan,
@@ -238,4 +244,52 @@ export function notifyDirectWorkItemAgentStartTimeout(agent: TuiAgent, submit: b
   // Why: process-startup timeout has no v1 enum slot; the `unknown` slice
   // on the dashboard is the trigger to add one.
   track('agent_error', { error_class: 'unknown', agent_kind: tuiAgentToAgentKind(agent) })
+}
+
+/** The work item's text once its agent tab exists: mirrored into chat where the launch carried it,
+ *  else pasted once the agent is ready. */
+export function deliverDirectWorkItemPrompt(args: {
+  tabId: string
+  agent: TuiAgent | null
+  startupPlan: Pick<AgentStartupPlan, 'agent' | 'draftPrompt'> | null
+  promptDelivery: 'draft' | 'submit-after-ready'
+  content: string
+  promptOnLaunchCommand: boolean
+  promptInLaunchFile: boolean
+}): void {
+  const { tabId, agent, startupPlan, promptDelivery, content } = args
+  if (agent && promptDelivery === 'draft') {
+    // Why: the draft rides in on argv or the startup payload, so no paste runs
+    // below; mirror it into chat the way the new-tab launcher does.
+    seedNativeChatLaunchDraftForAgentTab({ tabId, agent, text: content })
+  }
+  if (
+    agent &&
+    promptDelivery === 'submit-after-ready' &&
+    args.promptOnLaunchCommand &&
+    // Why: the transcript then shows the pointer sentence, which would never prune this copy.
+    !args.promptInLaunchFile
+  ) {
+    // Why: the launch line submits it, so no paste seeds the chat's copy of the prompt.
+    seedNativeChatLaunchPromptForAgentTab({ tabId, agent, text: content })
+  }
+  if (
+    startupPlan &&
+    !args.promptOnLaunchCommand &&
+    !(promptDelivery === 'draft' && startupPlan.draftPrompt)
+  ) {
+    const submit = promptDelivery === 'submit-after-ready'
+    const launched = startupPlan.agent
+    void deliverLaunchPromptToAgentTab({
+      tabId,
+      agent: launched,
+      content,
+      submit,
+      forcePaste: submit,
+      onTimeout: () =>
+        submit
+          ? showAgentLaunchPromptNotDeliveredNotice({ agent: launched, prompt: content })
+          : notifyDirectWorkItemAgentStartTimeout(launched, submit)
+    })
+  }
 }
