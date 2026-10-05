@@ -294,13 +294,15 @@ export class OrcaRuntimeWithAgentExitProof extends OrcaRuntimeWithAgentIdentityD
       })
   }
 
-  /** The signal that arrived mid-check gets one more check, no sooner than the rate limit allows. */
+  /** The signal that arrived mid-check gets one more check, as soon as a check is admitted. */
   private scheduleAgentEndRecheck(run: AgentExitRun, observedAtMs: number): void {
     run.endRecheckPending = false
     this.clearAgentEndFollowUp(run.ptyId)
+    // Why the earlier of the two: the same rule admits a check (unproven: now; backed off: 15 s).
     const delay = Math.max(
       0,
-      run.lastEndCheckAtMs + AGENT_PRESENCE_FALLBACK_INTERVAL_MS - Date.now()
+      Math.min(run.nextEndCheckAtMs, run.lastEndCheckAtMs + AGENT_PRESENCE_FALLBACK_INTERVAL_MS) -
+        Date.now()
     )
     const timer = setTimeout(() => {
       this.agentEndFollowUpTimers.delete(run.ptyId)

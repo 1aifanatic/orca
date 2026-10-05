@@ -348,11 +348,30 @@ describe('SSH end checks (R0107-1, R0107-2)', () => {
     // Claude leaves and the title exit arrives while that relay check is still in flight.
     host.foreground.set(PTY[A]!, null)
     host.runtime['nudgeAgentExitCheck'](PTY[A]!)
+    // Nothing failed, so nothing is backed off: the re-check runs right after the first (R5-1).
     await vi.advanceTimersByTimeAsync(10)
-    expect(host.hostPair().viewMode).toBe('chat')
-    await vi.advanceTimersByTimeAsync(15_000)
     expect(host.hostPair().viewMode).toBe('terminal')
     expect(host.probe).not.toHaveBeenCalled()
+  })
+
+  it('keeps the 15 s limit for signals during checks once a relay check came back unreadable', async () => {
+    vi.useFakeTimers()
+    const host = makeAgentExitHost({ viewMode: 'chat', leaves: 1, connectionId: 'ssh-1' })
+    await host.published()
+    host.owner(A, { agent: 'claude', process: CLAUDE })
+    host.inspectProcess.mockImplementation(
+      (ptyId: string) =>
+        new Promise((resolve) => setTimeout(() => resolve(unverifiable(ptyId)), 500))
+    )
+    host.owner(A, { agent: 'claude', process: CLAUDE, ended: true })
+    for (let index = 0; index < 300; index += 1) {
+      host.runtime['nudgeAgentExitCheck'](PTY[A]!)
+      await vi.advanceTimersByTimeAsync(200)
+      host.runtime['nudgeAgentExitCheck'](PTY[A]!)
+      await vi.advanceTimersByTimeAsync(800)
+    }
+    expect(host.inspectProcess.mock.calls.length).toBeLessThanOrEqual(1 + 300 / 15)
+    expect(host.hostPair().viewMode).toBe('chat')
   })
 
   it("never looks a remote replacement's PID up in this host's process table", async () => {
