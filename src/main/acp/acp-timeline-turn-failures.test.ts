@@ -54,7 +54,7 @@ describe('a failed ACP turn says why', () => {
     f.apply(
       lane.notification('_x.ai/session_notification', ended(prompt.promptId, 'error', REASON), 1003)
     )
-    expect(statusRows(await f.rig.rows())[0]?.body.failure?.detail?.text).toBe(REASON)
+    expect(statusRows(await f.rig.rows())[0]?.body.text).toBe(REASON)
     f.apply(
       lane.notification(
         '_x.ai/session/prompt_complete',
@@ -81,11 +81,8 @@ describe('a failed ACP turn says why', () => {
     const rows = await f.rig.rows()
     const failures = statusRows(rows)
     expect(failures).toHaveLength(1)
-    expect(failures[0]?.body).toMatchObject({
-      tone: 'error',
-      text: `The provider did not accept this message: ${REASON}.`,
-      failure: { kind: 'providerRejected', detail: { text: REASON, audience: 'person' } }
-    })
+    // The turn ran, so the row reads as Codex's turn-ending error does: no refusal sentence or fact.
+    expect(failures[0]?.body).toEqual({ kind: 'status', tone: 'error', text: REASON })
     const turns = await f.rig.turns()
     expect(turns.map((turn) => [turn.state, turn.outcome])).toEqual([
       ['completed', 'failure'],
@@ -106,14 +103,16 @@ describe('a failed ACP turn says why', () => {
     const prompt = lane.openPrompt('c1', 1000)
     f.apply(lane.notification('_x.ai/queue/changed', queued(prompt.promptId), 1001))
     f.apply(lane.notification('_x.ai/session_notification', ended(prompt.promptId, 'error'), 1002))
-    expect(statusRows(await f.rig.rows())[0]?.body.text).toBe(
-      'The provider did not accept this message.'
-    )
+    expect(statusRows(await f.rig.rows())[0]?.body).toEqual({
+      kind: 'status',
+      tone: 'error',
+      text: 'Grok ended this turn with an error.'
+    })
     f.apply(lane.promptFailed('c1', rpcError, 1003))
     f.apply(lane.promptFailed('c1', rpcError, 1004))
     const failures = statusRows(await f.rig.rows())
     expect(failures).toHaveLength(1)
-    expect(failures[0]?.body.failure?.detail?.text).toBe(REASON)
+    expect(failures[0]?.body).toEqual({ kind: 'status', tone: 'error', text: REASON })
   })
 
   it.each(['retry_state', 'turn_completed', 'prompt_complete', 'prompt error answer'] as const)(
@@ -149,7 +148,7 @@ describe('a failed ACP turn says why', () => {
         )
       )
       const failures = statusRows(await f.rig.rows())
-      expect(failures.map((failure) => failure.body.failure?.detail?.text)).toEqual([REASON])
+      expect(failures.map((failure) => failure.body.text)).toEqual([REASON])
     }
   )
 
@@ -162,10 +161,10 @@ describe('a failed ACP turn says why', () => {
     f.apply(lane.notification('_x.ai/session_notification', ended(prompt.promptId, 'error'), 1003))
     f.apply(lane.promptFailed('c1', { code: -32603, message: 'Internal error' }, 1004))
     const failures = statusRows(await f.rig.rows())
-    expect(failures.map((failure) => failure.body.failure?.detail?.text)).toEqual([REASON])
+    expect(failures.map((failure) => failure.body.text)).toEqual([REASON])
   })
 
-  it('records a rate-limited turn in the same words, without inventing a reason', async () => {
+  it('names a rate-limited turn the provider gave no words for, without inventing a reason', async () => {
     const f = await openAcpFixtureRig()
     const lane = f.lane()
     const prompt = lane.openPrompt('c1', 1000)
@@ -181,7 +180,9 @@ describe('a failed ACP turn says why', () => {
       )
     )
     const failures = statusRows(await f.rig.rows())
-    expect(failures.map((failure) => failure.body.failure)).toEqual([{ kind: 'providerRejected' }])
+    expect(failures.map((failure) => failure.body)).toEqual([
+      { kind: 'status', tone: 'error', text: 'Grok usage limit reached.' }
+    ])
     expect((await f.rig.turns())[0]?.outcome).toBe('failure')
   })
 

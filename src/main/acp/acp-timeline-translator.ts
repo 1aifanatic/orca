@@ -14,7 +14,7 @@ import type { AcpSessionEvent } from './acp-session-runtime'
 import { translateAcpRequest } from './acp-timeline-requests'
 import { acpSessionUpdate } from './acp-session-update'
 import { AcpToolTimeline } from './acp-tool-timeline'
-import { AcpTurnFailures, acpPromptErrorDetail, acpStopReasonFailed } from './acp-turn-failures'
+import { AcpTurnFailures, acpPromptErrorDetail } from './acp-turn-failures'
 import { AcpTurnMessages } from './acp-turn-messages'
 import {
   SessionNotificationSchema,
@@ -41,6 +41,8 @@ export type AcpTimelineTranslatorOptions = {
    *  because the journal is empty (an adopted session). Otherwise history stays out of the
    *  timeline and only its context usage reads on. */
   adopt?: boolean
+  /** The agent's display name, for a failed turn the provider gave no words for. */
+  agentName?: string
 }
 
 /** Consumes each frame once; the host retries the returned grammar events. Lives exactly as long
@@ -59,7 +61,7 @@ export class AcpTimelineTranslator {
 
   constructor(private readonly options: AcpTimelineTranslatorOptions) {
     this.dialect = options.dialect ?? GENERIC_ACP_DIALECT
-    this.failures = new AcpTurnFailures(options.sessionId)
+    this.failures = new AcpTurnFailures(options.sessionId, this.dialect, options.agentName)
     this.backgroundTasks = new AcpBackgroundTaskTimeline((callId) => this.tools.turn(callId))
     this.prompts = new AcpPromptTurns(
       options.sessionId,
@@ -256,7 +258,7 @@ export class AcpTimelineTranslator {
     durationMs: number | undefined,
     failureDetail: string | undefined
   ): ProviderTimelineEvent[] {
-    const events = acpStopReasonFailed(stopReason) ? this.failures.row(turn, failureDetail) : []
+    const events = this.failures.ended(turn, stopReason, failureDetail)
     events.push(acpTurnEnd(turn, stopReason, at, durationMs))
     this.end(turn)
     if (this.prompts.current?.turn === turn) {

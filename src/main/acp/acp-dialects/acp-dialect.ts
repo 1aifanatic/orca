@@ -46,6 +46,8 @@ export type AcpDialect = {
   request?(method: string, params: unknown): AcpRequestPresentation | undefined
   /** The provider's words in a `session/prompt` error answer, when its message is generic. */
   promptErrorDetail?(error: unknown): string | undefined
+  /** The row for a failed turn the provider gave no words for. */
+  failedTurnText?(stopReason: string): string
 }
 
 export const GENERIC_ACP_DIALECT: AcpDialect = {}

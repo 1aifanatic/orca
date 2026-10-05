@@ -11,7 +11,7 @@ import { AcpTimelineTranslator, acpTurnEnd } from './acp-timeline-translator'
 
 afterEach(closeProviderTimelineRigs)
 
-async function genericRig(options: { adopt?: boolean } = {}) {
+async function genericRig(options: { adopt?: boolean; agentName?: string } = {}) {
   const rig = await openProviderTimelineRig()
   const translator = new AcpTimelineTranslator({ sessionId: 'provider-1', ...options })
   const apply = (events: ProviderTimelineEvent[]) => {
@@ -164,6 +164,32 @@ describe('generic ACP translation', () => {
             row.body.kind === 'status' && row.body.providerFrame?.kind === `prompt:${stopReason}`
         )
       ).toBe(false)
+    }
+  )
+
+  it.each([
+    [undefined, 'The agent ended this turn with an error.'],
+    ['Agent X', 'Agent X ended this turn with an error.']
+  ])(
+    "writes a failed turn row in the agent's words, or names the agent (%s) without any",
+    async (agentName, fallback) => {
+      const { rig, translator, apply } = await genericRig(agentName ? { agentName } : {})
+      apply(translator.openPrompt('send-1', 1000).events)
+      apply(translator.promptResult('send-1', { stopReason: 'end_turn' }, 1100))
+      apply(translator.openPrompt('send-2', 1200).events)
+      apply(translator.promptFailed('send-2', { code: -32603, message: 'Upstream failed' }, 1300))
+      apply(translator.openPrompt('send-3', 1400).events)
+      apply(translator.promptFailed('send-3', { code: -32603 }, 1500))
+      const rows = (await rig.rows()).filter((row) => row.body.kind === 'status')
+      expect(rows.map((row) => row.body)).toEqual([
+        { kind: 'status', tone: 'error', text: 'Upstream failed' },
+        { kind: 'status', tone: 'error', text: fallback }
+      ])
+      expect((await rig.turns()).map((turn) => turn.outcome)).toEqual([
+        'success',
+        'failure',
+        'failure'
+      ])
     }
   )
 
