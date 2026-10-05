@@ -83,7 +83,9 @@ describe('killSourceControlAgentProcess for a supervised agent', () => {
 
     await vi.advanceTimersByTimeAsync(1)
     await stopped
-    expect(terminateTreeMock).toHaveBeenCalledWith(child)
+    expect(terminateTreeMock).toHaveBeenCalledWith(child, {
+      site: 'source-control-text-generation'
+    })
     expect(child.kill).not.toHaveBeenCalledWith('SIGKILL')
   })
 

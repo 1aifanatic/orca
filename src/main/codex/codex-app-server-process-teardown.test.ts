@@ -140,6 +140,20 @@ describe('terminateCodexAppServerProcessTree', () => {
     ])
   })
 
+  it('files the group kill under the site that forced it', async () => {
+    await terminateCodexAppServerProcessTree(child(), {
+      platform: 'darwin',
+      captureDescendants: async () => ({ rootPgid: 1234, descendants: [], capturedAtMs: 1 }),
+      terminateDescendants: async () => true,
+      signalProcessGroup: vi.fn(),
+      site: 'source-control-text-generation'
+    })
+
+    expect(findSelfInitiatedTreeKills(Date.now())).toEqual([
+      expect.objectContaining({ pid: 1234, site: 'source-control-text-generation' })
+    ])
+  })
+
   it('tears down 40 dedicated groups without process-table scans or cross-group fanout', async () => {
     const killMocks = Array.from({ length: 40 }, () => vi.fn(() => true))
     const targets = killMocks.map((kill, index) => ({

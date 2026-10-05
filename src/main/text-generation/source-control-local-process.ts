@@ -27,6 +27,8 @@ import type {
   TextGenerationOperation
 } from './source-control-text-generation-types'
 
+const SOURCE_CONTROL_KILL_SITE = 'source-control-text-generation'
+
 export async function killSourceControlAgentProcess(
   child: SpawnedSourceControlAgentProcess
 ): Promise<void> {
@@ -43,7 +45,7 @@ export async function killSourceControlAgentProcess(
     // pid-addressed walk; the handle-addressed root kill below cannot reach the
     // recycled pid it refused, and callers release the managed-home lock on this
     // promise, so it must not resolve having killed nothing.
-    await terminateWindowsProcessTree(pid, { site: 'source-control-text-generation' })
+    await terminateWindowsProcessTree(pid, { site: SOURCE_CONTROL_KILL_SITE })
   }
   try {
     child.kill('SIGKILL')
@@ -67,7 +69,7 @@ async function stopSupervisedAgent(child: SpawnedSourceControlAgentProcess): Pro
     },
     exitPromise: new Promise<void>((resolve) => child.once('exit', () => resolve())),
     exited,
-    force: () => terminateCodexAppServerProcessTree(child),
+    force: () => terminateCodexAppServerProcessTree(child, { site: SOURCE_CONTROL_KILL_SITE }),
     supervised: true
   })
 }

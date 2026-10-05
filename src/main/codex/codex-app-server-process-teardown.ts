@@ -15,7 +15,11 @@ export type CodexAppServerProcessTeardownDeps = {
   terminateDescendants?: (snapshot: DescendantSnapshot) => Promise<boolean>
   terminateWindowsTree?: (rootPid: number, deps?: { site?: string }) => Promise<void>
   signalProcessGroup?: (pgid: number, signal: NodeJS.Signals) => void
+  /** Who forced the teardown, for the self-initiated kill breadcrumbs. */
+  site?: string
 }
+
+const DEFAULT_TEARDOWN_SITE = 'codex-app-server-teardown'
 
 function terminateDedicatedPosixGroup(
   rootPid: number,
@@ -32,7 +36,7 @@ function terminateDedicatedPosixGroup(
   // Outside the try: that catch is the ESRCH contract, not a breadcrumb handler.
   recordSelfInitiatedTreeKill({
     pid: rootPid,
-    site: 'codex-app-server-teardown',
+    site: deps.site ?? DEFAULT_TEARDOWN_SITE,
     scope: 'posix-process-group'
   })
   return true
@@ -74,7 +78,7 @@ async function terminatePosixTree(
       // already-gone contract, not a breadcrumb handler.
       recordSelfInitiatedTreeKill({
         pid: snapshot.rootPgid,
-        site: 'codex-app-server-teardown',
+        site: deps.site ?? DEFAULT_TEARDOWN_SITE,
         scope: 'posix-process-group'
       })
     }
@@ -99,7 +103,7 @@ async function terminateOnce(
   }
   if ((deps.platform ?? process.platform) === 'win32') {
     const terminate = deps.terminateWindowsTree ?? terminateWindowsProcessTree
-    await terminate(rootPid, { site: 'codex-app-server-teardown' })
+    await terminate(rootPid, { site: deps.site ?? DEFAULT_TEARDOWN_SITE })
     // taskkill owns the tree; this preserves the prior direct-child fallback when it fails.
     child.kill('SIGKILL')
     return true
