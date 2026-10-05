@@ -119,10 +119,9 @@ test('Save and Close preserves text typed while its disk write is pending', asyn
   await expect(
     orcaPage.getByText('Save timed out or failed. Fix errors before closing.', { exact: true })
   ).toHaveCount(0)
-  await orcaPage
-    .getByRole('dialog')
-    .getByRole('button', { name: 'Save', exact: true })
-    .click({ timeout: 2_000 })
+  const saveButton = orcaPage.getByRole('dialog').getByRole('button', { name: 'Save', exact: true })
+  await expect(saveButton).toBeEnabled()
+  await saveButton.click()
   await expect.poll(() => readFile(filePath, 'utf8')).toContain('NEWER_DRAFT')
   await expect(editor).toHaveCount(0)
 })
