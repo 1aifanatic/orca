@@ -3,7 +3,10 @@ import { SshPtyHeldByPreviousRelayError } from './ssh-pty-errors'
 import { SshPtyProvider } from './ssh-pty-provider'
 import type { SshChannelMultiplexer } from '../ssh/ssh-channel-multiplexer'
 import { createMockMux, type MockMultiplexer } from './ssh-pty-provider-mock-multiplexer'
-import type { SshPtyLegacyRelayRouting } from './ssh-pty-legacy-relay-delegation'
+import {
+  attachHeldPtyThroughPreviousRelay,
+  type SshPtyLegacyRelayRouting
+} from './ssh-pty-legacy-relay-delegation'
 import { SshLegacyRelayRouter } from '../ssh/ssh-legacy-relay-router'
 
 const HELD = 'ssh:target-1@@pty2:old:1'
@@ -177,5 +180,37 @@ describe('SshPtyProvider delegation to an earlier build relay', () => {
       id: 'pty2:new:1',
       charCount: 32
     })
+  })
+
+  it('refuses input to a held PTY no older relay serves, instead of dropping it silently', async () => {
+    currentRelayHoldsTheId()
+    const { provider, currentMux, routing } = setup()
+    vi.mocked(routing.attach).mockResolvedValueOnce(null)
+    await expect(provider.spawn({ sessionId: HELD, cols: 80, rows: 24 })).rejects.toBeInstanceOf(
+      SshPtyHeldByPreviousRelayError
+    )
+
+    expect(provider.write(HELD, 'ls\n')).toBe(false)
+    expect(provider.write('pty2:old:1', 'ls\n')).toBe(false)
+    await expect(provider.writeWithSettlement(HELD, 'ls\n')).resolves.toMatchObject({
+      outcome: 'refused',
+      reason: 'endpoint_awaiting_recovery'
+    })
+    expect(currentMux.notify).not.toHaveBeenCalledWith('pty.data', expect.anything())
+    expect(provider.write(CURRENT, 'ls\n')).toBe(true)
+  })
+
+  it('delivers input once a reconnect routes the held PTY to the older relay', async () => {
+    const { provider, legacyMux, routing } = setup()
+    vi.mocked(routing.attach).mockResolvedValueOnce(null)
+    await expect(attachHeldPtyThroughPreviousRelay(provider, HELD)).resolves.toBeNull()
+    expect(provider.write(HELD, 'ls\n')).toBe(false)
+
+    legacyMux.request.mockResolvedValueOnce({ incarnationId: 'inc-old' })
+    await expect(attachHeldPtyThroughPreviousRelay(provider, HELD)).resolves.toMatchObject({
+      incarnationId: 'inc-old'
+    })
+    expect(provider.write(HELD, 'ls\n')).toBe(true)
+    expect(legacyMux.notify).toHaveBeenCalledWith('pty.data', { id: 'pty2:old:1', data: 'ls\n' })
   })
 })
