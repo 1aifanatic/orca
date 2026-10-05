@@ -83,7 +83,8 @@ export function recordRelayDecision(
 /** After the relay session is up, a terminal the first decision could not ask about may prove live. */
 export async function refineRelayTerminalDecision(
   target: SshTarget,
-  decision: HostServerOnConnectResult | null
+  decision: HostServerOnConnectResult | null,
+  isCurrent: () => boolean
 ): Promise<void> {
   try {
     const [{ relayTerminalsOnceConnected }, { orcadMigrationRelayPtyLister }] = await Promise.all([
@@ -94,9 +95,10 @@ export async function refineRelayTerminalDecision(
       store: getSshTargetRegistryStore()!.getOrcadMigrationSource(),
       targetId: target.id,
       decision,
-      listRelayPtyIds: orcadMigrationRelayPtyLister(target.id)
+      listRelayPtyIds: orcadMigrationRelayPtyLister(target.id),
+      isCurrent
     })
-    if (refined) {
+    if (refined && isCurrent()) {
       recordRelayDecision(target, refined)
     }
   } catch (error) {

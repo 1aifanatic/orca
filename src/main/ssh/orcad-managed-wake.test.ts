@@ -127,6 +127,25 @@ describe('wakeStoppedManagedOrcad', () => {
     expect(host.fence).toBe(false)
   })
 
+  it('never releases a fence another run took after its own interrupted fence was cleared', async () => {
+    host = stoppedHost()
+    const lost = Object.assign(new Error('connection lost'), { sshChannelCloseConfirmed: false })
+    vi.mocked(execCommand).mockImplementation(async (_conn, command) => {
+      if (command.includes('nohup')) {
+        throw lost
+      }
+      return host.exec(command)
+    })
+    await expect(wakeStoppedManagedOrcad(slot)).rejects.toBe(lost)
+    vi.mocked(execCommand).mockImplementation(async (_conn, command) => host.exec(command))
+    // A recovery cleared that fence, then another run took the host before journaling.
+    host.wakeOwner = 'another-run'
+
+    expect(await wakeStoppedManagedOrcad(slot)).toEqual({ outcome: 'fenced' })
+    expect(host.fence).toBe(true)
+    expect(launches()).toEqual([])
+  })
+
   it('never releases a fence another client may hold, even after its own wake dropped', async () => {
     host = stoppedHost()
     host.fence = true

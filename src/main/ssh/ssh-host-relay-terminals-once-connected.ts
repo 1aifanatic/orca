@@ -20,6 +20,8 @@ export async function relayTerminalsOnceConnected(args: {
   targetId: string
   decision: HostServerOnConnectResult | null
   listRelayPtyIds: ListRelayPtyIds | null
+  /** False once the connect was cancelled: it must neither report nor retire anything. */
+  isCurrent: () => boolean
 }): Promise<RelayDecision | null> {
   if (
     args.decision?.route !== 'relay' ||
@@ -29,6 +31,9 @@ export async function relayTerminalsOnceConnected(args: {
     return null
   }
   const proof = await assessOrcadMigrationTerminals(args.store, args.targetId, args.listRelayPtyIds)
+  if (!args.isCurrent()) {
+    return null
+  }
   if (proof.verdict === 'live') {
     return { route: 'relay', reason: 'relay_terminals_live', terminals: proof.ptyIds.length }
   }

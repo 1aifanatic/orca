@@ -5,11 +5,21 @@
  */
 import type { ServeReadiness } from '../server/serve-readiness'
 import { readOrcadActivationRecord } from './orcad-activation-record-store'
+import { randomUUID } from 'node:crypto'
 import {
   orcadActivationFenceExists,
+  orcadActivationTransactionRoot,
   releaseOrcadActivationFence,
   withOrcadActivationLock
 } from './orcad-activation-lock'
+import {
+  readBoundedOrcadRemoteRecord,
+  writeAtomicOrcadRemoteRecord
+} from './orcad-remote-record-file'
+import { RELAY_INSTALL_LOCK_NAME } from './ssh-relay-install-lock'
+import { joinRemotePath } from './ssh-remote-platform'
+
+const WAKE_OWNER_FILENAME = '.orca-wake-owner'
 import { readOrcadActivationTransaction } from './orcad-activation-transaction-store'
 import { isUnconfirmedSshCommandTermination } from './ssh-relay-deploy-helpers'
 import { orcadLivenessProbeCommand, parseOrcadLiveness } from './orcad-remote-launch'
@@ -41,10 +51,11 @@ export async function wakeStoppedManagedOrcad(
     return { outcome: liveness === 'LIVE' ? 'serving' : 'unverifiable' }
   }
   const host = wakeHostKey(options)
-  if (await orcadActivationFenceExists(options)) {
-    if (!(await releaseOwnInterruptedWakeFence(options, host))) {
-      return { outcome: 'fenced' }
-    }
+  if (!(await orcadActivationFenceExists(options))) {
+    // The fence this client left is gone by some other route; any later one belongs to another run.
+    interruptedWakes.delete(host)
+  } else if (!(await releaseOwnInterruptedWakeFence(options, host))) {
+    return { outcome: 'fenced' }
   }
   return withOrcadActivationLock(
     options,
@@ -55,13 +66,19 @@ export async function wakeStoppedManagedOrcad(
         return { outcome: 'not-activated' }
       }
       const identity = await resolveOrcadSlotIdentity(options, active)
+      // Marks this fence as this wake's, so only that exact fence is ever released later.
+      const token = randomUUID()
+      await writeAtomicOrcadRemoteRecord(options, wakeOwnerPath(options), token)
+      interruptedWakes.set(host, token)
       onStarting()
       try {
-        return { outcome: 'started', readiness: await ensureOrcadSlotServing(options, identity) }
+        const readiness = await ensureOrcadSlotServing(options, identity)
+        interruptedWakes.delete(host)
+        return { outcome: 'started', readiness }
       } catch (error) {
-        // A lost connection keeps the fence on the host; only this client knows it is its own.
-        if (isUnconfirmedSshCommandTermination(error)) {
-          interruptedWakes.add(host)
+        // A lost connection keeps the fence on the host; anything else releases it.
+        if (!isUnconfirmedSshCommandTermination(error)) {
+          interruptedWakes.delete(host)
         }
         throw error
       }
@@ -70,22 +87,37 @@ export async function wakeStoppedManagedOrcad(
   )
 }
 
-// Hosts where this client's own wake lost its connection while holding the fence.
-const interruptedWakes = new Set<string>()
+// The owner token of a fence this client's own wake may have left when its connection dropped.
+const interruptedWakes = new Map<string, string>()
+
+function wakeOwnerPath(options: OrcadSlotOptions): string {
+  return joinRemotePath(
+    options.host,
+    orcadActivationTransactionRoot(options.host, options.remoteHome),
+    RELAY_INSTALL_LOCK_NAME,
+    WAKE_OWNER_FILENAME
+  )
+}
 
 function wakeHostKey(options: OrcadSlotOptions): string {
   return `${options.conn.getTarget().id}\0${options.remoteHome}`
 }
 
 /**
- * A wake journals nothing, so a fence with no journal that this client's own interrupted wake
- * left is released; the slot was just proven exited and orcad's instance lock bars a double start.
+ * Releases only the fence carrying this client's own interrupted wake token and no journal; the
+ * slot was just proven exited and orcad's instance lock bars a double start.
  */
 async function releaseOwnInterruptedWakeFence(
   options: OrcadSlotOptions,
   host: string
 ): Promise<boolean> {
-  if (!interruptedWakes.has(host) || (await readOrcadActivationTransaction(options))) {
+  const token = interruptedWakes.get(host)
+  if (!token || (await readOrcadActivationTransaction(options))) {
+    return false
+  }
+  const owner = await readBoundedOrcadRemoteRecord(options, wakeOwnerPath(options), 64)
+  if (owner.state !== 'present' || owner.raw.trim() !== token) {
+    interruptedWakes.delete(host)
     return false
   }
   await releaseOrcadActivationFence(options)

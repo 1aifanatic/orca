@@ -262,7 +262,11 @@ async function doConnect(
     if (!ownsSession()) {
       throw createCancelledConnectAttemptError()
     }
-    await refineRelayTerminalDecision(target, server)
+    await refineRelayTerminalDecision(target, server, ownsSession)
+    // The re-check can wait seconds on the relay; a connect cancelled meanwhile must not report.
+    if (!ownsSession()) {
+      throw createCancelledConnectAttemptError()
+    }
 
     // Why: we manually pushed `deploying-relay`, so send `connected` straight to the renderer — routing through onStateChange would trigger reconnect logic.
     clearRelayStateOverride(targetId)
