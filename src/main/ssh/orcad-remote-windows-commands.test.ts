@@ -264,7 +264,9 @@ describe('Windows build hash and host script', () => {
     const [partial, contents] = writes[0] ?? []
     expect(contents).toBe(ORCAD_WINDOWS_HOST_SCRIPT)
     expect(partial).toMatch(new RegExp(`^${SCRIPT.replaceAll('.', '\\.')}\\..+\\.partial$`))
-    expect(String(mockExec.mock.calls[1]?.[1])).toContain(`Move-Item -LiteralPath '${partial}'`)
+    expect(String(mockExec.mock.calls[1]?.[1])).toMatch(
+      /^\S+node\.exe -e "[^"]+" \S+ \S+\.partial$/u
+    )
     expect(mockExec).toHaveBeenCalledTimes(2)
   })
 

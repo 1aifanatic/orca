@@ -116,6 +116,12 @@ export function orcadWindowsHostOpCommand(
   ])
 }
 
+// Renames the partial (argv[2]) over the script (argv[1]); identical bytes may already be there.
+const STAGE_HOST_SCRIPT_JS =
+  "const fs=require('fs');const [d,p]=process.argv.slice(1);" +
+  'if(p){try{fs.renameSync(p,d)}catch{}fs.rmSync(p,{force:true})}' +
+  "process.stdout.write(fs.existsSync(d)?'PRESENT':'MISSING')"
+
 // Content-addressed paths this connection already saw on the host.
 const stagedHostScripts = new WeakMap<SshConnection, Set<string>>()
 
@@ -134,23 +140,27 @@ export async function installOrcadWindowsHostScript(
   if (staged.has(scriptPath)) {
     return
   }
-  const script = powerShellLiteral(scriptPath)
-  const exec = (command: string): Promise<string> =>
-    execCommand(target.conn, command, { wrapCommand: false, signal: target.signal })
-  const presence = `if (Test-Path -LiteralPath ${script} -PathType Leaf) { 'PRESENT' } else { 'MISSING' }`
-  if ((await exec(presence)).trim() !== 'PRESENT') {
-    const partialPath = `${scriptPath}.${randomUUID()}.partial`
-    const partial = powerShellLiteral(partialPath)
-    await target.conn.writeFile(partialPath, ORCAD_WINDOWS_HOST_SCRIPT, {
+  // Through the pinned node.exe, which is staged first: one line both cmd.exe and PowerShell run.
+  const place = async (partial?: string): Promise<boolean> => {
+    const command = orcadWindowsNodeCommandLine(orcadWindowsPinnedNodePath(target.host, baseDir), [
+      '-e',
+      STAGE_HOST_SCRIPT_JS,
+      scriptPath,
+      ...(partial ? [partial] : [])
+    ])
+    const answer = await execCommand(target.conn, command, {
+      wrapCommand: false,
+      signal: target.signal
+    })
+    return answer.trim().split(/\r?\n/u).at(-1) === 'PRESENT'
+  }
+  if (!(await place())) {
+    const partial = `${scriptPath}.${randomUUID()}.partial`
+    await target.conn.writeFile(partial, ORCAD_WINDOWS_HOST_SCRIPT, {
       hostPlatform: target.host,
       signal: target.signal
     })
-    // A writer that won the race already placed identical bytes; only the partial is dropped.
-    const placed = await exec(
-      `Move-Item -LiteralPath ${partial} -Destination ${script} -ErrorAction SilentlyContinue; ` +
-        `Remove-Item -LiteralPath ${partial} -Force -ErrorAction SilentlyContinue; ${presence}`
-    )
-    if (placed.trim() !== 'PRESENT') {
+    if (!(await place(partial))) {
       throw new Error(`Could not stage the orcad host script at ${scriptPath}.`)
     }
   }
