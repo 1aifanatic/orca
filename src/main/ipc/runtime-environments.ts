@@ -23,6 +23,7 @@ import { registerOrcadRuntimeConversionHandlers } from './orcad-runtime-conversi
 import { registerOrcadDeltaMoveHandlers } from './orcad-delta-move-handlers'
 import { registerOrcadRuntimeMaintenanceHandlers } from './orcad-runtime-maintenance-handlers'
 import { clearPublishedManagedServer } from './ssh-renderer-broadcast'
+import { reconcileOrphanedRuntimeSessions } from './runtime-environment-session-reconcile'
 import { registerRuntimeSshAccessHandlers } from './runtime-ssh-access-handlers'
 import { retirePairedRuntimeBrowserClientHostEnvironment } from '../browser/paired-runtime-browser-client-host-runtime'
 import { registerRuntimeEnvironmentBrowserClientHostHandler } from './runtime-environment-browser-client-host-handler'
@@ -56,6 +57,7 @@ export function registerRuntimeEnvironmentHandlers(store: Store): void {
     ipcMain.removeHandler(channel)
   }
   ipcMain.removeAllListeners('runtimeEnvironments:subscriptionBinary')
+  reconcileOrphanedRuntimeSessions(store, getUserDataPath())
 
   registerRuntimeEnvironmentConnectivityHandlers({
     store,
