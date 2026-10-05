@@ -11,7 +11,6 @@ import {
   AGENT_JOURNAL_THREAD_SCOPE,
   type AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
-import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import { createTrackedJournalOpener } from '../agent-session-journal/journal-host-database-test-support'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { structuredAgentSessionStopNoteIdentity } from './structured-agent-session-command-turn'
