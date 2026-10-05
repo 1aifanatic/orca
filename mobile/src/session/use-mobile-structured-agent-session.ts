@@ -5,6 +5,7 @@ import { projectStructuredAgentSessionMessages } from '../../../src/shared/struc
 import { withNativeChatCutTurnNotices } from '../../../src/shared/native-chat-cut-turn-notice'
 import { TUI_AGENT_DISPLAY_NAMES } from '../../../src/shared/tui-agent-display-names'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../src/shared/structured-agent-session-main-agent-working'
+import { isFinalAgentSessionReadRefusal } from '../../../src/shared/structured-agent-session-read-refusal'
 import {
   activeStructuredAgentSessionTurnId,
   isStructuredAgentSessionThinking
@@ -36,6 +37,7 @@ import {
 import { useMobileStructuredAgentMutate } from './use-mobile-structured-agent-mutation'
 import { agentStopDisplayStatus } from '../../../src/shared/agent-stop-display-status'
 import {
+  mobileStructuredSendQueues,
   useMobileStructuredSendWithOutcome,
   type StructuredMobileSendAttachment
 } from './use-mobile-structured-send-with-outcome'
@@ -208,9 +210,15 @@ export function useMobileStructuredAgentSession(args: {
       activityText,
       stopping,
       stopRequestInFlight,
-      ...(stopping ? { afterStop: queueCapable ? ('queue' as const) : ('send' as const) } : {})
+      ...(stopping
+        ? {
+            afterStop: mobileStructuredSendQueues(queueCapable, state.items)
+              ? ('queue' as const)
+              : ('send' as const)
+          }
+        : {})
     }),
-    [thinking, activityText, stopping, stopRequestInFlight, queueCapable]
+    [thinking, activityText, stopping, stopRequestInFlight, queueCapable, state.items]
   )
   const status = state.status === 'idle' ? 'idle' : state.status
   const approvalPrompt = useMemo(
@@ -266,6 +274,7 @@ export function useMobileStructuredAgentSession(args: {
       status,
       transcriptLoading: status === 'loading',
       error: state.error,
+      readFailedFinally: status === 'error' && isFinalAgentSessionReadRefusal(state.readRefusal),
       hasMore: state.hasOlder,
       loadingEarlier: loadingOlder,
       loadEarlier

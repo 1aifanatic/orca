@@ -40,6 +40,8 @@ import { outboxOutsideQueuedCards } from './structured-agent-session-queued-card
 import { structuredAgentSessionStartFailureFacts } from './structured-agent-session-delivery-notices'
 import { hostStatesTurnScopes } from '../../../../shared/native-chat-turn-membership'
 import { agentStopDisplayStatus } from '../../../../shared/agent-stop-display-status'
+import { structuredAgentSessionNewSendsQueue } from '../../../../shared/structured-agent-session-outbox-delivery'
+import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
 import { withNativeChatCutTurnNotices } from '../../../../shared/native-chat-cut-turn-notice'
 import { TUI_AGENT_DISPLAY_NAMES } from '../../../../shared/tui-agent-display-names'
 
@@ -129,9 +131,13 @@ export function useStructuredAgentSession(args: {
       hostStopping,
       stopPressed: stopPress.pressed
     }) === 'stopping'
+  const prompts = pendingStructuredSessionPrompts(transportState.journalItems)
+  // A host's queue waits on any pending prompt, and nothing here can settle one this build cannot
+  // answer: the send must start a turn, after which the card's cancel works.
+  const queueEnabled = queueFollowUps && !pendingPromptsAllUnanswerableHere(prompts)
   const queueDelivery = useMemo(
-    () => ({ capability: queueCapability, enabled: queueFollowUps }),
-    [queueCapability, queueFollowUps]
+    () => ({ capability: queueCapability, enabled: queueEnabled }),
+    [queueCapability, queueEnabled]
   )
   const outboxController = useStructuredAgentSessionOutbox({
     sessionId,
@@ -162,7 +168,6 @@ export function useStructuredAgentSession(args: {
     enabled: providerVisible
   })
 
-  const prompts = pendingStructuredSessionPrompts(transportState.journalItems)
   const { outbox } = outboxController
   // A host that takes a Stop naming no turn gets Stop from the send until the work settles; every
   // Stop before a turn opens needs that form. An older host can stop only a turn it has opened.
@@ -272,8 +277,9 @@ export function useStructuredAgentSession(args: {
         : Promise.resolve(null)
     },
     queuedMessages: queuedController,
-    /** The host holds a send made while the agent works as a queued card. */
-    queueCapable,
+    /** A send made now while the agent works is held as a queued card: the host queues, and this
+     *  send asks it to (the setting is on and no pending prompt blocks the queue). */
+    sendsQueue: structuredAgentSessionNewSendsQueue(queueDelivery),
     cancel: async (turnId: string, prompt?: StructuredPromptCancelTarget) => {
       // Capability negotiation must complete before mutate fingerprints the payload:
       // older hosts reject the strict prompt field.
