@@ -23,6 +23,7 @@ import { classifyDispatchRejection } from '../../shared/structured-agent-session
 import { CodexAppServerRequestError } from '../codex/codex-app-server-connection'
 import { MAX_CODEX_HOOK_REASON_CHARS } from '../codex/codex-structured-prompt-block'
 import { owesStructuredAgentSessionWork } from '../../shared/structured-agent-session-owed-work'
+import { projectStructuredAgentSessionStatusSummary } from '../../shared/structured-agent-session-projection'
 import {
   projectStructuredAgentSessionMessages,
   structuredAgentSessionRejectedShownInPlace
@@ -165,6 +166,14 @@ async function blockedAndTheChatMovesOn(clientMessageId: string) {
   )
   const journal = await snapshot()
   expect(working(journal)).toBe(false)
+  // Its sidebar row reads as the idle chat does, never Failed: the person's own hook refused it.
+  expect(
+    projectStructuredAgentSessionStatusSummary(journal.items, journal.submissions, fence)
+  ).toMatchObject({ status: 'idle' })
+  expect(
+    projectStructuredAgentSessionStatusSummary(journal.items, journal.submissions, fence)
+      .turnOutcome
+  ).not.toBe('failure')
   const before = answers
   await send('carry on')
   await vi.waitFor(() => expect(answers).toBe(before + 1))
