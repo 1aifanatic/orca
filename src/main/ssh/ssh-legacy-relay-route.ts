@@ -82,6 +82,10 @@ export class SshLegacyRelayRoute {
   private readonly exited = new Set<string>()
   private closed = false
   private readonly closeListeners = new Set<() => void>()
+  private readonly servedExitListeners = new Set<SshPtyExitCallback>()
+  /** Requests still awaiting the old relay; the bridge stays up until they settle. */
+  private inFlight = 0
+  private closeWhenSettled: string | null = null
 
   private constructor(
     readonly sockPath: string,
@@ -153,6 +157,27 @@ export class SshLegacyRelayRoute {
     this.closeListeners.add(listener)
   }
 
+  /** Exits of PTYs this route served, as the old relay reported them. */
+  onServedExit(listener: SshPtyExitCallback): void {
+    this.servedExitListeners.add(listener)
+  }
+
+  /**
+   * Runs a request on the old relay without the bridge closing under it. Why: a stop's PTY exit can
+   * arrive before the stop's own reply, and closing on that exit used to fail the stop.
+   */
+  async track<T>(request: () => Promise<T>): Promise<T> {
+    this.inFlight += 1
+    try {
+      return await request()
+    } finally {
+      this.inFlight -= 1
+      if (this.inFlight === 0 && this.closeWhenSettled !== null) {
+        this.close(this.closeWhenSettled)
+      }
+    }
+  }
+
   /** Hangs up the bridge; the old relay keeps whatever still runs and its own grace decides the rest. */
   close(reason: string): void {
     if (this.closed) {
@@ -208,8 +233,14 @@ export class SshLegacyRelayRoute {
         return
       }
       sink.exit(payload)
+      this.servedExitListeners.forEach((listener) => listener(payload))
       this.attached.delete(payload.id)
-      if (this.attached.size === 0) {
+      if (this.attached.size > 0) {
+        return
+      }
+      if (this.inFlight > 0) {
+        this.closeWhenSettled = 'legacy-relay-terminals-exited'
+      } else {
         this.close('legacy-relay-terminals-exited')
       }
     })

@@ -3,7 +3,7 @@ import {
   type SshTerminateSessionsResult
 } from '../../shared/ssh-types'
 import { SSH_TERMINATE_RECONNECT_REQUIRED } from '../../shared/constants'
-import { isSshPtyNotFoundError } from '../providers/ssh-pty-errors'
+import { isSshPtyNotFoundError, SshPtyHeldByPreviousRelayError } from '../providers/ssh-pty-errors'
 import { toAppSshPtyId, toRelaySshPtyId } from '../providers/ssh-pty-id'
 import { isReattachHeldByPreviousRelay } from '../ssh/ssh-previous-relay-terminals'
 import {
@@ -82,7 +82,8 @@ export async function terminateSshTargetSessions(
       const { appPtyId, relayPtyId } = ptyIds[index]
       if (
         result.status !== 'fulfilled' &&
-        (await isReattachHeldByPreviousRelay(targetId, result.reason))
+        (result.reason instanceof SshPtyHeldByPreviousRelayError ||
+          (await isReattachHeldByPreviousRelay(targetId, result.reason)))
       ) {
         // Not found here is not absence while an older build's relay may still run it (#25124).
         outcome = { ...outcome, unverifiable: outcome.unverifiable + 1 }

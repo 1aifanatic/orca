@@ -40,6 +40,10 @@ export function createSshLegacyRelayRouter(args: {
       const census = await previousRelayCensus(targetId)
       return census.bridgeable ? census.endpoints : []
     },
+    unreachableMayHold: async () => {
+      const census = await previousRelayCensus(targetId)
+      return !census.complete || (!census.bridgeable && census.endpoints.length > 0)
+    },
     openRoute: async (sockPath) => {
       const census = await previousRelayCensus(targetId)
       const conn = args.connection()

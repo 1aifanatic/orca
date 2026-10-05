@@ -7,7 +7,7 @@
  * served there, every later operation on its id goes to the same relay.
  */
 import { SshPtyHeldByPreviousRelayError } from './ssh-pty-errors'
-import { toAppSshPtyId } from './ssh-pty-id'
+import { toAppSshPtyId, toRelaySshPtyId } from './ssh-pty-id'
 import type { SshPtyProvider } from './ssh-pty-provider'
 import type { SshPtyAttachResult } from './ssh-pty-session-reattach'
 import type { PtySpawnOptions, PtySpawnResult } from './types'
@@ -17,6 +17,18 @@ export type SshPtyLegacyRelayRouting = {
   /** The served route for a held PTY, or null when no older relay holds it. */
   attach: (appPtyId: string) => Promise<{ provider: SshPtyProvider; release: () => void } | null>
   providerFor: (appPtyId: string) => SshPtyProvider | undefined
+  /** Runs a request for a served PTY on its route, keeping the route open until it settles. */
+  track: <T>(
+    appPtyId: string,
+    request: (provider: SshPtyProvider) => Promise<T>
+  ) => Promise<T> | undefined
+  /** Stops a PTY an older relay holds through a short-lived route; see SshLegacyRelayRouter. */
+  stopHeld: (
+    appPtyId: string,
+    stop: (provider: SshPtyProvider) => Promise<void>
+  ) => Promise<{ stopped: true } | { stopped: false; reachable: boolean }>
+  /** Exits the older relays report for served PTYs. */
+  onExit: (listener: Parameters<SshPtyProvider['onExit']>[0]) => () => void
   servedProviders: () => SshPtyProvider[]
   dispose: () => void
 }
@@ -60,6 +72,19 @@ export async function attachHeldPtyThroughPreviousRelay(
   }
 }
 
+/** A stop whose bridge dropped mid-request may or may not have landed: unverifiable, not failed. */
+async function unverifiableIfBridgeLost<T>(stop: Promise<T>, relayPtyId: string): Promise<T> {
+  try {
+    return await stop
+  } catch (error) {
+    const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined
+    if (code === 'DISPOSED' || code === 'CONNECTION_LOST') {
+      throw new SshPtyHeldByPreviousRelayError(relayPtyId)
+    }
+    throw error
+  }
+}
+
 export function installSshPtyLegacyRelayDelegation(
   provider: SshPtyProvider,
   routing: SshPtyLegacyRelayRouting
@@ -77,6 +102,7 @@ export function installSshPtyLegacyRelayDelegation(
     attach: provider.attach.bind(provider),
     attachForReconnect: provider.attachForReconnect.bind(provider),
     shutdown: provider.shutdown.bind(provider),
+    onExit: provider.onExit,
     pauseProducer: provider.pauseProducer.bind(provider),
     resumeProducer: provider.resumeProducer.bind(provider),
     listProcesses: provider.listProcesses,
@@ -137,7 +163,41 @@ export function installSshPtyLegacyRelayDelegation(
   provider.attachForReconnect = (id, expected, recovery) =>
     routed(id)?.attachForReconnect(id, expected, recovery) ??
     own.attachForReconnect(id, expected, recovery)
-  provider.shutdown = (id, opts) => routed(id)?.shutdown(id, opts) ?? own.shutdown(id, opts)
+  // Why the stop finds its route first: the current relay answers a stop for an id it never minted
+  // as done, so a held PTY sent there was reported stopped while its shell kept running.
+  provider.shutdown = async (id, opts) => {
+    const appPtyId = toAppSshPtyId(provider.getConnectionId(), id)
+    const relayPtyId = toRelaySshPtyId(provider.getConnectionId(), id)
+    const stopOnOldRelay = (legacy: SshPtyProvider): Promise<void> => legacy.shutdown(id, opts)
+    const servedStop = routing.track(appPtyId, stopOnOldRelay)
+    if (servedStop) {
+      return await unverifiableIfBridgeLost(servedStop, relayPtyId)
+    }
+    if (own.hasPty(appPtyId) || own.hasPty(relayPtyId)) {
+      return await own.shutdown(id, opts)
+    }
+    // A PTY no pane resumed this connection: a short-lived route stops it on the relay that runs it.
+    const held = await unverifiableIfBridgeLost(
+      routing.stopHeld(appPtyId, stopOnOldRelay),
+      relayPtyId
+    )
+    if (held.stopped) {
+      return
+    }
+    if (!held.reachable || isHeldUnserved(id)) {
+      throw new SshPtyHeldByPreviousRelayError(relayPtyId)
+    }
+    return await own.shutdown(id, opts)
+  }
+  // Why merged: a stop waits for the exit of the PTY it stopped, which an older relay reports.
+  provider.onExit = (callback) => {
+    const stopOwn = own.onExit(callback)
+    const stopRouted = routing.onExit(callback)
+    return () => {
+      stopOwn()
+      stopRouted()
+    }
+  }
   provider.pauseProducer = (id) => (routed(id) ?? own).pauseProducer(id)
   provider.resumeProducer = (id) => (routed(id) ?? own).resumeProducer(id)
   const isHeldUnserved = (id: string): boolean => {

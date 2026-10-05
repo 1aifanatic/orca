@@ -6,12 +6,15 @@
  * none. An unreachable or non-bridgeable relay leaves the pane held, never respawned.
  */
 import type { SshPtyProvider } from '../providers/ssh-pty-provider'
+import type { SshPtyExitCallback } from '../providers/ssh-pty-provider-contract'
 import type { SshPtyLegacyRelayRouting } from '../providers/ssh-pty-legacy-relay-delegation'
 import type { SshLegacyRelayRoute } from './ssh-legacy-relay-route'
 
 export type SshLegacyRelayRouterOptions = {
   targetId: string
   endpoints: () => Promise<string[]>
+  /** True when an older relay may run PTYs no route can reach: an incomplete or Windows census. */
+  unreachableMayHold?: () => Promise<boolean>
   openRoute: (sockPath: string) => Promise<SshLegacyRelayRoute | null>
 }
 
@@ -26,6 +29,7 @@ type RouteEntry = {
 export class SshLegacyRelayRouter implements SshPtyLegacyRelayRouting {
   private readonly routes = new Map<string, RouteEntry>()
   private readonly disposeListeners = new Set<() => void>()
+  private readonly exitListeners = new Set<SshPtyExitCallback>()
   private disposed = false
 
   constructor(private readonly options: SshLegacyRelayRouterOptions) {}
@@ -111,6 +115,59 @@ export class SshLegacyRelayRouter implements SshPtyLegacyRelayRouting {
     return undefined
   }
 
+  /**
+   * Stops a PTY an older relay holds but no pane is served for: a short-lived route opens through
+   * the old relay's bridge, the stop runs there, and the route hangs up once that PTY exits. False
+   * when no older relay lists it; `reachable` false when one may but could not be asked.
+   */
+  async stopHeld(
+    appPtyId: string,
+    stop: (provider: SshPtyProvider) => Promise<void>
+  ): Promise<{ stopped: true } | { stopped: false; reachable: boolean }> {
+    let reachable = !(await this.options.unreachableMayHold?.())
+    for (const sockPath of await this.options.endpoints()) {
+      const route = await this.use(sockPath, 'legacy-relay-holds-no-stopped-terminal', (opened) => {
+        if (!opened && !this.disposed) {
+          reachable = false
+        }
+        if (!opened?.holds(appPtyId) || this.disposed) {
+          return null
+        }
+        opened.beginServing(appPtyId)
+        return opened
+      })
+      if (route) {
+        try {
+          await route.track(() => stop(route.provider))
+        } catch (error) {
+          this.release(sockPath, route, appPtyId)
+          throw error
+        }
+        return { stopped: true }
+      }
+    }
+    return { stopped: false, reachable }
+  }
+
+  /** Runs a request for a served PTY on its route, or undefined when no route serves it. */
+  track<T>(
+    appPtyId: string,
+    request: (provider: SshPtyProvider) => Promise<T>
+  ): Promise<T> | undefined {
+    for (const { route } of this.routes.values()) {
+      if (route?.serves(appPtyId)) {
+        return route.track(() => request(route.provider))
+      }
+    }
+    return undefined
+  }
+
+  /** Exits the older relays report for the PTYs their routes serve. */
+  onExit(listener: SshPtyExitCallback): () => void {
+    this.exitListeners.add(listener)
+    return () => this.exitListeners.delete(listener)
+  }
+
   /** Every pane a route serves, for listings that must not read a served PTY as gone. */
   servedProviders(): SshPtyProvider[] {
     const providers: SshPtyProvider[] = []
@@ -144,6 +201,9 @@ export class SshLegacyRelayRouter implements SshPtyLegacyRelayRouting {
     entry.pending = this.options.openRoute(sockPath).then(
       (route) => {
         entry.route = route
+        route?.onServedExit((payload) =>
+          this.exitListeners.forEach((listener) => listener(payload))
+        )
         route?.onClose(() => {
           if (this.routes.get(sockPath) === entry) {
             this.routes.delete(sockPath)

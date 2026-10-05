@@ -38,6 +38,16 @@ function setup() {
       return { provider: legacy, release }
     }),
     providerFor: (id) => (served.has(id) ? legacy : undefined),
+    track: (id, request) => (served.has(id) ? request(legacy) : undefined),
+    // The old relay holds HELD; a short-lived route stops it there.
+    stopHeld: vi.fn(async (id: string, stop: (provider: SshPtyProvider) => Promise<void>) => {
+      if (id !== HELD) {
+        return { stopped: false as const, reachable: true }
+      }
+      await stop(legacy)
+      return { stopped: true as const }
+    }),
+    onExit: () => () => {},
     servedProviders: () => (served.size > 0 ? [legacy] : []),
     dispose: vi.fn()
   }
@@ -212,5 +222,116 @@ describe('SshPtyProvider delegation to an earlier build relay', () => {
     })
     expect(provider.write(HELD, 'ls\n')).toBe(true)
     expect(legacyMux.notify).toHaveBeenCalledWith('pty.data', { id: 'pty2:old:1', data: 'ls\n' })
+  })
+
+  it('stops a served PTY on the older relay, never the current one', async () => {
+    const { provider, currentMux, legacyMux, served } = setup()
+    served.add(HELD)
+
+    await provider.shutdown(HELD, { immediate: true })
+
+    expect(legacyMux.request).toHaveBeenCalledWith(
+      'pty.shutdown',
+      expect.objectContaining({ id: 'pty2:old:1', immediate: true }),
+      undefined
+    )
+    expect(currentMux.request).not.toHaveBeenCalledWith(
+      'pty.shutdown',
+      expect.anything(),
+      undefined
+    )
+  })
+
+  it('finds the older relay for a stop on a PTY no pane resumed this connection', async () => {
+    const { provider, legacyMux, routing } = setup()
+
+    await provider.shutdown(HELD, { immediate: false })
+
+    expect(routing.stopHeld).toHaveBeenCalledWith(HELD, expect.any(Function))
+    expect(routing.attach).not.toHaveBeenCalled()
+    expect(legacyMux.request).toHaveBeenCalledWith(
+      'pty.shutdown',
+      expect.objectContaining({ id: 'pty2:old:1' }),
+      undefined
+    )
+  })
+
+  it('refuses a stop for a held PTY no older relay can serve, instead of reporting it stopped', async () => {
+    const { provider, currentMux, routing } = setup()
+    vi.mocked(routing.attach).mockResolvedValue(null)
+    vi.mocked(routing.stopHeld).mockResolvedValue({ stopped: false, reachable: true })
+    await expect(attachHeldPtyThroughPreviousRelay(provider, HELD)).resolves.toBeNull()
+
+    await expect(provider.shutdown(HELD, { immediate: true })).rejects.toBeInstanceOf(
+      SshPtyHeldByPreviousRelayError
+    )
+    expect(currentMux.request).not.toHaveBeenCalledWith(
+      'pty.shutdown',
+      expect.anything(),
+      undefined
+    )
+  })
+
+  it('hears exits the older relays report, so a stop can confirm them', () => {
+    const currentMux = createMockMux()
+    const provider = new SshPtyProvider('target-1', asMux(currentMux), undefined, 7)
+    const exitListeners: Parameters<SshPtyProvider['onExit']>[0][] = []
+    provider.setLegacyRelayRouting({
+      attach: async () => null,
+      providerFor: () => undefined,
+      track: () => undefined,
+      stopHeld: async () => ({ stopped: false, reachable: true }),
+      onExit: (listener) => {
+        exitListeners.push(listener)
+        return () => {}
+      },
+      servedProviders: () => [],
+      dispose: () => {}
+    })
+    const heard = vi.fn()
+    provider.onExit(heard)
+
+    const exit = { id: HELD, code: 0, providerGeneration: 8, ptyIncarnation: 'inc-old' }
+    exitListeners.forEach((listener) => listener(exit))
+
+    expect(heard).toHaveBeenCalledWith(exit)
+  })
+
+  it('refuses a stop when an older relay that may hold the PTY cannot be asked', async () => {
+    const { provider, currentMux, routing } = setup()
+    vi.mocked(routing.stopHeld).mockResolvedValue({ stopped: false, reachable: false })
+
+    await expect(provider.shutdown(CURRENT, { immediate: true })).rejects.toBeInstanceOf(
+      SshPtyHeldByPreviousRelayError
+    )
+    expect(currentMux.request).not.toHaveBeenCalledWith(
+      'pty.shutdown',
+      expect.anything(),
+      undefined
+    )
+  })
+
+  it('stops an id no relay holds on the current relay', async () => {
+    const { provider, currentMux } = setup()
+
+    await provider.shutdown(CURRENT, { immediate: true })
+
+    expect(currentMux.request).toHaveBeenCalledWith(
+      'pty.shutdown',
+      expect.objectContaining({ id: 'pty2:new:1' }),
+      undefined
+    )
+  })
+
+  it('reads a stop whose bridge dropped mid-request as unverifiable, not failed', async () => {
+    const { provider, legacyMux, served } = setup()
+    served.add(HELD)
+    legacyMux.request.mockRejectedValueOnce(
+      Object.assign(new Error('Multiplexer disposed'), { code: 'DISPOSED' })
+    )
+
+    await expect(provider.shutdown(HELD, { immediate: true })).rejects.toBeInstanceOf(
+      SshPtyHeldByPreviousRelayError
+    )
   })
 })

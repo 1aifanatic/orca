@@ -9,6 +9,7 @@ const HELD = 'ssh:target-1@@pty2:old:1'
 function fakeRoute(listed: string[]) {
   const served = new Set<string>()
   const closeListeners: (() => void)[] = []
+  const exitListeners: ((payload: { id: string }) => void)[] = []
   // Only identity matters here; the router never calls into the provider itself.
   const provider: SshPtyProvider = Object.create(null)
   const route = {
@@ -22,6 +23,9 @@ function fakeRoute(listed: string[]) {
     beginServing: (id: string) => served.add(id),
     stopServing: (id: string) => served.delete(id),
     onClose: (listener: () => void) => closeListeners.push(listener),
+    onServedExit: (listener: (payload: { id: string }) => void) => exitListeners.push(listener),
+    emitServedExit: (id: string) => exitListeners.forEach((listener) => listener({ id })),
+    track: vi.fn(<T>(request: () => Promise<T>) => request()),
     close: vi.fn(() => closeListeners.forEach((listener) => listener()))
   }
   return route
@@ -137,5 +141,57 @@ describe('SshLegacyRelayRouter', () => {
     expect(served?.provider).toBe(route.provider)
     expect(route.close).not.toHaveBeenCalled()
     expect(router.providerFor(HELD)).toBe(route.provider)
+  })
+
+  it('runs a served PTY’s requests on its route and relays the exits it reports', async () => {
+    const route = fakeRoute([HELD])
+    const { router } = routerFor(route)
+    const exits: string[] = []
+    router.onExit((payload) => exits.push(payload.id))
+    await router.attach(HELD)
+
+    await expect(router.track(HELD, async (provider) => provider)).resolves.toBe(route.provider)
+    expect(route.track).toHaveBeenCalledTimes(1)
+    expect(router.track('ssh:target-1@@pty2:new:1', async () => 'x')).toBeUndefined()
+    route.emitServedExit(HELD)
+    expect(exits).toEqual([HELD])
+  })
+
+  it('stops a held PTY no pane is served for on a short-lived route', async () => {
+    const route = fakeRoute([HELD])
+    const { router } = routerFor(route)
+    const stop = vi.fn(async () => {})
+
+    await expect(router.stopHeld(HELD, stop)).resolves.toEqual({ stopped: true })
+
+    expect(stop).toHaveBeenCalledWith(route.provider)
+    expect(route.track).toHaveBeenCalledTimes(1)
+    // Served until its exit arrives, which hangs the route up.
+    expect(router.providerFor(HELD)).toBe(route.provider)
+  })
+
+  it('says whether a PTY no older relay lists could have been held elsewhere', async () => {
+    const notListing = fakeRoute(['ssh:target-1@@pty2:old:2'])
+    await expect(routerFor(notListing).router.stopHeld(HELD, vi.fn())).resolves.toEqual({
+      stopped: false,
+      reachable: true
+    })
+    expect(notListing.close).toHaveBeenCalledWith('legacy-relay-holds-no-stopped-terminal')
+
+    await expect(routerFor(null).router.stopHeld(HELD, vi.fn())).resolves.toEqual({
+      stopped: false,
+      reachable: false
+    })
+
+    const windows = new SshLegacyRelayRouter({
+      targetId: 'target-1',
+      endpoints: async () => [],
+      unreachableMayHold: async () => true,
+      openRoute: async () => null
+    })
+    await expect(windows.stopHeld(HELD, vi.fn())).resolves.toEqual({
+      stopped: false,
+      reachable: false
+    })
   })
 })
