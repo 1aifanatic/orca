@@ -5,7 +5,11 @@ import type {
   PermissionMode
 } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
-import { agentSessionProviderHandleChainHead } from '../../shared/agent-session-provider-handle'
+import {
+  agentSessionProviderHandleChainHead,
+  agentSessionProviderHandleRoot
+} from '../../shared/agent-session-provider-handle'
+import { claudeProviderHandleLeafUuid } from '../../shared/agent-session-provider-handle-encoding'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { withCliRuntimeOnPath } from '../../shared/node-cli-command-resolution'
 import { structuredSessionChildIdentityEnv } from '../runtime/structured-session-child-identity-env'
@@ -305,19 +309,20 @@ export function createClaudeStructuredLaunchResolver(
         gate && hasWslBoundClaudeAccount(gate) ? { reason: 'managedAccountUnsupported' } : {}
       )
     }
-    const head = agentSessionProviderHandleChainHead(record.providerHandleChain)
+    // A Claude record's chain holds only Claude handles; the record store refuses anything else.
+    const head = agentSessionProviderHandleChainHead(record.providerHandleChain)?.handle ?? null
     if (
-      head?.handle.provider === 'claude' &&
-      (identity.providerHandle.kind !== 'claude' ||
-        identity.providerHandle.sessionId !== head.handle.sessionId)
+      head &&
+      (!identity.providerHandle ||
+        agentSessionProviderHandleRoot(identity.providerHandle) !==
+          agentSessionProviderHandleRoot(head))
     ) {
       throw new Error('claude durable resume identity changed before spawn')
     }
-    const providerSessionId =
-      head?.handle.provider === 'claude'
-        ? head.handle.sessionId
-        : claudeSessionIdForOrcaSession(identity.sessionId)
-    const continuesChain = head?.handle.provider === 'claude'
+    const providerSessionId = head
+      ? head.nativeId
+      : claudeSessionIdForOrcaSession(identity.sessionId)
+    const continuesChain = head !== null
     const cwd = await deps.resolveWorkspacePath(record.location.workspaceId)
     const sources = await resolveClaudeChildEnvSources(deps)
     // Asked as soon as the spawn's cwd and PATH are known, so it overlaps what is left to resolve.
@@ -329,8 +334,8 @@ export function createClaudeStructuredLaunchResolver(
     // A start that failed before its first turn wrote no transcript, and `--resume` of an absent
     // one exits; launch that id fresh instead. With a transcript, `--session-id` would collide.
     const resumesTranscript =
-      head?.handle.provider === 'claude' &&
-      (head.handle.leafUuid !== null ||
+      head !== null &&
+      (claudeProviderHandleLeafUuid(head) !== null ||
         (await (deps.hasTranscript ?? claudeTranscriptExists)({
           providerSessionId,
           claudeConfigDir: record.accountHome.path
@@ -370,8 +375,7 @@ export function createClaudeStructuredLaunchResolver(
       env,
       claudeConfigDir: record.accountHome.path,
       providerSessionId,
-      resumeLeafUuid:
-        resumesTranscript && head?.handle.provider === 'claude' ? head.handle.leafUuid : null,
+      resumeLeafUuid: resumesTranscript && head ? claudeProviderHandleLeafUuid(head) : null,
       resumesTranscript,
       continuesChain
     }
