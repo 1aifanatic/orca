@@ -393,7 +393,8 @@ describe('runCodexHookTrustGrantSession', () => {
       hooks: keys.map((key) => managedHook(key)),
       expectedTrustKeys: keys,
       managedCommand: MANAGED_COMMAND,
-      timeoutMs: 500
+      // Long enough for the supervisor and stub to start on a loaded host and write the pid.
+      timeoutMs: 2_000
     })
 
     const startedAt = Date.now()
@@ -413,7 +414,8 @@ describe('runCodexHookTrustGrantSession', () => {
       hooks: [],
       expectedTrustKeys: [],
       managedCommand: MANAGED_COMMAND,
-      timeoutMs: 500
+      // Long enough for the supervisor and stub to start on a loaded host and write the pid.
+      timeoutMs: 2_000
     })
 
     const startedAt = Date.now()
