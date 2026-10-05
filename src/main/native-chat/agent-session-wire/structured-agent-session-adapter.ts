@@ -13,6 +13,7 @@ import type {
 
 import type { AgentSessionBackgroundTaskStops } from '../../../shared/agent-child-work-stop-targets'
 import type {
+  AgentJournalAnsweredTurnIdentity,
   AgentJournalItemIdentity,
   AgentJournalItemBody,
   AgentJournalMessageItem,
@@ -178,8 +179,12 @@ export type AgentSessionDispatchOutcome =
    * anything and never promotes this to `unknown`.
    */
   | { state: 'admitted' }
-  /** Words from `agentSessionFailureWords`, never written by hand. */
-  | ({ state: 'rejected' } & AgentJournalDispatchRejection)
+  /** Words from `agentSessionFailureWords`, never written by hand. `answeredInTurn`: the turn the
+   *  provider answered the send into, which ended before the answer was read. */
+  | ({
+      state: 'rejected'
+      answeredInTurn?: AgentJournalAnsweredTurnIdentity
+    } & AgentJournalDispatchRejection)
   /** The call did not settle. Never re-send on the user's behalf. */
   | { state: 'unknown'; reason: string }
 
