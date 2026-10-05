@@ -4,8 +4,10 @@ import { removeWorkspaceSessionOwners } from '../restoring-sessions/session-owne
 import {
   createOrcadMigrationSourceScope,
   orcadMigrationOwnerMatchesScope,
+  orcadMigrationPartitionScope,
   type OrcadMigrationSourceScope
 } from './orcad-source-scope'
+import { LOCAL_EXECUTION_HOST_ID } from '../../../shared/execution-host'
 import { collectSessionOwnerKeys } from './orcad-source-workspace-session-fragments'
 import type { OrcadMigrationManifest } from '../../../shared/orcad-migration-manifest'
 import type { PersistedState } from '../../../shared/persisted-state-types'
@@ -31,13 +33,18 @@ export function removeOrcadMigrationScopeWorkspaceSession(
     source: manifest.source,
     catalog: manifest.payload
   })
-  state.workspaceSession = removeOwnedSessionState(state.workspaceSession, scope)
+  state.workspaceSession = removeOwnedSessionState(
+    state.workspaceSession,
+    orcadMigrationPartitionScope(scope, LOCAL_EXECUTION_HOST_ID)
+  )
   const partitions = state.workspaceSessionsByHostId
   if (partitions) {
     state.workspaceSessionsByHostId = Object.fromEntries(
       Object.entries(partitions).map(([hostId, session]) => [
         hostId,
-        session ? removeOwnedSessionState(session, scope) : session
+        session
+          ? removeOwnedSessionState(session, orcadMigrationPartitionScope(scope, hostId))
+          : session
       ])
     )
   }

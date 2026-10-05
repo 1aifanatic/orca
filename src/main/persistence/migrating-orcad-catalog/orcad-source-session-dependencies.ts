@@ -10,7 +10,8 @@ export type OrcadMigrationSourceSessionInspection = {
 
 type SessionScope = {
   hostId: ExecutionHostId
-  ownerMatches: (ownerKey: string) => boolean
+  /** `partitionHostId` owns the partition's unqualified keys. */
+  ownerMatches: (ownerKey: string, partitionHostId: string) => boolean
 }
 
 /** The terminal tabs and PTYs the target's sessions own, across every partition. */
@@ -23,7 +24,7 @@ export function inspectOrcadMigrationSourceSessions(
     tabIds: new Set()
   }
   for (const [hostId, session] of sessionPartitions(state, 'local')) {
-    inspectSession(session, scope, hostId === scope.hostId, result)
+    inspectSession(session, scope, hostId, result)
   }
   return result
 }
@@ -31,11 +32,12 @@ export function inspectOrcadMigrationSourceSessions(
 function inspectSession(
   session: WorkspaceSessionState,
   scope: SessionScope,
-  sourceHostPartition: boolean,
+  partitionHostId: string,
   result: OrcadMigrationSourceSessionInspection
 ): void {
+  const sourceHostPartition = partitionHostId === scope.hostId
   const matchesOwner = (ownerKey: string): boolean =>
-    Boolean(ownerKey) && (sourceHostPartition || scope.ownerMatches(ownerKey))
+    Boolean(ownerKey) && (sourceHostPartition || scope.ownerMatches(ownerKey, partitionHostId))
   for (const [ownerKey, tabs] of Object.entries(session.tabsByWorktree)) {
     if (!matchesOwner(ownerKey)) {
       continue

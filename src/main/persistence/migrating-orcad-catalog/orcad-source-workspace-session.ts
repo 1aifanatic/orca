@@ -14,6 +14,7 @@ import type { TerminalScrollbackSnapshotStorage } from '../../terminal-scrollbac
 import {
   createOrcadMigrationSourceScope,
   orcadMigrationOwnerMatchesScope,
+  orcadMigrationPartitionScope,
   unqualifyOrcadMigrationOwnerKey
 } from './orcad-source-scope'
 import {
@@ -48,11 +49,12 @@ export function collectOrcadMigrationSourceWorkspaceSession(
   catalog: OrcadMigrationCatalogPayload,
   storage?: TerminalScrollbackSnapshotStorage
 ): OrcadMigrationSourceWorkspaceSessionInspection {
-  const scope = createOrcadMigrationSourceScope({ source, catalog })
+  const sourceScope = createOrcadMigrationSourceScope({ source, catalog })
   const fragments: WorkspaceSessionState[] = []
   const snapshots: OrcadMigrationTerminalScrollbackSnapshot[] = []
   let blockedCount = 0
   for (const [partitionId, session] of sessionPartitions(state, LOCAL_EXECUTION_HOST_ID)) {
+    const scope = orcadMigrationPartitionScope(sourceScope, partitionId)
     const sourceHostPartition = partitionId === scope.hostId
     const terminalTabIds = collectOwnedTerminalTabIds(session, scope)
     blockedCount += countUnsupportedSessionState(
