@@ -186,6 +186,10 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
     }
     return resent
   }
+  if (withdrawnReplay && mobileStructuredSendWithdrawnBeforeStart(result)) {
+    // Not resent, but the chat draws it with its stop row: handing it back too would show it twice.
+    return 'accepted'
+  }
   if (withdrawnReplay) {
     // Not resent: no card and no bubble holds the text, so it goes back to the
     // composer rather than vanishing.
