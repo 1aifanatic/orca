@@ -40,6 +40,7 @@ const ALLOWED_REFERENCES: Record<string, readonly string[]> = {
     'runtime/orca-runtime-persist-headless-session-tab-props.ts',
     'runtime/orca-runtime-persist-headless-terminal-title.ts',
     'runtime/orca-runtime-persist-terminal-surface-retirements.ts',
+    'runtime/orca-runtime-pty-foreground-process-reads.ts',
     'runtime/orca-runtime-stop-terminals-for-worktree.ts',
     'runtime/runtime-legacy-worker-terminal-recovery-persistence.ts',
     'runtime/runtime-workspace-session-controller.ts'
@@ -62,29 +63,15 @@ const ALLOWED_REFERENCES: Record<string, readonly string[]> = {
   ]
 }
 
-/** `({ name: w } = x)` destructures; any other object literal defines its keys. */
-function isAssignmentPattern(node: ts.Node): boolean {
-  const parent = node.parent
-  return (
-    ts.isBinaryExpression(parent) &&
-    parent.left === node &&
-    parent.operatorToken.kind === ts.SyntaxKind.EqualsToken
-  )
-}
-
-/** The name a node declares, which defines a writer rather than using it. */
-function isDeclaredName(node: ts.Node): boolean {
+/** A writer's own definition, as opposed to any other mention of its name. */
+function isDefinitionName(node: ts.Node): boolean {
   const parent = node.parent
   return (
     (ts.isFunctionDeclaration(parent) ||
       ts.isMethodDeclaration(parent) ||
       ts.isPropertyDeclaration(parent) ||
-      (ts.isPropertyAssignment(parent) && !isAssignmentPattern(parent.parent)) ||
       ts.isGetAccessorDeclaration(parent) ||
-      ts.isSetAccessorDeclaration(parent) ||
-      ts.isVariableDeclaration(parent) ||
-      ts.isParameter(parent) ||
-      ts.isEnumMember(parent)) &&
+      ts.isSetAccessorDeclaration(parent)) &&
     parent.name === node
   )
 }
@@ -97,22 +84,22 @@ function isTypeOnlyImportOrExport(node: ts.Node): boolean {
   )
 }
 
-/** A string literal names a member as `x['name']`, `['name']` or a quoted destructure key. */
-function isQuotedKey(node: ts.Node): node is ts.StringLiteralLike {
+/** A string literal in a member-name position: `x['n']`, `['n']`, `{ 'n': v }`, `{ 'n': w } = x`. */
+function isQuotedName(node: ts.Node): node is ts.StringLiteralLike {
   const parent = node.parent
   return (
     ts.isStringLiteralLike(node) &&
-    (ts.isElementAccessExpression(parent) ||
+    ((ts.isElementAccessExpression(parent) && parent.argumentExpression === node) ||
       ts.isComputedPropertyName(parent) ||
-      ts.isBindingElement(parent) ||
-      ts.isPropertyAssignment(parent))
+      (ts.isPropertyAssignment(parent) && parent.name === node) ||
+      (ts.isBindingElement(parent) && parent.propertyName === node))
   )
 }
 
-/** A use is any value-position name or quoted key that doesn't declare it; types are skipped. */
+/** Any value-position mention of a name except the writer's own definition; types are skipped. */
 function referencedName(node: ts.Node): string | undefined {
-  if (ts.isIdentifier(node) || isQuotedKey(node)) {
-    return isDeclaredName(node) ? undefined : node.text
+  if (ts.isIdentifier(node) || isQuotedName(node)) {
+    return isDefinitionName(node) ? undefined : node.text
   }
   return undefined
 }
