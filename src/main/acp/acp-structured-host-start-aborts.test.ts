@@ -164,7 +164,7 @@ describe('a Grok start the host aborts', () => {
   })
 })
 
-/** A Grok chat the user closed; each later start resumes it. `hangsHandshake`: that child never
+/** A Grok chat the user closed; each later start loads it. `hangsHandshake`: that child never
  *  answers `initialize`. */
 async function openClosedResumableChat(options: { hangsHandshake?: number } = {}) {
   let children = 0
@@ -175,7 +175,7 @@ async function openClosedResumableChat(options: { hangsHandshake?: number } = {}
       if (++children === options.hangsHandshake) {
         agent.on('initialize', () => {})
       }
-      agent.on('session/resume', (frame) =>
+      agent.on('session/load', (frame) =>
         agent.reply(frame, { configOptions: GROK_CONFIG_OPTIONS })
       )
     },

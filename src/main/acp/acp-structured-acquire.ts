@@ -1,9 +1,9 @@
 // Making a reservation real for an ACP agent: spawn the child, record it before any handshake,
 // initialize with the client's file system and terminals off, then reattach the session this chat
-// proved (`session/resume` where the agent offers it, else `session/load`) or start a new one. The
-// journal already holds a reattached chat, so whatever the agent sends while it reattaches is not
-// written, except context usage. The handshake is bounded: an agent that never answers fails the
-// start instead of holding the chat's queue, and the acquire's abort signal stops it at any point.
+// proved with `session/load` (`session/resume` only for an agent that cannot load) or start a new
+// one. The journal already holds a reattached chat, so whatever the agent sends while it reattaches
+// is not written, except context usage. The handshake is bounded: an agent that never answers fails
+// the start instead of holding the chat's queue, and the acquire's abort signal stops it at any point.
 
 import type { AgentSessionProviderHandleLink } from '../../shared/agent-session-provider-handle'
 import { TUI_AGENT_DISPLAY_NAMES } from '../../shared/tui-agent-display-names'
@@ -234,8 +234,7 @@ export async function acquireAcpStructuredSession(input: {
         started = await runtime.start({
           cwd: launch.cwd,
           mcpServers: [],
-          sessionId: resume.sessionId,
-          resumePreference: 'resume'
+          sessionId: resume.sessionId
         })
         slot.reattaching = false
         attaching.apply(attaching.translator.finishLoad(now()))

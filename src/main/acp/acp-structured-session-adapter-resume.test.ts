@@ -28,7 +28,7 @@ const hello: AgentJournalMessageItem = {
   blocks: [{ type: 'text', text: 'hello' }]
 }
 
-/** Grok's own capabilities: it loads and resumes sessions. */
+/** Grok's own capabilities: it loads and resumes sessions; Orca reopens with `session/load`. */
 const RESUMES = { agentCapabilities: { loadSession: true, sessionCapabilities: { resume: {} } } }
 const resume = { launch: { resume: { sessionId: PROVIDER_SESSION, replaceableKey: null } } }
 
@@ -85,13 +85,13 @@ describe('the reattach window', () => {
     ...resume,
     initialize: RESUMES,
     script: (agent: AcpScriptedAgent) =>
-      agent.on('session/resume', (frame) => {
+      agent.on('session/load', (frame) => {
         sendsUnmarkedWhileAttaching(agent)
         agent.reply(frame, { configOptions: GROK_CONFIG_OPTIONS })
       })
   }
 
-  it('writes nothing Grok sends while it resumes, even unmarked as replay', async () => {
+  it('writes nothing Grok sends while it loads, even unmarked as replay', async () => {
     const rig = await openAcpAdapterRig(resumesUnmarked)
     await rig.acquire()
     await rig.settle()
@@ -102,7 +102,7 @@ describe('the reattach window', () => {
     const rig = await openAcpAdapterRig({
       ...resumesUnmarked,
       script: (agent: AcpScriptedAgent) =>
-        agent.on('session/resume', (frame) => {
+        agent.on('session/load', (frame) => {
           // An old reply with no end and no replay mark.
           agent.notify('session/update', replyChunk('prompt:old', 'stale text'))
           agent.reply(frame, { configOptions: GROK_CONFIG_OPTIONS })
@@ -118,8 +118,8 @@ describe('the reattach window', () => {
   })
 })
 
-describe('the context meter across a resume', () => {
-  it('keeps the last reading the journal holds; the resume only refreshes the window', async () => {
+describe('the context meter across a reopen', () => {
+  it('keeps the last reading the journal holds; the load only refreshes the window', async () => {
     const models = {
       currentModelId: 'grok-4.7',
       availableModels: [
@@ -130,8 +130,8 @@ describe('the context meter across a resume', () => {
       ...resume,
       initialize: RESUMES,
       script: (agent) =>
-        // Grok replays no usage on resume; its answer carries only the models.
-        agent.on('session/resume', (frame) =>
+        // A load that replays no usage; its answer carries only the models.
+        agent.on('session/load', (frame) =>
           agent.reply(frame, { configOptions: GROK_CONFIG_OPTIONS, models })
         )
     })
@@ -160,12 +160,12 @@ describe('the context meter across a resume', () => {
 })
 
 describe('reattaching a Grok chat the journal holds', () => {
-  it('resumes with session/resume and writes nothing Grok sends while it resumes', async () => {
+  it('loads with session/load though Grok also resumes, and writes nothing it replays', async () => {
     const rig = await openAcpAdapterRig({
       ...resume,
       initialize: RESUMES,
       script: (agent) =>
-        agent.on('session/resume', (frame) => {
+        agent.on('session/load', (frame) => {
           sendsWhileAttaching(agent, 'hi')
           agent.reply(frame, { configOptions: GROK_CONFIG_OPTIONS })
         })
@@ -176,9 +176,9 @@ describe('reattaching a Grok chat the journal holds', () => {
     await rig.adapter.closeSession(SESSION)
     await rig.acquire({ fence: 2 })
     await rig.settle()
-    expect(rig.sent('session/resume')).toHaveLength(1)
-    expect(rig.sent('session/load')).toHaveLength(0)
-    // No second user bubble, no stale task row, and no turn opened by the resume's own traffic.
+    expect(rig.sent('session/load')).toHaveLength(1)
+    expect(rig.sent('session/resume')).toHaveLength(0)
+    // No second user bubble, no stale task row, and no turn opened by the load's own traffic.
     expect((await rig.rig.rows()).map((row) => row.itemId)).toEqual(before)
     expect(await texts(rig)).toEqual(['hello', 'hi'])
     await expect(rig.adapter.cancelTurn({ sessionId: SESSION, fence: 2 })).resolves.toEqual({
@@ -233,7 +233,7 @@ describe('reattaching a Grok chat the journal holds', () => {
       ...resume,
       initialize: RESUMES,
       script: (agent) =>
-        agent.on('session/resume', (frame) => {
+        agent.on('session/load', (frame) => {
           sendsWhileAttaching(agent, 'hi')
           agent.reply(frame, { configOptions: GROK_CONFIG_OPTIONS })
         })
@@ -263,12 +263,12 @@ describe('reattaching a Grok chat the journal holds', () => {
     deferred.close()
   })
 
-  it('starts a new session in place of a created one that session/resume reports missing', async () => {
+  it('starts a new session in place of a created one that session/load reports missing', async () => {
     const rig = await openAcpAdapterRig({
       launch: { resume: { sessionId: 'never-saved', replaceableKey: 'acp:grok:never-saved' } },
       initialize: RESUMES,
       script: (agent) =>
-        agent.on('session/resume', (frame) => agent.fail(frame, -32002, 'Resource not found'))
+        agent.on('session/load', (frame) => agent.fail(frame, -32002, 'Resource not found'))
     })
     const acquired = await rig.acquire()
     expect(acquired.link).toMatchObject({
@@ -276,17 +276,17 @@ describe('reattaching a Grok chat the journal holds', () => {
       handle: { nativeId: PROVIDER_SESSION },
       supersedesKey: 'acp:grok:never-saved'
     })
-    // The failed resume left the translator taking prompts.
+    // The failed load left the translator taking prompts.
     await exchange(rig, 'hi', true)
     expect(await texts(rig)).toEqual(['hello', 'hi'])
   })
 
-  it('keeps the slash commands Grok reports while it resumes', async () => {
+  it('keeps the slash commands Grok reports while it loads', async () => {
     const rig = await openAcpAdapterRig({
       ...resume,
       initialize: RESUMES,
       script: (agent) =>
-        agent.on('session/resume', (frame) => {
+        agent.on('session/load', (frame) => {
           agent.notify('session/update', {
             sessionId: PROVIDER_SESSION,
             update: {

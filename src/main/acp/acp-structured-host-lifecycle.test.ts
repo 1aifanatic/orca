@@ -35,12 +35,12 @@ afterEach(async () => {
   await closeProviderTimelineRigs()
 })
 
-/** On every resume, Grok sends what its resume may carry: the saved `reply` marked as replay, and a
+/** On every reopen, Grok sends what its load may carry: the saved `reply` marked as replay, and a
  *  task the dead process left running, ended by the restart. */
-function resumes(reply: string, count: { resumes: number }) {
+function loads(reply: string, count: { loads: number }) {
   return (agent: AcpScriptedAgent) =>
-    agent.on('session/resume', (frame) => {
-      count.resumes += 1
+    agent.on('session/load', (frame) => {
+      count.loads += 1
       agent.notify('session/update', replyChunk('prompt:m1', reply, { isReplay: true }))
       agent.notify('x.ai/task_completed', {
         sessionId: PROVIDER_SESSION,
@@ -53,13 +53,13 @@ function resumes(reply: string, count: { resumes: number }) {
     })
 }
 
-describe('resuming a Grok chat through the host', () => {
-  it('resumes a chat the journal holds and writes its exchange once', async () => {
-    const count = { resumes: 0 }
+describe('reopening a Grok chat through the host', () => {
+  it('loads a chat the journal holds and writes its exchange once', async () => {
+    const count = { loads: 0 }
     let resumed = false
     const { host, fence, messages, exchange } = await openHostRig({
       initialize: RESUMES,
-      script: resumes('hi', count),
+      script: loads('hi', count),
       deps: { resolveLaunch: launch(() => resumed) }
     })
     expect(await host.attach(CALLER, attachParams())).toMatchObject({ ok: true })
@@ -70,7 +70,7 @@ describe('resuming a Grok chat through the host', () => {
     await host.close(SESSION, 'user-close')
     expect(await host.attach(CALLER, attachParams(fence()))).toMatchObject({ ok: true })
     await host.flushStreamedEvents(SESSION)
-    expect(count.resumes).toBe(1)
+    expect(count.loads).toBe(1)
     expect(await messages()).toEqual(['hello', 'hi'])
     const after = (await host.history({ sessionId: SESSION, direction: 'tail' })).page.items
     expect(after.filter((row) => row.itemId.includes('background-task'))).toEqual([])
@@ -84,7 +84,7 @@ describe('resuming a Grok chat through the host', () => {
     let resumed = false
     const { rig, host, fence, messages, exchange } = await openHostRig({
       initialize: RESUMES,
-      script: resumes('complete saved reply', { resumes: 0 }),
+      script: loads('complete saved reply', { loads: 0 }),
       deps: { resolveLaunch: launch(() => resumed) }
     })
     expect(await host.attach(CALLER, attachParams())).toMatchObject({ ok: true })

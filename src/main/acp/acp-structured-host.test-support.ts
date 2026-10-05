@@ -132,7 +132,7 @@ export async function openHostRig(
   return { rig, host, store, fence, messages, exchange }
 }
 
-/** Grok's capabilities: it loads and resumes sessions. */
+/** Grok's capabilities: it loads and resumes sessions; Orca reopens with `session/load`. */
 export const RESUMES = {
   agentCapabilities: { loadSession: true, sessionCapabilities: { resume: {} } }
 }
@@ -163,15 +163,15 @@ export function stop(host: StructuredAgentSessionHost, turnId?: string) {
 export const framesOf = (child: FakeAcpChild, method: string) =>
   child.agent.frames.filter((frame) => frame.method === method)
 
-/** A new Grok chat the host attached; Grok resumes its session on a later start, counting each. */
+/** A new Grok chat the host attached; Grok loads its session on a later start, counting each. */
 export async function openAttachedHostRig(deps: Partial<AcpStructuredSessionAdapterDeps> = {}) {
-  const count = { resumes: 0 }
+  const count = { loads: 0 }
   let resumed = false
   const rig = await openHostRig({
     initialize: RESUMES,
     script: (agent) =>
-      agent.on('session/resume', (frame) => {
-        count.resumes += 1
+      agent.on('session/load', (frame) => {
+        count.loads += 1
         agent.reply(frame, { configOptions: GROK_CONFIG_OPTIONS })
       }),
     deps: { resolveLaunch: launch(() => resumed), ...deps }
