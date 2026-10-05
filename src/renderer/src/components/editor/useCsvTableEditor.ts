@@ -11,6 +11,7 @@ import { useCsvClipboard } from './useCsvClipboard'
 import { csvSourceRow } from './csv-inspection'
 import {
   mutateCsvTextDocument,
+  parseCsvTextDocument,
   type CsvTextDocument,
   type CsvTableMutation
 } from './csv-text-document'
@@ -70,51 +71,50 @@ export function useCsvTableEditor({
       setError(reason instanceof Error ? reason.message : String(reason))
     }
   }
-  const apply = (mutation: CsvTableMutation): boolean => {
+  const update = (mutation?: CsvTableMutation): string | null => {
     if (!document || !onContentChange || current.current?.source !== document.source) {
-      return false
+      return null
     }
+    const draft = editingRef.current
     try {
-      const result = mutateCsvTextDocument(document, mutation)
-      if (result !== document.source) {
-        onContentChange(result)
-        onStructureChange(mutation)
-        if (mutation.kind === 'move-column') {
+      if (draft && draft.source !== document.source) {
+        throw new Error('CSV changed while this cell was being edited. Cancel and try again.')
+      }
+      const cellMutation: CsvTableMutation = {
+        kind: 'cells',
+        edits: draft
+          ? [{ row: draft.sourceRow, column: draft.position.column, value: draft.value }]
+          : []
+      }
+      let source = draft ? mutateCsvTextDocument(document, cellMutation) : document.source
+      if (mutation) {
+        const next =
+          source === document.source ? document : parseCsvTextDocument(source, document.delimiter)
+        source = mutateCsvTextDocument(next, mutation)
+      }
+      if (source !== document.source) {
+        onContentChange(source)
+        onStructureChange(mutation ?? cellMutation)
+        if (mutation?.kind === 'move-column') {
           setSelected((previous) =>
             remapCsvSelectionAfterColumnMove(previous, mutation.from, mutation.to)
           )
-        } else if (mutation.kind !== 'cells') {
+        } else if (mutation && mutation.kind !== 'cells') {
           setSelected(null)
         }
-      }
-      setError(null)
-      return true
-    } catch (reason) {
-      fail(reason)
-      return false
-    }
-  }
-  const commit = (): boolean => {
-    const draft = editingRef.current
-    if (!draft) {
-      return true
-    }
-    if (draft.source !== document?.source) {
-      fail(new Error('CSV changed while this cell was being edited. Cancel and try again.'))
-      return false
-    }
-    const applied = apply({
-      kind: 'cells',
-      edits: [{ row: draft.sourceRow, column: draft.position.column, value: draft.value }]
-    })
-    if (applied) {
-      setCellEditing(null)
-      if (draft.value === document.rows[draft.sourceRow]?.[draft.position.column]) {
+      } else if (draft) {
         onDirtyStateHint?.(draft.wasDirty)
       }
+      setCellEditing(null)
+      setError(null)
+      return source
+    } catch (reason) {
+      fail(reason)
+      return null
     }
-    return applied
   }
+  const apply = (mutation: CsvTableMutation): boolean => update(mutation) !== null
+  const commit = (): boolean => update() !== null
   const setRootRef = useCsvPendingCell({
     fileId,
     commit,
@@ -151,6 +151,7 @@ export function useCsvTableEditor({
   const { pasteText, paste, copy, copyEvent, pasteEvent } = useCsvClipboard({
     document,
     selection,
+    editing,
     columns,
     inspectionRows,
     ownerId,
@@ -158,23 +159,15 @@ export function useCsvTableEditor({
     apply: (edits) => apply({ kind: 'cells', edits })
   })
   const save = async (): Promise<void> => {
-    if (!document || !onSave || saving || !commit()) {
+    if (!onSave || saving) {
+      return
+    }
+    const source = update()
+    if (source === null) {
       return
     }
     setSaving(true)
     try {
-      const source = editing
-        ? mutateCsvTextDocument(document, {
-            kind: 'cells',
-            edits: [
-              {
-                row: editing.sourceRow,
-                column: editing.position.column,
-                value: editing.value
-              }
-            ]
-          })
-        : document.source
       if (!(await onSave(source))) {
         throw new Error('CSV could not be saved. Your edits remain in the draft.')
       }

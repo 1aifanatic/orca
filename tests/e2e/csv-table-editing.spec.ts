@@ -115,11 +115,16 @@ test('CSV table edits, inspection, clipboard and widths survive save and view sw
     '\ufeffName,Score,Description\r\nBeta updated,2,"Original text"\r\nAlpha renamed,12,Second record\r\n'
   await expect.poll(() => readFileSync(filePath, 'utf8')).toBe(expected)
   await orcaPage.screenshot({ path: testInfo.outputPath('csv-table-editing-after.png') })
-  expect(
-    await electronApp.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows().some((window) => window.isVisible())
-    )
-  ).toBe(false)
+  if (
+    process.env.ORCA_E2E_FORCE_HEADFUL !== '1' &&
+    testInfo.project.metadata.orcaHeadful !== true
+  ) {
+    expect(
+      await electronApp.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows().some((window) => window.isVisible())
+      )
+    ).toBe(false)
+  }
 })
 
 test('CSV row and column operations preserve column widths and produce the expected file', async ({
@@ -184,7 +189,7 @@ test('CSV row and column operations preserve column widths and produce the expec
 test('keyboard selection reaches and edits a cell beyond both virtualized viewports', async ({
   orcaPage,
   seededRepoPath
-}) => {
+}, testInfo) => {
   const filePath = path.join(seededRepoPath, 'editable-wide.csv')
   const header = Array.from({ length: 1024 }, (_, column) => `column-${column}`).join(',')
   const row = Array.from({ length: 1024 }, (_, column) => `v${column}`).join(',')
@@ -211,6 +216,46 @@ test('keyboard selection reaches and edits a cell beyond both virtualized viewpo
   )
   const grid = orcaPage.getByTestId('csv-grid')
   await expect(grid).toHaveAttribute('aria-colcount', '1025')
+  // Dispatch on the clipped cell without Playwright scrolling it into view first.
+  const clipped = await grid.evaluate((element) => {
+    const viewport = element.closest('[data-testid="csv-scroll"]')
+    if (!viewport) {
+      throw new Error('Missing CSV scroll surface')
+    }
+    const edge = viewport.getBoundingClientRect().right
+    const cell = [...element.querySelectorAll('[data-csv-row="1"]')].find((cell) => {
+      const bounds = cell.getBoundingClientRect()
+      return bounds.left < edge - 4 && bounds.right > edge + 4
+    })
+    if (!cell) {
+      throw new Error('Missing clipped cell')
+    }
+    const column = Number(cell.getAttribute('data-csv-column'))
+    cell.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+    return { column, scrollLeft: viewport.scrollLeft }
+  })
+  const clippedInput = orcaPage.getByRole('textbox', {
+    name: `Edit row 2, column ${clipped.column + 1}`,
+    exact: true
+  })
+  await expect(clippedInput).toBeFocused()
+  expect(await orcaPage.getByTestId('csv-scroll').evaluate((element) => element.scrollLeft)).toBe(
+    clipped.scrollLeft
+  )
+  await orcaPage.keyboard.type('z')
+  await expect(clippedInput).toHaveValue(`zv${clipped.column}`)
+  await expect(clippedInput).toBeFocused()
+  await orcaPage.screenshot({ path: testInfo.outputPath('csv-clipped-cell-editor.png') })
+  await orcaPage.getByTestId('csv-scroll').evaluate((element) => {
+    element.scrollTop = 2000
+  })
+  await expect(clippedInput).toHaveCount(0)
+  expect(
+    await orcaPage.getByTestId('csv-scroll').evaluate((element) => element.scrollTop)
+  ).toBeGreaterThan(0)
+  await orcaPage.getByTestId('csv-scroll').evaluate((element) => {
+    element.scrollTop = 0
+  })
   await grid.getByRole('gridcell', { name: 'v0', exact: true }).first().click()
   const modifier = await orcaPage.evaluate(() =>
     navigator.userAgent.includes('Mac') ? 'Meta' : 'Control'
@@ -230,4 +275,55 @@ test('keyboard selection reaches and edits a cell beyond both virtualized viewpo
   await expect
     .poll(() => readFileSync(filePath, 'utf8').split('\n').at(-2)?.split(',').at(-1))
     .toBe('edited-final-cell')
+  expect(readFileSync(filePath, 'utf8').split('\n')[1]?.split(',')[clipped.column]).toBe(
+    `zv${clipped.column}`
+  )
+})
+
+test('autosave preserves an active cell while saving the previously committed draft', async ({
+  orcaPage,
+  seededRepoPath
+}, testInfo) => {
+  const filePath = path.join(seededRepoPath, 'csv-autosave.csv')
+  writeFileSync(filePath, 'Name,Value\nA,1\nB,2')
+  await orcaPage.evaluate(
+    async ({ filePath }) => {
+      const state = window.__store?.getState()
+      if (!state?.activeWorktreeId) {
+        throw new Error('Missing CSV workspace')
+      }
+      await state.updateSettings({ editorAutoSave: true, editorAutoSaveDelayMs: 1000 })
+      state.openFile(
+        {
+          filePath,
+          relativePath: 'csv-autosave.csv',
+          worktreeId: state.activeWorktreeId,
+          language: 'plaintext',
+          mode: 'edit'
+        },
+        { preview: false }
+      )
+    },
+    { filePath }
+  )
+  const grid = orcaPage.getByTestId('csv-grid')
+  await grid.getByRole('gridcell', { name: 'A', exact: true }).dblclick()
+  const input = orcaPage.getByRole('textbox', { name: /Edit row/ })
+  await input.fill('committed')
+  await input.press('Enter')
+  await grid.getByRole('gridcell', { name: 'B', exact: true }).dblclick()
+  await input.fill('still typing')
+  await expect.poll(() => readFileSync(filePath, 'utf8')).toBe('Name,Value\ncommitted,1\nB,2')
+  await expect(input).toBeFocused()
+  await expect(input).toHaveValue('still typing')
+  await expect
+    .poll(() =>
+      orcaPage.evaluate(() => window.__store?.getState().openFiles.some((file) => file.isDirty))
+    )
+    .toBe(true)
+  await orcaPage.screenshot({ path: testInfo.outputPath('csv-autosave-keeps-input.png') })
+  await input.press('Enter')
+  await expect
+    .poll(() => readFileSync(filePath, 'utf8'))
+    .toBe('Name,Value\ncommitted,1\nstill typing,2')
 })

@@ -8,7 +8,7 @@ import type { CsvCellEdit, CsvTextDocument } from './csv-text-document'
 export function editCsvTextCells(
   document: CsvTextDocument,
   edits: CsvCellEdit[],
-  preservePendingDraft: boolean
+  preservePendingDraft = false
 ): string {
   const changed = new Map<number, string[]>()
   for (const edit of edits) {

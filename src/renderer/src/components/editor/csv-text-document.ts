@@ -67,15 +67,13 @@ function checkedIndex(index: number, count: number, inserting = false): void {
 
 export function mutateCsvTextDocument(
   document: CsvTextDocument,
-  mutation: CsvTableMutation,
-  preservePendingDraft = false
+  mutation: CsvTableMutation
 ): string {
   if (mutation.kind === 'cells') {
-    return editCsvTextCells(document, mutation.edits, preservePendingDraft)
+    return editCsvTextCells(document, mutation.edits)
   }
   let rows = [...document.rows]
   let sourceRows = rows.map((_, index) => index)
-  const changed = new Set<number>()
   let columns = Array.from({ length: document.columnCount }, (_, index) => index)
   if (mutation.kind === 'insert-rows') {
     checkedIndex(mutation.at, rows.length, true)
@@ -123,7 +121,6 @@ export function mutateCsvTextDocument(
             : ''
           : (original[column] ?? '')
       )
-      changed.add(index)
     }
     if (!rows.length && mutation.kind === 'insert-column') {
       rows.push([mutation.label])
@@ -145,7 +142,6 @@ export function mutateCsvTextDocument(
         : document.source.slice(document.contentEnds[sourceRow], document.ends[sourceRow])
     if (
       sourceRow >= 0 &&
-      !changed.has(sourceRow) &&
       mutation.kind !== 'insert-column' &&
       mutation.kind !== 'delete-columns' &&
       mutation.kind !== 'move-column'
@@ -179,16 +175,10 @@ export function mutateCsvTextDocument(
     }
     const ending = hasFollowing || finalTerminated ? originalEnding || document.lineEnding : ''
     bytes += measureUtf8ByteLength(parts.at(-1)!).byteLength + ending.length
-    if (!preservePendingDraft) {
-      assertCsvTableEditBytes(bytes)
-    }
+    assertCsvTableEditBytes(bytes)
     parts.push(ending)
   }
   const result = parts.join('')
-  // Detached editors retain even over-limit input as a recoverable Source draft.
-  if (preservePendingDraft) {
-    return result
-  }
   parseCsv(result, document.delimiter, {
     maxCells: 1024 * 1024 + 1,
     maxColumns: CSV_MAX_COLUMNS,

@@ -4,6 +4,10 @@ import { csvCellIsSelected } from './csv-cell-selection'
 import type { CsvGridInteraction } from './csv-grid-interaction'
 import { translate } from '@/i18n/i18n'
 
+function focusCellInput(node: HTMLTextAreaElement | null): void {
+  node?.focus({ preventScroll: true })
+}
+
 export function CsvGridCell({
   value,
   row,
@@ -56,7 +60,7 @@ export function CsvGridCell({
     >
       {active && editing ? (
         <Textarea
-          autoFocus
+          ref={focusCellInput}
           variant="cell"
           rows={1}
           aria-label={translate('csv.editCell', 'Edit row {{row}}, column {{column}}', {

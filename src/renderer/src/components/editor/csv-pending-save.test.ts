@@ -25,7 +25,7 @@ function setup() {
   return { disk, store, file, queue }
 }
 
-it('autosave flushes a pending cell and reads its updated draft before writing', async () => {
+it('autosave flushes a legacy editor and reads its updated draft before writing', async () => {
   const { disk, store, file, queue } = setup()
   const unregister = registerPendingEditorFlush(file.id, () =>
     store.getState().setEditorDraft(file.id, 'header\nlatest')
@@ -101,3 +101,27 @@ it('keeps a newer pending cell dirty when an earlier remote save completes', asy
     queue.dispose()
   }
 })
+
+it.each([false, true])(
+  'autosave leaves an active CSV input alone (changed: %s)',
+  async (changed) => {
+    const { disk, store, file, queue } = setup()
+    const flush = vi.fn(() => {
+      throw new Error('rejected cell')
+    })
+    const unregister = registerPendingEditorFlush(file.id, flush, () => changed)
+    try {
+      await queue.queueSave(file, 'fallback', 'autosave')
+      expect(flush).not.toHaveBeenCalled()
+      expect(disk.files.get(file.filePath)).toBe('header\nprevious')
+      expect(store.getState().openFiles[0]?.isDirty).toBe(changed)
+      if (changed) {
+        await queue.queueSave(file, 'fallback', 'autosave')
+        expect(disk.fs.writeFile).toHaveBeenCalledTimes(1)
+      }
+    } finally {
+      unregister()
+      queue.dispose()
+    }
+  }
+)

@@ -98,8 +98,15 @@ export function createEditorSaveQueue(store: AppStoreApi): EditorSaveQueue {
           return
         }
 
-        flushPendingEditorChange(file.id)
+        flushPendingEditorChange(file.id, trigger === 'autosave')
         const contentToSave = store.getState().editorDrafts[file.id] ?? fallbackContent
+        if (
+          trigger === 'autosave' &&
+          hasPendingEditorChange(file.id) &&
+          liveFile.lastKnownDiskSignature === getDiskBaselineSignature(contentToSave)
+        ) {
+          return
+        }
         const worktree = liveFile.worktreeId
           ? findWorktreeById(state.worktreesByRepo ?? {}, liveFile.worktreeId)
           : null
@@ -222,7 +229,9 @@ export function createEditorSaveQueue(store: AppStoreApi): EditorSaveQueue {
       const timerId = window.setTimeout(() => {
         autoSaveTimers.delete(file.id)
         autoSaveScheduledContent.delete(file.id)
-        void queueSave(file, draft, 'autosave')
+        void queueSave(file, draft, 'autosave').catch((error) => {
+          console.error('[editor] autosave failed', error)
+        })
       }, autoSaveDelayMs)
       autoSaveTimers.set(file.id, timerId)
     }

@@ -111,6 +111,10 @@ export function CsvGrid({
     if (!active || scrolledFocusVersion.current === interaction?.focusVersion) {
       return
     }
+    if (interaction?.editing) {
+      scrolledFocusVersion.current = interaction.focusVersion
+      return
+    }
     const targetWindow =
       Math.floor(Math.max(0, active.row - 1) / SCROLL_WINDOW_ROWS) * SCROLL_WINDOW_ROWS
     if (targetWindow !== windowStart) {
@@ -124,7 +128,7 @@ export function CsvGrid({
     }
     columns.scrollToIndex(active.column, { align: 'auto' })
     scrolledFocusVersion.current = interaction?.focusVersion ?? -1
-  }, [active, interaction?.focusVersion, rows, columns, windowStart])
+  }, [active, interaction?.editing, interaction?.focusVersion, rows, columns, windowStart])
   useEffect(() => {
     const finish = (): void => {
       dragging.current = false
@@ -170,9 +174,28 @@ export function CsvGrid({
         ref={scrollRef}
         data-testid="csv-scroll"
         className="relative min-h-0 flex-1 overflow-auto scrollbar-editor font-mono text-xs"
-        onScroll={() => {
-          if (interaction?.editing && !interaction.commit()) {
-            const position = interaction.editing.position
+        onScroll={(event) => {
+          if (!interaction?.editing) {
+            return
+          }
+          const position = interaction.editing.position
+          const cell = gridRef.current
+            ?.querySelector(
+              `[data-csv-row="${position.row}"][data-csv-column="${position.column}"]`
+            )
+            ?.getBoundingClientRect()
+          const viewport = event.currentTarget.getBoundingClientRect()
+          // Caret visibility can scroll a clipped input while the user is still typing.
+          if (
+            cell &&
+            cell.bottom > viewport.top + (position.row ? ROW_HEIGHT : 0) &&
+            cell.top < viewport.bottom &&
+            cell.right > viewport.left &&
+            cell.left < viewport.right
+          ) {
+            return
+          }
+          if (!interaction.commit()) {
             if (position.row > 0) {
               rows.scrollToIndex(position.row - 1 - windowStart, { align: 'auto' })
             }

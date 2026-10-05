@@ -115,8 +115,16 @@ export default function CsvViewer({
           saving={editor.saving}
           canEdit={!result.error}
           canSave={Boolean(onSave)}
-          onFilter={setFilter}
-          onSort={setSort}
+          onFilter={(next) => {
+            if (editor.interaction?.commit() !== false) {
+              setFilter(next)
+            }
+          }}
+          onSort={(next) => {
+            if (editor.interaction?.commit() !== false) {
+              setSort(next)
+            }
+          }}
           onApply={editor.apply}
           onEdit={() =>
             editor.edit(editor.selection?.focus.row ?? 0, editor.selection?.focus.column ?? 0)
@@ -163,7 +171,11 @@ export default function CsvViewer({
         columnCount={result.parsed?.columnCount ?? 0}
         delimiterChoice={delimiterChoice}
         detectedDelimiter={detectedDelimiter}
-        onDelimiterChange={setDelimiterChoice}
+        onDelimiterChange={(next) => {
+          if (editor.interaction?.commit() !== false) {
+            setDelimiterChoice(next)
+          }
+        }}
       />
     </div>
   )

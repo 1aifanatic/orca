@@ -18,12 +18,12 @@ export function registerPendingEditorFlush(
   }
 }
 
-export function flushPendingEditorChange(fileId: string): void {
+export function flushPendingEditorChange(fileId: string, autosave = false): void {
   const entries = [...(pendingEditorFlushes.get(fileId) ?? [])]
   // Keep legacy replacement semantics while retaining each CSV pane's pending input.
   const legacy = entries.findLast((entry) => !entry.hasChange)
   for (const entry of entries) {
-    if (entry.hasChange || entry === legacy) {
+    if (entry.hasChange ? !autosave : entry === legacy) {
       entry.flush()
     }
   }

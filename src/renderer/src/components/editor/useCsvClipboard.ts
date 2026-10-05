@@ -2,11 +2,13 @@ import { useEffect, useLayoutEffect, useRef, type ClipboardEvent } from 'react'
 import { APP_MENU_PASTE_EVENT } from '@/lib/app-menu-paste'
 import { copyCsvSelection, pasteCsvSelection } from './csv-cell-clipboard'
 import type { CsvCellSelection } from './csv-cell-selection'
+import type { CsvCellEditSession } from './csv-grid-interaction'
 import type { CsvCellEdit, CsvTextDocument } from './csv-text-document'
 
 export function useCsvClipboard({
   document,
   selection,
+  editing,
   columns,
   inspectionRows,
   ownerId,
@@ -15,6 +17,7 @@ export function useCsvClipboard({
 }: {
   document: CsvTextDocument | null
   selection: CsvCellSelection | null
+  editing: CsvCellEditSession | null
   columns: number
   inspectionRows: number[] | null
   ownerId: string
@@ -28,6 +31,7 @@ export function useCsvClipboard({
   }, [
     document,
     inspectionRows,
+    editing,
     selection?.anchor.row,
     selection?.anchor.column,
     selection?.focus.row,

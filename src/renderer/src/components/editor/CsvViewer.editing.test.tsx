@@ -1,8 +1,10 @@
 // @vitest-environment happy-dom
 import { useState } from 'react'
-import { cleanup, fireEvent, render, screen, act } from '@testing-library/react'
+import { renderHook, cleanup, fireEvent, render, screen, act } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import CsvViewer from './CsvViewer'
+import { useCsvTableEditor } from './useCsvTableEditor'
+import { parseCsvTextDocument } from './csv-text-document'
 import { flushPendingEditorChange, hasPendingEditorChange } from './editor-pending-flush'
 import { APP_MENU_PASTE_EVENT } from '@/lib/app-menu-paste'
 import { ORCA_EDITOR_FILE_SAVED_EVENT } from './editor-autosave'
@@ -186,6 +188,39 @@ describe('editable CSV table', () => {
     expect(changes).toHaveBeenCalledWith(`\ufeffname,value\r\n${value},2\r\nA,1`)
   })
 
+  it('blocks table mutations after a rejected pending edit and preserves its recovery draft', () => {
+    const { changes, unmount } = setup()
+    const value = 'x'.repeat(1024 * 1024 + 1)
+    fireEvent.keyDown(edit('B', value), { key: 'Enter' })
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Rows' }), {
+      key: 'ArrowDown'
+    })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Insert row below' }))
+    expect(changes).not.toHaveBeenCalled()
+    expect(screen.getByTestId('source').textContent).toBe('\ufeffname,value\r\nB,2\r\nA,1')
+    unmount()
+    expect(changes).toHaveBeenCalledWith(`\ufeffname,value\r\n${value},2\r\nA,1`)
+  })
+
+  it('applies a pending cell and a subsequent structural mutation atomically', () => {
+    const changes = vi.fn()
+    const { result } = renderHook(() =>
+      useCsvTableEditor({
+        document: parseCsvTextDocument('name,value\nB,2', ','),
+        inspectionRows: null,
+        onContentChange: changes,
+        onStructureChange: vi.fn()
+      })
+    )
+    act(() => result.current.edit(1, 0))
+    act(() => result.current.interaction?.change('pending'))
+    act(() =>
+      expect(result.current.apply({ kind: 'insert-column', at: 1, label: 'new' })).toBe(true)
+    )
+    expect(changes).toHaveBeenCalledExactlyOnceWith('name,new,value\npending,,2')
+    expect(result.current.interaction?.editing).toBeNull()
+  })
+
   it('leaves a read-only table without mutation controls or an input', () => {
     render(<CsvViewer content={'a,b\nx,y'} filePath="readonly.csv" />)
     fireEvent.doubleClick(screen.getByRole('cell', { name: 'x' }))
@@ -215,6 +250,29 @@ describe('editable CSV table', () => {
     })
     expect(changes).not.toHaveBeenCalled()
     expect(screen.getByRole('alert').textContent).toContain('CSV changed before paste completed')
+  })
+
+  it('rejects a delayed paste if typing starts before the clipboard read completes', async () => {
+    let resolveRead: (value: string) => void = () => {}
+    const pending = new Promise<string>((resolve) => {
+      resolveRead = resolve
+    })
+    Object.defineProperty(window, 'api', {
+      configurable: true,
+      value: { ui: { readClipboardText: () => pending } }
+    })
+    const { changes } = setup()
+    fireEvent.pointerDown(screen.getByRole('gridcell', { name: 'B' }), { button: 0 })
+    fireEvent.click(screen.getByRole('button', { name: 'Paste' }))
+    edit('B', 'new pending input')
+    await act(async () => {
+      resolveRead('old clipboard')
+      await pending
+    })
+    expect(changes).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert').textContent).toContain('CSV changed before paste completed')
+    const retained = screen.getByRole('textbox', { name: /Edit row/ })
+    expect(retained instanceof HTMLTextAreaElement && retained.value).toBe('new pending input')
   })
 
   it('routes menu paste only to the focused grid when two file panes are mounted', async () => {
