@@ -65,9 +65,6 @@ export async function holdUnsentSends(
   journal: AgentSessionJournal,
   input: { fence: number; hostInstance: string; hold: UnsentSendHold }
 ): Promise<void> {
-  if (journal.isReadOnly) {
-    return
-  }
   const { hold } = input
   const unsent = journal
     .submissions()

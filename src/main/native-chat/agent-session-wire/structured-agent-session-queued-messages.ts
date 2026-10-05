@@ -211,9 +211,7 @@ export async function maybeQueueStructuredAgentSessionSend(
   if (ctx.journal.submissions().some((entry) => entry.clientMessageId === clientMessageId)) {
     return null
   }
-  // A newer Orca's journal takes no new draft: the immediate path refuses the send.
   if (
-    ctx.journal.isReadOnly ||
     !shouldQueueStructuredAgentSessionSend({
       journal: ctx.journal,
       record: context.deps.store.getRecord(ctx.sessionId),
@@ -277,7 +275,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
 
   schedule(sessionId: string): void {
     const journal = this.deps.sessions.get(sessionId)?.journal
-    if (!journal || journal.isReadOnly) {
+    if (!journal) {
       return
     }
     // Cheap pre-check so token streams do not pay a serialized step per delta.
@@ -320,7 +318,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
 
   private async step(sessionId: string): Promise<void> {
     const session = this.deps.sessions.get(sessionId)
-    if (this.disposed || !session || session.journal.isReadOnly) {
+    if (this.disposed || !session) {
       return
     }
     const journal = session.journal
