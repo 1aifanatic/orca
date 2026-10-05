@@ -5,7 +5,7 @@ import {
   tuiAgentArgsBypassPermissions
 } from './tui-agent-launch-defaults'
 import { applyAgentPermissionMode, YOLO_TUI_AGENT_ARGS } from './tui-agent-permissions'
-import type { TuiAgent } from './tui-agent'
+import { isTuiAgent } from './tui-agent-config'
 
 describe('tuiAgentArgsBypassPermissions', () => {
   // The Agent Permissions toggle has no storage of its own: Yolo is the presence of the agent's
@@ -92,7 +92,7 @@ describe('tuiAgentArgsBypassPermissions', () => {
 
 describe('resolvedTuiAgentArgsBypassPermissions', () => {
   // The settings shape the Agent Permissions toggle writes, for every agent it covers.
-  it.each(Object.keys(YOLO_TUI_AGENT_ARGS) as TuiAgent[])(
+  it.each(Object.keys(YOLO_TUI_AGENT_ARGS).filter(isTuiAgent))(
     "reads the toggle's own Yolo and Manual writes for %s",
     (agent) => {
       for (const platform of ['darwin', 'win32'] as const) {

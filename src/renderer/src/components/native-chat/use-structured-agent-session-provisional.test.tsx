@@ -5,16 +5,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import type { StructuredAgentSessionState } from '../../../../shared/structured-agent-session-reducer'
 
-const mocks = vi.hoisted(() => ({
-  call: vi.fn<(target: unknown, method: string, params: unknown) => Promise<unknown>>(),
-  hold: vi.fn<(args: { enabled?: boolean }) => void>(),
-  read: vi.fn<(args: { isVisible?: boolean }) => void>(),
-  outbox: vi.fn<(args: { fence: number | null; submissions: readonly unknown[] }) => void>(),
-  send: vi.fn<(text: string) => boolean>(),
-  retry: vi.fn<(clientMessageId: string) => void>(),
-  withdrawUnsent: vi.fn<() => void>(),
-  outboxEntries: [] as StructuredAgentSessionOutboxEntry[]
-}))
+const mocks = vi.hoisted(() => {
+  const outboxEntries: StructuredAgentSessionOutboxEntry[] = []
+  return {
+    call: vi.fn<(target: unknown, method: string, params: unknown) => Promise<unknown>>(),
+    hold: vi.fn<(args: { enabled?: boolean }) => void>(),
+    read: vi.fn<(args: { isVisible?: boolean }) => void>(),
+    outbox: vi.fn<(args: { fence: number | null; submissions: readonly unknown[] }) => void>(),
+    send: vi.fn<(text: string) => boolean>(),
+    retry: vi.fn<(clientMessageId: string) => void>(),
+    withdrawUnsent: vi.fn<() => void>(),
+    outboxEntries
+  }
+})
 
 let readState: StructuredAgentSessionState
 
