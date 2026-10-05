@@ -182,7 +182,7 @@ describe('converting an SSH host into a managed server', () => {
 
   // No relay session and no lease: only a host census may prove nothing runs, never the silence.
   it('converts with no relay session only on a host census that proves its relays idle', async () => {
-    await expect(convert(null)).resolves.toMatchObject({
+    await expect(convert(null, null)).resolves.toMatchObject({
       outcome: 'refused',
       verdict: 'unverifiable'
     })
