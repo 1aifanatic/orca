@@ -35,10 +35,11 @@ test('a deleted dirty file stays missing until Restore File is chosen', async ({
     if (!instance || instance !== element || !instance.editor) {
       throw new Error('Markdown editor unavailable')
     }
-    instance.focus()
-    instance.editor.commands.setTextSelection(instance.editor.state.doc.content.size - 1)
+    instance.editor.commands.insertContentAt(
+      instance.editor.state.doc.content.size - 1,
+      ' RETAINED_DRAFT'
+    )
   })
-  await orcaPage.keyboard.type(' RETAINED_DRAFT')
   await expect(editor.locator('p').first()).toHaveText('Saved on disk. RETAINED_DRAFT')
   await expect
     .poll(() =>
