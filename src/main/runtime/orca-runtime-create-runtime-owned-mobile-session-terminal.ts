@@ -19,6 +19,8 @@ import {
   getHeadlessMobileSessionGroupId
 } from './mobile-session-layout-projection'
 
+const OWNED_MOBILE_DISPATCH_RECIPE_TTL_MS = 15 * 60_000
+
 export class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal extends OrcaRuntimeWithResolveMobileSessionTerminalCommand {
   private readonly ownedMobileDispatchRecipes = new Map<
     string,
@@ -26,8 +28,18 @@ export class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal extends Orca
       launchConfig?: SleepingAgentLaunchConfig
       launchAgent?: TuiAgent
       connectionId: string | null
+      recordedAt: number
     }
   >()
+
+  private pruneOwnedMobileDispatchRecipes(): void {
+    const now = Date.now()
+    for (const [handle, recipe] of this.ownedMobileDispatchRecipes) {
+      if (now - recipe.recordedAt >= OWNED_MOBILE_DISPATCH_RECIPE_TTL_MS) {
+        this.ownedMobileDispatchRecipes.delete(handle)
+      }
+    }
+  }
 
   protected async createRuntimeOwnedMobileSessionTerminal(
     worktreeId: string,
@@ -49,6 +61,7 @@ export class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal extends Orca
       signal?: AbortSignal
     } = {}
   ): Promise<RuntimeMobileSessionCreateTerminalResult> {
+    this.pruneOwnedMobileDispatchRecipes()
     const workspace = await this.resolveTerminalWorkspaceLaunchScope(`id:${worktreeId}`)
     const cwd = this.resolveWorkspaceTerminalStartupCwd(workspace, opts.cwd)
     // Why: SshPtyProvider treats sessionId as a relay reattach; only synthesize local serve ids so SSH fresh terminals still call pty.spawn.
@@ -80,6 +93,7 @@ export class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal extends Orca
                 // Retain original dispatch evidence across an ambiguous response; retry payloads cannot replace it.
                 this.ownedMobileDispatchRecipes.set(mutationHandle, {
                   connectionId: workspace.connectionId ?? null,
+                  recordedAt: Date.now(),
                   ...(launch.launchConfig
                     ? { launchConfig: copySleepingAgentLaunchConfig(launch.launchConfig) }
                     : {}),
@@ -121,19 +135,11 @@ export class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal extends Orca
           (_selector, handle) => create(handle)
         )
       : await create()
-    if (opts.createMutation && opts.identity && terminal.ptyId) {
-      this.registerPty(terminal.ptyId, worktreeId, workspace.connectionId ?? null, {
-        tabId: opts.identity.tabId,
-        leafId: opts.identity.leafId,
-        terminalHandle: terminal.handle
-      })
-    }
     const livePty = this.getLivePtyForHandle(terminal.handle)
     if (!livePty) {
       throw new Error('terminal_handle_stale')
     }
     if (opts.createMutation) {
-      livePty.pty.runtimeSessionOwned = true
       if (
         livePty.pty.launchAgent &&
         opts.launchAgent &&
@@ -141,25 +147,35 @@ export class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal extends Orca
       ) {
         throw new Error('terminal_create_identity_conflict')
       }
-      const recipe =
+      const dispatchedRecipe =
         mutationHandle === terminal.handle && this.ownedMobileDispatchRecipes.get(terminal.handle)
-      if (
-        recipe &&
-        recipe.connectionId === (workspace.connectionId ?? null) &&
-        (!livePty.pty.launchAgent || livePty.pty.launchAgent === recipe.launchAgent)
-      ) {
+      const recipe =
+        dispatchedRecipe &&
+        dispatchedRecipe.connectionId === (workspace.connectionId ?? null) &&
+        (!livePty.pty.launchAgent || livePty.pty.launchAgent === dispatchedRecipe.launchAgent)
+          ? dispatchedRecipe
+          : null
+      if (opts.launchConfig && !livePty.pty.launchConfig && !recipe?.launchConfig) {
+        // Missing original dispatch evidence cannot authorize a retry's captured recipe.
+        throw new Error('runtime_unavailable')
+      }
+      if (recipe) {
         livePty.pty.launchAgent ??= recipe.launchAgent ?? null
         if (!livePty.pty.launchConfig && recipe.launchConfig) {
           livePty.pty.launchConfig = copySleepingAgentLaunchConfig(recipe.launchConfig)
         }
       }
-      if (opts.launchConfig && !livePty.pty.launchConfig) {
-        // Missing original dispatch evidence cannot authorize a retry's captured recipe.
-        throw new Error('runtime_unavailable')
-      }
+      livePty.pty.runtimeSessionOwned = true
       if (mutationHandle) {
         this.ownedMobileDispatchRecipes.delete(mutationHandle)
       }
+    }
+    if (opts.createMutation && opts.identity && terminal.ptyId) {
+      this.registerPty(terminal.ptyId, worktreeId, workspace.connectionId ?? null, {
+        tabId: opts.identity.tabId,
+        leafId: opts.identity.leafId,
+        terminalHandle: terminal.handle
+      })
     }
     const parentTabId = livePty.pty.tabId ?? `pty:${livePty.pty.ptyId}`
     const leafId = parsePaneKey(livePty.pty.paneKey ?? '')?.leafId ?? randomUUID()

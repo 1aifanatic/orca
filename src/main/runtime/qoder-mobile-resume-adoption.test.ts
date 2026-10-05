@@ -284,7 +284,17 @@ it.each(['missing-original', 'different-agent'])(
     )
     const runtime = new QoderAdoptionRuntime(store)
     runtime.syncWindowGraph(0, { tabs: [], leaves: [] })
+    const tabId = 'original-owned-tab'
+    const leafId = '55555555-5555-4555-8555-555555555555'
+    runtime.registerPty('unknown-owned-pty', TEST_WORKTREE_ID, null, {
+      tabId,
+      leafId,
+      terminalHandle: handle,
+      incarnationId: 'owned-prior-incarnation'
+    })
     const retained = runtime.retainedRecipe('unknown-owned-pty', TEST_WORKTREE_ID)
+    const originalPaneKey = retained.paneKey
+    const originalOwnership = retained.runtimeSessionOwned
     if (state === 'different-agent') {
       retained.launchAgent = 'codex'
     }
@@ -327,5 +337,105 @@ it.each(['missing-original', 'different-agent'])(
     expect(retained.launchAgent).toBe(state === 'different-agent' ? 'codex' : null)
     expect(retained.launchToken).toBeNull()
     expect(retained.launchIncarnationId).toBeNull()
+    expect(retained.tabId).toBe(tabId)
+    expect(retained.paneKey).toBe(originalPaneKey)
+    expect(retained.runtimeSessionOwned).toBe(originalOwnership)
+    expect(runtime.resolveTerminalPane(`${tabId}:${leafId}`).handle).toBe(handle)
   }
 )
+
+it('releases abandoned dispatch capacity without guessing an expired live recipe', async () => {
+  vi.useFakeTimers()
+  try {
+    const { TEST_WORKTREE_ID } = await import('./orca-runtime-test-fixtures.spec')
+    const { deriveRemoteRuntimeTerminalCreateHandle } =
+      await import('./remote-runtime-terminal-create-identity')
+    vi.mocked(detectAgentCommandsOnHost)
+      .mockReset()
+      .mockResolvedValue(new Set(['qoder']))
+    const runtime = new OrcaRuntimeService(store)
+    runtime.syncWindowGraph(0, { tabs: [], leaves: [] })
+    let accept = false
+    const inventory: {
+      id: string
+      worktreeId: string
+      terminalHandle: string
+      cwd: string
+      title: string
+    }[] = []
+    const spawn = vi.fn(async () => {
+      if (accept) {
+        return { id: 'fresh-after-expiry' }
+      }
+      throw new Error('abandoned-create')
+    })
+    const kill = vi.fn()
+    runtime.setPtyController({
+      spawn,
+      kill,
+      write: () => true,
+      getForegroundProcess: async () => null,
+      listProcesses: async () => inventory
+    })
+    const request = {
+      command: 'qodercli --resume original',
+      launchAgent: 'qoder' as const,
+      launchConfig: {
+        agentCommand: 'qodercli',
+        agentArgs: '--original',
+        agentEnv: { ORIGINAL: 'owned' }
+      },
+      clientNavigationId: 'owned-phone',
+      select: false
+    }
+    for (let index = 0; index < 4096; index++) {
+      await runtime
+        .createMobileSessionTerminal(`id:${TEST_WORKTREE_ID}`, {
+          ...request,
+          clientMutationId: `abandoned-${index}`
+        })
+        .catch((error: unknown) => {
+          if (!(error instanceof Error) || error.message !== 'abandoned-create') {
+            throw error
+          }
+        })
+    }
+    accept = true
+    await expect(
+      runtime.createMobileSessionTerminal(`id:${TEST_WORKTREE_ID}`, {
+        ...request,
+        clientMutationId: 'fresh-mutation'
+      })
+    ).rejects.toThrow('runtime_unavailable')
+    expect(spawn).toHaveBeenCalledTimes(4096)
+    await vi.advanceTimersByTimeAsync(16 * 60_000)
+    const fresh = await runtime.createMobileSessionTerminal(`id:${TEST_WORKTREE_ID}`, {
+      ...request,
+      clientMutationId: 'fresh-mutation'
+    })
+    expect(fresh.tab.ptyId).toBe('fresh-after-expiry')
+    inventory.push({
+      id: 'expired-live-pty',
+      worktreeId: TEST_WORKTREE_ID,
+      terminalHandle: deriveRemoteRuntimeTerminalCreateHandle(
+        'owned-phone',
+        TEST_WORKTREE_ID,
+        'abandoned-0'
+      ),
+      cwd: TEST_WORKTREE_PATH,
+      title: 'Qoder'
+    })
+    await expect(
+      runtime.createMobileSessionTerminal(`id:${TEST_WORKTREE_ID}`, {
+        ...request,
+        launchConfig: { ...request.launchConfig, agentEnv: { GUESSED: 'retry' } },
+        clientMutationId: 'abandoned-0'
+      })
+    ).rejects.toThrow('runtime_unavailable')
+    expect(spawn).toHaveBeenCalledTimes(4097)
+    expect(kill).not.toHaveBeenCalled()
+    expect(inventory).toHaveLength(1)
+  } finally {
+    vi.useRealTimers()
+  }
+}, 30_000)
