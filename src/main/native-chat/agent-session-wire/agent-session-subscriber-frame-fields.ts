@@ -75,9 +75,12 @@ export function buildSubscriberFrame(
     queued !== undefined &&
     event.type !== 'end' &&
     (event.type !== 'batch' || queued !== subscriber.queuePublication)
-  // Rides with the queue publication: whole on hydration, on batches only when it changed.
+  // Rides with the queue publication: whole on hydration, on batches only when it changed. A
+  // subscription's first frame always carries it, even mid catch-up: a resumed client reads its
+  // absence there as a host that never publishes it.
+  const firstPublication = subscriber.asyncQuestions === undefined
   const asyncQuestions =
-    withholdQueued || !journal || event.type === 'end'
+    (withholdQueued && !firstPublication) || !journal || event.type === 'end'
       ? undefined
       : hooks.readAsyncQuestions?.(subscriber.sessionId, journal)
   const attachedAsync =

@@ -356,6 +356,38 @@ describe('structured async questions on subscribe frames', () => {
   })
 })
 
+describe('structured async questions on a resumed, multi-page catch-up', () => {
+  it('carries the set on the first page even though more pages follow, then only on change', async () => {
+    const journal = await open()
+    await ask(journal, 'A?')
+    const resumeFrom = journal.cursor()
+    for (let index = 0; index < 400; index += 1) {
+      await journal.appendItem(
+        codexIdentity(),
+        { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: `row ${index}` }] },
+        OPTIONS
+      )
+    }
+    const events: AgentSessionSubscribeEvent[] = []
+    new AgentSessionSubscribers({
+      readAsyncQuestions: (_sessionId, journal) => readStructuredAgentSessionAsyncQuestions(journal)
+    }).open({
+      id: 's',
+      sessionId: IDENTITY.sessionId,
+      journal,
+      fence: 1,
+      cursor: resumeFrom,
+      emit: (event) => events.push(event)
+    })
+    const batches = events.filter((event) => event.type === 'batch')
+    expect(batches.length).toBeGreaterThan(1)
+    expect(batches[0]).toMatchObject({
+      asyncQuestions: { state: 'ready', questions: [{ title: 'A?' }] }
+    })
+    expect(batches.slice(1).every((event) => !('asyncQuestions' in event))).toBe(true)
+  })
+})
+
 describe('structured async questions against the frame byte budget', () => {
   it('holds back only the field it carries: a large message still renders on every page', async () => {
     const journal = await open()
