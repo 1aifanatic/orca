@@ -15,8 +15,9 @@ import {
   installNativeChatComposerDraftBroadcast
 } from './native-chat-composer-draft-persistence'
 import {
-  pruneNativeChatComposerDraftJournal,
-  readNativeChatComposerDraftJournal
+  replayNativeChatComposerDraftJournal,
+  snapshotNativeChatComposerDraftJournal,
+  type NativeChatComposerDraftJournalSnapshot
 } from './native-chat-composer-draft-journal'
 import {
   nativeChatComposerDraftStorage,
@@ -30,6 +31,7 @@ import {
 const RETRY_DELAYS_MS = [1_000, 5_000, 30_000]
 
 let hydration: Promise<void> | null = null
+let started = false
 let failedLoads = 0
 let retryTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -51,18 +53,16 @@ function withAppends(
 
 type DraftLoadResult = { draft: StoredNativeChatComposerDraft; changed: boolean }
 
-function applyLoaded(loaded: ReadonlyMap<string, unknown>, readAtSequence: number): void {
+function applyLoaded(
+  loaded: ReadonlyMap<string, unknown>,
+  readAtSequence: number,
+  journal: NativeChatComposerDraftJournalSnapshot
+): void {
   const drafts = new Map<string, StoredNativeChatComposerDraft | null>()
   for (const [scopeKey, value] of loaded) {
     drafts.set(scopeKey, parseStoredNativeChatComposerDraft(value))
   }
-  for (const [scopeKey, change] of readNativeChatComposerDraftJournal()) {
-    const stored = drafts.get(scopeKey)
-    if (stored && stored.savedAt >= change.at) {
-      pruneNativeChatComposerDraftJournal(scopeKey, change.at)
-      continue
-    }
-    drafts.set(scopeKey, change.draft)
+  for (const scopeKey of replayNativeChatComposerDraftJournal(drafts, journal)) {
     dirtyScopes.add(scopeKey)
   }
   for (const [scopeKey, appends] of load.appendsBeforeLoad) {
@@ -118,12 +118,14 @@ function retryLater(error: unknown): void {
 
 /** Loads every saved draft into memory, once; a failed load is retried a few times, then left. */
 export function hydrateNativeChatComposerDrafts(): Promise<void> {
+  started = true
   hydration ??= (async () => {
     removeLegacyLocalStorageNativeChatComposerDrafts()
     installNativeChatComposerDraftBroadcast()
     // Why read here: storage applies changes in order, so this load reads every append made so far.
     const readAtSequence = load.appendSequence
-    applyLoaded(await nativeChatComposerDraftStorage().loadAll(), readAtSequence)
+    const journal = snapshotNativeChatComposerDraftJournal()
+    applyLoaded(await nativeChatComposerDraftStorage().loadAll(), readAtSequence, journal)
   })().catch(retryLater)
   return hydration
 }
@@ -140,7 +142,14 @@ export async function waitForNativeChatComposerDrafts(timeoutMs: number): Promis
   clearTimeout(timer)
 }
 
+/** The load of saved drafts has started and not landed (nor been given up): a draft may exist that
+ *  memory doesn't hold yet. */
+export function isNativeChatComposerDraftLoadPending(): boolean {
+  return started && !load.hydrated
+}
+
 export function resetNativeChatComposerDraftLoadForTests(): void {
+  started = false
   if (retryTimer !== null) {
     clearTimeout(retryTimer)
     retryTimer = null

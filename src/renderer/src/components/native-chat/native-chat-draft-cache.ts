@@ -33,59 +33,47 @@ export function writeNativeChatDraftCache(
   )
 }
 
-/** A whitespace-only draft counts as empty, so the text never lands after blank lines. */
-export function appendNativeChatDraftText(draft: string, text: string): string {
-  return draft.trim() === '' ? text : `${draft.trimEnd()}\n\n${text}`
-}
+export { appendNativeChatDraftText } from './native-chat-composer-draft-addition'
 
 // Why: a composer mid-IME-composition keeps showing what it had, so it is told what was appended.
 const appendListeners = new Map<string, Set<(text: string, previous: string) => void>>()
 
-/** Appends `text` unless `holds` says the draft already ends with it, checked against the draft as
- *  it is now and, before the startup load lands, against the loaded one too. */
-function appendToDraft(
-  scopeKey: string,
-  text: string,
-  holds: (draft: string) => boolean = () => false
-): void {
-  const previous = readNativeChatDraftCache(scopeKey)
-  if (holds(previous)) {
-    return
+/** Puts text back after whatever is typed, and tells a mounted composer to show it. True once it
+ *  is durable, so the copy it came from may go. */
+export function appendNativeChatDraftCache(scopeKey: string, text: string): boolean {
+  if (text === '') {
+    return true
   }
-  // Saved now: the copy it came from (an outbox entry, a queued card) goes right after this.
-  appendToNativeChatComposerDraft(scopeKey, (draft) =>
-    holds(draft.text)
-      ? {}
-      : { text: appendNativeChatDraftText(draft.text, text), document: undefined }
-  )
+  const previous = readNativeChatDraftCache(scopeKey)
+  // Durable now: the copy it came from (an outbox entry, a queued card) goes right after this.
+  const durable = appendToNativeChatComposerDraft(scopeKey, { text })
   appendListeners.get(scopeKey)?.forEach((listener) => listener(text, previous))
+  return durable
 }
 
-/** Puts text back after whatever is typed, and tells a mounted composer to show it. */
-export function appendNativeChatDraftCache(scopeKey: string, text: string): void {
-  if (text === '') {
-    return
-  }
-  appendToDraft(scopeKey, text)
+/** Whether the draft already ends with `returned` as its own paragraph. */
+function draftEndsWith(draft: string, returned: string): boolean {
+  const held = draft.trimEnd()
+  return held === returned || held.endsWith(`\n\n${returned}`)
 }
 
 /**
  * Hands text Orca could not deliver back to the person, with or without a composer showing it.
- * Why skipped when the draft already ends with it: a hand-back can repeat (a crash before its copy
- * was removed, two windows settling one message), and the person must see it once. Only the end
- * counts, so text that merely appears inside a longer draft still comes back; two identical
- * messages returned one after the other come back as one, as in the common pattern.
+ * True when its addition is durable now, so the copy it came from may go; false leaves that to the
+ * scope's next confirmed write (nothing was added, or the journal couldn't take it). Why skipped when the draft already ends
+ * with it: a hand-back can repeat (a crash before its copy was removed, two windows settling one
+ * message), and the person must see it once. Only the end counts, so text that merely appears
+ * inside a longer draft still comes back; two identical messages returned one after the other come
+ * back as one, as in the common pattern. Read against the loaded drafts: the caller waits for the
+ * startup load, since an addition made before it is applied again to the loaded draft.
  */
-export function returnNativeChatDraftText(scopeKey: string, text: string): void {
+export function returnNativeChatDraftText(scopeKey: string, text: string): boolean {
   // Only the end is trimmed, as a send trims it: a first line's indentation is part of the text.
   const returned = text.trimEnd()
-  if (returned.trim() === '') {
-    return
+  if (returned.trim() === '' || draftEndsWith(readNativeChatDraftCache(scopeKey), returned)) {
+    return false
   }
-  appendToDraft(scopeKey, returned, (draft) => {
-    const held = draft.trimEnd()
-    return held === returned || held.endsWith(`\n\n${returned}`)
-  })
+  return appendNativeChatDraftCache(scopeKey, returned)
 }
 
 export function subscribeToNativeChatDraftAppend(

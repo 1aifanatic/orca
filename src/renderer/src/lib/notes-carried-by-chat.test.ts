@@ -75,10 +75,7 @@ import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-cap
 import { readOutbox } from '@/components/native-chat/structured-agent-session-outbox-storage'
 import { resetStructuredAgentSessionCarriedNotesForTests } from '@/components/native-chat/structured-agent-session-outbox-carried-notes'
 import { useStructuredAgentSessionOutbox } from '@/components/native-chat/use-structured-agent-session-outbox'
-import {
-  nativeChatComposerDraftWritesSettled,
-  structuredAgentSessionDraftScopeKey
-} from '@/components/native-chat/native-chat-composer-draft-store'
+import { structuredAgentSessionDraftScopeKey } from '@/components/native-chat/native-chat-composer-draft-store'
 import {
   clearNativeChatDraftCacheForTests,
   readNativeChatDraftCache
@@ -429,12 +426,8 @@ describe('notes sent to a chat already open', () => {
     expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey(target.sessionId))).toBe(
       NOTES
     )
-    // Until storage confirms the draft, a crash could lose the text: the message stays, returning,
-    // and its notes stay held.
-    expect(readOutbox(target.sessionId)).toMatchObject([{ returning: { ending: 'returned' } }])
-    expect(isNoteInFlight(KEY_A)).toBe(true)
-    expect(mocks.clearDeliveredDiffComments).not.toHaveBeenCalled()
-    await nativeChatComposerDraftWritesSettled()
+    // The addition is journaled at once, so it is durable: the message leaves and its notes are
+    // cleared, never before the draft holds the text.
     await vi.waitFor(() =>
       expect(mocks.clearDeliveredDiffComments).toHaveBeenCalledExactlyOnceWith(WORKTREE_ID, [
         NOTE_A

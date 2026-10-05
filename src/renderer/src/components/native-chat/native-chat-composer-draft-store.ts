@@ -9,6 +9,11 @@ import {
   sameNativeChatComposerDraftImages
 } from './native-chat-composer-draft-comparison'
 import {
+  withNativeChatComposerDraftAddition,
+  type NativeChatComposerDraftAddition
+} from './native-chat-composer-draft-addition'
+import { journalNativeChatComposerDraftAddition } from './native-chat-composer-draft-journal'
+import {
   clearDraftMemoryForTests,
   dirtyScopes,
   hasLocalChange,
@@ -42,11 +47,13 @@ import {
 export {
   flushNativeChatComposerDrafts,
   isKeptLocalPaste,
+  nativeChatComposerDraftWriteSettled,
   nativeChatComposerDraftWritesSettled,
   unavailableNativeChatComposerDraftImage
 } from './native-chat-composer-draft-persistence'
 export {
   hydrateNativeChatComposerDrafts,
+  isNativeChatComposerDraftLoadPending,
   waitForNativeChatComposerDrafts
 } from './native-chat-composer-draft-load'
 
@@ -167,30 +174,38 @@ export function updateNativeChatComposerDraft(
   }
 }
 
+function withAddition<T extends NativeChatComposerDraft>(
+  draft: T,
+  addition: NativeChatComposerDraftAddition
+): T {
+  const next = withNativeChatComposerDraftAddition(draft, addition)
+  return { ...draft, ...next, ...(next.text === draft.text ? {} : { document: undefined }) }
+}
+
 /**
- * Adds to the scope's draft as it is now: text or images given back, or attached. Saved at once.
- * Before the startup load lands, the same addition is made again to the loaded draft, so nothing
- * saved earlier is replaced by it.
+ * Adds to the scope's draft as it is now: text or images given back, or attached. Before the
+ * startup load lands, the same addition is made again to the loaded draft, so nothing saved
+ * earlier is replaced by it. True once the addition is durable: storage commits later, so it is
+ * also journaled at once, and the copy it came from may then be deleted.
  */
 export function appendToNativeChatComposerDraft(
   scopeKey: string,
-  append: (draft: NativeChatComposerDraft) => NativeChatComposerDraftChange
-): void {
+  addition: NativeChatComposerDraftAddition
+): boolean {
+  const before = records.get(scopeKey)
+  const current = readNativeChatComposerDraft(scopeKey)
+  const { text, images } = withAddition(current, addition)
   updateNativeChatComposerDraft(
     scopeKey,
-    append(readNativeChatComposerDraft(scopeKey)),
+    { text, images, ...(text === current.text ? {} : { document: undefined }) },
     'immediate',
-    (loaded) => {
-      const change = append(loaded)
-      const document = 'document' in change ? change.document : loaded.document
-      return {
-        ...loaded,
-        text: change.text ?? loaded.text,
-        images: change.images ?? loaded.images,
-        ...(document ? { document } : { document: undefined })
-      }
-    }
+    (loaded) => withAddition(loaded, addition)
   )
+  const after = records.get(scopeKey)
+  if (!after || after === before) {
+    return true
+  }
+  return journalNativeChatComposerDraftAddition(scopeKey, addition, after.savedAt)
 }
 
 /**

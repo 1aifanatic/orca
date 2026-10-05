@@ -9,6 +9,8 @@ import {
   writeNativeChatDraftCache
 } from './native-chat-draft-cache'
 import { NATIVE_CHAT_COMPOSER_SCOPE_CACHE_MAX } from './native-chat-composer-scope-cache'
+import { appendNativeChatAttachmentCache } from './native-chat-draft-images'
+import { readNativeChatAttachmentCache } from './use-native-chat-composer-attachments'
 
 afterEach(() => {
   clearNativeChatDraftCacheForTests()
@@ -102,5 +104,18 @@ describe('returnNativeChatDraftText', () => {
     returnNativeChatDraftText('agent-session:s1', 'unsent message')
     unsubscribe()
     expect(listener).toHaveBeenCalledExactlyOnceWith('unsent message', '')
+  })
+
+  it('adds an image given back again only once, keeping its SSH connection', () => {
+    const image = { id: 'withdrawn-m1-0', path: '/repo/shot.png', connectionId: 'ssh-1' }
+    appendNativeChatAttachmentCache('agent-session:s1', [image])
+    appendNativeChatAttachmentCache('agent-session:s1', [
+      image,
+      { id: 'withdrawn-m1-1', path: '/repo/other.png' }
+    ])
+    expect(readNativeChatAttachmentCache('agent-session:s1')).toEqual([
+      image,
+      { id: 'withdrawn-m1-1', path: '/repo/other.png' }
+    ])
   })
 })

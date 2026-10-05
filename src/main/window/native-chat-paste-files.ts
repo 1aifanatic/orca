@@ -1,6 +1,5 @@
 // Local native-chat pastes live in an Orca-owned folder, so a restored draft can show and send them:
-// a restore keeps only files that really are inside it, and old files expire. The preview reads them
-// as chat images, so no grant is involved.
+// a restore keeps only files that really are inside it, and old files expire.
 
 import { lstat, readdir, realpath, stat, unlink } from 'node:fs/promises'
 import path from 'node:path'
@@ -50,7 +49,8 @@ export function isInsideNativeChatPasteFolder(
 
 /**
  * For each restored local paste: kept only when its real path is a file inside the real paste
- * folder (symlinks and junctions resolved). Never throws.
+ * folder (symlinks and junctions resolved). Anything else comes back as a placeholder. Nothing is
+ * granted: the preview reads a paste with chat-image access. Never throws.
  */
 export async function restoreNativeChatPastes(paths: unknown): Promise<RestoredNativeChatPaste[]> {
   if (!Array.isArray(paths)) {
@@ -87,7 +87,7 @@ async function restoreNativeChatPaste(
   if (folders === null || restored === '' || !path.isAbsolute(restored)) {
     return refused
   }
-  // Why both: the path the draft stored and the file it really names must each be inside.
+  // Why both: the text the draft stores and the file it really names must each be inside.
   const named = path.resolve(restored)
   if (
     !isInsideNativeChatPasteFolder(folders.named, named) &&

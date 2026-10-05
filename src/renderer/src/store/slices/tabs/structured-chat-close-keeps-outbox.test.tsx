@@ -188,8 +188,6 @@ describe('closing a chat tab while the host is out of reach', () => {
     writeOutbox(SID, [entry('QUEUED-TEXT', { state: 'queued' })])
 
     store.getState().closeUnifiedTab(chat.id)
-    // Kept, marked, until the draft is saved; never sent again meanwhile.
-    expect(readOutbox(SID)).toMatchObject([{ returning: { ending: 'returned' } }])
     await handBacksSettled()
     expect(readOutbox(SID)).toEqual([])
     expect(draft()).toBe('QUEUED-TEXT')
@@ -222,8 +220,6 @@ describe('closing a chat tab while the host is out of reach', () => {
     })
 
     store.getState().closeUnifiedTab(chat.id)
-    // It ends once its draft is saved.
-    expect(endings).toEqual([])
     await handBacksSettled()
     unsubscribe()
     expect(endings).toEqual(['discarded'])

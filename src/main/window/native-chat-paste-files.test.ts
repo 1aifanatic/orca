@@ -14,9 +14,10 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 import { AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS } from '../../shared/agent-session-host-authority'
-import { isPathAllowed } from '../ipc/filesystem-auth'
-import type { Store } from '../persistence'
 
+import type { Store } from '../persistence'
+import { resolveLocalFileRequestPath } from '../ipc/local-file-access-resolution'
+import { readLocalFileContent } from '../ipc/filesystem/filesystem-file-content-inspection'
 import {
   NATIVE_CHAT_PASTE_TTL_MS,
   isInsideNativeChatPasteFolder,
@@ -24,13 +25,26 @@ import {
   sweepExpiredNativeChatPastes
 } from './native-chat-paste-files'
 
-// A store with no workspaces: a restore must never make an outside file readable.
-const NO_ROOTS_STORE: Store = Object.assign(Object.create(null), {
+// A store with no projects: nothing but an access kind decides what a read may reach.
+const NO_PROJECTS: Store = Object.assign(Object.create(null), {
   getRepos: () => [],
+  getProjects: () => [],
   getProjectGroups: () => [],
   getFolderWorkspaces: () => [],
-  getSettings: () => ({})
+  getSettings: () => ({ nestWorkspaces: false, workspaceDir: '' })
 })
+
+/** Whether the composer preview's chat-image access can read `target`. */
+async function chatImageReadable(target: string): Promise<boolean> {
+  try {
+    await readLocalFileContent(
+      await resolveLocalFileRequestPath(target, { kind: 'chat-image' }, NO_PROJECTS)
+    )
+    return true
+  } catch {
+    return false
+  }
+}
 
 describe('isInsideNativeChatPasteFolder', () => {
   const posixFolder = '/data/native-chat-pastes'
@@ -119,6 +133,16 @@ describe('native-chat paste folder on disk', () => {
     await expect(restoreNativeChatPastes('not a list')).resolves.toEqual([])
   })
 
+  it('leaves a kept paste readable by the composer preview, with no grant', async () => {
+    const kept = path.join(folder, 'orca-paste-1.png')
+    writeFileSync(kept, 'png')
+    await expect(restoreNativeChatPastes([kept])).resolves.toEqual([
+      { path: kept, kept: true, exists: true }
+    ])
+    const readable = await resolveLocalFileRequestPath(kept, { kind: 'chat-image' }, NO_PROJECTS)
+    await expect(readLocalFileContent(readable)).resolves.toMatchObject({ mimeType: 'image/png' })
+  })
+
   it('keeps a paste reached through a symlinked alias of the folder, as /var is of /private/var', async () => {
     const kept = path.join(folder, 'orca-paste-1.png')
     writeFileSync(kept, 'png')
@@ -133,6 +157,8 @@ describe('native-chat paste folder on disk', () => {
         { path: viaAlias, kept: true, exists: true },
         { path: realpathSync(kept), kept: true, exists: true }
       ])
+      // The preview reads by the stored spelling, through chat-image access.
+      expect(await chatImageReadable(viaAlias)).toBe(true)
     } finally {
       rmSync(alias, { force: true })
     }
@@ -159,10 +185,12 @@ describe('native-chat paste folder on disk', () => {
     await expect(restoreNativeChatPastes([crafted])).resolves.toEqual([
       { path: crafted, kept: false, exists: false }
     ])
-    expect(isPathAllowed(secret, NO_ROOTS_STORE)).toBe(false)
+    // An outside file never becomes readable: nothing is granted, and chat-image reads only images.
+    expect(await chatImageReadable(secret)).toBe(false)
+    expect(await chatImageReadable(crafted)).toBe(false)
   })
 
-  it('keeps a stored spelling that reaches a real paste through a link, and opens nothing outside', async () => {
+  it('keeps a paste by its real path, and never makes the file its stored spelling names readable', async () => {
     const secret = path.join(root, 'outside', 'id_rsa')
     mkdirSync(path.dirname(secret), { recursive: true })
     writeFileSync(secret, 'PRIVATE KEY')
@@ -179,8 +207,9 @@ describe('native-chat paste folder on disk', () => {
     await expect(restoreNativeChatPastes([restored])).resolves.toEqual([
       { path: restored, kept: true, exists: true }
     ])
-    expect(isPathAllowed(secret, NO_ROOTS_STORE)).toBe(false)
-    expect(isPathAllowed(realpathSync(secret), NO_ROOTS_STORE)).toBe(false)
+    expect(await chatImageReadable(secret)).toBe(false)
+    expect(await chatImageReadable(realpathSync(secret))).toBe(false)
+    expect(await chatImageReadable(path.join(folder, 'orca-paste-y.png'))).toBe(false)
   })
 
   it('neither restores from nor sweeps a paste folder that is itself a link', async () => {

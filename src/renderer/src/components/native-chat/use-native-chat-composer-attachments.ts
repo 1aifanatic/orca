@@ -74,8 +74,8 @@ export function useNativeChatComposerAttachments({
     subscribe,
     () => readNativeChatComposerDraft(attachmentScopeKey).images
   )
-  // Why: a restored paste can be previewed only once main re-grants it, so until the restore check
-  // is done it waits like a chip still saving.
+  // Why: a restored paste shows only once main confirms it is still kept, so until the restore
+  // check is done it waits like a chip still saving, instead of flashing before a placeholder.
   const restoring = useRestoredNativeChatComposerDraftImageCheck(attachmentScopeKey, subscribe)
   // Chips still being written, and the clipboard previews this composer minted, are its own.
   const [local, setLocal] = useState<LocalAttachments>(NO_LOCAL_ATTACHMENTS)

@@ -34,7 +34,9 @@ const CHANNEL_NAME = 'orca-native-chat-composer-drafts'
 
 let flushTimer: ReturnType<typeof setTimeout> | null = null
 let flushOnHideInstalled = false
-const inFlight = new Set<Promise<void>>()
+const inFlight = new Set<Promise<boolean>>()
+// Per scope, the writes not yet settled: each resolves true once committed, false when refused.
+const scopeWrites = new Map<string, Set<Promise<boolean>>>()
 let channel: BroadcastChannel | null = null
 
 /** An image the draft names but can no longer send, so the user can attach it again. */
@@ -98,11 +100,30 @@ function persist(scopeKey: string): void {
   unconfirmed.set(scopeKey, change)
   const storage = nativeChatComposerDraftStorage()
   const written = (draft ? storage.write(scopeKey, draft) : storage.remove([scopeKey])).then(
-    () => confirm(scopeKey, change),
-    (error: unknown) => refuse(scopeKey, change, error)
+    () => {
+      confirm(scopeKey, change)
+      return true
+    },
+    (error: unknown) => {
+      refuse(scopeKey, change, error)
+      return false
+    }
   )
+  track(scopeKey, written)
+}
+
+function track(scopeKey: string, written: Promise<boolean>): void {
   inFlight.add(written)
-  void written.finally(() => inFlight.delete(written))
+  const pending = scopeWrites.get(scopeKey) ?? new Set()
+  scopeWrites.set(scopeKey, pending)
+  pending.add(written)
+  void written.finally(() => {
+    inFlight.delete(written)
+    pending.delete(written)
+    if (pending.size === 0 && scopeWrites.get(scopeKey) === pending) {
+      scopeWrites.delete(scopeKey)
+    }
+  })
 }
 
 export function flushNativeChatComposerDrafts(): void {
@@ -151,6 +172,7 @@ function appendBeforeLoad(scopeKey: string, append: DraftAppend): void {
   const entry: AppendBeforeLoad = { sequence: load.appendSequence, append, committed: false }
   load.appendsBeforeLoad.set(scopeKey, [...(load.appendsBeforeLoad.get(scopeKey) ?? []), entry])
   const owner = records.get(scopeKey)?.owner
+  const appendedAt = records.get(scopeKey)?.savedAt ?? 0
   const empty: StoredNativeChatComposerDraft = { text: '', images: [], savedAt: 0 }
   const written = nativeChatComposerDraftStorage()
     .update(scopeKey, (stored) => {
@@ -163,7 +185,9 @@ function appendBeforeLoad(scopeKey: string, append: DraftAppend): void {
     .then(
       () => {
         entry.committed = true
+        pruneNativeChatComposerDraftJournal(scopeKey, appendedAt)
         channel?.postMessage({ scopeKey })
+        return true
       },
       (error: unknown) => {
         if (!refusedScopes.has(scopeKey)) {
@@ -174,10 +198,10 @@ function appendBeforeLoad(scopeKey: string, append: DraftAppend): void {
           refusedScopes.add(scopeKey)
           notifyScope(scopeKey)
         }
+        return false
       }
     )
-  inFlight.add(written)
-  void written.finally(() => inFlight.delete(written))
+  track(scopeKey, written)
 }
 
 /** Marks a scope changed in memory: `deferred` coalesces typing into one write, `immediate`
@@ -264,6 +288,19 @@ export function installNativeChatComposerDraftBroadcast(): void {
   }
 }
 
+/**
+ * Settles once every write of this scope issued before the call has: true only when IndexedDB
+ * completed each transaction, false when one was refused or failed. A change still waiting for its
+ * deferred write is issued first, so it is included. Never settles on a timeout.
+ */
+export async function nativeChatComposerDraftWriteSettled(scopeKey: string): Promise<boolean> {
+  if (dirtyScopes.has(scopeKey)) {
+    flushNativeChatComposerDrafts()
+  }
+  const pending = scopeWrites.get(scopeKey)
+  return pending ? (await Promise.all(pending)).every(Boolean) : true
+}
+
 /** Settles once every write issued so far has been confirmed or refused. */
 export async function nativeChatComposerDraftWritesSettled(): Promise<void> {
   while (inFlight.size > 0) {
@@ -285,4 +322,5 @@ export function resetNativeChatComposerDraftPersistenceForTests(): void {
     document.removeEventListener('visibilitychange', journalWhenHidden)
   }
   inFlight.clear()
+  scopeWrites.clear()
 }

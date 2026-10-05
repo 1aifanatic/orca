@@ -12,40 +12,37 @@ import { appendNativeChatAttachmentCache } from './native-chat-draft-images'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 
 /**
- * Gives a message's text and images back to its conversation's draft. Called before the entry
- * leaves the outbox, so a failure between the two repeats the text rather than losing it; the
- * append skips text and images already there, so a repeat adds nothing.
+ * Gives a message's text and images back to its conversation's draft. The append skips text and
+ * images already there, so a repeat adds nothing. True when everything the message holds was just
+ * added durably; false leaves the copy's removal to the draft's next confirmed write.
  */
 export function returnStructuredAgentSessionMessage(
   entry: StructuredAgentSessionOutboxEntry
-): void {
+): boolean {
   const scopeKey = structuredAgentSessionDraftScopeKey(entry.sessionId)
   const blocks = entry.body.blocks
-  returnNativeChatDraftText(
-    scopeKey,
-    blocks.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n')
-  )
+  const text = blocks.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n')
   let image = -1
-  appendNativeChatAttachmentCache(
-    scopeKey,
-    blocks.flatMap((block, index) => {
-      if (block.type !== 'image-ref') {
-        return []
-      }
-      image += 1
-      // An SSH image keeps its connection, so it still opens on its remote host.
-      const connectionId = entry.attachmentConnectionIds?.[image] ?? undefined
-      return block.path
-        ? [
-            {
-              id: `returned-${entry.clientMessageId}-${index}`,
-              path: block.path,
-              ...(connectionId ? { connectionId } : {})
-            }
-          ]
-        : []
-    })
-  )
+  const images = blocks.flatMap((block, index) => {
+    if (block.type !== 'image-ref') {
+      return []
+    }
+    image += 1
+    // An SSH image keeps its connection, so it still opens on its remote host.
+    const connectionId = entry.attachmentConnectionIds?.[image] ?? undefined
+    return block.path
+      ? [
+          {
+            id: `returned-${entry.clientMessageId}-${index}`,
+            path: block.path,
+            ...(connectionId ? { connectionId } : {})
+          }
+        ]
+      : []
+  })
+  const textDurable = text.trim() === '' || returnNativeChatDraftText(scopeKey, text)
+  const imagesDurable = images.length === 0 || appendNativeChatAttachmentCache(scopeKey, images)
+  return textDurable && imagesDurable
 }
 
 type ChatLine = {

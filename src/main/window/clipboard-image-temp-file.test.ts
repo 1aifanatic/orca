@@ -51,6 +51,7 @@ describe('saveClipboardImageBufferAsTempFile', () => {
     expect(dirname(savedPath)).toBe(
       join('/Users/me/Library/Application Support/orca', 'native-chat-pastes')
     )
+    expect(writeFileMock).toHaveBeenCalledWith(savedPath, Buffer.from([1, 2, 3]))
   })
 
   it('writes an SSH paste to the remote temp folder', async () => {

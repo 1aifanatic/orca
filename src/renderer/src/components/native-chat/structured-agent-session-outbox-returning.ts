@@ -1,15 +1,17 @@
 // A message handed back to its conversation's draft stays in the outbox, marked returning, until
-// storage confirms the draft holds it, and only then leaves and says it ended (which clears the
-// notes it carried). Drafts are saved asynchronously, so removing the copy first could lose the
-// text in a crash. A returning entry is never sent again: its id proved no record, so a resend would
+// the draft holds it durably (the addition journaled at once, or storage confirming the draft), and
+// only then leaves and says it ended (which clears the notes it carried). Drafts are saved
+// asynchronously, so removing the copy first could lose the text in a crash. A returning entry is never sent again: its id proved no record, so a resend would
 // be a new first send. On load, one still marked re-runs its hand-back, which the draft's suffix
 // rule and image id check make safe to repeat. A refused save keeps it until a later save of that
 // draft lands in this run, or the next load.
 
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import {
+  hydrateNativeChatComposerDrafts,
+  isNativeChatComposerDraftLoadPending,
   isNativeChatComposerDraftUnsaved,
-  nativeChatComposerDraftWritesSettled,
+  nativeChatComposerDraftWriteSettled,
   structuredAgentSessionDraftScopeKey,
   subscribeToNativeChatComposerDraft
 } from './native-chat-composer-draft-store'
@@ -29,11 +31,27 @@ export function returningStructuredAgentSessionEntry(
   return { ...entry, returning: { ending } }
 }
 
-/** Whether storage holds the scope's draft as it is now. One function, so a per-scope confirm from
- *  the draft store replaces it in one line. */
-async function structuredAgentSessionDraftSaved(scopeKey: string): Promise<boolean> {
-  await nativeChatComposerDraftWritesSettled()
-  return !isNativeChatComposerDraftUnsaved(scopeKey)
+/** Whether storage holds the scope's draft as written so far: false when it refused it. */
+function structuredAgentSessionDraftSaved(scopeKey: string): Promise<boolean> {
+  return nativeChatComposerDraftWriteSettled(scopeKey)
+}
+
+/** How often a hand-back looks again for the startup load of saved drafts; a failed load retries
+ *  on its own timer, so this only waits, never spins. */
+const LOAD_RECHECK_MS = 200
+
+/** Resolves once the saved drafts are in memory (or their load was given up): a hand-back reads
+ *  the draft it adds to, and an addition made before the load is applied again to the loaded one. */
+async function draftsLoaded(): Promise<void> {
+  while (isNativeChatComposerDraftLoadPending()) {
+    await Promise.race([
+      hydrateNativeChatComposerDrafts(),
+      new Promise((resolve) => setTimeout(resolve, LOAD_RECHECK_MS))
+    ])
+    if (isNativeChatComposerDraftLoadPending()) {
+      await new Promise((resolve) => setTimeout(resolve, LOAD_RECHECK_MS))
+    }
+  }
 }
 
 /** Resolves when the scope's draft next reads as saved after a change: the user's own edit or send,
@@ -72,10 +90,23 @@ export function handBackStructuredAgentSessionEntry(
     return
   }
   handingBack.add(key)
-  returnStructuredAgentSessionMessage(entry)
-  void draftSavedInThisRun(structuredAgentSessionDraftScopeKey(entry.sessionId))
-    .then(() => finishReturning(entry))
-    .finally(() => handingBack.delete(key))
+  const handBack = (): void => {
+    // Durable at once (journaled) lets it go now; otherwise the draft's confirmed write does.
+    if (returnStructuredAgentSessionMessage(entry)) {
+      handingBack.delete(key)
+      finishReturning(entry)
+      return
+    }
+    void draftSavedInThisRun(structuredAgentSessionDraftScopeKey(entry.sessionId))
+      .then(() => finishReturning(entry))
+      .finally(() => handingBack.delete(key))
+  }
+  // Read against the loaded drafts; once loaded, the text is in the draft as the hand-back runs.
+  if (isNativeChatComposerDraftLoadPending()) {
+    void draftsLoaded().then(handBack, () => handingBack.delete(key))
+  } else {
+    handBack()
+  }
 }
 
 function finishReturning(entry: StructuredAgentSessionOutboxEntry): void {

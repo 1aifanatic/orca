@@ -100,10 +100,39 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers()
+  vi.restoreAllMocks()
 })
 
+/** The draft journal can't take an addition (localStorage full): the addition is not durable at
+ *  once, so the hand-back waits for storage to confirm the draft. */
+function journalFull(): void {
+  const setItem = localStorage.setItem.bind(localStorage)
+  vi.spyOn(localStorage, 'setItem').mockImplementation((key: string, value: string) => {
+    if (key === 'orca:nativeChatComposerDraftJournal:v1') {
+      throw new DOMException('full', 'QuotaExceededError')
+    }
+    setItem(key, value)
+  })
+}
+
 describe('a message handed back to its draft', () => {
-  it('stays returning until storage saves the draft, then leaves and ends', async () => {
+  it('leaves at once when its addition is journaled, and a crash before storage commits loses nothing', async () => {
+    const crashed = await reload(neverCommitting())
+    const endings = endingsOf(crashed)
+    withdraw(crashed, message())
+
+    // Durable at once: the addition is journaled, so the copy goes and the ending fires.
+    expect(crashed.outbox.readOutbox(SESSION)).toEqual([])
+    expect(endings).toEqual(['returned'])
+    expect(storage.drafts.get(SCOPE)).toBeUndefined()
+
+    // The run ends before storage commits: the next load replays the journal.
+    const next = await reload()
+    expect(next.drafts.readNativeChatDraftCache(SCOPE)).toBe('withdrawn message')
+  })
+
+  it('with the journal full, stays returning until storage saves the draft, then leaves and ends', async () => {
+    journalFull()
     const modules = await reload()
     const endings = endingsOf(modules)
     withdraw(modules, message())
@@ -112,13 +141,13 @@ describe('a message handed back to its draft', () => {
       { clientMessageId: 'withdrawn-1', returning: { ending: 'returned' } }
     ])
     expect(endings).toEqual([])
-    await settled(modules)
-    expect(modules.outbox.readOutbox(SESSION)).toEqual([])
+    await vi.waitFor(() => expect(modules.outbox.readOutbox(SESSION)).toEqual([]))
     expect(endings).toEqual(['returned'])
     expect(storage.drafts.get(SCOPE)).toMatchObject({ text: 'withdrawn message' })
   })
 
   it('survives a crash before the draft is saved: after a reload the text is in the draft once', async () => {
+    journalFull()
     const crashed = await reload(neverCommitting())
     withdraw(crashed, message())
     await Promise.resolve()
@@ -128,6 +157,7 @@ describe('a message handed back to its draft', () => {
       { returning: { ending: 'returned' } }
     ])
 
+    vi.restoreAllMocks()
     const next = await reload()
     const endings = endingsOf(next)
     next.returning.resumeReturningStructuredAgentSessionEntries()
@@ -153,6 +183,7 @@ describe('a message handed back to its draft', () => {
   })
 
   it('is never sent again and holds nothing up while it returns', async () => {
+    journalFull()
     const modules = await reload(neverCommitting())
     withdraw(modules, message({ state: 'unconfirmed', lastAttemptAt: 2 }))
     const later = message({ clientMessageId: 'later', carriedNoteKeys: undefined })
@@ -190,6 +221,7 @@ describe('a message handed back to its draft', () => {
   })
 
   it('stays returning while storage refuses the draft, and leaves once a later load saves it', async () => {
+    journalFull()
     storage.refuseWrites = true
     const refused = await reload()
     const endings = endingsOf(refused)
@@ -203,6 +235,7 @@ describe('a message handed back to its draft', () => {
     expect(endings).toEqual([])
 
     storage.refuseWrites = false
+    vi.restoreAllMocks()
     const next = await reload()
     next.returning.resumeReturningStructuredAgentSessionEntries()
     await settled(next)
@@ -213,6 +246,7 @@ describe('a message handed back to its draft', () => {
   // A later save of that draft confirms the user has the text (sent or edited), so the copy goes in
   // this run: the next start never brings back what the user already sent or changed.
   it('leaves in this run once a later save of the draft lands: the user sent the returned text', async () => {
+    journalFull()
     storage.refuseWrites = true
     const run = await reload()
     withdraw(run, message())
@@ -232,6 +266,7 @@ describe('a message handed back to its draft', () => {
   })
 
   it('leaves in this run once a later save lands: the user edited the returned text', async () => {
+    journalFull()
     storage.refuseWrites = true
     const run = await reload()
     withdraw(run, message())
@@ -248,5 +283,37 @@ describe('a message handed back to its draft', () => {
     next.returning.resumeReturningStructuredAgentSessionEntries()
     await settled(next)
     expect(next.drafts.readNativeChatDraftCache(SCOPE)).toBe('withdrawn message, edited')
+  })
+
+  // A crash between a hand-back's mark and its draft leaves it for the next start, which may run it
+  // before that start's load lands: it waits for the load, so it reads the saved draft.
+  it('resumed before the load lands, gives the text back once', async () => {
+    storage.drafts.set(SCOPE, { text: 'typed\n\nwithdrawn message', images: [], savedAt: 1 })
+    localStorage.setItem(
+      `orca:desktopStructuredAgentSessionOutbox:v1:${SESSION}`,
+      JSON.stringify([message({ returning: { ending: 'returned' } })])
+    )
+    let land: () => void = () => {}
+    const slow = {
+      ...storage,
+      loadAll: () => {
+        const snapshot = new Map(storage.drafts)
+        return new Promise<ReadonlyMap<string, unknown>>((resolve) => {
+          land = () => resolve(snapshot)
+        })
+      }
+    }
+    vi.resetModules()
+    const storageModule = await import('./native-chat-composer-draft-storage')
+    storageModule.setNativeChatComposerDraftStorageForTests(slow)
+    const returning = await import('./structured-agent-session-outbox-returning')
+    const outbox = await import('./structured-agent-session-outbox-storage')
+    const drafts = await import('./native-chat-draft-cache')
+    const store = await import('./native-chat-composer-draft-store')
+    void store.hydrateNativeChatComposerDrafts()
+    returning.resumeReturningStructuredAgentSessionEntries()
+    land()
+    await vi.waitFor(() => expect(outbox.readOutbox(SESSION)).toEqual([]))
+    expect(drafts.readNativeChatDraftCache(SCOPE)).toBe('typed\n\nwithdrawn message')
   })
 })
