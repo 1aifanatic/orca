@@ -93,6 +93,18 @@ describe('text-entry keybinding context', () => {
     ).toBe(false)
   })
 
+  it.each(platformCases)('keeps a remapped copy chord with the field on %s', (platform, mac) => {
+    const input = chord(mac ? 'c' : '\u0441', 'KeyC', { meta: mac, control: !mac })
+    const bindings = { 'sidebar.left.toggle': ['Mod+C'] }
+    expect(keybindingMatchesAction('sidebar.left.toggle', input, platform, bindings)).toBe(true)
+    expect(
+      keybindingMatchesAction('sidebar.left.toggle', input, platform, bindings, {
+        context: 'text-entry',
+        textEntryClaim: SINGLE_LINE
+      })
+    ).toBe(false)
+  })
+
   it('leaves app, terminal and browser contexts untouched', () => {
     const modP = chord('p', 'KeyP', { meta: true })
 

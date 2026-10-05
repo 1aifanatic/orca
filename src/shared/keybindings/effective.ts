@@ -98,11 +98,7 @@ export function isKeybindingPotentialTerminalConflict(definition: KeybindingDefi
   return !isKeybindingAllowedInTerminal(definition)
 }
 
-/**
- * Whether an action may fire while the caret sits in a text surface. Only global
- * actions are candidates: every other scope belongs to a surface the caret is not
- * in, and the tab scope already reaches text fields through its own listener.
- */
+// Tab shortcuts already have a separate listener; only global actions pass here.
 function keybindingIsActiveInTextEntry(
   definition: KeybindingDefinition,
   options: KeybindingMatchOptions,

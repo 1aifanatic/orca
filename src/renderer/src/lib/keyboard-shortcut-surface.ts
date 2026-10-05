@@ -1,14 +1,6 @@
 import type { KeybindingContext, TextEntryClaim } from '../../../shared/keybindings'
 import { isEditableTarget } from './editable-target'
 
-/**
- * What the focused element means for shortcut dispatch.
- *
- * `blocked` is the default for any editable element: app shortcuts stay suppressed
- * there exactly as before. A surface opts out of that by declaring
- * `data-keyboard-surface`, which states which gestures it actually owns and lets
- * everything else through.
- */
 export type KeyboardShortcutSurface =
   | { kind: 'app' }
   | { kind: 'terminal' }
@@ -17,14 +9,10 @@ export type KeyboardShortcutSurface =
 
 export const KEYBOARD_SURFACE_ATTRIBUTE = 'data-keyboard-surface'
 
-const DECLARED_CLAIMS: Record<string, TextEntryClaim> = {
-  // A single line has no vertical caret movement and no formatting of its own.
-  'text-field': { verticalCaret: false, richTextFormatting: false },
-  'text-editor': { verticalCaret: true, richTextFormatting: false },
-  'rich-text': { verticalCaret: true, richTextFormatting: true }
-}
+const DECLARED_CLAIMS = new Map<string, TextEntryClaim>([
+  ['text-field', { verticalCaret: false, richTextFormatting: false }]
+])
 
-/** Input types whose arrow keys step a value instead of moving a caret. */
 const VERTICAL_ARROW_INPUT_TYPES = new Set([
   'number',
   'range',
@@ -35,10 +23,7 @@ const VERTICAL_ARROW_INPUT_TYPES = new Set([
   'week'
 ])
 
-/**
- * What the element itself owns regardless of the region it sits in, so a declared
- * region can never hand away a gesture the focused control actually needs.
- */
+// A region cannot hand away editing keys its nested control needs.
 function inherentTextEntryClaim(target: HTMLElement): TextEntryClaim {
   if (target.isContentEditable) {
     return { verticalCaret: true, richTextFormatting: true }
@@ -63,8 +48,7 @@ export function resolveKeyboardShortcutSurface(
   if (!(target instanceof HTMLElement)) {
     return APP_SURFACE
   }
-  // Checked before editability because xterm's helper textarea is an input element
-  // that must keep receiving app shortcuts.
+  // xterm's helper textarea retains terminal shortcut policy.
   if (target.classList.contains('xterm-helper-textarea')) {
     return TERMINAL_SURFACE
   }
@@ -73,7 +57,7 @@ export function resolveKeyboardShortcutSurface(
   }
   const declared = target.closest(`[${KEYBOARD_SURFACE_ATTRIBUTE}]`)
   const claim = declared
-    ? DECLARED_CLAIMS[declared.getAttribute(KEYBOARD_SURFACE_ATTRIBUTE) ?? '']
+    ? DECLARED_CLAIMS.get(declared.getAttribute(KEYBOARD_SURFACE_ATTRIBUTE) ?? '')
     : undefined
   if (!claim) {
     return BLOCKED_SURFACE

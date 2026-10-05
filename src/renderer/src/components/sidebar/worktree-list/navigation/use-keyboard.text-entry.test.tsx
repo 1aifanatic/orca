@@ -3,10 +3,11 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Virtualizer } from '@tanstack/react-virtual'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import type { HostSectionRow } from '../../host-section-rows'
 import type { RenderRow } from '../listing/render-row'
 import { getShortcutPlatform } from '@/lib/shortcut-platform'
+import { repo, worktree } from '../../worktree-list-groups-test-fixtures'
 
 const activateAndRevealWorktree = vi.fn()
 
@@ -24,26 +25,23 @@ const { useWorktreeListKeyboardNavigation } = await import('./use-keyboard')
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 function localRow(id: string): HostSectionRow {
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: cycling reads only worktree.id off a row; a literal Worktree/Repo would pin ~50 fields this behavior never touches.
   return {
     type: 'item',
     rowKey: `row:${id}`,
     sectionKey: 'repo:repo-1',
-    worktree: { id, repoId: 'repo-1' },
-    repo: { id: 'repo-1', path: '/repo-1', displayName: 'Repo 1' },
+    worktree: { ...worktree, id, repoId: repo.id },
+    repo,
     depth: 0,
     groupDepth: 0,
     lineageTrail: [],
     isLastLineageChild: false,
     lineageChildCount: 0
-  } as unknown as HostSectionRow
+  }
 }
 
 const rows: HostSectionRow[] = [localRow('a'), localRow('b'), localRow('c')]
 // Empty on purpose: the reveal lookup then returns -1, so the virtualizer is never called.
 const renderRows: RenderRow[] = []
-// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: unreachable while renderRows is empty; the hook calls scrollToIndex only for a found row index.
-const virtualizer = {} as Virtualizer<HTMLDivElement, HTMLDivElement>
 
 let container: HTMLDivElement
 let root: Root
@@ -67,6 +65,11 @@ function pressNextWorktreeOn(target: Element): void {
 
 function renderProbe(): void {
   function Probe(): null {
+    const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
+      count: 0,
+      getScrollElement: () => container,
+      estimateSize: () => 30
+    })
     useWorktreeListKeyboardNavigation({
       rows,
       renderRows,
@@ -110,8 +113,6 @@ afterEach(() => {
 
 describe('worktree cycling while a text surface holds focus', () => {
   it('cycles from a one-line field that declares it owns no vertical caret', () => {
-    // The search box: Cmd/Ctrl+Shift+Arrow has no meaning on a single line, so the
-    // app action stays reachable without tabbing out of the field first.
     const input = mountFocusTarget(
       '<div data-keyboard-surface="text-field"><input type="text" /></div>',
       'input'
@@ -119,7 +120,10 @@ describe('worktree cycling while a text surface holds focus', () => {
 
     pressNextWorktreeOn(input)
 
-    expect(activateAndRevealWorktree).toHaveBeenCalledWith('c', {})
+    expect(activateAndRevealWorktree).toHaveBeenCalledWith('c', {
+      navigationIntent: 'user-open',
+      revealInSidebar: false
+    })
   })
 
   it('leaves an undeclared text field suppressed', () => {
@@ -146,6 +150,9 @@ describe('worktree cycling while a text surface holds focus', () => {
 
     pressNextWorktreeOn(button)
 
-    expect(activateAndRevealWorktree).toHaveBeenCalledWith('c', {})
+    expect(activateAndRevealWorktree).toHaveBeenCalledWith('c', {
+      navigationIntent: 'user-open',
+      revealInSidebar: false
+    })
   })
 })

@@ -89,11 +89,18 @@ describe('resolveKeyboardShortcutSurface', () => {
     ).toEqual({ verticalCaret: true, richTextFormatting: true })
   })
 
-  it('ignores an unknown surface value rather than guessing', () => {
-    const host = mount(`<div ${KEYBOARD_SURFACE_ATTRIBUTE}="nonsense"><input type="text" /></div>`)
+  it.each(['nonsense', 'constructor', 'toString', '__proto__', 'text-editor', 'rich-text'])(
+    'blocks unknown surface %s',
+    (value) => {
+      const host = mount(
+        `<div ${KEYBOARD_SURFACE_ATTRIBUTE}="${value}"><input type="text" /></div>`
+      )
 
-    expect(resolveKeyboardShortcutSurface(host.querySelector('input'))).toEqual({ kind: 'blocked' })
-  })
+      expect(resolveKeyboardShortcutSurface(host.querySelector('input'))).toEqual({
+        kind: 'blocked'
+      })
+    }
+  )
 
   it('maps surfaces onto keybinding contexts', () => {
     expect(keybindingContextForSurface({ kind: 'app' })).toBe('app')

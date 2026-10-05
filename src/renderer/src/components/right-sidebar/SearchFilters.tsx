@@ -19,7 +19,6 @@ export function SearchFilters({
   excludeInputRef
 }: SearchFiltersProps): React.JSX.Element {
   return (
-    // Matches the query row: one-line glob fields keep global shortcuts reachable.
     <div className="flex flex-col gap-1" data-keyboard-surface="text-field">
       <label className="flex flex-col gap-0.5">
         <span className="text-[10px] uppercase tracking-wide text-muted-foreground">

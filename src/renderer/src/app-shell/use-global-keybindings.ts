@@ -193,8 +193,7 @@ export function useGlobalKeybindings(args: {
         return
       }
 
-      // Skip editable surfaces so TipTap's Cmd+B bold works; this renderer-side fallback covers the blur→press IPC race (docs/markdown-cmd-b-bold-design.md).
-      // A surface that declares what it owns is judged per chord in the keybinding gate instead.
+      // Undeclared editors retain shortcut ownership (docs/markdown-cmd-b-bold-design.md).
       if (surface.kind === 'blocked') {
         return
       }
