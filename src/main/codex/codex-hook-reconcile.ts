@@ -249,8 +249,9 @@ async function askCodexForHookHashes(
 }
 
 /**
- * One read-only `hooks/list` against ~/.codex after a write: 'trusted' when
- * Codex lists every entry Orca approved as trusted and enabled.
+ * One read-only `hooks/list` against ~/.codex after a write. 'rejected' only
+ * on Codex listing Orca's own entry at an approved key as not trusted; an
+ * entry a concurrent edit moved or removed proves nothing either way.
  */
 async function verifyRealHomeCodexHook(
   codexPath: string,
@@ -263,12 +264,16 @@ async function verifyRealHomeCodexHook(
     const byKey = new Map(
       listings.map((listing) => [normalizeHookTrustKeyForLookup(listing.key), listing])
     )
-    return approvals.every((entry) => {
+    const listed = approvals.map((entry) => {
       const listing = byKey.get(normalizeHookTrustKeyForLookup(computeTrustKey(entry)))
-      return listing?.trustStatus === 'trusted' && listing.enabled !== false
+      return listing?.command === entry.command ? listing : null
     })
+    if (listed.some((listing) => listing && listing.trustStatus !== 'trusted')) {
+      return 'rejected'
+    }
+    return listed.every((listing) => listing?.enabled !== false && listing !== null)
       ? 'trusted'
-      : 'rejected'
+      : 'unverified'
   } catch (error) {
     console.warn('[codex-hook-reconcile] could not verify Orca entries with Codex:', error)
     return 'unverified'
