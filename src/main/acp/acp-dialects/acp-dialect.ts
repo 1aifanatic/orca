@@ -14,6 +14,8 @@ export type AcpBackgroundTaskUpdate = Pick<NativeChatBackgroundTaskBlock, 'taskI
   Partial<Omit<NativeChatBackgroundTaskBlock, 'type' | 'taskId' | 'state'>> & {
     /** Used only until a provider description is known. */
     fallbackLabel?: string
+    /** Used only until a frame names the task's kind. */
+    fallbackKind?: NativeChatBackgroundTaskBlock['kind']
   }
 
 export type AcpDialectNotification =
@@ -24,7 +26,9 @@ export type AcpDialectNotification =
       replay?: boolean
       at?: number
       started?: boolean
-      end?: { stopReason: string; durationMs?: number }
+      end?: { stopReason: string; durationMs?: number; failureDetail?: string }
+      /** The provider's own words for why `turn` failed, sent apart from its end. */
+      failureDetail?: string
       usage?: AgentSessionContextUsage
       backgroundTasks?: AcpBackgroundTaskUpdate[]
     }
@@ -40,6 +44,8 @@ export type AcpDialect = {
   notification?(method: string, params: unknown, at: number): AcpDialectNotification | undefined
   contextWindow?(models: unknown): number | undefined
   request?(method: string, params: unknown): AcpRequestPresentation | undefined
+  /** The provider's words in a `session/prompt` error answer, when its message is generic. */
+  promptErrorDetail?(error: unknown): string | undefined
 }
 
 export const GENERIC_ACP_DIALECT: AcpDialect = {}

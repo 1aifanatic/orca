@@ -11,6 +11,8 @@ export type AcpPromptTurn = {
 /** An injected identity is known before any provider output arrives. */
 export class AcpPromptTurns {
   current?: AcpPromptTurn
+  /** The last prompt that ended, so its answer can still add the failure reason the end lacked. */
+  last?: AcpPromptTurn
 
   constructor(
     private readonly sessionId: string,
@@ -24,6 +26,11 @@ export class AcpPromptTurns {
     const turn = `prompt:${clientMessageId}`
     this.current = { clientMessageId, turn, requestedAt: at, opened: false }
     return { promptId: turn, events: this.injected ? [] : this.start(turn, at) }
+  }
+
+  finish(): void {
+    this.last = this.current
+    this.current = undefined
   }
 
   start(turn: string, at: number): ProviderTimelineEvent[] {

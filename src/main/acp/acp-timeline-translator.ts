@@ -1,31 +1,28 @@
 import { z } from 'zod'
 import { BoundedMap } from '../../shared/bounded-map'
 import type { ProviderTimelineEvent } from '../native-chat/agent-session-timeline/provider-timeline-event'
-import {
-  acpNotificationEnvelopeSchema,
-  AcpContextTimeline,
-  acpWindowUsage
-} from './acp-context-usage'
+import { acpNotificationEnvelopeSchema, AcpContextTimeline } from './acp-context-usage'
 import { AcpBackgroundTaskTimeline } from './acp-background-task-timeline'
 import {
   GENERIC_ACP_DIALECT,
   type AcpDialect,
-  type AcpDialectNotification,
   type AcpRequestPresentation
 } from './acp-dialects/acp-dialect'
 import { AcpHistoryAdoption } from './acp-history-adoption'
 import { acpTurnEnd, AcpPromptTurns } from './acp-prompt-turns'
 import type { AcpSessionEvent } from './acp-session-runtime'
 import { translateAcpRequest } from './acp-timeline-requests'
-export { acpTurnEnd } from './acp-prompt-turns'
 import { acpSessionUpdate } from './acp-session-update'
 import { AcpToolTimeline } from './acp-tool-timeline'
+import { AcpTurnFailures, acpPromptErrorDetail, acpStopReasonFailed } from './acp-turn-failures'
 import { AcpTurnMessages } from './acp-turn-messages'
 import {
   SessionNotificationSchema,
   type PromptResponse,
   type SessionNotification
 } from './generated/acp-protocol.generated'
+
+export { acpTurnEnd } from './acp-prompt-turns'
 
 const requestSessionSchema = z.object({ sessionId: z.string() })
 const SUBSTANTIVE_UPDATES = [
@@ -55,12 +52,14 @@ export class AcpTimelineTranslator {
   private readonly backgroundTasks: AcpBackgroundTaskTimeline
   private readonly messages = new AcpTurnMessages()
   private readonly started = new BoundedMap<string, true>({ maxEntries: 128 })
+  private readonly failures: AcpTurnFailures
   private load?: { adoption?: AcpHistoryAdoption }
   private readonly context = new AcpContextTimeline()
   private activeTurn?: string
 
   constructor(private readonly options: AcpTimelineTranslatorOptions) {
     this.dialect = options.dialect ?? GENERIC_ACP_DIALECT
+    this.failures = new AcpTurnFailures(options.sessionId)
     this.backgroundTasks = new AcpBackgroundTaskTimeline((callId) => this.tools.turn(callId))
     this.prompts = new AcpPromptTurns(
       options.sessionId,
@@ -87,23 +86,30 @@ export class AcpTimelineTranslator {
     return this.finishPrompt(clientMessageId, result.stopReason, at)
   }
 
-  promptFailed(clientMessageId: string, _error: unknown, at: number): ProviderTimelineEvent[] {
-    return this.finishPrompt(clientMessageId, 'error', at)
+  promptFailed(clientMessageId: string, error: unknown, at: number): ProviderTimelineEvent[] {
+    const detail = acpPromptErrorDetail(this.dialect, error)
+    const ended = this.prompts.last
+    if (this.prompts.current?.clientMessageId !== clientMessageId) {
+      // The provider already ended this turn; its answer may carry the only copy of the reason.
+      return ended?.clientMessageId === clientMessageId && this.failures.has(ended.turn)
+        ? this.failures.row(ended.turn, detail)
+        : []
+    }
+    return this.finishPrompt(clientMessageId, 'error', at, detail)
   }
 
   private finishPrompt(
     clientMessageId: string,
     stopReason: string,
-    at: number
+    at: number,
+    failureDetail?: string
   ): ProviderTimelineEvent[] {
     const prompt = this.prompts.current
     if (prompt?.clientMessageId !== clientMessageId) {
       return []
     }
-    const events = this.prompts.start(prompt.turn, at)
-    events.push(acpTurnEnd(prompt.turn, stopReason, at, prompt.durationMs))
-    this.end(prompt.turn)
-    this.prompts.current = undefined
+    const events = this.start(prompt.turn, at)
+    events.push(...this.endTurn(prompt.turn, stopReason, at, prompt.durationMs, failureDetail))
     return events
   }
 
@@ -145,11 +151,10 @@ export class AcpTimelineTranslator {
     if (session.success && session.data.sessionId !== this.options.sessionId) {
       return []
     }
-    const interpreted = this.dialect.notification?.(method, params, at)
-    if (interpreted?.disposition === 'ignore') {
+    const extension = this.dialect.notification?.(method, params, at)
+    if (extension?.disposition === 'ignore') {
       return []
     }
-    const extension = interpreted
     if (method !== 'session/update' && !extension) {
       return []
     }
@@ -162,7 +167,7 @@ export class AcpTimelineTranslator {
     const history = markedReplay || (extension?.replay === undefined && this.load !== undefined)
     const adoption = history ? this.load?.adoption : undefined
     if (history && !adoption) {
-      return this.historyUsage(update, extension, at)
+      return this.context.history(update, extension?.usage, at, { thread: this.options.sessionId })
     }
     if (adoption && update?.sessionUpdate === 'user_message_chunk') {
       return this.historyUser(adoption, update, at)
@@ -193,18 +198,18 @@ export class AcpTimelineTranslator {
     if (extension?.usage) {
       events.push(...this.context.update(extension.usage, join))
     }
-    if (extension?.end && turn) {
+    if (extension?.failureDetail && turn) {
+      events.push(...this.failures.row(turn, extension.failureDetail))
+    }
+    const end = extension?.end
+    if (end && turn) {
       if (
         this.prompts.current?.turn === turn &&
-        ['end_turn', 'cancelled'].includes(extension.end.stopReason)
+        ['end_turn', 'cancelled'].includes(end.stopReason)
       ) {
-        this.prompts.current.durationMs = extension.end.durationMs
+        this.prompts.current.durationMs = end.durationMs
       } else {
-        events.push(acpTurnEnd(turn, extension.end.stopReason, at, extension.end.durationMs))
-        this.end(turn)
-        if (this.prompts.current?.turn === turn) {
-          this.prompts.current = undefined
-        }
+        events.push(...this.endTurn(turn, end.stopReason, at, end.durationMs, end.failureDetail))
       }
       return events
     }
@@ -243,16 +248,19 @@ export class AcpTimelineTranslator {
     })
   }
 
-  /** History that is not adopted is dropped except what it says about the context window. */
-  private historyUsage(
-    update: SessionNotification['update'] | undefined,
-    extension: Extract<AcpDialectNotification, { disposition: 'map' }> | undefined,
-    at: number
+  /** A failed end writes the reason row before the end, so it joins the turn while open. */
+  private endTurn(
+    turn: string,
+    stopReason: string,
+    at: number,
+    durationMs: number | undefined,
+    failureDetail: string | undefined
   ): ProviderTimelineEvent[] {
-    const join = { thread: this.options.sessionId }
-    const events = extension?.usage ? this.context.update(extension.usage, join) : []
-    if (update?.sessionUpdate === 'usage_update') {
-      events.push({ type: 'context.usage', usage: acpWindowUsage(update, at), join })
+    const events = acpStopReasonFailed(stopReason) ? this.failures.row(turn, failureDetail) : []
+    events.push(acpTurnEnd(turn, stopReason, at, durationMs))
+    this.end(turn)
+    if (this.prompts.current?.turn === turn) {
+      this.prompts.finish()
     }
     return events
   }
@@ -298,6 +306,8 @@ export class AcpTimelineTranslator {
   private start(turn: string, at: number): ProviderTimelineEvent[] {
     if (turn === this.prompts.current?.turn) {
       const events = this.prompts.start(turn, at)
+      // Marked so a late frame for this prompt after its end neither reopens nor retargets it.
+      this.started.set(turn, true)
       this.activeTurn = turn
       return events
     }

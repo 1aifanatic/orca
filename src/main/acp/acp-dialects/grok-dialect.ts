@@ -14,8 +14,27 @@ const completionSchema = z.looseObject({
   sessionUpdate: z.literal('turn_completed'),
   prompt_id: z.string(),
   stop_reason: z.string(),
+  agent_result: z.string().nullish(),
   elapsed_ms: tokenCount.optional()
 })
+const retrySchema = z.looseObject({
+  sessionUpdate: z.literal('retry_state'),
+  type: z.string(),
+  message: z.string().optional()
+})
+const promptCompleteSchema = z.looseObject({
+  sessionId: z.string(),
+  promptId: z.string(),
+  stopReason: z.string(),
+  agentResult: z.string().nullish()
+})
+const promptErrorSchema = z.looseObject({ data: z.looseObject({ message: z.string() }) })
+/** Grok writes its result text as the failure's reason only for these ends. */
+const FAILED_STOP_REASONS = ['error', 'rate_limit']
+
+function failureDetail(stopReason: string, result: string | null | undefined): string | undefined {
+  return FAILED_STOP_REASONS.includes(stopReason) && result?.trim() ? result : undefined
+}
 const responseSchema = z.object({
   sessionUpdate: z.literal('response_completed'),
   usage: z.object({
@@ -50,6 +69,17 @@ function contextWindow(models: unknown): number | undefined {
   )
 }
 
+function completionEnd(
+  completion: z.infer<typeof completionSchema>
+): NonNullable<Extract<AcpDialectNotification, { disposition: 'map' }>['end']> {
+  const detail = failureDetail(completion.stop_reason, completion.agent_result)
+  return {
+    stopReason: completion.stop_reason,
+    durationMs: completion.elapsed_ms,
+    ...(detail ? { failureDetail: detail } : {})
+  }
+}
+
 function notification(
   method: string,
   params: unknown,
@@ -65,6 +95,16 @@ function notification(
     return tokens === undefined
       ? { disposition: 'ignore' }
       : { disposition: 'map', usage: { window: { tokens, capturedAt: at } } }
+  }
+  if (canonical === 'x.ai/session/prompt_complete') {
+    // A copy of the turn's end; only its failure reason is read, in case the end carried none.
+    const parsed = promptCompleteSchema.safeParse(params)
+    const detail = parsed.success
+      ? failureDetail(parsed.data.stopReason, parsed.data.agentResult)
+      : undefined
+    return parsed.success && detail
+      ? { disposition: 'map', turn: parsed.data.promptId, failureDetail: detail }
+      : { disposition: 'ignore' }
   }
   if (canonical === 'x.ai/queue/changed') {
     const parsed = queueSchema.safeParse(params)
@@ -86,7 +126,13 @@ function notification(
   const meta = turnMetaSchema.safeParse(envelope._meta)
   const completion = completionSchema.safeParse(envelope.update)
   const response = responseSchema.safeParse(envelope.update)
-  if (method !== 'session/update' && !completion.success && !response.success) {
+  // Only a retry Grok gave up on is read; it names no turn, so it joins the one running.
+  const retry = retrySchema.safeParse(envelope.update)
+  const retryFailure =
+    retry.success && retry.data.type === 'failed' && retry.data.message?.trim()
+      ? retry.data.message
+      : undefined
+  if (method !== 'session/update' && !completion.success && !response.success && !retryFailure) {
     return { disposition: 'ignore' }
   }
   const turn = completion.success
@@ -99,11 +145,8 @@ function notification(
     ...(turn === undefined ? {} : { turn }),
     ...(meta.success && meta.data.turnStartMs !== undefined ? { at: meta.data.turnStartMs } : {}),
     replay: envelope._meta?.isReplay === true,
-    ...(completion.success
-      ? {
-          end: { stopReason: completion.data.stop_reason, durationMs: completion.data.elapsed_ms }
-        }
-      : {}),
+    ...(completion.success ? { end: completionEnd(completion.data) } : {}),
+    ...(retryFailure ? { failureDetail: retryFailure } : {}),
     ...(response.success
       ? {
           usage: {
@@ -132,5 +175,6 @@ export const GROK_ACP_DIALECT: AcpDialect = {
   request: grokRequest,
   toolBackgroundTasks: grokToolBackgroundTasks,
   notification,
-  contextWindow
+  contextWindow,
+  promptErrorDetail: (error) => promptErrorSchema.safeParse(error).data?.data.message
 }

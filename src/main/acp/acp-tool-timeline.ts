@@ -77,11 +77,13 @@ type ToolSnapshot = { body: AgentJournalToolCallItem; turn?: string }
 /** Holds the snapshots that fill ACP's partial tool updates, settled ones evicted first. Its bound
  *  is the assembler's open budget, which counts each running tool at no fewer bytes, so a running
  *  tool is evicted only after the assembler refused one past that budget, which ends the session.
- *  An update for an evicted settled tool is dropped by the assembler as settled. */
+ *  An update for an evicted settled tool is dropped by the assembler as settled.
+ *  A tool's turn is held once: on its snapshot while that lives, then in `turns`. */
 export class AcpToolTimeline {
   private readonly tools = new Map<string, ToolSnapshot>()
   private bytes = 0
-  /** Outlives the turn, so a later task or request still lands beside the tool that started it. */
+  /** Turns of tools whose snapshot is gone, so a later task or request still lands beside the tool
+   *  that started it. */
   private readonly turns = new BoundedMap<string, string>({
     maxEntries: MAX_PROVIDER_TIMELINE_OPEN_ENTRIES
   })
@@ -122,14 +124,9 @@ export class AcpToolTimeline {
           : {}
         : { output: boundPayload(output, DEFAULT_JOURNAL_PAYLOAD_LIMITS) })
     }
-    const snapshot: ToolSnapshot = {
-      body,
-      ...(join.turn === undefined ? {} : { turn: join.turn })
-    }
-    this.remember(update.toolCallId, snapshot)
-    if (join.turn !== undefined) {
-      this.turns.set(update.toolCallId, join.turn)
-    }
+    const turn = join.turn ?? this.turn(update.toolCallId)
+    this.turns.delete(update.toolCallId)
+    this.remember(update.toolCallId, { body, ...(turn === undefined ? {} : { turn }) })
     const events: ProviderTimelineEvent[] = [
       {
         type: state === 'running' ? (previous ? 'item.update' : 'item.open') : 'item.close',
@@ -173,8 +170,15 @@ export class AcpToolTimeline {
     for (const [key, snapshot] of this.tools) {
       if (snapshot.turn === turn) {
         this.bytes -= this.size(key, snapshot)
-        this.tools.delete(key)
+        this.retire(key, snapshot)
       }
+    }
+  }
+
+  private retire(key: string, snapshot: ToolSnapshot): void {
+    this.tools.delete(key)
+    if (snapshot.turn !== undefined) {
+      this.turns.set(key, snapshot.turn)
     }
   }
 
@@ -191,8 +195,8 @@ export class AcpToolTimeline {
     if (this.size(key, snapshot) > MAX_PROVIDER_TIMELINE_OPEN_BYTES) {
       if (previous) {
         this.bytes -= this.size(key, previous)
-        this.tools.delete(key)
       }
+      this.retire(key, snapshot)
       return
     }
     let bytes = this.bytes - (previous ? this.size(key, previous) : 0) + this.size(key, snapshot)
@@ -219,7 +223,10 @@ export class AcpToolTimeline {
       }
     }
     for (const candidate of evicted) {
-      this.tools.delete(candidate)
+      const stored = this.tools.get(candidate)
+      if (stored) {
+        this.retire(candidate, stored)
+      }
     }
     this.tools.delete(key)
     this.tools.set(key, snapshot)

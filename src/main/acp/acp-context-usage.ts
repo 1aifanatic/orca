@@ -5,7 +5,7 @@ import type {
   ProviderTimelineJoin
 } from '../native-chat/agent-session-timeline/provider-timeline-event'
 import type { AcpDialect } from './acp-dialects/acp-dialect'
-import type { UsageUpdate } from './generated/acp-protocol.generated'
+import type { SessionUpdate, UsageUpdate } from './generated/acp-protocol.generated'
 
 export class AcpContextTimeline {
   private window?: { tokens: number; capturedAt: number }
@@ -29,6 +29,20 @@ export class AcpContextTimeline {
         join
       }
     ]
+  }
+
+  /** History that is not adopted is dropped except what it says about the context window. */
+  history(
+    update: SessionUpdate | undefined,
+    usage: AgentSessionContextUsage | undefined,
+    at: number,
+    join: ProviderTimelineJoin
+  ): ProviderTimelineEvent[] {
+    const events = usage ? this.update(usage, join) : []
+    if (update?.sessionUpdate === 'usage_update') {
+      events.push({ type: 'context.usage', usage: acpWindowUsage(update, at), join })
+    }
+    return events
   }
 }
 
