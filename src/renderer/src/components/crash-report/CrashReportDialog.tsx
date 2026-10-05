@@ -10,6 +10,7 @@ import {
   usePromptBlockingDialog
 } from '@/components/automatic-prompts/use-automatic-prompt-turn'
 import { AutomaticPromptDialogScope } from '@/lib/dialog-presence'
+import { useAppStore } from '@/store'
 import type { CrashReportRecord } from '../../../../shared/crash-reporting'
 
 const CrashReportDialogSurface = lazy(() =>
@@ -21,8 +22,18 @@ const CrashReportDialogSurface = lazy(() =>
 /** A report the app raises by itself, waiting for its turn among the other automatic prompts. */
 type AutomaticCrashReport = {
   report: CrashReportRecord
+  /** A launch report keeps its place; error-boundary reports not yet shown give way to a newer one. */
+  origin: 'launch' | 'boundary'
   /** The launch prompt is one-shot: acknowledged once actually shown, never before. */
   acknowledgeOnShow: boolean
+}
+
+function shownAutomatically(reportId: string): boolean {
+  return useAppStore
+    .getState()
+    .automaticPromptRequests.some(
+      (request) => request.id === 'crash-report' && request.key === reportId && request.shown
+    )
 }
 
 export function CrashReportDialog(): React.JSX.Element | null {
@@ -43,13 +54,26 @@ export function CrashReportDialog(): React.JSX.Element | null {
   )
   usePromptBlockingDialog('crash-report', userOpen)
 
-  const raiseCrashReport = useCallback((report: CrashReportRecord, acknowledgeOnShow = false) => {
-    setQueue((current) =>
-      current.some((entry) => entry.report.id === report.id)
-        ? current
-        : [...current, { report, acknowledgeOnShow }]
-    )
-  }, [])
+  const raiseCrashReport = useCallback(
+    (report: CrashReportRecord, origin: AutomaticCrashReport['origin']) => {
+      setQueue((current) => {
+        if (current.some((entry) => entry.report.id === report.id)) {
+          return current
+        }
+        // One fault can trip several boundaries; like a dialog replacing its report, only the
+        // newest of those not yet seen is offered.
+        const kept =
+          origin === 'boundary'
+            ? current.filter(
+                (entry) => entry.origin === 'launch' || shownAutomatically(entry.report.id)
+              )
+            : current
+        const acknowledgeOnShow = origin === 'launch' && report.status === 'pending'
+        return [...kept, { report, origin, acknowledgeOnShow }]
+      })
+    },
+    []
+  )
 
   const loadUserCrashReport = useCallback(async (): Promise<void> => {
     setLoading(true)
@@ -57,6 +81,10 @@ export function CrashReportDialog(): React.JSX.Element | null {
       const nextReport = await window.api.crashReports.getLatestReport()
       if (mountedRef.current) {
         setUserReport(nextReport)
+        // The user is looking at it now, so it must not open again by itself afterwards.
+        if (nextReport) {
+          setQueue((current) => current.filter((entry) => entry.report.id !== nextReport.id))
+        }
       }
     } catch (error) {
       console.error('Failed to load crash report:', error)
@@ -76,7 +104,7 @@ export function CrashReportDialog(): React.JSX.Element | null {
       .getLatestPending()
       .then((pending) => {
         if (pending && mountedRef.current) {
-          raiseCrashReport(pending, pending.status === 'pending')
+          raiseCrashReport(pending, 'launch')
         }
       })
       .catch((error) => console.error('Failed to load crash report:', error))
@@ -124,13 +152,13 @@ export function CrashReportDialog(): React.JSX.Element | null {
   useEffect(() => {
     const pendingReport = takePendingReactErrorBoundaryReport()
     if (pendingReport) {
-      raiseCrashReport(pendingReport)
+      raiseCrashReport(pendingReport, 'boundary')
     }
 
     const onReactErrorBoundaryReport = (): void => {
       const nextReport = takePendingReactErrorBoundaryReport()
       if (nextReport) {
-        raiseCrashReport(nextReport)
+        raiseCrashReport(nextReport, 'boundary')
       }
     }
 
@@ -149,8 +177,9 @@ export function CrashReportDialog(): React.JSX.Element | null {
   }
 
   return (
-    // Its own dialog never counts as another one it waits for.
-    <AutomaticPromptDialogScope.Provider value>
+    // Raised by itself, its own dialog never counts as another one and it steps aside under one;
+    // opened from Help it is a user dialog like any other.
+    <AutomaticPromptDialogScope automatic={!userOpen}>
       <Suspense fallback={null}>
         <CrashReportDialogSurface
           // A new report is a new dialog, so its notes and viewer state start fresh.
@@ -172,6 +201,6 @@ export function CrashReportDialog(): React.JSX.Element | null {
           onShown={userOpen ? undefined : onAutomaticShown}
         />
       </Suspense>
-    </AutomaticPromptDialogScope.Provider>
+    </AutomaticPromptDialogScope>
   )
 }

@@ -18,7 +18,6 @@ import { shouldRenderPetOverlay } from '../components/pet/pet-overlay-visibility
 import { useAppStore } from '../store'
 import type { UpdateStatus } from '../../../shared/update-status-types'
 import { useLazyModalMounts } from './use-lazy-modal-mounts'
-import { AutomaticPromptDialogScope } from '@/lib/dialog-presence'
 import { FailedFeatureTip } from '../components/feature-tips/use-app-open-feature-tip'
 import {
   selectAppRootSurfacePetEnabled,
@@ -269,10 +268,7 @@ export function AppRootSurfaces(props: {
             resetKey={activeModal === 'feature-tips'}
             fallback={renderFailedFeatureTip}
           >
-            {/* Opens by itself, so its own dialogs never count as another dialog it waits for. */}
-            <AutomaticPromptDialogScope.Provider value>
-              <FeatureTipsModal />
-            </AutomaticPromptDialogScope.Provider>
+            <FeatureTipsModal />
           </ModalBoundary>
         ) : null}
       </Suspense>

@@ -11,7 +11,7 @@ import {
   AUTOMATIC_PROMPT_MODAL_KEY,
   selectAutomaticPromptSlotSuspended
 } from '@/store/slices/ui/automatic-prompt-turns'
-import { useOtherDialogOpen } from '@/lib/dialog-presence'
+import { AutomaticPromptDialogScope } from '@/lib/dialog-presence'
 import { useAppOpenFeatureTipShown } from './use-app-open-feature-tip'
 import { CliSetupTipDialog } from './CliSetupTipDialog'
 import { CmdJPaletteTipDialog } from './CmdJPaletteTipDialog'
@@ -30,7 +30,17 @@ import { SessionSearchTipDialog } from './SessionSearchTipDialog'
 import { useSessionSearchTipSetup } from './use-session-search-tip-setup'
 import { VoiceDictationTipDialog } from './VoiceDictationTipDialog'
 
-export default function FeatureTipsModal(): JSX.Element | null {
+export default function FeatureTipsModal(): JSX.Element {
+  const automaticTip = useAppStore((s) => s.modalData[AUTOMATIC_PROMPT_MODAL_KEY] === 'feature-tip')
+  // Raised by the app, its own dialogs never count as another one and it steps aside under one.
+  return (
+    <AutomaticPromptDialogScope automatic={automaticTip}>
+      <FeatureTipDialogs />
+    </AutomaticPromptDialogScope>
+  )
+}
+
+function FeatureTipDialogs(): JSX.Element | null {
   const activeModal = useAppStore((s) => s.activeModal)
   const closeModal = useAppStore((s) => s.closeModal)
   const openSettingsPage = useAppStore((s) => s.openSettingsPage)
@@ -47,11 +57,10 @@ export default function FeatureTipsModal(): JSX.Element | null {
   const setupRequestIdRef = useRef(0)
   const [primaryBusy, setPrimaryBusy] = useState(false)
   const [skillTerminalOpen, setSkillTerminalOpen] = useState(false)
-  // Raised by the app, it steps aside while a dialog the user opened is up, then comes back.
+  // Raised by the app, it waits while another prompt holds the turn.
   const automaticTip = modalData[AUTOMATIC_PROMPT_MODAL_KEY] === 'feature-tip'
   const suspended = useAppStore(selectAutomaticPromptSlotSuspended)
-  const otherDialogOpen = useOtherDialogOpen()
-  const isOpen = activeModal === 'feature-tips' && !(automaticTip && (suspended || otherDialogOpen))
+  const isOpen = activeModal === 'feature-tips' && !(automaticTip && suspended)
   const currentTip = getFeatureTipForModal({
     cliInstalled: true,
     modalData,

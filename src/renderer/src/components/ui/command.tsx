@@ -9,6 +9,7 @@ import { Dialog as DialogPrimitive } from 'radix-ui'
 import { cn } from '@/lib/utils'
 import { handleImeOverlayEscape } from '@/lib/ime-overlay-escape'
 import { useImeTextFieldProps } from '@/lib/ime-text-field'
+import { DialogPresenceMarker } from '@/lib/dialog-presence'
 
 function Command({ className, ...props }: React.ComponentProps<typeof CommandPrimitive>) {
   return (
@@ -72,6 +73,7 @@ function CommandDialog({
           onOpenAutoFocus={onOpenAutoFocus}
           onCloseAutoFocus={onCloseAutoFocus}
         >
+          <DialogPresenceMarker />
           <DialogPrimitive.Title className="sr-only">{title}</DialogPrimitive.Title>
           <DialogPrimitive.Description className="sr-only">
             {description}

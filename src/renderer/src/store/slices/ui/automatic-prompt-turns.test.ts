@@ -9,6 +9,7 @@ import {
   selectAutomaticPromptSlotSuspended,
   selectPromptSurfaceVisible,
   selectTourBlockedByPrompts,
+  selectVisibleAutomaticPrompt,
   selectVisibleAutomaticPromptId
 } from './automatic-prompt-turns'
 
@@ -18,11 +19,16 @@ function visible(store: StoreApi<AppState>): string | null {
 
 /** What an owner does once its prompt is on screen. */
 function show(store: StoreApi<AppState>): string | null {
-  const id = selectVisibleAutomaticPromptId(store.getState())
-  if (id) {
-    store.getState().markAutomaticPromptShown(id)
+  const request = selectVisibleAutomaticPrompt(store.getState())
+  if (request) {
+    store.getState().markAutomaticPromptShown(request.id, request.key)
   }
-  return id
+  return request?.id ?? null
+}
+
+/** What the shared dialog primitive reports while any dialog other than a prompt's is rendered. */
+function setOtherDialogOnScreen(store: StoreApi<AppState>, open: boolean): void {
+  store.setState({ otherDialogOnScreen: open })
 }
 
 afterEach(() => {
@@ -72,46 +78,94 @@ describe('automatic prompt turns', () => {
     expect(visible(store)).toBe('feature-tip')
     store.getState().releaseAutomaticPrompt('feature-tip')
     expect(visible(store)).toBeNull()
-    expect(store.getState().automaticPromptShownId).toBeNull()
+    expect(store.getState().automaticPromptRequests).toEqual([])
   })
 
-  it('never delays a user modal; a prompt on screen steps aside and comes back after it', () => {
+  it('a prompt not yet shown waits for any dialog on screen', () => {
+    const store = createUIStore()
+    setOtherDialogOnScreen(store, true)
+    store.getState().requestAutomaticPrompt('native-chat-resume')
+    expect(visible(store)).toBeNull()
+    setOtherDialogOnScreen(store, false)
+    expect(visible(store)).toBe('native-chat-resume')
+  })
+
+  it('a prompt on screen keeps its turn and stays rendered under a dialog opened over it', () => {
     const store = createUIStore()
     store.getState().requestAutomaticPrompt('native-chat-resume')
     expect(show(store)).toBe('native-chat-resume')
 
-    store.getState().openModal('add-repo')
-    expect(visible(store)).toBeNull()
-    // The prompt keeps its turn while hidden, so another waiting prompt cannot take it.
+    // Hidden by its dialog scope, not unmounted, so nothing typed or in flight is lost.
+    setOtherDialogOnScreen(store, true)
+    store.getState().setPromptBlockingDialogVisible('ssh-credential:1', true)
     store.getState().requestAutomaticPrompt('crash-report')
-    store.getState().closeModal()
     expect(visible(store)).toBe('native-chat-resume')
+    setOtherDialogOnScreen(store, false)
+    store.getState().setPromptBlockingDialogVisible('ssh-credential:1', false)
+    expect(visible(store)).toBe('native-chat-resume')
+  })
+
+  it('a modal slot whose dialog never rendered holds nothing back', () => {
+    const store = createUIStore()
+    // A modal-slot dialog that failed to render: the slot is set, nothing is on screen.
+    store.getState().openModal('new-workspace-composer')
+    store.getState().requestAutomaticPrompt('crash-report')
+    expect(visible(store)).toBe('crash-report')
   })
 
   it('does not count its own modal-slot entry as a user modal', () => {
     const store = createUIStore()
     store.getState().requestAutomaticPrompt('feature-tip')
-    expect(show(store)).toBe('feature-tip')
     store.getState().openModal('feature-tips', { [AUTOMATIC_PROMPT_MODAL_KEY]: 'feature-tip' })
 
     expect(visible(store)).toBe('feature-tip')
     expect(selectAutomaticPromptSlotSuspended(store.getState())).toBe(false)
 
+    // Not on screen yet, so an SSH prompt suspends it; once shown it stays.
     store.getState().setPromptBlockingDialogVisible('ssh-credential:1', true)
     expect(selectAutomaticPromptSlotSuspended(store.getState())).toBe(true)
     store.getState().setPromptBlockingDialogVisible('ssh-credential:1', false)
+    expect(show(store)).toBe('feature-tip')
+    store.getState().setPromptBlockingDialogVisible('ssh-credential:1', true)
     expect(selectAutomaticPromptSlotSuspended(store.getState())).toBe(false)
   })
 
-  it('an SSH credential prompt shows over a visible resume offer, which comes back after', () => {
+  it("being shown belongs to the item, so an owner's next item takes a fresh turn", () => {
     const store = createUIStore()
+    store.getState().requestAutomaticPrompt('crash-report', 'a')
+    expect(show(store)).toBe('crash-report')
     store.getState().requestAutomaticPrompt('native-chat-resume')
-    expect(show(store)).toBe('native-chat-resume')
 
-    store.getState().setPromptBlockingDialogVisible('ssh-credential:1', true)
-    expect(visible(store)).toBeNull()
-    store.getState().setPromptBlockingDialogVisible('ssh-credential:1', false)
-    expect(visible(store)).toBe('native-chat-resume')
+    // The owner moves to its next item: the waiting resume offer goes before it.
+    store.getState().releaseAutomaticPrompt('crash-report', 'a')
+    store.getState().requestAutomaticPrompt('crash-report', 'b')
+    expect(selectVisibleAutomaticPrompt(store.getState())?.id).toBe('native-chat-resume')
+    // A stale mark for the next item cannot take the turn from the one whose turn it is.
+    store.getState().markAutomaticPromptShown('crash-report', 'b')
+    expect(store.getState().automaticPromptRequests.find((r) => r.key === 'b')?.shown).toBe(false)
+    expect(show(store)).toBe('native-chat-resume')
+  })
+
+  it('a mark for another item of the same owner does not mark the one whose turn it is', () => {
+    const store = createUIStore()
+    store.getState().requestAutomaticPrompt('crash-report', 'a')
+    store.getState().markAutomaticPromptShown('crash-report', 'b')
+    expect(store.getState().automaticPromptRequests).toEqual([
+      expect.objectContaining({ key: 'a', shown: false })
+    ])
+  })
+
+  it("a new key replaces the owner's last item in place, not yet shown", () => {
+    const store = createUIStore()
+    store.getState().requestAutomaticPrompt('crash-report', 'a')
+    expect(show(store)).toBe('crash-report')
+    store.getState().requestAutomaticPrompt('crash-report', 'b')
+    expect(store.getState().automaticPromptRequests).toEqual([
+      expect.objectContaining({ id: 'crash-report', key: 'b', shown: false })
+    ])
+    // Releasing an item that is no longer queued leaves the current one alone.
+    store.getState().releaseAutomaticPrompt('crash-report', 'a')
+    expect(visible(store)).toBe('crash-report')
   })
 
   it('one dialog closing does not clear another that is still open', () => {
@@ -187,18 +241,23 @@ describe('automatic prompt turns', () => {
   })
 
   describe('contextual tours', () => {
-    it('an automatic tour waits for a queued prompt and for launch discovery', () => {
+    it('an automatic tour waits for a prompt that can show and for launch discovery', () => {
       const pending = createUIStore({ launchPromptDiscoveryPending: true })
       expect(selectTourBlockedByPrompts(pending.getState(), false)).toBe(true)
+      // A tour the user asked for yields only to what is on screen.
+      expect(selectTourBlockedByPrompts(pending.getState(), true)).toBe(false)
 
       const store = createUIStore()
       expect(selectTourBlockedByPrompts(store.getState(), false)).toBe(false)
       store.getState().requestAutomaticPrompt('native-chat-resume')
-      store.getState().openModal('add-repo')
-      // Hidden behind the user's modal, the resume offer still goes before an automatic tour.
       expect(selectTourBlockedByPrompts(store.getState(), false)).toBe(true)
-      // A tour the user asked for yields only to what is on screen.
-      expect(selectTourBlockedByPrompts(store.getState(), true)).toBe(false)
+    })
+
+    it('a prompt waiting behind a user dialog does not hold back a tour inside that dialog', () => {
+      const store = createUIStore()
+      store.getState().requestAutomaticPrompt('native-chat-resume')
+      setOtherDialogOnScreen(store, true)
+      expect(selectTourBlockedByPrompts(store.getState(), false)).toBe(false)
     })
 
     it('a running tour holds the turn; a prompt asked for meanwhile opens after it', () => {
