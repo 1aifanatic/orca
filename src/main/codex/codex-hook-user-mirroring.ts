@@ -10,6 +10,7 @@ import {
   getCodexExplicitHomeHookSourcePath,
   parseTrustKey,
   writeConfigAtomically,
+  assertLoadableHookTrustConfig,
   type CodexEventLabel,
   type CodexTrustEntry
 } from './config-toml-trust'
@@ -204,6 +205,7 @@ export function applyMirroredRuntimeUserHookTrustStates(
     updated = updated.replace(pattern, `$1${enabled}`)
   }
   if (updated !== existing) {
+    assertLoadableHookTrustConfig(tomlPath, existing, updated)
     writeConfigAtomically(tomlPath, updated)
   }
 }

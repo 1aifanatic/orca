@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import type * as Os from 'node:os'
 import { join } from 'node:path'
+import { parse as parseToml } from 'smol-toml'
 import type * as InstallerUtils from '../agent-hooks/installer-utils'
 import { isCodexManagedCommand, setupCodexHookHomes } from './hook-service-test-harness'
 
@@ -35,6 +36,7 @@ import { _internals as reconcileInternals, startCodexHookReconcile } from './cod
 import {
   computeTrustKey,
   getCodexExplicitHomeHookSourcePath,
+  computeTrustedHash,
   readHookTrustEntries,
   upsertHookTrustEntries,
   type CodexEventLabel
@@ -239,5 +241,37 @@ describe('managed-home Codex hook approval', () => {
     expect(
       readHookTrustEntries(join(managedHome(), 'config.toml')).get(managedKey('stop', 0))
     ).toEqual({ trustedHash: 'sha256:codex-stop', enabled: true })
+  })
+
+  it("keeps the managed config.toml loadable when hooks are off and the user's approvals are inline", async () => {
+    const systemHome = join(homes.tmpHome, '.codex')
+    mkdirSync(systemHome, { recursive: true })
+    const userHook = { type: 'command', command: 'user-stop.sh' }
+    writeFileSync(
+      join(systemHome, 'hooks.json'),
+      JSON.stringify({ hooks: { Stop: [{ hooks: [userHook] }] } })
+    )
+    const userKey = computeTrustKey({
+      sourcePath: join(systemHome, 'hooks.json'),
+      eventLabel: 'stop',
+      groupIndex: 0,
+      handlerIndex: 0,
+      command: 'user-stop.sh'
+    })
+    const userHash = computeTrustedHash({
+      sourcePath: join(systemHome, 'hooks.json'),
+      eventLabel: 'stop',
+      groupIndex: 0,
+      handlerIndex: 0,
+      command: 'user-stop.sh'
+    })
+    writeFileSync(
+      join(systemHome, 'config.toml'),
+      `model = "m"\n[hooks]\nstate = { ${JSON.stringify(userKey)} = { trusted_hash = "${userHash}" } }\n`
+    )
+
+    await new CodexHookService().refreshRuntimeUserHooks()
+
+    expect(() => parseToml(readFileSync(join(managedHome(), 'config.toml'), 'utf-8'))).not.toThrow()
   })
 })

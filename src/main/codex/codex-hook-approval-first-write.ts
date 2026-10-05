@@ -5,7 +5,7 @@ import {
   readHookTrustBlocks,
   readHookTrustEntries,
   restoreHookTrustBlocks,
-  upsertHookTrustEntriesIfLoadable,
+  upsertHookTrustEntries,
   type CodexHookTrustState,
   type CodexTrustEntry
 } from './config-toml-trust'
@@ -43,7 +43,7 @@ export function writeCodexHookApprovalsBeforeEntries(
     tomlPath,
     changed.map((entry) => computeTrustKey(entry))
   )
-  upsertHookTrustEntriesIfLoadable(tomlPath, changed)
+  upsertHookTrustEntries(tomlPath, changed)
   try {
     writeEntries()
   } catch (error) {
