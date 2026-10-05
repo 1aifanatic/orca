@@ -150,6 +150,7 @@
     "../src/main/codex/codex-hook-wsl-runtime.ts",
     "../src/main/codex/codex-managed-trust-reconciliation.ts",
     "../src/main/provider-process/provider-process-exit-deadline.ts",
+    "../src/main/provider-process/provider-process-launch.ts",
     "../src/main/codex/codex-real-home-background-grant.ts",
     "../src/main/codex/codex-real-home-entry-trust.ts",
     "../src/main/codex/codex-real-home-hook-entry-plan.ts",
