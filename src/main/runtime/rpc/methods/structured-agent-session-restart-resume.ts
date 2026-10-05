@@ -21,7 +21,7 @@ export const STRUCTURED_AGENT_SESSION_RESTART_RESUME_METHODS = [
     handler: async (_params, ctx) => {
       await ensureStructuredHostInstalled(ctx)
       const host = requireStructuredHost(ctx)
-      const audience = structuredAgentsReadBy(ctx)
+      const audience = structuredAgentsReadBy(ctx, host.agentDefinitions())
       return {
         sessions: await host.restartResume.list(audience),
         // Acted-on offers whose agent did not carry on. Optional on the wire; older clients ignore it.
@@ -38,7 +38,7 @@ export const STRUCTURED_AGENT_SESSION_RESTART_RESUME_METHODS = [
       await ensureStructuredHostInstalled(ctx)
       const host = requireStructuredHost(ctx)
       // Offers this client was never shown stay for a client that can show them.
-      const audience = structuredAgentsReadBy(ctx)
+      const audience = structuredAgentsReadBy(ctx, host.agentDefinitions())
       const dismissed = await host.restartResume.dismiss(params.sessionIds, audience)
       if (params.sessionIds === undefined) {
         // The dismissal removed every pending and in-flight record this client sees, so a second
@@ -64,7 +64,7 @@ export const STRUCTURED_AGENT_SESSION_RESTART_RESUME_METHODS = [
       return host.restartResume.continueAfterRestart(
         params.sessionIds,
         structuredCallerFor(ctx).callerKey,
-        structuredAgentsReadBy(ctx)
+        structuredAgentsReadBy(ctx, host.agentDefinitions())
       )
     }
   }),

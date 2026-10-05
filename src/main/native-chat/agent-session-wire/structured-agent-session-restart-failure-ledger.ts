@@ -59,11 +59,11 @@ export type StructuredAgentSessionRestartFailureLedger = {
       failureReason: (sessionId: string) => string
     }
   ) => Promise<void>
-  /** Named sessions forget their offer or failure; unnamed, every durable record goes. With an
-   *  audience, only records of agents it sees go, and an unnamed dismissal is no fence. */
+  /** Named sessions forget their offer or failure; unnamed, every durable record goes and stays
+   *  gone. With an audience, only records of agents it sees go, and only they are fenced. */
   dismiss: (
     sessionIds: readonly string[] | undefined,
-    beforeClearAll: () => void,
+    beforeClearAll: (audience?: StructuredAgentSessionRestartAudience) => void,
     audience?: StructuredAgentSessionRestartAudience
   ) => Promise<number>
 }
@@ -216,20 +216,20 @@ export function createStructuredAgentSessionRestartFailureLedger(deps: {
     settle,
     dismiss: (sessionIds, beforeClearAll, audience) =>
       deps.enqueue(async () => {
-        if (audience) {
-          // Decided under the capsule lock. A record whose chat this host cannot read names no
-          // agent the audience was shown, so it stays.
-          const hidden = (marker: AgentSessionResumeMarker) => {
-            const record = deps.getRecord(marker.sessionId)
-            return record === null || !audience(record.provider)
+        // Decided under the capsule lock. A record whose chat this host cannot read names no
+        // agent the audience was shown, so it stays.
+        const hidden = (marker: AgentSessionResumeMarker) => {
+          if (!audience) {
+            return false
           }
-          return (await deps.capsule?.dismiss(sessionIds ?? 'all', deps.now(), hidden)) ?? 0
+          const record = deps.getRecord(marker.sessionId)
+          return record === null || !audience(record.provider)
         }
         if (sessionIds !== undefined) {
-          return (await deps.capsule?.dismiss(sessionIds, deps.now())) ?? 0
+          return (await deps.capsule?.dismiss(sessionIds, deps.now(), hidden)) ?? 0
         }
-        beforeClearAll()
-        return (await deps.capsule?.clearAll(deps.now())) ?? 0
+        beforeClearAll(audience)
+        return (await deps.capsule?.clearAll(deps.now(), audience ? hidden : undefined)) ?? 0
       })
   }
 }

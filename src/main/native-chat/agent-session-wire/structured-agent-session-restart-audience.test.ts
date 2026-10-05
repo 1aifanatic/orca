@@ -74,6 +74,7 @@ it('keeps a failure the caller cannot show, and leaves it out of an action reply
 
   expect(await host.restartResume.dismiss(undefined, cannotShowCodex)).toBe(0)
   expect(await host.restartResume.listFailures()).toHaveLength(1)
-  expect(await host.restartResume.dismiss(undefined, showsCodex)).toBe(1)
+  // A dismiss-all counts pending offers, as it always has; the failure goes with it all the same.
+  expect(await host.restartResume.dismiss(undefined, showsCodex)).toBe(0)
   expect(await host.restartResume.listFailures()).toEqual([])
 })

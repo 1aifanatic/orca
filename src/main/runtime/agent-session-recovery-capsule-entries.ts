@@ -42,8 +42,12 @@ const capsuleSchema = z.object({
   version: z.literal(2),
   entries: z.array(z.unknown()),
   dismissedAt: z.number().int().nonnegative().optional(),
+  dismissedSessions: z.unknown().optional(),
   failed: z.unknown().optional()
 })
+const sessionFencesSchema = z.record(z.string().min(1), z.number().int().nonnegative())
+/** Newest per-session fences kept; a dismiss-all fence supersedes every older one. */
+const MAX_SESSION_FENCES = 512
 
 /** What an acted-on offer left behind when the agent did not carry on. Current only while nothing
  *  newer happened in that chat; also dies with a dismissal, a successful retry, or a newer
@@ -79,7 +83,101 @@ export type RecoveryEntry = {
 export type RecoveryCapsuleState = {
   entries: RecoveryEntry[]
   failed: AgentSessionResumeFailureRecord[]
+} & RecoveryCapsuleFence
+
+/** What keeps a dismissed offer dismissed: a teardown witness recorded at or before the fence is
+ *  dropped. `dismissedAt` fences every session (dismiss-all); `dismissedSessions` fences single
+ *  sessions, for a dismiss-all scoped to the agents one client sees. */
+export type RecoveryCapsuleFence = {
   dismissedAt?: number
+  dismissedSessions?: ReadonlyMap<string, number>
+}
+
+export function isFencedOut(
+  fence: RecoveryCapsuleFence,
+  marker: AgentSessionResumeMarker
+): boolean {
+  const at = Math.max(fence.dismissedAt ?? -1, fence.dismissedSessions?.get(marker.sessionId) ?? -1)
+  return marker.recordedAt <= at
+}
+
+/** `fence` with each of `sessionIds` fenced at `at`. */
+function withSessionFences(
+  fence: RecoveryCapsuleFence,
+  sessionIds: Iterable<string>,
+  at: number
+): RecoveryCapsuleFence {
+  const dismissedSessions = new Map(fence.dismissedSessions)
+  for (const sessionId of sessionIds) {
+    dismissedSessions.set(sessionId, Math.max(at, dismissedSessions.get(sessionId) ?? at))
+  }
+  return { ...fence, dismissedSessions }
+}
+
+/** A dismiss-all of `state`: every record but those `keep` answers true for goes, and stays gone.
+ *  An in-flight action's later complete/rollback becomes a no-op, and a late teardown writer is
+ *  fenced: for every session, or with `keep` for each cleared one, so a session kept for a client
+ *  that sees it is never fenced by one that does not. */
+export function dismissAll(
+  state: RecoveryCapsuleState,
+  now: number,
+  keep?: (marker: AgentSessionResumeMarker) => boolean
+): {
+  records: Pick<RecoveryCapsuleState, 'entries' | 'failed'>
+  fence: RecoveryCapsuleFence
+  pendingCleared: number
+} {
+  const { entries, failed } = normalizeState(state, now)
+  const kept = (record: { marker: AgentSessionResumeMarker }) => keep?.(record.marker) === true
+  const cleared = [...entries, ...failed].filter((record) => !kept(record))
+  return {
+    records: { entries: entries.filter(kept), failed: failed.filter(kept) },
+    fence: keep
+      ? withSessionFences(
+          state,
+          cleared.map((record) => record.marker.sessionId),
+          now
+        )
+      : { dismissedAt: now },
+    pendingCleared: entries.filter((entry) => entry.state === 'pending' && !kept(entry)).length
+  }
+}
+
+/** The capsule file's contents. */
+export function storedCapsule(
+  { entries, failed }: Pick<RecoveryCapsuleState, 'entries' | 'failed'>,
+  fence: RecoveryCapsuleFence
+) {
+  return {
+    version: 2,
+    entries,
+    ...storedFence(fence),
+    ...(failed.length === 0 ? {} : { failed })
+  }
+}
+
+/** The fence as stored: a session fence the dismiss-all fence covers is dropped, and only the
+ *  newest are kept, so the set cannot grow without bound. */
+function storedFence(fence: RecoveryCapsuleFence): {
+  dismissedAt?: number
+  dismissedSessions?: Record<string, number>
+} {
+  const sessions = [...(fence.dismissedSessions ?? new Map<string, number>())]
+    .filter(([, at]) => fence.dismissedAt === undefined || at > fence.dismissedAt)
+    .sort(([, left], [, right]) => right - left)
+    .slice(0, MAX_SESSION_FENCES)
+  return {
+    ...(fence.dismissedAt === undefined ? {} : { dismissedAt: fence.dismissedAt }),
+    ...(sessions.length === 0 ? {} : { dismissedSessions: Object.fromEntries(sessions) })
+  }
+}
+
+// Advisory like failures: an unreadable set reads as none rather than costing every offer.
+function parseSessionFences(value: unknown): ReadonlyMap<string, number> | undefined {
+  const parsed = sessionFencesSchema.safeParse(value)
+  return parsed.success && Object.keys(parsed.data).length > 0
+    ? new Map(Object.entries(parsed.data))
+    : undefined
 }
 
 function parseMarker(value: unknown): AgentSessionResumeMarker {
@@ -144,10 +242,12 @@ export function parseState(raw: string): RecoveryCapsuleState {
     }
   }
   const capsule = capsuleSchema.parse(value)
+  const dismissedSessions = parseSessionFences(capsule.dismissedSessions)
   return {
     entries: capsule.entries.map(parseEntry),
     failed: parseFailures(capsule.failed),
-    ...(capsule.dismissedAt === undefined ? {} : { dismissedAt: capsule.dismissedAt })
+    ...(capsule.dismissedAt === undefined ? {} : { dismissedAt: capsule.dismissedAt }),
+    ...(dismissedSessions ? { dismissedSessions } : {})
   }
 }
 

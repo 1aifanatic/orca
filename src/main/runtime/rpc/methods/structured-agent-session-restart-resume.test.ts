@@ -9,6 +9,7 @@ import {
   type StructuredAgentSessionRestartAudience
 } from '../../../native-chat/agent-session-wire/structured-agent-session-restart-resume-set'
 import { STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
+import { DESKTOP_RENDERER_RUNTIME_CLIENT_CAPABILITIES } from '../../../ipc/desktop-renderer-runtime-capabilities'
 import {
   call,
   clearStructuredHostStub,
@@ -21,11 +22,16 @@ afterEach(clearStructuredHostStub)
 const CLAUDE_OFFER = { sessionId: 'claude-session', agent: 'claude' }
 const GROK_OFFER = { sessionId: 'grok-session', agent: 'grok' }
 
-const OLD_CLIENT = STRUCTURED_CLIENT
-const NEW_CLIENT = {
+// What the desktop renderer really dispatches with: every client that calls these methods
+// advertises Claude support.
+const OLD_CLIENT = {
   ...STRUCTURED_CLIENT,
+  clientCapabilities: [...DESKTOP_RENDERER_RUNTIME_CLIENT_CAPABILITIES]
+}
+const NEW_CLIENT = {
+  ...OLD_CLIENT,
   clientCapabilities: [
-    ...STRUCTURED_CLIENT.clientCapabilities,
+    ...OLD_CLIENT.clientCapabilities,
     STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY
   ]
 }
@@ -63,7 +69,12 @@ function installRestartHost() {
       })
     )
   }
-  setStructuredAgentSessionHost(Object.assign(hostStub(), { restartResume }))
+  setStructuredAgentSessionHost(
+    Object.assign(hostStub(), {
+      restartResume,
+      agentDefinitions: () => [{ agent: 'claude' }, { agent: 'codex' }, { agent: 'grok' }]
+    })
+  )
   return { restartResume, offers: () => offers }
 }
 
