@@ -33,6 +33,7 @@ export type EditorSaveQuiesceTarget = { fileId: string } | EditorPathMutationTar
 export type EditorSaveQuiesceDetail = EditorSaveQuiesceTarget & {
   claim: () => void
   resolve: () => void
+  reject: (message: string) => void
 }
 
 export type EditorSaveFileTarget = {
@@ -165,7 +166,7 @@ export function getOpenFilesForExternalFileChange(
 }
 
 export async function requestEditorSaveQuiesce(target: EditorSaveQuiesceTarget): Promise<void> {
-  await new Promise<void>((resolve) => {
+  await new Promise<void>((resolve, reject) => {
     let claimed = false
     window.dispatchEvent(
       new CustomEvent<EditorSaveQuiesceDetail>(ORCA_EDITOR_QUIESCE_FILE_SAVES_EVENT, {
@@ -174,7 +175,8 @@ export async function requestEditorSaveQuiesce(target: EditorSaveQuiesceTarget):
           claim: () => {
             claimed = true
           },
-          resolve
+          resolve,
+          reject: (message) => reject(new Error(message))
         }
       })
     )
