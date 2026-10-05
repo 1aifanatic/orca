@@ -23,7 +23,8 @@ function createSaveAndCloseFixture() {
   store.setState({
     settings: { ...settings, editorAutoSave: false },
     browserTabsByWorktree: {},
-    tabsByWorktree: {}
+    tabsByWorktree: {},
+    unifiedTabsByWorktree: {}
   })
   store.getState().openFile({
     filePath: fileId,
