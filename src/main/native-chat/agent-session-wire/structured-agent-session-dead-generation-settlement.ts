@@ -263,8 +263,10 @@ export async function settleStaleStructuredAgentSessionState(input: {
         provider: 'orca',
         clientMessageId: `${STALE_SESSION_ROW_PREFIX}${input.sessionId}:death-${evidence.ownerFence ?? 'unowned'}-${evidence.observedAt}`
       },
-      // The death evidence is Orca's log text, never a sentence for a person. The owner that went
-      // away was Orca, not the agent, so the row says only that the response was interrupted.
+      // The death evidence is Orca's log text, never a sentence for a person, and it proves only that
+      // the agent's process is gone, not who ended it: a quit's close and an agent exit whose own
+      // settle failed both read `exit-observed`. So the row blames no one. Written, not left to the
+      // reader's derived notice, because a client older than that notice sees only this row.
       body: agentSessionResponseInterruptedBody(),
       turnScope: runningRootTurnScope(items)
     })

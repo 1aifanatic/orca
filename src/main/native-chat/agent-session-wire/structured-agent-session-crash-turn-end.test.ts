@@ -224,8 +224,8 @@ describe('a turn a crash cut short mid-tool', () => {
     await host.restoreReadableSessions()
 
     const { items } = await host.journalSnapshot(SESSION)
-    // As a reader's transcript shows it: the stored row is the explanation, so none is derived. Orca
-    // went away, not the agent, so the row blames no one and is muted, not an error.
+    // As a reader's transcript shows it: the stored row is the explanation, so none is derived.
+    // Nothing proves who ended the agent's process, so the row blames no one and is muted.
     const statusRows = withNativeChatCutTurnNotices(items).flatMap((item) =>
       item.body.kind === 'status' ? [item.body] : []
     )

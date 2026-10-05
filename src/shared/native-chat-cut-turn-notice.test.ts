@@ -164,7 +164,7 @@ describe('withNativeChatCutTurnNotices', () => {
     }
   })
 
-  // The owner that went away was Orca, so an older host's red "the agent stopped" blamed the agent.
+  // An older host's red "the agent stopped" blamed the agent for a process nothing proves it ended.
   it("words an owner's proven death as the notice does, and leaves the agent's own exit row as written", () => {
     const owner = exitRow('stale-session:s:death-3-2000', inTurn('t1'))
     const exit = exitRow('provider-exit:s:3:gen', inTurn('t2'))
@@ -186,6 +186,33 @@ describe('withNativeChatCutTurnNotices', () => {
     })
     expect(derived[5]).toBe(exit)
     expect(withNativeChatCutTurnNotices(items)[2]).toBe(derived[2])
+  })
+
+  // A row that names its presentation is a newer host's own wording (a cause it recorded, say), and
+  // an early build's untoned row quotes the exit's detail: each is kept as written.
+  it('keeps a reopen row that is not the legacy red shape as written', () => {
+    const newer = hostRow(
+      'stale-session:s:death-3-2000',
+      {
+        kind: 'status',
+        text: 'Orca quit while this response was in progress. You can continue in this conversation.',
+        presentation: 'response-interrupted-orca-quit',
+        tone: 'notice'
+      },
+      inTurn('t1')
+    )
+    const early = hostRow(
+      'stale-session:s:3:seq-8',
+      {
+        kind: 'status',
+        text: 'The provider stopped while this response was in progress: Not logged in. You can continue in this conversation.'
+      },
+      inTurn('t1')
+    )
+    for (const row of [newer, early]) {
+      const items = [user('u1'), turn('t1', 'u1', CUT), row]
+      expect(withNativeChatCutTurnNotices(items)).toBe(items)
+    }
   })
 
   // A host from before failure facts wrote the same rows with only their words.

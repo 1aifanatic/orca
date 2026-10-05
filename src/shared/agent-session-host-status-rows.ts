@@ -8,8 +8,8 @@ export const AGENT_SESSION_HOST_STATUS_COPY = {
   'history-repaired': "Part of this chat's history couldn't be loaded.",
   /** In place of an item too large for any history page. */
   'history-item-too-large': 'This part of the chat was too large to show.',
-  /** A turn cut short with nobody asking (a crash, quit, restart or eviction), worded for every cause
-   *  because a reader can't tell them apart. */
+  /** A turn cut short with nobody asking (a crash, quit, restart or eviction, or an agent exit whose
+   *  own settle failed), worded for every cause because a reader can't tell them apart. */
   'response-interrupted': 'This response was interrupted. You can continue in this conversation.'
 } as const
 

@@ -5,6 +5,7 @@
 // explanation, so nothing is said twice. Shared by desktop and mobile, whose transcripts must agree.
 // The journal names no cause a reader can see, so the words fit every cause and blame no one.
 
+import { readAgentSessionFailureFact } from './agent-session-failure'
 import { agentSessionResponseInterruptedBody } from './agent-session-host-status-rows'
 import { agentJournalItemKey } from './agent-session-journal-item-key'
 import type { AgentJournalRenderItem } from './agent-session-journal-types'
@@ -80,10 +81,18 @@ function cutTurnNotice(
 
 const ownerDeathRowCache = new WeakMap<AgentJournalRenderItem, AgentJournalRenderItem>()
 
-/** A reopen's row about an owner found dead, in the notice's words: that owner was Orca, so an older
- *  host's "the agent stopped" blamed the agent, and in error red. */
+/** An older host's reopen row about an agent process found gone, in the notice's words: it said
+ *  "the agent stopped", in error red, though the evidence only proves the process is gone, not who
+ *  ended it. Only that legacy shape: a row that names its presentation, and an early build's row
+ *  that quotes the exit's detail untoned, are kept as written. */
 function ownerDeathRowAsInterruption(item: AgentJournalRenderItem): AgentJournalRenderItem {
-  if (cutTurnStopExplanation(item) !== 'owner-death') {
+  if (
+    cutTurnStopExplanation(item) !== 'owner-death' ||
+    item.body.kind !== 'status' ||
+    item.body.presentation !== undefined ||
+    (item.body.tone !== 'error' &&
+      readAgentSessionFailureFact(item.body.failure)?.kind !== 'providerExited')
+  ) {
     return item
   }
   const cached = ownerDeathRowCache.get(item)
@@ -97,8 +106,8 @@ function ownerDeathRowAsInterruption(item: AgentJournalRenderItem): AgentJournal
 
 /**
  * The journal as the transcript reads it: each root turn cut short with nobody asking, and no row
- * saying so, gets one muted notice right after the turn's last row, and a reopen's row about an
- * owner found dead says the same. Returns `items` itself when neither applies.
+ * saying so, gets one muted notice right after the turn's last row, and an older host's reopen row
+ * about an agent process found gone says the same. Returns `items` itself when neither applies.
  */
 export function withNativeChatCutTurnNotices(
   items: readonly AgentJournalRenderItem[]
