@@ -7,7 +7,9 @@ import {
 import { createBridgePortPair } from '../mobile-web-shell/bridge/bridge-port-pair-test-harness'
 import { useMobileSessionContentCreateActions } from '../session/use-mobile-session-content-create-actions'
 import { mountFixture } from './rpc-recording/recorder-fixture-shape'
-import { screenMount } from './rpc-recording/mounted-screen-tree'
+import { createElement } from 'react'
+import { flushSync } from 'react-dom'
+import { createRoot, type Root } from 'react-dom/client'
 
 export async function createPairedMarkdownNote(
   pairingUrl: string,
@@ -20,7 +22,7 @@ export async function createPairedMarkdownNote(
   }
   const direct = new DirectRpcClient(offer.endpoint, offer.deviceToken, offer.publicKeyB64, {})
   let bridge: ReturnType<typeof createBridgePortPair> | undefined
-  let screen: ReturnType<typeof screenMount> | undefined
+  let screen: Root | undefined
   const timers: ReturnType<typeof setTimeout>[] = []
   try {
     const statusReply = await fileOwnershipRuntimeStatusRead.request(direct, undefined, {
@@ -52,14 +54,11 @@ export async function createPairedMarkdownNote(
       observed.actions = useMobileSessionContentCreateActions(scope)
       return null
     }
-    screen = screenMount(
-      () => createElement(Harness),
-      () => {}
-    )
-    screen.mount()
+    screen = createRoot(document.createElement('div'))
+    flushSync(() => screen?.render(createElement(Harness)))
     const actions = observed.actions
     if (!actions) {
-      throw new Error(screen.crash() ?? 'The note-creation hook did not mount')
+      throw new Error('The note-creation hook did not mount')
     }
     await actions.handleCreateMarkdownNote()
     const worktreeReply = await fileOwnershipWorktreeRead.request(
@@ -109,4 +108,3 @@ export async function createPairedMarkdownNote(
     direct.close()
   }
 }
-import { createElement } from 'react'

@@ -71,7 +71,11 @@ test('creates paired Markdown notes through the native client and web bridge', a
     banner: {
       js: "globalThis.process ??= { env: { NODE_ENV: 'development', EXPO_OS: 'web' }, platform: 'web', version: '', nextTick: (fn) => setTimeout(fn, 0) };"
     },
-    alias: { 'react-native': 'react-native-web' },
+    alias: {
+      'react-native': 'react-native-web',
+      // Why: desktop E2E installs root dependencies; Chromium owns this fixture's secure RNG.
+      'expo-crypto': path.resolve('tests/e2e/helpers/paired-note-browser-crypto.ts')
+    },
     resolveExtensions: ['.web.tsx', '.web.ts', '.web.js', '.tsx', '.ts', '.js', '.json'],
     define: {
       global: 'globalThis',
