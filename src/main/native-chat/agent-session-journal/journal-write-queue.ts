@@ -30,7 +30,6 @@ export class JournalWriteQueue {
   private closed = false
   /** Runs before the next write, and stays owed until it succeeds. */
   private owed: (() => Promise<void>) | null = null
-  private completed = 0
 
   constructor(private readonly sessionId: string) {}
 
@@ -42,20 +41,9 @@ export class JournalWriteQueue {
     if (this.closed) {
       return Promise.reject(this.closedError())
     }
-    const counted = (): JournalWriteResult<T> => {
-      const result = run()
-      this.completed++
-      return result
-    }
     return this.owed !== null || this.lineBusy
-      ? this.join(counted, this.owed !== null)
-      : this.runNow(counted)
-  }
-
-  /** Write bodies that returned without throwing. Bodies run one at a time, so a body that reads
-   *  this learns synchronously whether the write just ahead of it landed. */
-  get completedWrites(): number {
-    return this.completed
+      ? this.join(run, this.owed !== null)
+      : this.runNow(run)
   }
 
   /** Runs `read` after every write admitted before it, whatever each one's outcome, and ahead of any
