@@ -1,7 +1,10 @@
 import { EventEmitter } from 'node:events'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserWindow } from 'electron'
-import type { TerminalChatViewRequest } from '../../shared/terminal-chat-view-request'
+import {
+  TERMINAL_CHAT_VIEW_TAB_NOT_FOUND_ERROR,
+  type TerminalChatViewRequest
+} from '../../shared/terminal-chat-view-request'
 
 const ipcEmitter = new EventEmitter()
 const ipcMainMock = {
@@ -116,8 +119,8 @@ describe('requestTerminalChatViewFromRenderer', () => {
     ipcEmitter.emit(
       'ui:terminalChatViewResponse',
       { sender: webContents },
-      { requestId: request.requestId, error: 'tab_not_found' }
+      { requestId: request.requestId, error: TERMINAL_CHAT_VIEW_TAB_NOT_FOUND_ERROR }
     )
-    await expect(pending).rejects.toThrow('tab_not_found')
+    await expect(pending).rejects.toThrow(TERMINAL_CHAT_VIEW_TAB_NOT_FOUND_ERROR)
   })
 })

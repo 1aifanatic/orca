@@ -1,4 +1,5 @@
 import type { SplitTerminalPaneDetail } from '@/constants/terminal'
+import { TERMINAL_CHAT_VIEW_TAB_NOT_FOUND_ERROR } from '../../../../shared/terminal-chat-view-request'
 import { requestBackgroundTerminalWorktreeMount } from '@/components/terminal/background-terminal-worktree-mount'
 import {
   dispatchTerminalPaneSplitRequest,
@@ -123,13 +124,18 @@ export function registerTerminalUiRoutingIpcBridge(unsubs: (() => void)[]): void
         const state = useAppStore.getState()
         // Why: a worktree another Orca host owns is only mirrored here; its pair is not ours to write.
         if (resolveChatPairAuthority(state, worktreeId) !== 'local') {
-          window.api.ui.respondTerminalChatView({ requestId, error: 'tab_not_found' })
+          window.api.ui.respondTerminalChatView({
+            requestId,
+            error: TERMINAL_CHAT_VIEW_TAB_NOT_FOUND_ERROR
+          })
           return
         }
         // Why synchronous: IPC arrival order is the host's admit order, so apply before replying.
         const chatView = state.applyTerminalChatPair(tabId, leafId, viewMode)
         window.api.ui.respondTerminalChatView(
-          chatView ? { requestId, chatView } : { requestId, error: 'tab_not_found' }
+          chatView
+            ? { requestId, chatView }
+            : { requestId, error: TERMINAL_CHAT_VIEW_TAB_NOT_FOUND_ERROR }
         )
       }
     )
