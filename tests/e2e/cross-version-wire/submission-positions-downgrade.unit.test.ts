@@ -4,15 +4,23 @@ import { join } from 'node:path'
 import { expect, test } from 'vitest'
 import { agentSessionFailureFact } from '../../../src/shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../src/shared/agent-session-failure-words'
-import type { AgentSessionJournalIdentity } from '../../../src/shared/agent-session-journal-types'
+import type {
+  AgentJournalSubmission,
+  AgentSessionJournalIdentity
+} from '../../../src/shared/agent-session-journal-types'
 import type { AgentSessionHistoryPage } from '../../../src/shared/agent-session-wire'
-import { createTrackedJournalOpener } from '../../../src/main/native-chat/agent-session-journal/journal-host-database-test-support'
+import {
+  createTrackedJournalOpener,
+  type TrackedJournalOpener
+} from '../../../src/main/native-chat/agent-session-journal/journal-host-database-test-support'
+import { projectJournalBatch } from '../../../src/main/native-chat/agent-session-wire/agent-session-journal-batch'
 import { readAgentSessionHydrationPage } from '../../../src/main/native-chat/agent-session-wire/agent-session-history-page'
 import { importReleaseCheckoutModule, materializeReleaseCheckout } from './release-checkout'
 
-// A released client that predates the published submission position and answered turn: it must fold
-// and draw a page carrying them exactly as it draws the same page without them.
-const BASELINE_REF = 'v1.4.219'
+// Released clients that predate the published submission position and answered turn: each must
+// fold and draw a history page and an incremental batch carrying them exactly as it draws the same
+// without them, whether the turn is named or stated as none.
+const BASELINE_REFS = ['v1.4.219', 'v1.4.220'] as const
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-positions',
@@ -34,103 +42,162 @@ function releaseExport<T>(module: Record<string, unknown>, name: string): T {
 
 type OldState = { submissions: Record<string, unknown>[]; items: unknown[] }
 
-/** Strips the published position and answered turn, as an older host's page would carry its
- *  submissions. */
-function withoutPosition(page: AgentSessionHistoryPage): AgentSessionHistoryPage {
-  return {
-    ...page,
-    submissions: page.submissions.map(
-      ({ submittedSequence: _submitted, answeredInTurn: _turn, ...rest }) => rest
-    )
-  }
+/** Submissions as an older host would carry them. */
+function withoutNewFields(
+  submissions: readonly AgentJournalSubmission[]
+): AgentJournalSubmission[] {
+  return submissions.map(
+    ({ submittedSequence: _submitted, answeredInTurn: _turn, ...rest }) => rest
+  )
 }
 
-// Loads a real release checkout, cold extraction and transforms included.
-test('a released client folds and draws a page whose submissions carry their journal position and answered turn', async () => {
-  const directory = mkdtempSync(join(tmpdir(), 'orca-submission-positions-downgrade-'))
-  const journals = createTrackedJournalOpener()
-  try {
-    const journal = await journals.open({ identity: IDENTITY, stateDirectory: directory })
-    for (const id of ['taken-back', 'still-queued']) {
-      await journal.appendSubmission({
-        clientMessageId: id,
-        payloadFingerprint: id,
-        body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: id }] },
-        fence: 1,
-        handoverRecorded: true
-      })
-    }
-    await journal.resolveDispatch({
-      clientMessageId: 'taken-back',
-      state: 'rejected',
-      ...agentSessionFailureWords(agentSessionFailureFact('cancelled'), { surface: 'rejection' }),
-      fence: 1,
-      recovered: true
-    })
+/** A chat before and after three rejections: a queued send taken back, one its turn's end
+ *  rejected, and one refused outright. */
+async function journalWithRejections(directory: string, journals: TrackedJournalOpener) {
+  const journal = await journals.open({ identity: IDENTITY, stateDirectory: directory })
+  const message = (text: string) => ({
+    kind: 'message' as const,
+    role: 'user' as const,
+    blocks: [{ type: 'text' as const, text }]
+  })
+  for (const id of ['taken-back', 'still-queued']) {
     await journal.appendSubmission({
-      clientMessageId: 'turn-ended',
-      payloadFingerprint: 'turn-ended',
-      body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'turn-ended' }] },
+      clientMessageId: id,
+      payloadFingerprint: id,
+      body: message(id),
+      fence: 1,
+      handoverRecorded: true
+    })
+  }
+  for (const id of ['turn-ended', 'refused']) {
+    await journal.appendSubmission({
+      clientMessageId: id,
+      payloadFingerprint: id,
+      body: message(id),
       fence: 1
     })
-    await journal.resolveDispatch({
-      clientMessageId: 'turn-ended',
-      state: 'rejected',
-      ...agentSessionFailureWords(agentSessionFailureFact('cancelled'), { surface: 'rejection' }),
-      answeredInTurn: {
-        turn: {
-          provider: 'legacy',
-          agent: 'codex',
-          sessionId: IDENTITY.sessionId,
-          recordId: 'turn-lifecycle:turn-1'
-        },
-        via: 'start'
+  }
+  const before = readAgentSessionHydrationPage(journal, 1)
+  const seen = journal.snapshot().cursor
+  const cancelled = agentSessionFailureWords(agentSessionFailureFact('cancelled'), {
+    surface: 'rejection'
+  })
+  await journal.resolveDispatch({
+    clientMessageId: 'taken-back',
+    state: 'rejected',
+    ...cancelled,
+    fence: 1,
+    recovered: true
+  })
+  await journal.resolveDispatch({
+    clientMessageId: 'turn-ended',
+    state: 'rejected',
+    ...cancelled,
+    answeredInTurn: {
+      turn: {
+        provider: 'legacy',
+        agent: 'codex',
+        sessionId: IDENTITY.sessionId,
+        recordId: 'turn-lifecycle:turn-1'
       },
-      fence: 1
-    })
-    const page = readAgentSessionHydrationPage(journal, 1)
-    // Anti-vacuous: the page this build publishes does carry both.
-    expect(page.submissions.find((entry) => entry.clientMessageId === 'taken-back')).toEqual(
-      expect.objectContaining({
-        submittedSequence: expect.any(Number)
+      via: 'start'
+    },
+    fence: 1
+  })
+  await journal.resolveDispatch({
+    clientMessageId: 'refused',
+    state: 'rejected',
+    ...agentSessionFailureWords(agentSessionFailureFact('queueFull'), { surface: 'rejection' }),
+    fence: 1
+  })
+  const since = journal.readSince(seen)
+  const batch = since.ok
+    ? projectJournalBatch({
+        rows: since.rows,
+        snapshot: journal.snapshot(),
+        afterSequence: seen.sequence
       })
-    )
-    expect(page.submissions.find((entry) => entry.clientMessageId === 'turn-ended')).toEqual(
-      expect.objectContaining({
-        answeredInTurn: { turnItemId: expect.any(String), via: 'start' }
-      })
-    )
+    : null
+  if (!batch?.ok) {
+    throw new Error('the batch did not project')
+  }
+  return { before, after: readAgentSessionHydrationPage(journal, 1), batch: batch.batch }
+}
 
-    const checkout = await materializeReleaseCheckout(BASELINE_REF)
-    const reducer = await importReleaseCheckoutModule(
-      checkout,
-      'src/shared/structured-agent-session-reducer.ts'
-    )
-    const projection = await importReleaseCheckoutModule(
-      checkout,
-      'src/shared/structured-agent-session-message-projection.ts'
-    )
-    const reduce = releaseExport<(state: unknown, action: unknown) => OldState>(
-      reducer,
-      'reduceStructuredAgentSession'
-    )
-    const empty = releaseExport<unknown>(reducer, 'EMPTY_STRUCTURED_AGENT_SESSION')
-    const project = releaseExport<
-      (items: unknown[], outbox: unknown[], submissions: unknown[]) => unknown[]
-    >(projection, 'projectStructuredAgentSessionMessages')
-    const draw = (from: AgentSessionHistoryPage) => {
-      const state = reduce(empty, { type: 'history-page', page: from })
-      return {
+// Loads real release checkouts, cold extraction and transforms included.
+test.each(BASELINE_REFS)(
+  'a released client (%s) draws a page and a batch carrying journal positions and answered turns as it draws them without',
+  async (ref) => {
+    const directory = mkdtempSync(join(tmpdir(), 'orca-submission-positions-downgrade-'))
+    const journals = createTrackedJournalOpener()
+    try {
+      const { before, after, batch } = await journalWithRejections(directory, journals)
+      // Anti-vacuous: what this build publishes carries a position, a named turn, and stated none.
+      expect(after.submissions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ clientMessageId: 'taken-back', answeredInTurn: null }),
+          expect.objectContaining({
+            clientMessageId: 'turn-ended',
+            submittedSequence: expect.any(Number),
+            answeredInTurn: { turnItemId: expect.any(String), via: 'start' }
+          }),
+          expect.objectContaining({ clientMessageId: 'refused', answeredInTurn: null })
+        ])
+      )
+      expect(batch.submissions.map((entry) => entry.answeredInTurn)).toContain(null)
+
+      const checkout = await materializeReleaseCheckout(ref)
+      const reducer = await importReleaseCheckoutModule(
+        checkout,
+        'src/shared/structured-agent-session-reducer.ts'
+      )
+      const projection = await importReleaseCheckoutModule(
+        checkout,
+        'src/shared/structured-agent-session-message-projection.ts'
+      )
+      const reduce = releaseExport<(state: unknown, action: unknown) => OldState>(
+        reducer,
+        'reduceStructuredAgentSession'
+      )
+      const empty = releaseExport<unknown>(reducer, 'EMPTY_STRUCTURED_AGENT_SESSION')
+      const project = releaseExport<
+        (items: unknown[], outbox: unknown[], submissions: unknown[]) => unknown[]
+      >(projection, 'projectStructuredAgentSessionMessages')
+      const draw = (state: OldState) => ({
         submissions: state.submissions.map(
           ({ submittedSequence: _s, answeredInTurn: _t, ...rest }) => rest
         ),
         messages: project(state.items, [], state.submissions)
-      }
-    }
+      })
+      const fromPage = (page: AgentSessionHistoryPage) =>
+        draw(reduce(empty, { type: 'history-page', page }))
+      const fromBatch = (stripped: boolean) =>
+        draw(
+          reduce(reduce(empty, { type: 'history-page', page: before }), {
+            type: 'event',
+            event: {
+              type: 'batch',
+              sessionId: IDENTITY.sessionId,
+              batch: stripped
+                ? { ...batch, submissions: withoutNewFields(batch.submissions) }
+                : batch,
+              fence: 1
+            }
+          })
+        )
 
-    expect(draw(page)).toEqual(draw(withoutPosition(page)))
-  } finally {
-    await journals.closeAll()
-    rmSync(directory, { recursive: true, force: true })
-  }
-}, 180_000)
+      expect(fromPage(after)).toEqual(
+        fromPage({ ...after, submissions: withoutNewFields(after.submissions) })
+      )
+      expect(fromBatch(false)).toEqual(fromBatch(true))
+      // Anti-vacuous: the batch reached the old client's submissions.
+      expect(fromBatch(false).submissions).toEqual(
+        expect.arrayContaining([expect.objectContaining({ dispatchState: 'rejected' })])
+      )
+    } finally {
+      await journals.closeAll()
+      rmSync(directory, { recursive: true, force: true })
+    }
+  },
+  180_000
+)

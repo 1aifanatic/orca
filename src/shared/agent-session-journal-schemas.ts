@@ -319,8 +319,11 @@ export const AgentJournalSubmissionSchema = z.object({
   submittedAt: z.number(),
   resolvedAt: z.number().nullable(),
   submittedSequence: z.number().int().optional(),
-  // Open like `dispatchState`: a way of joining a newer host names must not drop the submission.
-  answeredInTurn: z.object({ turnItemId: z.string().min(1), via: z.string().min(1) }).optional(),
+  // `via` is a string, as `dispatchState` is: a newer host may name another way of joining.
+  answeredInTurn: z
+    .object({ turnItemId: z.string().min(1), via: z.string().min(1) })
+    .nullable()
+    .optional(),
   recovered: z.literal(true).optional(),
   handoverRecorded: z.literal(true).optional(),
   handedOverAt: z.number().optional(),

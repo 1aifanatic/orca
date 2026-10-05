@@ -119,14 +119,16 @@ describe('the turn a rejected submission was answered into', () => {
     })
   })
 
-  it('is absent on a take-back that names no turn, as on rows from older hosts', async () => {
+  it('is stated as none on a take-back that names no turn, so it reads apart from an older row', async () => {
     const { journal } = await sendHandedOverThenWithdrawn()
 
-    expect(journal.submission('send-1')).toMatchObject({ dispatchState: 'rejected' })
-    expect(journal.submission('send-1')).not.toHaveProperty('answeredInTurn')
-    expect(readAgentSessionHydrationPage(journal).submissions[0]).not.toHaveProperty(
-      'answeredInTurn'
-    )
+    expect(journal.submission('send-1')).toMatchObject({
+      dispatchState: 'rejected',
+      answeredInTurn: null
+    })
+    expect(readAgentSessionHydrationPage(journal).submissions[0]).toMatchObject({
+      answeredInTurn: null
+    })
   })
 })
 

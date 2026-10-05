@@ -35,9 +35,8 @@ export function applyJournalDispatchRow(
   } else {
     delete submission.rejection
   }
-  const answeredInTurn = row.state === 'rejected' ? readAnsweredTurn(row.answeredInTurn) : undefined
-  if (answeredInTurn) {
-    submission.answeredInTurn = answeredInTurn
+  if (row.state === 'rejected' && row.answeredInTurn !== undefined) {
+    submission.answeredInTurn = readAnsweredTurn(row.answeredInTurn)
   } else {
     delete submission.answeredInTurn
   }
@@ -68,17 +67,17 @@ export function applyJournalDispatchRow(
   })
 }
 
-/** A stored answered turn; one malformed, or naming a way of joining this build does not know, is
- *  dropped, never the row. */
-function readAnsweredTurn(value: unknown): AgentJournalAnsweredTurn | undefined {
+/** A stored answered turn. One malformed, or naming a way of joining this build does not know, is
+ *  read as no turn: it was written knowing the field, so it is not an older row. */
+function readAnsweredTurn(value: unknown): AgentJournalAnsweredTurn | null {
   if (typeof value !== 'object' || value === null) {
-    return undefined
+    return null
   }
   const turnItemId = 'turnItemId' in value ? value.turnItemId : undefined
   const via = 'via' in value ? value.via : undefined
   return typeof turnItemId === 'string' && turnItemId && (via === 'start' || via === 'steer')
     ? { turnItemId, via }
-    : undefined
+    : null
 }
 
 /** A stored rejection fact, read where it can be placed; a kind it cannot place is kept as

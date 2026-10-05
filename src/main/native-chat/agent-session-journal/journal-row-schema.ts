@@ -16,7 +16,6 @@
 import type { AgentSessionFailureFact } from '../../../shared/agent-session-failure'
 import {
   AGENT_SESSION_JOURNAL_SCHEMA_VERSION,
-  type AgentJournalAnsweredTurn,
   type AgentJournalDispatchState,
   type AgentJournalItemBody,
   type AgentJournalMessageItem,
@@ -152,9 +151,10 @@ export type JournalDispatchRow = JournalRowBase & {
    *  dropped when read, never the row. */
   rejection?: AgentSessionFailureFact
   /** On `rejected`: the turn a Codex send was answered into, and how it joined it, when that
-   *  turn's end settled the send. Absent on every other row. Older readers keep the key and ignore
-   *  it; a malformed one is dropped when read, never the row. */
-  answeredInTurn?: AgentJournalAnsweredTurn
+   *  turn's end settled the send; null on every other rejection. Absent on other rows and on rows
+   *  written before it. `via` stays a string: a newer build may write another. Older readers keep
+   *  the key and ignore it; one this build cannot read is read as null, never dropping the row. */
+  answeredInTurn?: { turnItemId: string; via: string } | null
 }
 
 /** An item mutation may name its own producer, because one batch can CREATE
