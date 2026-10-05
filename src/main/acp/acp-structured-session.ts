@@ -36,11 +36,12 @@ export type AcpStructuredSession = {
 }
 
 /** Every agent frame goes through here once the lane exists: options and commands first, so a
- *  read right after the frame sees them, then the journal. */
+ *  read right after the frame sees them, then the journal. `reattaching`: see `asReattachHistory`. */
 export function routeAcpSessionEvent(
   session: Pick<AcpStructuredSession, 'lane' | 'options'>,
   event: AcpSessionEvent,
-  at: number
+  at: number,
+  reattaching = false
 ): void {
   if (event.kind === 'known') {
     const { update } = event.notification
@@ -50,7 +51,27 @@ export function routeAcpSessionEvent(
       session.options.adoptConfigOptions(update.configOptions)
     }
   }
-  session.lane.apply(session.lane.translator.sessionEvent(event, at))
+  const { translator } = session.lane
+  session.lane.apply(
+    reattaching
+      ? translator.notification(
+          'session/update',
+          asReattachHistory(event.kind === 'known' ? event.notification : event.raw),
+          at
+        )
+      : translator.sessionEvent(event, at)
+  )
+}
+
+/** While a chat the journal holds reattaches, everything the agent sends is history the journal
+ *  already has, whatever the agent marked: marked as replay, the translator keeps only its usage. */
+export function asReattachHistory(params: unknown): unknown {
+  if (typeof params !== 'object' || params === null || Array.isArray(params)) {
+    return params
+  }
+  const meta = '_meta' in params ? params._meta : undefined
+  const marked = typeof meta === 'object' && meta !== null && !Array.isArray(meta) ? meta : {}
+  return { ...params, _meta: { ...marked, isReplay: true } }
 }
 
 /**

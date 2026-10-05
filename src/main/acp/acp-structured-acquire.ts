@@ -3,7 +3,7 @@
 // proved (`session/resume` where the agent offers it, else `session/load`) or start a new one. The
 // journal already holds a reattached chat, so whatever the agent sends while it reattaches is not
 // written, except context usage. The handshake is bounded: an agent that never answers fails the
-// start instead of holding the chat's queue, and a close can stop the child at any point of it.
+// start instead of holding the chat's queue, and the acquire's abort signal stops it at any point.
 
 import type { AgentSessionProviderHandleLink } from '../../shared/agent-session-provider-handle'
 import { TUI_AGENT_DISPLAY_NAMES } from '../../shared/tui-agent-display-names'
@@ -29,7 +29,11 @@ import { AcpStructuredLane } from './acp-structured-lane'
 import type { AcpStructuredLaunch } from './acp-structured-launch-resolution'
 import { AcpStructuredOptions, restoreAcpSessionOptions } from './acp-structured-options'
 import { AcpStructuredPrompts } from './acp-structured-prompts'
-import { routeAcpSessionEvent, type AcpStructuredSession } from './acp-structured-session'
+import {
+  asReattachHistory,
+  routeAcpSessionEvent,
+  type AcpStructuredSession
+} from './acp-structured-session'
 import {
   ACP_CANCEL_TIMEOUT_MS,
   type AcpStructuredSessionAdapterDeps
@@ -108,7 +112,10 @@ export async function acquireAcpStructuredSession(input: {
   input.track(child)
   let session: AcpStructuredSession | null = null
   // A slot rather than a `let`: closures read it, and control-flow narrowing cannot see them write.
-  const slot: { lane: AcpStructuredLane | null } = { lane: null }
+  const slot: { lane: AcpStructuredLane | null; reattaching: boolean } = {
+    lane: null,
+    reattaching: false
+  }
   const options = new AcpStructuredOptions()
   const prompts = new AcpStructuredPrompts(() => slot.lane)
   const early: (() => void)[] = []
@@ -137,7 +144,15 @@ export async function acquireAcpStructuredSession(input: {
     },
     onRequest: (method, params, context) => prompts.handle(method, params, context),
     onExtensionNotification: (method, params) =>
-      whenLane(() => slot.lane?.apply(slot.lane.translator.notification(method, params, now()))),
+      whenLane(() =>
+        slot.lane?.apply(
+          slot.lane.translator.notification(
+            method,
+            slot.reattaching ? asReattachHistory(params) : params,
+            now()
+          )
+        )
+      ),
     onDiagnostic: (message) =>
       deps.logger?.warn('ACP agent protocol diagnostic', {
         scope: 'acp-diagnostic',
@@ -150,7 +165,11 @@ export async function acquireAcpStructuredSession(input: {
     }
   })
   runtime.subscribe((event: AcpSessionEvent) =>
-    whenLane(() => slot.lane && routeAcpSessionEvent({ lane: slot.lane, options }, event, now()))
+    whenLane(
+      () =>
+        slot.lane &&
+        routeAcpSessionEvent({ lane: slot.lane, options }, event, now(), slot.reattaching)
+    )
   )
   child.onExit(() => {
     // A crash usually ends stdout first, so the connection's loss may already have closed the
@@ -177,6 +196,7 @@ export async function acquireAcpStructuredSession(input: {
       onFailed: () => input.forceClose(sessionId)
     })
     slot.lane = lane
+    slot.reattaching = attaching
     if (attaching) {
       lane.translator.beginLoad()
     }
@@ -217,6 +237,7 @@ export async function acquireAcpStructuredSession(input: {
           sessionId: resume.sessionId,
           resumePreference: 'resume'
         })
+        slot.reattaching = false
         attaching.apply(attaching.translator.finishLoad(now()))
       } catch (error) {
         const notFound = error instanceof AcpRpcError && error.code === ACP_RESOURCE_NOT_FOUND

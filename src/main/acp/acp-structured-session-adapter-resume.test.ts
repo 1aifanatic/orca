@@ -71,6 +71,45 @@ async function exchange(rig: AcpAdapterRig, reply: string, end: boolean): Promis
 const texts = async (rig: AcpAdapterRig) =>
   (await rig.rig.rows()).flatMap((row) => messageText(row.body) ?? [])
 
+/** What Grok might send while it resumes with no replay mark: an old reply and its turn's end. */
+function sendsUnmarkedWhileAttaching(agent: AcpScriptedAgent): void {
+  agent.notify('session/update', replyChunk('prompt:old', 'stale text'))
+  agent.notify('x.ai/session_notification', {
+    sessionId: PROVIDER_SESSION,
+    update: { sessionUpdate: 'turn_completed', prompt_id: 'prompt:old', stop_reason: 'end_turn' }
+  })
+}
+
+describe('the reattach window', () => {
+  const resumesUnmarked = {
+    ...resume,
+    initialize: RESUMES,
+    script: (agent: AcpScriptedAgent) =>
+      agent.on('session/resume', (frame) => {
+        sendsUnmarkedWhileAttaching(agent)
+        agent.reply(frame, { configOptions: GROK_CONFIG_OPTIONS })
+      })
+  }
+
+  it('writes nothing Grok sends while it resumes, even unmarked as replay', async () => {
+    const rig = await openAcpAdapterRig(resumesUnmarked)
+    await rig.acquire()
+    await rig.settle()
+    expect(await rig.rig.rows()).toEqual([])
+  })
+
+  it('leaves no turn from the window for a later Stop to find', async () => {
+    const rig = await openAcpAdapterRig(resumesUnmarked)
+    await rig.acquire()
+    await rig.settle()
+    await expect(rig.adapter.cancelTurn({ sessionId: SESSION, fence: 1 })).resolves.toEqual({
+      cancelled: false,
+      refusal: { turnNotRunning: true }
+    })
+    expect(rig.child().closes).toBe(0)
+  })
+})
+
 describe('reattaching a Grok chat the journal holds', () => {
   it('resumes with session/resume and writes nothing Grok sends while it resumes', async () => {
     const rig = await openAcpAdapterRig({
