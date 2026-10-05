@@ -4,7 +4,8 @@ import { parseWslUncPath } from '../../shared/wsl-paths'
 import { buildWslCodexAppServerArgs } from '../codex-accounts/wsl-codex-command'
 import { CODEX_READ_ONLY_APP_SERVER_ARGS } from '../codex-cli/codex-read-only-app-server-args'
 import { terminateCodexProbeChild } from '../rate-limits/codex-probe-termination'
-import { createProviderSpawnSpec } from './codex-app-server-posix-supervisor'
+import { CODEX_APP_SERVER_CLOSE_REQUEST } from './codex-app-server-close-request'
+import { createProviderSpawnSpec, requestProviderClose } from './codex-app-server-posix-supervisor'
 import type { CodexAppServerSpawn } from './codex-app-server-process-tree-kill'
 import { stopSupervisedChildProcess } from './supervised-child-process-stop'
 
@@ -41,7 +42,7 @@ export function spawnCodexBackfillRecoveryProcess(
     { command, args: [...CODEX_READ_ONLY_APP_SERVER_ARGS], cwd: codexHomePath },
     withCliRuntimeOnPath(command, { ...process.env, CODEX_HOME: codexHomePath }),
     process.platform,
-    { lifetime: 'session' }
+    { lifetime: 'session', closeRequest: CODEX_APP_SERVER_CLOSE_REQUEST }
   )
   const child = spawnProcess(spawnSpec.program, spawnSpec.args, {
     cwd: codexHomePath,
@@ -59,7 +60,17 @@ export async function stopCodexBackfillRecoveryProcess(
 ): Promise<void> {
   if (supervised) {
     // A session supervisor turns stdin end into its group stop, as a Codex connection close does.
-    await stopSupervisedChildProcess(child, () => child.stdin?.end(), BACKFILL_RECOVERY_KILL_SITE)
+    await stopSupervisedChildProcess(
+      child,
+      () =>
+        requestProviderClose({
+          child,
+          closeRequest: CODEX_APP_SERVER_CLOSE_REQUEST,
+          supervised: true,
+          exited: () => child.exitCode !== null || child.signalCode !== null
+        }),
+      BACKFILL_RECOVERY_KILL_SITE
+    )
     return
   }
   await terminateCodexProbeChild(child)

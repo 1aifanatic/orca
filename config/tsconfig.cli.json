@@ -132,6 +132,7 @@
     "../src/main/codex/codex-app-server-capability-cache.ts",
     "../src/main/codex/codex-app-server-capability-signal.ts",
     "../src/main/codex/codex-app-server-client.ts",
+    "../src/main/codex/codex-app-server-close-request.ts",
     "../src/main/codex/codex-app-server-posix-supervisor.ts",
     "../src/main/codex/codex-app-server-process-teardown.ts",
     "../src/main/codex/codex-app-server-process-tree-kill.ts",

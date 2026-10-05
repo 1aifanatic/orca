@@ -2,8 +2,10 @@ import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { waitForProcessExitUntil } from './codex-process-exit-deadline'
 import { stderrIndicatesMissingAppServer } from './codex-app-server-capability-signal'
 import { withCliRuntimeOnPath } from '../../shared/node-cli-command-resolution'
+import { CODEX_APP_SERVER_CLOSE_REQUEST } from './codex-app-server-close-request'
 import {
   createProviderSpawnSpec,
+  requestProviderClose,
   stopSupervisedProvider
 } from './codex-app-server-posix-supervisor'
 import { terminateCodexAppServerProcessTree } from './codex-app-server-process-teardown'
@@ -125,7 +127,7 @@ export async function runCodexAppServerSession<T>(
     { command: invocation.command, args: invocation.args },
     pairedEnv,
     process.platform,
-    { lifetime: 'session' }
+    { lifetime: 'session', closeRequest: CODEX_APP_SERVER_CLOSE_REQUEST }
   )
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: every stdio slot is 'pipe', so stdin, stdout and stderr exist.
   const child = spawnImpl(spawnSpec.program, spawnSpec.args, {
@@ -336,11 +338,12 @@ export async function runCodexAppServerSession<T>(
   } finally {
     await stopSupervisedProvider({
       request: () => {
-        try {
-          child.stdin.end()
-        } catch {
-          // stdin may already be destroyed after a kill; reaping below still runs.
-        }
+        requestProviderClose({
+          child,
+          closeRequest: CODEX_APP_SERVER_CLOSE_REQUEST,
+          supervised: spawnSpec.supervised,
+          exited: () => exited
+        })
         // A session past its deadline is wedged; its stdin end would only add a grace.
         if (timedOut && spawnSpec.supervised && !exited) {
           child.kill('SIGTERM')
