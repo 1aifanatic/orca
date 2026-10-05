@@ -15,6 +15,7 @@ import {
   type AgentJournalRenderItem
 } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
+import { STALE_SESSION_ROW_PREFIX } from '../../../shared/agent-session-stop-row-identity'
 import { partitionJournalLifecycleMutations } from '../agent-session-journal/journal-lifecycle-batch-partition'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import {
@@ -161,7 +162,7 @@ export function planGoneGenerationSettlement(input: {
       // Named by the death it explains, so a retry after a partly written settle adds no second row.
       identity: {
         provider: 'orca',
-        clientMessageId: `stale-session:${input.sessionId}:death-${evidence.ownerFence ?? 'unowned'}-${evidence.observedAt}`
+        clientMessageId: `${STALE_SESSION_ROW_PREFIX}${input.sessionId}:death-${evidence.ownerFence ?? 'unowned'}-${evidence.observedAt}`
       },
       // The death evidence is Orca's log text, never a sentence for a person: the row says only
       // that the provider stopped.
@@ -177,7 +178,7 @@ export function planGoneGenerationSettlement(input: {
     })
   }
   return {
-    settlementId: `stale-session:${input.sessionId}:${input.fence}:${input.generation}`,
+    settlementId: `${STALE_SESSION_ROW_PREFIX}${input.sessionId}:${input.fence}:${input.generation}`,
     mutations
   }
 }
