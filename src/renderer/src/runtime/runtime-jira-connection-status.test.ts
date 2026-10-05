@@ -8,7 +8,9 @@ describe('parseJiraConnectionStatus', () => {
     ['an array', []],
     ['a non-boolean connected', { connected: 'yes', viewer: null }],
     ['a non-object viewer', { connected: true, viewer: 'me' }],
-    ['non-array sites', { connected: true, viewer: null, sites: {} }]
+    ['a malformed viewer', { connected: true, viewer: {}, sites: [] }],
+    ['non-array sites', { connected: true, viewer: null, sites: {} }],
+    ['a malformed site', { connected: true, viewer: null, sites: [null] }]
   ])('reads %s as disconnected', (_label, value) => {
     expect(parseJiraConnectionStatus(value)).toEqual({ connected: false, viewer: null })
   })
