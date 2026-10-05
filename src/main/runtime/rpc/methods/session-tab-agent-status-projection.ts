@@ -109,19 +109,20 @@ function resolveConversationIdentityCarriers<TPayload extends SessionTabsPayload
   payload: TPayload,
   foldForMobile: boolean
 ): TPayload {
-  let changed = false
+  if (!payload.tabs.some((tab) => readMobileConversationIdentityCarrier(tab))) {
+    return payload
+  }
   const tabs = payload.tabs.map((tab) => {
     const carrier = readMobileConversationIdentityCarrier(tab)
     if (!carrier) {
       return tab
     }
-    changed = true
     const stripped = stripMobileConversationIdentityCarrier(tab)
     return foldForMobile && stripped.type === 'terminal' && !stripped.agentStatus
       ? { ...stripped, agentStatus: carrier }
       : stripped
   })
-  return changed ? { ...payload, tabs } : payload
+  return { ...payload, tabs }
 }
 
 function projectUnsupportedAgentSessionTabTitles<TPayload extends SessionTabsPayload>(

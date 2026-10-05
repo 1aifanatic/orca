@@ -56,6 +56,9 @@ export type MobileConversationIdentityCandidate = {
   sessionAgent: AgentType | null
   /** When the identity was observed; dates the carrier so repeat projections are stable. */
   observedAt: number
+  /** The model reported on the same row as `providerSession`. */
+  model?: string
+  modelSwitchCommand?: 'orca-model'
 }
 
 /**
@@ -101,6 +104,9 @@ export function buildMobileConversationIdentityCarrier(args: {
     terminalTitle: args.terminalTitle,
     agentType,
     providerSession: candidate.providerSession,
+    // Why: the model belongs to the conversation, so a restarted phone's picker needs it too.
+    ...(candidate.model ? { model: candidate.model } : {}),
+    ...(candidate.modelSwitchCommand ? { modelSwitchCommand: candidate.modelSwitchCommand } : {}),
     ...(args.terminalHandle ? { terminalHandle: args.terminalHandle } : {}),
     ...(args.worktreeId ? { worktreeId: args.worktreeId } : {})
   }

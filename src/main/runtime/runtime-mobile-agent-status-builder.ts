@@ -83,7 +83,7 @@ export function buildRuntimeMobileAgentStatus(
     ownerOptions
   )
   if (nonAgentTitle) {
-    // Why: a non-agent title shows no live state (#1437) unless a live hook signal survives; a neutral one still relays the pane's conversation identity as a session boundary.
+    // Why: a non-agent title shows no live state (#1437) unless a live hook signal survives.
     const hasLiveHookSignal =
       retained?.payload.interactivePrompt != null ||
       retained?.payload.toolName != null ||
@@ -96,6 +96,7 @@ export function buildRuntimeMobileAgentStatus(
       // Scoped to panes with no PTY status at all, so it cannot revive a spinner:
       // this branch publishes `done`. It only keeps the transcript addressable.
       (!pty?.lastAgentStatus && (hookRow.agentType != null || hookRow.providerSession != null))
+    // Why: a neutral title still relays the pane's conversation identity as a session boundary.
     if (!hasLiveHookSignal) {
       const carrier = terminalTitleBlocksExplicitAgentStatus(ptyTitle)
         ? null
@@ -105,13 +106,23 @@ export function buildRuntimeMobileAgentStatus(
                 ? {
                     providerSession: hookRow.providerSession,
                     sessionAgent: hookRow.providerSessionAgentType,
-                    observedAt: hookRow.providerSessionReceivedAt
+                    observedAt: hookRow.providerSessionReceivedAt,
+                    ...(hookRow.providerSessionModel
+                      ? { model: hookRow.providerSessionModel }
+                      : {}),
+                    ...(hookRow.providerSessionModelSwitchCommand
+                      ? { modelSwitchCommand: hookRow.providerSessionModelSwitchCommand }
+                      : {})
                   }
                 : retained?.providerSession
                   ? {
                       providerSession: retained.providerSession,
                       sessionAgent: retained.payload.agentType ?? null,
-                      observedAt: retained.updatedAt
+                      observedAt: retained.updatedAt,
+                      ...(retained.payload.model ? { model: retained.payload.model } : {}),
+                      ...(retained.payload.modelSwitchCommand
+                        ? { modelSwitchCommand: retained.payload.modelSwitchCommand }
+                        : {})
                     }
                   : null,
             ownerAgent,

@@ -243,6 +243,38 @@ describe('idle neutral-title conversation identity (STA-7370)', () => {
     expect(readMobileConversationIdentityCarrier(result)).toBeNull()
   })
 
+  it('carries the model reported on the hook row that holds the session', () => {
+    const row = codexRow({ model: 'gpt-5.5', modelSwitchCommand: 'orca-model' })
+    const carrier = readMobileConversationIdentityCarrier(build({ rows: [row], retained: null }))
+    expect(carrier).toMatchObject({ model: 'gpt-5.5', modelSwitchCommand: 'orca-model' })
+  })
+
+  it('carries the model reported on the retained row when it holds the session', () => {
+    const row = codexRow({ model: 'gpt-5.5' })
+    const retained = {
+      ...retainedFrom(row),
+      payload: { ...retainedFrom(row).payload, model: 'gpt-5.5' }
+    }
+    const carrier = readMobileConversationIdentityCarrier(build({ rows: [], retained }))
+    expect(carrier).toMatchObject({ model: 'gpt-5.5', providerSession: CODEX_SESSION })
+    expect(carrier).not.toHaveProperty('modelSwitchCommand')
+  })
+
+  it('omits the model when the session row reports none, even if another row does', () => {
+    const sessionRow = codexRow()
+    const newerModelRow = codexRow({
+      providerSession: undefined,
+      model: 'gpt-5.5',
+      receivedAt: sessionRow.receivedAt + 1
+    })
+    const carrier = readMobileConversationIdentityCarrier(
+      build({ rows: [sessionRow, newerModelRow], retained: null })
+    )
+    expect(carrier?.providerSession).toEqual(CODEX_SESSION)
+    expect(carrier).not.toHaveProperty('model')
+    expect(carrier).not.toHaveProperty('modelSwitchCommand')
+  })
+
   it('keeps a live tool under a neutral title as rich status, exactly as before', () => {
     const row = codexRow({ state: 'working', toolName: 'shell', prompt: 'Say hi' })
     const retained = {
