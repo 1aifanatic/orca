@@ -212,8 +212,10 @@ export function markEnvironmentUsed(
     entry.id === environment.id
       ? {
           ...entry,
-          runtimeId: runtimeIdChanged ? args.runtimeId : entry.runtimeId,
-          ...(pairedDeviceIdChanged ? { pairedDeviceId: args.pairedDeviceId } : {}),
+          runtimeId: (runtimeIdChanged ? args.runtimeId : null) ?? entry.runtimeId,
+          ...(pairedDeviceIdChanged && args.pairedDeviceId
+            ? { pairedDeviceId: args.pairedDeviceId }
+            : {}),
           lastUsedAt: now,
           updatedAt: now
         }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { PAIRING_OFFER_VERSION } from '../../shared/pairing'
+import { PAIRING_OFFER_VERSION, type PairingOffer } from '../../shared/pairing'
 
 const sendRemoteRuntimeRequest = vi.hoisted(() => vi.fn())
 vi.mock('../../shared/remote-runtime-client', () => ({ sendRemoteRuntimeRequest }))
@@ -10,7 +10,7 @@ vi.mock('../../shared/remote-pairing-verification', () => ({
 const { RUNTIME_IDENTITY_MISMATCH_MESSAGE, verifyRuntimePairingIdentity } =
   await import('./runtime-environment-identity-verification')
 
-const pairing = {
+const pairing: PairingOffer = {
   v: PAIRING_OFFER_VERSION,
   endpoint: 'ws://127.0.0.1:46768',
   deviceToken: 'token-new',
