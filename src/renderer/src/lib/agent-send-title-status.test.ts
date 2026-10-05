@@ -25,9 +25,6 @@ describe('detectAgentSendTitleStatus', () => {
     expect(detectAgentSendTitleStatus('zsh')).toBeNull()
   })
 
-  // Why: the runtime's presence check treats a lone quarter-circle frame as generic
-  // activity, not identity (STA-4028), so offering one here is an offer-then-refuse
-  // contradiction when the foreground read cannot prove the agent (#24286).
   it.each(['\u25d1 Check package version in package.json', '\u25d3 Deploying release 4.2'])(
     'rejects a lone quarter-circle spinner title %j',
     (title) => {

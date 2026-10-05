@@ -15,9 +15,7 @@ export function detectAgentSendTitleStatus(title: string | null | undefined): Ag
 
   const status = classifyTitleActivity(title)
   if (status !== 'idle') {
-    // Why: title-only evidence cannot prove identity for a lone quarter-circle frame (STA-4028);
-    // the runtime may still accept that pane via launch, foreground-process, or ready-prompt
-    // evidence the renderer cannot see, so this is a deliberate conservative narrowing (#24286).
+    // Generic progress needs identity evidence the renderer does not have.
     return isQuarterCircleSpinnerOnlyAgentTitle(title) ? null : status
   }
 

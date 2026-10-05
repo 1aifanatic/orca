@@ -58,8 +58,6 @@ export function activeAgentNotesSendFailureMessage(
         : 'Open the agent terminal in this worktree, then send the notes again.'
       break
     case 'no-agent':
-      // Why: this is the one refusal a user can hit with no visible cause — a running agent
-      // must be present before the notes can be sent (#24286).
       message = options.explicitTarget
         ? translate(
             'auto.lib.activeAgentNoteSendResult.noAgent.selectedTerminal',

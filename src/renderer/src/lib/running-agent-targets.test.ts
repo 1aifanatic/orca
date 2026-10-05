@@ -318,8 +318,6 @@ describe('running agent send targets', () => {
       NOW
     )
 
-    // Why: the runtime's presence guard ignores a lone quarter-circle frame (STA-4028),
-    // so a stale hook row must stay disabled rather than be re-offered (#24286).
     expect(target).toMatchObject({
       paneKey,
       ptyId: 'pty-right',
