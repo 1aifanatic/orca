@@ -23,7 +23,6 @@ import {
 import type { StoreRuntimeState } from './store-runtime-state'
 import type { WriteSchedulingOperations } from './write-scheduling'
 import { scheduleSave } from './write-scheduling'
-import { publishWorkspaceSessionPartition } from './workspace-session-partition-publication'
 import {
   preserveMissingWorkspaceSessionTerminalBindings,
   sshTargetIdForWorkspaceSessionHost
@@ -206,11 +205,10 @@ export function setHostWorkspaceSession(
     ),
     owner[sessionHostPartitionOperationsContext].runtime.state.workspaceSession
   )
-  publishWorkspaceSessionPartition(
-    owner[sessionHostPartitionOperationsContext].runtime.state,
-    hostId,
-    pruned
-  )
+  owner[sessionHostPartitionOperationsContext].runtime.state.workspaceSessionsByHostId = {
+    ...owner[sessionHostPartitionOperationsContext].runtime.state.workspaceSessionsByHostId,
+    [hostId]: pruned
+  }
   scheduleSave(owner[sessionHostPartitionOperationsContext].scheduling, [
     'workspaceSessionsByHostId'
   ])

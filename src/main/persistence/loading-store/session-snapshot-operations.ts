@@ -15,7 +15,6 @@ import type { TerminalBindingRecoveryOperations } from './terminal-binding-recov
 import type { WriteSchedulingOperations } from './write-scheduling'
 import { resolveHostId, setHostWorkspaceSession } from './session-host-partitions'
 import { scheduleSave } from './write-scheduling'
-import { publishWorkspaceSessionPartition } from './workspace-session-partition-publication'
 
 type SessionSnapshotOperationsRuntime = Pick<
   StoreRuntimeState,
@@ -97,7 +96,14 @@ export class SessionSnapshotOperations {
 
   private publishSession(session: WorkspaceSessionState, hostId: ExecutionHostId): void {
     const { runtime, scheduling } = this[sessionSnapshotOperationsContext]
-    publishWorkspaceSessionPartition(runtime.state, hostId, session)
+    if (hostId === LOCAL_EXECUTION_HOST_ID) {
+      runtime.state.workspaceSession = session
+    } else {
+      runtime.state.workspaceSessionsByHostId = {
+        ...runtime.state.workspaceSessionsByHostId,
+        [hostId]: session
+      }
+    }
     scheduleSave(
       scheduling,
       hostId === LOCAL_EXECUTION_HOST_ID ? ['workspaceSession'] : ['workspaceSessionsByHostId']

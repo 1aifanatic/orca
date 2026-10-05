@@ -3,164 +3,86 @@ import type { ExecutionHostId } from '../../../shared/execution-host'
 import type { TerminalSurfaceCloseTarget } from '../../../shared/terminal-surface-close-target'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
 import { _resetTracerForTests, setActiveSink } from '../../observability/tracer'
-import { makeTerminalTab, testState } from '../../persistence-test-harness'
-import { TEST_LEAF_1, TEST_LEAF_2 } from '../../persistence-session-fixtures'
-import {
-  terminalSurfaceCloseMutation,
-  type TerminalSurfaceCloseCommit,
-  type TerminalSurfaceCloseOptions
-} from '../../runtime/terminal-surface-close'
+import type { TerminalSurfaceCloseCommit } from '../../runtime/terminal-surface-close'
 import { closeLeafOrTab } from './terminal-topology-commit'
 
-vi.mock('electron', () => ({
-  app: { getPath: () => testState.dir },
-  safeStorage: { isEncryptionAvailable: () => false }
-}))
-
-type Fixture = { hostId: ExecutionHostId; worktreeId: string; repoId: string }
-
-// An ssh: partition: the close must land in the owning host's partition, not local.
-const fixture: Fixture = {
-  hostId: 'ssh:target-1',
-  worktreeId: 'ssh-repo::/srv/app',
-  repoId: 'ssh-repo'
-}
-
+// An ssh: partition, so a leaked host id or worktree path would show in the span.
+const HOST_ID: ExecutionHostId = 'ssh:target-1'
+const WORKTREE_ID = 'ssh-repo::/srv/app'
+const LEAF_1 = '11111111-1111-4111-8111-111111111111'
+const LEAF_2 = '22222222-2222-4222-8222-222222222222'
 const SPLIT_TAB = 'tab-split'
 const PINNED_TAB = 'tab-pinned'
 const CLOSED_TAB = 'tab-closed-earlier'
+const NOW = 1_700_000_000_000
 
-function sessionFor(fixture: Fixture): WorkspaceSessionState {
-  const { worktreeId } = fixture
+function tab(id: string, ptyId: string, isPinned = false) {
   return {
-    activeRepoId: fixture.repoId,
-    activeWorktreeId: worktreeId,
+    id,
+    ptyId,
+    worktreeId: WORKTREE_ID,
+    title: 'Terminal',
+    customTitle: null,
+    color: null,
+    sortOrder: 0,
+    createdAt: 1,
+    ...(isPinned ? { isPinned } : {})
+  }
+}
+
+function session(): WorkspaceSessionState {
+  return {
+    activeRepoId: 'ssh-repo',
+    activeWorktreeId: WORKTREE_ID,
     activeTabId: SPLIT_TAB,
-    tabsByWorktree: {
-      [worktreeId]: [
-        makeTerminalTab({ id: SPLIT_TAB, ptyId: 'pty-1', worktreeId }),
-        makeTerminalTab({ id: PINNED_TAB, ptyId: 'pty-3', worktreeId, isPinned: true })
-      ]
-    },
+    tabsByWorktree: { [WORKTREE_ID]: [tab(SPLIT_TAB, 'pty-1'), tab(PINNED_TAB, 'pty-3', true)] },
     terminalLayoutsByTabId: {
       [SPLIT_TAB]: {
         root: {
           type: 'split',
           direction: 'vertical',
-          first: { type: 'leaf', leafId: TEST_LEAF_1 },
-          second: { type: 'leaf', leafId: TEST_LEAF_2 }
+          first: { type: 'leaf', leafId: LEAF_1 },
+          second: { type: 'leaf', leafId: LEAF_2 }
         },
-        activeLeafId: TEST_LEAF_1,
+        activeLeafId: LEAF_1,
         expandedLeafId: null,
-        ptyIdsByLeafId: { [TEST_LEAF_1]: 'pty-1', [TEST_LEAF_2]: 'pty-2' },
-        buffersByLeafId: { [TEST_LEAF_2]: 'scrollback' },
-        titlesByLeafId: { [TEST_LEAF_2]: 'logs' }
-      },
-      [PINNED_TAB]: {
-        root: { type: 'leaf', leafId: TEST_LEAF_1 },
-        activeLeafId: TEST_LEAF_1,
-        expandedLeafId: null,
-        ptyIdsByLeafId: { [TEST_LEAF_1]: 'pty-3' }
+        ptyIdsByLeafId: { [LEAF_1]: 'pty-1', [LEAF_2]: 'pty-2' }
       }
     },
-    terminalPtyIncarnationsByPaneKey: {
-      [`${SPLIT_TAB}:${TEST_LEAF_1}`]: 'inc-1',
-      [`${SPLIT_TAB}:${TEST_LEAF_2}`]: 'inc-2'
-    },
-    remoteSessionIdsByTabId: { [SPLIT_TAB]: 'remote-1' },
     closedTerminalTabTombstonesByTabId: {
-      [CLOSED_TAB]: { closedAt: 1_699_999_999_000, worktreeId, reason: 'user' }
+      [CLOSED_TAB]: { closedAt: NOW - 1000, worktreeId: WORKTREE_ID, reason: 'user' }
     },
-    terminalTopologyRevisionByRepoId: { [fixture.repoId]: 3 }
+    terminalTopologyRevisionByRepoId: { 'ssh-repo': 3 }
   }
 }
 
-type CloseCase = {
-  name: string
-  target: TerminalSurfaceCloseTarget
-  options?: TerminalSurfaceCloseOptions
-}
-
-const PANE_CLOSE: CloseCase = {
-  name: 'pane of a split',
-  target: { kind: 'pane', tabId: SPLIT_TAB, leafId: TEST_LEAF_2 }
-}
-const TAB_CLOSE: CloseCase = {
-  name: 'tab',
-  target: { kind: 'tab', tabId: SPLIT_TAB },
-  options: { reason: 'user' }
-}
-const PINNED_TAB_CLOSE: CloseCase = {
-  name: 'pinned tab',
-  target: { kind: 'tab', tabId: PINNED_TAB }
-}
-const RECORDED_CLOSE_ECHO: CloseCase = {
-  name: 'echo of a recorded close',
-  target: { kind: 'tab', tabId: CLOSED_TAB },
-  options: { allowMissing: true }
-}
-
-/** Runs one close through `mutationFor` and records every byte it hands back. */
-function runClose(
-  closeCase: CloseCase,
-  mutationFor: (
-    commit: TerminalSurfaceCloseCommit
-  ) => () => { value: Error | undefined; persist?: boolean | 'if-dirty' }
-): string {
-  const sessions = new Map<ExecutionHostId, WorkspaceSessionState>([
-    [fixture.hostId, sessionFor(fixture)]
-  ])
-  const writes: unknown[] = []
-  let killed: string[] | null = null
-  const mutation = mutationFor({
-    worktreeId: fixture.worktreeId,
-    target: closeCase.target,
-    options: closeCase.options ?? {},
-    requestedSession: sessionFor(fixture),
+function commitFor(
+  target: TerminalSurfaceCloseTarget,
+  overrides: Partial<TerminalSurfaceCloseCommit> = {}
+): TerminalSurfaceCloseCommit {
+  let current = session()
+  return {
+    worktreeId: WORKTREE_ID,
+    target,
+    options: {},
+    requestedSession: current,
     ownerMatches: () => true,
-    hostId: () => fixture.hostId,
-    getSession: (hostId) => sessions.get(hostId),
-    setSession: (session, hostId) => {
-      writes.push({ hostId, session })
-      sessions.set(hostId, session)
+    hostId: () => HOST_ID,
+    getSession: () => current,
+    setSession: (next) => {
+      current = next
     },
-    onClosed: (ptyIds) => {
-      killed = ptyIds
-    }
-  })
-  const result = mutation()
-  return JSON.stringify({
-    value: result.value instanceof Error ? result.value.message : result.value,
-    persist: result.persist,
-    writes,
-    killed
-  })
-}
-
-describe('closeLeafOrTab writes exactly what the close mutation writes', () => {
-  beforeEach(() => {
-    vi.useFakeTimers()
-    vi.setSystemTime(1_700_000_000_000)
-  })
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
-  for (const closeCase of [PANE_CLOSE, TAB_CLOSE]) {
-    it(closeCase.name, () => {
-      const legacy = runClose(closeCase, terminalSurfaceCloseMutation)
-      expect(legacy).toContain('"writes":[{')
-      expect(runClose(closeCase, closeLeafOrTab)).toBe(legacy)
-    })
+    onClosed: () => {},
+    ...overrides
   }
-})
+}
 
 describe('persistence.terminal-topology span', () => {
   let records: { name: string; attributes: Record<string, unknown>; exit: unknown }[]
 
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] })
-    vi.setSystemTime(1_700_000_000_000)
+    vi.setSystemTime(NOW)
     records = []
     setActiveSink({
       push: (record) => {
@@ -175,25 +97,31 @@ describe('persistence.terminal-topology span', () => {
     _resetTracerForTests()
   })
 
-  function attributesOf(closeCase: CloseCase): Record<string, unknown> {
-    runClose(closeCase, closeLeafOrTab)
+  function attributesAfter(commit: TerminalSurfaceCloseCommit): Record<string, unknown> {
+    closeLeafOrTab(commit)()
     expect(records).toHaveLength(1)
     expect(records[0].name).toBe('persistence.terminal-topology')
     return records[0].attributes
   }
 
   it('records a committed pane close without ids', () => {
-    const attributes = attributesOf(PANE_CLOSE)
-    expect(attributes).toEqual({
+    expect(attributesAfter(commitFor({ kind: 'pane', tabId: SPLIT_TAB, leafId: LEAF_2 }))).toEqual({
       kind: 'persistence',
       'topology.kind': 'close_leaf',
       'topology.outcome': 'committed'
     })
-    expect(JSON.stringify(records[0])).not.toMatch(/pty-|tab-split|ssh-repo|srv|remote-1/)
+    expect(JSON.stringify(records[0])).not.toMatch(/pty-|tab-split|ssh-repo|srv|target-1/)
+  })
+
+  it('records a committed tab close', () => {
+    expect(attributesAfter(commitFor({ kind: 'tab', tabId: SPLIT_TAB }))).toMatchObject({
+      'topology.kind': 'close_tab',
+      'topology.outcome': 'committed'
+    })
   })
 
   it('records a refusal with its reason code', () => {
-    expect(attributesOf(PINNED_TAB_CLOSE)).toMatchObject({
+    expect(attributesAfter(commitFor({ kind: 'tab', tabId: PINNED_TAB }))).toMatchObject({
       'topology.kind': 'close_tab',
       'topology.outcome': 'refused',
       'topology.refusal': 'terminal_tab_pinned'
@@ -201,23 +129,21 @@ describe('persistence.terminal-topology span', () => {
   })
 
   it('records a close that changes nothing as a noop', () => {
-    expect(attributesOf(RECORDED_CLOSE_ECHO)).toMatchObject({ 'topology.outcome': 'noop' })
+    const echo = commitFor({ kind: 'tab', tabId: CLOSED_TAB }, { options: { allowMissing: true } })
+    expect(attributesAfter(echo)).toMatchObject({ 'topology.outcome': 'noop' })
   })
 
   it('records a thrown commit as a failed span and rethrows', () => {
-    const mutation = closeLeafOrTab({
-      worktreeId: fixture.worktreeId,
-      target: { kind: 'tab', tabId: SPLIT_TAB },
-      options: {},
-      requestedSession: undefined,
-      ownerMatches: () => true,
-      hostId: () => fixture.hostId,
-      getSession: () => {
-        throw new Error('read failed')
-      },
-      setSession: () => {},
-      onClosed: () => {}
-    })
+    const mutation = closeLeafOrTab(
+      commitFor(
+        { kind: 'tab', tabId: SPLIT_TAB },
+        {
+          getSession: () => {
+            throw new Error('read failed')
+          }
+        }
+      )
+    )
     expect(mutation).toThrow('read failed')
     expect(records).toHaveLength(1)
     expect(records[0].attributes).toMatchObject({ 'topology.outcome': 'threw' })

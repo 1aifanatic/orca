@@ -1,9 +1,9 @@
+import { startSpan } from '../../observability/tracer'
 import {
   terminalSurfaceCloseMutation,
   type TerminalSurfaceCloseCommit
 } from '../../runtime/terminal-surface-close'
 import type { DurableProfileStateMutation } from '../loading-store/store-runtime-state'
-import { startTerminalTopologyWriteSpan } from './terminal-topology-write-span'
 
 /**
  * The commit boundary for class-(a) terminal topology (design §5.1). Today it wraps the explicit
@@ -11,25 +11,45 @@ import { startTerminalTopologyWriteSpan } from './terminal-topology-write-span'
  * still lives in runtime/ until B1-8 moves it behind this module.
  */
 
-/** Closes one pane (close_leaf) or a whole tab (close_tab), unchanged, inside the topology span. */
+/** Bindings are not listed: `persistPtyBinding` already records `persistence.pty-binding`. */
+type TerminalTopologyCommitKind = 'close_leaf' | 'close_tab'
+
+/** Closes one pane or a whole tab, unchanged, inside the topology span. */
 export function closeLeafOrTab(
   commit: TerminalSurfaceCloseCommit
 ): () => DurableProfileStateMutation<Error | undefined> {
-  const mutate = terminalSurfaceCloseMutation(commit)
-  const kind = commit.target.kind === 'pane' ? 'close_leaf' : 'close_tab'
+  return traced(
+    commit.target.kind === 'pane' ? 'close_leaf' : 'close_tab',
+    terminalSurfaceCloseMutation(commit)
+  )
+}
+
+/**
+ * One `persistence.terminal-topology` span per commit, from admission to the in-memory write.
+ * Attributes stay low-cardinality: no pane key, PTY id or path.
+ */
+function traced<T>(
+  kind: TerminalTopologyCommitKind,
+  mutate: () => DurableProfileStateMutation<T>
+): () => DurableProfileStateMutation<T> {
   return () => {
-    const span = startTerminalTopologyWriteSpan(kind)
+    const span = startSpan('persistence.terminal-topology', {
+      attributes: { kind: 'persistence', 'topology.kind': kind }
+    })
     try {
       const result = mutate()
       if (result.value instanceof Error) {
-        // Close refusals are fixed reason codes, never ids.
-        span.finish('refused', result.value.message)
+        span.setAttribute('topology.outcome', 'refused')
+        // Refusals are fixed reason codes, never ids.
+        span.setAttribute('topology.refusal', result.value.message)
       } else {
-        span.finish(result.persist === false ? 'noop' : 'committed')
+        span.setAttribute('topology.outcome', result.persist === false ? 'noop' : 'committed')
       }
+      span.end()
       return result
     } catch (error) {
-      span.finish('threw', error)
+      span.setAttribute('topology.outcome', 'threw')
+      span.fail(error instanceof Error ? error : String(error))
       throw error
     }
   }
