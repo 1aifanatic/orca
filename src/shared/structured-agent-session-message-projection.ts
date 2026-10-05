@@ -19,45 +19,23 @@ export type StructuredAgentSessionMessageProjectionOptions = {
 }
 
 /**
- * The rejected submissions the host's history shows in place as not sent, by item id; `submissions`
- * in submission order, as the client keeps them. A withdrawn one went back to its sender, and one
- * the queue holds (a draft's hand-off, or a card under its id) is drawn as its card. A command such
- * as `/compact` is shown like any message: its row is where every viewer learns it did not run.
+ * The rejected submissions the host's history shows in place as not sent, by item id. A withdrawn
+ * one went back to its sender, and one the queue holds (a draft's hand-off, or a card under its id)
+ * is drawn as its card. Every other one stays, a command such as `/compact` included, whatever was
+ * sent after it: a resend of its text is a new message, and the row is the record of the failure.
  */
 export function structuredAgentSessionRejectedShownInPlace(
   submissions: readonly AgentJournalSubmission[],
   queuedMessageIds: readonly string[]
 ): Set<string> {
   const cards = new Set(queuedMessageIds)
-  // Each body's copies, as positions in submission order. A withdrawn one is hidden too, so it
-  // supersedes nothing.
-  const copies = new Map<string, { index: number; submittedAt: number }[]>()
-  for (const [index, submission] of submissions.entries()) {
-    if (!dispatchWasWithdrawn(submission)) {
-      const copy = { index, submittedAt: submission.submittedAt }
-      const same = copies.get(submission.payloadFingerprint)
-      if (same) {
-        same.push(copy)
-      } else {
-        copies.set(submission.payloadFingerprint, [copy])
-      }
-    }
-  }
   const shown = new Set<string>()
-  for (const [index, submission] of submissions.entries()) {
-    const { resolvedAt } = submission
+  for (const submission of submissions) {
     if (
       submission.dispatchState !== 'rejected' ||
       dispatchWasWithdrawn(submission) ||
       submission.queuedMessageId !== undefined ||
-      cards.has(submission.clientMessageId) ||
-      // Collapses resends of a rejected message: past Retries resent it under a new id, and the
-      // host re-delivers its own messages under new ids. Only a later copy sent once the rejection
-      // was known counts, so a repeat sent before it is kept.
-      (resolvedAt !== null &&
-        (copies.get(submission.payloadFingerprint) ?? []).some(
-          (copy) => copy.index > index && copy.submittedAt >= resolvedAt
-        ))
+      cards.has(submission.clientMessageId)
     ) {
       continue
     }
