@@ -86,6 +86,17 @@ describe('native-chat composer draft addition', () => {
     expect(next.drafts.readNativeChatDraftCache(SCOPE)).toBe('please go\n\ngo')
   })
 
+  it('keeps a hand-back the draft already ends with when that draft was never saved', async () => {
+    const crashing = { ...storage, write: () => new Promise<void>(() => {}) }
+    const crashed = await reload({ using: crashing })
+    crashed.drafts.writeNativeChatDraftCache(SCOPE, 'hello')
+    expect(crashed.drafts.appendNativeChatDraftCache(SCOPE, 'hello')).toBe(true)
+    crashed.store.clearNativeChatComposerDraftsForTests()
+
+    const next = await reload()
+    expect(next.drafts.readNativeChatDraftCache(SCOPE)).toBe('hello')
+  })
+
   it('makes text given back before the load lands again only where the loaded draft lacks it', async () => {
     // An earlier run gave "go" back, then crashed before its copy was deleted.
     storage.drafts.set(SCOPE, { text: 'typed earlier\n\ngo', images: [], savedAt: 1 })

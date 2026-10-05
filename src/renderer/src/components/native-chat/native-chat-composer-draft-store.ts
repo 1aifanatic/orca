@@ -204,7 +204,11 @@ export function appendToNativeChatComposerDraft(
     (loaded) => withAddition(loaded, addition, { once: true })
   )
   const after = records.get(scopeKey)
-  if (!after || after === before) {
+  if (!after) {
+    return true
+  }
+  // Why: a hand-back the draft already holds changes nothing, but that draft may not be saved yet.
+  if (after === before && !hasLocalChange(scopeKey) && !refusedScopes.has(scopeKey)) {
     return true
   }
   return journalNativeChatComposerDraftAddition(scopeKey, addition, after.savedAt)
