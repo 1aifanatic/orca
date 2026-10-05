@@ -5,6 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionTurnCompletionEvent } from '../../../shared/agent-session-wire'
@@ -59,7 +60,7 @@ function startHost(): void {
           },
           link: {
             linkId: `link-${fence}`,
-            handle: { provider: 'codex' as const, threadId: THREAD },
+            handle: codexProviderHandle(THREAD),
             // A start after the first continues the chain it created.
             origin: store.getRecord(SESSION)?.providerHandleChain.length
               ? ('resumed' as const)

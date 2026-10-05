@@ -34,9 +34,10 @@ import { adapterSupportsRecord } from './structured-agent-session-provider-suppo
 import { startFailureRefusalReason } from './structured-agent-session-failure-text'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import {
-  finishOwedStructuredAgentSessionWindDownUnderSerialize,
-  type StructuredAgentSessionLifetimeContext
-} from './structured-agent-session-host-lifetime'
+  joinClosingStructuredAgentSessionChild,
+  releaseLeaseOfEndedStructuredAgentSessionChild
+} from './structured-agent-session-child-close'
+export { joinClosingStructuredAgentSessionChild }
 import {
   structuredAgentSessionResumeOperationId,
   structuredAgentSessionResumeParams
@@ -62,48 +63,6 @@ export type StructuredAgentSessionResumeOutcome =
 const AGENT_START_CALLER_KEY = 'trusted-local:agent-start'
 
 /**
- * Every operation that reaches the provider finishes a stop an earlier attempt left owed first: the
- * child that stop could not prove gone takes no input, and none may start beside it. Still
- * unproven, the operation is refused with the exit `unverifiable`, never assumed `exited`.
- */
-export async function finishOwedStructuredAgentSessionStop(
-  context: StructuredAgentSessionLifetimeContext,
-  sessionId: string
-): Promise<StructuredAgentSessionResumeOutcome> {
-  if (await finishOwedStructuredAgentSessionWindDownUnderSerialize(context, sessionId)) {
-    return { ok: true }
-  }
-  return {
-    ok: false,
-    refusal: refuse(
-      'agent_session_ownership_unknown',
-      { reason: 'previousExitUnverifiable', ownerVerdict: 'unverifiable' },
-      "Orca could not prove this chat's previous agent process exited."
-    )
-  }
-}
-
-/** The same, for an operation the running child performs, which starts none: only an exit still
- *  unproven, its child still on record, holds it back. A proven exit owes only bookkeeping, which
- *  gates no such operation: its retry was reported, and the operation goes on as with none owed. */
-export async function finishOwedStructuredAgentSessionStopForProviderWrite(
-  context: StructuredAgentSessionLifetimeContext,
-  sessionId: string
-): Promise<StructuredAgentSessionResumeOutcome> {
-  const settled = await finishOwedStructuredAgentSessionStop(context, sessionId)
-  return settled.ok || context.sessions.get(sessionId)?.child ? settled : { ok: true }
-}
-
-export function isStructuredAgentSessionPreviousExitUnverifiable(
-  refusal: AgentSessionWireRefusal
-): boolean {
-  return (
-    refusal.code === 'agent_session_ownership_unknown' &&
-    refusal.details?.reason === 'previousExitUnverifiable'
-  )
-}
-
-/**
  * Gives the session a provider child if it has none, for a caller inside its serialize — which is
  * what makes "if it has none" exact: two askers run this in turn, and the second finds the first
  * one's child. A failed start leaves the next asker to make its own.
@@ -113,9 +72,11 @@ export async function ensureStructuredAgentSessionAgent(
   sessionId: string,
   startedFor?: string
 ): Promise<StructuredAgentSessionResumeOutcome> {
-  const settled = await finishOwedStructuredAgentSessionStop(context, sessionId)
-  if (!settled.ok) {
-    return settled
+  // A child a stop began closing takes no input, and none may start beside it: the start waits on
+  // that close, and is refused while its exit stays unverifiable.
+  const closed = await joinClosingStructuredAgentSessionChild(context, sessionId)
+  if (!closed.ok) {
+    return closed
   }
   if (context.sessions.get(sessionId)?.child) {
     return { ok: true }
@@ -200,6 +161,9 @@ async function startStructuredAgentSessionAgent(
     return { ok: false, refusal: unreconciled, beforeSpawn: { needsUser: false } }
   }
   await context.runtimeState.resolveRecovery(sessionId)
+  // A start needs the lease released; a release the exit's own wind-down could not write is
+  // re-derived from this host's proof of that exit, never refused on.
+  await releaseLeaseOfEndedStructuredAgentSessionChild(context, sessionId)
   const record = context.deps.store.getRecord(sessionId)
   // Neither is a start refused: this host cannot run the chat at all, so no later try could land,
   // and the words send the person to a new chat.
