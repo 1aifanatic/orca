@@ -453,3 +453,45 @@ it.each([
     expect(hostSession()?.lastEndedChild).toMatchObject({ cause, failure: { kind: 'hostFault' } })
   }
 )
+
+it("closes a message accepted while a fault's close was unproven when the chat close that takes it over is proven later", async () => {
+  const connection = claude.connections[0]!
+  await turnWithBackgroundTask(connection)
+  await faultedUnproven(connection)
+  const closing = hostSession()!.child!
+  const faultAt = closing.close!.requestedAt
+
+  // A message is accepted, then the chat is closed, then the exit is proven, all before the
+  // message's delivery step runs.
+  const held = Promise.withResolvers<void>()
+  const holding = host['tasks'].serialize(SESSION, () => held.promise)
+  const sent = send('Sent before the close.')
+  // The close's own rejection of what is queued fails, so only where its end stands closes it.
+  vi.spyOn(hostSession()!.journal, 'rejectQueuedSubmissions').mockRejectedValueOnce(
+    new Error('disk full')
+  )
+  const closed = host.close(SESSION, 'user-close')
+  const ended = host['tasks'].serialize(SESSION, () =>
+    host['eventRecovery'].endExitedChildUnderSerialize(SESSION, closing, {
+      expected: true,
+      reason: 'claude session closed'
+    })
+  )
+  held.resolve()
+  await holding
+  const message = await sent
+  await expect(closed).rejects.toThrow()
+  await ended
+
+  // The close took the fault's close over where it was asked, after the message: the end stands
+  // there, so the message is closed with the chat and starts no new agent.
+  expect(await settled(message)).toMatchObject({
+    dispatchState: 'rejected',
+    rejection: { kind: 'chatClosed' }
+  })
+  const end = hostSession()!.lastEndedChild!
+  expect(end).toMatchObject({ cause: 'user-close', failure: { kind: 'hostFault' } })
+  expect(end.endedAt.sequence).toBeGreaterThan(faultAt.sequence)
+  expect(claude.connections).toHaveLength(1)
+  expect(wrote(connection, 'Sent before the close.')).toBe(false)
+})
