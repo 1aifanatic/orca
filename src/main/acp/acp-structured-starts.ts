@@ -44,7 +44,7 @@ export class AcpStructuredStarts {
   /** Quit: every start under way stops; true once none has a child left unproven gone. */
   async stopAll(): Promise<boolean> {
     const proven = await Promise.all(
-      [...this.starting].map(([attempt, quit]) => {
+      [...this.starting].map(async ([attempt, quit]) => {
         quit.abort()
         return attempt.child ? attempt.child.close().catch(() => false) : true
       })
