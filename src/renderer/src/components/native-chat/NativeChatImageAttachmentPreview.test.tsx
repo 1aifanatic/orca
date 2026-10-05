@@ -51,7 +51,9 @@ describe('NativeChatImageAttachmentPreview', () => {
     mocks.useLocalImageSrc.mockReturnValue(undefined)
     renderPreview({ id: 'a1', path: '', previewUrl: 'blob:clipboard-1', pending: true })
 
-    expect(mocks.useLocalImageSrc).toHaveBeenCalledWith(undefined, '', undefined)
+    expect(mocks.useLocalImageSrc).toHaveBeenCalledWith(undefined, '', undefined, undefined, {
+      kind: 'chat-image'
+    })
   })
 
   it('shows a pasted image that could not come back by name, says it was not kept, and lets it be removed', () => {

@@ -11,20 +11,11 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 import { AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS } from '../../shared/agent-session-host-authority'
-import type * as FilesystemAuth from '../ipc/filesystem-auth'
 import { isPathAllowed } from '../ipc/filesystem-auth'
 import type { Store } from '../persistence'
-
-const { authorizeExternalPathMock } = vi.hoisted(() => ({ authorizeExternalPathMock: vi.fn() }))
-// Why the real grant behind the spy: the tests check what a read is then allowed to reach.
-vi.mock('../ipc/filesystem-auth', async (importOriginal) => {
-  const actual = await importOriginal<typeof FilesystemAuth>()
-  authorizeExternalPathMock.mockImplementation(actual.authorizeExternalPath)
-  return { ...actual, authorizeExternalPath: authorizeExternalPathMock }
-})
 
 import {
   NATIVE_CHAT_PASTE_TTL_MS,
@@ -33,7 +24,7 @@ import {
   sweepExpiredNativeChatPastes
 } from './native-chat-paste-files'
 
-// A store with no workspaces, so only the grants decide what a read may reach.
+// A store with no workspaces: a restore must never make an outside file readable.
 const NO_ROOTS_STORE: Store = Object.assign(Object.create(null), {
   getRepos: () => [],
   getProjectGroups: () => [],
@@ -86,7 +77,6 @@ describe('native-chat paste folder on disk', () => {
   let folder: string
 
   beforeEach(() => {
-    authorizeExternalPathMock.mockClear()
     root = mkdtempSync(path.join(tmpdir(), 'orca-native-chat-pastes-'))
     folder = path.join(root, 'native-chat-pastes')
     mkdirSync(folder)
@@ -97,7 +87,7 @@ describe('native-chat paste folder on disk', () => {
     rmSync(root, { recursive: true, force: true })
   })
 
-  it('re-grants only files really inside the folder, and never throws on a bad path', async () => {
+  it('keeps only files really inside the folder, and never throws on a bad path', async () => {
     const kept = path.join(folder, 'orca-paste-1.png')
     writeFileSync(kept, 'png')
     const outside = path.join(root, 'outside.png')
@@ -126,8 +116,6 @@ describe('native-chat paste folder on disk', () => {
       { path: 'relative/orca-paste-3.png', kept: false, exists: false },
       { path: '', kept: false, exists: false }
     ])
-    const granted = authorizeExternalPathMock.mock.calls.map(([granted]) => granted)
-    expect(new Set(granted)).toEqual(new Set([realpathSync(kept), kept]))
     await expect(restoreNativeChatPastes('not a list')).resolves.toEqual([])
   })
 
@@ -145,9 +133,6 @@ describe('native-chat paste folder on disk', () => {
         { path: viaAlias, kept: true, exists: true },
         { path: realpathSync(kept), kept: true, exists: true }
       ])
-      // The preview reads by the stored spelling, so a read by it is allowed too.
-      expect(isPathAllowed(viaAlias, NO_ROOTS_STORE)).toBe(true)
-      expect(isPathAllowed(realpathSync(kept), NO_ROOTS_STORE)).toBe(true)
     } finally {
       rmSync(alias, { force: true })
     }
@@ -174,11 +159,10 @@ describe('native-chat paste folder on disk', () => {
     await expect(restoreNativeChatPastes([crafted])).resolves.toEqual([
       { path: crafted, kept: false, exists: false }
     ])
-    expect(authorizeExternalPathMock).not.toHaveBeenCalled()
     expect(isPathAllowed(secret, NO_ROOTS_STORE)).toBe(false)
   })
 
-  it('grants the stored spelling only when it names the same file as the real path', async () => {
+  it('keeps a stored spelling that reaches a real paste through a link, and opens nothing outside', async () => {
     const secret = path.join(root, 'outside', 'id_rsa')
     mkdirSync(path.dirname(secret), { recursive: true })
     writeFileSync(secret, 'PRIVATE KEY')
