@@ -1,4 +1,4 @@
-import { createElement, useRef } from 'react'
+import { createElement, useLayoutEffect, useRef } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentStatusEntry } from '../../../src/shared/agent-status-types'
@@ -83,7 +83,10 @@ describe('an ownerless host chat on the phone', () => {
     readability: MobileNativeChatReadability
   }): null {
     const tabsRef = useRef(props.tabs)
-    tabsRef.current = props.tabs
+    // Why layout: the hook reads this ref only after commit, from effects and taps.
+    useLayoutEffect(() => {
+      tabsRef.current = props.tabs
+    })
     chatView = useMobileSessionChatView({
       hostId: 'h-ownerless',
       worktreeId: 'w',
@@ -155,7 +158,7 @@ describe('an ownerless host chat on the phone', () => {
       'T::A': 'terminal',
       'T::N': 'terminal'
     })
-    fails[fails.length - 1]!(new Error('boom'))
+    fails.at(-1)!(new Error('boom'))
     expect(await render([agent('N'), shell('N')])).toEqual({ 'T::A': 'chat', 'T::N': 'terminal' })
     expect(toasts).toHaveLength(1)
   })

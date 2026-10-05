@@ -1,4 +1,4 @@
-import { createElement, useRef } from 'react'
+import { createElement, useLayoutEffect, useRef } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentStatusEntry } from '../../../src/shared/agent-status-types'
@@ -177,7 +177,10 @@ describe('useMobileSessionChatView', () => {
 
   function Harness(props: { tabs: MobileSessionTab[]; marker: boolean; client: RpcClient }): null {
     const tabsRef = useRef(props.tabs)
-    tabsRef.current = props.tabs
+    // Why layout: the hook reads this ref only after commit, from effects and taps.
+    useLayoutEffect(() => {
+      tabsRef.current = props.tabs
+    })
     const chatView = useMobileSessionChatView({
       hostId: 'h',
       worktreeId: 'w',
