@@ -1,4 +1,4 @@
-import type { ManagedPaneInternal } from './pane-manager-types'
+import type { ManagedPaneInternal, PaneLayoutGesture } from './pane-manager-types'
 import { equalizePaneSplitSizes } from './pane-tree-ops'
 import { fitRevealedPane } from './pane-reveal-fit'
 
@@ -25,7 +25,7 @@ export function refreshAllPaneTerminals(panes: Map<number, ManagedPaneInternal>)
 export function equalizeManagedPaneSizes(
   panes: Map<number, ManagedPaneInternal>,
   root: HTMLElement,
-  onLayoutChanged?: () => void
+  onLayoutChanged?: (gesture?: PaneLayoutGesture) => void
 ): void {
   if (panes.size < 2) {
     return
@@ -38,5 +38,5 @@ export function equalizeManagedPaneSizes(
     return
   }
 
-  onLayoutChanged?.()
+  onLayoutChanged?.('equalize')
 }

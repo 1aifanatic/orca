@@ -2,6 +2,7 @@ import type {
   DropZone,
   ManagedPane,
   ManagedPaneInternal,
+  PaneLayoutGesture,
   PaneStyleOptions
 } from './pane-manager-types'
 import { createDivider, disposeDivider } from './pane-divider'
@@ -26,7 +27,7 @@ type TreeOpsCallbacks = {
   getStyleOptions: () => PaneStyleOptions
   safeFit: (pane: ManagedPane) => void
   refitPanesUnder: (el: HTMLElement) => void
-  onLayoutChanged?: () => void
+  onLayoutChanged?: (gesture?: PaneLayoutGesture) => void
   onDragActiveChange?: (active: boolean) => void
   isDestroyed?: () => boolean
   requestPaneReparentFrame?: (callback: FrameRequestCallback) => void

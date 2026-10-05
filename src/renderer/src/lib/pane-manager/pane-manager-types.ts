@@ -55,11 +55,14 @@ export type PaneExternalDropHandler = (
   target: PaneExternalDropTarget
 ) => boolean
 
+// Why: lets persistence tell a user's layout gesture apart from automatic layout updates.
+export type PaneLayoutGesture = 'divider-drag' | 'divider-reset' | 'pane-reorder' | 'equalize'
+
 export type PaneManagerOptions = {
   onPaneCreated?: (pane: ManagedPane, spawnHints?: PaneSpawnHints) => void | Promise<void>
   onPaneClosed?: (paneId: number, closedPane?: ClosedPaneInfo) => void
   onActivePaneChange?: (pane: ManagedPane) => void
-  onLayoutChanged?: () => void
+  onLayoutChanged?: (gesture?: PaneLayoutGesture) => void
   /** Why: Electron webviews can steal pointer streams from renderer-owned
    *  pane drags unless callers temporarily put them in pointer passthrough. */
   onPaneDragActiveChange?: (active: boolean) => void

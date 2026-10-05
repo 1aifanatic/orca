@@ -5,6 +5,7 @@ import type {
   PaneExternalDropHandler,
   PaneExternalDropResolver,
   PaneExternalDropTarget,
+  PaneLayoutGesture,
   PaneStyleOptions
 } from './pane-manager-types'
 import { detachPaneFromTree, findPaneChildren, insertPaneNextTo } from './pane-tree-ops'
@@ -31,7 +32,7 @@ export type DragReorderCallbacks = {
   applyDividerStyles: () => void
   refitPanesUnder: (el: HTMLElement) => void
   requestPaneReparentFrame?: (callback: FrameRequestCallback) => void
-  onLayoutChanged?: () => void
+  onLayoutChanged?: (gesture?: PaneLayoutGesture) => void
   onDragActiveChange?: (active: boolean) => void
   resolveExternalDropTarget?: PaneExternalDropResolver
   onExternalPaneDrop?: PaneExternalDropHandler
@@ -133,7 +134,7 @@ export function handlePaneDrop(
   callbacks.applyPaneOpacity()
   callbacks.applyDividerStyles()
   updateMultiPaneState(callbacks)
-  callbacks.onLayoutChanged?.()
+  callbacks.onLayoutChanged?.('pane-reorder')
 }
 
 export function showDropOverlay(state: DragReorderState): void {

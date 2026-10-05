@@ -1,8 +1,9 @@
 import { holdPtyResizesForPaneSubtrees } from './pane-pty-resize-hold'
+import type { PaneLayoutGesture } from './pane-manager-types'
 
 export type DividerCallbacks = {
   refitPanesUnder: (el: HTMLElement) => void
-  onLayoutChanged?: () => void
+  onLayoutChanged?: (gesture?: PaneLayoutGesture) => void
   onDragActiveChange?: (active: boolean) => void
 }
 
@@ -175,7 +176,7 @@ export function attachDividerDrag(
     nextInitialFlex = ''
 
     if (didMove && commitLayout) {
-      callbacks.onLayoutChanged?.()
+      callbacks.onLayoutChanged?.('divider-drag')
     }
     didMove = false
   }
@@ -271,7 +272,7 @@ export function attachDividerDrag(
 
     callbacks.refitPanesUnder(prev)
     callbacks.refitPanesUnder(next)
-    callbacks.onLayoutChanged?.()
+    callbacks.onLayoutChanged?.('divider-reset')
   }
 
   const onPointerCancel = (e: PointerEvent): void => {

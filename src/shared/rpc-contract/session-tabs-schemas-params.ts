@@ -110,6 +110,13 @@ export const TerminalPaneLayoutNodeSchema = z
     })
   )
 
+export type PaneLayoutEditIntent = 'gesture'
+
+// Why: never rejects, so a newer client's unknown intent reads as unmarked instead of failing the edit.
+const PaneLayoutEditIntentParam = z
+  .unknown()
+  .transform((v): PaneLayoutEditIntent | undefined => (v === 'gesture' ? 'gesture' : undefined))
+
 export const UpdatePaneLayout = WorktreeTabSelector.extend({
   tabId: z
     .unknown()
@@ -118,7 +125,9 @@ export const UpdatePaneLayout = WorktreeTabSelector.extend({
   root: z.union([z.null(), TerminalPaneLayoutNodeSchema]),
   expandedLeafId: z.string().max(128).nullable().optional(),
   chatLeafId: z.string().max(128).nullable().optional(),
-  titlesByLeafId: z.record(z.string(), z.string()).optional()
+  titlesByLeafId: z.record(z.string(), z.string()).optional(),
+  // Why: marks edits from a user's layout gesture; hosts ignore it until they act on marked edits.
+  intent: PaneLayoutEditIntentParam.optional()
 })
 
 export const SetTabProps = WorktreeTabSelector.extend({

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import { useTerminalPaneContextMenu } from './use-terminal-pane-context-menu'
 import type { TerminalPaneCloseController } from './use-terminal-pane-close-actions'
+import { GESTURE_LAYOUT_PERSIST } from './terminal-layout-persist-options'
 import { useTerminalQuickCommandHosts } from '@/hooks/use-terminal-quick-command-hosts'
 import { terminalQuickCommandMatchesWorkspaceProject } from '@/lib/terminal-quick-command-project-scope'
 import {
@@ -72,7 +73,7 @@ export function useTerminalPaneContextActions(controller: TerminalPaneCloseContr
     }
     closeRenameSession()
     setRenamingPaneId(null)
-    persistLayoutSnapshot()
+    persistLayoutSnapshot(GESTURE_LAYOUT_PERSIST)
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- Preserve the pre-split dependency contract.
   }, [closeRenameSession, renamingPaneId, renameValue, removePaneTitle, persistLayoutSnapshot])
   const handleRenameCancel = useCallback(() => {
