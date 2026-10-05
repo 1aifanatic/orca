@@ -7,7 +7,6 @@ import {
   abandonQueuedStructuredAgentSessionMessages,
   stopStructuredAgentSessionAgentUnderSerialize
 } from './structured-agent-session-host-lifetime'
-import type { AgentJournalResetReason } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
   openStructuredAgentSessionConversation,
@@ -59,7 +58,6 @@ export function createStructuredAgentSessionConversationDelivery(input: {
   trackStart: <T>(start: Promise<T>) => Promise<T>
   /** For starting a child for the queued message at the head, and ending one whose start failed. */
   attachContext: () => StructuredAgentSessionAttachContext
-  reset: (sessionId: string, journal: AgentSessionJournal, reset: AgentJournalResetReason) => void
   clientDelivery: Pick<StructuredAgentSessionClientDelivery, 'publishRestored' | 'readChildWork'>
 }): StructuredAgentSessionConversationDelivery {
   const { deps, sessions } = input
@@ -94,11 +92,8 @@ export function createStructuredAgentSessionConversationDelivery(input: {
     sessionId: string,
     opened: OpenedStructuredAgentSessionConversation
   ): Promise<void> => {
-    const { session, reset } = opened
+    const { session } = opened
     sessions.set(sessionId, session)
-    if (reset) {
-      input.reset(sessionId, session.journal, reset)
-    }
     input.clientDelivery.publishRestored(sessionId)
     await settleInterruptedCommands(deps, sessionId, session)
     if (session.journal.submissions().some(isQueuedAgentJournalSubmission)) {

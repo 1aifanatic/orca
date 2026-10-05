@@ -32,22 +32,19 @@ import {
   exitedRootTurnScope,
   runningRootTurnScope
 } from './structured-agent-session-exit-turn-scope'
+import {
+  withdrawCodexSendsNoTurnOpenedFor,
+  type UnopenedSendJournal
+} from './structured-agent-session-unopened-send-withdrawal'
 
 /** Bounds the exit reason the lease keeps as log evidence; a provider diagnostic is held to the
  *  same cap. */
 export const MAX_UNEXPECTED_EXIT_REASON_CHARS = MAX_PROVIDER_DIAGNOSTIC_CHARS
 
-type DeadGenerationSubmission = Pick<
-  ReturnType<AgentSessionJournal['submissions']>[number],
-  'clientMessageId' | 'dispatchState' | 'recovered' | 'handoverRecorded' | 'handedOverAt'
->
-
-export type DeadGenerationJournal = {
+export type DeadGenerationJournal = UnopenedSendJournal & {
   appendLifecycleBatch: AgentSessionJournal['appendLifecycleBatch']
   markPendingSubmissionsUnknown: AgentSessionJournal['markPendingSubmissionsUnknown']
-  snapshot: () => Pick<ReturnType<AgentSessionJournal['snapshot']>, 'items'>
   pendingSubmissions?: AgentSessionJournal['pendingSubmissions']
-  submissions?: () => DeadGenerationSubmission[]
 }
 
 export type StructuredAgentSessionUnfinishedWork = {
@@ -130,6 +127,7 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
     }
     // A queued message is the delivery loop's to settle: it was never handed to this child. A
     // proven child's handed-over sends stay in doubt.
+    await withdrawCodexSendsNoTurnOpenedFor(input.journal, input.fence)
     await input.journal.markPendingSubmissionsUnknown(input.fence, input.pendingSubmissionReason)
     const items = input.journal.snapshot().items
     const mutations: JournalLifecycleMutationInput[] = []
