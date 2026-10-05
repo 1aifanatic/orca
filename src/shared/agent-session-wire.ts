@@ -1,4 +1,4 @@
-import type { AgentSessionUnavailableObservation } from './agent-session-availability'
+import type { AgentSessionModelCatalogObservation } from './agent-session-availability'
 import type {
   AgentSessionBackgroundTask,
   AgentSessionBackgroundTaskState
@@ -430,23 +430,17 @@ export type AgentSessionFastModeSupport = {
  * for the key yet — the client keeps its static seed. Additive read-only
  * surface: an older host simply lacks the method.
  */
-export type AgentSessionModelCatalogResult =
-  | {
-      origin: 'unknown'
-      unavailable?: AgentSessionUnavailableObservation
-      /** The host is running its first listing for this account; a `waitForListing` read answers
-       *  when it lands. Absent from a host that predates it. */
-      listingInProgress?: true
-    }
-  | {
-      /** What produced the listing; any age is served, `fetchedAt` carries it. */
-      origin: 'live-session' | 'probe'
-      unavailable?: AgentSessionUnavailableObservation
-      listingInProgress?: true
-      models: AgentSessionModelOption[]
-      fastModeSupport?: AgentSessionFastModeSupport
-      fetchedAt: number
-    }
+export type AgentSessionModelCatalogResult = AgentSessionModelCatalogObservation &
+  (
+    | { origin: 'unknown' }
+    | {
+        /** What produced the listing; any age is served, `fetchedAt` carries it. */
+        origin: 'live-session' | 'probe'
+        models: AgentSessionModelOption[]
+        fastModeSupport?: AgentSessionFastModeSupport
+        fetchedAt: number
+      }
+  )
 
 /** One entry of the `/` menu the running provider reports for itself. `skill`
  *  marks a name the session loaded as a skill rather than a built-in command;

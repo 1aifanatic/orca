@@ -6,6 +6,12 @@ export type AgentSessionUnavailable =
 
 export type AgentSessionUnavailableObservation = AgentSessionUnavailable & { expiresInMs: number }
 
+export type AgentSessionModelCatalogObservation = {
+  unavailable?: AgentSessionUnavailableObservation
+  /** A waiting catalog read joins the host's current listing. Optional for older hosts. */
+  listingInProgress?: true
+}
+
 export const AGENT_SESSION_AVAILABILITY_TTL_MS = 30_000
 
 export function readAgentSessionUnavailable(
