@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { Repo } from '../../../../shared/repo-types'
 import type { WorktreeCardProperty } from '../../../../shared/ui-chrome-types'
 import type { Worktree } from '../../../../shared/worktree/types'
@@ -12,7 +13,7 @@ const openModal = vi.fn()
 const updateWorktreeMeta = vi.fn()
 
 let worktreeCardProperties: WorktreeCardProperty[] = []
-const WORKTREE_CARD_IMPORT_TIMEOUT_MS = 15_000
+let settings: Partial<GlobalSettings> | null = null
 
 vi.mock('@/store', () => ({
   useAppStore: (selector: (state: unknown) => unknown) =>
@@ -28,7 +29,7 @@ vi.mock('@/store', () => ({
       openModal,
       projectGroups: [],
       remoteBranchConflictByWorktreeId: {},
-      settings: null,
+      settings,
       sshConnectionStates: new Map(),
       sshTargetLabels: new Map(),
       updateWorktreeMeta,
@@ -68,6 +69,8 @@ vi.mock('./WorktreeContextMenu', () => ({
   WORKTREE_NATIVE_CONTEXT_MENU_ATTR: 'data-worktree-native-context-menu'
 }))
 
+import WorktreeCard from './WorktreeCard'
+
 function makeRepo(): Repo {
   return {
     id: 'repo-1',
@@ -105,70 +108,70 @@ describe('WorktreeCard lineage indicators', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     worktreeCardProperties = []
+    settings = null
   })
 
-  it(
-    'does not render parent lineage badge copy on workspace cards',
-    async () => {
-      const { default: WorktreeCard } = await import('./WorktreeCard')
+  it('does not render parent lineage badge copy on workspace cards', () => {
+    const markup = renderToStaticMarkup(
+      <WorktreeCard worktree={makeWorktree()} repo={makeRepo()} isActive={false} />
+    )
 
-      const markup = renderToStaticMarkup(
-        <WorktreeCard worktree={makeWorktree()} repo={makeRepo()} isActive={false} />
-      )
+    expect(markup).not.toContain('Parent workspace')
+    expect(markup).not.toContain('parent:')
+    expect(markup).not.toContain('from master')
+    expect(markup).not.toContain('Missing parent')
+    expect(markup).toContain('overflow-hidden')
+  })
 
-      expect(markup).not.toContain('Parent workspace')
-      expect(markup).not.toContain('parent:')
-      expect(markup).not.toContain('from master')
-      expect(markup).not.toContain('Missing parent')
-      expect(markup).toContain('overflow-hidden')
-    },
-    WORKTREE_CARD_IMPORT_TIMEOUT_MS
-  )
+  it('keeps the child workspace toggle chip', () => {
+    const markup = renderToStaticMarkup(
+      <WorktreeCard
+        worktree={makeWorktree()}
+        repo={makeRepo()}
+        isActive={false}
+        lineageChildCount={1}
+        lineageCollapsed={false}
+        onLineageToggle={vi.fn()}
+      />
+    )
 
-  it(
-    'keeps the child workspace toggle chip',
-    async () => {
-      const { default: WorktreeCard } = await import('./WorktreeCard')
+    expect(markup).toContain('aria-label="Hide 1 child workspace"')
+    expect(markup).toContain('1 child')
+    expect(markup).not.toContain('Parent workspace')
+  })
 
+  // Why: the legacy outdent is sized against the 22px status lane; without one it undercut the
+  // child's step (3px instead of 25px). The new card style nests in the surface and never had it.
+  const OUTDENT = '-ml-[1.125rem] mt-1.5 w-[calc(100%+1.125rem)] space-y-1'
+  const NO_LANE = 'ml-1 mt-1.5 w-[calc(100%-0.25rem)] space-y-1'
+  const STYLES = {
+    legacy: {},
+    compact: { compactWorktreeCards: true },
+    new: { experimentalNewWorktreeCardStyle: true }
+  }
+  it.each([
+    ['legacy', 'on', OUTDENT],
+    ['legacy', 'off', NO_LANE],
+    ['compact', 'on', OUTDENT],
+    ['compact', 'off', NO_LANE],
+    ['new', 'on', 'mt-1.5 space-y-1'],
+    ['new', 'off', 'mt-1.5 space-y-1']
+  ] as const)(
+    '%s card, status %s: lineage children list classes',
+    (style, status, expectedClasses) => {
+      settings = STYLES[style]
+      worktreeCardProperties = status === 'on' ? ['status'] : []
       const markup = renderToStaticMarkup(
         <WorktreeCard
           worktree={makeWorktree()}
           repo={makeRepo()}
           isActive={false}
-          lineageChildCount={1}
-          lineageCollapsed={false}
-          onLineageToggle={vi.fn()}
+          lineageChildren={<span data-testid="child">child</span>}
         />
       )
 
-      expect(markup).toContain('aria-label="Hide 1 child workspace"')
-      expect(markup).toContain('1 child')
-      expect(markup).not.toContain('Parent workspace')
-    },
-    WORKTREE_CARD_IMPORT_TIMEOUT_MS
-  )
-
-  // Why: the legacy outdent is sized against the status lane; without one it would undercut the step.
-  it(
-    'outdents legacy lineage children only over a status lane',
-    async () => {
-      const { default: WorktreeCard } = await import('./WorktreeCard')
-      const render = (): string =>
-        renderToStaticMarkup(
-          <WorktreeCard
-            worktree={makeWorktree()}
-            repo={makeRepo()}
-            isActive={false}
-            lineageChildren={<span>child</span>}
-          />
-        )
-
-      worktreeCardProperties = ['status']
-      expect(render()).toContain('-ml-[1.125rem] w-[calc(100%+1.125rem)]')
-      worktreeCardProperties = []
-      expect(render()).not.toContain('-ml-[1.125rem]')
-      expect(render()).toContain('ml-1 w-[calc(100%-0.25rem)]')
-    },
-    WORKTREE_CARD_IMPORT_TIMEOUT_MS
+      const listClasses = /<div class="([^"]*)"[^>]*><span data-testid="child">/.exec(markup)?.[1]
+      expect(listClasses?.split(' ').toSorted()).toEqual(expectedClasses.split(' ').toSorted())
+    }
   )
 })
