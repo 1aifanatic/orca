@@ -242,6 +242,9 @@ export type StructuredAgentSessionSetOptionInput = {
   key: string
   value: string
   fence: number
+  /** Aborted by a close, a Stop admitted now, or quit, which must not wait behind a pick the
+   *  provider never answers: the write fails. An adapter that bounds its own write may ignore it. */
+  signal?: AbortSignal
 }
 
 export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & {

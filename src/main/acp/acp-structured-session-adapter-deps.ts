@@ -13,6 +13,8 @@ import type { AcpStructuredLaunch } from './acp-structured-launch-resolution'
 export const ACP_CANCEL_TIMEOUT_MS = 10_000
 /** How long a Stop, counted from its cancel, lets the agent end its turn before the child goes. */
 export const ACP_STOP_GRACE_MS = 4_000
+/** How long a model or effort pick waits for the agent's answer, as Claude's and Codex's do. */
+export const ACP_OPTION_WRITE_TIMEOUT_MS = 30_000
 
 export type AcpStructuredSessionAdapterDeps = {
   spec: AcpLaunchSpec
@@ -39,5 +41,7 @@ export type AcpStructuredSessionAdapterDeps = {
   stopGraceMs?: number
   /** Bounds the handshake and session load or creation; past it the start fails. */
   startupTimeoutMs?: number
+  /** Bounds a pick's wait for the agent's answer; past it the pick fails. */
+  optionWriteTimeoutMs?: number
   isWindowsProcessStartTimeAvailable?: () => boolean
 }

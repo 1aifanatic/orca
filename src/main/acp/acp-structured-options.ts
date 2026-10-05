@@ -158,6 +158,46 @@ export class AcpStructuredOptions {
   }
 }
 
+/** Sends a pick and adopts the agent's answer, even one that lands after the wait gave up: that is
+ *  still what the agent runs. The wait fails at `timeoutMs`, or once `signal` aborts. */
+export function writeAcpSessionOption(
+  runtime: Pick<AcpSessionRuntime, 'setConfigOption' | 'setModel'>,
+  options: AcpStructuredOptions,
+  write: AcpOptionWrite,
+  bound: { agent: string; timeoutMs: number; signal?: AbortSignal }
+): Promise<void> {
+  const { agent, timeoutMs, signal } = bound
+  if (signal?.aborted) {
+    return Promise.reject(new Error(`${agent} option write abandoned before it was sent`))
+  }
+  const applied =
+    write.method === 'config'
+      ? runtime
+          .setConfigOption(write.configId, write.value)
+          .then((result) => options.adoptConfigOptions(result.configOptions))
+      : runtime.setModel(write.modelId).then(() => options.adoptModel(write.modelId))
+  return new Promise<void>((resolve, reject) => {
+    const fail = (error: Error): void => {
+      settle()
+      reject(error)
+    }
+    const onAbort = (): void => fail(new Error(`${agent} option write abandoned`))
+    const timer = setTimeout(
+      () => fail(new Error(`${agent} did not answer an option write within ${timeoutMs}ms`)),
+      timeoutMs
+    )
+    const settle = (): void => {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+    applied.then(() => {
+      settle()
+      resolve()
+    }, fail)
+  })
+}
+
 /** Re-applies the chat's saved picks to the agent's new session; a pick it refuses is skipped and
  *  reported, never retried. */
 export async function restoreAcpSessionOptions(

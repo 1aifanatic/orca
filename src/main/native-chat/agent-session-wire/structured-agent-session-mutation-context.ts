@@ -46,6 +46,8 @@ export type StructuredAgentSessionMutationContext = {
   wakeQueuedDrain?: (sessionId: string) => void
   /** Aborts the acquire the session has in flight, from outside its serialize. */
   abortAcquire: (sessionId: string, reason: string) => void
+  /** Registers a provider wait other than a start, which `abortAcquire` then aborts too. */
+  beginProviderWait: (sessionId: string) => { signal: AbortSignal; end: () => void }
   now: () => number
 }
 

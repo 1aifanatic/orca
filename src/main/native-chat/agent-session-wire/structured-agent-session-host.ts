@@ -293,6 +293,7 @@ export class StructuredAgentSessionHost {
       stopAgent: (sessionId, ending) => this.lifetime.stopAgent(sessionId, ending),
       wakeQueuedDrain: (sessionId) => this.queued.drain.schedule(sessionId),
       abortAcquire: (sessionId, reason) => this.runtimeState.acquireAborts.abort(sessionId, reason),
+      beginProviderWait: (sessionId) => this.runtimeState.acquireAborts.begin(sessionId),
       now: () => this.now()
     }
   }

@@ -30,9 +30,11 @@ import {
 import { AcpStructuredStarts, type AcpStartAttempt } from './acp-structured-starts'
 import { acpPromptBlocks } from './acp-structured-turns'
 import {
+  ACP_OPTION_WRITE_TIMEOUT_MS,
   ACP_STOP_GRACE_MS,
   type AcpStructuredSessionAdapterDeps
 } from './acp-structured-session-adapter-deps'
+import { writeAcpSessionOption } from './acp-structured-options'
 
 export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapter {
   /** Live children, and ones whose exit is not yet proven; a proven exit removes its entry. */
@@ -202,13 +204,12 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
     if (!write) {
       throw new Error(`${session.spec.agent} offers no session option named ${input.key}`)
     }
-    if (write.method === 'config') {
-      const result = await session.runtime.setConfigOption(write.configId, write.value)
-      session.options.adoptConfigOptions(result.configOptions)
-    } else {
-      await session.runtime.setModel(write.modelId)
-      session.options.adoptModel(write.modelId)
-    }
+    // Bounded, and abandoned by a close or Stop: the session's queue waits on it.
+    await writeAcpSessionOption(session.runtime, session.options, write, {
+      agent: session.spec.agent,
+      timeoutMs: this.deps.optionWriteTimeoutMs ?? ACP_OPTION_WRITE_TIMEOUT_MS,
+      ...(input.signal ? { signal: input.signal } : {})
+    })
     return session.options.reported()
   }
 
