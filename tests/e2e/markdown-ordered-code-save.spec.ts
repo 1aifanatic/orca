@@ -33,15 +33,18 @@ for (const workspace of ['git', 'folder'] as const) {
         .toBe(folder)
     }
     const context = await getActiveWorktreeContext(orcaPage)
-    for (const [fence, language, code] of [
-      ['```', 'js', 'const answer = 42\nconsole.log(answer)'],
-      ['~~~', 'mermaid', 'graph TD\nA[Line1<br/>Line2] --> B']
+    for (const [label, firstMarker, secondMarker, fence, language, code] of [
+      ['decimal', '1.', '2.', '```', 'js', 'const answer = 42\nconsole.log(answer)'],
+      ['mermaid', '1.', '2.', '~~~', 'mermaid', 'graph TD\nA[Line1<br/>Line2] --> B'],
+      ['alphabetic', 'a.', 'b.', '```', 'js', 'const answer = 42\nconsole.log(answer)'],
+      ['roman', 'I.', 'II.', '~~~', 'js', 'const answer = 42\nconsole.log(answer)']
     ] as const) {
-      const source = `1. ${fence}${language}\n   ${code.replaceAll('\n', '\n   ')}\n   ${fence}\n2. Second item\n\nTail.\n`
+      const indent = ' '.repeat(firstMarker.length + 1)
+      const source = `${firstMarker} ${fence}${language}\n${indent}${code.replaceAll('\n', `\n${indent}`)}\n${indent}${fence}\n${secondMarker} Second item\n\nTail.\n`
       const file = await createMarkdownFixture(
         context,
         'ordered-code-proof',
-        `${workspace}-${language}`,
+        `${workspace}-${label}`,
         testInfo.workerIndex,
         source
       )
@@ -71,8 +74,8 @@ for (const workspace of ['git', 'folder'] as const) {
         await orcaPage.keyboard.press('ControlOrMeta+S')
         await expect.poll(() => readFileSync(file, 'utf8')).toBe(`${source}Edited after.`)
         const saved = readFileSync(file, 'utf8')
-        writeFileSync(testInfo.outputPath(`${language}-saved-source.md`), saved)
-        await testInfo.attach(`${language}-saved-source`, {
+        writeFileSync(testInfo.outputPath(`${label}-saved-source.md`), saved)
+        await testInfo.attach(`${label}-saved-source`, {
           body: saved,
           contentType: 'text/markdown'
         })
@@ -90,9 +93,9 @@ for (const workspace of ['git', 'folder'] as const) {
         await expect(
           monaco.locator('.view-line').filter({ hasText: code.split('\n')[1] })
         ).toHaveCount(1)
-        await testInfo.attach(`${language}-reopened-source`, {
+        await testInfo.attach(`${label}-reopened-source`, {
           body: await orcaPage.screenshot({
-            path: testInfo.outputPath(`${language}-reopened-source.png`)
+            path: testInfo.outputPath(`${label}-reopened-source.png`)
           }),
           contentType: 'image/png'
         })

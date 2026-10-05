@@ -106,10 +106,6 @@ export function getMarkdownRichModeUnsupportedReason(
   const fm = extractFrontMatter(content)
   const body = fm ? fm.body : content
 
-  if (hasUnsafeOrderedCodeFirstItem(body)) {
-    return 'other'
-  }
-
   const contentWithoutCode = stripMarkdownCode(body)
 
   // Why: run cheap regex checks first. If no unsupported syntax is detected,
@@ -128,6 +124,10 @@ export function getMarkdownRichModeUnsupportedReason(
     if (matcher.pattern.test(contentWithoutCode)) {
       return matcher.reason
     }
+  }
+
+  if (hasUnsafeOrderedCodeFirstItem(body)) {
+    return 'other'
   }
 
   if (hasHtml) {
