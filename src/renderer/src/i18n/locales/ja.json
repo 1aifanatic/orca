@@ -19072,5 +19072,7 @@
       "confirm": "一覧表示されたすべてのワークツリーを削除",
       "preservedBranches": "一部のネストされたワークツリーブランチは保持されました"
     }
-  }
+  },
+  "settings.appearance.chat.title": "Chat",
+  "settings.appearance.chat.defaultSummary": "14px · Comfortable width"
 }

@@ -19072,5 +19072,7 @@
       "confirm": "删除所有列出的工作树",
       "preservedBranches": "部分嵌套工作树分支已保留"
     }
-  }
+  },
+  "settings.appearance.chat.title": "Chat",
+  "settings.appearance.chat.defaultSummary": "14px · Comfortable width"
 }

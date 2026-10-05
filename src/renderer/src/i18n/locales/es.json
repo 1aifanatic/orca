@@ -19072,5 +19072,7 @@
       "confirm": "Eliminar todos los worktrees indicados",
       "preservedBranches": "Se conservaron algunas ramas de worktrees anidados"
     }
-  }
+  },
+  "settings.appearance.chat.title": "Chat",
+  "settings.appearance.chat.defaultSummary": "14px · Comfortable width"
 }
