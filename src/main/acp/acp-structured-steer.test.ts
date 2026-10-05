@@ -17,6 +17,7 @@ import { HOST_TEST_SESSION as SESSION } from '../native-chat/agent-session-wire/
 import type { AcpScriptedAgent, FakeFrame } from './acp-scripted-agent.test-support'
 import {
   openAcpAdapterRig,
+  PROVIDER_SESSION,
   replyChunk,
   sendHello,
   waitFor
@@ -33,6 +34,16 @@ import {
 afterEach(async () => {
   await closeProviderTimelineRigs()
 })
+
+/** A turn Grok began itself, as a background task's completion wakes it. */
+const GROK_TURN = 'task-completed-background-1'
+
+function endsGrokTurn(agent: AcpScriptedAgent): void {
+  agent.notify('x.ai/session_notification', {
+    sessionId: PROVIDER_SESSION,
+    update: { sessionUpdate: 'turn_completed', prompt_id: GROK_TURN, stop_reason: 'cancelled' }
+  })
+}
 
 /** Grok answers each cancel by ending the prompt it is running, as `cancelled`. */
 function answersCancels(agent: AcpScriptedAgent): void {
@@ -119,15 +130,55 @@ describe('a send while a Grok prompt runs', () => {
   })
 })
 
+describe('a send while a turn Grok began itself runs', () => {
+  async function steerBehindGrokTurn() {
+    const rig = await openAcpAdapterRig()
+    await rig.acquire()
+    rig.child().agent.notify('session/update', replyChunk(GROK_TURN, 'Build finished; now'))
+    await rig.settle()
+    await sendHello(rig, 'steer')
+    await rig.settle()
+    expect(rig.sent('session/cancel')).toHaveLength(1)
+    expect(rig.sent('session/prompt')).toHaveLength(0)
+    return rig
+  }
+
+  it('withdraws the steer a Stop reaches while it waits for that turn to end', async () => {
+    const rig = await steerBehindGrokTurn()
+    await expect(rig.adapter.cancelTurn({ sessionId: ADAPTER_SESSION, fence: 1 })).resolves.toEqual(
+      { cancelled: true }
+    )
+    endsGrokTurn(rig.child().agent)
+    await rig.settle()
+    expect(rig.sent('session/prompt')).toHaveLength(0)
+    expect(rig.settled).toEqual([
+      expect.objectContaining({
+        clientMessageId: 'steer',
+        state: 'rejected',
+        reason: DISPATCH_REJECTED_CANCELLED
+      })
+    ])
+  })
+
+  it('rejects the waiting steer as never sent when Grok exits', async () => {
+    const rig = await steerBehindGrokTurn()
+    rig.child().exit()
+    await rig.settle()
+    expect(rig.sent('session/prompt')).toHaveLength(0)
+    expect(rig.settled).toEqual([
+      expect.objectContaining({
+        clientMessageId: 'steer',
+        state: 'rejected',
+        reason: 'Grok stopped before this message was sent.'
+      })
+    ])
+  })
+})
+
 describe('Steer on a Grok card, through the host', () => {
-  /** A Grok turn running, and a card queued behind it. */
-  async function cardBehindARunningTurn() {
-    const rig = await openAttachedHostRig({ stopGraceMs: 20 })
+  /** A card queued behind whatever turn runs. */
+  async function queueCard(rig: Awaited<ReturnType<typeof openAttachedHostRig>>) {
     const { host } = rig
-    await send(host, 'hello')
-    const prompt = await rig.rig.frame('session/prompt')
-    rig.rig.child().agent.notify('session/update', replyChunk(promptIdOf(prompt), 'working'))
-    await rig.rig.settle()
     await host.flushStreamedEvents(SESSION)
     const body = message('and then this')
     const delivery = 'queue-if-active' as const
@@ -155,7 +206,17 @@ describe('Steer on a Grok card, through the host', () => {
       (await host.journalSnapshot(SESSION)).submissions
         .filter((entry) => entry.queuedMessageId === cardId)
         .map((entry) => ({ state: entry.dispatchState, reason: entry.reason }))
-    return { ...rig, prompt, cardId, sendNow, page, sends }
+    return { cardId, sendNow, page, sends }
+  }
+
+  /** A Grok turn running, and a card queued behind it. */
+  async function cardBehindARunningTurn() {
+    const rig = await openAttachedHostRig({ stopGraceMs: 20 })
+    await send(rig.host, 'hello')
+    const prompt = await rig.rig.frame('session/prompt')
+    rig.rig.child().agent.notify('session/update', replyChunk(promptIdOf(prompt), 'working'))
+    await rig.rig.settle()
+    return { ...rig, prompt, ...(await queueCard(rig)) }
   }
 
   it('leaves the card in the host queue while the turn runs, and cancels then sends it on Steer', async () => {
@@ -216,5 +277,24 @@ describe('Steer on a Grok card, through the host', () => {
       })
     })
     await host.close(SESSION, 'user-close')
+  })
+
+  it('cancels a turn Grok began itself on Steer, and sends the card once that turn ends', async () => {
+    const rig = await openAttachedHostRig({ stopGraceMs: 20 })
+    const child = rig.rig.child()
+    child.agent.notify('session/update', replyChunk(GROK_TURN, 'Build finished; now'))
+    await rig.rig.settle()
+    const { sendNow, sends } = await queueCard(rig)
+    expect(await sendNow()).toMatchObject({ ok: true })
+    await waitFor(() => expect(framesOf(child, 'session/cancel')).toHaveLength(1))
+    // Not into Grok's own queue behind its turn, where Orca could no longer withdraw it.
+    expect(framesOf(child, 'session/prompt')).toHaveLength(0)
+    endsGrokTurn(child.agent)
+    const steered = await rig.rig.frame('session/prompt')
+    child.agent.notify('session/update', replyChunk(promptIdOf(steered), 'on it'))
+    await waitFor(async () => expect(await sends()).toMatchObject([{ state: 'accepted' }]))
+    expect(framesOf(child, 'session/cancel')).toHaveLength(1)
+    expect(child.exited).toBe(false)
+    await rig.host.close(SESSION, 'user-close')
   })
 })

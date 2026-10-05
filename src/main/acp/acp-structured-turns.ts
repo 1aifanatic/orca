@@ -1,7 +1,9 @@
 // The sends of one ACP session. ACP runs one prompt at a time, so a message sent while a prompt runs
 // steers: the running prompt is cancelled (the session stays) and the message goes as the next
-// prompt once the agent answers the cancel. A steer waits here until then; one behind it cancels it
-// in turn, so the last one runs, and a Stop withdraws what waits. Each send is settled exactly once:
+// prompt once the agent answers the cancel. A turn the agent began itself is the running reply too,
+// as it is for a Stop: it is cancelled, and the message goes once that turn ends. A steer waits here
+// until then; one behind it cancels it in turn, so the last one runs, and a Stop withdraws what
+// waits. Each send is settled exactly once:
 // accepted when the agent's first event for its turn (or its answer) arrives, rejected when the
 // agent refused it or it never left Orca, unknown when the agent died with it or its connection
 // broke before it answered.
@@ -58,7 +60,9 @@ export type AcpStructuredTurnsDeps = {
 
 export class AcpStructuredTurns {
   private active: Send | null = null
-  /** Steers waiting for the prompt ahead of them to answer its cancel. */
+  /** The agent's own turn the steers wait to leave; null while none is waited on. */
+  private awaitedTurn: string | null = null
+  /** Steers waiting for the prompt or turn ahead of them to answer its cancel. */
   private readonly steers: Send[] = []
   private readonly unsettled = new Set<string>()
   private readonly idleWaiters = new Set<() => void>()
@@ -83,6 +87,16 @@ export class AcpStructuredTurns {
     if (this.active) {
       this.steers.push(send)
       this.cancelForSteer()
+      return
+    }
+    if (this.awaitedTurn !== null) {
+      this.steers.push(send)
+      return
+    }
+    const theirs = this.deps.lane.openTurnId
+    if (theirs !== null) {
+      this.steers.push(send)
+      this.sendAfter(theirs)
       return
     }
     this.start(send)
@@ -177,6 +191,19 @@ export class AcpStructuredTurns {
     } else if (!this.active) {
       this.notifyIdle()
     }
+  }
+
+  /** Cancels the agent's own turn once, and sends the next steer when that turn ends. */
+  private sendAfter(turnId: string): void {
+    this.awaitedTurn = turnId
+    this.cancelForSteer()
+    void this.deps.lane.whenTurnLeaves(turnId).then(() => {
+      this.awaitedTurn = null
+      const next = this.ended ? undefined : this.steers.shift()
+      if (next) {
+        this.start(next)
+      }
+    })
   }
 
   /** Answers the agent's open requests cancelled and ends the running prompt. One the agent never
