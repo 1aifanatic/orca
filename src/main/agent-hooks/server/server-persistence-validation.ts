@@ -13,6 +13,7 @@ import {
   normalizeGrokPromptId
 } from '../../../shared/agent-hook-listener/listener-limits'
 import { parsePaneKey } from '../../../shared/stable-pane-id'
+import { readConversationIdentityFields } from '../../../shared/terminal-conversation-identity'
 import type { AgentHookAuthorityEvidence, EnrichedAgentHookEventPayload } from './server-types'
 import { isValidPaneKey, isValidPiProviderSessionOnly } from './server-status-identity'
 
@@ -151,6 +152,9 @@ export function sanitizeHydratedEntry(
       ? record.compactTrigger
       : undefined
   const turnStartedAt = record.turnStartedAt
+  // Why null, not undefined, when present but bad: a missing key seeds from top-level fields, a broken one must not.
+  const conversation =
+    'conversation' in record ? readConversationIdentityFields(record.conversation) : undefined
   return {
     paneKey,
     agentPresence: readAgentProcessPresence(record.agentPresence),
@@ -176,7 +180,8 @@ export function sanitizeHydratedEntry(
     stateStartedAt,
     ...(typeof turnStartedAt === 'number' && Number.isFinite(turnStartedAt) && turnStartedAt > 0
       ? { turnStartedAt }
-      : {})
+      : {}),
+    ...(conversation !== undefined ? { conversation } : {})
   }
 }
 

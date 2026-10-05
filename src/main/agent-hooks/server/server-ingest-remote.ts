@@ -318,7 +318,11 @@ export abstract class AgentHookServerIngestRemote extends AgentHookServerIngestS
           }
         : undefined,
       'hook',
-      typeof age === 'number' ? Math.max(0, Date.now() - age) : undefined
+      typeof age === 'number' ? Math.max(0, Date.now() - age) : undefined,
+      undefined,
+      // Why: relay hooks, replays and transcript polls all land here; polls repeat the latest
+      // forwarded address and model, so the facet treats them as no-ops by idempotence.
+      'reported'
     )
   }
 }

@@ -7,6 +7,16 @@ import type {
 import type { AgentStatusObservation } from '../../../shared/agent-status-observation'
 import type { AgentKind } from '../../../shared/telemetry-events'
 import type { LegacyPaneKeyAliasEntry } from '../../../shared/persisted-state-types'
+import type { ConversationIdentityFields } from '../../../shared/terminal-conversation-identity'
+
+/** The conversation the store kept for a pane; changed only by a kept original provider report. */
+export type StoredAgentConversation = ConversationIdentityFields
+
+/** A pane's stored facet and whether it sits on a resume-only remnant row. */
+export type StoredAgentConversationRead = {
+  facet: StoredAgentConversation | null
+  rowIsRemnant: boolean
+}
 
 // Why: server-side enrichment — receivedAt = latest event arrival, stateStartedAt = when the current state first appeared; extra fields ride the shared map untouched (it only writes/clears).
 export type EnrichedAgentHookEventPayload = AgentHookEventPayload & {
@@ -28,6 +38,9 @@ export type EnrichedAgentHookEventPayload = AgentHookEventPayload & {
   restoredUnconfirmed?: true
   /** User-hidden resume identity retained solely for destructive liveness checks. */
   retainedForLiveness?: true
+  /** Status-independent conversation facet. `undefined`: never set (or a pre-upgrade row);
+   *  `null`: a hydrated facet that was explicitly empty or malformed. */
+  conversation?: StoredAgentConversation | null
 }
 
 // `claudeRunningNonAgentTask` is persisted on purpose: it is the one child-work fact the row's
