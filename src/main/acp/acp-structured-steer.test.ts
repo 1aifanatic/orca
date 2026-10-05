@@ -128,6 +128,37 @@ describe('a send while a Grok prompt runs', () => {
       ])
     )
   })
+
+  // Unlike the common pattern, which waits on a steer's cancel without a bound: a Grok that ignores
+  // a cancel that long is hung, and its connection is not trusted further.
+  it('ends a Grok that never answers a steer cancel, and rejects the steer as never sent', async () => {
+    const rig = await openAcpAdapterRig({ deps: { cancelTimeoutMs: 30 } })
+    await rig.acquire()
+    await sendHello(rig, 'first')
+    await rig.frame('session/prompt')
+    rig.child().agent.notify('session/update', replyChunk('prompt:first', 'working'))
+    await rig.settle()
+    await sendHello(rig, 'steer')
+    await waitFor(() => expect(rig.lifecycle).toHaveLength(1))
+    expect(rig.lifecycle[0]).toMatchObject({
+      type: 'ended',
+      cause: 'unexpected-exit',
+      failure: { kind: 'providerExited' },
+      reason: expect.stringContaining('session/cancel')
+    })
+    expect(rig.sent('session/prompt')).toHaveLength(1)
+    expect(rig.settled).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          clientMessageId: 'steer',
+          state: 'rejected',
+          reason: 'Grok stopped before this message was sent.'
+        })
+      ])
+    )
+    const turns = (await rig.rig.rows()).flatMap((row) => readAgentJournalTurn(row.body) ?? [])
+    expect(turns.map((turn) => turn.state)).toEqual(['unverifiable'])
+  })
 })
 
 describe('a send while a turn Grok began itself runs', () => {
