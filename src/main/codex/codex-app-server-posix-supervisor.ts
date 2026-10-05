@@ -115,12 +115,15 @@ if (spec.lifetime !== 'one-shot') {
   process.stdin.once('end', scheduleOwnerShutdown)
   process.stdin.once('close', scheduleOwnerShutdown)
 }
-process.stdin.pipe(child.stdin)
-child.stdout.pipe(process.stdout)
-child.stderr.pipe(process.stderr)
-// A dead owner's stdout pipe raises EPIPE; unhandled, it would end this pid before the group.
-for (const stream of [process.stdin, process.stdout, process.stderr, child.stdin, child.stdout, child.stderr]) {
-  stream.on('error', () => {})
+// A spawn that failed outright (EMFILE, ENFILE) has no pid and no pipes; its 'error' reports it.
+if (child.pid) {
+  process.stdin.pipe(child.stdin)
+  child.stdout.pipe(process.stdout)
+  child.stderr.pipe(process.stderr)
+  // A dead owner's stdout pipe raises EPIPE; unhandled, it would end this pid before the group.
+  for (const stream of [process.stdin, process.stdout, process.stderr, child.stdin, child.stdout, child.stderr]) {
+    stream.on('error', () => {})
+  }
 }
 // Exit can land before the provider's last output is relayed; a one-shot's answer is that output.
 const drainProviderOutput = () => {

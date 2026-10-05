@@ -10,6 +10,7 @@ import {
   supervisedPosixLaunch,
   type ProviderSupervisorOptions
 } from './codex-app-server-posix-supervisor'
+import { supervisedProviderSpawnFailure } from './provider-spawn-failure-report'
 
 // The provider leads its own group; its grandchild shares that group and ignores SIGTERM.
 const PROVIDER = String.raw`
@@ -101,6 +102,19 @@ const SIGNAL_AFTER_SPAWN_PRELOAD = String.raw`
   }
 `
 
+// Preloaded into the supervisor: its spawn fails the way EMFILE does, with no pid and no pipes.
+const SPAWN_WITHOUT_PID_PRELOAD = String.raw`
+  const childProcess = require('node:child_process')
+  const { EventEmitter } = require('node:events')
+  childProcess.spawn = (command) => {
+    const child = Object.assign(new EventEmitter(), { pid: undefined, stdin: null, stdout: null, stderr: null })
+    process.nextTick(() =>
+      child.emit('error', Object.assign(new Error('spawn ' + command + ' EMFILE'), { code: 'EMFILE' }))
+    )
+    return child
+  }
+`
+
 const recordedPids = new Set<number>()
 const tempDirs: string[] = []
 
@@ -166,12 +180,13 @@ function launchSupervisor(
     command: process.execPath,
     args: ['-e', PROVIDER]
   },
-  nodeArgs: string[] = []
+  nodeArgs: string[] = [],
+  stderr: 'pipe' | 'ignore' = 'ignore'
 ): { supervisor: ChildProcess; exit: Promise<{ code: number | null; signal: string | null }> } {
   const launch = supervisedPosixLaunch(provider, { ...process.env, ...env }, options)
   const supervisor = spawn(launch.command, [...nodeArgs, ...launch.args], {
     env: launch.env,
-    stdio: ['pipe', 'pipe', 'ignore'],
+    stdio: ['pipe', 'pipe', stderr],
     detached: true
   })
   recordedPids.add(supervisor.pid!)
@@ -445,6 +460,27 @@ describe.runIf(process.platform !== 'win32')('POSIX provider supervisor processe
 
       await expect(exit).resolves.toEqual({ code: 0, signal: null })
       expect(stdout).toBe(nodeOptions)
+    })
+
+    it('reports a spawn that failed without a pid through the marked line', async () => {
+      const preload = join(tempDir(), 'spawn-without-pid.js')
+      writeFileSync(preload, SPAWN_WITHOUT_PID_PRELOAD)
+      const { supervisor, exit } = launchSupervisor(
+        { lifetime: 'one-shot' },
+        {},
+        { command: '/opt/agent', args: [] },
+        ['--require', preload],
+        'pipe'
+      )
+      let stderr = ''
+      supervisor.stderr!.on('data', (chunk: Buffer) => (stderr += chunk.toString()))
+      supervisor.stdin!.end()
+
+      await expect(exit).resolves.toEqual({ code: 127, signal: null })
+      expect(supervisedProviderSpawnFailure(127, stderr)).toMatchObject({
+        thrown: false,
+        error: { code: 'EMFILE', message: 'spawn /opt/agent EMFILE' }
+      })
     })
 
     it('hands the provider a near-cap argv prompt intact', async () => {
