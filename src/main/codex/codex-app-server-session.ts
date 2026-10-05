@@ -3,6 +3,12 @@ import { waitForProcessExitUntil } from './codex-process-exit-deadline'
 import { stderrIndicatesMissingAppServer } from './codex-app-server-capability-signal'
 import { withCliRuntimeOnPath } from '../../shared/node-cli-command-resolution'
 import {
+  createProviderSpawnSpec,
+  stopSupervisedProvider,
+  supervisedProviderSpawnError
+} from './codex-app-server-posix-supervisor'
+import { terminateCodexAppServerProcessTree } from './codex-app-server-process-teardown'
+import {
   killCodexAppServerProcessTree,
   spawnCodexAppServerProcess,
   type CodexAppServerSpawn
@@ -33,7 +39,7 @@ export type CodexAppServerInvocation = {
   /** Env keys stripped from the inherited environment before spawn (e.g. an
    *  inherited CODEX_HOME, so a default-home grant runs against the real ~/.codex). */
   envToDelete?: readonly string[]
-  /** Whole-session deadline. The codex child is SIGKILLed when it lapses. */
+  /** Whole-session deadline. The codex child is stopped when it lapses. */
   timeoutMs: number
 }
 
@@ -93,7 +99,8 @@ export function isCodexMethodNotFoundError(error: unknown): boolean {
 /**
  * Runs one short-lived `codex app-server` session over stdio JSON-RPC (JSONL):
  * spawn → initialize → initialized → body(rpc) → EOF/reap. The child is reaped
- * on every path; the session deadline SIGKILLs it.
+ * on every path; the session deadline stops it. On POSIX it runs under the provider
+ * supervisor, so an Orca that quits or dies mid-session still stops its group.
  */
 export async function runCodexAppServerSession<T>(
   invocation: CodexAppServerInvocation,
@@ -109,14 +116,23 @@ export async function runCodexAppServerSession<T>(
   const pairedEnv = invocation.cliPath
     ? withCliRuntimeOnPath(invocation.cliPath, childEnv)
     : childEnv
-  const child = spawnImpl(invocation.command, invocation.args, {
-    env: pairedEnv,
+  const spawnSpec = createProviderSpawnSpec(
+    { command: invocation.command, args: invocation.args },
+    pairedEnv,
+    process.platform,
+    { lifetime: 'session' }
+  )
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: every stdio slot is 'pipe', so stdin, stdout and stderr exist.
+  const child = spawnImpl(spawnSpec.program, spawnSpec.args, {
+    env: spawnSpec.env,
     stdio: ['pipe', 'pipe', 'pipe'],
-    windowsHide: true
+    windowsHide: true,
+    ...(spawnSpec.supervised ? { detached: true } : {})
   }) as ChildProcessWithoutNullStreams
 
   let stderrTail = ''
   let exited = false
+  let exitCode: number | null = null
   let nextRequestId = 1
   let timedOut = false
   const pending = new Map<
@@ -125,8 +141,9 @@ export async function runCodexAppServerSession<T>(
   >()
 
   const exitPromise = new Promise<void>((resolve) => {
-    child.on('exit', () => {
+    child.on('exit', (code: number | null) => {
       exited = true
+      exitCode = code
       resolve()
     })
   })
@@ -190,7 +207,10 @@ export async function runCodexAppServerSession<T>(
     const error = new CodexAppServerTimeoutError(
       `codex app-server session exceeded ${invocation.timeoutMs}ms (${invocation.command})`
     )
-    killCodexAppServerProcessTree(child)
+    // A supervised child is stopped by the finally below, which this rejection runs at once.
+    if (!spawnSpec.supervised) {
+      killCodexAppServerProcessTree(child)
+    }
     failPending(error)
     rejectDeadline(error)
   }, invocation.timeoutMs)
@@ -263,6 +283,13 @@ export async function runCodexAppServerSession<T>(
   }
 
   function buildEarlyExitError(): Error {
+    // A supervisor reports a missing binary as exit 127; callers classify the spawn error.
+    const providerSpawnError = spawnSpec.supervised
+      ? supervisedProviderSpawnError(exitCode, stderrTail)
+      : null
+    if (providerSpawnError) {
+      return providerSpawnError
+    }
     if (stderrIndicatesMissingAppServer(stderrTail)) {
       return new CodexAppServerUnsupportedError(
         `codex CLI does not support the app-server subcommand: ${stderrTail.trim().slice(0, 400)}`
@@ -297,20 +324,32 @@ export async function runCodexAppServerSession<T>(
     }
     throw error
   } finally {
-    try {
-      child.stdin.end()
-    } catch {
-      // stdin may already be destroyed after a kill; reaping below still runs.
-    }
-    if (!exited) {
-      // Why: the server exits promptly on stdin EOF; the grace period only
-      // bounds a wedged child before the guaranteed SIGKILL reap.
-      await waitForProcessExitUntil(exitPromise, 1500)
-      if (!exited) {
-        killCodexAppServerProcessTree(child)
+    await stopSupervisedProvider({
+      request: () => {
+        try {
+          child.stdin.end()
+        } catch {
+          // stdin may already be destroyed after a kill; reaping below still runs.
+        }
+        // A session past its deadline is wedged; its stdin end would only add a grace.
+        if (timedOut && spawnSpec.supervised && !exited) {
+          child.kill('SIGTERM')
+        }
+      },
+      exitPromise,
+      exited: () => exited,
+      force: async () => {
+        if (spawnSpec.supervised) {
+          await terminateCodexAppServerProcessTree(child)
+        } else {
+          killCodexAppServerProcessTree(child)
+        }
         await waitForProcessExitUntil(exitPromise, 1000)
-      }
-    }
+      },
+      supervised: spawnSpec.supervised,
+      // Why: the server exits promptly on stdin EOF; the wait only bounds a wedged child.
+      directWaitMs: 1500
+    })
     clearTimeout(deadline)
   }
 }

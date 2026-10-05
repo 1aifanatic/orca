@@ -1,4 +1,3 @@
-import type { CodexAppServerLaunch } from './codex-app-server-connection'
 import { waitForProcessExitUntil } from './codex-process-exit-deadline'
 
 /** Time the provider gets to exit on its own after its stdin ends, before SIGTERM. */
@@ -197,6 +196,13 @@ export async function stopSupervisedProvider(input: ProviderStopInput): Promise<
   return true
 }
 
+/** The provider command line a supervisor starts. */
+export type ProviderLaunch = {
+  command: string
+  args: string[]
+  cwd?: string
+}
+
 export type ProviderSupervisorOptions = {
   cwd?: string
   lifetime?: ProviderSupervisorLifetime
@@ -214,7 +220,7 @@ function assertGraceWithin(name: string, graceMs: number, maxMs: number): void {
 }
 
 export function supervisedPosixLaunch(
-  launch: CodexAppServerLaunch,
+  launch: ProviderLaunch,
   childEnv: NodeJS.ProcessEnv,
   {
     cwd = launch.cwd ?? process.cwd(),
@@ -250,7 +256,7 @@ export function supervisedPosixLaunch(
 }
 
 export function createProviderSpawnSpec(
-  launch: CodexAppServerLaunch,
+  launch: ProviderLaunch,
   childEnv: NodeJS.ProcessEnv,
   platform: NodeJS.Platform,
   { lifetime }: Pick<ProviderSupervisorOptions, 'lifetime'> = {}
