@@ -23,8 +23,12 @@ import {
   attachParams,
   hello,
   launch,
+  openAttachedHostRig,
   openHostRig,
-  RESUMES
+  promptIdOf,
+  RESUMES,
+  send,
+  stop
 } from './acp-structured-host.test-support'
 
 afterEach(async () => {
@@ -107,6 +111,59 @@ describe('resuming a Grok chat through the host', () => {
             readAgentSessionFailureFact(row.body.failure)?.kind === 'providerExited')
       )
     ).toBe(true)
+    await host.close(SESSION, 'user-close')
+  })
+})
+
+describe('a Grok crash whose exit is not proven yet', () => {
+  it('rejects a send meanwhile as never sent, and a later Stop does not turn the crash into one', async () => {
+    const { rig, host, rows } = await openAttachedHostRig()
+    const child = rig.child()
+    await send(host, 'hello')
+    const prompt = await rig.frame('session/prompt')
+    child.agent.notify('session/update', replyChunk(promptIdOf(prompt), 'partial'))
+    await rig.settle()
+    let proves = false
+    child.close = async () => {
+      child.closes += 1
+      if (proves) {
+        child.exit()
+      }
+      return proves
+    }
+    child.stderr = 'panic: out of memory'
+    child.stdout.end()
+    await rig.settle()
+    const next = await send(host, 'next')
+    await waitFor(async () =>
+      expect(
+        (await host.journalSnapshot(SESSION)).submissions.find(
+          (entry) => entry.clientMessageId === next
+        )
+      ).toMatchObject({
+        dispatchState: 'rejected',
+        reason: 'Grok stopped before this message was sent.'
+      })
+    )
+    await stop(host)
+    proves = true
+    child.exit()
+    await rig.settle()
+    await host.flushStreamedEvents(SESSION)
+    const transcript = withNativeChatCutTurnNotices(await rows(), { agentName: 'Grok' })
+    // The crash's own notice, as for any crash; not a Stop's.
+    expect(
+      transcript.flatMap((row) =>
+        row.body.kind === 'status'
+          ? [{ text: row.body.text, failure: readAgentSessionFailureFact(row.body.failure)?.kind }]
+          : []
+      )
+    ).toEqual([
+      {
+        text: 'Grok stopped while this response was in progress. You can continue in this conversation.',
+        failure: 'providerExited'
+      }
+    ])
     await host.close(SESSION, 'user-close')
   })
 })

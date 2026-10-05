@@ -196,6 +196,44 @@ describe('ACP connection loss', () => {
     })
   })
 
+  it('keeps a crash a crash when a stop Orca asks for lands before its unproven exit', async () => {
+    const rig = await openAcpAdapterRig()
+    await rig.acquire()
+    const child = rig.child()
+    child.close = async () => {
+      child.closes += 1
+      return false
+    }
+    child.stderr = 'panic: late'
+    child.stdout.end()
+    await rig.settle()
+    expect(rig.lifecycle).toEqual([])
+    // Never left Orca, so it is not recorded as unconfirmed.
+    expect(
+      await rig.adapter.dispatch({
+        sessionId: SESSION,
+        clientMessageId: 'after',
+        body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'after' }] },
+        fence: 1
+      })
+    ).toEqual({
+      state: 'rejected',
+      reason: 'Grok stopped before this message was sent.',
+      rejection: { kind: 'providerExited' }
+    })
+    // The next start's stop of the old child is one Orca asked for; it does not rename the crash.
+    await expect(rig.acquire()).rejects.toMatchObject({
+      name: 'AgentSessionAcquisitionExitUnprovenError'
+    })
+    child.exit()
+    await waitFor(() => expect(rig.lifecycle).toHaveLength(1))
+    expect(rig.lifecycle[0]).toMatchObject({
+      cause: 'unexpected-exit',
+      reason: 'grok ACP agent exited: panic: late',
+      failure: { kind: 'providerExited', detail: { text: 'panic: late' } }
+    })
+  })
+
   it('leaves a running turn unverifiable, never completed, when the stream breaks mid-turn', async () => {
     const rig = await openAcpAdapterRig()
     await rig.acquire()

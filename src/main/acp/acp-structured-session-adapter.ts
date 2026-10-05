@@ -123,16 +123,15 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
     requestedAt?: number
     beforeDispatch?: () => Promise<void>
   }): Promise<AgentSessionDispatchOutcome> {
+    const lost = this.sessions.get(input.sessionId)
+    if (lost && lost.journalClosed !== null) {
+      // The connection broke and the exit is not yet proven: the message never left Orca.
+      return this.rejected(lost, 'providerExited')
+    }
     const session = this.live(input.sessionId)
     const prompt = acpPromptBlocks(input.body)
     if (!prompt) {
-      return {
-        state: 'rejected',
-        ...agentSessionFailureWords(agentSessionFailureFact('attachmentInvalid'), {
-          surface: 'rejection',
-          agentName: acpAgentName(session.spec.agent)
-        })
-      }
+      return this.rejected(session, 'attachmentInvalid')
     }
     await input.beforeDispatch?.()
     session.turns.dispatch({
@@ -272,8 +271,9 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
     if (!session || session.ended) {
       return true
     }
-    session.closeRequested ||= requested
+    // A connection loss already decided why the child ends; a later stop does not relabel it.
     if (session.journalClosed === null) {
+      session.closeRequested ||= requested
       session.lane.flush()
     }
     const proven = await session.child.close()
@@ -306,6 +306,19 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
       `${session.spec.agent} ACP connection closed: ${error.message || error.name}`
     )
     void this.stop(session.sessionId, false)
+  }
+
+  private rejected(
+    session: AcpStructuredSession,
+    kind: 'providerExited' | 'attachmentInvalid'
+  ): AgentSessionDispatchOutcome {
+    return {
+      state: 'rejected',
+      ...agentSessionFailureWords(agentSessionFailureFact(kind), {
+        surface: 'rejection',
+        agentName: acpAgentName(session.spec.agent)
+      })
+    }
   }
 
   private live(sessionId: string): AcpStructuredSession {
