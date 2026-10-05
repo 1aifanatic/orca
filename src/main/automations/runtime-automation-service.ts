@@ -8,6 +8,11 @@ import type { Store } from '../persistence'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { AutomationService } from './service'
 import { observeHeadlessRunCompletion } from './headless-run-completion'
+import {
+  getTuiAgentDetectCommands,
+  isTuiAgent,
+  TUI_AGENT_CONFIG
+} from '../../shared/tui-agent-config'
 import { buildHeadlessAutomationWorktreeCreateArgs } from './headless-workspace-create'
 import { createRuntimeAutomationRunTerminalObserver } from './runtime-terminal-run-observer'
 
@@ -71,7 +76,8 @@ export function createRuntimeAutomationService(input: {
           const completion = observeHeadlessRunCompletion(runtime, {
             handle: terminalHandle,
             paneKey: terminalPaneKey,
-            dispatchedAt
+            dispatchedAt,
+            agentCommands: automationAgentCommands(automation.agentId)
           })
           return {
             workspaceId,
@@ -86,4 +92,12 @@ export function createRuntimeAutomationService(input: {
   })
   runtime.setAutomationService(service)
   return service
+}
+
+function automationAgentCommands(agentId: string): string[] {
+  if (!isTuiAgent(agentId)) {
+    return []
+  }
+  const config = TUI_AGENT_CONFIG[agentId]
+  return [...getTuiAgentDetectCommands(config), config.launchCmd]
 }
