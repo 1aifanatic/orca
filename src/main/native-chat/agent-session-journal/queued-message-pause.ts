@@ -210,17 +210,11 @@ export function resumableQueuePause(
  *  made before a Stop lifts nothing, so it never counts. */
 export function queuePauseLiftOnItsWay(
   pause: DerivedQueuePause,
-  submissions: Iterable<Pick<AgentJournalSubmission, 'dispatchState' | 'acceptedSequence'>>
+  submissions: readonly Pick<AgentJournalSubmission, 'dispatchState' | 'acceptedSequence'>[]
 ): boolean {
   const anchor = pause.since?.sequence ?? 0
-  for (const submission of submissions) {
-    if (
-      submission.dispatchState === 'pending' &&
-      submission.acceptedSequence !== undefined &&
-      submission.acceptedSequence > anchor
-    ) {
-      return true
-    }
-  }
-  return false
+  return submissions.some(
+    (submission) =>
+      submission.dispatchState === 'pending' && (submission.acceptedSequence ?? 0) > anchor
+  )
 }
