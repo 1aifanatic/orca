@@ -7,7 +7,12 @@ import type { CodexUsageStore } from '../codex-usage/store'
 import type { Store } from '../persistence'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { AutomationService } from './service'
-import { createHeadlessAutomationOutputSnapshotBuffer } from './headless-dispatch'
+import { observeHeadlessRunCompletion } from './headless-run-completion'
+import {
+  getTuiAgentDetectCommands,
+  isTuiAgent,
+  TUI_AGENT_CONFIG
+} from '../../shared/tui-agent-config'
 import { buildHeadlessAutomationWorktreeCreateArgs } from './headless-workspace-create'
 import { createRuntimeAutomationRunTerminalObserver } from './runtime-terminal-run-observer'
 
@@ -28,7 +33,7 @@ export function createRuntimeAutomationService(input: {
     allowRemoteHostScheduling: input.headless,
     headlessDispatcher: input.headless
       ? async ({ automation, run, target }) => {
-          const terminalSnapshotLimit = 2_000
+          const dispatchedAt = Date.now()
           let terminalHandle: string
           let terminalSessionId: string | null = null
           let terminalPaneKey: string | null = null
@@ -68,28 +73,12 @@ export function createRuntimeAutomationService(input: {
             const worktree = await runtime.showManagedWorktree(`id:${workspaceId}`)
             workspaceDisplayName = worktree.displayName ?? null
           }
-          const completion = (async () => {
-            const wait = await runtime.waitForTerminal(terminalHandle, { condition: 'tui-idle' })
-            const read = await runtime.readTerminal(terminalHandle, {
-              limit: terminalSnapshotLimit
-            })
-            const snapshotBuffer = createHeadlessAutomationOutputSnapshotBuffer()
-            snapshotBuffer.append(read.tail.join('\n'))
-            if (wait.satisfied) {
-              return {
-                status: 'completed' as const,
-                outputSnapshot: snapshotBuffer.snapshot(),
-                error: null
-              }
-            }
-            return {
-              status: 'dispatch_failed' as const,
-              outputSnapshot: snapshotBuffer.snapshot(),
-              error: wait.blockedReason
-                ? `Automation agent is blocked: ${wait.blockedReason}.`
-                : 'Automation agent did not report completion.'
-            }
-          })()
+          const completion = observeHeadlessRunCompletion(runtime, {
+            handle: terminalHandle,
+            paneKey: terminalPaneKey,
+            dispatchedAt,
+            agentCommands: automationAgentCommands(automation.agentId)
+          })
           return {
             workspaceId,
             workspaceDisplayName,
@@ -103,4 +92,12 @@ export function createRuntimeAutomationService(input: {
   })
   runtime.setAutomationService(service)
   return service
+}
+
+function automationAgentCommands(agentId: string): string[] {
+  if (!isTuiAgent(agentId)) {
+    return []
+  }
+  const config = TUI_AGENT_CONFIG[agentId]
+  return [...getTuiAgentDetectCommands(config), config.launchCmd]
 }
