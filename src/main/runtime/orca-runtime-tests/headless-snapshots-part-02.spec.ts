@@ -4,10 +4,19 @@ import type { RuntimeTerminalAgentStatusEvent } from '../orca-runtime-test-mocks
 import {
   TEST_REPO_ID,
   TEST_WORKTREE_ID,
-  createRuntime,
   store,
   syncSinglePty
 } from '../orca-runtime-test-fixtures.spec'
+
+class RecoveryProbeRuntime extends OrcaRuntimeService {
+  ruledScreen(ptyId: string) {
+    return this.readRuledScreen(ptyId)
+  }
+
+  bufferTailLines(ptyId: string): string[] {
+    return this.headlessTerminals.get(ptyId)?.emulator.getBufferTailLines(100) ?? []
+  }
+}
 
 describe('OrcaRuntimeService', () => {
   it('replaces a cwd parsed before late WSL context with the provider cwd', async () => {
@@ -235,7 +244,7 @@ describe('OrcaRuntimeService', () => {
   })
 
   it('parks a recovery-seeded model on the PTY grid when the snapshot was another size', async () => {
-    const runtime = createRuntime()
+    const runtime = new RecoveryProbeRuntime(store)
     runtime.setPtyController({
       write: () => true,
       kill: () => true,
@@ -253,18 +262,9 @@ describe('OrcaRuntimeService', () => {
     const snapshot = await runtime.serializeMainTerminalBuffer('pty-1', { scrollbackRows: 100 })
     expect(snapshot).toMatchObject({ cols: 47, rows: 40, source: 'headless' })
     expect(snapshot?.data).toContain('desktop history')
-    const internals = runtime as unknown as {
-      headlessTerminals: Map<
-        string,
-        {
-          unrepaintedReflowGrid?: { cols: number; rows: number }
-          emulator: { getBufferTailLines: (limit: number) => string[] }
-        }
-      >
-    }
-    const state = internals.headlessTerminals.get('pty-1')
-    expect(state?.unrepaintedReflowGrid).toEqual({ cols: 47, rows: 40 })
-    const lines = state?.emulator.getBufferTailLines(100) ?? []
+    // An unrepainted reflow is what keeps screen rules off a grid the TUI never painted.
+    expect(runtime.ruledScreen('pty-1')).toBeNull()
+    const lines = runtime.bufferTailLines('pty-1')
     const wrapped = lines.indexOf(`after recovery ${'W'.repeat(32)}`)
     expect(wrapped).toBeGreaterThanOrEqual(0)
     expect(lines[wrapped + 1]).toBe('W'.repeat(28))
