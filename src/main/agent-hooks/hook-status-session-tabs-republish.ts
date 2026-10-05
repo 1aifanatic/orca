@@ -5,6 +5,8 @@ type SessionTabsRepublisher = {
   getTerminalWorktreeIdForPaneKey(paneKey: string): string | null
   scheduleMobileSessionTabsAgentStatusHeartbeatForWorktree(worktreeId: string): void
   touchMobileSessionTabsForWorktree(worktreeId: string): void
+  /** Optional so older runtime doubles keep compiling; the agent-exit check reads the row itself. */
+  noteAgentStatusRowMutation?(paneKey: string): void
 }
 
 type StatusStore = Pick<AgentHookServer, 'subscribeStatusFreshness' | 'subscribeStatusRowMutations'>
@@ -48,6 +50,10 @@ export function installHookStatusSessionTabsRepublish(
     }
     for (const worktreeId of worktreeIds) {
       runtime.touchMobileSessionTabsForWorktree(worktreeId)
+    }
+    const paneKey = mutation.after?.paneKey ?? mutation.before?.paneKey
+    if (paneKey) {
+      runtime.noteAgentStatusRowMutation?.(paneKey)
     }
   })
   const unsubscribeFreshness = statusStore.subscribeStatusFreshness((status) => {

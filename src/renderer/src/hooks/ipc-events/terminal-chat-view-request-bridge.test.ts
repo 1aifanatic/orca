@@ -168,6 +168,81 @@ describe('renderer side of the desktop chat-view relay', () => {
     expect(respond.mock.calls.at(-1)?.[0]?.chatView?.viewMode).toBe('chat')
   })
 
+  it('retires an exited agent only while its pane still owns chat and is bound to that PTY (F2)', () => {
+    const split = (bound: Record<string, string>) => ({
+      root: {
+        type: 'split' as const,
+        direction: 'vertical' as const,
+        first: { type: 'leaf' as const, leafId: A },
+        second: { type: 'leaf' as const, leafId: B }
+      },
+      activeLeafId: A,
+      expandedLeafId: null,
+      ptyIdsByLeafId: bound
+    })
+    const exit = (tabId: string, requestId: string): void =>
+      onRequest!({
+        requestId,
+        worktreeId: WT,
+        tabId,
+        leafId: A,
+        viewMode: 'terminal',
+        agentExit: { ptyId: 'pty-a' }
+      })
+
+    const owned = useAppStore.getState().createTab(WT, undefined, undefined, {})
+    useAppStore.getState().setTabLayout(owned.id, split({ [A]: 'pty-a', [B]: 'pty-b' }))
+    useAppStore.getState().applyTerminalChatPair(owned.id, A, 'chat')
+    exit(owned.id, 'r-exit')
+    expect(respond).toHaveBeenCalledWith({
+      requestId: 'r-exit',
+      chatView: { viewMode: 'terminal', chatLeafId: null }
+    })
+
+    // A newer user switch moved chat to B: the stale exit of A changes nothing.
+    const moved = useAppStore.getState().createTab(WT, undefined, undefined, {})
+    useAppStore.getState().setTabLayout(moved.id, split({ [A]: 'pty-a', [B]: 'pty-b' }))
+    useAppStore.getState().applyTerminalChatPair(moved.id, B, 'chat')
+    exit(moved.id, 'r-moved')
+    expect(respond).toHaveBeenCalledWith({
+      requestId: 'r-moved',
+      chatView: { viewMode: 'chat', chatLeafId: B }
+    })
+
+    // A respawned in another PTY: the exit belongs to the old process.
+    const rebound = useAppStore.getState().createTab(WT, undefined, undefined, {})
+    useAppStore.getState().setTabLayout(rebound.id, split({ [A]: 'pty-a2', [B]: 'pty-b' }))
+    useAppStore.getState().applyTerminalChatPair(rebound.id, A, 'chat')
+    exit(rebound.id, 'r-rebound')
+    expect(respond).toHaveBeenCalledWith({
+      requestId: 'r-rebound',
+      chatView: { viewMode: 'chat', chatLeafId: A }
+    })
+  })
+
+  it("clears a sole pane's launch hint on exit and leaves an unswitched view unset (F2)", () => {
+    const tab = useAppStore
+      .getState()
+      .createTab(WT, undefined, undefined, { launchAgent: 'claude' })
+    useAppStore.getState().setTabLayout(tab.id, {
+      root: { type: 'leaf', leafId: A },
+      activeLeafId: A,
+      expandedLeafId: null,
+      ptyIdsByLeafId: { [A]: 'pty-a' }
+    })
+    onRequest!({
+      requestId: 'r-legacy',
+      worktreeId: WT,
+      tabId: tab.id,
+      leafId: A,
+      viewMode: 'terminal',
+      agentExit: { ptyId: 'pty-a' }
+    })
+    const row = useAppStore.getState().tabsByWorktree[WT]?.find((t) => t.id === tab.id)
+    expect(row?.launchAgent).toBeUndefined()
+    expect(respond.mock.calls.at(-1)?.[0]?.chatView?.viewMode).toBeNull()
+  })
+
   it('reports an unknown tab', () => {
     onRequest!({
       requestId: 'r-2',

@@ -120,6 +120,7 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
     if (!current || restoredStatus === null || restoredStatus === undefined) {
       return
     }
+    this.noteNativeChatAgentEvidence(ptyId)
     current.lastAgentStatus = restoredStatus
     if (restoredStatus === 'idle') {
       this.resolvePtyTuiIdleWaiters(current, ptyId)

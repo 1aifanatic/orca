@@ -79,7 +79,7 @@ export class OrcaRuntimeWithPersistHeadlessSessionTabProps extends OrcaRuntimeWi
     parentTabId: string,
     leafId: string | null,
     viewMode: 'terminal' | 'chat',
-    props: Pick<HeadlessSessionTabProps, 'color' | 'isPinned'>
+    props: Pick<HeadlessSessionTabProps, 'color' | 'isPinned' | 'launchAgent'>
   ): void {
     const state = readHeadlessChatPairState(
       this.getWorkspaceSessionForWorktree(worktreeId),
@@ -99,7 +99,11 @@ export class OrcaRuntimeWithPersistHeadlessSessionTabProps extends OrcaRuntimeWi
       ...(state.hasLayout ? { pickOwner: () => this.pickChatOwnerLeafForLayout(state.layout) } : {})
     })
     if (!next) {
-      if (props.color !== undefined || props.isPinned !== undefined) {
+      if (
+        props.color !== undefined ||
+        props.isPinned !== undefined ||
+        props.launchAgent !== undefined
+      ) {
         this.persistHeadlessSessionTabProps(worktreeId, parentTabId, props)
         this.applyHeadlessSessionTabPropsToSnapshot(worktreeId, parentTabId, props)
       }

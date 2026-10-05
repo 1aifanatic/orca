@@ -16,6 +16,9 @@ export type TerminalChatViewRequest = {
   /** The host's owner for a parent-addressed chat, used only when the tab holds no valid owner;
    *  null: no pane of a split may own chat. */
   ownerPickLeafId?: string | null
+  /** The host proved the agent in `leafId`'s PTY exited: retire that pane's chat and launch hint,
+   *  only while the pane still owns the chat and is still bound to `ptyId`. */
+  agentExit?: { ptyId: string }
 }
 
 export type TerminalChatViewResponse = {

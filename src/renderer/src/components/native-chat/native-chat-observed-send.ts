@@ -1,4 +1,4 @@
-import { sendRuntimePtyInputVerified } from '@/runtime/runtime-terminal-inspection'
+import { sendNativeChatPtyInputVerified } from './native-chat-pty-input'
 import type { getSettingsForAgentTabRuntimeOwner } from '@/lib/agent-paste-draft'
 import { enqueueNativeChatPtySend } from './native-chat-pty-send-queue'
 import {
@@ -34,7 +34,7 @@ export function sendNativeChatObservedWrites(
           if (isCancelled()) {
             return
           }
-          void sendRuntimePtyInputVerified(settings, ptyId, write.data, 'driving')
+          void sendNativeChatPtyInputVerified(settings, ptyId, write.data, options.chatAction)
             .then((accepted) => {
               if (isCancelled()) {
                 return

@@ -27,6 +27,11 @@ export const terminalSendAcceptedSchema = z
   })
   .transform((reply) => reply.send?.accepted === true)
 
+/** A chat write the host could not settle: some bytes may have landed, so it is not "not sent". */
+export const terminalSendDeliveryUnknownSchema = z.looseObject({
+  send: z.looseObject({ deliveryUnknown: z.literal(true) })
+})
+
 /**
  * What the runtime did with a viewport the refit sent in place.
  *

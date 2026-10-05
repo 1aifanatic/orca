@@ -283,6 +283,13 @@ export type RuntimeMobileSessionTabsResult = {
    * owner, and which turn a tab to terminal when its owning pane is removed.
    */
   chatViewHostOwned?: true
+  /**
+   * Set by hosts that turn a chat tab to terminal themselves when they prove its agent exited (on
+   * every device, mounted or not) and that refuse `terminal.send` writes carrying `chatInput` after
+   * that proof. A client seeing it stops writing the pair on exit and tags its composer writes;
+   * without it the client keeps its own exit route and sends untagged writes.
+   */
+  chatViewAgentExitHostOwned?: true
 }
 
 /** The chat pair a host holds after a `setTabProps` carrying `viewMode`. */

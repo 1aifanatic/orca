@@ -14,6 +14,7 @@ import {
   resolveNativeChatLeafRoute
 } from '../native-chat/native-chat-leaf-routing'
 import { useTerminalPaneChatPairActions } from './use-terminal-pane-chat-pair-actions'
+import { hostOwnsChatAgentExit } from '@/store/slices/tabs/terminal-chat-pair-authority'
 import type { TerminalPaneTitleController } from './use-terminal-pane-title-state'
 
 export function useTerminalPaneChatState(controller: TerminalPaneTitleController) {
@@ -170,6 +171,10 @@ export function useTerminalPaneChatState(controller: TerminalPaneTitleController
       if (leafId !== chatLeafId) {
         return
       }
+      // Why: a host that owns exits writes the pair itself, without moving chat to another pane.
+      if (hostOwnsChatAgentExit(useAppStore.getState(), worktreeId)) {
+        return
+      }
       const panes = managerRef.current?.getPanes() ?? []
       const activeLeafId = managerRef.current?.getActivePane()?.leafId ?? null
       applyNativeChatLeafRoute(
@@ -185,7 +190,7 @@ export function useTerminalPaneChatState(controller: TerminalPaneTitleController
       )
     },
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- Preserve the pre-split dependency contract.
-    [applyNativeChatLeafRoute, chatLeafId, isChatEligibleForLeaf, isChatViewMode]
+    [applyNativeChatLeafRoute, chatLeafId, isChatEligibleForLeaf, isChatViewMode, worktreeId]
   )
   useEffect(() => {
     onAgentExitedRef.current = handleConfirmedAgentExit

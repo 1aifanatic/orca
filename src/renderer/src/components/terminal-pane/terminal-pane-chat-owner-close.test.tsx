@@ -110,6 +110,7 @@ function published(tabId: string) {
 function renderPane(tabId: string) {
   const persistRef: { current: () => void } = { current: () => {} }
   const { manager, container } = makeManager(() => persistRef.current())
+  const onAgentExitedRef: { current: (leafId: string) => void } = { current: () => {} }
   const hook = renderHook(() => {
     // Same source the pane foundation uses on a local worktree.
     const savedLayout = useAppStore((state) => state.terminalLayoutsByTabId[tabId] ?? EMPTY_LAYOUT)
@@ -118,7 +119,7 @@ function renderPane(tabId: string) {
       managerRef: { current: manager },
       containerRef: { current: container },
       nativeChatTranscriptIsLocalReadable: true,
-      onAgentExitedRef: { current: vi.fn() },
+      onAgentExitedRef,
       paneCount: manager.getPanes().length,
       tabId,
       worktreeId: WT,
@@ -173,7 +174,7 @@ function renderPane(tabId: string) {
     ])
     return { ...chat, ...layout, chatLeafId }
   })
-  return { hook, manager }
+  return { hook, manager, onAgentExitedRef }
 }
 
 beforeEach(() => {
@@ -226,6 +227,21 @@ describe('closing the chat-owning pane on a local tab', () => {
       hook.rerender()
     })
     expect(storePair(tabId)).toEqual({ viewMode: 'terminal', owner: undefined })
+  })
+})
+
+describe("a confirmed agent exit on this desktop's own tab (F2)", () => {
+  it('writes no pair and never moves chat to an eligible sibling: the host relays its own exit', async () => {
+    const tabId = seedTab({ viewMode: 'chat', owner: A })
+    useAppStore.setState({ runtimePaneTitlesByTabId: { [tabId]: { 1: 'codex', 2: 'codex' } } })
+    const { onAgentExitedRef } = renderPane(tabId)
+    await act(async () => {})
+    act(() => onAgentExitedRef.current(A))
+    await act(async () => {})
+    expect(published(tabId)).toEqual([
+      { viewMode: 'chat', owner: A },
+      { viewMode: 'chat', owner: A }
+    ])
   })
 })
 

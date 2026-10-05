@@ -20,6 +20,9 @@ export type TabsSlice = {
   layoutByWorktree: Record<string, TabGroupLayoutNode>
   /** Paired worktrees whose latest applied host snapshot says the host owns the chat pair. */
   chatViewHostOwnedByWorktree: Record<string, true>
+  /** Paired worktrees whose host turns a chat tab to terminal itself on a proven agent exit and
+   *  refuses tagged chat writes after it (`chatViewAgentExitHostOwned`). */
+  chatViewAgentExitHostOwnedByWorktree: Record<string, true>
   /** This desktop's unconfirmed chat-pair writes on host-owned worktrees, by terminal tab id. */
   pendingChatPairByTabId: Record<string, TerminalChatPair>
   createUnifiedTab: (

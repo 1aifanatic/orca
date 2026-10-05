@@ -12,6 +12,8 @@ export function installPtyWriteIpcHandlers(deps: {
   const {
     writePtyInput,
     writePtyInputAccepted,
+    writePtyChatInput,
+    isPtyChatInputPayload,
     isPtyWritePayload,
     isPtyViewportClaimPayload,
     isPtyWriteEventFromMainWindow
@@ -40,6 +42,16 @@ export function installPtyWriteIpcHandlers(deps: {
       : writePtyInputAccepted(args)
   })
 
+  ipcMain.handle('pty:writeChatInput', async (event, args: unknown) => {
+    if (!isPtyWriteEventFromMainWindow(event) || !isPtyChatInputPayload(args)) {
+      return { accepted: false, bytesWritten: 0 }
+    }
+    const claimTail = hostViewportClaimTails.get(args.id)
+    if (claimTail && !(await claimTail)) {
+      return { accepted: false, bytesWritten: 0 }
+    }
+    return writePtyChatInput(args)
+  })
   ipcMain.removeAllListeners('pty:claimViewport')
   ipcMain.on('pty:claimViewport', (event, args: unknown) => {
     if (!isPtyWriteEventFromMainWindow(event) || !runtime || !isPtyViewportClaimPayload(args)) {

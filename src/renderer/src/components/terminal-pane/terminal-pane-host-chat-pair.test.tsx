@@ -243,6 +243,21 @@ describe('a paired desktop pane on a host-owned pair', () => {
     expect(hook.result.current.isChatViewMode).toBe(false)
   })
 
+  it('writes nothing on a confirmed exit when the host owns exits, and follows its flip (F2)', async () => {
+    hostSays({ viewMode: 'chat', owner: A, exitMarker: true })
+    const { hook, onAgentExitedRef } = renderPane()
+    await settle()
+    act(() => onAgentExitedRef.current(A))
+    await settle()
+    // Why: the host writes the pair itself; this pane neither writes nor retargets to B.
+    expect(host.pairWrites()).toEqual([])
+    expect(hook.result.current.chatLeafId).toBe(A)
+    hostSays({ viewMode: 'terminal', exitMarker: true })
+    await settle()
+    expect(hook.result.current.isChatViewMode).toBe(false)
+    expect(host.pairWrites()).toEqual([])
+  })
+
   it('does not exit chat for a host owner that is not mounted here yet', async () => {
     hostSays({ viewMode: 'chat', owner: C, leaves: [A, B, C] })
     const { hook } = renderPane([A, B])

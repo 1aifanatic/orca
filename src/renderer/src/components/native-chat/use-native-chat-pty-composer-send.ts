@@ -14,6 +14,7 @@ import { resolveNativeChatLaunchDraftSend } from './native-chat-launch-draft-sen
 import { nativeChatComposerTargetIsRemote } from './native-chat-composer-target'
 import type { NativeChatResolvedTarget } from './native-chat-composer-target'
 import { pushHistory, type HistoryState } from './native-chat-composer-state'
+import { createNativeChatWriteAction, nativeChatMessageNotSentText } from './native-chat-pty-input'
 import { isSlashCommandDraft } from '../../../../shared/native-chat-slash-commands'
 import type { NativeChatPickerState } from './use-native-chat-picker-state'
 import type { NativeChatSendLifecycle } from './use-native-chat-send-lifecycle'
@@ -66,28 +67,35 @@ export function useNativeChatPtyComposerSend(args: {
       readScreen: () => args.readTerminalScreen?.()
     })
     let pendingId: string | undefined
+    const rejectSend = (): void => {
+      if (pendingId) {
+        args.optimisticSendOutcome?.reject(pendingId)
+      } else if (classification !== 'chat') {
+        // Why: a command has no message row; the composer's notice line is its failure surface.
+        args.setNotice(nativeChatMessageNotSentText())
+      }
+    }
+    // Why every agent: a refusal after the host proved the agent exited is not Claude-specific.
+    const chatAction = createNativeChatWriteAction(args.terminalTabId, rejectSend)
     const sendOptions =
       args.agent === 'claude' && classification === 'chat'
         ? {
             ...launchSendOptions,
-            onWriteRejected: () => {
-              if (pendingId) {
-                args.optimisticSendOutcome?.reject(pendingId)
-              }
-            },
+            chatAction,
+            onWriteRejected: rejectSend,
             onWriteUnconfirmed: () => {
               if (pendingId) {
                 args.optimisticSendOutcome?.holdUnconfirmed(pendingId)
               }
             }
           }
-        : launchSendOptions
+        : { ...launchSendOptions, chatAction }
     let pendingHandle: NativeChatSendHandle | null = null
     // Why: slash-like text must not silently drop its attached images.
     if (classification !== 'chat' && imagePaths.length === 0) {
       pendingHandle =
         args.agent === 'codex' && isSlashCommandDraft(text)
-          ? sendNativeChatTypedCommand(target.settings, target.ptyId, text)
+          ? sendNativeChatTypedCommand(target.settings, target.ptyId, text, chatAction)
           : sendNativeChatMessage(target.settings, target.ptyId, text, sendOptions)
     } else if (imagePaths.length > 0) {
       pendingHandle = sendNativeChatMessageWithImageAttachments(
@@ -101,7 +109,7 @@ export function useNativeChatPtyComposerSend(args: {
     } else if (text.trim().length > 0) {
       pendingHandle = sendNativeChatMessage(target.settings, target.ptyId, text, sendOptions)
     } else {
-      submitNativeChatPrompt(target.settings, target.ptyId)
+      submitNativeChatPrompt(target.settings, target.ptyId, chatAction)
     }
     if (classification !== 'chat') {
       if (pendingHandle) {

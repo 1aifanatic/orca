@@ -8,6 +8,8 @@ import {
 import { hasRegisteredRuntimeTerminalTab } from '@/runtime/sync-runtime-graph'
 import { activateTabAndFocusPane } from '@/lib/activate-tab-and-focus-pane'
 import { resolveChatPairAuthority } from '@/store/slices/tabs/terminal-chat-pair-authority'
+import { resolveExitedAgentChatRetirement } from '@/store/slices/tabs/terminal-chat-exit-retirement'
+import { readTerminalChatPair } from '@/store/slices/tabs/terminal-chat-pair-state'
 import { useAppStore } from '../../store'
 import type { AppState } from '../../store/types'
 import { resolveBrowserSessionTabTarget } from './browser-session-tab-target'
@@ -120,7 +122,7 @@ export function registerTerminalUiRoutingIpcBridge(unsubs: (() => void)[]): void
 
   unsubs.push(
     window.api.ui.onTerminalChatViewRequest(
-      ({ requestId, worktreeId, tabId, leafId, viewMode, ownerPickLeafId }) => {
+      ({ requestId, worktreeId, tabId, leafId, viewMode, ownerPickLeafId, agentExit }) => {
         const state = useAppStore.getState()
         // Why: a worktree another Orca host owns is only mirrored here; its pair is not ours to write.
         if (resolveChatPairAuthority(state, worktreeId) !== 'local') {
@@ -128,6 +130,23 @@ export function registerTerminalUiRoutingIpcBridge(unsubs: (() => void)[]): void
             requestId,
             error: TERMINAL_CHAT_VIEW_TAB_NOT_FOUND_ERROR
           })
+          return
+        }
+        if (agentExit && leafId) {
+          // Why synchronous: the owner/binding check and the write happen in one store turn.
+          const retirement = resolveExitedAgentChatRetirement(state, tabId, leafId, agentExit.ptyId)
+          if (retirement?.retireChat) {
+            state.applyTerminalChatPair(tabId, null, 'terminal')
+          }
+          if (retirement?.clearLaunchAgent) {
+            useAppStore.getState().clearTabLaunchAgent(tabId)
+          }
+          const chatView = readTerminalChatPair(useAppStore.getState(), tabId)
+          window.api.ui.respondTerminalChatView(
+            chatView
+              ? { requestId, chatView }
+              : { requestId, error: TERMINAL_CHAT_VIEW_TAB_NOT_FOUND_ERROR }
+          )
           return
         }
         // Why synchronous: IPC arrival order is the host's admit order, so apply before replying.

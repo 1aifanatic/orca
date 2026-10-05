@@ -105,6 +105,8 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
       afterWrite?: (ptyId: string) => void | Promise<void>
       suffixFailureError?: string
       inputKind: TerminalInputKind
+      /** A chat composer write: settled, fenced per chunk by the action's agent-exit guard. */
+      chatInput?: { actionId: string }
     }
   ): Promise<RuntimeTerminalSend> {
     const pty = this.getLivePtyForHandle(handle)
@@ -117,6 +119,9 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
         throw new Error('invalid_terminal_send')
       }
       await assertTerminalInputWithinLimitWithYield(action.text)
+      if (options.chatInput) {
+        return this.writeNativeChatInputAction(handle, pty.pty.ptyId, action, options)
+      }
       await this.writeTerminalAction(pty.pty.ptyId, action, payload, options)
       return {
         handle,
@@ -142,6 +147,9 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
       throw new Error('terminal_not_writable')
     }
 
+    if (options.chatInput) {
+      return this.writeNativeChatInputAction(handle, leaf.ptyId, action, options)
+    }
     await this.writeTerminalAction(leaf.ptyId, action, payload, options)
 
     return {
