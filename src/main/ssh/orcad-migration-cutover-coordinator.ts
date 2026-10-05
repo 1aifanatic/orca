@@ -66,14 +66,15 @@ export async function stageOrcadMigrationDestination(
   }
   assertSourceUnchanged(context, cutover)
   const { destination } = context
-  let state = await destination.readState(cutover.manifest)
-  if (state.state !== 'committed') {
-    state = await resolveDurableOrcadCatalogMutation(
-      () => destination.stage(cutover.manifest),
-      () => destination.readState(cutover.manifest),
-      (observed) => observed.state !== 'absent'
-    )
-  }
+  const read = await destination.readState(cutover.manifest)
+  const state =
+    read.state === 'committed'
+      ? await confirmDurableCommit(destination, cutover.manifest)
+      : await resolveDurableOrcadCatalogMutation(
+          () => destination.stage(cutover.manifest),
+          () => destination.readState(cutover.manifest),
+          (observed) => observed.state !== 'absent'
+        )
   cutover = recordObservedState(context, cutover, state)
   if (state.state === 'staged') {
     await transferOrcadMigrationSnapshots({
@@ -142,7 +143,7 @@ export async function abortOrcadMigrationCutover(
     state = await abortWithRecovery(destination, cutover.manifest)
   }
   if (state.state === 'committed') {
-    recordObservedState(context, cutover, state)
+    recordObservedState(context, cutover, await confirmDurableCommit(destination, cutover.manifest))
     return committedRefusal()
   }
   if (state.state !== 'absent') {
@@ -150,6 +151,21 @@ export async function abortOrcadMigrationCutover(
   }
   await release(cutover)
   return { outcome: 'released', evidence: 'catalog-absent' }
+}
+
+/**
+ * A committed read may come from memory the server never flushed; only commit()'s acknowledgement,
+ * which flushes before it answers, may move the journal to committed and on to retirement.
+ */
+async function confirmDurableCommit(
+  destination: OrcadMigrationDestinationCatalog,
+  manifest: OrcadMigrationManifest
+): Promise<OrcadMigrationCatalogState> {
+  const state = await destination.commit(manifest)
+  if (state.state !== 'committed') {
+    throw new Error(`orcad_migration_commit_not_committed:${state.state}`)
+  }
+  return state
 }
 
 function assertSourceUnchanged(
