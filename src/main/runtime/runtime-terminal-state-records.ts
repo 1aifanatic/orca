@@ -66,10 +66,10 @@ export type RuntimePtyWorktreeRecord = RuntimeTerminalTailState & {
   launchToken: string | null
   launchIncarnationId: PtyIncarnationId | null
   launchAgent: TuiAgent | null
-  /** In memory only: the incarnation whose `launchAgent` the host settled (admitted at a spawn or
-   *  reattach, or retired), so null there means no launched agent. Absent for a PTY known only from
-   *  inventory, whose null proves nothing. */
-  launchIdentitySettledIncarnationId?: PtyIncarnationId | null
+  /** In memory only: the incarnation whose `launchAgent` the host settled, so null there means no
+   *  launched agent; `retired` when it was cleared because the host saw the agent exit. Absent for a
+   *  PTY known only from inventory, whose null proves nothing. */
+  launchIdentitySettlement?: { incarnationId: PtyIncarnationId | null; retired: boolean }
   agentSessionOwners: AgentSessionOwnerBinding[]
   foregroundAgent: TerminalAgent | null
   connected: boolean
@@ -176,13 +176,21 @@ export type HeadlessSeedMetadata = {
 
 /** The PTY's launch agent when the host settled it for the live incarnation; undefined if unknown. */
 export function settledPtyLaunchAgent(
-  pty: Pick<
-    RuntimePtyWorktreeRecord,
-    'incarnationId' | 'launchAgent' | 'launchIdentitySettledIncarnationId'
-  >
+  pty: Pick<RuntimePtyWorktreeRecord, 'incarnationId' | 'launchAgent' | 'launchIdentitySettlement'>
 ): TuiAgent | null | undefined {
-  return pty.launchIdentitySettledIncarnationId !== undefined &&
-    pty.launchIdentitySettledIncarnationId === pty.incarnationId
+  return pty.launchIdentitySettlement !== undefined &&
+    pty.launchIdentitySettlement.incarnationId === pty.incarnationId
     ? pty.launchAgent
     : undefined
+}
+
+/** Settles a fresh spawn's assigned launch agent with its incarnation, in the same step. */
+export function settleFreshSpawnLaunchIdentity(
+  pty: Pick<RuntimePtyWorktreeRecord, 'incarnationId' | 'launchIdentitySettlement'>,
+  isReattach: boolean | undefined
+): void {
+  // Why: a reattach keeps what its provider proved; only a fresh spawn's launch is complete here.
+  if (isReattach !== true) {
+    pty.launchIdentitySettlement = { incarnationId: pty.incarnationId, retired: false }
+  }
 }

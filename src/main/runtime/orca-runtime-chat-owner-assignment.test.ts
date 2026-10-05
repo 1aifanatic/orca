@@ -184,6 +184,25 @@ describe('F1: a parent-addressed chat on a split gets a host owner (headless)', 
     expect((await chatWrite()).chatView).toEqual({ viewMode: 'chat', chatLeafId: A })
   })
 
+  it('lets a reattach of the same process report the agent a fresh spawn did not prove', async () => {
+    // A spawn with no admitted launch authority settles "no agent"; a renderer reload then
+    // reattaches the same process and the daemon reports the agent it was launched with.
+    const host = makeOwnerHost({ leaves: 2, viewMode: 'terminal', shellOn: [A, B] })
+    host.runtime.registerPty('pty-a', TEST_WORKTREE_ID, null, {
+      tabId: 'host-tab',
+      leafId: A,
+      incarnationId: `inc-${A}`,
+      isReattach: true,
+      providerReattachLaunchIdentity: { incarnationId: `inc-${A}`, launchAgent: 'claude' }
+    })
+    expect(host.runtime['ptysById'].get('pty-a')?.launchAgent).toBe('claude')
+    const reply = await host.runtime.setMobileSessionTabProps(`id:${TEST_WORKTREE_ID}`, {
+      tabId: 'host-tab',
+      viewMode: 'chat'
+    })
+    expect(reply.chatView).toEqual({ viewMode: 'chat', chatLeafId: A })
+  })
+
   it('admits the reported agent on the first reattach after a restart', async () => {
     const host = makeOwnerHost({ leaves: 2, viewMode: 'terminal', shellOn: [B] })
     host.runtime.registerPty('pty-a', TEST_WORKTREE_ID, 'ssh-1', {

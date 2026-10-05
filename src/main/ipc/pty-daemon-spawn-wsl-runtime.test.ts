@@ -148,6 +148,48 @@ describe('registerPtyHandlers', () => {
           false
         )
       })
+      it('leaves a runtime-created agent spawn for its creator to settle with the agent', async () => {
+        const leafId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+        setupDaemonAdapter()
+        const runtime = {
+          setPtyController: vi.fn(),
+          registerPty: vi.fn(),
+          onPtySpawned: vi.fn(),
+          onPtyExit: vi.fn(),
+          onPtyData: vi.fn()
+        }
+        handlers.clear()
+        registerPtyHandlers(mainWindow as never, runtime as never)
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: registerPtyHandlers installs the runtime PTY controller through setPtyController.
+        const controller = runtime.setPtyController.mock.calls[0]?.[0] as {
+          spawn(args: {
+            cols: number
+            rows: number
+            worktreeId: string
+            tabId: string
+            leafId: string
+            launchAgent: 'claude'
+          }): Promise<{ id: string }>
+        }
+
+        await controller.spawn({
+          cols: 80,
+          rows: 24,
+          worktreeId: 'wt-runtime-agent',
+          tabId: 'tab-agent',
+          leafId,
+          launchAgent: 'claude'
+        })
+
+        // Why: settling here would publish "no agent" until create-terminal assigns the agent.
+        expect(runtime.registerPty).toHaveBeenCalledWith(
+          expect.any(String),
+          'wt-runtime-agent',
+          null,
+          { tabId: 'tab-agent', leafId },
+          false
+        )
+      })
       it('restores daemon launch identity for a runtime-created reattach', async () => {
         const incarnationId = 'runtime-reattach-incarnation'
         const leafId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
