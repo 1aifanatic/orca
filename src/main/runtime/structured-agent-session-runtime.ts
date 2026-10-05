@@ -28,6 +28,7 @@ import {
   type StructuredAgentSessionHostDeps
 } from '../native-chat/agent-session-wire/structured-agent-session-host'
 import { StructuredAgentSessionAdapterRouter } from '../native-chat/agent-session-wire/structured-agent-session-adapter-router'
+import { StructuredAgentRegistry } from '../native-chat/agent-session-wire/structured-agent-registry'
 import { setStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import type { ClaudeManagedAccountGateSettings } from '../native-chat/claude-structured-managed-account-support'
 import { AgentSessionRecordStore } from './agent-session-record-store'
@@ -276,12 +277,14 @@ async function installOnJournal(
   const registrations = STRUCTURED_AGENT_RUNTIME_REGISTRATIONS.map(
     ({ definition, createAdapter }) => ({ definition, adapter: createAdapter(context) })
   )
-  const adapter = new StructuredAgentSessionAdapterRouter(registrations, async () => {
+  const agents = new StructuredAgentRegistry(registrations)
+  const adapter = new StructuredAgentSessionAdapterRouter(agents, async () => {
     await Promise.all(registrations.map((registration) => registration.adapter.closeAll()))
   })
   host = new StructuredAgentSessionHost({
     store,
     adapter,
+    agents,
     recoveryCapsule: new AgentSessionRecoveryCapsule(deps.stateDirectory),
     journalDatabase,
     claimKeyId: deps.claimKeyId,
@@ -297,7 +300,7 @@ async function installOnJournal(
     ...(deps.onSessionStatusChanged ? { onSessionStatusChanged: deps.onSessionStatusChanged } : {}),
     ...(deps.statusSink ? { statusSink: deps.statusSink } : {}),
     ...(deps.hasOpenDispatch ? { hasOpenDispatch: deps.hasOpenDispatch } : {}),
-    ...(await modelCatalogHostDeps({ store, deps, envResolvers }))
+    ...(await modelCatalogHostDeps({ store, agents, deps, envResolvers }))
   })
   setStructuredAgentSessionHost(host)
   return {

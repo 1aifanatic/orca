@@ -95,7 +95,7 @@ export function createCodexStructuredLaunchResolver(
     // concern, and the permission posture they used to smuggle in is derived per acquisition.
     const permissionPolicy = deps.resolvePermissionPolicy?.()
     const head = agentSessionProviderHandleChainHead(record.providerHandleChain)
-    // A Codex record's chain holds only Codex handles; the record store refuses anything else.
+    // A Codex record's chain holds only Codex handles; the attach admission refuses anything else.
     const resumeThreadId = head?.handle.nativeId ?? null
     // The same saved options every turn sends, so the thread and its turns name one model.
     const model = record.options?.model

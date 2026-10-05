@@ -19,6 +19,7 @@ import type { StructuredAgentSessionStatusSink } from './structured-agent-sessio
 import type { AgentModelCatalogService } from '../agent-model-catalog/agent-model-catalog-service'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 import type { StructuredAgentId } from '../../../shared/agent-session-provider-handle'
+import type { StructuredAgentRegistry } from './structured-agent-registry'
 
 export type StructuredAgentSessionCaller = { callerKey: string }
 
@@ -103,6 +104,8 @@ export type StructuredAgentSessionHostSession = {
 export type StructuredAgentSessionHostDeps = {
   store: AgentSessionRecordStore
   adapter: StructuredAgentSessionAdapter
+  /** The agents this runtime drives; what each declares is read here, never from the adapter. */
+  agents: StructuredAgentRegistry
   /** Optional advisory recovery storage, independent of conversation backups. */
   recoveryCapsule?: AgentSessionRecoveryCapsule
   /** The host's one chat journal database. */

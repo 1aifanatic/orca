@@ -19,7 +19,7 @@ import { codexTurnLifecycleFake } from '../../codex/codex-turn-lifecycle-fake'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
-import { claudeAndCodexDefinition } from './structured-agent-session-adapter-router-test-support'
+import { NO_STRUCTURED_AGENTS } from './structured-agent-session-adapter-router-test-support'
 import {
   HOST_TEST_NOW as NOW,
   HOST_TEST_SESSION as SESSION,
@@ -72,12 +72,10 @@ beforeEach(async () => {
   })
   disposeSession = vi.spyOn(adapter, 'disposeSession')
   host = new StructuredAgentSessionHost({
+    agents: NO_STRUCTURED_AGENTS,
     logger: (log = recordingStructuredAgentSessionLogger()).logger,
     store,
-    adapter: Object.assign(adapter, {
-      supportsCreate: () => true,
-      definition: claudeAndCodexDefinition
-    }),
+    adapter: Object.assign(adapter, { supportsCreate: () => true }),
     journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
     mintSpawnToken: () => 'spawn-1',

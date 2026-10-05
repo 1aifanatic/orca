@@ -63,7 +63,7 @@ export type StructuredAgentSessionRestartFailureLedger = {
    *  audience, only records of agents it sees go, and an unnamed dismissal is no fence. */
   dismiss: (
     sessionIds: readonly string[] | undefined,
-    beforeClearAll: () => void,
+    beforeClearAll: (audience?: StructuredAgentSessionRestartAudience) => void,
     audience?: StructuredAgentSessionRestartAudience
   ) => Promise<number>
 }
@@ -223,6 +223,11 @@ export function createStructuredAgentSessionRestartFailureLedger(deps: {
             const record = deps.getRecord(marker.sessionId)
             return record === null || !audience(record.provider)
           }
+          if (sessionIds === undefined) {
+            beforeClearAll(audience)
+          }
+          // No fence: no client reaches this today (the local desktop gets no audience), and a
+          // late write from this process is serialized behind the dismissal.
           return (await deps.capsule?.dismiss(sessionIds ?? 'all', deps.now(), hidden)) ?? 0
         }
         if (sessionIds !== undefined) {

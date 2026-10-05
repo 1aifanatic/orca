@@ -55,7 +55,7 @@ describe('handle identity', () => {
 
   it('distinguishes a null leaf from an empty-string leaf and rejects malformed handles', () => {
     expect(isAgentSessionProviderHandle(claudeProviderHandle('sess-1', null))).toBe(true)
-    expect(isAgentSessionProviderHandle({ ...CLAUDE, providerData: '' })).toBe(false)
+    expect(isAgentSessionProviderHandle({ ...CLAUDE, resumeCursor: '' })).toBe(false)
     expect(isAgentSessionProviderHandle({ ...CLAUDE, nativeId: '' })).toBe(false)
     expect(isAgentSessionProviderHandle({ ...CLAUDE, nativeId: ' sess-1 ' })).toBe(false)
     // A stored typed shape is not an in-memory handle: it must be decoded first.
@@ -460,11 +460,11 @@ describe('superseding a creation the provider never saved', () => {
 })
 
 describe('a transport shared code has never heard of', () => {
-  const acp = (nativeId: string, providerData?: string): AgentSessionProviderHandle => ({
+  const acp = (nativeId: string, resumeCursor?: string): AgentSessionProviderHandle => ({
     transport: 'acp',
     agent: 'grok',
     nativeId,
-    ...(providerData === undefined ? {} : { providerData })
+    ...(resumeCursor === undefined ? {} : { resumeCursor })
   })
 
   it('chains resumes and forks by its native id alone', () => {
@@ -495,7 +495,7 @@ describe('a transport shared code has never heard of', () => {
     expect(forked.at(-1)?.handle.nativeId).toBe('s-2')
   })
 
-  it('records a same-fence resume that only moved provider data instead of eliding it', () => {
+  it('records a same-fence resume that only moved the resume cursor instead of eliding it', () => {
     const created = link({ handle: acp('s-1', 'a') })
     const moved = link({ linkId: 'link-2', origin: 'resumed', handle: acp('s-1', 'b') })
     expect(appendAgentSessionProviderHandleLink([created], moved)).toHaveLength(2)

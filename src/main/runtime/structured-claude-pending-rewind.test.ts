@@ -11,7 +11,8 @@ import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-sessio
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import { claudeSessionIdForOrcaSession } from '../claude/claude-structured-launch-resolution'
 import { fakeClaude } from '../claude/claude-structured-session-test-support'
-import { claudeAndCodexRouter } from '../native-chat/agent-session-wire/structured-agent-session-adapter-router-test-support'
+import { claudeAndCodexAgents } from '../native-chat/agent-session-wire/structured-agent-session-adapter-router-test-support'
+import { StructuredAgentSessionAdapterRouter } from '../native-chat/agent-session-wire/structured-agent-session-adapter-router'
 import { CLAUDE_STRUCTURED_AGENT } from '../claude/claude-structured-agent-definition'
 import { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
 import {
@@ -122,11 +123,13 @@ beforeEach(async () => {
     onLifecycleEvent: () => {}
   })
   log = recordingStructuredAgentSessionLogger()
+  // Only Claude sessions are attached here; the router supplies the production create gate.
+  const agents = claudeAndCodexAgents({ claude: adapter, codex: adapter })
   host = new StructuredAgentSessionHost({
+    agents,
     logger: log.logger,
     store,
-    // Only Claude sessions are attached here; the router supplies the production create gate.
-    adapter: claudeAndCodexRouter({ claude: adapter, codex: adapter }, () => adapter.closeAll()),
+    adapter: new StructuredAgentSessionAdapterRouter(agents, () => adapter.closeAll()),
     journalDatabase: openTestJournalHostDatabase(directory),
     claimKeyId: 'key',
     now: () => HOST_TEST_NOW,

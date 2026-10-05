@@ -3,20 +3,24 @@ import { CLAUDE_STRUCTURED_AGENT } from '../claude/claude-structured-agent-defin
 import { CODEX_STRUCTURED_AGENT } from '../codex/codex-structured-agent-definition'
 import { CLAUDE_AND_CODEX_STORED_AGENTS } from '../../shared/agent-session-stored-agent.test-fixture'
 import {
+  CLAUDE_STRUCTURED_HANDLE_NAMESPACE,
+  CODEX_STRUCTURED_HANDLE_NAMESPACE
+} from '../../shared/agent-session-provider-handle-encoding'
+import {
   STRUCTURED_AGENT_RUNTIME_REGISTRATIONS,
   STRUCTURED_AGENT_STORAGE
 } from './structured-agent-runtime-registrations'
 
 describe('what the shipped definitions let a record store', () => {
-  it('matches the storage every older build wrote', () => {
-    for (const definition of [CLAUDE_STRUCTURED_AGENT, CODEX_STRUCTURED_AGENT]) {
-      const { agent, handleTransport, accountHomeVariable } = definition
-      expect({ agent, handleTransport, accountHomeVariable }).toEqual(
-        CLAUDE_AND_CODEX_STORED_AGENTS.get(agent)
-      )
-    }
-    expect(CLAUDE_STRUCTURED_AGENT.accountHomeVariable).toBe('CLAUDE_CONFIG_DIR')
-    expect(CODEX_STRUCTURED_AGENT.accountHomeVariable).toBe('CODEX_HOME')
+  it('pins what every older build wrote', () => {
+    expect(CLAUDE_STRUCTURED_AGENT).toMatchObject({
+      handleTransport: CLAUDE_STRUCTURED_HANDLE_NAMESPACE.transport,
+      accountHomeVariable: 'CLAUDE_CONFIG_DIR'
+    })
+    expect(CODEX_STRUCTURED_AGENT).toMatchObject({
+      handleTransport: CODEX_STRUCTURED_HANDLE_NAMESPACE.transport,
+      accountHomeVariable: 'CODEX_HOME'
+    })
   })
 
   it('admits exactly the agents the runtime routes, stored as before', () => {

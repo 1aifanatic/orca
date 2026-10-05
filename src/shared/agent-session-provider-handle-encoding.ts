@@ -7,6 +7,9 @@
  * in the neutral shape, which an older build refuses as unreadable rather than mistaking for one
  * of its own. Decoding is strict: each handle has exactly one stored form, and the key and root
  * strings derived from it are persisted elsewhere, so none of them may ever change.
+ *
+ * A stored handle has a closed field set, and a rewrite drops anything else. A later build adds new
+ * per-link data on the chain link, which every build preserves, never on the handle.
  */
 
 import type {
@@ -46,9 +49,10 @@ export function isAgentSessionProviderHandleInNamespace(
 
 /**
  * Whether a handle belongs to a record of this agent. Compares namespaces; never reads its data.
- * Claude and Codex handles are pinned to their typed lane's transport. Another agent's transport is
- * its registered definition's, which the record store checks on every row it loads or writes; a
- * chain never changes transport after its first link.
+ * Claude and Codex handles are pinned to their typed lane's transport. Another agent's handle may be
+ * in any transport: the record store asks only that a chain keep one namespace owned by the
+ * record's agent, and whether this build speaks that transport is asked when the agent would start
+ * (`agentDrivesSession`).
  */
 export function agentSessionProviderHandleBelongsTo(
   handle: AgentSessionProviderHandle,
@@ -58,7 +62,7 @@ export function agentSessionProviderHandleBelongsTo(
   return builtIn ? isAgentSessionProviderHandleInNamespace(handle, builtIn) : handle.agent === agent
 }
 
-/** Claude's provider data is its resume leaf: the transcript entry a resume continues from. */
+/** Claude's resume cursor is its leaf: the transcript entry a resume continues from. */
 export function claudeProviderHandle(
   sessionId: string,
   leafUuid: string | null
@@ -66,12 +70,12 @@ export function claudeProviderHandle(
   return {
     ...CLAUDE_STRUCTURED_HANDLE_NAMESPACE,
     nativeId: sessionId,
-    ...(leafUuid === null ? {} : { providerData: leafUuid })
+    ...(leafUuid === null ? {} : { resumeCursor: leafUuid })
   }
 }
 
 export function claudeProviderHandleLeafUuid(handle: AgentSessionProviderHandle): string | null {
-  return handle.providerData ?? null
+  return handle.resumeCursor ?? null
 }
 
 export function codexProviderHandle(threadId: string): AgentSessionProviderHandle {
@@ -83,7 +87,7 @@ export function codexProviderHandle(threadId: string): AgentSessionProviderHandl
 const MAX_HANDLE_FIELD_LENGTH = 512
 /** A generic handle's key carries escaped ids, so it may outgrow a legacy key's bound. */
 const MAX_NEUTRAL_HANDLE_KEY_LENGTH = 8192
-const MAX_PROVIDER_DATA_LENGTH = 4096
+const MAX_RESUME_CURSOR_LENGTH = 4096
 const NAMESPACE_PART_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/
 
 export function isAgentSessionProviderHandleField(value: unknown): value is string {
@@ -114,7 +118,7 @@ function isLegacyNamespace(handle: AgentSessionProviderHandleNamespace): boolean
 
 /**
  * An in-memory handle. A Claude or Codex handle must also fit its typed stored shape: Claude's
- * provider data is a leaf id, and Codex has none.
+ * resume cursor is a leaf id, and Codex has none.
  */
 export function isAgentSessionProviderHandle(value: unknown): value is AgentSessionProviderHandle {
   if (typeof value !== 'object' || value === null || Object.hasOwn(value, 'provider')) {
@@ -123,7 +127,7 @@ export function isAgentSessionProviderHandle(value: unknown): value is AgentSess
   const transport = 'transport' in value ? value.transport : undefined
   const agent = 'agent' in value ? value.agent : undefined
   const nativeId = 'nativeId' in value ? value.nativeId : undefined
-  const providerData = 'providerData' in value ? value.providerData : undefined
+  const resumeCursor = 'resumeCursor' in value ? value.resumeCursor : undefined
   if (
     !isNamespacePart(transport) ||
     !isNamespacePart(agent) ||
@@ -133,16 +137,16 @@ export function isAgentSessionProviderHandle(value: unknown): value is AgentSess
   }
   const namespace = { transport, agent }
   if (isAgentSessionProviderHandleInNamespace(namespace, CODEX_STRUCTURED_HANDLE_NAMESPACE)) {
-    return providerData === undefined
+    return resumeCursor === undefined
   }
   if (isAgentSessionProviderHandleInNamespace(namespace, CLAUDE_STRUCTURED_HANDLE_NAMESPACE)) {
-    return providerData === undefined || isAgentSessionProviderHandleField(providerData)
+    return resumeCursor === undefined || isAgentSessionProviderHandleField(resumeCursor)
   }
   return (
-    providerData === undefined ||
-    (typeof providerData === 'string' &&
-      providerData.length > 0 &&
-      providerData.length <= MAX_PROVIDER_DATA_LENGTH)
+    resumeCursor === undefined ||
+    (typeof resumeCursor === 'string' &&
+      resumeCursor.length > 0 &&
+      resumeCursor.length <= MAX_RESUME_CURSOR_LENGTH)
   )
 }
 
@@ -171,7 +175,7 @@ export function encodePersistedAgentSessionProviderHandle(
   handle: AgentSessionProviderHandle
 ): PersistedAgentSessionProviderHandle {
   if (isAgentSessionProviderHandleInNamespace(handle, CLAUDE_STRUCTURED_HANDLE_NAMESPACE)) {
-    return { provider: 'claude', sessionId: handle.nativeId, leafUuid: handle.providerData ?? null }
+    return { provider: 'claude', sessionId: handle.nativeId, leafUuid: handle.resumeCursor ?? null }
   }
   if (isAgentSessionProviderHandleInNamespace(handle, CODEX_STRUCTURED_HANDLE_NAMESPACE)) {
     return { provider: 'codex', threadId: handle.nativeId }
@@ -180,12 +184,12 @@ export function encodePersistedAgentSessionProviderHandle(
     transport: handle.transport,
     agent: handle.agent,
     nativeId: handle.nativeId,
-    ...(handle.providerData === undefined ? {} : { providerData: handle.providerData })
+    ...(handle.resumeCursor === undefined ? {} : { resumeCursor: handle.resumeCursor })
   }
 }
 
 /** The neutral form's discriminator and identity fields; a typed stored handle carries none of them. */
-const NEUTRAL_HANDLE_FIELDS = ['transport', 'agent', 'nativeId', 'providerData'] as const
+const NEUTRAL_HANDLE_FIELDS = ['transport', 'agent', 'nativeId', 'resumeCursor'] as const
 
 export function decodePersistedAgentSessionProviderHandle(
   value: unknown
@@ -223,7 +227,7 @@ export function decodePersistedAgentSessionProviderHandle(
     transport: value.transport,
     agent: value.agent,
     nativeId: value.nativeId,
-    ...(value.providerData === undefined ? {} : { providerData: value.providerData })
+    ...(value.resumeCursor === undefined ? {} : { resumeCursor: value.resumeCursor })
   }
 }
 
@@ -237,7 +241,7 @@ export function agentSessionProviderHandleKey(handle: AgentSessionProviderHandle
       ? `claude:${JSON.stringify([stored.sessionId, stored.leafUuid])}`
       : `codex:${JSON.stringify(stored.threadId)}`
   }
-  // Why: provider data is resume state the adapter owns, not identity; only Claude's leaf, a
+  // Why: the resume cursor is resume state the adapter owns, not identity; only Claude's leaf, a
   // branch cursor, was ever part of a key, and its key above is fixed by records already written.
   return agentSessionProviderHandleRoot(handle)
 }

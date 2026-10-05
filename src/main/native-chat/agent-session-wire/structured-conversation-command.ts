@@ -106,6 +106,7 @@ export function runStructuredConversationCommand(
     return admitAndRunAgentSessionMutation({
       store,
       adapter: context.deps.adapter,
+      agents: context.deps.agents,
       logger: context.deps.logger,
       callerKey: caller.callerKey,
       envelope,

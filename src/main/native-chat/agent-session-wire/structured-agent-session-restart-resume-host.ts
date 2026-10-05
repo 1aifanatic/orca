@@ -7,13 +7,10 @@ import {
   AgentSessionRefusalError,
   agentSessionRefusalFromReference
 } from '../../../shared/agent-session-wire-refusals'
-import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
-import type { AgentSessionRecoveryCapsule } from '../../runtime/agent-session-recovery-capsule'
 import type {
   AgentSessionResumeMarker,
   AgentSessionResumeTrigger
 } from '../../../shared/agent-session-resume-marker'
-import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { createStructuredAgentSessionRestartCandidateReader } from './structured-agent-session-restart-candidates'
 import {
   continuationFailureOutcome,
@@ -46,7 +43,7 @@ import {
 import type { StructuredAgentSessionRestartResumeSurfaces } from './structured-agent-session-restart-resume-wiring'
 import { createStructuredAgentSessionRestartWitnesses } from './structured-agent-session-restart-witnesses'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
-import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
+import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 
 type LiveSession = StructuredAgentSessionRestartOfferSession
 
@@ -86,12 +83,10 @@ export type StructuredAgentSessionRestartResume = {
 }
 
 export function createStructuredAgentSessionRestartResume(
-  deps: {
-    store: AgentSessionRecordStore
-    adapter: StructuredAgentSessionAdapter
-    recoveryCapsule?: AgentSessionRecoveryCapsule
-    logger: StructuredAgentSessionLogger
-  },
+  deps: Pick<
+    StructuredAgentSessionHostDeps,
+    'store' | 'adapter' | 'recoveryCapsule' | 'logger' | 'agents'
+  >,
   sessions: ReadonlyMap<string, LiveSession>,
   surfaces: StructuredAgentSessionRestartResumeSurfaces
 ): StructuredAgentSessionRestartResume {
@@ -118,6 +113,7 @@ export function createStructuredAgentSessionRestartResume(
     sessions,
     getRecord: deps.store.getRecord,
     adapter: deps.adapter,
+    agents: deps.agents,
     movedOn: withdrawal.movedOn
   })
   const failures = createStructuredAgentSessionRestartFailureLedger({
@@ -179,7 +175,7 @@ export function createStructuredAgentSessionRestartResume(
   ) => {
     // An explicit action supersedes teardown witnesses captured by this host. The durable mutation
     // lane below also drains a publication already in flight before completion.
-    witnesses.clear()
+    witnesses.clear(audience)
     const markers = await readActionMarkers(sessionIds)
     await revealMarkers(markers)
     const requested = new Set(sessionIds ?? markers.map((marker) => marker.sessionId))

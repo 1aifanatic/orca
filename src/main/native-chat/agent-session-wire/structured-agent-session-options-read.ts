@@ -15,7 +15,7 @@ import { decodeStructuredAgentSessionOptionValue } from '../../../shared/structu
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { journalOpenReadRefusal } from '../agent-session-journal/journal-open-failure'
 import type { StructuredAgentDefinition } from './structured-agent-definition'
-import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
+import type { StructuredAgentRegistry } from './structured-agent-registry'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 import { structuredAgentSessionOptionModels } from './structured-agent-session-option-models'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
@@ -25,21 +25,21 @@ type RestingOptions = Pick<AgentSessionOptionsResult, 'models' | 'fastModeSuppor
 
 /** The at-rest rules of the record's agent, as this runtime registered it; null for any other. */
 function restingOptionRules(
-  adapter: Pick<StructuredAgentSessionAdapter, 'definition'>,
+  agents: Pick<StructuredAgentRegistry, 'definition'>,
   record: AgentSessionRecord
 ): StructuredAgentDefinition['restingOptions'] | null {
-  return adapter.definition?.(record.provider)?.restingOptions ?? null
+  return agents.definition(record.provider)?.restingOptions ?? null
 }
 
 async function readStructuredAgentSessionOptionsAtRest(
-  deps: Pick<StructuredAgentSessionHostDeps, 'store' | 'adapter' | 'modelCatalog'>,
+  deps: Pick<StructuredAgentSessionHostDeps, 'store' | 'agents' | 'modelCatalog'>,
   sessionId: string
 ): Promise<RestingOptions> {
   const record = deps.store.getRecord(sessionId)
   if (!record) {
     throw new Error('agent_session_identity_required')
   }
-  const rules = restingOptionRules(deps.adapter, record)
+  const rules = restingOptionRules(deps.agents, record)
   const catalog = (await deps.modelCatalog
     ?.read({ agent: record.provider, sessionId })
     .catch(() => null)) ?? { origin: 'unknown' as const }
@@ -80,13 +80,13 @@ async function readStructuredAgentSessionOptionsAtRest(
 export async function recordStructuredAgentSessionOptionIntent(
   deps: {
     store: Pick<AgentSessionRecordStore, 'getRecord'>
-    adapter: Pick<StructuredAgentSessionAdapter, 'definition'>
+    agents: Pick<StructuredAgentRegistry, 'definition'>
   },
   ctx: Pick<AgentSessionTurnContext, 'sessionId' | 'persistOptions' | 'publish'>,
   input: { key: string; value: string }
 ): Promise<TurnOutcome<AgentSessionOptionResult>> {
   const record = deps.store.getRecord(ctx.sessionId)
-  if (!record || !restingOptionRules(deps.adapter, record)?.acceptsKey(input.key)) {
+  if (!record || !restingOptionRules(deps.agents, record)?.acceptsKey(input.key)) {
     return {
       ok: false,
       refusal: refuse(
@@ -110,7 +110,7 @@ export async function readStructuredAgentSessionOptions(
   >,
   sessionId: string
 ): Promise<AgentSessionOptionsResult> {
-  const { adapter, store } = context.deps
+  const { adapter, agents, store } = context.deps
   const live = await context.serialize(sessionId, async () => {
     const session = await context.openConversation(sessionId).catch((error: unknown) => {
       throw journalOpenReadRefusal(error, context.deps.logger, sessionId)
@@ -129,7 +129,7 @@ export async function readStructuredAgentSessionOptions(
   const session = await context.conversation(sessionId)
   const phase = store.getRecord(sessionId)?.rewind?.phase
   const agent = session.params.provider
-  const capabilities = adapter.capabilities?.(sessionId, agent)
+  const capabilities = agents.capabilities(agent)
   return {
     ...options,
     rewind:

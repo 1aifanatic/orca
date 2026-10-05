@@ -35,7 +35,7 @@ describe('recordAgentSessionProviderHandle', () => {
       link: resumedLink(record.lease.runtimeFence),
       now: 4_000
     })
-    expect(next.providerHandleChain.at(-1)?.handle).toMatchObject({ providerData: 'leaf-2' })
+    expect(next.providerHandleChain.at(-1)?.handle).toMatchObject({ resumeCursor: 'leaf-2' })
     expect(next.lease.provenHandleLinkId).toBe('link-2')
   })
 
@@ -52,7 +52,7 @@ describe('recordAgentSessionProviderHandle', () => {
       link: resumedLink(lease.runtimeFence),
       now: 4_000
     })
-    expect(next.providerHandleChain.at(-1)?.handle).toMatchObject({ providerData: 'leaf-2' })
+    expect(next.providerHandleChain.at(-1)?.handle).toMatchObject({ resumeCursor: 'leaf-2' })
     expect(next.lease).toMatchObject({ claimStatus: 'reserved', provenHandleLinkId: null })
   })
 })
@@ -73,7 +73,7 @@ describe('reviseAgentSessionProviderResumePoint', () => {
     expect(second.providerHandleChain.at(-1)).toMatchObject({
       linkId: 'link-1',
       origin: 'created',
-      handle: { providerData: 'leaf-3' }
+      handle: { resumeCursor: 'leaf-3' }
     })
     expect(second.lease.provenHandleLinkId).toBe('link-1')
     expect(

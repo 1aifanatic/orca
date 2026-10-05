@@ -148,11 +148,15 @@ export function beginStructuredAgentSessionProvisionalLaunch(
 }
 
 function beginLocalProvisionalLaunch(args: ProvisionalLaunchArgs): LocalProvisionalLaunch | null {
-  const handle = args.plan.begin(args.hooks, args.target)
+  const worktreeId = args.target?.worktreeId ?? args.plan.worktreeId
+  // The group the tab opens in: the caller's, else the workspace's active one.
+  const groupId =
+    args.targetGroupId ??
+    (worktreeId ? useAppStore.getState().activeGroupIdByWorktree[worktreeId] : undefined)
+  const handle = args.plan.begin(args.hooks, groupId ? { ...args.target, groupId } : args.target)
   if (!handle) {
     return null
   }
-  const worktreeId = args.target?.worktreeId ?? args.plan.worktreeId
   if (!worktreeId) {
     throw new Error('A provisional structured launch needs its workspace.')
   }

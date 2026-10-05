@@ -33,8 +33,6 @@ import {
   getTabEntryOmniboxPlaceholder
 } from './tab-create-entry-copy'
 import { EMPTY_AGENT_OPTIONS, EMPTY_MENU_OPTIONS } from './tab-create-entry-empty-options'
-import { useStructuredAgentLaunchPendingAgents } from '@/lib/structured-agent-session-launch'
-import type { TuiAgent } from '../../../../shared/tui-agent'
 import type { TabEntryActionClassification } from './tab-create-entry-classifier'
 import type { TabBarCreateEntryProps } from './tab-create-entry-props'
 
@@ -61,9 +59,6 @@ function TabBarCreateEntrySession({
   const [error, setError] = useState<string | null>(null)
   const [switchError, setSwitchError] = useState<string | null>(null)
   const [selectionGuidance, setSelectionGuidance] = useState<string | null>(null)
-  const pendingStructuredLaunchAgents = useStructuredAgentLaunchPendingAgents(worktreeId)
-  const isStructuredLaunchPending = (agent: TuiAgent): boolean =>
-    pendingStructuredLaunchAgents.has(agent)
   // null = follow ranking (deferred tabs can prepend); set on arrow keys only.
   const [pinnedOptionId, setPinnedOptionId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -232,9 +227,6 @@ function TabBarCreateEntrySession({
       return
     }
     if (selectedOption.kind === 'agent') {
-      if (isStructuredLaunchPending(selectedOption.option.agent)) {
-        return
-      }
       onLaunchAgent?.(selectedOption.option.agent)
       onDidOpenEntry?.()
       return
@@ -383,15 +375,8 @@ function TabBarCreateEntrySession({
                 id={resultOptionDomId(index)}
                 option={option}
                 selected={index === activeSelectedIndex}
-                disabled={
-                  disabled ||
-                  pending ||
-                  (option.kind === 'agent' && isStructuredLaunchPending(option.option.agent))
-                }
-                loading={
-                  (pending && index === activeSelectedIndex) ||
-                  (option.kind === 'agent' && isStructuredLaunchPending(option.option.agent))
-                }
+                disabled={disabled || pending}
+                loading={pending && index === activeSelectedIndex}
                 onClick={() => {
                   setSelectionGuidance(null)
                   submitOption(option)

@@ -14,7 +14,7 @@ import { agentModelCatalogFingerprintForRecord } from '../native-chat/agent-mode
 import { AgentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import type { StructuredAgentSessionMutationContext } from '../native-chat/agent-session-wire/structured-agent-session-host-mutations'
 import { readStructuredAgentSessionOptions } from '../native-chat/agent-session-wire/structured-agent-session-options-read'
-import { claudeAndCodexDefinition } from '../native-chat/agent-session-wire/structured-agent-session-adapter-router-test-support'
+import { claudeAndCodexAgents } from '../native-chat/agent-session-wire/structured-agent-session-adapter-router-test-support'
 import { composeCodexSessionOptionCatalog } from '../codex/codex-structured-model-catalog'
 import { nativeSessionOptionsFromReport } from '../native-chat/agent-session-wire/structured-agent-session-option-restoration'
 import {
@@ -144,13 +144,19 @@ function readAtRest(store: AgentModelCatalogStore, record: AgentSessionRecord) {
   const modelCatalog = createAgentModelCatalogService({
     store,
     getRecord: () => record,
+    drivesRecord: () => true,
     resolveAccountHome: async () => ({ variable: 'CLAUDE_CONFIG_DIR', path: ACCOUNT_HOME })
   })
-  const resting = { child: null, params: { provider: 'claude' } }
+  const resting = {
+    child: null,
+    params: { provider: 'claude' },
+    journal: { threadGoal: () => null, contextUsage: () => null }
+  }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the resting read touches only these members.
   const context = {
     deps: {
-      adapter: { definition: claudeAndCodexDefinition },
+      adapter: {},
+      agents: claudeAndCodexAgents(),
       store: { getRecord: () => record },
       modelCatalog
     },

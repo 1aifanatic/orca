@@ -1,3 +1,4 @@
+import '../unused-default-rpc-methods.test-fixture'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../../shared/agent-session-journal-types'
 // A chat at rest, through the RPC surface a client actually calls: opening it starts nothing, what
 // it can answer without an agent it answers, and the first send is what starts one.
@@ -32,8 +33,7 @@ import {
   openTestJournalHostDatabase,
   updateTestJournalRowJson
 } from '../../../native-chat/agent-session-journal/journal-host-database-test-support'
-import { CODEX_STRUCTURED_AGENT } from '../../../codex/codex-structured-agent-definition'
-import { CLAUDE_STRUCTURED_AGENT } from '../../../claude/claude-structured-agent-definition'
+import { claudeAndCodexDeclared } from '../../../native-chat/agent-session-wire/structured-agent-session-adapter-router-test-support'
 
 const CLIENT = {
   clientId: 'device-1',
@@ -371,11 +371,9 @@ describe('options at rest', () => {
 
   it('answers the provider-level features of a chat at rest (P2-17)', async () => {
     await restingChat()
+    // A runtime that declares Codex's goal and rewind, as production registers it.
+    setStructuredAgentSessionHost(await rig.restart({ agents: claudeAndCodexDeclared() }))
     Object.assign(rig.host.deps.adapter, {
-      capabilities: (_id: string, agent?: string) =>
-        agent === 'codex'
-          ? CODEX_STRUCTURED_AGENT.capabilities
-          : CLAUDE_STRUCTURED_AGENT.capabilities,
       rewindSupport: (_id: string, agent?: string) =>
         agent === 'codex' ? { supported: true } : { supported: false, reason: 'unsupported' }
     })

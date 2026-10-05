@@ -16,6 +16,9 @@ import type {
 export type AgentModelCatalogServiceDeps = {
   store: AgentModelCatalogStore
   getRecord: (sessionId: string) => AgentSessionRecord | undefined
+  /** Whether this build can start the record's agent as the record pins it; a record it cannot
+   *  names no account a probe may start that agent's CLI under. */
+  drivesRecord: (record: AgentSessionRecord) => boolean
   /** The account home a structured launch for this agent would pin right now —
    *  the SAME resolver the create path fills `record.accountHome` with, so a
    *  record-less read can never answer from another account's listing. */
@@ -92,7 +95,8 @@ export function createAgentModelCatalogService(
   return {
     async read(params) {
       const record = params.sessionId ? deps.getRecord(params.sessionId) : undefined
-      const scoped = record && record.provider === params.agent ? record : undefined
+      const scoped =
+        record && record.provider === params.agent && deps.drivesRecord(record) ? record : undefined
       let fingerprint: string
       let accountHomePath: string | null
       if (scoped) {

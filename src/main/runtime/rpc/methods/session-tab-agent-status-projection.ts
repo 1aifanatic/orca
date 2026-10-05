@@ -1,8 +1,5 @@
 import {
   AGENT_SESSION_BOUNDARY_RUNTIME_CAPABILITY,
-  CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
-  STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY,
-  STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
   type RuntimeCapability
 } from '../../../../shared/protocol-version'
 import type {
@@ -11,7 +8,10 @@ import type {
   RuntimeMobileSessionTabsSnapshot
 } from '../../../../shared/runtime-types'
 import type { TabGroupLayoutNode } from '../../../../shared/tab-types'
-import { supportsStructuredAgentSessions } from './structured-agent-session-policy'
+import {
+  clientRendersStructuredAgent,
+  supportsStructuredAgentSessions
+} from './structured-agent-session-policy'
 
 type SessionTabsPayload = RuntimeMobileSessionTabsResult | RuntimeMobileSessionTabsSnapshot
 
@@ -23,19 +23,9 @@ function clientCanRenderStructuredAgentSessionTab(
   tab: RuntimeMobileSessionAgentTab,
   clientCapabilities: readonly RuntimeCapability[] | undefined
 ): boolean {
-  if (!clientCapabilities?.includes(STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY)) {
-    return false
-  }
-  if (tab.agent === 'codex') {
-    return true
-  }
   // Every shipped client reads only Claude and Codex as chats; any other agent's tab would list
   // with an empty pane, so it waits for a client that says it renders the host's agents.
-  return clientCapabilities.includes(
-    tab.agent === 'claude'
-      ? CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
-      : STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY
-  )
+  return clientRendersStructuredAgent(clientCapabilities, tab.agent)
 }
 
 function resolveMobileStructuredChatFallbackTitle(

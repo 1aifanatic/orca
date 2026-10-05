@@ -26,10 +26,7 @@ import {
 } from './agent-session-provider-handle'
 import { isAgentSessionProviderHandleInNamespace } from './agent-session-provider-handle-encoding'
 import type { AgentSessionAccountHome } from './agent-session-account-home'
-import {
-  isDeclaredAccountHomeVariable,
-  type AgentSessionStoredAgents
-} from './agent-session-stored-agent'
+import type { AgentSessionStoredAgents } from './agent-session-stored-agent'
 
 export type { AgentSessionAccountHome } from './agent-session-account-home'
 
@@ -229,16 +226,18 @@ export function isAgentSessionProcessIdentity(
   )
 }
 
-function isAgentSessionAccountHome(
-  value: unknown,
-  agents: AgentSessionStoredAgents
-): value is AgentSessionAccountHome {
+const ENVIRONMENT_VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/
+
+/** Shape only: whether the variable is the one the record's agent pins is a launch-time question
+ *  (`agentDrivesSession`), so an agent that renames its variable never hides its chats. */
+function isAgentSessionAccountHome(value: unknown): value is AgentSessionAccountHome {
   if (typeof value !== 'object' || value === null) {
     return false
   }
   const home = value as Partial<AgentSessionAccountHome>
   return (
-    isDeclaredAccountHomeVariable(agents, home.variable) &&
+    typeof home.variable === 'string' &&
+    ENVIRONMENT_VARIABLE_NAME.test(home.variable) &&
     isBoundedString(home.path, MAX_PATH_LENGTH)
   )
 }
@@ -341,7 +340,9 @@ function isPersistedAgentSessionLease(value: unknown): value is PersistedAgentSe
 
 /** The on-disk shape, which still admits the removed terminal handoff's lease values and stores
  *  handles in their typed form. Decode through `decodePersistedAgentSessionRecord` before use.
- *  `agents` are the host's registered agents: a record of any other agent is not readable here. */
+ *  `agents` are the host's registered agents: a record of any other agent is not readable here. A
+ *  registered agent's record is readable when it agrees with itself; whether this build can drive
+ *  its transport and account variable is decided only when its agent would start. */
 export function isPersistedAgentSessionRecord(
   value: unknown,
   agents: AgentSessionStoredAgents
@@ -350,13 +351,13 @@ export function isPersistedAgentSessionRecord(
     return false
   }
   const record = value as Partial<AgentSessionRecord>
-  const agent = typeof record.provider === 'string' ? agents.get(record.provider) : undefined
   const fieldsValid =
     record.schemaVersion === AGENT_SESSION_RECORD_SCHEMA_VERSION &&
     isAgentSessionId(record.sessionId) &&
     isAgentSessionExecutionLocation(record.location) &&
-    agent !== undefined &&
-    isAgentSessionAccountHome(record.accountHome, agents) &&
+    typeof record.provider === 'string' &&
+    agents.has(record.provider) &&
+    isAgentSessionAccountHome(record.accountHome) &&
     (record.options === undefined || isAgentSessionOptions(record.options)) &&
     (record.rewind === undefined || isAgentSessionRewindRecord(record.rewind)) &&
     (record.conversationCommand === undefined ||
@@ -376,10 +377,15 @@ export function isPersistedAgentSessionRecord(
   // The row holds stored handles; validate the chain they decode to.
   const chain = decodePersistedAgentSessionProviderHandleChain(validated.providerHandleChain)
   const head = chain?.at(-1)
-  const namespace = { transport: agent.handleTransport, agent: agent.agent }
+  // One namespace, owned by the record's own agent; which transport is the chain's own fact.
+  const transport = chain?.[0]?.handle.transport
+  const namespace = transport === undefined ? null : { transport, agent: validated.provider }
   return (
     chain !== null &&
-    chain.every((link) => isAgentSessionProviderHandleInNamespace(link.handle, namespace)) &&
+    chain.every(
+      (link) =>
+        namespace !== null && isAgentSessionProviderHandleInNamespace(link.handle, namespace)
+    ) &&
     (validated.lease.claimStatus !== 'live' ||
       (validated.lease.ownerProcess !== null &&
         head?.linkId === validated.lease.provenHandleLinkId &&

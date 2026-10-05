@@ -1,9 +1,14 @@
 // The structured agents this runtime registers, in one list. Each entry's definition decides which
-// agents' records the store admits, and its factory builds the adapter the router drives that agent
-// with once the store is open, so storage and routing cannot disagree about which agents exist.
+// agents' records the store admits, its factory builds the adapter the router drives that agent with
+// once the store is open, and its location rule and account resolver answer the picker and create
+// before any host exists, so none of them can disagree about which agents exist or where they run.
 // Adding an agent is one more entry.
 
 import { createCodexStructuredLaunchResolver } from '../codex/codex-structured-launch-resolution'
+import { supportsCodexStructuredLocation } from '../codex/codex-structured-location-support'
+import { supportsClaudeStructuredLocation } from '../claude/claude-structured-location-support'
+import { applyStructuredCodexWorkspaceTrust } from '../agent-workspace-trust-spawn'
+import type { AgentSessionExecutionLocation } from '../../shared/agent-session-record'
 import { CodexStructuredSessionAdapter } from '../codex/codex-structured-session-adapter'
 import { CODEX_STRUCTURED_AGENT } from '../codex/codex-structured-agent-definition'
 import { CLAUDE_STRUCTURED_AGENT } from '../claude/claude-structured-agent-definition'
@@ -24,7 +29,13 @@ import type { createStructuredAgentSessionDispatchFollowUps } from './structured
 import type { StructuredAgentSessionRuntimeDeps } from './structured-agent-session-runtime'
 import type { createStructuredAgentEnvironmentResolvers } from './structured-agent-shell-environment'
 import { createStructuredClaudeRuntimeAdapter } from './structured-claude-runtime-adapter'
-import { resolveStructuredEnvAccountHomePath } from './structured-agent-account-home'
+import {
+  resolveStructuredClaudeAccountHomePath,
+  resolveStructuredCodexAccountHomePath,
+  resolveStructuredEnvAccountHomePath,
+  type StructuredClaudeAccountHomeDeps,
+  type StructuredCodexAccountHomeDeps
+} from './structured-agent-account-home'
 import { ACP_LAUNCH_SPECS, type AcpLaunchSpec } from '../acp/acp-launch-specs'
 import { acpStructuredAgentDefinition } from '../acp/acp-structured-agent-definitions'
 import { spawnAcpStructuredChild } from '../acp/acp-structured-child'
@@ -49,12 +60,36 @@ export type StructuredAgentRuntimeAdapter = StructuredAgentSessionAdapter & {
   drainObservedExits?: () => Promise<void>
 }
 
+/** Which account home a chat of an agent pins, asked on the host that runs it. */
+export type StructuredAgentAccountHomeRequest = {
+  launchEnv: NodeJS.ProcessEnv
+  /** Where the chat runs; null for a read with no workspace (the model catalog). */
+  location: AgentSessionExecutionLocation | null
+  /** A `read` has no side effects: it syncs no home, starts no bridge, clears no selection. */
+  purpose: 'launch' | 'read'
+  /** The launch's workspace directory on this host; a read has none. */
+  workspacePath: (() => Promise<string>) | null
+}
+
+/** What resolving an account may ask of the runtime around it. */
+export type StructuredAgentAccountHomeServices = {
+  getClaudeConfigDirectory: StructuredClaudeAccountHomeDeps['getClaudeConfigDirectory']
+  /** Codex's home for a launch, prepared for it; and the same answer with no side effects. */
+  prepareCodexLaunchHome: StructuredCodexAccountHomeDeps['resolveLaunchHome']
+  readCodexLaunchHome: StructuredCodexAccountHomeDeps['resolveLaunchHome']
+  workspaceTrustSettings: () => Parameters<typeof applyStructuredCodexWorkspaceTrust>[0]['settings']
+}
+
 export type StructuredAgentRuntimeRegistration = {
   definition: StructuredAgentDefinition
   createAdapter: (context: StructuredAgentAdapterContext) => StructuredAgentRuntimeAdapter
-  /** Where a new chat of this agent finds its account on this runtime's machine. Absent: the
-   *  runtime resolves it itself (Claude and Codex, which need its account services). */
-  resolveAccountHomePath?: (input: { launchEnv: NodeJS.ProcessEnv }) => string
+  /** Whether this agent's chats can run at `location`; answered without building the host. */
+  supportsLocation: (location: AgentSessionExecutionLocation) => boolean
+  /** The account home a chat of this agent pins; see `StructuredAgentAccountHomeRequest`. */
+  resolveAccountHomePath: (
+    request: StructuredAgentAccountHomeRequest,
+    services: StructuredAgentAccountHomeServices
+  ) => Promise<string>
 }
 
 function createCodexAdapter(context: StructuredAgentAdapterContext): StructuredAgentRuntimeAdapter {
@@ -121,7 +156,8 @@ function createClaudeAdapter(
 function acpRegistration(spec: AcpLaunchSpec): StructuredAgentRuntimeRegistration {
   return {
     definition: acpStructuredAgentDefinition(spec),
-    resolveAccountHomePath: ({ launchEnv }) =>
+    supportsLocation: (location) => supportsCodexStructuredLocation(location),
+    resolveAccountHomePath: async ({ launchEnv }) =>
       resolveStructuredEnvAccountHomePath({
         launchEnv,
         variable: spec.accountHomeVariable,
@@ -153,24 +189,58 @@ function acpRegistration(spec: AcpLaunchSpec): StructuredAgentRuntimeRegistratio
   }
 }
 
+async function resolveCodexAccountHomePath(
+  request: StructuredAgentAccountHomeRequest,
+  services: StructuredAgentAccountHomeServices
+): Promise<string> {
+  const { launchEnv, purpose, workspacePath } = request
+  if (purpose === 'launch' && workspacePath) {
+    await applyStructuredCodexWorkspaceTrust({
+      workspacePath: await workspacePath(),
+      launchEnv,
+      settings: services.workspaceTrustSettings()
+    })
+  }
+  return resolveStructuredCodexAccountHomePath({
+    launchEnv,
+    resolveLaunchHome:
+      purpose === 'launch' ? services.prepareCodexLaunchHome : services.readCodexLaunchHome
+  })
+}
+
 export const STRUCTURED_AGENT_RUNTIME_REGISTRATIONS: readonly StructuredAgentRuntimeRegistration[] =
   [
-    { definition: CODEX_STRUCTURED_AGENT, createAdapter: createCodexAdapter },
-    { definition: CLAUDE_STRUCTURED_AGENT, createAdapter: createClaudeAdapter },
+    {
+      definition: CODEX_STRUCTURED_AGENT,
+      createAdapter: createCodexAdapter,
+      supportsLocation: (location) => supportsCodexStructuredLocation(location),
+      resolveAccountHomePath: resolveCodexAccountHomePath
+    },
+    {
+      definition: CLAUDE_STRUCTURED_AGENT,
+      createAdapter: createClaudeAdapter,
+      supportsLocation: supportsClaudeStructuredLocation,
+      resolveAccountHomePath: async ({ launchEnv, location }, services) =>
+        resolveStructuredClaudeAccountHomePath({
+          launchEnv,
+          wslDistro: location?.wslDistro ?? null,
+          getClaudeConfigDirectory: services.getClaudeConfigDirectory
+        })
+    },
     ...ACP_LAUNCH_SPECS.map(acpRegistration)
   ]
 
+/** The registration of `agent`; null for an agent this runtime does not drive. */
 export function structuredAgentRuntimeRegistration(
   agent: string
 ): StructuredAgentRuntimeRegistration | null {
   return (
-    STRUCTURED_AGENT_RUNTIME_REGISTRATIONS.find(
-      (registration) => registration.definition.agent === agent
-    ) ?? null
+    STRUCTURED_AGENT_RUNTIME_REGISTRATIONS.find(({ definition }) => definition.agent === agent) ??
+    null
   )
 }
 
-/** What the record store admits: exactly the registered agents' declared storage. */
+/** What the record store admits: the ids of exactly the agents registered here. */
 export const STRUCTURED_AGENT_STORAGE: AgentSessionStoredAgents = agentSessionStoredAgents(
   STRUCTURED_AGENT_RUNTIME_REGISTRATIONS.map((registration) => registration.definition)
 )

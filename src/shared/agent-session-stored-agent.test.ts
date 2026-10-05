@@ -9,7 +9,7 @@ import { agentSessionStoredAgents } from './agent-session-stored-agent'
 import { CLAUDE_AND_CODEX_STORED_AGENTS } from './agent-session-stored-agent.test-fixture'
 
 const GROK = { agent: 'grok', handleTransport: 'acp', accountHomeVariable: 'GROK_HOME' }
-const WITH_GROK = agentSessionStoredAgents([...CLAUDE_AND_CODEX_STORED_AGENTS.values(), GROK])
+const WITH_GROK = agentSessionStoredAgents([{ agent: 'claude' }, { agent: 'codex' }, GROK])
 
 function grokRecord(transport = 'acp'): AgentSessionRecord {
   const record = agentSessionRecordFixture()
@@ -18,7 +18,7 @@ function grokRecord(transport = 'acp'): AgentSessionRecord {
     provider: 'grok',
     providerHandleChain: record.providerHandleChain.map((link) => ({
       ...link,
-      handle: { transport, agent: 'grok', nativeId: 'grok-session-1', providerData: '{"cwd":"/w"}' }
+      handle: { transport, agent: 'grok', nativeId: 'grok-session-1', resumeCursor: '{"cwd":"/w"}' }
     })),
     accountHome: { variable: 'GROK_HOME', path: '/home/user/.grok' }
   }
@@ -43,10 +43,27 @@ describe('records of registered agents', () => {
     ).toBe(false)
   })
 
-  it("refuses handles outside the agent's declared transport", () => {
+  // Whether this build can drive the chain's transport is decided when its agent would start
+  // (structured-agent-session-drivability.test.ts), so a definition change never hides a chat.
+  it("reads a record whose handles are in a transport other than the agent's current one", () => {
     expect(
       isPersistedAgentSessionRecord(encodeAgentSessionRecord(grokRecord('other')), WITH_GROK)
-    ).toBe(false)
+    ).toBe(true)
+  })
+
+  it('sets aside a record whose handles name another agent, or mix transports', () => {
+    const record = grokRecord()
+    const [link] = record.providerHandleChain
+    const foreign = { ...link!, handle: { ...link!.handle, agent: 'codex' } }
+    const mixed = { ...link!, linkId: 'second', handle: { ...link!.handle, transport: 'other' } }
+    for (const chain of [[foreign], [link!, mixed]]) {
+      expect(
+        isPersistedAgentSessionRecord(
+          encodeAgentSessionRecord({ ...record, providerHandleChain: chain }),
+          WITH_GROK
+        )
+      ).toBe(false)
+    }
   })
 
   it('keeps reading Claude and Codex records exactly as before', () => {
