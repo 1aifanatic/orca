@@ -15,6 +15,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 import { AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS } from '../../shared/agent-session-host-authority'
 
+import type { Store } from '../persistence'
+import { resolveLocalFileRequestPath } from '../ipc/local-file-access-resolution'
+import { readLocalFileContent } from '../ipc/filesystem/filesystem-file-content-inspection'
 import {
   NATIVE_CHAT_PASTE_TTL_MS,
   isInsideNativeChatPasteFolder,
@@ -107,6 +110,25 @@ describe('native-chat paste folder on disk', () => {
       { path: '', kept: false, exists: false }
     ])
     await expect(restoreNativeChatPastes('not a list')).resolves.toEqual([])
+  })
+
+  it('leaves a kept paste readable by the composer preview, with no grant', async () => {
+    const kept = path.join(folder, 'orca-paste-1.png')
+    writeFileSync(kept, 'png')
+    // A store with no projects: nothing but the chat-image access lets the preview read it.
+    const noProjects: Store = Object.assign(Object.create(null), {
+      getRepos: () => [],
+      getProjects: () => [],
+      getProjectGroups: () => [],
+      getFolderWorkspaces: () => [],
+      getSettings: () => ({ nestWorkspaces: false, workspaceDir: '' })
+    })
+
+    await expect(restoreNativeChatPastes([kept])).resolves.toEqual([
+      { path: kept, kept: true, exists: true }
+    ])
+    const readable = await resolveLocalFileRequestPath(kept, { kind: 'chat-image' }, noProjects)
+    await expect(readLocalFileContent(readable)).resolves.toMatchObject({ mimeType: 'image/png' })
   })
 
   it('keeps a paste reached through a symlinked alias of the folder, as /var is of /private/var', async () => {
