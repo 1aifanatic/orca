@@ -216,19 +216,15 @@ export async function acquireAcpStructuredSession(input: {
           sessionId: resume.sessionId,
           resumePreference: 'resume'
         })
+        attaching.apply(attaching.translator.finishLoad(now()))
       } catch (error) {
         const notFound = error instanceof AcpRpcError && error.code === ACP_RESOURCE_NOT_FOUND
         if (!notFound || resume.replaceableKey === null) {
           throw error
         }
-        // A session this chat created and the agent never saved: a new one takes its place.
+        // A session this chat created and the agent never saved: a new one takes its place, with a
+        // new lane, so nothing of the failed attach's window outlives it.
         supersedesKey = resume.replaceableKey
-      } finally {
-        // Also after a failed attach, so the translator takes prompts again.
-        const usage = attaching.translator.finishLoad(now())
-        if (started) {
-          attaching.apply(usage)
-        }
       }
     }
     if (!started || !liveLane) {
