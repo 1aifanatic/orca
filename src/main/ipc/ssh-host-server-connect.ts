@@ -8,13 +8,18 @@ import type {
 } from '../../shared/ssh-types'
 import type { HostServerOnConnectResult } from '../ssh/ssh-host-server-on-connect'
 import { relayServerStatus, shouldToastManagedServerMove } from '../ssh/ssh-host-server-move-offer'
-import { setSshHostServerStatus } from '../ssh/ssh-host-server-status'
+import { clearSshHostServerStatus, setSshHostServerStatus } from '../ssh/ssh-host-server-status'
 import { trackSshHostServerMove } from '../ssh/ssh-host-server-telemetry'
 import { knownSshHostPlatform } from '../ssh/ssh-host-platform-memo'
 import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
 import { allowsDirectSshRelay } from '../ssh/ssh-connection-store'
 import { connectionManager, getCurrentMainWindow } from './ssh-ipc-context'
-import { broadcastSshState, getPublicSshState } from './ssh-renderer-broadcast'
+import {
+  broadcastSshState,
+  clearRelayStateOverride,
+  getPublicSshState
+} from './ssh-renderer-broadcast'
+import { isAuthError } from '../ssh/ssh-connection-utils'
 
 /** Resolves null when the decision couldn't run on a host that may still use the relay. */
 export async function decideHostServer(
@@ -38,6 +43,22 @@ export async function decideHostServer(
     console.warn('[ssh] Could not decide the managed Orca server for this host:', error)
     return null
   }
+}
+
+/**
+ * A host only its managed server reaches failed to set up: leave 'connecting' and the 'setting
+ * up' status for the error, as a failed transport connect does.
+ */
+export function publishHostServerDecisionFailure(targetId: string, error: unknown): void {
+  const failure = error instanceof Error ? error : new Error(String(error))
+  clearSshHostServerStatus(targetId)
+  clearRelayStateOverride(targetId)
+  broadcastSshState(getCurrentMainWindow, targetId, {
+    targetId,
+    status: isAuthError(failure) ? 'auth-failed' : 'error',
+    error: failure.message,
+    reconnectAttempt: 0
+  })
 }
 
 export function publishManagedServerConnect(

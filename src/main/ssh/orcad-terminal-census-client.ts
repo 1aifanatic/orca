@@ -16,6 +16,7 @@ import {
 import { sendRemoteRuntimeRequestWithStatusPreflight } from '../../shared/remote-runtime-client'
 import type { OrcadActivationRecord } from './orcad-activation-record'
 import { ensureOrcadManagedTunnel } from './orcad-managed-tunnel'
+import { verifyOrcadManagedServing } from './orcad-managed-serving-verify'
 
 const UNVERIFIABLE: OrcadTerminalCensus = {
   liveSessions: null,
@@ -23,7 +24,10 @@ const UNVERIFIABLE: OrcadTerminalCensus = {
   daemonProtocolVersion: null
 }
 
-/** The census through the server's ensured tunnel; a tunnel that cannot open is unverifiable. */
+/**
+ * The census through the server's ensured tunnel, after starting a server that idled out; a
+ * tunnel that cannot open, or a server that cannot start, is unverifiable.
+ */
 export async function collectManagedTerminalCensus(
   userDataPath: string,
   environment: KnownRuntimeEnvironment,
@@ -39,6 +43,8 @@ export async function collectManagedTerminalCensus(
   }
   try {
     await ensureOrcadManagedTunnel(userDataPath, environment.id)
+    // A server that idled out behind a forward still up is started first, or it never answers.
+    await verifyOrcadManagedServing(userDataPath, environment.id)
     const response = await sendRemoteRuntimeRequestWithStatusPreflight<unknown>(
       getPreferredPairingOffer(environment),
       ORCAD_TERMINAL_CENSUS_METHOD,

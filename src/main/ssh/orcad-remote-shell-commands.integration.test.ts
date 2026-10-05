@@ -26,6 +26,7 @@ import { openProfileStateDatabase } from '../persistence/profile-state/profile-s
 
 import {
   orcadLaunchCommand,
+  orcadLivenessAnswerBlocksGc,
   orcadLivenessProbeCommand,
   ORCAD_PID_FILENAME,
   ORCAD_READINESS_FILENAME,
@@ -449,6 +450,13 @@ describe('liveness and stop commands, run for real', () => {
   })
 
   it('reports UNKNOWN with no pid file, and DEAD for a pid that has exited', () => {
+    // A slot installed but never launched: only GC reads it apart from UNKNOWN.
+    rmSync(join(versionDir, ORCAD_READINESS_FILENAME), { force: true })
+    const neverLaunched = sh(orcadLivenessProbeCommand(host, versionDir))
+    expect(parseOrcadLiveness(neverLaunched)).toBe('UNKNOWN')
+    expect(orcadLivenessAnswerBlocksGc(neverLaunched)).toBe(false)
+    writeFileSync(join(versionDir, ORCAD_READINESS_FILENAME), '')
+    expect(orcadLivenessAnswerBlocksGc(sh(orcadLivenessProbeCommand(host, versionDir)))).toBe(true)
     expect(parseOrcadLiveness(sh(orcadLivenessProbeCommand(host, versionDir)))).toBe('UNKNOWN')
     writeFileSync(join(versionDir, ORCAD_PID_FILENAME), 'not-a-pid')
     expect(parseOrcadLiveness(sh(orcadLivenessProbeCommand(host, versionDir)))).toBe('UNKNOWN')
@@ -470,8 +478,23 @@ describe('liveness and stop commands, run for real', () => {
     ).toBe('UNKNOWN')
   })
 
+  it('reports a reused PID running something other than this slot as DEAD', () => {
+    const stranger = spawn('/bin/sh', ['-c', 'sleep 30'], { stdio: 'ignore' })
+    try {
+      writeFileSync(join(versionDir, ORCAD_PID_FILENAME), String(stranger.pid))
+      expect(parseOrcadLiveness(sh(orcadLivenessProbeCommand(host, versionDir)))).toBe('DEAD')
+    } finally {
+      stranger.kill('SIGKILL')
+    }
+  })
+
   it('reports LIVE for a running process and stops it with SIGTERM', async () => {
-    const child = spawn('/bin/sh', ['-c', 'sleep 30'], { stdio: 'ignore' })
+    // Stands in for orcad: its command line runs this slot's orcad.js.
+    const child = spawn(
+      process.execPath,
+      ['-e', 'setTimeout(() => {}, 30000)', join(versionDir, 'orcad.js')],
+      { stdio: 'ignore' }
+    )
     try {
       writeFileSync(join(versionDir, ORCAD_PID_FILENAME), String(child.pid))
       expect(parseOrcadLiveness(sh(orcadLivenessProbeCommand(host, versionDir)))).toBe('LIVE')

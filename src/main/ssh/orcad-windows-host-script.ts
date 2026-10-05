@@ -109,20 +109,26 @@ function readiness(dir) {
   try { return line ? JSON.parse(line) : null } catch { return null }
 }
 
+// A launch creates the readiness file first, so a slot with neither it nor a process record
+// never launched: GC may remove it, while every other reader treats it as UNKNOWN.
+function livenessWord(dir) {
+  const launched = [${text(ORCAD_WINDOWS_PROCESS_FILENAME)}, ${text(ORCAD_READINESS_FILENAME)}]
+  if (!launched.some((name) => fs.existsSync(path.join(dir, name)))) {
+    return ${text('NEVER_LAUNCHED')}
+  }
+  const record = orcadRecord(dir)
+  const state = record ? orcadState(dir, record) : 'unknown'
+  return state === 'alive' ? 'LIVE' : state === 'dead' ? 'DEAD' : 'UNKNOWN'
+}
+
 const ops = {
   liveness(dir) {
-    const record = orcadRecord(dir)
-    const state = record ? orcadState(dir, record) : 'unknown'
-    answer(state === 'alive' ? 'LIVE' : state === 'dead' ? 'DEAD' : 'UNKNOWN')
+    answer(livenessWord(dir))
   },
 
   // One process for a whole GC pass: a node.exe per version dir is the burst EDR scores.
   'liveness-many'(...dirs) {
-    const states = dirs.map((dir) => {
-      const record = orcadRecord(dir)
-      const state = record ? orcadState(dir, record) : 'unknown'
-      return state === 'alive' ? 'LIVE' : state === 'dead' ? 'DEAD' : 'UNKNOWN'
-    })
+    const states = dirs.map(livenessWord)
     answer(${text(`${ORCAD_WINDOWS_LIVENESS_MANY_MARKER} `)} + states.join(',') + '\\n')
   },
 

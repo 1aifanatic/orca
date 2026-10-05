@@ -20,9 +20,9 @@ import { ORCAD_INSTALL_MODEL } from './remote-install-model'
 import { gcOldRemoteInstallVersions } from './ssh-relay-versioned-install'
 import { orcadGcPinnedDirNames, type OrcadActivationRecord } from './orcad-activation-record'
 import {
-  orcadLivenessBlocksGc,
-  orcadLivenessProbeCommand,
-  parseOrcadLiveness
+  ORCAD_NEVER_LAUNCHED,
+  orcadLivenessAnswerBlocksGc,
+  orcadLivenessProbeCommand
 } from './orcad-remote-launch'
 import { gcRemoteNodeRuntimeStore } from './remote-node-runtime-store-gc'
 import { readOrcadGcTransactionPins } from './orcad-gc-transaction-pins'
@@ -86,7 +86,7 @@ export async function gcOldOrcadVersions(options: OrcadGcOptions): Promise<void>
               signal: options.signal
             }
           )
-          return orcadLivenessBlocksGc(parseOrcadLiveness(probe))
+          return orcadLivenessAnswerBlocksGc(probe)
         } catch (error) {
           if (isUnconfirmedSshCommandTermination(error)) {
             throw error
@@ -141,5 +141,7 @@ async function windowsLiveCandidates(
   if (states.length !== candidates.length) {
     return null
   }
-  return candidates.filter((_name, index) => states[index] !== 'DEAD')
+  return candidates.filter(
+    (_name, index) => states[index] !== 'DEAD' && states[index] !== ORCAD_NEVER_LAUNCHED
+  )
 }

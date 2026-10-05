@@ -14,7 +14,9 @@ import { closeOrcadManagedTunnel } from '../ssh/orcad-managed-tunnel'
 import { rotateSshProviderAuthority } from '../ssh/ssh-provider-authority'
 import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
 import { isManagedOrcadSshTarget, isRuntimeOwnedSshTarget } from '../ssh/ssh-connection-store'
-import { getCurrentMainWindow } from './ssh-ipc-context'
+import { connectionManager, getCurrentMainWindow } from './ssh-ipc-context'
+import { runTargetLifecycle } from './ssh-target-lifecycle-queue'
+import { fingerprintRuntimeSshTarget } from '../ssh/runtime-ssh-access'
 import { removeRegisteredSshTarget } from './ssh-session-teardown'
 
 // Why: add/import can re-adopt workspaces orphaned on a removed target id (see ssh-target-readoption); the renderer must refresh its repo list to surface them.
@@ -113,15 +115,24 @@ export function registerSshTargetCrudHandlers(): void {
     'ssh:updateTarget',
     (_event, args: { id: string; updates: SshTargetUpdateInput }) => {
       assertNotRuntimeOwned(args.id, 'edited')
+      const before = getSshTargetRegistryStore()!.getTarget(args.id)
       // The fence and generation are stripped, so a managed host keeps its server binding.
       const updated = getSshTargetRegistryStore()!.updateTarget(
         args.id,
         omitRendererSshTargetGeneration(args.updates)
       )
       const environmentId = getManagedOrcadFenceEnvironmentId(updated ?? undefined)
-      if (environmentId) {
-        // Why: the open tunnel still dials the old address; the next use redials with the new one.
-        void closeOrcadManagedTunnel(environmentId).catch(() => undefined)
+      if (environmentId && updated) {
+        // Why: the tunnel and the SSH transport under it were built from the old fields; a managed
+        // host has no direct relay session, so both go and the next use dials the edited target.
+        const redial =
+          !before || fingerprintRuntimeSshTarget(before) !== fingerprintRuntimeSshTarget(updated)
+        void runTargetLifecycle(args.id, async () => {
+          await closeOrcadManagedTunnel(environmentId)
+          if (redial) {
+            await connectionManager?.disconnect(args.id)
+          }
+        }).catch(() => undefined)
       }
       return updated
     }

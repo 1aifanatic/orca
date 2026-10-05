@@ -118,7 +118,9 @@ export function readOrcadReadinessCommand(
  *
  * Answers `LIVE`, `DEAD`, or `UNKNOWN`. `UNKNOWN` covers a missing or unparseable PID file
  * and a `kill -0` that failed for a reason other than "no such process" — a permission
- * error means someone else's process holds that PID, which is evidence of neither.
+ * error means someone else's process holds that PID, which is evidence of neither. A slot with
+ * neither a PID file nor a readiness file (which a launch creates first) answers
+ * `NEVER_LAUNCHED`, which only GC reads apart from `UNKNOWN`.
  */
 export function orcadLivenessProbeCommand(
   host: RemoteHostPlatform,
@@ -128,13 +130,20 @@ export function orcadLivenessProbeCommand(
     return windowsOrcadLivenessProbeCommand(host, remoteInstallDir)
   }
   const pidFile = shellEscape(joinRemotePath(host, remoteInstallDir, ORCAD_PID_FILENAME))
+  const readiness = shellEscape(joinRemotePath(host, remoteInstallDir, ORCAD_READINESS_FILENAME))
+  const entry = shellEscape(joinRemotePath(host, remoteInstallDir, 'orcad.js'))
   return [
     posixProcessAliveShellFunction({ refuseUnverifiable: true }),
+    // A PID is no identity once reused: a process whose command line does not run this slot's
+    // orcad.js is not it. No `ps` answer leaves the plain liveness check to decide.
+    `orcad_entry=${entry};`,
+    'orcad_reused() { args=$(ps -o args= -p "$1" 2>/dev/null) && [ -n "$args" ] && ' +
+      'case "$args" in *"$orcad_entry"*) return 1;; *) return 0;; esac; };',
     `pid=$(cat ${pidFile} 2>/dev/null);`,
     'case "$pid" in',
-    '"" ) echo UNKNOWN;;',
+    `"" ) if [ -e ${pidFile} ] || [ -e ${readiness} ]; then echo UNKNOWN; else echo ${ORCAD_NEVER_LAUNCHED}; fi;;`,
     '*[!0-9]* ) echo UNKNOWN;;',
-    '* ) if orcad_alive "$pid"; then echo LIVE; else echo DEAD; fi;;',
+    '* ) if orcad_reused "$pid"; then echo DEAD; elif orcad_alive "$pid"; then echo LIVE; else echo DEAD; fi;;',
     'esac'
   ].join(' ')
 }
@@ -144,6 +153,15 @@ export type OrcadLiveness = 'LIVE' | 'DEAD' | 'UNKNOWN'
 export function parseOrcadLiveness(output: string): OrcadLiveness {
   const value = output.trim().split('\n').pop()?.trim()
   return value === 'LIVE' || value === 'DEAD' ? value : 'UNKNOWN'
+}
+
+export const ORCAD_NEVER_LAUNCHED = 'NEVER_LAUNCHED'
+
+/** GC's reading of a liveness answer: a slot that never launched holds nothing and is removable. */
+export function orcadLivenessAnswerBlocksGc(output: string): boolean {
+  return output.trim().split('\n').pop()?.trim() === ORCAD_NEVER_LAUNCHED
+    ? false
+    : orcadLivenessBlocksGc(parseOrcadLiveness(output))
 }
 
 /** True when GC must leave this directory alone. Inconclusive counts as in use. */
