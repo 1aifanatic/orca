@@ -68,7 +68,7 @@ export function decideTurnOpen(
     state: 'running',
     userItemId: pending?.userItemId ?? turn.itemId,
     startedAt: event.at,
-    ...(pending?.requestedAt === undefined ? {} : { requestedAt: pending.requestedAt })
+    ...(pending ? { requestedAt: pending.requestedAt } : {})
   }
   const write: ProviderTimelineResolvedWrite = {
     identity: turn.identity,
