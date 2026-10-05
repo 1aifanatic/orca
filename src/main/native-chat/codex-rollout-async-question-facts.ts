@@ -38,3 +38,15 @@ export function codexRolloutAsyncQuestionFacts(
   const message = decodeCodexTranscriptLine(line, recordId)
   return message ? nativeChatTranscriptAsyncQuestionFacts(message) : []
 }
+
+/** Bytes of a record over the size cap still read, enough for its envelope and item type. */
+export const CODEX_OVERSIZED_RECORD_HEAD_BYTES = 4096
+
+const DELIVERED_USER_HEAD =
+  /^\{(?:"timestamp":"[^"]*",)?"type":"event_msg","payload":\{"type":"(?:user_message"|item_completed",.*?"item":\{"type":"(?:UserMessage|user_message)")/
+
+/** A record over the size cap is never parsed, but a pasted giant reply is still a delivered
+ *  user message: its compact JSON head says so before any user text (which is escaped). */
+export function codexOversizedRolloutRecordFacts(head: string): NativeChatAsyncQuestionFact[] {
+  return DELIVERED_USER_HEAD.test(head) ? [{ kind: 'delivered-user-message', author: 'root' }] : []
+}

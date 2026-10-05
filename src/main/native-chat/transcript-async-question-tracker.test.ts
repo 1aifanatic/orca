@@ -130,4 +130,66 @@ describe('createTranscriptAsyncQuestionTracker', () => {
     expect(titles(tracker.takeChanged() ?? { state: 'pending' })).toEqual(['Now?'])
     expect(tracker.takeChanged()).toBeUndefined()
   })
+
+  it('retries a failed reconstruction on its own while the file stays idle', async () => {
+    vi.useFakeTimers()
+    try {
+      const scan = vi
+        .fn<() => Promise<NativeChatAsyncQuestionFact[]>>()
+        .mockRejectedValueOnce(new Error('busy'))
+        .mockResolvedValueOnce([asked('first', 'First?')])
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const onSettled = vi.fn()
+      const tracker = createTranscriptAsyncQuestionTracker({ filePath: '/f', onSettled, scan })
+      tracker.begin(100)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(tracker.field()).toEqual({ state: 'pending' })
+      expect(warn).toHaveBeenCalledOnce()
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(scan).toHaveBeenCalledTimes(2)
+      expect(scan).toHaveBeenLastCalledWith('/f', 100, expect.anything())
+      expect(titles(tracker.field())).toEqual(['First?'])
+      expect(onSettled).toHaveBeenCalledOnce()
+      warn.mockRestore()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('stops retrying after dispose', async () => {
+    vi.useFakeTimers()
+    try {
+      const scan = vi.fn(async (): Promise<NativeChatAsyncQuestionFact[]> => {
+        throw new Error('busy')
+      })
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const tracker = createTranscriptAsyncQuestionTracker({
+        filePath: '/f',
+        onSettled: () => {},
+        scan
+      })
+      tracker.begin(100)
+      await vi.advanceTimersByTimeAsync(0)
+      tracker.dispose()
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(scan).toHaveBeenCalledOnce()
+      warn.mockRestore()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('treats a record too large to read as a delivered user message when its head says so', () => {
+    const tracker = createTranscriptAsyncQuestionTracker({
+      filePath: '/f',
+      onSettled: () => {},
+      scan: async () => []
+    })
+    tracker.beginFromStart()
+    tracker.observeLine(askLine('call-1', 'Color?'), 'r1')
+    expect(titles(tracker.field())).toEqual(['Color?'])
+    const head = '{"timestamp":"t","type":"event_msg","payload":{"type":"user_message","message":"'
+    tracker.observeOversizedRecord(Buffer.from(head), 'r2')
+    expect(titles(tracker.field())).toEqual([])
+  })
 })

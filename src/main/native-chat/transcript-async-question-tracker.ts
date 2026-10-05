@@ -16,7 +16,11 @@ import {
   type NativeChatAsyncQuestionsField
 } from '../../shared/native-chat-async-questions'
 import { resolveNativeChatTranscriptAgent } from '../../shared/native-chat-agent-support'
-import { codexRolloutAsyncQuestionFacts } from './codex-rollout-async-question-facts'
+import {
+  codexOversizedRolloutRecordFacts,
+  codexRolloutAsyncQuestionFacts
+} from './codex-rollout-async-question-facts'
+import type { OversizedTranscriptRecordObserver } from './transcript-incremental-reader'
 import type { SubscribeNativeChatTranscriptArgs } from './transcript-watch-contract'
 import type { NativeChatLineDecoder } from './transcript-tail-reader'
 import { scanCodexAsyncQuestionFactsBefore } from './transcript-async-question-boundary-scan'
@@ -28,6 +32,8 @@ export type TranscriptAsyncQuestionTracker = {
   beginFromStart: () => void
   /** Feed one line read at or past the boundary, in file order. */
   observeLine: (line: string, recordId: string) => void
+  /** Feed the head of a line too large to read, in file order. */
+  observeOversizedRecord: OversizedTranscriptRecordObserver
   /** The field to publish now. */
   field: () => NativeChatAsyncQuestionsField
   /** The field if it changed since the last call to this or `markPublished`, else undefined. */
@@ -37,6 +43,9 @@ export type TranscriptAsyncQuestionTracker = {
   retryIfFailed: () => void
   dispose: () => void
 }
+
+const RETRY_BASE_MS = 1_000
+const RETRY_MAX_MS = 30_000
 
 export function createTranscriptAsyncQuestionTracker(args: {
   filePath: string
@@ -53,6 +62,15 @@ export function createTranscriptAsyncQuestionTracker(args: {
   let disposed = false
   let controller = new AbortController()
   let published: NativeChatAsyncQuestionsField | undefined
+  let retryTimer: ReturnType<typeof setTimeout> | null = null
+  let consecutiveFailures = 0
+
+  function clearRetryTimer(): void {
+    if (retryTimer) {
+      clearTimeout(retryTimer)
+      retryTimer = null
+    }
+  }
 
   function currentField(): NativeChatAsyncQuestionsField {
     return reconstructing
@@ -61,6 +79,7 @@ export function createTranscriptAsyncQuestionTracker(args: {
   }
 
   function reset(): void {
+    clearRetryTimer()
     generation += 1
     controller.abort()
     controller = new AbortController()
@@ -84,15 +103,44 @@ export function createTranscriptAsyncQuestionTracker(args: {
         }
         buffered = []
         reconstructing = false
+        consecutiveFailures = 0
         args.onSettled()
       },
-      () => {
-        if (!disposed && runGeneration === generation) {
-          // Stay pending (never partial); the next drain retries from the same boundary.
-          failedBoundary = endOffset
+      (error: unknown) => {
+        if (disposed || runGeneration !== generation) {
+          return
         }
+        // Stay pending (never partial). A drain retries at once; an idle file has no drain,
+        // so a backed-off retry of its own runs until success, a reset, or unsubscribe.
+        failedBoundary = endOffset
+        consecutiveFailures += 1
+        console.warn('[native-chat] async-question reconstruction failed; retrying', error)
+        retryTimer = setTimeout(
+          retryIfFailed,
+          Math.min(RETRY_BASE_MS * 2 ** (consecutiveFailures - 1), RETRY_MAX_MS)
+        )
       }
     )
+  }
+
+  function retryIfFailed(): void {
+    if (failedBoundary === null || disposed) {
+      return
+    }
+    // Lines buffered past the boundary still apply after the retried scan.
+    const pending = buffered
+    begin(failedBoundary)
+    buffered = pending
+  }
+
+  function observe(facts: readonly NativeChatAsyncQuestionFact[]): void {
+    for (const fact of facts) {
+      if (reconstructing) {
+        buffered.push(fact)
+      } else {
+        foldNativeChatAsyncQuestionFact(fold, fact)
+      }
+    }
   }
 
   return {
@@ -101,15 +149,9 @@ export function createTranscriptAsyncQuestionTracker(args: {
       reset()
       reconstructing = false
     },
-    observeLine: (line, recordId) => {
-      for (const fact of codexRolloutAsyncQuestionFacts(line, recordId)) {
-        if (reconstructing) {
-          buffered.push(fact)
-        } else {
-          foldNativeChatAsyncQuestionFact(fold, fact)
-        }
-      }
-    },
+    observeLine: (line, recordId) => observe(codexRolloutAsyncQuestionFacts(line, recordId)),
+    observeOversizedRecord: (head) =>
+      observe(codexOversizedRolloutRecordFacts(head.toString('utf8'))),
     field: currentField,
     takeChanged: () => {
       const next = currentField()
@@ -122,17 +164,10 @@ export function createTranscriptAsyncQuestionTracker(args: {
     markPublished: (field) => {
       published = field
     },
-    retryIfFailed: () => {
-      if (failedBoundary === null || disposed) {
-        return
-      }
-      // Lines buffered past the boundary still apply after the retried scan.
-      const pending = buffered
-      begin(failedBoundary)
-      buffered = pending
-    },
+    retryIfFailed,
     dispose: () => {
       disposed = true
+      clearRetryTimer()
       controller.abort()
     }
   }
@@ -144,6 +179,7 @@ export type WatchedTranscriptAsyncQuestions = Pick<
 > & {
   /** Decoder for reads past the boundary: feeds each line to the fold, then decodes it. */
   readDecode: NativeChatLineDecoder
+  observeOversizedRecord: OversizedTranscriptRecordObserver
   /** The field a snapshot or replacement carries, recorded as published. */
   snapshotField: () => NativeChatAsyncQuestionsField
 }
@@ -173,6 +209,7 @@ export function createWatchedTranscriptAsyncQuestions(
     retryIfFailed: tracker.retryIfFailed,
     takeChanged: tracker.takeChanged,
     dispose: tracker.dispose,
+    observeOversizedRecord: tracker.observeOversizedRecord,
     readDecode: (line, fallbackId) => {
       tracker.observeLine(line, fallbackId)
       return decode(line, fallbackId)

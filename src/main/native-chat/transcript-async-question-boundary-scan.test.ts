@@ -200,6 +200,26 @@ describe('host-derived Codex async questions on the terminal transport', () => {
     expect(observed.frames.at(-1)).toMatchObject({ kind: 'appended', field: { state: 'ready' } })
   })
 
+  it('stops the backward scan at a user reply too large to read', async () => {
+    const ask = [{ title: 'Name?' }]
+    const huge = 'y'.repeat(3 * 1024 * 1024)
+    const filePath = await rollout(
+      userEvent() + asyncCall('c', ask) + itemAsk('c', ask) + userEvent(huge) + assistant(1)
+    )
+    const observed = await watch(filePath)
+    await waitFor(() => observed.ready() !== undefined)
+    expect(titles(observed)).toEqual([])
+  })
+
+  it('retires the set when a user reply too large to read is appended', async () => {
+    const ask = [{ title: 'Name?' }]
+    const filePath = await rollout(userEvent() + asyncCall('c', ask) + itemAsk('c', ask))
+    const observed = await watch(filePath)
+    await waitFor(() => observed.ready()?.questions.length === 1)
+    await appendFile(filePath, userEvent('y'.repeat(3 * 1024 * 1024)) + assistant(1))
+    await waitFor(() => observed.ready()?.questions.length === 0)
+  })
+
   it('omits the field on appended frames when the set did not change', async () => {
     const ask = [{ title: 'Name?' }]
     const filePath = await rollout(userEvent() + asyncCall('c', ask) + itemAsk('c', ask))

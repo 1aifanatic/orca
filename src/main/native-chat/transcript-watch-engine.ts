@@ -75,13 +75,19 @@ export async function installTranscriptWatcher(
     }
   }
 
-  async function readAndEmitAppends(): Promise<void> {
-    const { messages: remaining, lifecycle } = await readIncrementalTranscriptWithLifecycle(
+  const readForward = (onBatch?: Parameters<typeof readIncrementalTranscriptWithLifecycle>[5]) =>
+    readIncrementalTranscriptWithLifecycle(
       filePath,
       state,
       readDecode,
       decodeLifecycle,
       gateAbort.signal,
+      onBatch,
+      asyncQuestions?.observeOversizedRecord
+    )
+
+  async function readAndEmitAppends(): Promise<void> {
+    const { messages: remaining, lifecycle } = await readForward(
       (messages) => !closed && onAppend(messages)
     )
     const asyncQuestionsChanged = closed ? undefined : asyncQuestions?.takeChanged()
@@ -200,13 +206,7 @@ export async function installTranscriptWatcher(
         await readAndEmitAppends()
       } else {
         asyncQuestions?.beginFromStart()
-        const { messages, lifecycle } = await readIncrementalTranscriptWithLifecycle(
-          filePath,
-          state,
-          readDecode,
-          decodeLifecycle,
-          gateAbort.signal
-        )
+        const { messages, lifecycle } = await readForward()
         if (closed) {
           return
         }

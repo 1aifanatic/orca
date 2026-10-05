@@ -3,7 +3,11 @@
 // messages, so memory is O(pending questions) however much output follows them.
 
 import type { NativeChatAsyncQuestionFact } from '../../shared/native-chat-async-questions'
-import { codexRolloutAsyncQuestionFacts } from './codex-rollout-async-question-facts'
+import {
+  CODEX_OVERSIZED_RECORD_HEAD_BYTES,
+  codexOversizedRolloutRecordFacts,
+  codexRolloutAsyncQuestionFacts
+} from './codex-rollout-async-question-facts'
 import { transcriptFallbackId } from './transcript-fallback-id'
 import { TAIL_CHUNK_BYTES } from './transcript-tail-boundary'
 import { MAX_NATIVE_CHAT_TRANSCRIPT_RECORD_BYTES } from './transcript-tail-reader'
@@ -30,14 +34,21 @@ export async function scanCodexAsyncQuestionFactsBefore(
     const lineParts: Buffer[] = []
     let lineBytes = 0
     let lineOversized = false
+    // An oversized line's first bytes (parts arrive newest-first, so each one is prepended).
+    let oversizedHead = Buffer.alloc(0)
     // Returns true once the boundary (a delivered user message) is reached.
     const handleLine = (lineOffset: number): boolean => {
       const oversized = lineOversized
+      const head = oversizedHead
       const bytes = lineParts.length === 1 ? lineParts[0] : Buffer.concat(lineParts.toReversed())
       lineParts.length = 0
       lineBytes = 0
       lineOversized = false
-      if (oversized || !bytes || bytes.length === 0) {
+      oversizedHead = Buffer.alloc(0)
+      if (oversized) {
+        return codexOversizedRolloutRecordFacts(head.toString('utf8')).length > 0
+      }
+      if (!bytes || bytes.length === 0) {
         return false
       }
       let line = bytes.toString('utf8')
@@ -54,11 +65,22 @@ export async function scanCodexAsyncQuestionFactsBefore(
       return false
     }
     const retainPart = (part: Buffer): void => {
-      if (lineOversized || part.length === 0) {
+      if (part.length === 0) {
+        return
+      }
+      if (lineOversized) {
+        oversizedHead = Buffer.concat([part, oversizedHead]).subarray(
+          0,
+          CODEX_OVERSIZED_RECORD_HEAD_BYTES
+        )
         return
       }
       lineBytes += part.length
       if (lineBytes > MAX_NATIVE_CHAT_TRANSCRIPT_RECORD_BYTES) {
+        oversizedHead = Buffer.concat([part, ...lineParts.toReversed()]).subarray(
+          0,
+          CODEX_OVERSIZED_RECORD_HEAD_BYTES
+        )
         lineParts.length = 0
         lineOversized = true
         return
