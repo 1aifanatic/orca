@@ -63,7 +63,7 @@ export async function wakeStoppedManagedOrcad(
   const wake = withOrcadActivationLock(
     options,
     async (): Promise<OrcadManagedWake> => {
-      // Claimed before any remote step: a drop at any later point leaves a fence this client knows.
+      // Claimed before the write lands, so a drop after it still leaves a fence this client can prove.
       const token = randomUUID()
       interruptedWakes.set(host, token)
       const settle = (): void => {
@@ -135,9 +135,9 @@ async function releaseOwnInterruptedWakeFence(
   if (!token || (await readOrcadActivationTransaction(options))) {
     return false
   }
-  // Absent is still this wake's: its token was claimed right after the fence, before the write.
+  // Only a fence carrying this process's own token: a fresh fence another client took has none yet.
   const owner = await readBoundedOrcadRemoteRecord(options, wakeOwnerPath(options), 64)
-  if (owner.state === 'present' && owner.raw.trim() !== token) {
+  if (owner.state !== 'present' || owner.raw.trim() !== token) {
     interruptedWakes.delete(host)
     return false
   }
