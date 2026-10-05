@@ -26,13 +26,18 @@ vi.mock('./claude-agent-sdk-exit-proof', () => ({
   proveClaudeChildExit: (...args: unknown[]) => mocks.proveClaudeChildExit(...args)
 }))
 
-function fakeChild(): ChildProcessWithoutNullStreams {
+function fakeChild(
+  streams: { stdout: PassThrough; stderr: PassThrough } = {
+    stdout: new PassThrough(),
+    stderr: new PassThrough()
+  }
+): ChildProcessWithoutNullStreams {
   const child = new EventEmitter()
   return Object.assign(child, {
     pid: 424242,
     stdin: new PassThrough(),
-    stdout: new PassThrough(),
-    stderr: new PassThrough(),
+    stdout: streams.stdout,
+    stderr: streams.stderr,
     kill: vi.fn()
   }) as unknown as ChildProcessWithoutNullStreams
 }
@@ -133,13 +138,15 @@ describe('Claude stream-json close ordering', () => {
     await expect(connection.close()).resolves.toBe(true)
   })
 
-  // The provider supervisor ends Orca's stdout when Claude's ends, so EOF now comes before the exit.
+  // Stdout can end before the exit is seen, as when the provider supervisor's own exit closes it.
   it('reports an exit whose stdout ended first once the exit is seen, with its usual reason', async () => {
     mocks.refresh.mockReset()
     mocks.proveClaudeChildExit.mockReset()
     mocks.refresh.mockResolvedValue(undefined)
     mocks.proveClaudeChildExit.mockResolvedValue(true)
-    const child = fakeChild()
+    const stdout = new PassThrough()
+    const stderr = new PassThrough()
+    const child = fakeChild({ stdout, stderr })
     // The SDK's stream ends with the child's stdout.
     const next = vi
       .fn<() => Promise<IteratorResult<Record<string, unknown>>>>()
@@ -164,8 +171,8 @@ describe('Claude stream-json close ordering', () => {
       queryImpl
     )
 
-    child.stderr.write('session limit reached\n')
-    child.stdout.end()
+    stderr.write('session limit reached\n')
+    stdout.end()
     await vi.waitFor(() => expect(next).toHaveBeenCalledOnce())
     await new Promise((resolve) => setImmediate(resolve))
     expect(exits).toEqual([])
