@@ -37,7 +37,8 @@ const scope = createOrcadMigrationSourceScope({
         updatedAt: 1
       }
     ]
-  }
+  },
+  repos: []
 })
 
 describe('migration source scope', () => {

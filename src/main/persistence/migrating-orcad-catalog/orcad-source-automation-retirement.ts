@@ -1,17 +1,26 @@
 import { getAutomationRunRepoId } from '../../../shared/automation-run-identity'
 import type { OrcadMigrationManifest } from '../../../shared/orcad-migration-manifest'
 import type { PersistedState } from '../../../shared/persisted-state-types'
+import { createOrcadMigrationSourceScope, orcadMigrationOwnsRepoId } from './orcad-source-scope'
 
 /** The manifest's automations, and any a downgraded build added to a moved project since. */
 export function retireOrcadMigrationSourceAutomationState(
   state: PersistedState,
   manifest: OrcadMigrationManifest
 ): void {
-  const repoIds = new Set(manifest.payload.repositories.map((repo) => repo.id))
+  const scope = createOrcadMigrationSourceScope({
+    source: manifest.source,
+    catalog: manifest.payload,
+    repos: state.repos
+  })
   const automationIds = new Set([
     ...(manifest.payload.dormantState?.automations ?? []).map((entry) => entry.id),
     ...state.automations
-      .filter((entry) => repoIds.has(getAutomationRunRepoId(entry)))
+      .filter(
+        (entry) =>
+          orcadMigrationOwnsRepoId(scope, getAutomationRunRepoId(entry)) &&
+          (entry.executionTargetType !== 'ssh' || entry.executionTargetId === scope.targetId)
+      )
       .map((entry) => entry.id)
   ])
   const runIds = new Set((manifest.payload.dormantState?.automationRuns ?? []).map((run) => run.id))

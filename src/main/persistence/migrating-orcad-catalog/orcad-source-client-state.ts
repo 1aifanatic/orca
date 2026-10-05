@@ -19,6 +19,7 @@ import { collectCloseIntents } from './orcad-source-client-browser-intents'
 import {
   createOrcadMigrationSourceScope,
   orcadMigrationOwnerMatchesScope,
+  orcadMigrationOwnsRepoId,
   unqualifyOrcadMigrationOwnerKey
 } from './orcad-source-scope'
 
@@ -40,7 +41,7 @@ export function collectOrcadMigrationSourceClientState(
   destinationEnvironmentId: string | undefined,
   eligibleSession: WorkspaceSessionState | undefined
 ): OrcadMigrationSourceClientStateInspection {
-  const scope = createOrcadMigrationSourceScope({ source, catalog })
+  const scope = createOrcadMigrationSourceScope({ source, catalog, repos: state.repos })
   const blockedCounts = {
     'mobile-tab-selection': 0,
     'ui-routing': 0,
@@ -141,13 +142,13 @@ function collectUiRouting(
 ): OrcadMigrationUiRoutingState | undefined {
   const ui = state.ui
   const result: OrcadMigrationUiRoutingState = {}
-  if (ui.lastActiveRepoId && scope.repoIds.has(ui.lastActiveRepoId)) {
+  if (ui.lastActiveRepoId && orcadMigrationOwnsRepoId(scope, ui.lastActiveRepoId)) {
     result.lastActiveRepoId = ui.lastActiveRepoId
   }
   if (ui.lastActiveWorktreeId && orcadMigrationOwnerMatchesScope(ui.lastActiveWorktreeId, scope)) {
     result.lastActiveWorktreeId = unqualifyOrcadMigrationOwnerKey(ui.lastActiveWorktreeId)
   }
-  const filterRepoIds = ui.filterRepoIds.filter((repoId) => scope.repoIds.has(repoId))
+  const filterRepoIds = ui.filterRepoIds.filter((repoId) => orcadMigrationOwnsRepoId(scope, repoId))
   if (filterRepoIds.length > 0) {
     result.filterRepoIds = filterRepoIds
   }
@@ -158,7 +159,7 @@ function collectUiRouting(
     result.showDotfilesByWorktree = Object.fromEntries(dotfiles)
   }
   const dismissed = (ui.setupScriptPromptDismissedRepoIds ?? []).filter((repoId) =>
-    scope.repoIds.has(repoId)
+    orcadMigrationOwnsRepoId(scope, repoId)
   )
   if (dismissed.length > 0) {
     result.setupScriptPromptDismissedRepoIds = dismissed

@@ -31,7 +31,8 @@ export function collectOrcadMigrationUntransferredDependencyCensus(
 ): OrcadMigrationSourceDependencyCensus {
   const scope = createOrcadMigrationSourceScope({
     source: manifest.source,
-    catalog: manifest.payload
+    catalog: manifest.payload,
+    repos: state.repos
   })
   const sessions = inspectOrcadMigrationSourceSessions(state, {
     hostId: scope.hostId,

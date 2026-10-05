@@ -49,7 +49,7 @@ export function collectOrcadMigrationSourceDormantState(
   storage?: TerminalScrollbackSnapshotStorage,
   destinationEnvironmentId?: string
 ): OrcadMigrationSourceDormantInspection {
-  const scope = createOrcadMigrationSourceScope({ source, catalog })
+  const scope = createOrcadMigrationSourceScope({ source, catalog, repos: state.repos })
   const blockedCounts = emptyBlockedCounts()
   const destinationRepos = catalog.repositories.map(toOrcadDestinationRepository)
   const setupByRepoId = new Map(
@@ -132,13 +132,15 @@ export function collectOrcadMigrationSourceDormantState(
     (entry) => entry.childWorkspaceKey,
     () => (blockedCounts['workspace-lineage'] += 1)
   )
-  const sparsePresets = [...scope.repoIds]
+  // A repo id another host shares keys one registry for both hosts: it stays where it is.
+  const ownedRepoIds = [...scope.repoIds].filter((repoId) => !scope.sharedRepoIds.has(repoId))
+  const sparsePresets = ownedRepoIds
     .flatMap((repoId) => state.sparsePresetsByRepo[repoId] ?? [])
     .map((preset) => structuredClone(preset))
     .sort((left, right) =>
       compareKeys(`${left.repoId}\0${left.id}`, `${right.repoId}\0${right.id}`)
     )
-  const retiredWorktreeNames = [...scope.repoIds]
+  const retiredWorktreeNames = ownedRepoIds
     .flatMap((repoId) => {
       const registry = state.retiredWorktreeNamesByRepo?.[repoId]
       return registry && !isEmptyRetiredNameRegistry(registry)
