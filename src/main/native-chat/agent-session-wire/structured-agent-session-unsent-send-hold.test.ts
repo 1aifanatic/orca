@@ -344,46 +344,62 @@ describe('the queue at a quit', () => {
     await eventually(() => expect(rig.compact).toHaveBeenCalledOnce())
   }
 
-  it('a drain step already running when quit begins makes no hand-off', async () => {
-    await compactRunning()
-    const queued = rig.send('queued behind the compact', 'queue-if-active')
-    expect(await queued.result).toMatchObject({ ok: true, value: { queued: { state: 'waiting' } } })
-    const host = rig.host
-    const { queuedMessages } = journal()
-    const settleOwed = queuedMessages.settleOwed.bind(queuedMessages)
-    let release = (): void => undefined
-    const held = new Promise<void>((resolve) => (release = resolve))
-    let reached = (): void => undefined
-    const inStep = new Promise<void>((resolve) => (reached = resolve))
-    let blocked = false
-    const inDrainStep = (): boolean =>
-      (new Error('which caller').stack ?? '').includes('QueuedMessageDrain.step')
-    // Holds the drain step at its one await, past its first dispose check, until quit has begun.
-    const owed = vi
-      .spyOn(queuedMessages, 'settlementOwed')
-      .mockImplementation(() => !blocked && inDrainStep())
-    const healing = vi.spyOn(queuedMessages, 'settleOwed').mockImplementation(async () => {
-      if (!blocked && inDrainStep()) {
-        blocked = true
-        reached()
-        await held
+  // Quit's first step is `stopDelivery`, before teardown drains recovery; the flush repeats it.
+  it.each(['stopDelivery', 'flushAllStreamedEvents'] as const)(
+    'a drain step already running when quit begins (%s) makes no hand-off',
+    async (quitStep) => {
+      await compactRunning()
+      const queued = rig.send('queued behind the compact', 'queue-if-active')
+      expect(await queued.result).toMatchObject({
+        ok: true,
+        value: { queued: { state: 'waiting' } }
+      })
+      const host = rig.host
+      const { queuedMessages } = journal()
+      const settleOwed = queuedMessages.settleOwed.bind(queuedMessages)
+      let release = (): void => undefined
+      const held = new Promise<void>((resolve) => (release = resolve))
+      let reached = (): void => undefined
+      const inStep = new Promise<void>((resolve) => (reached = resolve))
+      let blocked = false
+      const inDrainStep = (): boolean =>
+        (new Error('which caller').stack ?? '').includes('QueuedMessageDrain.step')
+      // Holds the drain step at its one await, past its first dispose check, until quit has begun.
+      const owed = vi
+        .spyOn(queuedMessages, 'settlementOwed')
+        .mockImplementation(() => !blocked && inDrainStep())
+      const healing = vi.spyOn(queuedMessages, 'settleOwed').mockImplementation(async () => {
+        if (!blocked && inDrainStep()) {
+          blocked = true
+          reached()
+          await held
+        }
+        return settleOwed()
+      })
+      rig.finishCompact()
+      await inStep
+      if (quitStep === 'stopDelivery') {
+        host.stopDelivery()
+        release()
+        await healing.mock.results[0]?.value
+        // The step's append check runs on the turn after its heal resolves.
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        expect(await rig.handoff(queued.id)).toBeUndefined()
+      } else {
+        const quitting = host.flushAllStreamedEvents()
+        release()
+        await quitting
       }
-      return settleOwed()
-    })
-    rig.finishCompact()
-    await inStep
-    const quitting = host.flushAllStreamedEvents()
-    release()
-    await quitting
-    owed.mockRestore()
-    healing.mockRestore()
-    rig.crashRestartHostProcess()
+      owed.mockRestore()
+      healing.mockRestore()
+      rig.crashRestartHostProcess()
 
-    expect(await rig.drafts()).toEqual([{ messageId: queued.id, state: 'waiting' }])
-    expect(await rig.queuePause()).toEqual({ reason: 'restarted' })
-    expect(await rig.handoff(queued.id)).toBeUndefined()
-    expect(rig.dispatch).not.toHaveBeenCalled()
-  })
+      expect(await rig.drafts()).toEqual([{ messageId: queued.id, state: 'waiting' }])
+      expect(await rig.queuePause()).toEqual({ reason: 'restarted' })
+      expect(await rig.handoff(queued.id)).toBeUndefined()
+      expect(rig.dispatch).not.toHaveBeenCalled()
+    }
+  )
 
   // The card the person pushed ahead waits for their own Send; Resume sends the rest.
   it('Send now on an ordinary card, cut short by a quit, returns it kept while Resume sends the rest', async () => {
