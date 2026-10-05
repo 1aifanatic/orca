@@ -7,7 +7,6 @@ import {
   pickTargetGroup,
   type HostEditTabRecord
 } from './host-editor-session-model'
-import { getHeadlessMobileSessionGroupId } from './mobile-session-layout-projection'
 import {
   pruneTabGroupLayoutAfterRetirement,
   repairMobileSessionTabGroupsAfterRetirement
@@ -133,9 +132,10 @@ function refocusAfterEditorClose(
 }
 
 /**
- * Persists a host-side group layout (after a move, split or reorder) together with each wrapper's
- * group and order, so a window restoring the session places tabs where phones saw them. Transient
- * tabs (host diffs) are left out: the session holds only what a window would persist.
+ * Persists a legacy session's host-side group layout (after a move, split or reorder): its only
+ * groups are the headless ones, so the snapshot's are the whole model. Transient tabs (host
+ * diffs) are left out: the session holds only what a window would persist. Unified sessions are
+ * edited instead (`editPersistedTabGroups`).
  */
 export function persistHostTabGroupLayout(
   session: WorkspaceSessionState,
@@ -147,13 +147,6 @@ export function persistHostTabGroupLayout(
     transientTabIds?: ReadonlySet<string>
   }
 ): WorkspaceSessionState {
-  // Why: the synthetic terminal group exists only in legacy projections; a window would restore it as a split.
-  if (
-    isUnifiedWorkspaceSession(session) &&
-    layout.groups.some((group) => group.id === getHeadlessMobileSessionGroupId(worktreeId))
-  ) {
-    return session
-  }
   // Why: a window migrates a wrapper named by its legacy file id, so the snapshot id can differ from the persisted one.
   const persistedIdByTabId = new Map(
     listHostEditTabs(session, worktreeId).flatMap((record) =>

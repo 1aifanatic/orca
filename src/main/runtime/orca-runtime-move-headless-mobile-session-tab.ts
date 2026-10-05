@@ -13,7 +13,7 @@ import {
 import { randomUUID } from 'node:crypto'
 import type { TabGroupLayoutNode } from '../../shared/tab-types'
 import { resolveEditorAuthority } from './editor-authority'
-import { persistHostEditorLayout } from './host-editor-tab-commands'
+import { hostEditsPersistedTabGroups, persistHostEditorLayout } from './host-editor-tab-commands'
 
 export class OrcaRuntimeWithMoveHeadlessMobileSessionTab extends OrcaRuntimeWithPersistHeadlessSessionTabProps {
   protected moveHeadlessMobileSessionTab(
@@ -71,7 +71,11 @@ export class OrcaRuntimeWithMoveHeadlessMobileSessionTab extends OrcaRuntimeWith
       tabs: nextTabs
     }
     this.persistHeadlessTerminalTabOrder(worktreeId, tabOrder)
-    if (nextGroups.length > 1 && snapshot.tabGroupLayout) {
+    if (
+      nextGroups.length > 1 &&
+      snapshot.tabGroupLayout &&
+      !hostEditsPersistedTabGroups(this, worktreeId, snapshot)
+    ) {
       this.persistHeadlessTabGroups(worktreeId, nextGroups, snapshot.tabGroupLayout)
     }
     this.persistHostEditorLayoutIfHostOwned(worktreeId, nextSnapshot)
@@ -113,7 +117,10 @@ export class OrcaRuntimeWithMoveHeadlessMobileSessionTab extends OrcaRuntimeWith
       tabGroups: split.groups,
       tabGroupLayout: split.layout
     }
-    this.persistHeadlessTabGroups(worktreeId, split.groups, split.layout)
+    // Why: a host that owns editors edits the persisted groups; this snapshot shows only some of them.
+    if (!hostEditsPersistedTabGroups(this, worktreeId, snapshot)) {
+      this.persistHeadlessTabGroups(worktreeId, split.groups, split.layout)
+    }
     this.persistHostEditorLayoutIfHostOwned(worktreeId, nextSnapshot)
     this.storeMobileSessionSnapshot(worktreeId, nextSnapshot)
     this.emitMobileSessionTabsSnapshot(nextSnapshot)
@@ -150,7 +157,9 @@ export class OrcaRuntimeWithMoveHeadlessMobileSessionTab extends OrcaRuntimeWith
       tabGroups: moved.groups,
       tabGroupLayout: layout
     }
-    this.persistHeadlessTabGroups(worktreeId, moved.groups, layout)
+    if (!hostEditsPersistedTabGroups(this, worktreeId, snapshot)) {
+      this.persistHeadlessTabGroups(worktreeId, moved.groups, layout)
+    }
     this.persistHostEditorLayoutIfHostOwned(worktreeId, nextSnapshot)
     this.storeMobileSessionSnapshot(worktreeId, nextSnapshot)
     this.emitMobileSessionTabsSnapshot(nextSnapshot)

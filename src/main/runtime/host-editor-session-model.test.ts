@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import { buildOwnedEditorFileId } from '../../shared/editor-file-identity'
-import { closeHostEditFile, persistHostTabGroupLayout } from './host-editor-session-layout'
+import { closeHostEditFile } from './host-editor-session-layout'
 import { listHostEditTabs, openHostEditTab } from './host-editor-session-model'
+import { editPersistedTabGroups } from './host-editor-tab-group-edit'
 
 const WT = 'repo1::/path/wt1'
 const OTHER_WT = 'repo2::/path/wt2'
 const NOTE = '/path/wt1/notes.md'
+const SAME_IDS = { toWrapperId: (id: string) => id, toSnapshotId: (id: string) => id }
 
 function base(overrides: Partial<WorkspaceSessionState> = {}): WorkspaceSessionState {
   return {
@@ -281,19 +283,24 @@ describe('host editor session model', () => {
       }
     })
 
-    const next = persistHostTabGroupLayout(session, WT, {
-      groups: [
-        { id: 'g-1', activeTabId: 'term-1', tabOrder: ['term-1'] },
-        { id: 'g-2', activeTabId: 'a', tabOrder: ['a'] }
-      ],
-      groupLayout: {
-        type: 'split',
-        direction: 'horizontal',
-        first: { type: 'leaf', groupId: 'g-1' },
-        second: { type: 'leaf', groupId: 'g-2' }
+    const next = editPersistedTabGroups(
+      session,
+      WT,
+      {
+        tabGroups: [
+          { id: 'g-1', activeTabId: 'term-1', tabOrder: ['term-1'] },
+          { id: 'g-2', activeTabId: 'a', tabOrder: ['a'] }
+        ],
+        tabGroupLayout: {
+          type: 'split',
+          direction: 'horizontal',
+          first: { type: 'leaf', groupId: 'g-1' },
+          second: { type: 'leaf', groupId: 'g-2' }
+        },
+        activeGroupId: 'g-2'
       },
-      activeGroupId: 'g-2'
-    })
+      SAME_IDS
+    )!
 
     expect(next.unifiedTabs?.[WT]?.find((tab) => tab.id === 'a')).toMatchObject({
       groupId: 'g-2',
@@ -339,19 +346,25 @@ describe('host editor session model', () => {
     ])
   })
 
-  it('never writes the legacy terminal group into a unified session', () => {
+  it('never invents the legacy terminal group in a unified session', () => {
     const session = base({
       unifiedTabs: { [WT]: [] },
       tabGroups: { [WT]: [{ id: 'g-1', worktreeId: WT, activeTabId: null, tabOrder: [] }] }
     })
 
-    const next = persistHostTabGroupLayout(session, WT, {
-      groups: [{ id: `headless-terminals:${WT}`, activeTabId: 'term-1', tabOrder: ['term-1'] }],
-      groupLayout: undefined,
-      activeGroupId: `headless-terminals:${WT}`
-    })
+    const next = editPersistedTabGroups(
+      session,
+      WT,
+      {
+        tabGroups: [
+          { id: `headless-terminals:${WT}`, activeTabId: 'term-1', tabOrder: ['term-1'] }
+        ],
+        activeGroupId: `headless-terminals:${WT}`
+      },
+      SAME_IDS
+    )
 
-    expect(next).toBe(session)
+    expect(next).toBeNull()
   })
 
   it('leaves transient tabs out of a persisted layout and refocuses the group', () => {
@@ -362,19 +375,22 @@ describe('host editor session model', () => {
       }
     })
 
-    const next = persistHostTabGroupLayout(session, WT, {
-      groups: [
-        {
-          id: 'g-1',
-          activeTabId: 'diff-1',
-          tabOrder: ['diff-1', 'term-1'],
-          recentTabIds: ['term-1', 'diff-1']
-        }
-      ],
-      groupLayout: undefined,
-      activeGroupId: 'g-1',
-      transientTabIds: new Set(['diff-1'])
-    })
+    const next = editPersistedTabGroups(
+      session,
+      WT,
+      {
+        tabGroups: [
+          {
+            id: 'g-1',
+            activeTabId: 'diff-1',
+            tabOrder: ['diff-1', 'term-1'],
+            recentTabIds: ['term-1', 'diff-1']
+          }
+        ],
+        activeGroupId: 'g-1'
+      },
+      { toWrapperId: (id) => (id === 'diff-1' ? null : id), toSnapshotId: (id) => id }
+    )!
 
     expect(next.tabGroups?.[WT]).toEqual([
       expect.objectContaining({

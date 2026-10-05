@@ -3,8 +3,12 @@ import type {
   RuntimeMobileSessionTabGroup,
   RuntimeMobileSessionTabsSnapshot
 } from '../../shared/runtime-types'
-import type { TabGroupLayoutNode } from '../../shared/tab-types'
+import type { Tab, TabGroupLayoutNode } from '../../shared/tab-types'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
+import {
+  translateSnapshotTabIds,
+  type SnapshotTabIdTranslation
+} from './host-editor-tab-group-edit'
 import type { HostEditorMobileTab } from './host-editor-tab-projection'
 import {
   collectHeadlessTopLevelTabOrder,
@@ -35,6 +39,23 @@ function insertByPersistedOrder(
   return [tabId, ...next]
 }
 
+/** Snapshot ↔ wrapper ids for every tab kind a host snapshot carries, editors included. */
+export function translateHostSnapshotTabIds(
+  tabs: readonly RuntimeMobileSessionSnapshotTab[],
+  editors: readonly HostEditorMobileTab[],
+  wrappers: readonly Tab[]
+): SnapshotTabIdTranslation {
+  return translateSnapshotTabIds(
+    tabs,
+    wrappers,
+    new Map(
+      editors.flatMap((editor) =>
+        editor.persistedTabId ? [[editor.tab.id, editor.persistedTabId] as const] : []
+      )
+    )
+  )
+}
+
 export type ProjectedTabGroups = {
   groups: RuntimeMobileSessionTabGroup[]
   layout: TabGroupLayoutNode | undefined
@@ -55,14 +76,11 @@ export function projectPersistedTabGroups(
   if (persisted.length === 0) {
     return null
   }
-  const snapshotIdByPersistedId = new Map(
-    editors.flatMap((editor) =>
-      editor.persistedTabId && editor.persistedTabId !== editor.tab.id
-        ? [[editor.persistedTabId, editor.tab.id] as const]
-        : []
-    )
+  const { toSnapshotId } = translateHostSnapshotTabIds(
+    [...baseTabs, ...editors.map((editor) => editor.tab)],
+    editors,
+    session.unifiedTabs?.[worktreeId] ?? []
   )
-  const toSnapshotId = (tabId: string): string => snapshotIdByPersistedId.get(tabId) ?? tabId
   const topLevelIds = [
     ...collectHeadlessTopLevelTabOrder(baseTabs),
     ...editors.map((editor) => editor.tab.id)

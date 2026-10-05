@@ -132,6 +132,65 @@ describe('window hydration of host-written editor tabs', () => {
     expect(state.activeGroupIdByWorktree[WT]).toBe('g-2')
   })
 
+  it('restores an editor the host moved out of a persisted headless terminal group', () => {
+    const store = storeWithWorktree()
+    const headlessGroupId = `headless-terminals:${WT}`
+    const editorWrapper = {
+      id: HOST_TAB_ID,
+      entityId: NOTE,
+      groupId: 'g-2',
+      worktreeId: WT,
+      contentType: 'editor' as const,
+      label: 'notes.md',
+      customLabel: null,
+      color: null,
+      sortOrder: 0,
+      createdAt: 2
+    }
+    // What the host writes after a phone moves notes.md into the right-hand group.
+    const session: WorkspaceSessionState = {
+      ...baseSession,
+      unifiedTabs: {
+        [WT]: [
+          {
+            ...editorWrapper,
+            id: 'term-1',
+            entityId: 'term-1',
+            groupId: headlessGroupId,
+            contentType: 'terminal'
+          },
+          editorWrapper
+        ]
+      },
+      tabGroups: {
+        [WT]: [
+          { id: headlessGroupId, worktreeId: WT, activeTabId: 'term-1', tabOrder: ['term-1'] },
+          { id: 'g-2', worktreeId: WT, activeTabId: HOST_TAB_ID, tabOrder: [HOST_TAB_ID] }
+        ]
+      },
+      tabGroupLayouts: {
+        [WT]: {
+          type: 'split',
+          direction: 'horizontal',
+          first: { type: 'leaf', groupId: headlessGroupId },
+          second: { type: 'leaf', groupId: 'g-2' }
+        }
+      },
+      activeGroupIdByWorktree: { [WT]: 'g-2' }
+    }
+
+    store.getState().hydrateTabsSession(session)
+    store.getState().hydrateEditorSession(session)
+
+    const state = store.getState()
+    expect(
+      state.unifiedTabsByWorktree[WT]!.find((tab) => tab.contentType === 'editor')?.groupId
+    ).toBe('g-2')
+    expect(state.groupsByWorktree[WT]?.find((group) => group.id === 'g-2')?.tabOrder).toEqual([
+      HOST_TAB_ID
+    ])
+  })
+
   it('names the tab by its path in a legacy session, as the host publishes it', () => {
     const store = storeWithWorktree()
 
