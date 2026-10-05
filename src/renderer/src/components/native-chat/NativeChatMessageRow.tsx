@@ -1,32 +1,80 @@
+import { memo, useCallback, useRef } from 'react'
 import { NativeChatRewindAction } from './NativeChatRewindAction'
 import type { NativeChatRewindSurface } from './use-native-chat-rewind'
-import { memo, useCallback, useMemo, useRef } from 'react'
+import { Goal, RotateCcw } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import CommentMarkdown, {
   type CommentMarkdownLinkClickHandler
 } from '@/components/sidebar/CommentMarkdown'
 import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
-import {
-  isSubagentGroupFallbackText,
-  subagentGroupBlocks
-} from '../../../../shared/native-chat-subagent-summary'
-import {
-  isSubagentGroupBlock,
-  type NativeChatMessage,
-  type NativeChatToolCallBlock
+import type {
+  NativeChatMessage,
+  NativeChatToolCallBlock
 } from '../../../../shared/native-chat-types'
-import { splitNativeChatBlocks } from './native-chat-tool-fold'
+import { deriveNativeChatRowContent } from '../../../../shared/native-chat-row-content'
 import { NativeChatToolRun } from './NativeChatToolRun'
+import { NativeChatCodeBlock } from './NativeChatCodeBlock'
 import { NativeChatNoticeRow } from './NativeChatNoticeRow'
+import { NativeChatCopyButton } from './NativeChatCopyButton'
 import { NativeChatMessageTimestamp } from './NativeChatMessageTimestamp'
-import { nativeChatProseToMarkdown } from './native-chat-prose'
 import {
   NativeChatAgentControls,
   NativeChatImageAttachments,
   ProviderFrameRow
 } from './NativeChatTranscriptChrome'
 import type { NativeChatDiffReveal } from './native-chat-turn-diffs'
+import type {
+  NativeChatSubagentDisclosure,
+  NativeChatSubagentRosterState
+} from './native-chat-subagent-sections'
 import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client'
+
+/** What a user message says about its delivery: that nothing has confirmed it yet, quietly in
+ *  place of its time, or that it did not go through, with its own Retry when the surface can send
+ *  it again. */
+export type NativeChatDeliveryNotice =
+  | { sending: true; text?: never; onRetry?: never; onDismiss?: never }
+  | { sending?: never; text: string; onRetry?: () => void; onDismiss?: () => void }
+
+const USER_META_REVEAL =
+  'transition-opacity can-hover:pointer-events-none can-hover:opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 [.group:has(:focus-visible)_&]:pointer-events-auto [.group:has(:focus-visible)_&]:opacity-100'
+
+/** Under a user message: copy + timestamp, revealed together like the agent controls row. Until
+ *  confirmed, a quiet "Sending…" stays visible in the time's place and copy keeps its own reveal,
+ *  so the row keeps its height when it clears. Image-only prompts have no text to copy. */
+function UserMessageMeta({
+  markdown,
+  timestamp,
+  sending,
+  rewind
+}: {
+  markdown: string
+  timestamp: number | null
+  sending: boolean
+  rewind?: { itemId: string; surface: NativeChatRewindSurface }
+}): React.JSX.Element | null {
+  if (!markdown && timestamp === null && !sending && !rewind) {
+    return null
+  }
+  return (
+    <div className={cn('flex select-none items-center gap-1', !sending && USER_META_REVEAL)}>
+      {markdown ? (
+        <NativeChatCopyButton text={markdown} className={sending ? USER_META_REVEAL : undefined} />
+      ) : null}
+      {sending ? (
+        <span className="text-xs whitespace-nowrap text-muted-foreground">
+          {translate('components.native-chat.messageSending', 'Sending…')}
+        </span>
+      ) : (
+        <NativeChatMessageTimestamp timestamp={timestamp} focusable />
+      )}
+      {rewind && !sending ? (
+        <NativeChatRewindAction itemId={rewind.itemId} rewind={rewind.surface} />
+      ) : null}
+    </div>
+  )
+}
 
 /** One message: its prose first, then a collapsible run folding all of the
  *  turn's tool activity. Monochrome per STYLEGUIDE: user prompts read as a
@@ -40,12 +88,15 @@ export const MessageRow = memo(function MessageRow({
   revealedDiff,
   expandSignal,
   activeTurnIsWorking,
+  trailingRun,
   onScrollMessageToTop,
   onLinkClick,
   allowFileUriLinks = false,
-  deliveryFailed = false,
-  activityExpandOverride,
-  structuredActivityUi = true,
+  deliveryNotice,
+  folded = false,
+  subagentRoster,
+  subagentDisclosure,
+  inSubagentSection = false,
   runtimeContext,
   rewind
 }: {
@@ -55,43 +106,29 @@ export const MessageRow = memo(function MessageRow({
   revealedDiff?: NativeChatDiffReveal
   expandSignal: boolean
   activeTurnIsWorking?: boolean
+  /** This row's tool run is the turn's last, so it is the one still live. */
+  trailingRun?: boolean
   /** Align this message's top to the top of the scroll viewport. */
   onScrollMessageToTop: (el: HTMLElement) => void
   onLinkClick?: CommentMarkdownLinkClickHandler
   allowFileUriLinks?: boolean
-  deliveryFailed?: boolean
-  activityExpandOverride?: boolean
-  structuredActivityUi?: boolean
-  rewind?: NativeChatRewindSurface
+  deliveryNotice?: NativeChatDeliveryNotice
+  /** Behind a folded turn: the row keeps only what outlives the turn. */
+  folded?: boolean
+  /** On a roster row: its list's state and the subagents whose rows open below it. */
+  subagentRoster?: NativeChatSubagentRosterState
+  subagentDisclosure?: NativeChatSubagentDisclosure
+  /** Inside a subagent's section, whose border has to reach past the row's controls. */
+  inSubagentSection?: boolean
   runtimeContext?: RuntimeFileOperationArgs | null
+  /** On a user row: discards it and everything after it. */
+  rewind?: NativeChatRewindSurface
 }): React.JSX.Element | null {
   const rowRef = useRef<HTMLDivElement | null>(null)
-  // One pass per block set: a streaming turn re-renders this row on every frame, and these
-  // derivations used to re-run each time even though `message.blocks` had not changed.
-  const { hasImages, markdown, prose, subagentGroups, tools } = useMemo(() => {
-    const split = splitNativeChatBlocks(message.blocks)
-    const groups = subagentGroupBlocks(split.prose)
-    // A spawn-group row carries a plain-text twin so a client without the block
-    // type still reads the roster. This one draws the block, so the twin is
-    // dropped rather than printed beside it — only the twin, never the prose
-    // beside it: the block is provider-agnostic, so a lane that folds a roster
-    // into a message with real text must not lose that text here.
-    const prose =
-      groups.length === 0
-        ? split.prose
-        : split.prose.filter(
-            (block) =>
-              !isSubagentGroupBlock(block) &&
-              !(block.type === 'text' && isSubagentGroupFallbackText(block.text))
-          )
-    return {
-      tools: split.tools,
-      prose,
-      subagentGroups: groups,
-      markdown: nativeChatProseToMarkdown(prose),
-      hasImages: prose.some((block) => block.type === 'image-ref')
-    }
-  }, [message.blocks])
+  // One pass per block set, shared with the list that decides whether this row
+  // occupies a slot — so "draws nothing" means the same thing to both.
+  const { backgroundTasks, hasImages, markdown, prose, subagentGroups, tools } =
+    deriveNativeChatRowContent(message.blocks)
   const isUser = message.role === 'user'
   const isReasoning = message.role === 'reasoning'
   const isSystem = message.role === 'system'
@@ -106,7 +143,19 @@ export const MessageRow = memo(function MessageRow({
   // Skip rows with nothing renderable so the transcript shows no empty/ghost
   // bubble.
   // After all hooks, so hook order stays unconditional.
-  if (markdown.length === 0 && !hasImages && tools.length === 0 && subagentGroups.length === 0) {
+  if (
+    markdown.length === 0 &&
+    !hasImages &&
+    tools.length === 0 &&
+    subagentGroups.length === 0 &&
+    backgroundTasks.length === 0
+  ) {
+    return null
+  }
+
+  // Behind a folded turn this row is the work, not the answer. Rows that outlive
+  // their turn never reach here — the fold leaves them out.
+  if (folded) {
     return null
   }
 
@@ -153,6 +202,7 @@ export const MessageRow = memo(function MessageRow({
                 content={markdown}
                 variant="document"
                 className="text-sm"
+                renderCodeBlock={NativeChatCodeBlock}
                 onLinkClick={onLinkClick}
                 allowFileUriLinks={allowFileUriLinks}
               />
@@ -165,16 +215,35 @@ export const MessageRow = memo(function MessageRow({
             />
           )}
         </div>
-        <div className="flex items-center gap-1 select-none transition-opacity can-hover:pointer-events-none can-hover:opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-has-[:focus-visible]:pointer-events-auto group-has-[:focus-visible]:opacity-100">
-          <NativeChatMessageTimestamp timestamp={message.timestamp} focusable />
-          {rewind ? <NativeChatRewindAction itemId={message.id} rewind={rewind} /> : null}
-        </div>
-        {deliveryFailed ? (
-          <div className="max-w-[85%] text-[11px] text-destructive/80">
-            {translate(
-              'components.native-chat.launchPromptNotDelivered',
-              'Not delivered — check the terminal'
-            )}
+        {message.sentAs === 'goal' ? (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Goal className="size-3" aria-hidden />
+            <span>{translate('components.native-chat.goal.sentAsGoal', 'Sent as goal')}</span>
+          </div>
+        ) : null}
+        <UserMessageMeta
+          markdown={markdown}
+          timestamp={message.timestamp}
+          sending={deliveryNotice?.sending === true}
+          {...(rewind ? { rewind: { itemId: message.id, surface: rewind } } : {})}
+        />
+        {deliveryNotice?.text !== undefined ? (
+          <div className="flex max-w-[85%] items-center gap-2 text-[11px] text-destructive/80">
+            <span className="min-w-0 break-words">{deliveryNotice.text}</span>
+            {deliveryNotice.onDismiss ? (
+              <Button type="button" variant="ghost" size="xs" onClick={deliveryNotice.onDismiss}>
+                {translate('components.native-chat.dismissDeliveryNotice', 'Dismiss')}
+              </Button>
+            ) : null}
+            {deliveryNotice.onRetry ? (
+              <Button type="button" variant="ghost" size="xs" onClick={deliveryNotice.onRetry}>
+                <RotateCcw className="size-3" />
+                {translate(
+                  'auto.components.native.chat.NativeChatStructuredSession.a5e7f14068',
+                  'Retry'
+                )}
+              </Button>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -205,12 +274,13 @@ export const MessageRow = memo(function MessageRow({
           content={markdown}
           variant="document"
           className="text-sm"
+          renderCodeBlock={NativeChatCodeBlock}
           onLinkClick={onLinkClick}
           allowFileUriLinks={allowFileUriLinks}
           linkifyFilePaths={onLinkClick !== undefined}
         />
       ) : null}
-      {tools.length > 0 || subagentGroups.length > 0 ? (
+      {tools.length > 0 || subagentGroups.length > 0 || backgroundTasks.length > 0 ? (
         <NativeChatToolRun
           blocks={tools}
           previousTodoWrite={previousTodoWrite}
@@ -219,10 +289,13 @@ export const MessageRow = memo(function MessageRow({
           onRevealDiff={onScrollMessageToTop}
           onLinkClick={onLinkClick}
           subagentGroups={subagentGroups}
+          subagentRoster={subagentRoster}
+          subagentDisclosure={subagentDisclosure}
+          backgroundTasks={backgroundTasks}
           expandSignal={expandSignal}
-          expandOverride={activityExpandOverride}
           activeTurnIsWorking={activeTurnIsWorking}
-          structuredActivityUi={structuredActivityUi}
+          trailing={trailingRun}
+          disclosureId={message.id}
         />
       ) : null}
       {showControls ? (
@@ -230,7 +303,11 @@ export const MessageRow = memo(function MessageRow({
           markdown={markdown}
           timestamp={message.timestamp}
           onScrollToTop={scrollToTop}
-          className="mt-1 -mb-5 w-fit select-none transition-opacity can-hover:pointer-events-none can-hover:opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-has-[:focus-visible]:pointer-events-auto group-has-[:focus-visible]:opacity-100"
+          className={cn(
+            'mt-1 w-fit select-none transition-opacity can-hover:pointer-events-none can-hover:opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 [.group:has(:focus-visible)_&]:pointer-events-auto [.group:has(:focus-visible)_&]:opacity-100',
+            // They hang into the gap below; a section keeps them inside its border instead.
+            !inSubagentSection && '-mb-5'
+          )}
         />
       ) : null}
     </div>

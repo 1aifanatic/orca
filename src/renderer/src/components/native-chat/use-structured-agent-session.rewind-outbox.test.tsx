@@ -23,10 +23,6 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 vi.mock('./use-structured-agent-session-hold', () => ({
   useStructuredAgentSessionHold: () => undefined
 }))
-vi.mock('./use-structured-agent-session-status-summary', () => ({
-  useStructuredAgentSessionStatusSummary: () =>
-    mocks.blocked ? { rewindBlockedReason: 'outcome-unknown' } : null
-}))
 vi.mock('./use-structured-agent-session-read', () => ({
   useStructuredAgentSessionRead: () => ({ state, loadingOlder: false, loadOlder: vi.fn() })
 }))
@@ -59,7 +55,12 @@ describe('rewind recovery outbox suspension', () => {
     async (entryState) => {
       const entry = enqueueStructuredAgentSessionLaunchPrompt(args.sessionId, 'Pending prompt')!
       writeOutbox(args.sessionId, [{ ...entry, state: entryState }])
-      const view = renderHook(() => useStructuredAgentSession(args))
+      const view = renderHook(() =>
+        useStructuredAgentSession({
+          ...args,
+          rewindBlockedReason: mocks.blocked ? 'outcome-unknown' : null
+        })
+      )
       await act(async () => {
         view.result.current.retry(entry.clientMessageId)
         await vi.advanceTimersByTimeAsync(60_000)

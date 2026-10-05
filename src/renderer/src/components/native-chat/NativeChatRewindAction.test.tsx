@@ -6,6 +6,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MessageRow } from './NativeChatMessageRow'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 
+const confirm = vi.hoisted(() => vi.fn())
+vi.mock('@/components/confirmation-dialog-context', () => ({
+  useConfirmationDialog: () => confirm
+}))
+
 afterEach(cleanup)
 function row(
   role: NativeChatMessage['role'],
@@ -39,10 +44,10 @@ describe('user-row rewind affordance', () => {
     expect(button).toHaveFocus()
     expect(button.parentElement).toHaveClass(
       'group-hover:opacity-100',
-      'group-has-[:focus-visible]:opacity-100'
+      '[.group:has(:focus-visible)_&]:opacity-100'
     )
     fireEvent.click(button)
-    expect(request).toHaveBeenCalledWith('user-1')
+    expect(request).toHaveBeenCalledWith('user-1', confirm)
   })
   it('exposes the disabled reason to keyboard users and cannot invoke rewind', async () => {
     const request = row('user', 'This older Codex conversation does not support rewinding.')

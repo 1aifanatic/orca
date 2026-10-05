@@ -21,7 +21,7 @@ import {
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { MessageRow } from './NativeChatMessageRow'
 
-const mocks = vi.hoisted(() => ({ call: vi.fn() }))
+const mocks = vi.hoisted(() => ({ call: vi.fn(), confirm: vi.fn() }))
 let state: StructuredAgentSessionState
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
@@ -30,8 +30,8 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 vi.mock('./use-structured-agent-session-hold', () => ({
   useStructuredAgentSessionHold: () => undefined
 }))
-vi.mock('./use-structured-agent-session-status-summary', () => ({
-  useStructuredAgentSessionStatusSummary: () => null
+vi.mock('@/components/confirmation-dialog-context', () => ({
+  useConfirmationDialog: () => mocks.confirm
 }))
 vi.mock('./use-structured-agent-session-read', () => ({
   useStructuredAgentSessionRead: () => ({ state, loadingOlder: false, loadOlder: vi.fn() })
@@ -80,7 +80,7 @@ describe('rewind target after send acceptance', () => {
     await waitFor(() => expect(hook.result.current.messages).toHaveLength(1))
     const entry = hook.result.current.outbox[0]!
     const optimisticId = agentJournalSubmissionKey(entry.clientMessageId)
-    const confirm = vi.fn().mockResolvedValue(true)
+    const confirm = mocks.confirm.mockResolvedValue(true)
     const row = () => (
       <TooltipProvider>
         <MessageRow
@@ -89,7 +89,7 @@ describe('rewind target after send acceptance', () => {
           onScrollMessageToTop={vi.fn()}
           rewind={{
             disabledReason: hook.result.current.rewind.disabledReason,
-            request: (itemId) => void hook.result.current.rewind.request(itemId, confirm)
+            request: hook.result.current.rewind.request
           }}
         />
       </TooltipProvider>

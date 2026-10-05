@@ -6,8 +6,18 @@ import { EMPTY_STRUCTURED_AGENT_SESSION } from '../../../../shared/structured-ag
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
 import { countNativeChatRewindMessages, useNativeChatRewind } from './use-native-chat-rewind'
 import { nativeChatRewindReasonCopy } from './native-chat-rewind-copy'
+import {
+  parseAgentSessionWriteFailure,
+  type AgentSessionWriteFailure
+} from '../../../../shared/agent-session-write-failure'
 
 afterEach(cleanup)
+const done = { kind: 'done' as const, value: { itemId: 'user', epoch: 'new' } }
+const notDone = (failure: AgentSessionWriteFailure) => ({
+  kind: 'not-done' as const,
+  notice: '',
+  failure
+})
 const item = (itemId: string, sequence: number, role = 'user'): AgentJournalRenderItem =>
   ({
     itemId,
@@ -28,9 +38,8 @@ function input() {
       items: [item('user', 10), item('reply', 11, 'assistant'), item('later', 12)]
     },
     support: { supported: true as const },
-    supportResolved: true,
     blocked: false,
-    send: vi.fn().mockResolvedValue({ itemId: 'user', epoch: 'new' })
+    send: vi.fn().mockResolvedValue(done)
   }
 }
 function deferred<T>() {
@@ -56,10 +65,7 @@ describe('structured chat rewind', () => {
         description: expect.stringContaining('3 in total')
       })
     )
-    expect(props.send).toHaveBeenCalledWith(
-      { itemId: 'user', expectedEpoch: 'old' },
-      expect.any(Function)
-    )
+    expect(props.send).toHaveBeenCalledWith({ itemId: 'user', expectedEpoch: 'old' })
     expect(view.result.current.pending).toBe(true)
     expect(view.result.current.blockedRef.current).toBe(true)
   })
@@ -104,7 +110,7 @@ describe('structured chat rewind', () => {
 
   it('does not label its in-flight request as an unknown outcome when the host prepares recovery', async () => {
     const props = input(),
-      response = deferred<{ itemId: string; epoch: string }>()
+      response = deferred<typeof done>()
     props.send.mockReturnValue(response.promise)
     const view = renderHook<
       ReturnType<typeof useNativeChatRewind>,
@@ -118,7 +124,7 @@ describe('structured chat rewind', () => {
     expect(view.result.current.pending).toBe(true)
     expect(view.result.current.error).toBeNull()
     await act(async () => {
-      response.resolve({ itemId: 'user', epoch: 'new' })
+      response.resolve(done)
       await request
     })
     expect(view.result.current.error).toBeNull()
@@ -142,27 +148,18 @@ describe('structured chat rewind', () => {
     expect(props.send).not.toHaveBeenCalled()
   })
 
-  it.each(['busy', 'unwritable', 'handoff', 'legacy', 'loading-support'] as const)(
+  it.each(['busy', 'unwritable', 'legacy', 'loading-support'] as const)(
     'disables %s sessions with explanatory copy',
     async (mode) => {
       const props: Parameters<typeof useNativeChatRewind>[0] = input()
       if (mode === 'loading-support') {
-        props.supportResolved = false
+        props.support = undefined
       }
       if (mode === 'busy') {
         props.blocked = true
       }
       if (mode === 'unwritable') {
         props.state.fence = null
-      }
-      if (mode === 'handoff') {
-        props.state.handoff = {
-          owner: 'tui',
-          phase: 'idle',
-          stage: null,
-          direction: null,
-          operationId: null
-        }
       }
       if (mode === 'legacy') {
         props.support = { supported: false, reason: 'history-not-paginated' }
@@ -211,7 +208,7 @@ describe('structured chat rewind', () => {
     'settles when epoch reset arrives %s RPC success',
     async (order) => {
       const props = input(),
-        response = deferred<{ itemId: string; epoch: string }>()
+        response = deferred<typeof done>()
       props.send.mockReturnValue(response.promise)
       const view = renderHook((value) => useNativeChatRewind(value), { initialProps: props })
       let request!: Promise<void>
@@ -224,7 +221,7 @@ describe('structured chat rewind', () => {
         reset()
       }
       await act(async () => {
-        response.resolve({ itemId: 'user', epoch: 'new' })
+        response.resolve(done)
         await request
       })
       if (order === 'after') {
@@ -254,10 +251,22 @@ describe('structured chat rewind', () => {
     'explains refusal %s',
     async (rewindReason) => {
       const props = input()
-      props.send.mockImplementation(async (_fields, failure) => {
-        failure({ code: 'agent_session_conflict', rewindReason })
-        return null
-      })
+      props.send.mockResolvedValue(
+        notDone(
+          rewindReason === 'outcome-unknown'
+            ? {
+                kind: 'refused',
+                code: 'agent_session_operation_unknown',
+                details: { reason: 'rewindUnconfirmed', rewindReason: 'outcome-unknown' }
+              }
+            : // Parsed as a reply is, so a reason this build does not know is dropped.
+              (parseAgentSessionWriteFailure({
+                kind: 'refused',
+                code: 'agent_session_operation_invalid',
+                details: { reason: 'rewindRefused', rewindReason }
+              }) ?? { kind: 'failed' })
+        )
+      )
       const view = renderHook(() => useNativeChatRewind(props))
       await act(() => view.result.current.request('user', async () => true))
       expect(view.result.current.error).toBe(nativeChatRewindReasonCopy(rewindReason))
@@ -276,10 +285,7 @@ describe('structured chat rewind', () => {
 
   it('treats a lost transport response as uncertain and never retries', async () => {
     const props = input()
-    props.send.mockImplementation(async (_fields, failure) => {
-      failure()
-      return null
-    })
+    props.send.mockResolvedValue(notDone({ kind: 'unconfirmed' }))
     const view = renderHook(() => useNativeChatRewind(props))
     await act(() => view.result.current.request('user', async () => true))
     await act(() => view.result.current.request('user', async () => true))

@@ -1,4 +1,5 @@
 import { Undo2 } from 'lucide-react'
+import { useConfirmationDialog } from '@/components/confirmation-dialog-context'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { translate } from '@/i18n/i18n'
@@ -11,6 +12,7 @@ export function NativeChatRewindAction({
   itemId: string
   rewind: NativeChatRewindSurface
 }) {
+  const confirm = useConfirmationDialog()
   const label = translate('components.native-chat.rewind.action', 'Revert to here')
   return (
     <Tooltip>
@@ -25,7 +27,7 @@ export function NativeChatRewindAction({
           aria-disabled={Boolean(rewind.disabledReason)}
           onClick={() => {
             if (!rewind.disabledReason) {
-              rewind.request(itemId)
+              void rewind.request(itemId, confirm)
             }
           }}
         >

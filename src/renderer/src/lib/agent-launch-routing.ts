@@ -5,16 +5,13 @@ import {
   resolveStructuredNativeChatSupport
 } from '../../../shared/structured-native-chat-launch-route'
 import type { TuiAgent } from '../../../shared/tui-agent'
+import type { WorkspaceLaunchKind } from '../../../shared/workspace-launch-kind'
 import {
   decideInitialAgentTabViewMode,
   type NativeChatLaunchPromptDelivery
 } from '@/lib/native-chat-initial-view-mode'
 
-export {
-  hasExplicitTuiAgentArgs,
-  hasExplicitTuiLaunchCustomization,
-  hasSemanticallyNonEmptyAgentArgs
-} from '../../../shared/tui-agent-launch-customization'
+export { hasExplicitTuiLaunchCommand } from '../../../shared/tui-agent-launch-command-override'
 
 export type AgentLaunchRoute = 'structured-native-chat' | 'legacy-native-chat' | 'terminal-tui'
 
@@ -32,16 +29,24 @@ export type AgentLaunchRoutingInput = {
   executionHostId: string
   /** Capabilities of the target host; `null` = not yet established. */
   hostCapabilities: readonly string[] | null
-  workspaceKind?: 'git-worktree' | 'folder' | 'floating'
+  /** What this client advertises to a paired host. */
+  clientCapabilities?: readonly string[]
+  workspaceKind?: WorkspaceLaunchKind
   projectRuntime?: ProjectExecutionRuntimeResolution | null
   promptDelivery?: NativeChatLaunchPromptDelivery
   launchText?: string
   nativeChatTranscriptIsLocalReadable?: boolean
-  requiresTuiLaunchCustomization?: boolean
+  requiresTuiLaunchCommand?: boolean
   initialSessionOptions?: Readonly<Record<string, unknown>>
 }
 
 export function resolveAgentLaunchRoute(input: AgentLaunchRoutingInput): AgentLaunchRoute {
+  // Why: structured eligibility is decided before the view-mode decider. That decider applies the
+  // terminal mirror gate (a TUI cannot clear more than forty lines of prefilled draft), which has
+  // no meaning for a session that seeds the composer store directly. Its other gates are already
+  // implied here: the structured resolver admits only claude/codex, both native-chat agents, and
+  // only hosts with an Orca runtime, and a structured session reads its journal over RPC rather
+  // than the transcript file, so local transcript readability does not apply either.
   if (
     prefersStructuredNativeChatByDefault(input.settings) &&
     structuredAgentLaunchSupported(input)
@@ -56,10 +61,7 @@ export function resolveAgentLaunchRoute(input: AgentLaunchRoutingInput): AgentLa
     launchDraftText: input.launchText,
     nativeChatTranscriptIsLocalReadable: input.nativeChatTranscriptIsLocalReadable
   })
-  if (initialViewMode !== 'chat') {
-    return 'terminal-tui'
-  }
-  return 'legacy-native-chat'
+  return initialViewMode === 'chat' ? 'legacy-native-chat' : 'terminal-tui'
 }
 
 // Explicit chat requests do not depend on the default view mode for new tabs.
@@ -72,10 +74,10 @@ export function structuredAgentLaunchSupported(
       agent: input.agent,
       executionHostId: input.executionHostId,
       hostCapabilities: input.hostCapabilities,
+      ...(input.clientCapabilities ? { clientCapabilities: input.clientCapabilities } : {}),
       workspaceKind: input.workspaceKind,
       projectRuntime: input.projectRuntime,
-      isDraftPrompt: input.promptDelivery === 'draft',
-      requiresTuiLaunchCustomization: input.requiresTuiLaunchCustomization
+      requiresTuiLaunchCommand: input.requiresTuiLaunchCommand
     }).supported
   )
 }
