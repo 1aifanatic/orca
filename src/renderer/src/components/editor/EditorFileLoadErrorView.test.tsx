@@ -59,4 +59,20 @@ describe('EditorFileLoadErrorView', () => {
     screen.getByText(FILE_TOO_LARGE_ERROR)
     expect(screen.queryByText('raw error message')).toBeNull()
   })
+
+  it.each([
+    'Remote preview failed: file_too_large',
+    "Error invoking remote method 'fs:readFile': Error: file_too_large"
+  ])('localizes a transport-wrapped refusal: %s', (message) => {
+    render(<EditorFileLoadErrorView message={message} onRetry={vi.fn()} />)
+    screen.getByText(FILE_TOO_LARGE_ERROR)
+    expect(screen.queryByText(message)).toBeNull()
+  })
+
+  it('keeps unrelated errors that merely mention the token', () => {
+    const message = 'Failed to read file_too_large.log'
+    render(<EditorFileLoadErrorView message={message} onRetry={vi.fn()} />)
+    screen.getByText(message)
+    expect(screen.queryByText(FILE_TOO_LARGE_ERROR)).toBeNull()
+  })
 })

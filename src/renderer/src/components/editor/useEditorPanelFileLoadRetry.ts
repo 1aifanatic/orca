@@ -57,7 +57,7 @@ export function shouldRetryFileLoadError(message: string, code?: string): boolea
   if (
     message === WORKTREE_OWNER_UNREACHABLE_ERROR ||
     code === WORKTREE_HOST_UNRESOLVED_CODE ||
-    code === FILE_TOO_LARGE_CODE
+    hasRuntimeRpcErrorCode({ code, message }, FILE_TOO_LARGE_CODE)
   ) {
     return false
   }
@@ -66,8 +66,7 @@ export function shouldRetryFileLoadError(message: string, code?: string): boolea
     !lower.includes('access denied') &&
     !lower.includes('enoent') &&
     !lower.includes('no such file') &&
-    !lower.includes('file too large') &&
-    !lower.includes(FILE_TOO_LARGE_CODE)
+    !lower.includes('file too large')
   )
 }
 
