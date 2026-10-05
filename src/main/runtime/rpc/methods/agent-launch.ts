@@ -71,6 +71,23 @@ export function supportsAgentLaunch(
 }
 
 /**
+ * `agent.launch.v2` was defined when Claude and Codex were the only chats, so it vouches for those
+ * two. Any other agent's chat needs the client to say it reads it, by the rule tabs and restart
+ * offers use; a client that does not gets that agent as a terminal.
+ */
+function callerRendersLaunchedChat(
+  context: Pick<RpcContext, 'clientKind' | 'clientCapabilities'>,
+  agent: string
+): boolean {
+  return (
+    context.clientKind === undefined ||
+    agent === 'claude' ||
+    agent === 'codex' ||
+    clientRendersStructuredAgent(context.clientCapabilities, agent)
+  )
+}
+
+/**
  * A client addresses a workspace by selector, but the result's `worktreeId` is an id and every
  * step below the executor re-prefixes it as `id:<worktreeId>`. Resolving here is what keeps a
  * caller's `id:wt-7` from reaching the runtime as `id:id:wt-7`.
@@ -166,11 +183,7 @@ async function runAgentLaunch(
       terminalSpawn
     ),
     workspaces: agentLaunchWorkspaceFactory(context, intent.agent),
-    // The rule tabs and restart offers use: a phone that cannot show this agent's chat gets a terminal.
-    ...(context.clientKind !== undefined &&
-    !clientRendersStructuredAgent(context.clientCapabilities, intent.agent)
-      ? { callerRendersStructured: false }
-      : {})
+    ...(callerRendersLaunchedChat(context, intent.agent) ? {} : { callerRendersStructured: false })
   })
   if (callerNavigationId !== null) {
     selectAgentLaunchTabForCaller(context.runtime, result, callerNavigationId)

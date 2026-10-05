@@ -1,19 +1,17 @@
 /**
- * `agent.launch` makes a chat only for a caller that can show it: a client that cannot read an
- * agent's chat gets a terminal, by the rule tabs and restart offers use. The host's own callers
- * (CLI, orchestration over the runtime socket) carry no capability list and are unaffected.
+ * `agent.launch` makes a chat only for a caller that can show it. `agent.launch.v2` vouches for
+ * Claude and Codex chats; any other agent's chat needs the client to read it, by the rule tabs and
+ * restart offers use, else it gets a terminal. The host's own callers (CLI, orchestration over the
+ * runtime socket) carry no capability list and are unaffected.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
-import type { RpcContext } from '../core'
 import {
-  CAPABLE_CLIENT,
-  methodNamed,
-  PHONE_LAUNCH_CAPABILITIES,
-  rpcContext,
-  runtimeStub
-} from './agent-launch.test-fixture'
+  STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY,
+  STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
+} from '../../../../shared/protocol-version'
+import type { RpcContext } from '../core'
+import { CAPABLE_CLIENT, methodNamed, rpcContext, runtimeStub } from './agent-launch.test-fixture'
 
 const createStructuredSession = vi.fn(async (_args: Record<string, unknown>) => ({
   ok: true as const,
@@ -46,7 +44,7 @@ beforeEach(() => {
 })
 
 describe('a launch the caller cannot show as a chat', () => {
-  it('opens Grok as a terminal for a phone that reads only Claude and Codex chats', async () => {
+  it('opens Grok as a terminal for a client that reads only Claude and Codex chats', async () => {
     const { result, runtime } = await launchInto('grok', CAPABLE_CLIENT)
     expect(result.outcome).toMatchObject({ kind: 'terminal', handle: 'term_1' })
     expect(result.receipt).toMatchObject({ mode: 'terminal', preferred: 'structured' })
@@ -54,7 +52,7 @@ describe('a launch the caller cannot show as a chat', () => {
     expect(runtime.createTerminal).toHaveBeenCalledTimes(1)
   })
 
-  it('still opens Claude and Codex as chats for that phone', async () => {
+  it('still opens Claude and Codex as chats for that client', async () => {
     for (const agent of ['claude', 'codex']) {
       const { result } = await launchInto(agent, CAPABLE_CLIENT)
       expect(result.outcome).toMatchObject({ kind: 'structured' })
@@ -65,7 +63,8 @@ describe('a launch the caller cannot show as a chat', () => {
     const { result, runtime } = await launchInto('grok', {
       ...CAPABLE_CLIENT,
       clientCapabilities: [
-        ...PHONE_LAUNCH_CAPABILITIES,
+        ...(CAPABLE_CLIENT.clientCapabilities ?? []),
+        STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
         STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY
       ]
     })

@@ -6,11 +6,7 @@
  */
 
 import { vi } from 'vitest'
-import {
-  AGENT_LAUNCH_RUNTIME_CAPABILITY,
-  CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
-  STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
-} from '../../../../shared/protocol-version'
+import { AGENT_LAUNCH_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
 import { AgentLaunchPaneAlreadyLiveError } from '../../../../shared/agent-launch-pane-already-live'
 import type { RpcContext } from '../core'
 
@@ -135,15 +131,8 @@ export function rpcContext(
   return { runtime, ...context } as unknown as RpcContext
 }
 
-/** What a phone advertises that reads Claude and Codex chats; a launch reads it to pick the mode. */
-export const PHONE_LAUNCH_CAPABILITIES = [
-  STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
-  CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
-  AGENT_LAUNCH_RUNTIME_CAPABILITY
-]
-
 export const CAPABLE_CLIENT: Partial<RpcContext> = {
   clientKind: 'mobile',
   pairedDeviceId: 'device-1',
-  clientCapabilities: PHONE_LAUNCH_CAPABILITIES
+  clientCapabilities: [AGENT_LAUNCH_RUNTIME_CAPABILITY]
 }
