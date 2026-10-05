@@ -17617,7 +17617,7 @@
         "backgroundTasksRunning": "バックグラウンドタスクがまだ実行中です。",
         "waitForBackgroundTasks": "バックグラウンドタスクが終わるまでお待ちください。",
         "messagesUnsettled": "以前に送信したメッセージはまだ確認されていません。",
-        "settleEarlierMessage": "Agent の処理が終わるまで待ってから、もう一度お試しください。",
+        "settleEarlierMessage": "以前のメッセージが届くまで待つか、再試行してください。",
         "optionRejected": "Agent はこの設定を受け入れませんでした。",
         "goalsUnsupported": "この Agent は目標に対応していません。",
         "agentRefused": "Agent がこれを拒否しました。",

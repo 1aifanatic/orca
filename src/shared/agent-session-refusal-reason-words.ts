@@ -81,7 +81,6 @@ const REASON_WORDS = {
     turnActive: causeWords('turnActive', 'wait', 'waitForTurn'),
     promptPending: causeWords('promptPending', 'actFirst', 'answerFirst'),
     backgroundTasksRunning: causeWords('backgroundTasksRunning', 'wait', 'waitForBackgroundTasks'),
-    // No Retry stands for an unconfirmed send, but the chat reads as working until it settles.
     messagesUnsettled: causeWords('messagesUnsettled', 'actFirst', 'settleEarlierMessage'),
     // No chat surface sends a rewind; a replayed one says only that it did not happen.
     rewindRefused: codeWords('hostFinding'),
