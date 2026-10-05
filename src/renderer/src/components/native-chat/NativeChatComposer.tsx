@@ -1,3 +1,5 @@
+import { agentSessionSignInCopyId } from '../../../../shared/agent-session-availability'
+import { sayAgentSessionFailureTranslated } from './agent-session-failure-words-text'
 import type { NativeChatComposerInput } from './native-chat-composer-input'
 import { forwardRef, useCallback, useState } from 'react'
 import { useAppStore } from '../../store'
@@ -185,6 +187,16 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     // A pasted image has no agent-readable path until its save lands; sending
     // mid-save would ship the message without the image the chip promises.
     const hasPendingAttachment = imageAttachments.some((attachment) => attachment.pending)
+    const unavailable = structuredTransport?.unavailable
+    const sendDisabledReason = unavailable
+      ? unavailable.reason === 'cliMissing'
+        ? sayAgentSessionFailureTranslated('cliMissing', {
+            agent: agent === 'codex' ? 'Codex' : 'Claude'
+          })
+        : sayAgentSessionFailureTranslated(
+            agentSessionSignInCopyId(agent === 'codex' ? 'codex' : 'claude', unavailable.account)
+          )
+      : undefined
     const sendButtonDisabled = isWorking
       ? !hasPty || !onStop
       : disabled || hasPendingAttachment || (draft.trim() === '' && imageAttachments.length === 0)
@@ -370,7 +382,10 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
         activeSuggestion={activeSuggestion}
         notice={notice}
         imageAttachments={imageAttachments}
-        sendButtonDisabled={sendButtonDisabled}
+        sendButtonDisabled={
+          sendButtonDisabled || (!isWorking && !goalMode.active && Boolean(unavailable))
+        }
+        sendDisabledReason={goalMode.active ? undefined : sendDisabledReason}
         isWorking={isWorking}
         attachDisabled={disabled}
         dictationDisabled={dictationDisabled}

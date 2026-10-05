@@ -91,6 +91,7 @@ export function useStructuredAgentSession(args: {
   const transportState = useStructuredAgentSessionTransportState(state, transportEnabled)
   const {
     conversationCommands,
+    unavailable,
     optionSnapshot,
     optionSurface,
     setStructuredOption,
@@ -302,6 +303,7 @@ export function useStructuredAgentSession(args: {
         fields
       )
     },
+    unavailable,
     optionSnapshot,
     optionSurface,
     sessionCommands: transportEnabled ? (state.commands ?? undefined) : undefined,

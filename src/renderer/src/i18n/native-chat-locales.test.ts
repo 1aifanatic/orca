@@ -1,3 +1,4 @@
+import fr from './locales/fr.json'
 import { describe, expect, it } from 'vitest'
 import en from './locales/en.json'
 import es from './locales/es.json'
@@ -61,6 +62,24 @@ describe('native chat locale copy', () => {
       for (const key of ['fast', ...localizedEffortValues] as const) {
         expect(composer.optionValue[key].trim()).not.toBe('')
         expect(composer.optionValue[key]).not.toBe(englishComposer.optionValue[key])
+      }
+    }
+  )
+})
+
+describe('account-aware Send fixes', () => {
+  it.each(Object.entries({ en, es, fr, ja, ko, zh }))(
+    '%s includes the same fixes for Send and post-send failures',
+    (_locale, catalog) => {
+      const words = catalog.components['native-chat'].failureWords
+      expect(words.claudeSystemNotSignedIn).toContain('`claude`')
+      expect(words.claudeSystemNotSignedIn).toContain('/login')
+      expect(words.codexSystemNotSignedIn).toContain('`codex login`')
+      expect(words.claudeManagedNotSignedIn).not.toContain('/login')
+      expect(words.codexManagedNotSignedIn).not.toContain('`codex login`')
+      expect(words.cliMissing).toContain('{{agent}}')
+      for (const key of ['claudeManagedNotSignedIn', 'codexManagedNotSignedIn'] as const) {
+        expect(words[key].trim()).not.toBe('')
       }
     }
   )

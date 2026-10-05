@@ -1,3 +1,7 @@
+import {
+  claudeInitializationSignedOut,
+  type AgentSessionAccountKind
+} from '../../shared/agent-session-availability'
 import { CLAUDE_DEFAULT_SETTING_SOURCES } from './claude-structured-launch-resolution'
 import type { ClaudeAuthDiagnostic } from './claude-structured-session-state'
 import { AgentSessionAcquisitionRefusal } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
@@ -68,14 +72,14 @@ export function readClaudeCapabilities(
 }
 
 export function claudeInitializationAuthError(
-  initialization: unknown
+  initialization: unknown,
+  accountKind?: AgentSessionAccountKind
 ): AgentSessionAcquisitionRefusal | null {
-  const account =
-    isRecord(initialization) && isRecord(initialization.account) ? initialization.account : null
-  return readClaudeFrameString(account ?? {}, 'tokenSource') === 'none'
+  return claudeInitializationSignedOut(initialization)
     ? new AgentSessionAcquisitionRefusal(
         'Claude is not signed in for the selected account. Sign in with the Claude CLI for this CLAUDE_CONFIG_DIR, then retry.',
-        'notSignedIn'
+        'notSignedIn',
+        accountKind
       )
     : null
 }

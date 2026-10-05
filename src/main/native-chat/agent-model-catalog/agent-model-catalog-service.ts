@@ -116,29 +116,36 @@ export function createAgentModelCatalogService(
       let entry = deps.store.get(fingerprint)
       const probe = deps.probes?.[params.agent]
       const home = accountHomePath
-      // Without an entry, join a running listing too: that is the one a waiting read answers from.
       const listing =
         probe &&
         home &&
-        (entry ? deps.store.shouldRefresh(fingerprint) : !deps.store.hasActiveFailure(fingerprint))
+        (deps.store.shouldProbeAvailability(fingerprint) || deps.store.shouldRefresh(fingerprint))
           ? deps.store.refresh(fingerprint, params.agent, () => probe(home))
           : null
-      if (!entry) {
-        if (!listing) {
-          return { origin: 'unknown' }
-        }
-        if (!params.waitForListing) {
-          return { origin: 'unknown', listingInProgress: true }
-        }
-        entry = await listing
-        if (!entry) {
-          return { origin: 'unknown' }
-        }
+      if (listing && params.waitForListing) {
+        await listing
+        entry = deps.store.get(fingerprint)
       }
-      return resultFromEntry(
-        entry,
-        await workspaceKeepsListedDefault(deps, params.agent, params.workspacePath, accountHomePath)
-      )
+      const unavailable = home ? deps.store.unavailable(fingerprint) : undefined
+      const observation = {
+        ...(unavailable ? { unavailable } : {}),
+        ...(listing && !params.waitForListing ? { listingInProgress: true as const } : {})
+      }
+      if (!entry) {
+        return { origin: 'unknown', ...observation }
+      }
+      return {
+        ...resultFromEntry(
+          entry,
+          await workspaceKeepsListedDefault(
+            deps,
+            params.agent,
+            params.workspacePath,
+            accountHomePath
+          )
+        ),
+        ...observation
+      }
     }
   }
 }

@@ -210,6 +210,7 @@ export function NativeChatStructuredSession(
       ...(setThreadGoalObjective ? { threadGoal: { setObjective: setThreadGoalObjective } } : {}),
       optionsSurface: controller.optionSurface,
       conversationCommands: controller.conversationCommands,
+      unavailable: controller.unavailable,
       optionSnapshot: controller.optionSnapshot,
       optionPickerRequest,
       sessionCommands: controller.sessionCommands,

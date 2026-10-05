@@ -1,6 +1,8 @@
+import type { KeyboardEventHandler } from 'react'
+import type { NativeChatStructuredComposerTransport } from './native-chat-composer-types'
 // @vitest-environment happy-dom
 
-import { act, cleanup, render, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   SessionOptionDescriptor,
@@ -14,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   composerIsComposing: null as (() => boolean) | null,
   attachmentIsComposing: null as (() => boolean) | null,
   flushPendingAttachments: vi.fn(),
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the hoisted mock starts empty and only the typed field component assigns its props.
   fieldProps: null as {
     onSend?: () => void
     onStop?: () => void
@@ -26,6 +29,7 @@ const mocks = vi.hoisted(() => ({
     sessionOptionsSnapshot?: SessionOptionDescriptor[]
     attachDisabled?: boolean
     sendButtonDisabled?: boolean
+    sendDisabledReason?: string
     autocomplete?: { mode: string; items?: { kind: string; name: string }[] }
   } | null,
   modelSwitchOutcome: 'applied' as 'applied' | 'rejected' | 'unknown',
@@ -107,9 +111,13 @@ vi.mock('./native-chat-draft-cache', () => ({
   readNativeChatDraftCache: () => ''
 }))
 vi.mock('./NativeChatComposerField', () => ({
-  NativeChatComposerField: (props: { onSend?: () => void; onStop?: () => void }) => {
+  NativeChatComposerField: (props: {
+    onSend?: () => void
+    onStop?: () => void
+    onKeyDown?: KeyboardEventHandler<HTMLElement>
+  }) => {
     mocks.fieldProps = props
-    return <div data-testid="native-chat-composer-field" />
+    return <div data-testid="native-chat-composer-field" onKeyDown={props.onKeyDown} />
   }
 }))
 vi.mock('./use-native-chat-skills', () => ({
@@ -277,13 +285,14 @@ describe('NativeChatComposer', () => {
       subscribe: () => () => {}
     } satisfies SessionOptionsSurface
     const optionSnapshot = [{ id: 'model' }] as SessionOptionDescriptor[]
-    render(
+    const composer = (unavailable: NativeChatStructuredComposerTransport['unavailable']) => (
       <NativeChatComposer
         terminalTabId="tab-1"
         paneKey="tab-1:structured"
         targetPtyId={null}
         agent="codex"
         structuredTransport={{
+          unavailable,
           send,
           dispatchCommand,
           optionsSurface,
@@ -296,6 +305,22 @@ describe('NativeChatComposer', () => {
       />
     )
 
+    const view = render(composer({ reason: 'notSignedIn', account: 'managed' }))
+    expect(mocks.fieldProps?.sendButtonDisabled).toBe(true)
+    expect(mocks.fieldProps?.sendDisabledReason).toContain('Codex Accounts settings.')
+    await act(async () => mocks.fieldProps?.onSend?.())
+    await act(async () => {
+      fireEvent.keyDown(view.getByTestId('native-chat-composer-field'), { key: 'Enter' })
+      fireEvent.keyDown(view.getByTestId('native-chat-composer-field'), {
+        key: 'Enter',
+        ctrlKey: true,
+        metaKey: true
+      })
+    })
+    expect(send).not.toHaveBeenCalled()
+    expect(mocks.setDraft).not.toHaveBeenCalledWith('')
+    view.rerender(composer(null))
+    expect(mocks.fieldProps?.sendButtonDisabled).toBe(false)
     expect(mocks.fieldProps?.sessionOptionsSurface).toBe(optionsSurface)
     expect(mocks.fieldProps?.sessionOptionsSnapshot).toBe(optionSnapshot)
     expect(mocks.fieldProps?.attachDisabled).toBe(false)

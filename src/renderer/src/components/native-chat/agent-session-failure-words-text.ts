@@ -46,6 +46,32 @@ const PIECES: Record<AgentSessionFailureCopyId, (values: AgentSessionFailureCopy
       translate('components.native-chat.writeNotice.startNewChat', COPY.startNewChat),
     notSignedIn: (values) =>
       translate('components.native-chat.failureWords.notSignedIn', COPY.notSignedIn, values),
+    claudeSystemNotSignedIn: (values) =>
+      translate(
+        'components.native-chat.failureWords.claudeSystemNotSignedIn',
+        COPY.claudeSystemNotSignedIn,
+        values
+      ),
+    claudeManagedNotSignedIn: (values) =>
+      translate(
+        'components.native-chat.failureWords.claudeManagedNotSignedIn',
+        COPY.claudeManagedNotSignedIn,
+        values
+      ),
+    codexSystemNotSignedIn: (values) =>
+      translate(
+        'components.native-chat.failureWords.codexSystemNotSignedIn',
+        COPY.codexSystemNotSignedIn,
+        values
+      ),
+    codexManagedNotSignedIn: (values) =>
+      translate(
+        'components.native-chat.failureWords.codexManagedNotSignedIn',
+        COPY.codexManagedNotSignedIn,
+        values
+      ),
+    cliMissing: (values) =>
+      translate('components.native-chat.failureWords.cliMissing', COPY.cliMissing, values),
     signInFirst: () =>
       translate('components.native-chat.failureWords.signInFirst', COPY.signInFirst),
     signInThenRunCommand: (values) =>

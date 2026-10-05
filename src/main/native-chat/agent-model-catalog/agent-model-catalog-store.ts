@@ -1,3 +1,8 @@
+import {
+  AGENT_SESSION_AVAILABILITY_TTL_MS,
+  type AgentSessionUnavailableObservation,
+  type AgentSessionUnavailable
+} from '../../../shared/agent-session-availability'
 import type {
   AgentSessionFastModeSupport,
   AgentSessionModelOption
@@ -38,7 +43,13 @@ export type AgentModelCatalogSuccess = {
 
 export type AgentModelCatalogProbe = (accountHomePath: string) => Promise<AgentModelCatalogSuccess>
 
-type CatalogFailure = { detail: string; failedAt: number }
+export class AgentModelCatalogUnavailableError extends Error {
+  constructor(readonly unavailable: AgentSessionUnavailable) {
+    super(unavailable.reason)
+  }
+}
+
+type CatalogFailure = { detail: string; failedAt: number; unavailable?: AgentSessionUnavailable }
 
 /** A live session's handle into the store, pinned at spawn to the account home
  *  THAT child launched under — an account switched afterwards must never
@@ -81,6 +92,7 @@ function listingKey(entry: AgentModelCatalogEntry): string {
 export class AgentModelCatalogStore {
   private readonly entries = new Map<string, AgentModelCatalogEntry>()
   private readonly failures = new Map<string, CatalogFailure>()
+  private readonly probeTimes = new Map<string, number>()
   private readonly refreshes = new Map<string, Promise<AgentModelCatalogEntry | null>>()
   private persistence: AgentModelCatalogPersistence | null = null
   private readonly now: () => number
@@ -172,8 +184,50 @@ export class AgentModelCatalogStore {
     return entry
   }
 
-  recordFailure(fingerprint: string, detail: string): void {
-    this.failures.set(fingerprint, { detail, failedAt: this.now() })
+  recordFailure(fingerprint: string, detail: string, unavailable?: AgentSessionUnavailable): void {
+    this.failures.delete(fingerprint)
+    this.failures.set(fingerprint, {
+      detail,
+      failedAt: this.now(),
+      ...(unavailable ? { unavailable } : {})
+    })
+    this.evictTransientOverCap()
+  }
+
+  unavailable(fingerprint: string): AgentSessionUnavailableObservation | undefined {
+    if (!this.hasActiveFailure(fingerprint)) {
+      return undefined
+    }
+    const failure = this.failures.get(fingerprint)
+    return failure?.unavailable
+      ? {
+          ...failure.unavailable,
+          expiresInMs: Math.max(
+            0,
+            AGENT_SESSION_AVAILABILITY_TTL_MS - (this.now() - failure.failedAt)
+          )
+        }
+      : undefined
+  }
+
+  shouldProbeAvailability(fingerprint: string): boolean {
+    const checkedAt = this.probeTimes.get(fingerprint)
+    return (
+      !this.hasActiveFailure(fingerprint) &&
+      (checkedAt === undefined || this.now() - checkedAt >= AGENT_SESSION_AVAILABILITY_TTL_MS)
+    )
+  }
+
+  private evictTransientOverCap(): void {
+    for (const entries of [this.failures, this.probeTimes]) {
+      while (entries.size > AGENT_MODEL_CATALOG_MAX_ENTRIES) {
+        const oldest = entries.keys().next().value
+        if (oldest === undefined) {
+          break
+        }
+        entries.delete(oldest)
+      }
+    }
   }
 
   /** Joins an in-flight refresh for the key rather than starting a second.
@@ -187,14 +241,28 @@ export class AgentModelCatalogStore {
     if (inFlight) {
       return inFlight
     }
-    const run = listModels().then(
+    let listing: Promise<AgentModelCatalogSuccess>
+    try {
+      listing = listModels()
+    } catch (error) {
+      listing = Promise.reject(error)
+    }
+    const run = listing.then(
       (success) => {
         this.refreshes.delete(fingerprint)
+        this.probeTimes.delete(fingerprint)
+        this.probeTimes.set(fingerprint, this.now())
+        this.failures.delete(fingerprint)
+        this.evictTransientOverCap()
         return this.recordSuccess(fingerprint, agent, success)
       },
       (error: unknown) => {
         this.refreshes.delete(fingerprint)
-        this.recordFailure(fingerprint, error instanceof Error ? error.message : String(error))
+        this.recordFailure(
+          fingerprint,
+          error instanceof Error ? error.message : String(error),
+          error instanceof AgentModelCatalogUnavailableError ? error.unavailable : undefined
+        )
         return null
       }
     )

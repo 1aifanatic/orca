@@ -1,3 +1,4 @@
+import { claudeInitializationSignedOut } from './agent-session-availability'
 import { assertJsonTextStructureWithinLimits } from './json-text-structure-limit'
 
 // Why: the Claude CLI has no model-listing subcommand (`claude models` starts a
@@ -121,4 +122,48 @@ export function parseClaudeModelList(stdout: string): ClaudeListedModel[] {
     }
   }
   return []
+}
+
+export const CLAUDE_CATALOG_INITIALIZE_ID = 'orca-catalog-initialize'
+export const CLAUDE_CATALOG_STDIN = `${JSON.stringify({
+  type: 'control_request',
+  request_id: CLAUDE_CATALOG_INITIALIZE_ID,
+  request: { subtype: 'initialize' }
+})}\n${CLAUDE_MODEL_LIST_STDIN}`
+
+export function claudeCatalogSignedOut(stdout: string): boolean {
+  for (const line of stdout.split(/\r?\n/)) {
+    if (!line.includes(CLAUDE_CATALOG_INITIALIZE_ID)) {
+      continue
+    }
+    try {
+      assertJsonTextStructureWithinLimits(line, CLAUDE_MODEL_LIST_JSON_LIMITS)
+      const parsed: unknown = JSON.parse(line)
+      if (
+        typeof parsed !== 'object' ||
+        parsed === null ||
+        !('type' in parsed) ||
+        parsed.type !== 'control_response' ||
+        !('response' in parsed)
+      ) {
+        continue
+      }
+      const response = parsed.response
+      if (
+        typeof response !== 'object' ||
+        response === null ||
+        !('request_id' in response) ||
+        response.request_id !== CLAUDE_CATALOG_INITIALIZE_ID ||
+        !('subtype' in response) ||
+        response.subtype !== 'success' ||
+        !('response' in response)
+      ) {
+        continue
+      }
+      return claudeInitializationSignedOut(response.response)
+    } catch {
+      /* Malformed provider output is unknown. */
+    }
+  }
+  return false
 }

@@ -1,5 +1,9 @@
+import {
+  claudeCatalogSignedOut,
+  CLAUDE_CATALOG_STDIN,
+  parseClaudeModelList
+} from './claude-model-list-probe'
 import { describe, expect, it } from 'vitest'
-import { parseClaudeModelList } from './claude-model-list-probe'
 
 function controlResponseLine(models: unknown[]): string {
   return JSON.stringify({
@@ -136,5 +140,54 @@ describe('parseClaudeModelList', () => {
       ])
     )
     expect(parsed[0]?.effortLevels).toEqual([])
+  })
+})
+
+describe('Claude catalog initialize observation', () => {
+  it('sends only initialization and model controls, with no user turn', () => {
+    expect(
+      CLAUDE_CATALOG_STDIN.trim()
+        .split('\n')
+        .map((line) => JSON.parse(line))
+    ).toEqual([
+      {
+        type: 'control_request',
+        request_id: 'orca-catalog-initialize',
+        request: { subtype: 'initialize' }
+      },
+      {
+        type: 'control_request',
+        request_id: 'orca-model-discovery',
+        request: { subtype: 'list_models' }
+      }
+    ])
+  })
+  it.each([
+    ['orca-catalog-initialize', 'success', 'none', true],
+    ['orca-model-discovery', 'success', 'none', false],
+    ['orca-catalog-initialize', 'error', 'none', false],
+    ['orca-catalog-initialize', 'success', 'oauth', false]
+  ] as const)(
+    'reads only correlated successful initialization: %s %s %s',
+    (request_id, subtype, tokenSource, signedOut) => {
+      expect(
+        claudeCatalogSignedOut(
+          JSON.stringify({
+            type: 'control_response',
+            response: { request_id, subtype, response: { account: { tokenSource } } }
+          })
+        )
+      ).toBe(signedOut)
+    }
+  )
+  it.each([
+    '',
+    '{"orca-catalog-initialize":',
+    JSON.stringify({
+      type: 'control_response',
+      response: { request_id: 'orca-catalog-initialize', subtype: 'success', response: {} }
+    })
+  ])('keeps missing or malformed initialization unknown', (output) => {
+    expect(claudeCatalogSignedOut(output)).toBe(false)
   })
 })

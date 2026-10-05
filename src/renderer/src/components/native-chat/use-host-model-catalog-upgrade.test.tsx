@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 
-import { act, render, renderHook } from '@testing-library/react'
+import { act, cleanup, render, renderHook } from '@testing-library/react'
 import { useLayoutEffect } from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ call: vi.fn() }))
 
@@ -21,6 +21,7 @@ vi.mock('@/lib/structured-agent-session-launch-options', () => ({
   getStructuredAgentSessionLaunchSelection: () => null
 }))
 
+import { useAppStore } from '@/store'
 import type { SessionOptionDescriptor } from '../../../../shared/native-chat-session-options'
 import type { StructuredAgentSessionMutate } from './use-structured-agent-session-mutate'
 import { useStructuredAgentSessionOptions } from './use-structured-agent-session-options'
@@ -354,4 +355,121 @@ describe('the end of a host listing wait', () => {
       view.unmount()
     })
   }
+})
+
+describe('Send availability follows the current catalog', () => {
+  beforeEach(() => {
+    mocks.call.mockReset()
+    sessionId = `availability-${++sessionCount}`
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    cleanup()
+    vi.useRealTimers()
+  })
+  const blocked = {
+    origin: 'unknown',
+    unavailable: { reason: 'notSignedIn', account: 'system', expiresInMs: 30000 }
+  }
+  it('releases a blocker at expiry before a hanging refresh answers', async () => {
+    answerCatalog([() => Promise.resolve(blocked), () => new Promise(() => {})])
+    const { result } = renderOptions()
+    await flush()
+    expect(result.current.unavailable).toMatchObject({ reason: 'notSignedIn', account: 'system' })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30000)
+    })
+    expect(result.current.unavailable).toBeNull()
+    expect(catalogReads()).toHaveLength(2)
+  })
+  it('a focus refresh with an unknown answer clears the blocker', async () => {
+    answerCatalog([() => Promise.resolve(blocked), () => Promise.resolve(UNKNOWN)])
+    const { result } = renderOptions()
+    await flush()
+    act(() => window.dispatchEvent(new Event('focus')))
+    await flush()
+    expect(result.current.unavailable).toBeNull()
+  })
+  it('a failed focus refresh clears the blocker', async () => {
+    answerCatalog([() => Promise.resolve(blocked), () => Promise.reject(new Error('disconnected'))])
+    const { result } = renderOptions()
+    await flush()
+    act(() => window.dispatchEvent(new Event('focus')))
+    await flush()
+    expect(result.current.unavailable).toBeNull()
+  })
+  it('does not apply a signed-out answer from the previous chat', async () => {
+    const first = deferred()
+    answerCatalog([() => first.promise, () => Promise.resolve(UNKNOWN)])
+    const { result, rerender } = renderOptions()
+    rerender({ sessionId: 'new-chat' })
+    first.resolve(blocked)
+    await flush()
+    expect(result.current.unavailable).toBeNull()
+  })
+  it('does not disable the cached model picker while refreshing availability', async () => {
+    const waited = deferred()
+    answerCatalog([
+      () => Promise.resolve({ ...HOST_CATALOG, listingInProgress: true }),
+      () => waited.promise
+    ])
+    const { result } = renderOptions()
+    await flush()
+    expect(model(result.current.optionSnapshot).choicesPending).toBeUndefined()
+    waited.resolve({ ...HOST_CATALOG, unavailable: blocked.unavailable })
+    await flush()
+    expect(result.current.unavailable?.reason).toBe('notSignedIn')
+  })
+  it('hiding and revealing the pane cannot resurrect its old blocker', async () => {
+    answerCatalog([() => Promise.resolve(blocked), () => new Promise(() => {})])
+    const { result, rerender } = renderOptions()
+    await flush()
+    rerender({ hidden: true })
+    expect(result.current.unavailable).toBeNull()
+    rerender({ hidden: false })
+    await flush()
+    expect(result.current.unavailable).toBeNull()
+  })
+  it('clears the blocker when the paired host becomes unreachable', async () => {
+    const previous = useAppStore.getState().runtimeStatusByEnvironmentId
+    answerCatalog([() => Promise.resolve(blocked)])
+    const { result, unmount } = renderOptions()
+    await flush()
+    expect(result.current.unavailable?.reason).toBe('notSignedIn')
+    act(() =>
+      useAppStore.setState({
+        runtimeStatusByEnvironmentId: new Map([
+          [PAIRED_TARGET.environmentId, { status: null, checkedAt: 1 }]
+        ])
+      })
+    )
+    expect(result.current.unavailable).toBeNull()
+    unmount()
+    useAppStore.setState({ runtimeStatusByEnvironmentId: previous })
+  })
+  it('ignores a late reply after the document hides and refreshes on visibility', async () => {
+    const first = deferred()
+    answerCatalog([() => first.promise, () => Promise.resolve(UNKNOWN)])
+    const { result } = renderOptions()
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    first.resolve(blocked)
+    await flush()
+    expect(result.current.unavailable).toBeNull()
+    vi.restoreAllMocks()
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    await flush()
+    expect(catalogReads()).toHaveLength(2)
+    expect(result.current.unavailable).toBeNull()
+  })
+  it.each([
+    undefined,
+    { reason: 'future', expiresInMs: 30000 },
+    { reason: 'cliMissing', expiresInMs: 0 }
+  ])('ignores old-host or unfamiliar availability %j', async (unavailable) => {
+    answerCatalog([() => Promise.resolve({ ...HOST_CATALOG, unavailable })])
+    const { result } = renderOptions()
+    await flush()
+    expect(result.current.unavailable).toBeNull()
+  })
 })

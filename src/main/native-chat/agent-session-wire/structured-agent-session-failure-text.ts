@@ -67,7 +67,10 @@ export function providerStartupFailureFact(cause?: unknown): SubmissionRejection
     cause instanceof AgentSessionAcquisitionRefusal ? cause.reason : undefined
   )
   if (typed) {
-    return agentSessionFailureFact(typed)
+    return agentSessionFailureFact(
+      typed,
+      cause instanceof AgentSessionAcquisitionRefusal ? { account: cause.account } : {}
+    )
   }
   return agentSessionFailureFact(
     providerExitObserved(cause) ? 'providerStartFailed' : 'startFailed',
@@ -96,7 +99,12 @@ function refusedStartFailureFact(
   const reason = refusal.details?.reason
   const typed = typedStartRefusal(reason)
   if (typed) {
-    return agentSessionFailureFact(typed)
+    return agentSessionFailureFact(
+      typed,
+      refusal.code === 'agent_session_operation_invalid'
+        ? { account: refusal.details?.account }
+        : {}
+    )
   }
   if (reason === 'providerStartFailed') {
     return agentSessionFailureFact('providerStartFailed', { detail: diagnostic })

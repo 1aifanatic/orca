@@ -1,3 +1,4 @@
+import { agentSessionSignInCopyId } from './agent-session-availability'
 // The sentence a person reads beside each failure fact, and the one constructor that writes both.
 //
 // A row's `text`, a rejected message's `reason` and a conversation command's `error` are what
@@ -187,16 +188,25 @@ const FAILURE_SENTENCES = {
   providerStartFailed: (context, _fact, _surface, say) =>
     joinSentences([say('providerStartFailed', agent(say, context)), ...startRetry(say, context)]),
   startFailed: couldNot('couldNotStart'),
-  // Beside a Retry the resend is the button, but signing in is still a step to take first.
-  notSignedIn: (context, _fact, _surface, say) =>
-    joinSentences([
-      say('notSignedIn', agent(say, context)),
-      context.retryControl
-        ? say('signInFirst')
-        : context.command
-          ? say('signInThenRunCommand', { command: context.command })
-          : say('signInThenSend')
-    ]),
+  notSignedIn: (context, fact, _surface, say) => {
+    if (!context.provider && context.agentName !== 'Claude' && context.agentName !== 'Codex') {
+      return joinSentences([
+        say('notSignedIn', agent(say, context)),
+        context.retryControl
+          ? say('signInFirst')
+          : context.command
+            ? say('signInThenRunCommand', { command: context.command })
+            : say('signInThenSend')
+      ])
+    }
+    const provider =
+      context.agentName === 'Codex'
+        ? 'codex'
+        : context.agentName === 'Claude'
+          ? 'claude'
+          : (context.provider ?? 'claude')
+    return say(agentSessionSignInCopyId(provider, fact.account))
+  },
   historyTooLarge: (_context, _fact, _surface, say) =>
     joinSentences([say('historyTooLarge'), say('startNewChat')]),
   managedAccountEnvOverride: (_context, _fact, _surface, say) => say('managedAccountEnvOverride'),

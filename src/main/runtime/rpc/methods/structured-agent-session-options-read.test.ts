@@ -1,5 +1,6 @@
 // The catalog read behind the picker: which directory a named worktree runs in on this host.
 
+import type { AgentSessionModelCatalogResult } from '../../../../shared/agent-session-wire'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-registry'
 import {
@@ -15,11 +16,47 @@ afterEach(() => {
 })
 
 describe('agentSession.modelCatalog', () => {
-  const read = vi.fn(async () => ({ origin: 'unknown' as const }))
+  const read = vi.fn<() => Promise<AgentSessionModelCatalogResult>>(async () => ({
+    origin: 'unknown'
+  }))
 
   beforeEach(() => {
-    read.mockClear()
+    read.mockReset()
+    read.mockResolvedValue({ origin: 'unknown' })
     setStructuredAgentSessionHost(Object.assign(hostStub(), { deps: { modelCatalog: { read } } }))
+  })
+
+  it.each(['unknown', 'probe'] as const)(
+    'carries optional availability beside a %s catalog over the existing RPC',
+    async (origin) => {
+      const unavailable = { reason: 'notSignedIn', account: 'managed', expiresInMs: 12000 } as const
+      const catalog: AgentSessionModelCatalogResult =
+        origin === 'unknown'
+          ? { origin, unavailable }
+          : {
+              origin,
+              unavailable,
+              models: [{ id: 'gpt-host', label: 'GPT Host', isDefault: true, efforts: [] }],
+              fetchedAt: 1
+            }
+      read.mockResolvedValue(catalog)
+      const reply = await call(
+        'agentSession.modelCatalog',
+        { agent: 'codex', sessionId: SESSION },
+        STRUCTURED_CLIENT
+      )
+      expect(reply).toMatchObject({ ok: true, result: catalog })
+    }
+  )
+
+  it('keeps the existing answer when the host supplies no availability field', async () => {
+    const reply = await call(
+      'agentSession.modelCatalog',
+      { agent: 'claude', sessionId: SESSION },
+      STRUCTURED_CLIENT
+    )
+    expect(reply).toMatchObject({ ok: true, result: { origin: 'unknown' } })
+    expect(reply).not.toHaveProperty('result.unavailable')
   })
 
   it('reads the catalog for the directory the named worktree runs in on this host', async () => {

@@ -47,11 +47,33 @@ describe('structuredAgentSessionStartFailure', () => {
     expect(structuredAgentSessionStartFailure({ error: refusal }, { agentName: 'Claude' })).toEqual(
       {
         reason:
-          'Claude is not signed in for the selected account. Sign in, then send your message again.',
+          "Claude isn't signed in. Run `claude` and sign in with /login, or choose an account in Claude Accounts settings.",
         rejection: { kind: 'notSignedIn' }
       }
     )
   })
+
+  it.each(['managed', 'system'] as const)(
+    'keeps the %s account in every start-failure fact',
+    (account) => {
+      const direct = structuredAgentSessionStartFailure(
+        { error: new AgentSessionAcquisitionRefusal('signed out', 'notSignedIn', account) },
+        { agentName: 'Claude' }
+      )
+      const refused = structuredAgentSessionStartFailure(
+        {
+          refusal: refuse(
+            'agent_session_operation_invalid',
+            { reason: 'notSignedIn', account },
+            'log'
+          )
+        },
+        { agentName: 'Claude' }
+      )
+      expect(direct.rejection).toEqual({ kind: 'notSignedIn', account })
+      expect(refused).toEqual(direct)
+    }
+  )
 
   it.each([
     [

@@ -1,4 +1,10 @@
-import { useEffect, useSyncExternalStore, type MutableRefObject } from 'react'
+import {
+  readAgentSessionUnavailable,
+  type AgentSessionUnavailable
+} from '../../../../shared/agent-session-availability'
+import { useAppStore } from '@/store'
+import { runtimeHostContactForEntry } from '../../../../shared/runtime-host-contact'
+import { useEffect, useState, useSyncExternalStore, type MutableRefObject } from 'react'
 import type { AgentSessionModelCatalogResult } from '../../../../shared/agent-session-wire'
 import type { AgentType } from '../../../../shared/agent-status-types'
 import type { AgentSessionOptionCatalog } from '../../../../shared/agent-session-option-catalog'
@@ -25,7 +31,7 @@ import {
  *
  * When the host says its first listing for the account is running, one more
  * read waits for it — one per chat, joined by every later run and remount.
- * Returns true while that read is in flight.
+ * Reports that wait alongside the host's short-lived availability evidence.
  */
 export function useHostModelCatalogUpgrade(args: {
   agent: AgentType
@@ -43,7 +49,7 @@ export function useHostModelCatalogUpgrade(args: {
   updateOptionState: (
     update: (current: StructuredAgentSessionOptionState) => StructuredAgentSessionOptionState
   ) => void
-}): boolean {
+}): { awaitingListing: boolean; unavailable: AgentSessionUnavailable | null } {
   const {
     activeOptionRecordRef,
     agent,
@@ -56,15 +62,27 @@ export function useHostModelCatalogUpgrade(args: {
     updateOptionState,
     worktree
   } = args
-  const waitKey = `${structuredAgentSessionHostKey(target)}\u0000${agent}\u0000${sessionId}`
+  const [accountRevision, setAccountRevision] = useState(0)
+  const waitKey = `${structuredAgentSessionHostKey(target)}\u0000${agent}\u0000${sessionId}\u0000${accountRevision}`
   const awaitingListing = useSyncExternalStore(subscribeHostModelListingWaits, () =>
     isHostModelListingWaitInFlight(waitKey)
   )
+  const [observation, setObservation] = useState<{
+    key: string
+    unavailable: AgentSessionUnavailable
+  } | null>(null)
+  // oxlint-disable-next-line react-doctor/effect-needs-cleanup -- The replaceable expiry handle is cleared before rearming and by the returned cleanup.
   useEffect(() => {
     if (!enabled || !optionCatalog || (agent !== 'claude' && agent !== 'codex')) {
       return
     }
     let stale = false
+    let generation = 0
+    let expiry: ReturnType<typeof setTimeout> | undefined
+    const clear = (): void => {
+      clearTimeout(expiry)
+      setObservation(null)
+    }
     const params = { agent, sessionId, ...(namesDefault && worktree ? { worktree } : {}) }
     const read = (waitForListing: boolean): Promise<AgentSessionModelCatalogResult> =>
       callStructuredAgentSession<AgentSessionModelCatalogResult>(
@@ -72,7 +90,19 @@ export function useHostModelCatalogUpgrade(args: {
         'agentSession.modelCatalog',
         waitForListing ? { ...params, waitForListing } : params
       )
-    const apply = (catalog: AgentSessionModelCatalogResult): void =>
+    const apply = (catalog: AgentSessionModelCatalogResult | null): void => {
+      clear()
+      if (!catalog) {
+        return
+      }
+      const unavailable = readAgentSessionUnavailable(catalog.unavailable)
+      if (unavailable) {
+        setObservation({ key: waitKey, unavailable })
+        expiry = setTimeout(() => {
+          clear()
+          refresh()
+        }, unavailable.expiresInMs)
+      }
       updateOptionState((current) =>
         current.record === activeOptionRecordRef.current
           ? applyStructuredAgentSessionModelCatalog(current, optionCatalog, catalog, {
@@ -80,38 +110,102 @@ export function useHostModelCatalogUpgrade(args: {
             })
           : current
       )
+    }
     let leave: (() => void) | null = null
-    const waitForListing = (): void => {
+    const waitForListing = (requestGeneration: number): void => {
+      leave?.()
       leave = joinHostModelListingWait(
         waitKey,
         () => read(true),
         (catalog) => {
-          if (catalog) {
+          if (!stale && generation === requestGeneration) {
             apply(catalog)
           }
         }
       )
     }
-    if (isHostModelListingWaitInFlight(waitKey)) {
-      waitForListing()
-    } else {
-      void read(false)
-        .then((catalog) => {
-          if (stale) {
-            return
-          }
-          // Only a host that reports the listing knows the wait param; an older one refuses it.
-          if (catalog.origin === 'unknown' && catalog.listingInProgress === true) {
-            waitForListing()
-          } else {
+    const refresh = (): void => {
+      if (stale || document.visibilityState === 'hidden') {
+        return
+      }
+      const requestGeneration = ++generation
+      if (isHostModelListingWaitInFlight(waitKey)) {
+        waitForListing(requestGeneration)
+      } else {
+        void read(false)
+          .then((catalog) => {
+            if (stale || generation !== requestGeneration) {
+              return
+            }
             apply(catalog)
-          }
-        })
-        .catch(() => {})
+            if (catalog.listingInProgress === true) {
+              waitForListing(requestGeneration)
+            }
+          })
+          .catch(() => {
+            if (!stale && generation === requestGeneration) {
+              clear()
+            }
+          })
+      }
     }
+    const onVisibility = (): void => {
+      if (document.visibilityState === 'hidden') {
+        generation += 1
+        leave?.()
+        clear()
+      } else {
+        refresh()
+      }
+    }
+    clear()
+    refresh()
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', onVisibility)
+    const unsubscribe = useAppStore.subscribe((state, previous) => {
+      const currentSettings = state.settings
+      const oldSettings = previous.settings
+      if (
+        currentSettings?.activeClaudeManagedAccountId !==
+          oldSettings?.activeClaudeManagedAccountId ||
+        currentSettings?.activeCodexManagedAccountId !== oldSettings?.activeCodexManagedAccountId ||
+        currentSettings?.activeClaudeManagedAccountIdsByRuntime !==
+          oldSettings?.activeClaudeManagedAccountIdsByRuntime ||
+        currentSettings?.activeCodexManagedAccountIdsByRuntime !==
+          oldSettings?.activeCodexManagedAccountIdsByRuntime ||
+        currentSettings?.agentDefaultEnv !== oldSettings?.agentDefaultEnv
+      ) {
+        generation += 1
+        clear()
+        setAccountRevision((revision) => revision + 1)
+      }
+      if (
+        target.kind !== 'local' &&
+        state.runtimeStatusByEnvironmentId !== previous.runtimeStatusByEnvironmentId
+      ) {
+        const contact = runtimeHostContactForEntry(
+          state.runtimeStatusByEnvironmentId.get(target.environmentId)
+        )
+        if (contact.verdict !== 'live') {
+          generation += 1
+          leave?.()
+          clear()
+        } else if (
+          runtimeHostContactForEntry(
+            previous.runtimeStatusByEnvironmentId.get(target.environmentId)
+          ).verdict !== 'live'
+        ) {
+          refresh()
+        }
+      }
+    })
     return () => {
       stale = true
+      clearTimeout(expiry)
       leave?.()
+      unsubscribe()
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [
     activeOptionRecordRef,
@@ -126,5 +220,8 @@ export function useHostModelCatalogUpgrade(args: {
     waitKey,
     worktree
   ])
-  return awaitingListing
+  return {
+    awaitingListing,
+    unavailable: enabled && observation?.key === waitKey ? observation.unavailable : null
+  }
 }

@@ -1,3 +1,4 @@
+import type { AgentSessionAccountKind } from '../../shared/agent-session-availability'
 // Where the structured agent-session wire becomes a live host on this runtime.
 //
 // Built on the first `agentSession.*` call rather than at startup: the record
@@ -127,6 +128,7 @@ export type StructuredAgentSessionRuntimeDeps = {
   statusSink?: StructuredAgentSessionHostDeps['statusSink']
   /** See `StructuredAgentSessionHostDeps.hasOpenDispatch`. */
   hasOpenDispatch?: StructuredAgentSessionHostDeps['hasOpenDispatch']
+  resolveCodexAccountKind?: (home: string) => AgentSessionAccountKind | undefined
   /** The account home a structured launch would pin right now, for catalog
    *  reads with no session record. Absent disables the catalog surface. */
   resolveAgentAccountHome?: RuntimeAgentAccountHomeResolver

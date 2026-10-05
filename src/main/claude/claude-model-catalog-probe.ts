@@ -1,3 +1,5 @@
+import { CLAUDE_CATALOG_STDIN, claudeCatalogSignedOut } from '../../shared/claude-model-list-probe'
+import { AgentModelCatalogUnavailableError } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import { discoverModelsLocal } from '../text-generation/commit-message-model-discovery'
 import { commandBackslashMode } from '../text-generation/commit-message-text-generation'
 import { spawnSourceControlAgent } from '../text-generation/source-control-agent-launch'
@@ -33,12 +35,16 @@ export function createClaudeModelCatalogProbe(
   return async (accountHomePath: string): Promise<AgentModelCatalogSuccess> => {
     // Same pin rule as the session spawn: naming the CLI's default dir would move
     // it off the default Keychain item and list under another identity.
-    const { command, env } = await resolveClaudeStructuredInvocation(deps, (base) => ({
+    const { command, env, account } = await resolveClaudeStructuredInvocation(deps, (base) => ({
       ...base,
       ...claudeConfigDirEnvPatch(accountHomePath, { env: base })
     }))
     const result = await (deps.discover ?? discoverModelsLocal)({
       agentId: 'claude',
+      binary: command,
+      stdinPayload: CLAUDE_CATALOG_STDIN,
+      inspectOutput: (stdout) =>
+        claudeCatalogSignedOut(stdout) ? { reason: 'notSignedIn', account } : undefined,
       env,
       options: {},
       backslash: commandBackslashMode({ kind: 'local', cwd: '' }),
@@ -48,6 +54,9 @@ export function createClaudeModelCatalogProbe(
       spawnAgent: (input) =>
         (deps.spawnAgent ?? spawnSourceControlAgent)({ ...input, binary: command })
     })
+    if (!result.success && result.unavailable) {
+      throw new AgentModelCatalogUnavailableError(result.unavailable)
+    }
     // The spec's static fallback must never pass as a listing: Claude's real
     // list replaces the seed, so only a probe-origin answer is a catalog.
     if (!result.success || result.catalogOrigin !== 'probe' || result.models.length === 0) {

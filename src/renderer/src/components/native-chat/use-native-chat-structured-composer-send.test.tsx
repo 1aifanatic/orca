@@ -97,3 +97,26 @@ describe('attachment guard follows what the host claims', () => {
     expect(structuredTransport.send).not.toHaveBeenCalled()
   })
 })
+
+describe('availability blocks prompts, not host commands', () => {
+  it('refuses a prompt and an agent command without clearing its attachments', async () => {
+    const { send, structuredTransport } = harness('codex')
+    structuredTransport.unavailable = { reason: 'notSignedIn', account: 'managed' }
+    send('hello')
+    send('/review')
+    await vi.waitFor(() => expect(structuredTransport.onError).toHaveBeenCalledWith(null))
+    expect(structuredTransport.send).not.toHaveBeenCalled()
+    structuredTransport.unavailable = null
+    send('hello')
+    await vi.waitFor(() =>
+      expect(structuredTransport.send).toHaveBeenCalledWith('hello', [ATTACHMENT])
+    )
+  })
+  it('still dispatches a host conversation command while the CLI is missing', async () => {
+    const { send, structuredTransport } = harness('claude')
+    structuredTransport.unavailable = { reason: 'cliMissing' }
+    send('/clear', [])
+    await vi.waitFor(() => expect(structuredTransport.onError).toHaveBeenCalledWith(null))
+    expect(structuredTransport.send).not.toHaveBeenCalled()
+  })
+})

@@ -105,7 +105,7 @@ function failedAcquisitionDetails(
   error: unknown
 ): AgentSessionRefusalDetailsByCode['agent_session_operation_invalid'] | undefined {
   if (error instanceof AgentSessionAcquisitionRefusal) {
-    return { reason: error.reason }
+    return { reason: error.reason, ...(error.account ? { account: error.account } : {}) }
   }
   if (isAgentSessionPreSpawnError(error) && error.reason) {
     return { reason: error.reason }

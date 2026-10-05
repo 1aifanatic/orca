@@ -1,3 +1,4 @@
+import type { AgentSessionAccountKind } from './agent-session-availability'
 // What went wrong in a chat, typed where the host decides it, beside the sentence a person reads.
 //
 // The host writes both at once: `text`/`reason` stays a complete sentence because released clients
@@ -125,6 +126,7 @@ export type AgentSessionProviderRetry = {
 
 export type AgentSessionFailureFact = {
   kind: AgentSessionFailureKind
+  account?: AgentSessionAccountKind
   /** Provider-authored only; absent whenever Orca wrote the words. */
   detail?: ProviderDiagnostic
   /** On `restartFailed` and `startFailed`: the refusal that kept the agent from starting. On
@@ -161,6 +163,7 @@ export function providerDiagnostic(
 export function agentSessionFailureFact<TKind extends AgentSessionFailureKind>(
   kind: TKind,
   extra: {
+    account?: AgentSessionAccountKind
     detail?: ProviderDiagnostic
     refusal?: AgentSessionRefusalReference
     attachment?: AgentSessionAttachmentProblem
@@ -173,6 +176,7 @@ export function agentSessionFailureFact<TKind extends AgentSessionFailureKind>(
     : undefined
   return {
     kind,
+    ...(extra.account ? { account: extra.account } : {}),
     ...(detail ? { detail } : {}),
     ...(extra.refusal ? { refusal: extra.refusal } : {}),
     ...(extra.attachment ? { attachment: extra.attachment } : {}),
@@ -234,6 +238,9 @@ export function readAgentSessionFailureFact(value: unknown): AgentSessionFailure
   const attachment = readAttachmentProblem(value.attachment)
   const retry = readProviderRetry(value.retry)
   return agentSessionFailureFact(value.kind, {
+    ...(value.account === 'managed' || value.account === 'system'
+      ? { account: value.account }
+      : {}),
     ...(isProviderDiagnostic(value.detail) ? { detail: value.detail } : {}),
     ...(refusal ? { refusal } : {}),
     ...(attachment ? { attachment } : {}),

@@ -1,3 +1,4 @@
+import type { AgentSessionAccountKind } from '../../shared/agent-session-availability'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import type {
@@ -91,6 +92,7 @@ export function claudeStructuredPermissionOptions(
 export type ClaudeStructuredLaunch = {
   /** Always Orca's resolved user CLI: the SDK's bundled binaries are excluded from the install. */
   pathToClaudeCodeExecutable: string
+  account?: AgentSessionAccountKind
   options: ClaudeStructuredSdkOptions
   cwd: string
   env?: Record<string, string>
@@ -145,7 +147,11 @@ async function claudeTranscriptExists(input: {
   return path !== null
 }
 
-export type ClaudeStructuredInvocation = { command: string; env: Record<string, string> }
+export type ClaudeStructuredInvocation = {
+  command: string
+  env: Record<string, string>
+  account: AgentSessionAccountKind
+}
 
 /**
  * The one place a structured Claude child's binary and environment are
@@ -197,7 +203,7 @@ export async function resolveClaudeStructuredInvocation(
     }),
     { platform: process.platform }
   )
-  return { command, env }
+  return { command, env, account: auth.stripAuthEnv ? 'managed' : 'system' }
 }
 
 /**
@@ -287,7 +293,7 @@ export function createClaudeStructuredLaunchResolver(
     const permission = claudeStructuredPermissionOptions(
       (await deps.resolvePermissionMode?.()) ?? 'default'
     )
-    const { command, env } = await resolveClaudeStructuredInvocation(deps, (base) =>
+    const { command, env, account } = await resolveClaudeStructuredInvocation(deps, (base) =>
       // Every structured session speaks orchestration as itself: its injected id and the Orca CLI.
       structuredSessionChildIdentityEnv(record.sessionId, {
         ...base,
@@ -297,6 +303,7 @@ export function createClaudeStructuredLaunchResolver(
     )
     return {
       pathToClaudeCodeExecutable: command,
+      account,
       options: {
         ...CLAUDE_STRUCTURED_BASE_OPTIONS,
         ...permission,

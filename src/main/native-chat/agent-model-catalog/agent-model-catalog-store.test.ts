@@ -14,6 +14,7 @@ import {
   AGENT_MODEL_CATALOG_FAILURE_TTL_MS,
   AGENT_MODEL_CATALOG_FRESH_MS,
   AgentModelCatalogStore,
+  AgentModelCatalogUnavailableError,
   type AgentModelCatalogSuccess
 } from './agent-model-catalog-store'
 
@@ -230,5 +231,29 @@ describe('agent model catalog store', () => {
     const directory = mkdtempSync(join(tmpdir(), 'agent-model-catalog-'))
     const persistence = createAgentModelCatalogFilePersistence(directory)
     expect(await persistence.load()).toEqual([])
+  })
+})
+
+describe('transient availability storage', () => {
+  it('replaces a blocker with an unknown failure or fresh success', async () => {
+    const store = new AgentModelCatalogStore()
+    store.recordFailure('a', 'auth', { reason: 'notSignedIn', account: 'system' })
+    expect(store.unavailable('a')?.reason).toBe('notSignedIn')
+    await store.refresh('a', 'codex', async () => {
+      throw new Error('timeout')
+    })
+    expect(store.unavailable('a')).toBeUndefined()
+    store.recordFailure('a', 'missing', { reason: 'cliMissing' })
+    await store.refresh('a', 'codex', async () => success('gpt-a'))
+    expect(store.unavailable('a')).toBeUndefined()
+  })
+  it('a synchronous probe fault never rejects the catalog read', async () => {
+    const store = new AgentModelCatalogStore()
+    await expect(
+      store.refresh('a', 'codex', () => {
+        throw new AgentModelCatalogUnavailableError({ reason: 'cliMissing' })
+      })
+    ).resolves.toBeNull()
+    expect(store.unavailable('a')?.reason).toBe('cliMissing')
   })
 })

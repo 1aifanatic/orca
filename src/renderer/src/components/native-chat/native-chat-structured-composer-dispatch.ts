@@ -10,5 +10,6 @@ export async function dispatchNativeChatStructuredComposerText(
   if (command.handled) {
     return { accepted: command.accepted, error: command.error }
   }
+  if (transport.unavailable) {return { accepted: false, error: null }}
   return { accepted: transport.send(text, attachments), error: null }
 }

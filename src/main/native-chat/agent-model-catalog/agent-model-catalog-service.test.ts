@@ -7,6 +7,7 @@ import {
 import { createAgentModelCatalogService } from './agent-model-catalog-service'
 import {
   AGENT_MODEL_CATALOG_FRESH_MS,
+  AgentModelCatalogUnavailableError,
   AgentModelCatalogStore,
   type AgentModelCatalogSuccess
 } from './agent-model-catalog-store'
@@ -255,7 +256,7 @@ describe('agent model catalog service', () => {
         resolveAccountHome: async () => CODEX_HOME('/homes/selected'),
         probes: { codex: probe }
       })
-      const result = await service.read({ agent: 'codex', waitForListing: true })
+      const result = await service.read({ agent: 'codex' })
       expect(result.origin === 'unknown' ? null : result.models[0]!.id).toBe('gpt-old')
       expect(probe).toHaveBeenCalledTimes(1)
     })
@@ -310,5 +311,105 @@ describe('agent model catalog service', () => {
       expect(defaults(await service.read({ agent: 'codex' }))).toEqual([true])
       expect(workspaceMayOverrideDefaultModel).not.toHaveBeenCalled()
     })
+  })
+})
+
+describe('catalog availability evidence', () => {
+  it.each([false, true])('returns an expiring blocker with cached models=%s', async (cached) => {
+    let at = 1000
+    const store = new AgentModelCatalogStore({ now: () => at })
+    const fingerprint = selectedHomeFingerprint('/homes/a')
+    if (cached) {
+      store.recordSuccess(fingerprint, 'codex', listing('gpt-a'))
+    }
+    const probe = vi.fn(async () => {
+      throw new AgentModelCatalogUnavailableError({ reason: 'notSignedIn', account: 'managed' })
+    })
+    const service = createAgentModelCatalogService({
+      store,
+      getRecord: () => undefined,
+      resolveAccountHome: async () => CODEX_HOME('/homes/a'),
+      probes: { codex: probe }
+    })
+    const result = await service.read({ agent: 'codex', waitForListing: true })
+    expect(result.unavailable).toEqual({
+      reason: 'notSignedIn',
+      account: 'managed',
+      expiresInMs: 30000
+    })
+    expect(result.origin).toBe(cached ? 'probe' : 'unknown')
+    at += 10000
+    expect((await service.read({ agent: 'codex' })).unavailable?.expiresInMs).toBe(20000)
+    expect(probe).toHaveBeenCalledTimes(1)
+    at += 20000
+    const next = await service.read({ agent: 'codex' })
+    expect(next.unavailable).toBeUndefined()
+    expect(next.listingInProgress).toBe(true)
+    expect(probe).toHaveBeenCalledTimes(2)
+  })
+  it('a failed refresh clears signed-out evidence and preserves cached models', async () => {
+    let at = 1
+    const store = new AgentModelCatalogStore({ now: () => at })
+    const fingerprint = selectedHomeFingerprint('/homes/a')
+    store.recordSuccess(fingerprint, 'codex', listing('gpt-a'))
+    store.recordFailure(fingerprint, 'notSignedIn', { reason: 'notSignedIn', account: 'system' })
+    at += 30000
+    const service = createAgentModelCatalogService({
+      store,
+      getRecord: () => undefined,
+      resolveAccountHome: async () => CODEX_HOME('/homes/a'),
+      probes: {
+        codex: async () => {
+          throw new Error('host unreachable')
+        }
+      }
+    })
+    const result = await service.read({ agent: 'codex', waitForListing: true })
+    expect(result).toMatchObject({ origin: 'probe', models: [{ id: 'gpt-a' }] })
+    expect(result.unavailable).toBeUndefined()
+  })
+  it('does not persist blocked evidence or reuse model-cache freshness as account evidence', async () => {
+    const store = new AgentModelCatalogStore()
+    store.recordSuccess(selectedHomeFingerprint('/homes/a'), 'codex', listing('gpt-a'))
+    store.recordFailure(selectedHomeFingerprint('/homes/a'), 'missing', { reason: 'cliMissing' })
+    const loaded = new AgentModelCatalogStore()
+    await loaded.attachPersistence({
+      load: async () => [store.get(selectedHomeFingerprint('/homes/a'))!],
+      save: () => {},
+      flush: async () => {}
+    })
+    expect(loaded.unavailable(selectedHomeFingerprint('/homes/a'))).toBeUndefined()
+    const probe = vi.fn(async () => listing('gpt-a'))
+    const service = createAgentModelCatalogService({
+      store: loaded,
+      getRecord: () => undefined,
+      resolveAccountHome: async () => CODEX_HOME('/homes/a'),
+      probes: { codex: probe }
+    })
+    expect((await service.read({ agent: 'codex' })).listingInProgress).toBe(true)
+    expect(probe).toHaveBeenCalledTimes(1)
+  })
+  it('joins a warm refresh and returns its fresh evidence', async () => {
+    const store = new AgentModelCatalogStore()
+    store.recordSuccess(selectedHomeFingerprint('/homes/a'), 'codex', listing('cached'))
+    let resolve!: (value: AgentModelCatalogSuccess) => void
+    const probe = vi.fn(
+      () =>
+        new Promise<AgentModelCatalogSuccess>((done) => {
+          resolve = done
+        })
+    )
+    const service = createAgentModelCatalogService({
+      store,
+      getRecord: () => undefined,
+      resolveAccountHome: async () => CODEX_HOME('/homes/a'),
+      probes: { codex: probe }
+    })
+    expect((await service.read({ agent: 'codex' })).listingInProgress).toBe(true)
+    const waiting = service.read({ agent: 'codex', waitForListing: true })
+    await Promise.resolve()
+    resolve(listing('fresh'))
+    expect(await waiting).toMatchObject({ origin: 'probe', models: [{ id: 'fresh' }] })
+    expect(probe).toHaveBeenCalledTimes(1)
   })
 })

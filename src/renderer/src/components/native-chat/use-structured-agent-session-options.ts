@@ -90,7 +90,7 @@ export function useStructuredAgentSessionOptions(args: {
     unloadedTurnRevisions: args.unloadedTurnRevisions
   })
 
-  const awaitingHostModelList = useHostModelCatalogUpgrade({
+  const { awaitingListing: awaitingHostModelList, unavailable } = useHostModelCatalogUpgrade({
     agent,
     sessionId,
     target,
@@ -105,7 +105,10 @@ export function useStructuredAgentSessionOptions(args: {
     updateOptionState
   })
   // The running provider's own list ends the wait for the host's.
-  const modelListPending = awaitingHostModelList && optionState.catalogSource !== 'live'
+  const modelListPending =
+    awaitingHostModelList &&
+    optionState.catalogSource !== 'live' &&
+    optionState.catalogSource !== 'host'
 
   // What a settled pick must remember so the next launch starts where the user left off.
   const rememberOptionPicks = useCallback(
@@ -286,6 +289,7 @@ export function useStructuredAgentSessionOptions(args: {
     contextUsage: support?.contextUsage,
     optionSnapshot,
     optionSurface,
+    unavailable,
     setStructuredOption
   }
 }

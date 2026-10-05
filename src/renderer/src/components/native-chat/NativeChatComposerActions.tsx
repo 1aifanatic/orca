@@ -16,6 +16,7 @@ export type NativeChatComposerActionsProps = {
   attachDisabled: boolean
   dictationDisabled: boolean
   sendDisabled: boolean
+  sendDisabledReason?: string
   isWorking: boolean
   isDictating: boolean
   isDictationHoldMode: boolean
@@ -38,6 +39,7 @@ export function NativeChatComposerActions({
   attachDisabled,
   dictationDisabled,
   sendDisabled,
+  sendDisabledReason,
   isWorking,
   isDictating,
   isDictationHoldMode,
@@ -68,6 +70,24 @@ export function NativeChatComposerActions({
   const dictationLabel = isDictating
     ? translate('components.native-chat.composer.stopDictation', 'Stop dictation')
     : translate('components.native-chat.composer.startDictation', 'Start dictation')
+  const criticalButton = (
+    <Button
+      type="button"
+      data-native-chat-critical-action={isWorking ? 'stop' : undefined}
+      aria-label={
+        isWorking
+          ? translate('components.native-chat.stop', 'Stop the agent')
+          : translate('components.native-chat.composer.send', 'Send')
+      }
+      disabled={sendDisabled}
+      onClick={handleCriticalAction}
+      variant={isWorking ? 'secondary' : 'default'}
+      size="icon"
+      className="size-8 rounded-full pointer-coarse:size-10"
+    >
+      {isWorking ? <Square className="size-3.5 fill-current" /> : <ArrowUp className="size-4" />}
+    </Button>
+  )
   return (
     <div className="flex w-full items-center justify-between gap-2">
       <div className="flex min-w-0 items-center gap-0.5">
@@ -145,26 +165,26 @@ export function NativeChatComposerActions({
             {dictationLabel}
           </TooltipContent>
         </Tooltip>
-        <Button
-          type="button"
-          data-native-chat-critical-action={isWorking ? 'stop' : undefined}
-          aria-label={
-            isWorking
-              ? translate('components.native-chat.stop', 'Stop the agent')
-              : translate('components.native-chat.composer.send', 'Send')
-          }
-          disabled={sendDisabled}
-          onClick={handleCriticalAction}
-          variant={isWorking ? 'secondary' : 'default'}
-          size="icon"
-          className="size-8 rounded-full pointer-coarse:size-10"
-        >
-          {isWorking ? (
-            <Square className="size-3.5 fill-current" />
-          ) : (
-            <ArrowUp className="size-4" />
-          )}
-        </Button>
+        {sendDisabledReason && !isWorking ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                role="button"
+                tabIndex={0}
+                aria-disabled="true"
+                aria-label={sendDisabledReason}
+                className="inline-flex shrink-0"
+              >
+                {criticalButton}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" sideOffset={4}>
+              {sendDisabledReason}
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          criticalButton
+        )}
       </div>
     </div>
   )

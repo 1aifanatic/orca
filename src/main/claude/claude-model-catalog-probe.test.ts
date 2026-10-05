@@ -1,3 +1,6 @@
+import { createMockDiscoveryChild } from '../text-generation/commit-message-text-generation-test-harness'
+import { CLAUDE_CATALOG_STDIN } from '../../shared/claude-model-list-probe'
+import { AgentModelCatalogUnavailableError } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -123,5 +126,119 @@ describe('claude model catalog probe', () => {
       discover: async () => ({ ...listedResult(), catalogOrigin: 'spec' })
     })
     await expect(probe('/homes/a')).rejects.toThrow(/listed no models/)
+  })
+})
+
+describe('Claude catalog availability', () => {
+  it.each([false, true])(
+    'reads initialization in the same listing for managed=%s',
+    async (managed) => {
+      const probe = createClaudeModelCatalogProbe({
+        ...probeDeps(),
+        resolveEnv: () => ({}),
+        resolveAuthPolicy: () => ({ stripAuthEnv: managed }),
+        discover: async (input) => {
+          expect(input.stdinPayload).toBe(CLAUDE_CATALOG_STDIN)
+          expect(input.binary).toBe('/resolved/claude with spaces/claude')
+          const unavailable = input.inspectOutput?.(
+            JSON.stringify({
+              type: 'control_response',
+              response: {
+                subtype: 'success',
+                request_id: 'orca-catalog-initialize',
+                response: { account: { tokenSource: 'none' } }
+              }
+            })
+          )
+          return { success: false, error: 'notSignedIn', unavailable }
+        }
+      })
+      await expect(probe('/homes/a')).rejects.toMatchObject({
+        unavailable: { reason: 'notSignedIn', account: managed ? 'managed' : 'system' }
+      })
+    }
+  )
+  it('retains typed missing CLI evidence', async () => {
+    const probe = createClaudeModelCatalogProbe({
+      ...probeDeps(),
+      discover: async () => ({
+        success: false,
+        error: 'missing',
+        unavailable: { reason: 'cliMissing' }
+      })
+    })
+    await expect(probe('/homes/a')).rejects.toBeInstanceOf(AgentModelCatalogUnavailableError)
+  })
+  it('does not turn a generic discovery failure into unavailable', async () => {
+    const probe = createClaudeModelCatalogProbe({
+      ...probeDeps(),
+      discover: async () => ({ success: false, error: 'timeout' })
+    })
+    await expect(probe('/homes/a')).rejects.not.toBeInstanceOf(AgentModelCatalogUnavailableError)
+  })
+})
+
+describe('Claude catalog fake-child contract', () => {
+  it.each(['none', 'oauth'])(
+    'initializes and lists in one process for tokenSource=%s',
+    async (tokenSource) => {
+      const child = createMockDiscoveryChild()
+      const spawnAgent = vi.fn<SpawnSourceControlAgent>(() => {
+        queueMicrotask(() => {
+          child.stdout.emit(
+            'data',
+            Buffer.from(
+              `${JSON.stringify({
+                type: 'control_response',
+                response: {
+                  request_id: 'orca-catalog-initialize',
+                  subtype: 'success',
+                  response: { account: { tokenSource } }
+                }
+              })}\n${JSON.stringify({
+                type: 'control_response',
+                response: {
+                  request_id: 'orca-model-discovery',
+                  subtype: 'success',
+                  response: { models: [{ value: 'sonnet', displayName: 'Sonnet' }] }
+                }
+              })}\n`
+            )
+          )
+          child.emit('close', 0)
+        })
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: discovery reads only the fake child's EventEmitter streams, pid, kill and stdin.end.
+        return child as unknown as SpawnedSourceControlAgentProcess
+      })
+      const probe = createClaudeModelCatalogProbe({ ...probeDeps(), spawnAgent })
+      const result = await probe('/homes/a').catch((error: unknown) => error)
+      if (tokenSource === 'none') {
+        expect(result).toMatchObject({ unavailable: { reason: 'notSignedIn', account: 'system' } })
+      } else {
+        expect(result).toMatchObject({ models: [{ id: 'sonnet' }] })
+      }
+      expect(spawnAgent).toHaveBeenCalledTimes(1)
+      expect(child.stdin.end).toHaveBeenCalledWith(CLAUDE_CATALOG_STDIN)
+    }
+  )
+  it('preserves the resolved executable missing error from a child', async () => {
+    const child = createMockDiscoveryChild()
+    const probe = createClaudeModelCatalogProbe({
+      ...probeDeps(),
+      spawnAgent: () => {
+        queueMicrotask(() =>
+          child.emit(
+            'error',
+            Object.assign(new Error('missing'), {
+              code: 'ENOENT',
+              path: '/resolved/claude with spaces/claude'
+            })
+          )
+        )
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: discovery reads only the fake child's EventEmitter streams, pid, kill and stdin.end.
+        return child as unknown as SpawnedSourceControlAgentProcess
+      }
+    })
+    await expect(probe('/homes/a')).rejects.toMatchObject({ unavailable: { reason: 'cliMissing' } })
   })
 })

@@ -1,3 +1,4 @@
+import type { AgentSessionAccountKind } from '../../shared/agent-session-availability'
 // What Claude reports at initialize, read after the session is already published. None of it
 // gates the create: a slow start is still a start, and every way it can fail (exit, auth,
 // a foreign session id) faults the published session through its exit path.
@@ -65,13 +66,14 @@ export async function readClaudeStartupFacts(input: {
   sessionId: string
   providerSessionId: string
   resumesTranscript: boolean
+  account?: AgentSessionAccountKind
   inputOptions: StructuredAgentSessionAcquireInput['options']
   requestTimeoutMs: number | undefined
   emit: (event: ClaudeStructuredSessionEvent) => void
 }): Promise<ClaudeStartupFacts> {
   const [initialization, init] = await Promise.all([
     input.connection.initializationResult().then((result) => {
-      const authError = claudeInitializationAuthError(result)
+      const authError = claudeInitializationAuthError(result, input.account)
       if (authError) {
         throw authError
       }

@@ -1,3 +1,8 @@
+import type { AgentSessionAccountKind } from '../../shared/agent-session-availability'
+import { AgentModelCatalogUnavailableError } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
+import { isMissingCatalogExecutable } from '../native-chat/agent-model-catalog/agent-model-catalog-executable'
+import { getSystemCodexHomePath } from './codex-home-paths'
+import { resolve } from 'node:path'
 import { CODEX_SHORT_LIVED_PROBE_APP_SERVER_ARGS } from '../codex-cli/codex-read-only-app-server-args'
 import { runCodexAppServerSession } from './codex-app-server-session'
 import { fetchCodexModelCatalogListing } from './codex-structured-model-catalog'
@@ -18,6 +23,7 @@ export type CodexModelCatalogProbeDeps = Pick<
   CodexStructuredLaunchResolverDeps,
   'resolveCommand' | 'resolveEnvironment'
 > & {
+  resolveAccountKind?: (home: string) => AgentSessionAccountKind | undefined
   /** Test seam; production runs the shared short-lived app-server session. */
   runSession?: typeof runCodexAppServerSession
 }
@@ -52,8 +58,44 @@ export function createCodexModelCatalogProbe(
         env: { ...definedEnv(environment), CODEX_HOME: accountHomePath },
         timeoutMs: CODEX_MODEL_CATALOG_PROBE_TIMEOUT_MS
       },
-      (rpc) => fetchCodexModelCatalogListing({ connection: rpc })
-    )
+      async (rpc) => {
+        let response: unknown
+        try {
+          response = await rpc.request(
+            'account/read',
+            { refreshToken: false },
+            { timeoutMs: 2_000 }
+          )
+        } catch {
+          /* Unknown account status cannot block sending. */
+        }
+        if (
+          typeof response === 'object' &&
+          response !== null &&
+          !Array.isArray(response) &&
+          'requiresOpenaiAuth' in response &&
+          response.requiresOpenaiAuth === true &&
+          'account' in response &&
+          response.account === null
+        ) {
+          const account = deps.resolveAccountKind
+            ? deps.resolveAccountKind(accountHomePath)
+            : resolve(accountHomePath) === resolve(getSystemCodexHomePath())
+              ? 'system'
+              : undefined
+          throw new AgentModelCatalogUnavailableError({
+            reason: 'notSignedIn',
+            ...(account ? { account } : {})
+          })
+        }
+        return fetchCodexModelCatalogListing({ connection: rpc })
+      }
+    ).catch((error: unknown) => {
+      if (isMissingCatalogExecutable(error, command)) {
+        throw new AgentModelCatalogUnavailableError({ reason: 'cliMissing' })
+      }
+      throw error
+    })
     if (listing.models.length === 0) {
       throw new Error('codex app-server listed no models')
     }

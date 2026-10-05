@@ -1,3 +1,4 @@
+import type { AgentSessionUnavailable } from '../../../../shared/agent-session-availability'
 import type { AgentSessionConversationCommand } from '../../../../shared/agent-session-conversation-command'
 import type { StructuredAgentContextUsage } from '../../../../shared/structured-agent-session-context-usage'
 import type { AgentSessionSlashCommand } from '../../../../shared/agent-session-wire'
@@ -16,6 +17,7 @@ export type NativeChatOptionPickerRequest = {
 }
 
 export type NativeChatStructuredComposerTransport = {
+  unavailable?: AgentSessionUnavailable | null
   conversationCommands?: readonly AgentSessionConversationCommand[]
   send: (text: string, attachments: readonly NativeChatComposerImageAttachment[]) => boolean
   dispatchCommand: (text: string) => Promise<StructuredAgentSessionCommandOutcome>

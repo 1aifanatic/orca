@@ -1,3 +1,5 @@
+import type { AgentSessionUnavailable } from '../../shared/agent-session-availability'
+import { isMissingCatalogExecutable } from '../native-chat/agent-model-catalog/agent-model-catalog-executable'
 import { mergeCommandEnvironment } from '../../shared/command-environment'
 import type { CommandTemplateBackslash } from '../../shared/commit-message-prompt'
 import type { CommitMessagePlan } from '../../shared/commit-message-plan'
@@ -38,6 +40,9 @@ export async function discoverModelsLocal(input: {
   options: CommitMessageModelDiscoveryLocalOptions
   backslash: CommandTemplateBackslash
   spawnAgent: SpawnSourceControlAgent
+  binary?: string
+  stdinPayload?: string
+  inspectOutput?: (stdout: string) => AgentSessionUnavailable | undefined
 }): Promise<DiscoverCommitMessageModelsResult> {
   const spec = getAgentModelProbeSpec(input.agentId)
   if (!spec) {
@@ -57,6 +62,8 @@ export async function discoverModelsLocal(input: {
     input.options.wslDistro ? 'linux' : process.platform
   )
 
+  const binary = input.binary ?? planned.plan.binary
+  const stdinPayload = input.stdinPayload ?? planned.plan.stdinPayload
   const startDiscovery = (): LocalProcessExecution<DiscoverCommitMessageModelsResult> => {
     let markProcessClosed!: () => void
     const processClosed = new Promise<void>((resolve) => {
@@ -66,24 +73,27 @@ export async function discoverModelsLocal(input: {
       let child: SpawnedSourceControlAgentProcess
       try {
         child = input.spawnAgent({
-          binary: planned.plan.binary,
+          binary,
           args: planned.plan.args,
           cwd: input.options.cwd,
           env: input.options.wslDistro ? input.env : env,
           commandEnv: planned.plan.env,
           wslDistro: input.options.wslDistro,
-          stdinMode: planned.plan.stdinPayload === null ? 'ignore' : 'pipe',
+          stdinMode: stdinPayload === null ? 'ignore' : 'pipe',
           useCwdForNative: false
         })
-        if (planned.plan.stdinPayload !== null) {
+        if (stdinPayload !== null) {
           child.stdin?.on?.('error', () => {})
-          child.stdin?.end(planned.plan.stdinPayload)
+          child.stdin?.end(stdinPayload)
         }
       } catch (error) {
         markProcessClosed()
         console.error('[commit-message] Failed to spawn model discovery:', error)
         resolve({
           success: false,
+          ...(isMissingCatalogExecutable(error, binary)
+            ? { unavailable: { reason: 'cliMissing' as const } }
+            : {}),
           error: `${spec.label} model discovery could not be started. Check the agent CLI configuration and try again.`
         })
         return
@@ -145,6 +155,9 @@ export async function discoverModelsLocal(input: {
         }
         finish({
           success: false,
+          ...(isMissingCatalogExecutable(error, binary)
+            ? { unavailable: { reason: 'cliMissing' as const } }
+            : {}),
           error:
             (error as NodeJS.ErrnoException).code === 'ENOENT'
               ? `${spec.modelDiscovery?.binary ?? spec.binary} not found on PATH. Install ${spec.label} to discover models.`
@@ -153,6 +166,11 @@ export async function discoverModelsLocal(input: {
       }
       const onClose = (code: number | null): void => {
         markClosedAfterTermination()
+        const unavailable = input.inspectOutput?.(stdout)
+        if (unavailable) {
+          finish({ success: false, error: unavailable.reason, unavailable })
+          return
+        }
         finish(
           outputLimitExceeded
             ? { success: false, error: `${spec.label} returned too much model data.` }
