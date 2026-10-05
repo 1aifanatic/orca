@@ -37,6 +37,8 @@ export async function deliverAndSettleWorkerStartReadiness(args: {
   devMode: boolean | undefined
   requestId: string
   agent: TuiAgent | null
+  /** The agent this start launched into `terminalHandle`; null when the caller supplied it. */
+  launchedAgent: TuiAgent | null
   setupReceipt: WorkerSetupReceipt
   launchReceipt: OrchestrationWorkerLaunchReceipt
   mode: WorkerStartModeReceipt
@@ -66,7 +68,8 @@ export async function deliverAndSettleWorkerStartReadiness(args: {
         taskSpec: task.spec,
         coordinatorHandle: args.coordinatorHandle,
         devMode: args.devMode,
-        requestId: args.requestId
+        requestId: args.requestId,
+        launchedAgent: args.launchedAgent
       })
   effects.push({
     kind: 'dispatch_input',
