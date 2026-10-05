@@ -214,8 +214,8 @@ export type NativeChatMessage = AgentJournalProducerLinkage & {
   sentAs?: AgentJournalMessageSendMode
   /** Accepted but not yet handed to the agent: drawn after everything the agent has done. */
   queued?: true
-  /** Shown as not sent, waiting for the user's Retry: in no turn, so a newer turn's bar and clock
-   *  never land on it, and drawn after the conversation. */
+  /** Shown as not sent: in no turn, so a newer turn's bar and clock never land on it. Drawn where
+   *  the journal recorded it, or after the conversation when it holds no place there. */
   unsent?: true
   /** This client's send, made while the chat read Stopping, that the host has not recorded yet. */
   sentWhileStopping?: true
