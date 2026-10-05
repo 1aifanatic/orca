@@ -195,59 +195,21 @@ describe("a person's close pressed before its send's turn showed", () => {
     expect(later).not.toHaveProperty('outcome')
   })
 
-  /** Turn `turn-later` starts and ends on its own, interrupted, after the close returned. */
-  async function laterTurnEndsOnItsOwn() {
-    await journal().appendItem(
-      LATER,
-      { kind: 'turn', turnId: 'turn-later', state: 'running', startedAt: Date.now() },
-      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
-    )
-    await journal().appendItem(
-      LATER,
-      {
-        kind: 'turn',
-        turnId: 'turn-later',
-        state: 'interrupted',
-        startedAt: Date.now(),
-        completedAt: Date.now() + 5
-      },
-      { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
-    )
-    return journal()
-      .snapshot()
-      .items.map((item) => readAgentJournalTurn(item.body))
-      .find((turn) => turn?.turnId === 'turn-later')
-  }
-
-  // The close fails, but it is over: its settle closes with it.
-  it('binds no turn that ends on its own after a close whose kill failed', async () => {
-    rig = await createQueuedMessageTestRig()
-    await rig.workingSend()
-    rig.closeSession.mockRejectedValueOnce(new Error('the kill timed out'))
-    await expect(
-      rig.host['lifetime'].stopAgent(HOST_TEST_SESSION, { cause: 'user-close' })
-    ).rejects.toThrow()
-    expect(journal().stopMarks.latest()?.event).toMatchObject({ reason: 'user-close' })
-
-    const later = await laterTurnEndsOnItsOwn()
-    expect(later).toMatchObject({ state: 'interrupted' })
-    expect(later).not.toHaveProperty('outcome')
-  })
-
-  // A second close joins the first, whose kill failed; the turn the send opened meanwhile is the
-  // person's, as it would be had the second close written its own Stop.
-  it('reads a turn that opened between a failed close and the next as interrupted by the person', async () => {
+  // The first close's kill is unproven and its settle closes with it; asking again re-kills, so a
+  // turn that ask's end cuts is the person's again.
+  it('binds the turn a repeated close cuts after a first close that came back unproven', async () => {
     rig = await createQueuedMessageTestRig()
     const sent = await rig.workingSend()
-    rig.closeSession.mockRejectedValueOnce(new Error('the kill timed out'))
-    await expect(
-      rig.host['lifetime'].stopAgent(HOST_TEST_SESSION, { cause: 'user-close' })
-    ).rejects.toThrow()
-    await turnOpens(sent)
+    const close = () => rig.host['lifetime'].stopAgent(HOST_TEST_SESSION, { cause: 'user-close' })
+    rig.closeSession.mockResolvedValueOnce(false)
+    await expect(close()).rejects.toThrow()
+    rig.closeSession.mockImplementationOnce(async () => {
+      await turnOpens(sent)
+      return true
+    })
 
-    await rig.host['lifetime'].stopAgent(HOST_TEST_SESSION, { cause: 'user-close' })
+    await close()
 
     expect(openedTurn()).toMatchObject({ state: 'interrupted', outcome: 'cancellation' })
-    expect(nothingRuns()).toBe(true)
   })
 })

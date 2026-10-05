@@ -107,7 +107,6 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
     return
   }
   const cause = 'recorded' in ending ? ending.recorded : ending.cause
-  const joining = child.close !== undefined
   if (!child.close) {
     // Judged before the kill: a stop that ends nothing writes nothing. Its event is issued before
     // the kill and never awaited by it; the journal writes rows in order.
@@ -121,16 +120,14 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
       requestedAt: session.journal.cursor()
     }
   } else if (child.close.cause === cause) {
-    // The same stop asked again, such as a second close of the chat, closes what came since.
+    // The same stop asked again, such as a second close of the chat, closes what came since, and
+    // binds again what its child's end cuts.
     child.close.requestedAt = session.journal.cursor()
+    child.close.recorded = child.close.recorded.then((settle) =>
+      settle ? session.journal.stopMarks.beginSettle() : null
+    )
   }
-  const close = child.close
-  // A person's close joining one whose Stop opened a settle reopens it until this attempt is done,
-  // as a fresh close's would: a turn its child's end cuts is still theirs.
-  const rejoined =
-    joining && close.cause === 'user-close' && cause === 'user-close' && (await close.recorded)
-      ? session.journal.stopMarks.beginSettle()
-      : null
+  const { close } = child
   try {
     if (context.restartWitness) {
       await snapshotBeforeStructuredAgentSessionStop(
@@ -151,8 +148,7 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
     }
   } finally {
     // A person's close binds what its child's end cut; done, proven or not, it binds no more.
-    void close.recorded.then((settle) => session.journal.stopMarks.settled(settle))
-    session.journal.stopMarks.settled(rejoined)
+    void close?.recorded.then((settle) => session.journal.stopMarks.settled(settle))
   }
 }
 
