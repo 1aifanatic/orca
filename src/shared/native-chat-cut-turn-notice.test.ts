@@ -249,6 +249,25 @@ describe('withNativeChatCutTurnNotices', () => {
     expect(withNativeChatCutTurnNotices(wordedItems)).toBe(wordedItems)
   })
 
+  // A row that names why Orca stopped keeps its red words and exit fact for older clients; this one
+  // mutes it in the notice's words, keeping its presentation and cause for a client that words them.
+  it('mutes an orca-stop row, keeping its presentation and cause, and reads the turn interrupted', () => {
+    for (const id of ['stale-session:s:shutdown-3-gen', 'stale-session:s:death-3-2000']) {
+      const stored = { ...exitWords(), presentation: 'orca-stop', orcaStop: { cause: 'quit' } }
+      const items = [user('u1'), turn('t1', 'u1', CUT), hostRow(id, stored, inTurn('t1'))]
+
+      expect(notices(items), id).toEqual([])
+      expect(withNativeChatCutTurnNotices(items)[2]!.body, id).toEqual({
+        kind: 'status',
+        text: NOTICE,
+        presentation: 'orca-stop',
+        tone: 'notice',
+        orcaStop: { cause: 'quit' }
+      })
+      expect(structuredAgentTurnVerdictReader(items)(items[1]!), id).toBe('interruption')
+    }
+  })
+
   // A host from before failure facts wrote the same rows with only their words.
   it("counts an older host's exit row by its writer, with no exit fact", () => {
     for (const id of ['provider-exit:s:3:gen', 'stale-session:s:death-3-2000']) {

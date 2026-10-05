@@ -10,7 +10,10 @@ export const AGENT_SESSION_HOST_STATUS_COPY = {
   'history-item-too-large': 'This part of the chat was too large to show.',
   /** A turn cut short with nobody asking (a crash, quit, restart or eviction, or an agent exit whose
    *  own settle failed), worded for every cause because a reader can't tell them apart. */
-  'response-interrupted': 'This response was interrupted. You can continue in this conversation.'
+  'response-interrupted': 'This response was interrupted. You can continue in this conversation.',
+  /** A host's row about Orca stopping under a turn (a quit, an update), which names its cause in
+   *  `orcaStop` for a client that words it; this client says only that it was interrupted. */
+  'orca-stop': 'This response was interrupted. You can continue in this conversation.'
 } as const
 
 export type AgentSessionHostStatusPresentation = keyof typeof AGENT_SESSION_HOST_STATUS_COPY
@@ -25,6 +28,12 @@ export function agentSessionHostStatusBody(
  *  interrupted, and `notice` is the tone a client that can't name the presentation draws it in. */
 export function agentSessionResponseInterruptedBody(): AgentJournalPlainStatusItem {
   return { ...agentSessionHostStatusBody('response-interrupted'), tone: 'notice' }
+}
+
+/** A row that says a turn was cut short: muted, never folded with the turn's work, and never a
+ *  failure report, whatever tone an older reader needs it to carry. */
+export function isAgentSessionInterruptionPresentation(presentation: string | undefined): boolean {
+  return presentation === 'response-interrupted' || presentation === 'orca-stop'
 }
 
 export function isAgentSessionHostStatusPresentation(

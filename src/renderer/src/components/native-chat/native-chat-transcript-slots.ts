@@ -7,6 +7,7 @@
 // single place that answers "does this message take a slot?", and it answers it
 // with the same derivation the row itself renders from.
 
+import { isAgentSessionInterruptionPresentation } from '../../../../shared/agent-session-host-status-rows'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
 import {
   isBackgroundTaskBlock,
@@ -127,11 +128,17 @@ export function buildNativeChatTranscriptSlots(
     outlivesTurn: message.blocks.some(
       (block) => isSubagentGroupBlock(block) || isBackgroundTaskBlock(block)
     ),
-    reportsFailure: message.blocks.some((block) => block.type === 'text' && block.tone === 'error'),
+    reportsFailure: message.blocks.some(
+      (block) =>
+        block.type === 'text' &&
+        block.tone === 'error' &&
+        !isAgentSessionInterruptionPresentation(block.presentation)
+    ),
     explainsTurn: message.blocks.some(
       (block) =>
         block.type === 'text' &&
-        (block.presentation === 'compaction' || block.presentation === 'response-interrupted')
+        (block.presentation === 'compaction' ||
+          isAgentSessionInterruptionPresentation(block.presentation))
     )
   }))
   // Liveness is the turn's, not any one call's: the run at the frontier stays

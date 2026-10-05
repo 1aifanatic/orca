@@ -83,8 +83,8 @@ const reopenRow = (body: AgentJournalItemBody) =>
     IN_CUT
   )
 
-function renderCollapsed(journal: readonly AgentJournalRenderItem[]) {
-  const items = withNativeChatCutTurnNotices(journal)
+function renderCollapsed(journal: readonly AgentJournalRenderItem[], represent = true) {
+  const items = represent ? withNativeChatCutTurnNotices(journal) : journal
   render(
     <NativeChatMessageList
       session={{
@@ -133,12 +133,44 @@ describe('a collapsed turn that was cut short', () => {
           tone: 'error'
         })
       ]
+    ],
+    [
+      'a row naming why Orca stopped, red for older clients',
+      () => [
+        ...cutTurn(true),
+        reopenRow({
+          kind: 'status',
+          text: 'Codex stopped while this response was in progress. You can continue in this conversation.',
+          presentation: 'orca-stop',
+          tone: 'error'
+        })
+      ]
     ]
   ])('shows its answer and the notice: %s', (_label, journal) => {
     renderCollapsed(journal())
 
     expect(screen.getByText('partial answer a2')).toBeInTheDocument()
     expect(screen.queryByText('narration a1')).toBeNull()
+    expect(screen.getAllByText(NOTICE)).toHaveLength(1)
+  })
+
+  // Its red tone is for older clients: it is never the turn's failure report, so the partial answer
+  // stays the answer, even read before the re-wording.
+  it('never takes an orca-stop row as the failure the turn ended on', () => {
+    renderCollapsed(
+      [
+        ...cutTurn(true),
+        reopenRow({
+          kind: 'status',
+          text: 'Codex stopped while this response was in progress.',
+          presentation: 'orca-stop',
+          tone: 'error'
+        })
+      ],
+      false
+    )
+
+    expect(screen.getByText('partial answer a2')).toBeInTheDocument()
     expect(screen.getAllByText(NOTICE)).toHaveLength(1)
   })
 

@@ -82,27 +82,37 @@ function cutTurnNotice(
 const ownerDeathRowCache = new WeakMap<AgentJournalRenderItem, AgentJournalRenderItem>()
 
 /** A host's row about an agent process gone from under a turn (a reopen's, or a quit's), in the
- *  notice's words when it is in the older red form: "the agent stopped", in error red, though the
- *  evidence only proves the process is gone, not who ended it. A row that names its presentation,
- *  and an early build's row that quotes the exit's detail untoned, are kept as written. */
+ *  notice's words and muted. Two shapes, and only these: an older host's red "the agent stopped"
+ *  (no presentation, error red or the exit fact), whose evidence only proves the process is gone;
+ *  and an `orca-stop` row, which stays red for clients that fold every other row and names its
+ *  cause in fields a newer client words, so its presentation is kept. Every other stored field is
+ *  kept; the failure fact goes with the words it was built from. Any other row is kept as written,
+ *  as is an early build's untoned row that quotes the exit's detail. */
 function ownerDeathRowAsInterruption(item: AgentJournalRenderItem): AgentJournalRenderItem {
-  if (
-    cutTurnStopExplanation(item) !== 'owner-death' ||
-    item.body.kind !== 'status' ||
-    item.body.presentation !== undefined ||
-    (item.body.tone !== 'error' &&
-      readAgentSessionFailureFact(item.body.failure)?.kind !== 'providerExited')
-  ) {
+  if (cutTurnStopExplanation(item) !== 'owner-death' || item.body.kind !== 'status') {
+    return item
+  }
+  const { presentation, tone } = item.body
+  const orcaStop = presentation === 'orca-stop'
+  const legacy =
+    presentation === undefined &&
+    (tone === 'error' || readAgentSessionFailureFact(item.body.failure)?.kind === 'providerExited')
+  if (!orcaStop && !legacy) {
     return item
   }
   const cached = ownerDeathRowCache.get(item)
   if (cached) {
     return cached
   }
-  // Only the words change, and the failure fact the old words were built from goes with them: a
-  // field a newer host stored beside them (why Orca stopped) is kept.
   const { failure: _failure, ...stored } = item.body
-  const reworded = { ...item, body: { ...stored, ...agentSessionResponseInterruptedBody() } }
+  const reworded = {
+    ...item,
+    body: {
+      ...stored,
+      ...agentSessionResponseInterruptedBody(),
+      ...(orcaStop ? { presentation } : {})
+    }
+  }
   ownerDeathRowCache.set(item, reworded)
   return reworded
 }

@@ -28,7 +28,9 @@ const HOST_STATUS_WORDS: Record<AgentSessionHostStatusPresentation, () => string
     translate(
       'components.native-chat.notices.responseInterrupted',
       HOST_STATUS_COPY['response-interrupted']
-    )
+    ),
+  'orca-stop': () =>
+    translate('components.native-chat.notices.responseInterrupted', HOST_STATUS_COPY['orca-stop'])
 }
 
 export function NativeChatNoticeRow({

@@ -118,6 +118,21 @@ describe('notice rows', () => {
     expect(line).toHaveClass('text-muted-foreground')
     expect(line.closest('.text-destructive')).toBeNull()
   })
+  // A row naming why Orca stopped stays red for clients that fold every other row; this client says
+  // only that the response was interrupted, muted.
+  it('draws an orca-stop row as the muted interrupted line, even in its red tone', () => {
+    renderStatus({
+      kind: 'status',
+      text: 'Codex stopped while this response was in progress.',
+      presentation: 'orca-stop',
+      tone: 'error'
+    })
+    const line = screen.getByText(
+      'This response was interrupted. You can continue in this conversation.'
+    )
+    expect(line).toHaveClass('text-muted-foreground')
+    expect(line.closest('.text-destructive')).toBeNull()
+  })
   it('renders future presentation and tone values as untinted text', () => {
     renderStatus({
       kind: 'status',
