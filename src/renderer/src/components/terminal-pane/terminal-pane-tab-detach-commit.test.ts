@@ -137,6 +137,29 @@ describe('detachTerminalPaneToTab against main (B1-2 review-1)', () => {
     expect(toastErrorMock).toHaveBeenCalledWith(expect.stringMatching(STAYED))
   })
 
+  // B1-2 review-2: a tab this window opened before the throw would disagree with main's undo.
+  it('drops a half-opened target tab without killing its PTY and restores the source', async () => {
+    const commitMove = mainAnswering([moved, moved])
+    const store = createStore()
+    const sourceLayout = store.terminalLayoutsByTabId[SOURCE_TAB_ID]
+    vi.mocked(store.setActiveTab).mockImplementation(() => {
+      throw new Error('setActiveTab failed')
+    })
+
+    await expect(detach({ commitMove, store })).resolves.toBeNull()
+
+    expect(store.createTab).toHaveBeenCalledOnce()
+    expect(store.closeTab).toHaveBeenCalledWith(
+      'tab-detached',
+      expect.objectContaining({
+        localPtyTeardownOwnedExternally: true,
+        remoteCloseOwnedByHost: true
+      })
+    )
+    expect(store.terminalLayoutsByTabId[SOURCE_TAB_ID]).toBe(sourceLayout)
+    expect(commitMove.mock.calls[1]?.[0]).toMatchObject({ undo: true })
+  })
+
   // SF4: a stalled main must not wedge later drags of the pane.
   it('gives up on a stalled move, undoes it and lets the pane be dragged again', async () => {
     const commitMove = mainAnswering(['hang', { status: 'not_held' }, moved])

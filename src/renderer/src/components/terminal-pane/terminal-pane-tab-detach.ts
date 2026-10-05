@@ -1,6 +1,6 @@
 import type { AppState } from '@/store'
 import { createBrowserUuid } from '@/lib/browser-uuid'
-import type { TerminalTab } from '../../../../shared/terminal-tab-types'
+import type { TerminalLayoutSnapshot, TerminalTab } from '../../../../shared/terminal-tab-types'
 import type {
   TerminalLeafMoveRequest,
   TerminalLeafMoveResult
@@ -22,6 +22,7 @@ export type { TerminalTabStripDropTarget } from './terminal-tab-strip-drop-targe
 
 export type TerminalPaneTabDetachStore = Pick<
   AppState,
+  | 'closeTab'
   | 'createTab'
   | 'groupsByWorktree'
   | 'reorderUnifiedTabs'
@@ -248,6 +249,8 @@ async function applyCommittedMove(
     return settleUnappliedMove(args, request)
   }
 
+  const sourceLayoutBefore = store.terminalLayoutsByTabId[args.sourceTabId]
+  let createdTabId: string | null = null
   try {
     const latestStore = args.getStore()
     const sourceShellOverride = latestStore.tabsByWorktree[args.worktreeId]?.find(
@@ -266,6 +269,7 @@ async function applyCommittedMove(
         : { initialLeafId: sourceLeafId }),
       recordInteraction: true
     })
+    createdTabId = tab.id
     const afterCreateStore = args.getStore()
     moveCreatedTabToIndex({
       groupId: args.targetGroupId,
@@ -288,6 +292,33 @@ async function applyCommittedMove(
     return { tab, leafId: sourceLeafId, ptyId }
   } catch (error) {
     console.warn('[terminal-pane-detach] could not open the moved pane; putting it back', error)
+    if (createdTabId) {
+      dropHalfOpenedTab(args, createdTabId, sourceLayoutBefore)
+    }
     return settleUnappliedMove(args, request, true)
+  }
+}
+
+/** Main is putting the leaf back in its source, so this window must not keep a tab for it. */
+function dropHalfOpenedTab(
+  args: DetachTerminalPaneToTabArgs,
+  tabId: string,
+  sourceLayoutBefore: TerminalLayoutSnapshot | undefined
+): void {
+  try {
+    const store = args.getStore()
+    // Why these flags: the PTY stays on its source leaf, and main never had this tab to close.
+    store.closeTab(tabId, {
+      reason: 'cleanup',
+      recordInteraction: false,
+      captureRecentlyClosed: false,
+      localPtyTeardownOwnedExternally: true,
+      remoteCloseOwnedByHost: true
+    })
+    if (sourceLayoutBefore) {
+      store.setTabLayout(args.sourceTabId, sourceLayoutBefore)
+    }
+  } catch (error) {
+    console.warn('[terminal-pane-detach] could not drop the half-opened tab', error)
   }
 }

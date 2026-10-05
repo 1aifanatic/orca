@@ -71,6 +71,7 @@ export function createStore(
   sourceShellOverride = 'powershell.exe'
 ): TerminalPaneTabDetachStore {
   const store = {
+    closeTab: vi.fn(),
     createTab: vi.fn((_worktreeId, _targetGroupId, _shellOverride, options) => {
       const tab = createTerminalTab('tab-detached', options?.initialPtyId ?? null)
       const group = store.groupsByWorktree[WORKTREE_ID]?.find(
