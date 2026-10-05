@@ -28,6 +28,7 @@ vi.mock('../ssh/ssh-port-forward', () => mocks.sshPortForward)
 vi.mock('../ssh/ssh-port-scanner', () => mocks.sshPortScanner)
 
 import { SSH_TERMINATE_RECONNECT_REQUIRED } from '../../shared/constants'
+import { SshPtyHeldByPreviousRelayError } from '../providers/ssh-pty-errors'
 import type { SshConnectionState, SshTarget } from '../../shared/ssh-types'
 import {
   clearProviderPtyState,
@@ -313,6 +314,39 @@ describe('SSH IPC handlers', () => {
     expect(mockStore.markSshRemotePtyLease).toHaveBeenCalledWith(
       'ssh-1',
       'pty-abandoned',
+      'terminated'
+    )
+  })
+
+  it('ssh:terminateSessions keeps a lease an older relay holds but no route can stop', async () => {
+    mockSshStore.getTarget.mockReturnValue({
+      id: 'ssh-1',
+      label: 'Server',
+      host: 'example.com',
+      port: 22,
+      username: 'deploy'
+    })
+    mockConnectionManager.connect.mockResolvedValue({})
+    mockConnectionManager.getState.mockReturnValue({
+      targetId: 'ssh-1',
+      status: 'connected',
+      error: null,
+      reconnectAttempt: 0
+    })
+    mockStore.getSshRemotePtyLeases.mockReturnValue([
+      { targetId: 'ssh-1', ptyId: 'pty2:old:1', state: 'detached' }
+    ])
+    vi.mocked(getSshPtyProvider).mockReturnValue(mockPtyProvider as never)
+    vi.mocked(getPtyIdsForConnection).mockReturnValue([])
+    mockPtyProvider.shutdown.mockRejectedValue(new SshPtyHeldByPreviousRelayError('pty2:old:1'))
+
+    await handlers.get('ssh:connect')!(null, { targetId: 'ssh-1' })
+    await expect(
+      handlers.get('ssh:terminateSessions')!(null, { targetId: 'ssh-1' })
+    ).resolves.toEqual({ terminated: 0, unverifiable: 1 })
+    expect(mockStore.markSshRemotePtyLease).not.toHaveBeenCalledWith(
+      'ssh-1',
+      'pty2:old:1',
       'terminated'
     )
   })

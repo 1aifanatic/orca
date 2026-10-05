@@ -4,7 +4,12 @@ import { mkdir, symlink, writeFile } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { join } from 'node:path'
 import { build, type Plugin } from 'esbuild'
-import type { MultiplexerTransport } from '../../../src/main/ssh/ssh-channel-multiplexer'
+import {
+  SshChannelMultiplexer,
+  type MultiplexerTransport
+} from '../../../src/main/ssh/ssh-channel-multiplexer'
+import { openSshPtyConsumerSession } from '../../../src/main/ssh/ssh-pty-consumer-session'
+import { toAppSshPtyId } from '../../../src/main/providers/ssh-pty-id'
 import { RELAY_SENTINEL } from '../../../src/main/ssh/relay-protocol'
 import type { ReleaseCheckout } from './release-checkout'
 
@@ -199,4 +204,38 @@ export function openShellRelayTransport(command: string): Promise<MultiplexerTra
       })
     })
   })
+}
+
+/**
+ * What a shipped app leaves behind on quit: its relay keeps one shell that echoes each line it
+ * reads, and the app's owner claim lapses after its grace. Returns the shell's app PTY id.
+ */
+export async function leaveShellInReleasedRelay(
+  install: ReleasedRelayInstall,
+  sockPath: string,
+  targetId: string
+): Promise<string> {
+  const bridge = `cd '${install.dir}' && '${process.execPath}' relay.js --connect --sock-path '${sockPath}' --credential-file '${sockPath}.credential'`
+  const oldApp = new SshChannelMultiplexer(await openShellRelayTransport(bridge))
+  await openSshPtyConsumerSession(oldApp, {
+    clientInstanceId: `${install.version}-app`,
+    expectedServerBuildId: install.version,
+    outputFlowControl: { requestedWindowSu: 256 * 1024 }
+  })
+  const spawned: unknown = await oldApp.request('pty.spawn', { cols: 80, rows: 24 })
+  if (
+    !spawned ||
+    typeof spawned !== 'object' ||
+    !('id' in spawned) ||
+    typeof spawned.id !== 'string'
+  ) {
+    throw new Error('released relay pty.spawn returned no id')
+  }
+  oldApp.notify('pty.data', {
+    id: spawned.id,
+    data: 'stty -echo; while read -r l; do [ "$l" = quit ] && exit 0; echo "GOT:$l"; done\n'
+  })
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  oldApp.dispose()
+  return toAppSshPtyId(targetId, spawned.id)
 }
