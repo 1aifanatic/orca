@@ -60,7 +60,7 @@ export async function acquireAcpStructuredSession(input: {
   acquire: StructuredAgentSessionAcquireInput
   deps: AcpStructuredSessionAdapterDeps
   generation: string
-  /** A close reached this start; checked until the spawn, after which `track` hands it the child. */
+  /** The acquire was aborted; checked until the spawn, after which `track` hands it the child. */
   abandoned: () => boolean
   /** Registers the child so a close during the acquire can stop it. */
   track: (child: AcpStructuredChild) => void

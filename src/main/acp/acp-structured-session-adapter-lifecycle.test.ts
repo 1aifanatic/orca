@@ -253,11 +253,12 @@ describe('ACP startup that never answers', () => {
   it('lets a close stop the child while the handshake is unanswered', async () => {
     const rig = await openAcpAdapterRig({ script: (agent) => agent.on('initialize', () => {}) })
     const queue = new StructuredAgentSessionTaskQueue()
-    const acquiring = queue.serialize(SESSION, () => rig.acquire())
+    const start = new AbortController()
+    const acquiring = queue.serialize(SESSION, () => rig.acquire({ signal: start.signal }))
     const failed = acquiring.catch((error: unknown) => error)
     await rig.frame('initialize')
     // What the host's close does outside the queue, then its queued stop.
-    await rig.adapter.abandonStart(SESSION)
+    start.abort()
     const closing = queue.serialize(SESSION, () => rig.adapter.closeSession(SESSION))
     expect(rig.child().closes).toBe(1)
     expect(await failed).toMatchObject({ message: 'Grok was closed while starting' })
@@ -285,11 +286,12 @@ describe('ACP startup that never answers', () => {
       script: (agent) => agent.on('initialize', () => {}),
       deps: { startupTimeoutMs: 15 }
     })
-    const failed = rig.acquire().catch((error: unknown) => error)
+    const start = new AbortController()
+    const failed = rig.acquire({ signal: start.signal }).catch((error: unknown) => error)
     await rig.frame('initialize')
     const child = rig.child()
     child.close = vi.fn(async () => false)
-    await rig.adapter.abandonStart(SESSION)
+    start.abort()
     expect(await failed).toMatchObject({ name: 'AgentSessionAcquisitionExitUnprovenError' })
     // Every later stop asks the child again, and none answers for it.
     expect(await rig.adapter.closeSession(SESSION)).toBe(false)
@@ -322,9 +324,10 @@ describe('ACP startup that never answers', () => {
         }
       }
     })
-    const failed = rig.acquire().catch((error: unknown) => error)
+    const start = new AbortController()
+    const failed = rig.acquire({ signal: start.signal }).catch((error: unknown) => error)
     await tick()
-    await rig.adapter.abandonStart(SESSION)
+    start.abort()
     releaseLaunch()
     expect(await failed).toMatchObject({ name: 'AgentSessionPreSpawnError' })
     expect(rig.spawned).toEqual([])
@@ -332,6 +335,13 @@ describe('ACP startup that never answers', () => {
 })
 
 describe('ACP session release', () => {
+  it('stops nothing for a chat it never started, as one an earlier Orca left', async () => {
+    const rig = await openAcpAdapterRig()
+    await expect(rig.adapter.releaseAcquisition({ sessionId: SESSION })).resolves.toBe(true)
+    expect(rig.spawned).toEqual([])
+    expect(rig.lifecycle).toEqual([])
+  })
+
   it('keeps nothing of a chat once its child is proven closed', async () => {
     const rig = await openAcpAdapterRig()
     await rig.acquire()

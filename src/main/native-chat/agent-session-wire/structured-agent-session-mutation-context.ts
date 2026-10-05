@@ -44,6 +44,8 @@ export type StructuredAgentSessionMutationContext = {
    *  journal commit (a conversation command). Draft-table changes need no call:
    *  the draft store notifies through the journal's own commit listener. */
   wakeQueuedDrain?: (sessionId: string) => void
+  /** Aborts the acquire the session has in flight, from outside its serialize. */
+  abortAcquire: (sessionId: string, reason: string) => void
   now: () => number
 }
 

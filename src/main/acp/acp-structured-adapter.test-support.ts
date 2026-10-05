@@ -104,6 +104,7 @@ export type AcpAdapterRig = {
   acquire(options?: {
     fence?: number
     onSpawned?: () => Promise<void>
+    signal?: AbortSignal
   }): ReturnType<AcpStructuredSessionAdapter['acquire']>
   /** Frames Orca wrote to the agent with this method. */
   sent(method: string): FakeFrame[]
@@ -191,6 +192,7 @@ export async function openAcpAdapterRig(
         fence: acquireOptions.fence ?? 1,
         spawnToken: 'spawn-1',
         events: rig.eventSink,
+        ...(acquireOptions.signal ? { signal: acquireOptions.signal } : {}),
         onSpawned: async () => {
           spawned.push('onSpawned')
           await acquireOptions.onSpawned?.()

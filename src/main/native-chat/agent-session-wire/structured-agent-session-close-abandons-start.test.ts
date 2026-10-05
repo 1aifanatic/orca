@@ -21,20 +21,20 @@ import { claudeAndCodexDeclared } from './structured-agent-session-adapter-route
 
 it('a close stops a start the provider never answers instead of queueing behind it', async () => {
   const state = hostTestState()
-  let failStart: ((error: Error) => void) | undefined
+  let signal: AbortSignal | undefined
+  // A start the provider never answers ends only when its acquire is aborted.
   state.acquire.mockImplementation(
-    () =>
+    (input) =>
       new Promise((_resolve, reject) => {
-        failStart = reject
+        signal = input.signal
+        input.signal?.addEventListener('abort', () => reject(new Error('closed while starting')))
       })
   )
-  // The provider's child stops, so its unanswered handshake fails the start.
-  const abandonStart = vi.fn(async () => failStart?.(new Error('closed while starting')))
   const host = new StructuredAgentSessionHost({
     agents: claudeAndCodexDeclared(),
     logger: createStructuredAgentSessionLogger(),
     store: state.store,
-    adapter: { ...adapter(), abandonStart },
+    adapter: adapter(),
     journalDatabase: openTestJournalHostDatabase(state.root),
     recoveryCapsule: new AgentSessionRecoveryCapsule(state.root),
     claimKeyId: 'key-1',
@@ -45,6 +45,6 @@ it('a close stops a start the provider never answers instead of queueing behind 
   const attaching = host.attach(CALLER, attachParams())
   await vi.waitFor(() => expect(state.acquire).toHaveBeenCalled())
   await host.close(SESSION, 'user-close')
-  expect(abandonStart).toHaveBeenCalledWith(SESSION)
+  expect(signal?.aborted).toBe(true)
   expect((await attaching).ok).toBe(false)
 })

@@ -40,6 +40,7 @@ export async function acquireOwner(
       ...(record.options ? { options: record.options } : {}),
       ...(input.eventSink ? { events: input.eventSink } : {}),
       ...(input.recordPhase ? { recordPhase: input.recordPhase } : {}),
+      ...(input.acquireSignal ? { signal: input.acquireSignal } : {}),
       onSpawned: async (process) => {
         record = await input.store.commitProcessIdentity({
           sessionId: record.sessionId,

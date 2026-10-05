@@ -231,6 +231,10 @@ export type StructuredAgentSessionAcquireInput = {
   /** Durably records the child's identity the moment it exists, before any handshake, so a crash
    *  mid-start leaves an owner recovery can stop. The acquisition's `process` must match it. */
   onSpawned?: (process: AgentSessionProcessIdentity) => Promise<void>
+  /** Aborted by a close, or by a Stop admitted now, that must not wait behind this acquire: the
+   *  adapter stops what it started and the acquire fails. An adapter whose acquire never waits on
+   *  the provider's handshake may ignore it. */
+  signal?: AbortSignal
 }
 
 export type StructuredAgentSessionSetOptionInput = {
@@ -382,8 +386,4 @@ export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & 
   disposeSession?(sessionId: string): Promise<boolean>
   /** Host acknowledgement that the proven-dead child, lease and journal owner are released. */
   acknowledgeSessionRelease?(sessionId: string): void
-  /** A close that must not wait behind an acquire still in its handshake: stops that child now, so
-   *  the acquire fails and the close queued behind it runs. Called outside the session's serialize;
-   *  a no-op when nothing is starting. Absent where an acquire never waits on the provider. */
-  abandonStart?(sessionId: string): Promise<void>
 }

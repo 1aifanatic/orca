@@ -131,6 +131,7 @@ async function runAttach(
     candidate: null,
     committed: false
   }
+  const acquire = context.runtimeState.acquireAborts.begin(sessionId)
   try {
     const attached = await performAttach({
       store: context.deps.store,
@@ -157,6 +158,7 @@ async function runAttach(
       params,
       now: () => context.now(),
       recordPhase,
+      acquireSignal: acquire.signal,
       ...(options.onAcquisitionFailed ? { onAcquisitionFailed: options.onAcquisitionFailed } : {}),
       openConversation: async (record) => {
         const conversation = await context.openConversation(record.sessionId, {
@@ -227,6 +229,7 @@ async function runAttach(
     }
     return stampFailedCreateOwnerVerdict(context.deps.store, callerKey, params.envelope, attached)
   } finally {
+    acquire.end()
     if (!attempt.committed) {
       attemptSink.close()
     }

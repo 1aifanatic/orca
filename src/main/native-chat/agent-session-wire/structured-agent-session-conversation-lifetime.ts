@@ -76,6 +76,25 @@ export function createStructuredAgentSessionConversationLifetime(host: {
     )
   }
 
+  /** A start that failed with its child not proven gone leaves no child here, only the record's
+   *  owner, so the close asks the adapter again; it stops only a child it still holds. Its answer
+   *  proves nothing for the record: the lease probe does, and the close never waits on it. */
+  const releaseUnprovenOwner = async (sessionId: string): Promise<void> => {
+    const lease = deps().store.getRecord(sessionId)?.lease
+    if (sessions.get(sessionId)?.child || !lease?.ownerProcess || lease.deathEvidence !== null) {
+      return
+    }
+    await deps()
+      .adapter.releaseAcquisition?.({ sessionId })
+      .catch((error: unknown) =>
+        deps().logger.warn("stopping a failed start's agent for a close failed", {
+          scope: 'close-unproven-owner',
+          sessionId,
+          error
+        })
+      )
+  }
+
   const idleSweep = new StructuredAgentSessionIdleSweep({
     sessions,
     serialize,
@@ -162,15 +181,7 @@ export function createStructuredAgentSessionConversationLifetime(host: {
      *  still queued will not be sent. */
     close: (sessionId: string, cause: StructuredAgentSessionCloseCause): Promise<void> => {
       // Outside the queue: a start the provider never answers must not hold the close behind it.
-      void deps()
-        .adapter.abandonStart?.(sessionId)
-        ?.catch((error: unknown) =>
-          deps().logger.warn('stopping a starting provider for a close failed', {
-            scope: 'abandon-start',
-            sessionId,
-            error
-          })
-        )
+      host.context().runtimeState.acquireAborts.abort(sessionId, 'closed while starting')
       return serialize(sessionId, async () => {
         readRefusals.forget(sessionId)
         const session = sessions.get(sessionId)
@@ -179,6 +190,7 @@ export function createStructuredAgentSessionConversationLifetime(host: {
           await abandonQueuedStructuredAgentSessionMessages(deps(), sessionId, session.journal)
         }
         await stopStructuredAgentSessionAgentUnderSerialize(host.context(), sessionId, { cause })
+        await releaseUnprovenOwner(sessionId)
         await closeConversation(sessionId)
       })
     }

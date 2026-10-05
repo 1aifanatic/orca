@@ -47,9 +47,9 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
 
   async acquire(input: StructuredAgentSessionAcquireInput): Promise<AgentSessionAcquisition> {
     const sessionId = input.identity.sessionId
-    const attempt = this.starts.begin(sessionId)
+    const attempt = this.starts.begin(input.signal)
     try {
-      if (!(await this.stopPrevious(sessionId))) {
+      if (!(await this.stop(sessionId))) {
         throw new AgentSessionAcquisitionExitUnprovenError(
           new Error(
             `the previous ${this.deps.spec.agent} child for ${sessionId} could not be stopped`
@@ -58,7 +58,7 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
       }
       return await this.start(input, attempt)
     } finally {
-      this.starts.end(sessionId, attempt)
+      this.starts.end(attempt)
     }
   }
 
@@ -73,7 +73,7 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
         acquire: input,
         deps: this.deps,
         generation,
-        abandoned: () => attempt.abandoned,
+        abandoned: () => attempt.signal.aborted,
         track: (child) => this.starts.track(attempt, child),
         onExit: (session) => {
           if (session && this.sessions.get(sessionId) === session) {
@@ -84,7 +84,7 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
         onSettled: (settlement) => this.deps.onDispatchSettledLate?.({ sessionId, ...settlement }),
         forceClose: (id) => void this.forceCloseSession(id)
       })
-      if (attempt.abandoned) {
+      if (attempt.signal.aborted) {
         session.lane.dispose()
         throw new Error('closed while starting')
       }
@@ -93,12 +93,12 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
     } catch (error) {
       const { child } = attempt
       // Checked before the close below, which would make any exit look like one Orca asked for.
-      const exitedOnItsOwn = child?.exited === true && !attempt.abandoned
+      const exitedOnItsOwn = child?.exited === true && !attempt.signal.aborted
       if (child && !(await child.close().catch(() => false))) {
         this.starts.retainFailed(sessionId, child)
         throw new AgentSessionAcquisitionExitUnprovenError(error)
       }
-      if (attempt.abandoned) {
+      if (attempt.signal.aborted) {
         const closed = new Error(
           `${acpAgentName(this.deps.spec.agent)} was closed while starting`,
           { cause: error }
@@ -113,13 +113,6 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
       }
       throw error
     }
-  }
-
-  /** A close that must not wait behind an acquire still starting: that start stops now, its child
-   *  if it has one, and the acquire fails through the start-failure surface. A failed start's
-   *  child still unproven gone is asked again. */
-  abandonStart = async (sessionId: string): Promise<void> => {
-    await Promise.all([this.starts.abandon(sessionId), this.starts.stopFailed(sessionId)])
   }
 
   async dispatch(input: {
@@ -242,8 +235,11 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
   forceCloseSession = (sessionId: string): Promise<boolean> => this.stop(sessionId, false)
 
   async closeAll(): Promise<void> {
-    const ids = new Set([...this.sessions.keys(), ...this.starts.sessionIds()])
-    const proven = await Promise.all([...ids].map((sessionId) => this.stop(sessionId, true)))
+    const ids = new Set([...this.sessions.keys(), ...this.starts.failedSessionIds()])
+    const proven = await Promise.all([
+      this.starts.stopAll(),
+      ...[...ids].map((sessionId) => this.stop(sessionId, true))
+    ])
     if (proven.includes(false)) {
       throw new Error('an ACP agent child could not be proven stopped')
     }
@@ -263,17 +259,9 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
     return closed
   }
 
-  /** True only once every child is proven gone, or when this adapter runs none for the session. */
-  private async stop(sessionId: string, requested: boolean): Promise<boolean> {
-    const [abandoned, previous] = await Promise.all([
-      this.starts.abandon(sessionId),
-      this.stopPrevious(sessionId, requested)
-    ])
-    return abandoned && previous
-  }
-
-  /** What an earlier start left: a failed start's child, and the session's own. */
-  private async stopPrevious(sessionId: string, requested = true): Promise<boolean> {
+  /** True only once every child is proven gone, or when this adapter runs none for the session:
+   *  a failed start's child, and the session's own. */
+  private async stop(sessionId: string, requested = true): Promise<boolean> {
     const [failedStart, session] = await Promise.all([
       this.starts.stopFailed(sessionId),
       this.stopSession(sessionId, requested)

@@ -1,44 +1,55 @@
-// The adapter's starts: each acquire from its first step, so a close reaches it at any point (before
-// the spawn too), and each failed start's child until its exit is proven, so a later close retries
-// it instead of answering for a child it no longer knows.
+// The adapter's starts: each acquire under way, stopped when its signal aborts (a close or a Stop
+// that must not wait behind it) or at quit, and each failed start's child until its exit is
+// proven, so a later close retries it instead of answering for a child it no longer knows.
 
 import type { AcpStructuredChild } from './acp-structured-child'
 
-export type AcpStartAttempt = { abandoned: boolean; child: AcpStructuredChild | null }
+export type AcpStartAttempt = {
+  /** Aborted by the acquire's own signal, or by quit. */
+  readonly signal: AbortSignal
+  child: AcpStructuredChild | null
+}
 
 export class AcpStructuredStarts {
-  private readonly starting = new Map<string, AcpStartAttempt>()
+  /** Each start under way, with what quit aborts it by. */
+  private readonly starting = new Map<AcpStartAttempt, AbortController>()
   private readonly failed = new Map<string, AcpStructuredChild>()
 
-  /** Registered before anything awaits, so a close from here on stops this start. */
-  begin(sessionId: string): AcpStartAttempt {
-    const attempt: AcpStartAttempt = { abandoned: false, child: null }
-    this.starting.set(sessionId, attempt)
+  /** Registered before anything awaits, so an abort from here on stops this start. */
+  begin(signal: AbortSignal | undefined): AcpStartAttempt {
+    const quit = new AbortController()
+    const attempt: AcpStartAttempt = {
+      signal: signal ? AbortSignal.any([signal, quit.signal]) : quit.signal,
+      child: null
+    }
+    attempt.signal.addEventListener('abort', () => void attempt.child?.close().catch(() => false), {
+      once: true
+    })
+    this.starting.set(attempt, quit)
     return attempt
   }
 
-  /** The start has its child; one a close already reached goes as soon as it exists. */
+  /** The start has its child; one already aborted goes as soon as it exists. */
   track(attempt: AcpStartAttempt, child: AcpStructuredChild): void {
     attempt.child = child
-    if (attempt.abandoned) {
+    if (attempt.signal.aborted) {
       void child.close().catch(() => false)
     }
   }
 
-  end(sessionId: string, attempt: AcpStartAttempt): void {
-    if (this.starting.get(sessionId) === attempt) {
-      this.starting.delete(sessionId)
-    }
+  end(attempt: AcpStartAttempt): void {
+    this.starting.delete(attempt)
   }
 
-  /** The start under way, stopped: true once it has no child or that child's exit is proven. */
-  async abandon(sessionId: string): Promise<boolean> {
-    const attempt = this.starting.get(sessionId)
-    if (!attempt) {
-      return true
-    }
-    attempt.abandoned = true
-    return attempt.child ? attempt.child.close().catch(() => false) : true
+  /** Quit: every start under way stops; true once none has a child left unproven gone. */
+  async stopAll(): Promise<boolean> {
+    const proven = await Promise.all(
+      [...this.starting].map(([attempt, quit]) => {
+        quit.abort()
+        return attempt.child ? attempt.child.close().catch(() => false) : true
+      })
+    )
+    return !proven.includes(false)
   }
 
   /** A failed start whose child is not proven gone keeps it until its exit is. */
@@ -64,7 +75,7 @@ export class AcpStructuredStarts {
     return proven
   }
 
-  sessionIds(): string[] {
-    return [...this.starting.keys(), ...this.failed.keys()]
+  failedSessionIds(): string[] {
+    return [...this.failed.keys()]
   }
 }
