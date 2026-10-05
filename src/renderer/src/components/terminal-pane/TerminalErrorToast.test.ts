@@ -369,6 +369,20 @@ describe('TerminalErrorToast environment footer', () => {
     expect(view.container.textContent).not.toContain('OS:')
   })
 
+  it('omits client details for a remote pane whose session cannot be reattached', async () => {
+    const error = "Error invoking remote method 'pty:attach': Error: Session not found: pty-7"
+    const remote = render(
+      React.createElement(TerminalErrorToast, { error, paneOnClient: false, onDismiss: vi.fn() })
+    )
+    expect(remote.container.textContent).toContain("couldn't reattach")
+    await waitFor(() => expect(environmentMocks.resolveFooter).not.toHaveBeenCalled())
+    expect(remote.container.textContent).not.toContain('OS:')
+    cleanup()
+
+    const local = render(React.createElement(TerminalErrorToast, { error, onDismiss: vi.fn() }))
+    await waitFor(() => expect(local.container.textContent).toContain('OS: darwin'))
+  })
+
   it('shows the issue request once for a host error that already asks for one', () => {
     const view = render(
       React.createElement(TerminalErrorToast, {
