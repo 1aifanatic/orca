@@ -161,12 +161,13 @@ export function openClaudeConnectionOf(
         launch,
         {
           ...handlers,
-          onExit: (error, exit) => {
+          // Every argument passes through, so one the connection adds later still reaches the session.
+          onExit: (...args) => {
             support.observeExit(
               { command: launch.pathToClaudeCodeExecutable, cwd: launch.cwd },
-              error
+              args[0]
             )
-            handlers.onExit?.(error, exit)
+            handlers.onExit?.(...args)
           }
         },
         ...rest
