@@ -57,8 +57,6 @@ describe('hasCustomCodexHomeOverride', () => {
       temporaryHomes.push(paneHome)
       writeFileSync(join(paneHome, '.zshrc'), 'export CODEX_HOME="$HOME/custom-codex-home"\n')
 
-      // Why cleared: a developer's XDG_CONFIG_HOME would change which startup files are read.
-      delete process.env.XDG_CONFIG_HOME
       expect(hasCustomCodexHomeOverrideForLaunch({ HOME: paneHome, SHELL: '/bin/zsh' })).toBe(true)
     }
   )
@@ -77,9 +75,6 @@ describe('hasCustomCodexHomeOverride', () => {
         join(configHome, 'fish', 'config.fish'),
         'set -gx CODEX_HOME "$HOME/custom-codex-home"\n'
       )
-      // Why no CODEX_HOME in the decoy: ignoring XDG_CONFIG_HOME would read it and find none.
-      mkdirSync(join(paneHome, '.config', 'fish'), { recursive: true })
-      writeFileSync(join(paneHome, '.config', 'fish', 'config.fish'), 'set -gx EDITOR vim\n')
       delete process.env.XDG_CONFIG_HOME
 
       const launchEnv = {

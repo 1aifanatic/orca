@@ -62,7 +62,7 @@ const SHARED_ROLLOUT = join(MANAGED_SHARED_HOME, 'sessions', '2026', '07', '20',
 describe('registerPtyHandlers', () => {
   const { handlers, mainWindow } = setupPtyIpcSuite()
 
-  it('records route provenance for a process-wide CODEX_HOME', async () => {
+  it('records a launch env CODEX_HOME pane under the shared home', async () => {
     const previousCodexHome = process.env.CODEX_HOME
     process.env.CODEX_HOME = '/process/custom-codex-home'
     try {
