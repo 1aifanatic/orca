@@ -1,12 +1,16 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SerializeAddon } from '@xterm/addon-serialize'
 import { Terminal } from '@xterm/headless'
 import { installTerminalMouseEncodingTracker } from '@/lib/pane-manager/terminal-mouse-encoding-tracker'
 import type { SerializeFn } from '../pty-buffer-serializer'
 import type { ConnectPanePtySession } from './connect-pane-pty-session'
+import { hydrateOverrides, setFitOverride } from '@/lib/pane-manager/mobile-fit-overrides'
 import { bindRegisterPaneSerializer } from './pane-serializer-register'
 
 const serializers = vi.hoisted(() => new Map<string, SerializeFn>())
+const safeFit = vi.hoisted(() => vi.fn())
+
+vi.mock('@/lib/pane-manager/pane-tree-ops', () => ({ safeFit }))
 
 vi.mock('../pty-buffer-serializer', () => ({
   registerPtySerializer: (ptyId: string, fn: SerializeFn) => {
@@ -65,5 +69,48 @@ describe('pane serializer mouse encoding', () => {
 
   it('keeps an empty snapshot empty', async () => {
     expect(await serializePaneAfter(`${ESC}[?1006h`)).toBe('')
+  })
+})
+
+describe('pane serializer override fit', () => {
+  afterEach(() => {
+    hydrateOverrides([])
+    safeFit.mockClear()
+  })
+
+  async function serializeBoundPane(boundPtyId: string): Promise<void> {
+    const terminal = new Terminal({ cols: 200, rows: 50, allowProposedApi: true })
+    const serializeAddon = new SerializeAddon()
+    terminal.loadAddon(serializeAddon)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the serializer reads only these members of the session bag.
+    const session = {
+      disposed: false,
+      pane: { terminal, serializeAddon, container: { dataset: { ptyId: boundPtyId } } },
+      rendererOrderedPtyId: null,
+      kittyKeyboardModes: { hasProvenBaseline: false },
+      transport: {},
+      onDataDisposable: { dispose: () => {} }
+    } as unknown as ConnectPanePtySession
+    bindRegisterPaneSerializer(session)
+    session.registerPaneSerializerFor('pty-1')
+    await serializers.get('pty-1')?.()
+  }
+
+  it('fits a pane still on the desktop grid before answering', async () => {
+    setFitOverride('pty-1', 'mobile-fit', 47, 40)
+    await serializeBoundPane('pty-1')
+    expect(safeFit).toHaveBeenCalledTimes(1)
+  })
+
+  it('skips the fit when the pane already sits at the override grid', async () => {
+    setFitOverride('pty-1', 'mobile-fit', 200, 50)
+    await serializeBoundPane('pty-1')
+    expect(safeFit).not.toHaveBeenCalled()
+  })
+
+  it('skips the fit for a stale registration whose pane now hosts another PTY', async () => {
+    setFitOverride('pty-1', 'mobile-fit', 47, 40)
+    await serializeBoundPane('pty-2')
+    expect(safeFit).not.toHaveBeenCalled()
   })
 })
