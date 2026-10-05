@@ -2,8 +2,7 @@
 
 import '@testing-library/jest-dom/vitest'
 
-import { act, cleanup, fireEvent, screen } from '@testing-library/react'
-import { render } from './native-chat-app-root-test-render'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { createRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
@@ -20,8 +19,7 @@ import {
   session,
   stubLayout,
   stubResizeObserver,
-  TRANSCRIPT_LENGTH,
-  VIEWPORT_PX
+  TRANSCRIPT_LENGTH
 } from './native-chat-windowing-test-harness'
 
 afterEach(cleanup)
@@ -431,22 +429,6 @@ describe('reader navigation', () => {
     const { container } = render(list(transcript))
 
     expect(scrollRoot(container)).toHaveAttribute('tabindex', '0')
-  })
-
-  it('offers the way to the top only once the start of a loaded transcript is out of view', () => {
-    const { container } = render(list(transcript))
-    paint(container)
-    scrollTranscript(container, VIEWPORT_PX / 2)
-    paint(container)
-    // Anti-vacuous: the reader has left the end, so the way back down is offered.
-    expect(screen.getByRole('button', { name: 'Jump to latest' })).not.toHaveAttribute('inert')
-    // The first message is still on screen: there is nowhere further up to go.
-    expect(screen.queryByRole('button', { name: 'Jump to top' })).toBeNull()
-
-    scrollTranscript(container, VIEWPORT_PX * 2)
-    paint(container)
-
-    expect(screen.getByRole('button', { name: 'Jump to top' })).not.toHaveAttribute('inert')
   })
 
   it('hands focus to the transcript when a focused jump button hides, and leaves it inert', () => {

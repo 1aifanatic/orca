@@ -2,8 +2,7 @@
 
 import '@testing-library/jest-dom/vitest'
 
-import { cleanup, fireEvent, screen, within } from '@testing-library/react'
-import { render } from './native-chat-app-root-test-render'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalStatusItem } from '../../../../shared/agent-session-journal-types'
 import { projectStructuredItemToNativeChat } from '../../../../shared/structured-agent-session-projection'

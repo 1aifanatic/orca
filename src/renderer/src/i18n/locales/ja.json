@@ -17777,7 +17777,6 @@
         "toggleDetails": "ターンの詳細を切り替えます"
       },
       "jumpToLatest": "最新にジャンプ",
-      "jumpToTop": "先頭へジャンプ",
       "transcriptLabel": "会話",
       "toggle": {
         "showTerminal": "ターミナルを表示",

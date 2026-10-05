@@ -45,11 +45,8 @@ function hasMeasurableViewport(element: HTMLElement | null): element is HTMLElem
 
 export type NativeChatTranscriptScroll = {
   showJump: boolean
-  /** More than a viewport below the top of what is loaded. */
-  awayFromTop: boolean
   onScroll: UIEventHandler<HTMLDivElement>
   scrollToBottom: () => void
-  scrollToTop: () => void
   /** Align an element inside the transcript with the top of the viewport. */
   scrollMessageToTop: (element: HTMLElement) => void
   /** The reader opened a row to read it: leave it where it is. */
@@ -87,7 +84,6 @@ export function useNativeChatTranscriptScroll({
   reconcileReaderScroll: (isTakingOver: boolean) => void
 }): NativeChatTranscriptScroll {
   const [showJump, setShowJump] = useState(false)
-  const [awayFromTop, setAwayFromTop] = useState(false)
   const followRef = useRef(FOLLOWING)
   const detachedScrollTopRef = useRef<number | null>(null)
   const isVisibleRef = useRef(isVisible)
@@ -127,7 +123,6 @@ export function useNativeChatTranscriptScroll({
       const following = followRef.current.kind === 'following'
       detachedScrollTopRef.current = following ? null : geometry.scrollTop
       setShowJump(shouldShowJumpToLatest(following, geometry))
-      setAwayFromTop(geometry.scrollTop > geometry.clientHeight)
       return geometry
     },
     [consumeProgrammaticScroll, follow, reconcileReaderScroll, scrollRef]
@@ -154,13 +149,6 @@ export function useNativeChatTranscriptScroll({
     scrollToEndWhenMeasurable()
     setShowJump(false)
   }, [follow, scrollToEndWhenMeasurable])
-
-  const scrollToTop = useCallback(() => {
-    follow({ kind: 'navigate' })
-    // Also where a hidden pane lands once revealed, since the write below waits for layout.
-    detachedScrollTopRef.current = 0
-    restoreScrollOffset(0)
-  }, [follow, restoreScrollOffset])
 
   const scrollMessageToTop = useCallback(
     (element: HTMLElement) => {
@@ -248,10 +236,8 @@ export function useNativeChatTranscriptScroll({
 
   return {
     showJump,
-    awayFromTop,
     onScroll,
     scrollToBottom,
-    scrollToTop,
     scrollMessageToTop,
     readerOpened,
     readerClosed,

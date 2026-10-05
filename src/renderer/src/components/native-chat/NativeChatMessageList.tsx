@@ -264,8 +264,7 @@ export function NativeChatMessageList({
     sessionKey: `${session.agent}:${session.sessionId}`,
     isVisible,
     loadEarlier,
-    jumpToLoaded: requestRailJump,
-    jumpToStart: transcriptScroll.scrollToTop
+    jumpToLoaded: requestRailJump
   })
   const { start: startHistoryJump, abort: beginNavigation } = railHistoryJump
   const readerOpens = useNativeChatReaderOpens({
@@ -427,8 +426,6 @@ export function NativeChatMessageList({
           />
           <NativeChatJumpControls
             showLatest={transcriptScroll.showJump}
-            startOutOfView={showOlderHistory || transcriptScroll.awayFromTop}
-            historyJump={railHistoryJump}
             onLatest={jumpToLatest}
             transcriptRef={scrollRef}
           />
