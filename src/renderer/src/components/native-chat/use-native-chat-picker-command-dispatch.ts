@@ -17,13 +17,18 @@ import {
 } from './native-chat-composer-state'
 import type { NativeChatSendLifecycle } from './use-native-chat-send-lifecycle'
 import type { NativeChatPtySessionOptionsSurface } from './native-chat-pty-session-options'
+import {
+  answerNativeChatCommandInComposer,
+  type NativeChatLocalCommandAnswer
+} from './use-native-chat-local-command-answer'
 
 export function useNativeChatPickerCommandDispatch(args: {
   agent: AgentType
   disabled: boolean
   isDispatchingSessionOption: boolean
   resolveTarget: () => NativeChatResolvedTarget | null
-  onSlashCommand?: (command: string) => void
+  onSlashCommand?: (command: string, output?: string) => void
+  answerCommandLocally?: NativeChatLocalCommandAnswer
   onSubmitted?: () => void
   sessionOptionsSurface: NativeChatPtySessionOptionsSurface | null
   trackPendingSend: NativeChatSendLifecycle['trackPendingSend']
@@ -41,6 +46,7 @@ export function useNativeChatPickerCommandDispatch(args: {
     isDispatchingSessionOption,
     resolveTarget,
     onSlashCommand,
+    answerCommandLocally,
     onSubmitted,
     sessionOptionsSurface,
     trackPendingSend,
@@ -57,6 +63,24 @@ export function useNativeChatPickerCommandDispatch(args: {
       const text = `/${command.name}`
       const target = resolveTarget()
       if (!target || disabled || isDispatchingSessionOption) {
+        return
+      }
+      if (
+        answerNativeChatCommandInComposer({
+          draft: text,
+          answerCommandLocally,
+          sessionOptionsSurface,
+          onSlashCommand,
+          setHistory,
+          setDraft,
+          setCaret,
+          clearSkillOrigin,
+          setNotice
+        })
+      ) {
+        emitNativeChatPickerItemAccepted({ agent, itemKind: 'command' })
+        emitNativeChatSendClassified({ agent, outcome: 'command' })
+        setActiveSuggestion(0)
         return
       }
       trackPendingSend(
@@ -86,6 +110,7 @@ export function useNativeChatPickerCommandDispatch(args: {
     },
     [
       agent,
+      answerCommandLocally,
       clearImageAttachments,
       clearSkillOrigin,
       disabled,

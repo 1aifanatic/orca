@@ -51,6 +51,7 @@ import { LinkActionPopover } from '@/components/link-actions/LinkActionPopover'
 import { useNativeChatLinkActions } from './use-native-chat-link-actions'
 import type { NativeChatResolvedViewProps } from './native-chat-view-types'
 import { useNativeChatFileLinkContext } from './use-native-chat-file-link-context'
+import { useNativeChatLocalCommandAnswer } from './use-native-chat-local-command-answer'
 import { matchNativeChatSplitShortcut } from './native-chat-split-shortcut'
 import { getShortcutPlatform } from '@/lib/shortcut-platform'
 import { formatShortcutLabel } from '@/hooks/useShortcutLabel'
@@ -213,8 +214,8 @@ export function NativeChatResolvedView({
     [record]
   )
   const onSlashCommand = useCallback(
-    (command: string) => {
-      setCommandMarkers(appendCommandMarkerCache(commandMarkerScope, command))
+    (command: string, output?: string) => {
+      setCommandMarkers(appendCommandMarkerCache(commandMarkerScope, command, Date.now(), output))
     },
     [commandMarkerScope]
   )
@@ -236,6 +237,8 @@ export function NativeChatResolvedView({
       ? sessionWithLaunchPrompt
       : { ...sessionWithLaunchPrompt, messages }
   }, [sessionWithLaunchPrompt, commandMarkers])
+  // Why: answer from the conversation the pane shows, so a `/clear` sent here reads as reset.
+  const answerLocally = useNativeChatLocalCommandAnswer(agent, sessionAfterCommandBoundaries)
   const launchPromptDeliveryNotices = useNativeChatLaunchPromptDeliveryNotice(
     paneLaunchPrompt?.failed ? launchPromptMessage?.id : null,
     sessionAfterCommandBoundaries.messages
@@ -431,6 +434,7 @@ export function NativeChatResolvedView({
           optimisticSendOutcome={delivery}
           onSlashCommand={onSlashCommand}
           onSubmitted={revealLatest}
+          answerCommandLocally={answerLocally}
           onSwitchToTerminal={onSwitchToTerminal}
           readTerminalScreen={readTerminalScreen}
           launchSeed={{ ...launchDraftSignal, ownsTabWideLaunchDraft }}
