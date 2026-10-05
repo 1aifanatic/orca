@@ -1,4 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest'
+import { CSV_MAX_PAGE_BYTES } from './csv-byte-index'
 import { CsvPagedPreview } from './csv-paged-preview'
 
 const mocks = vi.hoisted(() => ({ stat: vi.fn(), read: vi.fn(), request: vi.fn(), close: vi.fn() }))
@@ -184,5 +185,21 @@ it('detects a mutation during the full scan before publishing an index', async (
   mocks.stat.mockResolvedValueOnce(snapshot).mockResolvedValue({ ...snapshot, size: 20 })
   await expect(preview.buildIndex(',', () => {})).rejects.toThrow('changed on disk')
   expect(mocks.request.mock.calls.some(([command]) => command.kind === 'finish')).toBe(false)
+  preview.close()
+})
+
+it('reads a maximum-size first record including its BOM and CRLF in bounded chunks', async () => {
+  const largeSnapshot = { ...snapshot, size: CSV_MAX_PAGE_BYTES }
+  mocks.stat.mockResolvedValue(largeSnapshot)
+  const preview = new CsvPagedPreview({ ...file, snapshot: largeSnapshot })
+  await preview.page(0, { start: 0, end: CSV_MAX_PAGE_BYTES, firstRow: 0, rowCount: 1 })
+  expect(mocks.read.mock.calls.map((call) => call[2])).toEqual([
+    256 * 1024,
+    256 * 1024,
+    256 * 1024,
+    256 * 1024,
+    5
+  ])
+  await expect(preview.read(0, CSV_MAX_PAGE_BYTES + 1)).rejects.toThrow('Invalid CSV page range')
   preview.close()
 })

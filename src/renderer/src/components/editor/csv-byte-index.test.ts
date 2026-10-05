@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { CsvByteIndex, CSV_MAX_COLUMNS, CSV_RECORD_BYTES, csvPageForRow } from './csv-byte-index'
+import {
+  CsvByteIndex,
+  CSV_MAX_COLUMNS,
+  CSV_MAX_PAGE_BYTES,
+  CSV_RECORD_BYTES,
+  csvPageForRow
+} from './csv-byte-index'
 import { parseCsv } from './csv-parse'
 
 function indexCsv(source: string, delimiter: string, chunkSize: number) {
@@ -74,6 +80,30 @@ describe('CSV byte index', () => {
     expect(() => indexCsv(`"${'x'.repeat(CSV_RECORD_BYTES)}`, ',', 1000)).toThrow('record')
     expect(() => indexCsv(','.repeat(CSV_MAX_COLUMNS), ',', 1000)).toThrow('column')
     expect(() => indexCsv('a\0b', ',', 1)).toThrow('binary')
+  })
+  it('matches parser limits at record boundaries with BOMs and every line ending', () => {
+    const records = [
+      'x'.repeat(CSV_RECORD_BYTES),
+      `"${'x'.repeat(CSV_RECORD_BYTES - 2)}"`,
+      `"${'x'.repeat(CSV_RECORD_BYTES - 3)}\n"`
+    ]
+    for (const bom of ['', '\ufeff']) {
+      for (const ending of ['', '\n', '\r', '\r\n']) {
+        for (const record of records) {
+          const source = `${bom}${record}${ending}`
+          const { bytes, result } = indexCsv(source, ',', 256 * 1024)
+          expect(result.rowCount).toBe(1)
+          expect(result.pages[0]!.end - result.pages[0]!.start).toBeLessThanOrEqual(
+            CSV_MAX_PAGE_BYTES
+          )
+          const decoded = new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes)
+          expect(parseCsv(decoded, ',', { maxRecordLength: CSV_RECORD_BYTES })).toEqual(
+            parseCsv(source)
+          )
+          expect(() => indexCsv(`${bom}${record}x${ending}`, ',', 256 * 1024)).toThrow('record')
+        }
+      }
+    }
   })
   it('preserves a real BOM character at a later page boundary', () => {
     const source = `${'value\n'.repeat(256)}\ufefflast\n`

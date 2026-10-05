@@ -17,3 +17,18 @@ it('bounds columns, cells and a single record', () => {
 it('retains a real BOM in a later page', () => {
   expect(parseCsv('\ufeffvalue', ',', { stripBom: false }).rows).toEqual([['\ufeffvalue']])
 })
+
+it('excludes BOMs and record terminators while counting quoted newlines toward the limit', () => {
+  for (const bom of ['', '\ufeff']) {
+    for (const ending of ['', '\n', '\r', '\r\n']) {
+      for (const record of ['abcd', '"ab"', '"a\n"', '""""']) {
+        expect(parseCsv(`${bom}${record}${ending}`, ',', { maxRecordLength: 4 })).toEqual(
+          parseCsv(`${bom}${record}${ending}`)
+        )
+        expect(() => parseCsv(`${bom}${record}x${ending}`, ',', { maxRecordLength: 4 })).toThrow(
+          'record'
+        )
+      }
+    }
+  }
+})

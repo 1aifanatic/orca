@@ -1,4 +1,6 @@
 export const CSV_RECORD_BYTES = 1024 * 1024
+// A first page can also contain a UTF-8 BOM and a trailing CRLF.
+export const CSV_MAX_PAGE_BYTES = CSV_RECORD_BYTES + 5
 export const CSV_MAX_COLUMNS = 4096
 const PAGE_ROWS = 256
 const PAGE_BYTES = 64 * 1024
@@ -47,14 +49,16 @@ export class CsvByteIndex {
       this.consumePrefix()
     }
     if (this.pendingCR || this.hasContent || this.columns > 1) {
-      this.emitRow(this.position)
+      this.emitRow(this.position, this.position - (this.pendingCR ? 1 : 0))
     }
     this.checkpoint(this.position)
     return { pages: this.pages, rowCount: this.rowCount, columnCount: this.columnCount }
   }
 
   private consumePrefix(): void {
-    if (!(this.prefix[0] === 239 && this.prefix[1] === 187 && this.prefix[2] === 191)) {
+    if (this.prefix[0] === 239 && this.prefix[1] === 187 && this.prefix[2] === 191) {
+      this.rowStart = 3
+    } else {
       this.prefix.forEach((byte, at) => this.consume(byte, at))
     }
     this.prefix = []
@@ -78,8 +82,8 @@ export class CsvByteIndex {
     this.pageCells = 0
   }
 
-  private emitRow(end: number): void {
-    if (end - this.rowStart > CSV_RECORD_BYTES) {
+  private emitRow(end: number, contentEnd = end): void {
+    if (contentEnd - this.rowStart > CSV_RECORD_BYTES) {
       throw new Error('CSV record exceeds the 1 MB preview limit.')
     }
     if (end - this.pageStart > PAGE_BYTES || this.pageCells + this.columns > CSV_PAGE_CELLS) {
@@ -104,12 +108,13 @@ export class CsvByteIndex {
   private consume(byte: number, at: number): void {
     if (this.pendingCR) {
       this.pendingCR = false
-      this.emitRow(byte === 10 ? at + 1 : at)
+      this.emitRow(byte === 10 ? at + 1 : at, at - 1)
       if (byte === 10) {
         return
       }
     }
-    if (at + 1 - this.rowStart > CSV_RECORD_BYTES) {
+    const endsRecord = (byte === 13 || byte === 10) && (!this.inQuotes || this.pendingQuote)
+    if (at + (endsRecord ? 0 : 1) - this.rowStart > CSV_RECORD_BYTES) {
       throw new Error('CSV record exceeds the 1 MB preview limit.')
     }
     if (byte === 0) {
@@ -145,7 +150,7 @@ export class CsvByteIndex {
     } else if (byte === 13) {
       this.pendingCR = true
     } else if (byte === 10) {
-      this.emitRow(at + 1)
+      this.emitRow(at + 1, at)
     } else {
       this.fieldEmpty = false
       this.hasContent = true

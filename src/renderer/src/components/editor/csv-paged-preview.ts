@@ -1,7 +1,12 @@
 import { MAX_FILE_RANGE_READ_BYTES } from '../../../../shared/file-range-read'
 import { readRuntimeFileRange, statRuntimeReadTarget } from '@/runtime/runtime-file-range-client'
 import type { CsvFilePreview } from './editor-csv-file-content'
-import { CSV_RECORD_BYTES, csvPageForRow, type CsvIndex, type CsvPageRange } from './csv-byte-index'
+import {
+  CSV_MAX_PAGE_BYTES,
+  csvPageForRow,
+  type CsvIndex,
+  type CsvPageRange
+} from './csv-byte-index'
 import { CsvPreviewWorkerClient } from './csv-preview-worker-client'
 
 const CACHE_CELLS = 512 * 1024
@@ -40,7 +45,7 @@ export class CsvPagedPreview {
       start < 0 ||
       end <= start ||
       end > this.file.snapshot.size ||
-      end - start > CSV_RECORD_BYTES
+      end - start > CSV_MAX_PAGE_BYTES
     ) {
       throw new Error('Invalid CSV page range')
     }

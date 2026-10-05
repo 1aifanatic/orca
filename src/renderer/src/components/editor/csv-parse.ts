@@ -57,10 +57,13 @@ export function parseCsv(
     recordStart = next
   }
   for (let i = start; i < source.length; i += 1) {
-    if (i - recordStart >= (limits.maxRecordLength ?? Infinity)) {
+    const ch = source[i]
+    if (
+      i - recordStart >= (limits.maxRecordLength ?? Infinity) &&
+      (inQuotes || (ch !== '\r' && ch !== '\n'))
+    ) {
       throw new Error('CSV record is too large to preview safely.')
     }
-    const ch = source[i]
     if (inQuotes) {
       if (ch === '"') {
         appendSpan(i)
