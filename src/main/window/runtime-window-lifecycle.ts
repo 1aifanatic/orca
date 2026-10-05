@@ -216,7 +216,9 @@ export function registerRuntimeWindowLifecycle(
       send('runtime:browserDriverChanged', { browserPageId, driver }),
     browserRemoteViewersChanged: (browserPageId, hasRemoteViewers) =>
       send('runtime:browserRemoteViewersChanged', { browserPageId, hasRemoteViewers }),
-    clientHostedBrowserRowsChanged: (event) => send('runtime:clientHostedBrowserRowsChanged', event)
+    clientHostedBrowserRowsChanged: (event) =>
+      send('runtime:clientHostedBrowserRowsChanged', event),
+    terminalTopologyChanged: (slice) => send('session:terminal-topology-changed', slice)
   })
   registerRendererDocumentNavigation(mainWebContents, () => {
     rendererNotifications.onMainFrameReloadStarted()

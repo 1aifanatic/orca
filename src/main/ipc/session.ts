@@ -39,13 +39,19 @@ export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeServic
         throw new Error('invalid_terminal_surface')
       }
       // Why only these two: main alone closes a tab for its process exit.
-      return runtime.closeTerminalSurfaceFromRenderer({
-        worktreeId: args.worktreeId,
-        target,
-        reason: args.reason === 'cleanup' ? 'cleanup' : 'user'
-      })
+      const worktreeId = args.worktreeId
+      return runtime
+        .closeTerminalSurfaceFromRenderer({
+          worktreeId,
+          target,
+          reason: args.reason === 'cleanup' ? 'cleanup' : 'user'
+        })
+        .then(() => ({ publishSeq: runtime.settleTerminalTopology(worktreeId) }))
     }
   )
+
+  // Startup and reload read every slice here; pushes dropped while the frame reloaded need no replay.
+  ipcMain.handle('session:get-terminal-topology-slices', () => runtime.getTerminalTopologySlices())
 
   ipcMain.handle('session:flush', () => {
     // Why: durable lifecycle RPCs must propagate disk failures instead of

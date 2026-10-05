@@ -2,16 +2,40 @@ import { installRuntimeLinearCommandSurface } from './runtime-linear-command-sur
 import { OrcaRuntimeWithResolveWaiter } from './orca-runtime-resolve-waiter'
 import type { RuntimeCommandSurfaceHost } from './orca-runtime-core'
 import { registerWorktreeChangeInvalidator } from '../ipc/worktree-change-invalidators'
+import type { TerminalTopologySlice } from '../../shared/terminal-topology-slice'
+import type { RuntimeNotifier } from './runtime-notifier-contract'
+import { TerminalTopologyPublisher } from './terminal-topology-publisher'
 import { registerDetectedWorktreeScanInvalidation } from '../ipc/worktrees/listing/register-detected-worktree-scan-invalidation'
 
 class OrcaRuntimeService extends OrcaRuntimeWithResolveWaiter {
+  private readonly terminalTopology = new TerminalTopologyPublisher(() =>
+    this.workspaceSessions.getHydrationOwners(true)
+  )
+
   constructor(...args: ConstructorParameters<typeof OrcaRuntimeWithResolveWaiter>) {
     super(...args)
+    this.store?.onWorkspaceSessionWritten?.(() => this.terminalTopology.markDirty())
     // Why: the runtime listing re-runs a scan the worktree-change generation overtook and re-lists
     // through this runtime's scan cache, so a worktree change must reach both. The desktop IPC
     // module registers the generation bump at load; a headless host never loads it.
     registerDetectedWorktreeScanInvalidation()
     registerWorktreeChangeInvalidator((repoId) => this.invalidateWorktreeCatalog(repoId))
+  }
+
+  override setNotifier(notifier: RuntimeNotifier | null): void {
+    super.setNotifier(notifier)
+    // Only a desktop window consumes topology; headless serve hosts never project it.
+    const sink = notifier?.terminalTopologyChanged?.bind(notifier) ?? null
+    this.terminalTopology.setSink(sink)
+  }
+
+  /** publishSeq for a reply: the push or pull carrying it covers this caller's committed write. */
+  settleTerminalTopology(worktreeId?: string): number {
+    return this.terminalTopology.settle(worktreeId)
+  }
+
+  getTerminalTopologySlices(): TerminalTopologySlice[] {
+    return this.terminalTopology.readSlices()
   }
 }
 type OrcaRuntimeServiceExport = RuntimeCommandSurfaceHost<OrcaRuntimeService>

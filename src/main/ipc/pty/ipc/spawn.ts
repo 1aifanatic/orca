@@ -11,6 +11,9 @@ export function installPtySpawnIpcHandler(deps: PtySpawnIpcDeps): void {
     if (startupPromise) {
       await startupPromise
     }
-    return runPtyIpcSpawn(deps, args)
+    const result = await runPtyIpcSpawn(deps, args)
+    // Optional call: injected runtimes without topology publishing keep today's reply.
+    const publishSeq = deps.runtime?.settleTerminalTopology?.(args.worktreeId)
+    return publishSeq === undefined ? result : { ...result, publishSeq }
   })
 }
