@@ -172,7 +172,7 @@ describe('the notice on each message that did not go through', () => {
       })
     ).toEqual({
       [agentJournalSubmissionKey('held')]:
-        'Your message was not sent. Claude is not signed in for the selected account. Sign in first.'
+        "Your message was not sent. Claude isn't signed in. Run `claude` and sign in with /login, or choose an account in Claude Accounts settings."
     })
   })
 
