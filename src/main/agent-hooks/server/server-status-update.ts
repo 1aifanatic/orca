@@ -153,7 +153,8 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
       previous &&
       shouldSuppressInheritedTerminalStatus({
         inheritedFromActivePane: identity.inheritedFromActivePane,
-        incomingState: rootContextPreservingPayload.payload.state
+        incomingState: rootContextPreservingPayload.payload.state,
+        isHookEvent: origin === 'hook'
       })
     ) {
       this.commitStatusRowMutation(rowBefore, previous)
