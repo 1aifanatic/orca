@@ -61,8 +61,9 @@ export function endedProviderTimelineTurn(
   }
 }
 
-/** Which open rows a settlement covers: one turn's, or every row when the session ends. */
-export type ProviderTimelineSettlementScope = { turnItemId: string } | 'session'
+/** Which open rows a settlement covers: one turn's, or every row when the session ends. A turn
+ *  another writer settled covers only its prompts: its tool calls are the provider's to finish. */
+export type ProviderTimelineSettlementScope = { turnItemId: string; promptsOnly?: true } | 'session'
 
 /** The turns a settlement ends, and how; absent when another writer already ended the turn. */
 export type ProviderTimelineSettlementEnding = {
@@ -81,7 +82,9 @@ export function providerTimelineSettlement(
     const turnScope = attribution.turnScope ?? AGENT_JOURNAL_THREAD_SCOPE
     const covered =
       scope === 'session' ||
-      (turnScope.kind === 'turn' && turnScope.turnItemId === scope.turnItemId)
+      (turnScope.kind === 'turn' &&
+        turnScope.turnItemId === scope.turnItemId &&
+        !(scope.promptsOnly && body.kind === 'tool-call'))
     // Background tasks and subagents outlive turns; only the session's end leaves them past seeing.
     const settled = !covered
       ? null
@@ -129,6 +132,7 @@ function endedTurnRow(
   const target = { identity: turn.identity }
   const write = {
     lifecycle: agentJournalTurnBody(endedProviderTimelineTurn(running, end)),
+    // Defence only: the check above reads the same snapshot; the revision refuses an ended row too.
     onlyWhileRunning: true as const
   }
   return resolveAgentJournalTurnRowWrite(
