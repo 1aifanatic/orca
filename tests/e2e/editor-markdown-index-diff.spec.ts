@@ -40,8 +40,12 @@ test('Markdown Changes compares the index to working bytes and refreshes on reop
     orcaPage.locator(
       `[data-source-control-path="${relativePath}"][data-source-control-area="${area}"]`
     )
-  const original = orcaPage.locator('.original-in-monaco-diff-editor .view-lines')
-  const modified = orcaPage.locator('.modified-in-monaco-diff-editor .view-lines')
+  const original = orcaPage.locator(
+    '.original-in-monaco-diff-editor .view-lines[role="presentation"]'
+  )
+  const modified = orcaPage.locator(
+    '.modified-in-monaco-diff-editor .view-lines[role="presentation"]'
+  )
   await row('unstaged').dblclick()
   await expect(modified).toContainText('unstaged line')
   await orcaPage.screenshot({ path: testInfo.outputPath('unstaged-baseline.png') })
