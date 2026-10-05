@@ -62,6 +62,22 @@ export function installManagedOrcadStartStatus(): void {
   })
 }
 
+/** A changed host the user resolved (moved or kept) is managed again; its status line says so now. */
+export function publishResolvedChangedHostStatus(target: SshTarget, environmentId: string): void {
+  setSshHostServerStatus(target.id, { kind: 'managed', environmentId })
+  // Why a disconnected state too: the move released the relay session, which had the stale line.
+  broadcastSshState(
+    getCurrentMainWindow,
+    target.id,
+    connectionManager?.getState(target.id) ?? {
+      targetId: target.id,
+      status: 'disconnected',
+      error: null,
+      reconnectAttempt: 0
+    }
+  )
+}
+
 function publishHostServerStatus(target: SshTarget, status: SshManagedServerStatus): void {
   setSshHostServerStatus(target.id, status)
   // Only a host with a connection state has a status line to refresh.

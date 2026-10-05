@@ -14,6 +14,7 @@ import { orcadMigrationDestinationFor } from '../ssh/orcad-runtime-conversion-wi
 import { hasRegisteredDirectSshAuthority } from '../ssh/ssh-target-registry'
 import { requiredString } from './orcad-runtime-lifecycle-handlers'
 import { disconnectRegisteredSshTarget } from './ssh-session-teardown'
+import { publishResolvedChangedHostStatus } from './runtime-environment-managed-tunnel'
 import { runTargetLifecycle } from './ssh-target-lifecycle-queue'
 
 export function registerOrcadDeltaMoveHandlers(getUserDataPath: () => string): void {
@@ -28,7 +29,7 @@ export function registerOrcadDeltaMoveHandlers(getUserDataPath: () => string): v
   )
   ipcMain.handle(
     'runtimeEnvironments:moveOrcadDelta',
-    (_event, args: { sshTargetId: string }): Promise<OrcadDeltaMoveResult> => {
+    async (_event, args: { sshTargetId: string }): Promise<OrcadDeltaMoveResult> => {
       const userDataPath = getUserDataPath()
       const { store, claims, target } = requireChangedHost(args)
       const environment = listEnvironments(userDataPath).find(
@@ -37,7 +38,7 @@ export function registerOrcadDeltaMoveHandlers(getUserDataPath: () => string): v
       if (!environment) {
         throw new Error('The managed Orca server for this host is no longer registered.')
       }
-      return runOrcadDeltaMove({
+      const result = await runOrcadDeltaMove({
         userDataPath,
         store,
         claims,
@@ -55,15 +56,20 @@ export function registerOrcadDeltaMoveHandlers(getUserDataPath: () => string): v
         },
         runTargetLifecycle
       })
+      if (result.outcome === 'moved') {
+        publishResolvedChangedHostStatus(target, environment.id)
+      }
+      return result
     }
   )
   ipcMain.handle(
     'runtimeEnvironments:keepOrcadServerVersion',
     async (_event, args: { sshTargetId: string }): Promise<void> => {
-      const { store, claims, target } = requireChangedHost(args)
+      const { store, claims, target, environmentId } = requireChangedHost(args)
       await runTargetLifecycle(target.id, () =>
         keepOrcadServerVersion({ userDataPath: getUserDataPath(), store, claims, target })
       )
+      publishResolvedChangedHostStatus(target, environmentId)
     }
   )
 }
@@ -76,5 +82,5 @@ function requireChangedHost(args: { sshTargetId: string } | undefined) {
   if (!target?.orcadFence?.sourceChangedAt) {
     throw new Error('This SSH host has no changes from an older Orca to resolve.')
   }
-  return { store, claims, target }
+  return { store, claims, target, environmentId: target.orcadFence.environmentId }
 }
