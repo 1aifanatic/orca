@@ -165,6 +165,24 @@ describe('queued message cards', () => {
     expect(newestSteerableQueuedMessageCard([])).toBeNull()
   })
 
+  it('marks a command card, which the chord never steers', () => {
+    const compact: AgentSessionQueuedMessage = {
+      ...draft('c', 2),
+      body: {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: '/compact' }],
+        command: { name: 'compact' }
+      }
+    }
+    const cards = projectQueuedMessageCards([draft('a', 1), compact], [], IDLE)
+    expect(cards.map((card) => [card.text, card.command ?? false])).toEqual([
+      ['text of a', false],
+      ['/compact', true]
+    ])
+    expect(newestSteerableQueuedMessageCard(cards)).toBeNull()
+  })
+
   it('a mid-turn queue send on its way is no bubble; one that stalled stays visible', () => {
     const entry = (
       clientMessageId: string,

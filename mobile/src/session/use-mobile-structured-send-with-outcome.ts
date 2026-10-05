@@ -35,6 +35,8 @@ export function useMobileStructuredSendWithOutcome(args: {
   sessionKey: string
   enabled: boolean
   queueCapable: boolean
+  /** The host holds a /compact sent while the agent works as a card. */
+  commandsWait: boolean
   stateRef: { readonly current: StructuredAgentSessionState }
   commandPending: { current: boolean }
   controller: Pick<
@@ -53,6 +55,7 @@ export function useMobileStructuredSendWithOutcome(args: {
     callerIdentity,
     client,
     commandPending,
+    commandsWait,
     controller,
     enabled,
     onSendError,
@@ -99,6 +102,11 @@ export function useMobileStructuredSendWithOutcome(args: {
           !stateRef.current.items.some(
             (item) => pendingStructuredApproval(item) || pendingStructuredQuestion(item)
           ),
+        // A card waiting on a prompt nothing here can answer would hold it forever.
+        waitsInLine: (command) =>
+          command === 'compact' &&
+          commandsWait &&
+          !pendingPromptsAllUnanswerableHere(stateRef.current.items),
         onError: onSendError,
         timeoutMs
       })
@@ -131,6 +139,7 @@ export function useMobileStructuredSendWithOutcome(args: {
       callerIdentity,
       client,
       commandPending,
+      commandsWait,
       controller,
       enabled,
       onSendError,

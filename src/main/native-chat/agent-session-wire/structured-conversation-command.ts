@@ -38,6 +38,8 @@ export function conversationCommandFailure(
 export type ConversationCommandParams = {
   envelope: AgentSessionMutationEnvelope
   command: AgentSessionConversationCommand
+  /** /compact only: wait as a card while the agent works, as a queued send does. */
+  delivery?: 'queue-if-active'
 }
 export type ConversationReplacement = {
   sourceSessionId: string

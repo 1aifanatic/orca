@@ -99,6 +99,8 @@ export function useMobileStructuredAgentSession(args: {
   } = args
   // Old host ⇒ exactly today's behavior: no delivery field, no cards, plain Stop.
   const queueCapable = hostSupport?.queuedMessages === true
+  // A /compact waits in line only where its card renders.
+  const commandsWait = queueCapable && hostSupport?.queuedCommands === true
   const promptCancelSupported = hostSupport?.promptCancel ?? null
   const hostAnswersRepeatedStops = hostSupport?.quietRepeatedStop ?? null
   const sessionKey = encodeNativeChatTranscriptIdentity([sourceIdentity, agent, sessionId])
@@ -147,6 +149,7 @@ export function useMobileStructuredAgentSession(args: {
     sessionKey,
     enabled,
     queueCapable,
+    commandsWait,
     stateRef,
     commandPending: commandPendingRef,
     controller: sendController,

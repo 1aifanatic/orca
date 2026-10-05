@@ -33,6 +33,7 @@ function setup() {
       conversationCommands: ['clear', 'compact']
     },
     canRun: () => true,
+    waitsInLine: () => false,
     onError: vi.fn(),
     timeoutMs: 15000
   }
@@ -118,6 +119,29 @@ describe('mobile structured conversation commands', () => {
     expect(Object.keys(fields).sort()).toEqual(['command', 'envelope'])
     expect(fields.command).toBe('clear')
     expect(asyncStorage.setItem).not.toHaveBeenCalled()
+  })
+  it('a /compact the host holds in line skips the busy check, asks to wait, and shows nothing', async () => {
+    const { input, sendRequest } = setup()
+    sendRequest.mockResolvedValueOnce({
+      ok: true,
+      result: {
+        ok: true,
+        value: {
+          command: 'compact',
+          state: 'completed',
+          queued: { messageId: 'op', position: 1, state: 'waiting' }
+        }
+      }
+    })
+    input.canRun = () => false
+    input.waitsInLine = (command) => command === 'compact'
+    expect(await dispatchMobileStructuredCommand(input)).toBe('accepted')
+    const fields = requestFields(sendRequest.mock.calls[0])
+    expect(fields).toMatchObject({ command: 'compact', delivery: 'queue-if-active' })
+    expect(input.onError).not.toHaveBeenCalled()
+    // A /clear never waits: the busy check still answers it.
+    expect(await dispatchMobileStructuredCommand({ ...input, text: '/clear' })).toBe('rejected')
+    expect(sendRequest).toHaveBeenCalledOnce()
   })
   it('keeps ordinary messages on the existing send path', async () => {
     const { input, sendRequest } = setup()

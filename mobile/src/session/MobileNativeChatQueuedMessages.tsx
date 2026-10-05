@@ -134,31 +134,34 @@ export function MobileNativeChatQueuedMessages({
                   </Text>
                 ) : null}
               </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ disabled: busy }}
-                accessibilityLabel={
-                  returned
-                    ? 'Send this message again'
-                    : card.paused
-                      ? 'Send this message'
-                      : 'Submit without interrupting the model'
-                }
-                style={({ pressed }) => [
-                  styles.textAction,
-                  pressed && styles.pressed,
-                  busy && styles.disabled
-                ]}
-                disabled={busy}
-                onPress={() => void run(card.messageId, onSend)}
-              >
-                {steers ? (
-                  <CornerDownRight size={12} color={colors.textPrimary} strokeWidth={2} />
-                ) : (
-                  <Send size={12} color={colors.textPrimary} strokeWidth={2} />
-                )}
-                <Text style={styles.actionLabel}>{steers ? 'Steer' : 'Send'}</Text>
-              </Pressable>
+              {/* A command runs when the agent finishes, so it offers no Steer or Send. */}
+              {card.command ? null : (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: busy }}
+                  accessibilityLabel={
+                    returned
+                      ? 'Send this message again'
+                      : card.paused
+                        ? 'Send this message'
+                        : 'Submit without interrupting the model'
+                  }
+                  style={({ pressed }) => [
+                    styles.textAction,
+                    pressed && styles.pressed,
+                    busy && styles.disabled
+                  ]}
+                  disabled={busy}
+                  onPress={() => void run(card.messageId, onSend)}
+                >
+                  {steers ? (
+                    <CornerDownRight size={12} color={colors.textPrimary} strokeWidth={2} />
+                  ) : (
+                    <Send size={12} color={colors.textPrimary} strokeWidth={2} />
+                  )}
+                  <Text style={styles.actionLabel}>{steers ? 'Steer' : 'Send'}</Text>
+                </Pressable>
+              )}
               <Pressable
                 accessibilityRole="button"
                 accessibilityState={{ disabled: busy }}

@@ -23,6 +23,8 @@ export type MobileQueuedMessageCard = {
   needsAttention: boolean
   /** Status under the text; null for a card plainly waiting its turn, the paused queue's too. */
   caption: string | null
+  /** A conversation command such as /compact: it waits for the agent and never steers. */
+  command?: true
 }
 
 function queuedMessageBodyText(body: AgentSessionQueuedMessage['body']): string {
@@ -131,7 +133,8 @@ export function mobileQueuedMessageCards(
       needsAttention:
         draft.state === 'returned' ||
         (paused && draft.pausedReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED),
-      caption
+      caption,
+      ...(draft.body.command !== undefined ? { command: true as const } : {})
     })
     if (draft.state === 'returned') {
       behindReturned = true

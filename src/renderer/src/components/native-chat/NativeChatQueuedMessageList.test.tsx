@@ -116,6 +116,25 @@ describe('NativeChatQueuedMessageList', () => {
     expect(owner.remove).toHaveBeenCalledWith('draft-2')
   })
 
+  it('a command card offers no Steer or Send: it runs when the agent finishes', () => {
+    renderList(
+      controller([
+        card({ messageId: 'compact-1', text: '/compact', command: true }),
+        card({
+          messageId: 'compact-2',
+          text: '/compact',
+          command: true,
+          state: 'returned',
+          hold: 'returned'
+        })
+      ])
+    )
+    expect(screen.getAllByText('/compact')).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: 'Steer' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Send' })).toBeNull()
+    expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(2)
+  })
+
   it.each(['Delete', 'Steer'])(
     '%s hands focus to the composer once the focused card is gone',
     async (name) => {

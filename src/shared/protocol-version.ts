@@ -226,6 +226,12 @@ export const AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY =
 // gates the rollout.
 export const AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY =
   'agent-session.queued-messages.v1' as const
+// Why: `agentSession.conversationCommand`'s params are strict, so an older host rejects
+// `delivery`. A host advertising this holds a /compact sent while the agent works as a queued
+// card instead of refusing it. Clients ask only when queued-messages.v1 is advertised too:
+// the card is the only place the waiting command shows.
+export const AGENT_SESSION_QUEUED_COMMANDS_RUNTIME_CAPABILITY =
+  'agent-session.queued-commands.v1' as const
 // Why: paired clients advertise Claude-structured support so the host can gate its agent-specific
 // journal and lifecycle surfaces independently from Codex support.
 export const CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY =
@@ -397,6 +403,7 @@ export const RUNTIME_CAPABILITIES = [
   // turn starts, so a client may gate on either.
   AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY,
   AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY,
+  AGENT_SESSION_QUEUED_COMMANDS_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_HOLD_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_REVEAL_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_RESUME_HISTORY_RUNTIME_CAPABILITY,

@@ -5,7 +5,10 @@ import type { AgentSessionFailureFact } from '../../../../shared/agent-session-f
 import { agentSessionFailureWords } from '../../../../shared/agent-session-failure-words'
 import { TUI_AGENT_DISPLAY_NAMES } from '../../../../shared/tui-agent-display-names'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
-import { sendStructuredConversationCommand } from './structured-conversation-command-send'
+import {
+  sendStructuredConversationCommand,
+  structuredConversationCommandBlocked
+} from './structured-conversation-command-send'
 
 const START_FAILED: AgentSessionFailureFact = { kind: 'startFailed' }
 const COMPACTION_FAILED: AgentSessionFailureFact = {
@@ -174,5 +177,49 @@ describe('the line under the composer after a conversation command failed', () =
       accepted: true,
       error: null
     })
+  })
+})
+
+describe('a /compact the host holds in line', () => {
+  it('reads its queued answer as sent, with no line under the composer', async () => {
+    expect(
+      await sent({
+        command: 'compact',
+        state: 'completed',
+        queued: { messageId: 'op-1', position: 1, state: 'waiting' }
+      })
+    ).toEqual({ accepted: true, error: null })
+  })
+
+  const idle = {
+    waitsInLine: false,
+    turnActive: false,
+    promptPending: false,
+    backgroundTasksRunning: false,
+    outboxHeld: false,
+    outboxUnsent: false
+  }
+
+  it('is held here only by a message the host does not have yet, or background work', () => {
+    const inLine = { ...idle, waitsInLine: true }
+    expect(
+      structuredConversationCommandBlocked({
+        ...inLine,
+        turnActive: true,
+        promptPending: true,
+        outboxHeld: true
+      })
+    ).toBe(false)
+    expect(structuredConversationCommandBlocked({ ...inLine, outboxUnsent: true })).toBe(true)
+    expect(structuredConversationCommandBlocked({ ...inLine, backgroundTasksRunning: true })).toBe(
+      true
+    )
+  })
+
+  it('against a host that cannot hold it, and for /clear, keeps every check', () => {
+    expect(structuredConversationCommandBlocked(idle)).toBe(false)
+    for (const busy of ['turnActive', 'promptPending', 'outboxHeld'] as const) {
+      expect(structuredConversationCommandBlocked({ ...idle, [busy]: true })).toBe(true)
+    }
   })
 })

@@ -64,6 +64,7 @@ vi.mock('./use-structured-agent-session-outbox', () => ({
 
 import {
   AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY,
+  AGENT_SESSION_QUEUED_COMMANDS_RUNTIME_CAPABILITY,
   AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY
 } from '../../../../shared/protocol-version'
 import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-capabilities'
@@ -318,6 +319,130 @@ describe('against a capable host', () => {
     expect(result.current.queuedMessages.cards.map((card) => card.text)).toEqual(['queued draft-1'])
     const transcriptText = JSON.stringify(result.current.messages)
     expect(transcriptText).not.toContain('queued draft-1')
+  })
+})
+
+function commandCalls(): unknown[] {
+  return mocks.call.mock.calls
+    .filter(([, method]) => method === 'agentSession.conversationCommand')
+    .map(([, , params]) => params)
+}
+
+function answerCommands(value: Record<string, unknown>): void {
+  mocks.call.mockImplementation(async (_target, method) =>
+    method === 'agentSession.conversationCommand'
+      ? { ok: true, replayed: false, fence: 3, cursor: { epoch: 'e', sequence: 1 }, value }
+      : null
+  )
+}
+
+describe('a /compact against a host that holds commands in line', () => {
+  beforeEach(() => {
+    setLocalRuntimeCapabilitiesForTests([
+      AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY,
+      AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY,
+      AGENT_SESSION_QUEUED_COMMANDS_RUNTIME_CAPABILITY
+    ])
+  })
+
+  it('mid-turn, goes to the host asking to wait, and its queued answer shows no notice', async () => {
+    answerCommands({
+      command: 'compact',
+      state: 'completed',
+      queued: { messageId: 'operation-1', position: 1, state: 'waiting' }
+    })
+    const { result } = render()
+    let outcome: unknown
+    await act(async () => {
+      outcome = await result.current.runConversationCommand('compact')
+    })
+    expect(outcome).toEqual({ accepted: true, error: null })
+    const parsed = ConversationCommandParams.parse(commandCalls()[0])
+    expect(parsed).toMatchObject({ command: 'compact', delivery: 'queue-if-active' })
+    expect(parsed.envelope.payloadFingerprint).toBe(
+      structuredAgentSessionPayloadFingerprint({
+        method: 'agentSession.conversationCommand',
+        sessionId: 'session-1',
+        fields: { command: 'compact', delivery: 'queue-if-active' }
+      })
+    )
+  })
+
+  it('still holds it back behind a message this window has not handed to the host', async () => {
+    outboxEntries = [
+      createStructuredAgentSessionOutboxEntry({
+        clientMessageId: 'unsent',
+        sessionId: 'session-1',
+        text: 'on its way',
+        attachments: [],
+        queuedAt: 1
+      })
+    ]
+    const { result } = render()
+    let outcome: { accepted: boolean } | undefined
+    await act(async () => {
+      outcome = await result.current.runConversationCommand('compact')
+    })
+    expect(outcome?.accepted).toBe(false)
+    expect(commandCalls()).toHaveLength(0)
+  })
+
+  it('/clear mid-turn is still refused here, and never asks to wait', async () => {
+    const { result } = render()
+    await act(async () => {
+      await result.current.runConversationCommand('clear')
+    })
+    expect(commandCalls()).toHaveLength(0)
+    items = []
+    answerCommands({ command: 'clear', state: 'completed' })
+    const idle = render()
+    await act(async () => {
+      await idle.result.current.runConversationCommand('clear')
+    })
+    expect(ConversationCommandParams.parse(commandCalls()[0])).not.toHaveProperty('delivery')
+  })
+
+  it('a send behind a waiting command card queues, even with follow-ups off', () => {
+    queuedMessages = [
+      {
+        ...draft('compact-1'),
+        body: {
+          kind: 'message',
+          role: 'user',
+          blocks: [{ type: 'text', text: '/compact' }],
+          command: { name: 'compact' }
+        }
+      }
+    ]
+    render(false)
+    expect(mocks.outboxArgs.at(-1)?.queueDelivery).toEqual({
+      capability: 'supported',
+      enabled: true
+    })
+  })
+})
+
+describe('a /compact against a host that queues messages but not commands', () => {
+  beforeEach(() => {
+    setLocalRuntimeCapabilitiesForTests([
+      AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY,
+      AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY
+    ])
+  })
+
+  it('mid-turn, is held back here as today, and idle goes out without `delivery`', async () => {
+    const { result } = render()
+    await act(async () => {
+      await result.current.runConversationCommand('compact')
+    })
+    expect(commandCalls()).toHaveLength(0)
+    items = []
+    answerCommands({ command: 'compact', state: 'completed' })
+    const idle = render()
+    await act(async () => {
+      await idle.result.current.runConversationCommand('compact')
+    })
+    expect(ConversationCommandParams.parse(commandCalls()[0])).not.toHaveProperty('delivery')
   })
 })
 

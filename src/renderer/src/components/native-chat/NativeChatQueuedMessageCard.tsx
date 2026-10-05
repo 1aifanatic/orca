@@ -150,22 +150,29 @@ export function NativeChatQueuedMessageCard({
           </p>
         ) : null}
       </div>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button type="button" variant="ghost" size="xs" onClick={onSteer}>
-            {sendNow.steers ? <CornerDownRight className="size-3" /> : <Send className="size-3" />}
-            {sendNow.label}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top" sideOffset={4}>
-          <span className="flex items-center gap-2">
-            <span>{sendNow.hint}</span>
-            {showsSteerShortcut ? (
-              <ShortcutKeyCombo keys={[isMac ? '⌘' : 'Ctrl', isMac ? '⏎' : 'Enter']} />
-            ) : null}
-          </span>
-        </TooltipContent>
-      </Tooltip>
+      {/* A command runs when the agent finishes, so it offers no Send-now. */}
+      {card.command ? null : (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button type="button" variant="ghost" size="xs" onClick={onSteer}>
+              {sendNow.steers ? (
+                <CornerDownRight className="size-3" />
+              ) : (
+                <Send className="size-3" />
+              )}
+              {sendNow.label}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top" sideOffset={4}>
+            <span className="flex items-center gap-2">
+              <span>{sendNow.hint}</span>
+              {showsSteerShortcut ? (
+                <ShortcutKeyCombo keys={[isMac ? '⌘' : 'Ctrl', isMac ? '⏎' : 'Enter']} />
+              ) : null}
+            </span>
+          </TooltipContent>
+        </Tooltip>
+      )}
       <Tooltip>
         <TooltipTrigger asChild>
           <Button

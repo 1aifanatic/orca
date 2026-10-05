@@ -13,6 +13,27 @@ import { sayAgentSessionFailureTranslated } from './agent-session-failure-words-
 import { agentSessionFailureStatedByStartRow } from './structured-agent-session-delivery-notices'
 import type { StructuredAgentSessionWriteOutcome } from './use-structured-agent-session-mutate'
 
+/** Whether this client holds the command back with its own notice. A command that waits in line
+ *  is held only by a message the host doesn't have yet, which must stay ahead of it. */
+export function structuredConversationCommandBlocked(input: {
+  /** A /compact the host can hold as a card behind the turn or prompt. */
+  waitsInLine: boolean
+  turnActive: boolean
+  promptPending: boolean
+  backgroundTasksRunning: boolean
+  /** Any message this window sent that the host has not answered. */
+  outboxHeld: boolean
+  /** A message this window sent that the host doesn't have yet. */
+  outboxUnsent: boolean
+}): boolean {
+  if (input.backgroundTasksRunning) {
+    return true
+  }
+  return input.waitsInLine
+    ? input.outboxUnsent
+    : input.turnActive || input.promptPending || input.outboxHeld
+}
+
 export async function sendStructuredConversationCommand(input: {
   command: AgentSessionConversationCommand
   /** The chat's agent, as a failed command names it. */

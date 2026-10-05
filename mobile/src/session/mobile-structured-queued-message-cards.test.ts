@@ -30,6 +30,28 @@ function draft(overrides: Partial<AgentSessionQueuedMessage> & { messageId: stri
 }
 
 describe('mobileQueuedMessageCards', () => {
+  it('marks a /compact card as a command, its text as typed', () => {
+    const [card] = mobileQueuedMessageCards(
+      [
+        draft({
+          messageId: 'c',
+          body: {
+            kind: 'message',
+            role: 'user',
+            blocks: [{ type: 'text', text: '/compact' }],
+            command: { name: 'compact' }
+          }
+        })
+      ],
+      [],
+      { pendingPrompt: false }
+    )
+    expect(card).toMatchObject({ text: '/compact', command: true, caption: null })
+    expect(
+      mobileQueuedMessageCards([draft({ messageId: 'a' })], [], { pendingPrompt: false })[0]
+    ).not.toHaveProperty('command')
+  })
+
   it('renders nothing without a published list', () => {
     expect(mobileQueuedMessageCards(null, [], { pendingPrompt: false })).toEqual([])
     expect(mobileQueuedMessageCards([], [], { pendingPrompt: false })).toEqual([])

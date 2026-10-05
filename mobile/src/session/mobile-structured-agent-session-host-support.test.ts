@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   AGENT_SESSION_PROMPT_CANCEL_RUNTIME_CAPABILITY,
   AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY,
+  AGENT_SESSION_QUEUED_COMMANDS_RUNTIME_CAPABILITY,
   AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY,
   AGENT_SESSION_REPEATED_STOP_RUNTIME_CAPABILITY
 } from '../../../src/shared/protocol-version'
@@ -13,6 +14,7 @@ describe('structuredAgentSessionHostSupport', () => {
       promptCancel: false,
       questionAnswers: false,
       queuedMessages: false,
+      queuedCommands: false,
       quietRepeatedStop: false
     })
     expect(
@@ -21,6 +23,7 @@ describe('structuredAgentSessionHostSupport', () => {
       promptCancel: false,
       questionAnswers: true,
       queuedMessages: false,
+      queuedCommands: false,
       quietRepeatedStop: false
     })
     expect(
@@ -29,6 +32,7 @@ describe('structuredAgentSessionHostSupport', () => {
       promptCancel: true,
       questionAnswers: false,
       queuedMessages: false,
+      queuedCommands: false,
       quietRepeatedStop: false
     })
     expect(
@@ -37,6 +41,16 @@ describe('structuredAgentSessionHostSupport', () => {
       promptCancel: false,
       questionAnswers: false,
       queuedMessages: true,
+      queuedCommands: false,
+      quietRepeatedStop: false
+    })
+    expect(
+      structuredAgentSessionHostSupport([AGENT_SESSION_QUEUED_COMMANDS_RUNTIME_CAPABILITY])
+    ).toEqual({
+      promptCancel: false,
+      questionAnswers: false,
+      queuedMessages: false,
+      queuedCommands: true,
       quietRepeatedStop: false
     })
     expect(
@@ -45,6 +59,7 @@ describe('structuredAgentSessionHostSupport', () => {
       promptCancel: false,
       questionAnswers: false,
       queuedMessages: false,
+      queuedCommands: false,
       quietRepeatedStop: true
     })
   })

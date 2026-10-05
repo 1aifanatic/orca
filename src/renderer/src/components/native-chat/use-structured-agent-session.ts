@@ -14,6 +14,7 @@ import {
   supportsStructuredAgentSessionQuestionAnswers
 } from '@/runtime/structured-agent-session-client'
 import {
+  useStructuredAgentSessionHostQueuesCommands,
   useStructuredAgentSessionHostQueuesMessagesState,
   useStructuredAgentSessionHostStopsConversation
 } from '@/runtime/structured-agent-session-host-capability'
@@ -114,14 +115,21 @@ export function useStructuredAgentSession(args: {
   // anything older this client must look exactly like today's.
   const queueCapability = useStructuredAgentSessionHostQueuesMessagesState(target)
   const queueCapable = queueCapability === 'supported'
+  // A /compact waits in line only where its card renders.
+  const commandsWait = useStructuredAgentSessionHostQueuesCommands(target) && queueCapable
   const queuedMessageIds = useMemo(
     () => (transportState.queuedMessages ?? []).map((message) => message.messageId),
     [transportState.queuedMessages]
   )
   const prompts = pendingStructuredSessionPrompts(transportState.journalItems)
+  const promptsUnanswerableHere = pendingPromptsAllUnanswerableHere(prompts)
+  // A send after a waiting command goes behind it, even with follow-ups off: send order is kept.
+  const commandWaiting = (transportState.queuedMessages ?? []).some(
+    (message) => message.state === 'waiting' && message.body.command !== undefined
+  )
   // A host's queue waits on any pending prompt, and nothing here can settle one this build cannot
   // answer: the send must start a turn, after which the card's cancel works.
-  const queueEnabled = queueFollowUps && !pendingPromptsAllUnanswerableHere(prompts)
+  const queueEnabled = (queueFollowUps || commandWaiting) && !promptsUnanswerableHere
   const queueDelivery = useMemo(
     () => ({ capability: queueCapability, enabled: queueEnabled }),
     [queueCapability, queueEnabled]
@@ -200,18 +208,26 @@ export function useStructuredAgentSession(args: {
         command,
         agentName: structuredAgentLabel(agent === 'codex' ? 'codex' : 'claude'),
         pending: commandPending,
-        blocked: Boolean(
-          transportState.turnId ||
-          prompts.length ||
-          transportState.backgroundTasks.isMonitoring ||
-          outbox.length
-        ),
+        blocked: structuredConversationCommands.structuredConversationCommandBlocked({
+          waitsInLine:
+            command === 'compact' && commandsWait && !(prompts.length && promptsUnanswerableHere),
+          turnActive: transportState.turnId !== null,
+          promptPending: prompts.length > 0,
+          backgroundTasksRunning: transportState.backgroundTasks.isMonitoring,
+          outboxHeld: outbox.length > 0,
+          outboxUnsent: hasUnsentStructuredAgentSessionOutboxEntry(
+            outbox,
+            transportState.submissions
+          )
+        }),
         startFailures: () => structuredAgentSessionStartFailureFacts(stateRef.current.items),
         send: (command) =>
           write<AgentSessionConversationCommandResult>(
             'agentSession.conversationCommand',
             'agentSession.conversationCommand',
-            { command }
+            command === 'compact' && commandsWait
+              ? { command, delivery: 'queue-if-active' }
+              : { command }
           )
       }),
     journalItems: transcriptItems,

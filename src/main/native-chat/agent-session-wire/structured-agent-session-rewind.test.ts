@@ -299,6 +299,49 @@ describe('host rewind', () => {
     })
     expect(rewind).not.toHaveBeenCalled()
   })
+  it('is busy exactly while the chat shows a sent message unanswered', async () => {
+    const target = await seed()
+    const body = hostTestMessage('unanswered')
+    const clientOperationId = hostTestOperationId()
+    expect(
+      await host.send(caller, {
+        body,
+        envelope: {
+          ...(await params(target)).envelope,
+          clientOperationId,
+          payloadFingerprint: computeAgentSessionPayloadFingerprint({
+            method: 'agentSession.send',
+            sessionId: HOST_TEST_SESSION,
+            fields: { body }
+          })
+        }
+      })
+    ).toMatchObject({ ok: true })
+    // The adapter's reply is lost: a live doubt, which the chat shows as working.
+    await vi.waitFor(async () =>
+      expect(
+        (await host.journalSnapshot(HOST_TEST_SESSION)).submissions.find(
+          (entry) => entry.clientMessageId === clientOperationId
+        )?.dispatchState
+      ).toBe('unknown')
+    )
+    expect(await host.rewind(caller, await params(target))).toMatchObject({
+      ok: false,
+      refusal: { rewindReason: 'busy' }
+    })
+    await host.settleLateDispatch({
+      sessionId: HOST_TEST_SESSION,
+      clientMessageId: clientOperationId,
+      providerIdentity: {
+        provider: 'codex',
+        threadId: HOST_TEST_THREAD,
+        turnId: 'late',
+        ordinal: 0
+      }
+    })
+    expect(await host.rewind(caller, await params(target))).toMatchObject({ ok: true })
+    expect(rewind).toHaveBeenCalledOnce()
+  })
   it('refuses stale epochs and targets from another provider', async () => {
     const target = await seed()
     expect(await host.rewind(caller, await params(target, 'old-epoch'))).toMatchObject({

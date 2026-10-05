@@ -156,6 +156,20 @@ describe('MobileNativeChatQueuedMessages', () => {
     expect(nodeTypes(rows[1]!)).toContain('CornerDownRight')
   })
 
+  it('offers a command card no Steer or Send, only Delete and the menu', async () => {
+    const mounted = await mount({
+      cards: [
+        card({ messageId: 'compact', text: '/compact', command: true }),
+        card({ messageId: 'returned', text: '/compact', command: true, state: 'returned' })
+      ],
+      onSend: vi.fn(async () => true)
+    })
+    expect(texts(mounted).filter((text) => text === 'Send' || text === 'Steer')).toEqual([])
+    expect(
+      mounted.root.findAllByProps({ accessibilityLabel: 'Delete this queued message' })
+    ).toHaveLength(2)
+  })
+
   it('deletes a card from its trash button', async () => {
     const onDelete = vi.fn(async () => true)
     const mounted = await mount({ cards: [card({ messageId: 'w' })], onDelete })

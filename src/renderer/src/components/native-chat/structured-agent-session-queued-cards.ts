@@ -33,6 +33,8 @@ export type QueuedMessageCard = {
   text: string
   state: 'waiting' | 'returned'
   hold: QueuedMessageCardHold
+  /** A conversation command such as /compact: it waits for the agent and never steers. */
+  command?: true
   pausedReason?: string
   returnedReason?: string | null
   /** The typed fact the returned card's submission settled with; read like its `rejection`. */
@@ -82,6 +84,7 @@ export function projectQueuedMessageCards(
       text: queuedMessageCardText(message.body),
       state: message.state,
       hold,
+      ...(message.body.command !== undefined ? { command: true as const } : {}),
       ...(message.pausedReason !== undefined ? { pausedReason: message.pausedReason } : {}),
       ...(message.returnedReason !== undefined ? { returnedReason: message.returnedReason } : {}),
       ...(message.returnedRejection !== undefined
@@ -91,11 +94,12 @@ export function projectQueuedMessageCards(
   })
 }
 
-/** The card Cmd/Ctrl+Enter steers: the newest one; every shown card takes Send-now. */
+/** The card Cmd/Ctrl+Enter steers: the newest one, unless it is a command, which never steers. */
 export function newestSteerableQueuedMessageCard(
   cards: readonly QueuedMessageCard[]
 ): QueuedMessageCard | null {
-  return cards.at(-1) ?? null
+  const newest = cards.at(-1)
+  return newest && !newest.command ? newest : null
 }
 
 /**

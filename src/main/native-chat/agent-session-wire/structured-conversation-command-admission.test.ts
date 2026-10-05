@@ -6,6 +6,8 @@ import {
   type ConversationCommandAdmissionContext
 } from './structured-conversation-command-admission'
 import type { AgentSessionBackgroundTaskStops } from '../../../shared/agent-child-work-stop-targets'
+import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
+import { hasUnansweredStructuredAgentSessionDispatch } from '../../../shared/structured-agent-session-unanswered-dispatch'
 
 const TARGETED: AgentSessionBackgroundTaskStops = { supportsTaskStop: true, supportsStopAll: true }
 const UNTARGETED: AgentSessionBackgroundTaskStops = {
@@ -190,5 +192,62 @@ describe('conversationCommandBlocked for a command sent at rest (C6, B3)', () =>
     ] as never
     ctx.journal.submissions = () => queued
     expect(conversationCommandBlocked(ctx, RECORD, [], 'handover')).toBeNull()
+  })
+})
+
+describe('conversationCommandBlocked on unsettled messages', () => {
+  // One send per shape the Working indicator and admission could read differently.
+  const SHAPES = {
+    queued: { dispatchState: 'pending', handoverRecorded: true, fence: 1 },
+    handedOver: { dispatchState: 'pending', handoverRecorded: true, handedOverAt: 5, fence: 1 },
+    handedOverByEarlierChild: {
+      dispatchState: 'pending',
+      handoverRecorded: true,
+      handedOverAt: 5,
+      fence: 0
+    },
+    liveUnknown: { dispatchState: 'unknown', fence: 1 },
+    recoveredUnknown: { dispatchState: 'unknown', fence: 1, recovered: true },
+    restartedUnknown: {
+      dispatchState: 'unknown',
+      fence: 1,
+      reason: 'host_restarted_before_acknowledgement'
+    },
+    accepted: { dispatchState: 'accepted', fence: 1 },
+    rejected: { dispatchState: 'rejected', fence: 1 }
+  }
+
+  function admissionOver(shape: keyof typeof SHAPES, admission?: 'at-rest' | 'handover') {
+    const ctx = contextWith(undefined)
+    const submission = { clientMessageId: shape, ...SHAPES[shape] }
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the admission reads only the dispatch fields.
+    const submissions = [submission] as unknown as AgentJournalSubmission[]
+    ctx.journal.submissions = () => submissions
+    const refusal = conversationCommandBlocked(ctx, RECORD, [], admission)
+    return {
+      blocked: refusal?.details && 'reason' in refusal.details ? refusal.details.reason : null,
+      working: hasUnansweredStructuredAgentSessionDispatch(submissions, ctx.fence)
+    }
+  }
+
+  it.each(Object.keys(SHAPES) as (keyof typeof SHAPES)[])(
+    'refuses on %s exactly when the chat shows the agent working',
+    (shape) => {
+      const { blocked, working } = admissionOver(shape)
+      expect(blocked).toBe(working ? 'messagesUnsettled' : null)
+      expect(admissionOver(shape, 'at-rest').blocked).toBe(blocked)
+    }
+  )
+
+  it('does not refuse what the chat no longer shows as working', () => {
+    // An earlier child's hand-off and a restart's doubt: the chat reads idle, so nothing refuses.
+    expect(admissionOver('handedOverByEarlierChild').blocked).toBeNull()
+    expect(admissionOver('restartedUnknown').blocked).toBeNull()
+  })
+
+  it('at handover, a queued message is one behind the command; a handed-over one still refuses', () => {
+    expect(admissionOver('queued', 'handover').blocked).toBeNull()
+    expect(admissionOver('handedOver', 'handover').blocked).toBe('messagesUnsettled')
+    expect(admissionOver('liveUnknown', 'handover').blocked).toBe('messagesUnsettled')
   })
 })

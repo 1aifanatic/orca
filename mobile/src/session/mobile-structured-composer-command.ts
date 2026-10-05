@@ -1,4 +1,7 @@
-import type { AgentSessionConversationCommandResult } from '../../../src/shared/agent-session-conversation-command'
+import type {
+  AgentSessionConversationCommand,
+  AgentSessionConversationCommandResult
+} from '../../../src/shared/agent-session-conversation-command'
 import {
   dispatchStructuredAgentSessionComposerCommand,
   isStructuredAgentSessionComposerCommand,
@@ -17,6 +20,8 @@ export async function dispatchMobileStructuredCommand(input: {
   pending: { current: boolean }
   controller: StructuredAgentSessionComposerOptions
   canRun: () => boolean
+  /** The host holds this command as a card behind work in flight, so nothing here holds it. */
+  waitsInLine: (command: AgentSessionConversationCommand) => boolean
   onError: (message: string) => void
   timeoutMs: number
 }): Promise<MobileNativeChatSendOutcome | null> {
@@ -34,7 +39,8 @@ export async function dispatchMobileStructuredCommand(input: {
   const outcome = await dispatchStructuredAgentSessionComposerCommand(input.text, {
     ...input.controller,
     runConversationCommand: async (command) => {
-      if (!input.canRun()) {
+      const waitsInLine = input.waitsInLine(command)
+      if (!waitsInLine && !input.canRun()) {
         return {
           accepted: false,
           error: 'Wait for pending work to finish before using this command.'
@@ -49,7 +55,7 @@ export async function dispatchMobileStructuredCommand(input: {
             expectedRuntimeFence: input.fence,
             method: 'agentSession.conversationCommand',
             fingerprintMethod: 'agentSession.conversationCommand',
-            fields: { command },
+            fields: waitsInLine ? { command, delivery: 'queue-if-active' } : { command },
             timeoutMs: Math.max(input.timeoutMs, 195_000)
           })
         if (
