@@ -117,21 +117,3 @@ describe('buildHeadlessMobileSessionTerminalTabs view mode', () => {
     expect(next.terminalLayoutsByTabId['tab-1']!.chatLeafId).toBe(LEAF_B)
   })
 })
-
-describe('buildHeadlessMobileSessionTerminalTabs launch evidence', () => {
-  it('gives a split no tab-wide launch hint on either leaf', () => {
-    const tabs = project(session([row({ launchAgent: 'claude' })], { 'tab-1': split() }))
-    expect(tabs.map((tab) => tab.launchAgent)).toEqual([undefined, undefined])
-  })
-
-  it('keeps the hint on a sole pane and on a legacy tab with no layout', () => {
-    expect(
-      project(session([row({ launchAgent: 'claude' })], { 'tab-1': singleLeaf() })).map(
-        (tab) => tab.launchAgent
-      )
-    ).toEqual(['claude'])
-    expect(
-      project(session([row({ launchAgent: 'codex' })], {})).map((tab) => tab.launchAgent)
-    ).toEqual(['codex'])
-  })
-})

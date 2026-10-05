@@ -19,7 +19,11 @@ import {
   readPublishedChatPairState,
   toSessionTabChatView
 } from './session-tab-chat-pair'
-import type { RuntimeSessionTabChatView } from '../../shared/runtime-session-contracts'
+import type {
+  RuntimeSessionTabChatView,
+  RuntimeSessionTabChatViewWrite,
+  RuntimeSessionTabPropsResult
+} from '../../shared/runtime-session-contracts'
 import { resolveTerminalChatPairWrite } from '../../shared/terminal-tab-view-mode'
 
 export class OrcaRuntimeWithPersistHeadlessSessionTabProps extends OrcaRuntimeWithCloseHeadlessMobileTerminalTab {
@@ -93,6 +97,10 @@ export class OrcaRuntimeWithPersistHeadlessSessionTabProps extends OrcaRuntimeWi
       leafId: state.hasLayout ? leafId : null
     })
     if (!next) {
+      if (props.color !== undefined || props.isPinned !== undefined) {
+        this.persistHeadlessSessionTabProps(worktreeId, parentTabId, props)
+        this.applyHeadlessSessionTabPropsToSnapshot(worktreeId, parentTabId, props)
+      }
       return
     }
     const pairProps: HeadlessSessionTabProps = {
@@ -102,6 +110,28 @@ export class OrcaRuntimeWithPersistHeadlessSessionTabProps extends OrcaRuntimeWi
     }
     this.persistHeadlessSessionTabProps(worktreeId, parentTabId, pairProps)
     this.applyHeadlessSessionTabPropsToSnapshot(worktreeId, parentTabId, pairProps)
+  }
+
+  /** The reply for a write the fence refuses, or null when it applies. */
+  protected admitChatViewWrite(
+    worktreeId: string,
+    parentTabId: string,
+    write: RuntimeSessionTabChatViewWrite
+  ): RuntimeSessionTabPropsResult | null {
+    const admission = this.chatViewWriteFence.admit(
+      worktreeId,
+      parentTabId,
+      write.writerId,
+      write.seq
+    )
+    if (admission === 'apply') {
+      return null
+    }
+    return {
+      updated: true,
+      chatView: this.readMobileSessionTabChatView(worktreeId, parentTabId),
+      ...(admission === 'superseded' ? { superseded: true as const } : {})
+    }
   }
 
   protected readMobileSessionTabChatView(

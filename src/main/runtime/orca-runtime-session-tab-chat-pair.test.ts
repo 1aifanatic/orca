@@ -11,6 +11,7 @@ import {
   makeWorkspaceSessionWithHeadlessTerminal
 } from './orca-runtime-test-fixtures.spec'
 import { RpcDispatcher } from './rpc/dispatcher'
+import { normalizeWorkspaceSessionPaneIdentities } from '../persistence/restoring-sessions/workspace-pane-normalization'
 import { SESSION_TAB_METHODS } from './rpc/methods/session-tabs'
 import type { RuntimeStore } from './runtime-store-contract'
 import type { Tab } from '../../shared/tab-types'
@@ -36,7 +37,12 @@ const UNIFIED_HOST_TAB: Tab = {
 }
 
 function makeChatPairHost(
-  options: { viewMode?: 'terminal' | 'chat'; chatLeafId?: string; layout?: boolean } = {}
+  options: {
+    viewMode?: 'terminal' | 'chat'
+    chatLeafId?: string
+    layout?: boolean
+    normalizeOnWrite?: boolean
+  } = {}
 ) {
   const layout: TerminalLayoutSnapshot = {
     ...makeHeadlessTerminalLayout({ [A]: 'persisted-pty', [B]: undefined }),
@@ -54,7 +60,15 @@ function makeChatPairHost(
     },
     terminalLayoutsByTabId
   }
-  const { runtimeStore, getSession } = makeRuntimeStoreWithWorkspaceSession(session)
+  const { runtimeStore, getSession, setSession } = makeRuntimeStoreWithWorkspaceSession(session)
+  if (options.normalizeOnWrite) {
+    // Production persistence normalizes pane identities, which strips an owner outside the tree.
+    runtimeStore.setWorkspaceSession.mockImplementation((next) =>
+      setSession(
+        normalizeWorkspaceSessionPaneIdentities(next, getSession().terminalLayoutsByTabId).session
+      )
+    )
+  }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The shared fixture implements RuntimeStore; its annotation erases the Vitest mock call signatures.
   const store = runtimeStore as RuntimeStore
   const runtime = new OrcaRuntimeService(store)
@@ -287,6 +301,60 @@ describe('session.tabs.setTabProps writer fence on a desktop-owned host', () => 
     expect((await s1).superseded).toBe(true)
     expect(relayed).toEqual([`host-tab:${B}:chat`])
   })
+
+  it("leaves the desktop's view alone for an unfenced write, as today's paired clients send", async () => {
+    const host = makeChatPairHost()
+    await host.publishedPairs()
+    const setTerminalChatView = vi.fn()
+    Reflect.set(host.runtime, 'getAvailableAuthoritativeWindow', () => ({}))
+    Reflect.set(host.runtime, 'notifier', { setTerminalChatView })
+
+    expect(await host.write(SURFACE_A, 'terminal')).toEqual({ updated: true })
+    expect(setTerminalChatView).not.toHaveBeenCalled()
+  })
+
+  it('relays a resend of the same sequence again while the first relay is still pending', async () => {
+    const host = makeChatPairHost()
+    await host.publishedPairs()
+    const firstRelay = makeDeferred()
+    const setTerminalChatView = vi
+      .fn()
+      .mockReturnValueOnce(firstRelay.promise.then(() => ({ viewMode: 'chat', chatLeafId: A })))
+      .mockResolvedValueOnce({ viewMode: 'chat', chatLeafId: A })
+    Reflect.set(host.runtime, 'getAvailableAuthoritativeWindow', () => ({}))
+    Reflect.set(host.runtime, 'notifier', { setTerminalChatView })
+
+    const first = host.write(SURFACE_A, 'chat', { writerId: 'W', seq: 1 })
+    const resend = await host.write(SURFACE_A, 'chat', { writerId: 'W', seq: 1 })
+    firstRelay.resolve()
+    await first
+
+    expect(setTerminalChatView).toHaveBeenCalledTimes(2)
+    expect(resend.chatView).toEqual({ viewMode: 'chat', chatLeafId: A })
+    expect((await host.write(SURFACE_A, 'chat', { writerId: 'W', seq: 1 })).superseded).toBe(
+      undefined
+    )
+    expect(setTerminalChatView).toHaveBeenCalledTimes(2)
+  })
+
+  it('applies a resend of the same sequence after its relay failed', async () => {
+    const host = makeChatPairHost()
+    await host.publishedPairs()
+    const setTerminalChatView = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('chat_view_relay_timeout'))
+      .mockResolvedValueOnce({ viewMode: 'chat', chatLeafId: A })
+    Reflect.set(host.runtime, 'getAvailableAuthoritativeWindow', () => ({}))
+    Reflect.set(host.runtime, 'notifier', { setTerminalChatView })
+
+    await expect(host.write(SURFACE_A, 'chat', { writerId: 'W', seq: 1 })).rejects.toThrow(
+      'chat_view_relay_timeout'
+    )
+    const resend = await host.write(SURFACE_A, 'chat', { writerId: 'W', seq: 1 })
+
+    expect(setTerminalChatView).toHaveBeenCalledTimes(2)
+    expect(resend.chatView).toEqual({ viewMode: 'chat', chatLeafId: A })
+  })
 })
 
 describe('writer fence lifetime', () => {
@@ -375,18 +443,32 @@ describe('closing the chat-owning pane on a headless host', () => {
     expect(await host.publishedPairs()).toEqual([{ viewMode: 'chat', owner: A }])
   })
 
-  it('turns the tab to terminal when an accepted layout push no longer holds the owner', async () => {
-    const host = makeChatPairHost({ viewMode: 'chat', chatLeafId: A })
-    await host.publishedPairs()
+  it.each([false, true])(
+    'turns the tab to terminal when an accepted layout push no longer holds the owner (normalizing store: %s)',
+    async (normalizeOnWrite) => {
+      const host = makeChatPairHost({ viewMode: 'chat', chatLeafId: A, normalizeOnWrite })
+      await host.publishedPairs()
+      const frames: string[] = []
+      host.runtime.onMobileSessionTabsChanged((frame) => {
+        for (const tab of frame.tabs) {
+          if (tab.type === 'terminal') {
+            frames.push(`${tab.viewMode}:${tab.parentLayout?.chatLeafId ?? 'none'}`)
+          }
+        }
+      }, 'observer')
 
-    await host.runtime.updateMobileSessionPaneLayout(`id:${TEST_WORKTREE_ID}`, {
-      tabId: 'host-tab',
-      root: { type: 'leaf', leafId: B },
-      expandedLeafId: null,
-      chatLeafId: B
-    })
+      await host.runtime.updateMobileSessionPaneLayout(`id:${TEST_WORKTREE_ID}`, {
+        tabId: 'host-tab',
+        root: { type: 'leaf', leafId: B },
+        expandedLeafId: null,
+        chatLeafId: B
+      })
 
-    expect(host.hostPair()).toEqual({ row: 'terminal', unified: 'terminal', owner: undefined })
-    expect((await host.publishedPairs()).every((pair) => pair.viewMode === 'terminal')).toBe(true)
-  })
+      expect(host.hostPair()).toEqual({ row: 'terminal', unified: 'terminal', owner: undefined })
+      expect((await host.publishedPairs()).every((pair) => pair.viewMode === 'terminal')).toBe(true)
+      // No frame in between may show chat without its owning pane.
+      expect(frames.length).toBeGreaterThan(0)
+      expect(frames.filter((frame) => frame.startsWith('chat'))).toEqual([])
+    }
+  )
 })
