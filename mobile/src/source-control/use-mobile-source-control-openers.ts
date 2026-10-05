@@ -36,7 +36,7 @@ type Params = {
   // Fired synchronously at tap time (before the openDiff RPC) so the session can
   // snapshot the active tab then — capturing it post-await would misread a tab
   // the user switched to during the RPC window as the tap-time tab.
-  onFileOpenStart?: () => void
+  onFileOpenStart?: () => (() => boolean) | void
   onOpenedFileDiff?: (relativePath: string) => void
   branchCompareState: MobileBranchCompareState
   mountedRef: MutableRefObject<boolean>
@@ -121,7 +121,7 @@ export function useMobileSourceControlOpeners(params: Params) {
         // Snapshot the active tab now, at tap time, before the openDiff RPC —
         // the session uses it to avoid stealing focus if the user switches tabs
         // during the RPC window.
-        onFileOpenStart?.()
+        const canRevealFile = onFileOpenStart?.()
         const openedTabMode = await openSessionChangedFile(client, {
           worktreeId,
           relativePath: entry.path,
@@ -131,6 +131,9 @@ export function useMobileSourceControlOpeners(params: Params) {
           return
         }
         if (openedTabMode === 'device-review') {
+          if (canRevealFile && !canRevealFile()) {
+            return
+          }
           openReviewRoute()
           return
         }

@@ -192,8 +192,7 @@ export function useMobileDiffReviewInteractions(input: InteractionInput) {
         relativePath: currentItem.filePath,
         staged: currentItem.scope === 'staged'
       })
-      // Why: a host with no renderer (orca serve, orcad) has no tab to open; this screen is the diff view.
-      // Not latched: a serve host can gain a window, or the client be replaced, while this screen is open.
+      // Recheck on every tap: a serve host can gain a window while this review stays open.
       if (isRendererUnavailableRefusal(response)) {
         setActionError(SESSION_TABS_UNAVAILABLE_MESSAGE)
         return

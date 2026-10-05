@@ -1,4 +1,4 @@
-import { createElement } from 'react'
+import { createElement, type ReactNode } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ActionSheetAction } from '../components/ActionSheetModal'
@@ -45,13 +45,15 @@ vi.mock('lucide-react-native', () => ({
   X: 'X'
 }))
 vi.mock('../components/ActionSheetModal', () => ({
-  ActionSheetModal: (props: { title: string; actions: ActionSheetAction[] }) => {
+  ActionSheetContent: (props: { title: string; actions: ActionSheetAction[] }) => {
     sheets.actions.set(props.title, props.actions)
     return null
   }
 }))
-vi.mock('../components/BottomDrawer', () => ({ BottomDrawer: () => null }))
-vi.mock('../components/ConfirmModal', () => ({ ConfirmModal: () => null }))
+vi.mock('../components/mounted-bottom-drawer', () => ({
+  MountedBottomDrawer: (props: { children: ReactNode }) => props.children
+}))
+vi.mock('../components/ConfirmModal', () => ({ ConfirmContent: () => null }))
 vi.mock('../components/mobile-diff-review-screen-styles', () => ({ mobileDiffReviewStyles: {} }))
 vi.mock('../platform/keyboard-occlusion', () => ({ useKeyboardAvoidingPadding: () => 0 }))
 vi.mock('expo-haptics', () => ({
@@ -99,6 +101,9 @@ describe('review screen Open in Session', () => {
       const current = useMobileDiffReviewController({
         client,
         connState: 'connected',
+        hostCapabilities: [],
+        hostStatusPending: false,
+        hostStatusReadable: true,
         hostId: 'host-1',
         worktreeId: 'wt-1',
         name: 'review',
@@ -117,6 +122,7 @@ describe('review screen Open in Session', () => {
     if (!controller?.currentItem) {
       throw new Error('review did not load a file')
     }
+    await act(async () => controller?.openSheet({ kind: 'actions' }))
   }
 
   async function press(action: ActionSheetAction): Promise<void> {

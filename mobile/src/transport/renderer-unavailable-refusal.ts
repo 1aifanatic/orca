@@ -2,11 +2,7 @@ import type { RpcResponse } from './types'
 
 const RENDERER_UNAVAILABLE = 'renderer_unavailable'
 
-/**
- * A host with no desktop renderer (headless `orca serve`, orcad) refuses requests that open a
- * desktop tab with this; screens fall back to rendering the content on the device instead.
- * Current hosts wrap it as a `runtime_error` whose message is the code.
- */
+// Current hosts wrap this refusal in runtime_error; older replies may carry it as the code.
 export function isRendererUnavailableRefusal(response: RpcResponse): boolean {
   if (response.ok) {
     return false

@@ -181,6 +181,9 @@ async function openMobileFileTapAsync<T extends FileTapSessionTab>(
   )
   // Why: a host with no renderer cannot open a desktop tab; preview the file on the device (#22186).
   if (isRendererUnavailableRefusal(openResponse)) {
+    if (!shouldActivateOpenedMobileSessionTab(options.getActivationState(false))) {
+      return
+    }
     options.pushPreviewRoute(
       createMobileFilePreviewHref({
         hostId: options.hostId,
