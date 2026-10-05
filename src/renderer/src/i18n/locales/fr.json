@@ -167,7 +167,8 @@
         "full": "Pleine",
         "pixels": "px",
         "reset": "Réinitialiser",
-        "summary": "{{fontSize}}px · Largeur {{width}}"
+        "summary": "{{fontSize}}px · Largeur {{width}}",
+        "preview": "Aperçu"
       }
     },
     "browser": {

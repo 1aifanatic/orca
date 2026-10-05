@@ -68,7 +68,8 @@
         "full": "전체",
         "pixels": "px",
         "reset": "초기화",
-        "summary": "{{fontSize}}px · {{width}} 너비"
+        "summary": "{{fontSize}}px · {{width}} 너비",
+        "preview": "미리보기"
       }
     },
     "browser": {

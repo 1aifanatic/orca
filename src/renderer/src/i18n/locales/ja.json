@@ -68,7 +68,8 @@
         "full": "全幅",
         "pixels": "px",
         "reset": "リセット",
-        "summary": "{{fontSize}}px · 幅: {{width}}"
+        "summary": "{{fontSize}}px · 幅: {{width}}",
+        "preview": "プレビュー"
       }
     },
     "browser": {

@@ -68,7 +68,8 @@
         "full": "Completo",
         "pixels": "px",
         "reset": "Restablecer",
-        "summary": "{{fontSize}}px · Ancho {{width}}"
+        "summary": "{{fontSize}}px · Ancho {{width}}",
+        "preview": "Vista previa"
       }
     },
     "browser": {

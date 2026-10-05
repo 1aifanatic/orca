@@ -289,6 +289,7 @@ export function AppearancePane({
             settings={settings}
             updateSettings={updateSettings}
             forceVisiblePrimary={chatLabelMatches}
+            previewVisible={isSectionOpen('chat')}
           />
         </AppearanceSection>
       ) : null}

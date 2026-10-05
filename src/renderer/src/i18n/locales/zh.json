@@ -68,7 +68,8 @@
         "full": "全宽",
         "pixels": "px",
         "reset": "重置",
-        "summary": "{{fontSize}}px · {{width}}宽度"
+        "summary": "{{fontSize}}px · {{width}}宽度",
+        "preview": "预览"
       }
     },
     "browser": {

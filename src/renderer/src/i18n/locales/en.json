@@ -231,7 +231,8 @@
         "full": "Full",
         "pixels": "px",
         "reset": "Reset",
-        "summary": "{{fontSize}}px · {{width}} width"
+        "summary": "{{fontSize}}px · {{width}} width",
+        "preview": "Preview"
       }
     },
     "browser": {
