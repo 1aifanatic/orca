@@ -176,7 +176,6 @@ export function createProviderTimelineAssembler(
         return { admission: ADMITTED }
       }
       case 'input.accepted':
-      case 'input.history':
       case 'turn.open':
       case 'turn.end':
       case 'item.open':
