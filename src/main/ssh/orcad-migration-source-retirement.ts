@@ -64,15 +64,18 @@ export async function retireOrcadMigrationSource(
     ) {
       throw new Error('orcad_migration_source_fence_lost')
     }
-    context.store.retireOrcadMigrationSourceCatalog(cutover.manifest)
-    retireProvenLeases(context.store, cutover)
-    // The relay consumer's recovery record would only re-dial a relay this host no longer runs.
-    await context.store.removeSshPtyConsumerRecovery(cutover.sshTargetId)
-    await context.store.flushPendingOrThrowAsync({
-      signal: context.signal,
-      drainToStableGeneration: false
-    })
-    context.store.assertOrcadMigrationSourceRetired(cutover.manifest)
+    await retireAndFlush(context, cutover)
+    try {
+      context.store.assertOrcadMigrationSourceRetired(cutover.manifest)
+    } catch (error) {
+      if (!isReappeared(error)) {
+        throw error
+      }
+      // Why once more: a save that lands during the flush can re-add a row the pass removed;
+      // the retirement is idempotent, so a second pass settles it. A row back again is real.
+      await retireAndFlush(context, cutover)
+      context.store.assertOrcadMigrationSourceRetired(cutover.manifest)
+    }
     retired = {
       ...cutover,
       phase: 'source-retired',
@@ -87,6 +90,24 @@ export async function retireOrcadMigrationSource(
     return null
   }
   return retired
+}
+
+async function retireAndFlush(
+  context: { store: OrcadMigrationRetirementStore; signal?: AbortSignal },
+  cutover: OrcadMigrationSourceCutover
+): Promise<void> {
+  context.store.retireOrcadMigrationSourceCatalog(cutover.manifest)
+  retireProvenLeases(context.store, cutover)
+  // The relay consumer's recovery record would only re-dial a relay this host no longer runs.
+  await context.store.removeSshPtyConsumerRecovery(cutover.sshTargetId)
+  await context.store.flushPendingOrThrowAsync({
+    signal: context.signal,
+    drainToStableGeneration: false
+  })
+}
+
+function isReappeared(error: unknown): boolean {
+  return error instanceof Error && /^orcad_migration_source_\w+_reappeared/.test(error.message)
 }
 
 /** Leases the fence proved exited name a relay that no longer serves this host. */

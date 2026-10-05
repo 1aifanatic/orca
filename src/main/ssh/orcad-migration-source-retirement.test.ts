@@ -32,7 +32,26 @@ afterEach(async () => {
   }
 })
 
-async function setup(options: { commit?: boolean; localRepoInGroup?: boolean } = {}) {
+const WORKTREE = 'repo-1::/srv/app'
+
+function editorTab(id: string) {
+  return {
+    id,
+    entityId: '/srv/app/README.md',
+    groupId: `group-${id}`,
+    worktreeId: WORKTREE,
+    contentType: 'editor' as const,
+    label: 'README.md',
+    customLabel: null,
+    color: null,
+    sortOrder: 0,
+    createdAt: 1
+  }
+}
+
+async function setup(
+  options: { commit?: boolean; localRepoInGroup?: boolean; sessionTab?: boolean } = {}
+) {
   const userDataPath = mkdtempSync(join(tmpdir(), 'orcad-source-retirement-'))
   directories.push(userDataPath)
   const store = createSqliteTestStore(Store, { dataFile: join(userDataPath, 'orca-data.json') })
@@ -69,6 +88,13 @@ async function setup(options: { commit?: boolean; localRepoInGroup?: boolean } =
       kind: 'git',
       projectGroupId: group.id
     })
+  }
+  if (options.sessionTab) {
+    // The relay-era session the manifest moves, in the host's own partition.
+    store.patchWorkspaceSession(
+      { unifiedTabs: { [WORKTREE]: [editorTab('tab-1')] } },
+      `ssh:${TARGET.id}`
+    )
   }
   store.upsertSshRemotePtyLease({ targetId: TARGET.id, ptyId: 'old', state: 'terminated' })
   const claims = new SshTargetOrcadClaims(store)
@@ -160,5 +186,34 @@ describe('retiring a migrated source', () => {
     expect(h.store.getRepos().map((repo) => repo.id)).toEqual(['repo-local'])
     expect(h.store.getProjectGroups().map((group) => group.id)).toEqual([h.groupId])
     expect(h.store.getFolderWorkspaces()).toEqual([])
+  })
+
+  it('retires a session row a live writer adds while the retirement flushes', async () => {
+    const h = await setup({ sessionTab: true })
+    const flush = h.store.flushPendingOrThrowAsync.bind(h.store)
+    let wrote = false
+    h.store.flushPendingOrThrowAsync = async (options) => {
+      if (!wrote) {
+        wrote = true
+        // A save that lands mid-flush, keyed the unqualified way the local partition stores it.
+        h.store.patchWorkspaceSession({ unifiedTabs: { [WORKTREE]: [editorTab('tab-late')] } })
+      }
+      return flush(options)
+    }
+    await expect(h.retire()).resolves.toMatchObject({ phase: 'source-retired' })
+    expect(h.store.getWorkspaceSession().unifiedTabs?.[WORKTREE]).toBeUndefined()
+  })
+
+  it('defers, naming the partition and owner, when a writer keeps restoring the row', async () => {
+    const h = await setup({ sessionTab: true })
+    const flush = h.store.flushPendingOrThrowAsync.bind(h.store)
+    h.store.flushPendingOrThrowAsync = async (options) => {
+      h.store.patchWorkspaceSession({ unifiedTabs: { [WORKTREE]: [editorTab('tab-late')] } })
+      return flush(options)
+    }
+    await expect(h.retire()).rejects.toThrow(
+      `orcad_migration_source_workspace_session_reappeared:local|${WORKTREE}`
+    )
+    expect(listOrcadMigrationSourceCutovers(h.userDataPath)[0]?.phase).toBe('destination-committed')
   })
 })
