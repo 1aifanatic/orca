@@ -94,10 +94,10 @@ function referencingFilesByWriter(): Map<string, Set<string>> {
   const references = new Map(writers.map((writer) => [writer, new Set<string>()]))
   for (const file of scanSourceTree(MAIN_ROOT)) {
     // Why prefilter: parsing every main-process file would dominate the test's budget. A matched
-    // name appears verbatim in the text unless spelled with a `\u` escape.
+    // name appears verbatim in the text unless it is spelled with an escape.
     if (
       file.relativePath.startsWith(BOUNDARY_DIR) ||
-      (!file.source.includes('\\u') && !writers.some((writer) => file.source.includes(writer)))
+      (!file.source.includes('\\') && !writers.some((writer) => file.source.includes(writer)))
     ) {
       continue
     }
