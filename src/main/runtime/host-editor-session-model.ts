@@ -1,5 +1,5 @@
-import { assignHydratedEditorFileIds } from '../../shared/editor-file-identity'
 import type { ExecutionHostId } from '../../shared/execution-host'
+import { hydratedAssignmentsForWorktree } from './host-editor-file-id-assignments'
 import type { Tab, TabGroup } from '../../shared/tab-types'
 import type {
   PersistedOpenFile,
@@ -35,9 +35,7 @@ export function listHostEditTabs(
   session: WorkspaceSessionState,
   worktreeId: string
 ): HostEditTabRecord[] {
-  const assignments = assignHydratedEditorFileIds(session.openFilesByWorktree ?? {}).filter(
-    (assignment) => assignment.worktreeId === worktreeId
-  )
+  const assignments = hydratedAssignmentsForWorktree(session.openFilesByWorktree, worktreeId)
   if (assignments.length === 0) {
     return []
   }

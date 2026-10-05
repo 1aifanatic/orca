@@ -87,6 +87,33 @@ describe('host editor session model', () => {
     expect(record.tabId).toBe(NOTE)
   })
 
+  it('re-derives ids when the stored rows change in place, as a worktree rename does', () => {
+    const row = (worktreeId: string) => ({
+      filePath: NOTE,
+      relativePath: 'notes.md',
+      worktreeId,
+      language: 'markdown'
+    })
+    const openFilesByWorktree: Record<string, ReturnType<typeof row>[]> = {
+      [OTHER_WT]: [row(OTHER_WT)]
+    }
+    const session = base({ openFilesByWorktree })
+    expect(listHostEditTabs(session, OTHER_WT).map((record) => record.fileId)).toEqual([NOTE])
+
+    openFilesByWorktree[WT] = [row(WT)]
+    delete openFilesByWorktree[OTHER_WT]
+    expect(listHostEditTabs(session, WT).map((record) => record.fileId)).toEqual([NOTE])
+    expect(listHostEditTabs(session, OTHER_WT)).toEqual([])
+
+    openFilesByWorktree[WT]!.unshift(row(WT))
+    openFilesByWorktree[OTHER_WT] = []
+    expect(listHostEditTabs(session, WT)).toHaveLength(1)
+    openFilesByWorktree[OTHER_WT].push(row(OTHER_WT))
+    expect(listHostEditTabs(session, OTHER_WT).map((record) => record.fileId)).toEqual([
+      buildOwnedEditorFileId(NOTE, OTHER_WT, undefined)
+    ])
+  })
+
   it('dedupes by owner and path, preferring the active group wrapper', () => {
     const session = base({
       openFilesByWorktree: {
