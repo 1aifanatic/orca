@@ -4,14 +4,16 @@ import { renderTableToCompactMarkdown } from './rich-markdown-table-markdown'
 
 // Mock helper: renderChildren returns the concatenated text of the cell's nodes,
 // which is all the table serializer reads from each cell.
-const helpers = {
+const helpers: MarkdownRendererHelpers = {
   renderChildren: (nodes: JSONContent | JSONContent[]): string => {
     const list = Array.isArray(nodes) ? nodes : [nodes]
     const text = (node: JSONContent): string =>
       node.type === 'text' ? (node.text ?? '') : (node.content ?? []).map(text).join('')
     return list.map(text).join('')
-  }
-} as unknown as MarkdownRendererHelpers
+  },
+  wrapInBlock: (prefix, content) => prefix + content,
+  indent: (content) => content
+}
 
 function cell(text: string, type: 'tableCell' | 'tableHeader'): JSONContent {
   return { type, content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] }
