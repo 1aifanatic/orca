@@ -168,11 +168,11 @@ describe('useMobileNativeChatAsyncQuestions', () => {
     // The accepted send's echo carries the answers until its row lands.
     update({ ...props, pending: [echo('Question: a?\nAnswer: one', { a: 'one' })] })
     expect(model!.edits.a).toEqual({ text: 'one' })
-    expect(model!.sending).toBe(true)
+    expect([...model!.held]).toEqual(['a'])
     expect(model!.canSend).toBe(false)
     update({ ...props, pending: [] })
     expect(model!.edits.a).toBeUndefined()
-    expect(model!.sending).toBe(false)
+    expect(model!.held.size).toBe(0)
   })
 
   it('structured: holds the answer while its submission is pending, gives it back if refused', async () => {
@@ -183,12 +183,12 @@ describe('useMobileNativeChatAsyncQuestions', () => {
     await settle({ outcome: 'accepted', receipt: 'm1' })
     update({ ...props, submissions: [submission('m1', 'pending')] })
     expect(model!.edits.a).toEqual({ text: 'x' })
-    expect(model!.sending).toBe(true)
+    expect([...model!.held]).toEqual(['a'])
     expect(model!.canSend).toBe(false)
     // A Stop before the agent drained the steered answer: the host refuses it.
     update({ ...props, submissions: [submission('m1', 'rejected')] })
     expect(model!.edits.a).toEqual({ text: 'x' })
-    expect(model!.sending).toBe(false)
+    expect(model!.held.size).toBe(0)
     expect(model!.canSend).toBe(true)
   })
 

@@ -24,6 +24,7 @@ function model(
     ],
     omittedCount: 0,
     edits: {},
+    held: new Set(),
     sending: false,
     canSend: false,
     edit: vi.fn(),
@@ -95,6 +96,21 @@ describe('MobileNativeChatAsyncQuestions', () => {
     )
     expect(texts(idle)).toContain('Sending…')
     expect(byType(idle.root, 'TextInput')[0]?.props.editable).toBe(false)
+  })
+
+  it('shows a held answer read-only while Dismiss and every other question stay usable', () => {
+    const card = model({ edits: { a: { option: 'Red' } }, held: new Set(['a']) })
+    const view = mount(card)
+    const options = byType(view.root, 'Pressable').filter(
+      (node) => node.props.accessibilityState !== undefined
+    )
+    expect(options.map((node) => node.props.disabled)).toEqual([true, true])
+    expect(byType(view.root, 'TextInput').map((node) => node.props.editable)).toEqual([false, true])
+    expect(texts(view)).toContain('Send')
+    const dismissals = view.root.findAllByProps({ accessibilityLabel: 'Dismiss' })
+    expect(dismissals.map((node) => node.props.disabled)).toEqual([false, false])
+    act(() => dismissals[0]?.props.onPress())
+    expect(card.dismiss).toHaveBeenCalledWith('a')
   })
 
   it('renders a choice the model repeated once per occurrence, each with its own key', () => {

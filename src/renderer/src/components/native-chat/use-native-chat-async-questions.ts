@@ -30,6 +30,8 @@ export type NativeChatAsyncQuestionsCardModel = {
   open: NativeChatAsyncQuestion[]
   omittedCount: number
   edits: NativeChatAsyncQuestionEdits
+  /** Questions whose sent answer is still on its way: shown read-only. */
+  held: ReadonlySet<string>
   sending: boolean
   canSend: boolean
   edit: (key: string, edit: NativeChatAsyncQuestionEdit) => void
@@ -43,7 +45,7 @@ const NO_PROGRESS: NativeChatAsyncAnswerProgress = { answers: {}, sendingKeys: n
  * The async question card for one conversation, keyed by question so a question added
  * while another is edited, dismissed or sent changes nothing for it. Its state lives in the
  * card store, so it survives the pane's terminal↔chat toggle. The card stays until the
- * host's set drops a question; Send is only disabled while an answer is on its way.
+ * host's set drops a question; a question is read-only only while its own answer is on its way.
  */
 export function useNativeChatAsyncQuestions(args: {
   /** Pane + session: edits never carry over to another conversation. */
@@ -91,6 +93,7 @@ export function useNativeChatAsyncQuestions(args: {
     open: card.open,
     omittedCount: card.omittedCount,
     edits: card.edits,
+    held: card.held,
     sending: card.sending,
     canSend: card.canSend,
     edit,

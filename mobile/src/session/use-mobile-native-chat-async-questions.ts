@@ -24,6 +24,8 @@ export type MobileNativeChatAsyncQuestionsModel = {
   open: NativeChatAsyncQuestion[]
   omittedCount: number
   edits: NativeChatAsyncQuestionEdits
+  /** Questions whose sent answer is still on its way: shown read-only. */
+  held: ReadonlySet<string>
   sending: boolean
   canSend: boolean
   edit: (key: string, edit: NativeChatAsyncQuestionEdit) => void
@@ -120,6 +122,7 @@ export function useMobileNativeChatAsyncQuestions(args: {
     open: card.open,
     omittedCount: card.omittedCount,
     edits: card.edits,
+    held: card.held,
     sending: card.sending,
     canSend: card.canSend,
     edit,

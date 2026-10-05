@@ -13,7 +13,7 @@ export function MobileNativeChatAsyncQuestions({
 }: {
   model: MobileNativeChatAsyncQuestionsModel
 }): React.JSX.Element | null {
-  const { open, omittedCount, edits, sending, canSend } = model
+  const { open, omittedCount, edits, held, sending, canSend } = model
   if (open.length === 0) {
     return null
   }
@@ -22,6 +22,8 @@ export function MobileNativeChatAsyncQuestions({
       <ScrollView style={styles.scroll} contentContainerStyle={styles.list}>
         {open.map((question) => {
           const answer = edits[question.key]
+          // A held question shows the answer on its way; Dismiss stays usable.
+          const locked = sending || held.has(question.key)
           return (
             <View key={question.key} style={styles.question}>
               <View style={styles.header}>
@@ -45,7 +47,7 @@ export function MobileNativeChatAsyncQuestions({
                       <Pressable
                         key={key}
                         accessibilityState={{ selected }}
-                        disabled={sending}
+                        disabled={locked}
                         style={({ pressed }) => [
                           styles.option,
                           selected && styles.optionSelected,
@@ -67,7 +69,7 @@ export function MobileNativeChatAsyncQuestions({
               <TextInput
                 style={mobileNativeChatInputStyles.freeInput}
                 value={answer?.text ?? ''}
-                editable={!sending}
+                editable={!locked}
                 onChangeText={(text) => model.edit(question.key, { ...answer, text })}
                 placeholder="Type your reply…"
                 placeholderTextColor={colors.textMuted}

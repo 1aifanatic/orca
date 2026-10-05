@@ -15,7 +15,7 @@ export function NativeChatAsyncQuestionsCard({
 }: {
   model: NativeChatAsyncQuestionsCardModel
 }): React.JSX.Element | null {
-  const { open, omittedCount, edits, sending, canSend } = model
+  const { open, omittedCount, edits, held, sending, canSend } = model
   if (open.length === 0) {
     return null
   }
@@ -29,6 +29,8 @@ export function NativeChatAsyncQuestionsCard({
           <div className="min-h-0 divide-y divide-border/60 overflow-y-auto scrollbar-sleek">
             {open.map((question) => {
               const answer = edits[question.key]
+              // A held question shows the answer on its way; Dismiss stays usable.
+              const locked = sending || held.has(question.key)
               return (
                 <div key={question.key} className="flex flex-col gap-2 px-3.5 py-2.5">
                   <div className="flex items-start gap-2">
@@ -57,7 +59,7 @@ export function NativeChatAsyncQuestionsCard({
                             key={key}
                             variant={answer?.option === option ? 'secondary' : 'outline'}
                             size="xs"
-                            disabled={sending}
+                            disabled={locked}
                             aria-pressed={answer?.option === option}
                             onClick={() =>
                               model.edit(question.key, {
@@ -74,7 +76,7 @@ export function NativeChatAsyncQuestionsCard({
                   ) : null}
                   <Input
                     value={answer?.text ?? ''}
-                    disabled={sending}
+                    disabled={locked}
                     onChange={(event) =>
                       model.edit(question.key, { ...answer, text: event.target.value })
                     }

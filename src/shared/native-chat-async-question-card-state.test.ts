@@ -204,6 +204,33 @@ describe('a delivered answer a transport record holds', () => {
     expect([...progress.sendingKeys]).toEqual(['b'])
   })
 
+  it('holds only the questions its answer covers: a later question stays answerable on its own', async () => {
+    const state = run(
+      createNativeChatAsyncQuestionCardState('tab-1', ready('b', 'c')),
+      { type: 'edit', key: 'b', edit: { text: 'stale' } },
+      { type: 'edit', key: 'c', edit: { option: 'Red' } }
+    )
+    const progress = nativeChatAsyncAnswerProgress([{ answers: { b: '80' }, holding: true }])
+    const card = nativeChatAsyncQuestionScopeView(state, state.view, progress)
+    expect([...card.held]).toEqual(['b'])
+    // The held question shows what it sent; the hold is not this card's write in flight.
+    expect(card.edits.b).toEqual({ text: '80' })
+    expect(card.sending).toBe(false)
+    expect(card.canSend).toBe(true)
+    const send = vi.fn(
+      async (_text: string, _answers: Record<string, string>) => 'accepted' as const
+    )
+    submitNativeChatAsyncQuestionScope({ scopeKey: 'tab-1', ...card }, () => {}, send)
+    expect(send).toHaveBeenCalledWith('Question: c?\nAnswer: Red', { c: 'Red' })
+    // With only held questions open there is nothing to send, and nothing reads as sending.
+    const onlyHeld = nativeChatAsyncQuestionScopeView(
+      run(state, { type: 'dismiss', key: 'c' }),
+      state.view,
+      progress
+    )
+    expect([onlyHeld.canSend, onlyHeld.sending]).toEqual([false, false])
+  })
+
   it('submits through a seam that names the record holding a delivered answer', async () => {
     const state = run(createNativeChatAsyncQuestionCardState('tab-1', ready('a')), {
       type: 'edit',

@@ -142,7 +142,7 @@ describe('structured async answers', () => {
     // A relaunch: the card store is gone, the persisted outbox is not.
     clearNativeChatAsyncQuestionCardStoreForTests()
     const again = render({ submissions: [], fence: null })
-    expect(again.result.current.card.sending).toBe(true)
+    expect([...again.result.current.card.held]).toEqual(['a'])
     expect(again.result.current.card.canSend).toBe(false)
     act(() => again.result.current.card.submit())
     expect(again.result.current.outbox.outbox).toHaveLength(1)
@@ -255,6 +255,6 @@ describe('structured async answers', () => {
     // Resent under the new owner: still the same entry on its way, never a second answer.
     await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
     expect(result.current.outbox.outbox).toHaveLength(1)
-    expect(result.current.card.sending).toBe(true)
+    expect([...result.current.card.held]).toEqual(['a'])
   })
 })

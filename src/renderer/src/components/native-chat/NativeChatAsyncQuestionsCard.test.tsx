@@ -17,6 +17,7 @@ function model(
     ],
     omittedCount: 0,
     edits: {},
+    held: new Set(),
     sending: false,
     canSend: false,
     edit: vi.fn(),
@@ -60,6 +61,21 @@ describe('NativeChatAsyncQuestionsCard', () => {
     rerender(<NativeChatAsyncQuestionsCard model={model({ sending: true })} />)
     expect(screen.getByRole('button', { name: 'Sending…' }).hasAttribute('disabled')).toBe(true)
     expect(screen.getByRole('button', { name: 'Red' }).hasAttribute('disabled')).toBe(true)
+  })
+
+  it('shows a held answer read-only while Dismiss and every other question stay usable', () => {
+    const card = model({ edits: { a: { option: 'Red' } }, held: new Set(['a']) })
+    render(<NativeChatAsyncQuestionsCard model={card} />)
+    expect(screen.getByRole('button', { name: 'Red' }).hasAttribute('disabled')).toBe(true)
+    const [heldInput, openInput] = screen.getAllByPlaceholderText('Type your answer')
+    expect(heldInput!.hasAttribute('disabled')).toBe(true)
+    expect(openInput!.hasAttribute('disabled')).toBe(false)
+    expect(screen.getByRole('button', { name: 'Submit' })).toBeTruthy()
+    for (const dismiss of screen.getAllByRole('button', { name: 'Dismiss' })) {
+      expect(dismiss.hasAttribute('disabled')).toBe(false)
+    }
+    fireEvent.click(screen.getAllByRole('button', { name: 'Dismiss' })[0]!)
+    expect(card.dismiss).toHaveBeenCalledWith('a')
   })
 
   it('says how many questions were left out of the published set, singular for one', () => {

@@ -213,9 +213,10 @@ it('holds the sent answer while its echo waits for the transcript, then leaves i
   await act(() => vi.advanceTimersByTimeAsync(1000))
   expect(writtenBytes()).toContain(NATIVE_CHAT_SUBMIT)
 
-  // Codex holds a steered answer until its next model step: the card shows it, Send held.
+  // Codex holds a steered answer until its next model step: the card shows it read-only.
   expect(hook.result.current.model.edits).toEqual({ 'q-a': { option: 'core' } })
-  expect(hook.result.current.model.sending).toBe(true)
+  expect([...hook.result.current.model.held]).toEqual(['q-a'])
+  expect(hook.result.current.model.sending).toBe(false)
   expect(hook.result.current.model.canSend).toBe(false)
 
   // Its row lands: the echo retires, and the card waits for the host's set to drop the question.
@@ -227,7 +228,7 @@ it('holds the sent answer while its echo waits for the transcript, then leaves i
       row('a1', 'assistant', 'Using core.')
     ]
   })
-  expect(hook.result.current.model.sending).toBe(false)
+  expect(hook.result.current.model.held.size).toBe(0)
   expect(hook.result.current.model.edits).toEqual({})
 })
 

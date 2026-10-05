@@ -1,6 +1,7 @@
 // The async question card's per-question state as one pure reducer, so desktop and phone
-// keep identical rules: keyed by question, pruned only by an authoritative set, Send blocked
-// only while one is in flight, and sent edits cleared only by a delivered outcome.
+// keep identical rules: keyed by question, pruned only by an authoritative set, the card locked
+// only while its own write is in flight, a sent answer held read-only per question while its
+// transport holds it, and sent edits cleared only by a delivered outcome.
 
 import {
   buildNativeChatAsyncQuestionReply,
@@ -262,10 +263,21 @@ export function reduceNativeChatAsyncQuestionCard(
 export type NativeChatAsyncQuestionCardView = {
   open: NativeChatAsyncQuestion[]
   omittedCount: number
-  /** What each question shows: the user's edit, else an answer the transport still holds. */
+  /** What each question shows: the user's edit, else an answer the transport holds or gave back. */
   edits: NativeChatAsyncQuestionEdits
+  /** Open questions whose sent answer a transport still holds: read-only and left out of Send. */
+  held: ReadonlySet<string>
+  /** This card's own write is in flight; a transport's hold never sets it. */
   sending: boolean
   canSend: boolean
+}
+
+const NONE_HELD: ReadonlySet<string> = new Set()
+
+function answerable(
+  card: Pick<NativeChatAsyncQuestionCardView, 'open' | 'held'>
+): NativeChatAsyncQuestion[] {
+  return card.open.filter((question) => !card.held.has(question.key))
 }
 
 export function nativeChatAsyncQuestionScopeView(
@@ -277,17 +289,31 @@ export function nativeChatAsyncQuestionScopeView(
     nativeChatAsyncQuestionsShown(view),
     new Set(Object.keys(scope.dismissed))
   )
-  const edits = progress
-    ? { ...nativeChatAsyncQuestionEditsFromAnswers(open, progress.answers), ...scope.edits }
-    : scope.edits
-  const sending =
-    scope.sending || open.some((question) => progress?.sendingKeys.has(question.key) === true)
+  const held = progress
+    ? new Set(
+        open.flatMap((question) => (progress.sendingKeys.has(question.key) ? [question.key] : []))
+      )
+    : NONE_HELD
+  let edits = scope.edits
+  if (progress) {
+    const given = nativeChatAsyncQuestionEditsFromAnswers(open, progress.answers)
+    const shown: Record<string, NativeChatAsyncQuestionEdit> = { ...given, ...scope.edits }
+    // A held question shows what it sent, never an edit left from before.
+    for (const key of held) {
+      const sent = given[key]
+      if (sent) {
+        shown[key] = sent
+      }
+    }
+    edits = shown
+  }
   return {
     open,
     omittedCount: view.state === 'ready' ? (view.omittedCount ?? 0) : 0,
     edits,
-    sending,
-    canSend: !sending && nativeChatAsyncQuestionsSendable(open, edits)
+    held,
+    sending: scope.sending,
+    canSend: !scope.sending && nativeChatAsyncQuestionsSendable(answerable({ open, held }), edits)
   }
 }
 
@@ -302,15 +328,18 @@ export type NativeChatAsyncAnswerSeam = (
   answers: Record<string, string>
 ) => Promise<NativeChatAsyncAnswerSendResult>
 
-/** Sends the card's answers through `send` and settles the card on its honest outcome. */
+/** Sends the answers of the questions no transport holds through `send`, and settles the card
+ *  on its honest outcome. */
 export function submitNativeChatAsyncQuestionScope(
-  card: Pick<NativeChatAsyncQuestionCardView, 'open' | 'edits' | 'canSend'> & {
+  card: Pick<NativeChatAsyncQuestionCardView, 'open' | 'held' | 'edits' | 'canSend'> & {
     scopeKey: string
   },
   dispatch: (action: NativeChatAsyncQuestionScopeAction) => void,
   send: NativeChatAsyncAnswerSeam
 ): void {
-  const reply = card.canSend ? buildNativeChatAsyncQuestionReply(card.open, card.edits) : null
+  const reply = card.canSend
+    ? buildNativeChatAsyncQuestionReply(answerable(card), card.edits)
+    : null
   if (!reply) {
     return
   }
