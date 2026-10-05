@@ -105,6 +105,36 @@ describe('SshLegacyRelayRoute', () => {
       'Multiplexer disposed'
     )
   })
+
+  it('keeps a route a second pane started serving while a stop on the first was settling', async () => {
+    exitListeners.length = 0
+    const route = await openRoute()
+    route.beginServing(SERVED)
+    let settleStop: () => void = () => {}
+    const stop = route.track(
+      () =>
+        new Promise<void>((resolve) => {
+          settleStop = resolve
+        })
+    )
+    // The stopped PTY's exit lands before the stop's reply, deferring the hang-up.
+    for (const listener of exitListeners) {
+      listener({ id: SERVED })
+    }
+    route.beginServing(UNSERVED)
+
+    settleStop()
+    await stop
+
+    expect(route.serves(UNSERVED)).toBe(true)
+    expect(route.heldPtyIds()).toEqual([UNSERVED])
+
+    for (const listener of exitListeners) {
+      listener({ id: UNSERVED })
+    }
+    expect(route.serves(UNSERVED)).toBe(false)
+    expect(route.heldPtyIds()).toEqual([])
+  })
 })
 
 async function openRoute(): Promise<SshLegacyRelayRoute> {

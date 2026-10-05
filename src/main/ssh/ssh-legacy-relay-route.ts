@@ -147,6 +147,8 @@ export class SshLegacyRelayRoute {
 
   beginServing(appPtyId: string): void {
     this.attached.add(appPtyId)
+    // A pane served again cancels a hang-up the last exit deferred until a stop settled.
+    this.closeWhenSettled = null
   }
 
   stopServing(appPtyId: string): void {
@@ -172,7 +174,7 @@ export class SshLegacyRelayRoute {
       return await request()
     } finally {
       this.inFlight -= 1
-      if (this.inFlight === 0 && this.closeWhenSettled !== null) {
+      if (this.inFlight === 0 && this.closeWhenSettled !== null && !this.servesAny) {
         this.close(this.closeWhenSettled)
       }
     }
