@@ -88,16 +88,28 @@ describe('a Grok chat Stop', () => {
   })
 
   it('leaves no Grok behind whose background work could begin a turn after the Stop', async () => {
-    const { rig, host, turns } = await openAttachedHostRig()
+    const { rig, host, rows, turns } = await openAttachedHostRig()
     const first = rig.child()
     await send(host, 'hello')
     const prompt = await rig.frame('session/prompt')
     first.agent.notify('session/update', replyChunk(promptIdOf(prompt), 'started a build'))
+    first.agent.notify('x.ai/task_backgrounded', {
+      sessionId: PROVIDER_SESSION,
+      update: { sessionUpdate: 'task_backgrounded', task_id: 'build-1', command: 'make all' }
+    })
     first.agent.on('session/cancel', () => first.agent.reply(prompt, { stopReason: 'cancelled' }))
     await rig.settle()
     await host.flushStreamedEvents(SESSION)
     await stop(host)
     await waitFor(() => expect(first.exited).toBe(true))
+    // The task ended with Grok's process; Orca cannot say how, so its row says no more than that.
+    const task = (await rows()).find((row) => row.itemId.includes('background-task'))
+    expect(task?.body).toMatchObject({
+      blocks: [
+        { type: 'text', text: 'Background command "make all" stopped reporting' },
+        { type: 'background-task', taskId: 'build-1', state: 'unverifiable' }
+      ]
+    })
     const settled = await turns()
     // What a kept process would do once its backgrounded build finished.
     first.agent.notify('session/update', replyChunk('task-completed-background-1', 'Build done'))
