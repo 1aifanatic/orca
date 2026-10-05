@@ -16810,7 +16810,6 @@
           "showUnreadOnly": "Show unread only",
           "showChildAgents": "Show child agents",
           "activityOptions": "Activity options",
-          "threadListOptionsFiltered": "Thread list options, filters active",
           "showSearch": "Show search",
           "interrupted": "Interrupted",
           "state": {
@@ -16826,7 +16825,9 @@
             "permission": "Needs attention"
           },
           "filtersSection": "Filters",
-          "viewSection": "View"
+          "viewSection": "View",
+          "threadListOptionsActive": "Thread list options ({{value0}} active)",
+          "activityOptionsActive": "Activity options ({{value0}})"
         },
         "clearCompleted": {
           "clearedOne": "Cleared 1 completed agent",
@@ -16844,7 +16845,11 @@
         },
         "ActivityScopeFilterControls": {
           "hiddenCount": "{{value0}} hidden",
-          "resetScope": "Show all hosts and projects"
+          "resetScope": "Show all hosts and projects",
+          "hideAutomationCreated": "Hide automation-created",
+          "hideCliCreated": "Hide CLI-created",
+          "hideOtherClientsAria": "Hide agents in workspaces created from other Orca clients on shared remote servers",
+          "hideOtherClients": "Hide other-client agents"
         },
         "ActivityThreadHoverCard": {
           "pathCopied": "Path copied to clipboard",
