@@ -14,8 +14,9 @@ export type LegacyWorkerTerminalRecoveryResult = {
 export type LegacyWorkerRecoveryOptions = {
   connectionId?: string
   materializeRenderer?: boolean
-  /** Internal timer pass; explicit recovery starts a fresh bounded retry budget. */
+  /** Internal timer pass; retry only assignments that remain unresolved. */
   retry?: true
+  dispatchIds?: readonly string[]
 }
 
 export type LegacyWorkerRecoveryCandidate = LegacyWorkerTerminalRecoveryPlan['candidates'][number]
@@ -72,6 +73,7 @@ export type LegacyWorkerRecoveryPorts = {
     resolution: 'adopted' | 'exited'
   ) => void
   canRecoverPersistentLocalPtys: () => boolean
+  isTerminalProvenAbsent?: (candidate: LegacyWorkerRecoveryCandidate) => Promise<boolean>
   reconcileRequestedReleases: () => Promise<unknown>
   reconcile: (options: LegacyWorkerRecoveryOptions) => Promise<LegacyWorkerTerminalRecoveryResult>
   updateRetry: (

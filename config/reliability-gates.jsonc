@@ -21633,7 +21633,7 @@
     },
     {
       "id": "orchestration.worker-recovery-convergence",
-      "title": "Settled assignments leave recovery and unverifiable workers stop automatic retries",
+      "title": "Settled assignments leave recovery while unresolved workers retain automatic recovery",
       "maturity": "experimental",
       "protection": "partial",
       "owner": "orchestration",
@@ -21645,34 +21645,18 @@
         "recovery retry scheduling",
         "durable session retirement"
       ],
-      "platforms": [
-        "macos",
-        "linux",
-        "windows"
-      ],
-      "providers": [
-        "local",
-        "daemon",
-        "ssh",
-        "wsl",
-        "remote-runtime"
-      ],
-      "coveredPlatforms": [
-        "macos"
-      ],
-      "coveredProviders": [
-        "local",
-        "daemon",
-        "ssh"
-      ],
+      "platforms": ["macos", "linux", "windows"],
+      "providers": ["local", "daemon", "ssh", "wsl", "remote-runtime"],
+      "coveredPlatforms": ["macos"],
+      "coveredProviders": ["local", "daemon", "ssh"],
       "coverageNotes": "Temporary SQLite databases and fake-clock/provider contracts cover assignment repair, uncertain starts/stops, missing git/folder workspaces, owning SSH inventories, and rejection of foreign paired-runtime PTYs. Hidden macOS Electron journeys retain real daemon PTYs through restart without duplicate launch or interrupted output. Live SSH/WSL and Linux/Windows journeys remain gaps; no execution commands or wire payloads change.",
       "motivatingLinks": [
         "https://stablygroup.slack.com/archives/C0AK2T3JEF4/p1791225819076759",
         "https://github.com/stablyai/orca/pull/11271",
         "https://github.com/stablyai/orca/pull/22612"
       ],
-      "invariant": "Completing an assignment settles its active worker bookkeeping in the same transaction without asserting process exit or releasing a terminal. Historical settled assignments converge once on database open. Missing workspaces require owning-provider evidence before exact-incarnation retirement; loss of contact is unverifiable. Automatic recovery stops after six retries per host until explicit recovery restarts the budget.",
-      "oracle": "Reopen historical completed/failed/circuit-broken PTY, structured and handle-less assignments and require no active recovery rows; preserve genuine report outcomes, pending unknown workers, diagnostics and terminal resources. Inject settlement failure and require complete transaction rollback. Query 100 missing-workspace candidates once per provider, preserve live/unidentified PTYs and wrong-host SSH evidence, and advance fake time ten minutes to require six retries and zero remaining timers without lifecycle settlement.",
+      "invariant": "Completing an assignment settles its active worker bookkeeping in the same transaction without asserting process exit or releasing a terminal. Historical settled assignments converge once on database open. Missing workspaces require owning-provider evidence before exact-incarnation retirement; a restarted relay's empty inventory and loss of contact are unverifiable. Automatic retries retain unresolved assignments without revisiting settled workers or persisting empty batches; late availability converges without user intervention.",
+      "oracle": "Reopen historical completed/failed/circuit-broken PTY, structured and handle-less assignments and require no active recovery rows; preserve genuine report outcomes, pending unknown workers, diagnostics and terminal resources. Inject settlement failure and require complete transaction rollback. Query 100 missing-workspace candidates once per provider, preserve live/unidentified PTYs and wrong-host SSH evidence. Advance fake time ten minutes and require zero persistence for unresolved passes and no repeated settlement. Make a host verifiable after two minutes and require automatic convergence and timer cleanup.",
       "commands": [
         "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/main/runtime/orchestration src/main/runtime/runtime-legacy-worker-terminal-recovery-persistence.test.ts src/main/runtime/runtime-legacy-worker-terminal-recovery-retry.test.ts src/main/runtime/runtime-legacy-worker-missing-workspace-recovery.test.ts src/main/runtime/orca-runtime.test.ts src/main/runtime/rpc/orchestration-runtime-update-settlement.test.ts src/main/runtime/rpc/methods/orchestration/worker/composed-workers.test.ts src/main/runtime/rpc/methods/orchestration/messaging/check.test.ts src/main/runtime/rpc/methods/orchestration/federation/federation-lifecycle-settlement.test.ts src/main/runtime/rpc/methods/orchestration/federation/federation.test.ts src/cli/handlers/orchestration-lifecycle-rejection.test.ts src/cli/handlers/orchestration-migration.test.ts",
         "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/main/runtime/orchestration/worker-dispatch-settlement.test.ts src/main/runtime/runtime-legacy-worker-terminal-recovery-retry.test.ts src/main/runtime/runtime-legacy-worker-missing-workspace-recovery.test.ts src/main/runtime/runtime-legacy-worker-terminal-recovery-persistence.test.ts",
@@ -21698,8 +21682,9 @@
         {
           "file": "src/main/runtime/runtime-legacy-worker-terminal-recovery-retry.test.ts",
           "assertions": [
-            "six automatic retries leave unverifiable workers unchanged and permit explicit recovery",
-            "other host timers remain cancellable after one scope exhausts its budget"
+            "late provider availability recovers automatically after two minutes",
+            "ten minutes of unresolved retries never revisit settled workers or persist empty batches",
+            "every host timer remains cancellable during extended recovery"
           ]
         },
         {
@@ -21707,7 +21692,8 @@
           "assertions": [
             "100 deleted git or folder workspace candidates use one owning-provider inventory",
             "live PTYs without scoped membership or verified incarnation remain deferred",
-            "local inventory never proves SSH worker exit"
+            "local inventory and restarted relay inventory never prove SSH worker exit",
+            "SSH cleanup requires an explicit owning-host absence verdict; probe failures preserve uncertainty"
           ]
         }
       ],
@@ -21754,7 +21740,7 @@
       },
       "performanceBudget": {
         "required": true,
-        "evidence": "One startup SQL repair, six automatic retries per host with a stop condition, one inventory query for 100 deleted-workspace candidates, one durable batch flush, and at most two full rollback snapshots per changed host. Unchanged adopted surfaces avoid snapshots while still forcing durability. Adds no perpetual polling or per-worker process spawn."
+        "evidence": "One startup SQL repair, one inventory query for 100 deleted-workspace candidates, one durable batch flush, and at most two full rollback snapshots per changed host. Timer passes process only still-deferred assignments, omit foreground-process inspection, and skip empty persistence and release reconciliation. Ten minutes of unchanged retries cause zero session writes and never revisit settled workers. Existing backoff remains capped at 30 seconds so late availability recovers automatically; timers stop on convergence or cancellation."
       },
       "knownGaps": [
         "Physical Linux/Windows, WSL and live SSH reconnect/deleted-folder journeys are untested locally.",
@@ -21763,7 +21749,7 @@
       "promotionCriteria": [
         "Collect cross-platform and provider soak evidence with no weakened identity, transaction or bounded-work assertions."
       ],
-      "demotionRule": "Keep experimental until soak and platform evidence; investigate failures without extending retries or weakening ownership evidence."
+      "demotionRule": "Keep experimental until soak and platform evidence; investigate failures without weakening ownership, late recovery, or zero-write retry evidence."
     }
   ]
 }

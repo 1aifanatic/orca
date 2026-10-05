@@ -29,6 +29,9 @@ export class RuntimeLegacyWorkerTerminalRecoveryPersistence {
   async persist(
     resolutions: readonly LegacyWorkerRecoveryResolution[]
   ): Promise<ReadonlySet<string>> {
+    if (resolutions.length === 0) {
+      return new Set()
+    }
     const store = this.getStore()
     if (!store?.getWorkspaceSession || !store.setWorkspaceSession || !store.runDurableMutation) {
       return new Set()

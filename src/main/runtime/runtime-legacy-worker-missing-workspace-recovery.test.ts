@@ -94,7 +94,7 @@ describe('worker recovery after workspace deletion', () => {
     expect(fixture.reconcileMissing).not.toHaveBeenCalled()
   })
 
-  it('can prove absence on the owning SSH provider without resolving a deleted folder', async () => {
+  it('keeps an SSH worker unverifiable when the current relay has no record of its PTY', async () => {
     const candidate = missingWorkspaceWorker({
       worktreeId: 'folder:deleted-folder',
       ptyId: toAppSshPtyId('server-1', 'pty-remote')
@@ -105,8 +105,11 @@ describe('worker recovery after workspace deletion', () => {
     })
 
     const result = await fixture.controller.reconcile({ connectionId: 'server-1' })
-    expect(result.exitedDispatchIds).toEqual([candidate.dispatchId])
-    expect(fixture.persist.mock.calls[0][0][0]).toMatchObject({ hostId: 'ssh:server-1' })
+    expect(result.exitedDispatchIds).toEqual([])
+    expect(result.deferredDispatchIds).toEqual([candidate.dispatchId])
+    expect(fixture.refreshInventory).toHaveBeenCalledExactlyOnceWith([], 'server-1')
+    expect(fixture.reconcileMissing).not.toHaveBeenCalled()
+    expect(fixture.rollback).not.toHaveBeenCalled()
   })
 
   it.each(['ssh:malformed', 'remote:peer-1@@pty-remote'])(
@@ -118,6 +121,37 @@ describe('worker recovery after workspace deletion', () => {
       expect(fixture.reconcileMissing).not.toHaveBeenCalled()
     }
   )
+
+  it.each([true, false])(
+    'uses an explicit owning-host absence verdict of %s for SSH cleanup',
+    async (provenAbsent) => {
+      const candidate = missingWorkspaceWorker({ ptyId: toAppSshPtyId('server-1', 'pty-remote') })
+      const fixture = missingWorkspaceRecoveryFixture([candidate], {
+        ...emptyLocalWorkerInventory(),
+        queriedHostIds: new Set([toSshExecutionHostId('server-1')])
+      })
+      fixture.ports.isTerminalProvenAbsent = vi.fn(async () => provenAbsent)
+      const result = await fixture.controller.reconcile({ connectionId: 'server-1' })
+      expect(result.exitedDispatchIds).toEqual(provenAbsent ? [candidate.dispatchId] : [])
+      expect(result.deferredDispatchIds).toEqual(provenAbsent ? [] : [candidate.dispatchId])
+      expect(fixture.reconcileMissing).toHaveBeenCalledTimes(provenAbsent ? 1 : 0)
+    }
+  )
+
+  it('preserves SSH workers when the owning-host absence probe throws', async () => {
+    const candidate = missingWorkspaceWorker({ ptyId: toAppSshPtyId('server-1', 'pty-remote') })
+    const fixture = missingWorkspaceRecoveryFixture([candidate], {
+      ...emptyLocalWorkerInventory(),
+      queriedHostIds: new Set([toSshExecutionHostId('server-1')])
+    })
+    fixture.ports.isTerminalProvenAbsent = vi.fn(async () => {
+      throw new Error('host disconnected')
+    })
+    expect(
+      (await fixture.controller.reconcile({ connectionId: 'server-1' })).deferredDispatchIds
+    ).toEqual([candidate.dispatchId])
+    expect(fixture.reconcileMissing).not.toHaveBeenCalled()
+  })
 
   it('defers transient workspace lookup failures rather than assuming deletion', async () => {
     const fixture = missingWorkspaceRecoveryFixture(undefined, emptyLocalWorkerInventory())

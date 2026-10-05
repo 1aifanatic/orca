@@ -9,13 +9,11 @@ import type {
 
 type RecoveryRetry = {
   attempt: number
-  exhausted: boolean
+  dispatchIds: string[]
   connectionId?: string
   materializeRenderer: boolean
   timer: ReturnType<typeof setTimeout> | null
 }
-
-const MAX_LEGACY_WORKER_RECOVERY_RETRIES = 6
 
 // Retain controllers only while timers need cancellation during test teardown.
 const controllersWithArmedRetries = new Set<RuntimeLegacyWorkerTerminalRecoveryController>()
@@ -84,25 +82,26 @@ export class RuntimeLegacyWorkerTerminalRecoveryController {
     options: LegacyWorkerRecoveryOptions
   ): void {
     const scopeKey = options.connectionId ? `ssh:${options.connectionId}` : 'local'
-    const hasDeferredWorker = plan.candidates.some((candidate) => {
+    const dispatchIds = plan.candidates.flatMap((candidate) => {
       const sshPty = parseAppSshPtyId(candidate.ptyId)
       const inScope = options.connectionId
         ? sshPty?.connectionId === options.connectionId
         : sshPty === null
-      return inScope && deferredDispatchIds.has(candidate.dispatchId)
+      return inScope && deferredDispatchIds.has(candidate.dispatchId) ? [candidate.dispatchId] : []
     })
-    if (!hasDeferredWorker) {
+    if (dispatchIds.length === 0) {
       this.cancelScope(scopeKey)
       return
     }
     const retry = this.retries.get(scopeKey) ?? {
       attempt: 0,
-      exhausted: false,
+      dispatchIds,
       ...(options.connectionId ? { connectionId: options.connectionId } : {}),
       materializeRenderer: options.materializeRenderer === true,
       timer: null
     }
     retry.materializeRenderer ||= options.materializeRenderer === true
+    retry.dispatchIds = dispatchIds
     this.retries.set(scopeKey, retry)
     this.armRetry(scopeKey, retry)
   }
@@ -132,24 +131,17 @@ export class RuntimeLegacyWorkerTerminalRecoveryController {
   }
 
   private armRetry(scopeKey: string, retry: RecoveryRetry): void {
-    if (retry.timer || retry.exhausted) {
-      return
-    }
-    if (retry.attempt >= MAX_LEGACY_WORKER_RECOVERY_RETRIES) {
-      retry.exhausted = true
-      if (![...this.retries.values()].some((entry) => entry.timer !== null)) {
-        controllersWithArmedRetries.delete(this)
-      }
-      console.warn('[orchestration] automatic worker recovery retries exhausted', { scopeKey })
+    if (retry.timer) {
       return
     }
     const delayMs = Math.min(1_000 * 2 ** retry.attempt, 30_000)
-    retry.attempt += 1
+    retry.attempt = Math.min(retry.attempt + 1, 5)
     retry.timer = setTimeout(() => {
       retry.timer = null
       void this.ports
         .reconcile({
           retry: true,
+          dispatchIds: retry.dispatchIds,
           ...(retry.connectionId ? { connectionId: retry.connectionId } : {}),
           materializeRenderer: retry.materializeRenderer
         })

@@ -10,7 +10,8 @@ import type {
 import type { LegacyWorkerTerminalRecoveryPlan } from './orchestration/orchestration-legacy-worker-terminal-recovery'
 import {
   missingWorkspaceRecoveryFixture,
-  missingWorkspaceWorker
+  missingWorkspaceWorker,
+  emptyLocalWorkerInventory
 } from './runtime-legacy-worker-recovery-test-fixture'
 import { toAppSshPtyId } from '../../shared/ssh-pty-id'
 
@@ -95,31 +96,33 @@ describe('RuntimeLegacyWorkerTerminalRecoveryController retry loop', () => {
     expect(second.reconcile).not.toHaveBeenCalled()
   })
 
-  it('exhausts automatic retries without settling an unverifiable worker, then permits explicit recovery', async () => {
+  it('keeps automatic recovery available without persistence work while the host is unverifiable', async () => {
     const fixture = missingWorkspaceRecoveryFixture()
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     try {
       await fixture.controller.reconcile()
       await vi.advanceTimersByTimeAsync(600_000)
 
-      expect(fixture.reconcile).toHaveBeenCalledTimes(6)
+      expect(fixture.reconcile).toHaveBeenCalledTimes(23)
       expect(fixture.reconcileMissing).not.toHaveBeenCalled()
-      expect(fixture.persist.mock.calls.every(([resolutions]) => resolutions.length === 0)).toBe(
-        true
-      )
-      expect(vi.getTimerCount()).toBe(0)
-      expect(warning).toHaveBeenCalledTimes(1)
+      expect(fixture.persist).not.toHaveBeenCalled()
+      expect(vi.getTimerCount()).toBe(1)
+      expect(warning).not.toHaveBeenCalled()
 
       await fixture.controller.reconcile({ materializeRenderer: true })
       await vi.advanceTimersByTimeAsync(1_000)
-      expect(fixture.reconcile).toHaveBeenCalledTimes(7)
-      expect(fixture.reconcile).toHaveBeenLastCalledWith({ retry: true, materializeRenderer: true })
+      expect(fixture.reconcile).toHaveBeenCalledTimes(24)
+      expect(fixture.reconcile).toHaveBeenLastCalledWith({
+        retry: true,
+        dispatchIds: [DEFERRED_DISPATCH_ID],
+        materializeRenderer: true
+      })
     } finally {
       warning.mockRestore()
     }
   })
 
-  it('keeps other host timers cancellable after the local retry budget is exhausted', async () => {
+  it('keeps every host timer cancellable after extended recovery', async () => {
     const local = missingWorkspaceWorker()
     const remote = missingWorkspaceWorker({
       dispatchId: 'dispatch-remote',
@@ -133,7 +136,7 @@ describe('RuntimeLegacyWorkerTerminalRecoveryController retry loop', () => {
       await fixture.controller.reconcile({ connectionId: 'server-1' })
       await vi.advanceTimersByTimeAsync(30_000)
       const callsBeforeCancellation = fixture.reconcile.mock.calls.length
-      expect(vi.getTimerCount()).toBe(1)
+      expect(vi.getTimerCount()).toBe(2)
 
       __cancelLegacyWorkerTerminalRecoveryRetriesForTests()
       await vi.advanceTimersByTimeAsync(60_000)
@@ -144,14 +147,14 @@ describe('RuntimeLegacyWorkerTerminalRecoveryController retry loop', () => {
     }
   })
 
-  it('bounds retries when the provider throws rather than returning a recovery result', async () => {
+  it('backs off when the provider throws and remains cancellable', async () => {
     const { controller, reconcile } = armedController()
     reconcile.mockRejectedValue(new Error('provider unavailable'))
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     try {
       await vi.advanceTimersByTimeAsync(600_000)
-      expect(reconcile).toHaveBeenCalledTimes(6)
-      expect(vi.getTimerCount()).toBe(0)
+      expect(reconcile).toHaveBeenCalledTimes(23)
+      expect(vi.getTimerCount()).toBe(1)
     } finally {
       controller.cancelAllRetries()
       warning.mockRestore()
@@ -182,13 +185,49 @@ describe('RuntimeLegacyWorkerTerminalRecoveryController retry loop', () => {
       explicitInventory.resolve(null)
       await explicitPass
       await vi.advanceTimersByTimeAsync(600_000)
-      expect(fixture.reconcile).toHaveBeenCalledTimes(7)
-      expect(vi.getTimerCount()).toBe(0)
+      expect(fixture.reconcile).toHaveBeenCalledTimes(24)
+      expect(vi.getTimerCount()).toBe(1)
       expect(fixture.reconcileMissing).not.toHaveBeenCalled()
     } finally {
       timerInventory.resolve(null)
       explicitInventory.resolve(null)
       warning.mockRestore()
     }
+  })
+
+  it('automatically recovers a provider that becomes verifiable after two minutes', async () => {
+    const fixture = missingWorkspaceRecoveryFixture()
+    await fixture.controller.reconcile()
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(fixture.reconcileMissing).not.toHaveBeenCalled()
+    expect(fixture.persist).not.toHaveBeenCalled()
+
+    fixture.refreshInventory.mockResolvedValue(emptyLocalWorkerInventory())
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(fixture.reconcileMissing).toHaveBeenCalledExactlyOnceWith(missingWorkspaceWorker())
+    expect(fixture.persist).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('does not revisit settled workers or persist empty batches during later retries', async () => {
+    const settled = missingWorkspaceWorker({ dispatchId: 'settled', ptyId: 'gone' })
+    const deferred = missingWorkspaceWorker()
+    const fixture = missingWorkspaceRecoveryFixture([settled, deferred], {
+      ...emptyLocalWorkerInventory(),
+      allLivePtyIds: new Set([deferred.ptyId])
+    })
+    const resolve = vi.spyOn(fixture.ports, 'resolveWorkspace')
+    await fixture.controller.reconcile()
+    expect(fixture.reconcileMissing).toHaveBeenCalledExactlyOnceWith(settled)
+    expect(fixture.persist).toHaveBeenCalledTimes(1)
+    resolve.mockClear()
+
+    await vi.advanceTimersByTimeAsync(600_000)
+    expect(resolve).toHaveBeenCalledTimes(23)
+    expect(
+      resolve.mock.calls.every(([candidate]) => candidate.dispatchId === deferred.dispatchId)
+    ).toBe(true)
+    expect(fixture.persist).toHaveBeenCalledTimes(1)
+    expect(fixture.reconcileMissing).toHaveBeenCalledTimes(1)
   })
 })
