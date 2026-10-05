@@ -157,7 +157,7 @@ describe('mobile-fit override on a hidden desktop pane', () => {
     terminal.dispose()
   })
 
-  it('answers a serialize request that lands before the fit frame at the override grid', async () => {
+  it('fits to the override grid before any frame, so the next serialize answers at it', async () => {
     const { pane, terminal } = createHiddenPane(true)
     pane.container.dataset.ptyId = PTY_ID
     registerSerializer(pane)
@@ -165,13 +165,11 @@ describe('mobile-fit override on a hidden desktop pane', () => {
 
     // The host sends the override, then its serialize request, on one ordered channel.
     act(() => setFitOverride(PTY_ID, 'mobile-fit', PHONE.cols, PHONE.rows))
-    expect(pendingFrames).toHaveLength(1)
+    expect({ cols: terminal.cols, rows: terminal.rows }).toEqual(PHONE)
     const reply = await serializeForHost()
 
-    expect(pendingFrames).toHaveLength(1)
+    expect(pendingFrames).toHaveLength(0)
     expect({ cols: reply?.cols, rows: reply?.rows }).toEqual(PHONE)
-    act(() => flushFrames())
-    expect({ cols: terminal.cols, rows: terminal.rows }).toEqual(PHONE)
     terminal.dispose()
   })
 
@@ -189,6 +187,7 @@ describe('mobile-fit override on a hidden desktop pane', () => {
     expect({ cols: reply?.cols, rows: reply?.rows }).toEqual(PHONE)
     terminal.dispose()
   })
+
   it('keeps a pinned viewport on its content across a hidden phone reflow', async () => {
     const { pane, terminal } = createHiddenPane()
     pane.container.dataset.ptyId = PTY_ID

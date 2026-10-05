@@ -8,8 +8,6 @@ import {
 } from '@/lib/pane-manager/pane-terminal-output-scheduler'
 import { clearTerminalScrollbackAndFollowOutput } from '@/lib/pane-manager/terminal-scrollback-clear'
 import { terminalMouseEncodingRestoreAnsi } from '@/lib/pane-manager/terminal-mouse-encoding-tracker'
-import { safeFit } from '@/lib/pane-manager/pane-tree-ops'
-import { getFitOverrideForPty } from '@/lib/pane-manager/mobile-fit-overrides'
 
 import type { ConnectPanePtySession } from './connect-pane-pty-session'
 
@@ -36,16 +34,6 @@ export function bindRegisterPaneSerializer(session: ConnectPanePtySession): void
           // write; never publish a fossil frame from a dead renderer.
           if (isTerminalWritePipelineCertifiedDead(session.pane.terminal)) {
             return null
-          }
-          // Why: the override lands before its rAF fit, and the host asks right after it.
-          const override = getFitOverrideForPty(ptyId)
-          const { terminal } = session.pane
-          if (
-            override &&
-            session.pane.container?.dataset?.ptyId === ptyId &&
-            (terminal.cols !== override.cols || terminal.rows !== override.rows)
-          ) {
-            safeFit(session.pane)
           }
           // Why serializeWithAbsoluteCursor: SerializeAddon's relative
           // cursor restore lands one column short when replay of a

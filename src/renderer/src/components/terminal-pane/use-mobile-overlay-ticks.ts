@@ -32,7 +32,7 @@ function isPtyMountedInTab(
  *
  * Both emitters are global listener sets: every event reaches every mounted tab.
  * The pty-affinity check therefore runs *before* the tick, not just before the
- * rAF work — a remote reconnect replays two handle-rotation events per pane, so
+ * fit work — a remote reconnect replays two handle-rotation events per pane, so
  * an ungated tick costs (events x mounted panes) re-renders per network blip.
  */
 export function useMobileOverlayTicks({ managerRef, paneTransportsRef }: MobileOverlayTickDeps): {
@@ -78,24 +78,10 @@ export function useMobileOverlayTicks({ managerRef, paneTransportsRef }: MobileO
         )
       if (event.mode === 'mobile-fit' || event.mode === 'remote-desktop-fit') {
         // Why: when mobile drives, xterm must shrink to phone dims or the wide desktop grid garbles the phone-wrapped stream.
-        // Why: skip the rAF unless this tab actually has a mis-parked pane.
-        const panesNeedingFit = getPanesNeedingOverrideFit(
-          getAffectedPanes(),
-          event.cols,
-          event.rows
-        )
-        if (panesNeedingFit.length === 0) {
-          return
+        // Why sync: the override fit is a plain resize that reads no layout, so it lands before any phone-painted byte parses.
+        for (const pane of getPanesNeedingOverrideFit(getAffectedPanes(), event.cols, event.rows)) {
+          safeFit(pane)
         }
-        scheduleFitFrame(() => {
-          for (const pane of getPanesNeedingOverrideFit(
-            getAffectedPanes(),
-            event.cols,
-            event.rows
-          )) {
-            safeFit(pane)
-          }
-        })
         return
       }
       if (event.mode === 'desktop-fit') {
