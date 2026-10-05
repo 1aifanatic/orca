@@ -70,6 +70,8 @@ export async function runOrcadDeltaMove(args: OrcadDeltaMoveArgs): Promise<Orcad
   const { userDataPath, store, target } = args
   const now = args.now ?? (() => new Date())
   const plan = planOrcadDeltaMove(userDataPath, store, target, { now })
+  // Taken with the manifest, before any await: the baseline must describe what the server receives.
+  const planned = sourceBaseline(store, target)
   if (!plan.resumes && plan.added.length === 0) {
     return refuse('orcad_delta_nothing_new', 'An older build added nothing new to move.')
   }
@@ -97,14 +99,37 @@ export async function runOrcadDeltaMove(args: OrcadDeltaMoveArgs): Promise<Orcad
     if (!changedAt || head?.migrationId !== (plan.resumes ?? plan.head).migrationId) {
       return refuse('orcad_delta_superseded', 'Another move of this host ran first.')
     }
-    const cutover = plan.resumes ?? journalDelta(args, plan, terminals.provenPtyIds, now)
+    // The source stays writable until the fence below: a draft typed while the terminals were
+    // checked is newer than the manifest, so it must not become the baseline the server is held to.
+    if (!plan.resumes && !sameSourceBaseline(planned, sourceBaseline(store, target))) {
+      return refuse(
+        'orcad_delta_source_changed',
+        'This host changed while the move was starting. Try the move again.'
+      )
+    }
+    const cutover = plan.resumes ?? journalDelta(args, plan, planned, terminals.provenPtyIds, now)
     return commitDelta(args, plan, cutover, changedAt, now)
   })
+}
+
+type SourceBaseline = { identity: string; state: string | null }
+
+function sourceBaseline(store: Store, target: SshTarget): SourceBaseline {
+  return {
+    identity: currentOrcadSourceFingerprint(store, target),
+    state: currentOrcadSourceStateFingerprint(store, target)
+  }
+}
+
+/** An unreadable source (null) matches only itself, and stays unverified once journaled. */
+function sameSourceBaseline(left: SourceBaseline, right: SourceBaseline): boolean {
+  return left.identity === right.identity && left.state === right.state
 }
 
 function journalDelta(
   args: OrcadDeltaMoveArgs,
   plan: OrcadDeltaMovePlan,
+  planned: SourceBaseline,
   provenPtyIds: string[],
   now: () => Date
 ): OrcadMigrationSourceCutover {
@@ -122,10 +147,9 @@ function journalDelta(
     manifestSha256: plan.manifest.manifestSha256,
     provenPtyIds,
     supersedesMigrationId: plan.head.migrationId,
-    // The whole source as it is now: what the retained rows must keep matching afterwards.
-    sourceBaselineFingerprint: currentOrcadSourceFingerprint(args.store, args.target),
-    sourceStateFingerprint:
-      currentOrcadSourceStateFingerprint(args.store, args.target) ?? undefined,
+    // The whole source as the manifest saw it: what the retained rows must keep matching.
+    sourceBaselineFingerprint: planned.identity,
+    sourceStateFingerprint: planned.state ?? undefined,
     manifest: plan.manifest
   }
   writeOrcadMigrationSourceCutover(args.userDataPath, cutover)
