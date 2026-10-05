@@ -125,13 +125,6 @@ export class StructuredAgentSessionHost {
       // Quit drains a delivery start before it evicts, so the child it produces is stopped.
       trackStart: (start) => this.tasks.trackAttach(start),
       attachContext: () => this.attachContext(),
-      reset: (sessionId, journal, reset) =>
-        this.subscribers.reset(
-          sessionId,
-          journal,
-          reset,
-          structuredAgentSessionConversationFence(deps.store, sessionId)
-        ),
       clientDelivery: this.clientDelivery
     })
     this.restore = createStructuredAgentSessionHostRestore(deps, {
@@ -141,7 +134,8 @@ export class StructuredAgentSessionHost {
       hasSession: this.hasSession,
       // Site 10: cannot overwrite a live entry — the restorer returns early on
       // `hasSession` inside the same serialized step as this `set`.
-      onReadable: this.conversationDelivery.adoptOpened
+      onReadable: this.conversationDelivery.adoptOpened,
+      onUnopened: (sessionId) => this.tabs.markUnopened(sessionId)
     })
     this.eventRecovery = new StructuredAgentSessionEventRecovery({
       deps,
