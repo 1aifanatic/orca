@@ -4,15 +4,18 @@ import type { AgentSessionTurnCompletionEvent } from '../../../shared/agent-sess
 import { STRUCTURED_AGENT_SESSION_START_RETRY_DELAYS_MS } from '../../../shared/structured-agent-session-start-retry'
 import { AgentSessionRecoveryCapsule } from '../../runtime/agent-session-recovery-capsule'
 import {
+  AGENT_SESSION_RESTART_CONTINUATION_NOTE,
   AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE,
   AGENT_SESSION_RESTART_CONTINUATION_UNCONFIRMED_NOTE
 } from '../../../shared/agent-session-restart-continuation'
 import { AgentSessionPreSpawnError } from './structured-agent-session-adapter'
 import { StructuredAgentSessionResumeAdmission } from './structured-agent-session-restart-resume-runner'
-import { STRUCTURED_AGENT_SESSION_RESTART_CONTINUATION_CALLER } from './structured-agent-session-restart-resume-wiring'
 import {
   interruptedRestart,
-  statusNotes
+  QUIT_CUT_NOTICE,
+  readerNotes,
+  statusNotes,
+  throwAfterContinuationAccepted
 } from './structured-agent-session-restart-interruption-test-harness'
 import { CALLER, envelope } from './structured-agent-session-host-test-harness'
 import {
@@ -53,6 +56,8 @@ it('files nothing for a chat the user moved on in before its attempt, and spends
   expect(await capsule.listFailed(NOW)).toEqual([])
   expect(await capsule.list(NOW)).toEqual([])
   expect(await statusNotes(host)).toEqual([])
+  // No note took over, so the cut turn keeps its one notice.
+  expect(await readerNotes(host)).toEqual([QUIT_CUT_NOTICE])
 })
 
 // The continuation is accepted and its agent's start is refused before it ran. Like any message
@@ -126,22 +131,29 @@ it('reads Failed once its tries run out, with one failure notification', async (
   expect(await host.restartResume.listFailures()).toEqual([])
 })
 
+// A continuation that carries on, chosen in the prompt or automatically at launch, does not stand in
+// for the cut: its note is written after its own message, so the cut keeps its notice throughout.
+it("keeps the quit's notice through a continuation that carries the chat on", async () => {
+  const { host } = await interruptedRestart()
+  await host.restartResume.list()
+  expect(await readerNotes(host)).toEqual([QUIT_CUT_NOTICE])
+
+  const result = await host.restartResume.continueAfterRestart([SESSION], 'modal')
+
+  expect(result.continued).toMatchObject([{ outcome: 'continued' }])
+  expect(await readerNotes(host)).toEqual([
+    QUIT_CUT_NOTICE,
+    { text: AGENT_SESSION_RESTART_CONTINUATION_NOTE, tone: undefined }
+  ])
+})
+
 // A send that throws after Orca may have taken it cannot be proven undelivered: filed unconfirmed,
 // and it stays on record while the agent that may be carrying on keeps running.
 it('keeps an unconfirmed failure while the agent the continuation started keeps running', async () => {
-  const { host, store } = await interruptedRestart()
+  const { host } = await interruptedRestart()
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   await host.restartResume.list()
-  const settle = store.recordOperationOutcome.bind(store)
-  vi.spyOn(store, 'recordOperationOutcome').mockImplementation(async (input) => {
-    if (
-      input.callerKey === STRUCTURED_AGENT_SESSION_RESTART_CONTINUATION_CALLER &&
-      input.outcome.status === 'succeeded'
-    ) {
-      throw new Error('operation outcome could not be persisted')
-    }
-    return settle(input)
-  })
+  throwAfterContinuationAccepted()
 
   const result = await host.restartResume.continueAfterRestart([SESSION], 'modal')
 

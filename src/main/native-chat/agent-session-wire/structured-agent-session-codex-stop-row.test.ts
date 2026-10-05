@@ -10,9 +10,9 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import {
   createStructuredAgentSessionOutboxEntry,
-  reconcileStructuredAgentSessionOutbox,
   structuredAgentSessionSendMutation
 } from '../../../shared/structured-agent-session-outbox'
+import { reconcileStructuredAgentSessionOutbox } from '../../../shared/structured-agent-session-outbox-reconcile'
 import { admitStructuredAgentSessionOutboxEntry } from '../../../shared/structured-agent-session-outbox-admission'
 import { CodexAppServerRequestError } from '../../codex/codex-app-server-connection'
 import { CodexAppServerTimeoutError } from '../../codex/codex-app-server-session'
@@ -530,7 +530,8 @@ describe('a follow-up Codex never echoed, when a Stop whose interrupt failed', (
     const next = queued(hostTestOperationId(), 'carry on')
     const outbox = reconcileStructuredAgentSessionOutbox(
       [{ ...queued(followUpId, 'and also this'), state: 'dispatching', lastAttemptAt: NOW }, next],
-      submissions
+      submissions,
+      []
     )
     expect(admitStructuredAgentSessionOutboxEntry(outbox)).toEqual({
       state: 'dispatch',
@@ -559,7 +560,7 @@ describe('a follow-up Codex never echoed, when a Stop whose interrupt failed', (
     const later = queued(hostTestOperationId(), 'and then')
     expect(
       admitStructuredAgentSessionOutboxEntry(
-        reconcileStructuredAgentSessionOutbox([...outbox, later], submissions)
+        reconcileStructuredAgentSessionOutbox([...outbox, later], submissions, [])
       )
     ).toEqual({ state: 'dispatch', entry: later })
   }

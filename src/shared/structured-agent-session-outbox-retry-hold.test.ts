@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { AgentJournalSubmission } from './agent-session-journal-types'
 import {
   createStructuredAgentSessionOutboxEntry,
-  reconcileStructuredAgentSessionOutbox,
   type StructuredAgentSessionOutboxEntry
 } from './structured-agent-session-outbox'
+import { reconcileStructuredAgentSessionOutbox } from './structured-agent-session-outbox-reconcile'
 import {
   admitStructuredAgentSessionOutboxEntry,
   structuredAgentSessionEntryHeldForRetry
@@ -71,7 +71,8 @@ describe('a message held for its Retry', () => {
     }
     const [landed] = reconcileStructuredAgentSessionOutbox(
       [entry('held', { lastFailure: REFUSED })],
-      [submission]
+      [submission],
+      []
     )
     expect(landed?.state).toBe('dispatching')
     expect(landed?.lastFailure).toBeUndefined()
@@ -91,7 +92,8 @@ describe('a message held for its Retry', () => {
     }
     const reconciled = reconcileStructuredAgentSessionOutbox(
       [entry('held', { lastAttemptAt: 2, lastFailure: REFUSED }), entry('next')],
-      [submission]
+      [submission],
+      []
     )
     // Its journal row draws it, and the host never sends it again, so nothing waits on it.
     expect(reconciled.map((entry) => entry.clientMessageId)).toEqual(['next'])

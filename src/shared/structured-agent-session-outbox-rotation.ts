@@ -15,6 +15,13 @@ export function rotateStructuredAgentSessionOutboxEntryId(
   }
 }
 
+/** Every id this client's messages went out under before a Retry replaced it. */
+export function structuredAgentSessionReplacedIds(
+  outbox: readonly Pick<StructuredAgentSessionOutboxEntry, 'rotatedFrom'>[]
+): ReadonlySet<string> {
+  return new Set(outbox.flatMap((entry) => entry.rotatedFrom ?? []))
+}
+
 /** The replaced ids a saved entry carries; a malformed list is dropped. */
 export function parseStructuredAgentSessionOutboxRotation(entry: {
   rotatedFrom?: unknown

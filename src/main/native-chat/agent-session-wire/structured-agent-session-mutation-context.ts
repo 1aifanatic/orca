@@ -55,8 +55,9 @@ class AwaitingAgentStart {
   constructor(readonly child: string) {}
 }
 
+type AdmittedPreparation = NonNullable<AgentSessionMutationRequest<unknown>['prepareSession']>
 type SessionPreparation = (
-  ...args: Parameters<NonNullable<AgentSessionMutationRequest<unknown>['prepareSession']>>
+  ...args: Parameters<AdmittedPreparation>
 ) => Promise<AgentSessionMutationSessionPreparation>
 
 /**
@@ -69,13 +70,13 @@ export async function serializeAwaitingAgentStart<TValue>(
   context: Pick<StructuredAgentSessionMutationContext, 'serialize' | 'sessions' | 'deps'>,
   sessionId: string,
   step: (
-    prepare: (prepareSession: SessionPreparation) => SessionPreparation
+    prepare: (prepareSession: SessionPreparation) => AdmittedPreparation
   ) => Promise<AgentSessionMutationResult<TValue>>
 ): Promise<AgentSessionMutationResult<TValue>> {
   const { adapter } = context.deps
   let awaited: string | null = null
   const prepare =
-    (prepareSession: SessionPreparation): SessionPreparation =>
+    (prepareSession: SessionPreparation): AdmittedPreparation =>
     async (...args) => {
       const prepared = await prepareSession(...args)
       const child = context.sessions.get(sessionId)?.child
@@ -115,7 +116,7 @@ export function mutateStructuredAgentSession<TValue>(
   caller: StructuredAgentSessionCaller,
   envelope: AgentSessionMutationEnvelope,
   plan: MutationPlan<TValue>,
-  prepareSession?: AgentSessionMutationRequest<TValue>['prepareSession']
+  prepareSession?: SessionPreparation
 ): Promise<AgentSessionMutationResult<TValue>> {
   const { sessionId } = envelope
   return serializeAwaitingAgentStart(context, sessionId, (prepare) =>

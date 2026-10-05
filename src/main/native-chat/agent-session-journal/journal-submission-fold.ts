@@ -69,20 +69,26 @@ export function placeHandedOverMessage(
   })
 }
 
-/** A queued message that leaves the queue without a handover, its start failed for good: placed
- *  where that was written, which is where it was drawn while it waited. Its turn scope is kept. */
-export function placeQueuedMessageAt(
+/** A rejected message — queued, handed over, or sent directly — joins the conversation where it was
+ *  rejected, in no turn: what happened before the rejection happened before it, and the newest page
+ *  holds a recent one. Only a rejection: one in doubt may have reached the agent, so it stays. */
+export function placeRejectedMessage(
   state: JournalReducerState,
   submission: AgentJournalSubmission,
   row: Extract<JournalRow, { kind: 'dispatch' }>
 ): void {
   const itemId = agentJournalSubmissionKey(submission.clientMessageId)
   const item = state.items.get(itemId)
-  if (!submission.handoverRecorded || !item) {
+  if (row.state !== 'rejected' || !item) {
     return
   }
-  const { sequenceIndex: _acceptedAt, ...accepted } = item
-  state.items.set(itemId, { ...accepted, sequence: row.seq })
+  const { sequenceIndex: _placed, ...rest } = item
+  state.items.set(itemId, {
+    ...rest,
+    sequence: row.seq,
+    observedAt: row.ts,
+    turnScope: AGENT_JOURNAL_THREAD_SCOPE
+  })
 }
 
 export function acceptSubmissionFromProviderItem(

@@ -6,18 +6,24 @@ import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/struc
 import { projectStructuredAgentSessionMessages as projectMessages } from '../../../../shared/structured-agent-session-message-projection'
 import { projectStructuredQuestionMessages } from './structured-agent-question-projection'
 
+/** The desktop's transcript: a message the host accepted and then rejected stays where it was
+ *  sent, as not sent, unless a queued card holds it. */
 export function projectStructuredAgentSessionMessages(
   items: readonly AgentJournalRenderItem[],
   outbox: readonly StructuredAgentSessionOutboxEntry[],
   submissions: readonly AgentJournalSubmission[],
-  showsFailedStartsSentElsewhere: boolean,
+  /** The queue's live cards; required, since a rejected message a card holds must not draw twice. */
+  queuedMessageIds: readonly string[],
+  /** The whole outbox, where `outbox` leaves out the sends drawn as cards. */
   sentHere: readonly StructuredAgentSessionOutboxEntry[] = outbox
 ) {
-  return projectMessages(items, outbox, submissions, {
-    projectItems: projectStructuredQuestionMessages,
-    showsFailedStartsSentElsewhere,
-    sentHere
-  })
+  return projectMessages(
+    items,
+    outbox,
+    submissions,
+    { rejectedInPlace: true, queuedMessageIds, sentHere },
+    projectStructuredQuestionMessages
+  )
 }
 
 export type StructuredPromptItem = AgentJournalRenderItem & {

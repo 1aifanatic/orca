@@ -24,10 +24,8 @@ import { CodexAppServerRequestError } from '../codex/codex-app-server-connection
 import { MAX_CODEX_HOOK_REASON_CHARS } from '../codex/codex-structured-prompt-block'
 import { owesStructuredAgentSessionWork } from '../../shared/structured-agent-session-owed-work'
 import { projectStructuredAgentSessionMessages } from '../../shared/structured-agent-session-message-projection'
-import {
-  createStructuredAgentSessionOutboxEntry,
-  reconcileStructuredAgentSessionOutbox
-} from '../../shared/structured-agent-session-outbox'
+import { createStructuredAgentSessionOutboxEntry } from '../../shared/structured-agent-session-outbox'
+import { reconcileStructuredAgentSessionOutbox } from '../../shared/structured-agent-session-outbox-reconcile'
 import { admitStructuredAgentSessionOutboxEntry } from '../../shared/structured-agent-session-outbox-admission'
 import { readWholeAgentSessionFailureFact } from '../../shared/agent-session-failure'
 import { agentSessionFailureSentence } from '../../shared/agent-session-failure-words'
@@ -452,7 +450,8 @@ describe('a Codex send a Codex hook blocked', () => {
         { ...queued(followUp, 'and paste the API key'), state: 'dispatching', lastAttemptAt: 1 },
         next
       ],
-      journal.submissions
+      journal.submissions,
+      journal.items
     )
     expect(outbox).toEqual([next])
     expect(admitStructuredAgentSessionOutboxEntry(outbox)).toEqual({
@@ -474,7 +473,8 @@ describe('a Codex send a Codex hook blocked', () => {
       const rows = projectStructuredAgentSessionMessages(
         journal.items,
         sentHere,
-        journal.submissions
+        journal.submissions,
+        { rejectedInPlace: true }
       )
       expect(rows.filter(({ id }) => id === key)).toEqual([
         expect.objectContaining({ id: key, unsent: true })
@@ -485,6 +485,7 @@ describe('a Codex send a Codex hook blocked', () => {
     )
     // The phone, which can't mark a message unsent yet, draws it as sent, as before the block.
     const onPhone = projectStructuredAgentSessionMessages(journal.items, [], journal.submissions, {
+      rejectedInPlace: false,
       showsUndeliveredSentElsewhere: false
     }).filter(({ id }) => id === key)
     expect(onPhone).toHaveLength(1)
