@@ -356,4 +356,16 @@ describe('NativeChatInteractiveCard paused gate', () => {
 
     expect(screen.queryByText('Tabs or spaces?')).not.toBeInTheDocument()
   })
+
+  it('shows an unsupported request with its own text and one line, and nothing to approve', () => {
+    const status = storeState.agentStatusByPaneKey['tab-1:leaf-1']
+    status.interactivePrompt = JSON.stringify({ choice: { title: 'Implement this plan?' } })
+    status.toolName = undefined
+    render(cardElement(true, []))
+
+    expect(screen.getByText('Implement this plan?')).toBeInTheDocument()
+    expect(screen.getByText('This request needs a newer version of Orca.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /allow|approve|yes/i })).not.toBeInTheDocument()
+    status.toolName = 'AskUserQuestion'
+  })
 })

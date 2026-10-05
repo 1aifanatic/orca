@@ -12,7 +12,6 @@ import { useMobileNativeChatSessionLane } from './use-mobile-native-chat-session
 import { useMobileStructuredNativeChatSendBridge } from './use-mobile-structured-native-chat-send-bridge'
 import { useMobileNativeChatDecisionCards } from './use-mobile-native-chat-decision-cards'
 import { useMobileNativeChatAsyncQuestions } from './use-mobile-native-chat-async-questions'
-import { NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT } from '../../../src/shared/native-chat-async-questions'
 import { useNativeChatAcceptedAction } from './use-native-chat-action-outcomes'
 import { useThrottledLatestValue } from './use-throttled-latest-value'
 import type { MobileNativeChatController } from './mobile-native-chat-controller-contract'
@@ -231,8 +230,7 @@ export function useMobileNativeChatController(args: {
 
   const nativeChatAsyncQuestions = useMobileNativeChatAsyncQuestions({
     scopeKey: JSON.stringify([activeSessionTabId, activeChatSessionId]),
-    // A lane session without the field (no host answer yet) reads as an older host.
-    view: nativeChatSession.asyncQuestions ?? NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT,
+    view: nativeChatSession.asyncQuestions,
     structured: activeChatStructured,
     answerTerminal: legacyHandleNativeChatQuestionAnswer,
     answerStructured: structuredNativeChatSend.answer

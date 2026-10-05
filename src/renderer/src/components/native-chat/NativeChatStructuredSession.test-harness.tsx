@@ -2,6 +2,7 @@ import { act } from '@testing-library/react'
 import { forwardRef, useImperativeHandle, useRef } from 'react'
 import { vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
+import { NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT } from '../../../../shared/native-chat-async-questions'
 import type { QueuedMessageCard } from './structured-agent-session-queued-cards'
 import type { AgentSessionBackgroundTask } from '../../../../shared/agent-session-wire'
 import type { AgentSessionWriteRefusal } from '../../../../shared/agent-session-write-failure'
@@ -220,6 +221,8 @@ export function createStructuredSessionMocks() {
             submissions: mocks.submissions,
             send: outbox.send,
             retry: outbox.retry,
+            sendAsyncAnswer: outbox.sendAsyncAnswer,
+            asyncQuestions: NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT,
             isWorking: mocks.isWorking,
             backgroundTasks: {
               show: mocks.showBackgroundTasks || mocks.monitoringBackgroundTasks,

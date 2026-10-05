@@ -15,6 +15,7 @@ const holdUnconfirmedSend = vi.fn()
 // and transcript state; defaults keep the send-seam tests unchanged.
 const viewMode = { isTabChatView: (_tabId: string) => true }
 const sessionState = { messages: [] as unknown[], status: 'ready', transcriptLoading: false }
+const NO_ASYNC_QUESTIONS = { asyncQuestions: { state: 'absent' as const } }
 const structuredSendWithOutcome = vi.fn()
 const structuredCancel = vi.fn()
 const structuredCancelPrompt = vi.fn(async () => true)
@@ -84,11 +85,11 @@ vi.mock('./use-mobile-session-view-mode', () => ({
   })
 }))
 vi.mock('./use-mobile-native-chat-session', () => ({
-  useMobileNativeChatSession: () => sessionState
+  useMobileNativeChatSession: () => ({ ...sessionState, ...NO_ASYNC_QUESTIONS })
 }))
 vi.mock('./use-mobile-structured-agent-session', () => ({
   useMobileStructuredAgentSession: () => ({
-    session: structuredSessionState,
+    session: { ...structuredSessionState, ...NO_ASYNC_QUESTIONS },
     ...structuredActivity,
     queued: { cards: [], send: vi.fn(), delete: vi.fn(), edit: vi.fn() },
     sendWithOutcome: structuredSendWithOutcome,

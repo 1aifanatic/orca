@@ -1,4 +1,3 @@
-import { NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT } from '../../../../shared/native-chat-async-questions'
 import type { useStructuredAgentSession } from './use-structured-agent-session'
 import {
   useNativeChatAsyncQuestions,
@@ -21,8 +20,7 @@ export function useStructuredNativeChatAsyncQuestions(
   })
   return useNativeChatAsyncQuestions({
     scopeKey: paneKey,
-    // Absent until the transport has a host answer.
-    view: controller.asyncQuestions ?? NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT,
+    view: controller.asyncQuestions,
     send
   })
 }
