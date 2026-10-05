@@ -49,8 +49,12 @@ describe('Monaco view state persistence', () => {
     const remountedEditor = {
       setSelections,
       setScrollTop,
-      focus
-    } as unknown as editor.IStandaloneCodeEditor
+      focus,
+      getLayoutInfo: () => ({ contentWidth: 100, height: 100 }),
+      onDidDispose: () => ({ dispose: vi.fn() }),
+      onDidChangeModel: () => ({ dispose: vi.fn() }),
+      onDidLayoutChange: () => ({ dispose: vi.fn() })
+    } satisfies Parameters<typeof restoreMonacoViewState>[0]
     restoreMonacoViewState(remountedEditor, 'file.ts::tab-1')
 
     expect(setSelections).toHaveBeenCalledWith(selections)

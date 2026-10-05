@@ -1,17 +1,22 @@
 import type { Editor } from '@tiptap/react'
 import { TextSelection } from '@tiptap/pm/state'
 
-/**
- * Auto-focuses the rich markdown editor on mount so users can start typing
- * immediately (matching MonacoEditor's behavior). Guards against focus theft
- * from modals/dialogs and skips scrollIntoView to avoid racing with
- * useEditorScrollRestore.
- *
- * `force` marks an explicit user handoff (Explorer open): it bypasses the theft
- * guard and claims DOM focus in this tick, because `commands.focus()` defers the
- * real `view.focus()` by a further frame. `shouldFocus` lets the caller retire a
- * handoff that expired while the frame was pending.
- */
+function isSelectedTabInEditorPane(active: Element | null, rootEl: HTMLElement | null): boolean {
+  if (!active?.matches('[data-tab-id][data-active="true"]')) {
+    return false
+  }
+  const body = rootEl?.closest('[data-tab-group-body-id]')
+  const strip = active.closest('[data-tab-group-strip-id]')
+  return Boolean(
+    body?.isConnected &&
+    body.getAttribute('data-worktree-id') &&
+    strip &&
+    body.getAttribute('data-tab-group-body-id') === strip.getAttribute('data-tab-group-strip-id') &&
+    body.getAttribute('data-worktree-id') === strip.getAttribute('data-worktree-id')
+  )
+}
+
+// Explicit Explorer handoffs may claim focus; ordinary mounts must leave unrelated controls alone.
 export function autoFocusRichEditor(
   nextEditor: Editor,
   rootEl: HTMLElement | null,
@@ -28,24 +33,19 @@ export function autoFocusRichEditor(
       return
     }
     const active = document.activeElement
-    // Why: explicit file-open requests may hand focus to the editor; ordinary
-    // lazy mounts must still leave unrelated fields and dialogs alone.
     const canTakeFocus =
       force ||
       active === null ||
       active === document.body ||
       (rootEl?.contains(active) ?? false) ||
-      (active instanceof HTMLElement && active.hasAttribute('data-tab-id'))
+      isSelectedTabInEditorPane(active, rootEl)
     if (!canTakeFocus) {
       return
     }
-    // Preserve a restored TextSelection; forced and non-text focus starts at position 1.
+    // An empty document's AllSelection needs a caret; restored text selections must survive.
     const focusPosition =
       force || !(nextEditor.state.selection instanceof TextSelection) ? 'start' : null
-    // Why: `scrollIntoView: false` prevents Tiptap's focus command from
-    // scrolling the cursor into view, which would otherwise race with
-    // useEditorScrollRestore's RAF retry loop and clobber the cached
-    // scroll position on every tab switch.
+    // Cursor reveal would overwrite the separately restored scroll position.
     nextEditor.commands.focus(focusPosition, { scrollIntoView: false })
   })
   return () => {

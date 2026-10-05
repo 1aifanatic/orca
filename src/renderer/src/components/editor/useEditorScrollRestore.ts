@@ -1,5 +1,6 @@
 import { useLayoutEffect, type RefObject } from 'react'
 import type { Editor } from '@tiptap/react'
+import { TextSelection } from '@tiptap/pm/state'
 import { richMarkdownSelectionCache, scrollTopCache, setWithLRU } from '@/lib/scroll-cache'
 
 /**
@@ -46,15 +47,6 @@ export function useEditorScrollRestore(
       container.removeEventListener('scroll', onScroll)
     }
   }, [scrollContainerRef, scrollCacheKey])
-  useLayoutEffect(() => {
-    if (!editor) {
-      return
-    }
-    return () => {
-      const { from, to } = editor.state.selection
-      setWithLRU(richMarkdownSelectionCache, scrollCacheKey, { from, to })
-    }
-  }, [editor, scrollCacheKey])
 
   // Restore scroll position with RAF retry loop for async Tiptap content.
   useLayoutEffect(() => {
@@ -95,16 +87,27 @@ export function useEditorScrollRestore(
   }, [scrollContainerRef, scrollCacheKey, editor])
 
   useLayoutEffect(() => {
-    if (!editor) {
+    if (!editor || editor.isDestroyed) {
       return
     }
     const savedSelection = richMarkdownSelectionCache.get(scrollCacheKey)
     if (savedSelection) {
-      const docSize = editor.state.doc.content.size
-      editor.commands.setTextSelection({
-        from: Math.min(savedSelection.from, docSize),
-        to: Math.min(savedSelection.to, docSize)
-      })
+      editor.commands.setTextSelection(savedSelection)
+    }
+    return () => {
+      if (editor.isDestroyed) {
+        return
+      }
+      const selection = editor.state.selection
+      if (selection instanceof TextSelection) {
+        // Keep the moving end of a backwards selection when the editor remounts.
+        setWithLRU(richMarkdownSelectionCache, scrollCacheKey, {
+          from: selection.anchor,
+          to: selection.head
+        })
+      } else {
+        richMarkdownSelectionCache.delete(scrollCacheKey)
+      }
     }
   }, [editor, scrollCacheKey])
 }

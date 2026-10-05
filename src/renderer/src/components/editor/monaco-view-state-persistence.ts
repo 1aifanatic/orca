@@ -41,14 +41,43 @@ export function installMonacoViewStateTracking(params: MonacoViewStateTrackingPa
 }
 
 export function restoreMonacoViewState(
-  editorInstance: editor.IStandaloneCodeEditor,
+  editorInstance: Pick<
+    editor.IStandaloneCodeEditor,
+    'setSelections' | 'setScrollTop' | 'focus' | 'onDidDispose'
+  > & {
+    getLayoutInfo(): Pick<editor.EditorLayoutInfo, 'contentWidth' | 'height'>
+    onDidLayoutChange(listener: () => void): { dispose(): void }
+    onDidChangeModel(listener: () => void): { dispose(): void }
+  },
   viewStateKey: string
 ): void {
   const savedSelections = editorSelectionCache.get(viewStateKey)
   const savedScrollTop = scrollTopCache.get(viewStateKey)
   if (savedScrollTop !== undefined || savedSelections) {
-    // Why: Monaco renders synchronously so one RAF suffices; focus inside it to avoid a scroll-0 flash before restore.
-    requestAnimationFrame(() => {
+    let restoreFrame: number | null = null
+    let active = true
+    const cancelRestore = (): void => {
+      if (!active) {
+        return
+      }
+      active = false
+      if (restoreFrame !== null) {
+        cancelAnimationFrame(restoreFrame)
+        restoreFrame = null
+      }
+      subscriptions.forEach((subscription) => subscription.dispose())
+    }
+    const restore = (): void => {
+      restoreFrame = null
+      if (!active) {
+        return
+      }
+      const layout = editorInstance.getLayoutInfo()
+      // Initial narrow layout wraps every character; its pixel scroll changes again on resize.
+      if (layout.contentWidth <= 0 || layout.height <= 0) {
+        return
+      }
+      cancelRestore()
       if (savedSelections) {
         editorInstance.setSelections(savedSelections)
       }
@@ -56,7 +85,18 @@ export function restoreMonacoViewState(
         editorInstance.setScrollTop(savedScrollTop)
       }
       editorInstance.focus()
-    })
+    }
+    const scheduleRestore = (): void => {
+      if (active && restoreFrame === null) {
+        restoreFrame = requestAnimationFrame(restore)
+      }
+    }
+    const subscriptions = [
+      editorInstance.onDidDispose(cancelRestore),
+      editorInstance.onDidChangeModel(cancelRestore),
+      editorInstance.onDidLayoutChange(scheduleRestore)
+    ]
+    scheduleRestore()
   } else {
     editorInstance.focus()
   }
