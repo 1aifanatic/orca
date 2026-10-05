@@ -147,7 +147,8 @@ export function createSshIpcMocks(): SshIpcMocks {
     hostServerConnect: {
       decideHostServer: vi.fn(async () => null),
       publishManagedServerConnect: vi.fn(),
-      recordRelayDecision: vi.fn()
+      recordRelayDecision: vi.fn(),
+      refineRelayTerminalDecision: vi.fn(async () => {})
     },
     sshConnectionStore: {
       isRuntimeOwnedSshTarget: (target: { owner?: unknown }) => target.owner !== undefined,
