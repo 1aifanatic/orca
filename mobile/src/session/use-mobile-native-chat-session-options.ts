@@ -22,6 +22,10 @@ import {
   withTrackedNativeChatModel
 } from '../../../src/shared/native-chat-session-option-snapshot'
 import {
+  decideConversationModelReport,
+  type ConversationModelReport
+} from '../../../src/shared/terminal-conversation-model-report'
+import {
   applyNativeChatReportedSessionOptions,
   clearNativeChatSessionModel,
   getTrackedSessionOption,
@@ -57,6 +61,9 @@ export function useMobileNativeChatSessionOptions(args: {
   scopeKey: string | null
   /** Provider model from live agent status, when the hook reported one. */
   reportedModel: string | null
+  /** Which evidence supplied `reportedModel`, and the conversation it belongs to; a status
+   *  report when omitted. */
+  modelReport?: Omit<ConversationModelReport, 'model'>
   discoveredModels?: CatalogModel[] | null
   modelSwitchCommand?: string
   dispatchCommand: (
@@ -102,29 +109,51 @@ export function useMobileNativeChatSessionOptions(args: {
 
   // Seed the current model from live agent status; hook reports are authority
   // over locally dispatched guesses (desktop 'reported' source parity).
+  const modelReport = args.modelReport
+  const reportedModelSource = modelReport?.modelSource ?? (reportedModel ? 'status' : null)
+  const fieldReportKey = modelReport?.fieldReportKey ?? null
+  const conversationKey = modelReport?.conversationKey ?? null
+  const conversationCleared = modelReport?.cleared === true
   useEffect(() => {
-    if (!catalog || !scopeKey || !agent || !reportedModel) {
+    if (!catalog || !scopeKey || !agent) {
       return
     }
     // OMP reports exact selectors, including models absent from cached discovery.
-    const matched =
-      agent === 'omp' ? reportedModel.trim() : matchNativeChatCatalogModelId(catalog, reportedModel)
-    if (!matched) {
-      return
-    }
+    const matched = !reportedModel
+      ? null
+      : agent === 'omp'
+        ? reportedModel.trim()
+        : matchNativeChatCatalogModelId(catalog, reportedModel)
     // Why: the same report is re-delivered whenever the tab is re-entered or the
     // status stream reconnects, and a session-start report cannot have observed a
     // `/model` sent after it. Re-applying it would revert the user's pick. Only a
     // report that CHANGES is evidence; the value itself still wins when it does.
-    if (appliedReportByScope.get(scopeKey) === matched) {
+    const decision = decideConversationModelReport(appliedReportByScope.get(scopeKey), {
+      cleared: conversationCleared,
+      conversationKey,
+      model: matched || null,
+      modelSource: reportedModelSource,
+      fieldReportKey
+    })
+    appliedReportByScope.set(scopeKey, decision.baseline)
+    if (!decision.apply || !matched) {
       return
     }
-    appliedReportByScope.set(scopeKey, matched)
     const record = getScopedRecord(scopeKey, agent)
     if (applyNativeChatReportedSessionOptions(record, { model: matched })) {
       bump()
     }
-  }, [agent, bump, catalog, reportedModel, scopeKey])
+  }, [
+    agent,
+    bump,
+    catalog,
+    conversationCleared,
+    conversationKey,
+    fieldReportKey,
+    reportedModel,
+    reportedModelSource,
+    scopeKey
+  ])
 
   const snapshot = useMemo(() => {
     if (!catalog || !scopeKey || !agent) {
