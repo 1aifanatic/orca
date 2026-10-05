@@ -26,6 +26,7 @@ import { readWorktreeStructuredActivationInventory } from '../../src/renderer/sr
 import type { RuntimeMobileSessionTabsResult } from '../../src/shared/runtime-types'
 import { openTestJournalHostDatabase } from '../../src/main/native-chat/agent-session-journal/journal-host-database-test-support'
 import { createStructuredAgentSessionLogger } from '../../src/main/native-chat/agent-session-wire/structured-agent-session-logger'
+import { codexProviderHandle } from '../../src/shared/agent-session-provider-handle-encoding'
 
 const WORKTREE = 'repo-1::/workspace/repo'
 
@@ -44,7 +45,7 @@ function openHost(): void {
         process: { hostId: 'local', pid: 4242, processStartTimeMs: 1_700_000_000_000, spawnToken },
         link: {
           linkId: `link-${fence}`,
-          handle: { provider: 'codex', threadId: THREAD },
+          handle: codexProviderHandle(THREAD),
           origin: store.getRecord(SESSION)?.providerHandleChain.length ? 'resumed' : 'created',
           mintedAtFence: fence,
           observedAt: NOW
@@ -135,7 +136,7 @@ describe('a chat at rest keeps its worktree activatable', () => {
   it('after the idle sweep stopped its agent and closed the conversation', async () => {
     clock += STRUCTURED_AGENT_SESSION_IDLE_MS + 1
     await vi.waitFor(() => expect(host.hasSession(SESSION)).toBe(false))
-    expect(closeSession).toHaveBeenCalledWith(SESSION, 'evict')
+    expect(closeSession).toHaveBeenCalledWith(SESSION)
 
     expect(host.handoffStatus(SESSION)).toMatchObject({ owner: 'native' })
     expect(await activate()).toBe('structured')

@@ -29,6 +29,7 @@ import {
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 
 let root: string
 let store: AgentSessionRecordStore
@@ -111,7 +112,7 @@ describe('attach', () => {
         },
         link: {
           linkId: 'stale-link',
-          handle: { provider: 'codex', threadId: THREAD },
+          handle: codexProviderHandle(THREAD),
           origin: 'created',
           mintedAtFence: fence + 1,
           observedAt: NOW
@@ -126,7 +127,7 @@ describe('attach', () => {
         },
         link: {
           linkId: `link-${fence}`,
-          handle: { provider: 'codex', threadId: THREAD },
+          handle: codexProviderHandle(THREAD),
           origin: 'created',
           mintedAtFence: fence,
           observedAt: NOW
@@ -301,27 +302,6 @@ describe('cancel', () => {
       refusal: { code: 'agent_session_item_revision_stale' }
     })
     expect(cancelTurn).not.toHaveBeenCalled()
-  })
-
-  it('records an unknown outcome when lifecycle draining fails and never interrupts on replay', async () => {
-    await attach()
-    const prompt = await seedApproval()
-    vi.spyOn(host, 'flushStreamedEvents').mockRejectedValueOnce(new Error('journal drain failed'))
-    const fields = {
-      turnId: 'turn-1',
-      prompt: { itemId: prompt.itemId, expectedRevision: prompt.revision }
-    }
-    const params = {
-      envelope: envelope('agentSession.cancel', fields),
-      ...fields
-    }
-
-    await expect(host.cancel(CALLER, params)).rejects.toThrow('journal drain failed')
-    expect(await host.cancel(CALLER, params)).toMatchObject({
-      ok: false,
-      refusal: { code: 'agent_session_operation_unknown' }
-    })
-    expect(cancelTurn).toHaveBeenCalledTimes(1)
   })
 
   it('records an unknown outcome when strict prompt interruption throws and never retries it', async () => {

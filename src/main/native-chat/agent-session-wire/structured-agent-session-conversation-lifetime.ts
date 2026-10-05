@@ -12,15 +12,15 @@ import {
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { createJournalOpenReadRefusals } from '../agent-session-journal/journal-open-failure'
 import type { StructuredAgentSessionConversations } from './structured-agent-session-conversations'
+import { releaseLeaseOfEndedStructuredAgentSessionChild } from './structured-agent-session-child-close'
 import {
   abandonQueuedStructuredAgentSessionMessages,
   closeStructuredAgentSessionConversationUnderSerialize,
-  finishOwedStructuredAgentSessionWindDownUnderSerialize,
   stopStructuredAgentSessionAgentUnderSerialize,
   type StructuredAgentSessionCloseCause,
-  type StructuredAgentSessionLifetimeContext
+  type StructuredAgentSessionLifetimeContext,
+  type StructuredAgentSessionStopEnding
 } from './structured-agent-session-host-lifetime'
-import type { StructuredAgentSessionStopCause } from './structured-agent-session-adapter'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
 import { StructuredAgentSessionIdleSweep } from './structured-agent-session-idle-sweep'
 import { AGENT_SESSION_NOT_ATTACHED } from './structured-agent-session-mutation-admission'
@@ -55,13 +55,15 @@ export function createStructuredAgentSessionConversationLifetime(host: {
     session.journal.whenImported().catch((error: unknown) => {
       throw readRefusals.refusal(sessionId, error)
     })
-  const stopAgent = (sessionId: string, cause: StructuredAgentSessionStopCause) =>
-    stopStructuredAgentSessionAgentUnderSerialize(host.context(), sessionId, { cause })
-  const finishOwedWindDown = (sessionId: string) =>
-    finishOwedStructuredAgentSessionWindDownUnderSerialize(host.context(), sessionId)
+  const stopAgent = (sessionId: string, ending: StructuredAgentSessionStopEnding) =>
+    stopStructuredAgentSessionAgentUnderSerialize(host.context(), sessionId, ending)
 
-  const closeConversation = (sessionId: string): Promise<boolean> =>
-    closeStructuredAgentSessionConversationUnderSerialize(
+  const closeConversation = async (sessionId: string): Promise<boolean> => {
+    // The handle carries the proof that releases a lease its child's wind-down could not.
+    if (await releaseLeaseOfEndedStructuredAgentSessionChild(host.context(), sessionId)) {
+      return false
+    }
+    return closeStructuredAgentSessionConversationUnderSerialize(
       {
         sessions,
         closeStatus: (id) => {
@@ -72,6 +74,7 @@ export function createStructuredAgentSessionConversationLifetime(host: {
       },
       sessionId
     )
+  }
 
   const idleSweep = new StructuredAgentSessionIdleSweep({
     sessions,
@@ -86,8 +89,7 @@ export function createStructuredAgentSessionConversationLifetime(host: {
     },
     providerHoldsDispatch: (sessionId) => deps().adapter.holdsDispatch?.(sessionId) === true,
     // The host puts an idle agent to rest: a turn it cuts short is news, not the user's Stop.
-    stopAgent: (sessionId) => stopAgent(sessionId, 'evict'),
-    finishOwedWindDown,
+    stopAgent: (sessionId) => stopAgent(sessionId, { cause: 'evict', resting: true }),
     // A host stop: the delivery loop waiting on this child writes the one error row and rejects
     // what is queued with it, both worded from the hostStopped fact.
     stopStartingAgent: (sessionId) =>

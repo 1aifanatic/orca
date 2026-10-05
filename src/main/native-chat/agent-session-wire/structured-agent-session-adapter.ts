@@ -33,7 +33,6 @@ import type {
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionRefusalReason } from '../../../shared/agent-session-wire-refusals'
 import type { SubmissionRejectionFact } from '../../../shared/agent-session-failure'
-import type { StructuredAgentSessionStopCause } from './structured-agent-session-stop-cause'
 import type {
   AgentSessionCancelOutcome,
   StructuredAgentSessionAdapterStop
@@ -191,8 +190,6 @@ export type StructuredAgentSessionEndedEvent = {
    *  Orca fault. Absent reads as a provider exit with nothing to add. */
   failure?: SubmissionRejectionFact
   cause: 'unexpected-exit' | 'requested-close'
-  /** With `requested-close`: who asked for it. Absent when the host named no cause. */
-  stopCause?: StructuredAgentSessionStopCause
   fence: number
   acquisitionGeneration: string
   /** Host receipt of the child exit: the end time of a turn it interrupted. */
@@ -366,9 +363,6 @@ export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & 
   readOptions?(input: { sessionId: string; fence: number }): Promise<AgentSessionOptionsResult>
   /** Option keys skipped after a provider rejected their persisted restore value. */
   readOptionRestoreFailures?(sessionId: string): readonly string[]
-  /** Transcript path for journal recovery. Omit to let the existing session-file
-   *  resolver discover it from the provider session id. */
-  historyFilePath?(input: { identity: AgentSessionJournalIdentity }): Promise<string | null>
   /** Provider history for restart reconciliation, bounded to what the provider
    *  recorded after the journal's last committed item. Only the adapter can say
    *  whether the read has a proven start and whether a turn is still running, so
@@ -381,11 +375,11 @@ export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & 
   /** Gracefully stops the structured owner after its event stream is drained. */
   /** Returns true only after the provider child exit is proven. A root-exit or processless verdict
    *  is thrown only once the session is finalized; read it through `stopAgentSessionProviderRoot`. */
-  closeSession?(sessionId: string, cause?: StructuredAgentSessionStopCause): Promise<boolean>
+  closeSession?(sessionId: string): Promise<boolean>
   /** Stops a provider after a sink failure; the resulting exit is recovered as unexpected. */
   forceCloseSession?(sessionId: string): Promise<boolean>
   /** Stops a provider child for teardown without requiring a future-resume cursor. */
-  disposeSession?(sessionId: string, cause?: StructuredAgentSessionStopCause): Promise<boolean>
+  disposeSession?(sessionId: string): Promise<boolean>
   /** Host acknowledgement that the proven-dead child, lease and journal owner are released. */
   acknowledgeSessionRelease?(sessionId: string): void
 }
